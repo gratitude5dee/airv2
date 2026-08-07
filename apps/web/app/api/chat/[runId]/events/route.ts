@@ -28,7 +28,33 @@ export async function GET(
   try {
     const box = await ensureBoxAwake(supabase, userId);
     const stream = await runEvents(box.target, runId);
-    return new Response(stream, {
+
+    // Close out the agent_runs row as the terminal event streams past —
+    // the box owns the transcript; Supabase records only run metadata.
+    const decoder = new TextDecoder();
+    let closed = false;
+    const finish = (outcome: string): void => {
+      if (closed) return;
+      closed = true;
+      void supabase
+        .from("agent_runs")
+        .update({ outcome, ended_at: new Date().toISOString() })
+        .eq("user_id", userId)
+        .eq("hermes_run_id", runId)
+        .is("outcome", null)
+        .then(() => undefined);
+    };
+    const watched = stream.pipeThrough(
+      new TransformStream<Uint8Array, Uint8Array>({
+        transform(chunk, controller) {
+          const text = decoder.decode(chunk, { stream: true });
+          if (text.includes('"run.completed"')) finish("completed");
+          else if (text.includes('"run.failed"')) finish("failed");
+          controller.enqueue(chunk);
+        },
+      })
+    );
+    return new Response(watched, {
       headers: {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache, no-transform",

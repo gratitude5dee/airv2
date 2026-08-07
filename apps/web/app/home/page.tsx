@@ -129,6 +129,7 @@ export default function HomePage() {
   const [hubResults, setHubResults] = useState<HubSkill[] | null>(null);
   const [hubNote, setHubNote] = useState<string | null>(null);
   const [skillBusy, setSkillBusy] = useState<string | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -147,6 +148,45 @@ export default function HomePage() {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages]);
+
+  // One conversation across every client: seed the pane with the shared
+  // session's transcript (iMessage turns included). First load may wake the
+  // box, so this stays best-effort and non-blocking.
+  useEffect(() => {
+    let stale = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/box/api/sessions/air-main/messages");
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          data?: Array<{ role?: string; content?: string }>;
+        };
+        const transcript = (data.data ?? [])
+          .filter(
+            (m) =>
+              (m.role === "user" || m.role === "assistant") &&
+              typeof m.content === "string" &&
+              m.content.trim() !== ""
+          )
+          .map((m) => ({
+            role: m.role === "user" ? ("user" as const) : ("agent" as const),
+            text: (m.content ?? "").trim(),
+          }));
+        if (!stale && transcript.length > 0) {
+          setMessages((current) =>
+            current.length === 0 ? transcript : current
+          );
+        }
+      } catch {
+        // history is a nicety; chat works without it
+      } finally {
+        if (!stale) setHistoryLoading(false);
+      }
+    })();
+    return () => {
+      stale = true;
+    };
+  }, []);
 
   const send = useCallback(async () => {
     const text = input.trim();
@@ -777,7 +817,9 @@ export default function HomePage() {
                   <div className="flex h-full flex-col items-center justify-center gap-3 py-16 text-center">
                     <Orb size={28} label="air" />
                     <p className="muted m-0 text-[13px]">
-                      Talk to your agent — same one as on iMessage.
+                      {historyLoading
+                        ? "Syncing your conversation…"
+                        : "Talk to your agent — same one as on iMessage."}
                     </p>
                   </div>
                 ) : (

@@ -12,6 +12,14 @@ export interface HermesBoxTarget {
   apiServerKey: string;
 }
 
+/**
+ * The one durable conversation every chat client shares (goal.md M6, C13
+ * adjacent): iMessage, web, and any future channel (WhatsApp…) all run their
+ * turns in this Hermes session, so history and context are synced — email
+ * stays per-thread because threads are the conversation unit there.
+ */
+export const MAIN_SESSION = "air-main";
+
 export interface RunRequest {
   input: string;
   sessionId?: string;
@@ -66,9 +74,15 @@ export async function createRun(
   target: HermesBoxTarget,
   request: RunRequest
 ): Promise<RunResponse> {
+  // api_server expects snake_case `session_id`; a camelCase key is silently
+  // ignored and every run lands in its own throwaway session.
   return hermesFetch<RunResponse>(target, "/v1/runs", {
     method: "POST",
-    body: JSON.stringify(request),
+    body: JSON.stringify({
+      input: request.input,
+      ...(request.sessionId ? { session_id: request.sessionId } : {}),
+      ...(request.metadata ? { metadata: request.metadata } : {}),
+    }),
   });
 }
 

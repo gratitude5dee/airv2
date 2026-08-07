@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { sessionUserId } from "@/lib/auth/user";
 import { serviceClient } from "@/lib/supabase";
 import { ensureBoxAwake, armStopAfter, StartLimitError } from "@/lib/orchestrator/boxes";
-import { createRun } from "@/lib/hermes/client";
+import { createRun, MAIN_SESSION } from "@/lib/hermes/client";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,7 +28,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const box = await ensureBoxAwake(supabase, userId);
     const run = await createRun(box.target, {
       input,
+      sessionId: MAIN_SESSION,
       metadata: { channel: "web" },
+    });
+    await supabase.from("agent_runs").insert({
+      user_id: userId,
+      hermes_run_id: run.run_id,
+      trigger: "web",
     });
     await armStopAfter(supabase, userId);
     return NextResponse.json({ run_id: run.run_id });

@@ -12,7 +12,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { command, writeFile } from "../box/client";
-import { createRun, runEvents, stopRun } from "../hermes/client";
+import { createRun, MAIN_SESSION, runEvents, stopRun } from "../hermes/client";
 import { createSpectrumSender, type SpectrumSender } from "../spectrum/sender";
 import {
   armStopAfter,
@@ -353,7 +353,8 @@ export async function runFlush(
 
     const run = await createRun(box.target, {
       input,
-      sessionId: job.spaceId,
+      sessionId: MAIN_SESSION,
+      metadata: { channel: "imessage" },
     });
     await supabase
       .from("flush_jobs")
