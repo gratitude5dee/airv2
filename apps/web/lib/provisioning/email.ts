@@ -13,7 +13,32 @@ import {
   ensurePod,
   ensureWebhook,
 } from "../agentmail/client";
-import { readFile, writeFile } from "../box/client";
+import { command, readFile, writeFile } from "../box/client";
+
+/**
+ * Registers AgentMail's hosted MCP server in the box's Hermes config
+ * (goal.md M3 step 7). The header holds only the `${AGENTMAIL_API_KEY}`
+ * interpolation template — Hermes resolves it from ~/.hermes/.env at
+ * connect time, so no secret appears in the command line or config file.
+ */
+async function installAgentmailMcp(boxId: string): Promise<void> {
+  const script = [
+    "import yaml",
+    'cf = "/home/user/.hermes/config.yaml"',
+    "c = yaml.safe_load(open(cf)) or {}",
+    's = c.setdefault("mcp_servers", {})',
+    's["agentmail"] = {"url": "https://mcp.agentmail.to/mcp", "headers": {"x-api-key": "${AGENTMAIL_API_KEY}"}, "enabled": True}',
+    "yaml.safe_dump(c, open(cf, 'w'), default_flow_style=False, sort_keys=False)",
+  ].join("\n");
+  const result = await command(
+    boxId,
+    `python3 - <<'PYEOF'\n${script}\nPYEOF\nsudo systemctl restart hermes-gateway`,
+    120
+  );
+  if (result.exitCode !== 0) {
+    throw new Error(`agentmail mcp install failed: ${result.stderr}`);
+  }
+}
 
 export async function provisionEmail(
   supabase: SupabaseClient,
@@ -90,6 +115,7 @@ export async function provisionEmail(
       kept.push(`AGENTMAIL_API_KEY=${draftKey}`);
       kept.push(`AGENTMAIL_INBOX_ID=${inbox.inbox_id}`);
       await writeFile(boxId, ".hermes/.env", kept.join("\n") + "\n");
+      await installAgentmailMcp(boxId);
     } catch (error) {
       console.error(
         JSON.stringify({
