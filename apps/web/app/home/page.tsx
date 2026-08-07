@@ -571,6 +571,32 @@ export default function HomePage() {
           </div>
 
           <div className="panel">
+            <h3 style={{ marginTop: 0 }}>Apps</h3>
+            <div style={{ display: "flex", gap: 8 }}>
+              {(["kanban", "todo"] as const).map((slug) => (
+                <button
+                  key={slug}
+                  className="btn"
+                  onClick={() =>
+                    void fetch("/api/mini/link", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ app: slug }),
+                    }).then(async (res) => {
+                      if (res.ok) {
+                        const data = (await res.json()) as { url?: string };
+                        if (data.url) window.open(data.url, "_blank");
+                      }
+                    })
+                  }
+                >
+                  {slug === "kanban" ? "Kanban" : "To-Do"}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="panel">
             <h3 style={{ marginTop: 0 }}>Speed &amp; Intelligence</h3>
             <select className="input" value={tier} onChange={(e) => void saveTier(e.target.value)}>
               <option value="fast">Fast</option>

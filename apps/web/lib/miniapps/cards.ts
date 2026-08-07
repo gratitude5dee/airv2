@@ -1,0 +1,34 @@
+/**
+ * Mini-app cards on iMessage (M7.5). The signed URL is minted inside the
+ * `app()` thunk so no live URL is ever stored (C15); cards render live and
+ * are edited in place on update.
+ */
+import { env } from "../env";
+import { createSpectrumSender } from "../spectrum/sender";
+import { mintToken } from "./tokens";
+
+export function mintSignedLink(
+  userId: string,
+  appSlug: string,
+  resourceId: string
+): string {
+  const origin = process.env.MINIAPP_ORIGIN ?? env.appOrigin();
+  return `${origin}/mini/${appSlug}?t=${mintToken(userId, appSlug, resourceId)}`;
+}
+
+export async function sendMiniAppCard(
+  spaceId: string,
+  phone: string,
+  userId: string,
+  appSlug: string,
+  resourceId: string
+): Promise<void> {
+  const sender = await createSpectrumSender();
+  try {
+    await sender.sendApp(spaceId, phone, () =>
+      mintSignedLink(userId, appSlug, resourceId)
+    );
+  } finally {
+    await sender.close();
+  }
+}

@@ -5,7 +5,7 @@
  * the lines row — never the Chat SDK adapter's line inference, which throws
  * NotImplementedError on every cold thread once per-user lines exist.
  */
-import { Spectrum, text, typing } from "spectrum-ts";
+import { Spectrum, app as appCard, text, typing } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
 import { env } from "../env";
 
@@ -22,6 +22,15 @@ export interface SpectrumSender {
     spaceId: string,
     phone: string,
     stream: AsyncIterable<string>
+  ): Promise<void>;
+  /**
+   * Send a live app card; the URL is produced by a thunk so signed links
+   * are minted at send time, never stored (C15).
+   */
+  sendApp(
+    spaceId: string,
+    phone: string,
+    url: () => string | Promise<string>
   ): Promise<void>;
   /** Webhooks carry attachment metadata only; bytes come through the SDK. */
   getAttachment(
@@ -50,6 +59,9 @@ export async function createSpectrumSender(): Promise<SpectrumSender> {
     },
     streamText: async (spaceId, phone, stream) => {
       await (await space(spaceId, phone)).send(text(stream));
+    },
+    sendApp: async (spaceId, phone, url) => {
+      await (await space(spaceId, phone)).send(appCard(url, { live: true }));
     },
     getAttachment: async (attachmentId, phone) => {
       const attachment = await im.getAttachment(attachmentId, phone);
