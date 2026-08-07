@@ -96,37 +96,46 @@ export async function claimFlush(
   return { chainStartedAt };
 }
 
-async function drainQueue(
+/** Read in arrival order, then delete exactly the rows read. */
+async function drainTable(
   supabase: SupabaseClient,
+  table: "batch_queue" | "carried_messages",
   spaceId: string
 ): Promise<QueuedMessage[]> {
   const { data, error } = await supabase
-    .from("batch_queue")
-    .delete()
-    .eq("space_id", spaceId)
+    .from(table)
     .select("id, message_id, body")
+    .eq("space_id", spaceId)
     .order("received_at", { ascending: true });
   if (error) {
-    throw new Error(`batch_queue drain failed: ${error.message}`);
+    throw new Error(`${table} read failed: ${error.message}`);
   }
-  return (data ?? []) as QueuedMessage[];
+  const rows = (data ?? []) as QueuedMessage[];
+  if (rows.length > 0) {
+    const { error: deleteError } = await supabase
+      .from(table)
+      .delete()
+      .in(
+        "id",
+        rows.map((row) => row.id)
+      );
+    if (deleteError) {
+      throw new Error(`${table} drain failed: ${deleteError.message}`);
+    }
+  }
+  return rows;
 }
 
-async function drainCarried(
+const drainQueue = (
   supabase: SupabaseClient,
   spaceId: string
-): Promise<QueuedMessage[]> {
-  const { data, error } = await supabase
-    .from("carried_messages")
-    .delete()
-    .eq("space_id", spaceId)
-    .select("id, message_id, body")
-    .order("received_at", { ascending: true });
-  if (error) {
-    throw new Error(`carried_messages drain failed: ${error.message}`);
-  }
-  return (data ?? []) as QueuedMessage[];
-}
+): Promise<QueuedMessage[]> => drainTable(supabase, "batch_queue", spaceId);
+
+const drainCarried = (
+  supabase: SupabaseClient,
+  spaceId: string
+): Promise<QueuedMessage[]> =>
+  drainTable(supabase, "carried_messages", spaceId);
 
 /** Prior-chain remnants read as history, not fresh input. */
 export function composeInput(
