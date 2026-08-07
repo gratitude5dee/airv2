@@ -75,9 +75,10 @@ export async function provisionUser(): Promise<ProvisionResult> {
 
   // Per-box secrets. OPENAI_API_KEY carries the GATEWAY_TOKEN — it is the
   // credential Hermes presents to OUR gateway, never a provider key.
+  // files API paths are relative to the box work directory (/home/user)
   await writeFile(
     box.id,
-    "/home/user/.hermes/.env",
+    ".hermes/.env",
     [
       `API_SERVER_KEY=${apiServerKey}`,
       "API_SERVER_HOST=0.0.0.0",
