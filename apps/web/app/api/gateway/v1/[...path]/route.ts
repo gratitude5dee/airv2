@@ -6,7 +6,7 @@
  * model ID; spend caps are enforced with 429; the upstream stream passes
  * through unmodified while usage is metered into agent_runs.
  */
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { env } from "@/lib/env";
 import { serviceClient } from "@/lib/supabase";
 import { costUsd, isSpeedTier, modelForTier } from "@/lib/entitlements/models";
@@ -32,14 +32,23 @@ async function meter(
   const completionTokens = usage.completion_tokens ?? 0;
   const cost = costUsd(tier, promptTokens, completionTokens);
   const supabase = serviceClient();
-  await supabase.from("agent_runs").insert({
+  const { error: runError } = await supabase.from("agent_runs").insert({
     user_id: userId,
     trigger: null,
     ended_at: new Date().toISOString(),
     outcome: "gateway_completion",
     cost_usd: cost,
   });
-  await supabase.rpc("add_spend", { p_user_id: userId, p_cost_usd: cost });
+  if (runError) {
+    console.error(JSON.stringify({ msg: "agent_runs insert failed", user_id: userId, error: runError.message }));
+  }
+  const { error: spendError } = await supabase.rpc("add_spend", {
+    p_user_id: userId,
+    p_cost_usd: cost,
+  });
+  if (spendError) {
+    console.error(JSON.stringify({ msg: "add_spend failed", user_id: userId, error: spendError.message }));
+  }
 }
 
 /** Watches the SSE pass-through for the final usage chunk without altering it. */
@@ -181,7 +190,7 @@ export async function POST(
 
   if (streaming) {
     const stream = meteringTee(upstream.body, (usage) => {
-      void meter(userId, tier, usage);
+      after(meter(userId, tier, usage));
     });
     return new Response(stream, {
       status: 200,
@@ -194,7 +203,8 @@ export async function POST(
 
   const json = (await upstream.json()) as { usage?: Usage };
   if (json.usage) {
-    void meter(userId, tier, json.usage);
+    const usage = json.usage;
+    after(meter(userId, tier, usage));
   }
   return NextResponse.json(json, { status: 200 });
 }
