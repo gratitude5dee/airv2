@@ -4,6 +4,8 @@
  */
 import { notFound } from "next/navigation";
 import { serviceClient } from "@/lib/supabase";
+import { DitherAvatar } from "@/components/dither-kit/avatar";
+import { DitherGradient } from "@/components/dither-kit/gradient";
 
 export const dynamic = "force-dynamic";
 
@@ -43,41 +45,44 @@ export default async function ContactCard({
   ]);
 
   return (
-    <main style={{ maxWidth: 420, margin: "18vh auto", padding: 16 }}>
-      <div className="panel" style={{ textAlign: "center" }}>
-        <div
-          style={{
-            width: 72,
-            height: 72,
-            borderRadius: "50%",
-            background: "var(--accent)",
-            color: "#0b0b0f",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 30,
-            fontWeight: 700,
-            margin: "0 auto 12px",
-          }}
-        >
-          {username[0]?.toUpperCase()}
+    <main className="relative min-h-screen overflow-hidden">
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[40vh]">
+        <DitherGradient from="purple" direction="up" opacity={0.3} />
+      </div>
+
+      <div className="relative mx-auto flex min-h-screen w-full max-w-[420px] flex-col justify-center px-6">
+        <div className="panel rise-in text-center">
+          <div className="mx-auto mb-4 h-[72px] w-[72px] overflow-hidden rounded-full shadow-[0_0_0_0.5px_var(--ring)]">
+            <DitherAvatar name={username} size={72} />
+          </div>
+          <h1 className="mb-1 mt-0 text-[22px] font-semibold tracking-[-0.02em]">
+            @{username}
+          </h1>
+          <p className="mt-0 text-[13px] text-muted">Personal agent</p>
+
+          <div className="mt-5 grid gap-2">
+            {line?.phone ? (
+              <a
+                className="btn w-full"
+                href={`sms:${line.phone as string}`}
+              >
+                {line.phone as string}
+              </a>
+            ) : null}
+            {address?.address ? (
+              <a
+                className="btn btn-ghost w-full"
+                href={`mailto:${address.address as string}`}
+              >
+                {address.address as string}
+              </a>
+            ) : null}
+          </div>
         </div>
-        <h1 style={{ margin: "0 0 4px", fontSize: 22 }}>@{username}</h1>
-        <p className="muted" style={{ marginTop: 0 }}>
-          Personal agent
+
+        <p className="rise-in mt-6 text-center text-[11px] text-muted">
+          Powered by air
         </p>
-        {line?.phone ? (
-          <p>
-            <a href={`sms:${line.phone as string}`}>{line.phone as string}</a>
-          </p>
-        ) : null}
-        {address?.address ? (
-          <p>
-            <a href={`mailto:${address.address as string}`}>
-              {address.address as string}
-            </a>
-          </p>
-        ) : null}
       </div>
     </main>
   );

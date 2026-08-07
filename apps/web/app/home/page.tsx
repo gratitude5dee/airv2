@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { DitherAvatar } from "@/components/dither-kit/avatar";
+import { Orb } from "@/components/orb/Orb";
+import { PromptInput } from "@/components/prompt-input/PromptInput";
 
 interface Me {
   user: { id: string; username: string | null; wallet_address: string | null };
@@ -65,6 +68,17 @@ interface ChatMessage {
   text: string;
 }
 
+type Tab = "chat" | "history" | "skills" | "needs" | "people" | "connectors";
+
+const TABS: [Tab, string][] = [
+  ["chat", "Chat"],
+  ["needs", "Needs you"],
+  ["history", "History"],
+  ["people", "People"],
+  ["connectors", "Connectors"],
+  ["skills", "Skills"],
+];
+
 export default function HomePage() {
   const router = useRouter();
   const [me, setMe] = useState<Me | null>(null);
@@ -74,9 +88,7 @@ export default function HomePage() {
   const [tier, setTier] = useState("balanced");
   const [username, setUsername] = useState("");
   const [note, setNote] = useState<string | null>(null);
-  const [tab, setTab] = useState<
-    "chat" | "history" | "skills" | "needs" | "people" | "connectors"
-  >("chat");
+  const [tab, setTab] = useState<Tab>("chat");
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
   const [skills, setSkills] = useState<SkillSummary[] | null>(null);
   const [decisions, setDecisions] = useState<Decision[] | null>(null);
@@ -109,7 +121,7 @@ export default function HomePage() {
     if (!text || busy) return;
     setBusy(true);
     setInput("");
-    setMessages((m) => [...m, { role: "user", text }, { role: "agent", text: "…" }]);
+    setMessages((m) => [...m, { role: "user", text }, { role: "agent", text: "" }]);
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
@@ -128,6 +140,7 @@ export default function HomePage() {
                 : "Something went wrong.",
           },
         ]);
+        setBusy(false);
         return;
       }
       const { run_id } = (await res.json()) as { run_id: string };
@@ -262,9 +275,7 @@ export default function HomePage() {
     }
   }
 
-  async function loadTab(
-    next: "chat" | "history" | "skills" | "needs" | "people" | "connectors"
-  ) {
+  async function loadTab(next: Tab) {
     setTab(next);
     setPanelNote(null);
     if (next === "history" && sessions === null) {
@@ -309,109 +320,137 @@ export default function HomePage() {
     router.push("/login");
   }
 
+  const spendPct = me?.entitlement
+    ? Math.min(
+        100,
+        (Number(me.entitlement.spend_mtd_usd) /
+          Math.max(1e-9, Number(me.entitlement.monthly_cap_usd))) *
+          100
+      )
+    : 0;
+
   return (
-    <main style={{ maxWidth: 880, margin: "0 auto", padding: 16 }}>
-      <header
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          padding: "12px 0",
-        }}
-      >
-        <h1 style={{ margin: 0, fontSize: 22 }}>air</h1>
-        <nav style={{ display: "flex", gap: 8 }}>
-          {(
-            [
-              ["chat", "Chat"],
-              ["needs", "Needs you"],
-              ["history", "History"],
-              ["people", "People"],
-              ["connectors", "Connectors"],
-              ["skills", "Skills"],
-            ] as const
-          ).map(([key, label]) => (
+    <main className="mx-auto w-full max-w-[960px] px-4 pb-8">
+      <header className="flex flex-wrap items-center justify-between gap-3 py-4">
+        <div className="flex items-center gap-2.5">
+          <Orb size={22} label="air" />
+          <h1 className="m-0 text-[19px] font-semibold tracking-[-0.02em]">air</h1>
+        </div>
+        <nav
+          className="flex flex-wrap items-center gap-1 rounded-full p-1 shadow-[0_0_0_0.5px_var(--ring)]"
+          aria-label="Sections"
+        >
+          {TABS.map(([key, label]) => (
             <button
               key={key}
-              className={tab === key ? "btn" : "btn btn-ghost"}
+              className={
+                "cursor-pointer rounded-full border-0 px-3 py-1.5 text-[12px] font-medium transition-colors " +
+                (tab === key
+                  ? "bg-text text-bg"
+                  : "bg-transparent text-muted-2 hover:bg-surface-2 hover:text-text")
+              }
               onClick={() => void loadTab(key)}
             >
               {label}
             </button>
           ))}
-          <button className="btn btn-ghost" onClick={logout}>
-            Sign out
-          </button>
         </nav>
+        <button className="btn btn-ghost !px-3 !py-1.5 !text-[12px]" onClick={logout}>
+          Sign out
+        </button>
       </header>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 16 }}>
-        <section className="panel" style={{ display: "flex", flexDirection: "column", height: "70vh" }}>
+      <div className="grid gap-4 md:grid-cols-[1fr_280px]">
+        <section className="panel flex h-[72vh] flex-col !p-4">
           {tab === "needs" ? (
-            <div style={{ flex: 1, overflowY: "auto", display: "grid", gap: 8, alignContent: "start" }}>
-              <h3 style={{ margin: 0 }}>Needs you</h3>
+            <div className="grid flex-1 content-start gap-2 overflow-y-auto">
+              <h3 className="m-0 text-[15px] font-semibold">Needs you</h3>
               {(decisions ?? []).map((d) => (
-                <div key={d.id} className="panel" style={{ padding: 12 }}>
-                  <strong>
+                <div key={d.id} className="panel rise-in !p-3">
+                  <strong className="text-[13px]">
                     {d.kind === "email_draft"
                       ? "Email draft awaiting send"
                       : d.kind === "run_approval"
                         ? "Agent action awaiting approval"
                         : "New contact"}
                   </strong>
-                  <p className="muted" style={{ margin: "4px 0 8px" }}>
+                  <p className="muted mb-2 mt-1 text-[12px]">
                     {[d.label, d.sender, d.platform].filter(Boolean).join(" \u00b7 ")}
                   </p>
-                  <div style={{ display: "flex", gap: 8 }}>
+                  <div className="flex gap-2">
                     {d.kind === "email_draft" ? (
-                      <button className="btn" onClick={() => void resolveDecision(d.id, "approve")}>
+                      <button
+                        className="btn !px-3 !py-1.5 !text-[12px]"
+                        onClick={() => void resolveDecision(d.id, "approve")}
+                      >
                         Send
                       </button>
                     ) : null}
-                    <button className="btn btn-ghost" onClick={() => void resolveDecision(d.id, "dismiss")}>
+                    <button
+                      className="btn btn-ghost !px-3 !py-1.5 !text-[12px]"
+                      onClick={() => void resolveDecision(d.id, "dismiss")}
+                    >
                       Dismiss
                     </button>
                   </div>
                 </div>
               ))}
               {decisions !== null && decisions.length === 0 ? (
-                <p className="muted">Nothing needs you right now.</p>
+                <p className="muted text-[13px]">Nothing needs you right now.</p>
               ) : null}
             </div>
           ) : tab === "people" ? (
-            <div style={{ flex: 1, overflowY: "auto", display: "grid", gap: 8, alignContent: "start" }}>
-              <h3 style={{ margin: 0 }}>People</h3>
-              <p className="muted" style={{ margin: 0 }}>
-                Known senders can talk to your agent; unknown senders wait in “Needs you”.
+            <div className="grid flex-1 content-start gap-2 overflow-y-auto">
+              <h3 className="m-0 text-[15px] font-semibold">People</h3>
+              <p className="muted m-0 text-[12px]">
+                Known senders can talk to your agent; unknown senders wait in
+                “Needs you”.
               </p>
               {(people ?? []).map((s) => (
-                <div key={s.id} className="panel" style={{ padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div>
-                    <strong>{s.address}</strong>
-                    <p className="muted" style={{ margin: "4px 0 0" }}>
-                      {s.platform} · {s.trust_tier === 1 ? "known" : "unknown"}
-                    </p>
+                <div
+                  key={s.id}
+                  className="panel rise-in flex items-center justify-between !p-3"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="h-8 w-8 overflow-hidden rounded-full shadow-[0_0_0_0.5px_var(--ring)]">
+                      <DitherAvatar name={s.address} size={32} />
+                    </div>
+                    <div>
+                      <strong className="text-[13px]">{s.address}</strong>
+                      <p className="muted m-0 mt-0.5 text-[12px]">
+                        {s.platform} · {s.trust_tier === 1 ? "known" : "unknown"}
+                      </p>
+                    </div>
                   </div>
                   {s.trust_tier === 2 ? (
-                    <button className="btn" onClick={() => void setTrust(s.id, 1)}>
+                    <button
+                      className="btn !px-3 !py-1.5 !text-[12px]"
+                      onClick={() => void setTrust(s.id, 1)}
+                    >
                       Mark known
                     </button>
                   ) : (
-                    <button className="btn btn-ghost" onClick={() => void setTrust(s.id, 2)}>
+                    <button
+                      className="btn btn-ghost !px-3 !py-1.5 !text-[12px]"
+                      onClick={() => void setTrust(s.id, 2)}
+                    >
                       Mark unknown
                     </button>
                   )}
                 </div>
               ))}
               {people !== null && people.length === 0 ? (
-                <p className="muted">No one has messaged your agent yet.</p>
+                <p className="muted text-[13px]">
+                  No one has messaged your agent yet.
+                </p>
               ) : null}
             </div>
           ) : tab === "connectors" ? (
-            <div style={{ flex: 1, overflowY: "auto", display: "grid", gap: 8, alignContent: "start" }}>
-              <h3 style={{ margin: 0 }}>Connectors</h3>
-              <p className="muted" style={{ margin: 0 }}>
-                Connect your accounts so your agent can act on them. You approve each one.
+            <div className="grid flex-1 content-start gap-2 overflow-y-auto">
+              <h3 className="m-0 text-[15px] font-semibold">Connectors</h3>
+              <p className="muted m-0 text-[12px]">
+                Connect your accounts so your agent can act on them. You approve
+                each one.
               </p>
               <input
                 className="input"
@@ -420,11 +459,14 @@ export default function HomePage() {
                 onChange={(e) => setConnectorFilter(e.target.value)}
               />
               {connections.length > 0 ? (
-                <div style={{ display: "grid", gap: 8 }}>
+                <div className="grid gap-2">
                   {connections.map((c) => (
-                    <div key={c.toolkit} className="panel" style={{ padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <strong>{c.toolkit}</strong>
-                      <span className="muted">{c.status}</span>
+                    <div
+                      key={c.toolkit}
+                      className="panel flex items-center justify-between !p-3"
+                    >
+                      <strong className="text-[13px]">{c.toolkit}</strong>
+                      <span className="muted text-[12px]">{c.status}</span>
                     </div>
                   ))}
                 </div>
@@ -438,145 +480,203 @@ export default function HomePage() {
                 )
                 .slice(0, 40)
                 .map((t) => (
-                  <div key={t.slug} className="panel" style={{ padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div
+                    key={t.slug}
+                    className="panel rise-in flex items-center justify-between !p-3"
+                  >
+                    <div className="flex items-center gap-2">
                       {t.logo ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={t.logo} alt="" width={20} height={20} style={{ borderRadius: 4 }} />
+                        <img
+                          src={t.logo}
+                          alt=""
+                          width={20}
+                          height={20}
+                          className="rounded"
+                        />
                       ) : null}
-                      <strong>{t.name}</strong>
+                      <strong className="text-[13px]">{t.name}</strong>
                     </div>
-                    {connections.some((c) => c.toolkit === t.slug && c.status === "active") ? (
-                      <span className="muted">connected</span>
+                    {connections.some(
+                      (c) => c.toolkit === t.slug && c.status === "active"
+                    ) ? (
+                      <span className="muted text-[12px]">connected</span>
                     ) : (
-                      <button className="btn" onClick={() => void connectToolkit(t.slug)}>
+                      <button
+                        className="btn !px-3 !py-1.5 !text-[12px]"
+                        onClick={() => void connectToolkit(t.slug)}
+                      >
                         Connect
                       </button>
                     )}
                   </div>
                 ))}
-              {toolkits === null ? <p className="muted">Loading…</p> : null}
+              {toolkits === null ? (
+                <div className="py-2">
+                  <Orb pill label="Loading connectors…" />
+                </div>
+              ) : null}
             </div>
           ) : tab === "history" ? (
-            <div style={{ flex: 1, overflowY: "auto", display: "grid", gap: 8, alignContent: "start" }}>
-              <h3 style={{ margin: 0 }}>Conversations</h3>
-              {panelNote ? <p className="muted">{panelNote}</p> : null}
+            <div className="grid flex-1 content-start gap-2 overflow-y-auto">
+              <h3 className="m-0 text-[15px] font-semibold">Conversations</h3>
+              {panelNote ? (
+                <div className="py-1">
+                  <Orb pill label={panelNote} />
+                </div>
+              ) : null}
               {(sessions ?? []).map((s, i) => (
-                <div key={s.session_id ?? s.id ?? i} className="panel" style={{ padding: 12 }}>
-                  <strong>{s.title ?? "Untitled"}</strong>
-                  <p className="muted" style={{ margin: "4px 0 0" }}>
-                    {[s.platform, s.updated_at ?? s.created_at, s.message_count != null ? `${s.message_count} messages` : null]
+                <div key={s.session_id ?? s.id ?? i} className="panel rise-in !p-3">
+                  <strong className="text-[13px]">{s.title ?? "Untitled"}</strong>
+                  <p className="muted m-0 mt-1 text-[12px]">
+                    {[
+                      s.platform,
+                      s.updated_at ?? s.created_at,
+                      s.message_count != null
+                        ? `${s.message_count} messages`
+                        : null,
+                    ]
                       .filter(Boolean)
                       .join(" · ")}
                   </p>
                 </div>
               ))}
               {sessions !== null && sessions.length === 0 ? (
-                <p className="muted">No conversations yet.</p>
+                <p className="muted text-[13px]">No conversations yet.</p>
               ) : null}
             </div>
           ) : tab === "skills" ? (
-            <div style={{ flex: 1, overflowY: "auto", display: "grid", gap: 8, alignContent: "start" }}>
-              <h3 style={{ margin: 0 }}>Skills</h3>
-              {panelNote ? <p className="muted">{panelNote}</p> : null}
+            <div className="grid flex-1 content-start gap-2 overflow-y-auto">
+              <h3 className="m-0 text-[15px] font-semibold">Skills</h3>
+              {panelNote ? (
+                <div className="py-1">
+                  <Orb pill label={panelNote} />
+                </div>
+              ) : null}
               {(skills ?? []).map((s, i) => (
-                <div key={s.name ?? i} className="panel" style={{ padding: 12 }}>
-                  <strong>{s.name ?? "skill"}</strong>
+                <div key={s.name ?? i} className="panel rise-in !p-3">
+                  <strong className="text-[13px]">{s.name ?? "skill"}</strong>
                   {s.description ? (
-                    <p className="muted" style={{ margin: "4px 0 0" }}>{s.description}</p>
+                    <p className="muted m-0 mt-1 text-[12px]">{s.description}</p>
                   ) : null}
                 </div>
               ))}
               {skills !== null && skills.length === 0 ? (
-                <p className="muted">No skills installed yet.</p>
+                <p className="muted text-[13px]">No skills installed yet.</p>
               ) : null}
             </div>
           ) : (
-          <>
-          <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", display: "grid", gap: 8, alignContent: "start" }}>
-            {messages.length === 0 ? (
-              <p className="muted">Talk to your agent — same one as on iMessage.</p>
-            ) : (
-              messages.map((m, i) => (
-                <div
-                  key={i}
-                  style={{
-                    justifySelf: m.role === "user" ? "end" : "start",
-                    background: m.role === "user" ? "var(--accent)" : "var(--bg)",
-                    color: m.role === "user" ? "#0b0b0f" : "var(--text)",
-                    border: m.role === "user" ? "none" : "1px solid var(--border)",
-                    borderRadius: 12,
-                    padding: "8px 12px",
-                    maxWidth: "80%",
-                    whiteSpace: "pre-wrap",
-                  }}
-                >
-                  {m.text}
-                </div>
-              ))
-            )}
-          </div>
-          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-            <input
-              className="input"
-              placeholder="Message your agent…"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void send();
-              }}
-              disabled={busy}
-            />
-            <button className="btn" onClick={() => void send()} disabled={busy || !input.trim()}>
-              Send
-            </button>
-          </div>
-          </>
+            <>
+              <div
+                ref={scrollRef}
+                className="grid flex-1 content-start gap-2 overflow-y-auto pb-2"
+              >
+                {messages.length === 0 ? (
+                  <div className="flex h-full flex-col items-center justify-center gap-3 py-16 text-center">
+                    <Orb size={28} label="air" />
+                    <p className="muted m-0 text-[13px]">
+                      Talk to your agent — same one as on iMessage.
+                    </p>
+                  </div>
+                ) : (
+                  messages.map((m, i) => {
+                    const isLast = i === messages.length - 1;
+                    const streaming = busy && isLast && m.role === "agent";
+                    if (streaming && !m.text) {
+                      return (
+                        <div key={i} className="justify-self-start">
+                          <Orb pill label="Thinking…" />
+                        </div>
+                      );
+                    }
+                    return (
+                      <div
+                        key={i}
+                        className={
+                          "max-w-[80%] whitespace-pre-wrap rounded-xl px-3 py-2 text-[13px] leading-relaxed " +
+                          (m.role === "user"
+                            ? "justify-self-end bg-text text-bg"
+                            : "justify-self-start bg-surface shadow-[0_0_0_0.5px_var(--ring)]")
+                        }
+                      >
+                        {m.text}
+                        {streaming ? (
+                          <Orb
+                            size={14}
+                            label="Streaming…"
+                            className="ml-1.5 align-middle"
+                          />
+                        ) : null}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+              <PromptInput
+                value={input}
+                onChange={setInput}
+                onSend={() => void send()}
+                busy={busy}
+                tier={tier}
+                onTierChange={(next) => void saveTier(next)}
+              />
+            </>
           )}
         </section>
 
-        <aside style={{ display: "grid", gap: 16, alignContent: "start" }}>
+        <aside className="grid content-start gap-4">
           <div className="panel">
-            <h3 style={{ marginTop: 0 }}>Account</h3>
-            <p className="muted" style={{ margin: "4px 0" }}>
+            <div className="mb-2 flex items-center gap-3">
+              {me?.user.username ? (
+                <div className="h-9 w-9 overflow-hidden rounded-full shadow-[0_0_0_0.5px_var(--ring)]">
+                  <DitherAvatar name={me.user.username} size={36} />
+                </div>
+              ) : null}
+              <h3 className="m-0 text-[15px] font-semibold">Account</h3>
+            </div>
+            <p className="muted my-1 text-[12px]">
               {me?.lines[0] ? `iMessage line: ${me.lines[0].phone}` : "No line yet"}
             </p>
-            <p className="muted" style={{ margin: "4px 0" }}>
+            <p className="muted my-1 text-[12px]">
               {me?.addresses?.[0]
                 ? `Email: ${me.addresses[0].address}`
                 : "Email: set a username to create one"}
             </p>
             {me?.user.username ? (
-              <p className="muted" style={{ margin: "4px 0" }}>
-                Contact card: <a href={`/@${me.user.username}`}>/@{me.user.username}</a>
+              <p className="muted my-1 text-[12px]">
+                Contact card:{" "}
+                <a href={`/@${me.user.username}`}>/@{me.user.username}</a>
               </p>
             ) : null}
-            <p className="muted" style={{ margin: "4px 0" }}>
+            <p className="muted my-1 text-[12px]">
               {me?.user.wallet_address
                 ? `Wallet: ${me.user.wallet_address.slice(0, 6)}…${me.user.wallet_address.slice(-4)}`
                 : "Wallet: not set up"}
             </p>
-            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+            <div className="mt-2 flex gap-2">
               <input
                 className="input"
                 placeholder="username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
               />
-              <button className="btn" onClick={() => void saveUsername()}>
+              <button
+                className="btn !px-3 !py-1.5 !text-[12px]"
+                onClick={() => void saveUsername()}
+              >
                 Save
               </button>
             </div>
-            {note ? <p className="muted" style={{ marginBottom: 0 }}>{note}</p> : null}
+            {note ? <p className="muted mb-0 mt-2 text-[12px]">{note}</p> : null}
           </div>
 
           <div className="panel">
-            <h3 style={{ marginTop: 0 }}>Apps</h3>
-            <div style={{ display: "flex", gap: 8 }}>
+            <h3 className="mt-0 text-[15px] font-semibold">Apps</h3>
+            <div className="flex gap-2">
               {(["kanban", "todo"] as const).map((slug) => (
                 <button
                   key={slug}
-                  className="btn"
+                  className="btn btn-ghost !px-3 !py-1.5 !text-[12px]"
                   onClick={() =>
                     void fetch("/api/mini/link", {
                       method: "POST",
@@ -597,17 +697,52 @@ export default function HomePage() {
           </div>
 
           <div className="panel">
-            <h3 style={{ marginTop: 0 }}>Speed &amp; Intelligence</h3>
-            <select className="input" value={tier} onChange={(e) => void saveTier(e.target.value)}>
-              <option value="fast">Fast</option>
-              <option value="balanced">Balanced</option>
-              <option value="deep">Deep</option>
-            </select>
+            <h3 className="mt-0 text-[15px] font-semibold">
+              Speed &amp; Intelligence
+            </h3>
+            <div className="grid gap-1.5">
+              {(
+                [
+                  ["fast", "Fast"],
+                  ["balanced", "Balanced"],
+                  ["deep", "Deep"],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  className={
+                    "cursor-pointer rounded-lg border-0 px-3 py-2 text-left text-[13px] font-medium transition-colors " +
+                    (tier === id
+                      ? "bg-text text-bg"
+                      : "bg-transparent text-muted-2 shadow-[0_0_0_0.5px_var(--ring)] hover:bg-surface-2 hover:text-text")
+                  }
+                  onClick={() => void saveTier(id)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
             {me?.entitlement ? (
-              <p className="muted" style={{ marginBottom: 0 }}>
-                ${Number(me.entitlement.spend_mtd_usd).toFixed(2)} of $
-                {Number(me.entitlement.monthly_cap_usd).toFixed(2)} used this month
-              </p>
+              <div className="mt-3">
+                <div
+                  className="h-2 overflow-hidden rounded-full bg-surface-2"
+                  role="meter"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={Math.round(spendPct)}
+                  aria-label="Monthly spend"
+                >
+                  <div
+                    className="h-full rounded-full bg-accent [background-image:radial-gradient(circle,rgba(255,255,255,0.55)_0.7px,transparent_1.2px)] [background-size:4px_4px] transition-[width] duration-500"
+                    style={{ width: `${spendPct}%` }}
+                  />
+                </div>
+                <p className="muted mb-0 mt-2 text-[12px]">
+                  ${Number(me.entitlement.spend_mtd_usd).toFixed(2)} of $
+                  {Number(me.entitlement.monthly_cap_usd).toFixed(2)} used this
+                  month
+                </p>
+              </div>
             ) : null}
           </div>
         </aside>
