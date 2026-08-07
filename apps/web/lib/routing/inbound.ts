@@ -53,6 +53,27 @@ export async function resolveLine(
 }
 
 /**
+ * Resolve a sender handle (platform + address) to its user — the fallback
+ * when the line phone doesn't identify the account (Spectrum reports
+ * `space.phone: "shared"` on shared-line spaces, so the line alone can't
+ * distinguish users there).
+ */
+export async function resolveSenderHandle(
+  supabase: SupabaseClient,
+  platform: string,
+  address: string
+): Promise<ResolvedRoute | undefined> {
+  const { data } = await supabase
+    .from("handles")
+    .select("user_id")
+    .eq("platform", platform)
+    .eq("address", address)
+    .maybeSingle();
+  if (!data?.user_id) return undefined;
+  return { userId: data.user_id as string };
+}
+
+/**
  * Resolve an agent email address to its user, including retired aliases —
  * a retired address routes forever (SECURITY-DECISIONS.md).
  */

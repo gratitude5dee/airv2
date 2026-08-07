@@ -14,7 +14,11 @@ import {
   spectrumWebhookHeaders,
   verifySpectrumSignature,
 } from "@/lib/routing/spectrum";
-import { dedupeInboundEvent, resolveLine } from "@/lib/routing/inbound";
+import {
+  dedupeInboundEvent,
+  resolveLine,
+  resolveSenderHandle,
+} from "@/lib/routing/inbound";
 import {
   enqueueInbound,
   flushAfterDebounce,
@@ -64,10 +68,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const supabase = serviceClient();
 
-  // 3: resolve space.phone → lines → user_id.
-  const route = inbound.phone
+  // 3: resolve (line, sender) → user_id. A dedicated line identifies the
+  // user by itself; on the shared line (space.phone "shared") the sender's
+  // registered handle does.
+  let route = inbound.phone
     ? await resolveLine(supabase, inbound.phone)
     : undefined;
+  if (!route && inbound.senderId) {
+    route = await resolveSenderHandle(supabase, "imessage", inbound.senderId);
+  }
 
   // 4: dedupe. A conflict means already-seen: return 200 and stop.
   const { alreadySeen } = await dedupeInboundEvent(
