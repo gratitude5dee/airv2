@@ -1,0 +1,16 @@
+[Unit]
+Description=Hermes dashboard (FastAPI SPA on 9119)
+After=network-online.target hermes-gateway.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=user
+WorkingDirectory=/home/user/hermes-agent
+EnvironmentFile=-/home/user/.hermes/.env
+ExecStart=/home/user/.local/bin/uv run hermes dashboard --host 0.0.0.0 --port 9119 --no-open
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

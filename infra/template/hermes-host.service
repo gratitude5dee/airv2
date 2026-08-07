@@ -1,0 +1,16 @@
+# MANDATORY. Snapshots do not capture open ports; the hosted routes must be
+# re-registered on every resume. URLs and tokens are stable and sticky across
+# re-hosts, so this is idempotent.
+[Unit]
+Description=Re-register Box hosted routes for 8642 and 9119 on every boot/resume
+After=hermes-gateway.service hermes-dashboard.service
+Wants=hermes-gateway.service hermes-dashboard.service
+
+[Service]
+Type=oneshot
+User=user
+ExecStart=/bin/sh -c 'host 8642 --private && host 9119 --private'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
