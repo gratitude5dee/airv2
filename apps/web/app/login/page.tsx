@@ -24,7 +24,11 @@ export default function LoginPage() {
       setStage("code");
     } else {
       const data = (await res.json().catch(() => ({}))) as { error?: string };
-      setError(data.error ?? "could not send code");
+      setError(
+        res.status === 429
+          ? "Too many codes requested — wait a few minutes and try again."
+          : (data.error ?? "could not send code")
+      );
     }
   }
 

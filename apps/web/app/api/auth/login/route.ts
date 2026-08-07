@@ -6,7 +6,11 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
-import { completeSmsAuth, initiateSmsAuth } from "@/lib/thirdweb/client";
+import {
+  ThirdwebApiError,
+  completeSmsAuth,
+  initiateSmsAuth,
+} from "@/lib/thirdweb/client";
 import { SESSION_COOKIE, createSessionToken } from "@/lib/auth/session";
 
 export const runtime = "nodejs";
@@ -32,7 +36,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   if (!body.code) {
-    await initiateSmsAuth(phone);
+    try {
+      await initiateSmsAuth(phone);
+    } catch (error) {
+      const status =
+        error instanceof ThirdwebApiError && error.status === 429 ? 429 : 502;
+      return NextResponse.json(
+        {
+          error:
+            status === 429
+              ? "too many codes requested — wait a few minutes"
+              : "could not send code",
+        },
+        { status }
+      );
+    }
     return NextResponse.json({ ok: true, sent: true });
   }
 
