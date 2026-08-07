@@ -98,6 +98,20 @@ export interface ConnectedAccount {
   user_id?: string;
 }
 
+export async function deleteConnectedAccount(id: string): Promise<void> {
+  await composioFetch<unknown>(
+    `/connected_accounts/${encodeURIComponent(id)}`,
+    { method: "DELETE" }
+  );
+}
+
+export async function deleteSession(sessionId: string): Promise<void> {
+  await composioFetch<unknown>(
+    `/tool_router/session/${encodeURIComponent(sessionId)}`,
+    { method: "DELETE" }
+  );
+}
+
 export async function listConnectedAccounts(
   userId: string
 ): Promise<ConnectedAccount[]> {

@@ -35,6 +35,21 @@ async function agentmailFetch<T>(
   return (await response.json()) as T;
 }
 
+/** Deleting a pod takes its inboxes, threads, and drafts with it (M8). */
+export async function deletePod(podId: string): Promise<void> {
+  const response = await fetch(
+    `${AGENTMAIL_API}/pods/${encodeURIComponent(podId)}`,
+    {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${env.agentmailApiKey()}` },
+    }
+  );
+  if (!response.ok && response.status !== 404) {
+    const text = await response.text();
+    throw new AgentMailApiError(response.status, text.slice(0, 500));
+  }
+}
+
 interface Pod {
   pod_id: string;
   client_id?: string;

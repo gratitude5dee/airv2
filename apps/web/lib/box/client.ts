@@ -126,6 +126,11 @@ export async function stop(boxId: string): Promise<Box> {
   return envelope.box;
 }
 
+/** Deleting a box deletes its snapshots with it (goal.md M8). */
+export async function deleteBox(boxId: string): Promise<void> {
+  await boxFetch<unknown>(`/boxes/${boxId}`, { method: "DELETE" });
+}
+
 export async function getBox(boxId: string): Promise<Box> {
   const envelope = await boxFetch<BoxEnvelope>(`/boxes/${boxId}`);
   return envelope.box;
