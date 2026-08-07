@@ -31,6 +31,23 @@ interface SkillSummary {
   enabled?: boolean;
 }
 
+interface Decision {
+  id: string;
+  kind: string;
+  platform: string | null;
+  sender: string | null;
+  label: string | null;
+  created_at: string;
+}
+
+interface Sender {
+  id: string;
+  platform: string;
+  address: string;
+  trust_tier: number;
+  first_seen: string;
+}
+
 interface ChatMessage {
   role: "user" | "agent";
   text: string;
@@ -45,9 +62,13 @@ export default function HomePage() {
   const [tier, setTier] = useState("balanced");
   const [username, setUsername] = useState("");
   const [note, setNote] = useState<string | null>(null);
-  const [tab, setTab] = useState<"chat" | "history" | "skills">("chat");
+  const [tab, setTab] = useState<
+    "chat" | "history" | "skills" | "needs" | "people"
+  >("chat");
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
   const [skills, setSkills] = useState<SkillSummary[] | null>(null);
+  const [decisions, setDecisions] = useState<Decision[] | null>(null);
+  const [people, setPeople] = useState<Sender[] | null>(null);
   const [panelNote, setPanelNote] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -162,7 +183,43 @@ export default function HomePage() {
     else setNote("Invalid username.");
   }
 
-  async function loadTab(next: "chat" | "history" | "skills") {
+  async function loadDecisions() {
+    const res = await fetch("/api/decisions");
+    if (res.ok) {
+      const data = (await res.json()) as { decisions?: Decision[] };
+      setDecisions(data.decisions ?? []);
+    }
+  }
+
+  async function resolveDecision(id: string, action: "approve" | "dismiss") {
+    await fetch("/api/decisions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, action }),
+    });
+    await loadDecisions();
+  }
+
+  async function loadPeople() {
+    const res = await fetch("/api/senders");
+    if (res.ok) {
+      const data = (await res.json()) as { senders?: Sender[] };
+      setPeople(data.senders ?? []);
+    }
+  }
+
+  async function setTrust(id: string, trustTier: number) {
+    await fetch("/api/senders", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, trust_tier: trustTier }),
+    });
+    await loadPeople();
+  }
+
+  async function loadTab(
+    next: "chat" | "history" | "skills" | "needs" | "people"
+  ) {
     setTab(next);
     setPanelNote(null);
     if (next === "history" && sessions === null) {
@@ -177,6 +234,12 @@ export default function HomePage() {
       } else {
         setPanelNote("Couldn't load history — try again shortly.");
       }
+    }
+    if (next === "needs") {
+      await loadDecisions();
+    }
+    if (next === "people") {
+      await loadPeople();
     }
     if (next === "skills" && skills === null) {
       setPanelNote("Waking your agent… this can take a minute if it was asleep.");
@@ -213,7 +276,9 @@ export default function HomePage() {
           {(
             [
               ["chat", "Chat"],
+              ["needs", "Needs you"],
               ["history", "History"],
+              ["people", "People"],
               ["skills", "Skills"],
             ] as const
           ).map(([key, label]) => (
@@ -233,7 +298,67 @@ export default function HomePage() {
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 16 }}>
         <section className="panel" style={{ display: "flex", flexDirection: "column", height: "70vh" }}>
-          {tab === "history" ? (
+          {tab === "needs" ? (
+            <div style={{ flex: 1, overflowY: "auto", display: "grid", gap: 8, alignContent: "start" }}>
+              <h3 style={{ margin: 0 }}>Needs you</h3>
+              {(decisions ?? []).map((d) => (
+                <div key={d.id} className="panel" style={{ padding: 12 }}>
+                  <strong>
+                    {d.kind === "email_draft"
+                      ? "Email draft awaiting send"
+                      : d.kind === "run_approval"
+                        ? "Agent action awaiting approval"
+                        : "New contact"}
+                  </strong>
+                  <p className="muted" style={{ margin: "4px 0 8px" }}>
+                    {[d.label, d.sender, d.platform].filter(Boolean).join(" \u00b7 ")}
+                  </p>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    {d.kind === "email_draft" ? (
+                      <button className="btn" onClick={() => void resolveDecision(d.id, "approve")}>
+                        Send
+                      </button>
+                    ) : null}
+                    <button className="btn btn-ghost" onClick={() => void resolveDecision(d.id, "dismiss")}>
+                      Dismiss
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {decisions !== null && decisions.length === 0 ? (
+                <p className="muted">Nothing needs you right now.</p>
+              ) : null}
+            </div>
+          ) : tab === "people" ? (
+            <div style={{ flex: 1, overflowY: "auto", display: "grid", gap: 8, alignContent: "start" }}>
+              <h3 style={{ margin: 0 }}>People</h3>
+              <p className="muted" style={{ margin: 0 }}>
+                Known senders can talk to your agent; unknown senders wait in “Needs you”.
+              </p>
+              {(people ?? []).map((s) => (
+                <div key={s.id} className="panel" style={{ padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <strong>{s.address}</strong>
+                    <p className="muted" style={{ margin: "4px 0 0" }}>
+                      {s.platform} · {s.trust_tier === 1 ? "known" : "unknown"}
+                    </p>
+                  </div>
+                  {s.trust_tier === 2 ? (
+                    <button className="btn" onClick={() => void setTrust(s.id, 1)}>
+                      Mark known
+                    </button>
+                  ) : (
+                    <button className="btn btn-ghost" onClick={() => void setTrust(s.id, 2)}>
+                      Mark unknown
+                    </button>
+                  )}
+                </div>
+              ))}
+              {people !== null && people.length === 0 ? (
+                <p className="muted">No one has messaged your agent yet.</p>
+              ) : null}
+            </div>
+          ) : tab === "history" ? (
             <div style={{ flex: 1, overflowY: "auto", display: "grid", gap: 8, alignContent: "start" }}>
               <h3 style={{ margin: 0 }}>Conversations</h3>
               {panelNote ? <p className="muted">{panelNote}</p> : null}

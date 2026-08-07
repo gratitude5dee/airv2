@@ -22,6 +22,7 @@ import {
 } from "@/lib/orchestrator/flush";
 import { createSpectrumSender } from "@/lib/spectrum/sender";
 import { handleOnboarding } from "@/lib/provisioning/onboarding";
+import { createDecision, resolveTrustTier } from "@/lib/routing/trust";
 
 export const maxDuration = 800;
 
@@ -118,6 +119,32 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       } finally {
         await sender.close().catch(() => undefined);
       }
+    });
+    return NextResponse.json({ ok: true }, { status: 200 });
+  }
+
+  // M4: resolve the sender's trust tier before any work. Tier 2 (unknown)
+  // may not cause any side effect — no run, no reply; it lands in "Needs
+  // you" for the owner to triage (ARCHITECTURE.md §2.5c).
+  const tier = inbound.senderId
+    ? await resolveTrustTier(supabase, route.userId, "imessage", inbound.senderId)
+    : 2;
+  if (tier === 2) {
+    await createDecision(supabase, {
+      userId: route.userId,
+      kind: "tier2_contact",
+      platform: "imessage",
+      sender: inbound.senderId,
+      ref: inbound.messageId,
+      label: "Message from an unknown number",
+    }).catch((error: unknown) => {
+      console.error(
+        JSON.stringify({
+          msg: "tier2 decision insert failed",
+          user_id: route.userId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      );
     });
     return NextResponse.json({ ok: true }, { status: 200 });
   }

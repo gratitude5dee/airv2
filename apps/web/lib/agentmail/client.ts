@@ -101,6 +101,77 @@ export async function createDraftOnlyKey(name: string): Promise<string> {
   return result.api_key;
 }
 
+export interface AgentMailMessage {
+  message_id: string;
+  inbox_id: string;
+  thread_id?: string;
+  from?: string;
+  subject?: string;
+  text?: string;
+  /** Provider-extracted new content, already quote-stripped. */
+  extracted_text?: string;
+  html?: string;
+}
+
+export async function getMessage(
+  inboxId: string,
+  messageId: string
+): Promise<AgentMailMessage> {
+  return await agentmailFetch<AgentMailMessage>(
+    `/inboxes/${encodeURIComponent(inboxId)}/messages/${encodeURIComponent(messageId)}`
+  );
+}
+
+/**
+ * Control-plane reply (M5 task 3): threading preserved by replying to the
+ * message itself; Idempotency-Key makes retried sends single-effect.
+ */
+export async function replyToMessage(
+  inboxId: string,
+  messageId: string,
+  text: string,
+  idempotencyKey: string
+): Promise<void> {
+  const response = await fetch(
+    `${AGENTMAIL_API}/inboxes/${encodeURIComponent(inboxId)}/messages/${encodeURIComponent(messageId)}/reply`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.agentmailApiKey()}`,
+        "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
+      },
+      body: JSON.stringify({ text }),
+    }
+  );
+  if (!response.ok) {
+    const body = await response.text();
+    throw new AgentMailApiError(response.status, body.slice(0, 500));
+  }
+}
+
+/** Send a held draft — the only send path for agent-composed mail (C10). */
+export async function sendDraft(
+  inboxId: string,
+  draftId: string,
+  idempotencyKey: string
+): Promise<void> {
+  const response = await fetch(
+    `${AGENTMAIL_API}/inboxes/${encodeURIComponent(inboxId)}/drafts/${encodeURIComponent(draftId)}/send`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.agentmailApiKey()}`,
+        "Idempotency-Key": idempotencyKey,
+      },
+    }
+  );
+  if (!response.ok) {
+    const body = await response.text();
+    throw new AgentMailApiError(response.status, body.slice(0, 500));
+  }
+}
+
 interface Webhook {
   webhook_id: string;
   client_id?: string;

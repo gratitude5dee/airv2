@@ -4,7 +4,7 @@
  * 200 → work. Recipients resolve through agent_addresses INCLUDING
  * retired aliases — a retired address routes forever.
  */
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { env } from "@/lib/env";
 import { serviceClient } from "@/lib/supabase";
 import {
@@ -13,18 +13,20 @@ import {
   verifySvixSignature,
 } from "@/lib/routing/svix";
 import { dedupeInboundEvent, resolveAgentAddress } from "@/lib/routing/inbound";
+import { processInboundEmail } from "@/lib/email/inbound";
+
+export const maxDuration = 800;
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 interface AgentMailMessageEvent {
-  type?: string;
-  data?: {
-    message?: {
-      id?: string;
-      to?: string[] | string;
-      inbox_id?: string;
-    };
+  event_type?: string;
+  event_id?: string;
+  message?: {
+    message_id?: string;
+    to?: string[] | string;
+    inbox_id?: string;
   };
 }
 
@@ -51,12 +53,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   } catch {
     return NextResponse.json({ error: "invalid JSON body" }, { status: 400 });
   }
-  if (event.type !== "message.received") {
+  if (event.event_type !== "message.received") {
+    // Spam / blocked / unauthenticated variants and other events: ack only.
     return NextResponse.json({ ok: true }, { status: 200 });
   }
 
-  const message = event.data?.message;
-  const messageId = message?.id;
+  const message = event.message;
+  const messageId = message?.message_id;
   if (!messageId) {
     return NextResponse.json({ error: "missing message id" }, { status: 400 });
   }
@@ -86,7 +89,23 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ ok: true, deduped: true }, { status: 200 });
   }
 
-  // Ack before work (C8). M5 wires Talon quote-stripping, the box run, and
-  // the two-key draft/send policy here.
+  // Ack before work (C8); the turn runs after the response.
+  const inboxId = message?.inbox_id;
+  if (userId && inboxId) {
+    const resolvedUserId = userId;
+    after(async () => {
+      try {
+        await processInboundEmail(supabase, resolvedUserId, inboxId, messageId);
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            msg: "email turn failed",
+            user_id: resolvedUserId,
+            error: error instanceof Error ? error.message : String(error),
+          })
+        );
+      }
+    });
+  }
   return NextResponse.json({ ok: true }, { status: 200 });
 }
