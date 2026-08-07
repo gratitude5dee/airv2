@@ -117,9 +117,22 @@ export async function ensureBoxAwake(
     if (Date.now() > deadline) {
       throw new Error(`hermes on ${boxId} not healthy after resume`);
     }
-    const hosted = await refreshHostedRoute(supabase, boxId);
-    target = { ...target, hostedUrl: hosted.url, hostedToken: hosted.token };
-    if (await health(target)) break;
+    try {
+      // Right after resume the box reports ready before the ascii agent and
+      // hermes-host have booted, so the refresh command itself can fail —
+      // keep retrying until the deadline.
+      const hosted = await refreshHostedRoute(supabase, boxId);
+      target = { ...target, hostedUrl: hosted.url, hostedToken: hosted.token };
+      if (await health(target)) break;
+    } catch (error) {
+      console.log(
+        JSON.stringify({
+          msg: "hosted route refresh retrying",
+          box_id: boxId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      );
+    }
     await new Promise((resolve) => setTimeout(resolve, 5_000));
   }
 

@@ -82,12 +82,26 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       .maybeSingle();
     userId = handle?.user_id as string | undefined;
     if (userId) {
-      // First web sign-in for a phone-provisioned account: attach the wallet.
+      // First web sign-in for a phone-provisioned account: attach the wallet
+      // and activate — the OTP is the same possession proof the iMessage
+      // claim flow performs, so a pending account is claimed here too.
       await supabase
         .from("users")
-        .update({ wallet_address: walletAddress })
+        .update({ wallet_address: walletAddress, status: "active" })
         .eq("id", userId)
         .is("wallet_address", null);
+      await supabase
+        .from("provisioning")
+        .update({ state: "active", updated_at: new Date().toISOString() })
+        .eq("user_id", userId)
+        .neq("state", "abandoned");
+      await supabase
+        .from("handles")
+        .update({ verified_at: new Date().toISOString() })
+        .eq("user_id", userId)
+        .eq("platform", "imessage")
+        .eq("address", phone)
+        .is("verified_at", null);
     }
   }
   if (!userId) {
