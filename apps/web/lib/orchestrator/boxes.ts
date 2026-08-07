@@ -1,0 +1,146 @@
+/**
+ * Box lifecycle for the message path: resolve the user's box, resume it if
+ * stopped, refresh the hosted route (the hosted `_token` rotates on resume),
+ * and manage the 20-minute stop_after window swept by the cron (goal.md M2
+ * task 4). Box 429 start_limit_reached surfaces as a typed error so callers
+ * can queue and back off rather than drop the turn (task 9).
+ */
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { command, getBox, isStartLimit, resume, waitForBox } from "../box/client";
+import { health, type HermesBoxTarget } from "../hermes/client";
+
+export const STOP_AFTER_MINUTES = 20;
+
+export class StartLimitError extends Error {
+  constructor() {
+    super("box start limit reached");
+    this.name = "StartLimitError";
+  }
+}
+
+export interface UserBox {
+  boxId: string;
+  target: HermesBoxTarget;
+}
+
+interface BoxRow {
+  provider_box_id: string;
+  hosted_url: string;
+  hosted_token: string;
+  api_server_key: string;
+}
+
+const HOSTED_URL_PATTERN =
+  /^(https:\/\/[a-z0-9-]+-(\d+)\.on\.ascii\.dev)\?_token=([a-f0-9]+)$/m;
+
+function parseHostedUrl(
+  stdout: string,
+  port: number
+): { url: string; token: string } {
+  for (const line of stdout.split("\n")) {
+    const match = HOSTED_URL_PATTERN.exec(line.trim());
+    if (match?.[1] && match[3] && Number(match[2]) === port) {
+      return { url: match[1], token: match[3] };
+    }
+  }
+  throw new Error(`hosted URL for port ${port} not found in host output`);
+}
+
+/** Re-register the private hosted route and persist the rotated token. */
+async function refreshHostedRoute(
+  supabase: SupabaseClient,
+  boxId: string
+): Promise<{ url: string; token: string }> {
+  const result = await command(
+    boxId,
+    `eval "$(grep '^export ASCII_' /home/user/.bashrc)"; /home/user/.ascii/host url 8642 --timeout 120 --private`,
+    180
+  );
+  if (result.exitCode !== 0) {
+    throw new Error(`host refresh failed: ${result.stderr}`);
+  }
+  const hosted = parseHostedUrl(result.stdout, 8642);
+  await supabase
+    .from("boxes")
+    .update({ hosted_url: hosted.url, hosted_token: hosted.token })
+    .eq("provider_box_id", boxId);
+  return hosted;
+}
+
+/**
+ * Resolve the user's box and make sure Hermes answers, resuming if needed.
+ * Clears stop_after for the duration of the run (the caller re-arms it).
+ */
+export async function ensureBoxAwake(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<UserBox> {
+  const { data } = await supabase
+    .from("boxes")
+    .select("provider_box_id, hosted_url, hosted_token, api_server_key")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!data) {
+    throw new Error(`no box for user ${userId}`);
+  }
+  const row = data as BoxRow;
+  const boxId = row.provider_box_id;
+
+  await supabase
+    .from("boxes")
+    .update({ stop_after: null, last_active_at: new Date().toISOString() })
+    .eq("user_id", userId);
+
+  const box = await getBox(boxId);
+  if (box.state !== "ready" && box.state !== "idle") {
+    try {
+      await resume(boxId);
+    } catch (error) {
+      if (isStartLimit(error)) {
+        throw new StartLimitError();
+      }
+      throw error;
+    }
+    await waitForBox(boxId);
+  }
+
+  let target: HermesBoxTarget = {
+    hostedUrl: row.hosted_url,
+    hostedToken: row.hosted_token,
+    apiServerKey: row.api_server_key,
+  };
+
+  // The hosted token rotates across stop/resume; hermes-host re-registers on
+  // boot but the stored token may be stale. Probe, then refresh once.
+  const deadline = Date.now() + 180_000;
+  while (!(await health(target))) {
+    if (Date.now() > deadline) {
+      throw new Error(`hermes on ${boxId} not healthy after resume`);
+    }
+    const hosted = await refreshHostedRoute(supabase, boxId);
+    target = { ...target, hostedUrl: hosted.url, hostedToken: hosted.token };
+    if (await health(target)) break;
+    await new Promise((resolve) => setTimeout(resolve, 5_000));
+  }
+
+  await supabase
+    .from("boxes")
+    .update({ state: "ready" })
+    .eq("provider_box_id", boxId);
+
+  return { boxId, target };
+}
+
+/** Re-arm the idle deadline; the cron sweeper stops the box past it. */
+export async function armStopAfter(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<void> {
+  const stopAfter = new Date(
+    Date.now() + STOP_AFTER_MINUTES * 60_000
+  ).toISOString();
+  await supabase
+    .from("boxes")
+    .update({ stop_after: stopAfter })
+    .eq("user_id", userId);
+}

@@ -1,0 +1,435 @@
+/**
+ * Burst debouncing and the debounced turn (goal.md M2 task 3, C14).
+ *
+ * One flush job per chat. Every inbound resets run_at to now()+5s; the
+ * invocation that still owns the deadline when it fires claims the drain
+ * atomically. Messages stay in batch_queue until the handler reads them —
+ * the enqueuer never carries them in a payload. A chain cancelled
+ * mid-generation moves its drained messages to carried_messages, and the
+ * next batch prepends them as "[Earlier message] …". Cancellation compares
+ * cancelled_at against the chain's own chainStartedAt, never "is the flag
+ * set", so a stale flag cannot orphan a new chain.
+ */
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { command, writeFile } from "../box/client";
+import { createRun, runEvents, stopRun } from "../hermes/client";
+import { createSpectrumSender, type SpectrumSender } from "../spectrum/sender";
+import {
+  armStopAfter,
+  ensureBoxAwake,
+  StartLimitError,
+} from "./boxes";
+
+const ATTACHMENT_MARKER = /^\[attachment:([^\]]+)\]$/;
+
+export const DEBOUNCE_MS = 5_000;
+const MAX_ATTEMPTS = 5;
+const CANCEL_POLL_MS = 2_000;
+
+export interface InboundMessage {
+  userId: string;
+  spaceId: string;
+  phone: string;
+  senderId?: string;
+  messageId: string;
+  body: string;
+}
+
+interface QueuedMessage {
+  id: string;
+  message_id: string;
+  body: string;
+}
+
+/** Enqueue + (re)schedule the chat's flush job. Returns the new deadline. */
+export async function enqueueInbound(
+  supabase: SupabaseClient,
+  message: InboundMessage
+): Promise<{ runAt: string }> {
+  const { error: queueError } = await supabase.from("batch_queue").insert({
+    user_id: message.userId,
+    space_id: message.spaceId,
+    phone: message.phone,
+    sender_id: message.senderId ?? null,
+    message_id: message.messageId,
+    body: message.body,
+  });
+  if (queueError) {
+    throw new Error(`batch_queue insert failed: ${queueError.message}`);
+  }
+
+  const runAt = new Date(Date.now() + DEBOUNCE_MS).toISOString();
+  const { error: jobError } = await supabase.from("flush_jobs").upsert(
+    {
+      space_id: message.spaceId,
+      user_id: message.userId,
+      phone: message.phone,
+      run_at: runAt,
+      cancelled_at: new Date().toISOString(),
+    },
+    { onConflict: "space_id" }
+  );
+  if (jobError) {
+    throw new Error(`flush_jobs upsert failed: ${jobError.message}`);
+  }
+  return { runAt };
+}
+
+/**
+ * Claim the flush if this invocation still owns the deadline: the update
+ * only matches while run_at is unchanged, so a later inbound (which moved
+ * run_at) silently wins.
+ */
+export async function claimFlush(
+  supabase: SupabaseClient,
+  spaceId: string,
+  expectedRunAt: string
+): Promise<{ chainStartedAt: string } | undefined> {
+  const chainStartedAt = new Date().toISOString();
+  const { data } = await supabase
+    .from("flush_jobs")
+    .update({ chain_started_at: chainStartedAt })
+    .eq("space_id", spaceId)
+    .eq("run_at", expectedRunAt)
+    .select("space_id");
+  if (!data || data.length === 0) return undefined;
+  return { chainStartedAt };
+}
+
+async function drainQueue(
+  supabase: SupabaseClient,
+  spaceId: string
+): Promise<QueuedMessage[]> {
+  const { data, error } = await supabase
+    .from("batch_queue")
+    .delete()
+    .eq("space_id", spaceId)
+    .select("id, message_id, body")
+    .order("received_at", { ascending: true });
+  if (error) {
+    throw new Error(`batch_queue drain failed: ${error.message}`);
+  }
+  return (data ?? []) as QueuedMessage[];
+}
+
+async function drainCarried(
+  supabase: SupabaseClient,
+  spaceId: string
+): Promise<QueuedMessage[]> {
+  const { data, error } = await supabase
+    .from("carried_messages")
+    .delete()
+    .eq("space_id", spaceId)
+    .select("id, message_id, body")
+    .order("received_at", { ascending: true });
+  if (error) {
+    throw new Error(`carried_messages drain failed: ${error.message}`);
+  }
+  return (data ?? []) as QueuedMessage[];
+}
+
+/** Prior-chain remnants read as history, not fresh input. */
+export function composeInput(
+  carried: QueuedMessage[],
+  fresh: QueuedMessage[]
+): string {
+  const parts: string[] = [];
+  for (const message of carried) {
+    parts.push(`[Earlier message] ${message.body}`);
+  }
+  for (const message of fresh) {
+    parts.push(message.body);
+  }
+  return parts.join("\n");
+}
+
+/** True when a cancellation stamped after this chain began. */
+export function isCancelled(
+  cancelledAt: string | null,
+  chainStartedAt: string
+): boolean {
+  return cancelledAt !== null && cancelledAt > chainStartedAt;
+}
+
+async function chainCancelled(
+  supabase: SupabaseClient,
+  spaceId: string,
+  chainStartedAt: string
+): Promise<boolean> {
+  const { data } = await supabase
+    .from("flush_jobs")
+    .select("cancelled_at")
+    .eq("space_id", spaceId)
+    .maybeSingle();
+  return isCancelled((data?.cancelled_at as string | null) ?? null, chainStartedAt);
+}
+
+/**
+ * Webhooks carry attachment metadata only. Fetch the bytes through the live
+ * SDK (`getAttachment(id, phone)`), drop them into the box filesystem, and
+ * rewrite the marker so the agent can read the file itself.
+ */
+async function materializeAttachments(
+  sender: SpectrumSender,
+  boxId: string,
+  phone: string,
+  input: string
+): Promise<string> {
+  const lines = await Promise.all(
+    input.split("\n").map(async (line) => {
+      const match = ATTACHMENT_MARKER.exec(
+        line.replace(/^\[Earlier message\] /, "")
+      );
+      if (!match?.[1]) return line;
+      const parts: string[] = [];
+      for (const id of match[1].split(",")) {
+        const attachment = await sender
+          .getAttachment(id, phone)
+          .catch(() => undefined);
+        if (!attachment) {
+          parts.push("[The user sent an attachment that could not be retrieved]");
+          continue;
+        }
+        const safeName = attachment.name.replace(/[^A-Za-z0-9._-]/g, "_");
+        const path = `.hermes/inbox/${Date.now()}-${safeName}`;
+        await command(boxId, "mkdir -p /home/user/.hermes/inbox");
+        await writeFile(boxId, path, attachment.data.toString("base64"));
+        await command(
+          boxId,
+          `base64 -d /home/user/${path} > /home/user/${path}.bin && mv /home/user/${path}.bin /home/user/${path}`
+        );
+        parts.push(
+          `[The user sent an attachment (${attachment.mimeType}); it is saved at /home/user/${path}]`
+        );
+      }
+      return line.startsWith("[Earlier message] ")
+        ? `[Earlier message] ${parts.join(" ")}`
+        : parts.join(" ");
+    })
+  );
+  return lines.join("\n");
+}
+
+/** Parse Hermes SSE into text deltas; throws on run.failed. */
+export async function* hermesDeltas(
+  stream: ReadableStream<Uint8Array>,
+  onDone?: (output: string) => void
+): AsyncGenerator<string> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let sawDelta = false;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let index: number;
+      while ((index = buffer.indexOf("\n\n")) !== -1) {
+        const frame = buffer.slice(0, index);
+        buffer = buffer.slice(index + 2);
+        const line = frame
+          .split("\n")
+          .find((entry) => entry.startsWith("data: "));
+        if (!line) continue;
+        let event: {
+          event?: string;
+          delta?: string;
+          output?: string;
+          error?: string;
+        };
+        try {
+          event = JSON.parse(line.slice(6)) as typeof event;
+        } catch {
+          continue;
+        }
+        if (event.event === "message.delta" && event.delta) {
+          sawDelta = true;
+          yield event.delta;
+        } else if (event.event === "run.completed") {
+          if (!sawDelta && event.output) {
+            yield event.output;
+          }
+          onDone?.(event.output ?? "");
+          return;
+        } else if (event.event === "run.failed") {
+          throw new Error(event.error ?? "run failed");
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+async function rescheduleWithBackoff(
+  supabase: SupabaseClient,
+  spaceId: string,
+  attempts: number
+): Promise<void> {
+  const delayMs = Math.min(2 ** attempts * 15_000, 10 * 60_000);
+  await supabase
+    .from("flush_jobs")
+    .update({
+      run_at: new Date(Date.now() + delayMs).toISOString(),
+      chain_started_at: null,
+      attempts: attempts + 1,
+    })
+    .eq("space_id", spaceId);
+}
+
+async function carryMessages(
+  supabase: SupabaseClient,
+  userId: string,
+  spaceId: string,
+  messages: QueuedMessage[]
+): Promise<void> {
+  if (messages.length === 0) return;
+  await supabase.from("carried_messages").insert(
+    messages.map((message) => ({
+      user_id: userId,
+      space_id: spaceId,
+      message_id: message.message_id,
+      body: message.body,
+    }))
+  );
+}
+
+/**
+ * Run one debounced turn for a chat. Called after the claim succeeds; owns
+ * drain → resume → run → stream → stop_after re-arm.
+ */
+export async function runFlush(
+  supabase: SupabaseClient,
+  job: { spaceId: string; userId: string; phone: string; attempts: number },
+  chainStartedAt: string
+): Promise<void> {
+  const carried = await drainCarried(supabase, job.spaceId);
+  const fresh = await drainQueue(supabase, job.spaceId);
+  const drained = [...carried, ...fresh];
+  if (drained.length === 0) {
+    await supabase.from("flush_jobs").delete().eq("space_id", job.spaceId);
+    return;
+  }
+  const rawInput = composeInput(carried, fresh);
+
+  const sender = await createSpectrumSender();
+  try {
+    let box: Awaited<ReturnType<typeof ensureBoxAwake>>;
+    try {
+      box = await ensureBoxAwake(supabase, job.userId);
+    } catch (error) {
+      if (error instanceof StartLimitError && job.attempts < MAX_ATTEMPTS) {
+        // First-class queued state: hold the user honestly, retry later.
+        await carryMessages(supabase, job.userId, job.spaceId, fresh);
+        if (job.attempts === 0) {
+          await sender.sendText(
+            job.spaceId,
+            job.phone,
+            "Give me a few minutes — my computer is busy starting up. I'll reply as soon as it's ready."
+          );
+        }
+        await rescheduleWithBackoff(supabase, job.spaceId, job.attempts);
+        return;
+      }
+      throw error;
+    }
+
+    const input = await materializeAttachments(
+      sender,
+      box.boxId,
+      job.phone,
+      rawInput
+    );
+
+    const run = await createRun(box.target, {
+      input,
+      sessionId: job.spaceId,
+    });
+    await supabase
+      .from("flush_jobs")
+      .update({ hermes_run_id: run.run_id })
+      .eq("space_id", job.spaceId);
+
+    const startedAt = new Date().toISOString();
+    let cancelled = false;
+    let lastCancelCheck = Date.now();
+    const events = await runEvents(box.target, run.run_id);
+    const deltas = hermesDeltas(events);
+
+    // Stream straight into iMessage: first chunk is a real message, edited
+    // in place as more arrives.
+    async function* guarded(): AsyncGenerator<string> {
+      for await (const delta of deltas) {
+        if (Date.now() - lastCancelCheck > CANCEL_POLL_MS) {
+          lastCancelCheck = Date.now();
+          if (await chainCancelled(supabase, job.spaceId, chainStartedAt)) {
+            cancelled = true;
+            await stopRun(box.target, run.run_id).catch(() => undefined);
+            return;
+          }
+        }
+        yield delta;
+      }
+    }
+    await sender.streamText(job.spaceId, job.phone, guarded());
+
+    if (cancelled) {
+      // Losing nothing: the drained messages ride into the next batch as
+      // history. The successor chain owns the flush job now.
+      await carryMessages(supabase, job.userId, job.spaceId, drained);
+      return;
+    }
+
+    await supabase
+      .from("agent_runs")
+      .insert({
+        user_id: job.userId,
+        hermes_run_id: run.run_id,
+        trigger: "imessage",
+        started_at: startedAt,
+        ended_at: new Date().toISOString(),
+        outcome: "completed",
+      });
+    // If a new inbound arrived while we streamed, its flush owns the job now.
+    if (!(await chainCancelled(supabase, job.spaceId, chainStartedAt))) {
+      await supabase
+        .from("flush_jobs")
+        .delete()
+        .eq("space_id", job.spaceId)
+        .eq("chain_started_at", chainStartedAt);
+    }
+    await armStopAfter(supabase, job.userId);
+  } finally {
+    await sender.close().catch(() => undefined);
+  }
+}
+
+/** Debounce wait + claim + run; the webhook route calls this via after(). */
+export async function flushAfterDebounce(
+  supabase: SupabaseClient,
+  message: InboundMessage,
+  runAt: string
+): Promise<void> {
+  const waitMs = new Date(runAt).getTime() - Date.now();
+  if (waitMs > 0) {
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
+  }
+  const claim = await claimFlush(supabase, message.spaceId, runAt);
+  if (!claim) return; // a later message owns the flush now
+  const { data } = await supabase
+    .from("flush_jobs")
+    .select("attempts")
+    .eq("space_id", message.spaceId)
+    .maybeSingle();
+  await runFlush(
+    supabase,
+    {
+      spaceId: message.spaceId,
+      userId: message.userId,
+      phone: message.phone,
+      attempts: (data?.attempts as number | undefined) ?? 0,
+    },
+    claim.chainStartedAt
+  );
+}

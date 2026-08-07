@@ -25,7 +25,7 @@ function makeBody(overrides?: Record<string, unknown>): Uint8Array {
         direction: "inbound",
         platform: "imessage",
         sender: { id: "+15552223333" },
-        content: { type: "text" },
+        content: { type: "text", text: "hello there" },
       },
       ...overrides,
     })
@@ -94,6 +94,8 @@ describe("parseInboundSpectrumMessage", () => {
       senderId: "+15552223333",
       spaceId: "space-1",
       webhookId: "wh-1",
+      text: "hello there",
+      attachmentIds: [],
     });
   });
 

@@ -5,7 +5,7 @@
  *
  * Only routing identifiers touch Postgres — never content or media (C4).
  */
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { env } from "@/lib/env";
 import { serviceClient } from "@/lib/supabase";
 import {
@@ -15,6 +15,14 @@ import {
   verifySpectrumSignature,
 } from "@/lib/routing/spectrum";
 import { dedupeInboundEvent, resolveLine } from "@/lib/routing/inbound";
+import {
+  enqueueInbound,
+  flushAfterDebounce,
+  type InboundMessage,
+} from "@/lib/orchestrator/flush";
+import { createSpectrumSender } from "@/lib/spectrum/sender";
+
+export const maxDuration = 800;
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -72,12 +80,54 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ ok: true, deduped: true }, { status: 200 });
   }
 
-  if (!route) {
+  if (!route || !inbound.phone) {
     // Unroutable line: recorded as an event, no work dispatched.
     return NextResponse.json({ ok: true }, { status: 200 });
   }
 
-  // 5: ack before work (C8). 6: work — M2 wires burst debouncing (batch_queue)
-  // and the box run dispatch here.
+  const body =
+    inbound.text ??
+    (inbound.attachmentIds.length > 0
+      ? `[attachment:${inbound.attachmentIds.join(",")}]`
+      : "");
+  if (!body) {
+    return NextResponse.json({ ok: true }, { status: 200 });
+  }
+
+  const message: InboundMessage = {
+    userId: route.userId,
+    spaceId: inbound.spaceId,
+    phone: inbound.phone,
+    senderId: inbound.senderId,
+    messageId: inbound.messageId,
+    body,
+  };
+  const { runAt } = await enqueueInbound(supabase, message);
+
+  // 5: ack before work (C8). 6: work after the response — typing indicator
+  // immediately (a cold start becomes a pause, not silence), then the
+  // debounced flush.
+  after(async () => {
+    const sender = await createSpectrumSender().catch(() => undefined);
+    if (sender) {
+      await sender
+        .startTyping(message.spaceId, message.phone)
+        .catch(() => undefined);
+    }
+    try {
+      await flushAfterDebounce(supabase, message, runAt);
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          msg: "imessage flush failed",
+          user_id: message.userId,
+          space_id: message.spaceId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      );
+    } finally {
+      await sender?.close().catch(() => undefined);
+    }
+  });
   return NextResponse.json({ ok: true }, { status: 200 });
 }

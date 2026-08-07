@@ -27,7 +27,11 @@ export interface SpectrumWebhookHeaders {
   webhookId?: string;
 }
 
-/** Routing-only identifiers. No message content, no media, ever. */
+/**
+ * Routing identifiers plus the in-flight text/attachment metadata the
+ * debounced turn needs. Only the identifiers are persisted to
+ * inbound_events; text lives transiently in batch_queue until drained (C4).
+ */
 export interface InboundSpectrumMessage {
   messageId: string;
   /** The line's phone (E.164), or the literal "shared" on pool lines. */
@@ -36,6 +40,9 @@ export interface InboundSpectrumMessage {
   senderId?: string;
   spaceId: string;
   webhookId?: string;
+  text?: string;
+  /** Metadata only — bytes are fetched via getAttachment through the SDK. */
+  attachmentIds: string[];
 }
 
 type UnknownRecord = Record<string, unknown>;
@@ -136,6 +143,20 @@ export function parseInboundSpectrumMessage(
     return undefined;
   }
   const sender = asRecord(message.sender);
+  const attachmentIds: string[] = [];
+  const contentType = asString(content?.type)?.toLowerCase();
+  if (contentType === "attachment") {
+    const id = asString(content?.id);
+    if (id) attachmentIds.push(id);
+  }
+  const groupItems = Array.isArray(content?.contents) ? content.contents : [];
+  for (const item of groupItems) {
+    const record = asRecord(item);
+    if (asString(record?.type)?.toLowerCase() === "attachment") {
+      const id = asString(record?.id);
+      if (id) attachmentIds.push(id);
+    }
+  }
   return {
     messageId,
     phone: asString(space?.phone) ?? asString(embeddedSpace?.phone),
@@ -143,5 +164,7 @@ export function parseInboundSpectrumMessage(
     senderId: asString(sender?.id),
     spaceId,
     webhookId: headers.webhookId,
+    text: asString(content?.text),
+    attachmentIds,
   };
 }
