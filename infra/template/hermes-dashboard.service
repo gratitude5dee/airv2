@@ -7,6 +7,7 @@ Wants=network-online.target
 Type=simple
 User=user
 WorkingDirectory=/home/user/hermes-agent
+Environment=UV_NO_SYNC=1
 EnvironmentFile=-/home/user/.hermes/.env
 # --skip-build: the SPA is built once at template time (web/ → hermes_cli/web_dist).
 ExecStart=/home/user/.local/bin/uv run hermes dashboard --host 0.0.0.0 --port 9119 --no-open --skip-build

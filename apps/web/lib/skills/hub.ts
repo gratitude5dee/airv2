@@ -27,7 +27,7 @@ export async function installBaseSkills(boxId: string): Promise<void> {
     try {
       const result = await command(
         boxId,
-        `hermes skills install "${identifier}" --yes`,
+        `/home/user/hermes-agent/.venv/bin/hermes skills install "${identifier}" --yes`,
         300
       );
       if (result.exitCode !== 0) {
@@ -100,7 +100,7 @@ export async function searchHub(
   const box = await ensureBoxAwake(supabase, userId);
   const result = await command(
     box.boxId,
-    `hermes skills search "${query}" --json --limit 20`,
+    `/home/user/hermes-agent/.venv/bin/hermes skills search "${query}" --json --limit 20`,
     180
   );
   if (result.exitCode !== 0) {
@@ -127,7 +127,7 @@ export async function installSkill(
   const box = await ensureBoxAwake(supabase, userId);
   const result = await command(
     box.boxId,
-    `hermes skills install "${identifier}" --yes`,
+    `/home/user/hermes-agent/.venv/bin/hermes skills install "${identifier}" --yes`,
     300
   );
   if (result.exitCode !== 0) {
@@ -147,7 +147,7 @@ export async function uninstallSkill(
   const box = await ensureBoxAwake(supabase, userId);
   const result = await command(
     box.boxId,
-    `hermes skills uninstall "${name}"`,
+    `/home/user/hermes-agent/.venv/bin/hermes skills uninstall "${name}"`,
     180
   );
   if (result.exitCode !== 0) {
