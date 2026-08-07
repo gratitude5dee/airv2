@@ -8,6 +8,8 @@ import { randomBytes } from "node:crypto";
 import { env } from "../env";
 import { serviceClient } from "../supabase";
 import { command, deleteBox, fork, stop, waitForBox, writeFile } from "../box/client";
+import { installComposioMcp } from "./connectors";
+import { installBaseSkills } from "../skills/hub";
 
 export interface ProvisionOptions {
   displayName?: string;
@@ -249,6 +251,19 @@ export async function provisionUser(
   });
   if (boxError) {
     throw new Error(`boxes insert failed: ${boxError.message}`);
+  }
+
+  // Best-effort: base skills plus the per-user Composio MCP endpoint, so a
+  // fresh agent starts with its email/search skills and connector tooling.
+  // Failures log and continue — the user can install from the dashboard.
+  await installBaseSkills(box.id);
+  try {
+    await installComposioMcp(supabase, userId);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown error";
+    console.error(
+      JSON.stringify({ msg: "composio preinstall failed", user_id: userId, error: message })
+    );
   }
 
   return {
