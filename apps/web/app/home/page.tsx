@@ -739,16 +739,21 @@ export default function HomePage() {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({ app: slug }),
-                    }).then(async (res) => {
-                      if (res.ok) {
-                        const data = (await res.json()) as { url?: string };
-                        if (data.url && win) {
-                          win.location.href = data.url;
+                    })
+                      .then(async (res) => {
+                        const data = res.ok
+                          ? ((await res.json().catch(() => ({}))) as {
+                              url?: string;
+                            })
+                          : {};
+                        if (data.url) {
+                          if (win) win.location.href = data.url;
+                          else window.location.href = data.url;
                           return;
                         }
-                      }
-                      win?.close();
-                    });
+                        win?.close();
+                      })
+                      .catch(() => win?.close());
                   }}
                 >
                   {slug === "kanban" ? "Kanban" : "To-Do"}
