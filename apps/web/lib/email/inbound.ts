@@ -96,7 +96,10 @@ export async function processInboundEmail(
   }
 
   if (output.trim()) {
-    await replyToMessage(inboxId, messageId, output.trim(), messageId);
+    // AgentMail Idempotency-Key allows only [A-Za-z0-9-._~]; RFC-822 ids
+    // contain <>@ so map anything else onto that alphabet.
+    const idempotencyKey = messageId.replace(/[^A-Za-z0-9\-._~]/g, "_");
+    await replyToMessage(inboxId, messageId, output.trim(), idempotencyKey);
   }
 
   await supabase.from("agent_runs").insert({
