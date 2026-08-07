@@ -8,7 +8,8 @@ Type=simple
 User=user
 WorkingDirectory=/home/user/hermes-agent
 EnvironmentFile=-/home/user/.hermes/.env
-ExecStart=/home/user/.local/bin/uv run hermes dashboard --host 0.0.0.0 --port 9119 --no-open
+# --skip-build: the SPA is built once at template time (web/ → hermes_cli/web_dist).
+ExecStart=/home/user/.local/bin/uv run hermes dashboard --host 0.0.0.0 --port 9119 --no-open --skip-build
 Restart=always
 RestartSec=3
 

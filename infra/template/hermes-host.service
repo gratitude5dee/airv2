@@ -9,7 +9,13 @@ Wants=hermes-gateway.service hermes-dashboard.service
 [Service]
 Type=oneshot
 User=user
-ExecStart=/bin/sh -c 'host 8642 --private && host 9119 --private'
+# The Box host CLI needs the ASCII_* env exported in ~/.bashrc (which guards
+# against non-interactive sourcing), and /usr/bin/host (the DNS tool) shadows
+# it in systemd's default PATH — hence the eval and the absolute path.
+# Retry loop: right after a fork/resume the box agent token can briefly be
+# stale (API 401 agent_revoked) until the platform rotates it.
+ExecStart=/bin/bash -c 'eval "$(grep "^export ASCII_" /home/user/.bashrc)"; for i in $(seq 1 36); do /home/user/.ascii/host 8642 --private && /home/user/.ascii/host 9119 --private && exit 0; sleep 10; eval "$(grep "^export ASCII_" /home/user/.bashrc)"; done; exit 1'
+TimeoutStartSec=420
 RemainAfterExit=yes
 
 [Install]
