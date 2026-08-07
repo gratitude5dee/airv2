@@ -23,6 +23,21 @@ function tierOverride(tier: SpeedTier): string | undefined {
   return byTier[tier];
 }
 
+/**
+ * Optional per-tier reasoning effort (MODEL_REASONING_FAST / _BALANCED /
+ * _DEEP), injected by the gateway for providers that accept
+ * `reasoning_effort` (OpenAI GPT-5.x). Unset means don't send the field.
+ */
+export function reasoningForTier(tier: SpeedTier): string | undefined {
+  const byTier: Record<SpeedTier, string | undefined> = {
+    fast: process.env.MODEL_REASONING_FAST,
+    balanced: process.env.MODEL_REASONING_BALANCED,
+    deep: process.env.MODEL_REASONING_DEEP,
+  };
+  const value = byTier[tier];
+  return value && value.trim() ? value.trim() : undefined;
+}
+
 /** Approximate USD per 1M tokens, for metering into agent_runs. */
 const TIER_PRICING: Record<SpeedTier, { input: number; output: number }> = {
   fast: { input: 0.15, output: 0.6 },
