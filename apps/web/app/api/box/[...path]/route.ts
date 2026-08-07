@@ -5,20 +5,22 @@
  * The Box `_token` is appended server-side and never reaches a browser (C3).
  */
 import { NextRequest, NextResponse } from "next/server";
+import { sessionUserId } from "@/lib/auth/user";
+import { serviceClient } from "@/lib/supabase";
+import { ensureBoxAwake } from "@/lib/orchestrator/boxes";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 const ALLOWLIST: ReadonlyArray<{ method: string; pattern: RegExp }> = [
-  { method: "GET", pattern: /^api\/skills$/ },
-  { method: "PUT", pattern: /^api\/skills\/toggle$/ },
-  { method: "GET", pattern: /^api\/skills\/hub\/search$/ },
-  { method: "POST", pattern: /^api\/skills\/hub\/(install|uninstall|update)$/ },
+  { method: "GET", pattern: /^api\/sessions$/ },
+  { method: "GET", pattern: /^api\/sessions\/[A-Za-z0-9_-]+$/ },
+  { method: "GET", pattern: /^api\/sessions\/[A-Za-z0-9_-]+\/messages$/ },
+  { method: "GET", pattern: /^v1\/skills$/ },
+  { method: "GET", pattern: /^v1\/toolsets$/ },
   { method: "GET", pattern: /^api\/mcp\/servers$/ },
-  { method: "GET", pattern: /^api\/mcp\/catalog$/ },
-  { method: "GET", pattern: /^api\/cron\/jobs$/ },
-  { method: "POST", pattern: /^api\/cron\/jobs$/ },
-  { method: "GET", pattern: /^api\/analytics\/usage$/ },
+  { method: "GET", pattern: /^api\/jobs$/ },
 ];
 
 function isAllowed(method: string, path: string): boolean {
@@ -36,12 +38,39 @@ async function handle(
   if (!isAllowed(request.method, joined)) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
-  // M7 wires the authenticated per-user proxy to the box's dashboard (9119)
-  // here, appending the hosted `_token` server-side.
-  return NextResponse.json(
-    { error: "proxy not yet provisioned" },
-    { status: 503 }
-  );
+  const userId = sessionUserId(request);
+  if (!userId) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+  const supabase = serviceClient();
+  try {
+    const box = await ensureBoxAwake(supabase, userId);
+    const search = request.nextUrl.search;
+    const upstream = await fetch(
+      `${box.target.hostedUrl}/${joined}${search}`,
+      {
+        method: request.method,
+        headers: {
+          Authorization: `Bearer ${box.target.apiServerKey}`,
+          Cookie: `_port_auth=${box.target.hostedToken}`,
+        },
+      }
+    );
+    const body = await upstream.text();
+    return new NextResponse(body, {
+      status: upstream.status,
+      headers: {
+        "Content-Type":
+          upstream.headers.get("content-type") ?? "application/json",
+      },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown error";
+    console.error(
+      JSON.stringify({ msg: "box proxy failed", user_id: userId, error: message })
+    );
+    return NextResponse.json({ error: "proxy failed" }, { status: 502 });
+  }
 }
 
 export async function GET(

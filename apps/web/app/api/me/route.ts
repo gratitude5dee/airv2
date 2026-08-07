@@ -12,7 +12,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const supabase = serviceClient();
-  const [{ data: user }, { data: entitlement }, { data: lines }] =
+  const [{ data: user }, { data: entitlement }, { data: lines }, { data: addresses }] =
     await Promise.all([
       supabase
         .from("users")
@@ -28,9 +28,19 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         .from("lines")
         .select("phone, platform")
         .eq("assigned_user_id", userId),
+      supabase
+        .from("agent_addresses")
+        .select("address, is_primary, retired_at")
+        .eq("user_id", userId)
+        .is("retired_at", null),
     ]);
   if (!user) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
-  return NextResponse.json({ user, entitlement, lines: lines ?? [] });
+  return NextResponse.json({
+    user,
+    entitlement,
+    lines: lines ?? [],
+    addresses: addresses ?? [],
+  });
 }

@@ -12,6 +12,23 @@ interface Me {
     spend_mtd_usd: number;
   } | null;
   lines: { phone: string; platform: string }[];
+  addresses: { address: string; is_primary: boolean }[];
+}
+
+interface SessionSummary {
+  session_id?: string;
+  id?: string;
+  title?: string;
+  platform?: string;
+  updated_at?: string;
+  created_at?: string;
+  message_count?: number;
+}
+
+interface SkillSummary {
+  name?: string;
+  description?: string;
+  enabled?: boolean;
 }
 
 interface ChatMessage {
@@ -28,6 +45,10 @@ export default function HomePage() {
   const [tier, setTier] = useState("balanced");
   const [username, setUsername] = useState("");
   const [note, setNote] = useState<string | null>(null);
+  const [tab, setTab] = useState<"chat" | "history" | "skills">("chat");
+  const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
+  const [skills, setSkills] = useState<SkillSummary[] | null>(null);
+  const [panelNote, setPanelNote] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -141,6 +162,37 @@ export default function HomePage() {
     else setNote("Invalid username.");
   }
 
+  async function loadTab(next: "chat" | "history" | "skills") {
+    setTab(next);
+    setPanelNote(null);
+    if (next === "history" && sessions === null) {
+      setPanelNote("Waking your agent… this can take a minute if it was asleep.");
+      const res = await fetch("/api/box/api/sessions?limit=30");
+      if (res.ok) {
+        const data = (await res.json()) as
+          | SessionSummary[]
+          | { sessions?: SessionSummary[] };
+        setSessions(Array.isArray(data) ? data : (data.sessions ?? []));
+        setPanelNote(null);
+      } else {
+        setPanelNote("Couldn't load history — try again shortly.");
+      }
+    }
+    if (next === "skills" && skills === null) {
+      setPanelNote("Waking your agent… this can take a minute if it was asleep.");
+      const res = await fetch("/api/box/v1/skills");
+      if (res.ok) {
+        const data = (await res.json()) as
+          | SkillSummary[]
+          | { skills?: SkillSummary[] };
+        setSkills(Array.isArray(data) ? data : (data.skills ?? []));
+        setPanelNote(null);
+      } else {
+        setPanelNote("Couldn't load skills — try again shortly.");
+      }
+    }
+  }
+
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
     router.push("/login");
@@ -157,13 +209,66 @@ export default function HomePage() {
         }}
       >
         <h1 style={{ margin: 0, fontSize: 22 }}>air</h1>
-        <button className="btn btn-ghost" onClick={logout}>
-          Sign out
-        </button>
+        <nav style={{ display: "flex", gap: 8 }}>
+          {(
+            [
+              ["chat", "Chat"],
+              ["history", "History"],
+              ["skills", "Skills"],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              className={tab === key ? "btn" : "btn btn-ghost"}
+              onClick={() => void loadTab(key)}
+            >
+              {label}
+            </button>
+          ))}
+          <button className="btn btn-ghost" onClick={logout}>
+            Sign out
+          </button>
+        </nav>
       </header>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 16 }}>
         <section className="panel" style={{ display: "flex", flexDirection: "column", height: "70vh" }}>
+          {tab === "history" ? (
+            <div style={{ flex: 1, overflowY: "auto", display: "grid", gap: 8, alignContent: "start" }}>
+              <h3 style={{ margin: 0 }}>Conversations</h3>
+              {panelNote ? <p className="muted">{panelNote}</p> : null}
+              {(sessions ?? []).map((s, i) => (
+                <div key={s.session_id ?? s.id ?? i} className="panel" style={{ padding: 12 }}>
+                  <strong>{s.title ?? "Untitled"}</strong>
+                  <p className="muted" style={{ margin: "4px 0 0" }}>
+                    {[s.platform, s.updated_at ?? s.created_at, s.message_count != null ? `${s.message_count} messages` : null]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                </div>
+              ))}
+              {sessions !== null && sessions.length === 0 ? (
+                <p className="muted">No conversations yet.</p>
+              ) : null}
+            </div>
+          ) : tab === "skills" ? (
+            <div style={{ flex: 1, overflowY: "auto", display: "grid", gap: 8, alignContent: "start" }}>
+              <h3 style={{ margin: 0 }}>Skills</h3>
+              {panelNote ? <p className="muted">{panelNote}</p> : null}
+              {(skills ?? []).map((s, i) => (
+                <div key={s.name ?? i} className="panel" style={{ padding: 12 }}>
+                  <strong>{s.name ?? "skill"}</strong>
+                  {s.description ? (
+                    <p className="muted" style={{ margin: "4px 0 0" }}>{s.description}</p>
+                  ) : null}
+                </div>
+              ))}
+              {skills !== null && skills.length === 0 ? (
+                <p className="muted">No skills installed yet.</p>
+              ) : null}
+            </div>
+          ) : (
+          <>
           <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", display: "grid", gap: 8, alignContent: "start" }}>
             {messages.length === 0 ? (
               <p className="muted">Talk to your agent — same one as on iMessage.</p>
@@ -202,6 +307,8 @@ export default function HomePage() {
               Send
             </button>
           </div>
+          </>
+          )}
         </section>
 
         <aside style={{ display: "grid", gap: 16, alignContent: "start" }}>
@@ -210,6 +317,16 @@ export default function HomePage() {
             <p className="muted" style={{ margin: "4px 0" }}>
               {me?.lines[0] ? `iMessage line: ${me.lines[0].phone}` : "No line yet"}
             </p>
+            <p className="muted" style={{ margin: "4px 0" }}>
+              {me?.addresses?.[0]
+                ? `Email: ${me.addresses[0].address}`
+                : "Email: set a username to create one"}
+            </p>
+            {me?.user.username ? (
+              <p className="muted" style={{ margin: "4px 0" }}>
+                Contact card: <a href={`/@${me.user.username}`}>/@{me.user.username}</a>
+              </p>
+            ) : null}
             <p className="muted" style={{ margin: "4px 0" }}>
               {me?.user.wallet_address
                 ? `Wallet: ${me.user.wallet_address.slice(0, 6)}…${me.user.wallet_address.slice(-4)}`
