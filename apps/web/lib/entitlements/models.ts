@@ -38,11 +38,27 @@ export function reasoningForTier(tier: SpeedTier): string | undefined {
   return value && value.trim() ? value.trim() : undefined;
 }
 
-/** Approximate USD per 1M tokens, for metering into agent_runs. */
+/**
+ * Optional per-tier OpenAI service tier (MODEL_SERVICE_TIER_FAST /
+ * _BALANCED / _DEEP) — e.g. "fast" (priority processing) or "flex".
+ * Unset means don't send the field.
+ */
+export function serviceTierForTier(tier: SpeedTier): string | undefined {
+  const byTier: Record<SpeedTier, string | undefined> = {
+    fast: process.env.MODEL_SERVICE_TIER_FAST,
+    balanced: process.env.MODEL_SERVICE_TIER_BALANCED,
+    deep: process.env.MODEL_SERVICE_TIER_DEEP,
+  };
+  const value = byTier[tier];
+  return value && value.trim() ? value.trim() : undefined;
+}
+
+/** Approximate USD per 1M tokens, for metering into agent_runs
+ * (gpt-5.6-luna / -terra at Fast-mode rates). */
 const TIER_PRICING: Record<SpeedTier, { input: number; output: number }> = {
-  fast: { input: 0.15, output: 0.6 },
-  balanced: { input: 2.5, output: 10 },
-  deep: { input: 10, output: 40 },
+  fast: { input: 0.4, output: 2.4 },
+  balanced: { input: 0.4, output: 2.4 },
+  deep: { input: 4, output: 24 },
 };
 
 export function isSpeedTier(value: string): value is SpeedTier {

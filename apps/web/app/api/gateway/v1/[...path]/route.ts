@@ -14,6 +14,7 @@ import {
   isSpeedTier,
   modelForTier,
   reasoningForTier,
+  serviceTierForTier,
 } from "@/lib/entitlements/models";
 
 export const runtime = "nodejs";
@@ -171,6 +172,10 @@ export async function POST(
   const reasoning = reasoningForTier(tier);
   if (reasoning && body.reasoning_effort === undefined) {
     body.reasoning_effort = reasoning;
+  }
+  const serviceTier = serviceTierForTier(tier);
+  if (serviceTier && body.service_tier === undefined) {
+    body.service_tier = serviceTier;
   }
   // OpenAI reasoning models (gpt-5.x/o-series) reject the legacy knobs
   // clients still send: max_tokens must be max_completion_tokens, and only
