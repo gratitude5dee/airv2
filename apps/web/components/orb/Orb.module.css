@@ -1,0 +1,115 @@
+.root {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text, #1a1a1a);
+}
+
+/* The inline pill form — same component, wrapped. */
+.root[data-pill] {
+  gap: 7px;
+  height: 30px;
+  padding: 0 11px 0 5px;
+  border-radius: 999px;
+  background: var(--surface, #ffffff);
+  /* A hairline ring rather than a border, so it can't affect layout, plus
+     a tight contact shadow and a wider ambient one. */
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.08),
+    0 1px 2px rgba(0, 0, 0, 0.05),
+    0 2px 4px rgba(0, 0, 0, 0.02);
+}
+
+.pillLabel {
+  font-size: 11.5px;
+  font-weight: 425;
+  line-height: 1;
+  color: var(--muted, #a1a1a1);
+  white-space: nowrap;
+}
+
+.glyph {
+  position: relative;
+  display: block;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  overflow: hidden;
+  contain: strict;
+}
+
+@media (prefers-color-scheme: dark) {
+  .root[data-pill] {
+    box-shadow:
+      0 0 0 0.5px rgba(255, 255, 255, 0.12),
+      0 1px 2px rgba(0, 0, 0, 0.4),
+      0 2px 4px rgba(0, 0, 0, 0.3);
+  }
+}
+
+/* --- Lattice: discrete dots on a fixed 3×3 grid ------------------- */
+
+.lattice {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 28px;
+  height: 28px;
+  transform-origin: 0 0;
+  /* Three 3px dots on a 6px pitch measure 15px, so the grid is offset to sit
+     centred on the 28px stage. */
+  transform: scale(var(--orb-k, 1)) translate(6.5px, 6.5px);
+  /* Resting ink of an unlit cell — the grid stays legible between beats. */
+  --orb-rest: 0.14;
+}
+
+@media (prefers-color-scheme: dark) {
+  /* Light ink on a dark surface reads dimmer at the same alpha. */
+  .lattice {
+    --orb-rest: 0.2;
+  }
+}
+
+.cell {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: var(--orb-rest);
+}
+
+.lattice[data-variant="S1"] .cell {
+  animation: orb-wave 1.7s cubic-bezier(0.66, 0, 0.34, 1) infinite both;
+}
+
+/* Swells and subsides on the same symmetric curve, so there is no flash and
+   no hard edge. The long tail after 56% is the gap between beats. */
+@keyframes orb-wave {
+  0% {
+    opacity: var(--orb-rest);
+    transform: scale(1);
+    animation-timing-function: cubic-bezier(0.66, 0, 0.34, 1);
+  }
+  28% {
+    opacity: 1;
+    transform: scale(1.18);
+    animation-timing-function: cubic-bezier(0.66, 0, 0.34, 1);
+  }
+  56% {
+    opacity: var(--orb-rest);
+    transform: scale(1);
+  }
+  100% {
+    opacity: var(--orb-rest);
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lattice[data-variant] .cell {
+    animation: none;
+  }
+  .cell[data-mid] {
+    opacity: 1;
+  }
+}
