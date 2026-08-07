@@ -32,13 +32,16 @@ export class HermesApiError extends Error {
 }
 
 function url(target: HermesBoxTarget, path: string): string {
-  const separator = path.includes("?") ? "&" : "?";
-  return `${target.hostedUrl}${path}${separator}_token=${encodeURIComponent(target.hostedToken)}`;
+  return `${target.hostedUrl}${path}`;
 }
 
+// The hosted proxy authenticates via the _port_auth cookie: passing `?_token`
+// only triggers a 302 that sets the cookie and strips the query, which
+// server-side fetch cannot follow. Send the cookie directly.
 function headers(target: HermesBoxTarget): HeadersInit {
   return {
     Authorization: `Bearer ${target.apiServerKey}`,
+    Cookie: `_port_auth=${target.hostedToken}`,
     "Content-Type": "application/json",
   };
 }
@@ -103,7 +106,7 @@ export async function approveRun(
   });
 }
 
-/** Post-resume readiness probe. Use /api/health, not /api/status (§7.4). */
+/** Post-resume readiness probe against api_server's /health. */
 export async function health(target: HermesBoxTarget): Promise<boolean> {
   try {
     const response = await fetch(url(target, "/health"), {
