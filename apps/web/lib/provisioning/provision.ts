@@ -25,7 +25,7 @@ function parseHostedUrl(
 ): { url: string; token: string } {
   for (const line of stdout.split("\n")) {
     const match = HOSTED_URL_PATTERN.exec(line.trim());
-    if (match && Number(match[2]) === port) {
+    if (match?.[1] && match[3] && Number(match[2]) === port) {
       return { url: match[1], token: match[3] };
     }
   }
