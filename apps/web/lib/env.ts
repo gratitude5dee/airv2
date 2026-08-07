@@ -20,6 +20,8 @@ export const env = {
   boxApiBase: (): string =>
     optional("BOX_API_BASE", "https://ascii.dev/api/box/v1"),
   boxTemplateId: (): string => required("BOX_TEMPLATE_ID"),
+  adminApiKey: (): string => required("ADMIN_API_KEY"),
+  appOrigin: (): string => optional("APP_ORIGIN", "https://airv2.vercel.app"),
   supabaseUrl: (): string => required("SUPABASE_URL"),
   supabaseServiceRoleKey: (): string => required("SUPABASE_SERVICE_ROLE_KEY"),
   modelProviderApiKey: (): string => required("MODEL_PROVIDER_API_KEY"),

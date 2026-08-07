@@ -72,6 +72,39 @@ function meteringTee(
   return client;
 }
 
+/**
+ * GET /v1/models — Hermes probes the model catalog at startup. The tier
+ * names ARE the model IDs from the box's perspective (C2: no real model ID
+ * ever appears in box config).
+ */
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ path: string[] }> }
+): Promise<NextResponse> {
+  const { path } = await params;
+  const authHeader = request.headers.get("authorization") ?? "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+  if (!token) return unauthorized();
+  const supabase = serviceClient();
+  const { data: box } = await supabase
+    .from("boxes")
+    .select("user_id")
+    .eq("gateway_token", token)
+    .maybeSingle();
+  if (!box) return unauthorized();
+  if (path.join("/") !== "models") {
+    return NextResponse.json({ error: "not found" }, { status: 404 });
+  }
+  return NextResponse.json({
+    object: "list",
+    data: (["fast", "balanced", "deep"] as const).map((id) => ({
+      id,
+      object: "model",
+      owned_by: "air",
+    })),
+  });
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> }

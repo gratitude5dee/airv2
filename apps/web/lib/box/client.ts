@@ -9,16 +9,29 @@
 import { env } from "../env";
 
 export type BoxState =
-  | "provisioning"
-  | "running"
-  | "stopped"
-  | "failed"
+  | "provisioned"
+  | "cloning"
+  | "ready"
+  | "idle"
+  | "archiving"
+  | "archived"
+  | "error"
   | string;
 
 export interface Box {
   id: string;
   state: BoxState;
-  size?: string;
+  url?: string;
+  vcpu?: number;
+  memoryGB?: number;
+  createdAt?: string;
+}
+
+/** Every /boxes/* mutation returns this envelope. */
+interface BoxEnvelope {
+  ok: boolean;
+  id?: string;
+  box: Box;
 }
 
 export interface CommandResult {
@@ -84,48 +97,77 @@ export async function fork(options: ForkOptions): Promise<Box> {
       throw new Error(`fork: per-box env is missing ${key}`);
     }
   }
-  return boxFetch<Box>(`/boxes/${options.templateId}/fork`, {
-    method: "POST",
-    body: JSON.stringify({
-      noEnv: true,
-      env: options.env,
-      ...(options.size ? { size: options.size } : {}),
-    }),
-  });
+  const envelope = await boxFetch<BoxEnvelope>(
+    `/boxes/${options.templateId}/fork`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        noEnv: true,
+        env: options.env,
+        ...(options.size ? { size: options.size } : {}),
+      }),
+    }
+  );
+  return envelope.box;
 }
 
 export async function resume(boxId: string): Promise<Box> {
-  return boxFetch<Box>(`/boxes/${boxId}/resume`, { method: "POST" });
+  const envelope = await boxFetch<BoxEnvelope>(`/boxes/${boxId}/resume`, {
+    method: "POST",
+  });
+  return envelope.box;
 }
 
 /** Never pass force — a refused stop means the snapshot is failing (C6). */
 export async function stop(boxId: string): Promise<Box> {
-  return boxFetch<Box>(`/boxes/${boxId}/stop`, { method: "POST" });
+  const envelope = await boxFetch<BoxEnvelope>(`/boxes/${boxId}/stop`, {
+    method: "POST",
+  });
+  return envelope.box;
 }
 
 export async function getBox(boxId: string): Promise<Box> {
-  return boxFetch<Box>(`/boxes/${boxId}`);
+  const envelope = await boxFetch<BoxEnvelope>(`/boxes/${boxId}`);
+  return envelope.box;
+}
+
+/** Poll until the box reaches ready/idle. */
+export async function waitForBox(
+  boxId: string,
+  timeoutMs = 240_000
+): Promise<Box> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const box = await getBox(boxId);
+    if (box.state === "ready" || box.state === "idle") return box;
+    if (box.state === "error") {
+      throw new BoxApiError(500, `box ${boxId} entered error state`);
+    }
+    if (Date.now() > deadline) {
+      throw new BoxApiError(504, `box ${boxId} not ready after ${timeoutMs}ms`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5_000));
+  }
 }
 
 export async function command(
   boxId: string,
-  cmd: string
+  cmd: string,
+  timeoutSeconds = 60
 ): Promise<CommandResult> {
   return boxFetch<CommandResult>(`/boxes/${boxId}/commands`, {
     method: "POST",
-    body: JSON.stringify({ command: cmd }),
+    body: JSON.stringify({ command: cmd, timeoutSeconds }),
   });
 }
 
+/** Reads via the command endpoint; the files API is write-oriented. */
 export async function readFile(boxId: string, path: string): Promise<string> {
-  const result = await boxFetch<{ content: string }>(
-    `/boxes/${boxId}/files/read`,
-    {
-      method: "POST",
-      body: JSON.stringify({ path }),
-    }
-  );
-  return result.content;
+  const result = await command(boxId, `cat ${JSON.stringify(path)}`);
+  if (result.exitCode !== 0) {
+    throw new BoxApiError(404, `readFile ${path}: ${result.stderr}`);
+  }
+  return result.stdout;
 }
 
 export async function writeFile(
@@ -133,9 +175,8 @@ export async function writeFile(
   path: string,
   content: string
 ): Promise<void> {
-  await boxFetch<void>(`/boxes/${boxId}/files/write`, {
-    method: "POST",
+  await boxFetch<{ ok: boolean }>(`/boxes/${boxId}/files`, {
+    method: "PUT",
     body: JSON.stringify({ path, content }),
-    expectJson: false,
   });
 }
