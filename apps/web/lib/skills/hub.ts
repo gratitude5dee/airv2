@@ -24,18 +24,30 @@ export const BASE_SKILLS = [
 /** Best-effort base-skill install on an already-awake box (provisioning). */
 export async function installBaseSkills(boxId: string): Promise<void> {
   for (const identifier of BASE_SKILLS) {
-    const result = await command(
-      boxId,
-      `hermes skills install "${identifier}" --yes`,
-      300
-    );
-    if (result.exitCode !== 0) {
+    try {
+      const result = await command(
+        boxId,
+        `hermes skills install "${identifier}" --yes`,
+        300
+      );
+      if (result.exitCode !== 0) {
+        console.error(
+          JSON.stringify({
+            msg: "base skill install failed",
+            box_id: boxId,
+            skill: identifier,
+            error: (result.stderr || result.stdout).slice(0, 200),
+          })
+        );
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "unknown error";
       console.error(
         JSON.stringify({
           msg: "base skill install failed",
           box_id: boxId,
           skill: identifier,
-          error: (result.stderr || result.stdout).slice(0, 200),
+          error: message,
         })
       );
     }
