@@ -48,6 +48,18 @@ interface Sender {
   first_seen: string;
 }
 
+interface Toolkit {
+  slug: string;
+  name: string;
+  logo: string | null;
+}
+
+interface Connection {
+  toolkit: string;
+  status: string;
+  connected_at: string | null;
+}
+
 interface ChatMessage {
   role: "user" | "agent";
   text: string;
@@ -63,12 +75,15 @@ export default function HomePage() {
   const [username, setUsername] = useState("");
   const [note, setNote] = useState<string | null>(null);
   const [tab, setTab] = useState<
-    "chat" | "history" | "skills" | "needs" | "people"
+    "chat" | "history" | "skills" | "needs" | "people" | "connectors"
   >("chat");
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
   const [skills, setSkills] = useState<SkillSummary[] | null>(null);
   const [decisions, setDecisions] = useState<Decision[] | null>(null);
   const [people, setPeople] = useState<Sender[] | null>(null);
+  const [toolkits, setToolkits] = useState<Toolkit[] | null>(null);
+  const [connections, setConnections] = useState<Connection[]>([]);
+  const [connectorFilter, setConnectorFilter] = useState("");
   const [panelNote, setPanelNote] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -217,8 +232,38 @@ export default function HomePage() {
     await loadPeople();
   }
 
+  async function loadConnectors() {
+    const res = await fetch("/api/connectors");
+    if (res.ok) {
+      const data = (await res.json()) as {
+        toolkits?: Toolkit[];
+        connections?: Connection[];
+      };
+      setToolkits(data.toolkits ?? []);
+      setConnections(data.connections ?? []);
+    }
+    // Sync statuses (picks up OAuth flows completed since last visit).
+    const sync = await fetch("/api/connectors", { method: "PUT" });
+    if (sync.ok) {
+      const data = (await sync.json()) as { connections?: Connection[] };
+      setConnections(data.connections ?? []);
+    }
+  }
+
+  async function connectToolkit(slug: string) {
+    const res = await fetch("/api/connectors", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ toolkit: slug }),
+    });
+    if (res.ok) {
+      const data = (await res.json()) as { redirect_url?: string };
+      if (data.redirect_url) window.location.href = data.redirect_url;
+    }
+  }
+
   async function loadTab(
-    next: "chat" | "history" | "skills" | "needs" | "people"
+    next: "chat" | "history" | "skills" | "needs" | "people" | "connectors"
   ) {
     setTab(next);
     setPanelNote(null);
@@ -240,6 +285,9 @@ export default function HomePage() {
     }
     if (next === "people") {
       await loadPeople();
+    }
+    if (next === "connectors" && toolkits === null) {
+      await loadConnectors();
     }
     if (next === "skills" && skills === null) {
       setPanelNote("Waking your agent… this can take a minute if it was asleep.");
@@ -279,6 +327,7 @@ export default function HomePage() {
               ["needs", "Needs you"],
               ["history", "History"],
               ["people", "People"],
+              ["connectors", "Connectors"],
               ["skills", "Skills"],
             ] as const
           ).map(([key, label]) => (
@@ -357,6 +406,56 @@ export default function HomePage() {
               {people !== null && people.length === 0 ? (
                 <p className="muted">No one has messaged your agent yet.</p>
               ) : null}
+            </div>
+          ) : tab === "connectors" ? (
+            <div style={{ flex: 1, overflowY: "auto", display: "grid", gap: 8, alignContent: "start" }}>
+              <h3 style={{ margin: 0 }}>Connectors</h3>
+              <p className="muted" style={{ margin: 0 }}>
+                Connect your accounts so your agent can act on them. You approve each one.
+              </p>
+              <input
+                className="input"
+                placeholder="Search connectors…"
+                value={connectorFilter}
+                onChange={(e) => setConnectorFilter(e.target.value)}
+              />
+              {connections.length > 0 ? (
+                <div style={{ display: "grid", gap: 8 }}>
+                  {connections.map((c) => (
+                    <div key={c.toolkit} className="panel" style={{ padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <strong>{c.toolkit}</strong>
+                      <span className="muted">{c.status}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              {(toolkits ?? [])
+                .filter(
+                  (t) =>
+                    !connectorFilter ||
+                    t.name.toLowerCase().includes(connectorFilter.toLowerCase()) ||
+                    t.slug.includes(connectorFilter.toLowerCase())
+                )
+                .slice(0, 40)
+                .map((t) => (
+                  <div key={t.slug} className="panel" style={{ padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {t.logo ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={t.logo} alt="" width={20} height={20} style={{ borderRadius: 4 }} />
+                      ) : null}
+                      <strong>{t.name}</strong>
+                    </div>
+                    {connections.some((c) => c.toolkit === t.slug && c.status === "active") ? (
+                      <span className="muted">connected</span>
+                    ) : (
+                      <button className="btn" onClick={() => void connectToolkit(t.slug)}>
+                        Connect
+                      </button>
+                    )}
+                  </div>
+                ))}
+              {toolkits === null ? <p className="muted">Loading…</p> : null}
             </div>
           ) : tab === "history" ? (
             <div style={{ flex: 1, overflowY: "auto", display: "grid", gap: 8, alignContent: "start" }}>
