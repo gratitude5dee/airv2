@@ -12,8 +12,13 @@ import { SESSION_COOKIE, createSessionToken } from "@/lib/auth/session";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/** Accept "5104154787", "1 510 415 4787", or full E.164; default to +1. */
 function normalizePhone(value: string): string {
-  return value.replace(/[^+\d]/g, "");
+  const digits = value.replace(/[^+\d]/g, "");
+  if (digits.startsWith("+")) return digits;
+  if (/^\d{10}$/.test(digits)) return `+1${digits}`;
+  if (/^1\d{10}$/.test(digits)) return `+${digits}`;
+  return digits ? `+${digits}` : "";
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
