@@ -169,7 +169,11 @@ export async function POST(
   // The tier name is the only thing that ever appears in a box's config —
   // the real model ID is resolved here and only here.
   body.model = modelForTier(tier);
-  const reasoning = reasoningForTier(tier);
+  // gpt-5.6 on /v1/chat/completions rejects function tools with any
+  // reasoning_effort other than "none", so tool-bearing calls (every Hermes
+  // agent turn) pin it there; plain completions get the configured effort.
+  const hasTools = Array.isArray(body.tools) && body.tools.length > 0;
+  const reasoning = hasTools ? "none" : reasoningForTier(tier);
   if (reasoning && body.reasoning_effort === undefined) {
     body.reasoning_effort = reasoning;
   }
