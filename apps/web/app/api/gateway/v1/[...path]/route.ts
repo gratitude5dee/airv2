@@ -172,6 +172,23 @@ export async function POST(
   if (reasoning && body.reasoning_effort === undefined) {
     body.reasoning_effort = reasoning;
   }
+  // OpenAI reasoning models (gpt-5.x/o-series) reject the legacy knobs
+  // clients still send: max_tokens must be max_completion_tokens, and only
+  // the default sampling params are accepted.
+  if (/^(gpt-5|o[0-9])/.test(String(body.model))) {
+    if (body.max_tokens !== undefined) {
+      if (body.max_completion_tokens === undefined) {
+        body.max_completion_tokens = body.max_tokens;
+      }
+      delete body.max_tokens;
+    }
+    if (body.temperature !== undefined && body.temperature !== 1) {
+      delete body.temperature;
+    }
+    if (body.top_p !== undefined && body.top_p !== 1) {
+      delete body.top_p;
+    }
+  }
   const streaming = body.stream === true;
   if (streaming) {
     body.stream_options = { ...(body.stream_options as object), include_usage: true };
