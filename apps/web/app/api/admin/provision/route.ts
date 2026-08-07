@@ -24,10 +24,22 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   try {
-    const result = await provisionUser();
+    const body = (await request.json().catch(() => ({}))) as {
+      display_name?: string;
+      bound_phone?: string;
+      line_phone?: string;
+      operator?: string;
+    };
+    const result = await provisionUser({
+      displayName: body.display_name,
+      boundPhone: body.bound_phone,
+      linePhone: body.line_phone,
+      operator: body.operator,
+    });
     return NextResponse.json({
       user_id: result.userId,
       box_id: result.boxId,
+      invite_link: result.inviteLink ?? null,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";

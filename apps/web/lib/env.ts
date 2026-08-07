@@ -27,6 +27,7 @@ export const env = {
   modelProviderApiKey: (): string => required("MODEL_PROVIDER_API_KEY"),
   modelProviderBaseUrl: (): string => required("MODEL_PROVIDER_BASE_URL"),
   thirdwebSecretKey: (): string => required("THIRDWEB_SECRET_KEY"),
+  sessionSecret: (): string => required("SESSION_SECRET"),
   spectrumProjectId: (): string => required("SPECTRUM_PROJECT_ID"),
   spectrumProjectSecret: (): string => required("SPECTRUM_PROJECT_SECRET"),
   spectrumWebhookSecret: (): string => required("SPECTRUM_WEBHOOK_SECRET"),

@@ -9,11 +9,19 @@ import { env } from "../env";
 import { serviceClient } from "../supabase";
 import { command, fork, waitForBox, writeFile } from "../box/client";
 
+export interface ProvisionOptions {
+  displayName?: string;
+  boundPhone?: string;
+  linePhone?: string;
+  operator?: string;
+}
+
 export interface ProvisionResult {
   userId: string;
   boxId: string;
   hostedUrl: string;
   dashboardUrl: string;
+  inviteLink?: string;
 }
 
 const HOSTED_URL_PATTERN =
@@ -32,12 +40,16 @@ function parseHostedUrl(
   throw new Error(`hosted URL for port ${port} not found in host output`);
 }
 
-export async function provisionUser(): Promise<ProvisionResult> {
+export async function provisionUser(
+  options: ProvisionOptions = {}
+): Promise<ProvisionResult> {
   const supabase = serviceClient();
 
+  // M3: users + provisioning(bound_phone) + tier-0 handles are written
+  // BEFORE any line exists (goal.md M3 step 1).
   const { data: user, error: userError } = await supabase
     .from("users")
-    .insert({ status: "active" })
+    .insert({ status: options.boundPhone ? "pending" : "active" })
     .select("id")
     .single();
   if (userError || !user) {
@@ -50,6 +62,72 @@ export async function provisionUser(): Promise<ProvisionResult> {
     .insert({ user_id: userId });
   if (entitlementError) {
     throw new Error(`entitlements insert failed: ${entitlementError.message}`);
+  }
+
+  let inviteLink: string | undefined;
+  if (options.boundPhone) {
+    const { error: provisioningError } = await supabase
+      .from("provisioning")
+      .insert({
+        user_id: userId,
+        state: "created",
+        bound_phone: options.boundPhone,
+        operator: options.operator ?? null,
+      });
+    if (provisioningError) {
+      throw new Error(`provisioning insert failed: ${provisioningError.message}`);
+    }
+    const { error: handleError } = await supabase.from("handles").insert({
+      user_id: userId,
+      platform: "imessage",
+      address: options.boundPhone,
+    });
+    if (handleError) {
+      throw new Error(`handles insert failed: ${handleError.message}`);
+    }
+    const { error: senderError } = await supabase.from("senders").insert({
+      user_id: userId,
+      platform: "imessage",
+      address: options.boundPhone,
+      trust_tier: 0,
+    });
+    if (senderError) {
+      throw new Error(`senders insert failed: ${senderError.message}`);
+    }
+
+    if (options.linePhone) {
+      // Assign the dedicated line, bound to bound_phone from birth (C11).
+      const { data: line, error: lineError } = await supabase
+        .from("lines")
+        .update({
+          assigned_user_id: userId,
+          assigned_at: new Date().toISOString(),
+          role: "personal",
+        })
+        .eq("phone", options.linePhone)
+        .is("assigned_user_id", null)
+        .select("id");
+      if (lineError || !line || line.length === 0) {
+        throw new Error(
+          `line assignment failed: ${lineError?.message ?? "line missing or already assigned"}`
+        );
+      }
+      // Invite by deep link, delivered out-of-band by the operator. The user
+      // sends first — the agent never texts a fresh line (C13). Text-only
+      // body: Apple suppresses links until a reply lands.
+      const smsBody = encodeURIComponent(
+        `Hi${options.displayName ? ` — this is ${options.displayName}'s agent` : ""}! Send this to get started.`
+      );
+      inviteLink = `sms:${options.linePhone}&body=${smsBody}`;
+      await supabase
+        .from("provisioning")
+        .update({
+          state: "invited",
+          invited_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("user_id", userId);
+    }
   }
 
   const gatewayToken = randomBytes(32).toString("hex");
@@ -139,5 +217,6 @@ export async function provisionUser(): Promise<ProvisionResult> {
     boxId: box.id,
     hostedUrl: hermes.url,
     dashboardUrl: dashboard.url,
+    inviteLink,
   };
 }

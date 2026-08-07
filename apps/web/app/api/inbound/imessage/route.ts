@@ -21,6 +21,7 @@ import {
   type InboundMessage,
 } from "@/lib/orchestrator/flush";
 import { createSpectrumSender } from "@/lib/spectrum/sender";
+import { handleOnboarding } from "@/lib/provisioning/onboarding";
 
 export const maxDuration = 800;
 
@@ -91,6 +92,33 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       ? `[attachment:${inbound.attachmentIds.join(",")}]`
       : "");
   if (!body) {
+    return NextResponse.json({ ok: true }, { status: 200 });
+  }
+
+  // M3: pre-active accounts are handled by the claim/OTP flow; inbound from
+  // any sender other than bound_phone routes nowhere (C11).
+  const onboarding = await handleOnboarding(
+    supabase,
+    route.userId,
+    inbound.senderId,
+    body
+  );
+  if (onboarding.kind === "ignore") {
+    return NextResponse.json({ ok: true }, { status: 200 });
+  }
+  if (onboarding.kind === "reply") {
+    const reply = onboarding.text;
+    const spaceId = inbound.spaceId;
+    const phone = inbound.phone;
+    after(async () => {
+      const sender = await createSpectrumSender().catch(() => undefined);
+      if (!sender) return;
+      try {
+        await sender.sendText(spaceId, phone, reply);
+      } finally {
+        await sender.close().catch(() => undefined);
+      }
+    });
     return NextResponse.json({ ok: true }, { status: 200 });
   }
 
