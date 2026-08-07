@@ -184,7 +184,7 @@ export async function provisionUser(
 
   const hashResult = await command(
     box.id,
-    `cd ~/hermes-agent && UV_NO_SYNC=1 uv run python -c "from plugins.dashboard_auth.basic import hash_password; print(hash_password('${dashPassword}'))"`,
+    `cd ~/hermes-agent && /home/user/.hermes-venv/bin/python -c "from plugins.dashboard_auth.basic import hash_password; print(hash_password('${dashPassword}'))"`,
     120
   );
   if (hashResult.exitCode !== 0) {

@@ -52,7 +52,7 @@ export async function installComposioMcp(
   const box = await ensureBoxAwake(supabase, userId);
   const result = await command(
     box.boxId,
-    `printf 'y\\n' | /home/user/hermes-agent/.venv/bin/hermes mcp add composio --url "${mcpUrl}" && sudo systemctl restart hermes-gateway`,
+    `printf 'y\\n' | /home/user/.hermes-venv/bin/hermes mcp add composio --url "${mcpUrl}" && sudo systemctl restart hermes-gateway`,
     180
   );
   if (result.exitCode !== 0) {

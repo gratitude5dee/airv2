@@ -13,14 +13,22 @@ if [ ! -d "$HOME_DIR/hermes-agent" ]; then
 fi
 cd "$HOME_DIR/hermes-agent"
 command -v uv >/dev/null || curl -LsSf https://astral.sh/uv/install.sh | sh
-uv venv --python 3.11 || true
-uv pip install -e ".[all]"   # [all] covers web (FastAPI/Uvicorn) + pty + api_server (aiohttp)
 
-# `uv run` implicitly re-syncs the venv to the project's default deps, which
-# uninstalls the [all] extras (aiohttp → api_server dies). Pin no-sync
-# everywhere uv run can be invoked: systemd, shells, and box commands.
-grep -q UV_NO_SYNC "$HOME_DIR/.bashrc" || echo "export UV_NO_SYNC=1" >> "$HOME_DIR/.bashrc"
-grep -q UV_NO_SYNC /etc/environment || echo "UV_NO_SYNC=1" | sudo tee -a /etc/environment >/dev/null
+# The venv lives OUTSIDE the git checkout: box archive/restore drops
+# gitignored paths inside the repo (same reason web_dist is copied out), and
+# `uv run`'s implicit sync would strip the [all] extras (aiohttp → api_server
+# dies). So: persistent env at ~/.hermes-venv + UV_NO_SYNC everywhere.
+HERMES_VENV="$HOME_DIR/.hermes-venv"
+uv venv "$HERMES_VENV" --python 3.11 || true
+UV_PROJECT_ENVIRONMENT="$HERMES_VENV" uv pip install -e ".[all]" --python "$HERMES_VENV/bin/python"
+grep -q UV_NO_SYNC "$HOME_DIR/.bashrc" || {
+  echo "export UV_NO_SYNC=1" >> "$HOME_DIR/.bashrc"
+  echo "export UV_PROJECT_ENVIRONMENT=$HERMES_VENV" >> "$HOME_DIR/.bashrc"
+}
+grep -q UV_NO_SYNC /etc/environment || {
+  echo "UV_NO_SYNC=1" | sudo tee -a /etc/environment >/dev/null
+  echo "UV_PROJECT_ENVIRONMENT=$HERMES_VENV" | sudo tee -a /etc/environment >/dev/null
+}
 
 # ── 2. Build the dashboard SPA at template time ─────────────────────────────
 # Otherwise every forked box shells out to npm on first launch.
@@ -87,7 +95,7 @@ YAML
 TEMPLATE_API_SERVER_KEY=$(openssl rand -hex 32)
 TEMPLATE_DASH_PASSWORD=$(openssl rand -hex 16)
 TEMPLATE_DASH_SECRET=$(openssl rand -hex 32)
-TEMPLATE_DASH_HASH=$(cd "$HOME_DIR/hermes-agent" && UV_NO_SYNC=1 uv run python -c "from plugins.dashboard_auth.basic import hash_password; print(hash_password('$TEMPLATE_DASH_PASSWORD'))")
+TEMPLATE_DASH_HASH=$(cd "$HOME_DIR/hermes-agent" && "$HERMES_VENV/bin/python" -c "from plugins.dashboard_auth.basic import hash_password; print(hash_password('$TEMPLATE_DASH_PASSWORD'))")
 cat > "$HOME_DIR/.hermes/.env" <<ENV
 API_SERVER_KEY=$TEMPLATE_API_SERVER_KEY
 API_SERVER_HOST=0.0.0.0
@@ -102,7 +110,7 @@ chmod 600 "$HOME_DIR/.hermes/.env"
 # On top of the bundled library; forks inherit these so provisioning doesn't
 # pay the install cost per user. Failures warn but don't abort the template.
 for skill in official/email/agentmail official/research/duckduckgo-search; do
-  UV_NO_SYNC=1 uv run hermes skills install "$skill" --yes || echo "WARN: base skill $skill install failed" >&2
+  "$HERMES_VENV/bin/hermes" skills install "$skill" --yes || echo "WARN: base skill $skill install failed" >&2
 done
 
 # Copy the built SPA outside the git checkout: box archive/restore does not

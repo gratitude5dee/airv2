@@ -7,9 +7,10 @@ Wants=network-online.target
 Type=simple
 User=user
 WorkingDirectory=/home/user/hermes-agent
-# no-sync: an implicit `uv run` sync strips the [all] extras (aiohttp) and
-# kills the api_server adapter.
+# Persistent env outside the checkout (archive/restore drops gitignored
+# paths) and no implicit sync (it would strip the [all] extras / aiohttp).
 Environment=UV_NO_SYNC=1
+Environment=UV_PROJECT_ENVIRONMENT=/home/user/.hermes-venv
 Environment=API_SERVER_HOST=0.0.0.0
 Environment=API_SERVER_PORT=8642
 EnvironmentFile=-/home/user/.hermes/.env
