@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuthorized } from "@/lib/admin/auth";
 import { serviceClient } from "@/lib/supabase";
-import { deleteBox } from "@/lib/box/client";
+import { deleteBox, stop } from "@/lib/box/client";
 import { deletePod } from "@/lib/agentmail/client";
 import {
   deleteConnectedAccount,
@@ -49,6 +49,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .maybeSingle();
   if (box?.provider_box_id) {
     try {
+      // The provider soft-deletes running boxes; stop (archive) first so the
+      // delete actually releases compute.
+      try {
+        await stop(box.provider_box_id as string);
+      } catch {
+        // already stopped/archived
+      }
       await deleteBox(box.provider_box_id as string);
       steps.box = "deleted";
     } catch (error) {

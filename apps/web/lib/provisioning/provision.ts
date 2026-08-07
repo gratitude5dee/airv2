@@ -7,7 +7,7 @@
 import { randomBytes } from "node:crypto";
 import { env } from "../env";
 import { serviceClient } from "../supabase";
-import { command, fork, waitForBox, writeFile } from "../box/client";
+import { command, deleteBox, fork, stop, waitForBox, writeFile } from "../box/client";
 
 export interface ProvisionOptions {
   displayName?: string;
@@ -135,10 +135,49 @@ export async function provisionUser(
   const dashPassword = randomBytes(16).toString("hex");
   const dashSecret = randomBytes(32).toString("hex");
 
+  let boxId: string | undefined;
+  try {
+    return await forkAndConfigure();
+  } catch (error) {
+    // Roll back the half-provisioned account so a failed attempt leaves no
+    // partial user row and no orphan running box.
+    if (boxId) {
+      try {
+        await stop(boxId);
+        await deleteBox(boxId);
+      } catch (cleanupError) {
+        console.log(
+          JSON.stringify({
+            msg: "provision rollback box cleanup failed",
+            box_id: boxId,
+            error:
+              cleanupError instanceof Error
+                ? cleanupError.message
+                : String(cleanupError),
+          })
+        );
+      }
+    }
+    await supabase.from("users").delete().eq("id", userId);
+    if (options.linePhone) {
+      await supabase
+        .from("lines")
+        .update({ assigned_user_id: null, assigned_at: null })
+        .eq("phone", options.linePhone)
+        .eq("assigned_user_id", userId);
+    }
+    console.log(
+      JSON.stringify({ msg: "provision rolled back", user_id: userId })
+    );
+    throw error;
+  }
+
+  async function forkAndConfigure(): Promise<ProvisionResult> {
   const box = await fork({
     templateId: env.boxTemplateId(),
     env: { TENANT_ID: userId, GATEWAY_TOKEN: gatewayToken },
   });
+  boxId = box.id;
   await waitForBox(box.id);
 
   const hashResult = await command(
@@ -219,4 +258,5 @@ export async function provisionUser(
     dashboardUrl: dashboard.url,
     inviteLink,
   };
+  }
 }

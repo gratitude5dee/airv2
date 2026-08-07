@@ -77,7 +77,9 @@ export async function redeemOnce(
     app: claims.app,
   });
   if (error) {
-    if (error.code === "23505") return false;
+    // 23505: jti already redeemed. 23503: the user was deleted after mint —
+    // the token is no longer redeemable either way.
+    if (error.code === "23505" || error.code === "23503") return false;
     throw new Error(`miniapp redemption failed: ${error.message}`);
   }
   console.log(
