@@ -5,13 +5,18 @@
  * the lines row — never the Chat SDK adapter's line inference, which throws
  * NotImplementedError on every cold thread once per-user lines exist.
  */
-import { Spectrum, app as appCard, text, typing } from "spectrum-ts";
+import { Spectrum, app as appCard, read, text, typing } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
 import { env } from "../env";
 
 export interface SpectrumSender {
   /** Fire a typing indicator at the chat — before the box resumes. */
   startTyping(spaceId: string, phone: string): Promise<void>;
+  /**
+   * Surface a read receipt for an inbound message (chat-level on iMessage:
+   * everything unread in the chat is marked read). Best-effort.
+   */
+  markRead(spaceId: string, phone: string, messageId: string): Promise<void>;
   /** Send one finished text bubble. */
   sendText(spaceId: string, phone: string, body: string): Promise<void>;
   /**
@@ -53,6 +58,12 @@ export async function createSpectrumSender(): Promise<SpectrumSender> {
   return {
     startTyping: async (spaceId, phone) => {
       await (await space(spaceId, phone)).send(typing("start"));
+    },
+    markRead: async (spaceId, phone, messageId) => {
+      const s = await space(spaceId, phone);
+      const message = await s.getMessage(messageId);
+      if (!message || message.direction !== "inbound") return;
+      await s.send(read(message));
     },
     sendText: async (spaceId, phone, body) => {
       await (await space(spaceId, phone)).send(text(body));

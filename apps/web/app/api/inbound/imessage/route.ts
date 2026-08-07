@@ -184,6 +184,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const sender = await createSpectrumSender().catch(() => undefined);
     if (sender) {
       await sender
+        .markRead(message.spaceId, message.phone, message.messageId)
+        .catch(() => undefined);
+      await sender
         .startTyping(message.spaceId, message.phone)
         .catch(() => undefined);
     }
