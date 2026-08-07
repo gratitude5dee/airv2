@@ -83,6 +83,7 @@ export async function provisionUser(): Promise<ProvisionResult> {
       `API_SERVER_KEY=${apiServerKey}`,
       "API_SERVER_HOST=0.0.0.0",
       `OPENAI_API_KEY=${gatewayToken}`,
+      `OPENAI_BASE_URL=${env.appOrigin()}/api/gateway/v1`,
       "HERMES_DASHBOARD_BASIC_AUTH_USERNAME=air",
       `HERMES_DASHBOARD_BASIC_AUTH_PASSWORD_HASH=${dashHash}`,
       `HERMES_DASHBOARD_BASIC_AUTH_SECRET=${dashSecret}`,
@@ -92,10 +93,14 @@ export async function provisionUser(): Promise<ProvisionResult> {
   );
   await command(box.id, "chmod 600 /home/user/.hermes/.env");
 
+  // Hermes resolves the custom provider's credential from model.api_key in
+  // config.yaml (credential_pool seeds "model_config" when provider=custom
+  // and base_url matches) — the value is the box's GATEWAY_TOKEN, never a
+  // provider key.
   const gatewayUrl = `${env.appOrigin()}/api/gateway/v1`;
   await command(
     box.id,
-    `sed -i 's|base_url:.*|base_url: "${gatewayUrl}"|' /home/user/.hermes/config.yaml`
+    `sed -i -e '/^  api_key:/d' -e 's|base_url:.*|base_url: "${gatewayUrl}"\\n  api_key: "${gatewayToken}"|' /home/user/.hermes/config.yaml`
   );
 
   await command(
