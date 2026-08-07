@@ -11,7 +11,11 @@ import {
   completeSmsAuth,
   initiateSmsAuth,
 } from "@/lib/thirdweb/client";
-import { SESSION_COOKIE, createSessionToken } from "@/lib/auth/session";
+import {
+  SESSION_COOKIE,
+  createSessionToken,
+  createSignupToken,
+} from "@/lib/auth/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -87,7 +91,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
   }
   if (!userId) {
-    return NextResponse.json({ error: "no account" }, { status: 404 });
+    // Phone ownership is proven but no account exists: hand back a
+    // short-lived signup grant so /api/auth/signup can self-provision.
+    return NextResponse.json(
+      {
+        error: "no account",
+        signup_token: createSignupToken(phone, walletAddress),
+      },
+      { status: 404 }
+    );
   }
 
   const response = NextResponse.json({ ok: true });

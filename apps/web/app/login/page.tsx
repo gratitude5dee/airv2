@@ -12,6 +12,8 @@ export default function LoginPage() {
   const [stage, setStage] = useState<"phone" | "code">("phone");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [signupToken, setSignupToken] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
 
   async function sendCode() {
     setBusy(true);
@@ -46,12 +48,40 @@ export default function LoginPage() {
     if (res.ok) {
       router.push("/home");
     } else {
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        signup_token?: string;
+      };
+      if (data.error === "no account" && data.signup_token) {
+        setSignupToken(data.signup_token);
+      } else {
+        setError(
+          data.error === "no account"
+            ? "No account for that number yet — ask for an invite."
+            : "That code didn't match."
+        );
+      }
+    }
+  }
+
+  async function createAccount() {
+    if (!signupToken) return;
+    setCreating(true);
+    setError(null);
+    const res = await fetch("/api/auth/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ signup_token: signupToken }),
+    });
+    setCreating(false);
+    if (res.ok) {
+      router.push("/home");
+    } else {
       const data = (await res.json().catch(() => ({}))) as { error?: string };
-      setError(
-        data.error === "no account"
-          ? "No account for that number yet — ask for an invite."
-          : "That code didn't match."
-      );
+      setSignupToken(null);
+      setStage("phone");
+      setCode("");
+      setError(data.error ?? "could not create your account — try again");
     }
   }
 
@@ -74,7 +104,35 @@ export default function LoginPage() {
           </div>
 
           <div className="panel grid gap-3">
-            {stage === "phone" ? (
+            {signupToken ? (
+              <>
+                <p className="m-0 text-center text-[13px] text-muted-2">
+                  No account for that number yet.
+                </p>
+                <button
+                  className="btn"
+                  onClick={createAccount}
+                  disabled={creating}
+                >
+                  {creating ? (
+                    <Orb size={16} label="Setting up your agent — about a minute…" pill={false} />
+                  ) : (
+                    "Create my account"
+                  )}
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => {
+                    setSignupToken(null);
+                    setStage("phone");
+                    setCode("");
+                  }}
+                  disabled={creating}
+                >
+                  Different number
+                </button>
+              </>
+            ) : stage === "phone" ? (
               <>
                 <input
                   className="input"

@@ -31,6 +31,56 @@ export function createSessionToken(userId: string): string {
   return `${payload}.${sign(payload)}`;
 }
 
+const SIGNUP_TTL_SECONDS = 60 * 10;
+
+/**
+ * Short-lived signup grant, minted only after a successful OTP verification
+ * for a phone with no account. Redeemed once by /api/auth/signup to
+ * self-provision — the OTP code itself is single-use, so the grant carries
+ * the proof of phone ownership forward to the provision step.
+ */
+export function createSignupToken(
+  phone: string,
+  walletAddress: string
+): string {
+  const body = b64url(
+    JSON.stringify({
+      typ: "signup",
+      phone,
+      wallet: walletAddress,
+      exp: Math.floor(Date.now() / 1000) + SIGNUP_TTL_SECONDS,
+    })
+  );
+  return `${body}.${sign(body)}`;
+}
+
+export function verifySignupToken(
+  token: string
+): { phone: string; walletAddress: string } | undefined {
+  const dot = token.lastIndexOf(".");
+  if (dot <= 0) return undefined;
+  const body = token.slice(0, dot);
+  const expected = Buffer.from(sign(body));
+  const actual = Buffer.from(token.slice(dot + 1));
+  if (expected.length !== actual.length) return undefined;
+  if (!timingSafeEqual(expected, actual)) return undefined;
+  try {
+    const claims = JSON.parse(Buffer.from(body, "base64url").toString()) as {
+      typ?: string;
+      phone?: string;
+      wallet?: string;
+      exp?: number;
+    };
+    if (claims.typ !== "signup" || !claims.phone || !claims.wallet)
+      return undefined;
+    if (!claims.exp || claims.exp < Math.floor(Date.now() / 1000))
+      return undefined;
+    return { phone: claims.phone, walletAddress: claims.wallet };
+  } catch {
+    return undefined;
+  }
+}
+
 export function verifySessionToken(token: string): string | undefined {
   const parts = token.split(".");
   if (parts.length !== 3) return undefined;
