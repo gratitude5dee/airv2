@@ -83,7 +83,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   if (!route || !inbound.phone) {
-    // Unroutable line: recorded as an event, no work dispatched.
+    // Unroutable line: recorded as an event, no work dispatched. Log the
+    // line identifier (never content) so misrouted numbers are diagnosable.
+    console.error(
+      JSON.stringify({
+        msg: "imessage inbound unroutable",
+        line_phone: inbound.phone ?? null,
+        space_id: inbound.spaceId,
+        message_id: inbound.messageId,
+      })
+    );
     return NextResponse.json({ ok: true }, { status: 200 });
   }
 
