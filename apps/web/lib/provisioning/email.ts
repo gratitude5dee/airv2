@@ -13,7 +13,7 @@ import {
   ensurePod,
   ensureWebhook,
 } from "../agentmail/client";
-import { command } from "../box/client";
+import { readFile, writeFile } from "../box/client";
 
 export async function provisionEmail(
   supabase: SupabaseClient,
@@ -78,20 +78,28 @@ export async function provisionEmail(
     .eq("user_id", userId)
     .maybeSingle();
   if (box?.provider_box_id) {
-    const draftKey = await createDraftOnlyKey(`box-${userId}`);
-    await command(
-      box.provider_box_id as string,
-      `grep -q '^AGENTMAIL_API_KEY=' /home/user/.hermes/.env && sed -i 's|^AGENTMAIL_API_KEY=.*|AGENTMAIL_API_KEY=${draftKey}|' /home/user/.hermes/.env || printf 'AGENTMAIL_API_KEY=%s\\nAGENTMAIL_INBOX_ID=%s\\n' '${draftKey}' '${inbox.inbox_id}' >> /home/user/.hermes/.env`,
-      60
-    ).catch((error: unknown) => {
+    const boxId = box.provider_box_id as string;
+    try {
+      const draftKey = await createDraftOnlyKey(`box-${userId}`);
+      // Typed file read/write only — the key must never appear in a shell
+      // command line (visible in command logs / process listings).
+      const current = await readFile(boxId, ".hermes/.env").catch(() => "");
+      const kept = current
+        .split("\n")
+        .filter((line) => line && !line.startsWith("AGENTMAIL_"));
+      kept.push(`AGENTMAIL_API_KEY=${draftKey}`);
+      kept.push(`AGENTMAIL_INBOX_ID=${inbox.inbox_id}`);
+      await writeFile(boxId, ".hermes/.env", kept.join("\n") + "\n");
+    } catch (error) {
       console.error(
         JSON.stringify({
           msg: "box agentmail key injection failed",
           user_id: userId,
+          box_id: boxId,
           error: error instanceof Error ? error.message : String(error),
         })
       );
-    });
+    }
   }
 
   return { address };

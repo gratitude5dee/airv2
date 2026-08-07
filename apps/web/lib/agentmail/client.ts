@@ -101,21 +101,51 @@ export async function createDraftOnlyKey(name: string): Promise<string> {
   return result.api_key;
 }
 
+interface Webhook {
+  webhook_id: string;
+  client_id?: string;
+  pod_ids?: string[];
+}
+
+/**
+ * One shared inbound webhook for the whole deployment: each AgentMail webhook
+ * has its own signing secret and we hold exactly one (AGENTMAIL_WEBHOOK_SECRET),
+ * so new pods are appended to the existing webhook's pod_ids instead of
+ * creating a second webhook with an unknown secret.
+ */
 export async function ensureWebhook(
   url: string,
   podIds: string[]
 ): Promise<void> {
-  await agentmailFetch("/webhooks", {
+  const listed = await agentmailFetch<{ webhooks?: Webhook[] }>("/webhooks");
+  const existing = (listed.webhooks ?? []).find((w) =>
+    (w.client_id ?? "").startsWith("air-inbound")
+  );
+  if (existing) {
+    const merged = Array.from(
+      new Set([...(existing.pod_ids ?? []), ...podIds])
+    );
+    if (merged.length !== (existing.pod_ids ?? []).length) {
+      await agentmailFetch(`/webhooks/${existing.webhook_id}`, {
+        method: "PATCH",
+        body: { pod_ids: merged },
+      });
+    }
+    return;
+  }
+  const created = await agentmailFetch<{ webhook_id: string }>("/webhooks", {
     method: "POST",
     body: {
       url,
       event_types: ["message.received"],
       pod_ids: podIds,
-      client_id: `air-inbound-${podIds[0] ?? "default"}`,
+      client_id: "air-inbound",
     },
-  }).catch((error: unknown) => {
-    // An existing webhook with the same client_id is fine (idempotent).
-    if (error instanceof AgentMailApiError && error.status === 400) return;
-    throw error;
   });
+  console.error(
+    JSON.stringify({
+      msg: "agentmail webhook created — set AGENTMAIL_WEBHOOK_SECRET to its signing secret",
+      webhook_id: created.webhook_id,
+    })
+  );
 }
