@@ -63,6 +63,14 @@ interface Connection {
   connected_at: string | null;
 }
 
+interface HubSkill {
+  name: string;
+  identifier: string;
+  source: string;
+  trust_level: string;
+  description: string;
+}
+
 interface ChatMessage {
   role: "user" | "agent";
   text: string;
@@ -117,6 +125,10 @@ export default function HomePage() {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [connectorFilter, setConnectorFilter] = useState("");
   const [panelNote, setPanelNote] = useState<string | null>(null);
+  const [skillQuery, setSkillQuery] = useState("");
+  const [hubResults, setHubResults] = useState<HubSkill[] | null>(null);
+  const [hubNote, setHubNote] = useState<string | null>(null);
+  const [skillBusy, setSkillBusy] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -370,6 +382,79 @@ export default function HomePage() {
     }
   }
 
+  async function refreshSkills() {
+    const res = await fetch("/api/box/v1/skills");
+    if (res.ok) {
+      setSkills(pickList<SkillSummary>(await res.json(), ["skills", "data", "items"]));
+    }
+  }
+
+  async function searchSkillHub() {
+    const q = skillQuery.trim();
+    if (!q) return;
+    setHubNote("Searching skill registries…");
+    setHubResults(null);
+    try {
+      const res = await fetch(`/api/skills?q=${encodeURIComponent(q)}`);
+      if (res.ok) {
+        const data = (await res.json()) as { results?: HubSkill[] };
+        setHubResults(data.results ?? []);
+        setHubNote(null);
+      } else {
+        setHubNote(
+          res.status === 429
+            ? "Your agent's computer is busy starting up — try again in a minute."
+            : "Search failed — try again shortly."
+        );
+      }
+    } catch {
+      setHubNote("Search failed — try again shortly.");
+    }
+  }
+
+  async function installHubSkill(identifier: string) {
+    setSkillBusy(identifier);
+    setHubNote(null);
+    try {
+      const res = await fetch("/api/skills", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "install", identifier }),
+      });
+      if (res.ok) {
+        setHubNote("Installed.");
+        await refreshSkills();
+      } else {
+        setHubNote("Install failed — try again shortly.");
+      }
+    } catch {
+      setHubNote("Install failed — try again shortly.");
+    } finally {
+      setSkillBusy(null);
+    }
+  }
+
+  async function uninstallHubSkill(name: string) {
+    setSkillBusy(name);
+    setHubNote(null);
+    try {
+      const res = await fetch("/api/skills", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "uninstall", name }),
+      });
+      if (res.ok) {
+        await refreshSkills();
+      } else {
+        setHubNote("Remove failed — it may be a bundled skill.");
+      }
+    } catch {
+      setHubNote("Remove failed — try again shortly.");
+    } finally {
+      setSkillBusy(null);
+    }
+  }
+
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
     router.push("/login");
@@ -605,6 +690,53 @@ export default function HomePage() {
           ) : tab === "skills" ? (
             <div className="grid flex-1 content-start gap-2 overflow-y-auto">
               <h3 className="m-0 text-[15px] font-semibold">Skills</h3>
+              <form
+                className="flex gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void searchSkillHub();
+                }}
+              >
+                <input
+                  className="input flex-1 !py-1.5 !text-[13px]"
+                  placeholder="Search the skill hub…"
+                  value={skillQuery}
+                  onChange={(e) => setSkillQuery(e.target.value)}
+                  aria-label="Search skills"
+                />
+                <button
+                  type="submit"
+                  className="btn !px-3 !py-1.5 !text-[12px]"
+                  disabled={!skillQuery.trim()}
+                >
+                  Search
+                </button>
+              </form>
+              {hubNote ? <p className="muted m-0 text-[12px]">{hubNote}</p> : null}
+              {(hubResults ?? []).map((r) => (
+                <div key={r.identifier} className="panel rise-in !p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <strong className="text-[13px]">{r.name}</strong>
+                      <p className="muted m-0 mt-1 text-[12px]">{r.description}</p>
+                      <p className="muted m-0 mt-1 text-[11px]">
+                        {[r.source, r.trust_level].filter(Boolean).join(" \u00b7 ")}
+                      </p>
+                    </div>
+                    <button
+                      className="btn !px-3 !py-1.5 !text-[12px]"
+                      disabled={skillBusy !== null}
+                      onClick={() => void installHubSkill(r.identifier)}
+                    >
+                      {skillBusy === r.identifier ? "Installing…" : "Install"}
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {hubResults !== null && hubResults.length === 0 ? (
+                <p className="muted m-0 text-[13px]">No skills found.</p>
+              ) : null}
+              <h4 className="m-0 mt-2 text-[13px] font-semibold">Installed</h4>
               {panelNote ? (
                 <div className="py-1">
                   <Orb pill label={panelNote} />
@@ -612,10 +744,23 @@ export default function HomePage() {
               ) : null}
               {(skills ?? []).map((s, i) => (
                 <div key={s.name ?? i} className="panel rise-in !p-3">
-                  <strong className="text-[13px]">{s.name ?? "skill"}</strong>
-                  {s.description ? (
-                    <p className="muted m-0 mt-1 text-[12px]">{s.description}</p>
-                  ) : null}
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <strong className="text-[13px]">{s.name ?? "skill"}</strong>
+                      {s.description ? (
+                        <p className="muted m-0 mt-1 text-[12px]">{s.description}</p>
+                      ) : null}
+                    </div>
+                    {s.name ? (
+                      <button
+                        className="btn btn-ghost !px-3 !py-1.5 !text-[12px]"
+                        disabled={skillBusy !== null}
+                        onClick={() => void uninstallHubSkill(s.name as string)}
+                      >
+                        {skillBusy === s.name ? "Removing…" : "Remove"}
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
               ))}
               {skills !== null && skills.length === 0 ? (

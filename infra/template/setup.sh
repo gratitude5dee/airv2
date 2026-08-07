@@ -92,6 +92,13 @@ HERMES_DASHBOARD_BASIC_AUTH_SECRET=$TEMPLATE_DASH_SECRET
 ENV
 chmod 600 "$HOME_DIR/.hermes/.env"
 
+# ── 3c. Preinstall base skills into ~/.hermes/skills ────────────────────────
+# On top of the bundled library; forks inherit these so provisioning doesn't
+# pay the install cost per user. Failures warn but don't abort the template.
+for skill in official/email/agentmail official/research/duckduckgo-search; do
+  uv run hermes skills install "$skill" --yes || echo "WARN: base skill $skill install failed" >&2
+done
+
 # Copy the built SPA outside the git checkout: box archive/restore does not
 # preserve gitignored build output inside the repo, so the dashboard serves
 # from ~/.hermes/web_dist (HERMES_WEB_DIST) instead.
