@@ -79,6 +79,9 @@ function pickList<T>(payload: unknown, keys: string[]): T[] {
     for (const key of keys) {
       const value = record[key];
       if (Array.isArray(value)) return value as T[];
+    }
+    for (const key of keys) {
+      const value = record[key];
       if (value && typeof value === "object") {
         return Object.values(value as Record<string, unknown>) as T[];
       }
