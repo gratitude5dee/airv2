@@ -146,6 +146,17 @@ export default function HomePage() {
       const { run_id } = (await res.json()) as { run_id: string };
       const events = new EventSource(`/api/chat/${run_id}/events`);
       let acc = "";
+      // Replace a still-empty placeholder so a failed or empty run never
+      // leaves a blank bubble behind.
+      const fillEmpty = (fallback: string) => {
+        setMessages((m) => {
+          const last = m[m.length - 1];
+          if (last && last.role === "agent" && !last.text) {
+            return [...m.slice(0, -1), { role: "agent" as const, text: fallback }];
+          }
+          return m;
+        });
+      };
       events.onmessage = (event) => {
         try {
           const parsed = JSON.parse(event.data) as {
@@ -163,11 +174,14 @@ export default function HomePage() {
                 ...m.slice(0, -1),
                 { role: "agent", text: parsed.output ?? "" },
               ]);
+            } else if (!acc) {
+              fillEmpty("(no reply)");
             }
             events.close();
             setBusy(false);
           }
           if (parsed.type === "run.failed") {
+            fillEmpty("Something went wrong.");
             events.close();
             setBusy(false);
           }
@@ -176,10 +190,21 @@ export default function HomePage() {
         }
       };
       events.onerror = () => {
+        fillEmpty("Connection lost — try again.");
         events.close();
         setBusy(false);
       };
     } catch {
+      setMessages((m) => {
+        const last = m[m.length - 1];
+        if (last && last.role === "agent" && !last.text) {
+          return [
+            ...m.slice(0, -1),
+            { role: "agent" as const, text: "Something went wrong." },
+          ];
+        }
+        return m;
+      });
       setBusy(false);
     }
   }, [input, busy]);
