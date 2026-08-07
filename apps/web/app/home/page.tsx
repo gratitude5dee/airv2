@@ -70,6 +70,26 @@ interface ChatMessage {
 
 type Tab = "chat" | "history" | "skills" | "needs" | "people" | "connectors";
 
+/** Tolerantly extract a list from an API payload that may be a bare array,
+ * a keyed object ({sessions}/{skills}/{data}/{items}), or a keyed map. */
+function pickList<T>(payload: unknown, keys: string[]): T[] {
+  if (Array.isArray(payload)) return payload as T[];
+  if (payload && typeof payload === "object") {
+    const record = payload as Record<string, unknown>;
+    for (const key of keys) {
+      const value = record[key];
+      if (Array.isArray(value)) return value as T[];
+    }
+    for (const key of keys) {
+      const value = record[key];
+      if (value && typeof value === "object") {
+        return Object.values(value as Record<string, unknown>) as T[];
+      }
+    }
+  }
+  return [];
+}
+
 const TABS: [Tab, string][] = [
   ["chat", "Chat"],
   ["needs", "Needs you"],
@@ -305,14 +325,19 @@ export default function HomePage() {
     setPanelNote(null);
     if (next === "history" && sessions === null) {
       setPanelNote("Waking your agent… this can take a minute if it was asleep.");
-      const res = await fetch("/api/box/api/sessions?limit=30");
-      if (res.ok) {
-        const data = (await res.json()) as
-          | SessionSummary[]
-          | { sessions?: SessionSummary[] };
-        setSessions(Array.isArray(data) ? data : (data.sessions ?? []));
-        setPanelNote(null);
-      } else {
+      try {
+        const res = await fetch("/api/box/api/sessions?limit=30");
+        if (res.ok) {
+          setSessions(pickList<SessionSummary>(await res.json(), ["sessions", "data", "items"]));
+          setPanelNote(null);
+        } else {
+          setPanelNote(
+            res.status === 502
+              ? "Couldn't reach your agent's computer — try again shortly."
+              : "Couldn't load history — try again shortly."
+          );
+        }
+      } catch {
         setPanelNote("Couldn't load history — try again shortly.");
       }
     }
@@ -327,14 +352,19 @@ export default function HomePage() {
     }
     if (next === "skills" && skills === null) {
       setPanelNote("Waking your agent… this can take a minute if it was asleep.");
-      const res = await fetch("/api/box/v1/skills");
-      if (res.ok) {
-        const data = (await res.json()) as
-          | SkillSummary[]
-          | { skills?: SkillSummary[] };
-        setSkills(Array.isArray(data) ? data : (data.skills ?? []));
-        setPanelNote(null);
-      } else {
+      try {
+        const res = await fetch("/api/box/v1/skills");
+        if (res.ok) {
+          setSkills(pickList<SkillSummary>(await res.json(), ["skills", "data", "items"]));
+          setPanelNote(null);
+        } else {
+          setPanelNote(
+            res.status === 502
+              ? "Couldn't reach your agent's computer — try again shortly."
+              : "Couldn't load skills — try again shortly."
+          );
+        }
+      } catch {
         setPanelNote("Couldn't load skills — try again shortly.");
       }
     }
@@ -355,24 +385,31 @@ export default function HomePage() {
     : 0;
 
   return (
-    <main className="mx-auto w-full max-w-[960px] px-4 pb-8">
+    <main className="mx-auto w-full max-w-[1100px] px-4 pb-8">
       <header className="flex flex-wrap items-center justify-between gap-3 py-4">
         <div className="flex items-center gap-2.5">
           <Orb size={22} label="air" />
           <h1 className="m-0 text-[19px] font-semibold tracking-[-0.02em]">air</h1>
         </div>
+        <button className="btn btn-ghost !px-3 !py-1.5 !text-[12px]" onClick={logout}>
+          Sign out
+        </button>
+      </header>
+
+      <div className="grid gap-4 md:grid-cols-[150px_1fr_280px]">
         <nav
-          className="flex flex-wrap items-center gap-1 rounded-full p-1 shadow-[0_0_0_0.5px_var(--ring)]"
+          className="flex h-fit flex-row flex-wrap gap-1 rounded-2xl p-1.5 shadow-[0_0_0_0.5px_var(--ring)] md:flex-col md:rounded-[20px]"
           aria-label="Sections"
         >
           {TABS.map(([key, label]) => (
             <button
               key={key}
+              aria-current={tab === key ? "page" : undefined}
               className={
-                "cursor-pointer rounded-full border-0 px-3 py-1.5 text-[12px] font-medium transition-colors " +
+                "cursor-pointer rounded-full border-0 px-3.5 py-2 text-left text-[13px] font-medium transition-colors " +
                 (tab === key
-                  ? "bg-text text-bg"
-                  : "bg-transparent text-muted-2 hover:bg-surface-2 hover:text-text")
+                  ? "bg-[var(--text)] text-[var(--bg)]"
+                  : "bg-transparent text-[var(--muted-2)] hover:bg-[var(--surface-2)] hover:text-[var(--text)]")
               }
               onClick={() => void loadTab(key)}
             >
@@ -380,12 +417,7 @@ export default function HomePage() {
             </button>
           ))}
         </nav>
-        <button className="btn btn-ghost !px-3 !py-1.5 !text-[12px]" onClick={logout}>
-          Sign out
-        </button>
-      </header>
 
-      <div className="grid gap-4 md:grid-cols-[1fr_280px]">
         <section className="panel flex h-[72vh] flex-col !p-4">
           {tab === "needs" ? (
             <div className="grid flex-1 content-start gap-2 overflow-y-auto">
@@ -620,7 +652,7 @@ export default function HomePage() {
                         className={
                           "max-w-[80%] whitespace-pre-wrap rounded-xl px-3 py-2 text-[13px] leading-relaxed " +
                           (m.role === "user"
-                            ? "justify-self-end bg-text text-bg"
+                            ? "justify-self-end bg-[var(--text)] text-[var(--bg)]"
                             : "justify-self-start bg-surface shadow-[0_0_0_0.5px_var(--ring)]")
                         }
                       >
@@ -702,18 +734,30 @@ export default function HomePage() {
                 <button
                   key={slug}
                   className="btn btn-ghost !px-3 !py-1.5 !text-[12px]"
-                  onClick={() =>
+                  onClick={() => {
+                    // Open the window synchronously so popup blockers allow
+                    // it, then point it at the freshly minted link.
+                    const win = window.open("about:blank", "_blank");
                     void fetch("/api/mini/link", {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({ app: slug }),
-                    }).then(async (res) => {
-                      if (res.ok) {
-                        const data = (await res.json()) as { url?: string };
-                        if (data.url) window.open(data.url, "_blank");
-                      }
                     })
-                  }
+                      .then(async (res) => {
+                        const data = res.ok
+                          ? ((await res.json().catch(() => ({}))) as {
+                              url?: string;
+                            })
+                          : {};
+                        if (data.url) {
+                          if (win) win.location.href = data.url;
+                          else window.location.href = data.url;
+                          return;
+                        }
+                        win?.close();
+                      })
+                      .catch(() => win?.close());
+                  }}
                 >
                   {slug === "kanban" ? "Kanban" : "To-Do"}
                 </button>
@@ -738,8 +782,8 @@ export default function HomePage() {
                   className={
                     "cursor-pointer rounded-lg border-0 px-3 py-2 text-left text-[13px] font-medium transition-colors " +
                     (tier === id
-                      ? "bg-text text-bg"
-                      : "bg-transparent text-muted-2 shadow-[0_0_0_0.5px_var(--ring)] hover:bg-surface-2 hover:text-text")
+                      ? "bg-[var(--text)] text-[var(--bg)]"
+                      : "bg-transparent text-[var(--muted-2)] shadow-[0_0_0_0.5px_var(--ring)] hover:bg-[var(--surface-2)] hover:text-[var(--text)]")
                   }
                   onClick={() => void saveTier(id)}
                 >

@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>air 2.0 — Interactive Architecture</title>
+<style>
+:root{
+  --bg:#fafafa;--surface:#ffffff;--surface-2:#f4f4f5;--ring:rgba(0,0,0,.08);
+  --text:#1a1a1a;--muted:#a1a1a1;--muted-2:#6f6f76;--accent:#2b7fff;
+  --accent-soft:rgba(43,127,255,.12);--good:#16a34a;--warn:#d97706;
+  --shadow:0 0 0 .5px var(--ring),0 1px 2px rgba(0,0,0,.05),0 2px 4px rgba(0,0,0,.02);
+}
+@media(prefers-color-scheme:dark){:root{
+  --bg:#101012;--surface:#1a1a1c;--surface-2:#232326;--ring:rgba(255,255,255,.12);
+  --text:#f5f5f5;--muted:#a3a3a3;--muted-2:#8a8a92;
+  --shadow:0 0 0 .5px var(--ring),0 1px 2px rgba(0,0,0,.4);
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:"Inter",-apple-system,system-ui,sans-serif;letter-spacing:-.12px;-webkit-font-smoothing:antialiased}
+header{padding:24px 24px 8px;max-width:1280px;margin:0 auto}
+h1{font-size:22px;font-weight:600;letter-spacing:-.02em;margin:0}
+header p{color:var(--muted-2);font-size:13px;margin:6px 0 0;max-width:760px}
+.layout{display:grid;grid-template-columns:1fr 340px;gap:16px;max-width:1280px;margin:0 auto;padding:16px 24px 40px}
+@media(max-width:900px){.layout{grid-template-columns:1fr}}
+.canvas{background:var(--surface);border-radius:16px;box-shadow:var(--shadow);overflow:auto;padding:8px}
+svg{display:block;min-width:820px;width:100%;height:auto}
+.node rect{fill:var(--surface-2);stroke:var(--ring);stroke-width:1;rx:12;cursor:pointer;transition:fill .15s}
+.node:hover rect{fill:var(--accent-soft)}
+.node.active rect{stroke:var(--accent);stroke-width:1.5;fill:var(--accent-soft)}
+.node text{fill:var(--text);font-size:12.5px;font-weight:600;pointer-events:none}
+.node .sub{fill:var(--muted-2);font-size:10px;font-weight:400}
+.zone{fill:none;stroke:var(--ring);stroke-dasharray:4 4;rx:18}
+.zonelabel{fill:var(--muted);font-size:10px;font-weight:500;letter-spacing:.06em;text-transform:uppercase}
+.edge{stroke:var(--muted);stroke-width:1.2;fill:none;opacity:.55;transition:opacity .15s,stroke .15s}
+.edge.hl{stroke:var(--accent);opacity:1;stroke-width:1.8}
+.edgelabel{fill:var(--muted-2);font-size:9.5px}
+.detail{background:var(--surface);border-radius:16px;box-shadow:var(--shadow);padding:18px;height:fit-content;position:sticky;top:16px}
+.detail h2{font-size:15px;margin:0 0 4px;letter-spacing:-.01em}
+.detail .kind{display:inline-block;font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--accent);background:var(--accent-soft);border-radius:999px;padding:2px 8px;margin-bottom:8px}
+.detail p{font-size:12.5px;line-height:1.55;color:var(--muted-2);margin:8px 0}
+.detail code{background:var(--surface-2);border-radius:6px;padding:1px 5px;font-size:11px}
+.detail ul{padding-left:16px;margin:8px 0;font-size:12.5px;line-height:1.6;color:var(--muted-2)}
+.detail .inv{border-left:2px solid var(--accent);padding:2px 0 2px 10px;font-size:12px;color:var(--text);background:var(--accent-soft);border-radius:0 8px 8px 0;margin-top:10px}
+.hint{color:var(--muted);font-size:12px}
+.legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;font-size:11px;color:var(--muted-2)}
+.legend span::before{content:"";display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.legend .l-browser::before{background:#2b7fff}.legend .l-vercel::before{background:#8b5cf6}
+.legend .l-db::before{background:#16a34a}.legend .l-box::before{background:#d97706}
+.legend .l-ext::before{background:#a1a1a1}
+.node .dot{rx:2}
+</style>
+</head>
+<body>
+<header>
+  <h1>air 2.0 — architecture</h1>
+  <p>A personal agent with its own phone number, its own inbox, and its own computer — tied to exactly one person. Click any node to see what it does, its key files, and the invariants it enforces. Hover to trace data flows.</p>
+  <div class="legend">
+    <span class="l-browser">clients</span><span class="l-vercel">Vercel (Next.js control plane)</span>
+    <span class="l-db">Supabase (routing DB)</span><span class="l-box">per-user Box (Hermes)</span>
+    <span class="l-ext">external services</span>
+  </div>
+</header>
+<div class="layout">
+  <div class="canvas">
+    <svg viewBox="0 0 960 700" id="svg" role="img" aria-label="air architecture diagram"></svg>
+  </div>
+  <aside class="detail" id="detail">
+    <h2>Pick a node</h2>
+    <p class="hint">Click a box in the diagram to see its role, key source files, and the security invariants it enforces. Hovering a node highlights its connections.</p>
+  </aside>
+</div>
+<script>
+const NODES = [
+  // clients
+  {id:"browser", x:40,  y:40,  w:150, h:52, color:"#2b7fff", label:"Web app", sub:"app.airv2 (browser)", kind:"Client",
+   desc:"The Next.js dashboard: chat, Needs-you approvals, People, Connectors, History, Skills, settings. Talks ONLY to the Vercel API routes — it never sees a box URL, model name, or secret.",
+   files:["apps/web/app/home/page.tsx","apps/web/app/login/page.tsx","apps/web/app/[handle]/page.tsx"],
+   inv:"C3: box hosted URLs and tokens are server-side only. The browser never learns *.on.ascii.dev."},
+  {id:"imessage", x:210, y:40,  w:150, h:52, color:"#2b7fff", label:"iMessage", sub:"via Photon/Spectrum", kind:"Client",
+   desc:"The primary channel. Each user gets a line; inbound messages hit the Vercel webhook, which routes them to the owner's box. Mini-app cards (Kanban, To-Do) are sent here as signed single-use links.",
+   files:["apps/web/app/api/inbound/imessage/route.ts","apps/web/lib/spectrum/"],
+   inv:"Trust tiers: unknown (tier-2) senders queue a decision instead of reaching the agent."},
+  {id:"email", x:380, y:40,  w:150, h:52, color:"#2b7fff", label:"Email", sub:"user@agentmail.to", kind:"Client",
+   desc:"Each agent has its own inbox (AgentMail). Inbound mail arrives via Svix-signed webhook. Outbound mail exists on exactly one path: an owner-approved draft in the Needs-you queue.",
+   files:["apps/web/app/api/inbound/email/route.ts","apps/web/lib/email/inbound.ts","apps/web/lib/agentmail/client.ts"],
+   inv:"C10: approving an email_draft decision is the only send path."},
+  {id:"stranger", x:550, y:40,  w:150, h:52, color:"#2b7fff", label:"Contact card", sub:"/@username (public)", kind:"Client",
+   desc:"Public server-rendered card exposing ONLY the username, the sms: number, and the mailto: address. The second stranger-reachable channel besides the line itself.",
+   files:["apps/web/app/[handle]/page.tsx"],
+   inv:"Exposes name, number, email — never box or account internals."},
+
+  // vercel
+  {id:"auth", x:40,  y:170, w:140, h:56, color:"#8b5cf6", label:"Auth", sub:"thirdweb phone OTP", kind:"Vercel API",
+   desc:"Login is a phone-number OTP flow through thirdweb. A session cookie identifies the user for every other API route; there are no passwords and no API keys in the UI.",
+   files:["apps/web/app/api/auth/login/route.ts","apps/web/lib/auth/user.ts"],
+   inv:"One phone number ↔ one user. The wallet address is derived, not user-managed."},
+  {id:"chat", x:200, y:170, w:140, h:56, color:"#8b5cf6", label:"Chat relay", sub:"/api/chat + SSE", kind:"Vercel API",
+   desc:"POST /api/chat wakes the user's box and creates a Hermes run; /api/chat/[runId]/events re-streams the box's SSE to the browser. The dashboard chat is the same agent, same memory, as iMessage.",
+   files:["apps/web/app/api/chat/route.ts","apps/web/app/api/chat/[runId]/events/route.ts","apps/web/lib/hermes/client.ts"],
+   inv:"The browser gets an opaque run_id; the box origin and API_SERVER_KEY stay server-side."},
+  {id:"boxproxy", x:360, y:170, w:150, h:56, color:"#8b5cf6", label:"Box proxy", sub:"/api/box/* (allowlist)", kind:"Vercel API",
+   desc:"Read-only, allowlisted proxy to the box's Hermes api_server: GET sessions, session messages, skills, toolsets, MCP servers, jobs. Anything not listed 404s — /api/env, config writes, credentials are unreachable. This is why History and Skills are read-only today: there is intentionally no install/write endpoint yet.",
+   files:["apps/web/app/api/box/[...path]/route.ts"],
+   inv:"C5: allowlist, never denylist. C3: _token and API key appended server-side."},
+  {id:"gateway", x:530, y:170, w:150, h:56, color:"#8b5cf6", label:"LLM gateway", sub:"/api/gateway/v1/*", kind:"Vercel API",
+   desc:"Every box's Hermes points at this gateway instead of a raw provider. It maps the user's speed tier (fast/balanced/deep) to a model server-side, enforces the monthly spend cap (429 when exceeded), and meters cost per completion.",
+   files:["apps/web/app/api/gateway/v1/[...path]/route.ts","apps/web/lib/entitlements/models.ts"],
+   inv:"Model IDs never reach a user. Spend is metered from the usage chunk of each streamed completion: cost = tier price × tokens, accumulated by the add_spend RPC into entitlements.spend_mtd_usd — that is the number on the dashboard meter."},
+  {id:"decisions", x:700, y:170, w:150, h:56, color:"#8b5cf6", label:"Needs you", sub:"/api/decisions", kind:"Vercel API",
+   desc:"Pending decisions: unknown-sender contact requests, run approvals, and email drafts. Approving an email_draft sends it through AgentMail with the control-plane key; dismissing closes it.",
+   files:["apps/web/app/api/decisions/route.ts","apps/web/lib/agentmail/client.ts"],
+   inv:"C10: the approve button is the only path from draft to sent email."},
+  {id:"connectors", x:40, y:270, w:150, h:56, color:"#8b5cf6", label:"Connectors", sub:"/api/connectors (Composio)", kind:"Vercel API",
+   desc:"OAuth connections (Gmail, Notion, …) via Composio. POST starts an OAuth redirect; PUT re-syncs statuses. The agent uses these tools from inside the box.",
+   files:["apps/web/app/api/connectors/route.ts","apps/web/lib/provisioning/connectors.ts"],
+   inv:"The user approves each connection; tokens live in Composio, not the browser."},
+  {id:"miniapps", x:210, y:270, w:150, h:56, color:"#8b5cf6", label:"Mini-apps", sub:"/mini/[app] + /api/mini/link", kind:"Vercel API",
+   desc:"Kanban and To-Do webviews: server-rendered HTML, no client JS, no localStorage. The dashboard (or an iMessage card) mints a signed single-use token; opening it exchanges the token for a short-lived HttpOnly cookie scoped to that app's path.",
+   files:["apps/web/app/mini/[app]/route.ts","apps/web/app/api/mini/link/route.ts","apps/web/lib/miniapps/"],
+   inv:"C15/C17: single-use tokens, path-scoped cookies, state lives in the user's box store."},
+  {id:"webhooks", x:380, y:270, w:150, h:56, color:"#8b5cf6", label:"Inbound routing", sub:"/api/inbound/*", kind:"Vercel API",
+   desc:"Webhooks from Photon/Spectrum (iMessage) and AgentMail/Svix (email). Answers exactly one question — whose box is this message for? — applies trust tiers, then forwards to that box's Hermes.",
+   files:["apps/web/app/api/inbound/imessage/route.ts","apps/web/app/api/inbound/email/route.ts","apps/web/lib/routing/"],
+   inv:"The routing DB decides ownership; message content is not persisted centrally."},
+  {id:"orchestrator", x:550, y:270, w:150, h:56, color:"#8b5cf6", label:"Orchestrator", sub:"wake/sleep, provision", kind:"Vercel API",
+   desc:"ensureBoxAwake() wakes a stopped box before any chat/proxy call (this is the 'waking your agent' minute). Provisioning creates the box, line, inbox, and entitlement atomically; a cron sweeps idle boxes to sleep.",
+   files:["apps/web/lib/orchestrator/boxes.ts","apps/web/lib/provisioning/provision.ts","apps/web/app/api/cron/sweep/route.ts"],
+   inv:"I1: one user, one Hermes, one box, one filesystem."},
+
+  // data plane
+  {id:"supabase", x:130, y:400, w:190, h:64, color:"#16a34a", label:"Supabase Postgres", sub:"the one shared DB", kind:"Data plane",
+   desc:"The only shared database. Tables: users, lines, agent_addresses, entitlements (plan, speed_tier, monthly_cap_usd, spend_mtd_usd), decisions, senders (trust tiers), boxes, agent_runs. Its job is routing and metering — not agent memory.",
+   files:["supabase/migrations/","apps/web/lib/supabase.ts"],
+   inv:"Answers 'whose computer is this message for?'. Agent memory never lives here."},
+  {id:"box", x:420, y:390, w:220, h:84, color:"#d97706", label:"Per-user Box", sub:"Hermes on its own VPS", kind:"Data plane",
+   desc:"Every user gets their own computer: a box running their own Hermes process. All agent state — memory, sessions, skills, credentials — persists to ~/.hermes on that box's filesystem. The dashboard's History and Skills tabs are read-only windows into it via the box proxy.",
+   files:["~/.hermes (SQLite, config, creds)","hosted URL *-8642.on.ascii.dev"],
+   inv:"I1: no user's agent state ever touches another user's storage."},
+
+  // external
+  {id:"openrouter", x:700, y:390, w:150, h:52, color:"#a1a1a1", label:"LLM provider", sub:"via gateway only", kind:"External",
+   desc:"The upstream model provider. Only the gateway talks to it; boxes and browsers never hold provider keys.",
+   files:["apps/web/app/api/gateway/v1/[...path]/route.ts"],
+   inv:"One key, server-side, metered per user."},
+  {id:"photon", x:40, y:530, w:150, h:52, color:"#a1a1a1", label:"Photon / Spectrum", sub:"iMessage lines", kind:"External",
+   desc:"Provides the iMessage line per user and delivers inbound messages to the webhook; used to send replies and mini-app cards.",
+   files:["apps/web/lib/spectrum/"], inv:"One line ↔ one user."},
+  {id:"agentmail", x:210, y:530, w:150, h:52, color:"#a1a1a1", label:"AgentMail", sub:"agent inboxes", kind:"External",
+   desc:"Hosts each agent's email inbox (username@agentmail.to) and sends approved drafts. Inbound mail is verified with Svix signatures.",
+   files:["apps/web/lib/agentmail/client.ts","apps/web/lib/routing/svix.ts"], inv:"C10 send path only."},
+  {id:"composio", x:380, y:530, w:150, h:52, color:"#a1a1a1", label:"Composio", sub:"OAuth toolkits", kind:"External",
+   desc:"Holds users' OAuth connections (Gmail, Notion, …) that the agent uses as tools.",
+   files:["apps/web/lib/provisioning/connectors.ts"], inv:"User-approved, per-user connections."},
+  {id:"thirdweb", x:550, y:530, w:150, h:52, color:"#a1a1a1", label:"thirdweb", sub:"OTP + wallet", kind:"External",
+   desc:"Phone OTP auth and the user's derived wallet address.",
+   files:["apps/web/app/api/auth/login/route.ts"], inv:"No passwords, no keys in the UI."},
+];
+const EDGES = [
+  ["browser","auth","login"],["browser","chat","chat + SSE"],["browser","boxproxy","history/skills"],
+  ["browser","decisions","approve"],["browser","connectors",""],["browser","miniapps","signed link"],
+  ["imessage","webhooks","webhook"],["email","webhooks","svix webhook"],
+  ["stranger","imessage","sms:"],["stranger","email","mailto:"],
+  ["auth","thirdweb",""],["auth","supabase","session"],
+  ["chat","orchestrator","wake"],["chat","box","runs + events"],
+  ["boxproxy","box","GET allowlist"],
+  ["gateway","openrouter","completions"],["gateway","supabase","add_spend"],
+  ["box","gateway","LLM calls"],
+  ["decisions","supabase",""],["decisions","agentmail","send draft"],
+  ["connectors","composio","oauth"],["webhooks","supabase","route"],
+  ["webhooks","box","forward"],["orchestrator","box","start/stop"],
+  ["orchestrator","supabase",""],["miniapps","box","state store"],
+  ["webhooks","photon",""],["webhooks","agentmail",""],
+];
+const svg = document.getElementById("svg");
+const NS = "http://www.w3.org/2000/svg";
+const byId = Object.fromEntries(NODES.map(n=>[n.id,n]));
+function center(n){return {x:n.x+n.w/2,y:n.y+n.h/2};}
+// zones
+const zones=[
+  {x:20,y:20,w:700,h:90,label:"clients"},
+  {x:20,y:150,w:850,h:195,label:"vercel — next.js control plane"},
+  {x:110,y:370,w:550,h:120,label:"data plane"},
+  {x:20,y:510,w:700,h:90,label:"external services"},
+];
+for(const z of zones){
+  const r=document.createElementNS(NS,"rect");
+  Object.entries({x:z.x,y:z.y,width:z.w,height:z.h,class:"zone",rx:18}).forEach(([k,v])=>r.setAttribute(k,v));
+  svg.appendChild(r);
+  const t=document.createElementNS(NS,"text");
+  t.setAttribute("x",z.x+12);t.setAttribute("y",z.y+14);t.setAttribute("class","zonelabel");
+  t.textContent=z.label;svg.appendChild(t);
+}
+// edges
+const edgeEls=[];
+for(const [a,b,label] of EDGES){
+  const A=center(byId[a]),B=center(byId[b]);
+  const p=document.createElementNS(NS,"path");
+  const mx=(A.x+B.x)/2, my=(A.y+B.y)/2;
+  p.setAttribute("d",`M${A.x},${A.y} Q${mx},${my} ${B.x},${B.y}`);
+  p.setAttribute("class","edge");p.dataset.a=a;p.dataset.b=b;
+  svg.appendChild(p);edgeEls.push(p);
+  if(label){
+    const t=document.createElementNS(NS,"text");
+    t.setAttribute("x",mx+4);t.setAttribute("y",my-3);t.setAttribute("class","edgelabel");
+    t.textContent=label;svg.appendChild(t);
+  }
+}
+// nodes
+const detail=document.getElementById("detail");
+let activeEl=null;
+for(const n of NODES){
+  const g=document.createElementNS(NS,"g");
+  g.setAttribute("class","node");g.setAttribute("tabindex","0");g.setAttribute("role","button");
+  const r=document.createElementNS(NS,"rect");
+  Object.entries({x:n.x,y:n.y,width:n.w,height:n.h,rx:12}).forEach(([k,v])=>r.setAttribute(k,v));
+  g.appendChild(r);
+  const dot=document.createElementNS(NS,"rect");
+  Object.entries({x:n.x+12,y:n.y+13,width:9,height:9,rx:2.5,fill:n.color}).forEach(([k,v])=>dot.setAttribute(k,v));
+  g.appendChild(dot);
+  const t=document.createElementNS(NS,"text");
+  t.setAttribute("x",n.x+28);t.setAttribute("y",n.y+22);t.textContent=n.label;g.appendChild(t);
+  const s=document.createElementNS(NS,"text");
+  s.setAttribute("x",n.x+12);s.setAttribute("y",n.y+38);s.setAttribute("class","sub");s.textContent=n.sub;g.appendChild(s);
+  const show=()=>{
+    if(activeEl)activeEl.classList.remove("active");
+    activeEl=g;g.classList.add("active");
+    detail.innerHTML=`<span class="kind">${n.kind}</span><h2>${n.label}</h2><p>${n.desc}</p>`+
+      `<ul>${n.files.map(f=>`<li><code>${f}</code></li>`).join("")}</ul>`+
+      (n.inv?`<div class="inv">${n.inv}</div>`:"");
+  };
+  g.addEventListener("click",show);
+  g.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();show();}});
+  g.addEventListener("mouseenter",()=>{for(const e of edgeEls)if(e.dataset.a===n.id||e.dataset.b===n.id)e.classList.add("hl");});
+  g.addEventListener("mouseleave",()=>{for(const e of edgeEls)e.classList.remove("hl");});
+  svg.appendChild(g);
+}
+</script>
+</body>
+</html>
