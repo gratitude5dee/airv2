@@ -12,6 +12,17 @@ const TIER_MODELS: Record<SpeedTier, string> = {
   deep: "o3",
 };
 
+/** Env overrides (MODEL_FAST / MODEL_BALANCED / MODEL_DEEP) let ops swap the
+ * fleet's models without a deploy touching any box. */
+function tierOverride(tier: SpeedTier): string | undefined {
+  const byTier: Record<SpeedTier, string | undefined> = {
+    fast: process.env.MODEL_FAST,
+    balanced: process.env.MODEL_BALANCED,
+    deep: process.env.MODEL_DEEP,
+  };
+  return byTier[tier];
+}
+
 /** Approximate USD per 1M tokens, for metering into agent_runs. */
 const TIER_PRICING: Record<SpeedTier, { input: number; output: number }> = {
   fast: { input: 0.15, output: 0.6 },
@@ -24,7 +35,7 @@ export function isSpeedTier(value: string): value is SpeedTier {
 }
 
 export function modelForTier(tier: SpeedTier): string {
-  return TIER_MODELS[tier];
+  return tierOverride(tier) ?? TIER_MODELS[tier];
 }
 
 export function costUsd(
