@@ -41,6 +41,12 @@ export interface Delivery {
 
 export class AssetPipelineError extends Error {}
 
+/** Hard cap on a single ingested asset. The box is the untrusted side of the
+ * C16 boundary — never buffer more than this regardless of what the plugin's
+ * metadata claims. Generous for CM2 image/short-video outputs; ad asset
+ * groups (CM5) will need a streaming path instead of a bigger cap. */
+export const MAX_ASSET_BYTES = 100 * 1024 * 1024;
+
 async function pluginFetch(
   supabase: SupabaseClient,
   box: UserBox,
@@ -101,6 +107,9 @@ export async function ingestAsset(
   if (!meta.sha256 || !meta.bytes || !ext) {
     throw new AssetPipelineError("export metadata invalid");
   }
+  if (meta.bytes > MAX_ASSET_BYTES) {
+    throw new AssetPipelineError("asset exceeds size limit");
+  }
 
   const existing = await supabase
     .from("creative_assets")
@@ -122,7 +131,7 @@ export async function ingestAsset(
     await bytesRes.body?.cancel();
     throw new AssetPipelineError(`export pull failed (${bytesRes.status})`);
   }
-  const buffer = Buffer.from(await bytesRes.arrayBuffer());
+  const buffer = await readCapped(bytesRes, MAX_ASSET_BYTES);
   const digest = createHash("sha256").update(buffer).digest("hex");
   if (digest !== meta.sha256 || buffer.byteLength !== meta.bytes) {
     throw new AssetPipelineError("export bytes failed sha256 verification");
@@ -201,6 +210,60 @@ export async function mintDelivery(
   };
 }
 
+/** Read a response body with a hard byte cap — aborts as soon as the cap is
+ * crossed instead of buffering whatever the box sends. */
+async function readCapped(response: Response, cap: number): Promise<Buffer> {
+  if (!response.body) {
+    throw new AssetPipelineError("export body missing");
+  }
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > cap) {
+      await reader.cancel();
+      throw new AssetPipelineError("asset exceeds size limit");
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks);
+}
+
+/** Delete delivery objects and mark only the ones storage confirms removed
+ * (remove() silently omits paths it couldn't delete), so failures are
+ * retried by the next revoke/sweep instead of leaving a live URL marked
+ * revoked. */
+async function removeDeliveryRows(
+  supabase: SupabaseClient,
+  rows: Array<{ id: string; storage_key: string }>
+): Promise<number> {
+  if (rows.length === 0) return 0;
+  const removal = await supabase.storage
+    .from(ASSETS_BUCKET)
+    .remove(rows.map((row) => row.storage_key));
+  if (removal.error) {
+    throw new AssetPipelineError(
+      `delivery removal failed: ${removal.error.message}`
+    );
+  }
+  const removedKeys = new Set(
+    (removal.data ?? []).map((object) => object.name)
+  );
+  const confirmed = rows.filter((row) => removedKeys.has(row.storage_key));
+  if (confirmed.length === 0) return 0;
+  await supabase
+    .from("asset_deliveries")
+    .update({ revoked_at: new Date().toISOString() })
+    .in(
+      "id",
+      confirmed.map((row) => row.id)
+    );
+  return confirmed.length;
+}
+
 /** Revoke on publish confirmation — the delivery object is deleted, so the
  * URL 404s even inside its signature window. */
 export async function revokeDeliveries(
@@ -214,19 +277,10 @@ export async function revokeDeliveries(
     .eq("user_id", userId)
     .eq("asset_id", assetId)
     .is("revoked_at", null);
-  const rows = data ?? [];
-  if (rows.length === 0) return 0;
-  await supabase.storage
-    .from(ASSETS_BUCKET)
-    .remove(rows.map((row) => row.storage_key as string));
-  await supabase
-    .from("asset_deliveries")
-    .update({ revoked_at: new Date().toISOString() })
-    .in(
-      "id",
-      rows.map((row) => row.id as string)
-    );
-  return rows.length;
+  return removeDeliveryRows(
+    supabase,
+    (data ?? []) as Array<{ id: string; storage_key: string }>
+  );
 }
 
 /** TTL sweep: delete delivery objects past expiry (revoked-by-time). Run
@@ -242,16 +296,8 @@ export async function sweepExpiredDeliveries(
     .eq("user_id", userId)
     .is("revoked_at", null)
     .lt("expires_at", new Date().toISOString());
-  const rows = data ?? [];
-  if (rows.length === 0) return;
-  await supabase.storage
-    .from(ASSETS_BUCKET)
-    .remove(rows.map((row) => row.storage_key as string));
-  await supabase
-    .from("asset_deliveries")
-    .update({ revoked_at: new Date().toISOString() })
-    .in(
-      "id",
-      rows.map((row) => row.id as string)
-    );
+  await removeDeliveryRows(
+    supabase,
+    (data ?? []) as Array<{ id: string; storage_key: string }>
+  );
 }

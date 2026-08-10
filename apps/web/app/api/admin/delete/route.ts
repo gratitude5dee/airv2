@@ -102,7 +102,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     let removed = 0;
     for (const folder of ["masters", "deliveries"]) {
       const prefix = `${userPrefix(userId)}${folder}`;
-      for (;;) {
+      // Bounded: remove() can silently skip paths, so break on any page
+      // that makes no progress rather than re-listing forever.
+      for (let page = 0; page < 100; page += 1) {
         const { data: objects, error } = await supabase.storage
           .from(ASSETS_BUCKET)
           .list(prefix, { limit: 100 });
@@ -110,8 +112,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         const removal = await supabase.storage
           .from(ASSETS_BUCKET)
           .remove(objects.map((object) => `${prefix}/${object.name}`));
-        if (removal.error) break;
-        removed += objects.length;
+        if (removal.error || !removal.data || removal.data.length === 0) break;
+        removed += removal.data.length;
       }
     }
     steps.assets = `removed ${removed}`;
