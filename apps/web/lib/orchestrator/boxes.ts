@@ -8,6 +8,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { command, getBox, isStartLimit, resume, waitForBox } from "../box/client";
 import { health, type HermesBoxTarget } from "../hermes/client";
+import { mirrorBrandIfStale } from "../brand/mirror";
 
 export const STOP_AFTER_MINUTES = 20;
 
@@ -226,6 +227,10 @@ export async function ensureBoxAwake(
   if (refreshed) {
     void refreshDashboardRoute(supabase, boxId);
   }
+
+  // A box asleep through brand edits gets the current compile on wake
+  // (CM0: mirror, don't sync). Best-effort, off the critical path.
+  void mirrorBrandIfStale(supabase, userId, boxId);
 
   await supabase
     .from("boxes")
