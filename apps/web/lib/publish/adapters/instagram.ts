@@ -53,6 +53,13 @@ export const instagramAdapter: PublishAdapter = {
         message: "Stories take one item and do not carousel.",
       });
     }
+    const hashtags = draft.caption.match(/#\w+/g)?.length ?? 0;
+    if (hashtags > INSTAGRAM_SPEC.maxHashtags) {
+      problems.push({
+        code: "ig.caption.hashtags",
+        message: `Caption has ${hashtags} hashtags; Instagram allows at most ${INSTAGRAM_SPEC.maxHashtags}.`,
+      });
+    }
     if (draft.caption.length > INSTAGRAM_SPEC.maxCaptionChars) {
       problems.push({
         code: "ig.caption.length",

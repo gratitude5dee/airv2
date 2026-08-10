@@ -57,30 +57,21 @@ export function unwrapToolResult(result: unknown): unknown {
 
 /** Composio flattens the platform's HTTP status into the error text; fish it
  * back out so classify() can route auth failures and throttles correctly. */
+const STATUS_CODE = /\b(?:http\s+|status(?:_code)?["':\s=]+)(401|403|429|500|502|503)\b/;
+const AUTH_TEXT =
+  /unauthorized|invalid[ _](?:access[ _])?token|token (?:has )?(?:been )?(?:expired|revoked)|session (?:has )?expired|invalid_grant|oauthexception|re-?authenticat/;
+const THROTTLE_TEXT = /rate limit|too many requests/;
+const TRANSIENT_TEXT = /timeout|timed out|temporarily|internal server error|service unavailable|bad gateway/;
+
 function inferStatus(message: string): number {
   const lowered = message.toLowerCase();
-  if (
-    lowered.includes("unauthorized") ||
-    lowered.includes("invalid token") ||
-    lowered.includes("expired") ||
-    lowered.includes("re-auth") ||
-    lowered.includes("oauth") ||
-    lowered.includes("401") ||
-    lowered.includes("403")
-  ) {
-    return 401;
+  const anchored = STATUS_CODE.exec(lowered);
+  if (anchored?.[1]) {
+    const status = Number(anchored[1]);
+    return status === 401 || status === 403 ? 401 : status;
   }
-  if (lowered.includes("rate limit") || lowered.includes("429")) {
-    return 429;
-  }
-  if (
-    lowered.includes("500") ||
-    lowered.includes("502") ||
-    lowered.includes("503") ||
-    lowered.includes("timeout") ||
-    lowered.includes("temporarily")
-  ) {
-    return 503;
-  }
+  if (AUTH_TEXT.test(lowered)) return 401;
+  if (THROTTLE_TEXT.test(lowered)) return 429;
+  if (TRANSIENT_TEXT.test(lowered)) return 503;
   return 400;
 }

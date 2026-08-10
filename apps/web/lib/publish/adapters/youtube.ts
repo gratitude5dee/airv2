@@ -56,6 +56,12 @@ export const youtubeAdapter: PublishAdapter = {
         message: `Description is ${draft.caption.length} characters; YouTube allows at most ${YOUTUBE_SPEC.maxDescriptionChars}.`,
       });
     }
+    if (/[<>]/.test(draft.caption)) {
+      problems.push({
+        code: "yt.description.brackets",
+        message: "YouTube descriptions cannot contain angle brackets.",
+      });
+    }
     const video = videos[0];
     if (
       video &&

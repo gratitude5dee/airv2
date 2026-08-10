@@ -24,6 +24,7 @@ import { YOUTUBE_SPEC } from "./specs/youtube";
 import { TIKTOK_SPEC } from "./specs/tiktok";
 import { retryDelaySeconds, sanitizeLabel, verdictFor } from "./verdict";
 import { PublishError } from "./adapter";
+import { unwrapToolResult } from "./result";
 
 function draft(overrides: Partial<Draft>): Draft {
   return { caption: "hello", media: [], ...overrides };
@@ -96,6 +97,18 @@ describe("instagram validate", () => {
     expect(problems.map((problem) => problem.code)).toContain("ig.media.count");
   });
 
+  it("rejects a caption with 31 hashtags", () => {
+    const problems = instagramAdapter.validate(
+      draft({
+        caption: Array.from({ length: 31 }, (_, i) => `#tag${i}`).join(" "),
+        media: [image(1080, 1080)],
+      })
+    );
+    expect(problems.map((problem) => problem.code)).toContain(
+      "ig.caption.hashtags"
+    );
+  });
+
   it("rejects a multi-item story", () => {
     const problems = instagramAdapter.validate(
       draft({
@@ -153,6 +166,15 @@ describe("youtube validate", () => {
       .map((problem) => problem.code);
     expect(codes).toContain("yt.video.single");
     expect(codes).toContain("yt.title.required");
+  });
+
+  it("rejects angle brackets in the description", () => {
+    const problems = youtubeAdapter.validate(
+      draft({ caption: "see <b>this</b>", title: "t", media: [video(60)] })
+    );
+    expect(problems.map((problem) => problem.code)).toContain(
+      "yt.description.brackets"
+    );
   });
 
   it("rejects angle brackets in the title", () => {
@@ -227,6 +249,24 @@ describe("verdict helpers", () => {
     expect(retryDelaySeconds(0, 300)).toBe(300);
     expect(retryDelaySeconds(1, 300)).toBe(600);
     expect(retryDelaySeconds(10, 300)).toBe(6 * 60 * 60);
+  });
+
+  it("does not misread content errors mentioning expiry as auth failures", () => {
+    for (const [errorText, expected] of [
+      ["media container expired before publish", 400],
+      ["the media url expired", 400],
+      ["access token has expired, please reconnect", 401],
+      ["HTTP 401 Unauthorized", 401],
+      ["rate limit exceeded", 429],
+    ] as const) {
+      let status: number | null = null;
+      try {
+        unwrapToolResult({ successful: false, error: errorText });
+      } catch (error) {
+        if (error instanceof PublishError) status = error.status;
+      }
+      expect(status, errorText).toBe(expected);
+    }
   });
 
   it("sanitizes decision labels", () => {

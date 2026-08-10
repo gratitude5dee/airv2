@@ -122,7 +122,11 @@ export const tiktokAdapter: PublishAdapter = {
   },
 
   classify(status: number, body: string): Verdict {
-    if (body.includes("access_token_invalid") || body.includes("scope")) {
+    if (
+      body.includes("access_token_invalid") ||
+      body.includes("scope_not_authorized") ||
+      body.includes("scope_permission_missed")
+    ) {
       return {
         kind: "reauth",
         message: "TikTok connection expired — reconnect to keep posting.",

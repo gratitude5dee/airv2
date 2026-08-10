@@ -4,8 +4,8 @@
  * step state (container/publish ids) round-trips through the caller's
  * persistence hook so a long publish survives a worker deadline.
  */
-import { executeTool } from "../composio/client";
-import type { PublishCtx } from "./adapter";
+import { ComposioApiError, executeTool } from "../composio/client";
+import { PublishError, type PublishCtx } from "./adapter";
 
 export function makePublishCtx(options: {
   userId: string;
@@ -20,12 +20,22 @@ export function makePublishCtx(options: {
     accountRef: options.accountRef,
     state,
     async execute(toolSlug, args) {
-      return await executeTool(
-        toolSlug,
-        options.userId,
-        args,
-        options.connectedAccountId
-      );
+      try {
+        return await executeTool(
+          toolSlug,
+          options.userId,
+          args,
+          options.connectedAccountId
+        );
+      } catch (error) {
+        // Surface Composio HTTP failures (revoked connection, missing
+        // account, throttle) as PublishError so classify() can produce a
+        // reauth/fix-content/retry verdict instead of a blind retry.
+        if (error instanceof ComposioApiError) {
+          throw new PublishError(error.status, error.message);
+        }
+        throw error;
+      }
     },
     async saveState() {
       if (options.persistState) {
