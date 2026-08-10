@@ -126,6 +126,7 @@ export default function HomePage() {
   const [connectorFilter, setConnectorFilter] = useState("");
   const [panelNote, setPanelNote] = useState<string | null>(null);
   const [panelFailed, setPanelFailed] = useState(false);
+  const panelLoadId = useRef(0);
   const [skillQuery, setSkillQuery] = useState("");
   const [hubResults, setHubResults] = useState<HubSkill[] | null>(null);
   const [hubNote, setHubNote] = useState<string | null>(null);
@@ -382,36 +383,44 @@ export default function HomePage() {
   }
 
   async function loadHistory() {
+    const loadId = ++panelLoadId.current;
     setPanelFailed(false);
     setPanelNote("Waking your agent… this can take a minute if it was asleep.");
     try {
       const res = await fetch("/api/box/api/sessions?limit=30");
       if (res.ok) {
         setSessions(pickList<SessionSummary>(await res.json(), ["sessions", "data", "items"]));
+        if (loadId !== panelLoadId.current) return;
         setPanelNote(null);
       } else {
+        if (loadId !== panelLoadId.current) return;
         setPanelNote(boxErrorNote(res.status, "history"));
         setPanelFailed(true);
       }
     } catch {
+      if (loadId !== panelLoadId.current) return;
       setPanelNote("Couldn't load history — try again shortly.");
       setPanelFailed(true);
     }
   }
 
   async function loadInstalledSkills() {
+    const loadId = ++panelLoadId.current;
     setPanelFailed(false);
     setPanelNote("Waking your agent… this can take a minute if it was asleep.");
     try {
       const res = await fetch("/api/box/v1/skills");
       if (res.ok) {
         setSkills(pickList<SkillSummary>(await res.json(), ["skills", "data", "items"]));
+        if (loadId !== panelLoadId.current) return;
         setPanelNote(null);
       } else {
+        if (loadId !== panelLoadId.current) return;
         setPanelNote(boxErrorNote(res.status, "skills"));
         setPanelFailed(true);
       }
     } catch {
+      if (loadId !== panelLoadId.current) return;
       setPanelNote("Couldn't load skills — try again shortly.");
       setPanelFailed(true);
     }
@@ -419,6 +428,7 @@ export default function HomePage() {
 
   async function loadTab(next: Tab) {
     setTab(next);
+    panelLoadId.current++;
     setPanelNote(null);
     setPanelFailed(false);
     if (next === "history" && sessions === null) {
