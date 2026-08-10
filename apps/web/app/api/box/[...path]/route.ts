@@ -11,7 +11,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
 import { requestSession } from "@/lib/auth/surface";
-import { ensureBoxAwake } from "@/lib/orchestrator/boxes";
+import { ensureBoxAwake, StartLimitError } from "@/lib/orchestrator/boxes";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -73,6 +73,12 @@ async function handle(
       },
     });
   } catch (error) {
+    if (error instanceof StartLimitError) {
+      return NextResponse.json(
+        { error: "start_limit_reached" },
+        { status: 429 }
+      );
+    }
     const message = error instanceof Error ? error.message : "unknown error";
     console.error(
       JSON.stringify({ msg: "box proxy failed", user_id: userId, error: message })
