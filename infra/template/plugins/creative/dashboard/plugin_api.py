@@ -14,6 +14,7 @@ startup reconciliation fails with a retriable reason.
 import hashlib
 import json
 import os
+import shlex
 import shutil
 import signal
 import sqlite3
@@ -136,10 +137,10 @@ _reconcile_on_startup()
 
 class JobRequest(BaseModel):
     kind: str
-    brief: str
+    brief: str = Field(min_length=1, max_length=8000)
     spec_id: str | None = None
     brand_rev: int | None = None
-    inputs: list[str] = Field(default_factory=list)
+    inputs: list[str] = Field(default_factory=list, max_length=32)
 
 
 class VariantRequest(BaseModel):
@@ -159,9 +160,17 @@ def _launch(job_id: str, kind: str, brief: str, inputs: list[str]) -> int:
     if inputs:
         prompt += f" Input references: {json.dumps(inputs)}"
     log_path = job_dir / "job.log"
+    exit_path = job_dir / "exit_code"
+    # A thin sh wrapper records the render's exit status to exit_code so
+    # _refresh_job_state can distinguish a successful run from a crash that
+    # left partial output behind.
+    script = (
+        f"{shlex.quote(HERMES_BIN)} run {shlex.quote(prompt)}; "
+        f"echo $? > {shlex.quote(str(exit_path))}"
+    )
     with open(log_path, "ab") as log:
         process = subprocess.Popen(
-            [HERMES_BIN, "run", prompt],
+            ["/bin/sh", "-c", script],
             stdout=log,
             stderr=log,
             cwd=str(job_dir),
@@ -259,7 +268,7 @@ def _refresh_job_state(conn: sqlite3.Connection, row: sqlite3.Row) -> sqlite3.Ro
         except ValueError:
             exit_code = None
     outputs = _register_outputs(conn, row["id"])
-    if outputs and exit_code in (0, None):
+    if outputs and exit_code == 0:
         conn.execute(
             "update jobs set state='done', progress=1, updated_at=? where id=?",
             (time.time(), row["id"]),
@@ -267,7 +276,7 @@ def _refresh_job_state(conn: sqlite3.Connection, row: sqlite3.Row) -> sqlite3.Ro
     else:
         conn.execute(
             "update jobs set state='failed', retriable=1, "
-            "error='render exited without producing output — retry', "
+            "error='render exited unsuccessfully — retry', "
             "updated_at=? where id=?",
             (time.time(), row["id"]),
         )
@@ -456,6 +465,8 @@ def derive_variants(asset_id: str, body: VariantRequest) -> dict:
                 ratio_w, ratio_h = int(w_part), int(h_part)
             except ValueError:
                 raise HTTPException(400, f"bad ratio {ratio!r}") from None
+            if not (1 <= ratio_w <= 32 and 1 <= ratio_h <= 32):
+                raise HTTPException(400, f"ratio out of range {ratio!r}")
             source = Path(row["path"])
             variant_id = uuid.uuid4().hex
             out_path = ASSETS_DIR / variant_id / source.name

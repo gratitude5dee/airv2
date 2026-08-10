@@ -11,7 +11,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
 import { requestSession } from "@/lib/auth/surface";
-import { ensureBoxAwake, StartLimitError } from "@/lib/orchestrator/boxes";
+import {
+  ensureBoxAwake,
+  refreshDashboardRoute,
+  StartLimitError,
+  type HostedRoute,
+} from "@/lib/orchestrator/boxes";
 import { openSecret } from "@/lib/crypto/secretbox";
 import { env } from "@/lib/env";
 import { resolveUpstream } from "@/lib/box/allowlist";
@@ -39,8 +44,22 @@ async function handle(
   try {
     const box = await ensureBoxAwake(supabase, userId);
     const search = request.nextUrl.search;
-    let baseUrl: string;
-    let headers: Record<string, string>;
+    const hasBody = request.method === "POST" || request.method === "PUT";
+    const requestBody = hasBody ? await request.text() : undefined;
+
+    const proxyTo = async (
+      baseUrl: string,
+      headers: Record<string, string>
+    ): Promise<Response> =>
+      fetch(`${baseUrl}/${joined}${search}`, {
+        method: request.method,
+        headers: hasBody
+          ? { ...headers, "Content-Type": "application/json" }
+          : headers,
+        body: requestBody,
+      });
+
+    let upstream: Response;
     if (upstreamKind === "dashboard") {
       const authKey = env.boxDashboardAuthKey();
       if (!box.dashboard || !box.dashboardAuthSealed || !authKey) {
@@ -51,29 +70,26 @@ async function handle(
       }
       const password = openSecret(box.dashboardAuthSealed, authKey);
       const basic = Buffer.from(`air:${password}`).toString("base64");
-      baseUrl = box.dashboard.url;
-      headers = {
+      const dashboardHeaders = (route: HostedRoute): Record<string, string> => ({
         Authorization: `Basic ${basic}`,
-        Cookie: `_port_auth=${box.dashboard.token}`,
-      };
+        Cookie: `_port_auth=${route.token}`,
+      });
+      upstream = await proxyTo(box.dashboard.url, dashboardHeaders(box.dashboard));
+      // The hosted _token rotates on resume and the wake path refreshes the
+      // dashboard route only in the background — on a stale-token rejection,
+      // re-register the route synchronously and retry once.
+      if (upstream.status === 401 || upstream.status === 403) {
+        const fresh = await refreshDashboardRoute(supabase, box.boxId);
+        if (fresh) {
+          upstream = await proxyTo(fresh.url, dashboardHeaders(fresh));
+        }
+      }
     } else {
-      baseUrl = box.target.hostedUrl;
-      headers = {
+      upstream = await proxyTo(box.target.hostedUrl, {
         Authorization: `Bearer ${box.target.apiServerKey}`,
         Cookie: `_port_auth=${box.target.hostedToken}`,
-      };
+      });
     }
-    const hasBody = request.method === "POST" || request.method === "PUT";
-    const upstream = await fetch(
-      `${baseUrl}/${joined}${search}`,
-      {
-        method: request.method,
-        headers: hasBody
-          ? { ...headers, "Content-Type": "application/json" }
-          : headers,
-        body: hasBody ? await request.text() : undefined,
-      }
-    );
     const body = await upstream.text();
     return new NextResponse(body, {
       status: upstream.status,

@@ -91,14 +91,14 @@ async function refreshApiServerRoute(
 /**
  * Re-register the dashboard (9119) hosted route and persist the rotated
  * token. Best-effort: the dashboard unit is optional on older template
- * versions and nothing on the request path consumes the route yet, so this
- * runs fire-and-forget after the box is confirmed healthy and never blocks
- * or fails a turn.
+ * versions, so this never throws. Runs fire-and-forget after a wake so the
+ * wake deadline is never spent on it, and synchronously from the proxy when
+ * a dashboard-upstream request is rejected with a stale token.
  */
-async function refreshDashboardRoute(
+export async function refreshDashboardRoute(
   supabase: SupabaseClient,
   boxId: string
-): Promise<void> {
+): Promise<HostedRoute | null> {
   try {
     const result = await command(
       boxId,
@@ -106,13 +106,14 @@ async function refreshDashboardRoute(
       180
     );
     if (result.exitCode !== 0) {
-      return;
+      return null;
     }
     const dashboard = parseHostedUrl(result.stdout, DASHBOARD_PORT);
     await supabase
       .from("boxes")
       .update({ dashboard_url: dashboard.url, dashboard_token: dashboard.token })
       .eq("provider_box_id", boxId);
+    return dashboard;
   } catch (error) {
     console.log(
       JSON.stringify({
@@ -121,6 +122,7 @@ async function refreshDashboardRoute(
         error: error instanceof Error ? error.message : String(error),
       })
     );
+    return null;
   }
 }
 
@@ -224,9 +226,9 @@ export async function ensureBoxAwake(
     await new Promise((resolve) => setTimeout(resolve, 5_000));
   }
 
-  // The dashboard token rotated too, but nothing on the request path reads
-  // it — refresh it in the background so the wake deadline is never spent
-  // on it.
+  // The dashboard token rotated too; refresh it in the background so the
+  // wake deadline is never spent on it. Dashboard-upstream proxy requests
+  // that lose this race retry once with a synchronous refresh.
   if (refreshed) {
     void refreshDashboardRoute(supabase, boxId);
   }

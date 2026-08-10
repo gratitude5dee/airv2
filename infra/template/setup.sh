@@ -128,8 +128,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 mkdir -p "$HOME_DIR/.hermes/plugins"
 rm -rf "$HOME_DIR/.hermes/plugins/creative"
 cp -r "$SCRIPT_DIR/plugins/creative" "$HOME_DIR/.hermes/plugins/creative"
-grep -q CREATIVE_PLUGIN_VERSION "$HOME_DIR/.hermes/.env" || \
-  echo "CREATIVE_PLUGIN_VERSION=$(python3 -c "import json;print(json.load(open('$SCRIPT_DIR/plugins/creative/dashboard/manifest.json'))['version'])")" >> "$HOME_DIR/.hermes/.env"
+sed -i '/^CREATIVE_PLUGIN_VERSION=/d' "$HOME_DIR/.hermes/.env"
+echo "CREATIVE_PLUGIN_VERSION=$(python3 -c "import json;print(json.load(open('$SCRIPT_DIR/plugins/creative/dashboard/manifest.json'))['version'])")" >> "$HOME_DIR/.hermes/.env"
 
 # ── 4. systemd units — /etc is snapshotted, enabled units restart on resume ──
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
