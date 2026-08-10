@@ -389,8 +389,9 @@ export default function HomePage() {
     try {
       const res = await fetch("/api/box/api/sessions?limit=30");
       if (res.ok) {
-        setSessions(pickList<SessionSummary>(await res.json(), ["sessions", "data", "items"]));
+        const list = pickList<SessionSummary>(await res.json(), ["sessions", "data", "items"]);
         if (loadId !== panelLoadId.current) return;
+        setSessions(list);
         setPanelNote(null);
       } else {
         if (loadId !== panelLoadId.current) return;
@@ -411,8 +412,9 @@ export default function HomePage() {
     try {
       const res = await fetch("/api/box/v1/skills");
       if (res.ok) {
-        setSkills(pickList<SkillSummary>(await res.json(), ["skills", "data", "items"]));
+        const list = pickList<SkillSummary>(await res.json(), ["skills", "data", "items"]);
         if (loadId !== panelLoadId.current) return;
+        setSkills(list);
         setPanelNote(null);
       } else {
         if (loadId !== panelLoadId.current) return;
