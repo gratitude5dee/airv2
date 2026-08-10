@@ -123,10 +123,11 @@ async function handle(
       // re-registration + retry — other failures (dashboard 5xx, missing
       // cookies) fail fast instead of paying a multi-minute box command.
       if (attempt.kind === "stale") {
-        await attempt.response?.body?.cancel();
         const fresh = await refreshDashboardRoute(supabase, box.boxId);
         if (fresh) {
+          const superseded = attempt.response;
           attempt = await dashboardAttempt(fresh);
+          await superseded?.body?.cancel();
         }
       }
       if (attempt.kind === "stale" && attempt.response) {
