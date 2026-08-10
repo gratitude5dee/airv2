@@ -23,11 +23,19 @@ function yamlKey(key: string): string {
 function colorValue(value: string | BrandPaletteColor): string {
   if (typeof value === "string") return value;
   if (value.alpha !== undefined && value.alpha < 1) {
-    const hex = value.hex.replace("#", "");
-    const r = parseInt(hex.slice(0, 2), 16);
-    const g = parseInt(hex.slice(2, 4), 16);
-    const b = parseInt(hex.slice(4, 6), 16);
-    return `rgba(${r}, ${g}, ${b}, ${value.alpha})`;
+    let hex = value.hex.replace("#", "");
+    if (hex.length === 3) {
+      hex = hex
+        .split("")
+        .map((c) => c + c)
+        .join("");
+    }
+    if (/^[0-9a-fA-F]{6}$/.test(hex)) {
+      const r = parseInt(hex.slice(0, 2), 16);
+      const g = parseInt(hex.slice(2, 4), 16);
+      const b = parseInt(hex.slice(4, 6), 16);
+      return `rgba(${r}, ${g}, ${b}, ${value.alpha})`;
+    }
   }
   return value.hex;
 }
@@ -48,7 +56,7 @@ export function compileThemeYaml(source: BrandSource): string {
   if (typography.length > 0) {
     lines.push("typography:");
     for (const [key, value] of typography) {
-      lines.push(`  ${key}: ${yamlString(String(value))}`);
+      lines.push(`  ${yamlKey(key)}: ${yamlString(String(value))}`);
     }
   }
   if (source.layout?.radius || source.layout?.density) {
@@ -77,7 +85,10 @@ export function compileThemeYaml(source: BrandSource): string {
 }
 
 function list(items: string[] | undefined): string[] {
-  return (items ?? []).filter((item) => item.trim() !== "");
+  if (!Array.isArray(items)) return [];
+  return items.filter(
+    (item) => typeof item === "string" && item.trim() !== ""
+  );
 }
 
 /** The brief the agent reads: rules as instructions, palette as named hexes. */
@@ -242,6 +253,23 @@ const SLUG = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const TOKEN_KEY = /^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/;
 const DENSITIES = new Set(["compact", "comfortable", "spacious"]);
 
+function requireObject(field: string, value: unknown): void {
+  if (value === undefined) return;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${field} must be an object`);
+  }
+}
+
+function requireStringArray(field: string, value: unknown): void {
+  if (value === undefined) return;
+  if (
+    !Array.isArray(value) ||
+    value.some((item) => typeof item !== "string")
+  ) {
+    throw new Error(`${field} must be a list of strings`);
+  }
+}
+
 /** Shape-check an untrusted source before it is stored or compiled. */
 export function validateBrandSource(input: unknown): BrandSource {
   if (!input || typeof input !== "object") {
@@ -271,6 +299,27 @@ export function validateBrandSource(input: unknown): BrandSource {
       throw new Error(`palette.${key} must be a color string`);
     }
   }
+  requireObject("typography", source.typography);
+  requireObject("layout", source.layout);
+  requireObject("assets", source.assets);
+  requireObject("assets.custom", source.assets?.custom);
+  requireObject("voice", source.voice);
+  requireObject("claims", source.claims);
+  requireObject("imagery", source.imagery);
+  for (const key of Object.keys(source.typography ?? {})) {
+    if (!TOKEN_KEY.test(key)) {
+      throw new Error(
+        `typography key ${JSON.stringify(key)} must be a simple token name`
+      );
+    }
+  }
+  requireStringArray("voice.banned", source.voice?.banned);
+  requireStringArray("claims.allowed", source.claims?.allowed);
+  requireStringArray("claims.forbidden", source.claims?.forbidden);
+  requireStringArray("claims.requiresLegal", source.claims?.requiresLegal);
+  requireStringArray("imagery.do", source.imagery?.do);
+  requireStringArray("imagery.avoid", source.imagery?.avoid);
+  requireStringArray("markets", source.markets);
   if (
     source.layout?.density !== undefined &&
     !DENSITIES.has(String(source.layout.density))
