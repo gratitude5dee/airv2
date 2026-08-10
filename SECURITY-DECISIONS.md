@@ -72,6 +72,33 @@ are served by the 9119 dashboard behind basic auth, so the allowlisted
 - When `BOX_DASHBOARD_AUTH_KEY` is unset, provisioning persists no credential
   and dashboard proxy paths return 503 — the feature fails closed.
 
+## Creative asset delivery — user content leaves the box (CM2 / CC3 / CC4)
+
+Publishing platforms (Meta et al.) fetch media from a public URL; they do not
+accept uploads. The box can never be that URL (C16), so rendered assets leave
+the box through a delivery layer (`apps/web/lib/assets/`).
+
+**What leaves:** only rendered creative outputs the user explicitly delivers
+(`POST /api/assets`), never arbitrary box files — the pull path is exactly
+the creative plugin's export endpoints, server-to-server.
+
+**What is done on the way out:** the plugin strips EXIF/GPS/XMP/container
+metadata **inside the box** before the bytes leave (CC4; images re-encoded,
+av containers stream-copied with metadata dropped), and the control plane
+verifies the export's sha256 end-to-end before storing.
+
+**Where it lives:** the private `creative-assets` Supabase Storage bucket,
+content-addressed under `<user_id>/masters/…`. Deleting a user removes the
+whole prefix in the same deletion script.
+
+**Who can reach it and for how long:** nothing is publicly reachable at rest.
+A delivery is a copy at an unguessable random path signed for
+`DELIVERY_TTL_SECONDS` (30 min — Meta's worst-case container processing plus
+one sweep of retry margin), minted at publish time and deleted on
+confirmation or expiry, whichever first — after deletion the URL 404s even
+inside its signature window. Bytes are served by object storage directly,
+never proxied through a Vercel function.
+
 ## Standing invariants (restated for this repo)
 
 - No Box `_token`, `API_SERVER_KEY`, `GATEWAY_TOKEN`, provider key, or `*.on.ascii.dev`

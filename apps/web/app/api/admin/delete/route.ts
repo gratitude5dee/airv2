@@ -14,6 +14,7 @@ import {
   deleteSession,
   listConnectedAccounts,
 } from "@/lib/composio/client";
+import { ASSETS_BUCKET, userPrefix } from "@/lib/assets/keys";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -93,6 +94,31 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     steps.composio = `revoked ${accounts.length}`;
   } catch (error) {
     steps.composio = `error: ${error instanceof Error ? error.message : String(error)}`;
+  }
+
+  // CM2: remove every stored asset object under the user's prefix (masters
+  // and delivery derivatives) — added in the same PR as the bucket.
+  try {
+    let removed = 0;
+    for (const folder of ["masters", "deliveries"]) {
+      const prefix = `${userPrefix(userId)}${folder}`;
+      // Bounded: remove() can silently skip paths, so break on any page
+      // that makes no progress rather than re-listing forever.
+      for (let page = 0; page < 100; page += 1) {
+        const { data: objects, error } = await supabase.storage
+          .from(ASSETS_BUCKET)
+          .list(prefix, { limit: 100 });
+        if (error || !objects || objects.length === 0) break;
+        const removal = await supabase.storage
+          .from(ASSETS_BUCKET)
+          .remove(objects.map((object) => `${prefix}/${object.name}`));
+        if (removal.error || !removal.data || removal.data.length === 0) break;
+        removed += removal.data.length;
+      }
+    }
+    steps.assets = `removed ${removed}`;
+  } catch (error) {
+    steps.assets = `error: ${error instanceof Error ? error.message : String(error)}`;
   }
 
   await supabase
