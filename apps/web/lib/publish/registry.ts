@@ -18,7 +18,15 @@ const ADAPTERS: Record<Platform, PublishAdapter> = {
   tiktok: tiktokAdapter,
 };
 
+/** Adapters currently enabled for publishing (dark flags applied). */
 export function allAdapters(): PublishAdapter[] {
+  return Object.keys(ADAPTERS)
+    .map((platform) => adapterFor(platform))
+    .filter((adapter): adapter is PublishAdapter => adapter !== null);
+}
+
+/** Every adapter including dark ones — for conformance tests only. */
+export function allAdaptersIncludingDark(): PublishAdapter[] {
   return Object.values(ADAPTERS);
 }
 

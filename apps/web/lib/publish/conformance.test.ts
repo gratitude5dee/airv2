@@ -13,7 +13,11 @@ import { facebookAdapter } from "./adapters/facebook";
 import { xAdapter } from "./adapters/x";
 import { youtubeAdapter } from "./adapters/youtube";
 import { tiktokAdapter } from "./adapters/tiktok";
-import { allAdapters, adapterFor } from "./registry";
+import {
+  allAdapters,
+  allAdaptersIncludingDark,
+  adapterFor,
+} from "./registry";
 import { INSTAGRAM_SPEC } from "./specs/instagram";
 import { X_SPEC } from "./specs/x";
 import { YOUTUBE_SPEC } from "./specs/youtube";
@@ -227,7 +231,11 @@ describe("verdict helpers", () => {
 
   it("sanitizes decision labels", () => {
     expect(sanitizeLabel("a\u0000b\n\n  c")).toBe("a b c");
-    expect(sanitizeLabel("x".repeat(500))).toHaveLength(200);
+    expect(sanitizeLabel("word ".repeat(100))).toHaveLength(200);
+    expect(
+      sanitizeLabel("bad media at https://cdn.test/signed?token=abc123")
+    ).toBe("bad media at [link]");
+    expect(sanitizeLabel("tok " + "A".repeat(64))).toBe("tok [redacted]");
   });
 });
 
@@ -246,8 +254,17 @@ describe("registry", () => {
     expect(adapterFor("myspace")).toBeNull();
   });
 
+  it("allAdapters applies the dark flag", () => {
+    expect(allAdapters().map((adapter) => adapter.platform)).not.toContain(
+      "tiktok"
+    );
+    expect(
+      allAdaptersIncludingDark().map((adapter) => adapter.platform)
+    ).toContain("tiktok");
+  });
+
   it("every adapter rejects an over-cap caption", () => {
-    for (const adapter of allAdapters()) {
+    for (const adapter of allAdaptersIncludingDark()) {
       const problems = adapter.validate(
         draft({
           caption: "x".repeat(adapter.limits.maxCaptionChars + 1),

@@ -97,7 +97,14 @@ export const instagramAdapter: PublishAdapter = {
       ctx.state[CONTAINER_STATE_KEY] = containerId;
       await ctx.saveState();
     }
-    await waitForContainer(ctx, containerId);
+    const already = await waitForContainer(ctx, containerId);
+    if (already) {
+      // The container was published on a previous (interrupted) attempt —
+      // finish with the existing post instead of publishing twice.
+      delete ctx.state[CONTAINER_STATE_KEY];
+      await ctx.saveState();
+      return already;
+    }
     const published = unwrapToolResult(
       await ctx.execute("INSTAGRAM_CREATE_POST", {
         creation_id: containerId,
@@ -195,10 +202,17 @@ async function createItemContainer(
   return id;
 }
 
+/**
+ * Poll the container until it is ready to publish. Returns null when the
+ * container is FINISHED (ready for media_publish), or the already-live
+ * Published when the status is PUBLISHED — which happens when a previous
+ * attempt's media_publish succeeded but the worker died before clearing
+ * the checkpoint.
+ */
 async function waitForContainer(
   ctx: PublishCtx,
   containerId: string
-): Promise<void> {
+): Promise<Published | null> {
   for (let poll = 0; poll < MAX_POLLS; poll += 1) {
     const status = unwrapToolResult(
       await ctx.execute("INSTAGRAM_GET_POST_STATUS", {
@@ -206,7 +220,12 @@ async function waitForContainer(
       })
     );
     const code = firstString(status, [["status_code"], ["status"]]);
-    if (code === "FINISHED" || code === "PUBLISHED") return;
+    if (code === "FINISHED") return null;
+    if (code === "PUBLISHED") {
+      const externalId =
+        firstString(status, [["media_id"], ["ig_media_id"]]) ?? containerId;
+      return { externalId };
+    }
     if (code === "ERROR" || code === "EXPIRED") {
       // Terminal: drop the checkpoint so a retry creates a fresh container
       // instead of re-polling a dead one forever.

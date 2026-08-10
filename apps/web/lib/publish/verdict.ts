@@ -49,10 +49,13 @@ export async function raiseVerdictDecision(
   }
 }
 
-/** Labels render in the "Needs you" queue: keep printable text only,
- * collapse whitespace, and cap the length. */
+/** Labels render in the "Needs you" queue: redact URLs (platform error
+ * bodies can echo our signed delivery URLs) and token-like blobs, keep
+ * printable text only, collapse whitespace, and cap the length. */
 export function sanitizeLabel(message: string): string {
   return message
+    .replace(/https?:\/\/\S+/gi, "[link]")
+    .replace(/[A-Za-z0-9_-]{40,}/g, "[redacted]")
     .replace(/[^\x20-\x7E\u00A0-\uFFFF]/g, " ")
     .replace(/\s+/g, " ")
     .trim()
