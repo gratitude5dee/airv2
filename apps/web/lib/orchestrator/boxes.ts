@@ -29,6 +29,8 @@ export interface UserBox {
   target: HermesBoxTarget;
   /** Hermes dashboard (9119) route, for the allowlisted proxy. Server-side only. */
   dashboard?: HostedRoute;
+  /** Sealed dashboard basic-auth password (CM1/CC10). Server-side only. */
+  dashboardAuthSealed?: string;
 }
 
 interface BoxRow {
@@ -38,6 +40,7 @@ interface BoxRow {
   api_server_key: string;
   dashboard_url: string | null;
   dashboard_token: string | null;
+  dashboard_auth: string | null;
 }
 
 export const API_SERVER_PORT = 8642;
@@ -132,7 +135,7 @@ export async function ensureBoxAwake(
   const { data, error: selectError } = await supabase
     .from("boxes")
     .select(
-      "provider_box_id, hosted_url, hosted_token, api_server_key, dashboard_url, dashboard_token"
+      "provider_box_id, hosted_url, hosted_token, api_server_key, dashboard_url, dashboard_token, dashboard_auth"
     )
     .eq("user_id", userId)
     .maybeSingle();
@@ -237,7 +240,12 @@ export async function ensureBoxAwake(
     .update({ state: "ready" })
     .eq("provider_box_id", boxId);
 
-  return { boxId, target, dashboard };
+  return {
+    boxId,
+    target,
+    dashboard,
+    dashboardAuthSealed: row.dashboard_auth ?? undefined,
+  };
 }
 
 /** Re-arm the idle deadline; the cron sweeper stops the box past it. */

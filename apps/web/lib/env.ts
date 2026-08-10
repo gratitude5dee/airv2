@@ -42,6 +42,12 @@ export const env = {
   // credentials independently of web sessions.
   desktopSigningKey: (): string =>
     process.env.DESKTOP_SIGNING_KEY ?? required("SESSION_SECRET"),
+  // Seals the box dashboard basic-auth password at rest (CM1 task 0 / CC10).
+  // 64 hex chars (32 bytes). Optional until the creative plugin ships: when
+  // unset, provisioning skips persisting the credential and the dashboard
+  // proxy paths return 503.
+  boxDashboardAuthKey: (): string | null =>
+    process.env.BOX_DASHBOARD_AUTH_KEY ?? null,
   miniappOrigin: (): string =>
     optional("MINIAPP_ORIGIN", "https://mini.wzrd.tech"),
   operatorAllowlist: (): string[] =>

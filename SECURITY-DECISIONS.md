@@ -45,6 +45,33 @@ resolved by policy rather than a tap.
   across BOTH username renames AND the future domain migration. The inbound router
   resolves retired addresses forever.
 
+## Dashboard basic-auth credential persisted sealed (CM1 task 0 / CC10 / V7)
+
+`boxes.dashboard_auth` stores the box dashboard's (9119) basic-auth password
+sealed with AES-256-GCM under `BOX_DASHBOARD_AUTH_KEY`
+(`apps/web/lib/crypto/secretbox.ts`). Previously only a bcrypt-style hash
+reached the box and the plaintext was discarded at provision time.
+
+**Why:** the creative plugin (CM1) is a dashboard backend plugin — its routes
+are served by the 9119 dashboard behind basic auth, so the allowlisted
+`/api/box/*` proxy cannot reach `api/plugins/creative/*` without a credential.
+
+**Bounds:**
+
+- At rest it is ciphertext (`v1:` versioned format); the sealing key lives only
+  in the Vercel server env, never in a box or browser. The plaintext exists
+  only transiently inside the proxy request handler.
+- The proxy uses it only for paths in `DASHBOARD_ALLOWLIST` — exactly the
+  creative plugin surface, path by path (C5). No generic dashboard access is
+  exposed; every other `/api/plugins/*` path stays 404. Asset **bytes** are not
+  browser-proxied at all (server-to-server only, C16).
+- Box origins and hosted tokens still never reach a client (C3).
+- Rotation: re-provisioning writes a new password + hash; rotating
+  `BOX_DASHBOARD_AUTH_KEY` requires resealing rows (the version prefix exists
+  for that migration).
+- When `BOX_DASHBOARD_AUTH_KEY` is unset, provisioning persists no credential
+  and dashboard proxy paths return 503 — the feature fails closed.
+
 ## Standing invariants (restated for this repo)
 
 - No Box `_token`, `API_SERVER_KEY`, `GATEWAY_TOKEN`, provider key, or `*.on.ascii.dev`
