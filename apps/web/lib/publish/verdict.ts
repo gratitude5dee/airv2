@@ -5,7 +5,12 @@
  * invisible exponential backoff with capped attempts.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { PublishError, type PublishAdapter, type Verdict } from "./adapter";
+import {
+  PublishError,
+  sanitizeVerdictMessage,
+  type PublishAdapter,
+  type Verdict,
+} from "./adapter";
 
 export const MAX_RETRY_ATTEMPTS = 5;
 
@@ -49,15 +54,8 @@ export async function raiseVerdictDecision(
   }
 }
 
-/** Labels render in the "Needs you" queue: redact URLs (platform error
- * bodies can echo our signed delivery URLs) and token-like blobs, keep
- * printable text only, collapse whitespace, and cap the length. */
+/** Labels render in the "Needs you" queue; the scrub lives with the verdict
+ * contract so it also applies at classification time. */
 export function sanitizeLabel(message: string): string {
-  return message
-    .replace(/https?:\/\/\S+/gi, "[link]")
-    .replace(/[A-Za-z0-9_-]{40,}/g, "[redacted]")
-    .replace(/[^\x20-\x7E\u00A0-\uFFFF]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 200);
+  return sanitizeVerdictMessage(message);
 }

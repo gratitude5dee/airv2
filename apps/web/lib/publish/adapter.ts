@@ -124,8 +124,24 @@ export function classifyDefault(status: number, body: string): Verdict {
   }
   return {
     kind: "fix-content",
-    message: body.slice(0, 300) || `The platform rejected the post (${status}).`,
+    message:
+      sanitizeVerdictMessage(body) ||
+      `The platform rejected the post (${status}).`,
   };
+}
+
+/** Verdict messages surface to users (revise cards, and any future log or
+ * API consumer): redact URLs (platform error bodies can echo our signed
+ * delivery URLs) and token-like blobs, keep printable text only, collapse
+ * whitespace, and cap the length. */
+export function sanitizeVerdictMessage(message: string): string {
+  return message
+    .replace(/https?:\/\/\S+/gi, "[link]")
+    .replace(/[A-Za-z0-9_-]{40,}/g, "[redacted]")
+    .replace(/[^\x20-\x7E\u00A0-\uFFFF]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 200);
 }
 
 export function aspectRatio(media: DraftMedia): number | null {

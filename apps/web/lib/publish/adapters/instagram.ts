@@ -66,8 +66,11 @@ export const instagramAdapter: PublishAdapter = {
         message: `Caption is ${draft.caption.length} characters; Instagram allows at most ${INSTAGRAM_SPEC.maxCaptionChars}.`,
       });
     }
+    // The 4:5–1.91:1 bounds are the feed image range; stories and reels
+    // are full-screen 9:16 and are not bound by it.
+    const isFeed = draft.kind === undefined || draft.kind === "feed";
     for (const media of draft.media) {
-      if (media.kind === "image") {
+      if (media.kind === "image" && isFeed) {
         const ratio = aspectRatio(media);
         if (
           ratio !== null &&
@@ -196,7 +199,11 @@ async function createItemContainer(
 ): Promise<string> {
   const args: Record<string, unknown> = {
     ...(kind === "image" ? { image_url: url } : { video_url: url }),
-    ...(kind === "video" ? { media_type: "REELS" } : {}),
+    // Carousel video children must be plain VIDEO; REELS is only valid for
+    // a standalone reel container.
+    ...(kind === "video"
+      ? { media_type: isCarouselItem ? "VIDEO" : "REELS" }
+      : {}),
     ...(draftKind === "story" ? { media_type: "STORIES" } : {}),
     ...(isCarouselItem ? { is_carousel_item: true } : {}),
     ...(caption !== undefined ? { caption } : {}),
