@@ -74,9 +74,13 @@ async function handle(
       // mints hermes_session_* cookies that gate every protected route.
       // The cookies stay in this handler's memory — never forwarded to
       // the client (C3).
+      type DashboardAttempt =
+        | { kind: "ok"; response: Response }
+        | { kind: "stale" }
+        | { kind: "fail" };
       const dashboardAttempt = async (
         route: HostedRoute
-      ): Promise<Response | null> => {
+      ): Promise<DashboardAttempt> => {
         const login = await fetch(`${route.url}/auth/password-login`, {
           method: "POST",
           headers: {
@@ -92,37 +96,43 @@ async function handle(
         // Only status/headers matter — cancel the body so undici returns
         // the connection to the pool instead of holding it until GC.
         await login.body?.cancel();
-        if (!login.ok) return null;
+        if (login.status === 401 || login.status === 403) {
+          return { kind: "stale" };
+        }
+        if (!login.ok) return { kind: "fail" };
         const sessionCookies = login.headers
           .getSetCookie()
           .map((cookie) => cookie.split(";")[0])
           .join("; ");
-        if (!sessionCookies) return null;
-        return proxyTo(route.url, {
+        if (!sessionCookies) return { kind: "fail" };
+        const response = await proxyTo(route.url, {
           Cookie: `_port_auth=${route.token}; ${sessionCookies}`,
         });
+        if (response.status === 401 || response.status === 403) {
+          await response.body?.cancel();
+          return { kind: "stale" };
+        }
+        return { kind: "ok", response };
       };
       let attempt = await dashboardAttempt(box.dashboard);
       // The hosted _token rotates on resume and the wake path refreshes the
-      // dashboard route only in the background — on a stale-token rejection,
-      // re-register the route synchronously and retry once.
-      if (!attempt || attempt.status === 401 || attempt.status === 403) {
+      // dashboard route only in the background. Only a 401/403 (stale
+      // _port_auth or auth rejection) is worth the synchronous route
+      // re-registration + retry — other failures (dashboard 5xx, missing
+      // cookies) fail fast instead of paying a multi-minute box command.
+      if (attempt.kind === "stale") {
         const fresh = await refreshDashboardRoute(supabase, box.boxId);
         if (fresh) {
-          const retry = await dashboardAttempt(fresh);
-          if (retry) {
-            await attempt?.body?.cancel();
-            attempt = retry;
-          }
+          attempt = await dashboardAttempt(fresh);
         }
       }
-      if (!attempt) {
+      if (attempt.kind !== "ok") {
         return NextResponse.json(
           { error: "dashboard login failed" },
           { status: 502 }
         );
       }
-      upstream = attempt;
+      upstream = attempt.response;
     } else {
       upstream = await proxyTo(box.target.hostedUrl, {
         Authorization: `Bearer ${box.target.apiServerKey}`,
