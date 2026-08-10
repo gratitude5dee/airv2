@@ -33,6 +33,7 @@ HOME = Path(os.environ.get("HOME", "/home/user"))
 CREATIVE_DIR = HOME / ".hermes" / "creative"
 ASSETS_DIR = CREATIVE_DIR / "assets"
 JOBS_DIR = CREATIVE_DIR / "jobs"
+EXPORTS_DIR = CREATIVE_DIR / "exports"
 DB_PATH = CREATIVE_DIR / "creative.db"
 
 
@@ -48,7 +49,7 @@ def _default_hermes_bin() -> str:
 
 
 HERMES_BIN = os.environ.get("CREATIVE_HERMES_BIN") or _default_hermes_bin()
-PLUGIN_VERSION = "0.1.1"
+PLUGIN_VERSION = "0.2.0"
 
 JOB_KINDS = {"commercial", "marketing", "ugc", "cinematography"}
 
@@ -457,6 +458,71 @@ def asset_bytes(asset_id: str) -> FileResponse:
     if not row or not Path(row["path"]).is_file():
         raise HTTPException(404, "asset not found")
     return FileResponse(row["path"])
+
+
+# Formats where a metadata-stripping stream copy is reliable; anything image
+# shaped is re-encoded instead (EXIF/XMP segments survive naive edits).
+_COPY_SAFE_EXTENSIONS = {".mp4", ".mov", ".mp3", ".wav"}
+
+
+def _export_path(asset_id: str, source: Path) -> Path:
+    return EXPORTS_DIR / asset_id / source.name
+
+
+@router.post("/assets/{asset_id}/export")
+def export_asset(asset_id: str) -> dict:
+    """Produce a metadata-stripped copy of the master (CC4): EXIF, GPS, XMP,
+    and container metadata are removed before the bytes ever leave the box.
+    Images are re-encoded; av containers get a stream copy with metadata and
+    chapters dropped. Idempotent per asset — re-export overwrites."""
+    conn = _db()
+    try:
+        row = conn.execute(
+            "select path from assets where id=?", (asset_id,)
+        ).fetchone()
+    finally:
+        conn.close()
+    if not row or not Path(row["path"]).is_file():
+        raise HTTPException(404, "asset not found")
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise HTTPException(503, "ffmpeg unavailable")
+    source = Path(row["path"])
+    out_path = _export_path(asset_id, source)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    args = [ffmpeg, "-y", "-i", str(source), "-map_metadata", "-1"]
+    if source.suffix.lower() in _COPY_SAFE_EXTENSIONS:
+        args += ["-map_chapters", "-1", "-c", "copy"]
+    args += ["-fflags", "+bitexact", str(out_path)]
+    result = subprocess.run(args, capture_output=True, timeout=600)
+    if result.returncode != 0 or not out_path.is_file():
+        raise HTTPException(502, "export failed")
+    return {
+        "asset_id": asset_id,
+        "sha256": hashlib.sha256(out_path.read_bytes()).hexdigest(),
+        "bytes": out_path.stat().st_size,
+        "ext": out_path.suffix.lstrip(".").lower(),
+    }
+
+
+@router.get("/assets/{asset_id}/export/bytes")
+def export_bytes(asset_id: str) -> FileResponse:
+    """Streamed stripped bytes. Only ever called server-to-server by the
+    control plane's lib/assets (C3, C16) — not in the browser proxy
+    allowlist."""
+    conn = _db()
+    try:
+        row = conn.execute(
+            "select path from assets where id=?", (asset_id,)
+        ).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        raise HTTPException(404, "asset not found")
+    out_path = _export_path(asset_id, Path(row["path"]))
+    if not out_path.is_file():
+        raise HTTPException(404, "export not found — POST export first")
+    return FileResponse(out_path)
 
 
 @router.post("/assets/{asset_id}/variants")

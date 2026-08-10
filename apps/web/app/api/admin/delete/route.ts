@@ -14,6 +14,7 @@ import {
   deleteSession,
   listConnectedAccounts,
 } from "@/lib/composio/client";
+import { ASSETS_BUCKET, userPrefix } from "@/lib/assets/keys";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -93,6 +94,29 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     steps.composio = `revoked ${accounts.length}`;
   } catch (error) {
     steps.composio = `error: ${error instanceof Error ? error.message : String(error)}`;
+  }
+
+  // CM2: remove every stored asset object under the user's prefix (masters
+  // and delivery derivatives) — added in the same PR as the bucket.
+  try {
+    let removed = 0;
+    for (const folder of ["masters", "deliveries"]) {
+      const prefix = `${userPrefix(userId)}${folder}`;
+      for (;;) {
+        const { data: objects, error } = await supabase.storage
+          .from(ASSETS_BUCKET)
+          .list(prefix, { limit: 100 });
+        if (error || !objects || objects.length === 0) break;
+        const removal = await supabase.storage
+          .from(ASSETS_BUCKET)
+          .remove(objects.map((object) => `${prefix}/${object.name}`));
+        if (removal.error) break;
+        removed += objects.length;
+      }
+    }
+    steps.assets = `removed ${removed}`;
+  } catch (error) {
+    steps.assets = `error: ${error instanceof Error ? error.message : String(error)}`;
   }
 
   await supabase

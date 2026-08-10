@@ -18,6 +18,17 @@ client. Asset
 bytes (`/assets/{id}/bytes`) are deliberately not proxied to browsers —
 CM2's `lib/assets/` pulls them server-to-server.
 
+## Asset delivery (CM2)
+
+`POST /api/assets` runs the pipeline: the plugin's
+`POST /assets/{id}/export` produces a metadata-stripped copy **in the box**
+(CC4), `lib/assets/pipeline.ts` pulls `GET /assets/{id}/export/bytes`
+server-to-server, verifies the sha256, stores it content-addressed in the
+private `creative-assets` bucket, and mints a short-TTL signed delivery URL
+at an unguessable path (CC3). `DELETE /api/assets/{id}` revokes deliveries
+(the object is deleted, so the URL 404s). See `SECURITY-DECISIONS.md` for
+the trust-boundary write-up.
+
 ## Durability
 
 Jobs live in SQLite at `~/.hermes/creative/creative.db`, never in memory.
