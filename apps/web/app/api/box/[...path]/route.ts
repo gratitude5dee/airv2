@@ -89,6 +89,9 @@ async function handle(
             password,
           }),
         });
+        // Only status/headers matter — cancel the body so undici returns
+        // the connection to the pool instead of holding it until GC.
+        await login.body?.cancel();
         if (!login.ok) return null;
         const sessionCookies = login.headers
           .getSetCookie()
@@ -106,7 +109,11 @@ async function handle(
       if (!attempt || attempt.status === 401 || attempt.status === 403) {
         const fresh = await refreshDashboardRoute(supabase, box.boxId);
         if (fresh) {
-          attempt = (await dashboardAttempt(fresh)) ?? attempt;
+          const retry = await dashboardAttempt(fresh);
+          if (retry) {
+            await attempt?.body?.cancel();
+            attempt = retry;
+          }
         }
       }
       if (!attempt) {
