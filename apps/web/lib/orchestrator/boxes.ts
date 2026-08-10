@@ -59,16 +59,15 @@ function parseHostedUrl(
 }
 
 /**
- * Re-register both private hosted routes and persist the rotated tokens.
- * api_server (8642) backs chat on every surface; the dashboard (9119) route
- * is kept fresh for future Tier 2 dashboard slices — both tokens rotate on
- * resume, so refreshing only one leaves the other stale for the rest of the
- * box's life.
+ * Re-register the api_server (8642) hosted route and persist the rotated
+ * token. This runs inside the wake retry loop, so it stays a single box
+ * command — the dashboard route is refreshed separately, off the critical
+ * path.
  */
-async function refreshHostedRoutes(
+async function refreshApiServerRoute(
   supabase: SupabaseClient,
   boxId: string
-): Promise<{ apiServer: HostedRoute; dashboard?: HostedRoute }> {
+): Promise<HostedRoute> {
   const result = await command(
     boxId,
     `eval "$(grep '^export ASCII_' /home/user/.bashrc)"; /home/user/.ascii/host url ${API_SERVER_PORT} --timeout 120 --private`,
@@ -78,33 +77,47 @@ async function refreshHostedRoutes(
     throw new Error(`host refresh failed: ${result.stderr}`);
   }
   const apiServer = parseHostedUrl(result.stdout, API_SERVER_PORT);
-  // The dashboard unit is optional on older template versions; chat must not
-  // fail because its route is missing, so its registration runs separately
-  // and any failure is tolerated.
-  let dashboard: HostedRoute | undefined;
+  await supabase
+    .from("boxes")
+    .update({ hosted_url: apiServer.url, hosted_token: apiServer.token })
+    .eq("provider_box_id", boxId);
+  return apiServer;
+}
+
+/**
+ * Re-register the dashboard (9119) hosted route and persist the rotated
+ * token. Best-effort: the dashboard unit is optional on older template
+ * versions and nothing on the request path consumes the route yet, so this
+ * runs fire-and-forget after the box is confirmed healthy and never blocks
+ * or fails a turn.
+ */
+async function refreshDashboardRoute(
+  supabase: SupabaseClient,
+  boxId: string
+): Promise<void> {
   try {
-    const dashResult = await command(
+    const result = await command(
       boxId,
       `eval "$(grep '^export ASCII_' /home/user/.bashrc)"; /home/user/.ascii/host url ${DASHBOARD_PORT} --timeout 120 --private`,
       180
     );
-    if (dashResult.exitCode === 0) {
-      dashboard = parseHostedUrl(dashResult.stdout, DASHBOARD_PORT);
+    if (result.exitCode !== 0) {
+      return;
     }
-  } catch {
-    dashboard = undefined;
+    const dashboard = parseHostedUrl(result.stdout, DASHBOARD_PORT);
+    await supabase
+      .from("boxes")
+      .update({ dashboard_url: dashboard.url, dashboard_token: dashboard.token })
+      .eq("provider_box_id", boxId);
+  } catch (error) {
+    console.log(
+      JSON.stringify({
+        msg: "dashboard route refresh failed",
+        box_id: boxId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    );
   }
-  await supabase
-    .from("boxes")
-    .update({
-      hosted_url: apiServer.url,
-      hosted_token: apiServer.token,
-      ...(dashboard
-        ? { dashboard_url: dashboard.url, dashboard_token: dashboard.token }
-        : {}),
-    })
-    .eq("provider_box_id", boxId);
-  return { apiServer, dashboard };
 }
 
 /**
@@ -151,7 +164,7 @@ export async function ensureBoxAwake(
     hostedToken: row.hosted_token,
     apiServerKey: row.api_server_key,
   };
-  let dashboard: HostedRoute | undefined =
+  const dashboard: HostedRoute | undefined =
     row.dashboard_url && row.dashboard_token
       ? { url: row.dashboard_url, token: row.dashboard_token }
       : undefined;
@@ -159,6 +172,7 @@ export async function ensureBoxAwake(
   // The hosted token rotates across stop/resume; hermes-host re-registers on
   // boot but the stored token may be stale. Probe, then refresh once.
   const deadline = Date.now() + 180_000;
+  let refreshed = false;
   while (!(await health(target))) {
     if (Date.now() > deadline) {
       throw new Error(`hermes on ${boxId} not healthy after resume`);
@@ -167,13 +181,13 @@ export async function ensureBoxAwake(
       // Right after resume the box reports ready before the ascii agent and
       // hermes-host have booted, so the refresh command itself can fail —
       // keep retrying until the deadline.
-      const hosted = await refreshHostedRoutes(supabase, boxId);
+      const apiServer = await refreshApiServerRoute(supabase, boxId);
       target = {
         ...target,
-        hostedUrl: hosted.apiServer.url,
-        hostedToken: hosted.apiServer.token,
+        hostedUrl: apiServer.url,
+        hostedToken: apiServer.token,
       };
-      dashboard = hosted.dashboard ?? dashboard;
+      refreshed = true;
       if (await health(target)) break;
     } catch (error) {
       console.log(
@@ -185,6 +199,13 @@ export async function ensureBoxAwake(
       );
     }
     await new Promise((resolve) => setTimeout(resolve, 5_000));
+  }
+
+  // The dashboard token rotated too, but nothing on the request path reads
+  // it — refresh it in the background so the wake deadline is never spent
+  // on it.
+  if (refreshed) {
+    void refreshDashboardRoute(supabase, boxId);
   }
 
   await supabase
