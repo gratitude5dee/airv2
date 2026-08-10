@@ -214,7 +214,9 @@ export default function HomePage() {
             text:
               status === 429
                 ? "My computer is busy starting up — try again in a minute."
-                : "Something went wrong.",
+                : status >= 500
+                  ? "I couldn't reach my computer — it may still be waking up. Try again in a minute."
+                  : "Something went wrong.",
           },
         ]);
         setBusy(false);

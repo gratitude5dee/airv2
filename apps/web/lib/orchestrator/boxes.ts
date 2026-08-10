@@ -154,7 +154,13 @@ export async function ensureBoxAwake(
       if (isStartLimit(error)) {
         throw new StartLimitError();
       }
-      throw error;
+      // Concurrent wakes race: the pre-warm and a chat turn can both call
+      // resume, and the loser gets an error for a box that is already
+      // starting. If the box is no longer stopped, just wait for it.
+      const current = await getBox(boxId);
+      if (current.state === "error") {
+        throw error;
+      }
     }
     await waitForBox(boxId);
   }
