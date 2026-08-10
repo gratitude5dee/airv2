@@ -37,6 +37,11 @@ export const env = {
     optional("AGENT_EMAIL_DOMAIN", "agentmail.to"),
   composioApiKey: (): string => required("COMPOSIO_API_KEY"),
   miniappSigningKey: (): string => required("MINIAPP_SIGNING_KEY"),
+  // Desktop pairing/device tokens. Defaults to the web session secret so the
+  // desktop surface needs no new deploy config; set it to rotate desktop
+  // credentials independently of web sessions.
+  desktopSigningKey: (): string =>
+    process.env.DESKTOP_SIGNING_KEY ?? required("SESSION_SECRET"),
   miniappOrigin: (): string =>
     optional("MINIAPP_ORIGIN", "https://mini.wzrd.tech"),
   operatorAllowlist: (): string[] =>

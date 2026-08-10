@@ -1,10 +1,10 @@
 /**
- * SSE proxy (M6): streams GET /v1/runs/{id}/events from the user's box
- * through Vercel so hosted_token never reaches the browser (C3).
+ * Desktop SSE relay. The run's events are re-emitted from Vercel, so the
+ * desktop app never learns the box origin or its `_port_auth` token (C3).
  */
 import { NextRequest, NextResponse } from "next/server";
-import { sessionUserId } from "@/lib/auth/user";
 import { serviceClient } from "@/lib/supabase";
+import { desktopSession } from "@/lib/auth/desktop";
 import { chatEventStream, SSE_HEADERS } from "@/lib/chat/relay";
 
 export const runtime = "nodejs";
@@ -15,22 +15,26 @@ export async function GET(
   request: NextRequest,
   context: { params: Promise<{ runId: string }> }
 ): Promise<Response> {
-  const userId = sessionUserId(request);
-  if (!userId) {
+  const supabase = serviceClient();
+  const session = await desktopSession(supabase, request);
+  if (!session) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const { runId } = await context.params;
   if (!/^[A-Za-z0-9_-]+$/.test(runId)) {
     return NextResponse.json({ error: "bad run id" }, { status: 400 });
   }
-  const supabase = serviceClient();
   try {
-    const stream = await chatEventStream(supabase, userId, runId);
+    const stream = await chatEventStream(supabase, session.userId, runId);
     return new Response(stream, { headers: SSE_HEADERS });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";
     console.error(
-      JSON.stringify({ msg: "web events proxy failed", user_id: userId, error: message })
+      JSON.stringify({
+        msg: "desktop events relay failed",
+        user_id: session.userId,
+        error: message,
+      })
     );
     return NextResponse.json({ error: "stream failed" }, { status: 500 });
   }

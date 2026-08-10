@@ -3,16 +3,23 @@
  * denylist: anything not listed returns 404 — including /api/env,
  * /api/ops/*, PUT /api/config, /api/gateway/*, /api/credentials/* (C5).
  * The Box `_token` is appended server-side and never reaches a browser (C3).
+ *
+ * Both surfaces share this proxy: the browser authenticates with the session
+ * cookie, the desktop app with its scoped device token, so History and Skills
+ * read the same box state on either.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { sessionUserId } from "@/lib/auth/user";
 import { serviceClient } from "@/lib/supabase";
+import { requestSession } from "@/lib/auth/surface";
 import { ensureBoxAwake } from "@/lib/orchestrator/boxes";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
+// Everything here is served by api_server (8642). Dashboard (9119) slices
+// need the box's basic-auth credential, which the control plane does not
+// hold — do not add dashboard paths without persisting one first.
 const ALLOWLIST: ReadonlyArray<{ method: string; pattern: RegExp }> = [
   { method: "GET", pattern: /^api\/sessions$/ },
   { method: "GET", pattern: /^api\/sessions\/[A-Za-z0-9_-]+$/ },
@@ -38,11 +45,12 @@ async function handle(
   if (!isAllowed(request.method, joined)) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
-  const userId = sessionUserId(request);
-  if (!userId) {
+  const supabase = serviceClient();
+  const session = await requestSession(supabase, request);
+  if (!session) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const supabase = serviceClient();
+  const userId = session.userId;
   try {
     const box = await ensureBoxAwake(supabase, userId);
     const search = request.nextUrl.search;

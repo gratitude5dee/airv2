@@ -245,6 +245,10 @@ export async function provisionUser(
     state: "ready",
     hosted_url: hermes.url,
     hosted_token: hermes.token,
+    // The dashboard route backs the allowlisted History/Skills proxy on every
+    // surface, so it has to outlive provisioning.
+    dashboard_url: dashboard.url,
+    dashboard_token: dashboard.token,
     api_server_key: apiServerKey,
     gateway_token: gatewayToken,
     last_active_at: new Date().toISOString(),

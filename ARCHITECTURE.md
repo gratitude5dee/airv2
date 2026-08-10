@@ -868,6 +868,31 @@ Exposing that to a consumer is a support-ticket generator and a security surface
 
 ---
 
+## 7.5 The desktop app is a third client of the control plane, not of the box
+
+The desktop app is the same Tier 1 shape as the web app: it talks to Vercel, Vercel talks to the box. It is *not* a special case, and it does not get a box URL — the whole point of §7.4 is that `on.ascii.dev` origins and their `_token`s never leave the server (C3). Concretely, the desktop's "remote gateway" is `airv2`, and the contract is four routes:
+
+| Route | Credential | Purpose |
+|---|---|---|
+| `POST /api/desktop/link` | web session cookie | Owner-initiated mint of a single-use, 10-minute **pairing token** (same rule as mini-app links: only an authenticated owner can cause a mint) |
+| `POST /api/desktop/session` | pairing token | Redeems it exactly once — `desktop_devices.pairing_jti` is unique, so replays pair nothing — and returns a scoped, 12-hour **device token** |
+| `POST /api/desktop/chat` | device token | `ensureBoxAwake` → `createRun` on `MAIN_SESSION` with `metadata.channel = "desktop"` → opaque `run_id` |
+| `GET /api/desktop/chat/{runId}/events` | device token | Vercel re-streams the box SSE |
+
+Two consequences worth stating explicitly.
+
+**Persistence is a property of the session id, not of the client.** Every surface runs its turns in `air-main`, so memory, skills, files, and MCP/Composio tools are shared by construction — Composio connectors live in the box's Hermes config, not in a session, so connecting a toolkit through `/api/connectors` is immediately visible to a desktop-initiated run with no per-surface wiring. `channel` is run metadata; it never forks the conversation.
+
+**Revocation lives in Postgres, not in the token.** The signature proves the token is ours; the `desktop_devices` row proves it is still wanted. `revoked_at` (via `DELETE /api/desktop/session`) kills every token issued to a device without rotating `DESKTOP_SIGNING_KEY`.
+
+Read-only History and Skills parity needs no new surface — the desktop authenticates the existing allowlisted proxy at `/api/box/*` with its device token, which is why request auth resolves a cookie *or* a bearer to a bare `user_id` (`lib/auth/surface.ts`) and every route downstream is surface-blind.
+
+**Managed boxes stay on the hosted-route model.** No Tailscale Funnel, no `API_SERVER_HOST` change, no gateway routing change: a desktop client is a credential problem, not a topology problem. A future self-hosted "bring your own box" tier would store a user-supplied gateway base URL plus API key instead of forking a box — a different provisioning path, and out of scope for the desktop surface.
+
+Both hosted routes are now persisted (`boxes.dashboard_url` / `dashboard_token` alongside `hosted_url` / `hosted_token`) and both are re-registered on resume, because both tokens rotate and refreshing only 8642 left the dashboard route permanently stale after the first stop/resume cycle. The 8642 refresh is load-bearing for chat; the 9119 refresh is best-effort so a box without the dashboard unit still chats. One gap before any Tier 2 dashboard slice can actually be proxied: the dashboard's Basic Auth password is generated at provision time and only its hash reaches the box, so the control plane holds no credential for port 9119 — persisting one (or issuing a per-request ticket) is a prerequisite, and the `/api/box/*` allowlist stays api_server-only until then.
+
+---
+
 ## 8. Security model
 
 ### 8.1 Trust boundaries and what crosses them
@@ -878,6 +903,7 @@ Exposing that to a consumer is a support-ticket generator and a security surface
 | Vercel → Box | Run requests | `?_token=` on the hosted URL **and** `Authorization` with `API_SERVER_KEY`. Two independent secrets; neither alone suffices. |
 | Box → world | Tool calls, MCP, model API | Per-user credentials only. `--no-env` guarantees no platform credentials are present to steal. |
 | Browser → Vercel | Session | Standard web auth. **The browser never talks to a box directly** — that would require handing it `hosted_token`. |
+| Desktop → Vercel | Session | HMAC device token, scoped to one paired `desktop_devices` row and short-lived; issued only by redeeming an owner-minted single-use pairing token. Same rule as the browser: **no box origin, no `hosted_token`, no `API_SERVER_KEY`** — only an opaque `run_id` and a relayed SSE stream. |
 
 ### 8.2 Prompt injection (invariant I5)
 
