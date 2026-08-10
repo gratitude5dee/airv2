@@ -116,9 +116,16 @@ describe("instagram validate", () => {
         media: [image(1080, 1920), image(1080, 1920)],
       })
     );
-    expect(problems.map((problem) => problem.code)).toContain(
-      "ig.story.single"
+    expect(problems.map((problem) => problem.code)).toEqual([
+      "ig.story.single",
+    ]);
+  });
+
+  it("accepts a 9:16 story image (feed aspect bounds do not apply)", () => {
+    const problems = instagramAdapter.validate(
+      draft({ kind: "story", media: [image(1080, 1920)] })
     );
+    expect(problems).toEqual([]);
   });
 });
 
@@ -267,6 +274,17 @@ describe("verdict helpers", () => {
       }
       expect(status, errorText).toBe(expected);
     }
+  });
+
+  it("sanitizes fix-content messages from raw platform bodies", () => {
+    const verdict = classifyDefault(
+      400,
+      "invalid media at https://cdn.test/signed?token=abc123"
+    );
+    expect(verdict).toEqual({
+      kind: "fix-content",
+      message: "invalid media at [link]",
+    });
   });
 
   it("sanitizes decision labels", () => {
