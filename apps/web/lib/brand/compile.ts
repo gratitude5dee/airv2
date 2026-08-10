@@ -42,15 +42,16 @@ export function compileThemeYaml(source: BrandSource): string {
   for (const [key, value] of Object.entries(source.palette)) {
     lines.push(`  ${yamlKey(key)}: ${yamlString(colorValue(value))}`);
   }
-  if (source.typography) {
+  const typography = Object.entries(source.typography ?? {}).filter(
+    ([, value]) => value !== undefined && value !== ""
+  );
+  if (typography.length > 0) {
     lines.push("typography:");
-    for (const [key, value] of Object.entries(source.typography)) {
-      if (value !== undefined && value !== "") {
-        lines.push(`  ${key}: ${yamlString(String(value))}`);
-      }
+    for (const [key, value] of typography) {
+      lines.push(`  ${key}: ${yamlString(String(value))}`);
     }
   }
-  if (source.layout) {
+  if (source.layout?.radius || source.layout?.density) {
     lines.push("layout:");
     if (source.layout.radius) {
       lines.push(`  radius: ${yamlString(source.layout.radius)}`);
@@ -224,6 +225,19 @@ export function lintCopy(text: string, source: BrandSource): CopyViolation[] {
   return violations;
 }
 
+function requireHttpsUrl(field: string, value: unknown): void {
+  if (value === undefined || value === "") return;
+  let url: URL;
+  try {
+    url = new URL(String(value));
+  } catch {
+    throw new Error(`${field} must be an https URL`);
+  }
+  if (url.protocol !== "https:") {
+    throw new Error(`${field} must be an https URL`);
+  }
+}
+
 const SLUG = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const TOKEN_KEY = /^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/;
 const DENSITIES = new Set(["compact", "comfortable", "spacious"]);
@@ -263,10 +277,13 @@ export function validateBrandSource(input: unknown): BrandSource {
   ) {
     throw new Error("layout.density must be compact, comfortable or spacious");
   }
-  for (const key of Object.keys(source.assets?.custom ?? {})) {
+  for (const [key, value] of Object.entries(source.assets?.custom ?? {})) {
     if (!TOKEN_KEY.test(key)) {
       throw new Error(`asset key ${JSON.stringify(key)} must be a simple token name`);
     }
+    requireHttpsUrl(`assets.custom.${key}`, value);
   }
+  requireHttpsUrl("assets.logo", source.assets?.logo);
+  requireHttpsUrl("typography.fontUrl", source.typography?.fontUrl);
   return source;
 }

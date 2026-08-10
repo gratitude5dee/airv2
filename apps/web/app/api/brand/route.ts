@@ -133,6 +133,7 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
         JSON.stringify({
           msg: "brand mirror on write failed",
           user_id: userId,
+          box_id: boxRow.provider_box_id,
           error: error instanceof Error ? error.message : String(error),
         })
       );

@@ -66,6 +66,7 @@ export async function mirrorBrandIfStale(
     console.log(
       JSON.stringify({
         msg: "brand mirror failed",
+        user_id: userId,
         box_id: boxId,
         error: error instanceof Error ? error.message : String(error),
       })

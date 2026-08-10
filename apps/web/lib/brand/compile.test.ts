@@ -66,6 +66,18 @@ describe("compileThemeYaml", () => {
     expect(yaml).toContain('"foreground": "rgba(224, 85, 58, 0.5)"');
   });
 
+  it("omits empty typography/layout sections", () => {
+    const yaml = compileThemeYaml({
+      ...northwind,
+      typography: {},
+      layout: {},
+      assets: {},
+    });
+    expect(yaml).not.toContain("typography:");
+    expect(yaml).not.toContain("layout:");
+    expect(yaml).not.toContain("assets:");
+  });
+
   it("omits the voice/claims/imagery extensions", () => {
     const yaml = compileThemeYaml(northwind);
     expect(yaml).not.toContain("voice");
@@ -203,6 +215,27 @@ describe("validateBrandSource", () => {
         assets: { custom: { "bad key": "https://example.com/x.svg" } },
       })
     ).toThrow(/token name/);
+  });
+
+  it("rejects non-https asset and font URLs", () => {
+    expect(() =>
+      validateBrandSource({
+        ...northwind,
+        assets: { logo: "javascript:alert(1)" },
+      })
+    ).toThrow(/https/);
+    expect(() =>
+      validateBrandSource({
+        ...northwind,
+        assets: { custom: { mark: "http://169.254.169.254/x" } },
+      })
+    ).toThrow(/https/);
+    expect(() =>
+      validateBrandSource({
+        ...northwind,
+        typography: { fontUrl: "data:text/css,body{}" },
+      })
+    ).toThrow(/https/);
   });
 
   it("rejects an unknown layout density", () => {
