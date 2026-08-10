@@ -52,7 +52,7 @@ describe("compileThemeYaml", () => {
     expect(yaml).toContain('"background": "#0b0b0c"');
     expect(yaml).toContain('"warmGlow": "rgba(224, 85, 58, 0.18)"');
     expect(yaml).toContain("typography:");
-    expect(yaml).toContain('baseSize: "15px"');
+    expect(yaml).toContain('"baseSize": "15px"');
     expect(yaml).toContain('density: "comfortable"');
     expect(yaml).toContain('logo: "https://cdn.wzrd.tech/b/northwind/logo.svg"');
     expect(yaml).toContain('"lockupDark":');
@@ -64,6 +64,14 @@ describe("compileThemeYaml", () => {
       palette: { ...northwind.palette, foreground: { hex: "#e0553a", alpha: 0.5 } },
     });
     expect(yaml).toContain('"foreground": "rgba(224, 85, 58, 0.5)"');
+  });
+
+  it("expands 3-digit hex colors with alpha", () => {
+    const yaml = compileThemeYaml({
+      ...northwind,
+      palette: { ...northwind.palette, foreground: { hex: "#fff", alpha: 0.5 } },
+    });
+    expect(yaml).toContain('"foreground": "rgba(255, 255, 255, 0.5)"');
   });
 
   it("omits empty typography/layout sections", () => {
@@ -213,6 +221,30 @@ describe("validateBrandSource", () => {
       validateBrandSource({
         ...northwind,
         assets: { custom: { "bad key": "https://example.com/x.svg" } },
+      })
+    ).toThrow(/token name/);
+  });
+
+  it("rejects non-array list fields", () => {
+    expect(() =>
+      validateBrandSource({ ...northwind, markets: "US" })
+    ).toThrow(/markets/);
+    expect(() =>
+      validateBrandSource({
+        ...northwind,
+        voice: { banned: "revolutionize" },
+      })
+    ).toThrow(/voice.banned/);
+  });
+
+  it("rejects non-object section fields and bad typography keys", () => {
+    expect(() =>
+      validateBrandSource({ ...northwind, typography: "Inter" })
+    ).toThrow(/typography/);
+    expect(() =>
+      validateBrandSource({
+        ...northwind,
+        typography: { "evil:\n  raw": "x" },
       })
     ).toThrow(/token name/);
   });

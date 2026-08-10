@@ -36,16 +36,29 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   if (!data) {
     return NextResponse.json({ brand: null });
   }
-  const source = validateBrandSource(data.source);
-  return NextResponse.json({
-    brand: {
-      source,
-      tokens: JSON.parse(compileBrand(source).tokensJson) as unknown,
-      rev: data.rev,
-      mirrored: data.mirrored_rev >= data.rev,
-      updated_at: data.updated_at,
-    },
-  });
+  // A stored row that no longer validates/compiles degrades to "no brand"
+  // so the editor loads and the next save overwrites the bad row.
+  try {
+    const source = validateBrandSource(data.source);
+    return NextResponse.json({
+      brand: {
+        source,
+        tokens: JSON.parse(compileBrand(source).tokensJson) as unknown,
+        rev: data.rev,
+        mirrored: data.mirrored_rev >= data.rev,
+        updated_at: data.updated_at,
+      },
+    });
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        msg: "stored brand kit invalid",
+        user_id: userId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    );
+    return NextResponse.json({ brand: null });
+  }
 }
 
 export async function PUT(request: NextRequest): Promise<NextResponse> {
