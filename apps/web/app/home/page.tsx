@@ -144,6 +144,9 @@ export default function HomePage() {
       setMe(data);
       if (data.entitlement) setTier(data.entitlement.speed_tier);
       if (data.user.username) setUsername(data.user.username);
+      // Pre-warm the box so the first message / panel load doesn't wait on
+      // a cold resume. Best-effort: every consumer handles a sleeping box.
+      fetch("/api/box/wake", { method: "POST" }).catch(() => {});
     });
   }, [router]);
 
