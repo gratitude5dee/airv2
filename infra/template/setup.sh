@@ -130,6 +130,24 @@ rm -rf "$HOME_DIR/.hermes/plugins/creative"
 cp -r "$SCRIPT_DIR/plugins/creative" "$HOME_DIR/.hermes/plugins/creative"
 sed -i '/^CREATIVE_PLUGIN_VERSION=/d' "$HOME_DIR/.hermes/.env"
 echo "CREATIVE_PLUGIN_VERSION=$(python3 -c "import json;print(json.load(open('$SCRIPT_DIR/plugins/creative/dashboard/manifest.json'))['version'])")" >> "$HOME_DIR/.hermes/.env"
+# User plugins are opt-in: the dashboard only imports a user plugin's backend
+# (plugin_api.py) when its name is in the plugins.enabled allow-list in
+# ~/.hermes/config.yaml (GHSA-mcfc-hp25-cjv7).
+python3 - "$HOME_DIR/.hermes/config.yaml" <<'PYEOF'
+import sys, yaml, pathlib
+p = pathlib.Path(sys.argv[1])
+cfg = yaml.safe_load(p.read_text()) if p.exists() else None
+cfg = cfg if isinstance(cfg, dict) else {}
+plugins = cfg.get("plugins")
+plugins = plugins if isinstance(plugins, dict) else {}
+enabled = plugins.get("enabled")
+enabled = enabled if isinstance(enabled, list) else []
+if "creative" not in enabled:
+    enabled.append("creative")
+plugins["enabled"] = sorted(enabled)
+cfg["plugins"] = plugins
+p.write_text(yaml.safe_dump(cfg, default_flow_style=False))
+PYEOF
 
 # ── 4. systemd units — /etc is snapshotted, enabled units restart on resume ──
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

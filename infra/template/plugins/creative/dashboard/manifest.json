@@ -1,7 +1,8 @@
 {
   "name": "creative",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "entry": "dist/index.js",
+  "api": "plugin_api.py",
   "tab": {
     "label": "Creative",
     "hidden": true

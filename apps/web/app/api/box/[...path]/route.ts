@@ -69,21 +69,70 @@ async function handle(
         );
       }
       const password = openSecret(box.dashboardAuthSealed, authKey);
-      const basic = Buffer.from(`air:${password}`).toString("base64");
-      const dashboardHeaders = (route: HostedRoute): Record<string, string> => ({
-        Authorization: `Basic ${basic}`,
-        Cookie: `_port_auth=${route.token}`,
-      });
-      upstream = await proxyTo(box.dashboard.url, dashboardHeaders(box.dashboard));
+      // Dashboard auth is a password-login flow, not an Authorization
+      // header: POST /auth/password-login verifies the credential and
+      // mints hermes_session_* cookies that gate every protected route.
+      // The cookies stay in this handler's memory — never forwarded to
+      // the client (C3).
+      type DashboardAttempt =
+        | { kind: "ok"; response: Response }
+        | { kind: "stale" }
+        | { kind: "fail" };
+      const dashboardAttempt = async (
+        route: HostedRoute
+      ): Promise<DashboardAttempt> => {
+        const login = await fetch(`${route.url}/auth/password-login`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Cookie: `_port_auth=${route.token}`,
+          },
+          body: JSON.stringify({
+            provider: "basic",
+            username: "air",
+            password,
+          }),
+        });
+        // Only status/headers matter — cancel the body so undici returns
+        // the connection to the pool instead of holding it until GC.
+        await login.body?.cancel();
+        if (login.status === 401 || login.status === 403) {
+          return { kind: "stale" };
+        }
+        if (!login.ok) return { kind: "fail" };
+        const sessionCookies = login.headers
+          .getSetCookie()
+          .map((cookie) => cookie.split(";")[0])
+          .join("; ");
+        if (!sessionCookies) return { kind: "fail" };
+        const response = await proxyTo(route.url, {
+          Cookie: `_port_auth=${route.token}; ${sessionCookies}`,
+        });
+        if (response.status === 401 || response.status === 403) {
+          await response.body?.cancel();
+          return { kind: "stale" };
+        }
+        return { kind: "ok", response };
+      };
+      let attempt = await dashboardAttempt(box.dashboard);
       // The hosted _token rotates on resume and the wake path refreshes the
-      // dashboard route only in the background — on a stale-token rejection,
-      // re-register the route synchronously and retry once.
-      if (upstream.status === 401 || upstream.status === 403) {
+      // dashboard route only in the background. Only a 401/403 (stale
+      // _port_auth or auth rejection) is worth the synchronous route
+      // re-registration + retry — other failures (dashboard 5xx, missing
+      // cookies) fail fast instead of paying a multi-minute box command.
+      if (attempt.kind === "stale") {
         const fresh = await refreshDashboardRoute(supabase, box.boxId);
         if (fresh) {
-          upstream = await proxyTo(fresh.url, dashboardHeaders(fresh));
+          attempt = await dashboardAttempt(fresh);
         }
       }
+      if (attempt.kind !== "ok") {
+        return NextResponse.json(
+          { error: "dashboard login failed" },
+          { status: 502 }
+        );
+      }
+      upstream = attempt.response;
     } else {
       upstream = await proxyTo(box.target.hostedUrl, {
         Authorization: `Bearer ${box.target.apiServerKey}`,
