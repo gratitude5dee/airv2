@@ -76,6 +76,34 @@ async function pluginFetch(
   throw new AssetPipelineError("dashboard login failed");
 }
 
+export interface CreativePackage {
+  id: string;
+  caption: string | null;
+  hashtags: string[];
+  media_asset_ids: string[];
+  platform_settings: Record<string, unknown>;
+}
+
+/** Resolve a package_ref against the box's creative plugin (CC2 — the
+ * control plane stores refs only; captions and media live box-side). */
+export async function fetchPackage(
+  supabase: SupabaseClient,
+  box: UserBox,
+  packageRef: string
+): Promise<CreativePackage> {
+  const response = await pluginFetch(
+    supabase,
+    box,
+    "GET",
+    `packages/${encodeURIComponent(packageRef)}`
+  );
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw new AssetPipelineError(`package fetch failed (${response.status})`);
+  }
+  return (await response.json()) as CreativePackage;
+}
+
 /**
  * Pull one asset from the box into object storage: ask the plugin for a
  * metadata-stripped export, verify its sha256 end-to-end, store it
