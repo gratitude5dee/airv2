@@ -14,6 +14,12 @@ function yamlString(value: string): string {
   return JSON.stringify(value);
 }
 
+/** Map keys are caller-supplied — quote them so they can never restructure
+ * the emitted YAML. */
+function yamlKey(key: string): string {
+  return JSON.stringify(key);
+}
+
 function colorValue(value: string | BrandPaletteColor): string {
   if (typeof value === "string") return value;
   if (value.alpha !== undefined && value.alpha < 1) {
@@ -34,7 +40,7 @@ export function compileThemeYaml(source: BrandSource): string {
     "palette:",
   ];
   for (const [key, value] of Object.entries(source.palette)) {
-    lines.push(`  ${key}: ${yamlString(colorValue(value))}`);
+    lines.push(`  ${yamlKey(key)}: ${yamlString(colorValue(value))}`);
   }
   if (source.typography) {
     lines.push("typography:");
@@ -50,7 +56,7 @@ export function compileThemeYaml(source: BrandSource): string {
       lines.push(`  radius: ${yamlString(source.layout.radius)}`);
     }
     if (source.layout.density) {
-      lines.push(`  density: ${source.layout.density}`);
+      lines.push(`  density: ${yamlString(String(source.layout.density))}`);
     }
   }
   if (source.assets && (source.assets.logo || source.assets.custom)) {
@@ -62,7 +68,7 @@ export function compileThemeYaml(source: BrandSource): string {
     if (custom.length > 0) {
       lines.push("  custom:");
       for (const [key, value] of custom) {
-        lines.push(`    ${key}: ${yamlString(value)}`);
+        lines.push(`    ${yamlKey(key)}: ${yamlString(value)}`);
       }
     }
   }
@@ -219,6 +225,8 @@ export function lintCopy(text: string, source: BrandSource): CopyViolation[] {
 }
 
 const SLUG = /^[a-z0-9][a-z0-9-]{0,63}$/;
+const TOKEN_KEY = /^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/;
+const DENSITIES = new Set(["compact", "comfortable", "spacious"]);
 
 /** Shape-check an untrusted source before it is stored or compiled. */
 export function validateBrandSource(input: unknown): BrandSource {
@@ -241,9 +249,23 @@ export function validateBrandSource(input: unknown): BrandSource {
     }
   }
   for (const [key, value] of Object.entries(source.palette)) {
+    if (!TOKEN_KEY.test(key)) {
+      throw new Error(`palette key ${JSON.stringify(key)} must be a simple token name`);
+    }
     const raw = typeof value === "string" ? value : value?.hex;
     if (typeof raw !== "string" || raw.trim() === "") {
       throw new Error(`palette.${key} must be a color string`);
+    }
+  }
+  if (
+    source.layout?.density !== undefined &&
+    !DENSITIES.has(String(source.layout.density))
+  ) {
+    throw new Error("layout.density must be compact, comfortable or spacious");
+  }
+  for (const key of Object.keys(source.assets?.custom ?? {})) {
+    if (!TOKEN_KEY.test(key)) {
+      throw new Error(`asset key ${JSON.stringify(key)} must be a simple token name`);
     }
   }
   return source;

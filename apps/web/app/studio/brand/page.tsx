@@ -39,19 +39,24 @@ export default function BrandPage() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    fetch("/api/brand").then(async (res) => {
-      if (res.status === 401) {
-        router.push("/login");
-        return;
-      }
-      if (!res.ok) {
+    fetch("/api/brand")
+      .then(async (res) => {
+        if (res.status === 401) {
+          router.push("/login");
+          return;
+        }
+        if (!res.ok) {
+          setNote("Couldn't load your brand kit — try again shortly.");
+          setSource(EMPTY);
+          return;
+        }
+        const data = (await res.json()) as { brand: { source: BrandSource } | null };
+        setSource(data.brand?.source ?? EMPTY);
+      })
+      .catch(() => {
         setNote("Couldn't load your brand kit — try again shortly.");
         setSource(EMPTY);
-        return;
-      }
-      const data = (await res.json()) as { brand: { source: BrandSource } | null };
-      setSource(data.brand?.source ?? EMPTY);
-    });
+      });
   }, [router]);
 
   const save = useCallback(async () => {
@@ -138,7 +143,17 @@ export default function BrandPage() {
                 className="input flex-1"
                 value={typeof value === "string" ? value : value.hex}
                 onChange={(e) =>
-                  set({ palette: { ...source.palette, [key]: e.target.value } })
+                  set({
+                    palette: {
+                      ...source.palette,
+                      // Preserve the object shape (and its alpha) when the
+                      // existing entry carries one.
+                      [key]:
+                        typeof value === "string"
+                          ? e.target.value
+                          : { ...value, hex: e.target.value },
+                    },
+                  })
                 }
               />
               <span

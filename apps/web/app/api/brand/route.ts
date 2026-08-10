@@ -72,16 +72,40 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
   if (loadError) {
     return NextResponse.json({ error: "brand save failed" }, { status: 500 });
   }
+  // Optimistic concurrency: the write is conditional on the rev we read, so
+  // two overlapping saves can never both claim the same rev (the loser gets
+  // a 409 and retries with fresh state) and mirrored_rev can never be
+  // stamped for bytes that lost the race.
   const rev = (existing?.rev ?? 0) + 1;
-  const { error: saveError } = await supabase.from("brand_kits").upsert(
-    {
+  let saveError: { message: string } | null = null;
+  let conflicted = false;
+  if (existing) {
+    const { data: updated, error } = await supabase
+      .from("brand_kits")
+      .update({
+        source: source as unknown as Record<string, unknown>,
+        rev,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", userId)
+      .eq("rev", existing.rev)
+      .select("rev");
+    saveError = error;
+    conflicted = !error && (updated ?? []).length === 0;
+  } else {
+    const { error } = await supabase.from("brand_kits").insert({
       user_id: userId,
       source: source as unknown as Record<string, unknown>,
       rev,
       updated_at: new Date().toISOString(),
-    },
-    { onConflict: "user_id" }
-  );
+    });
+    // A concurrent first save wins the unique(user_id) race.
+    conflicted = error?.code === "23505";
+    saveError = conflicted ? null : error;
+  }
+  if (conflicted) {
+    return NextResponse.json({ error: "conflict — reload and retry" }, { status: 409 });
+  }
   if (saveError) {
     console.error(
       JSON.stringify({ msg: "brand kit save failed", user_id: userId, error: saveError.message })

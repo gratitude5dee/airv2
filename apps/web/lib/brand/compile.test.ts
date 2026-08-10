@@ -49,13 +49,13 @@ describe("compileThemeYaml", () => {
   it("emits palette, typography, layout and assets", () => {
     const yaml = compileThemeYaml(northwind);
     expect(yaml).toContain('name: "northwind"');
-    expect(yaml).toContain('background: "#0b0b0c"');
-    expect(yaml).toContain('warmGlow: "rgba(224, 85, 58, 0.18)"');
+    expect(yaml).toContain('"background": "#0b0b0c"');
+    expect(yaml).toContain('"warmGlow": "rgba(224, 85, 58, 0.18)"');
     expect(yaml).toContain("typography:");
     expect(yaml).toContain('baseSize: "15px"');
-    expect(yaml).toContain("density: comfortable");
+    expect(yaml).toContain('density: "comfortable"');
     expect(yaml).toContain('logo: "https://cdn.wzrd.tech/b/northwind/logo.svg"');
-    expect(yaml).toContain("lockupDark:");
+    expect(yaml).toContain('"lockupDark":');
   });
 
   it("resolves alpha palette colors to rgba", () => {
@@ -63,7 +63,7 @@ describe("compileThemeYaml", () => {
       ...northwind,
       palette: { ...northwind.palette, foreground: { hex: "#e0553a", alpha: 0.5 } },
     });
-    expect(yaml).toContain('foreground: "rgba(224, 85, 58, 0.5)"');
+    expect(yaml).toContain('"foreground": "rgba(224, 85, 58, 0.5)"');
   });
 
   it("omits the voice/claims/imagery extensions", () => {
@@ -188,5 +188,29 @@ describe("validateBrandSource", () => {
         palette: { ...northwind.palette, background: 42 },
       })
     ).toThrow(/background/);
+  });
+
+  it("rejects palette and asset keys that could restructure the YAML", () => {
+    expect(() =>
+      validateBrandSource({
+        ...northwind,
+        palette: { ...northwind.palette, "evil:\n  injected": "#fff" },
+      })
+    ).toThrow(/token name/);
+    expect(() =>
+      validateBrandSource({
+        ...northwind,
+        assets: { custom: { "bad key": "https://example.com/x.svg" } },
+      })
+    ).toThrow(/token name/);
+  });
+
+  it("rejects an unknown layout density", () => {
+    expect(() =>
+      validateBrandSource({
+        ...northwind,
+        layout: { density: "cozy\nraw: injected" },
+      })
+    ).toThrow(/density/);
   });
 });
