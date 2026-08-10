@@ -9,6 +9,7 @@ import { env } from "../env";
 import { serviceClient } from "../supabase";
 import { command, deleteBox, fork, stop, waitForBox, writeFile } from "../box/client";
 import { installComposioMcp } from "./connectors";
+import { sealSecret } from "../crypto/secretbox";
 import { installBaseSkills } from "../skills/hub";
 
 export interface ProvisionOptions {
@@ -136,6 +137,15 @@ export async function provisionUser(
   const apiServerKey = randomBytes(32).toString("hex");
   const dashPassword = randomBytes(16).toString("hex");
   const dashSecret = randomBytes(32).toString("hex");
+  const dashboardAuthKey = env.boxDashboardAuthKey();
+  if (!dashboardAuthKey) {
+    console.log(
+      JSON.stringify({
+        msg: "BOX_DASHBOARD_AUTH_KEY unset — dashboard credential not persisted",
+        user_id: userId,
+      })
+    );
+  }
 
   let boxId: string | undefined;
   try {
@@ -249,6 +259,11 @@ export async function provisionUser(
     // surface, so it has to outlive provisioning.
     dashboard_url: dashboard.url,
     dashboard_token: dashboard.token,
+    // Sealed basic-auth password for dashboard (9119) surfaces the proxy is
+    // allowed to reach (CM1 task 0 / CC10, see SECURITY-DECISIONS.md).
+    dashboard_auth: dashboardAuthKey
+      ? sealSecret(dashPassword, dashboardAuthKey)
+      : null,
     api_server_key: apiServerKey,
     gateway_token: gatewayToken,
     last_active_at: new Date().toISOString(),

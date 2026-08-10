@@ -11,30 +11,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
 import { requestSession } from "@/lib/auth/surface";
-import { ensureBoxAwake, StartLimitError } from "@/lib/orchestrator/boxes";
+import {
+  ensureBoxAwake,
+  refreshDashboardRoute,
+  StartLimitError,
+  type HostedRoute,
+} from "@/lib/orchestrator/boxes";
+import { openSecret } from "@/lib/crypto/secretbox";
+import { env } from "@/lib/env";
+import { resolveUpstream } from "@/lib/box/allowlist";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
-
-// Everything here is served by api_server (8642). Dashboard (9119) slices
-// need the box's basic-auth credential, which the control plane does not
-// hold — do not add dashboard paths without persisting one first.
-const ALLOWLIST: ReadonlyArray<{ method: string; pattern: RegExp }> = [
-  { method: "GET", pattern: /^api\/sessions$/ },
-  { method: "GET", pattern: /^api\/sessions\/[A-Za-z0-9_-]+$/ },
-  { method: "GET", pattern: /^api\/sessions\/[A-Za-z0-9_-]+\/messages$/ },
-  { method: "GET", pattern: /^v1\/skills$/ },
-  { method: "GET", pattern: /^v1\/toolsets$/ },
-  { method: "GET", pattern: /^api\/mcp\/servers$/ },
-  { method: "GET", pattern: /^api\/jobs$/ },
-];
-
-function isAllowed(method: string, path: string): boolean {
-  return ALLOWLIST.some(
-    (entry) => entry.method === method && entry.pattern.test(path)
-  );
-}
 
 async function handle(
   request: NextRequest,
@@ -42,7 +31,8 @@ async function handle(
 ): Promise<NextResponse> {
   const { path } = await params;
   const joined = path.join("/");
-  if (!isAllowed(request.method, joined)) {
+  const upstreamKind = resolveUpstream(request.method, joined);
+  if (!upstreamKind) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
   const supabase = serviceClient();
@@ -54,16 +44,52 @@ async function handle(
   try {
     const box = await ensureBoxAwake(supabase, userId);
     const search = request.nextUrl.search;
-    const upstream = await fetch(
-      `${box.target.hostedUrl}/${joined}${search}`,
-      {
+    const hasBody = request.method === "POST" || request.method === "PUT";
+    const requestBody = hasBody ? await request.text() : undefined;
+
+    const proxyTo = async (
+      baseUrl: string,
+      headers: Record<string, string>
+    ): Promise<Response> =>
+      fetch(`${baseUrl}/${joined}${search}`, {
         method: request.method,
-        headers: {
-          Authorization: `Bearer ${box.target.apiServerKey}`,
-          Cookie: `_port_auth=${box.target.hostedToken}`,
-        },
+        headers: hasBody
+          ? { ...headers, "Content-Type": "application/json" }
+          : headers,
+        body: requestBody,
+      });
+
+    let upstream: Response;
+    if (upstreamKind === "dashboard") {
+      const authKey = env.boxDashboardAuthKey();
+      if (!box.dashboard || !box.dashboardAuthSealed || !authKey) {
+        return NextResponse.json(
+          { error: "dashboard credential unavailable" },
+          { status: 503 }
+        );
       }
-    );
+      const password = openSecret(box.dashboardAuthSealed, authKey);
+      const basic = Buffer.from(`air:${password}`).toString("base64");
+      const dashboardHeaders = (route: HostedRoute): Record<string, string> => ({
+        Authorization: `Basic ${basic}`,
+        Cookie: `_port_auth=${route.token}`,
+      });
+      upstream = await proxyTo(box.dashboard.url, dashboardHeaders(box.dashboard));
+      // The hosted _token rotates on resume and the wake path refreshes the
+      // dashboard route only in the background — on a stale-token rejection,
+      // re-register the route synchronously and retry once.
+      if (upstream.status === 401 || upstream.status === 403) {
+        const fresh = await refreshDashboardRoute(supabase, box.boxId);
+        if (fresh) {
+          upstream = await proxyTo(fresh.url, dashboardHeaders(fresh));
+        }
+      }
+    } else {
+      upstream = await proxyTo(box.target.hostedUrl, {
+        Authorization: `Bearer ${box.target.apiServerKey}`,
+        Cookie: `_port_auth=${box.target.hostedToken}`,
+      });
+    }
     const body = await upstream.text();
     return new NextResponse(body, {
       status: upstream.status,

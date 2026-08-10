@@ -120,6 +120,17 @@ rm -rf "$HOME_DIR/.hermes/web_dist"
 cp -r "$HOME_DIR/hermes-agent/hermes_cli/web_dist" "$HOME_DIR/.hermes/web_dist"
 echo "HERMES_WEB_DIST=$HOME_DIR/.hermes/web_dist" >> "$HOME_DIR/.hermes/.env"
 
+# ── 3d. Bake the creative plugin into the template (CM1 task 7 / CC9) ────────
+# Plugin API routes mount once at dashboard startup; a rescan will not pick up
+# a new plugin_api.py — a plugin version bump means a template rebuild plus a
+# documented re-fork or restart window (docs/creative-plugin.md).
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+mkdir -p "$HOME_DIR/.hermes/plugins"
+rm -rf "$HOME_DIR/.hermes/plugins/creative"
+cp -r "$SCRIPT_DIR/plugins/creative" "$HOME_DIR/.hermes/plugins/creative"
+sed -i '/^CREATIVE_PLUGIN_VERSION=/d' "$HOME_DIR/.hermes/.env"
+echo "CREATIVE_PLUGIN_VERSION=$(python3 -c "import json;print(json.load(open('$SCRIPT_DIR/plugins/creative/dashboard/manifest.json'))['version'])")" >> "$HOME_DIR/.hermes/.env"
+
 # ── 4. systemd units — /etc is snapshotted, enabled units restart on resume ──
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 sudo cp "$SCRIPT_DIR"/hermes-gateway.service /etc/systemd/system/
