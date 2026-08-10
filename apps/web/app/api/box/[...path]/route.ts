@@ -17,16 +17,10 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-/** Which box port serves the path: api_server (8642) or the dashboard (9119). */
-type Upstream = "api_server" | "dashboard";
-
-interface AllowlistEntry {
-  method: string;
-  pattern: RegExp;
-  upstream?: Upstream;
-}
-
-const ALLOWLIST: ReadonlyArray<AllowlistEntry> = [
+// Everything here is served by api_server (8642). Dashboard (9119) slices
+// need the box's basic-auth credential, which the control plane does not
+// hold — do not add dashboard paths without persisting one first.
+const ALLOWLIST: ReadonlyArray<{ method: string; pattern: RegExp }> = [
   { method: "GET", pattern: /^api\/sessions$/ },
   { method: "GET", pattern: /^api\/sessions\/[A-Za-z0-9_-]+$/ },
   { method: "GET", pattern: /^api\/sessions\/[A-Za-z0-9_-]+\/messages$/ },
@@ -34,12 +28,10 @@ const ALLOWLIST: ReadonlyArray<AllowlistEntry> = [
   { method: "GET", pattern: /^v1\/toolsets$/ },
   { method: "GET", pattern: /^api\/mcp\/servers$/ },
   { method: "GET", pattern: /^api\/jobs$/ },
-  // Dashboard-only read slices (§7.4 Tier 2).
-  { method: "GET", pattern: /^api\/analytics\/usage$/, upstream: "dashboard" },
 ];
 
-function allowed(method: string, path: string): AllowlistEntry | undefined {
-  return ALLOWLIST.find(
+function isAllowed(method: string, path: string): boolean {
+  return ALLOWLIST.some(
     (entry) => entry.method === method && entry.pattern.test(path)
   );
 }
@@ -50,8 +42,7 @@ async function handle(
 ): Promise<NextResponse> {
   const { path } = await params;
   const joined = path.join("/");
-  const entry = allowed(request.method, joined);
-  if (!entry) {
+  if (!isAllowed(request.method, joined)) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
   const supabase = serviceClient();
@@ -62,21 +53,14 @@ async function handle(
   const userId = session.userId;
   try {
     const box = await ensureBoxAwake(supabase, userId);
-    if (entry.upstream === "dashboard" && !box.dashboard) {
-      return NextResponse.json({ error: "not found" }, { status: 404 });
-    }
-    const base =
-      entry.upstream === "dashboard" && box.dashboard
-        ? { url: box.dashboard.url, token: box.dashboard.token }
-        : { url: box.target.hostedUrl, token: box.target.hostedToken };
     const search = request.nextUrl.search;
     const upstream = await fetch(
-      `${base.url}/${joined}${search}`,
+      `${box.target.hostedUrl}/${joined}${search}`,
       {
         method: request.method,
         headers: {
           Authorization: `Bearer ${box.target.apiServerKey}`,
-          Cookie: `_port_auth=${base.token}`,
+          Cookie: `_port_auth=${box.target.hostedToken}`,
         },
       }
     );

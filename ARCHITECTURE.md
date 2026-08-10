@@ -889,7 +889,7 @@ Read-only History and Skills parity needs no new surface — the desktop authent
 
 **Managed boxes stay on the hosted-route model.** No Tailscale Funnel, no `API_SERVER_HOST` change, no gateway routing change: a desktop client is a credential problem, not a topology problem. A future self-hosted "bring your own box" tier would store a user-supplied gateway base URL plus API key instead of forking a box — a different provisioning path, and out of scope for the desktop surface.
 
-Both hosted routes are now persisted (`boxes.dashboard_url` / `dashboard_token` alongside `hosted_url` / `hosted_token`) and both are re-registered together on resume, because both tokens rotate and refreshing only 8642 left the dashboard route permanently stale after the first stop/resume cycle.
+Both hosted routes are now persisted (`boxes.dashboard_url` / `dashboard_token` alongside `hosted_url` / `hosted_token`) and both are re-registered on resume, because both tokens rotate and refreshing only 8642 left the dashboard route permanently stale after the first stop/resume cycle. The 8642 refresh is load-bearing for chat; the 9119 refresh is best-effort so a box without the dashboard unit still chats. One gap before any Tier 2 dashboard slice can actually be proxied: the dashboard's Basic Auth password is generated at provision time and only its hash reaches the box, so the control plane holds no credential for port 9119 — persisting one (or issuing a per-request ticket) is a prerequisite, and the `/api/box/*` allowlist stays api_server-only until then.
 
 ---
 

@@ -60,9 +60,10 @@ function parseHostedUrl(
 
 /**
  * Re-register both private hosted routes and persist the rotated tokens.
- * api_server (8642) backs chat on every surface; the dashboard (9119) backs
- * the allowlisted History/Skills proxy — both tokens rotate on resume, so
- * refreshing only one leaves the other stale for the rest of the box's life.
+ * api_server (8642) backs chat on every surface; the dashboard (9119) route
+ * is kept fresh for future Tier 2 dashboard slices — both tokens rotate on
+ * resume, so refreshing only one leaves the other stale for the rest of the
+ * box's life.
  */
 async function refreshHostedRoutes(
   supabase: SupabaseClient,
@@ -70,18 +71,26 @@ async function refreshHostedRoutes(
 ): Promise<{ apiServer: HostedRoute; dashboard?: HostedRoute }> {
   const result = await command(
     boxId,
-    `eval "$(grep '^export ASCII_' /home/user/.bashrc)"; /home/user/.ascii/host url ${API_SERVER_PORT} --timeout 120 --private && /home/user/.ascii/host url ${DASHBOARD_PORT} --timeout 120 --private`,
-    300
+    `eval "$(grep '^export ASCII_' /home/user/.bashrc)"; /home/user/.ascii/host url ${API_SERVER_PORT} --timeout 120 --private`,
+    180
   );
   if (result.exitCode !== 0) {
     throw new Error(`host refresh failed: ${result.stderr}`);
   }
   const apiServer = parseHostedUrl(result.stdout, API_SERVER_PORT);
   // The dashboard unit is optional on older template versions; chat must not
-  // fail because its route is missing.
+  // fail because its route is missing, so its registration runs separately
+  // and any failure is tolerated.
   let dashboard: HostedRoute | undefined;
   try {
-    dashboard = parseHostedUrl(result.stdout, DASHBOARD_PORT);
+    const dashResult = await command(
+      boxId,
+      `eval "$(grep '^export ASCII_' /home/user/.bashrc)"; /home/user/.ascii/host url ${DASHBOARD_PORT} --timeout 120 --private`,
+      180
+    );
+    if (dashResult.exitCode === 0) {
+      dashboard = parseHostedUrl(dashResult.stdout, DASHBOARD_PORT);
+    }
   } catch {
     dashboard = undefined;
   }
