@@ -76,7 +76,7 @@ async function handle(
       // the client (C3).
       type DashboardAttempt =
         | { kind: "ok"; response: Response }
-        | { kind: "stale" }
+        | { kind: "stale"; response?: Response }
         | { kind: "fail" };
       const dashboardAttempt = async (
         route: HostedRoute
@@ -109,8 +109,10 @@ async function handle(
           Cookie: `_port_auth=${route.token}; ${sessionCookies}`,
         });
         if (response.status === 401 || response.status === 403) {
-          await response.body?.cancel();
-          return { kind: "stale" };
+          // Could be a stale hosted _token or a genuine refusal by the
+          // route — keep the response so an exhausted retry can forward
+          // the upstream status instead of masking it as a 502.
+          return { kind: "stale", response };
         }
         return { kind: "ok", response };
       };
@@ -121,18 +123,24 @@ async function handle(
       // re-registration + retry — other failures (dashboard 5xx, missing
       // cookies) fail fast instead of paying a multi-minute box command.
       if (attempt.kind === "stale") {
+        await attempt.response?.body?.cancel();
         const fresh = await refreshDashboardRoute(supabase, box.boxId);
         if (fresh) {
           attempt = await dashboardAttempt(fresh);
         }
       }
-      if (attempt.kind !== "ok") {
+      if (attempt.kind === "stale" && attempt.response) {
+        // Retry exhausted but the box itself answered — forward its
+        // 401/403 verbatim rather than masking it as a gateway error.
+        upstream = attempt.response;
+      } else if (attempt.kind !== "ok") {
         return NextResponse.json(
           { error: "dashboard login failed" },
           { status: 502 }
         );
+      } else {
+        upstream = attempt.response;
       }
-      upstream = attempt.response;
     } else {
       upstream = await proxyTo(box.target.hostedUrl, {
         Authorization: `Bearer ${box.target.apiServerKey}`,
