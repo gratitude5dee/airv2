@@ -20,7 +20,10 @@ export const facebookAdapter: PublishAdapter = {
   scopes: ["pages_manage_posts", "pages_read_engagement"],
   limits: {
     maxCaptionChars: FACEBOOK_SPEC.maxCaptionChars,
-    maxMediaItems: FACEBOOK_SPEC.maxMediaItems,
+    // publish() sends a single photo or video today; multi-photo posts
+    // (album tools) are a follow-up. Validate must reject what publish
+    // cannot send rather than silently dropping media.
+    maxMediaItems: 1,
     dailyCap: FACEBOOK_SPEC.dailyCap,
   },
 
@@ -38,19 +41,14 @@ export const facebookAdapter: PublishAdapter = {
         message: `Post is ${draft.caption.length} characters; Facebook allows at most ${FACEBOOK_SPEC.maxCaptionChars}.`,
       });
     }
-    if (draft.media.length > FACEBOOK_SPEC.maxMediaItems) {
+    if (draft.media.length > 1) {
       problems.push({
         code: "fb.media.count",
-        message: `At most ${FACEBOOK_SPEC.maxMediaItems} media items per post.`,
+        message:
+          "Facebook posts support one photo or one video for now — split extra media into separate posts.",
       });
     }
     const videos = draft.media.filter((media) => media.kind === "video");
-    if (videos.length > 0 && draft.media.length > 1) {
-      problems.push({
-        code: "fb.video.single",
-        message: "A video post takes exactly one video, no other media.",
-      });
-    }
     for (const video of videos) {
       if (
         video.durationSeconds !== undefined &&

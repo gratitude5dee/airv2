@@ -18,7 +18,7 @@ import { INSTAGRAM_SPEC } from "./specs/instagram";
 import { X_SPEC } from "./specs/x";
 import { YOUTUBE_SPEC } from "./specs/youtube";
 import { TIKTOK_SPEC } from "./specs/tiktok";
-import { retryDelaySeconds, verdictFor } from "./verdict";
+import { retryDelaySeconds, sanitizeLabel, verdictFor } from "./verdict";
 import { PublishError } from "./adapter";
 
 function draft(overrides: Partial<Draft>): Draft {
@@ -114,12 +114,12 @@ describe("facebook validate", () => {
     ).toContain("fb.empty");
   });
 
-  it("rejects a video mixed with other media", () => {
+  it("rejects more media than publish() can send", () => {
     const problems = facebookAdapter.validate(
       draft({ media: [video(30), image(1080, 1080)] })
     );
     expect(problems.map((problem) => problem.code)).toContain(
-      "fb.video.single"
+      "fb.media.count"
     );
   });
 });
@@ -132,20 +132,13 @@ describe("x validate", () => {
     );
   });
 
-  it("rejects five images", () => {
+  it("rejects media until an upload path exists", () => {
     const problems = xAdapter.validate(
-      draft({ media: Array.from({ length: 5 }, () => image(1080, 1080)) })
+      draft({ media: [image(1080, 1080)] })
     );
     expect(problems.map((problem) => problem.code)).toContain(
-      "x.images.count"
+      "x.media.unsupported"
     );
-  });
-
-  it("rejects mixed images and video", () => {
-    const problems = xAdapter.validate(
-      draft({ media: [image(1080, 1080), video(30)] })
-    );
-    expect(problems.map((problem) => problem.code)).toContain("x.media.mixed");
   });
 });
 
@@ -231,6 +224,11 @@ describe("verdict helpers", () => {
     expect(retryDelaySeconds(1, 300)).toBe(600);
     expect(retryDelaySeconds(10, 300)).toBe(6 * 60 * 60);
   });
+
+  it("sanitizes decision labels", () => {
+    expect(sanitizeLabel("a\u0000b\n\n  c")).toBe("a b c");
+    expect(sanitizeLabel("x".repeat(500))).toHaveLength(200);
+  });
 });
 
 describe("registry", () => {
@@ -258,6 +256,12 @@ describe("registry", () => {
         })
       );
       expect(problems.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("rejects prototype-chain platform names", () => {
+    for (const name of ["constructor", "toString", "__proto__"]) {
+      expect(adapterFor(name)).toBeNull();
     }
   });
 });

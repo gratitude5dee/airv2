@@ -23,7 +23,7 @@ export function allAdapters(): PublishAdapter[] {
 }
 
 export function adapterFor(platform: string): PublishAdapter | null {
-  if (!(platform in ADAPTERS)) return null;
+  if (!Object.prototype.hasOwnProperty.call(ADAPTERS, platform)) return null;
   if (platform === "tiktok" && process.env.PUBLISH_TIKTOK !== "1") {
     return null;
   }

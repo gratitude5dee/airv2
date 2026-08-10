@@ -1,8 +1,8 @@
 /**
  * X (Twitter) adapter (CM3 task 5) via Composio's TWITTER toolkit.
- * Note: media upload through the hosted toolkit is text/link-first; media
- * attachment requires pre-uploaded media ids, which the toolkit exposes via
- * the post's media payload when available.
+ * Text-only for now: the hosted toolkit's post creation takes pre-uploaded
+ * media ids and no upload tool, so validate() rejects drafts with media
+ * rather than silently dropping attachments.
  */
 import {
   classifyDefault,
@@ -22,16 +22,23 @@ export const xAdapter: PublishAdapter = {
   scopes: ["tweet.read", "tweet.write", "users.read"],
   limits: {
     maxCaptionChars: X_SPEC.maxCaptionChars,
-    maxMediaItems: X_SPEC.maxImages,
+    maxMediaItems: 0,
     dailyCap: X_SPEC.dailyCap,
   },
 
   validate(draft: Draft): Problem[] {
     const problems: Problem[] = [];
-    if (draft.caption.length === 0 && draft.media.length === 0) {
+    if (draft.caption.length === 0) {
       problems.push({
         code: "x.empty",
-        message: "A post needs text or media.",
+        message: "A post needs text.",
+      });
+    }
+    if (draft.media.length > 0) {
+      problems.push({
+        code: "x.media.unsupported",
+        message:
+          "X posts are text-only for now — media attachments aren't supported yet.",
       });
     }
     if (draft.caption.length > X_SPEC.maxCaptionChars) {
@@ -39,37 +46,6 @@ export const xAdapter: PublishAdapter = {
         code: "x.caption.length",
         message: `Post is ${draft.caption.length} characters; X allows at most ${X_SPEC.maxCaptionChars}.`,
       });
-    }
-    const images = draft.media.filter((media) => media.kind === "image");
-    const videos = draft.media.filter((media) => media.kind === "video");
-    if (images.length > X_SPEC.maxImages) {
-      problems.push({
-        code: "x.images.count",
-        message: `At most ${X_SPEC.maxImages} images per post.`,
-      });
-    }
-    if (videos.length > X_SPEC.maxVideos) {
-      problems.push({
-        code: "x.videos.count",
-        message: "At most one video per post.",
-      });
-    }
-    if (videos.length > 0 && images.length > 0) {
-      problems.push({
-        code: "x.media.mixed",
-        message: "A post takes images or one video, not both.",
-      });
-    }
-    for (const video of videos) {
-      if (
-        video.durationSeconds !== undefined &&
-        video.durationSeconds > X_SPEC.maxVideoSeconds
-      ) {
-        problems.push({
-          code: "x.video.long",
-          message: `Video must run at most ${X_SPEC.maxVideoSeconds}s.`,
-        });
-      }
     }
     return problems;
   },

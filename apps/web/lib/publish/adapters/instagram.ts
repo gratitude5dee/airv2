@@ -208,6 +208,10 @@ async function waitForContainer(
     const code = firstString(status, [["status_code"], ["status"]]);
     if (code === "FINISHED" || code === "PUBLISHED") return;
     if (code === "ERROR" || code === "EXPIRED") {
+      // Terminal: drop the checkpoint so a retry creates a fresh container
+      // instead of re-polling a dead one forever.
+      delete ctx.state[CONTAINER_STATE_KEY];
+      await ctx.saveState();
       throw new PublishError(400, `container processing failed: ${code}`);
     }
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));

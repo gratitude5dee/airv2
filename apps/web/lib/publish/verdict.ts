@@ -37,11 +37,24 @@ export async function raiseVerdictDecision(
   verdict: Extract<Verdict, { kind: "reauth" | "fix-content" }>,
   ref: string
 ): Promise<void> {
-  await supabase.from("decisions").insert({
+  const { error } = await supabase.from("decisions").insert({
     user_id: userId,
     kind: verdict.kind === "reauth" ? "reconnect" : "revise",
     platform,
     ref,
-    label: verdict.message.slice(0, 200),
+    label: sanitizeLabel(verdict.message),
   });
+  if (error) {
+    throw new Error(`decisions insert failed: ${error.message}`);
+  }
+}
+
+/** Labels render in the "Needs you" queue: keep printable text only,
+ * collapse whitespace, and cap the length. */
+export function sanitizeLabel(message: string): string {
+  return message
+    .replace(/[^\x20-\x7E\u00A0-\uFFFF]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 200);
 }
