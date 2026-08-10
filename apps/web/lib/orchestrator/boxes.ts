@@ -128,13 +128,19 @@ export async function ensureBoxAwake(
   supabase: SupabaseClient,
   userId: string
 ): Promise<UserBox> {
-  const { data } = await supabase
+  const { data, error: selectError } = await supabase
     .from("boxes")
     .select(
       "provider_box_id, hosted_url, hosted_token, api_server_key, dashboard_url, dashboard_token"
     )
     .eq("user_id", userId)
     .maybeSingle();
+  // A failed query (e.g. a migration missing a selected column) is not the
+  // same as a missing row — surface it as its own error so an infra problem
+  // never reads as "this user has no box".
+  if (selectError) {
+    throw new Error(`box lookup failed for user ${userId}: ${selectError.message}`);
+  }
   if (!data) {
     throw new Error(`no box for user ${userId}`);
   }
