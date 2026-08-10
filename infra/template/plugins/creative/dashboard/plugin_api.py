@@ -34,10 +34,21 @@ CREATIVE_DIR = HOME / ".hermes" / "creative"
 ASSETS_DIR = CREATIVE_DIR / "assets"
 JOBS_DIR = CREATIVE_DIR / "jobs"
 DB_PATH = CREATIVE_DIR / "creative.db"
-HERMES_BIN = os.environ.get(
-    "CREATIVE_HERMES_BIN", str(HOME / ".hermes-venv" / "bin" / "hermes")
-)
-PLUGIN_VERSION = "0.1.0"
+
+
+def _default_hermes_bin() -> str:
+    candidates = [
+        HOME / ".hermes-venv" / "bin" / "hermes",
+        HOME / "hermes-agent" / ".venv" / "bin" / "hermes",
+    ]
+    for candidate in candidates:
+        if candidate.is_file():
+            return str(candidate)
+    return "hermes"
+
+
+HERMES_BIN = os.environ.get("CREATIVE_HERMES_BIN") or _default_hermes_bin()
+PLUGIN_VERSION = "0.1.1"
 
 JOB_KINDS = {"commercial", "marketing", "ugc", "cinematography"}
 

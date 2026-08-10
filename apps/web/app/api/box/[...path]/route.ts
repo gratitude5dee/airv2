@@ -69,21 +69,53 @@ async function handle(
         );
       }
       const password = openSecret(box.dashboardAuthSealed, authKey);
-      const basic = Buffer.from(`air:${password}`).toString("base64");
-      const dashboardHeaders = (route: HostedRoute): Record<string, string> => ({
-        Authorization: `Basic ${basic}`,
-        Cookie: `_port_auth=${route.token}`,
-      });
-      upstream = await proxyTo(box.dashboard.url, dashboardHeaders(box.dashboard));
+      // Dashboard auth is a password-login flow, not an Authorization
+      // header: POST /auth/password-login verifies the credential and
+      // mints hermes_session_* cookies that gate every protected route.
+      // The cookies stay in this handler's memory — never forwarded to
+      // the client (C3).
+      const dashboardAttempt = async (
+        route: HostedRoute
+      ): Promise<Response | null> => {
+        const login = await fetch(`${route.url}/auth/password-login`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Cookie: `_port_auth=${route.token}`,
+          },
+          body: JSON.stringify({
+            provider: "basic",
+            username: "air",
+            password,
+          }),
+        });
+        if (!login.ok) return null;
+        const sessionCookies = login.headers
+          .getSetCookie()
+          .map((cookie) => cookie.split(";")[0])
+          .join("; ");
+        if (!sessionCookies) return null;
+        return proxyTo(route.url, {
+          Cookie: `_port_auth=${route.token}; ${sessionCookies}`,
+        });
+      };
+      let attempt = await dashboardAttempt(box.dashboard);
       // The hosted _token rotates on resume and the wake path refreshes the
       // dashboard route only in the background — on a stale-token rejection,
       // re-register the route synchronously and retry once.
-      if (upstream.status === 401 || upstream.status === 403) {
+      if (!attempt || attempt.status === 401 || attempt.status === 403) {
         const fresh = await refreshDashboardRoute(supabase, box.boxId);
         if (fresh) {
-          upstream = await proxyTo(fresh.url, dashboardHeaders(fresh));
+          attempt = (await dashboardAttempt(fresh)) ?? attempt;
         }
       }
+      if (!attempt) {
+        return NextResponse.json(
+          { error: "dashboard login failed" },
+          { status: 502 }
+        );
+      }
+      upstream = attempt;
     } else {
       upstream = await proxyTo(box.target.hostedUrl, {
         Authorization: `Bearer ${box.target.apiServerKey}`,
