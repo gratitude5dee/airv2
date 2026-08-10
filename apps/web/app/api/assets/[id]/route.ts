@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
 import { requestSession } from "@/lib/auth/surface";
-import { revokeDeliveries } from "@/lib/assets/pipeline";
+import { AssetPipelineError, revokeDeliveries } from "@/lib/assets/pipeline";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -59,6 +59,12 @@ export async function DELETE(
   if (!asset) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
-  const revoked = await revokeDeliveries(supabase, session.userId, id);
-  return NextResponse.json({ revoked });
+  try {
+    const revoked = await revokeDeliveries(supabase, session.userId, id);
+    return NextResponse.json({ revoked });
+  } catch (error) {
+    const message =
+      error instanceof AssetPipelineError ? error.message : "revoke failed";
+    return NextResponse.json({ error: message }, { status: 502 });
+  }
 }

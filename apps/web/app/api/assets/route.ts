@@ -7,7 +7,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
 import { requestSession } from "@/lib/auth/surface";
-import { ensureBoxAwake, StartLimitError } from "@/lib/orchestrator/boxes";
+import {
+  armStopAfter,
+  ensureBoxAwake,
+  StartLimitError,
+} from "@/lib/orchestrator/boxes";
 import {
   AssetPipelineError,
   ingestAsset,
@@ -25,7 +29,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   if (!session) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  await sweepExpiredDeliveries(supabase, session.userId);
+  // Best-effort cleanup — never block the read path on a storage hiccup.
+  await sweepExpiredDeliveries(supabase, session.userId).catch(() => undefined);
   const { data, error } = await supabase
     .from("creative_assets")
     .select("id, box_asset_id, sha256, ext, kind, bytes, created_at")
@@ -57,8 +62,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
   try {
     const box = await ensureBoxAwake(supabase, session.userId);
-    const asset = await ingestAsset(supabase, session.userId, box, boxAssetId);
-    const delivery = await mintDelivery(supabase, asset, body.purpose ?? null);
+    let asset;
+    let delivery;
+    try {
+      asset = await ingestAsset(supabase, session.userId, box, boxAssetId);
+      delivery = await mintDelivery(supabase, asset, body.purpose ?? null);
+    } finally {
+      // ensureBoxAwake clears stop_after; re-arm the idle deadline so the
+      // sweeper stops the box again.
+      await armStopAfter(supabase, session.userId).catch(() => undefined);
+    }
     return NextResponse.json({
       asset_id: asset.id,
       sha256: asset.sha256,

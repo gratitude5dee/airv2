@@ -180,10 +180,19 @@ export async function mintDelivery(
   if (copied.error) {
     throw new AssetPipelineError(`delivery copy failed: ${copied.error.message}`);
   }
+  // If signing or the tracking insert fails, delete the copy — an object
+  // without an asset_deliveries row is invisible to revoke and the sweep.
+  const rollback = async () => {
+    await supabase.storage
+      .from(ASSETS_BUCKET)
+      .remove([key])
+      .catch(() => undefined);
+  };
   const signed = await supabase.storage
     .from(ASSETS_BUCKET)
     .createSignedUrl(key, DELIVERY_TTL_SECONDS);
   if (signed.error || !signed.data) {
+    await rollback();
     throw new AssetPipelineError("delivery signing failed");
   }
   const expiresAt = new Date(
@@ -201,6 +210,7 @@ export async function mintDelivery(
     .select("id")
     .single();
   if (inserted.error) {
+    await rollback();
     throw new AssetPipelineError(inserted.error.message);
   }
   return {
