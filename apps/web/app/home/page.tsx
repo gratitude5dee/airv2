@@ -125,6 +125,7 @@ export default function HomePage() {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [connectorFilter, setConnectorFilter] = useState("");
   const [panelNote, setPanelNote] = useState<string | null>(null);
+  const [panelFailed, setPanelFailed] = useState(false);
   const [skillQuery, setSkillQuery] = useState("");
   const [hubResults, setHubResults] = useState<HubSkill[] | null>(null);
   const [hubNote, setHubNote] = useState<string | null>(null);
@@ -372,26 +373,56 @@ export default function HomePage() {
     }
   }
 
+  function boxErrorNote(status: number, what: string): string {
+    if (status === 429)
+      return "Your agent's computer is busy starting up — retry in a minute.";
+    if (status === 502)
+      return "Couldn't reach your agent's computer — it may still be waking up.";
+    return `Couldn't load ${what} — try again shortly.`;
+  }
+
+  async function loadHistory() {
+    setPanelFailed(false);
+    setPanelNote("Waking your agent… this can take a minute if it was asleep.");
+    try {
+      const res = await fetch("/api/box/api/sessions?limit=30");
+      if (res.ok) {
+        setSessions(pickList<SessionSummary>(await res.json(), ["sessions", "data", "items"]));
+        setPanelNote(null);
+      } else {
+        setPanelNote(boxErrorNote(res.status, "history"));
+        setPanelFailed(true);
+      }
+    } catch {
+      setPanelNote("Couldn't load history — try again shortly.");
+      setPanelFailed(true);
+    }
+  }
+
+  async function loadInstalledSkills() {
+    setPanelFailed(false);
+    setPanelNote("Waking your agent… this can take a minute if it was asleep.");
+    try {
+      const res = await fetch("/api/box/v1/skills");
+      if (res.ok) {
+        setSkills(pickList<SkillSummary>(await res.json(), ["skills", "data", "items"]));
+        setPanelNote(null);
+      } else {
+        setPanelNote(boxErrorNote(res.status, "skills"));
+        setPanelFailed(true);
+      }
+    } catch {
+      setPanelNote("Couldn't load skills — try again shortly.");
+      setPanelFailed(true);
+    }
+  }
+
   async function loadTab(next: Tab) {
     setTab(next);
     setPanelNote(null);
+    setPanelFailed(false);
     if (next === "history" && sessions === null) {
-      setPanelNote("Waking your agent… this can take a minute if it was asleep.");
-      try {
-        const res = await fetch("/api/box/api/sessions?limit=30");
-        if (res.ok) {
-          setSessions(pickList<SessionSummary>(await res.json(), ["sessions", "data", "items"]));
-          setPanelNote(null);
-        } else {
-          setPanelNote(
-            res.status === 502
-              ? "Couldn't reach your agent's computer — try again shortly."
-              : "Couldn't load history — try again shortly."
-          );
-        }
-      } catch {
-        setPanelNote("Couldn't load history — try again shortly.");
-      }
+      await loadHistory();
     }
     if (next === "needs") {
       await loadDecisions();
@@ -403,22 +434,7 @@ export default function HomePage() {
       await loadConnectors();
     }
     if (next === "skills" && skills === null) {
-      setPanelNote("Waking your agent… this can take a minute if it was asleep.");
-      try {
-        const res = await fetch("/api/box/v1/skills");
-        if (res.ok) {
-          setSkills(pickList<SkillSummary>(await res.json(), ["skills", "data", "items"]));
-          setPanelNote(null);
-        } else {
-          setPanelNote(
-            res.status === 502
-              ? "Couldn't reach your agent's computer — try again shortly."
-              : "Couldn't load skills — try again shortly."
-          );
-        }
-      } catch {
-        setPanelNote("Couldn't load skills — try again shortly.");
-      }
+      await loadInstalledSkills();
     }
   }
 
@@ -703,8 +719,16 @@ export default function HomePage() {
             <div className="grid flex-1 content-start gap-2 overflow-y-auto">
               <h3 className="m-0 text-[15px] font-semibold">Conversations</h3>
               {panelNote ? (
-                <div className="py-1">
+                <div className="flex items-center gap-2 py-1">
                   <Orb pill label={panelNote} />
+                  {panelFailed ? (
+                    <button
+                      className="btn !px-3 !py-1.5 !text-[12px]"
+                      onClick={() => void loadHistory()}
+                    >
+                      Retry
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
               {(sessions ?? []).map((s, i) => (
@@ -778,8 +802,16 @@ export default function HomePage() {
               ) : null}
               <h4 className="m-0 mt-2 text-[13px] font-semibold">Installed</h4>
               {panelNote ? (
-                <div className="py-1">
+                <div className="flex items-center gap-2 py-1">
                   <Orb pill label={panelNote} />
+                  {panelFailed ? (
+                    <button
+                      className="btn !px-3 !py-1.5 !text-[12px]"
+                      onClick={() => void loadInstalledSkills()}
+                    >
+                      Retry
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
               {(skills ?? []).map((s, i) => (
