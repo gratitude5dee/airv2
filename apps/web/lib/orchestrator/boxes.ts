@@ -156,9 +156,16 @@ export async function ensureBoxAwake(
       }
       // Concurrent wakes race: the pre-warm and a chat turn can both call
       // resume, and the loser gets an error for a box that is already
-      // starting. If the box is no longer stopped, just wait for it.
-      const current = await getBox(boxId);
-      if (current.state === "error") {
+      // starting. Only swallow the error if the box actually left the
+      // stopped state — a still-stopped or errored box means the resume
+      // genuinely failed and must surface immediately.
+      const current = await getBox(boxId).catch(() => null);
+      const stillDown =
+        !current ||
+        current.state === "archived" ||
+        current.state === "archiving" ||
+        current.state === "error";
+      if (stillDown) {
         throw error;
       }
     }
