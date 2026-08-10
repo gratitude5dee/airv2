@@ -112,6 +112,32 @@ export async function deleteSession(sessionId: string): Promise<void> {
   );
 }
 
+/**
+ * Execute a Composio tool as a user (v3 tools/execute). The OAuth token
+ * stays with Composio; we pass only our user id (and optionally a specific
+ * connected account) and get the tool's JSON result back.
+ */
+export async function executeTool(
+  toolSlug: string,
+  userId: string,
+  args: Record<string, unknown>,
+  connectedAccountId?: string
+): Promise<unknown> {
+  return await composioFetch<unknown>(
+    `/tools/execute/${encodeURIComponent(toolSlug)}`,
+    {
+      method: "POST",
+      body: {
+        user_id: userId,
+        arguments: args,
+        ...(connectedAccountId
+          ? { connected_account_id: connectedAccountId }
+          : {}),
+      },
+    }
+  );
+}
+
 export async function listConnectedAccounts(
   userId: string
 ): Promise<ConnectedAccount[]> {
