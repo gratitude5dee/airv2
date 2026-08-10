@@ -18,9 +18,16 @@ export class StartLimitError extends Error {
   }
 }
 
+export interface HostedRoute {
+  url: string;
+  token: string;
+}
+
 export interface UserBox {
   boxId: string;
   target: HermesBoxTarget;
+  /** Hermes dashboard (9119) route, for the allowlisted proxy. Server-side only. */
+  dashboard?: HostedRoute;
 }
 
 interface BoxRow {
@@ -28,7 +35,12 @@ interface BoxRow {
   hosted_url: string;
   hosted_token: string;
   api_server_key: string;
+  dashboard_url: string | null;
+  dashboard_token: string | null;
 }
+
+export const API_SERVER_PORT = 8642;
+export const DASHBOARD_PORT = 9119;
 
 const HOSTED_URL_PATTERN =
   /^(https:\/\/[a-z0-9-]+-(\d+)\.on\.ascii\.dev)\?_token=([a-f0-9]+)$/m;
@@ -46,25 +58,44 @@ function parseHostedUrl(
   throw new Error(`hosted URL for port ${port} not found in host output`);
 }
 
-/** Re-register the private hosted route and persist the rotated token. */
-async function refreshHostedRoute(
+/**
+ * Re-register both private hosted routes and persist the rotated tokens.
+ * api_server (8642) backs chat on every surface; the dashboard (9119) backs
+ * the allowlisted History/Skills proxy — both tokens rotate on resume, so
+ * refreshing only one leaves the other stale for the rest of the box's life.
+ */
+async function refreshHostedRoutes(
   supabase: SupabaseClient,
   boxId: string
-): Promise<{ url: string; token: string }> {
+): Promise<{ apiServer: HostedRoute; dashboard?: HostedRoute }> {
   const result = await command(
     boxId,
-    `eval "$(grep '^export ASCII_' /home/user/.bashrc)"; /home/user/.ascii/host url 8642 --timeout 120 --private`,
-    180
+    `eval "$(grep '^export ASCII_' /home/user/.bashrc)"; /home/user/.ascii/host url ${API_SERVER_PORT} --timeout 120 --private && /home/user/.ascii/host url ${DASHBOARD_PORT} --timeout 120 --private`,
+    300
   );
   if (result.exitCode !== 0) {
     throw new Error(`host refresh failed: ${result.stderr}`);
   }
-  const hosted = parseHostedUrl(result.stdout, 8642);
+  const apiServer = parseHostedUrl(result.stdout, API_SERVER_PORT);
+  // The dashboard unit is optional on older template versions; chat must not
+  // fail because its route is missing.
+  let dashboard: HostedRoute | undefined;
+  try {
+    dashboard = parseHostedUrl(result.stdout, DASHBOARD_PORT);
+  } catch {
+    dashboard = undefined;
+  }
   await supabase
     .from("boxes")
-    .update({ hosted_url: hosted.url, hosted_token: hosted.token })
+    .update({
+      hosted_url: apiServer.url,
+      hosted_token: apiServer.token,
+      ...(dashboard
+        ? { dashboard_url: dashboard.url, dashboard_token: dashboard.token }
+        : {}),
+    })
     .eq("provider_box_id", boxId);
-  return hosted;
+  return { apiServer, dashboard };
 }
 
 /**
@@ -77,7 +108,9 @@ export async function ensureBoxAwake(
 ): Promise<UserBox> {
   const { data } = await supabase
     .from("boxes")
-    .select("provider_box_id, hosted_url, hosted_token, api_server_key")
+    .select(
+      "provider_box_id, hosted_url, hosted_token, api_server_key, dashboard_url, dashboard_token"
+    )
     .eq("user_id", userId)
     .maybeSingle();
   if (!data) {
@@ -109,6 +142,10 @@ export async function ensureBoxAwake(
     hostedToken: row.hosted_token,
     apiServerKey: row.api_server_key,
   };
+  let dashboard: HostedRoute | undefined =
+    row.dashboard_url && row.dashboard_token
+      ? { url: row.dashboard_url, token: row.dashboard_token }
+      : undefined;
 
   // The hosted token rotates across stop/resume; hermes-host re-registers on
   // boot but the stored token may be stale. Probe, then refresh once.
@@ -121,8 +158,13 @@ export async function ensureBoxAwake(
       // Right after resume the box reports ready before the ascii agent and
       // hermes-host have booted, so the refresh command itself can fail —
       // keep retrying until the deadline.
-      const hosted = await refreshHostedRoute(supabase, boxId);
-      target = { ...target, hostedUrl: hosted.url, hostedToken: hosted.token };
+      const hosted = await refreshHostedRoutes(supabase, boxId);
+      target = {
+        ...target,
+        hostedUrl: hosted.apiServer.url,
+        hostedToken: hosted.apiServer.token,
+      };
+      dashboard = hosted.dashboard ?? dashboard;
       if (await health(target)) break;
     } catch (error) {
       console.log(
@@ -141,7 +183,7 @@ export async function ensureBoxAwake(
     .update({ state: "ready" })
     .eq("provider_box_id", boxId);
 
-  return { boxId, target };
+  return { boxId, target, dashboard };
 }
 
 /** Re-arm the idle deadline; the cron sweeper stops the box past it. */
