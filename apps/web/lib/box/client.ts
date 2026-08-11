@@ -25,6 +25,10 @@ export interface Box {
   vcpu?: number;
   memoryGB?: number;
   createdAt?: string;
+  /** Secret-bearing desktop stream URL. Server-side only — never persist,
+   * never return to a client in JSON (lib/box/desktop.ts). */
+  desktopUrl?: string;
+  desktopAvailable?: boolean;
 }
 
 /** Every /boxes/* mutation returns this envelope. */

@@ -99,6 +99,38 @@ confirmation or expiry, whichever first — after deletion the URL 404s even
 inside its signature window. Bytes are served by object storage directly,
 never proxied through a Vercel function.
 
+## Desktop stream URL — a scoped exception to C3, and why
+
+**The tension:** ARCHITECTURE.md says a Box's `desktopUrl` must never reach a
+browser and should be proxied through the control plane. The stream turned
+out to be moonlight-web over WebRTC — pixels and input travel peer-to-peer
+between the browser and the box's desktop host, so a Vercel function cannot
+sit in that path. Proxying is physically unavailable; the choice is between
+no computer relay at all or a carefully gated hand-off of the stream URL.
+
+**The decision:** the owner's own browser — and only theirs — may receive
+their own box's `desktopUrl`, always via redirect, never in JSON or page
+markup:
+
+- Web: `GET /api/box/desktop` requires the owner's session and answers with
+  a 302. Embedded in an iframe, the parent page's scripts cannot read the
+  cross-origin destination; the URL lives only in the browser's network
+  layer.
+- iMessage: the `computer` mini-app rides the existing single-use-token
+  exchange (C15: owner-initiated mint only — including the agent-initiated
+  card, which the control plane sends to the box's owner and no one else),
+  then 302s the same way.
+- The URL is fetched fresh from the Box API per view and never persisted;
+  its token component rotates with the box lifecycle, unlike the hosted
+  `_token`. `Referrer-Policy: no-referrer` on every response that carries
+  the redirect keeps it out of Referer headers.
+
+**What stays true:** the box's hosted URL, `_token`, `API_SERVER_KEY`, and
+`GATEWAY_TOKEN` still never reach any client; the desktop URL grants a view
+of the user's own machine to the user themself, which is the product, not a
+leak. Cross-tenant exposure remains impossible: the mint path binds the URL
+lookup to the authenticated owner's box row.
+
 ## Standing invariants (restated for this repo)
 
 - No Box `_token`, `API_SERVER_KEY`, `GATEWAY_TOKEN`, provider key, or `*.on.ascii.dev`

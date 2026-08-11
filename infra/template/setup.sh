@@ -113,6 +113,15 @@ for skill in official/email/agentmail official/research/duckduckgo-search; do
   "$HERMES_VENV/bin/hermes" skills install "$skill" --yes || echo "WARN: base skill $skill install failed" >&2
 done
 
+# Bake local skills shipped with this template (e.g. the computer relay,
+# which teaches the agent to send its human a live screen card for logins).
+TEMPLATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+for local_skill in "$TEMPLATE_DIR"/skills/*/; do
+  name="$(basename "$local_skill")"
+  rm -rf "$HOME_DIR/.hermes/skills/$name"
+  cp -r "$local_skill" "$HOME_DIR/.hermes/skills/$name"
+done
+
 # Copy the built SPA outside the git checkout: box archive/restore does not
 # preserve gitignored build output inside the repo, so the dashboard serves
 # from ~/.hermes/web_dist (HERMES_WEB_DIST) instead.
