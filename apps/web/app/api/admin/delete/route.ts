@@ -58,7 +58,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .in("status", ["proposed", "scheduled", "parked"]);
   steps.slots = "cancelled";
 
-  {
+  try {
     const { data: activeCampaigns } = await supabase
       .from("ad_campaigns")
       .select("id, account_id, campaign_ref")
@@ -96,6 +96,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     steps.campaigns =
       `paused ${pausedCount} of ${(activeCampaigns ?? []).length}` +
       (failures.length > 0 ? `; failed: ${failures.join(", ")}` : "");
+  } catch (error) {
+    steps.campaigns = `error: ${error instanceof Error ? error.message : String(error)}`;
   }
 
   const { data: box } = await supabase
