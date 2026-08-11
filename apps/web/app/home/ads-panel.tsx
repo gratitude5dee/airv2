@@ -77,6 +77,7 @@ interface AdsAnalytics {
   spend_by_campaign: { campaign_ref: string; spend_cents: number }[];
   conversions_by_event: { event: string; count: number; value_cents: number }[];
   conversion_count: number;
+  truncated?: boolean;
 }
 
 type AdsTab = "onboarding" | "gallery" | "deploy" | "pixels" | "analytics";
@@ -854,6 +855,9 @@ export function AdsPanel({
             </strong>
             <p className="muted m-0 mt-1 text-[12px]">
               Conversions: {analytics?.conversion_count ?? 0}
+              {analytics?.truncated
+                ? " (partial — too much data to total exactly)"
+                : ""}
             </p>
           </div>
           {(analytics?.spend_by_campaign ?? []).map((row) => (
