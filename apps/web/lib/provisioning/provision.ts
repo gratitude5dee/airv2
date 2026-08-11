@@ -204,23 +204,34 @@ export async function provisionUser(
 
   // Per-box secrets. OPENAI_API_KEY carries the GATEWAY_TOKEN — it is the
   // credential Hermes presents to OUR gateway, never a provider key.
+  // Merged into the template's .env (not a wholesale rewrite) so template-time
+  // runtime settings — PATH/DISPLAY/AGENT_BROWSER_ARGS for the browser tool,
+  // CREATIVE_PLUGIN_VERSION — survive the fork.
   // files API paths are relative to the box work directory (/home/user)
-  await writeFile(
+  const perBoxEnv = [
+    `API_SERVER_KEY=${apiServerKey}`,
+    "API_SERVER_HOST=0.0.0.0",
+    `OPENAI_API_KEY=${gatewayToken}`,
+    `OPENAI_BASE_URL=${env.appOrigin()}/api/gateway/v1`,
+    "HERMES_DASHBOARD_BASIC_AUTH_USERNAME=air",
+    `HERMES_DASHBOARD_BASIC_AUTH_PASSWORD_HASH=${dashHash}`,
+    `HERMES_DASHBOARD_BASIC_AUTH_SECRET=${dashSecret}`,
+    "HERMES_WEB_DIST=/home/user/.hermes/web_dist",
+    "",
+  ];
+  await writeFile(box.id, ".hermes/.env.perbox", perBoxEnv.join("\n"));
+  const envKeys = perBoxEnv
+    .map((line) => line.split("=")[0])
+    .filter((key) => key !== "");
+  const mergeResult = await command(
     box.id,
-    ".hermes/.env",
-    [
-      `API_SERVER_KEY=${apiServerKey}`,
-      "API_SERVER_HOST=0.0.0.0",
-      `OPENAI_API_KEY=${gatewayToken}`,
-      `OPENAI_BASE_URL=${env.appOrigin()}/api/gateway/v1`,
-      "HERMES_DASHBOARD_BASIC_AUTH_USERNAME=air",
-      `HERMES_DASHBOARD_BASIC_AUTH_PASSWORD_HASH=${dashHash}`,
-      `HERMES_DASHBOARD_BASIC_AUTH_SECRET=${dashSecret}`,
-      "HERMES_WEB_DIST=/home/user/.hermes/web_dist",
-      "",
-    ].join("\n")
+    `touch /home/user/.hermes/.env && sed -i ${envKeys
+      .map((key) => `-e '/^${key}=/d'`)
+      .join(" ")} /home/user/.hermes/.env && cat /home/user/.hermes/.env.perbox >> /home/user/.hermes/.env && rm /home/user/.hermes/.env.perbox && chmod 600 /home/user/.hermes/.env`
   );
-  await command(box.id, "chmod 600 /home/user/.hermes/.env");
+  if (mergeResult.exitCode !== 0) {
+    throw new Error(`env merge failed: ${mergeResult.stderr}`);
+  }
 
   // Hermes resolves the custom provider's credential from model.api_key in
   // config.yaml (credential_pool seeds "model_config" when provider=custom
