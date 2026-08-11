@@ -174,6 +174,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     senderId: inbound.senderId,
     messageId: inbound.messageId,
     body,
+    senderTier: tier,
   };
   const { runAt } = await enqueueInbound(supabase, message);
 
