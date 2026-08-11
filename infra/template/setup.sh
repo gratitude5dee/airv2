@@ -153,6 +153,27 @@ for local_skill in "$TEMPLATE_DIR"/skills/*/; do
   cp -r "$local_skill" "$HOME_DIR/.hermes/skills/$name"
 done
 
+# Teach the agent it owns a computer. SOUL.md is auto-loaded into every
+# session's context; without this the model defaults to walking the human
+# through steps on THEIR device instead of driving its own browser (which is
+# what surfaces the live computer view in the web app).
+if ! grep -q '## Your own computer' "$HOME_DIR/.hermes/SOUL.md" 2>/dev/null; then
+  cat >> "$HOME_DIR/.hermes/SOUL.md" <<'EOF'
+
+## Your own computer
+You run on your own Linux computer with a graphical desktop and a real browser
+(the browser_* tools). When a task involves a website — navigating a UI,
+checking a page, filling forms, signing in somewhere — do it yourself in YOUR
+browser. Never instruct the human to open a browser on their own device for
+something you can do here. Your human can watch your screen live and take over
+at any time (the web app shows your computer inline in Chat, and iMessage users
+get a computer card). When a step needs the human — passwords, 2FA codes, OAuth
+consents, CAPTCHAs — open the page in your browser, get it to the exact step,
+then follow the computer-relay skill to hand them the screen. Never ask for
+credentials in chat.
+EOF
+fi
+
 # Copy the built SPA outside the git checkout: box archive/restore does not
 # preserve gitignored build output inside the repo, so the dashboard serves
 # from ~/.hermes/web_dist (HERMES_WEB_DIST) instead.
