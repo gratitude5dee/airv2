@@ -168,6 +168,10 @@ class JobRequest(BaseModel):
     kind: str
     brief: str = Field(min_length=1, max_length=8000)
     spec_id: str | None = None
+    # The full machine-readable spec for the placement (control plane's
+    # AD_SPECS entry) — the generator must know the exact ratios, counts, and
+    # character limits it is being graded against.
+    spec: dict | None = None
     brand_rev: int | None = None
     inputs: list[str] = Field(default_factory=list, max_length=32)
 
@@ -178,7 +182,14 @@ class VariantRequest(BaseModel):
     ratios: list[str] = Field(default_factory=list)  # e.g. ["1:1", "9:16"]
 
 
-def _launch(job_id: str, kind: str, brief: str, inputs: list[str]) -> int:
+def _launch(
+    job_id: str,
+    kind: str,
+    brief: str,
+    inputs: list[str],
+    spec_id: str | None = None,
+    spec: dict | None = None,
+) -> int:
     """Shell the genmedia skill via the Hermes CLI (CM1 task 3)."""
     job_dir = JOBS_DIR / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
@@ -199,6 +210,14 @@ def _launch(job_id: str, kind: str, brief: str, inputs: list[str]) -> int:
             f"video_files (arrays of output filenames relative to the job "
             f"directory). Offer/brief: {brief}"
         )
+        if spec_id:
+            prompt += f" Target placement spec: {spec_id}."
+        if spec:
+            prompt += (
+                f" The group must satisfy every constraint in this spec "
+                f"(ratios, asset counts, text counts, character limits): "
+                f"{json.dumps(spec)}"
+            )
     else:
         prompt = (
             f"Use the {kind} genmedia skill. Write every rendered output file into "
@@ -450,7 +469,9 @@ def submit_job(body: JobRequest) -> dict:
     now = time.time()
     conn = _db()
     try:
-        pid = _launch(job_id, body.kind, body.brief, body.inputs)
+        pid = _launch(
+            job_id, body.kind, body.brief, body.inputs, body.spec_id, body.spec
+        )
         conn.execute(
             "insert into jobs (id, kind, brief, spec_id, brand_rev, inputs, state, "
             "progress, cost_estimate, pid, created_at, updated_at) "

@@ -56,6 +56,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       kind: "ad_asset_group",
       brief: body.offer,
       spec_id: body.spec_id,
+      // The generator gets the full spec it is graded against — ratios,
+      // asset counts, and character limits — not just an opaque id.
+      spec: AD_SPECS[body.spec_id],
       ...(typeof body.brand_rev === "number"
         ? { brand_rev: body.brand_rev }
         : {}),

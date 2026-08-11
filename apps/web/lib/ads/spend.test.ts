@@ -13,6 +13,15 @@ describe("exposure math", () => {
     );
   });
 
+  it("a budget change commits only the increase; a cut commits nothing", () => {
+    expect(requestedExposureCents("update_budget", 1500, undefined, 1000)).toBe(
+      15000
+    );
+    expect(requestedExposureCents("update_budget", 500, undefined, 1000)).toBe(
+      0
+    );
+  });
+
   it("a pause commits nothing; a resume recommits the budget", () => {
     expect(requestedExposureCents("set_status", 1000, "paused")).toBe(0);
     expect(requestedExposureCents("set_status", 1000, "active")).toBe(30000);

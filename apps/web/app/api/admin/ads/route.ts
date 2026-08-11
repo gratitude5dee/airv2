@@ -55,6 +55,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
   const supabase = serviceClient();
+  // Re-registration must not rotate the conversion token (external postback
+  // integrations authenticate with it) or drop a previously sealed key.
+  const { data: existing } = await supabase
+    .from("ad_accounts")
+    .select("id, conversion_token, api_key_sealed")
+    .eq("user_id", body.user_id)
+    .eq("provider", body.provider)
+    .eq("account_ref", body.account_ref)
+    .maybeSingle();
   const { data, error } = await supabase
     .from("ad_accounts")
     .upsert(
@@ -63,8 +72,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         provider: body.provider,
         account_ref: body.account_ref,
         label: body.label ?? null,
-        api_key_sealed: sealed,
-        conversion_token: randomBytes(24).toString("hex"),
+        api_key_sealed: sealed ?? existing?.api_key_sealed ?? null,
+        conversion_token:
+          existing?.conversion_token ?? randomBytes(24).toString("hex"),
         status: "active",
       },
       { onConflict: "user_id,provider,account_ref" }

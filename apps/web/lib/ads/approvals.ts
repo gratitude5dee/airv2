@@ -51,14 +51,22 @@ export class AdWriteError extends Error {
 }
 
 /** The additional 30-day exposure a write commits if approved. Pauses and
- * budget decreases commit nothing; resumes recommit the campaign's budget. */
+ * budget decreases commit nothing; resumes recommit the campaign's budget;
+ * a budget change commits only the increase over the campaign's current
+ * budget (which committedExposureCents already counts). */
 export function requestedExposureCents(
   kind: AdWriteKind,
   dailyBudgetCents: number,
-  status: "active" | "paused" | undefined
+  status: "active" | "paused" | undefined,
+  currentDailyBudgetCents = 0
 ): number {
   if (kind === "set_status") {
     return status === "active" ? exposure30dCents(dailyBudgetCents) : 0;
+  }
+  if (kind === "update_budget") {
+    return exposure30dCents(
+      Math.max(0, dailyBudgetCents - currentDailyBudgetCents)
+    );
   }
   return exposure30dCents(dailyBudgetCents);
 }
@@ -81,14 +89,18 @@ export async function requestAdWrite(
     throw new AdWriteError("campaign_ref required", 400);
   }
   let dailyBudgetCents = request.dailyBudgetCents ?? 0;
-  if (request.kind === "set_status" && request.status === "active") {
+  let currentDailyBudgetCents = 0;
+  if (request.kind !== "create_campaign" && request.campaignRef) {
     const { data: campaign } = await supabase
       .from("ad_campaigns")
       .select("daily_budget_cents")
       .eq("account_id", account.id)
       .eq("campaign_ref", request.campaignRef)
       .maybeSingle();
-    dailyBudgetCents = Number(campaign?.daily_budget_cents ?? 0);
+    currentDailyBudgetCents = Number(campaign?.daily_budget_cents ?? 0);
+  }
+  if (request.kind === "set_status" && request.status === "active") {
+    dailyBudgetCents = currentDailyBudgetCents;
   }
   if (
     (request.kind === "create_campaign" || request.kind === "update_budget") &&
@@ -100,7 +112,8 @@ export async function requestAdWrite(
   const exposure = requestedExposureCents(
     request.kind,
     dailyBudgetCents,
-    request.status
+    request.status,
+    currentDailyBudgetCents
   );
   const { data: write, error } = await supabase
     .from("ad_writes")
@@ -245,7 +258,27 @@ export async function approveAdWrite(
 
   if (account.provider === "meta") {
     // Meta writes run in-box through the Meta Ads MCP; approval releases the
-    // gate the box polls before invoking the write tool.
+    // gate the box polls before invoking the write tool. The approved budget
+    // is mirrored here so committedExposureCents and the ceiling sweep see
+    // Meta spend too; a create's placeholder ref is reconciled to the real
+    // campaign id once the box reports it back.
+    const campaignRef =
+      (write.campaign_ref as string | null) ?? `write:${write.id}`;
+    if (write.kind === "create_campaign") {
+      await mirrorCampaign(supabase, userId, account.id, campaignRef, {
+        name: typeof args.name === "string" ? args.name : undefined,
+        daily_budget_cents: Number(write.daily_budget_cents ?? 0),
+        status: "active",
+      });
+    } else if (write.kind === "update_budget") {
+      await mirrorCampaign(supabase, userId, account.id, campaignRef, {
+        daily_budget_cents: Number(write.daily_budget_cents ?? 0),
+      });
+    } else if (write.kind === "set_status") {
+      await mirrorCampaign(supabase, userId, account.id, campaignRef, {
+        status: args.status === "active" ? "active" : "paused",
+      });
+    }
     await supabase
       .from("ad_writes")
       .update({ status: "approved", resolved_at: new Date().toISOString() })

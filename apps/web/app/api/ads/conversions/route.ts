@@ -31,16 +31,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "missing fields" }, { status: 400 });
   }
   const supabase = serviceClient();
-  const { data: account } = await supabase
+  // account_ref is only unique per (user_id, provider), so several rows can
+  // share it. The token — unique per account — picks the tenant; a ref match
+  // alone never does.
+  const { data: candidates } = await supabase
     .from("ad_accounts")
     .select("id, user_id, conversion_token")
     .eq("account_ref", body.account_ref)
     .eq("status", "active")
-    .maybeSingle();
-  if (
-    !account ||
-    !tokenMatches(body.token, account.conversion_token as string)
-  ) {
+    .limit(20);
+  const account = (candidates ?? []).find((row) =>
+    tokenMatches(body.token as string, row.conversion_token as string)
+  );
+  if (!account) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const occurredAt = body.occurred_at ? new Date(body.occurred_at) : new Date();
