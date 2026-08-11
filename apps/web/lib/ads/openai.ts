@@ -29,13 +29,15 @@ async function adsFetch(
   apiKey: string,
   method: "GET" | "POST" | "PATCH",
   path: string,
-  body?: unknown
+  body?: unknown,
+  idempotencyKey?: string
 ): Promise<unknown> {
   const response = await fetch(`${BASE_URL}${path}`, {
     method,
     headers: {
       authorization: `Bearer ${apiKey}`,
       ...(body === undefined ? {} : { "content-type": "application/json" }),
+      ...(idempotencyKey ? { "idempotency-key": idempotencyKey } : {}),
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
@@ -52,9 +54,19 @@ export interface CreatedCampaign {
 
 export async function createCampaign(
   apiKey: string,
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  idempotencyKey?: string
 ): Promise<CreatedCampaign> {
-  const result = (await adsFetch(apiKey, "POST", "/campaigns", args)) as {
+  // The idempotency key (derived from the ad_writes row id) makes a retried
+  // approval after an ambiguous failure return the same campaign instead of
+  // creating a duplicate.
+  const result = (await adsFetch(
+    apiKey,
+    "POST",
+    "/campaigns",
+    args,
+    idempotencyKey
+  )) as {
     id?: string;
   };
   if (!result.id) throw new OpenAIAdsError("campaign create returned no id");

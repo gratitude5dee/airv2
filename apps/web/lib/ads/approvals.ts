@@ -309,10 +309,14 @@ export async function approveAdWrite(
   try {
     let campaignRef = write.campaign_ref as string | null;
     if (write.kind === "create_campaign") {
-      const created = await createCampaign(apiKey, {
-        ...args,
-        daily_budget_cents: write.daily_budget_cents,
-      });
+      const created = await createCampaign(
+        apiKey,
+        {
+          ...args,
+          daily_budget_cents: write.daily_budget_cents,
+        },
+        `ad-write-${write.id}`
+      );
       campaignRef = created.campaignRef;
       await mirrorCampaign(supabase, userId, account.id, campaignRef, {
         name: typeof args.name === "string" ? args.name : undefined,
