@@ -12,6 +12,7 @@ import {
   dismissAdWrite,
   AdWriteError,
 } from "@/lib/ads/approvals";
+import { approveContentPlan, dismissContentPlan } from "@/lib/publish/propose";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -92,6 +93,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         );
       }
       return NextResponse.json({ error: "ad write failed" }, { status: 502 });
+    }
+  }
+
+  if (decision.kind === "content_plan" && decision.ref) {
+    // CM7 task 4: the plan is a proposal until this moment — approval flips
+    // its slots to scheduled and briefs the agent; dismissal cancels them.
+    if (body.action === "approve") {
+      await approveContentPlan(
+        supabase,
+        userId,
+        decision.ref as string,
+        (decision.payload ?? null) as Record<string, unknown> | null
+      );
+    } else {
+      await dismissContentPlan(supabase, userId, decision.ref as string);
     }
   }
 

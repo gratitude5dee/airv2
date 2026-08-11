@@ -21,7 +21,8 @@ export const dynamic = "force-dynamic";
 
 const SLOT_LIST_COLUMNS =
   "id, platform, account_ref, package_ref, scheduled_at, timezone, status, " +
-  "attempt, external_id, permalink, last_verdict, error_message, published_at, created_at";
+  "attempt, external_id, permalink, last_verdict, error_message, published_at, " +
+  "created_at, source_id, moment_key";
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const supabase = serviceClient();
