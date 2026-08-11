@@ -250,15 +250,15 @@ export default function HomePage() {
       events.onmessage = (event) => {
         try {
           const parsed = JSON.parse(event.data) as {
-            type?: string;
+            event?: string;
             delta?: string;
             output?: string;
           };
-          if (parsed.type === "message.delta" && parsed.delta) {
+          if (parsed.event === "message.delta" && parsed.delta) {
             acc += parsed.delta;
             setMessages((m) => [...m.slice(0, -1), { role: "agent", text: acc }]);
           }
-          if (parsed.type === "run.completed") {
+          if (parsed.event === "run.completed") {
             if (!acc && parsed.output) {
               setMessages((m) => [
                 ...m.slice(0, -1),
@@ -270,7 +270,7 @@ export default function HomePage() {
             events.close();
             setBusy(false);
           }
-          if (parsed.type === "run.failed") {
+          if (parsed.event === "run.failed") {
             fillEmpty("Something went wrong.");
             events.close();
             setBusy(false);
