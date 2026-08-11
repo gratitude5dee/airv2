@@ -55,18 +55,52 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: "unknown account" }, { status: 400 });
     }
   }
+  const name = (body.name ?? "").trim().slice(0, 128) || null;
+  const { data: existing } = await supabase
+    .from("ad_pixels")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("pixel_ref", pixelRef)
+    .maybeSingle();
+  if (existing) {
+    // Merge: only overwrite fields the caller actually provided, so
+    // re-registering a pixel ID doesn't wipe its saved name/account link.
+    const patch: { name?: string; account_id?: string } = {};
+    if (name !== null) patch.name = name;
+    if (body.account_id) patch.account_id = body.account_id;
+    if (Object.keys(patch).length === 0) {
+      const { data, error } = await supabase
+        .from("ad_pixels")
+        .select("id, account_id, pixel_ref, name, status, created_at")
+        .eq("user_id", userId)
+        .eq("id", existing.id)
+        .single();
+      if (error || !data) {
+        return NextResponse.json({ error: "save failed" }, { status: 502 });
+      }
+      return NextResponse.json({ pixel: data });
+    }
+    const { data, error } = await supabase
+      .from("ad_pixels")
+      .update(patch)
+      .eq("user_id", userId)
+      .eq("id", existing.id)
+      .select("id, account_id, pixel_ref, name, status, created_at")
+      .single();
+    if (error || !data) {
+      return NextResponse.json({ error: "save failed" }, { status: 502 });
+    }
+    return NextResponse.json({ pixel: data });
+  }
   const { data, error } = await supabase
     .from("ad_pixels")
-    .upsert(
-      {
-        user_id: userId,
-        pixel_ref: pixelRef,
-        name: (body.name ?? "").trim().slice(0, 128) || null,
-        account_id: body.account_id ?? null,
-        status: "active",
-      },
-      { onConflict: "user_id,pixel_ref" }
-    )
+    .insert({
+      user_id: userId,
+      pixel_ref: pixelRef,
+      name,
+      account_id: body.account_id ?? null,
+      status: "active",
+    })
     .select("id, account_id, pixel_ref, name, status, created_at")
     .single();
   if (error || !data) {
