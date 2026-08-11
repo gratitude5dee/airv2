@@ -107,6 +107,15 @@ function pickList<T>(payload: unknown, keys: string[]): T[] {
   return [];
 }
 
+/** Tool names that mean the agent is driving its own browser/desktop, so the
+ * live computer view should surface inline in Chat. */
+function isComputerTool(name: string | undefined): boolean {
+  return (
+    typeof name === "string" &&
+    (name.startsWith("browser") || name.startsWith("computer"))
+  );
+}
+
 const TABS: [Tab, string][] = [
   ["chat", "Chat"],
   ["needs", "Needs you"],
@@ -129,6 +138,11 @@ export default function HomePage() {
   const [note, setNote] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("chat");
   const [computerEpoch, setComputerEpoch] = useState(0);
+  const [chatComputerOpen, setChatComputerOpen] = useState(false);
+  const chatComputerOpenRef = useRef(false);
+  // Once the user closes the inline view mid-run, don't pop it back open
+  // until the next run starts using the computer again.
+  const chatComputerDismissed = useRef(false);
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
   const [skills, setSkills] = useState<SkillSummary[] | null>(null);
   const [decisions, setDecisions] = useState<Decision[] | null>(null);
@@ -212,6 +226,7 @@ export default function HomePage() {
     if (!text || busy) return;
     setBusy(true);
     setInput("");
+    chatComputerDismissed.current = false;
     setMessages((m) => [...m, { role: "user", text }, { role: "agent", text: "" }]);
     try {
       const res = await fetch("/api/chat", {
@@ -256,7 +271,20 @@ export default function HomePage() {
             event?: string;
             delta?: string;
             output?: string;
+            tool?: string;
           };
+          if (parsed.event === "tool.started" && isComputerTool(parsed.tool)) {
+            // The agent is driving its browser/desktop — surface the live view
+            // inline so the user can watch or take over (logins, approvals)
+            // without leaving Chat.
+            if (!chatComputerDismissed.current && !chatComputerOpenRef.current) {
+              chatComputerOpenRef.current = true;
+              // Fresh mount re-runs the authenticated redirect and picks up
+              // a fresh stream URL (the token rotates with the box).
+              setComputerEpoch((n) => n + 1);
+              setChatComputerOpen(true);
+            }
+          }
           if (parsed.event === "message.delta" && parsed.delta) {
             acc += parsed.delta;
             setMessages((m) => [...m.slice(0, -1), { role: "agent", text: acc }]);
@@ -1002,6 +1030,52 @@ export default function HomePage() {
                   })
                 )}
               </div>
+              {chatComputerOpen ? (
+                <div className="mb-2 flex flex-col gap-2 rounded-xl bg-surface p-2 shadow-[0_0_0_0.5px_var(--ring)]">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="muted m-0 text-[12px]">
+                      Your agent is using its computer — take over when it
+                      needs you (logins, approvals).
+                    </p>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <a
+                        className="btn btn-ghost !px-2.5 !py-1 !text-[12px]"
+                        href="/api/box/desktop"
+                        target="_blank"
+                        rel="noreferrer noopener"
+                      >
+                        Open in new tab
+                      </a>
+                      <a
+                        className="btn btn-ghost !px-2.5 !py-1 !text-[12px]"
+                        href="/api/box/desktop?vnc=1"
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        title="HTTPS-tunneled viewer for restrictive networks; opens as its own page"
+                      >
+                        Use VNC
+                      </a>
+                      <button
+                        className="btn btn-ghost !px-2.5 !py-1 !text-[12px]"
+                        onClick={() => {
+                          chatComputerOpenRef.current = false;
+                          chatComputerDismissed.current = true;
+                          setChatComputerOpen(false);
+                        }}
+                      >
+                        Hide
+                      </button>
+                    </div>
+                  </div>
+                  <iframe
+                    key={computerEpoch}
+                    src="/api/box/desktop"
+                    title="Your agent's computer"
+                    className="h-[320px] w-full rounded-lg border-0 bg-black"
+                    allow="clipboard-read; clipboard-write"
+                  />
+                </div>
+              ) : null}
               <PromptInput
                 value={input}
                 onChange={setInput}
