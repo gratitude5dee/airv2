@@ -53,13 +53,16 @@ export async function POST(
   try {
     const box = await ensureBoxAwake(supabase, session.userId);
     outcome = await publishSlot(supabase, box, slot);
-    await armStopAfter(supabase, session.userId).catch(() => undefined);
   } catch (error) {
     if (error instanceof StartLimitError) {
       // The slot is due — the next cron sweep publishes it.
       return NextResponse.json({ outcome: "queued" }, { status: 202 });
     }
     return NextResponse.json({ error: "publish failed" }, { status: 502 });
+  } finally {
+    // ensureBoxAwake nulls stop_after before it can fail; re-arm on every
+    // exit so a failed publish can't leave the box running forever.
+    await armStopAfter(supabase, session.userId).catch(() => undefined);
   }
   const { data: after } = await supabase
     .from("content_slots")
