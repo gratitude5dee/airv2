@@ -179,6 +179,7 @@ export default function HomePage() {
   const [adWrites, setAdWrites] = useState<AdWrite[]>([]);
   const [adsNote, setAdsNote] = useState<string | null>(null);
   const [adsFailed, setAdsFailed] = useState(false);
+  const [adsLoading, setAdsLoading] = useState(false);
   const [adSpecId, setAdSpecId] = useState("");
   const [adOffer, setAdOffer] = useState("");
   const [adJob, setAdJob] = useState<AdGroupJob | null>(null);
@@ -449,6 +450,7 @@ export default function HomePage() {
   async function loadAds() {
     setAdsNote(null);
     setAdsFailed(false);
+    setAdsLoading(true);
     let failed = false;
     try {
       const [accountsRes, specsRes, writesRes] = await Promise.all([
@@ -481,6 +483,7 @@ export default function HomePage() {
     } catch {
       failed = true;
     }
+    setAdsLoading(false);
     if (failed) {
       setAdsFailed(true);
       setAdsNote("Couldn't load your ads data.");
@@ -489,6 +492,7 @@ export default function HomePage() {
 
   async function connectMetaAds() {
     setAdBusy(true);
+    setAdsFailed(false);
     setAdsNote("Installing Meta Ads on your agent's computer…");
     try {
       const res = await fetch("/api/ads/accounts", {
@@ -519,6 +523,7 @@ export default function HomePage() {
     const offer = adOffer.trim();
     if (!specId || !offer || adBusy) return;
     setAdBusy(true);
+    setAdsFailed(false);
     setAdsNote(null);
     setAdJob(null);
     const pollId = ++adPollId.current;
@@ -595,6 +600,7 @@ export default function HomePage() {
     )
       return;
     setWriteBusy(true);
+    setAdsFailed(false);
     setAdsNote(null);
     try {
       const res = await fetch("/api/ads/writes", {
@@ -1331,7 +1337,7 @@ export default function HomePage() {
               {adAccounts !== null && adWrites.length === 0 ? (
                 <p className="muted m-0 text-[13px]">No ad writes yet.</p>
               ) : null}
-              {adAccounts === null ? (
+              {adsLoading ? (
                 <div className="py-2">
                   <Orb pill label="Loading ads…" />
                 </div>
