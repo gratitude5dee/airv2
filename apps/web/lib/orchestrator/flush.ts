@@ -58,6 +58,29 @@ export async function enqueueInbound(
     throw new Error(`batch_queue insert failed: ${queueError.message}`);
   }
 
+  // Durable destination for agent-initiated cards (flush_jobs is transient).
+  // Best-effort: a failure here must not drop the user's message.
+  const { error: destError } = await supabase
+    .from("imessage_destinations")
+    .upsert(
+      {
+        user_id: message.userId,
+        space_id: message.spaceId,
+        phone: message.phone,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id" }
+    );
+  if (destError) {
+    console.error(
+      JSON.stringify({
+        msg: "imessage_destinations upsert failed",
+        user_id: message.userId,
+        error: destError.message,
+      })
+    );
+  }
+
   const runAt = new Date(Date.now() + DEBOUNCE_MS).toISOString();
   const { error: jobError } = await supabase.from("flush_jobs").upsert(
     {

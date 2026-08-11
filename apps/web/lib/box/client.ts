@@ -25,10 +25,15 @@ export interface Box {
   vcpu?: number;
   memoryGB?: number;
   createdAt?: string;
+}
+
+/** Response of POST /boxes/{id}/desktop (docs.ascii.dev/box/desktop-streaming). */
+interface DesktopEnvelope {
+  ok: boolean;
+  success?: boolean;
   /** Secret-bearing desktop stream URL. Server-side only — never persist,
    * never return to a client in JSON (lib/box/desktop.ts). */
   desktopUrl?: string;
-  desktopAvailable?: boolean;
 }
 
 /** Every /boxes/* mutation returns this envelope. */
@@ -133,6 +138,24 @@ export async function stop(boxId: string): Promise<Box> {
 /** Deleting a box deletes its snapshots with it (goal.md M8). */
 export async function deleteBox(boxId: string): Promise<void> {
   await boxFetch<unknown>(`/boxes/${boxId}`, { method: "DELETE" });
+}
+
+/**
+ * Ask Box for a fresh authenticated desktop stream URL. Default is the
+ * Moonlight (WebRTC) viewer; pass vnc for the HTTPS-tunneled noVNC viewer
+ * (more tolerant of restrictive networks, must open as a top-level page).
+ */
+export async function requestDesktop(
+  boxId: string,
+  options?: { vnc?: boolean }
+): Promise<string | undefined> {
+  const query = options?.vnc ? "?vnc=1" : "?theme=light";
+  const envelope = await boxFetch<DesktopEnvelope>(
+    `/boxes/${boxId}/desktop${query}`,
+    { method: "POST" }
+  );
+  if (!envelope.ok || envelope.success === false) return undefined;
+  return envelope.desktopUrl;
 }
 
 export async function getBox(boxId: string): Promise<Box> {

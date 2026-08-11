@@ -40,6 +40,8 @@ Notes:
   If the send fails with HTTP 409, they haven't messaged you over iMessage
   yet — ask them (in the current conversation) to open the Computer tab in
   the web app instead.
+- HTTP 429 means a card was already sent moments ago — do NOT retry; point
+  them at the card that's already in their messages (or the web Computer tab).
 - Never read, log, or store anything the human types during their turn
   (passwords, codes). Credentials belong to the browser session, not to
   your notes or memory.

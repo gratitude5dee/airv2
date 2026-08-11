@@ -7,7 +7,7 @@
  * or single-use-token gate (SECURITY-DECISIONS.md "Desktop stream URL").
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getBox } from "./client";
+import { requestDesktop } from "./client";
 import { ensureBoxAwake } from "../orchestrator/boxes";
 
 export class DesktopUnavailableError extends Error {
@@ -18,18 +18,21 @@ export class DesktopUnavailableError extends Error {
 }
 
 /**
- * Wake the user's own box (never fork a new one) and fetch the current
- * desktop stream URL. Fetched fresh per view — never persisted — because
- * the token component rotates with the box lifecycle.
+ * Wake the user's own box (never fork a new one) and request a fresh
+ * desktop stream URL via POST /boxes/{id}/desktop. Fetched fresh per view —
+ * never persisted — because the token component rotates with the box
+ * lifecycle. `vnc` requests the HTTPS-tunneled noVNC viewer for restrictive
+ * networks; it must open as a top-level page, not embedded.
  */
 export async function desktopStreamUrl(
   supabase: SupabaseClient,
-  userId: string
+  userId: string,
+  options?: { vnc?: boolean }
 ): Promise<string> {
   const userBox = await ensureBoxAwake(supabase, userId);
-  const box = await getBox(userBox.boxId);
-  if (!box.desktopAvailable || !box.desktopUrl) {
+  const url = await requestDesktop(userBox.boxId, options);
+  if (!url) {
     throw new DesktopUnavailableError();
   }
-  return box.desktopUrl;
+  return url;
 }
