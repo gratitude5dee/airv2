@@ -12,7 +12,7 @@ import {
   StartLimitError,
 } from "@/lib/orchestrator/boxes";
 import { pluginFetch, AssetPipelineError } from "@/lib/assets/pipeline";
-import { AD_SPECS } from "@/lib/publish/specs/ads";
+import { getAdSpec } from "@/lib/publish/specs/ads";
 import {
   groupConformance,
   type AdGroupAsset,
@@ -80,7 +80,7 @@ export async function GET(
       return NextResponse.json({ error: "group not found" }, { status: 404 });
     }
     const group = (await groupRes.json()) as PluginAdGroup;
-    const spec = AD_SPECS[group.spec_id];
+    const spec = getAdSpec(group.spec_id);
     if (!spec) {
       return NextResponse.json(
         { error: `unknown spec ${group.spec_id}` },

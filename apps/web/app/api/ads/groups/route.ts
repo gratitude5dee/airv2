@@ -13,7 +13,7 @@ import {
   StartLimitError,
 } from "@/lib/orchestrator/boxes";
 import { pluginFetch, AssetPipelineError } from "@/lib/assets/pipeline";
-import { AD_SPECS, staleSpecs } from "@/lib/publish/specs/ads";
+import { AD_SPECS, getAdSpec, staleSpecs } from "@/lib/publish/specs/ads";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,7 +43,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     offer?: string;
     brand_rev?: number;
   };
-  if (!body.spec_id || !AD_SPECS[body.spec_id]) {
+  const spec = body.spec_id ? getAdSpec(body.spec_id) : undefined;
+  if (!spec) {
     return NextResponse.json({ error: "unknown spec_id" }, { status: 400 });
   }
   if (!body.offer || typeof body.offer !== "string" || body.offer.length > 8000) {
@@ -58,7 +59,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       spec_id: body.spec_id,
       // The generator gets the full spec it is graded against — ratios,
       // asset counts, and character limits — not just an opaque id.
-      spec: AD_SPECS[body.spec_id],
+      spec,
       ...(typeof body.brand_rev === "number"
         ? { brand_rev: body.brand_rev }
         : {}),
