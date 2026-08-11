@@ -110,6 +110,14 @@ export const AD_SPECS: Record<string, CreativeSpec> = Object.fromEntries(
   ].map((spec) => [spec.id, spec])
 );
 
+/** Prototype-safe registry lookup: only real spec ids resolve — inherited
+ * object property names ("constructor", "toString") do not. */
+export function getAdSpec(specId: string): CreativeSpec | undefined {
+  return Object.prototype.hasOwnProperty.call(AD_SPECS, specId)
+    ? AD_SPECS[specId]
+    : undefined;
+}
+
 export const SPEC_STALE_AFTER_DAYS = 90;
 
 /** Specs whose constants haven't been re-verified inside the window. */

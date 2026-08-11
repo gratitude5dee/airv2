@@ -100,7 +100,19 @@ export async function requestAdWrite(
     currentDailyBudgetCents = Number(campaign?.daily_budget_cents ?? 0);
   }
   if (request.kind === "set_status" && request.status === "active") {
-    dailyBudgetCents = currentDailyBudgetCents;
+    // A resume commits the campaign's real budget. If the campaign was never
+    // mirrored, the caller must state the budget — an unknown budget must
+    // not price the resume at zero and slip past the ceiling.
+    dailyBudgetCents =
+      currentDailyBudgetCents > 0
+        ? currentDailyBudgetCents
+        : (request.dailyBudgetCents ?? 0);
+    if (!Number.isInteger(dailyBudgetCents) || dailyBudgetCents <= 0) {
+      throw new AdWriteError(
+        "daily_budget_cents required to resume an untracked campaign",
+        409
+      );
+    }
   }
   if (
     (request.kind === "create_campaign" || request.kind === "update_budget") &&
@@ -275,8 +287,12 @@ export async function approveAdWrite(
         daily_budget_cents: Number(write.daily_budget_cents ?? 0),
       });
     } else if (write.kind === "set_status") {
+      const active = args.status === "active";
       await mirrorCampaign(supabase, userId, account.id, campaignRef, {
-        status: args.status === "active" ? "active" : "paused",
+        status: active ? "active" : "paused",
+        ...(active && Number(write.daily_budget_cents ?? 0) > 0
+          ? { daily_budget_cents: Number(write.daily_budget_cents) }
+          : {}),
       });
     }
     await supabase
@@ -293,10 +309,14 @@ export async function approveAdWrite(
   try {
     let campaignRef = write.campaign_ref as string | null;
     if (write.kind === "create_campaign") {
-      const created = await createCampaign(apiKey, {
-        ...args,
-        daily_budget_cents: write.daily_budget_cents,
-      });
+      const created = await createCampaign(
+        apiKey,
+        {
+          ...args,
+          daily_budget_cents: write.daily_budget_cents,
+        },
+        `ad-write-${write.id}`
+      );
       campaignRef = created.campaignRef;
       await mirrorCampaign(supabase, userId, account.id, campaignRef, {
         name: typeof args.name === "string" ? args.name : undefined,
@@ -315,6 +335,9 @@ export async function approveAdWrite(
       await updateCampaign(apiKey, campaignRef, { status });
       await mirrorCampaign(supabase, userId, account.id, campaignRef, {
         status,
+        ...(status === "active" && Number(write.daily_budget_cents ?? 0) > 0
+          ? { daily_budget_cents: Number(write.daily_budget_cents) }
+          : {}),
       });
     }
     await supabase
@@ -330,13 +353,12 @@ export async function approveAdWrite(
   } catch (error) {
     const message =
       error instanceof OpenAIAdsError ? error.message : "execute failed";
+    // A platform failure is retryable: the write stays pending (with the
+    // error recorded) so the still-open decision card can be approved again
+    // once the transient condition clears.
     await supabase
       .from("ad_writes")
-      .update({
-        status: "failed",
-        error: message,
-        resolved_at: new Date().toISOString(),
-      })
+      .update({ error: message })
       .eq("id", write.id);
     throw new AdWriteError(message, 502);
   }
