@@ -65,6 +65,11 @@ export interface PublishSweepResult {
 export async function publishDueSlots(
   supabase: SupabaseClient
 ): Promise<PublishSweepResult> {
+  // CM8 kill switch: halt scheduled publishing within one sweep without
+  // touching a single slot — flipping back resumes the calendar as-is.
+  if (process.env.PUBLISH_KILL_SWITCH === "1") {
+    return { usersWoken: 0, published: 0, parked: 0, deferred: 0, retried: 0 };
+  }
   const nowIso = new Date().toISOString();
   const staleClaim = new Date(Date.now() - CLAIM_TTL_MS).toISOString();
   const [due, stale] = await Promise.all([
@@ -92,6 +97,19 @@ export async function publishDueSlots(
     const slots = byUser.get(slot.user_id) ?? [];
     slots.push(slot);
     byUser.set(slot.user_id, slots);
+  }
+  if (byUser.size === 0) {
+    return { usersWoken: 0, published: 0, parked: 0, deferred: 0, retried: 0 };
+  }
+
+  // Per-user kill switch: paused users' slots are skipped, not modified.
+  const { data: paused } = await supabase
+    .from("users")
+    .select("id")
+    .in("id", [...byUser.keys()])
+    .eq("publish_paused", true);
+  for (const row of paused ?? []) {
+    byUser.delete(row.id as string);
   }
   if (byUser.size === 0) {
     return { usersWoken: 0, published: 0, parked: 0, deferred: 0, retried: 0 };

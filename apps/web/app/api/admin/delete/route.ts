@@ -1,8 +1,11 @@
 /**
- * M8 deletion: delete the Box (snapshots go with it), delete the AgentMail
- * pod (inboxes/threads/drafts go with it), revoke Composio connections and
- * the session, release the line back to inventory, then cascade-delete the
- * user row (every table references users(id) on delete cascade).
+ * M8/CM8 deletion: pause live ad campaigns and cancel unfired slots at the
+ * platforms first (deleting rows alone would leave live spend), delete the
+ * Box (snapshots go with it), delete the AgentMail pod (inboxes/threads/
+ * drafts go with it), revoke Composio connections and the session, remove
+ * every stored asset object, release the line back to inventory, then
+ * cascade-delete the user row (every table — slots, assets, campaigns,
+ * connections, decisions, moments — references users(id) on delete cascade).
  */
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuthorized } from "@/lib/admin/auth";
@@ -15,6 +18,7 @@ import {
   listConnectedAccounts,
 } from "@/lib/composio/client";
 import { ASSETS_BUCKET, userPrefix } from "@/lib/assets/keys";
+import { openAdsKey, updateCampaign } from "@/lib/ads/openai";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,6 +46,48 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const steps: Record<string, string> = {};
+
+  // CM8: neutralize live state before rows disappear. Unfired slots are
+  // cancelled so a sweep racing this deletion cannot publish; active
+  // campaigns are paused at the platform so no orphaned spend survives the
+  // row cascade.
+  await supabase
+    .from("content_slots")
+    .update({ status: "cancelled" })
+    .eq("user_id", userId)
+    .in("status", ["proposed", "scheduled", "parked"]);
+  steps.slots = "cancelled";
+
+  try {
+    const { data: activeCampaigns } = await supabase
+      .from("ad_campaigns")
+      .select("id, account_id, campaign_ref")
+      .eq("user_id", userId)
+      .eq("status", "active");
+    let pausedCount = 0;
+    for (const campaign of activeCampaigns ?? []) {
+      const { data: account } = await supabase
+        .from("ad_accounts")
+        .select("provider, api_key_sealed")
+        .eq("id", campaign.account_id)
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (account?.provider === "openai" && account.api_key_sealed) {
+        const apiKey = openAdsKey(account.api_key_sealed as string);
+        await updateCampaign(apiKey, campaign.campaign_ref as string, {
+          status: "paused",
+        });
+        pausedCount += 1;
+      }
+      await supabase
+        .from("ad_campaigns")
+        .update({ status: "paused", updated_at: new Date().toISOString() })
+        .eq("id", campaign.id);
+    }
+    steps.campaigns = `paused ${pausedCount} of ${(activeCampaigns ?? []).length}`;
+  } catch (error) {
+    steps.campaigns = `error: ${error instanceof Error ? error.message : String(error)}`;
+  }
 
   const { data: box } = await supabase
     .from("boxes")

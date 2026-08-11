@@ -11,6 +11,14 @@
     {
       "path": "/api/cron/ads",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/sources",
+      "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/cron/health",
+      "schedule": "30 * * * *"
     }
   ]
 }

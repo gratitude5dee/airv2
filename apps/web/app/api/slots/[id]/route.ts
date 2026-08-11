@@ -1,7 +1,8 @@
 /**
- * Slot reschedule/cancel (CM4). PATCH moves a scheduled or parked slot to a
- * new instant (re-queueing a parked one); DELETE cancels it. A slot mid-
- * publish is owned by its claim — neither touches 'publishing'.
+ * Slot reschedule/cancel (CM4). PATCH moves a scheduled, parked, or proposed
+ * slot to a new instant (re-queueing a parked one; a proposed slot stays
+ * proposed — editing a proposal never approves it, CM7); DELETE cancels it.
+ * A slot mid-publish is owned by its claim — neither touches 'publishing'.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
@@ -35,7 +36,7 @@ export async function PATCH(
   if (!slot) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
-  if (!["scheduled", "parked"].includes(slot.status as string)) {
+  if (!["scheduled", "parked", "proposed"].includes(slot.status as string)) {
     return NextResponse.json({ error: "slot not movable" }, { status: 409 });
   }
   const timezone = body.timezone ?? (slot.timezone as string);
@@ -62,14 +63,14 @@ export async function PATCH(
     .update({
       scheduled_at: scheduledAt.toISOString(),
       timezone,
-      status: "scheduled",
+      status: slot.status === "proposed" ? "proposed" : "scheduled",
       attempt: 0,
       last_verdict: null,
       error_message: null,
     })
     .eq("id", id)
     .eq("user_id", session.userId)
-    .in("status", ["scheduled", "parked"])
+    .eq("status", slot.status as string)
     .select("id, scheduled_at, timezone, status");
   if (!updated || updated.length === 0) {
     return NextResponse.json({ error: "slot not movable" }, { status: 409 });
@@ -92,7 +93,7 @@ export async function DELETE(
     .update({ status: "cancelled" })
     .eq("id", id)
     .eq("user_id", session.userId)
-    .in("status", ["scheduled", "parked"])
+    .in("status", ["scheduled", "parked", "proposed"])
     .select("id");
   if (!cancelled || cancelled.length === 0) {
     return NextResponse.json({ error: "not cancellable" }, { status: 409 });

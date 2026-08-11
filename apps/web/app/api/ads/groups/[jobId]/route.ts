@@ -64,9 +64,30 @@ export async function GET(
       await jobRes.body?.cancel();
       return NextResponse.json({ error: "job not found" }, { status: 404 });
     }
-    const job = (await jobRes.json()) as { state: string; error: string | null };
+    const job = (await jobRes.json()) as {
+      state: string;
+      error: string | null;
+      cost_estimate: number | null;
+    };
     if (job.state !== "done") {
       return NextResponse.json({ state: job.state, error: job.error });
+    }
+
+    // CM8 cost ledger: a completed render lands once (unique on
+    // (user_id, kind, ref)) so the cost dashboard sums real render spend.
+    if (typeof job.cost_estimate === "number" && job.cost_estimate > 0) {
+      await supabase
+        .from("cost_events")
+        .upsert(
+          {
+            user_id: userId,
+            kind: "render",
+            ref: `job:${jobId}`,
+            amount_cents: Math.round(job.cost_estimate * 100),
+          },
+          { onConflict: "user_id,kind,ref", ignoreDuplicates: true }
+        )
+        .then(() => undefined);
     }
 
     const groupRes = await pluginFetch(
