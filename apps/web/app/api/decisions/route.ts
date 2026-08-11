@@ -68,6 +68,26 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
+  if (
+    body.action === "approve" &&
+    ["reconnect", "revise"].includes(decision.kind as string) &&
+    decision.ref
+  ) {
+    // Approving re-queues the parked slot; the next sweep publishes it.
+    await supabase
+      .from("content_slots")
+      .update({
+        status: "scheduled",
+        scheduled_at: new Date().toISOString(),
+        attempt: 0,
+        last_verdict: null,
+        error_message: null,
+      })
+      .eq("id", decision.ref)
+      .eq("user_id", userId)
+      .eq("status", "parked");
+  }
+
   await supabase
     .from("decisions")
     .update({
