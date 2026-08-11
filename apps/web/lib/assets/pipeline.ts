@@ -47,11 +47,12 @@ export class AssetPipelineError extends Error {}
  * groups (CM5) will need a streaming path instead of a bigger cap. */
 export const MAX_ASSET_BYTES = 100 * 1024 * 1024;
 
-async function pluginFetch(
+export async function pluginFetch(
   supabase: SupabaseClient,
   box: UserBox,
   method: "GET" | "POST",
-  path: string
+  path: string,
+  body?: unknown
 ): Promise<Response> {
   const authKey = env.boxDashboardAuthKey();
   if (!box.dashboard || !box.dashboardAuthSealed || !authKey) {
@@ -64,7 +65,14 @@ async function pluginFetch(
     box.dashboard,
     password,
     (route, headers) =>
-      fetch(`${route.url}/api/plugins/creative/${path}`, { method, headers })
+      fetch(`${route.url}/api/plugins/creative/${path}`, {
+        method,
+        headers:
+          body === undefined
+            ? headers
+            : { ...headers, "content-type": "application/json" },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      })
   );
   if (attempt.kind === "ok") return attempt.response;
   if (attempt.kind === "stale" && attempt.response) {

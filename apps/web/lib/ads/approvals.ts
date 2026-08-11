@@ -1,0 +1,323 @@
+/**
+ * CM6 CC0: every ad write is a proposal. The interceptor is a real control,
+ * not a prompt instruction — a write lands here as a pending `ad_writes` row
+ * plus an 'ad_write' decision whose card carries the ad account, campaign,
+ * daily budget, total 30-day exposure, and the exact requested changes.
+ * Nothing executes from 'pending'; approval runs the ceiling check and only
+ * then executes (OpenAI: control-plane API call; Meta: the box's MCP write
+ * is released by the approved gate).
+ */
+import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  ceilingAllows,
+  committedExposureCents,
+  exposure30dCents,
+  spendCeilingCents,
+  type CeilingCheck,
+} from "./spend";
+import {
+  createCampaign,
+  updateCampaign,
+  openAdsKey,
+  OpenAIAdsError,
+} from "./openai";
+
+export type AdWriteKind = "create_campaign" | "update_budget" | "set_status";
+
+export interface AdWriteRequest {
+  accountId: string;
+  kind: AdWriteKind;
+  campaignRef?: string;
+  campaignName?: string;
+  dailyBudgetCents?: number;
+  status?: "active" | "paused";
+  args?: Record<string, unknown>;
+}
+
+export interface AdAccount {
+  id: string;
+  provider: "meta" | "openai";
+  account_ref: string;
+  api_key_sealed: string | null;
+}
+
+export class AdWriteError extends Error {
+  constructor(
+    message: string,
+    readonly status: number
+  ) {
+    super(message);
+  }
+}
+
+/** The additional 30-day exposure a write commits if approved. Pauses and
+ * budget decreases commit nothing; resumes recommit the campaign's budget. */
+export function requestedExposureCents(
+  kind: AdWriteKind,
+  dailyBudgetCents: number,
+  status: "active" | "paused" | undefined
+): number {
+  if (kind === "set_status") {
+    return status === "active" ? exposure30dCents(dailyBudgetCents) : 0;
+  }
+  return exposure30dCents(dailyBudgetCents);
+}
+
+export async function requestAdWrite(
+  supabase: SupabaseClient,
+  userId: string,
+  request: AdWriteRequest
+): Promise<{ writeId: string; decisionId: string }> {
+  const { data: account } = await supabase
+    .from("ad_accounts")
+    .select("id, provider, account_ref, api_key_sealed")
+    .eq("id", request.accountId)
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .maybeSingle();
+  if (!account) throw new AdWriteError("ad account not found", 404);
+
+  if (request.kind !== "create_campaign" && !request.campaignRef) {
+    throw new AdWriteError("campaign_ref required", 400);
+  }
+  let dailyBudgetCents = request.dailyBudgetCents ?? 0;
+  if (request.kind === "set_status" && request.status === "active") {
+    const { data: campaign } = await supabase
+      .from("ad_campaigns")
+      .select("daily_budget_cents")
+      .eq("account_id", account.id)
+      .eq("campaign_ref", request.campaignRef)
+      .maybeSingle();
+    dailyBudgetCents = Number(campaign?.daily_budget_cents ?? 0);
+  }
+  if (
+    (request.kind === "create_campaign" || request.kind === "update_budget") &&
+    (!Number.isInteger(dailyBudgetCents) || dailyBudgetCents <= 0)
+  ) {
+    throw new AdWriteError("daily_budget_cents required", 400);
+  }
+
+  const exposure = requestedExposureCents(
+    request.kind,
+    dailyBudgetCents,
+    request.status
+  );
+  const { data: write, error } = await supabase
+    .from("ad_writes")
+    .insert({
+      user_id: userId,
+      account_id: account.id,
+      kind: request.kind,
+      campaign_ref: request.campaignRef ?? null,
+      args: {
+        ...(request.args ?? {}),
+        ...(request.campaignName ? { name: request.campaignName } : {}),
+        ...(request.status ? { status: request.status } : {}),
+      },
+      daily_budget_cents: dailyBudgetCents || null,
+      exposure_30d_cents: exposure,
+    })
+    .select("id")
+    .single();
+  if (error || !write) throw new AdWriteError("write insert failed", 500);
+
+  // The decision card names the money: account, campaign, daily budget,
+  // 30-day exposure, and the exact requested changes (CM6 task 3).
+  const { data: decision, error: decisionError } = await supabase
+    .from("decisions")
+    .insert({
+      user_id: userId,
+      kind: "ad_write",
+      platform: account.provider,
+      ref: write.id,
+      label: `${request.kind} on ${account.provider} ${account.account_ref}`,
+      payload: {
+        provider: account.provider,
+        account_ref: account.account_ref,
+        campaign_ref: request.campaignRef ?? null,
+        campaign_name: request.campaignName ?? null,
+        write_kind: request.kind,
+        daily_budget_cents: dailyBudgetCents || null,
+        exposure_30d_cents: exposure,
+        changes: request.args ?? {},
+        status: request.status ?? null,
+      },
+    })
+    .select("id")
+    .single();
+  if (decisionError || !decision) {
+    throw new AdWriteError("decision insert failed", 500);
+  }
+  return { writeId: write.id, decisionId: decision.id };
+}
+
+async function ceilingCheck(
+  supabase: SupabaseClient,
+  userId: string,
+  requestedCents: number
+): Promise<CeilingCheck> {
+  const [ceiling, committed] = await Promise.all([
+    spendCeilingCents(supabase, userId),
+    committedExposureCents(supabase, userId),
+  ]);
+  return ceilingAllows(ceiling, committed, requestedCents);
+}
+
+async function mirrorCampaign(
+  supabase: SupabaseClient,
+  userId: string,
+  accountId: string,
+  campaignRef: string,
+  patch: { name?: string; daily_budget_cents?: number; status?: string }
+): Promise<void> {
+  const { data: existing } = await supabase
+    .from("ad_campaigns")
+    .select("id")
+    .eq("account_id", accountId)
+    .eq("campaign_ref", campaignRef)
+    .maybeSingle();
+  if (existing) {
+    await supabase
+      .from("ad_campaigns")
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq("id", existing.id);
+  } else {
+    await supabase.from("ad_campaigns").insert({
+      user_id: userId,
+      account_id: accountId,
+      campaign_ref: campaignRef,
+      name: patch.name ?? null,
+      daily_budget_cents: patch.daily_budget_cents ?? 0,
+      status: patch.status ?? "active",
+    });
+  }
+}
+
+/**
+ * Approve and execute a pending write. Refuses (without executing anything)
+ * when the write would push committed 30-day exposure past the control-plane
+ * ceiling — that is the hard, platform-independent limit.
+ */
+export async function approveAdWrite(
+  supabase: SupabaseClient,
+  userId: string,
+  writeId: string
+): Promise<{ outcome: "executed" | "approved"; ceiling?: CeilingCheck }> {
+  const { data: write } = await supabase
+    .from("ad_writes")
+    .select(
+      "id, account_id, kind, campaign_ref, args, daily_budget_cents, exposure_30d_cents, status"
+    )
+    .eq("id", writeId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!write) throw new AdWriteError("write not found", 404);
+  if (write.status !== "pending") {
+    throw new AdWriteError(`write already ${write.status}`, 409);
+  }
+
+  const args = (write.args ?? {}) as Record<string, unknown>;
+  const spendIncreasing =
+    write.kind === "create_campaign" ||
+    write.kind === "update_budget" ||
+    (write.kind === "set_status" && args.status === "active");
+  if (spendIncreasing) {
+    const check = await ceilingCheck(
+      supabase,
+      userId,
+      Number(write.exposure_30d_cents ?? 0)
+    );
+    if (!check.allowed) {
+      throw new AdWriteError(
+        `spend ceiling: ${check.committedCents + check.requestedCents} would exceed ${check.ceilingCents}`,
+        403
+      );
+    }
+  }
+
+  const { data: account } = await supabase
+    .from("ad_accounts")
+    .select("id, provider, account_ref, api_key_sealed")
+    .eq("id", write.account_id)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!account) throw new AdWriteError("ad account not found", 404);
+
+  if (account.provider === "meta") {
+    // Meta writes run in-box through the Meta Ads MCP; approval releases the
+    // gate the box polls before invoking the write tool.
+    await supabase
+      .from("ad_writes")
+      .update({ status: "approved", resolved_at: new Date().toISOString() })
+      .eq("id", write.id);
+    return { outcome: "approved" };
+  }
+
+  if (!account.api_key_sealed) {
+    throw new AdWriteError("ad account has no credential", 409);
+  }
+  const apiKey = openAdsKey(account.api_key_sealed);
+  try {
+    let campaignRef = write.campaign_ref as string | null;
+    if (write.kind === "create_campaign") {
+      const created = await createCampaign(apiKey, {
+        ...args,
+        daily_budget_cents: write.daily_budget_cents,
+      });
+      campaignRef = created.campaignRef;
+      await mirrorCampaign(supabase, userId, account.id, campaignRef, {
+        name: typeof args.name === "string" ? args.name : undefined,
+        daily_budget_cents: Number(write.daily_budget_cents ?? 0),
+        status: "active",
+      });
+    } else if (write.kind === "update_budget" && campaignRef) {
+      await updateCampaign(apiKey, campaignRef, {
+        daily_budget_cents: write.daily_budget_cents,
+      });
+      await mirrorCampaign(supabase, userId, account.id, campaignRef, {
+        daily_budget_cents: Number(write.daily_budget_cents ?? 0),
+      });
+    } else if (write.kind === "set_status" && campaignRef) {
+      const status = args.status === "active" ? "active" : "paused";
+      await updateCampaign(apiKey, campaignRef, { status });
+      await mirrorCampaign(supabase, userId, account.id, campaignRef, {
+        status,
+      });
+    }
+    await supabase
+      .from("ad_writes")
+      .update({
+        status: "executed",
+        campaign_ref: campaignRef,
+        result: { campaign_ref: campaignRef },
+        resolved_at: new Date().toISOString(),
+      })
+      .eq("id", write.id);
+    return { outcome: "executed" };
+  } catch (error) {
+    const message =
+      error instanceof OpenAIAdsError ? error.message : "execute failed";
+    await supabase
+      .from("ad_writes")
+      .update({
+        status: "failed",
+        error: message,
+        resolved_at: new Date().toISOString(),
+      })
+      .eq("id", write.id);
+    throw new AdWriteError(message, 502);
+  }
+}
+
+export async function dismissAdWrite(
+  supabase: SupabaseClient,
+  userId: string,
+  writeId: string
+): Promise<void> {
+  await supabase
+    .from("ad_writes")
+    .update({ status: "dismissed", resolved_at: new Date().toISOString() })
+    .eq("id", writeId)
+    .eq("user_id", userId)
+    .eq("status", "pending");
+}

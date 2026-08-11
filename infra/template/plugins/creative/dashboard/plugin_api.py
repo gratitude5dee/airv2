@@ -49,9 +49,9 @@ def _default_hermes_bin() -> str:
 
 
 HERMES_BIN = os.environ.get("CREATIVE_HERMES_BIN") or _default_hermes_bin()
-PLUGIN_VERSION = "0.2.0"
+PLUGIN_VERSION = "0.3.0"
 
-JOB_KINDS = {"commercial", "marketing", "ugc", "cinematography"}
+JOB_KINDS = {"commercial", "marketing", "ugc", "cinematography", "ad_asset_group"}
 
 # Coarse pre-run spend estimates in USD by job kind (CM1 task 4). The control
 # plane enforces the cap; these make enforcement possible by being stated
@@ -61,6 +61,8 @@ COST_ESTIMATES_USD = {
     "marketing": 1.5,
     "ugc": 2.0,
     "cinematography": 6.0,
+    # One concept fully built plus two alternates at hero ratio (CM5 task 6).
+    "ad_asset_group": 8.0,
 }
 
 MEDIA_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".mp4", ".mov", ".gif", ".mp3", ".wav"}
@@ -101,6 +103,21 @@ def _db() -> sqlite3.Connection:
              bytes integer not null,
              sha256 text not null,
              spec_conformance text not null default '[]',
+             created_at real not null
+           )"""
+    )
+    conn.execute(
+        """create table if not exists ad_groups (
+             job_id text primary key,
+             spec_id text not null,
+             brand_rev integer,
+             headlines text not null default '[]',
+             long_headlines text not null default '[]',
+             descriptions text not null default '[]',
+             final_url text,
+             image_asset_ids text not null default '[]',
+             logo_asset_ids text not null default '[]',
+             video_asset_ids text not null default '[]',
              created_at real not null
            )"""
     )
@@ -165,10 +182,28 @@ def _launch(job_id: str, kind: str, brief: str, inputs: list[str]) -> int:
     """Shell the genmedia skill via the Hermes CLI (CM1 task 3)."""
     job_dir = JOBS_DIR / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
-    prompt = (
-        f"Use the {kind} genmedia skill. Write every rendered output file into "
-        f"{job_dir}. Brief: {brief}"
-    )
+    if kind == "ad_asset_group":
+        # CM5: one job, one complete asset group. Master-and-derive — render
+        # the hero at highest fidelity, then recompose (reframe, don't
+        # center-crop) into the other ratios. group.json is the contract; a
+        # missing or partial file fails the job rather than shipping a
+        # partial group.
+        prompt = (
+            f"Use the marketing genmedia skill to build a complete ad asset "
+            f"group. Write every rendered file into {job_dir}. Render one "
+            f"hero master at the highest fidelity, then derive the other "
+            f"required ratios by intentional recomposition — reframe the "
+            f"subject, never center-crop. Also write {job_dir}/group.json "
+            f"with keys: headlines, long_headlines, descriptions (arrays of "
+            f"strings), final_url (string), image_files, logo_files, "
+            f"video_files (arrays of output filenames relative to the job "
+            f"directory). Offer/brief: {brief}"
+        )
+    else:
+        prompt = (
+            f"Use the {kind} genmedia skill. Write every rendered output file into "
+            f"{job_dir}. Brief: {brief}"
+        )
     if inputs:
         prompt += f" Input references: {json.dumps(inputs)}"
     log_path = job_dir / "job.log"
@@ -280,7 +315,23 @@ def _refresh_job_state(conn: sqlite3.Connection, row: sqlite3.Row) -> sqlite3.Ro
         except ValueError:
             exit_code = None
     outputs = _register_outputs(conn, row["id"])
-    if outputs and exit_code == 0:
+    if outputs and exit_code == 0 and row["kind"] == "ad_asset_group":
+        error = _register_ad_group(conn, row)
+        if error:
+            conn.execute(
+                "update jobs set state='failed', retriable=1, error=?, "
+                "updated_at=? where id=?",
+                (error, time.time(), row["id"]),
+            )
+            conn.commit()
+            return conn.execute(
+                "select * from jobs where id=?", (row["id"],)
+            ).fetchone()
+        conn.execute(
+            "update jobs set state='done', progress=1, updated_at=? where id=?",
+            (time.time(), row["id"]),
+        )
+    elif outputs and exit_code == 0:
         conn.execute(
             "update jobs set state='done', progress=1, updated_at=? where id=?",
             (time.time(), row["id"]),
@@ -317,10 +368,84 @@ def _job_payload(conn: sqlite3.Connection, row: sqlite3.Row) -> dict:
     }
 
 
+def _resolve_group_files(
+    conn: sqlite3.Connection, job_id: str, names: list
+) -> list[str] | None:
+    """Map group.json filenames to registered asset ids by stored name."""
+    if not isinstance(names, list) or not all(isinstance(n, str) for n in names):
+        return None
+    rows = conn.execute(
+        "select id, path from assets where job_id=?", (job_id,)
+    ).fetchall()
+    by_name = {Path(r["path"]).name: r["id"] for r in rows}
+    ids = []
+    for name in names:
+        asset_id = by_name.get(Path(name).name)
+        if asset_id is None:
+            return None
+        ids.append(asset_id)
+    return ids
+
+
+def _register_ad_group(conn: sqlite3.Connection, row: sqlite3.Row) -> str | None:
+    """Parse group.json into ad_groups. Any missing piece is a job failure
+    (CM5 task 2), never a partial success discovered at upload."""
+    group_path = JOBS_DIR / row["id"] / "group.json"
+    if not group_path.is_file():
+        return "asset group incomplete: group.json missing — retry"
+    try:
+        group = json.loads(group_path.read_text())
+    except ValueError:
+        return "asset group incomplete: group.json unparseable — retry"
+    text_fields = {}
+    for key in ("headlines", "long_headlines", "descriptions"):
+        values = group.get(key, [])
+        if not isinstance(values, list) or not all(
+            isinstance(v, str) for v in values
+        ):
+            return f"asset group incomplete: {key} malformed — retry"
+        text_fields[key] = values
+    if not text_fields["headlines"] or not text_fields["descriptions"]:
+        return "asset group incomplete: headlines/descriptions empty — retry"
+    resolved = {}
+    for key in ("image_files", "logo_files", "video_files"):
+        ids = _resolve_group_files(conn, row["id"], group.get(key, []))
+        if ids is None:
+            return f"asset group incomplete: {key} references unknown files — retry"
+        resolved[key] = ids
+    if not resolved["image_files"] and not resolved["video_files"]:
+        return "asset group incomplete: no media — retry"
+    final_url = group.get("final_url")
+    if final_url is not None and not isinstance(final_url, str):
+        return "asset group incomplete: final_url malformed — retry"
+    conn.execute(
+        "insert or replace into ad_groups (job_id, spec_id, brand_rev, "
+        "headlines, long_headlines, descriptions, final_url, image_asset_ids, "
+        "logo_asset_ids, video_asset_ids, created_at) "
+        "values (?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            row["id"],
+            row["spec_id"] or "",
+            row["brand_rev"],
+            json.dumps(text_fields["headlines"]),
+            json.dumps(text_fields["long_headlines"]),
+            json.dumps(text_fields["descriptions"]),
+            final_url,
+            json.dumps(resolved["image_files"]),
+            json.dumps(resolved["logo_files"]),
+            json.dumps(resolved["video_files"]),
+            time.time(),
+        ),
+    )
+    return None
+
+
 @router.post("/jobs")
 def submit_job(body: JobRequest) -> dict:
     if body.kind not in JOB_KINDS:
         raise HTTPException(400, f"unknown job kind {body.kind!r}")
+    if body.kind == "ad_asset_group" and not body.spec_id:
+        raise HTTPException(400, "ad_asset_group requires spec_id")
     job_id = uuid.uuid4().hex
     now = time.time()
     conn = _db()
@@ -573,13 +698,61 @@ def derive_variants(asset_id: str, body: VariantRequest) -> dict:
                     duration,
                     out_path.stat().st_size,
                     hashlib.sha256(out_path.read_bytes()).hexdigest(),
-                    "[]",
+                    # A blind center crop can't know where the subject is —
+                    # every crop-derived variant is flagged for human review
+                    # (CM5 task 3) rather than trusted into a group.
+                    json.dumps(
+                        [{"slot": ratio, "method": "center-crop", "review": True}]
+                    ),
                     time.time(),
                 ),
             )
-            created.append({"id": variant_id, "ratio": ratio})
+            created.append({"id": variant_id, "ratio": ratio, "review": True})
         conn.commit()
         return {"variants": created}
+    finally:
+        conn.close()
+
+
+@router.get("/ad-groups/{job_id}")
+def get_ad_group(job_id: str) -> dict:
+    """The completed asset group for a job: linted text plus asset ids by
+    role. Conformance against the placement spec is computed control-plane
+    side, where the spec registry lives."""
+    conn = _db()
+    try:
+        row = conn.execute(
+            "select * from ad_groups where job_id=?", (job_id,)
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, "ad group not found")
+        asset_ids = (
+            json.loads(row["image_asset_ids"])
+            + json.loads(row["logo_asset_ids"])
+            + json.loads(row["video_asset_ids"])
+        )
+        assets = []
+        for asset_id in asset_ids:
+            asset = conn.execute(
+                "select id, kind, w, h, duration, bytes, sha256 from assets "
+                "where id=?",
+                (asset_id,),
+            ).fetchone()
+            if asset:
+                assets.append(dict(asset))
+        return {
+            "job_id": row["job_id"],
+            "spec_id": row["spec_id"],
+            "brand_rev": row["brand_rev"],
+            "headlines": json.loads(row["headlines"]),
+            "long_headlines": json.loads(row["long_headlines"]),
+            "descriptions": json.loads(row["descriptions"]),
+            "final_url": row["final_url"],
+            "image_asset_ids": json.loads(row["image_asset_ids"]),
+            "logo_asset_ids": json.loads(row["logo_asset_ids"]),
+            "video_asset_ids": json.loads(row["video_asset_ids"]),
+            "assets": assets,
+        }
     finally:
         conn.close()
 
