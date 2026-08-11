@@ -227,6 +227,10 @@ export default function HomePage() {
     setBusy(true);
     setInput("");
     chatComputerDismissed.current = false;
+    // Re-arm the refresh guard so this run's first computer tool remounts the
+    // iframe even if the panel was left open — the stream URL goes stale when
+    // the box sleeps between runs (the token rotates on resume).
+    chatComputerOpenRef.current = false;
     setMessages((m) => [...m, { role: "user", text }, { role: "agent", text: "" }]);
     try {
       const res = await fetch("/api/chat", {
