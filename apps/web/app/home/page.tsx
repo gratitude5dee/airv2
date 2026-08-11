@@ -178,6 +178,7 @@ export default function HomePage() {
   const [adSpecs, setAdSpecs] = useState<AdSpec[]>([]);
   const [adWrites, setAdWrites] = useState<AdWrite[]>([]);
   const [adsNote, setAdsNote] = useState<string | null>(null);
+  const [adsFailed, setAdsFailed] = useState(false);
   const [adSpecId, setAdSpecId] = useState("");
   const [adOffer, setAdOffer] = useState("");
   const [adJob, setAdJob] = useState<AdGroupJob | null>(null);
@@ -186,6 +187,7 @@ export default function HomePage() {
   const [writeAccountId, setWriteAccountId] = useState("");
   const [writeCampaignName, setWriteCampaignName] = useState("");
   const [writeDailyUsd, setWriteDailyUsd] = useState("");
+  const [writeBusy, setWriteBusy] = useState(false);
   const [decisionBusy, setDecisionBusy] = useState<string | null>(null);
   const [decisionNote, setDecisionNote] = useState<string | null>(null);
 
@@ -446,28 +448,42 @@ export default function HomePage() {
 
   async function loadAds() {
     setAdsNote(null);
-    const [accountsRes, specsRes, writesRes] = await Promise.all([
-      fetch("/api/ads/accounts"),
-      fetch("/api/ads/groups"),
-      fetch("/api/ads/writes"),
-    ]);
-    if (accountsRes.ok) {
-      const data = (await accountsRes.json()) as {
-        accounts?: AdAccount[];
-        spend_ceiling_cents?: number;
-      };
-      setAdAccounts(data.accounts ?? []);
-      setAdCeilingCents(data.spend_ceiling_cents ?? 0);
-    } else {
-      setAdAccounts([]);
+    setAdsFailed(false);
+    let failed = false;
+    try {
+      const [accountsRes, specsRes, writesRes] = await Promise.all([
+        fetch("/api/ads/accounts"),
+        fetch("/api/ads/groups"),
+        fetch("/api/ads/writes"),
+      ]);
+      if (accountsRes.ok) {
+        const data = (await accountsRes.json()) as {
+          accounts?: AdAccount[];
+          spend_ceiling_cents?: number;
+        };
+        setAdAccounts(data.accounts ?? []);
+        setAdCeilingCents(data.spend_ceiling_cents ?? 0);
+      } else {
+        failed = true;
+      }
+      if (specsRes.ok) {
+        const data = (await specsRes.json()) as { specs?: AdSpec[] };
+        setAdSpecs(data.specs ?? []);
+      } else {
+        failed = true;
+      }
+      if (writesRes.ok) {
+        const data = (await writesRes.json()) as { writes?: AdWrite[] };
+        setAdWrites(data.writes ?? []);
+      } else {
+        failed = true;
+      }
+    } catch {
+      failed = true;
     }
-    if (specsRes.ok) {
-      const data = (await specsRes.json()) as { specs?: AdSpec[] };
-      setAdSpecs(data.specs ?? []);
-    }
-    if (writesRes.ok) {
-      const data = (await writesRes.json()) as { writes?: AdWrite[] };
-      setAdWrites(data.writes ?? []);
+    if (failed) {
+      setAdsFailed(true);
+      setAdsNote("Couldn't load your ads data.");
     }
   }
 
@@ -571,35 +587,43 @@ export default function HomePage() {
   async function proposeAdWrite() {
     const dailyUsd = Number(writeDailyUsd);
     if (
+      writeBusy ||
       !writeAccountId ||
       !writeCampaignName.trim() ||
       !Number.isFinite(dailyUsd) ||
       dailyUsd <= 0
     )
       return;
+    setWriteBusy(true);
     setAdsNote(null);
-    const res = await fetch("/api/ads/writes", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        account_id: writeAccountId,
-        kind: "create_campaign",
-        campaign_name: writeCampaignName.trim(),
-        daily_budget_cents: Math.round(dailyUsd * 100),
-      }),
-    });
-    if (res.ok) {
-      setWriteCampaignName("");
-      setWriteDailyUsd("");
-      setAdsNote("Proposed — approve it under “Needs you” to run it.");
-      const writes = await fetch("/api/ads/writes");
-      if (writes.ok) {
-        const data = (await writes.json()) as { writes?: AdWrite[] };
-        setAdWrites(data.writes ?? []);
+    try {
+      const res = await fetch("/api/ads/writes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          account_id: writeAccountId,
+          kind: "create_campaign",
+          campaign_name: writeCampaignName.trim(),
+          daily_budget_cents: Math.round(dailyUsd * 100),
+        }),
+      });
+      if (res.ok) {
+        setWriteCampaignName("");
+        setWriteDailyUsd("");
+        setAdsNote("Proposed — approve it under “Needs you” to run it.");
+        const writes = await fetch("/api/ads/writes");
+        if (writes.ok) {
+          const data = (await writes.json()) as { writes?: AdWrite[] };
+          setAdWrites(data.writes ?? []);
+        }
+      } else {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        setAdsNote(data.error ?? "Couldn't propose the campaign — try again.");
       }
-    } else {
-      const data = (await res.json().catch(() => ({}))) as { error?: string };
-      setAdsNote(data.error ?? "Couldn't propose the campaign — try again.");
+    } catch {
+      setAdsNote("Couldn't propose the campaign — try again.");
+    } finally {
+      setWriteBusy(false);
     }
   }
 
@@ -677,7 +701,9 @@ export default function HomePage() {
     if (next === "skills" && skills === null) {
       await loadInstalledSkills();
     }
-    if (next === "ads" && adAccounts === null) {
+    if (next === "ads") {
+      // Always re-fetch: accounts appear after the agent-side OAuth
+      // handshake, so a one-shot load would go stale.
       await loadAds();
     }
   }
@@ -1117,7 +1143,19 @@ export default function HomePage() {
                 Your agent drafts the creative; nothing spends money without
                 your approval under “Needs you”.
               </p>
-              {adsNote ? <p className="muted m-0 text-[12px]">{adsNote}</p> : null}
+              {adsNote ? (
+                <div className="flex items-center gap-2 py-1">
+                  <p className="muted m-0 text-[12px]">{adsNote}</p>
+                  {adsFailed ? (
+                    <button
+                      className="btn !px-3 !py-1.5 !text-[12px]"
+                      onClick={() => void loadAds()}
+                    >
+                      Retry
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
 
               <h4 className="m-0 mt-2 text-[13px] font-semibold">Accounts</h4>
               <p className="muted m-0 text-[12px]">
@@ -1259,12 +1297,13 @@ export default function HomePage() {
                     type="submit"
                     className="btn !px-3 !py-1.5 !text-[12px]"
                     disabled={
+                      writeBusy ||
                       !writeAccountId ||
                       !writeCampaignName.trim() ||
                       !(Number(writeDailyUsd) > 0)
                     }
                   >
-                    Propose — approve in “Needs you”
+                    {writeBusy ? "Proposing…" : "Propose — approve in “Needs you”"}
                   </button>
                 </div>
               </form>
