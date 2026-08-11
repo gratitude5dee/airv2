@@ -297,7 +297,11 @@ export async function approveAdWrite(
     }
     await supabase
       .from("ad_writes")
-      .update({ status: "approved", resolved_at: new Date().toISOString() })
+      .update({
+        status: "approved",
+        error: null,
+        resolved_at: new Date().toISOString(),
+      })
       .eq("id", write.id);
     return { outcome: "approved" };
   }
@@ -344,6 +348,7 @@ export async function approveAdWrite(
       .from("ad_writes")
       .update({
         status: "executed",
+        error: null,
         campaign_ref: campaignRef,
         result: { campaign_ref: campaignRef },
         resolved_at: new Date().toISOString(),
