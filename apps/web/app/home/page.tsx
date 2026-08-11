@@ -84,7 +84,8 @@ type Tab =
   | "needs"
   | "people"
   | "connectors"
-  | "ads";
+  | "ads"
+  | "computer";
 
 /** Tolerantly extract a list from an API payload that may be a bare array,
  * a keyed object ({sessions}/{skills}/{data}/{items}), or a keyed map. */
@@ -114,6 +115,7 @@ const TABS: [Tab, string][] = [
   ["connectors", "Connectors"],
   ["skills", "Skills"],
   ["ads", "Ads"],
+  ["computer", "Computer"],
 ];
 
 export default function HomePage() {
@@ -126,6 +128,7 @@ export default function HomePage() {
   const [username, setUsername] = useState("");
   const [note, setNote] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("chat");
+  const [computerEpoch, setComputerEpoch] = useState(0);
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
   const [skills, setSkills] = useState<SkillSummary[] | null>(null);
   const [decisions, setDecisions] = useState<Decision[] | null>(null);
@@ -456,6 +459,11 @@ export default function HomePage() {
 
   async function loadTab(next: Tab) {
     setTab(next);
+    if (next === "computer") {
+      // Remount the iframe so each visit re-runs the authenticated redirect
+      // and picks up a fresh stream URL (the token rotates with the box).
+      setComputerEpoch((n) => n + 1);
+    }
     panelLoadId.current++;
     setPanelNote(null);
     setPanelFailed(false);
@@ -903,6 +911,30 @@ export default function HomePage() {
               {skills !== null && skills.length === 0 ? (
                 <p className="muted text-[13px]">No skills installed yet.</p>
               ) : null}
+            </div>
+          ) : tab === "computer" ? (
+            <div className="flex flex-1 flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <p className="muted m-0 text-[13px]">
+                  Live view of your agent’s computer — take over when it needs
+                  you (logins, approvals).
+                </p>
+                <a
+                  className="btn btn-ghost !px-3 !py-1.5 !text-[12px]"
+                  href="/api/box/desktop"
+                  target="_blank"
+                  rel="noreferrer noopener"
+                >
+                  Open in new tab
+                </a>
+              </div>
+              <iframe
+                key={computerEpoch}
+                src="/api/box/desktop"
+                title="Your agent's computer"
+                className="min-h-[420px] flex-1 rounded-xl border-0 bg-black"
+                allow="clipboard-read; clipboard-write"
+              />
             </div>
           ) : tab === "ads" ? (
             <AdsPanel

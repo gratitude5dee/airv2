@@ -12,6 +12,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
 import { mintToken, redeemOnce, verifyToken } from "@/lib/miniapps/tokens";
+import { desktopStreamUrl, DesktopUnavailableError } from "@/lib/box/desktop";
+import { armStopAfter, StartLimitError } from "@/lib/orchestrator/boxes";
 import {
   addKanbanCard,
   getKanban,
@@ -26,7 +28,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-const APPS = new Set(["kanban", "todo"]);
+const APPS = new Set(["kanban", "todo", "computer"]);
 
 const BASE_HEADERS: Record<string, string> = {
   "Referrer-Policy": "no-referrer",
@@ -185,6 +187,52 @@ export async function GET(
   const session = sessionFromCookie(request, app);
   if (!session) return forbidden("no session — open this from your card");
 
+  if (app === "computer") {
+    // The desktop stream is WebRTC and cannot be re-streamed through this
+    // origin; the owner's browser is redirected to a freshly-fetched stream
+    // URL behind the single-use token exchange above. no-referrer keeps the
+    // URL out of Referer headers; nothing is stored client-side (C17).
+    try {
+      const url = await desktopStreamUrl(supabase, session.userId);
+      await armStopAfter(supabase, session.userId);
+      const response = NextResponse.redirect(url, 302);
+      response.headers.set("Referrer-Policy", "no-referrer");
+      response.headers.set("Cache-Control", "no-store");
+      return response;
+    } catch (error) {
+      if (error instanceof StartLimitError) {
+        return html(
+          page(
+            "Computer",
+            "<h1>Computer</h1><p>Your agent's computer can't start right now — try again in a few minutes.</p>"
+          )
+        );
+      }
+      if (error instanceof DesktopUnavailableError) {
+        return html(
+          page(
+            "Computer",
+            "<h1>Computer</h1><p>Your agent's screen isn't available yet — it may still be waking up. Pull to refresh in a moment.</p>"
+          )
+        );
+      }
+      const message = error instanceof Error ? error.message : "unknown error";
+      console.error(
+        JSON.stringify({
+          msg: "computer mini-app failed",
+          user_id: session.userId,
+          error: message,
+        })
+      );
+      return html(
+        page(
+          "Computer",
+          "<h1>Computer</h1><p>Couldn't reach your agent's computer — try again shortly.</p>"
+        )
+      );
+    }
+  }
+
   if (app === "kanban") {
     const board = await getKanban(supabase, session.userId, session.resourceId);
     return html(renderKanban(board, session.resourceId));
@@ -199,6 +247,9 @@ export async function POST(
 ): Promise<NextResponse> {
   const { app } = await context.params;
   if (!APPS.has(app)) {
+    return new NextResponse("not found", { status: 404, headers: BASE_HEADERS });
+  }
+  if (app === "computer") {
     return new NextResponse("not found", { status: 404, headers: BASE_HEADERS });
   }
   const session = sessionFromCookie(request, app);
