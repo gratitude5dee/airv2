@@ -19,8 +19,16 @@ export const maxDuration = 300;
 /** Minimum gap between agent-initiated computer cards per user. */
 const CARD_COOLDOWN_MS = 2 * 60 * 1000;
 
+/**
+ * Gap enforced after a failed delivery. Not a full release: a thrown send
+ * error is ambiguous (the card may already have reached the owner — e.g. a
+ * network timeout after handoff to Spectrum), so retries stay possible but
+ * the flood rate remains bounded even under repeated failures.
+ */
+const FAILED_SEND_RETRY_MS = 15 * 1000;
+
 interface CardClaim {
-  /** Best-effort undo so a failed delivery doesn't consume the cooldown. */
+  /** Best-effort backoff so a failed delivery doesn't consume the full cooldown. */
   release: () => Promise<void>;
 }
 
@@ -38,16 +46,19 @@ async function claimCardSend(
   const { error } = await supabase
     .from("computer_card_sends")
     .insert({ user_id: userId, sent_at: now.toISOString() });
+  const retryAt = new Date(
+    now.getTime() - CARD_COOLDOWN_MS + FAILED_SEND_RETRY_MS
+  ).toISOString();
+  // Only rolls back this call's own claim: a newer claim has a later sent_at.
+  const release = async () => {
+    await supabase
+      .from("computer_card_sends")
+      .update({ sent_at: retryAt })
+      .eq("user_id", userId)
+      .eq("sent_at", now.toISOString());
+  };
   if (!error) {
-    return {
-      release: async () => {
-        await supabase
-          .from("computer_card_sends")
-          .delete()
-          .eq("user_id", userId)
-          .eq("sent_at", now.toISOString());
-      },
-    };
+    return { release };
   }
   if (error.code !== "23505") {
     throw new Error(`computer_card_sends insert failed: ${error.message}`);
@@ -63,16 +74,7 @@ async function claimCardSend(
     throw new Error(`computer_card_sends update failed: ${updateError.message}`);
   }
   if ((data?.length ?? 0) === 0) return undefined;
-  return {
-    release: async () => {
-      // Re-expire the claim (previous sent_at was already past the cutoff).
-      await supabase
-        .from("computer_card_sends")
-        .update({ sent_at: cutoff })
-        .eq("user_id", userId)
-        .eq("sent_at", now.toISOString());
-    },
-  };
+  return { release };
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
