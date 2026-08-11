@@ -76,7 +76,46 @@ interface ChatMessage {
   text: string;
 }
 
-type Tab = "chat" | "history" | "skills" | "needs" | "people" | "connectors";
+interface AdAccount {
+  id: string;
+  provider: string;
+  account_ref: string;
+  label: string | null;
+  status: string;
+}
+
+interface AdSpec {
+  id: string;
+  stale: boolean;
+}
+
+interface AdWrite {
+  id: string;
+  kind: string;
+  campaign_ref: string | null;
+  status: string;
+  daily_budget_cents: number | null;
+  error: string | null;
+  created_at: string;
+}
+
+interface AdGroupJob {
+  jobId: string;
+  specId: string;
+  costEstimate: number;
+  state: string;
+  conformant: boolean | null;
+  gaps: string[];
+}
+
+type Tab =
+  | "chat"
+  | "history"
+  | "skills"
+  | "needs"
+  | "people"
+  | "connectors"
+  | "ads";
 
 /** Tolerantly extract a list from an API payload that may be a bare array,
  * a keyed object ({sessions}/{skills}/{data}/{items}), or a keyed map. */
@@ -105,6 +144,7 @@ const TABS: [Tab, string][] = [
   ["people", "People"],
   ["connectors", "Connectors"],
   ["skills", "Skills"],
+  ["ads", "Ads"],
 ];
 
 export default function HomePage() {
@@ -133,6 +173,21 @@ export default function HomePage() {
   const [skillBusy, setSkillBusy] = useState<string | null>(null);
   const [historyLoading, setHistoryLoading] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [adAccounts, setAdAccounts] = useState<AdAccount[] | null>(null);
+  const [adCeilingCents, setAdCeilingCents] = useState(0);
+  const [adSpecs, setAdSpecs] = useState<AdSpec[]>([]);
+  const [adWrites, setAdWrites] = useState<AdWrite[]>([]);
+  const [adsNote, setAdsNote] = useState<string | null>(null);
+  const [adSpecId, setAdSpecId] = useState("");
+  const [adOffer, setAdOffer] = useState("");
+  const [adJob, setAdJob] = useState<AdGroupJob | null>(null);
+  const [adBusy, setAdBusy] = useState(false);
+  const adPollId = useRef(0);
+  const [writeAccountId, setWriteAccountId] = useState("");
+  const [writeCampaignName, setWriteCampaignName] = useState("");
+  const [writeDailyUsd, setWriteDailyUsd] = useState("");
+  const [decisionBusy, setDecisionBusy] = useState<string | null>(null);
+  const [decisionNote, setDecisionNote] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/me").then(async (res) => {
@@ -324,11 +379,21 @@ export default function HomePage() {
   }
 
   async function resolveDecision(id: string, action: "approve" | "dismiss") {
-    await fetch("/api/decisions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, action }),
-    });
+    setDecisionBusy(id);
+    setDecisionNote(null);
+    try {
+      const res = await fetch("/api/decisions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, action }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        setDecisionNote(data.error ?? "That didn't go through — try again.");
+      }
+    } finally {
+      setDecisionBusy(null);
+    }
     await loadDecisions();
   }
 
@@ -376,6 +441,165 @@ export default function HomePage() {
     if (res.ok) {
       const data = (await res.json()) as { redirect_url?: string };
       if (data.redirect_url) window.location.href = data.redirect_url;
+    }
+  }
+
+  async function loadAds() {
+    setAdsNote(null);
+    const [accountsRes, specsRes, writesRes] = await Promise.all([
+      fetch("/api/ads/accounts"),
+      fetch("/api/ads/groups"),
+      fetch("/api/ads/writes"),
+    ]);
+    if (accountsRes.ok) {
+      const data = (await accountsRes.json()) as {
+        accounts?: AdAccount[];
+        spend_ceiling_cents?: number;
+      };
+      setAdAccounts(data.accounts ?? []);
+      setAdCeilingCents(data.spend_ceiling_cents ?? 0);
+    } else {
+      setAdAccounts([]);
+    }
+    if (specsRes.ok) {
+      const data = (await specsRes.json()) as { specs?: AdSpec[] };
+      setAdSpecs(data.specs ?? []);
+    }
+    if (writesRes.ok) {
+      const data = (await writesRes.json()) as { writes?: AdWrite[] };
+      setAdWrites(data.writes ?? []);
+    }
+  }
+
+  async function connectMetaAds() {
+    setAdBusy(true);
+    setAdsNote("Installing Meta Ads on your agent's computer…");
+    try {
+      const res = await fetch("/api/ads/accounts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ install: "meta-ads" }),
+      });
+      if (res.ok) {
+        setAdsNote(
+          "Meta Ads installed. Ask your agent in chat to connect your Meta ad account — it walks you through the login."
+        );
+      } else {
+        setAdsNote(
+          res.status === 429
+            ? "Your agent's computer is busy starting up — try again in a minute."
+            : "Install failed — try again shortly."
+        );
+      }
+    } catch {
+      setAdsNote("Install failed — try again shortly.");
+    } finally {
+      setAdBusy(false);
+    }
+  }
+
+  async function createAdGroup() {
+    const specId = adSpecId || adSpecs[0]?.id;
+    const offer = adOffer.trim();
+    if (!specId || !offer || adBusy) return;
+    setAdBusy(true);
+    setAdsNote(null);
+    setAdJob(null);
+    const pollId = ++adPollId.current;
+    try {
+      const res = await fetch("/api/ads/groups", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ spec_id: specId, offer }),
+      });
+      if (!res.ok) {
+        setAdsNote(
+          res.status === 429
+            ? "Your agent's computer is busy starting up — try again in a minute."
+            : "Couldn't start the ad group — try again shortly."
+        );
+        return;
+      }
+      const data = (await res.json()) as {
+        job_id: string;
+        cost_estimate: number;
+      };
+      let job: AdGroupJob = {
+        jobId: data.job_id,
+        specId,
+        costEstimate: data.cost_estimate,
+        state: "running",
+        conformant: null,
+        gaps: [],
+      };
+      setAdJob(job);
+      for (let i = 0; i < 60; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+        if (pollId !== adPollId.current) return;
+        const poll = await fetch(`/api/ads/groups/${data.job_id}`);
+        if (!poll.ok) continue;
+        const status = (await poll.json()) as {
+          state?: string;
+          error?: string | null;
+          conformance?: { complete?: boolean; gaps?: string[] };
+        };
+        if (pollId !== adPollId.current) return;
+        if (status.state === "done") {
+          job = {
+            ...job,
+            state: "done",
+            conformant: status.conformance?.complete ?? null,
+            gaps: status.conformance?.gaps ?? [],
+          };
+          setAdJob(job);
+          return;
+        }
+        if (status.state === "failed" || status.state === "cancelled") {
+          setAdJob({ ...job, state: status.state });
+          return;
+        }
+        setAdJob({ ...job, state: status.state ?? "running" });
+      }
+      setAdsNote("Still rendering — check back in a few minutes.");
+    } catch {
+      setAdsNote("Couldn't start the ad group — try again shortly.");
+    } finally {
+      if (pollId === adPollId.current) setAdBusy(false);
+    }
+  }
+
+  async function proposeAdWrite() {
+    const dailyUsd = Number(writeDailyUsd);
+    if (
+      !writeAccountId ||
+      !writeCampaignName.trim() ||
+      !Number.isFinite(dailyUsd) ||
+      dailyUsd <= 0
+    )
+      return;
+    setAdsNote(null);
+    const res = await fetch("/api/ads/writes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        account_id: writeAccountId,
+        kind: "create_campaign",
+        campaign_name: writeCampaignName.trim(),
+        daily_budget_cents: Math.round(dailyUsd * 100),
+      }),
+    });
+    if (res.ok) {
+      setWriteCampaignName("");
+      setWriteDailyUsd("");
+      setAdsNote("Proposed — approve it under “Needs you” to run it.");
+      const writes = await fetch("/api/ads/writes");
+      if (writes.ok) {
+        const data = (await writes.json()) as { writes?: AdWrite[] };
+        setAdWrites(data.writes ?? []);
+      }
+    } else {
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      setAdsNote(data.error ?? "Couldn't propose the campaign — try again.");
     }
   }
 
@@ -452,6 +676,9 @@ export default function HomePage() {
     }
     if (next === "skills" && skills === null) {
       await loadInstalledSkills();
+    }
+    if (next === "ads" && adAccounts === null) {
+      await loadAds();
     }
   }
 
@@ -587,22 +814,46 @@ export default function HomePage() {
                       ? "Email draft awaiting send"
                       : d.kind === "run_approval"
                         ? "Agent action awaiting approval"
-                        : "New contact"}
+                        : d.kind === "ad_write"
+                          ? "Ad spend awaiting approval"
+                          : d.kind === "content_plan"
+                            ? "Content plan proposed"
+                            : d.kind === "reconnect"
+                              ? "Account needs reconnecting"
+                              : d.kind === "revise"
+                                ? "Post needs a revision"
+                                : d.kind === "spend_divergence"
+                                  ? "Ad spend diverged from budget"
+                                  : d.kind === "spend_ceiling"
+                                    ? "Spend ceiling reached"
+                                    : "New contact"}
                   </strong>
                   <p className="muted mb-2 mt-1 text-[12px]">
                     {[d.label, d.sender, d.platform].filter(Boolean).join(" \u00b7 ")}
                   </p>
                   <div className="flex gap-2">
-                    {d.kind === "email_draft" ? (
+                    {["email_draft", "ad_write", "content_plan", "reconnect", "revise"].includes(
+                      d.kind
+                    ) ? (
                       <button
                         className="btn !px-3 !py-1.5 !text-[12px]"
+                        disabled={decisionBusy !== null}
                         onClick={() => void resolveDecision(d.id, "approve")}
                       >
-                        Send
+                        {decisionBusy === d.id
+                          ? "Working\u2026"
+                          : d.kind === "email_draft"
+                            ? "Send"
+                            : d.kind === "content_plan"
+                              ? "Approve plan"
+                              : d.kind === "reconnect" || d.kind === "revise"
+                                ? "Retry"
+                                : "Approve"}
                       </button>
                     ) : null}
                     <button
                       className="btn btn-ghost !px-3 !py-1.5 !text-[12px]"
+                      disabled={decisionBusy !== null}
                       onClick={() => void resolveDecision(d.id, "dismiss")}
                     >
                       Dismiss
@@ -610,6 +861,9 @@ export default function HomePage() {
                   </div>
                 </div>
               ))}
+              {decisionNote ? (
+                <p className="muted m-0 text-[12px]">{decisionNote}</p>
+              ) : null}
               {decisions !== null && decisions.length === 0 ? (
                 <p className="muted text-[13px]">Nothing needs you right now.</p>
               ) : null}
@@ -854,6 +1108,194 @@ export default function HomePage() {
               ))}
               {skills !== null && skills.length === 0 ? (
                 <p className="muted text-[13px]">No skills installed yet.</p>
+              ) : null}
+            </div>
+          ) : tab === "ads" ? (
+            <div className="grid flex-1 content-start gap-2 overflow-y-auto">
+              <h3 className="m-0 text-[15px] font-semibold">Ads</h3>
+              <p className="muted m-0 text-[12px]">
+                Your agent drafts the creative; nothing spends money without
+                your approval under “Needs you”.
+              </p>
+              {adsNote ? <p className="muted m-0 text-[12px]">{adsNote}</p> : null}
+
+              <h4 className="m-0 mt-2 text-[13px] font-semibold">Accounts</h4>
+              <p className="muted m-0 text-[12px]">
+                Spend ceiling: ${(adCeilingCents / 100).toFixed(2)} over 30 days
+                {adCeilingCents === 0
+                  ? " — no ceiling set, so ad writes are blocked. Ask your operator to set one."
+                  : ""}
+              </p>
+              {(adAccounts ?? []).map((a) => (
+                <div
+                  key={a.id}
+                  className="panel rise-in flex items-center justify-between !p-3"
+                >
+                  <div>
+                    <strong className="text-[13px]">
+                      {a.label ?? a.account_ref}
+                    </strong>
+                    <p className="muted m-0 mt-0.5 text-[12px]">
+                      {a.provider} · {a.status}
+                    </p>
+                  </div>
+                </div>
+              ))}
+              {adAccounts !== null && adAccounts.length === 0 ? (
+                <p className="muted m-0 text-[13px]">No ad accounts yet.</p>
+              ) : null}
+              <div>
+                <button
+                  className="btn !px-3 !py-1.5 !text-[12px]"
+                  disabled={adBusy}
+                  onClick={() => void connectMetaAds()}
+                >
+                  Connect Meta Ads
+                </button>
+              </div>
+
+              <h4 className="m-0 mt-2 text-[13px] font-semibold">
+                Create an ad asset group
+              </h4>
+              <form
+                className="grid gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void createAdGroup();
+                }}
+              >
+                <select
+                  className="input !py-1.5 !text-[13px]"
+                  value={adSpecId || adSpecs[0]?.id || ""}
+                  onChange={(e) => setAdSpecId(e.target.value)}
+                  aria-label="Ad placement"
+                >
+                  {adSpecs.map((spec) => (
+                    <option key={spec.id} value={spec.id}>
+                      {spec.id}
+                      {spec.stale ? " (spec needs re-verification)" : ""}
+                    </option>
+                  ))}
+                </select>
+                <textarea
+                  className="input min-h-[64px] !py-1.5 !text-[13px]"
+                  placeholder="What are you promoting? (the offer, product, or show)"
+                  value={adOffer}
+                  onChange={(e) => setAdOffer(e.target.value)}
+                  aria-label="Offer brief"
+                />
+                <div>
+                  <button
+                    type="submit"
+                    className="btn !px-3 !py-1.5 !text-[12px]"
+                    disabled={adBusy || !adOffer.trim() || adSpecs.length === 0}
+                  >
+                    {adBusy ? "Working…" : "Generate assets"}
+                  </button>
+                </div>
+              </form>
+              {adJob ? (
+                <div className="panel rise-in !p-3">
+                  <strong className="text-[13px]">
+                    {adJob.state === "done"
+                      ? adJob.conformant
+                        ? "Asset group ready — conformant"
+                        : "Asset group ready — has gaps"
+                      : adJob.state === "failed" || adJob.state === "cancelled"
+                        ? `Generation ${adJob.state}`
+                        : "Rendering…"}
+                  </strong>
+                  <p className="muted m-0 mt-1 text-[12px]">
+                    {adJob.specId} · est. ${adJob.costEstimate.toFixed(2)}
+                  </p>
+                  {adJob.gaps.length > 0 ? (
+                    <p className="muted m-0 mt-1 text-[12px]">
+                      Missing: {adJob.gaps.join(", ")}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+
+              <h4 className="m-0 mt-2 text-[13px] font-semibold">
+                Propose a campaign
+              </h4>
+              <form
+                className="grid gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void proposeAdWrite();
+                }}
+              >
+                <select
+                  className="input !py-1.5 !text-[13px]"
+                  value={writeAccountId}
+                  onChange={(e) => setWriteAccountId(e.target.value)}
+                  aria-label="Ad account"
+                >
+                  <option value="">Choose an account…</option>
+                  {(adAccounts ?? []).map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.label ?? a.account_ref} ({a.provider})
+                    </option>
+                  ))}
+                </select>
+                <input
+                  className="input !py-1.5 !text-[13px]"
+                  placeholder="Campaign name"
+                  value={writeCampaignName}
+                  onChange={(e) => setWriteCampaignName(e.target.value)}
+                  aria-label="Campaign name"
+                />
+                <input
+                  className="input !py-1.5 !text-[13px]"
+                  placeholder="Daily budget (USD)"
+                  inputMode="decimal"
+                  value={writeDailyUsd}
+                  onChange={(e) => setWriteDailyUsd(e.target.value)}
+                  aria-label="Daily budget in dollars"
+                />
+                <div>
+                  <button
+                    type="submit"
+                    className="btn !px-3 !py-1.5 !text-[12px]"
+                    disabled={
+                      !writeAccountId ||
+                      !writeCampaignName.trim() ||
+                      !(Number(writeDailyUsd) > 0)
+                    }
+                  >
+                    Propose — approve in “Needs you”
+                  </button>
+                </div>
+              </form>
+
+              <h4 className="m-0 mt-2 text-[13px] font-semibold">Ad writes</h4>
+              {adWrites.map((w) => (
+                <div key={w.id} className="panel rise-in !p-3">
+                  <strong className="text-[13px]">
+                    {w.kind.replace(/_/g, " ")}
+                    {w.campaign_ref ? ` · ${w.campaign_ref}` : ""}
+                  </strong>
+                  <p className="muted m-0 mt-1 text-[12px]">
+                    {[
+                      w.status,
+                      w.daily_budget_cents != null
+                        ? `$${(w.daily_budget_cents / 100).toFixed(2)}/day`
+                        : null,
+                      w.error,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                </div>
+              ))}
+              {adAccounts !== null && adWrites.length === 0 ? (
+                <p className="muted m-0 text-[13px]">No ad writes yet.</p>
+              ) : null}
+              {adAccounts === null ? (
+                <div className="py-2">
+                  <Orb pill label="Loading ads…" />
+                </div>
               ) : null}
             </div>
           ) : (
