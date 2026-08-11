@@ -927,6 +927,15 @@ export default function HomePage() {
                 >
                   Open in new tab
                 </a>
+                <a
+                  className="btn btn-ghost !px-3 !py-1.5 !text-[12px]"
+                  href="/api/box/desktop?vnc=1"
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  title="HTTPS-tunneled viewer for restrictive networks; opens as its own page"
+                >
+                  Use VNC
+                </a>
               </div>
               <iframe
                 key={computerEpoch}

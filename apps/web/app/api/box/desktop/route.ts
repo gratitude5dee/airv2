@@ -34,8 +34,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const session = await requestSession(supabase, request);
   if (!session) return failure(401, "unauthorized");
 
+  // ?vnc=1 requests the HTTPS-tunneled noVNC viewer for restrictive networks;
+  // it must open as a top-level page (new tab), not embedded.
+  const vnc = request.nextUrl.searchParams.get("vnc") === "1";
+
   try {
-    const url = await desktopStreamUrl(supabase, session.userId);
+    const url = await desktopStreamUrl(supabase, session.userId, { vnc });
     await armStopAfter(supabase, session.userId);
     const response = NextResponse.redirect(url, 302);
     for (const [key, value] of Object.entries(SAFE_HEADERS)) {
