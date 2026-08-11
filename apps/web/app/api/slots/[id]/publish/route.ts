@@ -36,6 +36,7 @@ export async function POST(
     .update({
       scheduled_at: new Date().toISOString(),
       status: "scheduled",
+      attempt: 0,
       last_verdict: null,
       error_message: null,
     })

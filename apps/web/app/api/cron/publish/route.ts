@@ -18,8 +18,10 @@ function authorized(request: NextRequest): boolean {
   if (!secret) return false;
   const header = request.headers.get("authorization") ?? "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
-  if (token.length !== secret.length) return false;
-  return timingSafeEqual(Buffer.from(token), Buffer.from(secret));
+  const tokenBytes = Buffer.from(token);
+  const secretBytes = Buffer.from(secret);
+  if (tokenBytes.length !== secretBytes.length) return false;
+  return timingSafeEqual(tokenBytes, secretBytes);
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {

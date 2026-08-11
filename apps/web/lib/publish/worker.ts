@@ -189,9 +189,13 @@ export async function publishSlot(
     adapter.limits.dailyCap
   );
   if (!headroom.allowed) {
+    // Restores 'scheduled' so a reclaimed stale claim stops matching the
+    // stale-claim query — no repeated wakes while the cap holds.
     await supabase
       .from("content_slots")
       .update({
+        status: "scheduled",
+        claimed_at: null,
         scheduled_at: headroom.nextWindow,
         last_verdict: "deferred",
         error_message: `Behind today's ${slot.platform} limit (${headroom.cap}/24h) — next window ${headroom.nextWindow}.`,
@@ -203,6 +207,14 @@ export async function publishSlot(
 
   const claimed = await claimSlot(supabase, slot);
   if (!claimed) return "skipped"; // another invocation owns it
+
+  // A resumed claim that already carries the platform's id was published —
+  // the invocation died between the external_id write and the done mark.
+  // Finalize instead of posting again.
+  if (claimed.external_id) {
+    const finalized = await finalizeAsPublished(supabase, slot.id);
+    return finalized ? "published" : "skipped";
+  }
 
   const connection = await supabase
     .from("connections")
@@ -264,23 +276,21 @@ export async function publishSlot(
   try {
     const published = await adapter.publish(ctx, draft);
     // CC7: the platform's id lands before the slot is marked done.
-    await supabase
+    const idWrite = await supabase
       .from("content_slots")
       .update({
         external_id: published.externalId,
         permalink: published.permalink ?? null,
       })
       .eq("id", slot.id);
-    await supabase
-      .from("content_slots")
-      .update({
-        status: "published",
-        published_at: new Date().toISOString(),
-        last_verdict: null,
-        error_message: null,
-        publish_state: {},
-      })
-      .eq("id", slot.id);
+    if (idWrite.error) {
+      throw new Error(`external_id write failed: ${idWrite.error.message}`);
+    }
+    if (!(await finalizeAsPublished(supabase, slot.id))) {
+      // Left 'publishing' with external_id set: the stale-claim resume
+      // finalizes it without re-posting.
+      return "skipped";
+    }
     // Publish confirmed: the delivery capability has served its purpose.
     for (const asset of assets) {
       await revokeDeliveries(supabase, slot.user_id, asset.id).catch(
@@ -311,6 +321,35 @@ export async function publishSlot(
     await park(supabase, claimed, verdict.kind, verdict.message);
     return "parked";
   }
+}
+
+/** Mark a slot done. Returns false when the write fails — the row stays
+ * 'publishing' with its external_id, and the resume path finalizes it. */
+async function finalizeAsPublished(
+  supabase: SupabaseClient,
+  slotId: string
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("content_slots")
+    .update({
+      status: "published",
+      published_at: new Date().toISOString(),
+      last_verdict: null,
+      error_message: null,
+      publish_state: {},
+    })
+    .eq("id", slotId);
+  if (error) {
+    console.error(
+      JSON.stringify({
+        msg: "slot finalize failed",
+        slot_id: slotId,
+        error: error.message,
+      })
+    );
+    return false;
+  }
+  return true;
 }
 
 async function resolveDraft(
