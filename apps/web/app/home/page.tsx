@@ -180,6 +180,7 @@ export default function HomePage() {
   const [adsNote, setAdsNote] = useState<string | null>(null);
   const [adsFailed, setAdsFailed] = useState(false);
   const [adsLoading, setAdsLoading] = useState(false);
+  const adsLoadId = useRef(0);
   const [adSpecId, setAdSpecId] = useState("");
   const [adOffer, setAdOffer] = useState("");
   const [adJob, setAdJob] = useState<AdGroupJob | null>(null);
@@ -448,6 +449,7 @@ export default function HomePage() {
   }
 
   async function loadAds() {
+    const loadId = ++adsLoadId.current;
     setAdsNote(null);
     setAdsFailed(false);
     setAdsLoading(true);
@@ -458,6 +460,7 @@ export default function HomePage() {
         fetch("/api/ads/groups"),
         fetch("/api/ads/writes"),
       ]);
+      if (loadId !== adsLoadId.current) return;
       if (accountsRes.ok) {
         const data = (await accountsRes.json()) as {
           accounts?: AdAccount[];
@@ -483,6 +486,7 @@ export default function HomePage() {
     } catch {
       failed = true;
     }
+    if (loadId !== adsLoadId.current) return;
     setAdsLoading(false);
     if (failed) {
       setAdsFailed(true);
