@@ -128,6 +128,14 @@ export PATH="$HERMES_NODE/bin:$PATH"
 npm install -g agent-browser --no-audit --no-fund
 agent-browser install   # downloads Chrome for Testing into ~/.agent-browser
 
+# Make the CLI resolvable by the systemd services (they inherit systemd's
+# default PATH and only load ~/.hermes/.env, which does no $-expansion) and
+# by the agent's local terminal backend.
+sed -i '/^PATH=/d' "$HOME_DIR/.hermes/.env"
+echo "PATH=$HERMES_NODE/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" >> "$HOME_DIR/.hermes/.env"
+grep -q 'hermes/node/bin' "$HOME_DIR/.bashrc" || \
+  echo "export PATH=\"$HERMES_NODE/bin:\$PATH\"" >> "$HOME_DIR/.bashrc"
+
 # ── 3c. Preinstall base skills into ~/.hermes/skills ────────────────────────
 # On top of the bundled library; forks inherit these so provisioning doesn't
 # pay the install cost per user. Failures warn but don't abort the template.
