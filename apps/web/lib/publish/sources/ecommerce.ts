@@ -108,7 +108,7 @@ export const ecommerceSource: CalendarSource = {
       const inventory = totalInventory(product);
       if (inventory !== null && inventory > 0 && inventory <= LOW_STOCK_THRESHOLD) {
         moments.push({
-          key: `low_stock:${product.id}:${inventory}`,
+          key: `low_stock:${product.id}`,
           kind: "low_stock",
           label: `Low stock (${inventory} left): ${product.title}`,
           occursAt: new Date(),

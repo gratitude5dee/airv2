@@ -65,26 +65,37 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       .eq("user_id", userId)
       .eq("status", "active");
     let pausedCount = 0;
+    const failures: string[] = [];
+    // One guard per campaign: a single failing pause must not leave the
+    // rest of the user's campaigns spending after the row cascade.
     for (const campaign of activeCampaigns ?? []) {
-      const { data: account } = await supabase
-        .from("ad_accounts")
-        .select("provider, api_key_sealed")
-        .eq("id", campaign.account_id)
-        .eq("user_id", userId)
-        .maybeSingle();
-      if (account?.provider === "openai" && account.api_key_sealed) {
-        const apiKey = openAdsKey(account.api_key_sealed as string);
-        await updateCampaign(apiKey, campaign.campaign_ref as string, {
-          status: "paused",
-        });
-        pausedCount += 1;
+      try {
+        const { data: account } = await supabase
+          .from("ad_accounts")
+          .select("provider, api_key_sealed")
+          .eq("id", campaign.account_id)
+          .eq("user_id", userId)
+          .maybeSingle();
+        if (account?.provider === "openai" && account.api_key_sealed) {
+          const apiKey = openAdsKey(account.api_key_sealed as string);
+          await updateCampaign(apiKey, campaign.campaign_ref as string, {
+            status: "paused",
+          });
+          pausedCount += 1;
+        }
+        await supabase
+          .from("ad_campaigns")
+          .update({ status: "paused", updated_at: new Date().toISOString() })
+          .eq("id", campaign.id);
+      } catch (error) {
+        failures.push(
+          `${campaign.id}: ${error instanceof Error ? error.message : String(error)}`
+        );
       }
-      await supabase
-        .from("ad_campaigns")
-        .update({ status: "paused", updated_at: new Date().toISOString() })
-        .eq("id", campaign.id);
     }
-    steps.campaigns = `paused ${pausedCount} of ${(activeCampaigns ?? []).length}`;
+    steps.campaigns =
+      `paused ${pausedCount} of ${(activeCampaigns ?? []).length}` +
+      (failures.length > 0 ? `; failed: ${failures.join(", ")}` : "");
   } catch (error) {
     steps.campaigns = `error: ${error instanceof Error ? error.message : String(error)}`;
   }

@@ -122,6 +122,7 @@ async function raiseReauth(
     .eq("kind", "reconnect")
     .eq("platform", toolkit)
     .eq("status", "pending")
+    .limit(1)
     .maybeSingle();
   if (pending) return 0;
   const { error } = await supabase.from("decisions").insert({

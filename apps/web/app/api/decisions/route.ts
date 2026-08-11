@@ -16,6 +16,9 @@ import { approveContentPlan, dismissContentPlan } from "@/lib/publish/propose";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// content_plan approval wakes the user's box (ensureBoxAwake), which can
+// exceed the default function timeout.
+export const maxDuration = 300;
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const userId = sessionUserId(request);
