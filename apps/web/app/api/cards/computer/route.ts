@@ -19,20 +19,36 @@ export const maxDuration = 300;
 /** Minimum gap between agent-initiated computer cards per user. */
 const CARD_COOLDOWN_MS = 2 * 60 * 1000;
 
+interface CardClaim {
+  /** Best-effort undo so a failed delivery doesn't consume the cooldown. */
+  release: () => Promise<void>;
+}
+
 /**
  * Atomic per-user rate limit: the insert wins the first send; afterwards a
  * conditional update only matches when the previous send is older than the
- * cooldown, so concurrent calls cannot both pass.
+ * cooldown, so concurrent calls cannot both pass. Returns a release handle
+ * to undo the claim when the send itself fails.
  */
 async function claimCardSend(
   supabase: ReturnType<typeof serviceClient>,
   userId: string
-): Promise<boolean> {
+): Promise<CardClaim | undefined> {
   const now = new Date();
   const { error } = await supabase
     .from("computer_card_sends")
     .insert({ user_id: userId, sent_at: now.toISOString() });
-  if (!error) return true;
+  if (!error) {
+    return {
+      release: async () => {
+        await supabase
+          .from("computer_card_sends")
+          .delete()
+          .eq("user_id", userId)
+          .eq("sent_at", now.toISOString());
+      },
+    };
+  }
   if (error.code !== "23505") {
     throw new Error(`computer_card_sends insert failed: ${error.message}`);
   }
@@ -42,11 +58,21 @@ async function claimCardSend(
     .update({ sent_at: now.toISOString() })
     .eq("user_id", userId)
     .lt("sent_at", cutoff)
-    .select("user_id");
+    .select("sent_at");
   if (updateError) {
     throw new Error(`computer_card_sends update failed: ${updateError.message}`);
   }
-  return (data?.length ?? 0) > 0;
+  if ((data?.length ?? 0) === 0) return undefined;
+  return {
+    release: async () => {
+      // Re-expire the claim (previous sent_at was already past the cutoff).
+      await supabase
+        .from("computer_card_sends")
+        .update({ sent_at: cutoff })
+        .eq("user_id", userId)
+        .eq("sent_at", now.toISOString());
+    },
+  };
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -66,27 +92,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
   const userId = box.user_id as string;
 
-  // The owner's iMessage destination: the durable per-user record (refreshed
-  // on every inbound), falling back to an in-flight flush job for users who
-  // haven't texted since the destination table was introduced.
+  // The owner's iMessage destination: only the durable per-user record,
+  // written exclusively from tier-0 (owner-handle) inbounds. No flush_jobs
+  // fallback — its latest row can belong to a tier-1 contact's thread on a
+  // shared line, and the screen card must never land there.
   const { data: dest } = await supabase
     .from("imessage_destinations")
     .select("space_id, phone")
     .eq("user_id", userId)
     .maybeSingle();
-  let spaceId = dest?.space_id ? String(dest.space_id) : "";
-  let phone = dest?.phone ? String(dest.phone) : "";
-  if (!spaceId || !phone) {
-    const { data: job } = await supabase
-      .from("flush_jobs")
-      .select("space_id, phone")
-      .eq("user_id", userId)
-      .order("run_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    spaceId = job?.space_id ? String(job.space_id) : "";
-    phone = job?.phone ? String(job.phone) : "";
-  }
+  const spaceId = dest?.space_id ? String(dest.space_id) : "";
+  const phone = dest?.phone ? String(dest.phone) : "";
   if (!spaceId || !phone) {
     return NextResponse.json(
       { error: "no known imessage destination for this user" },
@@ -94,8 +110,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
+  let claim: CardClaim | undefined;
   try {
-    if (!(await claimCardSend(supabase, userId))) {
+    claim = await claimCardSend(supabase, userId);
+    if (!claim) {
       return NextResponse.json(
         { error: "a computer card was sent recently — wait before sending another" },
         { status: 429 }
@@ -103,6 +121,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
     await sendMiniAppCard(spaceId, phone, userId, "computer", "default");
   } catch (error) {
+    await claim?.release().catch(() => undefined);
     const message = error instanceof Error ? error.message : "unknown error";
     console.error(
       JSON.stringify({ msg: "computer card send failed", user_id: userId, error: message })

@@ -29,6 +29,8 @@ export async function sendMiniAppCard(
       mintSignedLink(userId, appSlug, resourceId)
     );
   } finally {
-    await sender.close();
+    // Best-effort: a teardown failure after a successful send must not
+    // surface as a delivery failure (callers may retry on error).
+    await sender.close().catch(() => undefined);
   }
 }

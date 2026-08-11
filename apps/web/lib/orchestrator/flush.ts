@@ -33,6 +33,8 @@ export interface InboundMessage {
   senderId?: string;
   messageId: string;
   body: string;
+  /** Resolved sender trust tier; 0 = the owner's own verified handle. */
+  senderTier?: number;
 }
 
 interface QueuedMessage {
@@ -59,26 +61,30 @@ export async function enqueueInbound(
   }
 
   // Durable destination for agent-initiated cards (flush_jobs is transient).
+  // Owner-only (tier 0): on a shared line, tier-1 contacts also reach this
+  // path, and their conversation must never become the screen-card target.
   // Best-effort: a failure here must not drop the user's message.
-  const { error: destError } = await supabase
-    .from("imessage_destinations")
-    .upsert(
-      {
-        user_id: message.userId,
-        space_id: message.spaceId,
-        phone: message.phone,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "user_id" }
-    );
-  if (destError) {
-    console.error(
-      JSON.stringify({
-        msg: "imessage_destinations upsert failed",
-        user_id: message.userId,
-        error: destError.message,
-      })
-    );
+  if (message.senderTier === 0) {
+    const { error: destError } = await supabase
+      .from("imessage_destinations")
+      .upsert(
+        {
+          user_id: message.userId,
+          space_id: message.spaceId,
+          phone: message.phone,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id" }
+      );
+    if (destError) {
+      console.error(
+        JSON.stringify({
+          msg: "imessage_destinations upsert failed",
+          user_id: message.userId,
+          error: destError.message,
+        })
+      );
+    }
   }
 
   const runAt = new Date(Date.now() + DEBOUNCE_MS).toISOString();
