@@ -122,38 +122,46 @@ export async function publishDueSlots(
     retried: 0,
   };
   for (const [userId, slots] of byUser) {
-    let box: UserBox;
+    // ensureBoxAwake nulls stop_after before it can fail, and the sweeper
+    // only stops boxes with a past deadline — re-arm on every exit so a
+    // failed wake or publish can't leave the box running forever.
     try {
-      box = await ensureBoxAwake(supabase, userId);
-      result.usersWoken += 1;
-    } catch (error) {
-      console.error(
-        JSON.stringify({
-          msg: "publish sweep wake failed",
-          user_id: userId,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
-      continue; // slots stay scheduled; next sweep retries the wake
-    }
-    for (const slot of slots) {
-      const outcome = await publishSlot(supabase, box, slot).catch((error) => {
+      let box: UserBox;
+      try {
+        box = await ensureBoxAwake(supabase, userId);
+        result.usersWoken += 1;
+      } catch (error) {
         console.error(
           JSON.stringify({
-            msg: "publish slot crashed",
-            slot_id: slot.id,
+            msg: "publish sweep wake failed",
             user_id: userId,
             error: error instanceof Error ? error.message : String(error),
           })
         );
-        return "skipped" as const;
-      });
-      if (outcome === "published") result.published += 1;
-      else if (outcome === "parked") result.parked += 1;
-      else if (outcome === "deferred") result.deferred += 1;
-      else if (outcome === "retried") result.retried += 1;
+        continue; // slots stay scheduled; next sweep retries the wake
+      }
+      for (const slot of slots) {
+        const outcome = await publishSlot(supabase, box, slot).catch(
+          (error) => {
+            console.error(
+              JSON.stringify({
+                msg: "publish slot crashed",
+                slot_id: slot.id,
+                user_id: userId,
+                error: error instanceof Error ? error.message : String(error),
+              })
+            );
+            return "skipped" as const;
+          }
+        );
+        if (outcome === "published") result.published += 1;
+        else if (outcome === "parked") result.parked += 1;
+        else if (outcome === "deferred") result.deferred += 1;
+        else if (outcome === "retried") result.retried += 1;
+      }
+    } finally {
+      await armStopAfter(supabase, userId).catch(() => undefined);
     }
-    await armStopAfter(supabase, userId).catch(() => undefined);
   }
   return result;
 }
@@ -237,11 +245,22 @@ export async function publishSlot(
   try {
     ({ draft, assets } = await resolveDraft(supabase, box, claimed));
   } catch (error) {
-    // Box-side resolution failure is transient infrastructure, not content.
+    // Resolution failure is usually transient infrastructure, but a
+    // permanently missing package would otherwise wake the box forever —
+    // same capped policy as adapter retries.
+    if (claimed.attempt + 1 >= MAX_RETRY_ATTEMPTS) {
+      await park(
+        supabase,
+        claimed,
+        "fix-content",
+        `Couldn't load this post's content after ${MAX_RETRY_ATTEMPTS} attempts.`
+      );
+      return "parked";
+    }
     await backOff(
       supabase,
       claimed,
-      5 * 60,
+      retryDelaySeconds(claimed.attempt, 5 * 60),
       error instanceof Error ? error.message : String(error)
     );
     return "retried";
