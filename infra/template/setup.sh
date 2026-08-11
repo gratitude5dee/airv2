@@ -58,6 +58,11 @@ approvals:
 terminal:
   backend: "local"
 
+# The box IS the computer: launch the agent browser headed on the box's X
+# display so the human can watch/act via the desktop stream (computer relay).
+browser:
+  headed: true
+
 model:
   default: "balanced"
   provider: "custom"
@@ -103,8 +108,25 @@ OPENAI_API_KEY=GATEWAY_TOKEN_PLACEHOLDER
 HERMES_DASHBOARD_BASIC_AUTH_USERNAME=air
 HERMES_DASHBOARD_BASIC_AUTH_PASSWORD_HASH=$TEMPLATE_DASH_HASH
 HERMES_DASHBOARD_BASIC_AUTH_SECRET=$TEMPLATE_DASH_SECRET
+DISPLAY=:0
+AGENT_BROWSER_ARGS=--no-sandbox
 ENV
 chmod 600 "$HOME_DIR/.hermes/.env"
+
+# ── 3b2. Browser runtime for the computer relay ─────────────────────────────
+# Hermes' browser tool shells out to the agent-browser CLI, which needs
+# Node >= 22. Both live under $HOME so they survive box archive/restore.
+# Chromium runs headed on :0 with --no-sandbox (containerized box).
+HERMES_NODE="$HOME_DIR/.hermes/node"
+if [ ! -x "$HERMES_NODE/bin/node" ]; then
+  curl -fsSLo /tmp/node22.tar.xz https://nodejs.org/dist/v22.22.0/node-v22.22.0-linux-x64.tar.xz
+  mkdir -p "$HERMES_NODE"
+  tar -xJf /tmp/node22.tar.xz -C "$HERMES_NODE" --strip-components=1
+  rm -f /tmp/node22.tar.xz
+fi
+export PATH="$HERMES_NODE/bin:$PATH"
+npm install -g agent-browser --no-audit --no-fund
+agent-browser install   # downloads Chrome for Testing into ~/.agent-browser
 
 # ── 3c. Preinstall base skills into ~/.hermes/skills ────────────────────────
 # On top of the bundled library; forks inherit these so provisioning doesn't
