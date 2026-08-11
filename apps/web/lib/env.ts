@@ -48,6 +48,11 @@ export const env = {
   // proxy paths return 503.
   boxDashboardAuthKey: (): string | null =>
     process.env.BOX_DASHBOARD_AUTH_KEY ?? null,
+  // Seals per-account ad platform API keys at rest (CM6). Defaults to the
+  // dashboard auth key so the beta needs no extra deploy config; set it to
+  // rotate ad credentials independently.
+  adsVaultKey: (): string | null =>
+    process.env.ADS_VAULT_KEY ?? process.env.BOX_DASHBOARD_AUTH_KEY ?? null,
   miniappOrigin: (): string =>
     optional("MINIAPP_ORIGIN", "https://mini.wzrd.tech"),
   operatorAllowlist: (): string[] =>

@@ -7,6 +7,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { sessionUserId } from "@/lib/auth/user";
 import { serviceClient } from "@/lib/supabase";
 import { sendDraft } from "@/lib/agentmail/client";
+import {
+  approveAdWrite,
+  dismissAdWrite,
+  AdWriteError,
+} from "@/lib/ads/approvals";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,7 +24,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const supabase = serviceClient();
   const { data } = await supabase
     .from("decisions")
-    .select("id, kind, platform, sender, ref, label, status, created_at")
+    .select(
+      "id, kind, platform, sender, ref, label, status, created_at, payload"
+    )
     .eq("user_id", userId)
     .eq("status", "pending")
     .order("created_at", { ascending: false })
@@ -42,7 +49,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const supabase = serviceClient();
   const { data: decision } = await supabase
     .from("decisions")
-    .select("id, kind, ref, status")
+    .select("id, kind, ref, status, payload")
     .eq("id", body.id)
     .eq("user_id", userId)
     .maybeSingle();
@@ -66,6 +73,26 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       decision.ref as string,
       decision.id as string
     );
+  }
+
+  if (decision.kind === "ad_write" && decision.ref) {
+    // CC0: the decision is the gate. Approval runs the ceiling check and
+    // executes (or releases) the write; a refusal leaves it pending.
+    try {
+      if (body.action === "approve") {
+        await approveAdWrite(supabase, userId, decision.ref as string);
+      } else {
+        await dismissAdWrite(supabase, userId, decision.ref as string);
+      }
+    } catch (error) {
+      if (error instanceof AdWriteError) {
+        return NextResponse.json(
+          { error: error.message },
+          { status: error.status }
+        );
+      }
+      return NextResponse.json({ error: "ad write failed" }, { status: 502 });
+    }
   }
 
   if (

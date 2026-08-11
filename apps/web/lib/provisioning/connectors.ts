@@ -37,6 +37,29 @@ export async function ensureComposioSession(
 }
 
 /**
+ * CM6: register Meta's official Ads MCP in the user's box. One registration
+ * per box maps to one user's ad-account access; the OAuth handshake is
+ * per-user and completes in the agent's own browser session inside the box.
+ * `hermes mcp add` owns the config write, exactly like Composio.
+ */
+export const META_ADS_MCP_URL = "https://mcp.facebook.com/ads";
+
+export async function installMetaAdsMcp(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<void> {
+  const box = await ensureBoxAwake(supabase, userId);
+  const result = await command(
+    box.boxId,
+    `printf 'y\\n' | /home/user/.hermes-venv/bin/hermes mcp add meta-ads --url "${META_ADS_MCP_URL}" && sudo systemctl restart hermes-gateway`,
+    180
+  );
+  if (result.exitCode !== 0) {
+    throw new Error(`meta ads mcp install failed: ${result.stderr}`);
+  }
+}
+
+/**
  * Install (or refresh) the per-user Composio MCP endpoint in the box.
  * `hermes mcp add` validates the entry; the trailing `y` answers its
  * save-anyway prompt so a transient connect hiccup doesn't abort install.
