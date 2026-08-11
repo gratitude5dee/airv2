@@ -136,6 +136,7 @@ async function raiseDivergence(
     .eq("kind", "spend_divergence")
     .eq("ref", campaign.id)
     .eq("status", "pending")
+    .limit(1)
     .maybeSingle();
   if (pending) return;
   await supabase.from("decisions").insert({

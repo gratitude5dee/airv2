@@ -120,14 +120,20 @@ async function proposeMoment(
     .single();
   if (error || !momentRow) return 0; // already proposed (or insert failed)
 
-  const slotRows = steps.map((step) => ({
+  // A moment inside the lookback window can put early steps (e.g. the -24h
+  // teaser) in the past; shift the whole sequence forward together so the
+  // relative order survives and nothing fires immediately on approval.
+  const rawTimes = steps.map(
+    (step) => moment.occursAt.getTime() + step.offsetHours * 3_600_000
+  );
+  const floor = Date.now() + 3_600_000;
+  const shift = Math.max(0, floor - Math.min(...rawTimes));
+  const slotRows = steps.map((step, i) => ({
     user_id: userId,
     platform: step.platform,
     account_ref: "primary",
     package_ref: packageRef(momentRow.id as string, step.step),
-    scheduled_at: new Date(
-      moment.occursAt.getTime() + step.offsetHours * 3_600_000
-    ).toISOString(),
+    scheduled_at: new Date((rawTimes[i] as number) + shift).toISOString(),
     timezone: moment.timezone,
     status: "proposed",
     source_id: sourceId,
