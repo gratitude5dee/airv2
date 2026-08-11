@@ -21,15 +21,26 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const supabase = serviceClient();
-  const [{ data: accounts }, ceiling] = await Promise.all([
-    supabase
-      .from("ad_accounts")
-      .select("id, provider, account_ref, label, status, created_at")
-      .eq("user_id", userId),
-    spendCeilingCents(supabase, userId),
-  ]);
+  const [{ data: accounts }, { data: campaigns }, ceiling] = await Promise.all(
+    [
+      supabase
+        .from("ad_accounts")
+        .select("id, provider, account_ref, label, status, created_at")
+        .eq("user_id", userId),
+      supabase
+        .from("ad_campaigns")
+        .select(
+          "id, account_id, campaign_ref, name, daily_budget_cents, status"
+        )
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(100),
+      spendCeilingCents(supabase, userId),
+    ]
+  );
   return NextResponse.json({
     accounts: accounts ?? [],
+    campaigns: campaigns ?? [],
     spend_ceiling_cents: ceiling,
   });
 }
