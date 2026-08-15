@@ -4,6 +4,8 @@ A personal AI agent with its own phone number, its own inbox, and its own comput
 
 One user = one Hermes agent inside one Box sandbox, orchestrated by a Next.js control plane on Vercel + one shared Supabase (routing only, never content), iMessage via Photon Spectrum, email via AgentMail, identity/wallet via thirdweb, connectors via Composio.
 
+**Start here:** [`docs/platform.md`](docs/platform.md) — how the deployed system fits together (lifecycle, channels, gateway, Daytona sandboxes, security).
+
 **Specification of record:** [`goal.md`](goal.md) (executable milestone plan) and [`ARCHITECTURE.md`](ARCHITECTURE.md) (reasoning; tie-breaker where they disagree). Security posture decisions live in [`SECURITY-DECISIONS.md`](SECURITY-DECISIONS.md).
 
 ## Layout
@@ -17,10 +19,21 @@ apps/web/                      Next.js (App Router) — the control plane + UI
   lib/box/                     Box SDK wrapper: fork, resume, stop, command, files
   lib/hermes/                  api_server client: runs, sessions, approvals
   lib/routing/                 address → user → box → trust tier
-  lib/entitlements/            plan, speed tier, spend caps
+  lib/entitlements/            plan, speed tier, spend caps (tier → model mapping)
+  lib/provisioning/            user/box/email/connector provisioning
 supabase/migrations/           versioned, forward-only SQL (applied via Supabase MCP)
-infra/template/                everything baked into the Box template (M0)
+infra/template/                everything baked into the Box template (M0):
+                               Hermes + systemd units, dashboard SPA, base skills,
+                               browser runtime, Daytona CLI + MCP
+docs/                          platform guide, creative plugin, test plans
 ```
+
+## Channels
+
+iMessage (Photon Spectrum) and web chat are parallel clients over one shared
+Hermes session per user; email (AgentMail) is thread-scoped. The agent's
+computer is its Box; Daytona MCP tools give it ephemeral throwaway sandboxes
+on top. Details in [`docs/platform.md`](docs/platform.md).
 
 ## Conventions
 
