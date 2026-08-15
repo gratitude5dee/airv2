@@ -136,6 +136,20 @@ echo "PATH=$HERMES_NODE/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/s
 grep -q 'hermes/node/bin' "$HOME_DIR/.bashrc" || \
   echo "export PATH=\"$HERMES_NODE/bin:\$PATH\"" >> "$HOME_DIR/.bashrc"
 
+# ── 3b3. Daytona CLI + MCP: on-demand throwaway code sandboxes ───────────────
+# The Box stays the agent's durable home; Daytona sandboxes are ephemeral
+# (create → run → destroy) for risky/experimental code. The CLI binary lives
+# in /usr/local/bin (snapshotted); auth is `daytona login --api-key <key>`,
+# run by the operator at template-prep time (profile persists in ~/.daytona
+# and forks inherit it). The MCP server is stdio: `daytona mcp start`.
+sudo curl -sfL https://github.com/daytona/clients/releases/latest/download/daytona-linux-amd64 -o /usr/local/bin/daytona
+sudo chmod +x /usr/local/bin/daytona
+if [ -n "${DAYTONA_API_KEY:-}" ]; then
+  /usr/local/bin/daytona login --api-key "$DAYTONA_API_KEY"
+fi
+printf 'y\n' | "$HERMES_VENV/bin/hermes" mcp add daytona --command /usr/local/bin/daytona --args mcp start \
+  || echo "WARN: daytona mcp add failed" >&2
+
 # ── 3c. Preinstall base skills into ~/.hermes/skills ────────────────────────
 # On top of the bundled library; forks inherit these so provisioning doesn't
 # pay the install cost per user. Failures warn but don't abort the template.
