@@ -14,6 +14,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { command, writeFile } from "../box/client";
 import { createRun, MAIN_SESSION, runEvents, stopRun } from "../hermes/client";
 import { createSpectrumSender, type SpectrumSender } from "../spectrum/sender";
+import { maybeRunCreativeLane } from "../creative/imessage";
 import {
   armStopAfter,
   ensureBoxAwake,
@@ -353,6 +354,51 @@ export async function runFlush(
 
   const sender = await createSpectrumSender();
   try {
+    // M16 creative lane: an explicit /imagine, /animate, or /zap in the
+    // settled burst is handled here, before any box wake or Hermes run.
+    // Only tier-0/1 senders ever reach the flush — tier-2 inbound returns
+    // from the webhook before enqueue — so no provider call can happen for
+    // an unknown number. Ordinary prose falls through to Hermes unchanged.
+    try {
+      const handled = await maybeRunCreativeLane(
+        supabase,
+        sender,
+        { spaceId: job.spaceId, userId: job.userId, phone: job.phone },
+        rawInput
+      );
+      if (handled) {
+        if (!(await chainCancelled(supabase, job.spaceId, chainStartedAt))) {
+          await supabase
+            .from("flush_jobs")
+            .delete()
+            .eq("space_id", job.spaceId)
+            .eq("chain_started_at", chainStartedAt);
+        }
+        return;
+      }
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          msg: "creative lane failed",
+          user_id: job.userId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      );
+      await sender
+        .sendText(job.spaceId, job.phone, "that one didn't come out. try again?")
+        .catch(() => undefined);
+      // The burst was answered (with the failure line); do not carry it, or
+      // the next inbound would re-trigger the same paid command.
+      if (!(await chainCancelled(supabase, job.spaceId, chainStartedAt))) {
+        await supabase
+          .from("flush_jobs")
+          .delete()
+          .eq("space_id", job.spaceId)
+          .eq("chain_started_at", chainStartedAt);
+      }
+      return;
+    }
+
     let box: Awaited<ReturnType<typeof ensureBoxAwake>>;
     try {
       box = await ensureBoxAwake(supabase, job.userId);
