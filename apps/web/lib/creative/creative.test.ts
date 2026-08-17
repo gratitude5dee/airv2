@@ -258,8 +258,11 @@ describe("generated media SSRF protection", () => {
   });
 
   it("downloads validated bytes with the right MIME", async () => {
+    const pngBytes = Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x01,
+    ]);
     const fetcher = vi.fn().mockResolvedValue(
-      new Response(Buffer.from("png-bytes"), {
+      new Response(pngBytes, {
         status: 200,
         headers: { "content-type": "image/png" },
       })
@@ -271,7 +274,24 @@ describe("generated media SSRF protection", () => {
       fetcher
     );
     expect(media.mimeType).toBe("image/png");
-    expect(media.bytes.toString()).toBe("png-bytes");
+    expect(media.bytes.equals(pngBytes)).toBe(true);
+  });
+
+  it("rejects bytes whose magic numbers don't match the declared MIME", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(Buffer.from("not really a png"), {
+        status: 200,
+        headers: { "content-type": "image/png" },
+      })
+    );
+    await expect(
+      fetchSafeGeneratedMedia(
+        "https://cdn.example.com/out.png",
+        "image",
+        hosts,
+        fetcher
+      )
+    ).rejects.toThrow(/match their MIME/);
   });
 
   it("rejects a media response whose MIME doesn't match the job kind", async () => {

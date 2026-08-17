@@ -154,6 +154,32 @@ const mimeTypeForResponse = (
   throw new Error("Generated media response has no usable MIME type");
 };
 
+/**
+ * Magic-number check so provider-declared typing is never trusted end to
+ * end: the delivered bytes must actually start like the MIME they claim.
+ */
+const bytesMatchMimeType = (bytes: Buffer, mimeType: string): boolean => {
+  const startsWith = (offset: number, ...values: number[]): boolean =>
+    values.every((byte, index) => bytes[offset + index] === byte);
+  switch (mimeType) {
+    case "image/png":
+      return startsWith(0, 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a);
+    case "image/jpeg":
+      return startsWith(0, 0xff, 0xd8, 0xff);
+    case "image/gif":
+      return startsWith(0, 0x47, 0x49, 0x46, 0x38);
+    case "image/webp":
+      return startsWith(0, 0x52, 0x49, 0x46, 0x46) && startsWith(8, 0x57, 0x45, 0x42, 0x50);
+    case "image/heic":
+    case "video/mp4":
+    case "video/quicktime":
+      // ISO BMFF: an 'ftyp' box at offset 4.
+      return startsWith(4, 0x66, 0x74, 0x79, 0x70);
+    default:
+      return false;
+  }
+};
+
 const readResponseAtMost = async (response: Response): Promise<Buffer> => {
   const declaredLength = response.headers.get("content-length");
   if (declaredLength) {
@@ -257,11 +283,11 @@ export const fetchSafeGeneratedMedia = async (
       throw new Error(`Generated media download failed (${response.status})`);
     }
     const mimeType = mimeTypeForResponse(response, current, kind);
-    return {
-      bytes: await readResponseAtMost(response),
-      mimeType,
-      url: current,
-    };
+    const bytes = await readResponseAtMost(response);
+    if (!bytesMatchMimeType(bytes, mimeType)) {
+      throw new Error("Generated media bytes do not match their MIME type");
+    }
+    return { bytes, mimeType, url: current };
   }
 
   throw new Error("Generated media URL exceeded redirect limit");
