@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
 import { sessionUserId } from "@/lib/auth/user";
+import { modelLabelForTier } from "@/lib/entitlements/models";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,7 +40,16 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
   return NextResponse.json({
     user,
-    entitlement,
+    entitlement: entitlement
+      ? {
+          ...entitlement,
+          tier_models: {
+            fast: modelLabelForTier("fast"),
+            balanced: modelLabelForTier("balanced"),
+            deep: modelLabelForTier("deep"),
+          },
+        }
+      : entitlement,
     lines: lines ?? [],
     addresses: addresses ?? [],
   });

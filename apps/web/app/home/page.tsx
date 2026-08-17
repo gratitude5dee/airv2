@@ -12,6 +12,7 @@ interface Me {
   entitlement: {
     plan: string;
     speed_tier: string;
+    tier_models?: { fast: string; balanced: string; deep: string };
     monthly_cap_usd: number;
     spend_mtd_usd: number;
   } | null;
@@ -624,12 +625,7 @@ export default function HomePage() {
             <button
               key={key}
               aria-current={tab === key ? "page" : undefined}
-              className={
-                "cursor-pointer rounded-full border-0 px-3.5 py-2 text-left text-[13px] font-medium transition-colors " +
-                (tab === key
-                  ? "bg-[var(--text)] text-[var(--bg)]"
-                  : "bg-transparent text-[var(--muted-2)] hover:bg-[var(--surface-2)] hover:text-[var(--text)]")
-              }
+              className={"seg" + (tab === key ? " pill-active" : "")}
               onClick={() => void loadTab(key)}
             >
               {label}
@@ -1087,6 +1083,7 @@ export default function HomePage() {
                 busy={busy}
                 tier={tier}
                 onTierChange={(next) => void saveTier(next)}
+                tierModels={me?.entitlement?.tier_models}
               />
             </>
           )}
@@ -1191,14 +1188,24 @@ export default function HomePage() {
                 <button
                   key={id}
                   className={
-                    "cursor-pointer rounded-lg border-0 px-3 py-2 text-left text-[13px] font-medium transition-colors " +
+                    "seg rounded-lg" +
                     (tier === id
-                      ? "bg-[var(--text)] text-[var(--bg)]"
-                      : "bg-transparent text-[var(--muted-2)] shadow-[0_0_0_0.5px_var(--ring)] hover:bg-[var(--surface-2)] hover:text-[var(--text)]")
+                      ? " pill-active"
+                      : " shadow-[0_0_0_0.5px_var(--ring)]")
                   }
                   onClick={() => void saveTier(id)}
                 >
                   {label}
+                  {me?.entitlement?.tier_models ? (
+                    <span
+                      className={
+                        "block text-[11px] font-normal " +
+                        (tier === id ? "opacity-70" : "text-[var(--muted)]")
+                      }
+                    >
+                      {me.entitlement.tier_models[id]}
+                    </span>
+                  ) : null}
                 </button>
               ))}
             </div>

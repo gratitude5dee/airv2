@@ -69,6 +69,21 @@ export function modelForTier(tier: SpeedTier): string {
   return tierOverride(tier) ?? TIER_MODELS[tier];
 }
 
+/**
+ * Display-only model label for the UI (C19). MODEL_LABEL_FAST / _BALANCED /
+ * _DEEP let ops show a friendly name distinct from the wire model ID; falls
+ * back to the resolved model ID.
+ */
+export function modelLabelForTier(tier: SpeedTier): string {
+  const byTier: Record<SpeedTier, string | undefined> = {
+    fast: process.env.MODEL_LABEL_FAST,
+    balanced: process.env.MODEL_LABEL_BALANCED,
+    deep: process.env.MODEL_LABEL_DEEP,
+  };
+  const value = byTier[tier];
+  return value && value.trim() ? value.trim() : modelForTier(tier);
+}
+
 export function costUsd(
   tier: SpeedTier,
   promptTokens: number,

@@ -8,13 +8,17 @@
   flex-direction: column;
   gap: 12px;
   padding: 8px 10px 10px;
-  background: #ffffff;
+  background: var(--surface, #ffffff);
   /* transparent border keeps the box geometry the busy ::after relies on;
      the visible 0.5px hairline + drop shadow match the surrounding cards. */
   border: 0.5px solid transparent;
   border-radius: 12px;
-  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.05),
-    0 2px 4px rgba(0, 0, 0, 0.02);
+  box-shadow: var(
+    --shadow-card,
+    0 0 0 0.5px rgba(0, 0, 0, 0.08),
+    0 1px 2px rgba(0, 0, 0, 0.05),
+    0 2px 4px rgba(0, 0, 0, 0.02)
+  );
 }
 
 /* busy: a conic-gradient ring sweeps around the border */
@@ -59,7 +63,7 @@
   border: 0;
   outline: 0;
   background: transparent;
-  color: #1a1a1a;
+  color: var(--text, #1a1a1a);
   font: inherit;
   font-size: 13px;
   line-height: 19px;
@@ -70,7 +74,7 @@
   resize: none;
 }
 .field::placeholder {
-  color: #1a1a1a;
+  color: var(--text, #1a1a1a);
   opacity: 0.5;
 }
 .field:disabled {
@@ -100,7 +104,7 @@
   flex: none;
   border: 0;
   background: transparent;
-  color: #1a1a1a;
+  color: var(--text, #1a1a1a);
   cursor: pointer;
 }
 .iconBtn::before {
@@ -135,7 +139,7 @@
 }
 
 .send {
-  color: #a1a1a1;
+  color: var(--muted, #a1a1a1);
 }
 .send:disabled {
   cursor: default;
@@ -144,13 +148,13 @@
   transform: none;
 }
 .sendActive {
-  color: #ffffff;
+  color: var(--bg, #ffffff);
 }
 .sendActive::before {
-  background: #0b0d12;
+  background: var(--text, #0b0d12);
 }
 .sendActive:hover::before {
-  background: #2a2f3a;
+  opacity: 0.85;
 }
 
 /* "+" menu — same container style as the input frame */
@@ -161,8 +165,8 @@
   z-index: 20;
   width: 180px;
   padding: 3px;
-  background: #ffffff;
-  border: 0.5px solid #e6e8ec;
+  background: var(--surface, #ffffff);
+  border: 0.5px solid var(--border, #e6e8ec);
   border-radius: 10px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02), 0 1px 1px rgba(0, 0, 0, 0.04);
   transform-origin: bottom left;
@@ -178,7 +182,7 @@
   border: 0;
   border-radius: 7px;
   background: transparent;
-  color: #1a1a1a;
+  color: var(--text, #1a1a1a);
   font-size: 11px;
   font-weight: 425;
   line-height: 12px;
@@ -203,7 +207,7 @@
 .menuCheck {
   display: inline-flex;
   flex: none;
-  color: #1a1a1a;
+  color: var(--text, #1a1a1a);
 }
 
 .menuSub {
@@ -218,8 +222,8 @@
   z-index: 30;
   width: 200px;
   padding: 10px 12px;
-  background: #ffffff;
-  border: 0.5px solid #e6e8ec;
+  background: var(--surface, #ffffff);
+  border: 0.5px solid var(--border, #e6e8ec);
   border-radius: 10px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02), 0 1px 1px rgba(0, 0, 0, 0.04);
   pointer-events: none;
@@ -228,13 +232,20 @@
   font-size: 12px;
   font-weight: 500;
   line-height: 16px;
-  color: #1a1a1a;
+  color: var(--text, #1a1a1a);
 }
 .popoverDesc {
   margin: 2px 0 0;
   font-size: 11px;
   line-height: 15px;
-  color: #a1a1a1;
+  color: var(--muted, #a1a1a1);
+}
+.popoverModel {
+  margin: 4px 0 0;
+  font-size: 10px;
+  line-height: 13px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--muted-2, #6f6f76);
 }
 .menuLabel {
   display: flex;
@@ -243,7 +254,7 @@
   padding: 3px 7px;
   font-size: 11px;
   font-weight: 425;
-  color: #a1a1a1;
+  color: var(--muted, #a1a1a1);
 }
 @keyframes pi-menu-in {
   from { opacity: 0; transform: translateY(6px) scale(0.98); filter: blur(2px); }
@@ -251,11 +262,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  .frame {
-    background: #1a1a1a;
-    box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.12),
-      0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.3);
-  }
+  /* Colors follow the global tokens; only scheme-specific effects remain. */
   .frame[data-busy]::after {
     background: conic-gradient(
         from var(--pi-angle),
@@ -263,24 +270,11 @@
       )
       border-box;
   }
-  .field { color: #f5f5f5; }
-  .field::placeholder { color: #f5f5f5; }
-  .iconBtn { color: #f5f5f5; }
   .iconBtn::before { background: rgba(245, 245, 245, 0.06); }
   .iconBtn:hover::before { background: rgba(245, 245, 245, 0.1); }
   .plus[data-open]::before { background: rgba(245, 245, 245, 0.12); }
-  .sendActive { color: #0a0a0a; }
-  .sendActive::before { background: #f5f5f5; }
-  .sendActive:hover::before { background: #ffffff; }
-  .menu { background: #1a1a1a; border-color: #303030; }
-  .menuItem { color: #f5f5f5; }
   .menuItem:hover { background: rgba(245, 245, 245, 0.06); }
   .menuItem:active { background: rgba(245, 245, 245, 0.09); }
-  .menuCheck { color: #f5f5f5; }
-  .menuLabel { color: #a3a3a3; }
-  .menuPopover { background: #1a1a1a; border-color: #303030; }
-  .popoverTitle { color: #f5f5f5; }
-  .popoverDesc { color: #a3a3a3; }
 }
 
 @media (prefers-reduced-motion: reduce) {
