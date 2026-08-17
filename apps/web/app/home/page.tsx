@@ -198,6 +198,98 @@ export default function HomePage() {
   const [walletCopied, setWalletCopied] = useState(false);
   const [walletReceiveOpen, setWalletReceiveOpen] = useState(false);
   const [walletFundOpen, setWalletFundOpen] = useState(false);
+  const [boxState, setBoxState] = useState<string | null>(null);
+  const [powerBusy, setPowerBusy] = useState(false);
+  const [powerNote, setPowerNote] = useState<string | null>(null);
+
+  // Poll the box power state — quickly through transitions so the boot
+  // banner and Computer controls track reality, slowly at rest.
+  useEffect(() => {
+    let stale = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const tick = async () => {
+      try {
+        const res = await fetch("/api/box/status");
+        if (res.ok) {
+          const data = (await res.json()) as { state?: string };
+          if (!stale && typeof data.state === "string") setBoxState(data.state);
+        }
+      } catch {
+        // transient; keep polling
+      }
+      if (!stale) {
+        const fast =
+          boxStateRef.current === "starting" ||
+          boxStateRef.current === "stopping" ||
+          boxStateRef.current === "provisioning";
+        timer = setTimeout(tick, fast ? 3_000 : 15_000);
+      }
+    };
+    void tick();
+    return () => {
+      stale = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
+  const boxStateRef = useRef<string | null>(null);
+  useEffect(() => {
+    boxStateRef.current = boxState;
+  }, [boxState]);
+
+  async function powerOn(keepAwakeMinutes?: number) {
+    setPowerBusy(true);
+    setPowerNote(null);
+    setBoxState("starting");
+    try {
+      const res = await fetch("/api/box/wake", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          keepAwakeMinutes ? { keep_awake_minutes: keepAwakeMinutes } : {}
+        ),
+      });
+      if (res.ok) {
+        setBoxState("ready");
+        if (keepAwakeMinutes) {
+          setPowerNote(`Staying awake for ${Math.round(keepAwakeMinutes / 60)}h.`);
+        }
+        // Remount the desktop iframe: the stream token rotates on resume.
+        setComputerEpoch((n) => n + 1);
+      } else if (res.status === 429) {
+        setPowerNote("Start limit reached — try again in a minute.");
+        setBoxState("stopped");
+      } else {
+        setPowerNote("Couldn't power on — try again shortly.");
+        setBoxState("stopped");
+      }
+    } catch {
+      setPowerNote("Couldn't power on — try again shortly.");
+    } finally {
+      setPowerBusy(false);
+    }
+  }
+
+  async function powerOff() {
+    setPowerBusy(true);
+    setPowerNote(null);
+    try {
+      const res = await fetch("/api/box/stop", { method: "POST" });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (res.ok) {
+        setBoxState("stopped");
+      } else if (data.error === "run_active") {
+        setPowerNote("Your agent is mid-task — wait for it to finish first.");
+      } else if (data.error === "stop_refused") {
+        setPowerNote("The computer refused to stop — it stays on. Try again shortly.");
+      } else {
+        setPowerNote("Couldn't power off — try again shortly.");
+      }
+    } catch {
+      setPowerNote("Couldn't power off — try again shortly.");
+    } finally {
+      setPowerBusy(false);
+    }
+  }
 
   useEffect(() => {
     fetch("/api/me").then(async (res) => {
@@ -1016,36 +1108,100 @@ export default function HomePage() {
             </div>
           ) : tab === "computer" ? (
             <div className="flex flex-1 flex-col gap-2">
-              <div className="flex items-center justify-between">
-                <p className="muted m-0 text-[13px]">
-                  Live view of your agent’s computer — take over when it needs
-                  you (logins, approvals).
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="muted m-0 flex items-center gap-2 text-[13px]">
+                  <span
+                    aria-hidden
+                    className={
+                      "inline-block h-2 w-2 rounded-full " +
+                      (boxState === "ready" || boxState === "idle"
+                        ? "bg-[var(--success)]"
+                        : boxState === "starting" || boxState === "stopping"
+                          ? "bg-[var(--warning)]"
+                          : "bg-[var(--muted)]")
+                    }
+                  />
+                  {boxState === "ready" || boxState === "idle"
+                    ? "Your agent’s computer is on."
+                    : boxState === "starting"
+                      ? "Powering on…"
+                      : boxState === "stopping"
+                        ? "Powering off…"
+                        : boxState === "stopped"
+                          ? "Your agent’s computer is off."
+                          : "Checking power state…"}
                 </p>
-                <a
-                  className="btn btn-ghost !px-3 !py-1.5 !text-[12px]"
-                  href="/api/box/desktop"
-                  target="_blank"
-                  rel="noreferrer noopener"
-                >
-                  Open in new tab
-                </a>
-                <a
-                  className="btn btn-ghost !px-3 !py-1.5 !text-[12px]"
-                  href="/api/box/desktop?vnc=1"
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  title="HTTPS-tunneled viewer for restrictive networks; opens as its own page"
-                >
-                  Use VNC
-                </a>
+                <div className="flex items-center gap-2">
+                  {boxState === "stopped" ? (
+                    <button
+                      className="btn !px-3 !py-1.5 !text-[12px]"
+                      disabled={powerBusy}
+                      onClick={() => void powerOn()}
+                    >
+                      {powerBusy ? "Powering on…" : "Power on"}
+                    </button>
+                  ) : null}
+                  {boxState === "ready" || boxState === "idle" ? (
+                    <>
+                      <button
+                        className="btn btn-ghost !px-3 !py-1.5 !text-[12px]"
+                        disabled={powerBusy}
+                        onClick={() => void powerOn(60)}
+                        title="Keep the computer awake for the next hour"
+                      >
+                        Keep awake 1h
+                      </button>
+                      <button
+                        className="btn btn-ghost !px-3 !py-1.5 !text-[12px]"
+                        disabled={powerBusy}
+                        onClick={() => void powerOff()}
+                      >
+                        {powerBusy ? "Powering off…" : "Power off"}
+                      </button>
+                      <a
+                        className="btn btn-ghost !px-3 !py-1.5 !text-[12px]"
+                        href="/api/box/desktop"
+                        target="_blank"
+                        rel="noreferrer noopener"
+                      >
+                        Open in new tab
+                      </a>
+                      <a
+                        className="btn btn-ghost !px-3 !py-1.5 !text-[12px]"
+                        href="/api/box/desktop?vnc=1"
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        title="HTTPS-tunneled viewer for restrictive networks; opens as its own page"
+                      >
+                        Use VNC
+                      </a>
+                    </>
+                  ) : null}
+                </div>
               </div>
-              <iframe
-                key={computerEpoch}
-                src="/api/box/desktop"
-                title="Your agent's computer"
-                className="min-h-[420px] flex-1 rounded-xl border-0 bg-black"
-                allow="clipboard-read; clipboard-write"
-              />
+              {powerNote ? (
+                <p className="muted m-0 text-[12px]">{powerNote}</p>
+              ) : null}
+              {boxState === "ready" || boxState === "idle" ? (
+                <iframe
+                  key={computerEpoch}
+                  src="/api/box/desktop"
+                  title="Your agent's computer"
+                  className="min-h-[420px] flex-1 rounded-xl border-0 bg-black"
+                  allow="clipboard-read; clipboard-write"
+                />
+              ) : (
+                <div className="flex min-h-[420px] flex-1 flex-col items-center justify-center gap-3 rounded-xl bg-surface-2 text-center">
+                  <Orb size={28} label="air" />
+                  <p className="muted m-0 text-[13px]">
+                    {boxState === "starting"
+                      ? "Powering on — the live view will appear when it’s ready."
+                      : boxState === "stopping"
+                        ? "Powering off…"
+                        : "The computer is asleep. Power it on to see the live view."}
+                  </p>
+                </div>
+              )}
             </div>
           ) : tab === "wallet" ? (
             <div className="grid flex-1 content-start gap-2 overflow-y-auto">
@@ -1300,6 +1456,16 @@ export default function HomePage() {
                     className="h-[320px] w-full rounded-lg border-0 bg-black"
                     allow="clipboard-read; clipboard-write"
                   />
+                </div>
+              ) : null}
+              {boxState === "starting" ? (
+                <div className="flex items-center gap-2 rounded-xl bg-surface-2 px-3 py-2 text-[12px] text-[var(--muted-2)]">
+                  <span
+                    aria-hidden
+                    className="inline-block h-2 w-2 animate-pulse rounded-full bg-[var(--warning)]"
+                  />
+                  Your agent’s computer is booting — replies may take a little
+                  longer.
                 </div>
               ) : null}
               <PromptInput
