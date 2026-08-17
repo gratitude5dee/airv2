@@ -8,7 +8,11 @@ import { randomBytes } from "node:crypto";
 import { env } from "../env";
 import { serviceClient } from "../supabase";
 import { command, deleteBox, fork, stop, waitForBox, writeFile } from "../box/client";
-import { installComposioMcp } from "./connectors";
+import {
+  ensureComposioMcpInstalled,
+  installMetaAdsMcp,
+  writeConnectedToolsFile,
+} from "./connectors";
 import { sealSecret } from "../crypto/secretbox";
 import { installBaseSkills } from "../skills/hub";
 
@@ -288,11 +292,31 @@ export async function provisionUser(
   // Failures log and continue — the user can install from the dashboard.
   await installBaseSkills(box.id);
   try {
-    await installComposioMcp(supabase, userId);
+    await ensureComposioMcpInstalled(supabase, userId, box.id);
+    await writeConnectedToolsFile(supabase, userId, box.id);
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";
     console.error(
       JSON.stringify({ msg: "composio preinstall failed", user_id: userId, error: message })
+    );
+  }
+  // A re-forked box converges to the user's ad tooling too: if they had a
+  // Meta ad account registered, restore the meta-ads MCP entry.
+  try {
+    const { data: metaAccount } = await supabase
+      .from("ad_accounts")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("provider", "meta")
+      .limit(1)
+      .maybeSingle();
+    if (metaAccount) {
+      await installMetaAdsMcp(supabase, userId);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown error";
+    console.error(
+      JSON.stringify({ msg: "meta mcp preinstall failed", user_id: userId, error: message })
     );
   }
 
