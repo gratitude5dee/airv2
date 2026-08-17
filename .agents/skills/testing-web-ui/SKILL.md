@@ -13,5 +13,17 @@ description: How to run and test the airv2 Next.js web app (apps/web) locally, i
 - Speed tier labels (Fast/Balanced/Deep) live in `apps/web/components/prompt-input/PromptInput.tsx` and appear in `.next/static/chunks/app/home/page-*.js`.
 - Dark mode: the app relies on `prefers-color-scheme`; the test box has no GNOME schema (`gsettings` fails), so OS-level dark emulation isn't available — verify the `prefers-color-scheme:dark` token mirror in the built CSS instead, or find another emulation path.
 
+## Full authenticated testing without a phone (works today)
+Real Supabase creds can be fetched at runtime — no `.env` needed and no OTP login:
+1. Supabase project is `imkbxdsxfgmkylbgaygv` (name `airv2`). Get the service-role key via the management API with `SUPABASE_ACCESS_TOKEN`: `GET https://api.supabase.com/v1/projects/imkbxdsxfgmkylbgaygv/api-keys?reveal=true` (pick `name == "service_role"`). `SUPABASE_URL=https://imkbxdsxfgmkylbgaygv.supabase.co`.
+2. Start the prod build with those two values, the org `THIRDWEB_SECRET_KEY`, a locally-generated `SESSION_SECRET` (`openssl rand -hex 32`), and dummies for every other `required()` var in `lib/env.ts`. You do NOT need the deployed SESSION_SECRET — you control the server.
+3. Pick a user id from `GET {SUPABASE_URL}/rest/v1/users?select=id,username,wallet_address` (service key as `apikey` + `Authorization: Bearer`). User `7c8fc08b-…` (gratitude) has a wallet address; others have `wallet_address NULL` for the not-set-up state.
+4. Mint an `air_session` cookie with your SESSION_SECRET (HS256 JWT `{sub:<user_id>,exp}` — mirror `lib/auth/session.ts`), then set it in the browser via `document.cookie` on any localhost:3999 page. `/home` then loads fully authenticated.
+- Vercel env is also readable (`VERCEL_TOKEN`, project `prj_k85SYkCP3elo3YIChN6o45gEbsRC`), but production-scoped sensitive values (SUPABASE_URL/SERVICE_ROLE_KEY/etc.) do not decrypt; preview-scoped ones do. Prefer the Supabase management API route above.
+- thirdweb Insight (token balances / activity, used by the M15 wallet tab) returns 401 "The service key is missing" for both the org `THIRDWEB_SECRET_KEY` and the Vercel one — likely the thirdweb project needs the Insight service enabled. Expect `degraded:true` with empty tokens/transactions; native RPC balance works with the org key. The Vercel-stored THIRDWEB_SECRET_KEY fails even native RPC (401) — it may be rotated/invalid.
+- Box-backed tabs on /home (History, Skills, chat transcript sync) show "Couldn't reach your agent's computer" notes when `BOX_API_KEY` is dummy — expected, not a UI bug.
+
 ## Devin Secrets Needed
-- Supabase URL/service key env vars (not currently stored) to test authenticated views and `/@handle` cards.
+- `SUPABASE_ACCESS_TOKEN` (management API → service-role key for the airv2 project; enables full authenticated testing).
+- `THIRDWEB_SECRET_KEY` (native balance reads for the wallet tab; Insight currently 401s — see above).
+- `VERCEL_TOKEN` (optional; read non-sensitive/preview Vercel env).
