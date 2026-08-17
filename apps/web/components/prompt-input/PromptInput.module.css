@@ -138,6 +138,47 @@
   transform: rotate(45deg);
 }
 
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* recording: the mic turns danger-red with a soft pulse */
+.micActive {
+  color: var(--danger, #dc2626);
+}
+.micActive::before {
+  background: color-mix(in srgb, var(--danger, #dc2626) 12%, transparent);
+  animation: pi-mic-pulse 1.2s ease-in-out infinite;
+}
+.micActive:hover::before {
+  background: color-mix(in srgb, var(--danger, #dc2626) 18%, transparent);
+}
+@keyframes pi-mic-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger, #dc2626) 35%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--danger, #dc2626) 12%, transparent);
+  }
+}
+
+/* voice status / inline error line under the composer */
+.voiceStatus {
+  margin: 4px 2px 0;
+  font-size: 11px;
+  line-height: 15px;
+  color: var(--muted, #a1a1a1);
+}
+.voiceStatus:empty {
+  display: none;
+}
+.voiceError {
+  color: var(--danger, #dc2626);
+}
+
 .send {
   color: var(--muted, #a1a1a1);
 }
@@ -281,4 +322,5 @@
   .iconBtn::before, .plusIcon { transition: none; }
   .menu, .menuPopover { animation: none; }
   .frame[data-busy]::after { animation: none; }
+  .micActive::before { animation: none; }
 }

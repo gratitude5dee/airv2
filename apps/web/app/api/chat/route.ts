@@ -18,14 +18,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const body = (await request.json().catch(() => ({}))) as { input?: string };
+  const body = (await request.json().catch(() => ({}))) as {
+    input?: string;
+    via?: string;
+  };
   const input = (body.input ?? "").trim();
   if (!input) {
     return NextResponse.json({ error: "empty input" }, { status: 400 });
   }
+  const trigger = body.via === "voice" ? "voice" : "web";
   const supabase = serviceClient();
   try {
-    const runId = await startChatRun(supabase, userId, input, "web");
+    const runId = await startChatRun(supabase, userId, input, "web", trigger);
     return NextResponse.json({ run_id: runId });
   } catch (error) {
     if (error instanceof StartLimitError) {

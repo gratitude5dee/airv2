@@ -27,6 +27,17 @@ export const env = {
   modelProviderApiKey: (): string => required("MODEL_PROVIDER_API_KEY"),
   modelProviderBaseUrl: (): string => required("MODEL_PROVIDER_BASE_URL"),
   thirdwebSecretKey: (): string => required("THIRDWEB_SECRET_KEY"),
+  // Speech-to-text (M13). Defaults to the main model provider; STT_* overrides
+  // exist for providers with no audio endpoint (goal.md §5).
+  sttBaseUrl: (): string =>
+    process.env.STT_BASE_URL ?? required("MODEL_PROVIDER_BASE_URL"),
+  sttApiKey: (): string =>
+    process.env.STT_API_KEY ?? required("MODEL_PROVIDER_API_KEY"),
+  sttModel: (): string => optional("STT_MODEL", "whisper-1"),
+  sttCostCentsPerMin: (): number => {
+    const parsed = Number(optional("STT_COST_CENTS_PER_MIN", "1"));
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 1;
+  },
   sessionSecret: (): string => required("SESSION_SECRET"),
   spectrumProjectId: (): string => required("SPECTRUM_PROJECT_ID"),
   spectrumProjectSecret: (): string => required("SPECTRUM_PROJECT_SECRET"),
