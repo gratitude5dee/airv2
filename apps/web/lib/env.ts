@@ -60,4 +60,46 @@ export const env = {
       .split(",")
       .map((entry) => entry.trim())
       .filter(Boolean),
+  // M16 creative lane. Both provider keys are optional: with either absent
+  // the lane reports itself unconfigured and preflight degrades gracefully
+  // instead of failing the deploy.
+  groqApiKey: (): string | null => process.env.GROQ_API_KEY ?? null,
+  gmiCloudApiKey: (): string | null => process.env.GMI_CLOUD_API_KEY ?? null,
+  gmiOrganizationId: (): string | null =>
+    process.env.GMI_ORGANIZATION_ID ?? null,
+  gmiRequestQueueUrl: (): string =>
+    optional(
+      "GMI_REQUEST_QUEUE_URL",
+      "https://console.gmicloud.ai/api/v1/ie/requestqueue/apikey/requests"
+    ),
+  gmiMediaHosts: (): string[] =>
+    optional("GMI_MEDIA_HOSTS", "")
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean),
+  creativeMaxConcurrency: (): number => {
+    const parsed = Number.parseInt(
+      optional("CREATIVE_MAX_CONCURRENCY", "2"),
+      10
+    );
+    return Math.max(1, Math.min(4, parsed || 2));
+  },
+  creativeDailyLimit: (): number => {
+    const parsed = Number.parseInt(optional("CREATIVE_DAILY_LIMIT", "20"), 10);
+    return parsed > 0 ? parsed : 20;
+  },
+  creativeCostCentsImage: (): number => {
+    const parsed = Number.parseInt(
+      optional("CREATIVE_COST_CENTS_IMAGE", "5"),
+      10
+    );
+    return parsed >= 0 ? parsed : 5;
+  },
+  creativeCostCentsVideo: (): number => {
+    const parsed = Number.parseInt(
+      optional("CREATIVE_COST_CENTS_VIDEO", "25"),
+      10
+    );
+    return parsed >= 0 ? parsed : 25;
+  },
 };

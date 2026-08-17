@@ -188,6 +188,16 @@ credentials in chat.
 EOF
 fi
 
+# M16: make the agent aware of the creative slash commands. They are handled
+# by the control plane before Hermes ever sees the message, so this is purely
+# awareness — the box never routes or executes them.
+if ! grep -q '/imagine, /animate, /zap' "$HOME_DIR/.hermes/SOUL.md" 2>/dev/null; then
+  cat >> "$HOME_DIR/.hermes/SOUL.md" <<'EOF'
+
+Your human can also use /imagine, /animate, /zap in chat for instant media — those are handled before you see them.
+EOF
+fi
+
 # Copy the built SPA outside the git checkout: box archive/restore does not
 # preserve gitignored build output inside the repo, so the dashboard serves
 # from ~/.hermes/web_dist (HERMES_WEB_DIST) instead.
