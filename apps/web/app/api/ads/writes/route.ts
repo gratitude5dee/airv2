@@ -20,6 +20,9 @@ const WRITE_KINDS: AdWriteKind[] = [
   "create_campaign",
   "update_budget",
   "set_status",
+  "create_ad_group",
+  "create_ad",
+  "update_ad",
 ];
 
 export async function GET(request: NextRequest): Promise<NextResponse> {

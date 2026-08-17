@@ -980,6 +980,7 @@ export default function HomePage() {
                 setTab("chat");
                 setInput(prefill);
               }}
+              onOpenQueue={() => void loadTab("needs")}
             />
           ) : (
             <>
