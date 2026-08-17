@@ -18,18 +18,29 @@ interface SupabaseStub {
   client: unknown;
 }
 
-function supabaseStub(sttCountLastHour: number): SupabaseStub {
+function supabaseStub(
+  sttCountLastHour: number,
+  opts: { countError?: string; insertError?: string } = {}
+): SupabaseStub {
   const inserts: Record<string, unknown>[] = [];
   const client = {
     from: (table: string) => ({
       select: () => ({
         eq: () => ({
           eq: () => ({
-            gte: () => Promise.resolve({ count: sttCountLastHour }),
+            gte: () =>
+              Promise.resolve(
+                opts.countError
+                  ? { count: null, error: { message: opts.countError } }
+                  : { count: sttCountLastHour, error: null }
+              ),
           }),
         }),
       }),
       insert: (row: Record<string, unknown>) => {
+        if (opts.insertError) {
+          return Promise.resolve({ error: { message: opts.insertError } });
+        }
         inserts.push({ table, ...row });
         return Promise.resolve({ error: null });
       },
@@ -113,6 +124,31 @@ describe("POST /api/voice/transcribe", () => {
     const res = await POST(audioRequest(clip("audio/webm"), { durationS: 10 }));
     expect(res.status).toBe(429);
     expect(await res.json()).toEqual({ error: "rate_limited" });
+  });
+
+  it("fails closed when the rate-limit count is unavailable", async () => {
+    serviceClientMock.mockReturnValue(
+      supabaseStub(0, { countError: "connection refused" }).client
+    );
+    const res = await POST(audioRequest(clip("audio/webm"), { durationS: 10 }));
+    expect(res.status).toBe(500);
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("logs a rejected cost-event insert instead of dropping it silently", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    serviceClientMock.mockReturnValue(
+      supabaseStub(0, {
+        insertError: 'violates check constraint "cost_events_kind_check"',
+      }).client
+    );
+    const res = await POST(audioRequest(clip("audio/webm"), { durationS: 10 }));
+    expect(res.status).toBe(200);
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("stt cost event insert failed")
+    );
+    errorSpy.mockRestore();
   });
 
   it("maps a provider 500 to 502 without writing a cost event", async () => {

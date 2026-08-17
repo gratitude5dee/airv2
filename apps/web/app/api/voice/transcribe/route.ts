@@ -45,12 +45,23 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const supabase = serviceClient();
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-  const { count } = await supabase
+  const { count, error: countError } = await supabase
     .from("cost_events")
     .select("id", { count: "exact", head: true })
     .eq("user_id", userId)
     .eq("kind", "stt")
     .gte("occurred_at", oneHourAgo);
+  if (countError) {
+    // Fail closed: without a usable count the hourly limit is unenforceable.
+    console.error(
+      JSON.stringify({
+        msg: "stt rate-limit count failed",
+        user_id: userId,
+        error: countError.message,
+      })
+    );
+    return NextResponse.json({ error: "transcription_failed" }, { status: 500 });
+  }
   if ((count ?? 0) >= STT_HOURLY_LIMIT) {
     return NextResponse.json({ error: "rate_limited" }, { status: 429 });
   }
@@ -67,12 +78,24 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "transcription_failed" }, { status: 502 });
   }
 
-  await supabase.from("cost_events").insert({
+  const { error: insertError } = await supabase.from("cost_events").insert({
     user_id: userId,
     kind: "stt",
     amount_cents: sttCostCents(durationS),
     ref: null,
   });
+  if (insertError) {
+    // A dropped ledger row silently disables both metering and the hourly
+    // limit — surface it loudly, but the user already paid for the
+    // transcription, so still deliver the text.
+    console.error(
+      JSON.stringify({
+        msg: "stt cost event insert failed",
+        user_id: userId,
+        error: insertError.message,
+      })
+    );
+  }
 
   return NextResponse.json({ text, duration_s: durationS });
 }
