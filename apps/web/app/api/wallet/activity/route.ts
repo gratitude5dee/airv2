@@ -1,0 +1,37 @@
+/**
+ * Session-authenticated wallet activity (goal.md M15): last transactions via
+ * Insight, projected server-side with explorer URLs. Address comes from
+ * users.wallet_address — never from client input.
+ */
+import { NextRequest, NextResponse } from "next/server";
+import { serviceClient } from "@/lib/supabase";
+import { sessionUserId } from "@/lib/auth/user";
+import { readWalletActivity } from "@/lib/wallet/read";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+const CACHE_HEADERS = { "Cache-Control": "private, max-age=60" };
+
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  const userId = sessionUserId(request);
+  if (!userId) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+  const { data: user } = await serviceClient()
+    .from("users")
+    .select("wallet_address")
+    .eq("id", userId)
+    .maybeSingle();
+  if (!user) {
+    return NextResponse.json({ error: "not found" }, { status: 404 });
+  }
+  if (!user.wallet_address) {
+    return NextResponse.json(
+      { address: null, transactions: [] },
+      { headers: CACHE_HEADERS }
+    );
+  }
+  const activity = await readWalletActivity(user.wallet_address);
+  return NextResponse.json(activity, { headers: CACHE_HEADERS });
+}

@@ -27,6 +27,11 @@ export const env = {
   modelProviderApiKey: (): string => required("MODEL_PROVIDER_API_KEY"),
   modelProviderBaseUrl: (): string => required("MODEL_PROVIDER_BASE_URL"),
   thirdwebSecretKey: (): string => required("THIRDWEB_SECRET_KEY"),
+  // Chain the wallet tab reads from (goal.md M15). Default: Base mainnet.
+  walletChainId: (): number => {
+    const parsed = Number.parseInt(optional("WALLET_CHAIN_ID", "8453"), 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 8453;
+  },
   sessionSecret: (): string => required("SESSION_SECRET"),
   spectrumProjectId: (): string => required("SPECTRUM_PROJECT_ID"),
   spectrumProjectSecret: (): string => required("SPECTRUM_PROJECT_SECRET"),
