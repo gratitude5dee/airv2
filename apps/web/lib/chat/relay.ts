@@ -12,12 +12,15 @@ import { armStopAfter, ensureBoxAwake } from "../orchestrator/boxes";
 import { createRun, MAIN_SESSION, runEvents } from "../hermes/client";
 
 export type ChatChannel = "web" | "desktop";
+/** agent_runs.trigger: the channel, or 'voice' when the composer content came from a transcription (M13). */
+export type ChatTrigger = ChatChannel | "voice";
 
 export async function startChatRun(
   supabase: SupabaseClient,
   userId: string,
   input: string,
-  channel: ChatChannel
+  channel: ChatChannel,
+  trigger: ChatTrigger = channel
 ): Promise<string> {
   const box = await ensureBoxAwake(supabase, userId);
   const run = await createRun(box.target, {
@@ -28,7 +31,7 @@ export async function startChatRun(
   await supabase.from("agent_runs").insert({
     user_id: userId,
     hermes_run_id: run.run_id,
-    trigger: channel,
+    trigger,
   });
   await armStopAfter(supabase, userId);
   return run.run_id;

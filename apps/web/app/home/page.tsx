@@ -176,6 +176,9 @@ export default function HomePage() {
   // Once the user closes the inline view mid-run, don't pop it back open
   // until the next run starts using the computer again.
   const chatComputerDismissed = useRef(false);
+  // True when any mic transcription landed in the composer since the last
+  // send — those runs record agent_runs.trigger = 'voice' (M13).
+  const voiceUsedRef = useRef(false);
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
   const [skills, setSkills] = useState<SkillSummary[] | null>(null);
   const [decisions, setDecisions] = useState<Decision[] | null>(null);
@@ -402,6 +405,8 @@ export default function HomePage() {
   const send = useCallback(async () => {
     const text = input.trim();
     if (!text || busy) return;
+    const viaVoice = voiceUsedRef.current;
+    voiceUsedRef.current = false;
     setBusy(true);
     setInput("");
     chatComputerDismissed.current = false;
@@ -414,7 +419,9 @@ export default function HomePage() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ input: text }),
+        body: JSON.stringify(
+          viaVoice ? { input: text, via: "voice" } : { input: text }
+        ),
       });
       if (!res.ok) {
         const status = res.status;
@@ -1571,6 +1578,9 @@ export default function HomePage() {
                 tier={tier}
                 onTierChange={(next) => void saveTier(next)}
                 tierModels={me?.entitlement?.tier_models}
+                onVoiceTranscript={() => {
+                  voiceUsedRef.current = true;
+                }}
               />
             </>
           )}
