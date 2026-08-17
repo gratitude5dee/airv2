@@ -91,6 +91,7 @@ export function PromptInput({
   const discardRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startedAtRef = useRef(0);
+  const startingRef = useRef(false);
   const valueRef = useRef(value);
   valueRef.current = value;
 
@@ -202,6 +203,10 @@ export function PromptInput({
   }, []);
 
   const startRecording = useCallback(async () => {
+    // Guards re-entry while getUserMedia's permission prompt is pending; a
+    // second start would orphan the first stream and leave the mic live.
+    if (startingRef.current) return;
+    startingRef.current = true;
     setVoiceError(null);
     let stream: MediaStream;
     try {
@@ -210,14 +215,23 @@ export function PromptInput({
       setVoiceError(
         "Microphone is blocked — allow it in your browser's site settings."
       );
+      startingRef.current = false;
       return;
     }
     const mimeType = RECORDER_MIME_CANDIDATES.find((c) =>
       MediaRecorder.isTypeSupported(c)
     );
-    const recorder = mimeType
-      ? new MediaRecorder(stream, { mimeType })
-      : new MediaRecorder(stream);
+    let recorder: MediaRecorder;
+    try {
+      recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+    } catch {
+      stream.getTracks().forEach((t) => t.stop());
+      setVoiceError("Recording isn't supported in this browser.");
+      startingRef.current = false;
+      return;
+    }
     chunksRef.current = [];
     discardRef.current = false;
     recorder.ondataavailable = (e) => {
@@ -250,6 +264,7 @@ export function PromptInput({
       setElapsedS(Math.min(s, MAX_RECORDING_SECONDS));
       if (s >= MAX_RECORDING_SECONDS) stopRecording(false);
     }, 250);
+    startingRef.current = false;
   }, [stopRecording, transcribe]);
 
   // Escape cancels and discards an in-progress recording.
