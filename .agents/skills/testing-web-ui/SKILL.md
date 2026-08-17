@@ -13,6 +13,16 @@ description: How to run and test the airv2 Next.js web app (apps/web) locally, i
 - Speed tier labels (Fast/Balanced/Deep) live in `apps/web/components/prompt-input/PromptInput.tsx` and appear in `.next/static/chunks/app/home/page-*.js`.
 - Dark mode: the app relies on `prefers-color-scheme`; the test box has no GNOME schema (`gsettings` fails), so OS-level dark emulation isn't available — verify the `prefers-color-scheme:dark` token mirror in the built CSS instead, or find another emulation path.
 
+## Reaching the authenticated /home dashboard without real Supabase
+- You can fully exercise the authenticated dashboard (PromptInput, chat relay, voice) by pointing the dummy env at a local **mock backend** that stands in for Supabase PostgREST + Hermes: a small Node HTTP server (e.g. on :4545) answering `GET/POST /rest/v1/<table>` (return `[]`/inserted row; log inserts to a file for server-side assertions like `agent_runs.trigger`), plus the Hermes run/SSE endpoints used by `lib/chat/relay.ts`. Set `SUPABASE_URL=http://localhost:4545`, `HERMES_BASE_URL=http://localhost:4545`, etc., and mint an `air_session` cookie with your known `SESSION_SECRET` — `/api/me` then succeeds and `/home` renders.
+- Rate-limit style checks that count `cost_events` rows can be driven by making the mock read its count from a file (e.g. `/tmp/stt_count.txt`), letting you flip 429/200 deterministically.
+
+## Voice input (M13) UI testing
+- Devin's built-in Chrome hangs on `getUserMedia` — use **headed Playwright chromium on DISPLAY=:0** instead (`executable_path=/home/ubuntu/.cache/ms-playwright/chromium-*/chrome-linux64/chrome`; the default chromium-1097 path playwright expects is absent, so pass executable_path explicitly). Grant mic permission via `context.grant_permissions(['microphone'], origin=...)`.
+- Create a virtual mic with PulseAudio: `pactl load-module module-null-sink sink_name=vmic_sink` + `module-remap-source` from `vmic_sink.monitor`, set it as default source; generate a speech clip with `espeak-ng ... | ffmpeg → wav` and feed it during recording with `paplay -d vmic_sink clip.wav`. Whisper transcribes espeak-ng speech accurately.
+- Useful selectors: mic `button[aria-label="Record voice input"]`, stop `button[aria-label="Stop recording"]`, send `button[aria-label="Send"]`, status line `div[class*="voiceStatus"]` (shows "Recording… 0:0X" / "Transcribing…"). Feature detection: `add_init_script("delete window.MediaRecorder;")` hides the mic button.
+- For a real STT round trip set `STT_BASE_URL=https://api.openai.com/v1` and `STT_API_KEY=$OPENAI_API_KEY` (or the MODEL_PROVIDER fallbacks) on the server; capture `/api/chat` bodies via a Playwright request listener to prove `via:"voice"` and non-auto-send.
+
 ## Full authenticated testing without a phone (works today)
 Real Supabase creds can be fetched at runtime — no `.env` needed and no OTP login:
 1. Supabase project is `imkbxdsxfgmkylbgaygv` (name `airv2`). Get the service-role key via the management API with `SUPABASE_ACCESS_TOKEN`: `GET https://api.supabase.com/v1/projects/imkbxdsxfgmkylbgaygv/api-keys?reveal=true` (pick `name == "service_role"`). `SUPABASE_URL=https://imkbxdsxfgmkylbgaygv.supabase.co`.
@@ -27,3 +37,4 @@ Real Supabase creds can be fetched at runtime — no `.env` needed and no OTP lo
 - `SUPABASE_ACCESS_TOKEN` (management API → service-role key for the airv2 project; enables full authenticated testing).
 - `THIRDWEB_SECRET_KEY` (native balance reads for the wallet tab; Insight currently 401s — see above).
 - `VERCEL_TOKEN` (optional; read non-sensitive/preview Vercel env).
+- `OPENAI_API_KEY` (available in shell env) for real `/audio/transcriptions` round trips.
