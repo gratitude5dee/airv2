@@ -137,7 +137,10 @@ export async function stageCreativeInput(
   userId: string,
   bytes: Buffer,
   mimeType: string
-): Promise<{ url: string; kind: "image" | "video"; mimeType: string } | undefined> {
+): Promise<
+  | { url: string; kind: "image" | "video"; mimeType: string; storageKey: string }
+  | undefined
+> {
   const ext = EXT_BY_MIME[mimeType];
   if (!ext) return undefined;
   const kind = mimeType.startsWith("video/") ? ("video" as const) : ("image" as const);
@@ -154,6 +157,18 @@ export async function stageCreativeInput(
     return undefined;
   }
   // The key is unguessable and the signature expires with the URL; the
-  // object itself sits under the user's prefix so M8 deletion removes it.
-  return { url: signed.data.signedUrl, kind, mimeType };
+  // caller removes the object once the generation settles.
+  return { url: signed.data.signedUrl, kind, mimeType, storageKey: key };
+}
+
+/** Remove staged provider-input objects once the generation settles. */
+export async function removeStagedInputs(
+  supabase: SupabaseClient,
+  storageKeys: readonly string[]
+): Promise<void> {
+  if (storageKeys.length === 0) return;
+  await supabase.storage
+    .from(ASSETS_BUCKET)
+    .remove([...storageKeys])
+    .catch(() => undefined);
 }

@@ -17,6 +17,7 @@ export const maxDuration = 800;
 
 const POLL_MS = 1_000;
 const MAX_STREAM_MS = 480_000;
+const KEEPALIVE_MS = 15_000;
 
 const phaseFor = (status: CreativeJobStatus): "routing" | "generating" =>
   status === "routing" ? "routing" : "generating";
@@ -51,8 +52,9 @@ export async function GET(
       };
       const deadline = Date.now() + MAX_STREAM_MS;
       let lastPhase: string | undefined;
+      let lastWrite = Date.now();
       try {
-        while (Date.now() < deadline) {
+        while (Date.now() < deadline && !request.signal.aborted) {
           const current = await getCreativeJob(supabase, userId, jobId);
           if (!current) {
             send("creative.failed", { line: "that one didn't come out." });
@@ -89,11 +91,17 @@ export async function GET(
           if (phase !== lastPhase) {
             lastPhase = phase;
             send("creative.status", { phase });
+            lastWrite = Date.now();
+          } else if (Date.now() - lastWrite >= KEEPALIVE_MS) {
+            // Keepalive comment frame so a gone client fails the write fast.
+            controller.enqueue(encoder.encode(": keepalive\n\n"));
+            lastWrite = Date.now();
           }
           await new Promise((resolve) => setTimeout(resolve, POLL_MS));
         }
       } catch {
-        // Client disconnects surface as enqueue errors; nothing to clean up.
+        // Client disconnects surface as enqueue errors on the next write;
+        // nothing to clean up.
       } finally {
         try {
           controller.close();

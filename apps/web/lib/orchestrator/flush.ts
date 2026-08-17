@@ -387,7 +387,15 @@ export async function runFlush(
       await sender
         .sendText(job.spaceId, job.phone, "that one didn't come out. try again?")
         .catch(() => undefined);
-      await supabase.from("flush_jobs").delete().eq("space_id", job.spaceId);
+      // The burst was answered (with the failure line); do not carry it, or
+      // the next inbound would re-trigger the same paid command.
+      if (!(await chainCancelled(supabase, job.spaceId, chainStartedAt))) {
+        await supabase
+          .from("flush_jobs")
+          .delete()
+          .eq("space_id", job.spaceId)
+          .eq("chain_started_at", chainStartedAt);
+      }
       return;
     }
 

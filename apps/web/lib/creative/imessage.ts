@@ -21,7 +21,7 @@ import {
 } from "./parse";
 import { deterministicGenerationLines } from "./router";
 import { executeCreativeJob } from "./run";
-import { stageCreativeInput } from "./store";
+import { removeStagedInputs, stageCreativeInput } from "./store";
 
 const ATTACHMENT_MARKER = /\[attachment:([^\]]+)\]/g;
 
@@ -64,6 +64,7 @@ export async function maybeRunCreativeLane(
 
   // Stage inbound attachments as short-lived signed provider inputs.
   const mediaInputs: MediaInput[] = [];
+  const stagedKeys: string[] = [];
   for (const id of attachmentIds) {
     const fetched = await sender
       .getAttachment(id, job.phone)
@@ -76,7 +77,12 @@ export async function maybeRunCreativeLane(
       fetched.mimeType
     );
     if (staged) {
-      mediaInputs.push(staged);
+      mediaInputs.push({
+        url: staged.url,
+        kind: staged.kind,
+        mimeType: staged.mimeType,
+      });
+      stagedKeys.push(staged.storageKey);
     }
   }
 
@@ -91,12 +97,18 @@ export async function maybeRunCreativeLane(
     "imessage",
     command.mode
   );
-  const result = await executeCreativeJob(supabase, creativeJob.id, job.userId, {
-    mode: command.mode,
-    cleanedText: command.cleanedText,
-    text,
-    mediaInputs,
-  });
+  let result: Awaited<ReturnType<typeof executeCreativeJob>>;
+  try {
+    result = await executeCreativeJob(supabase, creativeJob.id, job.userId, {
+      mode: command.mode,
+      cleanedText: command.cleanedText,
+      text,
+      mediaInputs,
+    });
+  } finally {
+    // Staged inputs are single-use provider references; reclaim them now.
+    await removeStagedInputs(supabase, stagedKeys);
+  }
 
   if (result.status !== "delivered" || !result.asset) {
     await sender.sendText(job.spaceId, job.phone, result.line);
