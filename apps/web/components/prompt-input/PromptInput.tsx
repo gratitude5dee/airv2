@@ -108,6 +108,7 @@ export function PromptInput({
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startedAtRef = useRef(0);
   const startingRef = useRef(false);
+  const unmountedRef = useRef(false);
   const valueRef = useRef(value);
   valueRef.current = value;
 
@@ -258,6 +259,13 @@ export function PromptInput({
       startingRef.current = false;
       return;
     }
+    // The permission prompt can outlive the composer (tab swap, navigation);
+    // a stream granted after unmount would have no UI left to stop it.
+    if (unmountedRef.current) {
+      stream.getTracks().forEach((t) => t.stop());
+      startingRef.current = false;
+      return;
+    }
     const mimeType = RECORDER_MIME_CANDIDATES.find((c) =>
       MediaRecorder.isTypeSupported(c)
     );
@@ -319,7 +327,9 @@ export function PromptInput({
 
   // Unmount: stop the recorder and release the microphone.
   useEffect(() => {
+    unmountedRef.current = false;
     return () => {
+      unmountedRef.current = true;
       if (timerRef.current) clearInterval(timerRef.current);
       discardRef.current = true;
       const recorder = recorderRef.current;
@@ -445,7 +455,11 @@ export function PromptInput({
                     : "Record voice input"
                 }
                 aria-pressed={voiceState === "recording"}
-                disabled={busy || voiceState === "transcribing"}
+                disabled={
+                  voiceState === "recording"
+                    ? false
+                    : busy || voiceState === "transcribing"
+                }
                 onClick={() => {
                   if (voiceState === "recording") stopRecording(false);
                   else if (voiceState === "idle") void startRecording();
