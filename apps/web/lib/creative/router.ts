@@ -7,7 +7,7 @@
  * failure becomes a clarification plan, never a user-visible provider error.
  */
 import type { MediaInput } from "./gmi";
-import { groqChat } from "./groq";
+import { CreativeUnconfiguredError, groqChat } from "./groq";
 import { chatLine, deliveryLine } from "./limits";
 import { GENERATION_SYSTEMS, PROMPT_VERSIONS } from "./prompts";
 import type { CreativeMode } from "./parse";
@@ -178,6 +178,9 @@ export async function routeExplicitCommand(
       )
     );
   } catch (error) {
+    if (error instanceof CreativeUnconfiguredError) {
+      throw error;
+    }
     // Do not turn an unavailable classifier into a raw provider error. The
     // caller renders a written clarification and no paid call happens.
     console.warn(
