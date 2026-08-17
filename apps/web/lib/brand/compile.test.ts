@@ -195,7 +195,9 @@ describe("validateBrandSource", () => {
   });
 
   it("rejects a missing palette role", () => {
-    const { foreground: _unused, ...rest } = northwind.palette;
+    const rest = Object.fromEntries(
+      Object.entries(northwind.palette).filter(([role]) => role !== "foreground")
+    );
     expect(() =>
       validateBrandSource({ ...northwind, palette: rest })
     ).toThrow(/foreground/);
