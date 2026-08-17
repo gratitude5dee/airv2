@@ -5,7 +5,15 @@
  * the lines row — never the Chat SDK adapter's line inference, which throws
  * NotImplementedError on every cold thread once per-user lines exist.
  */
-import { Spectrum, app as appCard, read, text, typing } from "spectrum-ts";
+import {
+  Spectrum,
+  app as appCard,
+  attachment,
+  read,
+  richlink,
+  text,
+  typing,
+} from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
 import { env } from "../env";
 
@@ -37,6 +45,15 @@ export interface SpectrumSender {
     phone: string,
     url: () => string | Promise<string>
   ): Promise<void>;
+  /** Send bytes as a native media bubble (M16 creative delivery). */
+  sendAttachment(
+    spaceId: string,
+    phone: string,
+    data: Buffer,
+    options: { name: string; mimeType: string }
+  ): Promise<void>;
+  /** Send a rich link card — the fallback when native media send fails. */
+  sendRichLink(spaceId: string, phone: string, url: string): Promise<void>;
   /** Webhooks carry attachment metadata only; bytes come through the SDK. */
   getAttachment(
     attachmentId: string,
@@ -70,6 +87,12 @@ export async function createSpectrumSender(): Promise<SpectrumSender> {
     },
     streamText: async (spaceId, phone, stream) => {
       await (await space(spaceId, phone)).send(text(stream));
+    },
+    sendAttachment: async (spaceId, phone, data, options) => {
+      await (await space(spaceId, phone)).send(attachment(data, options));
+    },
+    sendRichLink: async (spaceId, phone, url) => {
+      await (await space(spaceId, phone)).send(richlink(url));
     },
     sendApp: async (spaceId, phone, url) => {
       await (await space(spaceId, phone)).send(appCard(url, { live: true }));

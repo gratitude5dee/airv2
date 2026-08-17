@@ -6,7 +6,7 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import { ArrowUp, Check, Gauge, Plus } from "lucide-react";
+import { ArrowUp, Check, Gauge, Plus, Sparkles } from "lucide-react";
 import styles from "./PromptInput.module.css";
 
 export interface SpeedTier {
@@ -33,6 +33,13 @@ export const SPEED_TIERS: SpeedTier[] = [
   },
 ];
 
+/** M16 creative commands surfaced when the composer starts with "/". */
+export const CREATIVE_COMMANDS = [
+  { id: "/imagine", desc: "Make an image from your words." },
+  { id: "/animate", desc: "Turn an idea into a short video." },
+  { id: "/zap", desc: "A quick, kinetic video clip." },
+] as const;
+
 export interface PromptInputProps {
   value: string;
   onChange: (next: string) => void;
@@ -57,10 +64,24 @@ export function PromptInput({
 }: PromptInputProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [hoveredTier, setHoveredTier] = useState<string | null>(null);
+  const [paletteDismissed, setPaletteDismissed] = useState(false);
   const plusRef = useRef<HTMLDivElement>(null);
   const fieldRef = useRef<HTMLTextAreaElement>(null);
 
   const sendActive = value.trim().length > 0 && !busy;
+
+  // Command palette: typing "/" at the start of the composer lists the
+  // creative commands; anything past the first word closes it.
+  const paletteMatches = /^\/[a-z]*$/i.test(value)
+    ? CREATIVE_COMMANDS.filter((c) =>
+        c.id.startsWith(value.toLowerCase())
+      )
+    : [];
+  const paletteOpen = !paletteDismissed && paletteMatches.length > 0;
+
+  useEffect(() => {
+    if (!/^\/[a-z]*$/i.test(value)) setPaletteDismissed(false);
+  }, [value]);
 
   // Auto-grow the textarea up to its CSS max-height.
   useEffect(() => {
@@ -92,6 +113,17 @@ export function PromptInput({
   }, [menuOpen]);
 
   const onKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    if (paletteOpen && e.key === "Escape") {
+      e.preventDefault();
+      setPaletteDismissed(true);
+      return;
+    }
+    const first = paletteMatches[0];
+    if (paletteOpen && first && (e.key === "Tab" || e.key === "Enter")) {
+      e.preventDefault();
+      onChange(`${first.id} `);
+      return;
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       if (sendActive) onSend();
@@ -101,6 +133,29 @@ export function PromptInput({
   return (
     <div className={styles.wrap}>
       <div className={styles.frame} data-busy={busy || undefined}>
+        {paletteOpen && (
+          <div className={styles.palette} role="menu" aria-label="Commands">
+            <div className={styles.menuLabel}>
+              <Sparkles size={12} aria-hidden />
+              Create
+            </div>
+            {paletteMatches.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                role="menuitem"
+                className={styles.menuItem}
+                onClick={() => {
+                  onChange(`${c.id} `);
+                  fieldRef.current?.focus();
+                }}
+              >
+                <span className={styles.menuName}>{c.id}</span>
+                <span className={styles.paletteDesc}>{c.desc}</span>
+              </button>
+            ))}
+          </div>
+        )}
         <textarea
           ref={fieldRef}
           className={styles.field}

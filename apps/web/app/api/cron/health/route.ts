@@ -9,6 +9,7 @@ import { timingSafeEqual } from "node:crypto";
 import { serviceClient } from "@/lib/supabase";
 import { probeConnectionHealth } from "@/lib/publish/health";
 import { reconcileSpend } from "@/lib/ads/reconcile";
+import { creativePreflight } from "@/lib/creative/preflight";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,5 +36,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   // so running it on every hourly tick is idempotent — the day's row just
   // converges on the latest platform-reported figure.
   const reconcile = await reconcileSpend(supabase);
-  return NextResponse.json({ ok: true, health, reconcile });
+  // M16: read-only creative provider preflight. Skips when keys are absent;
+  // never creates generation jobs, never logs provider bodies or secrets.
+  const creative = await creativePreflight();
+  return NextResponse.json({ ok: true, health, reconcile, creative });
 }

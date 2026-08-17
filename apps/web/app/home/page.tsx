@@ -85,6 +85,8 @@ interface HubSkill {
 interface ChatMessage {
   role: "user" | "agent";
   text: string;
+  /** M16: inline creative media, delivered via a short-lived signed URL. */
+  media?: { kind: "image" | "video"; url: string };
 }
 
 interface WalletSummary {
@@ -350,6 +352,53 @@ export default function HomePage() {
     };
   }, []);
 
+  // M16: follow a creative job's SSE stream and land the media inline.
+  const followCreativeJob = useCallback((jobId: string) => {
+    const events = new EventSource(`/api/creative/${jobId}/events`);
+    const finish = (message: ChatMessage) => {
+      setMessages((m) => [...m.slice(0, -1), message]);
+      events.close();
+      setBusy(false);
+    };
+    events.onmessage = (event) => {
+      try {
+        const parsed = JSON.parse(event.data) as {
+          event?: string;
+          phase?: string;
+          kind?: string;
+          url?: string;
+          line?: string;
+        };
+        if (parsed.event === "creative.status") {
+          const label =
+            parsed.phase === "generating" ? "Generating…" : "On it…";
+          setMessages((m) => [...m.slice(0, -1), { role: "agent", text: label }]);
+        }
+        if (parsed.event === "creative.done" && parsed.url) {
+          finish({
+            role: "agent",
+            text: parsed.line ?? "",
+            media: {
+              kind: parsed.kind === "video" ? "video" : "image",
+              url: parsed.url,
+            },
+          });
+        }
+        if (parsed.event === "creative.refused" || parsed.event === "creative.failed") {
+          finish({
+            role: "agent",
+            text: parsed.line ?? "that one didn't come out. try again?",
+          });
+        }
+      } catch {
+        // non-JSON keepalive
+      }
+    };
+    events.onerror = () => {
+      finish({ role: "agent", text: "Connection lost — try again." });
+    };
+  }, []);
+
   const send = useCallback(async () => {
     const text = input.trim();
     if (!text || busy) return;
@@ -384,7 +433,33 @@ export default function HomePage() {
         setBusy(false);
         return;
       }
-      const { run_id } = (await res.json()) as { run_id: string };
+      const payload = (await res.json()) as {
+        run_id?: string;
+        creative_job_id?: string;
+        creative_line?: string;
+      };
+      if (payload.creative_line) {
+        // Deterministic clarification (e.g. mixed /imagine + /zap) — no run.
+        setMessages((m) => [
+          ...m.slice(0, -1),
+          { role: "agent", text: payload.creative_line ?? "" },
+        ]);
+        setBusy(false);
+        return;
+      }
+      if (payload.creative_job_id) {
+        followCreativeJob(payload.creative_job_id);
+        return;
+      }
+      if (!payload.run_id) {
+        setMessages((m) => [
+          ...m.slice(0, -1),
+          { role: "agent", text: "Something went wrong." },
+        ]);
+        setBusy(false);
+        return;
+      }
+      const run_id = payload.run_id;
       const events = new EventSource(`/api/chat/${run_id}/events`);
       let acc = "";
       // Replace a still-empty placeholder so a failed or empty run never
@@ -461,7 +536,7 @@ export default function HomePage() {
       });
       setBusy(false);
     }
-  }, [input, busy]);
+  }, [input, busy, followCreativeJob]);
 
   async function saveTier(next: string) {
     setTier(next);
@@ -1400,6 +1475,25 @@ export default function HomePage() {
                             : "justify-self-start bg-surface shadow-[0_0_0_0.5px_var(--ring)]")
                         }
                       >
+                        {m.media ? (
+                          <div className="mb-1.5 overflow-hidden rounded-lg">
+                            {m.media.kind === "video" ? (
+                              <video
+                                src={m.media.url}
+                                controls
+                                playsInline
+                                className="block max-h-80 w-full"
+                              />
+                            ) : (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={m.media.url}
+                                alt="Generated image"
+                                className="block max-h-80 w-full object-contain"
+                              />
+                            )}
+                          </div>
+                        ) : null}
                         {m.text}
                         {streaming ? (
                           <Orb
