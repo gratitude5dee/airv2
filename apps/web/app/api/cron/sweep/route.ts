@@ -51,6 +51,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   let stopped = 0;
   for (const box of (idleBoxes ?? []) as SweepableBox[]) {
     try {
+      await supabase
+        .from("boxes")
+        .update({ state: "stopping" })
+        .eq("provider_box_id", box.provider_box_id);
       await stop(box.provider_box_id);
       await supabase
         .from("boxes")
@@ -58,6 +62,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         .eq("provider_box_id", box.provider_box_id);
       stopped += 1;
     } catch (error) {
+      // A refused stop means the snapshot is failing — leave the box
+      // running and visible as ready so the next sweep retries (C6).
+      await supabase
+        .from("boxes")
+        .update({ state: "ready" })
+        .eq("provider_box_id", box.provider_box_id);
       console.error(
         JSON.stringify({
           msg: "sweeper stop failed",

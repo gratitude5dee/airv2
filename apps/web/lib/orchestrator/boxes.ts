@@ -160,6 +160,11 @@ export async function ensureBoxAwake(
 
   const box = await getBox(boxId);
   if (box.state !== "ready" && box.state !== "idle") {
+    // Transitional state so the UI can show an honest boot progression (M10).
+    await supabase
+      .from("boxes")
+      .update({ state: "starting" })
+      .eq("provider_box_id", boxId);
     try {
       await resume(boxId);
     } catch (error) {
@@ -178,6 +183,10 @@ export async function ensureBoxAwake(
         current.state === "archiving" ||
         current.state === "error";
       if (stillDown) {
+        await supabase
+          .from("boxes")
+          .update({ state: "stopped" })
+          .eq("provider_box_id", boxId);
         throw error;
       }
     }
@@ -253,11 +262,10 @@ export async function ensureBoxAwake(
 /** Re-arm the idle deadline; the cron sweeper stops the box past it. */
 export async function armStopAfter(
   supabase: SupabaseClient,
-  userId: string
+  userId: string,
+  minutes: number = STOP_AFTER_MINUTES
 ): Promise<void> {
-  const stopAfter = new Date(
-    Date.now() + STOP_AFTER_MINUTES * 60_000
-  ).toISOString();
+  const stopAfter = new Date(Date.now() + minutes * 60_000).toISOString();
   await supabase
     .from("boxes")
     .update({ stop_after: stopAfter })

@@ -23,9 +23,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
+  // Optional keep-awake window (M10): clamp to 1–240 minutes.
+  let keepAwakeMinutes: number | undefined;
+  const body = (await request.json().catch(() => null)) as {
+    keep_awake_minutes?: unknown;
+  } | null;
+  if (typeof body?.keep_awake_minutes === "number" && Number.isFinite(body.keep_awake_minutes)) {
+    keepAwakeMinutes = Math.min(240, Math.max(1, Math.round(body.keep_awake_minutes)));
+  }
+
   try {
     await ensureBoxAwake(supabase, session.userId);
-    await armStopAfter(supabase, session.userId);
+    await armStopAfter(supabase, session.userId, keepAwakeMinutes);
     return NextResponse.json({ status: "awake" });
   } catch (error) {
     if (error instanceof StartLimitError) {
