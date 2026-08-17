@@ -9,6 +9,7 @@ import { serviceClient } from "@/lib/supabase";
 import { env } from "@/lib/env";
 import {
   createLinkSession,
+  deleteConnectedAccount,
   listConnectedAccounts,
   listToolkits,
 } from "@/lib/composio/client";
@@ -61,7 +62,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const link = await createLinkSession(
     sessionId,
     toolkit,
-    `${env.appOrigin()}/home`
+    `${env.appOrigin()}/home?connected=${encodeURIComponent(toolkit)}`
   );
   await supabase.from("connections").upsert(
     {
@@ -123,6 +124,53 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
       );
     }
   }
+  const { data: refreshed } = await supabase
+    .from("connections")
+    .select("toolkit, status, connected_at")
+    .eq("user_id", userId);
+  return NextResponse.json({ connections: refreshed ?? [] });
+}
+
+/** Disconnect one toolkit: delete the Composio account, mark it revoked. */
+export async function DELETE(request: NextRequest): Promise<NextResponse> {
+  const userId = sessionUserId(request);
+  if (!userId) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+  const toolkit = request.nextUrl.searchParams.get("toolkit")?.toLowerCase();
+  if (!toolkit || !/^[a-z0-9_-]{1,64}$/.test(toolkit)) {
+    return NextResponse.json({ error: "invalid toolkit" }, { status: 400 });
+  }
+  const supabase = serviceClient();
+  const { data: row } = await supabase
+    .from("connections")
+    .select("id, external_account_id")
+    .eq("user_id", userId)
+    .eq("provider", "composio")
+    .eq("toolkit", toolkit)
+    .maybeSingle();
+  if (!row) {
+    return NextResponse.json({ error: "not_found" }, { status: 404 });
+  }
+  if (row.external_account_id) {
+    try {
+      await deleteConnectedAccount(row.external_account_id as string);
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          msg: "composio account delete failed",
+          user_id: userId,
+          toolkit,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      );
+      return NextResponse.json({ error: "disconnect_failed" }, { status: 502 });
+    }
+  }
+  await supabase
+    .from("connections")
+    .update({ status: "revoked", connected_at: null })
+    .eq("id", row.id);
   const { data: refreshed } = await supabase
     .from("connections")
     .select("toolkit, status, connected_at")

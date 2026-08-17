@@ -7,7 +7,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { serviceClient } from "@/lib/supabase";
-import { probeConnectionHealth } from "@/lib/publish/health";
+import {
+  probeConnectionHealth,
+  reconcileConnections,
+} from "@/lib/publish/health";
 import { reconcileSpend } from "@/lib/ads/reconcile";
 
 export const runtime = "nodejs";
@@ -31,9 +34,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
   const supabase = serviceClient();
   const health = await probeConnectionHealth(supabase);
+  // Full mirror reconcile: an OAuth grant revoked at the provider (or the
+  // account deleted in Composio) flips the local row off `active` within one
+  // cycle instead of showing a stale "Connected" chip.
+  const connections = await reconcileConnections(supabase);
   // Spend reconciliation is daily-grained (spend_reports upserts by date),
   // so running it on every hourly tick is idempotent — the day's row just
   // converges on the latest platform-reported figure.
   const reconcile = await reconcileSpend(supabase);
-  return NextResponse.json({ ok: true, health, reconcile });
+  return NextResponse.json({ ok: true, health, connections, reconcile });
 }

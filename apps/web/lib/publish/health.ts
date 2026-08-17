@@ -109,6 +109,62 @@ export async function probeConnectionHealth(
   return result;
 }
 
+export interface ReconcileConnectionsResult {
+  usersChecked: number;
+  revoked: number;
+}
+
+/**
+ * Full per-user mirror reconcile (M11): any local `active` connection whose
+ * account no longer appears in Composio's ACTIVE list is marked `revoked`.
+ * `pending` rows are left alone — the Connectors page's Resume action owns
+ * that path; auto-expiry would fight a user mid-OAuth.
+ */
+export async function reconcileConnections(
+  supabase: SupabaseClient
+): Promise<ReconcileConnectionsResult> {
+  const result: ReconcileConnectionsResult = { usersChecked: 0, revoked: 0 };
+  const { data: rows } = await supabase
+    .from("connections")
+    .select("id, user_id, toolkit")
+    .eq("provider", "composio")
+    .eq("status", "active")
+    .limit(1000);
+  if (!rows || rows.length === 0) return result;
+
+  const byUser = new Map<string, Array<{ id: string; toolkit: string }>>();
+  for (const row of rows) {
+    const list = byUser.get(row.user_id as string) ?? [];
+    list.push({ id: row.id as string, toolkit: row.toolkit as string });
+    byUser.set(row.user_id as string, list);
+  }
+
+  for (const [userId, userRows] of byUser) {
+    result.usersChecked += 1;
+    let liveToolkits: Set<string>;
+    try {
+      const accounts = await listConnectedAccounts(userId);
+      liveToolkits = new Set(
+        accounts
+          .map((a) => a.toolkit?.slug?.toLowerCase())
+          .filter((s): s is string => Boolean(s))
+      );
+    } catch {
+      // Composio unreachable: don't revoke on missing evidence.
+      continue;
+    }
+    for (const row of userRows) {
+      if (liveToolkits.has(row.toolkit.toLowerCase())) continue;
+      const { error } = await supabase
+        .from("connections")
+        .update({ status: "revoked", connected_at: null })
+        .eq("id", row.id);
+      if (!error) result.revoked += 1;
+    }
+  }
+  return result;
+}
+
 async function raiseReauth(
   supabase: SupabaseClient,
   userId: string,
