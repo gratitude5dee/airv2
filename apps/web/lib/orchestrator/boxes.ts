@@ -246,6 +246,34 @@ export async function ensureBoxAwake(
   // (CM0: mirror, don't sync). Best-effort, off the critical path.
   void mirrorBrandIfStale(supabase, userId, boxId);
 
+  // M12: converge the box's Composio MCP entry and connected-tools note
+  // after a wake, fire-and-forget like the dashboard refresh above. Lazy
+  // import: provisioning/connectors imports this module (ensureBoxAwake), so
+  // a top-level import would create a cycle.
+  void (async () => {
+    try {
+      const { data } = await supabase
+        .from("connections")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("status", "active")
+        .limit(1);
+      if (!data || data.length === 0) return;
+      const { ensureComposioMcpInstalled, writeConnectedToolsFile } =
+        await import("../provisioning/connectors");
+      await ensureComposioMcpInstalled(supabase, userId, boxId);
+      await writeConnectedToolsFile(supabase, userId, boxId);
+    } catch (error) {
+      console.log(
+        JSON.stringify({
+          msg: "post-wake mcp ensure failed",
+          box_id: boxId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      );
+    }
+  })();
+
   await supabase
     .from("boxes")
     .update({ state: "ready" })

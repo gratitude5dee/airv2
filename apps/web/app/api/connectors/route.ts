@@ -14,8 +14,9 @@ import {
   listToolkits,
 } from "@/lib/composio/client";
 import {
+  ensureComposioMcpInstalled,
   ensureComposioSession,
-  installComposioMcp,
+  writeConnectedToolsFile,
 } from "@/lib/provisioning/connectors";
 
 export const runtime = "nodejs";
@@ -111,13 +112,31 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
         .eq("id", row.id);
     }
   }
-  if (newlyActive) {
+  // M12: idempotent ensure whenever the user has ≥1 active connection — a
+  // cheap no-op when the box already has the current session URL, and the
+  // heal path when the Composio session rotated.
+  const hasActive =
+    newlyActive || (rows ?? []).some((row) => row.status === "active");
+  if (hasActive) {
     try {
-      await installComposioMcp(supabase, userId);
+      await ensureComposioMcpInstalled(supabase, userId);
     } catch (error) {
       console.error(
         JSON.stringify({
-          msg: "composio mcp install failed",
+          msg: "composio mcp ensure failed",
+          user_id: userId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      );
+    }
+  }
+  if (newlyActive) {
+    try {
+      await writeConnectedToolsFile(supabase, userId);
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          msg: "connected-tools write failed",
           user_id: userId,
           error: error instanceof Error ? error.message : String(error),
         })
@@ -171,6 +190,18 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
     .from("connections")
     .update({ status: "revoked", connected_at: null })
     .eq("id", row.id);
+  // Keep the agent's connected-tools note truthful after the flip.
+  try {
+    await writeConnectedToolsFile(supabase, userId);
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        msg: "connected-tools write failed",
+        user_id: userId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    );
+  }
   const { data: refreshed } = await supabase
     .from("connections")
     .select("toolkit, status, connected_at")

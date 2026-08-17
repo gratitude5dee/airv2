@@ -188,6 +188,16 @@ credentials in chat.
 EOF
 fi
 
+# Teach the agent to check what its human has connected (M12): the control
+# plane maintains ~/.hermes/connected-tools.md on every connect/disconnect.
+if ! grep -q 'connected-tools.md' "$HOME_DIR/.hermes/SOUL.md" 2>/dev/null; then
+  cat >> "$HOME_DIR/.hermes/SOUL.md" <<'EOF'
+
+## Connected tools
+Check ~/.hermes/connected-tools.md for the tools your human has connected.
+EOF
+fi
+
 # Copy the built SPA outside the git checkout: box archive/restore does not
 # preserve gitignored build output inside the repo, so the dashboard serves
 # from ~/.hermes/web_dist (HERMES_WEB_DIST) instead.
