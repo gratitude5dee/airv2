@@ -117,6 +117,52 @@ function isComputerTool(name: string | undefined): boolean {
   );
 }
 
+/** "google_sheets" → "Google Sheets" for connections missing a catalog row. */
+function titleCaseSlug(slug: string): string {
+  return slug
+    .split(/[_-]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+interface ConnectorRow {
+  slug: string;
+  name: string;
+  logo: string | null;
+  status: string | null; // connections.status, or null when unconnected
+}
+
+/** One truthful row per service: catalog joined with connections by slug;
+ * connected rows first, then pending/error, then the unconnected catalog. */
+function mergeConnectorRows(
+  toolkits: Toolkit[],
+  connections: Connection[]
+): ConnectorRow[] {
+  const statusBySlug = new Map(connections.map((c) => [c.toolkit, c.status]));
+  const rows: ConnectorRow[] = toolkits
+    .slice(0, 40)
+    .map((t) => ({
+      slug: t.slug,
+      name: t.name,
+      logo: t.logo,
+      status: statusBySlug.get(t.slug) ?? null,
+    }));
+  const catalogSlugs = new Set(rows.map((r) => r.slug));
+  for (const c of connections) {
+    if (catalogSlugs.has(c.toolkit)) continue;
+    rows.push({
+      slug: c.toolkit,
+      name: titleCaseSlug(c.toolkit),
+      logo: null,
+      status: c.status,
+    });
+  }
+  const rank = (r: ConnectorRow) =>
+    r.status === "active" ? 0 : r.status === "pending" || r.status === "error" ? 1 : 2;
+  return rows.sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
+}
+
 const TABS: [Tab, string][] = [
   ["chat", "Chat"],
   ["needs", "Needs you"],
@@ -151,6 +197,7 @@ export default function HomePage() {
   const [toolkits, setToolkits] = useState<Toolkit[] | null>(null);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [connectorFilter, setConnectorFilter] = useState("");
+  const [connectorBusy, setConnectorBusy] = useState<string | null>(null);
   const [panelNote, setPanelNote] = useState<string | null>(null);
   const [panelFailed, setPanelFailed] = useState(false);
   const panelLoadId = useRef(0);
@@ -498,7 +545,7 @@ export default function HomePage() {
     await loadPeople();
   }
 
-  async function loadConnectors() {
+  async function loadConnectorCatalog() {
     const res = await fetch("/api/connectors");
     if (res.ok) {
       const data = (await res.json()) as {
@@ -508,23 +555,83 @@ export default function HomePage() {
       setToolkits(data.toolkits ?? []);
       setConnections(data.connections ?? []);
     }
-    // Sync statuses (picks up OAuth flows completed since last visit).
+  }
+
+  const syncConnections = useCallback(async () => {
+    // Sync statuses from Composio (picks up OAuth flows completed since the
+    // last visit). Cheap: one Composio call.
     const sync = await fetch("/api/connectors", { method: "PUT" });
     if (sync.ok) {
       const data = (await sync.json()) as { connections?: Connection[] };
       setConnections(data.connections ?? []);
     }
+  }, []);
+
+  // OAuth return: the Composio link session lands on /home?connected=<slug>.
+  // Sync immediately and strip the param so the flipped chip shows without a
+  // manual reload.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has("connected")) return;
+    params.delete("connected");
+    const rest = params.toString();
+    window.history.replaceState(
+      null,
+      "",
+      window.location.pathname + (rest ? `?${rest}` : "")
+    );
+    void syncConnections();
+  }, [syncConnections]);
+
+  // Re-sync when the document regains visibility with the Connectors tab
+  // open — an OAuth completed in another tab shows up without a reload.
+  const tabRef = useRef<Tab>("chat");
+  useEffect(() => {
+    tabRef.current = tab;
+  }, [tab]);
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible" && tabRef.current === "connectors") {
+        void syncConnections();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [syncConnections]);
+
+  async function disconnectToolkit(slug: string) {
+    setConnectorBusy(slug);
+    try {
+      const res = await fetch(
+        `/api/connectors?toolkit=${encodeURIComponent(slug)}`,
+        { method: "DELETE" }
+      );
+      if (res.ok) {
+        const data = (await res.json()) as { connections?: Connection[] };
+        setConnections(data.connections ?? []);
+      }
+    } finally {
+      setConnectorBusy(null);
+    }
   }
 
   async function connectToolkit(slug: string) {
-    const res = await fetch("/api/connectors", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ toolkit: slug }),
-    });
-    if (res.ok) {
-      const data = (await res.json()) as { redirect_url?: string };
-      if (data.redirect_url) window.location.href = data.redirect_url;
+    setConnectorBusy(slug);
+    try {
+      const res = await fetch("/api/connectors", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ toolkit: slug }),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { redirect_url?: string };
+        if (data.redirect_url) {
+          window.location.href = data.redirect_url;
+          return;
+        }
+      }
+    } finally {
+      setConnectorBusy(null);
     }
   }
 
@@ -601,8 +708,11 @@ export default function HomePage() {
     if (next === "people") {
       await loadPeople();
     }
-    if (next === "connectors" && toolkits === null) {
-      await loadConnectors();
+    if (next === "connectors") {
+      // Catalog is once-per-load; the status sync runs on every tab open so
+      // an OAuth completed since the last visit flips its chip immediately.
+      if (toolkits === null) await loadConnectorCatalog();
+      await syncConnections();
     }
     if (next === "skills" && skills === null) {
       await loadInstalledSkills();
@@ -849,57 +959,126 @@ export default function HomePage() {
                 value={connectorFilter}
                 onChange={(e) => setConnectorFilter(e.target.value)}
               />
-              {connections.length > 0 ? (
-                <div className="grid gap-2">
-                  {connections.map((c) => (
-                    <div
-                      key={c.toolkit}
-                      className="panel flex items-center justify-between !p-3"
-                    >
-                      <strong className="text-[13px]">{c.toolkit}</strong>
-                      <span className="muted text-[12px]">{c.status}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-              {(toolkits ?? [])
+              {mergeConnectorRows(toolkits ?? [], connections)
                 .filter(
-                  (t) =>
+                  (r) =>
                     !connectorFilter ||
-                    t.name.toLowerCase().includes(connectorFilter.toLowerCase()) ||
-                    t.slug.includes(connectorFilter.toLowerCase())
+                    r.name.toLowerCase().includes(connectorFilter.toLowerCase()) ||
+                    r.slug.includes(connectorFilter.toLowerCase())
                 )
-                .slice(0, 40)
-                .map((t) => (
+                .map((r) => (
                   <div
-                    key={t.slug}
-                    className="panel rise-in flex items-center justify-between !p-3"
+                    key={r.slug}
+                    className="panel rise-in flex items-center justify-between gap-2 !p-3"
                   >
-                    <div className="flex items-center gap-2">
-                      {t.logo ? (
+                    <div className="flex min-w-0 items-center gap-2">
+                      {r.logo ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
-                          src={t.logo}
+                          src={r.logo}
                           alt=""
                           width={20}
                           height={20}
                           className="rounded"
                         />
-                      ) : null}
-                      <strong className="text-[13px]">{t.name}</strong>
+                      ) : (
+                        <span
+                          aria-hidden
+                          className="flex h-5 w-5 items-center justify-center rounded bg-surface-2 text-[11px] font-semibold text-[var(--muted-2)]"
+                        >
+                          {r.name.charAt(0)}
+                        </span>
+                      )}
+                      <div className="min-w-0">
+                        <strong className="block truncate text-[13px]">
+                          {r.name}
+                        </strong>
+                        {r.slug === "metaads" ? (
+                          <span className="muted block text-[11px]">
+                            For the Ads tab, use{" "}
+                            <button
+                              className="cursor-pointer border-0 bg-transparent p-0 text-[11px] text-[var(--accent)] underline"
+                              onClick={() => void loadTab("ads")}
+                            >
+                              Meta Ads setup →
+                            </button>
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
-                    {connections.some(
-                      (c) => c.toolkit === t.slug && c.status === "active"
-                    ) ? (
-                      <span className="muted text-[12px]">connected</span>
-                    ) : (
-                      <button
-                        className="btn !px-3 !py-1.5 !text-[12px]"
-                        onClick={() => void connectToolkit(t.slug)}
-                      >
-                        Connect
-                      </button>
-                    )}
+                    <div className="flex shrink-0 items-center gap-2">
+                      {r.status === "active" ? (
+                        <>
+                          <span className="flex items-center gap-1.5 text-[12px]">
+                            <span
+                              aria-hidden
+                              className="inline-block h-2 w-2 rounded-full bg-[var(--success)]"
+                            />
+                            Connected
+                          </span>
+                          <button
+                            className="btn btn-ghost !px-3 !py-1.5 !text-[12px]"
+                            disabled={connectorBusy === r.slug}
+                            onClick={() => void disconnectToolkit(r.slug)}
+                          >
+                            Disconnect
+                          </button>
+                        </>
+                      ) : r.status === "pending" ? (
+                        <>
+                          <span className="flex items-center gap-1.5 text-[12px]">
+                            <span
+                              aria-hidden
+                              className="inline-block h-2 w-2 rounded-full bg-[var(--warning)]"
+                            />
+                            Finish connecting
+                          </span>
+                          <button
+                            className="btn !px-3 !py-1.5 !text-[12px]"
+                            disabled={connectorBusy === r.slug}
+                            onClick={() => void connectToolkit(r.slug)}
+                          >
+                            Resume
+                          </button>
+                        </>
+                      ) : r.status === "error" ? (
+                        <>
+                          <span className="flex items-center gap-1.5 text-[12px]">
+                            <span
+                              aria-hidden
+                              className="inline-block h-2 w-2 rounded-full bg-[var(--danger)]"
+                            />
+                            Needs attention
+                          </span>
+                          <button
+                            className="btn !px-3 !py-1.5 !text-[12px]"
+                            disabled={connectorBusy === r.slug}
+                            onClick={() => void connectToolkit(r.slug)}
+                          >
+                            Reconnect
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          {r.status === "revoked" ? (
+                            <span className="muted flex items-center gap-1.5 text-[12px]">
+                              <span
+                                aria-hidden
+                                className="inline-block h-2 w-2 rounded-full bg-[var(--muted)]"
+                              />
+                              Disconnected
+                            </span>
+                          ) : null}
+                          <button
+                            className="btn !px-3 !py-1.5 !text-[12px]"
+                            disabled={connectorBusy === r.slug}
+                            onClick={() => void connectToolkit(r.slug)}
+                          >
+                            Connect
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
                 ))}
               {toolkits === null ? (
