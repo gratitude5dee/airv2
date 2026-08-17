@@ -18,11 +18,32 @@ import {
 import {
   createCampaign,
   updateCampaign,
+  createAdGroup,
+  createAd,
+  updateAd,
+  uploadAsset,
   openAdsKey,
   OpenAIAdsError,
+  type ChatCardCreative,
 } from "./openai";
 
-export type AdWriteKind = "create_campaign" | "update_budget" | "set_status";
+export type AdWriteKind =
+  | "create_campaign"
+  | "update_budget"
+  | "set_status"
+  | "create_ad_group"
+  | "create_ad"
+  | "update_ad";
+
+/** Kinds that commit new 30-day budget exposure. Ad-group and ad mutations
+ * are spend-mutating (they place bids and creative) so they stay gated
+ * (C22), but their spend is bounded by the campaign budget the ceiling
+ * already counts — they add no exposure of their own. */
+const BUDGET_KINDS: AdWriteKind[] = [
+  "create_campaign",
+  "update_budget",
+  "set_status",
+];
 
 export interface AdWriteRequest {
   accountId: string;
@@ -60,6 +81,7 @@ export function requestedExposureCents(
   status: "active" | "paused" | undefined,
   currentDailyBudgetCents = 0
 ): number {
+  if (!BUDGET_KINDS.includes(kind)) return 0;
   if (kind === "set_status") {
     return status === "active" ? exposure30dCents(dailyBudgetCents) : 0;
   }
@@ -85,12 +107,33 @@ export async function requestAdWrite(
     .maybeSingle();
   if (!account) throw new AdWriteError("ad account not found", 404);
 
-  if (request.kind !== "create_campaign" && !request.campaignRef) {
+  const args = request.args ?? {};
+  if (
+    (request.kind === "update_budget" || request.kind === "set_status") &&
+    !request.campaignRef
+  ) {
     throw new AdWriteError("campaign_ref required", 400);
+  }
+  if (
+    request.kind === "create_ad_group" &&
+    !request.campaignRef &&
+    typeof args.parent_write_id !== "string"
+  ) {
+    throw new AdWriteError("campaign_ref or parent_write_id required", 400);
+  }
+  if (
+    request.kind === "create_ad" &&
+    typeof args.ad_group_ref !== "string" &&
+    typeof args.parent_write_id !== "string"
+  ) {
+    throw new AdWriteError("ad_group_ref or parent_write_id required", 400);
+  }
+  if (request.kind === "update_ad" && typeof args.ad_ref !== "string") {
+    throw new AdWriteError("ad_ref required", 400);
   }
   let dailyBudgetCents = request.dailyBudgetCents ?? 0;
   let currentDailyBudgetCents = 0;
-  if (request.kind !== "create_campaign" && request.campaignRef) {
+  if (BUDGET_KINDS.includes(request.kind) && request.kind !== "create_campaign" && request.campaignRef) {
     const { data: campaign } = await supabase
       .from("ad_campaigns")
       .select("daily_budget_cents")
@@ -218,6 +261,39 @@ async function mirrorCampaign(
   }
 }
 
+/** A wizard write may reference the ref its parent write creates (the ad
+ * group can't name a campaign that doesn't exist yet). The parent must have
+ * executed first — approving out of order refuses with a retryable 409. */
+async function parentResultRef(
+  supabase: SupabaseClient,
+  userId: string,
+  parentWriteId: string,
+  key: "campaign_ref" | "ad_group_ref"
+): Promise<string> {
+  const { data: parent } = await supabase
+    .from("ad_writes")
+    .select("id, status, result")
+    .eq("id", parentWriteId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!parent) throw new AdWriteError("parent write not found", 404);
+  const ref = ((parent.result ?? {}) as Record<string, unknown>)[key];
+  if (parent.status !== "executed" || typeof ref !== "string" || !ref) {
+    throw new AdWriteError("approve the earlier step first", 409);
+  }
+  return ref;
+}
+
+function chatCardFromArgs(args: Record<string, unknown>): ChatCardCreative | undefined {
+  const creative = args.creative as Record<string, unknown> | undefined;
+  if (!creative) return undefined;
+  return {
+    title: String(creative.title ?? ""),
+    body: String(creative.body ?? ""),
+    targetUrl: String(creative.target_url ?? ""),
+  };
+}
+
 /**
  * Approve and execute a pending write. Refuses (without executing anything)
  * when the write would push committed 30-day exposure past the control-plane
@@ -312,30 +388,115 @@ export async function approveAdWrite(
   const apiKey = openAdsKey(account.api_key_sealed);
   try {
     let campaignRef = write.campaign_ref as string | null;
-    if (write.kind === "create_campaign") {
+    let result: Record<string, unknown> = {};
+    if (write.kind === "create_ad_group") {
+      const campaignId =
+        campaignRef ??
+        (await parentResultRef(
+          supabase,
+          userId,
+          String(args.parent_write_id),
+          "campaign_ref"
+        ));
+      const created = await createAdGroup(
+        apiKey,
+        {
+          campaignId,
+          name: typeof args.name === "string" ? args.name : "Ad group",
+          ...(Array.isArray(args.context_hints)
+            ? { contextHints: args.context_hints.map(String) }
+            : {}),
+          ...(typeof args.max_bid_cents === "number"
+            ? { maxBidCents: Math.round(args.max_bid_cents) }
+            : {}),
+        },
+        `ad-write-${write.id}`
+      );
+      campaignRef = campaignId;
+      result = { campaign_ref: campaignId, ad_group_ref: created.adGroupRef };
+    } else if (write.kind === "create_ad") {
+      const adGroupId =
+        typeof args.ad_group_ref === "string" && args.ad_group_ref
+          ? args.ad_group_ref
+          : await parentResultRef(
+              supabase,
+              userId,
+              String(args.parent_write_id),
+              "ad_group_ref"
+            );
+      const creative = chatCardFromArgs(args);
+      if (!creative) throw new AdWriteError("creative required", 409);
+      if (typeof args.image_url === "string" && args.image_url) {
+        const upload = await uploadAsset(apiKey, { image_url: args.image_url });
+        creative.fileId = upload.fileId;
+      }
+      const created = await createAd(
+        apiKey,
+        {
+          adGroupId,
+          ...(typeof args.name === "string" ? { name: args.name } : {}),
+          creative,
+        },
+        `ad-write-${write.id}`
+      );
+      result = {
+        ad_group_ref: adGroupId,
+        ad_ref: created.adRef,
+        review_status: created.reviewStatus,
+      };
+    } else if (write.kind === "update_ad") {
+      const adRef = String(args.ad_ref);
+      await updateAd(
+        apiKey,
+        adRef,
+        {
+          ...(args.status === "active" || args.status === "paused"
+            ? { status: args.status }
+            : {}),
+          ...(chatCardFromArgs(args)
+            ? { creative: chatCardFromArgs(args) }
+            : {}),
+        },
+        `ad-write-${write.id}`
+      );
+      result = { ad_ref: adRef };
+    } else if (write.kind === "create_campaign") {
       const created = await createCampaign(
         apiKey,
         {
           ...args,
-          daily_budget_cents: write.daily_budget_cents,
+          lifetime_spend_limit_cents: Number(
+            write.exposure_30d_cents ??
+              exposure30dCents(Number(write.daily_budget_cents ?? 0))
+          ),
         },
         `ad-write-${write.id}`
       );
       campaignRef = created.campaignRef;
+      result = { campaign_ref: campaignRef };
       await mirrorCampaign(supabase, userId, account.id, campaignRef, {
         name: typeof args.name === "string" ? args.name : undefined,
         daily_budget_cents: Number(write.daily_budget_cents ?? 0),
         status: "active",
       });
     } else if (write.kind === "update_budget" && campaignRef) {
-      await updateCampaign(apiKey, campaignRef, {
-        daily_budget_cents: write.daily_budget_cents,
-      });
+      result = { campaign_ref: campaignRef };
+      await updateCampaign(
+        apiKey,
+        campaignRef,
+        {
+          lifetime_spend_limit_cents: exposure30dCents(
+            Number(write.daily_budget_cents ?? 0)
+          ),
+        },
+        `ad-write-${write.id}`
+      );
       await mirrorCampaign(supabase, userId, account.id, campaignRef, {
         daily_budget_cents: Number(write.daily_budget_cents ?? 0),
       });
     } else if (write.kind === "set_status" && campaignRef) {
       const status = args.status === "active" ? "active" : "paused";
+      result = { campaign_ref: campaignRef };
       await updateCampaign(apiKey, campaignRef, { status });
       await mirrorCampaign(supabase, userId, account.id, campaignRef, {
         status,
@@ -350,7 +511,7 @@ export async function approveAdWrite(
         status: "executed",
         error: null,
         campaign_ref: campaignRef,
-        result: { campaign_ref: campaignRef },
+        result,
         resolved_at: new Date().toISOString(),
       })
       .eq("id", write.id);
