@@ -2,10 +2,19 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { DitherAvatar } from "@/components/dither-kit/avatar";
 import { Orb } from "@/components/orb/Orb";
 import { PromptInput } from "@/components/prompt-input/PromptInput";
 import { AdsPanel } from "./ads-panel";
+
+// Loaded on demand so the main route doesn't pay for thirdweb/react unless
+// the user opens Fund (goal.md M15 bundle budget).
+const FundWidget = dynamic(() => import("@/components/wallet/FundWidget"), {
+  ssr: false,
+});
+
+const THIRDWEB_CLIENT_ID = process.env.NEXT_PUBLIC_THIRDWEB_CLIENT_ID;
 
 interface Me {
   user: { id: string; username: string | null; wallet_address: string | null };
@@ -78,6 +87,25 @@ interface ChatMessage {
   text: string;
 }
 
+interface WalletSummary {
+  address: string | null;
+  chain_id?: number;
+  native?: { symbol: string; display: string } | null;
+  tokens?: { symbol: string; name: string; display: string; usd: null }[];
+  degraded?: boolean;
+  receive_qr?: string | null;
+  updated_at?: string;
+}
+
+interface WalletTx {
+  hash: string;
+  direction: "in" | "out";
+  counterparty: string;
+  value_display: string;
+  timestamp: string;
+  explorer_url: string;
+}
+
 type Tab =
   | "chat"
   | "history"
@@ -86,6 +114,7 @@ type Tab =
   | "people"
   | "connectors"
   | "ads"
+  | "wallet"
   | "computer";
 
 /** Tolerantly extract a list from an API payload that may be a bare array,
@@ -125,6 +154,7 @@ const TABS: [Tab, string][] = [
   ["connectors", "Connectors"],
   ["skills", "Skills"],
   ["ads", "Ads"],
+  ["wallet", "Wallet"],
   ["computer", "Computer"],
 ];
 
@@ -165,6 +195,104 @@ export default function HomePage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [decisionBusy, setDecisionBusy] = useState<string | null>(null);
   const [decisionNote, setDecisionNote] = useState<string | null>(null);
+  const [wallet, setWallet] = useState<WalletSummary | null>(null);
+  const [walletTxs, setWalletTxs] = useState<WalletTx[] | null>(null);
+  const [walletNote, setWalletNote] = useState<string | null>(null);
+  const [walletCopied, setWalletCopied] = useState(false);
+  const [walletReceiveOpen, setWalletReceiveOpen] = useState(false);
+  const [walletFundOpen, setWalletFundOpen] = useState(false);
+  const [boxState, setBoxState] = useState<string | null>(null);
+  const [powerBusy, setPowerBusy] = useState(false);
+  const [powerNote, setPowerNote] = useState<string | null>(null);
+
+  // Poll the box power state — quickly through transitions so the boot
+  // banner and Computer controls track reality, slowly at rest.
+  useEffect(() => {
+    let stale = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const tick = async () => {
+      try {
+        const res = await fetch("/api/box/status");
+        if (res.ok) {
+          const data = (await res.json()) as { state?: string };
+          if (!stale && typeof data.state === "string") setBoxState(data.state);
+        }
+      } catch {
+        // transient; keep polling
+      }
+      if (!stale) {
+        const fast =
+          boxStateRef.current === "starting" ||
+          boxStateRef.current === "stopping" ||
+          boxStateRef.current === "provisioning";
+        timer = setTimeout(tick, fast ? 3_000 : 15_000);
+      }
+    };
+    void tick();
+    return () => {
+      stale = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
+  const boxStateRef = useRef<string | null>(null);
+  useEffect(() => {
+    boxStateRef.current = boxState;
+  }, [boxState]);
+
+  async function powerOn(keepAwakeMinutes?: number) {
+    setPowerBusy(true);
+    setPowerNote(null);
+    setBoxState("starting");
+    try {
+      const res = await fetch("/api/box/wake", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          keepAwakeMinutes ? { keep_awake_minutes: keepAwakeMinutes } : {}
+        ),
+      });
+      if (res.ok) {
+        setBoxState("ready");
+        if (keepAwakeMinutes) {
+          setPowerNote(`Staying awake for ${Math.round(keepAwakeMinutes / 60)}h.`);
+        }
+        // Remount the desktop iframe: the stream token rotates on resume.
+        setComputerEpoch((n) => n + 1);
+      } else if (res.status === 429) {
+        setPowerNote("Start limit reached — try again in a minute.");
+        setBoxState("stopped");
+      } else {
+        setPowerNote("Couldn't power on — try again shortly.");
+        setBoxState("stopped");
+      }
+    } catch {
+      setPowerNote("Couldn't power on — try again shortly.");
+    } finally {
+      setPowerBusy(false);
+    }
+  }
+
+  async function powerOff() {
+    setPowerBusy(true);
+    setPowerNote(null);
+    try {
+      const res = await fetch("/api/box/stop", { method: "POST" });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (res.ok) {
+        setBoxState("stopped");
+      } else if (data.error === "run_active") {
+        setPowerNote("Your agent is mid-task — wait for it to finish first.");
+      } else if (data.error === "stop_refused") {
+        setPowerNote("The computer refused to stop — it stays on. Try again shortly.");
+      } else {
+        setPowerNote("Couldn't power off — try again shortly.");
+      }
+    } catch {
+      setPowerNote("Couldn't power off — try again shortly.");
+    } finally {
+      setPowerBusy(false);
+    }
+  }
 
   useEffect(() => {
     fetch("/api/me").then(async (res) => {
@@ -451,6 +579,41 @@ export default function HomePage() {
     return `Couldn't load ${what} — try again shortly.`;
   }
 
+  async function loadWallet() {
+    setWalletNote(null);
+    try {
+      const [summaryRes, activityRes] = await Promise.all([
+        fetch("/api/wallet"),
+        fetch("/api/wallet/activity"),
+      ]);
+      if (summaryRes.ok) {
+        setWallet((await summaryRes.json()) as WalletSummary);
+      } else {
+        setWalletNote("Couldn't load your wallet — try again shortly.");
+      }
+      if (activityRes.ok) {
+        const data = (await activityRes.json()) as {
+          transactions?: WalletTx[];
+        };
+        setWalletTxs(data.transactions ?? []);
+      } else {
+        setWalletTxs([]);
+      }
+    } catch {
+      setWalletNote("Couldn't load your wallet — try again shortly.");
+    }
+  }
+
+  async function copyWalletAddress(address: string) {
+    try {
+      await navigator.clipboard.writeText(address);
+      setWalletCopied(true);
+      setTimeout(() => setWalletCopied(false), 1500);
+    } catch {
+      // clipboard unavailable; the address is selectable text
+    }
+  }
+
   async function loadHistory() {
     const loadId = ++panelLoadId.current;
     setPanelFailed(false);
@@ -521,6 +684,9 @@ export default function HomePage() {
     }
     if (next === "skills" && skills === null) {
       await loadInstalledSkills();
+    }
+    if (next === "wallet" && wallet === null) {
+      await loadWallet();
     }
   }
 
@@ -949,36 +1115,252 @@ export default function HomePage() {
             </div>
           ) : tab === "computer" ? (
             <div className="flex flex-1 flex-col gap-2">
-              <div className="flex items-center justify-between">
-                <p className="muted m-0 text-[13px]">
-                  Live view of your agent’s computer — take over when it needs
-                  you (logins, approvals).
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="muted m-0 flex items-center gap-2 text-[13px]">
+                  <span
+                    aria-hidden
+                    className={
+                      "inline-block h-2 w-2 rounded-full " +
+                      (boxState === "ready" || boxState === "idle"
+                        ? "bg-[var(--success)]"
+                        : boxState === "starting" || boxState === "stopping"
+                          ? "bg-[var(--warning)]"
+                          : "bg-[var(--muted)]")
+                    }
+                  />
+                  {boxState === "ready" || boxState === "idle"
+                    ? "Your agent’s computer is on."
+                    : boxState === "starting"
+                      ? "Powering on…"
+                      : boxState === "stopping"
+                        ? "Powering off…"
+                        : boxState === "stopped"
+                          ? "Your agent’s computer is off."
+                          : "Checking power state…"}
                 </p>
-                <a
-                  className="btn btn-ghost !px-3 !py-1.5 !text-[12px]"
-                  href="/api/box/desktop"
-                  target="_blank"
-                  rel="noreferrer noopener"
-                >
-                  Open in new tab
-                </a>
-                <a
-                  className="btn btn-ghost !px-3 !py-1.5 !text-[12px]"
-                  href="/api/box/desktop?vnc=1"
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  title="HTTPS-tunneled viewer for restrictive networks; opens as its own page"
-                >
-                  Use VNC
-                </a>
+                <div className="flex items-center gap-2">
+                  {boxState === "stopped" ? (
+                    <button
+                      className="btn !px-3 !py-1.5 !text-[12px]"
+                      disabled={powerBusy}
+                      onClick={() => void powerOn()}
+                    >
+                      {powerBusy ? "Powering on…" : "Power on"}
+                    </button>
+                  ) : null}
+                  {boxState === "ready" || boxState === "idle" ? (
+                    <>
+                      <button
+                        className="btn btn-ghost !px-3 !py-1.5 !text-[12px]"
+                        disabled={powerBusy}
+                        onClick={() => void powerOn(60)}
+                        title="Keep the computer awake for the next hour"
+                      >
+                        Keep awake 1h
+                      </button>
+                      <button
+                        className="btn btn-ghost !px-3 !py-1.5 !text-[12px]"
+                        disabled={powerBusy}
+                        onClick={() => void powerOff()}
+                      >
+                        {powerBusy ? "Powering off…" : "Power off"}
+                      </button>
+                      <a
+                        className="btn btn-ghost !px-3 !py-1.5 !text-[12px]"
+                        href="/api/box/desktop"
+                        target="_blank"
+                        rel="noreferrer noopener"
+                      >
+                        Open in new tab
+                      </a>
+                      <a
+                        className="btn btn-ghost !px-3 !py-1.5 !text-[12px]"
+                        href="/api/box/desktop?vnc=1"
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        title="HTTPS-tunneled viewer for restrictive networks; opens as its own page"
+                      >
+                        Use VNC
+                      </a>
+                    </>
+                  ) : null}
+                </div>
               </div>
-              <iframe
-                key={computerEpoch}
-                src="/api/box/desktop"
-                title="Your agent's computer"
-                className="min-h-[420px] flex-1 rounded-xl border-0 bg-black"
-                allow="clipboard-read; clipboard-write"
-              />
+              {powerNote ? (
+                <p className="muted m-0 text-[12px]">{powerNote}</p>
+              ) : null}
+              {boxState === "ready" || boxState === "idle" ? (
+                <iframe
+                  key={computerEpoch}
+                  src="/api/box/desktop"
+                  title="Your agent's computer"
+                  className="min-h-[420px] flex-1 rounded-xl border-0 bg-black"
+                  allow="clipboard-read; clipboard-write"
+                />
+              ) : (
+                <div className="flex min-h-[420px] flex-1 flex-col items-center justify-center gap-3 rounded-xl bg-surface-2 text-center">
+                  <Orb size={28} label="air" />
+                  <p className="muted m-0 text-[13px]">
+                    {boxState === "starting"
+                      ? "Powering on — the live view will appear when it’s ready."
+                      : boxState === "stopping"
+                        ? "Powering off…"
+                        : "The computer is asleep. Power it on to see the live view."}
+                  </p>
+                </div>
+              )}
+            </div>
+          ) : tab === "wallet" ? (
+            <div className="grid flex-1 content-start gap-2 overflow-y-auto">
+              <h3 className="m-0 text-[15px] font-semibold">Wallet</h3>
+              {walletNote ? (
+                <div className="flex items-center gap-2 py-1">
+                  <p className="muted m-0 text-[13px]">{walletNote}</p>
+                  <button
+                    className="btn !px-3 !py-1.5 !text-[12px]"
+                    onClick={() => void loadWallet()}
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : wallet === null ? (
+                <div className="py-2">
+                  <Orb pill label="Loading your wallet…" />
+                </div>
+              ) : wallet.address === null ? (
+                <p className="muted text-[13px]">
+                  Wallet not set up yet — sign out and back in with your phone
+                  to attach it.
+                </p>
+              ) : (
+                <>
+                  <div className="panel !p-3">
+                    <div className="flex items-center gap-3">
+                      <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full shadow-[0_0_0_0.5px_var(--ring)]">
+                        <DitherAvatar name={wallet.address} size={36} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="m-0 break-all font-mono text-[12px]">
+                          {wallet.address}
+                        </p>
+                        <p className="muted m-0 mt-0.5 text-[11px]">
+                          Chain {wallet.chain_id}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        className="btn !px-3 !py-1.5 !text-[12px]"
+                        onClick={() => void copyWalletAddress(wallet.address as string)}
+                      >
+                        {walletCopied ? "Copied" : "Copy"}
+                      </button>
+                      {wallet.receive_qr ? (
+                        <button
+                          className="btn btn-ghost !px-3 !py-1.5 !text-[12px]"
+                          onClick={() => setWalletReceiveOpen((open) => !open)}
+                        >
+                          {walletReceiveOpen ? "Hide QR" : "Receive"}
+                        </button>
+                      ) : null}
+                      {THIRDWEB_CLIENT_ID ? (
+                        <button
+                          className="btn btn-ghost !px-3 !py-1.5 !text-[12px]"
+                          onClick={() => setWalletFundOpen((open) => !open)}
+                        >
+                          {walletFundOpen ? "Hide fund" : "Fund"}
+                        </button>
+                      ) : null}
+                    </div>
+                    {walletReceiveOpen && wallet.receive_qr ? (
+                      <div className="mt-3">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={wallet.receive_qr}
+                          alt="QR code of your wallet address"
+                          width={160}
+                          height={160}
+                          className="rounded-lg bg-white p-2"
+                        />
+                      </div>
+                    ) : null}
+                    {walletFundOpen && THIRDWEB_CLIENT_ID && wallet.chain_id ? (
+                      <div className="mt-3">
+                        <FundWidget
+                          clientId={THIRDWEB_CLIENT_ID}
+                          chainId={wallet.chain_id}
+                          address={wallet.address}
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                  <h4 className="m-0 mt-2 text-[13px] font-semibold">Balances</h4>
+                  {wallet.degraded ? (
+                    <p className="muted m-0 text-[12px]">
+                      Some balances are unavailable right now — showing what we
+                      could reach.
+                    </p>
+                  ) : null}
+                  {wallet.native ? (
+                    <div className="panel rise-in flex items-center justify-between !p-3">
+                      <strong className="text-[13px]">{wallet.native.symbol}</strong>
+                      <span className="text-[13px]">{wallet.native.display}</span>
+                    </div>
+                  ) : null}
+                  {(wallet.tokens ?? []).map((t, i) => (
+                    <div
+                      key={`${t.symbol}-${i}`}
+                      className="panel rise-in flex items-center justify-between !p-3"
+                    >
+                      <div>
+                        <strong className="text-[13px]">{t.symbol}</strong>
+                        <p className="muted m-0 mt-0.5 text-[12px]">{t.name}</p>
+                      </div>
+                      <span className="text-[13px]">{t.display}</span>
+                    </div>
+                  ))}
+                  {!wallet.native && (wallet.tokens ?? []).length === 0 ? (
+                    <p className="muted m-0 text-[13px]">
+                      No balances to show yet.
+                    </p>
+                  ) : null}
+                  <h4 className="m-0 mt-2 text-[13px] font-semibold">Activity</h4>
+                  {(walletTxs ?? []).map((t) => (
+                    <a
+                      key={t.hash}
+                      href={t.explorer_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="panel rise-in flex items-center justify-between !p-3 no-underline"
+                    >
+                      <div className="min-w-0">
+                        <strong
+                          className={
+                            "text-[13px] " +
+                            (t.direction === "in"
+                              ? "text-[var(--success)]"
+                              : "text-[var(--muted-2)]")
+                          }
+                        >
+                          {t.direction === "in" ? "Received" : "Sent"}
+                        </strong>
+                        <p className="muted m-0 mt-0.5 break-all font-mono text-[11px]">
+                          {t.counterparty}
+                        </p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <span className="text-[13px]">{t.value_display}</span>
+                        <p className="muted m-0 mt-0.5 text-[11px]">
+                          {new Date(t.timestamp).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </a>
+                  ))}
+                  {walletTxs !== null && walletTxs.length === 0 ? (
+                    <p className="muted m-0 text-[13px]">No activity yet.</p>
+                  ) : null}
+                </>
+              )}
             </div>
           ) : tab === "ads" ? (
             <AdsPanel
@@ -987,6 +1369,7 @@ export default function HomePage() {
                 setTab("chat");
                 setInput(prefill);
               }}
+              onOpenQueue={() => void loadTab("needs")}
             />
           ) : (
             <>
@@ -1083,6 +1466,16 @@ export default function HomePage() {
                   />
                 </div>
               ) : null}
+              {boxState === "starting" ? (
+                <div className="flex items-center gap-2 rounded-xl bg-surface-2 px-3 py-2 text-[12px] text-[var(--muted-2)]">
+                  <span
+                    aria-hidden
+                    className="inline-block h-2 w-2 animate-pulse rounded-full bg-[var(--warning)]"
+                  />
+                  Your agent’s computer is booting — replies may take a little
+                  longer.
+                </div>
+              ) : null}
               <PromptInput
                 value={input}
                 onChange={setInput}
@@ -1124,9 +1517,18 @@ export default function HomePage() {
               </p>
             ) : null}
             <p className="muted my-1 text-[12px]">
-              {me?.user.wallet_address
-                ? `Wallet: ${me.user.wallet_address.slice(0, 6)}…${me.user.wallet_address.slice(-4)}`
-                : "Wallet: not set up"}
+              {me?.user.wallet_address ? (
+                <button
+                  type="button"
+                  className="cursor-pointer border-0 bg-transparent p-0 underline decoration-dotted underline-offset-2"
+                  onClick={() => void loadTab("wallet")}
+                >
+                  Wallet: {me.user.wallet_address.slice(0, 6)}…
+                  {me.user.wallet_address.slice(-4)}
+                </button>
+              ) : (
+                "Wallet: not set up"
+              )}
             </p>
             <div className="mt-2 flex gap-2">
               <input
