@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { serviceClient } from "@/lib/supabase";
-import { stop } from "@/lib/box/client";
+import { getBox, stop } from "@/lib/box/client";
 import { claimFlush, runFlush } from "@/lib/orchestrator/flush";
 
 export const runtime = "nodejs";
@@ -51,6 +51,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   let stopped = 0;
   for (const box of (idleBoxes ?? []) as SweepableBox[]) {
     try {
+      // last_active_at also starts the stale-transition clock below, so an
+      // interrupted stop is reconciled 30 minutes after the attempt.
+      await supabase
+        .from("boxes")
+        .update({ state: "stopping", last_active_at: nowIso })
+        .eq("provider_box_id", box.provider_box_id);
       await stop(box.provider_box_id);
       await supabase
         .from("boxes")
@@ -58,9 +64,52 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         .eq("provider_box_id", box.provider_box_id);
       stopped += 1;
     } catch (error) {
+      // A refused stop means the snapshot is failing — leave the box
+      // running and visible as ready so the next sweep retries (C6).
+      await supabase
+        .from("boxes")
+        .update({ state: "ready" })
+        .eq("provider_box_id", box.provider_box_id);
       console.error(
         JSON.stringify({
           msg: "sweeper stop failed",
+          box_id: box.provider_box_id,
+          user_id: box.user_id,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      );
+    }
+  }
+
+  // Reconcile rows parked in a transitional state by an interrupted wake or
+  // stop (function timeout between the "starting"/"stopping" write and the
+  // terminal write): after 30 minutes, persist the provider's real state so
+  // the user gets power controls back and a running box re-enters the sweep.
+  const staleBefore = new Date(Date.now() - 30 * 60_000).toISOString();
+  const { data: staleBoxes } = await supabase
+    .from("boxes")
+    .select("provider_box_id, user_id")
+    .in("state", ["starting", "stopping"])
+    .lt("last_active_at", staleBefore);
+  let reconciled = 0;
+  for (const box of (staleBoxes ?? []) as SweepableBox[]) {
+    try {
+      const current = await getBox(box.provider_box_id).catch(() => null);
+      const running =
+        current && (current.state === "ready" || current.state === "idle");
+      await supabase
+        .from("boxes")
+        .update(
+          running
+            ? { state: "ready", stop_after: nowIso }
+            : { state: "stopped", stop_after: null }
+        )
+        .eq("provider_box_id", box.provider_box_id);
+      reconciled += 1;
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          msg: "sweeper reconcile failed",
           box_id: box.provider_box_id,
           user_id: box.user_id,
           error: error instanceof Error ? error.message : String(error),
@@ -113,5 +162,5 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     .delete()
     .lt("received_at", ttlCutoff);
 
-  return NextResponse.json({ ok: true, stopped, flushed });
+  return NextResponse.json({ ok: true, stopped, reconciled, flushed });
 }

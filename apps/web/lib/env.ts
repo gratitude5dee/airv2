@@ -38,6 +38,11 @@ export const env = {
     const parsed = Number(optional("STT_COST_CENTS_PER_MIN", "1"));
     return Number.isFinite(parsed) && parsed >= 0 ? parsed : 1;
   },
+  // Chain the wallet tab reads from (goal.md M15). Default: Base mainnet.
+  walletChainId: (): number => {
+    const parsed = Number.parseInt(optional("WALLET_CHAIN_ID", "8453"), 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 8453;
+  },
   sessionSecret: (): string => required("SESSION_SECRET"),
   spectrumProjectId: (): string => required("SPECTRUM_PROJECT_ID"),
   spectrumProjectSecret: (): string => required("SPECTRUM_PROJECT_SECRET"),

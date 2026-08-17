@@ -11,6 +11,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Orb } from "@/components/orb/Orb";
+import { AdsDeployWizard } from "./ads-deploy-wizard";
+import { AdsAnalyticsTab } from "./ads-analytics";
 
 interface AdAccount {
   id: string;
@@ -71,15 +73,6 @@ interface AdPixel {
   created_at: string;
 }
 
-interface AdsAnalytics {
-  window_days: number;
-  spend_total_cents: number;
-  spend_by_campaign: { campaign_ref: string; spend_cents: number }[];
-  conversions_by_event: { event: string; count: number; value_cents: number }[];
-  conversion_count: number;
-  truncated?: boolean;
-}
-
 type AdsTab = "onboarding" | "gallery" | "deploy" | "pixels" | "analytics";
 
 const ADS_TABS: [AdsTab, string][] = [
@@ -97,11 +90,14 @@ function usd(cents: number): string {
 export function AdsPanel({
   active,
   onAskAgent,
+  onOpenQueue,
 }: {
   active: boolean;
   /** Jump to the chat tab with a prefilled message — the agent (same one as
    * iMessage) completes Meta logins and answers deeper data questions. */
   onAskAgent: (prefill: string) => void;
+  /** Jump to the "Needs you" queue where proposed writes await approval. */
+  onOpenQueue: () => void;
 }) {
   const [subtab, setSubtab] = useState<AdsTab>("onboarding");
   const [accounts, setAccounts] = useState<AdAccount[] | null>(null);
@@ -123,10 +119,6 @@ export function AdsPanel({
   const pollId = useRef(0);
 
   // Deploy
-  const [writeAccountId, setWriteAccountId] = useState("");
-  const [writeCampaignName, setWriteCampaignName] = useState("");
-  const [writeDailyUsd, setWriteDailyUsd] = useState("");
-  const [writeBusy, setWriteBusy] = useState(false);
   const [campaignBusy, setCampaignBusy] = useState<string | null>(null);
 
   // Onboarding
@@ -138,8 +130,6 @@ export function AdsPanel({
   const [pixelName, setPixelName] = useState("");
   const [pixelBusy, setPixelBusy] = useState(false);
 
-  // Analytics
-  const [analytics, setAnalytics] = useState<AdsAnalytics | null>(null);
 
   async function loadAds() {
     const id = ++loadId.current;
@@ -148,13 +138,12 @@ export function AdsPanel({
     setLoading(true);
     let anyFailed = false;
     try {
-      const [accountsRes, specsRes, writesRes, pixelsRes, analyticsRes, assetsRes] =
+      const [accountsRes, specsRes, writesRes, pixelsRes, assetsRes] =
         await Promise.all([
           fetch("/api/ads/accounts"),
           fetch("/api/ads/groups"),
           fetch("/api/ads/writes"),
           fetch("/api/ads/pixels"),
-          fetch("/api/ads/analytics"),
           fetch("/api/assets"),
         ]);
       if (id !== loadId.current) return;
@@ -185,11 +174,6 @@ export function AdsPanel({
       if (pixelsRes.ok) {
         const data = (await pixelsRes.json()) as { pixels?: AdPixel[] };
         setPixels(data.pixels ?? []);
-      } else {
-        anyFailed = true;
-      }
-      if (analyticsRes.ok) {
-        setAnalytics((await analyticsRes.json()) as AdsAnalytics);
       } else {
         anyFailed = true;
       }
@@ -319,46 +303,6 @@ export function AdsPanel({
     if (res.ok) {
       const data = (await res.json()) as { writes?: AdWrite[] };
       setWrites(data.writes ?? []);
-    }
-  }
-
-  async function proposeCampaign() {
-    const dailyUsd = Number(writeDailyUsd);
-    if (
-      writeBusy ||
-      !writeAccountId ||
-      !writeCampaignName.trim() ||
-      !Number.isFinite(dailyUsd) ||
-      dailyUsd <= 0
-    )
-      return;
-    setWriteBusy(true);
-    setFailed(false);
-    setNote(null);
-    try {
-      const res = await fetch("/api/ads/writes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          account_id: writeAccountId,
-          kind: "create_campaign",
-          campaign_name: writeCampaignName.trim(),
-          daily_budget_cents: Math.round(dailyUsd * 100),
-        }),
-      });
-      if (res.ok) {
-        setWriteCampaignName("");
-        setWriteDailyUsd("");
-        setNote("Proposed — approve it under “Needs you” to run it.");
-        await refreshWrites();
-      } else {
-        const data = (await res.json().catch(() => ({}))) as { error?: string };
-        setNote(data.error ?? "Couldn't propose the campaign — try again.");
-      }
-    } catch {
-      setNote("Couldn't propose the campaign — try again.");
-    } finally {
-      setWriteBusy(false);
     }
   }
 
@@ -652,58 +596,16 @@ export function AdsPanel({
               : ""}
           </p>
           <h4 className="m-0 mt-1 text-[13px] font-semibold">
-            Propose a campaign
+            Deploy an ad
           </h4>
-          <form
-            className="grid gap-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void proposeCampaign();
-            }}
-          >
-            <select
-              className="input !py-1.5 !text-[13px]"
-              value={writeAccountId}
-              onChange={(e) => setWriteAccountId(e.target.value)}
-              aria-label="Ad account"
-            >
-              <option value="">Choose an account…</option>
-              {(accounts ?? []).map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.label ?? a.account_ref} ({a.provider})
-                </option>
-              ))}
-            </select>
-            <input
-              className="input !py-1.5 !text-[13px]"
-              placeholder="Campaign name"
-              value={writeCampaignName}
-              onChange={(e) => setWriteCampaignName(e.target.value)}
-              aria-label="Campaign name"
-            />
-            <input
-              className="input !py-1.5 !text-[13px]"
-              placeholder="Daily budget (USD)"
-              inputMode="decimal"
-              value={writeDailyUsd}
-              onChange={(e) => setWriteDailyUsd(e.target.value)}
-              aria-label="Daily budget in dollars"
-            />
-            <div>
-              <button
-                type="submit"
-                className="btn !px-3 !py-1.5 !text-[12px]"
-                disabled={
-                  writeBusy ||
-                  !writeAccountId ||
-                  !writeCampaignName.trim() ||
-                  !(Number(writeDailyUsd) > 0)
-                }
-              >
-                {writeBusy ? "Proposing…" : "Propose — approve in “Needs you”"}
-              </button>
-            </div>
-          </form>
+          <AdsDeployWizard
+            accounts={accounts ?? []}
+            campaigns={campaigns}
+            assets={assets ?? []}
+            onProposed={refreshWrites}
+            onOpenQueue={onOpenQueue}
+            onAskAgent={onAskAgent}
+          />
 
           <h4 className="m-0 mt-2 text-[13px] font-semibold">Campaigns</h4>
           {campaigns.map((c) => (
@@ -845,64 +747,10 @@ export function AdsPanel({
       ) : null}
 
       {subtab === "analytics" ? (
-        <>
-          <h4 className="m-0 mt-1 text-[13px] font-semibold">
-            Last {analytics?.window_days ?? 30} days
-          </h4>
-          <div className="panel !p-3">
-            <strong className="text-[13px]">
-              Reported spend: {usd(analytics?.spend_total_cents ?? 0)}
-            </strong>
-            <p className="muted m-0 mt-1 text-[12px]">
-              Conversions: {analytics?.conversion_count ?? 0}
-              {analytics?.truncated
-                ? " (partial — too much data to total exactly)"
-                : ""}
-            </p>
-          </div>
-          {(analytics?.spend_by_campaign ?? []).map((row) => (
-            <div key={row.campaign_ref} className="panel rise-in !p-3">
-              <strong className="text-[13px]">{row.campaign_ref}</strong>
-              <p className="muted m-0 mt-1 text-[12px]">
-                {usd(row.spend_cents)} spent
-              </p>
-            </div>
-          ))}
-          {(analytics?.conversions_by_event ?? []).map((row) => (
-            <div key={row.event} className="panel rise-in !p-3">
-              <strong className="text-[13px]">{row.event}</strong>
-              <p className="muted m-0 mt-1 text-[12px]">
-                {row.count} events · {usd(row.value_cents)} value
-              </p>
-            </div>
-          ))}
-          {analytics &&
-          analytics.spend_by_campaign.length === 0 &&
-          analytics.conversions_by_event.length === 0 ? (
-            <p className="muted m-0 text-[13px]">
-              No reported spend or conversions yet.
-            </p>
-          ) : null}
-          <h4 className="m-0 mt-2 text-[13px] font-semibold">
-            Ask about your Meta data
-          </h4>
-          <p className="muted m-0 text-[12px]">
-            Your agent holds the Meta Ads tools — ask it anything about
-            performance, audiences, or spend. Same agent as iMessage.
-          </p>
-          <div>
-            <button
-              className="btn !px-3 !py-1.5 !text-[12px]"
-              onClick={() =>
-                onAskAgent(
-                  "Using your Meta Ads tools, summarize my ad performance over the last 30 days."
-                )
-              }
-            >
-              Chat with your Meta data
-            </button>
-          </div>
-        </>
+        <AdsAnalyticsTab
+          active={active && subtab === "analytics"}
+          onAskAgent={onAskAgent}
+        />
       ) : null}
 
       {loading ? (
