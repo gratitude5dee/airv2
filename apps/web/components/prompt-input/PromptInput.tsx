@@ -41,6 +41,8 @@ export interface PromptInputProps {
   placeholder?: string;
   tier: string;
   onTierChange: (tier: string) => void;
+  /** Display-only model labels per tier id, server-supplied via /api/me. */
+  tierModels?: Partial<Record<string, string>>;
 }
 
 export function PromptInput({
@@ -51,6 +53,7 @@ export function PromptInput({
   placeholder = "Message your agent…",
   tier,
   onTierChange,
+  tierModels,
 }: PromptInputProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [hoveredTier, setHoveredTier] = useState<string | null>(null);
@@ -159,6 +162,9 @@ export function PromptInput({
                       <div className={styles.menuPopover} role="tooltip">
                         <div className={styles.popoverTitle}>{t.name}</div>
                         <p className={styles.popoverDesc}>{t.desc}</p>
+                        {tierModels?.[t.id] && (
+                          <p className={styles.popoverModel}>{tierModels[t.id]}</p>
+                        )}
                       </div>
                     )}
                   </div>
