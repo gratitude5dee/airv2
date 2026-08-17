@@ -159,12 +159,15 @@ export async function ensureBoxAwake(
     .eq("user_id", userId);
 
   const box = await getBox(boxId);
+  let wroteStarting = false;
+  try {
   if (box.state !== "ready" && box.state !== "idle") {
     // Transitional state so the UI can show an honest boot progression (M10).
     await supabase
       .from("boxes")
       .update({ state: "starting" })
       .eq("provider_box_id", boxId);
+    wroteStarting = true;
     try {
       await resume(boxId);
     } catch (error) {
@@ -257,9 +260,30 @@ export async function ensureBoxAwake(
     dashboard,
     dashboardAuthSealed: row.dashboard_auth ?? undefined,
   };
+  } catch (error) {
+    // A wake that dies after the "starting" write (waitForBox throwing, the
+    // health loop deadline) must not park the row in a transitional state
+    // the UI has no controls for: persist the provider's real state.
+    if (wroteStarting) {
+      const current = await getBox(boxId).catch(() => null);
+      const state =
+        current && (current.state === "ready" || current.state === "idle")
+          ? "ready"
+          : "stopped";
+      await supabase
+        .from("boxes")
+        .update({ state })
+        .eq("provider_box_id", boxId);
+    }
+    throw error;
+  }
 }
 
-/** Re-arm the idle deadline; the cron sweeper stops the box past it. */
+/**
+ * Re-arm the idle deadline; the cron sweeper stops the box past it.
+ * Monotonic: never moves an existing deadline earlier, so routine activity
+ * re-arms (20 min) cannot shrink an explicit keep-awake window.
+ */
 export async function armStopAfter(
   supabase: SupabaseClient,
   userId: string,
@@ -269,5 +293,6 @@ export async function armStopAfter(
   await supabase
     .from("boxes")
     .update({ stop_after: stopAfter })
-    .eq("user_id", userId);
+    .eq("user_id", userId)
+    .or(`stop_after.is.null,stop_after.lt.${stopAfter}`);
 }

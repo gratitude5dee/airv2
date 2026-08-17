@@ -48,7 +48,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   await supabase
     .from("boxes")
-    .update({ state: "stopping" })
+    .update({ state: "stopping", last_active_at: new Date().toISOString() })
     .eq("user_id", session.userId);
   try {
     await stop(row.provider_box_id);
