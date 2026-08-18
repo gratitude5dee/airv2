@@ -14,6 +14,7 @@ import {
   registerVaultValue,
   resetRegisteredVaultValues,
   scrubVaultValues,
+  unregisterVaultValues,
   vaultLog,
 } from "./scrub";
 
@@ -184,6 +185,22 @@ describe("log-scrubber gate (V1 task 6)", () => {
     const line = fixture.join("\n");
     expect(line).not.toContain(PLANTED.password);
     expect(line).toContain("[REDACTED]");
+  });
+
+  it("registration is bounded to the operation that carried the value", async () => {
+    // After the request cycle in the gate test above, applyBatch/reveal have
+    // unregistered their values — nothing is retained process-wide.
+    vi.mocked(command).mockResolvedValue(cliOk(PLANTED.password));
+    await reveal("bx_1", "user-1", "item-login", "password");
+    expect(scrubVaultValues(`v=${PLANTED.password}`)).toContain(
+      PLANTED.password
+    );
+  });
+
+  it("unregisterVaultValues drops values from the registry", () => {
+    registerVaultValue(PLANTED.apiKey);
+    unregisterVaultValues([PLANTED.apiKey]);
+    expect(scrubVaultValues(`k=${PLANTED.apiKey}`)).toContain(PLANTED.apiKey);
   });
 
   it("scrubVaultValues replaces every occurrence, including embedded ones", () => {

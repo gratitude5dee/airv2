@@ -132,6 +132,17 @@ def test_type_is_machine_readable_until_wired(home, capsys):
     assert json.loads(err)["error"] == "type_not_available"
 
 
+def test_apply_shreds_inbox_when_key_missing(home, capsys, monkeypatch):
+    path = write_inbox(home, {"version": 1, "operations": [
+        {"op": "create", "item": {"kind": "api_key", "name": "x",
+                                  "fields": {"value": SECRET}}},
+    ]})
+    monkeypatch.delenv("AIR_VAULT_KEY")
+    code, _, err = run(capsys, "apply", path)
+    assert code == 1 and json.loads(err)["error"] == "key_missing"
+    assert not os.path.exists(path)
+
+
 def test_missing_key_is_machine_readable(home, capsys, monkeypatch):
     monkeypatch.delenv("AIR_VAULT_KEY")
     code, _, err = run(capsys, "list", "--masked")

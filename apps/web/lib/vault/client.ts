@@ -20,6 +20,7 @@ import { serviceClient } from "../supabase";
 import {
   registerVaultFields,
   registerVaultValue,
+  unregisterVaultValues,
   vaultLog,
   vaultLogError,
 } from "./scrub";
@@ -166,66 +167,96 @@ export async function applyBatch(
   operations: VaultOperation[]
 ): Promise<ApplyResult[]> {
   const supabase = serviceClient();
+  // Registered for the duration of this operation only (scrub.ts is bounded).
+  const transitedValues: (string | null | undefined)[] = [];
   for (const operation of operations) {
     if (operation.op !== "delete") {
       registerVaultFields(operation.item.fields ?? undefined);
+      transitedValues.push(...Object.values(operation.item.fields ?? {}));
       if (operation.item.totp_seed) {
         registerVaultValue(operation.item.totp_seed);
+        transitedValues.push(operation.item.totp_seed);
       }
     }
   }
-  const nonce = randomBytes(16).toString("hex");
-  const inboxRelative = `.hermes/vault/.inbox/${nonce}.json`;
-  const inboxAbsolute = `/home/user/${inboxRelative}`;
-  await command(
-    boxId,
-    "mkdir -p /home/user/.hermes/vault/.inbox && chmod 700 /home/user/.hermes/vault /home/user/.hermes/vault/.inbox"
-  );
-  await writeFile(
-    boxId,
-    inboxRelative,
-    JSON.stringify({ version: 1, operations })
-  );
-  const result = await command(
-    boxId,
-    `air-vault apply ${JSON.stringify(inboxAbsolute)}`
-  );
-  if (result.exitCode !== 0) {
-    throwCliError(result.stderr, "air-vault apply failed");
-  }
-  const { results } = JSON.parse(result.stdout) as { results: ApplyResult[] };
-
-  for (const applied of results) {
-    if (applied.op === "delete") {
-      const { error } = await supabase
-        .from("vault_items")
-        .update({
-          deleted_at: new Date().toISOString(),
-          // Free the unique (user_id, env_var) slot for future items.
-          env_var: null,
-        })
-        .eq("id", applied.id)
-        .eq("user_id", userId);
-      if (error) {
+  try {
+    const nonce = randomBytes(16).toString("hex");
+    const inboxRelative = `.hermes/vault/.inbox/${nonce}.json`;
+    const inboxAbsolute = `/home/user/${inboxRelative}`;
+    await command(
+      boxId,
+      "mkdir -p /home/user/.hermes/vault/.inbox && chmod 700 /home/user/.hermes/vault /home/user/.hermes/vault/.inbox"
+    );
+    await writeFile(
+      boxId,
+      inboxRelative,
+      JSON.stringify({ version: 1, operations })
+    );
+    let result;
+    try {
+      result = await command(
+        boxId,
+        `air-vault apply ${JSON.stringify(inboxAbsolute)}`
+      );
+      if (result.exitCode !== 0) {
+        throwCliError(result.stderr, "air-vault apply failed");
+      }
+    } catch (error) {
+      // The CLI shreds the inbox on every path it reaches, but a failed exec
+      // or an early abort (e.g. missing key) can leave the plaintext payload
+      // behind — erase it best-effort before surfacing the failure (C18).
+      try {
+        await command(
+          boxId,
+          `shred -u ${JSON.stringify(inboxAbsolute)} 2>/dev/null || rm -f ${JSON.stringify(inboxAbsolute)}`
+        );
+      } catch {
         vaultLogError({
-          msg: "vault_items delete mirror failed",
+          msg: "vault inbox cleanup failed",
           user_id: userId,
-          item_id: applied.id,
-          error: error.message,
+          box_id: boxId,
         });
       }
-    } else if (applied.item) {
-      await mirrorItem(supabase, userId, applied.item);
+      throw error;
     }
-    await appendEvent(supabase, userId, applied.op, applied.id);
-    vaultLog({
-      msg: "vault apply",
-      user_id: userId,
-      item_id: applied.id,
-      op: applied.op,
-    });
+    const { results } = JSON.parse(result.stdout) as {
+      results: ApplyResult[];
+    };
+
+    for (const applied of results) {
+      if (applied.op === "delete") {
+        const { error } = await supabase
+          .from("vault_items")
+          .update({
+            deleted_at: new Date().toISOString(),
+            // Free the unique (user_id, env_var) slot for future items.
+            env_var: null,
+          })
+          .eq("id", applied.id)
+          .eq("user_id", userId);
+        if (error) {
+          vaultLogError({
+            msg: "vault_items delete mirror failed",
+            user_id: userId,
+            item_id: applied.id,
+            error: error.message,
+          });
+        }
+      } else if (applied.item) {
+        await mirrorItem(supabase, userId, applied.item);
+      }
+      await appendEvent(supabase, userId, applied.op, applied.id);
+      vaultLog({
+        msg: "vault apply",
+        user_id: userId,
+        item_id: applied.id,
+        op: applied.op,
+      });
+    }
+    return results;
+  } finally {
+    unregisterVaultValues(transitedValues);
   }
-  return results;
 }
 
 /**
@@ -247,7 +278,11 @@ export async function reveal(
     throwCliError(result.stderr, "air-vault get failed");
   }
   registerVaultValue(result.stdout);
-  await appendEvent(serviceClient(), userId, "reveal", itemId, context);
+  try {
+    await appendEvent(serviceClient(), userId, "reveal", itemId, context);
+  } finally {
+    unregisterVaultValues([result.stdout]);
+  }
   return result.stdout;
 }
 

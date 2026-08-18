@@ -5,9 +5,10 @@
  * passed through the control plane during the current request cycle is
  * replaced before a log line is emitted.
  *
- * The registry is process-local and value-based (the control plane holds a
- * vault value only transiently, inside a single request); nothing here is
- * ever persisted.
+ * The registry is process-local and value-based, and bounded: callers
+ * register values for the duration of one vault operation and unregister
+ * them in a finally, so plaintext never outlives the request that carried
+ * it. Nothing here is ever persisted.
  */
 
 const MIN_SCRUB_LENGTH = 6;
@@ -27,6 +28,17 @@ export function registerVaultFields(
 ): void {
   for (const value of Object.values(fields ?? {})) {
     registerVaultValue(value);
+  }
+}
+
+/** Drop values once the operation that carried them has finished. */
+export function unregisterVaultValues(
+  values: Iterable<string | null | undefined>
+): void {
+  for (const value of values) {
+    if (typeof value === "string") {
+      registered.delete(value);
+    }
   }
 }
 

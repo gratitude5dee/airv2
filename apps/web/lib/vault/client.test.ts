@@ -179,6 +179,32 @@ describe("vault control-plane client", () => {
     expect(supabase.inserts[0]?.row.action).toBe("delete");
   });
 
+  it("applyBatch erases the inbox file when the CLI fails, without values in argv", async () => {
+    vi.mocked(writeFile).mockResolvedValue(undefined);
+    vi.mocked(command)
+      .mockResolvedValueOnce(cliOk("")) // mkdir
+      .mockResolvedValueOnce({
+        exitCode: 1,
+        stdout: "",
+        stderr: JSON.stringify({ error: "key_missing", message: "no key" }),
+      })
+      .mockResolvedValueOnce(cliOk("")); // cleanup
+    await expect(
+      applyBatch("bx_1", "user-1", [
+        {
+          op: "create",
+          item: { kind: "api_key", name: "P", fields: { value: PLANTED } },
+        },
+      ])
+    ).rejects.toMatchObject({ code: "key_missing" });
+    const calls = vi.mocked(command).mock.calls;
+    expect(calls).toHaveLength(3);
+    expect(calls[2]?.[1]).toMatch(/shred -u .*\.inbox\/[a-f0-9]{32}\.json/);
+    for (const call of calls) {
+      expect(call[1]).not.toContain(PLANTED);
+    }
+  });
+
   it("reveal returns the value, audits it, and never logs it", async () => {
     vi.mocked(command).mockResolvedValue(cliOk(PLANTED));
     const value = await reveal("bx_1", "user-1", "item-9", "password", "web");

@@ -81,10 +81,12 @@ def cmd_list(args: argparse.Namespace) -> int:
 
 
 def cmd_apply(args: argparse.Namespace) -> int:
-    key = _key()
-    home = _home_path()
+    # The inbox file holds plaintext values; every exit path — including a
+    # missing/invalid key — must shred it (C18).
     inbox_file = Path(args.inbox_file)
     try:
+        key = _key()
+        home = _home_path()
         try:
             payload = json.loads(inbox_file.read_text(encoding="utf-8"))
         except OSError:
