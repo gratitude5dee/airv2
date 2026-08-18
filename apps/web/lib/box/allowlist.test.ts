@@ -47,6 +47,23 @@ describe("resolveUpstream", () => {
     expect(resolveUpstream("GET", "api/credentials")).toBe(null);
   });
 
+  it("allows exactly the History session surface (V8)", () => {
+    expect(resolveUpstream("GET", "api/sessions/s1/messages")).toBe(
+      "api_server"
+    );
+    expect(resolveUpstream("DELETE", "api/sessions/s1")).toBe("api_server");
+  });
+
+  it("rejects session paths beyond the exact surface — never bulk ops", () => {
+    expect(resolveUpstream("DELETE", "api/sessions")).toBe(null);
+    expect(resolveUpstream("POST", "api/sessions/bulk-delete")).toBe(null);
+    expect(resolveUpstream("POST", "api/sessions/import")).toBe(null);
+    expect(resolveUpstream("POST", "api/sessions/prune")).toBe(null);
+    expect(resolveUpstream("DELETE", "api/sessions/s1/messages")).toBe(null);
+    expect(resolveUpstream("GET", "api/sessions/s1/export")).toBe(null);
+    expect(resolveUpstream("GET", "api/sessions/../env")).toBe(null);
+  });
+
   it("allows exactly the Hermes jobs API surface (V3)", () => {
     expect(resolveUpstream("GET", "api/jobs")).toBe("api_server");
     expect(resolveUpstream("POST", "api/jobs")).toBe("api_server");

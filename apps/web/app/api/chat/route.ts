@@ -17,6 +17,7 @@ import { executeCreativeJob } from "@/lib/creative/run";
 import { parseMention } from "@/lib/bots/mentions";
 import { listBots, toPublic, type BotRow } from "@/lib/bots/store";
 import { startBotChatRun } from "@/lib/bots/chat";
+import { attachmentMarker } from "@/lib/chat/attachments";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,8 +34,33 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const body = (await request.json().catch(() => ({}))) as {
     input?: string;
     via?: string;
+    attachments?: unknown;
   };
-  const input = (body.input ?? "").trim();
+  let input = (body.input ?? "").trim();
+  // V8: uploads referenced by box path (from /api/chat/upload), the same
+  // marker shape the iMessage path emits — never raw bytes (C4). The path
+  // must match exactly what the upload route mints.
+  const attachments = Array.isArray(body.attachments)
+    ? (body.attachments as { path?: unknown; mime?: unknown }[]).slice(0, 5)
+    : [];
+  const markers: string[] = [];
+  for (const attachment of attachments) {
+    if (
+      typeof attachment.path !== "string" ||
+      !/^\.hermes\/inbox\/\d+-[A-Za-z0-9._-]+$/.test(attachment.path)
+    ) {
+      return NextResponse.json({ error: "bad attachment" }, { status: 400 });
+    }
+    const mime =
+      typeof attachment.mime === "string" &&
+      /^[a-z0-9.+-]+\/[a-z0-9.+-]+$/i.test(attachment.mime)
+        ? attachment.mime
+        : "application/octet-stream";
+    markers.push(attachmentMarker(mime, attachment.path));
+  }
+  if (markers.length > 0) {
+    input = [input, ...markers].filter(Boolean).join("\n");
+  }
   if (!input) {
     return NextResponse.json({ error: "empty input" }, { status: 400 });
   }

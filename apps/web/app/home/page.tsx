@@ -59,9 +59,17 @@ interface Decision {
   platform: string | null;
   sender: string | null;
   label: string | null;
+  status?: string;
   created_at: string;
+  resolved_at?: string | null;
   /** social_post: the exact text + target the agent proposes to publish. */
-  payload?: { text?: string; target?: string } | null;
+  payload?: ({ text?: string; target?: string } & Record<string, unknown>) | null;
+}
+
+interface DecisionDetail {
+  decision: Decision;
+  /** email_draft: the held draft body, read from AgentMail at view time. */
+  draft?: { subject?: string; text?: string; to?: string[] } | null;
 }
 
 interface Sender {
@@ -70,6 +78,9 @@ interface Sender {
   address: string;
   trust_tier: number;
   first_seen: string;
+  run_count?: number;
+  blocked_at?: string | null;
+  tier_changed_at?: string | null;
 }
 
 interface Toolkit {
@@ -100,6 +111,42 @@ interface ChatMessage {
   /** V7: set when an @mention delegated this reply to a bot. */
   bot?: string;
 }
+
+/** V8: a chat upload staged in the composer; path is the box inbox path. */
+interface StagedAttachment {
+  name: string;
+  path?: string;
+  mime?: string;
+  uploading?: boolean;
+}
+
+interface TranscriptMessage {
+  role: string;
+  content: string;
+}
+
+const DECISION_KIND_LABELS: Record<string, string> = {
+  email_draft: "Email draft awaiting send",
+  calendar_add: "Calendar invite",
+  run_approval: "Agent action awaiting approval",
+  ad_write: "Ad spend awaiting approval",
+  content_plan: "Content plan proposed",
+  reconnect: "Account needs reconnecting",
+  revise: "Post needs a revision",
+  spend_divergence: "Ad spend diverged from budget",
+  spend_ceiling: "Spend ceiling reached",
+  social_post: "Social post awaiting approval",
+  purchase_review: "Card fill awaiting approval",
+  new_contact: "New contact",
+};
+
+function decisionKindLabel(kind: string): string {
+  return DECISION_KIND_LABELS[kind] ?? "New contact";
+}
+
+/** History channel chips (V8): each maps to session platform values. */
+const HISTORY_CHANNELS = ["imessage", "web", "schedule", "bot"] as const;
+type HistoryChannel = (typeof HISTORY_CHANNELS)[number] | "all";
 
 interface WalletSummary {
   address: string | null;
@@ -236,6 +283,34 @@ export default function HomePage() {
   const [boxState, setBoxState] = useState<string | null>(null);
   const [powerBusy, setPowerBusy] = useState(false);
   const [powerNote, setPowerNote] = useState<string | null>(null);
+  // V8 Chat: staged uploads, the streaming run (for stop), per-message copy,
+  // and the ready-bot roster for the @mention palette.
+  const [staged, setStaged] = useState<StagedAttachment[]>([]);
+  const stagedCountRef = useRef(0);
+  useEffect(() => {
+    stagedCountRef.current = staged.length;
+  }, [staged]);
+  const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+  const [botNames, setBotNames] = useState<string[]>([]);
+  // V8 Needs you: pending/resolved view, detail drawer, batch send.
+  const [needsView, setNeedsView] = useState<"pending" | "resolved">("pending");
+  const [resolved, setResolved] = useState<Decision[] | null>(null);
+  const [detail, setDetail] = useState<DecisionDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [batchBusy, setBatchBusy] = useState(false);
+  // V8 History: title search, channel chips, transcript view, delete.
+  const [historySearch, setHistorySearch] = useState("");
+  const [historyChannel, setHistoryChannel] = useState<HistoryChannel>("all");
+  const [openSessionId, setOpenSessionId] = useState<string | null>(null);
+  const transcriptLoadId = useRef(0);
+  const [transcript, setTranscript] = useState<TranscriptMessage[] | null>(null);
+  const [transcriptNote, setTranscriptNote] = useState<string | null>(null);
+  const [sessionBusy, setSessionBusy] = useState<string | null>(null);
+  // V8 People: expandable sender detail + block.
+  const [openSenderId, setOpenSenderId] = useState<string | null>(null);
+  const [senderBusy, setSenderBusy] = useState<string | null>(null);
+  const [senderNote, setSenderNote] = useState<string | null>(null);
 
   // Poll the box power state — quickly through transitions so the boot
   // banner and Computer controls track reality, slowly at rest.
@@ -340,6 +415,20 @@ export default function HomePage() {
       // a cold resume. Best-effort: every consumer handles a sleeping box.
       fetch("/api/box/wake", { method: "POST" }).catch(() => {});
     });
+    // Ready bots feed the composer's @mention palette (V8); best-effort.
+    fetch("/api/bots")
+      .then(async (res) => {
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          bots?: { name: string; status: string }[];
+        };
+        setBotNames(
+          (data.bots ?? [])
+            .filter((b) => b.status === "ready")
+            .map((b) => b.name)
+        );
+      })
+      .catch(() => {});
   }, [router]);
 
   useEffect(() => {
@@ -434,24 +523,53 @@ export default function HomePage() {
 
   const send = useCallback(async (textOverride?: string) => {
     const text = (textOverride ?? input).trim();
-    if (!text || busy) return;
+    // Staged uploads only ride the ordinary composer path, never overrides
+    // (calendar/ads prefills).
+    const attachments = textOverride
+      ? []
+      : staged.filter(
+          (a): a is StagedAttachment & { path: string } =>
+            typeof a.path === "string" && !a.uploading
+        );
+    if ((!text && attachments.length === 0) || busy) return;
     const viaVoice = voiceUsedRef.current;
     voiceUsedRef.current = false;
     setBusy(true);
     setInput("");
+    if (!textOverride) setStaged([]);
+    setActiveRunId(null);
     chatComputerDismissed.current = false;
     // Re-arm the refresh guard so this run's first computer tool remounts the
     // iframe even if the panel was left open — the stream URL goes stale when
     // the box sleeps between runs (the token rotates on resume).
     chatComputerOpenRef.current = false;
-    setMessages((m) => [...m, { role: "user", text }, { role: "agent", text: "" }]);
+    const shownText =
+      attachments.length > 0
+        ? [text, ...attachments.map((a) => `\u{1F4CE} ${a.name}`)]
+            .filter(Boolean)
+            .join("\n")
+        : text;
+    setMessages((m) => [
+      ...m,
+      { role: "user", text: shownText },
+      { role: "agent", text: "" },
+    ]);
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          viaVoice ? { input: text, via: "voice" } : { input: text }
-        ),
+        body: JSON.stringify({
+          input: text,
+          ...(viaVoice ? { via: "voice" } : {}),
+          ...(attachments.length > 0
+            ? {
+                attachments: attachments.map((a) => ({
+                  path: a.path,
+                  mime: a.mime,
+                })),
+              }
+            : {}),
+        }),
       });
       if (!res.ok) {
         const status = res.status;
@@ -501,6 +619,9 @@ export default function HomePage() {
       // A delegated @mention run lives in the bot's profile; its events
       // stream through the profile-aware route with the bot's own key.
       const botName = payload.bot?.name;
+      // Stop is wired for default-agent runs only — the stop relay
+      // authenticates against the box's default profile.
+      setActiveRunId(botName ? null : run_id);
       const events = new EventSource(
         botName
           ? `/api/bots/${botName}/chat/${run_id}/events`
@@ -556,11 +677,13 @@ export default function HomePage() {
             }
             events.close();
             setBusy(false);
+            setActiveRunId(null);
           }
           if (parsed.event === "run.failed") {
             fillEmpty("Something went wrong.");
             events.close();
             setBusy(false);
+            setActiveRunId(null);
           }
         } catch {
           // non-JSON keepalive
@@ -570,6 +693,7 @@ export default function HomePage() {
         fillEmpty("Connection lost — try again.");
         events.close();
         setBusy(false);
+        setActiveRunId(null);
       };
     } catch {
       setMessages((m) => {
@@ -584,7 +708,79 @@ export default function HomePage() {
       });
       setBusy(false);
     }
-  }, [input, busy, followCreativeJob]);
+  }, [input, busy, staged, followCreativeJob]);
+
+  // V8: upload picked files into the box inbox; the send references them by
+  // path (never bytes through Postgres).
+  async function pickFiles(files: File[]) {
+    // The 5-file cap is per message: /api/chat mints markers for at most 5.
+    const room = Math.max(0, 5 - stagedCountRef.current);
+    if (files.length > room) {
+      setMessages((m) => [
+        ...m,
+        {
+          role: "agent",
+          text: "You can attach up to 5 files per message — the extras weren't added.",
+        },
+      ]);
+    }
+    for (const file of files.slice(0, room)) {
+      const entry: StagedAttachment = { name: file.name, uploading: true };
+      setStaged((s) => [...s, entry]);
+      try {
+        const form = new FormData();
+        form.append("file", file);
+        const res = await fetch("/api/chat/upload", {
+          method: "POST",
+          body: form,
+        });
+        if (!res.ok) throw new Error(String(res.status));
+        const data = (await res.json()) as { path?: string };
+        setStaged((s) =>
+          s.map((a) =>
+            a === entry
+              ? {
+                  name: file.name,
+                  path: data.path,
+                  mime: file.type || "application/octet-stream",
+                }
+              : a
+          )
+        );
+      } catch {
+        setStaged((s) => s.filter((a) => a !== entry));
+        setNote(null);
+        setMessages((m) => [
+          ...m,
+          {
+            role: "agent",
+            text: `Couldn't upload ${file.name} — it may be too large (8 MB max) or the computer is still waking up.`,
+          },
+        ]);
+      }
+    }
+  }
+
+  // V8: relay the composer's stop to Hermes POST /v1/runs/{id}/stop.
+  async function stopActiveRun() {
+    if (!activeRunId) return;
+    try {
+      await fetch(`/api/chat/${activeRunId}/stop`, { method: "POST" });
+    } catch {
+      // The SSE stream ends (or errors) either way.
+    }
+    setActiveRunId(null);
+  }
+
+  async function copyMessage(index: number, text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedIdx(index);
+      setTimeout(() => setCopiedIdx((c) => (c === index ? null : c)), 1500);
+    } catch {
+      // clipboard unavailable; text stays selectable
+    }
+  }
 
   async function saveTier(next: string) {
     setTier(next);
@@ -637,6 +833,85 @@ export default function HomePage() {
     } finally {
       setDecisionBusy(null);
     }
+    setDetail((d) => (d?.decision.id === id ? null : d));
+    setResolved(null);
+    await loadDecisions();
+  }
+
+  // V8: the last 30 days of resolved decisions — receipts stay findable.
+  async function loadResolved() {
+    const res = await fetch("/api/decisions?status=resolved");
+    if (res.ok) {
+      const data = (await res.json()) as { decisions?: Decision[] };
+      setResolved(data.decisions ?? []);
+    } else {
+      setResolved([]);
+    }
+  }
+
+  // V8: decision detail drawer — full payload, plus the held email draft
+  // body read from AgentMail at view time.
+  async function openDecision(id: string) {
+    setDetailLoading(true);
+    setDetail(null);
+    try {
+      const res = await fetch(`/api/decisions/${id}`);
+      if (res.ok) {
+        setDetail((await res.json()) as DecisionDetail);
+      } else {
+        setDecisionNote("Couldn't load that decision — try again.");
+      }
+    } catch {
+      setDecisionNote("Couldn't load that decision — try again.");
+    } finally {
+      setDetailLoading(false);
+    }
+  }
+
+  // V8: batch-approve pending email drafts (tier-1 senders only — the
+  // server re-checks both kind and tier per decision).
+  async function batchSendDrafts(ids: string[]) {
+    if (ids.length === 0) return;
+    setBatchBusy(true);
+    setDecisionNote(null);
+    try {
+      const res = await fetch("/api/decisions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids, action: "approve" }),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as {
+          approved?: string[];
+          skipped?: { id: string; reason: string }[];
+        };
+        const sent = data.approved?.length ?? 0;
+        const skippedRows = data.skipped ?? [];
+        const overLimit = skippedRows.filter(
+          (s) => s.reason === "batch limit reached"
+        ).length;
+        const otherSkipped = skippedRows.length - overLimit;
+        const parts = [`Sent ${sent} draft${sent === 1 ? "" : "s"}`];
+        if (overLimit > 0) {
+          parts.push(
+            `${overLimit} still pending (batches send 20 at a time — press again for the rest)`
+          );
+        }
+        if (otherSkipped > 0) {
+          parts.push(
+            `${otherSkipped} skipped (unknown senders or already resolved stay one-at-a-time)`
+          );
+        }
+        setDecisionNote(`${parts.join(" — ")}.`);
+      } else {
+        setDecisionNote("Batch send didn't go through — try again.");
+      }
+    } catch {
+      setDecisionNote("Batch send didn't go through — try again.");
+    } finally {
+      setBatchBusy(false);
+    }
+    setResolved(null);
     await loadDecisions();
   }
 
@@ -655,6 +930,95 @@ export default function HomePage() {
       body: JSON.stringify({ id, trust_tier: trustTier }),
     });
     await loadPeople();
+  }
+
+  // V8: block an email sender — mirrored server-side to AgentMail's
+  // receive-block list (the enforcement layer).
+  async function setBlocked(id: string, blocked: boolean) {
+    setSenderBusy(id);
+    setSenderNote(null);
+    try {
+      const res = await fetch("/api/senders", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, blocked }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        setSenderNote(data.error ?? "That didn't go through — try again.");
+      }
+    } catch {
+      setSenderNote("That didn't go through — try again.");
+    } finally {
+      setSenderBusy(null);
+    }
+    await loadPeople();
+  }
+
+  // V8 History: read-only transcript for one session, through the exact
+  // allowlisted /api/box/api/sessions/{id}/messages path.
+  async function openSession(id: string) {
+    const loadId = ++transcriptLoadId.current;
+    setOpenSessionId(id);
+    setTranscript(null);
+    setTranscriptNote("Loading transcript…");
+    try {
+      const res = await fetch(
+        `/api/box/api/sessions/${encodeURIComponent(id)}/messages`
+      );
+      if (loadId !== transcriptLoadId.current) return;
+      if (res.ok) {
+        const list = pickList<{ role?: string; content?: string }>(
+          await res.json(),
+          ["data", "messages", "items"]
+        );
+        if (loadId !== transcriptLoadId.current) return;
+        setTranscript(
+          list
+            .filter(
+              (m) =>
+                (m.role === "user" || m.role === "assistant") &&
+                typeof m.content === "string" &&
+                m.content.trim() !== ""
+            )
+            .map((m) => ({
+              role: m.role === "user" ? "user" : "agent",
+              content: (m.content ?? "").trim(),
+            }))
+        );
+        setTranscriptNote(null);
+      } else {
+        setTranscriptNote(boxErrorNote(res.status, "the transcript"));
+      }
+    } catch {
+      if (loadId !== transcriptLoadId.current) return;
+      setTranscriptNote("Couldn't load the transcript — try again shortly.");
+    }
+  }
+
+  async function deleteSession(id: string) {
+    setSessionBusy(id);
+    try {
+      const res = await fetch(
+        `/api/box/api/sessions/${encodeURIComponent(id)}`,
+        { method: "DELETE" }
+      );
+      if (res.ok) {
+        setSessions((s) =>
+          (s ?? []).filter((row) => (row.session_id ?? row.id) !== id)
+        );
+        if (openSessionId === id) {
+          setOpenSessionId(null);
+          setTranscript(null);
+        }
+      } else {
+        setPanelNote(boxErrorNote(res.status, "that conversation"));
+      }
+    } catch {
+      setPanelNote("Couldn't delete — try again shortly.");
+    } finally {
+      setSessionBusy(null);
+    }
   }
 
   async function loadConnectors() {
@@ -925,106 +1289,283 @@ export default function HomePage() {
         <section className="panel flex h-[72vh] flex-col !p-4">
           {tab === "needs" ? (
             <div className="grid flex-1 content-start gap-2 overflow-y-auto">
-              <h3 className="m-0 text-[15px] font-semibold">Needs you</h3>
-              {(decisions ?? []).map((d) => (
-                <div
-                  key={d.id}
-                  className={
-                    "panel rise-in !p-3" +
-                    (d.kind === "calendar_add"
-                      ? " !shadow-none border border-dashed border-[var(--muted)]"
-                      : "")
-                  }
-                >
-                  <strong className="text-[13px]">
-                    {d.kind === "email_draft"
-                      ? "Email draft awaiting send"
-                      : d.kind === "calendar_add"
-                        ? "Calendar invite"
-                        : d.kind === "run_approval"
-                        ? "Agent action awaiting approval"
-                        : d.kind === "ad_write"
-                          ? "Ad spend awaiting approval"
-                          : d.kind === "content_plan"
-                            ? "Content plan proposed"
-                            : d.kind === "reconnect"
-                              ? "Account needs reconnecting"
-                              : d.kind === "revise"
-                                ? "Post needs a revision"
-                                : d.kind === "spend_divergence"
-                                  ? "Ad spend diverged from budget"
-                                  : d.kind === "spend_ceiling"
-                                    ? "Spend ceiling reached"
-                                    : d.kind === "social_post"
-                                      ? "Social post awaiting approval"
-                                      : d.kind === "purchase_review"
-                                        ? "Card fill awaiting approval"
-                                        : "New contact"}
-                  </strong>
-                  <p className="muted mb-2 mt-1 text-[12px]">
-                    {[d.label, d.sender, d.platform].filter(Boolean).join(" \u00b7 ")}
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="m-0 text-[15px] font-semibold">Needs you</h3>
+                <div className="flex items-center gap-1">
+                  {(["pending", "resolved"] as const).map((view) => (
+                    <button
+                      key={view}
+                      className={
+                        "seg !px-3 !py-1 !text-[12px]" +
+                        (needsView === view ? " pill-active" : "")
+                      }
+                      aria-current={needsView === view ? "page" : undefined}
+                      onClick={() => {
+                        setNeedsView(view);
+                        if (view === "resolved" && resolved === null) {
+                          void loadResolved();
+                        }
+                      }}
+                    >
+                      {view === "pending" ? "Pending" : "Last 30 days"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {decisionNote ? (
+                <p className="muted m-0 text-[12px]">{decisionNote}</p>
+              ) : null}
+              {detailLoading ? (
+                <div className="py-1">
+                  <Orb pill label="Loading details…" />
+                </div>
+              ) : null}
+              {detail ? (
+                <div className="panel rise-in !p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <strong className="text-[13px]">
+                      {decisionKindLabel(detail.decision.kind)}
+                    </strong>
+                    <button
+                      className="btn btn-ghost !px-2.5 !py-1 !text-[12px]"
+                      onClick={() => setDetail(null)}
+                    >
+                      Close
+                    </button>
+                  </div>
+                  <p className="muted m-0 mt-1 text-[12px]">
+                    {[
+                      detail.decision.label,
+                      detail.decision.sender,
+                      detail.decision.platform,
+                      new Date(detail.decision.created_at).toLocaleString(),
+                    ]
+                      .filter(Boolean)
+                      .join(" \u00b7 ")}
                   </p>
-                  {d.kind === "social_post" && d.payload?.text ? (
-                    <div className="mb-2 rounded-lg bg-surface-2 p-2">
-                      <p className="m-0 whitespace-pre-wrap text-[13px]">
-                        {d.payload.text}
-                      </p>
-                      {d.payload.target ? (
-                        <p className="muted m-0 mt-1 break-all text-[11px]">
-                          → {d.payload.target}
+                  {detail.draft ? (
+                    <div className="mt-2 rounded-lg bg-surface-2 p-2">
+                      {detail.draft.to && detail.draft.to.length > 0 ? (
+                        <p className="muted m-0 break-all text-[11px]">
+                          To: {detail.draft.to.join(", ")}
+                        </p>
+                      ) : null}
+                      {detail.draft.subject ? (
+                        <p className="m-0 mt-1 text-[13px] font-medium">
+                          {detail.draft.subject}
+                        </p>
+                      ) : null}
+                      {detail.draft.text ? (
+                        <p className="m-0 mt-1 whitespace-pre-wrap text-[13px]">
+                          {detail.draft.text}
                         </p>
                       ) : null}
                     </div>
                   ) : null}
-                  <div className="flex gap-2">
-                    {[
-                      "email_draft",
-                      "ad_write",
-                      "content_plan",
-                      "reconnect",
-                      "revise",
-                      "calendar_add",
-                      "social_post",
-                      "purchase_review",
-                    ].includes(d.kind) ? (
+                  {detail.decision.payload &&
+                  Object.keys(detail.decision.payload).length > 0 ? (
+                    <div className="mt-2 rounded-lg bg-surface-2 p-2">
+                      {Object.entries(detail.decision.payload).map(([k, v]) => (
+                        <p
+                          key={k}
+                          className="m-0 whitespace-pre-wrap break-all text-[12px]"
+                        >
+                          <span className="muted">{k}: </span>
+                          {typeof v === "string" ? v : JSON.stringify(v)}
+                        </p>
+                      ))}
+                    </div>
+                  ) : null}
+                  {detail.decision.status === "pending" ? (
+                    <div className="mt-2 flex gap-2">
                       <button
                         className="btn !px-3 !py-1.5 !text-[12px]"
                         disabled={decisionBusy !== null}
-                        onClick={() => void resolveDecision(d.id, "approve")}
+                        onClick={() =>
+                          void resolveDecision(detail.decision.id, "approve")
+                        }
                       >
-                        {decisionBusy === d.id
+                        {decisionBusy === detail.decision.id
                           ? "Working\u2026"
-                          : d.kind === "email_draft"
-                            ? "Send"
-                            : d.kind === "content_plan"
-                              ? "Approve plan"
-                              : d.kind === "calendar_add"
-                                ? "Add to calendar"
-                                : d.kind === "reconnect" || d.kind === "revise"
-                                  ? "Retry"
-                                  : d.kind === "social_post"
-                                    ? "Post it"
-                                    : d.kind === "purchase_review"
-                                      ? "Fill card"
-                                      : "Approve"}
+                          : "Approve"}
                       </button>
-                    ) : null}
-                    <button
-                      className="btn btn-ghost !px-3 !py-1.5 !text-[12px]"
-                      disabled={decisionBusy !== null}
-                      onClick={() => void resolveDecision(d.id, "dismiss")}
-                    >
-                      Dismiss
-                    </button>
-                  </div>
+                      <button
+                        className="btn btn-ghost !px-3 !py-1.5 !text-[12px]"
+                        disabled={decisionBusy !== null}
+                        onClick={() =>
+                          void resolveDecision(detail.decision.id, "dismiss")
+                        }
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
-              ))}
-              {decisionNote ? (
-                <p className="muted m-0 text-[12px]">{decisionNote}</p>
               ) : null}
-              {decisions !== null && decisions.length === 0 ? (
-                <p className="muted text-[13px]">Nothing needs you right now.</p>
-              ) : null}
+              {needsView === "resolved" ? (
+                <>
+                  {(resolved ?? []).map((d) => (
+                    <div key={d.id} className="panel rise-in !p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <strong className="text-[13px]">
+                            {decisionKindLabel(d.kind)}
+                          </strong>
+                          <p className="muted m-0 mt-1 text-[12px]">
+                            {[
+                              d.status === "approved" ? "Approved" : "Dismissed",
+                              d.label,
+                              d.sender,
+                              d.resolved_at
+                                ? new Date(d.resolved_at).toLocaleString()
+                                : null,
+                            ]
+                              .filter(Boolean)
+                              .join(" \u00b7 ")}
+                          </p>
+                        </div>
+                        <button
+                          className="btn btn-ghost !px-2.5 !py-1 !text-[12px]"
+                          onClick={() => void openDecision(d.id)}
+                        >
+                          Details
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {resolved !== null && resolved.length === 0 ? (
+                    <p className="muted text-[13px]">
+                      Nothing resolved in the last 30 days.
+                    </p>
+                  ) : null}
+                </>
+              ) : (
+                (() => {
+                  // Group pending decisions by kind, with counts (V8).
+                  const groups = new Map<string, Decision[]>();
+                  for (const d of decisions ?? []) {
+                    const list = groups.get(d.kind) ?? [];
+                    list.push(d);
+                    groups.set(d.kind, list);
+                  }
+                  return (
+                    <>
+                      {Array.from(groups.entries()).map(([kind, list]) => (
+                        <div key={kind} className="grid gap-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="muted m-0 text-[12px] font-medium">
+                              {decisionKindLabel(kind)} · {list.length}
+                            </p>
+                            {kind === "email_draft" && list.length > 1 ? (
+                              <button
+                                className="btn !px-3 !py-1.5 !text-[12px]"
+                                disabled={batchBusy || decisionBusy !== null}
+                                title="Sends drafts whose counterparty is a known sender; the rest stay individual."
+                                onClick={() =>
+                                  void batchSendDrafts(list.map((d) => d.id))
+                                }
+                              >
+                                {batchBusy
+                                  ? "Sending\u2026"
+                                  : `Send all (${list.length})`}
+                              </button>
+                            ) : null}
+                          </div>
+                          {list.map((d) => (
+                            <div
+                              key={d.id}
+                              className={
+                                "panel rise-in !p-3" +
+                                (d.kind === "calendar_add"
+                                  ? " !shadow-none border border-dashed border-[var(--muted)]"
+                                  : "")
+                              }
+                            >
+                              <strong className="text-[13px]">
+                                {decisionKindLabel(d.kind)}
+                              </strong>
+                              <p className="muted mb-2 mt-1 text-[12px]">
+                                {[d.label, d.sender, d.platform]
+                                  .filter(Boolean)
+                                  .join(" \u00b7 ")}
+                              </p>
+                              {d.kind === "social_post" && d.payload?.text ? (
+                                <div className="mb-2 rounded-lg bg-surface-2 p-2">
+                                  <p className="m-0 whitespace-pre-wrap text-[13px]">
+                                    {d.payload.text}
+                                  </p>
+                                  {d.payload.target ? (
+                                    <p className="muted m-0 mt-1 break-all text-[11px]">
+                                      → {d.payload.target}
+                                    </p>
+                                  ) : null}
+                                </div>
+                              ) : null}
+                              <div className="flex gap-2">
+                                {[
+                                  "email_draft",
+                                  "ad_write",
+                                  "content_plan",
+                                  "reconnect",
+                                  "revise",
+                                  "calendar_add",
+                                  "social_post",
+                                  "purchase_review",
+                                ].includes(d.kind) ? (
+                                  <button
+                                    className="btn !px-3 !py-1.5 !text-[12px]"
+                                    disabled={decisionBusy !== null}
+                                    onClick={() =>
+                                      void resolveDecision(d.id, "approve")
+                                    }
+                                  >
+                                    {decisionBusy === d.id
+                                      ? "Working\u2026"
+                                      : d.kind === "email_draft"
+                                        ? "Send"
+                                        : d.kind === "content_plan"
+                                          ? "Approve plan"
+                                          : d.kind === "calendar_add"
+                                            ? "Add to calendar"
+                                            : d.kind === "reconnect" ||
+                                                d.kind === "revise"
+                                              ? "Retry"
+                                              : d.kind === "social_post"
+                                                ? "Post it"
+                                                : d.kind === "purchase_review"
+                                                  ? "Fill card"
+                                                  : "Approve"}
+                                  </button>
+                                ) : null}
+                                <button
+                                  className="btn btn-ghost !px-3 !py-1.5 !text-[12px]"
+                                  disabled={decisionBusy !== null}
+                                  onClick={() =>
+                                    void resolveDecision(d.id, "dismiss")
+                                  }
+                                >
+                                  Dismiss
+                                </button>
+                                <button
+                                  className="btn btn-ghost !px-3 !py-1.5 !text-[12px]"
+                                  onClick={() => void openDecision(d.id)}
+                                >
+                                  Details
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                      {decisions !== null && decisions.length === 0 ? (
+                        <p className="muted text-[13px]">
+                          Nothing needs you right now.
+                        </p>
+                      ) : null}
+                    </>
+                  );
+                })()
+              )}
             </div>
           ) : tab === "people" ? (
             <div className="grid flex-1 content-start gap-2 overflow-y-auto">
@@ -1033,37 +1574,101 @@ export default function HomePage() {
                 Known senders can talk to your agent; unknown senders wait in
                 “Needs you”.
               </p>
+              {senderNote ? (
+                <p className="muted m-0 text-[12px]">{senderNote}</p>
+              ) : null}
               {(people ?? []).map((s) => (
-                <div
-                  key={s.id}
-                  className="panel rise-in flex items-center justify-between !p-3"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="h-8 w-8 overflow-hidden rounded-full shadow-[0_0_0_0.5px_var(--ring)]">
-                      <DitherAvatar name={s.address} size={32} />
-                    </div>
-                    <div>
-                      <strong className="text-[13px]">{s.address}</strong>
-                      <p className="muted m-0 mt-0.5 text-[12px]">
-                        {s.platform} · {s.trust_tier === 1 ? "known" : "unknown"}
-                      </p>
-                    </div>
+                <div key={s.id} className="panel rise-in !p-3">
+                  <div className="flex items-center justify-between">
+                    <button
+                      type="button"
+                      className="flex cursor-pointer items-center gap-3 border-0 bg-transparent p-0 text-left"
+                      onClick={() =>
+                        setOpenSenderId((open) => (open === s.id ? null : s.id))
+                      }
+                      aria-expanded={openSenderId === s.id}
+                    >
+                      <div className="h-8 w-8 overflow-hidden rounded-full shadow-[0_0_0_0.5px_var(--ring)]">
+                        <DitherAvatar name={s.address} size={32} />
+                      </div>
+                      <div>
+                        <strong className="text-[13px]">{s.address}</strong>
+                        <p className="muted m-0 mt-0.5 text-[12px]">
+                          {[
+                            s.platform,
+                            s.blocked_at
+                              ? "blocked"
+                              : s.trust_tier === 1
+                                ? "known"
+                                : "unknown",
+                            s.run_count != null
+                              ? `${s.run_count} message${s.run_count === 1 ? "" : "s"}`
+                              : null,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </p>
+                      </div>
+                    </button>
+                    {s.trust_tier === 2 ? (
+                      <button
+                        className="btn !px-3 !py-1.5 !text-[12px]"
+                        onClick={() => void setTrust(s.id, 1)}
+                      >
+                        Mark known
+                      </button>
+                    ) : (
+                      <button
+                        className="btn btn-ghost !px-3 !py-1.5 !text-[12px]"
+                        onClick={() => void setTrust(s.id, 2)}
+                      >
+                        Mark unknown
+                      </button>
+                    )}
                   </div>
-                  {s.trust_tier === 2 ? (
-                    <button
-                      className="btn !px-3 !py-1.5 !text-[12px]"
-                      onClick={() => void setTrust(s.id, 1)}
-                    >
-                      Mark known
-                    </button>
-                  ) : (
-                    <button
-                      className="btn btn-ghost !px-3 !py-1.5 !text-[12px]"
-                      onClick={() => void setTrust(s.id, 2)}
-                    >
-                      Mark unknown
-                    </button>
-                  )}
+                  {openSenderId === s.id ? (
+                    <div className="mt-2 border-t border-[var(--ring)] pt-2">
+                      <p className="muted m-0 text-[12px]">
+                        First seen {new Date(s.first_seen).toLocaleDateString()}
+                        {s.run_count != null
+                          ? ` · ${s.run_count} message${s.run_count === 1 ? "" : "s"} handled`
+                          : ""}
+                      </p>
+                      {s.tier_changed_at ? (
+                        <p className="muted m-0 mt-1 text-[12px]">
+                          {s.trust_tier === 1
+                            ? "Promoted to known"
+                            : "Marked unknown"}{" "}
+                          {new Date(s.tier_changed_at).toLocaleString()}
+                        </p>
+                      ) : null}
+                      {s.blocked_at ? (
+                        <p className="muted m-0 mt-1 text-[12px]">
+                          Blocked {new Date(s.blocked_at).toLocaleString()} —
+                          their email is refused before your agent sees it.
+                        </p>
+                      ) : null}
+                      {s.platform === "email" ? (
+                        <div className="mt-2">
+                          <button
+                            className="btn btn-ghost !px-3 !py-1.5 !text-[12px]"
+                            disabled={senderBusy !== null}
+                            onClick={() => void setBlocked(s.id, !s.blocked_at)}
+                          >
+                            {senderBusy === s.id
+                              ? "Working…"
+                              : s.blocked_at
+                                ? "Unblock"
+                                : "Block sender"}
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="muted m-0 mt-1 text-[11px]">
+                          Blocking applies to email senders.
+                        </p>
+                      )}
+                    </div>
+                  ) : null}
                 </div>
               ))}
               {people !== null && people.length === 0 ? (
@@ -1147,6 +1752,28 @@ export default function HomePage() {
           ) : tab === "history" ? (
             <div className="grid flex-1 content-start gap-2 overflow-y-auto">
               <h3 className="m-0 text-[15px] font-semibold">Conversations</h3>
+              <input
+                className="input !py-1.5 !text-[13px]"
+                placeholder="Search titles…"
+                value={historySearch}
+                onChange={(e) => setHistorySearch(e.target.value)}
+                aria-label="Search conversations by title"
+              />
+              <div className="flex flex-wrap items-center gap-1">
+                {(["all", ...HISTORY_CHANNELS] as const).map((channel) => (
+                  <button
+                    key={channel}
+                    className={
+                      "seg !px-3 !py-1 !text-[12px]" +
+                      (historyChannel === channel ? " pill-active" : "")
+                    }
+                    aria-pressed={historyChannel === channel}
+                    onClick={() => setHistoryChannel(channel)}
+                  >
+                    {channel === "all" ? "All" : channel}
+                  </button>
+                ))}
+              </div>
               {panelNote ? (
                 <div className="flex items-center gap-2 py-1">
                   <Orb pill label={panelNote} />
@@ -1160,22 +1787,92 @@ export default function HomePage() {
                   ) : null}
                 </div>
               ) : null}
-              {(sessions ?? []).map((s, i) => (
-                <div key={s.session_id ?? s.id ?? i} className="panel rise-in !p-3">
-                  <strong className="text-[13px]">{s.title ?? "Untitled"}</strong>
-                  <p className="muted m-0 mt-1 text-[12px]">
-                    {[
-                      s.platform,
-                      s.updated_at ?? s.created_at,
-                      s.message_count != null
-                        ? `${s.message_count} messages`
-                        : null,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </p>
-                </div>
-              ))}
+              {(sessions ?? [])
+                .filter((s) => {
+                  const q = historySearch.trim().toLowerCase();
+                  if (q && !(s.title ?? "").toLowerCase().includes(q)) {
+                    return false;
+                  }
+                  if (historyChannel !== "all") {
+                    return (s.platform ?? "").toLowerCase() === historyChannel;
+                  }
+                  return true;
+                })
+                .map((s, i) => {
+                  const sid = s.session_id ?? s.id;
+                  const open = sid != null && openSessionId === sid;
+                  return (
+                    <div key={sid ?? i} className="panel rise-in !p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <button
+                          type="button"
+                          className="min-w-0 cursor-pointer border-0 bg-transparent p-0 text-left"
+                          disabled={sid == null}
+                          aria-expanded={open}
+                          onClick={() => {
+                            if (sid == null) return;
+                            if (open) {
+                              setOpenSessionId(null);
+                              setTranscript(null);
+                              setTranscriptNote(null);
+                            } else {
+                              void openSession(sid);
+                            }
+                          }}
+                        >
+                          <strong className="text-[13px]">
+                            {s.title ?? "Untitled"}
+                          </strong>
+                          <p className="muted m-0 mt-1 text-[12px]">
+                            {[
+                              s.platform,
+                              s.updated_at ?? s.created_at,
+                              s.message_count != null
+                                ? `${s.message_count} messages`
+                                : null,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </p>
+                        </button>
+                        {sid != null ? (
+                          <button
+                            className="btn btn-ghost shrink-0 !px-2.5 !py-1 !text-[12px]"
+                            disabled={sessionBusy !== null}
+                            onClick={() => void deleteSession(sid)}
+                          >
+                            {sessionBusy === sid ? "Deleting…" : "Delete"}
+                          </button>
+                        ) : null}
+                      </div>
+                      {open ? (
+                        <div className="mt-2 grid max-h-72 gap-1.5 overflow-y-auto border-t border-[var(--ring)] pt-2">
+                          {transcriptNote ? (
+                            <Orb pill label={transcriptNote} />
+                          ) : null}
+                          {(transcript ?? []).map((m, j) => (
+                            <div
+                              key={j}
+                              className={
+                                "max-w-[90%] whitespace-pre-wrap rounded-lg px-2.5 py-1.5 text-[12px] leading-relaxed " +
+                                (m.role === "user"
+                                  ? "justify-self-end bg-[var(--text)] text-[var(--bg)]"
+                                  : "justify-self-start bg-surface-2")
+                              }
+                            >
+                              {m.content}
+                            </div>
+                          ))}
+                          {transcript !== null && transcript.length === 0 ? (
+                            <p className="muted m-0 text-[12px]">
+                              No messages in this conversation.
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
               {sessions !== null && sessions.length === 0 ? (
                 <p className="muted text-[13px]">No conversations yet.</p>
               ) : null}
@@ -1659,6 +2356,18 @@ export default function HomePage() {
                             className="ml-1.5 align-middle"
                           />
                         ) : null}
+                        {!streaming && m.text ? (
+                          <button
+                            type="button"
+                            className={
+                              "mt-1 block cursor-pointer border-0 bg-transparent p-0 text-[11px] underline decoration-dotted underline-offset-2 " +
+                              (m.role === "user" ? "opacity-70" : "text-[var(--muted)]")
+                            }
+                            onClick={() => void copyMessage(i, m.text)}
+                          >
+                            {copiedIdx === i ? "Copied" : "Copy"}
+                          </button>
+                        ) : null}
                       </div>
                     );
                   })
@@ -1731,6 +2440,14 @@ export default function HomePage() {
                 onVoiceTranscript={() => {
                   voiceUsedRef.current = true;
                 }}
+                botNames={botNames}
+                attachments={staged}
+                onPickFiles={(files) => void pickFiles(files)}
+                onRemoveAttachment={(index) =>
+                  setStaged((s) => s.filter((_, j) => j !== index))
+                }
+                stoppable={busy && activeRunId !== null}
+                onStop={() => void stopActiveRun()}
               />
             </>
           )}

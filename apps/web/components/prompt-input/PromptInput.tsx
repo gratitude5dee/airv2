@@ -9,12 +9,15 @@ import {
 } from "react";
 import {
   ArrowUp,
+  AtSign,
   Check,
   Gauge,
   Mic,
+  Paperclip,
   Plus,
   Sparkles,
   Square,
+  X,
 } from "lucide-react";
 import styles from "./PromptInput.module.css";
 
@@ -49,6 +52,12 @@ export const CREATIVE_COMMANDS = [
   { id: "/zap", desc: "A quick, kinetic video clip." },
 ] as const;
 
+/** A pending upload chip shown above the composer (V8). */
+export interface PendingAttachment {
+  name: string;
+  uploading?: boolean;
+}
+
 export interface PromptInputProps {
   value: string;
   onChange: (next: string) => void;
@@ -61,6 +70,15 @@ export interface PromptInputProps {
   tierModels?: Partial<Record<string, string>>;
   /** Fired when a transcription lands in the composer (voice-trigger tracking, M13). */
   onVoiceTranscript?: () => void;
+  /** V8: ready bot names for the @mention palette. */
+  botNames?: string[];
+  /** V8: pending upload chips; presence enables the attach button. */
+  attachments?: PendingAttachment[];
+  onPickFiles?: (files: File[]) => void;
+  onRemoveAttachment?: (index: number) => void;
+  /** V8: shown instead of send while a run is streaming. */
+  onStop?: () => void;
+  stoppable?: boolean;
 }
 
 /** Hard stop for a recording — mirrors the server's five-minute cap. */
@@ -90,12 +108,19 @@ export function PromptInput({
   onTierChange,
   tierModels,
   onVoiceTranscript,
+  botNames,
+  attachments,
+  onPickFiles,
+  onRemoveAttachment,
+  onStop,
+  stoppable,
 }: PromptInputProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [hoveredTier, setHoveredTier] = useState<string | null>(null);
   const [paletteDismissed, setPaletteDismissed] = useState(false);
   const plusRef = useRef<HTMLDivElement>(null);
   const fieldRef = useRef<HTMLTextAreaElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
@@ -112,7 +137,11 @@ export function PromptInput({
   const valueRef = useRef(value);
   valueRef.current = value;
 
-  const sendActive = value.trim().length > 0 && !busy;
+  const uploadsPending = (attachments ?? []).some((a) => a.uploading);
+  const sendActive =
+    (value.trim().length > 0 || (attachments ?? []).length > 0) &&
+    !busy &&
+    !uploadsPending;
 
   // Command palette: typing "/" at the start of the composer lists the
   // creative commands; anything past the first word closes it.
@@ -121,10 +150,18 @@ export function PromptInput({
         c.id.startsWith(value.toLowerCase())
       )
     : [];
+  // @bot palette: typing "@" at the start lists ready bots from the roster.
+  // Unknown @words stay ordinary text — the server validates again anyway.
+  const mentionMatches = /^@[a-z0-9-]*$/i.test(value)
+    ? (botNames ?? []).filter((name) =>
+        `@${name}`.startsWith(value.toLowerCase())
+      )
+    : [];
   const paletteOpen = !paletteDismissed && paletteMatches.length > 0;
+  const mentionOpen = !paletteDismissed && mentionMatches.length > 0;
 
   useEffect(() => {
-    if (!/^\/[a-z]*$/i.test(value)) setPaletteDismissed(false);
+    if (!/^[/@][a-z0-9-]*$/i.test(value)) setPaletteDismissed(false);
   }, [value]);
 
   // Auto-grow the textarea up to its CSS max-height.
@@ -157,7 +194,7 @@ export function PromptInput({
   }, [menuOpen]);
 
   const onKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
-    if (paletteOpen && e.key === "Escape") {
+    if ((paletteOpen || mentionOpen) && e.key === "Escape") {
       e.preventDefault();
       setPaletteDismissed(true);
       return;
@@ -166,6 +203,12 @@ export function PromptInput({
     if (paletteOpen && first && (e.key === "Tab" || e.key === "Enter")) {
       e.preventDefault();
       onChange(`${first.id} `);
+      return;
+    }
+    const firstBot = mentionMatches[0];
+    if (mentionOpen && firstBot && (e.key === "Tab" || e.key === "Enter")) {
+      e.preventDefault();
+      onChange(`@${firstBot} `);
       return;
     }
     if (e.key === "Enter" && !e.shiftKey) {
@@ -344,6 +387,28 @@ export function PromptInput({
         className={styles.frame}
         data-busy={busy || voiceState === "transcribing" || undefined}
       >
+        {mentionOpen && (
+          <div className={styles.palette} role="menu" aria-label="Bots">
+            <div className={styles.menuLabel}>
+              <AtSign size={12} aria-hidden />
+              Bots
+            </div>
+            {mentionMatches.map((name) => (
+              <button
+                key={name}
+                type="button"
+                role="menuitem"
+                className={styles.menuItem}
+                onClick={() => {
+                  onChange(`@${name} `);
+                  fieldRef.current?.focus();
+                }}
+              >
+                <span className={styles.menuName}>@{name}</span>
+              </button>
+            ))}
+          </div>
+        )}
         {paletteOpen && (
           <div className={styles.palette} role="menu" aria-label="Commands">
             <div className={styles.menuLabel}>
@@ -364,6 +429,32 @@ export function PromptInput({
                 <span className={styles.menuName}>{c.id}</span>
                 <span className={styles.paletteDesc}>{c.desc}</span>
               </button>
+            ))}
+          </div>
+        )}
+        {(attachments ?? []).length > 0 && (
+          <div className={styles.attachRow}>
+            {(attachments ?? []).map((a, index) => (
+              <span
+                key={`${a.name}-${index}`}
+                className={styles.attachChip}
+                data-uploading={a.uploading || undefined}
+              >
+                <Paperclip size={11} aria-hidden />
+                <span className={styles.attachName}>{a.name}</span>
+                {a.uploading ? (
+                  <span className={styles.attachStatus}>uploading…</span>
+                ) : (
+                  <button
+                    type="button"
+                    className={styles.attachRemove}
+                    aria-label={`Remove ${a.name}`}
+                    onClick={() => onRemoveAttachment?.(index)}
+                  >
+                    <X size={11} />
+                  </button>
+                )}
+              </span>
             ))}
           </div>
         )}
@@ -440,6 +531,30 @@ export function PromptInput({
           </div>
 
           <div className={styles.actions}>
+            {onPickFiles && (
+              <>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  multiple
+                  hidden
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files ?? []);
+                    if (files.length > 0) onPickFiles(files);
+                    e.target.value = "";
+                  }}
+                />
+                <button
+                  type="button"
+                  className={styles.iconBtn}
+                  aria-label="Attach files"
+                  disabled={busy}
+                  onClick={() => fileRef.current?.click()}
+                >
+                  <Paperclip size={14} />
+                </button>
+              </>
+            )}
             {voiceSupported && (
               <button
                 type="button"
@@ -472,17 +587,28 @@ export function PromptInput({
                 )}
               </button>
             )}
-            <button
-              type="button"
-              className={[styles.iconBtn, styles.send, sendActive ? styles.sendActive : ""]
-                .filter(Boolean)
-                .join(" ")}
-              aria-label="Send"
-              disabled={!sendActive}
-              onClick={onSend}
-            >
-              <ArrowUp size={14} />
-            </button>
+            {stoppable && onStop ? (
+              <button
+                type="button"
+                className={[styles.iconBtn, styles.stop].join(" ")}
+                aria-label="Stop"
+                onClick={onStop}
+              >
+                <Square size={12} />
+              </button>
+            ) : (
+              <button
+                type="button"
+                className={[styles.iconBtn, styles.send, sendActive ? styles.sendActive : ""]
+                  .filter(Boolean)
+                  .join(" ")}
+                aria-label="Send"
+                disabled={!sendActive}
+                onClick={onSend}
+              >
+                <ArrowUp size={14} />
+              </button>
+            )}
           </div>
         </div>
       </div>

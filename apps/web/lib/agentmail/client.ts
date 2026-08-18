@@ -243,6 +243,62 @@ export async function sendDraft(
   }
 }
 
+export interface AgentMailDraft {
+  draft_id: string;
+  subject?: string;
+  text?: string;
+  to?: string[];
+}
+
+/** Read a held draft so the Needs-you drawer can show its body (V8). */
+export async function getDraft(
+  inboxId: string,
+  draftId: string
+): Promise<AgentMailDraft> {
+  return await agentmailFetch<AgentMailDraft>(
+    `/inboxes/${encodeURIComponent(inboxId)}/drafts/${encodeURIComponent(draftId)}`
+  );
+}
+
+/**
+ * Inbox-scoped receive-block list (V8 People block): AgentMail Lists is the
+ * enforcement layer — a blocked address is rejected before it ever reaches
+ * the webhook, so no decision or run can exist for it.
+ * POST /inboxes/{inbox_id}/lists/receive/block per the AgentMail Lists API.
+ */
+export async function addInboxBlockEntry(
+  inboxId: string,
+  entry: string
+): Promise<void> {
+  try {
+    await agentmailFetch(
+      `/inboxes/${encodeURIComponent(inboxId)}/lists/receive/block`,
+      { method: "POST", body: { entry, reason: "blocked from People" } }
+    );
+  } catch (error) {
+    // 409: already on the list — the desired state holds.
+    if (error instanceof AgentMailApiError && error.status === 409) return;
+    throw error;
+  }
+}
+
+export async function removeInboxBlockEntry(
+  inboxId: string,
+  entry: string
+): Promise<void> {
+  const response = await fetch(
+    `${AGENTMAIL_API}/inboxes/${encodeURIComponent(inboxId)}/lists/receive/block/${encodeURIComponent(entry)}`,
+    {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${env.agentmailApiKey()}` },
+    }
+  );
+  if (!response.ok && response.status !== 404) {
+    const text = await response.text();
+    throw new AgentMailApiError(response.status, text.slice(0, 500));
+  }
+}
+
 interface Webhook {
   webhook_id: string;
   client_id?: string;

@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { sessionUserId } from "@/lib/auth/user";
 import { serviceClient } from "@/lib/supabase";
 import { sendDraft } from "@/lib/agentmail/client";
+import { batchApproveEmailDrafts } from "@/lib/decisions/batch";
 import {
   approveAdWrite,
   dismissAdWrite,
@@ -36,6 +37,22 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const supabase = serviceClient();
+  if (request.nextUrl.searchParams.get("status") === "resolved") {
+    // V8: resolved history — the last 30 days of receipts (C22), so an
+    // approval or dismissal is always findable after the fact.
+    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const { data } = await supabase
+      .from("decisions")
+      .select(
+        "id, kind, platform, sender, ref, label, status, created_at, resolved_at, payload"
+      )
+      .eq("user_id", userId)
+      .in("status", ["approved", "dismissed"])
+      .gte("resolved_at", since)
+      .order("resolved_at", { ascending: false })
+      .limit(100);
+    return NextResponse.json({ decisions: data ?? [] });
+  }
   const { data } = await supabase
     .from("decisions")
     .select(
@@ -55,8 +72,26 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
   const body = (await request.json().catch(() => ({}))) as {
     id?: string;
+    ids?: unknown;
     action?: string;
   };
+  // V8: batch approval, email_draft only — each approval is a pure
+  // control-plane send (C10), so no box wake or run resume gets skipped
+  // by batching. Every other kind resolves one at a time below.
+  if (Array.isArray(body.ids)) {
+    if (
+      body.action !== "approve" ||
+      !body.ids.every((value) => typeof value === "string")
+    ) {
+      return NextResponse.json({ error: "invalid request" }, { status: 400 });
+    }
+    const result = await batchApproveEmailDrafts(
+      serviceClient(),
+      userId,
+      body.ids as string[]
+    );
+    return NextResponse.json(result);
+  }
   if (!body.id || !["approve", "dismiss"].includes(body.action ?? "")) {
     return NextResponse.json({ error: "invalid request" }, { status: 400 });
   }
