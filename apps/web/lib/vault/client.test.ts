@@ -223,6 +223,43 @@ describe("vault control-plane client", () => {
     }
   });
 
+  it("applyBatch pre-creates the inbox file at mode 600 before uploading", async () => {
+    vi.mocked(writeFile).mockResolvedValue(undefined);
+    vi.mocked(command)
+      .mockResolvedValueOnce(cliOk(""))
+      .mockResolvedValueOnce(cliOk(JSON.stringify({ ok: true, results: [] })));
+    await applyBatch("bx_1", "user-1", [{ op: "delete", id: "item-9" }]);
+    const prep = vi.mocked(command).mock.calls[0]?.[1];
+    expect(prep).toMatch(
+      /install -m 600 \/dev\/null ".*\.inbox\/[a-f0-9]{32}\.json"$/
+    );
+    // The pre-create happened before the payload upload.
+    expect(vi.mocked(command).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(writeFile).mock.invocationCallOrder[0] ?? Infinity
+    );
+  });
+
+  it("applyBatch erases the inbox file when the payload upload itself fails", async () => {
+    vi.mocked(writeFile).mockRejectedValueOnce(new Error("upload aborted"));
+    vi.mocked(command)
+      .mockResolvedValueOnce(cliOk("")) // prep
+      .mockResolvedValueOnce(cliOk("")); // cleanup
+    await expect(
+      applyBatch("bx_1", "user-1", [
+        {
+          op: "create",
+          item: { kind: "api_key", name: "P", fields: { value: PLANTED } },
+        },
+      ])
+    ).rejects.toThrow("upload aborted");
+    const calls = vi.mocked(command).mock.calls;
+    expect(calls).toHaveLength(2);
+    expect(calls[1]?.[1]).toMatch(/shred -u .*\.inbox\/[a-f0-9]{32}\.json/);
+    for (const call of calls) {
+      expect(call[1]).not.toContain(PLANTED);
+    }
+  });
+
   it("applyBatch chmods the inbox file to 600 before the CLI reads it", async () => {
     vi.mocked(writeFile).mockResolvedValue(undefined);
     vi.mocked(command)
