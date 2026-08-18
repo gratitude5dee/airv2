@@ -26,6 +26,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       current_state: (box as { state: string } | null)?.state ?? null,
       events,
     },
-    { headers: { "Cache-Control": "private, max-age=60" } }
+    { headers: { "Cache-Control": "no-store" } }
   );
 }
