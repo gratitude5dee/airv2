@@ -231,9 +231,35 @@ rm -rf "$HOME_DIR/.hermes/plugins/creative"
 cp -r "$SCRIPT_DIR/plugins/creative" "$HOME_DIR/.hermes/plugins/creative"
 sed -i '/^CREATIVE_PLUGIN_VERSION=/d' "$HOME_DIR/.hermes/.env"
 echo "CREATIVE_PLUGIN_VERSION=$(python3 -c "import json;print(json.load(open('$SCRIPT_DIR/plugins/creative/dashboard/manifest.json'))['version'])")" >> "$HOME_DIR/.hermes/.env"
+# ── 3d2. Bake the air-vault plugin (V1 / C18) ────────────────────────────────
+# Encrypted store + air-vault CLI + the air_vault mapped secret source. The
+# store key (AIR_VAULT_KEY) is minted per-fork by the control plane; the
+# template ships only code, never vault data. Plugin dir name uses a dash
+# (matches the repo path); Hermes imports it under a sanitized module name,
+# and the plugin.yaml name / secret-source name is air_vault.
+rm -rf "$HOME_DIR/.hermes/plugins/air-vault"
+cp -r "$SCRIPT_DIR/plugins/air-vault" "$HOME_DIR/.hermes/plugins/air-vault"
+rm -rf "$HOME_DIR/.hermes/plugins/air-vault/tests"
+# The CLI is invoked by the control plane as plain `air-vault ...` over the
+# box command API.
+# It reads ONLY AIR_VAULT_KEY out of ~/.hermes/.env (never `source`s it —
+# other values could contain shell metacharacters).
+sudo tee /usr/local/bin/air-vault >/dev/null <<SH
+#!/usr/bin/env bash
+set -euo pipefail
+if [ -z "\${AIR_VAULT_KEY:-}" ] && [ -f "$HOME_DIR/.hermes/.env" ]; then
+  AIR_VAULT_KEY="\$(grep -m1 '^AIR_VAULT_KEY=' "$HOME_DIR/.hermes/.env" | cut -d= -f2- || true)"
+  export AIR_VAULT_KEY
+fi
+exec "$HERMES_VENV/bin/python" "$HOME_DIR/.hermes/plugins/air-vault/cli.py" "\$@"
+SH
+sudo chmod +x /usr/local/bin/air-vault
+
 # User plugins are opt-in: the dashboard only imports a user plugin's backend
 # (plugin_api.py) when its name is in the plugins.enabled allow-list in
-# ~/.hermes/config.yaml (GHSA-mcfc-hp25-cjv7).
+# ~/.hermes/config.yaml (GHSA-mcfc-hp25-cjv7). air_vault joins the allow-list
+# and its secret source is seeded enabled (fetch degrades to NOT_CONFIGURED
+# until provisioning mints AIR_VAULT_KEY).
 python3 - "$HOME_DIR/.hermes/config.yaml" <<'PYEOF'
 import sys, yaml, pathlib
 p = pathlib.Path(sys.argv[1])
@@ -243,10 +269,18 @@ plugins = cfg.get("plugins")
 plugins = plugins if isinstance(plugins, dict) else {}
 enabled = plugins.get("enabled")
 enabled = enabled if isinstance(enabled, list) else []
-if "creative" not in enabled:
-    enabled.append("creative")
+for name in ("creative", "air_vault"):
+    if name not in enabled:
+        enabled.append(name)
 plugins["enabled"] = sorted(enabled)
 cfg["plugins"] = plugins
+secrets = cfg.get("secrets")
+secrets = secrets if isinstance(secrets, dict) else {}
+air_vault = secrets.get("air_vault")
+air_vault = air_vault if isinstance(air_vault, dict) else {}
+air_vault["enabled"] = True
+secrets["air_vault"] = air_vault
+cfg["secrets"] = secrets
 p.write_text(yaml.safe_dump(cfg, default_flow_style=False))
 PYEOF
 

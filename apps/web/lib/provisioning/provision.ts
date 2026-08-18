@@ -137,6 +137,9 @@ export async function provisionUser(
   const apiServerKey = randomBytes(32).toString("hex");
   const dashPassword = randomBytes(16).toString("hex");
   const dashSecret = randomBytes(32).toString("hex");
+  // V1 (C18): the AIR Vault store key. Minted per box, lives ONLY in the
+  // box's .env — never persisted in Postgres or logged by the control plane.
+  const airVaultKey = randomBytes(32).toString("hex");
   const dashboardAuthKey = env.boxDashboardAuthKey();
   if (!dashboardAuthKey) {
     console.log(
@@ -225,6 +228,7 @@ export async function provisionUser(
     `HERMES_DASHBOARD_BASIC_AUTH_PASSWORD_HASH=${dashHash}`,
     `HERMES_DASHBOARD_BASIC_AUTH_SECRET=${dashSecret}`,
     "HERMES_WEB_DIST=/home/user/.hermes/web_dist",
+    `AIR_VAULT_KEY=${airVaultKey}`,
     "",
   ];
   await writeFile(box.id, ".hermes/.env.perbox", perBoxEnv.join("\n"));
