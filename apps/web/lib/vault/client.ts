@@ -183,10 +183,18 @@ export async function applyBatch(
     const nonce = randomBytes(16).toString("hex");
     const inboxRelative = `.hermes/vault/.inbox/${nonce}.json`;
     const inboxAbsolute = `/home/user/${inboxRelative}`;
-    await command(
+    const prepared = await command(
       boxId,
       "mkdir -p /home/user/.hermes/vault/.inbox && chmod 700 /home/user/.hermes/vault /home/user/.hermes/vault/.inbox"
     );
+    if (prepared.exitCode !== 0) {
+      // Never write the plaintext payload into a directory whose 700 mode
+      // could not be established (C18).
+      throw new VaultCliError(
+        "inbox_unavailable",
+        "could not prepare vault inbox directory"
+      );
+    }
     await writeFile(
       boxId,
       inboxRelative,

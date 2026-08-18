@@ -177,6 +177,11 @@ def main(argv=None) -> int:
     except VaultError as exc:
         sys.stderr.write(exc.to_json() + "\n")
         return 1
+    except Exception as exc:  # noqa: BLE001 — the contract is one JSON line
+        sys.stderr.write(
+            VaultError("internal", f"unexpected failure: {exc}").to_json() + "\n"
+        )
+        return 1
 
 
 if __name__ == "__main__":

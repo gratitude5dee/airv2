@@ -143,6 +143,19 @@ def test_apply_shreds_inbox_when_key_missing(home, capsys, monkeypatch):
     assert not os.path.exists(path)
 
 
+def test_unexpected_exception_is_machine_readable(home, capsys, monkeypatch):
+    def boom(args):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(cli, "cmd_list", boom)
+    code, out, err = run(capsys, "list", "--masked")
+    assert code == 1 and out == ""
+    assert "Traceback" not in err
+    lines = [line for line in err.splitlines() if line]
+    assert len(lines) == 1
+    assert json.loads(lines[0])["error"] == "internal"
+
+
 def test_missing_key_is_machine_readable(home, capsys, monkeypatch):
     monkeypatch.delenv("AIR_VAULT_KEY")
     code, _, err = run(capsys, "list", "--masked")

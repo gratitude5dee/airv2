@@ -56,9 +56,16 @@ def test_missing_key_not_configured(tmp_path):
     assert not result.secrets
 
 
-def test_missing_store_not_configured(tmp_path):
+def test_missing_store_is_empty_success(tmp_path):
+    # Every freshly provisioned box has a key but no store yet — that is an
+    # empty vault, not a misconfiguration.
     result = fetch(tmp_path, {"AIR_VAULT_KEY": KEY})
-    assert not result.ok and result.error_kind is ErrorKind.NOT_CONFIGURED
+    assert result.ok and not result.secrets and result.error is None
+
+
+def test_override_existing_hard_false():
+    src = AirVaultSource()
+    assert src.override_existing({"override_existing": True}) is False
 
 
 def test_corrupt_store_internal(tmp_path):

@@ -179,6 +179,24 @@ describe("vault control-plane client", () => {
     expect(supabase.inserts[0]?.row.action).toBe("delete");
   });
 
+  it("applyBatch never writes the payload when inbox preparation fails", async () => {
+    vi.mocked(command).mockResolvedValueOnce({
+      exitCode: 1,
+      stdout: "",
+      stderr: "chmod: permission denied",
+    });
+    await expect(
+      applyBatch("bx_1", "user-1", [
+        {
+          op: "create",
+          item: { kind: "api_key", name: "P", fields: { value: PLANTED } },
+        },
+      ])
+    ).rejects.toMatchObject({ code: "inbox_unavailable" });
+    expect(vi.mocked(writeFile)).not.toHaveBeenCalled();
+    expect(vi.mocked(command)).toHaveBeenCalledTimes(1);
+  });
+
   it("applyBatch erases the inbox file when the CLI fails, without values in argv", async () => {
     vi.mocked(writeFile).mockResolvedValue(undefined);
     vi.mocked(command)

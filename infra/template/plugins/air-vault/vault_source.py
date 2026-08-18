@@ -67,6 +67,12 @@ class AirVaultSource(SecretSource):
         # The bootstrap key — no source, including this one, may overwrite it.
         return frozenset({"AIR_VAULT_KEY"})
 
+    def override_existing(self, cfg: dict) -> bool:
+        # Hard False, not config-flippable: a vault binding must never clobber
+        # a value the box .env / shell already carries (OPENAI_API_KEY holds
+        # the gateway credential, API_SERVER_KEY, PATH, ...).
+        return False
+
     def remediation(self, kind, cfg: dict) -> str:
         return "Open the AIR web app \u2192 Vault tab to add or repair vault items."
 
@@ -85,8 +91,8 @@ class AirVaultSource(SecretSource):
 
             path = vault_store.store_path(Path(home_path))
             if not path.is_file():
-                result.error = f"vault store not found at {path}."
-                result.error_kind = ErrorKind.NOT_CONFIGURED
+                # Key present but nothing saved yet: every freshly provisioned
+                # box starts here — an empty vault, not a misconfiguration.
                 return result
 
             try:
