@@ -19,12 +19,14 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { serviceClient } from "@/lib/supabase";
 import { appendVaultEvent } from "@/lib/vault/client";
 import {
+  normalizeHost,
   proposePurchaseReview,
   recordPurchaseOutcome,
   PurchaseError,
   PURCHASE_OUTCOMES,
   type PurchaseOutcome,
 } from "@/lib/vault/purchase";
+import { MAX_TTL_MINUTES } from "@/lib/vault/tickets";
 import { sendMiniAppCard } from "@/lib/miniapps/cards";
 import { claimCardSend, type CardClaim } from "@/lib/miniapps/cardSends";
 
@@ -171,14 +173,42 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   if (action === "report") {
     const itemId = typeof body?.item_id === "string" ? body.item_id : "";
-    const host = typeof body?.host === "string" ? body.host : "";
+    const rawHost = typeof body?.host === "string" ? body.host : "";
     const groups = Array.isArray(body?.field_groups)
       ? body.field_groups.filter(
           (g): g is string => typeof g === "string" && FIELD_GROUPS.has(g)
         )
       : [];
-    if (!ID_RE.test(itemId) || groups.length === 0) {
+    if (!ID_RE.test(itemId) || !rawHost || groups.length === 0) {
       return NextResponse.json({ error: "invalid request" }, { status: 400 });
+    }
+    let host: string;
+    try {
+      host = normalizeHost(rawHost);
+    } catch {
+      return NextResponse.json({ error: "invalid request" }, { status: 400 });
+    }
+    // A report line only sticks when an owner approval actually redeemed a
+    // fill ticket for this exact (item, host) within the ticket lifetime —
+    // the box cannot fabricate approval receipts or flood the audit trail
+    // for cards it was never approved to fill (C20).
+    const since = new Date(
+      Date.now() - MAX_TTL_MINUTES * 60_000
+    ).toISOString();
+    const { data: redemption } = await supabase
+      .from("fill_ticket_redemptions")
+      .select("jti")
+      .eq("user_id", userId)
+      .eq("item_id", itemId)
+      .eq("host", host)
+      .gte("redeemed_at", since)
+      .limit(1)
+      .maybeSingle();
+    if (!redemption) {
+      return NextResponse.json(
+        { error: "no_ticket", message: "no approved fill for this card/site" },
+        { status: 403 }
+      );
     }
     // One value-free audit line per typed field group (§V6 receipts).
     for (const group of groups) {
@@ -187,7 +217,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         userId,
         "fill_approved",
         itemId,
-        host ? `${group}@${host}` : group
+        `${group}@${host}`
       );
     }
     return NextResponse.json({ ok: true });
