@@ -130,6 +130,7 @@ export function VaultPanel({ active }: { active: boolean }) {
         const body = (await itemsRes.json()) as { items: VaultItem[] };
         setItems(body.items);
       } else {
+        setItems((current) => current ?? []);
         setNote("could not load vault");
       }
       if (managersRes.ok) {
@@ -139,6 +140,7 @@ export function VaultPanel({ active }: { active: boolean }) {
         setManagers(body.managers);
       }
     } catch {
+      setItems((current) => current ?? []);
       setNote("could not load vault");
     }
   }, []);
@@ -403,6 +405,7 @@ function ItemRow({
   onEnvBinding: (envVar: string | null) => void;
 }) {
   const [envInput, setEnvInput] = useState(item.env_var ?? "");
+  const [envError, setEnvError] = useState<string | null>(null);
   const envValid = envInput === "" || ENV_NAME_RE.test(envInput);
   const fields = FIELDS_BY_KIND[item.kind] ?? [];
   return (
@@ -476,8 +479,16 @@ function ItemRow({
                   disabled={busy}
                   onChange={(event) => {
                     if (event.target.checked) {
-                      if (ENV_NAME_RE.test(envInput)) onEnvBinding(envInput);
+                      if (ENV_NAME_RE.test(envInput)) {
+                        setEnvError(null);
+                        onEnvBinding(envInput);
+                      } else {
+                        setEnvError(
+                          "Enter a variable name matching [A-Z_][A-Z0-9_]* first"
+                        );
+                      }
                     } else {
+                      setEnvError(null);
                       onEnvBinding(null);
                     }
                   }}
@@ -488,9 +499,10 @@ function ItemRow({
                 className="input font-mono text-[13px]"
                 placeholder="ENV_VAR_NAME"
                 value={envInput}
-                onChange={(event) =>
-                  setEnvInput(event.target.value.toUpperCase())
-                }
+                onChange={(event) => {
+                  setEnvError(null);
+                  setEnvInput(event.target.value.toUpperCase());
+                }}
                 onBlur={() => {
                   if (
                     item.env_var !== null &&
@@ -501,9 +513,9 @@ function ItemRow({
                   }
                 }}
               />
-              {!envValid ? (
+              {!envValid || envError ? (
                 <p className="m-0 text-[12px] text-red-500">
-                  Must match [A-Z_][A-Z0-9_]*
+                  {envError ?? "Must match [A-Z_][A-Z0-9_]*"}
                 </p>
               ) : null}
             </div>
@@ -922,6 +934,17 @@ function ManagersPanel({
   const [mappings, setMappings] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
 
+  // Credentials are per-provider; never carry a typed token across forms.
+  function openManagerForm(manager: ManagerStatus["manager"] | null) {
+    setToken("");
+    setProjectId("");
+    setHelperCommand("");
+    setMapEnv("");
+    setMapRef("");
+    setMappings({});
+    setOpenForm(manager);
+  }
+
   async function act(
     manager: ManagerStatus["manager"],
     action: "enable" | "disable" | "refresh",
@@ -1015,7 +1038,7 @@ function ManagersPanel({
                 <button
                   className="btn-ghost text-[13px]"
                   onClick={() =>
-                    setOpenForm(formOpen ? null : manager.manager)
+                    openManagerForm(formOpen ? null : manager.manager)
                   }
                 >
                   {formOpen ? "Close" : "Enable…"}

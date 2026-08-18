@@ -13,7 +13,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { randomBytes } from "node:crypto";
 import { command, writeFile } from "../box/client";
-import { scrubVaultValues, vaultLogError } from "./scrub";
+import {
+  registerVaultValue,
+  scrubVaultValues,
+  unregisterVaultValues,
+  vaultLogError,
+} from "./scrub";
 
 export type ManagerId = "bitwarden" | "onepassword" | "command";
 
@@ -66,13 +71,17 @@ async function mergeBoxEnv(
       throw new ManagerInputError("env values must be single-line");
     }
   }
+  // Register values with the request-scoped scrubber so a box error echoing
+  // the merged line can never surface a token in logs or thrown messages.
+  const values = keys.map((key) => entries[key] ?? "");
+  for (const value of values) registerVaultValue(value);
   const nonce = randomBytes(8).toString("hex");
   const relative = `.hermes/.env.mgr-${nonce}`;
   const absolute = `/home/user/${relative}`;
   const lines =
     keys.map((key) => `${key}=${entries[key] ?? ""}`).join("\n") + "\n";
-  await writeFile(boxId, relative, lines);
   try {
+    await writeFile(boxId, relative, lines);
     const result = await command(
       boxId,
       `touch /home/user/.hermes/.env && sed -i ${keys
@@ -87,6 +96,7 @@ async function mergeBoxEnv(
       boxId,
       `shred -u ${absolute} 2>/dev/null || rm -f ${absolute}`
     ).catch(() => undefined);
+    unregisterVaultValues(values);
   }
 }
 
@@ -307,7 +317,29 @@ export async function enableManager(
   }
 
   await patchSecretsConfig(boxId, CONFIG_SECTION[manager], configPatch);
-  await restartGateway(boxId);
+
+  // The box now holds the binding: mirror that before the restart so a
+  // restart failure cannot leave the status row claiming "off" (truthful
+  // mirror; the user can retry the restart from the Vault tab).
+  await upsertManagerRow(supabase, userId, manager, {
+    enabled: true,
+    status: "configured",
+    provenance_count: null,
+    warnings: "takes effect next boot — restart the gateway",
+    last_synced_at: new Date().toISOString(),
+  });
+  await appendManagerEvent(supabase, userId, "manager_enabled", manager);
+
+  try {
+    await restartGateway(boxId);
+  } catch (error) {
+    await upsertManagerRow(supabase, userId, manager, {
+      status: "error",
+      warnings:
+        "configured, but the gateway restart failed — retry Restart from the Vault tab",
+    }).catch(() => undefined);
+    throw error;
+  }
 
   const summary = await fetchStatusSummary(boxId, manager).catch(() => ({
     count: null,
@@ -315,13 +347,11 @@ export async function enableManager(
     ok: false,
   }));
   await upsertManagerRow(supabase, userId, manager, {
-    enabled: true,
     status: "configured",
     provenance_count: summary.count,
     warnings: summary.warnings,
     last_synced_at: new Date().toISOString(),
   });
-  await appendManagerEvent(supabase, userId, "manager_enabled", manager);
   return listManagers(supabase, userId);
 }
 
