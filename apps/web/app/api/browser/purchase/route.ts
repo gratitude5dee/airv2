@@ -198,11 +198,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     ).toISOString();
     const { data: redemption } = await supabase
       .from("fill_ticket_redemptions")
-      .select("jti")
+      .select("jti, redeemed_at")
       .eq("user_id", userId)
       .eq("item_id", itemId)
       .eq("host", host)
       .gte("redeemed_at", since)
+      .order("redeemed_at", { ascending: false })
       .limit(1)
       .maybeSingle();
     if (!redemption) {
@@ -212,15 +213,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
     // One value-free audit line per typed field group per approval —
-    // re-reports within the window are deduped so the box cannot pad the
-    // audit trail off a single owner approval.
+    // re-reports are deduped against lines written since the latest
+    // redemption, so the box cannot pad the audit trail off a single owner
+    // approval while a fresh approval still gets its own receipts.
     const { data: existing } = await supabase
       .from("vault_events")
       .select("context")
       .eq("user_id", userId)
       .eq("item_id", itemId)
       .eq("action", "fill_approved")
-      .gte("created_at", since);
+      .gte("created_at", redemption.redeemed_at);
     const reported = new Set(
       (existing ?? []).map((row) => String(row.context ?? ""))
     );
