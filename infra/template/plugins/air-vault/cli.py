@@ -42,9 +42,11 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import browser_fill
+    import fill_ticket
     import vault_store
 else:
     from . import browser_fill
+    from . import fill_ticket
     from . import vault_store
 
 VaultError = vault_store.VaultError
@@ -170,23 +172,40 @@ def _deliver_to_browser(item_id: str, value: str) -> str:
     return host
 
 
+def _deliver_card_field(home: Path, item_id: str, field: str, value: str) -> str:
+    """V6 (C20): card fields require-and-burn the owner-approved fill
+    ticket. The ticket — not site_grants — binds the host: it names the one
+    site the owner approved. Guards, in order: live unexpired ticket for
+    this item; field is a card group not yet typed (CVV strictly last);
+    frontmost page host matches the ticket host. The ticket loads BEFORE
+    the browser is touched and the host checks BEFORE the value crosses
+    (I5/C9: a hostile page on another host gets a refusal, nothing typed).
+    CVV burns the ticket; nothing is cached anywhere."""
+    ticket = fill_ticket.load_ticket(home, item_id)
+    group = fill_ticket.check_field(ticket, field)
+    port = browser_fill.debug_port()
+    target = browser_fill.frontmost_page(browser_fill.list_targets(port))
+    host = browser_fill.page_host(target)
+    fill_ticket.check_host(ticket, host)
+    browser_fill.insert_text(target, fill_ticket.dry_run_value(ticket, field, host, value))
+    fill_ticket.record_typed(home, item_id, ticket, group)
+    return host
+
+
 def cmd_type(args: argparse.Namespace) -> int:
     # V5: the value resolves in-process and crosses to the browser over CDP —
     # it never touches stdout, argv, run events, or the model transcript
     # (C19). Every guard here is code, not prompt.
-    store = _load(_home_path(), _key())
+    home = _home_path()
+    store = _load(home, _key())
     item = _find(store, args.id)
     value = (item.get("fields") or {}).get(args.field)
     if not isinstance(value, str) or not value:
         raise VaultError("field_not_found", f"item has no field {args.field!r}")
     if item.get("kind") == "card":
-        # C20 seam: card fields require a control-plane-minted fill ticket
-        # (V6). Until tickets exist this refuses always — never a fallback.
-        raise VaultError(
-            "fill_ticket_required",
-            "card fields need an approved fill ticket (coming in V6) — refused",
-        )
-    host = _deliver_to_browser(args.id, value)
+        host = _deliver_card_field(home, args.id, args.field, value)
+    else:
+        host = _deliver_to_browser(args.id, value)
     print(f"typed {args.id}/{args.field} into {host}")
     return 0
 

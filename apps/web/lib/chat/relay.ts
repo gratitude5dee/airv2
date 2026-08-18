@@ -59,6 +59,16 @@ export async function chatEventStream(
       .eq("user_id", userId)
       .eq("hermes_run_id", runId)
       .is("outcome", null)
+      .then(() =>
+        // A purchase outcome recorded mid-run keeps precedence over the
+        // generic terminal outcome, but the run still closes.
+        supabase
+          .from("agent_runs")
+          .update({ ended_at: new Date().toISOString() })
+          .eq("user_id", userId)
+          .eq("hermes_run_id", runId)
+          .is("ended_at", null)
+      )
       .then(() => undefined);
   };
   return stream.pipeThrough(

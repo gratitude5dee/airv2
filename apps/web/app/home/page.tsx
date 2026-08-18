@@ -937,7 +937,9 @@ export default function HomePage() {
                                   ? "Ad spend diverged from budget"
                                   : d.kind === "spend_ceiling"
                                     ? "Spend ceiling reached"
-                                    : "New contact"}
+                                    : d.kind === "purchase_review"
+                                      ? "Card fill awaiting approval"
+                                      : "New contact"}
                   </strong>
                   <p className="muted mb-2 mt-1 text-[12px]">
                     {[d.label, d.sender, d.platform].filter(Boolean).join(" \u00b7 ")}
@@ -950,6 +952,7 @@ export default function HomePage() {
                       "reconnect",
                       "revise",
                       "calendar_add",
+                      "purchase_review",
                     ].includes(d.kind) ? (
                       <button
                         className="btn !px-3 !py-1.5 !text-[12px]"
@@ -966,7 +969,9 @@ export default function HomePage() {
                                 ? "Add to calendar"
                                 : d.kind === "reconnect" || d.kind === "revise"
                                   ? "Retry"
-                                  : "Approve"}
+                                  : d.kind === "purchase_review"
+                                    ? "Fill card"
+                                    : "Approve"}
                       </button>
                     ) : null}
                     <button

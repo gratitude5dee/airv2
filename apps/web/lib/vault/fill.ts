@@ -5,8 +5,9 @@
  * in-process on the box and delivers it over local CDP. What comes back is
  * the CLI's safe receipt line ("typed <item>/<field> into <host>") — the
  * only thing parsed, logged, or audited (C19). The CLI is also the guard:
- * it refuses hosts missing from site_grants.json and card-kind fields
- * (fill tickets are V6 — `mintFillTicket` below is the seam).
+ * it refuses hosts missing from site_grants.json, and card-kind fields
+ * without a valid single-use fill ticket (V6, C20 — minted in
+ * lib/vault/tickets on purchase_review approval, burned by the CLI).
  */
 import { command } from "../box/client";
 import { serviceClient } from "../supabase";
@@ -100,15 +101,4 @@ export async function typeVaultTotp(
   return runTypeCommand(boxId, userId, id, "totp", `air-vault totp ${id} --type`);
 }
 
-/**
- * V6 seam: card fills will require a short-lived, owner-approved fill
- * ticket minted here after a `purchase_review` decision. V5 refuses all
- * card fills (the CLI enforces it too), so minting is intentionally not
- * implemented yet.
- */
-export function mintFillTicket(): never {
-  throw new VaultCliError(
-    "fill_ticket_required",
-    "card fills need an approved fill ticket — coming in V6"
-  );
-}
+

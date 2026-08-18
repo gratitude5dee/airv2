@@ -8,7 +8,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type CardKind = "computer" | "calendar";
+export type CardKind = "computer" | "calendar" | "vault" | "browser";
 
 /** Minimum gap between agent-initiated cards per (user, kind). */
 export const CARD_COOLDOWN_MS = 2 * 60 * 1000;
