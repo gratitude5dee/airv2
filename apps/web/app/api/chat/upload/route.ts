@@ -13,6 +13,7 @@ import {
   StartLimitError,
 } from "@/lib/orchestrator/boxes";
 import { command, writeFile } from "@/lib/box/client";
+import { shellQuote } from "@/lib/box/shell";
 import {
   attachmentMarker,
   inboxPath,
@@ -41,10 +42,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const box = await ensureBoxAwake(supabase, userId);
     const path = inboxPath(file.name, Date.now());
     const base64 = Buffer.from(await file.arrayBuffer()).toString("base64");
-    // Quote the path at the call site — safety must not depend solely on the
-    // sanitizer in lib/chat/attachments.ts keeping its character set.
-    const quoted = JSON.stringify(`/home/user/${path}`);
-    const quotedTmp = JSON.stringify(`/home/user/${path}.bin`);
+    // Single-quote the path at the call site — safety must not depend solely
+    // on the sanitizer in lib/chat/attachments.ts keeping its character set.
+    const quoted = shellQuote(`/home/user/${path}`);
+    const quotedTmp = shellQuote(`/home/user/${path}.bin`);
     await command(box.boxId, "mkdir -p /home/user/.hermes/inbox");
     await writeFile(box.boxId, path, base64);
     await command(

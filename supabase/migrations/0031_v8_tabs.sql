@@ -13,7 +13,7 @@ create table wallet_transfers (
   amount_display text not null,
   chain_id       int  not null,
   status         text not null default 'pending'
-                 check (status in ('pending','submitted','denied','failed')),
+                 check (status in ('pending','submitting','submitted','denied','failed')),
   transaction_id text,
   created_at     timestamptz not null default now(),
   resolved_at    timestamptz

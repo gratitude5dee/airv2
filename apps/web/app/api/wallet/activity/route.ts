@@ -12,7 +12,9 @@ import { listTransfers } from "@/lib/wallet/send";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const CACHE_HEADERS = { "Cache-Control": "private, max-age=60" };
+// The response carries the mutable transfer-intent ledger — a send/approve/
+// deny must show up on the very next load, so this must never be cached.
+const CACHE_HEADERS = { "Cache-Control": "no-store" };
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const userId = sessionUserId(request);

@@ -61,7 +61,7 @@ export interface WalletTransfer {
   amount_wei: string;
   amount_display: string;
   chain_id: number;
-  status: "pending" | "submitted" | "denied" | "failed";
+  status: "pending" | "submitting" | "submitted" | "denied" | "failed";
   transaction_id: string | null;
   created_at: string;
   resolved_at: string | null;
@@ -144,41 +144,64 @@ export async function findPendingTransfer(
 
 /**
  * Execute an approved transfer via thirdweb from the server-stored owner
- * wallet. On provider failure the row stays pending (and the caller must
- * leave the decision pending) so approval can be retried.
+ * wallet. The row is claimed pending→submitting first (a conditional update,
+ * same single-use pattern as claimSchedule and fill-ticket redemption) so
+ * concurrent approvals cannot both reach the provider. On failure the claim
+ * is released back to pending (and the caller must leave the decision
+ * pending) so approval can be retried.
  */
 export async function executeTransfer(
   supabase: SupabaseClient,
   userId: string,
   transfer: WalletTransfer
 ): Promise<string> {
-  const { data: user } = await supabase
-    .from("users")
-    .select("wallet_address")
-    .eq("id", userId)
-    .maybeSingle();
-  if (!user?.wallet_address) {
-    throw new WalletSendError(409, "no wallet on file");
-  }
-  const [transactionId] = await sendNativeTokens(
-    user.wallet_address as string,
-    transfer.chain_id,
-    transfer.to_address,
-    transfer.amount_wei
-  );
-  if (!transactionId) {
-    throw new WalletSendError(502, "send returned no transaction id");
-  }
-  await supabase
+  const { data: claimed } = await supabase
     .from("wallet_transfers")
-    .update({
-      status: "submitted",
-      transaction_id: transactionId,
-      resolved_at: new Date().toISOString(),
-    })
+    .update({ status: "submitting" })
     .eq("id", transfer.id)
-    .eq("user_id", userId);
-  return transactionId;
+    .eq("user_id", userId)
+    .eq("status", "pending")
+    .select("id");
+  if (!claimed || claimed.length === 0) {
+    throw new WalletSendError(409, "this send is already being processed");
+  }
+  try {
+    const { data: user } = await supabase
+      .from("users")
+      .select("wallet_address")
+      .eq("id", userId)
+      .maybeSingle();
+    if (!user?.wallet_address) {
+      throw new WalletSendError(409, "no wallet on file");
+    }
+    const [transactionId] = await sendNativeTokens(
+      user.wallet_address as string,
+      transfer.chain_id,
+      transfer.to_address,
+      transfer.amount_wei
+    );
+    if (!transactionId) {
+      throw new WalletSendError(502, "send returned no transaction id");
+    }
+    await supabase
+      .from("wallet_transfers")
+      .update({
+        status: "submitted",
+        transaction_id: transactionId,
+        resolved_at: new Date().toISOString(),
+      })
+      .eq("id", transfer.id)
+      .eq("user_id", userId);
+    return transactionId;
+  } catch (error) {
+    await supabase
+      .from("wallet_transfers")
+      .update({ status: "pending" })
+      .eq("id", transfer.id)
+      .eq("user_id", userId)
+      .eq("status", "submitting");
+    throw error;
+  }
 }
 
 /** Dismissal: mark the intent denied — no transaction exists or ever will. */

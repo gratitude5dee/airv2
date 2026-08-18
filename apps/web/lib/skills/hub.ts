@@ -6,6 +6,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { command } from "../box/client";
+import { shellQuote } from "../box/shell";
 import { ensureBoxAwake } from "../orchestrator/boxes";
 
 const QUERY_RE = /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$/;
@@ -27,7 +28,7 @@ export async function installBaseSkills(boxId: string): Promise<void> {
     try {
       const result = await command(
         boxId,
-        `/home/user/.hermes-venv/bin/hermes skills install "${identifier}" --yes`,
+        `/home/user/.hermes-venv/bin/hermes skills install ${shellQuote(identifier)} --yes`,
         300
       );
       if (result.exitCode !== 0) {
@@ -100,7 +101,7 @@ export async function searchHub(
   const box = await ensureBoxAwake(supabase, userId);
   const result = await command(
     box.boxId,
-    `/home/user/.hermes-venv/bin/hermes skills search "${query}" --json --limit 20`,
+    `/home/user/.hermes-venv/bin/hermes skills search ${shellQuote(query)} --json --limit 20`,
     180
   );
   if (result.exitCode !== 0) {
@@ -127,7 +128,7 @@ export async function installSkill(
   const box = await ensureBoxAwake(supabase, userId);
   const result = await command(
     box.boxId,
-    `/home/user/.hermes-venv/bin/hermes skills install "${identifier}" --yes`,
+    `/home/user/.hermes-venv/bin/hermes skills install ${shellQuote(identifier)} --yes`,
     300
   );
   if (result.exitCode !== 0) {
@@ -150,9 +151,10 @@ const UPDATE_STATUSES = new Set(["up_to_date", "update_available", "unavailable"
 /**
  * Hub-vs-installed comparison, computed by Hermes' own updater inside the
  * box (content-hash of the recorded provenance source — never a cross-registry
- * fallback). Fixed script, no interpolation.
+ * fallback). Fixed script, no interpolation; the cd puts tools.skills_hub
+ * on the import path (python reading stdin resolves imports from the cwd).
  */
-const CHECK_SCRIPT = `/home/user/.hermes-venv/bin/python - <<'PY'
+const CHECK_SCRIPT = `cd /home/user/hermes-agent && /home/user/.hermes-venv/bin/python - <<'PY'
 import json
 from tools.skills_hub import check_for_skill_updates
 print(json.dumps(check_for_skill_updates()))
@@ -195,7 +197,7 @@ export async function updateSkill(
   const box = await ensureBoxAwake(supabase, userId);
   const result = await command(
     box.boxId,
-    `/home/user/.hermes-venv/bin/hermes skills update "${name}"`,
+    `/home/user/.hermes-venv/bin/hermes skills update ${shellQuote(name)}`,
     300
   );
   if (result.exitCode !== 0) {
@@ -218,11 +220,12 @@ export interface SkillDetail {
 /**
  * Detail-sheet data: hub provenance from the lockfile when present, plus the
  * SKILL.md text (bundled/local skills resolve through Hermes' own scanner).
- * The name is validated against NAME_RE and passed as argv, never spliced
- * into python source.
+ * The name is validated against NAME_RE and passed as a single-quoted argv,
+ * never spliced into python source; the cd puts tools.skills_hub on the
+ * import path (python reading stdin resolves imports from the cwd).
  */
 function inspectScript(name: string): string {
-  return `/home/user/.hermes-venv/bin/python - "${name}" <<'PY'
+  return `cd /home/user/hermes-agent && /home/user/.hermes-venv/bin/python - ${shellQuote(name)} <<'PY'
 import json, sys
 from tools.skills_hub import SKILLS_DIR, HubLockFile
 name = sys.argv[1]

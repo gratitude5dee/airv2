@@ -131,6 +131,42 @@ interface SuggestedSkill {
   description: string;
 }
 
+/** Detail sheet body shared by installed and suggested skill cards. */
+function SkillDetailSheet({ detail }: { detail: SkillDetail | null }) {
+  return (
+    <div className="mt-2 border-t border-[var(--ring)] pt-2">
+      {detail === null ? (
+        <p className="muted m-0 text-[12px]">Loading details…</p>
+      ) : (
+        <>
+          <p className="muted m-0 text-[11px]">
+            {[
+              detail.source,
+              detail.trust_level,
+              detail.installed_at
+                ? `Installed ${new Date(
+                    detail.installed_at
+                  ).toLocaleDateString()}`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" \u00b7 ") || "Bundled skill"}
+          </p>
+          {detail.readme ? (
+            <pre className="m-0 mt-2 max-h-56 overflow-y-auto whitespace-pre-wrap rounded-lg bg-surface-2 p-2 text-[11px] leading-relaxed">
+              {detail.readme}
+            </pre>
+          ) : (
+            <p className="muted m-0 mt-2 text-[12px]">
+              No description file for this skill.
+            </p>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 interface ChatMessage {
   role: "user" | "agent";
   text: string;
@@ -201,7 +237,7 @@ interface WalletTransfer {
   id: string;
   to_address: string;
   amount_display: string;
-  status: "pending" | "submitted" | "denied" | "failed";
+  status: "pending" | "submitting" | "submitted" | "denied" | "failed";
   created_at: string;
 }
 
@@ -2173,20 +2209,27 @@ export default function HomePage() {
                     Suggested for you
                   </h4>
                   <div className="grid gap-2">
-                    {suggested.map((s) => (
-                      <button
-                        key={s.name}
-                        type="button"
-                        className="panel rise-in cursor-pointer !p-3 text-left"
-                        onClick={() => void openSkillDetail(s.name)}
-                        aria-expanded={skillDetailFor === s.name}
-                      >
-                        <strong className="text-[13px]">{s.name}</strong>
-                        <p className="muted m-0 mt-1 text-[12px]">
-                          {s.description}
-                        </p>
-                      </button>
-                    ))}
+                    {suggested.map((s) => {
+                      const suggestedOpen = skillDetailFor === s.name;
+                      return (
+                        <div key={s.name} className="panel rise-in !p-3">
+                          <button
+                            type="button"
+                            className="min-w-0 cursor-pointer border-0 bg-transparent p-0 text-left"
+                            onClick={() => void openSkillDetail(s.name)}
+                            aria-expanded={suggestedOpen}
+                          >
+                            <strong className="text-[13px]">{s.name}</strong>
+                            <p className="muted m-0 mt-1 text-[12px]">
+                              {s.description}
+                            </p>
+                          </button>
+                          {suggestedOpen ? (
+                            <SkillDetailSheet detail={skillDetail} />
+                          ) : null}
+                        </div>
+                      );
+                    })}
                   </div>
                 </>
               ) : null}
@@ -2274,38 +2317,7 @@ export default function HomePage() {
                       </div>
                     </div>
                     {detailOpen ? (
-                      <div className="mt-2 border-t border-[var(--ring)] pt-2">
-                        {skillDetail === null ? (
-                          <p className="muted m-0 text-[12px]">
-                            Loading details…
-                          </p>
-                        ) : (
-                          <>
-                            <p className="muted m-0 text-[11px]">
-                              {[
-                                skillDetail.source,
-                                skillDetail.trust_level,
-                                skillDetail.installed_at
-                                  ? `Installed ${new Date(
-                                      skillDetail.installed_at
-                                    ).toLocaleDateString()}`
-                                  : null,
-                              ]
-                                .filter(Boolean)
-                                .join(" \u00b7 ") || "Bundled skill"}
-                            </p>
-                            {skillDetail.readme ? (
-                              <pre className="m-0 mt-2 max-h-56 overflow-y-auto whitespace-pre-wrap rounded-lg bg-surface-2 p-2 text-[11px] leading-relaxed">
-                                {skillDetail.readme}
-                              </pre>
-                            ) : (
-                              <p className="muted m-0 mt-2 text-[12px]">
-                                No description file for this skill.
-                              </p>
-                            )}
-                          </>
-                        )}
-                      </div>
+                      <SkillDetailSheet detail={skillDetail} />
                     ) : null}
                   </div>
                 );
@@ -2631,18 +2643,21 @@ export default function HomePage() {
                             "text-[13px] " +
                             (t.status === "submitted"
                               ? "text-[var(--success)]"
-                              : t.status === "pending"
+                              : t.status === "pending" ||
+                                  t.status === "submitting"
                                 ? "text-[var(--warning)]"
                                 : "text-[var(--muted-2)]")
                           }
                         >
                           {t.status === "pending"
                             ? "Send awaiting approval"
-                            : t.status === "submitted"
-                              ? "Sent"
-                              : t.status === "denied"
-                                ? "Send denied"
-                                : "Send failed"}
+                            : t.status === "submitting"
+                              ? "Sending…"
+                              : t.status === "submitted"
+                                ? "Sent"
+                                : t.status === "denied"
+                                  ? "Send denied"
+                                  : "Send failed"}
                         </strong>
                         <p className="muted m-0 mt-0.5 break-all font-mono text-[11px]">
                           {t.to_address}
