@@ -7,6 +7,7 @@ import { DitherAvatar } from "@/components/dither-kit/avatar";
 import { Orb } from "@/components/orb/Orb";
 import { PromptInput } from "@/components/prompt-input/PromptInput";
 import { AdsPanel } from "./ads-panel";
+import { ScreenExtras } from "./screen-extras";
 import { VaultPanel } from "./vault-panel";
 import { BotsPanel } from "./bots-panel";
 import { CalendarPanel } from "./calendar-panel";
@@ -95,12 +96,75 @@ interface Connection {
   connected_at: string | null;
 }
 
+/** V8: per-connection health + "used by" hint, derived server-side. */
+interface ConnectionHealth {
+  toolkit: string;
+  status: string;
+  last_ok_at: string | null;
+  used_by: string | null;
+}
+
 interface HubSkill {
   name: string;
   identifier: string;
   source: string;
   trust_level: string;
   description: string;
+}
+
+interface SkillUpdate {
+  name: string;
+  status: "up_to_date" | "update_available" | "unavailable";
+}
+
+interface SkillDetail {
+  name: string;
+  source: string | null;
+  trust_level: string | null;
+  identifier: string | null;
+  installed_at: string | null;
+  readme: string | null;
+}
+
+interface SuggestedSkill {
+  name: string;
+  description: string;
+}
+
+/** Detail sheet body shared by installed and suggested skill cards. */
+function SkillDetailSheet({ detail }: { detail: SkillDetail | null }) {
+  return (
+    <div className="mt-2 border-t border-[var(--ring)] pt-2">
+      {detail === null ? (
+        <p className="muted m-0 text-[12px]">Loading details…</p>
+      ) : (
+        <>
+          <p className="muted m-0 text-[11px]">
+            {[
+              detail.source,
+              detail.trust_level,
+              detail.installed_at
+                ? `Installed ${new Date(
+                    detail.installed_at
+                  ).toLocaleDateString()}`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" \u00b7 ") || "Bundled skill"}
+          </p>
+          {detail.readme ? (
+            <pre className="m-0 mt-2 max-h-56 overflow-y-auto whitespace-pre-wrap rounded-lg bg-surface-2 p-2 text-[11px] leading-relaxed">
+              {detail.readme}
+            </pre>
+          ) : (
+            <p className="muted m-0 mt-2 text-[12px]">
+              No description file for this skill.
+            </p>
+          )}
+        </>
+      )}
+    </div>
+  );
 }
 
 interface ChatMessage {
@@ -167,6 +231,16 @@ interface WalletTx {
   explorer_url: string;
 }
 
+/** V8: a send intent from the transfer ledger — every send goes through a
+ * Needs-you approval before anything moves. */
+interface WalletTransfer {
+  id: string;
+  to_address: string;
+  amount_display: string;
+  status: "pending" | "submitting" | "submitted" | "denied" | "failed";
+  created_at: string;
+}
+
 type Tab =
   | "chat"
   | "history"
@@ -215,14 +289,14 @@ const TABS: [Tab, string][] = [
   ["needs", "Needs you"],
   ["history", "History"],
   ["people", "People"],
-  ["connectors", "Connectors"],
   ["skills", "Skills"],
-  ["calendar", "Calendar"],
-  ["ads", "Ads"],
   ["wallet", "Wallet"],
+  ["computer", "Computer"],
+  ["connectors", "Connectors"],
+  ["calendar", "Calendar"],
   ["vault", "Vault"],
   ["bots", "Bots"],
-  ["computer", "Computer"],
+  ["ads", "Ads"],
 ];
 
 export default function HomePage() {
@@ -262,6 +336,9 @@ export default function HomePage() {
   const [people, setPeople] = useState<Sender[] | null>(null);
   const [toolkits, setToolkits] = useState<Toolkit[] | null>(null);
   const [connections, setConnections] = useState<Connection[]>([]);
+  const [connHealth, setConnHealth] = useState<ConnectionHealth[]>([]);
+  const [connectorBusy, setConnectorBusy] = useState<string | null>(null);
+  const [connectorNote, setConnectorNote] = useState<string | null>(null);
   const [connectorFilter, setConnectorFilter] = useState("");
   const [panelNote, setPanelNote] = useState<string | null>(null);
   const [panelFailed, setPanelFailed] = useState(false);
@@ -270,6 +347,11 @@ export default function HomePage() {
   const [hubResults, setHubResults] = useState<HubSkill[] | null>(null);
   const [hubNote, setHubNote] = useState<string | null>(null);
   const [skillBusy, setSkillBusy] = useState<string | null>(null);
+  const [suggested, setSuggested] = useState<SuggestedSkill[]>([]);
+  const [skillUpdates, setSkillUpdates] = useState<SkillUpdate[] | null>(null);
+  const [updatesNote, setUpdatesNote] = useState<string | null>(null);
+  const [skillDetail, setSkillDetail] = useState<SkillDetail | null>(null);
+  const [skillDetailFor, setSkillDetailFor] = useState<string | null>(null);
   const [historyLoading, setHistoryLoading] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [decisionBusy, setDecisionBusy] = useState<string | null>(null);
@@ -280,6 +362,11 @@ export default function HomePage() {
   const [walletCopied, setWalletCopied] = useState(false);
   const [walletReceiveOpen, setWalletReceiveOpen] = useState(false);
   const [walletFundOpen, setWalletFundOpen] = useState(false);
+  const [walletTransfers, setWalletTransfers] = useState<WalletTransfer[]>([]);
+  const [sendTo, setSendTo] = useState("");
+  const [sendAmount, setSendAmount] = useState("");
+  const [sendBusy, setSendBusy] = useState(false);
+  const [sendNote, setSendNote] = useState<string | null>(null);
   const [boxState, setBoxState] = useState<string | null>(null);
   const [powerBusy, setPowerBusy] = useState(false);
   const [powerNote, setPowerNote] = useState<string | null>(null);
@@ -1027,15 +1114,42 @@ export default function HomePage() {
       const data = (await res.json()) as {
         toolkits?: Toolkit[];
         connections?: Connection[];
+        health?: ConnectionHealth[];
       };
       setToolkits(data.toolkits ?? []);
       setConnections(data.connections ?? []);
+      setConnHealth(data.health ?? []);
     }
     // Sync statuses (picks up OAuth flows completed since last visit).
     const sync = await fetch("/api/connectors", { method: "PUT" });
     if (sync.ok) {
       const data = (await sync.json()) as { connections?: Connection[] };
       setConnections(data.connections ?? []);
+    }
+  }
+
+  async function disconnectToolkit(toolkit: string) {
+    setConnectorBusy(toolkit);
+    setConnectorNote(null);
+    try {
+      const res = await fetch("/api/connectors", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ toolkit }),
+      });
+      if (res.ok) {
+        setConnections((rows) =>
+          rows.map((c) =>
+            c.toolkit === toolkit ? { ...c, status: "revoked" } : c
+          )
+        );
+      } else {
+        setConnectorNote("Couldn't disconnect — try again shortly.");
+      }
+    } catch {
+      setConnectorNote("Couldn't disconnect — try again shortly.");
+    } finally {
+      setConnectorBusy(null);
     }
   }
 
@@ -1074,13 +1188,47 @@ export default function HomePage() {
       if (activityRes.ok) {
         const data = (await activityRes.json()) as {
           transactions?: WalletTx[];
+          transfers?: WalletTransfer[];
         };
         setWalletTxs(data.transactions ?? []);
+        setWalletTransfers(data.transfers ?? []);
       } else {
         setWalletTxs([]);
       }
     } catch {
       setWalletNote("Couldn't load your wallet — try again shortly.");
+    }
+  }
+
+  async function submitSend() {
+    const to = sendTo.trim();
+    const amount = sendAmount.trim();
+    if (!to || !amount) return;
+    setSendBusy(true);
+    setSendNote(null);
+    try {
+      const res = await fetch("/api/wallet/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to, amount }),
+      });
+      if (res.ok) {
+        setSendTo("");
+        setSendAmount("");
+        setSendNote(
+          "Send requested — approve it in Needs you before anything moves."
+        );
+        await loadWallet();
+      } else {
+        const data = (await res.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        setSendNote(data.error ?? "Couldn't request the send — try again.");
+      }
+    } catch {
+      setSendNote("Couldn't request the send — try again shortly.");
+    } finally {
+      setSendBusy(false);
     }
   }
 
@@ -1163,6 +1311,7 @@ export default function HomePage() {
       await loadConnectors();
     }
     if (next === "skills" && skills === null) {
+      void loadSuggested();
       await loadInstalledSkills();
     }
     if (next === "wallet" && wallet === null) {
@@ -1174,6 +1323,85 @@ export default function HomePage() {
     const res = await fetch("/api/box/v1/skills");
     if (res.ok) {
       setSkills(pickList<SkillSummary>(await res.json(), ["skills", "data", "items"]));
+    }
+  }
+
+  async function loadSuggested() {
+    try {
+      const res = await fetch("/api/skills?suggested=1");
+      if (res.ok) {
+        const data = (await res.json()) as { suggested?: SuggestedSkill[] };
+        setSuggested(data.suggested ?? []);
+      }
+    } catch {
+      // suggestion row is optional
+    }
+  }
+
+  async function checkSkillUpdates() {
+    setUpdatesNote("Checking for updates…");
+    setSkillUpdates(null);
+    try {
+      const res = await fetch("/api/skills?updates=1");
+      if (res.ok) {
+        const data = (await res.json()) as { updates?: SkillUpdate[] };
+        setSkillUpdates(data.updates ?? []);
+        setUpdatesNote(null);
+      } else {
+        setUpdatesNote(
+          res.status === 429
+            ? "Your agent's computer is busy starting up — try again in a minute."
+            : "Update check failed — try again shortly."
+        );
+      }
+    } catch {
+      setUpdatesNote("Update check failed — try again shortly.");
+    }
+  }
+
+  async function updateHubSkill(name: string) {
+    setSkillBusy(name);
+    setUpdatesNote(null);
+    try {
+      const res = await fetch("/api/skills", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "update", name }),
+      });
+      if (res.ok) {
+        setSkillUpdates(
+          (rows) =>
+            rows?.map((u) =>
+              u.name === name ? { ...u, status: "up_to_date" as const } : u
+            ) ?? null
+        );
+        await refreshSkills();
+      } else {
+        setUpdatesNote("Update failed — try again shortly.");
+      }
+    } catch {
+      setUpdatesNote("Update failed — try again shortly.");
+    } finally {
+      setSkillBusy(null);
+    }
+  }
+
+  async function openSkillDetail(name: string) {
+    if (skillDetailFor === name) {
+      setSkillDetailFor(null);
+      setSkillDetail(null);
+      return;
+    }
+    setSkillDetailFor(name);
+    setSkillDetail(null);
+    try {
+      const res = await fetch(`/api/skills?detail=${encodeURIComponent(name)}`);
+      if (res.ok) {
+        const data = (await res.json()) as { skill?: SkillDetail };
+        setSkillDetail(data.skill ?? null);
+      }
+    } catch {
+      // the sheet shows a fallback when detail is null
     }
   }
 
@@ -1690,17 +1918,66 @@ export default function HomePage() {
                 value={connectorFilter}
                 onChange={(e) => setConnectorFilter(e.target.value)}
               />
+              {connectorNote ? (
+                <p className="muted m-0 text-[12px]">{connectorNote}</p>
+              ) : null}
               {connections.length > 0 ? (
                 <div className="grid gap-2">
-                  {connections.map((c) => (
-                    <div
-                      key={c.toolkit}
-                      className="panel flex items-center justify-between !p-3"
-                    >
-                      <strong className="text-[13px]">{c.toolkit}</strong>
-                      <span className="muted text-[12px]">{c.status}</span>
-                    </div>
-                  ))}
+                  {connections.map((c) => {
+                    const health = connHealth.find(
+                      (h) => h.toolkit === c.toolkit
+                    );
+                    return (
+                      <div key={c.toolkit} className="panel !p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <strong className="text-[13px]">{c.toolkit}</strong>
+                            <p className="muted m-0 mt-0.5 text-[11px]">
+                              {[
+                                health?.used_by
+                                  ? `Used by ${health.used_by}`
+                                  : null,
+                                health?.last_ok_at
+                                  ? `Last OK ${new Date(
+                                      health.last_ok_at
+                                    ).toLocaleDateString()}`
+                                  : null,
+                              ]
+                                .filter(Boolean)
+                                .join(" \u00b7 ")}
+                            </p>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2">
+                            <span
+                              className={
+                                "text-[12px] " +
+                                (c.status === "active"
+                                  ? "text-[var(--success)]"
+                                  : c.status === "error"
+                                    ? "text-[var(--warning)]"
+                                    : "muted")
+                              }
+                            >
+                              {c.status}
+                            </span>
+                            {c.status === "active" || c.status === "error" ? (
+                              <button
+                                className="btn btn-ghost !px-2.5 !py-1 !text-[12px]"
+                                disabled={connectorBusy !== null}
+                                onClick={() =>
+                                  void disconnectToolkit(c.toolkit)
+                                }
+                              >
+                                {connectorBusy === c.toolkit
+                                  ? "Disconnecting…"
+                                  : "Disconnect"}
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               ) : null}
               {(toolkits ?? [])
@@ -1926,7 +2203,55 @@ export default function HomePage() {
               {hubResults !== null && hubResults.length === 0 ? (
                 <p className="muted m-0 text-[13px]">No skills found.</p>
               ) : null}
-              <h4 className="m-0 mt-2 text-[13px] font-semibold">Installed</h4>
+              {suggested.length > 0 ? (
+                <>
+                  <h4 className="m-0 mt-2 text-[13px] font-semibold">
+                    Suggested for you
+                  </h4>
+                  <div className="grid gap-2">
+                    {suggested.map((s) => {
+                      const suggestedOpen = skillDetailFor === s.name;
+                      return (
+                        <div key={s.name} className="panel rise-in !p-3">
+                          <button
+                            type="button"
+                            className="min-w-0 cursor-pointer border-0 bg-transparent p-0 text-left"
+                            onClick={() => void openSkillDetail(s.name)}
+                            aria-expanded={suggestedOpen}
+                          >
+                            <strong className="text-[13px]">{s.name}</strong>
+                            <p className="muted m-0 mt-1 text-[12px]">
+                              {s.description}
+                            </p>
+                          </button>
+                          {suggestedOpen ? (
+                            <SkillDetailSheet detail={skillDetail} />
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : null}
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <h4 className="m-0 text-[13px] font-semibold">Installed</h4>
+                <button
+                  className="btn btn-ghost !px-2.5 !py-1 !text-[12px]"
+                  disabled={updatesNote === "Checking for updates…"}
+                  onClick={() => void checkSkillUpdates()}
+                >
+                  Check for updates
+                </button>
+              </div>
+              {updatesNote ? (
+                <p className="muted m-0 text-[12px]">{updatesNote}</p>
+              ) : null}
+              {skillUpdates !== null &&
+              skillUpdates.every((u) => u.status !== "update_available") ? (
+                <p className="muted m-0 text-[12px]">
+                  Everything is up to date.
+                </p>
+              ) : null}
               {panelNote ? (
                 <div className="flex items-center gap-2 py-1">
                   <Orb pill label={panelNote} />
@@ -1940,40 +2265,71 @@ export default function HomePage() {
                   ) : null}
                 </div>
               ) : null}
-              {(skills ?? []).map((s, i) => (
-                <div key={s.name ?? i} className="panel rise-in !p-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <strong className="text-[13px]">{s.name ?? "skill"}</strong>
-                      {s.description ? (
-                        <p className="muted m-0 mt-1 text-[12px]">{s.description}</p>
-                      ) : null}
-                    </div>
-                    {s.name ? (
+              {(skills ?? []).map((s, i) => {
+                const update = s.name
+                  ? skillUpdates?.find((u) => u.name === s.name)
+                  : undefined;
+                const detailOpen = s.name != null && skillDetailFor === s.name;
+                return (
+                  <div key={s.name ?? i} className="panel rise-in !p-3">
+                    <div className="flex items-start justify-between gap-2">
                       <button
-                        className="btn btn-ghost !px-3 !py-1.5 !text-[12px]"
-                        disabled={skillBusy !== null}
-                        onClick={() => void uninstallHubSkill(s.name as string)}
+                        type="button"
+                        className="min-w-0 cursor-pointer border-0 bg-transparent p-0 text-left"
+                        disabled={s.name == null}
+                        aria-expanded={detailOpen}
+                        onClick={() => {
+                          if (s.name) void openSkillDetail(s.name);
+                        }}
                       >
-                        {skillBusy === s.name ? "Removing…" : "Remove"}
+                        <strong className="text-[13px]">
+                          {s.name ?? "skill"}
+                        </strong>
+                        {s.description ? (
+                          <p className="muted m-0 mt-1 text-[12px]">
+                            {s.description}
+                          </p>
+                        ) : null}
                       </button>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {update?.status === "update_available" && s.name ? (
+                          <button
+                            className="btn !px-3 !py-1.5 !text-[12px]"
+                            disabled={skillBusy !== null}
+                            onClick={() =>
+                              void updateHubSkill(s.name as string)
+                            }
+                          >
+                            {skillBusy === s.name ? "Updating…" : "Update"}
+                          </button>
+                        ) : null}
+                        {s.name ? (
+                          <button
+                            className="btn btn-ghost !px-3 !py-1.5 !text-[12px]"
+                            disabled={skillBusy !== null}
+                            onClick={() =>
+                              void uninstallHubSkill(s.name as string)
+                            }
+                          >
+                            {skillBusy === s.name ? "Removing…" : "Remove"}
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                    {detailOpen ? (
+                      <SkillDetailSheet detail={skillDetail} />
                     ) : null}
                   </div>
-                </div>
-              ))}
+                );
+              })}
               {skills !== null && skills.length === 0 ? (
                 <p className="muted text-[13px]">No skills installed yet.</p>
               ) : null}
             </div>
           ) : tab === "computer" ? (
-            // The Browser subtab stacks panels below the live view, so it
-            // scrolls; Screen keeps the original fixed fill layout.
-            <div
-              className={
-                "flex flex-1 flex-col gap-2" +
-                (computerView === "browser" ? " min-h-0 overflow-y-auto" : "")
-              }
-            >
+            // Both subtabs stack panels below the live view (Screen: snapshot,
+            // power history, keep-awake; Browser: its panels), so both scroll.
+            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
               <div className="flex items-center gap-1">
                 {(["screen", "browser"] as const).map((view) => (
                   <button
@@ -2092,6 +2448,11 @@ export default function HomePage() {
                   </p>
                 </div>
               )}
+              {computerView === "screen" ? (
+                <ScreenExtras
+                  boxOn={boxState === "ready" || boxState === "idle"}
+                />
+              ) : null}
               {computerView === "browser" ? (
                 <BrowserPanels
                   browser={browser}
@@ -2189,6 +2550,57 @@ export default function HomePage() {
                       </div>
                     ) : null}
                   </div>
+                  <h4 className="m-0 mt-2 text-[13px] font-semibold">Send</h4>
+                  <form
+                    className="panel grid gap-2 !p-3"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void submitSend();
+                    }}
+                  >
+                    <input
+                      className="input font-mono !py-1.5 !text-[12px]"
+                      placeholder="Recipient address (0x…)"
+                      value={sendTo}
+                      onChange={(e) => setSendTo(e.target.value)}
+                      aria-label="Recipient address"
+                    />
+                    <div className="flex gap-2">
+                      <input
+                        className="input flex-1 !py-1.5 !text-[13px]"
+                        placeholder="Amount (ETH)"
+                        inputMode="decimal"
+                        value={sendAmount}
+                        onChange={(e) => setSendAmount(e.target.value)}
+                        aria-label="Amount in ETH"
+                      />
+                      <button
+                        type="submit"
+                        className="btn !px-3 !py-1.5 !text-[12px]"
+                        disabled={sendBusy || !sendTo.trim() || !sendAmount.trim()}
+                      >
+                        {sendBusy ? "Requesting…" : "Request send"}
+                      </button>
+                    </div>
+                    <p className="muted m-0 text-[11px]">
+                      Nothing moves until you approve it in Needs you. ENS
+                      names aren’t resolved — paste the full address.
+                    </p>
+                    {sendNote ? (
+                      <p className="m-0 text-[12px]">
+                        {sendNote}{" "}
+                        {sendNote.startsWith("Send requested") ? (
+                          <button
+                            type="button"
+                            className="cursor-pointer border-0 bg-transparent p-0 text-[12px] underline"
+                            onClick={() => void loadTab("needs")}
+                          >
+                            Open Needs you
+                          </button>
+                        ) : null}
+                      </p>
+                    ) : null}
+                  </form>
                   <h4 className="m-0 mt-2 text-[13px] font-semibold">Balances</h4>
                   {wallet.degraded ? (
                     <p className="muted m-0 text-[12px]">
@@ -2220,6 +2632,45 @@ export default function HomePage() {
                     </p>
                   ) : null}
                   <h4 className="m-0 mt-2 text-[13px] font-semibold">Activity</h4>
+                  {walletTransfers.map((t) => (
+                    <div
+                      key={t.id}
+                      className="panel rise-in flex items-center justify-between !p-3"
+                    >
+                      <div className="min-w-0">
+                        <strong
+                          className={
+                            "text-[13px] " +
+                            (t.status === "submitted"
+                              ? "text-[var(--success)]"
+                              : t.status === "pending" ||
+                                  t.status === "submitting"
+                                ? "text-[var(--warning)]"
+                                : "text-[var(--muted-2)]")
+                          }
+                        >
+                          {t.status === "pending"
+                            ? "Send awaiting approval"
+                            : t.status === "submitting"
+                              ? "Sending…"
+                              : t.status === "submitted"
+                                ? "Sent"
+                                : t.status === "denied"
+                                  ? "Send denied"
+                                  : "Send failed"}
+                        </strong>
+                        <p className="muted m-0 mt-0.5 break-all font-mono text-[11px]">
+                          {t.to_address}
+                        </p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <span className="text-[13px]">{t.amount_display}</span>
+                        <p className="muted m-0 mt-0.5 text-[11px]">
+                          {new Date(t.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
                   {(walletTxs ?? []).map((t) => (
                     <a
                       key={t.hash}
@@ -2251,7 +2702,9 @@ export default function HomePage() {
                       </div>
                     </a>
                   ))}
-                  {walletTxs !== null && walletTxs.length === 0 ? (
+                  {walletTxs !== null &&
+                  walletTxs.length === 0 &&
+                  walletTransfers.length === 0 ? (
                     <p className="muted m-0 text-[13px]">No activity yet.</p>
                   ) : null}
                 </>

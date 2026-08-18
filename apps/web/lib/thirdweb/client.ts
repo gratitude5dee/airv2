@@ -32,6 +32,34 @@ async function thirdwebFetch<T>(path: string, body: object): Promise<T> {
   return (await response.json()) as T;
 }
 
+interface SendTokensResponse {
+  result?: { transactionIds?: string[] };
+}
+
+/**
+ * Native-token send from a server-managed wallet (V8 wallet tab). Executed
+ * with the secret key only after the run_approval decision is approved —
+ * this function is never reachable straight from a composer. Omitting
+ * tokenAddress sends the chain's native token; quantity is in wei.
+ */
+export async function sendNativeTokens(
+  from: string,
+  chainId: number,
+  to: string,
+  quantityWei: string
+): Promise<string[]> {
+  const data = await thirdwebFetch<SendTokensResponse>("/v1/wallets/send", {
+    from,
+    chainId,
+    recipients: [{ address: to, quantity: quantityWei }],
+  });
+  const ids = data.result?.transactionIds;
+  if (!ids || ids.length === 0) {
+    throw new ThirdwebApiError(500, "send response missing transaction ids");
+  }
+  return ids;
+}
+
 export async function initiateSmsAuth(phone: string): Promise<void> {
   await thirdwebFetch("/v1/auth/initiate", { method: "sms", phone });
 }

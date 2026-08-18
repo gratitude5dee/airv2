@@ -9,6 +9,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { command, getBox, isStartLimit, resume, waitForBox } from "../box/client";
 import { health, type HermesBoxTarget } from "../hermes/client";
 import { mirrorBrandIfStale } from "../brand/mirror";
+import { recordBoxStateEvent } from "../box/events";
 
 export const STOP_AFTER_MINUTES = 20;
 
@@ -253,6 +254,11 @@ export async function ensureBoxAwake(
     .from("boxes")
     .update({ state: "ready" })
     .eq("provider_box_id", boxId);
+  if (wroteStarting) {
+    // V8: a genuine stopped→ready transition (not a no-op wake) feeds the
+    // Screen tab's power-state history.
+    await recordBoxStateEvent(supabase, userId, "ready").catch(() => undefined);
+  }
 
   return {
     boxId,

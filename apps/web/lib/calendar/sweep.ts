@@ -16,6 +16,7 @@ import { armStopAfter, ensureBoxAwake } from "../orchestrator/boxes";
 import { hermesDeltas } from "../orchestrator/flush";
 import { createSpectrumSender } from "../spectrum/sender";
 import { createDecision } from "../routing/trust";
+import { keepAwakeMinutes } from "../computer/keepawake";
 import {
   clampToWakingHours,
   nextRunAt,
@@ -154,6 +155,19 @@ export async function runSchedule(
 ): Promise<void> {
   const startedAt = new Date().toISOString();
   try {
+    // V8 Computer ▸ Screen: a keep-awake schedule wakes the box and holds it
+    // awake for its window — no Hermes run, no delivery. armStopAfter is
+    // monotonic, so the finally's 20-minute re-arm cannot shrink the window.
+    const awakeWindow = keepAwakeMinutes(schedule);
+    if (awakeWindow !== null) {
+      await ensureBoxAwake(supabase, schedule.user_id);
+      await armStopAfter(supabase, schedule.user_id, awakeWindow);
+      await supabase
+        .from("agent_schedules")
+        .update({ failure_count: 0 })
+        .eq("id", schedule.id);
+      return;
+    }
     const box = await ensureBoxAwake(supabase, schedule.user_id);
     const prompt = await readFile(
       box.boxId,
