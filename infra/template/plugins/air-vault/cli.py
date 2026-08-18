@@ -10,9 +10,12 @@ logged (C18/C19):
                                         ``~/.hermes/vault/.inbox/<nonce>.json``;
                                         the inbox file is shredded afterwards
 * ``air-vault get <id> --field <f> --reveal``   one value, owner-reveal only
-* ``air-vault totp <id>``               current TOTP code
-* ``air-vault type <id> --field <f>``   fill the focused browser field (wired
-                                        in V5 — exits machine-readably until then)
+* ``air-vault totp <id> [--type]``      current TOTP code (``--type`` delivers
+                                        it into the focused browser field
+                                        instead of printing it)
+* ``air-vault type <id> --field <f>``   fill the focused browser field via CDP
+                                        (V5); prints only
+                                        ``typed <item>/<field> into <host>``
 
 Apply payload shape::
 
@@ -38,8 +41,10 @@ from pathlib import Path
 
 if __package__ in (None, ""):
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import browser_fill
     import vault_store
 else:
+    from . import browser_fill
     from . import vault_store
 
 VaultError = vault_store.VaultError
@@ -126,22 +131,64 @@ def cmd_totp(args: argparse.Namespace) -> int:
     seed = item.get("totp_seed")
     if not isinstance(seed, str) or not seed:
         raise VaultError("no_totp", "item has no TOTP seed")
-    sys.stdout.write(vault_store.totp_code(seed))
+    code = vault_store.totp_code(seed)
+    if args.type_into_browser:
+        host = _deliver_to_browser(args.id, code)
+        print(f"typed {args.id}/totp into {host}")
+        return 0
+    sys.stdout.write(code)
     return 0
 
 
+def _site_grants(home: Path) -> dict:
+    """Owner-written per-site allowlist: {item_id: [host, ...]} under a
+    versioned envelope. Missing/corrupt file means no grants (default off)."""
+    path = home / "vault" / "site_grants.json"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    grants = payload.get("grants") if isinstance(payload, dict) else None
+    return grants if isinstance(grants, dict) else {}
+
+
+def _deliver_to_browser(item_id: str, value: str) -> str:
+    """CLI-enforced guards (C19/C22 are code, not prompt): the frontmost
+    page's host must be granted for this item in site_grants.json before the
+    value crosses into the browser. Returns the host typed into."""
+    port = browser_fill.debug_port()
+    target = browser_fill.frontmost_page(browser_fill.list_targets(port))
+    host = browser_fill.page_host(target)
+    grants = _site_grants(_home_path())
+    if not browser_fill.host_granted(host, grants.get(item_id)):
+        raise VaultError(
+            "site_not_granted",
+            f"{host} is not granted for this item — flip 'Allow agent "
+            "sign-in' for it in the Browser tab's Site access panel",
+        )
+    browser_fill.insert_text(target, value)
+    return host
+
+
 def cmd_type(args: argparse.Namespace) -> int:
-    # V5 wires CDP/keystroke injection so the value bypasses the model
-    # transcript entirely (C19). Until then this verb must not silently
-    # fall back to printing the value.
+    # V5: the value resolves in-process and crosses to the browser over CDP —
+    # it never touches stdout, argv, run events, or the model transcript
+    # (C19). Every guard here is code, not prompt.
     store = _load(_home_path(), _key())
     item = _find(store, args.id)
-    if not isinstance((item.get("fields") or {}).get(args.field), str):
+    value = (item.get("fields") or {}).get(args.field)
+    if not isinstance(value, str) or not value:
         raise VaultError("field_not_found", f"item has no field {args.field!r}")
-    raise VaultError(
-        "type_not_available",
-        "browser fill is not wired yet (V5); use the reveal UI instead",
-    )
+    if item.get("kind") == "card":
+        # C20 seam: card fields require a control-plane-minted fill ticket
+        # (V6). Until tickets exist this refuses always — never a fallback.
+        raise VaultError(
+            "fill_ticket_required",
+            "card fields need an approved fill ticket (coming in V6) — refused",
+        )
+    host = _deliver_to_browser(args.id, value)
+    print(f"typed {args.id}/{args.field} into {host}")
+    return 0
 
 
 def main(argv=None) -> int:
@@ -164,6 +211,7 @@ def main(argv=None) -> int:
 
     p_totp = sub.add_parser("totp")
     p_totp.add_argument("id")
+    p_totp.add_argument("--type", action="store_true", dest="type_into_browser")
     p_totp.set_defaults(func=cmd_totp)
 
     p_type = sub.add_parser("type")

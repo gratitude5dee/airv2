@@ -71,14 +71,14 @@ export class VaultCliError extends Error {
 /** Item ids / field names appear in argv — restrict to a shell-inert set. */
 const SAFE_ARG = /^[A-Za-z0-9._-]+$/;
 
-function safeArg(value: string, label: string): string {
+export function safeArg(value: string, label: string): string {
   if (!SAFE_ARG.test(value)) {
     throw new VaultCliError("bad_argument", `invalid ${label}`);
   }
   return value;
 }
 
-function throwCliError(stderr: string, fallback: string): never {
+export function throwCliError(stderr: string, fallback: string): never {
   try {
     const parsed = JSON.parse(stderr.trim()) as {
       error?: string;
@@ -93,7 +93,7 @@ function throwCliError(stderr: string, fallback: string): never {
   throw new VaultCliError("cli_failed", fallback);
 }
 
-async function appendEvent(
+export async function appendVaultEvent(
   supabase: SupabaseClient,
   userId: string,
   action: string,
@@ -266,7 +266,7 @@ export async function applyBatch(
       } else if (applied.item) {
         await mirrorItem(supabase, userId, applied.item);
       }
-      await appendEvent(supabase, userId, applied.op, applied.id);
+      await appendVaultEvent(supabase, userId, applied.op, applied.id);
       vaultLog({
         msg: "vault apply",
         user_id: userId,
@@ -300,7 +300,7 @@ export async function reveal(
   }
   registerVaultValue(result.stdout);
   try {
-    await appendEvent(serviceClient(), userId, "reveal", itemId, context);
+    await appendVaultEvent(serviceClient(), userId, "reveal", itemId, context);
   } finally {
     unregisterVaultValues([result.stdout]);
   }
@@ -321,6 +321,6 @@ export async function totp(
   if (result.exitCode !== 0) {
     throwCliError(result.stderr, "air-vault totp failed");
   }
-  await appendEvent(serviceClient(), userId, "reveal", itemId, context);
+  await appendVaultEvent(serviceClient(), userId, "reveal", itemId, context);
   return result.stdout.trim();
 }

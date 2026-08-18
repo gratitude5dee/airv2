@@ -44,7 +44,18 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-const APPS = new Set(["kanban", "todo", "computer", "vault", "calendar"]);
+const APPS = new Set([
+  "kanban",
+  "todo",
+  "computer",
+  "browser",
+  "vault",
+  "calendar",
+]);
+
+// Passthrough apps redirect the owner to a freshly-fetched desktop stream
+// URL (never serialized into HTML or storage) and accept no POSTs (C15/C16).
+const PASSTHROUGH_APPS = new Set(["computer", "browser"]);
 
 // V2 (C18/C20): card values never render on this reduced-trust surface —
 // card-field reveal is web-tab (full session) only. Logins may reveal here.
@@ -332,11 +343,12 @@ export async function GET(
   const session = sessionFromCookie(request, app);
   if (!session) return forbidden("no session — open this from your card");
 
-  if (app === "computer") {
+  if (PASSTHROUGH_APPS.has(app)) {
     // The desktop stream is WebRTC and cannot be re-streamed through this
     // origin; the owner's browser is redirected to a freshly-fetched stream
     // URL behind the single-use token exchange above. no-referrer keeps the
-    // URL out of Referer headers; nothing is stored client-side (C17).
+    // URL out of Referer headers; nothing is stored client-side (C17). The
+    // browser card is the same live desktop — the headed browser runs on it.
     try {
       const url = await desktopStreamUrl(supabase, session.userId);
       await armStopAfter(supabase, session.userId);
@@ -441,7 +453,7 @@ export async function POST(
   if (!APPS.has(app)) {
     return new NextResponse("not found", { status: 404, headers: BASE_HEADERS });
   }
-  if (app === "computer") {
+  if (PASSTHROUGH_APPS.has(app)) {
     return new NextResponse("not found", { status: 404, headers: BASE_HEADERS });
   }
   const session = sessionFromCookie(request, app);

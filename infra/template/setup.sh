@@ -69,6 +69,10 @@ mkdir -p "$HOME_DIR/.hermes"
 cat > "$HOME_DIR/.hermes/config.yaml" <<'YAML'
 approvals:
   mode: "smart"
+  # V5 social gate: publishing in the human's name always pauses the run
+  # (waiting_for_approval) so the Needs-you social_post card can resume it
+  # via /v1/runs/{id}/approval with the human's approve/dismiss.
+  smart_policy: "ALWAYS ESCALATE any command or browser action that publishes text publicly in the human's name on a social platform (posting, commenting, or replying). Liking/reacting under an enabled standing rule does not need escalation."
 
 terminal:
   backend: "local"
@@ -117,7 +121,8 @@ HERMES_DASHBOARD_BASIC_AUTH_USERNAME=air
 HERMES_DASHBOARD_BASIC_AUTH_PASSWORD_HASH=$TEMPLATE_DASH_HASH
 HERMES_DASHBOARD_BASIC_AUTH_SECRET=$TEMPLATE_DASH_SECRET
 DISPLAY=:0
-AGENT_BROWSER_ARGS=--no-sandbox
+AGENT_BROWSER_ARGS=--no-sandbox --remote-debugging-port=9222 --user-data-dir=$HOME_DIR/.hermes/browser-profile
+AIR_BROWSER_DEBUG_PORT=9222
 ENV
 chmod 600 "$HOME_DIR/.hermes/.env"
 
@@ -135,6 +140,12 @@ fi
 export PATH="$HERMES_NODE/bin:$PATH"
 npm install -g agent-browser --no-audit --no-fund
 agent-browser install   # downloads Chrome for Testing into ~/.agent-browser
+
+# Dedicated browser profile (V5 §5e): Chrome 136+ refuses the CDP debug port
+# on the default profile, and air-vault type needs 127.0.0.1:9222 to deliver
+# vault values via Input.insertText without transiting the model (C19).
+mkdir -p "$HOME_DIR/.hermes/browser-profile"
+chmod 700 "$HOME_DIR/.hermes/browser-profile"
 
 # Make the CLI resolvable by the systemd services (they inherit systemd's
 # default PATH and only load ~/.hermes/.env, which does no $-expansion) and
@@ -201,6 +212,11 @@ get a computer card). When a step needs the human — passwords, 2FA codes, OAut
 consents, CAPTCHAs — open the page in your browser, get it to the exact step,
 then follow the computer-relay skill to hand them the screen. Never ask for
 credentials in chat.
+
+Sign-ins come from the vault: when a site login is needed, use the vault-use
+skill (`air-vault type` / `air-vault totp --type`) to fill credentials — never
+ask the human to type a password into chat, and never read, print, or store a
+credential yourself.
 EOF
 fi
 

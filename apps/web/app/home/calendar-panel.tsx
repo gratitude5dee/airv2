@@ -117,10 +117,15 @@ function boxNote(status: number): string {
 export function CalendarPanel({
   active,
   onAgentRun,
+  prefill,
+  onPrefillConsumed,
 }: {
   active: boolean;
   /** Dispatch a chat run (Prep me / reschedule draft) in the Chat tab. */
   onAgentRun: (prompt: string) => void;
+  /** V5 deep-link: open the new-schedule sheet prefilled (Browser ▸ Schedule). */
+  prefill?: { name: string; prompt: string } | null;
+  onPrefillConsumed?: () => void;
 }) {
   const timezone =
     typeof Intl !== "undefined"
@@ -304,6 +309,20 @@ export function CalendarPanel({
       deliver: "imessage",
     });
   }
+
+  // Browser ▸ Automations "Schedule" lands here with the sheet prefilled.
+  useEffect(() => {
+    if (!active || !prefill) return;
+    setSheetNote(null);
+    setSheet({
+      mode: "create",
+      name: prefill.name,
+      when: "every day at 9am",
+      prompt: prefill.prompt,
+      deliver: "imessage",
+    });
+    onPrefillConsumed?.();
+  }, [active, prefill, onPrefillConsumed]);
 
   function openEdit(schedule: Schedule) {
     setSheetNote(null);

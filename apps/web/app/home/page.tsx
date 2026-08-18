@@ -9,6 +9,11 @@ import { PromptInput } from "@/components/prompt-input/PromptInput";
 import { AdsPanel } from "./ads-panel";
 import { VaultPanel } from "./vault-panel";
 import { CalendarPanel } from "./calendar-panel";
+import {
+  BrowserHeader,
+  BrowserPanels,
+  useBrowserPanel,
+} from "./browser-panel";
 
 // Loaded on demand so the main route doesn't pay for thirdweb/react unless
 // the user opens Fund (goal.md M15 bundle budget).
@@ -177,6 +182,18 @@ export default function HomePage() {
   const [note, setNote] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("chat");
   const [computerEpoch, setComputerEpoch] = useState(0);
+  // V5: Computer splits into Screen/Browser subtabs. The desktop iframe is
+  // owned by the tab (not the subtab), so switching never remounts it.
+  const [computerView, setComputerView] = useState<"screen" | "browser">(
+    "screen"
+  );
+  const [calendarPrefill, setCalendarPrefill] = useState<{
+    name: string;
+    prompt: string;
+  } | null>(null);
+  const browser = useBrowserPanel(
+    tab === "computer" && computerView === "browser"
+  );
   const [chatComputerOpen, setChatComputerOpen] = useState(false);
   const chatComputerOpenRef = useRef(false);
   // Once the user closes the inline view mid-run, don't pop it back open
@@ -1213,6 +1230,22 @@ export default function HomePage() {
             </div>
           ) : tab === "computer" ? (
             <div className="flex flex-1 flex-col gap-2">
+              <div className="flex items-center gap-1">
+                {(["screen", "browser"] as const).map((view) => (
+                  <button
+                    key={view}
+                    className={
+                      "seg !px-3 !py-1 !text-[12px]" +
+                      (computerView === view ? " pill-active" : "")
+                    }
+                    aria-current={computerView === view ? "page" : undefined}
+                    onClick={() => setComputerView(view)}
+                  >
+                    {view === "screen" ? "Screen" : "Browser"}
+                  </button>
+                ))}
+              </div>
+              {computerView === "screen" ? (
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="muted m-0 flex items-center gap-2 text-[13px]">
                   <span
@@ -1284,6 +1317,14 @@ export default function HomePage() {
                   ) : null}
                 </div>
               </div>
+              ) : (
+                <>
+                  <BrowserHeader browser={browser} />
+                  {browser.note ? (
+                    <p className="muted m-0 text-[12px]">{browser.note}</p>
+                  ) : null}
+                </>
+              )}
               {powerNote ? (
                 <p className="muted m-0 text-[12px]">{powerNote}</p>
               ) : null}
@@ -1307,6 +1348,18 @@ export default function HomePage() {
                   </p>
                 </div>
               )}
+              {computerView === "browser" ? (
+                <BrowserPanels
+                  browser={browser}
+                  onSchedule={(playbook) => {
+                    setCalendarPrefill({
+                      name: playbook,
+                      prompt: `Run the ${playbook} playbook: read and follow the ${playbook} skill.`,
+                    });
+                    void loadTab("calendar");
+                  }}
+                />
+              ) : null}
             </div>
           ) : tab === "wallet" ? (
             <div className="grid flex-1 content-start gap-2 overflow-y-auto">
@@ -1465,6 +1518,8 @@ export default function HomePage() {
           ) : tab === "calendar" ? (
             <CalendarPanel
               active={tab === "calendar"}
+              prefill={calendarPrefill}
+              onPrefillConsumed={() => setCalendarPrefill(null)}
               onAgentRun={(prompt) => {
                 setTab("chat");
                 if (busy) {

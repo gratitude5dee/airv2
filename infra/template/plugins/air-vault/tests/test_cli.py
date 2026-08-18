@@ -125,13 +125,6 @@ def test_totp_without_seed(home, capsys):
     assert code == 1 and json.loads(err)["error"] == "no_totp"
 
 
-def test_type_is_machine_readable_until_wired(home, capsys):
-    item_id = create_item(home, capsys)
-    code, out, err = run(capsys, "type", item_id, "--field", "value")
-    assert code == 1 and SECRET not in out and SECRET not in err
-    assert json.loads(err)["error"] == "type_not_available"
-
-
 def test_apply_shreds_inbox_when_key_missing(home, capsys, monkeypatch):
     path = write_inbox(home, {"version": 1, "operations": [
         {"op": "create", "item": {"kind": "api_key", "name": "x",
