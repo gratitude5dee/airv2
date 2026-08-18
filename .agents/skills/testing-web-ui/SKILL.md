@@ -33,6 +33,14 @@ Real Supabase creds can be fetched at runtime — no `.env` needed and no OTP lo
 - thirdweb Insight (token balances / activity, used by the M15 wallet tab) returns 401 "The service key is missing" for both the org `THIRDWEB_SECRET_KEY` and the Vercel one — likely the thirdweb project needs the Insight service enabled. Expect `degraded:true` with empty tokens/transactions; native RPC balance works with the org key. The Vercel-stored THIRDWEB_SECRET_KEY fails even native RPC (401) — it may be rotated/invalid.
 - Box-backed tabs on /home (History, Skills, chat transcript sync) show "Couldn't reach your agent's computer" notes when `BOX_API_KEY` is dummy — expected, not a UI bug.
 
+## Vault surface (V2) testing with the mock backend
+- The Vault tab, `/api/vault*` routes, and the `/mini/vault` mini-app can be fully exercised against the local mock (:4545) by extending it to emulate: PostgREST tables `vault_items`, `vault_events`, `vault_managers`, `miniapp_redemptions`, `boxes`, `users`; Box API `POST /boxes/:id/commands` (implement a tiny in-memory `air-vault` CLI: `set/get --field --reveal/delete`) and `POST /boxes/:id/files` (vault inbox writes); Hermes `GET /hermes/health` → `{"ok":true}`. Set `BOX_API_BASE=http://localhost:4545`.
+- `miniapp_redemptions` inserts MUST return PostgREST error `{code:"23505"}` (HTTP 409) on duplicate `jti`, or the mini-app single-use link check silently passes replays (redeemOnce treats any successful insert as first use).
+- `vault_items` inserts act as upserts by id (the client mirrors metadata with plain inserts after updates).
+- Mini-app link flow: `POST /api/mini/link {app:"vault"}` with the `air_session` cookie → open `?t=` URL once (303 sets `mini_vault` cookie, `Path=/mini/vault`); reuse → 403 "this link was already used"; garbage token → 403 "invalid or expired link". Card reveal contract: `POST /mini/vault action=reveal&id=<card>&field=number` with the mini cookie → 403 "card reveal is only available in the full Vault tab".
+- `POST /api/vault` body shape is `{"item":{kind,name,fields:{...}}}` (not bare kind/fields — that returns 400 "invalid request").
+- The mock is in-memory: restarting it wipes vault items/boxes/users mid-test; keep the append-only events log on disk for leak scans across restarts.
+
 ## Devin Secrets Needed
 - `SUPABASE_ACCESS_TOKEN` (management API → service-role key for the airv2 project; enables full authenticated testing).
 - `THIRDWEB_SECRET_KEY` (native balance reads for the wallet tab; Insight currently 401s — see above).
