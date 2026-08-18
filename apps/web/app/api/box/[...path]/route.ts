@@ -20,6 +20,7 @@ import { dashboardRequestWithRetry } from "@/lib/box/dashboard";
 import { openSecret } from "@/lib/crypto/secretbox";
 import { env } from "@/lib/env";
 import { resolveUpstream } from "@/lib/box/allowlist";
+import { getBot } from "@/lib/bots/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,6 +42,21 @@ async function handle(
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const userId = session.userId;
+
+  // V7: /p/<name>/… rides a bot profile — authenticate with THAT profile's
+  // key, resolved from the caller's own bots row (the box default key does
+  // not open a named profile, and vice versa). No row → 404 before any box
+  // traffic happens.
+  let profileKey: string | null = null;
+  const profileMatch = /^p\/([a-z0-9-]{2,32})\//.exec(joined);
+  if (profileMatch?.[1]) {
+    const bot = await getBot(supabase, userId, profileMatch[1]);
+    if (!bot || bot.status !== "ready") {
+      return NextResponse.json({ error: "not found" }, { status: 404 });
+    }
+    profileKey = bot.api_server_key;
+  }
+
   try {
     const box = await ensureBoxAwake(supabase, userId);
     const search = request.nextUrl.search;
@@ -94,7 +110,7 @@ async function handle(
       }
     } else {
       upstream = await proxyTo(box.target.hostedUrl, {
-        Authorization: `Bearer ${box.target.apiServerKey}`,
+        Authorization: `Bearer ${profileKey ?? box.target.apiServerKey}`,
         Cookie: `_port_auth=${box.target.hostedToken}`,
       });
     }
