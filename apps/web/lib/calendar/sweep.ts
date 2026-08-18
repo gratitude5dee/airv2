@@ -174,10 +174,19 @@ export async function runSchedule(
     // deliver: 'none' runs silently — output visible in History only.
     const trimmed = output.trim();
     if (trimmed && !trimmed.includes("[SILENT]")) {
+      let delivered = true;
       if (schedule.deliver === "imessage") {
-        await deliverImessage(supabase, schedule.user_id, trimmed);
+        delivered = await deliverImessage(supabase, schedule.user_id, trimmed);
       } else if (schedule.deliver === "email") {
-        await deliverEmail(supabase, schedule.user_id, schedule, trimmed);
+        delivered = await deliverEmail(
+          supabase,
+          schedule.user_id,
+          schedule,
+          trimmed
+        );
+      }
+      if (!delivered) {
+        throw new Error(`no ${schedule.deliver} destination for delivery`);
       }
     }
 

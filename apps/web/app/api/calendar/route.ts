@@ -34,9 +34,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     const box = await ensureBoxAwake(supabase, userId);
     events = await readEventsStore(box.boxId);
-    await armStopAfter(supabase, userId).catch(() => undefined);
   } catch {
     boxAwake = false;
+  } finally {
+    // ensureBoxAwake nulls stop_after before it can fail; re-arm on every exit.
+    await armStopAfter(supabase, userId).catch(() => undefined);
   }
 
   return NextResponse.json({

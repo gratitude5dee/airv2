@@ -78,11 +78,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const id = randomUUID();
   const promptRef = `.hermes/schedules/${id}.md`;
 
-  const box = await ensureBoxAwake(supabase, userId);
+  let boxId: string;
   try {
-    await command(box.boxId, "mkdir -p /home/user/.hermes/schedules");
-    await writeFile(box.boxId, promptRef, prompt);
+    const box = await ensureBoxAwake(supabase, userId);
+    boxId = box.boxId;
+    await command(boxId, "mkdir -p /home/user/.hermes/schedules");
+    await writeFile(boxId, promptRef, prompt);
   } finally {
+    // ensureBoxAwake nulls stop_after before it can fail; re-arm on every exit.
     await armStopAfter(supabase, userId).catch(() => undefined);
   }
 
@@ -103,7 +106,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     ).toISOString(),
   });
   if (error) {
-    await command(box.boxId, `rm -f /home/user/${promptRef}`).catch(
+    await command(boxId, `rm -f /home/user/${promptRef}`).catch(
       () => undefined
     );
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -174,10 +177,19 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
       timezone,
       deliver
     ).toISOString();
+  } else if (updates.deliver && updates.deliver !== existing.deliver) {
+    // Deliver-only change: the stored next_run_at may have been computed for
+    // a silent schedule (never clamped) — re-clamp so switching to a channel
+    // cannot message the user off-hours.
+    updates.next_run_at = clampToWakingHours(
+      new Date(existing.next_run_at),
+      timezone,
+      updates.deliver as Deliver
+    ).toISOString();
   }
   if (body.prompt?.trim()) {
-    const box = await ensureBoxAwake(supabase, userId);
     try {
+      const box = await ensureBoxAwake(supabase, userId);
       await writeFile(box.boxId, existing.prompt_ref, body.prompt.trim());
     } finally {
       await armStopAfter(supabase, userId).catch(() => undefined);

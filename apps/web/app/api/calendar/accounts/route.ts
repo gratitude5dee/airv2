@@ -144,9 +144,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const accountId = randomUUID();
-  const box = await ensureBoxAwake(supabase, userId);
   let webhookSecret: string | undefined;
   try {
+    const box = await ensureBoxAwake(supabase, userId);
     await upsertBoxSource(box.boxId, { id: accountId, provider, secret });
 
     // calcom: mint a per-account webhook secret, sealed at rest (AES-256-GCM

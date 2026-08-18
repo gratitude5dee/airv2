@@ -125,8 +125,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (decision.kind === "calendar_add" && decision.ref) {
     // V3: approve confirms the pending event in the box store; dismiss
     // tombstones the invite so a later re-sync cannot resurrect it.
-    const box = await ensureBoxAwake(supabase, userId);
     try {
+      const box = await ensureBoxAwake(supabase, userId);
       if (body.action === "approve") {
         await approveInboxEvent(box.boxId, decision.ref as string);
       } else {

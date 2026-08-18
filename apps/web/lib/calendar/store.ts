@@ -87,12 +87,16 @@ export async function upsertBoxSource(
   source: BoxSource
 ): Promise<void> {
   // Pre-create the file with mode 600 so the secret is never on disk with
-  // default (world-readable) permissions, even briefly.
-  await command(
+  // default (world-readable) permissions, even briefly. A failed mkdir/chmod
+  // must abort the write — command() only throws on API-level failures.
+  const prep = await command(
     boxId,
     `mkdir -p ${INBOX_DIR} && chmod 700 ${CALENDAR_DIR} && ` +
       `touch ${SOURCES_PATH} && chmod 600 ${SOURCES_PATH}`
   );
+  if (prep.exitCode !== 0) {
+    throw new Error(`sources prep failed: ${prep.stderr}`);
+  }
   let sources: BoxSource[] = [];
   try {
     const raw = await readFile(boxId, SOURCES_PATH);
@@ -109,7 +113,10 @@ export async function upsertBoxSource(
   const next = sources.filter((entry) => entry.id !== source.id);
   next.push(source);
   await writeFile(boxId, ".hermes/calendar/sources.json", JSON.stringify(next));
-  await command(boxId, `chmod 600 ${SOURCES_PATH}`);
+  const mode = await command(boxId, `chmod 600 ${SOURCES_PATH}`);
+  if (mode.exitCode !== 0) {
+    throw new Error(`sources chmod failed: ${mode.stderr}`);
+  }
 }
 
 export async function removeBoxSource(
@@ -139,7 +146,10 @@ export async function removeBoxSource(
     ".hermes/calendar/sources.json",
     JSON.stringify(next)
   );
-  await command(boxId, `chmod 600 ${SOURCES_PATH}`);
+  const mode = await command(boxId, `chmod 600 ${SOURCES_PATH}`);
+  if (mode.exitCode !== 0) {
+    throw new Error(`sources chmod failed: ${mode.stderr}`);
+  }
 }
 
 /**
@@ -235,11 +245,14 @@ export async function materializeIcs(
 ): Promise<string> {
   const safeName = fileName.replace(/[^A-Za-z0-9._-]/g, "_");
   const relative = `.hermes/calendar/inbox/${Date.now()}-${safeName}`;
+  // shellQuote also re-validates the sanitized path before interpolation.
+  const quoted = shellQuote(`/home/user/${relative}`);
+  const quotedBin = shellQuote(`/home/user/${relative}.bin`);
   await command(boxId, `mkdir -p ${INBOX_DIR}`);
   await writeFile(boxId, relative, bytes.toString("base64"));
   await command(
     boxId,
-    `base64 -d /home/user/${relative} > /home/user/${relative}.bin && mv /home/user/${relative}.bin /home/user/${relative}`
+    `base64 -d ${quoted} > ${quotedBin} && mv ${quotedBin} ${quoted}`
   );
   return `/home/user/${relative}`;
 }

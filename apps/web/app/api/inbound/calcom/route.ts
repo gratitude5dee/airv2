@@ -97,7 +97,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     try {
       const box = await ensureBoxAwake(supabase, userId);
       await nudgeSync(box.target, box.boxId);
-      await armStopAfter(supabase, userId).catch(() => undefined);
       await supabase
         .from("calendar_accounts")
         .update({ last_synced_at: new Date().toISOString() })
@@ -111,6 +110,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           error: error instanceof Error ? error.message : String(error),
         })
       );
+    } finally {
+      // ensureBoxAwake nulls stop_after before it can fail; re-arm on every exit.
+      await armStopAfter(supabase, userId).catch(() => undefined);
     }
   });
 

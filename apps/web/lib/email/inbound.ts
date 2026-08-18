@@ -71,8 +71,8 @@ async function handleCalendarInvites(
   );
   if (invites.length === 0) return false;
 
-  const box = await ensureBoxAwake(supabase, userId);
   try {
+    const box = await ensureBoxAwake(supabase, userId);
     for (const invite of invites) {
       const bytes = await getAttachmentBytes(
         inboxId,
