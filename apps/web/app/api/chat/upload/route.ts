@@ -41,11 +41,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const box = await ensureBoxAwake(supabase, userId);
     const path = inboxPath(file.name, Date.now());
     const base64 = Buffer.from(await file.arrayBuffer()).toString("base64");
+    // Quote the path at the call site — safety must not depend solely on the
+    // sanitizer in lib/chat/attachments.ts keeping its character set.
+    const quoted = JSON.stringify(`/home/user/${path}`);
+    const quotedTmp = JSON.stringify(`/home/user/${path}.bin`);
     await command(box.boxId, "mkdir -p /home/user/.hermes/inbox");
     await writeFile(box.boxId, path, base64);
     await command(
       box.boxId,
-      `base64 -d /home/user/${path} > /home/user/${path}.bin && mv /home/user/${path}.bin /home/user/${path}`
+      `base64 -d ${quoted} > ${quotedTmp} && mv ${quotedTmp} ${quoted}`
     );
     const mimeType = file.type || "application/octet-stream";
     return NextResponse.json({

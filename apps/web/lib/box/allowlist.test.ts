@@ -54,6 +54,21 @@ describe("resolveUpstream", () => {
     expect(resolveUpstream("DELETE", "api/sessions/s1")).toBe("api_server");
   });
 
+  it("allows channel-prefixed session ids Hermes mints (email:<thread>)", () => {
+    expect(resolveUpstream("GET", "api/sessions/email:thread_123")).toBe(
+      "api_server"
+    );
+    expect(
+      resolveUpstream("GET", "api/sessions/email:thread_123/messages")
+    ).toBe("api_server");
+    expect(resolveUpstream("DELETE", "api/sessions/email:thread_123")).toBe(
+      "api_server"
+    );
+    expect(resolveUpstream("GET", "api/sessions/a.b-c_d/messages")).toBe(
+      "api_server"
+    );
+  });
+
   it("rejects session paths beyond the exact surface — never bulk ops", () => {
     expect(resolveUpstream("DELETE", "api/sessions")).toBe(null);
     expect(resolveUpstream("POST", "api/sessions/bulk-delete")).toBe(null);
@@ -62,6 +77,15 @@ describe("resolveUpstream", () => {
     expect(resolveUpstream("DELETE", "api/sessions/s1/messages")).toBe(null);
     expect(resolveUpstream("GET", "api/sessions/s1/export")).toBe(null);
     expect(resolveUpstream("GET", "api/sessions/../env")).toBe(null);
+  });
+
+  it("rejects dot-only session ids — no path-segment aliasing", () => {
+    expect(resolveUpstream("GET", "api/sessions/..")).toBe(null);
+    expect(resolveUpstream("GET", "api/sessions/.")).toBe(null);
+    expect(resolveUpstream("DELETE", "api/sessions/..")).toBe(null);
+    expect(resolveUpstream("DELETE", "api/sessions/.")).toBe(null);
+    expect(resolveUpstream("GET", "api/sessions/../messages")).toBe(null);
+    expect(resolveUpstream("GET", "api/sessions/:._-")).toBe(null);
   });
 
   it("allows exactly the Hermes jobs API surface (V3)", () => {

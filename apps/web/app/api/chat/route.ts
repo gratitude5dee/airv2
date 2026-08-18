@@ -36,7 +36,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     via?: string;
     attachments?: unknown;
   };
-  let input = (body.input ?? "").trim();
+  const typed = (body.input ?? "").trim();
   // V8: uploads referenced by box path (from /api/chat/upload), the same
   // marker shape the iMessage path emits — never raw bytes (C4). The path
   // must match exactly what the upload route mints.
@@ -58,22 +58,27 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         : "application/octet-stream";
     markers.push(attachmentMarker(mime, attachment.path));
   }
-  if (markers.length > 0) {
-    input = [input, ...markers].filter(Boolean).join("\n");
-  }
-  if (!input) {
+  if (!typed && markers.length === 0) {
     return NextResponse.json({ error: "empty input" }, { status: 400 });
   }
   const trigger = body.via === "voice" ? "voice" : "web";
   const supabase = serviceClient();
 
   // M16: an explicit /imagine, /animate, or /zap short-circuits before the
-  // Hermes run. Ordinary prose ("make me a picture") falls through unchanged.
-  const command = parseExplicitGenerationCommand(input);
+  // Hermes run. Parsed against the user's typed text only — the attachment
+  // markers are internal bookkeeping, not part of a creative prompt (and the
+  // web lane stages no media inputs, so the combination is refused outright).
+  const command = parseExplicitGenerationCommand(typed);
   if (command) {
     if ("ambiguous" in command) {
       // Deterministic rejection — no model or provider call happens.
       return NextResponse.json({ creative_line: AMBIGUOUS_COMMAND_LINE });
+    }
+    if (markers.length > 0) {
+      return NextResponse.json({
+        creative_line:
+          "Attached files can't be used with /imagine, /animate, or /zap yet — send the command on its own and describe what you want.",
+      });
     }
     try {
       const job = await createCreativeJob(supabase, userId, "web", command.mode);
@@ -81,7 +86,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         await executeCreativeJob(supabase, job.id, userId, {
           mode: command.mode,
           cleanedText: command.cleanedText,
-          text: input,
+          text: typed,
           mediaInputs: [],
         }).catch((error: unknown) => {
           console.error(
@@ -106,6 +111,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: "run failed" }, { status: 500 });
     }
   }
+
+  // Ordinary chat: the Hermes input is the typed text plus the attachment
+  // path markers (references only, never bytes — C4).
+  const input = [typed, ...markers].filter(Boolean).join("\n");
 
   // V7: an @mention validated against the caller's roster delegates the
   // turn to that bot's canonical chat; unknown @words are ordinary text.

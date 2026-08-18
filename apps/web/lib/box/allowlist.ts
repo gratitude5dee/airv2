@@ -8,11 +8,21 @@ export type Upstream = "api_server" | "dashboard";
 // Served by api_server (8642).
 const ALLOWLIST: ReadonlyArray<{ method: string; pattern: RegExp }> = [
   { method: "GET", pattern: /^api\/sessions$/ },
-  { method: "GET", pattern: /^api\/sessions\/[A-Za-z0-9_-]+$/ },
-  { method: "GET", pattern: /^api\/sessions\/[A-Za-z0-9_-]+\/messages$/ },
+  // Session ids include the channel-prefixed forms Hermes mints (e.g.
+  // email:<thread>) — colon and dot are part of the id alphabet, but an id
+  // must contain at least one alphanumeric so dot-only path segments (".",
+  // "..") can never alias another upstream path.
+  { method: "GET", pattern: /^api\/sessions\/(?=[^/]*[A-Za-z0-9])[A-Za-z0-9:._-]+$/ },
+  {
+    method: "GET",
+    pattern: /^api\/sessions\/(?=[^/]*[A-Za-z0-9])[A-Za-z0-9:._-]+\/messages$/,
+  },
   // V8 History: delete one session by id — exact path, never bulk-delete,
   // import, or prune (C5).
-  { method: "DELETE", pattern: /^api\/sessions\/[A-Za-z0-9_-]+$/ },
+  {
+    method: "DELETE",
+    pattern: /^api\/sessions\/(?=[^/]*[A-Za-z0-9])[A-Za-z0-9:._-]+$/,
+  },
   { method: "GET", pattern: /^v1\/skills$/ },
   { method: "GET", pattern: /^v1\/toolsets$/ },
   { method: "GET", pattern: /^api\/mcp\/servers$/ },
