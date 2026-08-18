@@ -192,6 +192,14 @@ export async function provisionUser(
   boxId = box.id;
   await waitForBox(box.id);
 
+  // V0: which Hermes is this box on — read the SHA the template baked at
+  // build time so support can answer from the boxes row alone.
+  const refResult = await command(
+    box.id,
+    "cat /home/user/.hermes/.template-hermes-ref 2>/dev/null || true"
+  );
+  const templateHermesRef = refResult.stdout.trim() || null;
+
   const hashResult = await command(
     box.id,
     `cd ~/hermes-agent && /home/user/.hermes-venv/bin/python -c "from plugins.dashboard_auth.basic import hash_password; print(hash_password('${dashPassword}'))"`,
@@ -277,6 +285,7 @@ export async function provisionUser(
       : null,
     api_server_key: apiServerKey,
     gateway_token: gatewayToken,
+    template_version: templateHermesRef,
     last_active_at: new Date().toISOString(),
   });
   if (boxError) {
