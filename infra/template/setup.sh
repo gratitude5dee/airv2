@@ -5,12 +5,24 @@
 set -euo pipefail
 
 HERMES_REPO="${HERMES_REPO:-https://github.com/NousResearch/hermes-agent.git}"
+# V0: pinned Hermes revision (C24 depends on knowing exactly which snapshot the
+# template runs). Tag v2026.8.16.2 == pyproject version 0.20.3 (release line
+# v0.20.2, 2026-08-16). Re-pin deliberately with a delta review — never float
+# back to main (goal.md §12.4).
+HERMES_REF="${HERMES_REF:-7339f5f160db5c96657a3bab60151227cc61f66c}"
 HOME_DIR="${HOME:-/home/user}"
 
-# ── 1. Hermes from source, with the extras the dashboard needs ──────────────
-if [ ! -d "$HOME_DIR/hermes-agent" ]; then
-  git clone --depth 1 "$HERMES_REPO" "$HOME_DIR/hermes-agent"
+# ── 1. Hermes from source at the pinned revision ────────────────────────
+if [ ! -d "$HOME_DIR/hermes-agent/.git" ]; then
+  # init+fetch instead of clone --branch: works for tags AND bare commit SHAs.
+  git init "$HOME_DIR/hermes-agent"
+  git -C "$HOME_DIR/hermes-agent" remote add origin "$HERMES_REPO"
 fi
+git -C "$HOME_DIR/hermes-agent" fetch --depth 1 origin "$HERMES_REF"
+git -C "$HOME_DIR/hermes-agent" checkout --force FETCH_HEAD
+RESOLVED_HERMES_SHA=$(git -C "$HOME_DIR/hermes-agent" rev-parse HEAD)
+mkdir -p "$HOME_DIR/.hermes"
+printf '%s\n' "$RESOLVED_HERMES_SHA" > "$HOME_DIR/.hermes/.template-hermes-ref"
 cd "$HOME_DIR/hermes-agent"
 command -v uv >/dev/null || curl -LsSf https://astral.sh/uv/install.sh | sh
 
@@ -49,7 +61,10 @@ test -n "$(ls -A hermes_cli/web_dist 2>/dev/null)" || {
 # ── 3. Seed ~/.hermes/config.yaml ───────────────────────────────────────────
 # approvals on; terminal.backend local (the Box IS the computer); model.base_url
 # points at the gateway placeholder (rewritten per-fork by the control plane);
-# every messaging platform explicitly disabled except api_server (C12).
+# every messaging platform explicitly disabled except api_server (C12); the
+# platforms block is GENERATED from the pinned snapshot, never hand-written
+# (C24) — an upstream adapter (photon above all) must never silently open a
+# second door into the agent.
 mkdir -p "$HOME_DIR/.hermes"
 cat > "$HOME_DIR/.hermes/config.yaml" <<'YAML'
 approvals:
@@ -60,38 +75,31 @@ terminal:
 
 # The box IS the computer: launch the agent browser headed on the box's X
 # display so the human can watch/act via the desktop stream (computer relay).
+# backend is pinned explicitly (V0 task 3b): "off" = the built-in browser_*
+# tools over the baked agent-browser CLI — the behavior v2 shipped — rather
+# than inheriting 0.20.x's browser_exec-when-CLI-present default.
 browser:
   headed: true
+  backend: "off"
 
 model:
   default: "balanced"
   provider: "custom"
   base_url: "https://GATEWAY_PLACEHOLDER/api/gateway/v1"
 
-platforms:
-  api_server:
-    enabled: true
-  bluebubbles: { enabled: false }
-  telegram: { enabled: false }
-  discord: { enabled: false }
-  slack: { enabled: false }
-  signal: { enabled: false }
-  whatsapp: { enabled: false }
-  whatsapp_cloud: { enabled: false }
-  email: { enabled: false }
-  sms: { enabled: false }
-  matrix: { enabled: false }
-  mattermost: { enabled: false }
-  dingtalk: { enabled: false }
-  feishu: { enabled: false }
-  wecom: { enabled: false }
-  weixin: { enabled: false }
-  qqbot: { enabled: false }
-  yuanbao: { enabled: false }
-  webhook: { enabled: false }
-  msgraph_webhook: { enabled: false }
-  relay: { enabled: false }
+# V7 substrate: named profiles serve under /p/<name>/ with per-profile keys.
+gateway:
+  multiplex_profiles: true
 YAML
+
+# ── 3a. C24: generate the platform-disable list from the pinned snapshot ────
+# Enumerate gateway.config.Platform ∪ plugins/platforms/*/ and append
+# `enabled: false` for every adapter except api_server. Build FAILS if
+# generation fails (set -e) or produces an implausibly small set.
+TEMPLATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+"$HERMES_VENV/bin/python" "$TEMPLATE_DIR/generate_platforms.py" \
+  --hermes-repo "$HOME_DIR/hermes-agent" \
+  --config "$HOME_DIR/.hermes/config.yaml"
 
 # ── 3b. Seed ~/.hermes/.env with template-time secrets ──────────────────────
 # API_SERVER_KEY and the dashboard basic-auth credentials are per-box secrets
@@ -233,6 +241,35 @@ plugins["enabled"] = sorted(enabled)
 cfg["plugins"] = plugins
 p.write_text(yaml.safe_dump(cfg, default_flow_style=False))
 PYEOF
+
+# ── 3e. C24 gate: the build fails if any platform but api_server is enabled ──
+# Checked through Hermes' own config loader (not a YAML re-read) so the check
+# sees exactly what the gateway will see, after every config rewrite above.
+(cd "$HOME_DIR/hermes-agent" && "$HERMES_VENV/bin/python" - "$HOME_DIR/.hermes/config.yaml" <<'PYEOF'
+import sys, yaml
+from pathlib import Path
+sys.path.insert(0, str(Path.cwd()))
+from gateway.config import Platform  # noqa: E402
+
+cfg = yaml.safe_load(Path(sys.argv[1]).read_text()) or {}
+platforms = cfg.get("platforms") or {}
+enabled = sorted(
+    name for name, block in platforms.items()
+    if isinstance(block, dict) and block.get("enabled")
+)
+if enabled != ["api_server"]:
+    raise SystemExit(f"FATAL (C24): enabled platforms must be exactly ['api_server'], got {enabled}")
+enum_names = {member.value for member in Platform}
+plugin_names = {
+    entry.name for entry in (Path.cwd() / "plugins" / "platforms").iterdir()
+    if entry.is_dir() and not entry.name.startswith(("_", "."))
+}
+missing = sorted((enum_names | plugin_names) - set(platforms))
+if missing:
+    raise SystemExit(f"FATAL (C24): adapters missing from the disable list: {missing}")
+print(f"C24 gate ok: {len(platforms)} adapters, api_server only enabled", file=sys.stderr)
+PYEOF
+)
 
 # ── 4. systemd units — /etc is snapshotted, enabled units restart on resume ──
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
