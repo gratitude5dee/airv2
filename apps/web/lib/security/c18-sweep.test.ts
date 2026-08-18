@@ -59,6 +59,19 @@ describe("C18 sweep — schema audit", () => {
     expect(auditColumnNames(contaminated)).toEqual(["vault_items.pan"]);
   });
 
+  it("catches alter-table spellings with schema/only/if exists", () => {
+    for (const statement of [
+      "alter table public.vault_items add column pan text;",
+      "alter table only vault_items add column pan text;",
+      "alter table if exists vault_items add column pan text;",
+      "alter table if exists only public.vault_items add column if not exists pan text;",
+    ]) {
+      expect(auditColumnNames(`${sql}\n${statement}`), statement).toEqual([
+        "vault_items.pan",
+      ]);
+    }
+  });
+
   it("sees alter-added columns from the real migrations", () => {
     const columns = tableColumns(sql);
     expect(columns.get("boxes")).toContain("gateway_token");

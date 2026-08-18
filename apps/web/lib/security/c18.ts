@@ -79,7 +79,8 @@ export interface AlterAddColumn {
 /** Every `alter table … add column` in the migration set. */
 export function parseAlterAddColumns(sql: string): AlterAddColumn[] {
   const added: AlterAddColumn[] = [];
-  const statementRe = /alter table\s+([a-z0-9_]+)\s+([^;]*);/g;
+  const statementRe =
+    /alter table\s+(?:if exists\s+)?(?:only\s+)?(?:[a-z0-9_]+\.)?([a-z0-9_]+)\s+([^;]*);/g;
   for (let match = statementRe.exec(sql); match; match = statementRe.exec(sql)) {
     const [, table = "", body = ""] = match;
     const columnRe = /add column\s+(?:if not exists\s+)?([a-z0-9_]+)/g;
