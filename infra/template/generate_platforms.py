@@ -34,7 +34,7 @@ def enum_platforms(repo: Path) -> set[str]:
 
 
 REGISTER_RE = re.compile(
-    r"register_platform\(\s*(?:[a-z_]+\s*=\s*)?name\s*=\s*[\"']([a-z0-9_]+)[\"']"
+    r"register_platform\(\s*(?:[a-z_]+\s*=\s*)?name\s*=\s*[\"']([^\"']+)[\"']"
 )
 
 
