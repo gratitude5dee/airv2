@@ -17,13 +17,16 @@ export function cronOccurrences(
   timezone: string,
   start: Date,
   end: Date,
-  cap = 124
+  // Enough for an hourly cron across the 42-day month grid (1008 fires).
+  cap = 1100
 ): Date[] {
   let interval: CronExpression;
   try {
     interval = parser.parseExpression(cron, {
       tz: timezone,
-      currentDate: start,
+      // currentDate is exclusive in cron-parser: step back so an occurrence
+      // landing exactly on `start` is still included in the window.
+      currentDate: new Date(start.getTime() - 1),
     });
   } catch {
     return [];

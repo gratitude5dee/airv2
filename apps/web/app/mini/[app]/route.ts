@@ -24,6 +24,7 @@ import {
   readEventsStore,
   type CalendarEvent,
 } from "@/lib/calendar/store";
+import { isValidTimeZone } from "@/lib/calendar/schedule";
 import {
   addKanbanCard,
   getKanban,
@@ -131,12 +132,28 @@ interface InviteDecision {
   sender: string | null;
 }
 
-/** Agenda: next 7 days from the box store + pending invite approvals. */
+/**
+ * Agenda: next 7 days from the box store + pending invite approvals.
+ * Rendered server-side, so all dates are formatted in the owner's own
+ * timezone — the server's TZ (UTC on Vercel) must never leak into labels.
+ */
 function renderCalendar(
   events: CalendarEvent[],
   invites: InviteDecision[],
-  boxAwake: boolean
+  boxAwake: boolean,
+  timezone: string
 ): string {
+  const dayFmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+  const timeFmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    hour: "numeric",
+    minute: "2-digit",
+  });
   const now = Date.now();
   const horizon = now + 7 * 24 * 60 * 60 * 1000;
   const upcoming = events
@@ -157,7 +174,7 @@ function renderCalendar(
 
   const byDay = new Map<string, CalendarEvent[]>();
   for (const event of upcoming) {
-    const day = new Date(event.starts_at).toDateString();
+    const day = dayFmt.format(new Date(event.starts_at));
     byDay.set(day, [...(byDay.get(day) ?? []), event]);
   }
   const days = [...byDay.entries()]
@@ -166,10 +183,7 @@ function renderCalendar(
         .map((event) => {
           const when = event.all_day
             ? "all day"
-            : new Date(event.starts_at).toLocaleTimeString([], {
-                hour: "numeric",
-                minute: "2-digit",
-              });
+            : timeFmt.format(new Date(event.starts_at));
           return `<div class="item${event.status === "pending" ? " pending" : ""}"><span style="flex:1">${esc(event.title)}</span><span class="when">${esc(when)} \u00b7 ${esc(event.source)}</span></div>`;
         })
         .join("");
@@ -327,6 +341,19 @@ export async function GET(
       .eq("status", "pending")
       .order("created_at", { ascending: false })
       .limit(20);
+    // The owner's timezone lives in schedule metadata; fall back to UTC.
+    const { data: tzRow } = await supabase
+      .from("agent_schedules")
+      .select("timezone")
+      .eq("user_id", session.userId)
+      .neq("status", "deleted")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const timezone =
+      typeof tzRow?.timezone === "string" && isValidTimeZone(tzRow.timezone)
+        ? tzRow.timezone
+        : "UTC";
     let events: CalendarEvent[] = [];
     let boxAwake = true;
     try {
@@ -341,7 +368,8 @@ export async function GET(
       renderCalendar(
         events,
         (decisionRows ?? []) as InviteDecision[],
-        boxAwake
+        boxAwake,
+        timezone
       )
     );
   }
