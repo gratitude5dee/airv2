@@ -14,6 +14,7 @@ import {
 } from "@/lib/ads/approvals";
 import { approveContentPlan, dismissContentPlan } from "@/lib/publish/propose";
 import { armStopAfter, ensureBoxAwake } from "@/lib/orchestrator/boxes";
+import { approveRun } from "@/lib/hermes/client";
 import { approveInboxEvent, dismissInboxEvent } from "@/lib/calendar/store";
 import {
   clampToWakingHours,
@@ -132,6 +133,34 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       } else {
         await dismissInboxEvent(box.boxId, decision.ref as string);
       }
+    } finally {
+      await armStopAfter(supabase, userId).catch(() => undefined);
+    }
+  }
+
+  if (decision.kind === "social_post" && decision.ref) {
+    // V5: the agent's run is paused on this decision. Approve resumes it via
+    // /v1/runs/{id}/approval; dismiss resumes it with approved=false so the
+    // agent is told no. Either way the card stays in Needs-you history.
+    try {
+      const box = await ensureBoxAwake(supabase, userId);
+      await approveRun(
+        box.target,
+        decision.ref as string,
+        body.action === "approve"
+      );
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          msg: "social_post approval relay failed",
+          user_id: userId,
+          error: error instanceof Error ? error.message : "unknown",
+        })
+      );
+      return NextResponse.json(
+        { error: "could not reach the agent — try again" },
+        { status: 502 }
+      );
     } finally {
       await armStopAfter(supabase, userId).catch(() => undefined);
     }

@@ -9,7 +9,14 @@ import { mintSignedLink } from "@/lib/miniapps/cards";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const APPS = new Set(["kanban", "todo", "computer"]);
+const APPS = new Set([
+  "kanban",
+  "todo",
+  "computer",
+  "browser",
+  "vault",
+  "calendar",
+]);
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const userId = sessionUserId(request);

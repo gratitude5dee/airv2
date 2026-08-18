@@ -7,6 +7,13 @@ import { DitherAvatar } from "@/components/dither-kit/avatar";
 import { Orb } from "@/components/orb/Orb";
 import { PromptInput } from "@/components/prompt-input/PromptInput";
 import { AdsPanel } from "./ads-panel";
+import { VaultPanel } from "./vault-panel";
+import { CalendarPanel } from "./calendar-panel";
+import {
+  BrowserHeader,
+  BrowserPanels,
+  useBrowserPanel,
+} from "./browser-panel";
 
 // Loaded on demand so the main route doesn't pay for thirdweb/react unless
 // the user opens Fund (goal.md M15 bundle budget).
@@ -115,8 +122,10 @@ type Tab =
   | "needs"
   | "people"
   | "connectors"
+  | "calendar"
   | "ads"
   | "wallet"
+  | "vault"
   | "computer";
 
 /** Tolerantly extract a list from an API payload that may be a bare array,
@@ -155,8 +164,10 @@ const TABS: [Tab, string][] = [
   ["people", "People"],
   ["connectors", "Connectors"],
   ["skills", "Skills"],
+  ["calendar", "Calendar"],
   ["ads", "Ads"],
   ["wallet", "Wallet"],
+  ["vault", "Vault"],
   ["computer", "Computer"],
 ];
 
@@ -171,6 +182,18 @@ export default function HomePage() {
   const [note, setNote] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("chat");
   const [computerEpoch, setComputerEpoch] = useState(0);
+  // V5: Computer splits into Screen/Browser subtabs. The desktop iframe is
+  // owned by the tab (not the subtab), so switching never remounts it.
+  const [computerView, setComputerView] = useState<"screen" | "browser">(
+    "screen"
+  );
+  const [calendarPrefill, setCalendarPrefill] = useState<{
+    name: string;
+    prompt: string;
+  } | null>(null);
+  const browser = useBrowserPanel(
+    tab === "computer" && computerView === "browser"
+  );
   const [chatComputerOpen, setChatComputerOpen] = useState(false);
   const chatComputerOpenRef = useRef(false);
   // Once the user closes the inline view mid-run, don't pop it back open
@@ -402,8 +425,8 @@ export default function HomePage() {
     };
   }, []);
 
-  const send = useCallback(async () => {
-    const text = input.trim();
+  const send = useCallback(async (textOverride?: string) => {
+    const text = (textOverride ?? input).trim();
     if (!text || busy) return;
     const viaVoice = voiceUsedRef.current;
     voiceUsedRef.current = false;
@@ -886,11 +909,21 @@ export default function HomePage() {
             <div className="grid flex-1 content-start gap-2 overflow-y-auto">
               <h3 className="m-0 text-[15px] font-semibold">Needs you</h3>
               {(decisions ?? []).map((d) => (
-                <div key={d.id} className="panel rise-in !p-3">
+                <div
+                  key={d.id}
+                  className={
+                    "panel rise-in !p-3" +
+                    (d.kind === "calendar_add"
+                      ? " !shadow-none border border-dashed border-[var(--muted)]"
+                      : "")
+                  }
+                >
                   <strong className="text-[13px]">
                     {d.kind === "email_draft"
                       ? "Email draft awaiting send"
-                      : d.kind === "run_approval"
+                      : d.kind === "calendar_add"
+                        ? "Calendar invite"
+                        : d.kind === "run_approval"
                         ? "Agent action awaiting approval"
                         : d.kind === "ad_write"
                           ? "Ad spend awaiting approval"
@@ -910,9 +943,14 @@ export default function HomePage() {
                     {[d.label, d.sender, d.platform].filter(Boolean).join(" \u00b7 ")}
                   </p>
                   <div className="flex gap-2">
-                    {["email_draft", "ad_write", "content_plan", "reconnect", "revise"].includes(
-                      d.kind
-                    ) ? (
+                    {[
+                      "email_draft",
+                      "ad_write",
+                      "content_plan",
+                      "reconnect",
+                      "revise",
+                      "calendar_add",
+                    ].includes(d.kind) ? (
                       <button
                         className="btn !px-3 !py-1.5 !text-[12px]"
                         disabled={decisionBusy !== null}
@@ -924,9 +962,11 @@ export default function HomePage() {
                             ? "Send"
                             : d.kind === "content_plan"
                               ? "Approve plan"
-                              : d.kind === "reconnect" || d.kind === "revise"
-                                ? "Retry"
-                                : "Approve"}
+                              : d.kind === "calendar_add"
+                                ? "Add to calendar"
+                                : d.kind === "reconnect" || d.kind === "revise"
+                                  ? "Retry"
+                                  : "Approve"}
                       </button>
                     ) : null}
                     <button
@@ -1190,6 +1230,22 @@ export default function HomePage() {
             </div>
           ) : tab === "computer" ? (
             <div className="flex flex-1 flex-col gap-2">
+              <div className="flex items-center gap-1">
+                {(["screen", "browser"] as const).map((view) => (
+                  <button
+                    key={view}
+                    className={
+                      "seg !px-3 !py-1 !text-[12px]" +
+                      (computerView === view ? " pill-active" : "")
+                    }
+                    aria-current={computerView === view ? "page" : undefined}
+                    onClick={() => setComputerView(view)}
+                  >
+                    {view === "screen" ? "Screen" : "Browser"}
+                  </button>
+                ))}
+              </div>
+              {computerView === "screen" ? (
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="muted m-0 flex items-center gap-2 text-[13px]">
                   <span
@@ -1261,6 +1317,14 @@ export default function HomePage() {
                   ) : null}
                 </div>
               </div>
+              ) : (
+                <>
+                  <BrowserHeader browser={browser} />
+                  {browser.note ? (
+                    <p className="muted m-0 text-[12px]">{browser.note}</p>
+                  ) : null}
+                </>
+              )}
               {powerNote ? (
                 <p className="muted m-0 text-[12px]">{powerNote}</p>
               ) : null}
@@ -1284,6 +1348,18 @@ export default function HomePage() {
                   </p>
                 </div>
               )}
+              {computerView === "browser" ? (
+                <BrowserPanels
+                  browser={browser}
+                  onSchedule={(playbook) => {
+                    setCalendarPrefill({
+                      name: playbook,
+                      prompt: `Run the ${playbook} playbook: read and follow the ${playbook} skill.`,
+                    });
+                    void loadTab("calendar");
+                  }}
+                />
+              ) : null}
             </div>
           ) : tab === "wallet" ? (
             <div className="grid flex-1 content-start gap-2 overflow-y-auto">
@@ -1437,6 +1513,23 @@ export default function HomePage() {
                 </>
               )}
             </div>
+          ) : tab === "vault" ? (
+            <VaultPanel active={tab === "vault"} />
+          ) : tab === "calendar" ? (
+            <CalendarPanel
+              active={tab === "calendar"}
+              prefill={calendarPrefill}
+              onPrefillConsumed={() => setCalendarPrefill(null)}
+              onAgentRun={(prompt) => {
+                setTab("chat");
+                if (busy) {
+                  // A run is already streaming — stage the prompt instead.
+                  setInput(prompt);
+                } else {
+                  void send(prompt);
+                }
+              }}
+            />
           ) : tab === "ads" ? (
             <AdsPanel
               active={tab === "ads"}
@@ -1644,7 +1737,7 @@ export default function HomePage() {
           <div className="panel">
             <h3 className="mt-0 text-[15px] font-semibold">Apps</h3>
             <div className="flex gap-2">
-              {(["kanban", "todo"] as const).map((slug) => (
+              {(["kanban", "todo", "calendar"] as const).map((slug) => (
                 <button
                   key={slug}
                   className="btn btn-ghost !px-3 !py-1.5 !text-[12px]"
@@ -1673,7 +1766,11 @@ export default function HomePage() {
                       .catch(() => win?.close());
                   }}
                 >
-                  {slug === "kanban" ? "Kanban" : "To-Do"}
+                  {slug === "kanban"
+                    ? "Kanban"
+                    : slug === "todo"
+                      ? "To-Do"
+                      : "Calendar"}
                 </button>
               ))}
             </div>
