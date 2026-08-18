@@ -8,7 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { sessionUserId } from "@/lib/auth/user";
 import { serviceClient } from "@/lib/supabase";
 import { command } from "@/lib/box/client";
-import { ensureBoxAwake } from "@/lib/orchestrator/boxes";
+import { armStopAfter, ensureBoxAwake } from "@/lib/orchestrator/boxes";
 import { BOT_NAME_PATTERN } from "@/lib/bots/client";
 import { getBot } from "@/lib/bots/store";
 
@@ -53,6 +53,8 @@ export async function GET(
     });
   } catch {
     return NextResponse.json({ error: "box unavailable" }, { status: 503 });
+  } finally {
+    await armStopAfter(supabase, userId).catch(() => undefined);
   }
 }
 
@@ -98,10 +100,14 @@ export async function POST(
     }
   } catch {
     return NextResponse.json({ error: "box unavailable" }, { status: 503 });
+  } finally {
+    await armStopAfter(supabase, userId).catch(() => undefined);
   }
+  // A version-bearing ref so the (cacheable) avatar URL changes on upload.
+  const avatarRef = `v${Date.now()}`;
   await supabase
     .from("bots")
-    .update({ avatar_kind: "image", avatar_ref: "avatar.png" })
+    .update({ avatar_kind: "image", avatar_ref: avatarRef })
     .eq("id", bot.id);
-  return NextResponse.json({ avatar_kind: "image", avatar_ref: "avatar.png" });
+  return NextResponse.json({ avatar_kind: "image", avatar_ref: avatarRef });
 }

@@ -15,7 +15,7 @@ import {
   type HermesBoxTarget,
 } from "../hermes/client";
 import { hermesDeltas } from "../orchestrator/flush";
-import { ensureBoxAwake } from "../orchestrator/boxes";
+import { armStopAfter, ensureBoxAwake } from "../orchestrator/boxes";
 import { createDecision } from "../routing/trust";
 import { botTarget } from "./client";
 import type { BotRow } from "./store";
@@ -133,51 +133,56 @@ export async function orchestrateRoomTurn(
   const lines: string[] = [`user: ${userMessage}`];
   let stopped: RoomTurnResult["stopped"] = "completed";
 
-  rounds: for (let round = 0; round < ROOM_MAX_ROUNDS; round++) {
-    if (!(await roundBudgetOk(supabase, userId))) {
-      stopped = "budget";
-      break;
+  try {
+    rounds: for (let round = 0; round < ROOM_MAX_ROUNDS; round++) {
+      if (!(await roundBudgetOk(supabase, userId))) {
+        stopped = "budget";
+        break;
+      }
+      let anySpoke = false;
+      for (const bot of members) {
+        if (messages.length >= ROOM_MAX_MESSAGES) {
+          stopped = "message_cap";
+          break rounds;
+        }
+        const target = targets.get(bot.name);
+        if (!target) continue;
+        const others = members.map((m) => m.name).filter((n) => n !== bot.name);
+        let reply: string;
+        try {
+          reply = await runMemberTurn(
+            supabase,
+            userId,
+            target,
+            sessionId,
+            memberPrompt(room.name, bot.name, others, lines.join("\n"))
+          );
+        } catch {
+          continue; // a failing member forfeits its turn, the room goes on
+        }
+        if (!reply || reply.includes(ROOM_PASS_TOKEN)) continue;
+        anySpoke = true;
+        lines.push(`${bot.name}: ${reply}`);
+        messages.push({ from: bot.name, text: reply });
+        if (USER_MENTION.test(reply)) {
+          await createDecision(supabase, {
+            userId,
+            kind: "run_approval",
+            ref: `room:${room.id}:${Date.now()}`,
+            label: `Group ${room.name} · @${bot.name} needs you: ${reply}`.slice(
+              0,
+              200
+            ),
+          }).catch(() => undefined);
+          stopped = "needs_user";
+          break rounds;
+        }
+      }
+      if (!anySpoke) break; // everyone passed — the round has settled
     }
-    let anySpoke = false;
-    for (const bot of members) {
-      if (messages.length >= ROOM_MAX_MESSAGES) {
-        stopped = "message_cap";
-        break rounds;
-      }
-      const target = targets.get(bot.name);
-      if (!target) continue;
-      const others = members.map((m) => m.name).filter((n) => n !== bot.name);
-      let reply: string;
-      try {
-        reply = await runMemberTurn(
-          supabase,
-          userId,
-          target,
-          sessionId,
-          memberPrompt(room.name, bot.name, others, lines.join("\n"))
-        );
-      } catch {
-        continue; // a failing member forfeits its turn, the room goes on
-      }
-      if (!reply || reply.includes(ROOM_PASS_TOKEN)) continue;
-      anySpoke = true;
-      lines.push(`${bot.name}: ${reply}`);
-      messages.push({ from: bot.name, text: reply });
-      if (USER_MENTION.test(reply)) {
-        await createDecision(supabase, {
-          userId,
-          kind: "run_approval",
-          ref: `room:${room.id}:${Date.now()}`,
-          label: `Group ${room.name} · @${bot.name} needs you: ${reply}`.slice(
-            0,
-            200
-          ),
-        }).catch(() => undefined);
-        stopped = "needs_user";
-        break rounds;
-      }
-    }
-    if (!anySpoke) break; // everyone passed — the round has settled
+  } finally {
+    // Re-arm the box's idle shut-off deadline (ensureBoxAwake cleared it).
+    await armStopAfter(supabase, userId).catch(() => undefined);
   }
   return { messages, stopped };
 }

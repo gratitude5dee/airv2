@@ -62,7 +62,7 @@ function BotAvatar({ bot, size }: { bot: BotEntry; size: number }) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
-        src={`/api/bots/${bot.name}/avatar`}
+        src={`/api/bots/${bot.name}/avatar?v=${encodeURIComponent(bot.avatar_ref)}`}
         alt={`${bot.name} avatar`}
         width={size}
         height={size}

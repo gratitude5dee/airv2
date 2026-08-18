@@ -48,6 +48,12 @@ Real Supabase creds can be fetched at runtime — no `.env` needed and no OTP lo
 - `POST /api/vault` body shape is `{"item":{kind,name,fields:{...}}}` (not bare kind/fields — that returns 400 "invalid request").
 - The mock is in-memory: restarting it wipes vault items/boxes/users mid-test; keep the append-only events log on disk for leak scans across restarts.
 
+## Bots tab (V7) testing
+- The Bots tab lives in `apps/web/app/home/bots-panel.tsx` (tab wired in `app/home/page.tsx` TABS). Requires Supabase tables from `supabase/migrations/0028_bots.sql` (`bots`, `rooms`, `room_members`) — if PostgREST returns `PGRST205 Could not find the table 'public.bots'`, apply the migration via the management API: `POST https://api.supabase.com/v1/projects/imkbxdsxfgmkylbgaygv/database/query` with `{"query": <file contents>}` and `SUPABASE_ACCESS_TOKEN`.
+- Use a user with NO `boxes` row (e.g. `caltest` 1d6e19ba-…) plus `BOX_API_KEY=dummy` to exercise the graceful-failure path: roster shows the "computer is asleep" note, and Create bot returns 502 → red "provisioning failed" in the sheet with a `{"msg":"bot provisioning failed"}` server log line and no orphan `bots` row (provisioning inserts the row only after box health passes).
+- Server-side name validation (`POST /api/bots`) lowercases first, so uppercase-only names are accepted by design; 400s come from `default`, `rooms` (reserved), <2 chars, or invalid characters. Rooms POST enforces 2–6 members (`ROOM_MAX_MEMBERS=6`).
+- Client-side name errors show "Names are 2–32 lowercase letters, digits, or dashes." without any POST. Leak-scan strings for this surface: `api_server_key`, `hosted_token`, `gateway_token`, `on.ascii.dev` in rendered HTML + `.next/static`.
+
 ## Devin Secrets Needed
 - `SUPABASE_ACCESS_TOKEN` (management API → service-role key for the airv2 project; enables full authenticated testing).
 - `THIRDWEB_SECRET_KEY` (native balance reads for the wallet tab; Insight currently 401s — see above).

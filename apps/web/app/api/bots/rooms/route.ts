@@ -49,7 +49,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     members?: string[];
   };
   const name = (body.name ?? "").trim().slice(0, 60);
-  const memberNames = Array.isArray(body.members) ? body.members : [];
+  const memberNames = Array.isArray(body.members)
+    ? [...new Set(body.members)]
+    : [];
   if (!name) {
     return NextResponse.json({ error: "name required" }, { status: 400 });
   }

@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sessionUserId } from "@/lib/auth/user";
 import { serviceClient } from "@/lib/supabase";
-import { StartLimitError } from "@/lib/orchestrator/boxes";
+import { armStopAfter, StartLimitError } from "@/lib/orchestrator/boxes";
 import {
   createJob,
   deleteJob,
@@ -110,6 +110,9 @@ export async function GET(
       return NextResponse.json({ routines: [], box_asleep: true });
     }
     return failure(error, "list");
+  } finally {
+    // Re-arm the box's idle shut-off deadline (botBoxTarget cleared it).
+    await armStopAfter(supabase, userId).catch(() => undefined);
   }
 }
 
@@ -168,6 +171,8 @@ export async function POST(
     return NextResponse.json({ ok: true }, { status: 201 });
   } catch (error) {
     return failure(error, "create");
+  } finally {
+    await armStopAfter(supabase, userId).catch(() => undefined);
   }
 }
 
@@ -208,6 +213,8 @@ export async function PATCH(
     return NextResponse.json({ routine: publicRoutine(bot, job) });
   } catch (error) {
     return failure(error, "update");
+  } finally {
+    await armStopAfter(supabase, userId).catch(() => undefined);
   }
 }
 
@@ -229,5 +236,7 @@ export async function DELETE(
     return NextResponse.json({ ok: true });
   } catch (error) {
     return failure(error, "delete");
+  } finally {
+    await armStopAfter(supabase, userId).catch(() => undefined);
   }
 }

@@ -163,7 +163,9 @@ export async function provisionBot(
     // 5. Optional per-skill enablement (advanced create) — best-effort; the
     // profile works without them and the user can install more later.
     for (const skill of options.skills ?? []) {
-      if (!/^[A-Za-z0-9@/._-]+$/.test(skill)) continue;
+      // Alnum segments joined by single '.', '/', '_', '-', or '@' — no
+      // leading/trailing separators and no '..', so no path traversal.
+      if (!/^[A-Za-z0-9]+(?:[@/._-][A-Za-z0-9]+)*$/.test(skill)) continue;
       await command(
         box.boxId,
         `HERMES_HOME=${PROFILES_DIR}/${name} ${HERMES_BIN} skills install "${skill}" --yes`,

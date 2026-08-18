@@ -15,7 +15,7 @@ import {
 import { createCreativeJob } from "@/lib/creative/jobs";
 import { executeCreativeJob } from "@/lib/creative/run";
 import { parseMention } from "@/lib/bots/mentions";
-import { listBots, toPublic } from "@/lib/bots/store";
+import { listBots, toPublic, type BotRow } from "@/lib/bots/store";
 import { startBotChatRun } from "@/lib/bots/chat";
 
 export const runtime = "nodejs";
@@ -83,6 +83,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // V7: an @mention validated against the caller's roster delegates the
   // turn to that bot's canonical chat; unknown @words are ordinary text.
+  // A roster read failure degrades to the default agent (like the iMessage
+  // path); only errors starting the delegated run itself surface.
+  let delegate: BotRow | null = null;
+  let delegateInput = input;
   try {
     const roster = await listBots(supabase, userId);
     const hit = parseMention(
@@ -92,25 +96,36 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (hit) {
       const bot = roster.find((b) => b.name === hit.bot);
       if (bot && bot.status === "ready") {
-        const runId = await startBotChatRun(
-          supabase,
-          userId,
-          bot,
-          hit.input,
-          "web"
-        );
-        return NextResponse.json({ run_id: runId, bot: toPublic(bot) });
+        delegate = bot;
+        delegateInput = hit.input;
       }
     }
   } catch (error) {
-    if (error instanceof StartLimitError) {
-      return NextResponse.json({ error: "busy" }, { status: 429 });
-    }
     const message = error instanceof Error ? error.message : "unknown error";
     console.error(
-      JSON.stringify({ msg: "bot delegation failed", user_id: userId, error: message })
+      JSON.stringify({ msg: "bot delegation skipped", user_id: userId, error: message })
     );
-    return NextResponse.json({ error: "run failed" }, { status: 500 });
+  }
+  if (delegate) {
+    try {
+      const runId = await startBotChatRun(
+        supabase,
+        userId,
+        delegate,
+        delegateInput,
+        "web"
+      );
+      return NextResponse.json({ run_id: runId, bot: toPublic(delegate) });
+    } catch (error) {
+      if (error instanceof StartLimitError) {
+        return NextResponse.json({ error: "busy" }, { status: 429 });
+      }
+      const message = error instanceof Error ? error.message : "unknown error";
+      console.error(
+        JSON.stringify({ msg: "bot delegation failed", user_id: userId, error: message })
+      );
+      return NextResponse.json({ error: "run failed" }, { status: 500 });
+    }
   }
 
   try {
