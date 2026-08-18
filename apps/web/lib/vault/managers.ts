@@ -384,6 +384,39 @@ export async function refreshManager(
 ): Promise<ManagerStatus[]> {
   const summary = await fetchStatusSummary(boxId, manager);
   await upsertManagerRow(supabase, userId, manager, {
+    status: summary.ok ? "configured" : "error",
+    provenance_count: summary.count,
+    warnings: summary.warnings,
+    last_synced_at: new Date().toISOString(),
+  });
+  return listManagers(supabase, userId);
+}
+
+/** Retry the gateway restart for a manager stuck in an error state. */
+export async function restartManager(
+  supabase: SupabaseClient,
+  userId: string,
+  boxId: string,
+  manager: ManagerId
+): Promise<ManagerStatus[]> {
+  try {
+    await restartGateway(boxId);
+  } catch (error) {
+    await upsertManagerRow(supabase, userId, manager, {
+      status: "error",
+      warnings:
+        "configured, but the gateway restart failed — retry Restart from the Vault tab",
+      last_synced_at: new Date().toISOString(),
+    }).catch(() => undefined);
+    throw error;
+  }
+  const summary = await fetchStatusSummary(boxId, manager).catch(() => ({
+    count: null,
+    warnings: null,
+    ok: false,
+  }));
+  await upsertManagerRow(supabase, userId, manager, {
+    status: "configured",
     provenance_count: summary.count,
     warnings: summary.warnings,
     last_synced_at: new Date().toISOString(),
