@@ -39,19 +39,25 @@ export async function startBotChatRun(
   channel: "web" | "imessage"
 ): Promise<string> {
   const target = await botBoxTarget(supabase, userId, bot);
-  await ensureSession(target, BOT_CHAT_SESSION, BOT_CHAT_TITLE);
-  const run = await createRun(target, {
-    input,
-    sessionId: BOT_CHAT_SESSION,
-    metadata: { channel, bot: bot.name },
-  });
-  await supabase.from("agent_runs").insert({
-    user_id: userId,
-    hermes_run_id: run.run_id,
-    trigger: channel === "imessage" ? "imessage" : "web",
-  });
-  await armStopAfter(supabase, userId);
-  return run.run_id;
+  try {
+    await ensureSession(target, BOT_CHAT_SESSION, BOT_CHAT_TITLE);
+    const run = await createRun(target, {
+      input,
+      sessionId: BOT_CHAT_SESSION,
+      metadata: { channel, bot: bot.name },
+    });
+    await supabase.from("agent_runs").insert({
+      user_id: userId,
+      hermes_run_id: run.run_id,
+      trigger: channel === "imessage" ? "imessage" : "web",
+    });
+    return run.run_id;
+  } finally {
+    // botBoxTarget cleared the box's idle shut-off deadline; re-arm it on
+    // success and failure alike so a failed turn cannot leave the box
+    // running forever.
+    await armStopAfter(supabase, userId).catch(() => undefined);
+  }
 }
 
 /** Re-stream a bot run's events, closing the agent_runs row at the end. */
