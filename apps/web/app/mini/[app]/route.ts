@@ -18,6 +18,7 @@ import { mintToken, redeemOnce, verifyToken } from "@/lib/miniapps/tokens";
 import { getRegistryApp, type RegistryApp } from "@/lib/miniapps/registry";
 import {
   cookieName,
+  externalOrigin,
   logGateEvent,
   runGateChain,
   visibilityGate,
@@ -76,7 +77,7 @@ export async function GET(
     );
     await logGateEvent(supabase, app.id, claims.userId, "app_opened", "token");
     const response = withBaseHeaders(
-      NextResponse.redirect(new URL(basePath, request.nextUrl.origin), 303)
+      NextResponse.redirect(new URL(basePath, externalOrigin(request)), 303)
     );
     response.cookies.set(
       cookieName(slug),
@@ -112,7 +113,7 @@ export async function GET(
     if (!grant) return forbidden("this invite is no longer valid");
     await logGateEvent(supabase, app.id, grant.created_by, "app_opened", "guest");
     const response = withBaseHeaders(
-      NextResponse.redirect(new URL(basePath, request.nextUrl.origin), 303)
+      NextResponse.redirect(new URL(basePath, externalOrigin(request)), 303)
     );
     response.cookies.set(
       cookieName(slug),
@@ -175,7 +176,7 @@ export async function POST(
   if (action === "__password") {
     // Already unlocked — just reload the view.
     return withBaseHeaders(
-      NextResponse.redirect(new URL(basePath, request.nextUrl.origin), 303)
+      NextResponse.redirect(new URL(basePath, externalOrigin(request)), 303)
     );
   }
 

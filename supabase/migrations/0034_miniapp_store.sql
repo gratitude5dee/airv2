@@ -97,7 +97,16 @@ values
    'public', 'single', 'draft'),
   ('settings', '/mini/settings', 'input', '{settings:read,settings:write}', null,
    'Settings', 'Username, speed, timezone, memory, plugin sessions, storage, and exports.',
-   'public', 'single', 'draft');
+   'public', 'single', 'draft')
+-- calendar/vault/computer/browser already exist from 0025–0027: adopt them
+-- into the store with their new metadata instead of failing on the slug.
+on conflict (slug) do update set
+  name = excluded.name,
+  description = excluded.description,
+  visibility = excluded.visibility,
+  access = excluded.access,
+  status = excluded.status,
+  updated_at = now();
 
 create index mini_apps_store_idx on mini_apps (status, visibility);
 create index mini_apps_owner_idx on mini_apps (owner_user_id);

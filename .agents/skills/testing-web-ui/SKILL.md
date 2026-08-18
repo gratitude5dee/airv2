@@ -70,6 +70,13 @@ Real Supabase creds can be fetched at runtime — no `.env` needed and no OTP lo
 - Connectors: used-by/last-OK hints come from `calendar_accounts.last_synced_at` (googlecalendar) and `content_slots` (twitter); Disconnect does Composio `DELETE /api/v3.1/connected_accounts/:id` then PATCHes `connections.status="revoked"`.
 - Gotcha (repeat of mock4545 one): `pkill -f "node /tmp/.../mock.js"` from a shell whose own command line contains the pattern kills the shell (exit -1) and leaves the mock down — restart in a separate exec call and re-check the port. Restarting the mock wipes in-memory rows (wallet transfers, revoked connections) — capture ledger/UI evidence before restarting.
 
+## V9 mini-app store (mini origin) testing
+- Host-based routing: add `127.0.0.1 mini.localtest.me` to /etc/hosts and start next with `MINIAPP_ORIGIN=http://mini.localtest.me:3999`. Browsing `http://mini.localtest.me:3999/` then hits the store home; `localhost:3999` stays the main app. Main-host `/mini/*` 308s to the mini origin; mini-host `/mini/<app>?t=x` 301s to `/<app>?t=x`.
+- Migration `0034_miniapp_store.sql` fails raw on the live DB (`calendar` slug already seeded by 0025) — apply it with the 14-app insert changed to `on conflict (slug) do update set name/description/visibility/access/status`. Management API `POST /v1/projects/imkbxdsxfgmkylbgaygv/database/query` works with curl but 403s (error 1010) from python urllib's default User-Agent.
+- Gotcha for local browser testing: mini-origin session cookies (`mini_<app>`, `mini_store`) are `Secure`, so Chrome won't store them over http on `mini.localtest.me` — verify the post-redemption render and replay-403 with curl by passing the Set-Cookie value manually.
+- Known local artifact: the loader/handoff 303 uses `request.nextUrl.origin`, which under `next start` resolves to `http://localhost:3999` regardless of Host header, so browser launches land on the main host (404). Behind Vercel x-forwarded-host this may be correct — verify on a deploy before calling it a prod bug.
+- Store session mint for API tests: `POST /api/mini/link {"target":"store"}` with an `air_session` cookie → open the returned `/api/mini/session?t=…` URL → `mini_store` cookie; with it, `POST /api/mini/launch {"slug":"calendar"}` on the mini host returns 200 `{url}`.
+
 ## Devin Secrets Needed
 - `SUPABASE_ACCESS_TOKEN` (management API → service-role key for the airv2 project; enables full authenticated testing).
 - `THIRDWEB_SECRET_KEY` (native balance reads for the wallet tab; Insight currently 401s — see above).

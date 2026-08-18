@@ -6,6 +6,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
+import { env } from "@/lib/env";
 import { redeemOnce, verifyToken } from "@/lib/miniapps/tokens";
 import {
   STORE_APP,
@@ -21,13 +22,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const token = request.nextUrl.searchParams.get("t") ?? "";
   const claims = verifyToken(token, STORE_APP);
   if (!claims) {
-    return NextResponse.redirect(new URL("/login", request.nextUrl.origin), 303);
+    return NextResponse.redirect(new URL("/login", env.miniappOrigin()), 303);
   }
   if (!(await redeemOnce(serviceClient(), claims))) {
-    return NextResponse.redirect(new URL("/login", request.nextUrl.origin), 303);
+    return NextResponse.redirect(new URL("/login", env.miniappOrigin()), 303);
   }
   const response = NextResponse.redirect(
-    new URL("/", request.nextUrl.origin),
+    new URL("/", env.miniappOrigin()),
     303
   );
   response.cookies.set(

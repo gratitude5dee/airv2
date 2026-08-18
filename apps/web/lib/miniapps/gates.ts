@@ -31,6 +31,17 @@ export function cookieName(app: string): string {
   return `mini_${app}`;
 }
 
+/**
+ * Origin for redirects. Behind the mini-host rewrite, request.nextUrl.origin
+ * is the internal server origin (e.g. localhost under `next start`), so
+ * redirects must use the configured mini origin instead.
+ */
+export function externalOrigin(request: NextRequest): string {
+  return request.headers.get("x-mini-host") === "1"
+    ? env.miniappOrigin()
+    : request.nextUrl.origin;
+}
+
 export function sessionFromCookie(
   request: NextRequest,
   app: string
@@ -115,7 +126,7 @@ export function passwordGate(
       return passwordChallenge(app);
     }
     const response = NextResponse.redirect(
-      new URL(basePath, request.nextUrl.origin),
+      new URL(basePath, externalOrigin(request)),
       303
     );
     response.cookies.set(`${PW_COOKIE_PREFIX}${app.slug}`, proof, {
