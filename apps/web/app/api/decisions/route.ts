@@ -14,7 +14,7 @@ import {
 } from "@/lib/ads/approvals";
 import { approveContentPlan, dismissContentPlan } from "@/lib/publish/propose";
 import { armStopAfter, ensureBoxAwake } from "@/lib/orchestrator/boxes";
-import { approveRun } from "@/lib/hermes/client";
+import { approveRun, HermesApiError } from "@/lib/hermes/client";
 import { approveInboxEvent, dismissInboxEvent } from "@/lib/calendar/store";
 import {
   clampToWakingHours,
@@ -173,10 +173,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         })
       );
       // The referenced run may have already ended (the ref is the newest open
-      // run at proposal time). A post must never go out unacknowledged, so
-      // approve still fails loudly — but a dismiss is safe to finish anyway:
-      // an unreachable run can't post, and the card must be clearable.
-      if (body.action === "approve") {
+      // run at proposal time). A gone run can't post, so a dismiss may finish
+      // anyway — the card must be clearable. Everything else (box wake
+      // failures, transport errors, Hermes 5xx) fails loudly for both actions:
+      // the run may still be paused, and this card is its only resume path.
+      const runGone =
+        error instanceof HermesApiError &&
+        (error.status === 404 || error.status === 409 || error.status === 410);
+      if (body.action === "approve" || !runGone) {
         return NextResponse.json(
           { error: "could not reach the agent — try again" },
           { status: 502 }
