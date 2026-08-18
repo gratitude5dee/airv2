@@ -8,7 +8,24 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type CardKind = "computer" | "calendar" | "vault" | "browser";
+/** One kind per store app the agent may send a card for (goal.md §4.3). */
+export type CardKind =
+  | "computer"
+  | "calendar"
+  | "vault"
+  | "browser"
+  | "kanban"
+  | "todo"
+  | "onboarding"
+  | "connect"
+  | "video"
+  | "image"
+  | "crm"
+  | "analytics"
+  | "inbox"
+  | "pay"
+  | "shop"
+  | "settings";
 
 /** Minimum gap between agent-initiated cards per (user, kind). */
 export const CARD_COOLDOWN_MS = 2 * 60 * 1000;
