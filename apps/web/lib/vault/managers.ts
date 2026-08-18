@@ -196,6 +196,32 @@ async function fetchStatusSummary(
   return { count, warnings, ok: result.exitCode === 0 };
 }
 
+/** Real gateway health signal (the journal pipeline always exits 0). */
+async function gatewayActive(boxId: string): Promise<boolean> {
+  const result = await command(
+    boxId,
+    "systemctl is-active --quiet hermes-gateway"
+  ).catch(() => null);
+  return result !== null && result.exitCode === 0;
+}
+
+async function assertManagerEnabled(
+  supabase: SupabaseClient,
+  userId: string,
+  manager: ManagerId
+): Promise<void> {
+  const { data, error } = await supabase
+    .from("vault_managers")
+    .select("enabled")
+    .eq("user_id", userId)
+    .eq("manager", manager)
+    .maybeSingle();
+  if (error) throw new Error("manager lookup failed");
+  if (!data?.enabled) {
+    throw new ManagerInputError("manager is not enabled");
+  }
+}
+
 async function upsertManagerRow(
   supabase: SupabaseClient,
   userId: string,
@@ -382,11 +408,17 @@ export async function refreshManager(
   boxId: string,
   manager: ManagerId
 ): Promise<ManagerStatus[]> {
+  await assertManagerEnabled(supabase, userId, manager);
+  const active = await gatewayActive(boxId);
   const summary = await fetchStatusSummary(boxId, manager);
   await upsertManagerRow(supabase, userId, manager, {
-    status: summary.ok ? "configured" : "error",
+    status: active ? "configured" : "error",
     provenance_count: summary.count,
-    warnings: summary.warnings,
+    warnings: active
+      ? summary.warnings
+      : [summary.warnings, "gateway is not running — retry Restart gateway"]
+          .filter(Boolean)
+          .join("\n"),
     last_synced_at: new Date().toISOString(),
   });
   return listManagers(supabase, userId);
@@ -399,6 +431,7 @@ export async function restartManager(
   boxId: string,
   manager: ManagerId
 ): Promise<ManagerStatus[]> {
+  await assertManagerEnabled(supabase, userId, manager);
   try {
     await restartGateway(boxId);
   } catch (error) {
@@ -410,15 +443,20 @@ export async function restartManager(
     }).catch(() => undefined);
     throw error;
   }
+  const active = await gatewayActive(boxId);
   const summary = await fetchStatusSummary(boxId, manager).catch(() => ({
     count: null,
     warnings: null,
     ok: false,
   }));
   await upsertManagerRow(supabase, userId, manager, {
-    status: "configured",
+    status: active ? "configured" : "error",
     provenance_count: summary.count,
-    warnings: summary.warnings,
+    warnings: active
+      ? summary.warnings
+      : [summary.warnings, "gateway is not running — retry Restart gateway"]
+          .filter(Boolean)
+          .join("\n"),
     last_synced_at: new Date().toISOString(),
   });
   return listManagers(supabase, userId);
