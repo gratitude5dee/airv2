@@ -121,7 +121,7 @@ HERMES_DASHBOARD_BASIC_AUTH_USERNAME=air
 HERMES_DASHBOARD_BASIC_AUTH_PASSWORD_HASH=$TEMPLATE_DASH_HASH
 HERMES_DASHBOARD_BASIC_AUTH_SECRET=$TEMPLATE_DASH_SECRET
 DISPLAY=:0
-AGENT_BROWSER_ARGS=--no-sandbox --remote-debugging-port=9222 --user-data-dir=$HOME_DIR/.hermes/browser-profile
+AGENT_BROWSER_ARGS=--no-sandbox --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1 --user-data-dir=$HOME_DIR/.hermes/browser-profile
 AIR_BROWSER_DEBUG_PORT=9222
 ENV
 chmod 600 "$HOME_DIR/.hermes/.env"
