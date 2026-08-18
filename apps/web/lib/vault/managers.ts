@@ -207,27 +207,46 @@ async function gatewayActive(boxId: string): Promise<boolean> {
   return result.exitCode === 0;
 }
 
-/** Probe gateway health + parse the journal summary, then mirror both. */
+/**
+ * Probe gateway health + parse the journal summary, then mirror both.
+ * With `tolerateProbeError` (post-mutation paths, where the box operation
+ * already succeeded) a probe transport failure is mirrored as
+ * "configured, health unknown" instead of failing the whole request;
+ * without it (read-only refresh) the transport error propagates and the
+ * stored row is left untouched.
+ */
 async function mirrorGatewayHealth(
   supabase: SupabaseClient,
   userId: string,
   boxId: string,
-  manager: ManagerId
+  manager: ManagerId,
+  options?: { tolerateProbeError?: boolean }
 ): Promise<void> {
-  const active = await gatewayActive(boxId);
+  let active: boolean | null;
+  if (options?.tolerateProbeError) {
+    active = await gatewayActive(boxId).catch(() => null);
+  } else {
+    active = await gatewayActive(boxId);
+  }
   const summary = await fetchStatusSummary(boxId, manager).catch(() => ({
     count: null,
     warnings: null,
     ok: false,
   }));
   await upsertManagerRow(supabase, userId, manager, {
-    status: active ? "configured" : "error",
+    status: active === false ? "error" : "configured",
     provenance_count: summary.count,
-    warnings: active
-      ? summary.warnings
-      : [summary.warnings, "gateway is not running — retry Restart gateway"]
-          .filter(Boolean)
-          .join("\n"),
+    warnings:
+      active === true
+        ? summary.warnings
+        : [
+            summary.warnings,
+            active === false
+              ? "gateway is not running — retry Restart gateway"
+              : "health check unreachable — use Refresh to confirm",
+          ]
+            .filter(Boolean)
+            .join("\n"),
     last_synced_at: new Date().toISOString(),
   });
 }
@@ -394,7 +413,9 @@ export async function enableManager(
     throw error;
   }
 
-  await mirrorGatewayHealth(supabase, userId, boxId, manager);
+  await mirrorGatewayHealth(supabase, userId, boxId, manager, {
+    tolerateProbeError: true,
+  });
   return listManagers(supabase, userId);
 }
 
@@ -449,6 +470,8 @@ export async function restartManager(
     }).catch(() => undefined);
     throw error;
   }
-  await mirrorGatewayHealth(supabase, userId, boxId, manager);
+  await mirrorGatewayHealth(supabase, userId, boxId, manager, {
+    tolerateProbeError: true,
+  });
   return listManagers(supabase, userId);
 }
