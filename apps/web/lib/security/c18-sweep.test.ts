@@ -23,6 +23,7 @@ import {
   findPlantedHits,
   migrationSql,
   parseCreateTables,
+  tableColumns,
   WAVE_TABLES,
   WAVE_TABLES_WITHOUT_USER_ID,
 } from "./c18";
@@ -51,6 +52,17 @@ describe("C18 sweep — schema audit", () => {
 
   it("no migration declares a secret-value column", () => {
     expect(auditColumnNames(sql)).toEqual([]);
+  });
+
+  it("catches a secret column added via alter table", () => {
+    const contaminated = `${sql}\nalter table vault_items add column pan text;`;
+    expect(auditColumnNames(contaminated)).toEqual(["vault_items.pan"]);
+  });
+
+  it("sees alter-added columns from the real migrations", () => {
+    const columns = tableColumns(sql);
+    expect(columns.get("boxes")).toContain("gateway_token");
+    expect(columns.get("agent_runs")).toContain("schedule_source");
   });
 
   it("every wave table exists and carries user_id uuid not null (§9)", () => {
