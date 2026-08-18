@@ -947,7 +947,7 @@ function ManagersPanel({
 
   async function act(
     manager: ManagerStatus["manager"],
-    action: "enable" | "disable" | "refresh",
+    action: "enable" | "disable" | "refresh" | "restart",
     extra?: Record<string, unknown>
   ) {
     setBusy(`${manager}:${action}`);
@@ -999,11 +999,13 @@ function ManagersPanel({
               </div>
               <span className="muted text-[12px]">
                 {manager.enabled
-                  ? `configured${
-                      manager.provenance_count !== null
-                        ? ` · ${manager.provenance_count} from source`
-                        : ""
-                    }`
+                  ? manager.status === "error"
+                    ? "error"
+                    : `configured${
+                        manager.provenance_count !== null
+                          ? ` · ${manager.provenance_count} from source`
+                          : ""
+                      }`
                   : "off"}
               </span>
             </div>
@@ -1015,6 +1017,17 @@ function ManagersPanel({
             <div className="flex flex-wrap gap-2">
               {manager.enabled ? (
                 <>
+                  {manager.status === "error" ? (
+                    <button
+                      className="btn-ghost text-[13px]"
+                      disabled={busy !== null}
+                      onClick={() => void act(manager.manager, "restart")}
+                    >
+                      {busy === `${manager.manager}:restart`
+                        ? "Restarting…"
+                        : "Restart gateway"}
+                    </button>
+                  ) : null}
                   <button
                     className="btn-ghost text-[13px]"
                     disabled={busy !== null}

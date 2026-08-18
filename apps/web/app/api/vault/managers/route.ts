@@ -19,6 +19,7 @@ import {
   ManagerInputError,
   MANAGER_IDS,
   refreshManager,
+  restartManager,
   type ManagerId,
 } from "@/lib/vault/managers";
 
@@ -62,7 +63,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     !manager ||
     !MANAGER_IDS.includes(manager) ||
     !action ||
-    !["enable", "disable", "refresh"].includes(action)
+    !["enable", "disable", "refresh", "restart"].includes(action)
   ) {
     return NextResponse.json({ error: "invalid request" }, { status: 400 });
   }
@@ -80,6 +81,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         });
       } else if (action === "disable") {
         managers = await disableManager(supabase, session.userId, box.boxId, manager);
+      } else if (action === "restart") {
+        managers = await restartManager(supabase, session.userId, box.boxId, manager);
       } else {
         managers = await refreshManager(supabase, session.userId, box.boxId, manager);
       }
