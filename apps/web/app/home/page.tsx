@@ -7,6 +7,7 @@ import { DitherAvatar } from "@/components/dither-kit/avatar";
 import { Orb } from "@/components/orb/Orb";
 import { PromptInput } from "@/components/prompt-input/PromptInput";
 import { AdsPanel } from "./ads-panel";
+import { VaultPanel } from "./vault-panel";
 
 // Loaded on demand so the main route doesn't pay for thirdweb/react unless
 // the user opens Fund (goal.md M15 bundle budget).
@@ -117,6 +118,7 @@ type Tab =
   | "connectors"
   | "ads"
   | "wallet"
+  | "vault"
   | "computer";
 
 /** Tolerantly extract a list from an API payload that may be a bare array,
@@ -157,6 +159,7 @@ const TABS: [Tab, string][] = [
   ["skills", "Skills"],
   ["ads", "Ads"],
   ["wallet", "Wallet"],
+  ["vault", "Vault"],
   ["computer", "Computer"],
 ];
 
@@ -1437,6 +1440,8 @@ export default function HomePage() {
                 </>
               )}
             </div>
+          ) : tab === "vault" ? (
+            <VaultPanel active={tab === "vault"} />
           ) : tab === "ads" ? (
             <AdsPanel
               active={tab === "ads"}
