@@ -183,9 +183,11 @@ export async function applyBatch(
     const nonce = randomBytes(16).toString("hex");
     const inboxRelative = `.hermes/vault/.inbox/${nonce}.json`;
     const inboxAbsolute = `/home/user/${inboxRelative}`;
+    // Pre-create the payload file at 600 inside the 700 directory so it never
+    // exists at a permissive mode — the files API writes into it afterwards.
     const prepared = await command(
       boxId,
-      "mkdir -p /home/user/.hermes/vault/.inbox && chmod 700 /home/user/.hermes/vault /home/user/.hermes/vault/.inbox"
+      `mkdir -p /home/user/.hermes/vault/.inbox && chmod 700 /home/user/.hermes/vault /home/user/.hermes/vault/.inbox && install -m 600 /dev/null ${JSON.stringify(inboxAbsolute)}`
     );
     if (prepared.exitCode !== 0) {
       // Never write the plaintext payload into a directory whose 700 mode
@@ -195,15 +197,15 @@ export async function applyBatch(
         "could not prepare vault inbox directory"
       );
     }
-    await writeFile(
-      boxId,
-      inboxRelative,
-      JSON.stringify({ version: 1, operations })
-    );
     let result;
     try {
-      // Tighten the payload file itself before the CLI reads it — the files
-      // API's default mode is not guaranteed to be 600.
+      await writeFile(
+        boxId,
+        inboxRelative,
+        JSON.stringify({ version: 1, operations })
+      );
+      // Re-tighten before the CLI reads it, in case the files API replaced
+      // the pre-created file with a default-mode one.
       result = await command(
         boxId,
         `chmod 600 ${JSON.stringify(inboxAbsolute)} && air-vault apply ${JSON.stringify(inboxAbsolute)}`
@@ -212,9 +214,10 @@ export async function applyBatch(
         throwCliError(result.stderr, "air-vault apply failed");
       }
     } catch (error) {
-      // The CLI shreds the inbox on every path it reaches, but a failed exec
-      // or an early abort (e.g. missing key) can leave the plaintext payload
-      // behind — erase it best-effort before surfacing the failure (C18).
+      // The CLI shreds the inbox on every path it reaches, but an upload
+      // failure, a failed exec, or an early abort (e.g. missing key) can
+      // leave the plaintext payload behind — erase it best-effort before
+      // surfacing the failure (C18).
       try {
         const cleaned = await command(
           boxId,
