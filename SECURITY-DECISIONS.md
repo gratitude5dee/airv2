@@ -131,6 +131,66 @@ of the user's own machine to the user themself, which is the product, not a
 leak. Cross-tenant exposure remains impossible: the mint path binds the URL
 lookup to the authenticated owner's box row.
 
+## Vault key custody (V1 / C18)
+
+**The decision:** the vault store key (`AIR_VAULT_KEY`) is a per-box 32-byte
+hex value minted by the control plane at fork time, written once into the
+box's `~/.hermes/.env`, and never persisted control-plane-side — not in
+Postgres, not in Vercel env, not in logs. The encrypted store (`store.enc`,
+AES-256-GCM via the air-vault plugin) and its key live together on the
+user's own box; the control plane holds metadata only (ids, kinds, names,
+masked tails, timestamps — the `vault_items` mirror).
+
+Consequences we accept: losing the box loses the vault (deletion is
+self-completing — `/api/admin/delete` removes the box and the store dies
+with it), and the control plane can never decrypt a user's vault, which is
+the point. Values transit the control plane only during an owner-initiated
+apply/reveal cycle, scoped to the request, scrubbed from logs
+(`lib/vault/scrub.ts`), with `Cache-Control: no-store` on every route that
+can carry a field. The CI gate is `lib/security/c18-sweep.test.ts`; the
+production-shaped sweep runbook is `scripts/c18-box-sweep.sh`.
+
+## Fill tickets — capability tokens for card fill (V6 / C18/C19)
+
+**The decision:** the agent never sees card values. A checkout fill is
+authorized by a **fill ticket**: an HMAC-signed, single-use, ≤10-minute
+token minted only when the owner approves a `purchase_review` decision.
+Claims are value-free — user id, vault item id, normalized host, amount
+*band*, `jti`, expiry. The box CLI redeems the ticket (`ticket_redeemed`
+audit row; first insert of the `jti` wins, replays lose) and `air-vault
+type` moves the values from the encrypted store straight into the browser
+session on the box — browser-only, never through chat, never through the
+control plane. Host mismatch refuses the fill and leaves a `fill_requested`
+receipt; every mint and redeem is a distinct `vault_events` row with the
+`jti` (§9). Denial writes `fill_denied` and touches no box.
+
+## Desktop-stream reuse for the Browser subtab (V5)
+
+**The decision:** the Browser subtab and `browser` mini-app do not open a
+second remote-view channel. They reuse the exact desktop-stream hand-off
+already documented above (owner-only, 302-only, no-referrer, no-store) —
+the headed browser the agent drives runs on the box's own desktop, so the
+existing stream *is* the browser view. No new URL class reaches the
+client, no new allowlist path was added for pixels, and the C3 exception
+stays scoped to the one redirect already reasoned through. Vault fill on
+that browser rides fill tickets (above); the page content it visits is
+treated as hostile (I5) and can never mint anything — mints require the
+owner's decision.
+
+## C24 — the platform-disable list is generated, not hand-maintained
+
+**The decision:** the C12 posture ("`api_server` is the only enabled Hermes
+platform") is enforced by generation, not by a hand list. The template
+build (`infra/template/generate_platforms.py`, invoked from `setup.sh`)
+enumerates `gateway.config.Platform` ∪ `plugins/platforms/*/` from the
+pinned Hermes snapshot and writes `enabled: false` for every adapter except
+`api_server`; the build **fails** if generation fails or if the running
+gateway reports any other platform enabled. The pinned 0.20.3 snapshot
+ships 22 bundled adapters — including `photon`, a bundled in-box iMessage
+path that must never light up inside a box whose iMessage terminates in
+the control plane. Upstream adding an adapter can therefore never silently
+open a second door into the agent.
+
 ## Standing invariants (restated for this repo)
 
 - No Box `_token`, `API_SERVER_KEY`, `GATEWAY_TOKEN`, provider key, or `*.on.ascii.dev`
