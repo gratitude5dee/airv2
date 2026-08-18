@@ -12,19 +12,29 @@ One user = one Hermes agent inside one Box sandbox, orchestrated by a Next.js co
 
 ```
 apps/web/                      Next.js (App Router) — the control plane + UI
+  app/home/                    the dashboard: Chat, Needs you, History, People,
+                               Skills, Wallet, Computer (Screen/Browser), Connectors,
+                               Calendar, Vault, Bots, Ads
+  app/mini/[app]/              iMessage mini-apps (single-use token exchange)
   app/api/inbound/email        AgentMail webhook (Svix-verified)
   app/api/inbound/imessage     Spectrum webhook (HMAC-verified)
+  app/api/inbound/calcom       cal.com webhook (per-account sealed secret)
   app/api/gateway/v1/[...path] OpenAI-compatible inference gateway
-  app/api/box/[...path]        allowlisted Hermes dashboard proxy
+  app/api/box/[...path]        allowlisted Hermes dashboard proxy (exact paths, C5)
   lib/box/                     Box SDK wrapper: fork, resume, stop, command, files
   lib/hermes/                  api_server client: runs, sessions, approvals
   lib/routing/                 address → user → box → trust tier
   lib/entitlements/            plan, speed tier, spend caps (tier → model mapping)
   lib/provisioning/            user/box/email/connector provisioning
+  lib/vault/                   vault metadata mirror, fill tickets, log scrubber (C18)
+  lib/calendar/                calendar spine: sources, schedules, sweeper, ICS
+  lib/bots/                    bot roster, rooms, per-profile provisioning (V7)
+  lib/security/                C18 sweep harness + injection red-team suite (V8)
 supabase/migrations/           versioned, forward-only SQL (applied via Supabase MCP)
 infra/template/                everything baked into the Box template (M0):
                                Hermes + systemd units, dashboard SPA, base skills,
-                               browser runtime, Daytona CLI + MCP
+                               browser runtime, Daytona CLI + MCP, C24 platform gen
+scripts/                       operator runbooks (C18 production sweep)
 docs/                          platform guide, creative plugin, test plans
 ```
 

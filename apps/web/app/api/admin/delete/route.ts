@@ -19,6 +19,7 @@ import {
 } from "@/lib/composio/client";
 import { ASSETS_BUCKET, userPrefix } from "@/lib/assets/keys";
 import { openAdsKey, updateCampaign } from "@/lib/ads/openai";
+import { WAVE_TABLES, WAVE_TABLES_WITHOUT_USER_ID } from "@/lib/security/c18";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -132,6 +133,27 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     steps.box = "none";
   }
 
+  // V8: cal.com webhook "deregistration" — registration is owner-side at
+  // cal.com (the control plane only mints the sealed verification secret;
+  // there is no API-side registration to delete). Mark the accounts revoked
+  // before the cascade so a webhook racing this deletion fails verification
+  // the moment the sealed secret rows disappear.
+  const { count: calcomAccounts } = await supabase
+    .from("calendar_accounts")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("provider", "calcom");
+  if ((calcomAccounts ?? 0) > 0) {
+    await supabase
+      .from("calendar_accounts")
+      .update({ status: "revoked" })
+      .eq("user_id", userId)
+      .eq("provider", "calcom");
+    steps.calcom_webhook = `${calcomAccounts} account(s) revoked; sealed secret dies with the cascade — remove the webhook in the cal.com dashboard (owner-registered; no API-side registration exists)`;
+  } else {
+    steps.calcom_webhook = "none";
+  }
+
   const { data: address } = await supabase
     .from("agent_addresses")
     .select("agentmail_pod_id")
@@ -199,13 +221,26 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .eq("id", userId);
   steps.user = deleteError ? `error: ${deleteError.message}` : "deleted";
 
-  // Orphan check: the cascade must have taken every bots row with the user.
+  // V8 hardening item 3 — deletion completeness audit: after the cascade,
+  // every wave table must hold zero rows for the user (room_members has no
+  // user_id; it is reaped through rooms(id)/bots(id) cascades verified by
+  // the migration test in lib/admin/deletion.test.ts).
   if (!deleteError) {
-    const { count: orphanBots } = await supabase
-      .from("bots")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", userId);
-    steps.bots_orphans = (orphanBots ?? 0) === 0 ? "none" : `ORPHANED ${orphanBots}`;
+    const orphaned: string[] = [];
+    for (const table of WAVE_TABLES) {
+      if ((WAVE_TABLES_WITHOUT_USER_ID as readonly string[]).includes(table)) {
+        continue;
+      }
+      const { count } = await supabase
+        .from(table)
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", userId);
+      if ((count ?? 0) > 0) orphaned.push(`${table}:${count}`);
+    }
+    steps.table_audit =
+      orphaned.length === 0
+        ? "zero rows in every wave table"
+        : `ORPHANED ${orphaned.join(", ")}`;
   }
 
   console.log(

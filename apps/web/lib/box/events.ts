@@ -7,6 +7,30 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type BoxStateEvent = "ready" | "stopped";
 
+/**
+ * A keep-awake schedule fire receipt: 'ready' rows are written for every
+ * genuine wake, so ops needs a distinct marker to count keep-awake
+ * consumption without conflating message-driven wakes or double-counting
+ * cron fires. Best-effort, like the state edges.
+ */
+export async function recordKeepAwakeFire(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<void> {
+  const { error } = await supabase
+    .from("box_state_events")
+    .insert({ user_id: userId, state: "keepawake" });
+  if (error) {
+    console.error(
+      JSON.stringify({
+        msg: "keepawake fire event insert failed",
+        user_id: userId,
+        error: error.message,
+      })
+    );
+  }
+}
+
 export async function recordBoxStateEvent(
   supabase: SupabaseClient,
   userId: string,
@@ -42,6 +66,7 @@ export async function listBoxStateEvents(
     .from("box_state_events")
     .select("state, created_at")
     .eq("user_id", userId)
+    .in("state", ["ready", "stopped"])
     .gte("created_at", since)
     .order("created_at", { ascending: true })
     .limit(500);

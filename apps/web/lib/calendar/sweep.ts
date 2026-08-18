@@ -17,6 +17,7 @@ import { hermesDeltas } from "../orchestrator/flush";
 import { createSpectrumSender } from "../spectrum/sender";
 import { createDecision } from "../routing/trust";
 import { keepAwakeMinutes } from "../computer/keepawake";
+import { recordKeepAwakeFire } from "../box/events";
 import {
   clampToWakingHours,
   nextRunAt,
@@ -162,6 +163,7 @@ export async function runSchedule(
     if (awakeWindow !== null) {
       await ensureBoxAwake(supabase, schedule.user_id);
       await armStopAfter(supabase, schedule.user_id, awakeWindow);
+      await recordKeepAwakeFire(supabase, schedule.user_id);
       await supabase
         .from("agent_schedules")
         .update({ failure_count: 0 })

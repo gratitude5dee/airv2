@@ -6,25 +6,12 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuthorized } from "@/lib/admin/auth";
+import { EXPORT_TABLES } from "@/lib/admin/export-tables";
 import { serviceClient } from "@/lib/supabase";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
-
-const USER_TABLES = [
-  "users",
-  "handles",
-  "senders",
-  "agent_addresses",
-  "entitlements",
-  "provisioning",
-  "inbound_events",
-  "connections",
-  "agent_runs",
-  "decisions",
-  "miniapp_redemptions",
-] as const;
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   if (!adminAuthorized(request)) {
@@ -37,13 +24,29 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const supabase = serviceClient();
   const archive: Record<string, unknown> = {};
 
-  for (const table of USER_TABLES) {
-    const column = table === "users" ? "id" : "user_id";
+  for (const { table, column, select } of EXPORT_TABLES) {
     const { data, error } = await supabase
       .from(table)
-      .select("*")
+      .select(select)
       .eq(column, userId);
     archive[table] = error ? { error: error.message } : (data ?? []);
+  }
+
+  // room_members is keyed through rooms (the one wave table without a
+  // user_id); export the memberships of the user's own rooms.
+  const { data: rooms } = await supabase
+    .from("rooms")
+    .select("id")
+    .eq("user_id", userId);
+  const roomIds = (rooms ?? []).map((room) => room.id as string);
+  if (roomIds.length > 0) {
+    const { data: members } = await supabase
+      .from("room_members")
+      .select("*")
+      .in("room_id", roomIds);
+    archive.room_members = members ?? [];
+  } else {
+    archive.room_members = [];
   }
 
   const { data: line } = await supabase
