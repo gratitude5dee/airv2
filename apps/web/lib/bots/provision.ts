@@ -98,16 +98,21 @@ export async function provisionBot(
   }
 
   const box = await ensureBoxAwake(supabase, userId);
+  // Rollback only applies once the profile create was attempted: a failure
+  // before then changed nothing on the box, so restarting the shared
+  // gateway would needlessly cut off other bots' in-flight runs.
+  let profileAttempted = false;
 
   try {
     // Everything past the wake runs under the finally re-arm: a throw here
     // (e.g. the gateway-token lookup) must not leave the box awake with no
-    // idle deadline. Rollback below is a guarded no-op pre-profile-create.
+    // idle deadline.
     const gatewayToken = await boxGatewayToken(supabase, userId);
     const gatewayUrl = `${env.appOrigin()}/api/gateway/v1`;
     const apiServerKey = randomBytes(32).toString("hex");
 
     // 1. Create (or clone) the profile.
+    profileAttempted = true;
     const cloneFlag =
       options.cloneFrom && options.cloneFrom !== "default"
         ? ` --clone-from ${options.cloneFrom}`
@@ -220,8 +225,10 @@ export async function provisionBot(
     }
     return data as BotRow;
   } catch (error) {
-    await removeProfile(box.boxId, name);
-    await restartGateway(box.boxId).catch(() => undefined);
+    if (profileAttempted) {
+      await removeProfile(box.boxId, name);
+      await restartGateway(box.boxId).catch(() => undefined);
+    }
     throw error;
   } finally {
     // Re-arm the box's idle shut-off deadline (ensureBoxAwake cleared it).
