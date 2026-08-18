@@ -4,8 +4,22 @@
  * referenced in the run input — bytes never touch Postgres (C4).
  */
 
-/** Mirror of the iMessage attachment cap; a chat upload is not a file drive. */
-export const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
+/** Upload ceiling; a chat upload is still not a file drive. */
+export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
+
+/**
+ * Raw bytes per upload chunk. A multiple of 3 so each chunk's padless base64
+ * concatenates cleanly on the box, and small enough that a chunk request
+ * stays under the platform's ~4.5 MB request-body ceiling.
+ */
+export const UPLOAD_CHUNK_BYTES = 3 * 1024 * 1024;
+
+export const MAX_UPLOAD_CHUNKS = Math.ceil(
+  MAX_UPLOAD_BYTES / UPLOAD_CHUNK_BYTES
+);
+
+/** Server-side shape check for a client-echoed upload key (an inbox path). */
+export const INBOX_PATH_RE = /^\.hermes\/inbox\/\d+-[A-Za-z0-9._-]{1,120}$/;
 
 /** Same character policy as the iMessage path: anything shell-risky → "_". */
 export function sanitizeAttachmentName(name: string): string {

@@ -16,6 +16,7 @@ import {
   BrowserPanels,
   useBrowserPanel,
 } from "./browser-panel";
+import { MAX_UPLOAD_BYTES, UPLOAD_CHUNK_BYTES } from "@/lib/chat/attachments";
 
 // Loaded on demand so the main route doesn't pay for thirdweb/react unless
 // the user opens Fund (goal.md M15 bundle budget).
@@ -815,14 +816,32 @@ export default function HomePage() {
       const entry: StagedAttachment = { name: file.name, uploading: true };
       setStaged((s) => [...s, entry]);
       try {
-        const form = new FormData();
-        form.append("file", file);
-        const res = await fetch("/api/chat/upload", {
-          method: "POST",
-          body: form,
-        });
-        if (!res.ok) throw new Error(String(res.status));
-        const data = (await res.json()) as { path?: string };
+        if (file.size === 0 || file.size > MAX_UPLOAD_BYTES) {
+          throw new Error("too large");
+        }
+        // Chunked so each request stays under the platform body limit; the
+        // route reassembles in the box inbox and answers with the final path.
+        const total = Math.max(1, Math.ceil(file.size / UPLOAD_CHUNK_BYTES));
+        let key = "";
+        let data: { key?: string; path?: string } = {};
+        for (let i = 0; i < total; i++) {
+          const form = new FormData();
+          form.append(
+            "file",
+            file.slice(i * UPLOAD_CHUNK_BYTES, (i + 1) * UPLOAD_CHUNK_BYTES),
+            file.name
+          );
+          form.append("index", String(i));
+          form.append("total", String(total));
+          if (i > 0) form.append("key", key);
+          const res = await fetch("/api/chat/upload", {
+            method: "POST",
+            body: form,
+          });
+          if (!res.ok) throw new Error(String(res.status));
+          data = (await res.json()) as { key?: string; path?: string };
+          if (data.key) key = data.key;
+        }
         setStaged((s) =>
           s.map((a) =>
             a === entry
@@ -841,7 +860,7 @@ export default function HomePage() {
           ...m,
           {
             role: "agent",
-            text: `Couldn't upload ${file.name} — it may be too large (8 MB max) or the computer is still waking up.`,
+            text: `Couldn't upload ${file.name} — it may be too large (100 MB max) or the computer is still waking up.`,
           },
         ]);
       }
