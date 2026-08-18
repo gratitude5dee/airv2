@@ -65,7 +65,17 @@ export async function botEventStream(
   const stream = await runEvents(target, runId);
   const decoder = new TextDecoder();
   let closed = false;
+  let armed = false;
+  // botBoxTarget cleared the box's idle shut-off deadline; re-arm it once
+  // the stream terminates (finish, flush, or client cancel) so the sweeper
+  // can stop the box again.
+  const rearm = (): void => {
+    if (armed) return;
+    armed = true;
+    void armStopAfter(supabase, userId).catch(() => undefined);
+  };
   const finish = (outcome: string): void => {
+    rearm();
     if (closed) return;
     closed = true;
     void supabase
@@ -76,16 +86,25 @@ export async function botEventStream(
       .is("outcome", null)
       .then(() => undefined);
   };
-  return stream.pipeThrough(
-    new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, controller) {
-        const text = decoder.decode(chunk, { stream: true });
-        if (text.includes('"run.completed"')) finish("completed");
-        else if (text.includes('"run.failed"')) finish("failed");
-        controller.enqueue(chunk);
-      },
-    })
-  );
+  // `cancel` (client abort) is a newer Transformer member missing from the
+  // TS lib; declare it explicitly so runtimes that support it re-arm too.
+  const transformer: Transformer<Uint8Array, Uint8Array> & {
+    cancel?: () => void;
+  } = {
+    transform(chunk, controller) {
+      const text = decoder.decode(chunk, { stream: true });
+      if (text.includes('"run.completed"')) finish("completed");
+      else if (text.includes('"run.failed"')) finish("failed");
+      controller.enqueue(chunk);
+    },
+    flush() {
+      rearm();
+    },
+    cancel() {
+      rearm();
+    },
+  };
+  return stream.pipeThrough(new TransformStream(transformer));
 }
 
 /** Canonical-session history for the per-bot screen. */

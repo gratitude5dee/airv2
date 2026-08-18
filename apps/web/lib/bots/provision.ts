@@ -16,7 +16,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "../env";
 import { command } from "../box/client";
 import { health, deleteJob, listJobs } from "../hermes/client";
-import { ensureBoxAwake, type UserBox } from "../orchestrator/boxes";
+import { armStopAfter, ensureBoxAwake, type UserBox } from "../orchestrator/boxes";
 import { botTarget, BOT_NAME_PATTERN, isValidBotName } from "./client";
 import type { BotAvatarKind, BotModelTier, BotRow } from "./store";
 
@@ -219,6 +219,9 @@ export async function provisionBot(
     await removeProfile(box.boxId, name);
     await restartGateway(box.boxId).catch(() => undefined);
     throw error;
+  } finally {
+    // Re-arm the box's idle shut-off deadline (ensureBoxAwake cleared it).
+    await armStopAfter(supabase, userId).catch(() => undefined);
   }
 }
 
@@ -232,22 +235,26 @@ export async function deleteBot(
   bot: BotRow
 ): Promise<void> {
   const box = await ensureBoxAwake(supabase, userId);
-  const target = botTarget(box.target, bot.name, bot.api_server_key);
-  // Cron jobs live inside the profile store; delete explicitly first so a
-  // partially-failing profile delete cannot leave live schedules behind.
   try {
-    const jobs = await listJobs(target);
-    for (const job of jobs) {
-      await deleteJob(target, job.id).catch(() => undefined);
+    const target = botTarget(box.target, bot.name, bot.api_server_key);
+    // Cron jobs live inside the profile store; delete explicitly first so a
+    // partially-failing profile delete cannot leave live schedules behind.
+    try {
+      const jobs = await listJobs(target);
+      for (const job of jobs) {
+        await deleteJob(target, job.id).catch(() => undefined);
+      }
+    } catch {
+      // Profile already unreachable — the dir removal below covers the jobs.
     }
-  } catch {
-    // Profile already unreachable — the dir removal below covers the jobs.
-  }
-  await removeProfile(box.boxId, bot.name);
-  await restartGateway(box.boxId).catch(() => undefined);
-  const { error } = await supabase.from("bots").delete().eq("id", bot.id);
-  if (error) {
-    throw new Error(`bots delete failed: ${error.message}`);
+    await removeProfile(box.boxId, bot.name);
+    await restartGateway(box.boxId).catch(() => undefined);
+    const { error } = await supabase.from("bots").delete().eq("id", bot.id);
+    if (error) {
+      throw new Error(`bots delete failed: ${error.message}`);
+    }
+  } finally {
+    await armStopAfter(supabase, userId).catch(() => undefined);
   }
 }
 
