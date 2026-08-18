@@ -76,14 +76,20 @@ export interface AlterAddColumn {
   column: string;
 }
 
-/** Every `alter table … add column` in the migration set. */
+/**
+ * Every `alter table … add [column]` in the migration set. The COLUMN
+ * keyword is optional in Postgres, so `add pan text` counts too; the other
+ * ADD forms (constraint, primary key, unique, check, foreign key, exclude)
+ * are not column additions and are skipped.
+ */
 export function parseAlterAddColumns(sql: string): AlterAddColumn[] {
   const added: AlterAddColumn[] = [];
   const statementRe =
     /alter table\s+(?:if exists\s+)?(?:only\s+)?(?:[a-z0-9_]+\.)?([a-z0-9_]+)\s+([^;]*);/g;
   for (let match = statementRe.exec(sql); match; match = statementRe.exec(sql)) {
     const [, table = "", body = ""] = match;
-    const columnRe = /add column\s+(?:if not exists\s+)?([a-z0-9_]+)/g;
+    const columnRe =
+      /\badd\s+(?:column\s+)?(?:if not exists\s+)?(?!constraint\b|primary\b|unique\b|check\b|foreign\b|exclude\b)([a-z0-9_]+)/g;
     for (let col = columnRe.exec(body); col; col = columnRe.exec(body)) {
       added.push({ table, column: col[1] ?? "" });
     }
