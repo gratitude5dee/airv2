@@ -161,5 +161,12 @@ describe("batchApproveEmailDrafts", () => {
       decisions.map((d) => d.id as string)
     );
     expect(result.approved).toHaveLength(20);
+    // Ids past the cap are reported, never silently dropped (they stay pending).
+    expect(result.skipped).toEqual(
+      decisions.slice(20).map((d) => ({
+        id: d.id,
+        reason: "batch limit reached",
+      }))
+    );
   });
 });

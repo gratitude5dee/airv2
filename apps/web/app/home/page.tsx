@@ -286,6 +286,10 @@ export default function HomePage() {
   // V8 Chat: staged uploads, the streaming run (for stop), per-message copy,
   // and the ready-bot roster for the @mention palette.
   const [staged, setStaged] = useState<StagedAttachment[]>([]);
+  const stagedCountRef = useRef(0);
+  useEffect(() => {
+    stagedCountRef.current = staged.length;
+  }, [staged]);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   const [botNames, setBotNames] = useState<string[]>([]);
@@ -299,6 +303,7 @@ export default function HomePage() {
   const [historySearch, setHistorySearch] = useState("");
   const [historyChannel, setHistoryChannel] = useState<HistoryChannel>("all");
   const [openSessionId, setOpenSessionId] = useState<string | null>(null);
+  const transcriptLoadId = useRef(0);
   const [transcript, setTranscript] = useState<TranscriptMessage[] | null>(null);
   const [transcriptNote, setTranscriptNote] = useState<string | null>(null);
   const [sessionBusy, setSessionBusy] = useState<string | null>(null);
@@ -708,7 +713,18 @@ export default function HomePage() {
   // V8: upload picked files into the box inbox; the send references them by
   // path (never bytes through Postgres).
   async function pickFiles(files: File[]) {
-    for (const file of files.slice(0, 5)) {
+    // The 5-file cap is per message: /api/chat mints markers for at most 5.
+    const room = Math.max(0, 5 - stagedCountRef.current);
+    if (files.length > room) {
+      setMessages((m) => [
+        ...m,
+        {
+          role: "agent",
+          text: "You can attach up to 5 files per message — the extras weren't added.",
+        },
+      ]);
+    }
+    for (const file of files.slice(0, room)) {
       const entry: StagedAttachment = { name: file.name, uploading: true };
       setStaged((s) => [...s, entry]);
       try {
@@ -870,12 +886,23 @@ export default function HomePage() {
           skipped?: { id: string; reason: string }[];
         };
         const sent = data.approved?.length ?? 0;
-        const skipped = data.skipped?.length ?? 0;
-        setDecisionNote(
-          skipped > 0
-            ? `Sent ${sent} — ${skipped} skipped (unknown senders or already resolved stay one-at-a-time).`
-            : `Sent ${sent} draft${sent === 1 ? "" : "s"}.`
-        );
+        const skippedRows = data.skipped ?? [];
+        const overLimit = skippedRows.filter(
+          (s) => s.reason === "batch limit reached"
+        ).length;
+        const otherSkipped = skippedRows.length - overLimit;
+        const parts = [`Sent ${sent} draft${sent === 1 ? "" : "s"}`];
+        if (overLimit > 0) {
+          parts.push(
+            `${overLimit} still pending (batches send 20 at a time — press again for the rest)`
+          );
+        }
+        if (otherSkipped > 0) {
+          parts.push(
+            `${otherSkipped} skipped (unknown senders or already resolved stay one-at-a-time)`
+          );
+        }
+        setDecisionNote(`${parts.join(" — ")}.`);
       } else {
         setDecisionNote("Batch send didn't go through — try again.");
       }
@@ -931,6 +958,7 @@ export default function HomePage() {
   // V8 History: read-only transcript for one session, through the exact
   // allowlisted /api/box/api/sessions/{id}/messages path.
   async function openSession(id: string) {
+    const loadId = ++transcriptLoadId.current;
     setOpenSessionId(id);
     setTranscript(null);
     setTranscriptNote("Loading transcript…");
@@ -938,16 +966,20 @@ export default function HomePage() {
       const res = await fetch(
         `/api/box/api/sessions/${encodeURIComponent(id)}/messages`
       );
+      if (loadId !== transcriptLoadId.current) return;
       if (res.ok) {
         const list = pickList<{ role?: string; content?: string }>(
           await res.json(),
           ["data", "messages", "items"]
         );
+        if (loadId !== transcriptLoadId.current) return;
         setTranscript(
           list
             .filter(
               (m) =>
-                typeof m.content === "string" && m.content.trim() !== ""
+                (m.role === "user" || m.role === "assistant") &&
+                typeof m.content === "string" &&
+                m.content.trim() !== ""
             )
             .map((m) => ({
               role: m.role === "user" ? "user" : "agent",
@@ -959,6 +991,7 @@ export default function HomePage() {
         setTranscriptNote(boxErrorNote(res.status, "the transcript"));
       }
     } catch {
+      if (loadId !== transcriptLoadId.current) return;
       setTranscriptNote("Couldn't load the transcript — try again shortly.");
     }
   }

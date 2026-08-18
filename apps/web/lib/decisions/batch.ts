@@ -28,8 +28,13 @@ export async function batchApproveEmailDrafts(
   userId: string,
   ids: string[]
 ): Promise<BatchResult> {
-  const unique = Array.from(new Set(ids)).slice(0, BATCH_LIMIT);
+  const deduped = Array.from(new Set(ids));
+  const unique = deduped.slice(0, BATCH_LIMIT);
   const result: BatchResult = { approved: [], skipped: [] };
+  // Over-limit ids stay pending and are reported, never silently dropped.
+  for (const id of deduped.slice(BATCH_LIMIT)) {
+    result.skipped.push({ id, reason: "batch limit reached" });
+  }
   if (unique.length === 0) return result;
 
   const { data: rows } = await supabase
