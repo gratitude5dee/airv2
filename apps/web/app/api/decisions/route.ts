@@ -13,6 +13,14 @@ import {
   AdWriteError,
 } from "@/lib/ads/approvals";
 import { approveContentPlan, dismissContentPlan } from "@/lib/publish/propose";
+import { armStopAfter, ensureBoxAwake } from "@/lib/orchestrator/boxes";
+import { approveInboxEvent, dismissInboxEvent } from "@/lib/calendar/store";
+import {
+  clampToWakingHours,
+  nextRunAt,
+  SCHEDULE_COLUMNS,
+  type AgentSchedule,
+} from "@/lib/calendar/schedule";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -111,6 +119,57 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     } else {
       await dismissContentPlan(supabase, userId, decision.ref as string);
+    }
+  }
+
+  if (decision.kind === "calendar_add" && decision.ref) {
+    // V3: approve confirms the pending event in the box store; dismiss
+    // tombstones the invite so a later re-sync cannot resurrect it.
+    try {
+      const box = await ensureBoxAwake(supabase, userId);
+      if (body.action === "approve") {
+        await approveInboxEvent(box.boxId, decision.ref as string);
+      } else {
+        await dismissInboxEvent(box.boxId, decision.ref as string);
+      }
+    } finally {
+      await armStopAfter(supabase, userId).catch(() => undefined);
+    }
+  }
+
+  if (
+    decision.kind === "run_approval" &&
+    decision.ref &&
+    body.action === "approve"
+  ) {
+    // V3: the auto-pause notice — approving resumes the paused schedule.
+    const { data: scheduleRow } = await supabase
+      .from("agent_schedules")
+      .select(SCHEDULE_COLUMNS)
+      .eq("id", decision.ref)
+      .eq("user_id", userId)
+      .eq("status", "paused")
+      .maybeSingle();
+    if (scheduleRow) {
+      const schedule = scheduleRow as unknown as AgentSchedule;
+      let next: Date;
+      try {
+        next = nextRunAt(schedule.cron, schedule.timezone);
+      } catch {
+        next = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      }
+      await supabase
+        .from("agent_schedules")
+        .update({
+          status: "active",
+          failure_count: 0,
+          next_run_at: clampToWakingHours(
+            next,
+            schedule.timezone,
+            schedule.deliver
+          ).toISOString(),
+        })
+        .eq("id", schedule.id);
     }
   }
 

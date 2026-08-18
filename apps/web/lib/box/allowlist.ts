@@ -14,6 +14,14 @@ const ALLOWLIST: ReadonlyArray<{ method: string; pattern: RegExp }> = [
   { method: "GET", pattern: /^v1\/toolsets$/ },
   { method: "GET", pattern: /^api\/mcp\/servers$/ },
   { method: "GET", pattern: /^api\/jobs$/ },
+  // V3 calendar: the Hermes cron jobs API — exact paths, never prefixes (C5).
+  { method: "POST", pattern: /^api\/jobs$/ },
+  { method: "GET", pattern: /^api\/jobs\/[A-Za-z0-9_-]+$/ },
+  { method: "PATCH", pattern: /^api\/jobs\/[A-Za-z0-9_-]+$/ },
+  { method: "DELETE", pattern: /^api\/jobs\/[A-Za-z0-9_-]+$/ },
+  { method: "POST", pattern: /^api\/jobs\/[A-Za-z0-9_-]+\/pause$/ },
+  { method: "POST", pattern: /^api\/jobs\/[A-Za-z0-9_-]+\/resume$/ },
+  { method: "POST", pattern: /^api\/jobs\/[A-Za-z0-9_-]+\/run$/ },
 ];
 
 // Served by the dashboard (9119), which requires the box's basic-auth

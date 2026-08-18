@@ -9,11 +9,18 @@
  * draft-only, C10), threaded via Reply To Message with an Idempotency-Key.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getMessage, replyToMessage } from "../agentmail/client";
+import {
+  getAttachmentBytes,
+  getMessage,
+  replyToMessage,
+  type AgentMailMessage,
+} from "../agentmail/client";
 import { createRun, runEvents } from "../hermes/client";
 import { armStopAfter, ensureBoxAwake } from "../orchestrator/boxes";
 import { hermesDeltas } from "../orchestrator/flush";
 import { createDecision, resolveTrustTier } from "../routing/trust";
+import { extractInviteSummary, inviteLabel, looksLikeIcs } from "../calendar/ics";
+import { materializeIcs, nudgeSync } from "../calendar/store";
 
 /**
  * Strip quoted history before it reaches the model (M5 task 4) — it is
@@ -46,6 +53,55 @@ export function parseAddress(value: string): string {
   return (match?.[1] ?? value).trim().toLowerCase();
 }
 
+/**
+ * V3 email-invite branch: detect `.ics` / text-calendar attachments, drop the
+ * raw (hostile, I5) bytes into ~/.hermes/calendar/inbox/, and mint one
+ * calendar_add decision per invite. Returns true when the message carried an
+ * invite (the turn ends there — no auto-reply to machine-generated invites).
+ */
+async function handleCalendarInvites(
+  supabase: SupabaseClient,
+  userId: string,
+  inboxId: string,
+  message: AgentMailMessage,
+  from: string
+): Promise<boolean> {
+  const invites = (message.attachments ?? []).filter((attachment) =>
+    looksLikeIcs(attachment.content_type, attachment.filename)
+  );
+  if (invites.length === 0) return false;
+
+  try {
+    const box = await ensureBoxAwake(supabase, userId);
+    for (const invite of invites) {
+      const bytes = await getAttachmentBytes(
+        inboxId,
+        message.message_id,
+        invite.attachment_id
+      );
+      const path = await materializeIcs(
+        box.boxId,
+        invite.filename ?? "invite.ics",
+        bytes
+      );
+      const summary = extractInviteSummary(bytes.toString("utf8"));
+      await createDecision(supabase, {
+        userId,
+        kind: "calendar_add",
+        platform: "email",
+        sender: from || undefined,
+        ref: path,
+        label: inviteLabel(summary),
+      });
+    }
+    // Merge the drops as pending events so the store reflects them promptly.
+    await nudgeSync(box.target, box.boxId).catch(() => undefined);
+  } finally {
+    await armStopAfter(supabase, userId).catch(() => undefined);
+  }
+  return true;
+}
+
 export async function processInboundEmail(
   supabase: SupabaseClient,
   userId: string,
@@ -59,6 +115,8 @@ export async function processInboundEmail(
     : 2;
 
   if (tier === 2) {
+    // Unknown senders get a decision only — an attached .ics must never
+    // auto-add an event or reach the box before the human weighs in.
     await createDecision(supabase, {
       userId,
       kind: "tier2_contact",
@@ -67,6 +125,12 @@ export async function processInboundEmail(
       ref: messageId,
       label: message.subject?.slice(0, 120) ?? "Email from an unknown sender",
     });
+    return;
+  }
+
+  // V3: calendar invites short-circuit the reply turn — the raw bytes land
+  // in the box inbox and the human decides via the calendar_add decision.
+  if (await handleCalendarInvites(supabase, userId, inboxId, message, from)) {
     return;
   }
 

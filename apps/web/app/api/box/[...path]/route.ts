@@ -44,7 +44,10 @@ async function handle(
   try {
     const box = await ensureBoxAwake(supabase, userId);
     const search = request.nextUrl.search;
-    const hasBody = request.method === "POST" || request.method === "PUT";
+    const hasBody =
+      request.method === "POST" ||
+      request.method === "PUT" ||
+      request.method === "PATCH";
     const requestBody = hasBody ? await request.text() : undefined;
 
     const proxyTo = async (
@@ -133,6 +136,13 @@ export async function POST(
 }
 
 export async function PUT(
+  request: NextRequest,
+  context: { params: Promise<{ path: string[] }> }
+): Promise<NextResponse> {
+  return handle(request, context.params);
+}
+
+export async function PATCH(
   request: NextRequest,
   context: { params: Promise<{ path: string[] }> }
 ): Promise<NextResponse> {

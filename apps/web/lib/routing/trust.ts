@@ -59,11 +59,12 @@ export async function createDecision(
   supabase: SupabaseClient,
   entry: {
     userId: string;
-    kind: "tier2_contact" | "email_draft" | "run_approval";
+    kind: "tier2_contact" | "email_draft" | "run_approval" | "calendar_add";
     platform?: "imessage" | "email";
     sender?: string;
     ref?: string;
     label?: string;
+    payload?: Record<string, string>;
   }
 ): Promise<void> {
   const { error } = await supabase.from("decisions").insert({
@@ -73,6 +74,7 @@ export async function createDecision(
     sender: entry.sender ?? null,
     ref: entry.ref ?? null,
     label: entry.label?.slice(0, 200) ?? null,
+    ...(entry.payload ? { payload: entry.payload } : {}),
   });
   if (error) {
     throw new Error(`decisions insert failed: ${error.message}`);

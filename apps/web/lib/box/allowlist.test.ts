@@ -47,6 +47,24 @@ describe("resolveUpstream", () => {
     expect(resolveUpstream("GET", "api/credentials")).toBe(null);
   });
 
+  it("allows exactly the Hermes jobs API surface (V3)", () => {
+    expect(resolveUpstream("GET", "api/jobs")).toBe("api_server");
+    expect(resolveUpstream("POST", "api/jobs")).toBe("api_server");
+    expect(resolveUpstream("GET", "api/jobs/j1")).toBe("api_server");
+    expect(resolveUpstream("PATCH", "api/jobs/j1")).toBe("api_server");
+    expect(resolveUpstream("DELETE", "api/jobs/j1")).toBe("api_server");
+    expect(resolveUpstream("POST", "api/jobs/j1/pause")).toBe("api_server");
+    expect(resolveUpstream("POST", "api/jobs/j1/resume")).toBe("api_server");
+    expect(resolveUpstream("POST", "api/jobs/j1/run")).toBe("api_server");
+  });
+
+  it("rejects jobs paths beyond the exact surface — never prefixes", () => {
+    expect(resolveUpstream("GET", "api/jobs/j1/logs")).toBe(null);
+    expect(resolveUpstream("POST", "api/jobs/j1/pause/extra")).toBe(null);
+    expect(resolveUpstream("POST", "api/jobs/../env")).toBe(null);
+    expect(resolveUpstream("PUT", "api/jobs/j1")).toBe(null);
+  });
+
   it("rejects wrong methods on allowlisted paths", () => {
     expect(resolveUpstream("GET", "api/plugins/creative/jobs")).toBe(null);
     expect(resolveUpstream("DELETE", "api/plugins/creative/brand")).toBe(null);
