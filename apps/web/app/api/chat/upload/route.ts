@@ -29,11 +29,15 @@ import {
   UPLOAD_CHUNK_BYTES,
 } from "@/lib/chat/attachments";
 
-/** Abandoned upload partials older than this are swept on the next upload. */
-const STALE_PARTIAL_SWEEP =
-  "find /home/user/.hermes/inbox -maxdepth 1 " +
-  "\\( -name '*.b64' -o -name '*.part' -o -name '*.bin' \\) " +
-  "-mmin +60 -delete";
+/**
+ * In-flight upload artifacts live in a dedicated subdirectory so the stale
+ * sweep can never touch finished attachments (whose user-chosen names could
+ * end in .b64/.part/.bin) sitting in the inbox itself.
+ */
+const PARTIAL_DIR = ".hermes/inbox/.partial";
+
+/** Abandoned upload partials older than an hour are swept on the next upload. */
+const STALE_PARTIAL_SWEEP = `find /home/user/${PARTIAL_DIR} -maxdepth 1 -type f -mmin +60 -delete`;
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -95,18 +99,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const base64 = Buffer.from(await file.arrayBuffer()).toString("base64");
     // Single-quote paths at the call site — safety must not depend solely
     // on the sanitizer in lib/chat/attachments.ts keeping its character set.
+    const partial = `${PARTIAL_DIR}/${path.split("/").pop()}`;
     const quoted = shellQuote(`/home/user/${path}`);
-    const quotedB64 = shellQuote(`/home/user/${path}.b64`);
-    const quotedPart = shellQuote(`/home/user/${path}.part`);
-    const quotedTmp = shellQuote(`/home/user/${path}.bin`);
+    const quotedB64 = shellQuote(`/home/user/${partial}.b64`);
+    const quotedPart = shellQuote(`/home/user/${partial}.part`);
+    const quotedTmp = shellQuote(`/home/user/${partial}.bin`);
     if (index === 0) {
       await command(
         box.boxId,
-        `mkdir -p /home/user/.hermes/inbox && { ${STALE_PARTIAL_SWEEP} || true; }`
+        `mkdir -p /home/user/${PARTIAL_DIR} && { ${STALE_PARTIAL_SWEEP} || true; }`
       );
-      await writeFile(box.boxId, `${path}.b64`, base64);
+      await writeFile(box.boxId, `${partial}.b64`, base64);
     } else {
-      await writeFile(box.boxId, `${path}.part`, base64);
+      await writeFile(box.boxId, `${partial}.part`, base64);
       // The accumulator must be exactly index full-chunk base64 pieces long,
       // otherwise this is a replayed/out-of-order chunk — refuse and clean up
       // (the declared-total size bound is only sound if every index lands once).
