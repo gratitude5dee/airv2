@@ -7,7 +7,7 @@
  */
 import type { HermesBoxTarget } from "../hermes/client";
 import { createJob, listJobs, runJob } from "../hermes/client";
-import { command, readFile, writeFile } from "../box/client";
+import { BoxApiError, command, readFile, writeFile } from "../box/client";
 
 export const CALENDAR_DIR = "/home/user/.hermes/calendar";
 export const EVENTS_PATH = `${CALENDAR_DIR}/events.json`;
@@ -92,8 +92,11 @@ export async function upsertBoxSource(
     const raw = await readFile(boxId, SOURCES_PATH);
     const parsed = JSON.parse(raw) as unknown;
     if (Array.isArray(parsed)) sources = parsed as BoxSource[];
-  } catch {
-    // first source
+  } catch (error) {
+    // Only a missing file means "first source". A transient box/API failure
+    // must not be mistaken for an empty list — that would overwrite (and
+    // destroy) the user's other source credentials.
+    if (!(error instanceof BoxApiError && error.status === 404)) throw error;
   }
   const next = sources.filter((entry) => entry.id !== source.id);
   next.push(source);
@@ -105,22 +108,30 @@ export async function removeBoxSource(
   boxId: string,
   sourceId: string
 ): Promise<void> {
+  let raw: string;
   try {
-    const raw = await readFile(boxId, SOURCES_PATH);
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return;
-    const next = (parsed as BoxSource[]).filter(
-      (entry) => entry.id !== sourceId
-    );
-    await writeFile(
-      boxId,
-      ".hermes/calendar/sources.json",
-      JSON.stringify(next)
-    );
-    await command(boxId, `chmod 600 ${SOURCES_PATH}`);
-  } catch {
-    // no sources file — nothing to remove
+    raw = await readFile(boxId, SOURCES_PATH);
+  } catch (error) {
+    // No sources file — nothing to remove. Any other failure propagates.
+    if (error instanceof BoxApiError && error.status === 404) return;
+    throw error;
   }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return;
+  }
+  if (!Array.isArray(parsed)) return;
+  const next = (parsed as BoxSource[]).filter(
+    (entry) => entry.id !== sourceId
+  );
+  await writeFile(
+    boxId,
+    ".hermes/calendar/sources.json",
+    JSON.stringify(next)
+  );
+  await command(boxId, `chmod 600 ${SOURCES_PATH}`);
 }
 
 /**

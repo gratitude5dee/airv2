@@ -10,7 +10,7 @@ import { serviceClient } from "@/lib/supabase";
 import { env } from "@/lib/env";
 import { openSecret } from "@/lib/crypto/secretbox";
 import { dedupeInboundEvent } from "@/lib/routing/inbound";
-import { ensureBoxAwake } from "@/lib/orchestrator/boxes";
+import { armStopAfter, ensureBoxAwake } from "@/lib/orchestrator/boxes";
 import { nudgeSync } from "@/lib/calendar/store";
 import {
   calcomDedupeKey,
@@ -97,6 +97,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     try {
       const box = await ensureBoxAwake(supabase, userId);
       await nudgeSync(box.target, box.boxId);
+      await armStopAfter(supabase, userId).catch(() => undefined);
       await supabase
         .from("calendar_accounts")
         .update({ last_synced_at: new Date().toISOString() })

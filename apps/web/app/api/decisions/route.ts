@@ -13,7 +13,7 @@ import {
   AdWriteError,
 } from "@/lib/ads/approvals";
 import { approveContentPlan, dismissContentPlan } from "@/lib/publish/propose";
-import { ensureBoxAwake } from "@/lib/orchestrator/boxes";
+import { armStopAfter, ensureBoxAwake } from "@/lib/orchestrator/boxes";
 import { approveInboxEvent, dismissInboxEvent } from "@/lib/calendar/store";
 
 export const runtime = "nodejs";
@@ -125,6 +125,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     } else {
       await dismissInboxEvent(box.boxId, decision.ref as string);
     }
+    await armStopAfter(supabase, userId).catch(() => undefined);
   }
 
   if (

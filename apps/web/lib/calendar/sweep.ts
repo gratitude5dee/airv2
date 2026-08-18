@@ -193,13 +193,15 @@ export async function runSchedule(
       .from("agent_schedules")
       .update({ failure_count: 0 })
       .eq("id", schedule.id);
-    await armStopAfter(supabase, schedule.user_id);
   } catch (error) {
     await recordFailure(
       supabase,
       schedule,
       error instanceof Error ? error.message : String(error)
     );
+  } finally {
+    // Always re-arm: a failed run must not leave the box awake forever.
+    await armStopAfter(supabase, schedule.user_id).catch(() => undefined);
   }
 }
 

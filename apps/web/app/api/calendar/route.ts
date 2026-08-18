@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sessionUserId } from "@/lib/auth/user";
 import { serviceClient } from "@/lib/supabase";
-import { ensureBoxAwake } from "@/lib/orchestrator/boxes";
+import { armStopAfter, ensureBoxAwake } from "@/lib/orchestrator/boxes";
 import { readEventsStore, type CalendarEvent } from "@/lib/calendar/store";
 import { SCHEDULE_COLUMNS } from "@/lib/calendar/schedule";
 
@@ -34,6 +34,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     const box = await ensureBoxAwake(supabase, userId);
     events = await readEventsStore(box.boxId);
+    await armStopAfter(supabase, userId).catch(() => undefined);
   } catch {
     boxAwake = false;
   }

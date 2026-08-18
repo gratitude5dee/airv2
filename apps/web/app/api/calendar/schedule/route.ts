@@ -9,8 +9,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { sessionUserId } from "@/lib/auth/user";
 import { serviceClient } from "@/lib/supabase";
 import { command, writeFile } from "@/lib/box/client";
-import { ensureBoxAwake } from "@/lib/orchestrator/boxes";
+import { armStopAfter, ensureBoxAwake } from "@/lib/orchestrator/boxes";
 import {
+  clampToWakingHours,
   DELIVER_VALUES,
   isValidTimeZone,
   nextRunAt,
@@ -80,6 +81,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const box = await ensureBoxAwake(supabase, userId);
   await command(box.boxId, "mkdir -p /home/user/.hermes/schedules");
   await writeFile(box.boxId, promptRef, prompt);
+  await armStopAfter(supabase, userId).catch(() => undefined);
 
   const { error } = await supabase.from("agent_schedules").insert({
     id,
@@ -91,7 +93,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     deliver,
     source: "calendar",
     status: "active",
-    next_run_at: nextRunAt(cron, timezone).toISOString(),
+    next_run_at: clampToWakingHours(
+      nextRunAt(cron, timezone),
+      timezone,
+      deliver
+    ).toISOString(),
   });
   if (error) {
     await command(box.boxId, `rm -f /home/user/${promptRef}`).catch(
@@ -159,11 +165,17 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
     }
     updates.cron = cron;
     updates.timezone = timezone;
-    updates.next_run_at = nextRunAt(cron, timezone).toISOString();
+    const deliver = (updates.deliver ?? existing.deliver) as Deliver;
+    updates.next_run_at = clampToWakingHours(
+      nextRunAt(cron, timezone),
+      timezone,
+      deliver
+    ).toISOString();
   }
   if (body.prompt?.trim()) {
     const box = await ensureBoxAwake(supabase, userId);
     await writeFile(box.boxId, existing.prompt_ref, body.prompt.trim());
+    await armStopAfter(supabase, userId).catch(() => undefined);
   }
   if (Object.keys(updates).length > 0) {
     const { error } = await supabase
@@ -204,6 +216,7 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
       box.boxId,
       `rm -f /home/user/${(data[0] as { prompt_ref: string }).prompt_ref}`
     );
+    await armStopAfter(supabase, userId).catch(() => undefined);
   } catch {
     // box asleep — the row is gone; an orphaned prompt file is inert.
   }

@@ -175,13 +175,22 @@ def pull_apple(source):
 
 
 def pull_calcom(source):
+    # v2 API: the key travels in a header, never in the URL (query strings
+    # end up in proxy/access logs).
     body = fetch(
-        "https://api.cal.com/v1/bookings?apiKey=" + source["secret"]
+        "https://api.cal.com/v2/bookings",
+        headers={
+            "Authorization": "Bearer " + source["secret"],
+            "cal-api-version": "2024-08-13",
+        },
     )
     if body is None:
         return []
     try:
-        bookings = json.loads(body).get("bookings", [])
+        parsed = json.loads(body)
+        bookings = parsed.get("data") or parsed.get("bookings") or []
+        if not isinstance(bookings, list):
+            bookings = []
     except ValueError:
         return []
     events = []

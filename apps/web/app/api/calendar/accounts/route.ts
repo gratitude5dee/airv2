@@ -14,7 +14,7 @@ import { sessionUserId } from "@/lib/auth/user";
 import { serviceClient } from "@/lib/supabase";
 import { env } from "@/lib/env";
 import { sealSecret } from "@/lib/crypto/secretbox";
-import { ensureBoxAwake } from "@/lib/orchestrator/boxes";
+import { armStopAfter, ensureBoxAwake } from "@/lib/orchestrator/boxes";
 import {
   nudgeSync,
   removeBoxSource,
@@ -155,6 +155,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (provider === "calcom") {
     const sealKey = env.boxDashboardAuthKey();
     if (!sealKey) {
+      // Don't leave an untracked credential on the box.
+      await removeBoxSource(box.boxId, accountId).catch(() => undefined);
+      await armStopAfter(supabase, userId).catch(() => undefined);
       return NextResponse.json(
         { error: "sealing key unavailable" },
         { status: 500 }
@@ -176,10 +179,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   });
   if (error) {
     await removeBoxSource(box.boxId, accountId).catch(() => undefined);
+    await armStopAfter(supabase, userId).catch(() => undefined);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
   await nudgeSync(box.target, box.boxId).catch(() => undefined);
+  await armStopAfter(supabase, userId).catch(() => undefined);
 
   return NextResponse.json({
     id: accountId,
@@ -216,6 +221,7 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
     try {
       const box = await ensureBoxAwake(supabase, userId);
       await removeBoxSource(box.boxId, row.external_ref.slice(4));
+      await armStopAfter(supabase, userId).catch(() => undefined);
     } catch {
       // box asleep/unreachable — the source file entry is orphaned but the
       // account row is revoked; the next connect rewrites the file.
