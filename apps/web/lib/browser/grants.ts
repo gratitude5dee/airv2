@@ -8,7 +8,10 @@
  */
 import { readFile, writeFile } from "../box/client";
 
+// readFile runs `cat` (absolute path); writeFile posts to the box files API,
+// which — like every other caller — takes a home-relative path.
 export const SITE_GRANTS_PATH = "/home/user/.hermes/vault/site_grants.json";
+export const SITE_GRANTS_RELATIVE = ".hermes/vault/site_grants.json";
 
 export type SiteGrants = Record<string, string[]>;
 
@@ -86,7 +89,7 @@ export async function setSiteGrant(
   }
   await writeFile(
     boxId,
-    SITE_GRANTS_PATH,
+    SITE_GRANTS_RELATIVE,
     JSON.stringify({ version: 1, grants }, null, 2)
   );
   return grants;

@@ -5,7 +5,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFile, writeFile } from "../box/client";
 import {
-  SITE_GRANTS_PATH,
+  SITE_GRANTS_RELATIVE,
   normalizeHost,
   parseSiteGrants,
   readSiteGrants,
@@ -62,7 +62,7 @@ describe("readSiteGrants", () => {
 });
 
 describe("setSiteGrant", () => {
-  it("writes ids and hostnames only — never values", async () => {
+  it("writes ids and hostnames only — never values — to the home-relative files-API path", async () => {
     vi.mocked(readFile).mockResolvedValue('{"version":1,"grants":{}}');
     vi.mocked(writeFile).mockResolvedValue(undefined);
     const grants = await setSiteGrant(
@@ -74,7 +74,7 @@ describe("setSiteGrant", () => {
     expect(grants).toEqual({ "itm-1": ["github.com"] });
     const [boxId, path, content] = vi.mocked(writeFile).mock.calls[0]!;
     expect(boxId).toBe("box-1");
-    expect(path).toBe(SITE_GRANTS_PATH);
+    expect(path).toBe(SITE_GRANTS_RELATIVE);
     expect(JSON.parse(content)).toEqual({
       version: 1,
       grants: { "itm-1": ["github.com"] },
