@@ -62,7 +62,15 @@ export async function botEventStream(
   runId: string
 ): Promise<ReadableStream<Uint8Array>> {
   const target = await botBoxTarget(supabase, userId, bot);
-  const stream = await runEvents(target, runId);
+  let stream: ReadableStream<Uint8Array>;
+  try {
+    stream = await runEvents(target, runId);
+  } catch (error) {
+    // The box was woken but no stream (and so no transformer re-arm) will
+    // ever run — restore the idle deadline before surfacing the failure.
+    await armStopAfter(supabase, userId).catch(() => undefined);
+    throw error;
+  }
   const decoder = new TextDecoder();
   let closed = false;
   let armed = false;

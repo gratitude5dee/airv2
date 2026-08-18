@@ -98,11 +98,15 @@ export async function provisionBot(
   }
 
   const box = await ensureBoxAwake(supabase, userId);
-  const gatewayToken = await boxGatewayToken(supabase, userId);
-  const gatewayUrl = `${env.appOrigin()}/api/gateway/v1`;
-  const apiServerKey = randomBytes(32).toString("hex");
 
   try {
+    // Everything past the wake runs under the finally re-arm: a throw here
+    // (e.g. the gateway-token lookup) must not leave the box awake with no
+    // idle deadline. Rollback below is a guarded no-op pre-profile-create.
+    const gatewayToken = await boxGatewayToken(supabase, userId);
+    const gatewayUrl = `${env.appOrigin()}/api/gateway/v1`;
+    const apiServerKey = randomBytes(32).toString("hex");
+
     // 1. Create (or clone) the profile.
     const cloneFlag =
       options.cloneFrom && options.cloneFrom !== "default"
