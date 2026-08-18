@@ -41,11 +41,13 @@ export interface AgentSchedule {
   next_run_at: string;
   last_run_at: string | null;
   failure_count: number;
+  /** V4 "Remind me": fire once, then the sweeper deletes row + prompt. */
+  one_shot: boolean;
 }
 
 export const SCHEDULE_COLUMNS =
   "id, user_id, name, cron, timezone, prompt_ref, deliver, source, status, " +
-  "next_run_at, last_run_at, failure_count";
+  "next_run_at, last_run_at, failure_count, one_shot";
 
 /**
  * Validate a 5-field cron in the given timezone. Returns an error string or

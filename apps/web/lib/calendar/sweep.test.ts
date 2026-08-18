@@ -16,6 +16,7 @@ const SCHEDULE: AgentSchedule = {
   next_run_at: "2026-08-18T09:00:00.000Z",
   last_run_at: null,
   failure_count: 0,
+  one_shot: false,
 };
 
 /**

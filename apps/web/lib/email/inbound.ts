@@ -21,6 +21,8 @@ import { hermesDeltas } from "../orchestrator/flush";
 import { createDecision, resolveTrustTier } from "../routing/trust";
 import { extractInviteSummary, inviteLabel, looksLikeIcs } from "../calendar/ics";
 import { materializeIcs, nudgeSync } from "../calendar/store";
+import { sendMiniAppCard } from "../miniapps/cards";
+import { claimCardSend } from "../miniapps/cardSends";
 
 /**
  * Strip quoted history before it reaches the model (M5 task 4) — it is
@@ -99,7 +101,47 @@ async function handleCalendarInvites(
   } finally {
     await armStopAfter(supabase, userId).catch(() => undefined);
   }
+
+  // "Want this on your calendar?" — an owner-scoped calendar card (C15:
+  // the durable per-user destination only, same discipline as the computer
+  // card; the cooldown claim bounds the flood rate). Best-effort: a failed
+  // card must not fail invite processing — the decision already exists.
+  await sendCalendarCard(supabase, userId).catch((error) => {
+    console.error(
+      JSON.stringify({
+        msg: "calendar card send failed",
+        user_id: userId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    );
+  });
   return true;
+}
+
+async function sendCalendarCard(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<void> {
+  const { data: dest } = await supabase
+    .from("imessage_destinations")
+    .select("space_id, phone")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!dest?.space_id || !dest.phone) return;
+  const claim = await claimCardSend(supabase, userId, "calendar");
+  if (!claim) return;
+  try {
+    await sendMiniAppCard(
+      String(dest.space_id),
+      String(dest.phone),
+      userId,
+      "calendar",
+      "default"
+    );
+  } catch (error) {
+    await claim.release().catch(() => undefined);
+    throw error;
+  }
 }
 
 export async function processInboundEmail(
