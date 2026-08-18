@@ -39,19 +39,25 @@ export async function startBotChatRun(
   channel: "web" | "imessage"
 ): Promise<string> {
   const target = await botBoxTarget(supabase, userId, bot);
-  await ensureSession(target, BOT_CHAT_SESSION, BOT_CHAT_TITLE);
-  const run = await createRun(target, {
-    input,
-    sessionId: BOT_CHAT_SESSION,
-    metadata: { channel, bot: bot.name },
-  });
-  await supabase.from("agent_runs").insert({
-    user_id: userId,
-    hermes_run_id: run.run_id,
-    trigger: channel === "imessage" ? "imessage" : "web",
-  });
-  await armStopAfter(supabase, userId);
-  return run.run_id;
+  try {
+    await ensureSession(target, BOT_CHAT_SESSION, BOT_CHAT_TITLE);
+    const run = await createRun(target, {
+      input,
+      sessionId: BOT_CHAT_SESSION,
+      metadata: { channel, bot: bot.name },
+    });
+    await supabase.from("agent_runs").insert({
+      user_id: userId,
+      hermes_run_id: run.run_id,
+      trigger: channel === "imessage" ? "imessage" : "web",
+    });
+    return run.run_id;
+  } finally {
+    // botBoxTarget cleared the box's idle shut-off deadline; re-arm it on
+    // success and failure alike so a failed turn cannot leave the box
+    // running forever.
+    await armStopAfter(supabase, userId).catch(() => undefined);
+  }
 }
 
 /** Re-stream a bot run's events, closing the agent_runs row at the end. */
@@ -62,7 +68,15 @@ export async function botEventStream(
   runId: string
 ): Promise<ReadableStream<Uint8Array>> {
   const target = await botBoxTarget(supabase, userId, bot);
-  const stream = await runEvents(target, runId);
+  let stream: ReadableStream<Uint8Array>;
+  try {
+    stream = await runEvents(target, runId);
+  } catch (error) {
+    // The box was woken but no stream (and so no transformer re-arm) will
+    // ever run — restore the idle deadline before surfacing the failure.
+    await armStopAfter(supabase, userId).catch(() => undefined);
+    throw error;
+  }
   const decoder = new TextDecoder();
   let closed = false;
   let armed = false;
