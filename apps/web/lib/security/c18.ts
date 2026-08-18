@@ -70,6 +70,46 @@ export function parseCreateTables(sql: string): TableDeclaration[] {
   return tables;
 }
 
+/** A column added after table creation via `alter table … add column`. */
+export interface AlterAddColumn {
+  table: string;
+  column: string;
+}
+
+/** Every `alter table … add column` in the migration set. */
+export function parseAlterAddColumns(sql: string): AlterAddColumn[] {
+  const added: AlterAddColumn[] = [];
+  const statementRe =
+    /alter table\s+(?:if exists\s+)?(?:only\s+)?(?:[a-z0-9_]+\.)?([a-z0-9_]+)\s+([^;]*);/g;
+  for (let match = statementRe.exec(sql); match; match = statementRe.exec(sql)) {
+    const [, table = "", body = ""] = match;
+    const columnRe = /add column\s+(?:if not exists\s+)?([a-z0-9_]+)/g;
+    for (let col = columnRe.exec(body); col; col = columnRe.exec(body)) {
+      added.push({ table, column: col[1] ?? "" });
+    }
+  }
+  return added;
+}
+
+/**
+ * Every declared column per table: create-table blocks plus every column
+ * added later by `alter table … add column` — the audit must see both, or
+ * a value-shaped column could ride in through the most common way columns
+ * are added.
+ */
+export function tableColumns(sql: string): Map<string, string[]> {
+  const map = new Map<string, string[]>();
+  for (const table of parseCreateTables(sql)) {
+    map.set(table.name, [...table.columns]);
+  }
+  for (const { table, column } of parseAlterAddColumns(sql)) {
+    const columns = map.get(table) ?? [];
+    columns.push(column);
+    map.set(table, columns);
+  }
+  return map;
+}
+
 /**
  * Column names that would only exist to hold a C18-protected value. The
  * audit is name-based (the row audit covers values): a column named like a
@@ -81,13 +121,16 @@ export function parseCreateTables(sql: string): TableDeclaration[] {
 const FORBIDDEN_COLUMN_RE =
   /^(pan|cvv|cvc|card_number|password|passphrase|totp_seed|otp_seed|private_key|seed_phrase|mnemonic|plaintext.*|secret|secret_value)$/;
 
-/** Audit every declared column name; returns `table.column` violations. */
+/**
+ * Audit every declared column name — create-table and alter-add alike;
+ * returns `table.column` violations.
+ */
 export function auditColumnNames(sql: string): string[] {
   const violations: string[] = [];
-  for (const table of parseCreateTables(sql)) {
-    for (const column of table.columns) {
+  for (const [table, columns] of tableColumns(sql)) {
+    for (const column of columns) {
       if (FORBIDDEN_COLUMN_RE.test(column)) {
-        violations.push(`${table.name}.${column}`);
+        violations.push(`${table}.${column}`);
       }
     }
   }

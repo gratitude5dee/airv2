@@ -144,10 +144,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       .select("id", { count: "exact", head: true })
       .neq("status", "deleted"),
     supabase
-      .from("agent_schedules")
+      .from("agent_runs")
       .select("id", { count: "exact", head: true })
-      .eq("source", "bots")
-      .gte("last_run_at", dayAgo),
+      .eq("trigger", "cron")
+      .eq("schedule_source", "bots")
+      .gte("started_at", dayAgo),
   ]);
 
   const hour = startsHour ?? 0;

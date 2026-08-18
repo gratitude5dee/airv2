@@ -163,7 +163,9 @@ export async function runSchedule(
     if (awakeWindow !== null) {
       await ensureBoxAwake(supabase, schedule.user_id);
       await armStopAfter(supabase, schedule.user_id, awakeWindow);
-      await recordKeepAwakeFire(supabase, schedule.user_id);
+      await recordKeepAwakeFire(supabase, schedule.user_id).catch(
+        () => undefined
+      );
       await supabase
         .from("agent_schedules")
         .update({ failure_count: 0 })
@@ -210,6 +212,7 @@ export async function runSchedule(
       user_id: schedule.user_id,
       hermes_run_id: run.run_id,
       trigger: "cron",
+      schedule_source: schedule.source,
       started_at: startedAt,
       ended_at: new Date().toISOString(),
       outcome: "completed",

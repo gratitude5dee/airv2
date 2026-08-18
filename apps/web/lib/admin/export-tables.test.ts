@@ -7,11 +7,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { EXPORT_TABLES } from "./export-tables";
-import {
-  migrationSql,
-  parseCreateTables,
-  WAVE_TABLES,
-} from "../security/c18";
+import { migrationSql, tableColumns, WAVE_TABLES } from "../security/c18";
 
 const SECRET_COLUMN_RE = /(_sealed$|^api_server_key$|_token$|^gateway_token$)/;
 
@@ -28,13 +24,13 @@ describe("export manifest", () => {
   });
 
   it("never selects a sealed or credential column", () => {
-    const tables = new Map(
-      parseCreateTables(migrationSql()).map((table) => [table.name, table])
-    );
+    // tableColumns covers create-table blocks AND alter-add columns, so a
+    // credential column added by a later migration is caught too.
+    const tables = tableColumns(migrationSql());
     for (const entry of EXPORT_TABLES) {
       const declared = tables.get(entry.table);
       if (!declared) continue; // views/aliases have no create-table block
-      const secretColumns = declared.columns.filter((column) =>
+      const secretColumns = declared.filter((column) =>
         SECRET_COLUMN_RE.test(column)
       );
       if (entry.select === "*") {
