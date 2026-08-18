@@ -101,8 +101,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     .select("user_id, speed_tier, spend_mtd_usd, monthly_cap_usd");
 
   // V8 counters. Schedule fires come from the sweeper's agent_runs receipts
-  // (trigger='cron'); keep-awake wakes — silent starts with no run row —
-  // from the box power ledger. Bot runs have no control-plane attribution
+  // (trigger='cron'); keep-awake fires from their dedicated 'keepawake'
+  // receipts in the power ledger (disjoint from cron receipts and from the
+  // 'ready' rows every wake writes). Bot runs have no control-plane attribution
   // (bot turns run inside the user's box — C4), so the bot section reports
   // roster counts plus bot-sourced schedule fires, honestly labelled.
   const [
@@ -122,7 +123,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     supabase
       .from("box_state_events")
       .select("id", { count: "exact", head: true })
-      .eq("state", "ready")
+      .eq("state", "keepawake")
       .gte("created_at", dayAgo),
     supabase
       .from("vault_events")

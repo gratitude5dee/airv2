@@ -200,4 +200,8 @@ Full rationale in [`SECURITY-DECISIONS.md`](../SECURITY-DECISIONS.md).
 Rationale for the schedule share: the V3 sweeper and V8 keep-awake are the
 only polling-shaped box-start consumers; capping their slice at a third of
 the daily ceiling pages ops on schedule growth long before message-driven
-wakes are starved.
+wakes are starved. The two counters are disjoint by construction: cron
+fires come from `agent_runs` receipts (`trigger='cron'`), keep-awake fires
+from the dedicated `'keepawake'` receipts the sweeper's keep-awake branch
+writes to `box_state_events` — not from `'ready'` rows, which every wake
+(message, chat, cron, upload) records.
