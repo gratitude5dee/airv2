@@ -197,7 +197,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // delivers it to the box, and resumes the paused run; denying writes
     // the fill_denied receipt and resumes the run with approved=false.
     try {
-      const box = await ensureBoxAwake(supabase, userId);
+      // Denying needs no box — the fill_denied receipt must always be
+      // writable, even while the box is start-limited; the run resume on
+      // deny is already best-effort inside resolvePurchaseReview.
+      const box =
+        body.action === "approve"
+          ? await ensureBoxAwake(supabase, userId)
+          : await ensureBoxAwake(supabase, userId).catch(() => null);
       await resolvePurchaseReview(
         supabase,
         userId,

@@ -675,7 +675,11 @@ async function vaultPost(
       ? "Card fill approved — your agent is filling now. You click Place order."
       : "Okay — the checkout link still works if you want to finish manually.";
     try {
-      const box = await ensureBoxAwake(supabase, userId);
+      // Denying needs no box: the owner must always be able to say no,
+      // even while the box is start-limited.
+      const box = approve
+        ? await ensureBoxAwake(supabase, userId)
+        : await ensureBoxAwake(supabase, userId).catch(() => null);
       await resolvePurchaseReview(
         supabase,
         userId,

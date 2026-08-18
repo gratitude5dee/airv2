@@ -10,6 +10,7 @@ import {
   normalizeHost,
   proposePurchaseReview,
   resolveActiveTurn,
+  resolvePurchaseReview,
   dryRunHosts,
   PurchaseError,
   PURCHASE_OUTCOMES,
@@ -218,6 +219,27 @@ describe("proposePurchaseReview", () => {
     expect(payload.amount_band).toBe("under $25");
     // No card value ever lands in the decision row (C18).
     expect(JSON.stringify(decision)).not.toMatch(/\b\d{13,19}\b/);
+  });
+});
+
+describe("resolvePurchaseReview deny path", () => {
+  it("writes fill_denied without a box (the owner can always say no)", async () => {
+    const inserts: Record<string, Row[]> = {};
+    const supabase = fakeSupabase({}, inserts);
+    await resolvePurchaseReview(
+      supabase,
+      "user-1",
+      {
+        id: "d1",
+        ref: "run-1",
+        payload: { host: "amazon.com", item_id: "item-1" },
+      },
+      false,
+      null
+    );
+    const [event] = inserts.vault_events ?? [];
+    expect(event?.action).toBe("fill_denied");
+    expect(event?.item_id).toBe("item-1");
   });
 });
 
