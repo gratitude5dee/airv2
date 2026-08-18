@@ -72,6 +72,30 @@ describe("C18 sweep — schema audit", () => {
     }
   });
 
+  it("catches alter-table add without the column keyword", () => {
+    for (const statement of [
+      "alter table vault_items add pan text;",
+      "alter table public.vault_items add if not exists pan text;",
+      "alter table only vault_items add pan text not null default '';",
+    ]) {
+      expect(auditColumnNames(`${sql}\n${statement}`), statement).toEqual([
+        "vault_items.pan",
+      ]);
+    }
+  });
+
+  it("non-column alter-table add forms are not misread as columns", () => {
+    const statements = [
+      "alter table vault_items add constraint secret check (true);",
+      "alter table vault_items add primary key (id);",
+      "alter table vault_items add unique (name);",
+      "alter table vault_items add check (name <> '');",
+      "alter table vault_items add foreign key (user_id) references users(id);",
+      "alter table vault_items add exclude using gist (name with =);",
+    ].join("\n");
+    expect(auditColumnNames(`${sql}\n${statements}`)).toEqual([]);
+  });
+
   it("sees alter-added columns from the real migrations", () => {
     const columns = tableColumns(sql);
     expect(columns.get("boxes")).toContain("gateway_token");
