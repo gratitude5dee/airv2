@@ -138,6 +138,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
   }
 
+  if (
+    decision.kind === "social_post" &&
+    !decision.ref &&
+    body.action === "approve"
+  ) {
+    // The proposal carried no paused-run reference, so there is nothing to
+    // resume — approving would mark the card done while nothing posts.
+    // Refuse so the card stays actionable; dismiss can still clear it.
+    return NextResponse.json(
+      { error: "the agent is no longer waiting on this — dismiss it instead" },
+      { status: 409 }
+    );
+  }
+
   if (decision.kind === "social_post" && decision.ref) {
     // V5: the agent's run is paused on this decision. Approve resumes it via
     // /v1/runs/{id}/approval; dismiss resumes it with approved=false so the
