@@ -828,7 +828,11 @@ export default function HomePage() {
           const form = new FormData();
           form.append(
             "file",
-            file.slice(i * UPLOAD_CHUNK_BYTES, (i + 1) * UPLOAD_CHUNK_BYTES),
+            file.slice(
+              i * UPLOAD_CHUNK_BYTES,
+              (i + 1) * UPLOAD_CHUNK_BYTES,
+              file.type
+            ),
             file.name
           );
           form.append("index", String(i));
