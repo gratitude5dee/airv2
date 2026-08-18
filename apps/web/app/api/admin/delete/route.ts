@@ -100,6 +100,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     steps.campaigns = `error: ${error instanceof Error ? error.message : String(error)}`;
   }
 
+  // V7 bots: profiles live inside the box (deleted below) and bots/rooms
+  // rows reference users(id) on delete cascade — record the count so the
+  // checklist shows what the cascade is about to reap.
+  const { count: botCount } = await supabase
+    .from("bots")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId);
+  steps.bots = `cascading ${botCount ?? 0}`;
+
   const { data: box } = await supabase
     .from("boxes")
     .select("provider_box_id")
@@ -189,6 +198,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .delete()
     .eq("id", userId);
   steps.user = deleteError ? `error: ${deleteError.message}` : "deleted";
+
+  // Orphan check: the cascade must have taken every bots row with the user.
+  if (!deleteError) {
+    const { count: orphanBots } = await supabase
+      .from("bots")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId);
+    steps.bots_orphans = (orphanBots ?? 0) === 0 ? "none" : `ORPHANED ${orphanBots}`;
+  }
 
   console.log(
     JSON.stringify({ msg: "user deleted", user_id: userId, steps })

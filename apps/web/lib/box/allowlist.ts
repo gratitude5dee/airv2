@@ -22,6 +22,18 @@ const ALLOWLIST: ReadonlyArray<{ method: string; pattern: RegExp }> = [
   { method: "POST", pattern: /^api\/jobs\/[A-Za-z0-9_-]+\/pause$/ },
   { method: "POST", pattern: /^api\/jobs\/[A-Za-z0-9_-]+\/resume$/ },
   { method: "POST", pattern: /^api\/jobs\/[A-Za-z0-9_-]+\/run$/ },
+  // V7 bots: the same jobs API multiplexed under a profile prefix
+  // (/p/<name>/…, name = [a-z0-9-]{2,32} per the bots row). Still exact
+  // (method, path) pairs — the prefix widens the path shape, never the
+  // set of reachable endpoints (C5).
+  { method: "GET", pattern: /^p\/[a-z0-9-]{2,32}\/api\/jobs$/ },
+  { method: "POST", pattern: /^p\/[a-z0-9-]{2,32}\/api\/jobs$/ },
+  { method: "GET", pattern: /^p\/[a-z0-9-]{2,32}\/api\/jobs\/[A-Za-z0-9_-]+$/ },
+  { method: "PATCH", pattern: /^p\/[a-z0-9-]{2,32}\/api\/jobs\/[A-Za-z0-9_-]+$/ },
+  { method: "DELETE", pattern: /^p\/[a-z0-9-]{2,32}\/api\/jobs\/[A-Za-z0-9_-]+$/ },
+  { method: "POST", pattern: /^p\/[a-z0-9-]{2,32}\/api\/jobs\/[A-Za-z0-9_-]+\/pause$/ },
+  { method: "POST", pattern: /^p\/[a-z0-9-]{2,32}\/api\/jobs\/[A-Za-z0-9_-]+\/resume$/ },
+  { method: "POST", pattern: /^p\/[a-z0-9-]{2,32}\/api\/jobs\/[A-Za-z0-9_-]+\/run$/ },
 ];
 
 // Served by the dashboard (9119), which requires the box's basic-auth

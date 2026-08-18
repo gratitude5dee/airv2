@@ -8,6 +8,7 @@ import { Orb } from "@/components/orb/Orb";
 import { PromptInput } from "@/components/prompt-input/PromptInput";
 import { AdsPanel } from "./ads-panel";
 import { VaultPanel } from "./vault-panel";
+import { BotsPanel } from "./bots-panel";
 import { CalendarPanel } from "./calendar-panel";
 import {
   BrowserHeader,
@@ -96,6 +97,8 @@ interface ChatMessage {
   text: string;
   /** M16: inline creative media, delivered via a short-lived signed URL. */
   media?: { kind: "image" | "video"; url: string };
+  /** V7: set when an @mention delegated this reply to a bot. */
+  bot?: string;
 }
 
 interface WalletSummary {
@@ -128,6 +131,7 @@ type Tab =
   | "ads"
   | "wallet"
   | "vault"
+  | "bots"
   | "computer";
 
 /** Tolerantly extract a list from an API payload that may be a bare array,
@@ -170,6 +174,7 @@ const TABS: [Tab, string][] = [
   ["ads", "Ads"],
   ["wallet", "Wallet"],
   ["vault", "Vault"],
+  ["bots", "Bots"],
   ["computer", "Computer"],
 ];
 
@@ -469,6 +474,7 @@ export default function HomePage() {
         run_id?: string;
         creative_job_id?: string;
         creative_line?: string;
+        bot?: { name: string };
       };
       if (payload.creative_line) {
         // Deterministic clarification (e.g. mixed /imagine + /zap) — no run.
@@ -492,7 +498,14 @@ export default function HomePage() {
         return;
       }
       const run_id = payload.run_id;
-      const events = new EventSource(`/api/chat/${run_id}/events`);
+      // A delegated @mention run lives in the bot's profile; its events
+      // stream through the profile-aware route with the bot's own key.
+      const botName = payload.bot?.name;
+      const events = new EventSource(
+        botName
+          ? `/api/bots/${botName}/chat/${run_id}/events`
+          : `/api/chat/${run_id}/events`
+      );
       let acc = "";
       // Replace a still-empty placeholder so a failed or empty run never
       // leaves a blank bubble behind.
@@ -527,13 +540,16 @@ export default function HomePage() {
           }
           if (parsed.event === "message.delta" && parsed.delta) {
             acc += parsed.delta;
-            setMessages((m) => [...m.slice(0, -1), { role: "agent", text: acc }]);
+            setMessages((m) => [
+              ...m.slice(0, -1),
+              { role: "agent", text: acc, bot: botName },
+            ]);
           }
           if (parsed.event === "run.completed") {
             if (!acc && parsed.output) {
               setMessages((m) => [
                 ...m.slice(0, -1),
-                { role: "agent", text: parsed.output ?? "" },
+                { role: "agent", text: parsed.output ?? "", bot: botName },
               ]);
             } else if (!acc) {
               fillEmpty("(no reply)");
@@ -1541,6 +1557,8 @@ export default function HomePage() {
             </div>
           ) : tab === "vault" ? (
             <VaultPanel active={tab === "vault"} />
+          ) : tab === "bots" ? (
+            <BotsPanel active={tab === "bots"} />
           ) : tab === "calendar" ? (
             <CalendarPanel
               active={tab === "calendar"}
@@ -1601,6 +1619,14 @@ export default function HomePage() {
                             : "justify-self-start bg-surface shadow-[0_0_0_0.5px_var(--ring)]")
                         }
                       >
+                        {m.bot ? (
+                          <div className="mb-1 flex items-center gap-1.5">
+                            <DitherAvatar name={m.bot} size={16} />
+                            <span className="muted text-[11px] font-medium">
+                              @{m.bot}
+                            </span>
+                          </div>
+                        ) : null}
                         {m.media ? (
                           <div className="mb-1.5 overflow-hidden rounded-lg">
                             {m.media.kind === "video" ? (

@@ -127,6 +127,11 @@ export interface HermesJob {
   schedule?: string;
   prompt?: string;
   enabled?: boolean;
+  paused?: boolean;
+  deliver?: string;
+  next_run_at?: string | null;
+  last_run_at?: string | null;
+  last_output?: string | null;
 }
 
 export async function listJobs(target: HermesBoxTarget): Promise<HermesJob[]> {
@@ -139,7 +144,7 @@ export async function listJobs(target: HermesBoxTarget): Promise<HermesJob[]> {
 
 export async function createJob(
   target: HermesBoxTarget,
-  job: { name: string; schedule: string; prompt: string }
+  job: { name: string; schedule: string; prompt: string; deliver?: string }
 ): Promise<HermesJob> {
   return hermesFetch<HermesJob>(target, "/api/jobs", {
     method: "POST",
@@ -156,6 +161,120 @@ export async function runJob(
     `/api/jobs/${encodeURIComponent(jobId)}/run`,
     { method: "POST" }
   );
+}
+
+export async function getJob(
+  target: HermesBoxTarget,
+  jobId: string
+): Promise<HermesJob> {
+  const result = await hermesFetch<HermesJob | { job?: HermesJob }>(
+    target,
+    `/api/jobs/${encodeURIComponent(jobId)}`
+  );
+  return "job" in result && result.job ? result.job : (result as HermesJob);
+}
+
+export async function updateJob(
+  target: HermesBoxTarget,
+  jobId: string,
+  patch: { name?: string; schedule?: string; prompt?: string }
+): Promise<HermesJob> {
+  const result = await hermesFetch<HermesJob | { job?: HermesJob }>(
+    target,
+    `/api/jobs/${encodeURIComponent(jobId)}`,
+    { method: "PATCH", body: JSON.stringify(patch) }
+  );
+  return "job" in result && result.job ? result.job : (result as HermesJob);
+}
+
+export async function deleteJob(
+  target: HermesBoxTarget,
+  jobId: string
+): Promise<void> {
+  await hermesFetch<unknown>(
+    target,
+    `/api/jobs/${encodeURIComponent(jobId)}`,
+    { method: "DELETE" }
+  );
+}
+
+export async function pauseJob(
+  target: HermesBoxTarget,
+  jobId: string
+): Promise<void> {
+  await hermesFetch<unknown>(
+    target,
+    `/api/jobs/${encodeURIComponent(jobId)}/pause`,
+    { method: "POST" }
+  );
+}
+
+export async function resumeJob(
+  target: HermesBoxTarget,
+  jobId: string
+): Promise<void> {
+  await hermesFetch<unknown>(
+    target,
+    `/api/jobs/${encodeURIComponent(jobId)}/resume`,
+    { method: "POST" }
+  );
+}
+
+/** Hermes session row (api_server /api/sessions). */
+export interface HermesSession {
+  id: string;
+  title?: string | null;
+  started_at?: number | null;
+  last_active?: number | null;
+  message_count?: number | null;
+  preview?: string | null;
+}
+
+export async function listSessions(
+  target: HermesBoxTarget
+): Promise<HermesSession[]> {
+  const result = await hermesFetch<
+    HermesSession[] | { sessions?: HermesSession[] }
+  >(target, "/api/sessions");
+  return Array.isArray(result) ? result : (result.sessions ?? []);
+}
+
+/**
+ * Create a session with an explicit id + title. A 409/exists answer is
+ * success for callers that want ensure-once semantics (the canonical
+ * per-bot "Bot Chat" session).
+ */
+export async function ensureSession(
+  target: HermesBoxTarget,
+  sessionId: string,
+  title: string
+): Promise<void> {
+  const response = await fetch(url(target, "/api/sessions"), {
+    method: "POST",
+    headers: headers(target),
+    body: JSON.stringify({ id: sessionId, title }),
+  });
+  if (response.ok || response.status === 409) return;
+  const body = await response.text();
+  // Older builds answer duplicate creates with a 400 "exists" error.
+  if (response.status === 400 && /exist/i.test(body)) return;
+  throw new HermesApiError(response.status, body.slice(0, 500));
+}
+
+export interface HermesMessage {
+  role: string;
+  content: string;
+  created_at?: number | null;
+}
+
+export async function sessionMessages(
+  target: HermesBoxTarget,
+  sessionId: string
+): Promise<HermesMessage[]> {
+  const result = await hermesFetch<
+    HermesMessage[] | { messages?: HermesMessage[] }
+  >(target, `/api/sessions/${encodeURIComponent(sessionId)}/messages`);
+  return Array.isArray(result) ? result : (result.messages ?? []);
 }
 
 /** Post-resume readiness probe against api_server's /health. */

@@ -9,6 +9,10 @@ import { serviceClient } from "@/lib/supabase";
 import { armStopAfter, ensureBoxAwake } from "@/lib/orchestrator/boxes";
 import { readEventsStore, type CalendarEvent } from "@/lib/calendar/store";
 import { SCHEDULE_COLUMNS } from "@/lib/calendar/schedule";
+import { listBots } from "@/lib/bots/store";
+import { botTarget } from "@/lib/bots/client";
+import { listJobs } from "@/lib/hermes/client";
+import { displayRoutineName, isBotRoutineJob } from "@/lib/bots/routines";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,9 +35,36 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   let events: CalendarEvent[] = [];
   let boxAwake = true;
+  // V7 layer 3: each bot routine's next run. Safe metadata only (name +
+  // next_run_at from the profile's jobs API) — prompt/output bodies stay on
+  // the box (C4). Best-effort: a sleeping box just yields an empty overlay.
+  const botRoutines: Array<{
+    bot: string;
+    routine: string;
+    next_run_at: string | null;
+  }> = [];
   try {
     const box = await ensureBoxAwake(supabase, userId);
     events = await readEventsStore(box.boxId);
+    const bots = await listBots(supabase, userId);
+    for (const bot of bots) {
+      if (bot.status !== "ready") continue;
+      try {
+        const jobs = await listJobs(
+          botTarget(box.target, bot.name, bot.api_server_key)
+        );
+        for (const job of jobs) {
+          if (!isBotRoutineJob(bot.name, job.name)) continue;
+          botRoutines.push({
+            bot: bot.name,
+            routine: displayRoutineName(bot.name, job.name),
+            next_run_at: job.next_run_at ?? null,
+          });
+        }
+      } catch {
+        // this profile is unreachable; the rest still render
+      }
+    }
   } catch {
     boxAwake = false;
   } finally {
@@ -44,6 +75,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   return NextResponse.json({
     events,
     schedules: scheduleRows ?? [],
+    bot_routines: botRoutines,
     box_awake: boxAwake,
   });
 }

@@ -65,6 +65,39 @@ describe("resolveUpstream", () => {
     expect(resolveUpstream("PUT", "api/jobs/j1")).toBe(null);
   });
 
+  it("allows exactly the profile-prefixed jobs API surface (V7)", () => {
+    expect(resolveUpstream("GET", "p/researcher/api/jobs")).toBe("api_server");
+    expect(resolveUpstream("POST", "p/researcher/api/jobs")).toBe("api_server");
+    expect(resolveUpstream("GET", "p/researcher/api/jobs/j1")).toBe("api_server");
+    expect(resolveUpstream("PATCH", "p/researcher/api/jobs/j1")).toBe(
+      "api_server"
+    );
+    expect(resolveUpstream("DELETE", "p/researcher/api/jobs/j1")).toBe(
+      "api_server"
+    );
+    expect(resolveUpstream("POST", "p/researcher/api/jobs/j1/pause")).toBe(
+      "api_server"
+    );
+    expect(resolveUpstream("POST", "p/researcher/api/jobs/j1/resume")).toBe(
+      "api_server"
+    );
+    expect(resolveUpstream("POST", "p/researcher/api/jobs/j1/run")).toBe(
+      "api_server"
+    );
+  });
+
+  it("rejects profile paths beyond the exact jobs surface", () => {
+    expect(resolveUpstream("GET", "p/researcher/api/sessions")).toBe(null);
+    expect(resolveUpstream("GET", "p/researcher/v1/skills")).toBe(null);
+    expect(resolveUpstream("GET", "p/researcher/api/jobs/j1/logs")).toBe(null);
+    expect(resolveUpstream("GET", "p//api/jobs")).toBe(null);
+    expect(resolveUpstream("GET", "p/A/api/jobs")).toBe(null);
+    expect(resolveUpstream("GET", "p/Bad_Name/api/jobs")).toBe(null);
+    expect(resolveUpstream("GET", "p/../api/jobs")).toBe(null);
+    expect(resolveUpstream("POST", "p/researcher/api/jobs/../env")).toBe(null);
+    expect(resolveUpstream("PUT", "p/researcher/api/jobs/j1")).toBe(null);
+  });
+
   it("rejects wrong methods on allowlisted paths", () => {
     expect(resolveUpstream("GET", "api/plugins/creative/jobs")).toBe(null);
     expect(resolveUpstream("DELETE", "api/plugins/creative/brand")).toBe(null);

@@ -12,7 +12,16 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { command, writeFile } from "../box/client";
-import { createRun, MAIN_SESSION, runEvents, stopRun } from "../hermes/client";
+import {
+  createRun,
+  ensureSession,
+  MAIN_SESSION,
+  runEvents,
+  stopRun,
+} from "../hermes/client";
+import { botTarget, BOT_CHAT_SESSION, BOT_CHAT_TITLE } from "../bots/client";
+import { parseMention } from "../bots/mentions";
+import { listBots } from "../bots/store";
 import { createSpectrumSender, type SpectrumSender } from "../spectrum/sender";
 import { maybeRunCreativeLane } from "../creative/imessage";
 import {
@@ -426,9 +435,43 @@ export async function runFlush(
       rawInput
     );
 
-    const run = await createRun(box.target, {
-      input,
-      sessionId: MAIN_SESSION,
+    // V7: an @mention validated against the roster delegates the burst to
+    // that bot's canonical chat; the reply streams back attributed
+    // ('\u{1F916} <name>: \u2026'). Unknown @words stay ordinary text for the
+    // default agent. Roster read failures degrade to the default agent.
+    let runTarget = box.target;
+    let runSession = MAIN_SESSION;
+    let runInput = input;
+    let botPrefix = "";
+    try {
+      const roster = await listBots(supabase, job.userId);
+      const hit = parseMention(
+        input,
+        roster.filter((b) => b.status === "ready").map((b) => b.name)
+      );
+      if (hit) {
+        const bot = roster.find((b) => b.name === hit.bot);
+        if (bot) {
+          runTarget = botTarget(box.target, bot.name, bot.api_server_key);
+          await ensureSession(runTarget, BOT_CHAT_SESSION, BOT_CHAT_TITLE);
+          runSession = BOT_CHAT_SESSION;
+          runInput = hit.input;
+          botPrefix = `\u{1F916} ${bot.name}: `;
+        }
+      }
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          msg: "bot delegation skipped",
+          user_id: job.userId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      );
+    }
+
+    const run = await createRun(runTarget, {
+      input: runInput,
+      sessionId: runSession,
       metadata: { channel: "imessage" },
     });
     await supabase
@@ -439,22 +482,25 @@ export async function runFlush(
     const startedAt = new Date().toISOString();
     let cancelled = false;
     let lastCancelCheck = Date.now();
-    const events = await runEvents(box.target, run.run_id);
+    const events = await runEvents(runTarget, run.run_id);
     const deltas = hermesDeltas(events);
 
     // Stream straight into iMessage: first chunk is a real message, edited
-    // in place as more arrives.
+    // in place as more arrives. Delegated replies carry the bot attribution
+    // on the first chunk.
     async function* guarded(): AsyncGenerator<string> {
+      let first = true;
       for await (const delta of deltas) {
         if (Date.now() - lastCancelCheck > CANCEL_POLL_MS) {
           lastCancelCheck = Date.now();
           if (await chainCancelled(supabase, job.spaceId, chainStartedAt)) {
             cancelled = true;
-            await stopRun(box.target, run.run_id).catch(() => undefined);
+            await stopRun(runTarget, run.run_id).catch(() => undefined);
             return;
           }
         }
-        yield delta;
+        yield first ? `${botPrefix}${delta}` : delta;
+        first = false;
       }
     }
     await sender.streamText(job.spaceId, job.phone, guarded());
