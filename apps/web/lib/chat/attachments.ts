@@ -18,6 +18,9 @@ export const MAX_UPLOAD_CHUNKS = Math.ceil(
   MAX_UPLOAD_BYTES / UPLOAD_CHUNK_BYTES
 );
 
+/** Base64 length of one full chunk — the expected accumulator size before appending chunk N is N of these. */
+export const UPLOAD_CHUNK_B64_LEN = (UPLOAD_CHUNK_BYTES / 3) * 4;
+
 /** Server-side shape check for a client-echoed upload key (an inbox path). */
 export const INBOX_PATH_RE = /^\.hermes\/inbox\/\d+-[A-Za-z0-9._-]{1,120}$/;
 

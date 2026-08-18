@@ -25,8 +25,15 @@ import {
   INBOX_PATH_RE,
   MAX_UPLOAD_BYTES,
   MAX_UPLOAD_CHUNKS,
+  UPLOAD_CHUNK_B64_LEN,
   UPLOAD_CHUNK_BYTES,
 } from "@/lib/chat/attachments";
+
+/** Abandoned upload partials older than this are swept on the next upload. */
+const STALE_PARTIAL_SWEEP =
+  "find /home/user/.hermes/inbox -maxdepth 1 " +
+  "\\( -name '*.b64' -o -name '*.part' -o -name '*.bin' \\) " +
+  "-mmin +60 -delete";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -93,14 +100,26 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const quotedPart = shellQuote(`/home/user/${path}.part`);
     const quotedTmp = shellQuote(`/home/user/${path}.bin`);
     if (index === 0) {
-      await command(box.boxId, "mkdir -p /home/user/.hermes/inbox");
+      await command(
+        box.boxId,
+        `mkdir -p /home/user/.hermes/inbox && { ${STALE_PARTIAL_SWEEP} || true; }`
+      );
       await writeFile(box.boxId, `${path}.b64`, base64);
     } else {
       await writeFile(box.boxId, `${path}.part`, base64);
+      // The accumulator must be exactly index full-chunk base64 pieces long,
+      // otherwise this is a replayed/out-of-order chunk — refuse and clean up
+      // (the declared-total size bound is only sound if every index lands once).
+      const expected = index * UPLOAD_CHUNK_B64_LEN;
       const appended = await command(
         box.boxId,
-        `cat ${quotedPart} >> ${quotedB64} && rm ${quotedPart}`
+        `sz=$(stat -c %s ${quotedB64} 2>/dev/null || echo -1); ` +
+          `if [ "$sz" -ne ${expected} ]; then rm -f ${quotedPart}; exit 42; fi; ` +
+          `cat ${quotedPart} >> ${quotedB64} && rm ${quotedPart}`
       );
+      if (appended.exitCode === 42) {
+        return NextResponse.json({ error: "chunk out of order" }, { status: 409 });
+      }
       if (appended.exitCode !== 0) {
         return NextResponse.json({ error: "upload failed" }, { status: 502 });
       }

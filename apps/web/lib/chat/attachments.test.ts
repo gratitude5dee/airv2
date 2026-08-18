@@ -11,6 +11,7 @@ import {
   MAX_UPLOAD_BYTES,
   MAX_UPLOAD_CHUNKS,
   sanitizeAttachmentName,
+  UPLOAD_CHUNK_B64_LEN,
   UPLOAD_CHUNK_BYTES,
 } from "./attachments";
 
@@ -19,6 +20,8 @@ describe("chunked upload invariants", () => {
     expect(UPLOAD_CHUNK_BYTES % 3).toBe(0);
     const chunk = Buffer.alloc(UPLOAD_CHUNK_BYTES, 7).toString("base64");
     expect(chunk.endsWith("=")).toBe(false);
+    // The append offset check relies on this exact accumulator arithmetic.
+    expect(chunk.length).toBe(UPLOAD_CHUNK_B64_LEN);
   });
 
   it("chunk count covers the full upload ceiling", () => {
