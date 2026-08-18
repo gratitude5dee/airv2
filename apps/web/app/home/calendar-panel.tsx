@@ -75,12 +75,15 @@ const PROVIDER_LABELS: Record<CalEvent["source"], string> = {
   email: "Email",
 };
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 function startOfDay(date: Date): Date {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
   return d;
+}
+
+/** Calendar arithmetic (not fixed 24h steps) so grids survive DST shifts. */
+function addDays(date: Date, days: number): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
 }
 
 function sameDay(a: Date, b: Date): boolean {
@@ -220,15 +223,15 @@ export function CalendarPanel({
   const range = useMemo((): { start: Date; end: Date } => {
     if (view === "month") {
       const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
-      const start = new Date(first.getTime() - first.getDay() * DAY_MS);
-      return { start, end: new Date(start.getTime() + 42 * DAY_MS) };
+      const start = addDays(first, -first.getDay());
+      return { start, end: addDays(start, 42) };
     }
     if (view === "week") {
-      const start = new Date(cursor.getTime() - cursor.getDay() * DAY_MS);
-      return { start, end: new Date(start.getTime() + 7 * DAY_MS) };
+      const start = addDays(cursor, -cursor.getDay());
+      return { start, end: addDays(start, 7) };
     }
     const start = startOfDay(new Date());
-    return { start, end: new Date(start.getTime() + 30 * DAY_MS) };
+    return { start, end: addDays(start, 30) };
   }, [view, cursor]);
 
   const items = useMemo((): GridItem[] => {
@@ -599,7 +602,7 @@ export function CalendarPanel({
                   setCursor((c) =>
                     view === "month"
                       ? new Date(c.getFullYear(), c.getMonth() - 1, 1)
-                      : new Date(c.getTime() - 7 * DAY_MS)
+                      : addDays(c, -7)
                   )
                 }
               >
@@ -618,7 +621,7 @@ export function CalendarPanel({
                   setCursor((c) =>
                     view === "month"
                       ? new Date(c.getFullYear(), c.getMonth() + 1, 1)
-                      : new Date(c.getTime() + 7 * DAY_MS)
+                      : addDays(c, 7)
                   )
                 }
               >
@@ -630,7 +633,7 @@ export function CalendarPanel({
                       month: "long",
                       year: "numeric",
                     })
-                  : `${fmtDay(range.start)} – ${fmtDay(new Date(range.end.getTime() - DAY_MS))}`}
+                  : `${fmtDay(range.start)} – ${fmtDay(addDays(range.end, -1))}`}
               </span>
             </>
           ) : (
@@ -705,7 +708,7 @@ export function CalendarPanel({
           </div>
           <div className="mt-1 grid grid-cols-7 gap-1">
             {Array.from({ length: 42 }, (_, i) => {
-              const day = new Date(range.start.getTime() + i * DAY_MS);
+              const day = addDays(range.start, i);
               const inMonth = day.getMonth() === cursor.getMonth();
               const dayItems = itemsForDay(day);
               const isToday = sameDay(day, today);
@@ -743,7 +746,7 @@ export function CalendarPanel({
       ) : view === "week" ? (
         <div className="grid grid-cols-2 gap-1 sm:grid-cols-7">
           {Array.from({ length: 7 }, (_, i) => {
-            const day = new Date(range.start.getTime() + i * DAY_MS);
+            const day = addDays(range.start, i);
             const dayItems = itemsForDay(day);
             const isToday = sameDay(day, today);
             return (
@@ -773,7 +776,7 @@ export function CalendarPanel({
       ) : (
         <div className="grid gap-1.5">
           {Array.from({ length: 30 }, (_, i) => {
-            const day = new Date(range.start.getTime() + i * DAY_MS);
+            const day = addDays(range.start, i);
             const dayItems = itemsForDay(day);
             if (dayItems.length === 0) return null;
             return (

@@ -11,7 +11,6 @@ import { serviceClient } from "@/lib/supabase";
 import { command, writeFile } from "@/lib/box/client";
 import { armStopAfter, ensureBoxAwake } from "@/lib/orchestrator/boxes";
 import {
-  clampToWakingHours,
   DELIVER_VALUES,
   isValidTimeZone,
   type Deliver,
@@ -110,7 +109,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     source: "calendar",
     status: "active",
     one_shot: true,
-    next_run_at: clampToWakingHours(fireAt, timezone, deliver).toISOString(),
+    // No waking-hours clamp: the user asked for this exact moment relative
+    // to a real event — deferring to 8am would arrive after it starts.
+    next_run_at: fireAt.toISOString(),
   });
   if (error) {
     await command(box.boxId, `rm -f /home/user/${promptRef}`).catch(

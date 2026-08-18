@@ -211,6 +211,14 @@ export async function runSchedule(
       schedule,
       error instanceof Error ? error.message : String(error)
     );
+    if (schedule.one_shot) {
+      // A one-shot never outlives its single fire attempt: the re-armed
+      // cron would only recur a year out, delivering a stale reminder.
+      await supabase
+        .from("agent_schedules")
+        .update({ status: "deleted" })
+        .eq("id", schedule.id);
+    }
   } finally {
     // Always re-arm: a failed run must not leave the box awake forever.
     await armStopAfter(supabase, schedule.user_id).catch(() => undefined);
