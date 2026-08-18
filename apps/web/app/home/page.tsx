@@ -941,7 +941,9 @@ export default function HomePage() {
                                     ? "Spend ceiling reached"
                                     : d.kind === "social_post"
                                       ? "Social post awaiting approval"
-                                      : "New contact"}
+                                      : d.kind === "purchase_review"
+                                        ? "Card fill awaiting approval"
+                                        : "New contact"}
                   </strong>
                   <p className="muted mb-2 mt-1 text-[12px]">
                     {[d.label, d.sender, d.platform].filter(Boolean).join(" \u00b7 ")}
@@ -967,6 +969,7 @@ export default function HomePage() {
                       "revise",
                       "calendar_add",
                       "social_post",
+                      "purchase_review",
                     ].includes(d.kind) ? (
                       <button
                         className="btn !px-3 !py-1.5 !text-[12px]"
@@ -985,7 +988,9 @@ export default function HomePage() {
                                   ? "Retry"
                                   : d.kind === "social_post"
                                     ? "Post it"
-                                    : "Approve"}
+                                    : d.kind === "purchase_review"
+                                      ? "Fill card"
+                                      : "Approve"}
                       </button>
                     ) : null}
                     <button

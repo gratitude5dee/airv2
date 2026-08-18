@@ -16,6 +16,7 @@ import { approveContentPlan, dismissContentPlan } from "@/lib/publish/propose";
 import { armStopAfter, ensureBoxAwake } from "@/lib/orchestrator/boxes";
 import { approveRun, HermesApiError } from "@/lib/hermes/client";
 import { approveInboxEvent, dismissInboxEvent } from "@/lib/calendar/store";
+import { resolvePurchaseReview, PurchaseError } from "@/lib/vault/purchase";
 import {
   clampToWakingHours,
   nextRunAt,
@@ -186,6 +187,42 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           { status: 502 }
         );
       }
+    } finally {
+      await armStopAfter(supabase, userId).catch(() => undefined);
+    }
+  }
+
+  if (decision.kind === "purchase_review") {
+    // V6 (C20): approving mints + redeems the single-use fill ticket,
+    // delivers it to the box, and resumes the paused run; denying writes
+    // the fill_denied receipt and resumes the run with approved=false.
+    try {
+      const box = await ensureBoxAwake(supabase, userId);
+      await resolvePurchaseReview(
+        supabase,
+        userId,
+        decision as { id: string; ref: string | null; payload: unknown },
+        body.action === "approve",
+        box
+      );
+    } catch (error) {
+      if (error instanceof PurchaseError) {
+        return NextResponse.json(
+          { error: error.code, message: error.message },
+          { status: error.status }
+        );
+      }
+      console.error(
+        JSON.stringify({
+          msg: "purchase_review resolution failed",
+          user_id: userId,
+          error: error instanceof Error ? error.message : "unknown",
+        })
+      );
+      return NextResponse.json(
+        { error: "could not resolve the purchase review — try again" },
+        { status: 502 }
+      );
     } finally {
       await armStopAfter(supabase, userId).catch(() => undefined);
     }

@@ -121,7 +121,9 @@ def test_type_refuses_when_no_grants_file(home, capsys, fake_browser):
 
 
 def test_type_refuses_card_fields_without_ticket(home, capsys, fake_browser):
-    # C20 seam: card fills are refuse-always until V6 mints fill tickets.
+    # C20: card fills require the owner-approved fill ticket — with no
+    # ticket file present the refusal is unconditional and value-free.
+    # (test_fill_ticket.py exercises the ticketed path.)
     card_number = "4242424242424242"
     item_id = create_item(
         home, capsys, kind="card",

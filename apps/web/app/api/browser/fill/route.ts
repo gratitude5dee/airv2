@@ -4,9 +4,10 @@
  * headed browser. The control plane pre-checks the site grant against the
  * frontmost page and dispatches `air-vault type` — the CLI re-checks the
  * grant and delivers the value in-process over CDP. The response is the safe
- * receipt only; the value never transits this route (C19). Card fields are
- * refused everywhere until V6's fill tickets (C20) — see lib/vault/fill's
- * mintFillTicket seam.
+ * receipt only; the value never transits this route (C19). Card-kind
+ * fields additionally require the single-use fill ticket minted on a
+ * purchase_review approval (V6, C20) — the CLI requires-and-burns it, so
+ * without an owner approval the fill fails box-side and nothing is typed.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
@@ -16,7 +17,7 @@ import {
   ensureBoxAwake,
   StartLimitError,
 } from "@/lib/orchestrator/boxes";
-import { VaultCliError } from "@/lib/vault/client";
+import { VaultCliError, appendVaultEvent } from "@/lib/vault/client";
 import { typeVaultField, typeVaultTotp } from "@/lib/vault/fill";
 import { readSiteGrants } from "@/lib/browser/grants";
 import { probeBrowser } from "@/lib/browser/probe";
@@ -28,8 +29,15 @@ export const maxDuration = 300;
 const ID_RE = /^[A-Za-z0-9._-]{1,64}$/;
 const FIELD_RE = /^[a-z_][a-z0-9_]*$/;
 
-// Card-kind fields never fill in V5 (C20); the CLI refuses them too.
-const CARD_FIELDS = new Set(["number", "cvv", "expiry_month", "expiry_year"]);
+// Card-kind fields only fill under a burned fill ticket (C20); the CLI is
+// the enforcer — this set just shapes the request validation and receipts.
+const CARD_FIELDS = new Set([
+  "number",
+  "cvv",
+  "expiry_month",
+  "expiry_year",
+  "zip",
+]);
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const supabase = serviceClient();
@@ -51,7 +59,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   // Ownership + kind gate from the metadata mirror: only the owner's own
-  // login items are fillable (cards are metadata-visible but refused, C20).
+  // login and card items are fillable. Card fields go to the CLI, which
+  // requires-and-burns the owner-approved fill ticket (C20); a login item
+  // never types card-named fields and vice versa.
   const { data: item } = await supabase
     .from("vault_items")
     .select("id, kind")
@@ -62,14 +72,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!item) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
-  if (item.kind !== "login" || (!totp && CARD_FIELDS.has(field))) {
+  const cardFill = item.kind === "card" && !totp && CARD_FIELDS.has(field);
+  const loginFill = item.kind === "login" && (totp || !CARD_FIELDS.has(field));
+  if (!cardFill && !loginFill) {
     return NextResponse.json(
       {
-        error: "fill_ticket_required",
-        message: "only login fields can be typed in V5",
+        error: "invalid request",
+        message: "that field cannot be typed for this item kind",
       },
-      { status: 403 }
+      { status: 400 }
     );
+  }
+  if (cardFill) {
+    // Receipt trail (§V6): the attempt is recorded before the CLI decides.
+    await appendVaultEvent(supabase, userId, "fill_requested", itemId, field);
   }
 
   try {
@@ -87,9 +103,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         );
       }
       const host = new URL(probe.currentUrl).hostname.replace(/^www\./, "");
-      const granted = (grants[itemId] ?? []).some(
-        (allowed) => host === allowed || host.endsWith(`.${allowed}`)
-      );
+      // Card fills are host-bound by the fill ticket, not site_grants —
+      // the CLI matches the frontmost page against the approved host.
+      const granted =
+        cardFill ||
+        (grants[itemId] ?? []).some(
+          (allowed) => host === allowed || host.endsWith(`.${allowed}`)
+        );
       if (!granted) {
         return NextResponse.json(
           {
@@ -112,12 +132,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: "start_limit_reached" }, { status: 429 });
     }
     if (error instanceof VaultCliError) {
-      const status =
-        error.code === "site_not_granted" || error.code === "fill_ticket_required"
-          ? 403
-          : error.code === "browser_unreachable"
-            ? 409
-            : 400;
+      const status = [
+        "site_not_granted",
+        "fill_ticket_required",
+        "host_mismatch",
+        "cvv_not_last",
+        "field_not_allowed",
+      ].includes(error.code)
+        ? 403
+        : error.code === "browser_unreachable"
+          ? 409
+          : 400;
       return NextResponse.json(
         { error: error.code, message: error.message },
         { status }

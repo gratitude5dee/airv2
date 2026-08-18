@@ -96,6 +96,9 @@ export async function enqueueInbound(
       phone: message.phone,
       run_at: runAt,
       cancelled_at: new Date().toISOString(),
+      // V6 (C20): the purchase route reads this to keep offer-the-fill
+      // owner-initiated. Fail closed: unknown tier is never owner.
+      sender_tier: message.senderTier ?? null,
     },
     { onConflict: "space_id" }
   );
@@ -466,16 +469,33 @@ export async function runFlush(
       return;
     }
 
-    await supabase
+    // V6: a purchase outcome recorded mid-run already inserted this run's
+    // row (keyed by hermes_run_id) — close it instead of duplicating, and
+    // never overwrite a purchase_* outcome with the generic "completed".
+    const { data: existingRun } = await supabase
       .from("agent_runs")
-      .insert({
-        user_id: job.userId,
-        hermes_run_id: run.run_id,
-        trigger: "imessage",
-        started_at: startedAt,
-        ended_at: new Date().toISOString(),
-        outcome: "completed",
-      });
+      .select("id")
+      .eq("user_id", job.userId)
+      .eq("hermes_run_id", run.run_id)
+      .limit(1)
+      .maybeSingle();
+    if (existingRun) {
+      await supabase
+        .from("agent_runs")
+        .update({ started_at: startedAt, ended_at: new Date().toISOString() })
+        .eq("id", existingRun.id);
+    } else {
+      await supabase
+        .from("agent_runs")
+        .insert({
+          user_id: job.userId,
+          hermes_run_id: run.run_id,
+          trigger: "imessage",
+          started_at: startedAt,
+          ended_at: new Date().toISOString(),
+          outcome: "completed",
+        });
+    }
     // If a new inbound arrived while we streamed, its flush owns the job now.
     if (!(await chainCancelled(supabase, job.spaceId, chainStartedAt))) {
       await supabase

@@ -7,8 +7,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { command } from "../box/client";
 import { serviceClient } from "../supabase";
-import { VaultCliError } from "./client";
-import { mintFillTicket, typeVaultField, typeVaultTotp } from "./fill";
+import { typeVaultField, typeVaultTotp } from "./fill";
 
 vi.mock("../box/client", () => ({
   command: vi.fn(),
@@ -101,7 +100,7 @@ describe("vault browser fill", () => {
     expect(JSON.stringify(audit?.row)).not.toContain(PLANTED);
   });
 
-  it("card fills refuse in V5 — the ticket seam is V6 (C20)", async () => {
+  it("card fills without a ticket refuse, box-side (C20)", async () => {
     vi.mocked(command).mockResolvedValue({
       exitCode: 1,
       stdout: "",
@@ -113,7 +112,6 @@ describe("vault browser fill", () => {
     await expect(
       typeVaultField("box-1", "user-1", "card-1", "number")
     ).rejects.toMatchObject({ code: "fill_ticket_required" });
-    expect(() => mintFillTicket()).toThrow(VaultCliError);
   });
 
   it("totp typing returns the receipt, never the code", async () => {

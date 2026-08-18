@@ -24,6 +24,7 @@ import {
   VaultCliError,
   type VaultItemMetadata,
 } from "@/lib/vault/client";
+import { resolvePurchaseReview } from "@/lib/vault/purchase";
 import {
   approveInboxEvent,
   dismissInboxEvent,
@@ -131,10 +132,45 @@ function renderKanban(board: KanbanBoard, resourceId: string): string {
   );
 }
 
+interface PurchaseReviewRow {
+  id: string;
+  label: string | null;
+  payload: unknown;
+}
+
+/** V6: the purchase_review live card — site, order summary, amount band,
+ * and masked card only (C18); approve/deny resolve in place. */
+function renderPurchaseReviews(reviews: PurchaseReviewRow[]): string {
+  return reviews
+    .map((review) => {
+      const payload = review.payload as {
+        host?: unknown;
+        summary?: unknown;
+        amount_band?: unknown;
+        card_name?: unknown;
+        card_masked?: unknown;
+      } | null;
+      const host = typeof payload?.host === "string" ? payload.host : "";
+      const summary =
+        typeof payload?.summary === "string" ? payload.summary : "";
+      const band =
+        typeof payload?.amount_band === "string" ? payload.amount_band : "";
+      const card = [
+        typeof payload?.card_name === "string" ? payload.card_name : "",
+        typeof payload?.card_masked === "string" ? payload.card_masked : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+      return `<div class="card pending"><strong>Fill ${esc(card || "your card")} on ${esc(host)}?</strong><div class="when" style="white-space:normal;margin-top:4px">${esc(summary)}</div><div class="when" style="margin-top:4px">${esc(band)}</div><div style="display:flex;gap:4px;margin-top:8px"><form method="post" style="margin:0"><input type="hidden" name="action" value="approve_purchase"><input type="hidden" name="decision" value="${esc(review.id)}"><button>Fill card</button></form><form method="post" style="margin:0"><input type="hidden" name="action" value="deny_purchase"><input type="hidden" name="decision" value="${esc(review.id)}"><button class="ghost">Not now</button></form></div><div class="when" style="white-space:normal;margin-top:6px">You always click the final Place order button yourself.</div></div>`;
+    })
+    .join("");
+}
+
 function renderVault(
   items: VaultItemMetadata[],
   revealed: { id: string; field: string; value: string } | null,
-  notice: string | null
+  notice: string | null,
+  reviews: PurchaseReviewRow[] = []
 ): string {
   const sections: [string, string, string][] = [
     ["login", "LOGINS", "Add a login…"],
@@ -184,7 +220,7 @@ function renderVault(
   const addCard = `<details style="margin-top:8px"><summary style="cursor:pointer;font-size:13px">Add card</summary><p style="color:var(--muted);font-size:12px;margin:6px 0">Values are encrypted in your vault.</p><form method="post" style="display:grid;gap:6px"><input type="hidden" name="action" value="add_card"><input type="text" name="name" placeholder="e.g. &quot;Amex&quot;, &quot;Chase&quot;" maxlength="120"><input type="text" name="number" placeholder="🔒 Card number" inputmode="numeric" maxlength="23" autocomplete="off"><input type="text" name="expiry_month" placeholder="Expiry month" inputmode="numeric" maxlength="2"><input type="text" name="expiry_year" placeholder="Expiry year" inputmode="numeric" maxlength="4"><input type="text" name="cvv" placeholder="🔒 CVV" inputmode="numeric" maxlength="4" autocomplete="off"><input type="text" name="zip" placeholder="Billing ZIP" inputmode="numeric" maxlength="10"><button>Save</button></form></details>`;
   return page(
     "Vault",
-    `<h1>Vault</h1>${notice ? `<p style="color:var(--muted);font-size:12px">${esc(notice)}</p>` : ""}${body}${addLogin}${addCard}`
+    `<h1>Vault</h1>${notice ? `<p style="color:var(--muted);font-size:12px">${esc(notice)}</p>` : ""}${renderPurchaseReviews(reviews)}${body}${addLogin}${addCard}`
   );
 }
 
@@ -393,16 +429,31 @@ export async function GET(
   if (app === "vault") {
     // Metadata from the Postgres mirror only — the page renders without a
     // box wake and its HTML never contains a secret value (C18).
-    const { data } = await supabase
-      .from("vault_items")
-      .select(
-        "id, kind, name, masked, env_var, totp_enabled, created_at, updated_at"
-      )
-      .eq("user_id", session.userId)
-      .is("deleted_at", null)
-      .order("created_at", { ascending: true });
+    const [{ data }, { data: reviewRows }] = await Promise.all([
+      supabase
+        .from("vault_items")
+        .select(
+          "id, kind, name, masked, env_var, totp_enabled, created_at, updated_at"
+        )
+        .eq("user_id", session.userId)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: true }),
+      supabase
+        .from("decisions")
+        .select("id, label, payload")
+        .eq("user_id", session.userId)
+        .eq("kind", "purchase_review")
+        .eq("status", "pending")
+        .order("created_at", { ascending: false })
+        .limit(10),
+    ]);
     return html(
-      renderVault((data ?? []) as VaultItemMetadata[], null, null)
+      renderVault(
+        (data ?? []) as VaultItemMetadata[],
+        null,
+        null,
+        (reviewRows ?? []) as PurchaseReviewRow[]
+      )
     );
   }
 
@@ -599,6 +650,54 @@ async function vaultPost(
 
   if (action === "hide") {
     return html(renderVault(await vaultItems(supabase, userId), null, null));
+  }
+
+  if (action === "approve_purchase" || action === "deny_purchase") {
+    // V6 (C20): the iMessage live-card resolution of a purchase_review —
+    // same effect as the Needs-you queue. Approve mints + burns the fill
+    // ticket; the human still clicks the final Place order button.
+    const decisionId = String(form.get("decision") ?? "");
+    const { data: decision } = await supabase
+      .from("decisions")
+      .select("id, kind, ref, status, payload")
+      .eq("id", decisionId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (
+      !decision ||
+      decision.status !== "pending" ||
+      decision.kind !== "purchase_review"
+    ) {
+      return forbidden("not found");
+    }
+    const approve = action === "approve_purchase";
+    let notice: string | null = approve
+      ? "Card fill approved — your agent is filling now. You click Place order."
+      : "Okay — the checkout link still works if you want to finish manually.";
+    try {
+      const box = await ensureBoxAwake(supabase, userId);
+      await resolvePurchaseReview(
+        supabase,
+        userId,
+        decision as { id: string; ref: string | null; payload: unknown },
+        approve,
+        box
+      );
+      await supabase
+        .from("decisions")
+        .update({
+          status: approve ? "approved" : "dismissed",
+          resolved_at: new Date().toISOString(),
+        })
+        .eq("id", decision.id)
+        .eq("user_id", userId);
+    } catch (error) {
+      if (error instanceof StartLimitError) return busyPage();
+      notice = "That didn't go through — try again from Needs you.";
+    } finally {
+      await armStopAfter(supabase, userId).catch(() => undefined);
+    }
+    return html(renderVault(await vaultItems(supabase, userId), null, notice));
   }
 
   if (action === "reveal") {
