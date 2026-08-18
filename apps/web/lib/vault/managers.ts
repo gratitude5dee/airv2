@@ -196,6 +196,78 @@ async function fetchStatusSummary(
   return { count, warnings, ok: result.exitCode === 0 };
 }
 
+/** Real gateway health signal (the journal pipeline always exits 0). */
+async function gatewayActive(boxId: string): Promise<boolean> {
+  // Let transport failures propagate: only a returned non-zero exit code
+  // means the unit is genuinely not active.
+  const result = await command(
+    boxId,
+    "systemctl is-active --quiet hermes-gateway"
+  );
+  return result.exitCode === 0;
+}
+
+/**
+ * Probe gateway health + parse the journal summary, then mirror both.
+ * With `tolerateProbeError` (post-mutation paths, where the box operation
+ * already succeeded) a probe transport failure is mirrored as
+ * "configured, health unknown" instead of failing the whole request;
+ * without it (read-only refresh) the transport error propagates and the
+ * stored row is left untouched.
+ */
+async function mirrorGatewayHealth(
+  supabase: SupabaseClient,
+  userId: string,
+  boxId: string,
+  manager: ManagerId,
+  options?: { tolerateProbeError?: boolean }
+): Promise<void> {
+  let active: boolean | null;
+  if (options?.tolerateProbeError) {
+    active = await gatewayActive(boxId).catch(() => null);
+  } else {
+    active = await gatewayActive(boxId);
+  }
+  const summary = await fetchStatusSummary(boxId, manager).catch(() => ({
+    count: null,
+    warnings: null,
+    ok: false,
+  }));
+  await upsertManagerRow(supabase, userId, manager, {
+    status: active === false ? "error" : "configured",
+    provenance_count: summary.count,
+    warnings:
+      active === true
+        ? summary.warnings
+        : [
+            summary.warnings,
+            active === false
+              ? "gateway is not running — retry Restart gateway"
+              : "health check unreachable — use Refresh to confirm",
+          ]
+            .filter(Boolean)
+            .join("\n"),
+    last_synced_at: new Date().toISOString(),
+  });
+}
+
+async function assertManagerEnabled(
+  supabase: SupabaseClient,
+  userId: string,
+  manager: ManagerId
+): Promise<void> {
+  const { data, error } = await supabase
+    .from("vault_managers")
+    .select("enabled")
+    .eq("user_id", userId)
+    .eq("manager", manager)
+    .maybeSingle();
+  if (error) throw new Error("manager lookup failed");
+  if (!data?.enabled) {
+    throw new ManagerInputError("manager is not enabled");
+  }
+}
+
 async function upsertManagerRow(
   supabase: SupabaseClient,
   userId: string,
@@ -341,16 +413,8 @@ export async function enableManager(
     throw error;
   }
 
-  const summary = await fetchStatusSummary(boxId, manager).catch(() => ({
-    count: null,
-    warnings: null,
-    ok: false,
-  }));
-  await upsertManagerRow(supabase, userId, manager, {
-    status: "configured",
-    provenance_count: summary.count,
-    warnings: summary.warnings,
-    last_synced_at: new Date().toISOString(),
+  await mirrorGatewayHealth(supabase, userId, boxId, manager, {
+    tolerateProbeError: true,
   });
   return listManagers(supabase, userId);
 }
@@ -382,13 +446,8 @@ export async function refreshManager(
   boxId: string,
   manager: ManagerId
 ): Promise<ManagerStatus[]> {
-  const summary = await fetchStatusSummary(boxId, manager);
-  await upsertManagerRow(supabase, userId, manager, {
-    status: summary.ok ? "configured" : "error",
-    provenance_count: summary.count,
-    warnings: summary.warnings,
-    last_synced_at: new Date().toISOString(),
-  });
+  await assertManagerEnabled(supabase, userId, manager);
+  await mirrorGatewayHealth(supabase, userId, boxId, manager);
   return listManagers(supabase, userId);
 }
 
@@ -399,6 +458,7 @@ export async function restartManager(
   boxId: string,
   manager: ManagerId
 ): Promise<ManagerStatus[]> {
+  await assertManagerEnabled(supabase, userId, manager);
   try {
     await restartGateway(boxId);
   } catch (error) {
@@ -410,16 +470,8 @@ export async function restartManager(
     }).catch(() => undefined);
     throw error;
   }
-  const summary = await fetchStatusSummary(boxId, manager).catch(() => ({
-    count: null,
-    warnings: null,
-    ok: false,
-  }));
-  await upsertManagerRow(supabase, userId, manager, {
-    status: "configured",
-    provenance_count: summary.count,
-    warnings: summary.warnings,
-    last_synced_at: new Date().toISOString(),
+  await mirrorGatewayHealth(supabase, userId, boxId, manager, {
+    tolerateProbeError: true,
   });
   return listManagers(supabase, userId);
 }
