@@ -154,13 +154,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         JSON.stringify({
           msg: "social_post approval relay failed",
           user_id: userId,
+          action: body.action,
           error: error instanceof Error ? error.message : "unknown",
         })
       );
-      return NextResponse.json(
-        { error: "could not reach the agent — try again" },
-        { status: 502 }
-      );
+      // The referenced run may have already ended (the ref is the newest open
+      // run at proposal time). A post must never go out unacknowledged, so
+      // approve still fails loudly — but a dismiss is safe to finish anyway:
+      // an unreachable run can't post, and the card must be clearable.
+      if (body.action === "approve") {
+        return NextResponse.json(
+          { error: "could not reach the agent — try again" },
+          { status: 502 }
+        );
+      }
     } finally {
       await armStopAfter(supabase, userId).catch(() => undefined);
     }

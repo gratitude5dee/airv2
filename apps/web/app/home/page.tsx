@@ -59,6 +59,8 @@ interface Decision {
   sender: string | null;
   label: string | null;
   created_at: string;
+  /** social_post: the exact text + target the agent proposes to publish. */
+  payload?: { text?: string; target?: string } | null;
 }
 
 interface Sender {
@@ -937,11 +939,25 @@ export default function HomePage() {
                                   ? "Ad spend diverged from budget"
                                   : d.kind === "spend_ceiling"
                                     ? "Spend ceiling reached"
-                                    : "New contact"}
+                                    : d.kind === "social_post"
+                                      ? "Social post awaiting approval"
+                                      : "New contact"}
                   </strong>
                   <p className="muted mb-2 mt-1 text-[12px]">
                     {[d.label, d.sender, d.platform].filter(Boolean).join(" \u00b7 ")}
                   </p>
+                  {d.kind === "social_post" && d.payload?.text ? (
+                    <div className="mb-2 rounded-lg bg-surface-2 p-2">
+                      <p className="m-0 whitespace-pre-wrap text-[13px]">
+                        {d.payload.text}
+                      </p>
+                      {d.payload.target ? (
+                        <p className="muted m-0 mt-1 break-all text-[11px]">
+                          → {d.payload.target}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <div className="flex gap-2">
                     {[
                       "email_draft",
@@ -950,6 +966,7 @@ export default function HomePage() {
                       "reconnect",
                       "revise",
                       "calendar_add",
+                      "social_post",
                     ].includes(d.kind) ? (
                       <button
                         className="btn !px-3 !py-1.5 !text-[12px]"
@@ -966,7 +983,9 @@ export default function HomePage() {
                                 ? "Add to calendar"
                                 : d.kind === "reconnect" || d.kind === "revise"
                                   ? "Retry"
-                                  : "Approve"}
+                                  : d.kind === "social_post"
+                                    ? "Post it"
+                                    : "Approve"}
                       </button>
                     ) : null}
                     <button
@@ -1229,7 +1248,14 @@ export default function HomePage() {
               ) : null}
             </div>
           ) : tab === "computer" ? (
-            <div className="flex flex-1 flex-col gap-2">
+            // The Browser subtab stacks panels below the live view, so it
+            // scrolls; Screen keeps the original fixed fill layout.
+            <div
+              className={
+                "flex flex-1 flex-col gap-2" +
+                (computerView === "browser" ? " min-h-0 overflow-y-auto" : "")
+              }
+            >
               <div className="flex items-center gap-1">
                 {(["screen", "browser"] as const).map((view) => (
                   <button
