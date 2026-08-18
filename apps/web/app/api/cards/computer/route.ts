@@ -11,71 +11,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
 import { sendMiniAppCard } from "@/lib/miniapps/cards";
+import { claimCardSend, type CardClaim } from "@/lib/miniapps/cardSends";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
-
-/** Minimum gap between agent-initiated computer cards per user. */
-const CARD_COOLDOWN_MS = 2 * 60 * 1000;
-
-/**
- * Gap enforced after a failed delivery. Not a full release: a thrown send
- * error is ambiguous (the card may already have reached the owner — e.g. a
- * network timeout after handoff to Spectrum), so retries stay possible but
- * the flood rate remains bounded even under repeated failures.
- */
-const FAILED_SEND_RETRY_MS = 15 * 1000;
-
-interface CardClaim {
-  /** Best-effort backoff so a failed delivery doesn't consume the full cooldown. */
-  release: () => Promise<void>;
-}
-
-/**
- * Atomic per-user rate limit: the insert wins the first send; afterwards a
- * conditional update only matches when the previous send is older than the
- * cooldown, so concurrent calls cannot both pass. Returns a release handle
- * to undo the claim when the send itself fails.
- */
-async function claimCardSend(
-  supabase: ReturnType<typeof serviceClient>,
-  userId: string
-): Promise<CardClaim | undefined> {
-  const now = new Date();
-  const { error } = await supabase
-    .from("computer_card_sends")
-    .insert({ user_id: userId, sent_at: now.toISOString() });
-  const retryAt = new Date(
-    now.getTime() - CARD_COOLDOWN_MS + FAILED_SEND_RETRY_MS
-  ).toISOString();
-  // Only rolls back this call's own claim: a newer claim has a later sent_at.
-  const release = async () => {
-    await supabase
-      .from("computer_card_sends")
-      .update({ sent_at: retryAt })
-      .eq("user_id", userId)
-      .eq("sent_at", now.toISOString());
-  };
-  if (!error) {
-    return { release };
-  }
-  if (error.code !== "23505") {
-    throw new Error(`computer_card_sends insert failed: ${error.message}`);
-  }
-  const cutoff = new Date(now.getTime() - CARD_COOLDOWN_MS).toISOString();
-  const { data, error: updateError } = await supabase
-    .from("computer_card_sends")
-    .update({ sent_at: now.toISOString() })
-    .eq("user_id", userId)
-    .lt("sent_at", cutoff)
-    .select("sent_at");
-  if (updateError) {
-    throw new Error(`computer_card_sends update failed: ${updateError.message}`);
-  }
-  if ((data?.length ?? 0) === 0) return undefined;
-  return { release };
-}
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const authHeader = request.headers.get("authorization") ?? "";
@@ -114,7 +54,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   let claim: CardClaim | undefined;
   try {
-    claim = await claimCardSend(supabase, userId);
+    claim = await claimCardSend(supabase, userId, "computer");
     if (!claim) {
       return NextResponse.json(
         { error: "a computer card was sent recently — wait before sending another" },

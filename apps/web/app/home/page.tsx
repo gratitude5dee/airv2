@@ -8,6 +8,7 @@ import { Orb } from "@/components/orb/Orb";
 import { PromptInput } from "@/components/prompt-input/PromptInput";
 import { AdsPanel } from "./ads-panel";
 import { VaultPanel } from "./vault-panel";
+import { CalendarPanel } from "./calendar-panel";
 
 // Loaded on demand so the main route doesn't pay for thirdweb/react unless
 // the user opens Fund (goal.md M15 bundle budget).
@@ -116,6 +117,7 @@ type Tab =
   | "needs"
   | "people"
   | "connectors"
+  | "calendar"
   | "ads"
   | "wallet"
   | "vault"
@@ -157,6 +159,7 @@ const TABS: [Tab, string][] = [
   ["people", "People"],
   ["connectors", "Connectors"],
   ["skills", "Skills"],
+  ["calendar", "Calendar"],
   ["ads", "Ads"],
   ["wallet", "Wallet"],
   ["vault", "Vault"],
@@ -405,8 +408,8 @@ export default function HomePage() {
     };
   }, []);
 
-  const send = useCallback(async () => {
-    const text = input.trim();
+  const send = useCallback(async (textOverride?: string) => {
+    const text = (textOverride ?? input).trim();
     if (!text || busy) return;
     const viaVoice = voiceUsedRef.current;
     voiceUsedRef.current = false;
@@ -889,11 +892,21 @@ export default function HomePage() {
             <div className="grid flex-1 content-start gap-2 overflow-y-auto">
               <h3 className="m-0 text-[15px] font-semibold">Needs you</h3>
               {(decisions ?? []).map((d) => (
-                <div key={d.id} className="panel rise-in !p-3">
+                <div
+                  key={d.id}
+                  className={
+                    "panel rise-in !p-3" +
+                    (d.kind === "calendar_add"
+                      ? " !shadow-none border border-dashed border-[var(--muted)]"
+                      : "")
+                  }
+                >
                   <strong className="text-[13px]">
                     {d.kind === "email_draft"
                       ? "Email draft awaiting send"
-                      : d.kind === "run_approval"
+                      : d.kind === "calendar_add"
+                        ? "Calendar invite"
+                        : d.kind === "run_approval"
                         ? "Agent action awaiting approval"
                         : d.kind === "ad_write"
                           ? "Ad spend awaiting approval"
@@ -913,9 +926,14 @@ export default function HomePage() {
                     {[d.label, d.sender, d.platform].filter(Boolean).join(" \u00b7 ")}
                   </p>
                   <div className="flex gap-2">
-                    {["email_draft", "ad_write", "content_plan", "reconnect", "revise"].includes(
-                      d.kind
-                    ) ? (
+                    {[
+                      "email_draft",
+                      "ad_write",
+                      "content_plan",
+                      "reconnect",
+                      "revise",
+                      "calendar_add",
+                    ].includes(d.kind) ? (
                       <button
                         className="btn !px-3 !py-1.5 !text-[12px]"
                         disabled={decisionBusy !== null}
@@ -927,9 +945,11 @@ export default function HomePage() {
                             ? "Send"
                             : d.kind === "content_plan"
                               ? "Approve plan"
-                              : d.kind === "reconnect" || d.kind === "revise"
-                                ? "Retry"
-                                : "Approve"}
+                              : d.kind === "calendar_add"
+                                ? "Add to calendar"
+                                : d.kind === "reconnect" || d.kind === "revise"
+                                  ? "Retry"
+                                  : "Approve"}
                       </button>
                     ) : null}
                     <button
@@ -1442,6 +1462,19 @@ export default function HomePage() {
             </div>
           ) : tab === "vault" ? (
             <VaultPanel active={tab === "vault"} />
+          ) : tab === "calendar" ? (
+            <CalendarPanel
+              active={tab === "calendar"}
+              onAgentRun={(prompt) => {
+                setTab("chat");
+                if (busy) {
+                  // A run is already streaming — stage the prompt instead.
+                  setInput(prompt);
+                } else {
+                  void send(prompt);
+                }
+              }}
+            />
           ) : tab === "ads" ? (
             <AdsPanel
               active={tab === "ads"}
@@ -1649,7 +1682,7 @@ export default function HomePage() {
           <div className="panel">
             <h3 className="mt-0 text-[15px] font-semibold">Apps</h3>
             <div className="flex gap-2">
-              {(["kanban", "todo"] as const).map((slug) => (
+              {(["kanban", "todo", "calendar"] as const).map((slug) => (
                 <button
                   key={slug}
                   className="btn btn-ghost !px-3 !py-1.5 !text-[12px]"
@@ -1678,7 +1711,11 @@ export default function HomePage() {
                       .catch(() => win?.close());
                   }}
                 >
-                  {slug === "kanban" ? "Kanban" : "To-Do"}
+                  {slug === "kanban"
+                    ? "Kanban"
+                    : slug === "todo"
+                      ? "To-Do"
+                      : "Calendar"}
                 </button>
               ))}
             </div>
