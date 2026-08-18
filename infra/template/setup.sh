@@ -175,6 +175,14 @@ for local_skill in "$TEMPLATE_DIR"/skills/*/; do
   cp -r "$local_skill" "$HOME_DIR/.hermes/skills/$name"
 done
 
+# ── 3d. Calendar spine (V3): the box-resident event store + sync pipeline ──
+# Events live here, never in shared Postgres (C4). sources.json (written by
+# the control plane on connect) holds source credentials, mode 600.
+mkdir -p "$HOME_DIR/.hermes/calendar/inbox"
+chmod 700 "$HOME_DIR/.hermes/calendar"
+cp "$TEMPLATE_DIR/calendar/sync.py" "$HOME_DIR/.hermes/calendar/sync.py"
+chmod 755 "$HOME_DIR/.hermes/calendar/sync.py"
+
 # Teach the agent it owns a computer. SOUL.md is auto-loaded into every
 # session's context; without this the model defaults to walking the human
 # through steps on THEIR device instead of driving its own browser (which is

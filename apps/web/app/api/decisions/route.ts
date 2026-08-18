@@ -13,6 +13,8 @@ import {
   AdWriteError,
 } from "@/lib/ads/approvals";
 import { approveContentPlan, dismissContentPlan } from "@/lib/publish/propose";
+import { ensureBoxAwake } from "@/lib/orchestrator/boxes";
+import { approveInboxEvent, dismissInboxEvent } from "@/lib/calendar/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -111,6 +113,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     } else {
       await dismissContentPlan(supabase, userId, decision.ref as string);
+    }
+  }
+
+  if (decision.kind === "calendar_add" && decision.ref) {
+    // V3: approve confirms the pending event in the box store; dismiss
+    // tombstones the invite so a later re-sync cannot resurrect it.
+    const box = await ensureBoxAwake(supabase, userId);
+    if (body.action === "approve") {
+      await approveInboxEvent(box.boxId, decision.ref as string);
+    } else {
+      await dismissInboxEvent(box.boxId, decision.ref as string);
     }
   }
 

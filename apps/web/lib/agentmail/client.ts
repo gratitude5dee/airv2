@@ -116,6 +116,14 @@ export async function createDraftOnlyKey(name: string): Promise<string> {
   return result.api_key;
 }
 
+export interface AgentMailAttachment {
+  attachment_id: string;
+  filename?: string;
+  content_type?: string;
+  size?: number;
+  inline?: boolean;
+}
+
 export interface AgentMailMessage {
   message_id: string;
   inbox_id: string;
@@ -126,6 +134,38 @@ export interface AgentMailMessage {
   /** Provider-extracted new content, already quote-stripped. */
   extracted_text?: string;
   html?: string;
+  attachments?: AgentMailAttachment[];
+}
+
+/** Fetch raw attachment bytes (V3: emailed .ics invites → box inbox). */
+export async function getAttachmentBytes(
+  inboxId: string,
+  messageId: string,
+  attachmentId: string
+): Promise<Buffer> {
+  const response = await fetch(
+    `${AGENTMAIL_API}/inboxes/${encodeURIComponent(inboxId)}/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`,
+    { headers: { Authorization: `Bearer ${env.agentmailApiKey()}` } }
+  );
+  if (!response.ok) {
+    const text = await response.text();
+    throw new AgentMailApiError(response.status, text.slice(0, 500));
+  }
+  // The endpoint may serve bytes directly or a JSON pointer to a signed URL.
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    const body = (await response.json()) as { download_url?: string; url?: string };
+    const url = body.download_url ?? body.url;
+    if (!url) {
+      throw new AgentMailApiError(502, "attachment response had no bytes or url");
+    }
+    const download = await fetch(url);
+    if (!download.ok) {
+      throw new AgentMailApiError(download.status, "attachment download failed");
+    }
+    return Buffer.from(await download.arrayBuffer());
+  }
+  return Buffer.from(await response.arrayBuffer());
 }
 
 export async function getMessage(
@@ -163,6 +203,22 @@ export async function replyToMessage(
     const body = await response.text();
     throw new AgentMailApiError(response.status, body.slice(0, 500));
   }
+}
+
+/**
+ * V3 scheduled-email delivery: compose a draft control-plane-side, then send
+ * it through the policy-send path — the same draft→send shape agent mail
+ * uses (C10). Never a direct box send.
+ */
+export async function createDraft(
+  inboxId: string,
+  draft: { to: string[]; subject?: string; text: string }
+): Promise<string> {
+  const result = await agentmailFetch<{ draft_id: string }>(
+    `/inboxes/${encodeURIComponent(inboxId)}/drafts`,
+    { method: "POST", body: draft }
+  );
+  return result.draft_id;
 }
 
 /** Send a held draft — the only send path for agent-composed mail (C10). */

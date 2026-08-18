@@ -120,6 +120,44 @@ export async function approveRun(
   });
 }
 
+/** Hermes cron job (5d): exposed over REST as /api/jobs. */
+export interface HermesJob {
+  id: string;
+  name?: string;
+  schedule?: string;
+  prompt?: string;
+  enabled?: boolean;
+}
+
+export async function listJobs(target: HermesBoxTarget): Promise<HermesJob[]> {
+  const result = await hermesFetch<HermesJob[] | { jobs?: HermesJob[] }>(
+    target,
+    "/api/jobs"
+  );
+  return Array.isArray(result) ? result : (result.jobs ?? []);
+}
+
+export async function createJob(
+  target: HermesBoxTarget,
+  job: { name: string; schedule: string; prompt: string }
+): Promise<HermesJob> {
+  return hermesFetch<HermesJob>(target, "/api/jobs", {
+    method: "POST",
+    body: JSON.stringify(job),
+  });
+}
+
+export async function runJob(
+  target: HermesBoxTarget,
+  jobId: string
+): Promise<void> {
+  await hermesFetch<unknown>(
+    target,
+    `/api/jobs/${encodeURIComponent(jobId)}/run`,
+    { method: "POST" }
+  );
+}
+
 /** Post-resume readiness probe against api_server's /health. */
 export async function health(target: HermesBoxTarget): Promise<boolean> {
   try {
