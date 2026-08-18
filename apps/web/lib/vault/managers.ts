@@ -205,6 +205,31 @@ async function gatewayActive(boxId: string): Promise<boolean> {
   return result !== null && result.exitCode === 0;
 }
 
+/** Probe gateway health + parse the journal summary, then mirror both. */
+async function mirrorGatewayHealth(
+  supabase: SupabaseClient,
+  userId: string,
+  boxId: string,
+  manager: ManagerId
+): Promise<void> {
+  const active = await gatewayActive(boxId);
+  const summary = await fetchStatusSummary(boxId, manager).catch(() => ({
+    count: null,
+    warnings: null,
+    ok: false,
+  }));
+  await upsertManagerRow(supabase, userId, manager, {
+    status: active ? "configured" : "error",
+    provenance_count: summary.count,
+    warnings: active
+      ? summary.warnings
+      : [summary.warnings, "gateway is not running — retry Restart gateway"]
+          .filter(Boolean)
+          .join("\n"),
+    last_synced_at: new Date().toISOString(),
+  });
+}
+
 async function assertManagerEnabled(
   supabase: SupabaseClient,
   userId: string,
@@ -367,17 +392,7 @@ export async function enableManager(
     throw error;
   }
 
-  const summary = await fetchStatusSummary(boxId, manager).catch(() => ({
-    count: null,
-    warnings: null,
-    ok: false,
-  }));
-  await upsertManagerRow(supabase, userId, manager, {
-    status: "configured",
-    provenance_count: summary.count,
-    warnings: summary.warnings,
-    last_synced_at: new Date().toISOString(),
-  });
+  await mirrorGatewayHealth(supabase, userId, boxId, manager);
   return listManagers(supabase, userId);
 }
 
@@ -409,18 +424,7 @@ export async function refreshManager(
   manager: ManagerId
 ): Promise<ManagerStatus[]> {
   await assertManagerEnabled(supabase, userId, manager);
-  const active = await gatewayActive(boxId);
-  const summary = await fetchStatusSummary(boxId, manager);
-  await upsertManagerRow(supabase, userId, manager, {
-    status: active ? "configured" : "error",
-    provenance_count: summary.count,
-    warnings: active
-      ? summary.warnings
-      : [summary.warnings, "gateway is not running — retry Restart gateway"]
-          .filter(Boolean)
-          .join("\n"),
-    last_synced_at: new Date().toISOString(),
-  });
+  await mirrorGatewayHealth(supabase, userId, boxId, manager);
   return listManagers(supabase, userId);
 }
 
@@ -443,21 +447,6 @@ export async function restartManager(
     }).catch(() => undefined);
     throw error;
   }
-  const active = await gatewayActive(boxId);
-  const summary = await fetchStatusSummary(boxId, manager).catch(() => ({
-    count: null,
-    warnings: null,
-    ok: false,
-  }));
-  await upsertManagerRow(supabase, userId, manager, {
-    status: active ? "configured" : "error",
-    provenance_count: summary.count,
-    warnings: active
-      ? summary.warnings
-      : [summary.warnings, "gateway is not running — retry Restart gateway"]
-          .filter(Boolean)
-          .join("\n"),
-    last_synced_at: new Date().toISOString(),
-  });
+  await mirrorGatewayHealth(supabase, userId, boxId, manager);
   return listManagers(supabase, userId);
 }
