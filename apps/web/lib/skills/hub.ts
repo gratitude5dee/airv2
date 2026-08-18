@@ -324,7 +324,7 @@ export async function uninstallSkill(
   const box = await ensureBoxAwake(supabase, userId);
   const result = await command(
     box.boxId,
-    `/home/user/.hermes-venv/bin/hermes skills uninstall "${name}"`,
+    `/home/user/.hermes-venv/bin/hermes skills uninstall ${shellQuote(name)}`,
     180
   );
   if (result.exitCode !== 0) {
