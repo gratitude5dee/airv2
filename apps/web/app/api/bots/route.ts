@@ -8,11 +8,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sessionUserId } from "@/lib/auth/user";
 import { serviceClient } from "@/lib/supabase";
-import { StartLimitError } from "@/lib/orchestrator/boxes";
+import {
+  armStopAfter,
+  ensureBoxAwake,
+  StartLimitError,
+} from "@/lib/orchestrator/boxes";
 import { listSessions } from "@/lib/hermes/client";
 import { botTarget, BOT_CHAT_SESSION, isValidBotName } from "@/lib/bots/client";
 import { provisionBot, deleteBot, applyModelTier } from "@/lib/bots/provision";
-import { ensureBoxAwake } from "@/lib/orchestrator/boxes";
 import {
   getBot,
   listBots,
@@ -206,6 +209,9 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
         JSON.stringify({ msg: "bot tier re-pin failed", user_id: userId, error: message })
       );
       return NextResponse.json({ error: "tier update failed" }, { status: 502 });
+    } finally {
+      // Re-arm the box's idle shut-off deadline (ensureBoxAwake cleared it).
+      await armStopAfter(supabase, userId).catch(() => undefined);
     }
   }
   if (Object.keys(patch).length === 0) {

@@ -99,5 +99,7 @@ export async function botChatMessages(
     return await sessionMessages(target, BOT_CHAT_SESSION);
   } catch {
     return [];
+  } finally {
+    await armStopAfter(supabase, userId).catch(() => undefined);
   }
 }
