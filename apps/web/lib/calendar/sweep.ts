@@ -9,7 +9,7 @@
  * Needs you.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { readFile } from "../box/client";
+import { command, readFile } from "../box/client";
 import { createDraft, sendDraft } from "../agentmail/client";
 import { createRun, MAIN_SESSION, runEvents } from "../hermes/client";
 import { armStopAfter, ensureBoxAwake } from "../orchestrator/boxes";
@@ -198,16 +198,36 @@ export async function runSchedule(
       ended_at: new Date().toISOString(),
       outcome: "completed",
     });
-    await supabase
-      .from("agent_schedules")
-      .update({ failure_count: 0 })
-      .eq("id", schedule.id);
+    if (schedule.one_shot) {
+      // V4 "Remind me": one fire, then the row and the box prompt go away.
+      await supabase
+        .from("agent_schedules")
+        .update({ status: "deleted", failure_count: 0 })
+        .eq("id", schedule.id);
+      await command(
+        box.boxId,
+        `rm -f /home/user/${schedule.prompt_ref}`
+      ).catch(() => undefined);
+    } else {
+      await supabase
+        .from("agent_schedules")
+        .update({ failure_count: 0 })
+        .eq("id", schedule.id);
+    }
   } catch (error) {
     await recordFailure(
       supabase,
       schedule,
       error instanceof Error ? error.message : String(error)
     );
+    if (schedule.one_shot) {
+      // A one-shot never outlives its single fire attempt: the re-armed
+      // cron would only recur a year out, delivering a stale reminder.
+      await supabase
+        .from("agent_schedules")
+        .update({ status: "deleted" })
+        .eq("id", schedule.id);
+    }
   } finally {
     // Always re-arm: a failed run must not leave the box awake forever.
     await armStopAfter(supabase, schedule.user_id).catch(() => undefined);
