@@ -86,12 +86,20 @@ export async function upsertBoxSource(
   boxId: string,
   source: BoxSource
 ): Promise<void> {
-  await command(boxId, `mkdir -p ${INBOX_DIR} && chmod 700 ${CALENDAR_DIR}`);
+  // Pre-create the file with mode 600 so the secret is never on disk with
+  // default (world-readable) permissions, even briefly.
+  await command(
+    boxId,
+    `mkdir -p ${INBOX_DIR} && chmod 700 ${CALENDAR_DIR} && ` +
+      `touch ${SOURCES_PATH} && chmod 600 ${SOURCES_PATH}`
+  );
   let sources: BoxSource[] = [];
   try {
     const raw = await readFile(boxId, SOURCES_PATH);
-    const parsed = JSON.parse(raw) as unknown;
-    if (Array.isArray(parsed)) sources = parsed as BoxSource[];
+    if (raw.trim() !== "") {
+      const parsed = JSON.parse(raw) as unknown;
+      if (Array.isArray(parsed)) sources = parsed as BoxSource[];
+    }
   } catch (error) {
     // Only a missing file means "first source". A transient box/API failure
     // must not be mistaken for an empty list — that would overwrite (and
@@ -177,6 +185,18 @@ export async function nudgeSync(
   }
 }
 
+// Refs are box paths the control plane itself minted (materializeIcs).
+// Validate before shell interpolation — JSON/double quotes are NOT a safe
+// shell escaping primitive ($(), backticks and $VAR still expand).
+const SAFE_REF = /^[A-Za-z0-9._/-]+$/;
+
+function shellQuote(ref: string): string {
+  if (!SAFE_REF.test(ref)) {
+    throw new Error("invalid calendar ref");
+  }
+  return `'${ref}'`;
+}
+
 /** Approve a pending (emailed) event: flips it to confirmed in the store. */
 export async function approveInboxEvent(
   boxId: string,
@@ -184,7 +204,7 @@ export async function approveInboxEvent(
 ): Promise<void> {
   const result = await command(
     boxId,
-    `python3 /home/user/.hermes/calendar/sync.py approve ${JSON.stringify(ref)}`,
+    `python3 /home/user/.hermes/calendar/sync.py approve ${shellQuote(ref)}`,
     120
   );
   if (result.exitCode !== 0) {
@@ -199,7 +219,7 @@ export async function dismissInboxEvent(
 ): Promise<void> {
   const result = await command(
     boxId,
-    `python3 /home/user/.hermes/calendar/sync.py dismiss ${JSON.stringify(ref)}`,
+    `python3 /home/user/.hermes/calendar/sync.py dismiss ${shellQuote(ref)}`,
     120
   );
   if (result.exitCode !== 0) {

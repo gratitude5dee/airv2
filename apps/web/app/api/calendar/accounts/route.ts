@@ -145,46 +145,48 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const accountId = randomUUID();
   const box = await ensureBoxAwake(supabase, userId);
-  await upsertBoxSource(box.boxId, { id: accountId, provider, secret });
-
-  // calcom: mint a per-account webhook secret, sealed at rest (AES-256-GCM
-  // via lib/crypto/secretbox); returned once so the user can register the
-  // webhook at cal.com.
   let webhookSecret: string | undefined;
-  let webhookSecretSealed: string | null = null;
-  if (provider === "calcom") {
-    const sealKey = env.boxDashboardAuthKey();
-    if (!sealKey) {
-      // Don't leave an untracked credential on the box.
-      await removeBoxSource(box.boxId, accountId).catch(() => undefined);
-      await armStopAfter(supabase, userId).catch(() => undefined);
-      return NextResponse.json(
-        { error: "sealing key unavailable" },
-        { status: 500 }
-      );
+  try {
+    await upsertBoxSource(box.boxId, { id: accountId, provider, secret });
+
+    // calcom: mint a per-account webhook secret, sealed at rest (AES-256-GCM
+    // via lib/crypto/secretbox); returned once so the user can register the
+    // webhook at cal.com.
+    let webhookSecretSealed: string | null = null;
+    if (provider === "calcom") {
+      const sealKey = env.boxDashboardAuthKey();
+      if (!sealKey) {
+        // Don't leave an untracked credential on the box.
+        await removeBoxSource(box.boxId, accountId).catch(() => undefined);
+        return NextResponse.json(
+          { error: "sealing key unavailable" },
+          { status: 500 }
+        );
+      }
+      webhookSecret = randomBytes(32).toString("hex");
+      webhookSecretSealed = sealSecret(webhookSecret, sealKey);
     }
-    webhookSecret = randomBytes(32).toString("hex");
-    webhookSecretSealed = sealSecret(webhookSecret, sealKey);
-  }
 
-  const { error } = await supabase.from("calendar_accounts").insert({
-    id: accountId,
-    user_id: userId,
-    provider,
-    label:
-      body.label ?? (provider === "apple_ics" ? "Apple Calendar" : "cal.com"),
-    external_ref: `box:${accountId}`,
-    webhook_secret_sealed: webhookSecretSealed,
-    status: "active",
-  });
-  if (error) {
-    await removeBoxSource(box.boxId, accountId).catch(() => undefined);
+    const { error } = await supabase.from("calendar_accounts").insert({
+      id: accountId,
+      user_id: userId,
+      provider,
+      label:
+        body.label ?? (provider === "apple_ics" ? "Apple Calendar" : "cal.com"),
+      external_ref: `box:${accountId}`,
+      webhook_secret_sealed: webhookSecretSealed,
+      status: "active",
+    });
+    if (error) {
+      await removeBoxSource(box.boxId, accountId).catch(() => undefined);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    await nudgeSync(box.target, box.boxId).catch(() => undefined);
+  } finally {
+    // ensureBoxAwake nulls stop_after: re-arm no matter how we exit.
     await armStopAfter(supabase, userId).catch(() => undefined);
-    return NextResponse.json({ error: error.message }, { status: 500 });
   }
-
-  await nudgeSync(box.target, box.boxId).catch(() => undefined);
-  await armStopAfter(supabase, userId).catch(() => undefined);
 
   return NextResponse.json({
     id: accountId,
@@ -221,10 +223,11 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
     try {
       const box = await ensureBoxAwake(supabase, userId);
       await removeBoxSource(box.boxId, row.external_ref.slice(4));
-      await armStopAfter(supabase, userId).catch(() => undefined);
     } catch {
       // box asleep/unreachable — the source file entry is orphaned but the
       // account row is revoked; the next connect rewrites the file.
+    } finally {
+      await armStopAfter(supabase, userId).catch(() => undefined);
     }
   }
   return NextResponse.json({ ok: true });

@@ -22,11 +22,14 @@ their calendar_add decision resolves).
 """
 
 import hashlib
+import ipaddress
 import json
 import os
 import re
+import socket
 import sys
 import tempfile
+import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
@@ -153,12 +156,45 @@ def parse_ics(text, source, source_ref):
 
 # ── Sources ──────────────────────────────────────────────────────────────────
 
+def url_is_safe(url):
+    """https only, and the host must not resolve to a private/internal address
+    (SSRF guard: a source URL or a redirect must not reach link-local
+    metadata services or the box's internal network)."""
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme != "https" or not parsed.hostname:
+        return False
+    try:
+        infos = socket.getaddrinfo(parsed.hostname, parsed.port or 443)
+    except OSError:
+        return False
+    for info in infos:
+        try:
+            address = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            return False
+        if not address.is_global:
+            return False
+    return True
+
+
+class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Re-validate every redirect target with url_is_safe."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not url_is_safe(newurl):
+            return None
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 def fetch(url, headers=None):
-    if not url.startswith("https://"):
+    """Bounded, SSRF-guarded https GET. Returns None on any failure."""
+    if not url_is_safe(url):
+        print("WARN fetch refused: unsafe url", file=sys.stderr)
         return None
     request = urllib.request.Request(url, headers=headers or {})
+    opener = urllib.request.build_opener(_SafeRedirectHandler())
     try:
-        with urllib.request.urlopen(request, timeout=FETCH_TIMEOUT) as response:
+        with opener.open(request, timeout=FETCH_TIMEOUT) as response:
             return response.read(MAX_FETCH_BYTES + 1)[:MAX_FETCH_BYTES].decode(
                 "utf-8", errors="replace"
             )
@@ -168,9 +204,11 @@ def fetch(url, headers=None):
 
 
 def pull_apple(source):
+    """Returns the source's events, or None when the fetch failed (so the
+    caller keeps the previously synced events instead of blanking them)."""
     text = fetch(source["secret"])
     if text is None:
-        return []
+        return None
     return parse_ics(text, "apple_ics", source["id"])
 
 
@@ -185,7 +223,7 @@ def pull_calcom(source):
         },
     )
     if body is None:
-        return []
+        return None
     try:
         parsed = json.loads(body)
         bookings = parsed.get("data") or parsed.get("bookings") or []
@@ -307,10 +345,22 @@ def cmd_pull():
     for source in sources:
         if not isinstance(source, dict) or not isinstance(source.get("secret"), str):
             continue
+        pulled = None
         if source.get("provider") == "apple_ics":
-            events.extend(pull_apple(source))
+            pulled = pull_apple(source)
         elif source.get("provider") == "calcom":
-            events.extend(pull_calcom(source))
+            pulled = pull_calcom(source)
+        else:
+            continue
+        if pulled is None:
+            # Fetch failed: keep the previously synced events for this source
+            # rather than blanking them until the next successful sync.
+            pulled = [
+                e
+                for e in state["events"]
+                if isinstance(e, dict) and e.get("source_ref") == source.get("id")
+            ]
+        events.extend(pulled)
     events.extend(pull_inbox(set(state["tombstones"]), set(state["confirmed"])))
     # de-dup by id, keep first occurrence
     seen = set()

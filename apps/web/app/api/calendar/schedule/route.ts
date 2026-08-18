@@ -79,9 +79,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const promptRef = `.hermes/schedules/${id}.md`;
 
   const box = await ensureBoxAwake(supabase, userId);
-  await command(box.boxId, "mkdir -p /home/user/.hermes/schedules");
-  await writeFile(box.boxId, promptRef, prompt);
-  await armStopAfter(supabase, userId).catch(() => undefined);
+  try {
+    await command(box.boxId, "mkdir -p /home/user/.hermes/schedules");
+    await writeFile(box.boxId, promptRef, prompt);
+  } finally {
+    await armStopAfter(supabase, userId).catch(() => undefined);
+  }
 
   const { error } = await supabase.from("agent_schedules").insert({
     id,
@@ -174,8 +177,11 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
   }
   if (body.prompt?.trim()) {
     const box = await ensureBoxAwake(supabase, userId);
-    await writeFile(box.boxId, existing.prompt_ref, body.prompt.trim());
-    await armStopAfter(supabase, userId).catch(() => undefined);
+    try {
+      await writeFile(box.boxId, existing.prompt_ref, body.prompt.trim());
+    } finally {
+      await armStopAfter(supabase, userId).catch(() => undefined);
+    }
   }
   if (Object.keys(updates).length > 0) {
     const { error } = await supabase
@@ -216,9 +222,10 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
       box.boxId,
       `rm -f /home/user/${(data[0] as { prompt_ref: string }).prompt_ref}`
     );
-    await armStopAfter(supabase, userId).catch(() => undefined);
   } catch {
     // box asleep — the row is gone; an orphaned prompt file is inert.
+  } finally {
+    await armStopAfter(supabase, userId).catch(() => undefined);
   }
   return NextResponse.json({ ok: true });
 }

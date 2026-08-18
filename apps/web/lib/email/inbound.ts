@@ -72,30 +72,33 @@ async function handleCalendarInvites(
   if (invites.length === 0) return false;
 
   const box = await ensureBoxAwake(supabase, userId);
-  for (const invite of invites) {
-    const bytes = await getAttachmentBytes(
-      inboxId,
-      message.message_id,
-      invite.attachment_id
-    );
-    const path = await materializeIcs(
-      box.boxId,
-      invite.filename ?? "invite.ics",
-      bytes
-    );
-    const summary = extractInviteSummary(bytes.toString("utf8"));
-    await createDecision(supabase, {
-      userId,
-      kind: "calendar_add",
-      platform: "email",
-      sender: from || undefined,
-      ref: path,
-      label: inviteLabel(summary),
-    });
+  try {
+    for (const invite of invites) {
+      const bytes = await getAttachmentBytes(
+        inboxId,
+        message.message_id,
+        invite.attachment_id
+      );
+      const path = await materializeIcs(
+        box.boxId,
+        invite.filename ?? "invite.ics",
+        bytes
+      );
+      const summary = extractInviteSummary(bytes.toString("utf8"));
+      await createDecision(supabase, {
+        userId,
+        kind: "calendar_add",
+        platform: "email",
+        sender: from || undefined,
+        ref: path,
+        label: inviteLabel(summary),
+      });
+    }
+    // Merge the drops as pending events so the store reflects them promptly.
+    await nudgeSync(box.target, box.boxId).catch(() => undefined);
+  } finally {
+    await armStopAfter(supabase, userId).catch(() => undefined);
   }
-  // Merge the drops as pending events so the store reflects them promptly.
-  await nudgeSync(box.target, box.boxId).catch(() => undefined);
-  await armStopAfter(supabase, userId);
   return true;
 }
 
