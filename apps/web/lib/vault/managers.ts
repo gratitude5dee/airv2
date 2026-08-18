@@ -80,8 +80,8 @@ async function mergeBoxEnv(
   const absolute = `/home/user/${relative}`;
   const lines =
     keys.map((key) => `${key}=${entries[key] ?? ""}`).join("\n") + "\n";
-  await writeFile(boxId, relative, lines);
   try {
+    await writeFile(boxId, relative, lines);
     const result = await command(
       boxId,
       `touch /home/user/.hermes/.env && sed -i ${keys
