@@ -18,7 +18,11 @@ import {
 import { createRun, runEvents } from "../hermes/client";
 import { armStopAfter, ensureBoxAwake } from "../orchestrator/boxes";
 import { hermesDeltas } from "../orchestrator/flush";
-import { createDecision, resolveTrustTier } from "../routing/trust";
+import {
+  createDecision,
+  resolveTrustTier,
+  senderIdFor,
+} from "../routing/trust";
 import { extractInviteSummary, inviteLabel, looksLikeIcs } from "../calendar/ics";
 import { materializeIcs, nudgeSync } from "../calendar/store";
 import { sendMiniAppCard } from "../miniapps/cards";
@@ -215,6 +219,7 @@ export async function processInboundEmail(
     started_at: startedAt,
     ended_at: new Date().toISOString(),
     outcome: "completed",
+    sender_id: from ? await senderIdFor(supabase, userId, "email", from) : null,
   });
   await armStopAfter(supabase, userId);
 }

@@ -54,6 +54,30 @@ export async function resolveTrustTier(
   return 2;
 }
 
+/**
+ * Look up the senders row id for run attribution (V8 People counts).
+ * Returns null rather than creating a row — attribution is best-effort.
+ */
+export async function senderIdFor(
+  supabase: SupabaseClient,
+  userId: string,
+  platform: "imessage" | "email",
+  address: string
+): Promise<string | null> {
+  const normalized =
+    platform === "imessage"
+      ? address.replace(/[^+\d]/g, "")
+      : address.toLowerCase();
+  const { data } = await supabase
+    .from("senders")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("platform", platform)
+    .eq("address", normalized)
+    .maybeSingle();
+  return (data?.id as string | undefined) ?? null;
+}
+
 /** Queue a "Needs you" entry. Label is a short safe string, never a body. */
 export async function createDecision(
   supabase: SupabaseClient,

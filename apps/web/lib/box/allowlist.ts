@@ -10,6 +10,9 @@ const ALLOWLIST: ReadonlyArray<{ method: string; pattern: RegExp }> = [
   { method: "GET", pattern: /^api\/sessions$/ },
   { method: "GET", pattern: /^api\/sessions\/[A-Za-z0-9_-]+$/ },
   { method: "GET", pattern: /^api\/sessions\/[A-Za-z0-9_-]+\/messages$/ },
+  // V8 History: delete one session by id — exact path, never bulk-delete,
+  // import, or prune (C5).
+  { method: "DELETE", pattern: /^api\/sessions\/[A-Za-z0-9_-]+$/ },
   { method: "GET", pattern: /^v1\/skills$/ },
   { method: "GET", pattern: /^v1\/toolsets$/ },
   { method: "GET", pattern: /^api\/mcp\/servers$/ },
