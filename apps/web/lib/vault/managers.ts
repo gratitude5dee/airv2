@@ -198,11 +198,13 @@ async function fetchStatusSummary(
 
 /** Real gateway health signal (the journal pipeline always exits 0). */
 async function gatewayActive(boxId: string): Promise<boolean> {
+  // Let transport failures propagate: only a returned non-zero exit code
+  // means the unit is genuinely not active.
   const result = await command(
     boxId,
     "systemctl is-active --quiet hermes-gateway"
-  ).catch(() => null);
-  return result !== null && result.exitCode === 0;
+  );
+  return result.exitCode === 0;
 }
 
 /** Probe gateway health + parse the journal summary, then mirror both. */
