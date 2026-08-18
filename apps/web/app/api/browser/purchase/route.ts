@@ -189,11 +189,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: "invalid request" }, { status: 400 });
     }
     // A report line only sticks when an owner approval actually redeemed a
-    // fill ticket for this exact (item, host) within the ticket lifetime —
-    // the box cannot fabricate approval receipts or flood the audit trail
-    // for cards it was never approved to fill (C20).
+    // fill ticket for this exact (item, host) — the box cannot fabricate
+    // approval receipts for cards it was never approved to fill (C20). The
+    // lookup window is the ticket lifetime plus a grace period so a fill
+    // that finishes near expiry still gets its audit lines.
     const since = new Date(
-      Date.now() - MAX_TTL_MINUTES * 60_000
+      Date.now() - (MAX_TTL_MINUTES + 5) * 60_000
     ).toISOString();
     const { data: redemption } = await supabase
       .from("fill_ticket_redemptions")
@@ -210,15 +211,24 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         { status: 403 }
       );
     }
-    // One value-free audit line per typed field group (§V6 receipts).
+    // One value-free audit line per typed field group per approval —
+    // re-reports within the window are deduped so the box cannot pad the
+    // audit trail off a single owner approval.
+    const { data: existing } = await supabase
+      .from("vault_events")
+      .select("context")
+      .eq("user_id", userId)
+      .eq("item_id", itemId)
+      .eq("action", "fill_approved")
+      .gte("created_at", since);
+    const reported = new Set(
+      (existing ?? []).map((row) => String(row.context ?? ""))
+    );
     for (const group of groups) {
-      await appendVaultEvent(
-        supabase,
-        userId,
-        "fill_approved",
-        itemId,
-        `${group}@${host}`
-      );
+      const context = `${group}@${host}`;
+      if (reported.has(context)) continue;
+      reported.add(context);
+      await appendVaultEvent(supabase, userId, "fill_approved", itemId, context);
     }
     return NextResponse.json({ ok: true });
   }
