@@ -202,9 +202,11 @@ export async function applyBatch(
     );
     let result;
     try {
+      // Tighten the payload file itself before the CLI reads it — the files
+      // API's default mode is not guaranteed to be 600.
       result = await command(
         boxId,
-        `air-vault apply ${JSON.stringify(inboxAbsolute)}`
+        `chmod 600 ${JSON.stringify(inboxAbsolute)} && air-vault apply ${JSON.stringify(inboxAbsolute)}`
       );
       if (result.exitCode !== 0) {
         throwCliError(result.stderr, "air-vault apply failed");
@@ -214,10 +216,18 @@ export async function applyBatch(
       // or an early abort (e.g. missing key) can leave the plaintext payload
       // behind — erase it best-effort before surfacing the failure (C18).
       try {
-        await command(
+        const cleaned = await command(
           boxId,
           `shred -u ${JSON.stringify(inboxAbsolute)} 2>/dev/null || rm -f ${JSON.stringify(inboxAbsolute)}`
         );
+        if (cleaned.exitCode !== 0) {
+          vaultLogError({
+            msg: "vault inbox cleanup failed",
+            user_id: userId,
+            box_id: boxId,
+            exit_code: cleaned.exitCode,
+          });
+        }
       } catch {
         vaultLogError({
           msg: "vault inbox cleanup failed",

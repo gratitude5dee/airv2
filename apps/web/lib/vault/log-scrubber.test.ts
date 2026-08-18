@@ -187,6 +187,17 @@ describe("log-scrubber gate (V1 task 6)", () => {
     expect(line).toContain("[REDACTED]");
   });
 
+  it("masks values containing quotes, backslashes, and newlines despite JSON escaping", () => {
+    const awkward = 'pa"ss\\wo\nrd-planted-Zq81';
+    registerVaultValue(awkward);
+    vaultLog({ msg: "oops", detail: `value=${awkward}`, nested: { deep: awkward } });
+    const line = fixture.join("\n");
+    expect(line).not.toContain('pa\\"ss');
+    expect(line).not.toContain("Zq81");
+    expect(line).toContain("[REDACTED]");
+    unregisterVaultValues([awkward]);
+  });
+
   it("registration is bounded to the operation that carried the value", async () => {
     // After the request cycle in the gate test above, applyBatch/reveal have
     // unregistered their values — nothing is retained process-wide.

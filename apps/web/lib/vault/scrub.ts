@@ -51,14 +51,34 @@ export function scrubVaultValues(text: string): string {
   return scrubbed;
 }
 
+/**
+ * Scrub every string leaf of a record before serialization — JSON escaping
+ * (quotes, backslashes, newlines) would otherwise rewrite a value so the
+ * literal replacement in `scrubVaultValues` no longer matches it.
+ */
+function scrubDeep(value: unknown): unknown {
+  if (typeof value === "string") {
+    return scrubVaultValues(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map(scrubDeep);
+  }
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, scrubDeep(entry)])
+    );
+  }
+  return value;
+}
+
 /** Structured log emit that always passes through the scrubber. */
 export function vaultLog(record: Record<string, unknown>): void {
-  console.log(scrubVaultValues(JSON.stringify(record)));
+  console.log(scrubVaultValues(JSON.stringify(scrubDeep(record))));
 }
 
 /** Structured error emit that always passes through the scrubber. */
 export function vaultLogError(record: Record<string, unknown>): void {
-  console.error(scrubVaultValues(JSON.stringify(record)));
+  console.error(scrubVaultValues(JSON.stringify(scrubDeep(record))));
 }
 
 /** Test hook: the fixture gate plants values and must start clean. */

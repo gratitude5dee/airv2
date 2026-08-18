@@ -223,6 +223,34 @@ describe("vault control-plane client", () => {
     }
   });
 
+  it("applyBatch chmods the inbox file to 600 before the CLI reads it", async () => {
+    vi.mocked(writeFile).mockResolvedValue(undefined);
+    vi.mocked(command)
+      .mockResolvedValueOnce(cliOk(""))
+      .mockResolvedValueOnce(
+        cliOk(JSON.stringify({ ok: true, results: [] }))
+      );
+    await applyBatch("bx_1", "user-1", [{ op: "delete", id: "item-9" }]);
+    const apply = vi.mocked(command).mock.calls[1]?.[1];
+    expect(apply).toMatch(/^chmod 600 ".*\.inbox\/[a-f0-9]{32}\.json" && air-vault apply /);
+  });
+
+  it("applyBatch logs when inbox cleanup exits non-zero", async () => {
+    vi.mocked(writeFile).mockResolvedValue(undefined);
+    vi.mocked(command)
+      .mockResolvedValueOnce(cliOk("")) // mkdir
+      .mockResolvedValueOnce({
+        exitCode: 1,
+        stdout: "",
+        stderr: JSON.stringify({ error: "key_missing", message: "no key" }),
+      })
+      .mockResolvedValueOnce({ exitCode: 1, stdout: "", stderr: "rm: failed" });
+    await expect(
+      applyBatch("bx_1", "user-1", [{ op: "delete", id: "item-9" }])
+    ).rejects.toMatchObject({ code: "key_missing" });
+    expect(logs.join("\n")).toContain("vault inbox cleanup failed");
+  });
+
   it("reveal returns the value, audits it, and never logs it", async () => {
     vi.mocked(command).mockResolvedValue(cliOk(PLANTED));
     const value = await reveal("bx_1", "user-1", "item-9", "password", "web");
