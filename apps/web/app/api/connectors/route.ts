@@ -8,10 +8,13 @@ import { sessionUserId } from "@/lib/auth/user";
 import { serviceClient } from "@/lib/supabase";
 import { env } from "@/lib/env";
 import {
+  ComposioApiError,
   createLinkSession,
+  deleteConnectedAccount,
   listConnectedAccounts,
   listToolkits,
 } from "@/lib/composio/client";
+import { connectionHealth } from "@/lib/connectors/meta";
 import {
   ensureComposioSession,
   installComposioMcp,
@@ -34,13 +37,20 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       .select("toolkit, status, connected_at")
       .eq("user_id", userId),
   ]);
+  const connections = (rows ?? []) as Array<{
+    toolkit: string;
+    status: string;
+    connected_at: string | null;
+  }>;
+  const health = await connectionHealth(supabase, userId, connections);
   return NextResponse.json({
     toolkits: toolkits.map((t) => ({
       slug: t.slug,
       name: t.name,
       logo: t.meta?.logo ?? null,
     })),
-    connections: rows ?? [],
+    connections,
+    health,
   });
 }
 
@@ -128,4 +138,51 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
     .select("toolkit, status, connected_at")
     .eq("user_id", userId);
   return NextResponse.json({ connections: refreshed ?? [] });
+}
+
+/** Disconnect: revoke the account with Composio, then mark the mirror. */
+export async function DELETE(request: NextRequest): Promise<NextResponse> {
+  const userId = sessionUserId(request);
+  if (!userId) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+  const body = (await request.json().catch(() => ({}))) as {
+    toolkit?: string;
+  };
+  const toolkit = body.toolkit?.toLowerCase();
+  if (!toolkit || !/^[a-z0-9_-]{1,64}$/.test(toolkit)) {
+    return NextResponse.json({ error: "invalid toolkit" }, { status: 400 });
+  }
+  const supabase = serviceClient();
+  const { data } = await supabase
+    .from("connections")
+    .select("id, external_account_id, status")
+    .eq("user_id", userId)
+    .eq("provider", "composio")
+    .eq("toolkit", toolkit)
+    .maybeSingle();
+  const row = data as {
+    id: string;
+    external_account_id: string | null;
+    status: string;
+  } | null;
+  if (!row) {
+    return NextResponse.json({ error: "not found" }, { status: 404 });
+  }
+  if (row.external_account_id) {
+    try {
+      await deleteConnectedAccount(row.external_account_id);
+    } catch (error) {
+      // Already gone at Composio → the revoke is done; anything else is a
+      // real failure and the mirror must NOT claim revoked.
+      if (!(error instanceof ComposioApiError && error.status === 404)) {
+        return NextResponse.json({ error: "revoke failed" }, { status: 502 });
+      }
+    }
+  }
+  await supabase
+    .from("connections")
+    .update({ status: "revoked" })
+    .eq("id", row.id);
+  return NextResponse.json({ ok: true });
 }

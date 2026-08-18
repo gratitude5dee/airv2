@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
 import { requestSession } from "@/lib/auth/surface";
 import { stop } from "@/lib/box/client";
+import { recordBoxStateEvent } from "@/lib/box/events";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -70,5 +71,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .from("boxes")
     .update({ state: "stopped", stop_after: null })
     .eq("user_id", session.userId);
+  await recordBoxStateEvent(supabase, session.userId, "stopped");
   return NextResponse.json({ state: "stopped" });
 }

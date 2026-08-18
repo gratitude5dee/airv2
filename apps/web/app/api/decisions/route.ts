@@ -19,6 +19,12 @@ import { approveRun, HermesApiError } from "@/lib/hermes/client";
 import { approveInboxEvent, dismissInboxEvent } from "@/lib/calendar/store";
 import { resolvePurchaseReview, PurchaseError } from "@/lib/vault/purchase";
 import {
+  denyTransfer,
+  executeTransfer,
+  findPendingTransfer,
+  WalletSendError,
+} from "@/lib/wallet/send";
+import {
   clampToWakingHours,
   nextRunAt,
   SCHEDULE_COLUMNS,
@@ -266,6 +272,46 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     } finally {
       await armStopAfter(supabase, userId).catch(() => undefined);
+    }
+  }
+
+  if (decision.kind === "run_approval" && decision.ref) {
+    // V8: a wallet send intent — approve executes server-side via thirdweb
+    // from the server-stored owner wallet; dismiss marks it denied and no
+    // transaction ever exists. A provider failure leaves BOTH the intent and
+    // the decision pending so approval can be retried.
+    const transfer = await findPendingTransfer(
+      supabase,
+      userId,
+      decision.ref as string
+    );
+    if (transfer) {
+      if (body.action === "approve") {
+        try {
+          await executeTransfer(supabase, userId, transfer);
+        } catch (error) {
+          if (error instanceof WalletSendError) {
+            return NextResponse.json(
+              { error: error.message },
+              { status: error.status }
+            );
+          }
+          console.error(
+            JSON.stringify({
+              msg: "wallet transfer execution failed",
+              user_id: userId,
+              transfer_id: transfer.id,
+              error: error instanceof Error ? error.message : "unknown",
+            })
+          );
+          return NextResponse.json(
+            { error: "the send failed — nothing moved; try again" },
+            { status: 502 }
+          );
+        }
+      } else {
+        await denyTransfer(supabase, userId, transfer.id);
+      }
     }
   }
 

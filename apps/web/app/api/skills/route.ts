@@ -8,10 +8,14 @@ import { sessionUserId } from "@/lib/auth/user";
 import { serviceClient } from "@/lib/supabase";
 import { StartLimitError } from "@/lib/orchestrator/boxes";
 import {
+  checkSkillUpdates,
+  inspectSkill,
   installSkill,
   searchHub,
   SkillHubError,
+  SUGGESTED_SKILLS,
   uninstallSkill,
+  updateSkill,
 } from "@/lib/skills/hub";
 
 export const runtime = "nodejs";
@@ -40,7 +44,31 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const query = (request.nextUrl.searchParams.get("q") ?? "").trim();
+  const params = request.nextUrl.searchParams;
+  // V8: suggested-for-you row (static seeds — no box call).
+  if (params.get("suggested") === "1") {
+    return NextResponse.json({ suggested: SUGGESTED_SKILLS });
+  }
+  // V8: hub-vs-installed update check, computed inside the box.
+  if (params.get("updates") === "1") {
+    try {
+      const updates = await checkSkillUpdates(serviceClient(), userId);
+      return NextResponse.json({ updates });
+    } catch (error) {
+      return errorResponse(error, userId, "update check");
+    }
+  }
+  // V8: per-skill detail sheet (lockfile provenance + SKILL.md text).
+  const detail = (params.get("detail") ?? "").trim();
+  if (detail) {
+    try {
+      const skill = await inspectSkill(serviceClient(), userId, detail);
+      return NextResponse.json({ skill });
+    } catch (error) {
+      return errorResponse(error, userId, "inspect");
+    }
+  }
+  const query = (params.get("q") ?? "").trim();
   if (!query) {
     return NextResponse.json({ error: "missing query" }, { status: 400 });
   }
@@ -70,6 +98,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
     if (body.action === "uninstall" && body.name) {
       await uninstallSkill(supabase, userId, body.name);
+      return NextResponse.json({ ok: true });
+    }
+    if (body.action === "update" && body.name) {
+      await updateSkill(supabase, userId, body.name);
       return NextResponse.json({ ok: true });
     }
     return NextResponse.json({ error: "invalid request" }, { status: 400 });

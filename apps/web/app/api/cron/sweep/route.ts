@@ -9,6 +9,7 @@ import { timingSafeEqual } from "node:crypto";
 import { serviceClient } from "@/lib/supabase";
 import { getBox, stop } from "@/lib/box/client";
 import { claimFlush, runFlush } from "@/lib/orchestrator/flush";
+import { recordBoxStateEvent } from "@/lib/box/events";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -62,6 +63,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         .from("boxes")
         .update({ state: "stopped", stop_after: null })
         .eq("provider_box_id", box.provider_box_id);
+      await recordBoxStateEvent(supabase, box.user_id, "stopped");
       stopped += 1;
     } catch (error) {
       // A refused stop means the snapshot is failing — leave the box

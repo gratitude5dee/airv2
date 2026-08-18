@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
 import { sessionUserId } from "@/lib/auth/user";
 import { readWalletActivity } from "@/lib/wallet/read";
+import { listTransfers } from "@/lib/wallet/send";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,10 +29,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
   if (!user.wallet_address) {
     return NextResponse.json(
-      { address: null, transactions: [] },
+      { address: null, transactions: [], transfers: [] },
       { headers: CACHE_HEADERS }
     );
   }
-  const activity = await readWalletActivity(user.wallet_address);
-  return NextResponse.json(activity, { headers: CACHE_HEADERS });
+  // V8: send intents ride alongside Insight history — with Insight degraded
+  // (native-only), the intent ledger is the only activity trail for sends.
+  const [activity, transfers] = await Promise.all([
+    readWalletActivity(user.wallet_address),
+    listTransfers(serviceClient(), userId),
+  ]);
+  return NextResponse.json(
+    { ...activity, transfers },
+    { headers: CACHE_HEADERS }
+  );
 }
