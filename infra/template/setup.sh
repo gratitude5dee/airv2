@@ -243,33 +243,12 @@ p.write_text(yaml.safe_dump(cfg, default_flow_style=False))
 PYEOF
 
 # ── 3e. C24 gate: the build fails if any platform but api_server is enabled ──
-# Checked through Hermes' own config loader (not a YAML re-read) so the check
-# sees exactly what the gateway will see, after every config rewrite above.
-(cd "$HOME_DIR/hermes-agent" && "$HERMES_VENV/bin/python" - "$HOME_DIR/.hermes/config.yaml" <<'PYEOF'
-import sys, yaml
-from pathlib import Path
-sys.path.insert(0, str(Path.cwd()))
-from gateway.config import Platform  # noqa: E402
-
-cfg = yaml.safe_load(Path(sys.argv[1]).read_text()) or {}
-platforms = cfg.get("platforms") or {}
-enabled = sorted(
-    name for name, block in platforms.items()
-    if isinstance(block, dict) and block.get("enabled")
-)
-if enabled != ["api_server"]:
-    raise SystemExit(f"FATAL (C24): enabled platforms must be exactly ['api_server'], got {enabled}")
-enum_names = {member.value for member in Platform}
-plugin_names = {
-    entry.name for entry in (Path.cwd() / "plugins" / "platforms").iterdir()
-    if entry.is_dir() and not entry.name.startswith(("_", "."))
-}
-missing = sorted((enum_names | plugin_names) - set(platforms))
-if missing:
-    raise SystemExit(f"FATAL (C24): adapters missing from the disable list: {missing}")
-print(f"C24 gate ok: {len(platforms)} adapters, api_server only enabled", file=sys.stderr)
-PYEOF
-)
+# Re-checks the FINAL config (after every rewrite above) against the same
+# enum ∪ plugin-dir ∪ registered-name union the generator used.
+"$HERMES_VENV/bin/python" "$TEMPLATE_DIR/generate_platforms.py" \
+  --hermes-repo "$HOME_DIR/hermes-agent" \
+  --config "$HOME_DIR/.hermes/config.yaml" \
+  --verify
 
 # ── 4. systemd units — /etc is snapshotted, enabled units restart on resume ──
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
