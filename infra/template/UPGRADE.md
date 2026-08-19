@@ -82,3 +82,16 @@ debounced iMessage round trip, M6 web chat SSE, M7 skills/MCP proxy,
 computer relay card).
 
 Re-fork only boxes with no user state.
+
+## 3. MA9.1 — persistent memory enabled in the template config
+
+`setup.sh` §3 now seeds a `memory:` block (`memory_enabled: true`,
+`user_profile_enabled: true`, `write_approval: false` — writes are local file
+edits, so they ride the box's smart-approvals posture rather than gating).
+Boxes forked from an older template lack the block: during the in-place
+migration above, append it to `~/.hermes/config.yaml` and restart
+`hermes-gateway`. Verify with `hermes config get memory.memory_enabled` and
+confirm `~/.hermes/memories/MEMORY.md` / `USER.md` appear after a turn that
+saves a memory. Memory files are content: they stay in the box filesystem and
+are surfaced only through the owner-session Settings Memory section and the
+admin export (C4 — never Postgres, never logs).
