@@ -32,6 +32,15 @@ export function middleware(request: NextRequest): NextResponse {
   const onMini = host === miniHost();
 
   if (!onMini) {
+    // Discovery is served from the mini origin (MA10); the backing search
+    // tool at /api/store/search stays on the main origin for gateway callers.
+    if (pathname === "/api/store/index.json") {
+      const target = new URL(
+        pathname + search,
+        process.env.MINIAPP_ORIGIN ?? "https://mini.wzrd.tech"
+      );
+      return NextResponse.redirect(target, 308);
+    }
     // Main origin: mini-app and store paths live on the mini origin only.
     if (pathname === "/mini" || pathname.startsWith("/mini/")) {
       const target = new URL(
@@ -56,6 +65,8 @@ export function middleware(request: NextRequest): NextResponse {
   if (pathname.startsWith("/api/")) {
     if (pathname.startsWith("/api/mini/")) return NextResponse.next();
     if (pathname.startsWith("/api/apps/")) return NextResponse.next();
+    // MA10 machine registry lives on the mini origin.
+    if (pathname === "/api/store/index.json") return NextResponse.next();
     return new NextResponse("not found", { status: 404 });
   }
 

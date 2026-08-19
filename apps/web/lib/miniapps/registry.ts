@@ -29,13 +29,14 @@ export interface RegistryApp {
   status: MiniAppStatus;
   bundle_version: string | null;
   listed_at: string | null;
+  updated_at: string;
 }
 
 const COLUMNS =
   "id, slug, kind, owner_user_id, name, description, icon_key, " +
   "publisher_username, publisher_wallet, agent_identity, visibility, access, " +
   "password_hash, x402_enabled, x402_price_usdc, plugin_signin_enabled, " +
-  "status, bundle_version, listed_at";
+  "status, bundle_version, listed_at, updated_at";
 
 const SLUG_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 
