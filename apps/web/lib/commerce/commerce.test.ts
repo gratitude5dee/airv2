@@ -13,6 +13,7 @@ import type Stripe from "stripe";
 /* ------------------------------------------------------- stripe mock */
 
 const connectCalls: { account: string; params: Record<string, unknown> }[] = [];
+let connectSessionError: Error | null = null;
 
 vi.mock("@/lib/payments/stripe", () => ({
   createConnectAccount: async () => "acct_test_merchant",
@@ -21,6 +22,7 @@ vi.mock("@/lib/payments/stripe", () => ({
     account: string,
     params: Record<string, unknown>
   ) => {
+    if (connectSessionError) throw connectSessionError;
     connectCalls.push({ account, params });
     return {
       id: `cs_test_${connectCalls.length}`,
@@ -209,6 +211,7 @@ const MERCHANT = "user-merchant";
 function seed(): void {
   nextId = 0;
   connectCalls.length = 0;
+  connectSessionError = null;
   transferCalls.length = 0;
   boxCatalog = { items: [] };
   tables = {
@@ -290,6 +293,16 @@ describe("checkout: server-derived money (order tampering)", () => {
     // per-item price so the charge equals the recorded order total.
     expect(connectCalls[0]?.params.amountCents).toBe(2500);
     expect(connectCalls[0]?.params.quantity).toBe(2);
+  });
+
+  it("releases the order and fails gracefully when Stripe is unavailable", async () => {
+    const supabase = makeSupabase();
+    connectSessionError = new Error("Missing required env var: STRIPE_SECRET_KEY");
+    await expect(
+      startCheckout(supabase, MERCHANT, "tee", "1", null, "https://x")
+    ).rejects.toMatchObject({ status: 502 });
+    // No orphan pending row: the order is released back to expired.
+    expect(at(tables.orders, 0).status).toBe("expired");
   });
 
   it("rejects tampered quantities and unknown products", async () => {
