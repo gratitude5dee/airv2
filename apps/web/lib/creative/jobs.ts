@@ -9,6 +9,8 @@ import { env } from "../env";
 import type { CreativeMode } from "./parse";
 
 export type CreativeChannel = "web" | "imessage";
+/** Router modes plus box-side timeline assembly (MA7 'video_render'). */
+export type CreativeJobMode = CreativeMode | "video_render";
 export type CreativeJobStatus =
   | "routing"
   | "submitted"
@@ -22,7 +24,7 @@ export interface CreativeJob {
   id: string;
   user_id: string;
   channel: CreativeChannel;
-  mode: CreativeMode;
+  mode: CreativeJobMode;
   status: CreativeJobStatus;
   provider_request_id: string | null;
   prompt_version: string | null;
@@ -37,7 +39,7 @@ export async function createCreativeJob(
   supabase: SupabaseClient,
   userId: string,
   channel: CreativeChannel,
-  mode: CreativeMode
+  mode: CreativeJobMode
 ): Promise<CreativeJob> {
   const { data, error } = await supabase
     .from("creative_jobs")
