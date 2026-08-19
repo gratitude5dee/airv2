@@ -71,6 +71,17 @@ export const env = {
     process.env.ADS_VAULT_KEY ?? process.env.BOX_DASHBOARD_AUTH_KEY ?? null,
   miniappOrigin: (): string =>
     optional("MINIAPP_ORIGIN", "https://mini.wzrd.tech"),
+  // MA4 public media lane (R2). All three credentials must be present for the
+  // lane to be configured; when absent every write path reports itself
+  // unconfigured instead of failing the deploy. Keys are server-side only —
+  // never per-box env, never a browser (C18).
+  r2AccountId: (): string | null => process.env.R2_ACCOUNT_ID ?? null,
+  r2AccessKeyId: (): string | null => process.env.R2_ACCESS_KEY_ID ?? null,
+  r2SecretAccessKey: (): string | null =>
+    process.env.R2_SECRET_ACCESS_KEY ?? null,
+  r2Bucket: (): string => optional("R2_BUCKET", "air-media"),
+  r2PublicBaseUrl: (): string =>
+    optional("R2_PUBLIC_BASE_URL", "https://media.wzrd.tech"),
   operatorAllowlist: (): string[] =>
     optional("OPERATOR_ALLOWLIST", "")
       .split(",")

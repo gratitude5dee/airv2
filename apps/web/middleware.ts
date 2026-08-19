@@ -51,9 +51,11 @@ export function middleware(request: NextRequest): NextResponse {
     return NextResponse.redirect(target, 301);
   }
 
-  // API routes pass through untouched; only /api/mini/* belongs here.
+  // API routes pass through untouched; only /api/mini/* (store/loader) and
+  // /api/apps/* (the published-bundle Apps API, MA3) belong here.
   if (pathname.startsWith("/api/")) {
     if (pathname.startsWith("/api/mini/")) return NextResponse.next();
+    if (pathname.startsWith("/api/apps/")) return NextResponse.next();
     return new NextResponse("not found", { status: 404 });
   }
 

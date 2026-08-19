@@ -87,7 +87,10 @@ export default async function StoreHome({
             <h1 className="m-0 text-[28px] font-semibold tracking-[-0.03em]">
               mini
             </h1>
-            <Link className="btn-ghost ml-auto text-[12px]" href="/login">
+            <Link className="btn-ghost ml-auto text-[12px]" href="/publish">
+              Publish
+            </Link>
+            <Link className="btn-ghost text-[12px]" href="/login">
               Sign in
             </Link>
           </div>

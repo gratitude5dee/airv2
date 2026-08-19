@@ -25,6 +25,7 @@ import {
 } from "@/lib/miniapps/gates";
 import { guestRateLimited, redeemGuestGrant } from "@/lib/miniapps/guests";
 import { FIRST_PARTY_MODULES, type MiniAppModule } from "@/lib/miniapps/apps";
+import { publishedModule } from "@/lib/miniapps/apps/published";
 import { forbidden, notFound, withBaseHeaders } from "@/lib/miniapps/html";
 
 export const runtime = "nodejs";
@@ -43,9 +44,9 @@ function basePathFor(request: NextRequest, slug: string): string {
 }
 
 function resolveModule(app: RegistryApp): MiniAppModule | null {
-  // First-party rows dispatch by slug; published third-party bundles are a
-  // later concern (session C) and dispatch by kind once bundles exist.
-  return FIRST_PARTY_MODULES[app.slug] ?? null;
+  // First-party rows dispatch by slug; publisher rows (owner_user_id set +
+  // bundle_version) dispatch to the published-bundle module (MA3).
+  return FIRST_PARTY_MODULES[app.slug] ?? publishedModule(app);
 }
 
 export async function GET(

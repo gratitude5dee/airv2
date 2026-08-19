@@ -89,13 +89,27 @@ export default async function StoreDetail({
             </h2>
             <p className="mb-0 mt-2 text-[13px]">
               Served by{" "}
-              <Link
-                href={`/store/${app.slug}#agent`}
-                className="underline"
-                id="agent"
-              >
-                {agentIdentity}
-              </Link>
+              {app.agent_identity?.startsWith("https://") ? (
+                // MA3 agent identity link-out: agent-card URL or ERC-8004
+                // registration URI the publisher declared on the row.
+                <a
+                  href={app.agent_identity}
+                  className="underline"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  id="agent"
+                >
+                  {agentIdentity}
+                </a>
+              ) : (
+                <Link
+                  href={`/store/${app.slug}#agent`}
+                  className="underline"
+                  id="agent"
+                >
+                  {agentIdentity}
+                </Link>
+              )}
             </p>
           </div>
 

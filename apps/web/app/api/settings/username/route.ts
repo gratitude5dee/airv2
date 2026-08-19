@@ -7,15 +7,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { sessionUserId } from "@/lib/auth/user";
 import { serviceClient } from "@/lib/supabase";
 import { provisionEmail } from "@/lib/provisioning/email";
+import { isReservedWord } from "@/lib/miniapps/reserved";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const USERNAME_PATTERN = /^[a-z0-9_]{2,24}$/;
-const RESERVED = new Set([
-  "admin", "air", "api", "app", "billing", "help", "mail", "root",
-  "security", "support", "system", "team", "wzrd", "www",
-]);
 
 export async function PUT(request: NextRequest): Promise<NextResponse> {
   const userId = sessionUserId(request);
@@ -26,10 +23,21 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
     username?: string;
   };
   const username = (body.username ?? "").toLowerCase().trim();
-  if (!USERNAME_PATTERN.test(username) || RESERVED.has(username)) {
+  if (!USERNAME_PATTERN.test(username) || isReservedWord(username)) {
     return NextResponse.json({ error: "invalid username" }, { status: 400 });
   }
   const supabase = serviceClient();
+  // MA3 both-directions collision check: a username may not claim a word
+  // that is already a registry slug (bare first-party slugs are also in the
+  // reserved list; this catches anything registered since).
+  const { data: slugClash } = await supabase
+    .from("mini_apps")
+    .select("id")
+    .eq("slug", username)
+    .maybeSingle();
+  if (slugClash) {
+    return NextResponse.json({ error: "invalid username" }, { status: 400 });
+  }
   const { error } = await supabase
     .from("users")
     .update({ username })

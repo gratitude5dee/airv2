@@ -60,11 +60,35 @@ if [[ "${C18_SWEEP_BOX_FS:-0}" == "1" ]]; then
   fi
 fi
 
+# ── 1b. R2 credential patterns (MA4) ─────────────────────────────────────────
+# R2 keys live server-side only: they must never appear in a box filesystem,
+# a browser payload, logs, or a published bundle. Pattern-based (no planted
+# value needed): account-scoped endpoint, key env names, AWS-shaped ids.
+R2_PATTERNS='r2\.cloudflarestorage\.com|R2_ACCESS_KEY_ID|R2_SECRET_ACCESS_KEY|R2_ACCOUNT_ID|AKIA[0-9A-Z]{16}'
+if [[ "${C18_SWEEP_BOX_FS:-0}" == "1" ]]; then
+  r2_matches=$(grep -rIlE --exclude='store.enc' --exclude-dir='.git' \
+    -e "${R2_PATTERNS}" "${HOME}" 2>/dev/null || true)
+  if [[ -n "${r2_matches}" ]]; then
+    echo "C18 HIT [box-fs-r2]:" >&2
+    echo "${r2_matches}" | sort -u >&2
+    fail=1
+  else
+    echo "C18 ok [box-fs-r2]"
+  fi
+fi
+
 # ── 2. Postgres row dump ─────────────────────────────────────────────────────
 # Feed a full dump of the account's rows (every wave table + decisions +
 # agent_runs) on stdin:  psql ... -c "copy (...) to stdout" | C18_SECTION=pg …
 if [[ "${C18_SECTION:-}" == "pg" || "${C18_SECTION:-}" == "logs" || "${C18_SECTION:-}" == "sse" ]]; then
-  sweep "${C18_SECTION}" "$(cat)"
+  input="$(cat)"
+  sweep "${C18_SECTION}" "${input}"
+  if grep -qE -- "${R2_PATTERNS}" <<<"${input}"; then
+    echo "C18 HIT [${C18_SECTION}-r2]: R2 credential pattern present" >&2
+    fail=1
+  else
+    echo "C18 ok [${C18_SECTION}-r2]"
+  fi
 fi
 
 # ── 3. Vercel logs ───────────────────────────────────────────────────────────
