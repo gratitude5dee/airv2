@@ -18,6 +18,15 @@ import {
   type VaultItemMetadata,
 } from "@/lib/vault/client";
 import { resolvePurchaseReview } from "@/lib/vault/purchase";
+import {
+  disableManager,
+  enableManager,
+  listManagers,
+  ManagerInputError,
+  type ManagerId,
+  type ManagerStatus,
+} from "@/lib/vault/managers";
+import { normalizeHost, setSiteGrant } from "@/lib/browser/grants";
 import { externalOrigin } from "../gates";
 import { esc, forbidden, html, page, withBaseHeaders } from "../html";
 import type { MiniAppContext, MiniAppModule } from "./types";
@@ -30,6 +39,75 @@ interface PurchaseReviewRow {
   id: string;
   label: string | null;
   payload: unknown;
+}
+
+/** Mirror row with the MA5 default-card flag (metadata only, never a value). */
+type VaultItemRow = VaultItemMetadata & { default_for_purchases?: boolean };
+
+const ITEM_COLUMNS =
+  "id, kind, name, masked, env_var, totp_enabled, default_for_purchases, created_at, updated_at";
+
+interface GrantEventRow {
+  item_id: string | null;
+  action: string;
+  context: string | null;
+  created_at: string;
+}
+
+/**
+ * Current per-site grants, folded from the grant_site/revoke_site event
+ * ledger (MA5 #2): the latest event per (item, host) wins. The box grant
+ * file stays authoritative for fills; this surface mirrors the audit trail.
+ */
+function foldSiteGrants(events: GrantEventRow[]): Map<string, string[]> {
+  const latest = new Map<string, { allow: boolean; itemId: string; host: string }>();
+  for (const event of events) {
+    if (!event.item_id || !event.context) continue;
+    const key = `${event.item_id}\u0000${event.context}`;
+    if (!latest.has(key)) {
+      latest.set(key, {
+        allow: event.action === "grant_site",
+        itemId: event.item_id,
+        host: event.context,
+      });
+    }
+  }
+  const byItem = new Map<string, string[]>();
+  for (const { allow, itemId, host } of latest.values()) {
+    if (!allow) continue;
+    const hosts = byItem.get(itemId) ?? [];
+    hosts.push(host);
+    byItem.set(itemId, hosts.sort());
+  }
+  return byItem;
+}
+
+const MANAGER_LABELS: Record<ManagerId, string> = {
+  bitwarden: "Bitwarden",
+  onepassword: "1Password",
+  command: "Command helper",
+};
+
+/** Manager choice surfaced in the vault, not only Settings (MA5 #2). Status
+ * labels and counts only — never a token or a secret value (C18). */
+function renderManagers(managers: ManagerStatus[]): string {
+  const rows = managers
+    .map((m) => {
+      const label = MANAGER_LABELS[m.manager];
+      const status = m.enabled
+        ? `${m.status}${m.provenance_count !== null ? ` · ${m.provenance_count} secrets` : ""}`
+        : "off";
+      const toggle = m.enabled
+        ? `<form method="post" style="margin:0"><input type="hidden" name="action" value="disable_manager"><input type="hidden" name="manager" value="${esc(m.manager)}"><button class="ghost">Disable</button></form>`
+        : "";
+      const warning = m.warnings
+        ? `<div style="color:var(--muted);font-size:11px;margin-top:2px">${esc(m.warnings)}</div>`
+        : "";
+      return `<div class="item"><span style="flex:1">${esc(label)} <span style="color:var(--muted);font-size:11px">${esc(status)}</span>${warning}</span>${toggle}</div>`;
+    })
+    .join("");
+  const enable = `<details style="margin-top:6px"><summary style="cursor:pointer;font-size:13px">Bring your own manager</summary><form method="post" style="display:grid;gap:6px;margin-top:6px"><input type="hidden" name="action" value="enable_manager"><select name="manager" style="background:var(--surface);color:var(--text);border:0.5px solid var(--ring);border-radius:10px;padding:8px 10px;font-size:13px"><option value="bitwarden">Bitwarden (machine-account token)</option><option value="onepassword">1Password (service-account token)</option></select><input type="password" name="token" placeholder="Access token" maxlength="512" autocomplete="off"><button>Enable</button></form><p style="color:var(--muted);font-size:11px;margin:4px 0 0">The token goes straight to your agent's computer — never stored on the platform, never shown again.</p></details>`;
+  return `<h2 style="font-size:11px;font-weight:600;letter-spacing:0.08em;color:var(--muted);margin:14px 0 6px">SECRET MANAGERS</h2>${rows}${enable}`;
 }
 
 /** V6: the purchase_review live card — site, order summary, amount band,
@@ -61,10 +139,12 @@ function renderPurchaseReviews(reviews: PurchaseReviewRow[]): string {
 }
 
 function renderVault(
-  items: VaultItemMetadata[],
+  items: VaultItemRow[],
   revealed: { id: string; field: string; value: string } | null,
   notice: string | null,
-  reviews: PurchaseReviewRow[] = []
+  reviews: PurchaseReviewRow[] = [],
+  managers: ManagerStatus[] = [],
+  siteGrants: Map<string, string[]> = new Map()
 ): string {
   const sections: [string, string, string][] = [
     ["login", "LOGINS", "Add a login…"],
@@ -100,7 +180,23 @@ function renderVault(
             kind === "card"
               ? '<div style="color:var(--muted);font-size:11px;margin-top:6px">Card number and CVV reveal only in the full Vault tab.</div>'
               : "";
-          return `<div class="card"><strong>${esc(item.name)}</strong>${item.masked ? ` <span style="color:var(--muted)">${esc(item.masked)}</span>` : ""}${fieldRows}${cardNote}</div>`;
+          const defaultChip =
+            kind === "card"
+              ? item.default_for_purchases
+                ? ' <span style="color:var(--muted);font-size:11px">· default for purchases</span>'
+                : `<form method="post" style="margin:0;display:inline;margin-left:6px"><input type="hidden" name="action" value="set_default_card"><input type="hidden" name="id" value="${esc(item.id)}"><button class="ghost">Make default</button></form>`
+              : "";
+          const hosts = siteGrants.get(item.id) ?? [];
+          const grantRows =
+            kind === "login" && hosts.length > 0
+              ? `<div style="color:var(--muted);font-size:11px;margin-top:6px">Site access:${hosts
+                  .map(
+                    (host) =>
+                      ` <span style="white-space:nowrap">${esc(host)} <form method="post" style="margin:0;display:inline"><input type="hidden" name="action" value="revoke_site"><input type="hidden" name="id" value="${esc(item.id)}"><input type="hidden" name="host" value="${esc(host)}"><button class="ghost">Revoke</button></form></span>`
+                  )
+                  .join("")}</div>`
+              : "";
+          return `<div class="card"><strong>${esc(item.name)}</strong>${item.masked ? ` <span style="color:var(--muted)">${esc(item.masked)}</span>` : ""}${defaultChip}${fieldRows}${grantRows}${cardNote}</div>`;
         })
         .join("");
       const empty =
@@ -114,33 +210,69 @@ function renderVault(
   const addCard = `<details style="margin-top:8px"><summary style="cursor:pointer;font-size:13px">Add card</summary><p style="color:var(--muted);font-size:12px;margin:6px 0">Values are encrypted in your vault.</p><form method="post" style="display:grid;gap:6px"><input type="hidden" name="action" value="add_card"><input type="text" name="name" placeholder="e.g. &quot;Amex&quot;, &quot;Chase&quot;" maxlength="120"><input type="text" name="number" placeholder="🔒 Card number" inputmode="numeric" maxlength="23" autocomplete="off"><input type="text" name="expiry_month" placeholder="Expiry month" inputmode="numeric" maxlength="2"><input type="text" name="expiry_year" placeholder="Expiry year" inputmode="numeric" maxlength="4"><input type="text" name="cvv" placeholder="🔒 CVV" inputmode="numeric" maxlength="4" autocomplete="off"><input type="text" name="zip" placeholder="Billing ZIP" inputmode="numeric" maxlength="10"><button>Save</button></form></details>`;
   return page(
     "Vault",
-    `<h1>Vault</h1>${notice ? `<p style="color:var(--muted);font-size:12px">${esc(notice)}</p>` : ""}${renderPurchaseReviews(reviews)}${body}${addLogin}${addCard}`
+    `<h1>Vault</h1>${notice ? `<p style="color:var(--muted);font-size:12px">${esc(notice)}</p>` : ""}${renderPurchaseReviews(reviews)}${body}${addLogin}${addCard}${renderManagers(managers)}`
   );
 }
 
 async function vaultItems(
   supabase: SupabaseClient,
   userId: string
-): Promise<VaultItemMetadata[]> {
+): Promise<VaultItemRow[]> {
   const { data } = await supabase
     .from("vault_items")
-    .select(
-      "id, kind, name, masked, env_var, totp_enabled, created_at, updated_at"
-    )
+    .select(ITEM_COLUMNS)
     .eq("user_id", userId)
     .is("deleted_at", null)
     .order("created_at", { ascending: true });
-  return (data ?? []) as VaultItemMetadata[];
+  return (data ?? []) as VaultItemRow[];
+}
+
+async function vaultContext(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<{ managers: ManagerStatus[]; siteGrants: Map<string, string[]> }> {
+  const eventQuery = (action: "grant_site" | "revoke_site") =>
+    supabase
+      .from("vault_events")
+      .select("item_id, action, context, created_at")
+      .eq("user_id", userId)
+      .eq("action", action)
+      .order("created_at", { ascending: false })
+      .limit(250);
+  const [managers, { data: grants }, { data: revokes }] = await Promise.all([
+    listManagers(supabase, userId).catch(() => [] as ManagerStatus[]),
+    eventQuery("grant_site"),
+    eventQuery("revoke_site"),
+  ]);
+  const events = [
+    ...((grants ?? []) as GrantEventRow[]),
+    ...((revokes ?? []) as GrantEventRow[]),
+  ].sort((a, b) => b.created_at.localeCompare(a.created_at));
+  return { managers, siteGrants: foldSiteGrants(events) };
+}
+
+/** Full page reload used by action responses (managers + grants included). */
+async function vaultPage(
+  supabase: SupabaseClient,
+  userId: string,
+  revealed: { id: string; field: string; value: string } | null,
+  notice: string | null
+): Promise<NextResponse> {
+  const [items, context] = await Promise.all([
+    vaultItems(supabase, userId),
+    vaultContext(supabase, userId),
+  ]);
+  return html(
+    renderVault(items, revealed, notice, [], context.managers, context.siteGrants)
+  );
 }
 
 export const vault: MiniAppModule = {
   async render(ctx: MiniAppContext): Promise<NextResponse> {
-    const [{ data }, { data: reviewRows }] = await Promise.all([
+    const [{ data }, { data: reviewRows }, context] = await Promise.all([
       ctx.supabase
         .from("vault_items")
-        .select(
-          "id, kind, name, masked, env_var, totp_enabled, created_at, updated_at"
-        )
+        .select(ITEM_COLUMNS)
         .eq("user_id", ctx.session.userId)
         .is("deleted_at", null)
         .order("created_at", { ascending: true }),
@@ -152,13 +284,16 @@ export const vault: MiniAppModule = {
         .eq("status", "pending")
         .order("created_at", { ascending: false })
         .limit(10),
+      vaultContext(ctx.supabase, ctx.session.userId),
     ]);
     return html(
       renderVault(
-        (data ?? []) as VaultItemMetadata[],
+        (data ?? []) as VaultItemRow[],
         null,
         null,
-        (reviewRows ?? []) as PurchaseReviewRow[]
+        (reviewRows ?? []) as PurchaseReviewRow[],
+        context.managers,
+        context.siteGrants
       )
     );
   },
@@ -182,7 +317,7 @@ export const vault: MiniAppModule = {
       );
 
     if (action === "hide") {
-      return html(renderVault(await vaultItems(supabase, userId), null, null));
+      return vaultPage(supabase, userId, null, null);
     }
 
     if (action === "approve_purchase" || action === "deny_purchase") {
@@ -234,9 +369,7 @@ export const vault: MiniAppModule = {
       } finally {
         await armStopAfter(supabase, userId).catch(() => undefined);
       }
-      return html(
-        renderVault(await vaultItems(supabase, userId), null, notice)
-      );
+      return vaultPage(supabase, userId, null, notice);
     }
 
     if (action === "reveal") {
@@ -262,11 +395,11 @@ export const vault: MiniAppModule = {
         } finally {
           await armStopAfter(supabase, userId).catch(() => undefined);
         }
-        return html(renderVault(items, { id, field, value }, null));
+        return vaultPage(supabase, userId, { id, field, value }, null);
       } catch (error) {
         if (error instanceof StartLimitError) return busyPage();
         if (error instanceof VaultCliError) {
-          return html(renderVault(items, null, "reveal failed"));
+          return vaultPage(supabase, userId, null, "reveal failed");
         }
         console.error(
           JSON.stringify({
@@ -275,8 +408,130 @@ export const vault: MiniAppModule = {
             error: error instanceof Error ? error.message : "unknown",
           })
         );
-        return html(renderVault(items, null, "reveal failed"));
+        return vaultPage(supabase, userId, null, "reveal failed");
       }
+    }
+
+    if (action === "set_default_card") {
+      // MA5 #2 default-card affordance: a metadata flag on the mirror row.
+      // Purchase proposers may read it; approval gates are untouched.
+      const id = String(form.get("id") ?? "");
+      if (!/^[A-Za-z0-9._-]{1,64}$/.test(id)) {
+        return forbidden("invalid request");
+      }
+      const { data: card } = await supabase
+        .from("vault_items")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("id", id)
+        .eq("kind", "card")
+        .is("deleted_at", null)
+        .maybeSingle();
+      if (!card) return forbidden("not found");
+      await supabase
+        .from("vault_items")
+        .update({ default_for_purchases: false })
+        .eq("user_id", userId)
+        .eq("kind", "card");
+      await supabase
+        .from("vault_items")
+        .update({ default_for_purchases: true })
+        .eq("user_id", userId)
+        .eq("id", id);
+      return vaultPage(supabase, userId, null, "Default purchase card set.");
+    }
+
+    if (action === "revoke_site") {
+      // Same path as the browser surface's grant action: ownership check on
+      // the mirror, box grant file write, then the audit event.
+      const id = String(form.get("id") ?? "");
+      const host = normalizeHost(String(form.get("host") ?? ""));
+      if (!/^[A-Za-z0-9._-]{1,64}$/.test(id) || !host) {
+        return forbidden("invalid request");
+      }
+      const { data: item } = await supabase
+        .from("vault_items")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("id", id)
+        .eq("kind", "login")
+        .is("deleted_at", null)
+        .maybeSingle();
+      if (!item) return forbidden("not found");
+      try {
+        const box = await ensureBoxAwake(supabase, userId);
+        try {
+          await setSiteGrant(box.boxId, id, host, false);
+        } finally {
+          await armStopAfter(supabase, userId).catch(() => undefined);
+        }
+        await supabase.from("vault_events").insert({
+          user_id: userId,
+          item_id: id,
+          action: "revoke_site",
+          context: host,
+        });
+      } catch (error) {
+        if (error instanceof StartLimitError) return busyPage();
+        return vaultPage(supabase, userId, null, "revoke failed — try again");
+      }
+      return vaultPage(supabase, userId, null, `Access to ${host} revoked.`);
+    }
+
+    if (action === "enable_manager") {
+      const manager = String(form.get("manager") ?? "");
+      if (manager !== "bitwarden" && manager !== "onepassword") {
+        return forbidden("unknown manager");
+      }
+      const token = String(form.get("token") ?? "");
+      try {
+        const box = await ensureBoxAwake(supabase, userId);
+        try {
+          await enableManager(supabase, userId, box.boxId, { manager, token });
+        } finally {
+          await armStopAfter(supabase, userId).catch(() => undefined);
+        }
+      } catch (error) {
+        if (error instanceof StartLimitError) return busyPage();
+        if (error instanceof ManagerInputError) {
+          return vaultPage(supabase, userId, null, error.message);
+        }
+        return vaultPage(
+          supabase,
+          userId,
+          null,
+          "enabling the manager failed — try again"
+        );
+      }
+      return vaultPage(supabase, userId, null, "Manager enabled.");
+    }
+
+    if (action === "disable_manager") {
+      const manager = String(form.get("manager") ?? "");
+      if (
+        manager !== "bitwarden" &&
+        manager !== "onepassword" &&
+        manager !== "command"
+      ) {
+        return forbidden("unknown manager");
+      }
+      try {
+        const box = await ensureBoxAwake(supabase, userId);
+        try {
+          await disableManager(supabase, userId, box.boxId, manager);
+        } finally {
+          await armStopAfter(supabase, userId).catch(() => undefined);
+        }
+      } catch (error) {
+        if (error instanceof StartLimitError) return busyPage();
+        return vaultPage(
+          supabase,
+          userId,
+          null,
+          "disabling the manager failed — try again"
+        );
+      }
+      return vaultPage(supabase, userId, null, "Manager disabled.");
     }
 
     if (action === "add_login" || action === "add_card") {
@@ -320,8 +575,7 @@ export const vault: MiniAppModule = {
         }
       } catch (error) {
         if (error instanceof StartLimitError) return busyPage();
-        const items = await vaultItems(supabase, userId);
-        return html(renderVault(items, null, "save failed"));
+        return vaultPage(supabase, userId, null, "save failed");
       }
       return withBaseHeaders(
         NextResponse.redirect(
