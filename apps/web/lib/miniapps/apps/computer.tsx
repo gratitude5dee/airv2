@@ -8,7 +8,7 @@
  */
 import { NextResponse } from "next/server";
 import { captureScreenshotPng } from "@/lib/box/screenshot";
-import { esc, html, page } from "../html";
+import { esc, forbidden, html, page } from "../html";
 import { renderPassthrough } from "./passthrough";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
@@ -61,7 +61,7 @@ function renderState(
 export const computer: MiniAppModule = {
   async render(ctx: MiniAppContext): Promise<NextResponse> {
     if (ctx.session.role !== "owner") {
-      return html(page("Computer", "<h1>Computer</h1><p>This view is owner-only.</p>"));
+      return forbidden("this view is owner-only");
     }
     if (ctx.request.nextUrl.searchParams.get("view") === "live") {
       // The stream URL rides a Location header only, exactly as before.
@@ -96,7 +96,7 @@ export const computer: MiniAppModule = {
     let screenshot: string | null = null;
     if (box && awake) {
       try {
-        const png = await captureScreenshotPng(box.provider_box_id);
+        const png = await captureScreenshotPng(box.provider_box_id, 8);
         screenshot = `data:image/png;base64,${png.toString("base64")}`;
       } catch {
         screenshot = null;

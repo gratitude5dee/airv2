@@ -42,8 +42,10 @@ async function boxUserId(
 }
 
 /** The active turn's sender tier, resolved server-side: an open flush chain
- * carries the burst's sender tier; anything else is the owner's own
- * web/voice/desktop composer (tier 0). Unknown legacy rows fail closed. */
+ * carries the burst's sender tier; an open run with no newer chain is the
+ * owner's own web/voice/desktop composer (tier 0). No resolvable turn at
+ * all fails closed (decision-gated), mirroring resolveActiveTurn in
+ * lib/vault/purchase.ts. Unknown legacy rows fail closed too. */
 async function activeTurnTier(
   supabase: SupabaseClient,
   userId: string
@@ -73,7 +75,7 @@ async function activeTurnTier(
   if (flushJob && flushStarted >= runStarted) {
     return typeof flushJob.sender_tier === "number" ? flushJob.sender_tier : 2;
   }
-  return 0;
+  return openRun ? 0 : 2;
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {

@@ -33,9 +33,10 @@ export class ScreenshotError extends Error {
 /** Capture the current desktop as PNG bytes. Never wakes the box — callers
  * must check the box is already awake first. */
 export async function captureScreenshotPng(
-  providerBoxId: string
+  providerBoxId: string,
+  timeoutSeconds = 45
 ): Promise<Buffer> {
-  const result = await command(providerBoxId, CAPTURE_SCRIPT, 45);
+  const result = await command(providerBoxId, CAPTURE_SCRIPT, timeoutSeconds);
   if (result.exitCode === 3) {
     throw new ScreenshotError("no_tool");
   }

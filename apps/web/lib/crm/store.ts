@@ -42,12 +42,57 @@ export interface CrmStore {
 
 const EMPTY: CrmStore = { version: 1, people: [] };
 
+const strings = (value: unknown): string[] =>
+  Array.isArray(value)
+    ? value.filter((v): v is string => typeof v === "string")
+    : [];
+
+/** Normalize one raw entry from the box-side file, or drop it. The file is
+ * ordinary box state the agent may write directly, so every field is
+ * validated on read — one malformed record must not take the app down. */
+export function asPerson(raw: unknown): CrmPerson | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const value = raw as Record<string, unknown>;
+  if (typeof value.id !== "string" || !value.id) return null;
+  if (typeof value.name !== "string" || !value.name) return null;
+  const provenance = Array.isArray(value.provenance)
+    ? value.provenance.filter(
+        (p): p is CrmProvenance =>
+          typeof p === "object" &&
+          p !== null &&
+          ((p as CrmProvenance).source === "owner" ||
+            (p as CrmProvenance).source === "agent") &&
+          typeof (p as CrmProvenance).at === "string"
+      )
+    : [];
+  return {
+    id: value.id,
+    name: value.name,
+    emails: strings(value.emails),
+    phones: strings(value.phones),
+    sender_ids: strings(value.sender_ids),
+    photos: strings(value.photos),
+    notes: typeof value.notes === "string" ? value.notes : "",
+    tags: strings(value.tags),
+    provenance,
+    created_at:
+      typeof value.created_at === "string" ? value.created_at : "",
+    updated_at:
+      typeof value.updated_at === "string" ? value.updated_at : "",
+  };
+}
+
 export async function readPeople(boxId: string): Promise<CrmStore> {
   try {
     const raw = await readFile(boxId, PEOPLE_PATH);
     const parsed = JSON.parse(raw) as CrmStore;
     if (!Array.isArray(parsed.people)) return EMPTY;
-    return { version: 1, people: parsed.people };
+    return {
+      version: 1,
+      people: parsed.people
+        .map(asPerson)
+        .filter((p): p is CrmPerson => p !== null),
+    };
   } catch {
     return EMPTY;
   }

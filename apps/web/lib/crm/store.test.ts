@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import {
   applyPatch,
+  asPerson,
   avatarIndex,
   initialsFor,
   sanitizePatch,
@@ -56,6 +57,20 @@ describe("applyPatch", () => {
     );
     expect(store.people).toHaveLength(0);
     expect(JSON.stringify(store)).not.toContain("ada.png");
+  });
+});
+
+describe("asPerson", () => {
+  it("normalizes partial records and drops unusable ones", () => {
+    expect(asPerson(null)).toBeNull();
+    expect(asPerson({ name: "No id" })).toBeNull();
+    expect(asPerson({ id: "p1" })).toBeNull();
+    const person = asPerson({ id: "p1", name: "Ada", tags: "not-an-array" });
+    expect(person).not.toBeNull();
+    expect(person?.tags).toEqual([]);
+    expect(person?.emails).toEqual([]);
+    expect(person?.notes).toBe("");
+    expect(person?.provenance).toEqual([]);
   });
 });
 

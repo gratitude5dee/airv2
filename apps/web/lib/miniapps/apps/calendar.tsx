@@ -46,8 +46,11 @@ interface SourceRow {
 const PERSONA_RE = /^[a-z0-9 _-]{1,24}$/i;
 const COLOR_RE = /^#[0-9a-f]{6}$/i;
 
-/** provider → persona/color, from the owner's sources. Events carry only a
- * provider, so the first active source per provider names its persona. */
+/** provider → persona/color, from the owner's sources. Stored events carry
+ * only a provider (no per-account ref), so persona is effectively
+ * PER-PROVIDER: with two accounts from the same provider, the first active
+ * source names the persona for all of that provider's events. Per-account
+ * personas need an account discriminator on the event spine first. */
 function personaByProvider(
   sources: SourceRow[]
 ): Map<string, { persona: string; color: string }> {
