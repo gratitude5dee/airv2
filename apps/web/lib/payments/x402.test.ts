@@ -169,10 +169,12 @@ describe("x402 challenge", () => {
     expect(res).toBeNull();
   });
 
-  it("refuses to challenge when the publisher wallet is missing", async () => {
+  it("stays payment-gated with no accepts when the publisher wallet is missing", async () => {
     db.wallets = { [OWNER]: null };
     const res = await x402PaymentGate(request(), paidApp());
-    expect(res?.status).toBe(503);
+    expect(res?.status).toBe(402);
+    const body = (await res?.json()) as { accepts: unknown[] };
+    expect(body.accepts).toHaveLength(0);
     expect(db.receipts).toHaveLength(0);
   });
 

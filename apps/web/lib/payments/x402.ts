@@ -1,5 +1,5 @@
 /**
- * MA2.1 x402 gate. Replaces the Session A stub via setX402Gate: a gated app
+ * MA2.1 x402 gate, bound lazily by lib/miniapps/gates: a gated app
  * without a paid session answers 402 with the exact-scheme accepts payload
  * (Base mainnet USDC, payTo = the publisher's verified wallet from
  * users.wallet_address at challenge time — never from a manifest). On an
@@ -29,7 +29,6 @@ import {
   externalOrigin,
   logGateEvent,
   sessionFromCookie,
-  setX402Gate,
   type X402Gate,
 } from "../miniapps/gates";
 import { BASE_HEADERS, esc, page } from "../miniapps/html";
@@ -228,14 +227,18 @@ export const x402PaymentGate: X402Gate = async (request, app) => {
 
   const supabase = serviceClient();
   const payTo = await publisherPayTo(supabase, app);
-  if (!payTo) {
-    return paymentError(503, "payments unavailable: publisher wallet not configured");
-  }
   const basePath = basePathFor(request, app.slug);
   const resource = `${externalOrigin(request)}${basePath}`;
-  const requirements = buildPaymentRequirements(app, payTo, resource);
+  const requirements = payTo
+    ? buildPaymentRequirements(app, payTo, resource)
+    : null;
   if (!requirements) {
-    return paymentError(503, "payments unavailable: price not configured");
+    // Paid app with no verified payout wallet or price: still payment-gated
+    // (never open), but with nothing to accept — no payTo is ever invented.
+    return NextResponse.json(
+      { error: "payment required", x402Version: 1, accepts: [] },
+      { status: 402, headers: { "Cache-Control": "no-store" } }
+    );
   }
 
   const header = request.headers.get("x-payment");
@@ -323,7 +326,3 @@ export const x402PaymentGate: X402Gate = async (request, app) => {
   return response;
 };
 
-/** Called from instrumentation.ts (and tests) to swap in the real gate. */
-export function installX402Gate(): void {
-  setX402Gate(x402PaymentGate);
-}

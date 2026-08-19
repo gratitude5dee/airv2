@@ -4,9 +4,9 @@
  * Each gate short-circuits with its own challenge/error response. The chain
  * runs on every load — a `suspended` registry flip blocks the next request.
  *
- * Session B (payments) replaces the x402 stub via `setX402Gate` and mints
- * receipt proof after settlement; the ordering and short-circuit contract
- * here must not change.
+ * The x402 gate implementation lives in lib/payments/x402 and mints receipt
+ * proof after settlement; the ordering and short-circuit contract here must
+ * not change.
  */
 import { createHmac, scryptSync, timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
@@ -149,38 +149,30 @@ export function passwordGate(
 /* ---------------------------------------------------------------- gate 3 */
 
 /**
- * x402 hook. The stub challenges with 402 + price metadata whenever the app
- * has x402 enabled and the requester is not the app's owner. Session B
- * replaces this with real settlement (verify payment, write x402_receipts,
- * mint receipt proof) via setX402Gate — the loader only knows "null = pass,
- * response = short-circuit".
+ * x402 hook. The real gate lives in lib/payments/x402 (verify payment, write
+ * x402_receipts, mint receipt proof) and is bound lazily on first use — a
+ * static import would be a cycle, since the payments module uses this file's
+ * helpers. The loader only knows "null = pass, response = short-circuit".
  */
 export type X402Gate = (
   request: NextRequest,
   app: RegistryApp
 ) => Promise<NextResponse | null>;
 
-let x402Impl: X402Gate = async (request, app) => {
-  if (!app.x402_enabled) return null;
-  const session = sessionFromCookie(request, app.slug);
-  if (session && session.userId === app.owner_user_id) return null;
-  return NextResponse.json(
-    {
-      error: "payment required",
-      x402: { price_usdc: app.x402_price_usdc, app: app.slug },
-    },
-    { status: 402, headers: { "Cache-Control": "no-store" } }
-  );
-};
+let x402Impl: X402Gate | null = null;
 
 export function setX402Gate(gate: X402Gate): void {
   x402Impl = gate;
 }
 
-export function x402Gate(
+export async function x402Gate(
   request: NextRequest,
   app: RegistryApp
 ): Promise<NextResponse | null> {
+  if (!x402Impl) {
+    const { x402PaymentGate } = await import("../payments/x402");
+    x402Impl = x402PaymentGate;
+  }
   return x402Impl(request, app);
 }
 
