@@ -92,6 +92,27 @@ export async function updateCreativeJob(
 }
 
 /**
+ * Atomically claim the polling→delivered transition for a job. Returns true
+ * for exactly one caller; concurrent refreshes (or replays after a delivered
+ * write) see false and must fall back to the already-delivered artifact.
+ */
+export async function claimCreativeJobDelivery(
+  supabase: SupabaseClient,
+  jobId: string
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("creative_jobs")
+    .update({ status: "delivered", delivered_at: new Date().toISOString() })
+    .eq("id", jobId)
+    .neq("status", "delivered")
+    .select("id");
+  if (error) {
+    throw new Error(`creative job claim failed: ${error.message}`);
+  }
+  return (data ?? []).length > 0;
+}
+
+/**
  * True when the user has generation budget left today. Failed/refused jobs
  * don't consume the cap — only jobs that reached (or may have reached) the
  * provider count against it.

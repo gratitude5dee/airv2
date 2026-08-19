@@ -66,6 +66,9 @@ def main(job_dir: Path) -> int:
         )
         caption = str(clip.get("caption") or "")
         if caption and font:
+            # Caption text must only ever reach ffmpeg via textfile= — the
+            # filter graph string contains fixed internal paths, never user
+            # text, so captions cannot alter the filter structure.
             text_file = work / f"caption{index:03d}.txt"
             text_file.write_text(caption)
             filters += (

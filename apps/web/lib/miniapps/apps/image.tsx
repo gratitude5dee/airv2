@@ -113,6 +113,38 @@ async function signedFlatUrl(
   return signed.data?.signedUrl ?? null;
 }
 
+/**
+ * Private-link export: reuse an unexpired delivery for this doc's purpose
+ * (re-signing the same copy) so reloads of ?exported=1 don't mint duplicate
+ * storage copies; mint only when none exists.
+ */
+async function exportDelivery(
+  ctx: MiniAppContext,
+  asset: CreativeAsset
+): Promise<string | null> {
+  const purpose = `miniapp-image:${ctx.session.resourceId}`;
+  const { data } = await ctx.supabase
+    .from("asset_deliveries")
+    .select("storage_key")
+    .eq("user_id", ctx.session.userId)
+    .eq("asset_id", asset.id)
+    .eq("purpose", purpose)
+    .is("revoked_at", null)
+    .gt("expires_at", new Date().toISOString())
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const storageKey = data?.storage_key as string | undefined;
+  if (storageKey) {
+    const signed = await ctx.supabase.storage
+      .from(ASSETS_BUCKET)
+      .createSignedUrl(storageKey, DELIVERY_TTL_SECONDS);
+    if (signed.data?.signedUrl) return signed.data.signedUrl;
+  }
+  const minted = await mintDelivery(ctx.supabase, asset, purpose);
+  return minted.url;
+}
+
 function redirectBack(ctx: MiniAppContext, query?: string): NextResponse {
   return withBaseHeaders(
     NextResponse.redirect(
@@ -136,12 +168,7 @@ export const image: MiniAppModule = {
     let exportUrl: string | null = null;
     let notice: string | null = url.searchParams.get("notice");
     if (wantExport && asset && ctx.session.role === "owner") {
-      const delivery = await mintDelivery(
-        ctx.supabase,
-        asset,
-        `miniapp-image:${ctx.session.resourceId}`
-      );
-      exportUrl = delivery.url;
+      exportUrl = await exportDelivery(ctx, asset);
     }
     if (notice && notice.length > 200) notice = null;
     return html(
@@ -226,10 +253,12 @@ export const image: MiniAppModule = {
     } else if (action === "move") {
       const direction = String(form.get("direction") ?? "");
       if (direction === "up" || direction === "down") {
+        // The layer list renders top-of-stack first (reversed array), so the
+        // visual "up" is a move toward the end of the stored array.
         await updateImageDoc(ctx.supabase, userId, resourceId, {
           kind: "move",
           id: String(form.get("id") ?? ""),
-          direction,
+          direction: direction === "up" ? "down" : "up",
         });
       }
     } else if (action === "remove") {

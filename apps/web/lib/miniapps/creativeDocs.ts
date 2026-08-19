@@ -7,7 +7,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { readFile, writeFile } from "../box/client";
-import { ensureBoxAwake } from "../orchestrator/boxes";
+import { armStopAfter, ensureBoxAwake } from "../orchestrator/boxes";
 
 /* ------------------------------------------------------------- image docs */
 
@@ -278,6 +278,8 @@ async function readDoc(
     return JSON.parse(await readFile(box.boxId, docPath(app, resourceId)));
   } catch {
     return null;
+  } finally {
+    await armStopAfter(supabase, userId).catch(() => undefined);
   }
 }
 
@@ -289,11 +291,15 @@ async function writeDoc(
   doc: ImageDoc | VideoDoc
 ): Promise<void> {
   const box = await ensureBoxAwake(supabase, userId);
-  await writeFile(
-    box.boxId,
-    docPath(app, resourceId),
-    JSON.stringify(doc, null, 2)
-  );
+  try {
+    await writeFile(
+      box.boxId,
+      docPath(app, resourceId),
+      JSON.stringify(doc, null, 2)
+    );
+  } finally {
+    await armStopAfter(supabase, userId).catch(() => undefined);
+  }
 }
 
 export async function getImageDoc(

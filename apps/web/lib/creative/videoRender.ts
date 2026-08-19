@@ -5,9 +5,10 @@
  * creative_jobs lifecycle row, and a cost_events row on delivery.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { ingestAsset, pluginFetch } from "../assets/pipeline";
-import { ensureBoxAwake, StartLimitError } from "../orchestrator/boxes";
+import { AssetPipelineError, ingestAsset, pluginFetch } from "../assets/pipeline";
+import { armStopAfter, ensureBoxAwake, StartLimitError } from "../orchestrator/boxes";
 import {
+  claimCreativeJobDelivery,
   createCreativeJob,
   DAILY_LIMIT_LINE,
   getCreativeJob,
@@ -38,6 +39,7 @@ export async function startVideoRender(
   const job = await createCreativeJob(supabase, userId, "web", "video_render");
   try {
     const box = await ensureBoxAwake(supabase, userId);
+    await armStopAfter(supabase, userId).catch(() => undefined);
     const response = await pluginFetch(supabase, box, "POST", "jobs", {
       kind: "video_render",
       brief: doc.title || "timeline render",
@@ -133,6 +135,7 @@ export async function refreshVideoRender(
   }
   try {
     const box = await ensureBoxAwake(supabase, userId);
+    await armStopAfter(supabase, userId).catch(() => undefined);
     const response = await pluginFetch(
       supabase,
       box,
@@ -176,14 +179,41 @@ export async function refreshVideoRender(
       });
       return { status: "failed", line: "the render produced no video output.", url: null };
     }
-    const asset = await ingestAsset(supabase, userId, box, output.id);
-    const delivery = await mintJobDelivery(supabase, asset, job.id);
-    await updateCreativeJob(supabase, job.id, {
-      status: "delivered",
-      delivered_at: new Date().toISOString(),
-    });
-    await insertRenderCostEvent(supabase, userId, job.id, "video");
-    return { status: "delivered", line: "latest render:", url: delivery.url };
+    // Claim the delivered transition first so concurrent refreshes import
+    // and charge at most once; losers re-sign the existing delivery.
+    if (!(await claimCreativeJobDelivery(supabase, job.id))) {
+      const delivery = await signedDeliveryForJob(supabase, userId, job.id);
+      return {
+        status: "delivered",
+        line: delivery ? "latest render:" : "finalizing the render — refresh in a moment.",
+        url: delivery?.url ?? null,
+      };
+    }
+    try {
+      const asset = await ingestAsset(supabase, userId, box, output.id);
+      const delivery = await mintJobDelivery(supabase, asset, job.id);
+      await insertRenderCostEvent(supabase, userId, job.id, "video");
+      return { status: "delivered", line: "latest render:", url: delivery.url };
+    } catch (error) {
+      if (error instanceof AssetPipelineError) {
+        // Permanent import failure (size cap, bad export) — don't retry forever.
+        await updateCreativeJob(supabase, job.id, {
+          status: "failed",
+          error: error.message,
+        });
+        return {
+          status: "failed",
+          line: `the render finished but couldn't be imported: ${error.message}`,
+          url: null,
+        };
+      }
+      // Transient failure mid-import: release the claim so a later view retries.
+      await updateCreativeJob(supabase, job.id, {
+        status: "polling",
+        delivered_at: null,
+      });
+      throw error;
+    }
   } catch {
     return {
       status: job.status,

@@ -49,7 +49,7 @@ def _default_hermes_bin() -> str:
 
 
 HERMES_BIN = os.environ.get("CREATIVE_HERMES_BIN") or _default_hermes_bin()
-PLUGIN_VERSION = "0.3.0"
+PLUGIN_VERSION = "0.4.0"
 
 JOB_KINDS = {
     "commercial",
