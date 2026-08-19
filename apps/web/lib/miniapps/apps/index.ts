@@ -7,10 +7,13 @@
 import type { MiniAppModule } from "./types";
 import { calendar } from "./calendar";
 import { computer } from "./computer";
+import { connect } from "./connect";
 import { crm } from "./crm";
 import { inbox } from "./inbox";
 import { kanban } from "./kanban";
+import { onboarding } from "./onboarding";
 import { browser } from "./passthrough";
+import { settings } from "./settings";
 import { todo } from "./todo";
 import { vault } from "./vault";
 
@@ -18,9 +21,12 @@ export const FIRST_PARTY_MODULES: Record<string, MiniAppModule> = {
   browser,
   calendar,
   computer,
+  connect,
   crm,
   inbox,
   kanban,
+  onboarding,
+  settings,
   todo,
   vault,
 };

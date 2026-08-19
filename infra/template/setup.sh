@@ -77,6 +77,16 @@ approvals:
 terminal:
   backend: "local"
 
+# MA9.1: persistent memory on — ~/.hermes/memories/{MEMORY.md,USER.md} live in
+# this box's filesystem (I1/C4: memory is content, it never leaves for shared
+# Postgres). write_approval stays false to match the box's smart-approvals
+# posture: memory writes are local file edits, not public actions, so they do
+# not gate; the smart_policy above still escalates anything that publishes.
+memory:
+  memory_enabled: true
+  user_profile_enabled: true
+  write_approval: false
+
 # The box IS the computer: launch the agent browser headed on the box's X
 # display so the human can watch/act via the desktop stream (computer relay).
 # backend is pinned explicitly (V0 task 3b): "off" = the built-in browser_*
