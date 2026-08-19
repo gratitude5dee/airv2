@@ -6,7 +6,7 @@
  * testable without a box.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { readFile, writeFile } from "../box/client";
+import { BoxApiError, readFile, writeFile } from "../box/client";
 import { armStopAfter, ensureBoxAwake } from "../orchestrator/boxes";
 
 /* ------------------------------------------------------------- image docs */
@@ -274,12 +274,19 @@ async function readDoc(
   resourceId: string
 ): Promise<unknown> {
   try {
-    // A wake failure must propagate — treating it as "no document yet" would
-    // let a later write replace the real doc with an empty one. Only a
-    // missing/unparseable file means the document doesn't exist.
+    // Failures must propagate — treating them as "no document yet" would let
+    // a later write replace the real doc with an empty one. Only a genuinely
+    // missing (cat exits non-zero → 404) or unparseable file means no doc.
     const box = await ensureBoxAwake(supabase, userId);
+    let raw: string;
     try {
-      return JSON.parse(await readFile(box.boxId, docPath(app, resourceId)));
+      raw = await readFile(box.boxId, docPath(app, resourceId));
+    } catch (error) {
+      if (error instanceof BoxApiError && error.status === 404) return null;
+      throw error;
+    }
+    try {
+      return JSON.parse(raw);
     } catch {
       return null;
     }
