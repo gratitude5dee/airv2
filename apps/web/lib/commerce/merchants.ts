@@ -119,8 +119,9 @@ export async function ensureStorefrontRow(
     .eq("slug", slug)
     .maybeSingle();
   if (existing) return slug;
-  await supabase.from("mini_apps").insert({
+  const { error } = await supabase.from("mini_apps").insert({
     slug,
+    route: `/mini/${slug}`,
     kind: "render",
     owner_user_id: userId,
     publisher_username: username,
@@ -131,6 +132,15 @@ export async function ensureStorefrontRow(
     status: "published",
     listed_at: new Date().toISOString(),
   });
+  if (error) {
+    console.error(
+      JSON.stringify({
+        msg: "storefront row insert failed",
+        error: error.message,
+      })
+    );
+    return null;
+  }
   return slug;
 }
 

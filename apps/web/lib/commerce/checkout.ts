@@ -121,7 +121,8 @@ export async function startCheckout(
   const session = await createConnectCheckoutSession(
     merchant.stripe_account_id,
     {
-      amountCents,
+      // Stripe multiplies unit_amount × quantity — pass the per-item price.
+      amountCents: product.price_cents,
       quantity,
       productName: product.name,
       successUrl: `${storefrontUrl}?order=${orderId}&k=${buyerKey}`,
