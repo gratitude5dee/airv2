@@ -1,0 +1,468 @@
+/**
+ * Onboarding mini-app (goal.md §MA5 #1) — the front-door experience. Six
+ * guided, resumable steps; each writes real state through the existing code
+ * paths (username/email via lib/settings/account, Composio Connect Links via
+ * lib/connectors/manage, managers via lib/vault/managers, vault items via
+ * the vault CLI, first exchange via Hermes MAIN_SESSION). Progress persists
+ * box-side (C4, lib/miniapps/onboarding.ts); every step is skippable and
+ * re-enterable. Step 4 (Onairos, §MA9.2) is a stub behind ./onairos.ts until
+ * Session H's integration lands. Owner-only: no guest actions (MA4).
+ */
+import { NextResponse } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  armStopAfter,
+  ensureBoxAwake,
+  StartLimitError,
+} from "@/lib/orchestrator/boxes";
+import { applyBatch, VaultCliError } from "@/lib/vault/client";
+import {
+  enableManager,
+  listManagers,
+  ManagerInputError,
+  type ManagerStatus,
+} from "@/lib/vault/managers";
+import { setUsername } from "@/lib/settings/account";
+import {
+  beginConnect,
+  syncConnections,
+  TOOLKIT_SLUG_PATTERN,
+  type ConnectionRow,
+} from "@/lib/connectors/manage";
+import { createRun, MAIN_SESSION } from "@/lib/hermes/client";
+import {
+  defaultOnboardingState,
+  isOnboardingStep,
+  markOnboardingStep,
+  ONBOARDING_STEPS,
+  readOnboardingState,
+  type OnboardingState,
+  type OnboardingStepId,
+} from "../onboarding";
+import { onairosProvider, type OnairosStatus } from "./onairos";
+import { externalOrigin } from "../gates";
+import { esc, forbidden, html, page, withBaseHeaders } from "../html";
+import type { MiniAppContext, MiniAppModule } from "./types";
+
+const STEP_TITLES: Record<OnboardingStepId, string> = {
+  username: "Pick your username",
+  email: "Your agent's email",
+  connect: "Connect accounts",
+  onairos: "Personal context",
+  secrets: "Secrets",
+  agent: "Meet your agent",
+};
+
+/** Onboarding offers the two golden-path toolkits; the Connect app has all. */
+const ONBOARDING_TOOLKITS: Array<[string, string]> = [
+  ["gmail", "Gmail"],
+  ["googlecalendar", "Google Calendar"],
+];
+
+interface Snapshot {
+  state: OnboardingState;
+  username: string | null;
+  address: string | null;
+  connections: ConnectionRow[];
+  managers: ManagerStatus[];
+  vaultItemCount: number;
+  onairos: OnairosStatus;
+  boxBusy: boolean;
+}
+
+async function loadSnapshot(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<Snapshot> {
+  let state = defaultOnboardingState();
+  let boxBusy = false;
+  try {
+    state = await readOnboardingState(supabase, userId);
+  } catch (error) {
+    if (!(error instanceof StartLimitError)) throw error;
+    boxBusy = true;
+  }
+  const [
+    { data: user },
+    { data: addressRow },
+    { data: connectionRows },
+    managers,
+    { count },
+    onairos,
+  ] = await Promise.all([
+    supabase.from("users").select("username").eq("id", userId).maybeSingle(),
+    supabase
+      .from("agent_addresses")
+      .select("address")
+      .eq("user_id", userId)
+      .eq("is_primary", true)
+      .is("retired_at", null)
+      .maybeSingle(),
+    supabase
+      .from("connections")
+      .select("toolkit, status, connected_at")
+      .eq("user_id", userId),
+    listManagers(supabase, userId).catch(() => [] as ManagerStatus[]),
+    supabase
+      .from("vault_items")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .is("deleted_at", null),
+    onairosProvider.status(userId),
+  ]);
+  return {
+    state,
+    username: (user?.username as string | null) ?? null,
+    address: (addressRow?.address as string | null) ?? null,
+    connections: (connectionRows ?? []) as ConnectionRow[],
+    managers,
+    vaultItemCount: count ?? 0,
+    onairos,
+    boxBusy,
+  };
+}
+
+/** A step counts done when its real state exists, however it was written. */
+function effectiveStatus(
+  snapshot: Snapshot,
+  step: OnboardingStepId
+): "todo" | "done" | "skipped" {
+  const recorded = snapshot.state.steps[step];
+  if (recorded === "done" || recorded === "skipped") return recorded;
+  switch (step) {
+    case "username":
+      return snapshot.username ? "done" : "todo";
+    case "email":
+      return snapshot.address ? "done" : "todo";
+    case "connect":
+      return snapshot.connections.some((c) => c.status === "active")
+        ? "done"
+        : "todo";
+    case "onairos":
+      return snapshot.onairos.connected ? "done" : "todo";
+    case "secrets":
+      return snapshot.vaultItemCount > 0 ||
+        snapshot.managers.some((m) => m.enabled)
+        ? "done"
+        : "todo";
+    case "agent":
+      return "todo";
+  }
+}
+
+function firstOpenStep(snapshot: Snapshot): OnboardingStepId {
+  for (const step of ONBOARDING_STEPS) {
+    if (effectiveStatus(snapshot, step) === "todo") return step;
+  }
+  return "agent";
+}
+
+function skipForm(step: OnboardingStepId, label = "Skip for now"): string {
+  return `<form method="post" style="margin:0;display:inline"><input type="hidden" name="action" value="skip"><input type="hidden" name="step" value="${esc(step)}"><button class="ghost">${esc(label)}</button></form>`;
+}
+
+function stepBody(snapshot: Snapshot, step: OnboardingStepId): string {
+  if (step === "username") {
+    const current = snapshot.username
+      ? `<p style="font-size:13px">Current: <strong>@${esc(snapshot.username)}</strong></p>`
+      : "";
+    return `${current}<p style="color:var(--muted);font-size:12px">Lowercase letters, digits, underscore — 2–24 characters. Your agent's email follows it.</p><form method="post" style="display:flex;gap:6px"><input type="hidden" name="action" value="set_username"><input type="text" name="username" placeholder="username" maxlength="24" autocomplete="off"><button>Save</button></form>${skipForm("username")}`;
+  }
+  if (step === "email") {
+    const line = snapshot.address
+      ? `<p style="font-size:13px">Your agent reads and drafts at <strong>${esc(snapshot.address)}</strong>. Sending always waits for your approval.</p>`
+      : `<p style="color:var(--muted);font-size:13px">Your agent's inbox is provisioned automatically when you set a username — no extra step.</p>`;
+    return `${line}${snapshot.address ? `<form method="post" style="margin:0;display:inline"><input type="hidden" name="action" value="mark_done"><input type="hidden" name="step" value="email"><button>Looks good</button></form> ` : ""}${skipForm("email")}`;
+  }
+  if (step === "connect") {
+    const byToolkit = new Map(snapshot.connections.map((c) => [c.toolkit, c]));
+    const rows = ONBOARDING_TOOLKITS.map(([slug, label]) => {
+      const status = byToolkit.get(slug)?.status ?? null;
+      const chip =
+        status === "active"
+          ? '<span style="color:var(--muted);font-size:11px">connected</span>'
+          : status === "pending"
+            ? '<span style="color:var(--muted);font-size:11px">pending — finish sign-in, then refresh</span>'
+            : "";
+      const button =
+        status === "active"
+          ? ""
+          : `<form method="post" style="margin:0"><input type="hidden" name="action" value="connect"><input type="hidden" name="toolkit" value="${esc(slug)}"><button>Connect</button></form>`;
+      return `<div class="item"><span style="flex:1">${esc(label)}</span>${chip}${button}</div>`;
+    }).join("");
+    return `${rows}<p style="color:var(--muted);font-size:12px">Apple Calendar connects via an ICS subscription in the Calendar app — there is no OAuth for it here.</p><div style="display:flex;gap:6px"><form method="post" style="margin:0"><input type="hidden" name="action" value="refresh_connections"><button class="ghost">Refresh status</button></form>${skipForm("connect")}</div>`;
+  }
+  if (step === "onairos") {
+    if (!snapshot.onairos.available) {
+      return `<p style="color:var(--muted);font-size:13px">Onairos personal context is coming soon — connect it later from Settings once it ships. Nothing here blocks the rest of setup.</p>${skipForm("onairos", "Skip — coming soon")}`;
+    }
+    return `<p style="font-size:13px">${snapshot.onairos.connected ? "Connected." : "Connect your Onairos context."}</p>${skipForm("onairos")}`;
+  }
+  if (step === "secrets") {
+    const managerLines = snapshot.managers
+      .filter((m) => m.manager !== "command")
+      .map(
+        (m) =>
+          `<div style="font-size:12px;color:var(--muted)">${esc(m.manager === "bitwarden" ? "Bitwarden" : "1Password")}: ${esc(m.enabled ? m.status : "off")}</div>`
+      )
+      .join("");
+    return `<p style="color:var(--muted);font-size:12px">Your agent fills secrets only with your approval. Use the built-in vault, or bring your own manager.</p>${managerLines}<details style="margin-top:8px"><summary style="cursor:pointer;font-size:13px">Add a first login (built-in vault)</summary><form method="post" style="display:grid;gap:6px;margin-top:6px"><input type="hidden" name="action" value="add_login"><input type="text" name="name" placeholder="e.g. &quot;Gmail&quot;" maxlength="120"><input type="text" name="username" placeholder="Username" maxlength="200"><input type="password" name="password" placeholder="Password" maxlength="500" autocomplete="off"><button>Save to vault</button></form></details><details style="margin-top:8px"><summary style="cursor:pointer;font-size:13px">Bring your own manager</summary><form method="post" style="display:grid;gap:6px;margin-top:6px"><input type="hidden" name="action" value="enable_manager"><select name="manager" style="background:var(--surface);color:var(--text);border:0.5px solid var(--ring);border-radius:10px;padding:8px 10px;font-size:13px"><option value="bitwarden">Bitwarden (machine-account token)</option><option value="onepassword">1Password (service-account token)</option></select><input type="password" name="token" placeholder="Access token" maxlength="512" autocomplete="off"><button>Enable</button></form><p style="color:var(--muted);font-size:11px;margin:4px 0 0">The token goes straight to your agent's computer — it is never stored on the platform or shown again.</p></details><div style="margin-top:8px">${snapshot.vaultItemCount > 0 || snapshot.managers.some((m) => m.enabled) ? `<form method="post" style="margin:0;display:inline"><input type="hidden" name="action" value="mark_done"><input type="hidden" name="step" value="secrets"><button>Done with secrets</button></form> ` : ""}${skipForm("secrets")}</div>`;
+  }
+  // agent
+  return `<p style="color:var(--muted);font-size:12px">Say hello — your agent replies in your chat (iMessage or the web tab), same conversation everywhere.</p><form method="post" style="display:flex;gap:6px"><input type="hidden" name="action" value="ask_agent"><input type="text" name="text" placeholder="e.g. What can you do for me?" maxlength="4000"><button>Send</button></form>${skipForm("agent")}`;
+}
+
+function renderOnboarding(
+  snapshot: Snapshot,
+  active: OnboardingStepId,
+  notice: string | null
+): string {
+  const noticeHtml = notice
+    ? `<p style="color:var(--muted);font-size:12px">${esc(notice)}</p>`
+    : "";
+  const busy = snapshot.boxBusy
+    ? '<p style="color:var(--muted);font-size:12px">Your agent\'s computer is busy starting up — progress will save once it\'s awake.</p>'
+    : "";
+  const items = ONBOARDING_STEPS.map((step, index) => {
+    const status = effectiveStatus(snapshot, step);
+    const marker =
+      status === "done" ? "●" : status === "skipped" ? "○" : "◌";
+    const label = `${marker} ${index + 1}. ${STEP_TITLES[step]}${status === "skipped" ? " (skipped)" : ""}`;
+    const link = `<a href="?step=${esc(step)}" style="color:inherit;text-decoration:none">${esc(label)}</a>`;
+    const bodyHtml =
+      step === active
+        ? `<div style="margin-top:8px">${stepBody(snapshot, step)}</div>`
+        : "";
+    return `<div class="card${step === active ? "" : status === "todo" ? " pending" : ""}">${link}${bodyHtml}</div>`;
+  }).join("");
+  return page(
+    "Onboarding",
+    `<h1>Set up your agent</h1>${busy}${noticeHtml}${items}`
+  );
+}
+
+function activeStep(ctx: MiniAppContext, snapshot: Snapshot): OnboardingStepId {
+  const requested = ctx.request.nextUrl.searchParams.get("step") ?? "";
+  return isOnboardingStep(requested) ? requested : firstOpenStep(snapshot);
+}
+
+async function respond(
+  ctx: MiniAppContext,
+  step: OnboardingStepId | null,
+  notice: string | null
+): Promise<NextResponse> {
+  const snapshot = await loadSnapshot(ctx.supabase, ctx.session.userId);
+  return html(
+    renderOnboarding(snapshot, step ?? firstOpenStep(snapshot), notice)
+  );
+}
+
+async function markSafely(
+  supabase: SupabaseClient,
+  userId: string,
+  step: OnboardingStepId,
+  status: "done" | "skipped" | "todo"
+): Promise<boolean> {
+  try {
+    await markOnboardingStep(supabase, userId, step, status);
+    return true;
+  } catch (error) {
+    if (error instanceof StartLimitError) return false;
+    throw error;
+  }
+}
+
+export const onboarding: MiniAppModule = {
+  async render(ctx: MiniAppContext): Promise<NextResponse> {
+    const snapshot = await loadSnapshot(ctx.supabase, ctx.session.userId);
+    // A pending Connect Link may have completed on the hosted page — sync
+    // the mirror before rendering so the chip is truthful.
+    if (snapshot.connections.some((c) => c.status === "pending")) {
+      snapshot.connections = await syncConnections(
+        ctx.supabase,
+        ctx.session.userId
+      ).catch(() => snapshot.connections);
+    }
+    return html(renderOnboarding(snapshot, activeStep(ctx, snapshot), null));
+  },
+
+  async action(ctx: MiniAppContext, form: FormData): Promise<NextResponse> {
+    const supabase = ctx.supabase;
+    const userId = ctx.session.userId;
+    const action = String(form.get("action") ?? "");
+
+    if (action === "skip" || action === "mark_done") {
+      const step = String(form.get("step") ?? "");
+      if (!isOnboardingStep(step)) return forbidden("unknown step");
+      const saved = await markSafely(
+        supabase,
+        userId,
+        step,
+        action === "skip" ? "skipped" : "done"
+      );
+      return respond(
+        ctx,
+        null,
+        saved ? null : "Couldn't save progress — the computer is starting up."
+      );
+    }
+
+    if (action === "set_username") {
+      const result = await setUsername(
+        supabase,
+        userId,
+        String(form.get("username") ?? "")
+      );
+      if (!result.ok) {
+        const message =
+          result.error === "cooldown"
+            ? `Username changes are limited — try again ${result.eligible ? `after ${result.eligible}` : "later"}.`
+            : result.error === "taken"
+              ? "That username is taken."
+              : result.error === "invalid"
+                ? "2–24 lowercase letters, digits, or underscores."
+                : "Update failed — try again.";
+        return respond(ctx, "username", message);
+      }
+      await markSafely(supabase, userId, "username", "done");
+      if (result.address) {
+        await markSafely(supabase, userId, "email", "done");
+      }
+      return respond(
+        ctx,
+        null,
+        `You're @${result.username}${result.address ? ` — your agent's email is ${result.address}` : ""}.`
+      );
+    }
+
+    if (action === "connect") {
+      const toolkit = String(form.get("toolkit") ?? "").toLowerCase();
+      if (!TOOLKIT_SLUG_PATTERN.test(toolkit)) {
+        return forbidden("invalid toolkit");
+      }
+      const callback = `${externalOrigin(ctx.request)}${ctx.basePath}?step=connect`;
+      const link = await beginConnect(supabase, userId, toolkit, callback);
+      return withBaseHeaders(
+        NextResponse.redirect(link.redirect_url, 303)
+      );
+    }
+
+    if (action === "refresh_connections") {
+      const connections = await syncConnections(supabase, userId).catch(
+        () => [] as ConnectionRow[]
+      );
+      if (connections.some((c) => c.status === "active")) {
+        await markSafely(supabase, userId, "connect", "done");
+      }
+      return respond(ctx, "connect", null);
+    }
+
+    if (action === "add_login") {
+      const name = String(form.get("name") ?? "").trim();
+      if (name.length === 0 || name.length > 120) {
+        return respond(ctx, "secrets", "A name is required.");
+      }
+      const fields: Record<string, string> = {};
+      const loginUsername = String(form.get("username") ?? "");
+      const password = String(form.get("password") ?? "");
+      if (loginUsername) fields.username = loginUsername;
+      if (password) fields.password = password;
+      try {
+        const box = await ensureBoxAwake(supabase, userId);
+        try {
+          await applyBatch(box.boxId, userId, [
+            { op: "create", item: { kind: "login", name, fields } },
+          ]);
+        } finally {
+          await armStopAfter(supabase, userId).catch(() => undefined);
+        }
+      } catch (error) {
+        if (error instanceof StartLimitError) {
+          return respond(
+            ctx,
+            "secrets",
+            "The computer is starting up — try again in a minute."
+          );
+        }
+        if (error instanceof VaultCliError) {
+          return respond(ctx, "secrets", "Save failed — try again.");
+        }
+        throw error;
+      }
+      await markSafely(supabase, userId, "secrets", "done");
+      return respond(ctx, null, `Saved "${name}" to your vault.`);
+    }
+
+    if (action === "enable_manager") {
+      const manager = String(form.get("manager") ?? "");
+      if (manager !== "bitwarden" && manager !== "onepassword") {
+        return forbidden("unknown manager");
+      }
+      const token = String(form.get("token") ?? "");
+      try {
+        const box = await ensureBoxAwake(supabase, userId);
+        try {
+          await enableManager(supabase, userId, box.boxId, { manager, token });
+        } finally {
+          await armStopAfter(supabase, userId).catch(() => undefined);
+        }
+      } catch (error) {
+        if (error instanceof StartLimitError) {
+          return respond(
+            ctx,
+            "secrets",
+            "The computer is starting up — try again in a minute."
+          );
+        }
+        if (error instanceof ManagerInputError) {
+          return respond(ctx, "secrets", error.message);
+        }
+        return respond(
+          ctx,
+          "secrets",
+          "Enabling the manager failed — try again."
+        );
+      }
+      await markSafely(supabase, userId, "secrets", "done");
+      return respond(ctx, null, "Manager enabled.");
+    }
+
+    if (action === "ask_agent") {
+      const text = String(form.get("text") ?? "").trim();
+      if (!text || text.length > 4000) {
+        return respond(ctx, "agent", "Say something first.");
+      }
+      try {
+        const box = await ensureBoxAwake(supabase, userId);
+        const run = await createRun(box.target, {
+          input: text,
+          sessionId: MAIN_SESSION,
+          metadata: { app: "onboarding", resource: ctx.session.resourceId, surface: "miniapp" },
+        });
+        await supabase.from("agent_runs").insert({
+          user_id: userId,
+          hermes_run_id: run.run_id,
+          trigger: "web",
+        });
+        await armStopAfter(supabase, userId).catch(() => undefined);
+      } catch (error) {
+        if (error instanceof StartLimitError) {
+          return respond(
+            ctx,
+            "agent",
+            "The computer is starting up — try again in a minute."
+          );
+        }
+        throw error;
+      }
+      await markSafely(supabase, userId, "agent", "done");
+      return respond(
+        ctx,
+        null,
+        "Sent — your agent is replying in your chat. You're set up."
+      );
+    }
+
+    return forbidden("unknown action");
+  },
+};
