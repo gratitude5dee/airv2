@@ -118,9 +118,9 @@ export async function startCheckout(
     throw new CommerceError("could not create the order", 500);
   }
   const orderId = order.id as string;
-  const session = await createConnectCheckoutSession(
-    merchant.stripe_account_id,
-    {
+  let session;
+  try {
+    session = await createConnectCheckoutSession(merchant.stripe_account_id, {
       // Stripe multiplies unit_amount × quantity — pass the per-item price.
       amountCents: product.price_cents,
       quantity,
@@ -128,9 +128,24 @@ export async function startCheckout(
       successUrl: `${storefrontUrl}?order=${orderId}&k=${buyerKey}`,
       cancelUrl: storefrontUrl,
       metadata: { order_id: orderId },
-    }
-  );
-  if (!session.url) throw new CommerceError("checkout session has no URL", 502);
+    });
+    if (!session.url) throw new Error("checkout session has no URL");
+  } catch (cause) {
+    // Don't leave an orphan pending row when Stripe is unreachable or
+    // misconfigured — release the order and fail gracefully.
+    await supabase
+      .from("orders")
+      .update({ status: "expired", resolved_at: new Date().toISOString() })
+      .eq("id", orderId)
+      .eq("status", "pending");
+    console.error(
+      JSON.stringify({
+        msg: "checkout session create failed",
+        error: cause instanceof Error ? cause.message : String(cause),
+      })
+    );
+    throw new CommerceError("payments are unavailable right now — try again later", 502);
+  }
   await supabase
     .from("orders")
     .update({ stripe_session_id: session.id })
