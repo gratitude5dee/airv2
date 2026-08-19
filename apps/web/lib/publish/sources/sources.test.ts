@@ -22,9 +22,10 @@ function depsWithProducts(products: unknown[]): SourceDeps {
 }
 
 describe("source registry", () => {
-  it("exposes both sources and rejects prototype keys", () => {
+  it("exposes the sources and rejects prototype keys", () => {
     expect(allSources().map((s) => s.id).sort()).toEqual([
       "ecommerce",
+      "storefront",
       "touring",
     ]);
     expect(sourceFor("ecommerce")?.id).toBe("ecommerce");

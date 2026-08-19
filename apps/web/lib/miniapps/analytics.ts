@@ -295,14 +295,45 @@ export async function storePanel(
   };
 }
 
-/** Wired but empty until the MA8 storefront lands (Session G). */
-export function storefrontPanel(): Panel {
+/** MA8: paid orders by day — reconciles with the orders table exactly. */
+export async function storefrontPanel(
+  supabase: SupabaseClient,
+  userId: string,
+  since: string
+): Promise<Panel> {
+  const { data, error } = await supabase
+    .from("orders")
+    .select("amount_cents, status, resolved_at")
+    .eq("user_id", userId)
+    .in("status", ["paid", "refunded"])
+    .gte("resolved_at", since);
+  if (error) fail("orders", error.message);
+  const byDay = new Map<string, { orders: number; cents: number }>();
+  for (const order of (data ?? []) as {
+    amount_cents: number;
+    status: string;
+    resolved_at: string;
+  }[]) {
+    if (order.status !== "paid") continue;
+    const day = order.resolved_at.slice(0, 10);
+    const entry = byDay.get(day) ?? { orders: 0, cents: 0 };
+    entry.orders += 1;
+    entry.cents += order.amount_cents;
+    byDay.set(day, entry);
+  }
+  const rows = [...byDay.entries()]
+    .sort()
+    .map(([day, entry]): (string | number)[] => [
+      day,
+      entry.orders,
+      Number((entry.cents / 100).toFixed(2)),
+    ]);
   return {
     key: "storefront",
     title: "Storefront revenue",
-    note: "storefront revenue arrives with the storefront itself — this panel fills in automatically once it ships.",
-    columns: ["day", "orders", "revenue_usdc"],
-    rows: [],
+    note: rows.length === 0 ? "no paid orders in the window yet." : null,
+    columns: ["day", "orders", "revenue_usd"],
+    rows,
   };
 }
 
@@ -361,7 +392,7 @@ export async function allPanels(
     await adsPanel(supabase, userId, since),
     await conversionsPanel(supabase, userId, since),
     await storePanel(supabase, userId, since),
-    storefrontPanel(),
+    await storefrontPanel(supabase, userId, since),
     await spendPanel(supabase, userId, since),
   ];
 }

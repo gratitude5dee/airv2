@@ -15,10 +15,27 @@ interface StripeDb {
 
 const db: StripeDb = { events: [] };
 
+/** Empty read/update chain for the MA8 dispatch tables (no rows match). */
+function emptyChain(): Record<string, unknown> {
+  const chain: Record<string, unknown> = {
+    select: () => chain,
+    update: () => chain,
+    eq: () => chain,
+    is: () => chain,
+    order: () => chain,
+    limit: () => chain,
+    maybeSingle: async () => ({ data: null, error: null }),
+    then(resolve: (result: { data: unknown[]; error: null }) => void) {
+      resolve({ data: [], error: null });
+    },
+  };
+  return chain;
+}
+
 function fakeSupabase() {
   return {
     from(table: string) {
-      if (table !== "stripe_events") throw new Error(`unexpected table ${table}`);
+      if (table !== "stripe_events") return emptyChain();
       return {
         async insert(row: { event_id: string; event_type: string }) {
           if (db.events.some((e) => e.event_id === row.event_id)) {
@@ -26,6 +43,14 @@ function fakeSupabase() {
           }
           db.events.push(row);
           return { error: null };
+        },
+        delete() {
+          return {
+            eq: async (_column: string, value: string) => {
+              db.events = db.events.filter((e) => e.event_id !== value);
+              return { error: null };
+            },
+          };
         },
       };
     },

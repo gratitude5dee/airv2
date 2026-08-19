@@ -31,6 +31,13 @@ import {
   SCHEDULE_COLUMNS,
   type AgentSchedule,
 } from "@/lib/calendar/schedule";
+import {
+  approvePaymentRequest,
+  dismissPaymentRequest,
+} from "@/lib/commerce/paymentRequests";
+import { applyCatalogPublish } from "@/lib/commerce/catalog";
+import { CommerceError } from "@/lib/commerce/merchants";
+import { env } from "@/lib/env";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -273,6 +280,53 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
       return NextResponse.json(
         { error: "could not resolve the purchase review — try again" },
+        { status: 502 }
+      );
+    } finally {
+      await armStopAfter(supabase, userId).catch(() => undefined);
+    }
+  }
+
+  if (decision.kind === "payment_request" && decision.ref) {
+    // MA8 #12: approval resolves through rails with their own invariants —
+    // fiat mints a Stripe Checkout (Link) session on the payee's connected
+    // account (the response carries the URL to open); USDC files the
+    // existing wallet transfer intent whose own approval executes the send.
+    try {
+      if (body.action === "approve") {
+        const result = await approvePaymentRequest(
+          supabase,
+          userId,
+          decision.ref as string,
+          `${env.appOrigin()}/home`
+        );
+        await supabase
+          .from("decisions")
+          .update({ status: "approved", resolved_at: new Date().toISOString() })
+          .eq("id", decision.id)
+          .eq("user_id", userId);
+        return NextResponse.json({ ok: true, ...result });
+      }
+      await dismissPaymentRequest(supabase, userId, decision.ref as string);
+    } catch (error) {
+      if (error instanceof CommerceError) {
+        return NextResponse.json(
+          { error: error.message },
+          { status: error.status }
+        );
+      }
+      throw error;
+    }
+  }
+
+  if (decision.kind === "shop_publish" && body.action === "approve") {
+    // MA8 #13: owner approval projects the box-side catalog into the public
+    // storefront_products rows — the agent can only stage.
+    try {
+      await applyCatalogPublish(supabase, userId);
+    } catch {
+      return NextResponse.json(
+        { error: "couldn't reach your agent's computer — try again" },
         { status: 502 }
       );
     } finally {
