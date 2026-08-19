@@ -26,6 +26,7 @@ import {
   launchRateLimited,
   publishRateLimited,
   recordOpsEvent,
+  recordStoreOpen,
   uploadRateLimited,
 } from "@/lib/security/limits";
 import { miniAppOps, type MiniAppOpsInput } from "@/lib/admin/ops";
@@ -151,6 +152,17 @@ describe("durable ops-ledger rate limits (MA11)", () => {
   it("fails open on a ledger read error — a counter outage never bricks the store", async () => {
     const supabase = fakeSupabase({ rows: [], countError: true });
     expect(await launchRateLimited(supabase, "user-1")).toBe(false);
+  });
+
+  it("throttles anonymous store_open writes — a hammered store home can't spam inserts", async () => {
+    const db: FakeOps = { rows: [] };
+    const supabase = fakeSupabase(db);
+    for (let i = 0; i < 10; i += 1) {
+      await recordStoreOpen(supabase);
+    }
+    expect(
+      db.rows.filter((row) => row.kind === "store_open")
+    ).toHaveLength(1);
   });
 });
 

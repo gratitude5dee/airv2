@@ -50,6 +50,25 @@ export async function recordOpsEvent(
   }
 }
 
+/** Min gap between anonymous store_open writes, per server instance. */
+export const STORE_OPEN_MIN_INTERVAL_MS = 1_000;
+
+let lastStoreOpenAt = 0;
+
+/**
+ * Record an anonymous store-home open. The store home needs no session, so
+ * an unauthenticated client could otherwise force one insert per request —
+ * throttle writes to one per second per instance. The counter stays a
+ * useful traffic signal; it is not an exact hit count (the edge cache
+ * already absorbs most anonymous hits in production).
+ */
+export async function recordStoreOpen(supabase: SupabaseClient): Promise<void> {
+  const now = Date.now();
+  if (now - lastStoreOpenAt < STORE_OPEN_MIN_INTERVAL_MS) return;
+  lastStoreOpenAt = now;
+  await recordOpsEvent(supabase, "store_open", null);
+}
+
 async function countRecent(
   supabase: SupabaseClient,
   kind: OpsEventKind,

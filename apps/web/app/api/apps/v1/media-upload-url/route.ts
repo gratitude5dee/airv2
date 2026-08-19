@@ -51,9 +51,21 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   ).toLowerCase();
   const sizeBytes = Number(request.nextUrl.searchParams.get("sizeBytes") ?? "0");
   if (!allowedMediaType(contentType)) {
+    await recordOpsEvent(
+      supabase,
+      "upload_rejected",
+      auth.session.userId,
+      "content type not allowed"
+    );
     return NextResponse.json({ error: "content type not allowed" }, { status: 400 });
   }
   if (!Number.isFinite(sizeBytes) || sizeBytes <= 0 || sizeBytes > MEDIA_MAX_BYTES) {
+    await recordOpsEvent(
+      supabase,
+      "upload_rejected",
+      auth.session.userId,
+      "invalid size"
+    );
     return NextResponse.json({ error: "invalid size" }, { status: 400 });
   }
   if (await uploadRateLimited(supabase, auth.session.userId)) {

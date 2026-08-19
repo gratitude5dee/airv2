@@ -10,7 +10,7 @@ import { Orb } from "@/components/orb/Orb";
 import { serviceClient } from "@/lib/supabase";
 import { env } from "@/lib/env";
 import { listPublicApps, type RegistryApp } from "@/lib/miniapps/registry";
-import { recordOpsEvent } from "@/lib/security/limits";
+import { recordStoreOpen } from "@/lib/security/limits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -85,8 +85,9 @@ export default async function StoreHome({
   const { q } = await searchParams;
   const query = (q ?? "").trim().toLowerCase();
   const supabase = serviceClient();
-  // Anonymous store-home traffic feeds the store_opens_24h ops counter.
-  await recordOpsEvent(supabase, "store_open", null);
+  // Anonymous store-home traffic feeds the store_opens_24h ops counter;
+  // the recorder throttles writes so unauthenticated hits can't spam inserts.
+  await recordStoreOpen(supabase);
   const apps = await listPublicApps(supabase);
   const filtered = query
     ? apps.filter(
