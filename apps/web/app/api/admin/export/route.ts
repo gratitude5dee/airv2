@@ -76,14 +76,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   if (ownedAppIds.length > 0) {
     const { data: receipts } = await supabase
       .from("x402_receipts")
-      .select("jti, app_id, payer_address, amount_usdc, created_at")
+      .select("jti, app_id, payer_address, amount_usdc, settled_at")
       .in("app_id", ownedAppIds);
     archive.x402_receipts = (receipts ?? []).map((row) => ({
       jti: row.jti,
       app_id: row.app_id,
       payer: pseudonymizePayer(row.payer_address as string | null),
       amount_usdc: row.amount_usdc,
-      created_at: row.created_at,
+      settled_at: row.settled_at,
     }));
   } else {
     archive.x402_receipts = [];
