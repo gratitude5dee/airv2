@@ -51,7 +51,14 @@ def _default_hermes_bin() -> str:
 HERMES_BIN = os.environ.get("CREATIVE_HERMES_BIN") or _default_hermes_bin()
 PLUGIN_VERSION = "0.3.0"
 
-JOB_KINDS = {"commercial", "marketing", "ugc", "cinematography", "ad_asset_group"}
+JOB_KINDS = {
+    "commercial",
+    "marketing",
+    "ugc",
+    "cinematography",
+    "ad_asset_group",
+    "video_render",
+}
 
 # Coarse pre-run spend estimates in USD by job kind (CM1 task 4). The control
 # plane enforces the cap; these make enforcement possible by being stated
@@ -63,6 +70,9 @@ COST_ESTIMATES_USD = {
     "cinematography": 6.0,
     # One concept fully built plus two alternates at hero ratio (CM5 task 6).
     "ad_asset_group": 8.0,
+    # Deterministic ffmpeg timeline assembly (MA7 #7) — compute only, no
+    # provider spend, but still metered through the same job/cost ledgers.
+    "video_render": 0.1,
 }
 
 MEDIA_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".mp4", ".mov", ".gif", ".mp3", ".wav"}
@@ -174,12 +184,97 @@ class JobRequest(BaseModel):
     spec: dict | None = None
     brand_rev: int | None = None
     inputs: list[str] = Field(default_factory=list, max_length=32)
+    # video_render only: {clips: [{asset_id, trim_start, trim_end, caption}],
+    # audio_asset_id} — asset ids are resolved to box paths at submit time.
+    timeline: dict | None = None
 
 
 class VariantRequest(BaseModel):
     """Ratio/duration variants a spec demands, derived from one master."""
 
     ratios: list[str] = Field(default_factory=list)  # e.g. ["1:1", "9:16"]
+
+
+RENDER_VIDEO_SCRIPT = Path(__file__).with_name("render_video.py")
+
+MAX_TIMELINE_CLIPS = 50
+
+
+def _resolve_timeline(conn: sqlite3.Connection, timeline: dict) -> dict:
+    """Validate a video_render timeline and resolve asset ids to box paths.
+
+    Raises HTTPException(400) on any malformed or unknown reference — a
+    render never starts against assets that don't exist.
+    """
+    clips = timeline.get("clips")
+    if not isinstance(clips, list) or not clips:
+        raise HTTPException(400, "timeline requires at least one clip")
+    if len(clips) > MAX_TIMELINE_CLIPS:
+        raise HTTPException(400, f"timeline exceeds {MAX_TIMELINE_CLIPS} clips")
+
+    def asset_path(asset_id: object) -> str:
+        if not isinstance(asset_id, str) or not asset_id:
+            raise HTTPException(400, "timeline asset id malformed")
+        row = conn.execute(
+            "select path from assets where id=?", (asset_id,)
+        ).fetchone()
+        if not row or not Path(row["path"]).is_file():
+            raise HTTPException(400, f"timeline references unknown asset {asset_id!r}")
+        return row["path"]
+
+    resolved_clips = []
+    for clip in clips:
+        if not isinstance(clip, dict):
+            raise HTTPException(400, "timeline clip malformed")
+        trim_start = clip.get("trim_start", 0)
+        trim_end = clip.get("trim_end", 0)
+        if not isinstance(trim_start, (int, float)) or not isinstance(
+            trim_end, (int, float)
+        ) or trim_start < 0 or trim_end < 0:
+            raise HTTPException(400, "timeline trims malformed")
+        caption = clip.get("caption", "")
+        if not isinstance(caption, str) or len(caption) > 200:
+            raise HTTPException(400, "timeline caption malformed")
+        resolved_clips.append(
+            {
+                "path": asset_path(clip.get("asset_id")),
+                "trim_start": float(trim_start),
+                "trim_end": float(trim_end),
+                "caption": caption,
+            }
+        )
+    resolved: dict = {"clips": resolved_clips}
+    audio_asset_id = timeline.get("audio_asset_id")
+    if audio_asset_id is not None:
+        resolved["audio_path"] = asset_path(audio_asset_id)
+    return resolved
+
+
+def _launch_video_render(job_id: str, resolved_timeline: dict) -> int:
+    """Run the deterministic ffmpeg timeline renderer (MA7 #7) in the box.
+
+    Same exit_code convention as skill jobs so _refresh_job_state treats it
+    identically; output lands in the job dir and is registered as an asset.
+    """
+    job_dir = JOBS_DIR / job_id
+    job_dir.mkdir(parents=True, exist_ok=True)
+    (job_dir / "timeline.json").write_text(json.dumps(resolved_timeline))
+    log_path = job_dir / "job.log"
+    exit_path = job_dir / "exit_code"
+    script = (
+        f"python3 {shlex.quote(str(RENDER_VIDEO_SCRIPT))} "
+        f"{shlex.quote(str(job_dir))}; "
+        f"echo $? > {shlex.quote(str(exit_path))}"
+    )
+    with open(log_path, "ab") as log:
+        process = subprocess.Popen(
+            ["/bin/sh", "-c", script],
+            stdout=log,
+            stderr=log,
+            cwd=str(job_dir),
+            start_new_session=True,
+        )
+    return process.pid
 
 
 def _launch(
@@ -465,13 +560,20 @@ def submit_job(body: JobRequest) -> dict:
         raise HTTPException(400, f"unknown job kind {body.kind!r}")
     if body.kind == "ad_asset_group" and not body.spec_id:
         raise HTTPException(400, "ad_asset_group requires spec_id")
+    if body.kind == "video_render" and body.timeline is None:
+        raise HTTPException(400, "video_render requires a timeline")
     job_id = uuid.uuid4().hex
     now = time.time()
     conn = _db()
     try:
-        pid = _launch(
-            job_id, body.kind, body.brief, body.inputs, body.spec_id, body.spec
-        )
+        if body.kind == "video_render":
+            assert body.timeline is not None
+            resolved = _resolve_timeline(conn, body.timeline)
+            pid = _launch_video_render(job_id, resolved)
+        else:
+            pid = _launch(
+                job_id, body.kind, body.brief, body.inputs, body.spec_id, body.spec
+            )
         conn.execute(
             "insert into jobs (id, kind, brief, spec_id, brand_rev, inputs, state, "
             "progress, cost_estimate, pid, created_at, updated_at) "
