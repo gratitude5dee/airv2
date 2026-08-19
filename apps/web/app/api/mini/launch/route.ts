@@ -17,21 +17,41 @@ import { mintToken } from "@/lib/miniapps/tokens";
 import { getRegistryApp } from "@/lib/miniapps/registry";
 import { logGateEvent, visibilityGate, x402Gate } from "@/lib/miniapps/gates";
 import { storeSessionUserId } from "@/lib/miniapps/storeSession";
+import { verifyPluginToken } from "@/lib/plugin/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const userId = storeSessionUserId(request);
+  const supabase = serviceClient();
+  let userId = storeSessionUserId(request);
+  // MA2.4 headless launch: a plugin bearer stands in for the store session,
+  // but only opens apps that opted into plugin sign-in (checked below).
+  let viaPlugin = false;
+  if (!userId) {
+    const auth = request.headers.get("authorization") ?? "";
+    if (auth.startsWith("Bearer ")) {
+      const principal = await verifyPluginToken(supabase, auth.slice(7));
+      if (principal) {
+        userId = principal.userId;
+        viaPlugin = true;
+      }
+    }
+  }
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const body = (await request.json().catch(() => ({}))) as { slug?: string };
   const slug = body.slug ?? "";
-  const supabase = serviceClient();
   const app = await getRegistryApp(supabase, slug);
   if (!app || visibilityGate(app)) {
     return NextResponse.json({ error: "unknown app" }, { status: 404 });
+  }
+  if (viaPlugin && !app.plugin_signin_enabled) {
+    return NextResponse.json(
+      { error: "plugin sign-in not enabled for this app" },
+      { status: 403 }
+    );
   }
   // Password-gated apps challenge in the app view itself; x402 challenges
   // here so the store can settle before handing out a token.
