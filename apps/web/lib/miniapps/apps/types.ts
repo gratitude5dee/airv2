@@ -35,4 +35,11 @@ export interface MiniAppModule {
    * 403 and never reaches `action`. Default: none — guests are read-only.
    */
   guestActions?: readonly string[];
+  /**
+   * MA8: a public storefront-style surface. The loader still runs the
+   * visibility/password/x402 gates, but an anonymous visitor with no
+   * session gets a synthetic guest session for the app's owner instead of
+   * a 403 — the module renders only intended-public data.
+   */
+  publicAccess?: boolean;
 }

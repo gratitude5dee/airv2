@@ -103,6 +103,14 @@ const seed: Record<string, Row[]> = {
   entitlements: [
     { user_id: ME, plan: "paid", monthly_cap_usd: "20.00", spend_mtd_usd: "3.1400" },
   ],
+  orders: [
+    { user_id: ME, amount_cents: 2500, status: "paid", resolved_at: "2026-08-10T12:00:00Z" },
+    { user_id: ME, amount_cents: 1000, status: "paid", resolved_at: "2026-08-10T13:00:00Z" },
+    { user_id: ME, amount_cents: 500, status: "paid", resolved_at: "2026-08-11T09:00:00Z" },
+    { user_id: ME, amount_cents: 9999, status: "refunded", resolved_at: "2026-08-11T10:00:00Z" }, // refunded excluded from revenue
+    { user_id: ME, amount_cents: 9999, status: "pending", resolved_at: null }, // unpaid excluded
+    { user_id: OTHER, amount_cents: 7777, status: "paid", resolved_at: "2026-08-11T00:00:00Z" },
+  ],
   cost_events: [
     { user_id: ME, kind: "render", amount_cents: 12, occurred_at: "2026-08-10T00:00:00Z" },
     { user_id: ME, kind: "render", amount_cents: 8, occurred_at: "2026-08-11T00:00:00Z" },
@@ -160,10 +168,15 @@ describe("analytics reconciliation", () => {
     expect(panel.note).toContain("no published apps");
   });
 
-  it("storefront revenue panel is wired but empty (Session G)", () => {
-    const panel = storefrontPanel();
-    expect(panel.rows).toEqual([]);
-    expect(panel.note).toContain("storefront");
+  it("storefront revenue reconciles with paid orders by day (MA8)", async () => {
+    const panel = await storefrontPanel(supabase, ME, SINCE);
+    expect(panel.rows).toEqual([
+      ["2026-08-10", 2, 35],
+      ["2026-08-11", 1, 5],
+    ]);
+    // Refunded, pending, and other users' orders never count as revenue.
+    expect(JSON.stringify(panel.rows)).not.toContain("99.99");
+    expect(JSON.stringify(panel.rows)).not.toContain("77.77");
   });
 
   it("spend panel reflects entitlements and cost_events", async () => {

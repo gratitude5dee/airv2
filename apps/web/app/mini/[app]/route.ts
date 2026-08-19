@@ -20,12 +20,17 @@ import {
   cookieName,
   externalOrigin,
   logGateEvent,
+  passwordGate,
   runGateChain,
+  sessionFromCookie,
   visibilityGate,
+  x402Gate,
+  type GateOutcome,
 } from "@/lib/miniapps/gates";
 import { guestRateLimited, redeemGuestGrant } from "@/lib/miniapps/guests";
 import { FIRST_PARTY_MODULES, type MiniAppModule } from "@/lib/miniapps/apps";
 import { publishedModule } from "@/lib/miniapps/apps/published";
+import { isStorefrontApp, storefront } from "@/lib/miniapps/apps/storefront";
 import { forbidden, notFound, withBaseHeaders } from "@/lib/miniapps/html";
 
 export const runtime = "nodejs";
@@ -44,9 +49,42 @@ function basePathFor(request: NextRequest, slug: string): string {
 }
 
 function resolveModule(app: RegistryApp): MiniAppModule | null {
-  // First-party rows dispatch by slug; publisher rows (owner_user_id set +
+  // First-party rows dispatch by slug; merchant storefront rows (MA8) to
+  // the storefront module; publisher rows (owner_user_id set +
   // bundle_version) dispatch to the published-bundle module (MA3).
+  if (isStorefrontApp(app)) return storefront;
   return FIRST_PARTY_MODULES[app.slug] ?? publishedModule(app);
+}
+
+/**
+ * MA8 public surfaces: the visibility/password/x402 gates still run, but an
+ * anonymous visitor with no session cookie gets a synthetic guest session
+ * for the app's owner (scoped to this app only — it mints nothing and the
+ * guest-action gate still applies) instead of a 403.
+ */
+async function runPublicGateChain(
+  request: NextRequest,
+  app: RegistryApp,
+  basePath: string,
+  submittedPassword?: string
+): Promise<GateOutcome> {
+  const visibility = visibilityGate(app);
+  if (visibility) return { ok: false, response: visibility };
+  const password = passwordGate(request, app, basePath, submittedPassword);
+  if (password) return { ok: false, response: password.response };
+  const payment = await x402Gate(request, app);
+  if (payment) return { ok: false, response: payment };
+  const session = sessionFromCookie(request, app.slug);
+  if (session) return { ok: true, session };
+  if (!app.owner_user_id) return { ok: false, response: notFound() };
+  return {
+    ok: true,
+    session: {
+      userId: app.owner_user_id,
+      resourceId: "storefront",
+      role: "guest",
+    },
+  };
 }
 
 export async function GET(
@@ -138,7 +176,9 @@ export async function GET(
     return response;
   }
 
-  const gate = await runGateChain(request, supabase, app, basePath);
+  const gate = appModule.publicAccess
+    ? await runPublicGateChain(request, app, basePath)
+    : await runGateChain(request, supabase, app, basePath);
   if (!gate.ok) return gate.response;
 
   return appModule.render({
@@ -171,13 +211,9 @@ export async function POST(
       ? String(form.get("password") ?? "")
       : undefined;
 
-  const gate = await runGateChain(
-    request,
-    supabase,
-    app,
-    basePath,
-    submittedPassword
-  );
+  const gate = appModule.publicAccess
+    ? await runPublicGateChain(request, app, basePath, submittedPassword)
+    : await runGateChain(request, supabase, app, basePath, submittedPassword);
   if (!gate.ok) return gate.response;
   if (action === "__password") {
     // Already unlocked — just reload the view.

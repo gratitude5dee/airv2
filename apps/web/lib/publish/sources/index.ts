@@ -4,10 +4,12 @@
  */
 import type { CalendarSource } from "./source";
 import { ecommerceSource } from "./ecommerce";
+import { storefrontSource } from "./storefront";
 import { touringSource } from "./touring";
 
 const SOURCES: Record<string, CalendarSource> = {
   [ecommerceSource.id]: ecommerceSource,
+  [storefrontSource.id]: storefrontSource,
   [touringSource.id]: touringSource,
 };
 

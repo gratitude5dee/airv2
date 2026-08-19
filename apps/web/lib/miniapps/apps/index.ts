@@ -15,6 +15,8 @@ import { inbox } from "./inbox";
 import { kanban } from "./kanban";
 import { onboarding } from "./onboarding";
 import { browser } from "./passthrough";
+import { pay } from "./pay";
+import { shop } from "./shop";
 import { settings } from "./settings";
 import { todo } from "./todo";
 import { vault } from "./vault";
@@ -31,7 +33,9 @@ export const FIRST_PARTY_MODULES: Record<string, MiniAppModule> = {
   inbox,
   kanban,
   onboarding,
+  pay,
   settings,
+  shop,
   todo,
   vault,
   video,

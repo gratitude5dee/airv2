@@ -50,7 +50,8 @@ async function csvResponse(
   else if (key === "conversions")
     panel = await conversionsPanel(ctx.supabase, userId, since);
   else if (key === "store") panel = await storePanel(ctx.supabase, userId, since);
-  else if (key === "storefront") panel = storefrontPanel();
+  else if (key === "storefront")
+    panel = await storefrontPanel(ctx.supabase, userId, since);
   else if (key === "spend") panel = await spendPanel(ctx.supabase, userId, since);
   if (!panel) {
     return new NextResponse("unknown panel", { status: 404, headers: BASE_HEADERS });
