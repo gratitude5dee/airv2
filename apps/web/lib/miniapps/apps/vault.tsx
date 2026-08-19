@@ -18,6 +18,7 @@ import {
   type VaultItemMetadata,
 } from "@/lib/vault/client";
 import { resolvePurchaseReview } from "@/lib/vault/purchase";
+import { externalOrigin } from "../gates";
 import { esc, forbidden, html, page, withBaseHeaders } from "../html";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
@@ -324,7 +325,7 @@ export const vault: MiniAppModule = {
       }
       return withBaseHeaders(
         NextResponse.redirect(
-          new URL(ctx.basePath, ctx.request.nextUrl.origin),
+          new URL(ctx.basePath, externalOrigin(ctx.request)),
           303
         )
       );

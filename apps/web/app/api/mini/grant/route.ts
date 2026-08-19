@@ -31,13 +31,34 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!app || app.status !== "published") {
     return NextResponse.json({ error: "unknown app" }, { status: 400 });
   }
+  if (app.access !== "multiplayer") {
+    return NextResponse.json(
+      { error: "app is not shareable" },
+      { status: 400 }
+    );
+  }
   const resource = body.resource ?? "default";
   if (!/^[A-Za-z0-9._-]{1,64}$/.test(resource)) {
     return NextResponse.json({ error: "invalid resource" }, { status: 400 });
   }
+  const maxUses = Number(body.max_uses ?? 25);
+  const ttlHours = Number(body.ttl_hours ?? 72);
+  if (
+    !Number.isInteger(maxUses) ||
+    maxUses < 1 ||
+    maxUses > 500 ||
+    !Number.isFinite(ttlHours) ||
+    ttlHours <= 0 ||
+    ttlHours > 24 * 30
+  ) {
+    return NextResponse.json(
+      { error: "invalid grant options" },
+      { status: 400 }
+    );
+  }
   const grant = await createGuestGrant(supabase, userId, app.id, resource, {
-    maxUses: body.max_uses,
-    ttlHours: body.ttl_hours,
+    maxUses,
+    ttlHours,
   });
   return NextResponse.json({
     grant_id: grant.id,
