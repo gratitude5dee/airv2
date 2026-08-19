@@ -51,9 +51,11 @@ export function middleware(request: NextRequest): NextResponse {
     return NextResponse.redirect(target, 301);
   }
 
-  // API routes pass through untouched; only /api/mini/* belongs here.
+  // API routes pass through untouched; only /api/mini/* (store/loader) and
+  // /api/apps/* (the published-bundle Apps API, MA3) belong here.
   if (pathname.startsWith("/api/")) {
     if (pathname.startsWith("/api/mini/")) return NextResponse.next();
+    if (pathname.startsWith("/api/apps/")) return NextResponse.next();
     return new NextResponse("not found", { status: 404 });
   }
 
@@ -67,6 +69,8 @@ export function middleware(request: NextRequest): NextResponse {
 }
 
 export const config = {
-  // Skip static assets and Next internals; everything else routes by host.
-  matcher: ["/((?!_next/|favicon.ico|.*\\.(?:png|jpg|jpeg|svg|ico|css|js|woff2?)$).*)"],
+  // Skip Next internals only. Static-looking extensions still need the
+  // middleware: published bundle assets (/<slug>/app.js etc. on the mini
+  // host) must be rewritten to /mini/<slug>/<path> to be served (MA3).
+  matcher: ["/((?!_next/|favicon.ico$).*)"],
 };

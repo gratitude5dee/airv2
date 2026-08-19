@@ -81,6 +81,30 @@ async function writeDoc<T>(
   );
 }
 
+/**
+ * MA3 Apps API state: published apps keep their state in the session user's
+ * box at the same path convention the first-party apps use (C4). Capped and
+ * shape-checked at the route; stored verbatim here.
+ */
+export async function readAppState(
+  supabase: SupabaseClient,
+  userId: string,
+  app: string,
+  resourceId: string
+): Promise<unknown> {
+  return await readDoc<unknown>(supabase, userId, app, resourceId, {});
+}
+
+export async function writeAppState(
+  supabase: SupabaseClient,
+  userId: string,
+  app: string,
+  resourceId: string,
+  state: unknown
+): Promise<void> {
+  await writeDoc(supabase, userId, app, resourceId, state);
+}
+
 export async function getKanban(
   supabase: SupabaseClient,
   userId: string,

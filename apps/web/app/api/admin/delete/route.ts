@@ -18,6 +18,7 @@ import {
   listConnectedAccounts,
 } from "@/lib/composio/client";
 import { ASSETS_BUCKET, userPrefix } from "@/lib/assets/keys";
+import { deletePrefix, r2Configured } from "@/lib/storage/r2";
 import { openAdsKey, updateCampaign } from "@/lib/ads/openai";
 import { WAVE_TABLES, WAVE_TABLES_WITHOUT_USER_ID } from "@/lib/security/c18";
 
@@ -207,6 +208,24 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     steps.assets = `removed ${removed}`;
   } catch (error) {
     steps.assets = `error: ${error instanceof Error ? error.message : String(error)}`;
+  }
+
+  // MA4: delete every public media object under the user's R2 prefix
+  // (u/<username>/ — includes media/, apps/, and mini-app icon uploads).
+  try {
+    const { data: bucket } = await supabase
+      .from("user_buckets")
+      .select("prefix")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (bucket && r2Configured()) {
+      const removed = await deletePrefix(bucket.prefix as string);
+      steps.public_media = `removed ${removed}`;
+    } else {
+      steps.public_media = bucket ? "r2 not configured" : "none";
+    }
+  } catch (error) {
+    steps.public_media = `error: ${error instanceof Error ? error.message : String(error)}`;
   }
 
   await supabase

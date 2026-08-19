@@ -5,13 +5,9 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { provisionEmail } from "../provisioning/email";
+import { isReservedWord } from "../miniapps/reserved";
 
 export const USERNAME_PATTERN = /^[a-z0-9_]{2,24}$/;
-
-export const RESERVED_USERNAMES = new Set([
-  "admin", "air", "api", "app", "billing", "help", "mail", "root",
-  "security", "support", "system", "team", "wzrd", "www",
-]);
 
 export type UsernameResult =
   | { ok: true; username: string; address: string | null }
@@ -29,7 +25,18 @@ export async function setUsername(
   raw: string
 ): Promise<UsernameResult> {
   const username = raw.toLowerCase().trim();
-  if (!USERNAME_PATTERN.test(username) || RESERVED_USERNAMES.has(username)) {
+  if (!USERNAME_PATTERN.test(username) || isReservedWord(username)) {
+    return { ok: false, error: "invalid" };
+  }
+  // MA3 both-directions collision check: a username may not claim a word
+  // that is already a registry slug (bare first-party slugs are also in the
+  // reserved list; this catches anything registered since).
+  const { data: slugClash } = await supabase
+    .from("mini_apps")
+    .select("id")
+    .eq("slug", username)
+    .maybeSingle();
+  if (slugClash) {
     return { ok: false, error: "invalid" };
   }
   const { error } = await supabase
