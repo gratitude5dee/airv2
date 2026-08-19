@@ -154,6 +154,18 @@ describe("durable ops-ledger rate limits (MA11)", () => {
     expect(await launchRateLimited(supabase, "user-1")).toBe(false);
   });
 
+  it("counts rejected attempts toward the upload budget — invalid presign spam gets limited", async () => {
+    const db: FakeOps = { rows: [] };
+    const supabase = fakeSupabase(db);
+    for (let i = 0; i < UPLOADS_PER_HOUR; i += 1) {
+      await recordOpsEvent(supabase, "upload_rejected", "user-1");
+    }
+    expect(await uploadRateLimited(supabase, "user-1")).toBe(true);
+    expect(
+      db.rows.filter((r) => r.kind === "rate_limited" && r.ref === "upload")
+    ).toHaveLength(1);
+  });
+
   it("throttles anonymous store_open writes — a hammered store home can't spam inserts", async () => {
     const db: FakeOps = { rows: [] };
     const supabase = fakeSupabase(db);

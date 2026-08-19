@@ -46,6 +46,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       { status: 503 }
     );
   }
+  // The limit runs before the guards and counts rejected attempts too, so
+  // invalid presign spam cannot write unbounded upload_rejected rows.
+  if (await uploadRateLimited(supabase, auth.session.userId)) {
+    return NextResponse.json({ error: "too many uploads" }, { status: 429 });
+  }
   const contentType = (
     request.nextUrl.searchParams.get("contentType") ?? ""
   ).toLowerCase();
@@ -67,9 +72,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       "invalid size"
     );
     return NextResponse.json({ error: "invalid size" }, { status: 400 });
-  }
-  if (await uploadRateLimited(supabase, auth.session.userId)) {
-    return NextResponse.json({ error: "too many uploads" }, { status: 429 });
   }
   try {
     const bucket = await ensureUserBucket(supabase, auth.session.userId);

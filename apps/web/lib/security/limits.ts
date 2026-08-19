@@ -124,11 +124,21 @@ export function publishRateLimited(
   return overLimit(supabase, "publish", userId, PUBLISHES_PER_DAY, DAY_MS);
 }
 
-export function uploadRateLimited(
+/**
+ * Rejected attempts count against the hourly upload budget too, so a user
+ * spamming invalid presign requests trips this limit instead of writing an
+ * unbounded stream of upload_rejected rows.
+ */
+export async function uploadRateLimited(
   supabase: SupabaseClient,
   userId: string
 ): Promise<boolean> {
-  return overLimit(supabase, "upload", userId, UPLOADS_PER_HOUR, HOUR_MS);
+  const uploads = await countRecent(supabase, "upload", userId, HOUR_MS);
+  const rejected = await countRecent(supabase, "upload_rejected", userId, HOUR_MS);
+  if (uploads === null || rejected === null) return false; // fail open
+  if (uploads + rejected < UPLOADS_PER_HOUR) return false;
+  await recordOpsEvent(supabase, "rate_limited", userId, "upload");
+  return true;
 }
 
 export function grantRateLimited(
