@@ -5,10 +5,12 @@
  * here as their apps land.
  */
 import type { MiniAppModule } from "./types";
+import { analytics } from "./analytics";
 import { calendar } from "./calendar";
 import { computer } from "./computer";
 import { connect } from "./connect";
 import { crm } from "./crm";
+import { image } from "./image";
 import { inbox } from "./inbox";
 import { kanban } from "./kanban";
 import { onboarding } from "./onboarding";
@@ -16,10 +18,13 @@ import { browser } from "./passthrough";
 import { settings } from "./settings";
 import { todo } from "./todo";
 import { vault } from "./vault";
+import { video } from "./video";
 
 export const FIRST_PARTY_MODULES: Record<string, MiniAppModule> = {
+  analytics,
   browser,
   calendar,
+  image,
   computer,
   connect,
   crm,
@@ -29,6 +34,7 @@ export const FIRST_PARTY_MODULES: Record<string, MiniAppModule> = {
   settings,
   todo,
   vault,
+  video,
 };
 
 export type { MiniAppContext, MiniAppModule } from "./types";

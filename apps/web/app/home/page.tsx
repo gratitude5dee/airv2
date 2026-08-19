@@ -11,6 +11,7 @@ import { ScreenExtras } from "./screen-extras";
 import { VaultPanel } from "./vault-panel";
 import { BotsPanel } from "./bots-panel";
 import { AppsPanel } from "./apps-panel";
+import { PluginPanel } from "./plugin-panel";
 import { CalendarPanel } from "./calendar-panel";
 import {
   BrowserHeader,
@@ -3052,6 +3053,8 @@ export default function HomePage() {
               ))}
             </div>
           </div>
+
+          <PluginPanel />
 
           <div className="panel">
             <h3 className="mt-0 text-[15px] font-semibold">
