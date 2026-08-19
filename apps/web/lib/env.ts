@@ -111,6 +111,21 @@ export const env = {
     );
     return parsed >= 0 ? parsed : 5;
   },
+  // MA2 payments. The facilitator URL defaults to the Coinbase CDP
+  // facilitator; CDP key id/secret are required for Base mainnet settlement
+  // (the gate reports itself unconfigured without them rather than failing
+  // the deploy).
+  x402FacilitatorUrl: (): string =>
+    optional("X402_FACILITATOR_URL", "https://x402.org/facilitator"),
+  x402Network: (): string => optional("X402_NETWORK", "base"),
+  cdpApiKeyId: (): string | null => process.env.CDP_API_KEY_ID ?? null,
+  cdpApiKeySecret: (): string | null => process.env.CDP_API_KEY_SECRET ?? null,
+  stripeSecretKey: (): string => required("STRIPE_SECRET_KEY"),
+  stripeWebhookSecret: (): string => required("STRIPE_WEBHOOK_SECRET"),
+  // MA2.4 plugin sign-in. Hashes plugin bearer tokens at rest; defaults to
+  // the web session secret so the beta needs no new deploy config.
+  pluginTokenSigningKey: (): string =>
+    process.env.PLUGIN_TOKEN_SIGNING_KEY ?? required("SESSION_SECRET"),
   creativeCostCentsVideo: (): number => {
     const parsed = Number.parseInt(
       optional("CREATIVE_COST_CENTS_VIDEO", "25"),

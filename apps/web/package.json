@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@coinbase/x402": "^1.0.1",
     "@supabase/supabase-js": "^2.49.4",
     "@tailwindcss/postcss": "^4.3.3",
     "clsx": "^2.1.1",
@@ -23,9 +24,11 @@
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "spectrum-ts": "^12.7.0",
+    "stripe": "^22.5.0",
     "tailwind-merge": "^3.6.0",
     "tailwindcss": "^4.3.3",
-    "thirdweb": "^5.120.1"
+    "thirdweb": "^5.120.1",
+    "x402": "^1.2.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
