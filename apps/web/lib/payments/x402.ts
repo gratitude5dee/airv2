@@ -262,8 +262,19 @@ export const x402PaymentGate: X402Gate = async (request, app) => {
   const jti = paymentNonce(payload);
   if (!jti) return paymentError(402, "invalid payment payload");
 
+  // The facilitator client throws on non-2xx responses (e.g. a 400 for a
+  // bad signature) rather than returning isValid=false, so rejections are
+  // caught and answered as 402s like any other failed payment.
   const f = facilitator();
-  const verification = await f.verify(payload, requirements);
+  let verification: VerifyResponse;
+  try {
+    verification = await f.verify(payload, requirements);
+  } catch (err) {
+    return paymentError(
+      402,
+      `payment verification failed: ${err instanceof Error ? err.message : "invalid"}`
+    );
+  }
   if (!verification.isValid) {
     return paymentError(
       402,
@@ -271,7 +282,15 @@ export const x402PaymentGate: X402Gate = async (request, app) => {
     );
   }
 
-  const settlement = await f.settle(payload, requirements);
+  let settlement: SettleResponse;
+  try {
+    settlement = await f.settle(payload, requirements);
+  } catch (err) {
+    return paymentError(
+      402,
+      `payment settlement failed: ${err instanceof Error ? err.message : "unknown"}`
+    );
+  }
   if (!settlement.success) {
     return paymentError(
       402,
