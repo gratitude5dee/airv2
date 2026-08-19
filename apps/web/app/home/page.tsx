@@ -241,6 +241,7 @@ interface WalletTransfer {
   id: string;
   to_address: string;
   amount_display: string;
+  token_symbol?: string;
   status: "pending" | "submitting" | "submitted" | "denied" | "failed";
   created_at: string;
 }
@@ -371,6 +372,7 @@ export default function HomePage() {
   const [walletTransfers, setWalletTransfers] = useState<WalletTransfer[]>([]);
   const [sendTo, setSendTo] = useState("");
   const [sendAmount, setSendAmount] = useState("");
+  const [sendAsset, setSendAsset] = useState<"native" | "usdc">("native");
   const [sendBusy, setSendBusy] = useState(false);
   const [sendNote, setSendNote] = useState<string | null>(null);
   const [boxState, setBoxState] = useState<string | null>(null);
@@ -1242,7 +1244,7 @@ export default function HomePage() {
       const res = await fetch("/api/wallet/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ to, amount }),
+        body: JSON.stringify({ to, amount, asset: sendAsset }),
       });
       if (res.ok) {
         setSendTo("");
@@ -2617,12 +2619,25 @@ export default function HomePage() {
                     <div className="flex gap-2">
                       <input
                         className="input flex-1 !py-1.5 !text-[13px]"
-                        placeholder="Amount (ETH)"
+                        placeholder={
+                          sendAsset === "usdc" ? "Amount (USDC)" : "Amount (ETH)"
+                        }
                         inputMode="decimal"
                         value={sendAmount}
                         onChange={(e) => setSendAmount(e.target.value)}
-                        aria-label="Amount in ETH"
+                        aria-label="Amount"
                       />
+                      <select
+                        className="input !w-auto !py-1.5 !text-[13px]"
+                        value={sendAsset}
+                        onChange={(e) =>
+                          setSendAsset(e.target.value === "usdc" ? "usdc" : "native")
+                        }
+                        aria-label="Asset"
+                      >
+                        <option value="native">ETH</option>
+                        <option value="usdc">USDC</option>
+                      </select>
                       <button
                         type="submit"
                         className="btn !px-3 !py-1.5 !text-[12px]"
@@ -2713,7 +2728,9 @@ export default function HomePage() {
                         </p>
                       </div>
                       <div className="shrink-0 text-right">
-                        <span className="text-[13px]">{t.amount_display}</span>
+                        <span className="text-[13px]">
+                          {t.amount_display} {t.token_symbol ?? "ETH"}
+                        </span>
                         <p className="muted m-0 mt-0.5 text-[11px]">
                           {new Date(t.created_at).toLocaleDateString()}
                         </p>

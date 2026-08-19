@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  parseAssetAmount,
   parseNativeAmount,
   shortAddress,
   validateSendAddress,
@@ -29,6 +30,18 @@ describe("parseNativeAmount", () => {
     );
     // unbounded integer part
     expect(() => parseNativeAmount("1000000000")).toThrow(WalletSendError);
+  });
+});
+
+describe("parseAssetAmount", () => {
+  it("converts USDC amounts at 6 decimals", () => {
+    expect(parseAssetAmount("1", 6)).toBe(1_000_000n);
+    expect(parseAssetAmount("0.5", 6)).toBe(500_000n);
+    expect(parseAssetAmount("0.000001", 6)).toBe(1n);
+  });
+
+  it("rejects more fraction digits than the asset carries", () => {
+    expect(() => parseAssetAmount("0.0000001", 6)).toThrow(WalletSendError);
   });
 });
 

@@ -37,21 +37,24 @@ interface SendTokensResponse {
 }
 
 /**
- * Native-token send from a server-managed wallet (V8 wallet tab). Executed
+ * Token send from a server-managed wallet (V8 wallet tab). Executed
  * with the secret key only after the run_approval decision is approved —
- * this function is never reachable straight from a composer. Omitting
- * tokenAddress sends the chain's native token; quantity is in wei.
+ * this function is never reachable straight from a composer. A null
+ * tokenAddress sends the chain's native token; an ERC-20 contract address
+ * sends that token. Quantity is in the asset's smallest unit.
  */
-export async function sendNativeTokens(
+export async function sendWalletTokens(
   from: string,
   chainId: number,
   to: string,
-  quantityWei: string
+  quantityAtomic: string,
+  tokenAddress: string | null
 ): Promise<string[]> {
   const data = await thirdwebFetch<SendTokensResponse>("/v1/wallets/send", {
     from,
     chainId,
-    recipients: [{ address: to, quantity: quantityWei }],
+    recipients: [{ address: to, quantity: quantityAtomic }],
+    ...(tokenAddress ? { tokenAddress } : {}),
   });
   const ids = data.result?.transactionIds;
   if (!ids || ids.length === 0) {
