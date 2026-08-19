@@ -92,6 +92,35 @@ async function countRecent(
 }
 
 /**
+ * Mark a user as rate-limited, at most once per window per kind — repeat
+ * blocked calls read instead of write, so hammering a limited endpoint
+ * cannot grow the ledger or inflate the rate_limited_24h signal.
+ */
+async function markRateLimited(
+  supabase: SupabaseClient,
+  userId: string,
+  kind: OpsEventKind,
+  windowMs: number
+): Promise<void> {
+  const since = new Date(Date.now() - windowMs).toISOString();
+  const { count, error } = await supabase
+    .from("ops_events")
+    .select("id", { count: "exact", head: true })
+    .eq("kind", "rate_limited")
+    .eq("user_id", userId)
+    .eq("ref", kind)
+    .gte("created_at", since);
+  if (error) {
+    console.error(
+      JSON.stringify({ msg: "ops event count failed", kind, error: error.message })
+    );
+    return;
+  }
+  if ((count ?? 0) > 0) return;
+  await recordOpsEvent(supabase, "rate_limited", userId, kind);
+}
+
+/**
  * Durable per-user limit check against the ops ledger. Returns true when the
  * user is over the limit for the window; records a `rate_limited` marker so
  * probing shows up in the ops dashboard.
@@ -106,7 +135,7 @@ async function overLimit(
   const count = await countRecent(supabase, kind, userId, windowMs);
   if (count === null) return false; // fail open: counters must not outage the store
   if (count < max) return false;
-  await recordOpsEvent(supabase, "rate_limited", userId, kind);
+  await markRateLimited(supabase, userId, kind, windowMs);
   return true;
 }
 
@@ -124,11 +153,21 @@ export function publishRateLimited(
   return overLimit(supabase, "publish", userId, PUBLISHES_PER_DAY, DAY_MS);
 }
 
-export function uploadRateLimited(
+/**
+ * Rejected attempts count against the hourly upload budget too, so a user
+ * spamming invalid presign requests trips this limit instead of writing an
+ * unbounded stream of upload_rejected rows.
+ */
+export async function uploadRateLimited(
   supabase: SupabaseClient,
   userId: string
 ): Promise<boolean> {
-  return overLimit(supabase, "upload", userId, UPLOADS_PER_HOUR, HOUR_MS);
+  const uploads = await countRecent(supabase, "upload", userId, HOUR_MS);
+  const rejected = await countRecent(supabase, "upload_rejected", userId, HOUR_MS);
+  if (uploads === null || rejected === null) return false; // fail open
+  if (uploads + rejected < UPLOADS_PER_HOUR) return false;
+  await markRateLimited(supabase, userId, "upload", HOUR_MS);
+  return true;
 }
 
 export function grantRateLimited(

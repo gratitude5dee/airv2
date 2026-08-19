@@ -103,7 +103,9 @@ function fakeSupabase(db: FakeOps): SupabaseClient {
               }
               const count = db.rows.filter(
                 (row) =>
-                  row.kind === filters.kind && row.user_id === filters.user_id
+                  row.kind === filters.kind &&
+                  row.user_id === filters.user_id &&
+                  (filters.ref === undefined || row.ref === filters.ref)
               ).length;
               return Promise.resolve({ count, error: null });
             },
@@ -152,6 +154,32 @@ describe("durable ops-ledger rate limits (MA11)", () => {
   it("fails open on a ledger read error — a counter outage never bricks the store", async () => {
     const supabase = fakeSupabase({ rows: [], countError: true });
     expect(await launchRateLimited(supabase, "user-1")).toBe(false);
+  });
+
+  it("marks a blocked user once per window — hammering a limited endpoint can't grow the ledger", async () => {
+    const db: FakeOps = { rows: [] };
+    const supabase = fakeSupabase(db);
+    for (let i = 0; i < LAUNCHES_PER_HOUR; i += 1) {
+      await recordOpsEvent(supabase, "launch", "user-1");
+    }
+    for (let i = 0; i < 5; i += 1) {
+      expect(await launchRateLimited(supabase, "user-1")).toBe(true);
+    }
+    expect(
+      db.rows.filter((r) => r.kind === "rate_limited" && r.ref === "launch")
+    ).toHaveLength(1);
+  });
+
+  it("counts rejected attempts toward the upload budget — invalid presign spam gets limited", async () => {
+    const db: FakeOps = { rows: [] };
+    const supabase = fakeSupabase(db);
+    for (let i = 0; i < UPLOADS_PER_HOUR; i += 1) {
+      await recordOpsEvent(supabase, "upload_rejected", "user-1");
+    }
+    expect(await uploadRateLimited(supabase, "user-1")).toBe(true);
+    expect(
+      db.rows.filter((r) => r.kind === "rate_limited" && r.ref === "upload")
+    ).toHaveLength(1);
   });
 
   it("throttles anonymous store_open writes — a hammered store home can't spam inserts", async () => {
