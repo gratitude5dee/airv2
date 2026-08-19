@@ -7,4 +7,4 @@ alter table decisions add constraint decisions_kind_check
                   'revise','ad_write','spend_ceiling','content_plan',
                   'spend_divergence','calendar_add',
                   'vault_fill','vault_reveal','social_post','purchase_review',
-                  'miniapp_publish'));
+                  'miniapp_publish','crm_update'));
