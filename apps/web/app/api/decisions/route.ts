@@ -18,6 +18,7 @@ import { armStopAfter, ensureBoxAwake } from "@/lib/orchestrator/boxes";
 import { approveRun, HermesApiError } from "@/lib/hermes/client";
 import { approveInboxEvent, dismissInboxEvent } from "@/lib/calendar/store";
 import { resolvePurchaseReview, PurchaseError } from "@/lib/vault/purchase";
+import { applyPatchOnBox, sanitizePatch } from "@/lib/crm/store";
 import {
   denyTransfer,
   executeTransfer,
@@ -80,6 +81,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     id?: string;
     ids?: unknown;
     action?: string;
+    method?: string;
   };
   // V8: batch approval, email_draft only — each approval is a pure
   // control-plane send (C10), so no box wake or run resume gets skipped
@@ -241,8 +243,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       // Denying needs no box — the fill_denied receipt must always be
       // writable, even while the box is start-limited; the run resume on
       // deny is already best-effort inside resolvePurchaseReview.
+      // Link selection mints no ticket, so like deny it must resolve even
+      // while the box is start-limited (its run resume is best-effort too).
       const box =
-        body.action === "approve"
+        body.action === "approve" && body.method !== "link"
           ? await ensureBoxAwake(supabase, userId)
           : await ensureBoxAwake(supabase, userId).catch(() => null);
       await resolvePurchaseReview(
@@ -250,7 +254,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         userId,
         decision as { id: string; ref: string | null; payload: unknown },
         body.action === "approve",
-        box
+        box,
+        body.method === "link" ? "link" : "fill"
       );
     } catch (error) {
       if (error instanceof PurchaseError) {
@@ -268,6 +273,27 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
       return NextResponse.json(
         { error: "could not resolve the purchase review — try again" },
+        { status: 502 }
+      );
+    } finally {
+      await armStopAfter(supabase, userId).catch(() => undefined);
+    }
+  }
+
+  if (decision.kind === "crm_update" && body.action === "approve") {
+    // MA6 #9: a tier-derived CRM edit the agent proposed. Approval applies
+    // the stored patch to the box-side people store with agent provenance;
+    // dismissal leaves the store untouched.
+    try {
+      await applyPatchOnBox(
+        supabase,
+        userId,
+        sanitizePatch((decision.payload ?? {}) as Record<string, unknown>),
+        { source: "agent", at: new Date().toISOString(), note: "owner-approved" }
+      );
+    } catch {
+      return NextResponse.json(
+        { error: "couldn't reach your agent's computer — try again" },
         { status: 502 }
       );
     } finally {

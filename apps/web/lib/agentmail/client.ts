@@ -177,6 +177,41 @@ export async function getMessage(
   );
 }
 
+export interface AgentMailThread {
+  thread_id: string;
+  subject?: string;
+  preview?: string;
+  senders?: string[];
+  message_count?: number;
+  updated_at?: string;
+}
+
+export interface AgentMailThreadDetail extends AgentMailThread {
+  messages?: AgentMailMessage[];
+}
+
+/** Thread listing for the inbox mini-app (MA6 #11) — the one call the
+ * client was missing; everything else (get/reply/draft/send) exists. */
+export async function listThreads(
+  inboxId: string,
+  limit = 25
+): Promise<AgentMailThread[]> {
+  const result = await agentmailFetch<{ threads?: AgentMailThread[] }>(
+    `/inboxes/${encodeURIComponent(inboxId)}/threads?limit=${limit}`
+  );
+  return result.threads ?? [];
+}
+
+/** A thread with its messages, for the thread view. */
+export async function getThread(
+  inboxId: string,
+  threadId: string
+): Promise<AgentMailThreadDetail> {
+  return await agentmailFetch<AgentMailThreadDetail>(
+    `/inboxes/${encodeURIComponent(inboxId)}/threads/${encodeURIComponent(threadId)}`
+  );
+}
+
 /**
  * Control-plane reply (M5 task 3): threading preserved by replying to the
  * message itself; Idempotency-Key makes retried sends single-effect.

@@ -204,6 +204,7 @@ const DECISION_KIND_LABELS: Record<string, string> = {
   spend_ceiling: "Spend ceiling reached",
   social_post: "Social post awaiting approval",
   purchase_review: "Card fill awaiting approval",
+  crm_update: "CRM update awaiting approval",
   new_contact: "New contact",
 };
 
@@ -931,14 +932,18 @@ export default function HomePage() {
     }
   }
 
-  async function resolveDecision(id: string, action: "approve" | "dismiss") {
+  async function resolveDecision(
+    id: string,
+    action: "approve" | "dismiss",
+    method?: "link"
+  ) {
     setDecisionBusy(id);
     setDecisionNote(null);
     try {
       const res = await fetch("/api/decisions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, action }),
+        body: JSON.stringify({ id, action, ...(method ? { method } : {}) }),
       });
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
@@ -1766,6 +1771,7 @@ export default function HomePage() {
                                   "calendar_add",
                                   "social_post",
                                   "purchase_review",
+                                  "crm_update",
                                 ].includes(d.kind) ? (
                                   <button
                                     className="btn !px-3 !py-1.5 !text-[12px]"
@@ -1790,6 +1796,22 @@ export default function HomePage() {
                                                 : d.kind === "purchase_review"
                                                   ? "Fill card"
                                                   : "Approve"}
+                                  </button>
+                                ) : null}
+                                {d.kind === "purchase_review" &&
+                                d.payload?.link_supported === true ? (
+                                  <button
+                                    className="btn !px-3 !py-1.5 !text-[12px]"
+                                    disabled={decisionBusy !== null}
+                                    onClick={() =>
+                                      void resolveDecision(
+                                        d.id,
+                                        "approve",
+                                        "link"
+                                      )
+                                    }
+                                  >
+                                    Pay with Link
                                   </button>
                                 ) : null}
                                 <button

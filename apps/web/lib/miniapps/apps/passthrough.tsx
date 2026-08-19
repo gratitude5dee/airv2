@@ -11,7 +11,9 @@ import { armStopAfter, StartLimitError } from "@/lib/orchestrator/boxes";
 import { forbidden, html, page } from "../html";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
-async function renderPassthrough(ctx: MiniAppContext): Promise<NextResponse> {
+export async function renderPassthrough(
+  ctx: MiniAppContext
+): Promise<NextResponse> {
   if (ctx.session.role !== "owner") {
     return forbidden("this view is owner-only");
   }
@@ -61,5 +63,5 @@ async function renderPassthrough(ctx: MiniAppContext): Promise<NextResponse> {
   }
 }
 
-export const computer: MiniAppModule = { render: renderPassthrough };
+// The computer slug grew a task-state header page in MA6 — see computer.tsx.
 export const browser: MiniAppModule = { render: renderPassthrough };
