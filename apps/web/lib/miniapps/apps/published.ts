@@ -13,7 +13,7 @@
  */
 import { NextResponse } from "next/server";
 import { env } from "../../env";
-import { getObject } from "../../storage/r2";
+import { getObject, r2Configured } from "../../storage/r2";
 import { mintToken } from "../tokens";
 import type { RegistryApp } from "../registry";
 import type { MiniAppContext, MiniAppModule } from "./types";
@@ -45,6 +45,9 @@ async function render(ctx: MiniAppContext): Promise<NextResponse> {
   const version = ctx.app.bundle_version;
   if (!version) {
     return new NextResponse("not found", { status: 404 });
+  }
+  if (!r2Configured()) {
+    return new NextResponse("app storage unavailable", { status: 503 });
   }
   const object = await getObject(`apps/${ctx.app.slug}/${version}/index.html`);
   if (!object) {
@@ -91,6 +94,9 @@ export async function serveBundleAsset(
   path: string,
   contentType: string
 ): Promise<NextResponse> {
+  if (!r2Configured()) {
+    return new NextResponse("app storage unavailable", { status: 503 });
+  }
   const object = await getObject(`apps/${app.slug}/${app.bundle_version}/${path}`);
   if (!object) return new NextResponse("not found", { status: 404 });
   return new NextResponse(new Uint8Array(object.body), {
