@@ -103,6 +103,11 @@ export async function GET(
     // session it mints cannot mint anything broader.
     const blocked = visibilityGate(app);
     if (blocked) return blocked;
+    // Guest grants only exist for multiplayer apps — owner-only apps never
+    // redeem, even if a grant row exists for them.
+    if (app.access !== "multiplayer") {
+      return forbidden("this app is not shareable");
+    }
     const ip =
       request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
       "unknown";

@@ -12,7 +12,7 @@ import { createHmac, scryptSync, timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "../env";
-import { esc, forbidden, notFound, page } from "./html";
+import { BASE_HEADERS, esc, forbidden, notFound, page } from "./html";
 import type { RegistryApp } from "./registry";
 import { verifyToken, type MiniAppRole } from "./tokens";
 
@@ -99,11 +99,16 @@ function passwordChallenge(app: RegistryApp): NextResponse {
   return new NextResponse(body, {
     status: 401,
     headers: {
+      ...BASE_HEADERS,
       "Content-Type": "text/html; charset=utf-8",
-      "Cache-Control": "no-store",
-      "Referrer-Policy": "no-referrer",
     },
   });
+}
+
+export interface PasswordGateResult {
+  response: NextResponse;
+  /** true when a correct password was just accepted (MA9: gate_settled). */
+  settled: boolean;
 }
 
 /**
@@ -116,14 +121,14 @@ export function passwordGate(
   app: RegistryApp,
   basePath: string,
   submitted?: string
-): NextResponse | null {
+): PasswordGateResult | null {
   if (!app.password_hash) return null;
   const proof = passwordProof(app);
   const cookie = request.cookies.get(`${PW_COOKIE_PREFIX}${app.slug}`)?.value;
   if (cookie === proof) return null;
   if (submitted !== undefined) {
     if (!verifyPassword(submitted, app.password_hash)) {
-      return passwordChallenge(app);
+      return { response: passwordChallenge(app), settled: false };
     }
     const response = NextResponse.redirect(
       new URL(basePath, externalOrigin(request)),
@@ -136,9 +141,9 @@ export function passwordGate(
       path: basePath,
       maxAge: 60 * 60,
     });
-    return response;
+    return { response, settled: true };
   }
-  return passwordChallenge(app);
+  return { response: passwordChallenge(app), settled: false };
 }
 
 /* ---------------------------------------------------------------- gate 3 */
@@ -209,8 +214,14 @@ export async function runGateChain(
 
   const password = passwordGate(request, app, basePath, submittedPassword);
   if (password) {
-    await logGateEvent(supabase, app.id, null, "gate_challenged", "password");
-    return { ok: false, response: password };
+    await logGateEvent(
+      supabase,
+      app.id,
+      null,
+      password.settled ? "gate_settled" : "gate_challenged",
+      "password"
+    );
+    return { ok: false, response: password.response };
   }
 
   const payment = await x402Gate(request, app);

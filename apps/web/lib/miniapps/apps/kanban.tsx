@@ -1,5 +1,6 @@
 /** Kanban mini-app renderer (extracted from the M7.5 monolith, MA1). */
 import { NextResponse } from "next/server";
+import { externalOrigin } from "../gates";
 import { esc, html, page, withBaseHeaders } from "../html";
 import {
   addKanbanCard,
@@ -67,7 +68,7 @@ export const kanban: MiniAppModule = {
     }
     return withBaseHeaders(
       NextResponse.redirect(
-        new URL(ctx.basePath, ctx.request.nextUrl.origin),
+        new URL(ctx.basePath, externalOrigin(ctx.request)),
         303
       )
     );

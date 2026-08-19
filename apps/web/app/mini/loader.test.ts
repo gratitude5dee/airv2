@@ -71,8 +71,8 @@ beforeAll(() => {
 
 beforeEach(() => {
   testDb.apps = [
-    makeApp({ slug: "kanban", kind: "render", name: "Kanban" }),
-    makeApp({ slug: "todo", kind: "input", name: "Todos" }),
+    makeApp({ slug: "kanban", kind: "render", name: "Kanban", access: "multiplayer" }),
+    makeApp({ slug: "todo", kind: "input", name: "Todos", access: "multiplayer" }),
     makeApp({ slug: "vault", kind: "input", name: "Secrets" }),
     makeApp({ slug: "draftapp", kind: "input", status: "draft" }),
     makeApp({ slug: "gone", kind: "input", status: "suspended" }),
@@ -145,6 +145,63 @@ describe("gate ordering", () => {
     );
     expect(res.status).toBe(401);
     expect(testDb.gateEvents.map((e) => e.ref)).toEqual(["password"]);
+  });
+
+  it("password challenge carries the shared CSP/frame headers", async () => {
+    testDb.apps = [
+      makeApp({
+        slug: "kanban",
+        password_hash: hashPassword("pw", "cc".repeat(16)),
+      }),
+    ];
+    const res = await GET(
+      new NextRequest("https://mini.example/mini/kanban"),
+      params("kanban")
+    );
+    expect(res.status).toBe(401);
+    expect(res.headers.get("content-security-policy")).toContain(
+      "frame-ancestors 'self'"
+    );
+    expect(res.headers.get("x-frame-options")).toBe("SAMEORIGIN");
+  });
+
+  it("logs gate_settled on a correct password and gate_challenged on a wrong one", async () => {
+    testDb.apps = [
+      makeApp({
+        slug: "kanban",
+        password_hash: hashPassword("hunter2", "dd".repeat(16)),
+      }),
+    ];
+    const wrong = new FormData();
+    wrong.set("action", "__password");
+    wrong.set("password", "nope");
+    const denied = await POST(
+      new NextRequest("https://mini.example/mini/kanban", {
+        method: "POST",
+        body: wrong,
+      }),
+      params("kanban")
+    );
+    expect(denied.status).toBe(401);
+
+    const right = new FormData();
+    right.set("action", "__password");
+    right.set("password", "hunter2");
+    const unlocked = await POST(
+      new NextRequest("https://mini.example/mini/kanban", {
+        method: "POST",
+        body: right,
+      }),
+      params("kanban")
+    );
+    expect(unlocked.status).toBe(303);
+    expect(unlocked.headers.get("set-cookie") ?? "").toContain("mini_pw_kanban=");
+
+    expect(
+      testDb.gateEvents
+        .filter((e) => e.ref === "password")
+        .map((e) => e.kind)
+    ).toEqual(["gate_challenged", "gate_settled"]);
   });
 
   it("x402 fires before session: paid app 402s a stranger", async () => {
@@ -241,6 +298,16 @@ describe("guest grants (MA4)", () => {
     }
   });
 
+  it("403s a grant redeemed against an owner-only (access=single) app", async () => {
+    testDb.grants = [freshGrant({ app_id: "app-vault" })];
+    const res = await GET(
+      new NextRequest(`https://mini.example/mini/vault?g=${GRANT_ID}`),
+      params("vault")
+    );
+    expect(res.status).toBe(403);
+    expect(testDb.grants[0]?.uses).toBe(0);
+  });
+
   it("blocks guest POST actions the module does not declare guest-safe", async () => {
     const form = new FormData();
     form.set("action", "create_login");
@@ -257,6 +324,27 @@ describe("guest grants (MA4)", () => {
     );
     const res = await POST(request, params("vault"));
     expect(res.status).toBe(403);
+  });
+});
+
+describe("renderer action redirects", () => {
+  it("redirects to the external mini origin behind the mini-host rewrite", async () => {
+    const form = new FormData();
+    form.set("action", "add");
+    form.set("column", "todo");
+    form.set("text", "hello");
+    const request = new NextRequest("http://localhost:3999/mini/kanban", {
+      method: "POST",
+      body: form,
+      headers: { "x-mini-host": "1" },
+    });
+    request.cookies.set(
+      "mini_kanban",
+      mintToken("user-1", "kanban", "default", 15)
+    );
+    const res = await POST(request, params("kanban"));
+    expect(res.status).toBe(303);
+    expect(res.headers.get("location")).toBe("https://mini.wzrd.tech/kanban");
   });
 });
 

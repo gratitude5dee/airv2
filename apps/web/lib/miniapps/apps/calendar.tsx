@@ -11,6 +11,7 @@ import {
   readEventsStore,
   type CalendarEvent,
 } from "@/lib/calendar/store";
+import { externalOrigin } from "../gates";
 import { esc, html, page, withBaseHeaders } from "../html";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
@@ -157,7 +158,7 @@ export const calendar: MiniAppModule = {
     }
     return withBaseHeaders(
       NextResponse.redirect(
-        new URL(ctx.basePath, ctx.request.nextUrl.origin),
+        new URL(ctx.basePath, externalOrigin(ctx.request)),
         303
       )
     );
