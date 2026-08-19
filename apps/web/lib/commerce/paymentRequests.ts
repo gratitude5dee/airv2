@@ -246,7 +246,8 @@ export async function approvePaymentRequest(
     supabase,
     userId,
     request.payee,
-    request.amount_display
+    request.amount_display,
+    "usdc"
   );
   await supabase
     .from("payment_requests")
