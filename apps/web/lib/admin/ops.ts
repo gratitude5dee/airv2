@@ -48,6 +48,51 @@ export function scheduleBudget(
   };
 }
 
+/** Rejections page ops at ≥20% of upload attempts, once past this floor. */
+export const UPLOAD_REJECTION_SPIKE_FLOOR = 5;
+export const UPLOAD_REJECTION_SPIKE_RATIO = 0.2;
+
+export interface MiniAppOpsInput {
+  store_opens_24h: number;
+  launches_24h: number;
+  guest_sessions_24h: number;
+  publishes_24h: number;
+  uploads_24h: number;
+  upload_bytes_24h: number;
+  upload_rejections_24h: number;
+  rate_limited_24h: number;
+  gate_settlements_24h: number;
+  x402_settlements_24h: number;
+  x402_receipts_24h: number;
+  x402_revenue_usdc_24h: number;
+}
+
+export interface MiniAppOps extends MiniAppOpsInput {
+  alerts: string[];
+}
+
+/**
+ * MA11 mini-app counters. Two alarms: a receipt/settlement mismatch (every
+ * x402 gate_settled event writes its receipt first, so the counts must
+ * match — drift means a crashed settlement path) and an upload-guard
+ * rejection spike (someone probing the media guards).
+ */
+export function miniAppOps(input: MiniAppOpsInput): MiniAppOps {
+  const alerts: string[] = [];
+  if (input.x402_receipts_24h !== input.x402_settlements_24h) {
+    alerts.push("receipt_settlement_mismatch");
+  }
+  const attempts = input.uploads_24h + input.upload_rejections_24h;
+  if (
+    input.upload_rejections_24h >= UPLOAD_REJECTION_SPIKE_FLOOR &&
+    attempts > 0 &&
+    input.upload_rejections_24h / attempts >= UPLOAD_REJECTION_SPIKE_RATIO
+  ) {
+    alerts.push("upload_rejection_spike");
+  }
+  return { ...input, alerts };
+}
+
 export interface SocialUsage {
   user_id: string;
   actions_today: number;

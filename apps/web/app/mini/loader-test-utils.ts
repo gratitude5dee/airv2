@@ -38,6 +38,7 @@ export interface FakeDb {
   grants: GuestGrant[];
   redeemedJtis: Set<string>;
   gateEvents: { app_id: string; kind: string; ref: string | null }[];
+  opsEvents: { user_id: string | null; kind: string; ref: string | null }[];
 }
 
 /** Shared mutable db for vi.mock factories; tests seed it in beforeAll. */
@@ -46,6 +47,7 @@ export const testDb: FakeDb = {
   grants: [],
   redeemedJtis: new Set(),
   gateEvents: [],
+  opsEvents: [],
 };
 
 export function makeFakeSupabase(db: FakeDb) {
@@ -123,6 +125,18 @@ export function makeFakeSupabase(db: FakeDb) {
                 };
               },
             };
+          },
+        };
+      }
+      if (table === "ops_events") {
+        return {
+          async insert(row: {
+            user_id: string | null;
+            kind: string;
+            ref: string | null;
+          }) {
+            db.opsEvents.push(row);
+            return { error: null };
           },
         };
       }

@@ -5,7 +5,29 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
-vi.mock("@/lib/supabase", () => ({ serviceClient: () => ({}) }));
+// MA11: the route records grants and checks the durable rate limit on the
+// ops_events ledger — the fake supports just that table.
+const opsEvents: { kind: string; ref: string | null }[] = [];
+vi.mock("@/lib/supabase", () => ({
+  serviceClient: () => ({
+    from: (table: string) => {
+      if (table !== "ops_events") {
+        throw new Error(`fake supabase: unexpected table ${table}`);
+      }
+      const chain = {
+        eq: () => chain,
+        gte: async () => ({ count: 0, error: null }),
+      };
+      return {
+        insert: async (row: { kind: string; ref: string | null }) => {
+          opsEvents.push(row);
+          return { error: null };
+        },
+        select: () => chain,
+      };
+    },
+  }),
+}));
 vi.mock("@/lib/auth/user", () => ({ sessionUserId: () => "owner-1" }));
 
 const getRegistryApp = vi.fn();
@@ -48,6 +70,7 @@ function app(access: "single" | "multiplayer") {
 beforeEach(() => {
   getRegistryApp.mockReset();
   grantCalls.length = 0;
+  opsEvents.length = 0;
 });
 
 describe("POST /api/mini/grant", () => {
@@ -61,6 +84,7 @@ describe("POST /api/mini/grant", () => {
       "default",
       { maxUses: 25, ttlHours: 72 },
     ]);
+    expect(opsEvents.filter((e) => e.kind === "grant")).toHaveLength(1);
   });
 
   it("400s an owner-only (access=single) app", async () => {

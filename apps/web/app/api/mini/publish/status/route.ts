@@ -12,6 +12,7 @@ import {
   setPublishStatus,
   type PublishStatusFlip,
 } from "@/lib/miniapps/publish";
+import { publishRateLimited, recordOpsEvent } from "@/lib/security/limits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,6 +38,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       ? visibility
       : undefined;
   const supabase = serviceClient();
+  if (status === "published" && (await publishRateLimited(supabase, userId))) {
+    return NextResponse.json({ error: "too many publishes" }, { status: 429 });
+  }
   try {
     await setPublishStatus(
       supabase,
@@ -56,6 +60,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       .eq("kind", "miniapp_publish")
       .eq("ref", slug)
       .eq("status", "pending");
+    if (status === "published") {
+      await recordOpsEvent(supabase, "publish", userId, slug);
+    }
     return NextResponse.json({ ok: true });
   } catch (error) {
     if (error instanceof PublishError) {

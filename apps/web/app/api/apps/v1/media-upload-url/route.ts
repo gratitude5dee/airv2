@@ -23,6 +23,7 @@ import {
 } from "@/lib/storage/buckets";
 import { confirmUpload, reserveUpload } from "@/lib/storage/confirm";
 import { presignPut, publicUrl, r2Configured } from "@/lib/storage/r2";
+import { recordOpsEvent, uploadRateLimited } from "@/lib/security/limits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -55,12 +56,22 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   if (!Number.isFinite(sizeBytes) || sizeBytes <= 0 || sizeBytes > MEDIA_MAX_BYTES) {
     return NextResponse.json({ error: "invalid size" }, { status: 400 });
   }
+  if (await uploadRateLimited(supabase, auth.session.userId)) {
+    return NextResponse.json({ error: "too many uploads" }, { status: 429 });
+  }
   try {
     const bucket = await ensureUserBucket(supabase, auth.session.userId);
     assertWithinQuota(bucket, sizeBytes);
     const key = `${bucket.prefix}apps/${auth.app.slug}/${randomBytes(8).toString("hex")}`;
     await addUsage(supabase, auth.session.userId, sizeBytes);
     await reserveUpload(supabase, auth.session.userId, key, sizeBytes);
+    await recordOpsEvent(
+      supabase,
+      "upload",
+      auth.session.userId,
+      `apps-api:${auth.app.slug}`,
+      sizeBytes
+    );
     return NextResponse.json({
       uploadUrl: presignPut(key, contentType, 600),
       key,
@@ -68,6 +79,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     });
   } catch (error) {
     if (error instanceof MediaGuardError) {
+      await recordOpsEvent(
+        supabase,
+        "upload_rejected",
+        auth.session.userId,
+        error.message
+      );
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
     throw error;
@@ -91,6 +108,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
   const result = await confirmUpload(supabase, auth.session.userId, key);
   if (!result.ok) {
+    if (result.status === 422) {
+      await recordOpsEvent(
+        supabase,
+        "upload_rejected",
+        auth.session.userId,
+        result.error
+      );
+    }
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
   return NextResponse.json({ ok: true, publicUrl: result.publicUrl });

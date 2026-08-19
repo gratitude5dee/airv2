@@ -89,6 +89,7 @@ beforeEach(() => {
   testDb.grants = [freshGrant()];
   testDb.redeemedJtis = new Set();
   testDb.gateEvents = [];
+  testDb.opsEvents = [];
 });
 
 describe("registry dispatch", () => {
@@ -221,6 +222,35 @@ describe("gate ordering", () => {
     );
     expect(res.status).toBe(403);
   });
+
+  it("a valid session cookie cannot skip the password gate", async () => {
+    testDb.apps = [
+      makeApp({
+        slug: "kanban",
+        password_hash: hashPassword("hunter2", "ee".repeat(16)),
+      }),
+    ];
+    const request = new NextRequest("https://mini.example/mini/kanban");
+    request.cookies.set(
+      "mini_kanban",
+      mintToken("user-1", "kanban", "default", 15)
+    );
+    const res = await GET(request, params("kanban"));
+    expect(res.status).toBe(401);
+    expect(testDb.gateEvents.map((e) => e.ref)).toEqual(["password"]);
+  });
+
+  it("a valid session cookie cannot skip the x402 gate", async () => {
+    testDb.apps = [makeApp({ slug: "kanban", x402_enabled: true })];
+    const request = new NextRequest("https://mini.example/mini/kanban");
+    request.cookies.set(
+      "mini_kanban",
+      mintToken("user-1", "kanban", "default", 15)
+    );
+    const res = await GET(request, params("kanban"));
+    expect(res.status).toBe(402);
+    expect(testDb.gateEvents.map((e) => e.ref)).toEqual(["x402"]);
+  });
 });
 
 describe("slug/claims mismatch", () => {
@@ -298,6 +328,17 @@ describe("guest grants (MA4)", () => {
     }
   });
 
+  it("records a guest_session ops event on redemption", async () => {
+    const res = await GET(
+      new NextRequest(`https://mini.example/mini/kanban?g=${GRANT_ID}`),
+      params("kanban")
+    );
+    expect(res.status).toBe(303);
+    expect(
+      testDb.opsEvents.filter((e) => e.kind === "guest_session")
+    ).toHaveLength(1);
+  });
+
   it("403s a grant redeemed against an owner-only (access=single) app", async () => {
     testDb.grants = [freshGrant({ app_id: "app-vault" })];
     const res = await GET(
@@ -345,6 +386,48 @@ describe("renderer action redirects", () => {
     const res = await POST(request, params("kanban"));
     expect(res.status).toBe(303);
     expect(res.headers.get("location")).toBe("https://mini.wzrd.tech/kanban");
+  });
+});
+
+describe("middleware hardening (MA11)", () => {
+  it("strips a spoofed x-mini-host header on the main origin", () => {
+    const res = middleware(
+      new NextRequest("https://air.example/kanban", {
+        headers: { host: "air.example", "x-mini-host": "1" },
+      })
+    );
+    expect(res.status).toBe(200);
+    // The override list is the surviving request headers — x-mini-host must
+    // not be among them, and no forwarded value may exist.
+    const override = res.headers.get("x-middleware-override-headers") ?? "";
+    expect(override).not.toBe("");
+    expect(override).not.toContain("x-mini-host");
+    expect(res.headers.get("x-middleware-request-x-mini-host")).toBeNull();
+  });
+
+  it("overwrites a spoofed x-mini-host on the mini origin rewrite", () => {
+    const res = middleware(
+      new NextRequest("https://mini.wzrd.tech/kanban", {
+        headers: { host: "mini.wzrd.tech", "x-mini-host": "evil" },
+      })
+    );
+    expect(res.headers.get("x-middleware-request-x-mini-host")).toBe("1");
+  });
+
+  it("edge-caches the store home but never the loaders", () => {
+    const home = middleware(
+      new NextRequest("https://mini.wzrd.tech/", {
+        headers: { host: "mini.wzrd.tech" },
+      })
+    );
+    expect(home.headers.get("cache-control")).toContain("s-maxage=60");
+
+    const loader = middleware(
+      new NextRequest("https://mini.wzrd.tech/kanban", {
+        headers: { host: "mini.wzrd.tech" },
+      })
+    );
+    expect(loader.headers.get("cache-control")).toBeNull();
   });
 });
 

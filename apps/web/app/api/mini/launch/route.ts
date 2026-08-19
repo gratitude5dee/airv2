@@ -18,6 +18,7 @@ import { getRegistryApp } from "@/lib/miniapps/registry";
 import { logGateEvent, visibilityGate, x402Gate } from "@/lib/miniapps/gates";
 import { storeSessionUserId } from "@/lib/miniapps/storeSession";
 import { verifyPluginToken } from "@/lib/plugin/auth";
+import { launchRateLimited, recordOpsEvent } from "@/lib/security/limits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,6 +42,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+  if (await launchRateLimited(supabase, userId)) {
+    return NextResponse.json({ error: "too many launches" }, { status: 429 });
+  }
   const body = (await request.json().catch(() => ({}))) as { slug?: string };
   const slug = body.slug ?? "";
   const app = await getRegistryApp(supabase, slug);
@@ -61,6 +65,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return payment;
   }
   await logGateEvent(supabase, app.id, userId, "app_opened", "launch");
+  await recordOpsEvent(supabase, "launch", userId, slug);
   const token = mintToken(userId, slug, "default");
   return NextResponse.json({
     url: `${env.miniappOrigin()}/${slug}?t=${token}`,

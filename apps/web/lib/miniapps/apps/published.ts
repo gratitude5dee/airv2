@@ -23,6 +23,11 @@ export function publisherCsp(): string {
     "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
     `img-src 'self' ${env.r2PublicBaseUrl()} data:; font-src 'self'; ` +
     `media-src 'self'; connect-src 'self'; ` +
+    // worker-src does NOT inherit default-src through script-src fallback in
+    // every engine — an explicit 'none' is what actually blocks service
+    // worker/worker registration of same-origin bundle scripts. base-uri has
+    // no default-src fallback at all, so pin it too.
+    "worker-src 'none'; base-uri 'none'; " +
     `form-action 'self'; frame-ancestors 'self' ${env.appOrigin()}`
   );
 }

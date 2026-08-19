@@ -27,6 +27,7 @@ import {
   putObject,
   r2Configured,
 } from "@/lib/storage/r2";
+import { recordOpsEvent, uploadRateLimited } from "@/lib/security/limits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -59,6 +60,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
   const supabase = serviceClient();
+  if (await uploadRateLimited(supabase, userId)) {
+    return NextResponse.json({ error: "too many uploads" }, { status: 429 });
+  }
   try {
     const app = await ownedApp(supabase, userId, slug);
     const bytes = guardMediaUpload(Buffer.from(await file.arrayBuffer()), contentType, {
@@ -85,8 +89,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       .update({ icon_key: key, updated_at: new Date().toISOString() })
       .eq("id", app.id);
     if (error) throw new Error(`icon update failed: ${error.message}`);
+    await recordOpsEvent(supabase, "upload", userId, `icon:${app.slug}`, bytes.length);
     return NextResponse.json({ ok: true, icon_url: publicUrl(key) });
   } catch (error) {
+    if (error instanceof MediaGuardError) {
+      await recordOpsEvent(supabase, "upload_rejected", userId, error.message);
+    }
     if (error instanceof PublishError || error instanceof MediaGuardError) {
       return NextResponse.json(
         { error: error.message },

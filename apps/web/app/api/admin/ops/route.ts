@@ -12,7 +12,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuthorized } from "@/lib/admin/auth";
-import { scheduleBudget, socialUsage } from "@/lib/admin/ops";
+import { miniAppOps, scheduleBudget, socialUsage } from "@/lib/admin/ops";
 import { serviceClient } from "@/lib/supabase";
 
 export const runtime = "nodejs";
@@ -151,6 +151,68 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       .gte("started_at", dayAgo),
   ]);
 
+  // MA11 mini-app counters: the ops_events ledger (launch/publish/upload/
+  // guest_session/rate_limited) plus the gate ledger and the x402 receipt
+  // ledger. Sums are bounded reads — the 24h windows stay small at beta scale.
+  const opsKindCount = (kind: string) =>
+    supabase
+      .from("ops_events")
+      .select("id", { count: "exact", head: true })
+      .eq("kind", kind)
+      .gte("created_at", dayAgo);
+  const [
+    { count: storeOpens },
+    { count: launches },
+    { count: guestSessions },
+    { count: publishes },
+    { count: uploads },
+    { data: uploadBytesRows },
+    { count: uploadRejections },
+    { count: rateLimited },
+    { count: gateSettlements },
+    { count: x402Settlements },
+    { count: x402Receipts },
+    { data: receiptAmounts },
+  ] = await Promise.all([
+    supabase
+      .from("miniapp_gate_events")
+      .select("id", { count: "exact", head: true })
+      .eq("kind", "app_opened")
+      .gte("created_at", dayAgo),
+    opsKindCount("launch"),
+    opsKindCount("guest_session"),
+    opsKindCount("publish"),
+    opsKindCount("upload"),
+    supabase
+      .from("ops_events")
+      .select("bytes")
+      .eq("kind", "upload")
+      .gte("created_at", dayAgo)
+      .limit(10000),
+    opsKindCount("upload_rejected"),
+    opsKindCount("rate_limited"),
+    supabase
+      .from("miniapp_gate_events")
+      .select("id", { count: "exact", head: true })
+      .eq("kind", "gate_settled")
+      .gte("created_at", dayAgo),
+    supabase
+      .from("miniapp_gate_events")
+      .select("id", { count: "exact", head: true })
+      .eq("kind", "gate_settled")
+      .eq("ref", "x402")
+      .gte("created_at", dayAgo),
+    supabase
+      .from("x402_receipts")
+      .select("jti", { count: "exact", head: true })
+      .gte("settled_at", dayAgo),
+    supabase
+      .from("x402_receipts")
+      .select("amount_usdc")
+      .gte("settled_at", dayAgo)
+      .limit(10000),
+  ]);
+
   const hour = startsHour ?? 0;
   const day = startsDay ?? 0;
   return NextResponse.json({
@@ -181,6 +243,26 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       schedule_fires_24h: botScheduleFires ?? 0,
       note: "bot chat turns run inside the user's box (C4) — no per-turn control-plane attribution",
     },
+    miniapps: miniAppOps({
+      store_opens_24h: storeOpens ?? 0,
+      launches_24h: launches ?? 0,
+      guest_sessions_24h: guestSessions ?? 0,
+      publishes_24h: publishes ?? 0,
+      uploads_24h: uploads ?? 0,
+      upload_bytes_24h: (uploadBytesRows ?? []).reduce(
+        (sum, row) => sum + Number(row.bytes ?? 0),
+        0
+      ),
+      upload_rejections_24h: uploadRejections ?? 0,
+      rate_limited_24h: rateLimited ?? 0,
+      gate_settlements_24h: gateSettlements ?? 0,
+      x402_settlements_24h: x402Settlements ?? 0,
+      x402_receipts_24h: x402Receipts ?? 0,
+      x402_revenue_usdc_24h: (receiptAmounts ?? []).reduce(
+        (sum, row) => sum + Number(row.amount_usdc ?? 0),
+        0
+      ),
+    }),
     lines: lineHealth,
     spend: (spend ?? []).map((row) => ({
       ...row,
