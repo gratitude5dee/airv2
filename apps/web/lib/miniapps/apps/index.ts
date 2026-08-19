@@ -7,9 +7,12 @@
 import type { MiniAppModule } from "./types";
 import { analytics } from "./analytics";
 import { calendar } from "./calendar";
+import { connect } from "./connect";
 import { image } from "./image";
 import { kanban } from "./kanban";
+import { onboarding } from "./onboarding";
 import { browser, computer } from "./passthrough";
+import { settings } from "./settings";
 import { todo } from "./todo";
 import { vault } from "./vault";
 import { video } from "./video";
@@ -20,7 +23,10 @@ export const FIRST_PARTY_MODULES: Record<string, MiniAppModule> = {
   calendar,
   image,
   computer,
+  connect,
   kanban,
+  onboarding,
+  settings,
   todo,
   vault,
   video,

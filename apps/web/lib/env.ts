@@ -111,6 +111,15 @@ export const env = {
     );
     return parsed >= 0 ? parsed : 5;
   },
+  // MA9.2 Onairos developer API key. Optional: absent = the connect step
+  // reports itself unconfigured and the onboarding UI hides the button. The
+  // key is server-side only (goal.md §5) — how the client SDK gets
+  // initialized is a product decision, never NEXT_PUBLIC_.
+  onairosApiKey: (): string | null => process.env.ONAIROS_API_KEY ?? null,
+  // MA9.3 optional W&B Weave mirror — receipt METADATA only, never content
+  // (C4). Off by default: with no key the mirror makes zero network calls.
+  wandbApiKey: (): string | null => process.env.WANDB_API_KEY ?? null,
+  wandbProject: (): string => optional("WANDB_PROJECT", "air-traces"),
   creativeCostCentsVideo: (): number => {
     const parsed = Number.parseInt(
       optional("CREATIVE_COST_CENTS_VIDEO", "25"),
