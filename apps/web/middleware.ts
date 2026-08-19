@@ -31,6 +31,14 @@ export function middleware(request: NextRequest): NextResponse {
   const { pathname, search } = request.nextUrl;
   const onMini = host === miniHost();
 
+  // x-mini-host is a middleware-owned marker: never trust it from the
+  // client — a spoofed value would steer loader cookie paths and the
+  // post-gate redirect origins downstream. Strip it from every request;
+  // only the mini-origin rewrite below sets it back.
+  const spoofed = request.headers.has("x-mini-host");
+  const headers = new Headers(request.headers);
+  headers.delete("x-mini-host");
+
   if (!onMini) {
     // Discovery is served from the mini origin (MA10); the backing search
     // tool at /api/store/search stays on the main origin for gateway callers.
@@ -49,11 +57,7 @@ export function middleware(request: NextRequest): NextResponse {
       );
       return NextResponse.redirect(target, 308);
     }
-    // x-mini-host is a middleware-owned marker: never trust it from the
-    // client — a spoofed value would steer loader cookie paths/redirects.
-    if (request.headers.has("x-mini-host")) {
-      const headers = new Headers(request.headers);
-      headers.delete("x-mini-host");
+    if (spoofed) {
       return NextResponse.next({ request: { headers } });
     }
     return NextResponse.next();
@@ -70,10 +74,13 @@ export function middleware(request: NextRequest): NextResponse {
   // API routes pass through untouched; only /api/mini/* (store/loader) and
   // /api/apps/* (the published-bundle Apps API, MA3) belong here.
   if (pathname.startsWith("/api/")) {
-    if (pathname.startsWith("/api/mini/")) return NextResponse.next();
-    if (pathname.startsWith("/api/apps/")) return NextResponse.next();
+    const passthrough = spoofed
+      ? NextResponse.next({ request: { headers } })
+      : NextResponse.next();
+    if (pathname.startsWith("/api/mini/")) return passthrough;
+    if (pathname.startsWith("/api/apps/")) return passthrough;
     // MA10 machine registry lives on the mini origin.
-    if (pathname === "/api/store/index.json") return NextResponse.next();
+    if (pathname === "/api/store/index.json") return passthrough;
     return new NextResponse("not found", { status: 404 });
   }
 
@@ -81,7 +88,6 @@ export function middleware(request: NextRequest): NextResponse {
   // under /mini and mark the request so the loader uses external paths.
   const rewritten = new URL(request.nextUrl);
   rewritten.pathname = pathname === "/" ? "/mini" : `/mini${pathname}`;
-  const headers = new Headers(request.headers);
   headers.set("x-mini-host", "1");
   const response = NextResponse.rewrite(rewritten, { request: { headers } });
   // MA11 load: the store home is public, session-free SSR — let the edge

@@ -108,7 +108,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
   const result = await confirmUpload(supabase, auth.session.userId, key);
   if (!result.ok) {
-    if (result.status === 422) {
+    // Guard rejections (bad type 400, oversize 413, secret scrub / byte
+    // mismatch 422) all feed the upload_rejected spike alert.
+    if (result.status === 400 || result.status === 413 || result.status === 422) {
       await recordOpsEvent(
         supabase,
         "upload_rejected",
