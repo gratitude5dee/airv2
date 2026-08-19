@@ -59,7 +59,7 @@ const REGISTRY_COLUMNS =
   "id, slug, kind, owner_user_id, name, description, icon_key, " +
   "publisher_username, publisher_wallet, agent_identity, visibility, " +
   "access, password_hash, x402_enabled, x402_price_usdc, " +
-  "plugin_signin_enabled, status, bundle_version, listed_at";
+  "plugin_signin_enabled, status, bundle_version, listed_at, updated_at";
 
 export interface DraftInput {
   appname: string;

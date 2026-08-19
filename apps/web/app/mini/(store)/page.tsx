@@ -3,14 +3,36 @@
  * SSR: renders logged-out; only public + published registry metadata appears
  * here (MA7). Launching an app requires a store session via /api/mini/launch.
  */
+import type { Metadata } from "next";
 import Link from "next/link";
 import { DitherGradient } from "@/components/dither-kit/gradient";
 import { Orb } from "@/components/orb/Orb";
 import { serviceClient } from "@/lib/supabase";
+import { env } from "@/lib/env";
 import { listPublicApps, type RegistryApp } from "@/lib/miniapps/registry";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const STORE_DESCRIPTION =
+  "The Air mini-app store: apps for your agent. Every app is a view over your own agent — open one and it's already yours.";
+
+export function generateMetadata(): Metadata {
+  const origin = env.miniappOrigin().replace(/\/$/, "");
+  const title = "Air Mini-Apps";
+  return {
+    title,
+    description: STORE_DESCRIPTION,
+    alternates: { canonical: `${origin}/` },
+    openGraph: {
+      title,
+      description: STORE_DESCRIPTION,
+      url: `${origin}/`,
+      type: "website",
+    },
+    twitter: { card: "summary", title, description: STORE_DESCRIPTION },
+  };
+}
 
 const CATEGORIES: [string, string[]][] = [
   ["Agent", ["computer", "browser", "connect", "onboarding", "settings"]],

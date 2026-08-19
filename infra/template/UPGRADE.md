@@ -95,3 +95,12 @@ confirm `~/.hermes/memories/MEMORY.md` / `USER.md` appear after a turn that
 saves a memory. Memory files are content: they stay in the box filesystem and
 are surfaced only through the owner-session Settings Memory section and the
 admin export (C4 — never Postgres, never logs).
+
+## 4. MA10 — the app-store-search skill
+
+The template now ships `skills/app-store-search` (baked by `setup.sh` §3c's
+local-skill loop). It teaches the agent to search the public wzrd.tech app
+directory through `GET /api/store/search` on the gateway origin — the same
+public listing data any web reader sees. For existing boxes, copy the skill
+directory into `~/.hermes/skills/app-store-search` during the in-place
+migration; no config or service change is needed.
