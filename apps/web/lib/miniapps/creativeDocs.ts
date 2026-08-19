@@ -274,10 +274,15 @@ async function readDoc(
   resourceId: string
 ): Promise<unknown> {
   try {
+    // A wake failure must propagate — treating it as "no document yet" would
+    // let a later write replace the real doc with an empty one. Only a
+    // missing/unparseable file means the document doesn't exist.
     const box = await ensureBoxAwake(supabase, userId);
-    return JSON.parse(await readFile(box.boxId, docPath(app, resourceId)));
-  } catch {
-    return null;
+    try {
+      return JSON.parse(await readFile(box.boxId, docPath(app, resourceId)));
+    } catch {
+      return null;
+    }
   } finally {
     // ensureBoxAwake nulls stop_after before it can fail; re-arm on every exit.
     await armStopAfter(supabase, userId).catch(() => undefined);
