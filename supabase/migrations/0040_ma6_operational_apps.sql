@@ -16,7 +16,7 @@ alter table decisions add constraint decisions_kind_check
                   'revise','ad_write','spend_ceiling','content_plan',
                   'spend_divergence','calendar_add',
                   'vault_fill','vault_reveal','social_post','purchase_review',
-                  'crm_update'));
+                  'miniapp_publish','crm_update'));
 
 -- Wave 2 goes live: inbox and crm leave draft (computer/browser/calendar
 -- were already published in 0034).
