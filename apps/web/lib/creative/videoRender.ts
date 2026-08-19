@@ -39,7 +39,6 @@ export async function startVideoRender(
   const job = await createCreativeJob(supabase, userId, "web", "video_render");
   try {
     const box = await ensureBoxAwake(supabase, userId);
-    await armStopAfter(supabase, userId).catch(() => undefined);
     const response = await pluginFetch(supabase, box, "POST", "jobs", {
       kind: "video_render",
       brief: doc.title || "timeline render",
@@ -89,6 +88,9 @@ export async function startVideoRender(
       return { jobId: null, line: "your box can't start right now — try again shortly." };
     }
     return { jobId: null, line: "the render couldn't start — try again in a moment." };
+  } finally {
+    // ensureBoxAwake nulls stop_after before it can fail; re-arm on every exit.
+    await armStopAfter(supabase, userId).catch(() => undefined);
   }
 }
 
@@ -135,7 +137,6 @@ export async function refreshVideoRender(
   }
   try {
     const box = await ensureBoxAwake(supabase, userId);
-    await armStopAfter(supabase, userId).catch(() => undefined);
     const response = await pluginFetch(
       supabase,
       box,
@@ -195,7 +196,7 @@ export async function refreshVideoRender(
       await insertRenderCostEvent(supabase, userId, job.id, "video");
       return { status: "delivered", line: "latest render:", url: delivery.url };
     } catch (error) {
-      if (error instanceof AssetPipelineError) {
+      if (error instanceof AssetPipelineError && error.permanent) {
         // Permanent import failure (size cap, bad export) — don't retry forever.
         await updateCreativeJob(supabase, job.id, {
           status: "failed",
@@ -220,5 +221,8 @@ export async function refreshVideoRender(
       line: "couldn't reach the box to check the render — refresh in a moment.",
       url: null,
     };
+  } finally {
+    // ensureBoxAwake nulls stop_after before it can fail; re-arm on every exit.
+    await armStopAfter(supabase, userId).catch(() => undefined);
   }
 }

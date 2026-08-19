@@ -273,12 +273,13 @@ async function readDoc(
   app: "image" | "video",
   resourceId: string
 ): Promise<unknown> {
-  const box = await ensureBoxAwake(supabase, userId);
   try {
+    const box = await ensureBoxAwake(supabase, userId);
     return JSON.parse(await readFile(box.boxId, docPath(app, resourceId)));
   } catch {
     return null;
   } finally {
+    // ensureBoxAwake nulls stop_after before it can fail; re-arm on every exit.
     await armStopAfter(supabase, userId).catch(() => undefined);
   }
 }
@@ -290,14 +291,15 @@ async function writeDoc(
   resourceId: string,
   doc: ImageDoc | VideoDoc
 ): Promise<void> {
-  const box = await ensureBoxAwake(supabase, userId);
   try {
+    const box = await ensureBoxAwake(supabase, userId);
     await writeFile(
       box.boxId,
       docPath(app, resourceId),
       JSON.stringify(doc, null, 2)
     );
   } finally {
+    // ensureBoxAwake nulls stop_after before it can fail; re-arm on every exit.
     await armStopAfter(supabase, userId).catch(() => undefined);
   }
 }

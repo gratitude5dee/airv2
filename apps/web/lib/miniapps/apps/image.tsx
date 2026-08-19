@@ -125,7 +125,7 @@ async function exportDelivery(
   const purpose = `miniapp-image:${ctx.session.resourceId}`;
   const { data } = await ctx.supabase
     .from("asset_deliveries")
-    .select("storage_key")
+    .select("storage_key, expires_at")
     .eq("user_id", ctx.session.userId)
     .eq("asset_id", asset.id)
     .eq("purpose", purpose)
@@ -135,11 +135,19 @@ async function exportDelivery(
     .limit(1)
     .maybeSingle();
   const storageKey = data?.storage_key as string | undefined;
-  if (storageKey) {
-    const signed = await ctx.supabase.storage
-      .from(ASSETS_BUCKET)
-      .createSignedUrl(storageKey, DELIVERY_TTL_SECONDS);
-    if (signed.data?.signedUrl) return signed.data.signedUrl;
+  const expiresAt = data?.expires_at as string | undefined;
+  if (storageKey && expiresAt) {
+    // Sign only for the copy's remaining life — the sweeper deletes the
+    // object at expires_at, so a longer signature would outlive the bytes.
+    const remaining = Math.floor(
+      (new Date(expiresAt).getTime() - Date.now()) / 1000
+    );
+    if (remaining >= 60) {
+      const signed = await ctx.supabase.storage
+        .from(ASSETS_BUCKET)
+        .createSignedUrl(storageKey, remaining);
+      if (signed.data?.signedUrl) return signed.data.signedUrl;
+    }
   }
   const minted = await mintDelivery(ctx.supabase, asset, purpose);
   return minted.url;

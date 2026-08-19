@@ -39,7 +39,17 @@ export interface Delivery {
   expires_at: string;
 }
 
-export class AssetPipelineError extends Error {}
+export class AssetPipelineError extends Error {
+  /** True when retrying cannot succeed (bad export metadata, size cap,
+   * hash mismatch) — callers may abandon the artifact. Everything else
+   * (auth, transport, storage hiccups) is retriable. */
+  constructor(
+    message: string,
+    readonly permanent = false
+  ) {
+    super(message);
+  }
+}
 
 /** Hard cap on a single ingested asset. The box is the untrusted side of the
  * C16 boundary — never buffer more than this regardless of what the plugin's
@@ -141,10 +151,10 @@ export async function ingestAsset(
   };
   const ext = normalizeExt(meta.ext ?? "");
   if (!meta.sha256 || !meta.bytes || !ext) {
-    throw new AssetPipelineError("export metadata invalid");
+    throw new AssetPipelineError("export metadata invalid", true);
   }
   if (meta.bytes > MAX_ASSET_BYTES) {
-    throw new AssetPipelineError("asset exceeds size limit");
+    throw new AssetPipelineError("asset exceeds size limit", true);
   }
 
   const existing = await supabase
@@ -170,7 +180,7 @@ export async function ingestAsset(
   const buffer = await readCapped(bytesRes, MAX_ASSET_BYTES);
   const digest = createHash("sha256").update(buffer).digest("hex");
   if (digest !== meta.sha256 || buffer.byteLength !== meta.bytes) {
-    throw new AssetPipelineError("export bytes failed sha256 verification");
+    throw new AssetPipelineError("export bytes failed sha256 verification", true);
   }
 
   const key = masterKey(userId, digest, ext);
@@ -271,7 +281,7 @@ async function readCapped(response: Response, cap: number): Promise<Buffer> {
     total += value.byteLength;
     if (total > cap) {
       await reader.cancel();
-      throw new AssetPipelineError("asset exceeds size limit");
+      throw new AssetPipelineError("asset exceeds size limit", true);
     }
     chunks.push(value);
   }
