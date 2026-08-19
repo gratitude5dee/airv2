@@ -286,8 +286,10 @@ describe("checkout: server-derived money (order tampering)", () => {
     expect(order.amount_cents).toBe(5000); // 2 × 2500, from the row
     expect(order.status).toBe("pending");
     expect(start.checkoutUrl).toContain("checkout.stripe.com");
-    // The Stripe session amount is the same server-derived figure.
-    expect(connectCalls[0]?.params.amountCents).toBe(5000);
+    // Stripe multiplies unit_amount × quantity: the session gets the
+    // per-item price so the charge equals the recorded order total.
+    expect(connectCalls[0]?.params.amountCents).toBe(2500);
+    expect(connectCalls[0]?.params.quantity).toBe(2);
   });
 
   it("rejects tampered quantities and unknown products", async () => {

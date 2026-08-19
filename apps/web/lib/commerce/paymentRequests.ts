@@ -148,6 +148,23 @@ export async function createPaymentRequest(
   };
 }
 
+/** Both approval surfaces (Pay page + decisions API) converge here so the
+ * Needs-you card can't go stale. */
+async function resolveLinkedDecision(
+  supabase: SupabaseClient,
+  userId: string,
+  decisionId: string | null,
+  status: "approved" | "dismissed"
+): Promise<void> {
+  if (!decisionId) return;
+  await supabase
+    .from("decisions")
+    .update({ status, resolved_at: new Date().toISOString() })
+    .eq("id", decisionId)
+    .eq("user_id", userId)
+    .eq("status", "pending");
+}
+
 export async function getPaymentRequest(
   supabase: SupabaseClient,
   userId: string,
@@ -221,6 +238,7 @@ export async function approvePaymentRequest(
       .update({ status: "approved", stripe_session_id: session.id })
       .eq("id", request.id)
       .eq("status", "pending");
+    await resolveLinkedDecision(supabase, userId, request.decision_id, "approved");
     return { checkoutUrl: session.url };
   }
 
@@ -235,6 +253,7 @@ export async function approvePaymentRequest(
     .update({ status: "approved", transfer_id: transferId })
     .eq("id", request.id)
     .eq("status", "pending");
+  await resolveLinkedDecision(supabase, userId, request.decision_id, "approved");
   return { walletDecisionId: decisionId };
 }
 
@@ -243,12 +262,16 @@ export async function dismissPaymentRequest(
   userId: string,
   requestId: string
 ): Promise<void> {
+  const request = await getPaymentRequest(supabase, userId, requestId);
   await supabase
     .from("payment_requests")
     .update({ status: "dismissed", resolved_at: new Date().toISOString() })
     .eq("id", requestId)
     .eq("user_id", userId)
     .eq("status", "pending");
+  if (request) {
+    await resolveLinkedDecision(supabase, userId, request.decision_id, "dismissed");
+  }
 }
 
 /** Webhook confirmation: the fiat leg is paid. Replay-safe by the

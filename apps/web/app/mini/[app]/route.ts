@@ -13,6 +13,7 @@
  * main app and nothing is ever written to client storage (C17).
  */
 import { NextRequest, NextResponse } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { serviceClient } from "@/lib/supabase";
 import { mintToken, redeemOnce, verifyToken } from "@/lib/miniapps/tokens";
 import { getRegistryApp, type RegistryApp } from "@/lib/miniapps/registry";
@@ -64,6 +65,7 @@ function resolveModule(app: RegistryApp): MiniAppModule | null {
  */
 async function runPublicGateChain(
   request: NextRequest,
+  supabase: SupabaseClient,
   app: RegistryApp,
   basePath: string,
   submittedPassword?: string
@@ -71,9 +73,21 @@ async function runPublicGateChain(
   const visibility = visibilityGate(app);
   if (visibility) return { ok: false, response: visibility };
   const password = passwordGate(request, app, basePath, submittedPassword);
-  if (password) return { ok: false, response: password.response };
+  if (password) {
+    await logGateEvent(
+      supabase,
+      app.id,
+      null,
+      password.settled ? "gate_settled" : "gate_challenged",
+      "password"
+    );
+    return { ok: false, response: password.response };
+  }
   const payment = await x402Gate(request, app);
-  if (payment) return { ok: false, response: payment };
+  if (payment) {
+    await logGateEvent(supabase, app.id, null, "gate_challenged", "x402");
+    return { ok: false, response: payment };
+  }
   const session = sessionFromCookie(request, app.slug);
   if (session) return { ok: true, session };
   if (!app.owner_user_id) return { ok: false, response: notFound() };
@@ -177,7 +191,7 @@ export async function GET(
   }
 
   const gate = appModule.publicAccess
-    ? await runPublicGateChain(request, app, basePath)
+    ? await runPublicGateChain(request, supabase, app, basePath)
     : await runGateChain(request, supabase, app, basePath);
   if (!gate.ok) return gate.response;
 
@@ -212,7 +226,7 @@ export async function POST(
       : undefined;
 
   const gate = appModule.publicAccess
-    ? await runPublicGateChain(request, app, basePath, submittedPassword)
+    ? await runPublicGateChain(request, supabase, app, basePath, submittedPassword)
     : await runGateChain(request, supabase, app, basePath, submittedPassword);
   if (!gate.ok) return gate.response;
   if (action === "__password") {
