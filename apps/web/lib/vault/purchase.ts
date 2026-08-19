@@ -16,6 +16,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { command, writeFile } from "../box/client";
 import { approveRun, type HermesBoxTarget } from "../hermes/client";
+import { hostSupportsLink } from "../payments/link";
 import { appendVaultEvent, VaultCliError } from "./client";
 import {
   amountBand,
@@ -58,6 +59,7 @@ export interface PurchaseReviewPayload {
   amount_band: string;
   card_name: string;
   card_masked: string | null;
+  link_supported?: boolean;
 }
 
 /**
@@ -185,6 +187,7 @@ export async function proposePurchaseReview(
     amount_band: band,
     card_name: card.name as string,
     card_masked: (card.masked as string | null) ?? null,
+    link_supported: await hostSupportsLink(host),
   };
   const { data: decision, error } = await supabase
     .from("decisions")
@@ -268,11 +271,38 @@ export async function resolvePurchaseReview(
   userId: string,
   decision: { id: string; ref: string | null; payload: unknown },
   approve: boolean,
-  box: { boxId: string; target: HermesBoxTarget } | null
+  box: { boxId: string; target: HermesBoxTarget } | null,
+  method: "fill" | "link" = "fill"
 ): Promise<void> {
   const payload = decision.payload as Partial<PurchaseReviewPayload> | null;
   const host = typeof payload?.host === "string" ? payload.host : "";
   const itemId = typeof payload?.item_id === "string" ? payload.item_id : "";
+
+  if (approve && method === "link") {
+    // Pay with Link (MA6 #5): the review card only offers this when the
+    // proposal recorded host support. NO fill happens — no ticket is minted
+    // and the run is resumed with approved=false so the agent never types
+    // card fields; the owner completes the merchant's Link flow in the
+    // headed browser. The stop-before-submission invariant is untouched.
+    if (payload?.link_supported !== true) {
+      throw new PurchaseError(
+        "link_unsupported",
+        "this checkout was not offered with Link",
+        409
+      );
+    }
+    await appendVaultEvent(
+      supabase,
+      userId,
+      "fill_denied",
+      itemId || null,
+      host ? `${host}:link_selected` : "link_selected"
+    );
+    if (decision.ref && box) {
+      await approveRun(box.target, decision.ref, false).catch(() => undefined);
+    }
+    return;
+  }
 
   if (!approve) {
     await appendVaultEvent(

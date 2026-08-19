@@ -27,6 +27,8 @@ export interface CalendarEvent {
   all_day: boolean;
   location?: string;
   attendees_count?: number;
+  /** Attendee emails, when the source provides them (MA6 #6 avatars). */
+  attendees?: string[];
   url?: string;
   notes_ref?: string;
   /** email invites start pending until the calendar_add decision resolves */

@@ -214,6 +214,7 @@ describe("proposePurchaseReview", () => {
       "card_name",
       "host",
       "item_id",
+      "link_supported",
       "summary",
     ]);
     expect(payload.amount_band).toBe("under $25");
@@ -240,6 +241,44 @@ describe("resolvePurchaseReview deny path", () => {
     const [event] = inserts.vault_events ?? [];
     expect(event?.action).toBe("fill_denied");
     expect(event?.item_id).toBe("item-1");
+  });
+});
+
+describe("resolvePurchaseReview link path (MA6 #5)", () => {
+  it("approving with Link mints no fill ticket and works box-down", async () => {
+    const inserts: Record<string, Row[]> = {};
+    const supabase = fakeSupabase({}, inserts);
+    await resolvePurchaseReview(
+      supabase,
+      "user-1",
+      {
+        id: "d1",
+        ref: "run-1",
+        payload: { host: "amazon.com", item_id: "item-1", link_supported: true },
+      },
+      true,
+      null,
+      "link"
+    );
+    const [event] = inserts.vault_events ?? [];
+    expect(event?.action).toBe("fill_denied");
+    expect(event?.context).toBe("amazon.com:link_selected");
+    // No ticket table touched — Link never sees the card (C18/C20).
+    expect(inserts.vault_fill_tickets).toBeUndefined();
+  });
+
+  it("rejects Link when the review was not offered with it", async () => {
+    const supabase = fakeSupabase({});
+    await expect(
+      resolvePurchaseReview(
+        supabase,
+        "user-1",
+        { id: "d1", ref: null, payload: { host: "amazon.com" } },
+        true,
+        null,
+        "link"
+      )
+    ).rejects.toThrow(PurchaseError);
   });
 });
 
