@@ -209,7 +209,11 @@ export function robotsTxt(): string {
     "Allow: /$",
     "Allow: /store/",
     "Allow: /llms.txt",
+    "Allow: /sitemap.xml",
+    "Allow: /robots.txt",
     "Allow: /api/store/index.json",
+    // Crawlers need the rendered pages' styles/scripts.
+    "Allow: /_next/",
     // App views themselves are gated, tokened surfaces — not for crawlers.
     "Disallow: /",
     "",
