@@ -174,11 +174,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     { count: x402Receipts },
     { data: receiptAmounts },
   ] = await Promise.all([
-    supabase
-      .from("miniapp_gate_events")
-      .select("id", { count: "exact", head: true })
-      .eq("kind", "app_opened")
-      .gte("created_at", dayAgo),
+    opsKindCount("store_open"),
     opsKindCount("launch"),
     opsKindCount("guest_session"),
     opsKindCount("publish"),
