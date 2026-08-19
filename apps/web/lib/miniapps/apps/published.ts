@@ -21,7 +21,8 @@ import type { MiniAppContext, MiniAppModule } from "./types";
 export function publisherCsp(): string {
   return (
     "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
-    `img-src 'self' ${env.r2PublicBaseUrl()} data:; connect-src 'self'; ` +
+    `img-src 'self' ${env.r2PublicBaseUrl()} data:; font-src 'self'; ` +
+    `media-src 'self'; connect-src 'self'; ` +
     `form-action 'self'; frame-ancestors 'self' ${env.appOrigin()}`
   );
 }
@@ -103,8 +104,9 @@ export async function serveBundleAsset(
     status: 200,
     headers: {
       ...bundleHeaders(),
-      // Immutable per version: the key embeds bundle_version.
-      "Cache-Control": "private, max-age=3600",
+      // The public asset URL has no version segment, so it must revalidate
+      // — otherwise a new bundle_version would mix with hour-old assets.
+      "Cache-Control": "no-store",
       "Content-Type": contentType,
     },
   });

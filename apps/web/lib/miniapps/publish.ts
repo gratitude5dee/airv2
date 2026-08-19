@@ -108,6 +108,26 @@ export async function createDraft(
     .single();
   if (error) {
     if (error.code === "23505") {
+      // Slug exists: refresh the caller's own draft in place; only a slug
+      // owned by someone else is actually "taken".
+      const { data: refreshed } = await supabase
+        .from("mini_apps")
+        .update({
+          name,
+          description,
+          agent_identity: input.agentIdentity?.trim().slice(0, 200) || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("slug", slug)
+        .eq("owner_user_id", userId)
+        .select(REGISTRY_COLUMNS)
+        .maybeSingle();
+      if (refreshed) {
+        console.log(
+          JSON.stringify({ msg: "miniapp draft refreshed", user_id: userId, slug })
+        );
+        return refreshed as unknown as RegistryApp;
+      }
       throw new PublishError("that app name is taken", 409);
     }
     if (error.code === "23514") {

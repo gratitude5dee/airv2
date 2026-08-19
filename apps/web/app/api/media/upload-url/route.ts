@@ -1,8 +1,10 @@
 /**
  * MA4 owner upload path (a): any owner surface (web session or desktop
  * bearer) mints a presigned PUT into the user's public prefix. The declared
- * size is pre-charged against the quota; POST confirms/reconciles after the
- * upload (HEAD → actual size; delete on violation). R2 credentials stay
+ * size is pre-charged against the quota and recorded server-side
+ * (pending_uploads); POST confirms afterwards — the confirm leg consumes the
+ * reservation once, runs the full MA8 guard on the actual bytes, and
+ * reconciles usage against the STORED charge. R2 credentials stay
  * server-side — the browser only ever sees the time-boxed signed URL.
  */
 import { randomBytes } from "node:crypto";
@@ -19,13 +21,8 @@ import {
   assertWithinQuota,
   ensureUserBucket,
 } from "@/lib/storage/buckets";
-import {
-  deleteObject,
-  headObject,
-  presignPut,
-  publicUrl,
-  r2Configured,
-} from "@/lib/storage/r2";
+import { confirmUpload, reserveUpload } from "@/lib/storage/confirm";
+import { presignPut, publicUrl, r2Configured } from "@/lib/storage/r2";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,29 +40,22 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     contentType?: string;
     sizeBytes?: number;
     confirmKey?: string;
-    declaredBytes?: number;
   };
 
-  // Confirm/reconcile leg after an upload completed.
+  // Confirm/reconcile leg after an upload completed. The reservation is
+  // consumed exactly once and the release amount comes from the stored
+  // pre-charge, never the request body.
   if (body.confirmKey) {
     const bucket = await ensureUserBucket(supabase, session.userId);
     const key = body.confirmKey;
-    const declared = Number(body.declaredBytes ?? 0);
     if (!key.startsWith(bucket.prefix)) {
       return NextResponse.json({ error: "invalid key" }, { status: 400 });
     }
-    const head = await headObject(key);
-    if (!head) {
-      await addUsage(supabase, session.userId, -declared);
-      return NextResponse.json({ error: "object not found" }, { status: 404 });
+    const result = await confirmUpload(supabase, session.userId, key);
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
     }
-    if (head.sizeBytes > MEDIA_MAX_BYTES || !allowedMediaType(head.contentType)) {
-      await deleteObject(key);
-      await addUsage(supabase, session.userId, -declared);
-      return NextResponse.json({ error: "upload rejected" }, { status: 422 });
-    }
-    await addUsage(supabase, session.userId, head.sizeBytes - declared);
-    return NextResponse.json({ ok: true, publicUrl: publicUrl(key) });
+    return NextResponse.json({ ok: true, publicUrl: result.publicUrl });
   }
 
   if (!r2Configured()) {
@@ -94,11 +84,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     assertWithinQuota(bucket, sizeBytes);
     const key = `${bucket.prefix}media/${randomBytes(6).toString("hex")}-${filename}`;
     await addUsage(supabase, session.userId, sizeBytes);
+    await reserveUpload(supabase, session.userId, key, sizeBytes);
     return NextResponse.json({
       uploadUrl: presignPut(key, contentType, 600),
       key,
       publicUrl: publicUrl(key),
-      declaredBytes: sizeBytes,
     });
   } catch (error) {
     if (error instanceof MediaGuardError) {

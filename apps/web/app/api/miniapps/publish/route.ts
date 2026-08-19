@@ -50,24 +50,38 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       agentIdentity:
         typeof body?.agentIdentity === "string" ? body.agentIdentity : null,
     });
-    const { data: decision, error } = await supabase
+    // One pending decision per app: re-staging refreshes the draft but must
+    // not pile up duplicate Needs-you items.
+    const { data: pending } = await supabase
       .from("decisions")
-      .insert({
-        user_id: userId,
-        kind: "miniapp_publish",
-        ref: app.slug,
-        label: `Publish ${app.name} to the store`,
-      })
       .select("id")
-      .single();
-    if (error || !decision) {
-      return NextResponse.json({ error: "decision failed" }, { status: 502 });
+      .eq("user_id", userId)
+      .eq("kind", "miniapp_publish")
+      .eq("ref", app.slug)
+      .eq("status", "pending")
+      .maybeSingle();
+    let decisionId = pending ? (pending.id as string) : null;
+    if (!decisionId) {
+      const { data: decision, error } = await supabase
+        .from("decisions")
+        .insert({
+          user_id: userId,
+          kind: "miniapp_publish",
+          ref: app.slug,
+          label: `Publish ${app.name} to the store`,
+        })
+        .select("id")
+        .single();
+      if (error || !decision) {
+        return NextResponse.json({ error: "decision failed" }, { status: 502 });
+      }
+      decisionId = decision.id as string;
     }
     return NextResponse.json({
       ok: true,
       slug: app.slug,
       status: "draft",
-      decision_id: decision.id,
+      decision_id: decisionId,
       note: "Draft staged. Publishing is an owner decision in Needs-you / the Publish page.",
     });
   } catch (error) {

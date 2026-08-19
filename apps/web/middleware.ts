@@ -69,6 +69,8 @@ export function middleware(request: NextRequest): NextResponse {
 }
 
 export const config = {
-  // Skip static assets and Next internals; everything else routes by host.
-  matcher: ["/((?!_next/|favicon.ico|.*\\.(?:png|jpg|jpeg|svg|ico|css|js|woff2?)$).*)"],
+  // Skip Next internals only. Static-looking extensions still need the
+  // middleware: published bundle assets (/<slug>/app.js etc. on the mini
+  // host) must be rewritten to /mini/<slug>/<path> to be served (MA3).
+  matcher: ["/((?!_next/|favicon.ico$).*)"],
 };

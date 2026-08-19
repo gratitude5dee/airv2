@@ -20,7 +20,13 @@ import {
   assertWithinQuota,
   ensureUserBucket,
 } from "@/lib/storage/buckets";
-import { publicUrl, putObject, r2Configured } from "@/lib/storage/r2";
+import {
+  deleteObject,
+  headObject,
+  publicUrl,
+  putObject,
+  r2Configured,
+} from "@/lib/storage/r2";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -61,8 +67,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const bucket = await ensureUserBucket(supabase, userId);
     assertWithinQuota(bucket, bytes.length);
     const key = `${bucket.prefix}icons/${app.slug}.${ALLOWED_MEDIA_TYPES[contentType]}`;
+    // The key is deterministic per app, so an upload overwrites: charge only
+    // the delta, and clean up a stale object left under a previous extension.
+    const previous = await headObject(key);
+    let reclaimed = previous?.sizeBytes ?? 0;
+    if (app.icon_key && app.icon_key !== key) {
+      const stale = await headObject(app.icon_key);
+      if (stale) {
+        await deleteObject(app.icon_key);
+        reclaimed += stale.sizeBytes;
+      }
+    }
     await putObject(key, bytes, contentType);
-    await addUsage(supabase, userId, bytes.length);
+    await addUsage(supabase, userId, bytes.length - reclaimed);
     const { error } = await supabase
       .from("mini_apps")
       .update({ icon_key: key, updated_at: new Date().toISOString() })

@@ -2,9 +2,10 @@
  * Apps API (MA3/MA4): GET a presigned PUT into the session user's public
  * prefix. Owner sessions only; the declared content type must pass the MA8
  * allowlist and the declared size is pre-charged against the user's quota
- * (POST confirms the upload afterwards: HEAD the object, reconcile usage to
- * the actual size, delete on violation). R2 credentials never appear here —
- * only a time-boxed signed URL.
+ * and recorded server-side (pending_uploads). POST confirms afterwards: the
+ * reservation is consumed once, the full MA8 guard runs on the actual bytes,
+ * and usage reconciles against the STORED charge — never a client value.
+ * R2 credentials never appear here — only a time-boxed signed URL.
  */
 import { randomBytes } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
@@ -20,13 +21,8 @@ import {
   assertWithinQuota,
   ensureUserBucket,
 } from "@/lib/storage/buckets";
-import {
-  deleteObject,
-  headObject,
-  presignPut,
-  publicUrl,
-  r2Configured,
-} from "@/lib/storage/r2";
+import { confirmUpload, reserveUpload } from "@/lib/storage/confirm";
+import { presignPut, publicUrl, r2Configured } from "@/lib/storage/r2";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -64,11 +60,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     assertWithinQuota(bucket, sizeBytes);
     const key = `${bucket.prefix}apps/${auth.app.slug}/${randomBytes(8).toString("hex")}`;
     await addUsage(supabase, auth.session.userId, sizeBytes);
+    await reserveUpload(supabase, auth.session.userId, key, sizeBytes);
     return NextResponse.json({
       uploadUrl: presignPut(key, contentType, 600),
       key,
       publicUrl: publicUrl(key),
-      declaredBytes: sizeBytes,
     });
   } catch (error) {
     if (error instanceof MediaGuardError) {
@@ -86,27 +82,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
   const body = (await request.json().catch(() => ({}))) as {
     key?: string;
-    declaredBytes?: number;
   };
   const key = body.key ?? "";
-  const declared = Number(body.declaredBytes ?? 0);
   const bucket = await ensureUserBucket(supabase, auth.session.userId);
   // The key must live under this user's prefix and this app's folder.
   if (!key.startsWith(`${bucket.prefix}apps/${auth.app.slug}/`)) {
     return NextResponse.json({ error: "invalid key" }, { status: 400 });
   }
-  const head = await headObject(key);
-  if (!head) {
-    // Never uploaded: release the pre-charge.
-    await addUsage(supabase, auth.session.userId, -declared);
-    return NextResponse.json({ error: "object not found" }, { status: 404 });
+  const result = await confirmUpload(supabase, auth.session.userId, key);
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
   }
-  if (head.sizeBytes > MEDIA_MAX_BYTES || !allowedMediaType(head.contentType)) {
-    await deleteObject(key);
-    await addUsage(supabase, auth.session.userId, -declared);
-    return NextResponse.json({ error: "upload rejected" }, { status: 422 });
-  }
-  // Reconcile pre-charged usage to the actual object size.
-  await addUsage(supabase, auth.session.userId, head.sizeBytes - declared);
-  return NextResponse.json({ ok: true, publicUrl: publicUrl(key) });
+  return NextResponse.json({ ok: true, publicUrl: result.publicUrl });
 }

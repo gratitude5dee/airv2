@@ -60,10 +60,12 @@ function contentTypeFor(path: string, declared: string): string | null {
 
 /** Pull a box file over the command channel, base64-encoded, hard-capped. */
 async function pullBoxFile(boxId: string, path: string): Promise<Buffer> {
-  // head -c cap+1 makes an oversized file detectable without buffering it all.
+  // head -c cap+1 makes an oversized file detectable without buffering it
+  // all. pipefail so a missing/unreadable file fails the pipeline (base64
+  // would otherwise exit 0 on empty input and hide the error).
   const result = await command(
     boxId,
-    `head -c ${MEDIA_MAX_BYTES + 1} ${JSON.stringify(path)} | base64 -w0`,
+    `set -o pipefail; head -c ${MEDIA_MAX_BYTES + 1} ${JSON.stringify(path)} | base64 -w0`,
     120
   );
   if (result.exitCode !== 0) {
