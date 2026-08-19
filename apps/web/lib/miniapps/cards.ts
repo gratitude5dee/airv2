@@ -12,8 +12,8 @@ export function mintSignedLink(
   appSlug: string,
   resourceId: string
 ): string {
-  const origin = process.env.MINIAPP_ORIGIN ?? env.appOrigin();
-  return `${origin}/mini/${appSlug}?t=${mintToken(userId, appSlug, resourceId)}`;
+  // Apps live at mini.wzrd.tech/<slug> (MA0); legacy /mini/<slug> 301s there.
+  return `${env.miniappOrigin()}/${appSlug}?t=${mintToken(userId, appSlug, resourceId)}`;
 }
 
 export async function sendMiniAppCard(

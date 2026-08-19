@@ -187,7 +187,7 @@ describe("purchase_review closed vocabulary", () => {
 
   it("is rendered by the iMessage mini-app surface", () => {
     const mini = readFileSync(
-      join(root, "app", "mini", "[app]", "route.ts"),
+      join(root, "lib", "miniapps", "apps", "vault.tsx"),
       "utf8"
     );
     expect(mini).toContain("purchase_review");

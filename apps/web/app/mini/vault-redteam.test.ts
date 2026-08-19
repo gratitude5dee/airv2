@@ -21,11 +21,21 @@ function thenable(rows: unknown) {
   return builder;
 }
 
-vi.mock("@/lib/supabase", () => ({
-  serviceClient: () => ({
-    from: (table: string) =>
-      table === "vault_items"
-        ? thenable([
+vi.mock("@/lib/supabase", async () => {
+  const { makeFakeSupabase, makeApp, testDb } = await import(
+    "./loader-test-utils"
+  );
+  testDb.apps = [makeApp({ slug: "vault", kind: "input", name: "Secrets" })];
+  const registry = makeFakeSupabase(testDb);
+  return {
+    serviceClient: () => ({
+      from: (table: string) =>
+        table === "mini_apps" ||
+        table === "miniapp_gate_events" ||
+        table === "miniapp_redemptions"
+          ? registry.from(table)
+          : table === "vault_items"
+            ? thenable([
             {
               id: "item-1",
               kind: "login",
@@ -36,10 +46,11 @@ vi.mock("@/lib/supabase", () => ({
               created_at: "2026-08-01T00:00:00Z",
               updated_at: "2026-08-01T00:00:00Z",
             },
-          ])
-        : thenable([]),
-  }),
-}));
+              ])
+            : thenable([]),
+    }),
+  };
+});
 vi.mock("@/lib/box/desktop", () => ({
   desktopStreamUrl: vi.fn(),
   DesktopUnavailableError: class extends Error {},

@@ -9,12 +9,18 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "../env";
 
+export type MiniAppRole = "owner" | "guest";
+
 export interface MiniAppClaims {
   userId: string;
   app: string;
   resourceId: string;
   jti: string;
   exp: number;
+  /** Absent on pre-V9 tokens; treated as "owner". */
+  role?: MiniAppRole;
+  /** Guest sessions carry the grant they were minted from (MA4). */
+  grantId?: string;
 }
 
 function sign(payload: string): string {
@@ -27,7 +33,8 @@ export function mintToken(
   userId: string,
   app: string,
   resourceId: string,
-  ttlMinutes = 10
+  ttlMinutes = 10,
+  extra?: { role: MiniAppRole; grantId?: string }
 ): string {
   const claims: MiniAppClaims = {
     userId,
@@ -35,6 +42,7 @@ export function mintToken(
     resourceId,
     jti: randomBytes(12).toString("base64url"),
     exp: Math.floor(Date.now() / 1000) + ttlMinutes * 60,
+    ...(extra ?? {}),
   };
   const payload = Buffer.from(JSON.stringify(claims)).toString("base64url");
   console.log(

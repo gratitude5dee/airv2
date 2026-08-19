@@ -10,6 +10,7 @@ import { AdsPanel } from "./ads-panel";
 import { ScreenExtras } from "./screen-extras";
 import { VaultPanel } from "./vault-panel";
 import { BotsPanel } from "./bots-panel";
+import { AppsPanel } from "./apps-panel";
 import { CalendarPanel } from "./calendar-panel";
 import {
   BrowserHeader,
@@ -254,6 +255,7 @@ type Tab =
   | "wallet"
   | "vault"
   | "bots"
+  | "apps"
   | "computer";
 
 /** Tolerantly extract a list from an API payload that may be a bare array,
@@ -296,6 +298,7 @@ const TABS: [Tab, string][] = [
   ["connectors", "Connectors"],
   ["calendar", "Calendar"],
   ["vault", "Vault"],
+  ["apps", "Apps"],
   ["bots", "Bots"],
   ["ads", "Ads"],
 ];
@@ -2737,6 +2740,8 @@ export default function HomePage() {
             <VaultPanel active={tab === "vault"} />
           ) : tab === "bots" ? (
             <BotsPanel active={tab === "bots"} />
+          ) : tab === "apps" ? (
+            <AppsPanel active={tab === "apps"} />
           ) : tab === "calendar" ? (
             <CalendarPanel
               active={tab === "calendar"}

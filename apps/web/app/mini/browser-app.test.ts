@@ -7,7 +7,10 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { mintToken } from "@/lib/miniapps/tokens";
 
-vi.mock("@/lib/supabase", () => ({ serviceClient: () => ({}) }));
+vi.mock("@/lib/supabase", async () => {
+  const { makeFakeSupabase, testDb } = await import("./loader-test-utils");
+  return { serviceClient: () => makeFakeSupabase(testDb) };
+});
 vi.mock("@/lib/box/desktop", () => ({
   desktopStreamUrl: vi.fn(async () => "https://box-host.example/stream/xyz"),
   DesktopUnavailableError: class extends Error {},
@@ -47,8 +50,13 @@ function withCookie(app: string): NextRequest {
   return request;
 }
 
-beforeAll(() => {
+beforeAll(async () => {
   process.env.MINIAPP_SIGNING_KEY = "test-signing-key";
+  const { makeApp, testDb } = await import("./loader-test-utils");
+  testDb.apps = [
+    makeApp({ slug: "browser", kind: "passthrough" }),
+    makeApp({ slug: "todo", kind: "input", name: "Todos" }),
+  ];
 });
 
 describe("browser mini-app passthrough", () => {
