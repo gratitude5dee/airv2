@@ -6,7 +6,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
 import { sessionUserId } from "@/lib/auth/user";
-import { createTransferRequest, WalletSendError } from "@/lib/wallet/send";
+import {
+  createTransferRequest,
+  WalletSendError,
+  type WalletAsset,
+} from "@/lib/wallet/send";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,16 +23,22 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const body = (await request.json().catch(() => ({}))) as {
     to?: string;
     amount?: string;
+    asset?: string;
   };
   if (typeof body.to !== "string" || typeof body.amount !== "string") {
     return NextResponse.json({ error: "invalid request" }, { status: 400 });
+  }
+  const asset: WalletAsset = body.asset === "usdc" ? "usdc" : "native";
+  if (body.asset !== undefined && body.asset !== "usdc" && body.asset !== "native") {
+    return NextResponse.json({ error: "invalid asset" }, { status: 400 });
   }
   try {
     const result = await createTransferRequest(
       serviceClient(),
       userId,
       body.to,
-      body.amount
+      body.amount,
+      asset
     );
     return NextResponse.json(
       { ok: true, decision_id: result.decisionId },

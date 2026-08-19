@@ -4,16 +4,28 @@
  * filesystem and is exported by pulling a box snapshot (returned as a
  * reference, not streamed here).
  */
+import { createHmac } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuthorized } from "@/lib/admin/auth";
 import { EXPORT_TABLES } from "@/lib/admin/export-tables";
 import { readMemoryFiles } from "@/lib/memory/files";
 import { ensureBoxAwake } from "@/lib/orchestrator/boxes";
+import { env } from "@/lib/env";
 import { serviceClient } from "@/lib/supabase";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
+
+/** Keyed pseudonym for a payer wallet: stable across exports so repeat
+ * buyers correlate, but not reversible to the on-chain address. */
+function pseudonymizePayer(address: string | null): string | null {
+  if (!address) return null;
+  const digest = createHmac("sha256", env.sessionSecret())
+    .update(address.toLowerCase())
+    .digest("hex");
+  return `payer:${digest.slice(0, 16)}`;
+}
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   if (!adminAuthorized(request)) {
@@ -53,6 +65,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   // MA11: x402 receipts are app-keyed (no user_id) — export the settlement
   // ledger of the user's own published apps (their publisher revenue).
+  // Payers are third parties: their wallet address is replaced with a keyed
+  // pseudonym (stable within an install, so repeat buyers still correlate)
+  // and the tx hash — which resolves to the payer on-chain — stays home.
   const { data: ownedApps } = await supabase
     .from("mini_apps")
     .select("id")
@@ -61,9 +76,15 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   if (ownedAppIds.length > 0) {
     const { data: receipts } = await supabase
       .from("x402_receipts")
-      .select("*")
+      .select("jti, app_id, payer_address, amount_usdc, settled_at")
       .in("app_id", ownedAppIds);
-    archive.x402_receipts = receipts ?? [];
+    archive.x402_receipts = (receipts ?? []).map((row) => ({
+      jti: row.jti,
+      app_id: row.app_id,
+      payer: pseudonymizePayer(row.payer_address as string | null),
+      amount_usdc: row.amount_usdc,
+      settled_at: row.settled_at,
+    }));
   } else {
     archive.x402_receipts = [];
   }

@@ -43,6 +43,12 @@ export const env = {
     const parsed = Number.parseInt(optional("WALLET_CHAIN_ID", "8453"), 10);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 8453;
   },
+  // USDC contract for the wallet send lane. Default: Base mainnet USDC.
+  walletUsdcAddress: (): string =>
+    optional(
+      "WALLET_USDC_ADDRESS",
+      "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+    ),
   sessionSecret: (): string => required("SESSION_SECRET"),
   spectrumProjectId: (): string => required("SPECTRUM_PROJECT_ID"),
   spectrumProjectSecret: (): string => required("SPECTRUM_PROJECT_SECRET"),
