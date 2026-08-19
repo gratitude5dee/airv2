@@ -11,6 +11,7 @@ import { sessionUserId } from "@/lib/auth/user";
 import { env } from "@/lib/env";
 import { getRegistryApp } from "@/lib/miniapps/registry";
 import { createGuestGrant } from "@/lib/miniapps/guests";
+import { grantRateLimited, recordOpsEvent } from "@/lib/security/limits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,6 +28,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     ttl_hours?: number;
   };
   const supabase = serviceClient();
+  if (await grantRateLimited(supabase, userId)) {
+    return NextResponse.json({ error: "too many grants" }, { status: 429 });
+  }
   const app = await getRegistryApp(supabase, body.app ?? "");
   if (!app || app.status !== "published") {
     return NextResponse.json({ error: "unknown app" }, { status: 400 });
@@ -60,6 +64,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     maxUses,
     ttlHours,
   });
+  await recordOpsEvent(supabase, "grant", userId, app.slug);
   return NextResponse.json({
     grant_id: grant.id,
     url: `${env.miniappOrigin()}/${app.slug}?g=${grant.id}`,

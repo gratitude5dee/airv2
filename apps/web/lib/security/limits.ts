@@ -1,0 +1,120 @@
+/**
+ * MA11 rate limits + ops counters. Every counted event lands in ops_events
+ * (append-only, service-role only); the durable limits count that ledger so
+ * they hold across instances, unlike the in-memory guest throttle. Limits
+ * fail open on a ledger read error — a counter outage must not take the
+ * store down — but the record leg logs loudly so ops sees it.
+ */
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+export type OpsEventKind =
+  | "store_open"
+  | "launch"
+  | "publish"
+  | "upload"
+  | "upload_rejected"
+  | "guest_session"
+  | "grant"
+  | "rate_limited";
+
+/** Per-user launch mints (store session or plugin bearer), per hour. */
+export const LAUNCHES_PER_HOUR = 60;
+/** Publish status flips to `published`, per user per day. */
+export const PUBLISHES_PER_DAY = 20;
+/** Public-media uploads (bundle, icon, Apps API presign), per user per hour. */
+export const UPLOADS_PER_HOUR = 60;
+/** Guest grant mints, per owner per hour. */
+export const GRANTS_PER_HOUR = 30;
+
+const HOUR_MS = 3_600_000;
+const DAY_MS = 86_400_000;
+
+/** Append one ops event; best-effort, never blocks the request. */
+export async function recordOpsEvent(
+  supabase: SupabaseClient,
+  kind: OpsEventKind,
+  userId: string | null,
+  ref?: string,
+  bytes?: number
+): Promise<void> {
+  const { error } = await supabase.from("ops_events").insert({
+    user_id: userId,
+    kind,
+    ref: ref ?? null,
+    bytes: bytes ?? 0,
+  });
+  if (error) {
+    console.error(
+      JSON.stringify({ msg: "ops event insert failed", kind, error: error.message })
+    );
+  }
+}
+
+async function countRecent(
+  supabase: SupabaseClient,
+  kind: OpsEventKind,
+  userId: string,
+  windowMs: number
+): Promise<number | null> {
+  const since = new Date(Date.now() - windowMs).toISOString();
+  const { count, error } = await supabase
+    .from("ops_events")
+    .select("id", { count: "exact", head: true })
+    .eq("kind", kind)
+    .eq("user_id", userId)
+    .gte("created_at", since);
+  if (error) {
+    console.error(
+      JSON.stringify({ msg: "ops event count failed", kind, error: error.message })
+    );
+    return null;
+  }
+  return count ?? 0;
+}
+
+/**
+ * Durable per-user limit check against the ops ledger. Returns true when the
+ * user is over the limit for the window; records a `rate_limited` marker so
+ * probing shows up in the ops dashboard.
+ */
+async function overLimit(
+  supabase: SupabaseClient,
+  kind: OpsEventKind,
+  userId: string,
+  max: number,
+  windowMs: number
+): Promise<boolean> {
+  const count = await countRecent(supabase, kind, userId, windowMs);
+  if (count === null) return false; // fail open: counters must not outage the store
+  if (count < max) return false;
+  await recordOpsEvent(supabase, "rate_limited", userId, kind);
+  return true;
+}
+
+export function launchRateLimited(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<boolean> {
+  return overLimit(supabase, "launch", userId, LAUNCHES_PER_HOUR, HOUR_MS);
+}
+
+export function publishRateLimited(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<boolean> {
+  return overLimit(supabase, "publish", userId, PUBLISHES_PER_DAY, DAY_MS);
+}
+
+export function uploadRateLimited(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<boolean> {
+  return overLimit(supabase, "upload", userId, UPLOADS_PER_HOUR, HOUR_MS);
+}
+
+export function grantRateLimited(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<boolean> {
+  return overLimit(supabase, "grant", userId, GRANTS_PER_HOUR, HOUR_MS);
+}

@@ -174,6 +174,62 @@ describe("MA2 plugin approval needs an owner session", () => {
   });
 });
 
+describe("MA11 prompt-injection: publish/gate/quota surfaces are owner-session-gated", () => {
+  // A prompt-injected agent (or any sessionless caller) probing the publish,
+  // gate-config, quota, and grant surfaces must bounce off the auth check
+  // before any DB access — serviceClient above throws on touch.
+  const surfaces = [
+    {
+      name: "self-publish: the status flip",
+      path: "../../app/api/mini/publish/status/route",
+      url: "https://mini.wzrd.tech/api/mini/publish/status",
+      body: { slug: "alice-evil", status: "published" },
+    },
+    {
+      name: "gate stripping: publish settings (password/x402/visibility)",
+      path: "../../app/api/mini/publish/route",
+      url: "https://mini.wzrd.tech/api/mini/publish",
+      body: { slug: "alice-app", x402_enabled: false, password: null },
+    },
+    {
+      name: "quota drain: the bundle upload",
+      path: "../../app/api/mini/publish/bundle/route",
+      url: "https://mini.wzrd.tech/api/mini/publish/bundle?slug=alice-app",
+      body: { anything: true },
+    },
+  ] as const;
+
+  for (const surface of surfaces) {
+    it(`${surface.name} rejects sessionless callers pre-DB`, async () => {
+      const { POST } = (await import(surface.path)) as {
+        POST: (req: import("next/server").NextRequest) => Promise<Response>;
+      };
+      const { NextRequest } = await import("next/server");
+      const res = await POST(
+        new NextRequest(surface.url, {
+          method: "POST",
+          body: JSON.stringify(surface.body),
+          headers: { "Content-Type": "application/json" },
+        })
+      );
+      expect(res.status).toBe(401);
+    });
+  }
+
+  it("guest grant mint rejects sessionless callers pre-DB", async () => {
+    const { POST } = await import("../../app/api/mini/grant/route");
+    const { NextRequest } = await import("next/server");
+    const res = await POST(
+      new NextRequest("https://airv2.vercel.app/api/mini/grant", {
+        method: "POST",
+        body: JSON.stringify({ app: "kanban", resource: "default" }),
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+    expect(res.status).toBe(401);
+  });
+});
+
 describe("fill tickets refuse tampering (V6 re-run)", () => {
   beforeEach(() => {
     process.env.MINIAPP_SIGNING_KEY = "redteam-signing-key";

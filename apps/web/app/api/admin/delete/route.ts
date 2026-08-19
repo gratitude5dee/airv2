@@ -20,7 +20,12 @@ import {
 import { ASSETS_BUCKET, userPrefix } from "@/lib/assets/keys";
 import { deletePrefix, r2Configured } from "@/lib/storage/r2";
 import { openAdsKey, updateCampaign } from "@/lib/ads/openai";
-import { WAVE_TABLES, WAVE_TABLES_WITHOUT_USER_ID } from "@/lib/security/c18";
+import {
+  V9_SET_NULL_TABLES,
+  V9_USER_TABLES,
+  WAVE_TABLES,
+  WAVE_TABLES_WITHOUT_USER_ID,
+} from "@/lib/security/c18";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -210,6 +215,40 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     steps.assets = `error: ${error instanceof Error ? error.message : String(error)}`;
   }
 
+  // MA11: published bundles live at apps/<slug>/<version>/ on R2, outside
+  // the user's u/<username>/ prefix — delete each owned app's bundle tree
+  // before the mini_apps rows cascade away (the slugs are the only pointer).
+  try {
+    const { data: ownedApps } = await supabase
+      .from("mini_apps")
+      .select("slug")
+      .eq("owner_user_id", userId);
+    const slugs = (ownedApps ?? []).map((app) => app.slug as string);
+    if (slugs.length > 0 && r2Configured()) {
+      let removed = 0;
+      for (const slug of slugs) {
+        removed += await deletePrefix(`apps/${slug}/`);
+      }
+      steps.bundles = `removed ${removed} object(s) across ${slugs.length} app(s)`;
+    } else {
+      steps.bundles = slugs.length > 0 ? "r2 not configured" : "none";
+    }
+  } catch (error) {
+    steps.bundles = `error: ${error instanceof Error ? error.message : String(error)}`;
+  }
+
+  // MA8: the Stripe Connect Standard account belongs to the merchant — the
+  // platform never custodies funds and never deletes their account; the
+  // merchants row (the only link) cascades with the user row below.
+  const { count: merchantCount } = await supabase
+    .from("merchants")
+    .select("user_id", { count: "exact", head: true })
+    .eq("user_id", userId);
+  steps.merchant =
+    (merchantCount ?? 0) > 0
+      ? "link row cascades; the Connect account stays with the merchant"
+      : "none";
+
   // MA4: delete every public media object under the user's R2 prefix
   // (u/<username>/ — includes media/, apps/, and mini-app icon uploads).
   try {
@@ -260,6 +299,29 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       orphaned.length === 0
         ? "zero rows in every wave table"
         : `ORPHANED ${orphaned.join(", ")}`;
+
+    // MA11 — V9 completeness: every mini-app table keyed to the user must
+    // be empty after the cascade; set-null tables must hold no rows still
+    // pointing at the deleted user.
+    const v9Orphaned: string[] = [];
+    for (const { table, column } of V9_USER_TABLES) {
+      const { count } = await supabase
+        .from(table)
+        .select("*", { count: "exact", head: true })
+        .eq(column, userId);
+      if ((count ?? 0) > 0) v9Orphaned.push(`${table}:${count}`);
+    }
+    for (const { table, column } of V9_SET_NULL_TABLES) {
+      const { count } = await supabase
+        .from(table)
+        .select("*", { count: "exact", head: true })
+        .eq(column, userId);
+      if ((count ?? 0) > 0) v9Orphaned.push(`${table}:${count} (expected set null)`);
+    }
+    steps.v9_table_audit =
+      v9Orphaned.length === 0
+        ? "zero rows in every v9 table"
+        : `ORPHANED ${v9Orphaned.join(", ")}`;
   }
 
   console.log(

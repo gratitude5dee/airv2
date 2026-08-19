@@ -165,3 +165,35 @@ export const WAVE_TABLES = [
 ] as const;
 
 export const WAVE_TABLES_WITHOUT_USER_ID = ["room_members"] as const;
+
+/**
+ * V9 mini-app tables and the column that scopes each to a user. Drives the
+ * MA11 deletion-completeness audit and the export manifest checks. Tables
+ * absent here are scoped differently: x402_receipts and the app-cascade leg
+ * of miniapp_gate_events reap through mini_apps(id); stripe_events is a
+ * global idempotency ledger holding no user data.
+ */
+export const V9_USER_TABLES: readonly { table: string; column: string }[] = [
+  { table: "mini_apps", column: "owner_user_id" },
+  { table: "miniapp_installs", column: "user_id" },
+  { table: "miniapp_guest_grants", column: "created_by" },
+  { table: "miniapp_redemptions", column: "user_id" },
+  { table: "user_buckets", column: "user_id" },
+  { table: "plugin_tokens", column: "user_id" },
+  { table: "plugin_device_codes", column: "user_id" },
+  { table: "pending_uploads", column: "user_id" },
+  { table: "merchants", column: "user_id" },
+  { table: "storefront_products", column: "user_id" },
+  { table: "orders", column: "user_id" },
+  { table: "payment_requests", column: "user_id" },
+  { table: "storefront_events", column: "user_id" },
+  { table: "ops_events", column: "user_id" },
+] as const;
+
+/**
+ * V9 tables whose user reference is `on delete set null` rather than
+ * cascade: rows survive a user deletion anonymized, so the audit asserts
+ * the column is null rather than the row gone.
+ */
+export const V9_SET_NULL_TABLES: readonly { table: string; column: string }[] =
+  [{ table: "miniapp_gate_events", column: "user_id" }] as const;

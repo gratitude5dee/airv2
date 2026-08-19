@@ -14,6 +14,7 @@ import {
   uploadBundle,
 } from "@/lib/miniapps/bundles";
 import { r2Configured } from "@/lib/storage/r2";
+import { recordOpsEvent, uploadRateLimited } from "@/lib/security/limits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,13 +41,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "bundle too large" }, { status: 413 });
   }
   const supabase = serviceClient();
+  if (await uploadRateLimited(supabase, userId)) {
+    return NextResponse.json({ error: "too many uploads" }, { status: 429 });
+  }
   try {
     const app = await ownedApp(supabase, userId, slug);
     const zip = Buffer.from(await file.arrayBuffer());
     const version = await uploadBundle(supabase, app.id, app.slug, zip);
+    await recordOpsEvent(supabase, "upload", userId, `bundle:${app.slug}`, zip.length);
     return NextResponse.json({ ok: true, version });
   } catch (error) {
     if (error instanceof PublishError || error instanceof BundleError) {
+      if (error instanceof BundleError) {
+        await recordOpsEvent(supabase, "upload_rejected", userId, error.message);
+      }
       return NextResponse.json(
         { error: error.message },
         { status: error.status }

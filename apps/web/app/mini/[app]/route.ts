@@ -33,6 +33,7 @@ import { FIRST_PARTY_MODULES, type MiniAppModule } from "@/lib/miniapps/apps";
 import { publishedModule } from "@/lib/miniapps/apps/published";
 import { isStorefrontApp, storefront } from "@/lib/miniapps/apps/storefront";
 import { forbidden, notFound, withBaseHeaders } from "@/lib/miniapps/html";
+import { recordOpsEvent } from "@/lib/security/limits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -170,6 +171,7 @@ export async function GET(
     const grant = await redeemGuestGrant(supabase, grantId, app.id);
     if (!grant) return forbidden("this invite is no longer valid");
     await logGateEvent(supabase, app.id, grant.created_by, "app_opened", "guest");
+    await recordOpsEvent(supabase, "guest_session", grant.created_by, slug);
     const response = withBaseHeaders(
       NextResponse.redirect(new URL(basePath, externalOrigin(request)), 303)
     );

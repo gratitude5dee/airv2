@@ -51,6 +51,23 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     archive.room_members = [];
   }
 
+  // MA11: x402 receipts are app-keyed (no user_id) — export the settlement
+  // ledger of the user's own published apps (their publisher revenue).
+  const { data: ownedApps } = await supabase
+    .from("mini_apps")
+    .select("id")
+    .eq("owner_user_id", userId);
+  const ownedAppIds = (ownedApps ?? []).map((app) => app.id as string);
+  if (ownedAppIds.length > 0) {
+    const { data: receipts } = await supabase
+      .from("x402_receipts")
+      .select("*")
+      .in("app_id", ownedAppIds);
+    archive.x402_receipts = receipts ?? [];
+  } else {
+    archive.x402_receipts = [];
+  }
+
   const { data: line } = await supabase
     .from("lines")
     .select("phone, mode, role, assigned_at")

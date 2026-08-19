@@ -49,6 +49,13 @@ export function middleware(request: NextRequest): NextResponse {
       );
       return NextResponse.redirect(target, 308);
     }
+    // x-mini-host is a middleware-owned marker: never trust it from the
+    // client — a spoofed value would steer loader cookie paths/redirects.
+    if (request.headers.has("x-mini-host")) {
+      const headers = new Headers(request.headers);
+      headers.delete("x-mini-host");
+      return NextResponse.next({ request: { headers } });
+    }
     return NextResponse.next();
   }
 
@@ -76,7 +83,16 @@ export function middleware(request: NextRequest): NextResponse {
   rewritten.pathname = pathname === "/" ? "/mini" : `/mini${pathname}`;
   const headers = new Headers(request.headers);
   headers.set("x-mini-host", "1");
-  return NextResponse.rewrite(rewritten, { request: { headers } });
+  const response = NextResponse.rewrite(rewritten, { request: { headers } });
+  // MA11 load: the store home is public, session-free SSR — let the edge
+  // cache it briefly. Loaders (/<slug>) stay dynamic: they carry cookies.
+  if (pathname === "/" && request.method === "GET" && !search) {
+    response.headers.set(
+      "Cache-Control",
+      "public, s-maxage=60, stale-while-revalidate=300"
+    );
+  }
+  return response;
 }
 
 export const config = {

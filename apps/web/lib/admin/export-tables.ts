@@ -10,7 +10,7 @@
 export interface ExportTable {
   table: string;
   /** Column that scopes rows to the user. */
-  column: "id" | "user_id";
+  column: "id" | "user_id" | "owner_user_id" | "created_by";
   /** Explicit select list; "*" only when the table holds no secret column. */
   select: string;
 }
@@ -66,4 +66,39 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
   // V8 tabs
   all("wallet_transfers"),
   all("box_state_events"),
+  // V9 mini-apps (MA11) — password_hash never leaves the server, plugin
+  // bearer/device-code hashes stay home; x402_receipts is app-keyed and
+  // exported by the route through the user's owned app ids.
+  {
+    table: "mini_apps",
+    column: "owner_user_id",
+    select:
+      "id, slug, route, kind, scopes, backing_tool, name, description, icon_key, " +
+      "publisher_username, publisher_wallet, agent_identity, visibility, access, " +
+      "x402_enabled, x402_price_usdc, x402_config, plugin_signin_enabled, status, " +
+      "bundle_version, listed_at, updated_at",
+  },
+  all("miniapp_installs"),
+  { table: "miniapp_guest_grants", column: "created_by", select: "*" },
+  all("miniapp_gate_events"),
+  all("user_buckets"),
+  {
+    table: "plugin_tokens",
+    column: "user_id",
+    select: "id, tool, created_at, last_used_at, revoked_at",
+  },
+  {
+    table: "plugin_device_codes",
+    column: "user_id",
+    select: "id, tool, status, created_at, expires_at, approved_at",
+  },
+  all("pending_uploads"),
+  // MA8 commerce — stripe_account_id is the merchant's own Connect account
+  // reference, not a credential.
+  all("merchants"),
+  all("storefront_products"),
+  all("orders"),
+  all("payment_requests"),
+  all("storefront_events"),
+  all("ops_events"),
 ] as const;
