@@ -550,8 +550,11 @@ export async function runFlush(
         .eq("space_id", job.spaceId)
         .eq("chain_started_at", chainStartedAt);
     }
-    await armStopAfter(supabase, job.userId);
   } finally {
+    // Re-arm the idle deadline no matter how the turn ended: ensureBoxAwake
+    // cleared it, and a throw mid-turn must not leave the box awake with no
+    // deadline. Monotonic, so a no-op for boxes that never woke.
+    await armStopAfter(supabase, job.userId).catch(() => undefined);
     await sender.close().catch(() => undefined);
   }
 }
