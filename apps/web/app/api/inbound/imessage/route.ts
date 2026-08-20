@@ -27,6 +27,13 @@ import {
 import { createSpectrumSender } from "@/lib/spectrum/sender";
 import { handleOnboarding } from "@/lib/provisioning/onboarding";
 import { createDecision, resolveTrustTier } from "@/lib/routing/trust";
+import {
+  isOnairosTrigger,
+  relayToOnairos,
+  setSpectrumFlow,
+  spectrumFlowActive,
+  storeSpectrumGrants,
+} from "@/lib/onairos/spectrum";
 
 export const maxDuration = 800;
 
@@ -46,7 +53,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     });
   } catch (error) {
     if (error instanceof SpectrumWebhookError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.status },
+      );
     }
     throw error;
   }
@@ -56,7 +66,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     inbound = parseInboundSpectrumMessage(rawBody, headers);
   } catch (error) {
     if (error instanceof SpectrumWebhookError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.status },
+      );
     }
     throw error;
   }
@@ -85,7 +98,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       webhookId: inbound.webhookId ?? "spectrum",
       messageId: inbound.messageId,
     },
-    route?.userId ?? null
+    route?.userId ?? null,
   );
   if (alreadySeen) {
     return NextResponse.json({ ok: true, deduped: true }, { status: 200 });
@@ -100,7 +113,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         line_phone: inbound.phone ?? null,
         space_id: inbound.spaceId,
         message_id: inbound.messageId,
-      })
+      }),
     );
     return NextResponse.json({ ok: true }, { status: 200 });
   }
@@ -120,7 +133,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     supabase,
     route.userId,
     inbound.senderId,
-    body
+    body,
   );
   if (onboarding.kind === "ignore") {
     return NextResponse.json({ ok: true }, { status: 200 });
@@ -145,7 +158,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // may not cause any side effect — no run, no reply; it lands in "Needs
   // you" for the owner to triage (ARCHITECTURE.md §2.5c).
   const tier = inbound.senderId
-    ? await resolveTrustTier(supabase, route.userId, "imessage", inbound.senderId)
+    ? await resolveTrustTier(
+        supabase,
+        route.userId,
+        "imessage",
+        inbound.senderId,
+      )
     : 2;
   if (tier === 2) {
     await createDecision(supabase, {
@@ -161,8 +179,79 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           msg: "tier2 decision insert failed",
           user_id: route.userId,
           error: error instanceof Error ? error.message : String(error),
-        })
+        }),
       );
+    });
+    return NextResponse.json({ ok: true }, { status: 200 });
+  }
+
+  // Onairos connect relay (skill: onairos-spectrum-connect). Owner-tier
+  // only: the owner's own "connect onairos" opens the flow, and while the
+  // persisted shouldRouteNextMessage flag is set their messages route to
+  // Onairos instead of the agent — so the email/code/YES always comes from
+  // the user's own message, never a synthesized one. No key → normal path.
+  if (
+    tier === 0 &&
+    inbound.senderId &&
+    env.onairosApiKey() !== null &&
+    ((await spectrumFlowActive(supabase, route.userId)) ||
+      isOnairosTrigger(body))
+  ) {
+    const relayInput = {
+      sessionId: inbound.spaceId,
+      senderId: inbound.senderId,
+      phone: inbound.phone,
+      text: body,
+    };
+    const userId = route.userId;
+    // 5: ack before work (C8); the relay + reply happen after the response.
+    after(async () => {
+      const sender = await createSpectrumSender().catch(() => undefined);
+      try {
+        let result;
+        try {
+          result = await relayToOnairos(relayInput);
+        } catch (error) {
+          console.error(
+            JSON.stringify({
+              msg: "onairos relay failed",
+              user_id: userId,
+              space_id: relayInput.sessionId,
+              error: error instanceof Error ? error.message : String(error),
+            }),
+          );
+          await setSpectrumFlow(supabase, userId, "disconnected").catch(
+            () => undefined,
+          );
+          return;
+        }
+        if (result.grants.length > 0) {
+          await storeSpectrumGrants(supabase, userId, result.grants).catch(
+            (error: unknown) => {
+              console.error(
+                JSON.stringify({
+                  msg: "onairos grant store failed",
+                  user_id: userId,
+                  error: error instanceof Error ? error.message : String(error),
+                }),
+              );
+            },
+          );
+        } else {
+          await setSpectrumFlow(
+            supabase,
+            userId,
+            result.shouldRouteNextMessage ? "pending" : "disconnected",
+          ).catch(() => undefined);
+        }
+        if (result.reply && sender) {
+          await sender
+            .sendText(relayInput.sessionId, relayInput.phone, result.reply)
+            .catch(() => undefined);
+        }
+      } finally {
+        await sender?.close().catch(() => undefined);
+      }
     });
     return NextResponse.json({ ok: true }, { status: 200 });
   }
@@ -200,7 +289,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           user_id: message.userId,
           space_id: message.spaceId,
           error: error instanceof Error ? error.message : String(error),
-        })
+        }),
       );
     } finally {
       await sender?.close().catch(() => undefined);
