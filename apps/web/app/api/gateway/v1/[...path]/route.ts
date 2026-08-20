@@ -16,6 +16,7 @@ import {
   reasoningForTier,
   serviceTierForTier,
 } from "@/lib/entitlements/models";
+import { currentPeriodSpend } from "@/lib/entitlements/spend";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -138,13 +139,23 @@ export async function POST(
   if (!box) return unauthorized();
   const userId = box.user_id as string;
 
+  // Only the metered completion endpoint is proxied (review 2026-08 P1-1);
+  // any other upstream path would carry the platform key without metering.
+  if (path.join("/") !== "chat/completions") {
+    return NextResponse.json({ error: "not found" }, { status: 404 });
+  }
+
   const { data: entitlement } = await supabase
     .from("entitlements")
-    .select("speed_tier, monthly_cap_usd, spend_mtd_usd, suspended_reason")
+    .select("speed_tier, monthly_cap_usd, spend_mtd_usd, spend_period_start, suspended_reason")
     .eq("user_id", userId)
     .maybeSingle();
   if (!entitlement || entitlement.suspended_reason) return unauthorized();
-  if (Number(entitlement.spend_mtd_usd) >= Number(entitlement.monthly_cap_usd)) {
+  const spend = await currentPeriodSpend(supabase, userId, {
+    spend_mtd_usd: entitlement.spend_mtd_usd as number | string,
+    spend_period_start: String(entitlement.spend_period_start),
+  });
+  if (spend >= Number(entitlement.monthly_cap_usd)) {
     return NextResponse.json(
       {
         error: {
