@@ -4,8 +4,7 @@
 import { NextResponse } from "next/server";
 import { ASSETS_BUCKET, DELIVERY_TTL_SECONDS } from "@/lib/assets/keys";
 import { mintDelivery, type CreativeAsset } from "@/lib/assets/pipeline";
-import { createRun, MAIN_SESSION } from "@/lib/hermes/client";
-import { armStopAfter, ensureBoxAwake } from "@/lib/orchestrator/boxes";
+import { StartLimitError } from "@/lib/orchestrator/boxes";
 import { externalOrigin } from "../gates";
 import { esc, html, page, withBaseHeaders } from "../html";
 import {
@@ -15,6 +14,7 @@ import {
   type ImageDoc,
   type ImageLayer,
 } from "../creativeDocs";
+import { promptBar, runPrompt } from "../promptBar";
 import { publicExporter } from "../publicExport";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
@@ -80,11 +80,7 @@ ${
 <form method="post" class="addrow">${hidden("action", "export-public")}<button class="ghost">Public link</button></form>`
     : ""
 }
-${
-  isOwner
-    ? `<form method="post" class="addrow">${hidden("action", "prompt")}<input type="text" name="text" placeholder="Ask your agent — e.g. remove the background on layer 2…" maxlength="4000"><button>Send</button></form>`
-    : ""
-}`
+${isOwner ? promptBar("Ask your agent — e.g. remove the background on layer 2…") : ""}`
   );
 }
 
@@ -162,13 +158,27 @@ function redirectBack(ctx: MiniAppContext, query?: string): NextResponse {
   );
 }
 
+const unavailable = () =>
+  html(
+    page(
+      "Image",
+      "<h1>Image</h1><p>Your agent's computer can't start right now — try again in a few minutes.</p>"
+    )
+  );
+
 export const image: MiniAppModule = {
   async render(ctx: MiniAppContext): Promise<NextResponse> {
-    const doc = await getImageDoc(
-      ctx.supabase,
-      ctx.session.userId,
-      ctx.session.resourceId
-    );
+    let doc: ImageDoc;
+    try {
+      doc = await getImageDoc(
+        ctx.supabase,
+        ctx.session.userId,
+        ctx.session.resourceId
+      );
+    } catch (error) {
+      if (error instanceof StartLimitError) return unavailable();
+      throw error;
+    }
     const asset = await flatAsset(ctx, doc);
     const flatUrl = await signedFlatUrl(ctx, asset);
     const url = new URL(ctx.request.url);
@@ -192,32 +202,38 @@ export const image: MiniAppModule = {
     if (action === "export") {
       return redirectBack(ctx, "?exported=1");
     }
-    if (action === "export-public") {
-      const doc = await getImageDoc(ctx.supabase, userId, resourceId);
-      const result = doc.flatAssetId
-        ? await publicExporter.publishAsset(ctx.supabase, userId, doc.flatAssetId)
-        : { line: "render a flat before exporting." };
-      return redirectBack(ctx, `?notice=${encodeURIComponent(result.line)}`);
-    }
-    if (action === "prompt") {
-      const text = String(form.get("text") ?? "").trim();
-      if (text && text.length <= 4000) {
-        const box = await ensureBoxAwake(ctx.supabase, userId);
-        const run = await createRun(box.target, {
-          input: text,
-          sessionId: MAIN_SESSION,
-          metadata: { app: "image", resource: resourceId, surface: "miniapp" },
-        });
-        await ctx.supabase.from("agent_runs").insert({
-          user_id: userId,
-          hermes_run_id: run.run_id,
-          trigger: "web",
-        });
-        await armStopAfter(ctx.supabase, userId);
+    try {
+      if (action === "export-public") {
+        const doc = await getImageDoc(ctx.supabase, userId, resourceId);
+        const result = doc.flatAssetId
+          ? await publicExporter.publishAsset(
+              ctx.supabase,
+              userId,
+              doc.flatAssetId
+            )
+          : { line: "render a flat before exporting." };
+        return redirectBack(ctx, `?notice=${encodeURIComponent(result.line)}`);
       }
-      return redirectBack(ctx);
+      if (action === "prompt") {
+        await runPrompt(ctx, String(form.get("text") ?? ""));
+        return redirectBack(ctx);
+      }
+      return await mutate(ctx, action, form);
+    } catch (error) {
+      if (error instanceof StartLimitError) return unavailable();
+      throw error;
     }
-    if (action === "rename") {
+  },
+};
+
+async function mutate(
+  ctx: MiniAppContext,
+  action: string,
+  form: FormData
+): Promise<NextResponse> {
+  const userId = ctx.session.userId;
+  const resourceId = ctx.session.resourceId;
+  if (action === "rename") {
       await updateImageDoc(ctx.supabase, userId, resourceId, {
         kind: "rename",
         title: String(form.get("title") ?? ""),
@@ -270,11 +286,10 @@ export const image: MiniAppModule = {
         });
       }
     } else if (action === "remove") {
-      await updateImageDoc(ctx.supabase, userId, resourceId, {
-        kind: "remove",
-        id: String(form.get("id") ?? ""),
-      });
-    }
-    return redirectBack(ctx);
-  },
-};
+    await updateImageDoc(ctx.supabase, userId, resourceId, {
+      kind: "remove",
+      id: String(form.get("id") ?? ""),
+    });
+  }
+  return redirectBack(ctx);
+}

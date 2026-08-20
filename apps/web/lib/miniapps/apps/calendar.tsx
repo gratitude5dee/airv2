@@ -26,6 +26,7 @@ import {
 } from "@/lib/crm/store";
 import { externalOrigin } from "../gates";
 import { esc, html, page, withBaseHeaders } from "../html";
+import { promptBar, runPrompt } from "../promptBar";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
 interface InviteDecision {
@@ -91,7 +92,8 @@ function renderCalendar(
   boxAwake: boolean,
   sources: SourceRow[],
   activePersona: string | null,
-  avatars: Map<string, CrmAvatar>
+  avatars: Map<string, CrmAvatar>,
+  isOwner: boolean
 ): string {
   const providerMeta = personaByProvider(sources);
   const personaOf = (event: CalendarEvent): string =>
@@ -182,7 +184,8 @@ function renderCalendar(
 
   return page(
     "Calendar",
-    `<h1>Next 7 days</h1>${tabs}${inviteRows}${days}${empty}${sourcesSection}`
+    `<h1>Next 7 days</h1>${tabs}${inviteRows}${days}${empty}${sourcesSection}
+${isOwner ? promptBar("Ask your agent — e.g. block focus time tomorrow morning…") : ""}`
   );
 }
 
@@ -233,7 +236,8 @@ export const calendar: MiniAppModule = {
         boxAwake,
         (sourceRows ?? []) as SourceRow[],
         activePersona,
-        avatars
+        avatars,
+        ctx.session.role === "owner"
       )
     );
   },
@@ -242,6 +246,27 @@ export const calendar: MiniAppModule = {
     // Inline calendar_add resolution — same effect as the Needs-you queue:
     // approve confirms the pending event box-side, dismiss tombstones it.
     const action = String(form.get("action") ?? "");
+    if (action === "prompt") {
+      try {
+        await runPrompt(ctx, String(form.get("text") ?? ""));
+      } catch (error) {
+        if (error instanceof StartLimitError) {
+          return html(
+            page(
+              "Calendar",
+              "<h1>Calendar</h1><p>Your agent's computer can't start right now — try again in a few minutes.</p>"
+            )
+          );
+        }
+        throw error;
+      }
+      return withBaseHeaders(
+        NextResponse.redirect(
+          new URL(ctx.basePath, externalOrigin(ctx.request)),
+          303
+        )
+      );
+    }
     if (action === "set_source" && ctx.session.role === "owner") {
       // Persona/color are calendar_accounts metadata only — the event
       // spine and sync are untouched (pure view-state filter).
