@@ -8,9 +8,13 @@ import Link from "next/link";
 import { DitherGradient } from "@/components/dither-kit/gradient";
 import { Orb } from "@/components/orb/Orb";
 import { serviceClient } from "@/lib/supabase";
-import { env } from "@/lib/env";
 import { listPublicApps, type RegistryApp } from "@/lib/miniapps/registry";
 import { recordStoreOpen } from "@/lib/security/limits";
+import {
+  canonicalStoreHome,
+  storePaths,
+  type StorePaths,
+} from "@/lib/miniapps/storePaths";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,16 +23,16 @@ const STORE_DESCRIPTION =
   "The Air mini-app store: apps for your agent. Every app is a view over your own agent — open one and it's already yours.";
 
 export function generateMetadata(): Metadata {
-  const origin = env.miniappOrigin().replace(/\/$/, "");
+  const canonical = canonicalStoreHome();
   const title = "Air Mini-Apps";
   return {
     title,
     description: STORE_DESCRIPTION,
-    alternates: { canonical: `${origin}/` },
+    alternates: { canonical },
     openGraph: {
       title,
       description: STORE_DESCRIPTION,
-      url: `${origin}/`,
+      url: canonical,
       type: "website",
     },
     twitter: { card: "summary", title, description: STORE_DESCRIPTION },
@@ -47,11 +51,11 @@ function priceChip(app: RegistryApp): string | null {
   return app.x402_price_usdc ? `$${app.x402_price_usdc} USDC` : "x402";
 }
 
-function AppCard({ app }: { app: RegistryApp }) {
+function AppCard({ app, paths }: { app: RegistryApp; paths: StorePaths }) {
   const chip = priceChip(app);
   return (
     <Link
-      href={`/store/${app.slug}`}
+      href={paths.detail(app.slug)}
       className="panel !p-4 block text-left no-underline"
     >
       <div className="flex items-center gap-3">
@@ -83,6 +87,7 @@ export default async function StoreHome({
   searchParams: Promise<{ q?: string }>;
 }) {
   const { q } = await searchParams;
+  const paths = await storePaths();
   const query = (q ?? "").trim().toLowerCase();
   const supabase = serviceClient();
   // Anonymous store-home traffic feeds the store_opens_24h ops counter;
@@ -114,10 +119,10 @@ export default async function StoreHome({
             <h1 className="m-0 text-[28px] font-semibold tracking-[-0.03em]">
               mini
             </h1>
-            <Link className="btn-ghost ml-auto text-[12px]" href="/publish">
+            <Link className="btn-ghost ml-auto text-[12px]" href={paths.publish}>
               Publish
             </Link>
-            <Link className="btn-ghost text-[12px]" href="/login">
+            <Link className="btn-ghost text-[12px]" href={paths.login}>
               Sign in
             </Link>
           </div>
@@ -125,7 +130,7 @@ export default async function StoreHome({
             Apps for your agent. Every app here is a view over your own agent
             — open one and it&apos;s already yours.
           </p>
-          <form method="get" action="/" className="flex w-full gap-2">
+          <form method="get" action={paths.home} className="flex w-full gap-2">
             <input
               type="text"
               name="q"
@@ -151,7 +156,7 @@ export default async function StoreHome({
               </h2>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {row.map((app) => (
-                  <AppCard key={app.slug} app={app} />
+                  <AppCard key={app.slug} app={app} paths={paths} />
                 ))}
               </div>
             </section>
@@ -165,7 +170,7 @@ export default async function StoreHome({
             </h2>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {rest.map((app) => (
-                <AppCard key={app.slug} app={app} />
+                <AppCard key={app.slug} app={app} paths={paths} />
               ))}
             </div>
           </section>

@@ -197,7 +197,7 @@ describe("GET /api/store/search", () => {
     };
     expect(body.results.map((r) => r.slug)).toEqual(["alice-notes"]);
     expect(body.results[0]!.detail_url).toBe(
-      "https://mini.wzrd.tech/store/alice-notes"
+      "https://app.wzrd.tech/mini/alice-notes"
     );
     expect(body.results[0]!.agent_md).toBe(
       "https://mini.wzrd.tech/store/alice-notes/agent.md"

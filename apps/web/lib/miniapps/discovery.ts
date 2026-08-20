@@ -11,6 +11,7 @@ import { createHash } from "node:crypto";
 import { env } from "../env";
 import type { RegistryApp } from "./registry";
 
+
 export interface IndexEntry {
   name: string;
   description: string;
@@ -28,6 +29,16 @@ export interface IndexEntry {
 
 function origin(): string {
   return env.miniappOrigin().replace(/\/$/, "");
+}
+
+/** Canonical URL for the store home: the main origin's /mini (hybrid). */
+export function canonicalStoreHome(): string {
+  return `${env.appOrigin().replace(/\/$/, "")}/mini`;
+}
+
+/** Canonical URL for an app's detail page: the main origin's /mini/<slug>. */
+export function canonicalDetailUrl(slug: string): string {
+  return `${env.appOrigin().replace(/\/$/, "")}/mini/${slug}`;
 }
 
 /** True only for rows allowed on any discovery surface (MA7). */
@@ -110,7 +121,6 @@ function gateLines(entry: IndexEntry): string[] {
 /** Plain-markdown app card at /store/<slug>/agent.md (AEO). */
 export function agentMd(app: RegistryApp, actions: string[]): string {
   const entry = indexEntry(app);
-  const base = origin();
   const publisher = entry.publisher.username ?? "air";
   const lines = [
     `# ${entry.name}`,
@@ -118,7 +128,7 @@ export function agentMd(app: RegistryApp, actions: string[]): string {
     entry.description || "(no description)",
     "",
     `- URL: ${entry.url}`,
-    `- Detail page: ${base}/store/${entry.slug}`,
+    `- Detail page: ${canonicalDetailUrl(entry.slug)}`,
     `- Publisher: @${publisher}`,
     ...(entry.publisher.agent_identity
       ? [`- Publisher agent identity: ${entry.publisher.agent_identity}`]
@@ -225,7 +235,6 @@ export function robotsTxt(): string {
 /** JSON-LD SoftwareApplication (+ Offer for x402 apps) for a detail page. */
 export function jsonLd(app: RegistryApp): Record<string, unknown> {
   const entry = indexEntry(app);
-  const base = origin();
   const offer = entry.gates.x402
     ? {
         "@type": "Offer",
@@ -238,7 +247,7 @@ export function jsonLd(app: RegistryApp): Record<string, unknown> {
     "@type": "SoftwareApplication",
     name: entry.name,
     description: entry.description,
-    url: `${base}/store/${entry.slug}`,
+    url: canonicalDetailUrl(entry.slug),
     applicationCategory: "WebApplication",
     operatingSystem: "Web",
     offers: offer,
