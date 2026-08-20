@@ -23,10 +23,15 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const from = new Date(
     Date.now() - RECENT_DAYS * 24 * 60 * 60 * 1000
   ).toISOString();
-  const receipts = await fetchReceipts(supabase, userId, { from }, 1000);
-  receipts.sort((a, b) => String(b.ts ?? "").localeCompare(String(a.ts ?? "")));
+  const receipts = await fetchReceipts(
+    supabase,
+    userId,
+    { from },
+    MAX_ROWS,
+    true
+  );
   return NextResponse.json(
-    { receipts: receipts.slice(0, MAX_ROWS) },
+    { receipts },
     { headers: { "Cache-Control": "no-store" } }
   );
 }
