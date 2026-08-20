@@ -1,6 +1,6 @@
 # P1-10: agent media_publish skips rate limit + ops ledger
 
-Status: open
+Status: resolved (PR #128)
 
 Add uploadRateLimited + recordOpsEvent(upload) like apps/v1/media-upload-url. app/api/media/publish/route.ts:81-140.
 
