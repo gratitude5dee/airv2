@@ -103,7 +103,18 @@ export default async function StoreDetail({
         </Link>
 
         <header className="rise-in mt-6 flex items-center gap-4">
-          <Orb size={40} label={app.name || app.slug} />
+          {app.icon_key ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={publicUrl(app.icon_key)}
+              alt=""
+              width={40}
+              height={40}
+              className="shrink-0 rounded-[8px] object-cover [image-rendering:pixelated]"
+            />
+          ) : (
+            <Orb size={40} label={app.name || app.slug} />
+          )}
           <div className="min-w-0">
             <h1 className="m-0 text-[24px] font-semibold tracking-[-0.02em]">
               {app.name || app.slug}

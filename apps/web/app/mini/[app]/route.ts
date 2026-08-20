@@ -32,7 +32,12 @@ import { guestRateLimited, redeemGuestGrant } from "@/lib/miniapps/guests";
 import { FIRST_PARTY_MODULES, type MiniAppModule } from "@/lib/miniapps/apps";
 import { publishedModule } from "@/lib/miniapps/apps/published";
 import { isStorefrontApp, storefront } from "@/lib/miniapps/apps/storefront";
-import { forbidden, notFound, withBaseHeaders } from "@/lib/miniapps/html";
+import {
+  forbidden,
+  notFound,
+  sessionExpired,
+  withBaseHeaders,
+} from "@/lib/miniapps/html";
 import { recordOpsEvent } from "@/lib/security/limits";
 
 export const runtime = "nodejs";
@@ -122,9 +127,9 @@ export async function GET(
     const blocked = visibilityGate(app);
     if (blocked) return blocked;
     const claims = verifyToken(token, slug);
-    if (!claims) return forbidden("invalid or expired link");
+    if (!claims) return sessionExpired("This signed link is invalid or has expired.");
     if (!(await redeemOnce(supabase, claims))) {
-      return forbidden("this link was already used");
+      return sessionExpired("This signed link was already used.");
     }
     console.log(
       JSON.stringify({ msg: "miniapp opened", user_id: claims.userId, app: slug })

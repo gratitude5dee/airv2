@@ -18,7 +18,9 @@ import {
   setUsername,
   SPEED_TIERS,
 } from "@/lib/settings/account";
+import { StartLimitError } from "@/lib/orchestrator/boxes";
 import { esc, forbidden, html, page } from "../html";
+import { promptBar, runPrompt } from "../promptBar";
 import { memoryAction, renderMemorySection } from "../sections/memory";
 import { onairosAction, renderOnairosSection } from "../sections/onairos";
 import { renderTracesSection } from "../sections/traces";
@@ -172,7 +174,8 @@ function renderSettings(
   );
   return page(
     "Settings",
-    `<h1>Settings</h1>${notice ? `<p style="color:var(--muted);font-size:12px">${esc(notice)}</p>` : ""}${usernameSection}${speedSection}${emailSection}${contactSection}${timezoneSection}${memorySection}${onairosSection}${pluginSection}${storageSection}${traceSection}${dataSection}`
+    `<h1>Settings</h1>${notice ? `<p style="color:var(--muted);font-size:12px">${esc(notice)}</p>` : ""}${usernameSection}${speedSection}${emailSection}${contactSection}${timezoneSection}${memorySection}${onairosSection}${pluginSection}${storageSection}${traceSection}${dataSection}
+${promptBar("Ask your agent — e.g. change my speed tier to fast…")}`
   );
 }
 
@@ -203,6 +206,21 @@ export const settings: MiniAppModule = {
     }
     const action = String(form.get("action") ?? "");
     const userId = ctx.session.userId;
+
+    if (action === "prompt") {
+      try {
+        await runPrompt(ctx, String(form.get("text") ?? ""));
+      } catch (error) {
+        if (error instanceof StartLimitError) {
+          return respond(
+            ctx,
+            "Your agent's computer can't start right now — try again in a few minutes."
+          );
+        }
+        throw error;
+      }
+      return respond(ctx, "Sent to your agent.");
+    }
 
     const memoryResponse = await memoryAction(ctx, form);
     if (memoryResponse) return memoryResponse;

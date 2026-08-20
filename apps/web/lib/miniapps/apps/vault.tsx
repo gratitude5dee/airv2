@@ -28,6 +28,7 @@ import {
 } from "@/lib/vault/managers";
 import { normalizeHost, setSiteGrant } from "@/lib/browser/grants";
 import { externalOrigin } from "../gates";
+import { promptBar, runPrompt } from "../promptBar";
 import { esc, forbidden, html, page, withBaseHeaders } from "../html";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
@@ -210,7 +211,8 @@ function renderVault(
   const addCard = `<details style="margin-top:8px"><summary style="cursor:pointer;font-size:13px">Add card</summary><p style="color:var(--muted);font-size:12px;margin:6px 0">Values are encrypted in your vault.</p><form method="post" style="display:grid;gap:6px"><input type="hidden" name="action" value="add_card"><input type="text" name="name" placeholder="e.g. &quot;Amex&quot;, &quot;Chase&quot;" maxlength="120"><input type="text" name="number" placeholder="🔒 Card number" inputmode="numeric" maxlength="23" autocomplete="off"><input type="text" name="expiry_month" placeholder="Expiry month" inputmode="numeric" maxlength="2"><input type="text" name="expiry_year" placeholder="Expiry year" inputmode="numeric" maxlength="4"><input type="text" name="cvv" placeholder="🔒 CVV" inputmode="numeric" maxlength="4" autocomplete="off"><input type="text" name="zip" placeholder="Billing ZIP" inputmode="numeric" maxlength="10"><button>Save</button></form></details>`;
   return page(
     "Vault",
-    `<h1>Vault</h1>${notice ? `<p style="color:var(--muted);font-size:12px">${esc(notice)}</p>` : ""}${renderPurchaseReviews(reviews)}${body}${addLogin}${addCard}${renderManagers(managers)}`
+    `<h1>Vault</h1>${notice ? `<p style="color:var(--muted);font-size:12px">${esc(notice)}</p>` : ""}${renderPurchaseReviews(reviews)}${body}${addLogin}${addCard}${renderManagers(managers)}
+${promptBar("Ask your agent — e.g. which logins haven't I used in a while…")}`
   );
 }
 
@@ -318,6 +320,16 @@ export const vault: MiniAppModule = {
 
     if (action === "hide") {
       return vaultPage(supabase, userId, null, null);
+    }
+
+    if (action === "prompt") {
+      try {
+        await runPrompt(ctx, String(form.get("text") ?? ""));
+      } catch (error) {
+        if (error instanceof StartLimitError) return busyPage();
+        throw error;
+      }
+      return vaultPage(supabase, userId, null, "sent to your agent");
     }
 
     if (action === "approve_purchase" || action === "deny_purchase") {
