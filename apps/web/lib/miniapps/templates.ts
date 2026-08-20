@@ -147,7 +147,7 @@ async function save() {
   const res = await fetch("/api/apps/v1/state", {
     method: "PUT",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ state: { items } }),
+    body: JSON.stringify({ items }),
   });
   note.textContent = res.ok ? "" : "Couldn't save (guests are read-only).";
 }
