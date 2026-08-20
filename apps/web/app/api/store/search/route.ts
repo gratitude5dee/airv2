@@ -5,10 +5,13 @@
  * MA7-safe projection as /api/store/index.json, filtered server-side. The
  * response is generic directory data (name, description, URL, gates); it
  * teaches the agent nothing beyond what any web reader of the store learns.
+ * The /home App Store search reuses it with the owner's web session — same
+ * public projection, second credential path.
  */
 import { NextRequest, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { serviceClient } from "@/lib/supabase";
+import { sessionUserId } from "@/lib/auth/user";
 import { listPublicApps } from "@/lib/miniapps/registry";
 import { canonicalDetailUrl, searchIndex } from "@/lib/miniapps/discovery";
 import { env } from "@/lib/env";
@@ -35,7 +38,7 @@ async function boxUserId(
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const supabase = serviceClient();
-  const userId = await boxUserId(supabase, request);
+  const userId = (await boxUserId(supabase, request)) ?? sessionUserId(request);
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }

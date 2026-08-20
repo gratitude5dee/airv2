@@ -2,12 +2,12 @@
 
 /**
  * Settings → Profile: the account card (line, email, contact card, wallet
- * link, username) plus Plugin Sign-In, moved here from the old right rail in
- * the redesign phase-1 split.
+ * link, username). Plugin Sign-In sits beside it in the §7 settings assembly
+ * (settings-screen.tsx).
  */
 import { useEffect, useState } from "react";
 import { DitherAvatar } from "@/components/dither-kit/avatar";
-import { PluginPanel } from "../plugin-panel";
+import { DitherButton } from "@/components/dither-kit/button";
 
 interface Me {
   user: { id: string; username: string | null; wallet_address: string | null };
@@ -59,12 +59,12 @@ export function ProfilePanel({
   if (!active) return null;
 
   return (
-    <div className="grid flex-1 content-start gap-3 overflow-y-auto">
-      <h3 className="m-0 text-[15px] font-semibold">Profile</h3>
+    <div className="grid content-start gap-3">
+      <h3 className="chrome m-0 !text-[12px]">Profile</h3>
       <div className="panel !p-3">
         <div className="mb-2 flex items-center gap-3">
           {me?.user.username ? (
-            <div className="h-9 w-9 overflow-hidden rounded-full shadow-[0_0_0_0.5px_var(--ring)]">
+            <div className="tilebox h-9 w-9 overflow-hidden !rounded-[8px]">
               <DitherAvatar name={me.user.username} size={36} />
             </div>
           ) : null}
@@ -105,16 +105,12 @@ export function ProfilePanel({
             value={username}
             onChange={(e) => setUsername(e.target.value)}
           />
-          <button
-            className="btn !px-3 !py-1.5 !text-[12px]"
-            onClick={() => void saveUsername()}
-          >
+          <DitherButton color="blue" onClick={() => void saveUsername()}>
             Save
-          </button>
+          </DitherButton>
         </div>
         {note ? <p className="muted mb-0 mt-2 text-[12px]">{note}</p> : null}
       </div>
-      <PluginPanel />
     </div>
   );
 }

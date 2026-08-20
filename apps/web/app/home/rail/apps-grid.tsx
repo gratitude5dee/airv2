@@ -7,11 +7,14 @@
  */
 import { useEffect, useState } from "react";
 import { launchMiniApp } from "../launch";
+import { AppTile } from "../app-tile";
+import { PixelIcon } from "@/components/dither-kit/icon";
 
 interface AppRow {
   slug: string;
   name: string;
   description: string;
+  icon_url?: string | null;
   status: string;
   installed: boolean;
 }
@@ -51,9 +54,12 @@ export function AppsGrid({
   return (
     <div className="panel">
       <div className="flex items-center justify-between gap-2">
-        <h3 className="mt-0 text-[15px] font-semibold">Apps</h3>
+        <h3 className="chrome mt-0 flex items-center gap-1.5 !text-[11px]">
+          <PixelIcon glyph="grid" size={12} />
+          Apps
+        </h3>
         <button
-          className="btn-ghost text-[12px]"
+          className="btn btn-ghost"
           onClick={onOpenAppsPanel}
           title="Manage installed apps"
         >
@@ -66,15 +72,24 @@ export function AppsGrid({
           No apps installed yet — add some under APPS.
         </p>
       ) : (
-        <div className="grid grid-cols-3 gap-1.5">
+        <div className="grid grid-cols-3 gap-2">
           {installed.slice(0, 9).map((app) => (
             <div key={app.slug} className="relative">
               <button
-                className="seg w-full rounded-lg !px-1 !py-2 text-center text-[11px] shadow-[0_0_0_0.5px_var(--ring)]"
+                className="flex w-full cursor-pointer flex-col items-center gap-1 border-0 bg-transparent p-0 text-[var(--text)]"
                 title={app.description}
                 onClick={() => onOpenInChat(app.slug)}
               >
-                {app.name || app.slug}
+                <AppTile
+                  slug={app.slug}
+                  name={app.name}
+                  iconUrl={app.icon_url}
+                  size={44}
+                  radius={9}
+                />
+                <span className="chrome !text-[8.5px]">
+                  {app.name || app.slug}
+                </span>
               </button>
               <button
                 className="muted absolute right-0.5 top-0.5 cursor-pointer border-0 bg-transparent p-0.5 text-[10px] leading-none"

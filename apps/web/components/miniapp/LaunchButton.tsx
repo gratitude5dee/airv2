@@ -3,7 +3,8 @@
 /**
  * Open/Install CTA on the store detail page (MA0). POST /api/mini/launch
  * runs the gate chain server-side; 401 sends the visitor to the store
- * login, 402 surfaces the payment requirement (session B wires settlement).
+ * login, 402 routes to the app's human pay page (the browser GET of the app
+ * URL renders the x402 challenge with payment instructions).
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -11,9 +12,12 @@ import { useRouter } from "next/navigation";
 export function LaunchButton({
   slug,
   signInUrl = "/login",
+  payUrl,
 }: {
   slug: string;
   signInUrl?: string;
+  /** The app URL whose browser GET renders the x402 pay page. */
+  payUrl?: string;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -42,7 +46,11 @@ export function LaunchButton({
       return;
     }
     if (res.status === 402) {
-      setError("This app is paid — payments are coming soon.");
+      if (payUrl) {
+        window.location.assign(payUrl);
+      } else {
+        setError("This app is paid — open it directly to see payment options.");
+      }
       return;
     }
     setError("Couldn't open this app right now.");

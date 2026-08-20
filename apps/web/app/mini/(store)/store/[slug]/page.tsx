@@ -14,6 +14,7 @@ import { getRegistryApp, type RegistryApp } from "@/lib/miniapps/registry";
 import { discoverable, jsonLd } from "@/lib/miniapps/discovery";
 import { JsonLd } from "@/lib/miniapps/JsonLd";
 import { publicUrl } from "@/lib/storage/r2";
+import { env } from "@/lib/env";
 import { LaunchButton } from "@/components/miniapp/LaunchButton";
 import {
   canonicalDetailUrl,
@@ -116,7 +117,11 @@ export default async function StoreDetail({
         </p>
 
         <div className="rise-in mt-6 flex items-center gap-3">
-          <LaunchButton slug={app.slug} signInUrl={paths.login} />
+          <LaunchButton
+            slug={app.slug}
+            signInUrl={paths.login}
+            payUrl={`${env.miniappOrigin().replace(/\/$/, "")}/${app.slug}`}
+          />
         </div>
 
         <section className="rise-in mt-10 grid gap-3">

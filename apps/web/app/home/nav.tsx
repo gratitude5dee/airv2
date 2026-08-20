@@ -8,14 +8,18 @@
  * TABS array and 13-way ternary are retired together).
  */
 
+import { PixelIcon, type PixelGlyph } from "@/components/dither-kit/icon";
+
 export type Section =
   | "air.chat"
+  | "apps.store"
   | "apps.installed"
   | "apps.ads"
   | "personal.needs"
   | "personal.calendar"
   | "personal.history"
   | "personal.people"
+  | "personal.context"
   | "bank.wallet"
   | "bank.vault"
   | "settings.profile"
@@ -26,12 +30,14 @@ export const DEFAULT_SECTION: Section = "air.chat";
 
 const SECTIONS = new Set<string>([
   "air.chat",
+  "apps.store",
   "apps.installed",
   "apps.ads",
   "personal.needs",
   "personal.calendar",
   "personal.history",
   "personal.people",
+  "personal.context",
   "bank.wallet",
   "bank.vault",
   "settings.profile",
@@ -43,36 +49,38 @@ export function parseSection(raw: string | null): Section {
   return raw && SECTIONS.has(raw) ? (raw as Section) : DEFAULT_SECTION;
 }
 
-const GROUPS: [string, [Section, string][]][] = [
+const GROUPS: [string, [Section, string, PixelGlyph][]][] = [
   [
     "APPS",
     [
-      ["apps.installed", "Installed"],
-      ["apps.ads", "Ads"],
+      ["apps.store", "App Store", "store"],
+      ["apps.installed", "Installed", "grid"],
+      ["apps.ads", "Ads", "ads"],
     ],
   ],
   [
     "PERSONAL",
     [
-      ["personal.needs", "Needs you"],
-      ["personal.calendar", "Calendar"],
-      ["personal.history", "History"],
-      ["personal.people", "People"],
+      ["personal.needs", "Needs you", "bell"],
+      ["personal.calendar", "Calendar", "cal"],
+      ["personal.history", "History", "clock"],
+      ["personal.people", "People", "people"],
+      ["personal.context", "Context", "chip"],
     ],
   ],
   [
     "BANK",
     [
-      ["bank.wallet", "Wallet"],
-      ["bank.vault", "Vault"],
+      ["bank.wallet", "Wallet", "wallet"],
+      ["bank.vault", "Vault", "lock"],
     ],
   ],
   [
     "SETTINGS",
     [
-      ["settings.profile", "Profile"],
-      ["settings.connectors", "Connectors"],
-      ["settings.skills", "Skills"],
+      ["settings.profile", "Profile", "gear"],
+      ["settings.connectors", "Connectors", "plug"],
+      ["settings.skills", "Skills", "bolt"],
     ],
   ],
 ];
@@ -109,14 +117,16 @@ export function HomeNav({
       className="flex h-fit flex-row flex-wrap gap-1 rounded-2xl p-1.5 shadow-[0_0_0_0.5px_var(--ring)] md:flex-col md:rounded-[20px]"
       aria-label="Sections"
     >
-      <p className="muted m-0 hidden px-2 pt-1 text-[10px] font-semibold tracking-[0.1em] md:block">
-        AIR
-      </p>
+      <p className="chrome-2 m-0 hidden px-2 pt-1 md:block">AIR</p>
       <button
         aria-current={section === "air.chat" ? "page" : undefined}
-        className={"seg" + (section === "air.chat" ? " pill-active" : "")}
+        className={
+          "seg flex items-center gap-2" +
+          (section === "air.chat" ? " pill-active" : "")
+        }
         onClick={() => onNavigate("air.chat")}
       >
+        <PixelIcon glyph="chat" size={14} />
         Chat
       </button>
       {section === "air.chat" ? (
@@ -154,28 +164,30 @@ export function HomeNav({
         </div>
       ) : null}
       <button
-        className={"seg" + (botsOpen ? " pill-active" : "")}
+        className={
+          "seg flex items-center gap-2" + (botsOpen ? " pill-active" : "")
+        }
         aria-pressed={botsOpen}
         onClick={onToggleBots}
       >
+        <PixelIcon glyph="people" size={14} />
         Bots
       </button>
       {GROUPS.map(([group, items]) => (
         <div key={group} className="contents md:flex md:flex-col md:gap-1">
-          <p className="muted m-0 hidden px-2 pt-2 text-[10px] font-semibold tracking-[0.1em] md:block">
-            {group}
-          </p>
-          {items.map(([key, label]) => (
+          <p className="chrome-2 m-0 hidden px-2 pt-2 md:block">{group}</p>
+          {items.map(([key, label, glyph]) => (
             <button
               key={key}
               aria-current={section === key ? "page" : undefined}
               className={
-                "seg flex items-center justify-between gap-1" +
+                "seg flex items-center gap-2" +
                 (section === key ? " pill-active" : "")
               }
               onClick={() => onNavigate(key)}
             >
-              <span>{label}</span>
+              <PixelIcon glyph={glyph} size={14} />
+              <span className="flex-1">{label}</span>
               {key === "personal.needs" && needsCount > 0 ? (
                 <span
                   className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold text-white"
