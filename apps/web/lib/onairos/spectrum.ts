@@ -126,12 +126,15 @@ export async function spectrumFlowActive(
   return data?.status === "pending";
 }
 
+/** Statuses limited to the connections_status_check set (0001_init.sql):
+ * `pending` = mid-flow (route next message), `active` = granted, `error` =
+ * flow ended without grants — anything non-pending exits the routing loop. */
 export async function setSpectrumFlow(
   supabase: SupabaseClient,
   userId: string,
-  status: "pending" | "disconnected" | "active",
+  status: "pending" | "error" | "active",
 ): Promise<void> {
-  await supabase.from("connections").upsert(
+  const { error } = await supabase.from("connections").upsert(
     {
       user_id: userId,
       provider: PROVIDER,
@@ -141,6 +144,16 @@ export async function setSpectrumFlow(
     },
     { onConflict: "user_id,provider,toolkit" },
   );
+  if (error) {
+    console.error(
+      JSON.stringify({
+        msg: "onairos spectrum flow update failed",
+        user_id: userId,
+        status,
+        error: error.message,
+      }),
+    );
+  }
 }
 
 /** Persist grant records box-side (0600, vault-key custody model), flip the

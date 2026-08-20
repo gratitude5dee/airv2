@@ -220,7 +220,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
               error: error instanceof Error ? error.message : String(error),
             }),
           );
-          await setSpectrumFlow(supabase, userId, "disconnected").catch(
+          await setSpectrumFlow(supabase, userId, "error").catch(
             () => undefined,
           );
           return;
@@ -241,7 +241,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           await setSpectrumFlow(
             supabase,
             userId,
-            result.shouldRouteNextMessage ? "pending" : "disconnected",
+            result.shouldRouteNextMessage ? "pending" : "error",
           ).catch(() => undefined);
         }
         if (result.reply && sender) {
