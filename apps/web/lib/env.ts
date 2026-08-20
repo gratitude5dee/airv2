@@ -93,6 +93,16 @@ export const env = {
       .split(",")
       .map((entry) => entry.trim())
       .filter(Boolean),
+  // Per-user Daytona sandbox keys. The manager key (manage:api_keys +
+  // sandbox scopes) is server-side only — never a box env. Both must be set
+  // for the sandbox lane; when absent, provisioning injects no Daytona
+  // credential and the lane stays disabled.
+  daytonaManagerKey: (): string | null =>
+    process.env.DAYTONA_MANAGER_KEY ?? null,
+  daytonaOrganizationId: (): string | null =>
+    process.env.DAYTONA_ORGANIZATION_ID ?? null,
+  daytonaApiUrl: (): string =>
+    optional("DAYTONA_API_URL", "https://app.daytona.io/api"),
   // M16 creative lane. Both provider keys are optional: with either absent
   // the lane reports itself unconfigured and preflight degrades gracefully
   // instead of failing the deploy.

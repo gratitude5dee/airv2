@@ -9,6 +9,7 @@ import { env } from "../env";
 import { serviceClient } from "../supabase";
 import { command, deleteBox, fork, stop, waitForBox, writeFile } from "../box/client";
 import { installComposioMcp } from "./connectors";
+import { provisionDaytona } from "./daytona";
 import { normalizeAddress } from "../routing/trust";
 import { sealSecret } from "../crypto/secretbox";
 import { installBaseSkills } from "../skills/hub";
@@ -310,6 +311,15 @@ export async function provisionUser(
     const message = error instanceof Error ? error.message : "unknown error";
     console.error(
       JSON.stringify({ msg: "composio preinstall failed", user_id: userId, error: message })
+    );
+  }
+  // P1-11: per-user Daytona child key — the template carries no credential.
+  try {
+    await provisionDaytona(box.id, userId);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown error";
+    console.error(
+      JSON.stringify({ msg: "daytona key injection failed", user_id: userId, error: message })
     );
   }
 

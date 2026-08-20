@@ -12,6 +12,7 @@ import { adminAuthorized } from "@/lib/admin/auth";
 import { serviceClient } from "@/lib/supabase";
 import { deleteBox, stop } from "@/lib/box/client";
 import { deletePod } from "@/lib/agentmail/client";
+import { daytonaConfigured, deleteTenantKey } from "@/lib/daytona/client";
 import {
   deleteConnectedAccount,
   deleteSession,
@@ -137,6 +138,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
   } else {
     steps.box = "none";
+  }
+
+  // P1-11: revoke the user's Daytona child key — it dies with the account.
+  if (daytonaConfigured()) {
+    try {
+      await deleteTenantKey(userId);
+      steps.daytona_key = "revoked";
+    } catch (error) {
+      steps.daytona_key = `error: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  } else {
+    steps.daytona_key = "not configured";
   }
 
   // V8: cal.com webhook "deregistration" — registration is owner-side at
