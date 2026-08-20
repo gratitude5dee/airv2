@@ -24,6 +24,7 @@ import {
   executeTransfer,
   findPendingTransfer,
   WalletSendError,
+  WalletSubmitUnknownError,
 } from "@/lib/wallet/send";
 import {
   clampToWakingHours,
@@ -358,8 +359,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (decision.kind === "run_approval" && decision.ref) {
     // V8: a wallet send intent — approve executes server-side via thirdweb
     // from the server-stored owner wallet; dismiss marks it denied and no
-    // transaction ever exists. A provider failure leaves BOTH the intent and
-    // the decision pending so approval can be retried.
+    // transaction ever exists. A failure before the provider is reached
+    // leaves BOTH the intent and the decision pending so approval can be
+    // retried; an ambiguous submit is terminal (submit_unknown) and resolves
+    // the decision — re-approval could double-send (P0-1/C23).
     const transfer = await findPendingTransfer(
       supabase,
       userId,
@@ -370,6 +373,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         try {
           await executeTransfer(supabase, userId, transfer);
         } catch (error) {
+          if (error instanceof WalletSubmitUnknownError) {
+            await supabase
+              .from("decisions")
+              .update({
+                status: "approved",
+                resolved_at: new Date().toISOString(),
+              })
+              .eq("id", decision.id)
+              .eq("user_id", userId);
+            return NextResponse.json(
+              { error: error.message },
+              { status: error.status }
+            );
+          }
           if (error instanceof WalletSendError) {
             return NextResponse.json(
               { error: error.message },

@@ -242,7 +242,13 @@ interface WalletTransfer {
   to_address: string;
   amount_display: string;
   token_symbol?: string;
-  status: "pending" | "submitting" | "submitted" | "denied" | "failed";
+  status:
+    | "pending"
+    | "submitting"
+    | "submitted"
+    | "denied"
+    | "failed"
+    | "submit_unknown";
   created_at: string;
 }
 
@@ -2708,7 +2714,8 @@ export default function HomePage() {
                             (t.status === "submitted"
                               ? "text-[var(--success)]"
                               : t.status === "pending" ||
-                                  t.status === "submitting"
+                                  t.status === "submitting" ||
+                                  t.status === "submit_unknown"
                                 ? "text-[var(--warning)]"
                                 : "text-[var(--muted-2)]")
                           }
@@ -2721,7 +2728,9 @@ export default function HomePage() {
                                 ? "Sent"
                                 : t.status === "denied"
                                   ? "Send denied"
-                                  : "Send failed"}
+                                  : t.status === "submit_unknown"
+                                    ? "Send outcome unknown — check the chain"
+                                    : "Send failed"}
                         </strong>
                         <p className="muted m-0 mt-0.5 break-all font-mono text-[11px]">
                           {t.to_address}
