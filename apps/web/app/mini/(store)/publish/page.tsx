@@ -16,6 +16,11 @@ interface PublishedApp {
   visibility: string;
   bundle_version: string | null;
   agent_identity: string | null;
+  access: "single" | "multiplayer";
+  x402_enabled: boolean;
+  x402_price_usdc: number | null;
+  plugin_signin_enabled: boolean;
+  has_password: boolean;
 }
 
 interface EarningsRow {
@@ -101,6 +106,34 @@ export default function PublishPage() {
     });
     const data = (await res.json()) as { error?: string };
     setMessage(res.ok ? `Now ${status}: ${slug}` : data.error ?? "failed");
+    setBusy(false);
+    void refresh();
+  }
+
+  async function saveGates(slug: string, form: FormData) {
+    setBusy(true);
+    setMessage(null);
+    const price = String(form.get("x402_price_usdc") ?? "").trim();
+    const password = String(form.get("password") ?? "");
+    const clearPassword = form.get("clear_password") === "on";
+    const res = await fetch("/api/mini/publish", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        slug,
+        access: form.get("access"),
+        x402_enabled: form.get("x402_enabled") === "on",
+        x402_price_usdc: price === "" ? null : Number(price),
+        plugin_signin_enabled: form.get("plugin_signin_enabled") === "on",
+        ...(clearPassword
+          ? { password: null }
+          : password
+            ? { password }
+            : {}),
+      }),
+    });
+    const data = (await res.json()) as { error?: string };
+    setMessage(res.ok ? `Gates saved: ${slug}` : data.error ?? "failed");
     setBusy(false);
     void refresh();
   }
@@ -208,6 +241,77 @@ export default function PublishPage() {
                     </button>
                   )}
                 </div>
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void saveGates(app.slug, new FormData(event.currentTarget));
+                  }}
+                  className="mt-3 flex flex-col gap-2 border-t border-current/10 pt-3"
+                >
+                  <label className="flex items-center gap-2 text-[12px]">
+                    Access
+                    <select
+                      className="input !w-auto"
+                      name="access"
+                      defaultValue={app.access}
+                    >
+                      <option value="single">Single (owner only)</option>
+                      <option value="multiplayer">Multiplayer (guests)</option>
+                    </select>
+                  </label>
+                  <label className="flex items-center gap-2 text-[12px]">
+                    <input
+                      type="checkbox"
+                      name="x402_enabled"
+                      defaultChecked={app.x402_enabled}
+                    />
+                    Charge per open (x402)
+                    <input
+                      className="input !w-32"
+                      name="x402_price_usdc"
+                      type="number"
+                      step="0.000001"
+                      min="0"
+                      placeholder="Price (USDC)"
+                      defaultValue={app.x402_price_usdc ?? ""}
+                    />
+                  </label>
+                  <label className="flex items-center gap-2 text-[12px]">
+                    <input
+                      className="input !w-48"
+                      name="password"
+                      type="password"
+                      autoComplete="off"
+                      maxLength={200}
+                      placeholder={
+                        app.has_password
+                          ? "New password (blank keeps current)"
+                          : "Password (optional)"
+                      }
+                    />
+                    {app.has_password ? (
+                      <span className="flex items-center gap-1 text-muted">
+                        <input type="checkbox" name="clear_password" />
+                        Remove password
+                      </span>
+                    ) : null}
+                  </label>
+                  <label className="flex items-center gap-2 text-[12px]">
+                    <input
+                      type="checkbox"
+                      name="plugin_signin_enabled"
+                      defaultChecked={app.plugin_signin_enabled}
+                    />
+                    Plugin sign-in
+                  </label>
+                  <button
+                    className="btn-ghost self-start text-[12px]"
+                    disabled={busy}
+                    type="submit"
+                  >
+                    Save gates
+                  </button>
+                </form>
               </div>
             ))}
           </div>
