@@ -38,6 +38,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     .eq("owner_user_id", userId)
     .order("slug");
   const earnings = await publisherEarnings(supabase, userId);
+  // The creator previews the <username>-<appname> slug before staging.
+  const { data: user } = await supabase
+    .from("users")
+    .select("username")
+    .eq("id", userId)
+    .maybeSingle();
   // Never return the hash itself — the page only needs "is one set".
   const rows = ((apps ?? []) as unknown as Array<
     Record<string, unknown> & { password_hash: string | null }
@@ -45,7 +51,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     ...rest,
     has_password: password_hash !== null,
   }));
-  return NextResponse.json({ apps: rows, earnings });
+  return NextResponse.json({
+    apps: rows,
+    earnings,
+    username: (user?.username as string | null) ?? null,
+  });
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {

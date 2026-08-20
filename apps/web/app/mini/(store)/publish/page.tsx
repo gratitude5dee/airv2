@@ -157,7 +157,10 @@ export default function PublishPage() {
         <h1 className="m-0 text-[24px] font-semibold tracking-[-0.03em]">
           Publish
         </h1>
-        <Link className="btn-ghost ml-auto text-[12px]" href="/">
+        <Link className="btn ml-auto text-[12px]" href="/publish/create">
+          Create an app
+        </Link>
+        <Link className="btn-ghost text-[12px]" href="/">
           Store
         </Link>
       </header>

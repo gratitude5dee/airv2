@@ -11,6 +11,11 @@
 import { inflateRawSync } from "node:zlib";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { putObject } from "../storage/r2";
+import {
+  BUNDLE_MAX_ZIP_BYTES,
+  BUNDLE_MAX_UNPACKED_BYTES,
+  BUNDLE_MAX_FILES,
+} from "./bundleLimits";
 
 export class BundleError extends Error {
   readonly status: number;
@@ -21,9 +26,11 @@ export class BundleError extends Error {
   }
 }
 
-export const BUNDLE_MAX_ZIP_BYTES = 25 * 1024 * 1024;
-const BUNDLE_MAX_UNPACKED_BYTES = 100 * 1024 * 1024;
-const BUNDLE_MAX_FILES = 500;
+export {
+  BUNDLE_MAX_ZIP_BYTES,
+  BUNDLE_MAX_UNPACKED_BYTES,
+  BUNDLE_MAX_FILES,
+} from "./bundleLimits";
 
 /** Static-only allowlist. No svg (scriptable), no wasm, no source maps. */
 const EXTENSION_TYPES: Record<string, string> = {
