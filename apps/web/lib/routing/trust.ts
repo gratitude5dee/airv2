@@ -11,16 +11,27 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type TrustTier = 0 | 1 | 2;
 
+/**
+ * Canonical address form used everywhere handles/senders are written or
+ * compared: phones keep digits and a leading + (E.164-style), emails are
+ * lowercased.
+ */
+export function normalizeAddress(
+  platform: "imessage" | "email",
+  address: string
+): string {
+  return platform === "imessage"
+    ? address.replace(/[^+\d]/g, "")
+    : address.toLowerCase();
+}
+
 export async function resolveTrustTier(
   supabase: SupabaseClient,
   userId: string,
   platform: "imessage" | "email",
   address: string
 ): Promise<TrustTier> {
-  const normalized =
-    platform === "imessage"
-      ? address.replace(/[^+\d]/g, "")
-      : address.toLowerCase();
+  const normalized = normalizeAddress(platform, address);
 
   const { data: handle } = await supabase
     .from("handles")
@@ -64,10 +75,7 @@ export async function senderIdFor(
   platform: "imessage" | "email",
   address: string
 ): Promise<string | null> {
-  const normalized =
-    platform === "imessage"
-      ? address.replace(/[^+\d]/g, "")
-      : address.toLowerCase();
+  const normalized = normalizeAddress(platform, address);
   const { data } = await supabase
     .from("senders")
     .select("id")

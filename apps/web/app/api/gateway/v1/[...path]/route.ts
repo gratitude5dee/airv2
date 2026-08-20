@@ -11,6 +11,7 @@ import { env } from "@/lib/env";
 import { serviceClient } from "@/lib/supabase";
 import {
   costUsd,
+  isReasoningModel,
   isSpeedTier,
   modelForTier,
   reasoningForTier,
@@ -183,10 +184,14 @@ export async function POST(
   // gpt-5.6 on /v1/chat/completions rejects function tools with any
   // reasoning_effort other than "none", so tool-bearing calls (every Hermes
   // agent turn) pin it there; plain completions get the configured effort.
-  const hasTools = Array.isArray(body.tools) && body.tools.length > 0;
-  const reasoning = hasTools ? "none" : reasoningForTier(tier);
-  if (reasoning && body.reasoning_effort === undefined) {
-    body.reasoning_effort = reasoning;
+  // Non-reasoning models reject the field entirely, so it is only injected
+  // for families that accept it.
+  if (isReasoningModel(String(body.model))) {
+    const hasTools = Array.isArray(body.tools) && body.tools.length > 0;
+    const reasoning = hasTools ? "none" : reasoningForTier(tier);
+    if (reasoning && body.reasoning_effort === undefined) {
+      body.reasoning_effort = reasoning;
+    }
   }
   const serviceTier = serviceTierForTier(tier);
   if (serviceTier && body.service_tier === undefined) {
@@ -195,7 +200,7 @@ export async function POST(
   // OpenAI reasoning models (gpt-5.x/o-series) reject the legacy knobs
   // clients still send: max_tokens must be max_completion_tokens, and only
   // the default sampling params are accepted.
-  if (/^(gpt-5|o[0-9])/.test(String(body.model))) {
+  if (isReasoningModel(String(body.model))) {
     if (body.max_tokens !== undefined) {
       if (body.max_completion_tokens === undefined) {
         body.max_completion_tokens = body.max_tokens;

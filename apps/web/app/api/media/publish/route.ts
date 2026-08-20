@@ -24,6 +24,7 @@ import {
   ensureUserBucket,
 } from "@/lib/storage/buckets";
 import { publicUrl, putObject, r2Configured } from "@/lib/storage/r2";
+import { recordOpsEvent, uploadRateLimited } from "@/lib/security/limits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -90,6 +91,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       { status: 503 }
     );
   }
+  // Same durable per-user limit as the apps-api presign path — it runs
+  // before the guards and counts rejected attempts too.
+  if (await uploadRateLimited(supabase, userId)) {
+    return NextResponse.json({ error: "too many uploads" }, { status: 429 });
+  }
   const body = (await request.json().catch(() => null)) as {
     path?: unknown;
     contentType?: unknown;
@@ -103,10 +109,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       ? body.filename
       : path.slice(path.lastIndexOf("/") + 1).replace(/[^A-Za-z0-9._-]/g, "_");
   if (!BOX_PATH_RE.test(path) || path.includes("..")) {
+    await recordOpsEvent(supabase, "upload_rejected", userId, "invalid path");
     return NextResponse.json({ error: "invalid path" }, { status: 400 });
   }
   const contentType = contentTypeFor(path, declared);
   if (!contentType) {
+    await recordOpsEvent(
+      supabase,
+      "upload_rejected",
+      userId,
+      "content type not allowed"
+    );
     return NextResponse.json(
       { error: "content type not allowed" },
       { status: 400 }
@@ -122,6 +135,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const key = `${bucket.prefix}media/${randomBytes(6).toString("hex")}-${filename}`;
     await putObject(key, bytes, contentType);
     await addUsage(supabase, userId, bytes.length);
+    await recordOpsEvent(
+      supabase,
+      "upload",
+      userId,
+      `media-publish:${filename}`,
+      bytes.length
+    );
     return NextResponse.json({
       ok: true,
       url: publicUrl(key),
@@ -130,6 +150,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     });
   } catch (error) {
     if (error instanceof MediaGuardError) {
+      await recordOpsEvent(supabase, "upload_rejected", userId, error.message);
       return NextResponse.json(
         { error: error.message },
         { status: error.status }
