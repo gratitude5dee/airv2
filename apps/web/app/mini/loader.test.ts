@@ -461,7 +461,7 @@ describe("legacy /mini/<app> redirect (MA0)", () => {
     expect(replay.status).toBe(403);
   });
 
-  it("308s /mini/<app> on the main host to the mini origin", async () => {
+  it("308s tokened /mini/<app>?t= on the main host to the mini origin", async () => {
     const res = middleware(
       new NextRequest("https://air.example/mini/kanban?t=abc", {
         headers: { host: "air.example" },
@@ -470,6 +470,58 @@ describe("legacy /mini/<app> redirect (MA0)", () => {
     expect(res.status).toBe(308);
     expect(res.headers.get("location")).toBe(
       "https://mini.wzrd.tech/kanban?t=abc"
+    );
+  });
+
+  it("serves the canonical detail page at /mini/<slug> on the main host", async () => {
+    const res = middleware(
+      new NextRequest("https://air.example/mini/kanban", {
+        headers: { host: "air.example" },
+      })
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("x-middleware-rewrite")).toBe(
+      "https://air.example/mini/store/kanban"
+    );
+  });
+
+  it("serves the store home at /mini on the main host", async () => {
+    const res = middleware(
+      new NextRequest("https://air.example/mini", {
+        headers: { host: "air.example" },
+      })
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("x-middleware-rewrite")).toBeNull();
+  });
+
+  it("308s legacy /mini/store/<slug> on the main host to /mini/<slug>", async () => {
+    const res = middleware(
+      new NextRequest("https://air.example/mini/store/kanban", {
+        headers: { host: "air.example" },
+      })
+    );
+    expect(res.status).toBe(308);
+    expect(res.headers.get("location")).toBe("https://air.example/mini/kanban");
+  });
+
+  it("308s /mini/login and deeper app paths on the main host to the mini origin", async () => {
+    const login = middleware(
+      new NextRequest("https://air.example/mini/login", {
+        headers: { host: "air.example" },
+      })
+    );
+    expect(login.status).toBe(308);
+    expect(login.headers.get("location")).toBe("https://mini.wzrd.tech/login");
+
+    const asset = middleware(
+      new NextRequest("https://air.example/mini/kanban/app.js", {
+        headers: { host: "air.example" },
+      })
+    );
+    expect(asset.status).toBe(308);
+    expect(asset.headers.get("location")).toBe(
+      "https://mini.wzrd.tech/kanban/app.js"
     );
   });
 });

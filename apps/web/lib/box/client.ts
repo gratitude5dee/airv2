@@ -7,6 +7,7 @@
  * `force: true` (C6).
  */
 import { env } from "../env";
+import { requestSignal } from "../http/timeout";
 
 export type BoxState =
   | "provisioned"
@@ -76,12 +77,19 @@ export function isStartLimit(error: unknown): boolean {
   );
 }
 
+/** Box control-plane calls answer fast; forks/resumes are async server-side. */
+const BOX_REQUEST_TIMEOUT_MS = 60_000;
+
 async function boxFetch<T>(
   path: string,
-  init?: RequestInit & { expectJson?: boolean }
+  init?: RequestInit & { expectJson?: boolean; timeoutMs?: number }
 ): Promise<T> {
   const response = await fetch(`${env.boxApiBase()}${path}`, {
     ...init,
+    signal: requestSignal(
+      init?.timeoutMs ?? BOX_REQUEST_TIMEOUT_MS,
+      init?.signal
+    ),
     headers: {
       Authorization: `Bearer ${env.boxApiKey()}`,
       "Content-Type": "application/json",
@@ -187,9 +195,12 @@ export async function command(
   cmd: string,
   timeoutSeconds = 60
 ): Promise<CommandResult> {
+  // The box-side command runs up to timeoutSeconds; give the HTTP round
+  // trip that budget plus margin.
   return boxFetch<CommandResult>(`/boxes/${boxId}/commands`, {
     method: "POST",
     body: JSON.stringify({ command: cmd, timeoutSeconds }),
+    timeoutMs: (timeoutSeconds + 60) * 1000,
   });
 }
 

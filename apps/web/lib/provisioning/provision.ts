@@ -10,6 +10,7 @@ import { serviceClient } from "../supabase";
 import { command, deleteBox, fork, stop, waitForBox, writeFile } from "../box/client";
 import { installComposioMcp } from "./connectors";
 import { provisionDaytona } from "./daytona";
+import { normalizeAddress } from "../routing/trust";
 import { sealSecret } from "../crypto/secretbox";
 import { installBaseSkills } from "../skills/hub";
 
@@ -70,12 +71,15 @@ export async function provisionUser(
 
   let inviteLink: string | undefined;
   if (options.boundPhone) {
+    // Stored in the same canonical form the router compares against
+    // (routing/trust.ts), so the owner's texts resolve to tier 0.
+    const boundPhone = normalizeAddress("imessage", options.boundPhone);
     const { error: provisioningError } = await supabase
       .from("provisioning")
       .insert({
         user_id: userId,
         state: "created",
-        bound_phone: options.boundPhone,
+        bound_phone: boundPhone,
         operator: options.operator ?? null,
       });
     if (provisioningError) {
@@ -84,7 +88,7 @@ export async function provisionUser(
     const { error: handleError } = await supabase.from("handles").insert({
       user_id: userId,
       platform: "imessage",
-      address: options.boundPhone,
+      address: boundPhone,
     });
     if (handleError) {
       throw new Error(`handles insert failed: ${handleError.message}`);
@@ -92,7 +96,7 @@ export async function provisionUser(
     const { error: senderError } = await supabase.from("senders").insert({
       user_id: userId,
       platform: "imessage",
-      address: options.boundPhone,
+      address: boundPhone,
       trust_tier: 0,
     });
     if (senderError) {

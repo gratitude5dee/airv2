@@ -8,7 +8,13 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-export function LaunchButton({ slug }: { slug: string }) {
+export function LaunchButton({
+  slug,
+  signInUrl = "/login",
+}: {
+  slug: string;
+  signInUrl?: string;
+}) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,7 +34,11 @@ export function LaunchButton({ slug }: { slug: string }) {
       return;
     }
     if (res.status === 401) {
-      router.push("/login");
+      if (signInUrl.startsWith("/")) {
+        router.push(signInUrl);
+      } else {
+        window.location.assign(signInUrl);
+      }
       return;
     }
     if (res.status === 402) {

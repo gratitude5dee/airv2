@@ -13,6 +13,7 @@ import {
   type HermesBoxTarget,
   type HermesMessage,
 } from "../hermes/client";
+import { createTerminalScanner } from "../hermes/terminal";
 import { armStopAfter, ensureBoxAwake } from "../orchestrator/boxes";
 import { botTarget, BOT_CHAT_SESSION, BOT_CHAT_TITLE } from "./client";
 import type { BotRow } from "./store";
@@ -78,6 +79,7 @@ export async function botEventStream(
     throw error;
   }
   const decoder = new TextDecoder();
+  const scanner = createTerminalScanner();
   let closed = false;
   let armed = false;
   // botBoxTarget cleared the box's idle shut-off deadline; re-arm it once
@@ -106,12 +108,13 @@ export async function botEventStream(
     cancel?: () => void;
   } = {
     transform(chunk, controller) {
-      const text = decoder.decode(chunk, { stream: true });
-      if (text.includes('"run.completed"')) finish("completed");
-      else if (text.includes('"run.failed"')) finish("failed");
+      const outcome = scanner.push(decoder.decode(chunk, { stream: true }));
+      if (outcome) finish(outcome);
       controller.enqueue(chunk);
     },
     flush() {
+      const outcome = scanner.flush();
+      if (outcome) finish(outcome);
       rearm();
     },
     cancel() {

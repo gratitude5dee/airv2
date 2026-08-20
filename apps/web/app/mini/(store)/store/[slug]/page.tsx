@@ -10,19 +10,18 @@ import { notFound } from "next/navigation";
 import { DitherGradient } from "@/components/dither-kit/gradient";
 import { Orb } from "@/components/orb/Orb";
 import { serviceClient } from "@/lib/supabase";
-import { env } from "@/lib/env";
 import { getRegistryApp, type RegistryApp } from "@/lib/miniapps/registry";
 import { discoverable, jsonLd } from "@/lib/miniapps/discovery";
 import { JsonLd } from "@/lib/miniapps/JsonLd";
 import { publicUrl } from "@/lib/storage/r2";
 import { LaunchButton } from "@/components/miniapp/LaunchButton";
+import {
+  canonicalDetailUrl,
+  storePaths,
+} from "@/lib/miniapps/storePaths";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-function canonical(slug: string): string {
-  return `${env.miniappOrigin().replace(/\/$/, "")}/store/${slug}`;
-}
 
 function ogImage(app: RegistryApp): string | null {
   return app.icon_key ? publicUrl(app.icon_key) : null;
@@ -44,13 +43,13 @@ export async function generateMetadata({
   return {
     title,
     description,
-    alternates: { canonical: canonical(app.slug) },
+    alternates: { canonical: canonicalDetailUrl(app.slug) },
     // Unlisted apps resolve by URL but never enter discovery (MA7).
     robots: app.visibility === "public" ? undefined : { index: false },
     openGraph: {
       title,
       description,
-      url: canonical(app.slug),
+      url: canonicalDetailUrl(app.slug),
       type: "website",
       ...(image ? { images: [{ url: image }] } : {}),
     },
@@ -69,6 +68,7 @@ export default async function StoreDetail({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
+  const paths = await storePaths();
   const app = await getRegistryApp(serviceClient(), slug);
   if (!app || app.status !== "published" || app.visibility === "private") {
     notFound();
@@ -97,7 +97,7 @@ export default async function StoreDetail({
       </div>
 
       <div className="relative mx-auto w-full max-w-[560px] px-6 pb-16 pt-14">
-        <Link href="/" className="text-[12px] text-muted no-underline">
+        <Link href={paths.home} className="text-[12px] text-muted no-underline">
           ← Store
         </Link>
 
@@ -116,7 +116,7 @@ export default async function StoreDetail({
         </p>
 
         <div className="rise-in mt-6 flex items-center gap-3">
-          <LaunchButton slug={app.slug} />
+          <LaunchButton slug={app.slug} signInUrl={paths.login} />
         </div>
 
         <section className="rise-in mt-10 grid gap-3">
@@ -152,7 +152,7 @@ export default async function StoreDetail({
                 </a>
               ) : (
                 <Link
-                  href={`/store/${app.slug}#agent`}
+                  href={`${paths.detail(app.slug)}#agent`}
                   className="underline"
                   id="agent"
                 >

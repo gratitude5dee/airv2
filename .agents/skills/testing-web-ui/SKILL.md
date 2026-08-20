@@ -77,6 +77,10 @@ Real Supabase creds can be fetched at runtime — no `.env` needed and no OTP lo
 - Known local artifact: the loader/handoff 303 uses `request.nextUrl.origin`, which under `next start` resolves to `http://localhost:3999` regardless of Host header, so browser launches land on the main host (404). Behind Vercel x-forwarded-host this may be correct — verify on a deploy before calling it a prod bug.
 - Store session mint for API tests: `POST /api/mini/link {"target":"store"}` with an `air_session` cookie → open the returned `/api/mini/session?t=…` URL → `mini_store` cookie; with it, `POST /api/mini/launch {"slug":"calendar"}` on the mini host returns 200 `{url}`.
 
+## Cron sweep & ad-conversions (data durability) testing with the mock
+- `GET /api/cron/sweep` auth is `Authorization: Bearer $CRON_SECRET` (length-checked timingSafeEqual — set CRON_SECRET on the server). With the :4545 mock returning `[]` for `boxes`/`flush_jobs`/TTL tables, the route runs end-to-end; `sweepAbandonedUploads` issues `DELETE /rest/v1/pending_uploads?created_at=lt.<now-600s>&select=user_id,charged_bytes` (Prefer: return=representation) — return stale rows from the mock and assert `uploadsReleased` in the JSON plus one `user_buckets` PATCH per user with charged bytes subtracted (0-byte rows release without a PATCH). `addUsage` is a read-then-conditional-PATCH (`bytes_used=eq.<old>`), so the mock must return a `user_buckets` GET row and a non-empty PATCH representation.
+- `POST /api/ads/conversions` idempotency: mock `ad_accounts` GET with `{id,user_id,conversion_token}`; the route's upsert shows up as `POST /rest/v1/ad_conversions?on_conflict=account_id%2Cevent_id` with `Prefer: resolution=ignore-duplicates`; PostgREST-style empty-array 200 on the replay keeps the route returning 200. Missing `event_id` → 400 "missing fields" before any ad_conversions call.
+
 ## Devin Secrets Needed
 - `SUPABASE_ACCESS_TOKEN` (management API → service-role key for the airv2 project; enables full authenticated testing).
 - `THIRDWEB_SECRET_KEY` (native balance reads for the wallet tab; Insight currently 401s — see above).

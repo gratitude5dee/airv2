@@ -1,6 +1,6 @@
 # P1-3: failed turns leak awake boxes
 
-Status: open
+Status: resolved — https://github.com/gratitude5dee/airv2/pull/129
 
 ensureBoxAwake nulls stop_after eagerly; re-arm only on success; sweep never matches NULL. Fix: re-arm in finally; sweep catches ready boxes with NULL stop_after. lib/orchestrator/boxes.ts:157, flush.ts:553, chat/relay.ts:36.
 

@@ -159,9 +159,9 @@ export async function ensureBoxAwake(
     .update({ stop_after: null, last_active_at: new Date().toISOString() })
     .eq("user_id", userId);
 
-  const box = await getBox(boxId);
   let wroteStarting = false;
   try {
+  const box = await getBox(boxId);
   if (box.state !== "ready" && box.state !== "idle") {
     // Transitional state so the UI can show an honest boot progression (M10).
     await supabase
@@ -267,6 +267,10 @@ export async function ensureBoxAwake(
     dashboardAuthSealed: row.dashboard_auth ?? undefined,
   };
   } catch (error) {
+    // The deadline was cleared above and the caller's re-arm will never run
+    // for a wake that throws — restore it so the sweeper can still stop the
+    // box.
+    await armStopAfter(supabase, userId).catch(() => undefined);
     // A wake that dies after the "starting" write (waitForBox throwing, the
     // health loop deadline) must not park the row in a transitional state
     // the UI has no controls for: persist the provider's real state.

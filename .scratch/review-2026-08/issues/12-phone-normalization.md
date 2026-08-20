@@ -1,6 +1,6 @@
 # P1-8: phone numbers stored unnormalized at provision
 
-Status: open
+Status: resolved (PR #128)
 
 Formatted bound_phone breaks owner tier-0 recognition. Fix: normalize once at the provisioning write boundary. lib/provisioning/provision.ts:85,94 vs routing/trust.ts:20-24.
 

@@ -4,8 +4,12 @@
  * mint is draft-only + read and physically cannot send (C10).
  */
 import { env } from "../env";
+import { DEFAULT_REQUEST_TIMEOUT_MS, requestSignal } from "../http/timeout";
 
 const AGENTMAIL_API = "https://api.agentmail.to/v0";
+
+/** Attachment bytes can be large; allow a longer download window. */
+const ATTACHMENT_TIMEOUT_MS = 60_000;
 
 export class AgentMailApiError extends Error {
   readonly status: number;
@@ -22,6 +26,7 @@ async function agentmailFetch<T>(
 ): Promise<T> {
   const response = await fetch(`${AGENTMAIL_API}${path}`, {
     method: init?.method ?? "GET",
+    signal: requestSignal(DEFAULT_REQUEST_TIMEOUT_MS),
     headers: {
       Authorization: `Bearer ${env.agentmailApiKey()}`,
       "Content-Type": "application/json",
@@ -41,6 +46,7 @@ export async function deletePod(podId: string): Promise<void> {
     `${AGENTMAIL_API}/pods/${encodeURIComponent(podId)}`,
     {
       method: "DELETE",
+      signal: requestSignal(DEFAULT_REQUEST_TIMEOUT_MS),
       headers: { Authorization: `Bearer ${env.agentmailApiKey()}` },
     }
   );
@@ -145,7 +151,10 @@ export async function getAttachmentBytes(
 ): Promise<Buffer> {
   const response = await fetch(
     `${AGENTMAIL_API}/inboxes/${encodeURIComponent(inboxId)}/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`,
-    { headers: { Authorization: `Bearer ${env.agentmailApiKey()}` } }
+    {
+      signal: requestSignal(ATTACHMENT_TIMEOUT_MS),
+      headers: { Authorization: `Bearer ${env.agentmailApiKey()}` },
+    }
   );
   if (!response.ok) {
     const text = await response.text();
@@ -159,7 +168,9 @@ export async function getAttachmentBytes(
     if (!url) {
       throw new AgentMailApiError(502, "attachment response had no bytes or url");
     }
-    const download = await fetch(url);
+    const download = await fetch(url, {
+      signal: requestSignal(ATTACHMENT_TIMEOUT_MS),
+    });
     if (!download.ok) {
       throw new AgentMailApiError(download.status, "attachment download failed");
     }
@@ -226,6 +237,7 @@ export async function replyToMessage(
     `${AGENTMAIL_API}/inboxes/${encodeURIComponent(inboxId)}/messages/${encodeURIComponent(messageId)}/reply`,
     {
       method: "POST",
+      signal: requestSignal(DEFAULT_REQUEST_TIMEOUT_MS),
       headers: {
         Authorization: `Bearer ${env.agentmailApiKey()}`,
         "Content-Type": "application/json",
@@ -266,6 +278,7 @@ export async function sendDraft(
     `${AGENTMAIL_API}/inboxes/${encodeURIComponent(inboxId)}/drafts/${encodeURIComponent(draftId)}/send`,
     {
       method: "POST",
+      signal: requestSignal(DEFAULT_REQUEST_TIMEOUT_MS),
       headers: {
         Authorization: `Bearer ${env.agentmailApiKey()}`,
         "Idempotency-Key": idempotencyKey,
@@ -325,6 +338,7 @@ export async function removeInboxBlockEntry(
     `${AGENTMAIL_API}/inboxes/${encodeURIComponent(inboxId)}/lists/receive/block/${encodeURIComponent(entry)}`,
     {
       method: "DELETE",
+      signal: requestSignal(DEFAULT_REQUEST_TIMEOUT_MS),
       headers: { Authorization: `Bearer ${env.agentmailApiKey()}` },
     }
   );
