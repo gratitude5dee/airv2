@@ -181,7 +181,10 @@ describe("purchase_review closed vocabulary", () => {
   });
 
   it("is rendered by the web Needs-you surface", () => {
-    const page = readFileSync(join(root, "app", "home", "page.tsx"), "utf8");
+    const page = readFileSync(
+      join(root, "app", "home", "panels", "needs-panel.tsx"),
+      "utf8"
+    );
     expect(page).toContain('"purchase_review"');
   });
 
