@@ -718,7 +718,7 @@ function VaultModal({
               />
             </label>
             <label className="grid gap-1 text-[13px]">
-              🔒 Password
+              <span className="flex items-center gap-1.5"><PixelIcon glyph="lock" size={11} /> Password</span>
               <span className="flex gap-1.5">
                 <input
                   className="input flex-1"
@@ -772,7 +772,7 @@ function VaultModal({
         {kind === "card" ? (
           <>
             <label className="grid gap-1 text-[13px]">
-              🔒 Card number
+              <span className="flex items-center gap-1.5"><PixelIcon glyph="lock" size={11} /> Card number</span>
               <span className="flex items-center gap-1.5">
                 <input
                   className="input flex-1 font-mono"
@@ -824,7 +824,7 @@ function VaultModal({
             </div>
             <div className="grid grid-cols-2 gap-2">
               <label className="grid gap-1 text-[13px]">
-                🔒 CVV
+                <span className="flex items-center gap-1.5"><PixelIcon glyph="lock" size={11} /> CVV</span>
                 <input
                   className="input font-mono"
                   type="password"
@@ -856,7 +856,7 @@ function VaultModal({
         {kind === "api_key" ? (
           <>
             <label className="grid gap-1 text-[13px]">
-              🔒 Key
+              <span className="flex items-center gap-1.5"><PixelIcon glyph="lock" size={11} /> Key</span>
               <input
                 className="input font-mono"
                 type="password"
@@ -882,7 +882,7 @@ function VaultModal({
 
         {kind === "note" ? (
           <label className="grid gap-1 text-[13px]">
-            🔒 Note
+            <span className="flex items-center gap-1.5"><PixelIcon glyph="lock" size={11} /> Note</span>
             <textarea
               className="input min-h-24"
               value={noteText}

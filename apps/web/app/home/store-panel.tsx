@@ -216,7 +216,7 @@ export function StorePanel({
       </div>
 
       {banner ? (
-        <div className="relative overflow-hidden rounded-xl border border-[var(--outline)] bg-surface shadow-[3px_3px_0_var(--hard)]">
+        <div className="relative flex-shrink-0 overflow-hidden rounded-xl border border-[var(--outline)] bg-surface shadow-[3px_3px_0_var(--hard)]">
           <DitherGradient
             from="blue"
             direction="down"

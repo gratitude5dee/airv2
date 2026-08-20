@@ -16,8 +16,8 @@ import { PixelIcon } from "@/components/dither-kit/icon";
 const BUSY_NOTE = "Your agent's computer is busy starting up — try again in a minute.";
 
 interface MemoryState {
-  memory: string;
-  user: string;
+  memory: string | null;
+  user: string | null;
   user_char_limit: number;
 }
 
@@ -75,7 +75,7 @@ function MemoryCard() {
       }
       const data = (await res.json()) as MemoryState;
       setState(data);
-      setUserDraft(data.user);
+      setUserDraft(data.user ?? "");
       setLoaded(true);
     } catch {
       setNote("Couldn't read memory.");
