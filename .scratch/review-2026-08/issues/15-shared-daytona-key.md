@@ -1,6 +1,6 @@
 # P1-11: box template bakes one shared Daytona API key into every fork
 
-Status: resolved — PR #123
+Status: resolved — PR #127
 
 Template no longer logs in with a shared key (and scrubs any inherited
 `~/.daytona` profile); provisioning mints a per-user Daytona child key
