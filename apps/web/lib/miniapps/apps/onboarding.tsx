@@ -5,8 +5,9 @@
  * lib/connectors/manage, managers via lib/vault/managers, vault items via
  * the vault CLI, first exchange via Hermes MAIN_SESSION). Progress persists
  * box-side (C4, lib/miniapps/onboarding.ts); every step is skippable and
- * re-enterable. Step 4 (Onairos, §MA9.2) is a stub behind ./onairos.ts until
- * Session H's integration lands. Owner-only: no guest actions (MA4).
+ * re-enterable. Step 4 (Onairos, §MA9.2) reports status via ./onairos.ts
+ * over lib/onairos/sync.ts and stays skippable when no key is configured.
+ * Owner-only: no guest actions (MA4).
  */
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -108,7 +109,13 @@ async function loadSnapshot(
       .select("id", { count: "exact", head: true })
       .eq("user_id", userId)
       .is("deleted_at", null),
-    onairosProvider.status(userId),
+    onairosProvider.status(supabase, userId).catch(
+      (): OnairosStatus => ({
+        available: false,
+        connected: false,
+        connect_url: null,
+      })
+    ),
   ]);
   return {
     state,
@@ -194,9 +201,9 @@ function stepBody(snapshot: Snapshot, step: OnboardingStepId): string {
   }
   if (step === "onairos") {
     if (!snapshot.onairos.available) {
-      return `<p style="color:var(--muted);font-size:13px">Onairos personal context is coming soon — connect it later from Settings once it ships. Nothing here blocks the rest of setup.</p>${skipForm("onairos", "Skip — coming soon")}`;
+      return `<p style="color:var(--muted);font-size:13px">Onairos personal context isn't configured on this deployment — connect it later from Settings once it is. Nothing here blocks the rest of setup.</p>${skipForm("onairos", "Skip — not configured")}`;
     }
-    return `<p style="font-size:13px">${snapshot.onairos.connected ? "Connected." : "Connect your Onairos context."}</p>${skipForm("onairos")}`;
+    return `<p style="font-size:13px">${snapshot.onairos.connected ? "Connected — your imported context lives on your computer, and Settings has Re-sync / Disconnect." : "Connect your Onairos context from the main app — the consent flow runs there and your imported context lands on your computer, never on the platform."}</p>${skipForm("onairos")}`;
   }
   if (step === "secrets") {
     const managerLines = snapshot.managers

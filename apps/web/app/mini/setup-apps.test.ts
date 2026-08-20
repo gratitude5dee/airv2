@@ -75,7 +75,16 @@ const HOSTILE = '<script>alert("pwn")</script>';
 function thenable(rows: unknown, single: unknown = null) {
   const builder: Record<string, unknown> = {};
   const chain = () => builder;
-  for (const method of ["select", "eq", "is", "order", "limit"]) {
+  for (const method of [
+    "select",
+    "eq",
+    "is",
+    "order",
+    "limit",
+    "range",
+    "gte",
+    "lt",
+  ]) {
     builder[method] = vi.fn(chain);
   }
   builder.maybeSingle = async () => ({ data: single, error: null });
@@ -189,16 +198,19 @@ describe("settings mini-app", () => {
     });
   }
 
-  it("escapes hostile values and marks not-yet-shipped sections clearly", async () => {
+  it("escapes hostile values, mounts the section trio, and marks not-yet-shipped panels", async () => {
     const response = await settings.render(settingsCtx());
     expect(response.status).toBe(200);
     const body = await response.text();
     expect(body).toContain("&lt;script&gt;");
     expect(body).not.toContain("<script>alert");
     expect(body).toContain("Coming soon");
-    expect(body).toContain("MA9.1");
     expect(body).toContain("MA2.4");
     expect(body).toContain("user@wzrd.tech");
+    // MA9.1/MA9.2/MA9.3 sections are mounted, not placeholders.
+    expect(body).toContain("MEMORY.md");
+    expect(body).toContain("<h2>Traces</h2>");
+    expect(body).toContain("Connected context");
   });
 
   it("speed tier writes go through the shared account helper", async () => {

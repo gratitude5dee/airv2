@@ -41,7 +41,9 @@ export function generateMetadata(): Metadata {
 
 const CATEGORIES: [string, string[]][] = [
   ["Agent", ["computer", "browser", "connect", "onboarding", "settings"]],
-  ["Work", ["calendar", "inbox", "crm", "kanban", "todo", "analytics"]],
+  // kanban/todo are private single-user apps (migration 0034) — they never
+  // pass the listPublicApps visibility filter, so they don't belong here.
+  ["Work", ["calendar", "inbox", "crm", "analytics"]],
   ["Create", ["video", "image", "shop"]],
   ["Money", ["pay", "vault"]],
 ];

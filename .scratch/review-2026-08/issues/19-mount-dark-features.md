@@ -1,6 +1,6 @@
 # Wave 2 unlock: mount built-but-dark features
 
-Status: open
+Status: partially resolved (PR devin/1787241959-mount-dark-features) — settings sections mounted (memory/traces/onairos) with owner assertion; onboarding Onairos stub swapped for lib/onairos/sync.ts status; real publicExporter over the MA8 guard + R2 media lane; kanban/todo dropped from the store Work category (private apps); StartLimit wraps on kanban/todo/image/video; shared prompt bar (lib/miniapps/promptBar.ts) on kanban/todo/calendar/inbox/image/video owner sessions; pay/shop owner-role assertions. Still open: session-expiry page and vault pending purchase cards (not in this PR's scope).
 
 Mount settings sections memory/traces/onairos (needs issue 10 indexes first for traces); swap onboarding Onairos stub for lib/onairos/sync.ts; real publicExporter; store Work category fix; StartLimit wraps kanban/todo/image/video; prompt bar in shared shell; session-expiry page; vault pending purchase cards; pay/shop owner-role assertions. docs/review-2026-08/02-miniapps-review.md findings 4-19.
 

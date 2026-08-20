@@ -21,6 +21,7 @@ import {
 import { createDecision } from "@/lib/routing/trust";
 import { externalOrigin } from "../gates";
 import { esc, forbidden, html, page, withBaseHeaders } from "../html";
+import { promptBar, runPrompt } from "../promptBar";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
 async function primaryInboxId(
@@ -73,7 +74,10 @@ function renderThreads(
   const empty =
     threads.length === 0 ? `<p class="when">No mail yet.</p>` : "";
   const compose = `<div class="day">Compose (drafts only \u2014 nothing sends without you)</div><form method="post" style="display:flex;flex-direction:column;gap:6px"><input type="hidden" name="action" value="compose"><input type="text" name="to" placeholder="To" required><input type="text" name="subject" placeholder="Subject"><input type="text" name="text" placeholder="Message" required><div><button>Save draft</button></div></form>`;
-  return page("Inbox", `<h1>Inbox</h1>${rows}${empty}${compose}`);
+  return page(
+    "Inbox",
+    `<h1>Inbox</h1>${rows}${empty}${compose}\n${promptBar("Ask your agent \u2014 e.g. summarize unread threads\u2026")}`
+  );
 }
 
 function renderThread(
@@ -147,6 +151,15 @@ export const inbox: MiniAppModule = {
       return forbidden("this view is owner-only");
     }
     const action = String(form.get("action") ?? "");
+    if (action === "prompt") {
+      await runPrompt(ctx, String(form.get("text") ?? ""));
+      return withBaseHeaders(
+        NextResponse.redirect(
+          new URL(ctx.basePath, externalOrigin(ctx.request)),
+          303
+        )
+      );
+    }
     const to = String(form.get("to") ?? "").trim().slice(0, 320);
     const subject = String(form.get("subject") ?? "").trim().slice(0, 300);
     const text = String(form.get("text") ?? "").trim().slice(0, 10_000);

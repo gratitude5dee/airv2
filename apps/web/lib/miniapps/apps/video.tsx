@@ -3,8 +3,7 @@
  * the existing creative job flow. */
 import { NextResponse } from "next/server";
 import { refreshVideoRender, startVideoRender } from "@/lib/creative/videoRender";
-import { createRun, MAIN_SESSION } from "@/lib/hermes/client";
-import { armStopAfter, ensureBoxAwake } from "@/lib/orchestrator/boxes";
+import { StartLimitError } from "@/lib/orchestrator/boxes";
 import { externalOrigin } from "../gates";
 import { esc, html, page, withBaseHeaders } from "../html";
 import {
@@ -14,6 +13,7 @@ import {
   type VideoClip,
   type VideoDoc,
 } from "../creativeDocs";
+import { promptBar, runPrompt } from "../promptBar";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
 /** BASE CSP is default-src 'none'; the preview needs https media only. */
@@ -57,11 +57,7 @@ ${clips || `<div class="card pending">no clips yet — add box asset ids below o
 <form method="post" class="addrow">${hidden("action", "set-audio")}<input type="text" name="assetId" value="${esc(doc.audioAssetId ?? "")}" placeholder="Audio track (box asset id, blank to clear)…" maxlength="128"><button class="ghost">Audio</button></form>
 <form method="post" class="addrow">${hidden("action", "rename")}<input type="text" name="title" placeholder="Rename document…" maxlength="120"><button>Rename</button></form>
 ${isOwner ? `<form method="post" class="addrow">${hidden("action", "render")}<button>Render</button></form>` : ""}
-${
-  isOwner
-    ? `<form method="post" class="addrow">${hidden("action", "prompt")}<input type="text" name="text" placeholder="Ask your agent — e.g. tighten cut 2, add captions…" maxlength="4000"><button>Send</button></form>`
-    : ""
-}`
+${isOwner ? promptBar("Ask your agent — e.g. tighten cut 2, add captions…") : ""}`
   );
 }
 
@@ -74,23 +70,37 @@ function redirectBack(ctx: MiniAppContext, query?: string): NextResponse {
   );
 }
 
+const unavailable = () =>
+  html(
+    page(
+      "Video",
+      "<h1>Video</h1><p>Your agent's computer can't start right now — try again in a few minutes.</p>"
+    )
+  );
+
 export const video: MiniAppModule = {
   async render(ctx: MiniAppContext): Promise<NextResponse> {
-    const doc = await getVideoDoc(
-      ctx.supabase,
-      ctx.session.userId,
-      ctx.session.resourceId
-    );
+    let doc: VideoDoc;
     let renderLine: string | null = null;
     let renderUrl: string | null = null;
-    if (doc.lastRenderJobId) {
-      const view = await refreshVideoRender(
+    try {
+      doc = await getVideoDoc(
         ctx.supabase,
         ctx.session.userId,
-        doc.lastRenderJobId
+        ctx.session.resourceId
       );
-      renderLine = view.line;
-      renderUrl = view.url;
+      if (doc.lastRenderJobId) {
+        const view = await refreshVideoRender(
+          ctx.supabase,
+          ctx.session.userId,
+          doc.lastRenderJobId
+        );
+        renderLine = view.line;
+        renderUrl = view.url;
+      }
+    } catch (error) {
+      if (error instanceof StartLimitError) return unavailable();
+      throw error;
     }
     const url = new URL(ctx.request.url);
     let notice = url.searchParams.get("notice");
@@ -103,40 +113,40 @@ export const video: MiniAppModule = {
 
   async action(ctx: MiniAppContext, form: FormData): Promise<NextResponse> {
     const action = String(form.get("action") ?? "");
-    const userId = ctx.session.userId;
-    const resourceId = ctx.session.resourceId;
-    if (action === "render") {
-      const doc = await getVideoDoc(ctx.supabase, userId, resourceId);
-      const started = await startVideoRender(ctx.supabase, userId, doc);
-      if (started.jobId) {
-        await setVideoRenderJob(ctx.supabase, userId, resourceId, started.jobId);
-      }
-      return redirectBack(ctx, `?notice=${encodeURIComponent(started.line)}`);
+    try {
+      return await runAction(ctx, action, form);
+    } catch (error) {
+      if (error instanceof StartLimitError) return unavailable();
+      throw error;
     }
-    if (action === "prompt") {
-      const text = String(form.get("text") ?? "").trim();
-      if (text && text.length <= 4000) {
-        const box = await ensureBoxAwake(ctx.supabase, userId);
-        const run = await createRun(box.target, {
-          input: text,
-          sessionId: MAIN_SESSION,
-          metadata: { app: "video", resource: resourceId, surface: "miniapp" },
-        });
-        await ctx.supabase.from("agent_runs").insert({
-          user_id: userId,
-          hermes_run_id: run.run_id,
-          trigger: "web",
-        });
-        await armStopAfter(ctx.supabase, userId);
-      }
-      return redirectBack(ctx);
+  },
+};
+
+async function runAction(
+  ctx: MiniAppContext,
+  action: string,
+  form: FormData
+): Promise<NextResponse> {
+  const userId = ctx.session.userId;
+  const resourceId = ctx.session.resourceId;
+  if (action === "render") {
+    const doc = await getVideoDoc(ctx.supabase, userId, resourceId);
+    const started = await startVideoRender(ctx.supabase, userId, doc);
+    if (started.jobId) {
+      await setVideoRenderJob(ctx.supabase, userId, resourceId, started.jobId);
     }
-    if (action === "rename") {
-      await updateVideoDoc(ctx.supabase, userId, resourceId, {
-        kind: "rename",
-        title: String(form.get("title") ?? ""),
-      });
-    } else if (action === "add-clip") {
+    return redirectBack(ctx, `?notice=${encodeURIComponent(started.line)}`);
+  }
+  if (action === "prompt") {
+    await runPrompt(ctx, String(form.get("text") ?? ""));
+    return redirectBack(ctx);
+  }
+  if (action === "rename") {
+    await updateVideoDoc(ctx.supabase, userId, resourceId, {
+      kind: "rename",
+      title: String(form.get("title") ?? ""),
+    });
+  } else if (action === "add-clip") {
       await updateVideoDoc(ctx.supabase, userId, resourceId, {
         kind: "add-clip",
         assetId: String(form.get("assetId") ?? ""),
@@ -175,5 +185,4 @@ export const video: MiniAppModule = {
       });
     }
     return redirectBack(ctx);
-  },
-};
+}

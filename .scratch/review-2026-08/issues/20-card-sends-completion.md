@@ -1,6 +1,6 @@
 # Wave 2: generic agent card route POST /api/cards/[kind]
 
-Status: open
+Status: resolved — generic `POST /api/cards/[kind]` (all 16 registered kinds, same gateway-token auth + owner destination + per-kind cooldown as the computer/browser routes) landed in the "mount dark features" PR (devin/1787241959-mount-dark-features).
 
 claimCardSend supports all 16 kinds; 12 have no send path. Feature idea 4 in 02-miniapps-review.md.
 
