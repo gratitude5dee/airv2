@@ -8,7 +8,11 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
-import { appsApiSession, bundleManifest } from "@/lib/miniapps/appsApi";
+import {
+  appsApiSession,
+  bundleManifest,
+  stateUserId,
+} from "@/lib/miniapps/appsApi";
 import { readAppState, writeAppState } from "@/lib/miniapps/store";
 
 export const runtime = "nodejs";
@@ -59,10 +63,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       { status: 403 }
     );
   }
+  const userId = stateUserId(auth);
+  if (!userId) {
+    return NextResponse.json({ error: "no app owner" }, { status: 403 });
+  }
   const logResource = "actions";
   const existing = await readAppState(
     supabase,
-    auth.session.userId,
+    userId,
     auth.app.slug,
     logResource
   );
@@ -77,7 +85,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   });
   await writeAppState(
     supabase,
-    auth.session.userId,
+    userId,
     auth.app.slug,
     logResource,
     entries.slice(-LOG_MAX_ENTRIES)

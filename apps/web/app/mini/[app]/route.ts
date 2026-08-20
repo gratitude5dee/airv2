@@ -84,7 +84,7 @@ async function runPublicGateChain(
     );
     return { ok: false, response: password.response };
   }
-  const payment = await x402Gate(request, app);
+  const payment = await x402Gate(request, app, { basePath });
   if (payment) {
     await logGateEvent(supabase, app.id, null, "gate_challenged", "x402");
     return { ok: false, response: payment };

@@ -219,7 +219,7 @@ function paymentNonce(payload: PaymentPayload): string | null {
  * else gets the 402 challenge (JSON for agents, pay page for browsers), and
  * an X-PAYMENT header is verified + settled before a paid session is minted.
  */
-export const x402PaymentGate: X402Gate = async (request, app) => {
+export const x402PaymentGate: X402Gate = async (request, app, options) => {
   if (!app.x402_enabled) return null;
   const session = sessionFromCookie(request, app.slug);
   if (session && session.userId === app.owner_user_id) return null;
@@ -227,7 +227,7 @@ export const x402PaymentGate: X402Gate = async (request, app) => {
 
   const supabase = serviceClient();
   const payTo = await publisherPayTo(supabase, app);
-  const basePath = basePathFor(request, app.slug);
+  const basePath = options?.basePath ?? basePathFor(request, app.slug);
   const resource = `${externalOrigin(request)}${basePath}`;
   const requirements = payTo
     ? buildPaymentRequirements(app, payTo, resource)
@@ -321,10 +321,9 @@ export const x402PaymentGate: X402Gate = async (request, app) => {
     })
   );
 
-  const response = NextResponse.redirect(
-    new URL(basePath, externalOrigin(request)),
-    303
-  );
+  const response = options?.settled
+    ? options.settled()
+    : NextResponse.redirect(new URL(basePath, externalOrigin(request)), 303);
   response.headers.set(
     "X-PAYMENT-RESPONSE",
     safeBase64Encode(JSON.stringify(toJsonSafe(settlement)))

@@ -8,7 +8,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
-import { appsApiSession } from "@/lib/miniapps/appsApi";
+import { appsApiSession, stateUserId } from "@/lib/miniapps/appsApi";
 import { readAppState, writeAppState } from "@/lib/miniapps/store";
 
 export const runtime = "nodejs";
@@ -23,9 +23,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   if (!auth) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+  const userId = stateUserId(auth);
+  if (!userId) {
+    return NextResponse.json({ state: {} });
+  }
   const state = await readAppState(
     supabase,
-    auth.session.userId,
+    userId,
     auth.app.slug,
     auth.session.resourceId
   );

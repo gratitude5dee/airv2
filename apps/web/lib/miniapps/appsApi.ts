@@ -57,6 +57,20 @@ export async function appsApiSession(
   return null;
 }
 
+/**
+ * The box user whose filesystem holds the app's state (MA3, C4). Grant-guest
+ * sessions already carry the owner's user id in their claims; x402 paid
+ * sessions carry a synthetic "x402:<payer>" principal that maps to no box,
+ * so their state resolves against the app owner's box instead. Null when no
+ * box-backed user exists for the session.
+ */
+export function stateUserId(auth: AppsApiSession): string | null {
+  if (auth.session.userId.startsWith("x402:")) {
+    return auth.app.owner_user_id;
+  }
+  return auth.session.userId;
+}
+
 export interface BundleManifest {
   actions: string[];
   guestActions: string[];

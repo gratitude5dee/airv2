@@ -9,7 +9,7 @@
  *   mini host  /mini/<app>?t=…  → 301 /<app>?t=…           (legacy links;
  *                                 the single-use token rides the redirect)
  *   mini host  /<slug>          → rewrite /mini/<slug>     (loader v2)
- *   mini host  /api/mini/*      → pass through
+ *   mini host  /api/mini/*      → pass through, marked x-mini-host: 1
  *   main host  /mini/<app>      → 308 to the mini origin   (legacy links)
  *
  * Rewritten requests carry x-mini-host: 1 so the loader scopes cookies and
@@ -77,7 +77,13 @@ export function middleware(request: NextRequest): NextResponse {
     const passthrough = spoofed
       ? NextResponse.next({ request: { headers } })
       : NextResponse.next();
-    if (pathname.startsWith("/api/mini/")) return passthrough;
+    // Store/loader APIs mint app cookies and redirects, so they carry the
+    // same external-path marker as rewritten app requests: gates scope the
+    // paid session cookie to /<slug>, where the app is actually served.
+    if (pathname.startsWith("/api/mini/")) {
+      headers.set("x-mini-host", "1");
+      return NextResponse.next({ request: { headers } });
+    }
     if (pathname.startsWith("/api/apps/")) return passthrough;
     // MA10 machine registry lives on the mini origin.
     if (pathname === "/api/store/index.json") return passthrough;

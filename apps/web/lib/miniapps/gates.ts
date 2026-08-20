@@ -154,9 +154,22 @@ export function passwordGate(
  * static import would be a cycle, since the payments module uses this file's
  * helpers. The loader only knows "null = pass, response = short-circuit".
  */
+export interface X402GateOptions {
+  /**
+   * External base path the paid session cookie (and settlement redirect) is
+   * scoped to. Defaults to the request's host form; callers that know the
+   * serving path (the loader chain, /api/mini/launch) pass it explicitly so
+   * the cookie path always matches where the app is actually served.
+   */
+  basePath?: string;
+  /** Settlement response builder; defaults to a 303 redirect to basePath. */
+  settled?: () => NextResponse;
+}
+
 export type X402Gate = (
   request: NextRequest,
-  app: RegistryApp
+  app: RegistryApp,
+  options?: X402GateOptions
 ) => Promise<NextResponse | null>;
 
 let x402Impl: X402Gate | null = null;
@@ -167,13 +180,14 @@ export function setX402Gate(gate: X402Gate): void {
 
 export async function x402Gate(
   request: NextRequest,
-  app: RegistryApp
+  app: RegistryApp,
+  options?: X402GateOptions
 ): Promise<NextResponse | null> {
   if (!x402Impl) {
     const { x402PaymentGate } = await import("../payments/x402");
     x402Impl = x402PaymentGate;
   }
-  return x402Impl(request, app);
+  return x402Impl(request, app, options);
 }
 
 /* ---------------------------------------------------------------- gate 4 */
@@ -216,7 +230,7 @@ export async function runGateChain(
     return { ok: false, response: password.response };
   }
 
-  const payment = await x402Gate(request, app);
+  const payment = await x402Gate(request, app, { basePath });
   if (payment) {
     await logGateEvent(supabase, app.id, null, "gate_challenged", "x402");
     return { ok: false, response: payment };
