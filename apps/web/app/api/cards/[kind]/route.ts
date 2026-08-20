@@ -17,6 +17,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 const CARD_KINDS = [
+  "ads",
   "computer",
   "calendar",
   "vault",

@@ -5,6 +5,7 @@
  * here as their apps land.
  */
 import type { MiniAppModule } from "./types";
+import { ads } from "./ads";
 import { analytics } from "./analytics";
 import { calendar } from "./calendar";
 import { computer } from "./computer";
@@ -23,6 +24,7 @@ import { vault } from "./vault";
 import { video } from "./video";
 
 export const FIRST_PARTY_MODULES: Record<string, MiniAppModule> = {
+  ads,
   analytics,
   browser,
   calendar,

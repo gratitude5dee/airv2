@@ -81,6 +81,7 @@ export function StorePanel({
 }) {
   const [apps, setApps] = useState<StoreApp[] | null>(null);
   const [earnings, setEarnings] = useState<EarningsRow[]>([]);
+  const [adsBlocked, setAdsBlocked] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [category, setCategory] = useState<string>("All");
   const [selected, setSelected] = useState<string | null>(null);
@@ -103,10 +104,12 @@ export function StorePanel({
         const data = (await res.json()) as {
           apps: StoreApp[];
           earnings?: EarningsRow[];
+          ads_writes_blocked?: boolean;
         };
         if (!stale) {
           setApps(data.apps.filter((a) => a.status === "published"));
           setEarnings(data.earnings ?? []);
+          setAdsBlocked(data.ads_writes_blocked === true);
         }
       } catch {
         if (!stale) setError("Couldn't load the store.");
@@ -310,7 +313,14 @@ export function StorePanel({
                   radius={10}
                 />
                 {isSelected ? <DitherMarquee seed={app.slug} /> : null}
-                {badge ? (
+                {app.slug === "ads" && adsBlocked ? (
+                  <span
+                    className="chrome absolute -right-2 -top-2 rounded-[6px] border border-[var(--outline)] bg-[var(--text)] px-1 py-0.5 text-[9px] text-[var(--bg)]"
+                    title="Ad writes are blocked — no spend ceiling set"
+                  >
+                    $0
+                  </span>
+                ) : badge ? (
                   <span className="chrome absolute -right-2 -top-2 rounded-[6px] border border-[var(--outline)] bg-[var(--text)] px-1 py-0.5 text-[9px] text-[var(--bg)]">
                     {badge}
                   </span>

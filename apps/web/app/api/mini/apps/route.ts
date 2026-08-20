@@ -8,6 +8,7 @@ import { serviceClient } from "@/lib/supabase";
 import { sessionUserId } from "@/lib/auth/user";
 import { listFirstPartyApps } from "@/lib/miniapps/registry";
 import { publisherEarnings } from "@/lib/miniapps/publish";
+import { spendCeilingCents } from "@/lib/ads/spend";
 import { publicUrl } from "@/lib/storage/r2";
 
 export const runtime = "nodejs";
@@ -22,10 +23,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   // `?earnings=1` (App Store detail sheet) adds the owner's per-app x402
   // totals — same aggregation the publisher console exports.
   const wantEarnings = request.nextUrl.searchParams.get("earnings") === "1";
-  const [apps, { data: installs }, earnings] = await Promise.all([
+  const [apps, { data: installs }, earnings, adsCeiling] = await Promise.all([
     listFirstPartyApps(supabase),
     supabase.from("miniapp_installs").select("app_id").eq("user_id", userId),
     wantEarnings ? publisherEarnings(supabase, userId) : Promise.resolve([]),
+    spendCeilingCents(supabase, userId),
   ]);
   const installed = new Set((installs ?? []).map((row) => row.app_id));
   return NextResponse.json({
@@ -43,6 +45,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       x402_enabled: app.x402_enabled,
       x402_price_usdc: app.x402_price_usdc,
     })),
+    // Phase 3 tile badge: a zero ceiling means ad writes are blocked
+    // server-side (approveAdWrite fails closed) — surface it on the tile.
+    ads_writes_blocked: adsCeiling === 0,
     ...(wantEarnings ? { earnings } : {}),
   });
 }

@@ -119,6 +119,23 @@ describe("POST /api/cards/[kind]", () => {
     );
   });
 
+  it("sends the ads card (Phase 3: dead kind comes alive)", async () => {
+    const response = await POST(...post("ads", "good-token"));
+    expect(response.status).toBe(200);
+    expect(claimCardSend).toHaveBeenCalledWith(
+      expect.anything(),
+      "owner-1",
+      "ads"
+    );
+    expect(sendMiniAppCard).toHaveBeenCalledWith(
+      "space-1",
+      "+15550001111",
+      "owner-1",
+      "ads",
+      "default"
+    );
+  });
+
   it("releases the claim and 502s when delivery fails", async () => {
     sendMiniAppCard.mockRejectedValueOnce(new Error("spectrum down"));
     const response = await POST(...post("kanban", "good-token"));

@@ -10,6 +10,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 /** One kind per store app the agent may send a card for (goal.md §4.3). */
 export type CardKind =
+  | "ads"
   | "computer"
   | "calendar"
   | "vault"
