@@ -22,8 +22,8 @@ export class BundleError extends Error {
 }
 
 export const BUNDLE_MAX_ZIP_BYTES = 25 * 1024 * 1024;
-const BUNDLE_MAX_UNPACKED_BYTES = 100 * 1024 * 1024;
-const BUNDLE_MAX_FILES = 500;
+export const BUNDLE_MAX_UNPACKED_BYTES = 100 * 1024 * 1024;
+export const BUNDLE_MAX_FILES = 500;
 
 /** Static-only allowlist. No svg (scriptable), no wasm, no source maps. */
 const EXTENSION_TYPES: Record<string, string> = {
