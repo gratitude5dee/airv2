@@ -16,18 +16,23 @@ export type ChatChannel = "web" | "desktop";
 /** agent_runs.trigger: the channel, or 'voice' when the composer content came from a transcription (M13). */
 export type ChatTrigger = ChatChannel | "voice";
 
+/** Thread ids share air-main's namespace (spec §3): additive sessions, never
+ * a rewrite of the shared one. */
+export const CHAT_SESSION_RE = /^air-[a-z0-9-]{1,32}$/;
+
 export async function startChatRun(
   supabase: SupabaseClient,
   userId: string,
   input: string,
   channel: ChatChannel,
-  trigger: ChatTrigger = channel
+  trigger: ChatTrigger = channel,
+  sessionId: string = MAIN_SESSION
 ): Promise<string> {
   const box = await ensureBoxAwake(supabase, userId);
   try {
     const run = await createRun(box.target, {
       input,
-      sessionId: MAIN_SESSION,
+      sessionId,
       metadata: { channel },
     });
     await supabase.from("agent_runs").insert({
