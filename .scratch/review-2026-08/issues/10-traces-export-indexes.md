@@ -1,6 +1,6 @@
 # P1-6: missing indexes on traces-export hot path
 
-Status: open
+Status: resolved — fixed in PR (migration 0048 adds (user_id, created_at) indexes)
 
 decisions (user_id, created_at) and miniapp_gate_events (user_id, created_at) indexes missing → per-user full scans. lib/traces/receipts.ts:132,145.
 

@@ -21,7 +21,11 @@ import {
   assertWithinQuota,
   ensureUserBucket,
 } from "@/lib/storage/buckets";
-import { confirmUpload, reserveUpload } from "@/lib/storage/confirm";
+import {
+  confirmUpload,
+  PRESIGN_TTL_SECONDS,
+  reserveUpload,
+} from "@/lib/storage/confirm";
 import { presignPut, publicUrl, r2Configured } from "@/lib/storage/r2";
 
 export const runtime = "nodejs";
@@ -86,7 +90,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     await addUsage(supabase, session.userId, sizeBytes);
     await reserveUpload(supabase, session.userId, key, sizeBytes);
     return NextResponse.json({
-      uploadUrl: presignPut(key, contentType, 600),
+      uploadUrl: presignPut(key, contentType, PRESIGN_TTL_SECONDS),
       key,
       publicUrl: publicUrl(key),
     });

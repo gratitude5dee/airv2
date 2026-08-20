@@ -2,7 +2,9 @@
  * Cron sweeper (goal.md M2 task 4):
  *  - stop boxes idle past stop_after — never with force (C6);
  *  - fire flush jobs whose invocation died before draining;
- *  - 48h TTL on transient transport rows (inbound_events, batch_queue).
+ *  - 48h TTL on transient transport rows (inbound_events, batch_queue);
+ *  - release abandoned presign reservations so their pre-charged bytes
+ *    don't leak storage quota (MA4).
  */
 import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual } from "node:crypto";
@@ -10,6 +12,7 @@ import { serviceClient } from "@/lib/supabase";
 import { getBox, stop } from "@/lib/box/client";
 import { claimFlush, runFlush } from "@/lib/orchestrator/flush";
 import { recordBoxStateEvent } from "@/lib/box/events";
+import { sweepAbandonedUploads } from "@/lib/storage/confirm";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -156,6 +159,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
   }
 
+  let uploadsReleased = 0;
+  try {
+    uploadsReleased = await sweepAbandonedUploads(supabase);
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        msg: "sweeper upload release failed",
+        error: error instanceof Error ? error.message : String(error),
+      })
+    );
+  }
+
   const ttlCutoff = new Date(Date.now() - 48 * 3600_000).toISOString();
   await supabase.from("inbound_events").delete().lt("received_at", ttlCutoff);
   await supabase.from("batch_queue").delete().lt("received_at", ttlCutoff);
@@ -164,5 +179,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     .delete()
     .lt("received_at", ttlCutoff);
 
-  return NextResponse.json({ ok: true, stopped, reconciled, flushed });
+  return NextResponse.json({
+    ok: true,
+    stopped,
+    reconciled,
+    flushed,
+    uploadsReleased,
+  });
 }
