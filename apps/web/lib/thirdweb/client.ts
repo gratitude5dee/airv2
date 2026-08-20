@@ -4,6 +4,7 @@
  * on completion and no key material ever enters the box (C2-adjacent).
  */
 import { env } from "../env";
+import { DEFAULT_REQUEST_TIMEOUT_MS, requestSignal } from "../http/timeout";
 
 const THIRDWEB_API = "https://api.thirdweb.com";
 
@@ -19,6 +20,7 @@ export class ThirdwebApiError extends Error {
 async function thirdwebFetch<T>(path: string, body: object): Promise<T> {
   const response = await fetch(`${THIRDWEB_API}${path}`, {
     method: "POST",
+    signal: requestSignal(DEFAULT_REQUEST_TIMEOUT_MS),
     headers: {
       "Content-Type": "application/json",
       "x-secret-key": env.thirdwebSecretKey(),

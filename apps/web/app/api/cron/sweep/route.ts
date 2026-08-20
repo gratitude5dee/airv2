@@ -9,6 +9,7 @@ import { timingSafeEqual } from "node:crypto";
 import { serviceClient } from "@/lib/supabase";
 import { getBox, stop } from "@/lib/box/client";
 import { claimFlush, runFlush } from "@/lib/orchestrator/flush";
+import { findSweepableBoxes } from "@/lib/orchestrator/sweep";
 import { recordBoxStateEvent } from "@/lib/box/events";
 
 export const runtime = "nodejs";
@@ -22,11 +23,6 @@ function authorized(request: NextRequest): boolean {
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
   if (token.length !== secret.length) return false;
   return timingSafeEqual(Buffer.from(token), Buffer.from(secret));
-}
-
-interface SweepableBox {
-  provider_box_id: string;
-  user_id: string;
 }
 
 interface OverdueJob {
@@ -44,13 +40,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const supabase = serviceClient();
   const nowIso = new Date().toISOString();
 
-  const { data: idleBoxes } = await supabase
-    .from("boxes")
-    .select("provider_box_id, user_id")
-    .lt("stop_after", nowIso)
-    .in("state", ["ready", "idle"]);
+  const idleBoxes = await findSweepableBoxes(supabase, new Date());
   let stopped = 0;
-  for (const box of (idleBoxes ?? []) as SweepableBox[]) {
+  for (const box of idleBoxes) {
     try {
       // last_active_at also starts the stale-transition clock below, so an
       // interrupted stop is reconciled 30 minutes after the attempt.
@@ -94,7 +86,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     .in("state", ["starting", "stopping"])
     .lt("last_active_at", staleBefore);
   let reconciled = 0;
-  for (const box of (staleBoxes ?? []) as SweepableBox[]) {
+  for (const box of (staleBoxes ?? []) as { provider_box_id: string; user_id: string }[]) {
     try {
       const current = await getBox(box.provider_box_id).catch(() => null);
       const running =

@@ -4,6 +4,7 @@
  * and the per-box API_SERVER_KEY (ARCHITECTURE.md §8.1). Neither may ever
  * reach a browser (C3).
  */
+import { fetchWithHeaderTimeout, requestSignal } from "../http/timeout";
 
 export interface HermesBoxTarget {
   /** e.g. https://<sub>-8642.on.ascii.dev — SECRET-adjacent, server-side only */
@@ -19,6 +20,13 @@ export interface HermesBoxTarget {
  * stays per-thread because threads are the conversation unit there.
  */
 export const MAIN_SESSION = "air-main";
+
+/** Calls traverse the hosted proxy into the box; generous but bounded. */
+const HERMES_REQUEST_TIMEOUT_MS = 60_000;
+/** SSE opens bound only connection/headers; the body streams unbounded. */
+const HERMES_STREAM_OPEN_TIMEOUT_MS = 60_000;
+/** The health probe is a wake-loop poll; fail fast so the loop can retry. */
+const HEALTH_TIMEOUT_MS = 10_000;
 
 export interface RunRequest {
   input: string;
@@ -61,6 +69,7 @@ async function hermesFetch<T>(
 ): Promise<T> {
   const response = await fetch(url(target, path), {
     ...init,
+    signal: requestSignal(HERMES_REQUEST_TIMEOUT_MS, init?.signal),
     headers: { ...headers(target), ...init?.headers },
   });
   if (!response.ok) {
@@ -91,9 +100,11 @@ export async function runEvents(
   target: HermesBoxTarget,
   runId: string
 ): Promise<ReadableStream<Uint8Array>> {
-  const response = await fetch(url(target, `/v1/runs/${runId}/events`), {
-    headers: headers(target),
-  });
+  const response = await fetchWithHeaderTimeout(
+    url(target, `/v1/runs/${runId}/events`),
+    { headers: headers(target) },
+    HERMES_STREAM_OPEN_TIMEOUT_MS
+  );
   if (!response.ok || !response.body) {
     throw new HermesApiError(response.status, "failed to open run event stream");
   }
@@ -251,6 +262,7 @@ export async function ensureSession(
 ): Promise<void> {
   const response = await fetch(url(target, "/api/sessions"), {
     method: "POST",
+    signal: requestSignal(HERMES_REQUEST_TIMEOUT_MS),
     headers: headers(target),
     body: JSON.stringify({ id: sessionId, title }),
   });
@@ -281,6 +293,7 @@ export async function sessionMessages(
 export async function health(target: HermesBoxTarget): Promise<boolean> {
   try {
     const response = await fetch(url(target, "/health"), {
+      signal: requestSignal(HEALTH_TIMEOUT_MS),
       headers: headers(target),
     });
     return response.ok;

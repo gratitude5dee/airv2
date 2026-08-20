@@ -8,6 +8,7 @@
  * URL is the per-user endpoint installed into the user's box.
  */
 import { env } from "../env";
+import { DEFAULT_REQUEST_TIMEOUT_MS, requestSignal } from "../http/timeout";
 
 const COMPOSIO_API = "https://backend.composio.dev/api/v3.1";
 
@@ -26,6 +27,7 @@ async function composioFetch<T>(
 ): Promise<T> {
   const response = await fetch(`${COMPOSIO_API}${path}`, {
     method: init?.method ?? "GET",
+    signal: requestSignal(DEFAULT_REQUEST_TIMEOUT_MS),
     headers: {
       "x-api-key": env.composioApiKey(),
       ...(init?.body !== undefined
