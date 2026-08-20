@@ -13,6 +13,7 @@ import { BotsPanel } from "./bots-panel";
 import { AppsPanel } from "./apps-panel";
 import { PluginPanel } from "./plugin-panel";
 import { CalendarPanel } from "./calendar-panel";
+import { launchMiniApp } from "./launch";
 import {
   BrowserHeader,
   BrowserPanels,
@@ -206,10 +207,33 @@ const DECISION_KIND_LABELS: Record<string, string> = {
   purchase_review: "Card fill awaiting approval",
   crm_update: "CRM update awaiting approval",
   new_contact: "New contact",
+  tier2_contact: "New contact",
 };
 
 function decisionKindLabel(kind: string): string {
-  return DECISION_KIND_LABELS[kind] ?? "New contact";
+  return DECISION_KIND_LABELS[kind] ?? "Needs your approval";
+}
+
+/**
+ * D4: per-kind approve CTA copy. Kinds without an entry still get a generic
+ * Approve button (the API resolves any pending decision), except contact
+ * notices, which resolve through People (mark known) rather than approve.
+ */
+const DECISION_APPROVE_CTAS: Record<string, string> = {
+  email_draft: "Send",
+  content_plan: "Approve plan",
+  calendar_add: "Add to calendar",
+  reconnect: "Retry",
+  revise: "Retry",
+  social_post: "Post it",
+  purchase_review: "Fill card",
+};
+
+const NO_APPROVE_KINDS = new Set(["new_contact", "tier2_contact"]);
+
+function decisionApproveCta(kind: string): string | null {
+  if (NO_APPROVE_KINDS.has(kind)) return null;
+  return DECISION_APPROVE_CTAS[kind] ?? "Approve";
 }
 
 /** History channel chips (V8): each maps to session platform values. */
@@ -1770,17 +1794,7 @@ export default function HomePage() {
                                 </div>
                               ) : null}
                               <div className="flex gap-2">
-                                {[
-                                  "email_draft",
-                                  "ad_write",
-                                  "content_plan",
-                                  "reconnect",
-                                  "revise",
-                                  "calendar_add",
-                                  "social_post",
-                                  "purchase_review",
-                                  "crm_update",
-                                ].includes(d.kind) ? (
+                                {decisionApproveCta(d.kind) ? (
                                   <button
                                     className="btn !px-3 !py-1.5 !text-[12px]"
                                     disabled={decisionBusy !== null}
@@ -1790,20 +1804,7 @@ export default function HomePage() {
                                   >
                                     {decisionBusy === d.id
                                       ? "Working\u2026"
-                                      : d.kind === "email_draft"
-                                        ? "Send"
-                                        : d.kind === "content_plan"
-                                          ? "Approve plan"
-                                          : d.kind === "calendar_add"
-                                            ? "Add to calendar"
-                                            : d.kind === "reconnect" ||
-                                                d.kind === "revise"
-                                              ? "Retry"
-                                              : d.kind === "social_post"
-                                                ? "Post it"
-                                                : d.kind === "purchase_review"
-                                                  ? "Fill card"
-                                                  : "Approve"}
+                                      : decisionApproveCta(d.kind)}
                                   </button>
                                 ) : null}
                                 {d.kind === "purchase_review" &&
@@ -3045,30 +3046,7 @@ export default function HomePage() {
                 <button
                   key={slug}
                   className="btn btn-ghost !px-3 !py-1.5 !text-[12px]"
-                  onClick={() => {
-                    // Open the window synchronously so popup blockers allow
-                    // it, then point it at the freshly minted link.
-                    const win = window.open("about:blank", "_blank");
-                    void fetch("/api/mini/link", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ app: slug }),
-                    })
-                      .then(async (res) => {
-                        const data = res.ok
-                          ? ((await res.json().catch(() => ({}))) as {
-                              url?: string;
-                            })
-                          : {};
-                        if (data.url) {
-                          if (win) win.location.href = data.url;
-                          else window.location.href = data.url;
-                          return;
-                        }
-                        win?.close();
-                      })
-                      .catch(() => win?.close());
-                  }}
+                  onClick={() => void launchMiniApp({ app: slug })}
                 >
                   {slug === "kanban"
                     ? "Kanban"

@@ -7,6 +7,7 @@
  * opens the mini-origin store already signed in via the handoff link.
  */
 import { useCallback, useEffect, useState } from "react";
+import { launchMiniApp } from "./launch";
 
 interface AppRow {
   slug: string;
@@ -38,35 +39,17 @@ export function AppsPanel({ active }: { active: boolean }) {
   async function launch(slug: string) {
     setBusy(slug);
     setError(null);
-    const res = await fetch("/api/mini/link", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ app: slug }),
-    });
+    const ok = await launchMiniApp({ app: slug });
     setBusy(null);
-    if (!res.ok) {
-      setError("Couldn't open that app.");
-      return;
-    }
-    const data = (await res.json()) as { url: string };
-    window.open(data.url, "_blank", "noopener");
+    if (!ok) setError("Couldn't open that app.");
   }
 
   async function openStore() {
     setBusy("__store");
     setError(null);
-    const res = await fetch("/api/mini/link", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ target: "store" }),
-    });
+    const ok = await launchMiniApp({ target: "store" });
     setBusy(null);
-    if (!res.ok) {
-      setError("Couldn't open the store.");
-      return;
-    }
-    const data = (await res.json()) as { url: string };
-    window.open(data.url, "_blank", "noopener");
+    if (!ok) setError("Couldn't open the store.");
   }
 
   async function toggleInstall(app: AppRow) {
