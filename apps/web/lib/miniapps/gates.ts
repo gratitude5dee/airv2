@@ -12,7 +12,13 @@ import { createHmac, scryptSync, timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "../env";
-import { baseHeaders, esc, forbidden, notFound, page } from "./html";
+import {
+  baseHeaders,
+  esc,
+  notFound,
+  page,
+  sessionExpired,
+} from "./html";
 import type { RegistryApp } from "./registry";
 import { verifyToken, type MiniAppRole } from "./tokens";
 
@@ -200,7 +206,7 @@ export function sessionGate(
   if (!session) {
     return {
       ok: false,
-      response: forbidden("no session — open this from your card"),
+      response: sessionExpired("Your session for this app has ended."),
     };
   }
   return { ok: true, session };

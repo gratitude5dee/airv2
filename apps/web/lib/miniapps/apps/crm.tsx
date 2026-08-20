@@ -22,6 +22,7 @@ import {
 } from "@/lib/crm/store";
 import { externalOrigin } from "../gates";
 import { esc, forbidden, html, page, withBaseHeaders } from "../html";
+import { promptBar, runPrompt } from "../promptBar";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
 interface SenderRow {
@@ -49,7 +50,11 @@ function renderList(basePath: string, store: CrmStore): string {
       ? `<p class="when">No people yet \u2014 add one below, or let your agent fill this in from conversations.</p>`
       : "";
   const addForm = `<form method="post" class="addrow"><input type="hidden" name="action" value="upsert"><input type="text" name="name" placeholder="Add a person\u2026" required><button>Add</button></form>`;
-  return page("People", `<h1>People</h1>${rows}${empty}${addForm}`);
+  return page(
+    "People",
+    `<h1>People</h1>${rows}${empty}${addForm}
+${promptBar("Ask your agent — e.g. who haven't I talked to lately…")}`
+  );
 }
 
 function renderDetail(
@@ -140,6 +145,15 @@ export const crm: MiniAppModule = {
     const action = String(form.get("action") ?? "");
     const personId = String(form.get("person") ?? "");
     try {
+      if (action === "prompt") {
+        await runPrompt(ctx, String(form.get("text") ?? ""));
+        return withBaseHeaders(
+          NextResponse.redirect(
+            new URL(ctx.basePath, externalOrigin(ctx.request)),
+            303
+          )
+        );
+      }
       const box = await ensureBoxAwake(ctx.supabase, ctx.session.userId);
       const store = await readPeople(box.boxId);
       const provenance = {

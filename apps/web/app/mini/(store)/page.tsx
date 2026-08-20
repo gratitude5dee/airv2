@@ -9,6 +9,7 @@ import { DitherGradient } from "@/components/dither-kit/gradient";
 import { Orb } from "@/components/orb/Orb";
 import { serviceClient } from "@/lib/supabase";
 import { listPublicApps, type RegistryApp } from "@/lib/miniapps/registry";
+import { publicUrl } from "@/lib/storage/r2";
 import { recordStoreOpen } from "@/lib/security/limits";
 import {
   canonicalStoreHome,
@@ -53,6 +54,20 @@ function priceChip(app: RegistryApp): string | null {
   return app.x402_price_usdc ? `$${app.x402_price_usdc} USDC` : "x402";
 }
 
+function AppIcon({ app, size }: { app: RegistryApp; size: number }) {
+  if (!app.icon_key) return <Orb size={size} label={app.name || app.slug} />;
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={publicUrl(app.icon_key)}
+      alt=""
+      width={size}
+      height={size}
+      className="shrink-0 rounded-[6px] object-cover [image-rendering:pixelated]"
+    />
+  );
+}
+
 function AppCard({ app, paths }: { app: RegistryApp; paths: StorePaths }) {
   const chip = priceChip(app);
   return (
@@ -61,7 +76,7 @@ function AppCard({ app, paths }: { app: RegistryApp; paths: StorePaths }) {
       className="panel !p-4 block text-left no-underline"
     >
       <div className="flex items-center gap-3">
-        <Orb size={22} label={app.name || app.slug} />
+        <AppIcon app={app} size={22} />
         <div className="min-w-0">
           <h3 className="m-0 truncate text-[13px] font-semibold">
             {app.name || app.slug}

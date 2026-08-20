@@ -17,7 +17,9 @@ import {
   type ConnectionRow,
 } from "@/lib/connectors/manage";
 import { externalOrigin } from "../gates";
+import { StartLimitError } from "@/lib/orchestrator/boxes";
 import { esc, forbidden, html, page, withBaseHeaders } from "../html";
+import { promptBar, runPrompt } from "../promptBar";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
 function chip(status: string | null): string {
@@ -70,7 +72,8 @@ function renderConnect(
   const refresh = `<form method="post" style="margin:10px 0 0"><input type="hidden" name="action" value="refresh"><button class="ghost">Refresh statuses</button></form>`;
   return page(
     "Connect",
-    `<h1>Connect accounts</h1><p style="color:var(--muted);font-size:12px">Sign your agent into your tools. OAuth happens on the provider's own page — no password ever touches this app.</p>${notice ? `<p style="color:var(--muted);font-size:12px">${esc(notice)}</p>` : ""}${cards}${refresh}`
+    `<h1>Connect accounts</h1><p style="color:var(--muted);font-size:12px">Sign your agent into your tools. OAuth happens on the provider's own page — no password ever touches this app.</p>${notice ? `<p style="color:var(--muted);font-size:12px">${esc(notice)}</p>` : ""}${cards}${refresh}
+${promptBar("Ask your agent — e.g. what can you do with my calendar…")}`
   );
 }
 
@@ -106,6 +109,21 @@ export const connect: MiniAppModule = {
   async action(ctx: MiniAppContext, form: FormData): Promise<NextResponse> {
     const action = String(form.get("action") ?? "");
     const userId = ctx.session.userId;
+
+    if (action === "prompt") {
+      try {
+        await runPrompt(ctx, String(form.get("text") ?? ""));
+      } catch (error) {
+        if (error instanceof StartLimitError) {
+          return loadAndRender(
+            ctx,
+            "Your agent's computer can't start right now — try again in a few minutes."
+          );
+        }
+        throw error;
+      }
+      return loadAndRender(ctx, "Sent to your agent.");
+    }
 
     if (action === "refresh") {
       await syncConnections(ctx.supabase, userId).catch(() => undefined);

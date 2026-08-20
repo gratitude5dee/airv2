@@ -837,6 +837,7 @@ function HomeShell() {
           <WalletPanel
             active={section === "bank.wallet"}
             onOpenNeeds={() => navigate("personal.needs")}
+            onOpenPay={() => void openAppInChat("pay")}
           />
           <SettingsScreen
             section={section}

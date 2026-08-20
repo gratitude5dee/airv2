@@ -54,13 +54,27 @@ interface WalletTransfer {
   created_at: string;
 }
 
+/** Phase 3: pending payment_requests preview — the tile deep-links into
+ * the pay mini-app, where approve/dismiss actually live. */
+interface PaymentRequestPreview {
+  id: string;
+  amount_display: string;
+  currency: "usd" | "usdc";
+  payee: string;
+  memo: string;
+  created_at: string;
+}
+
 export function WalletPanel({
   active,
   onOpenNeeds,
+  onOpenPay,
 }: {
   active: boolean;
   /** "Open Needs you" jump after a send request — navigates the shell. */
   onOpenNeeds: () => void;
+  /** Deep link into the pay mini-app (signed-link launch). */
+  onOpenPay: () => void;
 }) {
   const [wallet, setWallet] = useState<WalletSummary | null>(null);
   const [walletTxs, setWalletTxs] = useState<WalletTx[] | null>(null);
@@ -74,13 +88,16 @@ export function WalletPanel({
   const [sendAsset, setSendAsset] = useState<"native" | "usdc">("native");
   const [sendBusy, setSendBusy] = useState(false);
   const [sendNote, setSendNote] = useState<string | null>(null);
+  const [payRequests, setPayRequests] = useState<PaymentRequestPreview[]>([]);
+  const [payCount, setPayCount] = useState(0);
 
   async function loadWallet() {
     setWalletNote(null);
     try {
-      const [summaryRes, activityRes] = await Promise.all([
+      const [summaryRes, activityRes, payRes] = await Promise.all([
         fetch("/api/wallet"),
         fetch("/api/wallet/activity"),
+        fetch("/api/wallet/payment-requests"),
       ]);
       if (summaryRes.ok) {
         setWallet((await summaryRes.json()) as WalletSummary);
@@ -96,6 +113,14 @@ export function WalletPanel({
         setWalletTransfers(data.transfers ?? []);
       } else {
         setWalletTxs([]);
+      }
+      if (payRes.ok) {
+        const data = (await payRes.json()) as {
+          pending?: PaymentRequestPreview[];
+          pending_count?: number;
+        };
+        setPayRequests(data.pending ?? []);
+        setPayCount(data.pending_count ?? 0);
       }
     } catch {
       setWalletNote("Couldn't load your wallet — try again shortly.");
@@ -299,6 +324,44 @@ export function WalletPanel({
               </p>
             ) : null}
           </form>
+          {payCount > 0 ? (
+            <>
+              <h4 className="m-0 mt-2 text-[13px] font-semibold">
+                Payment requests
+              </h4>
+              <div className="panel rise-in grid gap-2 !p-3">
+                {payRequests.map((r) => (
+                  <div
+                    key={r.id}
+                    className="flex items-center justify-between gap-2"
+                  >
+                    <div className="min-w-0">
+                      <strong className="text-[13px]">
+                        {r.amount_display}
+                        {r.currency === "usdc" ? " USDC" : ""} to {r.payee}
+                      </strong>
+                      {r.memo ? (
+                        <p className="muted m-0 mt-0.5 truncate text-[11px]">
+                          {r.memo}
+                        </p>
+                      ) : null}
+                    </div>
+                    <span className="muted shrink-0 text-[11px]">
+                      {new Date(r.created_at).toLocaleDateString()}
+                    </span>
+                  </div>
+                ))}
+                <button
+                  className="btn !px-3 !py-1.5 !text-[12px]"
+                  onClick={onOpenPay}
+                >
+                  {payCount === 1
+                    ? "Review 1 request in Pay"
+                    : `Review ${payCount} requests in Pay`}
+                </button>
+              </div>
+            </>
+          ) : null}
           <h4 className="m-0 mt-2 text-[13px] font-semibold">Balances</h4>
           {wallet.degraded ? (
             <p className="muted m-0 text-[12px]">

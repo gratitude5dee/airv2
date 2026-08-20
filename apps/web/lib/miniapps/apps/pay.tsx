@@ -16,6 +16,8 @@ import {
   type PaymentRequest,
 } from "@/lib/commerce/paymentRequests";
 import { CommerceError } from "@/lib/commerce/merchants";
+import { StartLimitError } from "@/lib/orchestrator/boxes";
+import { promptBar, runPrompt } from "../promptBar";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
 // Chrome enforces form-action on the redirect that follows a form POST, so
@@ -52,7 +54,8 @@ ${note ? `<div class="card">${esc(note)}</div>` : ""}
 ${pending.length > 0 ? `<div class="day">Needs you</div>${pending.map(requestCard).join("")}` : "<p class=\"when\" style=\"white-space:normal\">No pending payment requests.</p>"}
 ${rest.length > 0 ? `<div class="day">History</div>${rest.map(requestCard).join("")}` : ""}
 <div class="day">New request</div>
-<form method="post" class="addrow"><input type="hidden" name="action" value="request"><input type="text" name="amount" placeholder="Amount (USD, e.g. 12.50)" maxlength="20"><input type="text" name="payee" placeholder="Payee username" maxlength="64"><input type="text" name="memo" placeholder="Memo" maxlength="200"><button>Request</button></form>`
+<form method="post" class="addrow"><input type="hidden" name="action" value="request"><input type="text" name="amount" placeholder="Amount (USD, e.g. 12.50)" maxlength="20"><input type="text" name="payee" placeholder="Payee username" maxlength="64"><input type="text" name="memo" placeholder="Memo" maxlength="200"><button>Request</button></form>
+${promptBar("Ask your agent — e.g. request $20 from sam for dinner…")}`
   );
 }
 
@@ -87,6 +90,10 @@ export const pay: MiniAppModule = {
         )
       );
     try {
+      if (action === "prompt") {
+        await runPrompt(ctx, String(form.get("text") ?? ""));
+        return back("sent to your agent");
+      }
       if (action === "approve") {
         const result = await approvePaymentRequest(
           ctx.supabase,
@@ -122,6 +129,9 @@ export const pay: MiniAppModule = {
       }
     } catch (error) {
       if (error instanceof CommerceError) return back(error.message);
+      if (error instanceof StartLimitError) {
+        return back("your agent's computer can't start right now — try again in a few minutes");
+      }
       throw error;
     }
     return back();

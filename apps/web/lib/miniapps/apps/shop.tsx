@@ -24,6 +24,8 @@ import {
 import { checkInTicket, listOrders, type Order } from "@/lib/commerce/checkout";
 import { proposeForUser } from "@/lib/publish/propose";
 import { requestAdWrite, AdWriteError } from "@/lib/ads/approvals";
+import { StartLimitError } from "@/lib/orchestrator/boxes";
+import { promptBar, runPrompt } from "../promptBar";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
 // The onboarding redirect targets Stripe's hosted account-link flow.
@@ -71,7 +73,8 @@ ${products.length > 0 ? products.map(productCard).join("") : `<p class="when" st
 <div class="day">Orders</div>
 ${orders.length > 0 ? orders.map(orderRow).join("") : `<p class="when" style="white-space:normal">No orders yet.</p>`}
 <div class="day">Event check-in</div>
-<form method="post" class="addrow"><input type="hidden" name="action" value="check_in"><input type="text" name="code" placeholder="Ticket code" maxlength="64"><button>Check in</button></form>`
+<form method="post" class="addrow"><input type="hidden" name="action" value="check_in"><input type="text" name="code" placeholder="Ticket code" maxlength="64"><button>Check in</button></form>
+${promptBar("Ask your agent — e.g. draft a promo for my newest product…")}`
     );
     return html(body, { "Content-Security-Policy": SHOP_CSP });
   },
@@ -95,6 +98,10 @@ ${orders.length > 0 ? orders.map(orderRow).join("") : `<p class="when" style="wh
         )
       );
     try {
+      if (action === "prompt") {
+        await runPrompt(ctx, String(form.get("text") ?? ""));
+        return back("sent to your agent");
+      }
       if (action === "connect") {
         const here = `${origin}${ctx.basePath}`;
         const url = await startOnboarding(
@@ -152,6 +159,11 @@ ${orders.length > 0 ? orders.map(orderRow).join("") : `<p class="when" style="wh
     } catch (error) {
       if (error instanceof CommerceError) return back(error.message);
       if (error instanceof AdWriteError) return back(error.message);
+      if (error instanceof StartLimitError) {
+        return back(
+          "your agent's computer can't start right now — try again in a few minutes"
+        );
+      }
       throw error;
     }
     return back();

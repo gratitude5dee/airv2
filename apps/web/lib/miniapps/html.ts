@@ -80,6 +80,19 @@ export function forbidden(message: string): NextResponse {
   return new NextResponse(message, { status: 403, headers: baseHeaders() });
 }
 
+/**
+ * Styled 403 for expired/missing mini-app sessions — signed links are
+ * single-use and short-lived by design, so this is a normal dead end that
+ * deserves a real page instead of a raw error string. Still a 403.
+ */
+export function sessionExpired(message: string): NextResponse {
+  const body = `<h1>This link has expired</h1><div class="card"><p>${esc(message)}</p><p>Mini-app links are single-use and expire quickly on purpose — nothing is wrong with your account.</p><p>To get back in, ask Air for a fresh link, or reopen the app from its card in Messages or from your home screen.</p></div>`;
+  return new NextResponse(page("Link expired", body), {
+    status: 403,
+    headers: { ...baseHeaders(), "Content-Type": "text/html; charset=utf-8" },
+  });
+}
+
 export function notFound(): NextResponse {
   return new NextResponse("not found", { status: 404, headers: baseHeaders() });
 }
