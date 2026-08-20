@@ -5,8 +5,9 @@
  * page.tsx needs tab in the redesign phase-1 split; now self-contained).
  * Pending/resolved views, grouped-by-kind cards, detail drawer, batch send.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Orb } from "@/components/orb/Orb";
+import { useDialogFocus } from "../use-dialog";
 
 export interface Decision {
   id: string;
@@ -70,6 +71,27 @@ function decisionApproveCta(kind: string): string | null {
   return DECISION_APPROVE_CTAS[kind] ?? "Approve";
 }
 
+/** D10: focus-trapped detail drawer — Esc closes, focus restores. */
+function DetailSheet({
+  onClose,
+  children,
+}: {
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const ref = useDialogFocus<HTMLDivElement>(onClose);
+  return (
+    <div
+      ref={ref}
+      role="dialog"
+      aria-label="Decision details"
+      className="panel rise-in !p-3"
+    >
+      {children}
+    </div>
+  );
+}
+
 export function NeedsPanel({
   active,
   onPendingCount,
@@ -89,15 +111,21 @@ export function NeedsPanel({
   const [batchBusy, setBatchBusy] = useState(false);
 
   async function loadDecisions() {
-    const res = await fetch("/api/decisions");
-    if (res.ok) {
-      const data = (await res.json()) as { decisions?: Decision[] };
-      setDecisions(data.decisions ?? []);
-      onPendingCount?.((data.decisions ?? []).length);
+    try {
+      const res = await fetch("/api/decisions");
+      if (res.ok) {
+        const data = (await res.json()) as { decisions?: Decision[] };
+        setDecisions(data.decisions ?? []);
+        onPendingCount?.((data.decisions ?? []).length);
+      }
+    } catch {
+      // keep the current queue; the next activation re-fetches
     }
   }
 
   useEffect(() => {
+    // D6: stale-while-revalidate — the cached queue stays on screen while
+    // each activation re-fetches in the background.
     if (active) void loadDecisions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
@@ -119,6 +147,8 @@ export function NeedsPanel({
         const data = (await res.json().catch(() => ({}))) as { error?: string };
         setDecisionNote(data.error ?? "That didn't go through — try again.");
       }
+    } catch {
+      setDecisionNote("That didn't go through — try again.");
     } finally {
       setDecisionBusy(null);
     }
@@ -129,11 +159,15 @@ export function NeedsPanel({
 
   // V8: the last 30 days of resolved decisions — receipts stay findable.
   async function loadResolved() {
-    const res = await fetch("/api/decisions?status=resolved");
-    if (res.ok) {
-      const data = (await res.json()) as { decisions?: Decision[] };
-      setResolved(data.decisions ?? []);
-    } else {
+    try {
+      const res = await fetch("/api/decisions?status=resolved");
+      if (res.ok) {
+        const data = (await res.json()) as { decisions?: Decision[] };
+        setResolved(data.decisions ?? []);
+      } else {
+        setResolved([]);
+      }
+    } catch {
       setResolved([]);
     }
   }
@@ -240,7 +274,7 @@ export function NeedsPanel({
         </div>
       ) : null}
       {detail ? (
-        <div className="panel rise-in !p-3">
+        <DetailSheet onClose={() => setDetail(null)}>
           <div className="flex items-start justify-between gap-2">
             <strong className="text-[13px]">
               {decisionKindLabel(detail.decision.kind)}
@@ -317,7 +351,7 @@ export function NeedsPanel({
               </button>
             </div>
           ) : null}
-        </div>
+        </DetailSheet>
       ) : null}
       {needsView === "resolved" ? (
         <>

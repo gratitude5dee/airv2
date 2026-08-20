@@ -26,23 +26,33 @@ export function PeoplePanel({ active }: { active: boolean }) {
   const [senderNote, setSenderNote] = useState<string | null>(null);
 
   async function loadPeople() {
-    const res = await fetch("/api/senders");
-    if (res.ok) {
-      const data = (await res.json()) as { senders?: Sender[] };
-      setPeople(data.senders ?? []);
+    try {
+      const res = await fetch("/api/senders");
+      if (res.ok) {
+        const data = (await res.json()) as { senders?: Sender[] };
+        setPeople(data.senders ?? []);
+      }
+    } catch {
+      // keep the current list; the next activation re-fetches
     }
   }
 
   useEffect(() => {
+    // D6: stale-while-revalidate — the cached list stays on screen while
+    // each activation re-fetches in the background.
     if (active) void loadPeople();
   }, [active]);
 
   async function setTrust(id: string, trustTier: number) {
-    await fetch("/api/senders", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, trust_tier: trustTier }),
-    });
+    try {
+      await fetch("/api/senders", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, trust_tier: trustTier }),
+      });
+    } catch {
+      setSenderNote("That didn't go through — try again.");
+    }
     await loadPeople();
   }
 

@@ -88,11 +88,9 @@ function usd(cents: number): string {
 }
 
 export function AdsPanel({
-  active,
   onAskAgent,
   onOpenQueue,
 }: {
-  active: boolean;
   /** Jump to the chat tab with a prefilled message — the agent (same one as
    * iMessage) completes Meta logins and answers deeper data questions. */
   onAskAgent: (prefill: string) => void;
@@ -197,8 +195,18 @@ export function AdsPanel({
   useEffect(() => {
     // Always re-fetch on entry: accounts appear after the agent-side OAuth
     // handshake, so a one-shot load would go stale.
-    if (active) void loadAds();
-  }, [active]);
+    void loadAds();
+    // D3: invalidate any in-flight load or generation poll on unmount so
+    // nothing keeps hitting the API after the panel is gone. These are
+    // monotonic generation counters, not DOM refs — reading the latest
+    // value in cleanup is the point.
+    const load = loadId;
+    const poll = pollId;
+    return () => {
+      load.current++;
+      poll.current++;
+    };
+  }, []);
 
   async function connectMetaAds() {
     setInstallBusy(true);
@@ -747,10 +755,7 @@ export function AdsPanel({
       ) : null}
 
       {subtab === "analytics" ? (
-        <AdsAnalyticsTab
-          active={active && subtab === "analytics"}
-          onAskAgent={onAskAgent}
-        />
+        <AdsAnalyticsTab active={subtab === "analytics"} onAskAgent={onAskAgent} />
       ) : null}
 
       {loading ? (

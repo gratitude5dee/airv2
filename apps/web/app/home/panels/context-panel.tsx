@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { DitherButton } from "@/components/dither-kit/button";
 import { PixelIcon } from "@/components/dither-kit/icon";
+import { nextMessageId } from "../lib";
 
 const BUSY_NOTE = "Your agent's computer is busy starting up — try again in a minute.";
 
@@ -28,6 +29,9 @@ interface TraceReceipt {
   label: string | number | null;
   cost_usd: string | number | null;
 }
+
+/** D11: receipts get a stable per-visit id — the list never keys by index. */
+type KeyedTraceReceipt = TraceReceipt & { id: string };
 
 interface OnairosState {
   configured: boolean;
@@ -180,7 +184,7 @@ function MemoryCard() {
 }
 
 function TracesCard({ active }: { active: boolean }) {
-  const [receipts, setReceipts] = useState<TraceReceipt[] | null>(null);
+  const [receipts, setReceipts] = useState<KeyedTraceReceipt[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -194,7 +198,9 @@ function TracesCard({ active }: { active: boolean }) {
           return;
         }
         const data = (await res.json()) as { receipts: TraceReceipt[] };
-        if (!stale) setReceipts(data.receipts);
+        if (!stale) {
+          setReceipts(data.receipts.map((r) => ({ ...r, id: nextMessageId() })));
+        }
       } catch {
         if (!stale) setError("Couldn't load receipts.");
       }
@@ -216,9 +222,9 @@ function TracesCard({ active }: { active: boolean }) {
       ) : null}
       {receipts && receipts.length > 0 ? (
         <div className="max-h-56 overflow-y-auto">
-          {receipts.map((r, i) => (
+          {receipts.map((r) => (
             <div
-              key={i}
+              key={r.id}
               className="flex items-baseline gap-2 border-b border-[var(--ring)] py-1.5 last:border-b-0"
             >
               <span className="chrome-2 w-16 flex-none">{String(r.kind ?? "")}</span>

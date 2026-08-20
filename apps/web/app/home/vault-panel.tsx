@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Orb } from "@/components/orb/Orb";
 import { PixelIcon, type PixelGlyph } from "@/components/dither-kit/icon";
+import { useDialogFocus } from "./use-dialog";
 
 export interface VaultItem {
   id: string;
@@ -99,9 +100,10 @@ async function readError(res: Response): Promise<string> {
   return body?.message ?? body?.error ?? "request failed";
 }
 
-export function VaultPanel({ active }: { active: boolean }) {
+export function VaultPanel() {
   const [items, setItems] = useState<VaultItem[] | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const noteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [busy, setBusy] = useState(false);
 
   // Which detail sheet is open, keyed by item id.
@@ -147,13 +149,14 @@ export function VaultPanel({ active }: { active: boolean }) {
   }, []);
 
   useEffect(() => {
-    if (active) void load();
-  }, [active, load]);
+    void load();
+  }, [load]);
 
   useEffect(() => {
     const pending = timers.current;
     return () => {
       for (const timer of Object.values(pending)) clearTimeout(timer);
+      if (noteTimer.current) clearTimeout(noteTimer.current);
     };
   }, []);
 
@@ -225,7 +228,8 @@ export function VaultPanel({ active }: { active: boolean }) {
     try {
       await navigator.clipboard.writeText(value);
       setNote("copied");
-      setTimeout(() => setNote(null), 1500);
+      if (noteTimer.current) clearTimeout(noteTimer.current);
+      noteTimer.current = setTimeout(() => setNote(null), 1500);
     } catch {
       setNote("clipboard unavailable");
     }
@@ -562,6 +566,7 @@ function VaultModal({
 }) {
   const [name, setName] = useState(editing?.name ?? "");
   const [busy, setBusy] = useState(false);
+  const dialogRef = useDialogFocus<HTMLDivElement>(onClose);
   const [error, setError] = useState<string | null>(null);
 
   // Login
@@ -677,6 +682,7 @@ function VaultModal({
       onClick={onClose}
     >
       <div
+        ref={dialogRef}
         className="panel grid w-full max-w-md gap-3 bg-surface p-4"
         onClick={(event) => event.stopPropagation()}
       >

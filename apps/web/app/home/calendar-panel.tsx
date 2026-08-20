@@ -115,12 +115,10 @@ function boxNote(status: number): string {
 }
 
 export function CalendarPanel({
-  active,
   onAgentRun,
   prefill,
   onPrefillConsumed,
 }: {
-  active: boolean;
   /** Dispatch a chat run (Prep me / reschedule draft) in the Chat tab. */
   onAgentRun: (prompt: string) => void;
   /** V5 deep-link: open the new-schedule sheet prefilled (Browser ▸ Schedule). */
@@ -217,12 +215,12 @@ export function CalendarPanel({
   }, []);
 
   useEffect(() => {
-    if (active && !loaded) {
+    if (!loaded) {
       setLoaded(true);
       void loadCalendar();
       void loadAccounts();
     }
-  }, [active, loaded, loadCalendar, loadAccounts]);
+  }, [loaded, loadCalendar, loadAccounts]);
 
   // Visible range for the current view.
   const range = useMemo((): { start: Date; end: Date } => {
@@ -312,7 +310,7 @@ export function CalendarPanel({
 
   // Browser ▸ Automations "Schedule" lands here with the sheet prefilled.
   useEffect(() => {
-    if (!active || !prefill) return;
+    if (!prefill) return;
     setSheetNote(null);
     setSheet({
       mode: "create",
@@ -322,7 +320,7 @@ export function CalendarPanel({
       deliver: "imessage",
     });
     onPrefillConsumed?.();
-  }, [active, prefill, onPrefillConsumed]);
+  }, [prefill, onPrefillConsumed]);
 
   function openEdit(schedule: Schedule) {
     setSheetNote(null);

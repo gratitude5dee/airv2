@@ -9,6 +9,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import { isComputerTool } from "./lib";
 
 interface BrowserProbe {
   running: boolean;
@@ -58,14 +59,6 @@ interface BrowserState {
   rule_options: { playbooks: string[]; platforms: string[] };
   activity: ActivityRow[];
   recordings: RecordingRow[];
-}
-
-/** Same prefix heuristic Chat uses to surface the live computer view. */
-function isComputerTool(name: string | undefined): boolean {
-  return (
-    typeof name === "string" &&
-    (name.startsWith("browser") || name.startsWith("computer"))
-  );
 }
 
 function isBrowserActivity(label: string | null): boolean {

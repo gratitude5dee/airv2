@@ -93,10 +93,16 @@ export function SkillsPanel({ active }: { active: boolean }) {
   const [skillDetail, setSkillDetail] = useState<SkillDetail | null>(null);
   const [skillDetailFor, setSkillDetailFor] = useState<string | null>(null);
 
-  async function loadInstalledSkills() {
+  async function loadInstalledSkills(background = false) {
     const loadId = ++panelLoadId.current;
     setPanelFailed(false);
-    setPanelNote("Waking your agent… this can take a minute if it was asleep.");
+    // D6: background refreshes keep the cached list on screen — the wake
+    // note only shows when there is nothing to look at yet.
+    if (!background) {
+      setPanelNote(
+        "Waking your agent… this can take a minute if it was asleep."
+      );
+    }
     try {
       const res = await fetch("/api/box/v1/skills");
       if (res.ok) {
@@ -121,19 +127,25 @@ export function SkillsPanel({ active }: { active: boolean }) {
   }
 
   useEffect(() => {
-    if (active && skills === null) {
-      void loadSuggested();
-      void loadInstalledSkills();
+    // D6: stale-while-revalidate — show whatever is already loaded and
+    // refresh in the background on every activation.
+    if (active) {
+      if (skills === null) void loadSuggested();
+      void loadInstalledSkills(skills !== null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
 
   async function refreshSkills() {
-    const res = await fetch("/api/box/v1/skills");
-    if (res.ok) {
-      setSkills(
-        pickList<SkillSummary>(await res.json(), ["skills", "data", "items"])
-      );
+    try {
+      const res = await fetch("/api/box/v1/skills");
+      if (res.ok) {
+        setSkills(
+          pickList<SkillSummary>(await res.json(), ["skills", "data", "items"])
+        );
+      }
+    } catch {
+      // keep the current list; the next activation re-fetches
     }
   }
 
