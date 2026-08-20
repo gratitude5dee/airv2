@@ -160,10 +160,10 @@ describe("gate ordering", () => {
       params("kanban")
     );
     expect(res.status).toBe(401);
-    expect(res.headers.get("content-security-policy")).toContain(
-      "frame-ancestors 'self'"
+    expect(res.headers.get("content-security-policy")).toMatch(
+      /frame-ancestors 'self' https:\/\//
     );
-    expect(res.headers.get("x-frame-options")).toBe("SAMEORIGIN");
+    expect(res.headers.get("x-frame-options")).toBeNull();
   });
 
   it("logs gate_settled on a correct password and gate_challenged on a wrong one", async () => {

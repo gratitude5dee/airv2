@@ -16,7 +16,7 @@ import {
   WINDOW_DAYS,
   type Panel,
 } from "../analytics";
-import { BASE_HEADERS, esc, html, page } from "../html";
+import { baseHeaders, esc, html, page } from "../html";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
 function renderPanel(panel: Panel, basePath: string): string {
@@ -54,12 +54,12 @@ async function csvResponse(
     panel = await storefrontPanel(ctx.supabase, userId, since);
   else if (key === "spend") panel = await spendPanel(ctx.supabase, userId, since);
   if (!panel) {
-    return new NextResponse("unknown panel", { status: 404, headers: BASE_HEADERS });
+    return new NextResponse("unknown panel", { status: 404, headers: baseHeaders() });
   }
   return new NextResponse(panelToCsv(panel), {
     status: 200,
     headers: {
-      ...BASE_HEADERS,
+      ...baseHeaders(),
       "Content-Type": "text/csv; charset=utf-8",
       "Content-Disposition": `attachment; filename="${panel.key}.csv"`,
     },
