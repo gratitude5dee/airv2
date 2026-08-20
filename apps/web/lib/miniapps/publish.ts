@@ -7,7 +7,9 @@
  * decision: user-initiated from the Publish surface, or a Needs-you decision
  * when the agent staged the draft.
  */
+import { randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { hashPassword } from "./gates";
 import type { RegistryApp } from "./registry";
 import { isReservedWord } from "./reserved";
 
@@ -189,6 +191,122 @@ export async function setPublishStatus(
   if (error) throw new Error(`status flip failed: ${error.message}`);
   console.log(
     JSON.stringify({ msg: "miniapp status flip", user_id: userId, slug, status })
+  );
+}
+
+/**
+ * Gate settings a publisher can change on an owned app (P0-4). Every field
+ * is optional — only the keys present are written. `password` arrives as
+ * plaintext and is stored as a scrypt hash (null clears the gate); payout
+ * routing (publisher_wallet) is never touched here.
+ */
+export interface GateSettingsInput {
+  access?: "single" | "multiplayer";
+  x402Enabled?: boolean;
+  x402PriceUsdc?: number | null;
+  password?: string | null;
+  pluginSigninEnabled?: boolean;
+}
+
+const MAX_PRICE_USDC = 9999.999999; // numeric(10,6) column bound
+
+function validPrice(price: number): boolean {
+  return Number.isFinite(price) && price > 0 && price <= MAX_PRICE_USDC;
+}
+
+/** Owner-scoped gate-settings update; 403 when the app belongs to someone else. */
+export async function updateGateSettings(
+  supabase: SupabaseClient,
+  userId: string,
+  slug: string,
+  input: GateSettingsInput
+): Promise<void> {
+  const { data: app } = await supabase
+    .from("mini_apps")
+    .select(REGISTRY_COLUMNS)
+    .eq("slug", slug)
+    .maybeSingle();
+  if (!app) throw new PublishError("app not found", 404);
+  const owned = app as unknown as RegistryApp;
+  if (owned.owner_user_id !== userId) {
+    throw new PublishError("not your app", 403);
+  }
+
+  const update: Record<string, unknown> = {};
+  if (input.access !== undefined) update.access = input.access;
+
+  if (input.x402Enabled !== undefined) {
+    if (input.x402Enabled) {
+      const price =
+        input.x402PriceUsdc !== undefined && input.x402PriceUsdc !== null
+          ? input.x402PriceUsdc
+          : owned.x402_price_usdc;
+      if (typeof price !== "number" || !validPrice(price)) {
+        throw new PublishError(
+          "a positive USDC price is required to enable x402"
+        );
+      }
+      update.x402_enabled = true;
+      update.x402_price_usdc = price;
+    } else {
+      update.x402_enabled = false;
+      if (input.x402PriceUsdc !== undefined) {
+        if (input.x402PriceUsdc !== null && !validPrice(input.x402PriceUsdc)) {
+          throw new PublishError("invalid x402 price");
+        }
+        update.x402_price_usdc = input.x402PriceUsdc;
+      }
+    }
+  } else if (input.x402PriceUsdc !== undefined) {
+    if (input.x402PriceUsdc === null) {
+      if (owned.x402_enabled) {
+        throw new PublishError("disable x402 before clearing the price");
+      }
+      update.x402_price_usdc = null;
+    } else {
+      if (!validPrice(input.x402PriceUsdc)) {
+        throw new PublishError("invalid x402 price");
+      }
+      update.x402_price_usdc = input.x402PriceUsdc;
+    }
+  }
+
+  if (input.password !== undefined) {
+    if (input.password === null || input.password === "") {
+      update.password_hash = null;
+    } else {
+      if (input.password.length > 200) {
+        throw new PublishError("password too long");
+      }
+      update.password_hash = hashPassword(
+        input.password,
+        randomBytes(16).toString("hex")
+      );
+    }
+  }
+
+  if (input.pluginSigninEnabled !== undefined) {
+    update.plugin_signin_enabled = input.pluginSigninEnabled;
+  }
+
+  if (Object.keys(update).length === 0) {
+    throw new PublishError("nothing to update");
+  }
+  update.updated_at = new Date().toISOString();
+
+  const { error } = await supabase
+    .from("mini_apps")
+    .update(update)
+    .eq("id", owned.id)
+    .eq("owner_user_id", userId);
+  if (error) throw new Error(`gate settings update failed: ${error.message}`);
+  console.log(
+    JSON.stringify({
+      msg: "miniapp gate settings updated",
+      user_id: userId,
+      slug,
+      fields: Object.keys(update).filter((key) => key !== "updated_at"),
+    })
   );
 }
 
