@@ -8,7 +8,7 @@
  */
 import { NextResponse } from "next/server";
 import { externalOrigin } from "../gates";
-import { esc, html, page, withBaseHeaders } from "../html";
+import { esc, forbidden, html, page, withBaseHeaders } from "../html";
 import { env } from "@/lib/env";
 import {
   CommerceError,
@@ -45,6 +45,9 @@ function orderRow(order: Order): string {
 
 export const shop: MiniAppModule = {
   async render(ctx: MiniAppContext): Promise<NextResponse> {
+    if (ctx.session.role !== "owner") {
+      return forbidden("this view is owner-only");
+    }
     const { supabase, session } = ctx;
     const note = ctx.request.nextUrl.searchParams.get("note");
     const merchant = await getMerchant(supabase, session.userId);
@@ -74,6 +77,9 @@ ${orders.length > 0 ? orders.map(orderRow).join("") : `<p class="when" style="wh
   },
 
   async action(ctx: MiniAppContext, form: FormData): Promise<NextResponse> {
+    if (ctx.session.role !== "owner") {
+      return forbidden("this view is owner-only");
+    }
     const action = String(form.get("action") ?? "");
     const origin = externalOrigin(ctx.request);
     const back = (note?: string) =>

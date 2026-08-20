@@ -7,7 +7,7 @@
  */
 import { NextResponse } from "next/server";
 import { externalOrigin } from "../gates";
-import { esc, html, page, withBaseHeaders } from "../html";
+import { esc, forbidden, html, page, withBaseHeaders } from "../html";
 import {
   approvePaymentRequest,
   createPaymentRequest,
@@ -58,6 +58,9 @@ ${rest.length > 0 ? `<div class="day">History</div>${rest.map(requestCard).join(
 
 export const pay: MiniAppModule = {
   async render(ctx: MiniAppContext): Promise<NextResponse> {
+    if (ctx.session.role !== "owner") {
+      return forbidden("this view is owner-only");
+    }
     const requests = await listPaymentRequests(ctx.supabase, ctx.session.userId);
     const note = ctx.request.nextUrl.searchParams.get("note");
     return html(renderPay(requests, note), {
@@ -66,6 +69,9 @@ export const pay: MiniAppModule = {
   },
 
   async action(ctx: MiniAppContext, form: FormData): Promise<NextResponse> {
+    if (ctx.session.role !== "owner") {
+      return forbidden("this view is owner-only");
+    }
     const action = String(form.get("action") ?? "");
     const origin = externalOrigin(ctx.request);
     const back = (note?: string) =>
