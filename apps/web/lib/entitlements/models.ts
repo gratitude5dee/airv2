@@ -7,10 +7,18 @@
 export type SpeedTier = "fast" | "balanced" | "deep";
 
 const TIER_MODELS: Record<SpeedTier, string> = {
-  fast: "gpt-4o-mini",
-  balanced: "gpt-4o",
-  deep: "o3",
+  fast: "gpt-5.6-luna",
+  balanced: "gpt-5.6-luna",
+  deep: "gpt-5.6-terra",
 };
+
+/**
+ * OpenAI reasoning families (gpt-5.x / o-series) accept `reasoning_effort`
+ * and the reasoning-model parameter rules; everything else rejects them.
+ */
+export function isReasoningModel(model: string): boolean {
+  return /^(gpt-5|o[0-9])/.test(model);
+}
 
 /** Env overrides (MODEL_FAST / MODEL_BALANCED / MODEL_DEEP) let ops swap the
  * fleet's models without a deploy touching any box. */
