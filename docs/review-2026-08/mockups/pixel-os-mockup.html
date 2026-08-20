@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>air 2.0 — Pixel OS mockup</title>
+<style>
+:root{
+  --bg:#f6f6f4; --surface:#ffffff; --surface2:#efefec; --text:#17171a;
+  --muted:#6f6f76; --muted2:#9a9aa2; --accent:#2b7fff; --accent-soft:#e3eeff;
+  --outline:#17171a; --ring:rgba(0,0,0,.14); --hard:rgba(23,23,26,.18);
+  --success:#1a9e4b; --warning:#c77c00; --danger:#d43c3c;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --sans:Inter,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#101012; --surface:#1a1a1c; --surface2:#232326; --text:#f2f2f3;
+    --muted:#a2a2ab; --muted2:#6f6f78; --accent:#4d94ff; --accent-soft:#16233a;
+    --outline:#e9e9ec; --ring:rgba(255,255,255,.16); --hard:rgba(0,0,0,.5);
+  }
+}
+*{box-sizing:border-box} html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13.5px;letter-spacing:-.1px}
+canvas{image-rendering:pixelated}
+svg.px{shape-rendering:crispEdges;display:block}
+.mono{font-family:var(--mono)}
+.k{font-family:var(--mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase}
+.k2{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+
+/* ---------- mockup chrome ---------- */
+.mockbar{position:sticky;top:0;z-index:50;display:flex;gap:8px;align-items:center;
+  padding:10px 16px;background:var(--surface);border-bottom:1px solid var(--outline)}
+.mockbar .title{font-family:var(--mono);font-size:11px;letter-spacing:.1em}
+.mockbar .note{margin-left:auto;color:var(--muted);font-size:11px}
+.screen{display:none;max-width:1160px;margin:0 auto;padding:18px 16px 60px}
+.screen.on{display:block}
+
+/* ---------- pixel-os primitives ---------- */
+.card{background:var(--surface);border:1px solid var(--outline);border-radius:10px;
+  box-shadow:3px 3px 0 var(--hard)}
+.card .hd{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--outline)}
+.card .bd{padding:12px}
+.btn{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+  background:var(--surface);color:var(--text);border:1px solid var(--outline);border-radius:7px;
+  padding:6px 10px;cursor:pointer;box-shadow:2px 2px 0 var(--hard);user-select:none}
+.btn:active{transform:translate(1px,1px);box-shadow:1px 1px 0 var(--hard)}
+.btn.pri{background:var(--text);color:var(--bg)}
+.btn.ghost{box-shadow:none;border-color:var(--ring)}
+.btn.sm{padding:4px 8px;font-size:9px}
+.badge{font-family:var(--mono);font-size:9px;letter-spacing:.06em;border:1px solid var(--outline);
+  border-radius:6px;padding:2px 6px;background:var(--surface2)}
+.badge.new{background:var(--accent);color:#fff;border-color:var(--accent)}
+.badge.paid{background:#ffe9b8;color:#7a5200;border-color:#c99b2e}
+.dot{width:8px;height:8px;border-radius:2px;display:inline-block;border:1px solid var(--outline)}
+.dot.on{background:var(--success)} .dot.off{background:var(--muted2)} .dot.busy{background:var(--warning)}
+input.inp{background:var(--surface);border:1px solid var(--outline);border-radius:7px;color:var(--text);
+  padding:7px 10px;font:inherit;width:100%;box-shadow:inset 1px 1px 0 var(--ring)}
+.hr{height:1px;background:var(--outline);opacity:.25;margin:10px 0}
+
+/* ---------- app layout ---------- */
+.layout{display:grid;grid-template-columns:176px 1fr 284px;gap:14px;align-items:start}
+@media(max-width:980px){.layout{grid-template-columns:1fr}}
+
+/* left rail */
+.rail{display:flex;flex-direction:column;gap:14px;position:sticky;top:64px}
+.rail .grp .k2{padding:0 4px 6px}
+.navi{display:flex;align-items:center;gap:9px;width:100%;padding:7px 9px;border-radius:8px;
+  border:1px solid transparent;background:none;color:var(--text);cursor:pointer;text-align:left}
+.navi .lab{font-family:var(--mono);font-size:10.5px;letter-spacing:.07em;text-transform:uppercase}
+.navi:hover{background:var(--surface2)}
+.navi.act{background:var(--text);color:var(--bg);border-color:var(--outline);box-shadow:2px 2px 0 var(--hard)}
+.navi .cnt{margin-left:auto;font-family:var(--mono);font-size:9px;background:var(--danger);color:#fff;
+  border-radius:6px;padding:1px 5px}
+.navi.dis{opacity:.45;cursor:default}
+.navi.dis:hover{background:none}
+.soon{margin-left:auto;font-family:var(--mono);font-size:8px;letter-spacing:.06em;color:var(--muted);
+  border:1px solid var(--ring);border-radius:5px;padding:1px 4px}
+.brand{display:flex;align-items:center;gap:9px;padding:2px 4px 0}
+.brand h1{font-family:var(--mono);font-size:14px;letter-spacing:.14em;margin:0;font-weight:700}
+
+/* center column */
+.center{display:flex;flex-direction:column;gap:12px;min-width:0}
+
+/* computer card */
+#compBody{padding:0;overflow:hidden;border-radius:0 0 9px 9px}
+.desk{position:relative;height:300px;background:#0d1017}
+.desk .task{position:absolute;left:0;right:0;bottom:0;height:26px;background:#161b26;
+  border-top:1px solid #2a3244;display:flex;align-items:center;gap:8px;padding:0 10px;
+  color:#8fa0c5;font-family:var(--mono);font-size:9px;letter-spacing:.08em}
+.deskwin{position:absolute;background:#f2f2ef;border:1px solid #0d1017;border-radius:6px;
+  box-shadow:3px 3px 0 rgba(0,0,0,.45);overflow:hidden}
+.deskwin .twh{background:#dcdcd4;border-bottom:1px solid #0d1017;padding:3px 8px;
+  font-family:var(--mono);font-size:9px;color:#333;display:flex;gap:6px;align-items:center}
+.deskwin .twb{padding:8px;font-family:var(--mono);font-size:9.5px;color:#333;line-height:1.6}
+.strip{display:flex;align-items:center;gap:10px;padding:8px 12px}
+
+/* chat */
+.threads{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.thread{font-family:var(--mono);font-size:10px;letter-spacing:.05em;text-transform:uppercase;
+  border:1px solid var(--outline);border-radius:7px;padding:5px 9px;background:var(--surface);
+  cursor:pointer;display:flex;gap:6px;align-items:center}
+.thread.act{background:var(--text);color:var(--bg);box-shadow:2px 2px 0 var(--hard)}
+.chatlog{display:flex;flex-direction:column;gap:10px;padding:14px 12px;min-height:230px}
+.msg{max-width:76%;padding:9px 12px;border:1px solid var(--outline);border-radius:10px;line-height:1.5}
+.msg.user{align-self:flex-end;background:var(--text);color:var(--bg);box-shadow:2px 2px 0 var(--hard)}
+.msg.agent{align-self:flex-start;background:var(--surface)}
+.msg .who{font-family:var(--mono);font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;opacity:.6;margin-bottom:4px}
+.toolchip{align-self:flex-start;font-family:var(--mono);font-size:9.5px;color:var(--muted);
+  border:1px dashed var(--ring);border-radius:7px;padding:4px 8px}
+.composer{display:flex;gap:8px;align-items:center;border-top:1px solid var(--outline);padding:10px 12px}
+.composer .fake{flex:1;border:1px solid var(--outline);border-radius:8px;padding:8px 11px;color:var(--muted);
+  background:var(--surface);box-shadow:inset 1px 1px 0 var(--ring)}
+/* docked app */
+.dock{border:1px solid var(--outline);border-radius:10px;margin:0 12px 12px;overflow:hidden;box-shadow:2px 2px 0 var(--hard)}
+.dock .dh{display:flex;align-items:center;gap:8px;background:var(--surface2);border-bottom:1px solid var(--outline);padding:7px 10px}
+.kb{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;padding:10px;background:var(--surface)}
+.kcol .k2{margin-bottom:6px}
+.kcard{border:1px solid var(--outline);border-radius:7px;background:var(--surface);padding:6px 8px;font-size:11.5px;
+  box-shadow:1px 1px 0 var(--hard);margin-bottom:6px}
+
+/* right rail */
+.rrail{display:flex;flex-direction:column;gap:14px;position:sticky;top:64px}
+.tiers{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+.tier{border:1px solid var(--outline);border-radius:7px;padding:6px 4px;text-align:center;cursor:pointer;background:var(--surface)}
+.tier .k{display:block}
+.tier small{display:block;font-size:8.5px;color:var(--muted);margin-top:2px;font-family:var(--mono)}
+.tier.act{background:var(--text);color:var(--bg);box-shadow:2px 2px 0 var(--hard)}
+.tier.act small{color:var(--bg);opacity:.7}
+.meterrow{display:flex;justify-content:space-between;align-items:baseline;margin-top:10px}
+.apps9{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.mini{display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;border:none;background:none;color:var(--text);padding:0}
+.tilebox{width:52px;height:52px;border:1px solid var(--outline);border-radius:9px;display:flex;align-items:center;justify-content:center;
+  background:var(--surface);box-shadow:2px 2px 0 var(--hard),inset 0 2px 0 rgba(255,255,255,.55);position:relative}
+@media (prefers-color-scheme: dark){.tilebox{box-shadow:2px 2px 0 var(--hard),inset 0 2px 0 rgba(255,255,255,.12)}}
+.mini:active .tilebox{transform:translate(1px,1px);box-shadow:1px 1px 0 var(--hard)}
+.mini .lab{font-family:var(--mono);font-size:8.5px;letter-spacing:.07em;text-transform:uppercase}
+
+/* ---------- app store screen ---------- */
+.statusbar{display:flex;align-items:center;gap:10px;background:var(--text);color:var(--bg);
+  border:1px solid var(--outline);border-radius:9px;padding:7px 12px;box-shadow:3px 3px 0 var(--hard)}
+.statusbar .mid{margin:0 auto;font-family:var(--mono);font-size:11px;letter-spacing:.22em}
+.banner{position:relative;border:1px solid var(--outline);border-radius:12px;overflow:hidden;
+  box-shadow:3px 3px 0 var(--hard);margin-top:14px;background:var(--surface)}
+.banner canvas{position:absolute;inset:0;width:100%;height:100%}
+.banner .gloss{position:absolute;left:0;right:0;top:0;height:34%;
+  background:linear-gradient(rgba(255,255,255,.42),rgba(255,255,255,0));pointer-events:none}
+.banner .inner{position:relative;display:flex;align-items:center;gap:18px;padding:22px 22px}
+.banner h2{font-family:var(--mono);letter-spacing:.16em;margin:0 0 6px;font-size:20px}
+.banner p{margin:0;color:var(--muted);max-width:520px}
+.bigtile{width:84px;height:84px;border-radius:14px;flex:none}
+.cats{display:flex;gap:8px;margin:14px 0;flex-wrap:wrap}
+.cat{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;border:1px solid var(--outline);
+  border-radius:7px;padding:5px 10px;cursor:pointer;background:var(--surface)}
+.cat.act{background:var(--text);color:var(--bg);box-shadow:2px 2px 0 var(--hard)}
+.storegrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:14px}
+.stile{display:flex;flex-direction:column;align-items:center;gap:7px;cursor:pointer;border:none;background:none;color:var(--text);padding:0}
+.stile .tilebox{width:72px;height:72px;border-radius:12px}
+.stile .price{position:absolute;top:-7px;right:-7px}
+.stile .nm{font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;text-transform:uppercase}
+.stile .by{font-size:9px;color:var(--muted)}
+.creator{display:flex;gap:16px;align-items:center;margin-top:18px}
+.steps{display:flex;gap:8px;flex-wrap:wrap}
+.step{border:1px solid var(--outline);border-radius:7px;padding:5px 9px;font-family:var(--mono);font-size:9px;
+  letter-spacing:.05em;text-transform:uppercase;background:var(--surface2)}
+.instrow{display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--ring)}
+.instrow:last-child{border-bottom:none}
+.instrow .tilebox{width:36px;height:36px;border-radius:7px;flex:none}
+
+/* ---------- settings ---------- */
+.set2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:860px){.set2{grid-template-columns:1fr}}
+.avatarbox{width:56px;height:56px;border:1px solid var(--outline);border-radius:10px;overflow:hidden;flex:none;
+  box-shadow:2px 2px 0 var(--hard)}
+.prow{display:flex;gap:10px;align-items:center;margin-bottom:10px}
+.field{margin:8px 0}
+.field .k2{display:block;margin-bottom:4px}
+.tabs{display:flex;gap:8px;margin:18px 0 12px}
+.tab{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;padding:7px 14px;
+  border:1px solid var(--outline);border-radius:8px 8px 0 0;cursor:pointer;background:var(--surface2)}
+.tab.act{background:var(--surface);box-shadow:2px -2px 0 var(--hard);border-bottom-color:var(--surface)}
+.conrow{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--ring)}
+.conrow:last-child{border-bottom:none}
+.conrow .nm{font-weight:600}
+.conrow .sub{font-size:11px;color:var(--muted)}
+.right{margin-left:auto;display:flex;gap:6px;align-items:center}
+.codebox{font-family:var(--mono);font-size:16px;letter-spacing:.3em;border:1px dashed var(--outline);
+  border-radius:8px;padding:8px 12px;text-align:center;background:var(--surface2)}
+.footer-note{margin-top:26px;color:var(--muted);font-size:11px;text-align:center}
+</style>
+</head>
+<body>
+
+<div class="mockbar">
+  <span class="title">AIR 2.0 · PIXEL OS — DESIGN MOCKUP</span>
+  <button class="btn sm" data-go="home">Home</button>
+  <button class="btn sm" data-go="store">App Store</button>
+  <button class="btn sm" data-go="settings">Settings</button>
+  <span class="note">interactive: minimize the computer · launch an app into chat · flip settings tabs</span>
+</div>
+
+<!-- ============================ HOME ============================ -->
+<section class="screen on" id="scr-home">
+  <div class="layout">
+
+    <!-- LEFT RAIL -->
+    <nav class="rail">
+      <div class="brand"><span data-px="bolt" data-c="accent"></span><h1>AIR</h1></div>
+      <div class="grp">
+        <div class="k2">Air</div>
+        <button class="navi act"><span data-px="computer"></span><span class="lab">Computer</span><span class="dot on" style="margin-left:auto"></span></button>
+        <button class="navi"><span data-px="chat"></span><span class="lab">Chat</span></button>
+        <button class="navi" style="padding-left:26px"><span class="lab" style="color:var(--muted)">+ New thread</span></button>
+      </div>
+      <div class="grp">
+        <div class="k2">Apps</div>
+        <button class="navi" data-go="store"><span data-px="store"></span><span class="lab">App Store</span></button>
+        <button class="navi" data-go="store"><span data-px="grid"></span><span class="lab">Installed</span></button>
+        <button class="navi"><span data-px="ads"></span><span class="lab">Ads</span><span class="badge new" style="margin-left:auto">app</span></button>
+        <button class="navi" data-go="store"><span data-px="wrench"></span><span class="lab">Creator</span></button>
+      </div>
+      <div class="grp">
+        <div class="k2">Personal</div>
+        <button class="navi"><span data-px="bell"></span><span class="lab">Needs you</span><span class="cnt">3</span></button>
+        <button class="navi"><span data-px="cal"></span><span class="lab">Calendar</span></button>
+        <button class="navi"><span data-px="clock"></span><span class="lab">History</span></button>
+        <button class="navi"><span data-px="people"></span><span class="lab">People</span></button>
+        <button class="navi"><span data-px="chip"></span><span class="lab">Context</span></button>
+      </div>
+      <div class="grp">
+        <div class="k2">Bank</div>
+        <button class="navi"><span data-px="wallet"></span><span class="lab">Wallet</span></button>
+        <button class="navi"><span data-px="lock"></span><span class="lab">Vault</span></button>
+        <button class="navi dis"><span data-px="dollar"></span><span class="lab">Payments</span><span class="soon">soon</span></button>
+        <button class="navi dis"><span data-px="cardpx"></span><span class="lab">Card</span><span class="soon">soon</span></button>
+      </div>
+      <div class="grp" style="margin-top:auto">
+        <button class="navi" data-go="settings"><span data-px="gear"></span><span class="lab">Settings</span></button>
+      </div>
+    </nav>
+
+    <!-- CENTER -->
+    <div class="center">
+
+      <!-- COMPUTER (above chat, collapsible) -->
+      <div class="card" id="compCard">
+        <div class="hd">
+          <span class="dot on"></span>
+          <span class="k">Computer · ready</span>
+          <span class="k2" id="compHint" style="margin-left:6px">agent screen — live</span>
+          <span class="right">
+            <button class="btn sm ghost">Snapshot</button>
+            <button class="btn sm ghost">Keep awake 1h</button>
+            <button class="btn sm ghost">New tab ↗</button>
+            <button class="btn sm" id="compMin">— Minimize</button>
+          </span>
+        </div>
+        <div id="compBody">
+          <div class="desk">
+            <canvas id="wall" style="position:absolute;inset:0;width:100%;height:100%"></canvas>
+            <div class="deskwin" style="left:26px;top:22px;width:300px;height:180px">
+              <div class="twh"><span class="dot busy" style="width:6px;height:6px"></span> browser — checkout.stripe.com</div>
+              <div class="twb">▸ filling card via vault ticket…<br>▸ CVV burns last (C18)<br>▸ waiting for confirmation…</div>
+            </div>
+            <div class="deskwin" style="right:26px;top:56px;width:230px;height:130px">
+              <div class="twh">terminal</div>
+              <div class="twb">$ air calendar sync<br>ok · 12 events · 2 personas</div>
+            </div>
+            <div class="task"><span>⏻ AIR OS</span><span style="margin-left:auto">box: ready · 01:12:40</span></div>
+          </div>
+        </div>
+        <div class="strip" id="compStrip" style="display:none">
+          <span class="dot on"></span><span class="k">Computer · ready</span>
+          <span class="k2">2 windows · working on checkout</span>
+          <button class="btn sm" id="compMax" style="margin-left:auto">+ Expand</button>
+        </div>
+      </div>
+
+      <!-- CHAT -->
+      <div class="card">
+        <div class="hd">
+          <span data-px="chat"></span><span class="k">Chat</span>
+          <div class="threads" style="margin-left:10px">
+            <span class="thread act"><span data-px="chat" data-s="10"></span>Main · iMessage</span>
+            <span class="thread">site-redesign</span>
+            <span class="thread">q3-taxes</span>
+            <button class="btn sm ghost">+ New thread</button>
+          </div>
+        </div>
+        <div class="chatlog">
+          <div class="msg user">Buy the domain we talked about and put the receipt in the vault.</div>
+          <div class="toolchip">▶ computer.browser — screen docked above · <u>watch</u></div>
+          <div class="msg agent"><div class="who">air</div>Domain purchased for $12.40 — receipt saved. The card approval you signed off in <b>Needs you</b> covered it. Want me to point DNS at the new box?</div>
+          <div class="msg user">Yes — and show me the kanban.</div>
+        </div>
+
+        <!-- docked mini-app (hidden until launched from right rail) -->
+        <div class="dock" id="dock" style="display:none">
+          <div class="dh">
+            <span class="tilebox" style="width:22px;height:22px;border-radius:5px;box-shadow:none" id="dockIcon"></span>
+            <span class="k" id="dockName">Kanban</span>
+            <span class="k2">mini-app · docked in chat</span>
+            <span class="right">
+              <button class="btn sm ghost">Open in new tab ↗</button>
+              <button class="btn sm" id="dockClose">✕</button>
+            </span>
+          </div>
+          <div class="kb">
+            <div class="kcol"><div class="k2">To do</div><div class="kcard">Ship Pixel OS phase 1</div><div class="kcard">Fix x402 cookie path</div></div>
+            <div class="kcol"><div class="k2">Doing</div><div class="kcard">App Store icon grid</div></div>
+            <div class="kcol"><div class="k2">Done</div><div class="kcard">Review: 681 tests green</div></div>
+          </div>
+        </div>
+
+        <div class="composer">
+          <button class="btn sm ghost">+</button>
+          <div class="fake">Message your agent… ( / commands · @bots )</div>
+          <button class="btn sm ghost">🎤</button>
+          <button class="btn pri">Send</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT RAIL -->
+    <aside class="rrail">
+      <div class="card">
+        <div class="hd"><span data-px="bolt"></span><span class="k">Speed &amp; Intelligence</span></div>
+        <div class="bd">
+          <div class="tiers">
+            <div class="tier"><span class="k">Fast</span><small>luna</small></div>
+            <div class="tier act"><span class="k">Balanced</span><small>terra</small></div>
+            <div class="tier"><span class="k">Deep</span><small>astra</small></div>
+          </div>
+          <div class="meterrow"><span class="k2">Spend this month</span><span class="mono" style="font-size:11px">$3.12 / $5.00</span></div>
+          <canvas id="meter" width="248" height="14" style="width:100%;height:14px;border:1px solid var(--outline);border-radius:4px;margin-top:6px"></canvas>
+        </div>
+      </div>
+      <div class="card">
+        <div class="hd"><span data-px="grid"></span><span class="k">Apps</span><span class="k2" style="margin-left:auto">tap → opens in chat</span></div>
+        <div class="bd">
+          <div class="apps9" id="apps9"></div>
+        </div>
+      </div>
+    </aside>
+  </div>
+  <div class="footer-note">HOME — Computer docks above Chat (minimize it) · left rail: AIR / APPS / PERSONAL / BANK + Settings · right rail apps load into the chat column</div>
+</section>
+
+<!-- ============================ APP STORE ============================ -->
+<section class="screen" id="scr-store">
+  <div class="statusbar">
+    <span id="sig"></span>
+    <span class="mid">AIR · APP STORE</span>
+    <span id="batt"></span>
+  </div>
+
+  <div class="banner">
+    <canvas id="bannerc"></canvas>
+    <div class="gloss"></div>
+    <div class="inner">
+      <div class="tilebox bigtile" data-tile="ads"></div>
+      <div>
+        <div class="badge new" style="margin-bottom:8px">NEW MINI-APP</div>
+        <h2>ADS</h2>
+        <p>Campaigns, pixels and analytics — now a mini-app. Launch from chat, approve every write in Needs&nbsp;you, get reports as iMessage cards.</p>
+        <div style="margin-top:12px;display:flex;gap:8px"><button class="btn pri">Open</button><button class="btn">agent.md</button></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cats">
+    <span class="cat act">All</span><span class="cat">Work</span><span class="cat">Money</span>
+    <span class="cat">Media</span><span class="cat">Agent</span><span class="cat">Yours</span>
+    <span class="right mono" style="font-size:10px;color:var(--muted)">search: /api/store/search</span>
+  </div>
+
+  <div class="storegrid" id="storegrid"></div>
+
+  <!-- creator -->
+  <div class="card creatorwrap" style="margin-top:22px">
+    <div class="bd creator">
+      <div class="tilebox bigtile" data-tile="wrench"></div>
+      <div style="flex:1">
+        <div class="k" style="font-size:12px;margin-bottom:4px">Mini-App Creator</div>
+        <div style="color:var(--muted);margin-bottom:10px">Build and publish to this store in four steps — the same pipeline first-party apps use.</div>
+        <div class="steps">
+          <span class="step">1 · Name</span><span class="step">2 · Icon</span><span class="step">3 · Bundle / template</span>
+          <span class="step">4 · Gates: free · $ · password</span><span class="step">→ Publish</span>
+        </div>
+      </div>
+      <button class="btn pri">Start building</button>
+    </div>
+  </div>
+
+  <!-- installed -->
+  <div class="card" style="margin-top:22px">
+    <div class="hd"><span data-px="grid"></span><span class="k">Installed</span><span class="k2" style="margin-left:auto">pinned to your right rail</span></div>
+    <div class="bd">
+      <div class="instrow"><span class="tilebox" data-tile="kanban"></span><div><div class="nm mono" style="font-size:11px">KANBAN</div><div class="sub">multiplayer · share link</div></div><span class="right"><button class="btn sm">Open</button><button class="btn sm ghost">Unpin</button></span></div>
+      <div class="instrow"><span class="tilebox" data-tile="vault"></span><div><div class="nm mono" style="font-size:11px">VAULT</div><div class="sub">owner only</div></div><span class="right"><button class="btn sm">Open</button><button class="btn sm ghost">Unpin</button></span></div>
+      <div class="instrow"><span class="tilebox" data-tile="ads"></span><div><div class="nm mono" style="font-size:11px">ADS</div><div class="sub">owner only · spend-gated</div></div><span class="right"><button class="btn sm">Open</button><button class="btn sm ghost">Unpin</button></span></div>
+    </div>
+  </div>
+  <div class="footer-note">APP STORE — dithered featured banner with a single gloss band · chunky 1px-outline tiles · price/lock badges · Creator wraps the existing publish pipeline</div>
+</section>
+
+<!-- ============================ SETTINGS ============================ -->
+<section class="screen" id="scr-settings">
+  <div class="set2">
+    <div class="card">
+      <div class="hd"><span data-px="people"></span><span class="k">Profile</span></div>
+      <div class="bd">
+        <div class="prow">
+          <div class="avatarbox"><canvas id="avatar" width="56" height="56" style="width:100%;height:100%"></canvas></div>
+          <div>
+            <div class="mono" style="font-weight:700">@gratitud3</div>
+            <div class="sub" style="color:var(--muted);font-size:11px">air agent · since 2026</div>
+          </div>
+          <span class="right"><button class="btn sm ghost">Sign out</button></span>
+        </div>
+        <div class="field"><span class="k2">Username</span><input class="inp" value="gratitud3"><div class="k2" style="margin-top:4px;color:var(--muted)">30-day cooldown applies</div></div>
+        <div class="field"><span class="k2">iMessage</span><div class="mono" style="font-size:12px">+1 (415) 555-0117</div></div>
+        <div class="field"><span class="k2">Agent email</span><div class="mono" style="font-size:12px">gratitud3@agentmail.to</div></div>
+        <div class="field"><span class="k2">Public card</span><div class="mono" style="font-size:12px">wzrd.tech/@gratitud3</div></div>
+        <button class="btn pri">Save</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="hd"><span data-px="plug"></span><span class="k">Plugin sign-in</span></div>
+      <div class="bd">
+        <div class="k2" style="margin-bottom:8px">A coding agent is asking to connect</div>
+        <div class="codebox">H4KQ-77PL</div>
+        <div style="display:flex;gap:8px;margin:10px 0 16px"><button class="btn pri">Approve</button><button class="btn">Deny</button></div>
+        <div class="k2" style="margin-bottom:6px">Active tokens</div>
+        <div class="conrow"><span class="dot on"></span><div><div class="nm">Claude Code</div><div class="sub">last used 2h ago</div></div><span class="right"><button class="btn sm ghost">Revoke</button></span></div>
+        <div class="conrow"><span class="dot on"></span><div><div class="nm">Codex</div><div class="sub">last used yesterday</div></div><span class="right"><button class="btn sm ghost">Revoke</button></span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <span class="tab act" data-tab="con">Connectors</span>
+    <span class="tab" data-tab="skl">Skills</span>
+  </div>
+
+  <div class="card" id="pane-con">
+    <div class="bd">
+      <div class="conrow"><span class="tilebox" style="width:34px;height:34px;border-radius:7px" data-tile="plug"></span><div><div class="nm">Gmail</div><div class="sub">connected · used by email triage · last OK 4m</div></div><span class="right"><span class="dot on"></span><button class="btn sm ghost">Disconnect</button></span></div>
+      <div class="conrow"><span class="tilebox" style="width:34px;height:34px;border-radius:7px" data-tile="cal"></span><div><div class="nm">Google Calendar</div><div class="sub">connected · calendar spine source</div></div><span class="right"><span class="dot on"></span><button class="btn sm ghost">Disconnect</button></span></div>
+      <div class="conrow"><span class="tilebox" style="width:34px;height:34px;border-radius:7px" data-tile="chip"></span><div><div class="nm">Notion</div><div class="sub">available</div></div><span class="right"><button class="btn sm">Connect</button></span></div>
+      <div class="conrow"><span class="tilebox" style="width:34px;height:34px;border-radius:7px" data-tile="dollar"></span><div><div class="nm">Stripe</div><div class="sub">available · powers storefront payouts</div></div><span class="right"><button class="btn sm">Connect</button></span></div>
+    </div>
+  </div>
+  <div class="card" id="pane-skl" style="display:none">
+    <div class="bd">
+      <div class="conrow"><span class="tilebox" style="width:34px;height:34px;border-radius:7px" data-tile="bolt"></span><div><div class="nm">shopping-checkout</div><div class="sub">installed · v1.3 → update available</div></div><span class="right"><button class="btn sm">Update</button><button class="btn sm ghost">Remove</button></span></div>
+      <div class="conrow"><span class="tilebox" style="width:34px;height:34px;border-radius:7px" data-tile="bolt"></span><div><div class="nm">calendar-native</div><div class="sub">installed · v2.0</div></div><span class="right"><button class="btn sm ghost">Remove</button></span></div>
+      <div class="conrow"><span class="tilebox" style="width:34px;height:34px;border-radius:7px" data-tile="bolt"></span><div><div class="nm">ads-reporting</div><div class="sub">suggested from the hub</div></div><span class="right"><button class="btn sm">Install</button></span></div>
+    </div>
+  </div>
+  <div class="footer-note">SETTINGS — Profile &amp; Plugin sign-in side by side (moved from the home rail) · Connectors and Skills as tabs</div>
+</section>
+
+<script>
+/* ------------------------------------------------------------------ */
+/* pixel icon set — 8×8 bitmaps                                        */
+const PX = {
+  chat:    ["........",".XXXXXX.",".X....X.",".X....X.",".XXXXXX.","...X....","..X.....","........"],
+  computer:["........",".XXXXXX.",".X....X.",".X....X.",".XXXXXX.","...XX...","..XXXX..","........"],
+  store:   ["...XX...","..X..X..",".XXXXXX.",".X....X.",".X....X.",".X....X.",".XXXXXX.","........"],
+  grid:    ["........",".XX..XX.",".XX..XX.","........",".XX..XX.",".XX..XX.","........","........"],
+  ads:     ["......X.","....XXX.","..XXXXX.",".XXXXXX.","..XXXXX.","....XXX.","...X..X.","...XX..."],
+  wrench:  [".XX..XX.",".XXXXXX.","..XXXX..","...XX...","...XX...","...XX...","...XX...","........"],
+  bell:    ["...XX...","..XXXX..","..XXXX..",".XXXXXX.",".XXXXXX.","XXXXXXXX","...XX...","........"],
+  cal:     ["........",".X.XX.X.",".XXXXXX.",".X....X.",".X.XX.X.",".X.XX.X.",".XXXXXX.","........"],
+  clock:   ["..XXXX..",".X....X.",".X..X.X.",".X..XX..",".X....X.","..XXXX..","........","........"],
+  people:  ["..XX....","..XX....",".XXXX...","....XX..","....XX..","...XXXX.","........","........"],
+  chip:    ["..X..X..",".XXXXXX.","XX....XX",".X.XX.X.","XX....XX",".XXXXXX.","..X..X..","........"],
+  wallet:  ["........",".XXXXXX.",".X....X.",".X..XXX.",".X..XXX.",".X....X.",".XXXXXX.","........"],
+  lock:    ["..XXXX..",".X....X.",".X....X.","XXXXXXXX","XXX..XXX","XXX..XXX","XXXXXXXX","........"],
+  cardpx:  ["........","XXXXXXXX","X......X","XXXXXXXX","X......X","X.XX...X","XXXXXXXX","........"],
+  dollar:  ["...XX...","..XXXX..",".XX.....","..XXXX..",".....XX.","..XXXX..","...XX...","........"],
+  gear:    ["..X..X..",".XXXXXX.","XX.XX.XX",".X.XX.X.","XX.XX.XX",".XXXXXX.","..X..X..","........"],
+  plug:    [".X..X...",".X..X...","XXXXXX..",".XXXX...",".XXXX...","..XX....","..XX....","........"],
+  bolt:    ["....XX..","...XX...","..XXXX..","....XX..","...XX...","..XX....","........","........"],
+  inbox:   ["........",".XXXXXX.",".X....X.",".X....X.","XXX..XXX","X.XXXX.X","XXXXXXXX","........"],
+  crm:     ["..X..X..",".XXX.XXX",".XXX.XXX","........",".XXXXXX.",".X....X.",".XXXXXX.","........"],
+  image:   ["........",".XXXXXX.",".X..X.X.",".X.XXX.X",".XXXXXX.",".X....X.",".XXXXXX.","........"],
+  video:   ["........",".XXXX...",".X..XXX.",".X..XXX.",".XXXX...","........",".XXXXXX.","........"],
+  todo:    ["........",".XX.....","..XX..X.","...XXX..","....X...",".XX.....","..XX....","........"],
+  kanban:  ["........",".XX.X.X.",".XX.X.X.",".XX.X...",".XX.....","........","........","........"],
+  shop:    ["........","XXXXXXXX",".X....X.",".X....X.","..XXXX..","..X..X..","..XXXX..","........"],
+  analytics:["........","......X.","....X.X.","..X.X.X.","X.X.X.X.","X.X.X.X.","XXXXXXXX","........"],
+  pay:     ["...XX...","..XXXX..",".XX..X..","..XXXX..","..X..XX.","..XXXX..","...XX...","........"]
+};
+function pxSvg(name, size, color){
+  const bm = PX[name] || PX.grid; const s = size||16;
+  let r = '';
+  for(let y=0;y<8;y++)for(let x=0;x<8;x++)
+    if(bm[y] && bm[y][x]==='X') r += `<rect x="${x}" y="${y}" width="1" height="1"/>`;
+  return `<svg class="px" width="${s}" height="${s}" viewBox="0 0 8 8" fill="${color||'currentColor'}">${r}</svg>`;
+}
+document.querySelectorAll('[data-px]').forEach(el=>{
+  const c = el.getAttribute('data-c')==='accent' ? 'var(--accent)' : 'currentColor';
+  el.innerHTML = pxSvg(el.getAttribute('data-px'), parseInt(el.getAttribute('data-s')||'16',10), c);
+});
+
+/* ------------------------------------------------------------------ */
+/* Bayer 4×4 ordered dither                                            */
+const BAYER=[[0,8,2,10],[12,4,14,6],[3,11,1,9],[15,7,13,5]].map(r=>r.map(v=>(v+0.5)/16));
+function dither(canvas, colA, colB, dir){ // dir: 'h' fade A→B left→right, 'v' top→bottom
+  const dpr=1, w=canvas.width, h=canvas.height, g=canvas.getContext('2d');
+  const px=2; g.clearRect(0,0,w,h);
+  for(let y=0;y<h;y+=px)for(let x=0;x<w;x+=px){
+    const t = dir==='v'? y/h : x/w;
+    g.fillStyle = t < BAYER[(y/px)%4|0][(x/px)%4|0] ? colA : colB;
+    g.fillRect(x,y,px,px);
+  }
+}
+/* wallpaper for the fake desktop */
+(function(){const c=document.getElementById('wall'); if(!c)return;
+  c.width=760;c.height=300; dither(c,'#182036','#0d1017','v');
+})();
+/* spend meter — dense fill to 62%, dithered edge */
+(function(){const c=document.getElementById('meter'); if(!c)return;
+  const g=c.getContext('2d'), w=c.width,h=c.height, fill=.62;
+  const acc=getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#2b7fff';
+  g.clearRect(0,0,w,h);
+  for(let y=0;y<h;y+=2)for(let x=0;x<w;x+=2){
+    const t=x/w;
+    if(t<fill-0.08) g.fillStyle=acc;
+    else if(t<fill){ g.fillStyle = ((fill-t)/0.08) > BAYER[(y/2)%4|0][(x/2)%4|0] ? acc : 'transparent'; }
+    else g.fillStyle='transparent';
+    if(g.fillStyle!=='transparent') g.fillRect(x,y,2,2);
+  }
+})();
+/* store banner */
+(function(){const c=document.getElementById('bannerc'); if(!c)return;
+  c.width=1100;c.height=180;
+  const acc=getComputedStyle(document.documentElement).getPropertyValue('--accent-soft').trim()||'#e3eeff';
+  const sur=getComputedStyle(document.documentElement).getPropertyValue('--surface').trim()||'#fff';
+  dither(c,acc,sur,'h');
+})();
+/* deterministic pixel avatar (mirrored 8×8) */
+(function(){const c=document.getElementById('avatar'); if(!c)return;
+  const g=c.getContext('2d'); let seed=0; for(const ch of 'gratitud3') seed=(seed*31+ch.charCodeAt(0))>>>0;
+  const rnd=()=>{seed^=seed<<13;seed>>>=0;seed^=seed>>17;seed^=seed<<5;seed>>>=0;return seed/4294967296};
+  const acc=getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#2b7fff';
+  g.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--surface2').trim()||'#eee';
+  g.fillRect(0,0,56,56); g.fillStyle=acc; const s=7;
+  for(let y=0;y<8;y++)for(let x=0;x<4;x++){ if(rnd()>.5){ g.fillRect(x*s,y*s,s,s); g.fillRect((7-x)*s,y*s,s,s);} }
+})();
+
+/* status bar signal + battery */
+(function(){
+  const sig=document.getElementById('sig'), batt=document.getElementById('batt');
+  if(sig) sig.innerHTML='<svg class="px" width="22" height="14" viewBox="0 0 11 7" fill="currentColor"><rect x="0" y="5" width="1.6" height="2"/><rect x="2.4" y="4" width="1.6" height="3"/><rect x="4.8" y="2.5" width="1.6" height="4.5"/><rect x="7.2" y="1" width="1.6" height="6"/></svg>';
+  if(batt) batt.innerHTML='<svg class="px" width="26" height="14" viewBox="0 0 13 7" fill="currentColor"><rect x="0" y="1" width="11" height="5" fill="none" stroke="currentColor" stroke-width="1"/><rect x="1.5" y="2.5" width="2" height="2"/><rect x="4.2" y="2.5" width="2" height="2"/><rect x="6.9" y="2.5" width="2" height="2"/><rect x="11.5" y="2.6" width="1.4" height="1.8"/></svg>';
+})();
+
+/* tileboxes with icons (store + banner + installed + settings rows) */
+document.querySelectorAll('[data-tile]').forEach(el=>{
+  const n=el.getAttribute('data-tile');
+  const size = el.classList.contains('bigtile') ? 44 : (parseInt(getComputedStyle(el).width,10)>50? 34 : 20);
+  el.innerHTML=pxSvg(n,size,'var(--accent)');
+  el.style.display='flex';el.style.alignItems='center';el.style.justifyContent='center';
+});
+
+/* ------------------------------------------------------------------ */
+/* store grid data */
+const STORE=[
+  ['ads','ads','GRATITUD3',{new:1}], ['pay','pay','AIR',{}], ['vault','lock','AIR',{lock:1}],
+  ['kanban','kanban','AIR',{}], ['todo','todo','AIR',{}], ['calendar','cal','AIR',{}],
+  ['inbox','inbox','AIR',{}], ['crm','crm','AIR',{}], ['image','image','AIR',{}],
+  ['video','video','AIR',{}], ['analytics','analytics','AIR',{}], ['shop','shop','AIR',{price:'$0.50'}],
+];
+const sg=document.getElementById('storegrid');
+if(sg) sg.innerHTML=STORE.map(([nm,ic,by,b])=>`
+  <button class="stile">
+    <span class="tilebox" style="position:relative">${pxSvg(ic,34,'var(--accent)')}
+      ${b.new?'<span class="badge new price">NEW</span>':''}
+      ${b.price?`<span class="badge paid price">${b.price}</span>`:''}
+      ${b.lock?'<span class="badge price">🔒</span>':''}
+    </span>
+    <span class="nm">${nm}</span><span class="by">by ${by}</span>
+  </button>`).join('');
+
+/* right-rail 3×3 apps */
+const APPS9=[['kanban','kanban'],['todo','todo'],['calendar','cal'],['vault','lock'],['inbox','inbox'],['crm','crm'],['image','image'],['video','video'],['ads','ads']];
+const a9=document.getElementById('apps9');
+if(a9) a9.innerHTML=APPS9.map(([nm,ic])=>`
+  <button class="mini" data-app="${nm}" data-ic="${ic}">
+    <span class="tilebox">${pxSvg(ic,26,'var(--accent)')}</span><span class="lab">${nm}</span>
+  </button>`).join('');
+
+/* ------------------------------------------------------------------ */
+/* interactions */
+function show(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));
+  document.getElementById('scr-'+id).classList.add('on');
+  window.scrollTo(0,0);
+}
+document.querySelectorAll('[data-go]').forEach(b=>b.addEventListener('click',e=>{e.preventDefault();show(b.getAttribute('data-go'))}));
+
+const compBody=document.getElementById('compBody'), compStrip=document.getElementById('compStrip');
+const minBtn=document.getElementById('compMin');
+if(minBtn) minBtn.addEventListener('click',()=>{compBody.style.display='none';compStrip.style.display='flex';
+  minBtn.closest('.hd').style.display='none';});
+const maxBtn=document.getElementById('compMax');
+if(maxBtn) maxBtn.addEventListener('click',()=>{compBody.style.display='';compStrip.style.display='none';
+  document.querySelector('#compCard .hd').style.display='flex';});
+
+const dock=document.getElementById('dock');
+document.querySelectorAll('.mini').forEach(b=>b.addEventListener('click',()=>{
+  dock.style.display='';
+  document.getElementById('dockName').textContent=b.getAttribute('data-app').toUpperCase();
+  document.getElementById('dockIcon').innerHTML=pxSvg(b.getAttribute('data-ic'),14,'var(--accent)');
+  dock.scrollIntoView({behavior:'smooth',block:'center'});
+}));
+const dockClose=document.getElementById('dockClose');
+if(dockClose) dockClose.addEventListener('click',()=>dock.style.display='none');
+
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('act')); t.classList.add('act');
+  document.getElementById('pane-con').style.display = t.getAttribute('data-tab')==='con'?'':'none';
+  document.getElementById('pane-skl').style.display = t.getAttribute('data-tab')==='skl'?'':'none';
+}));
+document.querySelectorAll('.tier').forEach(t=>t.addEventListener('click',()=>{
+  document.querySelectorAll('.tier').forEach(x=>x.classList.remove('act')); t.classList.add('act');
+}));
+document.querySelectorAll('.cat').forEach(t=>t.addEventListener('click',()=>{
+  document.querySelectorAll('.cat').forEach(x=>x.classList.remove('act')); t.classList.add('act');
+}));
+</script>
+</body>
+</html>
