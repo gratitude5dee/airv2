@@ -23,6 +23,15 @@ import {
   putObject,
 } from "./r2";
 
+/** Lifetime of a presigned PUT; a pending reservation older than this can
+ * never be completed, so the sweeper releases its charge. */
+export const PRESIGN_TTL_SECONDS = 600;
+
+/** Sweep cutoff: presign TTL plus a grace window so an upload that lands
+ * right at the deadline still gets its confirm in before the reservation
+ * is reclaimed. */
+export const SWEEP_AFTER_SECONDS = PRESIGN_TTL_SECONDS + 15 * 60;
+
 /** Record the pre-charge so confirm reconciles against a server-side value. */
 export async function reserveUpload(
   supabase: SupabaseClient,
@@ -55,6 +64,43 @@ async function takeReservation(
   }
   if (!data || data.length === 0) return null;
   return Number(data[0]?.charged_bytes ?? 0);
+}
+
+interface StaleUpload {
+  user_id: string;
+  charged_bytes: number;
+}
+
+/**
+ * Release abandoned presign reservations: a pending_uploads row older than
+ * the presign TTL belongs to an upload that was never confirmed, so its
+ * pre-charge would leak quota forever. Delete-returning keeps the release
+ * exactly-once even across concurrent sweeps. The cutoff includes a grace
+ * window past the presign expiry so a confirm racing the sweep still finds
+ * its reservation.
+ */
+export async function sweepAbandonedUploads(
+  supabase: SupabaseClient,
+  ttlSeconds: number = SWEEP_AFTER_SECONDS
+): Promise<number> {
+  const cutoff = new Date(Date.now() - ttlSeconds * 1000).toISOString();
+  const { data, error } = await supabase
+    .from("pending_uploads")
+    .delete()
+    .lt("created_at", cutoff)
+    .select("user_id, charged_bytes");
+  if (error) {
+    throw new Error(`upload sweep failed: ${error.message}`);
+  }
+  let released = 0;
+  for (const row of (data ?? []) as StaleUpload[]) {
+    const charged = Number(row.charged_bytes ?? 0);
+    if (charged > 0) {
+      await addUsage(supabase, row.user_id, -charged);
+    }
+    released += 1;
+  }
+  return released;
 }
 
 export type ConfirmResult =
