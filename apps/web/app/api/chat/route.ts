@@ -7,7 +7,7 @@ import { after, NextRequest, NextResponse } from "next/server";
 import { sessionUserId } from "@/lib/auth/user";
 import { serviceClient } from "@/lib/supabase";
 import { StartLimitError } from "@/lib/orchestrator/boxes";
-import { startChatRun } from "@/lib/chat/relay";
+import { CHAT_SESSION_RE, startChatRun } from "@/lib/chat/relay";
 import {
   AMBIGUOUS_COMMAND_LINE,
   parseExplicitGenerationCommand,
@@ -35,7 +35,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     input?: string;
     via?: string;
     attachments?: unknown;
+    session?: unknown;
   };
+  // Threads (spec §3): an optional Hermes session id. Omitted means the
+  // shared air-main conversation — the pre-threads wire shape is unchanged.
+  let session: string | undefined;
+  if (body.session !== undefined) {
+    if (typeof body.session !== "string" || !CHAT_SESSION_RE.test(body.session)) {
+      return NextResponse.json({ error: "bad session" }, { status: 400 });
+    }
+    session = body.session;
+  }
   const typed = (body.input ?? "").trim();
   // V8: uploads referenced by box path (from /api/chat/upload), the same
   // marker shape the iMessage path emits — never raw bytes (C4). The path
@@ -164,7 +174,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    const runId = await startChatRun(supabase, userId, input, "web", trigger);
+    const runId = await startChatRun(
+      supabase,
+      userId,
+      input,
+      "web",
+      trigger,
+      session
+    );
     return NextResponse.json({ run_id: runId });
   } catch (error) {
     if (error instanceof StartLimitError) {
