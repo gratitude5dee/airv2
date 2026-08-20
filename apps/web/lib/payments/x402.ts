@@ -31,7 +31,7 @@ import {
   sessionFromCookie,
   type X402Gate,
 } from "../miniapps/gates";
-import { BASE_HEADERS, esc, page } from "../miniapps/html";
+import { baseHeaders, esc, page } from "../miniapps/html";
 import { mintToken } from "../miniapps/tokens";
 import type { RegistryApp } from "../miniapps/registry";
 
@@ -164,7 +164,7 @@ function payPage(
   return new NextResponse(body, {
     status: 402,
     headers: {
-      ...BASE_HEADERS,
+      ...baseHeaders(),
       "Content-Type": "text/html; charset=utf-8",
       "Cache-Control": "no-store",
     },

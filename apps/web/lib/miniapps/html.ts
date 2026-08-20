@@ -2,17 +2,23 @@
  * Shared mini-app HTML shell (M7.5, extracted for loader v2). Every renderer
  * emits plain server HTML into this page chrome — nothing is ever written to
  * localStorage/sessionStorage (C17) and the CSP names its frame ancestors
- * explicitly (MA1).
+ * explicitly (MA1): the mini origin itself plus the main app, so /home can
+ * embed first-party pages in the in-chat dock. frame-ancestors supersedes
+ * X-Frame-Options in every engine that supports CSP2, so no XFO is sent —
+ * SAMEORIGIN would contradict the allowed app origin.
  */
 import { NextResponse } from "next/server";
+import { env } from "../env";
 
-export const BASE_HEADERS: Record<string, string> = {
-  "Referrer-Policy": "no-referrer",
-  "X-Frame-Options": "SAMEORIGIN",
-  "Content-Security-Policy":
-    "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'self'",
-  "Cache-Control": "no-store",
-};
+export function baseHeaders(): Record<string, string> {
+  return {
+    "Referrer-Policy": "no-referrer",
+    "Content-Security-Policy":
+      "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; " +
+      `frame-ancestors 'self' ${env.appOrigin()}`,
+    "Cache-Control": "no-store",
+  };
+}
 
 export function esc(value: string): string {
   return value
@@ -63,7 +69,7 @@ export function html(
   return new NextResponse(body, {
     status: 200,
     headers: {
-      ...BASE_HEADERS,
+      ...baseHeaders(),
       ...extra,
       "Content-Type": "text/html; charset=utf-8",
     },
@@ -71,15 +77,15 @@ export function html(
 }
 
 export function forbidden(message: string): NextResponse {
-  return new NextResponse(message, { status: 403, headers: BASE_HEADERS });
+  return new NextResponse(message, { status: 403, headers: baseHeaders() });
 }
 
 export function notFound(): NextResponse {
-  return new NextResponse("not found", { status: 404, headers: BASE_HEADERS });
+  return new NextResponse("not found", { status: 404, headers: baseHeaders() });
 }
 
 export function withBaseHeaders(response: NextResponse): NextResponse {
-  for (const [key, value] of Object.entries(BASE_HEADERS)) {
+  for (const [key, value] of Object.entries(baseHeaders())) {
     response.headers.set(key, value);
   }
   return response;

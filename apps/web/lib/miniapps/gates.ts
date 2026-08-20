@@ -12,7 +12,7 @@ import { createHmac, scryptSync, timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "../env";
-import { BASE_HEADERS, esc, forbidden, notFound, page } from "./html";
+import { baseHeaders, esc, forbidden, notFound, page } from "./html";
 import type { RegistryApp } from "./registry";
 import { verifyToken, type MiniAppRole } from "./tokens";
 
@@ -99,7 +99,7 @@ function passwordChallenge(app: RegistryApp): NextResponse {
   return new NextResponse(body, {
     status: 401,
     headers: {
-      ...BASE_HEADERS,
+      ...baseHeaders(),
       "Content-Type": "text/html; charset=utf-8",
     },
   });
