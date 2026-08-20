@@ -46,6 +46,13 @@ input[type=text]::placeholder,input[type=password]::placeholder{color:var(--mute
 .day{font-size:11px;font-weight:500;margin:14px 2px 6px;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em}
 .pending{box-shadow:none;border:1px dashed var(--muted)}
 .when{color:var(--muted);font-size:12px;white-space:nowrap}
+.muted{color:var(--muted);font-size:12px}
+h2{font-size:11px;font-weight:600;letter-spacing:0.08em;color:var(--muted);text-transform:uppercase;margin:16px 0 6px}
+h3{font-size:12px;font-weight:600;margin:12px 0 4px}
+pre{background:var(--surface-2);border-radius:10px;padding:8px 10px;font-size:11px;white-space:pre-wrap;word-break:break-word;max-height:240px;overflow:auto}
+table{width:100%;border-collapse:collapse;font-size:11px}
+th,td{text-align:left;padding:4px 6px;border-bottom:0.5px solid var(--ring)}
+textarea{background:var(--surface);color:var(--text);border:0.5px solid var(--ring);border-radius:10px;padding:8px 10px;font-size:13px;outline:none;font-family:inherit}
 </style></head><body>${body}</body></html>`;
 }
 

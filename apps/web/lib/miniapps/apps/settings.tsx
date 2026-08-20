@@ -4,9 +4,10 @@
  * (lib/settings/account — same functions as /api/settings/*): username
  * (cooldown-aware) and speed tier. Read-only panels mirror plugin sessions
  * (MA2.4) and bucket usage (MA4) from their existing tables. Timezone,
- * memory viewer (MA9.1), plugin revoke (MA2.4), and trace export (MA9.3)
- * belong to sessions H/B — their sections are clearly marked and gain
- * their existing API when it lands; no new mutation paths (§MA5). Owner-only.
+ * and plugin revoke (MA2.4) belong to sessions H/B — their sections are
+ * clearly marked and gain their existing API when it lands; no new mutation
+ * paths (§MA5). Memory (MA9.1), traces (MA9.3), and Onairos (MA9.2) mount
+ * their self-contained sections from ../sections. Owner-only.
  */
 import type { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -18,6 +19,9 @@ import {
   SPEED_TIERS,
 } from "@/lib/settings/account";
 import { esc, forbidden, html, page } from "../html";
+import { memoryAction, renderMemorySection } from "../sections/memory";
+import { onairosAction, renderOnairosSection } from "../sections/onairos";
+import { renderTracesSection } from "../sections/traces";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
 interface SettingsData {
@@ -96,7 +100,17 @@ function formatBytes(bytes: number): string {
   return `${bytes} B`;
 }
 
-function renderSettings(data: SettingsData, notice: string | null): string {
+interface MountedSections {
+  memory: string;
+  traces: string;
+  onairos: string;
+}
+
+function renderSettings(
+  data: SettingsData,
+  sections: MountedSections,
+  notice: string | null
+): string {
   const usernameSection = section(
     "USERNAME",
     `<div class="card">${data.username ? `Current: <strong>@${esc(data.username)}</strong>` : "Not set yet."}<p style="color:var(--muted);font-size:11px;margin:4px 0 6px">2–24 lowercase letters, digits, or underscores. Changing it is limited to once every 30 days and moves your agent's email.</p><form method="post" style="display:flex;gap:6px;margin:0"><input type="hidden" name="action" value="set_username"><input type="text" name="username" placeholder="new username" maxlength="24" autocomplete="off"><button>Save</button></form></div>`
@@ -125,12 +139,7 @@ function renderSettings(data: SettingsData, notice: string | null): string {
       "Coming soon — a profile timezone (used for briefs and scheduling defaults) doesn't exist yet. Calendar schedules already carry their own timezone."
     )
   );
-  const memorySection = section(
-    "MEMORY",
-    comingSoon(
-      "Memory viewer (MA9.1) ships separately — view and edit what your agent remembers. Until then, memory lives on your agent's computer and never on the platform."
-    )
-  );
+  const memorySection = sections.memory;
   const pluginRows = data.pluginSessions
     .map(
       (t) =>
@@ -153,12 +162,8 @@ function renderSettings(data: SettingsData, notice: string | null): string {
           "Public media storage (MA4) hasn't been provisioned for this account yet — usage appears here once it is."
         )
   );
-  const traceSection = section(
-    "TRACE EXPORT",
-    comingSoon(
-      "Trace export (MA9.3) ships separately — download your agent's activity traces from here once it lands."
-    )
-  );
+  const traceSection = sections.traces;
+  const onairosSection = sections.onairos;
   const dataSection = section(
     "YOUR DATA",
     comingSoon(
@@ -167,7 +172,7 @@ function renderSettings(data: SettingsData, notice: string | null): string {
   );
   return page(
     "Settings",
-    `<h1>Settings</h1>${notice ? `<p style="color:var(--muted);font-size:12px">${esc(notice)}</p>` : ""}${usernameSection}${speedSection}${emailSection}${contactSection}${timezoneSection}${memorySection}${pluginSection}${storageSection}${traceSection}${dataSection}`
+    `<h1>Settings</h1>${notice ? `<p style="color:var(--muted);font-size:12px">${esc(notice)}</p>` : ""}${usernameSection}${speedSection}${emailSection}${contactSection}${timezoneSection}${memorySection}${onairosSection}${pluginSection}${storageSection}${traceSection}${dataSection}`
   );
 }
 
@@ -175,18 +180,34 @@ async function respond(
   ctx: MiniAppContext,
   notice: string | null
 ): Promise<NextResponse> {
-  const data = await loadSettings(ctx.supabase, ctx.session.userId);
-  return html(renderSettings(data, notice));
+  const [data, memory, traces, onairos] = await Promise.all([
+    loadSettings(ctx.supabase, ctx.session.userId),
+    renderMemorySection(ctx),
+    renderTracesSection(ctx),
+    renderOnairosSection(ctx),
+  ]);
+  return html(renderSettings(data, { memory, traces, onairos }, notice));
 }
 
 export const settings: MiniAppModule = {
   async render(ctx: MiniAppContext): Promise<NextResponse> {
+    if (ctx.session.role !== "owner") {
+      return forbidden("this view is owner-only");
+    }
     return respond(ctx, null);
   },
 
   async action(ctx: MiniAppContext, form: FormData): Promise<NextResponse> {
+    if (ctx.session.role !== "owner") {
+      return forbidden("this view is owner-only");
+    }
     const action = String(form.get("action") ?? "");
     const userId = ctx.session.userId;
+
+    const memoryResponse = await memoryAction(ctx, form);
+    if (memoryResponse) return memoryResponse;
+    const onairosResponse = await onairosAction(ctx, form);
+    if (onairosResponse) return onairosResponse;
 
     if (action === "set_username") {
       const result = await setUsername(
