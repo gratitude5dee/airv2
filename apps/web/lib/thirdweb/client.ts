@@ -42,19 +42,25 @@ interface SendTokensResponse {
  * this function is never reachable straight from a composer. A null
  * tokenAddress sends the chain's native token; an ERC-20 contract address
  * sends that token. Quantity is in the asset's smallest unit.
+ *
+ * idempotencyKey is the engine execution-option key (documented on the
+ * sibling /v1/contracts/write endpoint): a repeat submit with the same key
+ * returns the original transaction instead of broadcasting a second one.
  */
 export async function sendWalletTokens(
   from: string,
   chainId: number,
   to: string,
   quantityAtomic: string,
-  tokenAddress: string | null
+  tokenAddress: string | null,
+  idempotencyKey?: string
 ): Promise<string[]> {
   const data = await thirdwebFetch<SendTokensResponse>("/v1/wallets/send", {
     from,
     chainId,
     recipients: [{ address: to, quantity: quantityAtomic }],
     ...(tokenAddress ? { tokenAddress } : {}),
+    ...(idempotencyKey ? { idempotencyKey } : {}),
   });
   const ids = data.result?.transactionIds;
   if (!ids || ids.length === 0) {

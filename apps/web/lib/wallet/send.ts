@@ -39,6 +39,27 @@ export class WalletSendError extends Error {
   }
 }
 
+/**
+ * The provider may or may not have broadcast the transfer (C23). The intent
+ * is terminal (`submit_unknown`) — approval must never be retried, because a
+ * retry could double-send.
+ */
+export class WalletSubmitUnknownError extends WalletSendError {
+  constructor() {
+    super(
+      502,
+      "not sure that send went through — it won't retry; check activity before sending again"
+    );
+    this.name = "WalletSubmitUnknownError";
+  }
+}
+
+/** Deterministic per-intent key so a repeat submit of the same transfer
+ * dedupes at the provider instead of broadcasting twice. */
+export function transferIdempotencyKey(transferId: string): string {
+  return `wallet-transfer-${transferId}`;
+}
+
 /** Decimal amount → the asset's smallest unit. Throws WalletSendError(400)
  * on bad input, including more fraction digits than the asset carries. */
 export function parseAssetAmount(amount: string, decimals = 18): bigint {
@@ -88,7 +109,13 @@ export interface WalletTransfer {
   chain_id: number;
   token_address: string | null;
   token_symbol: string;
-  status: "pending" | "submitting" | "submitted" | "denied" | "failed";
+  status:
+    | "pending"
+    | "submitting"
+    | "submitted"
+    | "denied"
+    | "failed"
+    | "submit_unknown";
   transaction_id: string | null;
   created_at: string;
   resolved_at: string | null;
@@ -179,9 +206,11 @@ export async function findPendingTransfer(
  * Execute an approved transfer via thirdweb from the server-stored owner
  * wallet. The row is claimed pending→submitting first (a conditional update,
  * same single-use pattern as claimSchedule and fill-ticket redemption) so
- * concurrent approvals cannot both reach the provider. On failure the claim
- * is released back to pending (and the caller must leave the decision
- * pending) so approval can be retried.
+ * concurrent approvals cannot both reach the provider. A failure before the
+ * provider is reached releases the claim back to pending so approval can be
+ * retried; a throw during the submit itself is ambiguous — the transaction
+ * may have broadcast — so the row goes terminal `submit_unknown` and is
+ * never reset to pending (a retry could double-send, P0-1/C23).
  */
 export async function executeTransfer(
   supabase: SupabaseClient,
@@ -198,6 +227,7 @@ export async function executeTransfer(
   if (!claimed || claimed.length === 0) {
     throw new WalletSendError(409, "this send is already being processed");
   }
+  let walletAddress: string;
   try {
     const { data: user } = await supabase
       .from("users")
@@ -207,27 +237,9 @@ export async function executeTransfer(
     if (!user?.wallet_address) {
       throw new WalletSendError(409, "no wallet on file");
     }
-    const [transactionId] = await sendWalletTokens(
-      user.wallet_address as string,
-      transfer.chain_id,
-      transfer.to_address,
-      transfer.amount_wei,
-      transfer.token_address ?? null
-    );
-    if (!transactionId) {
-      throw new WalletSendError(502, "send returned no transaction id");
-    }
-    await supabase
-      .from("wallet_transfers")
-      .update({
-        status: "submitted",
-        transaction_id: transactionId,
-        resolved_at: new Date().toISOString(),
-      })
-      .eq("id", transfer.id)
-      .eq("user_id", userId);
-    return transactionId;
+    walletAddress = user.wallet_address as string;
   } catch (error) {
+    // Nothing has reached the provider: safe to release the claim.
     await supabase
       .from("wallet_transfers")
       .update({ status: "pending" })
@@ -236,6 +248,48 @@ export async function executeTransfer(
       .eq("status", "submitting");
     throw error;
   }
+  let transactionId: string | undefined;
+  try {
+    [transactionId] = await sendWalletTokens(
+      walletAddress,
+      transfer.chain_id,
+      transfer.to_address,
+      transfer.amount_wei,
+      transfer.token_address ?? null,
+      transferIdempotencyKey(transfer.id)
+    );
+  } catch {
+    await markSubmitUnknown(supabase, userId, transfer.id);
+    throw new WalletSubmitUnknownError();
+  }
+  if (!transactionId) {
+    // A 2xx without a transaction id: accepted but untrackable — ambiguous.
+    await markSubmitUnknown(supabase, userId, transfer.id);
+    throw new WalletSubmitUnknownError();
+  }
+  await supabase
+    .from("wallet_transfers")
+    .update({
+      status: "submitted",
+      transaction_id: transactionId,
+      resolved_at: new Date().toISOString(),
+    })
+    .eq("id", transfer.id)
+    .eq("user_id", userId);
+  return transactionId;
+}
+
+async function markSubmitUnknown(
+  supabase: SupabaseClient,
+  userId: string,
+  transferId: string
+): Promise<void> {
+  await supabase
+    .from("wallet_transfers")
+    .update({ status: "submit_unknown", resolved_at: new Date().toISOString() })
+    .eq("id", transferId)
+    .eq("user_id", userId)
+    .eq("status", "submitting");
 }
 
 /** Dismissal: mark the intent denied — no transaction exists or ever will. */
