@@ -19,7 +19,7 @@ import {
   BUNDLE_MAX_FILES,
   BUNDLE_MAX_UNPACKED_BYTES,
   BUNDLE_MAX_ZIP_BYTES,
-} from "@/lib/miniapps/bundles";
+} from "@/lib/miniapps/bundleLimits";
 
 const APPNAME_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/;
 
