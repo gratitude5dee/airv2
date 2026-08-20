@@ -58,9 +58,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
   // Password-gated apps challenge in the app view itself; x402 challenges
-  // here so the store can settle before handing out a token.
-  const payment = await x402Gate(request, app);
+  // here so the store can settle before handing out a token. The app is
+  // served at /<slug> on the mini origin, so the paid session cookie must be
+  // scoped there, and a settled payment answers with {url} — the JSON
+  // contract of this route — rather than the gate's redirect.
+  const payment = await x402Gate(request, app, {
+    basePath: `/${app.slug}`,
+    settled: () =>
+      NextResponse.json({ url: `${env.miniappOrigin()}/${app.slug}` }),
+  });
   if (payment) {
+    if (payment.status === 200) {
+      await logGateEvent(supabase, app.id, userId, "app_opened", "x402");
+      await recordOpsEvent(supabase, "launch", userId, slug);
+      return payment;
+    }
     await logGateEvent(supabase, app.id, userId, "gate_challenged", "x402");
     return payment;
   }

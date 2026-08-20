@@ -7,7 +7,7 @@
  * get a pay page driven by the same payload.
  */
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { encodePayment } from "x402/schemes";
 import type { PaymentPayload } from "x402/types";
 import type { RegistryApp } from "@/lib/miniapps/registry";
@@ -205,6 +205,46 @@ describe("x402 settlement", () => {
     expect(res?.headers.get("x-payment-response")).toBeTruthy();
     const cookie = res?.cookies.get("mini_paidapp");
     expect(cookie?.value).toBeTruthy();
+  });
+
+  it("scopes the paid cookie to /mini/<slug> on the main-host form", async () => {
+    const res = await x402PaymentGate(
+      request({ "x-payment": makePayment(NONCE) }),
+      paidApp()
+    );
+    expect(res?.status).toBe(303);
+    expect(res?.headers.get("location")).toBe(
+      "https://mini.wzrd.tech/mini/paidapp"
+    );
+    expect(res?.cookies.get("mini_paidapp")?.path).toBe("/mini/paidapp");
+  });
+
+  it("scopes the paid cookie to /<slug> on the mini host (x-mini-host)", async () => {
+    const res = await x402PaymentGate(
+      request({ "x-payment": makePayment(NONCE), "x-mini-host": "1" }),
+      paidApp()
+    );
+    expect(res?.status).toBe(303);
+    expect(res?.headers.get("location")).toBe("https://mini.wzrd.tech/paidapp");
+    expect(res?.cookies.get("mini_paidapp")?.path).toBe("/paidapp");
+  });
+
+  it("scopes the cookie to an explicit basePath and returns the caller's settled response (launch)", async () => {
+    const res = await x402PaymentGate(
+      request({ "x-payment": makePayment(NONCE) }),
+      paidApp(),
+      {
+        basePath: "/paidapp",
+        settled: () =>
+          NextResponse.json({ url: "https://mini.wzrd.tech/paidapp" }),
+      }
+    );
+    expect(res?.status).toBe(200);
+    const body = (await res?.json()) as { url: string };
+    expect(body.url).toBe("https://mini.wzrd.tech/paidapp");
+    expect(res?.headers.get("x-payment-response")).toBeTruthy();
+    expect(res?.cookies.get("mini_paidapp")?.path).toBe("/paidapp");
+    expect(db.receipts).toHaveLength(1);
   });
 
   it("rejects a replayed payment (same nonce) without minting", async () => {
