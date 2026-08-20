@@ -27,6 +27,11 @@ import {
  * never be completed, so the sweeper releases its charge. */
 export const PRESIGN_TTL_SECONDS = 600;
 
+/** Sweep cutoff: presign TTL plus a grace window so an upload that lands
+ * right at the deadline still gets its confirm in before the reservation
+ * is reclaimed. */
+export const SWEEP_AFTER_SECONDS = PRESIGN_TTL_SECONDS + 15 * 60;
+
 /** Record the pre-charge so confirm reconciles against a server-side value. */
 export async function reserveUpload(
   supabase: SupabaseClient,
@@ -70,11 +75,13 @@ interface StaleUpload {
  * Release abandoned presign reservations: a pending_uploads row older than
  * the presign TTL belongs to an upload that was never confirmed, so its
  * pre-charge would leak quota forever. Delete-returning keeps the release
- * exactly-once even across concurrent sweeps.
+ * exactly-once even across concurrent sweeps. The cutoff includes a grace
+ * window past the presign expiry so a confirm racing the sweep still finds
+ * its reservation.
  */
 export async function sweepAbandonedUploads(
   supabase: SupabaseClient,
-  ttlSeconds: number = PRESIGN_TTL_SECONDS
+  ttlSeconds: number = SWEEP_AFTER_SECONDS
 ): Promise<number> {
   const cutoff = new Date(Date.now() - ttlSeconds * 1000).toISOString();
   const { data, error } = await supabase

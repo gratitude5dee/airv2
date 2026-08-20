@@ -5,7 +5,7 @@
  */
 import { beforeEach, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { PRESIGN_TTL_SECONDS, sweepAbandonedUploads } from "./confirm";
+import { SWEEP_AFTER_SECONDS, sweepAbandonedUploads } from "./confirm";
 
 interface PendingRow {
   key: string;
@@ -104,13 +104,13 @@ describe("sweepAbandonedUploads", () => {
         key: "u/a/media/stale1",
         user_id: "user-1",
         charged_bytes: 300,
-        created_at: ago(PRESIGN_TTL_SECONDS + 60),
+        created_at: ago(SWEEP_AFTER_SECONDS + 60),
       },
       {
         key: "u/b/media/stale2",
         user_id: "user-2",
         charged_bytes: 700,
-        created_at: ago(PRESIGN_TTL_SECONDS + 120),
+        created_at: ago(SWEEP_AFTER_SECONDS + 120),
       },
     ];
     const released = await sweepAbandonedUploads(fakeSupabase());
@@ -143,7 +143,7 @@ describe("sweepAbandonedUploads", () => {
         key: "u/a/media/stale",
         user_id: "user-1",
         charged_bytes: 400,
-        created_at: ago(PRESIGN_TTL_SECONDS + 60),
+        created_at: ago(SWEEP_AFTER_SECONDS + 60),
       },
     ];
     await sweepAbandonedUploads(fakeSupabase());
