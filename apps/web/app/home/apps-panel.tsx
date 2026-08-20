@@ -8,16 +8,25 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { launchMiniApp } from "./launch";
+import { AppTile } from "./app-tile";
 
 interface AppRow {
   slug: string;
   name: string;
   description: string;
+  icon_url?: string | null;
   status: string;
   installed: boolean;
 }
 
-export function AppsPanel({ active }: { active: boolean }) {
+export function AppsPanel({
+  active,
+  onOpenStore,
+}: {
+  active: boolean;
+  /** Navigate to the in-app App Store section. */
+  onOpenStore?: () => void;
+}) {
   const [apps, setApps] = useState<AppRow[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -74,13 +83,18 @@ export function AppsPanel({ active }: { active: boolean }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-2">
-        <h2 className="m-0 text-[15px] font-semibold">Apps</h2>
+        <h2 className="chrome m-0 !text-[12px]">Installed</h2>
+        {onOpenStore ? (
+          <button className="btn btn-ghost ml-auto" onClick={onOpenStore}>
+            App Store
+          </button>
+        ) : null}
         <button
-          className="btn-ghost ml-auto text-[12px]"
+          className={"btn btn-ghost" + (onOpenStore ? "" : " ml-auto")}
           disabled={busy === "__store"}
           onClick={() => void openStore()}
         >
-          Open store ↗
+          Store ↗
         </button>
       </div>
       {error ? <p className="muted m-0 text-[12px]">{error}</p> : null}
@@ -93,22 +107,25 @@ export function AppsPanel({ active }: { active: boolean }) {
         ].map(([label, rows]) =>
           rows.length === 0 ? null : (
             <section key={label}>
-              <h3 className="muted m-0 mb-2 text-[11px] font-semibold uppercase tracking-[0.08em]">
-                {label}
-              </h3>
+              <h3 className="chrome-2 m-0 mb-2">{label}</h3>
               <div className="flex flex-col gap-2">
                 {rows.map((app) => (
                   <div
                     key={app.slug}
                     className="panel !p-3 flex items-center gap-3"
                   >
+                    <AppTile
+                      slug={app.slug}
+                      name={app.name}
+                      iconUrl={app.icon_url}
+                      size={36}
+                      radius={7}
+                    />
                     <div className="min-w-0 flex-1">
-                      <p className="m-0 text-[13px] font-medium">
+                      <p className="chrome m-0 !text-[11px]">
                         {app.name || app.slug}
                         {app.status !== "published" ? (
-                          <span className="muted ml-2 text-[10px] uppercase">
-                            soon
-                          </span>
+                          <span className="muted ml-2 text-[9px]">soon</span>
                         ) : null}
                       </p>
                       <p className="muted m-0 truncate text-[12px]">
@@ -117,7 +134,7 @@ export function AppsPanel({ active }: { active: boolean }) {
                     </div>
                     {app.status === "published" ? (
                       <button
-                        className="btn text-[12px]"
+                        className="btn"
                         disabled={busy === app.slug}
                         onClick={() => void launch(app.slug)}
                       >
@@ -125,11 +142,11 @@ export function AppsPanel({ active }: { active: boolean }) {
                       </button>
                     ) : null}
                     <button
-                      className="btn-ghost text-[12px]"
+                      className="btn btn-ghost"
                       disabled={busy === app.slug}
                       onClick={() => void toggleInstall(app)}
                     >
-                      {app.installed ? "Remove" : "Install"}
+                      {app.installed ? "Unpin" : "Install"}
                     </button>
                   </div>
                 ))}

@@ -19,6 +19,7 @@ import { AdsPanel } from "./ads-panel";
 import { VaultPanel } from "./vault-panel";
 import { BotsPanel } from "./bots-panel";
 import { AppsPanel } from "./apps-panel";
+import { StorePanel } from "./store-panel";
 import { CalendarPanel } from "./calendar-panel";
 import { launchMiniApp } from "./launch";
 import { MAX_UPLOAD_BYTES, UPLOAD_CHUNK_BYTES } from "@/lib/chat/attachments";
@@ -28,11 +29,10 @@ import { SpeedCard } from "./rail/speed-card";
 import { AppsGrid } from "./rail/apps-grid";
 import { NeedsPanel } from "./panels/needs-panel";
 import { PeoplePanel } from "./panels/people-panel";
-import { ConnectorsPanel } from "./panels/connectors-panel";
 import { HistoryPanel } from "./panels/history-panel";
-import { SkillsPanel } from "./panels/skills-panel";
 import { WalletPanel } from "./panels/wallet-panel";
-import { ProfilePanel } from "./panels/profile-panel";
+import { SettingsScreen } from "./panels/settings-screen";
+import { ContextPanel } from "./panels/context-panel";
 import { pickList } from "./lib";
 
 interface Me {
@@ -833,20 +833,26 @@ function HomeShell() {
             onPendingCount={setNeedsCount}
           />
           <PeoplePanel active={section === "personal.people"} />
-          <ConnectorsPanel active={section === "settings.connectors"} />
           <HistoryPanel active={section === "personal.history"} />
-          <SkillsPanel active={section === "settings.skills"} />
           <WalletPanel
             active={section === "bank.wallet"}
             onOpenNeeds={() => navigate("personal.needs")}
           />
-          <ProfilePanel
-            active={section === "settings.profile"}
+          <SettingsScreen
+            section={section}
+            onNavigate={navigate}
             me={me}
             onOpenWallet={() => navigate("bank.wallet")}
           />
+          <ContextPanel active={section === "personal.context"} />
           {section === "bank.vault" ? <VaultPanel active /> : null}
-          {section === "apps.installed" ? <AppsPanel active /> : null}
+          {section === "apps.installed" ? (
+            <AppsPanel active onOpenStore={() => navigate("apps.store")} />
+          ) : null}
+          <StorePanel
+            active={section === "apps.store"}
+            onOpenInChat={(slug) => void openAppInChat(slug)}
+          />
           {section === "personal.calendar" ? (
             <CalendarPanel
               active

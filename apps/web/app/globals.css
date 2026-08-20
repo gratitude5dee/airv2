@@ -1,8 +1,10 @@
 @import "tailwindcss";
 
 /* ---------------------------------------------------------------------------
-   air design tokens — light-first, hairline rings, soft radii, Inter.
-   Dark scheme mirrors every token via prefers-color-scheme.
+   air design tokens — Pixel OS (spec §1): hard 1px outlines, 6–10px corners,
+   2px hard offset shadows, mono chrome type, dithered gradients only.
+   Inter stays for prose. Dark scheme mirrors every token via
+   prefers-color-scheme.
 --------------------------------------------------------------------------- */
 :root {
   --bg: #fafafa;
@@ -19,11 +21,18 @@
   --success: #157f3c;
   --warning: #b45309;
   --accent-contrast: #ffffff;
+  /* Pixel OS chrome (spec §1): 1px solid outline (text @85%), hard offset
+     shadow color, and the once-per-screen specular top band. */
+  --outline: rgba(26, 26, 26, 0.85);
+  --hard: rgba(26, 26, 26, 0.18);
+  --shadow-hard: 2px 2px 0 var(--hard);
+  --chrome-top: rgba(255, 255, 255, 0.55);
   --shadow-card:
     0 0 0 0.5px var(--ring),
     0 1px 2px rgba(0, 0, 0, 0.05),
     0 2px 4px rgba(0, 0, 0, 0.02);
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --font-chrome: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -42,6 +51,9 @@
     --success: #4ade80;
     --warning: #fbbf24;
     --accent-contrast: #0b0d12;
+    --outline: rgba(245, 245, 245, 0.85);
+    --hard: rgba(0, 0, 0, 0.5);
+    --chrome-top: rgba(255, 255, 255, 0.12);
     --shadow-card:
       0 0 0 0.5px var(--ring),
       0 1px 2px rgba(0, 0, 0, 0.4),
@@ -65,6 +77,7 @@
   --color-accent-contrast: var(--accent-contrast);
   --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     sans-serif;
+  --color-outline: var(--outline);
 }
 
 /* Element-selector rules live in @layer base so Tailwind utilities (which sit
@@ -114,10 +127,39 @@
 
 .panel {
   background: var(--surface);
-  border: 0.5px solid transparent;
-  border-radius: 12px;
-  box-shadow: var(--shadow-card);
+  border: 1px solid var(--outline);
+  border-radius: 10px;
+  box-shadow: var(--shadow-hard);
   padding: 20px;
+}
+
+/* Mono chrome type (spec §1): nav labels, buttons, section headers, status
+   lines. Inter remains for prose. */
+.chrome {
+  font-family: var(--font-chrome);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.chrome-2 {
+  font-family: var(--font-chrome);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* App-icon tile chrome (spec §4): 1px outline, rounded-8, specular top edge
+   (the only gloss besides the store banner), hard 2px shadow. */
+.tilebox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  box-shadow: var(--shadow-hard), inset 0 2px 0 var(--chrome-top);
 }
 
 .input {
@@ -143,21 +185,25 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 8px 14px;
+  padding: 7px 12px;
   background: var(--text);
   color: var(--bg);
-  border: none;
-  border-radius: 999px;
-  font-size: 13px;
-  font-weight: 550;
+  border: 1px solid var(--outline);
+  border-radius: 7px;
+  font-family: var(--font-chrome);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   cursor: pointer;
-  transition: opacity 150ms var(--ease-out), transform 150ms var(--ease-out);
+  box-shadow: var(--shadow-hard);
+  transition: opacity 150ms var(--ease-out);
 }
 .btn:hover:not(:disabled) {
   opacity: 0.85;
 }
 .btn:active:not(:disabled) {
-  transform: scale(0.98);
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 var(--hard);
 }
 .btn:disabled {
   opacity: 0.4;
@@ -167,7 +213,12 @@
 .btn-ghost {
   background: transparent;
   color: var(--muted-2);
-  box-shadow: 0 0 0 0.5px var(--ring);
+  border-color: var(--ring);
+  box-shadow: none;
+}
+.btn-ghost:active:not(:disabled) {
+  transform: none;
+  box-shadow: none;
 }
 .btn-ghost:hover:not(:disabled) {
   opacity: 1;
@@ -182,12 +233,14 @@
 /* Shared segment/nav-item base — pair with .pill-active for selection. */
 .seg {
   cursor: pointer;
-  border: 0;
-  border-radius: 999px;
-  padding: 8px 14px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 7px 10px;
   text-align: left;
-  font-size: 13px;
-  font-weight: 500;
+  font-family: var(--font-chrome);
+  font-size: 10.5px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
   background: transparent;
   color: var(--muted-2);
   transition: background-color 150ms var(--ease-out), color 150ms var(--ease-out);
@@ -201,6 +254,8 @@
 .pill-active {
   background: var(--text);
   color: var(--bg);
+  border-color: var(--outline);
+  box-shadow: var(--shadow-hard);
 }
 
 /* Fade-and-rise entrance used on cards and lists. */

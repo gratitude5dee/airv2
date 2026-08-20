@@ -161,7 +161,9 @@ export async function fetchReceipts(
   supabase: SupabaseClient,
   userId: string,
   window: TraceWindow = {},
-  limit = 10_000
+  limit = 10_000,
+  /** true → return the newest `limit` receipts, sorted newest-first. */
+  newestFirst = false
 ): Promise<TraceReceipt[]> {
   const receipts: TraceReceipt[] = [];
   for (const source of SOURCES) {
@@ -171,7 +173,7 @@ export async function fetchReceipts(
         .from(source.table)
         .select(source.select)
         .eq("user_id", userId)
-        .order(source.tsColumn, { ascending: true })
+        .order(source.tsColumn, { ascending: !newestFirst })
         .range(offset, offset + PAGE - 1);
       if (window.from) query = query.gte(source.tsColumn, window.from);
       if (window.to) query = query.lt(source.tsColumn, window.to);
@@ -184,7 +186,9 @@ export async function fetchReceipts(
     }
   }
   receipts.sort((a, b) =>
-    String(a.ts ?? "").localeCompare(String(b.ts ?? ""))
+    newestFirst
+      ? String(b.ts ?? "").localeCompare(String(a.ts ?? ""))
+      : String(a.ts ?? "").localeCompare(String(b.ts ?? ""))
   );
   return receipts.slice(0, limit);
 }

@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Orb } from "@/components/orb/Orb";
+import { PixelIcon, type PixelGlyph } from "@/components/dither-kit/icon";
 
 export interface VaultItem {
   id: string;
@@ -39,12 +40,12 @@ const SECTIONS: {
   kind: "login" | "card" | "api_key" | "note";
   header: string;
   addLabel: string;
-  glyph: string;
+  glyph: PixelGlyph;
 }[] = [
-  { kind: "login", header: "LOGINS", addLabel: "Add a login…", glyph: "👤" },
-  { kind: "card", header: "CARDS", addLabel: "Add a card…", glyph: "💳" },
-  { kind: "api_key", header: "API KEYS", addLabel: "Add an API key…", glyph: "🔑" },
-  { kind: "note", header: "NOTES", addLabel: "Add a note…", glyph: "📝" },
+  { kind: "login", header: "LOGINS", addLabel: "Add a login…", glyph: "people" },
+  { kind: "card", header: "CARDS", addLabel: "Add a card…", glyph: "card" },
+  { kind: "api_key", header: "API KEYS", addLabel: "Add an API key…", glyph: "key" },
+  { kind: "note", header: "NOTES", addLabel: "Add a note…", glyph: "note" },
 ];
 
 const FIELDS_BY_KIND: Record<string, { field: string; label: string }[]> = {
@@ -393,7 +394,7 @@ function ItemRow({
   onEnvBinding,
 }: {
   item: VaultItem;
-  glyph: string;
+  glyph: PixelGlyph;
   open: boolean;
   revealed: Record<string, string>;
   busy: boolean;
@@ -415,7 +416,7 @@ function ItemRow({
         className="flex cursor-pointer items-center gap-2.5 border-0 bg-transparent px-3 py-2.5 text-left"
         onClick={onToggle}
       >
-        <span aria-hidden>{glyph}</span>
+        <PixelIcon glyph={glyph} size={14} />
         <span className="grid min-w-0 flex-1 gap-0.5">
           <span className="truncate text-[13px] font-medium">{item.name}</span>
           {item.masked ? (
@@ -444,7 +445,10 @@ function ItemRow({
                   aria-label={`${value !== undefined ? "Hide" : "Reveal"} ${label}`}
                   onClick={() => onReveal(field)}
                 >
-                  {value !== undefined ? "🙈" : "👁"}
+                  <PixelIcon
+                    glyph={value !== undefined ? "eyeoff" : "eye"}
+                    size={14}
+                  />
                 </button>
                 <button
                   className="btn-ghost text-[12px]"
@@ -466,7 +470,14 @@ function ItemRow({
                 className="btn-ghost text-[12px]"
                 onClick={() => onReveal("totp")}
               >
-                {revealed[`${item.id}:totp`] !== undefined ? "🙈" : "👁"}
+                <PixelIcon
+                  glyph={
+                    revealed[`${item.id}:totp`] !== undefined
+                      ? "eyeoff"
+                      : "eye"
+                  }
+                  size={14}
+                />
               </button>
             </div>
           ) : null}
@@ -707,7 +718,7 @@ function VaultModal({
               />
             </label>
             <label className="grid gap-1 text-[13px]">
-              🔒 Password
+              <span className="flex items-center gap-1.5"><PixelIcon glyph="lock" size={11} /> Password</span>
               <span className="flex gap-1.5">
                 <input
                   className="input flex-1"
@@ -723,7 +734,7 @@ function VaultModal({
                   aria-label={showPassword ? "Hide password" : "Show password"}
                   onClick={() => setShowPassword(!showPassword)}
                 >
-                  {showPassword ? "🙈" : "👁"}
+                  <PixelIcon glyph={showPassword ? "eyeoff" : "eye"} size={14} />
                 </button>
               </span>
             </label>
@@ -761,7 +772,7 @@ function VaultModal({
         {kind === "card" ? (
           <>
             <label className="grid gap-1 text-[13px]">
-              🔒 Card number
+              <span className="flex items-center gap-1.5"><PixelIcon glyph="lock" size={11} /> Card number</span>
               <span className="flex items-center gap-1.5">
                 <input
                   className="input flex-1 font-mono"
@@ -813,7 +824,7 @@ function VaultModal({
             </div>
             <div className="grid grid-cols-2 gap-2">
               <label className="grid gap-1 text-[13px]">
-                🔒 CVV
+                <span className="flex items-center gap-1.5"><PixelIcon glyph="lock" size={11} /> CVV</span>
                 <input
                   className="input font-mono"
                   type="password"
@@ -845,7 +856,7 @@ function VaultModal({
         {kind === "api_key" ? (
           <>
             <label className="grid gap-1 text-[13px]">
-              🔒 Key
+              <span className="flex items-center gap-1.5"><PixelIcon glyph="lock" size={11} /> Key</span>
               <input
                 className="input font-mono"
                 type="password"
@@ -871,7 +882,7 @@ function VaultModal({
 
         {kind === "note" ? (
           <label className="grid gap-1 text-[13px]">
-            🔒 Note
+            <span className="flex items-center gap-1.5"><PixelIcon glyph="lock" size={11} /> Note</span>
             <textarea
               className="input min-h-24"
               value={noteText}
