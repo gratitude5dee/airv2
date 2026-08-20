@@ -168,14 +168,17 @@ grep -q 'hermes/node/bin' "$HOME_DIR/.bashrc" || \
 # ── 3b3. Daytona CLI + MCP: on-demand throwaway code sandboxes ───────────────
 # The Box stays the agent's durable home; Daytona sandboxes are ephemeral
 # (create → run → destroy) for risky/experimental code. The CLI binary lives
-# in /usr/local/bin (snapshotted); auth is `daytona login --api-key <key>`,
-# run by the operator at template-prep time (profile persists in ~/.daytona
-# and forks inherit it). The MCP server is stdio: `daytona mcp start`.
+# in /usr/local/bin (snapshotted). The template carries NO Daytona credential:
+# the control plane mints a per-user child key at provision time and writes it
+# as DAYTONA_API_KEY into ~/.hermes/.env (lib/provisioning/daytona.ts) — the
+# same lane as GATEWAY_TOKEN and the AgentMail draft-only key. Without that
+# key the CLI/MCP is unauthenticated and the sandbox lane stays disabled.
+# The MCP server is stdio: `daytona mcp start`.
 sudo curl -sfL https://github.com/daytona/clients/releases/latest/download/daytona-linux-amd64 -o /usr/local/bin/daytona
 sudo chmod +x /usr/local/bin/daytona
-if [ -n "${DAYTONA_API_KEY:-}" ]; then
-  /usr/local/bin/daytona login --api-key "$DAYTONA_API_KEY"
-fi
+# Scrub any login profile from earlier template generations — a profile in
+# ~/.daytona would be a shared org key inherited by every fork (P1-11).
+rm -rf "$HOME_DIR/.daytona"
 printf 'y\n' | "$HERMES_VENV/bin/hermes" mcp add daytona --command /usr/local/bin/daytona --args mcp start \
   || echo "WARN: daytona mcp add failed" >&2
 

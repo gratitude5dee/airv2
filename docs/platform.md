@@ -157,10 +157,13 @@ For risky or experimental code the agent additionally has **Daytona** MCP
 tools (installed via `hermes mcp add daytona --command daytona --args mcp
 start`): create an ephemeral cloud sandbox, execute code, pull results,
 destroy it. The Daytona CLI is baked into the template
-(`infra/template/setup.sh`) so every new user's box gets it.
-
-> Beta caveat: boxes currently share one Daytona org key, so sandboxes are
-> not isolated between users. Move to per-user keys before opening signup.
+(`infra/template/setup.sh`) so every new user's box gets it — but the
+template carries no credential. Provisioning mints a per-user child key
+(scoped to `write:sandboxes`/`delete:sandboxes`) with a server-side
+Daytona manager key and writes it into the box's `~/.hermes/.env`
+(`lib/provisioning/daytona.ts`); deletion revokes it. When the manager
+key is not configured, no key is injected and the sandbox lane stays
+disabled.
 
 ## Security posture (short form)
 

@@ -23,7 +23,8 @@ chat. Instead:
    their phone:
 
 ```bash
-set -a; . ~/.hermes/.env; set +a
+OPENAI_BASE_URL="$(grep -m1 '^OPENAI_BASE_URL=' ~/.hermes/.env | cut -d= -f2-)"
+OPENAI_API_KEY="$(grep -m1 '^OPENAI_API_KEY=' ~/.hermes/.env | cut -d= -f2-)"
 curl -fsS -X POST "${OPENAI_BASE_URL%/api/gateway/v1}/api/cards/computer" \
   -H "Authorization: Bearer $OPENAI_API_KEY"
 ```
