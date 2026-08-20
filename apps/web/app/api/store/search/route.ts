@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { serviceClient } from "@/lib/supabase";
 import { listPublicApps } from "@/lib/miniapps/registry";
-import { searchIndex } from "@/lib/miniapps/discovery";
+import { canonicalDetailUrl, searchIndex } from "@/lib/miniapps/discovery";
 import { env } from "@/lib/env";
 
 export const runtime = "nodejs";
@@ -47,7 +47,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     query: q,
     results: results.map((entry) => ({
       ...entry,
-      detail_url: `${base}/store/${entry.slug}`,
+      detail_url: canonicalDetailUrl(entry.slug),
       agent_md: `${base}/store/${entry.slug}/agent.md`,
     })),
   });

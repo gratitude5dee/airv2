@@ -10,7 +10,10 @@
  *                                 the single-use token rides the redirect)
  *   mini host  /<slug>          → rewrite /mini/<slug>     (loader v2)
  *   mini host  /api/mini/*      → pass through, marked x-mini-host: 1
- *   main host  /mini/<app>      → 308 to the mini origin   (legacy links)
+ *   main host  /mini            → serve store home         (canonical)
+ *   main host  /mini/<slug>     → rewrite /mini/store/<slug> (canonical detail)
+ *   main host  /mini/store/<s>  → 308 /mini/<s>            (legacy links)
+ *   main host  /mini/login|publish|<slug>/* → 308 to the mini origin
  *
  * Rewritten requests carry x-mini-host: 1 so the loader scopes cookies and
  * redirects to the external /<slug> path.
@@ -49,10 +52,43 @@ export function middleware(request: NextRequest): NextResponse {
       );
       return NextResponse.redirect(target, 308);
     }
-    // Main origin: mini-app and store paths live on the mini origin only.
+    // Main origin: canonical store pages live here (hybrid) — /mini is the
+    // store home and /mini/<slug> the app detail page. Everything that runs
+    // publisher code or mints store sessions (loader paths, bundle assets,
+    // login, publish) stays on the sandboxed mini origin.
     if (pathname === "/mini" || pathname.startsWith("/mini/")) {
+      const rest = pathname.replace(/^\/mini\/?/, "");
+      if (rest === "") {
+        return NextResponse.next({ request: { headers } });
+      }
+      const segments = rest.split("/");
+      if (segments[0] === "store") {
+        // Legacy detail path: 308 to the canonical /mini/<slug>.
+        if (segments.length === 2) {
+          const target = new URL(request.nextUrl);
+          target.pathname = `/mini/${segments[1]}`;
+          return NextResponse.redirect(target, 308);
+        }
+        // /mini/store/<slug>/agent.md and friends serve as routed.
+        return NextResponse.next({ request: { headers } });
+      }
+      // Tokened launch/grant links (?t=/?g=) redeem at the mini-origin
+      // loader — the token rides the redirect, still spent exactly once.
+      const tokened =
+        request.nextUrl.searchParams.has("t") ||
+        request.nextUrl.searchParams.has("g");
+      if (
+        segments.length === 1 &&
+        !tokened &&
+        segments[0] !== "login" &&
+        segments[0] !== "publish"
+      ) {
+        const rewritten = new URL(request.nextUrl);
+        rewritten.pathname = `/mini/store/${segments[0]}`;
+        return NextResponse.rewrite(rewritten, { request: { headers } });
+      }
       const target = new URL(
-        pathname.replace(/^\/mini\/?/, "/") + search,
+        `/${rest}` + search,
         process.env.MINIAPP_ORIGIN ?? "https://mini.wzrd.tech"
       );
       return NextResponse.redirect(target, 308);
