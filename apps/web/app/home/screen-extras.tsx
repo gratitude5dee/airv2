@@ -78,7 +78,7 @@ function Sparkline({
         const w = Math.max(((span.to - span.from) / (now - start)) * 480, 1.5);
         return (
           <rect
-            key={span.from}
+            key={`${span.from}-${span.to}`}
             x={x}
             y={2}
             width={w}

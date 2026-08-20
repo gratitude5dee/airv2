@@ -384,9 +384,9 @@ export function WalletPanel({
               <span className="text-[13px]">{wallet.native.display}</span>
             </div>
           ) : null}
-          {(wallet.tokens ?? []).map((t) => (
+          {(wallet.tokens ?? []).map((t, i) => (
             <div
-              key={`${t.symbol}-${t.name}`}
+              key={`${t.symbol}-${t.name}-${i}`}
               className="panel rise-in flex items-center justify-between !p-3"
             >
               <div>
