@@ -3,6 +3,7 @@ import {
   clampToWakingHours,
   isValidTimeZone,
   nextRunAt,
+  parseAgentSchedule,
   validateCron,
 } from "./schedule";
 
@@ -77,5 +78,31 @@ describe("clampToWakingHours", () => {
     expect(
       clampToWakingHours(fireAt, "America/Los_Angeles", "none").getTime()
     ).toBe(fireAt.getTime());
+  });
+});
+
+describe("parseAgentSchedule", () => {
+  it("accepts a selected schedule row", () => {
+    expect(
+      parseAgentSchedule({
+        id: "schedule-1",
+        user_id: "user-1",
+        name: "Morning",
+        cron: "0 9 * * *",
+        timezone: "UTC",
+        prompt_ref: ".hermes/schedules/schedule-1.md",
+        deliver: "imessage",
+        source: "user",
+        status: "active",
+        next_run_at: "2026-08-19T09:00:00Z",
+        last_run_at: null,
+        failure_count: 0,
+        one_shot: false,
+      })
+    ).toMatchObject({ id: "schedule-1", deliver: "imessage" });
+  });
+
+  it("rejects a row with an invalid delivery channel", () => {
+    expect(parseAgentSchedule({ id: "schedule-1", deliver: "sms" })).toBeNull();
   });
 });

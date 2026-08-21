@@ -15,6 +15,7 @@ import {
   DELIVER_VALUES,
   isValidTimeZone,
   nextRunAt,
+  parseAgentSchedule,
   SCHEDULE_COLUMNS,
   validateCron,
   type AgentSchedule,
@@ -37,7 +38,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     .eq("user_id", userId)
     .neq("status", "deleted")
     .order("next_run_at", { ascending: true });
-  return NextResponse.json({ schedules: data ?? [] });
+  const schedules = (data ?? [])
+    .map(parseAgentSchedule)
+    .filter((schedule): schedule is AgentSchedule => schedule !== null);
+  return NextResponse.json({ schedules });
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -139,7 +143,7 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
     .eq("user_id", userId)
     .neq("status", "deleted")
     .maybeSingle();
-  const existing = data as unknown as AgentSchedule | null;
+  const existing = parseAgentSchedule(data);
   if (!existing) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }

@@ -13,7 +13,11 @@ import { createHash, randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type Stripe from "stripe";
 import { createConnectCheckoutSession } from "../payments/stripe";
-import { getPublishedProduct, type StorefrontProduct } from "./catalog";
+import {
+  getPublishedProduct,
+  parseStorefrontProduct,
+  type StorefrontProduct,
+} from "./catalog";
 import { CommerceError, getMerchant } from "./merchants";
 
 export interface Order {
@@ -36,6 +40,66 @@ export const ORDER_COLUMNS =
   "id, user_id, product_id, quantity, amount_cents, status, " +
   "stripe_session_id, stripe_payment_intent_id, buyer_key_hash, " +
   "attribution, ticket_code, checked_in_at, created_at";
+
+function isOrderStatus(value: unknown): value is Order["status"] {
+  return (
+    value === "pending" ||
+    value === "paid" ||
+    value === "refunded" ||
+    value === "expired"
+  );
+}
+
+function isNullableString(value: unknown): value is string | null | undefined {
+  return value === undefined || value === null || typeof value === "string";
+}
+
+/** Validate a selected orders row before applying fulfillment side effects. */
+export function parseOrder(value: unknown): Order | null {
+  if (typeof value !== "object" || value === null) return null;
+  const row = value as Record<string, unknown>;
+  if (
+    typeof row.id !== "string" ||
+    typeof row.user_id !== "string" ||
+    typeof row.product_id !== "string" ||
+    typeof row.quantity !== "number" ||
+    !Number.isInteger(row.quantity) ||
+    typeof row.amount_cents !== "number" ||
+    !Number.isInteger(row.amount_cents) ||
+    !isOrderStatus(row.status) ||
+    !isNullableString(row.stripe_session_id) ||
+    !isNullableString(row.stripe_payment_intent_id) ||
+    typeof row.buyer_key_hash !== "string" ||
+    !isNullableString(row.attribution) ||
+    !isNullableString(row.ticket_code) ||
+    !isNullableString(row.checked_in_at) ||
+    typeof row.created_at !== "string"
+  ) {
+    return null;
+  }
+  return {
+    id: row.id,
+    user_id: row.user_id,
+    product_id: row.product_id,
+    quantity: row.quantity,
+    amount_cents: row.amount_cents,
+    status: row.status,
+    stripe_session_id:
+      typeof row.stripe_session_id === "string"
+        ? row.stripe_session_id
+        : null,
+    stripe_payment_intent_id:
+      typeof row.stripe_payment_intent_id === "string"
+        ? row.stripe_payment_intent_id
+        : null,
+    buyer_key_hash: row.buyer_key_hash,
+    attribution: typeof row.attribution === "string" ? row.attribution : null,
+    ticket_code: typeof row.ticket_code === "string" ? row.ticket_code : null,
+    checked_in_at:
+      typeof row.checked_in_at === "string" ? row.checked_in_at : null,
+    created_at: row.created_at,
+  };
+}
 
 export function hashKey(value: string): string {
   return createHash("sha256").update(value).digest("hex");
@@ -204,7 +268,8 @@ export async function fulfillCheckoutSession(
     .eq("stripe_session_id", session.id)
     .maybeSingle();
   if (!found) return false;
-  const order = found as unknown as Order;
+  const order = parseOrder(found);
+  if (!order) return false;
   const paymentIntent =
     typeof session.payment_intent === "string"
       ? session.payment_intent
@@ -289,11 +354,18 @@ export async function reconcileRefund(
     .eq("stripe_payment_intent_id", paymentIntent)
     .eq("status", "paid")
     .select("id, user_id, product_id, amount_cents, attribution");
-  for (const order of flipped ?? []) {
-    await logStorefrontEvent(supabase, order.user_id as string, "refund", {
-      productId: order.product_id as string,
-      ref: (order.attribution as string | null) ?? null,
-      amountCents: order.amount_cents as number,
+  for (const row of flipped ?? []) {
+    if (
+      typeof row.user_id !== "string" ||
+      typeof row.product_id !== "string" ||
+      typeof row.amount_cents !== "number"
+    ) {
+      continue;
+    }
+    await logStorefrontEvent(supabase, row.user_id, "refund", {
+      productId: row.product_id,
+      ref: typeof row.attribution === "string" ? row.attribution : null,
+      amountCents: row.amount_cents,
     });
   }
 }
@@ -310,7 +382,8 @@ export async function orderForReceipt(
     .eq("id", orderId)
     .maybeSingle();
   if (!data) return null;
-  const order = data as unknown as Order;
+  const order = parseOrder(data);
+  if (!order) return null;
   if (order.buyer_key_hash !== hashKey(buyerKey)) return null;
   const { data: product } = await supabase
     .from("storefront_products")
@@ -319,7 +392,7 @@ export async function orderForReceipt(
     )
     .eq("id", order.product_id)
     .maybeSingle();
-  return { ...order, product: (product as StorefrontProduct | null) ?? null };
+  return { ...order, product: parseStorefrontProduct(product) };
 }
 
 /**
@@ -366,5 +439,7 @@ export async function listOrders(
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(50);
-  return (data as Order[] | null) ?? [];
+  return (data ?? [])
+    .map(parseOrder)
+    .filter((order): order is Order => order !== null);
 }

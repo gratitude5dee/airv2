@@ -13,7 +13,7 @@ import {
   StartLimitError,
 } from "@/lib/orchestrator/boxes";
 import { publishSlot } from "@/lib/publish/worker";
-import { SLOT_COLUMNS, type ContentSlot } from "@/lib/publish/slots";
+import { parseContentSlot, SLOT_COLUMNS } from "@/lib/publish/slots";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,7 +21,7 @@ export const maxDuration = 300;
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
   const { id } = await params;
   const supabase = serviceClient();
@@ -47,7 +47,10 @@ export async function POST(
   if (!queued || queued.length === 0) {
     return NextResponse.json({ error: "not publishable" }, { status: 409 });
   }
-  const slot = queued[0] as unknown as ContentSlot;
+  const slot = parseContentSlot(queued[0]);
+  if (!slot) {
+    return NextResponse.json({ error: "not publishable" }, { status: 409 });
+  }
 
   let outcome: string;
   try {
@@ -66,7 +69,9 @@ export async function POST(
   }
   const { data: after } = await supabase
     .from("content_slots")
-    .select("id, status, external_id, permalink, last_verdict, error_message, scheduled_at")
+    .select(
+      "id, status, external_id, permalink, last_verdict, error_message, scheduled_at",
+    )
     .eq("id", id)
     .eq("user_id", session.userId)
     .maybeSingle();

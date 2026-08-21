@@ -21,6 +21,7 @@ import { recordKeepAwakeFire } from "../box/events";
 import {
   clampToWakingHours,
   nextRunAt,
+  parseAgentSchedule,
   SCHEDULE_COLUMNS,
   type AgentSchedule,
 } from "./schedule";
@@ -59,7 +60,7 @@ export async function claimSchedule(
     .eq("next_run_at", schedule.next_run_at)
     .select(SCHEDULE_COLUMNS);
   if (!data || data.length === 0) return undefined;
-  return data[0] as unknown as AgentSchedule;
+  return parseAgentSchedule(data[0]) ?? undefined;
 }
 
 async function deliverImessage(
@@ -264,7 +265,9 @@ export async function sweepSchedules(
     .lte("next_run_at", new Date().toISOString())
     .order("next_run_at", { ascending: true })
     .limit(SWEEP_BATCH);
-  const due = (data ?? []) as unknown as AgentSchedule[];
+  const due = (data ?? [])
+    .map(parseAgentSchedule)
+    .filter((schedule): schedule is AgentSchedule => schedule !== null);
   let fired = 0;
   for (const schedule of due) {
     const claimed = await claimSchedule(supabase, schedule);

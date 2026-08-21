@@ -43,6 +43,10 @@ function receipt(partial: Partial<TraceReceipt>): TraceReceipt {
 
 type Row = Record<string, unknown>;
 
+function isRow(value: unknown): value is Row {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 const str = (value: unknown): string | null =>
   typeof value === "string" ? value : null;
 const num = (value: unknown): number | null =>
@@ -179,7 +183,8 @@ export async function fetchReceipts(
       if (window.to) query = query.lt(source.tsColumn, window.to);
       const { data, error } = await query;
       if (error) break; // a missing table (unapplied migration) exports as absent
-      const rows = (data ?? []) as unknown as Row[];
+      const values: unknown[] = Array.isArray(data) ? [...data] : [];
+      const rows = values.filter(isRow);
       for (const row of rows) receipts.push(source.map(row));
       if (rows.length < PAGE || receipts.length >= limit) break;
       offset += PAGE;

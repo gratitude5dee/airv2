@@ -49,6 +49,47 @@ export const PRODUCT_COLUMNS =
 
 const KEY_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 
+function isProductKind(value: unknown): value is ProductKind {
+  return PRODUCT_KINDS.includes(value as ProductKind);
+}
+
+/** Validate a selected storefront_products row before using it for checkout. */
+export function parseStorefrontProduct(
+  value: unknown
+): StorefrontProduct | null {
+  if (typeof value !== "object" || value === null) return null;
+  const row = value as Record<string, unknown>;
+  if (
+    typeof row.id !== "string" ||
+    typeof row.user_id !== "string" ||
+    typeof row.product_key !== "string" ||
+    !isProductKind(row.kind) ||
+    typeof row.name !== "string" ||
+    typeof row.description !== "string" ||
+    (row.image_url !== null && typeof row.image_url !== "string") ||
+    typeof row.price_cents !== "number" ||
+    !Number.isInteger(row.price_cents) ||
+    (row.inventory !== null &&
+      (typeof row.inventory !== "number" ||
+        !Number.isInteger(row.inventory))) ||
+    typeof row.active !== "boolean"
+  ) {
+    return null;
+  }
+  return {
+    id: row.id,
+    user_id: row.user_id,
+    product_key: row.product_key,
+    kind: row.kind,
+    name: row.name,
+    description: row.description,
+    image_url: row.image_url,
+    price_cents: row.price_cents,
+    inventory: row.inventory,
+    active: row.active,
+  };
+}
+
 /** Only public R2 URLs may be projected — never signed/private links. */
 function publicImageUrl(value: unknown): string | null {
   if (typeof value !== "string" || value.length === 0) return null;
@@ -208,7 +249,9 @@ export async function listPublishedProducts(
     .eq("user_id", userId)
     .eq("active", true)
     .order("published_at", { ascending: true });
-  return (data as StorefrontProduct[] | null) ?? [];
+  return (data ?? [])
+    .map(parseStorefrontProduct)
+    .filter((product): product is StorefrontProduct => product !== null);
 }
 
 export async function getPublishedProduct(
@@ -223,5 +266,5 @@ export async function getPublishedProduct(
     .eq("product_key", productKey)
     .eq("active", true)
     .maybeSingle();
-  return (data as StorefrontProduct | null) ?? null;
+  return parseStorefrontProduct(data);
 }

@@ -30,7 +30,7 @@ import {
   clampToWakingHours,
   nextRunAt,
   SCHEDULE_COLUMNS,
-  type AgentSchedule,
+  parseAgentSchedule,
 } from "@/lib/calendar/schedule";
 import {
   approvePaymentRequest,
@@ -59,7 +59,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const { data } = await supabase
       .from("decisions")
       .select(
-        "id, kind, platform, sender, ref, label, status, created_at, resolved_at, payload"
+        "id, kind, platform, sender, ref, label, status, created_at, resolved_at, payload",
       )
       .eq("user_id", userId)
       .in("status", ["approved", "dismissed"])
@@ -71,7 +71,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const { data } = await supabase
     .from("decisions")
     .select(
-      "id, kind, platform, sender, ref, label, status, created_at, payload"
+      "id, kind, platform, sender, ref, label, status, created_at, payload",
     )
     .eq("user_id", userId)
     .eq("status", "pending")
@@ -104,7 +104,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const result = await batchApproveEmailDrafts(
       serviceClient(),
       userId,
-      body.ids as string[]
+      body.ids as string[],
     );
     return NextResponse.json(result);
   }
@@ -122,7 +122,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 
-  if (body.action === "approve" && decision.kind === "email_draft" && decision.ref) {
+  if (
+    body.action === "approve" &&
+    decision.kind === "email_draft" &&
+    decision.ref
+  ) {
     const { data: address } = await supabase
       .from("agent_addresses")
       .select("agentmail_inbox_id")
@@ -136,7 +140,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     await sendDraft(
       address.agentmail_inbox_id as string,
       decision.ref as string,
-      decision.id as string
+      decision.id as string,
     );
   }
 
@@ -153,7 +157,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       if (error instanceof AdWriteError) {
         return NextResponse.json(
           { error: error.message },
-          { status: error.status }
+          { status: error.status },
         );
       }
       return NextResponse.json({ error: "ad write failed" }, { status: 502 });
@@ -168,7 +172,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         supabase,
         userId,
         decision.ref as string,
-        (decision.payload ?? null) as Record<string, unknown> | null
+        (decision.payload ?? null) as Record<string, unknown> | null,
       );
     } else {
       await dismissContentPlan(supabase, userId, decision.ref as string);
@@ -200,7 +204,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // Refuse so the card stays actionable; dismiss can still clear it.
     return NextResponse.json(
       { error: "the agent is no longer waiting on this — dismiss it instead" },
-      { status: 409 }
+      { status: 409 },
     );
   }
 
@@ -213,7 +217,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       await approveRun(
         box.target,
         decision.ref as string,
-        body.action === "approve"
+        body.action === "approve",
       );
     } catch (error) {
       console.error(
@@ -222,7 +226,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           user_id: userId,
           action: body.action,
           error: error instanceof Error ? error.message : "unknown",
-        })
+        }),
       );
       // The referenced run may have already ended (the ref is the newest open
       // run at proposal time). A gone run can't post, so a dismiss may finish
@@ -235,7 +239,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       if (body.action === "approve" || !runGone) {
         return NextResponse.json(
           { error: "could not reach the agent — try again" },
-          { status: 502 }
+          { status: 502 },
         );
       }
     } finally {
@@ -263,13 +267,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         decision as { id: string; ref: string | null; payload: unknown },
         body.action === "approve",
         box,
-        body.method === "link" ? "link" : "fill"
+        body.method === "link" ? "link" : "fill",
       );
     } catch (error) {
       if (error instanceof PurchaseError) {
         return NextResponse.json(
           { error: error.code, message: error.message },
-          { status: error.status }
+          { status: error.status },
         );
       }
       console.error(
@@ -277,11 +281,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           msg: "purchase_review resolution failed",
           user_id: userId,
           error: error instanceof Error ? error.message : "unknown",
-        })
+        }),
       );
       return NextResponse.json(
         { error: "could not resolve the purchase review — try again" },
-        { status: 502 }
+        { status: 502 },
       );
     } finally {
       await armStopAfter(supabase, userId).catch(() => undefined);
@@ -299,7 +303,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           supabase,
           userId,
           decision.ref as string,
-          `${env.appOrigin()}/home`
+          `${env.appOrigin()}/home`,
         );
         await supabase
           .from("decisions")
@@ -313,7 +317,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       if (error instanceof CommerceError) {
         return NextResponse.json(
           { error: error.message },
-          { status: error.status }
+          { status: error.status },
         );
       }
       throw error;
@@ -328,7 +332,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     } catch {
       return NextResponse.json(
         { error: "couldn't reach your agent's computer — try again" },
-        { status: 502 }
+        { status: 502 },
       );
     } finally {
       await armStopAfter(supabase, userId).catch(() => undefined);
@@ -344,12 +348,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         supabase,
         userId,
         sanitizePatch((decision.payload ?? {}) as Record<string, unknown>),
-        { source: "agent", at: new Date().toISOString(), note: "owner-approved" }
+        {
+          source: "agent",
+          at: new Date().toISOString(),
+          note: "owner-approved",
+        },
       );
     } catch {
       return NextResponse.json(
         { error: "couldn't reach your agent's computer — try again" },
-        { status: 502 }
+        { status: 502 },
       );
     } finally {
       await armStopAfter(supabase, userId).catch(() => undefined);
@@ -366,7 +374,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const transfer = await findPendingTransfer(
       supabase,
       userId,
-      decision.ref as string
+      decision.ref as string,
     );
     if (transfer) {
       if (body.action === "approve") {
@@ -384,13 +392,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
               .eq("user_id", userId);
             return NextResponse.json(
               { error: error.message },
-              { status: error.status }
+              { status: error.status },
             );
           }
           if (error instanceof WalletSendError) {
             return NextResponse.json(
               { error: error.message },
-              { status: error.status }
+              { status: error.status },
             );
           }
           console.error(
@@ -399,11 +407,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
               user_id: userId,
               transfer_id: transfer.id,
               error: error instanceof Error ? error.message : "unknown",
-            })
+            }),
           );
           return NextResponse.json(
             { error: "the send failed — nothing moved; try again" },
-            { status: 502 }
+            { status: 502 },
           );
         }
       } else {
@@ -426,25 +434,27 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       .eq("status", "paused")
       .maybeSingle();
     if (scheduleRow) {
-      const schedule = scheduleRow as unknown as AgentSchedule;
-      let next: Date;
-      try {
-        next = nextRunAt(schedule.cron, schedule.timezone);
-      } catch {
-        next = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      const schedule = parseAgentSchedule(scheduleRow);
+      if (schedule) {
+        let next: Date;
+        try {
+          next = nextRunAt(schedule.cron, schedule.timezone);
+        } catch {
+          next = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        }
+        await supabase
+          .from("agent_schedules")
+          .update({
+            status: "active",
+            failure_count: 0,
+            next_run_at: clampToWakingHours(
+              next,
+              schedule.timezone,
+              schedule.deliver,
+            ).toISOString(),
+          })
+          .eq("id", schedule.id);
       }
-      await supabase
-        .from("agent_schedules")
-        .update({
-          status: "active",
-          failure_count: 0,
-          next_run_at: clampToWakingHours(
-            next,
-            schedule.timezone,
-            schedule.deliver
-          ).toISOString(),
-        })
-        .eq("id", schedule.id);
     }
   }
 

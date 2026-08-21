@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { isReservedWord, RESERVED_WORDS } from "./reserved";
-import { PublishError, slugFor, validateAppName } from "./publish";
+import {
+  parseGateSettingsRow,
+  PublishError,
+  slugFor,
+  validateAppName,
+} from "./publish";
+import { parseRegistryApp } from "./registry";
 
 describe("reserved words (both directions)", () => {
   it("reserves platform routes and first-party slugs", () => {
@@ -58,5 +64,74 @@ describe("published slug shape", () => {
     for (const word of RESERVED_WORDS) {
       expect(slugFor("alice", word === "" ? "x" : "app")).not.toBe(word);
     }
+  });
+});
+
+describe("parseRegistryApp", () => {
+  const valid = {
+    id: "app-1",
+    slug: "alice-notes",
+    kind: "render",
+    owner_user_id: "user-1",
+    name: "Notes",
+    description: "A notes app",
+    icon_key: null,
+    publisher_username: "alice",
+    publisher_wallet: null,
+    agent_identity: null,
+    visibility: "public",
+    access: "single",
+    password_hash: null,
+    x402_enabled: false,
+    x402_price_usdc: null,
+    plugin_signin_enabled: false,
+    status: "published",
+    bundle_version: "v1",
+    listed_at: "2026-08-01T00:00:00Z",
+    updated_at: "2026-08-01T00:00:00Z",
+  };
+
+  it("accepts a complete selected row", () => {
+    expect(parseRegistryApp(valid)).toEqual(valid);
+  });
+
+  it("coerces numeric prices returned as strings", () => {
+    expect(
+      parseRegistryApp({ ...valid, x402_price_usdc: "0.500000" })
+    ).toMatchObject({ x402_price_usdc: 0.5 });
+  });
+
+  it("rejects rows with a drifted domain field", () => {
+    expect(parseRegistryApp({ ...valid, status: "active" })).toBeNull();
+    expect(parseRegistryApp({ ...valid, x402_enabled: "false" })).toBeNull();
+  });
+});
+
+describe("parseGateSettingsRow", () => {
+  it("coerces numeric prices returned as strings", () => {
+    expect(
+      parseGateSettingsRow({
+        id: "app-1",
+        owner_user_id: "user-1",
+        x402_enabled: true,
+        x402_price_usdc: "0.500000",
+      })
+    ).toEqual({
+      id: "app-1",
+      owner_user_id: "user-1",
+      x402_enabled: true,
+      x402_price_usdc: 0.5,
+    });
+  });
+
+  it("rejects empty numeric strings", () => {
+    expect(
+      parseGateSettingsRow({
+        id: "app-1",
+        owner_user_id: "user-1",
+        x402_enabled: false,
+        x402_price_usdc: "  ",
+      })
+    ).toBeNull();
   });
 });

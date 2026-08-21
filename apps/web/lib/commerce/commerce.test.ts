@@ -90,7 +90,12 @@ function at(rows: Row[], index = 0): Row {
 
 /** Column defaults the real schema supplies (0042_ma8_commerce.sql). */
 const COLUMN_DEFAULTS: Record<string, () => Row> = {
-  orders: () => ({ status: "pending", ticket_code: null, checked_in_at: null }),
+  orders: () => ({
+    status: "pending",
+    ticket_code: null,
+    checked_in_at: null,
+    created_at: new Date().toISOString(),
+  }),
   payment_requests: () => ({
     status: "pending",
     expires_at: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
@@ -191,11 +196,13 @@ import {
   fulfillCheckoutSession,
   hashKey,
   orderForReceipt,
+  parseOrder,
   sanitizeRef,
   startCheckout,
 } from "./checkout";
 import {
   applyCatalogPublish,
+  parseStorefrontProduct,
   requestCatalogPublish,
   sanitizeCatalogItem,
 } from "./catalog";
@@ -266,6 +273,37 @@ function seed(): void {
 }
 
 beforeEach(seed);
+
+describe("selected-row parsers", () => {
+  it("rejects malformed order and product rows", () => {
+    expect(parseOrder({ id: "order-1", status: "active" })).toBeNull();
+    expect(
+      parseOrder({
+        id: "order-1",
+        user_id: "user-1",
+        product_id: "product-1",
+        quantity: 1,
+        amount_cents: 100,
+        status: "pending",
+        stripe_session_id: null,
+        stripe_payment_intent_id: null,
+        buyer_key_hash: "hash",
+        attribution: null,
+        ticket_code: null,
+        checked_in_at: null,
+        created_at: null,
+      })
+    ).toBeNull();
+    expect(
+      parseStorefrontProduct({
+        id: "prod-1",
+        user_id: MERCHANT,
+        product_key: "tee",
+        kind: "unknown",
+      })
+    ).toBeNull();
+  });
+});
 
 function completedSession(sessionId: string): Stripe.Checkout.Session {
   return {
