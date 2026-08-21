@@ -338,6 +338,17 @@ PYEOF
   --config "$HOME_DIR/.hermes/config.yaml" \
   --verify
 
+# ── 3z. .boxignore — keep regenerable caches out of every snapshot ─────────
+# Box snapshots /home/user every minute; package caches only slow captures
+# and restores down. Only caches that rebuild themselves on demand go here —
+# never tool installs (e.g. ~/.cache/ms-playwright holds real browsers).
+cat > "$HOME_DIR/.boxignore" <<'EOF'
+.npm/_cacache/
+.cache/pip/
+.cache/uv/
+.hermes/cache/
+EOF
+
 # ── 4. systemd units — /etc is snapshotted, enabled units restart on resume ──
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 sudo cp "$SCRIPT_DIR"/hermes-gateway.service /etc/systemd/system/

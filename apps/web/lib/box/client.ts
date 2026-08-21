@@ -55,7 +55,18 @@ export interface ForkOptions {
   /** Per-box env. Must include TENANT_ID and GATEWAY_TOKEN. */
   env: Record<string, string>;
   size?: "small" | "default" | "large";
+  /** Provider auto-stop TTL; null disables it. Forks default to 1 hour. */
+  ttlSeconds?: number | null;
 }
+
+/**
+ * Provider-side auto-stop backstop. Our own sweeper stops idle boxes within
+ * minutes; this TTL only exists so a sweeper outage can't leave a box
+ * burning for the 30-day provider maximum. It must be long enough that the
+ * provider never kills an actively working box mid-turn (the default fork
+ * TTL of 1 hour counts from start, not last activity, and would).
+ */
+export const BOX_TTL_SECONDS = 24 * 60 * 60;
 
 export class BoxApiError extends Error {
   readonly status: number;
@@ -121,6 +132,7 @@ export async function fork(options: ForkOptions): Promise<Box> {
       body: JSON.stringify({
         noEnv: true,
         env: options.env,
+        ttlSeconds: options.ttlSeconds ?? BOX_TTL_SECONDS,
         ...(options.size ? { size: options.size } : {}),
       }),
     }
@@ -140,6 +152,7 @@ export async function renameBox(boxId: string, name: string): Promise<Box> {
 export async function resume(boxId: string): Promise<Box> {
   const envelope = await boxFetch<BoxEnvelope>(`/boxes/${boxId}/resume`, {
     method: "POST",
+    body: JSON.stringify({ ttlSeconds: BOX_TTL_SECONDS }),
   });
   return envelope.box;
 }
