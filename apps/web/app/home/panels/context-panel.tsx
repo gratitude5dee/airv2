@@ -329,7 +329,7 @@ function OnairosCard({ active }: { active: boolean }) {
       ) : (
         <div className="grid gap-2">
           <p className="m-0 text-[13px]">
-            {state.status === "connected" ? (
+            {state.status === "active" ? (
               <>
                 Connected
                 {state.connected_at
@@ -343,7 +343,7 @@ function OnairosCard({ active }: { active: boolean }) {
               "Onairos isn't configured on this deployment."
             )}
           </p>
-          {state.status === "connected" ? (
+          {state.status === "active" ? (
             <div className="flex gap-2">
               <DitherButton color="blue" disabled={busy} onClick={() => void resync()}>
                 Re-sync
