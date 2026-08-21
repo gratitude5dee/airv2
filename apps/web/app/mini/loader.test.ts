@@ -1,7 +1,7 @@
 /**
  * MA1 loader v2 acceptance: registry-driven dispatch, gate ordering
  * (visibility → password → x402 → session), slug/claims mismatch, guest
- * grant scoping (MA4), and legacy /mini/<app> redirect preserving single-use
+ * grant scoping (MA4), and legacy /mini/<app> redirect preserving
  * token redemption (MA0).
  */
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -276,8 +276,8 @@ describe("slug/claims mismatch", () => {
   });
 });
 
-describe("single-use token exchange", () => {
-  it("redeems once into a path-scoped cookie, strips the token, rejects replay", async () => {
+describe("token exchange", () => {
+  it("redeems into a path-scoped cookie and strips the token", async () => {
     const token = mintToken("user-1", "kanban", "default", 15);
     const url = `https://mini.example/mini/kanban?t=${encodeURIComponent(token)}`;
     const first = await GET(new NextRequest(url), params("kanban"));
@@ -288,9 +288,16 @@ describe("single-use token exchange", () => {
     expect(setCookie).toContain("mini_kanban=");
     expect(setCookie.toLowerCase()).toContain("httponly");
     expect(setCookie).toContain("Path=/mini/kanban");
+  });
 
+  it("allows replay within TTL — platform preview fetches redeem before the tap", async () => {
+    const token = mintToken("user-1", "kanban", "default", 15);
+    const url = `https://mini.example/mini/kanban?t=${encodeURIComponent(token)}`;
+    const first = await GET(new NextRequest(url), params("kanban"));
+    expect(first.status).toBe(303);
     const replay = await GET(new NextRequest(url), params("kanban"));
-    expect(replay.status).toBe(403);
+    expect(replay.status).toBe(303);
+    expect(replay.headers.get("set-cookie") ?? "").toContain("mini_kanban=");
   });
 });
 
@@ -444,7 +451,7 @@ describe("legacy /mini/<app> redirect (MA0)", () => {
     expect(location).toContain("https://mini.wzrd.tech/kanban?t=");
 
     // The middleware then rewrites /kanban → /mini/kanban with x-mini-host;
-    // the loader redeems the token exactly once on that follow-up request.
+    // the loader redeems the token on that follow-up request.
     const followUp = new NextRequest(location, {
       headers: { host: "mini.wzrd.tech", "x-mini-host": "1" },
     });
@@ -452,13 +459,14 @@ describe("legacy /mini/<app> redirect (MA0)", () => {
     expect(res.status).toBe(303);
     expect(res.headers.get("set-cookie") ?? "").toContain("Path=/kanban");
 
+    // Replays within TTL redeem again (platform preview fetches come first).
     const replay = await GET(
       new NextRequest(location, {
         headers: { host: "mini.wzrd.tech", "x-mini-host": "1" },
       }),
       params("kanban")
     );
-    expect(replay.status).toBe(403);
+    expect(replay.status).toBe(303);
   });
 
   it("308s tokened /mini/<app>?t= on the main host to the mini origin", async () => {

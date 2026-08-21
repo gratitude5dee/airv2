@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
 import { env } from "@/lib/env";
-import { redeemOnce, verifyToken } from "@/lib/miniapps/tokens";
+import { recordRedemption, verifyToken } from "@/lib/miniapps/tokens";
 import {
   STORE_APP,
   mintStoreSessionToken,
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   if (!claims) {
     return NextResponse.redirect(new URL("/login", env.miniappOrigin()), 303);
   }
-  if (!(await redeemOnce(serviceClient(), claims))) {
+  if (!(await recordRedemption(serviceClient(), claims))) {
     return NextResponse.redirect(new URL("/login", env.miniappOrigin()), 303);
   }
   const response = NextResponse.redirect(

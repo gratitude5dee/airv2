@@ -2,9 +2,10 @@
  * Mini-app loader v2 (MA1). One dispatcher, registry-driven:
  *  - resolve the slug against mini_apps — the path is a routing hint, never
  *    an authorization; unknown/unpublished slugs 404 within one request.
- *  - GET ?t=<token>: verify token.app === path.app, redeem the single-use
- *    token, exchange it for a short-lived HttpOnly cookie scoped to this
- *    app's path, and redirect with the token stripped from the URL (C15).
+ *  - GET ?t=<token>: verify token.app === path.app (multi-use within its
+ *    short TTL), exchange it for a short-lived HttpOnly cookie scoped to
+ *    this app's path, and redirect with the token stripped from the URL
+ *    (C15).
  *  - GET ?g=<grant>: redeem a guest grant into a guest session scoped to
  *    exactly that app + resource (MA4).
  *  - otherwise run the gate chain (visibility → password → x402 → session)
@@ -15,7 +16,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { serviceClient } from "@/lib/supabase";
-import { mintToken, redeemOnce, verifyToken } from "@/lib/miniapps/tokens";
+import { mintToken, recordRedemption, verifyToken } from "@/lib/miniapps/tokens";
 import { getRegistryApp, type RegistryApp } from "@/lib/miniapps/registry";
 import {
   cookieName,
@@ -171,8 +172,8 @@ export async function GET(
     }
     const claims = verifyToken(token, slug);
     if (!claims) return sessionExpired("This signed link is invalid or has expired.");
-    if (!(await redeemOnce(supabase, claims))) {
-      return sessionExpired("This signed link was already used.");
+    if (!(await recordRedemption(supabase, claims))) {
+      return sessionExpired("This signed link is no longer valid.");
     }
     console.log(
       JSON.stringify({ msg: "miniapp opened", user_id: claims.userId, app: slug })
