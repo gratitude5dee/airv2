@@ -394,8 +394,9 @@ const GRAIN_SVG =
 
 const SLIDE_CSS = `
 *{box-sizing:border-box}
-html,body{margin:0;min-height:100svh}
-body{background:var(--canvas);color:var(--ink);font-family:var(--font-body);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+html,body{margin:0;min-height:100%}
+html{background:var(--canvas);background-attachment:fixed}
+body{min-height:100svh;background:transparent;color:var(--ink);font-family:var(--font-body);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
 .backdrop{position:fixed;inset:0;z-index:0;pointer-events:none;display:block}
 .scrim{position:fixed;inset:0;z-index:1;pointer-events:none;background:var(--scrim)}
 .grain{position:fixed;inset:0;z-index:1;pointer-events:none;mix-blend-mode:soft-light;opacity:0.15;background-image:url("${GRAIN_SVG}")}
@@ -408,7 +409,7 @@ main.slide{flex:1;display:flex;flex-direction:column;align-items:center;justify-
 @keyframes slideIn{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:translateY(0)}}
 @media(prefers-reduced-motion:reduce){main.slide{animation:none}.navlink,button,.dots a{transition:none}}
 .kicker{font-family:var(--font-ui);font-size:clamp(0.68rem,0.8vw,0.85rem);letter-spacing:0.14em;text-transform:uppercase;color:var(--accent);margin:0 0 0.9rem;text-align:center}
-h1{font-weight:400;font-size:clamp(1.9rem,5.4vw,3.6rem);letter-spacing:-0.045em;line-height:0.98;margin:0 0 1.4rem;text-align:center;max-width:26ch;text-shadow:0 1px 2px rgba(2,8,20,0.85),0 0.5rem 1.6rem rgba(2,8,20,0.5)}
+h1{font-weight:400;font-size:clamp(1.9rem,5.4vw,3.6rem);letter-spacing:-0.045em;line-height:0.98;margin:0 0 1.4rem;text-align:center;max-width:26ch;text-shadow:var(--text-shadow)}
 .panel{width:min(100%,34rem);border-radius:var(--radius-panel);border:1px solid var(--ring);background:var(--panel-bg);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);box-shadow:var(--shadow);padding:clamp(1rem,3.4vw,1.5rem)}
 .notice{width:min(100%,34rem);margin:0 0 0.8rem;font-family:var(--font-ui);font-size:0.72rem;line-height:1.45;letter-spacing:0.04em;color:var(--on-accent);background:var(--accent);border-radius:var(--radius-well);padding:0.55rem 0.8rem}
 footer.nav{display:flex;align-items:center;justify-content:space-between;gap:0.75rem;font-family:var(--font-ui)}

@@ -66,6 +66,11 @@ export interface ThemeTokens {
   readonly radiusWell: string;
   /** Corner radius of buttons and pills. */
   readonly radiusPill: string;
+  /**
+   * Shadow behind display text, so a headline stays legible over a busy
+   * backdrop. "none" for flat themes.
+   */
+  readonly textShadow: string;
   /** Slide-transition duration; "0ms" disables the entrance animation. */
   readonly slideIn: string;
 }
@@ -133,6 +138,8 @@ const atmosphere: Theme = {
     radiusPanel: "1.1rem",
     radiusWell: "0.75rem",
     radiusPill: "999px",
+    textShadow:
+      "0 1px 2px rgba(2,8,20,0.85),0 0.5rem 1.6rem rgba(2,8,20,0.5)",
     slideIn: "620ms",
   },
   backdrop: {
@@ -154,19 +161,23 @@ const pixel: Theme = {
   id: "pixel",
   name: "Pixel",
   description:
-    "Flat Pixel OS neutrals, system type, no animated backdrop — the calm default.",
+    "Pixel OS neutrals on a gradient canvas, system type, no animated backdrop — the calm alternative.",
   tokens: {
-    canvas: "#101012",
+    canvas:
+      "radial-gradient(ellipse 70% 50% at 50% -8%, rgba(43,127,255,0.3), transparent 68%)," +
+      "radial-gradient(ellipse 55% 40% at 12% 18%, rgba(120,86,255,0.16), transparent 70%)," +
+      "radial-gradient(ellipse 80% 45% at 50% 110%, rgba(43,127,255,0.14), transparent 72%)," +
+      "linear-gradient(180deg,#16181d 0%,#101012 44%,#0a0a0c 100%)",
     ink: "#f5f5f5",
     inkMuted: "#a3a3a3",
     onAccent: "#ffffff",
     onInk: "#101012",
     accent: "#2b7fff",
-    panelBg: "#1a1a1c",
+    panelBg: "rgba(26,26,29,0.92)",
     wellBg: "#232326",
     logoPlate: "rgba(240,244,255,0.94)",
     scrim: "none",
-    ring: "rgba(255,255,255,0.12)",
+    ring: "rgba(255,255,255,0.14)",
     shadow:
       "0 0 0 0.5px rgba(255,255,255,0.12),0 1px 2px rgba(0,0,0,0.4),0 2px 4px rgba(0,0,0,0.3)",
     blur: "none",
@@ -175,6 +186,7 @@ const pixel: Theme = {
     radiusPanel: "12px",
     radiusWell: "10px",
     radiusPill: "999px",
+    textShadow: "none",
     slideIn: "0ms",
   },
   backdrop: { kind: "css", grain: false },
@@ -208,6 +220,7 @@ export function tokenBlock(tokens: ThemeTokens): string {
     ["radius-panel", tokens.radiusPanel],
     ["radius-well", tokens.radiusWell],
     ["radius-pill", tokens.radiusPill],
+    ["text-shadow", tokens.textShadow],
     ["slide-in", tokens.slideIn],
   ];
   return `:root{${pairs.map(([name, value]) => `--${name}:${value}`).join(";")}}`;
@@ -219,7 +232,12 @@ export function tokenBlock(tokens: ThemeTokens): string {
  * shader means no script-src at all, no web font means no font-src.
  */
 export function themeCsp(current: Theme): string {
-  const directives = ["default-src 'none'", "img-src 'self'"];
+  // The grain overlay is a `data:` SVG background, and CSS background images
+  // are governed by img-src — a grain-less theme keeps the tighter 'self'.
+  const directives = [
+    "default-src 'none'",
+    current.backdrop.grain ? "img-src 'self' data:" : "img-src 'self'",
+  ];
   if (current.backdrop.kind === "shader") directives.push("script-src 'self'");
   if (current.fontStylesheet === null) {
     directives.push("style-src 'unsafe-inline'");

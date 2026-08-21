@@ -52,16 +52,19 @@ Every theme fills the whole set. `tokenBlock(tokens)` emits them as
 | `fontBody` | `--font-body` | Display/body family |
 | `fontUi` | `--font-ui` | Eyebrow/UI family: labels, buttons, counters |
 | `radiusPanel` / `radiusWell` / `radiusPill` | `--radius-*` | Corner radii by surface class |
+| `textShadow` | `--text-shadow` | Shadow behind display text; `none` for flat themes |
 | `slideIn` | `--slide-in` | Slide entrance duration; `0ms` disables the animation |
 
-Two tokens exist because of hard-won rendering lessons, and a new theme must not
-skip them:
+Three tokens exist because of hard-won rendering lessons, and a new theme must
+not skip them:
 
 - **`logoPlate`** — the WZRD wordmark is dark chrome artwork. On a bright or busy
   backdrop it disappears without a light plate under it.
 - **`scrim`** — an animated backdrop goes bright in places. The scrim keeps body
   text at a readable contrast wherever the backdrop lands. Flat themes set
   `none` and the renderer omits the layer entirely.
+- **`textShadow`** — a headline over moving clouds needs its own shadow, and the
+  same shadow over a flat canvas reads as a smudge. `none` on flat themes.
 
 `onAccent` and `onInk` are separate on purpose: a solid button is an `ink` fill,
 a notice is an `accent` fill, and in a light-ink theme those need opposite text
@@ -79,6 +82,10 @@ A shader backdrop names a **self-hosted** script and the custom-element markup
 it defines; the renderer positions it fixed behind everything and paints the
 scrim and optional film grain above it. A `css` backdrop paints `canvas` only.
 
+`grain` is not only cosmetic: the overlay is a `data:` SVG background image, and
+CSS background images are governed by `img-src`, so `themeCsp()` widens `img-src`
+to `'self' data:` exactly for the themes that draw grain.
+
 ## Themes today
 
 ### Atmosphere (default)
@@ -90,8 +97,10 @@ display over Azeret Mono labels, cream ink on atmospheric blue, film grain, a
 
 ### Pixel
 
-The in-app Pixel OS surface expressed as a theme: flat dark neutrals, system
-type, no backdrop, no grain, no entrance animation, no external fonts. It is
+The in-app Pixel OS surface expressed as a theme: Pixel neutrals lit by a
+gradient canvas (a cool accent glow off the top edge, a violet wash at the upper
+left, a dimmer glow off the bottom), system type, no backdrop layer, no grain, no
+entrance animation, no external fonts. It is
 both the calm alternative and the safe fallback — everything renders with zero
 network dependencies and zero WebGL.
 
