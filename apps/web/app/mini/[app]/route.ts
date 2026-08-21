@@ -33,8 +33,11 @@ import { FIRST_PARTY_MODULES, type MiniAppModule } from "@/lib/miniapps/apps";
 import { publishedModule } from "@/lib/miniapps/apps/published";
 import { isStorefrontApp, storefront } from "@/lib/miniapps/apps/storefront";
 import {
+  esc,
   forbidden,
+  html,
   notFound,
+  page,
   sessionExpired,
   withBaseHeaders,
 } from "@/lib/miniapps/html";
@@ -53,6 +56,41 @@ function basePathFor(request: NextRequest, slug: string): string {
   return request.headers.get("x-mini-host") === "1"
     ? `/${slug}`
     : `/mini/${slug}`;
+}
+
+/**
+ * Link previews and speculative prefetches (iMessage/Slack unfurlers, Next
+ * HEAD derivation, browser prefetch) must never redeem a single-use token —
+ * only the user's real tap may. Serve them a placeholder instead.
+ */
+function isPrefetch(request: NextRequest): boolean {
+  if (request.method === "HEAD") return true;
+  const purpose = (
+    request.headers.get("sec-purpose") ??
+    request.headers.get("purpose") ??
+    request.headers.get("x-purpose") ??
+    request.headers.get("x-moz") ??
+    ""
+  ).toLowerCase();
+  if (purpose.includes("prefetch") || purpose.includes("preview")) return true;
+  const ua = (request.headers.get("user-agent") ?? "").toLowerCase();
+  return [
+    "facebookexternalhit",
+    "facebot",
+    "twitterbot",
+    "slackbot",
+    "discordbot",
+    "telegrambot",
+    "whatsapp",
+    "linkedinbot",
+    "skypeuripreview",
+    "imessagelinkpreview",
+    "applebot",
+    "googlebot",
+    "bingbot",
+    "bot/",
+    "preview",
+  ].some((needle) => ua.includes(needle));
 }
 
 function resolveModule(app: RegistryApp): MiniAppModule | null {
@@ -126,6 +164,11 @@ export async function GET(
     // entered even with a fresh token.
     const blocked = visibilityGate(app);
     if (blocked) return blocked;
+    if (isPrefetch(request)) {
+      return html(
+        page(app.name, `<h1>${esc(app.name)}</h1><div class="card">Tap to open.</div>`)
+      );
+    }
     const claims = verifyToken(token, slug);
     if (!claims) return sessionExpired("This signed link is invalid or has expired.");
     if (!(await redeemOnce(supabase, claims))) {
@@ -162,6 +205,11 @@ export async function GET(
     // session it mints cannot mint anything broader.
     const blocked = visibilityGate(app);
     if (blocked) return blocked;
+    if (isPrefetch(request)) {
+      return html(
+        page(app.name, `<h1>${esc(app.name)}</h1><div class="card">Tap to open.</div>`)
+      );
+    }
     // Guest grants only exist for multiplayer apps — owner-only apps never
     // redeem, even if a grant row exists for them.
     if (app.access !== "multiplayer") {

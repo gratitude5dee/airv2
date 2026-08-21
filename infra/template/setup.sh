@@ -250,6 +250,22 @@ human's message as a native tapback instead of a new bubble.
 EOF
 fi
 
+# Mini-apps open on the owner's phone, never in this box's browser. This
+# carve-out outranks the "Your own computer" section above: a mini-app open
+# is a card send (open-miniapp skill), not a website task.
+if ! grep -q '## Mini-apps open on their phone' "$HOME_DIR/.hermes/SOUL.md" 2>/dev/null; then
+  cat >> "$HOME_DIR/.hermes/SOUL.md" <<'EOF'
+
+## Mini-apps open on their phone
+When your human asks you to open, show, launch, or pull up a mini-app
+(calendar, onboarding, todo, kanban, inbox, vault, and the rest), follow the
+open-miniapp skill: one POST to /api/cards/<kind> sends them a tappable card.
+This is NOT a website task — never use your browser or computer for it, never
+open localhost:3000 or 127.0.0.1 anything, and never open the dashboard on
+port 9119. If the card send succeeds, tell them to tap the card.
+EOF
+fi
+
 # M16: make the agent aware of the creative slash commands. They are handled
 # by the control plane before Hermes ever sees the message, so this is purely
 # awareness — the box never routes or executes them.
