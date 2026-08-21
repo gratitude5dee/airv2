@@ -203,7 +203,9 @@ export async function POST(
       body.reasoning_effort = reasoning;
     }
   }
-  const serviceTier = serviceTierForTier(tier);
+  // service_tier is OpenAI-only, like reasoning_effort above.
+  const openRouter = isOpenRouterFamily(family);
+  const serviceTier = openRouter ? undefined : serviceTierForTier(tier);
   if (serviceTier && body.service_tier === undefined) {
     body.service_tier = serviceTier;
   }
@@ -229,7 +231,6 @@ export async function POST(
     body.stream_options = { ...(body.stream_options as object), include_usage: true };
   }
 
-  const openRouter = isOpenRouterFamily(family);
   const baseUrl = openRouter
     ? env.openRouterBaseUrl()
     : env.modelProviderBaseUrl();
