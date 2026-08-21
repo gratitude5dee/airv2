@@ -11,10 +11,14 @@ import { ensureBoxAwake } from "../orchestrator/boxes";
 export const ONBOARDING_STEPS = [
   "username",
   "email",
+  "model",
   "connect",
+  "imessage",
   "onairos",
   "secrets",
+  "stripe",
   "agent",
+  "walkthrough",
 ] as const;
 
 export type OnboardingStepId = (typeof ONBOARDING_STEPS)[number];
