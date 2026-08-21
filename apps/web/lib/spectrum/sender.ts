@@ -112,7 +112,23 @@ export async function createSpectrumSender(): Promise<SpectrumSender> {
     },
     editApp: async (spaceId, phone, session, url) => {
       const s = await space(spaceId, phone);
-      const message = await s.getMessage(session.messageGuid);
+      const messageIds = [
+        session.targetMessageGuid,
+        session.messageGuid,
+      ].filter((id, index, ids) => ids.indexOf(id) === index);
+      let message: Message | undefined;
+      for (const messageId of messageIds) {
+        let candidate: Message | undefined;
+        try {
+          candidate = await s.getMessage(messageId);
+        } catch {
+          continue;
+        }
+        if (candidate && candidate.direction === "outbound") {
+          message = candidate;
+          break;
+        }
+      }
       if (!message || message.direction !== "outbound") return undefined;
       const target = Object.assign(message, {
         miniAppCardSession: session,

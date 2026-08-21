@@ -11,10 +11,12 @@ import {
   type SpectrumSender,
 } from "../spectrum/sender";
 import {
+  deleteMiniAppCardSession,
   parseMiniAppCardSession,
   readMiniAppCardSession,
   upsertMiniAppCardSession,
 } from "./cardSessions";
+import type { MiniAppCardSession } from "./cardSessions";
 import type { CardKind } from "./cardSends";
 import { mintToken } from "./tokens";
 
@@ -75,9 +77,9 @@ export async function sendMiniAppCard(
 }
 
 /**
- * Refresh an existing card without claiming a new notification slot. If the
- * provider cannot edit the stored card, send a fresh card and replace the
- * stored session instead.
+ * Refresh an existing card without claiming a new notification slot. A
+ * missing or invalid session is not a new notification, so this never sends
+ * a replacement card.
  */
 export async function updateMiniAppCard(
   supabase: SupabaseClient,
@@ -114,7 +116,7 @@ export async function updateMiniAppCard(
   const spaceId = String(destination.space_id);
   const phone = String(destination.phone);
 
-  let session;
+  let session: MiniAppCardSession | undefined;
   try {
     session = await readMiniAppCardSession(
       supabase,
@@ -135,26 +137,6 @@ export async function updateMiniAppCard(
   }
 
   if (!session) {
-    try {
-      await sendMiniAppCard(
-        supabase,
-        spaceId,
-        phone,
-        userId,
-        appSlug,
-        resourceId
-      );
-    } catch (error) {
-      console.error(
-        JSON.stringify({
-          msg: "mini-app card refresh fallback failed",
-          user_id: userId,
-          kind: appSlug,
-          resource_id: resourceId,
-          error: error instanceof Error ? error.message : "unknown",
-        })
-      );
-    }
     return;
   }
 
@@ -178,14 +160,22 @@ export async function updateMiniAppCard(
       mintSignedLink(userId, appSlug, resourceId)
     );
     if (!refreshed) {
-      await sendMiniAppCard(
+      await deleteMiniAppCardSession(
         supabase,
-        spaceId,
-        phone,
         userId,
         appSlug,
         resourceId
-      );
+      ).catch((error: unknown) => {
+        console.error(
+          JSON.stringify({
+            msg: "mini-app card session deletion failed",
+            user_id: userId,
+            kind: appSlug,
+            resource_id: resourceId,
+            error: error instanceof Error ? error.message : "unknown",
+          })
+        );
+      });
       return;
     }
     try {
@@ -210,29 +200,22 @@ export async function updateMiniAppCard(
     }
   } catch (error) {
     if (error instanceof UnsupportedError) {
-      try {
-        await sendMiniAppCard(
-          supabase,
-          spaceId,
-          phone,
-          userId,
-          appSlug,
-          resourceId
-        );
-      } catch (fallbackError) {
+      await deleteMiniAppCardSession(
+        supabase,
+        userId,
+        appSlug,
+        resourceId
+      ).catch((deleteError: unknown) => {
         console.error(
           JSON.stringify({
-            msg: "mini-app card refresh fallback failed",
+            msg: "mini-app card session deletion failed",
             user_id: userId,
             kind: appSlug,
             resource_id: resourceId,
-            error:
-              fallbackError instanceof Error
-                ? fallbackError.message
-                : "unknown",
+            error: deleteError instanceof Error ? deleteError.message : "unknown",
           })
         );
-      }
+      });
     } else {
       console.error(
         JSON.stringify({

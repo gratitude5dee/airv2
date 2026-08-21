@@ -24,6 +24,7 @@ function makeSupabase(options?: {
 }) {
   let session = options?.session;
   const upserts: unknown[] = [];
+  let deletions = 0;
   const client = {
     from: (table: string) => {
       if (table === "imessage_destinations") {
@@ -58,10 +59,25 @@ function makeSupabase(options?: {
           session = (row as { session: typeof SESSION }).session;
           return { error: null };
         },
+        delete: () => {
+          let calls = 0;
+          const builder = {
+            eq: () => {
+              calls += 1;
+              if (calls === 3) {
+                deletions += 1;
+                session = undefined;
+                return Promise.resolve({ error: null });
+              }
+              return builder;
+            },
+          };
+          return builder;
+        },
       };
     },
   } as unknown as SupabaseClient;
-  return { client, upserts, getSession: () => session };
+  return { client, upserts, getSession: () => session, getDeletions: () => deletions };
 }
 
 const senderMock = {
@@ -97,21 +113,36 @@ describe("mini-app card session lifecycle", () => {
     expect(senderMock.sendApp).toHaveBeenCalledOnce();
   });
 
-  it("falls back to a fresh send when no session is stored", async () => {
+  it("does nothing when no session is stored", async () => {
     const { client } = makeSupabase();
     await updateMiniAppCard(client, "user-1", "vault", "default");
-    expect(senderMock.sendApp).toHaveBeenCalledOnce();
+    expect(senderMock.sendApp).not.toHaveBeenCalled();
     expect(senderMock.editApp).not.toHaveBeenCalled();
   });
 
-  it("falls back to a fresh send when editing is unsupported", async () => {
-    const { client } = makeSupabase({ session: SESSION });
+  it("deletes the session without sending when the refreshed session is invalid", async () => {
+    const { client, getSession, getDeletions } = makeSupabase({
+      session: SESSION,
+    });
+    senderMock.editApp.mockResolvedValueOnce(undefined);
+    await updateMiniAppCard(client, "user-1", "vault", "default");
+    expect(senderMock.sendApp).not.toHaveBeenCalled();
+    expect(getDeletions()).toBe(1);
+    expect(getSession()).toBeUndefined();
+  });
+
+  it("deletes the session without sending when editing is unsupported", async () => {
+    const { client, getSession, getDeletions } = makeSupabase({
+      session: SESSION,
+    });
     senderMock.editApp.mockRejectedValueOnce(
       UnsupportedError.content("edit", "imessage", "not supported")
     );
     await updateMiniAppCard(client, "user-1", "vault", "default");
     expect(senderMock.editApp).toHaveBeenCalledOnce();
-    expect(senderMock.sendApp).toHaveBeenCalledOnce();
+    expect(senderMock.sendApp).not.toHaveBeenCalled();
+    expect(getDeletions()).toBe(1);
+    expect(getSession()).toBeUndefined();
   });
 
   it("does not propagate a session persistence failure", async () => {
