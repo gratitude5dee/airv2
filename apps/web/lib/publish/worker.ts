@@ -27,6 +27,7 @@ import {
   capHeadroom,
   claimSlot,
   CLAIM_TTL_MS,
+  parseContentSlot,
   SLOT_COLUMNS,
   type ContentSlot,
 } from "./slots";
@@ -89,8 +90,12 @@ export async function publishDueSlots(
       .lt("claimed_at", staleClaim)
       .limit(20),
   ]);
-  const dueSlots = [...((due.data ?? []) as unknown as ContentSlot[])];
-  const staleSlots = (stale.data ?? []) as unknown as ContentSlot[];
+  const dueSlots = (due.data ?? [])
+    .map(parseContentSlot)
+    .filter((slot): slot is ContentSlot => slot !== null);
+  const staleSlots = (stale.data ?? [])
+    .map(parseContentSlot)
+    .filter((slot): slot is ContentSlot => slot !== null);
 
   const byUser = new Map<string, ContentSlot[]>();
   for (const slot of [...dueSlots, ...staleSlots]) {
@@ -109,7 +114,7 @@ export async function publishDueSlots(
     .in("id", [...byUser.keys()])
     .eq("publish_paused", true);
   for (const row of paused ?? []) {
-    byUser.delete(row.id as string);
+    if (typeof row.id === "string") byUser.delete(row.id);
   }
   if (byUser.size === 0) {
     return { usersWoken: 0, published: 0, parked: 0, deferred: 0, retried: 0 };
@@ -125,7 +130,9 @@ export async function publishDueSlots(
     .lte("scheduled_at", horizon)
     .in("user_id", [...byUser.keys()])
     .limit(100);
-  for (const slot of (upcoming.data ?? []) as unknown as ContentSlot[]) {
+  for (const value of upcoming.data ?? []) {
+    const slot = parseContentSlot(value);
+    if (!slot) continue;
     const slots = byUser.get(slot.user_id);
     if (slots && !slots.some((existing) => existing.id === slot.id)) {
       slots.push(slot);
@@ -298,8 +305,8 @@ export async function publishSlot(
   const ctx = makePublishCtx({
     userId: slot.user_id,
     accountRef: slot.account_ref,
-    ...(connection.data.external_account_id
-      ? { connectedAccountId: connection.data.external_account_id as string }
+    ...(typeof connection.data.external_account_id === "string"
+      ? { connectedAccountId: connection.data.external_account_id }
       : {}),
     state: { ...claimed.publish_state },
     persistState: async (state) => {

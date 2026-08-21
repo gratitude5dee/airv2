@@ -31,6 +31,7 @@ import {
   nextRunAt,
   SCHEDULE_COLUMNS,
   type AgentSchedule,
+  parseAgentSchedule,
 } from "@/lib/calendar/schedule";
 import {
   approvePaymentRequest,
@@ -426,7 +427,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       .eq("status", "paused")
       .maybeSingle();
     if (scheduleRow) {
-      const schedule = scheduleRow as unknown as AgentSchedule;
+      const schedule = parseAgentSchedule(scheduleRow);
+      if (!schedule) return NextResponse.json({ ok: true });
       let next: Date;
       try {
         next = nextRunAt(schedule.cron, schedule.timezone);

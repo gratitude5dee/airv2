@@ -50,7 +50,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   };
   const name = (body.name ?? "").trim().slice(0, 60);
   const memberNames = Array.isArray(body.members)
-    ? [...new Set(body.members)]
+    ? [
+        ...new Set(
+          body.members.filter(
+            (member): member is string => typeof member === "string"
+          )
+        ),
+      ]
     : [];
   if (!name) {
     return NextResponse.json({ error: "name required" }, { status: 400 });
@@ -72,6 +78,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (members.some((bot) => !bot)) {
     return NextResponse.json({ error: "unknown member" }, { status: 400 });
   }
+  const readyMembers = members.filter(
+    (bot): bot is NonNullable<(typeof members)[number]> => bot !== undefined
+  );
   const { data: room, error } = await supabase
     .from("rooms")
     .insert({ user_id: userId, name })
@@ -82,7 +91,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "room create failed" }, { status });
   }
   const { error: memberError } = await supabase.from("room_members").insert(
-    members.map((bot) => ({ room_id: room.id, bot_id: bot!.id }))
+    readyMembers.map((bot) => ({ room_id: room.id, bot_id: bot.id }))
   );
   if (memberError) {
     await supabase.from("rooms").delete().eq("id", room.id);

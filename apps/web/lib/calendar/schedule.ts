@@ -15,6 +15,10 @@ function nextDate(interval: CronExpression): Date {
 export const DELIVER_VALUES = ["imessage", "email", "none"] as const;
 export type Deliver = (typeof DELIVER_VALUES)[number];
 
+function isDeliver(value: unknown): value is Deliver {
+  return DELIVER_VALUES.some((deliver) => deliver === value);
+}
+
 /** Waking hours (user-local) that channel deliveries clamp to, like the Brief. */
 export const WAKING_START_HOUR = 8;
 export const WAKING_END_HOUR = 22;
@@ -43,6 +47,44 @@ export interface AgentSchedule {
   failure_count: number;
   /** V4 "Remind me": fire once, then the sweeper deletes row + prompt. */
   one_shot: boolean;
+}
+
+export function parseAgentSchedule(value: unknown): AgentSchedule | null {
+  if (typeof value !== "object" || value === null) return null;
+  const row = value as Record<string, unknown>;
+  if (
+    typeof row.id !== "string" ||
+    typeof row.user_id !== "string" ||
+    typeof row.name !== "string" ||
+    typeof row.cron !== "string" ||
+    typeof row.timezone !== "string" ||
+    typeof row.prompt_ref !== "string" ||
+    !isDeliver(row.deliver) ||
+    typeof row.source !== "string" ||
+    typeof row.status !== "string" ||
+    typeof row.next_run_at !== "string" ||
+    (row.last_run_at !== null && typeof row.last_run_at !== "string") ||
+    typeof row.failure_count !== "number" ||
+    !Number.isInteger(row.failure_count) ||
+    typeof row.one_shot !== "boolean"
+  ) {
+    return null;
+  }
+  return {
+    id: row.id,
+    user_id: row.user_id,
+    name: row.name,
+    cron: row.cron,
+    timezone: row.timezone,
+    prompt_ref: row.prompt_ref,
+    deliver: row.deliver,
+    source: row.source,
+    status: row.status,
+    next_run_at: row.next_run_at,
+    last_run_at: row.last_run_at,
+    failure_count: row.failure_count,
+    one_shot: row.one_shot,
+  };
 }
 
 export const SCHEDULE_COLUMNS =

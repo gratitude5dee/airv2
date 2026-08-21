@@ -13,7 +13,11 @@ import {
   StartLimitError,
 } from "@/lib/orchestrator/boxes";
 import { publishSlot } from "@/lib/publish/worker";
-import { SLOT_COLUMNS, type ContentSlot } from "@/lib/publish/slots";
+import {
+  parseContentSlot,
+  SLOT_COLUMNS,
+  type ContentSlot,
+} from "@/lib/publish/slots";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,7 +51,10 @@ export async function POST(
   if (!queued || queued.length === 0) {
     return NextResponse.json({ error: "not publishable" }, { status: 409 });
   }
-  const slot = queued[0] as unknown as ContentSlot;
+  const slot = parseContentSlot(queued[0]);
+  if (!slot) {
+    return NextResponse.json({ error: "not publishable" }, { status: 409 });
+  }
 
   let outcome: string;
   try {

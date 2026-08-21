@@ -10,7 +10,7 @@
 import { randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { hashPassword } from "./gates";
-import type { RegistryApp } from "./registry";
+import { parseRegistryApp, type RegistryApp } from "./registry";
 import { isReservedWord } from "./reserved";
 
 export class PublishError extends Error {
@@ -46,7 +46,7 @@ export async function publisherUsername(
     .select("username")
     .eq("id", userId)
     .maybeSingle();
-  const username = (user?.username as string | null) ?? null;
+  const username = typeof user?.username === "string" ? user.username : null;
   if (!username) {
     throw new PublishError("set a username before publishing", 409);
   }
@@ -70,12 +70,24 @@ export interface DraftInput {
   agentIdentity?: string | null;
 }
 
+type DraftResult = Pick<RegistryApp, "id" | "slug" | "name">;
+
+function parseDraftResult(value: unknown): DraftResult | null {
+  if (typeof value !== "object" || value === null) return null;
+  const row = value as Record<string, unknown>;
+  return typeof row.id === "string" &&
+    typeof row.slug === "string" &&
+    typeof row.name === "string"
+    ? { id: row.id, slug: row.slug, name: row.name }
+    : null;
+}
+
 /** Stage a draft registry row (identical path for user and agent drafts). */
 export async function createDraft(
   supabase: SupabaseClient,
   userId: string,
   input: DraftInput
-): Promise<RegistryApp> {
+): Promise<DraftResult> {
   const appname = validateAppName(input.appname);
   const username = await publisherUsername(supabase, userId);
   const slug = slugFor(username, appname);
@@ -100,7 +112,10 @@ export async function createDraft(
       name,
       description,
       publisher_username: username,
-      publisher_wallet: (wallet?.wallet_address as string | null) ?? null,
+      publisher_wallet:
+        typeof wallet?.wallet_address === "string"
+          ? wallet.wallet_address
+          : null,
       agent_identity: input.agentIdentity?.trim().slice(0, 200) || null,
       visibility: "unlisted",
       access: "single",
@@ -124,11 +139,12 @@ export async function createDraft(
         .eq("owner_user_id", userId)
         .select(REGISTRY_COLUMNS)
         .maybeSingle();
-      if (refreshed) {
+      const parsedRefreshed = parseDraftResult(refreshed);
+      if (parsedRefreshed) {
         console.log(
           JSON.stringify({ msg: "miniapp draft refreshed", user_id: userId, slug })
         );
-        return refreshed as unknown as RegistryApp;
+        return parsedRefreshed;
       }
       throw new PublishError("that app name is taken", 409);
     }
@@ -140,7 +156,9 @@ export async function createDraft(
   console.log(
     JSON.stringify({ msg: "miniapp draft created", user_id: userId, slug })
   );
-  return data as unknown as RegistryApp;
+  const parsed = parseDraftResult(data);
+  if (!parsed) throw new Error("draft create returned an invalid row");
+  return parsed;
 }
 
 /** Owner-scoped lookup: the app must exist and belong to this publisher. */
@@ -156,7 +174,9 @@ export async function ownedApp(
     .eq("owner_user_id", userId)
     .maybeSingle();
   if (!data) throw new PublishError("app not found", 404);
-  return data as unknown as RegistryApp;
+  const parsed = parseRegistryApp(data);
+  if (!parsed) throw new PublishError("app not found", 404);
+  return parsed;
 }
 
 /** Delisting = back to draft (status check constraint: draft|published|suspended). */
@@ -210,6 +230,35 @@ export interface GateSettingsInput {
 
 const MAX_PRICE_USDC = 9999.999999; // numeric(10,6) column bound
 
+interface GateSettingsRow {
+  id: string;
+  owner_user_id: string | null;
+  x402_enabled: boolean;
+  x402_price_usdc: number | null;
+}
+
+function parseGateSettingsRow(value: unknown): GateSettingsRow | null {
+  if (typeof value !== "object" || value === null) return null;
+  const row = value as Record<string, unknown>;
+  if (
+    typeof row.id !== "string" ||
+    (row.owner_user_id !== null &&
+      typeof row.owner_user_id !== "string") ||
+    typeof row.x402_enabled !== "boolean" ||
+    (row.x402_price_usdc !== null &&
+      (typeof row.x402_price_usdc !== "number" ||
+        !Number.isFinite(row.x402_price_usdc)))
+  ) {
+    return null;
+  }
+  return {
+    id: row.id,
+    owner_user_id: row.owner_user_id,
+    x402_enabled: row.x402_enabled,
+    x402_price_usdc: row.x402_price_usdc,
+  };
+}
+
 function validPrice(price: number): boolean {
   return Number.isFinite(price) && price > 0 && price <= MAX_PRICE_USDC;
 }
@@ -226,8 +275,8 @@ export async function updateGateSettings(
     .select(REGISTRY_COLUMNS)
     .eq("slug", slug)
     .maybeSingle();
-  if (!app) throw new PublishError("app not found", 404);
-  const owned = app as unknown as RegistryApp;
+  const owned = parseGateSettingsRow(app);
+  if (!owned) throw new PublishError("app not found", 404);
   if (owned.owner_user_id !== userId) {
     throw new PublishError("not your app", 403);
   }

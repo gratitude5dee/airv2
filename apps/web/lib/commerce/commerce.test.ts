@@ -191,11 +191,13 @@ import {
   fulfillCheckoutSession,
   hashKey,
   orderForReceipt,
+  parseOrder,
   sanitizeRef,
   startCheckout,
 } from "./checkout";
 import {
   applyCatalogPublish,
+  parseStorefrontProduct,
   requestCatalogPublish,
   sanitizeCatalogItem,
 } from "./catalog";
@@ -266,6 +268,20 @@ function seed(): void {
 }
 
 beforeEach(seed);
+
+describe("selected-row parsers", () => {
+  it("rejects malformed order and product rows", () => {
+    expect(parseOrder({ id: "order-1", status: "active" })).toBeNull();
+    expect(
+      parseStorefrontProduct({
+        id: "prod-1",
+        user_id: MERCHANT,
+        product_key: "tee",
+        kind: "unknown",
+      })
+    ).toBeNull();
+  });
+});
 
 function completedSession(sessionId: string): Stripe.Checkout.Session {
   return {

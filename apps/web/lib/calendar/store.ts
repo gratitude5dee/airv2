@@ -35,17 +35,76 @@ export interface CalendarEvent {
   status?: "pending" | "confirmed";
 }
 
-function asEvent(value: unknown): CalendarEvent | undefined {
+function isCalendarSource(value: unknown): value is CalendarEvent["source"] {
+  return (
+    value === "google" ||
+    value === "apple_ics" ||
+    value === "calcom" ||
+    value === "email"
+  );
+}
+
+export function parseCalendarEvent(value: unknown): CalendarEvent | undefined {
   if (typeof value !== "object" || value === null) return undefined;
   const record = value as Record<string, unknown>;
   if (
     typeof record.id !== "string" ||
+    !isCalendarSource(record.source) ||
+    typeof record.source_ref !== "string" ||
     typeof record.title !== "string" ||
-    typeof record.starts_at !== "string"
+    typeof record.starts_at !== "string" ||
+    typeof record.ends_at !== "string" ||
+    typeof record.all_day !== "boolean" ||
+    (record.location !== undefined && typeof record.location !== "string") ||
+    (record.attendees_count !== undefined &&
+      (typeof record.attendees_count !== "number" ||
+        !Number.isInteger(record.attendees_count))) ||
+    (record.attendees !== undefined &&
+      (!Array.isArray(record.attendees) ||
+        record.attendees.some((entry) => typeof entry !== "string"))) ||
+    (record.url !== undefined && typeof record.url !== "string") ||
+    (record.notes_ref !== undefined && typeof record.notes_ref !== "string") ||
+    (record.status !== undefined &&
+      record.status !== "pending" &&
+      record.status !== "confirmed")
   ) {
     return undefined;
   }
-  return record as unknown as CalendarEvent;
+  const location =
+    typeof record.location === "string" ? record.location : undefined;
+  const attendeesCount =
+    typeof record.attendees_count === "number"
+      ? record.attendees_count
+      : undefined;
+  const attendees = Array.isArray(record.attendees)
+    ? record.attendees.filter(
+        (entry): entry is string => typeof entry === "string"
+      )
+    : undefined;
+  const url = typeof record.url === "string" ? record.url : undefined;
+  const notesRef =
+    typeof record.notes_ref === "string" ? record.notes_ref : undefined;
+  const status =
+    record.status === "pending" || record.status === "confirmed"
+      ? record.status
+      : undefined;
+  return {
+    id: record.id,
+    source: record.source,
+    source_ref: record.source_ref,
+    title: record.title,
+    starts_at: record.starts_at,
+    ends_at: record.ends_at,
+    all_day: record.all_day,
+    ...(location !== undefined ? { location } : {}),
+    ...(attendeesCount !== undefined
+      ? { attendees_count: attendeesCount }
+      : {}),
+    ...(attendees !== undefined ? { attendees } : {}),
+    ...(url !== undefined ? { url } : {}),
+    ...(notesRef !== undefined ? { notes_ref: notesRef } : {}),
+    ...(status !== undefined ? { status } : {}),
+  };
 }
 
 /** Read + validate the box event store. A missing store is an empty feed. */
@@ -69,7 +128,7 @@ export async function readEventsStore(
     : ((parsed as Record<string, unknown>)?.events ?? []);
   if (!Array.isArray(list)) return [];
   return list
-    .map(asEvent)
+    .map(parseCalendarEvent)
     .filter((event): event is CalendarEvent => event !== undefined);
 }
 
@@ -78,6 +137,31 @@ export interface BoxSource {
   provider: "apple_ics" | "calcom";
   /** apple_ics: the https ICS URL. calcom: the API key. Box-only (C4). */
   secret: string;
+}
+
+export function parseBoxSource(value: unknown): BoxSource | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const record = value as Record<string, unknown>;
+  if (
+    typeof record.id !== "string" ||
+    (record.provider !== "apple_ics" && record.provider !== "calcom") ||
+    typeof record.secret !== "string"
+  ) {
+    return undefined;
+  }
+  return {
+    id: record.id,
+    provider: record.provider,
+    secret: record.secret,
+  };
+}
+
+function parseBoxSources(value: unknown): BoxSource[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const sources = value.map(parseBoxSource);
+  return sources.every((source): source is BoxSource => source !== undefined)
+    ? sources
+    : undefined;
 }
 
 /**
@@ -104,7 +188,9 @@ export async function upsertBoxSource(
     const raw = await readFile(boxId, SOURCES_PATH);
     if (raw.trim() !== "") {
       const parsed = JSON.parse(raw) as unknown;
-      if (Array.isArray(parsed)) sources = parsed as BoxSource[];
+      const parsedSources = parseBoxSources(parsed);
+      if (!parsedSources) throw new Error("sources file has an invalid shape");
+      sources = parsedSources;
     }
   } catch (error) {
     // Only a missing file means "first source". A transient box/API failure
@@ -140,9 +226,9 @@ export async function removeBoxSource(
     return;
   }
   if (!Array.isArray(parsed)) return;
-  const next = (parsed as BoxSource[]).filter(
-    (entry) => entry.id !== sourceId
-  );
+  const sources = parseBoxSources(parsed);
+  if (!sources) return;
+  const next = sources.filter((entry) => entry.id !== sourceId);
   await writeFile(
     boxId,
     ".hermes/calendar/sources.json",

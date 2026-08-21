@@ -35,6 +35,62 @@ export interface ContentSlot {
   published_at: string | null;
 }
 
+function isStringRecord(value: unknown): value is Record<string, string> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.values(value).every((entry) => typeof entry === "string")
+  );
+}
+
+export function parseContentSlot(value: unknown): ContentSlot | null {
+  if (typeof value !== "object" || value === null) return null;
+  const row = value as Record<string, unknown>;
+  if (
+    typeof row.id !== "string" ||
+    typeof row.user_id !== "string" ||
+    typeof row.platform !== "string" ||
+    typeof row.account_ref !== "string" ||
+    typeof row.package_ref !== "string" ||
+    typeof row.scheduled_at !== "string" ||
+    typeof row.timezone !== "string" ||
+    typeof row.status !== "string" ||
+    typeof row.attempt !== "number" ||
+    !Number.isInteger(row.attempt) ||
+    typeof row.attempt_epoch !== "number" ||
+    !Number.isInteger(row.attempt_epoch) ||
+    (row.claimed_at !== null && typeof row.claimed_at !== "string") ||
+    !isStringRecord(row.publish_state) ||
+    (row.external_id !== null && typeof row.external_id !== "string") ||
+    (row.permalink !== null && typeof row.permalink !== "string") ||
+    (row.last_verdict !== null && typeof row.last_verdict !== "string") ||
+    (row.error_message !== null && typeof row.error_message !== "string") ||
+    (row.published_at !== null && typeof row.published_at !== "string")
+  ) {
+    return null;
+  }
+  return {
+    id: row.id,
+    user_id: row.user_id,
+    platform: row.platform,
+    account_ref: row.account_ref,
+    package_ref: row.package_ref,
+    scheduled_at: row.scheduled_at,
+    timezone: row.timezone,
+    status: row.status,
+    attempt: row.attempt,
+    attempt_epoch: row.attempt_epoch,
+    claimed_at: row.claimed_at,
+    publish_state: row.publish_state,
+    external_id: row.external_id,
+    permalink: row.permalink,
+    last_verdict: row.last_verdict,
+    error_message: row.error_message,
+    published_at: row.published_at,
+  };
+}
+
 export const SLOT_COLUMNS =
   "id, user_id, platform, account_ref, package_ref, scheduled_at, timezone, " +
   "status, attempt, attempt_epoch, claimed_at, publish_state, external_id, " +
@@ -73,7 +129,7 @@ export async function claimSlot(
   }
   const { data } = await query.select(SLOT_COLUMNS);
   if (!data || data.length === 0) return undefined;
-  return data[0] as unknown as ContentSlot;
+  return parseContentSlot(data[0]) ?? undefined;
 }
 
 export interface CapHeadroom {
