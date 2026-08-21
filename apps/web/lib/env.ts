@@ -77,28 +77,27 @@ export const env = {
     process.env.ADS_VAULT_KEY ?? process.env.BOX_DASHBOARD_AUTH_KEY ?? null,
   miniappOrigin: (): string =>
     optional("MINIAPP_ORIGIN", "https://mini.wzrd.tech"),
-  // First-party iMessage extension identity for full-screen mini-app cards.
-  // All three of app name / bundle id / team id must be set; otherwise card
-  // sends fall back to the generic app card. IMESSAGE_APP_STORE_ID is optional
-  // and only routes recipients without the extension to the App Store.
+  // iMessage extension identity for full-screen mini-app cards. Defaults to
+  // Photon/Spectrum's own published extension; override the IMESSAGE_* vars
+  // only when shipping a first-party extension. IMESSAGE_APP_STORE_ID routes
+  // recipients without the extension to its App Store entry.
   imessageMiniAppExtension: (): {
     appName: string;
     extensionBundleId: string;
     teamId: string;
     appStoreId?: number;
-  } | null => {
-    const appName = process.env.IMESSAGE_APP_NAME;
-    const extensionBundleId = process.env.IMESSAGE_EXTENSION_BUNDLE_ID;
-    const teamId = process.env.IMESSAGE_TEAM_ID;
-    if (!appName || !extensionBundleId || !teamId) return null;
+  } => {
     const appStoreId = Number.parseInt(
-      process.env.IMESSAGE_APP_STORE_ID ?? "",
+      optional("IMESSAGE_APP_STORE_ID", "6777616651"),
       10
     );
     return {
-      appName,
-      extensionBundleId,
-      teamId,
+      appName: optional("IMESSAGE_APP_NAME", "Spectrum"),
+      extensionBundleId: optional(
+        "IMESSAGE_EXTENSION_BUNDLE_ID",
+        "codes.photon.Spectrum.MessagesExtension"
+      ),
+      teamId: optional("IMESSAGE_TEAM_ID", "P8XT6232SL"),
       ...(Number.isFinite(appStoreId) && appStoreId > 0 ? { appStoreId } : {}),
     };
   },

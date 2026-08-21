@@ -98,18 +98,15 @@ export interface AppCardLayout {
 }
 
 /**
- * When the deploy names a first-party iMessage extension
- * (IMESSAGE_EXTENSION_BUNDLE_ID / IMESSAGE_TEAM_ID / IMESSAGE_APP_NAME),
- * cards are sent as customized iMessage App cards so Messages renders the
- * mini-app full-screen through that extension. Without the config the
- * generic app card keeps working as the fallback.
+ * Cards are sent as customized iMessage App cards so Messages renders the
+ * mini-app full-screen through the extension identified by the IMESSAGE_*
+ * env vars (default: Photon/Spectrum's published extension).
  */
 function buildAppCard(
   url: string,
   layout: AppCardLayout | undefined
 ): ReturnType<typeof appCard> {
   const extension = env.imessageMiniAppExtension();
-  if (!extension) return appCard(url, { live: true });
   return customizedMiniApp({
     appName: extension.appName,
     extensionBundleId: extension.extensionBundleId,
