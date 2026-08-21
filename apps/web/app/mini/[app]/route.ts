@@ -187,6 +187,7 @@ export async function GET(
       mintToken(claims.userId, slug, claims.resourceId, 15, {
         role: claims.role ?? "owner",
         grantId: claims.grantId,
+        via: claims.via,
       }),
       {
         httpOnly: true,

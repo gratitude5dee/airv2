@@ -6,7 +6,7 @@
  */
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { mintToken } from "@/lib/miniapps/tokens";
+import { mintToken, verifyToken } from "@/lib/miniapps/tokens";
 import type { GuestGrant } from "@/lib/miniapps/guests";
 
 vi.mock("@/lib/supabase", async () => {
@@ -435,6 +435,33 @@ describe("middleware hardening (MA11)", () => {
       })
     );
     expect(loader.headers.get("cache-control")).toBeNull();
+  });
+
+  it("passes through first-party public assets on the mini host", () => {
+    const asset = middleware(
+      new NextRequest("https://mini.wzrd.tech/creator-os/fx.js", {
+        headers: { host: "mini.wzrd.tech" },
+      })
+    );
+    expect(asset.headers.get("x-middleware-rewrite")).toBeNull();
+    expect(asset.status).toBe(200);
+  });
+
+  it("carries the card `via` marker from the signed link into the session cookie", async () => {
+    const token = mintToken("user-1", "kanban", "default", 15, {
+      via: "card",
+    });
+    const res = await GET(
+      new NextRequest(`https://mini.wzrd.tech/kanban?t=${token}`, {
+        headers: { host: "mini.wzrd.tech", "x-mini-host": "1" },
+      }),
+      params("kanban")
+    );
+    expect(res.status).toBe(303);
+    const cookie = (res.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
+    const value = decodeURIComponent(cookie.split("=").slice(1).join("="));
+    const claims = verifyToken(value, "kanban");
+    expect(claims?.via).toBe("card");
   });
 });
 
