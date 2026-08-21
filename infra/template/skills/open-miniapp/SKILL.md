@@ -1,6 +1,6 @@
 ---
 name: open-miniapp
-description: "Open a wzrd.tech mini-app for your human: send them a tappable card in the current conversation instead of opening anything on this machine."
+description: "Open a wzrd.tech mini-app for your human: run `open-miniapp-card <kind>` with the terminal tool (never execute_code, never a browser) to send them a tappable card in the current conversation."
 version: 1.0.0
 author: air
 license: MIT
@@ -28,9 +28,10 @@ Hard rules — no exceptions:
   that is this box's own control panel, not a mini-app.
 - MUST NOT paste a raw link into the chat instead of sending the card; the
   signed link is minted control-plane-side and only works from the card.
-- MUST run the curl below with the `terminal` tool. NEVER use `execute_code`
-  for it — `execute_code` waits on an approval that never comes and the card
-  never sends. The command is read-only on this machine and needs no consent.
+- MUST run `open-miniapp-card <kind>` with the `terminal` tool. NEVER use
+  `execute_code` for it — `execute_code` waits on an approval that never
+  comes and the card never sends. The command is read-only on this machine
+  and needs no consent.
 
 Bad (never do these):
 
@@ -39,14 +40,21 @@ Bad (never do these):
   dashboard sign-in) ✗
 - "show me onboarding" → launching Chrome / any computer-use action ✗
 
-Good: "open the calendar miniapp" → `POST /api/cards/calendar` (below), then
-tell the owner to tap the card. ✓
+Good: "open the calendar miniapp" → terminal: `open-miniapp-card calendar`,
+then tell the owner to tap the card. ✓
 
 ## Send the card
 
-Pick the matching kind and POST it with the `terminal` tool (not
-`execute_code`). The control plane mints a signed link scoped to the owner
-and drops the card into their conversation:
+Pick the matching kind and run this one command with the `terminal` tool
+(not `execute_code`). The control plane mints a signed link scoped to the
+owner and drops the card into their conversation:
+
+```bash
+open-miniapp-card <kind>
+```
+
+If that command is missing on this box, fall back to the equivalent curl
+(still terminal, never execute_code):
 
 ```bash
 OPENAI_BASE_URL="$(grep -m1 '^OPENAI_BASE_URL=' ~/.hermes/.env | cut -d= -f2-)"
@@ -75,6 +83,10 @@ Valid kinds and when to use them:
 | `image` | image tools |
 | `settings` | settings, preferences |
 | `computer` | seeing/controlling this computer's screen |
+
+"Home", "dashboard", or "the main app" is NOT a card kind: reply with the
+web dashboard link `https://app.wzrd.tech/home` instead of sending a card
+(that link is public, so pasting it is fine).
 
 After a successful send, tell them in your reply to tap the card you just
 sent (e.g. "Sent you the onboarding app — tap the card above to open it.").

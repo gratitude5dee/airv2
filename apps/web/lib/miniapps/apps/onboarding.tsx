@@ -56,6 +56,7 @@ import { onairosProvider, type OnairosStatus } from "./onairos";
 import {
   relayToOnairos,
   setSpectrumFlow,
+  spectrumFlowActive,
 } from "@/lib/onairos/spectrum";
 import { createSpectrumSender } from "@/lib/spectrum/sender";
 import { externalOrigin } from "../gates";
@@ -813,6 +814,13 @@ export const onboarding: MiniAppModule = {
       }
       const spaceId = String(destination.space_id);
       const phone = String(destination.phone);
+      if (await spectrumFlowActive(supabase, userId)) {
+        return respond(
+          ctx,
+          "onairos",
+          "The Onairos conversation is already going in your iMessage thread — reply there to continue."
+        );
+      }
       let result;
       try {
         result = await relayToOnairos({

@@ -259,12 +259,14 @@ if ! grep -q '## Mini-apps open on their phone' "$HOME_DIR/.hermes/SOUL.md" 2>/d
 ## Mini-apps open on their phone
 When your human asks you to open, show, launch, or pull up a mini-app
 (calendar, onboarding, todo, kanban, inbox, vault, and the rest), follow the
-open-miniapp skill: one POST to /api/cards/<kind> sends them a tappable card.
-This is NOT a website task — never use your browser or computer for it, never
-open localhost:3000 or 127.0.0.1 anything, and never open the dashboard on
-port 9119. Run the card-send curl with your terminal tool, never
-execute_code (it stalls waiting for an approval that never comes). If the
-card send succeeds, tell them to tap the card.
+open-miniapp skill: run `open-miniapp-card <kind>` with your terminal tool —
+that one command sends them a tappable card. This is NOT a website task —
+never use your browser or computer for it, never open localhost:3000 or
+127.0.0.1 anything, and never open the dashboard on port 9119. Never use
+execute_code for the card send (it stalls waiting for an approval that never
+comes). "Home"/"dashboard" is not a card: reply with the link
+https://app.wzrd.tech/home instead. If the card send succeeds, tell them to
+tap the card.
 EOF
 fi
 
@@ -318,6 +320,21 @@ fi
 exec "$HERMES_VENV/bin/python" "$HOME_DIR/.hermes/plugins/air-vault/cli.py" "\$@"
 SH
 sudo chmod +x /usr/local/bin/air-vault
+
+# open-miniapp-card <kind>: the one-command card send the open-miniapp skill
+# points at. Wrapping the curl in a named binary keeps the agent on the
+# terminal tool (a simple command name) instead of drifting into
+# execute_code, which stalls on an approval that never comes.
+sudo tee /usr/local/bin/open-miniapp-card >/dev/null <<SH
+#!/usr/bin/env bash
+set -euo pipefail
+kind="\${1:?usage: open-miniapp-card <kind>}"
+base="\$(grep -m1 '^OPENAI_BASE_URL=' "$HOME_DIR/.hermes/.env" | cut -d= -f2-)"
+key="\$(grep -m1 '^OPENAI_API_KEY=' "$HOME_DIR/.hermes/.env" | cut -d= -f2-)"
+exec curl -fsS -X POST "\${base%/api/gateway/v1}/api/cards/\${kind}" \\
+  -H "Authorization: Bearer \$key"
+SH
+sudo chmod +x /usr/local/bin/open-miniapp-card
 
 # User plugins are opt-in: the dashboard only imports a user plugin's backend
 # (plugin_api.py) when its name is in the plugins.enabled allow-list in
