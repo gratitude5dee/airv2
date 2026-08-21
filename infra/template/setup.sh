@@ -262,7 +262,9 @@ When your human asks you to open, show, launch, or pull up a mini-app
 open-miniapp skill: one POST to /api/cards/<kind> sends them a tappable card.
 This is NOT a website task — never use your browser or computer for it, never
 open localhost:3000 or 127.0.0.1 anything, and never open the dashboard on
-port 9119. If the card send succeeds, tell them to tap the card.
+port 9119. Run the card-send curl with your terminal tool, never
+execute_code (it stalls waiting for an approval that never comes). If the
+card send succeeds, tell them to tap the card.
 EOF
 fi
 
