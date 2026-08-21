@@ -20,13 +20,16 @@ import type { MiniAppCardSession } from "./cardSessions";
 import type { CardKind } from "./cardSends";
 import { mintToken } from "./tokens";
 
+/** Card links stay tappable for a day — cards linger in the transcript. */
+export const CARD_LINK_TTL_MINUTES = 24 * 60;
+
 export function mintSignedLink(
   userId: string,
   appSlug: string,
   resourceId: string
 ): string {
   // Apps live at mini.wzrd.tech/<slug> (MA0); legacy /mini/<slug> 301s there.
-  return `${env.miniappOrigin()}/${appSlug}?t=${mintToken(userId, appSlug, resourceId)}`;
+  return `${env.miniappOrigin()}/${appSlug}?t=${mintToken(userId, appSlug, resourceId, CARD_LINK_TTL_MINUTES)}`;
 }
 
 export async function sendMiniAppCard(
