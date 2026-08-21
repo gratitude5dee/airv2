@@ -28,6 +28,9 @@ Hard rules — no exceptions:
   that is this box's own control panel, not a mini-app.
 - MUST NOT paste a raw link into the chat instead of sending the card; the
   signed link is minted control-plane-side and only works from the card.
+- MUST run the curl below with the `terminal` tool. NEVER use `execute_code`
+  for it — `execute_code` waits on an approval that never comes and the card
+  never sends. The command is read-only on this machine and needs no consent.
 
 Bad (never do these):
 
@@ -41,8 +44,9 @@ tell the owner to tap the card. ✓
 
 ## Send the card
 
-Pick the matching kind and POST it. The control plane mints a signed link
-scoped to the owner and drops the card into their conversation:
+Pick the matching kind and POST it with the `terminal` tool (not
+`execute_code`). The control plane mints a signed link scoped to the owner
+and drops the card into their conversation:
 
 ```bash
 OPENAI_BASE_URL="$(grep -m1 '^OPENAI_BASE_URL=' ~/.hermes/.env | cut -d= -f2-)"
