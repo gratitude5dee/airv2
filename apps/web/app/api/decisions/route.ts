@@ -428,25 +428,26 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       .maybeSingle();
     if (scheduleRow) {
       const schedule = parseAgentSchedule(scheduleRow);
-      if (!schedule) return NextResponse.json({ ok: true });
-      let next: Date;
-      try {
-        next = nextRunAt(schedule.cron, schedule.timezone);
-      } catch {
-        next = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      if (schedule) {
+        let next: Date;
+        try {
+          next = nextRunAt(schedule.cron, schedule.timezone);
+        } catch {
+          next = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        }
+        await supabase
+          .from("agent_schedules")
+          .update({
+            status: "active",
+            failure_count: 0,
+            next_run_at: clampToWakingHours(
+              next,
+              schedule.timezone,
+              schedule.deliver
+            ).toISOString(),
+          })
+          .eq("id", schedule.id);
       }
-      await supabase
-        .from("agent_schedules")
-        .update({
-          status: "active",
-          failure_count: 0,
-          next_run_at: clampToWakingHours(
-            next,
-            schedule.timezone,
-            schedule.deliver
-          ).toISOString(),
-        })
-        .eq("id", schedule.id);
     }
   }
 
