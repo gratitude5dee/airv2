@@ -132,7 +132,10 @@ export async function fork(options: ForkOptions): Promise<Box> {
       body: JSON.stringify({
         noEnv: true,
         env: options.env,
-        ttlSeconds: options.ttlSeconds ?? BOX_TTL_SECONDS,
+        ttlSeconds:
+          options.ttlSeconds !== undefined
+            ? options.ttlSeconds
+            : BOX_TTL_SECONDS,
         ...(options.size ? { size: options.size } : {}),
       }),
     }
