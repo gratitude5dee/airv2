@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { isReservedWord, RESERVED_WORDS } from "./reserved";
-import { PublishError, slugFor, validateAppName } from "./publish";
+import {
+  parseGateSettingsRow,
+  PublishError,
+  slugFor,
+  validateAppName,
+} from "./publish";
 import { parseRegistryApp } from "./registry";
 
 describe("reserved words (both directions)", () => {
@@ -90,8 +95,43 @@ describe("parseRegistryApp", () => {
     expect(parseRegistryApp(valid)).toEqual(valid);
   });
 
+  it("coerces numeric prices returned as strings", () => {
+    expect(
+      parseRegistryApp({ ...valid, x402_price_usdc: "0.500000" })
+    ).toMatchObject({ x402_price_usdc: 0.5 });
+  });
+
   it("rejects rows with a drifted domain field", () => {
     expect(parseRegistryApp({ ...valid, status: "active" })).toBeNull();
     expect(parseRegistryApp({ ...valid, x402_enabled: "false" })).toBeNull();
+  });
+});
+
+describe("parseGateSettingsRow", () => {
+  it("coerces numeric prices returned as strings", () => {
+    expect(
+      parseGateSettingsRow({
+        id: "app-1",
+        owner_user_id: "user-1",
+        x402_enabled: true,
+        x402_price_usdc: "0.500000",
+      })
+    ).toEqual({
+      id: "app-1",
+      owner_user_id: "user-1",
+      x402_enabled: true,
+      x402_price_usdc: 0.5,
+    });
+  });
+
+  it("rejects empty numeric strings", () => {
+    expect(
+      parseGateSettingsRow({
+        id: "app-1",
+        owner_user_id: "user-1",
+        x402_enabled: false,
+        x402_price_usdc: "  ",
+      })
+    ).toBeNull();
   });
 });

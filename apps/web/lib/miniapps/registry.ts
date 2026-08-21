@@ -36,6 +36,18 @@ function isNullableString(value: unknown): value is string | null {
   return value === null || typeof value === "string";
 }
 
+export function parseNullableNumeric(
+  value: unknown
+): number | null | undefined {
+  if (value === null) return null;
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : undefined;
+  }
+  if (typeof value !== "string" || value.trim() === "") return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 function isRegistryKind(value: unknown): value is RegistryApp["kind"] {
   return value === "render" || value === "input" || value === "passthrough";
 }
@@ -58,6 +70,7 @@ function isRegistryAccess(value: unknown): value is RegistryApp["access"] {
 export function parseRegistryApp(value: unknown): RegistryApp | null {
   if (typeof value !== "object" || value === null) return null;
   const row = value as Record<string, unknown>;
+  const x402PriceUsdc = parseNullableNumeric(row.x402_price_usdc);
   if (
     typeof row.id !== "string" ||
     typeof row.slug !== "string" ||
@@ -73,9 +86,7 @@ export function parseRegistryApp(value: unknown): RegistryApp | null {
     !isRegistryAccess(row.access) ||
     !isNullableString(row.password_hash) ||
     typeof row.x402_enabled !== "boolean" ||
-    (row.x402_price_usdc !== null &&
-      (typeof row.x402_price_usdc !== "number" ||
-        !Number.isFinite(row.x402_price_usdc))) ||
+    x402PriceUsdc === undefined ||
     typeof row.plugin_signin_enabled !== "boolean" ||
     !isRegistryStatus(row.status) ||
     !isNullableString(row.bundle_version) ||
@@ -99,7 +110,7 @@ export function parseRegistryApp(value: unknown): RegistryApp | null {
     access: row.access,
     password_hash: row.password_hash,
     x402_enabled: row.x402_enabled,
-    x402_price_usdc: row.x402_price_usdc,
+    x402_price_usdc: x402PriceUsdc,
     plugin_signin_enabled: row.plugin_signin_enabled,
     status: row.status,
     bundle_version: row.bundle_version,

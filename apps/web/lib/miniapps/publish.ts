@@ -10,7 +10,11 @@
 import { randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { hashPassword } from "./gates";
-import { parseRegistryApp, type RegistryApp } from "./registry";
+import {
+  parseNullableNumeric,
+  parseRegistryApp,
+  type RegistryApp,
+} from "./registry";
 import { isReservedWord } from "./reserved";
 
 export class PublishError extends Error {
@@ -237,17 +241,16 @@ interface GateSettingsRow {
   x402_price_usdc: number | null;
 }
 
-function parseGateSettingsRow(value: unknown): GateSettingsRow | null {
+export function parseGateSettingsRow(value: unknown): GateSettingsRow | null {
   if (typeof value !== "object" || value === null) return null;
   const row = value as Record<string, unknown>;
+  const x402PriceUsdc = parseNullableNumeric(row.x402_price_usdc);
   if (
     typeof row.id !== "string" ||
     (row.owner_user_id !== null &&
       typeof row.owner_user_id !== "string") ||
     typeof row.x402_enabled !== "boolean" ||
-    (row.x402_price_usdc !== null &&
-      (typeof row.x402_price_usdc !== "number" ||
-        !Number.isFinite(row.x402_price_usdc)))
+    x402PriceUsdc === undefined
   ) {
     return null;
   }
@@ -255,7 +258,7 @@ function parseGateSettingsRow(value: unknown): GateSettingsRow | null {
     id: row.id,
     owner_user_id: row.owner_user_id,
     x402_enabled: row.x402_enabled,
-    x402_price_usdc: row.x402_price_usdc,
+    x402_price_usdc: x402PriceUsdc,
   };
 }
 
