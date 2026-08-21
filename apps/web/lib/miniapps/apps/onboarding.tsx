@@ -494,8 +494,23 @@ export const onboarding: MiniAppModule = {
 
     if (action === "connect_stripe") {
       const here = `${externalOrigin(ctx.request)}${ctx.basePath}?step=stripe`;
-      const url = await startOnboarding(supabase, userId, here, here);
-      return withBaseHeaders(NextResponse.redirect(url, 303));
+      try {
+        const url = await startOnboarding(supabase, userId, here, here);
+        return withBaseHeaders(NextResponse.redirect(url, 303));
+      } catch (error) {
+        console.log(
+          JSON.stringify({
+            msg: "onboarding stripe connect failed",
+            user_id: userId,
+            error: error instanceof Error ? error.message : String(error),
+          })
+        );
+        return respond(
+          ctx,
+          "stripe",
+          "Stripe onboarding isn't available right now — try again later, or skip and connect from the Shop app."
+        );
+      }
     }
 
     if (action === "run_workflow") {
