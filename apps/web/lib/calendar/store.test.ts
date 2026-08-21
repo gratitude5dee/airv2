@@ -22,6 +22,34 @@ describe("parseCalendarEvent", () => {
     });
   });
 
+  it("treats explicit JSON null optionals as absent", () => {
+    expect(
+      parseCalendarEvent({
+        id: "event-1",
+        source: "google",
+        source_ref: "google-1",
+        title: "Standup",
+        starts_at: "2026-08-01T09:00:00Z",
+        ends_at: "2026-08-01T09:30:00Z",
+        all_day: false,
+        location: null,
+        attendees_count: null,
+        attendees: null,
+        url: null,
+        notes_ref: null,
+        status: null,
+      })
+    ).toEqual({
+      id: "event-1",
+      source: "google",
+      source_ref: "google-1",
+      title: "Standup",
+      starts_at: "2026-08-01T09:00:00Z",
+      ends_at: "2026-08-01T09:30:00Z",
+      all_day: false,
+    });
+  });
+
   it("rejects missing required fields and invalid optional fields", () => {
     expect(parseCalendarEvent({ id: "event-1", title: "Missing source" })).toBeUndefined();
     expect(

@@ -55,16 +55,25 @@ export function parseCalendarEvent(value: unknown): CalendarEvent | undefined {
     typeof record.starts_at !== "string" ||
     typeof record.ends_at !== "string" ||
     typeof record.all_day !== "boolean" ||
-    (record.location !== undefined && typeof record.location !== "string") ||
-    (record.attendees_count !== undefined &&
+    (record.location !== null &&
+      record.location !== undefined &&
+      typeof record.location !== "string") ||
+    (record.attendees_count !== null &&
+      record.attendees_count !== undefined &&
       (typeof record.attendees_count !== "number" ||
         !Number.isInteger(record.attendees_count))) ||
-    (record.attendees !== undefined &&
+    (record.attendees !== null &&
+      record.attendees !== undefined &&
       (!Array.isArray(record.attendees) ||
         record.attendees.some((entry) => typeof entry !== "string"))) ||
-    (record.url !== undefined && typeof record.url !== "string") ||
-    (record.notes_ref !== undefined && typeof record.notes_ref !== "string") ||
-    (record.status !== undefined &&
+    (record.url !== null &&
+      record.url !== undefined &&
+      typeof record.url !== "string") ||
+    (record.notes_ref !== null &&
+      record.notes_ref !== undefined &&
+      typeof record.notes_ref !== "string") ||
+    (record.status !== null &&
+      record.status !== undefined &&
       record.status !== "pending" &&
       record.status !== "confirmed")
   ) {
