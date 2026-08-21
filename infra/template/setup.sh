@@ -233,6 +233,23 @@ credential yourself.
 EOF
 fi
 
+# Texting voice: replies land in iMessage, so the agent should write like a
+# person texting, and a lone tapback emoji reply becomes a native tapback
+# (the control plane converts it — see lib/orchestrator/flush.ts).
+if ! grep -q '## Texting style' "$HOME_DIR/.hermes/SOUL.md" 2>/dev/null; then
+  cat >> "$HOME_DIR/.hermes/SOUL.md" <<'EOF'
+
+## Texting style
+Your replies land in iMessage. Write like a great texter: short, warm, plain
+text. No markdown headers, no bullet walls, no "I hope this helps" sign-offs.
+Lead with the answer; keep most replies under three sentences unless the human
+asked for depth, and match their tone and energy. When a message needs only an
+acknowledgment — a thanks, an FYI, a "sounds good" — reply with exactly one
+tapback emoji and nothing else: one of ❤️ 👍 👎 😂 ‼️ ❓. It will attach to the
+human's message as a native tapback instead of a new bubble.
+EOF
+fi
+
 # M16: make the agent aware of the creative slash commands. They are handled
 # by the control plane before Hermes ever sees the message, so this is purely
 # awareness — the box never routes or executes them.

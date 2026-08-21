@@ -10,6 +10,7 @@ import {
   app as appCard,
   attachment,
   edit,
+  reaction,
   read,
   richlink,
   text,
@@ -33,6 +34,17 @@ export interface SpectrumSender {
   markRead(spaceId: string, phone: string, messageId: string): Promise<void>;
   /** Send one finished text bubble. */
   sendText(spaceId: string, phone: string, body: string): Promise<void>;
+  /**
+   * Attach a tapback/emoji reaction to an inbound message. Resolves true
+   * when the reaction was sent, false when the target could not be resolved
+   * or the platform skipped it.
+   */
+  react(
+    spaceId: string,
+    phone: string,
+    messageId: string,
+    emoji: string
+  ): Promise<boolean>;
   /**
    * Stream a reply: the first chunk lands as a real message and is edited
    * in place as more arrives (goal.md M2 task 6).
@@ -97,6 +109,13 @@ export async function createSpectrumSender(): Promise<SpectrumSender> {
     },
     sendText: async (spaceId, phone, body) => {
       await (await space(spaceId, phone)).send(text(body));
+    },
+    react: async (spaceId, phone, messageId, emoji) => {
+      const s = await space(spaceId, phone);
+      const message = await s.getMessage(messageId);
+      if (!message || message.direction !== "inbound") return false;
+      const sent = await s.send(reaction(emoji, message));
+      return sent !== undefined;
     },
     streamText: async (spaceId, phone, stream) => {
       await (await space(spaceId, phone)).send(text(stream));
