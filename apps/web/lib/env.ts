@@ -77,6 +77,30 @@ export const env = {
     process.env.ADS_VAULT_KEY ?? process.env.BOX_DASHBOARD_AUTH_KEY ?? null,
   miniappOrigin: (): string =>
     optional("MINIAPP_ORIGIN", "https://mini.wzrd.tech"),
+  // iMessage extension identity for full-screen mini-app cards. Defaults to
+  // Photon/Spectrum's own published extension; override the IMESSAGE_* vars
+  // only when shipping a first-party extension. IMESSAGE_APP_STORE_ID routes
+  // recipients without the extension to its App Store entry.
+  imessageMiniAppExtension: (): {
+    appName: string;
+    extensionBundleId: string;
+    teamId: string;
+    appStoreId?: number;
+  } => {
+    const appStoreId = Number.parseInt(
+      optional("IMESSAGE_APP_STORE_ID", "6777616651"),
+      10
+    );
+    return {
+      appName: optional("IMESSAGE_APP_NAME", "Spectrum"),
+      extensionBundleId: optional(
+        "IMESSAGE_EXTENSION_BUNDLE_ID",
+        "codes.photon.Spectrum.MessagesExtension"
+      ),
+      teamId: optional("IMESSAGE_TEAM_ID", "P8XT6232SL"),
+      ...(Number.isFinite(appStoreId) && appStoreId > 0 ? { appStoreId } : {}),
+    };
+  },
   // MA4 public media lane (R2). All three credentials must be present for the
   // lane to be configured; when absent every write path reports itself
   // unconfigured instead of failing the deploy. Keys are server-side only —
