@@ -32,7 +32,8 @@ import { launchMiniApp } from "./launch";
 import { MAX_UPLOAD_BYTES, UPLOAD_CHUNK_BYTES } from "@/lib/chat/attachments";
 import { HomeNav, parseSection, type Section, type ThreadItem } from "./nav";
 import { ComputerCard, type ComputerDockState } from "./air/computer-card";
-import { SpeedCard } from "./rail/speed-card";
+import { MODEL_FAMILY_OPTIONS, SpeedCard } from "./rail/speed-card";
+import { InklingConsentDialog } from "./rail/inkling-consent";
 import { AppsGrid } from "./rail/apps-grid";
 import { NeedsPanel } from "./panels/needs-panel";
 import { PeoplePanel } from "./panels/people-panel";
@@ -54,7 +55,10 @@ interface Me {
   entitlement: {
     plan: string;
     speed_tier: string;
+    /** Defaults to "ox-alpha" for anyone who never picked a family. */
+    model_family?: string;
     tier_models?: { fast: string; balanced: string; deep: string };
+    family_models?: Record<string, string>;
     monthly_cap_usd: number;
     spend_mtd_usd: number;
   } | null;
@@ -147,6 +151,9 @@ function HomeShell() {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [tier, setTier] = useState("balanced");
+  const [family, setFamily] = useState("ox-alpha");
+  // Set while an Inkling family waits on its consent pop-up.
+  const [pendingFamily, setPendingFamily] = useState<string | null>(null);
   const [computerEpoch, setComputerEpoch] = useState(0);
   const [calendarPrefill, setCalendarPrefill] = useState<{
     name: string;
@@ -306,7 +313,10 @@ function HomeShell() {
       }
       const data = (await res.json()) as Me;
       setMe(data);
-      if (data.entitlement) setTier(data.entitlement.speed_tier);
+      if (data.entitlement) {
+        setTier(data.entitlement.speed_tier);
+        setFamily(data.entitlement.model_family ?? "ox-alpha");
+      }
       // Pre-warm the box so the first message / panel load doesn't wait on
       // a cold resume. Best-effort: every consumer handles a sleeping box.
       fetch("/api/box/wake", { method: "POST" }).catch(() => {});
@@ -801,6 +811,31 @@ function HomeShell() {
     }
   }
 
+  /** Inkling needs the pop-up first; everything else saves immediately. */
+  function pickFamily(next: string) {
+    if (next === "inkling" || next === "inkling-small") {
+      setPendingFamily(next);
+      return;
+    }
+    void saveFamily(next, false);
+  }
+
+  async function saveFamily(next: string, agreeTml: boolean) {
+    setFamily(next);
+    try {
+      await fetch("/api/settings/model", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model_family: next,
+          ...(agreeTml ? { agree_tml: true } : {}),
+        }),
+      });
+    } catch {
+      // best-effort; the family is re-read from /api/me on next load
+    }
+  }
+
   async function logout() {
     try {
       await fetch("/api/auth/logout", { method: "POST" });
@@ -1111,6 +1146,8 @@ function HomeShell() {
           <SpeedCard
             tier={tier}
             onTierChange={(next) => void saveTier(next)}
+            family={family}
+            onFamilyChange={pickFamily}
             entitlement={me?.entitlement ?? null}
           />
           <AppsGrid
@@ -1119,6 +1156,20 @@ function HomeShell() {
           />
         </aside>
       </div>
+      {pendingFamily ? (
+        <InklingConsentDialog
+          familyLabel={
+            MODEL_FAMILY_OPTIONS.find(([id]) => id === pendingFamily)?.[1] ??
+            pendingFamily
+          }
+          onAgree={() => {
+            const next = pendingFamily;
+            setPendingFamily(null);
+            void saveFamily(next, true);
+          }}
+          onCancel={() => setPendingFamily(null)}
+        />
+      ) : null}
     </main>
   );
 }

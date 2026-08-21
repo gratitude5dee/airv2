@@ -6,11 +6,51 @@
 
 export type SpeedTier = "fast" | "balanced" | "deep";
 
+/**
+ * The model family sits on top of the tiers: `openai` resolves through the
+ * speed tier, every other family is a single upstream slug. Ox Alpha is the
+ * default for anyone who never touches the setting.
+ */
+export type ModelFamily = "openai" | "ox-alpha" | "inkling" | "inkling-small";
+
+export const DEFAULT_MODEL_FAMILY: ModelFamily = "ox-alpha";
+
 const TIER_MODELS: Record<SpeedTier, string> = {
   fast: "gpt-5.6-luna",
   balanced: "gpt-5.6-luna",
   deep: "gpt-5.6-terra",
 };
+
+/** OpenRouter slugs for the families that don't go through the tiers. */
+const FAMILY_MODELS: Record<Exclude<ModelFamily, "openai">, string> = {
+  "ox-alpha": "stealth/ox-alpha",
+  inkling: "thinkingmachines/inkling:free",
+  "inkling-small": "thinkingmachines/inkling-small:free",
+};
+
+/** Families whose selection needs the TML free-endpoint consent (§7). */
+export const CONSENT_FAMILIES: readonly ModelFamily[] = [
+  "inkling",
+  "inkling-small",
+];
+
+export function isModelFamily(value: string): value is ModelFamily {
+  return (
+    value === "openai" ||
+    value === "ox-alpha" ||
+    value === "inkling" ||
+    value === "inkling-small"
+  );
+}
+
+export function requiresConsent(family: ModelFamily): boolean {
+  return CONSENT_FAMILIES.includes(family);
+}
+
+/** True for the families served by OpenRouter rather than OpenAI directly. */
+export function isOpenRouterFamily(family: ModelFamily): boolean {
+  return family !== "openai";
+}
 
 /**
  * OpenAI reasoning families (gpt-5.x / o-series) accept `reasoning_effort`
@@ -69,12 +109,42 @@ const TIER_PRICING: Record<SpeedTier, { input: number; output: number }> = {
   deep: { input: 4, output: 24 },
 };
 
+/** USD per 1M tokens for the non-tier families (OpenRouter list prices —
+ * Ox Alpha and both `:free` Inkling endpoints are free today). */
+const FAMILY_PRICING: Record<
+  Exclude<ModelFamily, "openai">,
+  { input: number; output: number }
+> = {
+  "ox-alpha": { input: 0, output: 0 },
+  inkling: { input: 0, output: 0 },
+  "inkling-small": { input: 0, output: 0 },
+};
+
 export function isSpeedTier(value: string): value is SpeedTier {
   return value === "fast" || value === "balanced" || value === "deep";
 }
 
 export function modelForTier(tier: SpeedTier): string {
   return tierOverride(tier) ?? TIER_MODELS[tier];
+}
+
+/**
+ * The one resolution point for "what model does this user actually get":
+ * a family slug for everything but `openai`, which keeps using the tiers.
+ */
+export function modelForSelection(
+  family: ModelFamily,
+  tier: SpeedTier
+): string {
+  return family === "openai" ? modelForTier(tier) : FAMILY_MODELS[family];
+}
+
+/** Display label for a family — the tier's label for `openai` (C19). */
+export function modelLabelForFamily(
+  family: ModelFamily,
+  tier: SpeedTier
+): string {
+  return family === "openai" ? modelLabelForTier(tier) : FAMILY_MODELS[family];
 }
 
 /**
@@ -95,9 +165,11 @@ export function modelLabelForTier(tier: SpeedTier): string {
 export function costUsd(
   tier: SpeedTier,
   promptTokens: number,
-  completionTokens: number
+  completionTokens: number,
+  family: ModelFamily = "openai"
 ): number {
-  const pricing = TIER_PRICING[tier];
+  const pricing =
+    family === "openai" ? TIER_PRICING[tier] : FAMILY_PRICING[family];
   return (
     (promptTokens * pricing.input + completionTokens * pricing.output) / 1_000_000
   );

@@ -51,6 +51,9 @@ vi.mock("@/lib/settings/account", async (importOriginal) => {
   return {
     SPEED_TIERS: actual.SPEED_TIERS,
     isSpeedTier: actual.isSpeedTier,
+    MODEL_FAMILIES: actual.MODEL_FAMILIES,
+    MODEL_FAMILY_LABELS: actual.MODEL_FAMILY_LABELS,
+    setModelFamily: vi.fn(async () => true),
     setUsername: vi.fn(async () => ({
       ok: true as const,
       username: "newname",
@@ -67,7 +70,7 @@ import {
 } from "@/lib/miniapps/onboarding";
 import { connect } from "@/lib/miniapps/apps/connect";
 import { settings } from "@/lib/miniapps/apps/settings";
-import { setSpeedTier } from "@/lib/settings/account";
+import { setModelFamily, setSpeedTier } from "@/lib/settings/account";
 import { beginConnect } from "@/lib/connectors/manage";
 
 const HOSTILE = '<script>alert("pwn")</script>';
@@ -232,5 +235,50 @@ describe("settings mini-app", () => {
     form.set("speed_tier", "warp");
     const response = await settings.action!(settingsCtx(), form);
     expect(response.status).toBe(403);
+  });
+
+  it("shows Ox Alpha as the selected family when none is stored", async () => {
+    const body = await (await settings.render(settingsCtx())).text();
+    expect(body).toContain("Ox Alpha");
+    expect(body).toContain("Inkling");
+    expect(body).toContain('target="_blank" rel="noopener"');
+    expect(body).toContain("TML Free Research API Terms of Service");
+  });
+
+  it("model family writes go through the shared account helper", async () => {
+    const form = new FormData();
+    form.set("action", "set_model_family");
+    form.set("model_family", "openai");
+    const response = await settings.action!(settingsCtx(), form);
+    expect(response.status).toBe(200);
+    expect(vi.mocked(setModelFamily)).toHaveBeenCalledWith(
+      expect.anything(),
+      "user-1",
+      "openai"
+    );
+  });
+
+  it("rejects an unknown model family", async () => {
+    const form = new FormData();
+    form.set("action", "set_model_family");
+    form.set("model_family", "gpt-4o");
+    expect((await settings.action!(settingsCtx(), form)).status).toBe(403);
+  });
+
+  it("rejects an Inkling family without consent", async () => {
+    vi.mocked(setModelFamily).mockClear();
+    const form = new FormData();
+    form.set("action", "set_model_family");
+    form.set("model_family", "inkling");
+    expect((await settings.action!(settingsCtx(), form)).status).toBe(403);
+    expect(vi.mocked(setModelFamily)).not.toHaveBeenCalled();
+
+    form.set("agree_tml", "1");
+    expect((await settings.action!(settingsCtx(), form)).status).toBe(200);
+    expect(vi.mocked(setModelFamily)).toHaveBeenCalledWith(
+      expect.anything(),
+      "user-1",
+      "inkling"
+    );
   });
 });

@@ -11,11 +11,15 @@ import { env } from "@/lib/env";
 import { serviceClient } from "@/lib/supabase";
 import {
   costUsd,
+  DEFAULT_MODEL_FAMILY,
+  isModelFamily,
+  isOpenRouterFamily,
   isReasoningModel,
   isSpeedTier,
-  modelForTier,
+  modelForSelection,
   reasoningForTier,
   serviceTierForTier,
+  type ModelFamily,
 } from "@/lib/entitlements/models";
 import { currentPeriodSpend } from "@/lib/entitlements/spend";
 
@@ -34,11 +38,12 @@ function unauthorized(): NextResponse {
 async function meter(
   userId: string,
   tier: "fast" | "balanced" | "deep",
+  family: ModelFamily,
   usage: Usage
 ): Promise<void> {
   const promptTokens = usage.prompt_tokens ?? 0;
   const completionTokens = usage.completion_tokens ?? 0;
-  const cost = costUsd(tier, promptTokens, completionTokens);
+  const cost = costUsd(tier, promptTokens, completionTokens, family);
   const supabase = serviceClient();
   const { error: runError } = await supabase.from("agent_runs").insert({
     user_id: userId,
@@ -148,7 +153,9 @@ export async function POST(
 
   const { data: entitlement } = await supabase
     .from("entitlements")
-    .select("speed_tier, monthly_cap_usd, spend_mtd_usd, spend_period_start, suspended_reason")
+    .select(
+      "speed_tier, model_family, monthly_cap_usd, spend_mtd_usd, spend_period_start, suspended_reason"
+    )
     .eq("user_id", userId)
     .maybeSingle();
   if (!entitlement || entitlement.suspended_reason) return unauthorized();
@@ -171,6 +178,9 @@ export async function POST(
 
   const tierValue = String(entitlement.speed_tier);
   const tier = isSpeedTier(tierValue) ? tierValue : "balanced";
+  // A user who never touched the setting gets Ox Alpha, not OpenAI.
+  const familyValue = String(entitlement.model_family ?? "");
+  const family = isModelFamily(familyValue) ? familyValue : DEFAULT_MODEL_FAMILY;
 
   let body: Record<string, unknown>;
   try {
@@ -178,9 +188,9 @@ export async function POST(
   } catch {
     return NextResponse.json({ error: "invalid JSON" }, { status: 400 });
   }
-  // The tier name is the only thing that ever appears in a box's config —
-  // the real model ID is resolved here and only here.
-  body.model = modelForTier(tier);
+  // The tier and family names are the only things that ever appear in a
+  // box's config — the real model ID is resolved here and only here.
+  body.model = modelForSelection(family, tier);
   // gpt-5.6 on /v1/chat/completions rejects function tools with any
   // reasoning_effort other than "none", so tool-bearing calls (every Hermes
   // agent turn) pin it there; plain completions get the configured effort.
@@ -219,17 +229,28 @@ export async function POST(
     body.stream_options = { ...(body.stream_options as object), include_usage: true };
   }
 
-  const upstream = await fetch(
-    `${env.modelProviderBaseUrl()}/${path.join("/")}`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${env.modelProviderApiKey()}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    }
-  );
+  const openRouter = isOpenRouterFamily(family);
+  const baseUrl = openRouter
+    ? env.openRouterBaseUrl()
+    : env.modelProviderBaseUrl();
+  const apiKey = openRouter
+    ? env.openRouterApiKey()
+    : env.modelProviderApiKey();
+  const upstream = await fetch(`${baseUrl}/${path.join("/")}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      // OpenRouter attribution (ignored by other upstreams).
+      ...(openRouter
+        ? {
+            "HTTP-Referer": env.appOrigin(),
+            "X-OpenRouter-Title": "AIR",
+          }
+        : {}),
+    },
+    body: JSON.stringify(body),
+  });
 
   if (!upstream.ok || !upstream.body) {
     const errorBody = await upstream.text();
@@ -241,7 +262,7 @@ export async function POST(
 
   if (streaming) {
     const stream = meteringTee(upstream.body, (usage) => {
-      after(meter(userId, tier, usage));
+      after(meter(userId, tier, family, usage));
     });
     return new Response(stream, {
       status: 200,
@@ -255,7 +276,7 @@ export async function POST(
   const json = (await upstream.json()) as { usage?: Usage };
   if (json.usage) {
     const usage = json.usage;
-    after(meter(userId, tier, usage));
+    after(meter(userId, tier, family, usage));
   }
   return NextResponse.json(json, { status: 200 });
 }

@@ -14,10 +14,19 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "@/lib/env";
 import {
   isSpeedTier,
+  MODEL_FAMILIES,
+  MODEL_FAMILY_LABELS,
+  setModelFamily,
   setSpeedTier,
   setUsername,
   SPEED_TIERS,
 } from "@/lib/settings/account";
+import {
+  DEFAULT_MODEL_FAMILY,
+  isModelFamily,
+  requiresConsent,
+} from "@/lib/entitlements/models";
+import { INKLING_CONSENT } from "@/lib/entitlements/inkling";
 import { StartLimitError } from "@/lib/orchestrator/boxes";
 import { esc, forbidden, html, page } from "../html";
 import { promptBar, runPrompt } from "../promptBar";
@@ -29,6 +38,7 @@ import type { MiniAppContext, MiniAppModule } from "./types";
 interface SettingsData {
   username: string | null;
   speedTier: string | null;
+  modelFamily: string;
   plan: string | null;
   address: string | null;
   pluginSessions: Array<{
@@ -53,7 +63,7 @@ async function loadSettings(
     supabase.from("users").select("username").eq("id", userId).maybeSingle(),
     supabase
       .from("entitlements")
-      .select("plan, speed_tier")
+      .select("plan, speed_tier, model_family")
       .eq("user_id", userId)
       .maybeSingle(),
     supabase
@@ -78,12 +88,25 @@ async function loadSettings(
   return {
     username: (user?.username as string | null) ?? null,
     speedTier: (entitlement?.speed_tier as string | null) ?? null,
+    modelFamily: (() => {
+      const value = String(entitlement?.model_family ?? "");
+      return isModelFamily(value) ? value : DEFAULT_MODEL_FAMILY;
+    })(),
     plan: (entitlement?.plan as string | null) ?? null,
     address: (addressRow?.address as string | null) ?? null,
     pluginSessions: (tokens ?? []) as SettingsData["pluginSessions"],
     bucket:
       (bucket as { bytes_used: number; quota_bytes: number } | null) ?? null,
   };
+}
+
+/** The TML free-endpoint notice, with its two links opening in a new tab. */
+function consentHtml(): string {
+  return INKLING_CONSENT.map((segment) =>
+    segment.href
+      ? `<a href="${esc(segment.href)}" target="_blank" rel="noopener">${esc(segment.text)}</a>`
+      : esc(segment.text)
+  ).join("");
 }
 
 function section(title: string, body: string): string {
@@ -124,6 +147,26 @@ function renderSettings(
   const speedSection = section(
     "SPEED & INTELLIGENCE",
     `<div class="card"><div style="display:flex;gap:6px">${speedButtons}</div><p style="color:var(--muted);font-size:11px;margin:6px 0 0">Faster answers or deeper reasoning — a tier, never a specific model.</p></div>`
+  );
+  const plainFamilyButtons = MODEL_FAMILIES.filter(
+    (family) => !requiresConsent(family)
+  )
+    .map(
+      (family) =>
+        `<form method="post" style="margin:0"><input type="hidden" name="action" value="set_model_family"><input type="hidden" name="model_family" value="${esc(family)}"><button${family === data.modelFamily ? "" : ' class="ghost"'}>${esc(MODEL_FAMILY_LABELS[family])}</button></form>`
+    )
+    .join("");
+  // The two free Inkling endpoints only save with the consent box ticked —
+  // the warning is inline and the checkbox is re-checked server-side.
+  const consentFamilyForms = MODEL_FAMILIES.filter(requiresConsent)
+    .map(
+      (family) =>
+        `<form method="post" style="margin:8px 0 0"><input type="hidden" name="action" value="set_model_family"><input type="hidden" name="model_family" value="${esc(family)}"><label style="display:flex;gap:6px;align-items:flex-start;font-size:11px;color:var(--muted)"><input type="checkbox" name="agree_tml" value="1"><span>I agree to the terms above and want ${esc(MODEL_FAMILY_LABELS[family])}.</span></label><button${family === data.modelFamily ? "" : ' class="ghost"'} style="margin-top:6px">${esc(MODEL_FAMILY_LABELS[family])}</button></form>`
+    )
+    .join("");
+  const modelSection = section(
+    "MODEL",
+    `<div class="card"><div style="display:flex;gap:6px;flex-wrap:wrap">${plainFamilyButtons}</div><p style="color:var(--muted);font-size:11px;margin:6px 0 0">Ox Alpha unless you pick otherwise. OpenAI follows your speed tier above.</p><div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--ring)"><p style="color:var(--muted);font-size:11px;margin:0">${consentHtml()}</p>${consentFamilyForms}</div></div>`
   );
   const emailSection = section(
     "AGENT EMAIL",
@@ -174,7 +217,7 @@ function renderSettings(
   );
   return page(
     "Settings",
-    `<h1>Settings</h1>${notice ? `<p style="color:var(--muted);font-size:12px">${esc(notice)}</p>` : ""}${usernameSection}${speedSection}${emailSection}${contactSection}${timezoneSection}${memorySection}${onairosSection}${pluginSection}${storageSection}${traceSection}${dataSection}
+    `<h1>Settings</h1>${notice ? `<p style="color:var(--muted);font-size:12px">${esc(notice)}</p>` : ""}${usernameSection}${speedSection}${modelSection}${emailSection}${contactSection}${timezoneSection}${memorySection}${onairosSection}${pluginSection}${storageSection}${traceSection}${dataSection}
 ${promptBar("Ask your agent — e.g. change my speed tier to fast…")}`
   );
 }
@@ -247,6 +290,22 @@ export const settings: MiniAppModule = {
       return respond(
         ctx,
         `You're @${result.username}${result.address ? ` — agent email is now ${result.address}` : ""}.`
+      );
+    }
+
+    if (action === "set_model_family") {
+      const family = String(form.get("model_family") ?? "");
+      if (!isModelFamily(family)) return forbidden("invalid model family");
+      // Consent is enforced here too, not only in the markup that carries it.
+      if (requiresConsent(family) && String(form.get("agree_tml") ?? "") !== "1") {
+        return forbidden("consent required");
+      }
+      const ok = await setModelFamily(ctx.supabase, userId, family);
+      return respond(
+        ctx,
+        ok
+          ? `Model set to ${MODEL_FAMILY_LABELS[family]}.`
+          : "Update failed."
       );
     }
 

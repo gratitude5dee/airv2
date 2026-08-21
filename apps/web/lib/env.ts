@@ -26,6 +26,14 @@ export const env = {
   supabaseServiceRoleKey: (): string => required("SUPABASE_SERVICE_ROLE_KEY"),
   modelProviderApiKey: (): string => required("MODEL_PROVIDER_API_KEY"),
   modelProviderBaseUrl: (): string => required("MODEL_PROVIDER_BASE_URL"),
+  // OpenRouter serves every non-OpenAI model family (Ox Alpha, Inkling).
+  // Defaults to the main model provider, so a single OpenRouter
+  // MODEL_PROVIDER_* pair works for all families; set the OPENROUTER_* pair
+  // to keep OpenAI on its native endpoint while the rest go to OpenRouter.
+  openRouterBaseUrl: (): string =>
+    process.env.OPENROUTER_BASE_URL ?? required("MODEL_PROVIDER_BASE_URL"),
+  openRouterApiKey: (): string =>
+    process.env.OPENROUTER_API_KEY ?? required("MODEL_PROVIDER_API_KEY"),
   thirdwebSecretKey: (): string => required("THIRDWEB_SECRET_KEY"),
   // Speech-to-text (M13). Defaults to the main model provider; STT_* overrides
   // exist for providers with no audio endpoint (goal.md §5).
