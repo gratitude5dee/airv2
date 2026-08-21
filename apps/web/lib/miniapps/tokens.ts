@@ -1,9 +1,10 @@
 /**
- * M7.5 mini-app tokens (C15/C17): signed, scoped, short-TTL, single-use for
- * anything with a side effect. Minted only inside owner-initiated flows —
- * tier-2 senders can never cause a mint. The token binds (user_id, app,
- * resource_id) so a Kanban token is rejected at /todo (path is a routing
- * hint, never an authorization).
+ * M7.5 mini-app tokens (C15/C17): signed, scoped, short-TTL. Minted only
+ * inside owner-initiated flows — tier-2 senders can never cause a mint. The
+ * token binds (user_id, app, resource_id) so a Kanban token is rejected at
+ * /todo (path is a routing hint, never an authorization). Tokens are
+ * multi-use within their TTL: messaging platforms fetch card URLs to render
+ * previews before the user taps, so expiry — not first-use — is the gate.
  */
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -74,8 +75,12 @@ export function verifyToken(token: string, app: string): MiniAppClaims | null {
   return claims;
 }
 
-/** Single-use redemption: first insert of a jti wins; replays are rejected. */
-export async function redeemOnce(
+/**
+ * Record a redemption for audit. Returns false only when the user no longer
+ * exists; a jti seen before is fine — platform preview fetches redeem the
+ * URL seconds before the user's real tap, so replays within TTL must work.
+ */
+export async function recordRedemption(
   supabase: SupabaseClient,
   claims: MiniAppClaims
 ): Promise<boolean> {
@@ -85,9 +90,10 @@ export async function redeemOnce(
     app: claims.app,
   });
   if (error) {
-    // 23505: jti already redeemed. 23503: the user was deleted after mint —
-    // the token is no longer redeemable either way.
-    if (error.code === "23505" || error.code === "23503") return false;
+    // 23505: jti already recorded — a replay within TTL, allowed.
+    if (error.code === "23505") return true;
+    // 23503: the user was deleted after mint — no longer redeemable.
+    if (error.code === "23503") return false;
     throw new Error(`miniapp redemption failed: ${error.message}`);
   }
   console.log(
