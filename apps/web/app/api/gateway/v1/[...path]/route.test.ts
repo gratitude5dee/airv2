@@ -162,6 +162,22 @@ describe("gateway model families", () => {
     expect(headers["HTTP-Referer"]).toBe("https://app.test");
   });
 
+  it("keeps the OpenAI-only service_tier off OpenRouter requests", async () => {
+    process.env.MODEL_SERVICE_TIER_FAST = "priority";
+    try {
+      setEntitlement({ speed_tier: "fast", model_family: "ox-alpha" });
+      expect(
+        (await upstreamBody({ messages: [] })).service_tier
+      ).toBeUndefined();
+      setEntitlement({ model_family: "openai" });
+      expect((await upstreamBody({ messages: [] })).service_tier).toBe(
+        "priority"
+      );
+    } finally {
+      delete process.env.MODEL_SERVICE_TIER_FAST;
+    }
+  });
+
   it("resolves each Inkling family to its free slug", async () => {
     setEntitlement({ model_family: "inkling" });
     expect((await upstreamBody({ messages: [] })).model).toBe(

@@ -6,7 +6,7 @@
  */
 
 export const INKLING_TOS_URL =
-  "https://thinkingmachines.ai/legal/terms/";
+  "https://thinkingmachines.ai/legal/tml-free-research-api-tier-terms-of-service.pdf";
 export const INKLING_PRIVACY_URL =
   "https://thinkingmachines.ai/legal/privacy/";
 
