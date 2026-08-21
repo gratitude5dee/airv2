@@ -23,6 +23,7 @@ import { botTarget, BOT_CHAT_SESSION, BOT_CHAT_TITLE } from "../bots/client";
 import { parseMention } from "../bots/mentions";
 import { listBots } from "../bots/store";
 import { createSpectrumSender, type SpectrumSender } from "../spectrum/sender";
+import { probeForTapback } from "../spectrum/tapbacks";
 import { maybeRunCreativeLane } from "../creative/imessage";
 import {
   armStopAfter,
@@ -506,7 +507,32 @@ export async function runFlush(
         first = false;
       }
     }
-    await sender.streamText(job.spaceId, job.phone, guarded());
+    // Tapback lane: when the whole reply is one tapback emoji, pin it to the
+    // human's last message as a native reaction instead of a new bubble
+    // (SOUL.md tells the agent this convention). Anything longer streams
+    // exactly as before, prefixed by what the probe consumed.
+    const iterator = guarded()[Symbol.asyncIterator]();
+    const probe = await probeForTapback(iterator);
+    const tapbackTarget = drained[drained.length - 1]?.message_id;
+    if (probe.tapback && tapbackTarget && !cancelled) {
+      const reacted = await sender
+        .react(job.spaceId, job.phone, tapbackTarget, probe.tapback)
+        .catch(() => false);
+      if (!reacted) {
+        await sender.sendText(job.spaceId, job.phone, probe.buffered.trim());
+      }
+    } else if (!(probe.ended && probe.buffered.length === 0)) {
+      async function* remainder(): AsyncGenerator<string> {
+        if (probe.buffered) yield probe.buffered;
+        if (probe.ended) return;
+        for (;;) {
+          const next = await iterator.next();
+          if (next.done) return;
+          yield next.value;
+        }
+      }
+      await sender.streamText(job.spaceId, job.phone, remainder());
+    }
 
     if (cancelled) {
       // Losing nothing: the drained messages ride into the next batch as
