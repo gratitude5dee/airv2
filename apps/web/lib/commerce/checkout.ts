@@ -33,7 +33,7 @@ export interface Order {
   attribution: string | null;
   ticket_code: string | null;
   checked_in_at: string | null;
-  created_at: string | null;
+  created_at: string;
 }
 
 export const ORDER_COLUMNS =
@@ -73,7 +73,7 @@ export function parseOrder(value: unknown): Order | null {
     !isNullableString(row.attribution) ||
     !isNullableString(row.ticket_code) ||
     !isNullableString(row.checked_in_at) ||
-    !isNullableString(row.created_at)
+    typeof row.created_at !== "string"
   ) {
     return null;
   }
@@ -97,7 +97,7 @@ export function parseOrder(value: unknown): Order | null {
     ticket_code: typeof row.ticket_code === "string" ? row.ticket_code : null,
     checked_in_at:
       typeof row.checked_in_at === "string" ? row.checked_in_at : null,
-    created_at: typeof row.created_at === "string" ? row.created_at : null,
+    created_at: row.created_at,
   };
 }
 
