@@ -6,9 +6,10 @@
  * token via /api/mini/link and opens mini.wzrd.tech/<slug>?t=…; "Store"
  * opens the mini-origin store already signed in via the handoff link.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { launchMiniApp } from "./launch";
 import { AppTile } from "./app-tile";
+import { useStaleWhileRevalidate } from "./use-swr";
 
 interface AppRow {
   slug: string;
@@ -20,30 +21,33 @@ interface AppRow {
 }
 
 export function AppsPanel({
-  active,
   onOpenStore,
 }: {
-  active: boolean;
   /** Navigate to the in-app App Store section. */
   onOpenStore?: () => void;
 }) {
-  const [apps, setApps] = useState<AppRow[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
-    const res = await fetch("/api/mini/apps");
-    if (res.ok) {
-      const data = (await res.json()) as { apps: AppRow[] };
-      setApps(data.apps);
-    } else {
-      setError("Couldn't load apps.");
+  // D6: stale-while-revalidate — cached apps render instantly on remount
+  // while a background refresh runs.
+  const { data: apps, refresh } = useStaleWhileRevalidate<AppRow[]>(
+    "apps-panel",
+    true,
+    async () => {
+      try {
+        const res = await fetch("/api/mini/apps");
+        if (res.ok) {
+          const data = (await res.json()) as { apps: AppRow[] };
+          return data.apps;
+        }
+        setError("Couldn't load apps.");
+      } catch {
+        setError("Couldn't load apps.");
+      }
+      return undefined;
     }
-  }, []);
-
-  useEffect(() => {
-    if (active) void refresh();
-  }, [active, refresh]);
+  );
 
   async function launch(slug: string) {
     setBusy(slug);
@@ -63,19 +67,21 @@ export function AppsPanel({
 
   async function toggleInstall(app: AppRow) {
     setBusy(app.slug);
-    await fetch("/api/mini/install", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        app: app.slug,
-        action: app.installed ? "uninstall" : "install",
-      }),
-    });
+    try {
+      await fetch("/api/mini/install", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          app: app.slug,
+          action: app.installed ? "uninstall" : "install",
+        }),
+      });
+    } catch {
+      setError("That didn't go through — try again.");
+    }
     setBusy(null);
     void refresh();
   }
-
-  if (!active) return null;
 
   const installed = (apps ?? []).filter((app) => app.installed);
   const available = (apps ?? []).filter((app) => !app.installed);

@@ -5,7 +5,7 @@
  * verbatim from the old page.tsx wallet tab in the redesign phase-1 split;
  * now self-contained). Sends still route through Needs You approval.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { DitherAvatar } from "@/components/dither-kit/avatar";
 import { Orb } from "@/components/orb/Orb";
@@ -22,7 +22,7 @@ interface WalletSummary {
   address: string | null;
   chain_id?: number;
   native?: { symbol: string; display: string } | null;
-  tokens?: { symbol: string; name: string; display: string; usd: null }[];
+  tokens?: { symbol: string; name: string; display: string }[];
   degraded?: boolean;
   receive_qr?: string | null;
   updated_at?: string;
@@ -90,6 +90,13 @@ export function WalletPanel({
   const [sendNote, setSendNote] = useState<string | null>(null);
   const [payRequests, setPayRequests] = useState<PaymentRequestPreview[]>([]);
   const [payCount, setPayCount] = useState(0);
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copiedTimer.current) clearTimeout(copiedTimer.current);
+    };
+  }, []);
 
   async function loadWallet() {
     setWalletNote(null);
@@ -128,8 +135,9 @@ export function WalletPanel({
   }
 
   useEffect(() => {
-    if (active && wallet === null) void loadWallet();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // D6: stale-while-revalidate — cached balances stay on screen while
+    // each activation re-fetches in the background.
+    if (active) void loadWallet();
   }, [active]);
 
   async function submitSend() {
@@ -168,7 +176,8 @@ export function WalletPanel({
     try {
       await navigator.clipboard.writeText(address);
       setWalletCopied(true);
-      setTimeout(() => setWalletCopied(false), 1500);
+      if (copiedTimer.current) clearTimeout(copiedTimer.current);
+      copiedTimer.current = setTimeout(() => setWalletCopied(false), 1500);
     } catch {
       // clipboard unavailable; the address is selectable text
     }
@@ -377,7 +386,7 @@ export function WalletPanel({
           ) : null}
           {(wallet.tokens ?? []).map((t, i) => (
             <div
-              key={`${t.symbol}-${i}`}
+              key={`${t.symbol}-${t.name}-${i}`}
               className="panel rise-in flex items-center justify-between !p-3"
             >
               <div>

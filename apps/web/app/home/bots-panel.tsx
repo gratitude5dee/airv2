@@ -11,6 +11,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DitherAvatar } from "@/components/dither-kit/avatar";
 import { Orb } from "@/components/orb/Orb";
+import { nextMessageId, replaceLast } from "./lib";
+import { useDialogFocus } from "./use-dialog";
 
 interface BotEntry {
   name: string;
@@ -43,11 +45,15 @@ interface Room {
 }
 
 interface RoomMessage {
+  /** D11: stable per-visit id — chat lists never key by index. */
+  id: string;
   from: string;
   text: string;
 }
 
 interface BotChatMessage {
+  /** D11: stable per-visit id — chat lists never key by index. */
+  id: string;
   role: "user" | "agent";
   text: string;
 }
@@ -79,14 +85,13 @@ function errorLine(status: number, fallback: string): string {
   return fallback;
 }
 
-export function BotsPanel({ active }: { active: boolean }) {
+export function BotsPanel() {
   const [bots, setBots] = useState<BotEntry[] | null>(null);
   const [boxAwake, setBoxAwake] = useState(false);
   const [rooms, setRooms] = useState<Room[] | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [openRoom, setOpenRoom] = useState<Room | null>(null);
-  const loadedOnce = useRef(false);
 
   const loadRoster = useCallback(async () => {
     try {
@@ -112,11 +117,8 @@ export function BotsPanel({ active }: { active: boolean }) {
   }, []);
 
   useEffect(() => {
-    if (active && !loadedOnce.current) {
-      loadedOnce.current = true;
-      void loadRoster();
-    }
-  }, [active, loadRoster]);
+    void loadRoster();
+  }, [loadRoster]);
 
   const selectedBot = bots?.find((b) => b.name === selected) ?? null;
 
@@ -202,6 +204,7 @@ function Roster({
             setSheetOpen(false);
             await onChanged();
           }}
+          onClose={() => setSheetOpen(false)}
         />
       ) : null}
       {bots !== null && bots.length === 0 ? (
@@ -271,10 +274,13 @@ function Roster({
 function NewBotSheet({
   bots,
   onCreated,
+  onClose,
 }: {
   bots: BotEntry[];
   onCreated: () => Promise<void>;
+  onClose: () => void;
 }) {
+  const dialogRef = useDialogFocus<HTMLDivElement>(onClose);
   const [name, setName] = useState("");
   const [title, setTitle] = useState("");
   const [advanced, setAdvanced] = useState(false);
@@ -329,7 +335,12 @@ function NewBotSheet({
   }
 
   return (
-    <div className="flex flex-col gap-2 rounded-xl bg-surface p-3 shadow-[0_0_0_0.5px_var(--ring)]">
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-label="New bot"
+      className="flex flex-col gap-2 rounded-xl bg-surface p-3 shadow-[0_0_0_0.5px_var(--ring)]"
+    >
       <div className="flex items-center gap-2">
         <DitherAvatar name={name.trim() || "new-bot"} size={28} />
         <input
@@ -439,6 +450,15 @@ function BotDetail({
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const historyLoaded = useRef(false);
+  const eventsRef = useRef<EventSource | null>(null);
+
+  // D2: close any still-streaming run when the detail view unmounts.
+  useEffect(() => {
+    return () => {
+      eventsRef.current?.close();
+      eventsRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     if (historyLoaded.current) return;
@@ -459,6 +479,7 @@ function BotDetail({
           payload.messages
             .filter((m) => m.role === "user" || m.role === "assistant")
             .map((m) => ({
+              id: nextMessageId(),
               role: m.role === "user" ? ("user" as const) : ("agent" as const),
               text: m.content,
             }))
@@ -473,12 +494,14 @@ function BotDetail({
     const events = new EventSource(
       `/api/bots/${bot.name}/chat/${runId}/events`
     );
+    eventsRef.current?.close();
+    eventsRef.current = events;
     let acc = "";
     const fillEmpty = (fallback: string) => {
       setMessages((m) => {
         const last = m[m.length - 1];
         if (last && last.role === "agent" && !last.text) {
-          return [...m.slice(0, -1), { role: "agent" as const, text: fallback }];
+          return replaceLast(m, { role: "agent" as const, text: fallback });
         }
         return m;
       });
@@ -492,14 +515,13 @@ function BotDetail({
         };
         if (parsed.event === "message.delta" && parsed.delta) {
           acc += parsed.delta;
-          setMessages((m) => [...m.slice(0, -1), { role: "agent", text: acc }]);
+          setMessages((m) => replaceLast(m, { role: "agent", text: acc }));
         }
         if (parsed.event === "run.completed") {
           if (!acc && parsed.output) {
-            setMessages((m) => [
-              ...m.slice(0, -1),
-              { role: "agent", text: parsed.output ?? "" },
-            ]);
+            setMessages((m) =>
+              replaceLast(m, { role: "agent", text: parsed.output ?? "" })
+            );
           } else if (!acc) {
             fillEmpty("(no reply)");
           }
@@ -530,8 +552,8 @@ function BotDetail({
     if (!action) setInput("");
     setMessages((m) => [
       ...m,
-      { role: "user", text },
-      { role: "agent", text: "" },
+      { id: nextMessageId(), role: "user", text },
+      { id: nextMessageId(), role: "agent", text: "" },
     ]);
     try {
       const res = await fetch(`/api/bots/${bot.name}/chat`, {
@@ -540,19 +562,20 @@ function BotDetail({
         body: JSON.stringify(action ? { action } : { input: text }),
       });
       if (!res.ok) {
-        setMessages((m) => [
-          ...m.slice(0, -1),
-          { role: "agent", text: errorLine(res.status, "Something went wrong.") },
-        ]);
+        setMessages((m) =>
+          replaceLast(m, {
+            role: "agent",
+            text: errorLine(res.status, "Something went wrong."),
+          })
+        );
         setBusy(false);
         return;
       }
       const payload = (await res.json()) as { run_id?: string };
       if (!payload.run_id) {
-        setMessages((m) => [
-          ...m.slice(0, -1),
-          { role: "agent", text: "Something went wrong." },
-        ]);
+        setMessages((m) =>
+          replaceLast(m, { role: "agent", text: "Something went wrong." })
+        );
         setBusy(false);
         return;
       }
@@ -565,11 +588,18 @@ function BotDetail({
   }
 
   async function remove() {
-    const res = await fetch("/api/bots", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: bot.name }),
-    });
+    let res: Response;
+    try {
+      res = await fetch("/api/bots", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: bot.name }),
+      });
+    } catch {
+      setNote("Delete failed — try again.");
+      setConfirmDelete(false);
+      return;
+    }
     if (!res.ok) {
       setNote(errorLine(res.status, "Delete failed — try again."));
       setConfirmDelete(false);
@@ -581,17 +611,23 @@ function BotDetail({
   async function duplicate() {
     const copy = `${bot.name}-copy`.slice(0, 32);
     setNote(`Creating @${copy}…`);
-    const res = await fetch("/api/bots", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: copy,
-        title: bot.title ?? undefined,
-        clone_from: bot.name,
-        model_tier: bot.model_tier ?? undefined,
-        group_label: bot.group_label ?? undefined,
-      }),
-    });
+    let res: Response;
+    try {
+      res = await fetch("/api/bots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: copy,
+          title: bot.title ?? undefined,
+          clone_from: bot.name,
+          model_tier: bot.model_tier ?? undefined,
+          group_label: bot.group_label ?? undefined,
+        }),
+      });
+    } catch {
+      setNote("Duplicate failed — try again.");
+      return;
+    }
     if (!res.ok) {
       const payload = (await res.json().catch(() => ({}))) as { error?: string };
       setNote(errorLine(res.status, payload.error ?? "Duplicate failed."));
@@ -658,7 +694,12 @@ function BotDetail({
             Compact context
           </button>
         </div>
-        <div className="grid max-h-96 gap-2 overflow-y-auto">
+        <div
+          role="log"
+          aria-live="polite"
+          aria-label={`Chat with @${bot.name}`}
+          className="grid max-h-96 gap-2 overflow-y-auto"
+        >
           {messages.length === 0 ? (
             <p className="muted m-0 py-6 text-center text-[12px]">
               One persistent chat — @{bot.name} remembers this conversation.
@@ -669,14 +710,14 @@ function BotDetail({
               const streaming = busy && isLast && m.role === "agent";
               if (streaming && !m.text) {
                 return (
-                  <div key={i} className="justify-self-start">
+                  <div key={m.id} className="justify-self-start">
                     <Orb pill label="Thinking…" />
                   </div>
                 );
               }
               return (
                 <div
-                  key={i}
+                  key={m.id}
                   className={
                     "max-w-[80%] whitespace-pre-wrap rounded-xl px-3 py-2 text-[13px] leading-relaxed " +
                     (m.role === "user"
@@ -729,17 +770,26 @@ function EditBotForm({
   async function save() {
     setBusy(true);
     setError(null);
-    const res = await fetch("/api/bots", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: bot.name,
-        title: title.trim() || null,
-        description: description.trim() || null,
-        group_label: groupLabel.trim() || null,
-        ...(tier !== (bot.model_tier ?? "") ? { model_tier: tier || null } : {}),
-      }),
-    });
+    let res: Response;
+    try {
+      res = await fetch("/api/bots", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: bot.name,
+          title: title.trim() || null,
+          description: description.trim() || null,
+          group_label: groupLabel.trim() || null,
+          ...(tier !== (bot.model_tier ?? "")
+            ? { model_tier: tier || null }
+            : {}),
+        }),
+      });
+    } catch {
+      setError("Save failed — try again.");
+      setBusy(false);
+      return;
+    }
     if (!res.ok) {
       setError(errorLine(res.status, "Save failed — try again."));
       setBusy(false);
@@ -854,20 +904,28 @@ function RoutinesSection({ bot }: { bot: BotEntry }) {
   }
 
   async function act(id: string, action: "pause" | "resume" | "run") {
-    await fetch(`/api/bots/${bot.name}/routines`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action, id }),
-    });
+    try {
+      await fetch(`/api/bots/${bot.name}/routines`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, id }),
+      });
+    } catch {
+      setNote("Couldn't update the routine — try again.");
+    }
     await load();
   }
 
   async function remove(id: string) {
-    await fetch(`/api/bots/${bot.name}/routines`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    });
+    try {
+      await fetch(`/api/bots/${bot.name}/routines`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+    } catch {
+      setNote("Couldn't delete the routine — try again.");
+    }
     await load();
   }
 
@@ -966,14 +1024,21 @@ function RoomsSection({
 
   async function create() {
     setError(null);
-    const res = await fetch("/api/bots/rooms", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: name.trim(), members }),
-    });
-    if (!res.ok) {
-      const payload = (await res.json().catch(() => ({}))) as { error?: string };
-      setError(payload.error ?? "Couldn't create the room.");
+    try {
+      const res = await fetch("/api/bots/rooms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim(), members }),
+      });
+      if (!res.ok) {
+        const payload = (await res.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        setError(payload.error ?? "Couldn't create the room.");
+        return;
+      }
+    } catch {
+      setError("Couldn't create the room.");
       return;
     }
     setCreating(false);
@@ -983,11 +1048,15 @@ function RoomsSection({
   }
 
   async function remove(id: string) {
-    await fetch("/api/bots/rooms", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    });
+    try {
+      await fetch("/api/bots/rooms", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+    } catch {
+      setError("Couldn't delete the room.");
+    }
     await onChanged();
   }
 
@@ -1080,7 +1149,7 @@ function RoomView({
     setBusy(true);
     setNote(null);
     setInput("");
-    setMessages((m) => [...m, { from: "you", text }]);
+    setMessages((m) => [...m, { id: nextMessageId(), from: "you", text }]);
     try {
       const res = await fetch(`/api/bots/rooms/${room.id}/send`, {
         method: "POST",
@@ -1096,7 +1165,10 @@ function RoomView({
         messages: { from: string; text: string }[];
         stopped?: string;
       };
-      setMessages((m) => [...m, ...payload.messages]);
+      setMessages((m) => [
+        ...m,
+        ...payload.messages.map((msg) => ({ ...msg, id: nextMessageId() })),
+      ]);
       if (payload.stopped === "budget") {
         setNote("The room stopped early to protect your monthly budget.");
       } else if (payload.stopped === "needs_user") {
@@ -1123,17 +1195,22 @@ function RoomView({
       </div>
       {note ? <p className="muted m-0 text-[12px]">{note}</p> : null}
       <div className="grid gap-2 rounded-xl bg-surface p-3 shadow-[0_0_0_0.5px_var(--ring)]">
-        <div className="grid max-h-96 gap-2 overflow-y-auto">
+        <div
+          role="log"
+          aria-live="polite"
+          aria-label={`Room ${room.name}`}
+          className="grid max-h-96 gap-2 overflow-y-auto"
+        >
           {messages.length === 0 ? (
             <p className="muted m-0 py-6 text-center text-[12px]">
               Ask the group — members answer in turns and may pass.
             </p>
           ) : (
-            messages.map((m, i) => {
+            messages.map((m) => {
               const bot = bots.find((b) => b.name === m.from);
               return (
                 <div
-                  key={i}
+                  key={m.id}
                   className={
                     "max-w-[80%] whitespace-pre-wrap rounded-xl px-3 py-2 text-[13px] leading-relaxed " +
                     (m.from === "you"

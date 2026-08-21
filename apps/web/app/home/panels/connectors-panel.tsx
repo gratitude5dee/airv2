@@ -37,28 +37,33 @@ export function ConnectorsPanel({ active }: { active: boolean }) {
   const [connectorFilter, setConnectorFilter] = useState("");
 
   async function loadConnectors() {
-    const res = await fetch("/api/connectors");
-    if (res.ok) {
-      const data = (await res.json()) as {
-        toolkits?: Toolkit[];
-        connections?: Connection[];
-        health?: ConnectionHealth[];
-      };
-      setToolkits(data.toolkits ?? []);
-      setConnections(data.connections ?? []);
-      setConnHealth(data.health ?? []);
-    }
-    // Sync statuses (picks up OAuth flows completed since last visit).
-    const sync = await fetch("/api/connectors", { method: "PUT" });
-    if (sync.ok) {
-      const data = (await sync.json()) as { connections?: Connection[] };
-      setConnections(data.connections ?? []);
+    try {
+      const res = await fetch("/api/connectors");
+      if (res.ok) {
+        const data = (await res.json()) as {
+          toolkits?: Toolkit[];
+          connections?: Connection[];
+          health?: ConnectionHealth[];
+        };
+        setToolkits(data.toolkits ?? []);
+        setConnections(data.connections ?? []);
+        setConnHealth(data.health ?? []);
+      }
+      // Sync statuses (picks up OAuth flows completed since last visit).
+      const sync = await fetch("/api/connectors", { method: "PUT" });
+      if (sync.ok) {
+        const data = (await sync.json()) as { connections?: Connection[] };
+        setConnections(data.connections ?? []);
+      }
+    } catch {
+      setConnectorNote("Couldn't load connectors — try again shortly.");
     }
   }
 
   useEffect(() => {
-    if (active && toolkits === null) void loadConnectors();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // D6: stale-while-revalidate — the cached list stays on screen while
+    // each activation re-fetches (also picks up finished OAuth flows).
+    if (active) void loadConnectors();
   }, [active]);
 
   async function disconnectToolkit(toolkit: string) {
@@ -87,14 +92,18 @@ export function ConnectorsPanel({ active }: { active: boolean }) {
   }
 
   async function connectToolkit(slug: string) {
-    const res = await fetch("/api/connectors", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ toolkit: slug }),
-    });
-    if (res.ok) {
-      const data = (await res.json()) as { redirect_url?: string };
-      if (data.redirect_url) window.location.href = data.redirect_url;
+    try {
+      const res = await fetch("/api/connectors", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ toolkit: slug }),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { redirect_url?: string };
+        if (data.redirect_url) window.location.href = data.redirect_url;
+      }
+    } catch {
+      setConnectorNote("Couldn't start that connection — try again shortly.");
     }
   }
 

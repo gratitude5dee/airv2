@@ -73,12 +73,12 @@ function Sparkline({
       role="img"
       aria-label={`Power history, last ${HISTORY_HOURS} hours`}
     >
-      {spans.map((span, i) => {
+      {spans.map((span) => {
         const x = ((span.from - start) / (now - start)) * 480;
         const w = Math.max(((span.to - span.from) / (now - start)) * 480, 1.5);
         return (
           <rect
-            key={i}
+            key={`${span.from}-${span.to}`}
             x={x}
             y={2}
             width={w}

@@ -10,7 +10,14 @@
  * all survive here.
  */
 
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { DitherAvatar } from "@/components/dither-kit/avatar";
 import { Orb } from "@/components/orb/Orb";
@@ -33,7 +40,14 @@ import { HistoryPanel } from "./panels/history-panel";
 import { WalletPanel } from "./panels/wallet-panel";
 import { SettingsScreen } from "./panels/settings-screen";
 import { ContextPanel } from "./panels/context-panel";
-import { pickList } from "./lib";
+import {
+  isComputerTool,
+  isNearBottom,
+  nextMessageId,
+  pickList,
+  replaceLast,
+} from "./lib";
+import { useDialogFocus } from "./use-dialog";
 
 interface Me {
   user: { id: string; username: string | null; wallet_address: string | null };
@@ -49,6 +63,8 @@ interface Me {
 }
 
 interface ChatMessage {
+  /** D11: stable per-visit id — chat lists never key by index. */
+  id: string;
   role: "user" | "agent";
   text: string;
   /** M16: inline creative media, delivered via a short-lived signed URL. */
@@ -63,15 +79,6 @@ interface StagedAttachment {
   path?: string;
   mime?: string;
   uploading?: boolean;
-}
-
-/** Tool names that mean the agent is driving its own browser/desktop, so the
- * live computer view should surface inline in Chat. */
-function isComputerTool(name: string | undefined): boolean {
-  return (
-    typeof name === "string" &&
-    (name.startsWith("browser") || name.startsWith("computer"))
-  );
 }
 
 /** Chat threads (spec §3): additive Hermes sessions next to the shared
@@ -169,7 +176,8 @@ function HomeShell() {
     stagedCountRef.current = staged.length;
   }, [staged]);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
-  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [botNames, setBotNames] = useState<string[]>([]);
   // Needs You badge on the rail — globally reachable (spec §8).
   const [needsCount, setNeedsCount] = useState(0);
@@ -186,6 +194,21 @@ function HomeShell() {
   const [boxThreads, setBoxThreads] = useState<ThreadItem[]>([]);
   const eventsRef = useRef<EventSource | null>(null);
   const threadRef = useRef(thread);
+  // D8: only auto-follow new messages while the user is at the bottom.
+  const atBottomRef = useRef(true);
+  const boxStateRef = useRef<string | null>(null);
+  useEffect(() => {
+    boxStateRef.current = boxState;
+  }, [boxState]);
+
+  // D2/D17: close any still-open stream and pending timers on unmount.
+  useEffect(() => {
+    return () => {
+      eventsRef.current?.close();
+      eventsRef.current = null;
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+    };
+  }, []);
 
   // Poll the box power state — quickly through transitions so the boot
   // banner and Computer controls track reality, slowly at rest.
@@ -216,10 +239,6 @@ function HomeShell() {
       if (timer) clearTimeout(timer);
     };
   }, []);
-  const boxStateRef = useRef<string | null>(null);
-  useEffect(() => {
-    boxStateRef.current = boxState;
-  }, [boxState]);
 
   async function powerOn(keepAwakeMinutes?: number) {
     setPowerBusy(true);
@@ -249,6 +268,9 @@ function HomeShell() {
       }
     } catch {
       setPowerNote("Couldn't power on — try again shortly.");
+      // D16: don't leave the optimistic "starting" state stuck on a
+      // network failure — the poller would take up to 15s to correct it.
+      setBoxState("stopped");
     } finally {
       setPowerBusy(false);
     }
@@ -288,6 +310,8 @@ function HomeShell() {
       // Pre-warm the box so the first message / panel load doesn't wait on
       // a cold resume. Best-effort: every consumer handles a sleeping box.
       fetch("/api/box/wake", { method: "POST" }).catch(() => {});
+    }).catch(() => {
+      // /api/me is retried on the next mount; the shell renders without it
     });
     // Ready bots feed the composer's @mention palette (V8); best-effort.
     fetch("/api/bots")
@@ -363,6 +387,9 @@ function HomeShell() {
   ];
 
   useEffect(() => {
+    // D8: stick to the bottom only when the user was already there — never
+    // yank the scroll position while they are reading older messages.
+    if (!atBottomRef.current) return;
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages]);
 
@@ -377,6 +404,7 @@ function HomeShell() {
       eventsRef.current = null;
       setBusy(false);
       setActiveRunId(null);
+      atBottomRef.current = true;
     }
     let stale = false;
     setMessages([]);
@@ -398,6 +426,7 @@ function HomeShell() {
               m.content.trim() !== ""
           )
           .map((m) => ({
+            id: nextMessageId(),
             role: m.role === "user" ? ("user" as const) : ("agent" as const),
             text: (m.content ?? "").trim(),
           }));
@@ -418,9 +447,10 @@ function HomeShell() {
   // M16: follow a creative job's SSE stream and land the media inline.
   const followCreativeJob = useCallback((jobId: string) => {
     const events = new EventSource(`/api/creative/${jobId}/events`);
+    eventsRef.current?.close();
     eventsRef.current = events;
-    const finish = (message: ChatMessage) => {
-      setMessages((m) => [...m.slice(0, -1), message]);
+    const finish = (message: Omit<ChatMessage, "id">) => {
+      setMessages((m) => replaceLast(m, message));
       events.close();
       setBusy(false);
     };
@@ -436,7 +466,7 @@ function HomeShell() {
         if (parsed.event === "creative.status") {
           const label =
             parsed.phase === "generating" ? "Generating…" : "On it…";
-          setMessages((m) => [...m.slice(0, -1), { role: "agent", text: label }]);
+          setMessages((m) => replaceLast(m, { role: "agent", text: label }));
         }
         if (parsed.event === "creative.done" && parsed.url) {
           finish({
@@ -491,10 +521,11 @@ function HomeShell() {
             .filter(Boolean)
             .join("\n")
         : text;
+    atBottomRef.current = true; // the user just sent — follow the reply
     setMessages((m) => [
       ...m,
-      { role: "user", text: shownText },
-      { role: "agent", text: "" },
+      { id: nextMessageId(), role: "user", text: shownText },
+      { id: nextMessageId(), role: "agent", text: "" },
     ]);
     try {
       const res = await fetch("/api/chat", {
@@ -520,9 +551,8 @@ function HomeShell() {
       });
       if (!res.ok) {
         const status = res.status;
-        setMessages((m) => [
-          ...m.slice(0, -1),
-          {
+        setMessages((m) =>
+          replaceLast(m, {
             role: "agent",
             text:
               status === 429
@@ -530,8 +560,8 @@ function HomeShell() {
                 : status >= 500
                   ? "I couldn't reach my computer — it may still be waking up. Try again in a minute."
                   : "Something went wrong.",
-          },
-        ]);
+          })
+        );
         setBusy(false);
         return;
       }
@@ -543,10 +573,9 @@ function HomeShell() {
       };
       if (payload.creative_line) {
         // Deterministic clarification (e.g. mixed /imagine + /zap) — no run.
-        setMessages((m) => [
-          ...m.slice(0, -1),
-          { role: "agent", text: payload.creative_line ?? "" },
-        ]);
+        setMessages((m) =>
+          replaceLast(m, { role: "agent", text: payload.creative_line ?? "" })
+        );
         setBusy(false);
         return;
       }
@@ -555,10 +584,9 @@ function HomeShell() {
         return;
       }
       if (!payload.run_id) {
-        setMessages((m) => [
-          ...m.slice(0, -1),
-          { role: "agent", text: "Something went wrong." },
-        ]);
+        setMessages((m) =>
+          replaceLast(m, { role: "agent", text: "Something went wrong." })
+        );
         setBusy(false);
         return;
       }
@@ -574,6 +602,7 @@ function HomeShell() {
           ? `/api/bots/${botName}/chat/${run_id}/events`
           : `/api/chat/${run_id}/events`
       );
+      eventsRef.current?.close();
       eventsRef.current = events;
       let acc = "";
       // Replace a still-empty placeholder so a failed or empty run never
@@ -582,7 +611,7 @@ function HomeShell() {
         setMessages((m) => {
           const last = m[m.length - 1];
           if (last && last.role === "agent" && !last.text) {
-            return [...m.slice(0, -1), { role: "agent" as const, text: fallback }];
+            return replaceLast(m, { role: "agent" as const, text: fallback });
           }
           return m;
         });
@@ -609,17 +638,19 @@ function HomeShell() {
           }
           if (parsed.event === "message.delta" && parsed.delta) {
             acc += parsed.delta;
-            setMessages((m) => [
-              ...m.slice(0, -1),
-              { role: "agent", text: acc, bot: botName },
-            ]);
+            setMessages((m) =>
+              replaceLast(m, { role: "agent", text: acc, bot: botName })
+            );
           }
           if (parsed.event === "run.completed") {
             if (!acc && parsed.output) {
-              setMessages((m) => [
-                ...m.slice(0, -1),
-                { role: "agent", text: parsed.output ?? "", bot: botName },
-              ]);
+              setMessages((m) =>
+                replaceLast(m, {
+                  role: "agent",
+                  text: parsed.output ?? "",
+                  bot: botName,
+                })
+              );
             } else if (!acc) {
               fillEmpty("(no reply)");
             }
@@ -647,10 +678,10 @@ function HomeShell() {
       setMessages((m) => {
         const last = m[m.length - 1];
         if (last && last.role === "agent" && !last.text) {
-          return [
-            ...m.slice(0, -1),
-            { role: "agent" as const, text: "Something went wrong." },
-          ];
+          return replaceLast(m, {
+            role: "agent" as const,
+            text: "Something went wrong.",
+          });
         }
         return m;
       });
@@ -667,6 +698,7 @@ function HomeShell() {
       setMessages((m) => [
         ...m,
         {
+          id: nextMessageId(),
           role: "agent",
           text: "You can attach up to 5 files per message — the extras weren't added.",
         },
@@ -722,6 +754,7 @@ function HomeShell() {
         setMessages((m) => [
           ...m,
           {
+            id: nextMessageId(),
             role: "agent",
             text: `Couldn't upload ${file.name} — it may be too large (100 MB max) or the computer is still waking up.`,
           },
@@ -741,11 +774,15 @@ function HomeShell() {
     setActiveRunId(null);
   }
 
-  async function copyMessage(index: number, text: string) {
+  async function copyMessage(id: string, text: string) {
     try {
       await navigator.clipboard.writeText(text);
-      setCopiedIdx(index);
-      setTimeout(() => setCopiedIdx((c) => (c === index ? null : c)), 1500);
+      setCopiedId(id);
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = setTimeout(
+        () => setCopiedId((c) => (c === id ? null : c)),
+        1500
+      );
     } catch {
       // clipboard unavailable; text stays selectable
     }
@@ -753,15 +790,23 @@ function HomeShell() {
 
   async function saveTier(next: string) {
     setTier(next);
-    await fetch("/api/settings/speed", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ speed_tier: next }),
-    });
+    try {
+      await fetch("/api/settings/speed", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ speed_tier: next }),
+      });
+    } catch {
+      // best-effort; the tier is re-read from /api/me on next load
+    }
   }
 
   async function logout() {
-    await fetch("/api/auth/logout", { method: "POST" });
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch {
+      // the login page clears any half-dead session
+    }
     router.push("/login");
   }
 
@@ -846,9 +891,9 @@ function HomeShell() {
             onOpenWallet={() => navigate("bank.wallet")}
           />
           <ContextPanel active={section === "personal.context"} />
-          {section === "bank.vault" ? <VaultPanel active /> : null}
+          {section === "bank.vault" ? <VaultPanel /> : null}
           {section === "apps.installed" ? (
-            <AppsPanel active onOpenStore={() => navigate("apps.store")} />
+            <AppsPanel onOpenStore={() => navigate("apps.store")} />
           ) : null}
           <StorePanel
             active={section === "apps.store"}
@@ -856,7 +901,6 @@ function HomeShell() {
           />
           {section === "personal.calendar" ? (
             <CalendarPanel
-              active
               prefill={calendarPrefill}
               onPrefillConsumed={() => setCalendarPrefill(null)}
               onAgentRun={(prompt) => {
@@ -872,7 +916,6 @@ function HomeShell() {
           ) : null}
           {section === "apps.ads" ? (
             <AdsPanel
-              active
               onAskAgent={(prefill) => {
                 navigate("air.chat");
                 setInput(prefill);
@@ -904,6 +947,13 @@ function HomeShell() {
               />
               <div
                 ref={scrollRef}
+                role="log"
+                aria-live="polite"
+                aria-label="Conversation"
+                onScroll={() => {
+                  const el = scrollRef.current;
+                  if (el) atBottomRef.current = isNearBottom(el);
+                }}
                 className="grid flex-1 content-start gap-2 overflow-y-auto pb-2"
               >
                 {messages.length === 0 ? (
@@ -923,14 +973,14 @@ function HomeShell() {
                     const streaming = busy && isLast && m.role === "agent";
                     if (streaming && !m.text) {
                       return (
-                        <div key={i} className="justify-self-start">
+                        <div key={m.id} className="justify-self-start">
                           <Orb pill label="Thinking…" />
                         </div>
                       );
                     }
                     return (
                       <div
-                        key={i}
+                        key={m.id}
                         className={
                           "max-w-[80%] whitespace-pre-wrap rounded-xl px-3 py-2 text-[13px] leading-relaxed " +
                           (m.role === "user"
@@ -980,9 +1030,9 @@ function HomeShell() {
                               "mt-1 block cursor-pointer border-0 bg-transparent p-0 text-[11px] underline decoration-dotted underline-offset-2 " +
                               (m.role === "user" ? "opacity-70" : "text-[var(--muted)]")
                             }
-                            onClick={() => void copyMessage(i, m.text)}
+                            onClick={() => void copyMessage(m.id, m.text)}
                           >
-                            {copiedIdx === i ? "Copied" : "Copy"}
+                            {copiedId === m.id ? "Copied" : "Copy"}
                           </button>
                         ) : null}
                       </div>
@@ -1042,7 +1092,7 @@ function HomeShell() {
             </>
           ) : null}
           {botsOpen ? (
-            <div className="absolute inset-y-0 right-0 z-10 flex w-full max-w-[420px] flex-col overflow-y-auto rounded-r-[inherit] bg-[var(--bg)] p-4 shadow-[-8px_0_24px_rgba(0,0,0,0.15),0_0_0_0.5px_var(--ring)]">
+            <BotsDrawer onClose={() => setBotsOpen(false)}>
               <div className="mb-2 flex items-center justify-between">
                 <h3 className="m-0 text-[15px] font-semibold">Bots</h3>
                 <button
@@ -1052,8 +1102,8 @@ function HomeShell() {
                   Close
                 </button>
               </div>
-              <BotsPanel active={botsOpen} />
-            </div>
+              <BotsPanel />
+            </BotsDrawer>
           ) : null}
         </section>
 
@@ -1070,5 +1120,27 @@ function HomeShell() {
         </aside>
       </div>
     </main>
+  );
+}
+
+/** Bots drawer shell — D10 dialog lifecycle (focus trap, Esc, restore). */
+function BotsDrawer({
+  onClose,
+  children,
+}: {
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const ref = useDialogFocus<HTMLDivElement>(onClose);
+  return (
+    <div
+      ref={ref}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Bots"
+      className="absolute inset-y-0 right-0 z-10 flex w-full max-w-[420px] flex-col overflow-y-auto rounded-r-[inherit] bg-[var(--bg)] p-4 shadow-[-8px_0_24px_rgba(0,0,0,0.15),0_0_0_0.5px_var(--ring)]"
+    >
+      {children}
+    </div>
   );
 }

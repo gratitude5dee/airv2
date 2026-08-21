@@ -7,7 +7,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { Orb } from "@/components/orb/Orb";
-import { boxErrorNote, pickList } from "../lib";
+import { boxErrorNote, nextMessageId, pickList } from "../lib";
 
 interface SessionSummary {
   session_id?: string;
@@ -20,6 +20,8 @@ interface SessionSummary {
 }
 
 interface TranscriptMessage {
+  /** D11: stable per-visit id — transcript lists never key by index. */
+  id: string;
   role: string;
   content: string;
 }
@@ -42,10 +44,16 @@ export function HistoryPanel({ active }: { active: boolean }) {
   const [transcriptNote, setTranscriptNote] = useState<string | null>(null);
   const [sessionBusy, setSessionBusy] = useState<string | null>(null);
 
-  async function loadHistory() {
+  async function loadHistory(background = false) {
     const loadId = ++panelLoadId.current;
     setPanelFailed(false);
-    setPanelNote("Waking your agent… this can take a minute if it was asleep.");
+    // D6: background refreshes keep the cached list on screen — the wake
+    // note only shows when there is nothing to look at yet.
+    if (!background) {
+      setPanelNote(
+        "Waking your agent… this can take a minute if it was asleep."
+      );
+    }
     try {
       const res = await fetch("/api/box/api/sessions?limit=30");
       if (res.ok) {
@@ -70,7 +78,9 @@ export function HistoryPanel({ active }: { active: boolean }) {
   }
 
   useEffect(() => {
-    if (active && sessions === null) void loadHistory();
+    // D6: stale-while-revalidate — show whatever is already loaded and
+    // refresh in the background on every activation.
+    if (active) void loadHistory(sessions !== null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
 
@@ -101,6 +111,7 @@ export function HistoryPanel({ active }: { active: boolean }) {
                 m.content.trim() !== ""
             )
             .map((m) => ({
+              id: nextMessageId(),
               role: m.role === "user" ? "user" : "agent",
               content: (m.content ?? "").trim(),
             }))
@@ -239,9 +250,9 @@ export function HistoryPanel({ active }: { active: boolean }) {
               {open ? (
                 <div className="mt-2 grid max-h-72 gap-1.5 overflow-y-auto border-t border-[var(--ring)] pt-2">
                   {transcriptNote ? <Orb pill label={transcriptNote} /> : null}
-                  {(transcript ?? []).map((m, j) => (
+                  {(transcript ?? []).map((m) => (
                     <div
-                      key={j}
+                      key={m.id}
                       className={
                         "max-w-[90%] whitespace-pre-wrap rounded-lg px-2.5 py-1.5 text-[12px] leading-relaxed " +
                         (m.role === "user"

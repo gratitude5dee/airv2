@@ -8,7 +8,7 @@
  * in-chat and whose Install/Pin posts to /api/mini/install. Search rides the
  * existing /api/store/search projection.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { DitherButton } from "@/components/dither-kit/button";
 import { DitherGradient } from "@/components/dither-kit/gradient";
 import { DitherMarquee } from "@/components/dither-kit/marquee";
@@ -16,6 +16,7 @@ import { PixelIcon } from "@/components/dither-kit/icon";
 import { pixelPrefersReducedMotion } from "@/components/dither-kit/pixel";
 import { AppTile } from "./app-tile";
 import { launchMiniApp } from "./launch";
+import { useDialogFocus } from "./use-dialog";
 
 interface StoreApp {
   slug: string;
@@ -343,7 +344,10 @@ export function StorePanel({
       ) : null}
 
       {detail ? (
-        <div className="panel rise-in !p-4">
+        <StoreDetailSheet
+          name={detail.name || detail.slug}
+          onClose={() => setSelected(null)}
+        >
           <div className="flex items-start gap-3">
             <AppTile
               slug={detail.slug}
@@ -407,8 +411,31 @@ export function StorePanel({
               </button>
             </div>
           </div>
-        </div>
+        </StoreDetailSheet>
       ) : null}
+    </div>
+  );
+}
+
+/** D10: focus-trapped detail sheet — Esc closes, focus restores. */
+function StoreDetailSheet({
+  name,
+  onClose,
+  children,
+}: {
+  name: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const ref = useDialogFocus<HTMLDivElement>(onClose);
+  return (
+    <div
+      ref={ref}
+      role="dialog"
+      aria-label={`${name} details`}
+      className="panel rise-in !p-4"
+    >
+      {children}
     </div>
   );
 }
