@@ -128,6 +128,15 @@ export async function fork(options: ForkOptions): Promise<Box> {
   return envelope.box;
 }
 
+/** Set the box's display name in the ascii dashboard (max 120 chars). */
+export async function renameBox(boxId: string, name: string): Promise<Box> {
+  const envelope = await boxFetch<BoxEnvelope>(`/boxes/${boxId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ name }),
+  });
+  return envelope.box;
+}
+
 export async function resume(boxId: string): Promise<Box> {
   const envelope = await boxFetch<BoxEnvelope>(`/boxes/${boxId}/resume`, {
     method: "POST",
