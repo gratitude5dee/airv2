@@ -215,7 +215,9 @@ function effectiveStatus(
     case "email":
       return snapshot.address ? "done" : "todo";
     case "model":
-      return snapshot.speedTier ? "done" : "todo";
+      // entitlements.speed_tier has a NOT NULL default, so its presence
+      // proves nothing — only an explicit choice (recorded above) counts.
+      return "todo";
     case "connect":
       return snapshot.connections.some((c) => c.status === "active")
         ? "done"
