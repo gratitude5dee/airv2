@@ -9,13 +9,19 @@ import {
   Spectrum,
   app as appCard,
   attachment,
+  edit,
   read,
   richlink,
   text,
   typing,
+  type Message,
 } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
 import { env } from "../env";
+import {
+  parseMiniAppCardSession,
+  type MiniAppCardSession,
+} from "../miniapps/cardSessions";
 
 export interface SpectrumSender {
   /** Fire a typing indicator at the chat — before the box resumes. */
@@ -44,7 +50,14 @@ export interface SpectrumSender {
     spaceId: string,
     phone: string,
     url: () => string | Promise<string>
-  ): Promise<void>;
+  ): Promise<Message | undefined>;
+  /** Refresh a previously-sent live app card and return its new session. */
+  editApp(
+    spaceId: string,
+    phone: string,
+    session: MiniAppCardSession,
+    url: () => string | Promise<string>
+  ): Promise<MiniAppCardSession | undefined>;
   /** Send bytes as a native media bubble (M16 creative delivery). */
   sendAttachment(
     spaceId: string,
@@ -95,7 +108,33 @@ export async function createSpectrumSender(): Promise<SpectrumSender> {
       await (await space(spaceId, phone)).send(richlink(url));
     },
     sendApp: async (spaceId, phone, url) => {
-      await (await space(spaceId, phone)).send(appCard(url, { live: true }));
+      return (await space(spaceId, phone)).send(appCard(url, { live: true }));
+    },
+    editApp: async (spaceId, phone, session, url) => {
+      const s = await space(spaceId, phone);
+      const messageIds = [
+        session.targetMessageGuid,
+        session.messageGuid,
+      ].filter((id, index, ids) => ids.indexOf(id) === index);
+      let message: Message | undefined;
+      for (const messageId of messageIds) {
+        let candidate: Message | undefined;
+        try {
+          candidate = await s.getMessage(messageId);
+        } catch {
+          continue;
+        }
+        if (candidate && candidate.direction === "outbound") {
+          message = candidate;
+          break;
+        }
+      }
+      if (!message || message.direction !== "outbound") return undefined;
+      const target = Object.assign(message, {
+        miniAppCardSession: session,
+      });
+      await s.send(edit(appCard(url, { live: true }), target));
+      return parseMiniAppCardSession(target.miniAppCardSession);
     },
     getAttachment: async (attachmentId, phone) => {
       const attachment = await im.getAttachment(attachmentId, phone);

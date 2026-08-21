@@ -53,6 +53,7 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
   all("agent_schedules"),
   all("calendar_moments"),
   all("card_sends"),
+  all("miniapp_card_sessions"),
   // V6 shopping fill ledger — jti/host/band only
   all("fill_ticket_redemptions"),
   // V7 bots — the per-profile API key never leaves the control plane

@@ -61,7 +61,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         { status: 429 }
       );
     }
-    await sendMiniAppCard(spaceId, phone, userId, "computer", "default");
+    await sendMiniAppCard(
+      supabase,
+      spaceId,
+      phone,
+      userId,
+      "computer",
+      "default"
+    );
   } catch (error) {
     await claim?.release().catch(() => undefined);
     const message = error instanceof Error ? error.message : "unknown error";

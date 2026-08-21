@@ -102,6 +102,7 @@ async function sendPurchaseCard(
     claim = await claimCardSend(supabase, userId, "vault");
     if (!claim) return; // cooldown — the Needs-you queue still has it
     await sendMiniAppCard(
+      supabase,
       String(dest.space_id),
       String(dest.phone),
       userId,

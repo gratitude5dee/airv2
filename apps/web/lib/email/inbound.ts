@@ -136,6 +136,7 @@ async function sendCalendarCard(
   if (!claim) return;
   try {
     await sendMiniAppCard(
+      supabase,
       String(dest.space_id),
       String(dest.phone),
       userId,
