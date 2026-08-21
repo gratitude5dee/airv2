@@ -93,7 +93,14 @@ export async function POST(
         { status: 429 }
       );
     }
-    await sendMiniAppCard(spaceId, phone, userId, kind, "default");
+    await sendMiniAppCard(
+      supabase,
+      spaceId,
+      phone,
+      userId,
+      kind,
+      "default"
+    );
   } catch (error) {
     await claim?.release().catch(() => undefined);
     const message = error instanceof Error ? error.message : "unknown error";

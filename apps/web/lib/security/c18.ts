@@ -154,6 +154,7 @@ export const WAVE_TABLES = [
   "calendar_accounts",
   "agent_schedules",
   "card_sends",
+  "miniapp_card_sessions",
   "automation_rules",
   "vault_managers",
   "bots",

@@ -3,8 +3,19 @@
  * `app()` thunk so no live URL is ever stored (C15); cards render live and
  * are edited in place on update.
  */
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { UnsupportedError } from "spectrum-ts";
 import { env } from "../env";
-import { createSpectrumSender } from "../spectrum/sender";
+import {
+  createSpectrumSender,
+  type SpectrumSender,
+} from "../spectrum/sender";
+import {
+  parseMiniAppCardSession,
+  readMiniAppCardSession,
+  upsertMiniAppCardSession,
+} from "./cardSessions";
+import type { CardKind } from "./cardSends";
 import { mintToken } from "./tokens";
 
 export function mintSignedLink(
@@ -17,20 +28,223 @@ export function mintSignedLink(
 }
 
 export async function sendMiniAppCard(
+  supabase: SupabaseClient,
   spaceId: string,
   phone: string,
   userId: string,
-  appSlug: string,
+  appSlug: CardKind,
   resourceId: string
 ): Promise<void> {
   const sender = await createSpectrumSender();
   try {
-    await sender.sendApp(spaceId, phone, () =>
+    const message = await sender.sendApp(spaceId, phone, () =>
       mintSignedLink(userId, appSlug, resourceId)
     );
+    const session = parseMiniAppCardSession(
+      message && "miniAppCardSession" in message
+        ? message.miniAppCardSession
+        : undefined
+    );
+    if (session) {
+      try {
+        await upsertMiniAppCardSession(
+          supabase,
+          userId,
+          appSlug,
+          resourceId,
+          spaceId,
+          session
+        );
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            msg: "mini-app card session persistence failed",
+            user_id: userId,
+            kind: appSlug,
+            resource_id: resourceId,
+            error: error instanceof Error ? error.message : "unknown",
+          })
+        );
+      }
+    }
   } finally {
     // Best-effort: a teardown failure after a successful send must not
     // surface as a delivery failure (callers may retry on error).
+    await sender.close().catch(() => undefined);
+  }
+}
+
+/**
+ * Refresh an existing card without claiming a new notification slot. If the
+ * provider cannot edit the stored card, send a fresh card and replace the
+ * stored session instead.
+ */
+export async function updateMiniAppCard(
+  supabase: SupabaseClient,
+  userId: string,
+  appSlug: CardKind,
+  resourceId: string
+): Promise<void> {
+  let destination:
+    | { space_id?: unknown; phone?: unknown }
+    | null
+    | undefined;
+  let destinationError: { message: string } | null = null;
+  try {
+    const result = await supabase
+      .from("imessage_destinations")
+      .select("space_id, phone")
+      .eq("user_id", userId)
+      .maybeSingle();
+    destination = result.data;
+    destinationError = result.error;
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        msg: "mini-app card destination lookup failed",
+        user_id: userId,
+        kind: appSlug,
+        resource_id: resourceId,
+        error: error instanceof Error ? error.message : "unknown",
+      })
+    );
+    return;
+  }
+  if (destinationError || !destination?.space_id || !destination.phone) return;
+  const spaceId = String(destination.space_id);
+  const phone = String(destination.phone);
+
+  let session;
+  try {
+    session = await readMiniAppCardSession(
+      supabase,
+      userId,
+      appSlug,
+      resourceId
+    );
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        msg: "mini-app card session lookup failed",
+        user_id: userId,
+        kind: appSlug,
+        resource_id: resourceId,
+        error: error instanceof Error ? error.message : "unknown",
+      })
+    );
+  }
+
+  if (!session) {
+    try {
+      await sendMiniAppCard(
+        supabase,
+        spaceId,
+        phone,
+        userId,
+        appSlug,
+        resourceId
+      );
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          msg: "mini-app card refresh fallback failed",
+          user_id: userId,
+          kind: appSlug,
+          resource_id: resourceId,
+          error: error instanceof Error ? error.message : "unknown",
+        })
+      );
+    }
+    return;
+  }
+
+  let sender: SpectrumSender;
+  try {
+    sender = await createSpectrumSender();
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        msg: "mini-app card sender creation failed",
+        user_id: userId,
+        kind: appSlug,
+        resource_id: resourceId,
+        error: error instanceof Error ? error.message : "unknown",
+      })
+    );
+    return;
+  }
+  try {
+    const refreshed = await sender.editApp(spaceId, phone, session, () =>
+      mintSignedLink(userId, appSlug, resourceId)
+    );
+    if (!refreshed) {
+      await sendMiniAppCard(
+        supabase,
+        spaceId,
+        phone,
+        userId,
+        appSlug,
+        resourceId
+      );
+      return;
+    }
+    try {
+      await upsertMiniAppCardSession(
+        supabase,
+        userId,
+        appSlug,
+        resourceId,
+        spaceId,
+        refreshed
+      );
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          msg: "mini-app card session persistence failed",
+          user_id: userId,
+          kind: appSlug,
+          resource_id: resourceId,
+          error: error instanceof Error ? error.message : "unknown",
+        })
+      );
+    }
+  } catch (error) {
+    if (error instanceof UnsupportedError) {
+      try {
+        await sendMiniAppCard(
+          supabase,
+          spaceId,
+          phone,
+          userId,
+          appSlug,
+          resourceId
+        );
+      } catch (fallbackError) {
+        console.error(
+          JSON.stringify({
+            msg: "mini-app card refresh fallback failed",
+            user_id: userId,
+            kind: appSlug,
+            resource_id: resourceId,
+            error:
+              fallbackError instanceof Error
+                ? fallbackError.message
+                : "unknown",
+          })
+        );
+      }
+    } else {
+      console.error(
+        JSON.stringify({
+          msg: "mini-app card update failed",
+          user_id: userId,
+          kind: appSlug,
+          resource_id: resourceId,
+          error: error instanceof Error ? error.message : "unknown",
+        })
+      );
+    }
+  } finally {
     await sender.close().catch(() => undefined);
   }
 }

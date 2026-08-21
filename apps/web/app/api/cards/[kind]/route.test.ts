@@ -111,6 +111,7 @@ describe("POST /api/cards/[kind]", () => {
       "inbox"
     );
     expect(sendMiniAppCard).toHaveBeenCalledWith(
+      expect.any(Object),
       "space-1",
       "+15550001111",
       "owner-1",
@@ -128,6 +129,7 @@ describe("POST /api/cards/[kind]", () => {
       "ads"
     );
     expect(sendMiniAppCard).toHaveBeenCalledWith(
+      expect.any(Object),
       "space-1",
       "+15550001111",
       "owner-1",

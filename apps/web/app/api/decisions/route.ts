@@ -39,6 +39,7 @@ import {
 import { applyCatalogPublish } from "@/lib/commerce/catalog";
 import { CommerceError } from "@/lib/commerce/merchants";
 import { env } from "@/lib/env";
+import { updateMiniAppCard } from "@/lib/miniapps/cards";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -476,5 +477,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     })
     .eq("id", decision.id)
     .eq("user_id", userId);
+  if (decision.kind === "purchase_review") {
+    await updateMiniAppCard(supabase, userId, "vault", "default");
+  }
   return NextResponse.json({ ok: true });
 }

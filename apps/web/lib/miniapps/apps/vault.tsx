@@ -27,6 +27,7 @@ import {
   type ManagerStatus,
 } from "@/lib/vault/managers";
 import { normalizeHost, setSiteGrant } from "@/lib/browser/grants";
+import { updateMiniAppCard } from "../cards";
 import { externalOrigin } from "../gates";
 import { promptBar, runPrompt } from "../promptBar";
 import { esc, forbidden, html, page, withBaseHeaders } from "../html";
@@ -375,6 +376,7 @@ export const vault: MiniAppModule = {
           })
           .eq("id", decision.id)
           .eq("user_id", userId);
+        await updateMiniAppCard(supabase, userId, "vault", "default");
       } catch (error) {
         if (error instanceof StartLimitError) return busyPage();
         notice = "That didn't go through — try again from Needs you.";
