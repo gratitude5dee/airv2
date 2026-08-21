@@ -5,6 +5,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { provisionEmail } from "../provisioning/email";
+import { renameBox } from "../box/client";
 import { isReservedWord } from "../miniapps/reserved";
 
 export const USERNAME_PATTERN = /^[a-z0-9_]{2,24}$/;
@@ -51,6 +52,30 @@ export async function setUsername(
       return { ok: false, error: "taken" };
     }
     return { ok: false, error: "update_failed" };
+  }
+  // Name the box after its owner so the fleet is navigable in the ascii
+  // dashboard. Best-effort: a rename failure never blocks the username.
+  const { data: box } = await supabase
+    .from("boxes")
+    .select("provider_box_id")
+    .eq("user_id", userId)
+    .maybeSingle();
+  const providerBoxId = (box?.provider_box_id as string | null) ?? null;
+  if (providerBoxId) {
+    try {
+      await renameBox(providerBoxId, `air-${username}`);
+    } catch (renameError) {
+      console.error(
+        JSON.stringify({
+          msg: "box rename failed",
+          user_id: userId,
+          error:
+            renameError instanceof Error
+              ? renameError.message
+              : String(renameError),
+        })
+      );
+    }
   }
   let address: string | null = null;
   try {
