@@ -98,9 +98,11 @@ export interface AppCardLayout {
 }
 
 /**
- * Cards are sent as customized iMessage App cards so Messages renders the
- * mini-app full-screen through the extension identified by the IMESSAGE_*
- * env vars (default: Photon/Spectrum's published extension).
+ * Cards are sent as customized iMessage App cards for the extension
+ * identified by the IMESSAGE_* env vars (default: Photon/Spectrum's
+ * published extension). `live` is deliberately omitted: live cards render
+ * the extension UI inline in the transcript bubble, while a static card
+ * opens the full-screen sheet view on tap — the presentation mini-apps need.
  */
 function buildAppCard(
   url: string,
@@ -112,7 +114,6 @@ function buildAppCard(
     extensionBundleId: extension.extensionBundleId,
     teamId: extension.teamId,
     ...(extension.appStoreId ? { appStoreId: extension.appStoreId } : {}),
-    live: true,
     url,
     layout: {
       ...(layout?.caption ? { caption: layout.caption } : {}),
