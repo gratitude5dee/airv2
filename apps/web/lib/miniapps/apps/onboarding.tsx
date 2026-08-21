@@ -53,6 +53,11 @@ import {
   type OnboardingStepId,
 } from "../onboarding";
 import { onairosProvider, type OnairosStatus } from "./onairos";
+import {
+  relayToOnairos,
+  setSpectrumFlow,
+} from "@/lib/onairos/spectrum";
+import { createSpectrumSender } from "@/lib/spectrum/sender";
 import { externalOrigin } from "../gates";
 import { baseHeaders, esc, forbidden, withBaseHeaders } from "../html";
 import {
@@ -334,7 +339,10 @@ function stepBody(snapshot: OnboardingSnapshot, step: OnboardingStepId): string 
     if (!snapshot.onairos.available) {
       return `<p class="muted">Onairos personal context isn't configured on this deployment — connect it later from Settings once it is. Nothing here blocks the rest of setup.</p><div class="row actions">${skipForm("onairos", "Skip — not configured")}</div>`;
     }
-    return `<p>${snapshot.onairos.connected ? "Connected — your imported context lives on your computer, and Settings has Re-sync / Disconnect." : "Connect your Onairos context from the main app — the consent flow runs there and your imported context lands on your computer, never on the platform."}</p><div class="row actions">${skipForm("onairos")}</div>`;
+    if (snapshot.onairos.connected) {
+      return `<p>Connected — your imported context lives on your computer, and Settings has Re-sync / Disconnect.</p><div class="row actions">${skipForm("onairos")}</div>`;
+    }
+    return `<p class="muted">Connect your Onairos context — the consent conversation happens right in your iMessage thread (Onairos asks for your account email, a verification code, and your YES). You can also connect from the main web app later.</p><div class="row actions"><form method="post" class="inline"><input type="hidden" name="action" value="connect_onairos"><button>Connect via iMessage</button></form>${skipForm("onairos")}</div>`;
   }
   if (step === "secrets") {
     const managerLines = snapshot.managers
@@ -785,6 +793,63 @@ export const onboarding: MiniAppModule = {
       }
       await markSafely(supabase, userId, "secrets", "done");
       return respond(ctx, null, "Manager enabled.");
+    }
+
+    if (action === "connect_onairos") {
+      if (env.onairosApiKey() === null) {
+        return respond(ctx, "onairos", "Onairos isn't configured on this deployment.");
+      }
+      const { data: destination } = await supabase
+        .from("imessage_destinations")
+        .select("space_id, phone")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (!destination?.space_id || !destination.phone) {
+        return respond(
+          ctx,
+          "onairos",
+          "No iMessage thread found yet — text your agent once, then try again."
+        );
+      }
+      const spaceId = String(destination.space_id);
+      const phone = String(destination.phone);
+      let result;
+      try {
+        result = await relayToOnairos({
+          sessionId: spaceId,
+          senderId: phone,
+          phone,
+          text: "Connect Onairos",
+        });
+      } catch {
+        return respond(
+          ctx,
+          "onairos",
+          "Couldn't reach Onairos — try again in a minute."
+        );
+      }
+      await setSpectrumFlow(
+        supabase,
+        userId,
+        result.shouldRouteNextMessage ? "pending" : "error"
+      ).catch(() => undefined);
+      if (result.reply) {
+        const sender = await createSpectrumSender().catch(() => undefined);
+        if (sender) {
+          try {
+            await sender
+              .sendText(spaceId, phone, result.reply)
+              .catch(() => undefined);
+          } finally {
+            await sender.close().catch(() => undefined);
+          }
+        }
+      }
+      return respond(
+        ctx,
+        "onairos",
+        "Check your iMessage — Onairos will ask for your account email there. Reply in the thread to finish connecting."
+      );
     }
 
     if (action === "ask_agent") {
