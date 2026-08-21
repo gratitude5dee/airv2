@@ -9,18 +9,32 @@
 interface Entitlement {
   plan: string;
   speed_tier: string;
+  model_family?: string;
   tier_models?: { fast: string; balanced: string; deep: string };
+  family_models?: Record<string, string>;
   monthly_cap_usd: number;
   spend_mtd_usd: number;
 }
 
+/** Families in picker order; Ox Alpha is the default anyone lands on. */
+export const MODEL_FAMILY_OPTIONS = [
+  ["ox-alpha", "Ox Alpha"],
+  ["openai", "OpenAI"],
+  ["inkling", "Inkling (free)"],
+  ["inkling-small", "Inkling Small (free)"],
+] as const;
+
 export function SpeedCard({
   tier,
   onTierChange,
+  family,
+  onFamilyChange,
   entitlement,
 }: {
   tier: string;
   onTierChange: (next: string) => void;
+  family: string;
+  onFamilyChange: (next: string) => void;
   entitlement: Entitlement | null;
 }) {
   const spendPct = entitlement
@@ -62,6 +76,33 @@ export function SpeedCard({
                 }
               >
                 {entitlement.tier_models[id]}
+              </span>
+            ) : null}
+          </button>
+        ))}
+      </div>
+      <h3 className="mb-1.5 mt-4 text-[15px] font-semibold">Model</h3>
+      <div className="grid gap-1.5">
+        {MODEL_FAMILY_OPTIONS.map(([id, label]) => (
+          <button
+            key={id}
+            className={
+              "seg rounded-lg" +
+              (family === id
+                ? " pill-active"
+                : " shadow-[0_0_0_0.5px_var(--ring)]")
+            }
+            onClick={() => onFamilyChange(id)}
+          >
+            {label}
+            {entitlement?.family_models?.[id] ? (
+              <span
+                className={
+                  "block text-[11px] font-normal " +
+                  (family === id ? "opacity-70" : "text-[var(--muted)]")
+                }
+              >
+                {entitlement.family_models[id]}
               </span>
             ) : null}
           </button>

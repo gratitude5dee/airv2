@@ -4,6 +4,7 @@
  * grows its own mutation logic (goal.md §MA5 #14).
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { ModelFamily } from "../entitlements/models";
 import { provisionEmail } from "../provisioning/email";
 import { renameBox } from "../box/client";
 import { isReservedWord } from "../miniapps/reserved";
@@ -112,6 +113,34 @@ export async function setSpeedTier(
   const { error } = await supabase
     .from("entitlements")
     .update({ speed_tier: tier })
+    .eq("user_id", userId);
+  return !error;
+}
+
+export const MODEL_FAMILIES = [
+  "ox-alpha",
+  "openai",
+  "inkling",
+  "inkling-small",
+] as const;
+
+/** Human labels for the family pickers. */
+export const MODEL_FAMILY_LABELS: Record<ModelFamily, string> = {
+  "ox-alpha": "Ox Alpha",
+  openai: "OpenAI",
+  inkling: "Inkling (free)",
+  "inkling-small": "Inkling Small (free)",
+};
+
+/** Writes entitlements.model_family — a family name, never a model ID. */
+export async function setModelFamily(
+  supabase: SupabaseClient,
+  userId: string,
+  family: ModelFamily
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("entitlements")
+    .update({ model_family: family })
     .eq("user_id", userId);
   return !error;
 }

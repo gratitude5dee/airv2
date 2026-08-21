@@ -2,7 +2,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
 import { sessionUserId } from "@/lib/auth/user";
-import { modelLabelForTier } from "@/lib/entitlements/models";
+import {
+  DEFAULT_MODEL_FAMILY,
+  isModelFamily,
+  isSpeedTier,
+  modelLabelForFamily,
+  modelLabelForTier,
+} from "@/lib/entitlements/models";
+import { MODEL_FAMILIES } from "@/lib/settings/account";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,7 +29,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         .maybeSingle(),
       supabase
         .from("entitlements")
-        .select("plan, speed_tier, monthly_cap_usd, spend_mtd_usd")
+        .select("plan, speed_tier, model_family, monthly_cap_usd, spend_mtd_usd")
         .eq("user_id", userId)
         .maybeSingle(),
       supabase
@@ -38,16 +45,24 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   if (!user) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
+  const familyValue = String(entitlement?.model_family ?? "");
+  const family = isModelFamily(familyValue) ? familyValue : DEFAULT_MODEL_FAMILY;
+  const tierValue = String(entitlement?.speed_tier ?? "");
+  const tier = isSpeedTier(tierValue) ? tierValue : "balanced";
   return NextResponse.json({
     user,
     entitlement: entitlement
       ? {
           ...entitlement,
+          model_family: family,
           tier_models: {
             fast: modelLabelForTier("fast"),
             balanced: modelLabelForTier("balanced"),
             deep: modelLabelForTier("deep"),
           },
+          family_models: Object.fromEntries(
+            MODEL_FAMILIES.map((f) => [f, modelLabelForFamily(f, tier)])
+          ),
         }
       : entitlement,
     lines: lines ?? [],
