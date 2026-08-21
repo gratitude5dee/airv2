@@ -12,10 +12,32 @@ metadata:
 
 # Open a mini-app
 
-When the owner asks you to open, show, or launch a mini-app — "open the
-onboarding mini-app", "pull up my calendar", "show me the vault" — do NOT
-open a browser, a desktop app, or any local address on this machine. The
-mini-apps run on the owner's phone: you send them a card and they tap it.
+This skill is the ONLY correct way to open a mini-app. ANY request of the
+form "open/show/launch/pull up the <X> mini-app" (or "open my calendar",
+"show me the vault", "take me to onboarding") MUST be handled by the single
+`POST /api/cards/<kind>` call below — nothing else. The mini-apps run on the
+owner's phone: you send them a card and they tap it.
+
+Hard rules — no exceptions:
+
+- MUST NOT use the computer-use or browser tool for this. There is nothing
+  to click; the card send is one curl command.
+- MUST NOT open or send any local URL: never `localhost:3000`,
+  `127.0.0.1`, `0.0.0.0`, or any port on this machine.
+- MUST NOT open the Hermes dashboard on port 9119 or its sign-in page —
+  that is this box's own control panel, not a mini-app.
+- MUST NOT paste a raw link into the chat instead of sending the card; the
+  signed link is minted control-plane-side and only works from the card.
+
+Bad (never do these):
+
+- "open the calendar miniapp" → browsing to `http://localhost:3000/calendar` ✗
+- "open the calendar miniapp" → opening `http://127.0.0.1:9119` (Hermes
+  dashboard sign-in) ✗
+- "show me onboarding" → launching Chrome / any computer-use action ✗
+
+Good: "open the calendar miniapp" → `POST /api/cards/calendar` (below), then
+tell the owner to tap the card. ✓
 
 ## Send the card
 
@@ -64,5 +86,5 @@ sent (e.g. "Sent you the onboarding app — tap the card above to open it.").
 
 If the request doesn't match a kind above, it's probably a store app: use
 the app-store-search skill and reply with the app's `detail_url` link.
-Never invent a kind, never guess local URLs, and never try to open or sign
-into an app on the owner's behalf.
+Never invent a kind, never guess local URLs, never open a browser on this
+machine, and never try to open or sign into an app on the owner's behalf.
