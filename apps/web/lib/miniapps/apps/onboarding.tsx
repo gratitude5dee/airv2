@@ -459,11 +459,24 @@ form.stack select{background:var(--well-bg);color:var(--ink);border:1px solid va
 .chip{font-family:var(--font-ui);font-size:0.6rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-muted)}
 `;
 
+/**
+ * Messages-extension webviews run under a tight memory/GPU budget — iOS
+ * kills the extension (“Unable to Load App”, frozen snapshot) when a page is
+ * too heavy. Card-opened sessions therefore render without the shader
+ * backdrop, grain, blur, and slide animation.
+ */
+const LITE_CSS = `
+.logo-pill,.counter,.panel,.navlink{backdrop-filter:none;-webkit-backdrop-filter:none}
+html{background-attachment:scroll}
+main.slide{animation:none}
+`;
+
 export function renderOnboarding(
   current: Theme,
   snapshot: OnboardingSnapshot,
   active: OnboardingStepId,
-  notice: string | null
+  notice: string | null,
+  lite = false
 ): string {
   const index = ONBOARDING_STEPS.indexOf(active);
   const prev = index > 0 ? ONBOARDING_STEPS[index - 1] : null;
@@ -504,23 +517,24 @@ export function renderOnboarding(
       : `<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="${esc(current.fontStylesheet)}">`;
   const backdrop = current.backdrop;
   const shader =
-    backdrop.kind === "shader"
+    backdrop.kind === "shader" && !lite
       ? `<script src="${esc(backdrop.script)}" defer></script>`
       : "";
   // The shader element paints itself; if fx.js or WebGL is unavailable it
   // stays an empty inert box and the canvas gradient carries the page.
   const backdropHtml =
-    backdrop.kind === "shader"
+    backdrop.kind === "shader" && !lite
       ? backdrop.element.replace("<wz-sky", '<wz-sky class="backdrop"')
       : "";
-  const grain = backdrop.grain
-    ? '<div class="grain" aria-hidden="true"></div>'
-    : "";
+  const grain =
+    backdrop.grain && !lite
+      ? '<div class="grain" aria-hidden="true"></div>'
+      : "";
   const scrim =
     current.tokens.scrim === "none"
       ? ""
       : '<div class="scrim" aria-hidden="true"></div>';
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>Onboarding — ${esc(STEP_TITLES[active])}</title>${fonts}<style>${tokenBlock(current.tokens)}${SLIDE_CSS}</style>${shader}</head><body>${backdropHtml}${scrim}${grain}<div class="frame"><header class="bar"><span class="logo-pill"><img src="/creator-os/wzrd-wordmark-1600.png" alt="WZRD.tech"></span><span class="counter">${pad(index + 1)} / ${pad(ONBOARDING_STEPS.length)}${esc(statusTag)}</span></header><main class="slide">${busy}${noticeHtml}<p class="kicker">${pad(index + 1)} / ${esc(STEP_KICKERS[active])}</p><h1>${esc(STEP_TITLES[active])}</h1><section class="panel">${stepBody(snapshot, active)}</section></main><footer class="nav">${prev ? `<a class="navlink" href="${href(prev)}">← Back</a>` : '<span class="navlink ghosted">← Back</span>'}<nav class="dots" aria-label="Steps">${dots}</nav>${next ? `<a class="navlink" href="${href(next)}">Next →</a>` : '<span class="navlink ghosted">Next →</span>'}</footer></div></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>Onboarding — ${esc(STEP_TITLES[active])}</title>${fonts}<style>${tokenBlock(current.tokens)}${SLIDE_CSS}${lite ? LITE_CSS : ""}</style>${shader}</head><body>${backdropHtml}${scrim}${grain}<div class="frame"><header class="bar"><span class="logo-pill"><img src="/creator-os/wzrd-wordmark-1600.png" alt="WZRD.tech"></span><span class="counter">${pad(index + 1)} / ${pad(ONBOARDING_STEPS.length)}${esc(statusTag)}</span></header><main class="slide">${busy}${noticeHtml}<p class="kicker">${pad(index + 1)} / ${esc(STEP_KICKERS[active])}</p><h1>${esc(STEP_TITLES[active])}</h1><section class="panel">${stepBody(snapshot, active)}</section></main><footer class="nav">${prev ? `<a class="navlink" href="${href(prev)}">← Back</a>` : '<span class="navlink ghosted">← Back</span>'}<nav class="dots" aria-label="Steps">${dots}</nav>${next ? `<a class="navlink" href="${href(next)}">Next →</a>` : '<span class="navlink ghosted">Next →</span>'}</footer></div></body></html>`;
 }
 
 function activeStep(ctx: MiniAppContext, snapshot: OnboardingSnapshot): OnboardingStepId {
@@ -547,7 +561,13 @@ async function respond(
   const current = activeTheme(ctx);
   return slides(
     current,
-    renderOnboarding(current, snapshot, step ?? firstOpenStep(snapshot), notice)
+    renderOnboarding(
+      current,
+      snapshot,
+      step ?? firstOpenStep(snapshot),
+      notice,
+      ctx.session.via === "card"
+    )
   );
 }
 
@@ -580,7 +600,13 @@ export const onboarding: MiniAppModule = {
     const current = activeTheme(ctx);
     return slides(
       current,
-      renderOnboarding(current, snapshot, activeStep(ctx, snapshot), null)
+      renderOnboarding(
+        current,
+        snapshot,
+        activeStep(ctx, snapshot),
+        null,
+        ctx.session.via === "card"
+      )
     );
   },
 

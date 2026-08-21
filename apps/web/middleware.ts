@@ -126,6 +126,13 @@ export function middleware(request: NextRequest): NextResponse {
     return new NextResponse("not found", { status: 404 });
   }
 
+  // First-party static assets (public/) are shared across both hosts —
+  // mini-app shells reference them by absolute path, so they must not be
+  // rewritten into loader slugs.
+  if (pathname.startsWith("/creator-os/")) {
+    return NextResponse.next({ request: { headers } });
+  }
+
   // Everything else on the mini host is store or loader territory: rewrite
   // under /mini and mark the request so the loader uses external paths.
   const rewritten = new URL(request.nextUrl);
