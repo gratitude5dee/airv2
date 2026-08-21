@@ -77,6 +77,31 @@ export const env = {
     process.env.ADS_VAULT_KEY ?? process.env.BOX_DASHBOARD_AUTH_KEY ?? null,
   miniappOrigin: (): string =>
     optional("MINIAPP_ORIGIN", "https://mini.wzrd.tech"),
+  // First-party iMessage extension identity for full-screen mini-app cards.
+  // All three of app name / bundle id / team id must be set; otherwise card
+  // sends fall back to the generic app card. IMESSAGE_APP_STORE_ID is optional
+  // and only routes recipients without the extension to the App Store.
+  imessageMiniAppExtension: (): {
+    appName: string;
+    extensionBundleId: string;
+    teamId: string;
+    appStoreId?: number;
+  } | null => {
+    const appName = process.env.IMESSAGE_APP_NAME;
+    const extensionBundleId = process.env.IMESSAGE_EXTENSION_BUNDLE_ID;
+    const teamId = process.env.IMESSAGE_TEAM_ID;
+    if (!appName || !extensionBundleId || !teamId) return null;
+    const appStoreId = Number.parseInt(
+      process.env.IMESSAGE_APP_STORE_ID ?? "",
+      10
+    );
+    return {
+      appName,
+      extensionBundleId,
+      teamId,
+      ...(Number.isFinite(appStoreId) && appStoreId > 0 ? { appStoreId } : {}),
+    };
+  },
   // MA4 public media lane (R2). All three credentials must be present for the
   // lane to be configured; when absent every write path reports itself
   // unconfigured instead of failing the deploy. Keys are server-side only —

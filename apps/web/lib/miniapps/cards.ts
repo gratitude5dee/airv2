@@ -23,6 +23,11 @@ import { mintToken } from "./tokens";
 /** Card links stay tappable for a day — cards linger in the transcript. */
 export const CARD_LINK_TTL_MINUTES = 24 * 60;
 
+function cardLayout(appSlug: string): { caption: string; subcaption: string } {
+  const caption = appSlug.charAt(0).toUpperCase() + appSlug.slice(1);
+  return { caption, subcaption: "Tap to open" };
+}
+
 export function mintSignedLink(
   userId: string,
   appSlug: string,
@@ -42,8 +47,11 @@ export async function sendMiniAppCard(
 ): Promise<void> {
   const sender = await createSpectrumSender();
   try {
-    const message = await sender.sendApp(spaceId, phone, () =>
-      mintSignedLink(userId, appSlug, resourceId)
+    const message = await sender.sendApp(
+      spaceId,
+      phone,
+      () => mintSignedLink(userId, appSlug, resourceId),
+      cardLayout(appSlug)
     );
     const session = parseMiniAppCardSession(
       message && "miniAppCardSession" in message
@@ -159,8 +167,12 @@ export async function updateMiniAppCard(
     return;
   }
   try {
-    const refreshed = await sender.editApp(spaceId, phone, session, () =>
-      mintSignedLink(userId, appSlug, resourceId)
+    const refreshed = await sender.editApp(
+      spaceId,
+      phone,
+      session,
+      () => mintSignedLink(userId, appSlug, resourceId),
+      cardLayout(appSlug)
     );
     if (!refreshed) {
       await deleteMiniAppCardSession(

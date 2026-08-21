@@ -17,7 +17,10 @@ import {
   typing,
   type Message,
 } from "spectrum-ts";
-import { imessage } from "spectrum-ts/providers/imessage";
+import {
+  customizedMiniApp,
+  imessage,
+} from "spectrum-ts/providers/imessage";
 import { env } from "../env";
 import {
   parseMiniAppCardSession,
@@ -61,14 +64,16 @@ export interface SpectrumSender {
   sendApp(
     spaceId: string,
     phone: string,
-    url: () => string | Promise<string>
+    url: () => string | Promise<string>,
+    layout?: AppCardLayout
   ): Promise<Message | undefined>;
   /** Refresh a previously-sent live app card and return its new session. */
   editApp(
     spaceId: string,
     phone: string,
     session: MiniAppCardSession,
-    url: () => string | Promise<string>
+    url: () => string | Promise<string>,
+    layout?: AppCardLayout
   ): Promise<MiniAppCardSession | undefined>;
   /** Send bytes as a native media bubble (M16 creative delivery). */
   sendAttachment(
@@ -85,6 +90,38 @@ export interface SpectrumSender {
     phone: string
   ): Promise<{ data: Buffer; mimeType: string; name: string } | undefined>;
   close(): Promise<void>;
+}
+
+export interface AppCardLayout {
+  caption?: string;
+  subcaption?: string;
+}
+
+/**
+ * When the deploy names a first-party iMessage extension
+ * (IMESSAGE_EXTENSION_BUNDLE_ID / IMESSAGE_TEAM_ID / IMESSAGE_APP_NAME),
+ * cards are sent as customized iMessage App cards so Messages renders the
+ * mini-app full-screen through that extension. Without the config the
+ * generic app card keeps working as the fallback.
+ */
+function buildAppCard(
+  url: string,
+  layout: AppCardLayout | undefined
+): ReturnType<typeof appCard> {
+  const extension = env.imessageMiniAppExtension();
+  if (!extension) return appCard(url, { live: true });
+  return customizedMiniApp({
+    appName: extension.appName,
+    extensionBundleId: extension.extensionBundleId,
+    teamId: extension.teamId,
+    ...(extension.appStoreId ? { appStoreId: extension.appStoreId } : {}),
+    live: true,
+    url,
+    layout: {
+      ...(layout?.caption ? { caption: layout.caption } : {}),
+      ...(layout?.subcaption ? { subcaption: layout.subcaption } : {}),
+    },
+  });
 }
 
 export async function createSpectrumSender(): Promise<SpectrumSender> {
@@ -126,10 +163,12 @@ export async function createSpectrumSender(): Promise<SpectrumSender> {
     sendRichLink: async (spaceId, phone, url) => {
       await (await space(spaceId, phone)).send(richlink(url));
     },
-    sendApp: async (spaceId, phone, url) => {
-      return (await space(spaceId, phone)).send(appCard(url, { live: true }));
+    sendApp: async (spaceId, phone, url, layout) => {
+      return (await space(spaceId, phone)).send(
+        buildAppCard(await url(), layout)
+      );
     },
-    editApp: async (spaceId, phone, session, url) => {
+    editApp: async (spaceId, phone, session, url, layout) => {
       const s = await space(spaceId, phone);
       const messageIds = [
         session.targetMessageGuid,
@@ -152,7 +191,7 @@ export async function createSpectrumSender(): Promise<SpectrumSender> {
       const target = Object.assign(message, {
         miniAppCardSession: session,
       });
-      await s.send(edit(appCard(url, { live: true }), target));
+      await s.send(edit(buildAppCard(await url(), layout), target));
       return parseMiniAppCardSession(target.miniAppCardSession);
     },
     getAttachment: async (attachmentId, phone) => {
