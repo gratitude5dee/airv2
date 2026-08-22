@@ -38,6 +38,8 @@ import {
   type IngestStatus,
 } from "@/lib/imessage/ingest";
 import { env } from "@/lib/env";
+import { sendMiniAppCard } from "@/lib/miniapps/cards";
+import { claimCardSend, type CardClaim } from "@/lib/miniapps/cardSends";
 import {
   beginConnect,
   syncConnections,
@@ -387,7 +389,7 @@ function stepBody(snapshot: OnboardingSnapshot, step: OnboardingStepId): string 
     return status;
   }
   if (step === "walkthrough") {
-    const tour = `<p>Quick tour:</p><ul><li><strong>Chat</strong> — one conversation with your agent, same on iMessage and the web.</li><li><strong>Needs you</strong> — every action with side effects (emails, payments, publishes) waits here for your approval.</li><li><strong>Apps</strong> — the App Store: calendar, vault, shop, and mini-apps from publishers.</li><li><strong>Settings</strong> — username, speed, memory, context, plugin sessions.</li></ul>`;
+    const tour = `<p>Home is your launcher — here's the clickthrough:</p><ul><li><strong>Home grid</strong> — every app as a one-tap tile: calendar, vault, pay, shop, inbox, persona, and more.</li><li><strong>Chat</strong> — one conversation with your agent, same on iMessage and the web.</li><li><strong>Needs you</strong> — every action with side effects (emails, payments, publishes) waits for your approval.</li><li><strong>Settings</strong> — username, speed, memory, context, plugin sessions.</li></ul><p class="muted">Finish setup and the Home app arrives as your next message — tap it and try each tile.</p>`;
     const buttons = WALKTHROUGH_WORKFLOWS.map(
       ([id, label]) =>
         `<form method="post" class="inline"><input type="hidden" name="action" value="run_workflow"><input type="hidden" name="workflow" value="${esc(id)}"><button class="ghost">${esc(label)}</button></form>`
@@ -634,6 +636,40 @@ async function markSafely(
   }
 }
 
+/**
+ * Deliver the Home launcher card to the owner's iMessage thread as the next
+ * message after setup. Best-effort: web-only users have no destination yet,
+ * and a send failure never blocks finishing onboarding.
+ */
+async function sendHomeCard(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<void> {
+  let claim: CardClaim | undefined;
+  try {
+    const { data: dest } = await supabase
+      .from("imessage_destinations")
+      .select("space_id, phone")
+      .eq("user_id", userId)
+      .maybeSingle();
+    const spaceId = dest?.space_id ? String(dest.space_id) : "";
+    const phone = dest?.phone ? String(dest.phone) : "";
+    if (!spaceId || !phone) return;
+    claim = await claimCardSend(supabase, userId, "home");
+    if (!claim) return;
+    await sendMiniAppCard(supabase, spaceId, phone, userId, "home", "default");
+  } catch (error) {
+    await claim?.release().catch(() => undefined);
+    console.error(
+      JSON.stringify({
+        msg: "walkthrough home card send failed",
+        user_id: userId,
+        error: error instanceof Error ? error.message : "unknown",
+      })
+    );
+  }
+}
+
 export const onboarding: MiniAppModule = {
   async render(ctx: MiniAppContext): Promise<NextResponse> {
     const snapshot = await loadSnapshot(ctx.supabase, ctx.session.userId);
@@ -674,6 +710,19 @@ export const onboarding: MiniAppModule = {
         step,
         action === "skip" ? "skipped" : "done"
       );
+      if (step === "walkthrough" && action === "mark_done") {
+        // Finishing the walkthrough delivers Home as the next message so the
+        // user's first stop after setup is the launcher clickthrough.
+        // Best-effort: web-only users have no iMessage destination yet.
+        await sendHomeCard(supabase, userId);
+        return respond(
+          ctx,
+          null,
+          saved
+            ? "Setup complete — the Home app is on its way to your chat."
+            : "Couldn't save progress — the computer is starting up."
+        );
+      }
       return respond(
         ctx,
         null,
