@@ -279,10 +279,17 @@ async function runStudioRender(
   };
   const result = await executeCreativeJob(ctx.supabase, job.id, userId, turn);
   if (result.status === "delivered" && result.asset) {
-    await updateImageDoc(ctx.supabase, userId, ctx.session.resourceId, {
-      kind: "set-flat",
-      assetId: result.asset.id,
-    });
+    // The render is already delivered and charged; a doc-write failure must
+    // not discard it. The asset stays retrievable, so surface a notice and
+    // let a later save repoint the canvas.
+    try {
+      await updateImageDoc(ctx.supabase, userId, ctx.session.resourceId, {
+        kind: "set-flat",
+        assetId: result.asset.id,
+      });
+    } catch {
+      return `render done (asset ${result.asset.id}) but saving to the canvas failed — try again in a minute or add it as an asset layer.`;
+    }
     return kind === "edit" ? "edit applied." : "image ready.";
   }
   return result.line;
