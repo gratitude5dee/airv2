@@ -83,13 +83,17 @@ Valid kinds and when to use them:
 | `image` | image tools |
 | `settings` | settings, preferences |
 | `computer` | seeing/controlling this computer's screen |
+| `home` | home, dashboard, the main app, "all my apps" |
 
-"Home", "dashboard", or "the main app" is NOT a card kind: reply with the
-web dashboard link `https://app.wzrd.tech/home` instead of sending a card
-(that link is public, so pasting it is fine).
+Common aliases — map silently, never explain kind names to the owner:
 
-After a successful send, tell them in your reply to tap the card you just
-sent (e.g. "Sent you the onboarding app — tap the card above to open it.").
+- "wallet", "money", "payments" → `pay`
+- "home", "dashboard", "main app" → `home`
+- "passwords", "keys", "secrets" → `vault`
+
+After a successful send, tell them in ONE short sentence to tap the card you
+just sent (e.g. "Sent — tap the card above to open it."). Do not explain
+which kind you picked, that an alias was used, or how the card system works.
 
 ## Errors
 

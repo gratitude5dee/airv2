@@ -26,7 +26,8 @@ export type CardKind =
   | "inbox"
   | "pay"
   | "shop"
-  | "settings";
+  | "settings"
+  | "home";
 
 /** Minimum gap between agent-initiated cards per (user, kind). */
 export const CARD_COOLDOWN_MS = 2 * 60 * 1000;
