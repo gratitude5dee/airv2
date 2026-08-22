@@ -104,3 +104,29 @@ directory through `GET /api/store/search` on the gateway origin — the same
 public listing data any web reader sees. For existing boxes, copy the skill
 directory into `~/.hermes/skills/app-store-search` during the in-place
 migration; no config or service change is needed.
+
+## 5. Baseline parity — `sync-box.sh`
+
+`infra/template/sync-box.sh` reconciles an EXISTING box to the current air
+baseline in place (idempotent; never re-forks). It refreshes only
+template-owned assets — air identity/SOUL sections, template skills
+(air-onboarding, open-miniapp, calendar-native, vault-use, shopping-checkout,
+…), the creative + air-vault plugins, the `air-vault` and `open-miniapp-card`
+CLIs, browser CDP args/profile, memory + browser config blocks, and the three
+systemd units — and preserves all user state (memories, sessions, vault
+store, per-box secrets, user-installed skills). To run against a box:
+
+```bash
+# from the control plane / operator machine, with the box resumed:
+tar czf - -C infra template | base64 -w0   # upload via the box files API
+# on the box:
+base64 -d air-template.b64 > t.tgz && mkdir -p air-template \
+  && tar xzf t.tgz -C air-template && bash air-template/template/sync-box.sh
+```
+
+Verify afterwards: SOUL.md leads with "## You are air", required skills and
+plugins present, `AGENT_BROWSER_ARGS` comma-separated with the CDP profile,
+`air-vault`/`open-miniapp-card` on PATH, all three units active, gateway
+`/health` 200. Run it on the template box itself after template changes so
+new forks inherit the baseline (then delete `AIR_VAULT_KEY` from the
+template's `~/.hermes/.env` — provisioning writes a per-user key on fork).
