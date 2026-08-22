@@ -19,7 +19,7 @@ vi.mock("@/lib/supabase", () => {
     let to = Infinity;
     const chain: Record<string, unknown> = {};
     const self = () => chain;
-    for (const method of ["select", "order"]) {
+    for (const method of ["select", "order", "not"]) {
       chain[method] = vi.fn(self);
     }
     chain.range = vi.fn((start: number, end: number) => {

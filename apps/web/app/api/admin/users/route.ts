@@ -54,6 +54,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const { data, error } = await supabase
       .from("handles")
       .select("user_id, platform, address")
+      .not("verified_at", "is", null)
       .order("id", { ascending: true })
       .range(offset, offset + PAGE - 1);
     if (error) break; // directory still useful without handles
