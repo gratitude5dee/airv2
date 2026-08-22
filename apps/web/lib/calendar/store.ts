@@ -19,7 +19,7 @@ export const SYNC_SCHEDULE = "*/15 * * * *";
 /** Normalized event shape the sync job writes and every surface reads. */
 export interface CalendarEvent {
   id: string;
-  source: "google" | "apple_ics" | "calcom" | "email";
+  source: "google" | "apple_ics" | "calcom" | "email" | "local";
   source_ref: string;
   title: string;
   starts_at: string;
@@ -40,7 +40,8 @@ function isCalendarSource(value: unknown): value is CalendarEvent["source"] {
     value === "google" ||
     value === "apple_ics" ||
     value === "calcom" ||
-    value === "email"
+    value === "email" ||
+    value === "local"
   );
 }
 
@@ -331,6 +332,66 @@ export async function dismissInboxEvent(
   );
   if (result.exitCode !== 0) {
     throw new Error(`calendar dismiss failed: ${result.stderr}`);
+  }
+}
+
+/** Fields for a locally created/edited event (owner mini-app or agent). */
+export interface LocalEventInput {
+  id?: string;
+  title: string;
+  starts_at: string;
+  ends_at?: string;
+  all_day?: boolean;
+  location?: string;
+}
+
+const LOCAL_ID = /^local:[a-f0-9]{16}$/;
+
+/** Create or update a local event in the box store. Returns the event id. */
+export async function upsertLocalEvent(
+  boxId: string,
+  input: LocalEventInput
+): Promise<string> {
+  if (input.id !== undefined && !LOCAL_ID.test(input.id)) {
+    throw new Error("invalid local event id");
+  }
+  // base64 keeps hostile text out of shell interpolation entirely.
+  const payload = Buffer.from(JSON.stringify(input), "utf-8").toString(
+    "base64"
+  );
+  if (!/^[A-Za-z0-9+/=]+$/.test(payload)) {
+    throw new Error("invalid payload");
+  }
+  const result = await command(
+    boxId,
+    `python3 /home/user/.hermes/calendar/sync.py upsert '${payload}'`,
+    120
+  );
+  if (result.exitCode !== 0) {
+    throw new Error(`calendar upsert failed: ${result.stderr}`);
+  }
+  const id = result.stdout.trim().split("\n").pop() ?? "";
+  if (!LOCAL_ID.test(id)) {
+    throw new Error("calendar upsert returned no id");
+  }
+  return id;
+}
+
+/** Delete a local event from the box store. */
+export async function removeLocalEvent(
+  boxId: string,
+  eventId: string
+): Promise<void> {
+  if (!LOCAL_ID.test(eventId)) {
+    throw new Error("invalid local event id");
+  }
+  const result = await command(
+    boxId,
+    `python3 /home/user/.hermes/calendar/sync.py remove '${eventId}'`,
+    120
+  );
+  if (result.exitCode !== 0) {
+    throw new Error(`calendar remove failed: ${result.stderr}`);
   }
 }
 

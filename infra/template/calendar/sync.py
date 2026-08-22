@@ -10,6 +10,9 @@ Commands:
   pull            sync all sources + the inbox into events.json
   approve <ref>   confirm the pending inbox event materialized from <ref>
   dismiss <ref>   tombstone <ref> so re-syncs cannot resurrect it
+  upsert <b64>    create/update a local event (base64 JSON: id?, title,
+                  starts_at, ends_at?, all_day?, location?)
+  remove <id>     delete a local event by id (local: ids only)
 
 Sources (~/.hermes/calendar/sources.json, mode 600):
   [{"id": "...", "provider": "apple_ics"|"calcom", "secret": "..."}]
@@ -37,6 +40,7 @@ CAL_DIR = os.path.expanduser("~/.hermes/calendar")
 EVENTS_PATH = os.path.join(CAL_DIR, "events.json")
 SOURCES_PATH = os.path.join(CAL_DIR, "sources.json")
 GOOGLE_PATH = os.path.join(CAL_DIR, "google.json")
+LOCAL_PATH = os.path.join(CAL_DIR, "local.json")
 INBOX_DIR = os.path.join(CAL_DIR, "inbox")
 
 MAX_FETCH_BYTES = 1_000_000  # hostile input: hard cap on any fetched ICS
@@ -44,7 +48,7 @@ MAX_EVENTS_PER_SOURCE = 500
 FETCH_TIMEOUT = 20
 FIELD_MAX = 512
 
-ALLOWED_SOURCES = ("google", "apple_ics", "calcom", "email")
+ALLOWED_SOURCES = ("google", "apple_ics", "calcom", "email", "local")
 
 
 def load_json(path, fallback):
@@ -291,6 +295,48 @@ def pull_google():
     return events
 
 
+def normalize_local(item):
+    """Validate one local.json entry into the canonical event shape."""
+    if not isinstance(item, dict):
+        return None
+    starts = clean(str(item.get("starts_at", "")))
+    if not starts:
+        return None
+    event_id = clean(str(item.get("id", "")))
+    if not event_id.startswith("local:"):
+        return None
+    return {
+        "id": event_id,
+        "source": "local",
+        "source_ref": "local",
+        "title": clean(str(item.get("title", ""))) or "(no title)",
+        "starts_at": starts,
+        "ends_at": clean(str(item.get("ends_at", ""))) or starts,
+        "all_day": bool(item.get("all_day", False)),
+        "location": clean(str(item.get("location", ""))) or None,
+        "attendees_count": 0,
+        "url": None,
+        "status": "confirmed",
+    }
+
+
+def load_local():
+    data = load_json(LOCAL_PATH, [])
+    if not isinstance(data, list):
+        return []
+    events = []
+    for item in data[:MAX_EVENTS_PER_SOURCE]:
+        event = normalize_local(item)
+        if event:
+            events.append(event)
+    return events
+
+
+def pull_local():
+    """Local events: created by the owner in the mini-app or by the agent."""
+    return load_local()
+
+
 def pull_inbox(tombstones, confirmed):
     """Emailed .ics drops: pending until their calendar_add decision lands."""
     events = []
@@ -342,6 +388,7 @@ def cmd_pull():
     if not isinstance(sources, list):
         sources = []
     events = pull_google()
+    events.extend(pull_local())
     for source in sources:
         if not isinstance(source, dict) or not isinstance(source.get("secret"), str):
             continue
@@ -386,6 +433,63 @@ def cmd_approve(ref):
     print("approved")
 
 
+def refresh_local_in_state():
+    """Replace the local slice of events.json from local.json (no network)."""
+    state = load_state()
+    events = [
+        e
+        for e in state["events"]
+        if isinstance(e, dict) and e.get("source") != "local"
+    ]
+    events.extend(pull_local())
+    save_state(state, events)
+
+
+def cmd_upsert(payload_b64):
+    import base64
+
+    try:
+        item = json.loads(base64.b64decode(payload_b64).decode("utf-8"))
+    except (ValueError, OSError):
+        print("invalid payload", file=sys.stderr)
+        sys.exit(2)
+    if not isinstance(item, dict):
+        print("invalid payload", file=sys.stderr)
+        sys.exit(2)
+    event_id = clean(str(item.get("id", "")))
+    if not event_id:
+        seed = clean(str(item.get("title", ""))) + clean(
+            str(item.get("starts_at", ""))
+        ) + datetime.now(timezone.utc).isoformat()
+        event_id = "local:" + hashlib.sha256(seed.encode()).hexdigest()[:16]
+    item["id"] = event_id
+    event = normalize_local(item)
+    if not event:
+        print("invalid event (need starts_at and a local: id)", file=sys.stderr)
+        sys.exit(2)
+    local = load_json(LOCAL_PATH, [])
+    if not isinstance(local, list):
+        local = []
+    local = [e for e in local if not (isinstance(e, dict) and e.get("id") == event_id)]
+    local.append(event)
+    atomic_write(LOCAL_PATH, local)
+    refresh_local_in_state()
+    print(event_id)
+
+
+def cmd_remove(event_id):
+    if not event_id.startswith("local:"):
+        print("only local: events can be removed", file=sys.stderr)
+        sys.exit(2)
+    local = load_json(LOCAL_PATH, [])
+    if not isinstance(local, list):
+        local = []
+    local = [e for e in local if not (isinstance(e, dict) and e.get("id") == event_id)]
+    atomic_write(LOCAL_PATH, local)
+    refresh_local_in_state()
+    print("removed")
+
+
 def cmd_dismiss(ref):
     state = load_state()
     if ref not in state["tombstones"]:
@@ -404,6 +508,10 @@ def main():
         cmd_approve(sys.argv[2])
     elif command == "dismiss" and len(sys.argv) > 2:
         cmd_dismiss(sys.argv[2])
+    elif command == "upsert" and len(sys.argv) > 2:
+        cmd_upsert(sys.argv[2])
+    elif command == "remove" and len(sys.argv) > 2:
+        cmd_remove(sys.argv[2])
     else:
         print(__doc__, file=sys.stderr)
         sys.exit(2)
