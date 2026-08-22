@@ -288,7 +288,7 @@ function stepBody(snapshot: OnboardingSnapshot, step: OnboardingStepId): string 
     const current = snapshot.username
       ? `<p>Current: <strong>@${esc(snapshot.username)}</strong></p>`
       : "";
-    return `${current}<p class="muted">Lowercase letters, digits, underscore — 2–24 characters. Your agent's email follows it.</p><form method="post" class="row"><input type="hidden" name="action" value="set_username"><input type="text" name="username" placeholder="username" maxlength="24" autocomplete="off"><button>Save</button></form><div class="row actions">${skipForm("username")}</div>`;
+    return `${current}<p class="muted">Lowercase letters, digits, underscore — 2–24 characters. Your agent's email follows it.</p><form method="post" class="row"><input type="hidden" name="action" value="set_username"><input type="text" name="username" placeholder="username" maxlength="24" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="text" enterkeyhint="done"><button>Save</button></form><div class="row actions">${skipForm("username")}</div>`;
   }
   if (step === "email") {
     const line = snapshot.address
@@ -377,7 +377,7 @@ function stepBody(snapshot: OnboardingSnapshot, step: OnboardingStepId): string 
     return `${tour}<p class="muted">Try a first workflow — all read-only; your agent replies in chat:</p><div class="row">${buttons}</div><div class="row actions">${doneForm("walkthrough", "Finish setup")}</div>`;
   }
   // agent
-  return `<p class="muted">Say hello — your agent replies in your chat (iMessage or the web tab), same conversation everywhere.</p><form method="post" class="row"><input type="hidden" name="action" value="ask_agent"><input type="text" name="text" placeholder="e.g. What can you do for me?" maxlength="4000"><button>Send</button></form><div class="row actions">${skipForm("agent")}</div>`;
+  return `<p class="muted">Say hello — your agent replies in your chat (iMessage or the web tab), same conversation everywhere.</p><form method="post" class="row"><input type="hidden" name="action" value="ask_agent"><input type="text" name="text" placeholder="e.g. What can you do for me?" maxlength="4000" enterkeyhint="send"><button>Send</button></form><div class="row actions">${skipForm("agent")}</div>`;
 }
 
 /**
@@ -422,28 +422,28 @@ h1{font-weight:400;font-size:clamp(1.9rem,5.4vw,3.6rem);letter-spacing:-0.045em;
 .panel{width:min(100%,34rem);border-radius:var(--radius-panel);border:1px solid var(--ring);background:var(--panel-bg);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);box-shadow:var(--shadow);padding:clamp(1rem,3.4vw,1.5rem)}
 .notice{width:min(100%,34rem);margin:0 0 0.8rem;font-family:var(--font-ui);font-size:0.72rem;line-height:1.45;letter-spacing:0.04em;color:var(--on-accent);background:var(--accent);border-radius:var(--radius-well);padding:0.55rem 0.8rem}
 footer.nav{display:flex;align-items:center;justify-content:space-between;gap:0.75rem;font-family:var(--font-ui)}
-.navlink{display:inline-flex;align-items:center;height:2.6rem;padding:0 1.1rem;border-radius:var(--radius-pill);border:1px solid var(--ring);background:var(--panel-bg);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);font-size:0.66rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink);text-decoration:none;white-space:nowrap;transition:box-shadow 200ms ease,transform 200ms ease}
+.navlink{display:inline-flex;align-items:center;min-height:2.75rem;padding:0 1.1rem;border-radius:var(--radius-pill);border:1px solid var(--ring);background:var(--panel-bg);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);font-size:0.66rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink);text-decoration:none;white-space:nowrap;transition:box-shadow 200ms ease,transform 200ms ease}
 .navlink:hover{transform:scale(1.04)}
 .navlink.ghosted{opacity:0.35;pointer-events:none}
 .dots{display:flex;gap:0.42rem;align-items:center}
-.dots a{width:0.5rem;height:0.5rem;border-radius:50%;background:var(--ring);display:block;transition:transform 200ms ease}
+.dots a{width:1.1rem;height:1.1rem;padding:0.3rem;border-radius:50%;background:var(--ring);background-clip:content-box;display:block;transition:transform 200ms ease}
 .dots a:hover{transform:scale(1.5)}
 .dots a.done{background:var(--accent)}
 .dots a.skipped{background:var(--ink-muted)}
 .dots a.active{outline:1.5px solid var(--accent);outline-offset:2.5px;background:var(--accent)}
 p{font-size:0.95rem;line-height:1.5;margin:0 0 0.6rem}
 a{color:var(--accent)}
-button{font-family:var(--font-ui);background:var(--ink);color:var(--on-ink);border:0;border-radius:var(--radius-pill);padding:0.5rem 1rem;font-size:0.7rem;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;transition:transform 180ms ease}
+button{font-family:var(--font-ui);background:var(--ink);color:var(--on-ink);border:0;border-radius:var(--radius-pill);min-height:2.75rem;padding:0.5rem 1.1rem;font-size:0.72rem;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;transition:transform 180ms ease}
 button:hover{transform:scale(1.05)}
 button.ghost{background:transparent;color:var(--ink-muted);border:1px solid var(--ring)}
 button.ghost:hover{color:var(--ink)}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-input[type=text],input[type=password],select{background:var(--well-bg);color:var(--ink);border:1px solid var(--ring);border-radius:var(--radius-well);padding:0.6rem 0.8rem;flex:1;font-size:0.9rem;font-family:var(--font-body);outline:none;min-width:0}
+input[type=text],input[type=password],select{background:var(--well-bg);color:var(--ink);border:1px solid var(--ring);border-radius:var(--radius-well);min-height:2.75rem;padding:0.6rem 0.85rem;flex:1;font-size:1rem;font-family:var(--font-body);outline:none;min-width:0}
 input[type=text]:focus,input[type=password]:focus{border-color:var(--accent)}
 input::placeholder{color:var(--ink-muted)}
 .item{display:flex;align-items:center;gap:0.6rem;border:1px solid var(--ring);border-radius:var(--radius-well);padding:0.7rem 0.85rem;margin-bottom:0.55rem;font-size:0.9rem;background:var(--well-bg)}
 details{border:1px solid var(--ring);border-radius:var(--radius-well);padding:0.6rem 0.85rem;background:var(--well-bg);margin-bottom:0.6rem}
-summary{font-family:var(--font-ui);font-size:0.7rem;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-muted);cursor:pointer}
+summary{font-family:var(--font-ui);font-size:0.7rem;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-muted);cursor:pointer;min-height:1.8rem;display:flex;align-items:center}
 pre{background:var(--well-bg);border:1px solid var(--ring);border-radius:var(--radius-well);padding:0.6rem 0.75rem;font-family:var(--font-ui);font-size:0.68rem;line-height:1.45;white-space:pre-wrap;word-break:break-all;max-height:240px;overflow:auto;color:var(--accent)}
 ul{margin:0.2rem 0 0.8rem;padding-left:1.1rem}
 li{font-size:0.88rem;line-height:1.5;color:var(--ink-muted)}
