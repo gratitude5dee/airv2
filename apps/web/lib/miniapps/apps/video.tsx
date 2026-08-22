@@ -5,7 +5,8 @@ import { NextResponse } from "next/server";
 import { refreshVideoRender, startVideoRender } from "@/lib/creative/videoRender";
 import { StartLimitError } from "@/lib/orchestrator/boxes";
 import { externalOrigin } from "../gates";
-import { esc, html, page, withBaseHeaders } from "../html";
+import { esc, withBaseHeaders } from "../html";
+import { renderShell, shellHtml } from "../shell";
 import {
   getVideoDoc,
   setVideoRenderJob,
@@ -16,9 +17,15 @@ import {
 import { promptBar, runPrompt } from "../promptBar";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
-/** BASE CSP is default-src 'none'; the preview needs https media only. */
-const MEDIA_CSP =
-  "default-src 'none'; style-src 'unsafe-inline'; media-src https:; form-action 'self'; frame-ancestors 'self'";
+/** The shell's theme CSP, widened for the https video preview only. */
+function mediaShellHtml(body: string): NextResponse {
+  const response = shellHtml(body);
+  response.headers.set(
+    "Content-Security-Policy",
+    `${response.headers.get("Content-Security-Policy")}; media-src https:`
+  );
+  return response;
+}
 
 function hidden(name: string, value: string): string {
   return `<input type="hidden" name="${esc(name)}" value="${esc(value)}">`;
@@ -40,25 +47,24 @@ function renderVideo(
   renderLine: string | null,
   renderUrl: string | null,
   notice: string | null,
-  isOwner: boolean
+  isOwner: boolean,
+  lite: boolean
 ): string {
   const clips = doc.clips
     .map((clip, index) => renderClip(clip, index))
     .join("");
-  return page(
-    doc.title,
-    `<h1>${esc(doc.title)}</h1>
+  const body = `<section class="panel">
 ${notice ? `<div class="card">${esc(notice)}</div>` : ""}
-${renderUrl ? `<div class="card"><video controls src="${esc(renderUrl)}" style="max-width:100%;border-radius:8px"></video></div>` : ""}
+${renderUrl ? `<div class="card"><video controls src="${esc(renderUrl)}" style="max-width:100%;border-radius:var(--radius-well)"></video></div>` : ""}
 ${renderLine && !renderUrl ? `<div class="card pending">${esc(renderLine)}</div>` : ""}
-<h1 style="margin-top:16px">Storyboard</h1>
+<h2>Storyboard</h2>
 ${clips || `<div class="card pending">no clips yet — add box asset ids below or ask your agent.</div>`}
 <form method="post" class="addrow">${hidden("action", "add-clip")}<input type="text" name="assetId" placeholder="Add a clip (box asset id)…" maxlength="128"><button>Add clip</button></form>
 <form method="post" class="addrow">${hidden("action", "set-audio")}<input type="text" name="assetId" value="${esc(doc.audioAssetId ?? "")}" placeholder="Audio track (box asset id, blank to clear)…" maxlength="128"><button class="ghost">Audio</button></form>
 <form method="post" class="addrow">${hidden("action", "rename")}<input type="text" name="title" placeholder="Rename document…" maxlength="120"><button>Rename</button></form>
 ${isOwner ? `<form method="post" class="addrow">${hidden("action", "render")}<button>Render</button></form>` : ""}
-${isOwner ? promptBar("Ask your agent — e.g. tighten cut 2, add captions…") : ""}`
-  );
+${isOwner ? promptBar("Ask your agent — e.g. tighten cut 2, add captions…") : ""}</section>`;
+  return renderShell({ title: doc.title, kicker: "Studio", body, lite });
 }
 
 function redirectBack(ctx: MiniAppContext, query?: string): NextResponse {
@@ -70,12 +76,14 @@ function redirectBack(ctx: MiniAppContext, query?: string): NextResponse {
   );
 }
 
-const unavailable = () =>
-  html(
-    page(
-      "Video",
-      "<h1>Video</h1><p>Your agent's computer can't start right now — try again in a few minutes.</p>"
-    )
+const unavailable = (lite: boolean) =>
+  shellHtml(
+    renderShell({
+      title: "Video",
+      kicker: "Studio",
+      body: "<section class=\"panel\"><p>Your agent's computer can't start right now — try again in a few minutes.</p></section>",
+      lite,
+    })
   );
 
 export const video: MiniAppModule = {
@@ -99,15 +107,22 @@ export const video: MiniAppModule = {
         renderUrl = view.url;
       }
     } catch (error) {
-      if (error instanceof StartLimitError) return unavailable();
+      if (error instanceof StartLimitError)
+        return unavailable(ctx.session.via === "card");
       throw error;
     }
     const url = new URL(ctx.request.url);
     let notice = url.searchParams.get("notice");
     if (notice && notice.length > 200) notice = null;
-    return html(
-      renderVideo(doc, renderLine, renderUrl, notice, ctx.session.role === "owner"),
-      { "Content-Security-Policy": MEDIA_CSP }
+    return mediaShellHtml(
+      renderVideo(
+        doc,
+        renderLine,
+        renderUrl,
+        notice,
+        ctx.session.role === "owner",
+        ctx.session.via === "card"
+      )
     );
   },
 
@@ -116,7 +131,8 @@ export const video: MiniAppModule = {
     try {
       return await runAction(ctx, action, form);
     } catch (error) {
-      if (error instanceof StartLimitError) return unavailable();
+      if (error instanceof StartLimitError)
+        return unavailable(ctx.session.via === "card");
       throw error;
     }
   },

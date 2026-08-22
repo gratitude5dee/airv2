@@ -16,7 +16,8 @@ import {
   WINDOW_DAYS,
   type Panel,
 } from "../analytics";
-import { baseHeaders, esc, html, page } from "../html";
+import { baseHeaders, esc } from "../html";
+import { renderShell, shellHtml } from "../shell";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
 function renderPanel(panel: Panel, basePath: string): string {
@@ -28,12 +29,12 @@ function renderPanel(panel: Panel, basePath: string): string {
     )
     .join("");
   return `<div class="card">
-<h2 style="font-size:13px;margin:0 0 6px">${esc(panel.title)} <a href="${esc(basePath)}?csv=${esc(panel.key)}" style="font-weight:400;font-size:11px">csv</a></h2>
-${panel.note ? `<div class="when" style="white-space:normal;margin-bottom:6px">${esc(panel.note)}</div>` : ""}
+<h2>${esc(panel.title)} <a href="${esc(basePath)}?csv=${esc(panel.key)}">csv</a></h2>
+${panel.note ? `<div class="muted">${esc(panel.note)}</div>` : ""}
 ${
   panel.rows.length
-    ? `<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="text-align:left;color:var(--muted)">${header}</tr></thead><tbody>${body}</tbody></table>`
-    : `<div class="when" style="white-space:normal">no rows in the last ${WINDOW_DAYS} days.</div>`
+    ? `<table><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table>`
+    : `<div class="muted">no rows in the last ${WINDOW_DAYS} days.</div>`
 }
 </div>`;
 }
@@ -74,12 +75,14 @@ export const analytics: MiniAppModule = {
       return csvResponse(ctx, csv);
     }
     const panels = await allPanels(ctx.supabase, ctx.session.userId);
-    return html(
-      page(
-        "Analytics",
-        `<h1>Analytics <span class="when">last ${WINDOW_DAYS} days</span></h1>
-${panels.map((panel) => renderPanel(panel, ctx.basePath)).join("")}`
-      )
+    return shellHtml(
+      renderShell({
+        title: "Analytics",
+        kicker: "Numbers",
+        body: `<section class="panel"><p class="muted">last ${WINDOW_DAYS} days</p>
+${panels.map((panel) => renderPanel(panel, ctx.basePath)).join("")}</section>`,
+        lite: ctx.session.via === "card",
+      })
     );
   },
   // Read-only by design (MA7 #10): no action, so every POST is a loader 404.

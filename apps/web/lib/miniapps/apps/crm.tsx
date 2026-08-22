@@ -21,7 +21,8 @@ import {
   type CrmStore,
 } from "@/lib/crm/store";
 import { externalOrigin } from "../gates";
-import { esc, forbidden, html, page, withBaseHeaders } from "../html";
+import { esc, forbidden, withBaseHeaders } from "../html";
+import { renderShell, shellHtml } from "../shell";
 import { promptBar, runPrompt } from "../promptBar";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
@@ -36,31 +37,30 @@ function avatar(person: CrmPerson): string {
   return `<span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:999px;background:${esc(ditherColor(person.id))};color:#fff;font-size:11px;font-weight:600;flex:none">${esc(initialsFor(person.name))}</span>`;
 }
 
-function renderList(basePath: string, store: CrmStore): string {
+function renderList(basePath: string, store: CrmStore, lite: boolean): string {
   const rows = store.people
     .slice()
     .sort((a, b) => a.name.localeCompare(b.name))
     .map(
       (p) =>
-        `<a href="${esc(basePath)}?person=${encodeURIComponent(p.id)}" style="text-decoration:none;color:inherit"><div class="item">${avatar(p)}<span style="flex:1">${esc(p.name)}</span><span class="when">${p.tags.map((t) => esc(t)).join(" \u00b7 ")}</span></div></a>`
+        `<a href="${esc(basePath)}?person=${encodeURIComponent(p.id)}" style="text-decoration:none;color:inherit"><div class="item">${avatar(p)}<span class="grow">${esc(p.name)}</span><span class="when">${p.tags.map((t) => esc(t)).join(" \u00b7 ")}</span></div></a>`
     )
     .join("");
   const empty =
     store.people.length === 0
-      ? `<p class="when">No people yet \u2014 add one below, or let your agent fill this in from conversations.</p>`
+      ? `<p class="muted">No people yet \u2014 add one below, or let your agent fill this in from conversations.</p>`
       : "";
   const addForm = `<form method="post" class="addrow"><input type="hidden" name="action" value="upsert"><input type="text" name="name" placeholder="Add a person\u2026" required><button>Add</button></form>`;
-  return page(
-    "People",
-    `<h1>People</h1>${rows}${empty}${addForm}
-${promptBar("Ask your agent — e.g. who haven't I talked to lately…")}`
-  );
+  const body = `<section class="panel">${rows}${empty}${addForm}
+${promptBar("Ask your agent — e.g. who haven't I talked to lately…")}</section>`;
+  return renderShell({ title: "People", kicker: "People", body, lite });
 }
 
 function renderDetail(
   basePath: string,
   person: CrmPerson,
-  unlinkedSenders: SenderRow[]
+  unlinkedSenders: SenderRow[],
+  lite: boolean
 ): string {
   const chips = [
     ...person.emails.map((e) => esc(e)),
@@ -80,26 +80,26 @@ function renderDetail(
     .slice(0, 10)
     .map(
       (sender) =>
-        `<div class="item"><span style="flex:1">${esc(sender.address)}</span><span class="when">${esc(sender.platform)}</span><form method="post" style="margin:0"><input type="hidden" name="action" value="link_sender"><input type="hidden" name="person" value="${esc(person.id)}"><input type="hidden" name="sender" value="${esc(sender.id)}"><button class="ghost">Link</button></form></div>`
+        `<div class="item"><span class="grow">${esc(sender.address)}</span><span class="when">${esc(sender.platform)}</span><form method="post" class="inline"><input type="hidden" name="action" value="link_sender"><input type="hidden" name="person" value="${esc(person.id)}"><input type="hidden" name="sender" value="${esc(sender.id)}"><button class="ghost">Link</button></form></div>`
     )
     .join("");
   const merge = mergeRows
-    ? `<div class="day">Merge with a sender</div>${mergeRows}`
+    ? `<h2>Merge with a sender</h2>${mergeRows}`
     : "";
-  const editForm = `<form method="post" style="margin-top:12px;display:flex;flex-direction:column;gap:6px"><input type="hidden" name="action" value="upsert"><input type="hidden" name="person" value="${esc(person.id)}"><input type="text" name="name" value="${esc(person.name)}"><input type="text" name="tags" value="${esc(person.tags.join(", "))}" placeholder="tags, comma separated"><input type="text" name="notes" value="${esc(person.notes)}" placeholder="notes"><div style="display:flex;gap:6px"><button>Save</button></div></form>`;
-  const deleteForm = `<form method="post" style="margin-top:8px"><input type="hidden" name="action" value="delete"><input type="hidden" name="person" value="${esc(person.id)}"><button class="ghost">Delete person</button></form>`;
-  return page(
-    person.name,
-    `<a href="${esc(basePath)}" style="text-decoration:none" class="when">\u2190 People</a><h1 style="margin-top:8px;display:flex;align-items:center;gap:8px">${avatar(person)}${esc(person.name)}</h1><div class="card">${chips || `<span class="when">no contact info yet</span>`}${person.notes ? `<p style="margin:6px 0 0">${esc(person.notes)}</p>` : ""}${provenance ? `<div style="margin-top:8px">${provenance}</div>` : ""}</div>${editForm}${merge}${deleteForm}`
-  );
+  const editForm = `<form method="post" class="stack"><input type="hidden" name="action" value="upsert"><input type="hidden" name="person" value="${esc(person.id)}"><input type="text" name="name" value="${esc(person.name)}"><input type="text" name="tags" value="${esc(person.tags.join(", "))}" placeholder="tags, comma separated"><input type="text" name="notes" value="${esc(person.notes)}" placeholder="notes"><div class="row"><button>Save</button></div></form>`;
+  const deleteForm = `<form method="post" class="row actions"><input type="hidden" name="action" value="delete"><input type="hidden" name="person" value="${esc(person.id)}"><button class="ghost">Delete person</button></form>`;
+  const body = `<section class="panel"><p><a href="${esc(basePath)}">\u2190 People</a></p><div class="card"><div class="row">${avatar(person)}<strong>${esc(person.name)}</strong></div>${chips || `<span class="when">no contact info yet</span>`}${person.notes ? `<p>${esc(person.notes)}</p>` : ""}${provenance ? `<div>${provenance}</div>` : ""}</div>${editForm}${merge}${deleteForm}</section>`;
+  return renderShell({ title: person.name, kicker: "People", body, lite });
 }
 
-const unavailable = () =>
-  html(
-    page(
-      "People",
-      "<h1>People</h1><p>Your agent's computer can't start right now \u2014 try again in a few minutes.</p>"
-    )
+const unavailable = (lite: boolean) =>
+  shellHtml(
+    renderShell({
+      title: "People",
+      kicker: "People",
+      body: `<section class="panel"><p>Your agent's computer can't start right now \u2014 try again in a few minutes.</p></section>`,
+      lite,
+    })
   );
 
 export const crm: MiniAppModule = {
@@ -107,12 +107,13 @@ export const crm: MiniAppModule = {
     if (ctx.session.role !== "owner") {
       return forbidden("this view is owner-only");
     }
+    const lite = ctx.session.via === "card";
     let store: CrmStore;
     try {
       const box = await ensureBoxAwake(ctx.supabase, ctx.session.userId);
       store = await readPeople(box.boxId);
     } catch {
-      return unavailable();
+      return unavailable(lite);
     } finally {
       await armStopAfter(ctx.supabase, ctx.session.userId).catch(
         () => undefined
@@ -132,10 +133,10 @@ export const crm: MiniAppModule = {
         const unlinked = ((senderRows ?? []) as SenderRow[]).filter(
           (s) => !linked.has(s.id)
         );
-        return html(renderDetail(ctx.basePath, person, unlinked));
+        return shellHtml(renderDetail(ctx.basePath, person, unlinked, lite));
       }
     }
-    return html(renderList(ctx.basePath, store));
+    return shellHtml(renderList(ctx.basePath, store, lite));
   },
 
   async action(ctx: MiniAppContext, form: FormData): Promise<NextResponse> {
@@ -219,7 +220,7 @@ export const crm: MiniAppModule = {
       }
     } catch (error) {
       if (error instanceof StartLimitError) {
-        return unavailable();
+        return unavailable(ctx.session.via === "card");
       }
       throw error;
     } finally {

@@ -6,7 +6,8 @@ import { ASSETS_BUCKET, DELIVERY_TTL_SECONDS } from "@/lib/assets/keys";
 import { mintDelivery, type CreativeAsset } from "@/lib/assets/pipeline";
 import { StartLimitError } from "@/lib/orchestrator/boxes";
 import { externalOrigin } from "../gates";
-import { esc, html, page, withBaseHeaders } from "../html";
+import { esc, withBaseHeaders } from "../html";
+import { renderShell, shellHtml } from "../shell";
 import {
   getImageDoc,
   isBlendMode,
@@ -18,9 +19,16 @@ import { promptBar, runPrompt } from "../promptBar";
 import { publicExporter } from "../publicExport";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
-/** BASE CSP is default-src 'none'; previews need https images only. */
-const MEDIA_CSP =
-  "default-src 'none'; style-src 'unsafe-inline'; img-src https:; form-action 'self'; frame-ancestors 'self'";
+/** The shell's theme CSP, with img-src widened for https flat previews. */
+function mediaShellHtml(body: string): NextResponse {
+  const response = shellHtml(body);
+  const csp = response.headers.get("Content-Security-Policy") ?? "";
+  response.headers.set(
+    "Content-Security-Policy",
+    csp.replace("img-src 'self'", "img-src 'self' https:")
+  );
+  return response;
+}
 
 const BLEND_OPTIONS = ["normal", "multiply", "screen", "overlay"] as const;
 
@@ -57,19 +65,18 @@ function renderImage(
   flatUrl: string | null,
   exportUrl: string | null,
   notice: string | null,
-  isOwner: boolean
+  isOwner: boolean,
+  lite: boolean
 ): string {
   const layers = doc.layers
     .map((layer, index) => renderLayer(layer, index, doc.layers.length))
     .reverse()
     .join("");
-  return page(
-    doc.title,
-    `<h1>${esc(doc.title)}</h1>
+  const body = `<section class="panel">
 ${notice ? `<div class="card">${esc(notice)}</div>` : ""}
-${flatUrl ? `<div class="card"><img src="${esc(flatUrl)}" alt="rendered flat" style="max-width:100%;border-radius:8px"></div>` : `<div class="card pending">no rendered flat yet — ask your agent to render one.</div>`}
+${flatUrl ? `<div class="card"><img src="${esc(flatUrl)}" alt="rendered flat" style="max-width:100%;border-radius:var(--radius-well)"></div>` : `<div class="card pending">no rendered flat yet — ask your agent to render one.</div>`}
 ${exportUrl ? `<div class="card">private link (expires in ${Math.round(DELIVERY_TTL_SECONDS / 60)} min): <a href="${esc(exportUrl)}">${esc(exportUrl.slice(0, 80))}…</a></div>` : ""}
-<h1 style="margin-top:16px">Layers</h1>
+<h2>Layers</h2>
 ${layers || `<div class="card pending">no layers yet.</div>`}
 <form method="post" class="addrow">${hidden("action", "add-text")}<input type="text" name="text" placeholder="Add a text layer…" maxlength="500"><button>Add text</button></form>
 <form method="post" class="addrow">${hidden("action", "add-asset")}<input type="text" name="assetId" placeholder="Add an asset layer (box asset id)…" maxlength="128"><button>Add asset</button></form>
@@ -80,8 +87,8 @@ ${
 <form method="post" class="addrow">${hidden("action", "export-public")}<button class="ghost">Public link</button></form>`
     : ""
 }
-${isOwner ? promptBar("Ask your agent — e.g. remove the background on layer 2…") : ""}`
-  );
+${isOwner ? promptBar("Ask your agent — e.g. remove the background on layer 2…") : ""}</section>`;
+  return renderShell({ title: doc.title, kicker: "Studio", body, lite });
 }
 
 async function flatAsset(
@@ -158,12 +165,14 @@ function redirectBack(ctx: MiniAppContext, query?: string): NextResponse {
   );
 }
 
-const unavailable = () =>
-  html(
-    page(
-      "Image",
-      "<h1>Image</h1><p>Your agent's computer can't start right now — try again in a few minutes.</p>"
-    )
+const unavailable = (lite: boolean) =>
+  shellHtml(
+    renderShell({
+      title: "Image",
+      kicker: "Studio",
+      body: "<section class=\"panel\"><p>Your agent's computer can't start right now — try again in a few minutes.</p></section>",
+      lite,
+    })
   );
 
 export const image: MiniAppModule = {
@@ -176,7 +185,8 @@ export const image: MiniAppModule = {
         ctx.session.resourceId
       );
     } catch (error) {
-      if (error instanceof StartLimitError) return unavailable();
+      if (error instanceof StartLimitError)
+        return unavailable(ctx.session.via === "card");
       throw error;
     }
     const asset = await flatAsset(ctx, doc);
@@ -189,9 +199,15 @@ export const image: MiniAppModule = {
       exportUrl = await exportDelivery(ctx, asset);
     }
     if (notice && notice.length > 200) notice = null;
-    return html(
-      renderImage(doc, flatUrl, exportUrl, notice, ctx.session.role === "owner"),
-      { "Content-Security-Policy": MEDIA_CSP }
+    return mediaShellHtml(
+      renderImage(
+        doc,
+        flatUrl,
+        exportUrl,
+        notice,
+        ctx.session.role === "owner",
+        ctx.session.via === "card"
+      )
     );
   },
 
@@ -220,7 +236,8 @@ export const image: MiniAppModule = {
       }
       return await mutate(ctx, action, form);
     } catch (error) {
-      if (error instanceof StartLimitError) return unavailable();
+      if (error instanceof StartLimitError)
+        return unavailable(ctx.session.via === "card");
       throw error;
     }
   },
