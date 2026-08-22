@@ -23,15 +23,27 @@ import {
 import { CommerceError } from "@/lib/commerce/merchants";
 import { addressQrDataUrl } from "@/lib/wallet/qr";
 import { externalOrigin } from "../gates";
-import { esc, html, notFound, page, withBaseHeaders } from "../html";
+import { esc, notFound, withBaseHeaders } from "../html";
+import { renderShell, shellHtml } from "../shell";
 import type { RegistryApp } from "../registry";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
-const STOREFRONT_CSP =
-  "default-src 'none'; style-src 'unsafe-inline'; " +
-  `img-src data: ${env.r2PublicBaseUrl()}; ` +
-  "form-action 'self' https://checkout.stripe.com https://*.stripe.com; " +
-  "frame-ancestors 'self'";
+// Checkout redirects into Stripe, product images come from R2, and the
+// ticket QR is a data: URL — all widen the shell's theme-derived CSP.
+function storefrontHtml(body: string): NextResponse {
+  const response = shellHtml(body);
+  const csp = response.headers.get("Content-Security-Policy") ?? "";
+  response.headers.set(
+    "Content-Security-Policy",
+    csp
+      .replace("img-src 'self'", `img-src 'self' data: ${env.r2PublicBaseUrl()}`)
+      .replace(
+        "form-action 'self'",
+        "form-action 'self' https://checkout.stripe.com https://*.stripe.com"
+      )
+  );
+  return response;
+}
 
 /** A merchant storefront row: first-party rendered, no bundle, owned. */
 export function isStorefrontApp(app: RegistryApp): boolean {
@@ -60,13 +72,17 @@ function listingPage(
   const cards = products
     .map(
       (product) =>
-        `<div class="card">${product.image_url ? `<img src="${esc(product.image_url)}" alt="${esc(product.name)}" style="max-width:100%;border-radius:8px">` : ""}<strong>${esc(product.name)}</strong> — ${price(product)}<div class="when" style="white-space:normal">${esc(product.description.slice(0, 140))}</div><form method="get"><input type="hidden" name="p" value="${esc(product.product_key)}">${ref ? `<input type="hidden" name="ref" value="${esc(ref)}">` : ""}<button>View</button></form></div>`
+        `<div class="card">${product.image_url ? `<img src="${esc(product.image_url)}" alt="${esc(product.name)}" style="max-width:100%;border-radius:var(--radius-well)">` : ""}<strong>${esc(product.name)}</strong> — ${price(product)}<div class="muted">${esc(product.description.slice(0, 140))}</div><form method="get"><input type="hidden" name="p" value="${esc(product.product_key)}">${ref ? `<input type="hidden" name="ref" value="${esc(ref)}">` : ""}<button>View</button></form></div>`
     )
     .join("");
-  return page(
-    app.name,
-    `<h1>${esc(app.name)}</h1>${note ? `<div class="card">${esc(note)}</div>` : ""}<p class="when" style="white-space:normal">${esc(app.description)}</p>${cards || `<p class="when" style="white-space:normal">Nothing for sale yet — check back soon.</p>`}`
-  );
+  const body = `<section class="panel"><p class="muted">${esc(app.description)}</p>${cards || '<p class="muted">Nothing for sale yet — check back soon.</p>'}</section>`;
+  return renderShell({
+    title: app.name,
+    kicker: "Storefront",
+    body,
+    notice: note,
+    lite: false,
+  });
 }
 
 function productPage(
@@ -75,18 +91,21 @@ function productPage(
   ref: string | null
 ): string {
   const soldOut = product.inventory !== null && product.inventory < 1;
-  return page(
-    `${product.name} — ${app.name}`,
-    `<h1>${esc(product.name)}</h1>
-${product.image_url ? `<img src="${esc(product.image_url)}" alt="${esc(product.name)}" style="max-width:100%;border-radius:12px">` : ""}
+  const body = `<section class="panel">
+${product.image_url ? `<img src="${esc(product.image_url)}" alt="${esc(product.name)}" style="max-width:100%;border-radius:var(--radius-well)">` : ""}
 <p>${esc(product.description)}</p>
 <p><strong>${price(product)}</strong>${product.inventory !== null ? ` <span class="when">${product.inventory} left</span>` : ""}</p>
 ${
   soldOut
-    ? `<p class="when" style="white-space:normal">Sold out.</p>`
+    ? '<p class="muted">Sold out.</p>'
     : `<form method="post" class="addrow"><input type="hidden" name="action" value="checkout"><input type="hidden" name="product_key" value="${esc(product.product_key)}">${refField(ref)}<input type="text" name="quantity" value="1" maxlength="2" style="flex:0 0 60px"><button>Buy with Link</button></form>`
-}`
-  );
+}</section>`;
+  return renderShell({
+    title: `${product.name} — ${app.name}`,
+    kicker: "Storefront",
+    body,
+    lite: false,
+  });
 }
 
 async function receiptPage(
@@ -100,22 +119,26 @@ async function receiptPage(
     order.ticket_code !== null
       ? await addressQrDataUrl(order.ticket_code)
       : null;
-  const body = page(
-    "Receipt",
-    `<h1>Thanks for your order</h1>
+  const body = `<section class="panel">
 <div class="card"><strong>${esc(order.product?.name ?? "Order")}</strong> × ${order.quantity} — $${(order.amount_cents / 100).toFixed(2)}<div class="when">${esc(order.status)}</div></div>
 ${
   order.status === "pending"
-    ? `<p class="when" style="white-space:normal">Payment confirmation is on its way — refresh in a moment.</p>`
+    ? '<p class="muted">Payment confirmation is on its way — refresh in a moment.</p>'
     : ""
 }
 ${
   order.ticket_code
     ? `<div class="card"><strong>Your ticket</strong>${qr ? `<div><img src="${qr}" alt="ticket QR" style="width:180px;height:180px"></div>` : ""}<div class="when">${esc(order.ticket_code)}</div>Show this at the door.</div>`
     : ""
-}`
+}</section>`;
+  return storefrontHtml(
+    renderShell({
+      title: "Thanks for your order",
+      kicker: "Storefront",
+      body,
+      lite: false,
+    })
   );
-  return html(body, { "Content-Security-Policy": STOREFRONT_CSP });
 }
 
 export const storefront: MiniAppModule = {
@@ -145,16 +168,12 @@ export const storefront: MiniAppModule = {
         productId: product.id,
         ref,
       });
-      return html(productPage(ctx.app, product, ref), {
-        "Content-Security-Policy": STOREFRONT_CSP,
-      });
+      return storefrontHtml(productPage(ctx.app, product, ref));
     }
 
     const products = await listPublishedProducts(ctx.supabase, merchantUserId);
     await logStorefrontEvent(ctx.supabase, merchantUserId, "visit", { ref });
-    return html(listingPage(ctx.app, products, ref, params.get("note")), {
-      "Content-Security-Policy": STOREFRONT_CSP,
-    });
+    return storefrontHtml(listingPage(ctx.app, products, ref, params.get("note")));
   },
 
   async action(ctx: MiniAppContext, form: FormData): Promise<NextResponse> {

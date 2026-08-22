@@ -7,7 +7,8 @@
  */
 import { NextResponse } from "next/server";
 import { externalOrigin } from "../gates";
-import { esc, forbidden, html, page, withBaseHeaders } from "../html";
+import { esc, forbidden, withBaseHeaders } from "../html";
+import { renderShell, shellHtml } from "../shell";
 import {
   approvePaymentRequest,
   createPaymentRequest,
@@ -21,11 +22,20 @@ import { promptBar, runPrompt } from "../promptBar";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
 // Chrome enforces form-action on the redirect that follows a form POST, so
-// the approval redirect into Stripe Checkout must be allowed here.
-const PAY_CSP =
-  "default-src 'none'; style-src 'unsafe-inline'; " +
-  "form-action 'self' https://checkout.stripe.com https://*.stripe.com; " +
-  "frame-ancestors 'self'";
+// the approval redirect into Stripe Checkout must be allowed on top of the
+// shell's theme-derived CSP.
+function payHtml(body: string): NextResponse {
+  const response = shellHtml(body);
+  const csp = response.headers.get("Content-Security-Policy") ?? "";
+  response.headers.set(
+    "Content-Security-Policy",
+    csp.replace(
+      "form-action 'self'",
+      "form-action 'self' https://checkout.stripe.com https://*.stripe.com"
+    )
+  );
+  return response;
+}
 
 function statusBadge(request: PaymentRequest): string {
   return `<span class="when">${esc(request.status)}</span>`;
@@ -44,19 +54,20 @@ function requestCard(request: PaymentRequest): string {
   return `<div class="card"><strong>${esc(amount)}</strong> to ${esc(request.payee)} ${statusBadge(request)}${request.memo ? `<div>${esc(request.memo)}</div>` : ""}${actions}</div>`;
 }
 
-function renderPay(requests: PaymentRequest[], note: string | null): string {
+function renderPay(
+  requests: PaymentRequest[],
+  note: string | null,
+  lite: boolean
+): string {
   const pending = requests.filter((r) => r.status === "pending");
   const rest = requests.filter((r) => r.status !== "pending");
-  return page(
-    "Pay",
-    `<h1>Pay</h1>
-${note ? `<div class="card">${esc(note)}</div>` : ""}
-${pending.length > 0 ? `<div class="day">Needs you</div>${pending.map(requestCard).join("")}` : "<p class=\"when\" style=\"white-space:normal\">No pending payment requests.</p>"}
+  const body = `<section class="panel">
+${pending.length > 0 ? `<div class="day">Needs you</div>${pending.map(requestCard).join("")}` : '<p class="muted">No pending payment requests.</p>'}
 ${rest.length > 0 ? `<div class="day">History</div>${rest.map(requestCard).join("")}` : ""}
 <div class="day">New request</div>
 <form method="post" class="addrow"><input type="hidden" name="action" value="request"><input type="text" name="amount" placeholder="Amount (USD, e.g. 12.50)" maxlength="20"><input type="text" name="payee" placeholder="Payee username" maxlength="64"><input type="text" name="memo" placeholder="Memo" maxlength="200"><button>Request</button></form>
-${promptBar("Ask your agent — e.g. request $20 from sam for dinner…")}`
-  );
+${promptBar("Ask your agent — e.g. request $20 from sam for dinner…")}</section>`;
+  return renderShell({ title: "Pay", kicker: "Money", body, notice: note, lite });
 }
 
 export const pay: MiniAppModule = {
@@ -66,9 +77,7 @@ export const pay: MiniAppModule = {
     }
     const requests = await listPaymentRequests(ctx.supabase, ctx.session.userId);
     const note = ctx.request.nextUrl.searchParams.get("note");
-    return html(renderPay(requests, note), {
-      "Content-Security-Policy": PAY_CSP,
-    });
+    return payHtml(renderPay(requests, note, ctx.session.via === "card"));
   },
 
   async action(ctx: MiniAppContext, form: FormData): Promise<NextResponse> {
