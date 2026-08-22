@@ -195,6 +195,15 @@ export async function ensureBoxAwake(
       }
     }
     await waitForBox(boxId);
+    // A VM resume revives the agent-browser daemon process but its Chrome
+    // child is gone (defunct), so every browser tool call hangs until the
+    // 60s tool timeout. Clear the stale daemon and sockets; the next
+    // browser call relaunches cleanly in ~2s.
+    void command(
+      boxId,
+      "pkill -9 -f agent-browser-linux; rm -f /home/user/.agent-browser/*.sock /home/user/.agent-browser/*.pid; rm -rf /tmp/agent-browser-*",
+      30
+    ).catch(() => undefined);
   }
 
   let target: HermesBoxTarget = {

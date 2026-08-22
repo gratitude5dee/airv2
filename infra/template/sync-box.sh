@@ -85,14 +85,18 @@ export PATH="$HERMES_NODE/bin:$PATH"
 command -v agent-browser >/dev/null || npm install -g agent-browser --no-audit --no-fund
 [ -d "$HOME_DIR/.agent-browser" ] || agent-browser install
 
-mkdir -p "$HOME_DIR/.hermes/browser-profile"
-chmod 700 "$HOME_DIR/.hermes/browser-profile"
-
-# agent-browser parses AGENT_BROWSER_ARGS comma-separated; older templates
-# shipped a space-separated (or bare --no-sandbox) value that broke launches.
+# agent-browser parses AGENT_BROWSER_ARGS comma-separated; keep it minimal —
+# overriding --remote-debugging-port/--user-data-dir breaks the daemon's own
+# port discovery and hangs every CLI call. air-vault finds the CDP port from
+# the daemon Chrome's DevToolsActivePort file instead.
 sed -i '/^AGENT_BROWSER_ARGS=/d' "$ENV_FILE"
-echo "AGENT_BROWSER_ARGS=--no-sandbox,--disable-dev-shm-usage,--remote-debugging-port=9222,--remote-debugging-address=127.0.0.1,--user-data-dir=$HOME_DIR/.hermes/browser-profile" >> "$ENV_FILE"
-grep -q '^AIR_BROWSER_DEBUG_PORT=' "$ENV_FILE" || echo "AIR_BROWSER_DEBUG_PORT=9222" >> "$ENV_FILE"
+sed -i '/^AIR_BROWSER_DEBUG_PORT=/d' "$ENV_FILE"
+echo "AGENT_BROWSER_ARGS=--no-sandbox,--disable-dev-shm-usage" >> "$ENV_FILE"
+
+# Clear any stale daemon left over from before this sync (or a VM resume).
+pkill -9 -f agent-browser-linux 2>/dev/null || true
+rm -f "$HOME_DIR/.agent-browser"/*.sock "$HOME_DIR/.agent-browser"/*.pid
+rm -rf /tmp/agent-browser-*
 grep -q '^DISPLAY=' "$ENV_FILE" || echo "DISPLAY=:0" >> "$ENV_FILE"
 sed -i '/^PATH=/d' "$ENV_FILE"
 echo "PATH=$HERMES_NODE/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" >> "$ENV_FILE"

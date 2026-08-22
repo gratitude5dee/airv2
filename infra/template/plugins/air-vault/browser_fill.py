@@ -1,11 +1,12 @@
 """Browser fill transport for ``air-vault type`` (V5, C19).
 
-Delivers a vault value into the focused input of the box's headed Chromium
-via CDP ``Input.insertText`` against the local debug endpoint
-(``--remote-debugging-port`` + dedicated ``--user-data-dir`` — Chrome 136+
-silently refuses the debug port on the default profile, §5e). The value goes
-process → CDP socket → browser; it never enters the model transcript, tool
-output, run events, or logs.
+Delivers a vault value into the focused input of the box's Chromium via CDP
+``Input.insertText`` against the local debug endpoint. The port comes from
+``AIR_BROWSER_DEBUG_PORT`` when set, otherwise it is discovered from the
+agent-browser daemon Chrome's ``DevToolsActivePort`` file (the daemon
+launches with ``--remote-debugging-port=0``). The value goes process → CDP
+socket → browser; it never enters the model transcript, tool output, run
+events, or logs.
 
 Deliberately stdlib-only (socket + urllib): a dependency-free minimal
 WebSocket client is enough for one localhost request/response exchange, and
@@ -15,6 +16,7 @@ it keeps the fill path auditable end to end.
 from __future__ import annotations
 
 import base64
+import glob
 import json
 import os
 import socket
@@ -41,19 +43,38 @@ def debug_port() -> int:
     return port if 0 < port < 65536 else DEFAULT_DEBUG_PORT
 
 
+def discovered_ports() -> List[int]:
+    """CDP ports of running daemon Chromes, newest profile first. The daemon
+    launches Chrome with ``--remote-debugging-port=0``; Chrome writes the
+    chosen port to ``DevToolsActivePort`` in its temp profile dir."""
+    entries = []
+    for path in glob.glob("/tmp/agent-browser-chrome-*/DevToolsActivePort"):
+        try:
+            first_line = open(path).readline().strip()
+            port = int(first_line)
+        except (OSError, ValueError):
+            continue
+        if 0 < port < 65536:
+            entries.append((os.path.getmtime(path), port))
+    return [port for _, port in sorted(entries, reverse=True)]
+
+
 def list_targets(port: int) -> List[Dict[str, Any]]:
-    """Page targets from the local debug endpoint's /json list."""
-    url = f"http://127.0.0.1:{port}/json/list"
-    try:
-        with urllib.request.urlopen(url, timeout=_TIMEOUT) as response:
-            targets = json.loads(response.read().decode("utf-8"))
-    except (OSError, ValueError):
-        raise VaultError(
-            "browser_unreachable",
-            "the browser's debug endpoint is not reachable — is the headed "
-            "browser running with --remote-debugging-port?",
-        )
-    return targets if isinstance(targets, list) else []
+    """Page targets from the local debug endpoint's /json list, falling back
+    to ports discovered from DevToolsActivePort files."""
+    for candidate in [port, *[p for p in discovered_ports() if p != port]]:
+        url = f"http://127.0.0.1:{candidate}/json/list"
+        try:
+            with urllib.request.urlopen(url, timeout=_TIMEOUT) as response:
+                targets = json.loads(response.read().decode("utf-8"))
+        except (OSError, ValueError):
+            continue
+        return targets if isinstance(targets, list) else []
+    raise VaultError(
+        "browser_unreachable",
+        "the browser's debug endpoint is not reachable — is the browser "
+        "running?",
+    )
 
 
 def frontmost_page(targets: List[Dict[str, Any]]) -> Dict[str, Any]:

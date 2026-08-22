@@ -133,8 +133,11 @@ HERMES_DASHBOARD_BASIC_AUTH_SECRET=$TEMPLATE_DASH_SECRET
 DISPLAY=:0
 # agent-browser parses AGENT_BROWSER_ARGS comma-separated (space-separated
 # values are also whitespace-split by systemd EnvironmentFile= loading).
-AGENT_BROWSER_ARGS=--no-sandbox,--disable-dev-shm-usage,--remote-debugging-port=9222,--remote-debugging-address=127.0.0.1,--user-data-dir=$HOME_DIR/.hermes/browser-profile
-AIR_BROWSER_DEBUG_PORT=9222
+# Keep it minimal: overriding --remote-debugging-port/--user-data-dir makes
+# Chrome write DevToolsActivePort to the overridden profile dir, the daemon
+# never sees its port, and every CLI call hangs. air-vault discovers the
+# CDP port from the daemon's DevToolsActivePort file instead.
+AGENT_BROWSER_ARGS=--no-sandbox,--disable-dev-shm-usage
 ENV
 chmod 600 "$HOME_DIR/.hermes/.env"
 
@@ -153,11 +156,8 @@ export PATH="$HERMES_NODE/bin:$PATH"
 npm install -g agent-browser --no-audit --no-fund
 agent-browser install   # downloads Chrome for Testing into ~/.agent-browser
 
-# Dedicated browser profile (V5 §5e): Chrome 136+ refuses the CDP debug port
-# on the default profile, and air-vault type needs 127.0.0.1:9222 to deliver
-# vault values via Input.insertText without transiting the model (C19).
-mkdir -p "$HOME_DIR/.hermes/browser-profile"
-chmod 700 "$HOME_DIR/.hermes/browser-profile"
+# air-vault type talks CDP to the daemon's Chrome via its DevToolsActivePort
+# file (C19); no fixed port or profile override is needed.
 
 # Make the CLI resolvable by the systemd services (they inherit systemd's
 # default PATH and only load ~/.hermes/.env, which does no $-expansion) and
