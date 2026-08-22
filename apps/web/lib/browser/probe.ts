@@ -6,8 +6,13 @@
  */
 import { command } from "../box/client";
 
-const DEBUG_PORT = 9222;
 const RECORDINGS_DIR = "/home/user/.hermes/browser_recordings";
+
+// The agent-browser daemon launches Chrome with --remote-debugging-port=0;
+// the chosen port lives in DevToolsActivePort under the newest temp profile.
+// Falls back to 9222 for boxes still pinning a fixed debug port.
+const CDP_PORT_SNIPPET =
+  'PORT=$(head -1 -q $(ls -t /tmp/agent-browser-chrome-*/DevToolsActivePort 2>/dev/null | head -1) 2>/dev/null); PORT=${PORT:-9222}';
 
 export interface BrowserPage {
   title: string;
@@ -34,7 +39,7 @@ function isInternal(url: string): boolean {
 export async function probeBrowser(boxId: string): Promise<BrowserProbe> {
   const result = await command(
     boxId,
-    `curl -fsS --max-time 5 http://127.0.0.1:${DEBUG_PORT}/json/list`,
+    `${CDP_PORT_SNIPPET}; curl -fsS --max-time 5 "http://127.0.0.1:$PORT/json/list"`,
     15
   );
   if (result.exitCode !== 0) {
