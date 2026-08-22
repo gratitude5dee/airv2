@@ -421,7 +421,9 @@ export async function runFlush(
       // than dropping the drained messages on the floor.
       if (job.attempts < MAX_ATTEMPTS) {
         // First-class queued state: hold the user honestly, retry later.
-        await carryMessages(supabase, job.userId, job.spaceId, fresh);
+        // Carry the full drained burst: previously carried rows were already
+        // deleted by drainCarried, so re-carrying only `fresh` would lose them.
+        await carryMessages(supabase, job.userId, job.spaceId, drained);
         if (job.attempts === 0) {
           await sender.sendText(
             job.spaceId,
