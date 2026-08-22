@@ -361,17 +361,29 @@ export async function runFlush(
   job: { spaceId: string; userId: string; phone: string; attempts: number },
   chainStartedAt: string
 ): Promise<void> {
-  const carried = await drainCarried(supabase, job.spaceId);
-  const fresh = await drainQueue(supabase, job.spaceId);
-  const drained = [...carried, ...fresh];
-  if (drained.length === 0) {
-    await supabase.from("flush_jobs").delete().eq("space_id", job.spaceId);
-    return;
-  }
-  const rawInput = composeInput(carried, fresh);
-
-  const sender = await createSpectrumSender();
+  // Connect to Spectrum BEFORE draining: draining deletes the queued rows,
+  // so a sender that cannot be created (e.g. a Spectrum/Cloudflare 502)
+  // must leave the burst in the queue and retry with backoff instead of
+  // silently destroying it.
+  let sender: SpectrumSender;
   try {
+    sender = await createSpectrumSender();
+  } catch (error) {
+    if (job.attempts < MAX_ATTEMPTS) {
+      await rescheduleWithBackoff(supabase, job.spaceId, job.attempts);
+      return;
+    }
+    throw error;
+  }
+  try {
+    const carried = await drainCarried(supabase, job.spaceId);
+    const fresh = await drainQueue(supabase, job.spaceId);
+    const drained = [...carried, ...fresh];
+    if (drained.length === 0) {
+      await supabase.from("flush_jobs").delete().eq("space_id", job.spaceId);
+      return;
+    }
+    const rawInput = composeInput(carried, fresh);
     // M16 creative lane: an explicit /imagine, /animate, or /zap in the
     // settled burst is handled here, before any box wake or Hermes run.
     // Only tier-0/1 senders ever reach the flush — tier-2 inbound returns
@@ -440,21 +452,30 @@ export async function runFlush(
             job.userId,
             rawInput
           ).catch(() => null);
+          // Holding lines are best-effort: a Spectrum send failure here
+          // must not throw past the reschedule below, or the carried burst
+          // would wait on the sweeper instead of the backoff retry.
           if (bridged) {
-            await sender.sendText(job.spaceId, job.phone, bridged);
-            await carryMessages(supabase, job.userId, job.spaceId, [
-              {
-                id: "bridge",
-                message_id: `${BRIDGE_MESSAGE_ID_PREFIX}${Date.now()}`,
-                body: bridgeCarryMarker(bridged),
-              },
-            ]);
+            try {
+              await sender.sendText(job.spaceId, job.phone, bridged);
+              await carryMessages(supabase, job.userId, job.spaceId, [
+                {
+                  id: "bridge",
+                  message_id: `${BRIDGE_MESSAGE_ID_PREFIX}${Date.now()}`,
+                  body: bridgeCarryMarker(bridged),
+                },
+              ]);
+            } catch {
+              // burst already carried above; retry owns the reply
+            }
           } else {
-            await sender.sendText(
-              job.spaceId,
-              job.phone,
-              "Give me a few minutes — my computer is busy starting up. I'll reply as soon as it's ready."
-            );
+            await sender
+              .sendText(
+                job.spaceId,
+                job.phone,
+                "Give me a few minutes — my computer is busy starting up. I'll reply as soon as it's ready."
+              )
+              .catch(() => undefined);
           }
         }
         await rescheduleWithBackoff(supabase, job.spaceId, job.attempts);
