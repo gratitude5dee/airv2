@@ -186,9 +186,11 @@ export const env = {
   pluginTokenSigningKey: (): string =>
     process.env.PLUGIN_TOKEN_SIGNING_KEY ?? required("SESSION_SECRET"),
   // MA9.2 Onairos developer API key. Optional: absent = the connect step
-  // reports itself unconfigured and the onboarding UI hides the button. The
-  // key is server-side only (goal.md §5) — how the client SDK gets
-  // initialized is a product decision, never NEXT_PUBLIC_.
+  // reports itself unconfigured and the onboarding UI hides the button.
+  // Never NEXT_PUBLIC_ (goal.md §5): the key is not baked into any client
+  // bundle. The vendor web SDK requires client-side initializeApiKey, so
+  // the key is delivered only inside the owner-authenticated onboarding
+  // render (signed mini-session, per-user), not on any public surface.
   onairosApiKey: (): string | null => process.env.ONAIROS_API_KEY ?? null,
   // MA9.3 optional W&B Weave mirror — receipt METADATA only, never content
   // (C4). Off by default: with no key the mirror makes zero network calls.
