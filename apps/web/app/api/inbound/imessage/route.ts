@@ -24,6 +24,7 @@ import {
   flushAfterDebounce,
   type InboundMessage,
 } from "@/lib/orchestrator/flush";
+import { prewarmBox } from "@/lib/orchestrator/boxes";
 import { createSpectrumSender } from "@/lib/spectrum/sender";
 import { handleOnboarding } from "@/lib/provisioning/onboarding";
 import { createDecision, resolveTrustTier } from "@/lib/routing/trust";
@@ -271,6 +272,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // immediately (a cold start becomes a pause, not silence), then the
   // debounced flush.
   after(async () => {
+    // Eager wake (optibox): kick the box resume the instant the message
+    // lands, in parallel with the typing indicator and the debounce wait,
+    // so a cold VM boot overlaps the turn instead of preceding it.
+    void prewarmBox(supabase, message.userId);
     const sender = await createSpectrumSender().catch(() => undefined);
     if (sender) {
       await sender

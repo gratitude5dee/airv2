@@ -28,8 +28,13 @@ import { maybeRunCreativeLane } from "../creative/imessage";
 import {
   armStopAfter,
   ensureBoxAwake,
-  StartLimitError,
 } from "./boxes";
+import {
+  BRIDGE_MESSAGE_ID_PREFIX,
+  bridgeCarryMarker,
+  isBridgeMarkerId,
+  sharedBridgeReply,
+} from "./sharedBridge";
 
 const ATTACHMENT_MARKER = /^\[attachment:([^\]]+)\]$/;
 
@@ -425,11 +430,32 @@ export async function runFlush(
         // deleted by drainCarried, so re-carrying only `fresh` would lose them.
         await carryMessages(supabase, job.userId, job.spaceId, drained);
         if (job.attempts === 0) {
-          await sender.sendText(
-            job.spaceId,
-            job.phone,
-            "Give me a few minutes — my computer is busy starting up. I'll reply as soon as it's ready."
-          );
+          // Shared bridge (optibox rule 1: always answer something): a
+          // restricted no-tools completion through the gateway answers the
+          // burst right now, and the reply rides into the retried turn as
+          // history so the agent continues instead of repeating. Any bridge
+          // failure falls back to the static holding line.
+          const bridged = await sharedBridgeReply(
+            supabase,
+            job.userId,
+            rawInput
+          ).catch(() => null);
+          if (bridged) {
+            await sender.sendText(job.spaceId, job.phone, bridged);
+            await carryMessages(supabase, job.userId, job.spaceId, [
+              {
+                id: "bridge",
+                message_id: `${BRIDGE_MESSAGE_ID_PREFIX}${Date.now()}`,
+                body: bridgeCarryMarker(bridged),
+              },
+            ]);
+          } else {
+            await sender.sendText(
+              job.spaceId,
+              job.phone,
+              "Give me a few minutes — my computer is busy starting up. I'll reply as soon as it's ready."
+            );
+          }
         }
         await rescheduleWithBackoff(supabase, job.spaceId, job.attempts);
         return;
@@ -518,7 +544,11 @@ export async function runFlush(
     // exactly as before, prefixed by what the probe consumed.
     const iterator = guarded()[Symbol.asyncIterator]();
     const probe = await probeForTapback(iterator);
-    const tapbackTarget = drained[drained.length - 1]?.message_id;
+    // Synthetic carried rows (bridge markers) are not real iMessages, so a
+    // reaction can never pin to them; target the last real inbound instead.
+    const tapbackTarget = [...drained]
+      .reverse()
+      .find((message) => !isBridgeMarkerId(message.message_id))?.message_id;
     if (probe.tapback && tapbackTarget && !cancelled) {
       const reacted = await sender
         .react(job.spaceId, job.phone, tapbackTarget, probe.tapback)

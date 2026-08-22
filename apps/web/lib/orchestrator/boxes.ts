@@ -128,6 +128,44 @@ export async function refreshDashboardRoute(
 }
 
 /**
+ * Eager wake (optibox: request the private box the moment a message
+ * arrives, even before the debounce settles). Fire-and-forget: kicks the
+ * provider resume so the VM boot overlaps the debounce window and the
+ * shared bridge, then returns — no health wait, no token refresh. All
+ * errors are swallowed; ensureBoxAwake owns the real wake and already
+ * tolerates losing the concurrent-resume race with this call.
+ */
+export async function prewarmBox(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<void> {
+  try {
+    const { data } = await supabase
+      .from("boxes")
+      .select("provider_box_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+    const boxId = (data?.provider_box_id as string | undefined) ?? "";
+    if (!boxId) return;
+    const box = await getBox(boxId);
+    if (box.state === "ready" || box.state === "idle") return;
+    await resume(boxId);
+    await supabase
+      .from("boxes")
+      .update({ state: "starting" })
+      .eq("provider_box_id", boxId);
+  } catch (error) {
+    console.log(
+      JSON.stringify({
+        msg: "box prewarm skipped",
+        user_id: userId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    );
+  }
+}
+
+/**
  * Resolve the user's box and make sure Hermes answers, resuming if needed.
  * Clears stop_after for the duration of the run (the caller re-arms it).
  */
