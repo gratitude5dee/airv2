@@ -50,7 +50,8 @@ def discovered_ports() -> List[int]:
     entries = []
     for path in glob.glob("/tmp/agent-browser-chrome-*/DevToolsActivePort"):
         try:
-            first_line = open(path).readline().strip()
+            with open(path) as fh:
+                first_line = fh.readline().strip()
             port = int(first_line)
         except (OSError, ValueError):
             continue
