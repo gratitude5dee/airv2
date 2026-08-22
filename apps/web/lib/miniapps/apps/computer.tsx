@@ -1,10 +1,11 @@
 /**
  * Computer mini-app (MA6 #4): a one-glance task-state page BEFORE the
  * stream. Opening the app never wakes a stopped box — power state, the
- * current/last run, and (only when the box is already awake) a screenshot
- * thumbnail all come from metadata or the existing server-fetched capture
- * path. "Watch live" is the only path to the proxied stream redirect, so no
- * *.on.ascii.dev URL ever lands in page HTML or devtools (C16 unchanged).
+ * current/last run, and (only when the box is already awake) a live desktop
+ * embed or screenshot thumbnail. The live view is an iframe pointing at the
+ * same-origin ?view=live relay: the redirect to the stream happens inside
+ * the browser's network layer, so no *.on.ascii.dev URL ever lands in page
+ * HTML or devtools (C16 unchanged). VNC opens top-level, as required.
  */
 import { NextResponse } from "next/server";
 import { captureScreenshotPng } from "@/lib/box/screenshot";
@@ -39,6 +40,7 @@ function ago(iso: string): string {
 function renderState(
   basePath: string,
   awake: boolean,
+  embed: boolean,
   stateLabel: string,
   run: RunRow | null,
   screenshotDataUri: string | null,
@@ -48,13 +50,19 @@ function renderState(
   const runRow = run
     ? `<div class="item"><span class="grow">${run.ended_at ? "Last run" : "Running now"}${run.trigger ? ` \u00b7 ${esc(run.trigger)}` : ""}${run.outcome ? ` \u00b7 ${esc(run.outcome)}` : ""}</span><span class="when">${esc(ago(run.ended_at ?? run.started_at))}</span></div>`
     : `<div class="item"><span class="grow">No runs yet</span></div>`;
-  const shot = screenshotDataUri
-    ? `<img src="${screenshotDataUri}" alt="Latest screen" style="width:100%;border-radius:var(--radius-well);box-shadow:var(--shadow);margin-top:10px">`
-    : awake
-      ? ""
-      : `<p class="muted">The computer is asleep \u2014 watching live will wake it.</p>`;
-  const watch = `<div class="addrow"><a href="${esc(basePath)}?view=live" style="text-decoration:none"><button>Watch live</button></a></div>`;
-  const body = `<section class="panel">${power}${runRow}${shot}${watch}</section>`;
+  const live = embed
+    ? `<div style="margin-top:10px;border-radius:var(--radius-well);overflow:hidden;box-shadow:var(--shadow);background:#000"><iframe src="${esc(basePath)}?view=live" title="Live view of your agent's computer" allow="fullscreen; clipboard-read; clipboard-write" allowfullscreen referrerpolicy="no-referrer" style="display:block;width:100%;height:min(62vh,520px);border:0"></iframe></div><p class="muted" style="margin-top:8px">Live \u00b7 <a href="${esc(basePath)}?view=live" target="_top">Open full screen</a> \u00b7 choppy? <a href="${esc(basePath)}?view=live&amp;vnc=1" target="_blank" rel="noopener">Switch to VNC</a></p>`
+    : "";
+  const shot =
+    !embed && screenshotDataUri
+      ? `<img src="${screenshotDataUri}" alt="Latest screen" style="width:100%;border-radius:var(--radius-well);box-shadow:var(--shadow);margin-top:10px">`
+      : awake || embed
+        ? ""
+        : `<p class="muted">The computer is asleep \u2014 watching live will wake it.</p>`;
+  const watch = embed
+    ? ""
+    : `<div class="addrow"><a href="${esc(basePath)}?embed=1" style="text-decoration:none"><button>Watch live</button></a></div>`;
+  const body = `<section class="panel">${power}${runRow}${live}${shot}${watch}</section>`;
   return renderShell({
     title: "Your agent's computer",
     kicker: "Screen",
@@ -96,10 +104,14 @@ export const computer: MiniAppModule = {
     const box = boxRow as BoxRow | null;
     const run = ((runRows ?? [])[0] as RunRow | undefined) ?? null;
     const awake = box?.state === "ready" || box?.state === "idle";
+    // Embed the live iframe when the box is already awake, or when the user
+    // explicitly asked to watch (the iframe's ?view=live request wakes it).
+    const embed =
+      awake || ctx.request.nextUrl.searchParams.get("embed") === "1";
 
     // Thumbnail only when the box is ALREADY awake — looking never wakes it.
     let screenshot: string | null = null;
-    if (box && awake) {
+    if (box && awake && !embed) {
       try {
         const png = await captureScreenshotPng(box.provider_box_id, 8);
         screenshot = `data:image/png;base64,${png.toString("base64")}`;
@@ -121,19 +133,23 @@ export const computer: MiniAppModule = {
       renderState(
         ctx.basePath,
         awake,
+        embed,
         stateLabel,
         run,
         screenshot,
         ctx.session.via === "card"
       )
     );
-    const csp = response.headers.get("Content-Security-Policy") ?? "";
+    let csp = response.headers.get("Content-Security-Policy") ?? "";
     if (!csp.includes("data:")) {
-      response.headers.set(
-        "Content-Security-Policy",
-        csp.replace("img-src 'self'", "img-src 'self' data:")
-      );
+      csp = csp.replace("img-src 'self'", "img-src 'self' data:");
     }
+    if (embed) {
+      // The iframe src is same-origin, but CSP re-checks the redirect
+      // destination, so the desktop host must be allowed under frame-src.
+      csp += "; frame-src 'self' https://*.on.ascii.dev";
+    }
+    response.headers.set("Content-Security-Policy", csp);
     return response;
   },
 };

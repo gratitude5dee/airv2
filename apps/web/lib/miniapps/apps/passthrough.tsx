@@ -32,8 +32,13 @@ export async function renderPassthrough(
         lite: ctx.session.via === "card",
       })
     );
+  // ?vnc=1 requests the HTTPS-tunneled noVNC viewer for restrictive
+  // networks; its page must be top-level, so callers open it in a new tab.
+  const vnc = ctx.request.nextUrl.searchParams.get("vnc") === "1";
   try {
-    const url = await desktopStreamUrl(ctx.supabase, ctx.session.userId);
+    const url = await desktopStreamUrl(ctx.supabase, ctx.session.userId, {
+      vnc,
+    });
     await armStopAfter(ctx.supabase, ctx.session.userId);
     const response = NextResponse.redirect(url, 302);
     response.headers.set("Referrer-Policy", "no-referrer");
