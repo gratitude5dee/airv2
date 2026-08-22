@@ -94,7 +94,7 @@ sed -i '/^AIR_BROWSER_DEBUG_PORT=/d' "$ENV_FILE"
 echo "AGENT_BROWSER_ARGS=--no-sandbox,--disable-dev-shm-usage" >> "$ENV_FILE"
 
 # Clear any stale daemon left over from before this sync (or a VM resume).
-pkill -9 -f agent-browser-linux 2>/dev/null || true
+pkill -9 -f 'agent-browser-linu[x]' 2>/dev/null || true
 rm -f "$HOME_DIR/.agent-browser"/*.sock "$HOME_DIR/.agent-browser"/*.pid
 rm -rf /tmp/agent-browser-*
 grep -q '^DISPLAY=' "$ENV_FILE" || echo "DISPLAY=:0" >> "$ENV_FILE"

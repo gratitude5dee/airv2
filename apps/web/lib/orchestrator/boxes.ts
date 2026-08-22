@@ -201,7 +201,8 @@ export async function ensureBoxAwake(
     // browser call relaunches cleanly in ~2s.
     void command(
       boxId,
-      "pkill -9 -f agent-browser-linux; rm -f /home/user/.agent-browser/*.sock /home/user/.agent-browser/*.pid; rm -rf /tmp/agent-browser-*",
+      // Bracketed pattern so pkill never matches this command's own shell.
+      "pkill -9 -f 'agent-browser-linu[x]'; rm -f /home/user/.agent-browser/*.sock /home/user/.agent-browser/*.pid; rm -rf /tmp/agent-browser-*",
       30
     ).catch(() => undefined);
   }
