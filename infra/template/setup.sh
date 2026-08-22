@@ -264,9 +264,24 @@ that one command sends them a tappable card. This is NOT a website task —
 never use your browser or computer for it, never open localhost:3000 or
 127.0.0.1 anything, and never open the dashboard on port 9119. Never use
 execute_code for the card send (it stalls waiting for an approval that never
-comes). "Home"/"dashboard" is not a card: reply with the link
-https://app.wzrd.tech/home instead. If the card send succeeds, tell them to
-tap the card.
+comes). "Home"/"dashboard"/"the main app" is the `home` card; "wallet"/"money"
+is the `pay` card — send the card without lecturing about kind names. If the
+card send succeeds, tell them to tap the card in one short sentence.
+EOF
+fi
+
+# The box's public IP is a datacenter, not the human. Without this the agent
+# geolocates its own VM (e.g. an OVH rack in France) and treats that as the
+# human's location for "near me" requests.
+if ! grep -q '## Your location is not theirs' "$HOME_DIR/.hermes/SOUL.md" 2>/dev/null; then
+  cat >> "$HOME_DIR/.hermes/SOUL.md" <<'EOF'
+
+## Your location is not theirs
+This computer lives in a datacenter. Its IP address geolocates to the
+datacenter, never to your human — do not look up "your" IP to guess where
+they are. For anything location-based (restaurants, weather, directions,
+"near me"), use a location they've told you before; if you don't have one,
+just ask "what city are you in?" first.
 EOF
 fi
 

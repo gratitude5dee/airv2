@@ -276,6 +276,53 @@ describe("slug/claims mismatch", () => {
   });
 });
 
+describe("home launcher", () => {
+  beforeEach(() => {
+    testDb.apps.push(
+      makeApp({ slug: "home", kind: "render", name: "Home" }),
+      makeApp({ slug: "calendar", kind: "input", name: "Calendar" })
+    );
+  });
+
+  it("renders signed sibling links for published first-party apps", async () => {
+    const request = new NextRequest("https://mini.example/mini/home");
+    request.cookies.set("mini_home", mintToken("user-1", "home", "default", 15));
+    const res = await GET(request, params("home"));
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).toContain('href="/mini/calendar?t=');
+    expect(body).not.toContain('href="/mini/home?t=');
+    expect(body).not.toContain("draftapp");
+    const token = (body.match(/href="\/mini\/calendar\?t=([^"]+)"/) ?? [])[1] ?? "";
+    const claims = verifyToken(decodeURIComponent(token), "calendar");
+    expect(claims?.userId).toBe("user-1");
+  });
+
+  it("carries the card `via` marker into launcher links", async () => {
+    const request = new NextRequest("https://mini.example/mini/home");
+    request.cookies.set(
+      "mini_home",
+      mintToken("user-1", "home", "default", 15, { via: "card" })
+    );
+    const res = await GET(request, params("home"));
+    const body = await res.text();
+    const token = (body.match(/href="\/mini\/calendar\?t=([^"]+)"/) ?? [])[1] ?? "";
+    const claims = verifyToken(decodeURIComponent(token), "calendar");
+    expect(claims?.via).toBe("card");
+  });
+
+  it("uses external sibling paths on the mini host", async () => {
+    const request = new NextRequest("https://mini.wzrd.tech/mini/home", {
+      headers: { "x-mini-host": "1" },
+    });
+    request.cookies.set("mini_home", mintToken("user-1", "home", "default", 15));
+    const res = await GET(request, params("home"));
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).toContain('href="/calendar?t=');
+  });
+});
+
 describe("token exchange", () => {
   it("redeems into a path-scoped cookie and strips the token", async () => {
     const token = mintToken("user-1", "kanban", "default", 15);

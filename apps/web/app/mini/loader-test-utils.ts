@@ -67,6 +67,16 @@ export function makeFakeSupabase(db: FakeDb) {
                   },
                 };
               },
+              is(_col: string, _value: null) {
+                return {
+                  async order() {
+                    return {
+                      data: db.apps.filter((a) => a.owner_user_id === null),
+                      error: null,
+                    };
+                  },
+                };
+              },
             };
           },
         };
