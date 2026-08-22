@@ -8,7 +8,8 @@
  */
 import { NextResponse } from "next/server";
 import { externalOrigin } from "../gates";
-import { esc, forbidden, html, page, withBaseHeaders } from "../html";
+import { esc, forbidden, withBaseHeaders } from "../html";
+import { renderShell, shellHtml } from "../shell";
 import { env } from "@/lib/env";
 import {
   CommerceError,
@@ -28,15 +29,25 @@ import { StartLimitError } from "@/lib/orchestrator/boxes";
 import { promptBar, runPrompt } from "../promptBar";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
-// The onboarding redirect targets Stripe's hosted account-link flow.
-const SHOP_CSP =
-  "default-src 'none'; style-src 'unsafe-inline'; " +
-  `img-src ${env.r2PublicBaseUrl()}; ` +
-  "form-action 'self' https://connect.stripe.com https://*.stripe.com; " +
-  "frame-ancestors 'self'";
+// The onboarding redirect targets Stripe's hosted account-link flow, and
+// product images come from R2 — both widen the shell's theme-derived CSP.
+function shopHtml(body: string): NextResponse {
+  const response = shellHtml(body);
+  const csp = response.headers.get("Content-Security-Policy") ?? "";
+  response.headers.set(
+    "Content-Security-Policy",
+    csp
+      .replace("img-src", `img-src ${env.r2PublicBaseUrl()}`)
+      .replace(
+        "form-action 'self'",
+        "form-action 'self' https://connect.stripe.com https://*.stripe.com"
+      )
+  );
+  return response;
+}
 
 function productCard(product: StorefrontProduct): string {
-  return `<div class="card">${product.image_url ? `<img src="${esc(product.image_url)}" alt="" style="max-width:100%;border-radius:8px">` : ""}<strong>${esc(product.name)}</strong> — $${(product.price_cents / 100).toFixed(2)} <span class="when">${esc(product.kind)}${product.inventory !== null ? ` · ${product.inventory} left` : ""}${product.active ? "" : " · inactive"}</span>
+  return `<div class="card">${product.image_url ? `<img src="${esc(product.image_url)}" alt="" style="max-width:100%;border-radius:var(--radius-well)">` : ""}<strong>${esc(product.name)}</strong> — $${(product.price_cents / 100).toFixed(2)} <span class="when">${esc(product.kind)}${product.inventory !== null ? ` · ${product.inventory} left` : ""}${product.active ? "" : " · inactive"}</span>
 <form method="post"><input type="hidden" name="action" value="promote"><button class="ghost">Propose a promo</button></form>
 <form method="post"><input type="hidden" name="action" value="retarget"><input type="hidden" name="product_key" value="${esc(product.product_key)}"><button class="ghost">Propose retargeting</button></form></div>`;
 }
@@ -63,20 +74,24 @@ export const shop: MiniAppModule = {
       : merchant.charges_enabled
         ? `<div class="card">Stripe connected — charges enabled.${slug ? ` Your storefront: <strong>${esc(env.miniappOrigin())}/${esc(slug)}</strong>` : ""}</div>`
         : `<div class="card">Stripe onboarding in progress.<form method="post"><input type="hidden" name="action" value="connect"><button>Resume onboarding</button></form></div>`;
-    const body = page(
-      "Shop",
-      `<h1>Shop</h1>
-${note ? `<div class="card">${esc(note)}</div>` : ""}
+    const body = `<section class="panel">
 ${status}
 <div class="day">Published products</div>
-${products.length > 0 ? products.map(productCard).join("") : `<p class="when" style="white-space:normal">No published products — ask your agent to build your catalog, then approve the publish.</p>`}
+${products.length > 0 ? products.map(productCard).join("") : '<p class="muted">No published products — ask your agent to build your catalog, then approve the publish.</p>'}
 <div class="day">Orders</div>
-${orders.length > 0 ? orders.map(orderRow).join("") : `<p class="when" style="white-space:normal">No orders yet.</p>`}
+${orders.length > 0 ? orders.map(orderRow).join("") : '<p class="muted">No orders yet.</p>'}
 <div class="day">Event check-in</div>
 <form method="post" class="addrow"><input type="hidden" name="action" value="check_in"><input type="text" name="code" placeholder="Ticket code" maxlength="64"><button>Check in</button></form>
-${promptBar("Ask your agent — e.g. draft a promo for my newest product…")}`
+${promptBar("Ask your agent — e.g. draft a promo for my newest product…")}</section>`;
+    return shopHtml(
+      renderShell({
+        title: "Shop",
+        kicker: "Store",
+        body,
+        notice: note,
+        lite: session.via === "card",
+      })
     );
-    return html(body, { "Content-Security-Policy": SHOP_CSP });
   },
 
   async action(ctx: MiniAppContext, form: FormData): Promise<NextResponse> {

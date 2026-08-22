@@ -10,7 +10,8 @@ import { NextResponse } from "next/server";
 import { AdWriteError, requestAdWrite } from "@/lib/ads/approvals";
 import { committedExposureCents, spendCeilingCents } from "@/lib/ads/spend";
 import { externalOrigin } from "../gates";
-import { esc, forbidden, html, page, withBaseHeaders } from "../html";
+import { esc, forbidden, withBaseHeaders } from "../html";
+import { renderShell, shellHtml } from "../shell";
 import { promptBar, runPrompt } from "../promptBar";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
@@ -69,14 +70,15 @@ function renderAds(
   writes: AdWriteRow[],
   ceilingCents: number,
   committedCents: number,
-  note: string | null
+  note: string | null,
+  lite: boolean
 ): string {
   const accountList =
     accounts.length > 0
       ? accounts
           .map(
             (a) =>
-              `<div class="item"><strong>${esc(a.label ?? a.account_ref)}</strong><span class="when">${esc(a.provider)} · ${esc(a.status)}</span></div>`
+              `<div class="item"><strong class="grow">${esc(a.label ?? a.account_ref)}</strong><span class="when">${esc(a.provider)} · ${esc(a.status)}</span></div>`
           )
           .join("")
       : `<p class="muted">No ad accounts connected yet — ask your agent to set one up.</p>`;
@@ -86,16 +88,14 @@ function renderAds(
       : `<p class="muted">No campaigns yet.</p>`;
   const writeList =
     writes.length > 0 ? writes.map(writeCard).join("") : "";
-  return page(
-    "Ads",
-    `<h1>Ads</h1>
+  const body = `<section class="panel">
 ${note ? `<div class="card">${esc(note)}</div>` : ""}
 ${ceilingBanner(ceilingCents, committedCents)}
-<div class="day">Accounts</div>${accountList}
-<div class="day">Campaigns</div>${campaignList}
-${writeList ? `<div class="day">Recent proposals</div>${writeList}` : ""}
-${promptBar("Ask your agent — e.g. draft a campaign for my new drop…")}`
-  );
+<h2>Accounts</h2>${accountList}
+<h2>Campaigns</h2>${campaignList}
+${writeList ? `<h2>Recent proposals</h2>${writeList}` : ""}
+${promptBar("Ask your agent — e.g. draft a campaign for my new drop…")}</section>`;
+  return renderShell({ title: "Ads", kicker: "Campaigns", body, lite });
 }
 
 async function loadAndRender(
@@ -124,14 +124,15 @@ async function loadAndRender(
       spendCeilingCents(ctx.supabase, userId),
       committedExposureCents(ctx.supabase, userId),
     ]);
-  return html(
+  return shellHtml(
     renderAds(
       (accounts ?? []) as AdAccountRow[],
       (campaigns ?? []) as AdCampaignRow[],
       (writes ?? []) as AdWriteRow[],
       ceiling,
       committed,
-      note
+      note,
+      ctx.session.via === "card"
     )
   );
 }

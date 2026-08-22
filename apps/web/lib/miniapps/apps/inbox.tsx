@@ -20,7 +20,8 @@ import {
 } from "@/lib/agentmail/client";
 import { createDecision } from "@/lib/routing/trust";
 import { externalOrigin } from "../gates";
-import { esc, forbidden, html, page, withBaseHeaders } from "../html";
+import { esc, forbidden, withBaseHeaders } from "../html";
+import { renderShell, shellHtml } from "../shell";
 import { promptBar, runPrompt } from "../promptBar";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
@@ -59,7 +60,8 @@ async function blockedAddresses(ctx: MiniAppContext): Promise<Set<string>> {
 function renderThreads(
   basePath: string,
   threads: AgentMailThread[],
-  blocked: Set<string>
+  blocked: Set<string>,
+  lite: boolean
 ): string {
   const rows = threads
     .map((thread) => {
@@ -68,16 +70,14 @@ function renderThreads(
       const when = thread.updated_at
         ? new Date(thread.updated_at).toLocaleDateString()
         : "";
-      return `<a href="${esc(basePath)}?thread=${encodeURIComponent(thread.thread_id)}" style="text-decoration:none;color:inherit"><div class="item"><span style="flex:1;min-width:0"><strong style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(thread.subject ?? "(no subject)")}</strong><span class="when">${esc(sender)}${isBlocked ? ` \u00b7 blocked` : ""}</span></span><span class="when">${esc(when)}</span></div></a>`;
+      return `<a href="${esc(basePath)}?thread=${encodeURIComponent(thread.thread_id)}" style="text-decoration:none;color:inherit"><div class="item"><span class="grow" style="min-width:0"><strong style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(thread.subject ?? "(no subject)")}</strong><span class="when">${esc(sender)}${isBlocked ? ` \u00b7 blocked` : ""}</span></span><span class="when">${esc(when)}</span></div></a>`;
     })
     .join("");
   const empty =
     threads.length === 0 ? `<p class="when">No mail yet.</p>` : "";
-  const compose = `<div class="day">Compose (drafts only \u2014 nothing sends without you)</div><form method="post" style="display:flex;flex-direction:column;gap:6px"><input type="hidden" name="action" value="compose"><input type="text" name="to" placeholder="To" required><input type="text" name="subject" placeholder="Subject"><input type="text" name="text" placeholder="Message" required><div><button>Save draft</button></div></form>`;
-  return page(
-    "Inbox",
-    `<h1>Inbox</h1>${rows}${empty}${compose}\n${promptBar("Ask your agent \u2014 e.g. summarize unread threads\u2026")}`
-  );
+  const compose = `<div class="day">Compose (drafts only \u2014 nothing sends without you)</div><form method="post" class="stack"><input type="hidden" name="action" value="compose"><input type="text" name="to" placeholder="To" required><input type="text" name="subject" placeholder="Subject"><input type="text" name="text" placeholder="Message" required><div class="row"><button>Save draft</button></div></form>`;
+  const body = `<section class="panel">${rows}${empty}${compose}\n${promptBar("Ask your agent \u2014 e.g. summarize unread threads\u2026")}</section>`;
+  return renderShell({ title: "Inbox", kicker: "Mail", body, lite });
 }
 
 function renderThread(
@@ -85,7 +85,8 @@ function renderThread(
   threadId: string,
   subject: string,
   messages: AgentMailMessage[],
-  blocked: Set<string>
+  blocked: Set<string>,
+  lite: boolean
 ): string {
   const rows = messages
     .map((message) => {
@@ -94,7 +95,7 @@ function renderThread(
       // Escaped plain text only — provider HTML (and any remote image in
       // it) never reaches the page.
       const body = message.extracted_text ?? message.text ?? "";
-      return `<div class="card"><div class="when">${esc(from)}${isBlocked ? " \u00b7 blocked sender" : ""}</div><p style="margin:6px 0 0;white-space:pre-wrap">${esc(body.slice(0, 5000))}</p></div>`;
+      return `<div class="card"><div class="when">${esc(from)}${isBlocked ? " \u00b7 blocked sender" : ""}</div><p style="margin:0.4rem 0 0;white-space:pre-wrap">${esc(body.slice(0, 5000))}</p></div>`;
     })
     .join("");
   const last = messages[messages.length - 1];
@@ -102,10 +103,8 @@ function renderThread(
   const reply = replyTo
     ? `<form method="post" class="addrow"><input type="hidden" name="action" value="reply"><input type="hidden" name="to" value="${esc(replyTo)}"><input type="hidden" name="subject" value="${esc(subject.startsWith("Re:") ? subject : `Re: ${subject}`)}"><input type="text" name="text" placeholder="Reply as a draft\u2026" required><button>Draft reply</button></form><p class="when">Replies are drafts \u2014 they wait in Needs&nbsp;you until you approve the send.</p>`
     : "";
-  return page(
-    subject,
-    `<a href="${esc(basePath)}" style="text-decoration:none" class="when">\u2190 Inbox</a><h1 style="margin-top:8px">${esc(subject)}</h1>${rows}${reply}`
-  );
+  const body = `<section class="panel"><a href="${esc(basePath)}" style="text-decoration:none" class="when">\u2190 Inbox</a>${rows}${reply}</section>`;
+  return renderShell({ title: subject, kicker: "Mail", body, lite });
 }
 
 export const inbox: MiniAppModule = {
@@ -113,10 +112,16 @@ export const inbox: MiniAppModule = {
     if (ctx.session.role !== "owner") {
       return forbidden("this view is owner-only");
     }
+    const lite = ctx.session.via === "card";
     const inboxId = await primaryInboxId(ctx);
     if (!inboxId) {
-      return html(
-        page("Inbox", "<h1>Inbox</h1><p>Your agent has no inbox yet.</p>")
+      return shellHtml(
+        renderShell({
+          title: "Inbox",
+          kicker: "Mail",
+          body: '<section class="panel"><p>Your agent has no inbox yet.</p></section>',
+          lite,
+        })
       );
     }
     const blocked = await blockedAddresses(ctx);
@@ -124,24 +129,27 @@ export const inbox: MiniAppModule = {
     try {
       if (threadId) {
         const thread = await getThread(inboxId, threadId);
-        return html(
+        return shellHtml(
           renderThread(
             ctx.basePath,
             threadId,
             thread.subject ?? "(no subject)",
             thread.messages ?? [],
-            blocked
+            blocked,
+            lite
           )
         );
       }
       const threads = await listThreads(inboxId);
-      return html(renderThreads(ctx.basePath, threads, blocked));
+      return shellHtml(renderThreads(ctx.basePath, threads, blocked, lite));
     } catch {
-      return html(
-        page(
-          "Inbox",
-          "<h1>Inbox</h1><p>Couldn't reach the mailbox \u2014 try again shortly.</p>"
-        )
+      return shellHtml(
+        renderShell({
+          title: "Inbox",
+          kicker: "Mail",
+          body: "<section class=\"panel\"><p>Couldn't reach the mailbox \u2014 try again shortly.</p></section>",
+          lite,
+        })
       );
     }
   },

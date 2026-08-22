@@ -8,7 +8,8 @@
 import { NextResponse } from "next/server";
 import { desktopStreamUrl, DesktopUnavailableError } from "@/lib/box/desktop";
 import { armStopAfter, StartLimitError } from "@/lib/orchestrator/boxes";
-import { forbidden, html, page } from "../html";
+import { forbidden } from "../html";
+import { renderShell, shellHtml } from "../shell";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
 export async function renderPassthrough(
@@ -22,6 +23,15 @@ export async function renderPassthrough(
   // URL behind the single-use token exchange. no-referrer keeps the URL out
   // of Referer headers; nothing is stored client-side (C17). The browser
   // card is the same live desktop — the headed browser runs on it.
+  const errorPage = (message: string) =>
+    shellHtml(
+      renderShell({
+        title: "Computer",
+        kicker: "Screen",
+        body: `<section class="panel"><p>${message}</p></section>`,
+        lite: ctx.session.via === "card",
+      })
+    );
   try {
     const url = await desktopStreamUrl(ctx.supabase, ctx.session.userId);
     await armStopAfter(ctx.supabase, ctx.session.userId);
@@ -31,19 +41,13 @@ export async function renderPassthrough(
     return response;
   } catch (error) {
     if (error instanceof StartLimitError) {
-      return html(
-        page(
-          "Computer",
-          "<h1>Computer</h1><p>Your agent's computer can't start right now — try again in a few minutes.</p>"
-        )
+      return errorPage(
+        "Your agent's computer can't start right now — try again in a few minutes."
       );
     }
     if (error instanceof DesktopUnavailableError) {
-      return html(
-        page(
-          "Computer",
-          "<h1>Computer</h1><p>Your agent's screen isn't available yet — it may still be waking up. Pull to refresh in a moment.</p>"
-        )
+      return errorPage(
+        "Your agent's screen isn't available yet — it may still be waking up. Pull to refresh in a moment."
       );
     }
     const message = error instanceof Error ? error.message : "unknown error";
@@ -54,11 +58,8 @@ export async function renderPassthrough(
         error: message,
       })
     );
-    return html(
-      page(
-        "Computer",
-        "<h1>Computer</h1><p>Couldn't reach your agent's computer — try again shortly.</p>"
-      )
+    return errorPage(
+      "Couldn't reach your agent's computer — try again shortly."
     );
   }
 }

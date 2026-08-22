@@ -2,7 +2,8 @@
 import { NextResponse } from "next/server";
 import { StartLimitError } from "@/lib/orchestrator/boxes";
 import { externalOrigin } from "../gates";
-import { esc, html, page, withBaseHeaders } from "../html";
+import { esc, withBaseHeaders } from "../html";
+import { renderShell, shellHtml } from "../shell";
 import { getTodos, updateTodo, type TodoList } from "../store";
 import { promptBar, runPrompt } from "../promptBar";
 import type { MiniAppContext, MiniAppModule } from "./types";
@@ -10,29 +11,30 @@ import type { MiniAppContext, MiniAppModule } from "./types";
 function renderTodo(
   list: TodoList,
   resourceId: string,
-  isOwner: boolean
+  isOwner: boolean,
+  lite: boolean
 ): string {
   const items = list.items
     .map(
       (item) =>
-        `<div class="item"><form method="post" style="margin:0"><input type="hidden" name="action" value="toggle"><input type="hidden" name="id" value="${esc(item.id)}"><button class="ghost">${item.done ? "☑" : "☐"}</button></form><span class="${item.done ? "done" : ""}">${esc(item.text)}</span></div>`
+        `<div class="item"><form method="post" class="inline"><input type="hidden" name="action" value="toggle"><input type="hidden" name="id" value="${esc(item.id)}"><button class="ghost">${item.done ? "☑" : "☐"}</button></form><span class="grow${item.done ? " done" : ""}">${esc(item.text)}</span></div>`
     )
     .join("");
-  return page(
-    list.title,
-    `<h1>${esc(list.title)}</h1>${items}
+  const body = `<section class="panel">${items || '<p class="muted">Nothing here yet — add your first task below.</p>'}
 <form method="post" class="addrow"><input type="hidden" name="action" value="add"><input type="text" name="text" placeholder="Add a task…" maxlength="200"><button>Add</button></form>
-${isOwner ? promptBar("Ask your agent — e.g. plan my day from this list…") : ""}
-<!-- resource: ${esc(resourceId)} -->`
-  );
+${isOwner ? promptBar("Ask your agent — e.g. plan my day from this list…") : ""}</section>
+<!-- resource: ${esc(resourceId)} -->`;
+  return renderShell({ title: list.title, kicker: "Tasks", body, lite });
 }
 
-const unavailable = () =>
-  html(
-    page(
-      "To-Do",
-      "<h1>To-Do</h1><p>Your agent's computer can't start right now — try again in a few minutes.</p>"
-    )
+const unavailable = (lite: boolean) =>
+  shellHtml(
+    renderShell({
+      title: "To-Do",
+      kicker: "Tasks",
+      body: '<section class="panel"><p>Your agent\'s computer can\'t start right now — try again in a few minutes.</p></section>',
+      lite,
+    })
   );
 
 export const todo: MiniAppModule = {
@@ -45,11 +47,18 @@ export const todo: MiniAppModule = {
         ctx.session.resourceId
       );
     } catch (error) {
-      if (error instanceof StartLimitError) return unavailable();
+      if (error instanceof StartLimitError) {
+        return unavailable(ctx.session.via === "card");
+      }
       throw error;
     }
-    return html(
-      renderTodo(list, ctx.session.resourceId, ctx.session.role === "owner")
+    return shellHtml(
+      renderTodo(
+        list,
+        ctx.session.resourceId,
+        ctx.session.role === "owner",
+        ctx.session.via === "card"
+      )
     );
   },
 
@@ -74,7 +83,9 @@ export const todo: MiniAppModule = {
         );
       }
     } catch (error) {
-      if (error instanceof StartLimitError) return unavailable();
+      if (error instanceof StartLimitError) {
+        return unavailable(ctx.session.via === "card");
+      }
       throw error;
     }
     return withBaseHeaders(

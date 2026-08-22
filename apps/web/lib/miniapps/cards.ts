@@ -23,9 +23,51 @@ import { mintToken } from "./tokens";
 /** Card links stay tappable for a day — cards linger in the transcript. */
 export const CARD_LINK_TTL_MINUTES = 24 * 60;
 
-function cardLayout(appSlug: string): { caption: string; subcaption: string } {
-  const caption = appSlug.charAt(0).toUpperCase() + appSlug.slice(1);
-  return { caption, subcaption: "Tap to open" };
+/**
+ * Inline mini-UI: the card bubble is a static layout preview (never
+ * `live` — see lib/spectrum/sender.ts), so the bubble itself is the
+ * mini-UI and tapping it expands into the full-screen mini-app. Per-kind
+ * copy makes the bubble informative instead of a bare "Tap to open".
+ */
+const CARD_COPY: Partial<Record<string, { name: string; line: string }>> = {
+  home: { name: "Home", line: "Every app, one tap away" },
+  onboarding: { name: "Onboarding", line: "Set up your agent" },
+  calendar: { name: "Calendar", line: "Your schedule" },
+  todo: { name: "To-Do", line: "Your tasks" },
+  kanban: { name: "Kanban", line: "Your board" },
+  inbox: { name: "Inbox", line: "Your agent's email" },
+  vault: { name: "Vault", line: "Keys & logins" },
+  connect: { name: "Connect", line: "Link your accounts" },
+  pay: { name: "Pay", line: "Money & payments" },
+  shop: { name: "Shop", line: "Your storefront" },
+  crm: { name: "CRM", line: "People & follow-ups" },
+  analytics: { name: "Analytics", line: "Your numbers" },
+  ads: { name: "Ads", line: "Campaigns" },
+  video: { name: "Video", line: "Video studio" },
+  image: { name: "Image", line: "Image studio" },
+  computer: { name: "Computer", line: "Your agent's screen" },
+  browser: { name: "Browser", line: "Your agent's browser" },
+  settings: { name: "Settings", line: "Preferences" },
+};
+
+function cardLayout(appSlug: string): {
+  caption: string;
+  subcaption: string;
+  trailingCaption: string;
+  trailingSubcaption: string;
+  summary: string;
+} {
+  const copy = CARD_COPY[appSlug] ?? {
+    name: appSlug.charAt(0).toUpperCase() + appSlug.slice(1),
+    line: "Your mini-app",
+  };
+  return {
+    caption: copy.name,
+    subcaption: copy.line,
+    trailingCaption: "WZRD",
+    trailingSubcaption: "Tap to open",
+    summary: `${copy.name} — ${copy.line}`,
+  };
 }
 
 export function mintSignedLink(

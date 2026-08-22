@@ -28,7 +28,8 @@ import {
 } from "@/lib/entitlements/models";
 import { INKLING_CONSENT } from "@/lib/entitlements/inkling";
 import { StartLimitError } from "@/lib/orchestrator/boxes";
-import { esc, forbidden, html, page } from "../html";
+import { esc, forbidden } from "../html";
+import { renderShell, shellHtml } from "../shell";
 import { promptBar, runPrompt } from "../promptBar";
 import { memoryAction, renderMemorySection } from "../sections/memory";
 import { onairosAction, renderOnairosSection } from "../sections/onairos";
@@ -110,12 +111,12 @@ function consentHtml(): string {
 }
 
 function section(title: string, body: string): string {
-  return `<h2 style="font-size:11px;font-weight:600;letter-spacing:0.08em;color:var(--muted);margin:16px 0 6px">${esc(title)}</h2>${body}`;
+  return `<h2>${esc(title)}</h2>${body}`;
 }
 
 /** A clearly-marked panel whose API belongs to another workstream. */
 function comingSoon(text: string): string {
-  return `<div class="card pending" style="color:var(--muted)">${esc(text)}</div>`;
+  return `<div class="card pending muted">${esc(text)}</div>`;
 }
 
 function formatBytes(bytes: number): string {
@@ -134,26 +135,27 @@ interface MountedSections {
 function renderSettings(
   data: SettingsData,
   sections: MountedSections,
-  notice: string | null
+  notice: string | null,
+  lite: boolean
 ): string {
   const usernameSection = section(
     "USERNAME",
-    `<div class="card">${data.username ? `Current: <strong>@${esc(data.username)}</strong>` : "Not set yet."}<p style="color:var(--muted);font-size:11px;margin:4px 0 6px">2–24 lowercase letters, digits, or underscores. Changing it is limited to once every 30 days and moves your agent's email.</p><form method="post" style="display:flex;gap:6px;margin:0"><input type="hidden" name="action" value="set_username"><input type="text" name="username" placeholder="new username" maxlength="24" autocomplete="off"><button>Save</button></form></div>`
+    `<div class="card">${data.username ? `Current: <strong>@${esc(data.username)}</strong>` : "Not set yet."}<p class="muted">2–24 lowercase letters, digits, or underscores. Changing it is limited to once every 30 days and moves your agent's email.</p><form method="post" class="row"><input type="hidden" name="action" value="set_username"><input type="text" name="username" placeholder="new username" maxlength="24" autocomplete="off"><button>Save</button></form></div>`
   );
   const speedButtons = SPEED_TIERS.map(
     (tier) =>
-      `<form method="post" style="margin:0"><input type="hidden" name="action" value="set_speed"><input type="hidden" name="speed_tier" value="${esc(tier)}"><button${tier === data.speedTier ? "" : ' class="ghost"'}>${esc(tier)}</button></form>`
+      `<form method="post" class="inline"><input type="hidden" name="action" value="set_speed"><input type="hidden" name="speed_tier" value="${esc(tier)}"><button${tier === data.speedTier ? "" : ' class="ghost"'}>${esc(tier)}</button></form>`
   ).join("");
   const speedSection = section(
     "SPEED & INTELLIGENCE",
-    `<div class="card"><div style="display:flex;gap:6px">${speedButtons}</div><p style="color:var(--muted);font-size:11px;margin:6px 0 0">Faster answers or deeper reasoning — a tier, never a specific model.</p></div>`
+    `<div class="card"><div class="row">${speedButtons}</div><p class="muted">Faster answers or deeper reasoning — a tier, never a specific model.</p></div>`
   );
   const plainFamilyButtons = MODEL_FAMILIES.filter(
     (family) => !requiresConsent(family)
   )
     .map(
       (family) =>
-        `<form method="post" style="margin:0"><input type="hidden" name="action" value="set_model_family"><input type="hidden" name="model_family" value="${esc(family)}"><button${family === data.modelFamily ? "" : ' class="ghost"'}>${esc(MODEL_FAMILY_LABELS[family])}</button></form>`
+        `<form method="post" class="inline"><input type="hidden" name="action" value="set_model_family"><input type="hidden" name="model_family" value="${esc(family)}"><button${family === data.modelFamily ? "" : ' class="ghost"'}>${esc(MODEL_FAMILY_LABELS[family])}</button></form>`
     )
     .join("");
   // The two free Inkling endpoints only save with the consent box ticked —
@@ -161,12 +163,12 @@ function renderSettings(
   const consentFamilyForms = MODEL_FAMILIES.filter(requiresConsent)
     .map(
       (family) =>
-        `<form method="post" style="margin:8px 0 0"><input type="hidden" name="action" value="set_model_family"><input type="hidden" name="model_family" value="${esc(family)}"><label style="display:flex;gap:6px;align-items:flex-start;font-size:11px;color:var(--muted)"><input type="checkbox" name="agree_tml" value="1"><span>I agree to the terms above and want ${esc(MODEL_FAMILY_LABELS[family])}.</span></label><button${family === data.modelFamily ? "" : ' class="ghost"'} style="margin-top:6px">${esc(MODEL_FAMILY_LABELS[family])}</button></form>`
+        `<form method="post" class="stack"><input type="hidden" name="action" value="set_model_family"><input type="hidden" name="model_family" value="${esc(family)}"><label class="row muted"><input type="checkbox" name="agree_tml" value="1"><span class="grow">I agree to the terms above and want ${esc(MODEL_FAMILY_LABELS[family])}.</span></label><button${family === data.modelFamily ? "" : ' class="ghost"'}>${esc(MODEL_FAMILY_LABELS[family])}</button></form>`
     )
     .join("");
   const modelSection = section(
     "MODEL",
-    `<div class="card"><div style="display:flex;gap:6px;flex-wrap:wrap">${plainFamilyButtons}</div><p style="color:var(--muted);font-size:11px;margin:6px 0 0">Ox Alpha unless you pick otherwise. OpenAI follows your speed tier above.</p><div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--ring)"><p style="color:var(--muted);font-size:11px;margin:0">${consentHtml()}</p>${consentFamilyForms}</div></div>`
+    `<div class="card"><div class="row">${plainFamilyButtons}</div><p class="muted">Ox Alpha unless you pick otherwise. OpenAI follows your speed tier above.</p><div class="row"><p class="muted">${consentHtml()}</p></div>${consentFamilyForms}</div>`
   );
   const emailSection = section(
     "AGENT EMAIL",
@@ -175,7 +177,7 @@ function renderSettings(
   const contactSection = data.username
     ? section(
         "CONTACT CARD",
-        `<div class="card">Your public contact card: <strong>${esc(`${env.appOrigin()}/@${data.username}`)}</strong><p style="color:var(--muted);font-size:11px;margin:4px 0 0">Shows only your name, agent address, and contact button — nothing else.</p></div>`
+        `<div class="card">Your public contact card: <strong>${esc(`${env.appOrigin()}/@${data.username}`)}</strong><p class="muted">Shows only your name, agent address, and contact button — nothing else.</p></div>`
       )
     : "";
   const timezoneSection = section(
@@ -188,13 +190,12 @@ function renderSettings(
   const pluginRows = data.pluginSessions
     .map(
       (t) =>
-        `<div class="item"><span style="flex:1">${esc(t.tool)}</span><span class="when">${esc(new Date(t.created_at).toLocaleDateString())}${t.last_used_at ? ` · last used ${esc(new Date(t.last_used_at).toLocaleDateString())}` : ""}</span></div>`
+        `<div class="item"><span class="grow">${esc(t.tool)}</span><span class="when">${esc(new Date(t.created_at).toLocaleDateString())}${t.last_used_at ? ` · last used ${esc(new Date(t.last_used_at).toLocaleDateString())}` : ""}</span></div>`
     )
     .join("");
   const pluginSection = section(
     "PLUGIN SESSIONS",
-    (pluginRows ||
-      '<div class="card" style="color:var(--muted)">No plugin sessions.</div>') +
+    (pluginRows || '<div class="card muted">No plugin sessions.</div>') +
       comingSoon(
         "Revoke ships with the WZRD.Tech plugin work (MA2.4) — this panel will call its API once it exists."
       )
@@ -215,11 +216,15 @@ function renderSettings(
       "Export and deletion are operator-run today — ask and it happens (full export / cascade delete already exist server-side). Self-serve buttons land here."
     )
   );
-  return page(
-    "Settings",
-    `<h1>Settings</h1>${notice ? `<p style="color:var(--muted);font-size:12px">${esc(notice)}</p>` : ""}${usernameSection}${speedSection}${modelSection}${emailSection}${contactSection}${timezoneSection}${memorySection}${onairosSection}${pluginSection}${storageSection}${traceSection}${dataSection}
-${promptBar("Ask your agent — e.g. change my speed tier to fast…")}`
-  );
+  const body = `<section class="panel">${usernameSection}${speedSection}${modelSection}${emailSection}${contactSection}${timezoneSection}${memorySection}${onairosSection}${pluginSection}${storageSection}${traceSection}${dataSection}
+${promptBar("Ask your agent — e.g. change my speed tier to fast…")}</section>`;
+  return renderShell({
+    title: "Settings",
+    kicker: "Preferences",
+    body,
+    notice,
+    lite,
+  });
 }
 
 async function respond(
@@ -232,7 +237,14 @@ async function respond(
     renderTracesSection(ctx),
     renderOnairosSection(ctx),
   ]);
-  return html(renderSettings(data, { memory, traces, onairos }, notice));
+  return shellHtml(
+    renderSettings(
+      data,
+      { memory, traces, onairos },
+      notice,
+      ctx.session.via === "card"
+    )
+  );
 }
 
 export const settings: MiniAppModule = {

@@ -95,6 +95,9 @@ export interface SpectrumSender {
 export interface AppCardLayout {
   caption?: string;
   subcaption?: string;
+  trailingCaption?: string;
+  trailingSubcaption?: string;
+  summary?: string;
 }
 
 /**
@@ -118,6 +121,13 @@ function buildAppCard(
     layout: {
       ...(layout?.caption ? { caption: layout.caption } : {}),
       ...(layout?.subcaption ? { subcaption: layout.subcaption } : {}),
+      ...(layout?.trailingCaption
+        ? { trailingCaption: layout.trailingCaption }
+        : {}),
+      ...(layout?.trailingSubcaption
+        ? { trailingSubcaption: layout.trailingSubcaption }
+        : {}),
+      ...(layout?.summary ? { summary: layout.summary } : {}),
     },
   });
 }

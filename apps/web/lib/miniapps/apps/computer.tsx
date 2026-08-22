@@ -8,7 +8,8 @@
  */
 import { NextResponse } from "next/server";
 import { captureScreenshotPng } from "@/lib/box/screenshot";
-import { esc, forbidden, html, page } from "../html";
+import { esc, forbidden } from "../html";
+import { renderShell, shellHtml } from "../shell";
 import { renderPassthrough } from "./passthrough";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
@@ -40,22 +41,26 @@ function renderState(
   awake: boolean,
   stateLabel: string,
   run: RunRow | null,
-  screenshotDataUri: string | null
+  screenshotDataUri: string | null,
+  lite: boolean
 ): string {
-  const power = `<div class="item"><span style="flex:1">Power</span><span class="when">${esc(stateLabel)}</span></div>`;
+  const power = `<div class="item"><span class="grow">Power</span><span class="when">${esc(stateLabel)}</span></div>`;
   const runRow = run
-    ? `<div class="item"><span style="flex:1">${run.ended_at ? "Last run" : "Running now"}${run.trigger ? ` \u00b7 ${esc(run.trigger)}` : ""}${run.outcome ? ` \u00b7 ${esc(run.outcome)}` : ""}</span><span class="when">${esc(ago(run.ended_at ?? run.started_at))}</span></div>`
-    : `<div class="item"><span style="flex:1">No runs yet</span></div>`;
+    ? `<div class="item"><span class="grow">${run.ended_at ? "Last run" : "Running now"}${run.trigger ? ` \u00b7 ${esc(run.trigger)}` : ""}${run.outcome ? ` \u00b7 ${esc(run.outcome)}` : ""}</span><span class="when">${esc(ago(run.ended_at ?? run.started_at))}</span></div>`
+    : `<div class="item"><span class="grow">No runs yet</span></div>`;
   const shot = screenshotDataUri
-    ? `<img src="${screenshotDataUri}" alt="Latest screen" style="width:100%;border-radius:12px;box-shadow:var(--shadow);margin-top:10px">`
+    ? `<img src="${screenshotDataUri}" alt="Latest screen" style="width:100%;border-radius:var(--radius-well);box-shadow:var(--shadow);margin-top:10px">`
     : awake
       ? ""
-      : `<p class="when">The computer is asleep \u2014 watching live will wake it.</p>`;
+      : `<p class="muted">The computer is asleep \u2014 watching live will wake it.</p>`;
   const watch = `<div class="addrow"><a href="${esc(basePath)}?view=live" style="text-decoration:none"><button>Watch live</button></a></div>`;
-  return page(
-    "Computer",
-    `<h1>Your agent's computer</h1>${power}${runRow}${shot}${watch}`
-  );
+  const body = `<section class="panel">${power}${runRow}${shot}${watch}</section>`;
+  return renderShell({
+    title: "Your agent's computer",
+    kicker: "Screen",
+    body,
+    lite,
+  });
 }
 
 export const computer: MiniAppModule = {
@@ -110,14 +115,25 @@ export const computer: MiniAppModule = {
     const base = !box ? "not provisioned" : awake ? "on" : (box.state ?? "off");
     const stateLabel =
       box && lastEdge ? `${base} \u00b7 since ${ago(lastEdge.created_at)}` : base;
-    // The base CSP is default-src 'none'; the data: allowance is only for
-    // the inline screenshot bytes — no remote loads become possible.
-    return html(
-      renderState(ctx.basePath, awake, stateLabel, run, screenshot),
-      {
-        "Content-Security-Policy":
-          "default-src 'none'; style-src 'unsafe-inline'; img-src data:; form-action 'self'; frame-ancestors 'self'",
-      }
+    // The theme CSP's img-src gains data: (when absent) only for the inline
+    // screenshot bytes — no remote loads become possible.
+    const response = shellHtml(
+      renderState(
+        ctx.basePath,
+        awake,
+        stateLabel,
+        run,
+        screenshot,
+        ctx.session.via === "card"
+      )
     );
+    const csp = response.headers.get("Content-Security-Policy") ?? "";
+    if (!csp.includes("data:")) {
+      response.headers.set(
+        "Content-Security-Policy",
+        csp.replace("img-src 'self'", "img-src 'self' data:")
+      );
+    }
+    return response;
   },
 };

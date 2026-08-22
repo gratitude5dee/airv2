@@ -30,7 +30,8 @@ import { normalizeHost, setSiteGrant } from "@/lib/browser/grants";
 import { updateMiniAppCard } from "../cards";
 import { externalOrigin } from "../gates";
 import { promptBar, runPrompt } from "../promptBar";
-import { esc, forbidden, html, page, withBaseHeaders } from "../html";
+import { esc, forbidden, withBaseHeaders } from "../html";
+import { renderShell, shellHtml } from "../shell";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
 // V2 (C18/C20): card values never render on this reduced-trust surface —
@@ -100,16 +101,16 @@ function renderManagers(managers: ManagerStatus[]): string {
         ? `${m.status}${m.provenance_count !== null ? ` · ${m.provenance_count} secrets` : ""}`
         : "off";
       const toggle = m.enabled
-        ? `<form method="post" style="margin:0"><input type="hidden" name="action" value="disable_manager"><input type="hidden" name="manager" value="${esc(m.manager)}"><button class="ghost">Disable</button></form>`
+        ? `<form method="post" class="inline"><input type="hidden" name="action" value="disable_manager"><input type="hidden" name="manager" value="${esc(m.manager)}"><button class="ghost">Disable</button></form>`
         : "";
       const warning = m.warnings
-        ? `<div style="color:var(--muted);font-size:11px;margin-top:2px">${esc(m.warnings)}</div>`
+        ? `<div class="muted">${esc(m.warnings)}</div>`
         : "";
-      return `<div class="item"><span style="flex:1">${esc(label)} <span style="color:var(--muted);font-size:11px">${esc(status)}</span>${warning}</span>${toggle}</div>`;
+      return `<div class="item"><span class="grow">${esc(label)} <span class="when">${esc(status)}</span>${warning}</span>${toggle}</div>`;
     })
     .join("");
-  const enable = `<details style="margin-top:6px"><summary style="cursor:pointer;font-size:13px">Bring your own manager</summary><form method="post" style="display:grid;gap:6px;margin-top:6px"><input type="hidden" name="action" value="enable_manager"><select name="manager" style="background:var(--surface);color:var(--text);border:0.5px solid var(--ring);border-radius:10px;padding:8px 10px;font-size:13px"><option value="bitwarden">Bitwarden (machine-account token)</option><option value="onepassword">1Password (service-account token)</option></select><input type="password" name="token" placeholder="Access token" maxlength="512" autocomplete="off"><button>Enable</button></form><p style="color:var(--muted);font-size:11px;margin:4px 0 0">The token goes straight to your agent's computer — never stored on the platform, never shown again.</p></details>`;
-  return `<h2 style="font-size:11px;font-weight:600;letter-spacing:0.08em;color:var(--muted);margin:14px 0 6px">SECRET MANAGERS</h2>${rows}${enable}`;
+  const enable = `<details><summary>Bring your own manager</summary><form method="post" class="stack"><input type="hidden" name="action" value="enable_manager"><select name="manager"><option value="bitwarden">Bitwarden (machine-account token)</option><option value="onepassword">1Password (service-account token)</option></select><input type="password" name="token" placeholder="Access token" maxlength="512" autocomplete="off"><button>Enable</button></form><p class="muted">The token goes straight to your agent's computer — never stored on the platform, never shown again.</p></details>`;
+  return `<h2>SECRET MANAGERS</h2>${rows}${enable}`;
 }
 
 /** V6: the purchase_review live card — site, order summary, amount band,
@@ -135,7 +136,7 @@ function renderPurchaseReviews(reviews: PurchaseReviewRow[]): string {
       ]
         .filter(Boolean)
         .join(" ");
-      return `<div class="card pending"><strong>Fill ${esc(card || "your card")} on ${esc(host)}?</strong><div class="when" style="white-space:normal;margin-top:4px">${esc(summary)}</div><div class="when" style="margin-top:4px">${esc(band)}</div><div style="display:flex;gap:4px;margin-top:8px"><form method="post" style="margin:0"><input type="hidden" name="action" value="approve_purchase"><input type="hidden" name="decision" value="${esc(review.id)}"><button>Fill card</button></form><form method="post" style="margin:0"><input type="hidden" name="action" value="deny_purchase"><input type="hidden" name="decision" value="${esc(review.id)}"><button class="ghost">Not now</button></form></div><div class="when" style="white-space:normal;margin-top:6px">You always click the final Place order button yourself.</div></div>`;
+      return `<div class="card pending"><strong>Fill ${esc(card || "your card")} on ${esc(host)}?</strong><div class="muted">${esc(summary)}</div><div class="when">${esc(band)}</div><div class="row actions"><form method="post" class="inline"><input type="hidden" name="action" value="approve_purchase"><input type="hidden" name="decision" value="${esc(review.id)}"><button>Fill card</button></form><form method="post" class="inline"><input type="hidden" name="action" value="deny_purchase"><input type="hidden" name="decision" value="${esc(review.id)}"><button class="ghost">Not now</button></form></div><div class="muted">You always click the final Place order button yourself.</div></div>`;
     })
     .join("");
 }
@@ -144,6 +145,7 @@ function renderVault(
   items: VaultItemRow[],
   revealed: { id: string; field: string; value: string } | null,
   notice: string | null,
+  lite: boolean,
   reviews: PurchaseReviewRow[] = [],
   managers: ManagerStatus[] = [],
   siteGrants: Map<string, string[]> = new Map()
@@ -175,46 +177,50 @@ function renderVault(
                 revealed !== null &&
                 revealed.id === item.id &&
                 revealed.field === field;
-              return `<div style="display:flex;align-items:center;gap:8px;margin-top:6px"><span style="color:var(--muted);font-size:11px;width:72px">${esc(label)}</span><span style="font-family:ui-monospace,monospace;font-size:12px;overflow:hidden;text-overflow:ellipsis">${isRevealed ? esc(revealed.value) : "••••••••"}</span><form method="post" style="margin:0;margin-left:auto"><input type="hidden" name="action" value="${isRevealed ? "hide" : "reveal"}"><input type="hidden" name="id" value="${esc(item.id)}"><input type="hidden" name="field" value="${esc(field)}"><button class="ghost">${isRevealed ? "Hide" : "Reveal"}</button></form></div>`;
+              return `<div class="row"><span class="chip">${esc(label)}</span><span class="when grow">${isRevealed ? esc(revealed.value) : "••••••••"}</span><form method="post" class="inline"><input type="hidden" name="action" value="${isRevealed ? "hide" : "reveal"}"><input type="hidden" name="id" value="${esc(item.id)}"><input type="hidden" name="field" value="${esc(field)}"><button class="ghost">${isRevealed ? "Hide" : "Reveal"}</button></form></div>`;
             })
             .join("");
           const cardNote =
             kind === "card"
-              ? '<div style="color:var(--muted);font-size:11px;margin-top:6px">Card number and CVV reveal only in the full Vault tab.</div>'
+              ? '<div class="muted">Card number and CVV reveal only in the full Vault tab.</div>'
               : "";
           const defaultChip =
             kind === "card"
               ? item.default_for_purchases
-                ? ' <span style="color:var(--muted);font-size:11px">· default for purchases</span>'
-                : `<form method="post" style="margin:0;display:inline;margin-left:6px"><input type="hidden" name="action" value="set_default_card"><input type="hidden" name="id" value="${esc(item.id)}"><button class="ghost">Make default</button></form>`
+                ? ' <span class="chip on">default for purchases</span>'
+                : `<form method="post" class="inline"><input type="hidden" name="action" value="set_default_card"><input type="hidden" name="id" value="${esc(item.id)}"><button class="ghost">Make default</button></form>`
               : "";
           const hosts = siteGrants.get(item.id) ?? [];
           const grantRows =
             kind === "login" && hosts.length > 0
-              ? `<div style="color:var(--muted);font-size:11px;margin-top:6px">Site access:${hosts
+              ? `<div class="row"><span class="muted">Site access:</span>${hosts
                   .map(
                     (host) =>
-                      ` <span style="white-space:nowrap">${esc(host)} <form method="post" style="margin:0;display:inline"><input type="hidden" name="action" value="revoke_site"><input type="hidden" name="id" value="${esc(item.id)}"><input type="hidden" name="host" value="${esc(host)}"><button class="ghost">Revoke</button></form></span>`
+                      ` <span class="chip">${esc(host)}</span> <form method="post" class="inline"><input type="hidden" name="action" value="revoke_site"><input type="hidden" name="id" value="${esc(item.id)}"><input type="hidden" name="host" value="${esc(host)}"><button class="ghost">Revoke</button></form>`
                   )
                   .join("")}</div>`
               : "";
-          return `<div class="card"><strong>${esc(item.name)}</strong>${item.masked ? ` <span style="color:var(--muted)">${esc(item.masked)}</span>` : ""}${defaultChip}${fieldRows}${grantRows}${cardNote}</div>`;
+          return `<div class="card"><strong>${esc(item.name)}</strong>${item.masked ? ` <span class="when">${esc(item.masked)}</span>` : ""}${defaultChip}${fieldRows}${grantRows}${cardNote}</div>`;
         })
         .join("");
       const empty =
         rows === ""
-          ? '<div class="card" style="border:1px dashed var(--ring);background:transparent;box-shadow:none;color:var(--muted)">Nothing here yet.</div>'
+          ? '<div class="card pending muted">Nothing here yet.</div>'
           : "";
-      return `<h2 style="font-size:11px;font-weight:600;letter-spacing:0.08em;color:var(--muted);margin:14px 0 6px">${esc(header)}</h2>${rows}${empty}`;
+      return `<h2>${esc(header)}</h2>${rows}${empty}`;
     })
     .join("");
-  const addLogin = `<details style="margin-top:14px"><summary style="cursor:pointer;font-size:13px">Add login</summary><p style="color:var(--muted);font-size:12px;margin:6px 0">Values are encrypted in your vault.</p><form method="post" style="display:grid;gap:6px"><input type="hidden" name="action" value="add_login"><input type="text" name="name" placeholder="e.g. &quot;Gmail&quot;, &quot;GitHub&quot;" maxlength="120"><input type="text" name="username" placeholder="Username" maxlength="200"><input type="text" name="password" placeholder="🔒 Password" maxlength="500" autocomplete="off"><button>Save</button></form></details>`;
-  const addCard = `<details style="margin-top:8px"><summary style="cursor:pointer;font-size:13px">Add card</summary><p style="color:var(--muted);font-size:12px;margin:6px 0">Values are encrypted in your vault.</p><form method="post" style="display:grid;gap:6px"><input type="hidden" name="action" value="add_card"><input type="text" name="name" placeholder="e.g. &quot;Amex&quot;, &quot;Chase&quot;" maxlength="120"><input type="text" name="number" placeholder="🔒 Card number" inputmode="numeric" maxlength="23" autocomplete="off"><input type="text" name="expiry_month" placeholder="Expiry month" inputmode="numeric" maxlength="2"><input type="text" name="expiry_year" placeholder="Expiry year" inputmode="numeric" maxlength="4"><input type="text" name="cvv" placeholder="🔒 CVV" inputmode="numeric" maxlength="4" autocomplete="off"><input type="text" name="zip" placeholder="Billing ZIP" inputmode="numeric" maxlength="10"><button>Save</button></form></details>`;
-  return page(
-    "Vault",
-    `<h1>Vault</h1>${notice ? `<p style="color:var(--muted);font-size:12px">${esc(notice)}</p>` : ""}${renderPurchaseReviews(reviews)}${body}${addLogin}${addCard}${renderManagers(managers)}
-${promptBar("Ask your agent — e.g. which logins haven't I used in a while…")}`
-  );
+  const addLogin = `<details><summary>Add login</summary><p class="muted">Values are encrypted in your vault.</p><form method="post" class="stack"><input type="hidden" name="action" value="add_login"><input type="text" name="name" placeholder="e.g. &quot;Gmail&quot;, &quot;GitHub&quot;" maxlength="120"><input type="text" name="username" placeholder="Username" maxlength="200"><input type="text" name="password" placeholder="🔒 Password" maxlength="500" autocomplete="off"><button>Save</button></form></details>`;
+  const addCard = `<details><summary>Add card</summary><p class="muted">Values are encrypted in your vault.</p><form method="post" class="stack"><input type="hidden" name="action" value="add_card"><input type="text" name="name" placeholder="e.g. &quot;Amex&quot;, &quot;Chase&quot;" maxlength="120"><input type="text" name="number" placeholder="🔒 Card number" inputmode="numeric" maxlength="23" autocomplete="off"><input type="text" name="expiry_month" placeholder="Expiry month" inputmode="numeric" maxlength="2"><input type="text" name="expiry_year" placeholder="Expiry year" inputmode="numeric" maxlength="4"><input type="text" name="cvv" placeholder="🔒 CVV" inputmode="numeric" maxlength="4" autocomplete="off"><input type="text" name="zip" placeholder="Billing ZIP" inputmode="numeric" maxlength="10"><button>Save</button></form></details>`;
+  const content = `<section class="panel">${renderPurchaseReviews(reviews)}${body}${addLogin}${addCard}${renderManagers(managers)}
+${promptBar("Ask your agent — e.g. which logins haven't I used in a while…")}</section>`;
+  return renderShell({
+    title: "Vault",
+    kicker: "Keys",
+    body: content,
+    notice,
+    lite,
+  });
 }
 
 async function vaultItems(
@@ -259,14 +265,23 @@ async function vaultPage(
   supabase: SupabaseClient,
   userId: string,
   revealed: { id: string; field: string; value: string } | null,
-  notice: string | null
+  notice: string | null,
+  lite: boolean
 ): Promise<NextResponse> {
   const [items, context] = await Promise.all([
     vaultItems(supabase, userId),
     vaultContext(supabase, userId),
   ]);
-  return html(
-    renderVault(items, revealed, notice, [], context.managers, context.siteGrants)
+  return shellHtml(
+    renderVault(
+      items,
+      revealed,
+      notice,
+      lite,
+      [],
+      context.managers,
+      context.siteGrants
+    )
   );
 }
 
@@ -289,11 +304,12 @@ export const vault: MiniAppModule = {
         .limit(10),
       vaultContext(ctx.supabase, ctx.session.userId),
     ]);
-    return html(
+    return shellHtml(
       renderVault(
         (data ?? []) as VaultItemRow[],
         null,
         null,
+        ctx.session.via === "card",
         (reviewRows ?? []) as PurchaseReviewRow[],
         context.managers,
         context.siteGrants
@@ -310,17 +326,19 @@ export const vault: MiniAppModule = {
     const supabase = ctx.supabase;
     const userId = ctx.session.userId;
     const action = String(form.get("action") ?? "");
+    const lite = ctx.session.via === "card";
     const busyPage = () =>
-      html(
+      shellHtml(
         renderVault(
           [],
           null,
-          "Your agent's computer is busy starting up — try again in a minute."
+          "Your agent's computer is busy starting up — try again in a minute.",
+          lite
         )
       );
 
     if (action === "hide") {
-      return vaultPage(supabase, userId, null, null);
+      return vaultPage(supabase, userId, null, null, lite);
     }
 
     if (action === "prompt") {
@@ -330,7 +348,7 @@ export const vault: MiniAppModule = {
         if (error instanceof StartLimitError) return busyPage();
         throw error;
       }
-      return vaultPage(supabase, userId, null, "sent to your agent");
+      return vaultPage(supabase, userId, null, "sent to your agent", lite);
     }
 
     if (action === "approve_purchase" || action === "deny_purchase") {
@@ -383,7 +401,7 @@ export const vault: MiniAppModule = {
       } finally {
         await armStopAfter(supabase, userId).catch(() => undefined);
       }
-      return vaultPage(supabase, userId, null, notice);
+      return vaultPage(supabase, userId, null, notice, lite);
     }
 
     if (action === "reveal") {
@@ -409,11 +427,11 @@ export const vault: MiniAppModule = {
         } finally {
           await armStopAfter(supabase, userId).catch(() => undefined);
         }
-        return vaultPage(supabase, userId, { id, field, value }, null);
+        return vaultPage(supabase, userId, { id, field, value }, null, lite);
       } catch (error) {
         if (error instanceof StartLimitError) return busyPage();
         if (error instanceof VaultCliError) {
-          return vaultPage(supabase, userId, null, "reveal failed");
+          return vaultPage(supabase, userId, null, "reveal failed", lite);
         }
         console.error(
           JSON.stringify({
@@ -422,7 +440,7 @@ export const vault: MiniAppModule = {
             error: error instanceof Error ? error.message : "unknown",
           })
         );
-        return vaultPage(supabase, userId, null, "reveal failed");
+        return vaultPage(supabase, userId, null, "reveal failed", lite);
       }
     }
 
@@ -452,7 +470,7 @@ export const vault: MiniAppModule = {
         .update({ default_for_purchases: true })
         .eq("user_id", userId)
         .eq("id", id);
-      return vaultPage(supabase, userId, null, "Default purchase card set.");
+      return vaultPage(supabase, userId, null, "Default purchase card set.", lite);
     }
 
     if (action === "revoke_site") {
@@ -487,9 +505,9 @@ export const vault: MiniAppModule = {
         });
       } catch (error) {
         if (error instanceof StartLimitError) return busyPage();
-        return vaultPage(supabase, userId, null, "revoke failed — try again");
+        return vaultPage(supabase, userId, null, "revoke failed — try again", lite);
       }
-      return vaultPage(supabase, userId, null, `Access to ${host} revoked.`);
+      return vaultPage(supabase, userId, null, `Access to ${host} revoked.`, lite);
     }
 
     if (action === "enable_manager") {
@@ -508,16 +526,17 @@ export const vault: MiniAppModule = {
       } catch (error) {
         if (error instanceof StartLimitError) return busyPage();
         if (error instanceof ManagerInputError) {
-          return vaultPage(supabase, userId, null, error.message);
+          return vaultPage(supabase, userId, null, error.message, lite);
         }
         return vaultPage(
           supabase,
           userId,
           null,
-          "enabling the manager failed — try again"
+          "enabling the manager failed — try again",
+          lite
         );
       }
-      return vaultPage(supabase, userId, null, "Manager enabled.");
+      return vaultPage(supabase, userId, null, "Manager enabled.", lite);
     }
 
     if (action === "disable_manager") {
@@ -542,10 +561,11 @@ export const vault: MiniAppModule = {
           supabase,
           userId,
           null,
-          "disabling the manager failed — try again"
+          "disabling the manager failed — try again",
+          lite
         );
       }
-      return vaultPage(supabase, userId, null, "Manager disabled.");
+      return vaultPage(supabase, userId, null, "Manager disabled.", lite);
     }
 
     if (action === "add_login" || action === "add_card") {
@@ -589,7 +609,7 @@ export const vault: MiniAppModule = {
         }
       } catch (error) {
         if (error instanceof StartLimitError) return busyPage();
-        return vaultPage(supabase, userId, null, "save failed");
+        return vaultPage(supabase, userId, null, "save failed", lite);
       }
       return withBaseHeaders(
         NextResponse.redirect(

@@ -8,7 +8,8 @@
  */
 import { listFirstPartyApps } from "../registry";
 import { mintToken } from "../tokens";
-import { esc, html, page } from "../html";
+import { esc } from "../html";
+import { renderShell, shellHtml } from "../shell";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
 /** Launcher order; anything published but unlisted here sorts after. */
@@ -37,13 +38,6 @@ function rank(slug: string): number {
   return i === -1 ? LAUNCH_ORDER.length : i;
 }
 
-const HOME_CSS = `
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-a.tile{display:block;background:var(--surface);border-radius:12px;box-shadow:var(--shadow);padding:12px;text-decoration:none;color:var(--text)}
-a.tile .name{font-size:13px;font-weight:600}
-a.tile .desc{font-size:11px;color:var(--muted);margin-top:3px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-`;
-
 export const home: MiniAppModule = {
   async render(ctx: MiniAppContext) {
     const { session, supabase, basePath } = ctx;
@@ -63,7 +57,13 @@ export const home: MiniAppModule = {
         return `<a class="tile" href="${prefix}/${esc(app.slug)}?t=${token}"><div class="name">${esc(app.name)}</div><div class="desc">${esc(app.description)}</div></a>`;
       })
       .join("");
-    const body = `<style>${HOME_CSS}</style><h1>Home</h1><div class="grid">${tiles}</div>`;
-    return html(page("Home", body));
+    return shellHtml(
+      renderShell({
+        title: "Home",
+        kicker: "Your apps",
+        body: `<div class="grid">${tiles}</div>`,
+        lite: session.via === "card",
+      })
+    );
   },
 };
