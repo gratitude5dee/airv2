@@ -9,9 +9,10 @@
  * lib/onairos/sync.ts — no persona data or key material is handled here
  * beyond the short-lived handoff token the SDK returns to the page.
  */
-import { StrictMode, useEffect, useState } from "react";
+import { StrictMode, useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { OnairosButton, initializeApiKey } from "onairos";
+import { canonicalApiUrl } from "@/lib/onairos/handoffUrl";
 
 function submitHandoff(apiUrl: string, token: string): void {
   const form = document.createElement("form");
@@ -35,26 +36,38 @@ function ConnectApp({ apiKey }: { apiKey: string }): React.ReactElement {
   const [phase, setPhase] = useState<
     "loading" | "ready" | "submitting" | "error"
   >("loading");
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let cancelled = false;
+    setPhase("loading");
     initializeApiKey({ apiKey })
       .then(() => {
         if (!cancelled) setPhase("ready");
       })
-      .catch(() => {
+      .catch((error: unknown) => {
+        // Diagnostic only — the message never carries the key or a token.
+        console.error(
+          "onairos init failed:",
+          error instanceof Error ? error.message : String(error)
+        );
         if (!cancelled) setPhase("error");
       });
     return () => {
       cancelled = true;
     };
-  }, [apiKey]);
+  }, [apiKey, attempt]);
+  const retry = useCallback(() => setAttempt((n) => n + 1), []);
   if (phase === "loading") {
     return <p className="muted">Loading Onairos sign-in…</p>;
   }
   if (phase === "error") {
     return (
       <p className="muted">
-        Onairos sign-in didn&apos;t load — use the iMessage option below.
+        Onairos sign-in couldn&apos;t reach the service —{" "}
+        <button type="button" className="ghost" onClick={retry}>
+          try again
+        </button>{" "}
+        or use the iMessage option below.
       </p>
     );
   }
@@ -67,9 +80,21 @@ function ConnectApp({ apiKey }: { apiKey: string }): React.ReactElement {
       requestData={["preferences", "personality"]}
       autoFetch={false}
       onComplete={(data, error) => {
-        if (error || !data || !data.token || !data.apiUrl) return;
+        if (error || !data || !data.token || !data.apiUrl) {
+          if (error) {
+            console.error(
+              "onairos flow failed:",
+              error instanceof Error ? error.message : String(error)
+            );
+            setPhase("error");
+          }
+          return;
+        }
         setPhase("submitting");
-        submitHandoff(data.apiUrl, data.token);
+        submitHandoff(
+          canonicalApiUrl(data.apiUrl, window.location.origin),
+          data.token
+        );
       }}
     />
   );
