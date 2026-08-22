@@ -48,6 +48,7 @@ const CARD_COPY: Partial<Record<string, { name: string; line: string }>> = {
   computer: { name: "Computer", line: "Your agent's screen" },
   browser: { name: "Browser", line: "Your agent's browser" },
   settings: { name: "Settings", line: "Preferences" },
+  persona: { name: "Persona", line: "A living map of your context" },
 };
 
 function cardLayout(appSlug: string): {

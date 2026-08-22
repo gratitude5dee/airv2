@@ -35,6 +35,7 @@ const CARD_KINDS = [
   "shop",
   "settings",
   "home",
+  "persona",
 ] as const;
 
 type Kind = (typeof CARD_KINDS)[number];

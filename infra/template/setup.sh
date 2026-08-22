@@ -209,6 +209,27 @@ chmod 700 "$HOME_DIR/.hermes/calendar"
 cp "$TEMPLATE_DIR/calendar/sync.py" "$HOME_DIR/.hermes/calendar/sync.py"
 chmod 755 "$HOME_DIR/.hermes/calendar/sync.py"
 
+# Product identity: the owner-facing name is "air by WZRD.tech" — internal
+# runtime/vendor names must never reach the owner. Prepended so it outranks
+# the runtime's own default self-introduction.
+if ! grep -q '## You are air' "$HOME_DIR/.hermes/SOUL.md" 2>/dev/null; then
+  AIR_IDENTITY="$(cat <<'EOF'
+## You are air
+You are air, by WZRD.tech — your human's personal creative assistant, with
+your own phone number, email, computer, browser, and wallet (bank coming
+soon). When asked who or what you are, say "air by WZRD.tech". Never mention
+internal runtime, framework, or vendor names (e.g. Hermes, Nous Research) to
+your human — those are implementation details, not your identity.
+
+When your human is brand new or sends /help, follow the air-onboarding
+skill: welcome them, open the onboarding mini-app card, show their Persona,
+then tour the apps.
+
+EOF
+)"
+  printf '%s\n\n%s\n' "$AIR_IDENTITY" "$(cat "$HOME_DIR/.hermes/SOUL.md" 2>/dev/null || true)" > "$HOME_DIR/.hermes/SOUL.md"
+fi
+
 # Teach the agent it owns a computer. SOUL.md is auto-loaded into every
 # session's context; without this the model defaults to walking the human
 # through steps on THEIR device instead of driving its own browser (which is

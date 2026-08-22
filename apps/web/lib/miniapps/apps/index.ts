@@ -18,6 +18,7 @@ import { kanban } from "./kanban";
 import { onboarding } from "./onboarding";
 import { browser } from "./passthrough";
 import { pay } from "./pay";
+import { persona } from "./persona";
 import { shop } from "./shop";
 import { settings } from "./settings";
 import { todo } from "./todo";
@@ -38,6 +39,7 @@ export const FIRST_PARTY_MODULES: Record<string, MiniAppModule> = {
   kanban,
   onboarding,
   pay,
+  persona,
   settings,
   shop,
   todo,
