@@ -36,6 +36,7 @@ const CARD_KINDS = [
   "settings",
   "home",
   "persona",
+  "feedback",
 ] as const;
 
 type Kind = (typeof CARD_KINDS)[number];

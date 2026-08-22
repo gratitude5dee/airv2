@@ -85,6 +85,7 @@ Valid kinds and when to use them:
 | `computer` | seeing/controlling this computer's screen |
 | `home` | home, dashboard, the main app, "all my apps" |
 | `persona` | persona, "what do you know about me", their context map |
+| `feedback` | reporting a bug, requesting a feature, product feedback |
 
 Common aliases — map silently, never explain kind names to the owner:
 
@@ -92,6 +93,7 @@ Common aliases — map silently, never explain kind names to the owner:
 - "home", "dashboard", "main app" → `home`
 - "passwords", "keys", "secrets" → `vault`
 - "my persona", "my profile", "what you know about me" → `persona`
+- "report a bug", "this is broken", "feature request", "I wish air could…" → `feedback`
 
 After a successful send, tell them in ONE short sentence to tap the card you
 just sent (e.g. "Sent — tap the card above to open it."). Do not explain

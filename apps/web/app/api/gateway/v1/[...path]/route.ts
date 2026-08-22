@@ -51,6 +51,8 @@ async function meter(
     ended_at: new Date().toISOString(),
     outcome: "gateway_completion",
     cost_usd: cost,
+    prompt_tokens: promptTokens,
+    completion_tokens: completionTokens,
   });
   if (runError) {
     console.error(JSON.stringify({ msg: "agent_runs insert failed", user_id: userId, error: runError.message }));
