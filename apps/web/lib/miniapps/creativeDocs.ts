@@ -51,7 +51,8 @@ export type ImageAction =
   | { kind: "set-blend"; id: string; blend: BlendMode }
   | { kind: "toggle-visible"; id: string }
   | { kind: "move"; id: string; direction: "up" | "down" }
-  | { kind: "remove"; id: string };
+  | { kind: "remove"; id: string }
+  | { kind: "set-flat"; assetId: string | null };
 
 const BLEND_MODES: readonly BlendMode[] = [
   "normal",
@@ -94,6 +95,10 @@ export function applyImageAction(doc: ImageDoc, action: ImageAction): ImageDoc {
         visible: true,
       });
     }
+    return doc;
+  }
+  if (action.kind === "set-flat") {
+    doc.flatAssetId = action.assetId ? action.assetId.slice(0, 128) : null;
     return doc;
   }
   if (action.kind === "add-asset") {

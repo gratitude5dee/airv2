@@ -1,9 +1,18 @@
-/** Image editor mini-app renderer (V9 MA7 #8). Layered documents live in the
- * user's box; generation/edit ops go through the agent prompt bar (MA10) and
- * the existing creative lane, so every render is metered. */
+/** Image studio mini-app renderer (V9 MA7 #8, Toolcraft-style rework).
+ * Layout follows the Toolcraft editor pattern: a large canvas stage with the
+ * rendered flat, and a right-hand settings rail of collapsible panels
+ * (Generate, Edit, Layers, Export). Generation and edits run through the
+ * existing metered creative lane (creative_jobs + GMI): "Generate" is a
+ * text-to-image `imagine` job; "Edit" is an `imagine` job with the current
+ * flat attached as the image input. Layered documents live in the user's
+ * box; every render is metered. */
 import { NextResponse } from "next/server";
 import { ASSETS_BUCKET, DELIVERY_TTL_SECONDS } from "@/lib/assets/keys";
 import { mintDelivery, type CreativeAsset } from "@/lib/assets/pipeline";
+import { createCreativeJob } from "@/lib/creative/jobs";
+import { executeCreativeJob } from "@/lib/creative/run";
+import type { CreativeCommandTurn } from "@/lib/creative/router";
+import type { MediaInput } from "@/lib/creative/gmi";
 import { StartLimitError } from "@/lib/orchestrator/boxes";
 import { externalOrigin } from "../gates";
 import { esc, withBaseHeaders } from "../html";
@@ -36,27 +45,52 @@ function hidden(name: string, value: string): string {
   return `<input type="hidden" name="${esc(name)}" value="${esc(value)}">`;
 }
 
+/** One collapsible settings-rail section (Toolcraft panel style). */
+function panel(title: string, body: string, open = false): string {
+  return `<details${open ? " open" : ""} style="border-top:1px solid rgba(255,255,255,0.08);padding:0.55rem 0">
+<summary style="cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;opacity:0.75">${esc(title)}<span aria-hidden="true">\u2303</span></summary>
+<div style="display:flex;flex-direction:column;gap:0.55rem;margin-top:0.6rem">${body}</div>
+</details>`;
+}
+
+/** Labelled slider row, Toolcraft-style: name left, value right. */
+function slider(
+  form: { action: string; id: string },
+  name: string,
+  label: string,
+  value: number,
+  min: number,
+  max: number
+): string {
+  return `<form method="post" style="display:flex;flex-direction:column;gap:0.2rem">${hidden("action", form.action)}${hidden("id", form.id)}
+<label class="when" style="display:flex;justify-content:space-between">${esc(label)}<span>${value}</span></label>
+<div style="display:flex;gap:0.4rem;align-items:center"><input type="range" name="${esc(name)}" value="${value}" min="${min}" max="${max}" style="flex:1"><button class="ghost" style="flex:none">set</button></div>
+</form>`;
+}
+
 function renderLayer(layer: ImageLayer, index: number, count: number): string {
   const label =
     layer.kind === "text"
-      ? `text — ${esc(layer.text ?? "")}`
-      : `asset — ${esc(layer.assetId ?? "")}`;
+      ? `T \u00b7 ${esc(layer.text ?? "")}`
+      : `\u25a3 \u00b7 ${esc(layer.assetId ?? "")}`;
   const blend = BLEND_OPTIONS.map(
     (mode) =>
       `<option value="${mode}"${mode === layer.blend ? " selected" : ""}>${mode}</option>`
   ).join("");
-  return `<div class="card">
-<strong>${count - index}.</strong> ${label}${layer.visible ? "" : ' <span class="when">(hidden)</span>'}
-<form method="post">${hidden("action", "move")}${hidden("id", layer.id)}<button name="direction" value="up" class="ghost">↑</button><button name="direction" value="down" class="ghost">↓</button></form>
+  return `<div class="card" style="display:flex;flex-direction:column;gap:0.4rem">
+<div style="display:flex;align-items:center;gap:0.4rem"><strong>${count - index}.</strong><span class="grow" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${label}</span>${layer.visible ? "" : '<span class="when">(hidden)</span>'}</div>
+<div style="display:flex;flex-wrap:wrap;gap:0.3rem">
+<form method="post">${hidden("action", "move")}${hidden("id", layer.id)}<button name="direction" value="up" class="ghost">\u2191</button><button name="direction" value="down" class="ghost">\u2193</button></form>
 <form method="post">${hidden("action", "toggle-visible")}${hidden("id", layer.id)}<button class="ghost">${layer.visible ? "hide" : "show"}</button></form>
-<form method="post">${hidden("action", "set-opacity")}${hidden("id", layer.id)}<input type="text" name="opacity" value="${layer.opacity}" maxlength="3" style="flex:0 0 52px"><button class="ghost">opacity</button></form>
-<form method="post">${hidden("action", "set-blend")}${hidden("id", layer.id)}<select name="blend">${blend}</select><button class="ghost">blend</button></form>
+<form method="post">${hidden("action", "remove")}${hidden("id", layer.id)}<button class="ghost">remove</button></form>
+</div>
+${slider({ action: "set-opacity", id: layer.id }, "opacity", "Opacity", layer.opacity, 0, 100)}
+<form method="post" style="display:flex;gap:0.3rem">${hidden("action", "set-blend")}${hidden("id", layer.id)}<select name="blend" style="flex:1">${blend}</select><button class="ghost">blend</button></form>
 ${
   layer.kind === "text"
-    ? `<form method="post">${hidden("action", "set-text")}${hidden("id", layer.id)}<input type="text" name="text" value="${esc(layer.text ?? "")}" maxlength="500"><button class="ghost">text</button></form>`
+    ? `<form method="post" style="display:flex;gap:0.3rem">${hidden("action", "set-text")}${hidden("id", layer.id)}<input type="text" name="text" value="${esc(layer.text ?? "")}" maxlength="500" style="flex:1"><button class="ghost">text</button></form>`
     : ""
 }
-<form method="post">${hidden("action", "remove")}${hidden("id", layer.id)}<button class="ghost">remove</button></form>
 </div>`;
 }
 
@@ -72,22 +106,64 @@ function renderImage(
     .map((layer, index) => renderLayer(layer, index, doc.layers.length))
     .reverse()
     .join("");
+
+  const stage = flatUrl
+    ? `<img src="${esc(flatUrl)}" alt="canvas" style="max-width:100%;max-height:70vh;border-radius:var(--radius-well);display:block;margin:0 auto">`
+    : `<div class="card pending" style="text-align:center;padding:2.5rem 1rem">No image yet \u2014 describe one below and tap Generate.</div>`;
+
+  const generatePanel = isOwner
+    ? panel(
+        "Generate",
+        `<form method="post" style="display:flex;flex-direction:column;gap:0.5rem">${hidden("action", "generate")}
+<textarea name="prompt" rows="3" maxlength="1000" placeholder="Describe the image to create\u2026" required style="resize:vertical"></textarea>
+<button>Generate</button></form>
+<p class="when">Runs a metered render \u2014 it can take up to a minute.</p>`,
+        !doc.flatAssetId
+      )
+    : "";
+
+  const editPanel =
+    isOwner && doc.flatAssetId
+      ? panel(
+          "Edit",
+          `<form method="post" style="display:flex;flex-direction:column;gap:0.5rem">${hidden("action", "edit")}
+<textarea name="prompt" rows="3" maxlength="1000" placeholder="Describe the change \u2014 e.g. remove the background\u2026" required style="resize:vertical"></textarea>
+<button>Apply edit</button></form>
+<p class="when">Edits the current canvas image with a metered render.</p>`,
+          true
+        )
+      : "";
+
+  const layersPanel = panel(
+    "Layers",
+    `${layers || '<div class="card pending">no layers yet.</div>'}
+<form method="post" class="addrow">${hidden("action", "add-text")}<input type="text" name="text" placeholder="Add a text layer\u2026" maxlength="500"><button>Add text</button></form>
+<form method="post" class="addrow">${hidden("action", "add-asset")}<input type="text" name="assetId" placeholder="Add an asset layer (box asset id)\u2026" maxlength="128"><button>Add asset</button></form>`
+  );
+
+  const exportPanel =
+    doc.flatAssetId && isOwner
+      ? panel(
+          "Export",
+          `<form method="post">${hidden("action", "export")}<button style="width:100%">\u2913 Export PNG (private link)</button></form>
+<form method="post">${hidden("action", "export-public")}<button class="ghost" style="width:100%">Public link</button></form>
+${exportUrl ? `<div class="card">private link (expires in ${Math.round(DELIVERY_TTL_SECONDS / 60)} min): <a href="${esc(exportUrl)}">${esc(exportUrl.slice(0, 80))}\u2026</a></div>` : ""}`,
+          exportUrl !== null
+        )
+      : "";
+
+  const documentPanel = panel(
+    "Document",
+    `<form method="post" class="addrow">${hidden("action", "rename")}<input type="text" name="title" placeholder="Rename document\u2026" maxlength="120"><button>Rename</button></form>`
+  );
+
   const body = `<section class="panel">
 ${notice ? `<div class="card">${esc(notice)}</div>` : ""}
-${flatUrl ? `<div class="card"><img src="${esc(flatUrl)}" alt="rendered flat" style="max-width:100%;border-radius:var(--radius-well)"></div>` : `<div class="card pending">no rendered flat yet — ask your agent to render one.</div>`}
-${exportUrl ? `<div class="card">private link (expires in ${Math.round(DELIVERY_TTL_SECONDS / 60)} min): <a href="${esc(exportUrl)}">${esc(exportUrl.slice(0, 80))}…</a></div>` : ""}
-<h2>Layers</h2>
-${layers || `<div class="card pending">no layers yet.</div>`}
-<form method="post" class="addrow">${hidden("action", "add-text")}<input type="text" name="text" placeholder="Add a text layer…" maxlength="500"><button>Add text</button></form>
-<form method="post" class="addrow">${hidden("action", "add-asset")}<input type="text" name="assetId" placeholder="Add an asset layer (box asset id)…" maxlength="128"><button>Add asset</button></form>
-<form method="post" class="addrow">${hidden("action", "rename")}<input type="text" name="title" placeholder="Rename document…" maxlength="120"><button>Rename</button></form>
-${
-  doc.flatAssetId && isOwner
-    ? `<form method="post" class="addrow">${hidden("action", "export")}<button>Private link</button></form>
-<form method="post" class="addrow">${hidden("action", "export-public")}<button class="ghost">Public link</button></form>`
-    : ""
-}
-${isOwner ? promptBar("Ask your agent — e.g. remove the background on layer 2…") : ""}</section>`;
+<div style="display:flex;flex-direction:column;gap:0.9rem">
+<div style="background:rgba(0,0,0,0.35);border-radius:var(--radius-well);padding:0.6rem">${stage}</div>
+<div>${generatePanel}${editPanel}${layersPanel}${exportPanel}${documentPanel}</div>
+</div>
+${isOwner ? promptBar("Ask your agent \u2014 e.g. remove the background on layer 2\u2026") : ""}</section>`;
   return renderShell({ title: doc.title, kicker: "Studio", body, lite });
 }
 
@@ -175,6 +251,50 @@ const unavailable = (lite: boolean) =>
     })
   );
 
+/** Run one metered GMI render for this doc: text-to-image ("generate") or
+ * an edit of the current flat ("edit"). On delivery the doc's flat is
+ * repointed at the new asset. Returns the user-facing notice line. */
+async function runStudioRender(
+  ctx: MiniAppContext,
+  kind: "generate" | "edit",
+  prompt: string
+): Promise<string> {
+  const userId = ctx.session.userId;
+  const text = prompt.trim().slice(0, 1000);
+  if (!text) return "describe what to make first.";
+  const mediaInputs: MediaInput[] = [];
+  if (kind === "edit") {
+    const doc = await getImageDoc(ctx.supabase, userId, ctx.session.resourceId);
+    const asset = await flatAsset(ctx, doc);
+    const url = await signedFlatUrl(ctx, asset);
+    if (!url) return "render an image before editing it.";
+    mediaInputs.push({ kind: "image", url });
+  }
+  const job = await createCreativeJob(ctx.supabase, userId, "web", "imagine");
+  const turn: CreativeCommandTurn = {
+    mode: "imagine",
+    cleanedText: text,
+    text,
+    mediaInputs,
+  };
+  const result = await executeCreativeJob(ctx.supabase, job.id, userId, turn);
+  if (result.status === "delivered" && result.asset) {
+    // The render is already delivered and charged; a doc-write failure must
+    // not discard it. The asset stays retrievable, so surface a notice and
+    // let a later save repoint the canvas.
+    try {
+      await updateImageDoc(ctx.supabase, userId, ctx.session.resourceId, {
+        kind: "set-flat",
+        assetId: result.asset.id,
+      });
+    } catch {
+      return `render done (asset ${result.asset.id}) but saving to the canvas failed — try again in a minute or add it as an asset layer.`;
+    }
+    return kind === "edit" ? "edit applied." : "image ready.";
+  }
+  return result.line;
+}
+
 export const image: MiniAppModule = {
   async render(ctx: MiniAppContext): Promise<NextResponse> {
     let doc: ImageDoc;
@@ -219,6 +339,17 @@ export const image: MiniAppModule = {
       return redirectBack(ctx, "?exported=1");
     }
     try {
+      if (
+        (action === "generate" || action === "edit") &&
+        ctx.session.role === "owner"
+      ) {
+        const line = await runStudioRender(
+          ctx,
+          action,
+          String(form.get("prompt") ?? "")
+        );
+        return redirectBack(ctx, `?notice=${encodeURIComponent(line)}`);
+      }
       if (action === "export-public") {
         const doc = await getImageDoc(ctx.supabase, userId, resourceId);
         const result = doc.flatAssetId
