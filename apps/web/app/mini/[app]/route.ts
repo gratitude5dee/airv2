@@ -46,7 +46,9 @@ import { recordOpsEvent } from "@/lib/security/limits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
+// Studio generate/edit actions run a synchronous creative render (420s
+// budget + a possible resume) — match the creative events lane's cap.
+export const maxDuration = 800;
 
 /**
  * External base path for the app: on mini.wzrd.tech the middleware rewrites
