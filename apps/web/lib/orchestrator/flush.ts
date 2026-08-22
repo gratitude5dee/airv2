@@ -29,7 +29,12 @@ import {
   armStopAfter,
   ensureBoxAwake,
 } from "./boxes";
-import { bridgeCarryMarker, sharedBridgeReply } from "./sharedBridge";
+import {
+  BRIDGE_MESSAGE_ID_PREFIX,
+  bridgeCarryMarker,
+  isBridgeMarkerId,
+  sharedBridgeReply,
+} from "./sharedBridge";
 
 const ATTACHMENT_MARKER = /^\[attachment:([^\]]+)\]$/;
 
@@ -440,7 +445,7 @@ export async function runFlush(
             await carryMessages(supabase, job.userId, job.spaceId, [
               {
                 id: "bridge",
-                message_id: `bridge-${Date.now()}`,
+                message_id: `${BRIDGE_MESSAGE_ID_PREFIX}${Date.now()}`,
                 body: bridgeCarryMarker(bridged),
               },
             ]);
@@ -539,7 +544,11 @@ export async function runFlush(
     // exactly as before, prefixed by what the probe consumed.
     const iterator = guarded()[Symbol.asyncIterator]();
     const probe = await probeForTapback(iterator);
-    const tapbackTarget = drained[drained.length - 1]?.message_id;
+    // Synthetic carried rows (bridge markers) are not real iMessages, so a
+    // reaction can never pin to them; target the last real inbound instead.
+    const tapbackTarget = [...drained]
+      .reverse()
+      .find((message) => !isBridgeMarkerId(message.message_id))?.message_id;
     if (probe.tapback && tapbackTarget && !cancelled) {
       const reacted = await sender
         .react(job.spaceId, job.phone, tapbackTarget, probe.tapback)

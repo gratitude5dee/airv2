@@ -76,6 +76,16 @@ export async function sharedBridgeReply(
 }
 
 /**
+ * Synthetic carried rows (the bridge marker) use this message_id prefix so
+ * downstream lanes can tell them apart from real inbound iMessages.
+ */
+export const BRIDGE_MESSAGE_ID_PREFIX = "bridge-";
+
+export function isBridgeMarkerId(messageId: string): boolean {
+  return messageId.startsWith(BRIDGE_MESSAGE_ID_PREFIX);
+}
+
+/**
  * History marker for the real agent turn: the bridge already spoke, and the
  * box-side agent must see that text as its own prior reply, not answer the
  * burst from scratch (optibox: shared text rides into the handoff context).

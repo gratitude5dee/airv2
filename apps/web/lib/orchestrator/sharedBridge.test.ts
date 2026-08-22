@@ -7,8 +7,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  BRIDGE_MESSAGE_ID_PREFIX,
   BRIDGE_SYSTEM_PROMPT,
   bridgeCarryMarker,
+  isBridgeMarkerId,
   sharedBridgeReply,
 } from "./sharedBridge";
 
@@ -104,5 +106,12 @@ describe("bridgeCarryMarker", () => {
     const marker = bridgeCarryMarker("Sure — checking now.");
     expect(marker).toContain('"Sure — checking now."');
     expect(marker).toContain("don't repeat it");
+  });
+});
+
+describe("isBridgeMarkerId", () => {
+  it("distinguishes synthetic marker rows from real iMessage ids", () => {
+    expect(isBridgeMarkerId(`${BRIDGE_MESSAGE_ID_PREFIX}1734567890`)).toBe(true);
+    expect(isBridgeMarkerId("p:0/ABCDEF-1234")).toBe(false);
   });
 });
