@@ -211,9 +211,21 @@ export async function ensureBoxAwake(
   // boot but the stored token may be stale. Probe, then refresh once.
   const deadline = Date.now() + 180_000;
   let refreshed = false;
+  let restarted = false;
   while (!(await health(target))) {
     if (Date.now() > deadline) {
       throw new Error(`hermes on ${boxId} not healthy after resume`);
+    }
+    if (refreshed && !restarted) {
+      // Still unhealthy on a fresh token: the gateway/host units are
+      // enabled but can miss a boot after an unclean VM death; one
+      // explicit restart per wake recovers them.
+      restarted = true;
+      await command(
+        boxId,
+        "sudo systemctl restart hermes-gateway hermes-dashboard hermes-host",
+        60
+      ).catch(() => undefined);
     }
     try {
       // Right after resume the box reports ready before the ascii agent and
