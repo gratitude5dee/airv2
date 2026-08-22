@@ -11,6 +11,7 @@ import { calendar } from "./calendar";
 import { computer } from "./computer";
 import { connect } from "./connect";
 import { crm } from "./crm";
+import { feedback } from "./feedback";
 import { home } from "./home";
 import { image } from "./image";
 import { inbox } from "./inbox";
@@ -34,6 +35,7 @@ export const FIRST_PARTY_MODULES: Record<string, MiniAppModule> = {
   computer,
   connect,
   crm,
+  feedback,
   home,
   inbox,
   kanban,

@@ -32,6 +32,7 @@ const LAUNCH_ORDER = [
   "computer",
   "browser",
   "settings",
+  "feedback",
 ] as const;
 
 function rank(slug: string): number {

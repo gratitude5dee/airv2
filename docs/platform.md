@@ -183,6 +183,19 @@ Full rationale in [`SECURITY-DECISIONS.md`](../SECURITY-DECISIONS.md).
 - `GET /api/admin/ops` — start-rate, line health, spend overview, plus the
   V8 wave counters: schedule fires, fill-ticket mints/redemptions,
   per-user social actions/day, bot counts.
+- `GET /api/admin/tokens` — per-user prompt/completion token volume and
+  gateway cost over a date window (`?days=`), from the `agent_runs` receipts.
+- `GET /api/admin/connectors` — `connections` rolled up per toolkit by status
+  (pending/active/revoked/error) across all users.
+- `GET /api/admin/boxes` — per-user box state, wake/stop counts, and metered
+  `box_seconds` over a window (`?days=`).
+- `GET /api/admin/traces` — receipt rows across every user (or one via
+  `?user_id=`), as JSON or a `?format=csv|jsonl` download. Metadata only (C4).
+- `GET /api/admin/feedback` — the feedback mini-app inbox (`?kind=`,
+  `?status=`, `?limit=`).
+- The operator dashboard (admin.wzrd.tech, `gratitude5dee/admin`) is the only
+  consumer of these; it holds `ADMIN_API_KEY` server-side and never exposes it
+  to the browser.
 - Cron sweeper (`/api/cron/sweep`) stops idle boxes past `stop_after`,
   fires due `agent_schedules`, and advances the content pipeline.
 - Structured logs carry `user_id`/`box_id` on every box-touching line and

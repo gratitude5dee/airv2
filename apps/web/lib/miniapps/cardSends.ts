@@ -28,7 +28,8 @@ export type CardKind =
   | "shop"
   | "settings"
   | "home"
-  | "persona";
+  | "persona"
+  | "feedback";
 
 /** Minimum gap between agent-initiated cards per (user, kind). */
 export const CARD_COOLDOWN_MS = 2 * 60 * 1000;

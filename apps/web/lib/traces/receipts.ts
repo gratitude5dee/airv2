@@ -161,22 +161,35 @@ const SOURCES: readonly Source[] = [
 
 const PAGE = 1000;
 
-export async function fetchReceipts(
+/** An admin receipt carries the owning user alongside the stable columns. */
+export interface AdminReceipt extends TraceReceipt {
+  user_id: string | null;
+}
+
+interface CollectOptions {
+  /** Omitted → every user's rows (operator reads only). */
+  userId?: string;
+  window: TraceWindow;
+  limit: number;
+  newestFirst: boolean;
+  /** true → select and carry user_id on each row. */
+  withUser: boolean;
+}
+
+async function collect(
   supabase: SupabaseClient,
-  userId: string,
-  window: TraceWindow = {},
-  limit = 10_000,
-  /** true → return the newest `limit` receipts, sorted newest-first. */
-  newestFirst = false
-): Promise<TraceReceipt[]> {
-  const receipts: TraceReceipt[] = [];
+  options: CollectOptions
+): Promise<AdminReceipt[]> {
+  const { userId, window, limit, newestFirst, withUser } = options;
+  const receipts: AdminReceipt[] = [];
   for (const source of SOURCES) {
     let offset = 0;
     for (;;) {
       let query = supabase
         .from(source.table)
-        .select(source.select)
-        .eq("user_id", userId)
+        .select(withUser ? `user_id, ${source.select}` : source.select);
+      if (userId) query = query.eq("user_id", userId);
+      query = query
         .order(source.tsColumn, { ascending: !newestFirst })
         .range(offset, offset + PAGE - 1);
       if (window.from) query = query.gte(source.tsColumn, window.from);
@@ -185,7 +198,12 @@ export async function fetchReceipts(
       if (error) break; // a missing table (unapplied migration) exports as absent
       const values: unknown[] = Array.isArray(data) ? [...data] : [];
       const rows = values.filter(isRow);
-      for (const row of rows) receipts.push(source.map(row));
+      for (const row of rows) {
+        receipts.push({
+          ...source.map(row),
+          user_id: withUser ? str(row.user_id) : null,
+        });
+      }
       if (rows.length < PAGE || receipts.length >= limit) break;
       offset += PAGE;
     }
@@ -196,6 +214,44 @@ export async function fetchReceipts(
       : String(a.ts ?? "").localeCompare(String(b.ts ?? ""))
   );
   return receipts.slice(0, limit);
+}
+
+export async function fetchReceipts(
+  supabase: SupabaseClient,
+  userId: string,
+  window: TraceWindow = {},
+  limit = 10_000,
+  /** true → return the newest `limit` receipts, sorted newest-first. */
+  newestFirst = false
+): Promise<TraceReceipt[]> {
+  return collect(supabase, {
+    userId,
+    window,
+    limit,
+    newestFirst,
+    withUser: false,
+  });
+}
+
+/**
+ * Operator variant of `fetchReceipts`: one user when `userId` is given,
+ * otherwise every user's receipts in the window, each row stamped with its
+ * `user_id`. Still metadata only (C4) — same explicit select lists.
+ */
+export async function fetchAdminReceipts(
+  supabase: SupabaseClient,
+  userId: string | undefined,
+  window: TraceWindow = {},
+  limit = 10_000,
+  newestFirst = false
+): Promise<AdminReceipt[]> {
+  return collect(supabase, {
+    userId,
+    window,
+    limit,
+    newestFirst,
+    withUser: true,
+  });
 }
 
 function csvEscape(value: string | number | null): string {
@@ -215,6 +271,23 @@ export function toCsvRow(row: TraceReceipt): string {
 /** JSONL with keys in RECEIPT_COLUMNS order on every line (stable keys). */
 export function toJsonlLine(row: TraceReceipt): string {
   const ordered: Record<string, string | number | null> = {};
+  for (const column of RECEIPT_COLUMNS) ordered[column] = row[column];
+  return JSON.stringify(ordered);
+}
+
+/** Operator exports prefix the stable columns with the owning user. */
+export function adminCsvHeader(): string {
+  return `user_id,${csvHeader()}`;
+}
+
+export function adminToCsvRow(row: AdminReceipt): string {
+  return `${csvEscape(row.user_id)},${toCsvRow(row)}`;
+}
+
+export function adminToJsonlLine(row: AdminReceipt): string {
+  const ordered: Record<string, string | number | null> = {
+    user_id: row.user_id,
+  };
   for (const column of RECEIPT_COLUMNS) ordered[column] = row[column];
   return JSON.stringify(ordered);
 }
