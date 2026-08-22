@@ -25,7 +25,8 @@ import {
   type CrmAvatar,
 } from "@/lib/crm/store";
 import { externalOrigin } from "../gates";
-import { esc, html, page, withBaseHeaders } from "../html";
+import { esc, withBaseHeaders } from "../html";
+import { renderShell, shellHtml } from "../shell";
 import { promptBar, runPrompt } from "../promptBar";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
@@ -93,7 +94,8 @@ function renderCalendar(
   sources: SourceRow[],
   activePersona: string | null,
   avatars: Map<string, CrmAvatar>,
-  isOwner: boolean
+  isOwner: boolean,
+  lite: boolean
 ): string {
   const providerMeta = personaByProvider(sources);
   const personaOf = (event: CalendarEvent): string =>
@@ -129,7 +131,7 @@ function renderCalendar(
   };
   const tabs =
     personas.length > 1 || activePersona !== null
-      ? `<div style="margin-bottom:12px">${tab("All", null)}${personas.map((p) => tab(p, p)).join("")}</div>`
+      ? `<div class="row" style="margin-bottom:0.8rem">${tab("All", null)}${personas.map((p) => tab(p, p)).join("")}</div>`
       : "";
 
   const inviteRows = invites
@@ -137,7 +139,7 @@ function renderCalendar(
       (invite) =>
         `<div class="card pending">${esc(invite.label ?? "Calendar invite")}${
           invite.sender ? `<div class="when">${esc(invite.sender)}</div>` : ""
-        }<div style="display:flex;gap:4px;margin-top:6px"><form method="post" style="margin:0"><input type="hidden" name="action" value="approve"><input type="hidden" name="decision" value="${esc(invite.id)}"><button>Add to calendar</button></form><form method="post" style="margin:0"><input type="hidden" name="action" value="dismiss"><input type="hidden" name="decision" value="${esc(invite.id)}"><button class="ghost">Dismiss</button></form></div></div>`
+        }<div class="row" style="margin-top:0.4rem"><form method="post"><input type="hidden" name="action" value="approve"><input type="hidden" name="decision" value="${esc(invite.id)}"><button>Add to calendar</button></form><form method="post"><input type="hidden" name="action" value="dismiss"><input type="hidden" name="decision" value="${esc(invite.id)}"><button class="ghost">Dismiss</button></form></div></div>`
     )
     .join("");
 
@@ -158,7 +160,7 @@ function renderCalendar(
               });
           const meta = providerMeta.get(event.source);
           const dot = `<span style="display:inline-block;width:8px;height:8px;border-radius:999px;background:${esc(meta?.color ?? ditherColor(personaOf(event)))};flex:none"></span>`;
-          return `<div class="item${event.status === "pending" ? " pending" : ""}">${dot}<span style="flex:1">${esc(event.title)}</span>${attendeeChips(event, avatars)}<span class="when">${esc(when)} \u00b7 ${esc(event.source)}</span></div>`;
+          return `<div class="item${event.status === "pending" ? " pending" : ""}">${dot}<span class="grow">${esc(event.title)}</span>${attendeeChips(event, avatars)}<span class="when">${esc(when)} \u00b7 ${esc(event.source)}</span></div>`;
         })
         .join("");
       return `<div class="day">${esc(day)}</div>${rows}`;
@@ -175,19 +177,27 @@ function renderCalendar(
   const sourceRows = sources
     .map(
       (source) =>
-        `<div class="item"><span style="display:inline-block;width:8px;height:8px;border-radius:999px;background:${esc(source.color ?? ditherColor(source.persona ?? "personal"))};flex:none"></span><span style="flex:1">${esc(source.label ?? source.provider)}</span><form method="post" style="margin:0;display:flex;gap:4px"><input type="hidden" name="action" value="set_source"><input type="hidden" name="source" value="${esc(source.id)}"><input type="text" name="persona" value="${esc(source.persona ?? "personal")}" style="max-width:90px"><input type="text" name="color" value="${esc(source.color ?? "")}" placeholder="#2b7fff" style="max-width:80px"><button class="ghost">Save</button></form></div>`
+        `<div class="item"><span style="display:inline-block;width:8px;height:8px;border-radius:999px;background:${esc(source.color ?? ditherColor(source.persona ?? "personal"))};flex:none"></span><span class="grow">${esc(source.label ?? source.provider)}</span><form method="post" style="display:flex;gap:0.4rem"><input type="hidden" name="action" value="set_source"><input type="hidden" name="source" value="${esc(source.id)}"><input type="text" name="persona" value="${esc(source.persona ?? "personal")}" style="max-width:90px"><input type="text" name="color" value="${esc(source.color ?? "")}" placeholder="#2b7fff" style="max-width:80px"><button class="ghost">Save</button></form></div>`
     )
     .join("");
   const sourcesSection = sourceRows
     ? `<div class="day">Sources</div>${sourceRows}`
     : "";
 
-  return page(
-    "Calendar",
-    `<h1>Next 7 days</h1>${tabs}${inviteRows}${days}${empty}${sourcesSection}
-${isOwner ? promptBar("Ask your agent — e.g. block focus time tomorrow morning…") : ""}`
-  );
+  const body = `<section class="panel">${tabs}${inviteRows}${days}${empty}${sourcesSection}
+${isOwner ? promptBar("Ask your agent — e.g. block focus time tomorrow morning…") : ""}</section>`;
+  return renderShell({ title: "Next 7 days", kicker: "Schedule", body, lite });
 }
+
+const unavailable = (lite: boolean) =>
+  shellHtml(
+    renderShell({
+      title: "Calendar",
+      kicker: "Schedule",
+      body: '<section class="panel"><p>Your agent\'s computer can\'t start right now — try again in a few minutes.</p></section>',
+      lite,
+    })
+  );
 
 export const calendar: MiniAppModule = {
   async render(ctx: MiniAppContext): Promise<NextResponse> {
@@ -228,7 +238,7 @@ export const calendar: MiniAppModule = {
     const personaParam = ctx.request.nextUrl.searchParams.get("persona");
     const activePersona =
       personaParam && PERSONA_RE.test(personaParam) ? personaParam : null;
-    return html(
+    return shellHtml(
       renderCalendar(
         ctx.basePath,
         events,
@@ -237,7 +247,8 @@ export const calendar: MiniAppModule = {
         (sourceRows ?? []) as SourceRow[],
         activePersona,
         avatars,
-        ctx.session.role === "owner"
+        ctx.session.role === "owner",
+        ctx.session.via === "card"
       )
     );
   },
@@ -251,12 +262,7 @@ export const calendar: MiniAppModule = {
         await runPrompt(ctx, String(form.get("text") ?? ""));
       } catch (error) {
         if (error instanceof StartLimitError) {
-          return html(
-            page(
-              "Calendar",
-              "<h1>Calendar</h1><p>Your agent's computer can't start right now — try again in a few minutes.</p>"
-            )
-          );
+          return unavailable(ctx.session.via === "card");
         }
         throw error;
       }
@@ -321,12 +327,7 @@ export const calendar: MiniAppModule = {
             .eq("user_id", ctx.session.userId);
         } catch (error) {
           if (error instanceof StartLimitError) {
-            return html(
-              page(
-                "Calendar",
-                "<h1>Calendar</h1><p>Your agent's computer can't start right now \u2014 try again in a few minutes.</p>"
-              )
-            );
+            return unavailable(ctx.session.via === "card");
           }
           throw error;
         } finally {

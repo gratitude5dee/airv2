@@ -18,19 +18,20 @@ import {
 } from "@/lib/connectors/manage";
 import { externalOrigin } from "../gates";
 import { StartLimitError } from "@/lib/orchestrator/boxes";
-import { esc, forbidden, html, page, withBaseHeaders } from "../html";
+import { esc, forbidden, withBaseHeaders } from "../html";
+import { renderShell, shellHtml } from "../shell";
 import { promptBar, runPrompt } from "../promptBar";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
 function chip(status: string | null): string {
   if (status === "active") {
-    return '<span style="font-size:11px;color:#16a34a">● connected</span>';
+    return '<span class="chip on">● connected</span>';
   }
   if (status === "pending") {
-    return '<span style="font-size:11px;color:var(--muted)">◌ pending</span>';
+    return '<span class="chip">◌ pending</span>';
   }
   if (status === "revoked") {
-    return '<span style="font-size:11px;color:var(--muted)">○ disconnected</span>';
+    return '<span class="chip">○ disconnected</span>';
   }
   return "";
 }
@@ -39,7 +40,8 @@ function renderConnect(
   toolkits: ComposioToolkit[],
   connections: ConnectionRow[],
   health: ConnectionHealth[],
-  notice: string | null
+  notice: string | null,
+  lite: boolean
 ): string {
   const statusByToolkit = new Map(connections.map((c) => [c.toolkit, c.status]));
   const healthByToolkit = new Map(health.map((h) => [h.toolkit, h]));
@@ -57,24 +59,27 @@ function renderConnect(
       const status = statusByToolkit.get(toolkit.slug) ?? null;
       const info = healthByToolkit.get(toolkit.slug);
       const usedBy = info?.used_by
-        ? `<div style="font-size:11px;color:var(--muted)">Used by ${esc(info.used_by)}</div>`
+        ? `<div class="when">Used by ${esc(info.used_by)}</div>`
         : "";
       const lastOk = info?.last_ok_at
-        ? `<div style="font-size:11px;color:var(--muted)">Last used ${esc(new Date(info.last_ok_at).toLocaleDateString())}</div>`
+        ? `<div class="when">Last used ${esc(new Date(info.last_ok_at).toLocaleDateString())}</div>`
         : "";
       const button =
         status === "active"
-          ? `<form method="post" style="margin:0"><input type="hidden" name="action" value="disconnect"><input type="hidden" name="toolkit" value="${esc(toolkit.slug)}"><button class="ghost">Disconnect</button></form>`
-          : `<form method="post" style="margin:0"><input type="hidden" name="action" value="connect"><input type="hidden" name="toolkit" value="${esc(toolkit.slug)}"><button>${status === "pending" ? "Resume" : "Connect"}</button></form>`;
-      return `<div class="card" style="display:flex;align-items:center;gap:8px"><div style="flex:1;min-width:0"><strong>${esc(toolkit.name)}</strong> ${chip(status)}${usedBy}${lastOk}</div>${button}</div>`;
+          ? `<form method="post"><input type="hidden" name="action" value="disconnect"><input type="hidden" name="toolkit" value="${esc(toolkit.slug)}"><button class="ghost">Disconnect</button></form>`
+          : `<form method="post"><input type="hidden" name="action" value="connect"><input type="hidden" name="toolkit" value="${esc(toolkit.slug)}"><button>${status === "pending" ? "Resume" : "Connect"}</button></form>`;
+      return `<div class="card" style="display:flex;align-items:center;gap:0.55rem"><div class="grow" style="min-width:0"><strong>${esc(toolkit.name)}</strong> ${chip(status)}${usedBy}${lastOk}</div>${button}</div>`;
     })
     .join("");
-  const refresh = `<form method="post" style="margin:10px 0 0"><input type="hidden" name="action" value="refresh"><button class="ghost">Refresh statuses</button></form>`;
-  return page(
-    "Connect",
-    `<h1>Connect accounts</h1><p style="color:var(--muted);font-size:12px">Sign your agent into your tools. OAuth happens on the provider's own page — no password ever touches this app.</p>${notice ? `<p style="color:var(--muted);font-size:12px">${esc(notice)}</p>` : ""}${cards}${refresh}
-${promptBar("Ask your agent — e.g. what can you do with my calendar…")}`
-  );
+  const refresh = `<form method="post" style="margin:0.7rem 0 0"><input type="hidden" name="action" value="refresh"><button class="ghost">Refresh statuses</button></form>`;
+  const body = `<section class="panel"><p class="muted">Sign your agent into your tools. OAuth happens on the provider's own page — no password ever touches this app.</p>${notice ? `<p class="muted">${esc(notice)}</p>` : ""}${cards}${refresh}
+${promptBar("Ask your agent — e.g. what can you do with my calendar…")}</section>`;
+  return renderShell({
+    title: "Connect accounts",
+    kicker: "Accounts",
+    body,
+    lite,
+  });
 }
 
 async function loadAndRender(
@@ -98,7 +103,15 @@ async function loadAndRender(
     );
   }
   const health = await connectionHealth(ctx.supabase, userId, connections);
-  return html(renderConnect(toolkits, connections, health, notice));
+  return shellHtml(
+    renderConnect(
+      toolkits,
+      connections,
+      health,
+      notice,
+      ctx.session.via === "card"
+    )
+  );
 }
 
 export const connect: MiniAppModule = {
