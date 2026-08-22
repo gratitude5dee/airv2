@@ -94,7 +94,10 @@ export async function listSessions(boxId: string): Promise<string[]> {
   const names: string[] = [];
   for (const line of result.stdout.split("\n")) {
     const match = /agent-browser-([\w-]+)\/?$/.exec(line.trim());
-    if (match && match[1]) names.push(match[1]);
+    // Skip Chrome temp profile dirs (agent-browser-chrome-<hash>) — only
+    // daemon session socket dirs are real sessions.
+    if (match && match[1] && !match[1].startsWith("chrome-"))
+      names.push(match[1]);
   }
   return names;
 }
