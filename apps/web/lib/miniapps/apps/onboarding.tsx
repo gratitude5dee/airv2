@@ -58,6 +58,8 @@ import {
   setSpectrumFlow,
   spectrumFlowActive,
 } from "@/lib/onairos/spectrum";
+import { OnairosError } from "@/lib/onairos/context";
+import { syncOnairos } from "@/lib/onairos/sync";
 import { createSpectrumSender } from "@/lib/spectrum/sender";
 import { externalOrigin } from "../gates";
 import { baseHeaders, esc, forbidden, withBaseHeaders } from "../html";
@@ -350,7 +352,11 @@ function stepBody(snapshot: OnboardingSnapshot, step: OnboardingStepId): string 
     if (snapshot.onairos.connected) {
       return `<p>Connected — your imported context lives on your computer, and Settings has Re-sync / Disconnect.</p><div class="row actions">${skipForm("onairos")}</div>`;
     }
-    return `<p class="muted">Connect your Onairos context — the consent conversation happens right in your iMessage thread (Onairos asks for your account email, a verification code, and your YES). You can also connect from the main web app later.</p><div class="row actions"><form method="post" class="inline"><input type="hidden" name="action" value="connect_onairos"><button>Connect via iMessage</button></form>${skipForm("onairos")}</div>`;
+    const apiKey = env.onairosApiKey() ?? "";
+    // The native SDK flow runs right here; the key only ever renders on the
+    // owner's own authenticated slide (never in a public bundle), and the
+    // handoff posts back as a regular form (action=onairos_handoff).
+    return `<p class="muted">Sign in with Onairos to import your personal context — the consent flow opens right here, and your imported context lives on your computer, never on the platform.</p><div id="onairos-connect" data-api-key="${esc(apiKey)}"><p class="muted">Loading Onairos sign-in…</p></div><script src="/creator-os/onairos-connect.js" defer></script><details><summary>Or connect via iMessage</summary><p class="muted">Onairos asks for your account email, a verification code, and your YES right in your iMessage thread.</p><form method="post" class="inline"><input type="hidden" name="action" value="connect_onairos"><button class="ghost">Connect via iMessage</button></form></details><div class="row actions">${skipForm("onairos")}</div>`;
   }
   if (step === "secrets") {
     const managerLines = snapshot.managers
@@ -395,10 +401,25 @@ function stepBody(snapshot: OnboardingSnapshot, step: OnboardingStepId): string 
  * widens for what that theme's own first-party assets need; publisher apps
  * keep the strict script-free shell in ../html.
  */
-function slides(current: Theme, body: string): NextResponse {
+function slides(
+  current: Theme,
+  body: string,
+  nativeOnairos = false
+): NextResponse {
   const headers = baseHeaders();
+  // The Onairos slide runs the vendor SDK bundle (served same-origin) which
+  // talks to the Onairos API and inlines its icons as data: URLs — widen
+  // only there, only by what the SDK needs.
+  let csp = themeCsp(current);
+  if (nativeOnairos) {
+    if (!csp.includes("script-src")) csp += "; script-src 'self'";
+    if (!csp.includes("img-src 'self' data:")) {
+      csp = csp.replace("img-src 'self'", "img-src 'self' data:");
+    }
+    csp += "; connect-src https://api2.onairos.uk https://api.onairos.uk";
+  }
   headers["Content-Security-Policy"] =
-    `${themeCsp(current)}; form-action 'self'; frame-ancestors 'self' ${env.appOrigin()}`;
+    `${csp}; form-action 'self'; frame-ancestors 'self' ${env.appOrigin()}`;
   return new NextResponse(body, {
     status: 200,
     headers: { ...headers, "Content-Type": "text/html; charset=utf-8" },
@@ -559,6 +580,19 @@ function activeTheme(ctx: MiniAppContext): Theme {
   return theme(isThemeId(requested) ? requested : DEFAULT_THEME);
 }
 
+/** The Onairos slide mounts the vendor SDK when a native connect is possible
+ * — the CSP widens only for that render. */
+function rendersNativeOnairos(
+  snapshot: OnboardingSnapshot,
+  step: OnboardingStepId
+): boolean {
+  return (
+    step === "onairos" &&
+    snapshot.onairos.available &&
+    !snapshot.onairos.connected
+  );
+}
+
 async function respond(
   ctx: MiniAppContext,
   step: OnboardingStepId | null,
@@ -566,15 +600,17 @@ async function respond(
 ): Promise<NextResponse> {
   const snapshot = await loadSnapshot(ctx.supabase, ctx.session.userId);
   const current = activeTheme(ctx);
+  const active = step ?? firstOpenStep(snapshot);
   return slides(
     current,
     renderOnboarding(
       current,
       snapshot,
-      step ?? firstOpenStep(snapshot),
+      active,
       notice,
       ctx.session.via === "card"
-    )
+    ),
+    rendersNativeOnairos(snapshot, active)
   );
 }
 
@@ -605,15 +641,17 @@ export const onboarding: MiniAppModule = {
       ).catch(() => snapshot.connections);
     }
     const current = activeTheme(ctx);
+    const active = activeStep(ctx, snapshot);
     return slides(
       current,
       renderOnboarding(
         current,
         snapshot,
-        activeStep(ctx, snapshot),
+        active,
         null,
         ctx.session.via === "card"
-      )
+      ),
+      rendersNativeOnairos(snapshot, active)
     );
   },
 
@@ -827,6 +865,40 @@ export const onboarding: MiniAppModule = {
       }
       await markSafely(supabase, userId, "secrets", "done");
       return respond(ctx, null, "Manager enabled.");
+    }
+
+    if (action === "onairos_handoff") {
+      if (env.onairosApiKey() === null) {
+        return respond(
+          ctx,
+          "onairos",
+          "Onairos isn't configured on this deployment."
+        );
+      }
+      try {
+        await syncOnairos(supabase, userId, {
+          token: String(form.get("token") ?? ""),
+          apiUrl: String(form.get("api_url") ?? ""),
+        });
+      } catch (error) {
+        if (error instanceof StartLimitError) {
+          return respond(
+            ctx,
+            "onairos",
+            "The computer is starting up — try again in a minute."
+          );
+        }
+        if (error instanceof OnairosError) {
+          return respond(ctx, "onairos", `Connecting failed — ${error.message}.`);
+        }
+        throw error;
+      }
+      await markSafely(supabase, userId, "onairos", "done");
+      return respond(
+        ctx,
+        null,
+        "Onairos connected — your imported context lives on your computer."
+      );
     }
 
     if (action === "connect_onairos") {

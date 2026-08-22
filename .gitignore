@@ -10,3 +10,6 @@ coverage/
 .vercel
 .env*
 __pycache__/
+
+# Built by apps/web/scripts/build-onairos-connect.mjs (prebuild)
+apps/web/public/creator-os/onairos-connect.js
