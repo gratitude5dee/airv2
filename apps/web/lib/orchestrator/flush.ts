@@ -416,7 +416,10 @@ export async function runFlush(
     try {
       box = await ensureBoxAwake(supabase, job.userId);
     } catch (error) {
-      if (error instanceof StartLimitError && job.attempts < MAX_ATTEMPTS) {
+      // Any wake failure (start limit, slow boot, hermes not healthy after
+      // an unclean VM death) is transient: hold the burst and retry rather
+      // than dropping the drained messages on the floor.
+      if (job.attempts < MAX_ATTEMPTS) {
         // First-class queued state: hold the user honestly, retry later.
         await carryMessages(supabase, job.userId, job.spaceId, fresh);
         if (job.attempts === 0) {
