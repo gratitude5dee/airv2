@@ -7,8 +7,10 @@
  *
  * This is a reduced-trust surface: message bodies render as escaped plain
  * text (extracted_text/text), never provider HTML — so a remote image from
- * any sender, blocked or not, is structurally stripped, and the page CSP
- * (default-src 'none') forbids remote loads anyway.
+ * any sender, blocked or not, is structurally stripped. The page CSP is the
+ * shared shell's theme CSP: script/img limited to 'self' (no inline), styles
+ * and fonts only from the theme's allow-listed font host — sender-controlled
+ * content can never introduce a remote load.
  */
 import { NextResponse } from "next/server";
 import {
