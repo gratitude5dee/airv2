@@ -32,7 +32,8 @@ vi.mock("@/lib/supabase", async () => {
       from: (table: string) =>
         table === "mini_apps" ||
         table === "miniapp_gate_events" ||
-        table === "miniapp_redemptions"
+        table === "miniapp_redemptions" ||
+        table === "users"
           ? registry.from(table)
           : table === "vault_items"
             ? thenable([

@@ -43,6 +43,7 @@ import {
   withBaseHeaders,
 } from "@/lib/miniapps/html";
 import { recordOpsEvent } from "@/lib/security/limits";
+import { userTheme, withTheme } from "@/lib/miniapps/themeContext";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -254,13 +255,16 @@ export async function GET(
     : await runGateChain(request, supabase, app, basePath);
   if (!gate.ok) return gate.response;
 
-  return appModule.render({
-    request,
-    supabase,
-    app,
-    session: gate.session,
-    basePath,
-  });
+  const currentTheme = await userTheme(supabase, gate.session.userId);
+  return withTheme(currentTheme, () =>
+    appModule.render({
+      request,
+      supabase,
+      app,
+      session: gate.session,
+      basePath,
+    })
+  );
 }
 
 export async function POST(
@@ -304,8 +308,11 @@ export async function POST(
     return forbidden("guests can't do that here");
   }
 
-  return appModule.action(
-    { request, supabase, app, session: gate.session, basePath },
-    form
+  const currentTheme = await userTheme(supabase, gate.session.userId);
+  return withTheme(currentTheme, () =>
+    appModule.action!(
+      { request, supabase, app, session: gate.session, basePath },
+      form
+    )
   );
 }

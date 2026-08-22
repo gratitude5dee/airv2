@@ -138,6 +138,24 @@ export function makeFakeSupabase(db: FakeDb) {
           },
         };
       }
+      if (table === "users") {
+        return {
+          select() {
+            return {
+              eq() {
+                return {
+                  async maybeSingle() {
+                    return {
+                      data: { miniapp_theme: "atmosphere" },
+                      error: null,
+                    };
+                  },
+                };
+              },
+            };
+          },
+        };
+      }
       if (table === "ops_events") {
         return {
           async insert(row: {

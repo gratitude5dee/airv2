@@ -13,13 +13,8 @@
 import { NextResponse } from "next/server";
 import { env } from "../env";
 import { baseHeaders, esc } from "./html";
-import {
-  DEFAULT_THEME,
-  theme,
-  themeCsp,
-  tokenBlock,
-  type Theme,
-} from "./themes";
+import { themeCsp, tokenBlock, type Theme } from "./themes";
+import { activeTheme } from "./themeContext";
 
 const GRAIN_SVG =
   "data:image/svg+xml,%3Csvg viewBox='0 0 160 160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.93' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E";
@@ -132,7 +127,7 @@ export interface ShellOptions {
 }
 
 export function renderShell(options: ShellOptions): string {
-  const current = options.theme ?? theme(DEFAULT_THEME);
+  const current = options.theme ?? activeTheme();
   const lite = options.lite ?? false;
   const fonts =
     current.fontStylesheet === null
@@ -171,7 +166,7 @@ export function renderShell(options: ShellOptions): string {
 /** Response wrapper: theme-derived CSP over the strict mini-app baseline. */
 export function shellHtml(
   body: string,
-  current: Theme = theme(DEFAULT_THEME)
+  current: Theme = activeTheme()
 ): NextResponse {
   const headers = baseHeaders();
   headers["Content-Security-Policy"] =
