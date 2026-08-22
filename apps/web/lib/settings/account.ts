@@ -5,6 +5,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ModelFamily } from "../entitlements/models";
+import type { ThemeId } from "../miniapps/themes";
 import { provisionEmail } from "../provisioning/email";
 import { renameBox } from "../box/client";
 import { isReservedWord } from "../miniapps/reserved";
@@ -114,6 +115,19 @@ export async function setSpeedTier(
     .from("entitlements")
     .update({ speed_tier: tier })
     .eq("user_id", userId);
+  return !error;
+}
+
+/** Writes users.miniapp_theme — a THEMES id, applied to every mini-app. */
+export async function setMiniappTheme(
+  supabase: SupabaseClient,
+  userId: string,
+  themeId: ThemeId
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("users")
+    .update({ miniapp_theme: themeId })
+    .eq("id", userId);
   return !error;
 }
 

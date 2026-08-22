@@ -16,6 +16,7 @@ import {
   isSpeedTier,
   MODEL_FAMILIES,
   MODEL_FAMILY_LABELS,
+  setMiniappTheme,
   setModelFamily,
   setSpeedTier,
   setUsername,
@@ -28,6 +29,12 @@ import {
 } from "@/lib/entitlements/models";
 import { INKLING_CONSENT } from "@/lib/entitlements/inkling";
 import { StartLimitError } from "@/lib/orchestrator/boxes";
+import {
+  DEFAULT_THEME,
+  isThemeId,
+  THEME_IDS,
+  THEMES,
+} from "../themes";
 import { esc, forbidden } from "../html";
 import { renderShell, shellHtml } from "../shell";
 import { promptBar, runPrompt } from "../promptBar";
@@ -38,6 +45,7 @@ import type { MiniAppContext, MiniAppModule } from "./types";
 
 interface SettingsData {
   username: string | null;
+  miniappTheme: string;
   speedTier: string | null;
   modelFamily: string;
   plan: string | null;
@@ -61,7 +69,11 @@ async function loadSettings(
     { data: tokens },
     { data: bucket },
   ] = await Promise.all([
-    supabase.from("users").select("username").eq("id", userId).maybeSingle(),
+    supabase
+      .from("users")
+      .select("username, miniapp_theme")
+      .eq("id", userId)
+      .maybeSingle(),
     supabase
       .from("entitlements")
       .select("plan, speed_tier, model_family")
@@ -88,6 +100,10 @@ async function loadSettings(
   ]);
   return {
     username: (user?.username as string | null) ?? null,
+    miniappTheme: (() => {
+      const value = String(user?.miniapp_theme ?? "");
+      return isThemeId(value) ? value : DEFAULT_THEME;
+    })(),
     speedTier: (entitlement?.speed_tier as string | null) ?? null,
     modelFamily: (() => {
       const value = String(entitlement?.model_family ?? "");
@@ -166,6 +182,14 @@ function renderSettings(
         `<form method="post" class="stack"><input type="hidden" name="action" value="set_model_family"><input type="hidden" name="model_family" value="${esc(family)}"><label class="row muted"><input type="checkbox" name="agree_tml" value="1"><span class="grow">I agree to the terms above and want ${esc(MODEL_FAMILY_LABELS[family])}.</span></label><button${family === data.modelFamily ? "" : ' class="ghost"'}>${esc(MODEL_FAMILY_LABELS[family])}</button></form>`
     )
     .join("");
+  const themeButtons = THEME_IDS.map(
+    (id) =>
+      `<form method="post" class="inline"><input type="hidden" name="action" value="set_theme"><input type="hidden" name="theme" value="${esc(id)}"><button${id === data.miniappTheme ? "" : ' class="ghost"'}>${esc(THEMES[id].name)}</button></form>`
+  ).join("");
+  const themeSection = section(
+    "THEME",
+    `<div class="card"><div class="row">${themeButtons}</div><p class="muted">${esc(THEMES[isThemeId(data.miniappTheme) ? data.miniappTheme : DEFAULT_THEME].description)}</p><p class="muted">Applies to every mini-app the next time it loads.</p></div>`
+  );
   const modelSection = section(
     "MODEL",
     `<div class="card"><div class="row">${plainFamilyButtons}</div><p class="muted">Ox Alpha unless you pick otherwise. OpenAI follows your speed tier above.</p><div class="row"><p class="muted">${consentHtml()}</p></div>${consentFamilyForms}</div>`
@@ -216,7 +240,7 @@ function renderSettings(
       "Export and deletion are operator-run today — ask and it happens (full export / cascade delete already exist server-side). Self-serve buttons land here."
     )
   );
-  const body = `<section class="panel">${usernameSection}${speedSection}${modelSection}${emailSection}${contactSection}${timezoneSection}${memorySection}${onairosSection}${pluginSection}${storageSection}${traceSection}${dataSection}
+  const body = `<section class="panel">${usernameSection}${themeSection}${speedSection}${modelSection}${emailSection}${contactSection}${timezoneSection}${memorySection}${onairosSection}${pluginSection}${storageSection}${traceSection}${dataSection}
 ${promptBar("Ask your agent — e.g. change my speed tier to fast…")}</section>`;
   return renderShell({
     title: "Settings",
@@ -318,6 +342,16 @@ export const settings: MiniAppModule = {
         ok
           ? `Model set to ${MODEL_FAMILY_LABELS[family]}.`
           : "Update failed."
+      );
+    }
+
+    if (action === "set_theme") {
+      const themeId = String(form.get("theme") ?? "");
+      if (!isThemeId(themeId)) return forbidden("invalid theme");
+      const ok = await setMiniappTheme(ctx.supabase, userId, themeId);
+      return respond(
+        ctx,
+        ok ? `Theme set to ${THEMES[themeId].name}.` : "Update failed."
       );
     }
 
