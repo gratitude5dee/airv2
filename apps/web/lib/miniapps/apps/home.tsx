@@ -15,6 +15,7 @@ import type { MiniAppContext, MiniAppModule } from "./types";
 /** Launcher order; anything published but unlisted here sorts after. */
 const LAUNCH_ORDER = [
   "onboarding",
+  "persona",
   "calendar",
   "todo",
   "kanban",

@@ -84,12 +84,14 @@ Valid kinds and when to use them:
 | `settings` | settings, preferences |
 | `computer` | seeing/controlling this computer's screen |
 | `home` | home, dashboard, the main app, "all my apps" |
+| `persona` | persona, "what do you know about me", their context map |
 
 Common aliases — map silently, never explain kind names to the owner:
 
 - "wallet", "money", "payments" → `pay`
 - "home", "dashboard", "main app" → `home`
 - "passwords", "keys", "secrets" → `vault`
+- "my persona", "my profile", "what you know about me" → `persona`
 
 After a successful send, tell them in ONE short sentence to tap the card you
 just sent (e.g. "Sent — tap the card above to open it."). Do not explain

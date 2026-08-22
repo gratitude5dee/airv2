@@ -139,6 +139,13 @@ export interface OnboardingSnapshot {
   boxBusy: boolean;
 }
 
+export async function loadOnboardingSnapshot(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<OnboardingSnapshot> {
+  return loadSnapshot(supabase, userId);
+}
+
 async function loadSnapshot(
   supabase: SupabaseClient,
   userId: string
@@ -231,7 +238,7 @@ function buildIngestCommand(userId: string): string | null {
 }
 
 /** A step counts done when its real state exists, however it was written. */
-function effectiveStatus(
+export function effectiveStatus(
   snapshot: OnboardingSnapshot,
   step: OnboardingStepId
 ): "todo" | "done" | "skipped" {
