@@ -11,6 +11,7 @@ import { serviceClient } from "@/lib/supabase";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const PAGE = 1000;
 const STATUSES = ["pending", "active", "revoked", "error"] as const;
 type Status = (typeof STATUSES)[number];
 
@@ -35,14 +36,23 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const supabase = serviceClient();
-  const { data } = await supabase
-    .from("connections")
-    .select("user_id, toolkit, status, provider");
+  const rowsAll: { user_id: unknown; toolkit: unknown; status: unknown }[] = [];
+  for (let offset = 0; ; offset += PAGE) {
+    const { data, error } = await supabase
+      .from("connections")
+      .select("user_id, toolkit, status, provider")
+      .order("id", { ascending: true })
+      .range(offset, offset + PAGE - 1);
+    if (error) break;
+    const page = data ?? [];
+    rowsAll.push(...page);
+    if (page.length < PAGE) break;
+  }
 
   const toolkits = new Map<string, { counts: StatusCounts; users: Set<string> }>();
   const totals = zeroCounts();
   let unknownStatus = 0;
-  for (const row of data ?? []) {
+  for (const row of rowsAll) {
     const toolkit = String(row.toolkit ?? "unknown");
     let entry = toolkits.get(toolkit);
     if (!entry) {

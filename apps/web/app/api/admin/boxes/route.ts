@@ -75,27 +75,32 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return entry;
   };
 
-  const [{ data: boxes }, { data: events }] = await Promise.all([
-    supabase
+  const { data: events } = await supabase
+    .from("box_state_events")
+    .select("user_id, state")
+    .gte("created_at", sinceIso)
+    .limit(50_000);
+
+  for (let offset = 0; ; offset += PAGE) {
+    const { data, error } = await supabase
       .from("boxes")
       .select(
         "user_id, provider, state, template_version, last_active_at, stop_after, created_at"
-      ),
-    supabase
-      .from("box_state_events")
-      .select("user_id, state")
-      .gte("created_at", sinceIso)
-      .limit(50_000),
-  ]);
-
-  for (const row of boxes ?? []) {
-    const entry = forUser(row.user_id as string);
-    entry.state = (row.state as string | null) ?? null;
-    entry.provider = (row.provider as string | null) ?? null;
-    entry.template_version = (row.template_version as string | null) ?? null;
-    entry.last_active_at = (row.last_active_at as string | null) ?? null;
-    entry.stop_after = (row.stop_after as string | null) ?? null;
-    entry.created_at = (row.created_at as string | null) ?? null;
+      )
+      .order("user_id", { ascending: true })
+      .range(offset, offset + PAGE - 1);
+    if (error) break;
+    const boxes = data ?? [];
+    for (const row of boxes) {
+      const entry = forUser(row.user_id as string);
+      entry.state = (row.state as string | null) ?? null;
+      entry.provider = (row.provider as string | null) ?? null;
+      entry.template_version = (row.template_version as string | null) ?? null;
+      entry.last_active_at = (row.last_active_at as string | null) ?? null;
+      entry.stop_after = (row.stop_after as string | null) ?? null;
+      entry.created_at = (row.created_at as string | null) ?? null;
+    }
+    if (boxes.length < PAGE) break;
   }
   for (const row of events ?? []) {
     const entry = forUser(row.user_id as string);
