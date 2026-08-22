@@ -420,10 +420,24 @@ function slides(
   let csp = themeCsp(current);
   if (nativeOnairos) {
     if (!csp.includes("script-src")) csp += "; script-src 'self'";
+    // The SDK loads Google Identity Services for its Google sign-in path
+    // (allowances per https://developers.google.com/identity/gsi/web/guides/csp).
+    csp = csp.replace(
+      "script-src 'self'",
+      "script-src 'self' https://accounts.google.com/gsi/client"
+    );
+    csp = csp.replace(
+      "style-src 'unsafe-inline'",
+      "style-src 'unsafe-inline' https://accounts.google.com/gsi/style"
+    );
     if (!csp.includes("img-src 'self' data:")) {
       csp = csp.replace("img-src 'self'", "img-src 'self' data:");
     }
-    csp += "; connect-src https://api2.onairos.uk https://api.onairos.uk";
+    // 'self' covers the same-origin Onairos relay (/api/mini/onairos) the
+    // SDK bundle is built against; the direct hosts stay for popup flows.
+    csp +=
+      "; connect-src 'self' https://api2.onairos.uk https://api.onairos.uk https://accounts.google.com/gsi/";
+    csp += "; frame-src https://accounts.google.com/gsi/";
   }
   headers["Content-Security-Policy"] =
     `${csp}; form-action 'self'; frame-ancestors 'self' ${env.appOrigin()}`;

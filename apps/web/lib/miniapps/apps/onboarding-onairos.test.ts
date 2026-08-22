@@ -119,8 +119,13 @@ describe("onboarding onairos slide (native connect)", () => {
     expect(body).toContain('src="/creator-os/onairos-connect.js"');
     expect(body).toContain('value="connect_onairos"');
     const csp = response.headers.get("Content-Security-Policy") ?? "";
-    expect(csp).toContain("script-src 'self'");
-    expect(csp).toContain("connect-src https://api2.onairos.uk");
+    expect(csp).toContain(
+      "script-src 'self' https://accounts.google.com/gsi/client"
+    );
+    expect(csp).toContain(
+      "connect-src 'self' https://api2.onairos.uk https://api.onairos.uk https://accounts.google.com/gsi/"
+    );
+    expect(csp).toContain("frame-src https://accounts.google.com/gsi/");
   });
 
   it("keeps the CSP narrow and hides the native mount when unconfigured", async () => {
