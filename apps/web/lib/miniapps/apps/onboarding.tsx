@@ -5,8 +5,10 @@
  * lib/connectors/manage, managers via lib/vault/managers, vault items via
  * the vault CLI, first exchange via Hermes MAIN_SESSION). Progress persists
  * box-side (C4, lib/miniapps/onboarding.ts); every step is skippable and
- * re-enterable. Step 4 (Onairos, §MA9.2) reports status via ./onairos.ts
- * over lib/onairos/sync.ts and stays skippable when no key is configured.
+ * re-enterable. The Onairos step (§MA9.2) reports status via ./onairos.ts
+ * over lib/onairos/sync.ts and stays skippable when no key is configured;
+ * the Composio integrations step follows it — Onairos ingests context,
+ * connections let the agent act across the user's apps.
  * Owner-only: no guest actions (MA4).
  */
 import { NextResponse } from "next/server";
@@ -77,9 +79,9 @@ const STEP_TITLES: Record<OnboardingStepId, string> = {
   username: "Pick your username",
   email: "Your agent's email",
   model: "Model preference",
-  connect: "Connect accounts",
   imessage: "Ingest iMessage history",
   onairos: "Personal context",
+  connect: "Connect your apps",
   secrets: "Secrets",
   stripe: "Stripe account",
   agent: "Meet your agent",
@@ -91,9 +93,9 @@ const STEP_KICKERS: Record<OnboardingStepId, string> = {
   username: "Identity",
   email: "Inbox",
   model: "Thinking speed",
-  connect: "Accounts",
   imessage: "Context · iMessage",
   onairos: "Context · Onairos",
+  connect: "Actions · Integrations",
   secrets: "Key vault",
   stripe: "Get paid",
   agent: "First contact",
@@ -119,10 +121,13 @@ const WALKTHROUGH_WORKFLOWS: Array<[string, string, string]> = [
   ],
 ];
 
-/** Onboarding offers the two golden-path toolkits; the Connect app has all. */
+/** Onboarding offers the golden-path action toolkits; the Connect app has all. */
 const ONBOARDING_TOOLKITS: Array<[string, string]> = [
   ["gmail", "Gmail"],
   ["googlecalendar", "Google Calendar"],
+  ["notion", "Notion"],
+  ["slack", "Slack"],
+  ["github", "GitHub"],
 ];
 
 export interface OnboardingSnapshot {
@@ -328,7 +333,7 @@ function stepBody(snapshot: OnboardingSnapshot, step: OnboardingStepId): string 
           : `<form method="post" class="inline"><input type="hidden" name="action" value="connect"><input type="hidden" name="toolkit" value="${esc(slug)}"><button>Connect</button></form>`;
       return `<div class="item"><span class="grow">${esc(label)}</span>${chip}${button}</div>`;
     }).join("");
-    return `${rows}<p class="muted">Apple Calendar connects via an ICS subscription in the Calendar app — there is no OAuth for it here.</p><div class="row actions"><form method="post" class="inline"><input type="hidden" name="action" value="refresh_connections"><button class="ghost">Refresh status</button></form>${skipForm("connect")}</div>`;
+    return `<p class="muted">Onairos imported your context — these connections let your agent take actions in your apps, always with your approval. Sign-in happens with each app directly; the platform never sees your passwords or tokens. The Connect app has the full catalog.</p>${rows}<p class="muted">Apple Calendar connects via an ICS subscription in the Calendar app — there is no OAuth for it here.</p><div class="row actions"><form method="post" class="inline"><input type="hidden" name="action" value="refresh_connections"><button class="ghost">Refresh status</button></form>${skipForm("connect")}</div>`;
   }
   if (step === "imessage") {
     const ingest = snapshot.ingest;
