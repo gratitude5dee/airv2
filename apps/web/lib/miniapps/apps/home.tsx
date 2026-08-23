@@ -6,11 +6,34 @@
  * tokens scoped to this owner), preserving the card `via` marker so target
  * apps keep the lite webview render.
  */
+import { NextResponse } from "next/server";
+import { env } from "@/lib/env";
+import { publicUrl } from "@/lib/storage/r2";
 import { listFirstPartyApps } from "../registry";
 import { mintToken } from "../tokens";
 import { esc } from "../html";
 import { avatarHtml, renderShell, shellHtml, tintHue } from "../shell";
 import type { MiniAppContext, MiniAppModule } from "./types";
+import type { RegistryApp } from "../registry";
+
+// App icons come from R2 — widen the shell's theme-derived img-src.
+function homeHtml(body: string): NextResponse {
+  const response = shellHtml(body);
+  const csp = response.headers.get("Content-Security-Policy") ?? "";
+  response.headers.set(
+    "Content-Security-Policy",
+    csp.replace("img-src 'self'", `img-src 'self' ${env.r2PublicBaseUrl()}`)
+  );
+  return response;
+}
+
+function avatar(app: RegistryApp): string {
+  return avatarHtml(
+    app.name,
+    app.slug,
+    app.icon_key ? publicUrl(app.icon_key) : null
+  );
+}
 
 /** Launcher order; anything published but unlisted here sorts after. */
 const LAUNCH_ORDER = [
@@ -58,17 +81,17 @@ export const home: MiniAppModule = {
     const icons = launchable
       .map(
         (app) =>
-          `<a href="${href(app.slug)}">${avatarHtml(app.name, app.slug)}<span class="label">${esc(app.name)}</span></a>`
+          `<a href="${href(app.slug)}">${avatar(app)}<span class="label">${esc(app.name)}</span></a>`
       )
       .join("");
     const featured = launchable.slice(0, 3);
     const feed = featured
       .map(
         (app) =>
-          `<a class="approw" href="${href(app.slug)}">${avatarHtml(app.name, app.slug)}<span class="meta"><span class="name">${esc(app.name)}</span><span class="desc">${esc(app.description)}</span></span></a><a class="hero" style="--tint:${tintHue(app.slug)}" href="${href(app.slug)}" aria-label="Open ${esc(app.name)}">${avatarHtml(app.name, app.slug)}</a>`
+          `<a class="approw" href="${href(app.slug)}">${avatar(app)}<span class="meta"><span class="name">${esc(app.name)}</span><span class="desc">${esc(app.description)}</span></span></a><a class="hero" style="--tint:${tintHue(app.slug)}" href="${href(app.slug)}" aria-label="Open ${esc(app.name)}">${avatar(app)}</a>`
       )
       .join("");
-    return shellHtml(
+    return homeHtml(
       renderShell({
         title: "Home",
         kicker: "Your apps",

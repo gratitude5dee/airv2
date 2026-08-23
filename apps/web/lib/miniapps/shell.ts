@@ -132,9 +132,17 @@ export function tintHue(seed: string): number {
   return hash % 360;
 }
 
-/** Circular app avatar: the app's initial over a slug-tinted gradient. */
-export function avatarHtml(name: string, slug: string): string {
-  return `<span class="avatar" style="--tint:${tintHue(slug)}" aria-hidden="true">${esc((name || slug).slice(0, 1))}</span>`;
+/** Circular app avatar: the icon image when one exists, otherwise the
+ * app's initial over a slug-tinted gradient. */
+export function avatarHtml(
+  name: string,
+  slug: string,
+  iconUrl?: string | null
+): string {
+  const inner = iconUrl
+    ? `<img src="${esc(iconUrl)}" alt="">`
+    : esc((name || slug).slice(0, 1));
+  return `<span class="avatar" style="--tint:${tintHue(slug)}" aria-hidden="true">${inner}</span>`;
 }
 
 export interface ShellOptions {
