@@ -43,6 +43,7 @@ import {
   isBackgroundId,
 } from "../backgrounds";
 import { esc, forbidden } from "../html";
+import { activeBackground, activeTheme, withStyle } from "../themeContext";
 import { renderShell, shellHtml } from "../shell";
 import { promptBar, runPrompt } from "../promptBar";
 import { memoryAction, renderMemorySection } from "../sections/memory";
@@ -366,9 +367,11 @@ export const settings: MiniAppModule = {
       const themeId = String(form.get("theme") ?? "");
       if (!isThemeId(themeId)) return forbidden("invalid theme");
       const ok = await setMiniappTheme(ctx.supabase, userId, themeId);
-      return respond(
-        ctx,
-        ok ? `Theme set to ${THEMES[themeId].name}.` : "Update failed."
+      if (!ok) return respond(ctx, "Update failed.");
+      // Re-render inside the just-written style so the response paints it.
+      return withStyle(
+        { theme: THEMES[themeId], background: activeBackground() },
+        () => respond(ctx, `Theme set to ${THEMES[themeId].name}.`)
       );
     }
 
@@ -376,11 +379,9 @@ export const settings: MiniAppModule = {
       const backgroundId = String(form.get("background") ?? "");
       if (!isBackgroundId(backgroundId)) return forbidden("invalid background");
       const ok = await setMiniappBackground(ctx.supabase, userId, backgroundId);
-      return respond(
-        ctx,
-        ok
-          ? `Backdrop set to ${BACKGROUND_NAMES[backgroundId]}.`
-          : "Update failed."
+      if (!ok) return respond(ctx, "Update failed.");
+      return withStyle({ theme: activeTheme(), background: backgroundId }, () =>
+        respond(ctx, `Backdrop set to ${BACKGROUND_NAMES[backgroundId]}.`)
       );
     }
 
