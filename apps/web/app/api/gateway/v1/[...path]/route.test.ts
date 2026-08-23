@@ -213,11 +213,12 @@ describe("gateway model families", () => {
     const goodCompletion = {
       choices: [{ message: { role: "assistant", content: "hi" } }],
     };
-    const fetchMock = vi.fn(async (url: RequestInfo | URL) =>
-      String(url).includes("openrouter")
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      void init;
+      return String(url).includes("openrouter")
         ? new Response(JSON.stringify(emptyCompletion), { status: 200 })
-        : new Response(JSON.stringify(goodCompletion), { status: 200 })
-    );
+        : new Response(JSON.stringify(goodCompletion), { status: 200 });
+    });
     vi.stubGlobal("fetch", fetchMock);
     const response = await POST(
       completionRequest({ messages: [], tools: [{ type: "function" }] }),
