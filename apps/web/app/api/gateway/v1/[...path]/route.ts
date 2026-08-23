@@ -184,76 +184,119 @@ export async function POST(
   const familyValue = String(entitlement.model_family ?? "");
   const family = isModelFamily(familyValue) ? familyValue : DEFAULT_MODEL_FAMILY;
 
-  let body: Record<string, unknown>;
+  let rawBody: Record<string, unknown>;
   try {
-    body = (await request.json()) as Record<string, unknown>;
+    rawBody = (await request.json()) as Record<string, unknown>;
   } catch {
     return NextResponse.json({ error: "invalid JSON" }, { status: 400 });
   }
-  // The tier and family names are the only things that ever appear in a
-  // box's config — the real model ID is resolved here and only here.
-  body.model = modelForSelection(family, tier);
-  // gpt-5.6 on /v1/chat/completions rejects function tools with any
-  // reasoning_effort other than "none", so tool-bearing calls (every Hermes
-  // agent turn) pin it there; plain completions get the configured effort.
-  // Non-reasoning models reject the field entirely, so it is only injected
-  // for families that accept it.
-  if (isReasoningModel(String(body.model))) {
-    const hasTools = Array.isArray(body.tools) && body.tools.length > 0;
-    const reasoning = hasTools ? "none" : reasoningForTier(tier);
-    if (reasoning && body.reasoning_effort === undefined) {
-      body.reasoning_effort = reasoning;
-    }
-  }
-  // service_tier is OpenAI-only, like reasoning_effort above.
-  const openRouter = isOpenRouterFamily(family);
-  const serviceTier = openRouter ? undefined : serviceTierForTier(tier);
-  if (serviceTier && body.service_tier === undefined) {
-    body.service_tier = serviceTier;
-  }
-  // OpenAI reasoning models (gpt-5.x/o-series) reject the legacy knobs
-  // clients still send: max_tokens must be max_completion_tokens, and only
-  // the default sampling params are accepted.
-  if (isReasoningModel(String(body.model))) {
-    if (body.max_tokens !== undefined) {
-      if (body.max_completion_tokens === undefined) {
-        body.max_completion_tokens = body.max_tokens;
-      }
-      delete body.max_tokens;
-    }
-    if (body.temperature !== undefined && body.temperature !== 1) {
-      delete body.temperature;
-    }
-    if (body.top_p !== undefined && body.top_p !== 1) {
-      delete body.top_p;
-    }
-  }
-  const streaming = body.stream === true;
-  if (streaming) {
-    body.stream_options = { ...(body.stream_options as object), include_usage: true };
-  }
+  const streaming = rawBody.stream === true;
+  const endpoint = path.join("/");
 
-  const baseUrl = openRouter
-    ? env.openRouterBaseUrl()
-    : env.modelProviderBaseUrl();
-  const apiKey = openRouter
-    ? env.openRouterApiKey()
-    : env.modelProviderApiKey();
-  const upstream = await fetch(`${baseUrl}/${path.join("/")}`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      // OpenRouter attribution (ignored by other upstreams).
-      ...(openRouter
-        ? {
-            "HTTP-Referer": env.appOrigin(),
-            "X-OpenRouter-Title": "AIR",
-          }
-        : {}),
-    },
-    body: JSON.stringify(body),
-  });
+  const dispatch = async (
+    toFamily: ModelFamily
+  ): Promise<Response> => {
+    // The tier and family names are the only things that ever appear in a
+    // box's config — the real model ID is resolved here and only here.
+    const body: Record<string, unknown> = { ...rawBody };
+    body.model = modelForSelection(toFamily, tier);
+    // gpt-5.6 on /v1/chat/completions rejects function tools with any
+    // reasoning_effort other than "none", so tool-bearing calls (every Hermes
+    // agent turn) pin it there; plain completions get the configured effort.
+    // Non-reasoning models reject the field entirely, so it is only injected
+    // for families that accept it.
+    if (isReasoningModel(String(body.model))) {
+      const hasTools = Array.isArray(body.tools) && body.tools.length > 0;
+      const reasoning = hasTools ? "none" : reasoningForTier(tier);
+      if (reasoning && body.reasoning_effort === undefined) {
+        body.reasoning_effort = reasoning;
+      }
+    }
+    // service_tier is OpenAI-only, like reasoning_effort above.
+    const openRouter = isOpenRouterFamily(toFamily);
+    const serviceTier = openRouter ? undefined : serviceTierForTier(tier);
+    if (serviceTier && body.service_tier === undefined) {
+      body.service_tier = serviceTier;
+    }
+    // OpenAI reasoning models (gpt-5.x/o-series) reject the legacy knobs
+    // clients still send: max_tokens must be max_completion_tokens, and only
+    // the default sampling params are accepted.
+    if (isReasoningModel(String(body.model))) {
+      if (body.max_tokens !== undefined) {
+        if (body.max_completion_tokens === undefined) {
+          body.max_completion_tokens = body.max_tokens;
+        }
+        delete body.max_tokens;
+      }
+      if (body.temperature !== undefined && body.temperature !== 1) {
+        delete body.temperature;
+      }
+      if (body.top_p !== undefined && body.top_p !== 1) {
+        delete body.top_p;
+      }
+    }
+    if (streaming) {
+      body.stream_options = { ...(body.stream_options as object), include_usage: true };
+    }
+
+    const baseUrl = openRouter
+      ? env.openRouterBaseUrl()
+      : env.modelProviderBaseUrl();
+    const apiKey = openRouter
+      ? env.openRouterApiKey()
+      : env.modelProviderApiKey();
+    return fetch(`${baseUrl}/${endpoint}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        // OpenRouter attribution (ignored by other upstreams).
+        ...(openRouter
+          ? {
+              "HTTP-Referer": env.appOrigin(),
+              "X-OpenRouter-Title": "AIR",
+            }
+          : {}),
+      },
+      body: JSON.stringify(body),
+    });
+  };
+
+  let servedFamily = family;
+  let upstream = await dispatch(family);
+
+  // OpenRouter families can degrade to empty completions (e.g. a stealth
+  // endpoint answering tool-bearing calls with `native_finish_reason:
+  // "network_error"` and a null message). The box would otherwise retry into
+  // the same wall and the user gets silence, so a dead or empty OpenRouter
+  // answer falls back once to the tier-resolved OpenAI model.
+  const canFallBack = isOpenRouterFamily(family);
+  if (canFallBack && (!upstream.ok || !upstream.body)) {
+    servedFamily = "openai";
+    upstream = await dispatch(servedFamily);
+  } else if (canFallBack && !streaming) {
+    const parsed = (await upstream.clone().json().catch(() => null)) as {
+      choices?: {
+        message?: {
+          content?: string | null;
+          tool_calls?: unknown[];
+          reasoning?: string | null;
+        };
+      }[];
+    } | null;
+    const choice = parsed?.choices?.[0];
+    const message = choice?.message;
+    const empty =
+      choice !== undefined &&
+      (message == null ||
+        (!message.content &&
+          !message.reasoning &&
+          !(Array.isArray(message.tool_calls) && message.tool_calls.length > 0)));
+    if (parsed === null || empty) {
+      servedFamily = "openai";
+      upstream = await dispatch(servedFamily);
+    }
+  }
 
   if (!upstream.ok || !upstream.body) {
     const errorBody = await upstream.text();
@@ -263,9 +306,58 @@ export async function POST(
     });
   }
 
+  // Streamed OpenRouter answers get the same empty check: the whole SSE body
+  // is buffered (these families answer in one burst) and replayed, or
+  // replaced by an OpenAI stream when no delta ever carried content.
+  if (streaming && servedFamily !== "openai" && canFallBack) {
+    const raw = new Uint8Array(await upstream.clone().arrayBuffer());
+    const text = new TextDecoder().decode(raw);
+    let sawContent = false;
+    for (const line of text.split("\n")) {
+      if (!line.startsWith("data:")) continue;
+      const data = line.slice(5).trim();
+      if (!data || data === "[DONE]") continue;
+      try {
+        const parsed = JSON.parse(data) as {
+          choices?: {
+            delta?: {
+              content?: string | null;
+              tool_calls?: unknown[];
+              reasoning?: string | null;
+            };
+          }[];
+        };
+        const delta = parsed.choices?.[0]?.delta;
+        if (
+          delta &&
+          (delta.content ||
+            delta.reasoning ||
+            (Array.isArray(delta.tool_calls) && delta.tool_calls.length > 0))
+        ) {
+          sawContent = true;
+          break;
+        }
+      } catch {
+        // non-JSON keepalive; ignore
+      }
+    }
+    if (!sawContent) {
+      servedFamily = "openai";
+      upstream = await dispatch(servedFamily);
+      if (!upstream.ok || !upstream.body) {
+        const errorBody = await upstream.text();
+        return new NextResponse(errorBody, {
+          status: upstream.status,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+  }
+
   if (streaming) {
+    const meteredFamily = servedFamily;
     const stream = meteringTee(upstream.body, (usage) => {
-      after(meter(userId, tier, family, usage));
+      after(meter(userId, tier, meteredFamily, usage));
     });
     return new Response(stream, {
       status: 200,
@@ -279,7 +371,7 @@ export async function POST(
   const json = (await upstream.json()) as { usage?: Usage };
   if (json.usage) {
     const usage = json.usage;
-    after(meter(userId, tier, family, usage));
+    after(meter(userId, tier, servedFamily, usage));
   }
   return NextResponse.json(json, { status: 200 });
 }
