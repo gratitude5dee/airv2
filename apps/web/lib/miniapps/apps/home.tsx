@@ -9,7 +9,7 @@
 import { listFirstPartyApps } from "../registry";
 import { mintToken } from "../tokens";
 import { esc } from "../html";
-import { renderShell, shellHtml } from "../shell";
+import { avatarHtml, renderShell, shellHtml, tintHue } from "../shell";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
 /** Launcher order; anything published but unlisted here sorts after. */
@@ -50,20 +50,29 @@ export const home: MiniAppModule = {
     // basePath is `/mini/home` on the main origin, `/home` on the mini host;
     // sibling apps live under the same prefix.
     const prefix = basePath.slice(0, -"/home".length);
-    const tiles = apps
-      .filter((app) => app.slug !== "home")
-      .map((app) => {
-        const token = mintToken(session.userId, app.slug, "default", 15, {
-          via: session.via,
-        });
-        return `<a class="tile" href="${prefix}/${esc(app.slug)}?t=${token}"><div class="name">${esc(app.name)}</div><div class="desc">${esc(app.description)}</div></a>`;
-      })
+    const launchable = apps.filter((app) => app.slug !== "home");
+    const href = (slug: string) =>
+      `${prefix}/${esc(slug)}?t=${mintToken(session.userId, slug, "default", 15, {
+        via: session.via,
+      })}`;
+    const icons = launchable
+      .map(
+        (app) =>
+          `<a href="${href(app.slug)}">${avatarHtml(app.name, app.slug)}<span class="label">${esc(app.name)}</span></a>`
+      )
+      .join("");
+    const featured = launchable.slice(0, 3);
+    const feed = featured
+      .map(
+        (app) =>
+          `<a class="approw" href="${href(app.slug)}">${avatarHtml(app.name, app.slug)}<span class="meta"><span class="name">${esc(app.name)}</span><span class="desc">${esc(app.description)}</span></span></a><a class="hero" style="--tint:${tintHue(app.slug)}" href="${href(app.slug)}" aria-label="Open ${esc(app.name)}">${avatarHtml(app.name, app.slug)}</a>`
+      )
       .join("");
     return shellHtml(
       renderShell({
         title: "Home",
         kicker: "Your apps",
-        body: `<div class="grid">${tiles}</div>`,
+        body: `<div class="icongrid">${icons}</div><h2 class="explore">Explore</h2>${feed}`,
         lite: session.via === "card",
       })
     );
