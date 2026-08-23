@@ -135,3 +135,9 @@ Real Supabase creds can be fetched at runtime — no `.env` needed and no OTP lo
 ## In-chat dock (mini-app iframe on /home) local testing
 - The dock iframe loads the mini origin inside the main-host page. Mini-app responses send `frame-ancestors 'self' ${APP_ORIGIN}` and Secure SameSite=lax cookies, so the classic local setup (parent 127.0.0.1:3999, iframe localhost:3999) FAILS with a Chrome sad-tab: cross-site CSP block + the lax cookie not sent in the iframe. This is a LOCAL ARTIFACT — in prod app.wzrd.tech/mini.wzrd.tech are same-site subdomains.
 - Working local recipe: restart next with `MINIAPP_ORIGIN=http://mini.air.localhost:3999` and `APP_ORIGIN=http://app.air.localhost:3999`, browse `http://app.air.localhost:3999/home` (Chrome resolves *.localhost to 127.0.0.1 and treats it as a secure context, and both hosts share registrable domain `air.localhost` → same-site, so Secure+lax cookies and frame-ancestors both pass). Set the `air_session` cookie via document.cookie on that host, click an installed tile in the right Apps rail → the mini-app renders fully inside the chat dock.
+
+## Store redesign (PR #188) surfaces
+- Store home is `/` on the mini host (`/mini` on the main host), detail at `/store/<slug>`; deterministic per-slug gradient tint = `tintHue(slug)` in lib/miniapps/shell.ts.
+- The home mini-app requires an authed mini session — the visible shell depends on the user's saved `miniapp_theme` (`pixel` = flat, no wz-sky/fx/grain; switch to `atmosphere` to see the cloud shader, restore afterward).
+- Home avatars render real images only when `mini_apps.icon_key` is set (shell CSP img-src is widened to `R2_PUBLIC_BASE_URL`); to test locally, point `R2_PUBLIC_BASE_URL` at the app origin and set a temporary icon_key via Supabase REST (restore to null after).
+- Gotcha: always `ss -ltnp` for stale next-server processes on :3999 before re-testing — a stale server silently serves the old build.

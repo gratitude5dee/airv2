@@ -14,7 +14,7 @@ import { NextResponse } from "next/server";
 import { env } from "../env";
 import { baseHeaders, esc } from "./html";
 import { themeCsp, tokenBlock, type Theme } from "./themes";
-import { activeTheme } from "./themeContext";
+import { activeBackground, activeTheme } from "./themeContext";
 
 const GRAIN_SVG =
   "data:image/svg+xml,%3Csvg viewBox='0 0 160 160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.93' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E";
@@ -49,9 +49,10 @@ h3{font-size:1.05rem;font-weight:500;margin:0.6rem 0 0.35rem}
 p{font-size:1rem;line-height:1.5;margin:0 0 0.6rem}
 a{color:var(--accent)}
 .muted{color:var(--ink-muted);font-size:0.9rem}
-button{font-family:var(--font-ui);background:var(--ink);color:var(--on-ink);border:0;border-radius:var(--radius-pill);min-height:2.75rem;padding:0.55rem 1.15rem;font-size:0.72rem;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;transition:transform 180ms ease}
-button:hover{transform:scale(1.04)}
-button.ghost{background:transparent;color:var(--ink-muted);border:1px solid var(--ring)}
+button{position:relative;font-family:var(--font-ui);background:linear-gradient(180deg,rgba(255,255,255,0.16),rgba(255,255,255,0) 55%),var(--ink);color:var(--on-ink);border:0;border-radius:var(--radius-pill);min-height:2.75rem;padding:0.55rem 1.15rem;font-size:0.72rem;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,255,255,0.35),inset 0 -1px 0 rgba(0,0,0,0.18),0 2px 8px rgba(2,5,10,0.28);transition:transform 180ms ease,box-shadow 180ms ease}
+button:hover{transform:scale(1.04);box-shadow:inset 0 1px 0 rgba(255,255,255,0.45),inset 0 -1px 0 rgba(0,0,0,0.18),0 4px 14px rgba(2,5,10,0.34)}
+button:active{transform:scale(0.97)}
+button.ghost{background:linear-gradient(180deg,rgba(255,255,255,0.1),rgba(255,255,255,0.02));color:var(--ink-muted);border:1px solid var(--ring);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);box-shadow:inset 0 1px 0 rgba(255,255,255,0.18),0 1px 4px rgba(2,5,10,0.2)}
 button.ghost:hover{color:var(--ink)}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 input[type=text],input[type=password],input[type=email],input[type=number],input[type=url],input[type=date],input[type=datetime-local],select,textarea{background:var(--well-bg);color:var(--ink);border:1px solid var(--ring);border-radius:var(--radius-well);min-height:2.75rem;padding:0.6rem 0.85rem;flex:1;font-size:1rem;font-family:var(--font-body);outline:none;min-width:0}
@@ -63,7 +64,7 @@ textarea{line-height:1.45;resize:vertical}
 .done{text-decoration:line-through;color:var(--ink-muted)}
 .grow{flex:1}
 .when{color:var(--ink-muted);font-size:0.82rem;white-space:nowrap;font-family:var(--font-ui)}
-.chip{font-family:var(--font-ui);font-size:0.6rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-muted);border:1px solid var(--ring);border-radius:var(--radius-pill);padding:0.2rem 0.55rem;white-space:nowrap}
+.chip{font-family:var(--font-ui);font-size:0.6rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-muted);border:1px solid var(--ring);border-radius:var(--radius-pill);padding:0.2rem 0.55rem;white-space:nowrap;background:linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0))}
 .chip.on{color:var(--on-accent);background:var(--accent);border-color:transparent}
 details{border:1px solid var(--ring);border-radius:var(--radius-well);padding:0.6rem 0.85rem;background:var(--well-bg);margin-bottom:0.6rem}
 summary{font-family:var(--font-ui);font-size:0.7rem;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-muted);cursor:pointer;min-height:1.8rem;display:flex;align-items:center}
@@ -95,7 +96,8 @@ form.stack{display:grid;gap:0.55rem;margin-top:0.5rem}
 .icongrid{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem 0.5rem;width:min(100%,36rem)}
 .icongrid a{display:flex;flex-direction:column;align-items:center;gap:0.45rem;text-decoration:none;color:var(--ink);min-width:0}
 .icongrid .label{font-family:var(--font-ui);font-size:0.66rem;letter-spacing:0.02em;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.avatar{display:flex;align-items:center;justify-content:center;flex-shrink:0;width:2.75rem;height:2.75rem;border-radius:50%;border:1px solid var(--ring);background:linear-gradient(145deg,hsl(var(--tint,220) 42% 62%),hsl(var(--tint,220) 55% 38%));color:#fff;font-family:var(--font-ui);font-size:1rem;text-transform:uppercase;box-shadow:var(--shadow);overflow:hidden}
+.avatar{position:relative;display:flex;align-items:center;justify-content:center;flex-shrink:0;width:2.75rem;height:2.75rem;border-radius:50%;border:1px solid var(--ring);background:linear-gradient(145deg,hsl(var(--tint,220) 42% 62%),hsl(var(--tint,220) 55% 38%));color:#fff;font-family:var(--font-ui);font-size:1rem;text-transform:uppercase;box-shadow:var(--shadow),inset 0 1px 1px rgba(255,255,255,0.4),inset 0 -2px 4px rgba(0,0,0,0.25);overflow:hidden}
+.avatar::after{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(165deg,rgba(255,255,255,0.35) 0%,rgba(255,255,255,0.08) 38%,transparent 55%);pointer-events:none}
 .avatar img{width:100%;height:100%;object-fit:cover}
 .icongrid .avatar{width:clamp(3.4rem,17vw,4.1rem);height:clamp(3.4rem,17vw,4.1rem);font-size:1.3rem}
 .explore{width:min(100%,36rem);font-family:var(--font-body);font-size:clamp(1.5rem,4.6vw,1.9rem);font-weight:600;letter-spacing:-0.03em;text-transform:none;color:var(--ink);margin:1.4rem 0 0.9rem;text-align:left}
@@ -107,8 +109,9 @@ form.stack{display:grid;gap:0.55rem;margin-top:0.5rem}
 .hero img{width:100%;height:100%;object-fit:cover}
 .hero .avatar{width:4.5rem;height:4.5rem;font-size:1.9rem;border-color:rgba(255,255,255,0.4)}
 footer.nav{display:flex;align-items:center;justify-content:space-between;gap:0.75rem;font-family:var(--font-ui)}
-.navlink{display:inline-flex;align-items:center;min-height:2.75rem;padding:0 1.1rem;border-radius:var(--radius-pill);border:1px solid var(--ring);background:var(--panel-bg);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);font-size:0.66rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink);text-decoration:none;white-space:nowrap;transition:transform 200ms ease}
+.navlink{display:inline-flex;align-items:center;min-height:2.75rem;padding:0 1.1rem;border-radius:var(--radius-pill);border:1px solid var(--ring);background:linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0) 60%),var(--panel-bg);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);box-shadow:inset 0 1px 0 rgba(255,255,255,0.2),0 1px 4px rgba(2,5,10,0.2);font-size:0.66rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink);text-decoration:none;white-space:nowrap;transition:transform 200ms ease}
 .navlink:hover{transform:scale(1.04)}
+.navlink:active{transform:scale(0.97)}
 `;
 
 /**
@@ -165,22 +168,30 @@ export interface ShellOptions {
 export function renderShell(options: ShellOptions): string {
   const current = options.theme ?? activeTheme();
   const lite = options.lite ?? false;
+  // Full-screen sessions swap the theme's backdrop for the user's chosen
+  // effect (a lazy-loaded React Bits port). Card-opened lite sessions keep
+  // the theme backdrop — the Messages webview can't afford a three.js scene.
+  const background = lite ? "theme" : activeBackground();
   const fonts =
     current.fontStylesheet === null
       ? ""
       : `<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="${esc(current.fontStylesheet)}">`;
   const backdrop = current.backdrop;
   const shader =
-    backdrop.kind === "shader"
-      ? `<script src="${esc(backdrop.script)}" defer></script>`
-      : "";
+    background !== "theme"
+      ? '<script type="module" src="/creator-os/bg/bg.js"></script>'
+      : backdrop.kind === "shader"
+        ? `<script src="${esc(backdrop.script)}" defer></script>`
+        : "";
   const backdropHtml =
-    backdrop.kind === "shader"
-      ? (lite
-          ? backdrop.element.replace('rays="0.9"', 'rays="0.4"')
-          : backdrop.element
-        ).replace("<wz-sky", '<wz-sky class="backdrop"')
-      : "";
+    background !== "theme"
+      ? `<div id="wz-bg" class="backdrop" data-effect="${esc(background)}" aria-hidden="true"></div>`
+      : backdrop.kind === "shader"
+        ? (lite
+            ? backdrop.element.replace('rays="0.9"', 'rays="0.4"')
+            : backdrop.element
+          ).replace("<wz-sky", '<wz-sky class="backdrop"')
+        : "";
   const grain =
     backdrop.grain && !lite
       ? '<div class="grain" aria-hidden="true"></div>'
@@ -205,8 +216,15 @@ export function shellHtml(
   current: Theme = activeTheme()
 ): NextResponse {
   const headers = baseHeaders();
+  // A chosen backdrop effect loads the self-hosted /creator-os/bg bundle
+  // even on themes whose own backdrop needs no script (Pixel).
+  const csp = themeCsp(current);
+  const scriptSrc =
+    activeBackground() !== "theme" && !csp.includes("script-src")
+      ? "; script-src 'self'"
+      : "";
   headers["Content-Security-Policy"] =
-    `${themeCsp(current)}; form-action 'self'; frame-ancestors 'self' ${env.appOrigin()}`;
+    `${csp}${scriptSrc}; form-action 'self'; frame-ancestors 'self' ${env.appOrigin()}`;
   return new NextResponse(body, {
     status: 200,
     headers: { ...headers, "Content-Type": "text/html; charset=utf-8" },

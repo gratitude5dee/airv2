@@ -6,6 +6,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ModelFamily } from "../entitlements/models";
 import type { ThemeId } from "../miniapps/themes";
+import type { BackgroundId } from "../miniapps/backgrounds";
 import { provisionEmail } from "../provisioning/email";
 import { renameBox } from "../box/client";
 import { isReservedWord } from "../miniapps/reserved";
@@ -127,6 +128,20 @@ export async function setMiniappTheme(
   const { error } = await supabase
     .from("users")
     .update({ miniapp_theme: themeId })
+    .eq("id", userId);
+  return !error;
+}
+
+/** Writes users.miniapp_background — a BACKGROUNDS id, the backdrop layer
+ * behind every mini-app ('theme' keeps the theme's own). */
+export async function setMiniappBackground(
+  supabase: SupabaseClient,
+  userId: string,
+  backgroundId: BackgroundId
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("users")
+    .update({ miniapp_background: backgroundId })
     .eq("id", userId);
   return !error;
 }
