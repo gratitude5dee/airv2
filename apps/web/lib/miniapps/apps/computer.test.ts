@@ -49,11 +49,15 @@ describe("computer mini-app live embed", () => {
   it("embeds the live iframe when the box is awake", async () => {
     const res = await computer.render(ctxFor("ready", "/computer"));
     const html = await res.text();
-    expect(html).toContain('<iframe src="/computer?view=live"');
+    expect(html).toContain('src="/computer?view=live"');
     expect(html).not.toContain("?embed=1");
-    expect(res.headers.get("Content-Security-Policy")).toContain(
-      "frame-src 'self' https://*.on.ascii.dev"
-    );
+    const csp = res.headers.get("Content-Security-Policy") ?? "";
+    expect(csp).toContain("frame-src 'self' https://*.on.ascii.dev");
+    // The embedded viewer needs autoplay (video won't start in an iframe
+    // without it) and the self-hosted keyboard forwarder.
+    expect(html).toContain('allow="autoplay; fullscreen');
+    expect(html).toContain('<script src="/creator-os/computer.js" defer>');
+    expect(csp).toContain("script-src 'self'");
   });
 
   it("offers Watch live without embedding when the box is stopped", async () => {
@@ -69,7 +73,7 @@ describe("computer mini-app live embed", () => {
   it("embeds on explicit ?embed=1 even when stopped", async () => {
     const res = await computer.render(ctxFor("stopped", "/computer?embed=1"));
     const html = await res.text();
-    expect(html).toContain('<iframe src="/computer?view=live"');
+    expect(html).toContain('src="/computer?view=live"');
     expect(res.headers.get("Content-Security-Policy")).toContain("frame-src");
   });
 

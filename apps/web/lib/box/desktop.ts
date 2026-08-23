@@ -7,8 +7,8 @@
  * or single-use-token gate (SECURITY-DECISIONS.md "Desktop stream URL").
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { requestDesktop } from "./client";
-import { ensureBoxAwake } from "../orchestrator/boxes";
+import { getBox, requestDesktop } from "./client";
+import { ensureBoxAwake, prewarmBox } from "../orchestrator/boxes";
 
 export class DesktopUnavailableError extends Error {
   constructor() {
@@ -35,4 +35,40 @@ export async function desktopStreamUrl(
     throw new DesktopUnavailableError();
   }
   return url;
+}
+
+/**
+ * Non-blocking variant for embedded viewers: if the machine is already up,
+ * return a fresh stream URL right away; otherwise kick a resume and report
+ * "waking" so the caller can render a self-refreshing progress page instead
+ * of holding the request open through a multi-minute boot. Only machine
+ * liveness gates the stream — Hermes health is irrelevant to pixels.
+ */
+export async function desktopStreamUrlIfUp(
+  supabase: SupabaseClient,
+  userId: string,
+  options?: { vnc?: boolean }
+): Promise<{ status: "up"; url: string } | { status: "waking" }> {
+  const { data, error } = await supabase
+    .from("boxes")
+    .select("provider_box_id")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) {
+    throw new Error(`box lookup failed for user ${userId}: ${error.message}`);
+  }
+  const boxId = (data?.provider_box_id as string | undefined) ?? "";
+  if (!boxId) {
+    throw new Error(`no box for user ${userId}`);
+  }
+  const box = await getBox(boxId);
+  if (box.state !== "ready" && box.state !== "idle") {
+    await prewarmBox(supabase, userId);
+    return { status: "waking" };
+  }
+  const url = await requestDesktop(boxId, options);
+  // A just-resumed machine can report ready before the stream endpoint is
+  // prepared — treat that as still waking rather than an error.
+  if (!url) return { status: "waking" };
+  return { status: "up", url };
 }
