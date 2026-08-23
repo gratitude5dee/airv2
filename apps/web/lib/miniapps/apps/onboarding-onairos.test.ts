@@ -128,6 +128,26 @@ describe("onboarding onairos slide (native connect)", () => {
     expect(csp).toContain("frame-src https://accounts.google.com/gsi/");
   });
 
+  it("passes the Google web client ID to the mount when configured", async () => {
+    vi.stubEnv("ONAIROS_API_KEY", "dev-key-123");
+    vi.stubEnv(
+      "ONAIROS_GOOGLE_CLIENT_ID",
+      "123-abc.apps.googleusercontent.com"
+    );
+    const response = await onboarding.render(makeCtx());
+    const body = await response.text();
+    expect(body).toContain(
+      'data-google-client-id="123-abc.apps.googleusercontent.com"'
+    );
+  });
+
+  it("omits the Google client attribute when unset", async () => {
+    vi.stubEnv("ONAIROS_API_KEY", "dev-key-123");
+    const response = await onboarding.render(makeCtx());
+    const body = await response.text();
+    expect(body).not.toContain("data-google-client-id");
+  });
+
   it("keeps the CSP narrow and hides the native mount when unconfigured", async () => {
     onairosStatusMock.mockResolvedValueOnce({
       configured: false,

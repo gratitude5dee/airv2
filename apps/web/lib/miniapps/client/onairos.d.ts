@@ -8,5 +8,11 @@ declare module "onairos" {
     apiKey: string;
     environment?: string;
     enableLogging?: boolean;
+    googleClientIds?: {
+      webClientId?: string;
+      iosClientId?: string;
+      androidClientId?: string;
+      serverClientId?: string;
+    };
   }): Promise<unknown>;
 }

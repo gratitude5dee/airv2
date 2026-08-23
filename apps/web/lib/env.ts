@@ -192,6 +192,12 @@ export const env = {
   // the key is delivered only inside the owner-authenticated onboarding
   // render (signed mini-session, per-user), not on any public surface.
   onairosApiKey: (): string | null => process.env.ONAIROS_API_KEY ?? null,
+  // Google OAuth *web client ID* for the Onairos SDK's "Continue with
+  // Google" (public identifier, not a secret). Must list the mini-app
+  // origins as authorized JavaScript origins; without it the SDK falls
+  // back to Onairos's own client ID, which rejects our origins.
+  onairosGoogleClientId: (): string | null =>
+    process.env.ONAIROS_GOOGLE_CLIENT_ID ?? null,
   // MA9.3 optional W&B Weave mirror — receipt METADATA only, never content
   // (C4). Off by default: with no key the mirror makes zero network calls.
   wandbApiKey: (): string | null => process.env.WANDB_API_KEY ?? null,

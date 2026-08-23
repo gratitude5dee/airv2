@@ -32,7 +32,13 @@ function submitHandoff(apiUrl: string, token: string): void {
   form.submit();
 }
 
-function ConnectApp({ apiKey }: { apiKey: string }): React.ReactElement {
+function ConnectApp({
+  apiKey,
+  googleClientId,
+}: {
+  apiKey: string;
+  googleClientId: string | null;
+}): React.ReactElement {
   const [phase, setPhase] = useState<
     "loading" | "ready" | "submitting" | "error"
   >("loading");
@@ -40,7 +46,20 @@ function ConnectApp({ apiKey }: { apiKey: string }): React.ReactElement {
   useEffect(() => {
     let cancelled = false;
     setPhase("loading");
-    initializeApiKey({ apiKey })
+    // Our own Google OAuth web client ID (public identifier): the SDK's
+    // built-in one only authorizes Onairos's origins, so "Continue with
+    // Google" is refused by Google on our domain without it.
+    initializeApiKey({
+      apiKey,
+      ...(googleClientId
+        ? {
+            googleClientIds: {
+              webClientId: googleClientId,
+              serverClientId: googleClientId,
+            },
+          }
+        : {}),
+    })
       .then(() => {
         if (!cancelled) setPhase("ready");
       })
@@ -55,7 +74,7 @@ function ConnectApp({ apiKey }: { apiKey: string }): React.ReactElement {
     return () => {
       cancelled = true;
     };
-  }, [apiKey, attempt]);
+  }, [apiKey, googleClientId, attempt]);
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
   if (phase === "loading") {
     return <p className="muted">Loading Onairos sign-in…</p>;
@@ -102,10 +121,11 @@ function ConnectApp({ apiKey }: { apiKey: string }): React.ReactElement {
 
 const mount = document.getElementById("onairos-connect");
 const apiKey = mount?.dataset.apiKey ?? "";
+const googleClientId = mount?.dataset.googleClientId ?? null;
 if (mount && apiKey) {
   createRoot(mount).render(
     <StrictMode>
-      <ConnectApp apiKey={apiKey} />
+      <ConnectApp apiKey={apiKey} googleClientId={googleClientId} />
     </StrictMode>
   );
 }
