@@ -48,7 +48,7 @@ function renderState(
   lite: boolean,
   streamOrigin: string | null
 ): string {
-  const power = `<div class="item"><span class="grow">Power</span><span class="when">${esc(stateLabel)}</span></div>`;
+  const power = `<div class="item"><span class="grow">Power</span><span class="chip${awake ? " on" : ""}">${esc(stateLabel)}</span></div>`;
   const runRow = run
     ? `<div class="item"><span class="grow">${run.ended_at ? "Last run" : "Running now"}${run.trigger ? ` \u00b7 ${esc(run.trigger)}` : ""}${run.outcome ? ` \u00b7 ${esc(run.outcome)}` : ""}</span><span class="when">${esc(ago(run.ended_at ?? run.started_at))}</span></div>`
     : `<div class="item"><span class="grow">No runs yet</span></div>`;
@@ -57,7 +57,7 @@ function renderState(
   // forwarder script bridges parent-page keystrokes into the embedded
   // stream (terminal typing) via the viewer's own postMessage protocol.
   const live = embed
-    ? `<div style="margin-top:10px;border-radius:var(--radius-well);overflow:hidden;box-shadow:var(--shadow);background:#000"><iframe id="live-desktop"${streamOrigin ? ` data-stream-origin="${esc(streamOrigin)}"` : ""} src="${esc(basePath)}?view=live" title="Live view of your agent's computer" allow="autoplay; fullscreen; clipboard-read; clipboard-write" allowfullscreen referrerpolicy="no-referrer" style="display:block;width:100%;height:${lite ? "min(62vh,520px)" : "max(62vh,420px)"};border:0"></iframe></div><p class="muted" style="margin-top:8px">Live \u00b7 <a href="${esc(basePath)}?view=live" target="_top">Open full screen</a> \u00b7 choppy? <a href="${esc(basePath)}?view=live&amp;vnc=1" target="_blank" rel="noopener">Switch to VNC</a></p><script src="/creator-os/computer.js" defer></script>`
+    ? `<div style="margin-top:10px;border-radius:var(--radius-well);overflow:hidden;box-shadow:var(--shadow);background:#000"><iframe id="live-desktop"${streamOrigin ? ` data-stream-origin="${esc(streamOrigin)}"` : ""} src="${esc(basePath)}?view=live" title="Live view of your agent's computer" allow="autoplay; fullscreen; clipboard-read; clipboard-write" allowfullscreen referrerpolicy="no-referrer" style="display:block;width:100%;height:${lite ? "min(62vh,520px)" : "max(62vh,420px)"};border:0"></iframe></div><p class="muted" style="margin-top:8px;display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap"><span class="chip on">Live</span><a href="${esc(basePath)}?view=live" target="_top" style="display:inline-flex;align-items:center;min-height:2.75rem">Open full screen</a><a href="${esc(basePath)}?view=live&amp;vnc=1" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;min-height:2.75rem">Choppy? Switch to VNC</a></p><script src="/creator-os/computer.js" defer></script>`
     : "";
   const shot =
     !embed && screenshotDataUri
