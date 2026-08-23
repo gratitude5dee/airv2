@@ -43,7 +43,12 @@ import {
   isBackgroundId,
 } from "../backgrounds";
 import { esc, forbidden } from "../html";
-import { activeBackground, activeTheme, withStyle } from "../themeContext";
+import {
+  activeBackground,
+  activeHomeHref,
+  activeTheme,
+  withStyle,
+} from "../themeContext";
 import { renderShell, shellHtml } from "../shell";
 import { promptBar, runPrompt } from "../promptBar";
 import { memoryAction, renderMemorySection } from "../sections/memory";
@@ -206,7 +211,7 @@ function renderSettings(
   const themeSection = section(
     "THEME",
     `<div class="card"><div class="row">${themeButtons}</div><p class="muted">${esc(THEMES[isThemeId(data.miniappTheme) ? data.miniappTheme : DEFAULT_THEME].description)}</p><p class="muted">Applies to every mini-app the next time it loads.</p></div>` +
-      `<div class="card"><h2>Backdrop</h2><div class="row">${backgroundButtons}</div><p class="muted">A living backdrop behind every full-screen mini-app. Theme default keeps the theme's own sky; inline cards always use the lightweight theme backdrop.</p></div>`
+      `<div class="card"><h2>Backdrop</h2><div class="row">${backgroundButtons}</div><p class="muted">A living backdrop behind every mini-app — it applies right away here and everywhere on next open. Inside Messages it runs at a reduced resolution.</p></div>`
   );
   const modelSection = section(
     "MODEL",
@@ -370,7 +375,11 @@ export const settings: MiniAppModule = {
       if (!ok) return respond(ctx, "Update failed.");
       // Re-render inside the just-written style so the response paints it.
       return withStyle(
-        { theme: THEMES[themeId], background: activeBackground() },
+        {
+          theme: THEMES[themeId],
+          background: activeBackground(),
+          homeHref: activeHomeHref(),
+        },
         () => respond(ctx, `Theme set to ${THEMES[themeId].name}.`)
       );
     }
@@ -380,8 +389,13 @@ export const settings: MiniAppModule = {
       if (!isBackgroundId(backgroundId)) return forbidden("invalid background");
       const ok = await setMiniappBackground(ctx.supabase, userId, backgroundId);
       if (!ok) return respond(ctx, "Update failed.");
-      return withStyle({ theme: activeTheme(), background: backgroundId }, () =>
-        respond(ctx, `Backdrop set to ${BACKGROUND_NAMES[backgroundId]}.`)
+      return withStyle(
+        {
+          theme: activeTheme(),
+          background: backgroundId,
+          homeHref: activeHomeHref(),
+        },
+        () => respond(ctx, `Backdrop set to ${BACKGROUND_NAMES[backgroundId]}.`)
       );
     }
 

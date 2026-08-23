@@ -47,13 +47,24 @@ describe("backgrounds", () => {
     expect(html).not.toContain("<wz-sky");
   });
 
-  it("lite (card) sessions keep the theme backdrop regardless of choice", () => {
+  it("lite (card) sessions render the chosen effect at 1x (data-lite)", () => {
     const html = withStyle(
       { theme: theme("atmosphere"), background: "galaxy" },
       () => renderShell({ title: "T", kicker: "K", body: "", lite: true })
     );
-    expect(html).not.toContain("wz-bg");
-    expect(html).toContain("<wz-sky");
+    expect(html).toContain('id="wz-bg"');
+    expect(html).toContain('data-effect="galaxy"');
+    expect(html).toContain('data-lite="1"');
+    expect(html).toContain("/creator-os/bg/bg.js");
+    expect(html).not.toContain("<wz-sky");
+  });
+
+  it("full sessions carry no data-lite flag", () => {
+    const html = withStyle(
+      { theme: theme("atmosphere"), background: "galaxy" },
+      () => renderShell({ title: "T", kicker: "K", body: "" })
+    );
+    expect(html).not.toContain("data-lite");
   });
 
   it("shellHtml widens script-src only when the bundle is emitted", () => {
@@ -67,7 +78,8 @@ describe("backgrounds", () => {
       );
     expect(cspFor("silk", false)).toContain("script-src 'self'");
     expect(cspFor("theme", false)).not.toContain("script-src");
-    // Lite card sessions never load the bundle, so no script-src either.
-    expect(cspFor("silk", true)).not.toContain("script-src");
+    // Lite card sessions load the bundle too (at 1x), so script-src widens.
+    expect(cspFor("silk", true)).toContain("script-src 'self'");
+    expect(cspFor("theme", true)).not.toContain("script-src");
   });
 });

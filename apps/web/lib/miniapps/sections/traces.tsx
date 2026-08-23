@@ -14,6 +14,19 @@ import type { MiniAppContext } from "../apps/types";
 
 const RECENT = 50;
 
+/** Compact, phone-width friendly timestamp; falls back to the raw value. */
+function when(ts: string): string {
+  const date = new Date(ts);
+  if (Number.isNaN(date.getTime())) return ts;
+  return date.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
 export async function renderTracesSection(
   ctx: MiniAppContext
 ): Promise<string> {
@@ -30,13 +43,13 @@ export async function renderTracesSection(
   const rows = recent
     .map(
       (row) =>
-        `<tr><td>${esc(String(row.ts ?? ""))}</td><td>${esc(String(row.kind ?? ""))}</td><td>${esc(String(row.label ?? ""))}</td><td>${esc(String(row.status ?? ""))}</td></tr>`
+        `<tr><td class="nowrap">${esc(when(String(row.ts ?? "")))}</td><td>${esc(String(row.kind ?? ""))}</td><td>${esc(String(row.label ?? ""))}</td><td>${esc(String(row.status ?? ""))}</td></tr>`
     )
     .join("");
   return `<h2>Traces</h2>
 <p class="muted">Receipts of what your agent did — runs, decisions, vault access, mini-app gates, creative jobs. Metadata only; transcripts stay on your computer unless you export them below.</p>
-<table><thead><tr><th>When</th><th>Kind</th><th>What</th><th>Status</th></tr></thead>
-<tbody>${rows || `<tr><td colspan="4" class="muted">No activity yet.</td></tr>`}</tbody></table>
+<div class="tablewrap"><table><thead><tr><th>When</th><th>Kind</th><th>What</th><th>Status</th></tr></thead>
+<tbody>${rows || `<tr><td colspan="4" class="muted">No activity yet.</td></tr>`}</tbody></table></div>
 <p>
 <a href="/api/me/traces/export?format=csv" download>Export CSV</a> ·
 <a href="/api/me/traces/export?format=jsonl" download>Export JSONL</a> ·

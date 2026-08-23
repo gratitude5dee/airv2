@@ -24,6 +24,10 @@ const FORWARD_REQUEST_HEADERS = [
   "authorization",
   "content-type",
   "x-api-key",
+  // The SDK's Google/OAuth endpoints branch on the caller platform and
+  // attribution — without these /google/authorize can refuse the web flow.
+  "x-sdk-platform",
+  "x-onairos-utm-source",
 ];
 
 const FORWARD_RESPONSE_HEADERS = ["content-type"];

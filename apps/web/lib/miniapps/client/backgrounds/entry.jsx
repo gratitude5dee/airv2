@@ -157,6 +157,19 @@ style.textContent =
 document.head.appendChild(style);
 
 const mount = document.getElementById("wz-bg");
+// Card-opened lite sessions (Messages extension) render at 1x: the vendor
+// effects size their canvases off window.devicePixelRatio, and capping it
+// quarters the GPU/memory cost on a 2-3x phone screen.
+if (mount?.dataset.lite === "1") {
+  try {
+    Object.defineProperty(window, "devicePixelRatio", {
+      get: () => 1,
+      configurable: true,
+    });
+  } catch {
+    /* leave the native ratio */
+  }
+}
 const spec = mount ? LOADERS[mount.dataset.effect] : undefined;
 if (mount && spec) {
   const [load, props] = spec;

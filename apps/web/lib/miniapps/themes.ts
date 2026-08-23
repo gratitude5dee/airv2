@@ -41,8 +41,8 @@ export interface ThemeTokens {
   /** Inset surface fill (inputs, rows, code blocks). */
   readonly wellBg: string;
   /**
-   * Plate behind the wordmark. The mark is dark chrome artwork, so a theme
-   * with a bright or busy backdrop must put a light plate under it.
+   * Plate behind the wordmark. Dark glass by default — the chrome mark's
+   * blue highlights carry it; a theme may still choose a light plate.
    */
   readonly logoPlate: string;
   /**
@@ -125,7 +125,7 @@ const atmosphere: Theme = {
     accent: "#8cc8ff",
     panelBg: "rgba(12,11,16,0.62)",
     wellBg: "rgba(5,7,10,0.42)",
-    logoPlate: "rgba(238,244,255,0.92)",
+    logoPlate: "rgba(8,12,22,0.72)",
     scrim:
       "radial-gradient(ellipse at 50% 52%, rgba(3,8,20,0.5) 0%, rgba(3,8,20,0.28) 45%, transparent 78%)," +
       "linear-gradient(180deg, rgba(3,8,20,0.5) 0%, transparent 22%, transparent 74%, rgba(3,8,20,0.6) 100%)",
@@ -175,7 +175,7 @@ const pixel: Theme = {
     accent: "#2b7fff",
     panelBg: "rgba(26,26,29,0.92)",
     wellBg: "#232326",
-    logoPlate: "rgba(240,244,255,0.94)",
+    logoPlate: "rgba(18,18,22,0.92)",
     scrim: "none",
     ring: "rgba(255,255,255,0.14)",
     shadow:

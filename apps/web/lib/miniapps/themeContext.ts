@@ -16,6 +16,9 @@ import {
 export interface MiniStyle {
   readonly theme: Theme;
   readonly background: BackgroundId;
+  /** Signed link back to the Home mini-app for this session's owner —
+   *  the shell's wordmark becomes a tappable home button when set. */
+  readonly homeHref?: string;
 }
 
 const store = new AsyncLocalStorage<MiniStyle>();
@@ -36,6 +39,11 @@ export function activeTheme(): Theme {
 /** The request's resolved backdrop, or the theme's own outside `withStyle`. */
 export function activeBackground(): BackgroundId {
   return store.getStore()?.background ?? DEFAULT_BACKGROUND;
+}
+
+/** The request's Home link for the shell wordmark, when one was minted. */
+export function activeHomeHref(): string | undefined {
+  return store.getStore()?.homeHref;
 }
 
 /** The saved style for a user (guests see the app owner's choice). */

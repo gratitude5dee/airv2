@@ -43,7 +43,12 @@ import {
   withBaseHeaders,
 } from "@/lib/miniapps/html";
 import { recordOpsEvent } from "@/lib/security/limits";
-import { userStyle, withStyle } from "@/lib/miniapps/themeContext";
+import {
+  userStyle,
+  withStyle,
+  type MiniStyle,
+} from "@/lib/miniapps/themeContext";
+import type { MiniSession } from "@/lib/miniapps/gates";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -147,6 +152,54 @@ async function runPublicGateChain(
       role: "guest",
     },
   };
+}
+
+/**
+ * The shell wordmark links back to Home for the session owner — a fresh
+ * signed link per render (multi-use within its TTL). Guests stay put: Home
+ * is the owner's launcher, not theirs.
+ */
+function sessionStyle(
+  style: MiniStyle,
+  session: MiniSession,
+  slug: string,
+  basePath: string
+): MiniStyle {
+  if (session.role !== "owner") return style;
+  const prefix = basePath.slice(0, basePath.length - slug.length);
+  const homeHref = `${prefix}home?t=${mintToken(session.userId, "home", "default", 15, { via: session.via })}`;
+  return { ...style, homeHref };
+}
+
+/**
+ * Sliding session: every gated request re-mints the path-scoped cookie, so
+ * a sheet left open in Messages keeps working past the original 15 minutes
+ * instead of dead-ending taps into a 403 ("Unable to Load App").
+ */
+function refreshCookie(
+  response: NextResponse,
+  session: MiniSession,
+  slug: string,
+  basePath: string
+): NextResponse {
+  // Synthetic storefront guests never had a cookie — don't mint one.
+  if (session.role === "guest" && !session.grantId) return response;
+  response.cookies.set(
+    cookieName(slug),
+    mintToken(session.userId, slug, session.resourceId, 15, {
+      role: session.role,
+      grantId: session.grantId,
+      via: session.via,
+    }),
+    {
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      path: basePath,
+      maxAge: 15 * 60,
+    }
+  );
+  return response;
 }
 
 export async function GET(
@@ -256,15 +309,18 @@ export async function GET(
   if (!gate.ok) return gate.response;
 
   const style = await userStyle(supabase, gate.session.userId);
-  return withStyle(style, () =>
-    appModule.render({
-      request,
-      supabase,
-      app,
-      session: gate.session,
-      basePath,
-    })
+  const response = await withStyle(
+    sessionStyle(style, gate.session, slug, basePath),
+    () =>
+      appModule.render({
+        request,
+        supabase,
+        app,
+        session: gate.session,
+        basePath,
+      })
   );
+  return refreshCookie(response, gate.session, slug, basePath);
 }
 
 export async function POST(
@@ -309,10 +365,13 @@ export async function POST(
   }
 
   const style = await userStyle(supabase, gate.session.userId);
-  return withStyle(style, () =>
-    appModule.action!(
-      { request, supabase, app, session: gate.session, basePath },
-      form
-    )
+  const response = await withStyle(
+    sessionStyle(style, gate.session, slug, basePath),
+    () =>
+      appModule.action!(
+        { request, supabase, app, session: gate.session, basePath },
+        form
+      )
   );
+  return refreshCookie(response, gate.session, slug, basePath);
 }
