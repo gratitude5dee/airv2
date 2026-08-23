@@ -6,7 +6,7 @@
  * screen, so there are no guest actions and render refuses guest sessions.
  */
 import { NextResponse } from "next/server";
-import { desktopStreamUrl, DesktopUnavailableError } from "@/lib/box/desktop";
+import { desktopStreamUrlIfUp } from "@/lib/box/desktop";
 import { armStopAfter, StartLimitError } from "@/lib/orchestrator/boxes";
 import { forbidden } from "../html";
 import { renderShell, shellHtml } from "../shell";
@@ -36,11 +36,29 @@ export async function renderPassthrough(
   // networks; its page must be top-level, so callers open it in a new tab.
   const vnc = ctx.request.nextUrl.searchParams.get("vnc") === "1";
   try {
-    const url = await desktopStreamUrl(ctx.supabase, ctx.session.userId, {
-      vnc,
-    });
+    const stream = await desktopStreamUrlIfUp(
+      ctx.supabase,
+      ctx.session.userId,
+      { vnc }
+    );
+    if (stream.status === "waking") {
+      // The machine is booting: render a progress page that reloads itself
+      // until the stream is ready, instead of holding the request open
+      // through a multi-minute resume (the iframe embed recovers by itself).
+      const waking = shellHtml(
+        renderShell({
+          title: "Computer",
+          kicker: "Screen",
+          body: `<section class="panel"><p>Waking your agent's computer\u2026</p><p class="muted">This can take a couple of minutes after a long sleep. This page refreshes itself.</p></section>`,
+          lite: ctx.session.via === "card",
+        })
+      );
+      waking.headers.set("Refresh", "5");
+      waking.headers.set("Cache-Control", "no-store");
+      return waking;
+    }
     await armStopAfter(ctx.supabase, ctx.session.userId);
-    const response = NextResponse.redirect(url, 302);
+    const response = NextResponse.redirect(stream.url, 302);
     response.headers.set("Referrer-Policy", "no-referrer");
     response.headers.set("Cache-Control", "no-store");
     return response;
@@ -48,11 +66,6 @@ export async function renderPassthrough(
     if (error instanceof StartLimitError) {
       return errorPage(
         "Your agent's computer can't start right now — try again in a few minutes."
-      );
-    }
-    if (error instanceof DesktopUnavailableError) {
-      return errorPage(
-        "Your agent's screen isn't available yet — it may still be waking up. Pull to refresh in a moment."
       );
     }
     const message = error instanceof Error ? error.message : "unknown error";

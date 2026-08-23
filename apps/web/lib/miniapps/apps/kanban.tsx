@@ -30,17 +30,17 @@ function renderKanban(
                 `<form method="post"><input type="hidden" name="action" value="move"><input type="hidden" name="card" value="${esc(card.id)}"><input type="hidden" name="to" value="${esc(c.id)}"><button class="ghost">→ ${esc(c.name)}</button></form>`
             )
             .join("");
-          return `<div class="card">${esc(card.text)}<div class="row" style="margin-top:0.4rem">${moves}</div></div>`;
+          return `<div class="card spot">${esc(card.text)}<div class="row" style="margin-top:0.4rem">${moves}</div></div>`;
         })
         .join("");
-      return `<div class="col"><h2>${esc(col.name)}</h2>${cards}</div>`;
+      return `<div class="col"><h2>${esc(col.name)} <span class="chip">${col.cards.length}</span></h2>${cards}</div>`;
     })
     .join("");
   const firstCol = board.columns[0]?.id ?? "todo";
   const body = `<div class="cols">${cols}</div>
 <section class="panel"><form method="post" class="addrow"><input type="hidden" name="action" value="add"><input type="hidden" name="column" value="${esc(firstCol)}"><input type="text" name="text" placeholder="Add a card…" maxlength="200"><button>Add</button></form>
 ${isOwner ? promptBar("Ask your agent — e.g. move everything blocked to done…") : ""}</section>
-<!-- resource: ${esc(resourceId)} -->`;
+<!-- resource: ${esc(resourceId)} --><script src="/creator-os/ui.js" defer></script>`;
   return renderShell({
     title: board.title,
     kicker: "Board",

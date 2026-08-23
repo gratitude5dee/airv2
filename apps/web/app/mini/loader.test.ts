@@ -14,7 +14,12 @@ vi.mock("@/lib/supabase", async () => {
   return { serviceClient: () => makeFakeSupabase(testDb) };
 });
 vi.mock("@/lib/box/desktop", () => ({
+  desktopStreamOrigin: vi.fn(async () => "https://box-host.example"),
   desktopStreamUrl: vi.fn(async () => "https://box-host.example/stream/xyz"),
+  desktopStreamUrlIfUp: vi.fn(async () => ({
+    status: "up",
+    url: "https://box-host.example/stream/xyz",
+  })),
   DesktopUnavailableError: class extends Error {},
 }));
 vi.mock("@/lib/orchestrator/boxes", () => ({
@@ -90,6 +95,7 @@ beforeEach(() => {
   testDb.redeemedJtis = new Set();
   testDb.gateEvents = [];
   testDb.opsEvents = [];
+  testDb.homeOrder = [];
 });
 
 describe("registry dispatch", () => {
@@ -312,6 +318,31 @@ describe("home launcher", () => {
     const value = (setCookie.match(/mini_home=([^;]+)/) ?? [])[1] ?? "";
     const claims = verifyToken(decodeURIComponent(value), "home");
     expect(claims?.userId).toBe("user-1");
+  });
+
+  it("persists a press-and-hold rearrangement and renders it first", async () => {
+    testDb.apps.push(makeApp({ slug: "todo", kind: "render", name: "Todo" }));
+    const form = new FormData();
+    form.set("action", "set_order");
+    form.set("order", "todo,calendar,draftapp");
+    const post = new NextRequest("https://mini.example/mini/home", {
+      method: "POST",
+      body: form,
+    });
+    post.cookies.set("mini_home", mintToken("user-1", "home", "default", 15));
+    const res = await POST(post, params("home"));
+    expect(res.status).toBe(303);
+    // Unpublished/unknown slugs are dropped before persisting.
+    expect(testDb.homeOrder).toEqual(["todo", "calendar"]);
+
+    const request = new NextRequest("https://mini.example/mini/home");
+    request.cookies.set("mini_home", mintToken("user-1", "home", "default", 15));
+    const page = await GET(request, params("home"));
+    const body = await page.text();
+    expect(body.indexOf('data-slug="todo"')).toBeGreaterThan(-1);
+    expect(body.indexOf('data-slug="todo"')).toBeLessThan(
+      body.indexOf('data-slug="calendar"')
+    );
   });
 
   it("carries the card `via` marker into launcher links", async () => {

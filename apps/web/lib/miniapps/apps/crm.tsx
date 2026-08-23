@@ -41,17 +41,21 @@ function renderList(basePath: string, store: CrmStore, lite: boolean): string {
   const rows = store.people
     .slice()
     .sort((a, b) => a.name.localeCompare(b.name))
-    .map(
-      (p) =>
-        `<a href="${esc(basePath)}?person=${encodeURIComponent(p.id)}" style="text-decoration:none;color:inherit"><div class="item">${avatar(p)}<span class="grow">${esc(p.name)}</span><span class="when">${p.tags.map((t) => esc(t)).join(" \u00b7 ")}</span></div></a>`
-    )
+    .map((p) => {
+      const contact = p.emails[0] ?? p.phones[0] ?? "";
+      const extra = p.emails.length + p.phones.length - (contact ? 1 : 0);
+      return `<tr><td><a href="${esc(basePath)}?person=${encodeURIComponent(p.id)}" style="display:inline-flex;align-items:center;gap:0.5rem;min-height:2.4rem;text-decoration:none;color:inherit">${avatar(p)}<strong>${esc(p.name)}</strong></a></td><td class="when">${p.tags.map((t) => esc(t)).join(" \u00b7 ")}</td><td class="when">${esc(contact)}${extra > 0 ? ` +${extra}` : ""}</td></tr>`;
+    })
     .join("");
+  const table = rows
+    ? `<div class="tablewrap"><table><thead><tr><th scope="col">Name</th><th scope="col">Tags</th><th scope="col">Contact</th></tr></thead><tbody>${rows}</tbody></table></div>`
+    : "";
   const empty =
     store.people.length === 0
       ? `<p class="muted">No people yet \u2014 add one below, or let your agent fill this in from conversations.</p>`
       : "";
   const addForm = `<form method="post" class="addrow"><input type="hidden" name="action" value="upsert"><input type="text" name="name" placeholder="Add a person\u2026" required><button>Add</button></form>`;
-  const body = `<section class="panel">${rows}${empty}${addForm}
+  const body = `<section class="panel">${table}${empty}${addForm}
 ${promptBar("Ask your agent — e.g. who haven't I talked to lately…")}</section>`;
   return renderShell({ title: "People", kicker: "People", body, lite });
 }

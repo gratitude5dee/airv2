@@ -122,6 +122,15 @@ footer.nav{display:flex;align-items:center;justify-content:space-between;gap:0.7
 .navlink{display:inline-flex;align-items:center;min-height:2.75rem;padding:0 1.1rem;border-radius:var(--radius-pill);border:1px solid var(--ring);background:linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0) 60%),var(--panel-bg);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);box-shadow:inset 0 1px 0 rgba(255,255,255,0.2),0 1px 4px rgba(2,5,10,0.2);font-size:0.66rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink);text-decoration:none;white-space:nowrap;transition:transform 200ms ease}
 .navlink:hover{transform:scale(1.04)}
 .navlink:active{transform:scale(0.97)}
+.spot{position:relative;overflow:hidden;--mx:50%;--my:50%}
+.spot::after{content:"";position:absolute;inset:0;border-radius:inherit;background:radial-gradient(9rem circle at var(--mx) var(--my),rgba(255,255,255,0.22),transparent 70%);opacity:0;transition:opacity 300ms ease;pointer-events:none}
+.spot:hover::after,.spot:focus-within::after{opacity:1}
+.grad-text{background:linear-gradient(92deg,var(--ink) 20%,var(--accent) 55%,var(--ink) 85%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent}
+.icongrid.editing a{animation:wiggle 320ms ease-in-out infinite alternate}
+.icongrid.editing a:nth-child(2n){animation-delay:-160ms}
+.icongrid a.drag{opacity:0.35}
+@keyframes wiggle{from{transform:rotate(-1.6deg)}to{transform:rotate(1.6deg)}}
+@media(prefers-reduced-motion:reduce){.icongrid.editing a{animation:none;outline:1px dashed var(--ring);outline-offset:3px}.spot::after{transition:none}}
 `;
 
 /**
@@ -243,7 +252,9 @@ export function shellHtml(
   // so the CSP only widens when the script is actually emitted.
   const csp = themeCsp(current);
   const scriptSrc =
-    body.includes('src="/creator-os/bg/bg.js"') && !csp.includes("script-src")
+    (body.includes('src="/creator-os/bg/bg.js"') ||
+      body.includes('<script src="/creator-os/ui.js"')) &&
+    !csp.includes("script-src")
       ? "; script-src 'self'"
       : "";
   headers["Content-Security-Policy"] =
