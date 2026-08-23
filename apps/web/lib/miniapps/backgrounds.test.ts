@@ -56,16 +56,18 @@ describe("backgrounds", () => {
     expect(html).toContain("<wz-sky");
   });
 
-  it("shellHtml widens script-src for script-less themes with an effect", () => {
-    const csp = withStyle(
-      { theme: theme("pixel"), background: "silk" },
-      () => shellHtml("").headers.get("Content-Security-Policy") ?? ""
-    );
-    expect(csp).toContain("script-src 'self'");
-    const plain = withStyle(
-      { theme: theme("pixel"), background: "theme" },
-      () => shellHtml("").headers.get("Content-Security-Policy") ?? ""
-    );
-    expect(plain).not.toContain("script-src");
+  it("shellHtml widens script-src only when the bundle is emitted", () => {
+    const render = (lite: boolean) =>
+      renderShell({ title: "T", kicker: "K", body: "", lite });
+    const cspFor = (background: "silk" | "theme", lite: boolean) =>
+      withStyle(
+        { theme: theme("pixel"), background },
+        () =>
+          shellHtml(render(lite)).headers.get("Content-Security-Policy") ?? ""
+      );
+    expect(cspFor("silk", false)).toContain("script-src 'self'");
+    expect(cspFor("theme", false)).not.toContain("script-src");
+    // Lite card sessions never load the bundle, so no script-src either.
+    expect(cspFor("silk", true)).not.toContain("script-src");
   });
 });

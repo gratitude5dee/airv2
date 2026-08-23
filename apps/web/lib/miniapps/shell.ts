@@ -217,10 +217,12 @@ export function shellHtml(
 ): NextResponse {
   const headers = baseHeaders();
   // A chosen backdrop effect loads the self-hosted /creator-os/bg bundle
-  // even on themes whose own backdrop needs no script (Pixel).
+  // even on themes whose own backdrop needs no script (Pixel). Keyed off the
+  // rendered document (renderShell skips the bundle for lite card sessions),
+  // so the CSP only widens when the script is actually emitted.
   const csp = themeCsp(current);
   const scriptSrc =
-    activeBackground() !== "theme" && !csp.includes("script-src")
+    body.includes('src="/creator-os/bg/bg.js"') && !csp.includes("script-src")
       ? "; script-src 'self'"
       : "";
   headers["Content-Security-Policy"] =
