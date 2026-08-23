@@ -16,6 +16,7 @@ import {
   isSpeedTier,
   MODEL_FAMILIES,
   MODEL_FAMILY_LABELS,
+  setMiniappBackground,
   setMiniappTheme,
   setModelFamily,
   setSpeedTier,
@@ -35,7 +36,14 @@ import {
   THEME_IDS,
   THEMES,
 } from "../themes";
+import {
+  BACKGROUND_IDS,
+  BACKGROUND_NAMES,
+  DEFAULT_BACKGROUND,
+  isBackgroundId,
+} from "../backgrounds";
 import { esc, forbidden } from "../html";
+import { activeBackground, activeTheme, withStyle } from "../themeContext";
 import { renderShell, shellHtml } from "../shell";
 import { promptBar, runPrompt } from "../promptBar";
 import { memoryAction, renderMemorySection } from "../sections/memory";
@@ -46,6 +54,7 @@ import type { MiniAppContext, MiniAppModule } from "./types";
 interface SettingsData {
   username: string | null;
   miniappTheme: string;
+  miniappBackground: string;
   speedTier: string | null;
   modelFamily: string;
   plan: string | null;
@@ -71,7 +80,7 @@ async function loadSettings(
   ] = await Promise.all([
     supabase
       .from("users")
-      .select("username, miniapp_theme")
+      .select("username, miniapp_theme, miniapp_background")
       .eq("id", userId)
       .maybeSingle(),
     supabase
@@ -103,6 +112,10 @@ async function loadSettings(
     miniappTheme: (() => {
       const value = String(user?.miniapp_theme ?? "");
       return isThemeId(value) ? value : DEFAULT_THEME;
+    })(),
+    miniappBackground: (() => {
+      const value = String(user?.miniapp_background ?? "");
+      return isBackgroundId(value) ? value : DEFAULT_BACKGROUND;
     })(),
     speedTier: (entitlement?.speed_tier as string | null) ?? null,
     modelFamily: (() => {
@@ -186,9 +199,14 @@ function renderSettings(
     (id) =>
       `<form method="post" class="inline"><input type="hidden" name="action" value="set_theme"><input type="hidden" name="theme" value="${esc(id)}"><button${id === data.miniappTheme ? "" : ' class="ghost"'}>${esc(THEMES[id].name)}</button></form>`
   ).join("");
+  const backgroundButtons = BACKGROUND_IDS.map(
+    (id) =>
+      `<form method="post" class="inline"><input type="hidden" name="action" value="set_background"><input type="hidden" name="background" value="${esc(id)}"><button${id === data.miniappBackground ? "" : ' class="ghost"'}>${esc(BACKGROUND_NAMES[id])}</button></form>`
+  ).join("");
   const themeSection = section(
     "THEME",
-    `<div class="card"><div class="row">${themeButtons}</div><p class="muted">${esc(THEMES[isThemeId(data.miniappTheme) ? data.miniappTheme : DEFAULT_THEME].description)}</p><p class="muted">Applies to every mini-app the next time it loads.</p></div>`
+    `<div class="card"><div class="row">${themeButtons}</div><p class="muted">${esc(THEMES[isThemeId(data.miniappTheme) ? data.miniappTheme : DEFAULT_THEME].description)}</p><p class="muted">Applies to every mini-app the next time it loads.</p></div>` +
+      `<div class="card"><h2>Backdrop</h2><div class="row">${backgroundButtons}</div><p class="muted">A living backdrop behind every full-screen mini-app. Theme default keeps the theme's own sky; inline cards always use the lightweight theme backdrop.</p></div>`
   );
   const modelSection = section(
     "MODEL",
@@ -349,9 +367,21 @@ export const settings: MiniAppModule = {
       const themeId = String(form.get("theme") ?? "");
       if (!isThemeId(themeId)) return forbidden("invalid theme");
       const ok = await setMiniappTheme(ctx.supabase, userId, themeId);
-      return respond(
-        ctx,
-        ok ? `Theme set to ${THEMES[themeId].name}.` : "Update failed."
+      if (!ok) return respond(ctx, "Update failed.");
+      // Re-render inside the just-written style so the response paints it.
+      return withStyle(
+        { theme: THEMES[themeId], background: activeBackground() },
+        () => respond(ctx, `Theme set to ${THEMES[themeId].name}.`)
+      );
+    }
+
+    if (action === "set_background") {
+      const backgroundId = String(form.get("background") ?? "");
+      if (!isBackgroundId(backgroundId)) return forbidden("invalid background");
+      const ok = await setMiniappBackground(ctx.supabase, userId, backgroundId);
+      if (!ok) return respond(ctx, "Update failed.");
+      return withStyle({ theme: activeTheme(), background: backgroundId }, () =>
+        respond(ctx, `Backdrop set to ${BACKGROUND_NAMES[backgroundId]}.`)
       );
     }
 
