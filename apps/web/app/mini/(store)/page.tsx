@@ -3,6 +3,7 @@
  * SSR: renders logged-out; only public + published registry metadata appears
  * here (MA7). Launching an app requires a store session via /api/mini/launch.
  */
+import type { CSSProperties } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { DitherGradient } from "@/components/dither-kit/gradient";
@@ -16,6 +17,7 @@ import {
   storePaths,
   type StorePaths,
 } from "@/lib/miniapps/storePaths";
+import { tintHue } from "@/lib/miniapps/shell";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,46 +56,89 @@ function priceChip(app: RegistryApp): string | null {
   return app.x402_price_usdc ? `$${app.x402_price_usdc} USDC` : "x402";
 }
 
-function AppIcon({ app, size }: { app: RegistryApp; size: number }) {
-  if (!app.icon_key) return <Orb size={size} label={app.name || app.slug} />;
+function tintStyle(slug: string, angle = 145): CSSProperties {
+  const hue = tintHue(slug);
+  return {
+    background: `linear-gradient(${angle}deg, hsl(${hue} 42% 62%), hsl(${hue} 55% 38%))`,
+  };
+}
+
+/** Circular app icon (Photon drawer style): image or tinted initial. */
+function AppCircle({ app, size }: { app: RegistryApp; size: number }) {
+  if (app.icon_key) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={publicUrl(app.icon_key)}
+        alt=""
+        width={size}
+        height={size}
+        className="shrink-0 rounded-full border border-[var(--ring)] object-cover"
+      />
+    );
+  }
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={publicUrl(app.icon_key)}
-      alt=""
-      width={size}
-      height={size}
-      className="shrink-0 rounded-[6px] object-cover [image-rendering:pixelated]"
-    />
+    <span
+      aria-hidden="true"
+      style={{ ...tintStyle(app.slug), width: size, height: size }}
+      className="flex shrink-0 items-center justify-center rounded-full border border-[var(--ring)] font-semibold uppercase text-white"
+    >
+      {(app.name || app.slug).slice(0, 1)}
+    </span>
   );
 }
 
-function AppCard({ app, paths }: { app: RegistryApp; paths: StorePaths }) {
+/** "Recents"-style launcher entry: big circle over an ellipsized label. */
+function AppIconLink({ app, paths }: { app: RegistryApp; paths: StorePaths }) {
+  return (
+    <Link
+      href={paths.detail(app.slug)}
+      className="flex min-w-0 flex-col items-center gap-2 text-inherit no-underline"
+    >
+      <AppCircle app={app} size={60} />
+      <span className="max-w-full truncate text-[12px]">
+        {app.name || app.slug}
+      </span>
+    </Link>
+  );
+}
+
+/** Explore feed row: circular icon, title, muted one-line description. */
+function AppRow({ app, paths }: { app: RegistryApp; paths: StorePaths }) {
   const chip = priceChip(app);
   return (
     <Link
       href={paths.detail(app.slug)}
-      className="panel !p-4 block text-left no-underline"
+      className="flex items-center gap-3 text-inherit no-underline"
     >
-      <div className="flex items-center gap-3">
-        <AppIcon app={app} size={22} />
-        <div className="min-w-0">
-          <h3 className="m-0 truncate text-[13px] font-semibold">
-            {app.name || app.slug}
-          </h3>
-          <p className="m-0 truncate text-[11px] text-muted">
-            {app.publisher_username ? `@${app.publisher_username}` : "air"}
-          </p>
-        </div>
-        {chip ? (
-          <span className="ml-auto shrink-0 rounded-full border border-current px-2 py-0.5 text-[10px] text-muted">
-            {chip}
-          </span>
-        ) : null}
+      <AppCircle app={app} size={44} />
+      <div className="min-w-0 flex-1">
+        <h3 className="m-0 truncate text-[17px] font-semibold tracking-[-0.02em]">
+          {app.name || app.slug}
+        </h3>
+        <p className="m-0 truncate text-[13px] text-muted">
+          {app.description}
+        </p>
       </div>
-      <p className="mb-0 mt-2 line-clamp-2 text-[12px] leading-relaxed text-muted">
-        {app.description}
-      </p>
+      {chip ? (
+        <span className="ml-auto shrink-0 rounded-full border border-current px-2 py-0.5 text-[10px] text-muted">
+          {chip}
+        </span>
+      ) : null}
+    </Link>
+  );
+}
+
+/** Big rounded promo card under a featured Explore row. */
+function AppHero({ app, paths }: { app: RegistryApp; paths: StorePaths }) {
+  return (
+    <Link
+      href={paths.detail(app.slug)}
+      aria-label={`Open ${app.name || app.slug}`}
+      style={tintStyle(app.slug, 160)}
+      className="mt-3 flex aspect-video w-full items-center justify-center rounded-[20px] border border-[var(--ring)] no-underline"
+    >
+      <AppCircle app={app} size={72} />
     </Link>
   );
 }
@@ -161,33 +206,57 @@ export default async function StoreHome({
           </form>
         </header>
 
+        {filtered.length > 0 ? (
+          <section className="rise-in mt-10">
+            <h2 className="m-0 mb-4 text-[12px] font-semibold uppercase tracking-[0.08em] text-muted">
+              Apps
+            </h2>
+            <div className="grid grid-cols-4 gap-x-2 gap-y-5">
+              {filtered.map((app) => (
+                <AppIconLink key={app.slug} app={app} paths={paths} />
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        {filtered.length > 0 ? (
+          <h2 className="rise-in mb-0 mt-12 text-[26px] font-semibold tracking-[-0.03em]">
+            Explore
+          </h2>
+        ) : null}
+
         {CATEGORIES.map(([label, slugs]) => {
           const row = slugs
             .map((slug) => bySlug.get(slug))
             .filter((app): app is RegistryApp => Boolean(app));
-          if (row.length === 0) return null;
+          const [featured, ...others] = row;
+          if (!featured) return null;
           return (
-            <section key={label} className="rise-in mt-10">
-              <h2 className="m-0 mb-3 text-[12px] font-semibold uppercase tracking-[0.08em] text-muted">
+            <section key={label} className="rise-in mt-8">
+              <h3 className="m-0 mb-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
                 {label}
-              </h2>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {row.map((app) => (
-                  <AppCard key={app.slug} app={app} paths={paths} />
-                ))}
-              </div>
+              </h3>
+              <AppRow app={featured} paths={paths} />
+              <AppHero app={featured} paths={paths} />
+              {others.length > 0 ? (
+                <div className="mt-4 grid gap-4">
+                  {others.map((app) => (
+                    <AppRow key={app.slug} app={app} paths={paths} />
+                  ))}
+                </div>
+              ) : null}
             </section>
           );
         })}
 
         {rest.length > 0 ? (
-          <section className="rise-in mt-10">
-            <h2 className="m-0 mb-3 text-[12px] font-semibold uppercase tracking-[0.08em] text-muted">
+          <section className="rise-in mt-8">
+            <h3 className="m-0 mb-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
               Community
-            </h2>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            </h3>
+            <div className="grid gap-4">
               {rest.map((app) => (
-                <AppCard key={app.slug} app={app} paths={paths} />
+                <AppRow key={app.slug} app={app} paths={paths} />
               ))}
             </div>
           </section>

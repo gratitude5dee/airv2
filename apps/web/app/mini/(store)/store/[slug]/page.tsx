@@ -20,6 +20,7 @@ import {
   canonicalDetailUrl,
   storePaths,
 } from "@/lib/miniapps/storePaths";
+import { tintHue } from "@/lib/miniapps/shell";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -108,12 +109,12 @@ export default async function StoreDetail({
             <img
               src={publicUrl(app.icon_key)}
               alt=""
-              width={40}
-              height={40}
-              className="shrink-0 rounded-[8px] object-cover [image-rendering:pixelated]"
+              width={44}
+              height={44}
+              className="shrink-0 rounded-full border border-[var(--ring)] object-cover"
             />
           ) : (
-            <Orb size={40} label={app.name || app.slug} />
+            <Orb size={44} label={app.name || app.slug} />
           )}
           <div className="min-w-0">
             <h1 className="m-0 text-[24px] font-semibold tracking-[-0.02em]">
@@ -122,6 +123,27 @@ export default async function StoreDetail({
             <p className="m-0 text-[12px] text-muted">@{publisher}</p>
           </div>
         </header>
+
+        <div
+          aria-hidden="true"
+          style={{
+            background: `linear-gradient(160deg, hsl(${tintHue(app.slug)} 48% 66%), hsl(${tintHue(app.slug)} 60% 34%))`,
+          }}
+          className="rise-in mt-5 flex aspect-video w-full items-center justify-center rounded-[20px] border border-[var(--ring)]"
+        >
+          {app.icon_key ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={publicUrl(app.icon_key)}
+              alt=""
+              width={72}
+              height={72}
+              className="rounded-full border border-white/40 object-cover"
+            />
+          ) : (
+            <Orb size={72} label={app.name || app.slug} />
+          )}
+        </div>
 
         <p className="rise-in mt-4 text-[14px] leading-relaxed text-muted-2">
           {app.description}

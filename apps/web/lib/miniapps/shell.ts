@@ -92,6 +92,20 @@ form.stack{display:grid;gap:0.55rem;margin-top:0.5rem}
 .tile .name{font-size:1.15rem;letter-spacing:-0.02em}
 .tile .desc{color:var(--ink-muted);font-size:0.82rem;margin-top:0.25rem;font-family:var(--font-ui);letter-spacing:0.02em}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(10.5rem,1fr));gap:0.7rem;width:min(100%,36rem)}
+.icongrid{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem 0.5rem;width:min(100%,36rem)}
+.icongrid a{display:flex;flex-direction:column;align-items:center;gap:0.45rem;text-decoration:none;color:var(--ink);min-width:0}
+.icongrid .label{font-family:var(--font-ui);font-size:0.66rem;letter-spacing:0.02em;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.avatar{display:flex;align-items:center;justify-content:center;flex-shrink:0;width:2.75rem;height:2.75rem;border-radius:50%;border:1px solid var(--ring);background:linear-gradient(145deg,hsl(var(--tint,220) 42% 62%),hsl(var(--tint,220) 55% 38%));color:#fff;font-family:var(--font-ui);font-size:1rem;text-transform:uppercase;box-shadow:var(--shadow);overflow:hidden}
+.avatar img{width:100%;height:100%;object-fit:cover}
+.icongrid .avatar{width:clamp(3.4rem,17vw,4.1rem);height:clamp(3.4rem,17vw,4.1rem);font-size:1.3rem}
+.explore{width:min(100%,36rem);font-family:var(--font-body);font-size:clamp(1.5rem,4.6vw,1.9rem);font-weight:600;letter-spacing:-0.03em;text-transform:none;color:var(--ink);margin:1.4rem 0 0.9rem;text-align:left}
+.approw{display:flex;align-items:center;gap:0.8rem;width:min(100%,36rem);margin:0 0 0.6rem;text-decoration:none;color:var(--ink)}
+.approw .name{display:block;font-size:1.15rem;font-weight:600;letter-spacing:-0.02em;line-height:1.25}
+.approw .desc{display:block;color:var(--ink-muted);font-size:0.85rem;font-family:var(--font-ui);letter-spacing:0.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.approw .meta{min-width:0;flex:1}
+.hero{display:flex;align-items:center;justify-content:center;width:min(100%,36rem);aspect-ratio:16/9;border-radius:1.3rem;border:1px solid var(--ring);margin:0 0 1.3rem;background:linear-gradient(160deg,hsl(var(--tint,220) 48% 66%),hsl(var(--tint,220) 60% 34%));box-shadow:var(--shadow);overflow:hidden;text-decoration:none}
+.hero img{width:100%;height:100%;object-fit:cover}
+.hero .avatar{width:4.5rem;height:4.5rem;font-size:1.9rem;border-color:rgba(255,255,255,0.4)}
 footer.nav{display:flex;align-items:center;justify-content:space-between;gap:0.75rem;font-family:var(--font-ui)}
 .navlink{display:inline-flex;align-items:center;min-height:2.75rem;padding:0 1.1rem;border-radius:var(--radius-pill);border:1px solid var(--ring);background:var(--panel-bg);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);font-size:0.66rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink);text-decoration:none;white-space:nowrap;transition:transform 200ms ease}
 .navlink:hover{transform:scale(1.04)}
@@ -108,6 +122,28 @@ const LITE_CSS = `
 html{background-attachment:scroll}
 main.app{animation:none}
 `;
+
+/** Deterministic hue per app slug — drives avatar/hero gradients. */
+export function tintHue(seed: string): number {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  }
+  return hash % 360;
+}
+
+/** Circular app avatar: the icon image when one exists, otherwise the
+ * app's initial over a slug-tinted gradient. */
+export function avatarHtml(
+  name: string,
+  slug: string,
+  iconUrl?: string | null
+): string {
+  const inner = iconUrl
+    ? `<img src="${esc(iconUrl)}" alt="">`
+    : esc((name || slug).slice(0, 1));
+  return `<span class="avatar" style="--tint:${tintHue(slug)}" aria-hidden="true">${inner}</span>`;
+}
 
 export interface ShellOptions {
   /** Document + header title, e.g. "Todo". */
