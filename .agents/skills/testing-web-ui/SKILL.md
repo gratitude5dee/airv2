@@ -141,3 +141,11 @@ Real Supabase creds can be fetched at runtime — no `.env` needed and no OTP lo
 - The home mini-app requires an authed mini session — the visible shell depends on the user's saved `miniapp_theme` (`pixel` = flat, no wz-sky/fx/grain; switch to `atmosphere` to see the cloud shader, restore afterward).
 - Home avatars render real images only when `mini_apps.icon_key` is set (shell CSP img-src is widened to `R2_PUBLIC_BASE_URL`); to test locally, point `R2_PUBLIC_BASE_URL` at the app origin and set a temporary icon_key via Supabase REST (restore to null after).
 - Gotcha: always `ss -ltnp` for stale next-server processes on :3999 before re-testing — a stale server silently serves the old build.
+
+## Switchable backdrops (PR #189)
+- `npm run build` is mandatory before `next start` — prebuild `scripts/build-backgrounds.mjs` regenerates `public/creator-os/bg/` (hashed chunks; a stale dir 404s).
+- Settings `set_theme`/`set_background` POSTs paint the new choice immediately in the response.
+- Verify per-effect lazy loading via `performance.getEntriesByType('resource')` filtered on `/creator-os/bg/` — expect `bg.js` plus exactly one `<Effect>-<hash>.js` chunk.
+- Card/lite sessions (token claim `via:"card"`) must have zero `wz-bg`/`bg.js` in the HTML and a strict CSP without `script-src`.
+- The Silk effect logs a benign `THREE.Clock` deprecation warning — a library warning, not a console error.
+- Restore `users.miniapp_theme`/`miniapp_background` for the test user after backdrop tests.
