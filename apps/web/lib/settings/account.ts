@@ -146,6 +146,20 @@ export async function setMiniappBackground(
   return !error;
 }
 
+/** Writes users.miniapp_home_order — Home launcher slugs in the user's
+ * chosen order (empty keeps the default). Callers validate the slugs. */
+export async function setMiniappHomeOrder(
+  supabase: SupabaseClient,
+  userId: string,
+  slugs: string[]
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("users")
+    .update({ miniapp_home_order: slugs })
+    .eq("id", userId);
+  return !error;
+}
+
 export const MODEL_FAMILIES = [
   "ox-alpha",
   "openai",

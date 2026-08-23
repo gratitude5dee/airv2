@@ -75,6 +75,8 @@ interface ChatMessage {
   media?: { kind: "image" | "video"; url: string };
   /** V7: set when an @mention delegated this reply to a bot. */
   bot?: string;
+  /** Tools the agent ran while producing this reply, in call order. */
+  tools?: string[];
 }
 
 /** V8: a chat upload staged in the composer; path is the box inbox path. */
@@ -615,6 +617,7 @@ function HomeShell() {
       eventsRef.current?.close();
       eventsRef.current = events;
       let acc = "";
+      const toolsSeen: string[] = [];
       // Replace a still-empty placeholder so a failed or empty run never
       // leaves a blank bubble behind.
       const fillEmpty = (fallback: string) => {
@@ -634,6 +637,20 @@ function HomeShell() {
             output?: string;
             tool?: string;
           };
+          if (parsed.event === "tool.started" && parsed.tool) {
+            // Tool chips: surface each step in the agent bubble as it runs.
+            if (toolsSeen[toolsSeen.length - 1] !== parsed.tool) {
+              toolsSeen.push(parsed.tool);
+              setMessages((m) =>
+                replaceLast(m, {
+                  role: "agent",
+                  text: acc,
+                  bot: botName,
+                  tools: [...toolsSeen],
+                })
+              );
+            }
+          }
           if (parsed.event === "tool.started" && isComputerTool(parsed.tool)) {
             // The agent is driving its browser/desktop — expand the dock so
             // the user can watch or take over (logins, approvals) without
@@ -649,7 +666,12 @@ function HomeShell() {
           if (parsed.event === "message.delta" && parsed.delta) {
             acc += parsed.delta;
             setMessages((m) =>
-              replaceLast(m, { role: "agent", text: acc, bot: botName })
+              replaceLast(m, {
+                role: "agent",
+                text: acc,
+                bot: botName,
+                tools: toolsSeen.length ? [...toolsSeen] : undefined,
+              })
             );
           }
           if (parsed.event === "run.completed") {
@@ -659,6 +681,7 @@ function HomeShell() {
                   role: "agent",
                   text: parsed.output ?? "",
                   bot: botName,
+                  tools: toolsSeen.length ? [...toolsSeen] : undefined,
                 })
               );
             } else if (!acc) {
@@ -1006,7 +1029,7 @@ function HomeShell() {
                   messages.map((m, i) => {
                     const isLast = i === messages.length - 1;
                     const streaming = busy && isLast && m.role === "agent";
-                    if (streaming && !m.text) {
+                    if (streaming && !m.text && !m.tools?.length) {
                       return (
                         <div key={m.id} className="justify-self-start">
                           <Orb pill label="Thinking…" />
@@ -1029,6 +1052,24 @@ function HomeShell() {
                             <span className="muted text-[11px] font-medium">
                               @{m.bot}
                             </span>
+                          </div>
+                        ) : null}
+                        {m.tools?.length ? (
+                          <div className="mb-1.5 flex flex-wrap gap-1">
+                            {m.tools.map((tool, t) => (
+                              <span
+                                key={`${tool}-${t}`}
+                                className="muted inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[10px] shadow-[0_0_0_0.5px_var(--ring)]"
+                              >
+                                {streaming && t === (m.tools?.length ?? 0) - 1 ? (
+                                  <span
+                                    aria-hidden
+                                    className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current"
+                                  />
+                                ) : null}
+                                {tool}
+                              </span>
+                            ))}
                           </div>
                         ) : null}
                         {m.media ? (

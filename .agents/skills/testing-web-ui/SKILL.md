@@ -149,3 +149,10 @@ Real Supabase creds can be fetched at runtime — no `.env` needed and no OTP lo
 - Card/lite sessions (token claim `via:"card"`) must have zero `wz-bg`/`bg.js` in the HTML and a strict CSP without `script-src`.
 - The Silk effect logs a benign `THREE.Clock` deprecation warning — a library warning, not a console error.
 - Restore `users.miniapp_theme`/`miniapp_background` for the test user after backdrop tests.
+
+## Computer mini-app live desktop stream (PR #193)
+- Box API base is `https://ascii.dev/api/box/v1` (not api.ascii.dev). Check box state with `GET /boxes/<id>` before testing — `ready`/`idle` auto-embeds the live iframe on `/computer`.
+- The `?view=live` response's `Location` header contains a fresh tokened `*.on.ascii.dev` desktop URL — redact it in any report/log; the page HTML itself must only ever contain `/computer?view=live`.
+- `?view=live&vnc=1` often shows the "Waking your agent's computer…" page briefly (VNC endpoint prep) before the `Refresh: 5` self-refresh lands on noVNC — expected, not a failure.
+- Keyboard input into the Moonlight/noVNC stream does not register from CDP-dispatched key events — keyboard-bridge verification needs a manual run.
+- Never stop/archive the production box to force the cold path; leave it as found or idle.

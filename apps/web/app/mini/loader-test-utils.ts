@@ -39,6 +39,8 @@ export interface FakeDb {
   redeemedJtis: Set<string>;
   gateEvents: { app_id: string; kind: string; ref: string | null }[];
   opsEvents: { user_id: string | null; kind: string; ref: string | null }[];
+  /** users.miniapp_home_order for the single test user. */
+  homeOrder: string[];
 }
 
 /** Shared mutable db for vi.mock factories; tests seed it in beforeAll. */
@@ -48,6 +50,7 @@ export const testDb: FakeDb = {
   redeemedJtis: new Set(),
   gateEvents: [],
   opsEvents: [],
+  homeOrder: [],
 };
 
 export function makeFakeSupabase(db: FakeDb) {
@@ -146,11 +149,24 @@ export function makeFakeSupabase(db: FakeDb) {
                 return {
                   async maybeSingle() {
                     return {
-                      data: { miniapp_theme: "atmosphere" },
+                      data: {
+                        miniapp_theme: "atmosphere",
+                        miniapp_home_order: db.homeOrder,
+                      },
                       error: null,
                     };
                   },
                 };
+              },
+            };
+          },
+          update(patch: { miniapp_home_order?: string[] }) {
+            return {
+              async eq() {
+                if (patch.miniapp_home_order) {
+                  db.homeOrder = patch.miniapp_home_order;
+                }
+                return { error: null };
               },
             };
           },
