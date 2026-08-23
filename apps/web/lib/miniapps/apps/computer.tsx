@@ -8,6 +8,7 @@
  * HTML or devtools (C16 unchanged). VNC opens top-level, as required.
  */
 import { NextResponse } from "next/server";
+import { desktopStreamOrigin } from "@/lib/box/desktop";
 import { captureScreenshotPng } from "@/lib/box/screenshot";
 import { esc, forbidden } from "../html";
 import { renderShell, shellHtml } from "../shell";
@@ -44,7 +45,8 @@ function renderState(
   stateLabel: string,
   run: RunRow | null,
   screenshotDataUri: string | null,
-  lite: boolean
+  lite: boolean,
+  streamOrigin: string | null
 ): string {
   const power = `<div class="item"><span class="grow">Power</span><span class="when">${esc(stateLabel)}</span></div>`;
   const runRow = run
@@ -55,7 +57,7 @@ function renderState(
   // forwarder script bridges parent-page keystrokes into the embedded
   // stream (terminal typing) via the viewer's own postMessage protocol.
   const live = embed
-    ? `<div style="margin-top:10px;border-radius:var(--radius-well);overflow:hidden;box-shadow:var(--shadow);background:#000"><iframe id="live-desktop" src="${esc(basePath)}?view=live" title="Live view of your agent's computer" allow="autoplay; fullscreen; clipboard-read; clipboard-write" allowfullscreen referrerpolicy="no-referrer" style="display:block;width:100%;height:${lite ? "min(62vh,520px)" : "max(62vh,420px)"};border:0"></iframe></div><p class="muted" style="margin-top:8px">Live \u00b7 <a href="${esc(basePath)}?view=live" target="_top">Open full screen</a> \u00b7 choppy? <a href="${esc(basePath)}?view=live&amp;vnc=1" target="_blank" rel="noopener">Switch to VNC</a></p><script src="/creator-os/computer.js" defer></script>`
+    ? `<div style="margin-top:10px;border-radius:var(--radius-well);overflow:hidden;box-shadow:var(--shadow);background:#000"><iframe id="live-desktop"${streamOrigin ? ` data-stream-origin="${esc(streamOrigin)}"` : ""} src="${esc(basePath)}?view=live" title="Live view of your agent's computer" allow="autoplay; fullscreen; clipboard-read; clipboard-write" allowfullscreen referrerpolicy="no-referrer" style="display:block;width:100%;height:${lite ? "min(62vh,520px)" : "max(62vh,420px)"};border:0"></iframe></div><p class="muted" style="margin-top:8px">Live \u00b7 <a href="${esc(basePath)}?view=live" target="_top">Open full screen</a> \u00b7 choppy? <a href="${esc(basePath)}?view=live&amp;vnc=1" target="_blank" rel="noopener">Switch to VNC</a></p><script src="/creator-os/computer.js" defer></script>`
     : "";
   const shot =
     !embed && screenshotDataUri
@@ -124,6 +126,13 @@ export const computer: MiniAppModule = {
       }
     }
 
+    // The frame origin (host only, never the tokened URL) pins the keyboard
+    // forwarder's postMessage target to the exact stream origin.
+    const streamOrigin =
+      box && awake && embed
+        ? await desktopStreamOrigin(box.provider_box_id)
+        : null;
+
     const lastEdge = ((stateRows ?? [])[0] ?? null) as {
       state: string;
       created_at: string;
@@ -141,7 +150,8 @@ export const computer: MiniAppModule = {
         stateLabel,
         run,
         screenshot,
-        ctx.session.via === "card"
+        ctx.session.via === "card",
+        streamOrigin
       )
     );
     let csp = response.headers.get("Content-Security-Policy") ?? "";

@@ -5,13 +5,18 @@ import {
   desktopStreamUrlIfUp,
   DesktopUnavailableError,
 } from "./desktop";
-import { getBox, requestDesktop } from "./client";
-import { ensureBoxAwake, prewarmBox } from "../orchestrator/boxes";
+import { getBox, isStartLimit, requestDesktop, resume } from "./client";
+import { ensureBoxAwake, StartLimitError } from "../orchestrator/boxes";
 
-vi.mock("./client", () => ({ requestDesktop: vi.fn(), getBox: vi.fn() }));
+vi.mock("./client", () => ({
+  requestDesktop: vi.fn(),
+  getBox: vi.fn(),
+  resume: vi.fn(),
+  isStartLimit: vi.fn(() => false),
+}));
 vi.mock("../orchestrator/boxes", () => ({
   ensureBoxAwake: vi.fn(),
-  prewarmBox: vi.fn(async () => undefined),
+  StartLimitError: class StartLimitError extends Error {},
 }));
 
 const supabase = {} as SupabaseClient;
@@ -23,6 +28,7 @@ beforeEach(() => {
 function supabaseWithBox(boxId: string | null): SupabaseClient {
   const chain = {
     select: () => chain,
+    update: () => chain,
     eq: () => chain,
     maybeSingle: () =>
       Promise.resolve({
@@ -84,7 +90,7 @@ describe("desktopStreamUrlIfUp", () => {
       status: "up",
       url: "https://d.on.ascii.dev/stream.html?token=abc",
     });
-    expect(prewarmBox).not.toHaveBeenCalled();
+    expect(resume).not.toHaveBeenCalled();
   });
 
   it("kicks a resume and reports waking when the machine is down", async () => {
@@ -94,8 +100,30 @@ describe("desktopStreamUrlIfUp", () => {
     await expect(
       desktopStreamUrlIfUp(supabaseWithBox("bx_1"), "user-1")
     ).resolves.toEqual({ status: "waking" });
-    expect(prewarmBox).toHaveBeenCalled();
+    expect(resume).toHaveBeenCalledWith("bx_1");
     expect(requestDesktop).not.toHaveBeenCalled();
+  });
+
+  it("surfaces the provider start limit as StartLimitError", async () => {
+    vi.mocked(getBox).mockResolvedValue({ state: "archived" } as Awaited<
+      ReturnType<typeof getBox>
+    >);
+    vi.mocked(resume).mockRejectedValue(new Error("429 start_limit_reached"));
+    vi.mocked(isStartLimit).mockReturnValue(true);
+    await expect(
+      desktopStreamUrlIfUp(supabaseWithBox("bx_1"), "user-1")
+    ).rejects.toBeInstanceOf(StartLimitError);
+  });
+
+  it("still reports waking when a concurrent wake owns the resume", async () => {
+    vi.mocked(getBox).mockResolvedValue({ state: "archived" } as Awaited<
+      ReturnType<typeof getBox>
+    >);
+    vi.mocked(resume).mockRejectedValue(new Error("already resuming"));
+    vi.mocked(isStartLimit).mockReturnValue(false);
+    await expect(
+      desktopStreamUrlIfUp(supabaseWithBox("bx_1"), "user-1")
+    ).resolves.toEqual({ status: "waking" });
   });
 
   it("reports waking when the machine is up but the stream isn't ready", async () => {

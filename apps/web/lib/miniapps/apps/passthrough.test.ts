@@ -11,6 +11,7 @@ import type { MiniAppContext } from "./types";
 
 vi.mock("@/lib/box/desktop", () => ({
   desktopStreamUrlIfUp: vi.fn(),
+  desktopStreamOrigin: vi.fn(async () => null),
 }));
 vi.mock("@/lib/orchestrator/boxes", () => ({
   armStopAfter: vi.fn(async () => undefined),
@@ -51,6 +52,16 @@ describe("renderPassthrough", () => {
     expect(res.headers.get("cache-control")).toBe("no-store");
     const html = await res.text();
     expect(html).toContain("Waking your agent");
+  });
+
+  it("shows the try-again page on a provider start limit", async () => {
+    const { StartLimitError } = await import("@/lib/orchestrator/boxes");
+    vi.mocked(desktopStreamUrlIfUp).mockRejectedValue(new StartLimitError());
+    const res = await renderPassthrough(ctx());
+    expect(res.status).toBe(200);
+    expect(res.headers.get("refresh")).toBeNull();
+    const html = await res.text();
+    expect(html).toContain("try again in a few minutes");
   });
 
   it("refuses guests", async () => {

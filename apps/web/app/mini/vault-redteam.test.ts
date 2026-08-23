@@ -53,6 +53,7 @@ vi.mock("@/lib/supabase", async () => {
   };
 });
 vi.mock("@/lib/box/desktop", () => ({
+  desktopStreamOrigin: vi.fn(async () => "https://box-host.example"),
   desktopStreamUrl: vi.fn(),
   desktopStreamUrlIfUp: vi.fn(async () => ({
     status: "up",

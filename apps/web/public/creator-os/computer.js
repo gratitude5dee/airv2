@@ -10,6 +10,10 @@
   "use strict";
   var frame = document.getElementById("live-desktop");
   if (!frame) return;
+  // Pin postMessage to the exact stream origin (server-provided, host only)
+  // so keystrokes can never be delivered to an unexpected frame origin.
+  var streamOrigin = frame.getAttribute("data-stream-origin");
+  if (!streamOrigin) return;
 
   function isFormField(target) {
     if (!target || !target.tagName) return false;
@@ -33,7 +37,7 @@
         metaKey: event.metaKey,
         repeat: event.repeat,
       },
-      "*"
+      streamOrigin
     );
   }
 

@@ -12,6 +12,10 @@ import type { MiniAppContext } from "./types";
 vi.mock("@/lib/box/screenshot", () => ({
   captureScreenshotPng: vi.fn().mockRejectedValue(new Error("no shot")),
 }));
+vi.mock("@/lib/box/desktop", () => ({
+  desktopStreamOrigin: vi.fn(async () => "https://d.on.ascii.dev"),
+  desktopStreamUrlIfUp: vi.fn(),
+}));
 
 function fakeSupabase(boxState: string | null) {
   const rows: Record<string, unknown> = {
@@ -50,6 +54,8 @@ describe("computer mini-app live embed", () => {
     const res = await computer.render(ctxFor("ready", "/computer"));
     const html = await res.text();
     expect(html).toContain('src="/computer?view=live"');
+    // The keyboard forwarder pins postMessage to this exact origin.
+    expect(html).toContain('data-stream-origin="https://d.on.ascii.dev"');
     expect(html).not.toContain("?embed=1");
     const csp = res.headers.get("Content-Security-Policy") ?? "";
     expect(csp).toContain("frame-src 'self' https://*.on.ascii.dev");
