@@ -365,6 +365,10 @@ function stepBody(
       return `<p>Connected — your imported context lives on your computer, and Settings has Re-sync / Disconnect.</p><div class="row actions">${skipForm("onairos")}</div>`;
     }
     const apiKey = env.onairosApiKey() ?? "";
+    const googleClientId = env.onairosGoogleClientId();
+    const googleAttr = googleClientId
+      ? ` data-google-client-id="${esc(googleClientId)}"`
+      : "";
     // Google blocks OAuth inside embedded webviews (disallowed_useragent),
     // so a card-opened Messages sheet offers a signed jump into the real
     // browser where the Google path works.
@@ -374,7 +378,7 @@ function stepBody(
     // The native SDK flow runs right here; the key only ever renders on the
     // owner's own authenticated slide (never in a public bundle), and the
     // handoff posts back as a regular form (action=onairos_handoff).
-    return `<p class="muted">Sign in with Onairos to import your personal context — the consent flow opens right here, and your imported context lives on your computer, never on the platform.</p><div id="onairos-connect" data-api-key="${esc(apiKey)}"><p class="muted">Loading Onairos sign-in…</p></div><script src="/creator-os/onairos-connect.js" defer></script>${browserLine}<details><summary>Or connect via iMessage</summary><p class="muted">Onairos asks for your account email, a verification code, and your YES right in your iMessage thread.</p><form method="post" class="inline"><input type="hidden" name="action" value="connect_onairos"><button class="ghost">Connect via iMessage</button></form></details><div class="row actions">${skipForm("onairos")}</div>`;
+    return `<p class="muted">Sign in with Onairos to import your personal context — the consent flow opens right here, and your imported context lives on your computer, never on the platform.</p><div id="onairos-connect" data-api-key="${esc(apiKey)}"${googleAttr}><p class="muted">Loading Onairos sign-in…</p></div><script src="/creator-os/onairos-connect.js" defer></script>${browserLine}<details><summary>Or connect via iMessage</summary><p class="muted">Onairos asks for your account email, a verification code, and your YES right in your iMessage thread.</p><form method="post" class="inline"><input type="hidden" name="action" value="connect_onairos"><button class="ghost">Connect via iMessage</button></form></details><div class="row actions">${skipForm("onairos")}</div>`;
   }
   if (step === "secrets") {
     const managerLines = snapshot.managers
