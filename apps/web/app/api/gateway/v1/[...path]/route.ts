@@ -284,12 +284,14 @@ export async function POST(
         };
       }[];
     } | null;
-    const message = parsed?.choices?.[0]?.message;
+    const choice = parsed?.choices?.[0];
+    const message = choice?.message;
     const empty =
-      message !== undefined &&
-      !message.content &&
-      !message.reasoning &&
-      !(Array.isArray(message.tool_calls) && message.tool_calls.length > 0);
+      choice !== undefined &&
+      (message == null ||
+        (!message.content &&
+          !message.reasoning &&
+          !(Array.isArray(message.tool_calls) && message.tool_calls.length > 0)));
     if (parsed === null || empty) {
       servedFamily = "openai";
       upstream = await dispatch(servedFamily);
