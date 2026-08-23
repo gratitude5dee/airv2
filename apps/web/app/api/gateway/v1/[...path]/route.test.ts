@@ -199,6 +199,121 @@ describe("gateway model families", () => {
     expect(headers["HTTP-Referer"]).toBeUndefined();
   });
 
+  it("falls back to the OpenAI tier model when OpenRouter answers empty", async () => {
+    setEntitlement({ speed_tier: "fast", model_family: "ox-alpha" });
+    const emptyCompletion = {
+      choices: [
+        {
+          finish_reason: "stop",
+          native_finish_reason: "network_error",
+          message: { role: "assistant", content: null, reasoning: null },
+        },
+      ],
+    };
+    const goodCompletion = {
+      choices: [{ message: { role: "assistant", content: "hi" } }],
+    };
+    const fetchMock = vi.fn(async (url: RequestInfo | URL) =>
+      String(url).includes("openrouter")
+        ? new Response(JSON.stringify(emptyCompletion), { status: 200 })
+        : new Response(JSON.stringify(goodCompletion), { status: 200 })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await POST(
+      completionRequest({ messages: [], tools: [{ type: "function" }] }),
+      { params: Promise.resolve({ path: ["chat", "completions"] }) }
+    );
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const secondBody = JSON.parse(
+      String((fetchMock.mock.calls[1]?.[1] as RequestInit).body)
+    ) as Record<string, unknown>;
+    expect(secondBody.model).toBe("gpt-5.6-luna");
+    expect(String(fetchMock.mock.calls[1]?.[0])).toBe(
+      "https://upstream.test/v1/chat/completions"
+    );
+    const payload = (await (response as Response).json()) as {
+      choices: { message: { content: string } }[];
+    };
+    expect(payload.choices[0]?.message.content).toBe("hi");
+  });
+
+  it("does not fall back when OpenRouter answers with content", async () => {
+    setEntitlement({ speed_tier: "fast", model_family: "ox-alpha" });
+    const completion = {
+      choices: [{ message: { role: "assistant", content: "hello" } }],
+    };
+    const fetchMock = vi.fn(
+      async () => new Response(JSON.stringify(completion), { status: 200 })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await POST(completionRequest({ messages: [] }), {
+      params: Promise.resolve({ path: ["chat", "completions"] }),
+    });
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to OpenAI when a streamed OpenRouter answer carries no deltas", async () => {
+    setEntitlement({ speed_tier: "fast", model_family: "ox-alpha" });
+    const emptySse =
+      'data: {"choices":[{"delta":{"role":"assistant"}}]}\n\ndata: [DONE]\n\n';
+    const goodSse =
+      'data: {"choices":[{"delta":{"content":"hi"}}]}\n\ndata: [DONE]\n\n';
+    const fetchMock = vi.fn(async (url: RequestInfo | URL) =>
+      new Response(String(url).includes("openrouter") ? emptySse : goodSse, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await POST(
+      completionRequest({ messages: [], stream: true }),
+      { params: Promise.resolve({ path: ["chat", "completions"] }) }
+    );
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(await (response as Response).text()).toContain('"content":"hi"');
+  });
+
+  it("replays a streamed OpenRouter answer that has content", async () => {
+    setEntitlement({ speed_tier: "fast", model_family: "ox-alpha" });
+    const goodSse =
+      'data: {"choices":[{"delta":{"content":"ox"}}]}\n\ndata: [DONE]\n\n';
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(goodSse, {
+          status: 200,
+          headers: { "Content-Type": "text/event-stream" },
+        })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await POST(
+      completionRequest({ messages: [], stream: true }),
+      { params: Promise.resolve({ path: ["chat", "completions"] }) }
+    );
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(await (response as Response).text()).toContain('"content":"ox"');
+  });
+
+  it("never falls back for the openai family", async () => {
+    setEntitlement({ speed_tier: "fast", model_family: "openai" });
+    const emptyCompletion = {
+      choices: [{ message: { role: "assistant", content: null } }],
+    };
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify(emptyCompletion), { status: 200 })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await POST(completionRequest({ messages: [] }), {
+      params: Promise.resolve({ path: ["chat", "completions"] }),
+    });
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("still exposes only tier names to boxes (C2)", async () => {
     setEntitlement({ model_family: "inkling" });
     const response = await GET(
