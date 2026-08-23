@@ -42,6 +42,7 @@ describe("onairos same-origin relay", () => {
         headers: {
           "content-type": "application/json",
           "x-api-key": "dev-key-123",
+          origin: "https://mini.wzrd.tech",
           cookie: "mini_session=secret",
         },
         body: JSON.stringify({ ping: 1 }),
@@ -53,6 +54,7 @@ describe("onairos same-origin relay", () => {
     expect(url.toString()).toBe("https://api2.onairos.uk/dev/validate-apikey");
     const sent = init.headers as Headers;
     expect(sent.get("x-api-key")).toBe("dev-key-123");
+    expect(sent.get("origin")).toBe("https://mini.wzrd.tech");
     expect(sent.get("cookie")).toBeNull();
   });
 

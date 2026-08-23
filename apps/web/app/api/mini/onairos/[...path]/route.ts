@@ -28,6 +28,11 @@ const FORWARD_REQUEST_HEADERS = [
   // attribution — without these /google/authorize can refuse the web flow.
   "x-sdk-platform",
   "x-onairos-utm-source",
+  // Onairos approves browser access per exact origin (Domains dashboard);
+  // relayed calls must still identify the page origin or the allowlist
+  // can't match. Never carries credentials — just the caller's origin.
+  "origin",
+  "referer",
 ];
 
 const FORWARD_RESPONSE_HEADERS = ["content-type"];
