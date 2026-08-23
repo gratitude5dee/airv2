@@ -14,7 +14,12 @@ vi.mock("@/lib/supabase", async () => {
   return { serviceClient: () => makeFakeSupabase(testDb) };
 });
 vi.mock("@/lib/box/desktop", () => ({
+  desktopStreamOrigin: vi.fn(async () => "https://box-host.example"),
   desktopStreamUrl: vi.fn(async () => "https://box-host.example/stream/xyz"),
+  desktopStreamUrlIfUp: vi.fn(async () => ({
+    status: "up",
+    url: "https://box-host.example/stream/xyz",
+  })),
   DesktopUnavailableError: class extends Error {},
 }));
 vi.mock("@/lib/orchestrator/boxes", () => ({
