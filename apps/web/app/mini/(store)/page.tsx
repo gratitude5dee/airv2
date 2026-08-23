@@ -229,8 +229,8 @@ export default async function StoreHome({
           const row = slugs
             .map((slug) => bySlug.get(slug))
             .filter((app): app is RegistryApp => Boolean(app));
-          if (row.length === 0) return null;
           const [featured, ...others] = row;
+          if (!featured) return null;
           return (
             <section key={label} className="rise-in mt-8">
               <h3 className="m-0 mb-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
