@@ -66,6 +66,7 @@ import { OnairosError } from "@/lib/onairos/context";
 import { syncOnairos } from "@/lib/onairos/sync";
 import { createSpectrumSender } from "@/lib/spectrum/sender";
 import { externalOrigin } from "../gates";
+import { mintToken } from "../tokens";
 import { baseHeaders, esc, forbidden, withBaseHeaders } from "../html";
 import {
   DEFAULT_THEME,
@@ -299,7 +300,11 @@ function doneForm(step: OnboardingStepId, label: string): string {
   return `<form method="post" class="inline"><input type="hidden" name="action" value="mark_done"><input type="hidden" name="step" value="${esc(step)}"><button>${esc(label)}</button></form>`;
 }
 
-function stepBody(snapshot: OnboardingSnapshot, step: OnboardingStepId): string {
+function stepBody(
+  snapshot: OnboardingSnapshot,
+  step: OnboardingStepId,
+  browserSignin: string | null
+): string {
   if (step === "username") {
     const current = snapshot.username
       ? `<p>Current: <strong>@${esc(snapshot.username)}</strong></p>`
@@ -360,10 +365,16 @@ function stepBody(snapshot: OnboardingSnapshot, step: OnboardingStepId): string 
       return `<p>Connected — your imported context lives on your computer, and Settings has Re-sync / Disconnect.</p><div class="row actions">${skipForm("onairos")}</div>`;
     }
     const apiKey = env.onairosApiKey() ?? "";
+    // Google blocks OAuth inside embedded webviews (disallowed_useragent),
+    // so a card-opened Messages sheet offers a signed jump into the real
+    // browser where the Google path works.
+    const browserLine = browserSignin
+      ? `<p class="muted">Using Google to sign in? Google blocks sign-in inside Messages — <a href="${esc(browserSignin)}" target="_blank" rel="noopener">open this step in your browser</a>, finish there, then come back and tap Refresh.</p><form method="post" class="inline"><input type="hidden" name="action" value="noop"><button class="ghost">Refresh</button></form>`
+      : "";
     // The native SDK flow runs right here; the key only ever renders on the
     // owner's own authenticated slide (never in a public bundle), and the
     // handoff posts back as a regular form (action=onairos_handoff).
-    return `<p class="muted">Sign in with Onairos to import your personal context — the consent flow opens right here, and your imported context lives on your computer, never on the platform.</p><div id="onairos-connect" data-api-key="${esc(apiKey)}"><p class="muted">Loading Onairos sign-in…</p></div><script src="/creator-os/onairos-connect.js" defer></script><details><summary>Or connect via iMessage</summary><p class="muted">Onairos asks for your account email, a verification code, and your YES right in your iMessage thread.</p><form method="post" class="inline"><input type="hidden" name="action" value="connect_onairos"><button class="ghost">Connect via iMessage</button></form></details><div class="row actions">${skipForm("onairos")}</div>`;
+    return `<p class="muted">Sign in with Onairos to import your personal context — the consent flow opens right here, and your imported context lives on your computer, never on the platform.</p><div id="onairos-connect" data-api-key="${esc(apiKey)}"><p class="muted">Loading Onairos sign-in…</p></div><script src="/creator-os/onairos-connect.js" defer></script>${browserLine}<details><summary>Or connect via iMessage</summary><p class="muted">Onairos asks for your account email, a verification code, and your YES right in your iMessage thread.</p><form method="post" class="inline"><input type="hidden" name="action" value="connect_onairos"><button class="ghost">Connect via iMessage</button></form></details><div class="row actions">${skipForm("onairos")}</div>`;
   }
   if (step === "secrets") {
     const managerLines = snapshot.managers
@@ -525,7 +536,8 @@ export function renderOnboarding(
   snapshot: OnboardingSnapshot,
   active: OnboardingStepId,
   notice: string | null,
-  lite = false
+  lite = false,
+  browserSignin: string | null = null
 ): string {
   const index = ONBOARDING_STEPS.indexOf(active);
   const prev = index > 0 ? ONBOARDING_STEPS[index - 1] : null;
@@ -583,7 +595,7 @@ export function renderOnboarding(
     current.tokens.scrim === "none"
       ? ""
       : '<div class="scrim" aria-hidden="true"></div>';
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>Onboarding — ${esc(STEP_TITLES[active])}</title>${fonts}<style>${tokenBlock(current.tokens)}${SLIDE_CSS}${lite ? LITE_CSS : ""}</style>${shader}</head><body>${backdropHtml}${scrim}${grain}<div class="frame"><header class="bar"><span class="logo-pill"><img src="/creator-os/wzrd-wordmark-1600.png" alt="WZRD.tech"></span><span class="counter">${pad(index + 1)} / ${pad(ONBOARDING_STEPS.length)}${esc(statusTag)}</span></header><main class="slide">${busy}${noticeHtml}<p class="kicker">${pad(index + 1)} / ${esc(STEP_KICKERS[active])}</p><h1>${esc(STEP_TITLES[active])}</h1><section class="panel">${stepBody(snapshot, active)}</section></main><footer class="nav">${prev ? `<a class="navlink" href="${href(prev)}">← Back</a>` : '<span class="navlink ghosted">← Back</span>'}<nav class="dots" aria-label="Steps">${dots}</nav>${next ? `<a class="navlink" href="${href(next)}">Next →</a>` : '<span class="navlink ghosted">Next →</span>'}</footer></div></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>Onboarding — ${esc(STEP_TITLES[active])}</title>${fonts}<style>${tokenBlock(current.tokens)}${SLIDE_CSS}${lite ? LITE_CSS : ""}</style>${shader}</head><body>${backdropHtml}${scrim}${grain}<div class="frame"><header class="bar"><span class="logo-pill"><img src="/creator-os/wzrd-wordmark-1600.png" alt="WZRD.tech"></span><span class="counter">${pad(index + 1)} / ${pad(ONBOARDING_STEPS.length)}${esc(statusTag)}</span></header><main class="slide">${busy}${noticeHtml}<p class="kicker">${pad(index + 1)} / ${esc(STEP_KICKERS[active])}</p><h1>${esc(STEP_TITLES[active])}</h1><section class="panel">${stepBody(snapshot, active, browserSignin)}</section></main><footer class="nav">${prev ? `<a class="navlink" href="${href(prev)}">← Back</a>` : '<span class="navlink ghosted">← Back</span>'}<nav class="dots" aria-label="Steps">${dots}</nav>${next ? `<a class="navlink" href="${href(next)}">Next →</a>` : '<span class="navlink ghosted">Next →</span>'}</footer></div></body></html>`;
 }
 
 function activeStep(ctx: MiniAppContext, snapshot: OnboardingSnapshot): OnboardingStepId {
@@ -599,6 +611,28 @@ function activeStep(ctx: MiniAppContext, snapshot: OnboardingSnapshot): Onboardi
 function activeTheme(ctx: MiniAppContext): Theme {
   const requested = ctx.request.nextUrl.searchParams.get("theme") ?? "";
   return theme(isThemeId(requested) ? requested : DEFAULT_THEME);
+}
+
+/**
+ * Signed jump into the real browser for the Onairos slide — Google refuses
+ * OAuth inside embedded webviews (disallowed_useragent), so a card-opened
+ * Messages sheet gets a link that finishes the sign-in in Safari. Multi-use
+ * within its TTL, minted per render, never stored.
+ */
+function browserSigninHref(
+  ctx: MiniAppContext,
+  snapshot: OnboardingSnapshot,
+  active: OnboardingStepId
+): string | null {
+  if (ctx.session.via !== "card") return null;
+  if (!rendersNativeOnairos(snapshot, active)) return null;
+  const token = mintToken(
+    ctx.session.userId,
+    "onboarding",
+    ctx.session.resourceId,
+    15
+  );
+  return `${env.appOrigin()}/mini/onboarding?t=${token}`;
 }
 
 /** The Onairos slide mounts the vendor SDK when a native connect is possible
@@ -629,7 +663,8 @@ async function respond(
       snapshot,
       active,
       notice,
-      ctx.session.via === "card"
+      ctx.session.via === "card",
+      browserSigninHref(ctx, snapshot, active)
     ),
     rendersNativeOnairos(snapshot, active)
   );
@@ -704,7 +739,8 @@ export const onboarding: MiniAppModule = {
         snapshot,
         active,
         null,
-        ctx.session.via === "card"
+        ctx.session.via === "card",
+        browserSigninHref(ctx, snapshot, active)
       ),
       rendersNativeOnairos(snapshot, active)
     );
@@ -790,6 +826,11 @@ export const onboarding: MiniAppModule = {
       const ok = await setSpeedTier(supabase, userId, tier);
       if (ok) await markSafely(supabase, userId, "model", "done");
       return respond(ctx, ok ? null : "model", ok ? `Speed set to ${tier}.` : "Update failed — try again.");
+    }
+
+    // Plain re-render — e.g. "Refresh" after finishing a browser sign-in.
+    if (action === "noop") {
+      return respond(ctx, null, null);
     }
 
     if (action === "refresh_ingest") {

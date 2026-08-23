@@ -291,10 +291,26 @@ describe("home launcher", () => {
     expect(res.status).toBe(200);
     const body = await res.text();
     expect(body).toContain('href="/mini/calendar?t=');
-    expect(body).not.toContain('href="/mini/home?t=');
+    // Home is not in the launcher grid; the only self-link is the header
+    // wordmark's signed home link.
+    expect(body).toContain('class="logo-pill" href="/mini/home?t=');
+    expect(body.split('href="/mini/home?t=').length).toBe(2);
     expect(body).not.toContain("draftapp");
     const token = (body.match(/href="\/mini\/calendar\?t=([^"]+)"/) ?? [])[1] ?? "";
     const claims = verifyToken(decodeURIComponent(token), "calendar");
+    expect(claims?.userId).toBe("user-1");
+  });
+
+  it("refreshes the session cookie on every gated render (sliding session)", async () => {
+    const request = new NextRequest("https://mini.example/mini/home");
+    request.cookies.set("mini_home", mintToken("user-1", "home", "default", 15));
+    const res = await GET(request, params("home"));
+    expect(res.status).toBe(200);
+    const setCookie = res.headers.get("set-cookie") ?? "";
+    expect(setCookie).toContain("mini_home=");
+    expect(setCookie).toContain("Max-Age=900");
+    const value = (setCookie.match(/mini_home=([^;]+)/) ?? [])[1] ?? "";
+    const claims = verifyToken(decodeURIComponent(value), "home");
     expect(claims?.userId).toBe("user-1");
   });
 

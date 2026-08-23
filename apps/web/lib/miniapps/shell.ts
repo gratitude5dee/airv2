@@ -6,15 +6,15 @@
  * via `shellHtml`; everything visual comes from theme tokens (`var(--token)`).
  *
  * Card-opened sessions (Messages extension) get a lighter variant: the
- * shader stays (it is the brand), but backdrop-filter blur and the entrance
- * animation are dropped and the shader runs in its calmer mode — the
+ * backdrop stays (it is the brand) but runs at 1x pixel ratio, and
+ * backdrop-filter blur and the entrance animation are dropped — the
  * extension webview has a tight memory/GPU budget.
  */
 import { NextResponse } from "next/server";
 import { env } from "../env";
 import { baseHeaders, esc } from "./html";
 import { themeCsp, tokenBlock, type Theme } from "./themes";
-import { activeBackground, activeTheme } from "./themeContext";
+import { activeBackground, activeHomeHref, activeTheme } from "./themeContext";
 
 const GRAIN_SVG =
   "data:image/svg+xml,%3Csvg viewBox='0 0 160 160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.93' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E";
@@ -28,6 +28,8 @@ const SHELL_CSS = `
 *{box-sizing:border-box}
 html,body{margin:0;min-height:100%}
 html{background:var(--canvas);background-attachment:fixed}
+html{-webkit-tap-highlight-color:transparent}
+a,button,input,select,textarea,summary,label{touch-action:manipulation}
 body{min-height:100svh;background:transparent;color:var(--ink);font-family:var(--font-body);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
 .backdrop{position:fixed;inset:0;z-index:0;pointer-events:none;display:block}
 .scrim{position:fixed;inset:0;z-index:1;pointer-events:none;background:var(--scrim)}
@@ -36,6 +38,9 @@ body{min-height:100svh;background:transparent;color:var(--ink);font-family:var(-
 header.bar{display:flex;align-items:center;justify-content:space-between;gap:0.75rem;font-family:var(--font-ui)}
 .logo-pill{display:inline-flex;align-items:center;height:clamp(2.7rem,9vw,3.4rem);padding:0 clamp(0.85rem,3vw,1.25rem);border-radius:var(--radius-pill);border:1px solid var(--ring);background:var(--logo-plate);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);box-shadow:var(--shadow)}
 .logo-pill img{display:block;height:clamp(1.2rem,4.4vw,1.6rem);width:auto}
+a.logo-pill{text-decoration:none;transition:transform 180ms ease}
+a.logo-pill:hover{transform:scale(1.03)}
+a.logo-pill:active{transform:scale(0.96)}
 .app-pill{display:inline-flex;align-items:center;height:2.2rem;padding:0 0.9rem;border-radius:var(--radius-pill);border:1px solid var(--ring);background:var(--panel-bg);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);font-size:0.62rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--ink)}
 main.app{flex:1;display:flex;flex-direction:column;align-items:center;animation:riseIn var(--slide-in) cubic-bezier(0.22,1,0.36,1)}
 @keyframes riseIn{from{opacity:0;transform:translateY(22px)}to{opacity:1;transform:translateY(0)}}
@@ -75,6 +80,11 @@ li strong{color:var(--ink)}
 table{width:100%;border-collapse:collapse;font-size:0.85rem}
 th{font-family:var(--font-ui);font-size:0.6rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-muted);text-align:left;padding:0.4rem 0.5rem;border-bottom:1px solid var(--ring)}
 td{text-align:left;padding:0.5rem;border-bottom:1px solid var(--ring)}
+td.nowrap{white-space:nowrap;font-family:var(--font-ui);font-size:0.72rem;color:var(--ink-muted)}
+.tablewrap{max-height:min(52svh,420px);overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;border:1px solid var(--ring);border-radius:var(--radius-well);margin-bottom:0.6rem}
+.tablewrap table{min-width:100%}
+.tablewrap th{position:sticky;top:0;background:var(--panel-bg);z-index:1}
+.tablewrap td,.tablewrap th{padding-left:0.7rem;padding-right:0.7rem}
 form{margin:0}
 form.inline{display:inline-flex}
 form.stack{display:grid;gap:0.55rem;margin-top:0.5rem}
@@ -168,10 +178,11 @@ export interface ShellOptions {
 export function renderShell(options: ShellOptions): string {
   const current = options.theme ?? activeTheme();
   const lite = options.lite ?? false;
-  // Full-screen sessions swap the theme's backdrop for the user's chosen
-  // effect (a lazy-loaded React Bits port). Card-opened lite sessions keep
-  // the theme backdrop — the Messages webview can't afford a three.js scene.
-  const background = lite ? "theme" : activeBackground();
+  // Every session paints the user's chosen backdrop effect (a lazy-loaded
+  // React Bits port). Card-opened lite sessions run it too — at 1x pixel
+  // ratio (the entry caps DPR when data-lite is set) so the Messages
+  // webview's tight GPU budget still holds.
+  const background = activeBackground();
   const fonts =
     current.fontStylesheet === null
       ? ""
@@ -185,7 +196,7 @@ export function renderShell(options: ShellOptions): string {
         : "";
   const backdropHtml =
     background !== "theme"
-      ? `<div id="wz-bg" class="backdrop" data-effect="${esc(background)}" aria-hidden="true"></div>`
+      ? `<div id="wz-bg" class="backdrop" data-effect="${esc(background)}"${lite ? ' data-lite="1"' : ""} aria-hidden="true"></div>`
       : backdrop.kind === "shader"
         ? (lite
             ? backdrop.element.replace('rays="0.9"', 'rays="0.4"')
@@ -207,7 +218,17 @@ export function renderShell(options: ShellOptions): string {
     options.headline === false
       ? ""
       : `<p class="kicker">${esc(options.kicker)}</p><h1>${esc(options.title)}</h1>`;
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>${esc(options.title)}</title>${fonts}<style>${tokenBlock(current.tokens)}${SHELL_CSS}${lite ? LITE_CSS : ""}</style>${shader}</head><body>${backdropHtml}${scrim}${grain}<div class="frame"><header class="bar"><span class="logo-pill"><img src="/creator-os/wzrd-wordmark-1600.png" alt="WZRD.tech"></span><span class="app-pill">${esc(options.kicker)}</span></header><main class="app">${noticeHtml}${headline}${options.body}</main></div></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>${esc(options.title)}</title>${fonts}<style>${tokenBlock(current.tokens)}${SHELL_CSS}${lite ? LITE_CSS : ""}</style>${shader}</head><body>${backdropHtml}${scrim}${grain}<div class="frame"><header class="bar">${logoPill()}<span class="app-pill">${esc(options.kicker)}</span></header><main class="app">${noticeHtml}${headline}${options.body}</main></div></body></html>`;
+}
+
+/** The header wordmark — a link back to the Home mini-app when the session
+ * carries a home link, a plain plate otherwise. */
+function logoPill(): string {
+  const home = activeHomeHref();
+  const img = '<img src="/creator-os/wzrd-wordmark-1600.png" alt="WZRD.tech">';
+  return home
+    ? `<a class="logo-pill" href="${esc(home)}" aria-label="Home">${img}</a>`
+    : `<span class="logo-pill">${img}</span>`;
 }
 
 /** Response wrapper: theme-derived CSP over the strict mini-app baseline. */
