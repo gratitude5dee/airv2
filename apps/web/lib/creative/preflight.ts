@@ -21,6 +21,7 @@ export const REQUIRED_GMI_MODELS = [
   "gpt-image-2-edit",
   "seedance-2-0-fast-260128",
   "gemini-omni-flash-preview",
+  "heygen-avatar-v4",
 ] as const;
 
 /**
@@ -48,6 +49,7 @@ export const REQUIRED_GMI_MODEL_PARAMETERS = {
     "generate_audio",
     "watermark",
   ],
+  "heygen-avatar-v4": ["video_inputs", "dimension", "duration"],
 } as const satisfies Record<
   (typeof REQUIRED_GMI_MODELS)[number],
   readonly string[]

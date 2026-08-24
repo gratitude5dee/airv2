@@ -140,6 +140,11 @@ export const env = {
   // instead of failing the deploy.
   groqApiKey: (): string | null => process.env.GROQ_API_KEY ?? null,
   gmiCloudApiKey: (): string | null => process.env.GMI_CLOUD_API_KEY ?? null,
+  // Direct HeyGen API key — used only to create per-user avatar IDs
+  // (POST /v3/avatars); video rendering stays on the GMI queue.
+  heygenApiKey: (): string | null => process.env.HEYGEN_API_KEY ?? null,
+  heygenApiUrl: (): string =>
+    optional("HEYGEN_API_URL", "https://api.heygen.com"),
   gmiOrganizationId: (): string | null =>
     process.env.GMI_ORGANIZATION_ID ?? null,
   gmiRequestQueueUrl: (): string =>

@@ -31,6 +31,24 @@ import {
 import { INKLING_CONSENT } from "@/lib/entitlements/inkling";
 import { StartLimitError } from "@/lib/orchestrator/boxes";
 import {
+  getAvatarAssetId,
+  listIdentityMediaViews,
+  removeIdentityAsset,
+  setAvatarAssetId,
+  signedIdentityUrl,
+  uploadIdentityImage,
+  type IdentityMediaView,
+} from "@/lib/identity/assets";
+import { generateCharacterSheet } from "@/lib/identity/generate";
+import { heygenAvailable } from "@/lib/identity/heygen";
+import {
+  createTwinVideo,
+  createUserHeygenAvatar,
+  getDigitalTwin,
+  type DigitalTwin,
+} from "@/lib/identity/twin";
+import type { CreativeAsset } from "@/lib/assets/pipeline";
+import {
   DEFAULT_THEME,
   isThemeId,
   THEME_IDS,
@@ -70,6 +88,11 @@ interface SettingsData {
     last_used_at: string | null;
   }>;
   bucket: { bytes_used: number; quota_bytes: number } | null;
+  identityMedia: IdentityMediaView[];
+  avatarAssetId: string | null;
+  twin: DigitalTwin | null;
+  twinVideoUrl: string | null;
+  twinAvailable: boolean;
 }
 
 async function loadSettings(
@@ -82,6 +105,9 @@ async function loadSettings(
     { data: addressRow },
     { data: tokens },
     { data: bucket },
+    identityMedia,
+    avatarAssetId,
+    twin,
   ] = await Promise.all([
     supabase
       .from("users")
@@ -111,7 +137,25 @@ async function loadSettings(
       .select("bytes_used, quota_bytes")
       .eq("user_id", userId)
       .maybeSingle(),
+    listIdentityMediaViews(supabase, userId),
+    getAvatarAssetId(supabase, userId).catch(() => null),
+    getDigitalTwin(supabase, userId).catch(() => null),
   ]);
+  let twinVideoUrl: string | null = null;
+  if (twin?.video_asset_id) {
+    const { data: videoAsset } = await supabase
+      .from("creative_assets")
+      .select("*")
+      .eq("id", twin.video_asset_id)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (videoAsset) {
+      twinVideoUrl = await signedIdentityUrl(
+        supabase,
+        videoAsset as CreativeAsset
+      ).catch(() => null);
+    }
+  }
   return {
     username: (user?.username as string | null) ?? null,
     miniappTheme: (() => {
@@ -132,6 +176,11 @@ async function loadSettings(
     pluginSessions: (tokens ?? []) as SettingsData["pluginSessions"],
     bucket:
       (bucket as { bytes_used: number; quota_bytes: number } | null) ?? null,
+    identityMedia,
+    avatarAssetId,
+    twin,
+    twinVideoUrl,
+    twinAvailable: env.gmiCloudApiKey() !== null,
   };
 }
 
@@ -227,6 +276,7 @@ function renderSettings(
         `<div class="card">Your public contact card: <strong>${esc(`${env.appOrigin()}/@${data.username}`)}</strong><p class="muted">Shows only your name, agent address, and contact button — nothing else.</p></div>`
       )
     : "";
+  const identitySection = section("IDENTITY VAULT", identityVaultBody(data));
   const timezoneSection = section(
     "TIMEZONE",
     comingSoon(
@@ -263,7 +313,7 @@ function renderSettings(
       "Export and deletion are operator-run today — ask and it happens (full export / cascade delete already exist server-side). Self-serve buttons land here."
     )
   );
-  const body = `<section class="panel">${usernameSection}${themeSection}${speedSection}${modelSection}${emailSection}${contactSection}${timezoneSection}${memorySection}${onairosSection}${pluginSection}${storageSection}${traceSection}${dataSection}
+  const body = `<section class="panel">${usernameSection}${themeSection}${speedSection}${modelSection}${emailSection}${contactSection}${identitySection}${timezoneSection}${memorySection}${onairosSection}${pluginSection}${storageSection}${traceSection}${dataSection}
 ${promptBar("Ask your agent — e.g. change my speed tier to fast…")}</section>`;
   return renderShell({
     title: "Settings",
@@ -272,6 +322,52 @@ ${promptBar("Ask your agent — e.g. change my speed tier to fast…")}</section
     notice,
     lite,
   });
+}
+
+const THUMB_STYLE =
+  "width:92px;height:92px;object-fit:cover;border-radius:12px;display:block";
+
+/** The vault cards: avatar preview, per-image set-as-avatar/delete, upload,
+ * re-generate, and the digital-twin status — all through the shared
+ * lib/identity helpers (same code paths as onboarding). */
+function identityVaultBody(data: SettingsData): string {
+  const current = data.identityMedia.find(
+    (m) => m.assetId === data.avatarAssetId && m.url
+  );
+  const avatarCard = `<div class="card">${
+    current
+      ? `<div class="row"><img src="${esc(current.url ?? "")}" alt="avatar" style="${THUMB_STYLE}"><span class="grow">Current avatar</span></div>`
+      : `<span class="muted">No avatar set — pick one below.</span>`
+  }</div>`;
+  const items = data.identityMedia
+    .filter((m) => m.role !== "avatar" && m.url)
+    .map(
+      (m) =>
+        `<div class="item"><img src="${esc(m.url ?? "")}" alt="${esc(m.role === "character_sheet" ? "character sheet" : "selfie")}" style="${THUMB_STYLE}"><span class="grow muted">${esc(m.role === "character_sheet" ? "character sheet" : "selfie")}</span><form method="post" class="inline"><input type="hidden" name="action" value="set_avatar"><input type="hidden" name="asset_id" value="${esc(m.assetId)}"><button${m.assetId === data.avatarAssetId ? "" : ' class="ghost"'}>${m.assetId === data.avatarAssetId ? "Avatar" : "Set as avatar"}</button></form><form method="post" class="inline"><input type="hidden" name="action" value="delete_identity_asset"><input type="hidden" name="asset_id" value="${esc(m.assetId)}"><button class="ghost">Delete</button></form></div>`
+    )
+    .join("");
+  const gallery =
+    items || '<div class="card muted">No identity images yet.</div>';
+  const upload = `<div class="card"><form method="post" enctype="multipart/form-data" class="row"><input type="hidden" name="action" value="upload_selfie"><input type="file" name="file" accept="image/png,image/jpeg,image/webp"><button>Upload image</button></form><p class="muted">PNG, JPEG, or WebP — stored privately in your image vault.</p>${
+    data.username
+      ? `<form method="post" class="inline"><input type="hidden" name="action" value="generate_character_sheet"><button class="ghost">Re-generate character sheet</button></form>`
+      : '<p class="muted">Set a username to generate a character sheet.</p>'
+  }</div>`;
+  const heygenCard = heygenAvailable()
+    ? `<div class="card">${
+        data.twin?.provider_avatar_id
+          ? "HeyGen avatar ready — videos render with your trained avatar ID."
+          : `<form method="post" class="inline"><input type="hidden" name="action" value="create_heygen_avatar"><button>Create HeyGen avatar</button></form><p class="muted">Recommended — trains a reusable avatar ID from your newest identity image.</p>`
+      }</div>`
+    : "";
+  const twinCard = !data.twinAvailable
+    ? '<div class="card muted">Digital twin creation isn\'t configured on this deployment.</div>'
+    : `<div class="card">Digital twin: <strong>${esc(data.twin ? data.twin.status : "not created")}</strong>${
+        data.twinVideoUrl
+          ? `<video src="${esc(data.twinVideoUrl)}" controls playsinline style="width:100%;border-radius:12px;margin-top:0.5rem"></video>`
+          : ""
+      }<form method="post" class="stack"><input type="hidden" name="action" value="recreate_twin"><input type="text" name="script" placeholder="What should your twin say?" maxlength="500"><button class="ghost">${data.twin ? "Re-create twin" : "Create twin"}</button></form></div>`;
+  return `${avatarCard}${gallery}${upload}${heygenCard}${twinCard}`;
 }
 
 async function respond(
@@ -284,7 +380,7 @@ async function respond(
     renderTracesSection(ctx),
     renderOnairosSection(ctx),
   ]);
-  return shellHtml(
+  const response = shellHtml(
     renderSettings(
       data,
       { memory, traces, onairos },
@@ -292,6 +388,14 @@ async function respond(
       ctx.session.via === "card"
     )
   );
+  // The IDENTITY VAULT previews private assets via short-TTL signed storage
+  // URLs — widen img/media the way apps/video.tsx does for its shell.
+  const csp = response.headers.get("Content-Security-Policy") ?? "";
+  response.headers.set(
+    "Content-Security-Policy",
+    `${csp.replace("img-src 'self'", "img-src 'self' https:")}; media-src https:`
+  );
+  return response;
 }
 
 export const settings: MiniAppModule = {
@@ -404,6 +508,106 @@ export const settings: MiniAppModule = {
       if (!isSpeedTier(tier)) return forbidden("invalid tier");
       const ok = await setSpeedTier(ctx.supabase, userId, tier);
       return respond(ctx, ok ? `Speed set to ${tier}.` : "Update failed.");
+    }
+
+    if (action === "upload_selfie") {
+      const file = form.get("file");
+      if (!(file instanceof File) || file.size === 0) {
+        return respond(ctx, "Choose an image first.");
+      }
+      const result = await uploadIdentityImage(
+        ctx.supabase,
+        userId,
+        file,
+        "selfie"
+      );
+      return respond(
+        ctx,
+        result.ok ? "Added to your image vault." : result.error
+      );
+    }
+
+    if (action === "generate_character_sheet") {
+      const { data: user } = await ctx.supabase
+        .from("users")
+        .select("username")
+        .eq("id", userId)
+        .maybeSingle();
+      const username = (user?.username as string | null) ?? null;
+      if (!username) {
+        return respond(ctx, "Set a username first — the character sheet is bound to your @name.");
+      }
+      const result = await generateCharacterSheet(ctx.supabase, userId, username);
+      return respond(ctx, result.notice);
+    }
+
+    if (action === "set_avatar") {
+      const assetId = String(form.get("asset_id") ?? "");
+      if (!assetId) return forbidden("missing asset");
+      const ok = await setAvatarAssetId(ctx.supabase, userId, assetId);
+      return respond(
+        ctx,
+        ok
+          ? "Avatar set."
+          : "Couldn't set that avatar — pick one of your identity images."
+      );
+    }
+
+    if (action === "delete_identity_asset") {
+      const assetId = String(form.get("asset_id") ?? "");
+      if (!assetId) return forbidden("missing asset");
+      const ok = await removeIdentityAsset(ctx.supabase, userId, assetId);
+      return respond(
+        ctx,
+        ok ? "Removed from your identity vault." : "Nothing to remove."
+      );
+    }
+
+    if (action === "create_heygen_avatar") {
+      if (!heygenAvailable()) {
+        return respond(ctx, "HeyGen isn't configured on this deployment.");
+      }
+      const { data: user } = await ctx.supabase
+        .from("users")
+        .select("username")
+        .eq("id", userId)
+        .maybeSingle();
+      const username = (user?.username as string | null) ?? null;
+      if (!username) return respond(ctx, "Set a username first.");
+      const media = await listIdentityMediaViews(ctx.supabase, userId);
+      const reference = media.find((m) => m.role !== "avatar" && m.url);
+      if (!reference?.url) {
+        return respond(ctx, "Upload an identity image first.");
+      }
+      const result = await createUserHeygenAvatar(
+        ctx.supabase,
+        userId,
+        username,
+        reference.url
+      );
+      if (!result.ok) return respond(ctx, result.error);
+      await setAvatarAssetId(ctx.supabase, userId, reference.assetId).catch(
+        () => false
+      );
+      return respond(ctx, "HeyGen avatar created — twin videos now use your trained avatar ID.");
+    }
+
+    if (action === "recreate_twin") {
+      if (env.gmiCloudApiKey() === null) {
+        return respond(ctx, "Digital twin creation isn't configured on this deployment.");
+      }
+      const script = String(form.get("script") ?? "").trim().slice(0, 500);
+      if (!script) return respond(ctx, "Write a line for your twin to say first.");
+      const media = await listIdentityMediaViews(ctx.supabase, userId);
+      const reference = media.find((m) => m.role !== "avatar" && m.url);
+      if (!reference?.url) {
+        return respond(ctx, "Upload an identity image first — the twin animates your reference photo.");
+      }
+      const result = await createTwinVideo(ctx.supabase, userId, {
+        avatarImageUrl: reference.url,
+        script,
+      });
+      return respond(ctx, result.notice);
     }
 
     return forbidden("unknown action");

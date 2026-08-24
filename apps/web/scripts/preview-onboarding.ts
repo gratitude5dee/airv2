@@ -19,6 +19,10 @@ const snapshot: OnboardingSnapshot = {
   state: defaultOnboardingState(),
   username: "gratitude",
   address: "gratitude@agents.wzrd.tech",
+  identityMedia: [],
+  avatarAssetId: null,
+  twin: null,
+  twinAvailable: false,
   connections: [
     { toolkit: "gmail", status: "active", connected_at: "2026-08-01" },
     { toolkit: "googlecalendar", status: "pending", connected_at: null },

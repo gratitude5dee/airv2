@@ -302,6 +302,49 @@ export function buildGenerationRequest(
   throw new Error(`Cannot generate media for router mode "${plan.mode}"`);
 }
 
+export type HeygenAvatarOptions = {
+  script: string;
+  voiceId?: string;
+  dimension?: { width: number; height: number };
+  durationSeconds?: number;
+} & (
+  | { avatarId: string; avatarImageUrl?: undefined }
+  | { avatarId?: undefined; avatarImageUrl: string }
+);
+
+/**
+ * Pure request builder for the HeyGen Avatar IV talking-head model. The
+ * queue advertises exactly `video_inputs` (required), `dimension`, and
+ * `duration` (verified against GMI's model-details endpoint); each segment
+ * carries a character — a trained HeyGen avatar ID when the user has one,
+ * otherwise a direct photo — and a text-to-speech voice per HeyGen's
+ * /v2/video/generate contract.
+ */
+export function buildHeygenAvatarRequest(
+  opts: HeygenAvatarOptions
+): GmiGenerationRequest {
+  return {
+    kind: "video",
+    model: "heygen-avatar-v4",
+    payload: {
+      video_inputs: [
+        {
+          character: opts.avatarId
+            ? { type: "avatar", avatar_id: opts.avatarId }
+            : { type: "photo", image_url: opts.avatarImageUrl },
+          voice: {
+            type: "text",
+            input_text: opts.script,
+            ...(opts.voiceId ? { voice_id: opts.voiceId } : {}),
+          },
+        },
+      ],
+      dimension: opts.dimension ?? { width: 1280, height: 720 },
+      ...(opts.durationSeconds ? { duration: opts.durationSeconds } : {}),
+    },
+  };
+}
+
 export async function generateCompiledRequest(
   request: GmiGenerationRequest,
   timeoutMs = DEFAULT_GENERATION_TIMEOUT_MS,
