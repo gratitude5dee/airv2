@@ -320,6 +320,34 @@ describe("buzz document normalizer", () => {
     expect(doc.pending[0]?.note).toBeUndefined();
   });
 
+  it("keeps bare 64-hex Nostr identifiers in id fields", () => {
+    const eventId = "b".repeat(64);
+    const channelId = "c".repeat(64);
+    const pubkey = "d".repeat(64);
+    const doc = normalizeBuzzDoc({
+      channels: [{ id: channelId, name: "general" }],
+      threads: [{ channelId, rootEventId: eventId, excerpt: "hello" }],
+      dms: [{ id: eventId, participants: [pubkey, NSEC] }],
+      canvases: [{ channelId }],
+      workflows: [{ id: eventId, name: "digest", channelId }],
+    });
+    expect(doc.channels).toEqual([{ id: channelId, name: "general" }]);
+    expect(doc.threads[0]?.rootEventId).toBe(eventId);
+    expect(doc.threads[0]?.channelId).toBe(channelId);
+    expect(doc.dms[0]?.participants).toEqual([pubkey]);
+    expect(doc.canvases[0]?.channelId).toBe(channelId);
+    expect(doc.workflows[0]?.channelId).toBe(channelId);
+  });
+
+  it("still drops key encodings from id fields", () => {
+    const doc = normalizeBuzzDoc({
+      channels: [{ id: NSEC, name: "general" }],
+      threads: [{ channelId: "c".repeat(64), rootEventId: NSEC }],
+    });
+    expect(doc.channels).toEqual([]);
+    expect(doc.threads).toEqual([]);
+  });
+
   it("bounds participants, counters, and list lengths", () => {
     const doc = normalizeBuzzDoc({
       dms: [

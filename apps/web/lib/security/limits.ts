@@ -5,6 +5,7 @@
  * fail open on a ledger read error — a counter outage must not take the
  * store down — but the record leg logs loudly so ops sees it.
  */
+import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type OpsEventKind =
@@ -15,7 +16,8 @@ export type OpsEventKind =
   | "upload_rejected"
   | "guest_session"
   | "grant"
-  | "rate_limited";
+  | "rate_limited"
+  | "pair_attempt";
 
 /** Per-user launch mints (store session or plugin bearer), per hour. */
 export const LAUNCHES_PER_HOUR = 60;
@@ -25,6 +27,8 @@ export const PUBLISHES_PER_DAY = 20;
 export const UPLOADS_PER_HOUR = 60;
 /** Guest grant mints, per owner per hour. */
 export const GRANTS_PER_HOUR = 30;
+/** Unauthenticated pairing-code exchange attempts, per source per hour. */
+export const PAIR_ATTEMPTS_PER_HOUR = 20;
 
 const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
@@ -168,6 +172,49 @@ export async function uploadRateLimited(
   if (uploads + rejected < UPLOADS_PER_HOUR) return false;
   await markRateLimited(supabase, userId, "upload", HOUR_MS);
   return true;
+}
+
+/**
+ * Hash the caller's network source for the pairing throttle: the ledger
+ * gets a stable per-source key, never a raw address.
+ */
+export function pairAttemptSource(forwardedFor: string | null): string {
+  const ip = forwardedFor?.split(",")[0]?.trim() || "unknown";
+  return createHash("sha256").update(ip).digest("hex").slice(0, 32);
+}
+
+/**
+ * Durable per-source throttle for the unauthenticated pairing exchanges
+ * (/api/berd/pair, /api/buzz/pair): the single-use code is the only
+ * credential there, so bound how fast one source can guess. Counts every
+ * attempt (valid or not); once over the limit, blocked calls read instead
+ * of write so hammering cannot grow the ledger. Fails open on a ledger
+ * read error, like the other MA11 limits.
+ */
+export async function pairExchangeRateLimited(
+  supabase: SupabaseClient,
+  source: string
+): Promise<boolean> {
+  const since = new Date(Date.now() - HOUR_MS).toISOString();
+  const { count, error } = await supabase
+    .from("ops_events")
+    .select("id", { count: "exact", head: true })
+    .eq("kind", "pair_attempt")
+    .eq("ref", source)
+    .gte("created_at", since);
+  if (error) {
+    console.error(
+      JSON.stringify({
+        msg: "ops event count failed",
+        kind: "pair_attempt",
+        error: error.message,
+      })
+    );
+    return false; // fail open, matching the other ledger limits
+  }
+  if ((count ?? 0) >= PAIR_ATTEMPTS_PER_HOUR) return true;
+  await recordOpsEvent(supabase, "pair_attempt", null, source);
+  return false;
 }
 
 export function grantRateLimited(

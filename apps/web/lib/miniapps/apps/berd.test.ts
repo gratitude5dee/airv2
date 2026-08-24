@@ -228,6 +228,21 @@ describe("berd document normalizer", () => {
     });
   });
 
+  it("keeps bare 64-hex identifiers in id fields but not key encodings", () => {
+    const hexId = "e".repeat(64);
+    const doc = normalizeBerdDoc({
+      sessions: [
+        { id: hexId, title: "planning", projectId: hexId },
+        { id: "sk-abcdefghijklmnop", title: "smuggled" },
+      ],
+      agents: [{ id: hexId, name: "Scout" }],
+    });
+    expect(doc.sessions).toEqual([
+      { id: hexId, title: "planning", projectId: hexId },
+    ]);
+    expect(doc.agents[0]?.id).toBe(hexId);
+  });
+
   it("bounds mirrored lists and string lengths", () => {
     const doc = normalizeBerdDoc({
       title: "t".repeat(500),
