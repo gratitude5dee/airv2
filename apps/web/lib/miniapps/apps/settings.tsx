@@ -606,7 +606,9 @@ export const settings: MiniAppModule = {
       const username = (user?.username as string | null) ?? null;
       if (!username) return respond(ctx, "Set a username first.");
       const media = await listIdentityMediaViews(ctx.supabase, userId);
-      const reference = media.find((m) => m.role !== "avatar" && m.url);
+      const reference = media.find(
+        (m) => (m.role === "selfie" || m.role === "character_sheet") && m.url
+      );
       if (!reference?.url) {
         return respond(ctx, "Upload an identity image first.");
       }
@@ -630,7 +632,9 @@ export const settings: MiniAppModule = {
       const script = String(form.get("script") ?? "").trim().slice(0, 500);
       if (!script) return respond(ctx, "Write a line for your twin to say first.");
       const media = await listIdentityMediaViews(ctx.supabase, userId);
-      const reference = media.find((m) => m.role !== "avatar" && m.url);
+      const reference = media.find(
+        (m) => (m.role === "selfie" || m.role === "character_sheet") && m.url
+      );
       if (!reference?.url) {
         return respond(ctx, "Upload an identity image first — the twin animates your reference photo.");
       }
