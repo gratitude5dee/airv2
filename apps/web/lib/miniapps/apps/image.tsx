@@ -24,6 +24,7 @@ import {
   updateImageDoc,
   type ImageDoc,
   type ImageLayer,
+  type LayerTransform,
 } from "../creativeDocs";
 import { promptBar, runPrompt } from "../promptBar";
 import { publicExporter } from "../publicExport";
@@ -38,6 +39,72 @@ function mediaShellHtml(body: string): NextResponse {
     csp.replace("img-src 'self'", "img-src 'self' https:")
   );
   return response;
+}
+
+/** The editor page runs the same-origin bundle: widen only by what that
+ * first-party code needs — script-src 'self' to load it, connect-src 'self'
+ * for its action fetches, img-src https: for signed asset previews. */
+function editorShellHtml(body: string): NextResponse {
+  const response = mediaShellHtml(body);
+  let csp = response.headers.get("Content-Security-Policy") ?? "";
+  if (!csp.includes("script-src")) csp += "; script-src 'self'";
+  if (!csp.includes("connect-src")) csp += "; connect-src 'self'";
+  response.headers.set("Content-Security-Policy", csp);
+  return response;
+}
+
+/** What the client editor renders from: the doc plus signed preview URLs.
+ * Only control-plane asset rows the user owns are signed — an assetId the
+ * doc invented (C9) simply gets no URL. */
+interface EditorPayload {
+  doc: ImageDoc;
+  flatUrl: string | null;
+  assetUrls: Record<string, string>;
+  notice?: string;
+  exportUrl?: string;
+}
+
+async function editorPayload(
+  ctx: MiniAppContext,
+  doc: ImageDoc
+): Promise<EditorPayload> {
+  const flatUrl = await signedFlatUrl(ctx, await flatAsset(ctx, doc));
+  const ids = [
+    ...new Set(
+      doc.layers
+        .filter((layer) => layer.kind === "asset" && layer.assetId)
+        .map((layer) => layer.assetId as string)
+    ),
+  ];
+  const assetUrls: Record<string, string> = {};
+  if (ids.length) {
+    const { data } = await ctx.supabase
+      .from("creative_assets")
+      .select("id, storage_key")
+      .eq("user_id", ctx.session.userId)
+      .in("id", ids);
+    for (const row of (data ?? []) as { id: string; storage_key: string }[]) {
+      const signed = await ctx.supabase.storage
+        .from(ASSETS_BUCKET)
+        .createSignedUrl(row.storage_key, DELIVERY_TTL_SECONDS);
+      if (signed.data?.signedUrl) assetUrls[row.id] = signed.data.signedUrl;
+    }
+  }
+  return { doc, flatUrl, assetUrls };
+}
+
+/** The owner's editor page: a mount node carrying the initial payload and
+ * the same-origin bundle. Everything visual lives in the bundle. */
+function renderEditor(payload: EditorPayload): string {
+  const body = `<div id="image-editor" data-payload="${esc(JSON.stringify(payload))}"></div>
+<script src="/creator-os/image-editor.js" defer></script>
+<noscript><p class="muted">This editor needs JavaScript — <a href="?classic=1">use the classic view</a>.</p></noscript>`;
+  return renderShell({
+    title: payload.doc.title,
+    kicker: "Studio",
+    body,
+    headline: false,
+  });
 }
 
 /** Tree rows in display order (top of stack first), with panel depth. */
@@ -362,6 +429,16 @@ export const image: MiniAppModule = {
         return unavailable(ctx.session.via === "card");
       throw error;
     }
+    const requestUrl = new URL(ctx.request.url);
+    // Owners get the client editor; card-opened (lite) sessions and guests
+    // keep the server-rendered classic view, as does ?classic=1.
+    if (
+      ctx.session.role === "owner" &&
+      ctx.session.via !== "card" &&
+      requestUrl.searchParams.get("classic") !== "1"
+    ) {
+      return editorShellHtml(renderEditor(await editorPayload(ctx, doc)));
+    }
     const asset = await flatAsset(ctx, doc);
     const flatUrl = await signedFlatUrl(ctx, asset);
     const url = new URL(ctx.request.url);
@@ -388,8 +465,34 @@ export const image: MiniAppModule = {
     const action = String(form.get("action") ?? "");
     const userId = ctx.session.userId;
     const resourceId = ctx.session.resourceId;
+    // The client editor posts the same action grammar with format=json and
+    // gets the authoritative doc back instead of a redirect.
+    const wantsJson = String(form.get("format") ?? "") === "json";
+    const respond = async (notice?: string): Promise<NextResponse> => {
+      if (!wantsJson) {
+        return redirectBack(
+          ctx,
+          notice ? `?notice=${encodeURIComponent(notice)}` : undefined
+        );
+      }
+      const doc = await getImageDoc(ctx.supabase, userId, resourceId);
+      const payload = await editorPayload(ctx, doc);
+      if (notice) payload.notice = notice;
+      return withBaseHeaders(NextResponse.json(payload));
+    };
     if (action === "export") {
-      return redirectBack(ctx, "?exported=1");
+      if (!wantsJson) return redirectBack(ctx, "?exported=1");
+      if (ctx.session.role !== "owner") return respond("export is owner-only.");
+      const doc = await getImageDoc(ctx.supabase, userId, resourceId);
+      const asset = await flatAsset(ctx, doc);
+      const payload = await editorPayload(ctx, doc);
+      if (asset) {
+        const url = await exportDelivery(ctx, asset);
+        if (url) payload.exportUrl = url;
+      } else {
+        payload.notice = "render a flat before exporting.";
+      }
+      return withBaseHeaders(NextResponse.json(payload));
     }
     try {
       if (
@@ -401,7 +504,7 @@ export const image: MiniAppModule = {
           action,
           String(form.get("prompt") ?? "")
         );
-        return redirectBack(ctx, `?notice=${encodeURIComponent(line)}`);
+        return respond(line);
       }
       if (action === "export-public") {
         const doc = await getImageDoc(ctx.supabase, userId, resourceId);
@@ -412,13 +515,13 @@ export const image: MiniAppModule = {
               doc.flatAssetId
             )
           : { line: "render a flat before exporting." };
-        return redirectBack(ctx, `?notice=${encodeURIComponent(result.line)}`);
+        return respond(result.line);
       }
       if (action === "prompt") {
         await runPrompt(ctx, String(form.get("text") ?? ""));
-        return redirectBack(ctx);
+        return respond();
       }
-      return await mutate(ctx, action, form);
+      return await mutate(ctx, action, form, respond);
     } catch (error) {
       if (error instanceof StartLimitError)
         return unavailable(ctx.session.via === "card");
@@ -430,7 +533,8 @@ export const image: MiniAppModule = {
 async function mutate(
   ctx: MiniAppContext,
   action: string,
-  form: FormData
+  form: FormData,
+  respond: (notice?: string) => Promise<NextResponse>
 ): Promise<NextResponse> {
   const userId = ctx.session.userId;
   const resourceId = ctx.session.resourceId;
@@ -518,6 +622,39 @@ async function mutate(
       kind: "remove",
       id: String(form.get("id") ?? ""),
     });
+  } else if (action === "select") {
+    const id = String(form.get("id") ?? "").trim();
+    await updateImageDoc(ctx.supabase, userId, resourceId, {
+      kind: "select",
+      id: id || null,
+    });
+  } else if (action === "reorder") {
+    await updateImageDoc(ctx.supabase, userId, resourceId, {
+      kind: "reorder",
+      id: String(form.get("id") ?? ""),
+      index: Number(form.get("index") ?? Number.NaN),
+    });
+  } else if (action === "set-transform") {
+    const num = (name: string): number | undefined => {
+      const raw = form.get(name);
+      if (raw === null || String(raw).trim() === "") return undefined;
+      const value = Number(raw);
+      return Number.isFinite(value) ? value : undefined;
+    };
+    const transform: Partial<LayerTransform> = {};
+    const x = num("x");
+    const y = num("y");
+    const scale = num("scale");
+    const rotation = num("rotation");
+    if (x !== undefined) transform.x = x;
+    if (y !== undefined) transform.y = y;
+    if (scale !== undefined) transform.scale = scale;
+    if (rotation !== undefined) transform.rotation = rotation;
+    await updateImageDoc(ctx.supabase, userId, resourceId, {
+      kind: "set-transform",
+      id: String(form.get("id") ?? ""),
+      transform,
+    });
   }
-  return redirectBack(ctx);
+  return respond();
 }

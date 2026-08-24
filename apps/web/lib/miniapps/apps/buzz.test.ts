@@ -10,6 +10,15 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MiniAppContext } from "@/lib/miniapps/apps/types";
 import { makeApp } from "@/app/mini/loader-test-utils";
 import { normalizeBuzzDoc } from "@/lib/miniapps/buzz/state";
+import { FakeDb } from "@/lib/miniapps/testing/fakeSupabase";
+import {
+  beginBuzzBinding,
+  buzzHeartbeat,
+  buzzLiveLink,
+  disconnectBuzz,
+  exchangeBuzzBindingCode,
+  validateRelayUrl,
+} from "@/lib/miniapps/buzz/link";
 
 const boxFiles = new Map<string, string>();
 
@@ -33,11 +42,14 @@ import { buzz } from "@/lib/miniapps/apps/buzz";
 
 const DOC_PATH = ".hermes/miniapps/buzz/default.json";
 const NSEC = "nsec1qqqqqqqqqqqqqqqqqqqqqqqqqqqqzzzzz";
+const NPUB = "npub1exampleexampleexampleexample";
+
+let db = new FakeDb();
 
 function makeCtx(role = "owner"): MiniAppContext {
   return {
     request: new NextRequest("https://mini.example/mini/buzz"),
-    supabase: {} as unknown as SupabaseClient,
+    supabase: db.client() as unknown as SupabaseClient,
     app: makeApp({ slug: "buzz", kind: "render" }),
     session: { userId: "user-1", resourceId: "default", role },
     basePath: "/mini/buzz",
@@ -50,7 +62,10 @@ function form(action: string): FormData {
   return data;
 }
 
-afterEach(() => boxFiles.clear());
+afterEach(() => {
+  boxFiles.clear();
+  db = new FakeDb();
+});
 
 describe("buzz mini-app", () => {
   it("renders an unbound surface and never asks for a key", async () => {
@@ -75,7 +90,7 @@ describe("buzz mini-app", () => {
   it("fails closed on unknown actions, including write verbs not yet built", async () => {
     for (const action of [
       "",
-      "connect-begin",
+      "intent-mint",
       "message-send",
       "agent-draft-create",
       "messages-delete",
@@ -99,7 +114,7 @@ describe("buzz mini-app", () => {
         link: {
           status: "connected",
           relayUrl: "wss://relay.example/",
-          npub: "npub1exampleexampleexampleexample",
+          npub: NPUB,
           signerKind: "box",
         },
         agents: [{ name: "Scout", draftState: "ready-for-review" }],
@@ -108,6 +123,128 @@ describe("buzz mini-app", () => {
     const body = await (await buzz.render(makeCtx())).text();
     expect(body).toContain("ready for review");
     expect(body).not.toMatch(/Scout[^<]*created/i);
+  });
+
+  it("refuses loopback and private relay URLs at bind-begin (C5)", async () => {
+    for (const relayUrl of [
+      "wss://localhost:7777",
+      "wss://127.0.0.1",
+      "wss://10.0.0.5",
+      "wss://192.168.1.2:4848",
+      "wss://relay.internal",
+      "wss://box.local",
+      "ws://relay.example.com",
+      "https://relay.example.com",
+      "wss://user:pass@relay.example.com",
+      "not a url",
+    ]) {
+      expect(validateRelayUrl(relayUrl)).toBeNull();
+      const data = new FormData();
+      data.set("action", "bind-begin");
+      data.set("relayUrl", relayUrl);
+      data.set("signer", "box");
+      const body = await (await buzz.action!(makeCtx(), data)).text();
+      expect(body).toContain("refused");
+      expect(db.rows("buzz_pairing_codes")).toHaveLength(0);
+    }
+    expect(validateRelayUrl("wss://relay.example.com")).toBe(
+      "wss://relay.example.com/"
+    );
+  });
+
+  it("runs the binding lifecycle and revokes on disconnect", async () => {
+    const data = new FormData();
+    data.set("action", "bind-begin");
+    data.set("relayUrl", "wss://relay.example.com");
+    data.set("signer", "box");
+    const begin = await buzz.action!(makeCtx(), data);
+    expect(await begin.text()).toContain("Binding code:");
+    // Reloads show pending but cannot re-reveal the hashed code.
+    const pendingBody = await (await buzz.render(makeCtx())).text();
+    expect(pendingBody).toContain("◌ connecting");
+    expect(pendingBody).not.toContain("Binding code:");
+
+    const supabase = db.client();
+    const { code } = await beginBuzzBinding(
+      supabase,
+      "user-1",
+      "wss://relay.example.com/",
+      "box"
+    );
+    const result = await exchangeBuzzBindingCode(supabase, {
+      code,
+      npub: NPUB,
+      communityLabel: "5DEE",
+    });
+    expect(result.ok).toBe(true);
+    const token = result.ok ? result.token : "";
+    expect(await buzzHeartbeat(supabase, token)).toBe(true);
+    const body = await (await buzz.render(makeCtx())).text();
+    expect(body).toContain("● connected");
+    expect(body).toContain("5DEE");
+    expect(body).toContain("box signer");
+    expect(body).not.toContain(token);
+
+    await disconnectBuzz(supabase, "user-1");
+    expect(await buzzHeartbeat(supabase, token)).toBe(false);
+    expect((await buzzLiveLink(supabase, "user-1")).status).toBe("revoked");
+  });
+
+  it("refuses replayed and expired binding codes and bad npubs", async () => {
+    const supabase = db.client();
+    const { code } = await beginBuzzBinding(
+      supabase,
+      "user-1",
+      "wss://relay.example.com/",
+      "desktop"
+    );
+    expect(
+      (
+        await exchangeBuzzBindingCode(supabase, {
+          code,
+          npub: NSEC,
+          communityLabel: null,
+        })
+      ).ok
+    ).toBe(false);
+    expect(
+      (
+        await exchangeBuzzBindingCode(supabase, {
+          code,
+          npub: NPUB,
+          communityLabel: null,
+        })
+      ).ok
+    ).toBe(true);
+    // Replay fails.
+    expect(
+      (
+        await exchangeBuzzBindingCode(supabase, {
+          code,
+          npub: NPUB,
+          communityLabel: null,
+        })
+      ).ok
+    ).toBe(false);
+    // Expired fails.
+    const { code: expired } = await beginBuzzBinding(
+      supabase,
+      "user-1",
+      "wss://relay.example.com/",
+      "desktop"
+    );
+    for (const row of db.rows("buzz_pairing_codes")) {
+      if (!row.used_at) row.expires_at = new Date(0).toISOString();
+    }
+    expect(
+      (
+        await exchangeBuzzBindingCode(supabase, {
+          code: expired,
+          npub: NPUB,
+          communityLabel: null,
+        })
+      ).ok
+    ).toBe(false);
   });
 
   it("escapes hostile relay content and drops planted key material", async () => {

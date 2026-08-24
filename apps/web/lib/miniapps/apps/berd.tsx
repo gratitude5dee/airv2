@@ -18,6 +18,13 @@ import {
   type BerdDoc,
   type BerdLinkStatus,
 } from "../berd/state";
+import {
+  beginBerdPairing,
+  berdLiveLink,
+  cancelBerdPairing,
+  disconnectBerd,
+  type BerdLiveLink,
+} from "../berd/link";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
 function chip(status: BerdLinkStatus): string {
@@ -42,28 +49,47 @@ function row(primary: string, secondary?: string): string {
   return `<div class="card"><strong>${esc(primary)}</strong>${detail}</div>`;
 }
 
-function linkPanel(doc: BerdDoc): string {
-  const { link } = doc;
-  const label = link.deviceLabel ? ` · ${esc(link.deviceLabel)}` : "";
-  const protocol = link.protocolVersion
-    ? ` · protocol v${link.protocolVersion}`
-    : "";
-  const sync = link.lastSyncAt
-    ? `Berd last checked in ${esc(link.lastSyncAt)}.`
-    : "Berd has never checked in.";
-  const hint =
-    link.status === "paired"
-      ? "Everything below is the last state Berd reported — it stays readable with the desktop closed."
-      : "Pair this surface with the Berd app on your own machine to manage agents, projects, skills, and sessions from here. Berd runs locally: nothing reaches it unless it asks.";
-  return `<div class="card"><div style="display:flex;align-items:center;gap:0.5rem"><strong class="grow">Berd desktop</strong>${chip(link.status)}${label}${protocol}</div>
-<div class="when">${sync}</div>
-<p class="muted">${esc(hint)}</p>
-<form method="post"><input type="hidden" name="action" value="refresh"><button class="ghost">Refresh</button></form></div>`;
+function actionButton(action: string, label: string): string {
+  return `<form method="post" style="display:inline"><input type="hidden" name="action" value="${esc(action)}"><button class="ghost">${esc(label)}</button></form>`;
 }
 
-function renderBerd(doc: BerdDoc, notice: string | null, lite: boolean): string {
+function linkPanel(live: BerdLiveLink, doc: BerdDoc): string {
+  const label = live.deviceLabel ? ` · ${esc(live.deviceLabel)}` : "";
+  const protocol = live.protocolVersion
+    ? ` · protocol v${live.protocolVersion}`
+    : "";
+  const lastSeen = live.lastSeenAt ?? doc.link.lastSyncAt;
+  const sync = lastSeen
+    ? `Berd last checked in ${esc(lastSeen)}.`
+    : "Berd has never checked in.";
+  let hint: string;
+  let controls: string;
+  if (live.status === "paired") {
+    hint =
+      "Everything below is the last state Berd reported — it stays readable with the desktop closed.";
+    controls = `${actionButton("refresh", "Refresh")} ${actionButton("disconnect", "Disconnect")}`;
+  } else if (live.status === "pending") {
+    hint = `A pairing code is waiting${live.pendingExpiresAt ? ` (expires ${live.pendingExpiresAt})` : ""}. Enter it in Berd under Settings → Connections → Air — on your desktop, or in a Berd running on your own Box — then come back here.`;
+    controls = `${actionButton("pair-begin", "New code")} ${actionButton("pair-cancel", "Cancel pairing")}`;
+  } else {
+    hint =
+      "Pair this surface with your own Berd — the desktop app on your machine, or a self-hosted Berd on your Box — to manage agents, projects, skills, and sessions from here. Berd is the side that connects out: nothing here can dial it.";
+    controls = actionButton("pair-begin", "Connect Berd");
+  }
+  return `<div class="card"><div style="display:flex;align-items:center;gap:0.5rem"><strong class="grow">Berd</strong>${chip(live.status)}${label}${protocol}</div>
+<div class="when">${sync}</div>
+<p class="muted">${esc(hint)}</p>
+<div style="display:flex;gap:0.4rem">${controls}</div></div>`;
+}
+
+function renderBerd(
+  doc: BerdDoc,
+  live: BerdLiveLink,
+  notice: string | null,
+  lite: boolean
+): string {
   const body = `<section class="panel">
-${linkPanel(doc)}
+${linkPanel(live, doc)}
 ${section(
   "Agents",
   doc.agents.map((agent) =>
@@ -105,12 +131,11 @@ async function loadAndRender(
   ctx: MiniAppContext,
   notice: string | null
 ): Promise<NextResponse> {
-  const doc = await getBerdDoc(
-    ctx.supabase,
-    ctx.session.userId,
-    ctx.session.resourceId
-  );
-  return shellHtml(renderBerd(doc, notice, ctx.session.via === "card"));
+  const [doc, live] = await Promise.all([
+    getBerdDoc(ctx.supabase, ctx.session.userId, ctx.session.resourceId),
+    berdLiveLink(ctx.supabase, ctx.session.userId),
+  ]);
+  return shellHtml(renderBerd(doc, live, notice, ctx.session.via === "card"));
 }
 
 export const berd: MiniAppModule = {
@@ -142,13 +167,36 @@ export const berd: MiniAppModule = {
       return loadAndRender(ctx, "Sent to your agent.");
     }
 
+    if (action === "pair-begin") {
+      const { code } = await beginBerdPairing(ctx.supabase, ctx.session.userId);
+      // Shown once: only its hash is stored, so a reload cannot re-reveal it.
+      return loadAndRender(
+        ctx,
+        `Pairing code: ${code} — enter it in Berd under Settings → Connections → Air (desktop or your Box-hosted Berd). It is single-use and expires in 10 minutes; this is the only time it is shown.`
+      );
+    }
+
+    if (action === "pair-cancel") {
+      await cancelBerdPairing(ctx.supabase, ctx.session.userId);
+      return loadAndRender(ctx, "Pairing cancelled.");
+    }
+
+    if (action === "disconnect") {
+      await disconnectBerd(ctx.supabase, ctx.session.userId);
+      return loadAndRender(
+        ctx,
+        "Disconnected. Berd's token is revoked and will be refused on its next check-in."
+      );
+    }
+
     if (action === "refresh") {
+      const live = await berdLiveLink(ctx.supabase, ctx.session.userId);
       const doc = await getBerdDoc(
         ctx.supabase,
         ctx.session.userId,
         ctx.session.resourceId
       );
-      if (doc.link.status !== "paired") {
+      if (live.status !== "paired") {
         return loadAndRender(
           ctx,
           "No Berd device is paired yet, so there is nothing to refresh."
@@ -165,7 +213,7 @@ export const berd: MiniAppModule = {
       return loadAndRender(ctx, "Showing the last state Berd reported.");
     }
 
-    // Pairing, envelopes, and every write verb are §MA-B2+. Fail closed.
+    // Envelopes and every write verb are §MA-B3+. Fail closed.
     return forbidden("unknown action");
   },
 };

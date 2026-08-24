@@ -10,6 +10,14 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MiniAppContext } from "@/lib/miniapps/apps/types";
 import { makeApp } from "@/app/mini/loader-test-utils";
 import { normalizeBerdDoc } from "@/lib/miniapps/berd/state";
+import { FakeDb } from "@/lib/miniapps/testing/fakeSupabase";
+import {
+  beginBerdPairing,
+  berdHeartbeat,
+  berdLiveLink,
+  disconnectBerd,
+  exchangeBerdPairingCode,
+} from "@/lib/miniapps/berd/link";
 
 const boxFiles = new Map<string, string>();
 
@@ -33,10 +41,12 @@ import { berd } from "@/lib/miniapps/apps/berd";
 
 const DOC_PATH = ".hermes/miniapps/berd/default.json";
 
+let db = new FakeDb();
+
 function makeCtx(role = "owner"): MiniAppContext {
   return {
     request: new NextRequest("https://mini.example/mini/berd"),
-    supabase: {} as unknown as SupabaseClient,
+    supabase: db.client() as unknown as SupabaseClient,
     app: makeApp({ slug: "berd", kind: "render" }),
     session: { userId: "user-1", resourceId: "default", role },
     basePath: "/mini/berd",
@@ -49,7 +59,10 @@ function form(action: string): FormData {
   return data;
 }
 
-afterEach(() => boxFiles.clear());
+afterEach(() => {
+  boxFiles.clear();
+  db = new FakeDb();
+});
 
 describe("berd mini-app", () => {
   it("renders an honest unpaired surface with no Berd anywhere", async () => {
@@ -71,7 +84,7 @@ describe("berd mini-app", () => {
   });
 
   it("fails closed on unknown and empty actions", async () => {
-    for (const action of ["", "pair-begin", "agent-delete", "__proto__"]) {
+    for (const action of ["", "envelope-mint", "agent-delete", "__proto__"]) {
       const response = await berd.action!(makeCtx(), form(action));
       expect(response.status).toBe(403);
       expect(await response.text()).toBe("unknown action");
@@ -82,6 +95,72 @@ describe("berd mini-app", () => {
     const body = await (await berd.action!(makeCtx(), form("refresh"))).text();
     expect(body).toContain("No Berd device is paired yet");
     expect(boxFiles.has(DOC_PATH)).toBe(false);
+  });
+
+  it("runs the pairing lifecycle: begin shows a code once, cancel and disconnect revoke", async () => {
+    const begin = await berd.action!(makeCtx(), form("pair-begin"));
+    const body = await (await berd.render(makeCtx())).text();
+    expect((await begin.text()).includes("Pairing code:")).toBe(true);
+    expect(body).toContain("◌ pairing");
+    // The code is hashed at rest: the reloaded page cannot re-reveal it.
+    expect(body).not.toContain("Pairing code:");
+    await berd.action!(makeCtx(), form("pair-cancel"));
+    expect(await (await berd.render(makeCtx())).text()).toContain(
+      "○ not connected"
+    );
+  });
+
+  it("pairs through the exchange and revokes on disconnect", async () => {
+    const supabase = db.client();
+    const { code } = await beginBerdPairing(supabase, "user-1");
+    const result = await exchangeBerdPairingCode(supabase, {
+      code,
+      deviceLabel: "MacBook",
+      protocolVersion: 1,
+    });
+    expect(result.ok).toBe(true);
+    const token = result.ok ? result.token : "";
+    expect(await berdHeartbeat(supabase, token)).toBe(true);
+    expect((await berdLiveLink(supabase, "user-1")).status).toBe("paired");
+    const body = await (await berd.render(makeCtx())).text();
+    expect(body).toContain("● connected");
+    expect(body).toContain("MacBook");
+    expect(body).not.toContain(token);
+    await disconnectBerd(supabase, "user-1");
+    // The revoked token is refused on the device's next contact.
+    expect(await berdHeartbeat(supabase, token)).toBe(false);
+    expect((await berdLiveLink(supabase, "user-1")).status).toBe("revoked");
+  });
+
+  it("refuses replayed, expired, unknown, and cancelled codes", async () => {
+    const supabase = db.client();
+    const { code } = await beginBerdPairing(supabase, "user-1");
+    const args = { deviceLabel: "d", protocolVersion: null };
+    expect(
+      (await exchangeBerdPairingCode(supabase, { code: "WRONGCODE", ...args }))
+        .ok
+    ).toBe(false);
+    expect(
+      (await exchangeBerdPairingCode(supabase, { code, ...args })).ok
+    ).toBe(true);
+    // Replay of a used code fails.
+    expect(
+      (await exchangeBerdPairingCode(supabase, { code, ...args })).ok
+    ).toBe(false);
+    // An expired code fails.
+    const { code: expired } = await beginBerdPairing(supabase, "user-1");
+    for (const row of db.rows("berd_pairing_codes")) {
+      if (!row.used_at) row.expires_at = new Date(0).toISOString();
+    }
+    expect(
+      (await exchangeBerdPairingCode(supabase, { code: expired, ...args })).ok
+    ).toBe(false);
+    // Minting a new code voids the old one (another-user / stale-tab case).
+    const { code: first } = await beginBerdPairing(supabase, "user-1");
+    await beginBerdPairing(supabase, "user-1");
+    expect(
+      (await exchangeBerdPairingCode(supabase, { code: first, ...args })).ok
+    ).toBe(false);
   });
 
   it("escapes hostile document content and drops key-shaped values", async () => {
