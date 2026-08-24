@@ -98,8 +98,30 @@ pkill -9 -f 'agent-browser-linu[x]' 2>/dev/null || true
 rm -f "$HOME_DIR/.agent-browser"/*.sock "$HOME_DIR/.agent-browser"/*.pid
 rm -rf /tmp/agent-browser-*
 grep -q '^DISPLAY=' "$ENV_FILE" || echo "DISPLAY=:0" >> "$ENV_FILE"
+
+# ── 3b. Browser Use CLI 3.0 (pinned) + the box-browser-use CDP wrapper ───────
+uv tool install --python 3.12 'browser-use==0.13.8'
+
+sudo tee /usr/local/bin/box-browser-use >/dev/null <<SH
+#!/usr/bin/env bash
+set -euo pipefail
+# Attach the Browser Use CLI to this box's headed daemon Chrome over CDP.
+# The daemon launches Chrome with --remote-debugging-port=0; the chosen port
+# is read from the newest DevToolsActivePort file (same discovery as
+# air-vault). Without a running daemon Chrome the CLI's own local flow runs.
+if [ -z "\${BU_CDP_URL:-}" ]; then
+  port_file="\$(ls -t /tmp/agent-browser-chrome-*/DevToolsActivePort 2>/dev/null | head -1 || true)"
+  if [ -n "\$port_file" ]; then
+    BU_CDP_URL="http://127.0.0.1:\$(head -1 "\$port_file")"
+    export BU_CDP_URL
+  fi
+fi
+exec "$HOME_DIR/.local/bin/browser-use" "\$@"
+SH
+sudo chmod +x /usr/local/bin/box-browser-use
+
 sed -i '/^PATH=/d' "$ENV_FILE"
-echo "PATH=$HERMES_NODE/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" >> "$ENV_FILE"
+echo "PATH=$HERMES_NODE/bin:$HOME_DIR/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" >> "$ENV_FILE"
 grep -q 'hermes/node/bin' "$HOME_DIR/.bashrc" || \
   echo "export PATH=\"$HERMES_NODE/bin:\$PATH\"" >> "$HOME_DIR/.bashrc"
 chmod 600 "$ENV_FILE"
