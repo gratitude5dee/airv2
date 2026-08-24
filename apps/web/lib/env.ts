@@ -34,6 +34,17 @@ export const env = {
     process.env.OPENROUTER_BASE_URL ?? required("MODEL_PROVIDER_BASE_URL"),
   openRouterApiKey: (): string =>
     process.env.OPENROUTER_API_KEY ?? required("MODEL_PROVIDER_API_KEY"),
+  // Venice (OpenAI-compatible, https://api.venice.ai/api/v1). The platform
+  // key is optional: without it the Venice family only works for users who
+  // saved a personal key in Settings.
+  veniceBaseUrl: (): string =>
+    optional("VENICE_BASE_URL", "https://api.venice.ai/api/v1"),
+  veniceApiKey: (): string | null => process.env.VENICE_API_KEY ?? null,
+  // Seals per-user provider API keys (Settings → provider keys) at rest.
+  // Defaults to the dashboard auth key so the beta needs no extra deploy
+  // config; set it to rotate provider credentials independently.
+  providerVaultKey: (): string | null =>
+    process.env.PROVIDER_VAULT_KEY ?? process.env.BOX_DASHBOARD_AUTH_KEY ?? null,
   thirdwebSecretKey: (): string => required("THIRDWEB_SECRET_KEY"),
   // Speech-to-text (M13). Defaults to the main model provider; STT_* overrides
   // exist for providers with no audio endpoint (goal.md §5).

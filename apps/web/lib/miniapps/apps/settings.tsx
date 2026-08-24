@@ -19,15 +19,42 @@ import {
   setMiniappBackground,
   setMiniappTheme,
   setModelFamily,
+  setOpenRouterModel,
   setSpeedTier,
   setUsername,
+  setVeniceModel,
   SPEED_TIERS,
 } from "@/lib/settings/account";
 import {
   DEFAULT_MODEL_FAMILY,
+  DEFAULT_VENICE_MODEL,
+  defaultOpenRouterModelForTier,
   isModelFamily,
+  isOpenRouterModel,
+  isVeniceModel,
+  OPENROUTER_MODELS,
   requiresConsent,
+  VENICE_MODELS,
 } from "@/lib/entitlements/models";
+import {
+  CREATIVE_LANES,
+  isCreativeLane,
+  isLaneModel,
+  LANE_LABELS,
+  LANE_MODELS,
+  loadCreativePrefs,
+  setCreativeModel,
+  type CreativePrefs,
+} from "@/lib/creative/model-prefs";
+import {
+  clearProviderKey,
+  isProviderId,
+  listProviderKeyStatuses,
+  PROVIDER_LABELS,
+  providerVaultAvailable,
+  setProviderKey,
+  type ProviderKeyStatus,
+} from "@/lib/providers/keys";
 import { INKLING_CONSENT } from "@/lib/entitlements/inkling";
 import { StartLimitError } from "@/lib/orchestrator/boxes";
 import {
@@ -84,6 +111,11 @@ interface SettingsData {
   miniappBackground: string;
   speedTier: string | null;
   modelFamily: string;
+  openrouterModel: string | null;
+  veniceModel: string | null;
+  creativePrefs: CreativePrefs;
+  providerKeys: ProviderKeyStatus[];
+  providerVault: boolean;
   plan: string | null;
   address: string | null;
   pluginSessions: Array<{
@@ -112,6 +144,8 @@ async function loadSettings(
     identityMedia,
     avatarAssetId,
     twin,
+    creativePrefs,
+    providerKeys,
   ] = await Promise.all([
     supabase
       .from("users")
@@ -120,7 +154,7 @@ async function loadSettings(
       .maybeSingle(),
     supabase
       .from("entitlements")
-      .select("plan, speed_tier, model_family")
+      .select("plan, speed_tier, model_family, openrouter_model, venice_model")
       .eq("user_id", userId)
       .maybeSingle(),
     supabase
@@ -144,6 +178,8 @@ async function loadSettings(
     listIdentityMediaViews(supabase, userId),
     getAvatarAssetId(supabase, userId).catch(() => null),
     getDigitalTwin(supabase, userId).catch(() => null),
+    loadCreativePrefs(supabase, userId),
+    listProviderKeyStatuses(supabase, userId).catch(() => []),
   ]);
   let twinVideoUrl: string | null = null;
   if (twin?.video_asset_id) {
@@ -175,6 +211,12 @@ async function loadSettings(
       const value = String(entitlement?.model_family ?? "");
       return isModelFamily(value) ? value : DEFAULT_MODEL_FAMILY;
     })(),
+    openrouterModel:
+      (entitlement?.openrouter_model as string | null) ?? null,
+    veniceModel: (entitlement?.venice_model as string | null) ?? null,
+    creativePrefs,
+    providerKeys,
+    providerVault: providerVaultAvailable(),
     plan: (entitlement?.plan as string | null) ?? null,
     address: (addressRow?.address as string | null) ?? null,
     pluginSessions: (tokens ?? []) as SettingsData["pluginSessions"],
@@ -266,9 +308,73 @@ function renderSettings(
     `<div class="card"><div class="row">${themeButtons}</div><p class="muted">${esc(THEMES[isThemeId(data.miniappTheme) ? data.miniappTheme : DEFAULT_THEME].description)}</p><p class="muted">Applies to every mini-app the next time it loads.</p></div>` +
       `<div class="card"><h2>Backdrop</h2><div class="row">${backgroundButtons}</div><p class="muted">A living backdrop behind every mini-app — it applies right away here and everywhere on next open. Inside Messages it runs at a reduced resolution.</p></div>`
   );
+  const tierValue = isSpeedTier(String(data.speedTier ?? ""))
+    ? (String(data.speedTier) as (typeof SPEED_TIERS)[number])
+    : "balanced";
+  const openrouterSelected =
+    data.openrouterModel && isOpenRouterModel(data.openrouterModel)
+      ? data.openrouterModel
+      : defaultOpenRouterModelForTier(tierValue);
+  const openrouterOptions = SPEED_TIERS.map(
+    (tier) =>
+      `<optgroup label="${esc(tier)}">${OPENROUTER_MODELS.filter(
+        (model) => model.tier === tier
+      )
+        .map(
+          (model) =>
+            `<option value="${esc(model.slug)}"${model.slug === openrouterSelected ? " selected" : ""}>${esc(model.label)}</option>`
+        )
+        .join("")}</optgroup>`
+  ).join("");
+  const openrouterCard = `<div class="card"><h2>OpenRouter model</h2><form method="post" class="row"><input type="hidden" name="action" value="set_openrouter_model"><select name="openrouter_model">${openrouterOptions}</select><button${data.modelFamily === "openrouter" ? "" : ' class="ghost"'}>Use</button></form><p class="muted">Grouped by speed tier — picking one switches your model to OpenRouter.</p></div>`;
+  const veniceSelected =
+    data.veniceModel && isVeniceModel(data.veniceModel)
+      ? data.veniceModel
+      : DEFAULT_VENICE_MODEL;
+  const veniceOptions = VENICE_MODELS.map(
+    (model) =>
+      `<option value="${esc(model.slug)}"${model.slug === veniceSelected ? " selected" : ""}>${esc(model.label)}</option>`
+  ).join("");
+  const veniceCard = `<div class="card"><h2>Venice model</h2><form method="post" class="row"><input type="hidden" name="action" value="set_venice_model"><select name="venice_model">${veniceOptions}</select><button${data.modelFamily === "venice" ? "" : ' class="ghost"'}>Use</button></form><p class="muted">Private, OpenAI-compatible inference — add a personal Venice key below to use your own balance.</p></div>`;
   const modelSection = section(
     "MODEL",
-    `<div class="card"><div class="row">${plainFamilyButtons}</div><p class="muted">Ox Alpha unless you pick otherwise. OpenAI follows your speed tier above.</p><div class="row"><p class="muted">${consentHtml()}</p></div>${consentFamilyForms}</div>`
+    `<div class="card"><div class="row">${plainFamilyButtons}</div><p class="muted">Ox Alpha unless you pick otherwise. OpenAI follows your speed tier above.</p><div class="row"><p class="muted">${consentHtml()}</p></div>${consentFamilyForms}</div>${openrouterCard}${veniceCard}`
+  );
+  const creativeCards = CREATIVE_LANES.map((lane) => {
+    const selected = data.creativePrefs[lane];
+    const options = LANE_MODELS[lane]
+      .map(
+        (model) =>
+          `<option value="${esc(model.slug)}"${model.slug === selected ? " selected" : ""}>${esc(model.label)}</option>`
+      )
+      .join("");
+    return `<div class="card"><h2>${esc(LANE_LABELS[lane])}</h2><form method="post" class="row"><input type="hidden" name="action" value="set_creative_model"><input type="hidden" name="lane" value="${esc(lane)}"><select name="model">${options}</select><button>Save</button></form></div>`;
+  }).join("");
+  const creativeSection = section(
+    "CREATIVE MODELS",
+    creativeCards +
+      `<p class="muted">Each command's prompts are automatically optimized for the model you pick.</p>`
+  );
+  const providerCards = data.providerKeys
+    .map((status) => {
+      const label = PROVIDER_LABELS[status.provider];
+      const state = status.hint
+        ? `Personal key on file ····${esc(status.hint)} — requests use your own balance.`
+        : "Using platform credentials.";
+      const clear = status.hint
+        ? `<form method="post" class="inline"><input type="hidden" name="action" value="clear_provider_key"><input type="hidden" name="provider" value="${esc(status.provider)}"><button class="ghost">Remove key</button></form>`
+        : "";
+      return `<div class="card"><h2>${esc(label)}</h2><p class="muted">${state}</p><form method="post" class="row"><input type="hidden" name="action" value="save_provider_key"><input type="hidden" name="provider" value="${esc(status.provider)}"><input type="password" name="api_key" placeholder="${esc(label)} API key" autocomplete="off"><button>Save</button></form>${clear}</div>`;
+    })
+    .join("");
+  const providerSection = section(
+    "PROVIDER KEYS",
+    data.providerVault
+      ? providerCards +
+          `<p class="muted">Optional — spend your own provider credits. Keys are sealed at rest and never shown again.</p>`
+      : comingSoon(
+          "Personal provider keys aren't enabled on this deployment."
+        )
   );
   const emailSection = section(
     "AGENT EMAIL",
@@ -317,7 +423,7 @@ function renderSettings(
       "Export and deletion are operator-run today — ask and it happens (full export / cascade delete already exist server-side). Self-serve buttons land here."
     )
   );
-  const body = `<section class="panel">${usernameSection}${themeSection}${speedSection}${modelSection}${emailSection}${contactSection}${identitySection}${timezoneSection}${memorySection}${onairosSection}${pluginSection}${storageSection}${traceSection}${dataSection}
+  const body = `<section class="panel">${usernameSection}${themeSection}${speedSection}${modelSection}${creativeSection}${providerSection}${emailSection}${contactSection}${identitySection}${timezoneSection}${memorySection}${onairosSection}${pluginSection}${storageSection}${traceSection}${dataSection}
 ${promptBar("Ask your agent — e.g. change my speed tier to fast…")}</section>`;
   return renderShell({
     title: "Settings",
@@ -520,6 +626,69 @@ export const settings: MiniAppModule = {
       if (!isSpeedTier(tier)) return forbidden("invalid tier");
       const ok = await setSpeedTier(ctx.supabase, userId, tier);
       return respond(ctx, ok ? `Speed set to ${tier}.` : "Update failed.");
+    }
+
+    if (action === "set_openrouter_model") {
+      const slug = String(form.get("openrouter_model") ?? "");
+      if (!isOpenRouterModel(slug)) return forbidden("invalid model");
+      const ok =
+        (await setOpenRouterModel(ctx.supabase, userId, slug)) &&
+        (await setModelFamily(ctx.supabase, userId, "openrouter"));
+      return respond(
+        ctx,
+        ok ? "OpenRouter model saved." : "Update failed."
+      );
+    }
+
+    if (action === "set_venice_model") {
+      const slug = String(form.get("venice_model") ?? "");
+      if (!isVeniceModel(slug)) return forbidden("invalid model");
+      const ok =
+        (await setVeniceModel(ctx.supabase, userId, slug)) &&
+        (await setModelFamily(ctx.supabase, userId, "venice"));
+      return respond(ctx, ok ? "Venice model saved." : "Update failed.");
+    }
+
+    if (action === "set_creative_model") {
+      const lane = String(form.get("lane") ?? "");
+      const slug = String(form.get("model") ?? "");
+      if (!isCreativeLane(lane) || !isLaneModel(lane, slug)) {
+        return forbidden("invalid creative model");
+      }
+      const ok = await setCreativeModel(ctx.supabase, userId, lane, slug);
+      return respond(
+        ctx,
+        ok ? `Model saved for ${LANE_LABELS[lane]}.` : "Update failed."
+      );
+    }
+
+    if (action === "save_provider_key") {
+      const provider = String(form.get("provider") ?? "");
+      if (!isProviderId(provider)) return forbidden("invalid provider");
+      const result = await setProviderKey(
+        ctx.supabase,
+        userId,
+        provider,
+        String(form.get("api_key") ?? "")
+      );
+      return respond(
+        ctx,
+        result.ok
+          ? `${PROVIDER_LABELS[provider]} key saved — requests now use your own balance.`
+          : result.error
+      );
+    }
+
+    if (action === "clear_provider_key") {
+      const provider = String(form.get("provider") ?? "");
+      if (!isProviderId(provider)) return forbidden("invalid provider");
+      const ok = await clearProviderKey(ctx.supabase, userId, provider);
+      return respond(
+        ctx,
+        ok
+          ? `${PROVIDER_LABELS[provider]} key removed — back to platform credentials.`
+          : "Nothing to remove."
+      );
     }
 
     if (action === "upload_selfie") {

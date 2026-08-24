@@ -13,15 +13,17 @@ import {
   costUsd,
   DEFAULT_MODEL_FAMILY,
   isModelFamily,
-  isOpenRouterFamily,
   isReasoningModel,
   isSpeedTier,
   modelForSelection,
+  providerForFamily,
   reasoningForTier,
   serviceTierForTier,
   type ModelFamily,
+  type ModelSelection,
 } from "@/lib/entitlements/models";
 import { currentPeriodSpend } from "@/lib/entitlements/spend";
+import { getProviderKey } from "@/lib/providers/keys";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,11 +41,16 @@ async function meter(
   userId: string,
   tier: "fast" | "balanced" | "deep",
   family: ModelFamily,
-  usage: Usage
+  usage: Usage,
+  model?: string,
+  /** Served on the user's own provider key — their spend, cost 0 here. */
+  onPersonalKey = false
 ): Promise<void> {
   const promptTokens = usage.prompt_tokens ?? 0;
   const completionTokens = usage.completion_tokens ?? 0;
-  const cost = costUsd(tier, promptTokens, completionTokens, family);
+  const cost = onPersonalKey
+    ? 0
+    : costUsd(tier, promptTokens, completionTokens, family, model);
   const supabase = serviceClient();
   const { error: runError } = await supabase.from("agent_runs").insert({
     user_id: userId,
@@ -156,7 +163,7 @@ export async function POST(
   const { data: entitlement } = await supabase
     .from("entitlements")
     .select(
-      "speed_tier, model_family, monthly_cap_usd, spend_mtd_usd, spend_period_start, suspended_reason"
+      "speed_tier, model_family, openrouter_model, venice_model, monthly_cap_usd, spend_mtd_usd, spend_period_start, suspended_reason"
     )
     .eq("user_id", userId)
     .maybeSingle();
@@ -183,6 +190,19 @@ export async function POST(
   // A user who never touched the setting gets Ox Alpha, not OpenAI.
   const familyValue = String(entitlement.model_family ?? "");
   const family = isModelFamily(familyValue) ? familyValue : DEFAULT_MODEL_FAMILY;
+  const selection: ModelSelection = {
+    openrouterModel: (entitlement.openrouter_model as string | null) ?? null,
+    veniceModel: (entitlement.venice_model as string | null) ?? null,
+  };
+
+  // Personal provider keys (Settings): when saved, the request is served on
+  // the user's own token spend and platform metering records zero cost.
+  const personalKeys = {
+    openrouter: await getProviderKey(supabase, userId, "openrouter").catch(
+      () => null
+    ),
+    venice: await getProviderKey(supabase, userId, "venice").catch(() => null),
+  };
 
   let rawBody: Record<string, unknown>;
   try {
@@ -193,13 +213,17 @@ export async function POST(
   const streaming = rawBody.stream === true;
   const endpoint = path.join("/");
 
+  let servedModel = "";
+  let servedOnPersonalKey = false;
+
   const dispatch = async (
     toFamily: ModelFamily
   ): Promise<Response> => {
     // The tier and family names are the only things that ever appear in a
     // box's config — the real model ID is resolved here and only here.
     const body: Record<string, unknown> = { ...rawBody };
-    body.model = modelForSelection(toFamily, tier);
+    body.model = modelForSelection(toFamily, tier, selection);
+    servedModel = String(body.model);
     // gpt-5.6 on /v1/chat/completions rejects function tools with any
     // reasoning_effort other than "none", so tool-bearing calls (every Hermes
     // agent turn) pin it there; plain completions get the configured effort.
@@ -213,8 +237,9 @@ export async function POST(
       }
     }
     // service_tier is OpenAI-only, like reasoning_effort above.
-    const openRouter = isOpenRouterFamily(toFamily);
-    const serviceTier = openRouter ? undefined : serviceTierForTier(tier);
+    const provider = providerForFamily(toFamily);
+    const openRouter = provider === "openrouter";
+    const serviceTier = provider === "openai" ? serviceTierForTier(tier) : undefined;
     if (serviceTier && body.service_tier === undefined) {
       body.service_tier = serviceTier;
     }
@@ -239,12 +264,40 @@ export async function POST(
       body.stream_options = { ...(body.stream_options as object), include_usage: true };
     }
 
-    const baseUrl = openRouter
-      ? env.openRouterBaseUrl()
-      : env.modelProviderBaseUrl();
-    const apiKey = openRouter
-      ? env.openRouterApiKey()
-      : env.modelProviderApiKey();
+    const baseUrl =
+      provider === "venice"
+        ? env.veniceBaseUrl()
+        : openRouter
+          ? env.openRouterBaseUrl()
+          : env.modelProviderBaseUrl();
+    const personalKey =
+      provider === "venice"
+        ? personalKeys.venice
+        : openRouter
+          ? personalKeys.openrouter
+          : null;
+    const platformKey =
+      provider === "venice"
+        ? env.veniceApiKey()
+        : openRouter
+          ? env.openRouterApiKey()
+          : env.modelProviderApiKey();
+    const apiKey = personalKey ?? platformKey;
+    servedOnPersonalKey = personalKey !== null;
+    if (!apiKey) {
+      // Venice has no platform key on this deployment and the user saved
+      // none — an explicit 503 beats an opaque upstream 401.
+      return new Response(
+        JSON.stringify({
+          error: {
+            message:
+              "Venice isn't configured — add a personal Venice API key in Settings.",
+            type: "provider_unconfigured",
+          },
+        }),
+        { status: 503, headers: { "Content-Type": "application/json" } }
+      );
+    }
     return fetch(`${baseUrl}/${endpoint}`, {
       method: "POST",
       headers: {
@@ -269,8 +322,8 @@ export async function POST(
   // endpoint answering tool-bearing calls with `native_finish_reason:
   // "network_error"` and a null message). The box would otherwise retry into
   // the same wall and the user gets silence, so a dead or empty OpenRouter
-  // answer falls back once to the tier-resolved OpenAI model.
-  const canFallBack = isOpenRouterFamily(family);
+  // (or Venice) answer falls back once to the tier-resolved OpenAI model.
+  const canFallBack = providerForFamily(family) !== "openai";
   if (canFallBack && (!upstream.ok || !upstream.body)) {
     servedFamily = "openai";
     upstream = await dispatch(servedFamily);
@@ -356,8 +409,12 @@ export async function POST(
 
   if (streaming) {
     const meteredFamily = servedFamily;
+    const meteredModel = servedModel;
+    const meteredPersonal = servedOnPersonalKey;
     const stream = meteringTee(upstream.body, (usage) => {
-      after(meter(userId, tier, meteredFamily, usage));
+      after(
+        meter(userId, tier, meteredFamily, usage, meteredModel, meteredPersonal)
+      );
     });
     return new Response(stream, {
       status: 200,
@@ -371,7 +428,9 @@ export async function POST(
   const json = (await upstream.json()) as { usage?: Usage };
   if (json.usage) {
     const usage = json.usage;
-    after(meter(userId, tier, servedFamily, usage));
+    after(
+      meter(userId, tier, servedFamily, usage, servedModel, servedOnPersonalKey)
+    );
   }
   return NextResponse.json(json, { status: 200 });
 }

@@ -11,7 +11,13 @@ export type SpeedTier = "fast" | "balanced" | "deep";
  * speed tier, every other family is a single upstream slug. Ox Alpha is the
  * default for anyone who never touches the setting.
  */
-export type ModelFamily = "openai" | "ox-alpha" | "inkling" | "inkling-small";
+export type ModelFamily =
+  | "openai"
+  | "ox-alpha"
+  | "inkling"
+  | "inkling-small"
+  | "openrouter"
+  | "venice";
 
 export const DEFAULT_MODEL_FAMILY: ModelFamily = "ox-alpha";
 
@@ -21,12 +27,73 @@ const TIER_MODELS: Record<SpeedTier, string> = {
   deep: "gpt-5.6-terra",
 };
 
-/** OpenRouter slugs for the families that don't go through the tiers. */
-const FAMILY_MODELS: Record<Exclude<ModelFamily, "openai">, string> = {
+/** OpenRouter slugs for the fixed families that don't go through the tiers. */
+const FAMILY_MODELS: Record<
+  Exclude<ModelFamily, "openai" | "openrouter" | "venice">,
+  string
+> = {
   "ox-alpha": "stealth/ox-alpha",
   inkling: "thinkingmachines/inkling:free",
   "inkling-small": "thinkingmachines/inkling-small:free",
 };
+
+export interface CatalogModel {
+  slug: string;
+  label: string;
+  tier: SpeedTier;
+  /** Approximate USD per 1M tokens for metering. */
+  pricing: { input: number; output: number };
+}
+
+/**
+ * The curated OpenRouter menu shown in Settings, grouped by the speed tier
+ * each entry best serves. The slug is validated on every write AND on every
+ * gateway read, so a stale row can never route to an arbitrary upstream.
+ */
+export const OPENROUTER_MODELS: readonly CatalogModel[] = [
+  { slug: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash", tier: "fast", pricing: { input: 0.3, output: 2.5 } },
+  { slug: "openai/gpt-4o-mini", label: "GPT-4o Mini", tier: "fast", pricing: { input: 0.15, output: 0.6 } },
+  { slug: "meta-llama/llama-3.3-70b-instruct", label: "Llama 3.3 70B", tier: "fast", pricing: { input: 0.1, output: 0.3 } },
+  { slug: "anthropic/claude-sonnet-4.5", label: "Claude Sonnet 4.5", tier: "balanced", pricing: { input: 3, output: 15 } },
+  { slug: "deepseek/deepseek-chat-v3.1", label: "DeepSeek V3.1", tier: "balanced", pricing: { input: 0.27, output: 1.1 } },
+  { slug: "qwen/qwen3-235b-a22b", label: "Qwen3 235B", tier: "balanced", pricing: { input: 0.2, output: 0.6 } },
+  { slug: "google/gemini-2.5-pro", label: "Gemini 2.5 Pro", tier: "deep", pricing: { input: 1.25, output: 10 } },
+  { slug: "anthropic/claude-opus-4.5", label: "Claude Opus 4.5", tier: "deep", pricing: { input: 5, output: 25 } },
+  { slug: "x-ai/grok-4", label: "Grok 4", tier: "deep", pricing: { input: 3, output: 15 } },
+];
+
+/**
+ * Venice models (OpenAI-compatible at api.venice.ai). Platform pricing is
+ * treated as zero for metering: Venice bills in its own credit units, and
+ * the family is expected to run on the user's personal key.
+ */
+export const VENICE_MODELS: readonly CatalogModel[] = [
+  { slug: "venice-uncensored", label: "Venice Uncensored", tier: "balanced", pricing: { input: 0, output: 0 } },
+  { slug: "qwen3-235b", label: "Qwen3 235B", tier: "deep", pricing: { input: 0, output: 0 } },
+  { slug: "llama-3.3-70b", label: "Llama 3.3 70B", tier: "fast", pricing: { input: 0, output: 0 } },
+  { slug: "deepseek-r1-671b", label: "DeepSeek R1 671B", tier: "deep", pricing: { input: 0, output: 0 } },
+];
+
+export function isOpenRouterModel(slug: string): boolean {
+  return OPENROUTER_MODELS.some((model) => model.slug === slug);
+}
+
+export function isVeniceModel(slug: string): boolean {
+  return VENICE_MODELS.some((model) => model.slug === slug);
+}
+
+export function defaultOpenRouterModelForTier(tier: SpeedTier): string {
+  const match = OPENROUTER_MODELS.find((model) => model.tier === tier);
+  return (match ?? OPENROUTER_MODELS[0]!).slug;
+}
+
+export const DEFAULT_VENICE_MODEL = VENICE_MODELS[0]!.slug;
+
+/** Per-user model selections read from entitlements alongside the family. */
+export interface ModelSelection {
+  openrouterModel?: string | null;
+  veniceModel?: string | null;
+}
 
 /** Families whose selection needs the TML free-endpoint consent (§7). */
 export const CONSENT_FAMILIES: readonly ModelFamily[] = [
@@ -39,8 +106,20 @@ export function isModelFamily(value: string): value is ModelFamily {
     value === "openai" ||
     value === "ox-alpha" ||
     value === "inkling" ||
-    value === "inkling-small"
+    value === "inkling-small" ||
+    value === "openrouter" ||
+    value === "venice"
   );
+}
+
+export type ModelProvider = "openai" | "openrouter" | "venice";
+
+/** Which upstream serves a family. Everything but OpenAI and Venice rides
+ * OpenRouter. */
+export function providerForFamily(family: ModelFamily): ModelProvider {
+  if (family === "openai") return "openai";
+  if (family === "venice") return "venice";
+  return "openrouter";
 }
 
 export function requiresConsent(family: ModelFamily): boolean {
@@ -49,7 +128,7 @@ export function requiresConsent(family: ModelFamily): boolean {
 
 /** True for the families served by OpenRouter rather than OpenAI directly. */
 export function isOpenRouterFamily(family: ModelFamily): boolean {
-  return family !== "openai";
+  return providerForFamily(family) === "openrouter";
 }
 
 /**
@@ -112,7 +191,7 @@ const TIER_PRICING: Record<SpeedTier, { input: number; output: number }> = {
 /** USD per 1M tokens for the non-tier families (OpenRouter list prices —
  * Ox Alpha and both `:free` Inkling endpoints are free today). */
 const FAMILY_PRICING: Record<
-  Exclude<ModelFamily, "openai">,
+  Exclude<ModelFamily, "openai" | "openrouter" | "venice">,
   { input: number; output: number }
 > = {
   "ox-alpha": { input: 0, output: 0 },
@@ -134,17 +213,33 @@ export function modelForTier(tier: SpeedTier): string {
  */
 export function modelForSelection(
   family: ModelFamily,
-  tier: SpeedTier
+  tier: SpeedTier,
+  selection: ModelSelection = {}
 ): string {
-  return family === "openai" ? modelForTier(tier) : FAMILY_MODELS[family];
+  if (family === "openai") return modelForTier(tier);
+  if (family === "openrouter") {
+    const chosen = selection.openrouterModel ?? "";
+    return isOpenRouterModel(chosen)
+      ? chosen
+      : defaultOpenRouterModelForTier(tier);
+  }
+  if (family === "venice") {
+    const chosen = selection.veniceModel ?? "";
+    return isVeniceModel(chosen) ? chosen : DEFAULT_VENICE_MODEL;
+  }
+  return FAMILY_MODELS[family];
 }
 
 /** Display label for a family — the tier's label for `openai` (C19). */
 export function modelLabelForFamily(
   family: ModelFamily,
-  tier: SpeedTier
+  tier: SpeedTier,
+  selection: ModelSelection = {}
 ): string {
-  return family === "openai" ? modelLabelForTier(tier) : FAMILY_MODELS[family];
+  if (family === "openai") return modelLabelForTier(tier);
+  const slug = modelForSelection(family, tier, selection);
+  const catalog = family === "venice" ? VENICE_MODELS : OPENROUTER_MODELS;
+  return catalog.find((model) => model.slug === slug)?.label ?? slug;
 }
 
 /**
@@ -166,10 +261,17 @@ export function costUsd(
   tier: SpeedTier,
   promptTokens: number,
   completionTokens: number,
-  family: ModelFamily = "openai"
+  family: ModelFamily = "openai",
+  model?: string
 ): number {
   const pricing =
-    family === "openai" ? TIER_PRICING[tier] : FAMILY_PRICING[family];
+    family === "openai"
+      ? TIER_PRICING[tier]
+      : family === "openrouter" || family === "venice"
+        ? ((family === "venice" ? VENICE_MODELS : OPENROUTER_MODELS).find(
+            (entry) => entry.slug === model
+          )?.pricing ?? { input: 0, output: 0 })
+        : FAMILY_PRICING[family];
   return (
     (promptTokens * pricing.input + completionTokens * pricing.output) / 1_000_000
   );

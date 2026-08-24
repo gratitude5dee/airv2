@@ -163,6 +163,8 @@ export async function setMiniappHomeOrder(
 export const MODEL_FAMILIES = [
   "ox-alpha",
   "openai",
+  "openrouter",
+  "venice",
   "inkling",
   "inkling-small",
 ] as const;
@@ -171,6 +173,8 @@ export const MODEL_FAMILIES = [
 export const MODEL_FAMILY_LABELS: Record<ModelFamily, string> = {
   "ox-alpha": "Ox Alpha",
   openai: "OpenAI",
+  openrouter: "OpenRouter",
+  venice: "Venice",
   inkling: "Inkling (free)",
   "inkling-small": "Inkling Small (free)",
 };
@@ -184,6 +188,34 @@ export async function setModelFamily(
   const { error } = await supabase
     .from("entitlements")
     .update({ model_family: family })
+    .eq("user_id", userId);
+  return !error;
+}
+
+/** Writes entitlements.openrouter_model — a catalog slug, validated by the
+ * caller (isOpenRouterModel) and re-validated at the gateway. */
+export async function setOpenRouterModel(
+  supabase: SupabaseClient,
+  userId: string,
+  slug: string
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("entitlements")
+    .update({ openrouter_model: slug })
+    .eq("user_id", userId);
+  return !error;
+}
+
+/** Writes entitlements.venice_model — a catalog slug, validated by the
+ * caller (isVeniceModel) and re-validated at the gateway. */
+export async function setVeniceModel(
+  supabase: SupabaseClient,
+  userId: string,
+  slug: string
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("entitlements")
+    .update({ venice_model: slug })
     .eq("user_id", userId);
   return !error;
 }
