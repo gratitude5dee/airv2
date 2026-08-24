@@ -18,11 +18,13 @@ import { externalOrigin } from "../gates";
 import { esc, withBaseHeaders } from "../html";
 import { renderShell, shellHtml } from "../shell";
 import {
+  BLEND_MODES,
   getImageDoc,
   isBlendMode,
   updateImageDoc,
   type ImageDoc,
   type ImageLayer,
+  type LayerTransform,
 } from "../creativeDocs";
 import { promptBar, runPrompt } from "../promptBar";
 import { publicExporter } from "../publicExport";
@@ -39,7 +41,99 @@ function mediaShellHtml(body: string): NextResponse {
   return response;
 }
 
-const BLEND_OPTIONS = ["normal", "multiply", "screen", "overlay"] as const;
+/** The editor page runs the same-origin bundle: widen only by what that
+ * first-party code needs — script-src 'self' to load it, connect-src 'self'
+ * for its action fetches, img-src https: for signed asset previews. */
+function editorShellHtml(body: string): NextResponse {
+  const response = mediaShellHtml(body);
+  let csp = response.headers.get("Content-Security-Policy") ?? "";
+  if (!csp.includes("script-src")) csp += "; script-src 'self'";
+  if (!csp.includes("connect-src")) csp += "; connect-src 'self'";
+  response.headers.set("Content-Security-Policy", csp);
+  return response;
+}
+
+/** What the client editor renders from: the doc plus signed preview URLs.
+ * Only control-plane asset rows the user owns are signed — an assetId the
+ * doc invented (C9) simply gets no URL. */
+interface EditorPayload {
+  doc: ImageDoc;
+  flatUrl: string | null;
+  assetUrls: Record<string, string>;
+  notice?: string;
+  exportUrl?: string;
+}
+
+async function editorPayload(
+  ctx: MiniAppContext,
+  doc: ImageDoc
+): Promise<EditorPayload> {
+  const flatUrl = await signedFlatUrl(ctx, await flatAsset(ctx, doc));
+  const ids = [
+    ...new Set(
+      doc.layers
+        .filter((layer) => layer.kind === "asset" && layer.assetId)
+        .map((layer) => layer.assetId as string)
+    ),
+  ];
+  const assetUrls: Record<string, string> = {};
+  if (ids.length) {
+    const { data } = await ctx.supabase
+      .from("creative_assets")
+      .select("id, storage_key")
+      .eq("user_id", ctx.session.userId)
+      .in("id", ids);
+    for (const row of (data ?? []) as { id: string; storage_key: string }[]) {
+      const signed = await ctx.supabase.storage
+        .from(ASSETS_BUCKET)
+        .createSignedUrl(row.storage_key, DELIVERY_TTL_SECONDS);
+      if (signed.data?.signedUrl) assetUrls[row.id] = signed.data.signedUrl;
+    }
+  }
+  return { doc, flatUrl, assetUrls };
+}
+
+/** The owner's editor page: a mount node carrying the initial payload and
+ * the same-origin bundle. Everything visual lives in the bundle. */
+function renderEditor(payload: EditorPayload): string {
+  const body = `<div id="image-editor" data-payload="${esc(JSON.stringify(payload))}"></div>
+<script src="/creator-os/image-editor.js" defer></script>
+<noscript><p class="muted">This editor needs JavaScript — <a href="?classic=1">use the classic view</a>.</p></noscript>`;
+  return renderShell({
+    title: payload.doc.title,
+    kicker: "Studio",
+    body,
+    headline: false,
+  });
+}
+
+/** Tree rows in display order (top of stack first), with panel depth. */
+interface LayerRow {
+  layer: ImageLayer;
+  depth: number;
+}
+
+function layerRows(doc: ImageDoc): LayerRow[] {
+  const byId = new Map(doc.layers.map((layer) => [layer.id, layer]));
+  const ancestors = (layer: ImageLayer): ImageLayer[] => {
+    const chain: ImageLayer[] = [];
+    let cursor = layer.parentGroupId;
+    while (cursor) {
+      const parent = byId.get(cursor);
+      if (!parent || chain.includes(parent)) break;
+      chain.push(parent);
+      cursor = parent.parentGroupId;
+    }
+    return chain;
+  };
+  return doc.layers
+    .map((layer) => ({ layer, chain: ancestors(layer) }))
+    // A collapsed group hides its subtree in the panel only — it still
+    // composites (image.goal.md §4.1).
+    .filter(({ chain }) => !chain.some((parent) => parent.collapsed === true))
+    .map(({ layer, chain }) => ({ layer, depth: chain.length }))
+    .reverse();
+}
 
 function hidden(name: string, value: string): string {
   return `<input type="hidden" name="${esc(name)}" value="${esc(value)}">`;
@@ -68,22 +162,41 @@ function slider(
 </form>`;
 }
 
-function renderLayer(layer: ImageLayer, index: number, count: number): string {
-  const label =
-    layer.kind === "text"
-      ? `T \u00b7 ${esc(layer.text ?? "")}`
-      : `\u25a3 \u00b7 ${esc(layer.assetId ?? "")}`;
-  const blend = BLEND_OPTIONS.map(
+function derivedLabel(layer: ImageLayer): string {
+  if (layer.name) return esc(layer.name);
+  if (layer.kind === "group") return "\u25a2 group";
+  if (layer.kind === "text") return `T \u00b7 ${esc(layer.text ?? "")}`;
+  return `\u25a3 \u00b7 ${esc(layer.assetId ?? "")}`;
+}
+
+function renderLayer(row: LayerRow, groups: ImageLayer[]): string {
+  const { layer, depth } = row;
+  const blend = BLEND_MODES.map(
     (mode) =>
       `<option value="${mode}"${mode === layer.blend ? " selected" : ""}>${mode}</option>`
   ).join("");
-  return `<div class="card" style="display:flex;flex-direction:column;gap:0.4rem">
-<div style="display:flex;align-items:center;gap:0.4rem"><strong>${count - index}.</strong><span class="grow" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${label}</span>${layer.visible ? "" : '<span class="when">(hidden)</span>'}</div>
+  const parentOptions = [
+    `<option value=""${layer.parentGroupId === null ? " selected" : ""}>\u2014 root \u2014</option>`,
+    ...groups
+      .filter((group) => group.id !== layer.id)
+      .map(
+        (group) =>
+          `<option value="${esc(group.id)}"${group.id === layer.parentGroupId ? " selected" : ""}>${derivedLabel(group)}</option>`
+      ),
+  ].join("");
+  const groupControls =
+    layer.kind === "group"
+      ? `<form method="post">${hidden("action", "toggle-collapsed")}${hidden("id", layer.id)}<button class="ghost">${layer.collapsed ? "expand" : "collapse"}</button></form>`
+      : "";
+  return `<div class="card" style="display:flex;flex-direction:column;gap:0.4rem;margin-left:${depth * 0.9}rem">
+<div style="display:flex;align-items:center;gap:0.4rem"><span class="grow" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${derivedLabel(layer)}</span>${layer.visible ? "" : '<span class="when">(hidden)</span>'}</div>
 <div style="display:flex;flex-wrap:wrap;gap:0.3rem">
 <form method="post">${hidden("action", "move")}${hidden("id", layer.id)}<button name="direction" value="up" class="ghost">\u2191</button><button name="direction" value="down" class="ghost">\u2193</button></form>
 <form method="post">${hidden("action", "toggle-visible")}${hidden("id", layer.id)}<button class="ghost">${layer.visible ? "hide" : "show"}</button></form>
-<form method="post">${hidden("action", "remove")}${hidden("id", layer.id)}<button class="ghost">remove</button></form>
+${groupControls}<form method="post">${hidden("action", "remove")}${hidden("id", layer.id)}<button class="ghost">remove</button></form>
 </div>
+<form method="post" style="display:flex;gap:0.3rem">${hidden("action", "rename-layer")}${hidden("id", layer.id)}<input type="text" name="name" value="${esc(layer.name ?? "")}" placeholder="layer name\u2026" maxlength="120" style="flex:1"><button class="ghost">name</button></form>
+<form method="post" style="display:flex;gap:0.3rem">${hidden("action", "set-parent")}${hidden("id", layer.id)}<select name="parentGroupId" style="flex:1">${parentOptions}</select><button class="ghost">group</button></form>
 ${slider({ action: "set-opacity", id: layer.id }, "opacity", "Opacity", layer.opacity, 0, 100)}
 <form method="post" style="display:flex;gap:0.3rem">${hidden("action", "set-blend")}${hidden("id", layer.id)}<select name="blend" style="flex:1">${blend}</select><button class="ghost">blend</button></form>
 ${
@@ -102,9 +215,9 @@ function renderImage(
   isOwner: boolean,
   lite: boolean
 ): string {
-  const layers = doc.layers
-    .map((layer, index) => renderLayer(layer, index, doc.layers.length))
-    .reverse()
+  const groups = doc.layers.filter((layer) => layer.kind === "group");
+  const layers = layerRows(doc)
+    .map((row) => renderLayer(row, groups))
     .join("");
 
   const stage = flatUrl
@@ -134,11 +247,18 @@ function renderImage(
         )
       : "";
 
+  const historyRow = `<div style="display:flex;gap:0.3rem">
+<form method="post">${hidden("action", "undo")}<button class="ghost"${doc.history.undo.length ? "" : " disabled"}>\u21b6 undo</button></form>
+<form method="post">${hidden("action", "redo")}<button class="ghost"${doc.history.redo.length ? "" : " disabled"}>\u21b7 redo</button></form>
+</div>`;
+
   const layersPanel = panel(
     "Layers",
-    `${layers || '<div class="card pending">no layers yet.</div>'}
+    `${historyRow}
+${layers || '<div class="card pending">no layers yet.</div>'}
 <form method="post" class="addrow">${hidden("action", "add-text")}<input type="text" name="text" placeholder="Add a text layer\u2026" maxlength="500"><button>Add text</button></form>
-<form method="post" class="addrow">${hidden("action", "add-asset")}<input type="text" name="assetId" placeholder="Add an asset layer (box asset id)\u2026" maxlength="128"><button>Add asset</button></form>`
+<form method="post" class="addrow">${hidden("action", "add-asset")}<input type="text" name="assetId" placeholder="Add an asset layer (box asset id)\u2026" maxlength="128"><button>Add asset</button></form>
+<form method="post" class="addrow">${hidden("action", "add-group")}<input type="text" name="name" placeholder="Add a group\u2026" maxlength="120"><button>Add group</button></form>`
   );
 
   const exportPanel =
@@ -309,6 +429,16 @@ export const image: MiniAppModule = {
         return unavailable(ctx.session.via === "card");
       throw error;
     }
+    const requestUrl = new URL(ctx.request.url);
+    // Owners get the client editor; card-opened (lite) sessions and guests
+    // keep the server-rendered classic view, as does ?classic=1.
+    if (
+      ctx.session.role === "owner" &&
+      ctx.session.via !== "card" &&
+      requestUrl.searchParams.get("classic") !== "1"
+    ) {
+      return editorShellHtml(renderEditor(await editorPayload(ctx, doc)));
+    }
     const asset = await flatAsset(ctx, doc);
     const flatUrl = await signedFlatUrl(ctx, asset);
     const url = new URL(ctx.request.url);
@@ -335,8 +465,34 @@ export const image: MiniAppModule = {
     const action = String(form.get("action") ?? "");
     const userId = ctx.session.userId;
     const resourceId = ctx.session.resourceId;
+    // The client editor posts the same action grammar with format=json and
+    // gets the authoritative doc back instead of a redirect.
+    const wantsJson = String(form.get("format") ?? "") === "json";
+    const respond = async (notice?: string): Promise<NextResponse> => {
+      if (!wantsJson) {
+        return redirectBack(
+          ctx,
+          notice ? `?notice=${encodeURIComponent(notice)}` : undefined
+        );
+      }
+      const doc = await getImageDoc(ctx.supabase, userId, resourceId);
+      const payload = await editorPayload(ctx, doc);
+      if (notice) payload.notice = notice;
+      return withBaseHeaders(NextResponse.json(payload));
+    };
     if (action === "export") {
-      return redirectBack(ctx, "?exported=1");
+      if (!wantsJson) return redirectBack(ctx, "?exported=1");
+      if (ctx.session.role !== "owner") return respond("export is owner-only.");
+      const doc = await getImageDoc(ctx.supabase, userId, resourceId);
+      const asset = await flatAsset(ctx, doc);
+      const payload = await editorPayload(ctx, doc);
+      if (asset) {
+        const url = await exportDelivery(ctx, asset);
+        if (url) payload.exportUrl = url;
+      } else {
+        payload.notice = "render a flat before exporting.";
+      }
+      return withBaseHeaders(NextResponse.json(payload));
     }
     try {
       if (
@@ -348,7 +504,7 @@ export const image: MiniAppModule = {
           action,
           String(form.get("prompt") ?? "")
         );
-        return redirectBack(ctx, `?notice=${encodeURIComponent(line)}`);
+        return respond(line);
       }
       if (action === "export-public") {
         const doc = await getImageDoc(ctx.supabase, userId, resourceId);
@@ -359,13 +515,13 @@ export const image: MiniAppModule = {
               doc.flatAssetId
             )
           : { line: "render a flat before exporting." };
-        return redirectBack(ctx, `?notice=${encodeURIComponent(result.line)}`);
+        return respond(result.line);
       }
       if (action === "prompt") {
         await runPrompt(ctx, String(form.get("text") ?? ""));
-        return redirectBack(ctx);
+        return respond();
       }
-      return await mutate(ctx, action, form);
+      return await mutate(ctx, action, form, respond);
     } catch (error) {
       if (error instanceof StartLimitError)
         return unavailable(ctx.session.via === "card");
@@ -377,7 +533,8 @@ export const image: MiniAppModule = {
 async function mutate(
   ctx: MiniAppContext,
   action: string,
-  form: FormData
+  form: FormData,
+  respond: (notice?: string) => Promise<NextResponse>
 ): Promise<NextResponse> {
   const userId = ctx.session.userId;
   const resourceId = ctx.session.resourceId;
@@ -395,6 +552,33 @@ async function mutate(
       await updateImageDoc(ctx.supabase, userId, resourceId, {
         kind: "add-asset",
         assetId: String(form.get("assetId") ?? ""),
+      });
+    } else if (action === "add-group") {
+      await updateImageDoc(ctx.supabase, userId, resourceId, {
+        kind: "add-group",
+        name: String(form.get("name") ?? ""),
+      });
+    } else if (action === "rename-layer") {
+      await updateImageDoc(ctx.supabase, userId, resourceId, {
+        kind: "rename-layer",
+        id: String(form.get("id") ?? ""),
+        name: String(form.get("name") ?? ""),
+      });
+    } else if (action === "toggle-collapsed") {
+      await updateImageDoc(ctx.supabase, userId, resourceId, {
+        kind: "toggle-collapsed",
+        id: String(form.get("id") ?? ""),
+      });
+    } else if (action === "set-parent") {
+      const parent = String(form.get("parentGroupId") ?? "").trim();
+      await updateImageDoc(ctx.supabase, userId, resourceId, {
+        kind: "set-parent",
+        id: String(form.get("id") ?? ""),
+        parentGroupId: parent || null,
+      });
+    } else if (action === "undo" || action === "redo") {
+      await updateImageDoc(ctx.supabase, userId, resourceId, {
+        kind: action === "undo" ? "undo" : "redo",
       });
     } else if (action === "set-text") {
       await updateImageDoc(ctx.supabase, userId, resourceId, {
@@ -438,6 +622,39 @@ async function mutate(
       kind: "remove",
       id: String(form.get("id") ?? ""),
     });
+  } else if (action === "select") {
+    const id = String(form.get("id") ?? "").trim();
+    await updateImageDoc(ctx.supabase, userId, resourceId, {
+      kind: "select",
+      id: id || null,
+    });
+  } else if (action === "reorder") {
+    await updateImageDoc(ctx.supabase, userId, resourceId, {
+      kind: "reorder",
+      id: String(form.get("id") ?? ""),
+      index: Number(form.get("index") ?? Number.NaN),
+    });
+  } else if (action === "set-transform") {
+    const num = (name: string): number | undefined => {
+      const raw = form.get(name);
+      if (raw === null || String(raw).trim() === "") return undefined;
+      const value = Number(raw);
+      return Number.isFinite(value) ? value : undefined;
+    };
+    const transform: Partial<LayerTransform> = {};
+    const x = num("x");
+    const y = num("y");
+    const scale = num("scale");
+    const rotation = num("rotation");
+    if (x !== undefined) transform.x = x;
+    if (y !== undefined) transform.y = y;
+    if (scale !== undefined) transform.scale = scale;
+    if (rotation !== undefined) transform.rotation = rotation;
+    await updateImageDoc(ctx.supabase, userId, resourceId, {
+      kind: "set-transform",
+      id: String(form.get("id") ?? ""),
+      transform,
+    });
   }
-  return redirectBack(ctx);
+  return respond();
 }

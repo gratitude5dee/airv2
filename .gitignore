@@ -15,3 +15,4 @@ __pycache__/
 apps/web/public/creator-os/onairos-connect.js
 apps/web/public/creator-os/bg/
 apps/web/public/creator-os/identity-booth.js
+apps/web/public/creator-os/image-editor.js
