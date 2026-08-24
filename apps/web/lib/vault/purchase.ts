@@ -126,7 +126,7 @@ export async function proposePurchaseReview(
     summary: string;
     amountUsd: number;
   }
-): Promise<{ decisionId: string; amountBand: string }> {
+): Promise<{ decisionId: string; amountBand: string; cardName: string }> {
   const host = normalizeHost(input.host);
 
   const turn = await resolveActiveTurn(supabase, userId);
@@ -203,7 +203,11 @@ export async function proposePurchaseReview(
   if (error || !decision) {
     throw new PurchaseError("decision_failed", "could not file the review", 502);
   }
-  return { decisionId: decision.id as string, amountBand: band };
+  return {
+    decisionId: decision.id as string,
+    amountBand: band,
+    cardName: payload.card_name,
+  };
 }
 
 /** Write the ticket to the box, 600 inside a 700 dir, mirroring the vault

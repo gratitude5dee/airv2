@@ -86,10 +86,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   );
 }
 
-/** Best-effort iMessage live card so approve/deny works in place. */
+/** Best-effort iMessage live card so approve/deny works in place. The
+ * bubble copy carries the review's value-free metadata (host, amount band,
+ * card name) so it reads as an inline payment-approval card. */
 async function sendPurchaseCard(
   supabase: SupabaseClient,
-  userId: string
+  userId: string,
+  review?: { host: string; amountBand: string; cardName: string }
 ): Promise<void> {
   const { data: dest } = await supabase
     .from("imessage_destinations")
@@ -107,7 +110,14 @@ async function sendPurchaseCard(
       String(dest.phone),
       userId,
       "vault",
-      "default"
+      "default",
+      review
+        ? {
+            caption: "Approve payment",
+            subcaption: `${review.amountBand} on ${review.host}`,
+            summary: `Approve payment — ${review.cardName}, ${review.amountBand} on ${review.host}. You still click the final Pay button.`,
+          }
+        : undefined
     );
   } catch (error) {
     await claim?.release().catch(() => undefined);
@@ -155,7 +165,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         summary,
         amountUsd,
       });
-      await sendPurchaseCard(supabase, userId);
+      await sendPurchaseCard(supabase, userId, {
+        host: normalizeHost(host),
+        amountBand: result.amountBand,
+        cardName: result.cardName,
+      });
       return NextResponse.json({
         ok: true,
         decision_id: result.decisionId,

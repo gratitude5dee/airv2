@@ -78,6 +78,13 @@ import {
   uploadTwinConsent,
   type DigitalTwin,
 } from "@/lib/identity/twin";
+import {
+  checkLinkAuth,
+  readLinkAuthDoc,
+  safeVerificationUrl,
+  startLinkAuth,
+  type LinkAuthDoc,
+} from "@/lib/payments/linkAuth";
 import { onairosProvider, type OnairosStatus } from "./onairos";
 import {
   relayToOnairos,
@@ -112,6 +119,7 @@ const STEP_TITLES: Record<OnboardingStepId, string> = {
   connect: "Connect your apps",
   secrets: "Secrets",
   stripe: "Stripe account",
+  link: "Connect Link",
   agent: "Meet your agent",
   walkthrough: "Walkthrough & first workflows",
 };
@@ -129,6 +137,7 @@ const STEP_KICKERS: Record<OnboardingStepId, string> = {
   connect: "Actions · Integrations",
   secrets: "Key vault",
   stripe: "Get paid",
+  link: "Agent payments",
   agent: "First contact",
   walkthrough: "Tour & workflows",
 };
@@ -175,6 +184,7 @@ export interface OnboardingSnapshot {
   onairos: OnairosStatus;
   speedTier: string | null;
   merchant: Merchant | null;
+  link: LinkAuthDoc | null;
   pluginSessions: number;
   ingest: IngestStatus | null;
   ingestCommand: string | null;
@@ -209,6 +219,7 @@ async function loadSnapshot(
     onairos,
     { data: entitlement },
     merchant,
+    link,
     { count: pluginCount },
     ingest,
     identityMedia,
@@ -246,6 +257,7 @@ async function loadSnapshot(
       .eq("user_id", userId)
       .maybeSingle(),
     getMerchant(supabase, userId).catch(() => null),
+    readLinkAuthDoc(supabase, userId).catch(() => null),
     supabase
       .from("plugin_tokens")
       .select("id", { count: "exact", head: true })
@@ -270,6 +282,7 @@ async function loadSnapshot(
     onairos,
     speedTier: (entitlement?.speed_tier as string | null) ?? null,
     merchant,
+    link,
     pluginSessions: pluginCount ?? 0,
     ingest,
     ingestCommand: buildIngestCommand(userId),
@@ -328,6 +341,8 @@ export function effectiveStatus(
         : "todo";
     case "stripe":
       return snapshot.merchant?.charges_enabled ? "done" : "todo";
+    case "link":
+      return snapshot.link?.authenticated ? "done" : "todo";
     case "agent":
       return "todo";
     case "walkthrough":
@@ -535,6 +550,27 @@ function stepBody(
         ? `<p>Stripe connected — charges enabled. Manage it from the Shop app.</p><div class="row actions">${skipForm("stripe", "Continue")}</div>`
         : `<p>Stripe onboarding in progress.</p><div class="row actions">${connectForm("Resume onboarding")}${skipForm("stripe", "Later")}</div>`;
     return status;
+  }
+  if (step === "link") {
+    const link = snapshot.link;
+    const intro = `<p class="muted">Link is Stripe's wallet. Pairing your agent's computer with your Link account lets it request one-time-use payment credentials for purchases and bookings — every spend still waits for your approval in the Link app, and you always click the final Pay button.</p>`;
+    if (link?.authenticated) {
+      return `${intro}<p>Link connected — your agent can request payment credentials, and each spend still needs your approval.</p><div class="row actions">${skipForm("link", "Continue")}</div>`;
+    }
+    if (link && !link.installed) {
+      return `${intro}<p class="muted">The Link CLI isn't on your agent's computer yet — it arrives with the next computer update. Skip for now and connect later from here.</p><div class="row actions">${skipForm("link", "Skip — not ready yet")}</div>`;
+    }
+    const connectForm = (label: string): string =>
+      `<form method="post" class="inline"><input type="hidden" name="action" value="link_connect"><button>${esc(label)}</button></form>`;
+    const checkForm = `<form method="post" class="inline"><input type="hidden" name="action" value="link_check"><button>I approved — check status</button></form>`;
+    const pendingUrl = safeVerificationUrl(link?.verification_url ?? null);
+    if (pendingUrl) {
+      const phrase = link?.phrase
+        ? `<p>Confirm this phrase in the Link app: <strong>${esc(link.phrase)}</strong></p>`
+        : "";
+      return `${intro}<p><a href="${esc(pendingUrl)}" target="_blank" rel="noopener">Approve the connection in your Link app</a></p>${phrase}<div class="row actions">${checkForm}${connectForm("Start over")}${skipForm("link", "Later")}</div>`;
+    }
+    return `${intro}<div class="row actions">${connectForm("Connect Link")}${skipForm("link", "Later")}</div>`;
   }
   if (step === "walkthrough") {
     const tour = `<p>Home is your launcher — here's the clickthrough:</p><ul><li><strong>Home grid</strong> — every app as a one-tap tile: calendar, vault, pay, shop, inbox, persona, and more.</li><li><strong>Chat</strong> — one conversation with your agent, same on iMessage and the web.</li><li><strong>Needs you</strong> — every action with side effects (emails, payments, publishes) waits for your approval.</li><li><strong>Settings</strong> — username, speed, memory, context, plugin sessions.</li></ul><p class="muted">Finish setup and the Home app arrives as your next message — tap it and try each tile.</p>`;
@@ -1212,6 +1248,49 @@ export const onboarding: MiniAppModule = {
           "stripe",
           "Stripe onboarding isn't available right now — try again later, or skip and connect from the Shop app."
         );
+      }
+    }
+
+    if (action === "link_connect" || action === "link_check") {
+      try {
+        const doc =
+          action === "link_connect"
+            ? await startLinkAuth(supabase, userId)
+            : await checkLinkAuth(supabase, userId);
+        if (doc.authenticated) {
+          await markSafely(supabase, userId, "link", "done");
+          return respond(ctx, "link", "Link connected.");
+        }
+        if (!doc.installed) {
+          return respond(
+            ctx,
+            "link",
+            "The Link CLI isn't on your agent's computer yet — skip for now and connect later."
+          );
+        }
+        if (doc.verification_url) {
+          return respond(
+            ctx,
+            "link",
+            "Open the link below and approve the connection in your Link app, then check status."
+          );
+        }
+        return respond(
+          ctx,
+          "link",
+          action === "link_connect"
+            ? "Couldn't start the Link connection — try again in a minute."
+            : "Not connected yet — approve the connection in your Link app first."
+        );
+      } catch (error) {
+        if (error instanceof StartLimitError) {
+          return respond(
+            ctx,
+            "link",
+            "The computer is starting up — try again in a minute."
+          );
+        }
+        throw error;
       }
     }
 
