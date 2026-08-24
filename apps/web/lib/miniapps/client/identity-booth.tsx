@@ -86,7 +86,12 @@ function DepthCarousel({
   const [position, setPosition] = useState(active);
   const positionRef = useRef(active);
   const frameRef = useRef(0);
-  const dragRef = useRef<{ startX: number; startPos: number } | null>(null);
+  const dragRef = useRef<{
+    startX: number;
+    startPos: number;
+    pointerId: number;
+    captured: boolean;
+  } | null>(null);
   const reduceMotion = useMemo(
     () =>
       typeof matchMedia !== "undefined" &&
@@ -126,8 +131,12 @@ function DepthCarousel({
 
   const onPointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
-      dragRef.current = { startX: event.clientX, startPos: active };
-      event.currentTarget.setPointerCapture(event.pointerId);
+      dragRef.current = {
+        startX: event.clientX,
+        startPos: active,
+        pointerId: event.pointerId,
+        captured: false,
+      };
     },
     [active]
   );
@@ -135,6 +144,13 @@ function DepthCarousel({
     (event: React.PointerEvent<HTMLDivElement>) => {
       const drag = dragRef.current;
       if (!drag) return;
+      // Capture only once a real drag starts, so plain taps/clicks still
+      // reach the dots and Keep/Drop buttons.
+      if (!drag.captured) {
+        if (Math.abs(drag.startX - event.clientX) < 8) return;
+        event.currentTarget.setPointerCapture(drag.pointerId);
+        drag.captured = true;
+      }
       const moved = Math.round((drag.startX - event.clientX) / 90);
       const next = Math.min(
         shots.length - 1,
@@ -398,7 +414,7 @@ function Booth({ mode }: { mode: BoothMode }): React.ReactElement {
 
   return (
     <StrictMode>
-      <div className={`booth booth-${mode}`}>
+      <div className={`booth booth-mode-${mode}`}>
         <div className={`booth-stage${cameraOn ? " on" : ""}`}>
           <video ref={videoRef} playsInline muted autoPlay className="booth-video" />
           {flash ? <div className="booth-flash" /> : null}

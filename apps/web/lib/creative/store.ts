@@ -29,6 +29,7 @@ const EXT_BY_MIME: Record<string, string> = {
   "image/webp": "webp",
   "video/mp4": "mp4",
   "video/quicktime": "mov",
+  "video/webm": "webm",
 };
 
 export const deliveryPurpose = (jobId: string): string => `creative:${jobId}`;
