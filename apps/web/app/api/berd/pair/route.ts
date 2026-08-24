@@ -8,6 +8,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
 import { exchangeBerdPairingCode } from "@/lib/miniapps/berd/link";
+import {
+  pairAttemptSource,
+  pairExchangeRateLimited,
+} from "@/lib/security/limits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,7 +25,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (typeof body.code !== "string") {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
-  const result = await exchangeBerdPairingCode(serviceClient(), {
+  const supabase = serviceClient();
+  const source = pairAttemptSource(request.headers);
+  if (await pairExchangeRateLimited(supabase, source)) {
+    return NextResponse.json({ error: "rate_limited" }, { status: 429 });
+  }
+  const result = await exchangeBerdPairingCode(supabase, {
     code: body.code,
     deviceLabel: typeof body.deviceLabel === "string" ? body.deviceLabel : "",
     protocolVersion:

@@ -8,8 +8,10 @@
  * Buzz identity is a keypair, so the invariant here is blunt: this document
  * holds the owner's **public** identity (`npub`) and never any private
  * material. Relay payloads are hostile input (C9) and a planted `nsec1…`,
- * bunker URI, or bare 64-hex secret is dropped at the normalizer rather than
- * written to a file every surface the owner opens can read (C18).
+ * bunker URI, or key-shaped free-text value is dropped at the normalizer
+ * rather than written to a file every surface the owner opens can read (C18).
+ * Identifier fields keep bare 64-hex values, since Nostr event ids and
+ * pubkeys share that shape.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { readAppState, writeAppState } from "../store";
@@ -130,14 +132,31 @@ const PENDING_STATES: readonly BuzzPendingState[] = [
   "failed",
 ];
 
-/** Anything that could be private key material, in any encoding we might see. */
-const SECRET_SHAPED =
-  /(nsec1[a-z0-9]{20,}|bunker:\/\/|-----BEGIN|\b[0-9a-f]{64}\b|\bncryptsec1[a-z0-9]{10,})/i;
+/** Explicit private-key encodings never belong anywhere in this document. */
+const KEY_ENCODED =
+  /(nsec1[a-z0-9]{20,}|bunker:\/\/|-----BEGIN|\bncryptsec1[a-z0-9]{10,})/i;
+/**
+ * Free text additionally rejects a bare 64-hex value: it could be a raw key.
+ * Nostr event ids and pubkeys are also 64-hex, so identifier fields use
+ * `ident` instead.
+ */
+const SECRET_SHAPED = new RegExp(
+  `(${KEY_ENCODED.source}|\\b[0-9a-f]{64}\\b)`,
+  "i"
+);
 
 function str(value: unknown, max: number): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   if (!trimmed || SECRET_SHAPED.test(trimmed)) return null;
+  return trimmed.slice(0, max);
+}
+
+/** Identifier fields (event ids, channel ids, pubkeys) may be bare 64-hex. */
+function ident(value: unknown, max: number): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed || KEY_ENCODED.test(trimmed)) return null;
   return trimmed.slice(0, max);
 }
 
@@ -193,7 +212,7 @@ export function normalizeBuzzDoc(raw: unknown): BuzzDoc {
     title: str(doc.title, 120) ?? DEFAULT_BUZZ_DOC.title,
     link: normalizeLink(doc.link),
     channels: rows(doc.channels).flatMap((row) => {
-      const id = str(row.id, 128);
+      const id = ident(row.id, 128);
       const name = str(row.name, 120);
       if (!id || !name) return [];
       const topic = str(row.topic, 400);
@@ -214,8 +233,8 @@ export function normalizeBuzzDoc(raw: unknown): BuzzDoc {
       ];
     }),
     threads: rows(doc.threads).flatMap((row) => {
-      const channelId = str(row.channelId, 128);
-      const rootEventId = str(row.rootEventId, 128);
+      const channelId = ident(row.channelId, 128);
+      const rootEventId = ident(row.rootEventId, 128);
       if (!channelId || !rootEventId) return [];
       const replyCount = count(row.replyCount);
       const updatedAt = str(row.updatedAt, 40);
@@ -230,29 +249,29 @@ export function normalizeBuzzDoc(raw: unknown): BuzzDoc {
       ];
     }),
     dms: rows(doc.dms).flatMap((row) => {
-      const id = str(row.id, 128);
+      const id = ident(row.id, 128);
       if (!id) return [];
       const participants = (Array.isArray(row.participants)
         ? row.participants
         : []
       )
-        .map((participant) => str(participant, 80))
+        .map((participant) => ident(participant, 80))
         .filter((participant): participant is string => participant !== null)
         .slice(0, 9);
       const updatedAt = str(row.updatedAt, 40);
       return [{ id, participants, ...(updatedAt ? { updatedAt } : {}) }];
     }),
     canvases: rows(doc.canvases).flatMap((row) => {
-      const channelId = str(row.channelId, 128);
+      const channelId = ident(row.channelId, 128);
       if (!channelId) return [];
       const updatedAt = str(row.updatedAt, 40);
       return [{ channelId, ...(updatedAt ? { updatedAt } : {}) }];
     }),
     workflows: rows(doc.workflows).flatMap((row) => {
-      const id = str(row.id, 128);
+      const id = ident(row.id, 128);
       const name = str(row.name, 120);
       if (!id || !name) return [];
-      const channelId = str(row.channelId, 128);
+      const channelId = ident(row.channelId, 128);
       const pendingApprovals = count(row.pendingApprovals);
       return [
         {
@@ -280,7 +299,7 @@ export function normalizeBuzzDoc(raw: unknown): BuzzDoc {
       ];
     }),
     pending: rows(doc.pending).flatMap((row) => {
-      const id = str(row.id, 128);
+      const id = ident(row.id, 128);
       const group = str(row.group, 80);
       const verb = str(row.verb, 80);
       if (!id || !group || !verb) return [];

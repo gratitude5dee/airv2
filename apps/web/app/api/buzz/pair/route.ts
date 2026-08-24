@@ -9,6 +9,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
 import { exchangeBuzzBindingCode } from "@/lib/miniapps/buzz/link";
+import {
+  pairAttemptSource,
+  pairExchangeRateLimited,
+} from "@/lib/security/limits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,7 +26,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (typeof body.code !== "string" || typeof body.npub !== "string") {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
-  const result = await exchangeBuzzBindingCode(serviceClient(), {
+  const supabase = serviceClient();
+  const source = pairAttemptSource(request.headers);
+  if (await pairExchangeRateLimited(supabase, source)) {
+    return NextResponse.json({ error: "rate_limited" }, { status: 429 });
+  }
+  const result = await exchangeBuzzBindingCode(supabase, {
     code: body.code,
     npub: body.npub,
     communityLabel:

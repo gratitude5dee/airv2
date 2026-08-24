@@ -20,10 +20,13 @@ import { publisherCsp } from "@/lib/miniapps/apps/published";
 import {
   GRANTS_PER_HOUR,
   LAUNCHES_PER_HOUR,
+  PAIR_ATTEMPTS_PER_HOUR,
   PUBLISHES_PER_DAY,
   UPLOADS_PER_HOUR,
   grantRateLimited,
   launchRateLimited,
+  pairAttemptSource,
+  pairExchangeRateLimited,
   publishRateLimited,
   recordOpsEvent,
   recordStoreOpen,
@@ -104,7 +107,8 @@ function fakeSupabase(db: FakeOps): SupabaseClient {
               const count = db.rows.filter(
                 (row) =>
                   row.kind === filters.kind &&
-                  row.user_id === filters.user_id &&
+                  (filters.user_id === undefined ||
+                    row.user_id === filters.user_id) &&
                   (filters.ref === undefined || row.ref === filters.ref)
               ).length;
               return Promise.resolve({ count, error: null });
@@ -180,6 +184,73 @@ describe("durable ops-ledger rate limits (MA11)", () => {
     expect(
       db.rows.filter((r) => r.kind === "rate_limited" && r.ref === "upload")
     ).toHaveLength(1);
+  });
+
+  function headers(map: Record<string, string>): { get(name: string): string | null } {
+    return { get: (name) => map[name.toLowerCase()] ?? null };
+  }
+
+  it("pair exchange: passes and records under the limit, blocks at it, and marks the block once", async () => {
+    const db: FakeOps = { rows: [] };
+    const supabase = fakeSupabase(db);
+    const source = pairAttemptSource(headers({ "x-real-ip": "203.0.113.7" }));
+    for (let i = 0; i < PAIR_ATTEMPTS_PER_HOUR; i += 1) {
+      expect(await pairExchangeRateLimited(supabase, source)).toBe(false);
+    }
+    for (let i = 0; i < 5; i += 1) {
+      expect(await pairExchangeRateLimited(supabase, source)).toBe(true);
+    }
+    expect(
+      db.rows.filter((row) => row.kind === "pair_attempt")
+    ).toHaveLength(PAIR_ATTEMPTS_PER_HOUR);
+    expect(
+      db.rows.filter(
+        (row) =>
+          row.kind === "rate_limited" && row.ref === `pair_attempt:${source}`
+      )
+    ).toHaveLength(1);
+  });
+
+  it("pair exchange: scopes the throttle per source and never records a raw address", async () => {
+    const db: FakeOps = { rows: [] };
+    const supabase = fakeSupabase(db);
+    const blocked = pairAttemptSource(headers({ "x-real-ip": "203.0.113.7" }));
+    for (let i = 0; i < PAIR_ATTEMPTS_PER_HOUR; i += 1) {
+      await pairExchangeRateLimited(supabase, blocked);
+    }
+    expect(await pairExchangeRateLimited(supabase, blocked)).toBe(true);
+    expect(
+      await pairExchangeRateLimited(
+        supabase,
+        pairAttemptSource(headers({ "x-real-ip": "198.51.100.9" }))
+      )
+    ).toBe(false);
+    expect(JSON.stringify(db.rows)).not.toContain("203.0.113.7");
+  });
+
+  it("pair exchange: keys on the trusted hop — a spoofed leftmost x-forwarded-for entry can't rotate the source", async () => {
+    const real = pairAttemptSource(headers({ "x-real-ip": "203.0.113.7" }));
+    expect(
+      pairAttemptSource(
+        headers({
+          "x-real-ip": "203.0.113.7",
+          "x-forwarded-for": "6.6.6.6, 203.0.113.7",
+        })
+      )
+    ).toBe(real);
+    expect(
+      pairAttemptSource(headers({ "x-forwarded-for": "6.6.6.6, 203.0.113.7" }))
+    ).toBe(real);
+    expect(
+      pairAttemptSource(headers({ "x-forwarded-for": "7.7.7.7, 203.0.113.7" }))
+    ).toBe(real);
+  });
+
+  it("pair exchange: fails open on a ledger read error", async () => {
+    const supabase = fakeSupabase({ rows: [], countError: true });
+    expect(
+      await pairExchangeRateLimited(supabase, pairAttemptSource(headers({})))
+    ).toBe(false);
   });
 
   it("throttles anonymous store_open writes — a hammered store home can't spam inserts", async () => {

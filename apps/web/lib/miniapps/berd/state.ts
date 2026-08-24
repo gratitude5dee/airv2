@@ -121,13 +121,26 @@ const PENDING_STATES: readonly BerdPendingState[] = [
  * broker has no tokens today, but a prompt-injected agent or a future payload
  * could try to park one here, and every surface the owner opens can read it.
  */
-const SECRET_SHAPED =
-  /(sk-[A-Za-z0-9_-]{12,}|nsec1[a-z0-9]{20,}|-----BEGIN|bunker:\/\/|\b[0-9a-f]{64}\b)/i;
+const KEY_ENCODED =
+  /(sk-[A-Za-z0-9_-]{12,}|nsec1[a-z0-9]{20,}|-----BEGIN|bunker:\/\/)/i;
+/** Free text also rejects a bare 64-hex value (could be a raw key); id
+ * fields use `ident` since hex identifiers are legitimate there. */
+const SECRET_SHAPED = new RegExp(
+  `(${KEY_ENCODED.source}|\\b[0-9a-f]{64}\\b)`,
+  "i"
+);
 
 function str(value: unknown, max: number): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   if (!trimmed || SECRET_SHAPED.test(trimmed)) return null;
+  return trimmed.slice(0, max);
+}
+
+function ident(value: unknown, max: number): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed || KEY_ENCODED.test(trimmed)) return null;
   return trimmed.slice(0, max);
 }
 
@@ -182,7 +195,7 @@ export function normalizeBerdDoc(raw: unknown): BerdDoc {
   ): T[] => {
     const out: T[] = [];
     for (const row of rows(doc[key])) {
-      const id = str(row.id, 128);
+      const id = ident(row.id, 128);
       const name = str(row.name, 200);
       if (id && name) out.push(build(row, id, name));
     }
@@ -216,10 +229,10 @@ export function normalizeBerdDoc(raw: unknown): BerdDoc {
       configured: row.configured === true,
     })),
     sessions: rows(doc.sessions).flatMap((row) => {
-      const id = str(row.id, 128);
+      const id = ident(row.id, 128);
       const title = str(row.title, 200);
       if (!id || !title) return [];
-      const projectId = str(row.projectId, 128);
+      const projectId = ident(row.projectId, 128);
       return [
         {
           id,
@@ -235,7 +248,7 @@ export function normalizeBerdDoc(raw: unknown): BerdDoc {
       enabled: row.enabled === true,
     })),
     pending: rows(doc.pending).flatMap((row) => {
-      const id = str(row.id, 128);
+      const id = ident(row.id, 128);
       const group = str(row.group, 80);
       const action = str(row.action, 80);
       if (!id || !group || !action) return [];
