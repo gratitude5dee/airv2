@@ -16,6 +16,7 @@
  */
 import { createHash, randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { mintEnvelopeKey, sealEnvelopeKey } from "../commandLane";
 import type { BuzzSignerKind } from "./state";
 
 const CODE_TTL_MS = 10 * 60 * 1000;
@@ -184,7 +185,7 @@ export async function buzzLiveLink(
 }
 
 export type BuzzExchangeResult =
-  | { ok: true; token: string; relayUrl: string }
+  | { ok: true; token: string; relayUrl: string; envelopeKey: string }
   | { ok: false; error: string };
 
 /**
@@ -227,6 +228,10 @@ export async function exchangeBuzzBindingCode(
     .eq("user_id", row.user_id)
     .eq("status", "connected");
   const token = `buzz_${randomBytes(32).toString("hex")}`;
+  // §MA-Z3: the per-signer envelope key lets the signer verify each pulled
+  // intent really came from here. The signer stores the plaintext in its own
+  // secure storage; this side keeps it sealed only (C18).
+  const envelopeKey = mintEnvelopeKey();
   const communityLabel = input.communityLabel?.trim().slice(0, 120) || null;
   const { error } = await supabase.from("buzz_links").insert({
     user_id: row.user_id,
@@ -235,9 +240,10 @@ export async function exchangeBuzzBindingCode(
     npub: input.npub.trim(),
     signer_kind: row.signer_kind,
     token_hash: sha256(token),
+    envelope_key_sealed: sealEnvelopeKey(envelopeKey),
   });
   if (error) return { ok: false, error: "binding failed" };
-  return { ok: true, token, relayUrl: row.relay_url as string };
+  return { ok: true, token, relayUrl: row.relay_url as string, envelopeKey };
 }
 
 export async function buzzHeartbeat(

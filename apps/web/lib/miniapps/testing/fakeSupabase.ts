@@ -17,6 +17,20 @@ const TABLE_DEFAULTS: Record<string, () => Row> = {
     last_seen_at: new Date().toISOString(),
     revoked_at: null,
   }),
+  berd_envelopes: () => ({
+    state: "queued",
+    issued_at: new Date().toISOString(),
+    sent_at: null,
+    completed_at: null,
+    note: null,
+  }),
+  buzz_intents: () => ({
+    state: "queued",
+    issued_at: new Date().toISOString(),
+    sent_at: null,
+    completed_at: null,
+    note: null,
+  }),
   buzz_pairing_codes: () => ({ used_at: null }),
   buzz_links: () => ({
     status: "connected",
@@ -48,6 +62,7 @@ export class FakeDb {
 interface Result {
   data: Row[] | Row | null;
   error: null;
+  count?: number;
 }
 
 function makeBuilder(rows: Row[], table: string) {
@@ -59,12 +74,13 @@ function makeBuilder(rows: Row[], table: string) {
 
   const execute = (): Result => {
     if (mode === "insert") {
-      rows.push({
+      const inserted = {
         id: randomUUID(),
         ...(TABLE_DEFAULTS[table]?.() ?? {}),
         ...patch,
-      });
-      return { data: null, error: null };
+      };
+      rows.push(inserted);
+      return { data: single ? inserted : [inserted], error: null };
     }
     const matched = rows.filter((row) => filters.every((f) => f(row)));
     if (mode === "update") {
@@ -74,6 +90,7 @@ function makeBuilder(rows: Row[], table: string) {
     return {
       data: single ? (limited[0] ?? null) : limited,
       error: null,
+      count: matched.length,
     };
   };
 
@@ -101,6 +118,19 @@ function makeBuilder(rows: Row[], table: string) {
     },
     gt(key: string, value: string) {
       filters.push((row) => String(row[key] ?? "") > value);
+      return api;
+    },
+    lte(key: string, value: string) {
+      filters.push((row) => String(row[key] ?? "") <= value);
+      return api;
+    },
+    in(key: string, values: unknown[]) {
+      filters.push((row) => values.includes(row[key]));
+      return api;
+    },
+    single() {
+      single = true;
+      max = 1;
       return api;
     },
     order() {

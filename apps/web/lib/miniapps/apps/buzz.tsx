@@ -19,9 +19,12 @@ import { promptBar, runPrompt } from "../promptBar";
 import {
   getBuzzDoc,
   putBuzzDoc,
+  queueBuzzPending,
   type BuzzDoc,
   type BuzzLinkStatus,
 } from "../buzz/state";
+import { parseBuzzIntent } from "../buzz/commands";
+import { BUZZ_LANE, enqueueEnvelope } from "../commandLane";
 import {
   beginBuzzBinding,
   buzzLiveLink,
@@ -72,6 +75,86 @@ function bindForm(): string {
 <label style="font-size:12px;display:flex;align-items:center;gap:0.4rem"><input type="radio" name="signer" value="desktop"> Sign with Buzz Desktop on my machine</label>
 <button>Connect Buzz</button>
 </form>`;
+}
+
+function channelOptions(doc: BuzzDoc): string {
+  return doc.channels
+    .map(
+      (channel) =>
+        `<option value="${esc(channel.id)}">#${esc(channel.name)}</option>`
+    )
+    .join("");
+}
+
+function confirmBox(label: string): string {
+  return `<label style="font-size:12px;display:flex;align-items:center;gap:0.4rem"><input type="checkbox" name="confirm" value="yes" required> I understand — ${esc(label)}</label>`;
+}
+
+/**
+ * §MA-Z5 write surface: every form posts one allowlisted verb that becomes
+ * a signed single-use intent for the signer that holds the key. Anything
+ * public and one-way carries an explicit confirm gate, checked server-side.
+ */
+function manageForms(doc: BuzzDoc): string {
+  const channels = channelOptions(doc);
+  const workflowOptions = doc.workflows
+    .map(
+      (workflow) =>
+        `<option value="${esc(workflow.id)}">${esc(workflow.name)}</option>`
+    )
+    .join("");
+  const forms: string[] = [];
+  if (channels) {
+    forms.push(`<form method="post" class="card" style="display:flex;flex-direction:column;gap:0.4rem">
+<input type="hidden" name="action" value="message-send">
+<strong>Send message</strong>
+<select name="channelId">${channels}</select>
+<textarea name="stdin" placeholder="message" rows="3" required></textarea>
+${confirmBox("a sent message is public and one-way")}
+<button>Queue send</button></form>`);
+    forms.push(`<form method="post" class="card" style="display:flex;flex-direction:column;gap:0.4rem">
+<input type="hidden" name="action" value="channel-topic">
+<strong>Set channel topic</strong>
+<select name="channelId">${channels}</select>
+<input type="text" name="stdin" placeholder="topic" required>
+<button class="ghost">Queue topic</button></form>`);
+    forms.push(`<form method="post" class="card" style="display:flex;flex-direction:column;gap:0.4rem">
+<input type="hidden" name="action" value="canvas-set">
+<strong>Set canvas</strong>
+<select name="channelId">${channels}</select>
+<textarea name="stdin" placeholder="canvas content" rows="3" required></textarea>
+${confirmBox("the canvas is last-write-wins")}
+<button class="ghost">Queue canvas</button></form>`);
+    forms.push(`<form method="post" class="card" style="display:flex;flex-direction:column;gap:0.4rem">
+<input type="hidden" name="action" value="agent-draft-create">
+<strong>Draft a new agent</strong>
+<select name="channelId">${channels}</select>
+<input type="text" name="displayName" placeholder="display name" required>
+<textarea name="stdin" placeholder="system prompt" rows="3" required></textarea>
+<div class="when">Sends an owner-reviewed draft — the agent only exists after you save it in Buzz.</div>
+<button>Queue draft</button></form>`);
+  }
+  forms.push(`<form method="post" class="card" style="display:flex;flex-direction:column;gap:0.4rem">
+<input type="hidden" name="action" value="channel-create">
+<strong>New channel</strong>
+<input type="text" name="name" placeholder="name" required>
+<select name="kind"><option value="stream">stream</option><option value="forum">forum</option></select>
+<button>Queue create</button></form>`);
+  forms.push(`<form method="post" class="card" style="display:flex;flex-direction:column;gap:0.4rem">
+<input type="hidden" name="action" value="dm-open">
+<strong>Open a DM</strong>
+<input type="text" name="pubkey" placeholder="hex pubkey" required>
+<button class="ghost">Queue open</button></form>`);
+  if (workflowOptions) {
+    forms.push(`<form method="post" class="card" style="display:flex;flex-direction:column;gap:0.4rem">
+<input type="hidden" name="action" value="workflow-approve">
+<strong>Approve workflow step</strong>
+<select name="workflowId">${workflowOptions}</select>
+<input type="text" name="approvalToken" placeholder="approval token (optional)">
+${confirmBox("an approval cannot be batched or undone")}
+<button>Queue approval</button></form>`);
+  }
+  return section("Manage", forms);
 }
 
 function linkPanel(live: BuzzLiveLink, doc: BuzzDoc): string {
@@ -173,9 +256,12 @@ ${section(
   "Canvases",
   doc.canvases.map((canvas) => row(canvas.channelId, canvas.updatedAt))
 )}
+${live.status === "connected" ? manageForms(doc) : ""}
 ${section(
   "Pending",
-  doc.pending.map((op) => row(`${op.group} ${op.verb}`, op.state))
+  doc.pending.map((op) =>
+    row(`${op.group} ${op.verb}`, [op.state, op.note].filter(Boolean).join(" · "))
+  )
 )}
 ${promptBar("Ask your agent — e.g. what happened in #engineering today…")}</section>`;
   return renderShell({ title: doc.title, kicker: "Buzz", body, notice, lite });
@@ -263,31 +349,54 @@ export const buzz: MiniAppModule = {
       );
     }
 
-    if (action === "refresh") {
-      const live = await buzzLiveLink(ctx.supabase, ctx.session.userId);
-      const doc = await getBuzzDoc(
-        ctx.supabase,
-        ctx.session.userId,
-        ctx.session.resourceId
-      );
-      if (live.status !== "connected") {
-        return loadAndRender(
-          ctx,
-          "No Buzz community is connected yet, so there is nothing to refresh."
-        );
-      }
-      // The intent lane (§MA-Z3) runs the read fan-out; for now this re-reads
-      // the mirror and says exactly that.
-      await putBuzzDoc(
-        ctx.supabase,
-        ctx.session.userId,
-        ctx.session.resourceId,
-        doc
-      );
-      return loadAndRender(ctx, "Showing the last state the relay reported.");
+    // Everything else is the §MA-Z3 intent lane: an allowlisted
+    // (group, verb) pair with validated args — content on `stdin`, never a
+    // flag — becomes a signed single-use intent the connected signer pulls
+    // outbound and executes where the key lives. Unknown actions fail closed.
+    const parsed = parseBuzzIntent(action, form);
+    if (!parsed.ok) {
+      if (parsed.error === "unknown action") return forbidden(parsed.error);
+      return loadAndRender(ctx, parsed.error);
     }
-
-    // Intents and every write verb are §MA-Z3+. Fail closed.
-    return forbidden("unknown action");
+    if (parsed.confirmLabel && form.get("confirm") !== "yes") {
+      return loadAndRender(
+        ctx,
+        `Tick the confirmation first — ${parsed.confirmLabel}.`
+      );
+    }
+    const live = await buzzLiveLink(ctx.supabase, ctx.session.userId);
+    if (live.status !== "connected") {
+      return loadAndRender(
+        ctx,
+        "No Buzz community is connected yet — intents run on your own signer. Bind one below first."
+      );
+    }
+    const queued = await enqueueEnvelope(
+      ctx.supabase,
+      BUZZ_LANE,
+      ctx.session.userId,
+      ctx.session.resourceId,
+      parsed.intent.group,
+      parsed.intent.verb,
+      parsed.intent.args
+    );
+    if (!queued.ok) {
+      return loadAndRender(ctx, queued.error);
+    }
+    const doc = await getBuzzDoc(
+      ctx.supabase,
+      ctx.session.userId,
+      ctx.session.resourceId
+    );
+    await putBuzzDoc(
+      ctx.supabase,
+      ctx.session.userId,
+      ctx.session.resourceId,
+      queueBuzzPending(doc, queued.id, parsed.intent.group, parsed.intent.verb)
+    );
+    return loadAndRender(
+      ctx,
+      "Queued — your signer runs it on its next check-in and the result lands below."
+    );
   },
 };

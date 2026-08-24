@@ -4,7 +4,7 @@
  * private-key-shaped value survives the normalizer or reaches the rendered
  * HTML (C9, C18). The surface has no field that accepts a key at all.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MiniAppContext } from "@/lib/miniapps/apps/types";
@@ -62,6 +62,10 @@ function form(action: string): FormData {
   return data;
 }
 
+beforeAll(() => {
+  process.env.SESSION_SECRET = "test-session-secret";
+});
+
 afterEach(() => {
   boxFiles.clear();
   db = new FakeDb();
@@ -87,17 +91,19 @@ describe("buzz mini-app", () => {
     }
   });
 
-  it("fails closed on unknown actions, including write verbs not yet built", async () => {
-    for (const action of [
-      "",
-      "intent-mint",
-      "message-send",
-      "agent-draft-create",
-      "messages-delete",
-    ]) {
+  it("fails closed on unknown actions, including destructive verbs never built", async () => {
+    for (const action of ["", "intent-mint", "messages-delete", "mem-rm"]) {
       const response = await buzz.action!(makeCtx(), form(action));
       expect(response.status).toBe(403);
       expect(await response.text()).toBe("unknown action");
+    }
+  });
+
+  it("renders a validation message for allowlisted verbs missing fields", async () => {
+    for (const action of ["message-send", "agent-draft-create"]) {
+      const response = await buzz.action!(makeCtx(), form(action));
+      expect(response.status).toBe(200);
+      expect(await response.text()).toContain("needed");
     }
   });
 

@@ -15,9 +15,12 @@ import { promptBar, runPrompt } from "../promptBar";
 import {
   getBerdDoc,
   putBerdDoc,
+  queueBerdPending,
   type BerdDoc,
   type BerdLinkStatus,
 } from "../berd/state";
+import { parseBerdCommand } from "../berd/commands";
+import { BERD_LANE, enqueueEnvelope } from "../commandLane";
 import {
   beginBerdPairing,
   berdLiveLink,
@@ -51,6 +54,95 @@ function row(primary: string, secondary?: string): string {
 
 function actionButton(action: string, label: string): string {
   return `<form method="post" style="display:inline"><input type="hidden" name="action" value="${esc(action)}"><button class="ghost">${esc(label)}</button></form>`;
+}
+
+function field(
+  name: string,
+  placeholder: string,
+  required: boolean
+): string {
+  return `<input type="text" name="${esc(name)}" placeholder="${esc(placeholder)}"${required ? " required" : ""}>`;
+}
+
+function idOptions(rows: { id: string; label: string }[]): string {
+  return rows
+    .map(
+      (row) =>
+        `<option value="${esc(row.id)}">${esc(row.label)}</option>`
+    )
+    .join("");
+}
+
+/**
+ * §MA-B5 write surface: every form posts one allowlisted action that
+ * becomes a signed envelope for the paired Berd. Create/edit only — the
+ * destructive verbs stay in Berd's own UI.
+ */
+function manageForms(doc: BerdDoc): string {
+  const agentOptions = idOptions(
+    doc.agents.map((agent) => ({ id: agent.id, label: agent.name }))
+  );
+  const projectOptions = idOptions(
+    doc.projects.map((project) => ({ id: project.id, label: project.name }))
+  );
+  const automationOptions = idOptions(
+    doc.automations.map((automation) => ({
+      id: automation.id,
+      label: automation.name,
+    }))
+  );
+  const forms: string[] = [
+    `<form method="post" class="card" style="display:flex;flex-direction:column;gap:0.4rem">
+<input type="hidden" name="action" value="agent-create">
+<strong>New agent</strong>
+${field("name", "name", true)}${field("description", "description (optional)", false)}${field("harness", "harness (optional)", false)}${field("model", "model (optional)", false)}
+<button>Queue create</button></form>`,
+    `<form method="post" class="card" style="display:flex;flex-direction:column;gap:0.4rem">
+<input type="hidden" name="action" value="project-create">
+<strong>New project</strong>
+${field("name", "name", true)}
+<button>Queue create</button></form>`,
+    `<form method="post" class="card" style="display:flex;flex-direction:column;gap:0.4rem">
+<input type="hidden" name="action" value="skill-create">
+<strong>New skill</strong>
+${field("name", "name", true)}${field("summary", "summary (optional)", false)}
+<textarea name="body" placeholder="skill body (optional)" rows="3"></textarea>
+<button>Queue create</button></form>`,
+  ];
+  if (agentOptions) {
+    forms.push(`<form method="post" class="card" style="display:flex;flex-direction:column;gap:0.4rem">
+<input type="hidden" name="action" value="agent-update">
+<strong>Edit agent</strong>
+<select name="id">${agentOptions}</select>
+${field("name", "new name (optional)", false)}${field("description", "new description (optional)", false)}${field("model", "new model (optional)", false)}
+<button>Queue update</button></form>`);
+  }
+  if (projectOptions) {
+    forms.push(`<form method="post" class="card" style="display:flex;flex-direction:column;gap:0.4rem">
+<input type="hidden" name="action" value="session-start">
+<strong>Start session</strong>
+<select name="projectId">${projectOptions}</select>
+${field("title", "title (optional)", false)}
+<button>Queue start</button></form>`);
+    forms.push(`<form method="post" class="card" style="display:flex;flex-direction:column;gap:0.4rem">
+<input type="hidden" name="action" value="project-archive">
+<strong>Archive project</strong>
+<select name="id">${projectOptions}</select>
+<button class="ghost">Queue archive</button></form>`);
+  }
+  if (automationOptions) {
+    forms.push(`<form method="post" class="card" style="display:flex;flex-direction:column;gap:0.4rem">
+<input type="hidden" name="action" value="automation-enable">
+<strong>Enable automation</strong>
+<select name="id">${automationOptions}</select>
+<button class="ghost">Queue enable</button></form>`);
+    forms.push(`<form method="post" class="card" style="display:flex;flex-direction:column;gap:0.4rem">
+<input type="hidden" name="action" value="automation-disable">
+<strong>Pause automation</strong>
+<select name="id">${automationOptions}</select>
+<button class="ghost">Queue pause</button></form>`);
+  }
+  return section("Manage", forms);
 }
 
 function linkPanel(live: BerdLiveLink, doc: BerdDoc): string {
@@ -119,9 +211,12 @@ ${section(
     row(automation.name, automation.enabled ? "enabled" : "paused")
   )
 )}
+${live.status === "paired" ? manageForms(doc) : ""}
 ${section(
   "Pending",
-  doc.pending.map((op) => row(`${op.group} ${op.action}`, op.state))
+  doc.pending.map((op) =>
+    row(`${op.group} ${op.action}`, [op.state, op.note].filter(Boolean).join(" · "))
+  )
 )}
 ${promptBar("Ask your agent — e.g. what is running in Berd right now…")}</section>`;
   return renderShell({ title: doc.title, kicker: "Berd", body, notice, lite });
@@ -189,31 +284,53 @@ export const berd: MiniAppModule = {
       );
     }
 
-    if (action === "refresh") {
-      const live = await berdLiveLink(ctx.supabase, ctx.session.userId);
-      const doc = await getBerdDoc(
-        ctx.supabase,
-        ctx.session.userId,
-        ctx.session.resourceId
-      );
-      if (live.status !== "paired") {
-        return loadAndRender(
-          ctx,
-          "No Berd device is paired yet, so there is nothing to refresh."
-        );
-      }
-      // The envelope lane (§MA-B3) does the fan-out; until it lands this only
-      // re-reads what Berd itself last wrote, and says so.
-      await putBerdDoc(
-        ctx.supabase,
-        ctx.session.userId,
-        ctx.session.resourceId,
-        doc
-      );
-      return loadAndRender(ctx, "Showing the last state Berd reported.");
+    // Everything else is the §MA-B3 command lane: an allowlisted
+    // (group, action) pair with validated args becomes a signed single-use
+    // envelope the paired Berd pulls outbound and routes through its own
+    // berdctl broker and renderer registry. Unknown actions fail closed.
+    const parsed = parseBerdCommand(action, form);
+    if (!parsed.ok) {
+      if (parsed.error === "unknown action") return forbidden(parsed.error);
+      return loadAndRender(ctx, parsed.error);
     }
-
-    // Envelopes and every write verb are §MA-B3+. Fail closed.
-    return forbidden("unknown action");
+    const live = await berdLiveLink(ctx.supabase, ctx.session.userId);
+    if (live.status !== "paired") {
+      return loadAndRender(
+        ctx,
+        "No Berd device is paired yet — commands run on your own device. Pair one below first."
+      );
+    }
+    const queued = await enqueueEnvelope(
+      ctx.supabase,
+      BERD_LANE,
+      ctx.session.userId,
+      ctx.session.resourceId,
+      parsed.command.group,
+      parsed.command.action,
+      parsed.command.args
+    );
+    if (!queued.ok) {
+      return loadAndRender(ctx, queued.error);
+    }
+    const doc = await getBerdDoc(
+      ctx.supabase,
+      ctx.session.userId,
+      ctx.session.resourceId
+    );
+    await putBerdDoc(
+      ctx.supabase,
+      ctx.session.userId,
+      ctx.session.resourceId,
+      queueBerdPending(
+        doc,
+        queued.id,
+        parsed.command.group,
+        parsed.command.action
+      )
+    );
+    return loadAndRender(
+      ctx,
+      "Queued — Berd runs it on its next check-in and the result lands below."
+    );
   },
 };

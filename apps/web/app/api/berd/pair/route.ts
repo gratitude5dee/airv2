@@ -43,5 +43,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!result.ok) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
-  return NextResponse.json({ token: result.token });
+  // The envelope key rides with the token exactly once: Berd stores both in
+  // its own secure storage and uses the key to verify pulled envelopes
+  // (§MA-B3). This side keeps only sealed/hashed copies.
+  return NextResponse.json({
+    token: result.token,
+    envelopeKey: result.envelopeKey,
+  });
 }

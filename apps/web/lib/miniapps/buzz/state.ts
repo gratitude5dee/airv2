@@ -318,6 +318,68 @@ export function normalizeBuzzDoc(raw: unknown): BuzzDoc {
   };
 }
 
+/** Bound: pending is a status strip, not a history. */
+const MAX_PENDING = 20;
+
+/** Record a freshly queued intent in the document's pending strip. */
+export function queueBuzzPending(
+  doc: BuzzDoc,
+  id: string,
+  group: string,
+  verb: string
+): BuzzDoc {
+  const pending = [
+    ...doc.pending.filter((op) => op.id !== id),
+    {
+      id,
+      group,
+      verb,
+      requestedAt: new Date().toISOString(),
+      state: "queued" as const,
+    },
+  ];
+  return { ...doc, pending: pending.slice(-MAX_PENDING) };
+}
+
+export function markBuzzPending(
+  doc: BuzzDoc,
+  id: string,
+  state: BuzzPendingState,
+  note?: string
+): BuzzDoc {
+  return {
+    ...doc,
+    pending: doc.pending.map((op) =>
+      op.id === id ? { ...op, state, ...(note ? { note } : {}) } : op
+    ),
+  };
+}
+
+/**
+ * Merge a signer result into the mirror. The signer reports whichever lists
+ * the intent touched as full replacements — the relay is authoritative, the
+ * mirror only renders — and the whole document passes back through the
+ * normalizer, so a hostile relay payload is bounded and anything key-shaped
+ * is dropped (C9/C18) before a byte is written.
+ */
+export function mergeBuzzResult(doc: BuzzDoc, data: unknown): BuzzDoc {
+  if (typeof data !== "object" || data === null) return doc;
+  const payload = data as Record<string, unknown>;
+  const merged: Record<string, unknown> = { ...doc };
+  for (const key of [
+    "channels",
+    "threads",
+    "dms",
+    "canvases",
+    "workflows",
+    "agents",
+  ]) {
+    if (Array.isArray(payload[key])) merged[key] = payload[key];
+  }
+  merged.link = { ...doc.link, lastSyncAt: new Date().toISOString() };
+  return normalizeBuzzDoc(merged);
+}
+
 export async function getBuzzDoc(
   supabase: SupabaseClient,
   userId: string,
