@@ -106,6 +106,19 @@ function label(layer: ImageLayer): string {
   return layer.assetId || "Image";
 }
 
+/** A layer composites only when it and every ancestor group are visible. */
+function visibleInTree(doc: ImageDoc, layer: ImageLayer): boolean {
+  const byId = new Map(doc.layers.map((l) => [l.id, l]));
+  const seen = new Set<string>();
+  let cursor: ImageLayer | undefined = layer;
+  while (cursor && !seen.has(cursor.id)) {
+    if (!cursor.visible) return false;
+    seen.add(cursor.id);
+    cursor = cursor.parentGroupId ? byId.get(cursor.parentGroupId) : undefined;
+  }
+  return true;
+}
+
 function siblingIndex(doc: ImageDoc, layer: ImageLayer): number {
   return doc.layers
     .filter((l) => l.parentGroupId === layer.parentGroupId)
@@ -364,7 +377,7 @@ function Editor({ initial }: { initial: Payload }): React.ReactElement {
   });
 
   const renderStageLayer = (layer: ImageLayer): React.ReactNode => {
-    if (!layer.visible || layer.kind === "group") return null;
+    if (layer.kind === "group" || !visibleInTree(doc, layer)) return null;
     if (layer.kind === "text") {
       return (
         <div
@@ -499,7 +512,7 @@ function Editor({ initial }: { initial: Payload }): React.ReactElement {
           aria-label="move layer up"
           onClick={(event) => {
             event.stopPropagation();
-            void send({ action: "move", id: layer.id, direction: "down" });
+            void send({ action: "move", id: layer.id, direction: "up" });
           }}
         >
           {"\u2191"}
@@ -510,7 +523,7 @@ function Editor({ initial }: { initial: Payload }): React.ReactElement {
           aria-label="move layer down"
           onClick={(event) => {
             event.stopPropagation();
-            void send({ action: "move", id: layer.id, direction: "up" });
+            void send({ action: "move", id: layer.id, direction: "down" });
           }}
         >
           {"\u2193"}
