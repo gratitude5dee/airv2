@@ -25,6 +25,7 @@ import { listBots } from "../bots/store";
 import { createSpectrumSender, type SpectrumSender } from "../spectrum/sender";
 import { probeForTapback } from "../spectrum/tapbacks";
 import { maybeRunCreativeLane } from "../creative/imessage";
+import { maybeSendMiniAppLink } from "../miniapps/imessageCommand";
 import {
   armStopAfter,
   ensureBoxAwake,
@@ -384,6 +385,43 @@ export async function runFlush(
       return;
     }
     const rawInput = composeInput(carried, fresh);
+    try {
+      const handled = await maybeSendMiniAppLink(
+        supabase,
+        sender,
+        { spaceId: job.spaceId, userId: job.userId, phone: job.phone },
+        rawInput
+      );
+      if (handled) {
+        if (!(await chainCancelled(supabase, job.spaceId, chainStartedAt))) {
+          await supabase
+            .from("flush_jobs")
+            .delete()
+            .eq("space_id", job.spaceId)
+            .eq("chain_started_at", chainStartedAt);
+        }
+        return;
+      }
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          msg: "mini-app command failed",
+          user_id: job.userId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      );
+      await sender
+        .sendText(job.spaceId, job.phone, "couldn't open that mini-app. try again?")
+        .catch(() => undefined);
+      if (!(await chainCancelled(supabase, job.spaceId, chainStartedAt))) {
+        await supabase
+          .from("flush_jobs")
+          .delete()
+          .eq("space_id", job.spaceId)
+          .eq("chain_started_at", chainStartedAt);
+      }
+      return;
+    }
     // M16 creative lane: an explicit /imagine, /animate, or /zap in the
     // settled burst is handled here, before any box wake or Hermes run.
     // Only tier-0/1 senders ever reach the flush — tier-2 inbound returns
