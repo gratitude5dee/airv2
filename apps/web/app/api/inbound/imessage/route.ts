@@ -143,11 +143,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const reply = onboarding.text;
     const spaceId = inbound.spaceId;
     const phone = inbound.phone;
+    const messageId = inbound.messageId;
     after(async () => {
       const sender = await createSpectrumSender().catch(() => undefined);
       if (!sender) return;
       try {
-        await sender.sendText(spaceId, phone, reply);
+        // Thread under the message being answered; plain send when the
+        // target can't be resolved.
+        const threaded = await sender
+          .sendReply(spaceId, phone, messageId, reply)
+          .catch(() => false);
+        if (!threaded) await sender.sendText(spaceId, phone, reply);
       } finally {
         await sender.close().catch(() => undefined);
       }
@@ -203,6 +209,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       senderId: inbound.senderId,
       phone: inbound.phone,
       text: body,
+      messageId: inbound.messageId,
     };
     const userId = route.userId;
     // 5: ack before work (C8); the relay + reply happen after the response.
@@ -246,9 +253,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           ).catch(() => undefined);
         }
         if (result.reply && sender) {
-          await sender
-            .sendText(relayInput.sessionId, relayInput.phone, result.reply)
-            .catch(() => undefined);
+          const threaded = await sender
+            .sendReply(
+              relayInput.sessionId,
+              relayInput.phone,
+              relayInput.messageId,
+              result.reply
+            )
+            .catch(() => false);
+          if (!threaded) {
+            await sender
+              .sendText(relayInput.sessionId, relayInput.phone, result.reply)
+              .catch(() => undefined);
+          }
         }
       } finally {
         await sender?.close().catch(() => undefined);

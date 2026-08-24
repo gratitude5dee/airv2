@@ -162,16 +162,93 @@ export function contextMarkdown(persona: unknown, syncedAt: string): string {
   return lines.join("\n");
 }
 
-/** Idempotently append the pointer line to USER.md content. */
-export function addPointerLine(user: string): string {
-  if (user.includes(USER_MD_POINTER_LINE)) return user;
-  const trimmed = user.replace(/\n+$/, "");
-  return trimmed === ""
-    ? `${USER_MD_POINTER_LINE}\n`
-    : `${trimmed}\n${USER_MD_POINTER_LINE}\n`;
+/** USER.md persona digest markers — everything between them (inclusive) is
+ * owned by the sync and replaced wholesale on every re-sync. */
+export const PERSONA_BLOCK_START = "<!-- onairos-persona:start -->";
+export const PERSONA_BLOCK_END = "<!-- onairos-persona:end -->";
+
+/** USER.md is budgeted (~500 tokens in Hermes), so the digest keeps only the
+ * highest-signal fields; the full projection stays in onairos.md. */
+const MAX_DIGEST_TRAITS = 5;
+const MAX_DIGEST_GROWTH = 3;
+const MAX_SUMMARY_CHARS = 400;
+
+function truncate(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max);
+  const space = cut.lastIndexOf(" ");
+  return `${cut.slice(0, space > max / 2 ? space : max)}…`;
 }
 
-/** Remove the pointer line (disconnect leaves zero Onairos-derived bytes). */
+/** Highest-scored trait names first (unscored traits keep their order, last). */
+function rankedTraits(record: Record<string, unknown>, limit: number): string {
+  return Object.entries(record)
+    .map(([name, value]) => ({ name, score: traitScore(value) }))
+    .sort((a, b) => Number(b.score || -1) - Number(a.score || -1))
+    .slice(0, limit)
+    .map(({ name, score }) => (score ? `${name} (${score})` : name))
+    .join(", ");
+}
+
+/** Compact persona digest for USER.md: archetype, ranked traits, summary,
+ * growth areas, connected platforms — the onairos-hermes-mcp shape. */
+export function personaBlock(persona: unknown, syncedAt: string): string {
+  const traits = extractTraits(persona);
+  const root = persona as { connectedPlatforms?: unknown } | null;
+  const lines: string[] = [
+    PERSONA_BLOCK_START,
+    "## What you know about your owner",
+    "Use this automatically whenever you personalize — recommendations, tone,",
+    "examples. The owner never needs to name or ask for this context.",
+  ];
+  if (typeof traits.archetype === "string" && traits.archetype) {
+    lines.push(`Archetype: The ${traits.archetype}`);
+  }
+  if (typeof traits.user_summary === "string" && traits.user_summary) {
+    lines.push(truncate(traits.user_summary, MAX_SUMMARY_CHARS));
+  }
+  const strengths = rankedTraits(
+    traits.positive_traits ?? {},
+    MAX_DIGEST_TRAITS
+  );
+  if (strengths) lines.push(`Top traits: ${strengths}`);
+  const growth = rankedTraits(traits.traits_to_improve ?? {}, MAX_DIGEST_GROWTH);
+  if (growth) lines.push(`Growth areas: ${growth}`);
+  if (Array.isArray(root?.connectedPlatforms)) {
+    const platforms = root.connectedPlatforms.filter(
+      (entry): entry is string => typeof entry === "string"
+    );
+    if (platforms.length > 0) lines.push(`Built from: ${platforms.join(", ")}`);
+  }
+  lines.push(
+    `Synced ${syncedAt} — full detail in ~/.hermes/context/onairos.md.`,
+    PERSONA_BLOCK_END
+  );
+  return lines.join("\n");
+}
+
+const BLOCK_PATTERN = new RegExp(
+  `${PERSONA_BLOCK_START}[\\s\\S]*?${PERSONA_BLOCK_END}\\n?`,
+  "g"
+);
+
+/** Replace (or append) the persona digest in USER.md content. Also retires
+ * the legacy standalone pointer line — the block carries the pointer now. */
+export function upsertPersonaBlock(user: string, block: string): string {
+  const cleaned = removePointerLine(user.replace(BLOCK_PATTERN, "")).replace(
+    /\n+$/,
+    ""
+  );
+  return cleaned === "" ? `${block}\n` : `${cleaned}\n\n${block}\n`;
+}
+
+/** Remove the persona digest (and legacy pointer line) from USER.md content. */
+export function removePersonaBlock(user: string): string {
+  return removePointerLine(user.replace(BLOCK_PATTERN, ""));
+}
+
+/** Remove the legacy pointer line older syncs appended (the persona block
+ * carries the pointer now); disconnect leaves zero Onairos-derived bytes. */
 export function removePointerLine(user: string): string {
   return user
     .split("\n")

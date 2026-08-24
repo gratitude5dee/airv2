@@ -1,6 +1,36 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { OnairosError } from "./context";
-import { fetchPersona, personaUrl } from "./sync";
+import {
+  fetchPersona,
+  PERSONA_CACHE_TTL_MS,
+  personaUrl,
+  resyncOnairos,
+} from "./sync";
+import { command, readFile, writeFile } from "@/lib/box/client";
+import { armStopAfter, ensureBoxAwake } from "@/lib/orchestrator/boxes";
+import { deepMemoryForget, deepMemoryIndex } from "@/lib/memory/deep";
+
+vi.mock("@/lib/box/client", () => ({
+  command: vi.fn(),
+  readFile: vi.fn(),
+  writeFile: vi.fn(),
+}));
+vi.mock("@/lib/orchestrator/boxes", () => ({
+  ensureBoxAwake: vi.fn(),
+  armStopAfter: vi.fn(),
+}));
+vi.mock("@/lib/memory/deep", () => ({
+  deepMemoryIndex: vi.fn(),
+  deepMemoryForget: vi.fn(),
+  OV_ONAIROS_URI: "ov://onairos",
+}));
+
+function fakeSupabase(): SupabaseClient {
+  return {
+    from: () => ({ upsert: vi.fn().mockResolvedValue({}) }),
+  } as unknown as SupabaseClient;
+}
 
 const handoff = {
   token: "tok",
@@ -103,6 +133,83 @@ describe("fetchPersona", () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(202));
     await expect(fetchPersona(handoff)).rejects.toThrow(
       "persona still training"
+    );
+  });
+});
+
+describe("resyncOnairos caching", () => {
+  beforeEach(() => {
+    vi.mocked(command).mockResolvedValue({ exitCode: 0, stdout: "", stderr: "" });
+    vi.mocked(writeFile).mockResolvedValue(undefined);
+    vi.mocked(ensureBoxAwake).mockResolvedValue({
+      boxId: "bx_test",
+    } as Awaited<ReturnType<typeof ensureBoxAwake>>);
+    vi.mocked(armStopAfter).mockResolvedValue(undefined);
+    vi.mocked(deepMemoryIndex).mockResolvedValue(true);
+    vi.mocked(deepMemoryForget).mockResolvedValue(true);
+  });
+
+  const cachedJson = (syncedAt: string) =>
+    JSON.stringify({ synced_at: syncedAt, persona: { traits: {} } });
+  const grantJson = JSON.stringify({
+    token: "tok",
+    apiUrl: "https://api2.onairos.uk/traits-only",
+  });
+
+  it("serves a fresh cache without an upstream request", async () => {
+    const syncedAt = new Date(Date.now() - 60_000).toISOString();
+    vi.mocked(readFile).mockResolvedValue(cachedJson(syncedAt));
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const result = await resyncOnairos(fakeSupabase(), "user-1");
+    expect(result).toEqual({ syncedAt, fromCache: true });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("refetches when the cache is older than the TTL", async () => {
+    const syncedAt = new Date(
+      Date.now() - PERSONA_CACHE_TTL_MS - 60_000
+    ).toISOString();
+    vi.mocked(readFile).mockImplementation(async (_boxId, path) => {
+      if (path.endsWith("onairos.json")) return cachedJson(syncedAt);
+      if (path.endsWith(".onairos-grant.json")) return grantJson;
+      return "";
+    });
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(jsonResponse(200, { traits: {} }));
+    const result = await resyncOnairos(fakeSupabase(), "user-1");
+    expect(fetchMock).toHaveBeenCalled();
+    expect(result.fromCache).toBeUndefined();
+  });
+
+  it("falls back to the stale cache when the grant has expired", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const syncedAt = new Date(
+      Date.now() - PERSONA_CACHE_TTL_MS - 60_000
+    ).toISOString();
+    vi.mocked(readFile).mockImplementation(async (_boxId, path) => {
+      if (path.endsWith("onairos.json")) return cachedJson(syncedAt);
+      if (path.endsWith(".onairos-grant.json")) return grantJson;
+      return "";
+    });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse(401, { error: "JWT_INVALID" })
+    );
+    const result = await resyncOnairos(fakeSupabase(), "user-1");
+    expect(result).toEqual({ syncedAt, fromCache: true });
+  });
+
+  it("409s on an expired grant when there is no cache at all", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.mocked(readFile).mockImplementation(async (_boxId, path) => {
+      if (path.endsWith(".onairos-grant.json")) return grantJson;
+      throw new Error("not found");
+    });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse(401, { error: "JWT_INVALID" })
+    );
+    await expect(resyncOnairos(fakeSupabase(), "user-1")).rejects.toThrow(
+      "grant expired — reconnect Onairos"
     );
   });
 });

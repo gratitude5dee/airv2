@@ -1,14 +1,17 @@
 /**
  * MA9.2 — Onairos handoff validation (SSRF guard: the apiUrl arrives from a
  * browser), markdown projection across the documented response families, and
- * the USER.md pointer-line invariants (exactly one, fully removable).
+ * the USER.md persona-block invariants (exactly one, fully removable).
  */
 import { describe, expect, it } from "vitest";
 import {
-  addPointerLine,
   contextMarkdown,
   OnairosError,
-  removePointerLine,
+  PERSONA_BLOCK_END,
+  PERSONA_BLOCK_START,
+  personaBlock,
+  removePersonaBlock,
+  upsertPersonaBlock,
   USER_MD_POINTER_LINE,
   validateHandoff,
 } from "./context";
@@ -88,22 +91,66 @@ describe("contextMarkdown", () => {
   });
 });
 
-describe("USER.md pointer line", () => {
-  it("appends exactly once", () => {
-    const once = addPointerLine("I like tea.\n");
-    expect(once).toBe(`I like tea.\n${USER_MD_POINTER_LINE}\n`);
-    expect(addPointerLine(once)).toBe(once);
+const persona = {
+  traits: {
+    archetype: "Builder",
+    user_summary: "Likes shipping.",
+    positive_traits: { Curiosity: { score: 91 }, Grit: 80, Focus: "n/a" },
+    traits_to_improve: { Patience: { score: 40 } },
+  },
+  connectedPlatforms: ["youtube", "reddit"],
+};
+
+describe("personaBlock", () => {
+  it("renders the compact digest with ranked traits", () => {
+    const block = personaBlock(persona, "2026-08-19T00:00:00Z");
+    expect(block.startsWith(PERSONA_BLOCK_START)).toBe(true);
+    expect(block.endsWith(PERSONA_BLOCK_END)).toBe(true);
+    expect(block).toContain("Archetype: The Builder");
+    expect(block).toContain("Top traits: Curiosity (91), Grit (80), Focus");
+    expect(block).toContain("Growth areas: Patience (40)");
+    expect(block).toContain("Built from: youtube, reddit");
+    expect(block).toContain("~/.hermes/context/onairos.md");
+  });
+
+  it("never names the provider in the digest heading or guidance", () => {
+    const block = personaBlock(persona, "2026-08-19T00:00:00Z");
+    const visible = block
+      .replace(PERSONA_BLOCK_START, "")
+      .replace(PERSONA_BLOCK_END, "")
+      .replace(/~\/\.hermes\/context\/onairos\.md/g, "");
+    expect(visible.toLowerCase()).not.toContain("onairos");
+  });
+});
+
+describe("USER.md persona block", () => {
+  const block = personaBlock(persona, "2026-08-19T00:00:00Z");
+
+  it("appends to existing content and replaces on re-sync", () => {
+    const once = upsertPersonaBlock("I like tea.\n", block);
+    expect(once).toBe(`I like tea.\n\n${block}\n`);
+    const newer = personaBlock(persona, "2026-08-20T00:00:00Z");
+    const replaced = upsertPersonaBlock(once, newer);
+    expect(replaced).toBe(`I like tea.\n\n${newer}\n`);
+    expect(replaced.match(/onairos-persona:start/g)).toHaveLength(1);
   });
 
   it("handles an empty USER.md", () => {
-    expect(addPointerLine("")).toBe(`${USER_MD_POINTER_LINE}\n`);
+    expect(upsertPersonaBlock("", block)).toBe(`${block}\n`);
   });
 
-  it("removes the pointer, leaving no Onairos-derived bytes", () => {
-    const withPointer = addPointerLine("Profile.\n");
-    const cleaned = removePointerLine(withPointer);
-    expect(cleaned).not.toContain("Onairos");
+  it("retires the legacy pointer line", () => {
+    const legacy = `Profile.\n${USER_MD_POINTER_LINE}\n`;
+    const upserted = upsertPersonaBlock(legacy, block);
+    expect(upserted).not.toContain(USER_MD_POINTER_LINE);
+    expect(upserted).toContain("Profile.");
+  });
+
+  it("removes the block, leaving no Onairos-derived bytes", () => {
+    const withBlock = upsertPersonaBlock("Profile.\n", block);
+    const cleaned = removePersonaBlock(withBlock);
+    expect(cleaned.toLowerCase()).not.toContain("onairos");
     expect(cleaned).toContain("Profile.");
-    expect(removePointerLine("no pointer here\n")).toBe("no pointer here\n");
+    expect(removePersonaBlock("no block here\n")).toBe("no block here\n");
   });
 });

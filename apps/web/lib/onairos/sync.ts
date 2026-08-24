@@ -20,13 +20,14 @@ import {
   ensureBoxAwake,
 } from "@/lib/orchestrator/boxes";
 import {
-  addPointerLine,
   contextMarkdown,
   ONAIROS_GRANT_PATH,
   ONAIROS_JSON_PATH,
   ONAIROS_MD_PATH,
   OnairosError,
-  removePointerLine,
+  personaBlock,
+  removePersonaBlock,
+  upsertPersonaBlock,
   validateHandoff,
   type OnairosHandoff,
 } from "./context";
@@ -130,12 +131,39 @@ export async function fetchPersona(handoff: OnairosHandoff): Promise<unknown> {
   return (await response.json()) as unknown;
 }
 
+/** Persona cache freshness window: re-syncs inside it serve the box-stored
+ * copy instead of re-hitting the Persona API. */
+export const PERSONA_CACHE_TTL_MS = 60 * 60 * 1000;
+
+interface CachedPersona {
+  syncedAt: string;
+  persona: unknown;
+}
+
+/** Read the box-stored persona cache (onairos.json). Null when absent or
+ * unreadable — callers then must fetch upstream. */
+async function readCachedPersona(boxId: string): Promise<CachedPersona | null> {
+  const raw = await readFile(boxId, ONAIROS_JSON_PATH).catch(() => null);
+  if (raw === null) return null;
+  try {
+    const parsed = JSON.parse(raw) as {
+      synced_at?: unknown;
+      persona?: unknown;
+    } | null;
+    if (typeof parsed?.synced_at !== "string") return null;
+    return { syncedAt: parsed.synced_at, persona: parsed.persona };
+  } catch {
+    return null;
+  }
+}
+
 async function writeContext(
   boxId: string,
   persona: unknown,
-  handoff: OnairosHandoff
+  handoff: OnairosHandoff,
+  syncedAtInput?: string
 ): Promise<void> {
-  const syncedAt = new Date().toISOString();
+  const syncedAt = syncedAtInput ?? new Date().toISOString();
   const mkdir = await command(boxId, "mkdir -p .hermes/context");
   if (mkdir.exitCode !== 0) throw new OnairosError("box write failed", 502);
   await writeFile(boxId, ONAIROS_MD_PATH, contextMarkdown(persona, syncedAt));
@@ -150,9 +178,11 @@ async function writeContext(
     JSON.stringify({ apiUrl: handoff.apiUrl, token: handoff.token })
   );
   await command(boxId, `chmod 600 ${shellQuote(ONAIROS_GRANT_PATH)}`);
-  // USER.md gets exactly one pointer line at the imported context (MA9.2).
+  // USER.md carries a compact persona digest (the onairos-hermes-mcp shape:
+  // archetype, ranked traits, summary, growth areas, platforms) so the agent
+  // is personalized from the first message — replaced wholesale on re-sync.
   const user = await readFile(boxId, USER_PROFILE_PATH).catch(() => "");
-  const updated = addPointerLine(user);
+  const updated = upsertPersonaBlock(user, personaBlock(persona, syncedAt));
   if (updated !== user) {
     await command(boxId, "mkdir -p .hermes/memories");
     await writeFile(boxId, USER_PROFILE_PATH, updated);
@@ -204,9 +234,18 @@ export async function syncOnairos(
 export async function resyncOnairos(
   supabase: SupabaseClient,
   userId: string
-): Promise<{ syncedAt: string }> {
+): Promise<{ syncedAt: string; fromCache?: boolean }> {
   const box = await ensureBoxAwake(supabase, userId);
   try {
+    const cached = await readCachedPersona(box.boxId);
+    // Fresh cache: serve the box-stored persona without an upstream request.
+    if (
+      cached !== null &&
+      Date.now() - Date.parse(cached.syncedAt) < PERSONA_CACHE_TTL_MS
+    ) {
+      await setStatus(supabase, userId, "active");
+      return { syncedAt: cached.syncedAt, fromCache: true };
+    }
     const raw = await readFile(box.boxId, ONAIROS_GRANT_PATH).catch(() => null);
     if (raw === null) {
       throw new OnairosError("no stored grant — reconnect Onairos", 409);
@@ -222,6 +261,12 @@ export async function resyncOnairos(
       persona = await fetchPersona(handoff);
     } catch (error) {
       if (error instanceof OnairosError && error.status === 502) {
+        // Expired grant: keep serving the last-synced persona when we have
+        // one — the context files on the box are still valid.
+        if (cached !== null) {
+          await setStatus(supabase, userId, "active");
+          return { syncedAt: cached.syncedAt, fromCache: true };
+        }
         throw new OnairosError("grant expired — reconnect Onairos", 409);
       }
       throw error;
@@ -256,7 +301,7 @@ export async function disconnectOnairos(
     await deepMemoryForget(box.boxId, OV_ONAIROS_URI);
     const user = await readFile(box.boxId, USER_PROFILE_PATH).catch(() => null);
     if (user !== null) {
-      const updated = removePointerLine(user);
+      const updated = removePersonaBlock(user);
       if (updated !== user) {
         await writeFile(box.boxId, USER_PROFILE_PATH, updated);
       }
