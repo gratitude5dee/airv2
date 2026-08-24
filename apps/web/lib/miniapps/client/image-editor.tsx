@@ -104,8 +104,17 @@ class SketchSurface {
 
   onInitialize(canvas: HTMLCanvasElement): void {
     this.canvas = canvas;
-    canvas.width = SKETCH_SIZE;
-    canvas.height = SKETCH_SIZE;
+    this.onUpdate();
+  }
+
+  /** Resize the logical stroke space to match the backdrop's aspect. */
+  setSize(width: number, height: number): void {
+    const canvas = this.canvas;
+    if (!canvas) return;
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
+    }
     this.onUpdate();
   }
 
@@ -148,9 +157,10 @@ class SketchSurface {
   }
 
   private onRender(): void {
-    const ctx = this.canvas?.getContext("2d");
-    if (!ctx) return;
-    ctx.clearRect(0, 0, SKETCH_SIZE, SKETCH_SIZE);
+    const canvas = this.canvas;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     const all = this.live ? [...this.strokes, this.live] : this.strokes;
     for (const stroke of all) drawStroke(ctx, stroke);
   }
@@ -197,15 +207,16 @@ function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke): void {
  */
 async function composeSketch(
   flatUrl: string | null,
-  strokes: Stroke[]
+  strokes: Stroke[],
+  dims: { w: number; h: number }
 ): Promise<string | null> {
   const out = document.createElement("canvas");
-  out.width = SKETCH_SIZE;
-  out.height = SKETCH_SIZE;
+  out.width = dims.w;
+  out.height = dims.h;
   const ctx = out.getContext("2d");
   if (!ctx) return null;
   ctx.fillStyle = "#101018";
-  ctx.fillRect(0, 0, SKETCH_SIZE, SKETCH_SIZE);
+  ctx.fillRect(0, 0, dims.w, dims.h);
   if (flatUrl) {
     try {
       const img = await new Promise<HTMLImageElement>((resolve, reject) => {
@@ -215,13 +226,8 @@ async function composeSketch(
         el.onerror = reject;
         el.src = flatUrl;
       });
-      const scale = Math.min(
-        SKETCH_SIZE / img.naturalWidth,
-        SKETCH_SIZE / img.naturalHeight
-      );
-      const w = img.naturalWidth * scale;
-      const h = img.naturalHeight * scale;
-      ctx.drawImage(img, (SKETCH_SIZE - w) / 2, (SKETCH_SIZE - h) / 2, w, h);
+      // dims share the flat's aspect, so this is a distortion-free fill.
+      ctx.drawImage(img, 0, 0, dims.w, dims.h);
     } catch {
       // A stale signed URL just means the sketch goes without the backdrop.
     }
@@ -394,6 +400,12 @@ function Editor({ initial }: { initial: Payload }): React.ReactElement {
   const [strokeCount, setStrokeCount] = useState(0);
   const surface = useRef(new SketchSurface());
   const sketchRef = useRef<HTMLCanvasElement | null>(null);
+  const flatRef = useRef<HTMLImageElement | null>(null);
+  /** Logical sketch resolution — the flat's aspect, longest side 1024. */
+  const [sketchDims, setSketchDims] = useState({
+    w: SKETCH_SIZE,
+    h: SKETCH_SIZE,
+  });
 
   /* Bottom pull-out tab (mini-app view): collapsed ↔ expanded. */
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -434,6 +446,31 @@ function Editor({ initial }: { initial: Payload }): React.ReactElement {
   }, []);
 
   useEffect(() => {
+    surface.current.setSize(sketchDims.w, sketchDims.h);
+  }, [sketchDims]);
+
+  /* Keep the drawing overlay's on-screen box glued to the flat image so
+     strokes land exactly on the pixels the user draws over. */
+  useEffect(() => {
+    const canvas = sketchRef.current;
+    const img = flatRef.current;
+    if (!canvas) return;
+    if (!img) {
+      canvas.style.width = "";
+      canvas.style.height = "";
+      return;
+    }
+    const sync = (): void => {
+      canvas.style.width = `${img.offsetWidth}px`;
+      canvas.style.height = `${img.offsetHeight}px`;
+    };
+    sync();
+    const observer = new ResizeObserver(sync);
+    observer.observe(img);
+    return () => observer.disconnect();
+  }, [flatUrl, sketchDims]);
+
+  useEffect(() => {
     surface.current.setStrokes(strokesByLayer.current.get(sketchKey) ?? []);
   }, [sketchKey, strokeCount]);
 
@@ -444,8 +481,8 @@ function Editor({ initial }: { initial: Payload }): React.ReactElement {
       const rect = canvas.getBoundingClientRect();
       if (!rect.width || !rect.height) return null;
       return {
-        x: ((event.clientX - rect.left) / rect.width) * SKETCH_SIZE,
-        y: ((event.clientY - rect.top) / rect.height) * SKETCH_SIZE,
+        x: ((event.clientX - rect.left) / rect.width) * canvas.width,
+        y: ((event.clientY - rect.top) / rect.height) * canvas.height,
       };
     },
     []
@@ -838,7 +875,23 @@ function Editor({ initial }: { initial: Payload }): React.ReactElement {
           }}
         >
           {flatUrl ? (
-            <img src={flatUrl} alt="canvas" draggable={false} className="ie-flat" />
+            <img
+              ref={flatRef}
+              src={flatUrl}
+              alt="canvas"
+              draggable={false}
+              className="ie-flat"
+              onLoad={(event) => {
+                const el = event.currentTarget;
+                const long = Math.max(el.naturalWidth, el.naturalHeight);
+                if (!long) return;
+                const scale = SKETCH_SIZE / long;
+                setSketchDims({
+                  w: Math.max(1, Math.round(el.naturalWidth * scale)),
+                  h: Math.max(1, Math.round(el.naturalHeight * scale)),
+                });
+              }}
+            />
           ) : (
             <div className="ie-empty">
               No image yet — describe one in Generate.
@@ -1041,7 +1094,7 @@ function Editor({ initial }: { initial: Payload }): React.ReactElement {
             onClick={async () => {
               setBusy("Rendering from drawing\u2026");
               setNotice(null);
-              const sketch = await composeSketch(flatUrl, layerStrokes);
+              const sketch = await composeSketch(flatUrl, layerStrokes, sketchDims);
               if (!sketch) {
                 setBusy(null);
                 setNotice("the drawing couldn't be captured — try again.");
