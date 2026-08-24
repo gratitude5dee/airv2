@@ -84,12 +84,18 @@ vi.mock("@/lib/identity/assets", () => ({
 }));
 const generateCharacterSheet = vi.fn(async () => ({
   ok: true as const,
-  notice: "Character sheet ready.",
+  notice: "character sheet ready — review it below, then save or discard it.",
   deliveryUrl: "https://signed.example/sheet.png",
 }));
+const saveCharacterSheetDraft = vi.fn(async () => true);
+const discardCharacterSheetDraft = vi.fn(async () => true);
 vi.mock("@/lib/identity/generate", () => ({
   generateCharacterSheet: (...args: unknown[]) =>
     generateCharacterSheet(...(args as [])),
+  saveCharacterSheetDraft: (...args: unknown[]) =>
+    saveCharacterSheetDraft(...(args as [])),
+  discardCharacterSheetDraft: (...args: unknown[]) =>
+    discardCharacterSheetDraft(...(args as [])),
 }));
 const uploadTwinConsent = vi.fn(async () => ({ ok: true as const }));
 const createTwinVideo = vi.fn(async () => ({
@@ -129,7 +135,10 @@ function thenable(rows: unknown, single: unknown = null) {
   return builder;
 }
 
-function makeCtx(step: string, options: { username?: string | null } = {}) {
+function makeCtx(
+  step: string,
+  options: { username?: string | null; via?: string } = {}
+) {
   const username = options.username === undefined ? "grat" : options.username;
   const tables: Record<string, ReturnType<typeof thenable>> = {
     users: thenable([], { username }),
@@ -146,7 +155,12 @@ function makeCtx(step: string, options: { username?: string | null } = {}) {
       from: (table: string) => tables[table] ?? thenable([]),
     } as unknown as SupabaseClient,
     app: makeApp({ slug: "setup", kind: "input" }),
-    session: { userId: "user-1", resourceId: "default", role: "owner" },
+    session: {
+      userId: "user-1",
+      resourceId: "default",
+      role: "owner",
+      ...(options.via ? { via: options.via } : {}),
+    },
     basePath: "/mini/setup",
   } as MiniAppContext;
 }
@@ -157,6 +171,8 @@ afterEach(() => {
   uploadIdentityImage.mockClear();
   setAvatarAssetId.mockClear();
   generateCharacterSheet.mockClear();
+  saveCharacterSheetDraft.mockClear();
+  discardCharacterSheetDraft.mockClear();
   uploadTwinConsent.mockClear();
   createTwinVideo.mockClear();
   createUserHeygenAvatar.mockClear();
@@ -206,7 +222,7 @@ describe("selfies step", () => {
     );
   });
 
-  it("generate_character_sheet runs the imagine lane bound to @username", async () => {
+  it("generate_character_sheet renders a draft without marking the step done", async () => {
     const form = new FormData();
     form.set("action", "generate_character_sheet");
     const response = await onboarding.action!(makeCtx("selfies"), form);
@@ -216,9 +232,54 @@ describe("selfies step", () => {
       "user-1",
       "grat"
     );
+    expect(
+      boxFiles.get(".hermes/miniapps/onboarding/state.json") ?? ""
+    ).not.toContain('"selfies": "done"');
+  });
+
+  it("save_character_sheet retags the draft and marks the step done", async () => {
+    const form = new FormData();
+    form.set("action", "save_character_sheet");
+    form.set("asset_id", "asset-9");
+    const response = await onboarding.action!(makeCtx("selfies"), form);
+    expect(response.status).toBe(200);
+    expect(saveCharacterSheetDraft).toHaveBeenCalledWith(
+      expect.anything(),
+      "user-1",
+      "asset-9"
+    );
     expect(boxFiles.get(".hermes/miniapps/onboarding/state.json")).toContain(
       '"selfies": "done"'
     );
+  });
+
+  it("discard_character_sheet removes the draft without completing the step", async () => {
+    const form = new FormData();
+    form.set("action", "discard_character_sheet");
+    form.set("asset_id", "asset-9");
+    const response = await onboarding.action!(makeCtx("selfies"), form);
+    expect(response.status).toBe(200);
+    expect(discardCharacterSheetDraft).toHaveBeenCalledWith(
+      expect.anything(),
+      "user-1",
+      "asset-9"
+    );
+    expect(
+      boxFiles.get(".hermes/miniapps/onboarding/state.json") ?? ""
+    ).not.toContain('"selfies": "done"');
+  });
+
+  it("mounts the photo booth bundle outside lite mode only", async () => {
+    const full = await (await onboarding.render(makeCtx("selfies"))).text();
+    expect(full).toContain('id="identity-booth"');
+    expect(full).toContain('data-mode="photo"');
+    expect(full).toContain("/creator-os/identity-booth.js");
+    expect(full).toContain('capture="user"');
+
+    const lite = await (
+      await onboarding.render(makeCtx("selfies", { via: "card" }))
+    ).text();
+    expect(lite).not.toContain("identity-booth");
   });
 
   it("points back to the username step when no username is set", async () => {
@@ -253,8 +314,19 @@ describe("twin step", () => {
     vi.stubEnv("GMI_CLOUD_API_KEY", "gmi-key");
     const body = await (await onboarding.render(makeCtx("twin"))).text();
     expect(body).toContain('value="upload_consent"');
+    expect(body).toContain('accept="video/mp4,video/webm"');
     expect(body).toContain('value="create_twin"');
     expect(body).toContain('value="skip"');
+  });
+
+  it("mounts the video booth outside lite mode only", async () => {
+    vi.stubEnv("GMI_CLOUD_API_KEY", "gmi-key");
+    const full = await (await onboarding.render(makeCtx("twin"))).text();
+    expect(full).toContain('data-mode="video"');
+    const lite = await (
+      await onboarding.render(makeCtx("twin", { via: "card" }))
+    ).text();
+    expect(lite).not.toContain("identity-booth");
   });
 
   it("upload_consent and create_twin go through the shared twin module", async () => {

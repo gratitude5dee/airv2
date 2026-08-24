@@ -39,7 +39,11 @@ import {
   uploadIdentityImage,
   type IdentityMediaView,
 } from "@/lib/identity/assets";
-import { generateCharacterSheet } from "@/lib/identity/generate";
+import {
+  discardCharacterSheetDraft,
+  generateCharacterSheet,
+  saveCharacterSheetDraft,
+} from "@/lib/identity/generate";
 import { heygenAvailable } from "@/lib/identity/heygen";
 import {
   createTwinVideo,
@@ -339,8 +343,16 @@ function identityVaultBody(data: SettingsData): string {
       ? `<div class="row"><img src="${esc(current.url ?? "")}" alt="avatar" style="${THUMB_STYLE}"><span class="grow">Current avatar</span></div>`
       : `<span class="muted">No avatar set — pick one below.</span>`
   }</div>`;
+  const draft = data.identityMedia.find(
+    (m) => m.role === "character_sheet_draft" && m.url
+  );
+  const draftCard = draft
+    ? `<div class="card"><img src="${esc(draft.url ?? "")}" alt="character sheet draft" style="${THUMB_STYLE}"><p class="muted">Character sheet draft — save it to your vault or discard it.</p><form method="post" class="inline"><input type="hidden" name="action" value="save_character_sheet"><input type="hidden" name="asset_id" value="${esc(draft.assetId)}"><button>Save to vault</button></form><form method="post" class="inline"><input type="hidden" name="action" value="discard_character_sheet"><input type="hidden" name="asset_id" value="${esc(draft.assetId)}"><button class="ghost">Discard</button></form></div>`
+    : "";
   const items = data.identityMedia
-    .filter((m) => m.role !== "avatar" && m.url)
+    .filter(
+      (m) => (m.role === "selfie" || m.role === "character_sheet") && m.url
+    )
     .map(
       (m) =>
         `<div class="item"><img src="${esc(m.url ?? "")}" alt="${esc(m.role === "character_sheet" ? "character sheet" : "selfie")}" style="${THUMB_STYLE}"><span class="grow muted">${esc(m.role === "character_sheet" ? "character sheet" : "selfie")}</span><form method="post" class="inline"><input type="hidden" name="action" value="set_avatar"><input type="hidden" name="asset_id" value="${esc(m.assetId)}"><button${m.assetId === data.avatarAssetId ? "" : ' class="ghost"'}>${m.assetId === data.avatarAssetId ? "Avatar" : "Set as avatar"}</button></form><form method="post" class="inline"><input type="hidden" name="action" value="delete_identity_asset"><input type="hidden" name="asset_id" value="${esc(m.assetId)}"><button class="ghost">Delete</button></form></div>`
@@ -367,7 +379,7 @@ function identityVaultBody(data: SettingsData): string {
           ? `<video src="${esc(data.twinVideoUrl)}" controls playsinline style="width:100%;border-radius:12px;margin-top:0.5rem"></video>`
           : ""
       }<form method="post" class="stack"><input type="hidden" name="action" value="recreate_twin"><input type="text" name="script" placeholder="What should your twin say?" maxlength="500"><button class="ghost">${data.twin ? "Re-create twin" : "Create twin"}</button></form></div>`;
-  return `${avatarCard}${gallery}${upload}${heygenCard}${twinCard}`;
+  return `${avatarCard}${draftCard}${gallery}${upload}${heygenCard}${twinCard}`;
 }
 
 async function respond(
@@ -539,6 +551,25 @@ export const settings: MiniAppModule = {
       }
       const result = await generateCharacterSheet(ctx.supabase, userId, username);
       return respond(ctx, result.notice);
+    }
+
+    if (action === "save_character_sheet") {
+      const assetId = String(form.get("asset_id") ?? "");
+      if (!assetId) return forbidden("missing asset");
+      const ok = await saveCharacterSheetDraft(ctx.supabase, userId, assetId);
+      return respond(
+        ctx,
+        ok
+          ? "Character sheet saved to your vault."
+          : "That draft is gone — generate a new one."
+      );
+    }
+
+    if (action === "discard_character_sheet") {
+      const assetId = String(form.get("asset_id") ?? "");
+      if (!assetId) return forbidden("missing asset");
+      await discardCharacterSheetDraft(ctx.supabase, userId, assetId);
+      return respond(ctx, "Draft discarded.");
     }
 
     if (action === "set_avatar") {

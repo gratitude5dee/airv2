@@ -5,7 +5,7 @@ const compat = new FlatCompat({ baseDirectory: import.meta.dirname });
 const config = [
   ...compat.extends("next/core-web-vitals", "next/typescript"),
   {
-    ignores: [".next/**", "node_modules/**", "next-env.d.ts", "public/creator-os/onairos-connect.js", "public/creator-os/bg/**", "lib/miniapps/client/backgrounds/**"],
+    ignores: [".next/**", "node_modules/**", "next-env.d.ts", "public/creator-os/onairos-connect.js", "public/creator-os/identity-booth.js", "public/creator-os/bg/**", "lib/miniapps/client/backgrounds/**"],
   },
 ];
 

@@ -11,9 +11,14 @@ import { createCreativeJob } from "../creative/jobs";
 import { executeCreativeJob } from "../creative/run";
 import type { CreativeCommandTurn } from "../creative/router";
 import {
+  isVaultRole,
   listIdentityAssets,
+  removeIdentityAsset,
+  retagIdentityAsset,
   signedIdentityUrl,
   tagIdentityAsset,
+  untagIdentityAsset,
+  type IdentityAssetView,
 } from "./assets";
 
 /** Fixed prompt template — the sheet is bound to the user's @username so
@@ -36,9 +41,10 @@ export interface CharacterSheetResult {
 }
 
 /**
- * Run one metered character-sheet render for the user, attaching their most
- * recent selfie as the identity reference, and tag the delivered asset as a
- * character_sheet identity reference.
+ * Step one of the two-step flow: run one metered character-sheet render for
+ * the user, attaching their most recent selfie as the identity reference,
+ * and hold the delivered asset as a character_sheet_draft awaiting the
+ * owner's confirmation (saveCharacterSheetDraft) or discard.
  */
 export async function generateCharacterSheet(
   supabase: SupabaseClient,
@@ -62,13 +68,71 @@ export async function generateCharacterSheet(
   };
   const result = await executeCreativeJob(supabase, job.id, userId, turn);
   if (result.status === "delivered" && result.asset) {
-    await tagIdentityAsset(supabase, userId, result.asset.id, "character_sheet");
+    await tagIdentityAsset(
+      supabase,
+      userId,
+      result.asset.id,
+      "character_sheet_draft"
+    );
     return {
       ok: true,
-      notice: "character sheet ready.",
+      notice: "character sheet ready — review it below, then save or discard.",
       asset: result.asset,
       deliveryUrl: result.deliveryUrl,
     };
   }
   return { ok: false, notice: result.line };
+}
+
+/** The user's pending character-sheet draft, if any (newest first). */
+export async function getCharacterSheetDraft(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<IdentityAssetView | null> {
+  const identity = await listIdentityAssets(supabase, userId);
+  return (
+    identity.find((entry) => entry.role === "character_sheet_draft") ?? null
+  );
+}
+
+/** Step two: confirm a draft into the vault as a character_sheet. */
+export async function saveCharacterSheetDraft(
+  supabase: SupabaseClient,
+  userId: string,
+  assetId: string
+): Promise<boolean> {
+  return retagIdentityAsset(
+    supabase,
+    userId,
+    assetId,
+    "character_sheet_draft",
+    "character_sheet"
+  );
+}
+
+/** Step two (reject): drop a draft and revoke its delivery URLs. The
+ * private master object stays content-addressed under the user's prefix. */
+export async function discardCharacterSheetDraft(
+  supabase: SupabaseClient,
+  userId: string,
+  assetId: string
+): Promise<boolean> {
+  const identity = await listIdentityAssets(supabase, userId);
+  const draft = identity.find(
+    (entry) =>
+      entry.asset_id === assetId && entry.role === "character_sheet_draft"
+  );
+  if (!draft) return false;
+  if (
+    identity.some((entry) => entry.asset_id === assetId && isVaultRole(entry.role))
+  ) {
+    // Also referenced from the vault — only drop the draft tag.
+    return untagIdentityAsset(
+      supabase,
+      userId,
+      assetId,
+      "character_sheet_draft"
+    );
+  }
+  return removeIdentityAsset(supabase, userId, assetId);
 }

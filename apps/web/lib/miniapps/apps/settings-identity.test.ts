@@ -52,9 +52,15 @@ const generateCharacterSheet = vi.fn(async () => ({
   notice: "Character sheet ready.",
   deliveryUrl: "https://signed.example/sheet.png",
 }));
+const saveCharacterSheetDraft = vi.fn(async () => true);
+const discardCharacterSheetDraft = vi.fn(async () => true);
 vi.mock("@/lib/identity/generate", () => ({
   generateCharacterSheet: (...args: unknown[]) =>
     generateCharacterSheet(...(args as [])),
+  saveCharacterSheetDraft: (...args: unknown[]) =>
+    saveCharacterSheetDraft(...(args as [])),
+  discardCharacterSheetDraft: (...args: unknown[]) =>
+    discardCharacterSheetDraft(...(args as [])),
 }));
 const createTwinVideo = vi.fn(async () => ({
   ok: true,

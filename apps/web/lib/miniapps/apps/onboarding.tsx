@@ -65,7 +65,11 @@ import {
   uploadIdentityImage,
   type IdentityMediaView,
 } from "@/lib/identity/assets";
-import { generateCharacterSheet } from "@/lib/identity/generate";
+import {
+  discardCharacterSheetDraft,
+  generateCharacterSheet,
+  saveCharacterSheetDraft,
+} from "@/lib/identity/generate";
 import { heygenAvailable } from "@/lib/identity/heygen";
 import {
   createTwinVideo,
@@ -302,9 +306,7 @@ export function effectiveStatus(
       // proves nothing — only an explicit choice (recorded above) counts.
       return "todo";
     case "selfies":
-      return snapshot.identityMedia.some((m) => m.role !== "avatar")
-        ? "done"
-        : "todo";
+      return snapshot.identityMedia.some(isVaultMedia) ? "done" : "todo";
     case "twin":
       return snapshot.twin && snapshot.twin.status !== "avatar_only"
         ? "done"
@@ -340,6 +342,16 @@ function firstOpenStep(snapshot: OnboardingSnapshot): OnboardingStepId {
   return "walkthrough";
 }
 
+/** Confirmed vault references — drafts and the avatar pointer excluded. */
+const isVaultMedia = (m: IdentityMediaView): boolean =>
+  m.role === "selfie" || m.role === "character_sheet";
+
+/** Same-origin photo-booth mount (script-src 'self'); the plain upload
+ * forms below it stay the lite/Messages and no-camera path. */
+function boothMount(mode: "photo" | "video"): string {
+  return `<div id="identity-booth" data-mode="${mode}"></div><script src="/creator-os/identity-booth.js" defer></script>`;
+}
+
 function skipForm(step: OnboardingStepId, label = "Skip for now"): string {
   return `<form method="post" class="inline"><input type="hidden" name="action" value="skip"><input type="hidden" name="step" value="${esc(step)}"><button class="ghost">${esc(label)}</button></form>`;
 }
@@ -351,7 +363,8 @@ function doneForm(step: OnboardingStepId, label: string): string {
 function stepBody(
   snapshot: OnboardingSnapshot,
   step: OnboardingStepId,
-  browserSignin: string | null
+  browserSignin: string | null,
+  lite = false
 ): string {
   if (step === "username") {
     const current = snapshot.username
@@ -373,7 +386,7 @@ function stepBody(
     return `<p class="muted">Pick how your agent thinks — faster answers or deeper reasoning. A tier, never a specific model; change it any time in Settings.</p><div class="row">${buttons}</div><div class="row actions">${skipForm("model")}</div>`;
   }
   if (step === "selfies") {
-    const references = snapshot.identityMedia.filter((m) => m.role !== "avatar");
+    const references = snapshot.identityMedia.filter(isVaultMedia);
     const thumbs = references
       .filter((m) => m.url)
       .map(
@@ -382,11 +395,22 @@ function stepBody(
       )
       .join("");
     const gallery = thumbs ? `<div class="idgrid">${thumbs}</div>` : "";
-    const upload = `<form method="post" enctype="multipart/form-data" class="row"><input type="hidden" name="action" value="upload_selfie"><input type="file" name="file" accept="image/png,image/jpeg,image/webp"><button>Upload</button></form>`;
-    const sheet = snapshot.username
-      ? `<form method="post" class="inline"><input type="hidden" name="action" value="generate_character_sheet"><button${references.length > 0 ? "" : ' class="ghost"'}>Generate character sheet</button></form>`
-      : `<p class="muted">Set a <a href="?step=username">username</a> first — the character sheet is bound to your @name.</p>`;
-    return `<p class="muted">Upload a few selfies or pro photos — they live privately in your image vault and anchor your @${esc(snapshot.username ?? "username")} identity for generated media.</p>${gallery}${upload}<div class="row actions">${sheet}${skipForm("selfies")}</div>`;
+    // Booth captures post upload_selfie on finalize; the plain form stays
+    // the lite/Messages and no-camera path (capture="user" opens the iPhone
+    // camera directly from the picker).
+    const booth = lite ? "" : boothMount("photo");
+    const upload = `<details${lite ? " open" : ""}><summary>Upload from your library</summary><form method="post" enctype="multipart/form-data" class="row"><input type="hidden" name="action" value="upload_selfie"><input type="file" name="file" accept="image/png,image/jpeg,image/webp" capture="user"><button>Upload</button></form></details>`;
+    // Two-step character sheet, same card: generate renders a draft; the
+    // owner then saves it into the vault or discards it.
+    const draft = snapshot.identityMedia.find(
+      (m) => m.role === "character_sheet_draft"
+    );
+    const sheet = !snapshot.username
+      ? `<p class="muted">Set a <a href="?step=username">username</a> first — the character sheet is bound to your @name.</p>`
+      : draft
+        ? `<div class="sheetcard"><p class="muted">Step 2 of 2 — review your character sheet, then save it to the vault or discard it.</p>${draft.url ? `<img class="sheetpreview" src="${esc(draft.url)}" alt="character sheet draft">` : ""}<div class="row"><form method="post" class="inline"><input type="hidden" name="action" value="save_character_sheet"><input type="hidden" name="asset_id" value="${esc(draft.assetId)}"><button>Save to vault</button></form><form method="post" class="inline"><input type="hidden" name="action" value="discard_character_sheet"><input type="hidden" name="asset_id" value="${esc(draft.assetId)}"><button class="ghost">Discard</button></form></div></div>`
+        : `<div class="sheetcard"><p class="muted">Step 1 of 2 — generate a character sheet from your photos; you review it before anything is saved.</p><form method="post" class="inline"><input type="hidden" name="action" value="generate_character_sheet"><button${references.length > 0 ? "" : ' class="ghost"'}>Generate character sheet</button></form></div>`;
+    return `<p class="muted">Step into the booth — photos live privately in your image vault and anchor your @${esc(snapshot.username ?? "username")} identity for generated media.</p>${booth}${gallery}${upload}${sheet}<div class="row actions">${skipForm("selfies")}</div>`;
   }
   if (step === "twin") {
     if (!snapshot.twinAvailable) {
@@ -395,9 +419,9 @@ function stepBody(
     const twin = snapshot.twin;
     const consent = twin?.consent_video_key
       ? `<p>Consent recording on file.</p>`
-      : `<details open><summary>Record consent</summary><p class="muted">Upload a short video of yourself saying you consent to creating a digital twin of your likeness.</p><form method="post" enctype="multipart/form-data" class="row"><input type="hidden" name="action" value="upload_consent"><input type="file" name="file" accept="video/mp4"><button>Upload consent</button></form></details>`;
+      : `${lite ? "" : boothMount("video")}<details${lite ? " open" : ""}><summary>Upload a recording instead</summary><p class="muted">Record or upload a short video of yourself saying you consent to creating a digital twin of your likeness.</p><form method="post" enctype="multipart/form-data" class="row"><input type="hidden" name="action" value="upload_consent"><input type="file" name="file" accept="video/mp4,video/webm" capture="user"><button>Upload consent</button></form></details>`;
     const reference = snapshot.identityMedia.find(
-      (m) => m.role !== "avatar" && m.url
+      (m) => isVaultMedia(m) && m.url
     );
     const create = reference
       ? `<form method="post" class="stack"><input type="hidden" name="action" value="create_twin"><input type="text" name="script" placeholder="What should @${esc(snapshot.username ?? "you")} say? (a sentence or two)" maxlength="500"><button>Create twin video</button></form>`
@@ -414,12 +438,12 @@ function stepBody(
     const heygenBlock = heygenAvailable()
       ? snapshot.twin?.provider_avatar_id
         ? `<p>HeyGen avatar ready — videos render with your trained avatar ID.</p>`
-        : snapshot.identityMedia.some((m) => m.role !== "avatar")
+        : snapshot.identityMedia.some(isVaultMedia)
           ? `<form method="post" class="inline"><input type="hidden" name="action" value="create_heygen_avatar"><button>Create HeyGen avatar</button></form><p class="muted">Recommended — trains a reusable avatar ID from your newest identity image.</p>`
           : `<p class="muted">Add a photo on the <a href="?step=selfies">selfies step</a> to create a HeyGen avatar.</p>`
       : "";
     const choices = snapshot.identityMedia
-      .filter((m) => m.role !== "avatar" && m.url)
+      .filter((m) => isVaultMedia(m) && m.url)
       .map(
         (m) =>
           `<form method="post" class="idpick"><input type="hidden" name="action" value="set_avatar"><input type="hidden" name="asset_id" value="${esc(m.assetId)}"><img class="idthumb" src="${esc(m.url ?? "")}" alt="identity image"><button${m.assetId === snapshot.avatarAssetId ? "" : ' class="ghost"'}>${m.assetId === snapshot.avatarAssetId ? "Current avatar" : "Use as avatar"}</button></form>`
@@ -536,7 +560,8 @@ function slides(
   current: Theme,
   body: string,
   nativeOnairos = false,
-  identityMedia = false
+  identityMedia = false,
+  booth = false
 ): NextResponse {
   const headers = baseHeaders();
   // The Onairos slide runs the vendor SDK bundle (served same-origin) which
@@ -569,6 +594,17 @@ function slides(
     // URLs (https:) — the mediaShellHtml pattern from apps/video.tsx.
     csp = csp.replace("img-src 'self'", "img-src 'self' https:");
     csp += "; media-src https:";
+  }
+  if (booth) {
+    // The photo booth is a same-origin bundle: camera frames render from
+    // in-memory blob: URLs and finalization posts back via fetch — widen
+    // only by what that first-party code needs.
+    if (!csp.includes("script-src")) csp += "; script-src 'self'";
+    csp = csp.replace(/img-src ([^;]+)/, "img-src $1 blob:");
+    csp = csp.includes("media-src")
+      ? csp.replace(/media-src ([^;]+)/, "media-src $1 blob:")
+      : csp + "; media-src blob:";
+    csp += "; connect-src 'self'";
   }
   headers["Content-Security-Policy"] =
     `${csp}; form-action 'self'; frame-ancestors 'self' ${env.appOrigin()}`;
@@ -645,6 +681,37 @@ input[type=file]{flex:1;min-width:0;color:var(--ink-muted);font-size:0.85rem;fon
 .idgrid{display:flex;gap:0.6rem;flex-wrap:wrap;margin:0.4rem 0 0.8rem}
 .idthumb{width:92px;height:92px;object-fit:cover;border-radius:var(--radius-well);border:1px solid var(--ring);display:block}
 .idpick{display:grid;gap:0.4rem;justify-items:center}
+.sheetcard{border:1px solid var(--ring);border-radius:var(--radius-well);background:var(--well-bg);padding:0.7rem 0.85rem;margin:0.6rem 0}
+.sheetpreview{display:block;width:100%;max-height:280px;object-fit:contain;border-radius:var(--radius-well);border:1px solid var(--ring);margin:0.4rem 0 0.6rem;background:var(--well-bg)}
+.booth{display:grid;gap:0.6rem;margin:0.4rem 0 0.8rem}
+.booth-stage{position:relative;border-radius:var(--radius-well);border:1px solid var(--ring);background:var(--well-bg);overflow:hidden;min-height:120px;display:flex;align-items:center;justify-content:center}
+.booth-stage.on{aspect-ratio:4/3}
+.booth-video{display:none;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+.booth-stage.on .booth-video{display:block}
+.booth-flash{position:absolute;inset:0;background:#fff;opacity:0.85;animation:boothFlash 220ms ease-out forwards}
+@keyframes boothFlash{to{opacity:0}}
+.booth-count{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--font-ui);font-size:4rem;color:#fff;text-shadow:0 2px 18px rgba(0,0,0,0.6)}
+.booth-rec{position:absolute;top:0.6rem;left:0.7rem;font-family:var(--font-ui);font-size:0.62rem;letter-spacing:0.12em;color:#ff5a5a;text-shadow:0 1px 6px rgba(0,0,0,0.6)}
+.booth-start{margin:1.4rem}
+.booth-saving{font-family:var(--font-ui);font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-muted);padding:1.4rem}
+.booth-controls{display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap}
+.booth-hint{font-family:var(--font-ui);font-size:0.62rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-muted)}
+.booth-error{color:var(--ink);font-size:0.85rem;margin:0}
+.booth-shutter{width:3.4rem;height:3.4rem;min-height:0;padding:0;border-radius:50%;background:var(--ink);border:3px solid var(--ring);box-shadow:0 0 0 3px var(--ink) inset}
+.booth-shutter:disabled{opacity:0.4;cursor:default}
+.booth-clip{display:grid;gap:0.5rem}
+.booth-playback{width:100%;border-radius:var(--radius-well);border:1px solid var(--ring);background:#000}
+.dcar{position:relative;perspective:1100px;touch-action:pan-y;outline:none;user-select:none;-webkit-user-select:none;cursor:grab}
+.dcar-stage{position:relative;height:190px;transform-style:preserve-3d}
+.dcar-card{position:absolute;left:50%;top:50%;width:132px;height:158px;border-radius:var(--radius-well);border:1px solid var(--ring);overflow:hidden;background:var(--well-bg);box-shadow:var(--shadow);transition:opacity 180ms ease}
+.dcar-card img{width:100%;height:100%;object-fit:cover;display:block}
+.dcar-card.dropped img{opacity:0.3;filter:grayscale(1)}
+.dcar-card.front{border-color:var(--accent)}
+.dcar-toggle{position:absolute;left:50%;bottom:0.4rem;transform:translateX(-50%);min-height:0;padding:0.25rem 0.7rem;font-size:0.58rem}
+.dcar-dots{display:flex;gap:0.4rem;justify-content:center;margin-top:0.4rem}
+.dcar-dot{width:0.55rem;height:0.55rem;min-height:0;padding:0;border-radius:50%;background:var(--ring)}
+.dcar-dot.on{background:var(--accent)}
+@media(prefers-reduced-motion:reduce){.booth-flash{animation:none;opacity:0}.dcar-card{transition:none}}
 `;
 
 /**
@@ -723,7 +790,7 @@ export function renderOnboarding(
     current.tokens.scrim === "none"
       ? ""
       : '<div class="scrim" aria-hidden="true"></div>';
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>Onboarding — ${esc(STEP_TITLES[active])}</title>${fonts}<style>${tokenBlock(current.tokens)}${SLIDE_CSS}${lite ? LITE_CSS : ""}</style>${shader}</head><body>${backdropHtml}${scrim}${grain}<div class="frame"><header class="bar"><span class="logo-pill"><img src="/creator-os/wzrd-wordmark-1600.png" alt="WZRD.tech"></span><span class="counter">${pad(index + 1)} / ${pad(ONBOARDING_STEPS.length)}${esc(statusTag)}</span></header><main class="slide">${busy}${noticeHtml}<p class="kicker">${pad(index + 1)} / ${esc(STEP_KICKERS[active])}</p><h1>${esc(STEP_TITLES[active])}</h1><section class="panel">${stepBody(snapshot, active, browserSignin)}</section></main><footer class="nav">${prev ? `<a class="navlink" href="${href(prev)}">← Back</a>` : '<span class="navlink ghosted">← Back</span>'}<nav class="dots" aria-label="Steps">${dots}</nav>${next ? `<a class="navlink" href="${href(next)}">Next →</a>` : '<span class="navlink ghosted">Next →</span>'}</footer></div></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>Onboarding — ${esc(STEP_TITLES[active])}</title>${fonts}<style>${tokenBlock(current.tokens)}${SLIDE_CSS}${lite ? LITE_CSS : ""}</style>${shader}</head><body>${backdropHtml}${scrim}${grain}<div class="frame"><header class="bar"><span class="logo-pill"><img src="/creator-os/wzrd-wordmark-1600.png" alt="WZRD.tech"></span><span class="counter">${pad(index + 1)} / ${pad(ONBOARDING_STEPS.length)}${esc(statusTag)}</span></header><main class="slide">${busy}${noticeHtml}<p class="kicker">${pad(index + 1)} / ${esc(STEP_KICKERS[active])}</p><h1>${esc(STEP_TITLES[active])}</h1><section class="panel">${stepBody(snapshot, active, browserSignin, lite)}</section></main><footer class="nav">${prev ? `<a class="navlink" href="${href(prev)}">← Back</a>` : '<span class="navlink ghosted">← Back</span>'}<nav class="dots" aria-label="Steps">${dots}</nav>${next ? `<a class="navlink" href="${href(next)}">Next →</a>` : '<span class="navlink ghosted">Next →</span>'}</footer></div></body></html>`;
 }
 
 function activeStep(ctx: MiniAppContext, snapshot: OnboardingSnapshot): OnboardingStepId {
@@ -768,6 +835,19 @@ function browserSigninHref(
 const rendersIdentityMedia = (step: OnboardingStepId): boolean =>
   step === "selfies" || step === "twin" || step === "avatar";
 
+/** The selfies/twin slides mount the same-origin photo booth — never in
+ * lite/Messages card sessions (tight memory/GPU budget, no camera UX). */
+const rendersBooth = (
+  snapshot: OnboardingSnapshot,
+  step: OnboardingStepId,
+  lite: boolean
+): boolean =>
+  !lite &&
+  (step === "selfies" ||
+    (step === "twin" &&
+      snapshot.twinAvailable &&
+      !snapshot.twin?.consent_video_key));
+
 /** The Onairos slide mounts the vendor SDK when a native connect is possible
  * — the CSP widens only for that render. */
 function rendersNativeOnairos(
@@ -800,7 +880,8 @@ async function respond(
       browserSigninHref(ctx, snapshot, active)
     ),
     rendersNativeOnairos(snapshot, active),
-    rendersIdentityMedia(active)
+    rendersIdentityMedia(active),
+    rendersBooth(snapshot, active, ctx.session.via === "card")
   );
 }
 
@@ -877,7 +958,8 @@ export const onboarding: MiniAppModule = {
         browserSigninHref(ctx, snapshot, active)
       ),
       rendersNativeOnairos(snapshot, active),
-      rendersIdentityMedia(active)
+      rendersIdentityMedia(active),
+      rendersBooth(snapshot, active, ctx.session.via === "card")
     );
   },
 
@@ -984,10 +1066,28 @@ export const onboarding: MiniAppModule = {
       if (!username) {
         return respond(ctx, "username", "Pick a username first — the character sheet is bound to your @name.");
       }
+      // Step 1 of 2: the render lands as a draft — nothing enters the
+      // vault until save_character_sheet.
       const result = await generateCharacterSheet(supabase, userId, username);
-      if (!result.ok) return respond(ctx, "selfies", result.notice);
-      await markSafely(supabase, userId, "selfies", "done");
       return respond(ctx, "selfies", result.notice);
+    }
+
+    if (action === "save_character_sheet") {
+      const assetId = String(form.get("asset_id") ?? "");
+      if (!assetId) return respond(ctx, "selfies", "No draft to save.");
+      const saved = await saveCharacterSheetDraft(supabase, userId, assetId);
+      if (!saved) {
+        return respond(ctx, "selfies", "That draft is gone — generate a new one.");
+      }
+      await markSafely(supabase, userId, "selfies", "done");
+      return respond(ctx, "selfies", "Character sheet saved to your vault.");
+    }
+
+    if (action === "discard_character_sheet") {
+      const assetId = String(form.get("asset_id") ?? "");
+      if (!assetId) return respond(ctx, "selfies", "No draft to discard.");
+      await discardCharacterSheetDraft(supabase, userId, assetId);
+      return respond(ctx, "selfies", "Draft discarded — generate another any time.");
     }
 
     if (action === "upload_consent") {
@@ -1011,7 +1111,9 @@ export const onboarding: MiniAppModule = {
       const script = String(form.get("script") ?? "").trim().slice(0, 500);
       if (!script) return respond(ctx, "twin", "Write a line for your twin to say first.");
       const identity = await listIdentityAssets(supabase, userId).catch(() => []);
-      const reference = identity.find((entry) => entry.role !== "avatar");
+      const reference = identity.find(
+        (entry) => entry.role === "selfie" || entry.role === "character_sheet"
+      );
       if (!reference) {
         return respond(ctx, "twin", "Add a photo on the selfies step first.");
       }
@@ -1044,7 +1146,9 @@ export const onboarding: MiniAppModule = {
         return respond(ctx, "username", "Pick a username first.");
       }
       const identity = await listIdentityAssets(supabase, userId).catch(() => []);
-      const reference = identity.find((entry) => entry.role !== "avatar");
+      const reference = identity.find(
+        (entry) => entry.role === "selfie" || entry.role === "character_sheet"
+      );
       if (!reference) {
         return respond(ctx, "avatar", "Add a photo on the selfies step first.");
       }

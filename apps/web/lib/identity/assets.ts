@@ -17,8 +17,24 @@ import {
 import { ingestUploadedMedia } from "../creative/store";
 import { guardMediaUpload, MediaGuardError } from "../storage/guard";
 
-export const IDENTITY_ROLES = ["selfie", "character_sheet", "avatar"] as const;
+export const IDENTITY_ROLES = [
+  "selfie",
+  "character_sheet",
+  "character_sheet_draft",
+  "avatar",
+] as const;
 export type IdentityRole = (typeof IDENTITY_ROLES)[number];
+
+/** Confirmed vault references — what galleries, avatar choices, and twin
+ * references draw from. Drafts and the avatar pointer are excluded. */
+export const VAULT_ROLES: readonly IdentityRole[] = [
+  "selfie",
+  "character_sheet",
+];
+
+export function isVaultRole(role: IdentityRole): boolean {
+  return VAULT_ROLES.includes(role);
+}
 
 export function isIdentityRole(value: string): value is IdentityRole {
   return (IDENTITY_ROLES as readonly string[]).includes(value);
@@ -79,6 +95,43 @@ export async function uploadIdentityImage(
   } catch {
     return { ok: false, error: "upload failed — try again in a minute." };
   }
+}
+
+/** Move an owned identity reference from one role to another (used to
+ * confirm a character-sheet draft into the vault). */
+export async function retagIdentityAsset(
+  supabase: SupabaseClient,
+  userId: string,
+  assetId: string,
+  from: IdentityRole,
+  to: IdentityRole
+): Promise<boolean> {
+  const { data: rows, error } = await supabase
+    .from("identity_assets")
+    .delete()
+    .eq("user_id", userId)
+    .eq("asset_id", assetId)
+    .eq("role", from)
+    .select("id");
+  if (error || (rows ?? []).length === 0) return false;
+  return tagIdentityAsset(supabase, userId, assetId, to);
+}
+
+/** Drop one identity role from an asset, leaving other roles intact. */
+export async function untagIdentityAsset(
+  supabase: SupabaseClient,
+  userId: string,
+  assetId: string,
+  role: IdentityRole
+): Promise<boolean> {
+  const { data: rows, error } = await supabase
+    .from("identity_assets")
+    .delete()
+    .eq("user_id", userId)
+    .eq("asset_id", assetId)
+    .eq("role", role)
+    .select("id");
+  return !error && (rows ?? []).length > 0;
 }
 
 /** Tag an owned creative asset with an identity role (idempotent). */
@@ -156,6 +209,7 @@ export async function setAvatarAssetId(
     .select("id")
     .eq("user_id", userId)
     .eq("asset_id", assetId)
+    .in("role", ["selfie", "character_sheet", "avatar"])
     .limit(1)
     .maybeSingle();
   if (!owned) return false;
