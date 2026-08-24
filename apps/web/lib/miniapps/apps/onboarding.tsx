@@ -369,16 +369,18 @@ function stepBody(
     const googleAttr = googleClientId
       ? ` data-google-client-id="${esc(googleClientId)}"`
       : "";
-    // Google blocks OAuth inside embedded webviews (disallowed_useragent),
-    // so a card-opened Messages sheet offers a signed jump into the real
-    // browser where the Google path works.
-    const browserLine = browserSignin
-      ? `<p class="muted">Using Google to sign in? Google blocks sign-in inside Messages — <a href="${esc(browserSignin)}" target="_blank" rel="noopener">open this step in your browser</a>, finish there, then come back and tap Refresh.</p><form method="post" class="inline"><input type="hidden" name="action" value="noop"><button class="ghost">Refresh</button></form>`
-      : "";
     // The native SDK flow runs right here; the key only ever renders on the
     // owner's own authenticated slide (never in a public bundle), and the
     // handoff posts back as a regular form (action=onairos_handoff).
-    return `<p class="muted">Sign in with Onairos to import your personal context — the consent flow opens right here, and your imported context lives on your computer, never on the platform.</p><div id="onairos-connect" data-api-key="${esc(apiKey)}"${googleAttr}><p class="muted">Loading Onairos sign-in…</p></div><script src="/creator-os/onairos-connect.js" defer></script>${browserLine}<details><summary>Or connect via iMessage</summary><p class="muted">Onairos asks for your account email, a verification code, and your YES right in your iMessage thread.</p><form method="post" class="inline"><input type="hidden" name="action" value="connect_onairos"><button class="ghost">Connect via iMessage</button></form></details><div class="row actions">${skipForm("onairos")}</div>`;
+    const sdkMount = `<div id="onairos-connect" data-api-key="${esc(apiKey)}"${googleAttr}><p class="muted">Loading Onairos sign-in…</p></div><script src="/creator-os/onairos-connect.js" defer></script>`;
+    const imessageDetails = `<details><summary>Or connect via iMessage</summary><p class="muted">Onairos asks for your account email, a verification code, and your YES right in your iMessage thread.</p><form method="post" class="inline"><input type="hidden" name="action" value="connect_onairos"><button class="ghost">Connect via iMessage</button></form></details>`;
+    // Google refuses OAuth inside embedded webviews (disallowed_useragent),
+    // so the card-opened Messages sheet leads with a signed jump into the
+    // real browser and keeps the in-sheet SDK as an email-only fallback.
+    if (browserSignin) {
+      return `<p class="muted">Sign in with Onairos to import your personal context. Google sign-in can't run inside Messages, so finish it in your browser — your imported context lives on your computer, never on the platform.</p><div class="row"><a href="${esc(browserSignin)}" target="_blank" rel="noopener" style="text-decoration:none"><button>Sign in in your browser</button></a><form method="post" class="inline"><input type="hidden" name="action" value="noop"><button class="ghost">Refresh</button></form></div><details><summary>Or sign in right here (email only)</summary><p class="muted">Email sign-in works inside Messages; the Google button here will be blocked by Google.</p>${sdkMount}</details>${imessageDetails}<div class="row actions">${skipForm("onairos")}</div>`;
+    }
+    return `<p class="muted">Sign in with Onairos to import your personal context — the consent flow opens right here, and your imported context lives on your computer, never on the platform.</p>${sdkMount}${imessageDetails}<div class="row actions">${skipForm("onairos")}</div>`;
   }
   if (step === "secrets") {
     const managerLines = snapshot.managers
