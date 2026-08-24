@@ -47,11 +47,35 @@ export interface OnairosState {
   connectedAt: string | null;
 }
 
+/** Inference endpoints URL resolution can hand back. They require an `Input`
+ * body (host-provided inferenceData) and answer a bodyless POST with 400. */
+const INFERENCE_ENDPOINTS =
+  /\/(?:combined-inference|combinedInference|combined-training-inference|inferenceNoProof|mobileInferenceNoProof)$/i;
+
+/** Traits-only endpoint the SDK itself falls back to when it has no `Input`
+ * (src/onairosButton.jsx swaps the resolved URL for `<origin>/traits-only`). */
+const TRAITS_ONLY_PATH = "/traits-only";
+
+/** The URL to read traits from: the resolved apiUrl, unless it is an
+ * inference endpoint — we never send `Input`, so those 400 and the
+ * traits-only endpoint on the same origin is the SDK's own fallback. */
+export function personaUrl(apiUrl: string): string {
+  let url: URL;
+  try {
+    url = new URL(apiUrl);
+  } catch {
+    return apiUrl;
+  }
+  if (!INFERENCE_ENDPOINTS.test(url.pathname)) return apiUrl;
+  url.pathname = TRAITS_ONLY_PATH;
+  return url.toString();
+}
+
 function personaRequest(
   handoff: OnairosHandoff,
   method: "POST" | "GET"
 ): Promise<Response> {
-  return fetch(handoff.apiUrl, {
+  return fetch(personaUrl(handoff.apiUrl), {
     method,
     headers: {
       Authorization: `Bearer ${handoff.token}`,
@@ -96,7 +120,7 @@ export async function fetchPersona(handoff: OnairosHandoff): Promise<unknown> {
       JSON.stringify({
         msg: "onairos persona fetch failed",
         method,
-        path: personaPath(handoff.apiUrl),
+        path: personaPath(personaUrl(handoff.apiUrl)),
         status: response.status,
       })
     );

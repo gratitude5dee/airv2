@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { OnairosError } from "./context";
-import { fetchPersona } from "./sync";
+import { fetchPersona, personaUrl } from "./sync";
 
 const handoff = {
   token: "tok",
@@ -15,15 +15,44 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("personaUrl", () => {
+  it("swaps inference endpoints for the traits-only endpoint", () => {
+    for (const path of [
+      "/combined-inference",
+      "/combinedInference",
+      "/combined-training-inference",
+      "/inferenceNoProof",
+      "/mobileInferenceNoProof",
+    ]) {
+      expect(personaUrl(`https://api2.onairos.uk${path}?x=1`)).toBe(
+        "https://api2.onairos.uk/traits-only?x=1"
+      );
+    }
+  });
+
+  it("leaves trait/persona endpoints and unparseable urls alone", () => {
+    expect(personaUrl("https://api2.onairos.uk/traits-only-fast")).toBe(
+      "https://api2.onairos.uk/traits-only-fast"
+    );
+    expect(personaUrl("https://api2.onairos.uk/persona/full")).toBe(
+      "https://api2.onairos.uk/persona/full"
+    );
+    expect(personaUrl("not a url")).toBe("not a url");
+  });
+});
+
 describe("fetchPersona", () => {
-  it("POSTs the resolved apiUrl and returns the payload", async () => {
+  it("POSTs the traits endpoint and returns the payload", async () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(jsonResponse(200, { traits: { archetype: "Maker" } }));
     const persona = await fetchPersona({
       ...handoff,
-      apiUrl: "https://api2.onairos.uk/combinedInference",
+      apiUrl: "https://api2.onairos.uk/combined-inference",
     });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "https://api2.onairos.uk/traits-only"
+    );
     expect(persona).toEqual({ traits: { archetype: "Maker" } });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ method: "POST" });
