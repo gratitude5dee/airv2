@@ -645,7 +645,7 @@ footer.nav{display:flex;align-items:center;justify-content:space-between;gap:0.7
 .navlink{display:inline-flex;align-items:center;min-height:2.75rem;padding:0 1.1rem;border-radius:var(--radius-pill);border:1px solid var(--ring);background:var(--panel-bg);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);font-size:0.66rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink);text-decoration:none;white-space:nowrap;transition:box-shadow 200ms ease,transform 200ms ease}
 .navlink:hover{transform:scale(1.04)}
 .navlink.ghosted{opacity:0.35;pointer-events:none}
-.dots{display:flex;gap:0.42rem;align-items:center}
+.dots{display:flex;gap:0.42rem;align-items:center;flex-wrap:wrap;min-width:0}
 .dots a{width:1.1rem;height:1.1rem;padding:0.3rem;border-radius:50%;background:var(--ring);background-clip:content-box;display:block;transition:transform 200ms ease}
 .dots a:hover{transform:scale(1.5)}
 .dots a.done{background:var(--accent)}
