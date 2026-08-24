@@ -15,6 +15,9 @@ export const OV_ONAIROS_URI = "viking://resources/context/onairos";
 
 /** ovctl waits for indexing (`wait=True`); give large ingests headroom. */
 const OVCTL_TIMEOUT_SECONDS = 600;
+/** `add-resource --no-wait` only enqueues — the request-path budget stays
+ * far below any platform function timeout. */
+const OVCTL_ENQUEUE_TIMEOUT_SECONDS = 60;
 
 export interface DeepMemoryStatus {
   healthy: boolean;
@@ -46,7 +49,9 @@ export async function deepMemoryStatus(
   };
 }
 
-/** Index a box-local file/dir at a stable URI. Best-effort: failures are
+/** Index a box-local file/dir at a stable URI. Enqueue-only (`--no-wait`):
+ * the server keeps indexing after the command returns, so callers on a
+ * request path never stall behind embedding work. Best-effort: failures are
  * swallowed after a metadata-only log line (no path contents, no memory). */
 export async function deepMemoryIndex(
   boxId: string,
@@ -56,8 +61,8 @@ export async function deepMemoryIndex(
   try {
     const result = await command(
       boxId,
-      `ovctl add-resource ${shellQuote(boxPath)} --to ${shellQuote(uri)}`,
-      OVCTL_TIMEOUT_SECONDS
+      `ovctl add-resource ${shellQuote(boxPath)} --to ${shellQuote(uri)} --no-wait`,
+      OVCTL_ENQUEUE_TIMEOUT_SECONDS
     );
     const ok = result.exitCode === 0;
     console.log(

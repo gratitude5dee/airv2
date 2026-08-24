@@ -164,24 +164,24 @@ def cmd_status() -> int:
     return 0
 
 
-def add_resource(c, path: pathlib.Path, to: str) -> bool:
+def add_resource(c, path: pathlib.Path, to: str, wait: bool = True) -> bool:
     if not path.exists():
         return False
     try:
         c.rm(to, recursive=True, wait=True)
     except Exception:
         pass  # first ingest — nothing to replace
-    c.add_resource(str(path), to=to, wait=True, timeout=600)
+    c.add_resource(str(path), to=to, wait=wait, timeout=600)
     return True
 
 
-def cmd_add_resource(path: str, to: str) -> int:
+def cmd_add_resource(path: str, to: str, wait: bool) -> int:
     p = pathlib.Path(path).expanduser()
     if not p.is_absolute():
         p = HOME / p
     c = client()
     try:
-        added = add_resource(c, p, to)
+        added = add_resource(c, p, to, wait=wait)
     finally:
         c.close()
     print(json.dumps({"ok": added, "uri": to}))
@@ -250,6 +250,10 @@ def main() -> int:
     p_add = sub.add_parser("add-resource")
     p_add.add_argument("path")
     p_add.add_argument("--to", required=True)
+    # Enqueue only: the server keeps indexing after ovctl exits. Latency-
+    # sensitive callers (the upload path) use this so a slow index never
+    # stalls an HTTP response.
+    p_add.add_argument("--no-wait", action="store_true")
     p_rm = sub.add_parser("rm")
     p_rm.add_argument("uri")
     sub.add_parser("reindex")
@@ -260,7 +264,7 @@ def main() -> int:
     if args.cmd == "status":
         return cmd_status()
     if args.cmd == "add-resource":
-        return cmd_add_resource(args.path, args.to)
+        return cmd_add_resource(args.path, args.to, wait=not args.no_wait)
     if args.cmd == "rm":
         return cmd_rm(args.uri)
     if args.cmd == "reindex":
