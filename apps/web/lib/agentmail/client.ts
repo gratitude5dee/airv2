@@ -259,7 +259,15 @@ export async function replyToMessage(
  */
 export async function createDraft(
   inboxId: string,
-  draft: { to: string[]; subject?: string; text: string }
+  draft: {
+    to?: string[];
+    subject?: string;
+    text: string;
+    /** Reply draft: recipients, subject, and threading derive from this message. */
+    in_reply_to?: string;
+    /** Caller-chosen id so a retried create is a no-op, not a duplicate draft. */
+    client_id?: string;
+  }
 ): Promise<string> {
   const result = await agentmailFetch<{ draft_id: string }>(
     `/inboxes/${encodeURIComponent(inboxId)}/drafts`,
