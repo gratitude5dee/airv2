@@ -136,7 +136,8 @@ chmod 600 "$ENV_FILE"
 OV_VENV="$HOME_DIR/.openviking-venv"
 if [ ! -x "$OV_VENV/bin/openviking-server" ]; then
   uv venv "$OV_VENV" --python 3.12 || true
-  uv pip install --python "$OV_VENV/bin/python" 'openviking==0.4.13' 'openviking-sdk==0.1.7'
+  sudo apt-get install -y --no-install-recommends cmake build-essential
+  uv pip install --python "$OV_VENV/bin/python" 'openviking[local-embed]==0.4.13' 'openviking-sdk==0.1.7'
 fi
 mkdir -p "$HOME_DIR/.openviking" && chmod 700 "$HOME_DIR/.openviking"
 cp "$TEMPLATE_DIR/openviking/ovctl.py" "$HOME_DIR/.openviking/ovctl.py"

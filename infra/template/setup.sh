@@ -245,7 +245,10 @@ done
 # or hosted vector store would move memory content off-box.
 OV_VENV="$HOME_DIR/.openviking-venv"
 uv venv "$OV_VENV" --python 3.12 || true
-uv pip install --python "$OV_VENV/bin/python" 'openviking==0.4.13' 'openviking-sdk==0.1.7'
+# [local-embed] pulls llama-cpp-python (no wheel — builds from source, so the
+# toolchain below); without it the server refuses to start local embeddings.
+sudo apt-get install -y --no-install-recommends cmake build-essential
+uv pip install --python "$OV_VENV/bin/python" 'openviking[local-embed]==0.4.13' 'openviking-sdk==0.1.7'
 mkdir -p "$HOME_DIR/.openviking" && chmod 700 "$HOME_DIR/.openviking"
 cp "$TEMPLATE_DIR/openviking/ovctl.py" "$HOME_DIR/.openviking/ovctl.py"
 chmod 755 "$HOME_DIR/.openviking/ovctl.py"
