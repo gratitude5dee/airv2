@@ -130,6 +130,25 @@ grep -q 'hermes/node/bin' "$HOME_DIR/.bashrc" || \
   echo "export PATH=\"$HERMES_NODE/bin:\$PATH\"" >> "$HOME_DIR/.bashrc"
 chmod 600 "$ENV_FILE"
 
+# ── 3c. OpenViking deep memory (docs/memory-upgrade.md, layer 2) ───────────
+# Boxes forked before the deep-memory layer never got the venv/service. The
+# workspace (~/.openviking/data) is user data — never touched here.
+OV_VENV="$HOME_DIR/.openviking-venv"
+if [ ! -x "$OV_VENV/bin/openviking-server" ]; then
+  uv venv "$OV_VENV" --python 3.12 || true
+  uv pip install --python "$OV_VENV/bin/python" 'openviking==0.4.13' 'openviking-sdk==0.1.7'
+fi
+mkdir -p "$HOME_DIR/.openviking" && chmod 700 "$HOME_DIR/.openviking"
+cp "$TEMPLATE_DIR/openviking/ovctl.py" "$HOME_DIR/.openviking/ovctl.py"
+chmod 755 "$HOME_DIR/.openviking/ovctl.py"
+
+sudo tee /usr/local/bin/ovctl >/dev/null <<SH
+#!/usr/bin/env bash
+set -euo pipefail
+exec "$OV_VENV/bin/python" "$HOME_DIR/.openviking/ovctl.py" "\$@"
+SH
+sudo chmod +x /usr/local/bin/ovctl
+
 # ── 4. Calendar spine ────────────────────────────────────────────────────────
 mkdir -p "$HOME_DIR/.hermes/calendar/inbox"
 chmod 700 "$HOME_DIR/.hermes/calendar"
@@ -272,6 +291,11 @@ if not isinstance(cfg.get("memory"), dict):
 # The box IS the computer: headed browser, built-in browser_* tools.
 if not isinstance(cfg.get("browser"), dict):
     cfg["browser"] = {"headed": True, "backend": "off"}
+# Deep memory (docs/memory-upgrade.md): the loopback OpenViking MCP server.
+mcp = cfg.get("mcp_servers")
+mcp = mcp if isinstance(mcp, dict) else {}
+mcp["openviking"] = {"url": "http://127.0.0.1:1933/mcp", "enabled": True}
+cfg["mcp_servers"] = mcp
 p.write_text(yaml.safe_dump(cfg, default_flow_style=False))
 PYEOF
 
@@ -284,8 +308,13 @@ PYEOF
 sudo cp "$TEMPLATE_DIR"/hermes-gateway.service /etc/systemd/system/
 sudo cp "$TEMPLATE_DIR"/hermes-dashboard.service /etc/systemd/system/
 sudo cp "$TEMPLATE_DIR"/hermes-host.service /etc/systemd/system/
+sudo cp "$TEMPLATE_DIR"/openviking.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable hermes-gateway.service hermes-dashboard.service hermes-host.service
+sudo systemctl enable hermes-gateway.service hermes-dashboard.service hermes-host.service openviking.service
 sudo systemctl restart hermes-gateway.service hermes-dashboard.service hermes-host.service
+
+# Render ov.conf from this box's per-fork gateway credentials and (re)start
+# the server. Best effort: deep memory degrades, the box never breaks.
+ovctl ensure || echo "WARN: openviking ensure failed — deep memory degraded" >&2
 
 echo "Baseline sync complete."

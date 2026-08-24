@@ -183,6 +183,98 @@ function MemoryCard() {
   );
 }
 
+interface DeepMemoryState {
+  healthy: boolean;
+  resources: number;
+  workspace_bytes: number;
+}
+
+/** Deep memory (docs/memory-upgrade.md): live status of the box-local
+ * semantic store + owner-triggered reindex. Metadata only — the contents
+ * stay on the box and surface through chat recall, not here. */
+function DeepMemoryCard() {
+  const [state, setState] = useState<DeepMemoryState | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  const load = useCallback(async () => {
+    setBusy(true);
+    setNote(null);
+    try {
+      const res = await fetch("/api/me/memory/deep");
+      if (res.status === 503) {
+        setNote(BUSY_NOTE);
+        return;
+      }
+      if (!res.ok) {
+        setNote("Couldn't read deep memory status.");
+        return;
+      }
+      setState((await res.json()) as DeepMemoryState);
+      setLoaded(true);
+    } catch {
+      setNote("Couldn't read deep memory status.");
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  async function reindex() {
+    setBusy(true);
+    setNote(null);
+    try {
+      const res = await fetch("/api/me/memory/deep", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reindex" }),
+      });
+      if (res.status === 503) setNote(BUSY_NOTE);
+      else if (!res.ok) setNote("Reindex failed.");
+      else {
+        setNote("Reindexed.");
+        void load();
+      }
+    } catch {
+      setNote("Reindex failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="panel !p-4">
+      <CardHeader
+        glyph="chip"
+        title="Deep memory"
+        sub="semantic recall over your imported context, on your box"
+      />
+      {note ? <p className="muted m-0 mb-2 text-[12px]">{note}</p> : null}
+      {!loaded ? (
+        <DitherButton color="blue" disabled={busy} onClick={() => void load()}>
+          {busy ? "Waking box…" : "Check status"}
+        </DitherButton>
+      ) : state ? (
+        <div className="grid gap-3">
+          <p className="m-0 text-[12px]">
+            {state.healthy ? "Running" : "Not running — recall degraded"} ·{" "}
+            {state.resources} indexed{" "}
+            {state.resources === 1 ? "resource" : "resources"}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <DitherButton color="blue" disabled={busy} onClick={() => void reindex()}>
+              Reindex imported context
+            </DitherButton>
+            <button className="btn btn-ghost" disabled={busy} onClick={() => void load()}>
+              Refresh
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function TracesCard({ active }: { active: boolean }) {
   const [receipts, setReceipts] = useState<KeyedTraceReceipt[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -372,6 +464,7 @@ export function ContextPanel({ active }: { active: boolean }) {
         <span className="muted text-[12px]">what your agent knows</span>
       </div>
       <MemoryCard />
+      <DeepMemoryCard />
       <TracesCard active={active} />
       <OnairosCard active={active} />
     </div>

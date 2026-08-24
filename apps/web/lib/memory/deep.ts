@@ -1,0 +1,126 @@
+/**
+ * Deep memory (docs/memory-upgrade.md, layer 2) — control-plane driver for
+ * the box-local OpenViking server, via the `ovctl` binary the template bakes
+ * in. Everything here is metadata-only on the control-plane side (C4): the
+ * indexed bytes never leave the box, ovctl prints counts/URIs/statuses, and
+ * every call is best-effort — a degraded deep-memory layer must never fail
+ * onboarding or a chat turn.
+ */
+import { command } from "@/lib/box/client";
+import { shellQuote } from "@/lib/box/shell";
+
+/** Stable viking:// targets — re-ingest replaces, never duplicates. */
+export const OV_IMESSAGE_URI = "viking://resources/context/imessage-history";
+export const OV_ONAIROS_URI = "viking://resources/context/onairos";
+
+/** ovctl waits for indexing (`wait=True`); give large ingests headroom. */
+const OVCTL_TIMEOUT_SECONDS = 600;
+
+export interface DeepMemoryStatus {
+  healthy: boolean;
+  resources: number;
+  workspace_bytes: number;
+}
+
+function parseJson(stdout: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(stdout) as unknown;
+    return typeof parsed === "object" && parsed !== null
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function deepMemoryStatus(
+  boxId: string
+): Promise<DeepMemoryStatus> {
+  const result = await command(boxId, "ovctl status", 60).catch(() => null);
+  const doc = result && result.exitCode === 0 ? parseJson(result.stdout) : null;
+  return {
+    healthy: doc?.healthy === true,
+    resources: typeof doc?.resources === "number" ? doc.resources : 0,
+    workspace_bytes:
+      typeof doc?.workspace_bytes === "number" ? doc.workspace_bytes : 0,
+  };
+}
+
+/** Index a box-local file/dir at a stable URI. Best-effort: failures are
+ * swallowed after a metadata-only log line (no path contents, no memory). */
+export async function deepMemoryIndex(
+  boxId: string,
+  boxPath: string,
+  uri: string
+): Promise<boolean> {
+  try {
+    const result = await command(
+      boxId,
+      `ovctl add-resource ${shellQuote(boxPath)} --to ${shellQuote(uri)}`,
+      OVCTL_TIMEOUT_SECONDS
+    );
+    const ok = result.exitCode === 0;
+    console.log(
+      JSON.stringify({ msg: "deep memory index", box_id: boxId, uri, ok })
+    );
+    return ok;
+  } catch {
+    console.log(
+      JSON.stringify({ msg: "deep memory index", box_id: boxId, uri, ok: false })
+    );
+    return false;
+  }
+}
+
+/** Remove an indexed subtree (e.g. Onairos disconnect). Best-effort. */
+export async function deepMemoryForget(
+  boxId: string,
+  uri: string
+): Promise<boolean> {
+  try {
+    const result = await command(
+      boxId,
+      `ovctl rm ${shellQuote(uri)}`,
+      OVCTL_TIMEOUT_SECONDS
+    );
+    const ok = result.exitCode === 0;
+    console.log(
+      JSON.stringify({ msg: "deep memory forget", box_id: boxId, uri, ok })
+    );
+    return ok;
+  } catch {
+    console.log(
+      JSON.stringify({ msg: "deep memory forget", box_id: boxId, uri, ok: false })
+    );
+    return false;
+  }
+}
+
+/** Re-render ov.conf from the box's .env and re-index the onboarding context
+ * (imessage-history/ + onairos.md). Owner-triggered from Settings. */
+export async function deepMemoryReindex(boxId: string): Promise<boolean> {
+  try {
+    const ensure = await command(boxId, "ovctl ensure", 180);
+    if (ensure.exitCode !== 0) return false;
+    const result = await command(boxId, "ovctl reindex", OVCTL_TIMEOUT_SECONDS);
+    return result.exitCode === 0;
+  } catch {
+    return false;
+  }
+}
+
+/** Export inventory + derived memory contents for /api/admin/export. The
+ * returned object is CONTENT — box → response only, never persisted. */
+export async function deepMemoryExport(
+  boxId: string
+): Promise<Record<string, unknown>> {
+  const result = await command(boxId, "ovctl export", 120).catch(() => null);
+  if (!result || result.exitCode !== 0) {
+    return { error: "openviking unavailable — deep memory rides the box snapshot" };
+  }
+  return (
+    parseJson(result.stdout) ?? {
+      error: "openviking export unreadable — deep memory rides the box snapshot",
+    }
+  );
+}

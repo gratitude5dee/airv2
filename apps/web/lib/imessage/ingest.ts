@@ -11,6 +11,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { readFile, writeFile } from "../box/client";
+import { deepMemoryIndex, OV_IMESSAGE_URI } from "../memory/deep";
 import { ensureBoxAwake } from "../orchestrator/boxes";
 import { env } from "../env";
 
@@ -207,10 +208,16 @@ export async function storeChunk(
     // first upload
   }
   const stamp = Date.now();
-  await writeFile(
+  const chunkPath = `${HISTORY_DIR}/chunk-${stamp}.json`;
+  await writeFile(box.boxId, chunkPath, JSON.stringify(chunk.messages));
+  // Deep memory (docs/memory-upgrade.md): make the chunk semantically
+  // searchable in the box-local OpenViking store. Best-effort — a degraded
+  // deep-memory layer never fails an upload; `ovctl reindex` re-adds the
+  // whole directory at its stable URI later.
+  await deepMemoryIndex(
     box.boxId,
-    `${HISTORY_DIR}/chunk-${stamp}.json`,
-    JSON.stringify(chunk.messages)
+    chunkPath,
+    `${OV_IMESSAGE_URI}/chunk-${stamp}`
   );
   status.chunks += 1;
   status.messages += chunk.messages.length;
