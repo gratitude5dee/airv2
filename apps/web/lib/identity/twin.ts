@@ -63,7 +63,7 @@ export interface DigitalTwin {
   updated_at: string;
 }
 
-export const CONSENT_VIDEO_TYPES = new Set(["video/mp4"]);
+export const CONSENT_VIDEO_TYPES = new Set(["video/mp4", "video/webm"]);
 export const CONSENT_VIDEO_MAX_BYTES = 50 * 1024 * 1024;
 
 export async function getDigitalTwin(
@@ -117,7 +117,7 @@ export async function uploadTwinConsent(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const contentType = file.type.toLowerCase();
   if (!CONSENT_VIDEO_TYPES.has(contentType)) {
-    return { ok: false, error: "consent recording must be an mp4 video." };
+    return { ok: false, error: "consent recording must be an mp4 or webm video." };
   }
   let bytes: Buffer;
   try {
