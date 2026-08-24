@@ -2,19 +2,25 @@
  * M5 email round trip: after the webhook is verified, resolved, deduped, and
  * acked, this runs the turn — quote-strip → box run → tier-gated reply.
  *
- *   tier 0/1  the agent's reply is auto-sent from the control plane
+ *   tier 0    the agent's reply is auto-sent from the control plane (the
+ *             counterparty is the owner's own verified handle)
+ *   tier 1    the reply is escalated for review: held as an AgentMail reply
+ *             draft plus an email_draft decision with an inline iMessage
+ *             card — nothing sends until the owner approves
  *   tier 2    no side effect: one "Needs you" entry, zero outbound mail
  *
- * The reply always leaves through the control-plane key (the box key is
- * draft-only, C10), threaded via Reply To Message with an Idempotency-Key.
+ * Every send leaves through the control-plane key (the box key is
+ * draft-only, C10), threaded with an Idempotency-Key.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  createDraft,
   getAttachmentBytes,
   getMessage,
   replyToMessage,
   type AgentMailMessage,
 } from "../agentmail/client";
+import { queueEmailDraftReview } from "./review";
 import { createRun, runEvents } from "../hermes/client";
 import { armStopAfter, ensureBoxAwake } from "../orchestrator/boxes";
 import { hermesDeltas } from "../orchestrator/flush";
@@ -210,7 +216,28 @@ export async function processInboundEmail(
     // AgentMail Idempotency-Key allows only [A-Za-z0-9-._~]; RFC-822 ids
     // contain <>@ so map anything else onto that alphabet.
     const idempotencyKey = messageId.replace(/[^A-Za-z0-9\-._~]/g, "_");
-    await replyToMessage(inboxId, messageId, output.trim(), idempotencyKey);
+    if (tier === 0) {
+      await replyToMessage(inboxId, messageId, output.trim(), idempotencyKey);
+    } else {
+      // Escalate for review: hold the reply as a threaded draft (recipients,
+      // subject, and threading derive from the inbound message) and file an
+      // email_draft decision with an inline iMessage review card. The
+      // client_id makes a retried turn reuse the same draft, not stack more.
+      const draftId = await createDraft(inboxId, {
+        in_reply_to: messageId,
+        text: output.trim(),
+        client_id: `reply-${idempotencyKey}`,
+      });
+      await queueEmailDraftReview(supabase, userId, {
+        draftId,
+        to: from,
+        subject: message.subject
+          ? message.subject.startsWith("Re:")
+            ? message.subject
+            : `Re: ${message.subject}`
+          : undefined,
+      });
+    }
   }
 
   await supabase.from("agent_runs").insert({

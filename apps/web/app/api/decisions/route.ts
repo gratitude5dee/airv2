@@ -6,8 +6,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sessionUserId } from "@/lib/auth/user";
 import { serviceClient } from "@/lib/supabase";
-import { sendDraft } from "@/lib/agentmail/client";
 import { batchApproveEmailDrafts } from "@/lib/decisions/batch";
+import { EmailDraftError, sendHeldDraft } from "@/lib/decisions/email";
 import {
   approveAdWrite,
   dismissAdWrite,
@@ -128,21 +128,22 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     decision.kind === "email_draft" &&
     decision.ref
   ) {
-    const { data: address } = await supabase
-      .from("agent_addresses")
-      .select("agentmail_inbox_id")
-      .eq("user_id", userId)
-      .eq("is_primary", true)
-      .is("retired_at", null)
-      .maybeSingle();
-    if (!address?.agentmail_inbox_id) {
-      return NextResponse.json({ error: "no inbox" }, { status: 409 });
+    try {
+      await sendHeldDraft(
+        supabase,
+        userId,
+        decision.ref as string,
+        decision.id as string,
+      );
+    } catch (error) {
+      if (error instanceof EmailDraftError) {
+        return NextResponse.json(
+          { error: error.message },
+          { status: error.status },
+        );
+      }
+      throw error;
     }
-    await sendDraft(
-      address.agentmail_inbox_id as string,
-      decision.ref as string,
-      decision.id as string,
-    );
   }
 
   if (decision.kind === "ad_write" && decision.ref) {

@@ -15,12 +15,17 @@
 import { NextResponse } from "next/server";
 import {
   createDraft,
+  getDraft,
   getThread,
   listThreads,
   type AgentMailMessage,
   type AgentMailThread,
 } from "@/lib/agentmail/client";
-import { createDecision } from "@/lib/routing/trust";
+import { queueEmailDraftReview } from "@/lib/email/review";
+import {
+  EmailDraftError,
+  resolveEmailDraftDecision,
+} from "@/lib/decisions/email";
 import { externalOrigin } from "../gates";
 import { esc, forbidden, withBaseHeaders } from "../html";
 import { renderShell, shellHtml } from "../shell";
@@ -59,10 +64,72 @@ async function blockedAddresses(ctx: MiniAppContext): Promise<Set<string>> {
   );
 }
 
+interface PendingDraftReview {
+  decisionId: string;
+  to: string;
+  subject: string;
+  preview: string;
+}
+
+/**
+ * Pending email_draft decisions with the held draft read from AgentMail at
+ * view time — the body never lands in Postgres (C4). A gone draft (already
+ * sent or expired) degrades to the stored safe metadata.
+ */
+async function pendingDraftReviews(
+  ctx: MiniAppContext,
+  inboxId: string
+): Promise<PendingDraftReview[]> {
+  const { data } = await ctx.supabase
+    .from("decisions")
+    .select("id, ref, sender, label")
+    .eq("user_id", ctx.session.userId)
+    .eq("kind", "email_draft")
+    .eq("status", "pending")
+    .order("created_at", { ascending: false })
+    .limit(10);
+  const rows = (data ?? []) as {
+    id: string;
+    ref: string | null;
+    sender: string | null;
+    label: string | null;
+  }[];
+  const reviews: PendingDraftReview[] = [];
+  for (const row of rows) {
+    let to = row.sender ?? "";
+    let subject = row.label ?? "";
+    let preview = "";
+    if (row.ref) {
+      try {
+        const draft = await getDraft(inboxId, row.ref);
+        to = draft.to?.join(", ") || to;
+        subject = draft.subject || subject;
+        preview = draft.text ?? "";
+      } catch {
+        // Draft may be gone; the stored metadata still identifies the card.
+      }
+    }
+    reviews.push({ decisionId: row.id, to, subject, preview });
+  }
+  return reviews;
+}
+
+function renderReviews(reviews: PendingDraftReview[]): string {
+  if (reviews.length === 0) return "";
+  const items = reviews
+    .map(
+      (review) =>
+        `<div class="card"><div class="when">To ${esc(review.to || "(no recipient)")}</div><strong>${esc(review.subject || "(no subject)")}</strong>${review.preview ? `<p style="margin:0.4rem 0 0;white-space:pre-wrap">${esc(review.preview.slice(0, 2000))}</p>` : ""}<div class="row" style="margin-top:0.6rem"><form method="post"><input type="hidden" name="action" value="approve_draft"><input type="hidden" name="decision" value="${esc(review.decisionId)}"><button>Approve &amp; send</button></form><form method="post"><input type="hidden" name="action" value="dismiss_draft"><input type="hidden" name="decision" value="${esc(review.decisionId)}"><button>Discard</button></form></div></div>`
+    )
+    .join("");
+  return `<div class="day">Waiting for your approval — nothing sends until you approve</div>${items}`;
+}
+
 function renderThreads(
   basePath: string,
   threads: AgentMailThread[],
   blocked: Set<string>,
+  reviews: PendingDraftReview[],
   lite: boolean
 ): string {
   const rows = threads
@@ -78,7 +145,7 @@ function renderThreads(
   const empty =
     threads.length === 0 ? `<p class="when">No mail yet.</p>` : "";
   const compose = `<div class="day">Compose (drafts only \u2014 nothing sends without you)</div><form method="post" class="stack"><input type="hidden" name="action" value="compose"><input type="text" name="to" placeholder="To" required><input type="text" name="subject" placeholder="Subject"><input type="text" name="text" placeholder="Message" required><div class="row"><button>Save draft</button></div></form>`;
-  const body = `<section class="panel">${rows}${empty}${compose}\n${promptBar("Ask your agent \u2014 e.g. summarize unread threads\u2026")}</section>`;
+  const body = `<section class="panel">${renderReviews(reviews)}${rows}${empty}${compose}\n${promptBar("Ask your agent \u2014 e.g. summarize unread threads\u2026")}</section>`;
   return renderShell({ title: "Inbox", kicker: "Mail", body, lite });
 }
 
@@ -142,8 +209,13 @@ export const inbox: MiniAppModule = {
           )
         );
       }
-      const threads = await listThreads(inboxId);
-      return shellHtml(renderThreads(ctx.basePath, threads, blocked, lite));
+      const [threads, reviews] = await Promise.all([
+        listThreads(inboxId),
+        pendingDraftReviews(ctx, inboxId),
+      ]);
+      return shellHtml(
+        renderThreads(ctx.basePath, threads, blocked, reviews, lite)
+      );
     } catch {
       return shellHtml(
         renderShell({
@@ -161,6 +233,30 @@ export const inbox: MiniAppModule = {
       return forbidden("this view is owner-only");
     }
     const action = String(form.get("action") ?? "");
+    if (action === "approve_draft" || action === "dismiss_draft") {
+      // The inline card's resolution path — identical checks to the
+      // Needs-you API (owner-scoped, pending-only, control-plane send).
+      const decisionId = String(form.get("decision") ?? "");
+      if (decisionId) {
+        try {
+          await resolveEmailDraftDecision(
+            ctx.supabase,
+            ctx.session.userId,
+            decisionId,
+            action === "approve_draft"
+          );
+        } catch (error) {
+          if (!(error instanceof EmailDraftError)) throw error;
+          // Already resolved / gone: the redirect re-renders without it.
+        }
+      }
+      return withBaseHeaders(
+        NextResponse.redirect(
+          new URL(ctx.basePath, externalOrigin(ctx.request)),
+          303
+        )
+      );
+    }
     if (action === "prompt") {
       await runPrompt(ctx, String(form.get("text") ?? ""));
       return withBaseHeaders(
@@ -182,13 +278,10 @@ export const inbox: MiniAppModule = {
           ...(subject ? { subject } : {}),
           text,
         });
-        await createDecision(ctx.supabase, {
-          userId: ctx.session.userId,
-          kind: "email_draft",
-          platform: "email",
-          sender: to,
-          ref: draftId,
-          label: subject ? `Draft: ${subject}` : `Draft to ${to}`,
+        await queueEmailDraftReview(ctx.supabase, ctx.session.userId, {
+          draftId,
+          to,
+          ...(subject ? { subject } : {}),
         });
       }
     }
