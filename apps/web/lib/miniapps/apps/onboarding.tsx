@@ -553,7 +553,7 @@ function stepBody(
   }
   if (step === "link") {
     const link = snapshot.link;
-    const intro = `<p class="muted">Link is Stripe's wallet. Pairing your agent's computer with your Link account lets it request one-time-use payment credentials for purchases and bookings — every spend still waits for your approval in the Link app, and you always click the final Pay button.</p>`;
+    const intro = `<p class="muted">Link is Stripe's wallet. Pairing your agent's computer with your Link account lets it request one-time-use payment credentials for purchases and bookings — every spend still waits for your approval at link.com, and you always click the final Pay button.</p>`;
     if (link?.authenticated) {
       return `${intro}<p>Link connected — your agent can request payment credentials, and each spend still needs your approval.</p><div class="row actions">${skipForm("link", "Continue")}</div>`;
     }
@@ -566,9 +566,9 @@ function stepBody(
     const pendingUrl = safeVerificationUrl(link?.verification_url ?? null);
     if (pendingUrl) {
       const phrase = link?.phrase
-        ? `<p>Confirm this phrase in the Link app: <strong>${esc(link.phrase)}</strong></p>`
+        ? `<p>Confirm this phrase at link.com: <strong>${esc(link.phrase)}</strong></p>`
         : "";
-      return `${intro}<p><a href="${esc(pendingUrl)}" target="_blank" rel="noopener">Approve the connection in your Link app</a></p>${phrase}<div class="row actions">${checkForm}${connectForm("Start over")}${skipForm("link", "Later")}</div>`;
+      return `${intro}<p><a href="${esc(pendingUrl)}" target="_blank" rel="noopener">Approve the connection at link.com</a></p>${phrase}<p class="muted">Opens in your browser — no app to install. Log in or sign up with the email on your Link wallet. The code expires after a few minutes; use Start over for a fresh one.</p><div class="row actions">${checkForm}${connectForm("Start over")}${skipForm("link", "Later")}</div>`;
     }
     return `${intro}<div class="row actions">${connectForm("Connect Link")}${skipForm("link", "Later")}</div>`;
   }
@@ -1272,7 +1272,7 @@ export const onboarding: MiniAppModule = {
           return respond(
             ctx,
             "link",
-            "Open the link below and approve the connection in your Link app, then check status."
+            "Open the link below and approve the connection at link.com, then check status. The code expires after a few minutes — Start over mints a fresh one."
           );
         }
         return respond(
@@ -1280,7 +1280,7 @@ export const onboarding: MiniAppModule = {
           "link",
           action === "link_connect"
             ? "Couldn't start the Link connection — try again in a minute."
-            : "Not connected yet — approve the connection in your Link app first."
+            : "Not connected yet — approve the connection at link.com first."
         );
       } catch (error) {
         if (error instanceof StartLimitError) {
