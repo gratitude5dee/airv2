@@ -11,6 +11,10 @@
 import { env } from "../env";
 import { CreativeUnconfiguredError } from "./groq";
 import { assertSafeGeneratedMediaUrl, generatedMediaHosts } from "./media-url";
+import {
+  DEFAULT_LANE_MODELS,
+  type CreativePrefs,
+} from "./model-prefs";
 import type { RouterPlan } from "./schema";
 
 const POLL_INTERVAL_MS = 2_000;
@@ -134,6 +138,9 @@ export interface GmiLifecycleEvent {
 
 export interface GmiGenerationOptions {
   onLifecycle?: (event: GmiLifecycleEvent) => Promise<void> | void;
+  /** Personal GMI key (Settings) — the user's own token spend. Falls back
+   * to the platform key when absent. Never logged, never persisted. */
+  apiKey?: string;
 }
 
 export type GmiRequestStage = "decode" | "poll" | "submit";
@@ -228,8 +235,10 @@ const zapAspectRatioFor = (
 /** Pure payload builder, kept separate from queue I/O for deterministic tests. */
 export function buildGenerationRequest(
   plan: RouterPlan,
-  turn: CreativeTurn
+  turn: CreativeTurn,
+  prefs?: CreativePrefs
 ): GmiGenerationRequest {
+  const models = prefs ?? DEFAULT_LANE_MODELS;
   const prompt = plan.expanded_prompt;
   const imageInputs = turn.mediaInputs.filter((media) => media.kind === "image");
   const videoInputs = turn.mediaInputs.filter((media) => media.kind === "video");
@@ -241,13 +250,13 @@ export function buildGenerationRequest(
     if (editSource) {
       return {
         kind: "image",
-        model: "gpt-image-2-edit",
+        model: models.edit,
         payload: { prompt, image: editSource.url, size, quality, n: 1 },
       };
     }
     return {
       kind: "image",
-      model: "gpt-image-2-generate",
+      model: models.imagine,
       payload: { prompt, size, quality, output_format: "png", n: 1 },
     };
   }
@@ -260,7 +269,7 @@ export function buildGenerationRequest(
       );
     return {
       kind: "video",
-      model: "seedance-2-0-fast-260128",
+      model: models.animate,
       payload: {
         prompt,
         duration,
@@ -279,7 +288,7 @@ export function buildGenerationRequest(
     const hasVideo = videoInputs.length > 0;
     return {
       kind: "video",
-      model: "gemini-omni-flash-preview",
+      model: models.zap,
       payload: {
         prompt,
         ...(imageInputs.length > 0
@@ -371,7 +380,7 @@ export async function generateCompiledRequest(
       env.gmiRequestQueueUrl(),
       {
         method: "POST",
-        headers: queueHeaders(),
+        headers: queueHeaders(options?.apiKey),
         body: JSON.stringify({ model: request.model, payload: request.payload }),
       },
       submitBudgetMs,
@@ -474,12 +483,13 @@ const isTransientPollFailure = (error: unknown): boolean =>
       error.status === 429 ||
       error.status >= 500));
 
-const queueHeaders = (): Record<string, string> => {
-  const apiKey = env.gmiCloudApiKey();
+const queueHeaders = (apiKeyOverride?: string): Record<string, string> => {
+  const apiKey = apiKeyOverride ?? env.gmiCloudApiKey();
   if (!apiKey) {
     throw new CreativeUnconfiguredError("GMI");
   }
-  const organizationId = env.gmiOrganizationId();
+  // The platform organization header only applies to the platform key.
+  const organizationId = apiKeyOverride ? null : env.gmiOrganizationId();
   return {
     Authorization: `Bearer ${apiKey}`,
     "Content-Type": "application/json",
@@ -551,7 +561,7 @@ async function poll(
     try {
       response = await fetchQueueJson(
         `${env.gmiRequestQueueUrl()}/${encodeURIComponent(requestId)}`,
-        { headers: queueHeaders() },
+        { headers: queueHeaders(options?.apiKey) },
         Math.max(1, Math.min(REQUEST_TIMEOUT_MS, deadline - Date.now())),
         "poll"
       );
@@ -608,10 +618,11 @@ export async function generate(
   plan: RouterPlan,
   turn: CreativeTurn,
   timeoutMs = DEFAULT_GENERATION_TIMEOUT_MS,
-  options?: GmiGenerationOptions
+  options?: GmiGenerationOptions,
+  prefs?: CreativePrefs
 ): Promise<GeneratedMedia> {
   return await generateCompiledRequest(
-    buildGenerationRequest(plan, turn),
+    buildGenerationRequest(plan, turn, prefs),
     timeoutMs,
     options
   );

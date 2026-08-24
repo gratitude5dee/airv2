@@ -22,6 +22,8 @@ import {
 import { CreativeUnconfiguredError } from "./groq";
 import { insertRenderCostEvent, updateCreativeJob, underDailyLimit, DAILY_LIMIT_LINE } from "./jobs";
 import { fetchSafeGeneratedMedia } from "./media-url";
+import { guideForModel, loadCreativePrefs } from "./model-prefs";
+import { getProviderKey } from "../providers/keys";
 import { PROMPT_VERSIONS } from "./prompts";
 import {
   CreativeRouterUnavailableError,
@@ -91,9 +93,26 @@ export async function executeCreativeJob(
     imageDescription = await describeImage(imageUrls).catch(() => null);
   }
 
+  // The user's lane model choices (Settings) and, when saved, their
+  // personal GMI key. Both degrade to platform defaults on any failure.
+  const prefs = await loadCreativePrefs(supabase, userId).catch(() => undefined);
+  const personalGmiKey = await getProviderKey(supabase, userId, "gmi").catch(
+    () => null
+  );
+  // Metaprompt: the guide for the model this turn will render on. /imagine
+  // with an attached image runs the edit lane's model.
+  const laneModel = prefs
+    ? turn.mode === "imagine"
+      ? turn.mediaInputs.some((media) => media.kind === "image")
+        ? prefs.edit
+        : prefs.imagine
+      : prefs[turn.mode]
+    : null;
+  const modelGuide = laneModel ? guideForModel(laneModel) : null;
+
   let plan;
   try {
-    plan = await routeExplicitCommand(turn, imageDescription);
+    plan = await routeExplicitCommand(turn, imageDescription, undefined, modelGuide);
   } catch (error) {
     if (error instanceof CreativeUnconfiguredError) {
       return await fail("failed", UNCONFIGURED_LINE);
@@ -125,11 +144,19 @@ export async function executeCreativeJob(
     }
   };
 
+  const generationOptions = {
+    onLifecycle,
+    ...(personalGmiKey ? { apiKey: personalGmiKey } : {}),
+  };
   let media: GeneratedMedia;
   try {
-    media = await generate(plan, creativeTurn, DEFAULT_GENERATION_TIMEOUT_MS, {
-      onLifecycle,
-    });
+    media = await generate(
+      plan,
+      creativeTurn,
+      DEFAULT_GENERATION_TIMEOUT_MS,
+      generationOptions,
+      prefs
+    );
   } catch (error) {
     if (error instanceof CreativeUnconfiguredError) {
       return await fail("failed", UNCONFIGURED_LINE);
@@ -137,9 +164,11 @@ export async function executeCreativeJob(
     if (error instanceof GmiTimeoutError) {
       // A known request ID may be resumed by polling only — never resubmit.
       try {
-        media = await resumeGeneration(error, DEFAULT_GENERATION_TIMEOUT_MS, {
-          onLifecycle,
-        });
+        media = await resumeGeneration(
+          error,
+          DEFAULT_GENERATION_TIMEOUT_MS,
+          generationOptions
+        );
       } catch {
         return await fail("failed", FAILED_LINE);
       }
@@ -164,7 +193,11 @@ export async function executeCreativeJob(
       status: "delivered",
       delivered_at: new Date().toISOString(),
     });
-    await insertRenderCostEvent(supabase, userId, jobId, media.kind);
+    // A render on the user's personal GMI key is their own provider spend —
+    // no platform cost event (the job still counts toward the daily cap).
+    if (!personalGmiKey) {
+      await insertRenderCostEvent(supabase, userId, jobId, media.kind);
+    }
     return {
       status: "delivered",
       line: plan.delivery_line || "made this for you",
