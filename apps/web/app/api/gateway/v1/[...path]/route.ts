@@ -295,7 +295,13 @@ export async function POST(
             type: "provider_unconfigured",
           },
         }),
-        { status: 503, headers: { "Content-Type": "application/json" } }
+        {
+          status: 503,
+          headers: {
+            "Content-Type": "application/json",
+            "X-Provider-Unconfigured": "1",
+          },
+        }
       );
     }
     return fetch(`${baseUrl}/${endpoint}`, {
@@ -323,6 +329,14 @@ export async function POST(
   // "network_error"` and a null message). The box would otherwise retry into
   // the same wall and the user gets silence, so a dead or empty OpenRouter
   // (or Venice) answer falls back once to the tier-resolved OpenAI model.
+  // An unconfigured provider is a user-facing settings problem, not a dead
+  // upstream — surface the 503 instead of silently answering with OpenAI.
+  if (upstream.headers.get("X-Provider-Unconfigured") === "1") {
+    return new NextResponse(await upstream.text(), {
+      status: upstream.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
   const canFallBack = providerForFamily(family) !== "openai";
   if (canFallBack && (!upstream.ok || !upstream.body)) {
     servedFamily = "openai";
