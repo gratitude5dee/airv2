@@ -11,10 +11,7 @@
 import { env } from "../env";
 import { CreativeUnconfiguredError } from "./groq";
 import { assertSafeGeneratedMediaUrl, generatedMediaHosts } from "./media-url";
-import {
-  DEFAULT_LANE_MODELS,
-  type CreativePrefs,
-} from "./model-prefs";
+import { DEFAULT_LANE_MODELS, type CreativePrefs } from "./model-prefs";
 import type { RouterPlan } from "./schema";
 
 const POLL_INTERVAL_MS = 2_000;
@@ -102,7 +99,7 @@ const releaseGmiSlot = (): void => {
 
 const withGmiSlot = async <T>(
   task: () => Promise<T>,
-  timeoutMs: number
+  timeoutMs: number,
 ): Promise<T> => {
   await acquireGmiSlot(timeoutMs);
   try {
@@ -119,10 +116,7 @@ export interface GmiGenerationRequest {
 }
 
 export type GmiLifecycleStage =
-  | "artifact_ready"
-  | "polling"
-  | "submitted"
-  | "submitting";
+  "artifact_ready" | "polling" | "submitted" | "submitting";
 
 /**
  * Metadata-only generation progress. Deliberately excludes prompts, payloads,
@@ -166,7 +160,10 @@ export class GmiRequestError extends Error {
 }
 
 export class GmiJobError extends Error {
-  constructor(readonly jobStatus: "cancelled" | "failed", message: string) {
+  constructor(
+    readonly jobStatus: "cancelled" | "failed",
+    message: string,
+  ) {
     super(message);
     this.name = "GmiJobError";
   }
@@ -175,7 +172,7 @@ export class GmiJobError extends Error {
 export class GmiTimeoutError extends Error {
   constructor(
     readonly requestId: string,
-    readonly mediaKind: GeneratedMedia["kind"]
+    readonly mediaKind: GeneratedMedia["kind"],
   ) {
     super("GMI request timed out");
     this.name = "GmiTimeoutError";
@@ -199,7 +196,7 @@ const asRecord = (value: unknown): Record<string, unknown> | undefined =>
 
 const stringField = (
   value: Record<string, unknown> | undefined,
-  key: string
+  key: string,
 ): string | undefined => {
   const candidate = value?.[key];
   return typeof candidate === "string" && candidate.length > 0
@@ -224,11 +221,11 @@ const qualityFor = (quality: RouterPlan["params"]["quality"]): string =>
   quality === "auto" ? "medium" : quality;
 
 const seedanceRatioFor = (
-  ratio: RouterPlan["params"]["aspect_ratio"]
+  ratio: RouterPlan["params"]["aspect_ratio"],
 ): string => (ratio === "auto" ? "16:9" : ratio);
 
 const zapAspectRatioFor = (
-  ratio: RouterPlan["params"]["aspect_ratio"]
+  ratio: RouterPlan["params"]["aspect_ratio"],
 ): "16:9" | "9:16" | "auto" =>
   ratio === "16:9" || ratio === "9:16" ? ratio : "auto";
 
@@ -236,27 +233,61 @@ const zapAspectRatioFor = (
 export function buildGenerationRequest(
   plan: RouterPlan,
   turn: CreativeTurn,
-  prefs?: CreativePrefs
+  prefs?: CreativePrefs,
 ): GmiGenerationRequest {
   const models = prefs ?? DEFAULT_LANE_MODELS;
   const prompt = plan.expanded_prompt;
-  const imageInputs = turn.mediaInputs.filter((media) => media.kind === "image");
-  const videoInputs = turn.mediaInputs.filter((media) => media.kind === "video");
+  const imageInputs = turn.mediaInputs.filter(
+    (media) => media.kind === "image",
+  );
+  const videoInputs = turn.mediaInputs.filter(
+    (media) => media.kind === "video",
+  );
 
   if (plan.mode === "imagine") {
     const size = imageSizeFor(plan.params.aspect_ratio);
     const quality = qualityFor(plan.params.quality);
     const editSource = imageInputs[0];
     if (editSource) {
+      // Each edit model advertises a different schema (GMI model details):
+      // reve takes `reference_image`, Gemini flash image takes `image`, and
+      // gpt-image-2-edit takes the full image/size/quality shape.
+      const model = models.edit;
+      if (model === "reve-edit-20250915") {
+        return {
+          kind: "image",
+          model,
+          payload: { prompt, reference_image: editSource.url },
+        };
+      }
+      if (model === "gemini-3.1-flash-image") {
+        return {
+          kind: "image",
+          model,
+          payload: { prompt, image: editSource.url },
+        };
+      }
       return {
         kind: "image",
-        model: models.edit,
+        model,
         payload: { prompt, image: editSource.url, size, quality, n: 1 },
+      };
+    }
+    const model = models.imagine;
+    if (model === "Flux2-Dev") {
+      const [width, height] = size.split("x").map(Number);
+      return { kind: "image", model, payload: { prompt, width, height } };
+    }
+    if (model === "seedream-4-0-250828") {
+      return {
+        kind: "image",
+        model,
+        payload: { prompt, size, watermark: false },
       };
     }
     return {
       kind: "image",
-      model: models.imagine,
+      model,
       payload: { prompt, size, quality, output_format: "png", n: 1 },
     };
   }
@@ -265,19 +296,62 @@ export function buildGenerationRequest(
     const duration = clamp(plan.params.duration ?? 8, 4, 15);
     const userRequestedSilence =
       /\b(?:silent|mute(?:d)?|without (?:sound|audio)|no (?:sound|audio))\b/i.test(
-        turn.text
+        turn.text,
       );
+    const model = models.animate;
+    // The brief requires audio by default. Only an explicit user request
+    // for silence can override it; the router's boolean is advisory.
+    const audio = !userRequestedSilence;
+    // Non-seedance video models advertise different schemas (GMI model
+    // details): LTX has no ratio/watermark, Happyhorse calls audio `audio`,
+    // and MiniMax-H3 takes `first_frame_image` with no audio flag.
+    if (model === "ltx-2-fast-text-to-video") {
+      return {
+        kind: "video",
+        model,
+        payload: {
+          prompt,
+          duration,
+          resolution: "720p",
+          generate_audio: audio,
+        },
+      };
+    }
+    if (model === "happyhorse-1.1-t2v") {
+      return {
+        kind: "video",
+        model,
+        payload: {
+          prompt,
+          duration,
+          resolution: "720p",
+          audio,
+          watermark: false,
+        },
+      };
+    }
+    if (model === "MiniMax-H3") {
+      return {
+        kind: "video",
+        model,
+        payload: {
+          prompt,
+          duration,
+          resolution: "720p",
+          ratio: seedanceRatioFor(plan.params.aspect_ratio),
+          ...(imageInputs[0] ? { first_frame_image: imageInputs[0].url } : {}),
+        },
+      };
+    }
     return {
       kind: "video",
-      model: models.animate,
+      model,
       payload: {
         prompt,
         duration,
         resolution: "720p",
         ratio: seedanceRatioFor(plan.params.aspect_ratio),
-        // The brief requires audio by default. Only an explicit user request
-        // for silence can override it; the router's boolean is advisory.
-        generate_audio: !userRequestedSilence,
+        generate_audio: audio,
         watermark: false,
         ...(imageInputs[0] ? { first_frame: imageInputs[0].url } : {}),
       },
@@ -292,7 +366,11 @@ export function buildGenerationRequest(
       payload: {
         prompt,
         ...(imageInputs.length > 0
-          ? { reference_image: imageInputs.slice(0, 5).map((media) => media.url) }
+          ? {
+              reference_image: imageInputs
+                .slice(0, 5)
+                .map((media) => media.url),
+            }
           : {}),
         ...(hasVideo
           ? { video: videoInputs.slice(0, 3).map((media) => media.url) }
@@ -330,7 +408,7 @@ export type HeygenAvatarOptions = {
  * /v2/video/generate contract.
  */
 export function buildHeygenAvatarRequest(
-  opts: HeygenAvatarOptions
+  opts: HeygenAvatarOptions,
 ): GmiGenerationRequest {
   return {
     kind: "video",
@@ -357,73 +435,85 @@ export function buildHeygenAvatarRequest(
 export async function generateCompiledRequest(
   request: GmiGenerationRequest,
   timeoutMs = DEFAULT_GENERATION_TIMEOUT_MS,
-  options?: GmiGenerationOptions
+  options?: GmiGenerationOptions,
 ): Promise<GeneratedMedia> {
   const deadline = Date.now() + timeoutMs;
-  return await withGmiSlot(async () => {
-    if (Date.now() >= deadline) {
-      throw new GmiCapacityError();
-    }
-    await emitLifecycle(options, {
-      stage: "submitting",
-      kind: request.kind,
-      model: request.model,
-    });
-    const submitBudgetMs = deadline - Date.now();
-    if (submitBudgetMs <= 0) {
-      throw new GmiRequestError("GMI request timed out", {
-        stage: "submit",
-        timedOut: true,
-      });
-    }
-    const response = await fetchQueueJson(
-      env.gmiRequestQueueUrl(),
-      {
-        method: "POST",
-        headers: queueHeaders(options?.apiKey),
-        body: JSON.stringify({ model: request.model, payload: request.payload }),
-      },
-      submitBudgetMs,
-      "submit"
-    );
-
-    const status = statusFor(response);
-    const requestId = requestIdFor(response);
-    await emitLifecycle(options, {
-      stage: "submitted",
-      kind: request.kind,
-      model: request.model,
-      ...(requestId ? { requestId } : {}),
-    });
-    if (status === "success") {
-      const url = extractMediaUrl(response);
-      if (url) {
-        const media = {
-          url: assertSafeGeneratedMediaUrl(url, generatedMediaHosts()),
-          kind: request.kind,
-        };
-        await emitLifecycle(options, {
-          stage: "artifact_ready",
-          kind: request.kind,
-          model: request.model,
-          ...(requestId ? { requestId } : {}),
-        });
-        return media;
+  return await withGmiSlot(
+    async () => {
+      if (Date.now() >= deadline) {
+        throw new GmiCapacityError();
       }
-    }
-    if (status === "failed" || status === "cancelled") {
-      throw new GmiJobError(status, errorMessageFor(response));
-    }
-
-    if (!requestId) {
-      // The caller must mark this submission ambiguous. A retry must never
-      // blindly pay for a duplicate request when the provider gave no ID.
-      throw new GmiRequestError("GMI submit response is missing request_id", {
-        stage: "submit",
+      await emitLifecycle(options, {
+        stage: "submitting",
+        kind: request.kind,
+        model: request.model,
       });
-    }
-    return await poll(requestId, request.kind, deadline, options, request.model);
-  }, Math.max(1, deadline - Date.now()));
+      const submitBudgetMs = deadline - Date.now();
+      if (submitBudgetMs <= 0) {
+        throw new GmiRequestError("GMI request timed out", {
+          stage: "submit",
+          timedOut: true,
+        });
+      }
+      const response = await fetchQueueJson(
+        env.gmiRequestQueueUrl(),
+        {
+          method: "POST",
+          headers: queueHeaders(options?.apiKey),
+          body: JSON.stringify({
+            model: request.model,
+            payload: request.payload,
+          }),
+        },
+        submitBudgetMs,
+        "submit",
+      );
+
+      const status = statusFor(response);
+      const requestId = requestIdFor(response);
+      await emitLifecycle(options, {
+        stage: "submitted",
+        kind: request.kind,
+        model: request.model,
+        ...(requestId ? { requestId } : {}),
+      });
+      if (status === "success") {
+        const url = extractMediaUrl(response);
+        if (url) {
+          const media = {
+            url: assertSafeGeneratedMediaUrl(url, generatedMediaHosts()),
+            kind: request.kind,
+          };
+          await emitLifecycle(options, {
+            stage: "artifact_ready",
+            kind: request.kind,
+            model: request.model,
+            ...(requestId ? { requestId } : {}),
+          });
+          return media;
+        }
+      }
+      if (status === "failed" || status === "cancelled") {
+        throw new GmiJobError(status, errorMessageFor(response));
+      }
+
+      if (!requestId) {
+        // The caller must mark this submission ambiguous. A retry must never
+        // blindly pay for a duplicate request when the provider gave no ID.
+        throw new GmiRequestError("GMI submit response is missing request_id", {
+          stage: "submit",
+        });
+      }
+      return await poll(
+        requestId,
+        request.kind,
+        deadline,
+        options,
+        request.model,
+      );
+    },
+    Math.max(1, deadline - Date.now()),
+  );
 }
 
 /** Normalizes the image and video models' different successful outcome shapes. */
@@ -470,7 +560,7 @@ const wait = async (milliseconds: number): Promise<void> =>
 
 const emitLifecycle = async (
   options: GmiGenerationOptions | undefined,
-  event: GmiLifecycleEvent
+  event: GmiLifecycleEvent,
 ): Promise<void> => {
   await options?.onLifecycle?.(event);
 };
@@ -501,7 +591,7 @@ const fetchQueueJson = async (
   url: string,
   init: RequestInit,
   timeoutMs = REQUEST_TIMEOUT_MS,
-  stage: GmiRequestStage
+  stage: GmiRequestStage,
 ): Promise<unknown> => {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -532,7 +622,10 @@ const fetchQueueJson = async (
       throw error;
     }
     if (controller.signal.aborted) {
-      throw new GmiRequestError("GMI request timed out", { stage, timedOut: true });
+      throw new GmiRequestError("GMI request timed out", {
+        stage,
+        timedOut: true,
+      });
     }
     throw new GmiRequestError("GMI request could not be reached", { stage });
   } finally {
@@ -545,7 +638,7 @@ async function poll(
   mediaKind: GeneratedMedia["kind"],
   deadline: number,
   options?: GmiGenerationOptions,
-  model?: string
+  model?: string,
 ): Promise<GeneratedMedia> {
   let transientFailures = 0;
 
@@ -563,7 +656,7 @@ async function poll(
         `${env.gmiRequestQueueUrl()}/${encodeURIComponent(requestId)}`,
         { headers: queueHeaders(options?.apiKey) },
         Math.max(1, Math.min(REQUEST_TIMEOUT_MS, deadline - Date.now())),
-        "poll"
+        "poll",
       );
       transientFailures = 0;
     } catch (error) {
@@ -605,7 +698,7 @@ async function poll(
     if (!status || !PENDING_STATUSES.has(status)) {
       throw new GmiRequestError(
         `Unexpected GMI request status: ${status ?? "missing"}`,
-        { stage: "poll" }
+        { stage: "poll" },
       );
     }
     await wait(Math.min(POLL_INTERVAL_MS, Math.max(1, deadline - Date.now())));
@@ -619,12 +712,12 @@ export async function generate(
   turn: CreativeTurn,
   timeoutMs = DEFAULT_GENERATION_TIMEOUT_MS,
   options?: GmiGenerationOptions,
-  prefs?: CreativePrefs
+  prefs?: CreativePrefs,
 ): Promise<GeneratedMedia> {
   return await generateCompiledRequest(
     buildGenerationRequest(plan, turn, prefs),
     timeoutMs,
-    options
+    options,
   );
 }
 
@@ -634,12 +727,12 @@ export async function generate(
 export async function resumeGeneration(
   error: GmiTimeoutError,
   timeoutMs = DEFAULT_GENERATION_TIMEOUT_MS,
-  options?: GmiGenerationOptions
+  options?: GmiGenerationOptions,
 ): Promise<GeneratedMedia> {
   const deadline = Date.now() + timeoutMs;
   return await withGmiSlot(
     async () => await poll(error.requestId, error.mediaKind, deadline, options),
-    Math.max(1, deadline - Date.now())
+    Math.max(1, deadline - Date.now()),
   );
 }
 

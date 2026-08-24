@@ -41,10 +41,10 @@ export const env = {
     optional("VENICE_BASE_URL", "https://api.venice.ai/api/v1"),
   veniceApiKey: (): string | null => process.env.VENICE_API_KEY ?? null,
   // Seals per-user provider API keys (Settings → provider keys) at rest.
-  // Defaults to the dashboard auth key so the beta needs no extra deploy
-  // config; set it to rotate provider credentials independently.
-  providerVaultKey: (): string | null =>
-    process.env.PROVIDER_VAULT_KEY ?? process.env.BOX_DASHBOARD_AUTH_KEY ?? null,
+  // A dedicated 64-hex key with no fallback: provider-key storage stays
+  // disabled until it is set, and it rotates independently of every other
+  // secret. Rotating it invalidates previously sealed keys.
+  providerVaultKey: (): string | null => process.env.PROVIDER_VAULT_KEY || null,
   thirdwebSecretKey: (): string => required("THIRDWEB_SECRET_KEY"),
   // Speech-to-text (M13). Defaults to the main model provider; STT_* overrides
   // exist for providers with no audio endpoint (goal.md §5).
@@ -66,7 +66,7 @@ export const env = {
   walletUsdcAddress: (): string =>
     optional(
       "WALLET_USDC_ADDRESS",
-      "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+      "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
     ),
   sessionSecret: (): string => required("SESSION_SECRET"),
   spectrumProjectId: (): string => required("SPECTRUM_PROJECT_ID"),
@@ -108,13 +108,13 @@ export const env = {
   } => {
     const appStoreId = Number.parseInt(
       optional("IMESSAGE_APP_STORE_ID", "6777616651"),
-      10
+      10,
     );
     return {
       appName: optional("IMESSAGE_APP_NAME", "Spectrum"),
       extensionBundleId: optional(
         "IMESSAGE_EXTENSION_BUNDLE_ID",
-        "codes.photon.Spectrum.MessagesExtension"
+        "codes.photon.Spectrum.MessagesExtension",
       ),
       teamId: optional("IMESSAGE_TEAM_ID", "P8XT6232SL"),
       ...(Number.isFinite(appStoreId) && appStoreId > 0 ? { appStoreId } : {}),
@@ -161,7 +161,7 @@ export const env = {
   gmiRequestQueueUrl: (): string =>
     optional(
       "GMI_REQUEST_QUEUE_URL",
-      "https://console.gmicloud.ai/api/v1/ie/requestqueue/apikey/requests"
+      "https://console.gmicloud.ai/api/v1/ie/requestqueue/apikey/requests",
     ),
   gmiMediaHosts: (): string[] =>
     optional("GMI_MEDIA_HOSTS", "")
@@ -171,7 +171,7 @@ export const env = {
   creativeMaxConcurrency: (): number => {
     const parsed = Number.parseInt(
       optional("CREATIVE_MAX_CONCURRENCY", "2"),
-      10
+      10,
     );
     return Math.max(1, Math.min(4, parsed || 2));
   },
@@ -182,7 +182,7 @@ export const env = {
   creativeCostCentsImage: (): number => {
     const parsed = Number.parseInt(
       optional("CREATIVE_COST_CENTS_IMAGE", "5"),
-      10
+      10,
     );
     return parsed >= 0 ? parsed : 5;
   },
@@ -221,7 +221,7 @@ export const env = {
   creativeCostCentsVideo: (): number => {
     const parsed = Number.parseInt(
       optional("CREATIVE_COST_CENTS_VIDEO", "25"),
-      10
+      10,
     );
     return parsed >= 0 ? parsed : 25;
   },

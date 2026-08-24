@@ -12,12 +12,7 @@ export type SpeedTier = "fast" | "balanced" | "deep";
  * default for anyone who never touches the setting.
  */
 export type ModelFamily =
-  | "openai"
-  | "ox-alpha"
-  | "inkling"
-  | "inkling-small"
-  | "openrouter"
-  | "venice";
+  "openai" | "ox-alpha" | "inkling" | "inkling-small" | "openrouter" | "venice";
 
 export const DEFAULT_MODEL_FAMILY: ModelFamily = "ox-alpha";
 
@@ -51,15 +46,60 @@ export interface CatalogModel {
  * gateway read, so a stale row can never route to an arbitrary upstream.
  */
 export const OPENROUTER_MODELS: readonly CatalogModel[] = [
-  { slug: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash", tier: "fast", pricing: { input: 0.3, output: 2.5 } },
-  { slug: "openai/gpt-4o-mini", label: "GPT-4o Mini", tier: "fast", pricing: { input: 0.15, output: 0.6 } },
-  { slug: "meta-llama/llama-3.3-70b-instruct", label: "Llama 3.3 70B", tier: "fast", pricing: { input: 0.1, output: 0.3 } },
-  { slug: "anthropic/claude-sonnet-4.5", label: "Claude Sonnet 4.5", tier: "balanced", pricing: { input: 3, output: 15 } },
-  { slug: "deepseek/deepseek-chat-v3.1", label: "DeepSeek V3.1", tier: "balanced", pricing: { input: 0.27, output: 1.1 } },
-  { slug: "qwen/qwen3-235b-a22b", label: "Qwen3 235B", tier: "balanced", pricing: { input: 0.2, output: 0.6 } },
-  { slug: "google/gemini-2.5-pro", label: "Gemini 2.5 Pro", tier: "deep", pricing: { input: 1.25, output: 10 } },
-  { slug: "anthropic/claude-opus-4.5", label: "Claude Opus 4.5", tier: "deep", pricing: { input: 5, output: 25 } },
-  { slug: "x-ai/grok-4", label: "Grok 4", tier: "deep", pricing: { input: 3, output: 15 } },
+  {
+    slug: "google/gemini-2.5-flash",
+    label: "Gemini 2.5 Flash",
+    tier: "fast",
+    pricing: { input: 0.3, output: 2.5 },
+  },
+  {
+    slug: "openai/gpt-4o-mini",
+    label: "GPT-4o Mini",
+    tier: "fast",
+    pricing: { input: 0.15, output: 0.6 },
+  },
+  {
+    slug: "meta-llama/llama-3.3-70b-instruct",
+    label: "Llama 3.3 70B",
+    tier: "fast",
+    pricing: { input: 0.1, output: 0.3 },
+  },
+  {
+    slug: "anthropic/claude-sonnet-4.5",
+    label: "Claude Sonnet 4.5",
+    tier: "balanced",
+    pricing: { input: 3, output: 15 },
+  },
+  {
+    slug: "deepseek/deepseek-chat-v3.1",
+    label: "DeepSeek V3.1",
+    tier: "balanced",
+    pricing: { input: 0.27, output: 1.1 },
+  },
+  {
+    slug: "qwen/qwen3-235b-a22b",
+    label: "Qwen3 235B",
+    tier: "balanced",
+    pricing: { input: 0.2, output: 0.6 },
+  },
+  {
+    slug: "google/gemini-2.5-pro",
+    label: "Gemini 2.5 Pro",
+    tier: "deep",
+    pricing: { input: 1.25, output: 10 },
+  },
+  {
+    slug: "anthropic/claude-opus-4.5",
+    label: "Claude Opus 4.5",
+    tier: "deep",
+    pricing: { input: 5, output: 25 },
+  },
+  {
+    slug: "x-ai/grok-4.6",
+    label: "Grok 4.6",
+    tier: "deep",
+    pricing: { input: 3, output: 15 },
+  },
 ];
 
 /**
@@ -68,10 +108,30 @@ export const OPENROUTER_MODELS: readonly CatalogModel[] = [
  * the family is expected to run on the user's personal key.
  */
 export const VENICE_MODELS: readonly CatalogModel[] = [
-  { slug: "venice-uncensored", label: "Venice Uncensored", tier: "balanced", pricing: { input: 0, output: 0 } },
-  { slug: "qwen3-235b", label: "Qwen3 235B", tier: "deep", pricing: { input: 0, output: 0 } },
-  { slug: "llama-3.3-70b", label: "Llama 3.3 70B", tier: "fast", pricing: { input: 0, output: 0 } },
-  { slug: "deepseek-r1-671b", label: "DeepSeek R1 671B", tier: "deep", pricing: { input: 0, output: 0 } },
+  {
+    slug: "venice-uncensored-1-2",
+    label: "Venice Uncensored",
+    tier: "balanced",
+    pricing: { input: 0, output: 0 },
+  },
+  {
+    slug: "qwen3-235b-a22b-instruct-2507",
+    label: "Qwen3 235B",
+    tier: "deep",
+    pricing: { input: 0, output: 0 },
+  },
+  {
+    slug: "llama-3.3-70b",
+    label: "Llama 3.3 70B",
+    tier: "fast",
+    pricing: { input: 0, output: 0 },
+  },
+  {
+    slug: "deepseek-v3.2",
+    label: "DeepSeek V3.2",
+    tier: "deep",
+    pricing: { input: 0, output: 0 },
+  },
 ];
 
 export function isOpenRouterModel(slug: string): boolean {
@@ -214,7 +274,7 @@ export function modelForTier(tier: SpeedTier): string {
 export function modelForSelection(
   family: ModelFamily,
   tier: SpeedTier,
-  selection: ModelSelection = {}
+  selection: ModelSelection = {},
 ): string {
   if (family === "openai") return modelForTier(tier);
   if (family === "openrouter") {
@@ -234,7 +294,7 @@ export function modelForSelection(
 export function modelLabelForFamily(
   family: ModelFamily,
   tier: SpeedTier,
-  selection: ModelSelection = {}
+  selection: ModelSelection = {},
 ): string {
   if (family === "openai") return modelLabelForTier(tier);
   const slug = modelForSelection(family, tier, selection);
@@ -262,17 +322,18 @@ export function costUsd(
   promptTokens: number,
   completionTokens: number,
   family: ModelFamily = "openai",
-  model?: string
+  model?: string,
 ): number {
   const pricing =
     family === "openai"
       ? TIER_PRICING[tier]
       : family === "openrouter" || family === "venice"
         ? ((family === "venice" ? VENICE_MODELS : OPENROUTER_MODELS).find(
-            (entry) => entry.slug === model
+            (entry) => entry.slug === model,
           )?.pricing ?? { input: 0, output: 0 })
         : FAMILY_PRICING[family];
   return (
-    (promptTokens * pricing.input + completionTokens * pricing.output) / 1_000_000
+    (promptTokens * pricing.input + completionTokens * pricing.output) /
+    1_000_000
   );
 }

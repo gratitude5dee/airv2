@@ -60,33 +60,41 @@ describe("model catalog", () => {
   it("resolves a valid selection and falls back on stale slugs", () => {
     const pick = OPENROUTER_MODELS[3]!.slug;
     expect(
-      modelForSelection("openrouter", "fast", { openrouterModel: pick })
+      modelForSelection("openrouter", "fast", { openrouterModel: pick }),
     ).toBe(pick);
     expect(
       modelForSelection("openrouter", "deep", {
         openrouterModel: "evil/injected-model",
-      })
+      }),
     ).toBe(defaultOpenRouterModelForTier("deep"));
     expect(
       modelForSelection("venice", "balanced", {
         veniceModel: VENICE_MODELS[1]!.slug,
-      })
+      }),
     ).toBe(VENICE_MODELS[1]!.slug);
-    expect(modelForSelection("venice", "balanced", { veniceModel: "nope" })).toBe(
-      DEFAULT_VENICE_MODEL
-    );
+    expect(
+      modelForSelection("venice", "balanced", { veniceModel: "nope" }),
+    ).toBe(DEFAULT_VENICE_MODEL);
     expect(isVeniceModel("nope")).toBe(false);
   });
 
   it("prices OpenRouter usage per model and Venice at zero", () => {
     const model = OPENROUTER_MODELS.find(
-      (entry) => entry.slug === "anthropic/claude-sonnet-4.5"
+      (entry) => entry.slug === "anthropic/claude-sonnet-4.5",
     )!;
     expect(
-      costUsd("balanced", 1_000_000, 1_000_000, "openrouter", model.slug)
+      costUsd("balanced", 1_000_000, 1_000_000, "openrouter", model.slug),
     ).toBeCloseTo(model.pricing.input + model.pricing.output);
     expect(costUsd("fast", 1_000_000, 0, "openrouter", "unknown/slug")).toBe(0);
-    expect(costUsd("fast", 1_000_000, 1_000_000, "venice", "qwen3-235b")).toBe(0);
+    expect(
+      costUsd(
+        "fast",
+        1_000_000,
+        1_000_000,
+        "venice",
+        "qwen3-235b-a22b-instruct-2507",
+      ),
+    ).toBe(0);
   });
 });
 
@@ -106,14 +114,14 @@ describe("creative model prefs", () => {
         select: () => ({
           eq: () => ({
             maybeSingle: async () => ({
-              data: { imagine_model: "flux-1-dev", edit_model: "bogus" },
+              data: { imagine_model: "Flux2-Dev", edit_model: "bogus" },
             }),
           }),
         }),
       }),
     } as unknown as SupabaseClient;
     const prefs = await loadCreativePrefs(supabase, "u1");
-    expect(prefs.imagine).toBe("flux-1-dev");
+    expect(prefs.imagine).toBe("Flux2-Dev");
     expect(prefs.edit).toBe(DEFAULT_LANE_MODELS.edit);
     expect(prefs.animate).toBe(DEFAULT_LANE_MODELS.animate);
     expect(prefs.zap).toBe(DEFAULT_LANE_MODELS.zap);
@@ -124,12 +132,17 @@ describe("creative model prefs", () => {
     const supabase = {
       from: () => ({ upsert }),
     } as unknown as SupabaseClient;
-    expect(await setCreativeModel(supabase, "u1", "imagine", "nano-banana")).toBe(
-      false
-    );
+    expect(
+      await setCreativeModel(
+        supabase,
+        "u1",
+        "imagine",
+        "gemini-3.1-flash-image",
+      ),
+    ).toBe(false);
     expect(upsert).not.toHaveBeenCalled();
-    expect(await setCreativeModel(supabase, "u1", "imagine", "flux-1-dev")).toBe(
-      true
+    expect(await setCreativeModel(supabase, "u1", "imagine", "Flux2-Dev")).toBe(
+      true,
     );
     expect(upsert).toHaveBeenCalledOnce();
   });
@@ -160,32 +173,50 @@ const turn = (overrides: Partial<CreativeTurn> = {}): CreativeTurn => ({
 describe("buildGenerationRequest with prefs", () => {
   it("uses the selected imagine/edit/animate/zap models", () => {
     const prefs = {
-      imagine: "flux-1-dev",
-      edit: "nano-banana",
-      animate: "ltx-2",
+      imagine: "Flux2-Dev",
+      edit: "gemini-3.1-flash-image",
+      animate: "ltx-2-fast-text-to-video",
       zap: "gemini-omni-flash-preview",
     };
-    expect(buildGenerationRequest(plan(), turn(), prefs).model).toBe(
-      "flux-1-dev"
+    const imagineRequest = buildGenerationRequest(plan(), turn(), prefs);
+    expect(imagineRequest.model).toBe("Flux2-Dev");
+    // Flux advertises width/height, not size/quality/n.
+    expect(imagineRequest.payload).toEqual({
+      prompt: "a fox in the fog",
+      width: 1024,
+      height: 1024,
+    });
+    const editRequest = buildGenerationRequest(
+      plan(),
+      turn({ mediaInputs: [{ kind: "image", url: "https://x.test/in.png" }] }),
+      prefs,
     );
+    expect(editRequest.model).toBe("gemini-3.1-flash-image");
+    expect(editRequest.payload).toEqual({
+      prompt: "a fox in the fog",
+      image: "https://x.test/in.png",
+    });
+    const animateRequest = buildGenerationRequest(
+      plan({ mode: "animate" }),
+      turn(),
+      prefs,
+    );
+    expect(animateRequest.model).toBe("ltx-2-fast-text-to-video");
+    // LTX advertises no ratio/watermark parameters.
+    expect(animateRequest.payload).toEqual({
+      prompt: "a fox in the fog",
+      duration: 8,
+      resolution: "720p",
+      generate_audio: true,
+    });
     expect(
-      buildGenerationRequest(
-        plan(),
-        turn({ mediaInputs: [{ kind: "image", url: "https://x.test/in.png" }] }),
-        prefs
-      ).model
-    ).toBe("nano-banana");
-    expect(
-      buildGenerationRequest(plan({ mode: "animate" }), turn(), prefs).model
-    ).toBe("ltx-2");
-    expect(
-      buildGenerationRequest(plan({ mode: "zap" }), turn(), prefs).model
+      buildGenerationRequest(plan({ mode: "zap" }), turn(), prefs).model,
     ).toBe("gemini-omni-flash-preview");
   });
 
   it("keeps the shipped defaults without prefs", () => {
     expect(buildGenerationRequest(plan(), turn()).model).toBe(
-      "gpt-image-2-generate"
+      "gpt-image-2-generate",
     );
   });
 });
@@ -194,16 +225,23 @@ describe("router metaprompt", () => {
   it("appends the model guide to the system prompt without changing the mode", async () => {
     let systemPrompt = "";
     const chat = vi.fn(
-      async (options: { messages: Array<{ role: string; content: string }> }) => {
+      async (options: {
+        messages: Array<{ role: string; content: string }>;
+      }) => {
         systemPrompt = options.messages[0]!.content;
         return JSON.stringify(plan());
-      }
+      },
     );
     const result = await routeExplicitCommand(
-      { mode: "imagine", text: "/imagine a fox", cleanedText: "a fox", mediaInputs: [] },
+      {
+        mode: "imagine",
+        text: "/imagine a fox",
+        cleanedText: "a fox",
+        mediaInputs: [],
+      },
       null,
       chat as never,
-      guideForModel("flux-1-dev")
+      guideForModel("Flux2-Dev"),
     );
     expect(result.mode).toBe("imagine");
     expect(systemPrompt).toContain("Target model guide");
@@ -224,8 +262,8 @@ describe("provider keys", () => {
     const filtered = (filters: Record<string, string>): Row[] =>
       rows.filter((row) =>
         Object.entries(filters).every(
-          ([key, value]) => row[key as keyof Row] === value
-        )
+          ([key, value]) => row[key as keyof Row] === value,
+        ),
       );
     return {
       from: () => ({
@@ -275,14 +313,14 @@ describe("provider keys", () => {
       supabase,
       "u1",
       "openrouter",
-      "sk-or-v1-secret-key-value"
+      "sk-or-v1-secret-key-value",
     );
     expect(result.ok).toBe(true);
     expect(rows[0]!.api_key_sealed).not.toContain("secret-key-value");
     expect(rows[0]!.api_key_sealed.startsWith("v1:")).toBe(true);
     expect(rows[0]!.key_hint).toBe("alue");
     expect(await getProviderKey(supabase, "u1", "openrouter")).toBe(
-      "sk-or-v1-secret-key-value"
+      "sk-or-v1-secret-key-value",
     );
     expect(await getProviderKey(supabase, "u1", "venice")).toBeNull();
   });
@@ -305,16 +343,17 @@ describe("provider keys", () => {
     vi.stubEnv("PROVIDER_VAULT_KEY", VAULT_KEY);
     const supabase = makeSupabase([]);
     expect((await setProviderKey(supabase, "u1", "venice", "short")).ok).toBe(
-      false
+      false,
     );
     expect(
-      (await setProviderKey(supabase, "u1", "venice", "has spaces in it")).ok
+      (await setProviderKey(supabase, "u1", "venice", "has spaces in it")).ok,
     ).toBe(false);
     vi.stubEnv("PROVIDER_VAULT_KEY", "");
-    vi.stubEnv("BOX_DASHBOARD_AUTH_KEY", "");
+    // A dashboard key alone must NOT enable the vault — no fallback secret.
+    vi.stubEnv("BOX_DASHBOARD_AUTH_KEY", VAULT_KEY);
     expect(
       (await setProviderKey(supabase, "u1", "venice", "valid-looking-key-123"))
-        .ok
+        .ok,
     ).toBe(false);
     expect(await getProviderKey(supabase, "u1", "venice")).toBeNull();
   });
