@@ -6,6 +6,7 @@ import {
 import { parseRouterPlan, type RouterPlan } from "./schema";
 import {
   buildGenerationRequest,
+  buildHeygenAvatarRequest,
   generateCompiledRequest,
   isAmbiguousSubmission,
   GmiRequestError,
@@ -17,7 +18,7 @@ import {
 } from "./media-url";
 import { maybeRunCreativeLane } from "./imessage";
 import { underDailyLimit } from "./jobs";
-import { creativePreflight } from "./preflight";
+import { creativePreflight, REQUIRED_GMI_MODELS } from "./preflight";
 
 const plan = (overrides: Partial<RouterPlan> = {}): RouterPlan => ({
   mode: "imagine",
@@ -207,6 +208,57 @@ describe("buildGenerationRequest", () => {
       turn()
     );
     expect(noVideo.payload.durationSeconds).toBe(10);
+  });
+});
+
+describe("buildHeygenAvatarRequest", () => {
+  it("builds a photo-character video_inputs payload with defaults", () => {
+    expect(
+      buildHeygenAvatarRequest({
+        avatarImageUrl: "https://signed.example/face.png",
+        script: "Hello from my twin.",
+      })
+    ).toEqual({
+      kind: "video",
+      model: "heygen-avatar-v4",
+      payload: {
+        video_inputs: [
+          {
+            character: {
+              type: "photo",
+              image_url: "https://signed.example/face.png",
+            },
+            voice: { type: "text", input_text: "Hello from my twin." },
+          },
+        ],
+        dimension: { width: 1280, height: 720 },
+      },
+    });
+  });
+
+  it("uses a trained avatar ID (with voice and duration) when provided", () => {
+    const request = buildHeygenAvatarRequest({
+      avatarId: "look_abc123",
+      script: "Hi",
+      voiceId: "voice_1",
+      dimension: { width: 720, height: 1280 },
+      durationSeconds: 8,
+    });
+    expect(request.model).toBe("heygen-avatar-v4");
+    expect(request.payload).toEqual({
+      video_inputs: [
+        {
+          character: { type: "avatar", avatar_id: "look_abc123" },
+          voice: { type: "text", input_text: "Hi", voice_id: "voice_1" },
+        },
+      ],
+      dimension: { width: 720, height: 1280 },
+      duration: 8,
+    });
+  });
+
+  it("heygen-avatar-v4 is a preflight-required model", () => {
+    expect(REQUIRED_GMI_MODELS).toContain("heygen-avatar-v4");
   });
 });
 

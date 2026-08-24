@@ -56,6 +56,24 @@ import {
   type OnboardingState,
   type OnboardingStepId,
 } from "../onboarding";
+import {
+  getAvatarAssetId,
+  listIdentityAssets,
+  listIdentityMediaViews,
+  setAvatarAssetId,
+  signedIdentityUrl,
+  uploadIdentityImage,
+  type IdentityMediaView,
+} from "@/lib/identity/assets";
+import { generateCharacterSheet } from "@/lib/identity/generate";
+import { heygenAvailable } from "@/lib/identity/heygen";
+import {
+  createTwinVideo,
+  createUserHeygenAvatar,
+  getDigitalTwin,
+  uploadTwinConsent,
+  type DigitalTwin,
+} from "@/lib/identity/twin";
 import { onairosProvider, type OnairosStatus } from "./onairos";
 import {
   relayToOnairos,
@@ -82,6 +100,9 @@ const STEP_TITLES: Record<OnboardingStepId, string> = {
   username: "Pick your username",
   email: "Your agent's email",
   model: "Model preference",
+  selfies: "Take selfies & pro photos",
+  twin: "Record your digital twin",
+  avatar: "Create your avatar",
   imessage: "Ingest iMessage history",
   onairos: "Personal context",
   connect: "Connect your apps",
@@ -96,6 +117,9 @@ const STEP_KICKERS: Record<OnboardingStepId, string> = {
   username: "Identity",
   email: "Inbox",
   model: "Thinking speed",
+  selfies: "Image Vault",
+  twin: "Digital Twin",
+  avatar: "Avatar",
   imessage: "Context · iMessage",
   onairos: "Context · Onairos",
   connect: "Actions · Integrations",
@@ -137,6 +161,10 @@ export interface OnboardingSnapshot {
   state: OnboardingState;
   username: string | null;
   address: string | null;
+  identityMedia: IdentityMediaView[];
+  avatarAssetId: string | null;
+  twin: DigitalTwin | null;
+  twinAvailable: boolean;
   connections: ConnectionRow[];
   managers: ManagerStatus[];
   vaultItemCount: number;
@@ -179,6 +207,9 @@ async function loadSnapshot(
     merchant,
     { count: pluginCount },
     ingest,
+    identityMedia,
+    avatarAssetId,
+    twin,
   ] = await Promise.all([
     supabase.from("users").select("username").eq("id", userId).maybeSingle(),
     supabase
@@ -217,11 +248,18 @@ async function loadSnapshot(
       .eq("user_id", userId)
       .is("revoked_at", null),
     readIngestStatus(supabase, userId).catch(() => null),
+    listIdentityMediaViews(supabase, userId),
+    getAvatarAssetId(supabase, userId).catch(() => null),
+    getDigitalTwin(supabase, userId).catch(() => null),
   ]);
   return {
     state,
     username: (user?.username as string | null) ?? null,
     address: (addressRow?.address as string | null) ?? null,
+    identityMedia,
+    avatarAssetId,
+    twin,
+    twinAvailable: env.gmiCloudApiKey() !== null,
     connections: (connectionRows ?? []) as ConnectionRow[],
     managers,
     vaultItemCount: count ?? 0,
@@ -263,6 +301,16 @@ export function effectiveStatus(
       // entitlements.speed_tier has a NOT NULL default, so its presence
       // proves nothing — only an explicit choice (recorded above) counts.
       return "todo";
+    case "selfies":
+      return snapshot.identityMedia.some((m) => m.role !== "avatar")
+        ? "done"
+        : "todo";
+    case "twin":
+      return snapshot.twin && snapshot.twin.status !== "avatar_only"
+        ? "done"
+        : "todo";
+    case "avatar":
+      return snapshot.avatarAssetId ? "done" : "todo";
     case "connect":
       return snapshot.connections.some((c) => c.status === "active")
         ? "done"
@@ -323,6 +371,67 @@ function stepBody(
         `<form method="post" class="inline"><input type="hidden" name="action" value="set_speed"><input type="hidden" name="speed_tier" value="${esc(tier)}"><button${tier === snapshot.speedTier ? "" : ' class="ghost"'}>${esc(tier)}</button></form>`
     ).join("");
     return `<p class="muted">Pick how your agent thinks — faster answers or deeper reasoning. A tier, never a specific model; change it any time in Settings.</p><div class="row">${buttons}</div><div class="row actions">${skipForm("model")}</div>`;
+  }
+  if (step === "selfies") {
+    const references = snapshot.identityMedia.filter((m) => m.role !== "avatar");
+    const thumbs = references
+      .filter((m) => m.url)
+      .map(
+        (m) =>
+          `<img class="idthumb" src="${esc(m.url ?? "")}" alt="${esc(m.role === "character_sheet" ? "character sheet" : "selfie")}">`
+      )
+      .join("");
+    const gallery = thumbs ? `<div class="idgrid">${thumbs}</div>` : "";
+    const upload = `<form method="post" enctype="multipart/form-data" class="row"><input type="hidden" name="action" value="upload_selfie"><input type="file" name="file" accept="image/png,image/jpeg,image/webp"><button>Upload</button></form>`;
+    const sheet = snapshot.username
+      ? `<form method="post" class="inline"><input type="hidden" name="action" value="generate_character_sheet"><button${references.length > 0 ? "" : ' class="ghost"'}>Generate character sheet</button></form>`
+      : `<p class="muted">Set a <a href="?step=username">username</a> first — the character sheet is bound to your @name.</p>`;
+    return `<p class="muted">Upload a few selfies or pro photos — they live privately in your image vault and anchor your @${esc(snapshot.username ?? "username")} identity for generated media.</p>${gallery}${upload}<div class="row actions">${sheet}${skipForm("selfies")}</div>`;
+  }
+  if (step === "twin") {
+    if (!snapshot.twinAvailable) {
+      return `<p class="muted">Digital twin creation isn't configured on this deployment — set it up later from Settings once it is. Nothing here blocks the rest of setup.</p><div class="row actions">${skipForm("twin", "Skip — not configured")}</div>`;
+    }
+    const twin = snapshot.twin;
+    const consent = twin?.consent_video_key
+      ? `<p>Consent recording on file.</p>`
+      : `<details open><summary>Record consent</summary><p class="muted">Upload a short video of yourself saying you consent to creating a digital twin of your likeness.</p><form method="post" enctype="multipart/form-data" class="row"><input type="hidden" name="action" value="upload_consent"><input type="file" name="file" accept="video/mp4"><button>Upload consent</button></form></details>`;
+    const reference = snapshot.identityMedia.find(
+      (m) => m.role !== "avatar" && m.url
+    );
+    const create = reference
+      ? `<form method="post" class="stack"><input type="hidden" name="action" value="create_twin"><input type="text" name="script" placeholder="What should @${esc(snapshot.username ?? "you")} say? (a sentence or two)" maxlength="500"><button>Create twin video</button></form>`
+      : `<p class="muted">Add a photo on the <a href="?step=selfies">selfies step</a> first — the twin animates your reference image.</p>`;
+    const statusLine = twin
+      ? `<p>Twin status: <strong>${esc(twin.status)}</strong>.</p>`
+      : "";
+    return `<p class="muted">Create a HeyGen Avatar IV talking-head twin from your reference photo. The video is delivered privately — only you can share it.</p>${statusLine}${consent}${create}<div class="row actions">${skipForm("twin")}</div>`;
+  }
+  if (step === "avatar") {
+    // First option: mint a HeyGen avatar ID from an identity image (when
+    // configured). Fallback: pick a photo directly — renders go straight
+    // through GMI with the raw image.
+    const heygenBlock = heygenAvailable()
+      ? snapshot.twin?.provider_avatar_id
+        ? `<p>HeyGen avatar ready — videos render with your trained avatar ID.</p>`
+        : snapshot.identityMedia.some((m) => m.role !== "avatar")
+          ? `<form method="post" class="inline"><input type="hidden" name="action" value="create_heygen_avatar"><button>Create HeyGen avatar</button></form><p class="muted">Recommended — trains a reusable avatar ID from your newest identity image.</p>`
+          : `<p class="muted">Add a photo on the <a href="?step=selfies">selfies step</a> to create a HeyGen avatar.</p>`
+      : "";
+    const choices = snapshot.identityMedia
+      .filter((m) => m.role !== "avatar" && m.url)
+      .map(
+        (m) =>
+          `<form method="post" class="idpick"><input type="hidden" name="action" value="set_avatar"><input type="hidden" name="asset_id" value="${esc(m.assetId)}"><img class="idthumb" src="${esc(m.url ?? "")}" alt="identity image"><button${m.assetId === snapshot.avatarAssetId ? "" : ' class="ghost"'}>${m.assetId === snapshot.avatarAssetId ? "Current avatar" : "Use as avatar"}</button></form>`
+      )
+      .join("");
+    const gallery = choices
+      ? `<div class="idgrid">${choices}</div>`
+      : `<p class="muted">No identity images yet — upload selfies or generate a character sheet on the <a href="?step=selfies">selfies step</a>.</p>`;
+    const generate = snapshot.username
+      ? `<form method="post" class="inline"><input type="hidden" name="action" value="generate_character_sheet"><button class="ghost">Generate a new look</button></form>`
+      : "";
+    return `<p class="muted">Pick the image that represents @${esc(snapshot.username ?? "you")} — generated media can reference it as your likeness.</p>${heygenBlock}${gallery}<div class="row actions">${generate}${skipForm("avatar")}</div>`;
   }
   if (step === "connect") {
     const byToolkit = new Map(snapshot.connections.map((c) => [c.toolkit, c]));
@@ -426,7 +535,8 @@ function stepBody(
 function slides(
   current: Theme,
   body: string,
-  nativeOnairos = false
+  nativeOnairos = false,
+  identityMedia = false
 ): NextResponse {
   const headers = baseHeaders();
   // The Onairos slide runs the vendor SDK bundle (served same-origin) which
@@ -454,6 +564,12 @@ function slides(
       "; connect-src 'self' https://api2.onairos.uk https://api.onairos.uk https://accounts.google.com/gsi/";
     csp += "; frame-src https://accounts.google.com/gsi/";
   }
+  if (identityMedia) {
+    // Identity slides preview private assets via short-TTL signed storage
+    // URLs (https:) — the mediaShellHtml pattern from apps/video.tsx.
+    csp = csp.replace("img-src 'self'", "img-src 'self' https:");
+    csp += "; media-src https:";
+  }
   headers["Content-Security-Policy"] =
     `${csp}; form-action 'self'; frame-ancestors 'self' ${env.appOrigin()}`;
   return new NextResponse(body, {
@@ -479,8 +595,12 @@ header.bar{display:flex;align-items:center;justify-content:space-between;gap:0.7
 .logo-pill img{display:block;height:clamp(1.2rem,4.4vw,1.6rem);width:auto}
 .counter{display:inline-flex;align-items:center;height:2rem;padding:0 0.75rem;border-radius:var(--radius-pill);border:1px solid var(--ring);background:var(--panel-bg);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);font-size:0.62rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--ink)}
 main.slide{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:clamp(1.2rem,4vw,2.5rem) 0;animation:slideIn var(--slide-in) cubic-bezier(0.22,1,0.36,1)}
-@keyframes slideIn{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:translateY(0)}}
-@media(prefers-reduced-motion:reduce){main.slide{animation:none}.navlink,button,.dots a{transition:none}}
+@keyframes slideIn{from{opacity:0;transform:translateY(26px) scale(0.985)}60%{opacity:1}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes riseIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+main.slide .kicker{animation:riseIn var(--slide-in) cubic-bezier(0.22,1,0.36,1) backwards;animation-delay:60ms}
+main.slide h1{animation:riseIn var(--slide-in) cubic-bezier(0.22,1,0.36,1) backwards;animation-delay:130ms}
+main.slide .panel{animation:riseIn var(--slide-in) cubic-bezier(0.22,1,0.36,1) backwards;animation-delay:200ms}
+@media(prefers-reduced-motion:reduce){main.slide,main.slide .kicker,main.slide h1,main.slide .panel{animation:none}.navlink,button,.dots a{transition:none}}
 .kicker{font-family:var(--font-ui);font-size:clamp(0.68rem,0.8vw,0.85rem);letter-spacing:0.14em;text-transform:uppercase;color:var(--accent);margin:0 0 0.9rem;text-align:center}
 h1{font-weight:400;font-size:clamp(1.9rem,5.4vw,3.6rem);letter-spacing:-0.045em;line-height:0.98;margin:0 0 1.4rem;text-align:center;max-width:26ch;text-shadow:var(--text-shadow)}
 .panel{width:min(100%,34rem);border-radius:var(--radius-panel);border:1px solid var(--ring);background:var(--panel-bg);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);box-shadow:var(--shadow);padding:clamp(1rem,3.4vw,1.5rem)}
@@ -521,6 +641,10 @@ form.stack select{background:var(--well-bg);color:var(--ink);border:1px solid va
 .grow{flex:1}
 .muted{color:var(--ink-muted);font-size:0.85rem}
 .chip{font-family:var(--font-ui);font-size:0.6rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-muted)}
+input[type=file]{flex:1;min-width:0;color:var(--ink-muted);font-size:0.85rem;font-family:var(--font-body)}
+.idgrid{display:flex;gap:0.6rem;flex-wrap:wrap;margin:0.4rem 0 0.8rem}
+.idthumb{width:92px;height:92px;object-fit:cover;border-radius:var(--radius-well);border:1px solid var(--ring);display:block}
+.idpick{display:grid;gap:0.4rem;justify-items:center}
 `;
 
 /**
@@ -532,7 +656,7 @@ form.stack select{background:var(--well-bg);color:var(--ink);border:1px solid va
 const LITE_CSS = `
 .logo-pill,.counter,.panel,.navlink{backdrop-filter:none;-webkit-backdrop-filter:none}
 html{background-attachment:scroll}
-main.slide{animation:none}
+main.slide,main.slide .kicker,main.slide h1,main.slide .panel{animation:none}
 `;
 
 export function renderOnboarding(
@@ -639,6 +763,11 @@ function browserSigninHref(
   return `${env.appOrigin()}/mini/onboarding?t=${token}`;
 }
 
+/** Identity slides preview signed private media — the CSP widens only for
+ * those renders. */
+const rendersIdentityMedia = (step: OnboardingStepId): boolean =>
+  step === "selfies" || step === "twin" || step === "avatar";
+
 /** The Onairos slide mounts the vendor SDK when a native connect is possible
  * — the CSP widens only for that render. */
 function rendersNativeOnairos(
@@ -670,7 +799,8 @@ async function respond(
       ctx.session.via === "card",
       browserSigninHref(ctx, snapshot, active)
     ),
-    rendersNativeOnairos(snapshot, active)
+    rendersNativeOnairos(snapshot, active),
+    rendersIdentityMedia(active)
   );
 }
 
@@ -746,7 +876,8 @@ export const onboarding: MiniAppModule = {
         ctx.session.via === "card",
         browserSigninHref(ctx, snapshot, active)
       ),
-      rendersNativeOnairos(snapshot, active)
+      rendersNativeOnairos(snapshot, active),
+      rendersIdentityMedia(active)
     );
   },
 
@@ -830,6 +961,120 @@ export const onboarding: MiniAppModule = {
       const ok = await setSpeedTier(supabase, userId, tier);
       if (ok) await markSafely(supabase, userId, "model", "done");
       return respond(ctx, ok ? null : "model", ok ? `Speed set to ${tier}.` : "Update failed — try again.");
+    }
+
+    if (action === "upload_selfie") {
+      const file = form.get("file");
+      if (!(file instanceof File) || file.size === 0) {
+        return respond(ctx, "selfies", "Choose an image first.");
+      }
+      const result = await uploadIdentityImage(supabase, userId, file, "selfie");
+      if (!result.ok) return respond(ctx, "selfies", result.error);
+      await markSafely(supabase, userId, "selfies", "done");
+      return respond(ctx, "selfies", "Added to your image vault.");
+    }
+
+    if (action === "generate_character_sheet") {
+      const { data: user } = await supabase
+        .from("users")
+        .select("username")
+        .eq("id", userId)
+        .maybeSingle();
+      const username = (user?.username as string | null) ?? null;
+      if (!username) {
+        return respond(ctx, "username", "Pick a username first — the character sheet is bound to your @name.");
+      }
+      const result = await generateCharacterSheet(supabase, userId, username);
+      if (!result.ok) return respond(ctx, "selfies", result.notice);
+      await markSafely(supabase, userId, "selfies", "done");
+      return respond(ctx, "selfies", result.notice);
+    }
+
+    if (action === "upload_consent") {
+      if (env.gmiCloudApiKey() === null) {
+        return respond(ctx, "twin", "Digital twin creation isn't configured on this deployment.");
+      }
+      const file = form.get("file");
+      if (!(file instanceof File) || file.size === 0) {
+        return respond(ctx, "twin", "Choose a video first.");
+      }
+      const result = await uploadTwinConsent(supabase, userId, file);
+      if (!result.ok) return respond(ctx, "twin", result.error);
+      await markSafely(supabase, userId, "twin", "done");
+      return respond(ctx, "twin", "Consent recorded.");
+    }
+
+    if (action === "create_twin") {
+      if (env.gmiCloudApiKey() === null) {
+        return respond(ctx, "twin", "Digital twin creation isn't configured on this deployment.");
+      }
+      const script = String(form.get("script") ?? "").trim().slice(0, 500);
+      if (!script) return respond(ctx, "twin", "Write a line for your twin to say first.");
+      const identity = await listIdentityAssets(supabase, userId).catch(() => []);
+      const reference = identity.find((entry) => entry.role !== "avatar");
+      if (!reference) {
+        return respond(ctx, "twin", "Add a photo on the selfies step first.");
+      }
+      const imageUrl = await signedIdentityUrl(supabase, reference.asset).catch(
+        () => null
+      );
+      if (!imageUrl) {
+        return respond(ctx, "twin", "Couldn't read your reference image — try again.");
+      }
+      const result = await createTwinVideo(supabase, userId, {
+        avatarImageUrl: imageUrl,
+        script,
+      });
+      if (!result.ok) return respond(ctx, "twin", result.notice);
+      await markSafely(supabase, userId, "twin", "done");
+      return respond(ctx, "twin", result.notice);
+    }
+
+    if (action === "create_heygen_avatar") {
+      if (!heygenAvailable()) {
+        return respond(ctx, "avatar", "HeyGen isn't configured on this deployment — pick a photo below instead.");
+      }
+      const { data: user } = await supabase
+        .from("users")
+        .select("username")
+        .eq("id", userId)
+        .maybeSingle();
+      const username = (user?.username as string | null) ?? null;
+      if (!username) {
+        return respond(ctx, "username", "Pick a username first.");
+      }
+      const identity = await listIdentityAssets(supabase, userId).catch(() => []);
+      const reference = identity.find((entry) => entry.role !== "avatar");
+      if (!reference) {
+        return respond(ctx, "avatar", "Add a photo on the selfies step first.");
+      }
+      const imageUrl = await signedIdentityUrl(supabase, reference.asset).catch(
+        () => null
+      );
+      if (!imageUrl) {
+        return respond(ctx, "avatar", "Couldn't read your reference image — try again.");
+      }
+      const result = await createUserHeygenAvatar(
+        supabase,
+        userId,
+        username,
+        imageUrl
+      );
+      if (!result.ok) return respond(ctx, "avatar", result.error);
+      await setAvatarAssetId(supabase, userId, reference.asset_id).catch(
+        () => false
+      );
+      await markSafely(supabase, userId, "avatar", "done");
+      return respond(ctx, "avatar", "HeyGen avatar created — twin videos now use your trained avatar ID.");
+    }
+
+    if (action === "set_avatar") {
+      const assetId = String(form.get("asset_id") ?? "");
+      if (!assetId) return forbidden("missing asset");
+      const ok = await setAvatarAssetId(supabase, userId, assetId);
+      if (!ok) return respond(ctx, "avatar", "Couldn't set that avatar — pick one of your identity images.");
+      await markSafely(supabase, userId, "avatar", "done");
+      return respond(ctx, "avatar", "Avatar set — it now represents you.");
     }
 
     // Plain re-render — e.g. "Refresh" after finishing a browser sign-in.
