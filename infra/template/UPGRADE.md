@@ -105,7 +105,23 @@ public listing data any web reader sees. For existing boxes, copy the skill
 directory into `~/.hermes/skills/app-store-search` during the in-place
 migration; no config or service change is needed.
 
-## 5. Baseline parity — `sync-box.sh`
+## 5. Browser Use CLI 3.0 — the browser-use skill + `box-browser-use`
+
+`setup.sh` §3b2b installs the Browser Use CLI (pinned `browser-use==0.13.8`,
+the CLI 3.0 / Browser Harness line) via `uv tool install --python 3.12` into
+`~/.local/bin`, and ships `/usr/local/bin/box-browser-use` — a wrapper that
+discovers the daemon Chrome's CDP port from its `DevToolsActivePort` file
+(same discovery as air-vault) and exports `BU_CDP_URL` so the CLI attaches to
+the box's ONE headed browser instead of launching its own. The template also
+bakes `skills/browser-use`, which teaches the agent to pipe Python into
+`box-browser-use` for multi-step web work while keeping the hard rules: no
+cloud browsers, no `browser-use auth`, vault-only card fills, and the human
+always clicks the final Place order button (shopping-checkout §5). For
+existing boxes, `sync-box.sh` §3b performs the same install + wrapper write.
+Verify: `box-browser-use --doctor` connects to the daemon Chrome, and
+`~/.hermes/skills/browser-use/SKILL.md` is present.
+
+## 6. Baseline parity — `sync-box.sh`
 
 `infra/template/sync-box.sh` reconciles an EXISTING box to the current air
 baseline in place (idempotent; never re-forks). It refreshes only
@@ -126,7 +142,7 @@ base64 -d air-template.b64 > t.tgz && mkdir -p air-template \
 
 Verify afterwards: SOUL.md leads with "## You are air", required skills and
 plugins present, `AGENT_BROWSER_ARGS` comma-separated with the CDP profile,
-`air-vault`/`open-miniapp-card` on PATH, all three units active, gateway
+`air-vault`/`open-miniapp-card`/`box-browser-use` on PATH, all three units active, gateway
 `/health` 200. Run it on the template box itself after template changes so
 new forks inherit the baseline (then delete `AIR_VAULT_KEY` from the
 template's `~/.hermes/.env` — provisioning writes a per-user key on fork).

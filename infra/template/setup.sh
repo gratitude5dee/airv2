@@ -159,11 +159,38 @@ agent-browser install   # downloads Chrome for Testing into ~/.agent-browser
 # air-vault type talks CDP to the daemon's Chrome via its DevToolsActivePort
 # file (C19); no fixed port or profile override is needed.
 
+# ── 3b2b. Browser Use CLI 3.0: script-driven control of the same Chrome ─────
+# browser-use pipes Python (Browser Harness) into a browser over CDP. The
+# box-browser-use wrapper attaches it to the SAME headed daemon Chrome the
+# browser_* tools and air-vault use — one browser, one session state, so the
+# human can still watch/act via the desktop stream and every purchase keeps
+# the stop-before-submission flow. Pinned version (C24); uv tool installs
+# into ~/.local/bin, which survives box archive/restore.
+uv tool install --python 3.12 'browser-use==0.13.8'
+
+sudo tee /usr/local/bin/box-browser-use >/dev/null <<SH
+#!/usr/bin/env bash
+set -euo pipefail
+# Attach the Browser Use CLI to this box's headed daemon Chrome over CDP.
+# The daemon launches Chrome with --remote-debugging-port=0; the chosen port
+# is read from the newest DevToolsActivePort file (same discovery as
+# air-vault). Without a running daemon Chrome the CLI's own local flow runs.
+if [ -z "\${BU_CDP_URL:-}" ]; then
+  port_file="\$(ls -t /tmp/agent-browser-chrome-*/DevToolsActivePort 2>/dev/null | head -1 || true)"
+  if [ -n "\$port_file" ]; then
+    BU_CDP_URL="http://127.0.0.1:\$(head -1 "\$port_file")"
+    export BU_CDP_URL
+  fi
+fi
+exec "$HOME_DIR/.local/bin/browser-use" "\$@"
+SH
+sudo chmod +x /usr/local/bin/box-browser-use
+
 # Make the CLI resolvable by the systemd services (they inherit systemd's
 # default PATH and only load ~/.hermes/.env, which does no $-expansion) and
 # by the agent's local terminal backend.
 sed -i '/^PATH=/d' "$HOME_DIR/.hermes/.env"
-echo "PATH=$HERMES_NODE/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" >> "$HOME_DIR/.hermes/.env"
+echo "PATH=$HERMES_NODE/bin:$HOME_DIR/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" >> "$HOME_DIR/.hermes/.env"
 grep -q 'hermes/node/bin' "$HOME_DIR/.bashrc" || \
   echo "export PATH=\"$HERMES_NODE/bin:\$PATH\"" >> "$HOME_DIR/.bashrc"
 
