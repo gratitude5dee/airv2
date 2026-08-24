@@ -5,6 +5,10 @@
  * with; every alternate is validated against this catalog on write and on
  * read, so a stale row can never route a paid job to an arbitrary model.
  *
+ * Slugs are verified against GMI's live model listing
+ * (GET <queue>/models); each model's payload is adapted to its advertised
+ * parameter schema in gmi.ts buildGenerationRequest.
+ *
  * Each catalog entry carries a short prompting guide, mirrored in
  * prompt-guides/prompt.md — the router appends the selected model's guide
  * to its system prompt so the compiled brief is optimized for the model
@@ -37,13 +41,13 @@ export const LANE_MODELS: Record<CreativeLane, readonly CreativeLaneModel[]> = {
         "Dense natural-language brief. Order subject → action → setting → lighting → lens/medium → palette → mood. Excellent rendered text: put exact copy in double quotes. No negative prompts.",
     },
     {
-      slug: "flux-1-dev",
+      slug: "Flux2-Dev",
       label: "Flux",
       guide:
         "Concise comma-separated visual tags after a one-sentence scene. Strong at photorealism and graphic composition; specify camera (e.g. 85mm portrait) and lighting explicitly. Avoid long prose.",
     },
     {
-      slug: "seedream-4-0",
+      slug: "seedream-4-0-250828",
       label: "Seedream",
       guide:
         "Cinematic one-paragraph description. Leads with style keywords (e.g. editorial photo, anime key visual), then subject and setting. Handles multi-subject scenes well; keep text rendering minimal.",
@@ -57,22 +61,16 @@ export const LANE_MODELS: Record<CreativeLane, readonly CreativeLaneModel[]> = {
         "Describe only the change, preserving everything else: 'same person, same lighting, replace X with Y'. Name what must stay identical (face, pose, background) before the edit.",
     },
     {
-      slug: "nano-banana",
-      label: "Nano Banana",
+      slug: "gemini-3.1-flash-image",
+      label: "Nano Banana (Gemini Flash Image)",
       guide:
         "Short imperative edit instruction. One change per request works best; identity preservation is strong, so reference 'the person in the image' rather than re-describing them.",
     },
     {
-      slug: "reve-edit",
+      slug: "reve-edit-20250915",
       label: "Reve",
       guide:
         "Precise spatial language: name the region ('top-left sign', 'the jacket'), then the replacement. Good at typography edits — quote exact replacement text.",
-    },
-    {
-      slug: "qwen-image-edit",
-      label: "Qwen Edit",
-      guide:
-        "Plain-language instruction plus a short description of the desired result. Handles style transfer well ('repaint in watercolor'); state 'keep composition unchanged' when it matters.",
     },
   ],
   animate: [
@@ -83,26 +81,26 @@ export const LANE_MODELS: Record<CreativeLane, readonly CreativeLaneModel[]> = {
         "Shot direction: subject action → one camera move → environmental motion → light behavior → ambient sound. One continuous motion per shot; with a first frame, describe only what changes.",
     },
     {
-      slug: "seedance-2-5",
+      slug: "seedance-2-5-260628",
       label: "Seedance 2.5",
       guide:
         "Same shot-direction structure as 2.0 with better multi-shot coherence — you may specify up to two cuts ('cut to close-up'). Name audio cues explicitly.",
     },
     {
-      slug: "ltx-2",
+      slug: "ltx-2-fast-text-to-video",
       label: "LTX",
       guide:
         "Fast, motion-first generations. Lead with the movement verb and keep the scene simple: one subject, one camera move, flat lighting descriptions work best.",
     },
     {
-      slug: "happyhorse-video",
+      slug: "happyhorse-1.1-t2v",
       label: "Happyhorse",
       guide:
         "Stylized/expressive motion. Describe mood and energy ('bouncy, playful loop') alongside the action; strong for character animation and loops.",
     },
     {
-      slug: "h3-video",
-      label: "H3",
+      slug: "MiniMax-H3",
+      label: "H3 (MiniMax)",
       guide:
         "High-fidelity realism. Write like a cinematographer: lens, depth of field, and natural physics ('handheld 35mm, shallow focus'); avoid surreal instructions.",
     },
@@ -146,7 +144,7 @@ export function guideForModel(slug: string): string | null {
 /** Reads the user's lane choices, falling back to each lane's default. */
 export async function loadCreativePrefs(
   supabase: SupabaseClient,
-  userId: string
+  userId: string,
 ): Promise<CreativePrefs> {
   const { data } = await supabase
     .from("creative_prefs")
@@ -169,7 +167,7 @@ export async function setCreativeModel(
   supabase: SupabaseClient,
   userId: string,
   lane: CreativeLane,
-  slug: string
+  slug: string,
 ): Promise<boolean> {
   if (!isLaneModel(lane, slug)) return false;
   const { error } = await supabase.from("creative_prefs").upsert(
@@ -178,7 +176,7 @@ export async function setCreativeModel(
       [`${lane}_model`]: slug,
       updated_at: new Date().toISOString(),
     },
-    { onConflict: "user_id" }
+    { onConflict: "user_id" },
   );
   return !error;
 }

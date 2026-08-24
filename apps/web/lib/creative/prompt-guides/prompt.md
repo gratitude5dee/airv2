@@ -17,14 +17,14 @@ exact copy in double quotes. Never use negative prompting.
 > studio shelves behind, warm window light from the left, 50mm photo, muted
 > terracotta palette, focused calm. Sign reads "OPEN STUDIO".
 
-### Flux (`flux-1-dev`)
+### Flux (`Flux2-Dev`)
 One-sentence scene followed by concise comma-separated visual tags. Strong
 at photorealism and graphic composition; always specify camera and lighting.
 
 > Example: A courier cycling through rain at night. neon reflections, 85mm,
 > shallow depth of field, cinematic teal-orange, motion blur on wheels.
 
-### Seedream (`seedream-4-0`)
+### Seedream (`seedream-4-0-250828`)
 Cinematic one-paragraph description leading with style keywords, then
 subject and setting. Handles multi-subject scenes well; keep rendered text
 minimal.
@@ -40,25 +40,18 @@ Describe only the change and name what must stay identical first.
 > Example: Same person, same pose and lighting — replace the denim jacket
 > with a black leather jacket. Keep the background unchanged.
 
-### Nano Banana (`nano-banana`)
+### Nano Banana (`gemini-3.1-flash-image`)
 Short imperative instruction, one change per request. Identity preservation
 is strong — say "the person in the image" instead of re-describing them.
 
 > Example: Give the person in the image a red beanie. Change nothing else.
 
-### Reve (`reve-edit`)
+### Reve (`reve-edit-20250915`)
 Precise spatial language: name the region, then the replacement. Excellent
 typography edits — quote exact replacement text.
 
 > Example: On the storefront sign at the top, replace the text with
 > "WZRD BAKERY" in the same font and color.
-
-### Qwen Edit (`qwen-image-edit`)
-Plain instruction plus a short description of the desired result. Strong
-style transfer; state "keep composition unchanged" when it matters.
-
-> Example: Repaint this photo as a loose watercolor with visible paper
-> texture. Keep composition unchanged.
 
 ## /animate — video generation
 
@@ -70,19 +63,19 @@ describe only what changes.
 > Example: The dancer spins once and lands facing camera, slow push-in,
 > curtains swaying, stage light warming from blue to amber, soft crowd murmur.
 
-### Seedance 2.5 (`seedance-2-5`)
+### Seedance 2.5 (`seedance-2-5-260628`)
 Same structure with better multi-shot coherence — up to two cuts allowed
 ("cut to close-up"). Name audio cues explicitly.
 
-### LTX (`ltx-2`)
+### LTX (`ltx-2-fast-text-to-video`)
 Motion-first: lead with the movement verb, keep the scene simple. One
 subject, one camera move, flat lighting descriptions.
 
-### Happyhorse (`happyhorse-video`)
+### Happyhorse (`happyhorse-1.1-t2v`)
 Stylized, expressive motion. Describe mood and energy alongside the action;
 strong for character animation and seamless loops.
 
-### H3 (`h3-video`)
+### H3 (`MiniMax-H3`)
 High-fidelity realism. Write like a cinematographer — lens, depth of field,
 natural physics ("handheld 35mm, shallow focus"). Avoid surreal instructions.
 

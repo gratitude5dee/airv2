@@ -179,30 +179,30 @@ describe("settings provider models", () => {
     expect(setOpenRouterModel).toHaveBeenCalledWith(
       expect.anything(),
       "user-1",
-      "google/gemini-2.5-pro"
+      "google/gemini-2.5-pro",
     );
     expect(setModelFamily).toHaveBeenCalledWith(
       expect.anything(),
       "user-1",
-      "openrouter"
+      "openrouter",
     );
   });
 
   it("set_venice_model writes the slug and switches the family", async () => {
     const form = new FormData();
     form.set("action", "set_venice_model");
-    form.set("venice_model", "venice-uncensored");
+    form.set("venice_model", "venice-uncensored-1-2");
     const response = await settings.action!(makeCtx(), form);
     expect(response.status).toBe(200);
     expect(setVeniceModel).toHaveBeenCalledWith(
       expect.anything(),
       "user-1",
-      "venice-uncensored"
+      "venice-uncensored-1-2",
     );
     expect(setModelFamily).toHaveBeenCalledWith(
       expect.anything(),
       "user-1",
-      "venice"
+      "venice",
     );
   });
 
@@ -224,20 +224,20 @@ describe("settings provider models", () => {
     const form = new FormData();
     form.set("action", "set_creative_model");
     form.set("lane", "animate");
-    form.set("model", "ltx-2");
+    form.set("model", "ltx-2-fast-text-to-video");
     const response = await settings.action!(makeCtx(), form);
     expect(response.status).toBe(200);
     expect(setCreativeModel).toHaveBeenCalledWith(
       expect.anything(),
       "user-1",
       "animate",
-      "ltx-2"
+      "ltx-2-fast-text-to-video",
     );
 
     const bad = new FormData();
     bad.set("action", "set_creative_model");
     bad.set("lane", "animate");
-    bad.set("model", "nano-banana");
+    bad.set("model", "gemini-3.1-flash-image");
     expect((await settings.action!(makeCtx(), bad)).status).toBe(403);
   });
 
@@ -252,7 +252,7 @@ describe("settings provider models", () => {
       expect.anything(),
       "user-1",
       "venice",
-      "vn-personal-key-123456"
+      "vn-personal-key-123456",
     );
     expect(await saved.text()).not.toContain("vn-personal-key-123456");
 
@@ -263,7 +263,7 @@ describe("settings provider models", () => {
     expect(clearProviderKey).toHaveBeenCalledWith(
       expect.anything(),
       "user-1",
-      "venice"
+      "venice",
     );
 
     const bad = new FormData();
