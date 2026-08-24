@@ -210,21 +210,22 @@ export async function storeChunk(
   const stamp = Date.now();
   const chunkPath = `${HISTORY_DIR}/chunk-${stamp}.json`;
   await writeFile(box.boxId, chunkPath, JSON.stringify(chunk.messages));
-  // Deep memory (docs/memory-upgrade.md): make the chunk semantically
-  // searchable in the box-local OpenViking store. Best-effort — a degraded
-  // deep-memory layer never fails an upload; `ovctl reindex` re-adds the
-  // whole directory at its stable URI later.
-  await deepMemoryIndex(
-    box.boxId,
-    chunkPath,
-    `${OV_IMESSAGE_URI}/chunk-${stamp}`
-  );
   status.chunks += 1;
   status.messages += chunk.messages.length;
   status.last_upload_at = new Date(stamp).toISOString();
   if (chunk.from_date) status.from_date = chunk.from_date;
   if (chunk.to_date) status.to_date = chunk.to_date;
   await writeFile(box.boxId, STATUS_PATH, JSON.stringify(status, null, 2));
+  // Deep memory (docs/memory-upgrade.md): make the chunk semantically
+  // searchable in the box-local OpenViking store. Runs after the durable
+  // chunk + status writes and is best-effort — a slow or degraded
+  // deep-memory layer never fails or double-counts an upload; `ovctl
+  // reindex` re-adds the whole directory at its stable URI later.
+  await deepMemoryIndex(
+    box.boxId,
+    chunkPath,
+    `${OV_IMESSAGE_URI}/chunk-${stamp}`
+  );
   console.log(
     JSON.stringify({
       msg: "imessage history chunk stored",
