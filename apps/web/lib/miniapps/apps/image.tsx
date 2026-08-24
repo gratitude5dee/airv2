@@ -18,6 +18,7 @@ import { externalOrigin } from "../gates";
 import { esc, withBaseHeaders } from "../html";
 import { renderShell, shellHtml } from "../shell";
 import {
+  BLEND_MODES,
   getImageDoc,
   isBlendMode,
   updateImageDoc,
@@ -39,7 +40,33 @@ function mediaShellHtml(body: string): NextResponse {
   return response;
 }
 
-const BLEND_OPTIONS = ["normal", "multiply", "screen", "overlay"] as const;
+/** Tree rows in display order (top of stack first), with panel depth. */
+interface LayerRow {
+  layer: ImageLayer;
+  depth: number;
+}
+
+function layerRows(doc: ImageDoc): LayerRow[] {
+  const byId = new Map(doc.layers.map((layer) => [layer.id, layer]));
+  const ancestors = (layer: ImageLayer): ImageLayer[] => {
+    const chain: ImageLayer[] = [];
+    let cursor = layer.parentGroupId;
+    while (cursor) {
+      const parent = byId.get(cursor);
+      if (!parent || chain.includes(parent)) break;
+      chain.push(parent);
+      cursor = parent.parentGroupId;
+    }
+    return chain;
+  };
+  return doc.layers
+    .map((layer) => ({ layer, chain: ancestors(layer) }))
+    // A collapsed group hides its subtree in the panel only — it still
+    // composites (image.goal.md §4.1).
+    .filter(({ chain }) => !chain.some((parent) => parent.collapsed === true))
+    .map(({ layer, chain }) => ({ layer, depth: chain.length }))
+    .reverse();
+}
 
 function hidden(name: string, value: string): string {
   return `<input type="hidden" name="${esc(name)}" value="${esc(value)}">`;
@@ -68,22 +95,41 @@ function slider(
 </form>`;
 }
 
-function renderLayer(layer: ImageLayer, index: number, count: number): string {
-  const label =
-    layer.kind === "text"
-      ? `T \u00b7 ${esc(layer.text ?? "")}`
-      : `\u25a3 \u00b7 ${esc(layer.assetId ?? "")}`;
-  const blend = BLEND_OPTIONS.map(
+function derivedLabel(layer: ImageLayer): string {
+  if (layer.name) return esc(layer.name);
+  if (layer.kind === "group") return "\u25a2 group";
+  if (layer.kind === "text") return `T \u00b7 ${esc(layer.text ?? "")}`;
+  return `\u25a3 \u00b7 ${esc(layer.assetId ?? "")}`;
+}
+
+function renderLayer(row: LayerRow, groups: ImageLayer[]): string {
+  const { layer, depth } = row;
+  const blend = BLEND_MODES.map(
     (mode) =>
       `<option value="${mode}"${mode === layer.blend ? " selected" : ""}>${mode}</option>`
   ).join("");
-  return `<div class="card" style="display:flex;flex-direction:column;gap:0.4rem">
-<div style="display:flex;align-items:center;gap:0.4rem"><strong>${count - index}.</strong><span class="grow" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${label}</span>${layer.visible ? "" : '<span class="when">(hidden)</span>'}</div>
+  const parentOptions = [
+    `<option value=""${layer.parentGroupId === null ? " selected" : ""}>\u2014 root \u2014</option>`,
+    ...groups
+      .filter((group) => group.id !== layer.id)
+      .map(
+        (group) =>
+          `<option value="${esc(group.id)}"${group.id === layer.parentGroupId ? " selected" : ""}>${derivedLabel(group)}</option>`
+      ),
+  ].join("");
+  const groupControls =
+    layer.kind === "group"
+      ? `<form method="post">${hidden("action", "toggle-collapsed")}${hidden("id", layer.id)}<button class="ghost">${layer.collapsed ? "expand" : "collapse"}</button></form>`
+      : "";
+  return `<div class="card" style="display:flex;flex-direction:column;gap:0.4rem;margin-left:${depth * 0.9}rem">
+<div style="display:flex;align-items:center;gap:0.4rem"><span class="grow" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${derivedLabel(layer)}</span>${layer.visible ? "" : '<span class="when">(hidden)</span>'}</div>
 <div style="display:flex;flex-wrap:wrap;gap:0.3rem">
 <form method="post">${hidden("action", "move")}${hidden("id", layer.id)}<button name="direction" value="up" class="ghost">\u2191</button><button name="direction" value="down" class="ghost">\u2193</button></form>
 <form method="post">${hidden("action", "toggle-visible")}${hidden("id", layer.id)}<button class="ghost">${layer.visible ? "hide" : "show"}</button></form>
-<form method="post">${hidden("action", "remove")}${hidden("id", layer.id)}<button class="ghost">remove</button></form>
+${groupControls}<form method="post">${hidden("action", "remove")}${hidden("id", layer.id)}<button class="ghost">remove</button></form>
 </div>
+<form method="post" style="display:flex;gap:0.3rem">${hidden("action", "rename-layer")}${hidden("id", layer.id)}<input type="text" name="name" value="${esc(layer.name ?? "")}" placeholder="layer name\u2026" maxlength="120" style="flex:1"><button class="ghost">name</button></form>
+<form method="post" style="display:flex;gap:0.3rem">${hidden("action", "set-parent")}${hidden("id", layer.id)}<select name="parentGroupId" style="flex:1">${parentOptions}</select><button class="ghost">group</button></form>
 ${slider({ action: "set-opacity", id: layer.id }, "opacity", "Opacity", layer.opacity, 0, 100)}
 <form method="post" style="display:flex;gap:0.3rem">${hidden("action", "set-blend")}${hidden("id", layer.id)}<select name="blend" style="flex:1">${blend}</select><button class="ghost">blend</button></form>
 ${
@@ -102,9 +148,9 @@ function renderImage(
   isOwner: boolean,
   lite: boolean
 ): string {
-  const layers = doc.layers
-    .map((layer, index) => renderLayer(layer, index, doc.layers.length))
-    .reverse()
+  const groups = doc.layers.filter((layer) => layer.kind === "group");
+  const layers = layerRows(doc)
+    .map((row) => renderLayer(row, groups))
     .join("");
 
   const stage = flatUrl
@@ -134,11 +180,18 @@ function renderImage(
         )
       : "";
 
+  const historyRow = `<div style="display:flex;gap:0.3rem">
+<form method="post">${hidden("action", "undo")}<button class="ghost"${doc.history.undo.length ? "" : " disabled"}>\u21b6 undo</button></form>
+<form method="post">${hidden("action", "redo")}<button class="ghost"${doc.history.redo.length ? "" : " disabled"}>\u21b7 redo</button></form>
+</div>`;
+
   const layersPanel = panel(
     "Layers",
-    `${layers || '<div class="card pending">no layers yet.</div>'}
+    `${historyRow}
+${layers || '<div class="card pending">no layers yet.</div>'}
 <form method="post" class="addrow">${hidden("action", "add-text")}<input type="text" name="text" placeholder="Add a text layer\u2026" maxlength="500"><button>Add text</button></form>
-<form method="post" class="addrow">${hidden("action", "add-asset")}<input type="text" name="assetId" placeholder="Add an asset layer (box asset id)\u2026" maxlength="128"><button>Add asset</button></form>`
+<form method="post" class="addrow">${hidden("action", "add-asset")}<input type="text" name="assetId" placeholder="Add an asset layer (box asset id)\u2026" maxlength="128"><button>Add asset</button></form>
+<form method="post" class="addrow">${hidden("action", "add-group")}<input type="text" name="name" placeholder="Add a group\u2026" maxlength="120"><button>Add group</button></form>`
   );
 
   const exportPanel =
@@ -395,6 +448,33 @@ async function mutate(
       await updateImageDoc(ctx.supabase, userId, resourceId, {
         kind: "add-asset",
         assetId: String(form.get("assetId") ?? ""),
+      });
+    } else if (action === "add-group") {
+      await updateImageDoc(ctx.supabase, userId, resourceId, {
+        kind: "add-group",
+        name: String(form.get("name") ?? ""),
+      });
+    } else if (action === "rename-layer") {
+      await updateImageDoc(ctx.supabase, userId, resourceId, {
+        kind: "rename-layer",
+        id: String(form.get("id") ?? ""),
+        name: String(form.get("name") ?? ""),
+      });
+    } else if (action === "toggle-collapsed") {
+      await updateImageDoc(ctx.supabase, userId, resourceId, {
+        kind: "toggle-collapsed",
+        id: String(form.get("id") ?? ""),
+      });
+    } else if (action === "set-parent") {
+      const parent = String(form.get("parentGroupId") ?? "").trim();
+      await updateImageDoc(ctx.supabase, userId, resourceId, {
+        kind: "set-parent",
+        id: String(form.get("id") ?? ""),
+        parentGroupId: parent || null,
+      });
+    } else if (action === "undo" || action === "redo") {
+      await updateImageDoc(ctx.supabase, userId, resourceId, {
+        kind: action === "undo" ? "undo" : "redo",
       });
     } else if (action === "set-text") {
       await updateImageDoc(ctx.supabase, userId, resourceId, {
