@@ -35,8 +35,8 @@ create table digital_twins (
   -- Storage key of the owner's consent recording in the private assets bucket.
   consent_video_key text,
   video_asset_id    uuid references creative_assets(id) on delete set null,
-  status            text not null default 'consented'
-    check (status in ('consented','creating','ready','failed')),
+  status            text not null default 'avatar_only'
+    check (status in ('avatar_only','consented','creating','ready','failed')),
   created_at        timestamptz not null default now(),
   updated_at        timestamptz not null default now()
 );

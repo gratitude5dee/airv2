@@ -306,7 +306,9 @@ export function effectiveStatus(
         ? "done"
         : "todo";
     case "twin":
-      return snapshot.twin ? "done" : "todo";
+      return snapshot.twin && snapshot.twin.status !== "avatar_only"
+        ? "done"
+        : "todo";
     case "avatar":
       return snapshot.avatarAssetId ? "done" : "todo";
     case "connect":

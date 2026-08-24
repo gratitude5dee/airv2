@@ -41,7 +41,12 @@ import {
 import { guardMediaUpload, MediaGuardError } from "../storage/guard";
 import { createHeygenPhotoAvatar } from "./heygen";
 
-export type DigitalTwinStatus = "consented" | "creating" | "ready" | "failed";
+export type DigitalTwinStatus =
+  | "avatar_only"
+  | "consented"
+  | "creating"
+  | "ready"
+  | "failed";
 
 export interface DigitalTwin {
   id: string;
