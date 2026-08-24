@@ -47,19 +47,44 @@ export interface OnairosState {
   connectedAt: string | null;
 }
 
-/** POST to the returned apiUrl with the short-lived bearer token (the
- * documented Persona contract). The response body is content — callers must
- * never log it. */
-export async function fetchPersona(handoff: OnairosHandoff): Promise<unknown> {
-  const response = await fetch(handoff.apiUrl, {
-    method: "POST",
+function personaRequest(
+  handoff: OnairosHandoff,
+  method: "POST" | "GET"
+): Promise<Response> {
+  return fetch(handoff.apiUrl, {
+    method,
     headers: {
       Authorization: `Bearer ${handoff.token}`,
       "Content-Type": "application/json",
     },
     // Traits/profile request: no Input (inference-only field), no llmData.
-    body: JSON.stringify({}),
+    ...(method === "POST" ? { body: JSON.stringify({}) } : {}),
   });
+}
+
+/** Endpoint path of a handoff URL — safe to log (no token, no payload). */
+function personaPath(apiUrl: string): string {
+  try {
+    return new URL(apiUrl).pathname;
+  } catch {
+    return "invalid";
+  }
+}
+
+/** Fetch the persona from the returned apiUrl with the short-lived bearer
+ * token. The documented contract is a POST, but URL resolution also hands
+ * back read-only endpoints (`/persona/full`) that answer a POST with 404 —
+ * those are retried as a GET. The response body is content and never
+ * logged; failures log the method/path/status only (C4). */
+export async function fetchPersona(handoff: OnairosHandoff): Promise<unknown> {
+  let method: "POST" | "GET" = "POST";
+  let response = await personaRequest(handoff, method);
+  if (response.status === 404 || response.status === 405) {
+    // The upstream has no POST route here, so the GET result is the
+    // meaningful one either way.
+    method = "GET";
+    response = await personaRequest(handoff, method);
+  }
   if (response.status === 202) {
     throw new OnairosError(
       "persona still training — try re-sync in a minute",
@@ -67,6 +92,14 @@ export async function fetchPersona(handoff: OnairosHandoff): Promise<unknown> {
     );
   }
   if (!response.ok) {
+    console.error(
+      JSON.stringify({
+        msg: "onairos persona fetch failed",
+        method,
+        path: personaPath(handoff.apiUrl),
+        status: response.status,
+      })
+    );
     // Status code only: the body could carry grant or persona details.
     throw new OnairosError(`persona fetch failed (${response.status})`, 502);
   }
