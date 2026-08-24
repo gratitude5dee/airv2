@@ -4,6 +4,7 @@ import { runFlush } from "./flush";
 import { createRun } from "../hermes/client";
 import { createSpectrumSender } from "../spectrum/sender";
 import { ensureBoxAwake } from "./boxes";
+import { mintSignedLink } from "../miniapps/cards";
 
 vi.mock("../spectrum/sender", () => ({ createSpectrumSender: vi.fn() }));
 vi.mock("../box/client", () => ({ command: vi.fn(), writeFile: vi.fn() }));
@@ -64,17 +65,28 @@ const registryApp = {
   updated_at: "2026-08-24T00:00:00.000Z",
 };
 
-function fakeSupabase() {
+function fakeSupabase(options: { registryError?: string } = {}) {
   const deleted: string[] = [];
+  const updates: Array<{ table: string; values: Record<string, unknown> }> = [];
+  const inserts: Array<{ table: string; rows: unknown }> = [];
   const supabase = {
     deleted,
+    updates,
+    inserts,
     from: (table: string) => ({
       select: () => {
         if (table === "mini_apps") {
           return {
             eq: () => ({
               maybeSingle: () =>
-                Promise.resolve({ data: registryApp, error: null }),
+                Promise.resolve(
+                  options.registryError
+                    ? {
+                        data: null,
+                        error: { message: options.registryError },
+                      }
+                    : { data: registryApp, error: null }
+                ),
             }),
           };
         }
@@ -109,13 +121,23 @@ function fakeSupabase() {
         };
         return chain;
       },
-      update: () => ({
-        eq: () => Promise.resolve({ error: null }),
-      }),
-      insert: () => Promise.resolve({ error: null }),
+      update: (values: Record<string, unknown>) => {
+        updates.push({ table, values });
+        return {
+          eq: () => Promise.resolve({ error: null }),
+        };
+      },
+      insert: (rows: unknown) => {
+        inserts.push({ table, rows });
+        return Promise.resolve({ error: null });
+      },
     }),
   };
-  return supabase as unknown as SupabaseClient & { deleted: string[] };
+  return supabase as unknown as SupabaseClient & {
+    deleted: string[];
+    updates: Array<{ table: string; values: Record<string, unknown> }>;
+    inserts: Array<{ table: string; rows: unknown }>;
+  };
 }
 
 beforeEach(() => {
@@ -135,14 +157,16 @@ describe("runFlush mini-app commands", () => {
     );
 
     const supabase = fakeSupabase();
+    const job = {
+      spaceId: "space-1",
+      userId: "user-1",
+      phone: "+15551234567",
+      attempts: 0,
+      senderTier: 0,
+    };
     await runFlush(
       supabase,
-      {
-        spaceId: "space-1",
-        userId: "user-1",
-        phone: "+15551234567",
-        attempts: 0,
-      },
+      job,
       "2026-08-24T00:00:00.000Z"
     );
 
@@ -154,5 +178,83 @@ describe("runFlush mini-app commands", () => {
     expect(ensureBoxAwake).not.toHaveBeenCalled();
     expect(createRun).not.toHaveBeenCalled();
     expect(supabase.deleted).toContain("flush_jobs");
+  });
+
+  it("does not mint an owner link for a non-owner sender", async () => {
+    const sendRichLink = vi.fn().mockResolvedValue(undefined);
+    const sendText = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(createSpectrumSender).mockResolvedValue({
+      sendRichLink,
+      sendText,
+      close: vi.fn().mockResolvedValue(undefined),
+    } as never);
+
+    const supabase = fakeSupabase();
+    const job = {
+      spaceId: "space-1",
+      userId: "user-1",
+      phone: "+15551234567",
+      attempts: 0,
+      senderTier: 1,
+    };
+    await runFlush(
+      supabase,
+      job,
+      "2026-08-24T00:00:00.000Z"
+    );
+
+    expect(sendRichLink).not.toHaveBeenCalled();
+    expect(mintSignedLink).not.toHaveBeenCalled();
+    expect(sendText).toHaveBeenCalledWith(
+      "space-1",
+      "+15551234567",
+      "only the owner can open mini-apps."
+    );
+    expect(ensureBoxAwake).not.toHaveBeenCalled();
+    expect(createRun).not.toHaveBeenCalled();
+    expect(supabase.deleted).toContain("flush_jobs");
+  });
+
+  it("requeues and reschedules a slash command when the registry lookup fails", async () => {
+    const sendText = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(createSpectrumSender).mockResolvedValue({
+      sendRichLink: vi.fn().mockResolvedValue(undefined),
+      sendText,
+      close: vi.fn().mockResolvedValue(undefined),
+    } as never);
+
+    const supabase = fakeSupabase({ registryError: "database unavailable" });
+    const job = {
+      spaceId: "space-1",
+      userId: "user-1",
+      phone: "+15551234567",
+      attempts: 0,
+      senderTier: 0,
+    };
+    await runFlush(
+      supabase,
+      job,
+      "2026-08-24T00:00:00.000Z"
+    );
+
+    expect(
+      supabase.inserts.find((insert) => insert.table === "batch_queue")?.rows
+    ).toEqual([
+      {
+        user_id: "user-1",
+        space_id: "space-1",
+        phone: "+15551234567",
+        message_id: "m1",
+        body: "/image-editor",
+      },
+    ]);
+    expect(
+      supabase.updates.find((update) => update.table === "flush_jobs")?.values
+        .attempts
+    ).toBe(1);
+    expect(sendText).not.toHaveBeenCalled();
+    expect(supabase.deleted).not.toContain("flush_jobs");
+    expect(ensureBoxAwake).not.toHaveBeenCalled();
+    expect(createRun).not.toHaveBeenCalled();
   });
 });

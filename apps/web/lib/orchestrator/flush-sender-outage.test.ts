@@ -94,6 +94,7 @@ const job = {
   userId: "user-1",
   phone: "+15551234567",
   attempts: 0,
+  senderTier: 0,
 };
 
 beforeEach(() => {
