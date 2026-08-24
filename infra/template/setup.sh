@@ -237,6 +237,45 @@ for local_skill in "$TEMPLATE_DIR"/skills/*/; do
   cp -r "$local_skill" "$HOME_DIR/.hermes/skills/$name"
 done
 
+# ── 3c2. OpenViking deep memory (docs/memory-upgrade.md, layer 2) ───────────
+# A loopback-only semantic memory server per box. Its own venv (the hermes
+# venv is pinned to the agent's lockstep deps); pinned versions (C24). The
+# workspace lives under ~/.openviking so memory snapshots/restores with the
+# box (I1/C4). Embeddings use OpenViking's built-in local model — a shared
+# or hosted vector store would move memory content off-box.
+OV_VENV="$HOME_DIR/.openviking-venv"
+uv venv "$OV_VENV" --python 3.12 || true
+# [local-embed] pulls llama-cpp-python (no wheel — builds from source, so the
+# toolchain below); without it the server refuses to start local embeddings.
+sudo apt-get install -y --no-install-recommends cmake build-essential
+uv pip install --python "$OV_VENV/bin/python" 'openviking[local-embed]==0.4.13' 'openviking-sdk==0.1.7'
+mkdir -p "$HOME_DIR/.openviking" && chmod 700 "$HOME_DIR/.openviking"
+cp "$TEMPLATE_DIR/openviking/ovctl.py" "$HOME_DIR/.openviking/ovctl.py"
+chmod 755 "$HOME_DIR/.openviking/ovctl.py"
+
+# The control plane drives ingest/status through this one named binary over
+# the box command API (same pattern as air-vault / open-miniapp-card).
+sudo tee /usr/local/bin/ovctl >/dev/null <<SH
+#!/usr/bin/env bash
+set -euo pipefail
+exec "$OV_VENV/bin/python" "$HOME_DIR/.openviking/ovctl.py" "\$@"
+SH
+sudo chmod +x /usr/local/bin/ovctl
+
+# Register the MCP server: recall (find/search/read) and persist
+# (remember/add_resource) become Hermes tools in the shared air-main session.
+python3 - "$HOME_DIR/.hermes/config.yaml" <<'PYEOF'
+import sys, yaml, pathlib
+p = pathlib.Path(sys.argv[1])
+cfg = yaml.safe_load(p.read_text()) if p.exists() else None
+cfg = cfg if isinstance(cfg, dict) else {}
+mcp = cfg.get("mcp_servers")
+mcp = mcp if isinstance(mcp, dict) else {}
+mcp["openviking"] = {"url": "http://127.0.0.1:1933/mcp", "enabled": True}
+cfg["mcp_servers"] = mcp
+p.write_text(yaml.safe_dump(cfg, default_flow_style=False))
+PYEOF
+
 # ── 3d. Calendar spine (V3): the box-resident event store + sync pipeline ──
 # Events live here, never in shared Postgres (C4). sources.json (written by
 # the control plane on connect) holds source credentials, mode 600.
@@ -456,6 +495,7 @@ cat > "$HOME_DIR/.boxignore" <<'EOF'
 .cache/pip/
 .cache/uv/
 .hermes/cache/
+.openviking/data/tmp/
 EOF
 
 # ── 4. systemd units — /etc is snapshotted, enabled units restart on resume ──
@@ -463,9 +503,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 sudo cp "$SCRIPT_DIR"/hermes-gateway.service /etc/systemd/system/
 sudo cp "$SCRIPT_DIR"/hermes-dashboard.service /etc/systemd/system/
 sudo cp "$SCRIPT_DIR"/hermes-host.service /etc/systemd/system/
+sudo cp "$SCRIPT_DIR"/openviking.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable hermes-gateway.service hermes-dashboard.service hermes-host.service
+sudo systemctl enable hermes-gateway.service hermes-dashboard.service hermes-host.service openviking.service
 sudo systemctl start hermes-gateway.service hermes-dashboard.service hermes-host.service
+
+# Render ov.conf (template stage: no gateway token yet → VLM block omitted;
+# the first post-provision `ovctl ensure` re-renders with the per-fork
+# gateway credentials) and start the server. Best effort — a broken deep
+# memory layer must never fail the template build (graceful degradation is
+# the acceptance posture in docs/memory-upgrade.md).
+ovctl ensure || echo "WARN: openviking ensure failed — deep memory degraded" >&2
 
 echo "Template setup complete."
 echo "Next (operator steps, per goal.md M0):"

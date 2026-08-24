@@ -30,6 +30,11 @@ import {
   validateHandoff,
   type OnairosHandoff,
 } from "./context";
+import {
+  deepMemoryForget,
+  deepMemoryIndex,
+  OV_ONAIROS_URI,
+} from "@/lib/memory/deep";
 import { USER_PROFILE_PATH } from "@/lib/memory/files";
 
 const PROVIDER = "onairos";
@@ -95,6 +100,10 @@ async function writeContext(
     await command(boxId, "mkdir -p .hermes/memories");
     await writeFile(boxId, USER_PROFILE_PATH, updated);
   }
+  // Deep memory (docs/memory-upgrade.md): index the persona markdown at its
+  // stable URI (replace-on-resync, so no duplicates). Best-effort — a
+  // degraded deep-memory layer never fails a connect/re-sync.
+  await deepMemoryIndex(boxId, ONAIROS_MD_PATH, OV_ONAIROS_URI);
 }
 
 async function setStatus(
@@ -185,6 +194,9 @@ export async function disconnectOnairos(
         .join(" ")}`
     );
     if (rm.exitCode !== 0) throw new OnairosError("box delete failed", 502);
+    // Deep memory: drop the indexed persona subtree too — disconnect means
+    // every Onairos-derived byte leaves the box (context files AND index).
+    await deepMemoryForget(box.boxId, OV_ONAIROS_URI);
     const user = await readFile(box.boxId, USER_PROFILE_PATH).catch(() => null);
     if (user !== null) {
       const updated = removePointerLine(user);

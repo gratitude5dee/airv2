@@ -8,6 +8,7 @@ import { createHmac } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuthorized } from "@/lib/admin/auth";
 import { EXPORT_TABLES } from "@/lib/admin/export-tables";
+import { deepMemoryExport } from "@/lib/memory/deep";
 import { readMemoryFiles } from "@/lib/memory/files";
 import { ensureBoxAwake } from "@/lib/orchestrator/boxes";
 import { env } from "@/lib/env";
@@ -128,6 +129,24 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
   } else {
     archive.memory_files = null;
+  }
+
+  // Deep memory (docs/memory-upgrade.md): OpenViking inventory + derived
+  // memory contents ride the archive the same way (box → response only).
+  // Raw resource bytes are files under the box filesystem — the snapshot
+  // reference above covers them.
+  if (box) {
+    try {
+      const awake = await ensureBoxAwake(supabase, userId);
+      archive.deep_memory = await deepMemoryExport(awake.boxId);
+    } catch {
+      archive.deep_memory = {
+        error:
+          "box unavailable — the deep-memory workspace is in the box snapshot referenced above",
+      };
+    }
+  } else {
+    archive.deep_memory = null;
   }
 
   return NextResponse.json({ user_id: userId, exported_at: new Date().toISOString(), archive });

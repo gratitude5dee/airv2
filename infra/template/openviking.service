@@ -1,0 +1,17 @@
+[Unit]
+Description=OpenViking deep-memory server (loopback :1933)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=user
+WorkingDirectory=/home/user/.openviking
+# ov.conf binds 127.0.0.1 only — the MCP/REST surface never leaves the box
+# (C4: memory is content; it has no network path out).
+ExecStart=/home/user/.openviking-venv/bin/openviking-server --config /home/user/.openviking/ov.conf
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
