@@ -27,7 +27,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
   const supabase = serviceClient();
-  const source = pairAttemptSource(request.headers.get("x-forwarded-for"));
+  const source = pairAttemptSource(request.headers);
   if (await pairExchangeRateLimited(supabase, source)) {
     return NextResponse.json({ error: "rate_limited" }, { status: 429 });
   }
