@@ -267,6 +267,68 @@ export function normalizeBerdDoc(raw: unknown): BerdDoc {
   };
 }
 
+/** Bound: pending is a status strip, not a history. */
+const MAX_PENDING = 20;
+
+/** Record a freshly queued envelope in the document's pending strip. */
+export function queueBerdPending(
+  doc: BerdDoc,
+  id: string,
+  group: string,
+  action: string
+): BerdDoc {
+  const pending = [
+    ...doc.pending.filter((op) => op.id !== id),
+    {
+      id,
+      group,
+      action,
+      requestedAt: new Date().toISOString(),
+      state: "queued" as const,
+    },
+  ];
+  return { ...doc, pending: pending.slice(-MAX_PENDING) };
+}
+
+export function markBerdPending(
+  doc: BerdDoc,
+  id: string,
+  state: BerdPendingState,
+  note?: string
+): BerdDoc {
+  return {
+    ...doc,
+    pending: doc.pending.map((op) =>
+      op.id === id ? { ...op, state, ...(note ? { note } : {}) } : op
+    ),
+  };
+}
+
+/**
+ * Merge a device result into the mirror. The device reports whichever lists
+ * the command touched (`agents`, `projects`, …) as full replacements — the
+ * device is authoritative, the mirror only renders — and the whole document
+ * passes back through the normalizer, so a hostile payload is bounded and
+ * key-shaped values are dropped (C9/C18) before anything is written.
+ */
+export function mergeBerdResult(doc: BerdDoc, data: unknown): BerdDoc {
+  if (typeof data !== "object" || data === null) return doc;
+  const payload = data as Record<string, unknown>;
+  const merged: Record<string, unknown> = { ...doc };
+  for (const key of [
+    "agents",
+    "projects",
+    "skills",
+    "providers",
+    "sessions",
+    "automations",
+  ]) {
+    if (Array.isArray(payload[key])) merged[key] = payload[key];
+  }
+  merged.link = { ...doc.link, lastSyncAt: new Date().toISOString() };
+  return normalizeBerdDoc(merged);
+}
+
 export async function getBerdDoc(
   supabase: SupabaseClient,
   userId: string,

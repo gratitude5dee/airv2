@@ -72,6 +72,179 @@ async function postAction(
   }
 }
 
+/* ---------------------------------------------------------- draw surface */
+
+/** Logical sketch resolution — matches the render lane's square size. */
+const SKETCH_SIZE = 1024;
+
+interface StrokePoint {
+  x: number;
+  y: number;
+}
+
+interface Stroke {
+  color: string;
+  size: number;
+  erase: boolean;
+  points: StrokePoint[];
+}
+
+/**
+ * Per-layer drawing surface, structured on the tldraw shader-starter-kit
+ * manager lifecycle (WebGLManager: onInitialize → onUpdate → onRender →
+ * onDispose) so a WebGL brush pipeline can replace the 2D compositor
+ * without touching the editor. Strokes are the model; rendering is a pure
+ * function of them, batched through requestAnimationFrame.
+ */
+class SketchSurface {
+  private canvas: HTMLCanvasElement | null = null;
+  private strokes: Stroke[] = [];
+  private live: Stroke | null = null;
+  private raf = 0;
+
+  onInitialize(canvas: HTMLCanvasElement): void {
+    this.canvas = canvas;
+    canvas.width = SKETCH_SIZE;
+    canvas.height = SKETCH_SIZE;
+    this.onUpdate();
+  }
+
+  onDispose(): void {
+    if (this.raf) cancelAnimationFrame(this.raf);
+    this.raf = 0;
+    this.canvas = null;
+  }
+
+  setStrokes(strokes: Stroke[]): void {
+    this.strokes = strokes;
+    this.live = null;
+    this.onUpdate();
+  }
+
+  begin(point: StrokePoint, color: string, size: number, erase: boolean): void {
+    this.live = { color, size, erase, points: [point] };
+    this.onUpdate();
+  }
+
+  extend(point: StrokePoint): void {
+    this.live?.points.push(point);
+    this.onUpdate();
+  }
+
+  /** Commit the live stroke; returns the finished stroke list. */
+  end(): Stroke[] {
+    if (this.live && this.live.points.length) this.strokes.push(this.live);
+    this.live = null;
+    this.onUpdate();
+    return [...this.strokes];
+  }
+
+  private onUpdate(): void {
+    if (this.raf || !this.canvas) return;
+    this.raf = requestAnimationFrame(() => {
+      this.raf = 0;
+      this.onRender();
+    });
+  }
+
+  private onRender(): void {
+    const ctx = this.canvas?.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, SKETCH_SIZE, SKETCH_SIZE);
+    const all = this.live ? [...this.strokes, this.live] : this.strokes;
+    for (const stroke of all) drawStroke(ctx, stroke);
+  }
+}
+
+function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke): void {
+  if (!stroke.points.length) return;
+  ctx.save();
+  ctx.globalCompositeOperation = stroke.erase
+    ? "destination-out"
+    : "source-over";
+  ctx.strokeStyle = stroke.color;
+  ctx.fillStyle = stroke.color;
+  ctx.lineWidth = stroke.size;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  if (!stroke.erase) {
+    // Soft shader-style falloff around the brush core.
+    ctx.shadowColor = stroke.color;
+    ctx.shadowBlur = stroke.size * 0.6;
+  }
+  const [first, ...rest] = stroke.points;
+  if (!first) {
+    ctx.restore();
+    return;
+  }
+  if (!rest.length) {
+    ctx.beginPath();
+    ctx.arc(first.x, first.y, stroke.size / 2, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    ctx.beginPath();
+    ctx.moveTo(first.x, first.y);
+    for (const point of rest) ctx.lineTo(point.x, point.y);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/**
+ * Flatten the current canvas (flat render, if any) plus the layer's strokes
+ * into one PNG data URL — the validated image input the server hands to the
+ * metered render lane.
+ */
+async function composeSketch(
+  flatUrl: string | null,
+  strokes: Stroke[]
+): Promise<string | null> {
+  const out = document.createElement("canvas");
+  out.width = SKETCH_SIZE;
+  out.height = SKETCH_SIZE;
+  const ctx = out.getContext("2d");
+  if (!ctx) return null;
+  ctx.fillStyle = "#101018";
+  ctx.fillRect(0, 0, SKETCH_SIZE, SKETCH_SIZE);
+  if (flatUrl) {
+    try {
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const el = new Image();
+        el.crossOrigin = "anonymous";
+        el.onload = () => resolve(el);
+        el.onerror = reject;
+        el.src = flatUrl;
+      });
+      const scale = Math.min(
+        SKETCH_SIZE / img.naturalWidth,
+        SKETCH_SIZE / img.naturalHeight
+      );
+      const w = img.naturalWidth * scale;
+      const h = img.naturalHeight * scale;
+      ctx.drawImage(img, (SKETCH_SIZE - w) / 2, (SKETCH_SIZE - h) / 2, w, h);
+    } catch {
+      // A stale signed URL just means the sketch goes without the backdrop.
+    }
+  }
+  for (const stroke of strokes) drawStroke(ctx, stroke);
+  try {
+    return out.toDataURL("image/png");
+  } catch {
+    return null;
+  }
+}
+
+const BRUSH_COLORS = [
+  "#ffffff",
+  "#ff5d5d",
+  "#ffb84d",
+  "#ffe14d",
+  "#6dea8a",
+  "#5db8ff",
+  "#b48cff",
+  "#101018",
+];
+
 /* ----------------------------------------------------------- layer tree */
 
 interface Row {
@@ -212,6 +385,19 @@ function Editor({ initial }: { initial: Payload }): React.ReactElement {
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const pending = useRef(0);
 
+  /* Drawing: one stroke set per layer so each layer keeps its own sketch. */
+  const [tool, setTool] = useState<"move" | "draw" | "erase">("move");
+  const [brushColor, setBrushColor] = useState("#5db8ff");
+  const [brushSize, setBrushSize] = useState(24);
+  const [drawPrompt, setDrawPrompt] = useState("");
+  const strokesByLayer = useRef(new Map<string, Stroke[]>());
+  const [strokeCount, setStrokeCount] = useState(0);
+  const surface = useRef(new SketchSurface());
+  const sketchRef = useRef<HTMLCanvasElement | null>(null);
+
+  /* Bottom pull-out tab (mini-app view): collapsed ↔ expanded. */
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
   const apply = useCallback((payload: Payload | null): void => {
     if (!payload) {
       setNotice("that didn't save — try again.");
@@ -236,6 +422,34 @@ function Editor({ initial }: { initial: Payload }): React.ReactElement {
   const selected = doc.layers.find((l) => l.id === doc.selectedLayerId) ?? null;
   const rows = useMemo(() => treeRows(doc), [doc]);
   const groups = doc.layers.filter((l) => l.kind === "group");
+
+  const sketchKey = selected?.id ?? "@canvas";
+  const layerStrokes = strokesByLayer.current.get(sketchKey) ?? [];
+
+  useEffect(() => {
+    const canvas = sketchRef.current;
+    const manager = surface.current;
+    if (canvas) manager.onInitialize(canvas);
+    return () => manager.onDispose();
+  }, []);
+
+  useEffect(() => {
+    surface.current.setStrokes(strokesByLayer.current.get(sketchKey) ?? []);
+  }, [sketchKey, strokeCount]);
+
+  const sketchPoint = useCallback(
+    (event: React.PointerEvent): StrokePoint | null => {
+      const canvas = sketchRef.current;
+      if (!canvas) return null;
+      const rect = canvas.getBoundingClientRect();
+      if (!rect.width || !rect.height) return null;
+      return {
+        x: ((event.clientX - rect.left) / rect.width) * SKETCH_SIZE,
+        y: ((event.clientY - rect.top) / rect.height) * SKETCH_SIZE,
+      };
+    },
+    []
+  );
 
   /* Local (uncommitted) preview of a continuous edit on one layer. */
   const preview = useCallback((id: string, patch: Partial<ImageLayer>): void => {
@@ -279,7 +493,7 @@ function Editor({ initial }: { initial: Payload }): React.ReactElement {
 
   const stageRef = useRef<HTMLDivElement>(null);
   const gesture = useRef<{
-    kind: "pan" | "layer";
+    kind: "pan" | "layer" | "sketch";
     id?: string;
     startX: number;
     startY: number;
@@ -289,6 +503,22 @@ function Editor({ initial }: { initial: Payload }): React.ReactElement {
 
   const onStagePointerDown = useCallback(
     (event: React.PointerEvent): void => {
+      if (tool !== "move") {
+        const point = sketchPoint(event);
+        if (point) {
+          (event.currentTarget as HTMLElement).setPointerCapture(
+            event.pointerId
+          );
+          gesture.current = { kind: "sketch", startX: 0, startY: 0, baseX: 0, baseY: 0 };
+          surface.current.begin(
+            point,
+            brushColor,
+            brushSize,
+            tool === "erase"
+          );
+        }
+        return;
+      }
       const target = event.target as HTMLElement;
       const layerEl = target.closest("[data-layer-id]") as HTMLElement | null;
       const id = layerEl?.dataset.layerId;
@@ -316,13 +546,18 @@ function Editor({ initial }: { initial: Payload }): React.ReactElement {
         };
       }
     },
-    [doc, pan, send]
+    [doc, pan, send, tool, brushColor, brushSize, sketchPoint]
   );
 
   const onStagePointerMove = useCallback(
     (event: React.PointerEvent): void => {
       const g = gesture.current;
       if (!g) return;
+      if (g.kind === "sketch") {
+        const point = sketchPoint(event);
+        if (point) surface.current.extend(point);
+        return;
+      }
       const dx = event.clientX - g.startX;
       const dy = event.clientY - g.startY;
       if (g.kind === "pan") {
@@ -334,12 +569,17 @@ function Editor({ initial }: { initial: Payload }): React.ReactElement {
         });
       }
     },
-    [previewTransform, zoom]
+    [previewTransform, zoom, sketchPoint]
   );
 
   const onStagePointerUp = useCallback((): void => {
     const g = gesture.current;
     gesture.current = null;
+    if (g?.kind === "sketch") {
+      strokesByLayer.current.set(sketchKey, surface.current.end());
+      setStrokeCount((count) => count + 1);
+      return;
+    }
     if (g?.kind === "layer" && g.id) {
       const layer = doc.layers.find((l) => l.id === g.id);
       if (
@@ -349,7 +589,7 @@ function Editor({ initial }: { initial: Payload }): React.ReactElement {
         commitTransform(g.id, layer.transform);
       }
     }
-  }, [commitTransform, doc]);
+  }, [commitTransform, doc, sketchKey]);
 
   const onWheel = useCallback((event: React.WheelEvent): void => {
     event.preventDefault();
@@ -605,6 +845,12 @@ function Editor({ initial }: { initial: Payload }): React.ReactElement {
             </div>
           )}
           {doc.layers.map(renderStageLayer)}
+          <canvas
+            ref={sketchRef}
+            className="ie-sketch"
+            style={{ pointerEvents: "none" }}
+            aria-label="drawing surface"
+          />
         </div>
         {notice ? (
           <div className="ie-notice" role="status">
@@ -616,6 +862,31 @@ function Editor({ initial }: { initial: Payload }): React.ReactElement {
         ) : null}
         {busy ? <div className="ie-busy">{busy}</div> : null}
         <div className="ie-toolbar">
+          <button
+            type="button"
+            className={`ie-tool${tool === "move" ? " on" : ""}`}
+            aria-label="move tool"
+            onClick={() => setTool("move")}
+          >
+            {"\u2723"}
+          </button>
+          <button
+            type="button"
+            className={`ie-tool${tool === "draw" ? " on" : ""}`}
+            aria-label="draw tool"
+            onClick={() => setTool("draw")}
+          >
+            {"\u270e"}
+          </button>
+          <button
+            type="button"
+            className={`ie-tool${tool === "erase" ? " on" : ""}`}
+            aria-label="eraser tool"
+            onClick={() => setTool("erase")}
+          >
+            {"\u25ef"}
+          </button>
+          <span className="ie-sep" />
           <button
             type="button"
             className="ie-tool"
@@ -664,7 +935,18 @@ function Editor({ initial }: { initial: Payload }): React.ReactElement {
         </div>
       </div>
 
-      <aside className="ie-rail">
+      <aside className={`ie-rail${drawerOpen ? " open" : ""}`}>
+        <button
+          type="button"
+          className="ie-drawer-handle"
+          aria-expanded={drawerOpen}
+          aria-label={drawerOpen ? "collapse editor panel" : "expand editor panel"}
+          onClick={() => setDrawerOpen((open) => !open)}
+        >
+          <span className="ie-grip" aria-hidden="true" />
+          <span>{drawerOpen ? "Hide options" : "Layers & options"}</span>
+        </button>
+        <div className="ie-rail-body">
         <Panel title="Document">
           <form
             className="ie-inline"
@@ -703,6 +985,84 @@ function Editor({ initial }: { initial: Payload }): React.ReactElement {
             Generate
           </button>
           <p className="ie-hint">Runs a metered render — up to a minute.</p>
+        </Panel>
+
+        <Panel title="Draw" open={tool !== "move"}>
+          <div className="ie-swatches">
+            {BRUSH_COLORS.map((color) => (
+              <button
+                key={color}
+                type="button"
+                className={`ie-swatch${brushColor === color ? " on" : ""}`}
+                style={{ background: color }}
+                aria-label={`brush color ${color}`}
+                onClick={() => {
+                  setBrushColor(color);
+                  if (tool === "move") setTool("draw");
+                }}
+              />
+            ))}
+          </div>
+          <Slider
+            label="Brush"
+            value={brushSize}
+            min={2}
+            max={120}
+            suffix="px"
+            onPreview={setBrushSize}
+            onCommit={setBrushSize}
+          />
+          <p className="ie-hint">
+            Drawing on: {selected ? label(selected) : "canvas"} ·{" "}
+            {layerStrokes.length} stroke{layerStrokes.length === 1 ? "" : "s"}
+          </p>
+          <button
+            type="button"
+            className="ie-btn"
+            disabled={!layerStrokes.length}
+            onClick={() => {
+              strokesByLayer.current.set(sketchKey, []);
+              setStrokeCount((count) => count + 1);
+            }}
+          >
+            Clear drawing
+          </button>
+          <textarea
+            rows={2}
+            maxLength={1000}
+            placeholder="What should the drawing become…"
+            value={drawPrompt}
+            onChange={(event) => setDrawPrompt(event.target.value)}
+          />
+          <button
+            type="button"
+            className="ie-btn ie-primary"
+            disabled={!!busy || !layerStrokes.length || !drawPrompt.trim()}
+            onClick={async () => {
+              setBusy("Rendering from drawing\u2026");
+              setNotice(null);
+              const sketch = await composeSketch(flatUrl, layerStrokes);
+              if (!sketch) {
+                setBusy(null);
+                setNotice("the drawing couldn't be captured — try again.");
+                return;
+              }
+              apply(
+                await postAction({
+                  action: "draw",
+                  prompt: drawPrompt.trim(),
+                  sketch,
+                })
+              );
+              setBusy(null);
+              setDrawPrompt("");
+            }}
+          >
+            Render from drawing
+          </button>
+          <p className="ie-hint">
+            Sends your drawing (over the current canvas) to a metered render.
+          </p>
         </Panel>
 
         {doc.flatAssetId ? (
@@ -1006,6 +1366,7 @@ function Editor({ initial }: { initial: Payload }): React.ReactElement {
         <a className="ie-classic" href="?classic=1">
           Classic view
         </a>
+        </div>
       </aside>
     </div>
   );
@@ -1023,11 +1384,20 @@ const CSS = `
 .ie-tool{background:transparent;border:0;color:#cfcfe0;min-width:34px;min-height:30px;border-radius:7px;cursor:pointer;font:12px/1 inherit;box-shadow:none;text-transform:none;padding:0 8px}
 .ie-tool:hover{background:rgba(255,255,255,0.08);transform:none}
 .ie-tool:disabled{opacity:0.35;cursor:default}
+.ie-tool.on{background:rgba(140,170,255,0.22);color:#fff}
+.ie-sketch{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(82%,1024px);aspect-ratio:1/1;height:auto}
+.ie-swatches{display:flex;gap:0.35rem;flex-wrap:wrap}
+.ie-swatch{width:24px;height:24px;border-radius:50%;border:2px solid rgba(255,255,255,0.2);cursor:pointer;padding:0;box-shadow:none}
+.ie-swatch.on{border-color:#8caaff;transform:scale(1.12)}
 .ie-zoom{min-width:52px}
 .ie-sep{width:1px;background:rgba(255,255,255,0.12);margin:4px 3px}
 .ie-busy{position:absolute;left:50%;top:16px;transform:translateX(-50%);background:rgba(18,18,26,0.92);border:1px solid rgba(255,255,255,0.12);border-radius:999px;padding:0.45rem 1rem;font-size:12px;letter-spacing:0.06em}
 .ie-notice{position:absolute;left:50%;top:16px;transform:translateX(-50%);display:flex;align-items:center;gap:0.5rem;background:rgba(30,30,44,0.95);border:1px solid rgba(255,255,255,0.14);border-radius:10px;padding:0.5rem 0.8rem;font-size:12px;max-width:min(80%,34rem)}
-.ie-rail{width:min(320px,42vw);overflow-y:auto;background:rgba(14,14,20,0.98);border-left:1px solid rgba(255,255,255,0.08);padding:0.5rem 0.6rem 1rem;display:flex;flex-direction:column;gap:0.2rem}
+.ie-rail{width:min(320px,42vw);background:rgba(14,14,20,0.98);border-left:1px solid rgba(255,255,255,0.08);display:flex;flex-direction:column}
+.ie-rail-body{flex:1;overflow-y:auto;padding:0.5rem 0.6rem 1rem;display:flex;flex-direction:column;gap:0.2rem}
+.ie-drawer-handle{display:none;flex-direction:column;align-items:center;gap:0.3rem;background:transparent;border:0;color:rgba(232,232,240,0.75);font:500 10.5px/1 inherit;letter-spacing:0.12em;text-transform:uppercase;padding:0.55rem 0 0.5rem;cursor:pointer;box-shadow:none;width:100%}
+.ie-drawer-handle:hover{color:#fff;transform:none}
+.ie-grip{width:44px;height:4px;border-radius:2px;background:rgba(255,255,255,0.28)}
 .ie-panel{border-bottom:1px solid rgba(255,255,255,0.07)}
 .ie-panel-head{width:100%;display:flex;justify-content:space-between;align-items:center;background:transparent;border:0;color:rgba(232,232,240,0.75);font:500 10.5px/1 inherit;letter-spacing:0.14em;text-transform:uppercase;padding:0.7rem 0.2rem;cursor:pointer;box-shadow:none}
 .ie-panel-head:hover{color:#fff;transform:none}
@@ -1058,7 +1428,13 @@ const CSS = `
 .ie-export-link{color:#8caaff;font-size:11px;word-break:break-all}
 .ie-classic{color:rgba(232,232,240,0.4);font-size:10.5px;text-align:center;padding:0.8rem 0 0;text-decoration:none}
 .ie-classic:hover{color:rgba(232,232,240,0.8)}
-@media(max-width:720px){.ie-root{flex-direction:column}.ie-rail{width:100%;max-height:46vh;border-left:0;border-top:1px solid rgba(255,255,255,0.08)}}
+@media(max-width:900px){
+.ie-root{flex-direction:column}
+.ie-rail{position:absolute;left:0;right:0;bottom:0;width:100%;border-left:0;border-top:1px solid rgba(255,255,255,0.14);border-radius:16px 16px 0 0;box-shadow:0 -10px 34px rgba(0,0,0,0.5);max-height:34vh;transition:max-height 0.25s ease;z-index:6}
+.ie-rail.open{max-height:78vh}
+.ie-drawer-handle{display:flex}
+.ie-rail:not(.open) .ie-rail-body{max-height:calc(34vh - 3rem)}
+}
 `;
 
 const mount = document.getElementById("image-editor");

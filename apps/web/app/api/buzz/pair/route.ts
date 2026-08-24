@@ -40,5 +40,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!result.ok) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
-  return NextResponse.json({ token: result.token, relayUrl: result.relayUrl });
+  // The envelope key rides with the token exactly once: the signer stores
+  // both in its own secure storage and uses the key to verify pulled
+  // intents (§MA-Z3). This side keeps only sealed/hashed copies.
+  return NextResponse.json({
+    token: result.token,
+    relayUrl: result.relayUrl,
+    envelopeKey: result.envelopeKey,
+  });
 }

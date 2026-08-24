@@ -10,6 +10,7 @@
  */
 import { createHash, randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { mintEnvelopeKey, sealEnvelopeKey } from "../commandLane";
 
 const CODE_TTL_MS = 10 * 60 * 1000;
 /** Human-typable alphabet: no 0/O/1/I/L ambiguity. */
@@ -141,7 +142,7 @@ export async function berdLiveLink(
 }
 
 export type BerdExchangeResult =
-  | { ok: true; token: string }
+  | { ok: true; token: string; envelopeKey: string }
   | { ok: false; error: string };
 
 /**
@@ -182,15 +183,20 @@ export async function exchangeBerdPairingCode(
     .eq("user_id", row.user_id)
     .eq("status", "paired");
   const token = `berd_${randomBytes(32).toString("hex")}`;
+  // §MA-B3: the per-device envelope key lets Berd verify each pulled
+  // envelope really came from here. The device stores the plaintext in its
+  // own secure storage; this side keeps it sealed only (C18).
+  const envelopeKey = mintEnvelopeKey();
   const deviceLabel = input.deviceLabel.trim().slice(0, 80) || "Berd";
   const { error } = await supabase.from("berd_links").insert({
     user_id: row.user_id,
     device_label: deviceLabel,
     token_hash: sha256(token),
     protocol_version: input.protocolVersion,
+    envelope_key_sealed: sealEnvelopeKey(envelopeKey),
   });
   if (error) return { ok: false, error: "pairing failed" };
-  return { ok: true, token };
+  return { ok: true, token, envelopeKey };
 }
 
 /**

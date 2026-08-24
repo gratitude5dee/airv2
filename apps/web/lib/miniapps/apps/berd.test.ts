@@ -4,7 +4,7 @@
  * inventing data, and a hostile box document cannot plant markup or a
  * credential in the rendered view (C9, C18).
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MiniAppContext } from "@/lib/miniapps/apps/types";
@@ -58,6 +58,10 @@ function form(action: string): FormData {
   data.set("action", action);
   return data;
 }
+
+beforeAll(() => {
+  process.env.SESSION_SECRET = "test-session-secret";
+});
 
 afterEach(() => {
   boxFiles.clear();

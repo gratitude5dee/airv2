@@ -6,8 +6,13 @@
  * text-to-image `imagine` job; "Edit" is an `imagine` job with the current
  * flat attached as the image input. Layered documents live in the user's
  * box; every render is metered. */
+import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
-import { ASSETS_BUCKET, DELIVERY_TTL_SECONDS } from "@/lib/assets/keys";
+import {
+  ASSETS_BUCKET,
+  DELIVERY_TTL_SECONDS,
+  masterKey,
+} from "@/lib/assets/keys";
 import { mintDelivery, type CreativeAsset } from "@/lib/assets/pipeline";
 import { createCreativeJob } from "@/lib/creative/jobs";
 import { executeCreativeJob } from "@/lib/creative/run";
@@ -371,19 +376,84 @@ const unavailable = (lite: boolean) =>
     })
   );
 
-/** Run one metered GMI render for this doc: text-to-image ("generate") or
- * an edit of the current flat ("edit"). On delivery the doc's flat is
- * repointed at the new asset. Returns the user-facing notice line. */
+/** Decoded PNG cap for a submitted drawing — a 1024² sketch is well under. */
+const MAX_SKETCH_BYTES = 4 * 1024 * 1024;
+const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+
+/**
+ * Take the editor's drawing (a PNG data URL composed client-side from the
+ * canvas plus the layer's strokes), verify it really is a bounded PNG, and
+ * store it as a content-addressed creative asset the render lane can sign a
+ * URL for. The browser never talks to the provider (C2/C3) — the drawing
+ * becomes a normal owned asset first, exactly like an ingested render.
+ */
+async function storeSketchAsset(
+  ctx: MiniAppContext,
+  dataUrl: string
+): Promise<CreativeAsset | null> {
+  const prefix = "data:image/png;base64,";
+  if (!dataUrl.startsWith(prefix)) return null;
+  let buffer: Buffer;
+  try {
+    buffer = Buffer.from(dataUrl.slice(prefix.length), "base64");
+  } catch {
+    return null;
+  }
+  if (
+    !buffer.byteLength ||
+    buffer.byteLength > MAX_SKETCH_BYTES ||
+    !buffer.subarray(0, 4).equals(PNG_MAGIC)
+  ) {
+    return null;
+  }
+  const digest = createHash("sha256").update(buffer).digest("hex");
+  const existing = await ctx.supabase
+    .from("creative_assets")
+    .select("*")
+    .eq("user_id", ctx.session.userId)
+    .eq("sha256", digest)
+    .maybeSingle();
+  if (existing.data) return existing.data as CreativeAsset;
+  const key = masterKey(ctx.session.userId, digest, "png");
+  const upload = await ctx.supabase.storage
+    .from(ASSETS_BUCKET)
+    .upload(key, buffer, { contentType: "image/png", upsert: true });
+  if (upload.error) return null;
+  const inserted = await ctx.supabase
+    .from("creative_assets")
+    .insert({
+      user_id: ctx.session.userId,
+      box_asset_id: `sketch:${digest.slice(0, 16)}`,
+      sha256: digest,
+      ext: "png",
+      kind: "png",
+      bytes: buffer.byteLength,
+      storage_key: key,
+    })
+    .select("*")
+    .single();
+  return (inserted.data as CreativeAsset | null) ?? null;
+}
+
+/** Run one metered GMI render for this doc: text-to-image ("generate"),
+ * an edit of the current flat ("edit"), or an edit guided by the owner's
+ * drawing ("draw"). On delivery the doc's flat is repointed at the new
+ * asset. Returns the user-facing notice line. */
 async function runStudioRender(
   ctx: MiniAppContext,
-  kind: "generate" | "edit",
-  prompt: string
+  kind: "generate" | "edit" | "draw",
+  prompt: string,
+  sketchAsset?: CreativeAsset
 ): Promise<string> {
   const userId = ctx.session.userId;
   const text = prompt.trim().slice(0, 1000);
   if (!text) return "describe what to make first.";
   const mediaInputs: MediaInput[] = [];
-  if (kind === "edit") {
+  if (kind === "draw") {
+    const url = await signedFlatUrl(ctx, sketchAsset ?? null);
+    if (!url) return "that drawing couldn't be read — try again.";
+    mediaInputs.push({ kind: "image", url });
+  } else if (kind === "edit") {
     const doc = await getImageDoc(ctx.supabase, userId, ctx.session.resourceId);
     const asset = await flatAsset(ctx, doc);
     const url = await signedFlatUrl(ctx, asset);
@@ -410,6 +480,7 @@ async function runStudioRender(
     } catch {
       return `render done (asset ${result.asset.id}) but saving to the canvas failed — try again in a minute or add it as an asset layer.`;
     }
+    if (kind === "draw") return "drawing rendered.";
     return kind === "edit" ? "edit applied." : "image ready.";
   }
   return result.line;
@@ -503,6 +574,22 @@ export const image: MiniAppModule = {
           ctx,
           action,
           String(form.get("prompt") ?? "")
+        );
+        return respond(line);
+      }
+      if (action === "draw" && ctx.session.role === "owner") {
+        const sketch = await storeSketchAsset(
+          ctx,
+          String(form.get("sketch") ?? "")
+        );
+        if (!sketch) {
+          return respond("that drawing couldn't be read — try again.");
+        }
+        const line = await runStudioRender(
+          ctx,
+          "draw",
+          String(form.get("prompt") ?? ""),
+          sketch
         );
         return respond(line);
       }
