@@ -102,6 +102,10 @@ grep -q '^DISPLAY=' "$ENV_FILE" || echo "DISPLAY=:0" >> "$ENV_FILE"
 # ── 3b. Browser Use CLI 3.0 (pinned) + the box-browser-use CDP wrapper ───────
 uv tool install --python 3.12 'browser-use==0.13.8'
 
+# ── 3b+. Stripe Link CLI (pinned) — owner-approved payment credentials ───────
+command -v link-cli >/dev/null || npm install -g @stripe/link-cli@0.13.1 --no-audit --no-fund
+mkdir -p "$HOME_DIR/.hermes/link" && chmod 700 "$HOME_DIR/.hermes/link"
+
 sudo tee /usr/local/bin/box-browser-use >/dev/null <<SH
 #!/usr/bin/env bash
 set -euo pipefail

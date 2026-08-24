@@ -41,6 +41,13 @@ const snapshot: OnboardingSnapshot = {
   onairos: { available: true, connected: false, connect_url: null },
   speedTier: "balanced",
   merchant: null,
+  link: {
+    installed: true,
+    authenticated: false,
+    verification_url: null,
+    phrase: null,
+    updated_at: null,
+  },
   pluginSessions: 1,
   ingest: {
     chunks: 3,

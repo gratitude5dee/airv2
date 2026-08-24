@@ -81,13 +81,22 @@ export function mintSignedLink(
   return `${env.miniappOrigin()}/${appSlug}?t=${mintToken(userId, appSlug, resourceId, CARD_LINK_TTL_MINUTES, { via: "card" })}`;
 }
 
+/** Per-send copy override so a card bubble can carry its occasion (e.g. a
+ * payment approval) — value-free metadata only, same rules as CARD_COPY. */
+export interface CardLayoutOverride {
+  caption?: string;
+  subcaption?: string;
+  summary?: string;
+}
+
 export async function sendMiniAppCard(
   supabase: SupabaseClient,
   spaceId: string,
   phone: string,
   userId: string,
   appSlug: CardKind,
-  resourceId: string
+  resourceId: string,
+  layout?: CardLayoutOverride
 ): Promise<void> {
   const sender = await createSpectrumSender();
   try {
@@ -95,7 +104,7 @@ export async function sendMiniAppCard(
       spaceId,
       phone,
       () => mintSignedLink(userId, appSlug, resourceId),
-      cardLayout(appSlug)
+      { ...cardLayout(appSlug), ...layout }
     );
     const session = parseMiniAppCardSession(
       message && "miniAppCardSession" in message

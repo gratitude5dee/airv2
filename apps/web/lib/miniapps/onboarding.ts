@@ -20,6 +20,7 @@ export const ONBOARDING_STEPS = [
   "connect",
   "secrets",
   "stripe",
+  "link",
   "agent",
   "walkthrough",
 ] as const;

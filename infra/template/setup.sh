@@ -168,6 +168,15 @@ agent-browser install   # downloads Chrome for Testing into ~/.agent-browser
 # into ~/.local/bin, which survives box archive/restore.
 uv tool install --python 3.12 'browser-use==0.13.8'
 
+# ── 3b2c. Stripe Link CLI: one-time-use payment credentials, owner-approved ──
+# link-cli pairs this box as a device on the OWNER's Link wallet (they
+# approve from their Link app during onboarding). Credentials live only in
+# ~/.hermes/link/ (600/700, snapshotted); every spend request still needs
+# the owner's in-app approval, and the human always clicks the final Pay
+# button. Pinned version (C24); npm -g lands in the hermes Node prefix.
+npm install -g @stripe/link-cli@0.13.1 --no-audit --no-fund
+mkdir -p "$HOME_DIR/.hermes/link" && chmod 700 "$HOME_DIR/.hermes/link"
+
 sudo tee /usr/local/bin/box-browser-use >/dev/null <<SH
 #!/usr/bin/env bash
 set -euo pipefail
