@@ -26,6 +26,10 @@ import { createSpectrumSender, type SpectrumSender } from "../spectrum/sender";
 import { probeForTapback } from "../spectrum/tapbacks";
 import { maybeRunCreativeLane } from "../creative/imessage";
 import {
+  maybeSendMiniAppLink,
+  MiniAppRegistryLookupError,
+} from "../miniapps/imessageCommand";
+import {
   armStopAfter,
   ensureBoxAwake,
 } from "./boxes";
@@ -352,13 +356,38 @@ async function carryMessages(
   );
 }
 
+async function requeueMessages(
+  supabase: SupabaseClient,
+  userId: string,
+  spaceId: string,
+  phone: string,
+  messages: QueuedMessage[]
+): Promise<void> {
+  if (messages.length === 0) return;
+  await supabase.from("batch_queue").insert(
+    messages.map((message) => ({
+      user_id: userId,
+      space_id: spaceId,
+      phone,
+      message_id: message.message_id,
+      body: message.body,
+    }))
+  );
+}
+
 /**
  * Run one debounced turn for a chat. Called after the claim succeeds; owns
  * drain → resume → run → stream → stop_after re-arm.
  */
 export async function runFlush(
   supabase: SupabaseClient,
-  job: { spaceId: string; userId: string; phone: string; attempts: number },
+  job: {
+    spaceId: string;
+    userId: string;
+    phone: string;
+    attempts: number;
+    senderTier: number | null;
+  },
   chainStartedAt: string
 ): Promise<void> {
   // Connect to Spectrum BEFORE draining: draining deletes the queued rows,
@@ -384,6 +413,62 @@ export async function runFlush(
       return;
     }
     const rawInput = composeInput(carried, fresh);
+    try {
+      const handled = await maybeSendMiniAppLink(
+        supabase,
+        sender,
+        {
+          spaceId: job.spaceId,
+          userId: job.userId,
+          phone: job.phone,
+          senderTier: job.senderTier,
+        },
+        rawInput
+      );
+      if (handled) {
+        if (!(await chainCancelled(supabase, job.spaceId, chainStartedAt))) {
+          await supabase
+            .from("flush_jobs")
+            .delete()
+            .eq("space_id", job.spaceId)
+            .eq("chain_started_at", chainStartedAt);
+        }
+        return;
+      }
+    } catch (error) {
+      if (error instanceof MiniAppRegistryLookupError) {
+        if (job.attempts < MAX_ATTEMPTS) {
+          await requeueMessages(
+            supabase,
+            job.userId,
+            job.spaceId,
+            job.phone,
+            drained
+          );
+          await rescheduleWithBackoff(supabase, job.spaceId, job.attempts);
+          return;
+        }
+        throw error;
+      }
+      console.error(
+        JSON.stringify({
+          msg: "mini-app command failed",
+          user_id: job.userId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      );
+      await sender
+        .sendText(job.spaceId, job.phone, "couldn't open that mini-app. try again?")
+        .catch(() => undefined);
+      if (!(await chainCancelled(supabase, job.spaceId, chainStartedAt))) {
+        await supabase
+          .from("flush_jobs")
+          .delete()
+          .eq("space_id", job.spaceId)
+          .eq("chain_started_at", chainStartedAt);
+      }
+      return;
+    }
     // M16 creative lane: an explicit /imagine, /animate, or /zap in the
     // settled burst is handled here, before any box wake or Hermes run.
     // Only tier-0/1 senders ever reach the flush — tier-2 inbound returns
@@ -665,6 +750,7 @@ export async function flushAfterDebounce(
       userId: message.userId,
       phone: message.phone,
       attempts: (data?.attempts as number | undefined) ?? 0,
+      senderTier: message.senderTier ?? null,
     },
     claim.chainStartedAt
   );

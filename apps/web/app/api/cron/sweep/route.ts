@@ -34,6 +34,7 @@ interface OverdueJob {
   phone: string;
   run_at: string;
   attempts: number;
+  sender_tier: number | null;
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
@@ -120,7 +121,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const overdueBefore = new Date(Date.now() - 30_000).toISOString();
   const { data: overdue } = await supabase
     .from("flush_jobs")
-    .select("space_id, user_id, phone, run_at, attempts")
+    .select("space_id, user_id, phone, run_at, attempts, sender_tier")
     .lt("run_at", overdueBefore)
     .limit(10);
   let flushed = 0;
@@ -135,6 +136,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           userId: job.user_id,
           phone: job.phone,
           attempts: job.attempts,
+          senderTier: job.sender_tier,
         },
         claim.chainStartedAt
       );
