@@ -80,25 +80,23 @@ interface Row {
   hidden: boolean;
 }
 
-/** Display rows, top of stack first, with depth and collapse-hiding. */
+/**
+ * Display rows: siblings topmost-first at every level, with each group
+ * header directly above its (indented) children.
+ */
 function treeRows(doc: ImageDoc): Row[] {
-  const byId = new Map(doc.layers.map((layer) => [layer.id, layer]));
-  const rows = doc.layers.map((layer) => {
-    let depth = 0;
-    let hidden = false;
-    let cursor = layer.parentGroupId;
-    const seen = new Set<string>([layer.id]);
-    while (cursor && !seen.has(cursor)) {
-      seen.add(cursor);
-      const parent = byId.get(cursor);
-      if (!parent) break;
-      depth += 1;
-      if (parent.collapsed === true) hidden = true;
-      cursor = parent.parentGroupId;
+  const rows: Row[] = [];
+  const emit = (parentId: string | null, depth: number, hidden: boolean): void => {
+    const run = doc.layers.filter((layer) => layer.parentGroupId === parentId);
+    for (const layer of [...run].reverse()) {
+      rows.push({ layer, depth, hidden });
+      if (layer.kind === "group") {
+        emit(layer.id, depth + 1, hidden || layer.collapsed === true);
+      }
     }
-    return { layer, depth, hidden };
-  });
-  return rows.reverse();
+  };
+  emit(null, 0, false);
+  return rows;
 }
 
 function label(layer: ImageLayer): string {
