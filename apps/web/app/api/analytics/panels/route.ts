@@ -1,3 +1,7 @@
+/**
+ * Strictly read-only gateway-token access to the existing reconciled
+ * analytics panel library. This route owns no aggregation logic of its own.
+ */
 import { NextRequest, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { allPanels, windowStart } from "@/lib/miniapps/analytics";

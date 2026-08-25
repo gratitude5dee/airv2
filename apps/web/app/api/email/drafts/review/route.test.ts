@@ -134,4 +134,15 @@ describe("POST /api/email/drafts/review", () => {
     });
     expect(mockedQueue).not.toHaveBeenCalled();
   });
+
+  it("returns 502 without leaking queue errors", async () => {
+    vi.mocked(mockedQueue).mockRejectedValueOnce(
+      new Error("database credentials")
+    );
+    const response = await POST(reviewRequest({ draft_id: "draft-1" }));
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({
+      error: "could not file the review",
+    });
+  });
 });

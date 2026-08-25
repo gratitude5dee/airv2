@@ -20,17 +20,25 @@ present proposed dates as confirmed.
 
 Use the commerce backing tool to stage a catalog publish:
 
-```http
-POST /api/miniapps/commerce
-{"action":"publish_catalog"}
+```bash
+set -a; . ~/.hermes/.env; set +a
+curl -fsS -X POST \
+  "${OPENAI_BASE_URL%/api/gateway/v1}/api/miniapps/commerce" \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"publish_catalog"}'
 ```
 
 This creates or reuses a pending `shop_publish` decision. To stage a deposit
 or split, send:
 
-```http
-POST /api/miniapps/commerce
-{"action":"payment_request","currency":"<currency>","amount":"<amount>","payee":"<payee>","memo":"<memo>"}
+```bash
+set -a; . ~/.hermes/.env; set +a
+curl -fsS -X POST \
+  "${OPENAI_BASE_URL%/api/gateway/v1}/api/miniapps/commerce" \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"payment_request","currency":"<currency>","amount":"<amount>","payee":"<payee>","memo":"<memo>"}'
 ```
 
 For USD, use a positive integer number of cents for `amount`; for USDC, use

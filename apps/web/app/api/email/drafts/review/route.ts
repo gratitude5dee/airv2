@@ -1,3 +1,9 @@
+/**
+ * Box-facing half of C10: the box can create a draft, but only the control
+ * plane can turn it into a Needs-you decision and only owner approval can
+ * send it. Recipient and subject come from AgentMail rather than being
+ * self-reported by the box.
+ */
 import { NextRequest, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getDraft } from "@/lib/agentmail/client";
@@ -84,10 +90,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ ok: true, status: "already_pending" });
   }
 
-  await queueEmailDraftReview(supabase, userId, {
-    draftId,
-    ...(to !== undefined ? { to } : {}),
-    ...(subject !== undefined ? { subject } : {}),
-  });
+  try {
+    await queueEmailDraftReview(supabase, userId, {
+      draftId,
+      ...(to !== undefined ? { to } : {}),
+      ...(subject !== undefined ? { subject } : {}),
+    });
+  } catch {
+    return NextResponse.json(
+      { error: "could not file the review" },
+      { status: 502 }
+    );
+  }
   return NextResponse.json({ ok: true, status: "pending_approval" });
 }
