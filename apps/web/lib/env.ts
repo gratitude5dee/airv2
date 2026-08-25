@@ -39,10 +39,15 @@ export const env = {
   // The macos "template pointer" in box_environment_templates overrides it.
   macBootstrapUrl: (): string | null =>
     process.env["MAC_BOOTSTRAP_URL"] ?? null,
-  // Support-disk image required by Namespace macOS applications; contents
-  // are unused (the bootstrap command lives in the base image).
+  // Support-disk image required by Namespace macOS applications. Must be a
+  // registry image Namespace can unpack for the mac (a plain file layer in
+  // the workspace's nscr.io registry — see infra/template-macos/UPGRADE.md);
+  // Linux images like busybox leave the instance stuck/erroring.
   macBootstrapImage: (): string =>
-    optional("MAC_BOOTSTRAP_IMAGE", "docker.io/library/busybox:latest"),
+    optional(
+      "MAC_BOOTSTRAP_IMAGE",
+      "nscr.io/nroeoinh9vg4q/air/mac-bootstrap:latest",
+    ),
   adminApiKey: (): string => required("ADMIN_API_KEY"),
   appOrigin: (): string => optional("APP_ORIGIN", "https://app.wzrd.tech"),
   supabaseUrl: (): string => required("SUPABASE_URL"),

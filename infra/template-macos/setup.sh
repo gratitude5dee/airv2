@@ -87,6 +87,9 @@ grep -q UV_NO_SYNC "$HOME_DIR/.zprofile" || {
 
 # ── 3. Dashboard SPA at template time ────────────────────────────────────────
 export PATH="$(brew --prefix node@24)/bin:$PATH"
+# hermes-agent's engines field rejects the npm that ships with node@24
+# (needs <11.10.0 || >=11.17.0), so move npm forward first.
+npm install -g npm@'>=11.17.0' --no-audit --no-fund
 (cd web && npm ci && npm run build)
 test -n "$(ls -A hermes_cli/web_dist 2>/dev/null)" || {
   echo "FATAL: hermes_cli/web_dist/ is empty — dashboard SPA did not build" >&2

@@ -50,6 +50,19 @@ on conflict (channel, environment)
 do update set template_ref = excluded.template_ref, updated_at = now();
 ```
 
+Namespace also needs a **support-disk image** for the application
+(`MAC_BOOTSTRAP_IMAGE`): a registry image whose layers Namespace unpacks onto
+the Mac. It must live in the workspace's `nscr.io` registry — external Linux
+images (e.g. busybox) leave the instance stuck in PENDING/ERROR. Publish it
+once per workspace:
+
+```bash
+printf 'FROM scratch\nCOPY bootstrap.sh /bootstrap.sh\n' > Dockerfile
+echo "$NAMESPACE_TOKEN" | docker login nscr.io -u token --password-stdin
+docker build -t nscr.io/<workspace>/air/mac-bootstrap:latest .
+docker push nscr.io/<workspace>/air/mac-bootstrap:latest
+```
+
 `MAC_BOOTSTRAP_URL` in Vercel is the fallback until that row exists. Also set
 `NAMESPACE_TOKEN` (a tenant token: `nsc token create` with instance
 lifecycle + ingress grants) and optionally `NAMESPACE_REGION` /
