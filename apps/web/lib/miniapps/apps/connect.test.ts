@@ -118,6 +118,12 @@ describe("connect mini-app card sessions", () => {
     );
   });
 
+  it("allows the post-submit redirect into Composio via form-action", async () => {
+    const response = await connect.render(makeCtx());
+    const csp = response.headers.get("Content-Security-Policy") ?? "";
+    expect(csp).toContain("form-action 'self' https://*.composio.dev");
+  });
+
   it("refresh surfaces a sync failure instead of hiding it", async () => {
     syncConnections.mockRejectedValueOnce(new Error("composio down"));
     const form = new FormData();
