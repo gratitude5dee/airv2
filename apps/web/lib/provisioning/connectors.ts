@@ -1,10 +1,10 @@
 /**
- * M7 connector provisioning: one Composio session per user, whose hosted
- * MCP URL is installed into the user's box with `hermes mcp add` (goal.md
- * M7 task 2). Composio keeps the OAuth tokens; the box gets only its own
- * user's session endpoint.
+ * M7 connector provisioning: one Composio session per user, reached from the
+ * box through the /api/mcp/composio proxy (goal.md M7 task 2). Composio keeps
+ * the OAuth tokens; the box gets only its own user's session endpoint.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { env } from "../env";
 import { command } from "../box/client";
 import { ensureBoxAwake } from "../orchestrator/boxes";
 import { createSession, getSession } from "../composio/client";
@@ -61,21 +61,35 @@ export async function installMetaAdsMcp(
 
 /**
  * Install (or refresh) the per-user Composio MCP endpoint in the box.
- * `hermes mcp add` validates the entry; the trailing `y` answers its
- * save-anyway prompt so a transient connect hiccup doesn't abort install.
+ *
+ * The box is pointed at our own /api/mcp/composio proxy rather than
+ * Composio's session URL: Composio's tool-router MCP endpoint requires the
+ * org API key on every request, and that key must never land in a box. The
+ * proxy authenticates the box by its gateway token — already present in the
+ * box's own config as `model.api_key` — so the entry is written box-side
+ * without any secret transiting the command line.
  */
 export async function installComposioMcp(
   supabase: SupabaseClient,
   userId: string
 ): Promise<void> {
-  const { mcpUrl } = await ensureComposioSession(supabase, userId);
-  if (!/^https:\/\/[A-Za-z0-9._~:/?#@!$&'()*+,;=%-]+$/.test(mcpUrl)) {
-    throw new Error("unexpected composio mcp url shape");
-  }
+  // Ensures the session exists before the box ever hits the proxy.
+  await ensureComposioSession(supabase, userId);
   const box = await ensureBoxAwake(supabase, userId);
+  const proxyUrl = `${env.appOrigin()}/api/mcp/composio`;
+  const script = [
+    "import yaml, pathlib",
+    'p = pathlib.Path("/home/user/.hermes/config.yaml")',
+    "cfg = yaml.safe_load(p.read_text()) or {}",
+    'mcp = cfg.get("mcp_servers")',
+    "mcp = mcp if isinstance(mcp, dict) else {}",
+    `mcp["composio"] = {"url": "${proxyUrl}", "enabled": True, "headers": {"Authorization": "Bearer " + cfg["model"]["api_key"]}}`,
+    'cfg["mcp_servers"] = mcp',
+    "p.write_text(yaml.safe_dump(cfg, default_flow_style=False))",
+  ].join("\n");
   const result = await command(
     box.boxId,
-    `printf 'y\\n' | /home/user/.hermes-venv/bin/hermes mcp add composio --url "${mcpUrl}" && sudo systemctl restart hermes-gateway`,
+    `/home/user/.hermes-venv/bin/python - <<'PYEOF' && sudo systemctl restart hermes-gateway\n${script}\nPYEOF`,
     180
   );
   if (result.exitCode !== 0) {
