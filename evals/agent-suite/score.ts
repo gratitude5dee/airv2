@@ -26,8 +26,12 @@ const HERE = new URL(".", import.meta.url).pathname;
  * Hermes reports the leaf name in a `skill_view` preview, so an expectation may
  * name either a leaf (`calendar-native`) or a family (`email`, satisfied by
  * `email/himalaya` or `email/email-inbox-triage`).
+ *
+ * EVAL_INVENTORY points at a different capture, so a re-run against a box with
+ * newly deployed skills is scored against that box rather than the first run's.
  */
-const INVENTORY = readFileSync(join(HERE, "installed-skills.txt"), "utf8")
+const INVENTORY_PATH = process.env["EVAL_INVENTORY"] ?? join(HERE, "installed-skills.txt");
+const INVENTORY = readFileSync(INVENTORY_PATH, "utf8")
   .split("\n")
   .map((line) => line.trim())
   .filter(Boolean);
@@ -41,8 +45,10 @@ const FAMILIES = new Set(
  * agent can author a skill mid-run, so the difference is evidence of the box
  * teaching itself a capability the suite asked for.
  */
-const INVENTORY_AFTER = existsSync(join(HERE, "installed-skills-after.txt"))
-  ? readFileSync(join(HERE, "installed-skills-after.txt"), "utf8")
+const INVENTORY_AFTER_PATH =
+  process.env["EVAL_INVENTORY_AFTER"] ?? join(HERE, "installed-skills-after.txt");
+const INVENTORY_AFTER = existsSync(INVENTORY_AFTER_PATH)
+  ? readFileSync(INVENTORY_AFTER_PATH, "utf8")
       .split("\n")
       .map((line) => line.trim())
       .filter(Boolean)
