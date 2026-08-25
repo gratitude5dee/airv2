@@ -4,7 +4,7 @@
  * toolkits via hosted Connect Links, and never renders a Composio credential
  * — the browser sees toolkit slugs and statuses only.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MiniAppContext } from "@/lib/miniapps/apps/types";
@@ -61,6 +61,10 @@ vi.mock("@/lib/onairos/sync", () => ({
 
 import { onboarding } from "@/lib/miniapps/apps/onboarding";
 import { ONBOARDING_STEPS } from "@/lib/miniapps/onboarding";
+
+beforeAll(() => {
+  process.env.MINIAPP_SIGNING_KEY = "test-signing-key";
+});
 
 function thenable(rows: unknown, single: unknown = null) {
   const builder: Record<string, unknown> = {};
@@ -148,6 +152,19 @@ describe("onboarding composio integrations step", () => {
       "notion",
       expect.stringContaining("/mini/setup?step=connect")
     );
+  });
+
+  it("card session connect never mints a Connect Link and points to the browser", async () => {
+    const ctx = makeCtx();
+    (ctx.session as { via?: "card" }).via = "card";
+    const form = new FormData();
+    form.set("action", "connect");
+    form.set("toolkit", "gmail");
+    const response = await onboarding.action!(ctx, form);
+    expect(response.status).toBe(200);
+    expect(beginConnect).not.toHaveBeenCalled();
+    const body = await response.text();
+    expect(body).toContain("open this step in your browser");
   });
 
   it("rejects a malformed toolkit slug", async () => {
