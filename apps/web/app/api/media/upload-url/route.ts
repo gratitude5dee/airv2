@@ -9,8 +9,10 @@
  */
 import { randomBytes } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { requestSession } from "@/lib/auth/surface";
 import { serviceClient } from "@/lib/supabase";
+import { parseBody } from "@/lib/http/body";
 import {
   allowedMediaType,
   MEDIA_MAX_BYTES,
@@ -33,18 +35,22 @@ export const dynamic = "force-dynamic";
 
 const FILENAME_RE = /^[a-zA-Z0-9._-]{1,128}$/;
 
+const UploadBodySchema = z.object({
+  filename: z.string().optional(),
+  contentType: z.string().optional(),
+  sizeBytes: z.number().optional(),
+  confirmKey: z.string().optional(),
+});
+
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const supabase = serviceClient();
   const session = await requestSession(supabase, request);
   if (!session) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const body = (await request.json().catch(() => ({}))) as {
-    filename?: string;
-    contentType?: string;
-    sizeBytes?: number;
-    confirmKey?: string;
-  };
+  const parsed = await parseBody(request, UploadBodySchema);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
 
   // Confirm/reconcile leg after an upload completed. The reservation is
   // consumed exactly once and the release amount comes from the stored
@@ -69,7 +75,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
   const contentType = (body.contentType ?? "").toLowerCase().trim();
-  const sizeBytes = Number(body.sizeBytes ?? 0);
+  const sizeBytes = body.sizeBytes ?? 0;
   const filename = body.filename ?? "";
   if (!allowedMediaType(contentType)) {
     return NextResponse.json(

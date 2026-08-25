@@ -154,7 +154,7 @@ function makeSupabase(): SupabaseClient {
         filters.push((row) => row[column] === value);
         return chain;
       },
-      not(column: string, op: string, value: string) {
+      not(column: string, _op: string, value: string) {
         const list = value.replace(/^\(|\)$/g, "").split(",");
         filters.push((row) => !list.includes(String(row[column])));
         return chain;

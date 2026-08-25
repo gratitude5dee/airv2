@@ -5,8 +5,10 @@
  * path with the MA5 connect mini-app (lib/connectors/manage.ts).
  */
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { sessionUserId } from "@/lib/auth/user";
 import { serviceClient } from "@/lib/supabase";
+import { parseBody } from "@/lib/http/body";
 import { env } from "@/lib/env";
 import { listToolkits } from "@/lib/composio/client";
 import { connectionHealth } from "@/lib/connectors/meta";
@@ -20,6 +22,15 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
+
+const ToolkitBody = z.object({
+  toolkit: z
+    .string()
+    .trim()
+    .min(1)
+    .transform((v) => v.toLowerCase())
+    .refine((v) => TOOLKIT_SLUG_PATTERN.test(v), { message: "invalid toolkit" }),
+});
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const userId = sessionUserId(request);
@@ -56,13 +67,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const body = (await request.json().catch(() => ({}))) as {
-    toolkit?: string;
-  };
-  const toolkit = body.toolkit?.toLowerCase();
-  if (!toolkit || !TOOLKIT_SLUG_PATTERN.test(toolkit)) {
-    return NextResponse.json({ error: "invalid toolkit" }, { status: 400 });
-  }
+  const parsed = await parseBody(request, ToolkitBody);
+  if (!parsed.ok) return parsed.response;
+  const { toolkit } = parsed.data;
+
   const supabase = serviceClient();
   const link = await beginConnect(
     supabase,
@@ -90,13 +98,10 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const body = (await request.json().catch(() => ({}))) as {
-    toolkit?: string;
-  };
-  const toolkit = body.toolkit?.toLowerCase();
-  if (!toolkit || !TOOLKIT_SLUG_PATTERN.test(toolkit)) {
-    return NextResponse.json({ error: "invalid toolkit" }, { status: 400 });
-  }
+  const parsed = await parseBody(request, ToolkitBody);
+  if (!parsed.ok) return parsed.response;
+  const { toolkit } = parsed.data;
+
   const supabase = serviceClient();
   const result = await disconnectToolkit(supabase, userId, toolkit);
   if (result === "not_found") {

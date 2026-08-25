@@ -137,7 +137,7 @@ function wantsHtml(request: NextRequest): boolean {
 }
 
 function challengeBody(
-  app: RegistryApp,
+  _app: RegistryApp,
   requirements: PaymentRequirements
 ): { error: string; x402Version: number; accepts: object[] } {
   return {
