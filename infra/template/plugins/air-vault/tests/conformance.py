@@ -2,7 +2,8 @@
 
 Vendored verbatim (docstring note aside) from NousResearch/hermes-agent
 ``tests/secret_sources/conformance.py`` at the template's pinned revision
-7339f5f160db5c96657a3bab60151227cc61f66c — keep in sync when re-pinning.
+fcbd1076a93841fa88855acce810e342a5b78101 — keep in sync when re-pinning
+(byte-identical upstream between v2026.8.16.2 and v2026.8.19).
 
 Any secret-source backend — bundled or external plugin — can validate
 itself against the contract by subclassing :class:`SecretSourceConformance`

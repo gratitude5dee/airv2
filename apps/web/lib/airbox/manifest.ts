@@ -24,7 +24,7 @@ import {
 } from "@/lib/orchestrator/boxes";
 
 /** Pinned Hermes revision baked into every template (infra/template/setup.sh). */
-export const HERMES_REF = "7339f5f160db5c96657a3bab60151227cc61f66c";
+export const HERMES_REF = "fcbd1076a93841fa88855acce810e342a5b78101";
 
 /**
  * The only Hermes platform ever enabled — every other adapter bypasses the

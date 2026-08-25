@@ -1,9 +1,31 @@
 # V0 — Hermes upgrade runbook (pin, rebuild, migrate the fleet)
 
 The template pins Hermes at `HERMES_REF` (see `setup.sh`; currently
-`7339f5f160db5c96657a3bab60151227cc61f66c` = tag `v2026.8.16.2`, pyproject
-`0.20.3`, release line v0.20.2 / 2026-08-16). Re-pin deliberately with a
-delta review — never float back to `main`.
+`fcbd1076a93841fa88855acce810e342a5b78101` = tag `v2026.8.19`, pyproject
+`0.20.5`, released 2026-08-21). Re-pin deliberately with a delta review —
+never float back to `main`. `infra/template-macos/setup.sh` stays on
+`7339f5f1` until that lane's own template build is re-run.
+
+## 0. Delta review for the v2026.8.16.2 → v2026.8.19 re-pin (963 commits)
+
+The three things a re-pin can break in this repo, and what the delta says:
+
+- **C24 platform union** — `generate_platforms.py`'s union (the `Platform`
+  enum ∪ `plugins/platforms/*/` ∪ every `register_platform(name=…)`) is
+  unchanged at 34 names across the two revisions, so no box can gain a second
+  door from the upgrade. Re-run `generate_platforms.py --verify` on the box
+  anyway; the gate is the contract, not this note.
+- **Secret-source API (V1)** — `SECRET_SOURCE_API_VERSION` is still `1` and
+  `tests/secret_sources/conformance.py` is byte-identical, so the vendored
+  air-vault conformance kit and the secret-source re-pull both still hold.
+- **Session DB schema** — still v25; the only change is that the v25 prompt
+  dedupe now pauses instead of raising when SQLite is contended, which fixes a
+  gateway watchdog crash loop. Safe on boxes that already migrated.
+
+Upstream work that matters to us: keyless/free provider catalog fixes around
+Ox Alpha (reasoning effort now reaches the wire clamped), cron agents run with
+memory enabled, `hermes update --plan`, and desktop-only performance work we
+do not ship.
 
 ## 1. Rebuild the template
 
@@ -61,7 +83,7 @@ Existing boxes carry `~/.hermes` state (memory, sessions, skills); a re-fork
 destroys it. For each box (resume it first):
 
 ```bash
-HERMES_REF=7339f5f160db5c96657a3bab60151227cc61f66c
+HERMES_REF=fcbd1076a93841fa88855acce810e342a5b78101
 cd ~/hermes-agent
 git fetch --depth 1 origin "$HERMES_REF" && git checkout --force FETCH_HEAD
 UV_PROJECT_ENVIRONMENT=~/.hermes-venv uv pip install -e ".[all]" \

@@ -185,8 +185,9 @@ build (`infra/template/generate_platforms.py`, invoked from `setup.sh`)
 enumerates `gateway.config.Platform` ∪ `plugins/platforms/*/` from the
 pinned Hermes snapshot and writes `enabled: false` for every adapter except
 `api_server`; the build **fails** if generation fails or if the running
-gateway reports any other platform enabled. The pinned 0.20.3 snapshot
-ships 22 bundled adapters — including `photon`, a bundled in-box iMessage
+gateway reports any other platform enabled. The pinned 0.20.5 snapshot
+ships 34 adapters across the enum, the plugin dirs, and the names plugins
+register at runtime — including `photon`, a bundled in-box iMessage
 path that must never light up inside a box whose iMessage terminates in
 the control plane. Upstream adding an adapter can therefore never silently
 open a second door into the agent.
