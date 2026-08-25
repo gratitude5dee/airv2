@@ -39,6 +39,10 @@ export const env = {
   // The macos "template pointer" in box_environment_templates overrides it.
   macBootstrapUrl: (): string | null =>
     process.env.MAC_BOOTSTRAP_URL ?? null,
+  // Support-disk image required by Namespace macOS applications; contents
+  // are unused (the bootstrap command lives in the base image).
+  macBootstrapImage: (): string =>
+    optional("MAC_BOOTSTRAP_IMAGE", "docker.io/library/busybox:latest"),
   adminApiKey: (): string => required("ADMIN_API_KEY"),
   appOrigin: (): string => optional("APP_ORIGIN", "https://app.wzrd.tech"),
   supabaseUrl: (): string => required("SUPABASE_URL"),

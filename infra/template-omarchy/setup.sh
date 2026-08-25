@@ -65,6 +65,9 @@ if [ ! -x "$ARCH_ROOT/usr/bin/pacman" ]; then
 fi
 
 echo "Server = $ARCH_MIRROR" | sudo tee "$ARCH_ROOT/etc/pacman.d/mirrorlist" >/dev/null
+# Inside the chroot pacman cannot resolve the cachedir's mount point, which
+# makes its free-space check fail spuriously; the host checks disk instead.
+sudo sed -i 's/^CheckSpace/#CheckSpace/' "$ARCH_ROOT/etc/pacman.conf"
 sudo cp /etc/resolv.conf "$ARCH_ROOT/etc/resolv.conf"
 printf 'en_US.UTF-8 UTF-8\n' | sudo tee "$ARCH_ROOT/etc/locale.gen" >/dev/null
 

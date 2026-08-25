@@ -218,6 +218,10 @@ export async function createMacInstance(
       applications: [
         {
           name: "air-bootstrap",
+          // macOS applications require an image ("support disk") even when
+          // the command is an absolute path into the base image. The image
+          // contents are unused; it only satisfies the support-disk mount.
+          imageRef: env.macBootstrapImage(),
           // The base image ships bash and curl; the template is fetched at
           // boot so a template change needs no image rebuild.
           command: "/bin/bash",
@@ -253,12 +257,25 @@ export async function waitForInstance(
 ): Promise<NamespaceInstance> {
   const until = Date.now() + timeoutMs;
   for (;;) {
-    const response = await call<DescribeInstanceResponse>(
-      COMPUTE_SERVICE,
-      "WaitInstanceSync",
-      { instanceId },
-      Math.min(120_000, Math.max(10_000, until - Date.now())),
-    );
+    let response: DescribeInstanceResponse;
+    try {
+      response = await call<DescribeInstanceResponse>(
+        COMPUTE_SERVICE,
+        "WaitInstanceSync",
+        { instanceId },
+        Math.min(120_000, Math.max(10_000, until - Date.now())),
+      );
+    } catch (error) {
+      // WaitInstanceSync long-polls; a slow boot (macOS takes minutes) can
+      // outlive one request. Re-poll until the overall deadline.
+      if (
+        Date.now() > until ||
+        (error instanceof NamespaceApiError && error.status < 500)
+      ) {
+        throw error;
+      }
+      continue;
+    }
     const instance = toInstance(response);
     if (instance.state === "RUNNING") return instance;
     if (instance.state === "DESTROYED" || instance.state === "FAILED") {
