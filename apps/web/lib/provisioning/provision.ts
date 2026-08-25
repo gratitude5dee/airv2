@@ -354,6 +354,50 @@ async function buildCompute(
   );
   const target = created.target;
 
+  // The instance exists from here on: if any configuration step below throws,
+  // tear it down before rethrowing so a mid-build failure never leaks a
+  // running instance the caller has no handle to.
+  try {
+    return await configureCompute(created, {
+      profile,
+      environment,
+      gatewayToken,
+      apiServerKey,
+      dashPassword,
+      dashSecret,
+      airVaultKey,
+    });
+  } catch (error) {
+    await teardown(target);
+    throw error;
+  }
+}
+
+interface ComputeSecrets {
+  profile: ReturnType<typeof profileFor>;
+  environment: ComputeEnvironment;
+  gatewayToken: string;
+  apiServerKey: string;
+  dashPassword: string;
+  dashSecret: string;
+  airVaultKey: string;
+}
+
+async function configureCompute(
+  created: Awaited<ReturnType<typeof createInstance>>,
+  secrets: ComputeSecrets
+): Promise<ProvisionedCompute> {
+  const {
+    profile,
+    environment,
+    gatewayToken,
+    apiServerKey,
+    dashPassword,
+    dashSecret,
+    airVaultKey,
+  } = secrets;
+  const target = created.target;
+
   // V0: which Hermes is this instance on — read the SHA the template baked at
   // build time so support can answer from the boxes row alone.
   const refResult = await runCommand(

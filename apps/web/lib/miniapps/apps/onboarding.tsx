@@ -408,6 +408,9 @@ function stepBody(
     const cards = COMPUTE_ENVIRONMENTS.map((environment) => {
       const profile = ENVIRONMENT_PROFILES[environment];
       const current = environment === snapshot.environment;
+      if (profile.comingSoon && !current) {
+        return `<div class="inline"><button class="ghost" disabled>${esc(profile.label)} · Coming soon</button><p class="muted">${esc(profile.blurb)}</p></div>`;
+      }
       return `<form method="post" class="inline"><input type="hidden" name="action" value="set_environment"><input type="hidden" name="environment" value="${esc(environment)}"><button${current ? "" : ' class="ghost"'}>${esc(profile.label)}</button><p class="muted">${esc(profile.blurb)}</p></form>`;
     }).join("");
     return `<p class="muted">Your agent gets its own computer. Pick where it lives — you can switch later, but its files start fresh on the new machine.</p><div class="row">${cards}</div><div class="row actions">${skipForm("environment", `Keep ${esc(ENVIRONMENT_PROFILES[snapshot.environment].label)}`)}</div>`;
@@ -1078,6 +1081,16 @@ export const onboarding: MiniAppModule = {
       const value = String(form.get("environment") ?? "");
       if (!isComputeEnvironment(value)) return forbidden("unknown environment");
       const snapshot = await loadSnapshot(supabase, userId);
+      if (
+        ENVIRONMENT_PROFILES[value].comingSoon &&
+        value !== snapshot.environment
+      ) {
+        return respond(
+          ctx,
+          "environment",
+          `${ENVIRONMENT_PROFILES[value].label} is coming soon — your agent stays on ${ENVIRONMENT_PROFILES[snapshot.environment].label} for now.`
+        );
+      }
       if (value === snapshot.environment) {
         await markSafely(supabase, userId, "environment", "done");
         return respond(

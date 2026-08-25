@@ -130,9 +130,12 @@ describe("onboarding environment step", () => {
     const response = await onboarding.render(makeCtx());
     expect(response.status).toBe(200);
     const body = await response.text();
-    for (const environment of ["ubuntu", "omarchy", "macos"]) {
-      expect(body).toContain(`value="${environment}"`);
-    }
+    // Only the live default is submittable; the other two render as
+    // coming-soon cards with no form.
+    expect(body).toContain('value="ubuntu"');
+    expect(body).not.toContain('value="omarchy"');
+    expect(body).not.toContain('value="macos"');
+    expect(body).toContain("Coming soon");
     expect(body).toContain("Ubuntu");
     expect(body).toContain("Omarchy");
     expect(body).toContain("macOS");
@@ -140,21 +143,19 @@ describe("onboarding environment step", () => {
     expect(body).not.toContain("Namespace");
   });
 
-  it("switches to a different environment and records the step", async () => {
+  it("a coming-soon environment never rebuilds the compute", async () => {
     const form = new FormData();
     form.set("action", "set_environment");
     form.set("environment", "omarchy");
     const response = await onboarding.action!(makeCtx(), form);
     expect(response.status).toBe(200);
-    expect(switchEnvironment).toHaveBeenCalledWith(
-      expect.anything(),
-      "user-1",
-      "omarchy"
-    );
+    const body = await response.text();
+    expect(body).toContain("coming soon");
+    expect(switchEnvironment).not.toHaveBeenCalled();
     const state = JSON.parse(
       boxFiles.get(".hermes/miniapps/onboarding/state.json") ?? "{}"
     );
-    expect(state.steps.environment).toBe("done");
+    expect(state.steps?.environment ?? "todo").toBe("todo");
   });
 
   it("keeping the current environment never rebuilds the compute", async () => {
@@ -181,11 +182,25 @@ describe("onboarding environment step", () => {
 
   it("a failed switch keeps the step open with a retry notice", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
-    switchEnvironment.mockRejectedValueOnce(new Error("no macos template"));
+    switchEnvironment.mockRejectedValueOnce(new Error("box gone"));
     const form = new FormData();
     form.set("action", "set_environment");
-    form.set("environment", "macos");
-    const response = await onboarding.action!(makeCtx(), form);
+    form.set("environment", "ubuntu");
+    const ctx = makeCtx();
+    // Current environment differs so ubuntu is a real switch.
+    (
+      ctx.supabase as unknown as { from: (t: string) => unknown }
+    ).from = (table: string) =>
+      table === "boxes"
+        ? thenable([], {
+            provider_box_id: "box-1",
+            environment: "omarchy",
+            control_url: null,
+            control_token: null,
+            state: "ready",
+          })
+        : thenable([], null);
+    const response = await onboarding.action!(ctx, form);
     expect(response.status).toBe(200);
     const body = await response.text();
     expect(body).toContain("isn't available right now");

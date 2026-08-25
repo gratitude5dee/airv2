@@ -61,6 +61,8 @@ export interface EnvironmentProfile {
   services: readonly string[];
   /** Whether the environment has a desktop the agent's browser runs headed on. */
   headedBrowser: boolean;
+  /** Shown in onboarding but not yet selectable — no template registered. */
+  comingSoon: boolean;
 }
 
 /** hermes-host re-registers the ascii tunnels after a resume; box-only. */
@@ -89,6 +91,7 @@ export const ENVIRONMENT_PROFILES: Record<
     homeDir: "/home/user",
     services: BOX_SERVICES,
     headedBrowser: true,
+    comingSoon: false,
   },
   omarchy: {
     environment: "omarchy",
@@ -99,6 +102,7 @@ export const ENVIRONMENT_PROFILES: Record<
     homeDir: "/home/user",
     services: OMARCHY_SERVICES,
     headedBrowser: true,
+    comingSoon: true,
   },
   macos: {
     environment: "macos",
@@ -109,6 +113,7 @@ export const ENVIRONMENT_PROFILES: Record<
     homeDir: "/Users/air",
     services: HERMES_SERVICES,
     headedBrowser: true,
+    comingSoon: true,
   },
 };
 

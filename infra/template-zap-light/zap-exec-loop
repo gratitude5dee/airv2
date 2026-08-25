@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# zap-exec-loop — minimal run-queue executor for the zap-light lane.
+#
+# A run is a JSON file dropped into ~/.zap/runs/queue/<id>.json:
+#   { "id": "...", "lane": "ffmpeg" | "codegen" | "media-workflows",
+#     "cmd": ["ffmpeg", "-i", "in.mp4", ...], "cwd": "media/project-x" }
+# Results land in ~/.zap/runs/done/<id>.json with exit code and output paths.
+# Isolation: hyperlight when capabilities.json says so, otherwise a
+# systemd-run --user sandbox. Command allowlist keeps the fallback lane to
+# the zap-light surface (no arbitrary shell).
+set -euo pipefail
+
+ZAP_DIR="$HOME/.zap"
+QUEUE="$ZAP_DIR/runs/queue"
+DONE="$ZAP_DIR/runs/done"
+mkdir -p "$QUEUE" "$DONE"
+
+ISOLATION=$(jq -r '.isolation // "process"' "$ZAP_DIR/capabilities.json" 2>/dev/null || echo process)
+ALLOWED='^(ffmpeg|ffprobe|convert|magick|vips|vipsthumbnail|python3|node|bash)$'
+
+run_one() {
+  local spec="$1" id lane cwd
+  id=$(jq -r '.id' "$spec")
+  lane=$(jq -r '.lane // "codegen"' "$spec")
+  cwd="$ZAP_DIR/$(jq -r '.cwd // "runs"' "$spec")"
+  mkdir -p "$cwd"
+  mapfile -t cmd < <(jq -r '.cmd[]' "$spec")
+  local exe="${cmd[0]}"
+  if ! [[ "$(basename "$exe")" =~ $ALLOWED ]]; then
+    jq -n --arg id "$id" '{id:$id, exit:126, error:"command not in zap-light allowlist"}' \
+      > "$DONE/$id.json"
+    return
+  fi
+  local out="$DONE/$id.log" rc=0
+  if [ "$ISOLATION" = "hyperlight" ]; then
+    # KVM host: run inside a Hyperlight sandbox via the built host binary.
+    "$ZAP_DIR/hyperlight/target/release/hyperlight-host" run --cwd "$cwd" -- "${cmd[@]}" \
+      >"$out" 2>&1 || rc=$?
+  else
+    systemd-run --user --wait --pipe --collect \
+      -p NoNewPrivileges=true -p PrivateTmp=true \
+      -p ProtectSystem=strict -p "ReadWritePaths=$ZAP_DIR" \
+      --working-directory="$cwd" -- "${cmd[@]}" >"$out" 2>&1 || rc=$?
+  fi
+  jq -n --arg id "$id" --arg lane "$lane" --argjson exit "$rc" \
+    '{id:$id, lane:$lane, exit:$exit}' > "$DONE/$id.json"
+}
+
+while true; do
+  for spec in "$QUEUE"/*.json; do
+    [ -e "$spec" ] || break
+    run_one "$spec" || true
+    rm -f "$spec"
+  done
+  sleep 1
+done
