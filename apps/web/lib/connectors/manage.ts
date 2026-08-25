@@ -10,7 +10,7 @@ import {
   ComposioApiError,
   createLinkSession,
   deleteConnectedAccount,
-  listConnectedAccounts,
+  listAllConnectedAccounts,
 } from "../composio/client";
 import {
   ensureComposioSession,
@@ -53,17 +53,18 @@ export async function syncConnections(
   userId: string
 ): Promise<ConnectionRow[]> {
   const [accounts, { data: rows }] = await Promise.all([
-    listConnectedAccounts(userId),
+    listAllConnectedAccounts(userId),
     supabase
       .from("connections")
-      .select("id, toolkit, status")
+      .select("id, toolkit, status, external_account_id")
       .eq("user_id", userId),
   ]);
   const activeByToolkit = new Map(
     accounts
-      .filter((a) => a.toolkit?.slug)
+      .filter((a) => a.toolkit?.slug && a.status === "ACTIVE")
       .map((a) => [a.toolkit?.slug as string, a.id])
   );
+  const statusById = new Map(accounts.map((a) => [a.id, a.status ?? ""]));
   let newlyActive = false;
   for (const row of rows ?? []) {
     const accountId = activeByToolkit.get(row.toolkit as string);
@@ -77,6 +78,21 @@ export async function syncConnections(
           connected_at: new Date().toISOString(),
         })
         .eq("id", row.id);
+      continue;
+    }
+    // A pending row whose Connect Link died (EXPIRED/FAILED at Composio, or
+    // gone entirely) will never activate — surface it as disconnected so
+    // the UI offers a fresh Connect instead of an eternal "pending".
+    if (row.status === "pending" && !accountId) {
+      const accountStatus = row.external_account_id
+        ? (statusById.get(row.external_account_id as string) ?? null)
+        : null;
+      if (accountStatus !== "INITIATED" && accountStatus !== "ACTIVE") {
+        await supabase
+          .from("connections")
+          .update({ status: "revoked" })
+          .eq("id", row.id);
+      }
     }
   }
   if (newlyActive) {

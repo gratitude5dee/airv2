@@ -17,6 +17,8 @@ import {
   type ConnectionRow,
 } from "@/lib/connectors/manage";
 import { externalOrigin } from "../gates";
+import { env } from "@/lib/env";
+import { mintToken } from "../tokens";
 import { StartLimitError } from "@/lib/orchestrator/boxes";
 import { esc, forbidden, withBaseHeaders } from "../html";
 import { renderShell, shellHtml } from "../shell";
@@ -36,12 +38,30 @@ function chip(status: string | null): string {
   return "";
 }
 
+/**
+ * Signed jump into the real browser — OAuth providers (Google above all)
+ * refuse sign-in inside embedded webviews (disallowed_useragent), so a
+ * card-opened Messages sheet must finish connecting in Safari. Multi-use
+ * within its TTL, minted per render, never stored.
+ */
+function browserJumpHref(ctx: MiniAppContext): string | null {
+  if (ctx.session.via !== "card") return null;
+  const token = mintToken(
+    ctx.session.userId,
+    ctx.app.slug,
+    ctx.session.resourceId,
+    15
+  );
+  return `${env.appOrigin()}/mini/${ctx.app.slug}?t=${token}`;
+}
+
 function renderConnect(
   toolkits: ComposioToolkit[],
   connections: ConnectionRow[],
   health: ConnectionHealth[],
   notice: string | null,
-  lite: boolean
+  lite: boolean,
+  browserJump: string | null
 ): string {
   const statusByToolkit = new Map(connections.map((c) => [c.toolkit, c.status]));
   const healthByToolkit = new Map(health.map((h) => [h.toolkit, h]));
@@ -72,7 +92,10 @@ function renderConnect(
     })
     .join("");
   const refresh = `<form method="post" style="margin:0.7rem 0 0"><input type="hidden" name="action" value="refresh"><button class="ghost">Refresh statuses</button></form>`;
-  const body = `<section class="panel"><p class="muted">Sign your agent into your tools. OAuth happens on the provider's own page — no password ever touches this app.</p>${notice ? `<p class="muted">${esc(notice)}</p>` : ""}${cards}${refresh}
+  const browserLine = browserJump
+    ? `<p class="muted">Providers like Google block sign-in inside Messages — <a href="${esc(browserJump)}" target="_blank" rel="noopener">open Connect in your browser</a> to link an account, then come back and tap Refresh statuses.</p>`
+    : "";
+  const body = `<section class="panel"><p class="muted">Sign your agent into your tools. OAuth happens on the provider's own page — no password ever touches this app.</p>${browserLine}${notice ? `<p class="muted">${esc(notice)}</p>` : ""}${cards}${refresh}
 ${promptBar("Ask your agent — e.g. what can you do with my calendar…")}</section>`;
   return renderShell({
     title: "Connect accounts",
@@ -99,7 +122,16 @@ async function loadAndRender(
   // mirror before rendering so chips are truthful (same path as PUT).
   if (connections.some((c) => c.status === "pending")) {
     connections = await syncConnections(ctx.supabase, userId).catch(
-      () => connections
+      (error: unknown) => {
+        console.error(
+          JSON.stringify({
+            msg: "connections sync failed",
+            user_id: userId,
+            error: error instanceof Error ? error.message : String(error),
+          })
+        );
+        return connections;
+      }
     );
   }
   const health = await connectionHealth(ctx.supabase, userId, connections);
@@ -109,7 +141,8 @@ async function loadAndRender(
       connections,
       health,
       notice,
-      ctx.session.via === "card"
+      ctx.session.via === "card",
+      browserJumpHref(ctx)
     )
   );
 }
@@ -139,7 +172,21 @@ export const connect: MiniAppModule = {
     }
 
     if (action === "refresh") {
-      await syncConnections(ctx.supabase, userId).catch(() => undefined);
+      try {
+        await syncConnections(ctx.supabase, userId);
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            msg: "connections sync failed",
+            user_id: userId,
+            error: error instanceof Error ? error.message : String(error),
+          })
+        );
+        return loadAndRender(
+          ctx,
+          "Couldn't refresh statuses just now — try again in a moment."
+        );
+      }
       return loadAndRender(ctx, null);
     }
 
@@ -149,6 +196,15 @@ export const connect: MiniAppModule = {
     }
 
     if (action === "connect") {
+      // Inside a Messages card webview the provider's OAuth page refuses to
+      // load (Google returns disallowed_useragent), so the flow must run in
+      // a real browser — don't mint a Connect Link that can never finish.
+      if (ctx.session.via === "card") {
+        return loadAndRender(
+          ctx,
+          "Sign-in can't run inside Messages — use the \"open Connect in your browser\" link above to finish connecting."
+        );
+      }
       const callback = `${externalOrigin(ctx.request)}${ctx.basePath}`;
       const link = await beginConnect(ctx.supabase, userId, toolkit, callback);
       return withBaseHeaders(NextResponse.redirect(link.redirect_url, 303));

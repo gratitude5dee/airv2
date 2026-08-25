@@ -148,3 +148,14 @@ export async function listConnectedAccounts(
   );
   return result.items ?? [];
 }
+
+/** Every connected account for the user, any status — lets the sync tell a
+ *  live INITIATED link apart from one that EXPIRED before authorization. */
+export async function listAllConnectedAccounts(
+  userId: string
+): Promise<ConnectedAccount[]> {
+  const result = await composioFetch<{ items?: ConnectedAccount[] }>(
+    `/connected_accounts?user_ids=${encodeURIComponent(userId)}&limit=50`
+  );
+  return result.items ?? [];
+}

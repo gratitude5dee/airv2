@@ -473,6 +473,11 @@ function stepBody(
     return `<p class="muted">Pick the image that represents @${esc(snapshot.username ?? "you")} — generated media can reference it as your likeness.</p>${heygenBlock}${gallery}<div class="row actions">${generate}${skipForm("avatar")}</div>`;
   }
   if (step === "connect") {
+    // Same webview constraint as the Onairos slide: Google refuses OAuth
+    // inside Messages, so a card session gets a jump into the real browser.
+    const connectBrowserLine = browserSignin
+      ? `<p class="muted">Google blocks sign-in inside Messages — <a href="${esc(browserSignin)}" target="_blank" rel="noopener">open this step in your browser</a>, connect there, then come back and tap Refresh status.</p>`
+      : "";
     const byToolkit = new Map(snapshot.connections.map((c) => [c.toolkit, c]));
     const rows = ONBOARDING_TOOLKITS.map(([slug, label]) => {
       const status = byToolkit.get(slug)?.status ?? null;
@@ -488,7 +493,7 @@ function stepBody(
           : `<form method="post" class="inline"><input type="hidden" name="action" value="connect"><input type="hidden" name="toolkit" value="${esc(slug)}"><button>Connect</button></form>`;
       return `<div class="item"><span class="grow">${esc(label)}</span>${chip}${button}</div>`;
     }).join("");
-    return `<p class="muted">Onairos imported your context — these connections let your agent take actions in your apps, always with your approval. Sign-in happens with each app directly; the platform never sees your passwords or tokens. The Connect app has the full catalog.</p>${rows}<p class="muted">Apple Calendar connects via an ICS subscription in the Calendar app — there is no OAuth for it here.</p><div class="row actions"><form method="post" class="inline"><input type="hidden" name="action" value="refresh_connections"><button class="ghost">Refresh status</button></form>${skipForm("connect")}</div>`;
+    return `<p class="muted">Onairos imported your context — these connections let your agent take actions in your apps, always with your approval. Sign-in happens with each app directly; the platform never sees your passwords or tokens. The Connect app has the full catalog.</p>${connectBrowserLine}${rows}<p class="muted">Apple Calendar connects via an ICS subscription in the Calendar app — there is no OAuth for it here.</p><div class="row actions"><form method="post" class="inline"><input type="hidden" name="action" value="refresh_connections"><button class="ghost">Refresh status</button></form>${skipForm("connect")}</div>`;
   }
   if (step === "imessage") {
     const ingest = snapshot.ingest;
@@ -856,7 +861,9 @@ function browserSigninHref(
   active: OnboardingStepId
 ): string | null {
   if (ctx.session.via !== "card") return null;
-  if (!rendersNativeOnairos(snapshot, active)) return null;
+  if (active !== "connect" && !rendersNativeOnairos(snapshot, active)) {
+    return null;
+  }
   const token = mintToken(
     ctx.session.userId,
     "onboarding",
@@ -1065,6 +1072,16 @@ export const onboarding: MiniAppModule = {
       const toolkit = String(form.get("toolkit") ?? "").toLowerCase();
       if (!TOOLKIT_SLUG_PATTERN.test(toolkit)) {
         return forbidden("invalid toolkit");
+      }
+      // The provider's OAuth page refuses to load inside a Messages card
+      // webview (Google returns disallowed_useragent) — don't mint a
+      // Connect Link there; the slide carries a jump into the real browser.
+      if (ctx.session.via === "card") {
+        return respond(
+          ctx,
+          "connect",
+          "Sign-in can't run inside Messages — use the \"open this step in your browser\" link on the slide, connect there, then tap Refresh status."
+        );
       }
       const callback = `${externalOrigin(ctx.request)}${ctx.basePath}?step=connect`;
       const link = await beginConnect(supabase, userId, toolkit, callback);
