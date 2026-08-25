@@ -89,7 +89,7 @@ export async function installComposioMcp(
   ].join("\n");
   const result = await command(
     box.boxId,
-    `/home/user/.hermes-venv/bin/python - <<'PYEOF'\n${script}\nPYEOF\nsudo systemctl restart hermes-gateway`,
+    `/home/user/.hermes-venv/bin/python - <<'PYEOF' && sudo systemctl restart hermes-gateway\n${script}\nPYEOF`,
     180
   );
   if (result.exitCode !== 0) {
