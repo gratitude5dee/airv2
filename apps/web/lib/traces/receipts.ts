@@ -54,63 +54,63 @@ const num = (value: unknown): number | null =>
 
 export function mapAgentRun(row: Row): TraceReceipt {
   return receipt({
-    ts: str(row.started_at),
+    ts: str(row["started_at"]),
     kind: "agent_run",
-    id: str(row.id),
-    ref: str(row.hermes_run_id),
-    status: str(row.outcome),
-    label: str(row.trigger),
-    ended_at: str(row.ended_at),
-    box_seconds: num(row.box_seconds),
-    cost_usd: num(row.cost_usd),
+    id: str(row["id"]),
+    ref: str(row["hermes_run_id"]),
+    status: str(row["outcome"]),
+    label: str(row["trigger"]),
+    ended_at: str(row["ended_at"]),
+    box_seconds: num(row["box_seconds"]),
+    cost_usd: num(row["cost_usd"]),
   });
 }
 
 export function mapDecision(row: Row): TraceReceipt {
   return receipt({
-    ts: str(row.created_at),
+    ts: str(row["created_at"]),
     kind: "decision",
-    id: str(row.id),
-    ref: str(row.ref),
-    status: str(row.status),
-    label: str(row.kind),
-    platform: str(row.platform),
-    ended_at: str(row.resolved_at),
+    id: str(row["id"]),
+    ref: str(row["ref"]),
+    status: str(row["status"]),
+    label: str(row["kind"]),
+    platform: str(row["platform"]),
+    ended_at: str(row["resolved_at"]),
   });
 }
 
 export function mapVaultEvent(row: Row): TraceReceipt {
   return receipt({
-    ts: str(row.created_at),
+    ts: str(row["created_at"]),
     kind: "vault_event",
-    id: str(row.id),
-    ref: str(row.item_id),
-    label: str(row.action),
+    id: str(row["id"]),
+    ref: str(row["item_id"]),
+    label: str(row["action"]),
   });
 }
 
 export function mapGateEvent(row: Row): TraceReceipt {
   return receipt({
-    ts: str(row.created_at),
+    ts: str(row["created_at"]),
     kind: "gate_event",
-    id: str(row.id),
-    ref: str(row.ref),
-    label: str(row.kind),
-    app_id: str(row.app_id),
+    id: str(row["id"]),
+    ref: str(row["ref"]),
+    label: str(row["kind"]),
+    app_id: str(row["app_id"]),
   });
 }
 
 export function mapCreativeJob(row: Row): TraceReceipt {
-  const channel = str(row.channel);
-  const mode = str(row.mode);
+  const channel = str(row["channel"]);
+  const mode = str(row["mode"]);
   return receipt({
-    ts: str(row.created_at),
+    ts: str(row["created_at"]),
     kind: "creative_job",
-    id: str(row.id),
-    ref: str(row.provider_request_id),
-    status: str(row.status),
+    id: str(row["id"]),
+    ref: str(row["provider_request_id"]),
+    status: str(row["status"]),
     label: channel && mode ? `${channel}/${mode}` : (channel ?? mode),
-    ended_at: str(row.delivered_at),
+    ended_at: str(row["delivered_at"]),
   });
 }
 
@@ -201,7 +201,7 @@ async function collect(
       for (const row of rows) {
         receipts.push({
           ...source.map(row),
-          user_id: withUser ? str(row.user_id) : null,
+          user_id: withUser ? str(row["user_id"]) : null,
         });
       }
       if (rows.length < PAGE || receipts.length >= limit) break;

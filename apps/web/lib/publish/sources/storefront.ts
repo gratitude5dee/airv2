@@ -102,14 +102,14 @@ export const storefrontSource: CalendarSource = {
 
   brief(moment: Moment, brand: BrandSource | null): BriefStep[] {
     const constraints = brandConstraints(brand);
-    const product = moment.entity.product ?? "the product";
+    const product = moment.entity["product"] ?? "the product";
     if (moment.kind === "low_stock") {
       return [
         {
           step: "urgency",
           platform: "instagram",
           offsetHours: 0,
-          brief: `Only ${moment.entity.remaining} left of ${product} — one urgent, honest post pointing at the shop. No fake scarcity beyond the real count.${constraints}`,
+          brief: `Only ${moment.entity["remaining"]} left of ${product} — one urgent, honest post pointing at the shop. No fake scarcity beyond the real count.${constraints}`,
         },
       ];
     }
@@ -124,7 +124,7 @@ export const storefrontSource: CalendarSource = {
         step: "reveal",
         platform: "instagram",
         offsetHours: 0,
-        brief: `Announce ${product} is live at $${moment.entity.price ?? ""} with a clear link to the shop.${constraints}`,
+        brief: `Announce ${product} is live at $${moment.entity["price"] ?? ""} with a clear link to the shop.${constraints}`,
       },
       {
         step: "detail",

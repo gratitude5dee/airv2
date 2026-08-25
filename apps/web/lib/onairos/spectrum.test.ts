@@ -38,7 +38,7 @@ describe("isOnairosTrigger", () => {
 describe("relayToOnairos", () => {
   it("503s when the API key is not configured", async () => {
     vi.stubEnv("ONAIROS_API_KEY", "");
-    delete process.env.ONAIROS_API_KEY;
+    delete process.env["ONAIROS_API_KEY"];
     await expect(relayToOnairos(INPUT)).rejects.toMatchObject({ status: 503 });
   });
 
@@ -71,10 +71,10 @@ describe("relayToOnairos", () => {
       "test-key",
     );
     const sent = JSON.parse(init.body as string) as Record<string, unknown>;
-    expect(sent.sessionId).toBe("space-1");
-    expect(sent.channel).toBe("iMessage");
-    expect(sent.user).toEqual({ id: "+15551234567", phone: "+15550001111" });
-    expect(sent.message).toEqual({ text: "Connect Onairos" });
+    expect(sent["sessionId"]).toBe("space-1");
+    expect(sent["channel"]).toBe("iMessage");
+    expect(sent["user"]).toEqual({ id: "+15551234567", phone: "+15550001111" });
+    expect(sent["message"]).toEqual({ text: "Connect Onairos" });
   });
 
   it("returns grants from the authorize response", async () => {

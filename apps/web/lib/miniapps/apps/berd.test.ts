@@ -60,7 +60,7 @@ function form(action: string): FormData {
 }
 
 beforeAll(() => {
-  process.env.SESSION_SECRET = "test-session-secret";
+  process.env["SESSION_SECRET"] = "test-session-secret";
 });
 
 afterEach(() => {
@@ -154,7 +154,7 @@ describe("berd mini-app", () => {
     // An expired code fails.
     const { code: expired } = await beginBerdPairing(supabase, "user-1");
     for (const row of db.rows("berd_pairing_codes")) {
-      if (!row.used_at) row.expires_at = new Date(0).toISOString();
+      if (!row["used_at"]) row["expires_at"] = new Date(0).toISOString();
     }
     expect(
       (await exchangeBerdPairingCode(supabase, { code: expired, ...args })).ok

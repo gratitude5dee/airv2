@@ -90,8 +90,8 @@ function thenable(rows: unknown, single: unknown = null) {
   ]) {
     builder[method] = vi.fn(chain);
   }
-  builder.maybeSingle = async () => ({ data: single, error: null });
-  builder.then = (resolve: (value: { data: unknown }) => unknown) =>
+  builder["maybeSingle"] = async () => ({ data: single, error: null });
+  builder["then"] = (resolve: (value: { data: unknown }) => unknown) =>
     Promise.resolve({ data: rows }).then(resolve);
   return builder;
 }

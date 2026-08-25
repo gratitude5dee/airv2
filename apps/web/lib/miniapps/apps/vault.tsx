@@ -577,8 +577,8 @@ export const vault: MiniAppModule = {
       if (action === "add_login") {
         const username = String(form.get("username") ?? "");
         const password = String(form.get("password") ?? "");
-        if (username) fields.username = username;
-        if (password) fields.password = password;
+        if (username) fields["username"] = username;
+        if (password) fields["password"] = password;
       } else {
         for (const key of [
           "number",

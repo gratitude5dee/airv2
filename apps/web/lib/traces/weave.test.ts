@@ -11,19 +11,19 @@ vi.stubGlobal("fetch", fetchSpy);
 
 afterEach(() => {
   fetchSpy.mockClear();
-  delete process.env.WANDB_API_KEY;
+  delete process.env["WANDB_API_KEY"];
 });
 
 describe("weave mirror", () => {
   it("is disabled and makes zero egress without WANDB_API_KEY", async () => {
-    delete process.env.WANDB_API_KEY;
+    delete process.env["WANDB_API_KEY"];
     expect(weaveEnabled()).toBe(false);
     await mirrorReceipts([mapAgentRun({ id: "r1" })]);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it("mirrors receipt metadata only when a key is set", async () => {
-    process.env.WANDB_API_KEY = "test-key";
+    process.env["WANDB_API_KEY"] = "test-key";
     expect(weaveEnabled()).toBe(true);
     await mirrorReceipts([
       mapAgentRun({
@@ -45,7 +45,7 @@ describe("weave mirror", () => {
   });
 
   it("swallows mirror failures", async () => {
-    process.env.WANDB_API_KEY = "test-key";
+    process.env["WANDB_API_KEY"] = "test-key";
     fetchSpy.mockRejectedValueOnce(new Error("boom"));
     await expect(mirrorReceipts([mapAgentRun({ id: "r1" })])).resolves.toBe(
       undefined

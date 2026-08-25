@@ -137,7 +137,7 @@ const OWNER = "owner-user-1";
 const supabase = fakeSupabase();
 
 beforeAll(() => {
-  process.env.SESSION_SECRET = "test-session-secret";
+  process.env["SESSION_SECRET"] = "test-session-secret";
 });
 
 beforeEach(() => {

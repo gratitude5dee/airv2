@@ -56,7 +56,7 @@ describe("sharedBridgeReply", () => {
     expect(reply).toBe("On it — one moment.");
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit & { headers: Record<string, string> }];
     expect(url).toBe("https://app.example.test/api/gateway/v1/chat/completions");
-    expect(init.headers.Authorization).toBe("Bearer gw-token");
+    expect(init.headers["Authorization"]).toBe("Bearer gw-token");
     const body = JSON.parse(init.body as string);
     expect(body.messages[0].content).toBe(BRIDGE_SYSTEM_PROMPT);
     expect(body.messages[1].content).toBe("book me a flight");

@@ -132,7 +132,7 @@ function request(headers?: Record<string, string>): NextRequest {
 }
 
 beforeAll(() => {
-  process.env.MINIAPP_SIGNING_KEY = "test-signing-key";
+  process.env["MINIAPP_SIGNING_KEY"] = "test-signing-key";
 });
 
 beforeEach(() => {

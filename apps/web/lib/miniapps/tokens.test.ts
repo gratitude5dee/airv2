@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { mintToken, verifyToken } from "./tokens";
 
 beforeAll(() => {
-  process.env.MINIAPP_SIGNING_KEY = "test-signing-key";
+  process.env["MINIAPP_SIGNING_KEY"] = "test-signing-key";
 });
 
 describe("mini-app tokens", () => {

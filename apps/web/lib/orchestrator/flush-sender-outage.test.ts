@@ -117,8 +117,8 @@ describe("runFlush during a Spectrum outage", () => {
     const reschedule = supabase.ops.updates.find(
       (update) => update.table === "flush_jobs"
     );
-    expect(reschedule?.values.attempts).toBe(1);
-    expect(reschedule?.values.chain_started_at).toBeNull();
+    expect(reschedule?.values["attempts"]).toBe(1);
+    expect(reschedule?.values["chain_started_at"]).toBeNull();
   });
 
   it("rethrows sender-creation failure once attempts are exhausted", async () => {
@@ -151,7 +151,7 @@ describe("runFlush during a Spectrum outage", () => {
     const reschedule = supabase.ops.updates.find(
       (update) => update.table === "flush_jobs"
     );
-    expect(reschedule?.values.attempts).toBe(1);
+    expect(reschedule?.values["attempts"]).toBe(1);
   });
 
   it("does not carry a bridge marker when the bridged reply fails to send", async () => {
@@ -173,6 +173,6 @@ describe("runFlush during a Spectrum outage", () => {
     const reschedule = supabase.ops.updates.find(
       (update) => update.table === "flush_jobs"
     );
-    expect(reschedule?.values.attempts).toBe(1);
+    expect(reschedule?.values["attempts"]).toBe(1);
   });
 });

@@ -106,18 +106,18 @@ function setEntitlement(patch: Partial<EntitlementRow>): void {
 describe("gateway reasoning_effort gating (P1-7)", () => {
   beforeEach(() => {
     setEntitlement({ speed_tier: "fast", model_family: "openai" });
-    process.env.MODEL_REASONING_FAST = "low";
+    process.env["MODEL_REASONING_FAST"] = "low";
   });
   afterEach(() => {
-    delete process.env.MODEL_REASONING_FAST;
-    delete process.env.MODEL_FAST;
+    delete process.env["MODEL_REASONING_FAST"];
+    delete process.env["MODEL_FAST"];
     vi.unstubAllGlobals();
   });
 
   it("injects the configured effort for reasoning models", async () => {
     const sent = await upstreamBody({ messages: [] });
-    expect(sent.model).toBe("gpt-5.6-luna");
-    expect(sent.reasoning_effort).toBe("low");
+    expect(sent["model"]).toBe("gpt-5.6-luna");
+    expect(sent["reasoning_effort"]).toBe("low");
   });
 
   it("pins none on tool-bearing calls", async () => {
@@ -125,66 +125,66 @@ describe("gateway reasoning_effort gating (P1-7)", () => {
       messages: [],
       tools: [{ type: "function" }],
     });
-    expect(sent.reasoning_effort).toBe("none");
+    expect(sent["reasoning_effort"]).toBe("none");
   });
 
   it("omits reasoning_effort for non-reasoning override models", async () => {
-    process.env.MODEL_FAST = "gpt-4o-mini";
+    process.env["MODEL_FAST"] = "gpt-4o-mini";
     const sent = await upstreamBody({ messages: [], max_tokens: 100 });
-    expect(sent.model).toBe("gpt-4o-mini");
-    expect(sent.reasoning_effort).toBeUndefined();
+    expect(sent["model"]).toBe("gpt-4o-mini");
+    expect(sent["reasoning_effort"]).toBeUndefined();
     // legacy knobs also stay untouched for non-reasoning models
-    expect(sent.max_tokens).toBe(100);
-    expect(sent.max_completion_tokens).toBeUndefined();
+    expect(sent["max_tokens"]).toBe(100);
+    expect(sent["max_completion_tokens"]).toBeUndefined();
   });
 });
 
 describe("gateway model families", () => {
   beforeEach(() => {
-    process.env.MODEL_REASONING_FAST = "low";
+    process.env["MODEL_REASONING_FAST"] = "low";
   });
   afterEach(() => {
-    delete process.env.MODEL_REASONING_FAST;
+    delete process.env["MODEL_REASONING_FAST"];
     vi.unstubAllGlobals();
   });
 
   it("falls back to Ox Alpha when the entitlement carries no family", async () => {
     setEntitlement({ speed_tier: "fast", model_family: null });
     const call = await upstreamCall({ messages: [], max_tokens: 100 });
-    expect(call.body.model).toBe("stealth/ox-alpha");
+    expect(call.body["model"]).toBe("stealth/ox-alpha");
     // OpenAI-only params are never injected for an OpenRouter slug
-    expect(call.body.reasoning_effort).toBeUndefined();
-    expect(call.body.max_tokens).toBe(100);
-    expect(call.body.max_completion_tokens).toBeUndefined();
+    expect(call.body["reasoning_effort"]).toBeUndefined();
+    expect(call.body["max_tokens"]).toBe(100);
+    expect(call.body["max_completion_tokens"]).toBeUndefined();
     expect(call.url).toBe("https://openrouter.test/api/v1/chat/completions");
     const headers = call.init.headers as Record<string, string>;
-    expect(headers.Authorization).toBe("Bearer openrouter-key");
+    expect(headers["Authorization"]).toBe("Bearer openrouter-key");
     expect(headers["HTTP-Referer"]).toBe("https://app.test");
   });
 
   it("keeps the OpenAI-only service_tier off OpenRouter requests", async () => {
-    process.env.MODEL_SERVICE_TIER_FAST = "priority";
+    process.env["MODEL_SERVICE_TIER_FAST"] = "priority";
     try {
       setEntitlement({ speed_tier: "fast", model_family: "ox-alpha" });
       expect(
-        (await upstreamBody({ messages: [] })).service_tier
+        (await upstreamBody({ messages: [] }))["service_tier"]
       ).toBeUndefined();
       setEntitlement({ model_family: "openai" });
-      expect((await upstreamBody({ messages: [] })).service_tier).toBe(
+      expect((await upstreamBody({ messages: [] }))["service_tier"]).toBe(
         "priority"
       );
     } finally {
-      delete process.env.MODEL_SERVICE_TIER_FAST;
+      delete process.env["MODEL_SERVICE_TIER_FAST"];
     }
   });
 
   it("resolves each Inkling family to its free slug", async () => {
     setEntitlement({ model_family: "inkling" });
-    expect((await upstreamBody({ messages: [] })).model).toBe(
+    expect((await upstreamBody({ messages: [] }))["model"]).toBe(
       "thinkingmachines/inkling:free"
     );
     setEntitlement({ model_family: "inkling-small" });
-    expect((await upstreamBody({ messages: [] })).model).toBe(
+    expect((await upstreamBody({ messages: [] }))["model"]).toBe(
       "thinkingmachines/inkling-small:free"
     );
   });
@@ -192,10 +192,10 @@ describe("gateway model families", () => {
   it("keeps the openai family on the tier-resolved model and provider", async () => {
     setEntitlement({ speed_tier: "deep", model_family: "openai" });
     const call = await upstreamCall({ messages: [] });
-    expect(call.body.model).toBe("gpt-5.6-terra");
+    expect(call.body["model"]).toBe("gpt-5.6-terra");
     expect(call.url).toBe("https://upstream.test/v1/chat/completions");
     const headers = call.init.headers as Record<string, string>;
-    expect(headers.Authorization).toBe("Bearer provider-key");
+    expect(headers["Authorization"]).toBe("Bearer provider-key");
     expect(headers["HTTP-Referer"]).toBeUndefined();
   });
 
@@ -229,7 +229,7 @@ describe("gateway model families", () => {
     const secondBody = JSON.parse(
       String((fetchMock.mock.calls[1]?.[1] as RequestInit).body)
     ) as Record<string, unknown>;
-    expect(secondBody.model).toBe("gpt-5.6-luna");
+    expect(secondBody["model"]).toBe("gpt-5.6-luna");
     expect(String(fetchMock.mock.calls[1]?.[0])).toBe(
       "https://upstream.test/v1/chat/completions"
     );

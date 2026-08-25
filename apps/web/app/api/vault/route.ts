@@ -39,22 +39,22 @@ function parseItemInput(
   const body = asRecord(raw);
   if (!body) return null;
   const item: Partial<VaultItemInput> = {};
-  if (body.kind !== undefined) {
-    if (!KINDS.includes(body.kind as VaultItemKind)) return null;
-    item.kind = body.kind as VaultItemKind;
+  if (body["kind"] !== undefined) {
+    if (!KINDS.includes(body["kind"] as VaultItemKind)) return null;
+    item.kind = body["kind"] as VaultItemKind;
   }
-  if (body.name !== undefined) {
+  if (body["name"] !== undefined) {
     if (
-      typeof body.name !== "string" ||
-      body.name.trim().length === 0 ||
-      body.name.length > 120
+      typeof body["name"] !== "string" ||
+      body["name"].trim().length === 0 ||
+      body["name"].length > 120
     ) {
       return null;
     }
-    item.name = body.name.trim();
+    item.name = body["name"].trim();
   }
-  if (body.fields !== undefined) {
-    const rawFields = asRecord(body.fields);
+  if (body["fields"] !== undefined) {
+    const rawFields = asRecord(body["fields"]);
     if (!rawFields) return null;
     const fields: Record<string, string | null> = {};
     for (const [key, value] of Object.entries(rawFields)) {
@@ -65,24 +65,24 @@ function parseItemInput(
     }
     item.fields = fields;
   }
-  if (body.env_var !== undefined) {
-    if (body.env_var !== null) {
+  if (body["env_var"] !== undefined) {
+    if (body["env_var"] !== null) {
       if (
-        typeof body.env_var !== "string" ||
-        !ENV_NAME_RE.test(body.env_var)
+        typeof body["env_var"] !== "string" ||
+        !ENV_NAME_RE.test(body["env_var"])
       ) {
         return null;
       }
-      item.env_var = body.env_var;
+      item.env_var = body["env_var"];
     } else {
       item.env_var = null;
     }
   }
-  if (body.totp_seed !== undefined) {
-    if (body.totp_seed !== null && typeof body.totp_seed !== "string") {
+  if (body["totp_seed"] !== undefined) {
+    if (body["totp_seed"] !== null && typeof body["totp_seed"] !== "string") {
       return null;
     }
-    item.totp_seed = body.totp_seed as string | null;
+    item.totp_seed = body["totp_seed"] as string | null;
   }
   if (!partial && (!item.kind || !item.name)) return null;
   return item;
@@ -161,7 +161,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   return mutate(request, (body) => {
-    const item = parseItemInput(body.item, false);
+    const item = parseItemInput(body["item"], false);
     if (!item) return null;
     return [{ op: "create", item: item as VaultItemInput }];
   });
@@ -169,16 +169,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
 export async function PUT(request: NextRequest): Promise<NextResponse> {
   return mutate(request, (body) => {
-    if (typeof body.id !== "string" || !ID_RE.test(body.id)) return null;
-    const item = parseItemInput(body.item, true);
+    if (typeof body["id"] !== "string" || !ID_RE.test(body["id"])) return null;
+    const item = parseItemInput(body["item"], true);
     if (!item || Object.keys(item).length === 0) return null;
-    return [{ op: "update", id: body.id, item }];
+    return [{ op: "update", id: body["id"], item }];
   });
 }
 
 export async function DELETE(request: NextRequest): Promise<NextResponse> {
   return mutate(request, (body) => {
-    if (typeof body.id !== "string" || !ID_RE.test(body.id)) return null;
-    return [{ op: "delete", id: body.id }];
+    if (typeof body["id"] !== "string" || !ID_RE.test(body["id"])) return null;
+    return [{ op: "delete", id: body["id"] }];
   });
 }

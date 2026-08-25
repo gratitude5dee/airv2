@@ -19,11 +19,11 @@ vi.mock("@/lib/supabase", () => {
     for (const method of ["select", "order", "limit", "gte"]) {
       chain[method] = vi.fn(self);
     }
-    chain.eq = vi.fn((column: string, value: unknown) => {
+    chain["eq"] = vi.fn((column: string, value: unknown) => {
       db.filters.push([column, value]);
       return chain;
     });
-    chain.then = (resolve: (value: unknown) => unknown) =>
+    chain["then"] = (resolve: (value: unknown) => unknown) =>
       Promise.resolve({
         data: db.error ? null : db.rows,
         error: db.error,
@@ -40,7 +40,7 @@ const authed = (url = base) =>
   new NextRequest(url, { headers: { authorization: "Bearer admin-key" } });
 
 beforeEach(() => {
-  process.env.ADMIN_API_KEY = "admin-key";
+  process.env["ADMIN_API_KEY"] = "admin-key";
   db.rows = [];
   db.error = null;
   db.filters = [];

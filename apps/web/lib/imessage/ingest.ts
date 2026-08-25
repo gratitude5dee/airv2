@@ -126,22 +126,22 @@ export function parseChunk(raw: unknown): IngestChunk {
     }
     const m = asRecord(entry) ?? {};
     if (
-      typeof m.ts !== "string" ||
-      typeof m.chat !== "string" ||
-      typeof m.from !== "string" ||
-      typeof m.is_from_me !== "boolean" ||
-      typeof m.text !== "string"
+      typeof m["ts"] !== "string" ||
+      typeof m["chat"] !== "string" ||
+      typeof m["from"] !== "string" ||
+      typeof m["is_from_me"] !== "boolean" ||
+      typeof m["text"] !== "string"
     ) {
       throw new IngestInputError(
         "each message needs ts, chat, from, is_from_me, text"
       );
     }
     messages.push({
-      ts: m.ts,
-      chat: m.chat,
-      from: m.from,
-      is_from_me: m.is_from_me,
-      text: m.text,
+      ts: m["ts"],
+      chat: m["chat"],
+      from: m["from"],
+      is_from_me: m["is_from_me"],
+      text: m["text"],
     });
   }
   return {
@@ -173,13 +173,13 @@ function normalizeStatus(raw: unknown): IngestStatus {
   const status = defaultStatus();
   const doc = asRecord(raw);
   if (!doc) return status;
-  if (typeof doc.chunks === "number") status.chunks = doc.chunks;
-  if (typeof doc.messages === "number") status.messages = doc.messages;
-  if (typeof doc.last_upload_at === "string") {
-    status.last_upload_at = doc.last_upload_at;
+  if (typeof doc["chunks"] === "number") status.chunks = doc["chunks"];
+  if (typeof doc["messages"] === "number") status.messages = doc["messages"];
+  if (typeof doc["last_upload_at"] === "string") {
+    status.last_upload_at = doc["last_upload_at"];
   }
-  if (typeof doc.from_date === "string") status.from_date = doc.from_date;
-  if (typeof doc.to_date === "string") status.to_date = doc.to_date;
+  if (typeof doc["from_date"] === "string") status.from_date = doc["from_date"];
+  if (typeof doc["to_date"] === "string") status.to_date = doc["to_date"];
   return status;
 }
 

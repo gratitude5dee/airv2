@@ -8,6 +8,7 @@
  * is released by the approved gate).
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { z } from "zod";
 import { asRecord } from "../records";
 import {
   ceilingAllows,
@@ -94,6 +95,32 @@ export function requestedExposureCents(
   return exposure30dCents(dailyBudgetCents);
 }
 
+/**
+ * Loose write-args shape: names the fields the approval path reads while
+ * `.passthrough()` keeps the rest, since create_campaign forwards the whole
+ * args object to the platform call.
+ */
+const WriteArgsSchema = z
+  .object({
+    parent_write_id: z.unknown(),
+    ad_group_ref: z.unknown(),
+    ad_ref: z.unknown(),
+    name: z.unknown(),
+    context_hints: z.unknown(),
+    max_bid_cents: z.unknown(),
+    image_url: z.unknown(),
+    status: z.unknown(),
+    creative: z.unknown(),
+  })
+  .passthrough();
+
+type WriteArgs = z.infer<typeof WriteArgsSchema>;
+
+function parseWriteArgs(value: unknown): WriteArgs {
+  const parsed = WriteArgsSchema.safeParse(value);
+  return parsed.success ? parsed.data : {};
+}
+
 export async function requestAdWrite(
   supabase: SupabaseClient,
   userId: string,
@@ -108,7 +135,7 @@ export async function requestAdWrite(
     .maybeSingle();
   if (!account) throw new AdWriteError("ad account not found", 404);
 
-  const args = request.args ?? {};
+  const args = parseWriteArgs(request.args ?? {});
   if (
     (request.kind === "update_budget" || request.kind === "set_status") &&
     !request.campaignRef
@@ -285,13 +312,19 @@ async function parentResultRef(
   return ref;
 }
 
-function chatCardFromArgs(args: Record<string, unknown>): ChatCardCreative | undefined {
-  const creative = asRecord(args.creative);
-  if (!creative) return undefined;
+const CreativeRow = z.object({
+  title: z.unknown(),
+  body: z.unknown(),
+  target_url: z.unknown(),
+});
+
+function chatCardFromArgs(args: WriteArgs): ChatCardCreative | undefined {
+  const creative = CreativeRow.safeParse(args.creative);
+  if (!creative.success) return undefined;
   return {
-    title: String(creative.title ?? ""),
-    body: String(creative.body ?? ""),
-    targetUrl: String(creative.target_url ?? ""),
+    title: String(creative.data.title ?? ""),
+    body: String(creative.data.body ?? ""),
+    targetUrl: String(creative.data.target_url ?? ""),
   };
 }
 
@@ -318,7 +351,7 @@ export async function approveAdWrite(
     throw new AdWriteError(`write already ${write.status}`, 409);
   }
 
-  const args = asRecord(write.args) ?? {};
+  const args = parseWriteArgs(write.args);
   const spendIncreasing =
     write.kind === "create_campaign" ||
     write.kind === "update_budget" ||

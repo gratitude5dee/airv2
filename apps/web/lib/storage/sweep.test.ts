@@ -70,8 +70,8 @@ function fakeSupabase(): SupabaseClient {
                 return chain;
               },
               async select(_columns: string) {
-                const userId = filters.user_id as string;
-                if (db.usage[userId] !== filters.bytes_used) {
+                const userId = filters["user_id"] as string;
+                if (db.usage[userId] !== filters["bytes_used"]) {
                   return { data: [], error: null };
                 }
                 db.usage[userId] = patch.bytes_used;

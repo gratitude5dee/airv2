@@ -67,12 +67,12 @@ const clip = (type: string, bytes = 16): Blob =>
 
 describe("POST /api/voice/transcribe", () => {
   beforeEach(() => {
-    process.env.MODEL_PROVIDER_BASE_URL = "https://stt.test/v1";
-    process.env.MODEL_PROVIDER_API_KEY = "test-key";
-    delete process.env.STT_BASE_URL;
-    delete process.env.STT_API_KEY;
-    delete process.env.STT_MODEL;
-    delete process.env.STT_COST_CENTS_PER_MIN;
+    process.env["MODEL_PROVIDER_BASE_URL"] = "https://stt.test/v1";
+    process.env["MODEL_PROVIDER_API_KEY"] = "test-key";
+    delete process.env["STT_BASE_URL"];
+    delete process.env["STT_API_KEY"];
+    delete process.env["STT_MODEL"];
+    delete process.env["STT_COST_CENTS_PER_MIN"];
     sessionUserIdMock.mockReturnValue("user-1");
     const stub = supabaseStub(0);
     serviceClientMock.mockReturnValue(stub.client);
@@ -184,7 +184,7 @@ describe("POST /api/voice/transcribe", () => {
     const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("https://stt.test/v1/audio/transcriptions");
-    expect((init.headers as Record<string, string>).Authorization).toBe(
+    expect((init.headers as Record<string, string>)["Authorization"]).toBe(
       "Bearer test-key"
     );
   });

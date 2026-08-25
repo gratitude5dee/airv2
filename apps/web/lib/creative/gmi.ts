@@ -517,12 +517,12 @@ export async function generateCompiledRequest(
 
 /** Normalizes the image and video models' different successful outcome shapes. */
 export function extractMediaUrl(response: unknown): string | undefined {
-  const outcome = asRecord(asRecord(response)?.outcome);
+  const outcome = asRecord(asRecord(response)?.["outcome"]);
   const direct = stringField(outcome, "video_url");
   if (direct) {
     return direct;
   }
-  const mediaUrls = outcome?.media_urls;
+  const mediaUrls = outcome?.["media_urls"];
   if (!Array.isArray(mediaUrls)) {
     return undefined;
   }
@@ -545,7 +545,7 @@ const requestIdFor = (response: unknown): string | undefined =>
 
 const errorMessageFor = (response: unknown): string => {
   const record = asRecord(response);
-  const outcome = asRecord(record?.outcome);
+  const outcome = asRecord(record?.["outcome"]);
   return (
     stringField(record, "message") ??
     stringField(record, "error") ??

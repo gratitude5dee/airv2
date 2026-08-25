@@ -62,14 +62,14 @@ describe("provisionUser bound_phone normalization (P1-8)", () => {
       provisionUser({ boundPhone: "+1 (415) 555-0123" })
     ).rejects.toThrow("fork unavailable in test");
 
-    expect(inserts.provisioning?.[0]).toMatchObject({
+    expect(inserts["provisioning"]?.[0]).toMatchObject({
       bound_phone: "+14155550123",
     });
-    expect(inserts.handles?.[0]).toMatchObject({
+    expect(inserts["handles"]?.[0]).toMatchObject({
       platform: "imessage",
       address: "+14155550123",
     });
-    expect(inserts.senders?.[0]).toMatchObject({
+    expect(inserts["senders"]?.[0]).toMatchObject({
       platform: "imessage",
       address: "+14155550123",
       trust_tier: 0,

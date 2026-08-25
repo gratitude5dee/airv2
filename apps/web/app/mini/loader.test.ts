@@ -71,7 +71,7 @@ function freshGrant(overrides?: Partial<GuestGrant>): GuestGrant {
 }
 
 beforeAll(() => {
-  process.env.MINIAPP_SIGNING_KEY = "test-signing-key";
+  process.env["MINIAPP_SIGNING_KEY"] = "test-signing-key";
 });
 
 beforeEach(() => {

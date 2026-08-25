@@ -131,7 +131,7 @@ function fakeSupabase(db: WalletDb): SupabaseClient {
           const apply = () => {
             if (
               "status" in filters &&
-              filters.status !== db.transfer.status
+              filters["status"] !== db.transfer.status
             ) {
               return [];
             }

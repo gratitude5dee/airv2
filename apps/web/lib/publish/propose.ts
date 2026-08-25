@@ -210,8 +210,8 @@ export async function approveContentPlan(
       slots.map((slot) => (slot as { id: string }).id)
     );
 
-  const steps = Array.isArray(payload?.steps)
-    ? (payload.steps as Array<{ brief?: string; slot_id?: string }>)
+  const steps = Array.isArray(payload?.["steps"])
+    ? (payload["steps"] as Array<{ brief?: string; slot_id?: string }>)
     : [];
   const briefBySlot = new Map<string, string>();
   for (const step of steps) {

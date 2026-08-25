@@ -324,13 +324,13 @@ describe("checkout: server-derived money (order tampering)", () => {
       "https://mini.wzrd.tech/casey-shop"
     );
     const order = at(tables.orders, 0);
-    expect(order.amount_cents).toBe(5000); // 2 × 2500, from the row
-    expect(order.status).toBe("pending");
+    expect(order["amount_cents"]).toBe(5000); // 2 × 2500, from the row
+    expect(order["status"]).toBe("pending");
     expect(start.checkoutUrl).toContain("checkout.stripe.com");
     // Stripe multiplies unit_amount × quantity: the session gets the
     // per-item price so the charge equals the recorded order total.
-    expect(connectCalls[0]?.params.amountCents).toBe(2500);
-    expect(connectCalls[0]?.params.quantity).toBe(2);
+    expect(connectCalls[0]?.params["amountCents"]).toBe(2500);
+    expect(connectCalls[0]?.params["quantity"]).toBe(2);
   });
 
   it("releases the order and fails gracefully when Stripe is unavailable", async () => {
@@ -340,7 +340,7 @@ describe("checkout: server-derived money (order tampering)", () => {
       startCheckout(supabase, MERCHANT, "tee", "1", null, "https://x")
     ).rejects.toMatchObject({ status: 502 });
     // No orphan pending row: the order is released back to expired.
-    expect(at(tables.orders, 0).status).toBe("expired");
+    expect(at(tables.orders, 0)["status"]).toBe("expired");
   });
 
   it("rejects tampered quantities and unknown products", async () => {
@@ -368,7 +368,7 @@ describe("checkout: server-derived money (order tampering)", () => {
   });
 
   it("refuses checkout when the merchant cannot take charges", async () => {
-    at(tables.merchants, 0).charges_enabled = false;
+    at(tables.merchants, 0)["charges_enabled"] = false;
     const supabase = makeSupabase();
     await expect(
       startCheckout(supabase, MERCHANT, "tee", "1", null, "https://x")
@@ -406,13 +406,13 @@ describe("fulfillment: webhook-only, replay-safe", () => {
   it("flips pending → paid exactly once and decrements inventory", async () => {
     const supabase = makeSupabase();
     await startCheckout(supabase, MERCHANT, "tee", "2", "cr-1", "https://x");
-    const sessionId = at(tables.orders, 0).stripe_session_id as string;
+    const sessionId = at(tables.orders, 0)["stripe_session_id"] as string;
     expect(await fulfillCheckoutSession(supabase, completedSession(sessionId))).toBe(true);
-    expect(at(tables.orders, 0).status).toBe("paid");
-    expect(at(tables.storefront_products, 0).inventory).toBe(1);
+    expect(at(tables.orders, 0)["status"]).toBe("paid");
+    expect(at(tables.storefront_products, 0)["inventory"]).toBe(1);
     // Replay: the conditional flip refuses a second effect.
     expect(await fulfillCheckoutSession(supabase, completedSession(sessionId))).toBe(false);
-    expect(at(tables.storefront_products, 0).inventory).toBe(1);
+    expect(at(tables.storefront_products, 0)["inventory"]).toBe(1);
   });
 
   it("mints a ticket for event tickets, none for physical goods", async () => {
@@ -420,16 +420,16 @@ describe("fulfillment: webhook-only, replay-safe", () => {
     await startCheckout(supabase, MERCHANT, "show", "1", null, "https://x");
     await fulfillCheckoutSession(
       supabase,
-      completedSession(at(tables.orders, 0).stripe_session_id as string)
+      completedSession(at(tables.orders, 0)["stripe_session_id"] as string)
     );
-    expect(at(tables.orders, 0).ticket_code).toBeTruthy();
+    expect(at(tables.orders, 0)["ticket_code"]).toBeTruthy();
 
     await startCheckout(supabase, MERCHANT, "tee", "1", null, "https://x");
     await fulfillCheckoutSession(
       supabase,
-      completedSession(at(tables.orders, 1).stripe_session_id as string)
+      completedSession(at(tables.orders, 1)["stripe_session_id"] as string)
     );
-    expect(at(tables.orders, 1).ticket_code ?? null).toBeNull();
+    expect(at(tables.orders, 1)["ticket_code"] ?? null).toBeNull();
   });
 
   it("an unknown session fulfills nothing", async () => {
@@ -449,7 +449,7 @@ describe("receipts and tickets", () => {
     const order = await orderForReceipt(supabase, start.orderId, start.buyerKey);
     expect(order?.id).toBe(start.orderId);
     // Only the hash is stored.
-    expect(at(tables.orders, 0).buyer_key_hash).toBe(hashKey(start.buyerKey));
+    expect(at(tables.orders, 0)["buyer_key_hash"]).toBe(hashKey(start.buyerKey));
     expect(JSON.stringify(at(tables.orders, 0))).not.toContain(start.buyerKey);
   });
 
@@ -458,9 +458,9 @@ describe("receipts and tickets", () => {
     await startCheckout(supabase, MERCHANT, "show", "1", null, "https://x");
     await fulfillCheckoutSession(
       supabase,
-      completedSession(at(tables.orders, 0).stripe_session_id as string)
+      completedSession(at(tables.orders, 0)["stripe_session_id"] as string)
     );
-    const code = at(tables.orders, 0).ticket_code as string;
+    const code = at(tables.orders, 0)["ticket_code"] as string;
     expect((await checkInTicket(supabase, "user-payer", code)).ok).toBe(false);
     expect((await checkInTicket(supabase, MERCHANT, code)).ok).toBe(true);
     expect((await checkInTicket(supabase, MERCHANT, code)).ok).toBe(false);
@@ -478,15 +478,15 @@ describe("catalog: owner-approved projection of public data only", () => {
     const supabase = makeSupabase();
     const first = await requestCatalogPublish(supabase, MERCHANT);
     expect(first.staged).toBe(true);
-    expect(at(tables.decisions, 0).kind).toBe("shop_publish");
-    expect(at(tables.decisions, 0).status ?? "pending").toBe("pending");
+    expect(at(tables.decisions, 0)["kind"]).toBe("shop_publish");
+    expect(at(tables.decisions, 0)["status"] ?? "pending").toBe("pending");
     // Restaging reuses the pending decision instead of piling up.
     const second = await requestCatalogPublish(supabase, MERCHANT);
     expect(second.staged).toBe(false);
     expect(tables.decisions).toHaveLength(1);
     // Nothing projected yet.
     expect(
-      tables.storefront_products.find((p) => p.product_key === "zine")
+      tables.storefront_products.find((p) => p["product_key"] === "zine")
     ).toBeUndefined();
   });
 
@@ -507,13 +507,13 @@ describe("catalog: owner-approved projection of public data only", () => {
     const supabase = makeSupabase();
     const published = await applyCatalogPublish(supabase, MERCHANT);
     expect(published).toBe(2);
-    const zine = tables.storefront_products.find((p) => p.product_key === "zine");
-    expect(zine?.price_cents).toBe(800);
-    const leaky = tables.storefront_products.find((p) => p.product_key === "leaky");
-    expect(leaky?.image_url ?? null).toBeNull();
+    const zine = tables.storefront_products.find((p) => p["product_key"] === "zine");
+    expect(zine?.["price_cents"]).toBe(800);
+    const leaky = tables.storefront_products.find((p) => p["product_key"] === "leaky");
+    expect(leaky?.["image_url"] ?? null).toBeNull();
     // The previously published rows not in the catalog are deactivated.
     expect(
-      tables.storefront_products.find((p) => p.product_key === "tee")?.active
+      tables.storefront_products.find((p) => p["product_key"] === "tee")?.["active"]
     ).toBe(false);
   });
 
@@ -535,8 +535,8 @@ describe("payment requests: decision-gated, expiring, webhook-confirmed", () => 
       amount: 500,
       payee: "casey",
     });
-    expect(at(tables.payment_requests, 0).status).toBe("pending");
-    expect(at(tables.decisions, 0).kind).toBe("payment_request");
+    expect(at(tables.payment_requests, 0)["status"]).toBe("pending");
+    expect(at(tables.decisions, 0)["kind"]).toBe("payment_request");
     expect(connectCalls).toHaveLength(0);
     expect(transferCalls).toHaveLength(0);
   });
@@ -552,7 +552,7 @@ describe("payment requests: decision-gated, expiring, webhook-confirmed", () => 
     await expect(
       createPaymentRequest(supabase, "user-payer", { currency: "usd", amount: 500, payee: "nobody" })
     ).rejects.toThrow(/not found/);
-    at(tables.merchants, 0).charges_enabled = false;
+    at(tables.merchants, 0)["charges_enabled"] = false;
     await expect(
       createPaymentRequest(supabase, "user-payer", { currency: "usd", amount: 500, payee: "casey" })
     ).rejects.toThrow(/not set up/);
@@ -565,11 +565,11 @@ describe("payment requests: decision-gated, expiring, webhook-confirmed", () => 
       amount: 500,
       payee: "casey",
     });
-    at(tables.payment_requests, 0).expires_at = "2000-01-01T00:00:00Z";
+    at(tables.payment_requests, 0)["expires_at"] = "2000-01-01T00:00:00Z";
     await expect(
       approvePaymentRequest(supabase, "user-payer", requestId, "https://x")
     ).rejects.toThrow(/expired/);
-    expect(at(tables.payment_requests, 0).status).toBe("expired");
+    expect(at(tables.payment_requests, 0)["status"]).toBe("expired");
     expect(connectCalls).toHaveLength(0);
   });
 
@@ -581,11 +581,11 @@ describe("payment requests: decision-gated, expiring, webhook-confirmed", () => 
       payee: "casey",
     });
     await approvePaymentRequest(supabase, "user-payer", requestId, "https://x");
-    const sessionId = at(tables.payment_requests, 0).stripe_session_id as string;
+    const sessionId = at(tables.payment_requests, 0)["stripe_session_id"] as string;
     expect(
       await markPaymentRequestPaid(supabase, completedSession(sessionId))
     ).toBe(true);
-    expect(at(tables.payment_requests, 0).status).toBe("paid");
+    expect(at(tables.payment_requests, 0)["status"]).toBe("paid");
     expect(
       await markPaymentRequestPaid(supabase, completedSession(sessionId))
     ).toBe(false);
@@ -651,9 +651,9 @@ describe("merchant onboarding", () => {
       charges_enabled: true,
       details_submitted: true,
     } as unknown as Stripe.Account);
-    expect(at(tables.merchants, 0).charges_enabled).toBe(true);
-    const row = tables.mini_apps.find((app) => app.slug === "casey-shop");
-    expect(row?.owner_user_id).toBe(MERCHANT);
+    expect(at(tables.merchants, 0)["charges_enabled"]).toBe(true);
+    const row = tables.mini_apps.find((app) => app["slug"] === "casey-shop");
+    expect(row?.["owner_user_id"]).toBe(MERCHANT);
     // A forged account id updates nothing.
     await syncAccountFromEvent(supabase, {
       id: "acct_forged",

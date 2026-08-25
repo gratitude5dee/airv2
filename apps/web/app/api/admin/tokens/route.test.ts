@@ -16,7 +16,7 @@ vi.mock("@/lib/supabase", () => {
     for (const method of ["select", "eq", "gte", "lt", "order", "range", "limit"]) {
       chain[method] = vi.fn(self);
     }
-    chain.then = (resolve: (value: unknown) => unknown) =>
+    chain["then"] = (resolve: (value: unknown) => unknown) =>
       Promise.resolve({ data: db.rows[table] ?? [], error: null }).then(resolve);
     return chain;
   }
@@ -30,7 +30,7 @@ const authed = (url = base) =>
   new NextRequest(url, { headers: { authorization: "Bearer admin-key" } });
 
 beforeEach(() => {
-  process.env.ADMIN_API_KEY = "admin-key";
+  process.env["ADMIN_API_KEY"] = "admin-key";
   db.rows = {};
 });
 

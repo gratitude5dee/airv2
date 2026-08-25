@@ -23,10 +23,10 @@ vi.mock("@/lib/supabase", () => {
     for (const method of ["select", "eq", "gte", "lt", "order", "range"]) {
       chain[method] = vi.fn(self);
     }
-    chain.maybeSingle = async () => ({
+    chain["maybeSingle"] = async () => ({
       data: table === "users" ? db.user : null,
     });
-    chain.then = (resolve: (value: unknown) => unknown) =>
+    chain["then"] = (resolve: (value: unknown) => unknown) =>
       Promise.resolve({ data: db.rows[table] ?? [], error: null }).then(
         resolve
       );
@@ -67,7 +67,7 @@ beforeEach(() => {
   db.user = { id: "user-1" };
   db.rows = {};
   fetchSpy.mockClear();
-  delete process.env.WANDB_API_KEY;
+  delete process.env["WANDB_API_KEY"];
 });
 
 describe("GET /api/me/traces/export", () => {

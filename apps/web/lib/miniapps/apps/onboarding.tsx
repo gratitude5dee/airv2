@@ -1366,8 +1366,8 @@ export const onboarding: MiniAppModule = {
       const fields: Record<string, string> = {};
       const loginUsername = String(form.get("username") ?? "");
       const password = String(form.get("password") ?? "");
-      if (loginUsername) fields.username = loginUsername;
-      if (password) fields.password = password;
+      if (loginUsername) fields["username"] = loginUsername;
+      if (password) fields["password"] = password;
       try {
         const box = await ensureBoxAwake(supabase, userId);
         try {

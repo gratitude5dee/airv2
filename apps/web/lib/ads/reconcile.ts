@@ -44,15 +44,15 @@ export function isDivergent(
 export function parseSpendCents(insights: unknown): number | null {
   const record = asRecord(insights);
   if (!record) return null;
-  const data = asRecord(record.data) ?? record;
-  if (typeof data.spend_cents === "number" && Number.isFinite(data.spend_cents)) {
-    return Math.round(data.spend_cents);
+  const data = asRecord(record["data"]) ?? record;
+  if (typeof data["spend_cents"] === "number" && Number.isFinite(data["spend_cents"])) {
+    return Math.round(data["spend_cents"]);
   }
   const spend =
-    typeof data.spend === "number"
-      ? data.spend
-      : typeof data.spend === "string"
-        ? Number(data.spend)
+    typeof data["spend"] === "number"
+      ? data["spend"]
+      : typeof data["spend"] === "string"
+        ? Number(data["spend"])
         : NaN;
   if (!Number.isFinite(spend)) return null;
   return Math.round(spend * 100);

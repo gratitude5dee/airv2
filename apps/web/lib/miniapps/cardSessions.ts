@@ -21,18 +21,18 @@ export function parseMiniAppCardSession(
 ): MiniAppCardSession | undefined {
   if (!isRecord(value)) return undefined;
   if (
-    !nonEmptyString(value.chatGuid) ||
-    !nonEmptyString(value.messageGuid) ||
-    !nonEmptyString(value.sessionId) ||
-    !nonEmptyString(value.targetMessageGuid)
+    !nonEmptyString(value["chatGuid"]) ||
+    !nonEmptyString(value["messageGuid"]) ||
+    !nonEmptyString(value["sessionId"]) ||
+    !nonEmptyString(value["targetMessageGuid"])
   ) {
     return undefined;
   }
   return {
-    chatGuid: value.chatGuid,
-    messageGuid: value.messageGuid,
-    sessionId: value.sessionId,
-    targetMessageGuid: value.targetMessageGuid,
+    chatGuid: value["chatGuid"],
+    messageGuid: value["messageGuid"],
+    sessionId: value["sessionId"],
+    targetMessageGuid: value["targetMessageGuid"],
   };
 }
 

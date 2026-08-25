@@ -22,12 +22,12 @@ vi.mock("@/lib/supabase", () => {
     for (const method of ["select", "order", "not"]) {
       chain[method] = vi.fn(self);
     }
-    chain.range = vi.fn((start: number, end: number) => {
+    chain["range"] = vi.fn((start: number, end: number) => {
       from = start;
       to = end;
       return chain;
     });
-    chain.then = (resolve: (value: unknown) => unknown) => {
+    chain["then"] = (resolve: (value: unknown) => unknown) => {
       const error = table === "users" ? db.usersError : db.handlesError;
       const rows = table === "users" ? db.users : db.handles;
       return Promise.resolve({
@@ -47,7 +47,7 @@ const authed = () =>
   new NextRequest(base, { headers: { authorization: "Bearer admin-key" } });
 
 beforeEach(() => {
-  process.env.ADMIN_API_KEY = "admin-key";
+  process.env["ADMIN_API_KEY"] = "admin-key";
   db.users = [];
   db.handles = [];
   db.usersError = null;

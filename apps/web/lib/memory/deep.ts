@@ -40,10 +40,10 @@ export async function deepMemoryStatus(
   const result = await command(boxId, "ovctl status", 60).catch(() => null);
   const doc = result && result.exitCode === 0 ? parseJson(result.stdout) : null;
   return {
-    healthy: doc?.healthy === true,
-    resources: typeof doc?.resources === "number" ? doc.resources : 0,
+    healthy: doc?.["healthy"] === true,
+    resources: typeof doc?.["resources"] === "number" ? doc["resources"] : 0,
     workspace_bytes:
-      typeof doc?.workspace_bytes === "number" ? doc.workspace_bytes : 0,
+      typeof doc?.["workspace_bytes"] === "number" ? doc["workspace_bytes"] : 0,
   };
 }
 

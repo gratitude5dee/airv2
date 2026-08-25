@@ -106,7 +106,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (tier > 0) {
     // Tier-derived edit: file the decision, write nothing (MA6 #9).
     const summary =
-      typeof body.summary === "string" ? body.summary.slice(0, 160) : null;
+      typeof body["summary"] === "string" ? body["summary"].slice(0, 160) : null;
     const { error } = await supabase.from("decisions").insert({
       user_id: userId,
       kind: "crm_update",
@@ -129,7 +129,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const person = await applyPatchOnBox(supabase, userId, patch, {
       source: "agent",
       at: new Date().toISOString(),
-      note: typeof body.summary === "string" ? body.summary.slice(0, 160) : undefined,
+      note: typeof body["summary"] === "string" ? body["summary"].slice(0, 160) : undefined,
     });
     return NextResponse.json({
       status: "applied",

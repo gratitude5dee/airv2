@@ -120,8 +120,8 @@ function ConnectApp({
 }
 
 const mount = document.getElementById("onairos-connect");
-const apiKey = mount?.dataset.apiKey ?? "";
-const googleClientId = mount?.dataset.googleClientId ?? null;
+const apiKey = mount?.dataset["apiKey"] ?? "";
+const googleClientId = mount?.dataset["googleClientId"] ?? null;
 if (mount && apiKey) {
   createRoot(mount).render(
     <StrictMode>

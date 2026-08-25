@@ -6,7 +6,7 @@
  * table's unique key, so replays are idempotent.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { asRecord } from "../records";
+import { z } from "zod";
 import {
   adInsights,
   campaignInsights,
@@ -70,6 +70,21 @@ function validDate(value: unknown): string {
  * name one of that user's own active Meta accounts (`account_ref`); no field
  * in the body can point at another user's account.
  */
+/** Loose pushed-row shape: box-pushed metrics are hostile input, so fields
+ * stay unknown and are validated below. */
+const PushedRowSchema = z.object({
+  provider: z.unknown(),
+  level: z.unknown(),
+  entity_ref: z.unknown(),
+  account_ref: z.unknown(),
+  metric_date: z.unknown(),
+  impressions: z.unknown(),
+  clicks: z.unknown(),
+  spend_cents: z.unknown(),
+  conversions: z.unknown(),
+  conversion_value_cents: z.unknown(),
+});
+
 export function validatePushedRows(
   body: unknown,
   userId: string,
@@ -83,7 +98,10 @@ export function validatePushedRows(
     throw new MetricsValidationError(`more than ${MAX_PUSH_ROWS} rows`);
   }
   return rows.map((raw) => {
-    const row = asRecord(raw) ?? {};
+    const parsed = PushedRowSchema.safeParse(raw);
+    const row: z.infer<typeof PushedRowSchema> = parsed.success
+      ? parsed.data
+      : {};
     if (row.provider !== "meta") {
       throw new MetricsValidationError("bad provider");
     }
@@ -140,6 +158,18 @@ const PULL_WINDOW_DAYS = 3;
 const PAGE_LIMIT = 100;
 const MAX_PAGES = 10;
 
+const InsightRowSchema = z.object({
+  date: z.unknown(),
+  metric_date: z.unknown(),
+  impressions: z.unknown(),
+  clicks: z.unknown(),
+  spend_micros: z.unknown(),
+  spend: z.unknown(),
+  conversions: z.unknown(),
+  conversion_value_micros: z.unknown(),
+  conversion_value: z.unknown(),
+});
+
 function pulledRow(
   base: Omit<
     NormalizedMetricRow,
@@ -154,8 +184,12 @@ function pulledRow(
   >,
   level: MetricLevel,
   entityRef: string,
-  insight: Record<string, unknown>
+  raw: unknown
 ): NormalizedMetricRow | null {
+  const parsedInsight = InsightRowSchema.safeParse(raw);
+  const insight: z.infer<typeof InsightRowSchema> = parsedInsight.success
+    ? parsedInsight.data
+    : {};
   const date =
     typeof insight.date === "string"
       ? insight.date
@@ -225,10 +259,10 @@ export async function ingestOpenAiMetrics(
           ...(after ? { after } : {}),
         });
         for (const campaign of envelope.data) {
-          if (typeof campaign.id === "string") campaignRefs.push(campaign.id);
+          if (typeof campaign["id"] === "string") campaignRefs.push(campaign["id"]);
         }
         const last = envelope.data[envelope.data.length - 1];
-        after = typeof last?.id === "string" ? last.id : undefined;
+        after = typeof last?.["id"] === "string" ? last["id"] : undefined;
         if (!envelope.hasMore || !after) break;
       }
       for (const campaignRef of campaignRefs) {
@@ -251,7 +285,12 @@ export async function ingestOpenAiMetrics(
       const adRefs = [
         ...new Set(
           (adWrites ?? [])
-            .map((w) => (asRecord(w.result) ?? {}).ad_ref)
+            .map((w) => {
+              const result = z
+                .object({ ad_ref: z.unknown() })
+                .safeParse(w.result);
+              return result.success ? result.data.ad_ref : undefined;
+            })
             .filter((ref): ref is string => typeof ref === "string" && !!ref)
         ),
       ];

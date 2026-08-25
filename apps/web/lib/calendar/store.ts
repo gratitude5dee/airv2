@@ -5,10 +5,10 @@
  * ~/.hermes/calendar/sources.json (mode 600) — never in Postgres. The
  * control plane reads the store per-request and never caches event content.
  */
+import { z } from "zod";
 import type { HermesBoxTarget } from "../hermes/client";
 import { createJob, listJobs, runJob } from "../hermes/client";
 import { BoxApiError, command, readFile, writeFile } from "../box/client";
-import { asRecord } from "../records";
 
 export const CALENDAR_DIR = "/home/user/.hermes/calendar";
 export const EVENTS_PATH = `${CALENDAR_DIR}/events.json`;
@@ -36,69 +36,26 @@ export interface CalendarEvent {
   status?: "pending" | "confirmed";
 }
 
-function isCalendarSource(value: unknown): value is CalendarEvent["source"] {
-  return (
-    value === "google" ||
-    value === "apple_ics" ||
-    value === "calcom" ||
-    value === "email" ||
-    value === "local"
-  );
-}
+const CalendarEventSchema = z.object({
+  id: z.string(),
+  source: z.enum(["google", "apple_ics", "calcom", "email", "local"]),
+  source_ref: z.string(),
+  title: z.string(),
+  starts_at: z.string(),
+  ends_at: z.string(),
+  all_day: z.boolean(),
+  location: z.string().nullish(),
+  attendees_count: z.number().int().nullish(),
+  attendees: z.array(z.string()).nullish(),
+  url: z.string().nullish(),
+  notes_ref: z.string().nullish(),
+  status: z.enum(["pending", "confirmed"]).nullish(),
+});
 
 export function parseCalendarEvent(value: unknown): CalendarEvent | undefined {
-  const record = asRecord(value);
-  if (!record) return undefined;
-  if (
-    typeof record.id !== "string" ||
-    !isCalendarSource(record.source) ||
-    typeof record.source_ref !== "string" ||
-    typeof record.title !== "string" ||
-    typeof record.starts_at !== "string" ||
-    typeof record.ends_at !== "string" ||
-    typeof record.all_day !== "boolean" ||
-    (record.location !== null &&
-      record.location !== undefined &&
-      typeof record.location !== "string") ||
-    (record.attendees_count !== null &&
-      record.attendees_count !== undefined &&
-      (typeof record.attendees_count !== "number" ||
-        !Number.isInteger(record.attendees_count))) ||
-    (record.attendees !== null &&
-      record.attendees !== undefined &&
-      (!Array.isArray(record.attendees) ||
-        record.attendees.some((entry) => typeof entry !== "string"))) ||
-    (record.url !== null &&
-      record.url !== undefined &&
-      typeof record.url !== "string") ||
-    (record.notes_ref !== null &&
-      record.notes_ref !== undefined &&
-      typeof record.notes_ref !== "string") ||
-    (record.status !== null &&
-      record.status !== undefined &&
-      record.status !== "pending" &&
-      record.status !== "confirmed")
-  ) {
-    return undefined;
-  }
-  const location =
-    typeof record.location === "string" ? record.location : undefined;
-  const attendeesCount =
-    typeof record.attendees_count === "number"
-      ? record.attendees_count
-      : undefined;
-  const attendees = Array.isArray(record.attendees)
-    ? record.attendees.filter(
-        (entry): entry is string => typeof entry === "string"
-      )
-    : undefined;
-  const url = typeof record.url === "string" ? record.url : undefined;
-  const notesRef =
-    typeof record.notes_ref === "string" ? record.notes_ref : undefined;
-  const status =
-    record.status === "pending" || record.status === "confirmed"
-      ? record.status
-      : undefined;
+  const parsed = CalendarEventSchema.safeParse(value);
+  if (!parsed.success) return undefined;
+  const record = parsed.data;
   return {
     id: record.id,
     source: record.source,
@@ -107,14 +64,14 @@ export function parseCalendarEvent(value: unknown): CalendarEvent | undefined {
     starts_at: record.starts_at,
     ends_at: record.ends_at,
     all_day: record.all_day,
-    ...(location !== undefined ? { location } : {}),
-    ...(attendeesCount !== undefined
-      ? { attendees_count: attendeesCount }
+    ...(record.location != null ? { location: record.location } : {}),
+    ...(record.attendees_count != null
+      ? { attendees_count: record.attendees_count }
       : {}),
-    ...(attendees !== undefined ? { attendees } : {}),
-    ...(url !== undefined ? { url } : {}),
-    ...(notesRef !== undefined ? { notes_ref: notesRef } : {}),
-    ...(status !== undefined ? { status } : {}),
+    ...(record.attendees != null ? { attendees: record.attendees } : {}),
+    ...(record.url != null ? { url: record.url } : {}),
+    ...(record.notes_ref != null ? { notes_ref: record.notes_ref } : {}),
+    ...(record.status != null ? { status: record.status } : {}),
   };
 }
 
@@ -134,9 +91,12 @@ export async function readEventsStore(
   } catch {
     return [];
   }
+  const wrapped = z.object({ events: z.unknown() }).safeParse(parsed);
   const list = Array.isArray(parsed)
     ? parsed
-    : (asRecord(parsed)?.events ?? []);
+    : wrapped.success
+      ? (wrapped.data.events ?? [])
+      : [];
   if (!Array.isArray(list)) return [];
   return list
     .map(parseCalendarEvent)
@@ -150,21 +110,15 @@ export interface BoxSource {
   secret: string;
 }
 
+const BoxSourceSchema = z.object({
+  id: z.string(),
+  provider: z.enum(["apple_ics", "calcom"]),
+  secret: z.string(),
+});
+
 export function parseBoxSource(value: unknown): BoxSource | undefined {
-  const record = asRecord(value);
-  if (!record) return undefined;
-  if (
-    typeof record.id !== "string" ||
-    (record.provider !== "apple_ics" && record.provider !== "calcom") ||
-    typeof record.secret !== "string"
-  ) {
-    return undefined;
-  }
-  return {
-    id: record.id,
-    provider: record.provider,
-    secret: record.secret,
-  };
+  const parsed = BoxSourceSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
 }
 
 function parseBoxSources(value: unknown): BoxSource[] | undefined {

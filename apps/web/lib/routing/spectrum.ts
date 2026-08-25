@@ -115,56 +115,56 @@ export function parseInboundSpectrumMessage(
     throw new SpectrumWebhookError(400, "invalid JSON body");
   }
   const envelope = asRecord(payload);
-  if (!envelope || envelope.event !== "messages") {
+  if (!envelope || envelope["event"] !== "messages") {
     return undefined;
   }
-  const message = asRecord(envelope.message);
+  const message = asRecord(envelope["message"]);
   if (!message) {
     throw new SpectrumWebhookError(400, "invalid message payload");
   }
-  const content = asRecord(message.content);
+  const content = asRecord(message["content"]);
   const isReadReceipt =
-    asString(content?.type)?.toLowerCase() === "read";
-  if (message.direction === "outbound" || isReadReceipt) {
+    asString(content?.["type"])?.toLowerCase() === "read";
+  if (message["direction"] === "outbound" || isReadReceipt) {
     return undefined;
   }
-  const embeddedSpace = asRecord(message.space);
-  const space = asRecord(envelope.space) ?? embeddedSpace;
-  const messageId = asString(message.id);
-  const spaceId = asString(space?.id);
+  const embeddedSpace = asRecord(message["space"]);
+  const space = asRecord(envelope["space"]) ?? embeddedSpace;
+  const messageId = asString(message["id"]);
+  const spaceId = asString(space?.["id"]);
   if (!(messageId && spaceId)) {
     throw new SpectrumWebhookError(400, "message payload is missing identifiers");
   }
   const platform =
-    asString(message.platform) ??
-    asString(embeddedSpace?.platform) ??
-    asString(space?.platform);
+    asString(message["platform"]) ??
+    asString(embeddedSpace?.["platform"]) ??
+    asString(space?.["platform"]);
   if (platform?.toLowerCase() !== "imessage") {
     return undefined;
   }
-  const sender = asRecord(message.sender);
+  const sender = asRecord(message["sender"]);
   const attachmentIds: string[] = [];
-  const contentType = asString(content?.type)?.toLowerCase();
+  const contentType = asString(content?.["type"])?.toLowerCase();
   if (contentType === "attachment") {
-    const id = asString(content?.id);
+    const id = asString(content?.["id"]);
     if (id) attachmentIds.push(id);
   }
-  const groupItems = Array.isArray(content?.contents) ? content.contents : [];
+  const groupItems = Array.isArray(content?.["contents"]) ? content["contents"] : [];
   for (const item of groupItems) {
     const record = asRecord(item);
-    if (asString(record?.type)?.toLowerCase() === "attachment") {
-      const id = asString(record?.id);
+    if (asString(record?.["type"])?.toLowerCase() === "attachment") {
+      const id = asString(record?.["id"]);
       if (id) attachmentIds.push(id);
     }
   }
   return {
     messageId,
-    phone: asString(space?.phone) ?? asString(embeddedSpace?.phone),
+    phone: asString(space?.["phone"]) ?? asString(embeddedSpace?.["phone"]),
     platform: "imessage",
-    senderId: asString(sender?.id),
+    senderId: asString(sender?.["id"]),
     spaceId,
     webhookId: headers.webhookId,
-    text: asString(content?.text),
+    text: asString(content?.["text"]),
     attachmentIds,
   };
 }

@@ -215,7 +215,7 @@ export async function POST(
   if (!rawBody) {
     return NextResponse.json({ error: "invalid JSON" }, { status: 400 });
   }
-  const streaming = rawBody.stream === true;
+  const streaming = rawBody["stream"] === true;
   const endpoint = path.join("/");
 
   let servedModel = "";
@@ -227,46 +227,46 @@ export async function POST(
     // The tier and family names are the only things that ever appear in a
     // box's config — the real model ID is resolved here and only here.
     const body: Record<string, unknown> = { ...rawBody };
-    body.model = modelForSelection(toFamily, tier, selection);
-    servedModel = String(body.model);
+    body["model"] = modelForSelection(toFamily, tier, selection);
+    servedModel = String(body["model"]);
     // gpt-5.6 on /v1/chat/completions rejects function tools with any
     // reasoning_effort other than "none", so tool-bearing calls (every Hermes
     // agent turn) pin it there; plain completions get the configured effort.
     // Non-reasoning models reject the field entirely, so it is only injected
     // for families that accept it.
-    if (isReasoningModel(String(body.model))) {
-      const hasTools = Array.isArray(body.tools) && body.tools.length > 0;
+    if (isReasoningModel(String(body["model"]))) {
+      const hasTools = Array.isArray(body["tools"]) && body["tools"].length > 0;
       const reasoning = hasTools ? "none" : reasoningForTier(tier);
-      if (reasoning && body.reasoning_effort === undefined) {
-        body.reasoning_effort = reasoning;
+      if (reasoning && body["reasoning_effort"] === undefined) {
+        body["reasoning_effort"] = reasoning;
       }
     }
     // service_tier is OpenAI-only, like reasoning_effort above.
     const provider = providerForFamily(toFamily);
     const openRouter = provider === "openrouter";
     const serviceTier = provider === "openai" ? serviceTierForTier(tier) : undefined;
-    if (serviceTier && body.service_tier === undefined) {
-      body.service_tier = serviceTier;
+    if (serviceTier && body["service_tier"] === undefined) {
+      body["service_tier"] = serviceTier;
     }
     // OpenAI reasoning models (gpt-5.x/o-series) reject the legacy knobs
     // clients still send: max_tokens must be max_completion_tokens, and only
     // the default sampling params are accepted.
-    if (isReasoningModel(String(body.model))) {
-      if (body.max_tokens !== undefined) {
-        if (body.max_completion_tokens === undefined) {
-          body.max_completion_tokens = body.max_tokens;
+    if (isReasoningModel(String(body["model"]))) {
+      if (body["max_tokens"] !== undefined) {
+        if (body["max_completion_tokens"] === undefined) {
+          body["max_completion_tokens"] = body["max_tokens"];
         }
-        delete body.max_tokens;
+        delete body["max_tokens"];
       }
-      if (body.temperature !== undefined && body.temperature !== 1) {
-        delete body.temperature;
+      if (body["temperature"] !== undefined && body["temperature"] !== 1) {
+        delete body["temperature"];
       }
-      if (body.top_p !== undefined && body.top_p !== 1) {
-        delete body.top_p;
+      if (body["top_p"] !== undefined && body["top_p"] !== 1) {
+        delete body["top_p"];
       }
     }
     if (streaming) {
-      body.stream_options = { ...(body.stream_options as object), include_usage: true };
+      body["stream_options"] = { ...(body["stream_options"] as object), include_usage: true };
     }
 
     const baseUrl =

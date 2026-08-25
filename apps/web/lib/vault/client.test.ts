@@ -156,7 +156,7 @@ describe("vault control-plane client", () => {
     expect(JSON.stringify(supabase.upserts[0])).not.toContain(PLANTED);
     expect(supabase.inserts).toHaveLength(1);
     expect(supabase.inserts[0]?.table).toBe("vault_events");
-    expect(supabase.inserts[0]?.row.action).toBe("create");
+    expect(supabase.inserts[0]?.row["action"]).toBe("create");
     expect(JSON.stringify(supabase.inserts[0])).not.toContain(PLANTED);
   });
 
@@ -174,9 +174,9 @@ describe("vault control-plane client", () => {
       );
     await applyBatch("bx_1", "user-1", [{ op: "delete", id: "item-9" }]);
     expect(supabase.updates).toHaveLength(1);
-    expect(supabase.updates[0]?.row.env_var).toBeNull();
-    expect(supabase.updates[0]?.row.deleted_at).toBeTruthy();
-    expect(supabase.inserts[0]?.row.action).toBe("delete");
+    expect(supabase.updates[0]?.row["env_var"]).toBeNull();
+    expect(supabase.updates[0]?.row["deleted_at"]).toBeTruthy();
+    expect(supabase.inserts[0]?.row["action"]).toBe("delete");
   });
 
   it("applyBatch never writes the payload when inbox preparation fails", async () => {
@@ -292,7 +292,7 @@ describe("vault control-plane client", () => {
     vi.mocked(command).mockResolvedValue(cliOk(PLANTED));
     const value = await reveal("bx_1", "user-1", "item-9", "password", "web");
     expect(value).toBe(PLANTED);
-    expect(supabase.inserts[0]?.row.action).toBe("reveal");
+    expect(supabase.inserts[0]?.row["action"]).toBe("reveal");
     expect(logs.join("\n")).not.toContain(PLANTED);
   });
 
@@ -306,7 +306,7 @@ describe("vault control-plane client", () => {
   it("totp returns the code and audits as reveal", async () => {
     vi.mocked(command).mockResolvedValue(cliOk("123456\n"));
     await expect(totp("bx_1", "user-1", "item-9")).resolves.toBe("123456");
-    expect(supabase.inserts[0]?.row.action).toBe("reveal");
+    expect(supabase.inserts[0]?.row["action"]).toBe("reveal");
   });
 
   it("surfaces machine-readable CLI failures as typed errors", async () => {

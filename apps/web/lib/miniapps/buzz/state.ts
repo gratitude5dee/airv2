@@ -14,8 +14,8 @@
  * pubkeys share that shape.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { z } from "zod";
 import { readAppState, writeAppState } from "../store";
-import { asRecord } from "../../records";
 
 export type BuzzLinkStatus = "unbound" | "pending" | "connected" | "revoked";
 export type BuzzSignerKind = "box" | "desktop" | "nip46";
@@ -167,13 +167,60 @@ function count(value: unknown): number | null {
   return rounded > 0 ? Math.min(rounded, 9999) : null;
 }
 
-function rows(value: unknown): Record<string, unknown>[] {
+/**
+ * Loose row schemas: relay payloads are hostile, so fields stay `unknown`
+ * and every value passes through str/ident/count. The schema only names
+ * the fields each normalizer reads.
+ */
+const ChannelRow = z.object({
+  id: z.unknown(),
+  name: z.unknown(),
+  kind: z.unknown(),
+  visibility: z.unknown(),
+  topic: z.unknown(),
+  unread: z.unknown(),
+});
+const ThreadRow = z.object({
+  channelId: z.unknown(),
+  rootEventId: z.unknown(),
+  excerpt: z.unknown(),
+  replyCount: z.unknown(),
+  updatedAt: z.unknown(),
+});
+const DmRow = z.object({
+  id: z.unknown(),
+  participants: z.unknown(),
+  updatedAt: z.unknown(),
+});
+const CanvasRow = z.object({ channelId: z.unknown(), updatedAt: z.unknown() });
+const WorkflowRow = z.object({
+  id: z.unknown(),
+  name: z.unknown(),
+  channelId: z.unknown(),
+  pendingApprovals: z.unknown(),
+});
+const AgentRow = z.object({
+  name: z.unknown(),
+  npub: z.unknown(),
+  access: z.unknown(),
+  draftState: z.unknown(),
+});
+const PendingRow = z.object({
+  id: z.unknown(),
+  group: z.unknown(),
+  verb: z.unknown(),
+  requestedAt: z.unknown(),
+  state: z.unknown(),
+  note: z.unknown(),
+});
+
+function rows<T>(value: unknown, schema: z.ZodType<T>): T[] {
   if (!Array.isArray(value)) return [];
   return value
-    .filter(
-      (row): row is Record<string, unknown> =>
-        typeof row === "object" && row !== null
-    )
+    .flatMap((row) => {
+      const parsed = schema.safeParse(row);
+      return parsed.success ? [parsed.data] : [];
+    })
     .slice(0, MAX_ROWS);
 }
 
@@ -191,9 +238,18 @@ function relayUrl(value: unknown): string | null {
   }
 }
 
+const LinkRow = z.object({
+  status: z.unknown(),
+  relayUrl: z.unknown(),
+  communityLabel: z.unknown(),
+  npub: z.unknown(),
+  signerKind: z.unknown(),
+  lastSyncAt: z.unknown(),
+});
+
 function normalizeLink(value: unknown): BuzzLink {
-  const link = (typeof value === "object" && value !== null ? value : {}) as
-    Record<string, unknown>;
+  const parsed = LinkRow.safeParse(value);
+  const link: z.infer<typeof LinkRow> = parsed.success ? parsed.data : {};
   const npub = str(link.npub, 80);
   return {
     status: LINK_STATUSES.find((s) => s === link.status) ?? "unbound",
@@ -205,14 +261,26 @@ function normalizeLink(value: unknown): BuzzLink {
   };
 }
 
+const DocRow = z.object({
+  title: z.unknown(),
+  link: z.unknown(),
+  channels: z.unknown(),
+  threads: z.unknown(),
+  dms: z.unknown(),
+  canvases: z.unknown(),
+  workflows: z.unknown(),
+  agents: z.unknown(),
+  pending: z.unknown(),
+});
+
 export function normalizeBuzzDoc(raw: unknown): BuzzDoc {
-  const doc = (typeof raw === "object" && raw !== null ? raw : {}) as
-    Record<string, unknown>;
+  const parsed = DocRow.safeParse(raw);
+  const doc: z.infer<typeof DocRow> = parsed.success ? parsed.data : {};
   return {
     schemaVersion: 1,
     title: str(doc.title, 120) ?? DEFAULT_BUZZ_DOC.title,
     link: normalizeLink(doc.link),
-    channels: rows(doc.channels).flatMap((row) => {
+    channels: rows(doc.channels, ChannelRow).flatMap((row) => {
       const id = ident(row.id, 128);
       const name = str(row.name, 120);
       if (!id || !name) return [];
@@ -233,7 +301,7 @@ export function normalizeBuzzDoc(raw: unknown): BuzzDoc {
         },
       ];
     }),
-    threads: rows(doc.threads).flatMap((row) => {
+    threads: rows(doc.threads, ThreadRow).flatMap((row) => {
       const channelId = ident(row.channelId, 128);
       const rootEventId = ident(row.rootEventId, 128);
       if (!channelId || !rootEventId) return [];
@@ -249,7 +317,7 @@ export function normalizeBuzzDoc(raw: unknown): BuzzDoc {
         },
       ];
     }),
-    dms: rows(doc.dms).flatMap((row) => {
+    dms: rows(doc.dms, DmRow).flatMap((row) => {
       const id = ident(row.id, 128);
       if (!id) return [];
       const participants = (Array.isArray(row.participants)
@@ -262,13 +330,13 @@ export function normalizeBuzzDoc(raw: unknown): BuzzDoc {
       const updatedAt = str(row.updatedAt, 40);
       return [{ id, participants, ...(updatedAt ? { updatedAt } : {}) }];
     }),
-    canvases: rows(doc.canvases).flatMap((row) => {
+    canvases: rows(doc.canvases, CanvasRow).flatMap((row) => {
       const channelId = ident(row.channelId, 128);
       if (!channelId) return [];
       const updatedAt = str(row.updatedAt, 40);
       return [{ channelId, ...(updatedAt ? { updatedAt } : {}) }];
     }),
-    workflows: rows(doc.workflows).flatMap((row) => {
+    workflows: rows(doc.workflows, WorkflowRow).flatMap((row) => {
       const id = ident(row.id, 128);
       const name = str(row.name, 120);
       if (!id || !name) return [];
@@ -283,7 +351,7 @@ export function normalizeBuzzDoc(raw: unknown): BuzzDoc {
         },
       ];
     }),
-    agents: rows(doc.agents).flatMap((row) => {
+    agents: rows(doc.agents, AgentRow).flatMap((row) => {
       const name = str(row.name, 120);
       if (!name) return [];
       const npub = str(row.npub, 80);
@@ -299,7 +367,7 @@ export function normalizeBuzzDoc(raw: unknown): BuzzDoc {
         },
       ];
     }),
-    pending: rows(doc.pending).flatMap((row) => {
+    pending: rows(doc.pending, PendingRow).flatMap((row) => {
       const id = ident(row.id, 128);
       const group = str(row.group, 80);
       const verb = str(row.verb, 80);
@@ -363,21 +431,31 @@ export function markBuzzPending(
  * normalizer, so a hostile relay payload is bounded and anything key-shaped
  * is dropped (C9/C18) before a byte is written.
  */
+const ResultPayload = z.object({
+  channels: z.unknown(),
+  threads: z.unknown(),
+  dms: z.unknown(),
+  canvases: z.unknown(),
+  workflows: z.unknown(),
+  agents: z.unknown(),
+});
+
 export function mergeBuzzResult(doc: BuzzDoc, data: unknown): BuzzDoc {
-  const payload = asRecord(data);
-  if (!payload) return doc;
-  const merged: Record<string, unknown> = { ...doc };
-  for (const key of [
-    "channels",
-    "threads",
-    "dms",
-    "canvases",
-    "workflows",
-    "agents",
-  ]) {
-    if (Array.isArray(payload[key])) merged[key] = payload[key];
-  }
-  merged.link = { ...doc.link, lastSyncAt: new Date().toISOString() };
+  const parsed = ResultPayload.safeParse(data);
+  if (!parsed.success) return doc;
+  const payload = parsed.data;
+  const merged = {
+    ...doc,
+    ...(Array.isArray(payload.channels) ? { channels: payload.channels } : {}),
+    ...(Array.isArray(payload.threads) ? { threads: payload.threads } : {}),
+    ...(Array.isArray(payload.dms) ? { dms: payload.dms } : {}),
+    ...(Array.isArray(payload.canvases) ? { canvases: payload.canvases } : {}),
+    ...(Array.isArray(payload.workflows)
+      ? { workflows: payload.workflows }
+      : {}),
+    ...(Array.isArray(payload.agents) ? { agents: payload.agents } : {}),
+    link: { ...doc.link, lastSyncAt: new Date().toISOString() },
+  };
   return normalizeBuzzDoc(merged);
 }
 

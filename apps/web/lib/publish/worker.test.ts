@@ -12,12 +12,12 @@ const throwingClient = new Proxy(
 ) as SupabaseClient;
 
 afterEach(() => {
-  delete process.env.PUBLISH_KILL_SWITCH;
+  delete process.env["PUBLISH_KILL_SWITCH"];
 });
 
 describe("publish kill switch", () => {
   it("halts the sweep before any query and leaves slots untouched", async () => {
-    process.env.PUBLISH_KILL_SWITCH = "1";
+    process.env["PUBLISH_KILL_SWITCH"] = "1";
     const result = await publishDueSlots(throwingClient);
     expect(result).toEqual({
       usersWoken: 0,

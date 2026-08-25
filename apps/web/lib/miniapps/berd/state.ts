@@ -167,18 +167,18 @@ function optional(
 function normalizeLink(value: unknown): BerdLink {
   const link = (typeof value === "object" && value !== null ? value : {}) as
     Record<string, unknown>;
-  const status = LINK_STATUSES.find((candidate) => candidate === link.status);
+  const status = LINK_STATUSES.find((candidate) => candidate === link["status"]);
   const protocolVersion =
-    typeof link.protocolVersion === "number" &&
-    Number.isInteger(link.protocolVersion) &&
-    link.protocolVersion > 0
-      ? link.protocolVersion
+    typeof link["protocolVersion"] === "number" &&
+    Number.isInteger(link["protocolVersion"]) &&
+    link["protocolVersion"] > 0
+      ? link["protocolVersion"]
       : null;
   return {
     status: status ?? "unpaired",
-    deviceLabel: str(link.deviceLabel, 80),
+    deviceLabel: str(link["deviceLabel"], 80),
     protocolVersion,
-    lastSyncAt: str(link.lastSyncAt, 40),
+    lastSyncAt: str(link["lastSyncAt"], 40),
   };
 }
 
@@ -196,16 +196,16 @@ export function normalizeBerdDoc(raw: unknown): BerdDoc {
   ): T[] => {
     const out: T[] = [];
     for (const row of rows(doc[key])) {
-      const id = ident(row.id, 128);
-      const name = str(row.name, 200);
+      const id = ident(row["id"], 128);
+      const name = str(row["name"], 200);
       if (id && name) out.push(build(row, id, name));
     }
     return out;
   };
   return {
     schemaVersion: 1,
-    title: str(doc.title, 120) ?? DEFAULT_BERD_DOC.title,
-    link: normalizeLink(doc.link),
+    title: str(doc["title"], 120) ?? DEFAULT_BERD_DOC.title,
+    link: normalizeLink(doc["link"]),
     agents: named("agents", (row, id, name) => ({
       id,
       name,
@@ -217,7 +217,7 @@ export function normalizeBerdDoc(raw: unknown): BerdDoc {
       id,
       name,
       ...optional("startupMode", row, 40),
-      ...(row.archived === true ? { archived: true } : {}),
+      ...(row["archived"] === true ? { archived: true } : {}),
     })),
     skills: named("skills", (row, id, name) => ({
       id,
@@ -227,13 +227,13 @@ export function normalizeBerdDoc(raw: unknown): BerdDoc {
     providers: named("providers", (row, id, name) => ({
       id,
       name,
-      configured: row.configured === true,
+      configured: row["configured"] === true,
     })),
-    sessions: rows(doc.sessions).flatMap((row) => {
-      const id = ident(row.id, 128);
-      const title = str(row.title, 200);
+    sessions: rows(doc["sessions"]).flatMap((row) => {
+      const id = ident(row["id"], 128);
+      const title = str(row["title"], 200);
       if (!id || !title) return [];
-      const projectId = ident(row.projectId, 128);
+      const projectId = ident(row["projectId"], 128);
       return [
         {
           id,
@@ -246,20 +246,20 @@ export function normalizeBerdDoc(raw: unknown): BerdDoc {
     automations: named("automations", (row, id, name) => ({
       id,
       name,
-      enabled: row.enabled === true,
+      enabled: row["enabled"] === true,
     })),
-    pending: rows(doc.pending).flatMap((row) => {
-      const id = ident(row.id, 128);
-      const group = str(row.group, 80);
-      const action = str(row.action, 80);
+    pending: rows(doc["pending"]).flatMap((row) => {
+      const id = ident(row["id"], 128);
+      const group = str(row["group"], 80);
+      const action = str(row["action"], 80);
       if (!id || !group || !action) return [];
-      const state = PENDING_STATES.find((candidate) => candidate === row.state);
+      const state = PENDING_STATES.find((candidate) => candidate === row["state"]);
       return [
         {
           id,
           group,
           action,
-          requestedAt: str(row.requestedAt, 40) ?? new Date(0).toISOString(),
+          requestedAt: str(row["requestedAt"], 40) ?? new Date(0).toISOString(),
           state: state ?? "queued",
           ...optional("note", row, 200),
         },
@@ -326,7 +326,7 @@ export function mergeBerdResult(doc: BerdDoc, data: unknown): BerdDoc {
   ]) {
     if (Array.isArray(payload[key])) merged[key] = payload[key];
   }
-  merged.link = { ...doc.link, lastSyncAt: new Date().toISOString() };
+  merged["link"] = { ...doc.link, lastSyncAt: new Date().toISOString() };
   return normalizeBerdDoc(merged);
 }
 

@@ -32,7 +32,7 @@ export function allAdaptersIncludingDark(): PublishAdapter[] {
 
 export function adapterFor(platform: string): PublishAdapter | null {
   if (!Object.prototype.hasOwnProperty.call(ADAPTERS, platform)) return null;
-  if (platform === "tiktok" && process.env.PUBLISH_TIKTOK !== "1") {
+  if (platform === "tiktok" && process.env["PUBLISH_TIKTOK"] !== "1") {
     return null;
   }
   return ADAPTERS[platform as Platform];

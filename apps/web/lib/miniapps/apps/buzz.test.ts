@@ -63,7 +63,7 @@ function form(action: string): FormData {
 }
 
 beforeAll(() => {
-  process.env.SESSION_SECRET = "test-session-secret";
+  process.env["SESSION_SECRET"] = "test-session-secret";
 });
 
 afterEach(() => {
@@ -240,7 +240,7 @@ describe("buzz mini-app", () => {
       "desktop"
     );
     for (const row of db.rows("buzz_pairing_codes")) {
-      if (!row.used_at) row.expires_at = new Date(0).toISOString();
+      if (!row["used_at"]) row["expires_at"] = new Date(0).toISOString();
     }
     expect(
       (

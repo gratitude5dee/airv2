@@ -54,37 +54,37 @@ export function parseAgentSchedule(value: unknown): AgentSchedule | null {
   const row = asRecord(value);
   if (!row) return null;
   if (
-    typeof row.id !== "string" ||
-    typeof row.user_id !== "string" ||
-    typeof row.name !== "string" ||
-    typeof row.cron !== "string" ||
-    typeof row.timezone !== "string" ||
-    typeof row.prompt_ref !== "string" ||
-    !isDeliver(row.deliver) ||
-    typeof row.source !== "string" ||
-    typeof row.status !== "string" ||
-    typeof row.next_run_at !== "string" ||
-    (row.last_run_at !== null && typeof row.last_run_at !== "string") ||
-    typeof row.failure_count !== "number" ||
-    !Number.isInteger(row.failure_count) ||
-    typeof row.one_shot !== "boolean"
+    typeof row["id"] !== "string" ||
+    typeof row["user_id"] !== "string" ||
+    typeof row["name"] !== "string" ||
+    typeof row["cron"] !== "string" ||
+    typeof row["timezone"] !== "string" ||
+    typeof row["prompt_ref"] !== "string" ||
+    !isDeliver(row["deliver"]) ||
+    typeof row["source"] !== "string" ||
+    typeof row["status"] !== "string" ||
+    typeof row["next_run_at"] !== "string" ||
+    (row["last_run_at"] !== null && typeof row["last_run_at"] !== "string") ||
+    typeof row["failure_count"] !== "number" ||
+    !Number.isInteger(row["failure_count"]) ||
+    typeof row["one_shot"] !== "boolean"
   ) {
     return null;
   }
   return {
-    id: row.id,
-    user_id: row.user_id,
-    name: row.name,
-    cron: row.cron,
-    timezone: row.timezone,
-    prompt_ref: row.prompt_ref,
-    deliver: row.deliver,
-    source: row.source,
-    status: row.status,
-    next_run_at: row.next_run_at,
-    last_run_at: row.last_run_at,
-    failure_count: row.failure_count,
-    one_shot: row.one_shot,
+    id: row["id"],
+    user_id: row["user_id"],
+    name: row["name"],
+    cron: row["cron"],
+    timezone: row["timezone"],
+    prompt_ref: row["prompt_ref"],
+    deliver: row["deliver"],
+    source: row["source"],
+    status: row["status"],
+    next_run_at: row["next_run_at"],
+    last_run_at: row["last_run_at"],
+    failure_count: row["failure_count"],
+    one_shot: row["one_shot"],
   };
 }
 
