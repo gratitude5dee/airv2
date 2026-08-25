@@ -6,6 +6,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { command } from "../box/client";
+import { hermesBin, runCommand, type ComputeTarget } from "../compute/runtime";
 import { shellQuote } from "../box/shell";
 import { ensureBoxAwake } from "../orchestrator/boxes";
 
@@ -22,13 +23,14 @@ export const BASE_SKILLS = [
   "official/research/duckduckgo-search",
 ] as const;
 
-/** Best-effort base-skill install on an already-awake box (provisioning). */
-export async function installBaseSkills(boxId: string): Promise<void> {
+/** Best-effort base-skill install on an already-awake instance (provisioning). */
+export async function installBaseSkills(target: ComputeTarget): Promise<void> {
+  const boxId = target.instanceId;
   for (const identifier of BASE_SKILLS) {
     try {
-      const result = await command(
-        boxId,
-        `/home/user/.hermes-venv/bin/hermes skills install ${shellQuote(identifier)} --yes`,
+      const result = await runCommand(
+        target,
+        `${hermesBin(target)} skills install ${shellQuote(identifier)} --yes`,
         300
       );
       if (result.exitCode !== 0) {

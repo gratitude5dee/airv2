@@ -17,6 +17,7 @@ const current = theme(isThemeId(themeArg) ? themeArg : DEFAULT_THEME);
 
 const snapshot: OnboardingSnapshot = {
   state: defaultOnboardingState(),
+  environment: "ubuntu",
   username: "gratitude",
   address: "gratitude@agents.wzrd.tech",
   identityMedia: [],

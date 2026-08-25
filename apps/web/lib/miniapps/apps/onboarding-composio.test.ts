@@ -95,6 +95,13 @@ function makeCtx(url = "https://mini.example/mini/setup?step=connect") {
     vault_items: thenable([]),
     entitlements: thenable([], { speed_tier: "balanced" }),
     plugin_tokens: thenable([]),
+    boxes: thenable([], {
+      provider_box_id: "box-1",
+      environment: "ubuntu",
+      control_url: null,
+      control_token: null,
+      state: "ready",
+    }),
   };
   return {
     request: new NextRequest(url),

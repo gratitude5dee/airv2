@@ -85,6 +85,14 @@ import {
   startLinkAuth,
   type LinkAuthDoc,
 } from "@/lib/payments/linkAuth";
+import {
+  COMPUTE_ENVIRONMENTS,
+  ENVIRONMENT_PROFILES,
+  isComputeEnvironment,
+  toComputeEnvironment,
+  type ComputeEnvironment,
+} from "@/lib/compute/environments";
+import { switchEnvironment } from "@/lib/provisioning/provision";
 import { onairosProvider, type OnairosStatus } from "./onairos";
 import {
   relayToOnairos,
@@ -108,6 +116,7 @@ import {
 import type { MiniAppContext, MiniAppModule } from "./types";
 
 const STEP_TITLES: Record<OnboardingStepId, string> = {
+  environment: "Pick your agent's computer",
   username: "Pick your username",
   email: "Your agent's email",
   model: "Model preference",
@@ -126,6 +135,7 @@ const STEP_TITLES: Record<OnboardingStepId, string> = {
 
 /** Mono kicker line above each slide title — the "why" in one breath. */
 const STEP_KICKERS: Record<OnboardingStepId, string> = {
+  environment: "Computer",
   username: "Identity",
   email: "Inbox",
   model: "Thinking speed",
@@ -172,6 +182,8 @@ const ONBOARDING_TOOLKITS: Array<[string, string]> = [
 
 export interface OnboardingSnapshot {
   state: OnboardingState;
+  /** The environment the user's compute currently runs (boxes.environment). */
+  environment: ComputeEnvironment;
   username: string | null;
   address: string | null;
   identityMedia: IdentityMediaView[];
@@ -225,6 +237,7 @@ async function loadSnapshot(
     identityMedia,
     avatarAssetId,
     twin,
+    { data: boxRow },
   ] = await Promise.all([
     supabase.from("users").select("username").eq("id", userId).maybeSingle(),
     supabase
@@ -267,9 +280,15 @@ async function loadSnapshot(
     listIdentityMediaViews(supabase, userId),
     getAvatarAssetId(supabase, userId).catch(() => null),
     getDigitalTwin(supabase, userId).catch(() => null),
+    supabase
+      .from("boxes")
+      .select("environment")
+      .eq("user_id", userId)
+      .maybeSingle(),
   ]);
   return {
     state,
+    environment: toComputeEnvironment(boxRow?.environment),
     username: (user?.username as string | null) ?? null,
     address: (addressRow?.address as string | null) ?? null,
     identityMedia,
@@ -310,6 +329,10 @@ export function effectiveStatus(
   const recorded = snapshot.state.steps[step];
   if (recorded === "done" || recorded === "skipped") return recorded;
   switch (step) {
+    case "environment":
+      // boxes.environment has a default, so its presence proves nothing —
+      // only an explicit choice (recorded above) counts, mirroring "model".
+      return "todo";
     case "username":
       return snapshot.username ? "done" : "todo";
     case "email":
@@ -381,6 +404,19 @@ function stepBody(
   browserSignin: string | null,
   lite = false
 ): string {
+  if (step === "environment") {
+    const cards = COMPUTE_ENVIRONMENTS.map((environment) => {
+      const profile = ENVIRONMENT_PROFILES[environment];
+      const current = environment === snapshot.environment;
+      const name = `<span class="envname">${esc(profile.label)}${current ? '<span class="envtag">Current</span>' : ""}${profile.comingSoon && !current ? '<span class="envtag soon">Coming soon</span>' : ""}</span>`;
+      const inner = `${name}<span class="envblurb">${esc(profile.blurb)}</span>`;
+      if (profile.comingSoon && !current) {
+        return `<div class="envcard off" aria-disabled="true">${inner}</div>`;
+      }
+      return `<form method="post" class="envform"><input type="hidden" name="action" value="set_environment"><input type="hidden" name="environment" value="${esc(environment)}"><button class="envcard${current ? " current" : ""}">${inner}</button></form>`;
+    }).join("");
+    return `<p class="muted">Your agent gets its own computer. Pick where it lives — you can switch later, but its files start fresh on the new machine.</p><div class="envgrid">${cards}</div>`;
+  }
   if (step === "username") {
     const current = snapshot.username
       ? `<p>Current: <strong>@${esc(snapshot.username)}</strong></p>`
@@ -665,7 +701,7 @@ const SLIDE_CSS = `
 *{box-sizing:border-box}
 html,body{margin:0;min-height:100%}
 html{background:var(--canvas);background-attachment:fixed}
-body{min-height:100svh;background:transparent;color:var(--ink);font-family:var(--font-body);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+body{min-height:100svh;background:transparent;color:var(--ink);font-family:var(--font-body);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .backdrop{position:fixed;inset:0;z-index:0;pointer-events:none;display:block}
 .scrim{position:fixed;inset:0;z-index:1;pointer-events:none;background:var(--scrim)}
 .grain{position:fixed;inset:0;z-index:1;pointer-events:none;mix-blend-mode:soft-light;opacity:0.15;background-image:url("${GRAIN_SVG}")}
@@ -690,15 +726,16 @@ footer.nav{display:flex;align-items:center;justify-content:space-between;gap:0.7
 .navlink:hover{transform:scale(1.04)}
 .navlink.ghosted{opacity:0.35;pointer-events:none}
 .dots{display:flex;gap:0.42rem;align-items:center;flex-wrap:wrap;min-width:0}
-.dots a{width:1.1rem;height:1.1rem;padding:0.3rem;border-radius:50%;background:var(--ring);background-clip:content-box;display:block;transition:transform 200ms ease}
+.dots a{width:1.5rem;height:1.5rem;padding:0.5rem;border-radius:50%;background:var(--ring);background-clip:content-box;display:block;transition:transform 200ms ease}
 .dots a:hover{transform:scale(1.5)}
 .dots a.done{background:var(--accent)}
 .dots a.skipped{background:var(--ink-muted)}
 .dots a.active{outline:1.5px solid var(--accent);outline-offset:2.5px;background:var(--accent)}
 p{font-size:0.95rem;line-height:1.5;margin:0 0 0.6rem}
 a{color:var(--accent)}
-button{font-family:var(--font-ui);background:var(--ink);color:var(--on-ink);border:0;border-radius:var(--radius-pill);min-height:2.75rem;padding:0.5rem 1.1rem;font-size:0.72rem;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;transition:transform 180ms ease}
+button{font-family:var(--font-ui);background:var(--ink);color:var(--on-ink);border:0;border-radius:var(--radius-pill);min-height:2.75rem;padding:0.5rem 1.15rem;font-size:0.72rem;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;transition:transform 180ms ease}
 button:hover{transform:scale(1.05)}
+button:active{transform:scale(0.97)}
 button.ghost{background:transparent;color:var(--ink-muted);border:1px solid var(--ring)}
 button.ghost:hover{color:var(--ink)}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -707,7 +744,7 @@ input[type=text]:focus,input[type=password]:focus{border-color:var(--accent)}
 input::placeholder{color:var(--ink-muted)}
 .item{display:flex;align-items:center;gap:0.6rem;border:1px solid var(--ring);border-radius:var(--radius-well);padding:0.7rem 0.85rem;margin-bottom:0.55rem;font-size:0.9rem;background:var(--well-bg)}
 details{border:1px solid var(--ring);border-radius:var(--radius-well);padding:0.6rem 0.85rem;background:var(--well-bg);margin-bottom:0.6rem}
-summary{font-family:var(--font-ui);font-size:0.7rem;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-muted);cursor:pointer;min-height:1.8rem;display:flex;align-items:center}
+summary{font-family:var(--font-ui);font-size:0.7rem;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-muted);cursor:pointer;min-height:2.75rem;display:flex;align-items:center}
 pre{background:var(--well-bg);border:1px solid var(--ring);border-radius:var(--radius-well);padding:0.6rem 0.75rem;font-family:var(--font-ui);font-size:0.68rem;line-height:1.45;white-space:pre-wrap;word-break:break-all;max-height:240px;overflow:auto;color:var(--accent)}
 ul{margin:0.2rem 0 0.8rem;padding-left:1.1rem}
 li{font-size:0.88rem;line-height:1.5;color:var(--ink-muted)}
@@ -716,8 +753,20 @@ form{margin:0}
 form.inline{display:inline-flex}
 form.stack{display:grid;gap:0.5rem;margin-top:0.5rem}
 form.stack select{background:var(--well-bg);color:var(--ink);border:1px solid var(--ring);border-radius:var(--radius-well);padding:0.6rem 0.8rem;font-size:0.9rem;font-family:var(--font-body)}
-.row{display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center}
+.row{display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center}
 .row.actions{margin-top:0.85rem}
+@media(max-width:480px){.row.actions{flex-direction:column;align-items:stretch}.row.actions form.inline{display:flex}.row.actions form.inline button{flex:1;width:100%}}
+.envgrid{display:grid;gap:0.6rem;margin-top:0.6rem}
+form.envform{display:block}
+.envcard{display:flex;flex-direction:column;align-items:flex-start;gap:0.35rem;width:100%;min-height:4.5rem;padding:0.9rem 1rem;border-radius:var(--radius-well);border:1px solid var(--ring);background:var(--well-bg);text-align:left;text-transform:none;letter-spacing:0;color:var(--ink)}
+button.envcard:hover{transform:none;border-color:var(--accent)}
+button.envcard:active{transform:scale(0.99)}
+.envcard.current{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+.envcard.off{opacity:0.6}
+.envname{font-family:var(--font-ui);font-size:0.78rem;letter-spacing:0.09em;text-transform:uppercase;display:flex;gap:0.55rem;align-items:center;flex-wrap:wrap}
+.envtag{font-size:0.58rem;letter-spacing:0.1em;color:var(--accent);border:1px solid var(--accent);border-radius:var(--radius-pill);padding:0.15rem 0.5rem}
+.envtag.soon{color:var(--ink-muted);border-color:var(--ring)}
+.envblurb{font-family:var(--font-body);font-size:0.85rem;line-height:1.45;color:var(--ink-muted)}
 .grow{flex:1}
 .muted{color:var(--ink-muted);font-size:0.85rem}
 .chip{font-family:var(--font-ui);font-size:0.6rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-muted)}
@@ -1040,6 +1089,53 @@ export const onboarding: MiniAppModule = {
         ctx,
         null,
         saved ? null : "Couldn't save progress — the computer is starting up."
+      );
+    }
+
+    if (action === "set_environment") {
+      const value = String(form.get("environment") ?? "");
+      if (!isComputeEnvironment(value)) return forbidden("unknown environment");
+      const snapshot = await loadSnapshot(supabase, userId);
+      if (
+        ENVIRONMENT_PROFILES[value].comingSoon &&
+        value !== snapshot.environment
+      ) {
+        return respond(
+          ctx,
+          "environment",
+          `${ENVIRONMENT_PROFILES[value].label} is coming soon — your agent stays on ${ENVIRONMENT_PROFILES[snapshot.environment].label} for now.`
+        );
+      }
+      if (value === snapshot.environment) {
+        await markSafely(supabase, userId, "environment", "done");
+        return respond(
+          ctx,
+          null,
+          `Staying on ${ENVIRONMENT_PROFILES[value].label}.`
+        );
+      }
+      try {
+        await switchEnvironment(supabase, userId, value);
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            msg: "environment switch failed",
+            user_id: userId,
+            environment: value,
+            error: error instanceof Error ? error.message : "unknown",
+          })
+        );
+        return respond(
+          ctx,
+          "environment",
+          `${ENVIRONMENT_PROFILES[value].label} isn't available right now — try another, or skip and switch later.`
+        );
+      }
+      await markSafely(supabase, userId, "environment", "done");
+      return respond(
+        ctx,
+        null,
+        `Your agent now lives on ${ENVIRONMENT_PROFILES[value].label}.`
       );
     }
 

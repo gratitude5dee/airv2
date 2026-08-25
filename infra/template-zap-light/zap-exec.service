@@ -1,0 +1,22 @@
+[Unit]
+Description=zap-light exec lane (sandboxed code/FFmpeg runs)
+After=network-online.target
+
+[Service]
+User=user
+WorkingDirectory=/home/user/.zap
+# Watches ~/.zap/runs for queued run specs (JSON) and executes them in the
+# strongest isolation the box offers (hyperlight when kvm=true in
+# capabilities.json, systemd-run sandbox otherwise).
+ExecStart=/home/user/.zap/bin/zap-exec-loop
+Restart=always
+RestartSec=2
+# Fallback-lane confinement: no new privileges, private tmp, and the media
+# tree is the only writable surface outside the run dir.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/home/user/.zap
+
+[Install]
+WantedBy=multi-user.target

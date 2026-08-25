@@ -49,7 +49,9 @@ grep -q UV_NO_SYNC /etc/environment || {
 # check, and nvm-installed versions live in $HOME so they survive archive.
 export NVM_DIR="$HOME_DIR/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] || { curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash; }
-. "$NVM_DIR/nvm.sh"
+# nvm.sh's auto-use returns non-zero when no default alias exists yet, which
+# set -e would turn fatal; the install below creates the alias.
+. "$NVM_DIR/nvm.sh" || true
 nvm install 24 && nvm alias default 24
 
 (cd web && npm ci && npm run build)

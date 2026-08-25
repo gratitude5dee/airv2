@@ -1,0 +1,26 @@
+[Unit]
+Description=Omarchy desktop (Hyprland, nested on the box display)
+Requires=arch-root.service
+After=arch-root.service
+# The box's own X display :0 is what the control plane streams; Hyprland runs
+# nested inside it (WLR_BACKENDS=x11) so the human sees the Omarchy desktop
+# through the existing live-screen lane instead of a second VNC stack.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+# arch-run drops to uid 1000 inside the Arch root itself.
+User=root
+Environment=DISPLAY=:0
+Environment=WLR_BACKENDS=x11
+Environment=WLR_NO_HARDWARE_CURSORS=1
+# Hyprland's Xwayland takes the next free display, :1 — the display
+# ~/.hermes/.env points the agent's browser at.
+Environment=HYPRLAND_NO_RT=1
+ExecStartPre=/bin/bash -c 'install -d -m 0700 -o user -g user /run/user/1000'
+ExecStart=/usr/local/bin/arch-run "exec Hyprland"
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -5,8 +5,13 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "../env";
-import { command } from "../box/client";
-import { ensureBoxAwake } from "../orchestrator/boxes";
+import { ensureComputeAwake } from "../compute/awake";
+import {
+  hermesBin,
+  runCommand,
+  type ComputeTarget,
+} from "../compute/runtime";
+import { profileFor, restartCommand } from "../compute/environments";
 import { createSession, getSession } from "../composio/client";
 
 export async function ensureComposioSession(
@@ -48,10 +53,10 @@ export async function installMetaAdsMcp(
   supabase: SupabaseClient,
   userId: string
 ): Promise<void> {
-  const box = await ensureBoxAwake(supabase, userId);
-  const result = await command(
-    box.boxId,
-    `printf 'y\\n' | /home/user/.hermes-venv/bin/hermes mcp add meta-ads --url "${META_ADS_MCP_URL}" && sudo systemctl restart hermes-gateway`,
+  const target = await ensureComputeAwake(supabase, userId);
+  const result = await runCommand(
+    target,
+    `printf 'y\\n' | ${hermesBin(target)} mcp add meta-ads --url "${META_ADS_MCP_URL}" && ${restartCommand(target.environment, ["hermes-gateway"])}`,
     180
   );
   if (result.exitCode !== 0) {
@@ -60,26 +65,31 @@ export async function installMetaAdsMcp(
 }
 
 /**
- * Install (or refresh) the per-user Composio MCP endpoint in the box.
+ * Install (or refresh) the per-user Composio MCP endpoint on the user's
+ * machine — identical in every environment, only the home dir and restart
+ * shell differ.
  *
- * The box is pointed at our own /api/mcp/composio proxy rather than
+ * The compute is pointed at our own /api/mcp/composio proxy rather than
  * Composio's session URL: Composio's tool-router MCP endpoint requires the
- * org API key on every request, and that key must never land in a box. The
- * proxy authenticates the box by its gateway token — already present in the
- * box's own config as `model.api_key` — so the entry is written box-side
- * without any secret transiting the command line.
+ * org API key on every request, and that key must never land in user
+ * compute. The proxy authenticates the instance by its gateway token —
+ * already present in its own config as `model.api_key` — so the entry is
+ * written machine-side without any secret transiting the command line.
  */
 export async function installComposioMcp(
   supabase: SupabaseClient,
-  userId: string
+  userId: string,
+  /** Freshly provisioned instance, when the boxes row is not readable yet. */
+  provisioned?: ComputeTarget
 ): Promise<void> {
-  // Ensures the session exists before the box ever hits the proxy.
+  // Ensures the session exists before the compute ever hits the proxy.
   await ensureComposioSession(supabase, userId);
-  const box = await ensureBoxAwake(supabase, userId);
+  const target = provisioned ?? (await ensureComputeAwake(supabase, userId));
+  const homeDir = profileFor(target.environment).homeDir;
   const proxyUrl = `${env.appOrigin()}/api/mcp/composio`;
   const script = [
     "import yaml, pathlib",
-    'p = pathlib.Path("/home/user/.hermes/config.yaml")',
+    `p = pathlib.Path("${homeDir}/.hermes/config.yaml")`,
     "cfg = yaml.safe_load(p.read_text()) or {}",
     'mcp = cfg.get("mcp_servers")',
     "mcp = mcp if isinstance(mcp, dict) else {}",
@@ -87,9 +97,9 @@ export async function installComposioMcp(
     'cfg["mcp_servers"] = mcp',
     "p.write_text(yaml.safe_dump(cfg, default_flow_style=False))",
   ].join("\n");
-  const result = await command(
-    box.boxId,
-    `/home/user/.hermes-venv/bin/python - <<'PYEOF' && sudo systemctl restart hermes-gateway\n${script}\nPYEOF`,
+  const result = await runCommand(
+    target,
+    `${hermesBin(target, "python")} - <<'PYEOF' && ${restartCommand(target.environment, ["hermes-gateway"])}\n${script}\nPYEOF`,
     180
   );
   if (result.exitCode !== 0) {
