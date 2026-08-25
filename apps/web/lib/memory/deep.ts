@@ -7,6 +7,7 @@
  * onboarding or a chat turn.
  */
 import { command } from "@/lib/box/client";
+import { asRecord } from "@/lib/records";
 import { shellQuote } from "@/lib/box/shell";
 
 /** Stable viking:// targets — re-ingest replaces, never duplicates. */
@@ -27,10 +28,7 @@ export interface DeepMemoryStatus {
 
 function parseJson(stdout: string): Record<string, unknown> | null {
   try {
-    const parsed = JSON.parse(stdout) as unknown;
-    return typeof parsed === "object" && parsed !== null
-      ? (parsed as Record<string, unknown>)
-      : null;
+    return asRecord(JSON.parse(stdout) as unknown);
   } catch {
     return null;
   }

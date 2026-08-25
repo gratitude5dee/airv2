@@ -9,6 +9,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { readAppState, writeAppState } from "../store";
+import { asRecord } from "../../records";
 
 export type BerdLinkStatus = "unpaired" | "pending" | "paired" | "revoked";
 export type BerdPendingState = "queued" | "sent" | "done" | "failed";
@@ -312,8 +313,8 @@ export function markBerdPending(
  * key-shaped values are dropped (C9/C18) before anything is written.
  */
 export function mergeBerdResult(doc: BerdDoc, data: unknown): BerdDoc {
-  if (typeof data !== "object" || data === null) return doc;
-  const payload = data as Record<string, unknown>;
+  const payload = asRecord(data);
+  if (!payload) return doc;
   const merged: Record<string, unknown> = { ...doc };
   for (const key of [
     "agents",

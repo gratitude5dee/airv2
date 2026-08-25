@@ -20,6 +20,7 @@ import { createHash, createHmac, randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "@/lib/env";
 import { openSecret, sealSecret } from "@/lib/crypto/secretbox";
+import { asRecord } from "@/lib/records";
 
 /** How long a minted envelope stays claimable before it fails as expired. */
 const ENVELOPE_TTL_MS = 120 * 1000;
@@ -215,7 +216,8 @@ export async function claimEnvelopes(
     .limit(CLAIM_BATCH);
 
   const envelopes: WireEnvelope[] = [];
-  for (const row of (queued ?? []) as unknown as Record<string, unknown>[]) {
+  for (const raw of queued ?? []) {
+    const row = asRecord(raw) ?? {};
     // Decrypt before the claiming update nulls the ciphertext.
     let args: unknown = null;
     if (typeof row.args_sealed === "string") {
@@ -275,7 +277,7 @@ export async function completeEnvelope(
     .eq("user_id", link.user_id)
     .eq("state", "sent")
     .select(`id, resource_id, cmd_group, ${lane.verbColumn}`);
-  const row = (data as unknown as Record<string, unknown>[] | null)?.[0];
+  const row = asRecord((data ?? [])[0]);
   if (!row) return null;
   return {
     id: row.id as string,

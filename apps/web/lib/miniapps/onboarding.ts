@@ -6,6 +6,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { readFile, writeFile } from "../box/client";
+import { asRecord } from "../records";
 import { ensureBoxAwake } from "../orchestrator/boxes";
 
 export const ONBOARDING_STEPS = [
@@ -51,8 +52,8 @@ function normalize(raw: unknown): OnboardingState {
   if (typeof raw !== "object" || raw === null) return state;
   const doc = raw as { steps?: unknown; updated_at?: unknown };
   if (typeof doc.updated_at === "string") state.updated_at = doc.updated_at;
-  if (typeof doc.steps === "object" && doc.steps !== null) {
-    const steps = doc.steps as Record<string, unknown>;
+  const steps = asRecord(doc.steps);
+  if (steps) {
     for (const step of ONBOARDING_STEPS) {
       const value = steps[step];
       if (value === "done" || value === "skipped" || value === "todo") {

@@ -9,6 +9,7 @@
  * verbatim (REQUIRED_GMI_MODEL_PARAMETERS in preflight.ts).
  */
 import { env } from "../env";
+import { asRecord as toRecord } from "../records";
 import { CreativeUnconfiguredError } from "./groq";
 import { assertSafeGeneratedMediaUrl, generatedMediaHosts } from "./media-url";
 import { DEFAULT_LANE_MODELS, type CreativePrefs } from "./model-prefs";
@@ -190,9 +191,7 @@ export const isAmbiguousSubmission = (error: unknown): boolean =>
   (error.timedOut || error.status === undefined);
 
 const asRecord = (value: unknown): Record<string, unknown> | undefined =>
-  typeof value === "object" && value !== null
-    ? (value as Record<string, unknown>)
-    : undefined;
+  toRecord(value) ?? undefined;
 
 const stringField = (
   value: Record<string, unknown> | undefined,

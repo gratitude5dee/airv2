@@ -4,6 +4,7 @@
  * rejected — the box wake budget is the scarce resource (§6.2).
  */
 import parser, { type CronDate, type CronExpression } from "cron-parser";
+import { asRecord } from "../records";
 
 /** cron-parser's next() is typed as CronDate | IteratorResult<CronDate>. */
 function nextDate(interval: CronExpression): Date {
@@ -50,8 +51,8 @@ export interface AgentSchedule {
 }
 
 export function parseAgentSchedule(value: unknown): AgentSchedule | null {
-  if (typeof value !== "object" || value === null) return null;
-  const row = value as Record<string, unknown>;
+  const row = asRecord(value);
+  if (!row) return null;
   if (
     typeof row.id !== "string" ||
     typeof row.user_id !== "string" ||

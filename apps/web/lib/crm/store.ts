@@ -10,6 +10,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { readFile, writeFile } from "../box/client";
+import { asRecord } from "../records";
 import { ensureBoxAwake } from "../orchestrator/boxes";
 
 export const PEOPLE_PATH = ".hermes/miniapps/crm/people.json";
@@ -51,8 +52,8 @@ const strings = (value: unknown): string[] =>
  * ordinary box state the agent may write directly, so every field is
  * validated on read — one malformed record must not take the app down. */
 export function asPerson(raw: unknown): CrmPerson | null {
-  if (typeof raw !== "object" || raw === null) return null;
-  const value = raw as Record<string, unknown>;
+  const value = asRecord(raw);
+  if (!value) return null;
   if (typeof value.id !== "string" || !value.id) return null;
   if (typeof value.name !== "string" || !value.name) return null;
   const provenance = Array.isArray(value.provenance)

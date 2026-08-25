@@ -7,6 +7,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { BoxApiError, readFile, writeFile } from "../box/client";
+import { asRecord } from "../records";
 import { armStopAfter, ensureBoxAwake } from "../orchestrator/boxes";
 
 /* ------------------------------------------------------------- image docs */
@@ -631,8 +632,8 @@ function docPath(app: "image" | "video", resourceId: string): string {
 }
 
 function normalizeLayer(raw: unknown): ImageLayer | null {
-  if (typeof raw !== "object" || raw === null) return null;
-  const input = raw as Record<string, unknown>;
+  const input = asRecord(raw);
+  if (!input) return null;
   if (typeof input.id !== "string" || !input.id) return null;
   const kind =
     input.kind === "group" || input.kind === "text" || input.kind === "asset"
@@ -719,7 +720,7 @@ export function normalizeImageDoc(raw: unknown): ImageDoc {
       .filter((layer): layer is ImageLayer => layer !== null)
       .slice(0, MAX_LAYERS)
   );
-  const history = (doc.history ?? {}) as Record<string, unknown>;
+  const history = asRecord(doc.history) ?? {};
   return {
     schemaVersion: IMAGE_DOC_VERSION,
     title: typeof doc.title === "string" ? doc.title : DEFAULT_IMAGE_DOC.title,

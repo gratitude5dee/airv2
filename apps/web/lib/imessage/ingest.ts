@@ -11,6 +11,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { readFile, writeFile } from "../box/client";
+import { asRecord } from "../records";
 import { deepMemoryIndex, OV_IMESSAGE_URI } from "../memory/deep";
 import { ensureBoxAwake } from "../orchestrator/boxes";
 import { env } from "../env";
@@ -123,7 +124,7 @@ export function parseChunk(raw: unknown): IngestChunk {
     if (typeof entry !== "object" || entry === null) {
       throw new IngestInputError("each message must be an object");
     }
-    const m = entry as Record<string, unknown>;
+    const m = asRecord(entry) ?? {};
     if (
       typeof m.ts !== "string" ||
       typeof m.chat !== "string" ||
@@ -170,8 +171,8 @@ function defaultStatus(): IngestStatus {
 
 function normalizeStatus(raw: unknown): IngestStatus {
   const status = defaultStatus();
-  if (typeof raw !== "object" || raw === null) return status;
-  const doc = raw as Record<string, unknown>;
+  const doc = asRecord(raw);
+  if (!doc) return status;
   if (typeof doc.chunks === "number") status.chunks = doc.chunks;
   if (typeof doc.messages === "number") status.messages = doc.messages;
   if (typeof doc.last_upload_at === "string") {
