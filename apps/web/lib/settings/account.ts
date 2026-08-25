@@ -146,6 +146,24 @@ export async function setMiniappBackground(
   return !error;
 }
 
+/**
+ * Reorders `submitted` within `saved`, keeping unsubmitted slugs in their
+ * saved positions. Surfaces arrange different subsets of the shared order
+ * (the web rail shows installed apps only; the Home mini-app orders all
+ * published apps), so a subset save must not drop the other surface's
+ * arrangement. Submitted slugs unknown to `saved` append at the end.
+ */
+export function mergeHomeOrder(saved: string[], submitted: string[]): string[] {
+  const submittedSet = new Set(submitted);
+  const refill = submitted.filter((slug) => saved.includes(slug));
+  const extras = submitted.filter((slug) => !saved.includes(slug));
+  let next = 0;
+  const merged = saved.map((slug) =>
+    submittedSet.has(slug) ? (refill[next++] ?? slug) : slug
+  );
+  return [...merged, ...extras];
+}
+
 /** Writes users.miniapp_home_order — Home launcher slugs in the user's
  * chosen order (empty keeps the default). Callers validate the slugs. */
 export async function setMiniappHomeOrder(
