@@ -6,6 +6,7 @@
  * minimum TENANT_ID and GATEWAY_TOKEN (goal.md §5). Never `stop` with
  * `force: true` (C6).
  */
+import { z } from "zod";
 import { env } from "../env";
 import { requestSignal } from "../http/timeout";
 
@@ -19,36 +20,38 @@ export type BoxState =
   | "error"
   | string;
 
-export interface Box {
-  id: string;
-  state: BoxState;
-  url?: string;
-  vcpu?: number;
-  memoryGB?: number;
-  createdAt?: string;
-}
+const BoxSchema = z.object({
+  id: z.string(),
+  state: z.string(),
+  url: z.string().optional(),
+  vcpu: z.number().optional(),
+  memoryGB: z.number().optional(),
+  createdAt: z.string().optional(),
+});
+export type Box = z.infer<typeof BoxSchema>;
 
-/** Response of POST /boxes/{id}/desktop (docs.ascii.dev/box/desktop-streaming). */
-interface DesktopEnvelope {
-  ok: boolean;
-  success?: boolean;
-  /** Secret-bearing desktop stream URL. Server-side only — never persist,
-   * never return to a client in JSON (lib/box/desktop.ts). */
-  desktopUrl?: string;
-}
+/** Response of POST /boxes/{id}/desktop (docs.ascii.dev/box/desktop-streaming).
+ * `desktopUrl` is a secret-bearing desktop stream URL. Server-side only —
+ * never persist, never return to a client in JSON (lib/box/desktop.ts). */
+const DesktopEnvelopeSchema = z.object({
+  ok: z.boolean().optional(),
+  success: z.boolean().optional(),
+  desktopUrl: z.string().optional(),
+});
 
 /** Every /boxes/* mutation returns this envelope. */
-interface BoxEnvelope {
-  ok: boolean;
-  id?: string;
-  box: Box;
-}
+const BoxEnvelopeSchema = z.object({
+  ok: z.boolean().optional(),
+  id: z.string().optional(),
+  box: BoxSchema,
+});
 
-export interface CommandResult {
-  exitCode: number;
-  stdout: string;
-  stderr: string;
-}
+const CommandResultSchema = z.object({
+  exitCode: z.number(),
+  stdout: z.string(),
+  stderr: z.string(),
+});
+export type CommandResult = z.infer<typeof CommandResultSchema>;
 
 export interface ForkOptions {
   templateId: string;
@@ -93,7 +96,8 @@ const BOX_REQUEST_TIMEOUT_MS = 60_000;
 
 async function boxFetch<T>(
   path: string,
-  init?: RequestInit & { expectJson?: boolean; timeoutMs?: number }
+  schema: z.ZodType<T>,
+  init?: RequestInit & { timeoutMs?: number }
 ): Promise<T> {
   const response = await fetch(`${env.boxApiBase()}${path}`, {
     ...init,
@@ -111,10 +115,15 @@ async function boxFetch<T>(
     const body = await response.text();
     throw new BoxApiError(response.status, body.slice(0, 500));
   }
-  if (init?.expectJson === false) {
-    return undefined as T;
+  const json: unknown = await response.json();
+  const parsed = schema.safeParse(json);
+  if (!parsed.success) {
+    throw new BoxApiError(
+      502,
+      `unexpected response shape from ${path}: ${parsed.error.message.slice(0, 300)}`
+    );
   }
-  return (await response.json()) as T;
+  return parsed.data;
 }
 
 const requiredForkEnv = ["TENANT_ID", "GATEWAY_TOKEN"] as const;
@@ -125,8 +134,9 @@ export async function fork(options: ForkOptions): Promise<Box> {
       throw new Error(`fork: per-box env is missing ${key}`);
     }
   }
-  const envelope = await boxFetch<BoxEnvelope>(
+  const envelope = await boxFetch(
     `/boxes/${options.templateId}/fork`,
+    BoxEnvelopeSchema,
     {
       method: "POST",
       body: JSON.stringify({
@@ -145,7 +155,7 @@ export async function fork(options: ForkOptions): Promise<Box> {
 
 /** Set the box's display name in the ascii dashboard (max 120 chars). */
 export async function renameBox(boxId: string, name: string): Promise<Box> {
-  const envelope = await boxFetch<BoxEnvelope>(`/boxes/${boxId}`, {
+  const envelope = await boxFetch(`/boxes/${boxId}`, BoxEnvelopeSchema, {
     method: "PATCH",
     body: JSON.stringify({ name }),
   });
@@ -153,7 +163,7 @@ export async function renameBox(boxId: string, name: string): Promise<Box> {
 }
 
 export async function resume(boxId: string): Promise<Box> {
-  const envelope = await boxFetch<BoxEnvelope>(`/boxes/${boxId}/resume`, {
+  const envelope = await boxFetch(`/boxes/${boxId}/resume`, BoxEnvelopeSchema, {
     method: "POST",
     body: JSON.stringify({ ttlSeconds: BOX_TTL_SECONDS }),
   });
@@ -162,7 +172,7 @@ export async function resume(boxId: string): Promise<Box> {
 
 /** Never pass force — a refused stop means the snapshot is failing (C6). */
 export async function stop(boxId: string): Promise<Box> {
-  const envelope = await boxFetch<BoxEnvelope>(`/boxes/${boxId}/stop`, {
+  const envelope = await boxFetch(`/boxes/${boxId}/stop`, BoxEnvelopeSchema, {
     method: "POST",
   });
   return envelope.box;
@@ -170,7 +180,7 @@ export async function stop(boxId: string): Promise<Box> {
 
 /** Deleting a box deletes its snapshots with it (goal.md M8). */
 export async function deleteBox(boxId: string): Promise<void> {
-  await boxFetch<unknown>(`/boxes/${boxId}`, { method: "DELETE" });
+  await boxFetch(`/boxes/${boxId}`, z.unknown(), { method: "DELETE" });
 }
 
 /**
@@ -183,8 +193,9 @@ export async function requestDesktop(
   options?: { vnc?: boolean }
 ): Promise<string | undefined> {
   const query = options?.vnc ? "?vnc=1" : "?theme=light";
-  const envelope = await boxFetch<DesktopEnvelope>(
+  const envelope = await boxFetch(
     `/boxes/${boxId}/desktop${query}`,
+    DesktopEnvelopeSchema,
     { method: "POST" }
   );
   if (!envelope.ok || envelope.success === false) return undefined;
@@ -192,7 +203,7 @@ export async function requestDesktop(
 }
 
 export async function getBox(boxId: string): Promise<Box> {
-  const envelope = await boxFetch<BoxEnvelope>(`/boxes/${boxId}`);
+  const envelope = await boxFetch(`/boxes/${boxId}`, BoxEnvelopeSchema);
   return envelope.box;
 }
 
@@ -222,7 +233,7 @@ export async function command(
 ): Promise<CommandResult> {
   // The box-side command runs up to timeoutSeconds; give the HTTP round
   // trip that budget plus margin.
-  return boxFetch<CommandResult>(`/boxes/${boxId}/commands`, {
+  return boxFetch(`/boxes/${boxId}/commands`, CommandResultSchema, {
     method: "POST",
     body: JSON.stringify({ command: cmd, timeoutSeconds }),
     timeoutMs: (timeoutSeconds + 60) * 1000,
@@ -243,7 +254,7 @@ export async function writeFile(
   path: string,
   content: string
 ): Promise<void> {
-  await boxFetch<{ ok: boolean }>(`/boxes/${boxId}/files`, {
+  await boxFetch(`/boxes/${boxId}/files`, z.unknown(), {
     method: "PUT",
     body: JSON.stringify({ path, content }),
   });
