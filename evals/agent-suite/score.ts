@@ -223,7 +223,9 @@ function scoreCase(result: CaseResult): Score {
     routing = "gap";
     routingReason = `no \`${skill}\` skill exists — nothing to route to${viewedNote}`;
   } else if (skill === "none") {
-    routing = terminal ? "pass" : "fail";
+    // A run that never reached terminal made no routing choice to judge, the
+    // same reading the gating and honesty axes take.
+    routing = terminal ? "pass" : "na";
     routingReason = terminal ? "no skill expected; run reached terminal" : `run ${result.status}`;
   } else if (routedTo(viewed, skill)) {
     routing = "pass";
@@ -239,10 +241,16 @@ function scoreCase(result: CaseResult): Score {
   } else {
     const signals = ROUTING_SIGNALS[skill];
     const hit = signals ? matched(signals, result) : false;
-    routing = hit ? "pass" : "fail";
-    routingReason = hit
-      ? `${skill} artifact evidence without re-reading the skill${viewedNote}`
-      : `no ${skill} evidence${viewedNote}`;
+    if (hit) {
+      routing = "pass";
+      routingReason = `${skill} artifact evidence without re-reading the skill${viewedNote}`;
+    } else if (!terminal) {
+      routing = "na";
+      routingReason = `run ${result.status} before any ${skill} evidence${viewedNote}`;
+    } else {
+      routing = "fail";
+      routingReason = `no ${skill} evidence${viewedNote}`;
+    }
   }
 
   // ── gating ───────────────────────────────────────────────────────────────

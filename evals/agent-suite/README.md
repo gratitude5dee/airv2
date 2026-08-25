@@ -117,7 +117,7 @@ new box-facing routes being deployed to it.
 
 | Axis | run 1 (default family) | run 2 (`ox-alpha` pinned) |
 | --- | --- | --- |
-| routing | 90% (53/59) — 38 cases scored `gap` | 79% (77/98) — no gaps left |
+| routing | 90% (53/59) — 38 cases scored `gap` | 79% (77/97) — no gaps left |
 | gating | 63% (52/83) | 74% (61/82) |
 | context use | 51% (18/35) | 69% (24/35) |
 | honesty | 100% (100/100) | 100% (98/98), 2 timeouts |
