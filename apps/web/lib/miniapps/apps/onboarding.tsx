@@ -647,8 +647,10 @@ function slides(
       : csp + "; media-src blob:";
     csp += "; connect-src 'self'";
   }
+  // Chrome enforces form-action on the redirect that follows a form POST, so
+  // the Composio connect redirect to the hosted page must be allowed here.
   headers["Content-Security-Policy"] =
-    `${csp}; form-action 'self'; frame-ancestors 'self' ${env.appOrigin()}`;
+    `${csp}; form-action 'self' https://*.composio.dev; frame-ancestors 'self' ${env.appOrigin()}`;
   return new NextResponse(body, {
     status: 200,
     headers: { ...headers, "Content-Type": "text/html; charset=utf-8" },

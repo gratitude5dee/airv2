@@ -25,6 +25,22 @@ import { renderShell, shellHtml } from "../shell";
 import { promptBar, runPrompt } from "../promptBar";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
+// Chrome enforces form-action on the redirect that follows a form POST, so
+// the connect redirect into the Composio hosted page must be allowed on top
+// of the shell's CSP (same pattern as pay.tsx for Stripe Checkout).
+function connectHtml(body: string): NextResponse {
+  const response = shellHtml(body);
+  const csp = response.headers.get("Content-Security-Policy") ?? "";
+  response.headers.set(
+    "Content-Security-Policy",
+    csp.replace(
+      "form-action 'self'",
+      "form-action 'self' https://*.composio.dev"
+    )
+  );
+  return response;
+}
+
 function chip(status: string | null): string {
   if (status === "active") {
     return '<span class="chip on">● connected</span>';
@@ -135,7 +151,7 @@ async function loadAndRender(
     );
   }
   const health = await connectionHealth(ctx.supabase, userId, connections);
-  return shellHtml(
+  return connectHtml(
     renderConnect(
       toolkits,
       connections,
