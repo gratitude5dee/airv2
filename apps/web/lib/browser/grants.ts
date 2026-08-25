@@ -7,6 +7,7 @@
  * values (C18/C19). Default is no grants: a fresh box refuses every fill.
  */
 import { readFile, writeFile } from "../box/client";
+import { asRecord } from "../records";
 
 // readFile runs `cat` (absolute path); writeFile posts to the box files API,
 // which — like every other caller — takes a home-relative path.
@@ -44,9 +45,10 @@ export function parseSiteGrants(content: string): SiteGrants {
   }
   if (payload === null || typeof payload !== "object") return {};
   const grants = (payload as { grants?: unknown }).grants;
-  if (grants === null || typeof grants !== "object") return {};
+  const record = asRecord(grants);
+  if (!record) return {};
   const result: SiteGrants = {};
-  for (const [itemId, hosts] of Object.entries(grants as Record<string, unknown>)) {
+  for (const [itemId, hosts] of Object.entries(record)) {
     if (Array.isArray(hosts)) {
       result[itemId] = hosts.filter(
         (host): host is string => typeof host === "string"

@@ -5,6 +5,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { sessionUserId } from "@/lib/auth/user";
+import { asRecord } from "@/lib/records";
 import { serviceClient } from "@/lib/supabase";
 import { batchApproveEmailDrafts } from "@/lib/decisions/batch";
 import { EmailDraftError, sendHeldDraft } from "@/lib/decisions/email";
@@ -174,7 +175,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         supabase,
         userId,
         decision.ref as string,
-        (decision.payload ?? null) as Record<string, unknown> | null,
+        asRecord(decision.payload),
       );
     } else {
       await dismissContentPlan(supabase, userId, decision.ref as string);
@@ -349,7 +350,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       await applyPatchOnBox(
         supabase,
         userId,
-        sanitizePatch((decision.payload ?? {}) as Record<string, unknown>),
+        sanitizePatch(asRecord(decision.payload) ?? {}),
         {
           source: "agent",
           at: new Date().toISOString(),

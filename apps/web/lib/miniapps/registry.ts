@@ -5,6 +5,7 @@
  * next request.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { asRecord } from "../records";
 
 export type MiniAppVisibility = "public" | "unlisted" | "private";
 export type MiniAppStatus = "draft" | "published" | "suspended";
@@ -68,8 +69,8 @@ function isRegistryAccess(value: unknown): value is RegistryApp["access"] {
 
 /** Validate a selected mini_apps row before exposing it as registry metadata. */
 export function parseRegistryApp(value: unknown): RegistryApp | null {
-  if (typeof value !== "object" || value === null) return null;
-  const row = value as Record<string, unknown>;
+  const row = asRecord(value);
+  if (!row) return null;
   const x402PriceUsdc = parseNullableNumeric(row.x402_price_usdc);
   if (
     typeof row.id !== "string" ||

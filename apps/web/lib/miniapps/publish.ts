@@ -10,6 +10,7 @@
 import { randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { hashPassword } from "./gates";
+import { asRecord } from "../records";
 import {
   parseNullableNumeric,
   parseRegistryApp,
@@ -77,8 +78,8 @@ export interface DraftInput {
 type DraftResult = Pick<RegistryApp, "id" | "slug" | "name">;
 
 function parseDraftResult(value: unknown): DraftResult | null {
-  if (typeof value !== "object" || value === null) return null;
-  const row = value as Record<string, unknown>;
+  const row = asRecord(value);
+  if (!row) return null;
   return typeof row.id === "string" &&
     typeof row.slug === "string" &&
     typeof row.name === "string"
@@ -242,8 +243,8 @@ interface GateSettingsRow {
 }
 
 export function parseGateSettingsRow(value: unknown): GateSettingsRow | null {
-  if (typeof value !== "object" || value === null) return null;
-  const row = value as Record<string, unknown>;
+  const row = asRecord(value);
+  if (!row) return null;
   const x402PriceUsdc = parseNullableNumeric(row.x402_price_usdc);
   if (
     typeof row.id !== "string" ||

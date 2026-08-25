@@ -7,6 +7,7 @@
  */
 import { env } from "../env";
 import { openSecret } from "../crypto/secretbox";
+import { asRecord } from "../records";
 
 const BASE_URL = "https://api.ads.openai.com/v1";
 
@@ -208,11 +209,11 @@ export async function getCampaign(
   apiKey: string,
   campaignRef: string
 ): Promise<Record<string, unknown>> {
-  return (await adsFetch(
-    apiKey,
-    "GET",
-    `/campaigns/${encodeURIComponent(campaignRef)}`
-  )) as Record<string, unknown>;
+  return (
+    asRecord(
+      await adsFetch(apiKey, "GET", `/campaigns/${encodeURIComponent(campaignRef)}`)
+    ) ?? {}
+  );
 }
 
 export interface AdGroupArgs {
@@ -352,7 +353,7 @@ export async function campaignInsights(
   if (options.after) params.set("after", options.after);
   const result = await adsFetch(apiKey, "GET", `/insights?${params}`);
   return {
-    ...((result ?? {}) as Record<string, unknown>),
+    ...(asRecord(result) ?? {}),
     ...asListEnvelope<Record<string, unknown>>(result),
   };
 }

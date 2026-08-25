@@ -6,6 +6,7 @@
  * table's unique key, so replays are idempotent.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { asRecord } from "../records";
 import {
   adInsights,
   campaignInsights,
@@ -82,7 +83,7 @@ export function validatePushedRows(
     throw new MetricsValidationError(`more than ${MAX_PUSH_ROWS} rows`);
   }
   return rows.map((raw) => {
-    const row = (raw ?? {}) as Record<string, unknown>;
+    const row = asRecord(raw) ?? {};
     if (row.provider !== "meta") {
       throw new MetricsValidationError("bad provider");
     }
@@ -250,7 +251,7 @@ export async function ingestOpenAiMetrics(
       const adRefs = [
         ...new Set(
           (adWrites ?? [])
-            .map((w) => ((w.result ?? {}) as Record<string, unknown>).ad_ref)
+            .map((w) => (asRecord(w.result) ?? {}).ad_ref)
             .filter((ref): ref is string => typeof ref === "string" && !!ref)
         ),
       ];

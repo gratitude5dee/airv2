@@ -6,6 +6,7 @@
  * DST transition never moves a launch (CM4 task 7).
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { asRecord } from "../records";
 
 export const SLOT_PLATFORMS = [
   "instagram",
@@ -45,8 +46,8 @@ function isStringRecord(value: unknown): value is Record<string, string> {
 }
 
 export function parseContentSlot(value: unknown): ContentSlot | null {
-  if (typeof value !== "object" || value === null) return null;
-  const row = value as Record<string, unknown>;
+  const row = asRecord(value);
+  if (!row) return null;
   if (
     typeof row.id !== "string" ||
     typeof row.user_id !== "string" ||

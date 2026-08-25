@@ -9,6 +9,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "../env";
 import { readAppState } from "../miniapps/store";
+import { asRecord } from "../records";
 import { CommerceError } from "./merchants";
 
 export const PRODUCT_KINDS = [
@@ -57,8 +58,8 @@ function isProductKind(value: unknown): value is ProductKind {
 export function parseStorefrontProduct(
   value: unknown
 ): StorefrontProduct | null {
-  if (typeof value !== "object" || value === null) return null;
-  const row = value as Record<string, unknown>;
+  const row = asRecord(value);
+  if (!row) return null;
   if (
     typeof row.id !== "string" ||
     typeof row.user_id !== "string" ||
@@ -98,8 +99,8 @@ function publicImageUrl(value: unknown): string | null {
 
 /** Validate one raw catalog entry into a projectable item, or null. */
 export function sanitizeCatalogItem(raw: unknown): CatalogItem | null {
-  if (raw === null || typeof raw !== "object") return null;
-  const item = raw as Record<string, unknown>;
+  const item = asRecord(raw);
+  if (!item) return null;
   const key = typeof item.key === "string" ? item.key.toLowerCase() : "";
   if (!KEY_RE.test(key)) return null;
   const kind = item.kind as ProductKind;
