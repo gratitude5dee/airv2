@@ -211,7 +211,7 @@ exec "$OV_VENV/bin/python" "$HOME_DIR/.openviking/ovctl.py" "\$@"
 SH
 chmod +x "$BIN_DIR/ovctl"
 
-python3 - "$HOME_DIR/.hermes/config.yaml" <<'PYEOF'
+"$HERMES_VENV/bin/python" - "$HOME_DIR/.hermes/config.yaml" <<'PYEOF'
 import sys, yaml, pathlib
 p = pathlib.Path(sys.argv[1])
 cfg = yaml.safe_load(p.read_text()) if p.exists() else None
@@ -259,7 +259,7 @@ exec curl -fsS -X POST "\${base%/api/gateway/v1}/api/cards/\${kind}" \\
 SH
 chmod +x "$BIN_DIR/open-miniapp-card"
 
-python3 - "$HOME_DIR/.hermes/config.yaml" <<'PYEOF'
+"$HERMES_VENV/bin/python" - "$HOME_DIR/.hermes/config.yaml" <<'PYEOF'
 import sys, yaml, pathlib
 p = pathlib.Path(sys.argv[1])
 cfg = yaml.safe_load(p.read_text()) if p.exists() else None
