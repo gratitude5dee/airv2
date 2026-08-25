@@ -114,6 +114,9 @@ export interface CaseResult {
   safety_note: string;
   /** ISO timestamp captured just before POST /api/chat — the decisions window floor. */
   window_start: string;
+  /** ISO timestamp captured after the settle wait — the window ceiling, so a
+   * later case's rows can never be read into this one. */
+  window_end: string | null;
   run_id: string | null;
   /** "completed" | "failed" | "timeout" | "start_error" | "stream_error" */
   status: string;

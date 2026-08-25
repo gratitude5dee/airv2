@@ -95,6 +95,13 @@ npx tsx evals/agent-suite/score.ts    # scores the newest results dir
 npx tsx evals/agent-suite/score.ts evals/agent-suite/results/<stamp>
 ```
 
+A case's evidence window is bounded on both ends — `window_start` just before
+the run starts, `window_end` after the settle wait — and a case that never
+reaches terminal is stopped through `POST /api/chat/<run_id>/stop` before the
+readback. Aborting only our end of the SSE stream leaves the run working on
+the box, and its later metering rows and decisions would otherwise land in the
+*next* case's window and be scored against that case.
+
 The runner is sequential and resumable: every case writes
 `results/<stamp>/<id>.json` the moment it settles — including timeouts and
 start errors, which are real results — and a rerun with the same

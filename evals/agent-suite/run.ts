@@ -66,6 +66,23 @@ function config(): Config {
   };
 }
 
+/**
+ * Stop a run that never reached terminal. Returns a note for the result's
+ * error field: whether the runaway run was actually cut matters when reading
+ * the next case's cost, so it is evidence, not a detail to swallow.
+ */
+async function stopRun(cfg: Config, runId: string): Promise<string> {
+  try {
+    const res = await fetch(`${cfg.baseUrl}/api/chat/${runId}/stop`, {
+      method: "POST",
+      headers: { Cookie: `air_session=${cfg.cookie}` },
+    });
+    return res.ok ? "; run stopped" : `; stop returned ${res.status}`;
+  } catch (error) {
+    return `; stop failed: ${redact(String(error)).slice(0, 120)}`;
+  }
+}
+
 async function startRun(cfg: Config, input: string): Promise<string> {
   const res = await fetch(`${cfg.baseUrl}/api/chat`, {
     method: "POST",
@@ -210,11 +227,16 @@ const RUN_COLS = "hermes_run_id,trigger,outcome,started_at,ended_at,cost_usd,box
  * the trigger=null `gateway_completion` rows the inference gateway inserts
  * per model call, which is where token cost actually lands.
  */
-async function readRuns(cfg: Config, windowStart: string): Promise<AgentRunRow[]> {
+async function readRuns(
+  cfg: Config,
+  windowStart: string,
+  windowEnd: string
+): Promise<AgentRunRow[]> {
   const rows = await supaSelect<RawRun>(
     cfg.supa,
     "agent_runs",
     `user_id=eq.${cfg.userId}&started_at=gte.${encodeURIComponent(windowStart)}` +
+      `&started_at=lt.${encodeURIComponent(windowEnd)}` +
       `&select=${RUN_COLS}&order=started_at.asc`
   );
   return rows.map(toRunRow);
@@ -234,11 +256,16 @@ interface RawDecision {
  * hold draft bodies, contact handles, and refs, so we persist their keys and
  * drop the values (the scorer only needs kind/status).
  */
-async function readDecisions(cfg: Config, windowStart: string): Promise<DecisionRow[]> {
+async function readDecisions(
+  cfg: Config,
+  windowStart: string,
+  windowEnd: string
+): Promise<DecisionRow[]> {
   const rows = await supaSelect<RawDecision>(
     cfg.supa,
     "decisions",
     `user_id=eq.${cfg.userId}&created_at=gte.${encodeURIComponent(windowStart)}` +
+      `&created_at=lt.${encodeURIComponent(windowEnd)}` +
       `&select=kind,status,label,platform,created_at,payload&order=created_at.asc`
   );
   return rows.map((row) => ({
@@ -264,6 +291,7 @@ async function runCase(cfg: Config, testCase: EvalCase): Promise<CaseResult> {
     expected_decision_kind: testCase.expected_decision_kind,
     safety_note: testCase.safety_note,
     window_start: windowStart,
+    window_end: null,
     run_id: null,
     status: "start_error",
     error: null,
@@ -287,16 +315,23 @@ async function runCase(cfg: Config, testCase: EvalCase): Promise<CaseResult> {
   }
 
   const stream = await streamRun(cfg, runId);
+  // Aborting our end of the SSE stream does not stop the run: the box keeps
+  // working, and its later metering rows and decisions would land inside the
+  // *next* case's window and be scored against that case. Cut the run first.
+  const stopNote = stream.status === "completed" || stream.status === "failed"
+    ? ""
+    : await stopRun(cfg, runId);
   // The relay closes out agent_runs as the terminal event passes; give that
   // write (and the gateway's metering inserts) a moment to land.
   await sleep(SETTLE_MS);
+  const windowEnd = new Date().toISOString();
 
   let windowRuns: AgentRunRow[] = [];
   let decisions: DecisionRow[] = [];
   let readError: string | null = null;
   try {
-    windowRuns = await readRuns(cfg, windowStart);
-    decisions = await readDecisions(cfg, windowStart);
+    windowRuns = await readRuns(cfg, windowStart, windowEnd);
+    decisions = await readDecisions(cfg, windowStart, windowEnd);
   } catch (error) {
     readError = redact(String(error));
   }
@@ -304,8 +339,9 @@ async function runCase(cfg: Config, testCase: EvalCase): Promise<CaseResult> {
   return {
     ...base,
     run_id: runId,
+    window_end: windowEnd,
     status: stream.status,
-    error: stream.error ? redact(stream.error) : readError,
+    error: stream.error ? `${redact(stream.error)}${stopNote}` : readError,
     tools: stream.tools,
     tool_events: stream.toolEvents,
     skills_viewed: stream.skillsViewed,
