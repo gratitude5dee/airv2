@@ -144,8 +144,8 @@ signal about where the shipped skill set left it without instructions.
 | E63 | analytics | completed | gap | pass | fail | pass | — | ads-reporting, capability-verification | skill_view, execute_code |
 | E64 | analytics | completed | gap | pass | fail | pass | — | open-miniapp, google-workspace, capability-verification, app-store-search | skill_view, tool_search, tool_describe, mcp__composio__COMPOSIO_SEARCH_TOOLS, tool_describe, mcp__composio__COMPOSIO_MANAGE_CONNECTIONS |
 | E65 | analytics | completed | gap | pass | fail | pass | — | capability-verification | skill_view, read_file, tool_search, tool_describe, mcp__composio__COMPOSIO_SEARCH_TOOLS, mcp__composio__COMPOSIO_MANAGE_CONNECTIONS |
-| E66 | analytics | completed | gap | pass | pass | pass | — | ads-reporting, capability-verification, calendar-native | skill_view |
-| E67 | analytics | completed | gap | pass | fail | pass | — | hermes-agent, capability-verification | skill_view, tool_search, terminal |
+| E66 | analytics | completed | gap | pass | fail | pass | — | ads-reporting, capability-verification, calendar-native | skill_view |
+| E67 | analytics | completed | gap | pass | pass | pass | — | hermes-agent, capability-verification | skill_view, tool_search, terminal |
 | E68 | analytics | completed | gap | pass | fail | pass | — | ads-reporting, capability-verification | skill_view, tool_search, tool_describe, mcp__composio__COMPOSIO_SEARCH_TOOLS, tool_describe, mcp__composio__COMPOSIO_MANAGE_CONNECTIONS |
 | E69 | analytics | completed | gap | pass | fail | pass | — | social-media, social-engage | skill_view, tool_search, tool_describe, mcp__composio__COMPOSIO_SEARCH_TOOLS |
 | E70 | analytics | completed | gap | pass | fail | pass | — | — | skill_view, write_file, terminal |
@@ -260,39 +260,39 @@ signal about where the shipped skill set left it without instructions.
   - routing: no `analytics-interpretation` skill exists — nothing to route to; opened ads-reporting
 - **E59** (analytics) — Give me a weekly performance dashboard: ad spend, conversions, storefront revenue, and social reach.
   - routing: no `analytics-interpretation` skill exists — nothing to route to; opened capability-verification, ads-reporting
-  - context: answered without reaching for owner context
+  - context: answered without reading the owner's ledgers
 - **E60** (analytics) — What's my customer acquisition cost across all channels this month?
   - routing: no `analytics-interpretation` skill exists — nothing to route to; opened ads-reporting
-  - context: answered without reaching for owner context
+  - context: answered without reading the owner's ledgers
 - **E61** (analytics) — Which product is driving the most storefront revenue, and where do buyers come from?
   - routing: no `analytics-interpretation` skill exists — nothing to route to; opened airtable, capability-verification
-  - context: answered without reaching for owner context
+  - context: answered without reading the owner's ledgers
 - **E62** (analytics) — Show me my agent's activity log for the last 7 days — what did it do and what did it cost?
   - routing: no `analytics-interpretation` skill exists — nothing to route to; opened capability-verification, hermes-agent
-  - context: answered without reaching for owner context
+  - context: answered without reading the owner's ledgers
 - **E63** (analytics) — Break down my funnel: impressions → clicks → checkouts → purchases, with drop-off rates.
   - routing: no `analytics-interpretation` skill exists — nothing to route to; opened ads-reporting, capability-verification
-  - context: answered without reaching for owner context
+  - context: answered without reading the owner's ledgers
 - **E64** (analytics) — Export my analytics to CSV for the last 30 days so I can share with my manager.
   - routing: no `analytics-interpretation` skill exists — nothing to route to; opened open-miniapp, google-workspace, capability-verification, app-store-search
-  - context: answered without reaching for owner context
+  - context: answered without reading the owner's ledgers
 - **E65** (analytics) — Are any of my numbers trending down week-over-week? Flag anything concerning.
   - routing: no `analytics-interpretation` skill exists — nothing to route to; opened capability-verification
-  - context: answered without reaching for owner context
+  - context: answered without reading the owner's ledgers
 - **E66** (analytics) — Attribute last month's ticket sales to the campaigns that drove them.
   - routing: no `analytics-interpretation` skill exists — nothing to route to; opened ads-reporting, capability-verification, calendar-native
+  - context: answered without reading the owner's ledgers
 - **E67** (analytics) — What's my gateway/token cost trend, and am I approaching any spend caps?
   - routing: no `analytics-interpretation` skill exists — nothing to route to; opened hermes-agent, capability-verification
-  - context: answered without reaching for owner context
 - **E68** (analytics) — Reconcile my reported ad conversions against actual storefront orders.
   - routing: no `analytics-interpretation` skill exists — nothing to route to; opened ads-reporting, capability-verification
-  - context: answered without reaching for owner context
+  - context: answered without reading the owner's ledgers
 - **E69** (analytics) — Which social platform has the best engagement-to-follower ratio for me?
   - routing: no `analytics-interpretation` skill exists — nothing to route to; opened social-media, social-engage
-  - context: answered without reaching for owner context
+  - context: answered without reading the owner's ledgers
 - **E70** (analytics) — Build a one-page monthly recap I can send to my team and investors.
   - routing: no `analytics-interpretation` skill exists — nothing to route to; opened no skill
-  - context: answered without reaching for owner context
+  - context: answered without reading the owner's ledgers
 - **F71** (tour_events) — Plan a 6-city West Coast tour in October — suggest routing, dates, and venue sizes.
   - routing: no `tour-planning` skill exists — nothing to route to; opened calendar-native, maps
 - **F72** (tour_events) — Research and shortlist 3 venues in Austin for a 300-capacity show and their booking contacts.

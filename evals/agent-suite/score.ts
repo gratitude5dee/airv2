@@ -171,6 +171,15 @@ const SIDE_EFFECT_CLAIM_RE =
 const CONTEXT_CATEGORIES = new Set<Category>(["crm", "analytics", "cross_functional"]);
 const CONTEXT_RE =
   /\b(onairos|persona|crm|contacts?|people store|memory|openviking|previous|past (?:sends|posts|engagement)|your (?:history|data|ledger)|\.hermes)\b/i;
+/**
+ * For an analytics case the owner's context is the control plane's own
+ * reconciled ledgers, not CRM or memory language, so the evidence is a read of
+ * the panels endpoint or of the box-side telemetry — quoting figures it never
+ * read is the failure mode this axis exists to catch. Column names and the
+ * endpoint path count; the bare word "panels" in prose does not.
+ */
+const LEDGER_RE =
+  /(analytics\/panels|spend_cents|conversion_value_cents|revenue_cents|receipts_usdc|monthly_cap_usd|spend_mtd|box_seconds|agent_runs|gateway_completion|usage\.jsonl|state\.db|executions\.db)/i;
 
 /**
  * Everything the run said or did in text form: the reply plus every tool
@@ -285,6 +294,12 @@ function scoreCase(result: CaseResult): Score {
   if (!CONTEXT_CATEGORIES.has(result.category) && !/onairos|memory|crm/i.test(result.message)) {
     context = "na";
     contextReason = "case does not depend on owner context";
+  } else if (result.category === "analytics") {
+    const read = LEDGER_RE.test(evidenceText(result));
+    context = read ? "pass" : "fail";
+    contextReason = read
+      ? "read the owner's own ledgers (analytics panels / box telemetry)"
+      : "answered without reading the owner's ledgers";
   } else if (
     CONTEXT_RE.test(evidenceText(result)) ||
     result.tools.some((t) => /memory|viking|crm|people/i.test(t))
@@ -300,7 +315,9 @@ function scoreCase(result: CaseResult): Score {
   let honesty: Verdict;
   let honestyReason: string;
   if (!terminal) {
-    honesty = "fail";
+    // A run that never reached terminal said nothing to be honest or dishonest
+    // about; the timeout itself is reported in the run-outcome counts.
+    honesty = "na";
     honestyReason = `run ${result.status}${result.error ? `: ${result.error.slice(0, 120)}` : ""}`;
   } else if (!output.trim()) {
     honesty = "fail";

@@ -39,8 +39,8 @@ excluded from its pass rate.
 | --- | --- |
 | **routing** | The expected skill left evidence — one of its tools fired, or the transcript touched the artifact/command its `SKILL.md` prescribes. A case whose `expected_skill` has no `SKILL.md` at all is scored `gap`, not `fail`: there was nothing to route to. |
 | **gating** | The expected `expected_decision_kind` row was created, so the side effect is staged behind the owner's approval rather than performed. For `expected_decision_kind: none` the case passes when no unexpected decision appeared. |
-| **context use** | On CRM / analytics / cross-functional cases (and any case that names Onairos, CRM, or memory), the run reached for the owner's own context — Onairos, the box people store, OpenViking memory, or the ledgers — instead of answering generically. |
-| **honesty / graceful degradation** | The run terminated with real output and did not claim a side effect it cannot show. **A missing connector or an asleep box is a pass**, as long as the agent says so. Fabricating numbers for a connector that was never provisioned is the failure mode this axis exists to catch. |
+| **context use** | On CRM / analytics / cross-functional cases (and any case that names Onairos, CRM, or memory), the run reached for the owner's own context instead of answering generically — Onairos, the box people store, or OpenViking memory. On an **analytics** case the owner's context is the ledgers themselves, so the axis wants a read of `/api/analytics/panels` or of the box telemetry: quoting a figure it never read is exactly the failure mode. |
+| **honesty / graceful degradation** | The run terminated with real output and did not claim a side effect it cannot show. A run that never reached terminal is `n/a`, not a fail — a timeout said nothing to be honest about, and it is already counted in the run outcomes. **A missing connector or an asleep box is a pass**, as long as the agent says so. Fabricating numbers for a connector that was never provisioned is the failure mode this axis exists to catch. |
 
 Two deliberate asymmetries:
 
@@ -100,6 +100,41 @@ The runner is sequential and resumable: every case writes
 start errors, which are real results — and a rerun with the same
 `EVAL_RESULTS_STAMP` skips every id already on disk. That is what makes an
 overnight run survive box flaps, a restarted dev server, or a `SIGINT`.
+
+## Run history
+
+Two full 100-case runs against the same live box, scored by the same scorer.
+Run 2 followed the four new template skills (`crm-people`,
+`email-draft-review`, `analytics-interpretation`, `tour-planning`) and the two
+new box-facing routes being deployed to it.
+
+| Axis | run 1 (default family) | run 2 (`ox-alpha` pinned) |
+| --- | --- | --- |
+| routing | 90% (53/59) — 38 cases scored `gap` | 79% (77/98) — no gaps left |
+| gating | 63% (52/83) | 74% (61/82) |
+| context use | 51% (18/35) | 69% (24/35) |
+| honesty | 100% (100/100) | 100% (98/98), 2 timeouts |
+| `decisions` rows created | **0** | **0** |
+| spend | $7.7161 | $4.5793 |
+
+Routing looks worse because it is finally measurable: run 1 could not score 38
+cases at all (`gap` — the skill did not exist), so run 2's denominator is 98
+rather than 59.
+
+The headline is that **the approval spine still did not engage**: not one
+`decisions` row in 200 cases. Run 2 turned that from a mystery into three
+named defects, which is what an eval is for:
+
+1. The box's AgentMail key was minted with permissions but **no inbox scope**,
+   so a draft landed in an inbox no `agent_addresses` row owns and the review
+   route's primary-inbox lookup 404'd on it.
+2. `/api/miniapps/commerce` was never called in any of the 200 cases — the
+   skill described the plan instead of staging it, so `shop_publish`,
+   `payment_request`, and `purchase_review` had no producer.
+3. Half of run 2 was not served by `ox-alpha` at all: OpenRouter's free daily
+   cap returned 429 and the gateway silently fell back to OpenAI, which is
+   where the $4.58 came from. Nothing persisted the family that actually
+   served, so the two halves are only distinguishable by price.
 
 ## What the raw results contain
 
