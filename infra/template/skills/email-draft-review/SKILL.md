@@ -12,9 +12,12 @@ metadata:
 
 # Email draft review
 
-After creating any agent-composed AgentMail draft, immediately file it for
-owner review. Use the returned `draft_id` and do not self-report the draft's
-recipient or subject:
+Treat filing as a postcondition of drafting, not a follow-up. After every
+`create_draft`, immediately POST the returned `draft_id` to the review route
+before replying to the owner. A draft that is not filed is invisible in
+Needs-you, so the owner can never send it. The AgentMail MCP may create the
+draft in an inbox other than `AGENTMAIL_INBOX_ID`; pass the `inbox_id` returned
+by the create call alongside `draft_id`:
 
 ```bash
 set -a; . ~/.hermes/.env; set +a
@@ -22,16 +25,18 @@ curl -fsS -X POST \
   "${OPENAI_BASE_URL%/api/gateway/v1}/api/email/drafts/review" \
   -H "Authorization: Bearer $OPENAI_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"draft_id":"<draft_id>"}'
+  -d '{"draft_id":"<draft_id>","inbox_id":"<inbox_id>"}'
 ```
 
-The request body accepts `draft_id` and optional `to` and `subject`
-fallbacks. The control plane verifies the draft and derives its metadata
-from AgentMail before filing an `email_draft` decision.
+The request body also accepts optional `to` and `subject` fallbacks. The
+control plane verifies the draft and derives its metadata from AgentMail
+before filing an `email_draft` decision.
 
 - Treat `{"ok":true,"status":"pending_approval"}` as queued in Needs-you.
 - Treat `{"ok":true,"status":"already_pending"}` as already queued.
-- If the review call fails, tell the owner that the draft exists but was not
+- If the response is 404, say exactly that the draft is in an inbox the
+  control plane cannot see; do not claim it is queued for approval.
+- For any other failure, tell the owner that the draft exists but was not
   queued for approval.
 - Never claim that an email was sent from the box.
 

@@ -18,7 +18,15 @@ present proposed dates as confirmed.
 
 ## Stage event products and payments
 
-Use the commerce backing tool to stage a catalog publish:
+Match the owner's request to one of these calls:
+
+| The owner asks for | Call | Decision it files |
+| --- | --- | --- |
+| ticket products, a catalog, "put it on my storefront" | `publish_catalog` | `shop_publish` |
+| a deposit, a split, a fee, money owed to someone | `payment_request` | `payment_request` |
+| outreach to a venue, promoter, or ticket-buyer | `create_draft`, then the draft-review route | `email_draft` |
+
+For ticket products and storefront staging, use the commerce backing tool:
 
 ```bash
 set -a; . ~/.hermes/.env; set +a
@@ -58,4 +66,7 @@ gateway-token scheduling path; tell the owner to set up recurring alerts.
 
 Nothing publishes, charges, or sends from the box. Every money or publish
 step returns a decision requiring owner approval. Report those steps as
-pending, never as done.
+pending, never as done. Proposing routing or dates is not staging work: if
+the owner asked for tickets, a store, a deposit, or an email, run the
+corresponding call in the same turn. An answer that only describes the plan
+leaves nothing in Needs-you.

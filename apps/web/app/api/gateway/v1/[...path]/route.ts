@@ -61,6 +61,8 @@ async function meter(
     cost_usd: cost,
     prompt_tokens: promptTokens,
     completion_tokens: completionTokens,
+    model_family: family,
+    model: model ?? null,
   });
   if (runError) {
     console.error(JSON.stringify({ msg: "agent_runs insert failed", user_id: userId, error: runError.message }));
