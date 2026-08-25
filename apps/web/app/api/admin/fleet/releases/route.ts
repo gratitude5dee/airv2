@@ -7,13 +7,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminAuthorized } from "@/lib/admin/auth";
 import { serviceClient } from "@/lib/supabase";
 import { cutRelease, listReleases, FleetError } from "@/lib/fleet/releases";
+import { R2Error } from "@/lib/storage/r2";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 function errorResponse(error: unknown): NextResponse {
-  if (error instanceof FleetError) {
+  if (error instanceof FleetError || error instanceof R2Error) {
     return NextResponse.json({ error: error.message }, { status: error.status });
   }
   const message = error instanceof Error ? error.message : "internal error";
