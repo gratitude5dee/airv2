@@ -45,7 +45,6 @@ const RoutineName = z
   .string()
   .trim()
   .min(1)
-  .max(80)
   .transform((v) => v.slice(0, 80));
 
 const ActionBody = z.object({

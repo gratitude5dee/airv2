@@ -29,7 +29,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 const CreateScheduleSchema = z.object({
-  name: z.string().trim().min(1).max(80),
+  name: z.string().trim().min(1).transform((v) => v.slice(0, 80)),
   cron: z.string().trim().min(1),
   timezone: z.string().trim().min(1),
   prompt: z.string().trim().min(1),
@@ -38,7 +38,7 @@ const CreateScheduleSchema = z.object({
 
 const PatchScheduleSchema = z.object({
   id: z.string().trim().min(1),
-  name: z.string().trim().min(1).max(80).optional(),
+  name: z.string().trim().min(1).transform((v) => v.slice(0, 80)).optional(),
   cron: z.string().trim().min(1).optional(),
   timezone: z.string().trim().min(1).optional(),
   prompt: z.string().trim().min(1).optional(),
