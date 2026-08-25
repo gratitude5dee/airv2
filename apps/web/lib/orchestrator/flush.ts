@@ -660,7 +660,19 @@ export async function runFlush(
         .react(job.spaceId, job.phone, tapbackTarget, probe.tapback)
         .catch(() => false);
       if (!reacted) {
-        await sender.sendText(job.spaceId, job.phone, probe.buffered.trim());
+        // Thread the short acknowledgment under the human's message so it
+        // reads like a native reply rather than a floating bubble.
+        const threaded = await sender
+          .sendReply(
+            job.spaceId,
+            job.phone,
+            tapbackTarget,
+            probe.buffered.trim()
+          )
+          .catch(() => false);
+        if (!threaded) {
+          await sender.sendText(job.spaceId, job.phone, probe.buffered.trim());
+        }
       }
     } else if (!(probe.ended && probe.buffered.length === 0)) {
       async function* remainder(): AsyncGenerator<string> {

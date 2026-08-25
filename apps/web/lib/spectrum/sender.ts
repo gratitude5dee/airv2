@@ -12,6 +12,7 @@ import {
   edit,
   reaction,
   read,
+  reply,
   richlink,
   text,
   typing,
@@ -37,6 +38,18 @@ export interface SpectrumSender {
   markRead(spaceId: string, phone: string, messageId: string): Promise<void>;
   /** Send one finished text bubble. */
   sendText(spaceId: string, phone: string, body: string): Promise<void>;
+  /**
+   * Send a text bubble threaded under an existing message. Resolves true
+   * when the threaded reply was sent; false when the target message could
+   * not be resolved (callers then fall back to a plain send). On platforms
+   * without thread support spectrum-ts resolves reply() as a no-op.
+   */
+  sendReply(
+    spaceId: string,
+    phone: string,
+    messageId: string,
+    body: string
+  ): Promise<boolean>;
   /**
    * Attach a tapback/emoji reaction to an inbound message. Resolves true
    * when the reaction was sent, false when the target could not be resolved
@@ -154,6 +167,13 @@ export async function createSpectrumSender(): Promise<SpectrumSender> {
     },
     sendText: async (spaceId, phone, body) => {
       await (await space(spaceId, phone)).send(text(body));
+    },
+    sendReply: async (spaceId, phone, messageId, body) => {
+      const s = await space(spaceId, phone);
+      const message = await s.getMessage(messageId).catch(() => undefined);
+      if (!message) return false;
+      const sent = await s.send(reply(text(body), message));
+      return sent !== undefined;
     },
     react: async (spaceId, phone, messageId, emoji) => {
       const s = await space(spaceId, phone);
