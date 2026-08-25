@@ -18,7 +18,7 @@ const DRAFT_ID_MAX_LENGTH = 200;
 
 async function boxUserId(
   supabase: SupabaseClient,
-  request: NextRequest
+  request: NextRequest,
 ): Promise<string | null> {
   const authHeader = request.headers.get("authorization") ?? "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
@@ -54,12 +54,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .from("agent_addresses")
     .select("agentmail_inbox_id, is_primary")
     .eq("user_id", userId)
-    .is("retired_at", null)
+    .is("retired_at", null);
   const ownedInboxes = (addresses ?? [])
     .filter(
-      (address): address is { agentmail_inbox_id: string; is_primary: boolean } =>
+      (
+        address,
+      ): address is { agentmail_inbox_id: string; is_primary: boolean } =>
         typeof address.agentmail_inbox_id === "string" &&
-        address.agentmail_inbox_id.length > 0
+        address.agentmail_inbox_id.length > 0,
     )
     .sort((a, b) => Number(b.is_primary) - Number(a.is_primary))
     .map((address) => address.agentmail_inbox_id);
@@ -76,9 +78,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "no such draft" }, { status: 404 });
   }
   const inboxesToTry =
-    typeof requestedInboxId === "string"
-      ? [requestedInboxId]
-      : ownedInboxes;
+    typeof requestedInboxId === "string" ? [requestedInboxId] : ownedInboxes;
   let draft: Awaited<ReturnType<typeof getDraft>> | null = null;
   for (const inboxId of inboxesToTry) {
     try {
@@ -123,7 +123,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   } catch {
     return NextResponse.json(
       { error: "could not file the review" },
-      { status: 502 }
+      { status: 502 },
     );
   }
   return NextResponse.json({ ok: true, status: "pending_approval" });
