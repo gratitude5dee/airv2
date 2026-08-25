@@ -1,17 +1,17 @@
 /**
- * M7 connector provisioning: one Composio session per user, whose hosted
- * MCP URL is installed into the user's box with `hermes mcp add` (goal.md
- * M7 task 2). Composio keeps the OAuth tokens; the box gets only its own
- * user's session endpoint.
+ * M7 connector provisioning: one Composio session per user, reached from the
+ * box through the /api/mcp/composio proxy (goal.md M7 task 2). Composio keeps
+ * the OAuth tokens; the box gets only its own user's session endpoint.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { env } from "../env";
 import { ensureComputeAwake } from "../compute/awake";
 import {
   hermesBin,
   runCommand,
   type ComputeTarget,
 } from "../compute/runtime";
-import { restartCommand } from "../compute/environments";
+import { profileFor, restartCommand } from "../compute/environments";
 import { createSession, getSession } from "../composio/client";
 
 export async function ensureComposioSession(
@@ -66,10 +66,15 @@ export async function installMetaAdsMcp(
 
 /**
  * Install (or refresh) the per-user Composio MCP endpoint on the user's
- * machine. Provider-agnostic: the Composio session and its MCP URL are the
- * same in every environment — only the shell that registers it differs.
- * `hermes mcp add` validates the entry; the trailing `y` answers its
- * save-anyway prompt so a transient connect hiccup doesn't abort install.
+ * machine — identical in every environment, only the home dir and restart
+ * shell differ.
+ *
+ * The compute is pointed at our own /api/mcp/composio proxy rather than
+ * Composio's session URL: Composio's tool-router MCP endpoint requires the
+ * org API key on every request, and that key must never land in user
+ * compute. The proxy authenticates the instance by its gateway token —
+ * already present in its own config as `model.api_key` — so the entry is
+ * written machine-side without any secret transiting the command line.
  */
 export async function installComposioMcp(
   supabase: SupabaseClient,
@@ -77,14 +82,24 @@ export async function installComposioMcp(
   /** Freshly provisioned instance, when the boxes row is not readable yet. */
   provisioned?: ComputeTarget
 ): Promise<void> {
-  const { mcpUrl } = await ensureComposioSession(supabase, userId);
-  if (!/^https:\/\/[A-Za-z0-9._~:/?#@!$&'()*+,;=%-]+$/.test(mcpUrl)) {
-    throw new Error("unexpected composio mcp url shape");
-  }
+  // Ensures the session exists before the compute ever hits the proxy.
+  await ensureComposioSession(supabase, userId);
   const target = provisioned ?? (await ensureComputeAwake(supabase, userId));
+  const homeDir = profileFor(target.environment).homeDir;
+  const proxyUrl = `${env.appOrigin()}/api/mcp/composio`;
+  const script = [
+    "import yaml, pathlib",
+    `p = pathlib.Path("${homeDir}/.hermes/config.yaml")`,
+    "cfg = yaml.safe_load(p.read_text()) or {}",
+    'mcp = cfg.get("mcp_servers")',
+    "mcp = mcp if isinstance(mcp, dict) else {}",
+    `mcp["composio"] = {"url": "${proxyUrl}", "enabled": True, "headers": {"Authorization": "Bearer " + cfg["model"]["api_key"]}}`,
+    'cfg["mcp_servers"] = mcp',
+    "p.write_text(yaml.safe_dump(cfg, default_flow_style=False))",
+  ].join("\n");
   const result = await runCommand(
     target,
-    `printf 'y\\n' | ${hermesBin(target)} mcp add composio --url "${mcpUrl}" && ${restartCommand(target.environment, ["hermes-gateway"])}`,
+    `${hermesBin(target, "python")} - <<'PYEOF' && ${restartCommand(target.environment, ["hermes-gateway"])}\n${script}\nPYEOF`,
     180
   );
   if (result.exitCode !== 0) {
