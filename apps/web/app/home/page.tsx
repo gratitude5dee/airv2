@@ -35,6 +35,7 @@ import { ComputerCard, type ComputerDockState } from "./air/computer-card";
 import { MODEL_FAMILY_OPTIONS, SpeedCard } from "./rail/speed-card";
 import { InklingConsentDialog } from "./rail/inkling-consent";
 import { AppsGrid } from "./rail/apps-grid";
+import { SelectionAsk } from "./selection-ask";
 import { NeedsPanel } from "./panels/needs-panel";
 import { PeoplePanel } from "./panels/people-panel";
 import { HistoryPanel } from "./panels/history-panel";
@@ -910,7 +911,9 @@ function HomeShell() {
       <header className="flex flex-wrap items-center justify-between gap-3 py-4">
         <div className="flex items-center gap-2.5">
           <Orb size={22} label="air" />
-          <h1 className="m-0 text-[19px] font-semibold tracking-[-0.02em]">air</h1>
+          <h1 className="grad-text m-0 text-[19px] font-semibold tracking-[-0.02em]">
+            air
+          </h1>
         </div>
         <button className="btn btn-ghost !px-3 !py-1.5 !text-[12px]" onClick={logout}>
           Sign out
@@ -1116,6 +1119,15 @@ function HomeShell() {
                   })
                 )}
               </div>
+              <SelectionAsk
+                containerRef={scrollRef}
+                onAsk={(quote) =>
+                  setInput(
+                    (current) =>
+                      `> ${quote.replace(/\n/g, "\n> ")}\n\n${current}`
+                  )
+                }
+              />
               {dockedAppNote ? (
                 <p className="muted m-0 mb-1 text-[12px]">{dockedAppNote}</p>
               ) : null}

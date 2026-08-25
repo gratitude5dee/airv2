@@ -230,6 +230,76 @@
   color: var(--muted);
 }
 
+/* Pointer-following spotlight (spec §1 gloss budget: hover-only, subtle).
+   Pair with a JS pointermove writer for --mx/--my. */
+.spot {
+  position: relative;
+  overflow: hidden;
+  --mx: 50%;
+  --my: 50%;
+}
+.spot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    7rem circle at var(--mx) var(--my),
+    var(--chrome-top),
+    transparent 70%
+  );
+  opacity: 0;
+  transition: opacity 250ms var(--ease-out);
+  pointer-events: none;
+}
+.spot:hover::after,
+.spot:focus-within::after {
+  opacity: 1;
+}
+
+/* Gradient chrome text — headings only, never prose. */
+.grad-text {
+  background: linear-gradient(
+    92deg,
+    var(--text) 25%,
+    var(--accent) 55%,
+    var(--text) 85%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* iOS-style press-and-hold edit mode for the apps grid. */
+.appgrid-editing .appgrid-item {
+  animation: wiggle 320ms ease-in-out infinite alternate;
+}
+.appgrid-editing .appgrid-item:nth-child(2n) {
+  animation-delay: -160ms;
+}
+.appgrid-item.drag {
+  opacity: 0.35;
+}
+@keyframes wiggle {
+  from {
+    transform: rotate(-1.6deg);
+  }
+  to {
+    transform: rotate(1.6deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .appgrid-editing .appgrid-item {
+    animation: none;
+    outline: 1px dashed var(--ring);
+    outline-offset: 3px;
+  }
+  .spot::after {
+    transition: none;
+  }
+}
+
 /* Shared segment/nav-item base — pair with .pill-active for selection. */
 .seg {
   cursor: pointer;

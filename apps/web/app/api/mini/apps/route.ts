@@ -23,12 +23,22 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   // `?earnings=1` (App Store detail sheet) adds the owner's per-app x402
   // totals — same aggregation the publisher console exports.
   const wantEarnings = request.nextUrl.searchParams.get("earnings") === "1";
-  const [apps, { data: installs }, earnings, adsCeiling] = await Promise.all([
-    listFirstPartyApps(supabase),
-    supabase.from("miniapp_installs").select("app_id").eq("user_id", userId),
-    wantEarnings ? publisherEarnings(supabase, userId) : Promise.resolve([]),
-    spendCeilingCents(supabase, userId),
-  ]);
+  const [apps, { data: installs }, earnings, adsCeiling, { data: userRow }] =
+    await Promise.all([
+      listFirstPartyApps(supabase),
+      supabase.from("miniapp_installs").select("app_id").eq("user_id", userId),
+      wantEarnings ? publisherEarnings(supabase, userId) : Promise.resolve([]),
+      spendCeilingCents(supabase, userId),
+      supabase
+        .from("users")
+        .select("miniapp_home_order")
+        .eq("id", userId)
+        .maybeSingle(),
+    ]);
+  const rawOrder = userRow?.miniapp_home_order;
+  const homeOrder = Array.isArray(rawOrder)
+    ? rawOrder.filter((s): s is string => typeof s === "string")
+    : [];
   const installed = new Set((installs ?? []).map((row) => row.app_id));
   return NextResponse.json({
     apps: apps.map((app) => ({
@@ -48,6 +58,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     // Phase 3 tile badge: a zero ceiling means ad writes are blocked
     // server-side (approveAdWrite fails closed) — surface it on the tile.
     ads_writes_blocked: adsCeiling === 0,
+    // The owner's press-and-hold arrangement — shared with the Home mini-app.
+    home_order: homeOrder,
     ...(wantEarnings ? { earnings } : {}),
   });
 }

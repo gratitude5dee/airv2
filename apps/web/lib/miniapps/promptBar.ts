@@ -12,9 +12,11 @@ import type { MiniAppContext } from "./apps/types";
 
 export const PROMPT_MAX_CHARS = 4000;
 
-/** The shared prompt-bar form. Render for owner sessions only. */
+/** The shared prompt-bar form. Render for owner sessions only. Ships the
+ * shared ui.js helper so highlighted text grows an "Ask agent" chip that
+ * quotes the selection into this input (the script self-deduplicates). */
 export function promptBar(placeholder = "Ask your agent…"): string {
-  return `<form method="post" class="addrow"><input type="hidden" name="action" value="prompt"><input type="text" name="text" placeholder="${esc(placeholder)}" maxlength="${PROMPT_MAX_CHARS}"><button>Send</button></form>`;
+  return `<form method="post" class="addrow"><input type="hidden" name="action" value="prompt"><input type="text" name="text" placeholder="${esc(placeholder)}" maxlength="${PROMPT_MAX_CHARS}"><button>Send</button></form><script src="/creator-os/ui.js" defer></script>`;
 }
 
 /** Start a MAIN_SESSION agent run for the owner's prompt-bar text. */
