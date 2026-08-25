@@ -141,6 +141,7 @@ vi.mock("../env", () => ({
 }));
 
 import { provisionUser } from "./provision";
+import * as boxClient from "../box/client";
 
 beforeEach(() => {
   for (const store of [inserts, upserts, tables]) {
@@ -149,6 +150,13 @@ beforeEach(() => {
   fork.mockClear();
   createMacInstance.mockClear();
   installComposioMcp.mockClear();
+  vi.mocked(boxClient.waitForBox)
+    .mockReset()
+    .mockResolvedValue({ id: "box-new" } as Awaited<
+      ReturnType<typeof boxClient.waitForBox>
+    >);
+  vi.mocked(boxClient.stop).mockClear();
+  vi.mocked(boxClient.deleteBox).mockClear();
   vi.spyOn(console, "log").mockImplementation(() => undefined);
 });
 
@@ -224,6 +232,18 @@ describe("provisionUser environments", () => {
     });
     expect(upserts.boxes?.[0]?.control_token).toEqual(expect.any(String));
     expect(installComposioMcp).toHaveBeenCalled();
+  });
+});
+
+describe("provisionUser rollback", () => {
+  it("a failed readiness wait destroys the just-forked box", async () => {
+    vi.mocked(boxClient.waitForBox).mockRejectedValueOnce(
+      new Error("box never became ready")
+    );
+    await expect(provisionUser()).rejects.toThrow("box never became ready");
+    expect(boxClient.stop).toHaveBeenCalledWith("box-new");
+    expect(boxClient.deleteBox).toHaveBeenCalledWith("box-new");
+    expect(upserts.boxes).toBeUndefined();
   });
 });
 

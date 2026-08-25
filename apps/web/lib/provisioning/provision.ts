@@ -492,7 +492,14 @@ async function createInstance(
   switch (kindFor(environment)) {
     case "box": {
       const box = await fork({ templateId, env: instanceEnv });
-      await waitForBox(box.id);
+      // The box exists from here on: a failed readiness wait must destroy it,
+      // or it runs forever with no boxes row for the sweeper to find.
+      try {
+        await waitForBox(box.id);
+      } catch (error) {
+        await teardown({ instanceId: box.id, environment });
+        throw error;
+      }
       return { target: { instanceId: box.id, environment }, ports: {} };
     }
     case "native": {
@@ -502,17 +509,37 @@ async function createInstance(
         env: instanceEnv,
         bridgeToken,
       });
-      await waitForInstance(instance.id);
-      const ingress = await publishMacIngress(instance.id);
+      try {
+        await waitForInstance(instance.id);
+      } catch (error) {
+        await teardown({ instanceId: instance.id, environment });
+        throw error;
+      }
+      const ingress = await publishMacIngress(instance.id).catch(
+        async (error) => {
+          await teardown({ instanceId: instance.id, environment });
+          throw error;
+        }
+      );
       const bridge = ingress[BRIDGE_PORT];
       if (!bridge) {
+        await teardown({ instanceId: instance.id, environment });
         throw new Error(`mac ${instance.id} bridge ingress missing`);
       }
-      await waitForBridge({
-        instanceId: instance.id,
-        controlUrl: bridge.url,
-        controlToken: bridgeToken,
-      });
+      try {
+        await waitForBridge({
+          instanceId: instance.id,
+          controlUrl: bridge.url,
+          controlToken: bridgeToken,
+        });
+      } catch (error) {
+        await teardown({
+          instanceId: instance.id,
+          environment,
+          control: { url: bridge.url, token: bridgeToken },
+        });
+        throw error;
+      }
       return {
         target: {
           instanceId: instance.id,
