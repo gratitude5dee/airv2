@@ -89,12 +89,13 @@ grep -q UV_NO_SYNC "$HOME_DIR/.zprofile" || {
 export PATH="$(brew --prefix node@24)/bin:$PATH"
 # hermes-agent's engines field rejects the npm that ships with node@24
 # (needs <11.10.0 || >=11.17.0), so move npm forward first. The upgrade lands
-# in npm's global prefix (not the node@24 keg bin), so put that bin first.
+# in npm's global prefix, not the node@24 keg bin — and that prefix's bin may
+# also carry a different node, so invoke the new npm explicitly (its
+# `#!/usr/bin/env node` shebang keeps resolving node@24 from PATH).
 npm install -g npm@'>=11.17.0' --no-audit --no-fund
-export PATH="$(npm prefix -g)/bin:$PATH"
-hash -r
-npm --version
-(cd web && npm ci && npm run build)
+NPM="$(npm prefix -g)/bin/npm"
+"$NPM" --version
+(cd web && "$NPM" ci && "$NPM" run build)
 test -n "$(ls -A hermes_cli/web_dist 2>/dev/null)" || {
   echo "FATAL: hermes_cli/web_dist/ is empty — dashboard SPA did not build" >&2
   exit 1
@@ -156,10 +157,10 @@ chmod 600 "$HOME_DIR/.hermes/.env"
 
 # ── 6. Browser runtime — the same agent-browser CLI; Chrome opens native
 # macOS windows, which is what the VNC screen share shows the human. ─────────
-npm install -g agent-browser --no-audit --no-fund
+"$NPM" install -g agent-browser --no-audit --no-fund
 agent-browser install
 uv tool install --python 3.12 'browser-use==0.13.8'
-npm install -g @stripe/link-cli@0.13.1 --no-audit --no-fund
+"$NPM" install -g @stripe/link-cli@0.13.1 --no-audit --no-fund
 mkdir -p "$HOME_DIR/.hermes/link" && chmod 700 "$HOME_DIR/.hermes/link"
 
 cat > "$BIN_DIR/box-browser-use" <<SH
