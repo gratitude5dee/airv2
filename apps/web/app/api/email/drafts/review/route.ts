@@ -57,11 +57,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .is("retired_at", null);
   const ownedInboxes = (addresses ?? [])
     .filter(
-      (
-        address,
-      ): address is { agentmail_inbox_id: string; is_primary: boolean } =>
+      (address): address is { agentmail_inbox_id: string; is_primary: boolean } =>
         typeof address.agentmail_inbox_id === "string" &&
-        address.agentmail_inbox_id.length > 0,
+        address.agentmail_inbox_id.length > 0
     )
     .sort((a, b) => Number(b.is_primary) - Number(a.is_primary))
     .map((address) => address.agentmail_inbox_id);
@@ -123,7 +121,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   } catch {
     return NextResponse.json(
       { error: "could not file the review" },
-      { status: 502 },
+      { status: 502 }
     );
   }
   return NextResponse.json({ ok: true, status: "pending_approval" });
