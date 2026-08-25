@@ -110,6 +110,14 @@ describe("connect mini-app card sessions", () => {
     expect(body).not.toContain("open Connect in your browser");
   });
 
+  it("connect forms target the top window so OAuth escapes the dock iframe", async () => {
+    const response = await connect.render(makeCtx());
+    const body = await response.text();
+    expect(body).toContain(
+      '<form method="post" target="_top"><input type="hidden" name="action" value="connect">'
+    );
+  });
+
   it("refresh surfaces a sync failure instead of hiding it", async () => {
     syncConnections.mockRejectedValueOnce(new Error("composio down"));
     const form = new FormData();
