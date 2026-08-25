@@ -216,7 +216,7 @@ function toRunRow(row: RawRun): AgentRunRow {
     started_at: row.started_at,
     ended_at: row.ended_at,
     cost_usd: row.cost_usd === null ? null : num(row.cost_usd),
-    box_seconds: row.box_seconds,
+    box_seconds: row.box_seconds === null ? null : num(row.box_seconds),
   };
 }
 
