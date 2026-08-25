@@ -105,7 +105,10 @@ export async function provisionEmail(
   if (box?.provider_box_id) {
     const boxId = box.provider_box_id as string;
     try {
-      const draftKey = await createDraftOnlyKey(`box-${userId}`);
+      const draftKey = await createDraftOnlyKey(
+        inbox.inbox_id,
+        `box-${userId}`
+      );
       // Typed file read/write only — the key must never appear in a shell
       // command line (visible in command logs / process listings).
       const current = await readFile(boxId, ".hermes/.env").catch(() => "");

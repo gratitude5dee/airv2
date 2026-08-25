@@ -3,7 +3,10 @@ import { NextRequest } from "next/server";
 
 const state = vi.hoisted(() => ({
   userId: "user-1" as string | null,
-  inboxId: "inbox-1" as string | null,
+  addresses: [
+    { agentmail_inbox_id: "inbox-primary", is_primary: true },
+    { agentmail_inbox_id: "inbox-secondary", is_primary: false },
+  ],
   pending: null as { id: string } | null,
 }));
 
@@ -24,19 +27,16 @@ vi.mock("@/lib/supabase", () => ({
             error: null,
           };
         }
-        if (table === "agent_addresses") {
-          return {
-            data: state.inboxId
-              ? { agentmail_inbox_id: state.inboxId }
-              : null,
-            error: null,
-          };
-        }
         if (table === "decisions") {
           return { data: state.pending, error: null };
         }
         throw new Error(`unexpected maybeSingle table: ${table}`);
       };
+      chain["then"] = (resolve: unknown) =>
+        Promise.resolve({
+          data: table === "agent_addresses" ? state.addresses : [],
+          error: null,
+        }).then(resolve as (value: unknown) => unknown);
       return chain;
     },
   }),
@@ -64,7 +64,10 @@ function reviewRequest(
 
 beforeEach(() => {
   state.userId = "user-1";
-  state.inboxId = "inbox-1";
+  state.addresses = [
+    { agentmail_inbox_id: "inbox-primary", is_primary: true },
+    { agentmail_inbox_id: "inbox-secondary", is_primary: false },
+  ];
   state.pending = null;
   vi.mocked(mockedGetDraft).mockReset();
   vi.mocked(mockedQueue).mockReset();
@@ -92,14 +95,18 @@ describe("POST /api/email/drafts/review", () => {
   });
 
   it("returns 404 when the draft does not exist", async () => {
-    vi.mocked(mockedGetDraft).mockRejectedValueOnce(new Error("not found"));
+    vi.mocked(mockedGetDraft).mockRejectedValue(new Error("not found"));
     const response = await POST(reviewRequest({ draft_id: "draft-1" }));
     expect(response.status).toBe(404);
     expect(await response.json()).toEqual({ error: "no such draft" });
     expect(mockedQueue).not.toHaveBeenCalled();
+    expect(mockedGetDraft).toHaveBeenCalledTimes(2);
   });
 
   it("files a decision using metadata read from AgentMail", async () => {
+    vi.mocked(mockedGetDraft).mockImplementationOnce(async () => {
+      throw new Error("not in primary");
+    });
     const response = await POST(
       reviewRequest({
         draft_id: "draft-1",
@@ -112,7 +119,16 @@ describe("POST /api/email/drafts/review", () => {
       ok: true,
       status: "pending_approval",
     });
-    expect(mockedGetDraft).toHaveBeenCalledWith("inbox-1", "draft-1");
+    expect(mockedGetDraft).toHaveBeenNthCalledWith(
+      1,
+      "inbox-primary",
+      "draft-1"
+    );
+    expect(mockedGetDraft).toHaveBeenNthCalledWith(
+      2,
+      "inbox-secondary",
+      "draft-1"
+    );
     expect(mockedQueue).toHaveBeenCalledWith(
       expect.anything(),
       "user-1",
@@ -121,6 +137,27 @@ describe("POST /api/email/drafts/review", () => {
         to: "real@example.com",
         subject: "Real subject",
       }
+    );
+  });
+
+  it("rejects an inbox that the user does not own", async () => {
+    const response = await POST(
+      reviewRequest({ draft_id: "draft-1", inbox_id: "other-inbox" })
+    );
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ error: "no such draft" });
+    expect(mockedGetDraft).not.toHaveBeenCalled();
+    expect(mockedQueue).not.toHaveBeenCalled();
+  });
+
+  it("uses an explicitly owned inbox when requested", async () => {
+    const response = await POST(
+      reviewRequest({ draft_id: "draft-1", inbox_id: "inbox-secondary" })
+    );
+    expect(response.status).toBe(200);
+    expect(mockedGetDraft).toHaveBeenCalledWith(
+      "inbox-secondary",
+      "draft-1"
     );
   });
 

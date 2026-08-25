@@ -102,23 +102,30 @@ export async function createInbox(
 
 /**
  * Draft-only + read key for the box. No message_send / draft_send: the box
- * can compose and read but structurally cannot send (C10).
+ * can compose and read but structurally cannot send (C10). The inbox scope,
+ * not just the permission set, makes every other user's mail unreachable.
  */
-export async function createDraftOnlyKey(name: string): Promise<string> {
-  const result = await agentmailFetch<{ api_key: string }>("/api-keys", {
-    method: "POST",
-    body: {
-      name,
-      permissions: {
-        inbox_read: true,
-        thread_read: true,
-        message_read: true,
-        draft_read: true,
-        draft_create: true,
-        draft_update: true,
+export async function createDraftOnlyKey(
+  inboxId: string,
+  name: string
+): Promise<string> {
+  const result = await agentmailFetch<{ api_key: string }>(
+    `/inboxes/${encodeURIComponent(inboxId)}/api-keys`,
+    {
+      method: "POST",
+      body: {
+        name,
+        permissions: {
+          inbox_read: true,
+          thread_read: true,
+          message_read: true,
+          draft_read: true,
+          draft_create: true,
+          draft_update: true,
+        },
       },
-    },
-  });
+    }
+  );
   return result.api_key;
 }
 

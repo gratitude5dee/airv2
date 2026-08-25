@@ -40,6 +40,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const body = (await request.json().catch(() => null)) as {
     draft_id?: unknown;
+    inbox_id?: unknown;
     to?: unknown;
     subject?: unknown;
   } | null;
@@ -49,22 +50,45 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "invalid request" }, { status: 400 });
   }
 
-  const { data: address } = await supabase
+  const { data: addresses } = await supabase
     .from("agent_addresses")
-    .select("agentmail_inbox_id")
+    .select("agentmail_inbox_id, is_primary")
     .eq("user_id", userId)
-    .eq("is_primary", true)
     .is("retired_at", null)
-    .maybeSingle();
-  const inboxId = address?.agentmail_inbox_id;
-  if (!inboxId) {
+  const ownedInboxes = (addresses ?? [])
+    .filter(
+      (address): address is { agentmail_inbox_id: string; is_primary: boolean } =>
+        typeof address.agentmail_inbox_id === "string" &&
+        address.agentmail_inbox_id.length > 0
+    )
+    .sort((a, b) => Number(b.is_primary) - Number(a.is_primary))
+    .map((address) => address.agentmail_inbox_id);
+  if (ownedInboxes.length === 0) {
     return NextResponse.json({ error: "no inbox" }, { status: 409 });
   }
 
-  let draft: Awaited<ReturnType<typeof getDraft>>;
-  try {
-    draft = await getDraft(inboxId as string, draftId);
-  } catch {
+  const requestedInboxId = body?.inbox_id;
+  if (
+    requestedInboxId !== undefined &&
+    (typeof requestedInboxId !== "string" ||
+      !ownedInboxes.includes(requestedInboxId))
+  ) {
+    return NextResponse.json({ error: "no such draft" }, { status: 404 });
+  }
+  const inboxesToTry =
+    typeof requestedInboxId === "string"
+      ? [requestedInboxId]
+      : ownedInboxes;
+  let draft: Awaited<ReturnType<typeof getDraft>> | null = null;
+  for (const inboxId of inboxesToTry) {
+    try {
+      draft = await getDraft(inboxId, draftId);
+      break;
+    } catch {
+      // Try the next inbox owned by this user.
+    }
+  }
+  if (!draft) {
     return NextResponse.json({ error: "no such draft" }, { status: 404 });
   }
 
