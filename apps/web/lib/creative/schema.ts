@@ -135,44 +135,44 @@ const inList = <T extends readonly string[]>(
 export function parseRouterPlan(value: unknown): RouterPlan {
   if (
     !isRecord(value) ||
-    !isRecord(value.params) ||
+    !isRecord(value["params"]) ||
     !hasOnlyKeys(value, PLAN_KEYS) ||
-    !hasOnlyKeys(value.params, PARAM_KEYS)
+    !hasOnlyKeys(value["params"], PARAM_KEYS)
   ) {
     throw new Error("Router response is missing its plan object");
   }
 
   const { params } = value;
   if (
-    !inList(value.mode, MODES) ||
-    typeof value.needs_input !== "boolean" ||
-    typeof value.chat_reply !== "string" ||
-    typeof value.delivery_line !== "string" ||
-    typeof value.expanded_prompt !== "string" ||
-    !inList(params.aspect_ratio, ASPECT_RATIOS) ||
-    !inList(params.quality, QUALITIES) ||
-    typeof params.generate_audio !== "boolean" ||
-    !inList(params.use_input_image_as, INPUT_IMAGE_USES) ||
+    !inList(value["mode"], MODES) ||
+    typeof value["needs_input"] !== "boolean" ||
+    typeof value["chat_reply"] !== "string" ||
+    typeof value["delivery_line"] !== "string" ||
+    typeof value["expanded_prompt"] !== "string" ||
+    !inList(params["aspect_ratio"], ASPECT_RATIOS) ||
+    !inList(params["quality"], QUALITIES) ||
+    typeof params["generate_audio"] !== "boolean" ||
+    !inList(params["use_input_image_as"], INPUT_IMAGE_USES) ||
     !(
-      params.duration === null ||
-      (typeof params.duration === "number" && Number.isInteger(params.duration))
+      params["duration"] === null ||
+      (typeof params["duration"] === "number" && Number.isInteger(params["duration"]))
     )
   ) {
     throw new Error("Router response does not match the WZRD plan schema");
   }
 
   return {
-    mode: value.mode,
-    needs_input: value.needs_input,
-    chat_reply: value.chat_reply,
-    delivery_line: value.delivery_line,
-    expanded_prompt: value.expanded_prompt,
+    mode: value["mode"],
+    needs_input: value["needs_input"],
+    chat_reply: value["chat_reply"],
+    delivery_line: value["delivery_line"],
+    expanded_prompt: value["expanded_prompt"],
     params: {
-      aspect_ratio: params.aspect_ratio,
-      duration: params.duration,
-      quality: params.quality,
-      generate_audio: params.generate_audio,
-      use_input_image_as: params.use_input_image_as,
+      aspect_ratio: params["aspect_ratio"],
+      duration: params["duration"],
+      quality: params["quality"],
+      generate_audio: params["generate_audio"],
+      use_input_image_as: params["use_input_image_as"],
     },
   };
 }

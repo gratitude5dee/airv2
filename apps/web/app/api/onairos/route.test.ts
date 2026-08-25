@@ -20,8 +20,8 @@ vi.mock("@/lib/supabase", () => {
     const chain: Record<string, unknown> = {};
     const self = () => chain;
     for (const method of ["select", "eq"]) chain[method] = vi.fn(self);
-    chain.maybeSingle = async () => ({ data: null });
-    chain.upsert = vi.fn(async (row: Record<string, unknown>) => {
+    chain["maybeSingle"] = async () => ({ data: null });
+    chain["upsert"] = vi.fn(async (row: Record<string, unknown>) => {
       db.upserts.push(row);
       return { error: null };
     });
@@ -130,8 +130,8 @@ describe("/api/onairos", () => {
     // metadata-only row: no token, no apiUrl, no persona bytes
     expect(db.upserts).toHaveLength(1);
     const row = JSON.stringify(db.upserts[0]);
-    expect(db.upserts[0]?.provider).toBe("onairos");
-    expect(db.upserts[0]?.status).toBe("active");
+    expect(db.upserts[0]?.["provider"]).toBe("onairos");
+    expect(db.upserts[0]?.["status"]).toBe("active");
     expect(row).not.toContain("short-lived-token");
     expect(row).not.toContain("Ships things");
     expect(row).not.toContain("onairos.uk");
@@ -151,6 +151,6 @@ describe("/api/onairos", () => {
     expect(box.removed.join(" ")).toContain(".hermes/context/onairos.json");
     expect(box.removed.join(" ")).toContain(".onairos-grant.json");
     expect(box.files[".hermes/memories/USER.md"]).not.toContain("Onairos");
-    expect(db.upserts.at(-1)?.status).toBe("revoked");
+    expect(db.upserts.at(-1)?.["status"]).toBe("revoked");
   });
 });

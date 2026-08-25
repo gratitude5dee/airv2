@@ -133,7 +133,7 @@ describe("PATCH /api/mini/publish", () => {
   it("hashes the password, never storing the plaintext", async () => {
     const res = await PATCH(patch({ slug: "alice-notes", password: "hunter22" }));
     expect(res.status).toBe(200);
-    const stored = updates[0]?.password_hash as string;
+    const stored = updates[0]?.["password_hash"] as string;
     expect(stored).toMatch(/^scrypt:/);
     expect(stored).not.toContain("hunter22");
     expect(verifyPassword("hunter22", stored)).toBe(true);

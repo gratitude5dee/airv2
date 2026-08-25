@@ -147,8 +147,8 @@ function signRequest(
     `AWS4-HMAC-SHA256 Credential=${creds.accessKeyId}/${scope}, ` +
     `SignedHeaders=${signedHeaderNames.join(";")}, Signature=${signature}`;
   const requestHeaders: Record<string, string> = { ...headers };
-  delete requestHeaders.host;
-  requestHeaders.authorization = authorization;
+  delete requestHeaders["host"];
+  requestHeaders["authorization"] = authorization;
   return {
     url: `https://${host}${path}${query ? `?${query}` : ""}`,
     headers: requestHeaders,

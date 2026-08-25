@@ -144,7 +144,7 @@ describe("buildGenerationRequest", () => {
       buildGenerationRequest(
         plan({ params: { ...plan().params, aspect_ratio } }),
         turn()
-      ).payload.size;
+      ).payload["size"];
     expect(sizeFor("3:4")).toBe("1024x1536");
     expect(sizeFor("16:9")).toBe("1536x1024");
     expect(sizeFor("21:9")).toBe("1536x1024");
@@ -181,7 +181,7 @@ describe("buildGenerationRequest", () => {
       plan({ mode: "animate" }),
       turn({ text: "a fox, no audio please" })
     );
-    expect(request.payload.generate_audio).toBe(false);
+    expect(request.payload["generate_audio"]).toBe(false);
   });
 
   it("zap builds gemini payload with reference/video caps and auto duration", () => {
@@ -198,16 +198,16 @@ describe("buildGenerationRequest", () => {
       turn({ mediaInputs: [...images, ...videos] })
     );
     expect(request.model).toBe("gemini-omni-flash-preview");
-    expect(request.payload.reference_image).toHaveLength(5);
-    expect(request.payload.video).toHaveLength(3);
+    expect(request.payload["reference_image"]).toHaveLength(5);
+    expect(request.payload["video"]).toHaveLength(3);
     // With input video the provider derives duration.
-    expect(request.payload.durationSeconds).toBe("auto");
+    expect(request.payload["durationSeconds"]).toBe("auto");
 
     const noVideo = buildGenerationRequest(
       plan({ mode: "zap", params: { ...plan().params, duration: 30 } }),
       turn()
     );
-    expect(noVideo.payload.durationSeconds).toBe(10);
+    expect(noVideo.payload["durationSeconds"]).toBe(10);
   });
 });
 

@@ -113,7 +113,7 @@ export function AppsGrid({
     event.preventDefault();
     const over = document.elementFromPoint(event.clientX, event.clientY);
     const target = over?.closest<HTMLElement>("[data-slug]");
-    const slug = target?.dataset.slug;
+    const slug = target?.dataset["slug"];
     if (!slug || slug === dragging) return;
     setOrder(() => {
       const slugs = installed.map((a) => a.slug);

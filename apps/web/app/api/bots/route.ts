@@ -182,26 +182,26 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
   const patch: Record<string, string | null> = {};
-  if (body.title !== undefined) patch.title = body.title?.slice(0, 80) ?? null;
+  if (body.title !== undefined) patch["title"] = body.title?.slice(0, 80) ?? null;
   if (body.description !== undefined) {
-    patch.description = body.description?.slice(0, 500) ?? null;
+    patch["description"] = body.description?.slice(0, 500) ?? null;
   }
   if (body.group_label !== undefined) {
-    patch.group_label = body.group_label?.slice(0, 40) ?? null;
+    patch["group_label"] = body.group_label?.slice(0, 40) ?? null;
   }
   if (body.avatar_kind !== undefined) {
     if (body.avatar_kind === null) {
-      patch.avatar_kind = null;
+      patch["avatar_kind"] = null;
     } else if (AVATAR_KINDS.includes(body.avatar_kind)) {
-      patch.avatar_kind = body.avatar_kind;
+      patch["avatar_kind"] = body.avatar_kind;
     }
   }
   if (body.avatar_ref !== undefined) {
-    patch.avatar_ref = body.avatar_ref?.slice(0, 200) ?? null;
+    patch["avatar_ref"] = body.avatar_ref?.slice(0, 200) ?? null;
   }
   if (body.model_tier !== undefined) {
     const tier = body.model_tier;
-    patch.model_tier = tier;
+    patch["model_tier"] = tier;
     // Re-pin in the profile config on the box; requires a wake.
     try {
       const box = await ensureBoxAwake(supabase, userId);

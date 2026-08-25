@@ -54,7 +54,7 @@ describe("ecommerce source", () => {
     expect(moments).toHaveLength(1);
     expect(moments[0]!.kind).toBe("launch");
     expect(moments[0]!.key).toBe("launch:111");
-    expect(moments[0]!.entity.product).toBe("Solar Jacket");
+    expect(moments[0]!.entity["product"]).toBe("Solar Jacket");
   });
 
   it("emits a low-stock moment at or below the threshold", async () => {
@@ -69,7 +69,7 @@ describe("ecommerce source", () => {
     const moments = await ecommerceSource.moments(deps, "u1", window);
     expect(moments).toHaveLength(1);
     expect(moments[0]!.kind).toBe("low_stock");
-    expect(moments[0]!.entity.remaining).toBe("3");
+    expect(moments[0]!.entity["remaining"]).toBe("3");
   });
 
   it("ignores malformed tool output", async () => {

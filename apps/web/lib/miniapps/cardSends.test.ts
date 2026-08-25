@@ -36,7 +36,7 @@ function makeSupabase(initial?: { kind: string; sent_at: string }) {
               return builder;
             },
             select: () => {
-              const key = `${filters.user_id}:${filters.kind}`;
+              const key = `${filters["user_id"]}:${filters["kind"]}`;
               const current = rows.get(key);
               if (current === undefined) return Promise.resolve({ data: [] });
               if (
@@ -47,7 +47,7 @@ function makeSupabase(initial?: { kind: string; sent_at: string }) {
               }
               if (
                 "sent_at" in filters &&
-                current !== (filters.sent_at as string)
+                current !== (filters["sent_at"] as string)
               ) {
                 return Promise.resolve({ data: [] });
               }

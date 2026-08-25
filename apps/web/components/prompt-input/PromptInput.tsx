@@ -382,14 +382,14 @@ export function PromptInput({
   }, []);
 
   return (
-    <div className={styles.wrap}>
+    <div className={styles["wrap"]}>
       <div
-        className={styles.frame}
+        className={styles["frame"]}
         data-busy={busy || voiceState === "transcribing" || undefined}
       >
         {mentionOpen && (
-          <div className={styles.palette} role="menu" aria-label="Bots">
-            <div className={styles.menuLabel}>
+          <div className={styles["palette"]} role="menu" aria-label="Bots">
+            <div className={styles["menuLabel"]}>
               <AtSign size={12} aria-hidden />
               Bots
             </div>
@@ -398,20 +398,20 @@ export function PromptInput({
                 key={name}
                 type="button"
                 role="menuitem"
-                className={styles.menuItem}
+                className={styles["menuItem"]}
                 onClick={() => {
                   onChange(`@${name} `);
                   fieldRef.current?.focus();
                 }}
               >
-                <span className={styles.menuName}>@{name}</span>
+                <span className={styles["menuName"]}>@{name}</span>
               </button>
             ))}
           </div>
         )}
         {paletteOpen && (
-          <div className={styles.palette} role="menu" aria-label="Commands">
-            <div className={styles.menuLabel}>
+          <div className={styles["palette"]} role="menu" aria-label="Commands">
+            <div className={styles["menuLabel"]}>
               <Sparkles size={12} aria-hidden />
               Create
             </div>
@@ -420,34 +420,34 @@ export function PromptInput({
                 key={c.id}
                 type="button"
                 role="menuitem"
-                className={styles.menuItem}
+                className={styles["menuItem"]}
                 onClick={() => {
                   onChange(`${c.id} `);
                   fieldRef.current?.focus();
                 }}
               >
-                <span className={styles.menuName}>{c.id}</span>
-                <span className={styles.paletteDesc}>{c.desc}</span>
+                <span className={styles["menuName"]}>{c.id}</span>
+                <span className={styles["paletteDesc"]}>{c.desc}</span>
               </button>
             ))}
           </div>
         )}
         {(attachments ?? []).length > 0 && (
-          <div className={styles.attachRow}>
+          <div className={styles["attachRow"]}>
             {(attachments ?? []).map((a, index) => (
               <span
                 key={`${a.name}-${index}`}
-                className={styles.attachChip}
+                className={styles["attachChip"]}
                 data-uploading={a.uploading || undefined}
               >
                 <Paperclip size={11} aria-hidden />
-                <span className={styles.attachName}>{a.name}</span>
+                <span className={styles["attachName"]}>{a.name}</span>
                 {a.uploading ? (
-                  <span className={styles.attachStatus}>uploading…</span>
+                  <span className={styles["attachStatus"]}>uploading…</span>
                 ) : (
                   <button
                     type="button"
-                    className={styles.attachRemove}
+                    className={styles["attachRemove"]}
                     aria-label={`Remove ${a.name}`}
                     onClick={() => onRemoveAttachment?.(index)}
                   >
@@ -460,7 +460,7 @@ export function PromptInput({
         )}
         <textarea
           ref={fieldRef}
-          className={styles.field}
+          className={styles["field"]}
           rows={1}
           placeholder={placeholder}
           aria-label={placeholder}
@@ -470,31 +470,31 @@ export function PromptInput({
           disabled={busy}
         />
 
-        <div className={styles.row}>
-          <div className={styles.plusWrap} ref={plusRef}>
+        <div className={styles["row"]}>
+          <div className={styles["plusWrap"]} ref={plusRef}>
             <button
               type="button"
-              className={[styles.iconBtn, styles.plus].join(" ")}
+              className={[styles["iconBtn"], styles["plus"]].join(" ")}
               data-open={menuOpen || undefined}
               aria-label="Choose speed"
               aria-expanded={menuOpen}
               onClick={() => setMenuOpen((o) => !o)}
             >
-              <span className={styles.plusIcon}>
+              <span className={styles["plusIcon"]}>
                 <Plus size={14} />
               </span>
             </button>
 
             {menuOpen && (
-              <div className={styles.menu} role="menu">
-                <div className={styles.menuLabel}>
+              <div className={styles["menu"]} role="menu">
+                <div className={styles["menuLabel"]}>
                   <Gauge size={12} aria-hidden />
                   Speed &amp; intelligence
                 </div>
                 {SPEED_TIERS.map((t) => (
                   <div
                     key={t.id}
-                    className={styles.menuSub}
+                    className={styles["menuSub"]}
                     onMouseEnter={() => setHoveredTier(t.id)}
                     onMouseLeave={() => setHoveredTier(null)}
                   >
@@ -502,25 +502,25 @@ export function PromptInput({
                       type="button"
                       role="menuitemradio"
                       aria-checked={tier === t.id}
-                      className={styles.menuItem}
+                      className={styles["menuItem"]}
                       onClick={() => {
                         onTierChange(t.id);
                         setMenuOpen(false);
                       }}
                     >
-                      <span className={styles.menuName}>{t.name}</span>
+                      <span className={styles["menuName"]}>{t.name}</span>
                       {tier === t.id && (
-                        <span className={styles.menuCheck}>
+                        <span className={styles["menuCheck"]}>
                           <Check size={14} />
                         </span>
                       )}
                     </button>
                     {hoveredTier === t.id && (
-                      <div className={styles.menuPopover} role="tooltip">
-                        <div className={styles.popoverTitle}>{t.name}</div>
-                        <p className={styles.popoverDesc}>{t.desc}</p>
+                      <div className={styles["menuPopover"]} role="tooltip">
+                        <div className={styles["popoverTitle"]}>{t.name}</div>
+                        <p className={styles["popoverDesc"]}>{t.desc}</p>
                         {tierModels?.[t.id] && (
-                          <p className={styles.popoverModel}>{tierModels[t.id]}</p>
+                          <p className={styles["popoverModel"]}>{tierModels[t.id]}</p>
                         )}
                       </div>
                     )}
@@ -530,7 +530,7 @@ export function PromptInput({
             )}
           </div>
 
-          <div className={styles.actions}>
+          <div className={styles["actions"]}>
             {onPickFiles && (
               <>
                 <input
@@ -546,7 +546,7 @@ export function PromptInput({
                 />
                 <button
                   type="button"
-                  className={styles.iconBtn}
+                  className={styles["iconBtn"]}
                   aria-label="Attach files"
                   disabled={busy}
                   onClick={() => fileRef.current?.click()}
@@ -559,8 +559,8 @@ export function PromptInput({
               <button
                 type="button"
                 className={[
-                  styles.iconBtn,
-                  voiceState === "recording" ? styles.micActive : "",
+                  styles["iconBtn"],
+                  voiceState === "recording" ? styles["micActive"] : "",
                 ]
                   .filter(Boolean)
                   .join(" ")}
@@ -590,7 +590,7 @@ export function PromptInput({
             {stoppable && onStop ? (
               <button
                 type="button"
-                className={[styles.iconBtn, styles.stop].join(" ")}
+                className={[styles["iconBtn"], styles["stop"]].join(" ")}
                 aria-label="Stop"
                 onClick={onStop}
               >
@@ -599,7 +599,7 @@ export function PromptInput({
             ) : (
               <button
                 type="button"
-                className={[styles.iconBtn, styles.send, sendActive ? styles.sendActive : ""]
+                className={[styles["iconBtn"], styles["send"], sendActive ? styles["sendActive"] : ""]
                   .filter(Boolean)
                   .join(" ")}
                 aria-label="Send"
@@ -612,9 +612,9 @@ export function PromptInput({
           </div>
         </div>
       </div>
-      <div className={styles.voiceStatus} aria-live="polite">
+      <div className={styles["voiceStatus"]} aria-live="polite">
         {voiceError ? (
-          <span className={styles.voiceError}>{voiceError}</span>
+          <span className={styles["voiceError"]}>{voiceError}</span>
         ) : voiceState === "recording" ? (
           `Recording… ${formatElapsed(elapsedS)}`
         ) : voiceState === "transcribing" ? (

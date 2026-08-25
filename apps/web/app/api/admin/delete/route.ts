@@ -64,7 +64,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .update({ status: "cancelled" })
     .eq("user_id", userId)
     .in("status", ["proposed", "scheduled", "parked"]);
-  steps.slots = "cancelled";
+  steps["slots"] = "cancelled";
 
   try {
     const { data: activeCampaigns } = await supabase
@@ -101,11 +101,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         );
       }
     }
-    steps.campaigns =
+    steps["campaigns"] =
       `paused ${pausedCount} of ${(activeCampaigns ?? []).length}` +
       (failures.length > 0 ? `; failed: ${failures.join(", ")}` : "");
   } catch (error) {
-    steps.campaigns = `error: ${error instanceof Error ? error.message : String(error)}`;
+    steps["campaigns"] = `error: ${error instanceof Error ? error.message : String(error)}`;
   }
 
   // V7 bots: profiles live inside the box (deleted below) and bots/rooms
@@ -115,7 +115,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .from("bots")
     .select("id", { count: "exact", head: true })
     .eq("user_id", userId);
-  steps.bots = `cascading ${botCount ?? 0}`;
+  steps["bots"] = `cascading ${botCount ?? 0}`;
 
   const { data: box } = await supabase
     .from("boxes")
@@ -132,24 +132,24 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         // already stopped/archived
       }
       await deleteBox(box.provider_box_id as string);
-      steps.box = "deleted";
+      steps["box"] = "deleted";
     } catch (error) {
-      steps.box = `error: ${error instanceof Error ? error.message : String(error)}`;
+      steps["box"] = `error: ${error instanceof Error ? error.message : String(error)}`;
     }
   } else {
-    steps.box = "none";
+    steps["box"] = "none";
   }
 
   // P1-11: revoke the user's Daytona child key — it dies with the account.
   if (daytonaConfigured()) {
     try {
       await deleteTenantKey(userId);
-      steps.daytona_key = "revoked";
+      steps["daytona_key"] = "revoked";
     } catch (error) {
-      steps.daytona_key = `error: ${error instanceof Error ? error.message : String(error)}`;
+      steps["daytona_key"] = `error: ${error instanceof Error ? error.message : String(error)}`;
     }
   } else {
-    steps.daytona_key = "not configured";
+    steps["daytona_key"] = "not configured";
   }
 
   // V8: cal.com webhook "deregistration" — registration is owner-side at
@@ -168,9 +168,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       .update({ status: "revoked" })
       .eq("user_id", userId)
       .eq("provider", "calcom");
-    steps.calcom_webhook = `${calcomAccounts} account(s) revoked; sealed secret dies with the cascade — remove the webhook in the cal.com dashboard (owner-registered; no API-side registration exists)`;
+    steps["calcom_webhook"] = `${calcomAccounts} account(s) revoked; sealed secret dies with the cascade — remove the webhook in the cal.com dashboard (owner-registered; no API-side registration exists)`;
   } else {
-    steps.calcom_webhook = "none";
+    steps["calcom_webhook"] = "none";
   }
 
   const { data: address } = await supabase
@@ -182,12 +182,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (address?.agentmail_pod_id) {
     try {
       await deletePod(address.agentmail_pod_id as string);
-      steps.agentmail_pod = "deleted";
+      steps["agentmail_pod"] = "deleted";
     } catch (error) {
-      steps.agentmail_pod = `error: ${error instanceof Error ? error.message : String(error)}`;
+      steps["agentmail_pod"] = `error: ${error instanceof Error ? error.message : String(error)}`;
     }
   } else {
-    steps.agentmail_pod = "none";
+    steps["agentmail_pod"] = "none";
   }
 
   try {
@@ -198,9 +198,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (user.composio_session_id) {
       await deleteSession(user.composio_session_id as string);
     }
-    steps.composio = `revoked ${accounts.length}`;
+    steps["composio"] = `revoked ${accounts.length}`;
   } catch (error) {
-    steps.composio = `error: ${error instanceof Error ? error.message : String(error)}`;
+    steps["composio"] = `error: ${error instanceof Error ? error.message : String(error)}`;
   }
 
   // CM2: remove every stored asset object under the user's prefix (masters
@@ -223,9 +223,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         removed += removal.data.length;
       }
     }
-    steps.assets = `removed ${removed}`;
+    steps["assets"] = `removed ${removed}`;
   } catch (error) {
-    steps.assets = `error: ${error instanceof Error ? error.message : String(error)}`;
+    steps["assets"] = `error: ${error instanceof Error ? error.message : String(error)}`;
   }
 
   // MA11: published bundles live at apps/<slug>/<version>/ on R2, outside
@@ -242,12 +242,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       for (const slug of slugs) {
         removed += await deletePrefix(`apps/${slug}/`);
       }
-      steps.bundles = `removed ${removed} object(s) across ${slugs.length} app(s)`;
+      steps["bundles"] = `removed ${removed} object(s) across ${slugs.length} app(s)`;
     } else {
-      steps.bundles = slugs.length > 0 ? "r2 not configured" : "none";
+      steps["bundles"] = slugs.length > 0 ? "r2 not configured" : "none";
     }
   } catch (error) {
-    steps.bundles = `error: ${error instanceof Error ? error.message : String(error)}`;
+    steps["bundles"] = `error: ${error instanceof Error ? error.message : String(error)}`;
   }
 
   // MA8: the Stripe Connect Standard account belongs to the merchant — the
@@ -257,7 +257,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .from("merchants")
     .select("user_id", { count: "exact", head: true })
     .eq("user_id", userId);
-  steps.merchant =
+  steps["merchant"] =
     (merchantCount ?? 0) > 0
       ? "link row cascades; the Connect account stays with the merchant"
       : "none";
@@ -272,25 +272,25 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       .maybeSingle();
     if (bucket && r2Configured()) {
       const removed = await deletePrefix(bucket.prefix as string);
-      steps.public_media = `removed ${removed}`;
+      steps["public_media"] = `removed ${removed}`;
     } else {
-      steps.public_media = bucket ? "r2 not configured" : "none";
+      steps["public_media"] = bucket ? "r2 not configured" : "none";
     }
   } catch (error) {
-    steps.public_media = `error: ${error instanceof Error ? error.message : String(error)}`;
+    steps["public_media"] = `error: ${error instanceof Error ? error.message : String(error)}`;
   }
 
   await supabase
     .from("lines")
     .update({ assigned_user_id: null, assigned_at: null })
     .eq("assigned_user_id", userId);
-  steps.line = "released";
+  steps["line"] = "released";
 
   const { error: deleteError } = await supabase
     .from("users")
     .delete()
     .eq("id", userId);
-  steps.user = deleteError ? `error: ${deleteError.message}` : "deleted";
+  steps["user"] = deleteError ? `error: ${deleteError.message}` : "deleted";
 
   // V8 hardening item 3 — deletion completeness audit: after the cascade,
   // every wave table must hold zero rows for the user (room_members has no
@@ -308,7 +308,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         .eq("user_id", userId);
       if ((count ?? 0) > 0) orphaned.push(`${table}:${count}`);
     }
-    steps.table_audit =
+    steps["table_audit"] =
       orphaned.length === 0
         ? "zero rows in every wave table"
         : `ORPHANED ${orphaned.join(", ")}`;
@@ -331,7 +331,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         .eq(column, userId);
       if ((count ?? 0) > 0) v9Orphaned.push(`${table}:${count} (expected set null)`);
     }
-    steps.v9_table_audit =
+    steps["v9_table_audit"] =
       v9Orphaned.length === 0
         ? "zero rows in every v9 table"
         : `ORPHANED ${v9Orphaned.join(", ")}`;

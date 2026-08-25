@@ -31,27 +31,27 @@ export const env = {
   // MODEL_PROVIDER_* pair works for all families; set the OPENROUTER_* pair
   // to keep OpenAI on its native endpoint while the rest go to OpenRouter.
   openRouterBaseUrl: (): string =>
-    process.env.OPENROUTER_BASE_URL ?? required("MODEL_PROVIDER_BASE_URL"),
+    process.env["OPENROUTER_BASE_URL"] ?? required("MODEL_PROVIDER_BASE_URL"),
   openRouterApiKey: (): string =>
-    process.env.OPENROUTER_API_KEY ?? required("MODEL_PROVIDER_API_KEY"),
+    process.env["OPENROUTER_API_KEY"] ?? required("MODEL_PROVIDER_API_KEY"),
   // Venice (OpenAI-compatible, https://api.venice.ai/api/v1). The platform
   // key is optional: without it the Venice family only works for users who
   // saved a personal key in Settings.
   veniceBaseUrl: (): string =>
     optional("VENICE_BASE_URL", "https://api.venice.ai/api/v1"),
-  veniceApiKey: (): string | null => process.env.VENICE_API_KEY ?? null,
+  veniceApiKey: (): string | null => process.env["VENICE_API_KEY"] ?? null,
   // Seals per-user provider API keys (Settings → provider keys) at rest.
   // A dedicated 64-hex key with no fallback: provider-key storage stays
   // disabled until it is set, and it rotates independently of every other
   // secret. Rotating it invalidates previously sealed keys.
-  providerVaultKey: (): string | null => process.env.PROVIDER_VAULT_KEY || null,
+  providerVaultKey: (): string | null => process.env["PROVIDER_VAULT_KEY"] || null,
   thirdwebSecretKey: (): string => required("THIRDWEB_SECRET_KEY"),
   // Speech-to-text (M13). Defaults to the main model provider; STT_* overrides
   // exist for providers with no audio endpoint (goal.md §5).
   sttBaseUrl: (): string =>
-    process.env.STT_BASE_URL ?? required("MODEL_PROVIDER_BASE_URL"),
+    process.env["STT_BASE_URL"] ?? required("MODEL_PROVIDER_BASE_URL"),
   sttApiKey: (): string =>
-    process.env.STT_API_KEY ?? required("MODEL_PROVIDER_API_KEY"),
+    process.env["STT_API_KEY"] ?? required("MODEL_PROVIDER_API_KEY"),
   sttModel: (): string => optional("STT_MODEL", "whisper-1"),
   sttCostCentsPerMin: (): number => {
     const parsed = Number(optional("STT_COST_CENTS_PER_MIN", "1"));
@@ -82,18 +82,18 @@ export const env = {
   // desktop surface needs no new deploy config; set it to rotate desktop
   // credentials independently of web sessions.
   desktopSigningKey: (): string =>
-    process.env.DESKTOP_SIGNING_KEY ?? required("SESSION_SECRET"),
+    process.env["DESKTOP_SIGNING_KEY"] ?? required("SESSION_SECRET"),
   // Seals the box dashboard basic-auth password at rest (CM1 task 0 / CC10).
   // 64 hex chars (32 bytes). Optional until the creative plugin ships: when
   // unset, provisioning skips persisting the credential and the dashboard
   // proxy paths return 503.
   boxDashboardAuthKey: (): string | null =>
-    process.env.BOX_DASHBOARD_AUTH_KEY ?? null,
+    process.env["BOX_DASHBOARD_AUTH_KEY"] ?? null,
   // Seals per-account ad platform API keys at rest (CM6). Defaults to the
   // dashboard auth key so the beta needs no extra deploy config; set it to
   // rotate ad credentials independently.
   adsVaultKey: (): string | null =>
-    process.env.ADS_VAULT_KEY ?? process.env.BOX_DASHBOARD_AUTH_KEY ?? null,
+    process.env["ADS_VAULT_KEY"] ?? process.env["BOX_DASHBOARD_AUTH_KEY"] ?? null,
   miniappOrigin: (): string =>
     optional("MINIAPP_ORIGIN", "https://mini.wzrd.tech"),
   // iMessage extension identity for full-screen mini-app cards. Defaults to
@@ -124,10 +124,10 @@ export const env = {
   // lane to be configured; when absent every write path reports itself
   // unconfigured instead of failing the deploy. Keys are server-side only —
   // never per-box env, never a browser (C18).
-  r2AccountId: (): string | null => process.env.R2_ACCOUNT_ID ?? null,
-  r2AccessKeyId: (): string | null => process.env.R2_ACCESS_KEY_ID ?? null,
+  r2AccountId: (): string | null => process.env["R2_ACCOUNT_ID"] ?? null,
+  r2AccessKeyId: (): string | null => process.env["R2_ACCESS_KEY_ID"] ?? null,
   r2SecretAccessKey: (): string | null =>
-    process.env.R2_SECRET_ACCESS_KEY ?? null,
+    process.env["R2_SECRET_ACCESS_KEY"] ?? null,
   r2Bucket: (): string => optional("R2_BUCKET", "air-media"),
   r2PublicBaseUrl: (): string =>
     optional("R2_PUBLIC_BASE_URL", "https://media.wzrd.tech"),
@@ -141,23 +141,23 @@ export const env = {
   // for the sandbox lane; when absent, provisioning injects no Daytona
   // credential and the lane stays disabled.
   daytonaManagerKey: (): string | null =>
-    process.env.DAYTONA_MANAGER_KEY ?? null,
+    process.env["DAYTONA_MANAGER_KEY"] ?? null,
   daytonaOrganizationId: (): string | null =>
-    process.env.DAYTONA_ORGANIZATION_ID ?? null,
+    process.env["DAYTONA_ORGANIZATION_ID"] ?? null,
   daytonaApiUrl: (): string =>
     optional("DAYTONA_API_URL", "https://app.daytona.io/api"),
   // M16 creative lane. Both provider keys are optional: with either absent
   // the lane reports itself unconfigured and preflight degrades gracefully
   // instead of failing the deploy.
-  groqApiKey: (): string | null => process.env.GROQ_API_KEY ?? null,
-  gmiCloudApiKey: (): string | null => process.env.GMI_CLOUD_API_KEY ?? null,
+  groqApiKey: (): string | null => process.env["GROQ_API_KEY"] ?? null,
+  gmiCloudApiKey: (): string | null => process.env["GMI_CLOUD_API_KEY"] ?? null,
   // Direct HeyGen API key — used only to create per-user avatar IDs
   // (POST /v3/avatars); video rendering stays on the GMI queue.
-  heygenApiKey: (): string | null => process.env.HEYGEN_API_KEY ?? null,
+  heygenApiKey: (): string | null => process.env["HEYGEN_API_KEY"] ?? null,
   heygenApiUrl: (): string =>
     optional("HEYGEN_API_URL", "https://api.heygen.com"),
   gmiOrganizationId: (): string | null =>
-    process.env.GMI_ORGANIZATION_ID ?? null,
+    process.env["GMI_ORGANIZATION_ID"] ?? null,
   gmiRequestQueueUrl: (): string =>
     optional(
       "GMI_REQUEST_QUEUE_URL",
@@ -193,30 +193,30 @@ export const env = {
   x402FacilitatorUrl: (): string =>
     optional("X402_FACILITATOR_URL", "https://x402.org/facilitator"),
   x402Network: (): string => optional("X402_NETWORK", "base"),
-  cdpApiKeyId: (): string | null => process.env.CDP_API_KEY_ID ?? null,
-  cdpApiKeySecret: (): string | null => process.env.CDP_API_KEY_SECRET ?? null,
+  cdpApiKeyId: (): string | null => process.env["CDP_API_KEY_ID"] ?? null,
+  cdpApiKeySecret: (): string | null => process.env["CDP_API_KEY_SECRET"] ?? null,
   stripeSecretKey: (): string => required("STRIPE_SECRET_KEY"),
   stripeWebhookSecret: (): string => required("STRIPE_WEBHOOK_SECRET"),
   // MA2.4 plugin sign-in. Hashes plugin bearer tokens at rest; defaults to
   // the web session secret so the beta needs no new deploy config.
   pluginTokenSigningKey: (): string =>
-    process.env.PLUGIN_TOKEN_SIGNING_KEY ?? required("SESSION_SECRET"),
+    process.env["PLUGIN_TOKEN_SIGNING_KEY"] ?? required("SESSION_SECRET"),
   // MA9.2 Onairos developer API key. Optional: absent = the connect step
   // reports itself unconfigured and the onboarding UI hides the button.
   // Never NEXT_PUBLIC_ (goal.md §5): the key is not baked into any client
   // bundle. The vendor web SDK requires client-side initializeApiKey, so
   // the key is delivered only inside the owner-authenticated onboarding
   // render (signed mini-session, per-user), not on any public surface.
-  onairosApiKey: (): string | null => process.env.ONAIROS_API_KEY ?? null,
+  onairosApiKey: (): string | null => process.env["ONAIROS_API_KEY"] ?? null,
   // Google OAuth *web client ID* for the Onairos SDK's "Continue with
   // Google" (public identifier, not a secret). Must list the mini-app
   // origins as authorized JavaScript origins; without it the SDK falls
   // back to Onairos's own client ID, which rejects our origins.
   onairosGoogleClientId: (): string | null =>
-    process.env.ONAIROS_GOOGLE_CLIENT_ID ?? null,
+    process.env["ONAIROS_GOOGLE_CLIENT_ID"] ?? null,
   // MA9.3 optional W&B Weave mirror — receipt METADATA only, never content
   // (C4). Off by default: with no key the mirror makes zero network calls.
-  wandbApiKey: (): string | null => process.env.WANDB_API_KEY ?? null,
+  wandbApiKey: (): string | null => process.env["WANDB_API_KEY"] ?? null,
   wandbProject: (): string => optional("WANDB_PROJECT", "air-traces"),
   creativeCostCentsVideo: (): number => {
     const parsed = Number.parseInt(

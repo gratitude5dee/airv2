@@ -96,7 +96,7 @@ describe("currentPeriodSpend", () => {
     expect(calls).toHaveLength(1);
     const call = calls[0]!;
     expect(call.values).toMatchObject({ spend_mtd_usd: 0 });
-    expect(call.values.spend_period_start).toBe(now.toISOString());
+    expect(call.values["spend_period_start"]).toBe(now.toISOString());
     expect(call.filters).toMatchObject({
       user_id: "u1",
       spend_mtd_usd: "19.9900",

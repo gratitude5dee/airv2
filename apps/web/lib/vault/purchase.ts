@@ -257,7 +257,7 @@ async function deliverTicket(
 
 /** Optional control-plane allowlist of staging store hosts (§8). */
 export function dryRunHosts(): string[] {
-  return (process.env.SHOPPING_DRY_RUN_HOSTS ?? "")
+  return (process.env["SHOPPING_DRY_RUN_HOSTS"] ?? "")
     .split(",")
     .map((h) => h.trim().toLowerCase().replace(/^www\./, ""))
     .filter((h) => h.length > 0);

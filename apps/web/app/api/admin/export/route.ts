@@ -59,9 +59,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       .from("room_members")
       .select("*")
       .in("room_id", roomIds);
-    archive.room_members = members ?? [];
+    archive["room_members"] = members ?? [];
   } else {
-    archive.room_members = [];
+    archive["room_members"] = [];
   }
 
   // MA11: x402 receipts are app-keyed (no user_id) — export the settlement
@@ -79,7 +79,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       .from("x402_receipts")
       .select("jti, app_id, payer_address, amount_usdc, settled_at")
       .in("app_id", ownedAppIds);
-    archive.x402_receipts = (receipts ?? []).map((row) => ({
+    archive["x402_receipts"] = (receipts ?? []).map((row) => ({
       jti: row.jti,
       app_id: row.app_id,
       payer: pseudonymizePayer(row.payer_address as string | null),
@@ -87,14 +87,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       settled_at: row.settled_at,
     }));
   } else {
-    archive.x402_receipts = [];
+    archive["x402_receipts"] = [];
   }
 
   const { data: line } = await supabase
     .from("lines")
     .select("phone, mode, role, assigned_at")
     .eq("assigned_user_id", userId);
-  archive.lines = line ?? [];
+  archive["lines"] = line ?? [];
 
   // Secret columns are never exported.
   const { data: box } = await supabase
@@ -102,7 +102,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     .select("provider_box_id, state, stop_after, created_at")
     .eq("user_id", userId)
     .maybeSingle();
-  archive.box = box
+  archive["box"] = box
     ? {
         ...box,
         snapshot_note:
@@ -117,18 +117,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     try {
       const awake = await ensureBoxAwake(supabase, userId);
       const files = await readMemoryFiles(awake.boxId);
-      archive.memory_files = {
+      archive["memory_files"] = {
         "MEMORY.md": files.memory,
         "USER.md": files.user,
       };
     } catch {
-      archive.memory_files = {
+      archive["memory_files"] = {
         error:
           "box unavailable — memory files are in the box snapshot referenced above",
       };
     }
   } else {
-    archive.memory_files = null;
+    archive["memory_files"] = null;
   }
 
   // Deep memory (docs/memory-upgrade.md): OpenViking inventory + derived
@@ -138,15 +138,15 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   if (box) {
     try {
       const awake = await ensureBoxAwake(supabase, userId);
-      archive.deep_memory = await deepMemoryExport(awake.boxId);
+      archive["deep_memory"] = await deepMemoryExport(awake.boxId);
     } catch {
-      archive.deep_memory = {
+      archive["deep_memory"] = {
         error:
           "box unavailable — the deep-memory workspace is in the box snapshot referenced above",
       };
     }
   } else {
-    archive.deep_memory = null;
+    archive["deep_memory"] = null;
   }
 
   return NextResponse.json({ user_id: userId, exported_at: new Date().toISOString(), archive });

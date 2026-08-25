@@ -41,7 +41,7 @@ vi.mock("@/lib/orchestrator/boxes", () => ({
 import { connect } from "@/lib/miniapps/apps/connect";
 
 beforeAll(() => {
-  process.env.MINIAPP_SIGNING_KEY = "test-signing-key";
+  process.env["MINIAPP_SIGNING_KEY"] = "test-signing-key";
 });
 
 function thenable(rows: unknown) {

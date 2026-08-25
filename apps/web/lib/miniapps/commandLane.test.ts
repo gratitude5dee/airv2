@@ -20,8 +20,8 @@ import { FakeDb } from "@/lib/miniapps/testing/fakeSupabase";
 import { createHash, createHmac } from "node:crypto";
 
 beforeAll(() => {
-  process.env.SESSION_SECRET = "test-session-secret";
-  delete process.env.COMMAND_LANE_KEY;
+  process.env["SESSION_SECRET"] = "test-session-secret";
+  delete process.env["COMMAND_LANE_KEY"];
 });
 
 const USER = "11111111-1111-1111-1111-111111111111";
@@ -55,9 +55,9 @@ describe("command lane", () => {
       { name: "scout", stdin: "system prompt content" }
     );
     expect(queued.ok).toBe(true);
-    expect(db.rows("berd_envelopes")[0]!.args_sealed).toBeTruthy();
+    expect(db.rows("berd_envelopes")[0]!["args_sealed"]).toBeTruthy();
     expect(
-      String(db.rows("berd_envelopes")[0]!.args_sealed)
+      String(db.rows("berd_envelopes")[0]!["args_sealed"])
     ).not.toContain("system prompt content");
 
     const link = await laneLink(supabase, BERD_LANE, token, "berd_", "paired");
@@ -70,8 +70,8 @@ describe("command lane", () => {
     });
     expect(envelopes[0]!.singleUse).toBe(true);
     // Ledger keeps names and states only after the claim.
-    expect(db.rows("berd_envelopes")[0]!.args_sealed).toBeNull();
-    expect(db.rows("berd_envelopes")[0]!.state).toBe("sent");
+    expect(db.rows("berd_envelopes")[0]!["args_sealed"]).toBeNull();
+    expect(db.rows("berd_envelopes")[0]!["state"]).toBe("sent");
 
     // Second poll: nothing left to claim.
     const again = await claimEnvelopes(supabase, BERD_LANE, link!);
@@ -113,7 +113,7 @@ describe("command lane", () => {
     makeLink(db, token, mintEnvelopeKey());
     const supabase = db.client();
     await enqueueEnvelope(supabase, BERD_LANE, USER, "default", "info", "refresh", null);
-    db.rows("berd_envelopes")[0]!.expires_at = new Date(
+    db.rows("berd_envelopes")[0]!["expires_at"] = new Date(
       Date.now() - 1000
     ).toISOString();
 
@@ -126,8 +126,8 @@ describe("command lane", () => {
     expect(envelopes).toHaveLength(0);
     expect(expiredIds).toHaveLength(1);
     expect(expiredIds[0]!.resourceId).toBe("default");
-    expect(db.rows("berd_envelopes")[0]!.state).toBe("failed");
-    expect(db.rows("berd_envelopes")[0]!.args_sealed).toBeNull();
+    expect(db.rows("berd_envelopes")[0]!["state"]).toBe("failed");
+    expect(db.rows("berd_envelopes")[0]!["args_sealed"]).toBeNull();
   });
 
   it("refuses completion replays and foreign envelopes", async () => {
@@ -182,7 +182,7 @@ describe("command lane", () => {
       "sent"
     );
     expect(done?.verb).toBe("send");
-    expect(db.rows("buzz_intents")[0]!.state).toBe("done");
+    expect(db.rows("buzz_intents")[0]!["state"]).toBe("done");
 
     // Replay: the row is no longer 'sent'.
     expect(

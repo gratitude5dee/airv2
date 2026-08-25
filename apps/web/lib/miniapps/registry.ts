@@ -5,7 +5,7 @@
  * next request.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { asRecord } from "../records";
+import { z } from "zod";
 
 export type MiniAppVisibility = "public" | "unlisted" | "private";
 export type MiniAppStatus = "draft" | "published" | "suspended";
@@ -33,10 +33,6 @@ export interface RegistryApp {
   updated_at: string;
 }
 
-function isNullableString(value: unknown): value is string | null {
-  return value === null || typeof value === "string";
-}
-
 export function parseNullableNumeric(
   value: unknown
 ): number | null | undefined {
@@ -49,75 +45,39 @@ export function parseNullableNumeric(
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-function isRegistryKind(value: unknown): value is RegistryApp["kind"] {
-  return value === "render" || value === "input" || value === "passthrough";
-}
-
-function isRegistryVisibility(
-  value: unknown
-): value is RegistryApp["visibility"] {
-  return value === "public" || value === "unlisted" || value === "private";
-}
-
-function isRegistryStatus(value: unknown): value is RegistryApp["status"] {
-  return value === "draft" || value === "published" || value === "suspended";
-}
-
-function isRegistryAccess(value: unknown): value is RegistryApp["access"] {
-  return value === "single" || value === "multiplayer";
-}
+const RegistryAppSchema = z.object({
+  id: z.string(),
+  slug: z.string(),
+  kind: z.enum(["render", "input", "passthrough"]),
+  owner_user_id: z.string().nullable(),
+  name: z.string(),
+  description: z.string(),
+  icon_key: z.string().nullable(),
+  publisher_username: z.string().nullable(),
+  publisher_wallet: z.string().nullable(),
+  agent_identity: z.string().nullable(),
+  visibility: z.enum(["public", "unlisted", "private"]),
+  access: z.enum(["single", "multiplayer"]),
+  password_hash: z.string().nullable(),
+  x402_enabled: z.boolean(),
+  // Postgres numeric columns arrive as strings; parseNullableNumeric owns
+  // that coercion, so the raw value stays unknown here.
+  x402_price_usdc: z.unknown(),
+  plugin_signin_enabled: z.boolean(),
+  status: z.enum(["draft", "published", "suspended"]),
+  bundle_version: z.string().nullable(),
+  listed_at: z.string().nullable(),
+  updated_at: z.string(),
+});
 
 /** Validate a selected mini_apps row before exposing it as registry metadata. */
 export function parseRegistryApp(value: unknown): RegistryApp | null {
-  const row = asRecord(value);
-  if (!row) return null;
+  const parsed = RegistryAppSchema.safeParse(value);
+  if (!parsed.success) return null;
+  const row = parsed.data;
   const x402PriceUsdc = parseNullableNumeric(row.x402_price_usdc);
-  if (
-    typeof row.id !== "string" ||
-    typeof row.slug !== "string" ||
-    !isRegistryKind(row.kind) ||
-    !isNullableString(row.owner_user_id) ||
-    typeof row.name !== "string" ||
-    typeof row.description !== "string" ||
-    !isNullableString(row.icon_key) ||
-    !isNullableString(row.publisher_username) ||
-    !isNullableString(row.publisher_wallet) ||
-    !isNullableString(row.agent_identity) ||
-    !isRegistryVisibility(row.visibility) ||
-    !isRegistryAccess(row.access) ||
-    !isNullableString(row.password_hash) ||
-    typeof row.x402_enabled !== "boolean" ||
-    x402PriceUsdc === undefined ||
-    typeof row.plugin_signin_enabled !== "boolean" ||
-    !isRegistryStatus(row.status) ||
-    !isNullableString(row.bundle_version) ||
-    !isNullableString(row.listed_at) ||
-    typeof row.updated_at !== "string"
-  ) {
-    return null;
-  }
-  return {
-    id: row.id,
-    slug: row.slug,
-    kind: row.kind,
-    owner_user_id: row.owner_user_id,
-    name: row.name,
-    description: row.description,
-    icon_key: row.icon_key,
-    publisher_username: row.publisher_username,
-    publisher_wallet: row.publisher_wallet,
-    agent_identity: row.agent_identity,
-    visibility: row.visibility,
-    access: row.access,
-    password_hash: row.password_hash,
-    x402_enabled: row.x402_enabled,
-    x402_price_usdc: x402PriceUsdc,
-    plugin_signin_enabled: row.plugin_signin_enabled,
-    status: row.status,
-    bundle_version: row.bundle_version,
-    listed_at: row.listed_at,
-    updated_at: row.updated_at,
-  };
+  if (x402PriceUsdc === undefined) return null;
+  return { ...row, x402_price_usdc: x402PriceUsdc };
 }
 
 const COLUMNS =

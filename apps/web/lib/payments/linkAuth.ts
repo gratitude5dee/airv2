@@ -136,16 +136,16 @@ export async function startLinkAuth(
   }
   const payload = parseCliJson(result.stdout);
   if (payload) {
-    if (payload.authenticated === true) {
+    if (payload["authenticated"] === true) {
       doc.authenticated = true;
     } else {
       doc.verification_url = safeVerificationUrl(
-        typeof payload.verification_url === "string"
-          ? payload.verification_url
+        typeof payload["verification_url"] === "string"
+          ? payload["verification_url"]
           : null
       );
       doc.phrase =
-        typeof payload.phrase === "string" ? payload.phrase.slice(0, 120) : null;
+        typeof payload["phrase"] === "string" ? payload["phrase"].slice(0, 120) : null;
     }
   }
   return saveDoc(box.boxId, doc);
@@ -171,7 +171,7 @@ export async function checkLinkAuth(
   }
   previous.installed = true;
   const payload = parseCliJson(result.stdout);
-  previous.authenticated = payload?.authenticated === true;
+  previous.authenticated = payload?.["authenticated"] === true;
   if (previous.authenticated) {
     previous.verification_url = null;
     previous.phrase = null;

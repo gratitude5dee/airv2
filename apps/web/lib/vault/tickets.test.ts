@@ -17,7 +17,7 @@ import {
 } from "./tickets";
 
 beforeAll(() => {
-  process.env.MINIAPP_SIGNING_KEY = "test-signing-key";
+  process.env["MINIAPP_SIGNING_KEY"] = "test-signing-key";
 });
 
 describe("amountBand", () => {

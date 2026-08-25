@@ -79,11 +79,11 @@ export interface CreatedCampaign {
  * cents never reach the API and raw micros never leave it. */
 function campaignPayload(args: Record<string, unknown>): Record<string, unknown> {
   const payload: Record<string, unknown> = { ...args };
-  const cents = payload.lifetime_spend_limit_cents;
-  delete payload.lifetime_spend_limit_cents;
-  delete payload.daily_budget_cents;
+  const cents = payload["lifetime_spend_limit_cents"];
+  delete payload["lifetime_spend_limit_cents"];
+  delete payload["daily_budget_cents"];
   if (typeof cents === "number") {
-    payload.lifetime_spend_limit_micros = centsToMicros(cents);
+    payload["lifetime_spend_limit_micros"] = centsToMicros(cents);
   }
   return payload;
 }

@@ -16,7 +16,7 @@ const FundWidget = dynamic(() => import("@/components/wallet/FundWidget"), {
   ssr: false,
 });
 
-const THIRDWEB_CLIENT_ID = process.env.NEXT_PUBLIC_THIRDWEB_CLIENT_ID;
+const THIRDWEB_CLIENT_ID = process.env["NEXT_PUBLIC_THIRDWEB_CLIENT_ID"];
 
 interface WalletSummary {
   address: string | null;

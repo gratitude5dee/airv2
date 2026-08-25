@@ -128,8 +128,8 @@ function thenable(rows: unknown, single: unknown = null) {
   for (const method of ["select", "eq", "is", "order", "limit", "gte", "lt"]) {
     builder[method] = vi.fn(chain);
   }
-  builder.maybeSingle = async () => ({ data: single, error: null });
-  builder.then = (
+  builder["maybeSingle"] = async () => ({ data: single, error: null });
+  builder["then"] = (
     resolve: (value: { data: unknown; count: number }) => unknown
   ) => Promise.resolve({ data: rows, count: 0 }).then(resolve);
   return builder;

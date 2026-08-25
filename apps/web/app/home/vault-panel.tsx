@@ -618,34 +618,34 @@ function VaultModal({
     }
     const fields: Record<string, string> = {};
     if (kind === "login") {
-      if (username) fields.username = username;
-      if (password) fields.password = password;
-      if (siteUrl) fields.site_url = siteUrl;
+      if (username) fields["username"] = username;
+      if (password) fields["password"] = password;
+      if (siteUrl) fields["site_url"] = siteUrl;
     } else if (kind === "card") {
       if (!editing && !luhnValid(digits)) {
         setError("Card number failed the Luhn check");
         return;
       }
-      if (digits) fields.number = digits;
-      if (expiryMonth) fields.expiry_month = expiryMonth.replace(/\D/g, "");
-      if (expiryYear) fields.expiry_year = expiryYear.replace(/\D/g, "");
-      if (cvv) fields.cvv = cvv.replace(/\D/g, "");
-      if (zip) fields.zip = zip.replace(/\D/g, "");
+      if (digits) fields["number"] = digits;
+      if (expiryMonth) fields["expiry_month"] = expiryMonth.replace(/\D/g, "");
+      if (expiryYear) fields["expiry_year"] = expiryYear.replace(/\D/g, "");
+      if (cvv) fields["cvv"] = cvv.replace(/\D/g, "");
+      if (zip) fields["zip"] = zip.replace(/\D/g, "");
     } else if (kind === "api_key") {
-      if (keyValue) fields.value = keyValue;
+      if (keyValue) fields["value"] = keyValue;
       if (envVar && !ENV_NAME_RE.test(envVar)) {
         setError("Env var must match [A-Z_][A-Z0-9_]*");
         return;
       }
     } else if (kind === "note") {
-      if (noteText) fields.note = noteText;
+      if (noteText) fields["note"] = noteText;
     }
     setBusy(true);
     try {
       const item: Record<string, unknown> = { name: name.trim() };
-      if (Object.keys(fields).length > 0) item.fields = fields;
-      if (kind === "api_key") item.env_var = envVar || null;
-      if (kind === "login" && totpSeed) item.totp_seed = totpSeed;
+      if (Object.keys(fields).length > 0) item["fields"] = fields;
+      if (kind === "api_key") item["env_var"] = envVar || null;
+      if (kind === "login" && totpSeed) item["totp_seed"] = totpSeed;
       let res: Response;
       if (editing) {
         res = await fetch("/api/vault", {
@@ -654,7 +654,7 @@ function VaultModal({
           body: JSON.stringify({ id: editing.id, item }),
         });
       } else {
-        item.kind = kind;
+        item["kind"] = kind;
         res = await fetch("/api/vault", {
           method: "POST",
           headers: { "Content-Type": "application/json" },

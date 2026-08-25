@@ -16,7 +16,7 @@ function thenable(rows: unknown) {
   for (const method of ["select", "eq", "is", "order", "limit"]) {
     builder[method] = vi.fn(chain);
   }
-  builder.then = (resolve: (value: { data: unknown }) => unknown) =>
+  builder["then"] = (resolve: (value: { data: unknown }) => unknown) =>
     Promise.resolve({ data: rows }).then(resolve);
   return builder;
 }
@@ -87,7 +87,7 @@ vi.mock("@/lib/miniapps/store", () => ({
 import { GET } from "./[app]/route";
 
 beforeAll(() => {
-  process.env.MINIAPP_SIGNING_KEY = "test-signing-key";
+  process.env["MINIAPP_SIGNING_KEY"] = "test-signing-key";
 });
 
 describe("vault mini-app with a hostile item name", () => {

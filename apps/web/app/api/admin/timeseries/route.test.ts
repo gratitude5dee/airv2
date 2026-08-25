@@ -23,16 +23,16 @@ vi.mock("@/lib/supabase", () => {
     for (const method of ["select", "gte", "order"]) {
       chain[method] = vi.fn(self);
     }
-    chain.eq = vi.fn((column: string, value: unknown) => {
+    chain["eq"] = vi.fn((column: string, value: unknown) => {
       db.filters.push({ table, column, value });
       return chain;
     });
-    chain.range = vi.fn((start: number, end: number) => {
+    chain["range"] = vi.fn((start: number, end: number) => {
       from = start;
       to = end;
       return chain;
     });
-    chain.then = (resolve: (value: unknown) => unknown) => {
+    chain["then"] = (resolve: (value: unknown) => unknown) => {
       const error = table === "agent_runs" ? db.runsError : null;
       const rows = table === "agent_runs" ? db.runs : db.events;
       return Promise.resolve({
@@ -54,7 +54,7 @@ const authed = (qs = "") =>
   });
 
 beforeEach(() => {
-  process.env.ADMIN_API_KEY = "admin-key";
+  process.env["ADMIN_API_KEY"] = "admin-key";
   db.runs = [];
   db.events = [];
   db.runsError = null;

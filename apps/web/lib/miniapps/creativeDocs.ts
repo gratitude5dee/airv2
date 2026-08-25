@@ -6,8 +6,8 @@
  * testable without a box.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { z } from "zod";
 import { BoxApiError, readFile, writeFile } from "../box/client";
-import { asRecord } from "../records";
 import { armStopAfter, ensureBoxAwake } from "../orchestrator/boxes";
 
 /* ------------------------------------------------------------- image docs */
@@ -631,9 +631,25 @@ function docPath(app: "image" | "video", resourceId: string): string {
   return `.hermes/miniapps/${app}/${resourceId}.json`;
 }
 
+/** Loose layer shape: hostile doc fields stay unknown and are clamped below. */
+const LayerRow = z.object({
+  id: z.unknown(),
+  kind: z.unknown(),
+  name: z.unknown(),
+  parentGroupId: z.unknown(),
+  collapsed: z.unknown(),
+  assetId: z.unknown(),
+  text: z.unknown(),
+  opacity: z.unknown(),
+  blend: z.unknown(),
+  visible: z.unknown(),
+  transform: z.unknown(),
+});
+
 function normalizeLayer(raw: unknown): ImageLayer | null {
-  const input = asRecord(raw);
-  if (!input) return null;
+  const parsed = LayerRow.safeParse(raw);
+  if (!parsed.success) return null;
+  const input = parsed.data;
   if (typeof input.id !== "string" || !input.id) return null;
   const kind =
     input.kind === "group" || input.kind === "text" || input.kind === "asset"
@@ -678,11 +694,19 @@ function normalizeLayer(raw: unknown): ImageLayer | null {
   };
 }
 
+const HistoryRow = z.object({
+  label: z.unknown(),
+  at: z.unknown(),
+  layers: z.unknown(),
+  selectedLayerId: z.unknown(),
+});
+
 function normalizeHistory(raw: unknown): ImageHistoryEntry[] {
   if (!Array.isArray(raw)) return [];
   return raw
-    .filter((entry): entry is Record<string, unknown> => {
-      return typeof entry === "object" && entry !== null;
+    .flatMap((value) => {
+      const parsed = HistoryRow.safeParse(value);
+      return parsed.success ? [parsed.data] : [];
     })
     .map((entry) => ({
       label: typeof entry.label === "string" ? entry.label.slice(0, 80) : "Edit",
@@ -720,7 +744,10 @@ export function normalizeImageDoc(raw: unknown): ImageDoc {
       .filter((layer): layer is ImageLayer => layer !== null)
       .slice(0, MAX_LAYERS)
   );
-  const history = asRecord(doc.history) ?? {};
+  const historyParsed = z
+    .object({ undo: z.unknown(), redo: z.unknown() })
+    .safeParse(doc.history);
+  const history = historyParsed.success ? historyParsed.data : {};
   return {
     schemaVersion: IMAGE_DOC_VERSION,
     title: typeof doc.title === "string" ? doc.title : DEFAULT_IMAGE_DOC.title,

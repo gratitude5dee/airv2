@@ -17,7 +17,7 @@ import {
 } from "./purchase";
 
 beforeAll(() => {
-  process.env.MINIAPP_SIGNING_KEY = "test-signing-key";
+  process.env["MINIAPP_SIGNING_KEY"] = "test-signing-key";
 });
 
 type Row = Record<string, unknown>;
@@ -42,20 +42,20 @@ function fakeSupabase(script: Script, inserts: Record<string, Row[]> = {}) {
     ]) {
       self[method] = chain;
     }
-    self.insert = (row: Row) => {
+    self["insert"] = (row: Row) => {
       inserted = row;
       (inserts[table] ??= []).push(row);
       return self;
     };
-    self.maybeSingle = () => {
+    self["maybeSingle"] = () => {
       single = true;
       return self;
     };
-    self.single = () => {
+    self["single"] = () => {
       single = true;
       return self;
     };
-    self.then = (
+    self["then"] = (
       resolve: (value: { data: unknown; error: null }) => unknown
     ) => {
       if (inserted && table === "decisions") {
@@ -201,13 +201,13 @@ describe("proposePurchaseReview", () => {
     );
     await proposePurchaseReview(supabase, "user-1", input);
 
-    const [event] = inserts.vault_events ?? [];
-    expect(event?.action).toBe("fill_requested");
-    expect(event?.item_id).toBe("item-1");
+    const [event] = inserts["vault_events"] ?? [];
+    expect(event?.["action"]).toBe("fill_requested");
+    expect(event?.["item_id"]).toBe("item-1");
 
-    const [decision] = inserts.decisions ?? [];
-    expect(decision?.kind).toBe("purchase_review");
-    const payload = decision?.payload as Row;
+    const [decision] = inserts["decisions"] ?? [];
+    expect(decision?.["kind"]).toBe("purchase_review");
+    const payload = decision?.["payload"] as Row;
     expect(Object.keys(payload).sort()).toEqual([
       "amount_band",
       "card_masked",
@@ -217,7 +217,7 @@ describe("proposePurchaseReview", () => {
       "link_supported",
       "summary",
     ]);
-    expect(payload.amount_band).toBe("under $25");
+    expect(payload["amount_band"]).toBe("under $25");
     // No card value ever lands in the decision row (C18).
     expect(JSON.stringify(decision)).not.toMatch(/\b\d{13,19}\b/);
   });
@@ -238,9 +238,9 @@ describe("resolvePurchaseReview deny path", () => {
       false,
       null
     );
-    const [event] = inserts.vault_events ?? [];
-    expect(event?.action).toBe("fill_denied");
-    expect(event?.item_id).toBe("item-1");
+    const [event] = inserts["vault_events"] ?? [];
+    expect(event?.["action"]).toBe("fill_denied");
+    expect(event?.["item_id"]).toBe("item-1");
   });
 });
 
@@ -260,11 +260,11 @@ describe("resolvePurchaseReview link path (MA6 #5)", () => {
       null,
       "link"
     );
-    const [event] = inserts.vault_events ?? [];
-    expect(event?.action).toBe("fill_denied");
-    expect(event?.context).toBe("amazon.com:link_selected");
+    const [event] = inserts["vault_events"] ?? [];
+    expect(event?.["action"]).toBe("fill_denied");
+    expect(event?.["context"]).toBe("amazon.com:link_selected");
     // No ticket table touched — Link never sees the card (C18/C20).
-    expect(inserts.vault_fill_tickets).toBeUndefined();
+    expect(inserts["vault_fill_tickets"]).toBeUndefined();
   });
 
   it("rejects Link when the review was not offered with it", async () => {
@@ -291,8 +291,8 @@ describe("outcomes and dry-run hosts", () => {
   });
 
   it("parses SHOPPING_DRY_RUN_HOSTS", () => {
-    process.env.SHOPPING_DRY_RUN_HOSTS = " www.Staging.Shop.example, ,test.example ";
+    process.env["SHOPPING_DRY_RUN_HOSTS"] = " www.Staging.Shop.example, ,test.example ";
     expect(dryRunHosts()).toEqual(["staging.shop.example", "test.example"]);
-    delete process.env.SHOPPING_DRY_RUN_HOSTS;
+    delete process.env["SHOPPING_DRY_RUN_HOSTS"];
   });
 });

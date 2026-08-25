@@ -285,7 +285,7 @@ export async function enableManager(
       if (!/^[0-9a-fA-F-]{8,64}$/.test(input.project_id)) {
         throw new ManagerInputError("project id has an unexpected format");
       }
-      configPatch.project_id = input.project_id;
+      configPatch["project_id"] = input.project_id;
     }
     await mergeBoxEnv(boxId, { BWS_ACCESS_TOKEN: input.token });
   } else if (manager === "onepassword") {
@@ -299,7 +299,7 @@ export async function enableManager(
     if (input.helper_command.length > 1000) {
       throw new ManagerInputError("helper command is too long");
     }
-    configPatch.command = input.helper_command.trim();
+    configPatch["command"] = input.helper_command.trim();
   }
 
   if (input.mappings) {
@@ -313,7 +313,7 @@ export async function enableManager(
       }
       mapped[envVar] = ref;
     }
-    configPatch.mapped = mapped;
+    configPatch["mapped"] = mapped;
   }
 
   await patchSecretsConfig(boxId, CONFIG_SECTION[manager], configPatch);

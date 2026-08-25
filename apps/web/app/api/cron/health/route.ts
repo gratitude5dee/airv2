@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 function authorized(request: NextRequest): boolean {
-  const secret = process.env.CRON_SECRET ?? "";
+  const secret = process.env["CRON_SECRET"] ?? "";
   if (!secret) return false;
   const header = request.headers.get("authorization") ?? "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";

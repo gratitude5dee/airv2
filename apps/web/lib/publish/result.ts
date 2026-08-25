@@ -41,14 +41,14 @@ export function unwrapToolResult(result: unknown): unknown {
   if (!record) {
     throw new PublishError(502, "malformed tool result");
   }
-  if (record.successful === false || record.successfull === false) {
+  if (record["successful"] === false || record["successfull"] === false) {
     const message =
-      typeof record.error === "string"
-        ? record.error
-        : JSON.stringify(record.error ?? "tool execution failed");
+      typeof record["error"] === "string"
+        ? record["error"]
+        : JSON.stringify(record["error"] ?? "tool execution failed");
     throw new PublishError(inferStatus(message), message);
   }
-  return record.data ?? record;
+  return record["data"] ?? record;
 }
 
 /** Composio flattens the platform's HTTP status into the error text; fish it

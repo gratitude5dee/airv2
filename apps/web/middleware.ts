@@ -21,7 +21,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 function miniHost(): string {
-  const origin = process.env.MINIAPP_ORIGIN ?? "https://mini.wzrd.tech";
+  const origin = process.env["MINIAPP_ORIGIN"] ?? "https://mini.wzrd.tech";
   try {
     return new URL(origin).host;
   } catch {
@@ -48,7 +48,7 @@ export function middleware(request: NextRequest): NextResponse {
     if (pathname === "/api/store/index.json") {
       const target = new URL(
         pathname + search,
-        process.env.MINIAPP_ORIGIN ?? "https://mini.wzrd.tech"
+        process.env["MINIAPP_ORIGIN"] ?? "https://mini.wzrd.tech"
       );
       return NextResponse.redirect(target, 308);
     }
@@ -89,7 +89,7 @@ export function middleware(request: NextRequest): NextResponse {
       }
       const target = new URL(
         `/${rest}` + search,
-        process.env.MINIAPP_ORIGIN ?? "https://mini.wzrd.tech"
+        process.env["MINIAPP_ORIGIN"] ?? "https://mini.wzrd.tech"
       );
       return NextResponse.redirect(target, 308);
     }

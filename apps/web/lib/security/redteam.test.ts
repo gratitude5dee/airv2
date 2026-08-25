@@ -232,7 +232,7 @@ describe("MA11 prompt-injection: publish/gate/quota surfaces are owner-session-g
 
 describe("fill tickets refuse tampering (V6 re-run)", () => {
   beforeEach(() => {
-    process.env.MINIAPP_SIGNING_KEY = "redteam-signing-key";
+    process.env["MINIAPP_SIGNING_KEY"] = "redteam-signing-key";
   });
 
   it("a ticket minted for one user is refused for another", () => {

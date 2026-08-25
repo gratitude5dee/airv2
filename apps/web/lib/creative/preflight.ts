@@ -131,25 +131,25 @@ const requireModels = (
 };
 
 const groqModelIds = (payload: unknown): ReadonlySet<string> => {
-  if (!isRecord(payload) || !Array.isArray(payload.data)) {
+  if (!isRecord(payload) || !Array.isArray(payload["data"])) {
     throw new ProviderPreflightError("Groq returned an invalid model list");
   }
   const ids: string[] = [];
-  for (const item of payload.data) {
-    if (!isRecord(item) || typeof item.id !== "string") {
+  for (const item of payload["data"]) {
+    if (!isRecord(item) || typeof item["id"] !== "string") {
       throw new ProviderPreflightError("Groq returned an invalid model list");
     }
-    ids.push(item.id);
+    ids.push(item["id"]);
   }
   return new Set(ids);
 };
 
 const gmiModelIds = (payload: unknown): ReadonlySet<string> => {
-  if (!isRecord(payload) || !Array.isArray(payload.model_ids)) {
+  if (!isRecord(payload) || !Array.isArray(payload["model_ids"])) {
     throw new ProviderPreflightError("GMI returned an invalid model list");
   }
   const ids: string[] = [];
-  for (const id of payload.model_ids) {
+  for (const id of payload["model_ids"]) {
     if (typeof id !== "string") {
       throw new ProviderPreflightError("GMI returned an invalid model list");
     }
@@ -162,17 +162,17 @@ const gmiParameterNames = (
   model: string,
   payload: unknown
 ): ReadonlySet<string> => {
-  if (!isRecord(payload) || !Array.isArray(payload.parameters)) {
+  if (!isRecord(payload) || !Array.isArray(payload["parameters"])) {
     throw new ProviderPreflightError(`GMI returned invalid details for ${model}`);
   }
   const names: string[] = [];
-  for (const parameter of payload.parameters) {
-    if (!isRecord(parameter) || typeof parameter.name !== "string") {
+  for (const parameter of payload["parameters"]) {
+    if (!isRecord(parameter) || typeof parameter["name"] !== "string") {
       throw new ProviderPreflightError(
         `GMI returned invalid details for ${model}`
       );
     }
-    names.push(parameter.name);
+    names.push(parameter["name"]);
   }
   return new Set(names);
 };

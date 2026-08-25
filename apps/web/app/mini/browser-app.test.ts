@@ -56,7 +56,7 @@ function withCookie(app: string): NextRequest {
 }
 
 beforeAll(async () => {
-  process.env.MINIAPP_SIGNING_KEY = "test-signing-key";
+  process.env["MINIAPP_SIGNING_KEY"] = "test-signing-key";
   const { makeApp, testDb } = await import("./loader-test-utils");
   testDb.apps = [
     makeApp({ slug: "browser", kind: "passthrough" }),

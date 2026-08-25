@@ -83,8 +83,8 @@ function post(body: string, signature?: string): Promise<Response> {
 }
 
 beforeAll(() => {
-  process.env.STRIPE_SECRET_KEY = "sk_test_fake";
-  process.env.STRIPE_WEBHOOK_SECRET = WEBHOOK_SECRET;
+  process.env["STRIPE_SECRET_KEY"] = "sk_test_fake";
+  process.env["STRIPE_WEBHOOK_SECRET"] = WEBHOOK_SECRET;
 });
 
 beforeEach(() => {

@@ -79,7 +79,7 @@ describe("resolveEmailDraftDecision", () => {
       "d1"
     );
     expect(updates).toHaveLength(1);
-    expect((updates[0]?.values as Row).status).toBe("approved");
+    expect((updates[0]?.["values"] as Row)["status"]).toBe("approved");
   });
 
   it("dismissal resolves the decision without any send", async () => {
@@ -89,7 +89,7 @@ describe("resolveEmailDraftDecision", () => {
     });
     await resolveEmailDraftDecision(client, "user-1", "d1", false);
     expect(vi.mocked(sendDraft)).not.toHaveBeenCalled();
-    expect((updates[0]?.values as Row).status).toBe("dismissed");
+    expect((updates[0]?.["values"] as Row)["status"]).toBe("dismissed");
   });
 
   it("refuses an already-resolved decision — a replayed approval re-sends nothing", async () => {

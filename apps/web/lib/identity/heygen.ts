@@ -64,7 +64,7 @@ export async function createHeygenPhotoAvatar(opts: {
   }
   const item = (body as { data?: { avatar_item?: Record<string, unknown> } })
     ?.data?.avatar_item;
-  const avatarId = typeof item?.id === "string" ? item.id : null;
+  const avatarId = typeof item?.["id"] === "string" ? item["id"] : null;
   if (!avatarId) {
     return { ok: false, error: "Avatar creation failed — try again." };
   }
@@ -72,10 +72,10 @@ export async function createHeygenPhotoAvatar(opts: {
     ok: true,
     identity: {
       avatarId,
-      groupId: typeof item?.group_id === "string" ? item.group_id : null,
+      groupId: typeof item?.["group_id"] === "string" ? item["group_id"] : null,
       voiceId:
-        typeof item?.default_voice_id === "string"
-          ? item.default_voice_id
+        typeof item?.["default_voice_id"] === "string"
+          ? item["default_voice_id"]
           : null,
     },
   };

@@ -558,7 +558,7 @@ function Editor({ initial }: { initial: Payload }): React.ReactElement {
       }
       const target = event.target as HTMLElement;
       const layerEl = target.closest("[data-layer-id]") as HTMLElement | null;
-      const id = layerEl?.dataset.layerId;
+      const id = layerEl?.dataset["layerId"];
       const layer = id ? doc.layers.find((l) => l.id === id) : undefined;
       (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
       if (layer) {
@@ -1494,7 +1494,7 @@ const mount = document.getElementById("image-editor");
 if (mount) {
   let initial: Payload | null = null;
   try {
-    initial = JSON.parse(mount.dataset.payload ?? "") as Payload;
+    initial = JSON.parse(mount.dataset["payload"] ?? "") as Payload;
   } catch {
     initial = null;
   }

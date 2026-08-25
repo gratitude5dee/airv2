@@ -6,7 +6,7 @@
  * DST transition never moves a launch (CM4 task 7).
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { asRecord } from "../records";
+import { z } from "zod";
 
 export const SLOT_PLATFORMS = [
   "instagram",
@@ -36,60 +36,29 @@ export interface ContentSlot {
   published_at: string | null;
 }
 
-function isStringRecord(value: unknown): value is Record<string, string> {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    Object.values(value).every((entry) => typeof entry === "string")
-  );
-}
+const ContentSlotSchema = z.object({
+  id: z.string(),
+  user_id: z.string(),
+  platform: z.string(),
+  account_ref: z.string(),
+  package_ref: z.string(),
+  scheduled_at: z.string(),
+  timezone: z.string(),
+  status: z.string(),
+  attempt: z.number().int(),
+  attempt_epoch: z.number().int(),
+  claimed_at: z.string().nullable(),
+  publish_state: z.record(z.string()),
+  external_id: z.string().nullable(),
+  permalink: z.string().nullable(),
+  last_verdict: z.string().nullable(),
+  error_message: z.string().nullable(),
+  published_at: z.string().nullable(),
+});
 
 export function parseContentSlot(value: unknown): ContentSlot | null {
-  const row = asRecord(value);
-  if (!row) return null;
-  if (
-    typeof row.id !== "string" ||
-    typeof row.user_id !== "string" ||
-    typeof row.platform !== "string" ||
-    typeof row.account_ref !== "string" ||
-    typeof row.package_ref !== "string" ||
-    typeof row.scheduled_at !== "string" ||
-    typeof row.timezone !== "string" ||
-    typeof row.status !== "string" ||
-    typeof row.attempt !== "number" ||
-    !Number.isInteger(row.attempt) ||
-    typeof row.attempt_epoch !== "number" ||
-    !Number.isInteger(row.attempt_epoch) ||
-    (row.claimed_at !== null && typeof row.claimed_at !== "string") ||
-    !isStringRecord(row.publish_state) ||
-    (row.external_id !== null && typeof row.external_id !== "string") ||
-    (row.permalink !== null && typeof row.permalink !== "string") ||
-    (row.last_verdict !== null && typeof row.last_verdict !== "string") ||
-    (row.error_message !== null && typeof row.error_message !== "string") ||
-    (row.published_at !== null && typeof row.published_at !== "string")
-  ) {
-    return null;
-  }
-  return {
-    id: row.id,
-    user_id: row.user_id,
-    platform: row.platform,
-    account_ref: row.account_ref,
-    package_ref: row.package_ref,
-    scheduled_at: row.scheduled_at,
-    timezone: row.timezone,
-    status: row.status,
-    attempt: row.attempt,
-    attempt_epoch: row.attempt_epoch,
-    claimed_at: row.claimed_at,
-    publish_state: row.publish_state,
-    external_id: row.external_id,
-    permalink: row.permalink,
-    last_verdict: row.last_verdict,
-    error_message: row.error_message,
-    published_at: row.published_at,
-  };
+  const parsed = ContentSlotSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
 
 export const SLOT_COLUMNS =

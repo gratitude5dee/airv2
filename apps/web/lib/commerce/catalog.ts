@@ -7,9 +7,9 @@
  * decision: the agent can stage, only the owner approves.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { z } from "zod";
 import { env } from "../env";
 import { readAppState } from "../miniapps/store";
-import { asRecord } from "../records";
 import { CommerceError } from "./merchants";
 
 export const PRODUCT_KINDS = [
@@ -50,45 +50,25 @@ export const PRODUCT_COLUMNS =
 
 const KEY_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 
-function isProductKind(value: unknown): value is ProductKind {
-  return PRODUCT_KINDS.includes(value as ProductKind);
-}
+const StorefrontProductSchema = z.object({
+  id: z.string(),
+  user_id: z.string(),
+  product_key: z.string(),
+  kind: z.enum(PRODUCT_KINDS),
+  name: z.string(),
+  description: z.string(),
+  image_url: z.string().nullable(),
+  price_cents: z.number().int(),
+  inventory: z.number().int().nullable(),
+  active: z.boolean(),
+});
 
 /** Validate a selected storefront_products row before using it for checkout. */
 export function parseStorefrontProduct(
   value: unknown
 ): StorefrontProduct | null {
-  const row = asRecord(value);
-  if (!row) return null;
-  if (
-    typeof row.id !== "string" ||
-    typeof row.user_id !== "string" ||
-    typeof row.product_key !== "string" ||
-    !isProductKind(row.kind) ||
-    typeof row.name !== "string" ||
-    typeof row.description !== "string" ||
-    (row.image_url !== null && typeof row.image_url !== "string") ||
-    typeof row.price_cents !== "number" ||
-    !Number.isInteger(row.price_cents) ||
-    (row.inventory !== null &&
-      (typeof row.inventory !== "number" ||
-        !Number.isInteger(row.inventory))) ||
-    typeof row.active !== "boolean"
-  ) {
-    return null;
-  }
-  return {
-    id: row.id,
-    user_id: row.user_id,
-    product_key: row.product_key,
-    kind: row.kind,
-    name: row.name,
-    description: row.description,
-    image_url: row.image_url,
-    price_cents: row.price_cents,
-    inventory: row.inventory,
-    active: row.active,
-  };
+  const parsed = StorefrontProductSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
 
 /** Only public R2 URLs may be projected — never signed/private links. */
@@ -97,14 +77,32 @@ function publicImageUrl(value: unknown): string | null {
   return value.startsWith(env.r2PublicBaseUrl()) ? value : null;
 }
 
+/** Loose catalog entry: box-side JSON is agent-written, so fields stay
+ * unknown and are clamped below. */
+const CatalogEntryRow = z.object({
+  key: z.unknown(),
+  kind: z.unknown(),
+  name: z.unknown(),
+  description: z.unknown(),
+  imageUrl: z.unknown(),
+  priceCents: z.unknown(),
+  inventory: z.unknown(),
+  active: z.unknown(),
+});
+
+function isProductKind(value: unknown): value is ProductKind {
+  return PRODUCT_KINDS.includes(value as ProductKind);
+}
+
 /** Validate one raw catalog entry into a projectable item, or null. */
 export function sanitizeCatalogItem(raw: unknown): CatalogItem | null {
-  const item = asRecord(raw);
-  if (!item) return null;
+  const parsed = CatalogEntryRow.safeParse(raw);
+  if (!parsed.success) return null;
+  const item = parsed.data;
   const key = typeof item.key === "string" ? item.key.toLowerCase() : "";
   if (!KEY_RE.test(key)) return null;
-  const kind = item.kind as ProductKind;
-  if (!PRODUCT_KINDS.includes(kind)) return null;
+  const kind = item.kind;
+  if (!isProductKind(kind)) return null;
   const name = typeof item.name === "string" ? item.name.trim().slice(0, 200) : "";
   if (!name) return null;
   const priceCents = item.priceCents;

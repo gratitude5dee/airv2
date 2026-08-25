@@ -60,45 +60,45 @@ export function parseOrder(value: unknown): Order | null {
   const row = asRecord(value);
   if (!row) return null;
   if (
-    typeof row.id !== "string" ||
-    typeof row.user_id !== "string" ||
-    typeof row.product_id !== "string" ||
-    typeof row.quantity !== "number" ||
-    !Number.isInteger(row.quantity) ||
-    typeof row.amount_cents !== "number" ||
-    !Number.isInteger(row.amount_cents) ||
-    !isOrderStatus(row.status) ||
-    !isNullableString(row.stripe_session_id) ||
-    !isNullableString(row.stripe_payment_intent_id) ||
-    typeof row.buyer_key_hash !== "string" ||
-    !isNullableString(row.attribution) ||
-    !isNullableString(row.ticket_code) ||
-    !isNullableString(row.checked_in_at) ||
-    typeof row.created_at !== "string"
+    typeof row["id"] !== "string" ||
+    typeof row["user_id"] !== "string" ||
+    typeof row["product_id"] !== "string" ||
+    typeof row["quantity"] !== "number" ||
+    !Number.isInteger(row["quantity"]) ||
+    typeof row["amount_cents"] !== "number" ||
+    !Number.isInteger(row["amount_cents"]) ||
+    !isOrderStatus(row["status"]) ||
+    !isNullableString(row["stripe_session_id"]) ||
+    !isNullableString(row["stripe_payment_intent_id"]) ||
+    typeof row["buyer_key_hash"] !== "string" ||
+    !isNullableString(row["attribution"]) ||
+    !isNullableString(row["ticket_code"]) ||
+    !isNullableString(row["checked_in_at"]) ||
+    typeof row["created_at"] !== "string"
   ) {
     return null;
   }
   return {
-    id: row.id,
-    user_id: row.user_id,
-    product_id: row.product_id,
-    quantity: row.quantity,
-    amount_cents: row.amount_cents,
-    status: row.status,
+    id: row["id"],
+    user_id: row["user_id"],
+    product_id: row["product_id"],
+    quantity: row["quantity"],
+    amount_cents: row["amount_cents"],
+    status: row["status"],
     stripe_session_id:
-      typeof row.stripe_session_id === "string"
-        ? row.stripe_session_id
+      typeof row["stripe_session_id"] === "string"
+        ? row["stripe_session_id"]
         : null,
     stripe_payment_intent_id:
-      typeof row.stripe_payment_intent_id === "string"
-        ? row.stripe_payment_intent_id
+      typeof row["stripe_payment_intent_id"] === "string"
+        ? row["stripe_payment_intent_id"]
         : null,
-    buyer_key_hash: row.buyer_key_hash,
-    attribution: typeof row.attribution === "string" ? row.attribution : null,
-    ticket_code: typeof row.ticket_code === "string" ? row.ticket_code : null,
+    buyer_key_hash: row["buyer_key_hash"],
+    attribution: typeof row["attribution"] === "string" ? row["attribution"] : null,
+    ticket_code: typeof row["ticket_code"] === "string" ? row["ticket_code"] : null,
     checked_in_at:
-      typeof row.checked_in_at === "string" ? row.checked_in_at : null,
-    created_at: row.created_at,
+      typeof row["checked_in_at"] === "string" ? row["checked_in_at"] : null,
+    created_at: row["created_at"],
   };
 }
 

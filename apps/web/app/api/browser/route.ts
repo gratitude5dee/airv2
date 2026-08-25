@@ -137,11 +137,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     string,
     unknown
   > | null;
-  const action = typeof body?.action === "string" ? body.action : "";
+  const action = typeof body?.["action"] === "string" ? body["action"] : "";
 
   try {
     if (action === "navigate") {
-      const url = typeof body?.url === "string" ? body.url.trim() : "";
+      const url = typeof body?.["url"] === "string" ? body["url"].trim() : "";
       const withScheme = /^https?:\/\//i.test(url) ? url : `https://${url}`;
       let parsed: URL;
       try {
@@ -172,7 +172,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     if (action === "run_playbook") {
-      const playbook = typeof body?.playbook === "string" ? body.playbook : "";
+      const playbook = typeof body?.["playbook"] === "string" ? body["playbook"] : "";
       if (!(RULE_PLAYBOOKS as readonly string[]).includes(playbook)) {
         return NextResponse.json({ error: "invalid request" }, { status: 400 });
       }
@@ -206,9 +206,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     if (action === "grant") {
-      const itemId = typeof body?.item_id === "string" ? body.item_id : "";
-      const host = typeof body?.host === "string" ? body.host : "";
-      const allow = body?.allow === true;
+      const itemId = typeof body?.["item_id"] === "string" ? body["item_id"] : "";
+      const host = typeof body?.["host"] === "string" ? body["host"] : "";
+      const allow = body?.["allow"] === true;
       if (!ID_RE.test(itemId) || !normalizeHost(host)) {
         return NextResponse.json({ error: "invalid request" }, { status: 400 });
       }
@@ -241,15 +241,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     if (action === "rule") {
-      const playbook = typeof body?.playbook === "string" ? body.playbook : "";
-      const platform = typeof body?.platform === "string" ? body.platform : "";
-      const enabled = body?.enabled === true;
+      const playbook = typeof body?.["playbook"] === "string" ? body["playbook"] : "";
+      const platform = typeof body?.["platform"] === "string" ? body["platform"] : "";
+      const enabled = body?.["enabled"] === true;
       const cap =
-        typeof body?.daily_cap === "number" &&
-        Number.isInteger(body.daily_cap) &&
-        body.daily_cap >= 1 &&
-        body.daily_cap <= 200
-          ? body.daily_cap
+        typeof body?.["daily_cap"] === "number" &&
+        Number.isInteger(body["daily_cap"]) &&
+        body["daily_cap"] >= 1 &&
+        body["daily_cap"] <= 200
+          ? body["daily_cap"]
           : DEFAULT_DAILY_CAP;
       if (
         !(RULE_PLAYBOOKS as readonly string[]).includes(playbook) ||

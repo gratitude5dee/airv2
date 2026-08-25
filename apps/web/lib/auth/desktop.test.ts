@@ -10,8 +10,8 @@ import {
 } from "./desktop";
 
 beforeAll(() => {
-  process.env.SESSION_SECRET = "test-session-secret";
-  delete process.env.DESKTOP_SIGNING_KEY;
+  process.env["SESSION_SECRET"] = "test-session-secret";
+  delete process.env["DESKTOP_SIGNING_KEY"];
 });
 
 /** Minimal insert-returning-single stub for desktop_devices. */
@@ -66,11 +66,11 @@ describe("desktop credentials", () => {
 
   it("rejects a token signed with a different key", () => {
     const { token } = mintDeviceToken("user-1", "device-1");
-    process.env.DESKTOP_SIGNING_KEY = "rotated";
+    process.env["DESKTOP_SIGNING_KEY"] = "rotated";
     try {
       expect(verifyDeviceToken(token)).toBeUndefined();
     } finally {
-      delete process.env.DESKTOP_SIGNING_KEY;
+      delete process.env["DESKTOP_SIGNING_KEY"];
     }
   });
 

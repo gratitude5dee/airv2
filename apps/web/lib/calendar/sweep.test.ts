@@ -39,11 +39,11 @@ function makeSupabase(row: { next_run_at: string; status: string }) {
             },
             select: () => {
               const matches =
-                filters.id === SCHEDULE.id &&
-                filters.status === row.status &&
-                filters.next_run_at === row.next_run_at;
+                filters["id"] === SCHEDULE.id &&
+                filters["status"] === row.status &&
+                filters["next_run_at"] === row.next_run_at;
               if (!matches) return Promise.resolve({ data: [] });
-              row.next_run_at = values.next_run_at as string;
+              row.next_run_at = values["next_run_at"] as string;
               updates.push(values);
               return Promise.resolve({
                 data: [{ ...SCHEDULE, ...values }],
@@ -67,7 +67,7 @@ describe("claimSchedule", () => {
     const claimed = await claimSchedule(client, SCHEDULE);
     expect(claimed).toBeDefined();
     expect(updates).toHaveLength(1);
-    expect(updates[0]?.next_run_at).not.toBe(SCHEDULE.next_run_at);
+    expect(updates[0]?.["next_run_at"]).not.toBe(SCHEDULE.next_run_at);
   });
 
   it("is idempotent — a second racing claim of the same fire loses", async () => {

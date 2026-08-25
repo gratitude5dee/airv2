@@ -126,7 +126,7 @@ describe("analytics reconciliation", () => {
     const panel = await agentActivityPanel(supabase, ME, SINCE);
     // Reconcile against the source rows directly.
     const source = AGENT_RUNS.filter(
-      (r) => r.user_id === ME && String(r.started_at) >= SINCE
+      (r) => r["user_id"] === ME && String(r["started_at"]) >= SINCE
     );
     const totalRuns = panel.rows.reduce((sum, row) => sum + Number(row[1]), 0);
     expect(totalRuns).toBe(source.length);

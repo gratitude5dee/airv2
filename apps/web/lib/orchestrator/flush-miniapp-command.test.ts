@@ -250,7 +250,7 @@ describe("runFlush mini-app commands", () => {
     ]);
     expect(
       supabase.updates.find((update) => update.table === "flush_jobs")?.values
-        .attempts
+        ["attempts"]
     ).toBe(1);
     expect(sendText).not.toHaveBeenCalled();
     expect(supabase.deleted).not.toContain("flush_jobs");

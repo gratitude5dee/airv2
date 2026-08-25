@@ -128,7 +128,7 @@ export const touringSource: CalendarSource = {
   brief(moment: Moment, brand: BrandSource | null): BriefStep[] {
     const constraints = brandConstraints(brand);
     const { artist, venue, city } = moment.entity;
-    const metro = moment.entity.metro ?? city;
+    const metro = moment.entity["metro"] ?? city;
     const local =
       ` Name ${venue} explicitly; the copy is local to ${city} and any ad ` +
       `targets the ${metro} metro.`;

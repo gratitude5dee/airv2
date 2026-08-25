@@ -150,13 +150,13 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
   const updates: Record<string, string | number> = {};
   const cron = body.cron ?? existing.cron;
   const timezone = body.timezone ?? existing.timezone;
-  if (body.name !== undefined) updates.name = body.name;
+  if (body.name !== undefined) updates["name"] = body.name;
   if (body.deliver !== undefined) {
-    updates.deliver = body.deliver;
+    updates["deliver"] = body.deliver;
   }
   if (body.status !== undefined) {
-    updates.status = body.status;
-    if (body.status === "active") updates.failure_count = 0;
+    updates["status"] = body.status;
+    if (body.status === "active") updates["failure_count"] = 0;
   }
   if (body.cron !== undefined || body.timezone !== undefined) {
     if (!isValidTimeZone(timezone)) {
@@ -166,22 +166,22 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
     if (cronError) {
       return NextResponse.json({ error: cronError }, { status: 400 });
     }
-    updates.cron = cron;
-    updates.timezone = timezone;
-    const deliver = (updates.deliver as Deliver | undefined) ?? existing.deliver;
-    updates.next_run_at = clampToWakingHours(
+    updates["cron"] = cron;
+    updates["timezone"] = timezone;
+    const deliver = (updates["deliver"] as Deliver | undefined) ?? existing.deliver;
+    updates["next_run_at"] = clampToWakingHours(
       nextRunAt(cron, timezone),
       timezone,
       deliver
     ).toISOString();
-  } else if (updates.deliver && updates.deliver !== existing.deliver) {
+  } else if (updates["deliver"] && updates["deliver"] !== existing.deliver) {
     // Deliver-only change: the stored next_run_at may have been computed for
     // a silent schedule (never clamped) — re-clamp so switching to a channel
     // cannot message the user off-hours.
-    updates.next_run_at = clampToWakingHours(
+    updates["next_run_at"] = clampToWakingHours(
       new Date(existing.next_run_at),
       timezone,
-      updates.deliver as Deliver
+      updates["deliver"] as Deliver
     ).toISOString();
   }
   if (body.prompt !== undefined) {

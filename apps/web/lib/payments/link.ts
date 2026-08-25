@@ -16,13 +16,13 @@ export interface LinkProvider {
 }
 
 function linkEnabled(): boolean {
-  return process.env.STRIPE_LINK_ENABLED === "1";
+  return process.env["STRIPE_LINK_ENABLED"] === "1";
 }
 
 /** Env-allowlist stand-in until lib/payments/stripe.ts (Session B) lands. */
 const envAllowlistProvider: LinkProvider = {
   async hostSupportsLink(host: string): Promise<boolean> {
-    return (process.env.STRIPE_LINK_HOSTS ?? "")
+    return (process.env["STRIPE_LINK_HOSTS"] ?? "")
       .split(",")
       .map((h) => h.trim().toLowerCase().replace(/^www\./, ""))
       .filter(Boolean)

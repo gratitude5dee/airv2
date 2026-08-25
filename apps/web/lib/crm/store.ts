@@ -9,8 +9,8 @@
  * so the detail view can show where a fact came from.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { z } from "zod";
 import { readFile, writeFile } from "../box/client";
-import { asRecord } from "../records";
 import { ensureBoxAwake } from "../orchestrator/boxes";
 
 export const PEOPLE_PATH = ".hermes/miniapps/crm/people.json";
@@ -48,23 +48,46 @@ const strings = (value: unknown): string[] =>
     ? value.filter((v): v is string => typeof v === "string")
     : [];
 
+/** Loose person row: box-side JSON the agent may write directly, so fields
+ * stay unknown and are validated below. */
+const PersonRow = z.object({
+  id: z.unknown(),
+  name: z.unknown(),
+  emails: z.unknown(),
+  phones: z.unknown(),
+  sender_ids: z.unknown(),
+  photos: z.unknown(),
+  notes: z.unknown(),
+  tags: z.unknown(),
+  provenance: z.unknown(),
+  created_at: z.unknown(),
+  updated_at: z.unknown(),
+});
+
+const ProvenanceSchema = z.object({
+  source: z.enum(["owner", "agent"]),
+  at: z.string(),
+  note: z.unknown(),
+});
+
 /** Normalize one raw entry from the box-side file, or drop it. The file is
  * ordinary box state the agent may write directly, so every field is
  * validated on read — one malformed record must not take the app down. */
 export function asPerson(raw: unknown): CrmPerson | null {
-  const value = asRecord(raw);
-  if (!value) return null;
+  const parsed = PersonRow.safeParse(raw);
+  if (!parsed.success) return null;
+  const value = parsed.data;
   if (typeof value.id !== "string" || !value.id) return null;
   if (typeof value.name !== "string" || !value.name) return null;
   const provenance = Array.isArray(value.provenance)
-    ? value.provenance.filter(
-        (p): p is CrmProvenance =>
-          typeof p === "object" &&
-          p !== null &&
-          ((p as CrmProvenance).source === "owner" ||
-            (p as CrmProvenance).source === "agent") &&
-          typeof (p as CrmProvenance).at === "string"
-      )
+    ? value.provenance.flatMap((p): CrmProvenance[] => {
+        const entry = ProvenanceSchema.safeParse(p);
+        if (!entry.success) return [];
+        const { source, at, note } = entry.data;
+        return [
+          { source, at, note: typeof note === "string" ? note : undefined },
+        ];
+      })
     : [];
   return {
     id: value.id,
@@ -127,7 +150,22 @@ export interface CrmPatch {
   delete?: boolean;
 }
 
-export function sanitizePatch(raw: Record<string, unknown>): CrmPatch {
+const PatchRow = z.object({
+  person_id: z.unknown(),
+  name: z.unknown(),
+  emails: z.unknown(),
+  phones: z.unknown(),
+  sender_ids: z.unknown(),
+  photos: z.unknown(),
+  notes: z.unknown(),
+  tags: z.unknown(),
+  delete: z.unknown(),
+});
+
+export function sanitizePatch(value: unknown): CrmPatch {
+  const parsed = PatchRow.safeParse(value);
+  if (!parsed.success) return {};
+  const raw = parsed.data;
   const patch: CrmPatch = {};
   if (typeof raw.person_id === "string") patch.person_id = raw.person_id;
   if (typeof raw.name === "string") patch.name = raw.name.slice(0, 200);

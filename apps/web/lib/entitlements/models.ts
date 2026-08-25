@@ -203,9 +203,9 @@ export function isReasoningModel(model: string): boolean {
  * fleet's models without a deploy touching any box. */
 function tierOverride(tier: SpeedTier): string | undefined {
   const byTier: Record<SpeedTier, string | undefined> = {
-    fast: process.env.MODEL_FAST,
-    balanced: process.env.MODEL_BALANCED,
-    deep: process.env.MODEL_DEEP,
+    fast: process.env["MODEL_FAST"],
+    balanced: process.env["MODEL_BALANCED"],
+    deep: process.env["MODEL_DEEP"],
   };
   return byTier[tier];
 }
@@ -217,9 +217,9 @@ function tierOverride(tier: SpeedTier): string | undefined {
  */
 export function reasoningForTier(tier: SpeedTier): string | undefined {
   const byTier: Record<SpeedTier, string | undefined> = {
-    fast: process.env.MODEL_REASONING_FAST,
-    balanced: process.env.MODEL_REASONING_BALANCED,
-    deep: process.env.MODEL_REASONING_DEEP,
+    fast: process.env["MODEL_REASONING_FAST"],
+    balanced: process.env["MODEL_REASONING_BALANCED"],
+    deep: process.env["MODEL_REASONING_DEEP"],
   };
   const value = byTier[tier];
   return value && value.trim() ? value.trim() : undefined;
@@ -232,9 +232,9 @@ export function reasoningForTier(tier: SpeedTier): string | undefined {
  */
 export function serviceTierForTier(tier: SpeedTier): string | undefined {
   const byTier: Record<SpeedTier, string | undefined> = {
-    fast: process.env.MODEL_SERVICE_TIER_FAST,
-    balanced: process.env.MODEL_SERVICE_TIER_BALANCED,
-    deep: process.env.MODEL_SERVICE_TIER_DEEP,
+    fast: process.env["MODEL_SERVICE_TIER_FAST"],
+    balanced: process.env["MODEL_SERVICE_TIER_BALANCED"],
+    deep: process.env["MODEL_SERVICE_TIER_DEEP"],
   };
   const value = byTier[tier];
   return value && value.trim() ? value.trim() : undefined;
@@ -309,9 +309,9 @@ export function modelLabelForFamily(
  */
 export function modelLabelForTier(tier: SpeedTier): string {
   const byTier: Record<SpeedTier, string | undefined> = {
-    fast: process.env.MODEL_LABEL_FAST,
-    balanced: process.env.MODEL_LABEL_BALANCED,
-    deep: process.env.MODEL_LABEL_DEEP,
+    fast: process.env["MODEL_LABEL_FAST"],
+    balanced: process.env["MODEL_LABEL_BALANCED"],
+    deep: process.env["MODEL_LABEL_DEEP"],
   };
   const value = byTier[tier];
   return value && value.trim() ? value.trim() : modelForTier(tier);

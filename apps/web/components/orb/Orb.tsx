@@ -67,12 +67,12 @@ export function Orb({ size = SIZE, label, pill, className, style }: OrbProps) {
   const text = label ?? "Thinking…";
   return (
     <span
-      className={styles.root + (className ? " " + className : "")}
+      className={styles["root"] + (className ? " " + className : "")}
       data-pill={pill ? "" : undefined}
       style={style}
     >
       <span
-        className={styles.glyph}
+        className={styles["glyph"]}
         role={pill ? undefined : "img"}
         aria-label={pill ? undefined : text}
         aria-hidden={pill ? true : undefined}
@@ -80,11 +80,11 @@ export function Orb({ size = SIZE, label, pill, className, style }: OrbProps) {
           { width: size, height: size, "--orb-k": size / STAGE } as CSSProperties
         }
       >
-        <span className={styles.lattice} data-variant="S1">
+        <span className={styles["lattice"]} data-variant="S1">
           {latticeCells().map((c) => (
             <span
               key={c.key}
-              className={styles.cell}
+              className={styles["cell"]}
               data-mid={c.mid ? "" : undefined}
               style={{
                 left: c.left,
@@ -95,7 +95,7 @@ export function Orb({ size = SIZE, label, pill, className, style }: OrbProps) {
           ))}
         </span>
       </span>
-      {pill && <span className={styles.pillLabel}>{text}</span>}
+      {pill && <span className={styles["pillLabel"]}>{text}</span>}
     </span>
   );
 }

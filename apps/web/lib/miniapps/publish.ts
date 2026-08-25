@@ -80,10 +80,10 @@ type DraftResult = Pick<RegistryApp, "id" | "slug" | "name">;
 function parseDraftResult(value: unknown): DraftResult | null {
   const row = asRecord(value);
   if (!row) return null;
-  return typeof row.id === "string" &&
-    typeof row.slug === "string" &&
-    typeof row.name === "string"
-    ? { id: row.id, slug: row.slug, name: row.name }
+  return typeof row["id"] === "string" &&
+    typeof row["slug"] === "string" &&
+    typeof row["name"] === "string"
+    ? { id: row["id"], slug: row["slug"], name: row["name"] }
     : null;
 }
 
@@ -245,20 +245,20 @@ interface GateSettingsRow {
 export function parseGateSettingsRow(value: unknown): GateSettingsRow | null {
   const row = asRecord(value);
   if (!row) return null;
-  const x402PriceUsdc = parseNullableNumeric(row.x402_price_usdc);
+  const x402PriceUsdc = parseNullableNumeric(row["x402_price_usdc"]);
   if (
-    typeof row.id !== "string" ||
-    (row.owner_user_id !== null &&
-      typeof row.owner_user_id !== "string") ||
-    typeof row.x402_enabled !== "boolean" ||
+    typeof row["id"] !== "string" ||
+    (row["owner_user_id"] !== null &&
+      typeof row["owner_user_id"] !== "string") ||
+    typeof row["x402_enabled"] !== "boolean" ||
     x402PriceUsdc === undefined
   ) {
     return null;
   }
   return {
-    id: row.id,
-    owner_user_id: row.owner_user_id,
-    x402_enabled: row.x402_enabled,
+    id: row["id"],
+    owner_user_id: row["owner_user_id"],
+    x402_enabled: row["x402_enabled"],
     x402_price_usdc: x402PriceUsdc,
   };
 }
@@ -286,7 +286,7 @@ export async function updateGateSettings(
   }
 
   const update: Record<string, unknown> = {};
-  if (input.access !== undefined) update.access = input.access;
+  if (input.access !== undefined) update["access"] = input.access;
 
   if (input.x402Enabled !== undefined) {
     if (input.x402Enabled) {
@@ -299,15 +299,15 @@ export async function updateGateSettings(
           "a positive USDC price is required to enable x402"
         );
       }
-      update.x402_enabled = true;
-      update.x402_price_usdc = price;
+      update["x402_enabled"] = true;
+      update["x402_price_usdc"] = price;
     } else {
-      update.x402_enabled = false;
+      update["x402_enabled"] = false;
       if (input.x402PriceUsdc !== undefined) {
         if (input.x402PriceUsdc !== null && !validPrice(input.x402PriceUsdc)) {
           throw new PublishError("invalid x402 price");
         }
-        update.x402_price_usdc = input.x402PriceUsdc;
+        update["x402_price_usdc"] = input.x402PriceUsdc;
       }
     }
   } else if (input.x402PriceUsdc !== undefined) {
@@ -315,23 +315,23 @@ export async function updateGateSettings(
       if (owned.x402_enabled) {
         throw new PublishError("disable x402 before clearing the price");
       }
-      update.x402_price_usdc = null;
+      update["x402_price_usdc"] = null;
     } else {
       if (!validPrice(input.x402PriceUsdc)) {
         throw new PublishError("invalid x402 price");
       }
-      update.x402_price_usdc = input.x402PriceUsdc;
+      update["x402_price_usdc"] = input.x402PriceUsdc;
     }
   }
 
   if (input.password !== undefined) {
     if (input.password === null || input.password === "") {
-      update.password_hash = null;
+      update["password_hash"] = null;
     } else {
       if (input.password.length > 200) {
         throw new PublishError("password too long");
       }
-      update.password_hash = hashPassword(
+      update["password_hash"] = hashPassword(
         input.password,
         randomBytes(16).toString("hex")
       );
@@ -339,13 +339,13 @@ export async function updateGateSettings(
   }
 
   if (input.pluginSigninEnabled !== undefined) {
-    update.plugin_signin_enabled = input.pluginSigninEnabled;
+    update["plugin_signin_enabled"] = input.pluginSigninEnabled;
   }
 
   if (Object.keys(update).length === 0) {
     throw new PublishError("nothing to update");
   }
-  update.updated_at = new Date().toISOString();
+  update["updated_at"] = new Date().toISOString();
 
   const { error } = await supabase
     .from("mini_apps")

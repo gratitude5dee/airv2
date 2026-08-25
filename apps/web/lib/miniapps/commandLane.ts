@@ -57,7 +57,7 @@ export const BUZZ_LANE: LaneConfig = {
  * it independently of web sessions. */
 function laneSealKey(): string {
   return (
-    process.env.COMMAND_LANE_KEY ??
+    process.env["COMMAND_LANE_KEY"] ??
     createHash("sha256").update(env.sessionSecret()).digest("hex")
   );
 }
@@ -220,9 +220,9 @@ export async function claimEnvelopes(
     const row = asRecord(raw) ?? {};
     // Decrypt before the claiming update nulls the ciphertext.
     let args: unknown = null;
-    if (typeof row.args_sealed === "string") {
+    if (typeof row["args_sealed"] === "string") {
       try {
-        args = JSON.parse(openSecret(row.args_sealed, laneSealKey()));
+        args = JSON.parse(openSecret(row["args_sealed"], laneSealKey()));
       } catch {
         args = null;
       }
@@ -230,17 +230,17 @@ export async function claimEnvelopes(
     const { data: claimed } = await supabase
       .from(lane.table)
       .update({ state: "sent", sent_at: nowIso, args_sealed: null })
-      .eq("id", row.id as string)
+      .eq("id", row["id"] as string)
       .eq("state", "queued")
       .select("id");
     if (!claimed?.length) continue;
     const fields = {
-      id: row.id as string,
-      group: row.cmd_group as string,
+      id: row["id"] as string,
+      group: row["cmd_group"] as string,
       verb: row[lane.verbColumn] as string,
       args,
-      issuedAt: row.issued_at as string,
-      expiresAt: row.expires_at as string,
+      issuedAt: row["issued_at"] as string,
+      expiresAt: row["expires_at"] as string,
       singleUse: true as const,
     };
     envelopes.push({ ...fields, sig: signEnvelope(envelopeKey, fields) });
@@ -280,9 +280,9 @@ export async function completeEnvelope(
   const row = asRecord((data ?? [])[0]);
   if (!row) return null;
   return {
-    id: row.id as string,
-    resourceId: row.resource_id as string,
-    group: row.cmd_group as string,
+    id: row["id"] as string,
+    resourceId: row["resource_id"] as string,
+    group: row["cmd_group"] as string,
     verb: row[lane.verbColumn] as string,
   };
 }

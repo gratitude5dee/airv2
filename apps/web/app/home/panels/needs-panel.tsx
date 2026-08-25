@@ -461,7 +461,7 @@ export function NeedsPanel({
                           </button>
                         ) : null}
                         {d.kind === "purchase_review" &&
-                        d.payload?.link_supported === true ? (
+                        d.payload?.["link_supported"] === true ? (
                           <button
                             className="btn !px-3 !py-1.5 !text-[12px]"
                             disabled={decisionBusy !== null}
