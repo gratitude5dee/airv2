@@ -25,11 +25,11 @@ export const env = {
   // a box_environment_templates pointer — the omarchy environment reports
   // itself unavailable instead of falling back to the Ubuntu template.
   omarchyTemplateId: (): string | null =>
-    process.env.OMARCHY_TEMPLATE_ID ?? null,
+    process.env["OMARCHY_TEMPLATE_ID"] ?? null,
   // Namespace (macos environment). The token is a tenant token
   // (`nsc token create`); without it the macos environment is disabled
   // and onboarding does not offer it.
-  namespaceToken: (): string | null => process.env.NAMESPACE_TOKEN ?? null,
+  namespaceToken: (): string | null => process.env["NAMESPACE_TOKEN"] ?? null,
   namespaceComputeApi: (): string =>
     optional(
       "NAMESPACE_COMPUTE_API",
@@ -38,7 +38,7 @@ export const env = {
   // Bootstrap script a fresh Mac curls on first boot (infra/template-macos).
   // The macos "template pointer" in box_environment_templates overrides it.
   macBootstrapUrl: (): string | null =>
-    process.env.MAC_BOOTSTRAP_URL ?? null,
+    process.env["MAC_BOOTSTRAP_URL"] ?? null,
   // Support-disk image required by Namespace macOS applications; contents
   // are unused (the bootstrap command lives in the base image).
   macBootstrapImage: (): string =>
