@@ -13,6 +13,7 @@ import { provisionDaytona } from "./daytona";
 import { normalizeAddress } from "../routing/trust";
 import { sealSecret } from "../crypto/secretbox";
 import { installBaseSkills } from "../skills/hub";
+import { templateBoxFor } from "../fleet/channels";
 
 export interface ProvisionOptions {
   displayName?: string;
@@ -193,8 +194,11 @@ export async function provisionUser(
   }
 
   async function forkAndConfigure(): Promise<ProvisionResult> {
+  // New users fork from the prod channel's template box; the static
+  // BOX_TEMPLATE_ID env var is the fallback until the channel is bootstrapped.
+  const templateId = await templateBoxFor(supabase, "prod", env.boxTemplateId());
   const box = await fork({
-    templateId: env.boxTemplateId(),
+    templateId,
     env: { TENANT_ID: userId, GATEWAY_TOKEN: gatewayToken },
   });
   boxId = box.id;
@@ -295,6 +299,7 @@ export async function provisionUser(
     api_server_key: apiServerKey,
     gateway_token: gatewayToken,
     template_version: templateHermesRef,
+    channel: "prod",
     last_active_at: new Date().toISOString(),
   });
   if (boxError) {
