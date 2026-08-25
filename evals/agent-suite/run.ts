@@ -354,11 +354,14 @@ async function main(): Promise<void> {
     if (index < queue.length - 1) await sleep(DELAY_MS);
   }
 
-  if (!existsSync(join(cfg.resultsDir, "messages.jsonl"))) {
-    // Snapshot the suite alongside the raw results so a report can always be
-    // rescored against the exact cases that ran.
+  // Snapshot the suite alongside the raw results so a report can always be
+  // rescored against the exact cases that ran. Written once per results dir:
+  // a resume's `ran` count covers only the remaining queue, so rewriting it
+  // would erase the original run's counts.
+  const suitePath = join(cfg.resultsDir, "suite.json");
+  if (!existsSync(suitePath)) {
     writeFileSync(
-      join(cfg.resultsDir, "suite.json"),
+      suitePath,
       `${JSON.stringify({ count: cases.length, ran: queue.length, at: new Date().toISOString() }, null, 2)}\n`
     );
   }
