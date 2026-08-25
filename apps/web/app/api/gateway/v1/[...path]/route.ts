@@ -8,6 +8,7 @@
  */
 import { after, NextRequest, NextResponse } from "next/server";
 import { env } from "@/lib/env";
+import { asRecord } from "@/lib/records";
 import { serviceClient } from "@/lib/supabase";
 import {
   costUsd,
@@ -204,10 +205,14 @@ export async function POST(
     venice: await getProviderKey(supabase, userId, "venice").catch(() => null),
   };
 
-  let rawBody: Record<string, unknown>;
+  let parsedBody: unknown;
   try {
-    rawBody = (await request.json()) as Record<string, unknown>;
+    parsedBody = await request.json();
   } catch {
+    return NextResponse.json({ error: "invalid JSON" }, { status: 400 });
+  }
+  const rawBody = asRecord(parsedBody);
+  if (!rawBody) {
     return NextResponse.json({ error: "invalid JSON" }, { status: 400 });
   }
   const streaming = rawBody.stream === true;

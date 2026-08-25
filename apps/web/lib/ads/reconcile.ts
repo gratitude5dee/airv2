@@ -9,6 +9,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { campaignInsights, openAdsKey } from "./openai";
+import { asRecord } from "../records";
 
 /** A report is divergent when it exceeds the mirrored budget by both this
  * ratio and an absolute floor — small drifts don't page anyone. */
@@ -41,9 +42,9 @@ export function isDivergent(
 /** Pull the day's spend out of an insights response without trusting its
  * shape: accepts spend as dollars (`spend`) or cents (`spend_cents`). */
 export function parseSpendCents(insights: unknown): number | null {
-  if (insights === null || typeof insights !== "object") return null;
-  const record = insights as Record<string, unknown>;
-  const data = (record.data ?? record) as Record<string, unknown>;
+  const record = asRecord(insights);
+  if (!record) return null;
+  const data = asRecord(record.data) ?? record;
   if (typeof data.spend_cents === "number" && Number.isFinite(data.spend_cents)) {
     return Math.round(data.spend_cents);
   }

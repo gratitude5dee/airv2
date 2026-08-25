@@ -13,6 +13,7 @@ import { createHash, randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type Stripe from "stripe";
 import { createConnectCheckoutSession } from "../payments/stripe";
+import { asRecord } from "../records";
 import {
   getPublishedProduct,
   parseStorefrontProduct,
@@ -56,8 +57,8 @@ function isNullableString(value: unknown): value is string | null | undefined {
 
 /** Validate a selected orders row before applying fulfillment side effects. */
 export function parseOrder(value: unknown): Order | null {
-  if (typeof value !== "object" || value === null) return null;
-  const row = value as Record<string, unknown>;
+  const row = asRecord(value);
+  if (!row) return null;
   if (
     typeof row.id !== "string" ||
     typeof row.user_id !== "string" ||

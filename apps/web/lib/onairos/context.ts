@@ -10,6 +10,7 @@
  * (traits/userProfile/DataAnalysis). This matches goal.md §3's anticipated
  * "client-SDK consent → context posted to the control plane" shape.
  */
+import { asRecord } from "../records";
 
 export const ONAIROS_MD_PATH = ".hermes/context/onairos.md";
 export const ONAIROS_JSON_PATH = ".hermes/context/onairos.json";
@@ -67,14 +68,16 @@ export function validateHandoff(input: unknown): OnairosHandoff {
   if (url.protocol !== "https:" || !ALLOWED_API_HOSTS.test(url.hostname)) {
     throw new OnairosError("apiUrl must be an https onairos.uk/onairos.io URL");
   }
-  const authorizedData =
-    body.authorizedData && typeof body.authorizedData === "object"
-      ? Object.fromEntries(
-          Object.entries(body.authorizedData as Record<string, unknown>)
-            .filter(([, value]) => typeof value === "boolean")
-            .map(([key, value]) => [key, value as boolean])
-        )
-      : undefined;
+  const authorizedRecord = asRecord(body.authorizedData);
+  const authorizedData = authorizedRecord
+    ? Object.fromEntries(
+        Object.entries(authorizedRecord)
+          .filter(
+            (entry): entry is [string, boolean] =>
+              typeof entry[1] === "boolean"
+          )
+      )
+    : undefined;
   return { token: body.token, apiUrl: body.apiUrl, authorizedData };
 }
 

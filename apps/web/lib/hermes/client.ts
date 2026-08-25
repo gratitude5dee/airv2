@@ -4,6 +4,7 @@
  * and the per-box API_SERVER_KEY (ARCHITECTURE.md §8.1). Neither may ever
  * reach a browser (C3).
  */
+import { z } from "zod";
 import { fetchWithHeaderTimeout, requestSignal } from "../http/timeout";
 
 export interface HermesBoxTarget {
@@ -34,9 +35,8 @@ export interface RunRequest {
   metadata?: Record<string, string>;
 }
 
-export interface RunResponse {
-  run_id: string;
-}
+const RunResponseSchema = z.object({ run_id: z.string() });
+export type RunResponse = z.infer<typeof RunResponseSchema>;
 
 export class HermesApiError extends Error {
   readonly status: number;
@@ -65,6 +65,7 @@ function headers(target: HermesBoxTarget): HeadersInit {
 async function hermesFetch<T>(
   target: HermesBoxTarget,
   path: string,
+  schema: z.ZodType<T>,
   init?: RequestInit
 ): Promise<T> {
   const response = await fetch(url(target, path), {
@@ -76,7 +77,15 @@ async function hermesFetch<T>(
     const body = await response.text();
     throw new HermesApiError(response.status, body.slice(0, 500));
   }
-  return (await response.json()) as T;
+  const json: unknown = await response.json();
+  const parsed = schema.safeParse(json);
+  if (!parsed.success) {
+    throw new HermesApiError(
+      502,
+      `unexpected response shape from ${path}: ${parsed.error.message.slice(0, 300)}`
+    );
+  }
+  return parsed.data;
 }
 
 export async function createRun(
@@ -85,7 +94,7 @@ export async function createRun(
 ): Promise<RunResponse> {
   // api_server expects snake_case `session_id`; a camelCase key is silently
   // ignored and every run lands in its own throwaway session.
-  return hermesFetch<RunResponse>(target, "/v1/runs", {
+  return hermesFetch(target, "/v1/runs", RunResponseSchema, {
     method: "POST",
     body: JSON.stringify({
       input: request.input,
@@ -115,7 +124,7 @@ export async function stopRun(
   target: HermesBoxTarget,
   runId: string
 ): Promise<void> {
-  await hermesFetch<unknown>(target, `/v1/runs/${runId}/stop`, {
+  await hermesFetch(target, `/v1/runs/${runId}/stop`, z.unknown(), {
     method: "POST",
   });
 }
@@ -125,30 +134,40 @@ export async function approveRun(
   runId: string,
   approved: boolean
 ): Promise<void> {
-  await hermesFetch<unknown>(target, `/v1/runs/${runId}/approval`, {
+  await hermesFetch(target, `/v1/runs/${runId}/approval`, z.unknown(), {
     method: "POST",
     body: JSON.stringify({ approved }),
   });
 }
 
 /** Hermes cron job (5d): exposed over REST as /api/jobs. */
-export interface HermesJob {
-  id: string;
-  name?: string;
-  schedule?: string;
-  prompt?: string;
-  enabled?: boolean;
-  paused?: boolean;
-  deliver?: string;
-  next_run_at?: string | null;
-  last_run_at?: string | null;
-  last_output?: string | null;
-}
+const HermesJobSchema = z.object({
+  id: z.string(),
+  name: z.string().optional(),
+  schedule: z.string().optional(),
+  prompt: z.string().optional(),
+  enabled: z.boolean().optional(),
+  paused: z.boolean().optional(),
+  deliver: z.string().optional(),
+  next_run_at: z.string().nullable().optional(),
+  last_run_at: z.string().nullable().optional(),
+  last_output: z.string().nullable().optional(),
+});
+export type HermesJob = z.infer<typeof HermesJobSchema>;
+
+const JobResultSchema = z.union([
+  HermesJobSchema,
+  z.object({ job: HermesJobSchema.optional() }),
+]);
 
 export async function listJobs(target: HermesBoxTarget): Promise<HermesJob[]> {
-  const result = await hermesFetch<HermesJob[] | { jobs?: HermesJob[] }>(
+  const result = await hermesFetch(
     target,
-    "/api/jobs"
+    "/api/jobs",
+    z.union([
+      z.array(HermesJobSchema),
+      z.object({ jobs: z.array(HermesJobSchema).optional() }),
+    ])
   );
   return Array.isArray(result) ? result : (result.jobs ?? []);
 }
@@ -157,7 +176,7 @@ export async function createJob(
   target: HermesBoxTarget,
   job: { name: string; schedule: string; prompt: string; deliver?: string }
 ): Promise<HermesJob> {
-  return hermesFetch<HermesJob>(target, "/api/jobs", {
+  return hermesFetch(target, "/api/jobs", HermesJobSchema, {
     method: "POST",
     body: JSON.stringify(job),
   });
@@ -167,9 +186,10 @@ export async function runJob(
   target: HermesBoxTarget,
   jobId: string
 ): Promise<void> {
-  await hermesFetch<unknown>(
+  await hermesFetch(
     target,
     `/api/jobs/${encodeURIComponent(jobId)}/run`,
+    z.unknown(),
     { method: "POST" }
   );
 }
@@ -178,11 +198,12 @@ export async function getJob(
   target: HermesBoxTarget,
   jobId: string
 ): Promise<HermesJob> {
-  const result = await hermesFetch<HermesJob | { job?: HermesJob }>(
+  const result = await hermesFetch(
     target,
-    `/api/jobs/${encodeURIComponent(jobId)}`
+    `/api/jobs/${encodeURIComponent(jobId)}`,
+    JobResultSchema
   );
-  return "job" in result && result.job ? result.job : (result as HermesJob);
+  return unwrapJob(result, jobId);
 }
 
 export async function updateJob(
@@ -190,21 +211,32 @@ export async function updateJob(
   jobId: string,
   patch: { name?: string; schedule?: string; prompt?: string }
 ): Promise<HermesJob> {
-  const result = await hermesFetch<HermesJob | { job?: HermesJob }>(
+  const result = await hermesFetch(
     target,
     `/api/jobs/${encodeURIComponent(jobId)}`,
+    JobResultSchema,
     { method: "PATCH", body: JSON.stringify(patch) }
   );
-  return "job" in result && result.job ? result.job : (result as HermesJob);
+  return unwrapJob(result, jobId);
+}
+
+function unwrapJob(
+  result: z.infer<typeof JobResultSchema>,
+  jobId: string
+): HermesJob {
+  if ("id" in result) return result;
+  if (result.job) return result.job;
+  throw new HermesApiError(502, `job ${jobId}: empty job envelope`);
 }
 
 export async function deleteJob(
   target: HermesBoxTarget,
   jobId: string
 ): Promise<void> {
-  await hermesFetch<unknown>(
+  await hermesFetch(
     target,
     `/api/jobs/${encodeURIComponent(jobId)}`,
+    z.unknown(),
     { method: "DELETE" }
   );
 }
@@ -213,9 +245,10 @@ export async function pauseJob(
   target: HermesBoxTarget,
   jobId: string
 ): Promise<void> {
-  await hermesFetch<unknown>(
+  await hermesFetch(
     target,
     `/api/jobs/${encodeURIComponent(jobId)}/pause`,
+    z.unknown(),
     { method: "POST" }
   );
 }
@@ -224,29 +257,36 @@ export async function resumeJob(
   target: HermesBoxTarget,
   jobId: string
 ): Promise<void> {
-  await hermesFetch<unknown>(
+  await hermesFetch(
     target,
     `/api/jobs/${encodeURIComponent(jobId)}/resume`,
+    z.unknown(),
     { method: "POST" }
   );
 }
 
 /** Hermes session row (api_server /api/sessions). */
-export interface HermesSession {
-  id: string;
-  title?: string | null;
-  started_at?: number | null;
-  last_active?: number | null;
-  message_count?: number | null;
-  preview?: string | null;
-}
+const HermesSessionSchema = z.object({
+  id: z.string(),
+  title: z.string().nullable().optional(),
+  started_at: z.number().nullable().optional(),
+  last_active: z.number().nullable().optional(),
+  message_count: z.number().nullable().optional(),
+  preview: z.string().nullable().optional(),
+});
+export type HermesSession = z.infer<typeof HermesSessionSchema>;
 
 export async function listSessions(
   target: HermesBoxTarget
 ): Promise<HermesSession[]> {
-  const result = await hermesFetch<
-    HermesSession[] | { sessions?: HermesSession[] }
-  >(target, "/api/sessions");
+  const result = await hermesFetch(
+    target,
+    "/api/sessions",
+    z.union([
+      z.array(HermesSessionSchema),
+      z.object({ sessions: z.array(HermesSessionSchema).optional() }),
+    ])
+  );
   return Array.isArray(result) ? result : (result.sessions ?? []);
 }
 
@@ -273,19 +313,25 @@ export async function ensureSession(
   throw new HermesApiError(response.status, body.slice(0, 500));
 }
 
-export interface HermesMessage {
-  role: string;
-  content: string;
-  created_at?: number | null;
-}
+const HermesMessageSchema = z.object({
+  role: z.string(),
+  content: z.string(),
+  created_at: z.number().nullable().optional(),
+});
+export type HermesMessage = z.infer<typeof HermesMessageSchema>;
 
 export async function sessionMessages(
   target: HermesBoxTarget,
   sessionId: string
 ): Promise<HermesMessage[]> {
-  const result = await hermesFetch<
-    HermesMessage[] | { messages?: HermesMessage[] }
-  >(target, `/api/sessions/${encodeURIComponent(sessionId)}/messages`);
+  const result = await hermesFetch(
+    target,
+    `/api/sessions/${encodeURIComponent(sessionId)}/messages`,
+    z.union([
+      z.array(HermesMessageSchema),
+      z.object({ messages: z.array(HermesMessageSchema).optional() }),
+    ])
+  );
   return Array.isArray(result) ? result : (result.messages ?? []);
 }
 

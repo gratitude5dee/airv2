@@ -8,6 +8,7 @@
  * is released by the approved gate).
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { asRecord } from "../records";
 import {
   ceilingAllows,
   committedExposureCents,
@@ -277,7 +278,7 @@ async function parentResultRef(
     .eq("user_id", userId)
     .maybeSingle();
   if (!parent) throw new AdWriteError("parent write not found", 404);
-  const ref = ((parent.result ?? {}) as Record<string, unknown>)[key];
+  const ref = (asRecord(parent.result) ?? {})[key];
   if (parent.status !== "executed" || typeof ref !== "string" || !ref) {
     throw new AdWriteError("approve the earlier step first", 409);
   }
@@ -285,7 +286,7 @@ async function parentResultRef(
 }
 
 function chatCardFromArgs(args: Record<string, unknown>): ChatCardCreative | undefined {
-  const creative = args.creative as Record<string, unknown> | undefined;
+  const creative = asRecord(args.creative);
   if (!creative) return undefined;
   return {
     title: String(creative.title ?? ""),
@@ -317,7 +318,7 @@ export async function approveAdWrite(
     throw new AdWriteError(`write already ${write.status}`, 409);
   }
 
-  const args = (write.args ?? {}) as Record<string, unknown>;
+  const args = asRecord(write.args) ?? {};
   const spendIncreasing =
     write.kind === "create_campaign" ||
     write.kind === "update_budget" ||

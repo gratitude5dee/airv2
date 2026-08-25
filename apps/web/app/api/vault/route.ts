@@ -7,6 +7,7 @@
  * only — raw values never transit this route.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { asRecord } from "@/lib/records";
 import { serviceClient } from "@/lib/supabase";
 import { requestSession } from "@/lib/auth/surface";
 import {
@@ -35,8 +36,8 @@ function parseItemInput(
   raw: unknown,
   partial: boolean
 ): VaultItemInput | Partial<VaultItemInput> | null {
-  if (typeof raw !== "object" || raw === null) return null;
-  const body = raw as Record<string, unknown>;
+  const body = asRecord(raw);
+  if (!body) return null;
   const item: Partial<VaultItemInput> = {};
   if (body.kind !== undefined) {
     if (!KINDS.includes(body.kind as VaultItemKind)) return null;
@@ -53,11 +54,10 @@ function parseItemInput(
     item.name = body.name.trim();
   }
   if (body.fields !== undefined) {
-    if (typeof body.fields !== "object" || body.fields === null) return null;
+    const rawFields = asRecord(body.fields);
+    if (!rawFields) return null;
     const fields: Record<string, string | null> = {};
-    for (const [key, value] of Object.entries(
-      body.fields as Record<string, unknown>
-    )) {
+    for (const [key, value] of Object.entries(rawFields)) {
       if (!FIELD_NAME_RE.test(key)) return null;
       if (value !== null && typeof value !== "string") return null;
       if (typeof value === "string" && value.length > 10000) return null;

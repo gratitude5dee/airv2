@@ -8,6 +8,7 @@
 import type { HermesBoxTarget } from "../hermes/client";
 import { createJob, listJobs, runJob } from "../hermes/client";
 import { BoxApiError, command, readFile, writeFile } from "../box/client";
+import { asRecord } from "../records";
 
 export const CALENDAR_DIR = "/home/user/.hermes/calendar";
 export const EVENTS_PATH = `${CALENDAR_DIR}/events.json`;
@@ -46,8 +47,8 @@ function isCalendarSource(value: unknown): value is CalendarEvent["source"] {
 }
 
 export function parseCalendarEvent(value: unknown): CalendarEvent | undefined {
-  if (typeof value !== "object" || value === null) return undefined;
-  const record = value as Record<string, unknown>;
+  const record = asRecord(value);
+  if (!record) return undefined;
   if (
     typeof record.id !== "string" ||
     !isCalendarSource(record.source) ||
@@ -135,7 +136,7 @@ export async function readEventsStore(
   }
   const list = Array.isArray(parsed)
     ? parsed
-    : ((parsed as Record<string, unknown>)?.events ?? []);
+    : (asRecord(parsed)?.events ?? []);
   if (!Array.isArray(list)) return [];
   return list
     .map(parseCalendarEvent)
@@ -150,8 +151,8 @@ export interface BoxSource {
 }
 
 export function parseBoxSource(value: unknown): BoxSource | undefined {
-  if (typeof value !== "object" || value === null) return undefined;
-  const record = value as Record<string, unknown>;
+  const record = asRecord(value);
+  if (!record) return undefined;
   if (
     typeof record.id !== "string" ||
     (record.provider !== "apple_ics" && record.provider !== "calcom") ||

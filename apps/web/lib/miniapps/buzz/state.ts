@@ -15,6 +15,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { readAppState, writeAppState } from "../store";
+import { asRecord } from "../../records";
 
 export type BuzzLinkStatus = "unbound" | "pending" | "connected" | "revoked";
 export type BuzzSignerKind = "box" | "desktop" | "nip46";
@@ -363,8 +364,8 @@ export function markBuzzPending(
  * is dropped (C9/C18) before a byte is written.
  */
 export function mergeBuzzResult(doc: BuzzDoc, data: unknown): BuzzDoc {
-  if (typeof data !== "object" || data === null) return doc;
-  const payload = data as Record<string, unknown>;
+  const payload = asRecord(data);
+  if (!payload) return doc;
   const merged: Record<string, unknown> = { ...doc };
   for (const key of [
     "channels",

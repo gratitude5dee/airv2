@@ -5,13 +5,9 @@
  * platform's id in hand).
  */
 import { PublishError } from "./adapter";
+import { asRecord } from "../records";
 
-export function asRecord(value: unknown): Record<string, unknown> | null {
-  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
-  }
-  return null;
-}
+export { asRecord };
 
 /** Walk a dotted path through nested objects; return a string leaf or null. */
 export function pickString(value: unknown, path: string[]): string | null {

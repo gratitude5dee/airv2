@@ -16,6 +16,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { command, readFile, writeFile } from "../box/client";
+import { asRecord } from "../records";
 import { ensureBoxAwake } from "../orchestrator/boxes";
 
 /** Box-side CLI credential file — claims stay on the box (C4/C19). */
@@ -99,10 +100,8 @@ async function saveDoc(boxId: string, doc: LinkAuthDoc): Promise<LinkAuthDoc> {
 function parseCliJson(stdout: string): Record<string, unknown> | null {
   try {
     const parsed = JSON.parse(stdout.trim()) as unknown;
-    const first = Array.isArray(parsed) ? parsed[0] : parsed;
-    return typeof first === "object" && first !== null
-      ? (first as Record<string, unknown>)
-      : null;
+    const first: unknown = Array.isArray(parsed) ? parsed[0] : parsed;
+    return asRecord(first);
   } catch {
     return null;
   }

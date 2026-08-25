@@ -45,7 +45,7 @@ export interface CatalogModel {
  * each entry best serves. The slug is validated on every write AND on every
  * gateway read, so a stale row can never route to an arbitrary upstream.
  */
-export const OPENROUTER_MODELS: readonly CatalogModel[] = [
+export const OPENROUTER_MODELS: readonly [CatalogModel, ...CatalogModel[]] = [
   {
     slug: "google/gemini-2.5-flash",
     label: "Gemini 2.5 Flash",
@@ -107,7 +107,7 @@ export const OPENROUTER_MODELS: readonly CatalogModel[] = [
  * treated as zero for metering: Venice bills in its own credit units, and
  * the family is expected to run on the user's personal key.
  */
-export const VENICE_MODELS: readonly CatalogModel[] = [
+export const VENICE_MODELS: readonly [CatalogModel, ...CatalogModel[]] = [
   {
     slug: "venice-uncensored-1-2",
     label: "Venice Uncensored",
@@ -144,10 +144,10 @@ export function isVeniceModel(slug: string): boolean {
 
 export function defaultOpenRouterModelForTier(tier: SpeedTier): string {
   const match = OPENROUTER_MODELS.find((model) => model.tier === tier);
-  return (match ?? OPENROUTER_MODELS[0]!).slug;
+  return (match ?? OPENROUTER_MODELS[0]).slug;
 }
 
-export const DEFAULT_VENICE_MODEL = VENICE_MODELS[0]!.slug;
+export const DEFAULT_VENICE_MODEL = VENICE_MODELS[0].slug;
 
 /** Per-user model selections read from entitlements alongside the family. */
 export interface ModelSelection {

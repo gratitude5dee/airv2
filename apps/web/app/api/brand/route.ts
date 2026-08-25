@@ -11,6 +11,7 @@ import { serviceClient } from "@/lib/supabase";
 import { compileBrand, validateBrandSource } from "@/lib/brand/compile";
 import { mirrorBrandToBox } from "@/lib/brand/mirror";
 import { getBox } from "@/lib/box/client";
+import { asRecord } from "@/lib/records";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -96,7 +97,7 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
     const { data: updated, error } = await supabase
       .from("brand_kits")
       .update({
-        source: source as unknown as Record<string, unknown>,
+        source: asRecord(source) ?? {},
         rev,
         updated_at: new Date().toISOString(),
       })
@@ -108,7 +109,7 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
   } else {
     const { error } = await supabase.from("brand_kits").insert({
       user_id: userId,
-      source: source as unknown as Record<string, unknown>,
+      source: asRecord(source) ?? {},
       rev,
       updated_at: new Date().toISOString(),
     });

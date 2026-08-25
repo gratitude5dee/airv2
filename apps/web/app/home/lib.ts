@@ -2,22 +2,21 @@
  * Shared helpers for the /home shell and its panels (extracted from the old
  * monolithic page.tsx in the redesign phase-1 split).
  */
+import { asRecord } from "@/lib/records";
 
 /** Tolerantly extract a list from an API payload that may be a bare array,
  * a keyed object ({sessions}/{skills}/{data}/{items}), or a keyed map. */
 export function pickList<T>(payload: unknown, keys: string[]): T[] {
   if (Array.isArray(payload)) return payload as T[];
-  if (payload && typeof payload === "object") {
-    const record = payload as Record<string, unknown>;
+  const record = asRecord(payload);
+  if (record) {
     for (const key of keys) {
       const value = record[key];
       if (Array.isArray(value)) return value as T[];
     }
     for (const key of keys) {
-      const value = record[key];
-      if (value && typeof value === "object") {
-        return Object.values(value as Record<string, unknown>) as T[];
-      }
+      const inner = asRecord(record[key]);
+      if (inner) return Object.values(inner) as T[];
     }
   }
   return [];
