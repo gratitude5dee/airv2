@@ -16,7 +16,7 @@ set -euo pipefail
 # Pinned like HERMES_REF: a floating branch would silently change what the
 # macos environment is. Re-pin deliberately (see UPGRADE.md).
 AIR_INFRA_REPO="${AIR_INFRA_REPO:-https://github.com/gratitude5dee/airv2.git}"
-AIR_INFRA_REF="${AIR_INFRA_REF:-main}"
+AIR_INFRA_REF="${AIR_INFRA_REF:-0a13b9e00a6e17f48bb9b4b6a1c68e78fff7cf40}"
 
 INFRA_DIR="$HOME/.air-infra"
 if [ ! -d "$INFRA_DIR/.git" ]; then
