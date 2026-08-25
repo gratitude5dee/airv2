@@ -20,6 +20,25 @@ export const env = {
   boxApiBase: (): string =>
     optional("BOX_API_BASE", "https://ascii.dev/api/box/v1"),
   boxTemplateId: (): string => required("BOX_TEMPLATE_ID"),
+  // The Omarchy template box (infra/template-omarchy — an ascii.dev box like
+  // BOX_TEMPLATE_ID, forked the same way). Optional: without it — and without
+  // a box_environment_templates pointer — the omarchy environment reports
+  // itself unavailable instead of falling back to the Ubuntu template.
+  omarchyTemplateId: (): string | null =>
+    process.env.OMARCHY_TEMPLATE_ID ?? null,
+  // Namespace (macos environment). The token is a tenant token
+  // (`nsc token create`); without it the macos environment is disabled
+  // and onboarding does not offer it.
+  namespaceToken: (): string | null => process.env.NAMESPACE_TOKEN ?? null,
+  namespaceComputeApi: (): string =>
+    optional(
+      "NAMESPACE_COMPUTE_API",
+      `https://${optional("NAMESPACE_REGION", "us")}.compute.namespaceapis.com`,
+    ),
+  // Bootstrap script a fresh Mac curls on first boot (infra/template-macos).
+  // The macos "template pointer" in box_environment_templates overrides it.
+  macBootstrapUrl: (): string | null =>
+    process.env.MAC_BOOTSTRAP_URL ?? null,
   adminApiKey: (): string => required("ADMIN_API_KEY"),
   appOrigin: (): string => optional("APP_ORIGIN", "https://app.wzrd.tech"),
   supabaseUrl: (): string => required("SUPABASE_URL"),

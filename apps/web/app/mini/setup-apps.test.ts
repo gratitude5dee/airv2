@@ -75,6 +75,28 @@ import { beginConnect } from "@/lib/connectors/manage";
 
 const HOSTILE = '<script>alert("pwn")</script>';
 
+/** Minimal boxes-row lookup for ensureComputeAwake (state doc lives box-side). */
+function computeSupabase(): SupabaseClient {
+  return {
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({
+            data: {
+              provider_box_id: "box-1",
+              environment: "ubuntu",
+              control_url: null,
+              control_token: null,
+              state: "ready",
+            },
+            error: null,
+          }),
+        }),
+      }),
+    }),
+  } as unknown as SupabaseClient;
+}
+
 function thenable(rows: unknown, single: unknown = null) {
   const builder: Record<string, unknown> = {};
   const chain = () => builder;
@@ -114,7 +136,7 @@ function makeCtx(
 describe("onboarding state document (C4)", () => {
   it("defaults when the box file is missing or garbage", async () => {
     boxFiles.clear();
-    const supabase = {} as SupabaseClient;
+    const supabase = computeSupabase();
     expect(await readOnboardingState(supabase, "user-1")).toEqual(
       defaultOnboardingState()
     );
@@ -126,7 +148,7 @@ describe("onboarding state document (C4)", () => {
 
   it("marks a step and persists it at the C4 path", async () => {
     boxFiles.clear();
-    const supabase = {} as SupabaseClient;
+    const supabase = computeSupabase();
     const state = await markOnboardingStep(
       supabase,
       "user-1",

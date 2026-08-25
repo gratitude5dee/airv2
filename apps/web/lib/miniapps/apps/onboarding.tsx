@@ -85,6 +85,14 @@ import {
   startLinkAuth,
   type LinkAuthDoc,
 } from "@/lib/payments/linkAuth";
+import {
+  COMPUTE_ENVIRONMENTS,
+  ENVIRONMENT_PROFILES,
+  isComputeEnvironment,
+  toComputeEnvironment,
+  type ComputeEnvironment,
+} from "@/lib/compute/environments";
+import { switchEnvironment } from "@/lib/provisioning/provision";
 import { onairosProvider, type OnairosStatus } from "./onairos";
 import {
   relayToOnairos,
@@ -108,6 +116,7 @@ import {
 import type { MiniAppContext, MiniAppModule } from "./types";
 
 const STEP_TITLES: Record<OnboardingStepId, string> = {
+  environment: "Pick your agent's computer",
   username: "Pick your username",
   email: "Your agent's email",
   model: "Model preference",
@@ -126,6 +135,7 @@ const STEP_TITLES: Record<OnboardingStepId, string> = {
 
 /** Mono kicker line above each slide title — the "why" in one breath. */
 const STEP_KICKERS: Record<OnboardingStepId, string> = {
+  environment: "Computer",
   username: "Identity",
   email: "Inbox",
   model: "Thinking speed",
@@ -172,6 +182,8 @@ const ONBOARDING_TOOLKITS: Array<[string, string]> = [
 
 export interface OnboardingSnapshot {
   state: OnboardingState;
+  /** The environment the user's compute currently runs (boxes.environment). */
+  environment: ComputeEnvironment;
   username: string | null;
   address: string | null;
   identityMedia: IdentityMediaView[];
@@ -225,6 +237,7 @@ async function loadSnapshot(
     identityMedia,
     avatarAssetId,
     twin,
+    { data: boxRow },
   ] = await Promise.all([
     supabase.from("users").select("username").eq("id", userId).maybeSingle(),
     supabase
@@ -267,9 +280,15 @@ async function loadSnapshot(
     listIdentityMediaViews(supabase, userId),
     getAvatarAssetId(supabase, userId).catch(() => null),
     getDigitalTwin(supabase, userId).catch(() => null),
+    supabase
+      .from("boxes")
+      .select("environment")
+      .eq("user_id", userId)
+      .maybeSingle(),
   ]);
   return {
     state,
+    environment: toComputeEnvironment(boxRow?.environment),
     username: (user?.username as string | null) ?? null,
     address: (addressRow?.address as string | null) ?? null,
     identityMedia,
@@ -310,6 +329,10 @@ export function effectiveStatus(
   const recorded = snapshot.state.steps[step];
   if (recorded === "done" || recorded === "skipped") return recorded;
   switch (step) {
+    case "environment":
+      // boxes.environment has a default, so its presence proves nothing —
+      // only an explicit choice (recorded above) counts, mirroring "model".
+      return "todo";
     case "username":
       return snapshot.username ? "done" : "todo";
     case "email":
@@ -381,6 +404,14 @@ function stepBody(
   browserSignin: string | null,
   lite = false
 ): string {
+  if (step === "environment") {
+    const cards = COMPUTE_ENVIRONMENTS.map((environment) => {
+      const profile = ENVIRONMENT_PROFILES[environment];
+      const current = environment === snapshot.environment;
+      return `<form method="post" class="inline"><input type="hidden" name="action" value="set_environment"><input type="hidden" name="environment" value="${esc(environment)}"><button${current ? "" : ' class="ghost"'}>${esc(profile.label)}</button><p class="muted">${esc(profile.blurb)}</p></form>`;
+    }).join("");
+    return `<p class="muted">Your agent gets its own computer. Pick where it lives — you can switch later, but its files start fresh on the new machine.</p><div class="row">${cards}</div><div class="row actions">${skipForm("environment", `Keep ${esc(ENVIRONMENT_PROFILES[snapshot.environment].label)}`)}</div>`;
+  }
   if (step === "username") {
     const current = snapshot.username
       ? `<p>Current: <strong>@${esc(snapshot.username)}</strong></p>`
@@ -1037,6 +1068,43 @@ export const onboarding: MiniAppModule = {
         ctx,
         null,
         saved ? null : "Couldn't save progress — the computer is starting up."
+      );
+    }
+
+    if (action === "set_environment") {
+      const value = String(form.get("environment") ?? "");
+      if (!isComputeEnvironment(value)) return forbidden("unknown environment");
+      const snapshot = await loadSnapshot(supabase, userId);
+      if (value === snapshot.environment) {
+        await markSafely(supabase, userId, "environment", "done");
+        return respond(
+          ctx,
+          null,
+          `Staying on ${ENVIRONMENT_PROFILES[value].label}.`
+        );
+      }
+      try {
+        await switchEnvironment(supabase, userId, value);
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            msg: "environment switch failed",
+            user_id: userId,
+            environment: value,
+            error: error instanceof Error ? error.message : "unknown",
+          })
+        );
+        return respond(
+          ctx,
+          "environment",
+          `${ENVIRONMENT_PROFILES[value].label} isn't available right now — try another, or skip and switch later.`
+        );
+      }
+      await markSafely(supabase, userId, "environment", "done");
+      return respond(
+        ctx,
+        null,
+        `Your agent now lives on ${ENVIRONMENT_PROFILES[value].label}.`
       );
     }
 

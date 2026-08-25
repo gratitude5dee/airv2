@@ -6,6 +6,7 @@
  * soaked on dev is what prod boxes receive.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { ComputeEnvironment } from "../compute/environments";
 import { FleetError, getRelease, type TemplateRelease } from "./releases";
 
 export type ChannelName = "dev" | "prod";
@@ -94,5 +95,71 @@ export async function templateBoxFor(
     return channel.template_box_id ?? fallback;
   } catch {
     return fallback;
+  }
+}
+
+/**
+ * Per-environment template pointer (box_environment_templates). A fork can
+ * only come from a template of the same environment, so every environment
+ * needs its own pointer: an Omarchy user forking the Ubuntu template would
+ * silently get an Ubuntu box.
+ *
+ * ubuntu keeps reading box_channels (and the BOX_TEMPLATE_ID fallback) so the
+ * default path is byte-identical to before this table existed. The other
+ * environments have no fallback: with no pointer registered the environment
+ * is unavailable, and that is an error rather than a wrong-OS box.
+ */
+export async function templateForEnvironment(
+  supabase: SupabaseClient,
+  name: ChannelName,
+  environment: ComputeEnvironment,
+  fallback: string | null
+): Promise<string> {
+  let pointer: string | null = null;
+  const { data, error } = await supabase
+    .from("box_environment_templates")
+    .select("template_ref")
+    .eq("channel", name)
+    .eq("environment", environment)
+    .maybeSingle();
+  // A missing table (pre-migration) or a missing row both mean "not
+  // registered" — fall through to the per-environment fallback.
+  if (!error && data) {
+    pointer = (data as { template_ref: string | null }).template_ref;
+  }
+  if (environment === "ubuntu" && !pointer) {
+    pointer = await templateBoxFor(supabase, name, fallback ?? "");
+  }
+  const resolved = pointer || fallback;
+  if (!resolved) {
+    throw new FleetError(
+      `no ${environment} template registered for channel ${name}`,
+      409
+    );
+  }
+  return resolved;
+}
+
+export async function setEnvironmentTemplate(
+  supabase: SupabaseClient,
+  name: ChannelName,
+  environment: ComputeEnvironment,
+  /** Template box id (ubuntu, omarchy) or bootstrap URL (macos). */
+  templateRef: string
+): Promise<void> {
+  const { error } = await supabase.from("box_environment_templates").upsert(
+    {
+      channel: name,
+      environment,
+      template_ref: templateRef,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "channel,environment" }
+  );
+  if (error) {
+    throw new FleetError(
+      `environment template update failed: ${error.message}`,
+      500
+    );
   }
 }

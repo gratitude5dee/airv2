@@ -5,8 +5,13 @@
  * user's session endpoint.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { command } from "../box/client";
-import { ensureBoxAwake } from "../orchestrator/boxes";
+import { ensureComputeAwake } from "../compute/awake";
+import {
+  hermesBin,
+  runCommand,
+  type ComputeTarget,
+} from "../compute/runtime";
+import { restartCommand } from "../compute/environments";
 import { createSession, getSession } from "../composio/client";
 
 export async function ensureComposioSession(
@@ -48,10 +53,10 @@ export async function installMetaAdsMcp(
   supabase: SupabaseClient,
   userId: string
 ): Promise<void> {
-  const box = await ensureBoxAwake(supabase, userId);
-  const result = await command(
-    box.boxId,
-    `printf 'y\\n' | /home/user/.hermes-venv/bin/hermes mcp add meta-ads --url "${META_ADS_MCP_URL}" && sudo systemctl restart hermes-gateway`,
+  const target = await ensureComputeAwake(supabase, userId);
+  const result = await runCommand(
+    target,
+    `printf 'y\\n' | ${hermesBin(target)} mcp add meta-ads --url "${META_ADS_MCP_URL}" && ${restartCommand(target.environment, ["hermes-gateway"])}`,
     180
   );
   if (result.exitCode !== 0) {
@@ -60,22 +65,26 @@ export async function installMetaAdsMcp(
 }
 
 /**
- * Install (or refresh) the per-user Composio MCP endpoint in the box.
+ * Install (or refresh) the per-user Composio MCP endpoint on the user's
+ * machine. Provider-agnostic: the Composio session and its MCP URL are the
+ * same in every environment — only the shell that registers it differs.
  * `hermes mcp add` validates the entry; the trailing `y` answers its
  * save-anyway prompt so a transient connect hiccup doesn't abort install.
  */
 export async function installComposioMcp(
   supabase: SupabaseClient,
-  userId: string
+  userId: string,
+  /** Freshly provisioned instance, when the boxes row is not readable yet. */
+  provisioned?: ComputeTarget
 ): Promise<void> {
   const { mcpUrl } = await ensureComposioSession(supabase, userId);
   if (!/^https:\/\/[A-Za-z0-9._~:/?#@!$&'()*+,;=%-]+$/.test(mcpUrl)) {
     throw new Error("unexpected composio mcp url shape");
   }
-  const box = await ensureBoxAwake(supabase, userId);
-  const result = await command(
-    box.boxId,
-    `printf 'y\\n' | /home/user/.hermes-venv/bin/hermes mcp add composio --url "${mcpUrl}" && sudo systemctl restart hermes-gateway`,
+  const target = provisioned ?? (await ensureComputeAwake(supabase, userId));
+  const result = await runCommand(
+    target,
+    `printf 'y\\n' | ${hermesBin(target)} mcp add composio --url "${mcpUrl}" && ${restartCommand(target.environment, ["hermes-gateway"])}`,
     180
   );
   if (result.exitCode !== 0) {

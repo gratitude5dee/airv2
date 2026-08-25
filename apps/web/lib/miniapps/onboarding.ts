@@ -5,10 +5,11 @@
  * same document. Every step is skippable and re-enterable (goal.md §MA5 #1).
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { readFile, writeFile } from "../box/client";
-import { ensureBoxAwake } from "../orchestrator/boxes";
+import { ensureComputeAwake } from "../compute/awake";
+import { readComputeFile, writeComputeFile } from "../compute/runtime";
 
 export const ONBOARDING_STEPS = [
+  "environment",
   "username",
   "email",
   "model",
@@ -67,9 +68,9 @@ export async function readOnboardingState(
   supabase: SupabaseClient,
   userId: string
 ): Promise<OnboardingState> {
-  const box = await ensureBoxAwake(supabase, userId);
+  const target = await ensureComputeAwake(supabase, userId);
   try {
-    const raw = await readFile(box.boxId, STATE_PATH);
+    const raw = await readComputeFile(target, STATE_PATH);
     return normalize(JSON.parse(raw));
   } catch {
     return defaultOnboardingState();
@@ -85,7 +86,7 @@ export async function markOnboardingStep(
   const state = await readOnboardingState(supabase, userId);
   state.steps[step] = status;
   state.updated_at = new Date().toISOString();
-  const box = await ensureBoxAwake(supabase, userId);
-  await writeFile(box.boxId, STATE_PATH, JSON.stringify(state, null, 2));
+  const target = await ensureComputeAwake(supabase, userId);
+  await writeComputeFile(target, STATE_PATH, JSON.stringify(state, null, 2));
   return state;
 }

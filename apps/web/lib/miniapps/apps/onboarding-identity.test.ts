@@ -147,6 +147,13 @@ function makeCtx(
     vault_items: thenable([]),
     entitlements: thenable([], { speed_tier: "balanced" }),
     plugin_tokens: thenable([]),
+    boxes: thenable([], {
+      provider_box_id: "box-1",
+      environment: "ubuntu",
+      control_url: null,
+      control_token: null,
+      state: "ready",
+    }),
     imessage_destinations: thenable([], null),
   };
   return {

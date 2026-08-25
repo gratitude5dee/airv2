@@ -5,11 +5,16 @@
  * GATEWAY_TOKEN and the AgentMail draft-only key. When the manager key is
  * not configured, no key is injected and the sandbox lane stays disabled.
  */
-import { command, readFile, writeFile } from "../box/client";
+import {
+  readComputeFile,
+  restartServices,
+  writeComputeFile,
+  type ComputeTarget,
+} from "../compute/runtime";
 import { createTenantKey, daytonaConfigured } from "../daytona/client";
 
 export async function provisionDaytona(
-  boxId: string,
+  target: ComputeTarget,
   userId: string
 ): Promise<void> {
   if (!daytonaConfigured()) {
@@ -24,12 +29,12 @@ export async function provisionDaytona(
   const tenantKey = await createTenantKey(userId);
   // Typed file read/write only — the key must never appear in a shell
   // command line (visible in command logs / process listings).
-  const current = await readFile(boxId, ".hermes/.env").catch(() => "");
+  const current = await readComputeFile(target, ".hermes/.env").catch(() => "");
   const kept = current
     .split("\n")
     .filter((line) => line && !line.startsWith("DAYTONA_API_KEY="));
   kept.push(`DAYTONA_API_KEY=${tenantKey}`);
-  await writeFile(boxId, ".hermes/.env", kept.join("\n") + "\n");
+  await writeComputeFile(target, ".hermes/.env", kept.join("\n") + "\n");
   // Restart so the stdio MCP subprocess inherits the new credential.
-  await command(boxId, "sudo systemctl restart hermes-gateway", 120);
+  await restartServices(target, ["hermes-gateway"]);
 }
