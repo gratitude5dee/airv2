@@ -42,7 +42,7 @@ export async function GET(
     );
   }
 
-  let draft: { subject?: string; text?: string; to?: string[] } | null = null;
+  let draft: { subject?: string | undefined; text?: string | undefined; to?: string[] | undefined } | null = null;
   if (decision.kind === "email_draft" && decision.ref) {
     const { data: address } = await supabase
       .from("agent_addresses")

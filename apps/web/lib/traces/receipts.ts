@@ -28,9 +28,9 @@ export type TraceReceipt = Record<ReceiptColumn, string | number | null>;
 
 export interface TraceWindow {
   /** Inclusive ISO lower bound on the row's primary timestamp. */
-  from?: string;
+  from?: string | undefined;
   /** Exclusive ISO upper bound. */
-  to?: string;
+  to?: string | undefined;
 }
 
 function receipt(partial: Partial<TraceReceipt>): TraceReceipt {
@@ -168,7 +168,7 @@ export interface AdminReceipt extends TraceReceipt {
 
 interface CollectOptions {
   /** Omitted → every user's rows (operator reads only). */
-  userId?: string;
+  userId?: string | undefined;
   window: TraceWindow;
   limit: number;
   newestFirst: boolean;

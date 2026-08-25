@@ -49,7 +49,7 @@ interface GroqResponse {
 }
 
 export class GroqRequestError extends Error {
-  readonly status?: number;
+  readonly status?: number | undefined;
   readonly timedOut: boolean;
 
   constructor(

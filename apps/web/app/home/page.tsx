@@ -75,17 +75,17 @@ interface ChatMessage {
   /** M16: inline creative media, delivered via a short-lived signed URL. */
   media?: { kind: "image" | "video"; url: string };
   /** V7: set when an @mention delegated this reply to a bot. */
-  bot?: string;
+  bot?: string | undefined;
   /** Tools the agent ran while producing this reply, in call order. */
-  tools?: string[];
+  tools?: string[] | undefined;
 }
 
 /** V8: a chat upload staged in the composer; path is the box inbox path. */
 interface StagedAttachment {
   name: string;
-  path?: string;
-  mime?: string;
-  uploading?: boolean;
+  path?: string | undefined;
+  mime?: string | undefined;
+  uploading?: boolean | undefined;
 }
 
 /** Chat threads (spec §3): additive Hermes sessions next to the shared

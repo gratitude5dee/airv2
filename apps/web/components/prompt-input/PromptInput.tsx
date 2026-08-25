@@ -55,7 +55,7 @@ export const CREATIVE_COMMANDS = [
 /** A pending upload chip shown above the composer (V8). */
 export interface PendingAttachment {
   name: string;
-  uploading?: boolean;
+  uploading?: boolean | undefined;
 }
 
 export interface PromptInputProps {
@@ -67,7 +67,7 @@ export interface PromptInputProps {
   tier: string;
   onTierChange: (tier: string) => void;
   /** Display-only model labels per tier id, server-supplied via /api/me. */
-  tierModels?: Partial<Record<string, string>>;
+  tierModels?: Partial<Record<string, string>> | undefined;
   /** Fired when a transcription lands in the composer (voice-trigger tracking, M13). */
   onVoiceTranscript?: () => void;
   /** V8: ready bot names for the @mention palette. */

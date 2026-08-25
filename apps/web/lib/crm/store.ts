@@ -17,7 +17,7 @@ export const PEOPLE_PATH = ".hermes/miniapps/crm/people.json";
 export interface CrmProvenance {
   source: "owner" | "agent";
   at: string;
-  note?: string;
+  note?: string | undefined;
 }
 
 export interface CrmPerson {

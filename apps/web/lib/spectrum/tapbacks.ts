@@ -34,7 +34,7 @@ export function asTapback(reply: string): string | undefined {
 
 export interface TapbackProbe {
   /** Set when the stream ended within the probe window on a lone tapback. */
-  tapback?: string;
+  tapback?: string | undefined;
   /** Everything consumed from the stream so far. */
   buffered: string;
   /** True when the stream is exhausted (nothing left beyond `buffered`). */

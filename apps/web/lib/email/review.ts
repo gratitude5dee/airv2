@@ -17,7 +17,7 @@ import { claimCardSend } from "../miniapps/cardSends";
 export async function queueEmailDraftReview(
   supabase: SupabaseClient,
   userId: string,
-  draft: { draftId: string; to?: string; subject?: string }
+  draft: { draftId: string; to?: string | undefined; subject?: string | undefined }
 ): Promise<void> {
   await createDecision(supabase, {
     userId,
@@ -48,7 +48,7 @@ export async function queueEmailDraftReview(
 async function sendEmailReviewCard(
   supabase: SupabaseClient,
   userId: string,
-  draft: { to?: string; subject?: string }
+  draft: { to?: string | undefined; subject?: string | undefined }
 ): Promise<void> {
   const { data: dest } = await supabase
     .from("imessage_destinations")

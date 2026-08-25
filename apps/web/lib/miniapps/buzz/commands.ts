@@ -17,7 +17,7 @@ export interface ValidatedIntent {
 }
 
 export type IntentParse =
-  | { ok: true; intent: ValidatedIntent; confirmLabel?: string }
+  | { ok: true; intent: ValidatedIntent; confirmLabel?: string | undefined }
   | { ok: false; error: string };
 
 function fail(error: string): IntentParse {

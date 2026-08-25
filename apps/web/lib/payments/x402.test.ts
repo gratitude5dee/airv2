@@ -125,7 +125,10 @@ function okFacilitator(): Facilitator {
 }
 
 function request(headers?: Record<string, string>): NextRequest {
-  return new NextRequest("https://mini.wzrd.tech/mini/paidapp", { headers });
+  return new NextRequest(
+    "https://mini.wzrd.tech/mini/paidapp",
+    headers ? { headers } : {}
+  );
 }
 
 beforeAll(() => {
