@@ -88,6 +88,12 @@ export async function startSyncJob(
   const canaries = new Set(
     (input.canaryBoxIds ?? []).filter((id) => boxIds.includes(id))
   );
+  if ((input.canaryBoxIds ?? []).length > 0 && canaries.size === 0) {
+    throw new FleetError(
+      `no requested canary box is syncable on ${input.channel}`,
+      409
+    );
+  }
   const { data: job, error: jobError } = await supabase
     .from("sync_jobs")
     .insert({
