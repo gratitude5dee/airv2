@@ -19,12 +19,12 @@ export interface MiniAppClaims {
   jti: string;
   exp: number;
   /** Absent on pre-V9 tokens; treated as "owner". */
-  role?: MiniAppRole;
+  role?: MiniAppRole | undefined;
   /** Guest sessions carry the grant they were minted from (MA4). */
-  grantId?: string;
+  grantId?: string | undefined;
   /** Set when the link was minted for a message card — the app is opening
    *  inside a messaging webview (Messages extension), not a browser. */
-  via?: "card";
+  via?: "card" | undefined;
 }
 
 function sign(payload: string): string {
@@ -38,7 +38,7 @@ export function mintToken(
   app: string,
   resourceId: string,
   ttlMinutes = 10,
-  extra?: { role?: MiniAppRole; grantId?: string; via?: "card" }
+  extra?: { role?: MiniAppRole | undefined; grantId?: string | undefined; via?: "card" | undefined }
 ): string {
   const claims: MiniAppClaims = {
     userId,

@@ -281,9 +281,9 @@ export interface ChatCardCreative {
 
 export interface AdArgs {
   adGroupId: string;
-  name?: string;
-  status?: "active" | "paused";
-  creative?: ChatCardCreative;
+  name?: string | undefined;
+  status?: "active" | "paused" | undefined;
+  creative?: ChatCardCreative | undefined;
 }
 
 function adPayload(args: Partial<AdArgs>): Record<string, unknown> {

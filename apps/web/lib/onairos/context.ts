@@ -37,7 +37,7 @@ export interface OnairosHandoff {
   /** The returned Persona API URL — opaque, followed as-is (docs contract). */
   apiUrl: string;
   /** Data categories the user consented to, when the SDK reported them. */
-  authorizedData?: Record<string, boolean>;
+  authorizedData?: Record<string, boolean> | undefined;
 }
 
 /** SSRF guard: the control plane only ever POSTs to Onairos-owned hosts over

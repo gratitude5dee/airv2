@@ -48,11 +48,11 @@ const BUDGET_KINDS: AdWriteKind[] = [
 export interface AdWriteRequest {
   accountId: string;
   kind: AdWriteKind;
-  campaignRef?: string;
-  campaignName?: string;
-  dailyBudgetCents?: number;
-  status?: "active" | "paused";
-  args?: Record<string, unknown>;
+  campaignRef?: string | undefined;
+  campaignName?: string | undefined;
+  dailyBudgetCents?: number | undefined;
+  status?: "active" | "paused" | undefined;
+  args?: Record<string, unknown> | undefined;
 }
 
 export interface AdAccount {
@@ -236,7 +236,7 @@ async function mirrorCampaign(
   userId: string,
   accountId: string,
   campaignRef: string,
-  patch: { name?: string; daily_budget_cents?: number; status?: string }
+  patch: { name?: string | undefined; daily_budget_cents?: number | undefined; status?: string | undefined }
 ): Promise<void> {
   const { data: existing } = await supabase
     .from("ad_campaigns")

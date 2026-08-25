@@ -44,12 +44,12 @@ import { installBaseSkills } from "../skills/hub";
 import { templateForEnvironment } from "../fleet/channels";
 
 export interface ProvisionOptions {
-  displayName?: string;
-  boundPhone?: string;
-  linePhone?: string;
-  operator?: string;
+  displayName?: string | undefined;
+  boundPhone?: string | undefined;
+  linePhone?: string | undefined;
+  operator?: string | undefined;
   /** Compute the agent lives on. Defaults to ubuntu — the original path. */
-  environment?: ComputeEnvironment;
+  environment?: ComputeEnvironment | undefined;
 }
 
 export interface ProvisionResult {
@@ -58,7 +58,7 @@ export interface ProvisionResult {
   hostedUrl: string;
   dashboardUrl: string;
   environment: ComputeEnvironment;
-  inviteLink?: string;
+  inviteLink?: string | undefined;
 }
 
 const HOSTED_URL_PATTERN =

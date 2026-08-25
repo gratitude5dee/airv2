@@ -92,11 +92,11 @@ export async function createDecision(
   entry: {
     userId: string;
     kind: "tier2_contact" | "email_draft" | "run_approval" | "calendar_add";
-    platform?: "imessage" | "email";
-    sender?: string;
-    ref?: string;
-    label?: string;
-    payload?: Record<string, string>;
+    platform?: "imessage" | "email" | undefined;
+    sender?: string | undefined;
+    ref?: string | undefined;
+    label?: string | undefined;
+    payload?: Record<string, string> | undefined;
   }
 ): Promise<void> {
   const { error } = await supabase.from("decisions").insert({

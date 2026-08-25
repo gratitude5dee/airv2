@@ -26,10 +26,10 @@ export interface MiniSession {
   userId: string;
   resourceId: string;
   role: MiniAppRole;
-  grantId?: string;
+  grantId?: string | undefined;
   /** Present when the session began from a message card — the app runs in
    *  a messaging webview (Messages extension), not a full browser. */
-  via?: "card";
+  via?: "card" | undefined;
 }
 
 export type GateOutcome =

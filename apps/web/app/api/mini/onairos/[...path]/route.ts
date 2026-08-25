@@ -59,7 +59,7 @@ async function relay(
     upstream = await fetch(url, {
       method: request.method,
       headers,
-      body,
+      ...(body ? { body } : {}),
       redirect: "manual",
       signal: AbortSignal.timeout(45_000),
     });
