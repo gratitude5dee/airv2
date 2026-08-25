@@ -34,7 +34,7 @@ check "unit-hermes-host" systemctl is-active --quiet hermes-host
 
 gateway_health() {
   for _ in 1 2 3 4 5 6; do
-    if curl -fsS -o /dev/null "http://127.0.0.1:8642/api/health"; then
+    if curl -fsS -o /dev/null "http://127.0.0.1:8642/health"; then
       return 0
     fi
     sleep 5
