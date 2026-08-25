@@ -19,7 +19,7 @@ export function AppTile({
 }: {
   slug: string;
   name?: string;
-  iconUrl?: string | null;
+  iconUrl?: string | null | undefined;
   /** Tile box size in px. */
   size?: number;
   radius?: number;

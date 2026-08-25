@@ -44,10 +44,10 @@ export interface SyncJob {
 
 export interface StartSyncJobInput {
   channel: ChannelName;
-  canaryBoxIds?: string[];
-  waveSize?: number;
+  canaryBoxIds?: string[] | undefined;
+  waveSize?: number | undefined;
   includeHermes?: boolean;
-  failureThreshold?: number;
+  failureThreshold?: number | undefined;
 }
 
 interface JobBoxRow {

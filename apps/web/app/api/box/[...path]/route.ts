@@ -75,7 +75,7 @@ async function handle(
         headers: hasBody
           ? { ...headers, "Content-Type": "application/json" }
           : headers,
-        body: requestBody,
+        ...(requestBody !== undefined ? { body: requestBody } : {}),
       });
 
     let upstream: Response;

@@ -149,10 +149,12 @@ export async function createSpectrumSender(): Promise<SpectrumSender> {
   const app = await Spectrum({
     projectId: env.spectrumProjectId(),
     projectSecret: env.spectrumProjectSecret(),
+    // @ts-expect-error spectrum-ts provider generics are not exactOptionalPropertyTypes-compatible; runtime is correct.
     providers: [imessage.config()],
   });
   const im = imessage(app);
   const space = async (spaceId: string, phone: string) =>
+    // @ts-expect-error spectrum-ts provider generics are not exactOptionalPropertyTypes-compatible; runtime is correct.
     await im.space.get(spaceId, { phone });
 
   return {
@@ -223,6 +225,7 @@ export async function createSpectrumSender(): Promise<SpectrumSender> {
       return parseMiniAppCardSession(target.miniAppCardSession);
     },
     getAttachment: async (attachmentId, phone) => {
+      // @ts-expect-error spectrum-ts provider generics are not exactOptionalPropertyTypes-compatible; runtime is correct.
       const attachment = await im.getAttachment(attachmentId, phone);
       if (!attachment) return undefined;
       return {

@@ -36,8 +36,8 @@ export function characterSheetPrompt(username: string): string {
 export interface CharacterSheetResult {
   ok: boolean;
   notice: string;
-  asset?: CreativeAsset;
-  deliveryUrl?: string;
+  asset?: CreativeAsset | undefined;
+  deliveryUrl?: string | undefined;
 }
 
 /**

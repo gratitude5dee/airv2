@@ -93,7 +93,7 @@ beforeEach(() => {
 const HIDDEN = ["bob-draft", "vault", "carol-secret", "bob-gone"];
 
 function get(url: string, headers?: Record<string, string>): Request {
-  return new Request(url, { headers });
+  return new Request(url, headers ? { headers } : {});
 }
 
 describe("GET /api/store/index.json", () => {

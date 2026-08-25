@@ -19,9 +19,9 @@ export class SvixWebhookError extends Error {
 }
 
 export interface SvixHeaders {
-  id?: string;
-  timestamp?: string;
-  signature?: string;
+  id?: string | undefined;
+  timestamp?: string | undefined;
+  signature?: string | undefined;
 }
 
 export function svixHeaders(headers: Headers): SvixHeaders {

@@ -147,7 +147,7 @@ export interface GmiRequestFailure {
 
 export class GmiRequestError extends Error {
   readonly stage: GmiRequestStage;
-  readonly status?: number;
+  readonly status?: number | undefined;
   readonly timedOut: boolean;
 
   constructor(message: string, failure: GmiRequestFailure) {

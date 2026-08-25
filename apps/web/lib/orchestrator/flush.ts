@@ -50,11 +50,11 @@ export interface InboundMessage {
   userId: string;
   spaceId: string;
   phone: string;
-  senderId?: string;
+  senderId?: string | undefined;
   messageId: string;
   body: string;
   /** Resolved sender trust tier; 0 = the owner's own verified handle. */
-  senderTier?: number;
+  senderTier?: number | undefined;
 }
 
 interface QueuedMessage {

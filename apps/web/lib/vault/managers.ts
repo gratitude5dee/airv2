@@ -260,13 +260,13 @@ export async function listManagers(
 export interface EnableInput {
   manager: ManagerId;
   /** Bitwarden machine-account token or 1Password service-account token. */
-  token?: string;
+  token?: string | undefined;
   /** Bitwarden project id filter (optional). */
-  project_id?: string;
+  project_id?: string | undefined;
   /** Command helper text — runs with agent privilege on the box. */
-  helper_command?: string;
+  helper_command?: string | undefined;
   /** Optional mapped bindings ENV_VAR -> reference (op:// URI etc.). */
-  mappings?: Record<string, string>;
+  mappings?: Record<string, string> | undefined;
 }
 
 export async function enableManager(

@@ -16,10 +16,10 @@ import { installBaseSkills } from "../skills/hub";
 import { templateBoxFor } from "../fleet/channels";
 
 export interface ProvisionOptions {
-  displayName?: string;
-  boundPhone?: string;
-  linePhone?: string;
-  operator?: string;
+  displayName?: string | undefined;
+  boundPhone?: string | undefined;
+  linePhone?: string | undefined;
+  operator?: string | undefined;
 }
 
 export interface ProvisionResult {
@@ -27,7 +27,7 @@ export interface ProvisionResult {
   boxId: string;
   hostedUrl: string;
   dashboardUrl: string;
-  inviteLink?: string;
+  inviteLink?: string | undefined;
 }
 
 const HOSTED_URL_PATTERN =

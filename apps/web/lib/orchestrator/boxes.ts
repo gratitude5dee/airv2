@@ -29,9 +29,9 @@ export interface UserBox {
   boxId: string;
   target: HermesBoxTarget;
   /** Hermes dashboard (9119) route, for the allowlisted proxy. Server-side only. */
-  dashboard?: HostedRoute;
+  dashboard?: HostedRoute | undefined;
   /** Sealed dashboard basic-auth password (CM1/CC10). Server-side only. */
-  dashboardAuthSealed?: string;
+  dashboardAuthSealed?: string | undefined;
 }
 
 interface BoxRow {

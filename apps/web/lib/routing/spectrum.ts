@@ -21,10 +21,10 @@ export class SpectrumWebhookError extends Error {
 }
 
 export interface SpectrumWebhookHeaders {
-  event?: string;
-  signature?: string;
-  timestamp?: string;
-  webhookId?: string;
+  event?: string | undefined;
+  signature?: string | undefined;
+  timestamp?: string | undefined;
+  webhookId?: string | undefined;
 }
 
 /**
@@ -35,12 +35,12 @@ export interface SpectrumWebhookHeaders {
 export interface InboundSpectrumMessage {
   messageId: string;
   /** The line's phone (E.164), or the literal "shared" on pool lines. */
-  phone?: string;
+  phone?: string | undefined;
   platform: "imessage";
-  senderId?: string;
+  senderId?: string | undefined;
   spaceId: string;
-  webhookId?: string;
-  text?: string;
+  webhookId?: string | undefined;
+  text?: string | undefined;
   /** Metadata only — bytes are fetched via getAttachment through the SDK. */
   attachmentIds: string[];
 }

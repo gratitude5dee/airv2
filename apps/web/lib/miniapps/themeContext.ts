@@ -18,7 +18,7 @@ export interface MiniStyle {
   readonly background: BackgroundId;
   /** Signed link back to the Home mini-app for this session's owner —
    *  the shell's wordmark becomes a tappable home button when set. */
-  readonly homeHref?: string;
+  readonly homeHref?: string | undefined;
 }
 
 const store = new AsyncLocalStorage<MiniStyle>();
