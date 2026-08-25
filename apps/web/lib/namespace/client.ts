@@ -371,20 +371,61 @@ export async function vncConfig(instanceId: string): Promise<VncConfig> {
 
 // ── bridge (control plane → a native instance) ──────────────────────────────
 
+// The ingress edge rejects workspace API tokens; requests must carry a
+// short-lived ingress access token (x-nsc-ingress-auth), issued per instance.
+const ingressTokens = new Map<string, { token: string; expires: number }>();
+const INGRESS_TOKEN_TTL_MS = 5 * 60 * 1000;
+
+async function ingressAccessToken(instanceId: string): Promise<string> {
+  const cached = ingressTokens.get(instanceId);
+  if (cached && cached.expires > Date.now()) {
+    return cached.token;
+  }
+  const token = env.namespaceToken();
+  if (!token) {
+    throw new NamespaceApiError(501, "NAMESPACE_TOKEN is not configured");
+  }
+  const response = await fetch(
+    `${env.namespaceIamApi()}/nsl.tenants.TenantsService/IssueIngressAccessToken`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ instanceId }),
+      signal: requestSignal(REQUEST_TIMEOUT_MS),
+    },
+  );
+  if (!response.ok) {
+    const text = await response.text();
+    throw new NamespaceApiError(
+      response.status,
+      `IssueIngressAccessToken: ${text.slice(0, 500)}`,
+    );
+  }
+  const body = (await response.json()) as { ingress_access_token?: string };
+  if (!body.ingress_access_token) {
+    throw new NamespaceApiError(502, "no ingress_access_token in response");
+  }
+  ingressTokens.set(instanceId, {
+    token: body.ingress_access_token,
+    expires: Date.now() + INGRESS_TOKEN_TTL_MS,
+  });
+  return body.ingress_access_token;
+}
+
 async function bridgeFetch<T>(
   control: BridgeControl,
   path: string,
   init: RequestInit & { timeoutMs?: number },
 ): Promise<T> {
-  const token = env.namespaceToken();
-  if (!token) {
-    throw new NamespaceApiError(501, "NAMESPACE_TOKEN is not configured");
-  }
+  const accessToken = await ingressAccessToken(control.instanceId);
   const response = await fetch(`${control.controlUrl}${path}`, {
     ...init,
     signal: requestSignal(init.timeoutMs ?? REQUEST_TIMEOUT_MS),
     headers: {
-      Authorization: `Bearer ${token}`,
+      "x-nsc-ingress-auth": `Bearer ${accessToken}`,
       "X-Air-Bridge-Token": control.controlToken,
       "Content-Type": "application/json",
       ...init.headers,

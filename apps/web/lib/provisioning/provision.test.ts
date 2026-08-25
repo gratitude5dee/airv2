@@ -168,7 +168,7 @@ describe("provisionUser environments", () => {
       expect.objectContaining({ templateId: "template-ubuntu" })
     );
     expect(createMacInstance).not.toHaveBeenCalled();
-    expect(upserts.boxes?.[0]).toMatchObject({
+    expect(upserts["boxes"]?.[0]).toMatchObject({
       environment: "ubuntu",
       provider: "ascii",
       provider_box_id: "box-new",
@@ -185,7 +185,7 @@ describe("provisionUser environments", () => {
   });
 
   it("omarchy forks the registered omarchy template box", async () => {
-    tables.box_environment_templates = [
+    tables["box_environment_templates"] = [
       { channel: "prod", environment: "omarchy", template_ref: "template-omarchy" },
     ];
     const result = await provisionUser({ environment: "omarchy" });
@@ -194,7 +194,7 @@ describe("provisionUser environments", () => {
       expect.objectContaining({ templateId: "template-omarchy" })
     );
     expect(createMacInstance).not.toHaveBeenCalled();
-    expect(upserts.boxes?.[0]).toMatchObject({
+    expect(upserts["boxes"]?.[0]).toMatchObject({
       environment: "omarchy",
       provider: "ascii",
     });
@@ -209,7 +209,7 @@ describe("provisionUser environments", () => {
   });
 
   it("macos builds a Namespace instance from the bootstrap URL", async () => {
-    tables.box_environment_templates = [
+    tables["box_environment_templates"] = [
       {
         channel: "prod",
         environment: "macos",
@@ -224,13 +224,13 @@ describe("provisionUser environments", () => {
         bootstrapUrl: "https://air.test/mac-bootstrap.sh",
       })
     );
-    expect(upserts.boxes?.[0]).toMatchObject({
+    expect(upserts["boxes"]?.[0]).toMatchObject({
       environment: "macos",
       provider: "namespace",
       provider_box_id: "mac-1",
       control_url: "https://mac-bridge.ns.dev",
     });
-    expect(upserts.boxes?.[0]?.control_token).toEqual(expect.any(String));
+    expect(upserts["boxes"]?.[0]?.["control_token"]).toEqual(expect.any(String));
     expect(installComposioMcp).toHaveBeenCalled();
   });
 });
@@ -243,7 +243,7 @@ describe("provisionUser rollback", () => {
     await expect(provisionUser()).rejects.toThrow("box never became ready");
     expect(boxClient.stop).toHaveBeenCalledWith("box-new");
     expect(boxClient.deleteBox).toHaveBeenCalledWith("box-new");
-    expect(upserts.boxes).toBeUndefined();
+    expect(upserts["boxes"]).toBeUndefined();
   });
 });
 
@@ -266,6 +266,6 @@ describe("provisionUser bound_phone normalization (P1-8)", () => {
       address: "+14155550123",
       trust_tier: 0,
     });
-    expect(upserts.boxes).toBeUndefined();
+    expect(upserts["boxes"]).toBeUndefined();
   });
 });

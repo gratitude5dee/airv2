@@ -25,24 +25,33 @@ export const env = {
   // a box_environment_templates pointer — the omarchy environment reports
   // itself unavailable instead of falling back to the Ubuntu template.
   omarchyTemplateId: (): string | null =>
-    process.env.OMARCHY_TEMPLATE_ID ?? null,
+    process.env["OMARCHY_TEMPLATE_ID"] ?? null,
   // Namespace (macos environment). The token is a tenant token
   // (`nsc token create`); without it the macos environment is disabled
   // and onboarding does not offer it.
-  namespaceToken: (): string | null => process.env.NAMESPACE_TOKEN ?? null,
+  namespaceToken: (): string | null => process.env["NAMESPACE_TOKEN"] ?? null,
   namespaceComputeApi: (): string =>
     optional(
       "NAMESPACE_COMPUTE_API",
       `https://${optional("NAMESPACE_REGION", "us")}.compute.namespaceapis.com`,
     ),
+  // IAM endpoint that issues ingress access tokens (authenticated-ingress
+  // requests carry them in x-nsc-ingress-auth).
+  namespaceIamApi: (): string =>
+    optional("NAMESPACE_IAM_API", "https://iam.namespaceapis.com"),
   // Bootstrap script a fresh Mac curls on first boot (infra/template-macos).
   // The macos "template pointer" in box_environment_templates overrides it.
   macBootstrapUrl: (): string | null =>
-    process.env.MAC_BOOTSTRAP_URL ?? null,
-  // Support-disk image required by Namespace macOS applications; contents
-  // are unused (the bootstrap command lives in the base image).
+    process.env["MAC_BOOTSTRAP_URL"] ?? null,
+  // Support-disk image required by Namespace macOS applications. Must be a
+  // registry image Namespace can unpack for the mac (a plain file layer in
+  // the workspace's nscr.io registry — see infra/template-macos/UPGRADE.md);
+  // Linux images like busybox leave the instance stuck/erroring.
   macBootstrapImage: (): string =>
-    optional("MAC_BOOTSTRAP_IMAGE", "docker.io/library/busybox:latest"),
+    optional(
+      "MAC_BOOTSTRAP_IMAGE",
+      "nscr.io/nroeoinh9vg4q/air/mac-bootstrap:latest",
+    ),
   adminApiKey: (): string => required("ADMIN_API_KEY"),
   appOrigin: (): string => optional("APP_ORIGIN", "https://app.wzrd.tech"),
   supabaseUrl: (): string => required("SUPABASE_URL"),
