@@ -338,3 +338,8 @@ write_agent openviking "$ENV_WRAP" "$OV_VENV/bin/openviking-server" --config "$H
 # ── done: flip the bridge's health to ready ──────────────────────────────────
 date -u +"%Y-%m-%dT%H:%M:%SZ" > "$HOME_DIR/.hermes/.bootstrap-complete"
 echo "macOS template setup complete."
+
+# Namespace tears the instance down when its application workload exits, so
+# the bootstrap process must stay resident for the life of the instance (the
+# real services live in launchd agents).
+exec tail -f /dev/null
