@@ -214,8 +214,11 @@ grep -q 'hermes/node/bin' "$HOME_DIR/.bashrc" || \
 # same lane as GATEWAY_TOKEN and the AgentMail draft-only key. Without that
 # key the CLI/MCP is unauthenticated and the sandbox lane stays disabled.
 # The MCP server is stdio: `daytona mcp start`.
-sudo curl -sfL https://github.com/daytona/clients/releases/latest/download/daytona-linux-amd64 -o /usr/local/bin/daytona
-sudo chmod +x /usr/local/bin/daytona
+# Download to a temp path and mv: overwriting in place fails with ETXTBSY
+# when a daytona process (e.g. the MCP server) is already running.
+sudo curl -sfL https://github.com/daytona/clients/releases/latest/download/daytona-linux-amd64 -o /tmp/daytona.dl
+sudo chmod +x /tmp/daytona.dl
+sudo mv /tmp/daytona.dl /usr/local/bin/daytona
 # Scrub any login profile from earlier template generations — a profile in
 # ~/.daytona would be a shared org key inherited by every fork (P1-11).
 rm -rf "$HOME_DIR/.daytona"

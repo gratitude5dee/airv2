@@ -157,6 +157,14 @@ sudo cp "$TEMPLATE_DIR/monitors-headless.lua" "$HOME_DIR/.config/hypr/monitors.l
 sudo chown -R "$(id -u):$(id -g)" "$HOME_DIR/.config/hypr" "$HOME_DIR/.local/state/omarchy"
 
 # ── 3. The desktop as a service ─────────────────────────────────────────────
+# The box has no GPU: vkms provides a virtual KMS display for Hyprland's DRM
+# backend, and Xorg must not grab it as a secondary GPU.
+echo vkms | sudo tee /etc/modules-load.d/vkms.conf >/dev/null
+sudo modprobe vkms || true
+sudo install -d /etc/X11/xorg.conf.d
+printf 'Section "ServerFlags"\n  Option "AutoAddGPU" "off"\nEndSection\n' |
+  sudo tee /etc/X11/xorg.conf.d/10-noautogpu.conf >/dev/null
+
 sudo cp "$TEMPLATE_DIR/arch-root.service" /etc/systemd/system/arch-root.service
 sudo cp "$TEMPLATE_DIR/omarchy-desktop.service" /etc/systemd/system/omarchy-desktop.service
 sudo systemctl daemon-reload

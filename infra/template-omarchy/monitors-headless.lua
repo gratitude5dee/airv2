@@ -5,10 +5,9 @@
 -- real Omarchy desktop to "no physical monitor, no human at the keyboard"
 -- without forking any of its theming or keybinds.
 
--- Hyprland runs nested on the box's X display (WLR_BACKENDS=x11), so the
--- output is a window, not a panel: match every output and fix the size, since
--- there is no EDID to read a preferred mode from. This is also the resolution
--- the human sees when they watch or take over the screen.
+-- Hyprland drives the box's vkms virtual display (no GPU, no EDID), so match
+-- every output and fix the size. This is also the resolution the human sees
+-- when they watch or take over the screen.
 hl.monitor({ output = "", mode = "1920x1080@60", position = "0x0", scale = 1 })
 
 -- X11/Xwayland windows stay unscaled: the agent's browser is an X client on
