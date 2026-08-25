@@ -6,8 +6,10 @@
  */
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { sessionUserId } from "@/lib/auth/user";
 import { serviceClient } from "@/lib/supabase";
+import { parseBody } from "@/lib/http/body";
 import { command, writeFile } from "@/lib/box/client";
 import { armStopAfter, ensureBoxAwake } from "@/lib/orchestrator/boxes";
 import {
@@ -25,6 +27,28 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
+
+const CreateScheduleSchema = z.object({
+  name: z.string().trim().min(1).transform((v) => v.slice(0, 80)),
+  cron: z.string().trim().min(1),
+  timezone: z.string().trim().min(1),
+  prompt: z.string().trim().min(1),
+  deliver: z.enum(DELIVER_VALUES).default("imessage"),
+});
+
+const PatchScheduleSchema = z.object({
+  id: z.string().trim().min(1),
+  name: z.string().trim().min(1).transform((v) => v.slice(0, 80)).optional(),
+  cron: z.string().trim().min(1).optional(),
+  timezone: z.string().trim().min(1).optional(),
+  prompt: z.string().trim().min(1).optional(),
+  deliver: z.enum(DELIVER_VALUES).optional(),
+  status: z.enum(["active", "paused"]).optional(),
+});
+
+const DeleteScheduleSchema = z.object({
+  id: z.string().trim().min(1),
+});
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const userId = sessionUserId(request);
@@ -49,27 +73,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const body = (await request.json().catch(() => ({}))) as {
-    name?: string;
-    cron?: string;
-    timezone?: string;
-    prompt?: string;
-    deliver?: string;
-  };
-  const name = body.name?.trim();
-  const cron = body.cron?.trim();
-  const timezone = body.timezone?.trim();
-  const prompt = body.prompt?.trim();
-  const deliver = (body.deliver ?? "imessage") as Deliver;
-  if (!name || !cron || !timezone || !prompt) {
-    return NextResponse.json(
-      { error: "name, cron, timezone, prompt required" },
-      { status: 400 }
-    );
-  }
-  if (!DELIVER_VALUES.includes(deliver)) {
-    return NextResponse.json({ error: "invalid deliver" }, { status: 400 });
-  }
+  const parsed = await parseBody(request, CreateScheduleSchema);
+  if (!parsed.ok) return parsed.response;
+  const { name, cron, timezone, prompt, deliver } = parsed.data;
+
   if (!isValidTimeZone(timezone)) {
     return NextResponse.json({ error: "invalid timezone" }, { status: 400 });
   }
@@ -123,18 +130,10 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const body = (await request.json().catch(() => ({}))) as {
-    id?: string;
-    name?: string;
-    cron?: string;
-    timezone?: string;
-    prompt?: string;
-    deliver?: string;
-    status?: string;
-  };
-  if (!body.id) {
-    return NextResponse.json({ error: "id required" }, { status: 400 });
-  }
+  const parsed = await parseBody(request, PatchScheduleSchema);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
+
   const supabase = serviceClient();
   const { data } = await supabase
     .from("agent_schedules")
@@ -149,23 +148,17 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
   }
 
   const updates: Record<string, string | number> = {};
-  const cron = body.cron?.trim() ?? existing.cron;
-  const timezone = body.timezone?.trim() ?? existing.timezone;
-  if (body.name?.trim()) updates.name = body.name.trim();
-  if (body.deliver) {
-    if (!DELIVER_VALUES.includes(body.deliver as Deliver)) {
-      return NextResponse.json({ error: "invalid deliver" }, { status: 400 });
-    }
+  const cron = body.cron ?? existing.cron;
+  const timezone = body.timezone ?? existing.timezone;
+  if (body.name !== undefined) updates.name = body.name;
+  if (body.deliver !== undefined) {
     updates.deliver = body.deliver;
   }
-  if (body.status) {
-    if (!["active", "paused"].includes(body.status)) {
-      return NextResponse.json({ error: "invalid status" }, { status: 400 });
-    }
+  if (body.status !== undefined) {
     updates.status = body.status;
     if (body.status === "active") updates.failure_count = 0;
   }
-  if (body.cron || body.timezone) {
+  if (body.cron !== undefined || body.timezone !== undefined) {
     if (!isValidTimeZone(timezone)) {
       return NextResponse.json({ error: "invalid timezone" }, { status: 400 });
     }
@@ -175,7 +168,7 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
     }
     updates.cron = cron;
     updates.timezone = timezone;
-    const deliver = (updates.deliver ?? existing.deliver) as Deliver;
+    const deliver = (updates.deliver as Deliver | undefined) ?? existing.deliver;
     updates.next_run_at = clampToWakingHours(
       nextRunAt(cron, timezone),
       timezone,
@@ -191,10 +184,10 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
       updates.deliver as Deliver
     ).toISOString();
   }
-  if (body.prompt?.trim()) {
+  if (body.prompt !== undefined) {
     try {
       const box = await ensureBoxAwake(supabase, userId);
-      await writeFile(box.boxId, existing.prompt_ref, body.prompt.trim());
+      await writeFile(box.boxId, existing.prompt_ref, body.prompt);
     } finally {
       await armStopAfter(supabase, userId).catch(() => undefined);
     }
@@ -217,16 +210,17 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const body = (await request.json().catch(() => ({}))) as { id?: string };
-  if (!body.id) {
-    return NextResponse.json({ error: "id required" }, { status: 400 });
-  }
+  const parsed = await parseBody(request, DeleteScheduleSchema);
+  if (!parsed.ok) return parsed.response;
+  const { id } = parsed.data;
+
   const supabase = serviceClient();
   const { data } = await supabase
     .from("agent_schedules")
     .update({ status: "deleted" })
-    .eq("id", body.id)
+    .eq("id", id)
     .eq("user_id", userId)
+    .neq("status", "deleted")
     .select("prompt_ref");
   if (!data || data.length === 0) {
     return NextResponse.json({ error: "not found" }, { status: 404 });

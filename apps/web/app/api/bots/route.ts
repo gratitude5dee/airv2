@@ -6,8 +6,10 @@
  * Bot api_server_keys never leave the server (C3).
  */
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { sessionUserId } from "@/lib/auth/user";
 import { serviceClient } from "@/lib/supabase";
+import { parseBody } from "@/lib/http/body";
 import {
   armStopAfter,
   ensureBoxAwake,
@@ -16,13 +18,7 @@ import {
 import { listSessions } from "@/lib/hermes/client";
 import { botTarget, BOT_CHAT_SESSION, isValidBotName } from "@/lib/bots/client";
 import { provisionBot, deleteBot, applyModelTier } from "@/lib/bots/provision";
-import {
-  getBot,
-  listBots,
-  toPublic,
-  type BotModelTier,
-  type BotPublic,
-} from "@/lib/bots/store";
+import { getBot, listBots, toPublic, type BotPublic } from "@/lib/bots/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,6 +29,37 @@ interface RosterEntry extends BotPublic {
   preview?: string;
   last_active?: number;
 }
+
+const BOT_TIERS = ["fast", "balanced", "deep"] as const;
+const AVATAR_KINDS = ["geometric", "image", "generated", "pet"] as const;
+
+const optionalString = z.union([z.string(), z.null()]).optional();
+
+const CreateBotSchema = z.object({
+  name: z.string(),
+  title: optionalString,
+  description: optionalString,
+  clone_from: optionalString,
+  model_tier: z.enum(BOT_TIERS).optional(),
+  group_label: optionalString,
+  avatar_kind: z.enum(AVATAR_KINDS).optional(),
+  avatar_ref: optionalString,
+  skills: z.array(z.string()).optional(),
+});
+
+const PatchBotSchema = z.object({
+  name: z.string(),
+  title: optionalString,
+  description: optionalString,
+  model_tier: z.enum(BOT_TIERS).nullable().optional(),
+  group_label: optionalString,
+  avatar_kind: z.enum(AVATAR_KINDS).nullable().optional(),
+  avatar_ref: optionalString,
+});
+
+const DeleteBotSchema = z.object({
+  name: z.string(),
+});
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const userId = sessionUserId(request);
@@ -87,33 +114,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const body = (await request.json().catch(() => ({}))) as {
-    name?: string;
-    title?: string;
-    description?: string;
-    clone_from?: string;
-    model_tier?: string;
-    group_label?: string;
-    avatar_kind?: string;
-    avatar_ref?: string;
-    skills?: string[];
-  };
-  const name = (body.name ?? "").trim().toLowerCase();
+  const parsed = await parseBody(request, CreateBotSchema);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
+
+  const name = body.name.trim().toLowerCase();
   if (!isValidBotName(name)) {
     return NextResponse.json(
       { error: "name must be [a-z0-9-]{2,32} and not 'default'" },
       { status: 400 }
     );
   }
-  const tier =
-    body.model_tier && ["fast", "balanced", "deep"].includes(body.model_tier)
-      ? (body.model_tier as BotModelTier)
-      : undefined;
-  const avatarKind =
-    body.avatar_kind &&
-    ["geometric", "image", "generated", "pet"].includes(body.avatar_kind)
-      ? (body.avatar_kind as "geometric" | "image" | "generated" | "pet")
-      : undefined;
+  const tier = body.model_tier;
+  const avatarKind = body.avatar_kind;
   const supabase = serviceClient();
   const existing = await getBot(supabase, userId, name);
   if (existing) {
@@ -133,12 +146,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       name,
       title: body.title?.slice(0, 80),
       description: body.description?.slice(0, 500),
-      cloneFrom: body.clone_from,
+      cloneFrom: body.clone_from ?? undefined,
       modelTier: tier,
       groupLabel: body.group_label?.slice(0, 40),
       avatarKind,
       avatarRef: body.avatar_ref?.slice(0, 200),
-      skills: Array.isArray(body.skills) ? body.skills.slice(0, 20) : undefined,
+      skills: body.skills?.slice(0, 20),
     });
     return NextResponse.json({ bot: toPublic(bot) }, { status: 201 });
   } catch (error) {
@@ -158,16 +171,11 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const body = (await request.json().catch(() => ({}))) as {
-    name?: string;
-    title?: string;
-    description?: string;
-    model_tier?: string | null;
-    group_label?: string | null;
-    avatar_kind?: string;
-    avatar_ref?: string | null;
-  };
-  const name = (body.name ?? "").trim().toLowerCase();
+  const parsed = await parseBody(request, PatchBotSchema);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
+
+  const name = body.name.trim().toLowerCase();
   const supabase = serviceClient();
   const bot = await getBot(supabase, userId, name);
   if (!bot) {
@@ -181,20 +189,18 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
   if (body.group_label !== undefined) {
     patch.group_label = body.group_label?.slice(0, 40) ?? null;
   }
-  if (
-    body.avatar_kind !== undefined &&
-    ["geometric", "image", "generated", "pet"].includes(body.avatar_kind)
-  ) {
-    patch.avatar_kind = body.avatar_kind;
+  if (body.avatar_kind !== undefined) {
+    if (body.avatar_kind === null) {
+      patch.avatar_kind = null;
+    } else if (AVATAR_KINDS.includes(body.avatar_kind)) {
+      patch.avatar_kind = body.avatar_kind;
+    }
   }
   if (body.avatar_ref !== undefined) {
     patch.avatar_ref = body.avatar_ref?.slice(0, 200) ?? null;
   }
   if (body.model_tier !== undefined) {
-    const tier =
-      body.model_tier && ["fast", "balanced", "deep"].includes(body.model_tier)
-        ? (body.model_tier as BotModelTier)
-        : null;
+    const tier = body.model_tier;
     patch.model_tier = tier;
     // Re-pin in the profile config on the box; requires a wake.
     try {
@@ -236,8 +242,11 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const body = (await request.json().catch(() => ({}))) as { name?: string };
-  const name = (body.name ?? "").trim().toLowerCase();
+  const parsed = await parseBody(request, DeleteBotSchema);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
+
+  const name = body.name.trim().toLowerCase();
   if (name === "default") {
     return NextResponse.json({ error: "default is undeletable" }, { status: 400 });
   }

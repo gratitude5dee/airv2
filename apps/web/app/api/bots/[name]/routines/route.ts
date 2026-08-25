@@ -6,8 +6,10 @@
  * bodies never persist in Postgres — they live in the profile's cron store.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { sessionUserId } from "@/lib/auth/user";
 import { serviceClient } from "@/lib/supabase";
+import { parseBody } from "@/lib/http/body";
 import { armStopAfter, StartLimitError } from "@/lib/orchestrator/boxes";
 import {
   createJob,
@@ -36,6 +38,38 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 800;
 
 const JOB_ID = /^[A-Za-z0-9_-]+$/;
+
+const JobId = z.string().trim().min(1).regex(JOB_ID);
+
+const RoutineName = z
+  .string()
+  .trim()
+  .min(1)
+  .transform((v) => v.slice(0, 80));
+
+const ActionBody = z.object({
+  action: z.enum(["run", "pause", "resume"]),
+  id: JobId,
+});
+
+const CreateBody = z.object({
+  name: RoutineName,
+  schedule: z.string().trim().min(1),
+  prompt: z.string().trim().min(1),
+});
+
+const PostBody = z.union([ActionBody, CreateBody]);
+
+const PatchBody = z.object({
+  id: JobId,
+  name: RoutineName.optional(),
+  schedule: z.string().trim().min(1).optional(),
+  prompt: z.string().trim().min(1).optional(),
+});
+
+const DeleteBody = z.object({
+  id: JobId,
+});
 
 async function resolveBot(
   request: NextRequest,
@@ -123,17 +157,13 @@ export async function POST(
   const resolved = await resolveBot(request, context);
   if ("response" in resolved) return resolved.response;
   const { userId, supabase, bot } = resolved;
-  const body = (await request.json().catch(() => ({}))) as {
-    action?: string;
-    id?: string;
-    name?: string;
-    schedule?: string;
-    prompt?: string;
-  };
+  const parsed = await parseBody(request, PostBody);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
   try {
     const target = await botBoxTarget(supabase, userId, bot);
-    if (body.action) {
-      const id = body.id ?? "";
+    if ("action" in body) {
+      const id = body.id;
       if (!JOB_ID.test(id)) {
         return NextResponse.json({ error: "bad job id" }, { status: 400 });
       }
@@ -145,9 +175,9 @@ export async function POST(
       }
       return NextResponse.json({ ok: true });
     }
-    const routineName = (body.name ?? "").trim();
-    const schedule = (body.schedule ?? "").trim();
-    const prompt = (body.prompt ?? "").trim();
+    const routineName = body.name;
+    const schedule = body.schedule;
+    const prompt = body.prompt;
     if (!routineName || !schedule || !prompt) {
       return NextResponse.json(
         { error: "name, schedule, and prompt are required" },
@@ -161,7 +191,7 @@ export async function POST(
       .maybeSingle();
     const userLabel = (userRow?.username as string | null) ?? "the user";
     await createJob(target, {
-      name: routineJobName(bot.name, routineName.slice(0, 80)),
+      name: routineJobName(bot.name, routineName),
       schedule,
       prompt: routinePrompt(prompt, userLabel),
       // Output lands in the bot's own chat (box-cron half of V3's split —
@@ -183,13 +213,10 @@ export async function PATCH(
   const resolved = await resolveBot(request, context);
   if ("response" in resolved) return resolved.response;
   const { userId, supabase, bot } = resolved;
-  const body = (await request.json().catch(() => ({}))) as {
-    id?: string;
-    name?: string;
-    schedule?: string;
-    prompt?: string;
-  };
-  const id = body.id ?? "";
+  const parsed = await parseBody(request, PatchBody);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
+  const id = body.id;
   if (!JOB_ID.test(id)) {
     return NextResponse.json({ error: "bad job id" }, { status: 400 });
   }
@@ -197,9 +224,9 @@ export async function PATCH(
     const target = await botBoxTarget(supabase, userId, bot);
     const patch: { name?: string; schedule?: string; prompt?: string } = {};
     if (body.name !== undefined) {
-      patch.name = routineJobName(bot.name, body.name.trim().slice(0, 80));
+      patch.name = routineJobName(bot.name, body.name);
     }
-    if (body.schedule !== undefined) patch.schedule = body.schedule.trim();
+    if (body.schedule !== undefined) patch.schedule = body.schedule;
     if (body.prompt !== undefined) {
       const { data: userRow } = await supabase
         .from("users")
@@ -207,7 +234,7 @@ export async function PATCH(
         .eq("id", userId)
         .maybeSingle();
       const userLabel = (userRow?.username as string | null) ?? "the user";
-      patch.prompt = routinePrompt(body.prompt.trim(), userLabel);
+      patch.prompt = routinePrompt(body.prompt, userLabel);
     }
     const job = await updateJob(target, id, patch);
     return NextResponse.json({ routine: publicRoutine(bot, job) });
@@ -225,8 +252,10 @@ export async function DELETE(
   const resolved = await resolveBot(request, context);
   if ("response" in resolved) return resolved.response;
   const { userId, supabase, bot } = resolved;
-  const body = (await request.json().catch(() => ({}))) as { id?: string };
-  const id = body.id ?? "";
+  const parsed = await parseBody(request, DeleteBody);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
+  const id = body.id;
   if (!JOB_ID.test(id)) {
     return NextResponse.json({ error: "bad job id" }, { status: 400 });
   }

@@ -151,7 +151,7 @@ function renderThreads(
 
 function renderThread(
   basePath: string,
-  threadId: string,
+  _threadId: string,
   subject: string,
   messages: AgentMailMessage[],
   blocked: Set<string>,

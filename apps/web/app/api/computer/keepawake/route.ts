@@ -6,8 +6,10 @@
  */
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { sessionUserId } from "@/lib/auth/user";
 import { serviceClient } from "@/lib/supabase";
+import { parseBody } from "@/lib/http/body";
 import { command, writeFile } from "@/lib/box/client";
 import {
   armStopAfter,
@@ -30,6 +32,17 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
+const CreateKeepAwakeSchema = z.object({
+  name: z.string().trim().min(1).max(80).optional(),
+  cron: z.string().trim().min(1),
+  timezone: z.string().trim().min(1),
+  minutes: z.number().int().positive(),
+});
+
+const DeleteKeepAwakeSchema = z.object({
+  id: z.string().trim().min(1),
+});
+
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const userId = sessionUserId(request);
   if (!userId) {
@@ -50,20 +63,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const body = (await request.json().catch(() => ({}))) as {
-    name?: string;
-    cron?: string;
-    timezone?: string;
-    minutes?: number;
-  };
-  const cron = body.cron?.trim();
-  const timezone = body.timezone?.trim();
-  if (!cron || !timezone || typeof body.minutes !== "number") {
-    return NextResponse.json(
-      { error: "cron, timezone, minutes required" },
-      { status: 400 }
-    );
-  }
+  const parsed = await parseBody(request, CreateKeepAwakeSchema);
+  if (!parsed.ok) return parsed.response;
+  const { name, cron, timezone, minutes } = parsed.data;
+
   if (!isValidTimeZone(timezone)) {
     return NextResponse.json({ error: "invalid timezone" }, { status: 400 });
   }
@@ -71,19 +74,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (cronError) {
     return NextResponse.json({ error: cronError }, { status: 400 });
   }
-  const minutes = clampKeepAwakeMinutes(body.minutes);
-  const name = body.name?.trim() || `Keep awake ${minutes} min`;
+  const clampedMinutes = clampKeepAwakeMinutes(minutes);
+  const scheduleName = name ?? `Keep awake ${clampedMinutes} min`;
 
   const supabase = serviceClient();
   const id = randomUUID();
-  const promptRef = keepAwakePromptRef(id, minutes);
+  const promptRef = keepAwakePromptRef(id, clampedMinutes);
   try {
     const box = await ensureBoxAwake(supabase, userId);
     await command(box.boxId, "mkdir -p /home/user/.hermes/schedules");
     await writeFile(
       box.boxId,
       promptRef,
-      `Keep-awake window (${minutes} minutes) — managed by the Computer tab; no agent run.`
+      `Keep-awake window (${clampedMinutes} minutes) — managed by the Computer tab; no agent run.`
     );
   } catch (error) {
     if (error instanceof StartLimitError) {
@@ -97,7 +100,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const { error } = await supabase.from("agent_schedules").insert({
     id,
     user_id: userId,
-    name,
+    name: scheduleName,
     cron,
     timezone,
     prompt_ref: promptRef,
@@ -119,15 +122,15 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const body = (await request.json().catch(() => ({}))) as { id?: string };
-  if (!body.id) {
-    return NextResponse.json({ error: "id required" }, { status: 400 });
-  }
+  const parsed = await parseBody(request, DeleteKeepAwakeSchema);
+  if (!parsed.ok) return parsed.response;
+  const { id } = parsed.data;
+
   const supabase = serviceClient();
   const { data } = await supabase
     .from("agent_schedules")
     .update({ status: "deleted" })
-    .eq("id", body.id)
+    .eq("id", id)
     .eq("user_id", userId)
     .eq("source", KEEPAWAKE_SOURCE)
     .select("prompt_ref");
