@@ -16,7 +16,7 @@
 
 # ── desktop: the Omarchy Hyprland session the agent drives ──────────────
 hyprland
-hyprland-qtutils
+hyprland-guiutils
 hyprpicker
 xorg-xwayland
 uwsm

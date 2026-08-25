@@ -36,10 +36,10 @@ export interface NamespaceInstance {
   id: string;
   state: InstanceState;
   /** Namespace dashboard URL for the instance — operator-facing. */
-  url?: string;
-  vcpu?: number;
-  memoryGB?: number;
-  createdAt?: string;
+  url?: string | undefined;
+  vcpu?: number | undefined;
+  memoryGB?: number | undefined;
+  createdAt?: string | undefined;
   /** Public ingress URLs of the container's exported ports, by port. */
   ports: Record<number, string>;
 }
@@ -122,7 +122,7 @@ async function call<T>(
 interface InstanceMetadata {
   instanceId: string;
   status?: InstanceState;
-  createdAt?: string;
+  createdAt?: string | undefined;
   shape?: { virtualCpu?: number; memoryMegabytes?: number };
 }
 

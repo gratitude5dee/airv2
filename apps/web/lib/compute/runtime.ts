@@ -40,7 +40,7 @@ export interface ComputeTarget {
   instanceId: string;
   environment: ComputeEnvironment;
   /** Native environments only: the template bridge behind Namespace ingress. */
-  control?: { url: string; token: string };
+  control?: { url: string; token: string } | undefined;
 }
 
 export interface ComputeTargetRow {
