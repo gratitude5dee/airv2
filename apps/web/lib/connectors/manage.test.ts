@@ -137,6 +137,22 @@ describe("syncConnections", () => {
     expect(updates).toHaveLength(0);
   });
 
+  it("keeps a pending row whose Connect Link is still INITIALIZING", async () => {
+    listAllConnectedAccounts.mockResolvedValueOnce([
+      { id: "ca_fresh", toolkit: { slug: "gmail" }, status: "INITIALIZING" },
+    ]);
+    const { supabase, updates } = makeSupabase([
+      {
+        id: "row-1",
+        toolkit: "gmail",
+        status: "pending",
+        external_account_id: "ca_fresh",
+      },
+    ]);
+    await syncConnections(supabase, "user-1");
+    expect(updates).toHaveLength(0);
+  });
+
   it("does not activate from a non-ACTIVE account status", async () => {
     listAllConnectedAccounts.mockResolvedValueOnce([
       { id: "ca_x", toolkit: { slug: "gmail" }, status: "FAILED" },

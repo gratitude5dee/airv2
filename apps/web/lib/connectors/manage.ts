@@ -19,6 +19,9 @@ import {
 
 export const TOOLKIT_SLUG_PATTERN = /^[a-z0-9_-]{1,64}$/;
 
+/** Composio account states where authorization can still complete. */
+const LIVE_ACCOUNT_STATUSES = new Set(["INITIALIZING", "INITIATED", "ACTIVE"]);
+
 export interface ConnectionRow {
   toolkit: string;
   status: string;
@@ -87,7 +90,7 @@ export async function syncConnections(
       const accountStatus = row.external_account_id
         ? (statusById.get(row.external_account_id as string) ?? null)
         : null;
-      if (accountStatus !== "INITIATED" && accountStatus !== "ACTIVE") {
+      if (!accountStatus || !LIVE_ACCOUNT_STATUSES.has(accountStatus)) {
         await supabase
           .from("connections")
           .update({ status: "revoked" })
