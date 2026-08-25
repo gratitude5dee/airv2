@@ -324,13 +324,18 @@ ENV_WRAP="$BIN_DIR/with-hermes-env"
 cat > "$ENV_WRAP" <<SH
 #!/usr/bin/env bash
 set -euo pipefail
-set -a; source "$HOME_DIR/.hermes/.env"; set +a
+# Read KEY=VALUE lines verbatim — values like bcrypt hashes contain \$-runs
+# that a shell source would expand.
+while IFS= read -r line; do
+  case "\$line" in ''|'#'*) continue;; esac
+  export "\${line%%=*}=\${line#*=}"
+done < "$HOME_DIR/.hermes/.env"
 exec "\$@"
 SH
 chmod +x "$ENV_WRAP"
 
 write_agent hermes-gateway "$ENV_WRAP" "$HERMES_VENV/bin/hermes" gateway
-write_agent hermes-dashboard "$ENV_WRAP" "$HERMES_VENV/bin/hermes" dashboard
+write_agent hermes-dashboard "$ENV_WRAP" "$HERMES_VENV/bin/hermes" dashboard --host 0.0.0.0 --port 9119 --no-open --skip-build
 write_agent openviking "$ENV_WRAP" "$OV_VENV/bin/openviking-server" --config "$HOME_DIR/.openviking/ov.conf"
 
 "$BIN_DIR/ovctl" ensure || echo "WARN: openviking ensure failed — deep memory degraded" >&2

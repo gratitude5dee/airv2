@@ -35,6 +35,10 @@ export const env = {
       "NAMESPACE_COMPUTE_API",
       `https://${optional("NAMESPACE_REGION", "us")}.compute.namespaceapis.com`,
     ),
+  // IAM endpoint that issues ingress access tokens (authenticated-ingress
+  // requests carry them in x-nsc-ingress-auth).
+  namespaceIamApi: (): string =>
+    optional("NAMESPACE_IAM_API", "https://iam.namespaceapis.com"),
   // Bootstrap script a fresh Mac curls on first boot (infra/template-macos).
   // The macos "template pointer" in box_environment_templates overrides it.
   macBootstrapUrl: (): string | null =>
