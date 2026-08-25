@@ -87,7 +87,7 @@ function renderConnect(
       const button =
         status === "active"
           ? `<form method="post"><input type="hidden" name="action" value="disconnect"><input type="hidden" name="toolkit" value="${esc(toolkit.slug)}"><button class="ghost">Disconnect</button></form>`
-          : `<form method="post"><input type="hidden" name="action" value="connect"><input type="hidden" name="toolkit" value="${esc(toolkit.slug)}"><button>${status === "pending" ? "Resume" : "Connect"}</button></form>`;
+          : `<form method="post" target="_top"><input type="hidden" name="action" value="connect"><input type="hidden" name="toolkit" value="${esc(toolkit.slug)}"><button>${status === "pending" ? "Resume" : "Connect"}</button></form>`;
       return `<div class="card" style="display:flex;align-items:center;gap:0.55rem"><div class="grow" style="min-width:0"><strong>${esc(toolkit.name)}</strong> ${chip(status)}${usedBy}${lastOk}</div>${button}</div>`;
     })
     .join("");
