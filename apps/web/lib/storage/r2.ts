@@ -202,6 +202,49 @@ export function presignPut(
   return `https://${host}${path}?${canonical}&X-Amz-Signature=${signature}`;
 }
 
+/**
+ * Presigned GET (query-string SigV4): lets a box download one object (e.g. a
+ * template release artifact) without the credentials leaving the server. TTL
+ * is short; the URL grants read on exactly one key.
+ */
+export function presignGet(key: string, ttlSeconds = 600): string {
+  const creds = credentials();
+  const host = endpointHost(creds);
+  const bucket = env.r2Bucket();
+  const path = `/${bucket}/${encodeKey(key)}`;
+  const { date, stamp } = amzDate(new Date());
+  const scope = `${stamp}/${REGION}/${SERVICE}/aws4_request`;
+  const query: Record<string, string> = {
+    "X-Amz-Algorithm": "AWS4-HMAC-SHA256",
+    "X-Amz-Credential": `${creds.accessKeyId}/${scope}`,
+    "X-Amz-Date": date,
+    "X-Amz-Expires": String(ttlSeconds),
+    "X-Amz-SignedHeaders": "host",
+  };
+  const canonical = canonicalQuery(query);
+  const canonicalRequest = [
+    "GET",
+    path,
+    canonical,
+    `host:${host}\n`,
+    "host",
+    "UNSIGNED-PAYLOAD",
+  ].join("\n");
+  const stringToSign = [
+    "AWS4-HMAC-SHA256",
+    date,
+    scope,
+    sha256Hex(canonicalRequest),
+  ].join("\n");
+  const signature = createHmac(
+    "sha256",
+    signingKey(creds.secretAccessKey, stamp)
+  )
+    .update(stringToSign)
+    .digest("hex");
+  return `https://${host}${path}?${canonical}&X-Amz-Signature=${signature}`;
+}
+
 export async function putObject(
   key: string,
   body: Buffer,

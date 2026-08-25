@@ -146,3 +146,28 @@ plugins present, `AGENT_BROWSER_ARGS` comma-separated with the CDP profile,
 `/health` 200. Run it on the template box itself after template changes so
 new forks inherit the baseline (then delete `AIR_VAULT_KEY` from the
 template's `~/.hermes/.env` — provisioning writes a per-user key on fork).
+
+## 7. Release channels — dev/prod fleet sync
+
+The manual §6 procedure is now automated behind release channels:
+
+1. **Cut a release** from a clean commit: `ADMIN_API_KEY=... APP_ORIGIN=...
+   infra/template/release.sh "notes"`. This packs `infra/template/` at HEAD,
+   stores the tarball immutably in R2 with its sha256, and records the row in
+   `template_releases` (with the pinned Hermes ref from `setup.sh`).
+2. **Deploy to dev**: `POST /api/admin/fleet/channels`
+   `{"channel":"dev","release_id":...}`, then start a job with
+   `POST /api/admin/fleet/sync` `{"channel":"dev"}`. Dev-channel boxes
+   (`boxes.channel = 'dev'`) converge on the next cron sweeps.
+3. **Promote to prod**: point the `prod` channel at the *same* release id and
+   start a prod job with `canary_box_ids` set. Canaries must pass the
+   `verify-box.sh` health gate before waves roll; failures pause the job.
+4. **Rollback** is the same pointer move to the previous release id.
+
+Per box the job runs exactly §6's steps — download, sha256 check,
+`sync-box.sh`, then `verify-box.sh` — and only records `baseline_version`
+after the gate passes. Stopped boxes are resumed and re-stopped; boxes in an
+active conversation window are deferred. Hermes re-pins (§2) ride the same
+job when started with `include_hermes: true` and the release carries a
+`hermes_ref`. New user forks come from the channel's `template_box_id` when
+set (`BOX_TEMPLATE_ID` remains the fallback).

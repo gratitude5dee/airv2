@@ -14,6 +14,7 @@ import { claimFlush, runFlush } from "@/lib/orchestrator/flush";
 import { findSweepableBoxes } from "@/lib/orchestrator/sweep";
 import { recordBoxStateEvent } from "@/lib/box/events";
 import { sweepAbandonedUploads } from "@/lib/storage/confirm";
+import { runSyncJobs } from "@/lib/fleet/sync";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -165,6 +166,20 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     );
   }
 
+  // Fleet sync: one wave of the active release-sync job per sweep tick,
+  // keeping box resumes well under the platform's start-rate ceiling.
+  let fleet = { synced: 0, failed: 0, deferred: 0 };
+  try {
+    fleet = await runSyncJobs(supabase);
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        msg: "sweeper fleet sync failed",
+        error: error instanceof Error ? error.message : String(error),
+      })
+    );
+  }
+
   const ttlCutoff = new Date(Date.now() - 48 * 3600_000).toISOString();
   await supabase.from("inbound_events").delete().lt("received_at", ttlCutoff);
   await supabase.from("batch_queue").delete().lt("received_at", ttlCutoff);
@@ -179,5 +194,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     reconciled,
     flushed,
     uploadsReleased,
+    fleet,
   });
 }
