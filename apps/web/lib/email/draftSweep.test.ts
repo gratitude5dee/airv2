@@ -107,10 +107,12 @@ describe("sweepUnfiledDrafts", () => {
     expect(vi.mocked(queueEmailDraftReview)).not.toHaveBeenCalled();
   });
 
-  it("leaves too-fresh and stale drafts alone", async () => {
+  it("leaves too-fresh, stale, and unstamped drafts alone", async () => {
     vi.mocked(listDrafts).mockResolvedValue([
       { draft_id: "fresh", updated_at: TOO_FRESH },
       { draft_id: "stale", updated_at: TOO_OLD },
+      { draft_id: "no-stamp" },
+      { draft_id: "bad-stamp", updated_at: "not-a-date" },
     ]);
     const client = fakeSupabase({
       boxes: [{ user_id: "user-1" }],

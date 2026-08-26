@@ -59,10 +59,13 @@ async function recentInboxes(
     }));
 }
 
+// A draft without a parseable timestamp is skipped: acting on it would
+// bypass both the grace period (racing the box's own filing) and the
+// staleness cap. The next sweep retries, so nothing is lost.
 function inSweepWindow(updatedAt: string | undefined, now: Date): boolean {
-  if (!updatedAt) return true;
+  if (!updatedAt) return false;
   const stamp = Date.parse(updatedAt);
-  if (Number.isNaN(stamp)) return true;
+  if (Number.isNaN(stamp)) return false;
   const age = now.getTime() - stamp;
   return age >= MIN_DRAFT_AGE_MS && age <= MAX_DRAFT_AGE_MS;
 }
