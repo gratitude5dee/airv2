@@ -6,10 +6,10 @@ set -euo pipefail
 
 HERMES_REPO="${HERMES_REPO:-https://github.com/NousResearch/hermes-agent.git}"
 # V0: pinned Hermes revision (C24 depends on knowing exactly which snapshot the
-# template runs). Tag v2026.8.16.2 == pyproject version 0.20.3 (release line
-# v0.20.2, 2026-08-16). Re-pin deliberately with a delta review — never float
-# back to main (goal.md §12.4).
-HERMES_REF="${HERMES_REF:-7339f5f160db5c96657a3bab60151227cc61f66c}"
+# template runs). Tag v2026.8.19 == pyproject version 0.20.5 (2026-08-21).
+# Re-pin deliberately with a delta review — never float back to main
+# (goal.md §12.4).
+HERMES_REF="${HERMES_REF:-fcbd1076a93841fa88855acce810e342a5b78101}"
 HOME_DIR="${HOME:-/home/user}"
 
 # ── 1. Hermes from source at the pinned revision ────────────────────────
