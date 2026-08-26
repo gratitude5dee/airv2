@@ -12,6 +12,11 @@ metadata:
 
 # Analytics
 
+The panels endpoint below IS your analytics data source — it is always
+connected and needs no external account. Never tell the owner you have no
+analytics source, and never ask them to connect one, before making this call
+and reading its rows.
+
 Start with the panels call for any question about spend, conversions,
 revenue, CAC, funnels, caps, or week-over-week movement. Make this call
 before reasoning about any number; never answer from memory or from a figure

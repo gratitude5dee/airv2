@@ -23,7 +23,11 @@ export type BoxState =
 const BoxSchema = z.object({
   id: z.string(),
   state: z.string(),
-  url: z.string().optional(),
+  // A stopped box has no hosted route; the provider reports url as null.
+  url: z
+    .string()
+    .nullish()
+    .transform((value) => value ?? undefined),
   vcpu: z.number().optional(),
   memoryGB: z.number().optional(),
   createdAt: z.string().optional(),
@@ -94,11 +98,11 @@ export function isStartLimit(error: unknown): boolean {
 /** Box control-plane calls answer fast; forks/resumes are async server-side. */
 const BOX_REQUEST_TIMEOUT_MS = 60_000;
 
-async function boxFetch<T>(
+async function boxFetch<S extends z.ZodTypeAny>(
   path: string,
-  schema: z.ZodType<T>,
+  schema: S,
   init?: RequestInit & { timeoutMs?: number }
-): Promise<T> {
+): Promise<z.output<S>> {
   const response = await fetch(`${env.boxApiBase()}${path}`, {
     ...init,
     signal: requestSignal(
