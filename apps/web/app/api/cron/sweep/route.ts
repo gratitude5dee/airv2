@@ -15,6 +15,7 @@ import { findSweepableBoxes } from "@/lib/orchestrator/sweep";
 import { recordBoxStateEvent } from "@/lib/box/events";
 import { sweepAbandonedUploads } from "@/lib/storage/confirm";
 import { runSyncJobs } from "@/lib/fleet/sync";
+import { sweepUnfiledDrafts } from "@/lib/email/draftSweep";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -180,6 +181,20 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     );
   }
 
+  // C10 backstop: file an email_draft review for any recent box-created
+  // draft the agent forgot to submit for review.
+  let draftsFiled = 0;
+  try {
+    draftsFiled = await sweepUnfiledDrafts(supabase);
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        msg: "sweeper draft review failed",
+        error: error instanceof Error ? error.message : String(error),
+      })
+    );
+  }
+
   const ttlCutoff = new Date(Date.now() - 48 * 3600_000).toISOString();
   await supabase.from("inbound_events").delete().lt("received_at", ttlCutoff);
   await supabase.from("batch_queue").delete().lt("received_at", ttlCutoff);
@@ -195,5 +210,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     flushed,
     uploadsReleased,
     fleet,
+    draftsFiled,
   });
 }

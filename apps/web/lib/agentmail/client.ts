@@ -311,6 +311,18 @@ export interface AgentMailDraft {
   subject?: string;
   text?: string;
   to?: string[];
+  updated_at?: string;
+}
+
+/** Recent drafts in an inbox — the review-backstop sweep's read half. */
+export async function listDrafts(
+  inboxId: string,
+  limit = 25
+): Promise<AgentMailDraft[]> {
+  const result = await agentmailFetch<{ drafts?: AgentMailDraft[] }>(
+    `/inboxes/${encodeURIComponent(inboxId)}/drafts?limit=${limit}`
+  );
+  return result.drafts ?? [];
 }
 
 /** Read a held draft so the Needs-you drawer can show its body (V8). */

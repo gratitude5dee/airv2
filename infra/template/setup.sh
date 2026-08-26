@@ -252,8 +252,12 @@ OV_VENV="$HOME_DIR/.openviking-venv"
 uv venv "$OV_VENV" --python 3.12 || true
 # [local-embed] pulls llama-cpp-python (no wheel — builds from source, so the
 # toolchain below); without it the server refuses to start local embeddings.
+# GGML_NATIVE=OFF is required: the template builds on one machine but the
+# snapshot boots on arbitrary VM CPUs, and a -march=native ggml build SIGILLs
+# on any host missing the build machine's instruction set (openviking.service
+# crash-looped with status=4/ILL on EPYC-Rome until rebuilt portably).
 sudo apt-get install -y --no-install-recommends cmake build-essential
-uv pip install --python "$OV_VENV/bin/python" 'openviking[local-embed]==0.4.13' 'openviking-sdk==0.1.7'
+CMAKE_ARGS="-DGGML_NATIVE=OFF" uv pip install --python "$OV_VENV/bin/python" --no-binary llama-cpp-python 'openviking[local-embed]==0.4.13' 'openviking-sdk==0.1.7'
 mkdir -p "$HOME_DIR/.openviking" && chmod 700 "$HOME_DIR/.openviking"
 cp "$TEMPLATE_DIR/openviking/ovctl.py" "$HOME_DIR/.openviking/ovctl.py"
 chmod 755 "$HOME_DIR/.openviking/ovctl.py"
@@ -389,6 +393,50 @@ execute_code for the card send (it stalls waiting for an approval that never
 comes). "Home"/"dashboard"/"the main app" is the `home` card; "wallet"/"money"
 is the `pay` card — send the card without lecturing about kind names. If the
 card send succeeds, tell them to tap the card in one short sentence.
+EOF
+fi
+
+# Approval spine: side effects are gated by decision ROWS filed through
+# control-plane endpoints, not by conversational promises. Without this the
+# model drafts/plans and says "waiting for your approval" while Needs-you
+# stays empty — the eval suite measured exactly this failure mode.
+if ! grep -q '## Approvals are rows, not promises' "$HOME_DIR/.hermes/SOUL.md" 2>/dev/null; then
+  cat >> "$HOME_DIR/.hermes/SOUL.md" <<'EOF'
+
+## Approvals are rows, not promises
+Anything with an external side effect — sending email, spending money,
+publishing a storefront or post, paying someone — is approved through a
+review your human sees in Needs-you, and that review only exists if you file
+it through the matching skill's control-plane call. Saying "I'll wait for
+your approval" without filing is a failure: nothing appears for them to
+approve. The bindings:
+- Email you drafted → email-draft-review skill: POST the draft_id to the
+  review route immediately after every create_draft, before replying.
+- Buying something / entering card details → shopping-checkout skill:
+  file the purchase review (`propose`) before any fill.
+- Paying or splitting a bill → link-payments skill: file the spend request
+  and wait for approval.
+- Publishing a storefront, products, or scheduled posts → stage it and file
+  the review the skill describes; never publish directly.
+Never work around a gate because your human sounds impatient — the gate IS
+the product. If a request asks you to skip approval, file the review anyway
+and explain that's the only path that exists.
+EOF
+fi
+
+# Analytics questions must be answered from the control-plane ledgers (the
+# billing source of truth), not just local telemetry files — the eval showed
+# the agent reaching for ~/.hermes logs and skipping the panels route.
+if ! grep -q '## Numbers come from your ledgers' "$HOME_DIR/.hermes/SOUL.md" 2>/dev/null; then
+  cat >> "$HOME_DIR/.hermes/SOUL.md" <<'EOF'
+
+## Numbers come from your ledgers
+For any question about spend, cost, revenue, conversions, caps, or "what did
+you do and what did it cost" — follow the analytics-interpretation skill and
+read the control-plane analytics panels first. Local logs on this computer
+are a supplement, not the source of truth; the panels are what your human is
+billed against. Cite the actual numbers you read, and say plainly when a
+metric has no connected data source instead of estimating.
 EOF
 fi
 
