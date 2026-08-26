@@ -23,8 +23,20 @@ import {
   DASHBOARD_PORT,
 } from "@/lib/orchestrator/boxes";
 
-/** Pinned Hermes revision baked into every template (infra/template/setup.sh). */
+/** Pinned Hermes revision baked into the Linux templates (infra/template/setup.sh). */
 export const HERMES_REF = "fcbd1076a93841fa88855acce810e342a5b78101";
+
+/**
+ * Per-environment pins: each entry mirrors that template's setup.sh so the
+ * manifest stays a projection of what the template actually builds. macOS
+ * stays on the older pin until infra/template-macos is re-built; omarchy
+ * overlays the ubuntu template, so it shares the Linux pin.
+ */
+export const HERMES_REFS: Record<ComputeEnvironment, string> = {
+  ubuntu: HERMES_REF,
+  omarchy: HERMES_REF,
+  macos: "7339f5f160db5c96657a3bab60151227cc61f66c",
+};
 
 /**
  * The only Hermes platform ever enabled — every other adapter bypasses the
@@ -74,7 +86,7 @@ export function airboxManifest(
     kind: profile.kind,
     homeDir: profile.homeDir,
     templateDir: TEMPLATE_DIRS[environment],
-    hermesRef: HERMES_REF,
+    hermesRef: HERMES_REFS[environment],
     ports: { hermes: API_SERVER_PORT, dashboard: DASHBOARD_PORT },
     services: profile.services,
     enabledPlatforms: ENABLED_PLATFORMS,
