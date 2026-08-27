@@ -1,8 +1,11 @@
 /**
  * Operator box usage: per-user box state (from `boxes`), start/stop counts in
  * the window (from the `box_state_events` power ledger), and metered
- * box_seconds from the agent_runs receipts. Enough to see who is running, how
- * often their box wakes, and how much compute time it burned.
+ * box_seconds from the agent_runs receipts. Each row is labeled with the
+ * user's username, verified handles, and provider box id so an operator can
+ * identify a specific user's box without cross-referencing /api/admin/users.
+ * Identity and usage metadata only — no message content, prompts, or memory
+ * (C4).
  */
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuthorized } from "@/lib/admin/auth";
@@ -17,6 +20,10 @@ const PAGE = 1000;
 
 interface UserBox {
   user_id: string;
+  username: string | null;
+  phone: string | null;
+  handles: Array<{ platform: string; address: string }>;
+  provider_box_id: string | null;
   state: string | null;
   provider: string | null;
   template_version: string | null;
@@ -47,7 +54,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   if (days === null) {
     return NextResponse.json(
       { error: `days must be an integer 1-${MAX_WINDOW_DAYS}` },
-      { status: 400 }
+      { status: 400 },
     );
   }
   const sinceIso = new Date(Date.now() - days * 86_400_000).toISOString();
@@ -59,6 +66,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     if (!entry) {
       entry = {
         user_id: userId,
+        username: null,
+        phone: null,
+        handles: [],
+        provider_box_id: null,
         state: null,
         provider: null,
         template_version: null,
@@ -85,7 +96,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const { data, error } = await supabase
       .from("boxes")
       .select(
-        "user_id, provider, state, template_version, last_active_at, stop_after, created_at"
+        "user_id, provider, provider_box_id, state, template_version, last_active_at, stop_after, created_at",
       )
       .order("user_id", { ascending: true })
       .range(offset, offset + PAGE - 1);
@@ -95,6 +106,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       const entry = forUser(row.user_id as string);
       entry.state = (row.state as string | null) ?? null;
       entry.provider = (row.provider as string | null) ?? null;
+      entry.provider_box_id = (row.provider_box_id as string | null) ?? null;
       entry.template_version = (row.template_version as string | null) ?? null;
       entry.last_active_at = (row.last_active_at as string | null) ?? null;
       entry.stop_after = (row.stop_after as string | null) ?? null;
@@ -126,8 +138,48 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     if (rows.length < PAGE) break;
   }
 
+  for (let offset = 0; ; offset += PAGE) {
+    const { data, error } = await supabase
+      .from("users")
+      .select("id, username")
+      .order("created_at", { ascending: true })
+      .range(offset, offset + PAGE - 1);
+    if (error) break; // usage view still useful without names
+    const rows = data ?? [];
+    for (const row of rows) {
+      const entry = users.get(row.id as string);
+      if (entry) entry.username = (row.username as string | null) ?? null;
+    }
+    if (rows.length < PAGE) break;
+  }
+
+  for (let offset = 0; ; offset += PAGE) {
+    const { data, error } = await supabase
+      .from("handles")
+      .select("user_id, platform, address")
+      .not("verified_at", "is", null)
+      .order("id", { ascending: true })
+      .range(offset, offset + PAGE - 1);
+    if (error) break; // usage view still useful without handles
+    const rows = data ?? [];
+    for (const row of rows) {
+      const entry = users.get(row.user_id as string);
+      if (!entry) continue;
+      const platform = row.platform as string;
+      const address = row.address as string;
+      entry.handles.push({ platform, address });
+      if (
+        !entry.phone &&
+        (platform === "imessage" || platform === "whatsapp")
+      ) {
+        entry.phone = address;
+      }
+    }
+    if (rows.length < PAGE) break;
+  }
+
   const rows = [...users.values()].sort(
-    (a, b) => b.box_seconds - a.box_seconds
+    (a, b) => b.box_seconds - a.box_seconds,
   );
   const states = new Map<string, number>();
   for (const row of rows) {
