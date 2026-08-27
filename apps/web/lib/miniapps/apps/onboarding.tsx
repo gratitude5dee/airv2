@@ -45,6 +45,12 @@ import {
   startDictionaryRun,
   type ImportStatus,
 } from "@/lib/context/importer";
+import {
+  disableBrowserProfile,
+  mintBrowserProfileTicket,
+  readBrowserProfileStatus,
+  type BrowserProfileStatus,
+} from "@/lib/context/browser-profile";
 import { env } from "@/lib/env";
 import { sendMiniAppCard } from "@/lib/miniapps/cards";
 import { claimCardSend, type CardClaim } from "@/lib/miniapps/cardSends";
@@ -212,6 +218,8 @@ export interface OnboardingSnapshot {
   ingestCommand: string | null;
   imports: ImportStatus | null;
   importCommand: string | null;
+  browserProfile: BrowserProfileStatus | null;
+  browserProfileCommand: string | null;
   boxBusy: boolean;
 }
 
@@ -247,6 +255,7 @@ async function loadSnapshot(
     { count: pluginCount },
     ingest,
     imports,
+    browserProfile,
     identityMedia,
     avatarAssetId,
     twin,
@@ -291,6 +300,7 @@ async function loadSnapshot(
       .is("revoked_at", null),
     readIngestStatus(supabase, userId).catch(() => null),
     readImportStatus(supabase, userId).catch(() => null),
+    readBrowserProfileStatus(supabase, userId).catch(() => null),
     listIdentityMediaViews(supabase, userId),
     getAvatarAssetId(supabase, userId).catch(() => null),
     getDigitalTwin(supabase, userId).catch(() => null),
@@ -321,6 +331,8 @@ async function loadSnapshot(
     ingestCommand: buildIngestCommand(userId),
     imports,
     importCommand: buildImportCommand(userId),
+    browserProfile,
+    browserProfileCommand: buildBrowserProfileCommand(userId),
     boxBusy,
   };
 }
@@ -332,6 +344,18 @@ function buildImportCommand(userId: string): string | null {
     const origin = env.appOrigin();
     const ticket = mintImportTicket(userId);
     return `curl -fsSL ${origin}/agent-context-import.sh -o /tmp/air-import.sh && AIR_IMPORT_ENDPOINT=${origin}/api/me/agent-context bash /tmp/air-import.sh ${ticket}`;
+  } catch {
+    return null;
+  }
+}
+
+/** The one-command profile snapshot shown on the import step — owner-only
+ * page, ticket is short-TTL and scoped to the browser-profile endpoint. */
+function buildBrowserProfileCommand(userId: string): string | null {
+  try {
+    const origin = env.appOrigin();
+    const ticket = mintBrowserProfileTicket(userId);
+    return `curl -fsSL ${origin}/browser-profile-import.sh -o /tmp/air-browser-import.sh && AIR_BROWSER_ENDPOINT=${origin}/api/me/browser-profile bash /tmp/air-browser-import.sh ${ticket}`;
   } catch {
     return null;
   }
@@ -679,7 +703,17 @@ function stepBody(
         ? `<form method="post" class="inline"><input type="hidden" name="action" value="build_dictionary"><button>${built ? "Rebuild dictionary" : "Build my dictionary"}</button></form>`
         : "";
     const refreshForm = `<form method="post" class="inline"><input type="hidden" name="action" value="refresh_import"><button class="ghost">Refresh status</button></form>`;
-    return `${statusLine}${perSource}${command}<div class="row actions">${buildForm}${refreshForm}${skipForm("import")}</div>`;
+    const browser = snapshot.browserProfile;
+    const browserStatus = browser?.enabled
+      ? `<div class="item"><span class="grow">Real profile browsing</span><span class="chip">on · ${esc(browser.browser ?? "browser")} · ${browser.files} files</span></div><p class="muted">Your agent browses with your logins and cookies. Run the command again after new sign-ins to re-sync; turning it off deletes the snapshot from your agent's computer.</p>`
+      : `<div class="item"><span class="grow">Real profile browsing</span><span class="chip">off</span></div><p class="muted">By default the agent browses in a clean, throwaway profile — logged into nothing. Turn this on to let it browse as you: one command copies your default browser's <strong>active</strong> profile (cookies, saved logins, preferences — never your other profiles) straight to your agent's computer. Only enable it when you want the agent acting as you.</p>`;
+    const browserCommand = snapshot.browserProfileCommand
+      ? `<details><summary>${browser?.enabled ? "Re-sync my browser profile" : "Turn on real profile browsing"}</summary><p class="muted">Run in Terminal on the machine where you browse (Chrome, Edge, Brave, or Chromium; link valid ~30 minutes; on Windows fully quit the browser first):</p><pre>${esc(snapshot.browserProfileCommand)}</pre></details>`
+      : "";
+    const browserDisable = browser?.enabled
+      ? `<form method="post" class="inline"><input type="hidden" name="action" value="disable_browser_profile"><button class="ghost">Turn off &amp; delete snapshot</button></form>`
+      : "";
+    return `${statusLine}${perSource}${command}<hr>${browserStatus}${browserCommand}<div class="row actions">${buildForm}${browserDisable}${refreshForm}${skipForm("import")}</div>`;
   }
   if (step === "walkthrough") {
     const tour = `<p>Home is your launcher — here's the clickthrough:</p><ul><li><strong>Home grid</strong> — every app as a one-tap tile: calendar, vault, pay, shop, inbox, persona, and more.</li><li><strong>Chat</strong> — one conversation with your agent, same on iMessage and the web.</li><li><strong>Needs you</strong> — every action with side effects (emails, payments, publishes) waits for your approval.</li><li><strong>Settings</strong> — username, speed, memory, context, plugin sessions.</li></ul><p class="muted">Finish setup and the Home app arrives as your next message — tap it and try each tile.</p>`;
@@ -1443,6 +1477,23 @@ export const onboarding: MiniAppModule = {
         ctx,
         "import",
         "Your ingestion agent is on it — Dictionary.MD lands on your computer in a few minutes; tap Refresh status."
+      );
+    }
+
+    if (action === "disable_browser_profile") {
+      try {
+        await disableBrowserProfile(supabase, userId);
+      } catch {
+        return respond(
+          ctx,
+          "import",
+          "Couldn't reach your agent's computer — try again in a minute."
+        );
+      }
+      return respond(
+        ctx,
+        "import",
+        "Real profile browsing is off — the copied profile was deleted from your agent's computer."
       );
     }
 
