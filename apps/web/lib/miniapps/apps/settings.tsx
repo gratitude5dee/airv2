@@ -101,6 +101,10 @@ import {
 import { renderShell, shellHtml } from "../shell";
 import { promptBar, runPrompt } from "../promptBar";
 import { memoryAction, renderMemorySection } from "../sections/memory";
+import {
+  connectivityAction,
+  renderConnectivitySection,
+} from "../sections/connectivity";
 import { onairosAction, renderOnairosSection } from "../sections/onairos";
 import { renderTracesSection } from "../sections/traces";
 import type { MiniAppContext, MiniAppModule } from "./types";
@@ -259,6 +263,7 @@ interface MountedSections {
   memory: string;
   traces: string;
   onairos: string;
+  connectivity: string;
 }
 
 function renderSettings(
@@ -394,6 +399,7 @@ function renderSettings(
     )
   );
   const memorySection = sections.memory;
+  const connectivitySection = sections.connectivity;
   const pluginRows = data.pluginSessions
     .map(
       (t) =>
@@ -423,7 +429,7 @@ function renderSettings(
       "Export and deletion are operator-run today — ask and it happens (full export / cascade delete already exist server-side). Self-serve buttons land here."
     )
   );
-  const body = `<section class="panel">${usernameSection}${themeSection}${speedSection}${modelSection}${creativeSection}${providerSection}${emailSection}${contactSection}${identitySection}${timezoneSection}${memorySection}${onairosSection}${pluginSection}${storageSection}${traceSection}${dataSection}
+  const body = `<section class="panel">${usernameSection}${themeSection}${speedSection}${modelSection}${creativeSection}${providerSection}${emailSection}${contactSection}${identitySection}${timezoneSection}${memorySection}${connectivitySection}${onairosSection}${pluginSection}${storageSection}${traceSection}${dataSection}
 ${promptBar("Ask your agent — e.g. change my speed tier to fast…")}</section>`;
   return renderShell({
     title: "Settings",
@@ -492,16 +498,17 @@ async function respond(
   ctx: MiniAppContext,
   notice: string | null
 ): Promise<NextResponse> {
-  const [data, memory, traces, onairos] = await Promise.all([
+  const [data, memory, traces, onairos, connectivity] = await Promise.all([
     loadSettings(ctx.supabase, ctx.session.userId),
     renderMemorySection(ctx),
     renderTracesSection(ctx),
     renderOnairosSection(ctx),
+    renderConnectivitySection(ctx),
   ]);
   const response = shellHtml(
     renderSettings(
       data,
-      { memory, traces, onairos },
+      { memory, traces, onairos, connectivity },
       notice,
       ctx.session.via === "card"
     )
@@ -548,6 +555,8 @@ export const settings: MiniAppModule = {
 
     const memoryResponse = await memoryAction(ctx, form);
     if (memoryResponse) return memoryResponse;
+    const connectivityResponse = await connectivityAction(ctx, form);
+    if (connectivityResponse) return connectivityResponse;
     const onairosResponse = await onairosAction(ctx, form);
     if (onairosResponse) return onairosResponse;
 

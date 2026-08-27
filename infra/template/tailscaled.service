@@ -1,0 +1,20 @@
+# Installed DISABLED. Only the owner's Settings opt-in flow
+# (apps/web/lib/box/tailscale.ts) ever enables/starts it, joining the USER'S
+# own tailnet — never a platform tailnet (I1). Userspace networking: the box
+# has no TUN device; the node is reachable from the user's tailnet without
+# kernel privileges.
+[Unit]
+Description=Tailscale node daemon (opt-in, user-owned tailnet, userspace networking)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=user
+ExecStartPre=/bin/mkdir -p /home/user/.tailscale
+ExecStart=/usr/local/bin/tailscaled --state=/home/user/.tailscale/tailscaled.state --socket=/home/user/.tailscale/tailscaled.sock --tun=userspace-networking
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

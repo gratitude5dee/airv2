@@ -332,6 +332,41 @@ cfg["mcp_servers"] = mcp
 p.write_text(yaml.safe_dump(cfg, default_flow_style=False))
 PYEOF
 
+# ── 3c3. Local task router (advisory shadow classifier, loopback :1917) ─────
+# A small GGUF model classifies messages into {tier, tools, needs_approval}
+# proposals. ADVISORY ONLY: the control plane stays the sole authorizer —
+# nothing consumes this output authoritatively yet (shadow mode). Reuses the
+# OpenViking venv's portable llama-cpp-python build (GGML_NATIVE=OFF above),
+# so no new toolchain enters the box. Decisions log to ~/.taskrouter (box
+# filesystem, never shared Postgres). Pinned model (C24); the download is
+# best-effort — without the model the service serves deterministic
+# heuristics from the same closed enums.
+mkdir -p "$HOME_DIR/.taskrouter" && chmod 700 "$HOME_DIR/.taskrouter"
+cp "$TEMPLATE_DIR/taskrouter/taskrouter.py" "$HOME_DIR/.taskrouter/taskrouter.py"
+chmod 755 "$HOME_DIR/.taskrouter/taskrouter.py"
+curl -fsSL -o "$HOME_DIR/.taskrouter/model.gguf" \
+  "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf" \
+  || { echo "WARN: task-router model download failed — router runs heuristics only" >&2; rm -f "$HOME_DIR/.taskrouter/model.gguf"; }
+
+# ── 3c4. Opt-in connectivity: Tailscale + Cotal (installed, NEVER enabled) ──
+# Tailscale: binaries + a DISABLED unit. Only the owner's Settings opt-in
+# (apps/web/lib/box/tailscale.ts) ever starts it, joining the USER'S own
+# tailnet with the user's own auth key — never a platform tailnet (I1).
+# Pinned version (C24).
+TS_VERSION=1.82.0
+curl -fsSL -o /tmp/tailscale.tgz "https://pkgs.tailscale.com/stable/tailscale_${TS_VERSION}_amd64.tgz" \
+  && tar -xzf /tmp/tailscale.tgz -C /tmp \
+  && sudo install -m 755 "/tmp/tailscale_${TS_VERSION}_amd64/tailscale" "/tmp/tailscale_${TS_VERSION}_amd64/tailscaled" /usr/local/bin/ \
+  && rm -rf /tmp/tailscale.tgz "/tmp/tailscale_${TS_VERSION}_amd64" \
+  || echo "WARN: tailscale install failed — opt-in tailnet unavailable" >&2
+
+# Cotal: a loopback NATS agent-session bus (single-tenant by construction —
+# it never leaves the box). Preinstalled so the owner's Settings opt-in
+# (apps/web/lib/box/cotal.ts) can start it without a per-box npm install.
+# Pinned version (C24). Not started here.
+npm install -g cotal-ai@0.33.1 --no-audit --no-fund \
+  || echo "WARN: cotal preinstall failed — opt-in agent mesh unavailable" >&2
+
 # ── 3d. Calendar spine (V3): the box-resident event store + sync pipeline ──
 # Events live here, never in shared Postgres (C4). sources.json (written by
 # the control plane on connect) holds source credentials, mode 600.
@@ -663,8 +698,12 @@ sudo cp "$SCRIPT_DIR"/hermes-gateway.service /etc/systemd/system/
 sudo cp "$SCRIPT_DIR"/hermes-dashboard.service /etc/systemd/system/
 sudo cp "$SCRIPT_DIR"/hermes-host.service /etc/systemd/system/
 sudo cp "$SCRIPT_DIR"/openviking.service /etc/systemd/system/
+sudo cp "$SCRIPT_DIR"/taskrouter.service /etc/systemd/system/
+# tailscaled.service is installed but NEVER enabled here — the owner's
+# Settings opt-in is the only thing that starts it (I3 stays intact).
+sudo cp "$SCRIPT_DIR"/tailscaled.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable hermes-gateway.service hermes-dashboard.service hermes-host.service openviking.service
+sudo systemctl enable hermes-gateway.service hermes-dashboard.service hermes-host.service openviking.service taskrouter.service
 sudo systemctl start hermes-gateway.service hermes-dashboard.service hermes-host.service
 
 # Render ov.conf (template stage: no gateway token yet → VLM block omitted;
