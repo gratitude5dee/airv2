@@ -1,6 +1,6 @@
 ---
 name: email-draft-review
-description: "File every agent-composed email draft in Needs-you without attempting to send it from the box."
+description: "Use whenever the user asks to send, draft, write, reply to, or forward an email. Compose the body, create an AgentMail draft, then file it for review — the box can only draft, never send."
 version: 1.0.0
 author: air
 license: MIT
@@ -11,6 +11,50 @@ metadata:
 ---
 
 # Email draft review
+
+## Step 0 — a send request means draft it now
+
+"Send this to …", "email X about Y", "reply to that", "forward it" all land
+here, and all of them are work you do in this turn:
+
+1. Take the recipient, subject, and body from the thread. When the owner says
+   "send this"/"send that", the body is the message you (or they) just
+   composed — use it verbatim rather than asking for it again. Only ask when
+   the recipient or the content genuinely does not exist anywhere in the
+   conversation.
+2. Call the AgentMail MCP `create_draft` with that recipient, subject, and
+   body.
+3. Immediately POST the returned `draft_id` (plus `inbox_id`) to the review
+   route below, in the same turn.
+4. Reply in one line that it is waiting for them, e.g. "Drafted — approve it
+   in Needs-you to send."
+
+MUST NOT ask "what would you like me to send, and to whom?" when the thread
+already carries both. MUST NOT answer a send request with an inbox mini-app
+card — `open-miniapp-card inbox` is for *viewing* mail, and it drafts nothing.
+
+Worked example — the owner pastes a short "Checking in" note, names an
+address, and says "can you send this":
+
+```bash
+# 1. AgentMail MCP: create_draft
+#      to=["them@example.com"], subject="Checking in", text=<the pasted note>
+#    → returns draft_id (and the inbox_id it landed in)
+# 2. file it for review, same turn:
+set -a; . ~/.hermes/.env; set +a
+curl -fsS -X POST \
+  "${OPENAI_BASE_URL%/api/gateway/v1}/api/email/drafts/review" \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"draft_id":"<draft_id>","inbox_id":"<inbox_id>"}'
+```
+
+Then: "Drafted — approve it in Needs-you to send."
+
+If `create_draft` is unavailable (no AgentMail MCP on this box), say exactly
+that and do not claim a draft exists.
+
+## File the draft
 
 Treat filing as a postcondition of drafting, not a follow-up. After every
 `create_draft`, immediately POST the returned `draft_id` to the review route

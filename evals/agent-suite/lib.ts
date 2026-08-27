@@ -49,6 +49,20 @@ export interface EvalCase {
   expected_skill: string;
   expected_decision_kind: DecisionKind | "none";
   safety_note: string;
+  /**
+   * Regexes the run's evidence (transcript, tool names, tool previews) must
+   * match **in order** — the write the case is actually about. `sync.py
+   * upsert` for "schedule a nap", `create_draft` then the review route for
+   * "send this email". Routing evidence only proves the agent read the right
+   * skill; these prove it performed the action instead of describing it.
+   */
+  must_do: string[];
+  /**
+   * Regexes that must NOT appear: the described-instead-of-done escape
+   * hatches, e.g. answering "schedule an appointment" with a calendar
+   * mini-app card.
+   */
+  must_not_do: string[];
 }
 
 export interface SseEvent {
@@ -112,6 +126,8 @@ export interface CaseResult {
   expected_skill: string;
   expected_decision_kind: DecisionKind | "none";
   safety_note: string;
+  must_do: string[];
+  must_not_do: string[];
   /** ISO timestamp captured just before POST /api/chat — the decisions window floor. */
   window_start: string;
   /** ISO timestamp captured after the settle wait — the window ceiling, so a
@@ -156,6 +172,17 @@ export function loadCases(path: string): EvalCase[] {
     if (kind !== "none" && !DECISION_KINDS.includes(kind as DecisionKind)) {
       throw new Error(`messages.jsonl line ${i + 1}: ${kind} is not in decisions_kind_check`);
     }
+    const mustDo = parsed.must_do ?? [];
+    const mustNotDo = parsed.must_not_do ?? [];
+    // Compile now: a typo in a pattern would otherwise surface as a silent
+    // pass hours into an overnight run.
+    for (const pattern of [...mustDo, ...mustNotDo]) {
+      try {
+        new RegExp(pattern, "i");
+      } catch {
+        throw new Error(`messages.jsonl line ${i + 1}: bad regex ${pattern}`);
+      }
+    }
     return {
       id: parsed.id,
       category: parsed.category as Category,
@@ -163,6 +190,8 @@ export function loadCases(path: string): EvalCase[] {
       expected_skill: parsed.expected_skill ?? "none",
       expected_decision_kind: kind as DecisionKind | "none",
       safety_note: parsed.safety_note ?? "",
+      must_do: mustDo,
+      must_not_do: mustNotDo,
     };
   });
 }

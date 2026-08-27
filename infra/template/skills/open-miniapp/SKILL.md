@@ -1,6 +1,6 @@
 ---
 name: open-miniapp
-description: "Open a wzrd.tech mini-app for your human: run `open-miniapp-card <kind>` with the terminal tool (never execute_code, never a browser) to send them a tappable card in the current conversation."
+description: "Open/view/show a wzrd.tech mini-app for your human: run `open-miniapp-card <kind>` with the terminal tool (never execute_code, never a browser) to send them a tappable card in the current conversation. Not for action requests — scheduling an event or drafting an email is work you do, not a card you send."
 version: 1.0.0
 author: air
 license: MIT
@@ -17,6 +17,22 @@ form "open/show/launch/pull up the <X> mini-app" (or "open my calendar",
 "show me the vault", "take me to onboarding") MUST be handled by the single
 `POST /api/cards/<kind>` call below — nothing else. The mini-apps run on the
 owner's phone: you send them a card and they tap it.
+
+## Not for action requests
+
+Cards are for OPEN / VIEW / SHOW / "take me to" requests only. When the owner
+asks you to *do* something, the skill that does it owns the turn and you MUST
+NOT send a card instead:
+
+| The owner asks | Handled by | Never |
+| --- | --- | --- |
+| "schedule an appointment", "add/move/cancel an event", "book X" | `calendar-native` (`sync.py upsert`) | `open-miniapp-card calendar` |
+| "send/draft/reply to/forward an email" | `email-draft-review` (`create_draft` + the review route) | `open-miniapp-card inbox` |
+| "pay/send money", "buy this", "post this" | the matching action skill, which stages a decision | a card |
+
+"Open my calendar" → card. "Put a nap on my calendar at 5pm tomorrow" →
+`calendar-native`, write the event, confirm it. A card in answer to an action
+request hands the work back to the owner and the action never happens.
 
 Hard rules — no exceptions:
 
@@ -68,10 +84,10 @@ Valid kinds and when to use them:
 | Kind | Owner asks for |
 | --- | --- |
 | `onboarding` | onboarding, setup, getting started |
-| `calendar` | calendar, schedule, events |
+| `calendar` | *viewing* the calendar, schedule, events (never to create one) |
 | `todo` | todo list, tasks |
 | `kanban` | kanban, board, projects |
-| `inbox` | email inbox |
+| `inbox` | *viewing* the email inbox (never to send or draft mail) |
 | `vault` | vault, passwords, keys |
 | `connect` | connecting accounts/integrations |
 | `pay` | payments, sending money |
