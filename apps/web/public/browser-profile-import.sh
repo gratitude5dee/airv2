@@ -158,6 +158,7 @@ try:
                     "part": part,
                     "parts": parts,
                     "content_b64": base64.b64encode(data).decode(),
+                    "start": i == 0 and part == 0,
                     "final": last_file and part == parts - 1,
                 })
         print(f"Uploaded {rel}")

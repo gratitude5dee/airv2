@@ -125,6 +125,9 @@ export interface BrowserProfileChunk {
   parts: number;
   /** Base64 of this part's bytes. */
   content_b64: string;
+  /** The packager marks its first upload — stale staging from an
+   * interrupted run is wiped so it can't be concatenated into this one. */
+  start: boolean;
   /** The packager marks its last upload — that's the finalize trigger. */
   final: boolean;
 }
@@ -191,6 +194,7 @@ export function parseBrowserProfileChunk(raw: unknown): BrowserProfileChunk {
     part,
     parts,
     content_b64: content,
+    start: doc["start"] === true,
     final: doc["final"] === true,
   };
 }
@@ -253,6 +257,15 @@ export async function storeBrowserProfileChunk(
   chunk: BrowserProfileChunk
 ): Promise<BrowserProfileStatus> {
   const box = await ensureBoxAwake(supabase, userId);
+  if (chunk.start) {
+    const clear = await command(
+      box.boxId,
+      `rm -rf "$HOME/${STAGING_DIR}/${chunk.browser}"`
+    );
+    if (clear.exitCode !== 0) {
+      throw new Error(`staging reset failed: ${clear.stderr}`);
+    }
+  }
   await writeFile(box.boxId, stagedPath(chunk), chunk.content_b64);
   console.log(
     JSON.stringify({

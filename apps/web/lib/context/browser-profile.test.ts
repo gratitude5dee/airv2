@@ -162,6 +162,20 @@ describe("staging and finalize", () => {
     expect(commandMock).not.toHaveBeenCalled();
   });
 
+  it("wipes stale staging from an interrupted run on a start chunk", async () => {
+    await storeBrowserProfileChunk(
+      supabase,
+      "user-1",
+      parseBrowserProfileChunk(chunk({ start: true }))
+    );
+    const commands = commandMock.mock.calls.map((call) => call[1]);
+    expect(
+      commands.some((cmd) =>
+        cmd.includes('rm -rf "$HOME/.hermes/browser-profile/.staging/chrome"')
+      )
+    ).toBe(true);
+  });
+
   it("assembles, enables the config toggle, and records status on final", async () => {
     const status = await storeBrowserProfileChunk(
       supabase,
