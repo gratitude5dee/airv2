@@ -151,10 +151,22 @@ function uriTail(uri: string): string {
   return tail.slice(-2).join(" / ") || uri;
 }
 
-function renderCortexSection(cortex: CortexOverview): string {
-  const graphLink = cortex.graphUrl
-    ? `<a href="${esc(cortex.graphUrl)}" rel="noreferrer">Open graph</a>`
-    : "";
+function renderCortexSection(
+  cortex: CortexOverview,
+  boxOk: boolean
+): string {
+  // The graph URL comes from an external service: only link https.
+  const graphLink =
+    cortex.graphUrl && /^https:\/\//.test(cortex.graphUrl)
+      ? `<a href="${esc(cortex.graphUrl)}" rel="noreferrer">Open graph</a>`
+      : "";
+  if (!boxOk) {
+    return `
+<section class="mem">
+  <div class="mem-head"><h2>Cortex memory</h2></div>
+  <p class="muted">Your agent's computer is asleep — open this again in a minute.</p>
+</section>`;
+  }
   if (!cortex.configured) {
     return `
 <section class="mem">
@@ -246,8 +258,10 @@ export const persona: MiniAppModule = {
     let cortex: CortexOverview = CORTEX_UNAVAILABLE;
     let ovStatus: DeepMemoryStatus | null = null;
     let ovHistory: DeepMemoryHistory | null = null;
+    let boxOk = false;
     try {
       const box = await ensureBoxAwake(supabase, session.userId);
+      boxOk = true;
       [cortex, ovStatus, ovHistory] = await Promise.all([
         cortexOverview(box.boxId),
         deepMemoryStatus(box.boxId).catch(() => null),
@@ -271,7 +285,7 @@ export const persona: MiniAppModule = {
 <script src="/creator-os/persona.js" defer></script>
 <div class="persona-legend">${chips}</div>
 <p class="muted" style="text-align:center;margin-top:0.7rem">${pct}% of your context is lit. Connect more accounts and finish onboarding to grow it.</p>
-${renderCortexSection(cortex)}
+${renderCortexSection(cortex, boxOk)}
 ${renderOpenVikingSection(ovStatus, ovHistory)}`;
     return shellHtml(
       renderShell({
