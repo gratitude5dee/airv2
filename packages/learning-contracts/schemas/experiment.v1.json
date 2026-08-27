@@ -1,0 +1,72 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "air.experiment.v1",
+  "title": "ExperimentSpec",
+  "description": "Input to EvaluationKernel.run(). All *Ref fields are OpaqueLocalRefs resolved only by air-learningd inside the Box (goal.md \u00a76.1).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "experimentId",
+    "tasksetRef",
+    "baselineRef",
+    "candidateRef",
+    "graderSetRef",
+    "fixtureSetRef",
+    "requiredCapabilities",
+    "seeds",
+    "privacyPolicyRef",
+    "budget"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "air.experiment.v1" },
+    "experimentId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "tasksetRef": { "$ref": "#/definitions/opaqueLocalRef" },
+    "baselineRef": { "$ref": "#/definitions/opaqueLocalRef" },
+    "candidateRef": { "$ref": "#/definitions/opaqueLocalRef" },
+    "graderSetRef": { "$ref": "#/definitions/opaqueLocalRef" },
+    "fixtureSetRef": { "$ref": "#/definitions/opaqueLocalRef" },
+    "requiredCapabilities": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "type": "string",
+        "enum": [
+          "filesystem",
+          "browser",
+          "display",
+          "network_mock",
+          "calendar_fixture",
+          "email_fixture",
+          "shell",
+          "subagent"
+        ]
+      }
+    },
+    "seeds": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": { "type": "integer", "minimum": 0 }
+    },
+    "privacyPolicyRef": { "$ref": "#/definitions/opaqueLocalRef" },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxTrials", "maxTokens", "maxCostUsd", "maxWallTimeSec"],
+      "properties": {
+        "maxTrials": { "type": "integer", "minimum": 1, "maximum": 10000 },
+        "maxTokens": { "type": "integer", "minimum": 1 },
+        "maxCostUsd": { "type": "number", "exclusiveMinimum": 0 },
+        "maxWallTimeSec": { "type": "integer", "minimum": 1 }
+      }
+    }
+  },
+  "definitions": {
+    "opaqueLocalRef": {
+      "type": "string",
+      "description": "Opaque Box-local reference. Never a URL, path, or content hash.",
+      "pattern": "^olr:[A-Za-z0-9._-]{1,120}$"
+    }
+  }
+}

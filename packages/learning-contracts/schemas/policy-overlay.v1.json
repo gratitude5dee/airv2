@@ -1,0 +1,107 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "air.policy-overlay.v1",
+  "title": "PolicyOverlay candidate manifest",
+  "description": "Allowlisted personalization delta (goal.md \u00a70.1, \u00a712). Candidates are data, never executable patches. Security, approval, entitlement, payment, and data-sharing fields DO NOT EXIST in this schema by design (L5) \u2014 additionalProperties is false everywhere.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "candidate_id",
+    "parent_profile_id",
+    "baseline_release",
+    "hermes_compatibility",
+    "changes",
+    "source_evidence",
+    "optimizer_version"
+  ],
+  "properties": {
+    "schema_version": { "const": "air.policy-overlay.v1" },
+    "candidate_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "parent_profile_id": { "type": ["string", "null"], "maxLength": 128 },
+    "baseline_release": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "hermes_compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tested_refs", "overlay_schema"],
+      "properties": {
+        "tested_refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "maxLength": 64 }
+        },
+        "overlay_schema": { "const": "air.policy-overlay.v1" }
+      }
+    },
+    "changes": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "prompt_addenda": {
+          "type": "array",
+          "maxItems": 8,
+          "items": { "type": "string", "maxLength": 2000 }
+        },
+        "skill_order": {
+          "type": "array",
+          "maxItems": 64,
+          "items": { "type": "string", "pattern": "^[a-z0-9-]{1,64}$" }
+        },
+        "tool_routing_hints": {
+          "type": "object",
+          "additionalProperties": { "type": "string", "maxLength": 200 },
+          "maxProperties": 32
+        },
+        "recovery_order": {
+          "type": "array",
+          "maxItems": 16,
+          "items": { "type": "string", "pattern": "^[a-z0-9_-]{1,64}$" }
+        },
+        "memory_retrieval": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "top_k": { "type": "integer", "minimum": 1, "maximum": 50 },
+            "recency_weight": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        },
+        "clarification_thresholds": {
+          "type": "object",
+          "additionalProperties": { "type": "number", "minimum": 0, "maximum": 1 },
+          "maxProperties": 32
+        },
+        "retry_policy": {
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 0, "maximum": 5 },
+          "maxProperties": 32
+        },
+        "timeout_budget_sec": {
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 1, "maximum": 3600 },
+          "maxProperties": 32
+        },
+        "step_budget": { "type": "integer", "minimum": 1, "maximum": 200 },
+        "model_hints": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "speed_tier": { "enum": ["fast", "balanced", "deep"] },
+            "reasoning_effort": { "enum": ["low", "medium", "high"] }
+          }
+        },
+        "style_preferences": {
+          "type": "object",
+          "additionalProperties": { "type": "string", "maxLength": 500 },
+          "maxProperties": 16
+        }
+      }
+    },
+    "source_evidence": {
+      "type": "array",
+      "maxItems": 64,
+      "items": { "type": "string", "pattern": "^olr:[A-Za-z0-9._-]{1,120}$" }
+    },
+    "optimizer_version": { "type": "string", "maxLength": 64 }
+  }
+}

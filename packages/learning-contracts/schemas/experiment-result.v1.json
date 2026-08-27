@@ -1,0 +1,105 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "air.experiment-result.v1",
+  "title": "ExperimentResult",
+  "description": "Output of EvaluationKernel.run(). Score vectors and gate verdicts are aggregates; per-task private scores stay in the ledger behind localArtifactRef.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "experimentId",
+    "status",
+    "backend",
+    "scoreVectors",
+    "hardGates",
+    "confidence",
+    "provenance",
+    "promotionEligible",
+    "localArtifactRef"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "air.experiment-result.v1" },
+    "experimentId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "status": { "enum": ["passed", "failed", "inconclusive", "cancelled"] },
+    "backend": { "enum": ["native", "hud", "harbor"] },
+    "scoreVectors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["profile", "dimension", "mean", "sampleCount"],
+        "properties": {
+          "profile": { "enum": ["baseline", "candidate"] },
+          "dimension": {
+            "enum": [
+              "task_success",
+              "instruction_following",
+              "tool_correctness",
+              "context_use",
+              "honesty",
+              "personal_fit",
+              "recovery_quality",
+              "latency",
+              "cost",
+              "token_efficiency",
+              "unnecessary_action_penalty"
+            ]
+          },
+          "mean": { "type": "number" },
+          "sampleCount": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "hardGates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["gate", "passed"],
+        "properties": {
+          "gate": {
+            "enum": [
+              "approval_integrity",
+              "authorization_integrity",
+              "privacy_integrity",
+              "secret_integrity",
+              "side_effect_safety",
+              "verifier_integrity",
+              "no_deception",
+              "required_evidence_complete"
+            ]
+          },
+          "passed": { "type": "boolean" }
+        }
+      }
+    },
+    "confidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "taskSuccessDeltaLower95", "pairedTrials"],
+      "properties": {
+        "method": { "enum": ["paired_bootstrap"] },
+        "taskSuccessDeltaLower95": { "type": ["number", "null"] },
+        "pairedTrials": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["airRelease", "hermesRef", "osClass", "servedModel", "adapterVersion"],
+      "properties": {
+        "airRelease": { "type": "string" },
+        "hermesRef": { "type": "string" },
+        "osClass": { "enum": ["ubuntu", "omarchy", "macos"] },
+        "servedModel": { "type": "string" },
+        "adapterVersion": { "type": "string" },
+        "routerVersion": { "type": "string" }
+      }
+    },
+    "promotionEligible": { "type": "boolean" },
+    "localArtifactRef": {
+      "type": "string",
+      "pattern": "^olr:[A-Za-z0-9._-]{1,120}$"
+    }
+  }
+}

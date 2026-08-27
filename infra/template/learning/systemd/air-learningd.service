@@ -1,0 +1,24 @@
+[Unit]
+Description=Air learning plane daemon (Box-local, Unix socket only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=user
+# Code is template-owned under /opt/air/learning; private state lives in
+# ~/.hermes/learning (goal.md §7). No public route, no tunnel, no provider
+# key, no Supabase credential.
+Environment=PYTHONPATH=/opt/air/learning
+ExecStart=/usr/bin/python3 -m air_learning.daemon
+WorkingDirectory=/home/user
+Restart=always
+RestartSec=5
+# Least privilege: the daemon only needs its socket and the owner's learning dir.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/home/user/.hermes/learning
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "air.learning-receipt.v1",
+  "title": "LearningReceipt",
+  "description": "The ONLY learning shape that may leave the Box (goal.md \u00a715.2 central allowlist). Content-free by construction: opaque IDs, enums, versions, and aggregate numbers only. additionalProperties false is the content boundary.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "event_type", "idempotency_key", "occurred_at"],
+  "properties": {
+    "schema_version": { "const": "air.learning-receipt.v1" },
+    "event_type": {
+      "enum": [
+        "episode_collected",
+        "episode_reconciled",
+        "task_qualified",
+        "task_quarantined",
+        "candidate_generated",
+        "experiment_started",
+        "experiment_completed",
+        "experiment_cancelled",
+        "experiment_failed",
+        "candidate_proposed",
+        "candidate_approved",
+        "candidate_rejected",
+        "profile_activated",
+        "profile_rolled_back",
+        "compatibility_checked",
+        "export_completed",
+        "deletion_completed",
+        "settings_changed",
+        "daemon_started",
+        "daemon_error"
+      ]
+    },
+    "idempotency_key": { "type": "string", "minLength": 8, "maxLength": 128 },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "trace_id": { "type": ["string", "null"], "maxLength": 128 },
+    "experiment_id": { "type": ["string", "null"], "maxLength": 128 },
+    "candidate_id": { "type": ["string", "null"], "maxLength": 128 },
+    "profile_id": { "type": ["string", "null"], "maxLength": 128 },
+    "status": { "type": ["string", "null"], "maxLength": 32 },
+    "backend": { "enum": ["native", "hud", "harbor", null] },
+    "air_release": { "type": ["string", "null"], "maxLength": 128 },
+    "hermes_ref": { "type": ["string", "null"], "maxLength": 64 },
+    "os_class": { "enum": ["ubuntu", "omarchy", "macos", null] },
+    "served_model": { "type": ["string", "null"], "maxLength": 128 },
+    "requested_tier": { "enum": ["fast", "balanced", "deep", null] },
+    "aggregate": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "tokens": { "type": "integer", "minimum": 0 },
+        "cost_usd": { "type": "number", "minimum": 0 },
+        "latency_ms_p95": { "type": "integer", "minimum": 0 },
+        "sample_count": { "type": "integer", "minimum": 0 },
+        "task_success_delta": { "type": "number" },
+        "task_success_delta_lower95": { "type": "number" },
+        "hard_gate_failures": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "error_class": { "type": ["string", "null"], "maxLength": 64 },
+    "rollback_reason": {
+      "enum": [
+        "hard_gate",
+        "integrity_error",
+        "task_family_regression",
+        "owner_rejection",
+        "incompatible_update",
+        "kill_switch",
+        null
+      ]
+    }
+  }
+}
