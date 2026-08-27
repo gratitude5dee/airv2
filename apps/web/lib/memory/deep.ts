@@ -112,6 +112,48 @@ export async function deepMemoryReindex(boxId: string): Promise<boolean> {
   }
 }
 
+export interface DeepMemoryEntry {
+  uri: string;
+  preview: string;
+}
+
+export interface DeepMemoryHistory {
+  resources: string[];
+  memories: DeepMemoryEntry[];
+}
+
+/** Recent OpenViking-derived memories + indexed resource URIs for the
+ * owner's Persona view. Same posture as export: the returned text is
+ * CONTENT — box → response only, never persisted. Best-effort: an
+ * unreachable or empty store renders as an empty history. */
+export async function deepMemoryHistory(
+  boxId: string,
+  limit = 12
+): Promise<DeepMemoryHistory> {
+  const result = await command(boxId, "ovctl export", 120).catch(() => null);
+  const doc = result && result.exitCode === 0 ? parseJson(result.stdout) : null;
+  if (!doc) return { resources: [], memories: [] };
+  const resources = Array.isArray(doc["resources"])
+    ? doc["resources"].filter((uri): uri is string => typeof uri === "string")
+    : [];
+  const memories: DeepMemoryEntry[] = [];
+  if (Array.isArray(doc["memories"])) {
+    for (const entry of doc["memories"]) {
+      const record = asRecord(entry);
+      if (!record || typeof record["uri"] !== "string") continue;
+      const content =
+        typeof record["content"] === "string" ? record["content"] : "";
+      if (!content) continue;
+      memories.push({
+        uri: record["uri"],
+        preview: content.slice(0, 240),
+      });
+      if (memories.length >= limit) break;
+    }
+  }
+  return { resources, memories };
+}
+
 /** Export inventory + derived memory contents for /api/admin/export. The
  * returned object is CONTENT — box → response only, never persisted. */
 export async function deepMemoryExport(
