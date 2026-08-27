@@ -17,6 +17,7 @@ Usage:
   learningctl profile.rollback '{"reason":"owner_rejection"}'
 """
 
+import base64
 import json
 import sys
 
@@ -30,7 +31,11 @@ def main() -> int:
         print(__doc__, file=sys.stderr)
         return 2
     method = sys.argv[1]
-    params = json.loads(sys.argv[2]) if len(sys.argv) > 2 else {}
+    raw = sys.argv[2] if len(sys.argv) > 2 else "{}"
+    # "b64:" carries JSON as base64 so callers never shell-quote content.
+    if raw.startswith("b64:"):
+        raw = base64.b64decode(raw[4:]).decode()
+    params = json.loads(raw)
     try:
         response = call(method, params)
     except (ConnectionRefusedError, FileNotFoundError):

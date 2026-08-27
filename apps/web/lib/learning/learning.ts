@@ -134,7 +134,11 @@ export async function callDaemon(
     return { ok: false, error: "unknown daemon method", error_class: "daemon_protocol" };
   }
   const resolved = target ?? (await loadTarget(supabase, userId));
-  const args = params ? ` '${JSON.stringify(params).replace(/'/g, "'\\''")}'` : "";
+  // Params travel base64-encoded (shell-safe alphabet), so no owner-supplied
+  // byte ever needs shell quoting; learningctl decodes the b64: prefix.
+  const args = params
+    ? ` b64:${Buffer.from(JSON.stringify(params), "utf8").toString("base64")}`
+    : "";
   const result = await runCommand(resolved, `learningctl ${method}${args}`, 60);
   const text = (result.stdout ?? "").trim();
   try {
