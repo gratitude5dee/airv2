@@ -6,7 +6,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mapAgentRun } from "./receipts";
 import { mirrorReceipts, weaveEnabled } from "./weave";
 
-const fetchSpy = vi.fn(async () => new Response("{}"));
+const fetchSpy = vi.fn(async () =>
+  Response.json({
+    data: {
+      viewer: { entity: "test-entity" },
+      upsertModel: { model: { name: "air-traces" } },
+      upsertBucket: { bucket: { name: "export-x" } },
+    },
+  })
+);
 vi.stubGlobal("fetch", fetchSpy);
 
 afterEach(() => {
@@ -32,12 +40,15 @@ describe("weave mirror", () => {
         started_at: "2026-08-01T00:00:00Z",
       }),
     ]);
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchSpy.mock.calls[0] as unknown as [
+    // viewer → upsertModel → upsertBucket → file_stream
+    expect(fetchSpy).toHaveBeenCalledTimes(4);
+    const [url, init] = fetchSpy.mock.calls[3] as unknown as [
       string,
       RequestInit,
     ];
     expect(url).toContain("wandb.ai");
+    expect(url).toContain("/files/test-entity/");
+    expect(url).toContain("/file_stream");
     const body = String(init.body);
     expect(body).toContain("agent_run");
     // stable receipt keys only — never transcript lines
