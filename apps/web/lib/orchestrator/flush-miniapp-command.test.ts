@@ -30,6 +30,8 @@ vi.mock("../miniapps/cards", () => ({
   mintSignedLink: vi.fn(
     (_userId: string, slug: string) => `https://mini.wzrd.tech/${slug}?t=signed`
   ),
+  cardLayout: vi.fn((slug: string) => ({ caption: slug })),
+  persistCardSession: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("./boxes", () => ({
   armStopAfter: vi.fn().mockResolvedValue(undefined),
@@ -145,9 +147,11 @@ beforeEach(() => {
 });
 
 describe("runFlush mini-app commands", () => {
-  it("sends an aliased mini-app URL without waking the box or running Hermes", async () => {
+  it("sends an aliased mini-app card without waking the box or running Hermes", async () => {
+    const sendApp = vi.fn().mockResolvedValue(undefined);
     const sendRichLink = vi.fn().mockResolvedValue(undefined);
     vi.mocked(createSpectrumSender).mockResolvedValue({
+      sendApp,
       sendRichLink,
       sendText: vi.fn().mockResolvedValue(undefined),
       close: vi.fn().mockResolvedValue(undefined),
@@ -170,20 +174,58 @@ describe("runFlush mini-app commands", () => {
       "2026-08-24T00:00:00.000Z"
     );
 
-    expect(sendRichLink).toHaveBeenCalledWith(
+    expect(sendApp).toHaveBeenCalledWith(
       "space-1",
       "+15551234567",
-      "https://mini.wzrd.tech/image?t=signed"
+      expect.any(Function),
+      { caption: "image" }
     );
+    const urlThunk = sendApp.mock.calls[0]?.[2] as () => string;
+    expect(urlThunk()).toBe("https://mini.wzrd.tech/image?t=signed");
+    expect(sendRichLink).not.toHaveBeenCalled();
     expect(ensureBoxAwake).not.toHaveBeenCalled();
     expect(createRun).not.toHaveBeenCalled();
     expect(supabase.deleted).toContain("flush_jobs");
   });
 
+  it("falls back to a rich link when the app card send fails", async () => {
+    const sendApp = vi.fn().mockRejectedValue(new Error("unsupported"));
+    const sendRichLink = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(createSpectrumSender).mockResolvedValue({
+      sendApp,
+      sendRichLink,
+      sendText: vi.fn().mockResolvedValue(undefined),
+      close: vi.fn().mockResolvedValue(undefined),
+    } as never);
+
+    const supabase = fakeSupabase();
+    const job = {
+      spaceId: "space-1",
+      userId: "user-1",
+      phone: "+15551234567",
+      attempts: 0,
+      senderTier: 0,
+    };
+    await runFlush(
+      supabase,
+      job,
+      "2026-08-24T00:00:00.000Z"
+    );
+
+    expect(sendRichLink).toHaveBeenCalledWith(
+      "space-1",
+      "+15551234567",
+      "https://mini.wzrd.tech/image?t=signed"
+    );
+    expect(supabase.deleted).toContain("flush_jobs");
+  });
+
   it("does not mint an owner link for a non-owner sender", async () => {
+    const sendApp = vi.fn().mockResolvedValue(undefined);
     const sendRichLink = vi.fn().mockResolvedValue(undefined);
     const sendText = vi.fn().mockResolvedValue(undefined);
     vi.mocked(createSpectrumSender).mockResolvedValue({
+      sendApp,
       sendRichLink,
       sendText,
       close: vi.fn().mockResolvedValue(undefined),
@@ -203,6 +245,7 @@ describe("runFlush mini-app commands", () => {
       "2026-08-24T00:00:00.000Z"
     );
 
+    expect(sendApp).not.toHaveBeenCalled();
     expect(sendRichLink).not.toHaveBeenCalled();
     expect(mintSignedLink).not.toHaveBeenCalled();
     expect(sendText).toHaveBeenCalledWith(
@@ -218,6 +261,7 @@ describe("runFlush mini-app commands", () => {
   it("requeues and reschedules a slash command when the registry lookup fails", async () => {
     const sendText = vi.fn().mockResolvedValue(undefined);
     vi.mocked(createSpectrumSender).mockResolvedValue({
+      sendApp: vi.fn().mockResolvedValue(undefined),
       sendRichLink: vi.fn().mockResolvedValue(undefined),
       sendText,
       close: vi.fn().mockResolvedValue(undefined),
