@@ -21,7 +21,16 @@ ENV_FILE="$HOME_DIR/.hermes/.env"
 TEMPLATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 [ -d "$HOME_DIR/.hermes" ] || { echo "FATAL: ~/.hermes missing — not a provisioned box" >&2; exit 1; }
-[ -x "$HERMES_VENV/bin/python" ] || { echo "FATAL: hermes venv missing — run setup.sh first" >&2; exit 1; }
+# Boxes forked before the venv moved out of the checkout (archive/restore
+# drops gitignored paths) have no ~/.hermes-venv — bootstrap it in place from
+# the existing checkout instead of failing the sync.
+if [ ! -x "$HERMES_VENV/bin/python" ]; then
+  [ -d "$HOME_DIR/hermes-agent" ] || { echo "FATAL: ~/hermes-agent missing — not a provisioned box" >&2; exit 1; }
+  echo "hermes venv missing — bootstrapping $HERMES_VENV"
+  export PATH="$HOME_DIR/.local/bin:$PATH"
+  uv venv "$HERMES_VENV" --python 3.11
+  (cd "$HOME_DIR/hermes-agent" && UV_PROJECT_ENVIRONMENT="$HERMES_VENV" uv pip install -e ".[all]" --python "$HERMES_VENV/bin/python")
+fi
 
 # ── 1. Template skills (replace template-owned dirs; user-installed skills
 # under other names are untouched) ───────────────────────────────────────────
