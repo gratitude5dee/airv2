@@ -212,7 +212,9 @@ async function syncOneBox(
 ): Promise<{ outcome: BoxOutcome; error?: string }> {
   const box = await getBox(boxId).catch(() => null);
   if (!box) return { outcome: "failed", error: "box lookup failed" };
-  const wasStopped = box.state === "stopped";
+  // Long-stopped boxes age into "archived" at the provider; resume() wakes
+  // both, so treat archived like stopped rather than deferring forever.
+  const wasStopped = box.state === "stopped" || box.state === "archived";
   if (box.state === "ready" || box.state === "idle") {
     // Active conversation window (stop_after in the future) — defer to the
     // idle window so services are not restarted under a live turn.
