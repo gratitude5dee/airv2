@@ -33,6 +33,7 @@ import {
   armStopAfter,
   ensureBoxAwake,
 } from "./boxes";
+import { deliverSendFiles, stripSendFileMarkers } from "./outbound";
 import {
   BRIDGE_MESSAGE_ID_PREFIX,
   bridgeCarryMarker,
@@ -624,7 +625,10 @@ export async function runFlush(
     let cancelled = false;
     let lastCancelCheck = Date.now();
     const events = await runEvents(runTarget, run.run_id);
-    const deltas = hermesDeltas(events);
+    // Outbound media lane: `[send-file: …]` markers are stripped from the
+    // streamed text and delivered as native attachments after the stream.
+    const stripped = stripSendFileMarkers(hermesDeltas(events));
+    const deltas = stripped.deltas;
 
     // Stream straight into iMessage: first chunk is a real message, edited
     // in place as more arrives. Delegated replies carry the bot attribution
@@ -685,6 +689,16 @@ export async function runFlush(
         }
       }
       await sender.streamText(job.spaceId, job.phone, remainder());
+    }
+
+    if (!cancelled && stripped.files.length > 0) {
+      await deliverSendFiles(
+        sender,
+        box.boxId,
+        job.spaceId,
+        job.phone,
+        stripped.files
+      ).catch(() => 0);
     }
 
     if (cancelled) {

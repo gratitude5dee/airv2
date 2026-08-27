@@ -6,6 +6,11 @@
  */
 import { z } from "zod";
 import { fetchWithHeaderTimeout, requestSignal } from "../http/timeout";
+import {
+  parseRawMessages,
+  sanitizeConversation,
+  type ConversationMessage,
+} from "./history";
 
 export interface HermesBoxTarget {
   /** e.g. https://<sub>-8642.on.ascii.dev — SECRET-adjacent, server-side only */
@@ -33,6 +38,9 @@ export interface RunRequest {
   input: string;
   sessionId?: string;
   metadata?: Record<string, string>;
+  /** Explicit history replay; when omitted and sessionId is set, createRun
+   * loads the persisted session transcript itself. */
+  conversationHistory?: ConversationMessage[];
 }
 
 const RunResponseSchema = z.object({ run_id: z.string() });
@@ -88,10 +96,43 @@ async function hermesFetch<T>(
   return parsed.data;
 }
 
+/**
+ * Load the persisted transcript for a session as replayable history.
+ * Best-effort: a missing session (first turn), an unreachable box, or an
+ * unexpected payload all degrade to an empty history rather than failing
+ * the turn.
+ */
+export async function loadConversationHistory(
+  target: HermesBoxTarget,
+  sessionId: string
+): Promise<ConversationMessage[]> {
+  try {
+    const response = await fetch(
+      url(target, `/api/sessions/${encodeURIComponent(sessionId)}/messages`),
+      {
+        signal: requestSignal(HERMES_REQUEST_TIMEOUT_MS),
+        headers: headers(target),
+      }
+    );
+    if (!response.ok) return [];
+    return sanitizeConversation(parseRawMessages(await response.json()));
+  } catch {
+    return [];
+  }
+}
+
 export async function createRun(
   target: HermesBoxTarget,
   request: RunRequest
 ): Promise<RunResponse> {
+  // The runs endpoint persists into `session_id` but does NOT load its
+  // transcript into the model context — continuity requires replaying the
+  // stored history as `conversation_history` (see lib/hermes/history.ts).
+  const history =
+    request.conversationHistory ??
+    (request.sessionId
+      ? await loadConversationHistory(target, request.sessionId)
+      : []);
   // api_server expects snake_case `session_id`; a camelCase key is silently
   // ignored and every run lands in its own throwaway session.
   return hermesFetch(target, "/v1/runs", RunResponseSchema, {
@@ -99,6 +140,7 @@ export async function createRun(
     body: JSON.stringify({
       input: request.input,
       ...(request.sessionId ? { session_id: request.sessionId } : {}),
+      ...(history.length > 0 ? { conversation_history: history } : {}),
       ...(request.metadata ? { metadata: request.metadata } : {}),
     }),
   });
