@@ -107,14 +107,32 @@ interface DaemonResponse {
   error_class?: string;
 }
 
+/** Daemon methods the control plane may invoke (never interpolate free text). */
+const DAEMON_METHODS = [
+  "status",
+  "settings.set",
+  "turn.completed",
+  "feedback.record",
+  "receipts.drain",
+  "receipts.ack",
+  "candidates.list",
+  "candidate.approve",
+  "candidate.reject",
+  "profile.rollback",
+] as const;
+export type DaemonMethod = (typeof DAEMON_METHODS)[number];
+
 /** Invoke learningctl on the owner's Box through the compute abstraction. */
 export async function callDaemon(
   supabase: SupabaseClient,
   userId: string,
-  method: string,
+  method: DaemonMethod,
   params?: Record<string, unknown>,
   target?: ComputeTarget,
 ): Promise<DaemonResponse> {
+  if (!(DAEMON_METHODS as readonly string[]).includes(method)) {
+    return { ok: false, error: "unknown daemon method", error_class: "daemon_protocol" };
+  }
   const resolved = target ?? (await loadTarget(supabase, userId));
   const args = params ? ` '${JSON.stringify(params).replace(/'/g, "'\\''")}'` : "";
   const result = await runCommand(resolved, `learningctl ${method}${args}`, 60);
