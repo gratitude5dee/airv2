@@ -70,6 +70,15 @@ const snapshot: OnboardingSnapshot = {
   },
   importCommand:
     "curl -fsSL https://app.wzrd.tech/agent-context-import.sh -o /tmp/air-import.sh && AIR_IMPORT_ENDPOINT=https://app.wzrd.tech/api/me/agent-context bash /tmp/air-import.sh tkt_example_ticket_value",
+  browserProfile: {
+    enabled: false,
+    browser: null,
+    files: 0,
+    bytes: 0,
+    imported_at: null,
+  },
+  browserProfileCommand:
+    "curl -fsSL https://app.wzrd.tech/browser-profile-import.sh -o /tmp/air-browser-import.sh && AIR_BROWSER_ENDPOINT=https://app.wzrd.tech/api/me/browser-profile bash /tmp/air-browser-import.sh tkt_example_ticket_value",
   ingestCommand:
     "curl -fsSL https://app.wzrd.tech/imessage-ingest.sh -o /tmp/air-ingest.sh && AIR_INGEST_ENDPOINT=https://app.wzrd.tech/api/me/imessage-history bash /tmp/air-ingest.sh tkt_example_ticket_value",
   boxBusy: false,
