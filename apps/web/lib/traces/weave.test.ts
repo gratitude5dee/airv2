@@ -10,6 +10,7 @@ const fetchSpy = vi.fn(async () =>
   Response.json({
     data: {
       viewer: { entity: "test-entity" },
+      project: { name: "air-traces" },
       upsertModel: { model: { name: "air-traces" } },
       upsertBucket: { bucket: { name: "export-x" } },
     },
@@ -40,8 +41,12 @@ describe("weave mirror", () => {
         started_at: "2026-08-01T00:00:00Z",
       }),
     ]);
-    // viewer → upsertModel → upsertBucket → file_stream
+    // viewer → project lookup (exists, so no upsertModel) → upsertBucket → file_stream
     expect(fetchSpy).toHaveBeenCalledTimes(4);
+    const bodies = fetchSpy.mock.calls.map((call) =>
+      String((call as unknown as [string, RequestInit])[1].body)
+    );
+    expect(bodies.some((b) => b.includes("upsertModel"))).toBe(false);
     const [url, init] = fetchSpy.mock.calls[3] as unknown as [
       string,
       RequestInit,
@@ -53,6 +58,43 @@ describe("weave mirror", () => {
     expect(body).toContain("agent_run");
     // stable receipt keys only — never transcript lines
     expect(body).not.toContain("transcript_message");
+  });
+
+  it("creates the project when missing and bails if the run cannot be created", async () => {
+    process.env["WANDB_API_KEY"] = "test-key";
+    fetchSpy.mockImplementation(async (...args: unknown[]) => {
+      const body = String((args[1] as RequestInit).body);
+      if (body.includes("viewer"))
+        return Response.json({ data: { viewer: { entity: "e" } } });
+      if (body.includes("upsertBucket"))
+        return Response.json({
+          errors: [{ message: "driver: bad connection" }],
+          data: { upsertBucket: null },
+        });
+      return Response.json({ data: { project: null, upsertModel: {} } });
+    });
+    await mirrorReceipts([mapAgentRun({ id: "r1" })]);
+    const bodies = fetchSpy.mock.calls.map((call) =>
+      String((call as unknown as [string, RequestInit])[1].body)
+    );
+    // project missing → upsertModel runs; upsertBucket fails twice → no file_stream
+    expect(bodies.some((b) => b.includes("upsertModel"))).toBe(true);
+    expect(bodies.filter((b) => b.includes("upsertBucket")).length).toBe(2);
+    expect(
+      fetchSpy.mock.calls.some((call) =>
+        String((call as unknown as [string])[0]).includes("file_stream")
+      )
+    ).toBe(false);
+    fetchSpy.mockImplementation(async () =>
+      Response.json({
+        data: {
+          viewer: { entity: "test-entity" },
+          project: { name: "air-traces" },
+          upsertModel: { model: { name: "air-traces" } },
+          upsertBucket: { bucket: { name: "export-x" } },
+        },
+      })
+    );
   });
 
   it("swallows mirror failures", async () => {
