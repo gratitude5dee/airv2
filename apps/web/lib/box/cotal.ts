@@ -37,7 +37,14 @@ export async function enableCotal(boxId: string): Promise<CotalStatus> {
   if (result.exitCode !== 0) {
     throw new Error(`cotal up failed: ${result.stderr.slice(0, 500)}`);
   }
-  return cotalStatus(boxId);
+  // `up --detach` returns before the bus is listening; poll until it
+  // reports up so a still-starting mesh isn't reported as failed.
+  let status = await cotalStatus(boxId);
+  for (let attempt = 0; attempt < 5 && !status.running; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    status = await cotalStatus(boxId);
+  }
+  return status;
 }
 
 export async function disableCotal(boxId: string): Promise<void> {
