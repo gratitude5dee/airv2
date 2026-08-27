@@ -1,5 +1,15 @@
-import { describe, expect, it } from "vitest";
-import { isSendablePath, stripSendFileMarkers } from "./outbound";
+import { describe, expect, it, vi } from "vitest";
+import {
+  deliverSendFiles,
+  isSendablePath,
+  stripSendFileMarkers,
+} from "./outbound";
+import { command } from "../box/client";
+import type { SpectrumSender } from "../spectrum/sender";
+
+vi.mock("../box/client", () => ({
+  command: vi.fn(),
+}));
 
 async function* chunks(...parts: string[]): AsyncGenerator<string> {
   for (const part of parts) yield part;
@@ -68,5 +78,56 @@ describe("isSendablePath", () => {
     expect(isSendablePath("/etc/passwd")).toBe(false);
     expect(isSendablePath("/home/user/../../etc/shadow")).toBe(false);
     expect(isSendablePath("relative/path.png")).toBe(false);
+  });
+});
+
+describe("deliverSendFiles", () => {
+  it("uses portable commands and single-quotes shell-metacharacter paths", async () => {
+    const mocked = vi.mocked(command);
+    mocked.mockReset();
+    const png = Buffer.from("fake-png-bytes");
+    mocked
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: `${png.length}\n`,
+        stderr: "",
+      })
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: png.toString("base64"),
+        stderr: "",
+      });
+    const sendAttachment = vi.fn().mockResolvedValue(undefined);
+    const sender = { sendAttachment } as unknown as SpectrumSender;
+    const path = `/home/user/.hermes/outbox/a"$(touch pwned)\`.png`;
+    const sent = await deliverSendFiles(sender, "bx_1", "space", "+1", [path]);
+    expect(sent).toBe(1);
+    const quoted = `'${path}'`;
+    expect(mocked).toHaveBeenNthCalledWith(1, "bx_1", `wc -c < ${quoted}`);
+    expect(mocked).toHaveBeenNthCalledWith(
+      2,
+      "bx_1",
+      `base64 < ${quoted} | tr -d '\\n'`,
+      120
+    );
+    expect(sendAttachment).toHaveBeenCalledWith("space", "+1", png, {
+      name: `a"$(touch pwned)\`.png`,
+      mimeType: "image/png",
+    });
+  });
+
+  it("escapes single quotes inside the path", async () => {
+    const mocked = vi.mocked(command);
+    mocked.mockReset();
+    mocked.mockResolvedValue({ exitCode: 1, stdout: "", stderr: "" });
+    const sender = {
+      sendAttachment: vi.fn(),
+    } as unknown as SpectrumSender;
+    const path = "/home/user/it's.png";
+    await deliverSendFiles(sender, "bx_1", "space", "+1", [path]);
+    expect(mocked).toHaveBeenCalledWith(
+      "bx_1",
+      `wc -c < '/home/user/it'\\''s.png'`
+    );
   });
 });

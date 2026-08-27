@@ -37,6 +37,11 @@ export function isSendablePath(path: string): boolean {
   );
 }
 
+/** POSIX single-quoting: safe against `"`, `$`, backticks, and newlines. */
+function shellQuote(path: string): string {
+  return `'${path.replaceAll("'", `'\\''`)}'`;
+}
+
 export interface StrippedStream {
   /** Deltas with complete `[send-file: …]` markers removed. */
   deltas: AsyncGenerator<string>;
@@ -112,15 +117,15 @@ export async function deliverSendFiles(
   for (const path of files.slice(0, 4)) {
     if (!isSendablePath(path)) continue;
     try {
-      const size = await command(
-        boxId,
-        `stat -c %s ${JSON.stringify(path)}`
-      );
+      const quoted = shellQuote(path);
+      // `wc -c < file` and unwrapped base64 work on both GNU and BSD tools;
+      // `stat -c` / `base64 -w0` are GNU-only and fail on macOS boxes.
+      const size = await command(boxId, `wc -c < ${quoted}`);
       if (size.exitCode !== 0) continue;
       if (Number.parseInt(size.stdout.trim(), 10) > MAX_FILE_BYTES) continue;
       const encoded = await command(
         boxId,
-        `base64 -w0 ${JSON.stringify(path)}`,
+        `base64 < ${quoted} | tr -d '\\n'`,
         120
       );
       if (encoded.exitCode !== 0) continue;
