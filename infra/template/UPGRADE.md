@@ -193,3 +193,45 @@ active conversation window are deferred. Hermes re-pins (§2) ride the same
 job when started with `include_hermes: true` and the release carries a
 `hermes_ref`. New user forks come from the channel's `template_box_id` when
 set (`BOX_TEMPLATE_ID` remains the fallback).
+
+## 8. Action triggers — calendar writes and AgentMail drafts
+
+`calendar-native`, `open-miniapp`, and `email-draft-review` were rewritten so
+an *action* request is executed in the turn it arrives instead of described or
+handed back as a mini-app card:
+
+- `calendar-native` now advertises write intents in its frontmatter and runs
+  `python3 ~/.hermes/calendar/sync.py upsert <base64-json>` on "schedule /
+  add / move / cancel", with a worked example.
+- `open-miniapp` cards are narrowed to OPEN / VIEW / SHOW requests; action
+  requests explicitly belong to `calendar-native` / `email-draft-review`.
+- `email-draft-review` recognises "send this", composes the body from the
+  thread, calls the AgentMail MCP `create_draft`, then files `draft_id` at
+  `/api/email/drafts/review`. Send stays in the control plane behind owner
+  approval — the box's key drafts only.
+
+All three are template-owned, so rollout needs **no code path change**:
+`setup.sh` §3c copies them into `~/.hermes/skills` on fork and `sync-box.sh`
+§1 replaces the template-owned skill directories on an existing box. Existing
+boxes therefore pick the new triggers up on their next sync (§6, or the next
+channel sweep in §7) — nothing to migrate by hand.
+
+**Check the email flow can actually draft.** The skill is inert without both
+halves of the AgentMail wiring, and a box missing them fails silently: the
+agent has no `create_draft` to call and falls back to describing the email.
+Both are provisioned automatically (`BASE_SKILLS` in
+`apps/web/lib/skills/hub.ts`; `installAgentmailMcp` in
+`apps/web/lib/provisioning/email.ts`), so this is a verification step for
+older boxes forked before either landed:
+
+```bash
+# on the box:
+test -f ~/.hermes/skills/email/agentmail/SKILL.md \
+  || hermes skills install official/email/agentmail --yes
+grep -A3 '^  agentmail:' ~/.hermes/config.yaml   # url + x-api-key, enabled: true
+hermes mcp test agentmail                        # must list create_draft
+```
+
+If the `agentmail` MCP block is absent, re-run provisioning's
+`installAgentmailMcp` for that box rather than hand-writing the key — the
+value is the per-user `${AGENTMAIL_API_KEY}` from the box env.
