@@ -1,9 +1,17 @@
 """AIR Vault store — box-local encrypted secret storage.
 
-Envelope: ``v1:<iv hex>:<tag hex>:<ciphertext hex>`` — AES-256-GCM with a
-12-byte random IV and a 32-byte key (64 hex chars), byte-for-byte compatible
-with ``apps/web/lib/crypto/secretbox.ts`` (which the control plane uses for
-its own sealed columns; the vault key itself never leaves the box).
+Envelope: ``v2:<iv hex>:<tag hex>:<ciphertext hex>`` — AES-256-GCM with a
+12-byte random IV, a 32-byte key (64 hex chars), and associated data (AAD)
+binding the envelope to its envelope version and the sealed scope, so a
+ciphertext cannot be replayed into a different slot of the vault even by
+someone holding the key. ``v1:`` envelopes (same layout, AAD ``None``) still
+open, so stores written before the AAD hardening keep working; the next
+write re-seals them as ``v2``.
+
+The layout stays byte-compatible with ``apps/web/lib/crypto/secretbox.ts``,
+which seals the control plane's own ``v1`` columns under a different key
+(``BOX_DASHBOARD_AUTH_KEY``) and never touches this store — the vault key
+(``AIR_VAULT_KEY``) never leaves the box (C18).
 
 Store file: ``~/.hermes/vault/store.enc`` (mode 600). Plaintext shape::
 
@@ -41,6 +49,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 STORE_VERSION = 1
+ENVELOPE_VERSION = "v2"
+#: Scope tag bound into the AAD of the whole-store envelope.
+STORE_SCOPE = "store"
 KINDS = ("login", "card", "api_key", "note", "identity")
 ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 PROTECTED_ENV_VARS = frozenset({"AIR_VAULT_KEY"})
@@ -72,22 +83,37 @@ def key_bytes(hex_key: str) -> bytes:
     return key
 
 
-def seal(plaintext: str, hex_key: str) -> str:
+def envelope_aad(scope: str) -> bytes:
+    """Associated data for a ``v2`` envelope: envelope version + scope.
+
+    Authenticated but not encrypted, and reconstructed at open time — so a
+    ciphertext only opens back into the scope it was sealed for. Deliberately
+    independent of ``STORE_VERSION``: the plaintext schema may be migrated
+    without making already-sealed stores unopenable.
+    """
+    if not scope:
+        raise VaultError("bad_payload", "sealed scope must be non-empty")
+    return f"air-vault:{ENVELOPE_VERSION}:{scope}".encode("utf-8")
+
+
+def seal(plaintext: str, hex_key: str, scope: str = STORE_SCOPE) -> str:
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
     key = key_bytes(hex_key)
     iv = os.urandom(12)
-    sealed = AESGCM(key).encrypt(iv, plaintext.encode("utf-8"), None)
+    sealed = AESGCM(key).encrypt(
+        iv, plaintext.encode("utf-8"), envelope_aad(scope)
+    )
     data, tag = sealed[:-16], sealed[-16:]
-    return f"v1:{iv.hex()}:{tag.hex()}:{data.hex()}"
+    return f"{ENVELOPE_VERSION}:{iv.hex()}:{tag.hex()}:{data.hex()}"
 
 
-def open_sealed(sealed: str, hex_key: str) -> str:
+def open_sealed(sealed: str, hex_key: str, scope: str = STORE_SCOPE) -> str:
     from cryptography.exceptions import InvalidTag
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
     parts = (sealed or "").strip().split(":")
-    if len(parts) != 4 or parts[0] != "v1" or not all(parts[1:]):
+    if len(parts) != 4 or parts[0] not in ("v1", "v2") or not all(parts[1:]):
         raise VaultError("store_corrupt", "unrecognized sealed envelope format")
     try:
         iv = bytes.fromhex(parts[1])
@@ -95,9 +121,13 @@ def open_sealed(sealed: str, hex_key: str) -> str:
         data = bytes.fromhex(parts[3])
     except ValueError:
         raise VaultError("store_corrupt", "sealed envelope is not valid hex")
+    if len(iv) != 12 or len(tag) != 16:
+        raise VaultError("store_corrupt", "sealed envelope has invalid lengths")
+    # v1 predates the AAD binding: same key, same layout, associated data None.
+    aad = None if parts[0] == "v1" else envelope_aad(scope)
     key = key_bytes(hex_key)
     try:
-        return AESGCM(key).decrypt(iv, data + tag, None).decode("utf-8")
+        return AESGCM(key).decrypt(iv, data + tag, aad).decode("utf-8")
     except InvalidTag:
         raise VaultError(
             "store_locked", "store cannot be decrypted with AIR_VAULT_KEY"

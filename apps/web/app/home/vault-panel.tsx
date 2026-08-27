@@ -11,6 +11,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Orb } from "@/components/orb/Orb";
 import { PixelIcon, type PixelGlyph } from "@/components/dither-kit/icon";
+import {
+  luhnValid,
+  normalizeExpiryYear,
+  paymentCardBrand,
+} from "@/lib/vault/payment-card";
 import { useDialogFocus } from "./use-dialog";
 
 export interface VaultItem {
@@ -67,29 +72,10 @@ const FIELDS_BY_KIND: Record<string, { field: string; label: string }[]> = {
   identity: [],
 };
 
-export function luhnValid(digits: string): boolean {
-  if (!/^\d{12,19}$/.test(digits)) return false;
-  let sum = 0;
-  let alt = false;
-  for (let i = digits.length - 1; i >= 0; i--) {
-    let n = digits.charCodeAt(i) - 48;
-    if (alt) {
-      n *= 2;
-      if (n > 9) n -= 9;
-    }
-    sum += n;
-    alt = !alt;
-  }
-  return sum % 10 === 0;
-}
-
-export function cardBrand(digits: string): string | null {
-  if (/^4/.test(digits)) return "Visa";
-  if (/^3[47]/.test(digits)) return "Amex";
-  if (/^(5[1-5]|2(2[2-9]|[3-6]|7[01]|720))/.test(digits)) return "Mastercard";
-  if (/^(6011|65)/.test(digits)) return "Discover";
-  return null;
-}
+// Card shape rules are shared with the API route that validates them
+// (lib/vault/payment-card.ts) so the form and the server agree.
+export { luhnValid };
+export const cardBrand = paymentCardBrand;
 
 async function readError(res: Response): Promise<string> {
   if (res.status === 429) return BUSY_BOX_NOTE;
@@ -628,7 +614,7 @@ function VaultModal({
       }
       if (digits) fields["number"] = digits;
       if (expiryMonth) fields["expiry_month"] = expiryMonth.replace(/\D/g, "");
-      if (expiryYear) fields["expiry_year"] = expiryYear.replace(/\D/g, "");
+      if (expiryYear) fields["expiry_year"] = normalizeExpiryYear(expiryYear);
       if (cvv) fields["cvv"] = cvv.replace(/\D/g, "");
       if (zip) fields["zip"] = zip.replace(/\D/g, "");
     } else if (kind === "api_key") {

@@ -15,7 +15,8 @@ KEY = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
 OTHER_KEY = "ff" * 32
 
 # Sealed with apps/web/lib/crypto/secretbox.ts semantics (node crypto
-# aes-256-gcm, iv 0102..0c) — proves cross-language envelope parity.
+# aes-256-gcm, iv 0102..0c) — proves cross-language envelope parity and that
+# pre-AAD (v1) stores still open.
 TS_SEALED = (
     "v1:0102030405060708090a0b0c:ff225d11bc00d1aa7260addbefa68c5d:"
     "0c1370cc9c3ad5209891cfb84189766a07ebd192"
@@ -24,12 +25,36 @@ TS_SEALED = (
 
 def test_envelope_roundtrip():
     sealed = vault_store.seal("hello vault", KEY)
-    assert sealed.startswith("v1:")
+    assert sealed.startswith("v2:")
     assert vault_store.open_sealed(sealed, KEY) == "hello vault"
 
 
 def test_envelope_parity_with_secretbox_ts():
     assert vault_store.open_sealed(TS_SEALED, KEY) == "vault-parity-fixture"
+
+
+def test_v2_envelope_is_bound_to_its_scope():
+    sealed = vault_store.seal("scoped", KEY, scope="store")
+    assert vault_store.open_sealed(sealed, KEY, scope="store") == "scoped"
+    with pytest.raises(VaultError) as exc:
+        vault_store.open_sealed(sealed, KEY, scope="inbox")
+    assert exc.value.code == "store_locked"
+
+
+def test_v2_aad_survives_a_store_schema_bump(monkeypatch):
+    """The AAD binds the envelope version, not the plaintext schema version,
+    so bumping STORE_VERSION for a migration still opens sealed stores."""
+    sealed = vault_store.seal("scoped", KEY)
+    monkeypatch.setattr(vault_store, "STORE_VERSION", vault_store.STORE_VERSION + 1)
+    assert vault_store.open_sealed(sealed, KEY) == "scoped"
+
+
+def test_v2_envelope_cannot_be_downgraded_to_v1():
+    """Relabelling v2 as v1 drops the AAD — and fails the tag check."""
+    sealed = vault_store.seal("scoped", KEY)
+    with pytest.raises(VaultError) as exc:
+        vault_store.open_sealed(f"v1:{sealed.split(':', 1)[1]}", KEY)
+    assert exc.value.code == "store_locked"
 
 
 def test_wrong_key_is_store_locked():
@@ -40,7 +65,8 @@ def test_wrong_key_is_store_locked():
 
 
 def test_corrupt_envelope_is_store_corrupt():
-    for bad in ("", "v2:aa:bb:cc", "v1:zz:bb:cc", "v1:aa:bb", "garbage"):
+    for bad in ("", "v2:aa:bb:cc", "v1:aa:bb:cc", "v3:aa:bb:cc",
+                "v1:zz:bb:cc", "v1:aa:bb", "garbage"):
         with pytest.raises(VaultError) as exc:
             vault_store.open_sealed(bad, KEY)
         assert exc.value.code == "store_corrupt"
@@ -62,7 +88,27 @@ def test_save_load_store_roundtrip_mode_600(tmp_path):
     assert loaded["items"][0]["id"] == "a"
     # On-disk bytes are ciphertext only.
     raw = path.read_text()
-    assert "note" not in raw and raw.startswith("v1:")
+    assert "note" not in raw and raw.startswith("v2:")
+
+
+def test_v1_store_file_loads_and_is_resealed_as_v2(tmp_path):
+    """Stores written before the AAD hardening keep opening; a write upgrades."""
+    path = tmp_path / "vault" / "store.enc"
+    path.parent.mkdir(parents=True)
+    store = vault_store.empty_store()
+    store["items"].append({"id": "a", "kind": "note", "name": "n", "fields": {}})
+    # Sealed without AAD — a genuine pre-hardening envelope.
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+    iv = bytes(range(12))
+    blob = AESGCM(bytes.fromhex(KEY)).encrypt(iv, json.dumps(store).encode(), None)
+    path.write_text(
+        f"v1:{iv.hex()}:{blob[-16:].hex()}:{blob[:-16].hex()}", encoding="utf-8"
+    )
+    assert vault_store.load_store(path, KEY)["items"][0]["id"] == "a"
+    vault_store.save_store(path, vault_store.load_store(path, KEY), KEY)
+    assert path.read_text().startswith("v2:")
+    assert vault_store.load_store(path, KEY)["items"][0]["id"] == "a"
 
 
 def test_load_missing_store(tmp_path):

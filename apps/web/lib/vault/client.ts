@@ -42,14 +42,23 @@ export interface VaultItemInput {
   kind: VaultItemKind;
   name: string;
   /** Field values — plaintext in transit to the box only, never logged. */
-  fields?: Record<string, string | null>;
-  env_var?: string | null;
-  totp_seed?: string | null;
+  fields?: Record<string, string | null> | undefined;
+  env_var?: string | null | undefined;
+  totp_seed?: string | null | undefined;
+}
+
+/** Update payload — any subset; a null field value deletes that field. */
+export interface VaultItemPatch {
+  kind?: VaultItemKind | undefined;
+  name?: string | undefined;
+  fields?: Record<string, string | null> | undefined;
+  env_var?: string | null | undefined;
+  totp_seed?: string | null | undefined;
 }
 
 export type VaultOperation =
   | { op: "create"; item: VaultItemInput }
-  | { op: "update"; id: string; item: Partial<VaultItemInput> }
+  | { op: "update"; id: string; item: VaultItemPatch }
   | { op: "delete"; id: string };
 
 interface ApplyResult {

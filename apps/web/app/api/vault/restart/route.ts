@@ -4,6 +4,7 @@
  * now?" and this route performs the restart via a box command.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { isSameOriginRequest } from "@/lib/http/origin";
 import { serviceClient } from "@/lib/supabase";
 import { requestSession } from "@/lib/auth/surface";
 import {
@@ -18,6 +19,9 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  if (!isSameOriginRequest(request)) {
+    return NextResponse.json({ error: "forbidden origin" }, { status: 403 });
+  }
   const supabase = serviceClient();
   const session = await requestSession(supabase, request);
   if (!session) {
