@@ -150,6 +150,14 @@ export async function provisionBot(
       `terminal:\n  backend: "local"\n\n` +
       `browser:\n  headed: true\n  backend: "off"\n\n` +
       `agent:\n  bot_mode_protocol: true\n\n` +
+      // Web three-job split: web_search discovers, web_extract reads, the
+      // browser interacts. Backends stay empty — the keyless ring serves the
+      // profile unless the user's vault fills them; no key enters the box (C2).
+      `web:\n  search_backend: ""\n  extract_backend: ""\n  extract_char_limit: 15000\n  keyless_fallback: true\n  keyless_rescue: true\n\n` +
+      // Delegated children run on the abstract "fast" tier (gateway-resolved,
+      // downgrade-only); provider unset so children inherit the gateway
+      // credentials below.
+      `delegation:\n  model: "fast"\n  max_concurrent_children: 4\n  max_spawn_depth: 1\n\n` +
       `model:\n${tierLine}  provider: "custom"\n  base_url: "${gatewayUrl}"\n  api_key: "${gatewayToken}"\n`;
     const configB64 = Buffer.from(profileConfig, "utf8").toString("base64");
     await run(

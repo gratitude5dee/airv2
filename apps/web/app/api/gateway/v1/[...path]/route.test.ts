@@ -139,6 +139,56 @@ describe("gateway reasoning_effort gating (P1-7)", () => {
   });
 });
 
+describe("gateway fast-tier delegation override", () => {
+  beforeEach(() => {
+    setEntitlement({ speed_tier: "balanced", model_family: "openai" });
+    process.env["MODEL_REASONING_FAST"] = "low";
+  });
+  afterEach(() => {
+    delete process.env["MODEL_REASONING_FAST"];
+    vi.unstubAllGlobals();
+  });
+
+  it("honors a request-body model:fast as a downgrade from the entitled tier", async () => {
+    setEntitlement({ speed_tier: "deep" });
+    const sent = await upstreamBody({ model: "fast", messages: [] });
+    expect(sent["model"]).toBe("gpt-5.6-luna");
+    expect(sent["reasoning_effort"]).toBe("low");
+  });
+
+  it("lands fast-lane reasoning even when the entitled tier is balanced", async () => {
+    const sent = await upstreamBody({ model: "fast", messages: [] });
+    expect(sent["model"]).toBe("gpt-5.6-luna");
+    expect(sent["reasoning_effort"]).toBe("low");
+  });
+
+  it("never upgrades: a request-body deep stays on the entitled tier", async () => {
+    setEntitlement({ speed_tier: "fast" });
+    delete process.env["MODEL_REASONING_FAST"];
+    const sent = await upstreamBody({ model: "deep", messages: [] });
+    expect(sent["model"]).toBe("gpt-5.6-luna");
+    expect(sent["model"]).not.toBe("gpt-5.6-terra");
+  });
+
+  it("keeps non-fast requests resolving through the entitlement", async () => {
+    setEntitlement({ speed_tier: "deep" });
+    const sent = await upstreamBody({ model: "balanced", messages: [] });
+    expect(sent["model"]).toBe("gpt-5.6-terra");
+  });
+
+  it("defaults MODEL_REASONING_FAST to low so the fast lane is actually fast", async () => {
+    delete process.env["MODEL_REASONING_FAST"];
+    const sent = await upstreamBody({ model: "fast", messages: [] });
+    expect(sent["reasoning_effort"]).toBe("low");
+  });
+
+  it("lets MODEL_REASONING_FAST='' disable the default", async () => {
+    process.env["MODEL_REASONING_FAST"] = "";
+    const sent = await upstreamBody({ model: "fast", messages: [] });
+    expect(sent["reasoning_effort"]).toBeUndefined();
+  });
+});
+
 describe("gateway model families", () => {
   beforeEach(() => {
     process.env["MODEL_REASONING_FAST"] = "low";
