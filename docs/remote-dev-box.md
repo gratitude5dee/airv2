@@ -43,14 +43,46 @@ resumed box would come back without it. Enable it once:
 Stop/resume is a reboot: enabled units come back, hand-started processes and
 `host`-exposed ports do not (§5.2 of ARCHITECTURE.md).
 
-## 4. After a resume
+## 4. Idle spin-down
+
+A box that never stops bills the whole time, so you want it to archive itself
+after an hour of no use and come back with the same filesystem. Box's own TTL
+almost does this, except it counts from **start**, not from last use — and the
+box cannot stop itself: the in-box `ASCII_TOKEN` is scoped `["host","lux"]`, so
+`POST /boxes/{id}/stop` from inside answers 401, and the on-box `box` CLI is
+signed out. Idleness has to be judged by whoever connects.
+
+`infra/box-dev.sh` does that with a rolling TTL: keep the box on a 1 hour TTL
+and push it out only while an SSH connection is established. Stop connecting
+and the TTL lapses, Box archives the box (which snapshots it), and `up` brings
+that exact filesystem back.
+
+```bash
+export BOX_API_KEY=... BOX_DEV_ID=bx_xxxxxxxx
+./box-dev.sh up          # resume if archived, re-authorize the key -> user@<ip>
+./box-dev.sh status      # state, ip, archiveAfter, snapshot status
+./box-dev.sh down        # stop and snapshot now
+```
+
+Run `keepalive` from launchd or cron every few minutes on the machine you SSH
+from — it extends only when it sees a live connection to the box, so it works
+with any SSH client, including GUI ones:
+
+```bash
+*/5 * * * * BOX_API_KEY=... BOX_DEV_ID=bx_xxxxxxxx /path/to/box-dev.sh keepalive
+```
+
+Without that tick nothing extends the TTL and the box archives an hour after
+`up`. Set `BOX_DEV_IDLE_TTL` to trade cost against how long a resumed
+connection stays alive unattended.
+
+## 5. After a resume
 
 The public IP is per-machine, not per-box — a resumed box usually comes back on
 a different address. Re-read it and reconnect:
 
 ```bash
-./boxctl.sh resume bx_xxxxxxxx && ./boxctl.sh wait bx_xxxxxxxx
-./boxctl.sh ip bx_xxxxxxxx
+./box-dev.sh up     # or: boxctl.sh resume + wait + ip
 ```
 
 For a stable *hostname* you need `host <port> --private`, which is HTTPS-only
