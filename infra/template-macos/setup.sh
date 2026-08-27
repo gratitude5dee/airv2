@@ -329,7 +329,9 @@ import re, sys, pathlib
 setup = pathlib.Path(sys.argv[1]).read_text()
 soul = pathlib.Path(sys.argv[2])
 existing = soul.read_text() if soul.exists() else ""
-blocks = re.findall(r"<<'EOF'\n(## .*?)\nEOF", setup, re.DOTALL)
+# Appended sections open with a blank line after the heredoc marker; the
+# identity block does not — tolerate both.
+blocks = re.findall(r"<<'EOF'\n\s*(## .*?)\nEOF", setup, re.DOTALL)
 identity = re.search(r"<<'EOF'\n(## You are air.*?)\nEOF", setup, re.DOTALL)
 out = existing
 if identity and "## You are air" not in out:
@@ -341,14 +343,18 @@ for block in blocks:
 soul.write_text(out)
 PYEOF
 # One darwin-specific delta: this computer is a Mac, not Linux.
-python3 - "$HOME_DIR/.hermes/SOUL.md" <<'PYEOF'
+python3 - "$HOME_DIR/.hermes/SOUL.md" "$HOME_DIR" <<'PYEOF'
 import pathlib, sys
 p = pathlib.Path(sys.argv[1])
+home = sys.argv[2].rstrip("/")
 text = p.read_text()
-p.write_text(text.replace(
+text = text.replace(
     "You run on your own Linux computer with a graphical desktop",
     "You run on your own Mac (Apple silicon) with a graphical desktop",
-))
+)
+# The send-file marker needs this Mac's real absolute home, not the Linux one.
+text = text.replace("/home/user/.hermes/outbox/", f"{home}/.hermes/outbox/")
+p.write_text(text)
 PYEOF
 
 # ── 10. C24 gate on the FINAL config ─────────────────────────────────────────
