@@ -392,13 +392,24 @@ PYEOF
   --config "$HOME_DIR/.hermes/config.yaml" \
   --verify
 
+# Learning plane (goal.md V10 §7, L15): update code in place — never re-fork.
+# Owner state in ~/.hermes/learning is untouched; only /opt/air/learning code
+# and the service unit refresh.
+sudo mkdir -p /opt/air/learning
+sudo cp -r "$TEMPLATE_DIR/learning/air_learning" /opt/air/learning/
+sudo cp "$TEMPLATE_DIR/learning/pyproject.toml" /opt/air/learning/
+sudo chmod -R a+rX /opt/air/learning
+sudo install -m 755 "$TEMPLATE_DIR/learning/learningctl.py" /usr/local/bin/learningctl
+mkdir -p "$HOME_DIR/.hermes/learning" && chmod 700 "$HOME_DIR/.hermes/learning"
+
 sudo cp "$TEMPLATE_DIR"/hermes-gateway.service /etc/systemd/system/
 sudo cp "$TEMPLATE_DIR"/hermes-dashboard.service /etc/systemd/system/
 sudo cp "$TEMPLATE_DIR"/hermes-host.service /etc/systemd/system/
 sudo cp "$TEMPLATE_DIR"/openviking.service /etc/systemd/system/
+sudo cp "$TEMPLATE_DIR"/learning/systemd/air-learningd.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable hermes-gateway.service hermes-dashboard.service hermes-host.service openviking.service
-sudo systemctl restart hermes-gateway.service hermes-dashboard.service hermes-host.service
+sudo systemctl enable hermes-gateway.service hermes-dashboard.service hermes-host.service openviking.service air-learningd.service
+sudo systemctl restart hermes-gateway.service hermes-dashboard.service hermes-host.service air-learningd.service
 
 # Render ov.conf from this box's per-fork gateway credentials and (re)start
 # the server. Best effort: deep memory degrades, the box never breaks.

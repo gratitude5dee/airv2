@@ -1,0 +1,19 @@
+# Air Learning Plane daemon (goal.md V10, §7). Runs stdlib-only in V10 M1 so
+# no new toolchain enters the box (C24). The HUD/Harbor adapter pins below are
+# declared for M5/M6; they are NOT installed on owner boxes until those
+# milestones ship a signed frozen release artifact (L12) — the adapters return
+# typed `backend_unavailable` errors until then.
+[project]
+name = "air-learning"
+version = "0.1.0"
+description = "Box-local learning plane: collector, ledger, kernel, privacy"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+# M5/M6 starting pins (goal.md §11) — source-review + fleet release required
+# before these ever install on an owner box.
+frameworks = [
+  "hud==0.6.13",
+  "harbor==0.22.0",
+]

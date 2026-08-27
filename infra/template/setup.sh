@@ -680,6 +680,19 @@ PYEOF
   --config "$HOME_DIR/.hermes/config.yaml" \
   --verify
 
+# ── 3c5. Learning plane (goal.md V10 §7): air-learningd + learningctl ──────
+# Signed template-owned code goes under /opt/air/learning (read-only to the
+# agent); private learning state lives in ~/.hermes/learning and never leaves
+# the box (L1). The daemon exposes a Unix socket only — no port, no tunnel,
+# no provider key. Stdlib-only in V10 M1 (C24: no new toolchain). The HUD and
+# Harbor pins in pyproject.toml are declared for M5/M6 and NOT installed here.
+sudo mkdir -p /opt/air/learning
+sudo cp -r "$TEMPLATE_DIR/learning/air_learning" /opt/air/learning/
+sudo cp "$TEMPLATE_DIR/learning/pyproject.toml" /opt/air/learning/
+sudo chmod -R a+rX /opt/air/learning
+sudo install -m 755 "$TEMPLATE_DIR/learning/learningctl.py" /usr/local/bin/learningctl
+mkdir -p "$HOME_DIR/.hermes/learning" && chmod 700 "$HOME_DIR/.hermes/learning"
+
 # ── 3z. .boxignore — keep regenerable caches out of every snapshot ─────────
 # Box snapshots /home/user every minute; package caches only slow captures
 # and restores down. Only caches that rebuild themselves on demand go here —
@@ -699,11 +712,12 @@ sudo cp "$SCRIPT_DIR"/hermes-dashboard.service /etc/systemd/system/
 sudo cp "$SCRIPT_DIR"/hermes-host.service /etc/systemd/system/
 sudo cp "$SCRIPT_DIR"/openviking.service /etc/systemd/system/
 sudo cp "$SCRIPT_DIR"/taskrouter.service /etc/systemd/system/
+sudo cp "$SCRIPT_DIR"/learning/systemd/air-learningd.service /etc/systemd/system/
 # tailscaled.service is installed but NEVER enabled here — the owner's
 # Settings opt-in is the only thing that starts it (I3 stays intact).
 sudo cp "$SCRIPT_DIR"/tailscaled.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable hermes-gateway.service hermes-dashboard.service hermes-host.service openviking.service taskrouter.service
+sudo systemctl enable hermes-gateway.service hermes-dashboard.service hermes-host.service openviking.service taskrouter.service air-learningd.service
 sudo systemctl start hermes-gateway.service hermes-dashboard.service hermes-host.service
 
 # Render ov.conf (template stage: no gateway token yet → VLM block omitted;

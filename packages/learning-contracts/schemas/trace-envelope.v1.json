@@ -1,0 +1,79 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "air.trace.v1",
+  "title": "TraceEnvelope",
+  "description": "Box-local canonical episode trace with ATIF-compatible steps. class private_raw: never leaves the Box (L1). Hidden reasoning is never stored (L14).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "trace_id",
+    "episode_id",
+    "source",
+    "steps",
+    "outcome",
+    "usage",
+    "provenance",
+    "privacy"
+  ],
+  "properties": {
+    "schema_version": { "const": "air.trace.v1" },
+    "trace_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "episode_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "parent_trace_id": { "type": ["string", "null"] },
+    "subagent_path": { "type": ["string", "null"] },
+    "source": { "enum": ["production", "evaluation"] },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type"],
+        "properties": {
+          "type": {
+            "enum": ["message", "action", "tool_result", "error", "state_diff", "summary"]
+          }
+        }
+      }
+    },
+    "outcome": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": {
+          "enum": ["completed", "failed", "cancelled", "interrupted", "unknown"]
+        }
+      }
+    },
+    "usage": {
+      "type": "object",
+      "properties": {
+        "prompt_tokens": { "type": "integer", "minimum": 0 },
+        "completion_tokens": { "type": "integer", "minimum": 0 },
+        "cost_usd": { "type": "number", "minimum": 0 },
+        "latency_ms": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["air_release", "hermes_ref", "profile_id", "served_model"],
+      "properties": {
+        "air_release": { "type": "string" },
+        "hermes_ref": { "type": "string" },
+        "profile_id": { "type": ["string", "null"] },
+        "served_model": { "type": "string" },
+        "router_version": { "type": "string" }
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["class", "consent_basis", "retention_until", "redaction_version"],
+      "properties": {
+        "class": { "const": "private_raw" },
+        "consent_basis": { "enum": ["observe", "suggest", "auto_safe"] },
+        "retention_until": { "type": "string", "format": "date-time" },
+        "redaction_version": { "type": "string" }
+      }
+    }
+  }
+}
