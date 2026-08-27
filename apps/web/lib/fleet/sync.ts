@@ -26,8 +26,11 @@ import { FleetError, getRelease, type TemplateRelease } from "./releases";
 import { getChannel, type ChannelName } from "./channels";
 
 export const DEFAULT_WAVE_SIZE = 3;
-const SYNC_TIMEOUT_SECONDS = 900;
-const HERMES_TIMEOUT_SECONDS = 1200;
+// The box provider rejects command timeouts above 600 seconds, so every
+// on-box step must fit in one 600s command; longer work is split into
+// sequential commands (see hermesCommands).
+const SYNC_TIMEOUT_SECONDS = 600;
+const HERMES_STEP_TIMEOUT_SECONDS = 600;
 const ARTIFACT_URL_TTL_SECONDS = 900;
 
 export interface SyncJob {
@@ -175,16 +178,28 @@ export function syncCommand(release: TemplateRelease): string {
   ].join(" && ");
 }
 
-/** UPGRADE.md §2 in-place Hermes re-pin, gated on the release's hermes_ref. */
-export function hermesCommand(hermesRef: string): string {
+/**
+ * UPGRADE.md §2 in-place Hermes re-pin, gated on the release's hermes_ref.
+ * Split into sequential commands so each fits the provider's 600s cap:
+ * checkout, dependency install, then ref write + service restart.
+ */
+export function hermesCommands(hermesRef: string): string[] {
   return [
-    `cd ~/hermes-agent`,
-    `git fetch --depth 1 origin ${shellQuote(hermesRef)}`,
-    "git checkout --force FETCH_HEAD",
-    `UV_PROJECT_ENVIRONMENT=~/.hermes-venv uv pip install -e ".[all]" --python ~/.hermes-venv/bin/python`,
-    "git rev-parse HEAD > ~/.hermes/.template-hermes-ref",
-    "sudo systemctl restart hermes-gateway hermes-dashboard hermes-host",
-  ].join(" && ");
+    [
+      `cd ~/hermes-agent`,
+      `git fetch --depth 1 origin ${shellQuote(hermesRef)}`,
+      "git checkout --force FETCH_HEAD",
+    ].join(" && "),
+    [
+      `cd ~/hermes-agent`,
+      `UV_PROJECT_ENVIRONMENT=~/.hermes-venv uv pip install -e ".[all]" --python ~/.hermes-venv/bin/python`,
+    ].join(" && "),
+    [
+      `cd ~/hermes-agent`,
+      "git rev-parse HEAD > ~/.hermes/.template-hermes-ref",
+      "sudo systemctl restart hermes-gateway hermes-dashboard hermes-host",
+    ].join(" && "),
+  ];
 }
 
 type BoxOutcome = "ok" | "failed" | "deferred";
@@ -234,16 +249,14 @@ async function syncOneBox(
       };
     }
     if (job.include_hermes && release.hermes_ref) {
-      const hermes = await command(
-        boxId,
-        hermesCommand(release.hermes_ref),
-        HERMES_TIMEOUT_SECONDS
-      );
-      if (hermes.exitCode !== 0) {
-        return {
-          outcome: "failed",
-          error: `hermes repin exit ${hermes.exitCode}: ${hermes.stderr.slice(-500)}`,
-        };
+      for (const step of hermesCommands(release.hermes_ref)) {
+        const hermes = await command(boxId, step, HERMES_STEP_TIMEOUT_SECONDS);
+        if (hermes.exitCode !== 0) {
+          return {
+            outcome: "failed",
+            error: `hermes repin exit ${hermes.exitCode}: ${hermes.stderr.slice(-500)}`,
+          };
+        }
       }
       const verify = await command(
         boxId,

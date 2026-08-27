@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cutRelease, type TemplateRelease } from "./releases";
 import { isChannelName } from "./channels";
-import { hermesCommand, syncCommand } from "./sync";
+import { hermesCommands, syncCommand } from "./sync";
 
 vi.mock("../storage/r2", () => ({
   putObject: vi.fn().mockResolvedValue(undefined),
@@ -75,14 +75,23 @@ describe("syncCommand", () => {
   });
 });
 
-describe("hermesCommand", () => {
+describe("hermesCommands", () => {
   it("re-pins in place per the upgrade runbook and restarts services", () => {
-    const cmd = hermesCommand("b".repeat(40));
-    expect(cmd).toContain(`git fetch --depth 1 origin '${"b".repeat(40)}'`);
-    expect(cmd).toContain("git checkout --force FETCH_HEAD");
-    expect(cmd).toContain("git rev-parse HEAD > ~/.hermes/.template-hermes-ref");
-    expect(cmd).toContain(
+    const steps = hermesCommands("b".repeat(40));
+    const all = steps.join(" && ");
+    expect(all).toContain(`git fetch --depth 1 origin '${"b".repeat(40)}'`);
+    expect(all).toContain("git checkout --force FETCH_HEAD");
+    expect(all).toContain("git rev-parse HEAD > ~/.hermes/.template-hermes-ref");
+    expect(all).toContain(
       "sudo systemctl restart hermes-gateway hermes-dashboard hermes-host"
     );
+  });
+
+  it("keeps every step independent so each fits the provider's 600s command cap", () => {
+    const steps = hermesCommands("b".repeat(40));
+    expect(steps.length).toBeGreaterThan(1);
+    for (const step of steps) {
+      expect(step).toContain("cd ~/hermes-agent");
+    }
   });
 });
