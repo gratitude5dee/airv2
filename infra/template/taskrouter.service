@@ -1,0 +1,15 @@
+[Unit]
+Description=Local task router (advisory shadow classifier, loopback :1917)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=user
+WorkingDirectory=/home/user/.taskrouter
+ExecStart=/home/user/.openviking-venv/bin/python /home/user/.taskrouter/taskrouter.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

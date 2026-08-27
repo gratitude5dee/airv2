@@ -59,7 +59,7 @@ function assertToken(token: string, label: string): void {
  * Merge KEY=VALUE entries into the box .env via a one-shot file (same
  * delete-then-append semantics provisioning uses). Values never touch argv.
  */
-async function mergeBoxEnv(
+export async function mergeBoxEnv(
   boxId: string,
   entries: Record<string, string>
 ): Promise<void> {
@@ -100,7 +100,10 @@ async function mergeBoxEnv(
   }
 }
 
-async function removeBoxEnvKeys(boxId: string, keys: string[]): Promise<void> {
+export async function removeBoxEnvKeys(
+  boxId: string,
+  keys: string[]
+): Promise<void> {
   const safe = keys.filter((key) => ENV_NAME_RE.test(key));
   if (safe.length === 0) return;
   await command(
