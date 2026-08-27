@@ -8,7 +8,7 @@
  * prompts, or message bodies are reachable from here at any format. The
  * optional W&B mirror (lib/traces/weave.ts) stays dormant without WANDB_API_KEY.
  */
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { adminAuthorized } from "@/lib/admin/auth";
 import { serviceClient } from "@/lib/supabase";
 import {
@@ -79,8 +79,10 @@ export async function GET(request: NextRequest): Promise<Response> {
     format === "json"
   );
   if (weaveEnabled()) {
-    // fire-and-forget metadata mirror; never blocks or fails the read
-    void mirrorReceipts(receipts);
+    // metadata mirror after the response is sent; never blocks or fails
+    // the read (a bare fire-and-forget promise gets dropped when the
+    // serverless function is frozen after responding)
+    after(() => mirrorReceipts(receipts));
   }
 
   if (format === "json") {
