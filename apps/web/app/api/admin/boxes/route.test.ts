@@ -1,23 +1,39 @@
 /**
  * Admin box usage contract: bearer auth against ADMIN_API_KEY, window
- * validation, and per-user box state joined with start/stop and box_seconds.
+ * validation, per-user box state joined with start/stop and box_seconds, and
+ * identity labels (username, phone/handles, provider box id) with a handles
+ * read failure degrading to empty handles rather than a 500.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const db = vi.hoisted(() => ({
   rows: {} as Record<string, Record<string, unknown>[]>,
+  errors: {} as Record<string, { message: string }>,
 }));
 
 vi.mock("@/lib/supabase", () => {
   function builder(table: string) {
     const chain: Record<string, unknown> = {};
     const self = () => chain;
-    for (const method of ["select", "eq", "gte", "order", "range", "limit"]) {
+    for (const method of [
+      "select",
+      "eq",
+      "gte",
+      "not",
+      "order",
+      "range",
+      "limit",
+    ]) {
       chain[method] = vi.fn(self);
     }
-    chain["then"] = (resolve: (value: unknown) => unknown) =>
-      Promise.resolve({ data: db.rows[table] ?? [], error: null }).then(resolve);
+    chain["then"] = (resolve: (value: unknown) => unknown) => {
+      const error = db.errors[table] ?? null;
+      return Promise.resolve({
+        data: error ? null : (db.rows[table] ?? []),
+        error,
+      }).then(resolve);
+    };
     return chain;
   }
   return { serviceClient: () => ({ from: builder }) };
@@ -32,6 +48,7 @@ const authed = (url = base) =>
 beforeEach(() => {
   process.env["ADMIN_API_KEY"] = "admin-key";
   db.rows = {};
+  db.errors = {};
 });
 
 describe("GET /api/admin/boxes", () => {
@@ -50,6 +67,7 @@ describe("GET /api/admin/boxes", () => {
         {
           user_id: "u1",
           provider: "ascii",
+          provider_box_id: "bx_one",
           state: "ready",
           template_version: "v9",
           last_active_at: "2026-08-20T00:00:00Z",
@@ -84,15 +102,74 @@ describe("GET /api/admin/boxes", () => {
     expect(body.window_days).toBe(7);
     expect(body.totals.boxes).toBe(2);
     expect(body.totals.by_state).toEqual({ ready: 1, stopped: 1 });
-    expect(body.totals).toMatchObject({ starts: 3, stops: 1, box_seconds: 150 });
+    expect(body.totals).toMatchObject({
+      starts: 3,
+      stops: 1,
+      box_seconds: 150,
+    });
     expect(body.users[0]).toMatchObject({
       user_id: "u1",
       state: "ready",
+      provider_box_id: "bx_one",
       template_version: "v9",
       starts: 2,
       stops: 1,
       runs: 2,
       box_seconds: 120,
+    });
+  });
+
+  it("labels each box with the user's username and verified handles", async () => {
+    db.rows = {
+      boxes: [
+        { user_id: "u1", state: "ready", provider_box_id: "bx_one" },
+        { user_id: "u2", state: "stopped", provider_box_id: "bx_two" },
+      ],
+      users: [
+        { id: "u1", username: "gratitude" },
+        { id: "u2", username: null },
+        { id: "ghost", username: "nobox" },
+      ],
+      handles: [
+        { user_id: "u1", platform: "imessage", address: "+15551234567" },
+        { user_id: "u1", platform: "email", address: "gopal@example.com" },
+        { user_id: "ghost", platform: "email", address: "orphan@example.com" },
+      ],
+    };
+    const body = (await (await GET(authed())).json()) as {
+      users: Array<Record<string, unknown>>;
+    };
+    expect(body.users).toHaveLength(2);
+    expect(body.users.find((row) => row["user_id"] === "u1")).toMatchObject({
+      username: "gratitude",
+      phone: "+15551234567",
+      provider_box_id: "bx_one",
+      handles: [
+        { platform: "imessage", address: "+15551234567" },
+        { platform: "email", address: "gopal@example.com" },
+      ],
+    });
+    expect(body.users.find((row) => row["user_id"] === "u2")).toMatchObject({
+      username: null,
+      phone: null,
+      provider_box_id: "bx_two",
+      handles: [],
+    });
+  });
+
+  it("degrades to empty handles when the handles read fails", async () => {
+    db.rows = {
+      boxes: [{ user_id: "u1", state: "ready" }],
+      users: [{ id: "u1", username: "gratitude" }],
+    };
+    db.errors = { handles: { message: "boom" } };
+    const response = await GET(authed());
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.users[0]).toMatchObject({
+      username: "gratitude",
+      phone: null,
+      handles: [],
     });
   });
 
