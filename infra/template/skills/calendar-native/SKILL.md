@@ -1,12 +1,51 @@
 ---
 name: calendar-native
-description: Read and reason over the user's calendar from the box-resident event store. Use whenever the user asks about their schedule, events, meetings, availability, or invites.
+description: Read AND create/edit/delete the user's calendar events in the box-resident event store. Use whenever the user asks about their schedule OR asks to schedule/create/add/book/move/cancel an appointment, event, or meeting.
 ---
 
 # Calendar (box-native)
 
 The canonical calendar lives on this machine. Answer calendar questions from
 it directly — never call the control plane for event content.
+
+## Do it in the same turn
+
+When the user asks to schedule, add, move, or cancel something, the write is
+your job and it happens in this turn:
+
+- Run `python3 ~/.hermes/calendar/sync.py upsert <base64-json>` (or `remove`)
+  immediately, then confirm what you wrote. See the commands below.
+- MUST NOT send a calendar mini-app card and tell the user to tap it to create
+  the event. A card creates nothing; it hands the work back.
+- Only reach for `open-miniapp-card calendar` when the user explicitly asks to
+  OPEN, VIEW, or SHOW the calendar app — never when they ask you to schedule
+  something.
+- Resolve relative times ("tomorrow at 5pm", "next Tuesday morning") yourself
+  against the user's timezone. Ask only if the request is genuinely ambiguous
+  about *which* day or time, never to avoid doing the write.
+
+Worked example — "schedule an appointment called Nap at 5pm tomorrow":
+
+```bash
+# resolve "tomorrow 5pm" in the user's timezone, then write it
+B64=$(python3 - <<'PY'
+import base64, json
+from datetime import datetime, timedelta
+# The box clock carries the user's timezone; pass an explicit
+# zoneinfo.ZoneInfo(...) instead when you know they are elsewhere.
+start = (datetime.now().astimezone() + timedelta(days=1)).replace(
+    hour=17, minute=0, second=0, microsecond=0)
+print(base64.b64encode(json.dumps({
+    "title": "Nap",
+    "starts_at": start.isoformat(),
+    "ends_at": (start + timedelta(hours=1)).isoformat(),
+}).encode()).decode())
+PY
+)
+python3 ~/.hermes/calendar/sync.py upsert "$B64"
+```
+
+Then reply: "Added 'Nap' at 5 PM tomorrow." — not "tap the card."
 
 ## The event store
 

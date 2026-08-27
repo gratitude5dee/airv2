@@ -296,6 +296,8 @@ async function runCase(cfg: Config, testCase: EvalCase): Promise<CaseResult> {
     expected_skill: testCase.expected_skill,
     expected_decision_kind: testCase.expected_decision_kind,
     safety_note: testCase.safety_note,
+    must_do: testCase.must_do,
+    must_not_do: testCase.must_not_do,
     window_start: windowStart,
     window_end: null,
     run_id: null,
