@@ -150,6 +150,31 @@ apply/reveal cycle, scoped to the request, scrubbed from logs
 can carry a field. The CI gate is `lib/security/c18-sweep.test.ts`; the
 production-shaped sweep runbook is `scripts/c18-box-sweep.sh`.
 
+**Envelope AAD binding (`v2:`).** The box-side envelope in
+`infra/template/plugins/air-vault/vault_store.py` binds associated data into
+AES-GCM (`air-vault:v2:<store version>:<scope>`) instead of passing `None`,
+so a ciphertext only opens back into the store version and scope it was
+sealed for — a sealed blob cannot be replayed into a different slot, and a
+`v2:` envelope relabelled `v1:` fails authentication. Writes are always
+`v2:`; `v1:` envelopes still decrypt (same key, same layout, no AAD) and are
+upgraded on the next save, so existing stores keep opening. This is a
+tamper-binding change only: custody is unchanged — the key stays box-local
+and the control plane never sees it or the store.
+
+**Borrowed validation, not borrowed custody.** The control-plane vault
+surface validates request *shape* with `lib/vault/schema.ts`
+(kind/name/field-name/env-var/id/reveal Zod schemas), typed card structure
+with `lib/vault/payment-card.ts` (cardholder, PAN + Luhn, expiration,
+security code, billing postal, brand — shared with the Add card modal), and
+a same-origin mutation guard in `lib/http/origin.ts` on every vault
+mutation. The patterns come from the OpenInstinct manager library; its
+server-side sealing key (`SECRET_ENCRYPTION_KEY`) and Postgres ciphertext
+store are deliberately **not** adopted — they would let the control plane
+decrypt user vaults, which C18 forbids. Values are parsed, forwarded to the
+box, and dropped: nothing new is persisted, rejection messages name fields
+only (never contents), and `Cache-Control: no-store` plus
+`lib/vault/scrub.ts` remain in place.
+
 ## Fill tickets — capability tokens for card fill (V6 / C18/C19)
 
 **The decision:** the agent never sees card values. A checkout fill is

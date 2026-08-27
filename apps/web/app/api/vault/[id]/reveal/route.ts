@@ -7,6 +7,7 @@
  * the seed.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { isSameOriginRequest } from "@/lib/http/origin";
 import { serviceClient } from "@/lib/supabase";
 import { requestSession } from "@/lib/auth/surface";
 import {
@@ -15,19 +16,24 @@ import {
   StartLimitError,
 } from "@/lib/orchestrator/boxes";
 import { reveal, totp, VaultCliError } from "@/lib/vault/client";
+import { vaultItemIdSchema, vaultRevealBodySchema } from "@/lib/vault/schema";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-const FIELD_RE = /^[a-z_][a-z0-9_]*$/;
-const ID_RE = /^[A-Za-z0-9._-]{1,64}$/;
 const NO_STORE = { "Cache-Control": "no-store" };
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
+  if (!isSameOriginRequest(request)) {
+    return NextResponse.json(
+      { error: "forbidden origin" },
+      { status: 403, headers: NO_STORE }
+    );
+  }
   const supabase = serviceClient();
   const session = await requestSession(supabase, request);
   if (!session) {
@@ -37,20 +43,16 @@ export async function POST(
     );
   }
   const { id } = await params;
-  const body = (await request.json().catch(() => null)) as {
-    field?: string;
-  } | null;
-  const field = body?.field;
-  if (
-    !ID_RE.test(id) ||
-    typeof field !== "string" ||
-    !FIELD_RE.test(field)
-  ) {
+  const body = vaultRevealBodySchema.safeParse(
+    await request.json().catch(() => null)
+  );
+  if (!vaultItemIdSchema.safeParse(id).success || !body.success) {
     return NextResponse.json(
       { error: "invalid request" },
       { status: 400, headers: NO_STORE }
     );
   }
+  const field = body.data.field;
   // Ownership check against the metadata mirror — no box wake for a 404.
   const { data: item } = await supabase
     .from("vault_items")

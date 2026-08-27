@@ -5,6 +5,7 @@
  * exists in this process only for the life of the request.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { isSameOriginRequest } from "@/lib/http/origin";
 import { serviceClient } from "@/lib/supabase";
 import { requestSession } from "@/lib/auth/surface";
 import {
@@ -43,6 +44,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  if (!isSameOriginRequest(request)) {
+    return NextResponse.json(
+      { error: "forbidden origin" },
+      { status: 403, headers: NO_STORE }
+    );
+  }
   const supabase = serviceClient();
   const session = await requestSession(supabase, request);
   if (!session) {
