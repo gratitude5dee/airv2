@@ -40,11 +40,25 @@ describe("receipt mappers", () => {
       outcome: "ok",
       box_seconds: 60,
       cost_usd: 0.01,
+      speed_tier: "fast",
+      model: "gpt-5.6-luna",
+      requested_model: "fast",
+      reasoning_effort: "low",
+      latency_ms: 812,
+      prompt_tokens: 100,
+      completion_tokens: 20,
       sneaky_content: "should never appear",
     });
     expect(run.kind).toBe("agent_run");
     expect(run.ref).toBe("h1");
     expect(run.box_seconds).toBe(60);
+    expect(run.tier).toBe("fast");
+    expect(run.model).toBe("gpt-5.6-luna");
+    expect(run.requested_model).toBe("fast");
+    expect(run.reasoning_effort).toBe("low");
+    expect(run.latency_ms).toBe(812);
+    expect(run.prompt_tokens).toBe(100);
+    expect(run.completion_tokens).toBe(20);
     expect(JSON.stringify(run)).not.toContain("should never appear");
   });
 
@@ -83,6 +97,6 @@ describe("serializers", () => {
 
   it("nulls serialize as empty CSV cells", () => {
     const row = mapVaultEvent({ id: "v1" });
-    expect(toCsvRow(row)).toBe(`,vault_event,v1,,,,,,,,`);
+    expect(toCsvRow(row)).toBe(`,vault_event,v1,,,,,,,,,,,,,,,`);
   });
 });

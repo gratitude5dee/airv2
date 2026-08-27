@@ -575,6 +575,59 @@ function main(): void {
   }
   lines.push("");
 
+  // Task-router traces: the gateway stamps every metering row with the
+  // resolved tier, the box-requested model, the served model, the injected
+  // reasoning effort, and gateway latency — the same metadata surfaced at
+  // /api/admin/traces on admin.wzrd.tech.
+  const gatewayRows = results.flatMap((r) =>
+    r.window_runs.filter((run) => run.outcome === "gateway_completion")
+  );
+  const traced = gatewayRows.filter((run) => run.speed_tier !== null);
+  lines.push("## Task-router traces (gateway metering rows)", "");
+  if (traced.length === 0) {
+    lines.push(
+      "No router-traced rows in this results set (rows predate the",
+      "`speed_tier`/`latency_ms` trace columns).",
+      ""
+    );
+  } else {
+    const byTier = new Map<string, typeof traced>();
+    for (const run of traced) {
+      const key = run.speed_tier ?? "unknown";
+      byTier.set(key, [...(byTier.get(key) ?? []), run]);
+    }
+    lines.push("| Tier | calls | models served | mean gw latency | p95 gw latency | requested `fast` honored |");
+    lines.push("| --- | --- | --- | --- | --- | --- |");
+    for (const [tierName, runs] of [...byTier.entries()].sort()) {
+      const lats = runs
+        .map((run) => run.latency_ms)
+        .filter((v): v is number => v !== null)
+        .sort((a, b) => a - b);
+      const mean = lats.length ? lats.reduce((s, v) => s + v, 0) / lats.length : 0;
+      const p95lat = lats.length ? lats[Math.floor((lats.length - 1) * 0.95)] : 0;
+      const models = [...new Set(runs.map((run) => run.model ?? "?"))].join(", ");
+      const fastRequested = runs.filter((run) => run.requested_model === "fast");
+      const honored = fastRequested.length
+        ? `${fastRequested.filter((run) => run.speed_tier === "fast").length}/${fastRequested.length}`
+        : "—";
+      lines.push(
+        `| ${tierName} | ${runs.length} | ${models} | ${(mean / 1000).toFixed(2)}s | ` +
+          `${(p95lat / 1000).toFixed(2)}s | ${honored} |`
+      );
+    }
+    const misrouted = traced.filter(
+      (run) => run.requested_model === "fast" && run.speed_tier !== "fast"
+    );
+    lines.push(
+      "",
+      misrouted.length === 0
+        ? `Router invariant held: every \`model: "fast"\` request landed on the fast tier (${traced.length} traced calls).`
+        : `**Router invariant violated**: ${misrouted.length} \`model: "fast"\` call(s) served off the fast tier.`,
+      ""
+    );
+  }
+  lines.push("");
+
   lines.push("## Failures clustered by capability", "");
   lines.push("| Expected capability | Skill exists | Cases | Failing | No-skill gap | Case ids |");
   lines.push("| --- | --- | --- | --- | --- | --- |");
