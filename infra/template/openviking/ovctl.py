@@ -242,6 +242,35 @@ def cmd_export() -> int:
     return 0
 
 
+def cmd_recent(limit: int) -> int:
+    """Bounded preview listing for the Persona view: at most `limit` memory
+    URIs with a 240-char content preview each, truncated box-side so the
+    control plane never buffers the full store. Same content posture as
+    export (box → response only, never persisted)."""
+    if not healthy():
+        print(json.dumps({"error": "openviking not running"}))
+        return 1
+    limit = max(1, min(limit, 50))
+    c = client()
+    try:
+        resources = list_uris(c, "viking://resources")
+        memories = []
+        for uri in list_uris(c, "viking://user"):
+            try:
+                content = c.read(uri, limit=1024)
+            except Exception:
+                continue  # directory node or unreadable
+            if not content:
+                continue
+            memories.append({"uri": uri, "preview": content[:240]})
+            if len(memories) >= limit:
+                break
+    finally:
+        c.close()
+    print(json.dumps({"resources": resources, "memories": memories}))
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="ovctl")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -258,6 +287,8 @@ def main() -> int:
     p_rm.add_argument("uri")
     sub.add_parser("reindex")
     sub.add_parser("export")
+    p_recent = sub.add_parser("recent")
+    p_recent.add_argument("--limit", type=int, default=12)
     args = parser.parse_args()
     if args.cmd == "ensure":
         return cmd_ensure()
@@ -271,6 +302,8 @@ def main() -> int:
         return cmd_reindex()
     if args.cmd == "export":
         return cmd_export()
+    if args.cmd == "recent":
+        return cmd_recent(args.limit)
     return 2
 
 

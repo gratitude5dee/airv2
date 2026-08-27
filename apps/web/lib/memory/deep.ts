@@ -130,7 +130,14 @@ export async function deepMemoryHistory(
   boxId: string,
   limit = 12
 ): Promise<DeepMemoryHistory> {
-  const result = await command(boxId, "ovctl export", 120).catch(() => null);
+  // `ovctl recent` truncates previews box-side (unlike the full `ovctl
+  // export` dump), so the control plane never buffers the whole store.
+  const bounded = Math.max(1, Math.min(Math.floor(limit), 50));
+  const result = await command(
+    boxId,
+    `ovctl recent --limit ${bounded}`,
+    120
+  ).catch(() => null);
   const doc = result && result.exitCode === 0 ? parseJson(result.stdout) : null;
   if (!doc) return { resources: [], memories: [] };
   const resources = Array.isArray(doc["resources"])
@@ -141,14 +148,11 @@ export async function deepMemoryHistory(
     for (const entry of doc["memories"]) {
       const record = asRecord(entry);
       if (!record || typeof record["uri"] !== "string") continue;
-      const content =
-        typeof record["content"] === "string" ? record["content"] : "";
-      if (!content) continue;
-      memories.push({
-        uri: record["uri"],
-        preview: content.slice(0, 240),
-      });
-      if (memories.length >= limit) break;
+      const preview =
+        typeof record["preview"] === "string" ? record["preview"] : "";
+      if (!preview) continue;
+      memories.push({ uri: record["uri"], preview: preview.slice(0, 240) });
+      if (memories.length >= bounded) break;
     }
   }
   return { resources, memories };
