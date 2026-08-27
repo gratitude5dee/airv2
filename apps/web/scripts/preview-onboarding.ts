@@ -57,6 +57,19 @@ const snapshot: OnboardingSnapshot = {
     from_date: "2026-05-01",
     to_date: "2026-08-17",
   },
+  imports: {
+    sources: {
+      hermes: { files: 12, bytes: 40_000 },
+      codex: { files: 88, bytes: 2_400_000 },
+      claude: { files: 41, bytes: 1_100_000 },
+    },
+    last_upload_at: "2026-08-20T10:00:00Z",
+    dictionary_started_at: null,
+    dictionary_built_at: null,
+    dictionary_run_id: null,
+  },
+  importCommand:
+    "curl -fsSL https://app.wzrd.tech/agent-context-import.sh -o /tmp/air-import.sh && AIR_IMPORT_ENDPOINT=https://app.wzrd.tech/api/me/agent-context bash /tmp/air-import.sh tkt_example_ticket_value",
   ingestCommand:
     "curl -fsSL https://app.wzrd.tech/imessage-ingest.sh -o /tmp/air-ingest.sh && AIR_INGEST_ENDPOINT=https://app.wzrd.tech/api/me/imessage-history bash /tmp/air-ingest.sh tkt_example_ticket_value",
   boxBusy: false,

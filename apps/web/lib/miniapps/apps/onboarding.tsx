@@ -37,6 +37,14 @@ import {
   readIngestStatus,
   type IngestStatus,
 } from "@/lib/imessage/ingest";
+import {
+  DictionaryStartError,
+  importedFileCount,
+  mintImportTicket,
+  readImportStatus,
+  startDictionaryRun,
+  type ImportStatus,
+} from "@/lib/context/importer";
 import { env } from "@/lib/env";
 import { sendMiniAppCard } from "@/lib/miniapps/cards";
 import { claimCardSend, type CardClaim } from "@/lib/miniapps/cardSends";
@@ -131,6 +139,7 @@ const STEP_TITLES: Record<OnboardingStepId, string> = {
   link: "Connect Link",
   agent: "Meet your agent",
   walkthrough: "Walkthrough & first workflows",
+  import: "Import your AI context",
 };
 
 /** Mono kicker line above each slide title — the "why" in one breath. */
@@ -150,6 +159,7 @@ const STEP_KICKERS: Record<OnboardingStepId, string> = {
   link: "Agent payments",
   agent: "First contact",
   walkthrough: "Tour & workflows",
+  import: "Context · Hyperpersonalize",
 };
 
 /** Guided, read-only first workflows — fixed prompts, never client text. */
@@ -200,6 +210,8 @@ export interface OnboardingSnapshot {
   pluginSessions: number;
   ingest: IngestStatus | null;
   ingestCommand: string | null;
+  imports: ImportStatus | null;
+  importCommand: string | null;
   boxBusy: boolean;
 }
 
@@ -234,6 +246,7 @@ async function loadSnapshot(
     link,
     { count: pluginCount },
     ingest,
+    imports,
     identityMedia,
     avatarAssetId,
     twin,
@@ -277,6 +290,7 @@ async function loadSnapshot(
       .eq("user_id", userId)
       .is("revoked_at", null),
     readIngestStatus(supabase, userId).catch(() => null),
+    readImportStatus(supabase, userId).catch(() => null),
     listIdentityMediaViews(supabase, userId),
     getAvatarAssetId(supabase, userId).catch(() => null),
     getDigitalTwin(supabase, userId).catch(() => null),
@@ -305,8 +319,22 @@ async function loadSnapshot(
     pluginSessions: pluginCount ?? 0,
     ingest,
     ingestCommand: buildIngestCommand(userId),
+    imports,
+    importCommand: buildImportCommand(userId),
     boxBusy,
   };
+}
+
+/** The one-command packager shown on the import step — owner-only page,
+ * ticket is short-TTL and scoped to the agent-context endpoint. */
+function buildImportCommand(userId: string): string | null {
+  try {
+    const origin = env.appOrigin();
+    const ticket = mintImportTicket(userId);
+    return `curl -fsSL ${origin}/agent-context-import.sh -o /tmp/air-import.sh && AIR_IMPORT_ENDPOINT=${origin}/api/me/agent-context bash /tmp/air-import.sh ${ticket}`;
+  } catch {
+    return null;
+  }
 }
 
 /** The upload command shown on the iMessage step — owner-only page, ticket
@@ -370,6 +398,8 @@ export function effectiveStatus(
       return "todo";
     case "walkthrough":
       return "todo";
+    case "import":
+      return snapshot.imports?.dictionary_built_at ? "done" : "todo";
   }
 }
 
@@ -377,7 +407,7 @@ function firstOpenStep(snapshot: OnboardingSnapshot): OnboardingStepId {
   for (const step of ONBOARDING_STEPS) {
     if (effectiveStatus(snapshot, step) === "todo") return step;
   }
-  return "walkthrough";
+  return "import";
 }
 
 /** Confirmed vault references — drafts and the avatar pointer excluded. */
@@ -612,6 +642,44 @@ function stepBody(
       return `${intro}<p><a href="${esc(pendingUrl)}" target="_blank" rel="noopener">Approve the connection at link.com</a></p>${phrase}<p class="muted">Opens in your browser — no app to install. Log in or sign up with the email on your Link wallet. The code expires after a few minutes; use Start over for a fresh one.</p><div class="row actions">${checkForm}${connectForm("Start over")}${skipForm("link", "Later")}</div>`;
     }
     return `${intro}<div class="row actions">${connectForm("Connect Link")}${skipForm("link", "Later")}</div>`;
+  }
+  if (step === "import") {
+    const imports = snapshot.imports;
+    const files = imports ? importedFileCount(imports) : 0;
+    const built = Boolean(imports?.dictionary_built_at);
+    const building = Boolean(
+      imports?.dictionary_started_at && !imports.dictionary_built_at
+    );
+    const perSource = imports
+      ? (
+          [
+            ["Hermes profile", imports.sources.hermes.files],
+            ["Codex", imports.sources.codex.files],
+            ["Claude", imports.sources.claude.files],
+          ] as Array<[string, number]>
+        )
+          .map(
+            ([label, count]) =>
+              `<div class="item"><span class="grow">${esc(label)}</span><span class="chip">${count > 0 ? `${count.toLocaleString("en-US")} files` : "not imported"}</span></div>`
+          )
+          .join("")
+      : "";
+    const statusLine = built
+      ? `<p>Your personal dictionary is ready — <strong>Dictionary.MD</strong> lives on your agent's computer and now personalizes every conversation.</p>`
+      : building
+        ? `<p>Your ingestion agent is reading everything you imported and distilling <strong>Dictionary.MD</strong> — tap Refresh in a minute.</p>`
+        : files > 0
+          ? `<p>Imported <strong>${files.toLocaleString("en-US")}</strong> files — build your dictionary below, or run the command again to add more.</p>`
+          : `<p class="muted">Already use Hermes, Codex, or Claude Code? One command imports all of it — your profile, sessions, and instructions — straight to your agent's computer, never to the platform. It then builds a personal <strong>Dictionary.MD</strong> from everything, so your agent starts out already knowing you.</p>`;
+    const command = snapshot.importCommand
+      ? `<details${files > 0 || built ? "" : " open"}><summary>Get the one-click import command</summary><p class="muted">Run in Terminal on the machine where your agents live (link valid ~30 minutes; secrets are excluded and credentials redacted before upload):</p><pre>${esc(snapshot.importCommand)}</pre></details>`
+      : "";
+    const buildForm =
+      files > 0 && !building
+        ? `<form method="post" class="inline"><input type="hidden" name="action" value="build_dictionary"><button>${built ? "Rebuild dictionary" : "Build my dictionary"}</button></form>`
+        : "";
+    const refreshForm = `<form method="post" class="inline"><input type="hidden" name="action" value="refresh_import"><button class="ghost">Refresh status</button></form>`;
+    return `${statusLine}${perSource}${command}<div class="row actions">${buildForm}${refreshForm}${skipForm("import")}</div>`;
   }
   if (step === "walkthrough") {
     const tour = `<p>Home is your launcher — here's the clickthrough:</p><ul><li><strong>Home grid</strong> — every app as a one-tap tile: calendar, vault, pay, shop, inbox, persona, and more.</li><li><strong>Chat</strong> — one conversation with your agent, same on iMessage and the web.</li><li><strong>Needs you</strong> — every action with side effects (emails, payments, publishes) waits for your approval.</li><li><strong>Settings</strong> — username, speed, memory, context, plugin sessions.</li></ul><p class="muted">Finish setup and the Home app arrives as your next message — tap it and try each tile.</p>`;
@@ -1336,6 +1404,46 @@ export const onboarding: MiniAppModule = {
     // Plain re-render — e.g. "Refresh" after finishing a browser sign-in.
     if (action === "noop") {
       return respond(ctx, null, null);
+    }
+
+    if (action === "refresh_import") {
+      const imports = await readImportStatus(supabase, userId).catch(() => null);
+      if (imports?.dictionary_built_at) {
+        await markSafely(supabase, userId, "import", "done");
+        return respond(
+          ctx,
+          "import",
+          "Your personal dictionary is ready — your agent now knows you."
+        );
+      }
+      return respond(ctx, "import", null);
+    }
+
+    if (action === "build_dictionary") {
+      try {
+        await startDictionaryRun(supabase, userId);
+      } catch (error) {
+        if (error instanceof StartLimitError) {
+          return respond(
+            ctx,
+            "import",
+            "The computer is starting up — try again in a minute."
+          );
+        }
+        if (error instanceof DictionaryStartError) {
+          return respond(
+            ctx,
+            "import",
+            "Nothing imported yet — run the import command first."
+          );
+        }
+        throw error;
+      }
+      return respond(
+        ctx,
+        "import",
+        "Your ingestion agent is on it — Dictionary.MD lands on your computer in a few minutes; tap Refresh status."
+      );
     }
 
     if (action === "refresh_ingest") {
