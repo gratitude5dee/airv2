@@ -181,6 +181,32 @@ describe("staging and finalize", () => {
     expect(saved.enabled).toBe(true);
   });
 
+  it("disables the toggle and status when an over-budget snapshot is wiped", async () => {
+    commandMock.mockResolvedValueOnce({
+      exitCode: 0,
+      stdout: `3\n${999 * 1024 * 1024 * 1024}\n`,
+      stderr: "",
+    });
+    await expect(
+      storeBrowserProfileChunk(
+        supabase,
+        "user-1",
+        parseBrowserProfileChunk(chunk({ final: true }))
+      )
+    ).rejects.toThrow(BrowserProfileInputError);
+    const commands = commandMock.mock.calls.map((call) => call[1]);
+    expect(
+      commands.some((cmd) =>
+        cmd.includes('rm -rf "$HOME/.hermes/browser-profile"')
+      )
+    ).toBe(true);
+    expect(commands.some((cmd) => cmd.includes("use_real_profile"))).toBe(
+      true
+    );
+    const saved = JSON.parse(boxFiles.get(STATUS_PATH) ?? "{}");
+    expect(saved.enabled).toBe(false);
+  });
+
   it("keeps profile bytes out of Postgres entirely (C4)", async () => {
     // supabase is an empty object: any .from() call would throw.
     await storeBrowserProfileChunk(

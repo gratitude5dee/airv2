@@ -316,6 +316,12 @@ rm -rf "$HOME/${STAGING_DIR}"`,
     await command(boxId, `rm -rf "$HOME/${SNAPSHOT_DIR}"`).catch(
       () => undefined
     );
+    await setUseRealProfile(boxId, false).catch(() => undefined);
+    await writeFile(
+      boxId,
+      STATUS_PATH,
+      JSON.stringify(defaultBrowserProfileStatus(), null, 2)
+    ).catch(() => undefined);
     throw new BrowserProfileInputError("snapshot exceeds the size budget");
   }
   await setUseRealProfile(boxId, true);
