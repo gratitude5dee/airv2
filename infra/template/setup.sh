@@ -98,6 +98,31 @@ browser:
   headed: true
   backend: "off"
 
+# Web three-job split: web_search is discovery, web_extract reads pages with
+# a deterministic head+tail budget (the extract cache under ~/.hermes/cache/web
+# is shared across subagent processes), and the browser is for interaction
+# only. Backends stay empty in the template — no provider key is ever baked
+# into the box (C2). The control plane fills search_backend/extract_backend
+# when the user's vault holds a matching provider key (lib/vault/managers.ts);
+# with no key, the keyless free-tier ring serves both jobs.
+web:
+  search_backend: ""
+  extract_backend: ""
+  extract_char_limit: 15000
+  keyless_fallback: true
+  keyless_rescue: true
+
+# Delegated children (research/search/browse fan-out) run on the abstract
+# "fast" tier — the gateway resolves it server-side and honors it as a
+# downgrade-only lane — while this parent stays on the box default below.
+# provider stays unset so children inherit the box's custom gateway
+# credentials; depth stays 1 (raising it multiplies per-leaf runtime — set a
+# non-zero child_timeout_seconds before ever enabling depth 2).
+delegation:
+  model: "fast"
+  max_concurrent_children: 4
+  max_spawn_depth: 1
+
 model:
   default: "balanced"
   provider: "custom"
@@ -228,7 +253,29 @@ printf 'y\n' | "$HERMES_VENV/bin/hermes" mcp add daytona --command /usr/local/bi
 # ── 3c. Preinstall base skills into ~/.hermes/skills ────────────────────────
 # On top of the bundled library; forks inherit these so provisioning doesn't
 # pay the install cost per user. Failures warn but don't abort the template.
-for skill in official/email/agentmail official/research/duckduckgo-search; do
+# Identifiers are pinned from real `hermes skills search` results (never
+# guessed) and mirrored in BASE_SKILLS (apps/web/lib/skills/hub.ts) so
+# provisioning re-asserts them per fork. The eval-test set (V0 web latency)
+# rides along so the agent-suite can exercise them without per-box installs.
+for skill in \
+  official/email/agentmail \
+  official/research/duckduckgo-search \
+  official/creative/hyperframes \
+  skills-sh/kepano/obsidian-skills/defuddle \
+  browser-harness \
+  skills-sh/panniantong/agent-reach/agent-reach \
+  skills-sh/jakubkrehel/make-interfaces-feel-better/make-interfaces-feel-better \
+  skills-sh/addyosmani/agent-skills/browser-testing-with-devtools \
+  skills-sh/composiohq/skills/composio \
+  skills-sh/zeropointrepo/youtube-skills/youtube-full \
+  skills-sh/nousresearch/hermes-agent/humanizer \
+  skills-sh/mattpocock/skills/setup-matt-pocock-skills \
+  skills-sh/aradotso/trending-skills/skillclaw-skill-evolution \
+  skills-sh/aradotso/mcp-skills/codebase-memory-mcp-intelligence \
+  skills-sh/forward-future/loopy/loopy \
+  skills-sh/calesthio/openmontage/ai-video-gen \
+  skills-sh/aradotso/security-skills/anthropic-cybersecurity-skills \
+; do
   "$HERMES_VENV/bin/hermes" skills install "$skill" --yes || echo "WARN: base skill $skill install failed" >&2
 done
 

@@ -311,6 +311,26 @@ if not isinstance(cfg.get("memory"), dict):
 # The box IS the computer: headed browser, built-in browser_* tools.
 if not isinstance(cfg.get("browser"), dict):
     cfg["browser"] = {"headed": True, "backend": "off"}
+# V0 web split: web_search discovers, web_extract reads, browser interacts.
+# Template-owned defaults are set only when absent so a user's own backend
+# choice (or a control-plane-written vault backend) is never clobbered.
+web = cfg.get("web")
+web = web if isinstance(web, dict) else {}
+web.setdefault("search_backend", "")
+web.setdefault("extract_backend", "")
+web.setdefault("extract_char_limit", 15000)
+web.setdefault("keyless_fallback", True)
+web.setdefault("keyless_rescue", True)
+cfg["web"] = web
+# V0 fast-tier delegation: children run on the abstract "fast" tier
+# (gateway-resolved, downgrade-only); provider stays unset so children
+# inherit the box's gateway credentials.
+delegation = cfg.get("delegation")
+delegation = delegation if isinstance(delegation, dict) else {}
+delegation.setdefault("model", "fast")
+delegation.setdefault("max_concurrent_children", 4)
+delegation.setdefault("max_spawn_depth", 1)
+cfg["delegation"] = delegation
 # Deep memory (docs/memory-upgrade.md): the loopback OpenViking MCP server.
 mcp = cfg.get("mcp_servers")
 mcp = mcp if isinstance(mcp, dict) else {}

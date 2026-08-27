@@ -502,6 +502,12 @@ function main(): void {
   const totalCost = results.reduce((sum, r) => sum + r.cost_usd, 0);
   const totalBoxSeconds = results.reduce((sum, r) => sum + r.box_seconds, 0);
   const totalDecisions = results.reduce((sum, r) => sum + r.decisions.length, 0);
+  const totalPrompt = results.reduce((sum, r) => sum + (r.prompt_tokens ?? 0), 0);
+  const totalCompletion = results.reduce((sum, r) => sum + (r.completion_tokens ?? 0), 0);
+  const latencies = results.map((r) => r.elapsed_ms).sort((a, b) => a - b);
+  const meanLatency = latencies.reduce((sum, v) => sum + v, 0) / latencies.length;
+  const p50 = latencies[Math.floor((latencies.length - 1) * 0.5)];
+  const p95 = latencies[Math.floor((latencies.length - 1) * 0.95)];
   const statuses = new Map<string, number>();
   for (const r of results) statuses.set(r.status, (statuses.get(r.status) ?? 0) + 1);
 
@@ -524,6 +530,8 @@ function main(): void {
     `Run outcomes: ${[...statuses.entries()].map(([k, v]) => `${k} ${v}`).join(", ")}.`,
     `Decisions created: **${totalDecisions}**.`,
     `Spend: **$${totalCost.toFixed(4)}** across ${results.length} cases; box time recorded: **${totalBoxSeconds}s**.`,
+    `Tokens: **${totalPrompt.toLocaleString()}** prompt / **${totalCompletion.toLocaleString()}** completion.`,
+    `Latency per case: mean **${(meanLatency / 1000).toFixed(1)}s**, p50 **${(p50 / 1000).toFixed(1)}s**, p95 **${(p95 / 1000).toFixed(1)}s**.`,
     "",
     "> `cost_usd` sums every `agent_runs` row in each case's window, including the",
     "> `gateway_completion` metering rows the inference gateway inserts per model",
@@ -542,6 +550,27 @@ function main(): void {
     lines.push(
       `| ${category} | ${n} | ${rate(cat.routing)} | ${rate(cat.execution)} | ${rate(cat.gating)} | ` +
         `${rate(cat.context)} | ${rate(cat.honesty)} |`
+    );
+  }
+  lines.push("");
+
+  // Latency/cost/token medians per category: the before/after comparison
+  // surface for the web split + fast-tier delegation work.
+  lines.push("## Per-category latency and spend", "");
+  lines.push("| Category | n | mean latency | p95 latency | cost | prompt tok | completion tok |");
+  lines.push("| --- | --- | --- | --- | --- | --- | --- |");
+  for (const category of CATEGORIES) {
+    const rows = results.filter((r) => r.category === category);
+    if (rows.length === 0) continue;
+    const catLat = rows.map((r) => r.elapsed_ms).sort((a, b) => a - b);
+    const catMean = catLat.reduce((sum, v) => sum + v, 0) / catLat.length;
+    const catP95 = catLat[Math.floor((catLat.length - 1) * 0.95)];
+    const catCost = rows.reduce((sum, r) => sum + r.cost_usd, 0);
+    const catPrompt = rows.reduce((sum, r) => sum + (r.prompt_tokens ?? 0), 0);
+    const catCompletion = rows.reduce((sum, r) => sum + (r.completion_tokens ?? 0), 0);
+    lines.push(
+      `| ${category} | ${rows.length} | ${(catMean / 1000).toFixed(1)}s | ${(catP95 / 1000).toFixed(1)}s | ` +
+        `$${catCost.toFixed(4)} | ${catPrompt.toLocaleString()} | ${catCompletion.toLocaleString()} |`
     );
   }
   lines.push("");

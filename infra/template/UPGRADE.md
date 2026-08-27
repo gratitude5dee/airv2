@@ -169,6 +169,73 @@ plugins present, `AGENT_BROWSER_ARGS` comma-separated with the CDP profile,
 new forks inherit the baseline (then delete `AIR_VAULT_KEY` from the
 template's `~/.hermes/.env` — provisioning writes a per-user key on fork).
 
+## 6b. Web split + fast-tier delegation — `web:` and `delegation:` blocks
+
+`setup.sh` §3 (and the macOS lane, and `sync-box.sh` for existing boxes) now
+seeds two more config blocks:
+
+```yaml
+web:
+  search_backend: ""
+  extract_backend: ""
+  extract_char_limit: 15000
+  keyless_fallback: true
+  keyless_rescue: true
+
+delegation:
+  model: "fast"
+  max_concurrent_children: 4
+  max_spawn_depth: 1
+```
+
+- **Three-job split.** `web_search` is discovery, `web_extract` is reading
+  (deterministic head+tail budget, `extract_char_limit: 15000`), and the
+  browser is reserved for interaction. The `browser-use` and
+  `shopping-checkout` skills now say this explicitly. Extracted pages land in
+  `~/.hermes/cache/web`, which is shared across subagent processes, so
+  fan-out re-reads are near-free. The pinned Hermes has **no**
+  `web.cache_enabled` / `web.cache_ttl_minutes` keys — the cache/web
+  full-text store is unconditional — so we do not seed them; re-check on the
+  next re-pin.
+- **Independent backends.** `search_backend`/`extract_backend` stay `""`
+  (keyless ring) until the vault provides a key: enabling a secrets manager
+  (Bitwarden/1Password/command) now also runs a backend sync that inspects
+  the mapped env-var names and picks a keyed provider per capability —
+  search-only providers (brave-free, searxng, xai) are never chosen for
+  extract. A backend the owner (or an operator) set by hand is never
+  overwritten. With no matching key, the keyless ring plus
+  `keyless_fallback`/`keyless_rescue` remain the safety net.
+- **Vault-sourced web keys (C2).** `FIRECRAWL_API_KEY`, `TAVILY_API_KEY`,
+  `EXA_API_KEY`, `SEARXNG_URL`, etc. are NEVER written into the template
+  `.env`. Users map them through their own secrets manager
+  (`secrets.<manager>.mapped`) exactly like any other credential; air-vault
+  resolves them into the box's `.hermes/.env` at gateway start.
+- **Fast-tier children.** `delegation.model: "fast"` pins delegated
+  research/search/browse children to the box-visible `fast` tier while the
+  parent stays on the default (`balanced`). `delegation.provider` stays
+  unset so children inherit the box's custom gateway credentials. The
+  gateway honors a request-body `model: "fast"` as a downgrade-only
+  override, and `MODEL_REASONING_FAST` defaults to `"low"` — there is no
+  faster model slug; low reasoning effort IS the fast-mode lever. Keep
+  `max_spawn_depth: 1`; if you raise it to 2, also set a non-zero
+  `delegation.child_timeout_seconds` because nesting multiplies per-leaf
+  runtime.
+- **Bot profiles** get the same two blocks from
+  `apps/web/lib/bots/provision.ts`.
+
+## 6c. Eval test skills
+
+`setup.sh` §3c's hub-install loop (and `BASE_SKILLS` in
+`apps/web/lib/skills/hub.ts`) now includes the eval-test skill set —
+agent-reach, defuddle, browser-harness, browser-testing-with-devtools,
+hyperframes, composio, youtube-full, humanizer, and friends. Every
+identifier was confirmed with `hermes skills search` against the pinned CLI;
+never pin a guessed identifier. `resemble-detect` is vendored under
+`infra/template/skills/resemble-detect/` (external repo, not in the hub).
+The eval suite gained token/latency capture and a `research` category
+(I101–I104: shopping, flight, reservation, multi-source fan-out) — see
+`evals/agent-suite/`.
+
 ## 7. Release channels — dev/prod fleet sync
 
 The manual §6 procedure is now automated behind release channels:

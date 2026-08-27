@@ -21,6 +21,27 @@ const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 export const BASE_SKILLS = [
   "official/email/agentmail",
   "official/research/duckduckgo-search",
+  // Eval-test set (V0 web latency work). Every identifier below was
+  // confirmed with a real `hermes skills search` against the pinned CLI —
+  // never guessed — and the same list is preinstalled by the template
+  // setup scripts, so these installs are normally no-ops at provision time.
+  // Search/browser-relevant first:
+  "skills-sh/kepano/obsidian-skills/defuddle",
+  "browser-harness",
+  "skills-sh/panniantong/agent-reach/agent-reach",
+  "skills-sh/addyosmani/agent-skills/browser-testing-with-devtools",
+  // Broader eval set:
+  "official/creative/hyperframes",
+  "skills-sh/jakubkrehel/make-interfaces-feel-better/make-interfaces-feel-better",
+  "skills-sh/composiohq/skills/composio",
+  "skills-sh/zeropointrepo/youtube-skills/youtube-full",
+  "skills-sh/nousresearch/hermes-agent/humanizer",
+  "skills-sh/mattpocock/skills/setup-matt-pocock-skills",
+  "skills-sh/aradotso/trending-skills/skillclaw-skill-evolution",
+  "skills-sh/aradotso/mcp-skills/codebase-memory-mcp-intelligence",
+  "skills-sh/forward-future/loopy/loopy",
+  "skills-sh/calesthio/openmontage/ai-video-gen",
+  "skills-sh/aradotso/security-skills/anthropic-cybersecurity-skills",
 ] as const;
 
 /** Best-effort base-skill install on an already-awake instance (provisioning). */

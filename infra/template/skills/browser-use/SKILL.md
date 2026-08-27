@@ -17,6 +17,23 @@ comparing pages — prefer the Browser Use CLI over long chains of single
 browser_* tool calls. It executes Python inside the browser session
 (Browser Harness), so loops, retries, and inspection happen in one shot.
 
+## Reading vs. interacting — pick the fast lane first
+
+The browser is the SLOWEST way to get information. Route each job to its
+tool:
+
+- **Discovery** (find pages, products, flights, restaurants): `web_search`.
+- **Reading** (articles, docs, prices, reviews, comparisons — anything
+  that's just page content): `web_extract`. It returns clean text on a
+  deterministic budget and caches the page, so re-reads and subagent
+  fan-outs are near-free.
+- **Interaction only** (carts, seat maps, booking forms, logins, anything
+  needing live session state): the browser — browser_* tools or this CLI.
+
+Only open the browser when the task needs clicks, forms, or a signed-in
+session. "Look up X and tell me" is a web_search + web_extract job, never
+a browser job.
+
 ## How to run it
 
 Pipe Python into `box-browser-use` from the terminal:

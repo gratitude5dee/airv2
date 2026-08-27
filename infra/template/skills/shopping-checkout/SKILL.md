@@ -17,10 +17,14 @@ The fixed choreography — never reorder or skip a step:
 
 ## 1. Find
 
-"find me 2 tickets to X" / "buy the usual coffee filters" → work in this
-computer's browser: search, compare, open the product/event page, and get
-checkout-ready (cart built, seat map chosen, signed in via a vault login
-fill if the site is granted).
+"find me 2 tickets to X" / "buy the usual coffee filters" → research with
+the fast tools first: `web_search` to discover candidates (products,
+events, flights, restaurants) and `web_extract` to read and compare pages,
+prices, and reviews — the browser is the slowest path, so don't browse to
+read. Open this computer's browser only once you know WHAT to buy, for the
+parts that need live state: open the product/event page, build the cart,
+pick seats, and sign in (via a vault login fill if the site is granted)
+until checkout-ready.
 
 ## 2. Serve the URL — always
 

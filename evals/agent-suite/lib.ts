@@ -38,6 +38,7 @@ export const CATEGORIES = [
   "tour_events",
   "cross_functional",
   "adversarial",
+  "research",
 ] as const;
 
 export type Category = (typeof CATEGORIES)[number];
@@ -117,6 +118,8 @@ export interface AgentRunRow {
   ended_at: string | null;
   cost_usd: number | null;
   box_seconds: number | null;
+  prompt_tokens: number | null;
+  completion_tokens: number | null;
 }
 
 export interface CaseResult {
@@ -152,6 +155,9 @@ export interface CaseResult {
   window_runs: AgentRunRow[];
   cost_usd: number;
   box_seconds: number;
+  /** Token totals summed over the window's gateway metering rows. */
+  prompt_tokens: number;
+  completion_tokens: number;
   decisions: DecisionRow[];
 }
 

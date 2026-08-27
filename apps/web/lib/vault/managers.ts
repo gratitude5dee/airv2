@@ -155,6 +155,87 @@ PYEOF`
   }
 }
 
+/**
+ * V0 web split: derive `web.search_backend` / `web.extract_backend` from the
+ * env-var NAMES the user's enabled managers map (values never leave the box).
+ * Runs entirely on the box: it reads secrets.*.mapped from config.yaml,
+ * picks a capability-correct provider per job, and degrades to the keyless
+ * ring (empty backend) when no matching key is mapped. Bookkeeping under
+ * secrets.air_web records what the control plane wrote so a backend the user
+ * set by hand is never clobbered.
+ */
+async function syncWebBackends(boxId: string): Promise<void> {
+  const result = await command(
+    boxId,
+    `python3 - <<'PYEOF'
+import pathlib, yaml
+
+# Provider -> env var that unlocks it — mirrors the pinned hermes-agent
+# plugins/web/* capability table. brave-free/searxng/xai are search-only,
+# so EXTRACT_ORDER holds only the providers whose supports_extract is true.
+PROVIDER_KEY = {
+    "firecrawl": "FIRECRAWL_API_KEY",
+    "tavily": "TAVILY_API_KEY",
+    "exa": "EXA_API_KEY",
+    "parallel": "PARALLEL_API_KEY",
+    "keenable": "KEENABLE_API_KEY",
+    "brave-free": "BRAVE_SEARCH_API_KEY",
+    "searxng": "SEARXNG_URL",
+    "xai": "XAI_API_KEY",
+}
+# Search prefers the light search-only providers; extract needs a provider
+# that can actually read pages.
+SEARCH_ORDER = ["brave-free", "searxng", "xai", "tavily", "exa", "firecrawl", "parallel", "keenable"]
+EXTRACT_ORDER = ["firecrawl", "tavily", "exa", "parallel", "keenable"]
+
+p = pathlib.Path.home() / ".hermes" / "config.yaml"
+cfg = yaml.safe_load(p.read_text()) if p.exists() else None
+cfg = cfg if isinstance(cfg, dict) else {}
+secrets = cfg.get("secrets")
+secrets = secrets if isinstance(secrets, dict) else {}
+
+mapped_vars = set()
+for section in ("bitwarden", "onepassword", "command"):
+    entry = secrets.get(section)
+    if not isinstance(entry, dict) or not entry.get("enabled"):
+        continue
+    mapped = entry.get("mapped")
+    if isinstance(mapped, dict):
+        mapped_vars.update(str(k) for k in mapped)
+
+def pick(order):
+    for name in order:
+        if PROVIDER_KEY[name] in mapped_vars:
+            return name
+    return ""
+
+search = pick(SEARCH_ORDER)
+extract = pick(EXTRACT_ORDER)
+
+web = cfg.get("web")
+web = web if isinstance(web, dict) else {}
+book = secrets.get("air_web")
+book = book if isinstance(book, dict) else {}
+for key, value in (("search_backend", search), ("extract_backend", extract)):
+    current = web.get(key) or ""
+    if current in ("", book.get(key) or ""):
+        web[key] = value
+        book[key] = value
+web.setdefault("keyless_fallback", True)
+web.setdefault("keyless_rescue", True)
+cfg["web"] = web
+secrets["air_web"] = book
+cfg["secrets"] = secrets
+p.write_text(yaml.safe_dump(cfg, default_flow_style=False))
+PYEOF`
+  );
+  if (result.exitCode !== 0) {
+    throw new Error(
+      `web backend sync failed: ${scrubVaultValues(result.stderr)}`
+    );
+  }
+}
+
 export async function restartGateway(boxId: string): Promise<void> {
   const result = await command(
     boxId,
@@ -317,6 +398,10 @@ export async function enableManager(
   }
 
   await patchSecretsConfig(boxId, CONFIG_SECTION[manager], configPatch);
+  // Mapped web-provider keys (TAVILY_API_KEY, EXA_API_KEY, ...) route the
+  // web_search/web_extract split onto the user's own providers; with none
+  // mapped the keyless ring keeps serving both jobs.
+  await syncWebBackends(boxId);
 
   // The box now holds the binding: mirror that before the restart so a
   // restart failure cannot leave the status row claiming "off" (truthful
@@ -364,6 +449,9 @@ export async function disableManager(
   await patchSecretsConfig(boxId, CONFIG_SECTION[manager], { enabled: false });
   const envKey = MANAGER_ENV_KEY[manager];
   if (envKey) await removeBoxEnvKeys(boxId, [envKey]);
+  // Re-derive the web backends without this manager's mappings so a backend
+  // whose key just left the box degrades back to the keyless ring.
+  await syncWebBackends(boxId);
   await restartGateway(boxId);
   await upsertManagerRow(supabase, userId, manager, {
     enabled: false,

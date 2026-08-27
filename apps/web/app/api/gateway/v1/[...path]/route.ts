@@ -189,7 +189,7 @@ export async function POST(
   }
 
   const tierValue = String(entitlement.speed_tier);
-  const tier = isSpeedTier(tierValue) ? tierValue : "balanced";
+  const entitledTier = isSpeedTier(tierValue) ? tierValue : "balanced";
   // A user who never touched the setting gets Ox Alpha, not OpenAI.
   const familyValue = String(entitlement.model_family ?? "");
   const family = isModelFamily(familyValue) ? familyValue : DEFAULT_MODEL_FAMILY;
@@ -219,6 +219,14 @@ export async function POST(
   }
   const streaming = rawBody["stream"] === true;
   const endpoint = path.join("/");
+
+  // Delegated child runs pin `model: "fast"` (delegation.model in the box
+  // config), which must actually land on the fast lane. Only the cheapest
+  // tier is honored from the request: box config may downgrade a call below
+  // the user's Settings tier, never upgrade it (spend stays entitlement-
+  // bounded), and the box's static `model.default: "balanced"` keeps
+  // resolving through the entitlement as before.
+  const tier = rawBody["model"] === "fast" ? "fast" : entitledTier;
 
   let servedModel = "";
   let servedOnPersonalKey = false;

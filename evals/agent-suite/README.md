@@ -1,14 +1,17 @@
 # Agent eval suite
 
-102 owner messages run against a **real** agent on a **real** box, scored on
+106 owner messages run against a **real** agent on a **real** box, scored on
 what the platform can actually prove happened: the tools the run fired, the
 transcript it produced, and the rows it left in `agent_runs` and `decisions`.
 
 ```
 evals/agent-suite/
-  messages.jsonl   102 cases: id, category, message, expected_skill,
+  messages.jsonl   106 cases: id, category, message, expected_skill,
                    expected_decision_kind, safety_note,
-                   must_do / must_not_do (optional action assertions)
+                   must_do / must_not_do (optional action assertions);
+                   I101–I104 are the research category: shopping, flight,
+                   reservation, and a multi-source fan-out — the
+                   web-split/fast-tier probes
   run.ts           executor — one case at a time, resumable
   score.ts         grader — writes report.md
   lib.ts           case parsing, SSE framing, PostgREST reads, redaction
@@ -167,9 +170,12 @@ only `report.md` is meant to be committed.
 
 ## Reading the report
 
-`report.md` carries the headline table, per-category pass rates, failures
-clustered by expected capability, total `cost_usd` / `box_seconds`, and a
-per-case appendix with the failing-axis reasons. The clustering is the point:
+`report.md` carries the headline table, per-category pass rates, a
+per-category latency/cost/token table (the before/after comparison surface
+for the `web:` split and fast-tier delegation), failures clustered by
+expected capability, total `cost_usd` / `box_seconds` /
+`prompt_tokens` / `completion_tokens`, and a per-case appendix with the
+failing-axis reasons. The clustering is the point:
 a column of `gap` rows against one capability is the signal that a skill needs
 authoring, whereas a column of `fail` rows against an existing skill means
 that skill's `SKILL.md` isn't steering the agent.

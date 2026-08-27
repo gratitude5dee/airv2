@@ -213,11 +213,14 @@ function tierOverride(tier: SpeedTier): string | undefined {
 /**
  * Optional per-tier reasoning effort (MODEL_REASONING_FAST / _BALANCED /
  * _DEEP), injected by the gateway for providers that accept
- * `reasoning_effort` (OpenAI GPT-5.x). Unset means don't send the field.
+ * `reasoning_effort` (OpenAI GPT-5.x). Unset means don't send the field —
+ * except the fast tier, which defaults to "low": there is no faster model
+ * slug behind "fast", so low reasoning effort IS the fast-mode lever.
+ * Set MODEL_REASONING_FAST="" to disable the default.
  */
 export function reasoningForTier(tier: SpeedTier): string | undefined {
   const byTier: Record<SpeedTier, string | undefined> = {
-    fast: process.env["MODEL_REASONING_FAST"],
+    fast: process.env["MODEL_REASONING_FAST"] ?? "low",
     balanced: process.env["MODEL_REASONING_BALANCED"],
     deep: process.env["MODEL_REASONING_DEEP"],
   };

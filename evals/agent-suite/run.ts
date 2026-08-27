@@ -206,6 +206,8 @@ interface RawRun {
   ended_at: string | null;
   cost_usd: string | number | null;
   box_seconds: number | null;
+  prompt_tokens: number | null;
+  completion_tokens: number | null;
 }
 
 function toRunRow(row: RawRun): AgentRunRow {
@@ -217,10 +219,14 @@ function toRunRow(row: RawRun): AgentRunRow {
     ended_at: row.ended_at,
     cost_usd: row.cost_usd === null ? null : num(row.cost_usd),
     box_seconds: row.box_seconds === null ? null : num(row.box_seconds),
+    prompt_tokens: row.prompt_tokens === null ? null : num(row.prompt_tokens),
+    completion_tokens: row.completion_tokens === null ? null : num(row.completion_tokens),
   };
 }
 
-const RUN_COLS = "hermes_run_id,trigger,outcome,started_at,ended_at,cost_usd,box_seconds";
+const RUN_COLS =
+  "hermes_run_id,trigger,outcome,started_at,ended_at,cost_usd,box_seconds," +
+  "prompt_tokens,completion_tokens";
 
 /**
  * Every agent_runs row the case produced: the chat row the relay opened plus
@@ -306,6 +312,8 @@ async function runCase(cfg: Config, testCase: EvalCase): Promise<CaseResult> {
     window_runs: [],
     cost_usd: 0,
     box_seconds: 0,
+    prompt_tokens: 0,
+    completion_tokens: 0,
     decisions: [],
   };
 
@@ -353,6 +361,8 @@ async function runCase(cfg: Config, testCase: EvalCase): Promise<CaseResult> {
     window_runs: windowRuns,
     cost_usd: windowRuns.reduce((sum, r) => sum + (r.cost_usd ?? 0), 0),
     box_seconds: windowRuns.reduce((sum, r) => sum + (r.box_seconds ?? 0), 0),
+    prompt_tokens: windowRuns.reduce((sum, r) => sum + (r.prompt_tokens ?? 0), 0),
+    completion_tokens: windowRuns.reduce((sum, r) => sum + (r.completion_tokens ?? 0), 0),
     decisions,
   };
 }
@@ -386,6 +396,7 @@ async function main(): Promise<void> {
       `[eval] ${label} ${result.status} — ${result.tools.length} tool(s), ` +
         `${result.skills_viewed.length ? `skills [${result.skills_viewed.join(" ")}], ` : ""}` +
         `${result.decisions.length} decision(s), $${result.cost_usd.toFixed(4)}, ` +
+        `${result.prompt_tokens + result.completion_tokens} tok, ` +
         `${Math.round(result.elapsed_ms / 1000)}s` +
         (result.error ? ` — ${result.error.slice(0, 160)}` : "")
     );

@@ -122,6 +122,25 @@ browser:
   headed: true
   backend: "off"
 
+# Web three-job split (same seed as the Linux template): web_search discovers,
+# web_extract reads, the browser interacts. Backends stay empty — no provider
+# key ships in the template (C2); the control plane fills them from the user's
+# vault, and the keyless free-tier ring covers the no-key case.
+web:
+  search_backend: ""
+  extract_backend: ""
+  extract_char_limit: 15000
+  keyless_fallback: true
+  keyless_rescue: true
+
+# Delegated children run on the abstract "fast" tier (gateway-resolved,
+# downgrade-only); provider stays unset so they inherit the gateway
+# credentials. Depth stays 1 — set child_timeout_seconds before raising it.
+delegation:
+  model: "fast"
+  max_concurrent_children: 4
+  max_spawn_depth: 1
+
 model:
   default: "balanced"
   provider: "custom"
@@ -188,7 +207,27 @@ printf 'y\n' | "$HERMES_VENV/bin/hermes" mcp add daytona --command "$BIN_DIR/day
   || echo "WARN: daytona mcp add failed" >&2
 
 # ── 8. Skills, plugins, calendar, OpenViking — the same shared assets ────────
-for skill in official/email/agentmail official/research/duckduckgo-search; do
+# Same pinned hub set as the Linux template (identifiers confirmed via
+# `hermes skills search`, mirrored in apps/web/lib/skills/hub.ts BASE_SKILLS).
+for skill in \
+  official/email/agentmail \
+  official/research/duckduckgo-search \
+  official/creative/hyperframes \
+  skills-sh/kepano/obsidian-skills/defuddle \
+  browser-harness \
+  skills-sh/panniantong/agent-reach/agent-reach \
+  skills-sh/jakubkrehel/make-interfaces-feel-better/make-interfaces-feel-better \
+  skills-sh/addyosmani/agent-skills/browser-testing-with-devtools \
+  skills-sh/composiohq/skills/composio \
+  skills-sh/zeropointrepo/youtube-skills/youtube-full \
+  skills-sh/nousresearch/hermes-agent/humanizer \
+  skills-sh/mattpocock/skills/setup-matt-pocock-skills \
+  skills-sh/aradotso/trending-skills/skillclaw-skill-evolution \
+  skills-sh/aradotso/mcp-skills/codebase-memory-mcp-intelligence \
+  skills-sh/forward-future/loopy/loopy \
+  skills-sh/calesthio/openmontage/ai-video-gen \
+  skills-sh/aradotso/security-skills/anthropic-cybersecurity-skills \
+; do
   "$HERMES_VENV/bin/hermes" skills install "$skill" --yes || echo "WARN: base skill $skill install failed" >&2
 done
 mkdir -p "$HOME_DIR/.hermes/skills"
