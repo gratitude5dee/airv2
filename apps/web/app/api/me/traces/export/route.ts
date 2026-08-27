@@ -9,7 +9,7 @@
  * W&B mirror receives receipt metadata only and is dormant without
  * WANDB_API_KEY.
  */
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { sessionUserId } from "@/lib/auth/user";
 import {
   armStopAfter,
@@ -81,8 +81,10 @@ export async function GET(request: NextRequest): Promise<Response> {
 
   const receipts = await fetchReceipts(supabase, userId, window);
   if (weaveEnabled()) {
-    // fire-and-forget metadata mirror; never blocks or fails the download
-    void mirrorReceipts(receipts);
+    // metadata mirror after the response is sent; never blocks or fails
+    // the download (a bare fire-and-forget promise gets dropped when the
+    // serverless function is frozen after responding)
+    after(() => mirrorReceipts(receipts));
   }
 
   const day = new Date().toISOString().slice(0, 10);
