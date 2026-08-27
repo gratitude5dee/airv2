@@ -169,15 +169,23 @@ def serve() -> None:
     thread = threading.Thread(target=_maintenance_loop, args=(stop,), daemon=True)
     thread.start()
 
-    def shutdown(signum, frame):
+    def on_signal(signum, frame):
+        # Only set the event here; server.shutdown() blocks until the serve
+        # loop exits and must not run on the thread hosting that loop.
         stop.set()
-        server.shutdown()
 
-    signal.signal(signal.SIGTERM, shutdown)
-    signal.signal(signal.SIGINT, shutdown)
+    signal.signal(signal.SIGTERM, on_signal)
+    signal.signal(signal.SIGINT, on_signal)
     print(f"air-learningd {__version__} listening on {SOCKET_PATH}")
-    server.serve_forever()
-    SOCKET_PATH.unlink(missing_ok=True)
+    serve_thread = threading.Thread(target=server.serve_forever, daemon=True)
+    serve_thread.start()
+    try:
+        stop.wait()
+    finally:
+        server.shutdown()
+        server.server_close()
+        serve_thread.join(timeout=10)
+        SOCKET_PATH.unlink(missing_ok=True)
 
 
 def call(method: str, params: dict | None = None, timeout: float = 60) -> dict:
