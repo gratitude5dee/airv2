@@ -11,7 +11,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Orb } from "@/components/orb/Orb";
 import { PixelIcon, type PixelGlyph } from "@/components/dither-kit/icon";
-import { luhnValid, paymentCardBrand } from "@/lib/vault/payment-card";
+import {
+  luhnValid,
+  normalizeExpiryYear,
+  paymentCardBrand,
+} from "@/lib/vault/payment-card";
 import { useDialogFocus } from "./use-dialog";
 
 export interface VaultItem {
@@ -610,7 +614,7 @@ function VaultModal({
       }
       if (digits) fields["number"] = digits;
       if (expiryMonth) fields["expiry_month"] = expiryMonth.replace(/\D/g, "");
-      if (expiryYear) fields["expiry_year"] = expiryYear.replace(/\D/g, "");
+      if (expiryYear) fields["expiry_year"] = normalizeExpiryYear(expiryYear);
       if (cvv) fields["cvv"] = cvv.replace(/\D/g, "");
       if (zip) fields["zip"] = zip.replace(/\D/g, "");
     } else if (kind === "api_key") {

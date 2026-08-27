@@ -3,7 +3,11 @@
  * never echo a field value.
  */
 import { describe, expect, it } from "vitest";
-import { cardFieldsIssue, paymentCardBrand } from "./payment-card";
+import {
+  cardFieldsIssue,
+  normalizeExpiryYear,
+  paymentCardBrand,
+} from "./payment-card";
 
 const COMPLETE = {
   cardholder: "Ada Lovelace",
@@ -38,12 +42,18 @@ describe("cardFieldsIssue", () => {
     expect(cardFieldsIssue({ ...COMPLETE, expiry_month: "13" }, true)).toBe(
       "invalid card field: expiry_month"
     );
-    expect(cardFieldsIssue({ ...COMPLETE, expiry_year: "30" }, true)).toBe(
+    expect(cardFieldsIssue({ ...COMPLETE, expiry_year: "303" }, true)).toBe(
       "invalid card field: expiry_year"
     );
     expect(cardFieldsIssue({ number: "4242 4242 4242 4242" }, false)).toBe(
       "invalid card field: number"
     );
+  });
+
+  it("accepts the two-digit year printed on a card", () => {
+    expect(cardFieldsIssue({ ...COMPLETE, expiry_year: "30" }, true)).toBeNull();
+    expect(normalizeExpiryYear("30")).toBe("2030");
+    expect(normalizeExpiryYear("2030")).toBe("2030");
   });
 
   it("rejects a PAN that fails the Luhn check", () => {

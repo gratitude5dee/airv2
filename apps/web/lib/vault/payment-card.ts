@@ -24,7 +24,8 @@ export const CARD_FIELD_SCHEMAS = {
   cardholder: z.string().trim().min(1).max(200),
   number: z.string().regex(/^\d{12,19}$/u),
   expiry_month: z.string().regex(/^(0?[1-9]|1[0-2])$/u),
-  expiry_year: z.string().regex(/^\d{4}$/u),
+  // YY or YYYY — cards print the short form, so both are accepted.
+  expiry_year: z.string().regex(/^(\d{2}|\d{4})$/u),
   cvv: z.string().regex(/^\d{3,4}$/u),
   zip: z.string().trim().min(1).max(20),
 } as const;
@@ -60,6 +61,12 @@ export function luhnValid(digits: string): boolean {
     alt = !alt;
   }
   return sum % 10 === 0;
+}
+
+/** `YY` → `20YY`; anything else is returned as typed. */
+export function normalizeExpiryYear(year: string): string {
+  const digits = year.replace(/\D/g, "");
+  return /^\d{2}$/.test(digits) ? `20${digits}` : digits;
 }
 
 /** IIN → brand, mirroring OpenInstinct's `paymentCardBrand` ranges. */

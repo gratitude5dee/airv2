@@ -103,7 +103,7 @@ describe("vaultUpdateBodySchema", () => {
     expect(
       vaultUpdateBodySchema.safeParse({
         id: "itm_1",
-        item: { kind: "card", fields: { expiry_year: "30" } },
+        item: { kind: "card", fields: { expiry_year: "303" } },
       }).success
     ).toBe(false);
   });
