@@ -9,27 +9,34 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /** One kind per store app the agent may send a card for (goal.md §4.3). */
-export type CardKind =
-  | "ads"
-  | "computer"
-  | "calendar"
-  | "vault"
-  | "browser"
-  | "kanban"
-  | "todo"
-  | "onboarding"
-  | "connect"
-  | "video"
-  | "image"
-  | "crm"
-  | "analytics"
-  | "inbox"
-  | "pay"
-  | "shop"
-  | "settings"
-  | "home"
-  | "persona"
-  | "feedback";
+export const CARD_KINDS = [
+  "ads",
+  "computer",
+  "calendar",
+  "vault",
+  "browser",
+  "kanban",
+  "todo",
+  "onboarding",
+  "connect",
+  "video",
+  "image",
+  "crm",
+  "analytics",
+  "inbox",
+  "pay",
+  "shop",
+  "settings",
+  "home",
+  "persona",
+  "feedback",
+] as const;
+
+export type CardKind = (typeof CARD_KINDS)[number];
+
+export function isCardKind(slug: string): slug is CardKind {
+  return (CARD_KINDS as readonly string[]).includes(slug);
+}
 
 /** Minimum gap between agent-initiated cards per (user, kind). */
 export const CARD_COOLDOWN_MS = 2 * 60 * 1000;

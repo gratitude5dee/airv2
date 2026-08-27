@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { SpectrumSender } from "../spectrum/sender";
-import { mintSignedLink } from "./cards";
+import { cardLayout, mintSignedLink, persistCardSession } from "./cards";
+import { isCardKind } from "./cardSends";
 import { getRegistryApp } from "./registry";
 
 const ALIASES: Readonly<Record<string, string>> = {
@@ -56,11 +57,33 @@ export async function maybeSendMiniAppLink(
     return true;
   }
 
-  const url = mintSignedLink(job.userId, app.slug, "default");
+  // Full mini-app card (same bubble as agent-initiated cards): tapping it
+  // opens the full-screen mini-app sheet. A bare richlink renders as a flat
+  // "Tap to Load Preview" bubble, so it is only the fallback path.
   try {
-    await sender.sendRichLink(job.spaceId, job.phone, url);
+    const message = await sender.sendApp(
+      job.spaceId,
+      job.phone,
+      () => mintSignedLink(job.userId, app.slug, "default"),
+      cardLayout(app.slug)
+    );
+    if (isCardKind(app.slug)) {
+      await persistCardSession(
+        supabase,
+        job.userId,
+        app.slug,
+        "default",
+        job.spaceId,
+        message
+      );
+    }
   } catch {
-    await sender.sendText(job.spaceId, job.phone, url);
+    const url = mintSignedLink(job.userId, app.slug, "default");
+    try {
+      await sender.sendRichLink(job.spaceId, job.phone, url);
+    } catch {
+      await sender.sendText(job.spaceId, job.phone, url);
+    }
   }
   return true;
 }

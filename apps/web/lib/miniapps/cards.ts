@@ -19,6 +19,7 @@ import {
 import type { MiniAppCardSession } from "./cardSessions";
 import type { CardKind } from "./cardSends";
 import { mintToken } from "./tokens";
+import type { Message } from "spectrum-ts";
 
 /** Card links stay tappable for a day — cards linger in the transcript. */
 export const CARD_LINK_TTL_MINUTES = 24 * 60;
@@ -52,7 +53,7 @@ const CARD_COPY: Partial<Record<string, { name: string; line: string }>> = {
   feedback: { name: "Feedback", line: "Report a bug or ask for a feature" },
 };
 
-function cardLayout(appSlug: string): {
+export function cardLayout(appSlug: string): {
   caption: string;
   subcaption: string;
   trailingCaption: string;
@@ -106,37 +107,57 @@ export async function sendMiniAppCard(
       () => mintSignedLink(userId, appSlug, resourceId),
       { ...cardLayout(appSlug), ...layout }
     );
-    const session = parseMiniAppCardSession(
-      message && "miniAppCardSession" in message
-        ? message.miniAppCardSession
-        : undefined
+    await persistCardSession(
+      supabase,
+      userId,
+      appSlug,
+      resourceId,
+      spaceId,
+      message
     );
-    if (session) {
-      try {
-        await upsertMiniAppCardSession(
-          supabase,
-          userId,
-          appSlug,
-          resourceId,
-          spaceId,
-          session
-        );
-      } catch (error) {
-        console.error(
-          JSON.stringify({
-            msg: "mini-app card session persistence failed",
-            user_id: userId,
-            kind: appSlug,
-            resource_id: resourceId,
-            error: error instanceof Error ? error.message : "unknown",
-          })
-        );
-      }
-    }
   } finally {
     // Best-effort: a teardown failure after a successful send must not
     // surface as a delivery failure (callers may retry on error).
     await sender.close().catch(() => undefined);
+  }
+}
+
+/** Persist the card session returned by a send so later updates can edit
+ * the same bubble in place. Best-effort: persistence failures are logged
+ * and never surface as delivery failures. */
+export async function persistCardSession(
+  supabase: SupabaseClient,
+  userId: string,
+  appSlug: CardKind,
+  resourceId: string,
+  spaceId: string,
+  message: Message | undefined
+): Promise<void> {
+  const session = parseMiniAppCardSession(
+    message && "miniAppCardSession" in message
+      ? message.miniAppCardSession
+      : undefined
+  );
+  if (!session) return;
+  try {
+    await upsertMiniAppCardSession(
+      supabase,
+      userId,
+      appSlug,
+      resourceId,
+      spaceId,
+      session
+    );
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        msg: "mini-app card session persistence failed",
+        user_id: userId,
+        kind: appSlug,
+        resource_id: resourceId,
+        error: error instanceof Error ? error.message : "unknown",
+      })
+    );
   }
 }
 
