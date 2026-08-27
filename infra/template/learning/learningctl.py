@@ -10,6 +10,7 @@ Usage:
   learningctl turn.completed '{"trace_id":"tr_..","outcome":"completed"}'
   learningctl feedback.record '{"trace_id":"tr_..","reason":"wrong_result"}'
   learningctl receipts.drain '{"limit":100}'
+  learningctl receipts.ack '{"idempotency_keys":["..."]}'
   learningctl candidates.list
   learningctl candidate.approve '{"candidate_id":"cand_.."}'
   learningctl candidate.reject '{"candidate_id":"cand_.."}'

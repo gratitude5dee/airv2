@@ -77,6 +77,18 @@ class TestLedger:
         ).fetchone()[0]
         assert count == 1
 
+    def test_drain_is_peek_until_acked(self, conn):
+        ledger.enqueue_receipt(conn, _receipt(idempotency_key="rcpt-1"))
+        first = ledger.drain_receipts(conn)
+        assert [r["idempotency_key"] for r in first] == ["rcpt-1"]
+        # not acked yet: the receipt is redelivered
+        again = ledger.drain_receipts(conn)
+        assert [r["idempotency_key"] for r in again] == ["rcpt-1"]
+        assert ledger.ack_receipts(conn, ["rcpt-1"]) == 1
+        assert ledger.drain_receipts(conn) == []
+        # acking again is a no-op
+        assert ledger.ack_receipts(conn, ["rcpt-1"]) == 0
+
 
 class TestPrivacy:
     def test_valid_receipt_passes(self):

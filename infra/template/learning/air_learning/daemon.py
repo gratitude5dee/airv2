@@ -86,6 +86,11 @@ def handle_request(request: dict) -> dict:
                 return {"ok": True, "result": {"feedback_id": feedback_id}}
             if method == "receipts.drain":
                 return {"ok": True, "result": ledger.drain_receipts(conn, int(params.get("limit", 100)))}
+            if method == "receipts.ack":
+                keys = params.get("idempotency_keys", [])
+                if not isinstance(keys, list) or not all(isinstance(k, str) for k in keys):
+                    return {"ok": False, "error_class": "invalid_params", "error": "idempotency_keys must be a list of strings"}
+                return {"ok": True, "result": {"acked": ledger.ack_receipts(conn, keys)}}
             if method == "candidates.list":
                 rows = conn.execute(
                     "select candidate_id, parent_profile_id, state, summary, created_at, updated_at "

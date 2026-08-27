@@ -245,21 +245,27 @@ const RECEIPT_COLUMNS = [
 
 /**
  * Drain the Box's content-free receipt outbox into learning_events.
+ * The drain is a peek: rows are only acknowledged (removed from the
+ * outbox) after the central upsert succeeds, so delivery is
+ * at-least-once and (user_id, idempotency_key) deduplicates retries.
  * Unknown keys are dropped (never stored); rows without the required
- * fields are skipped. Idempotent on (user_id, idempotency_key).
+ * fields are skipped but still acknowledged.
  */
 export async function drainReceipts(
   supabase: SupabaseClient,
   userId: string,
   target?: ComputeTarget,
 ): Promise<number> {
-  const response = await callDaemon(supabase, userId, "receipts.drain", { limit: 100 }, target);
+  const resolved = target ?? (await loadTarget(supabase, userId));
+  const response = await callDaemon(supabase, userId, "receipts.drain", { limit: 100 }, resolved);
   if (!response.ok || !Array.isArray(response.result)) return 0;
   const rows = [];
+  const ackKeys: string[] = [];
   for (const raw of response.result) {
     if (typeof raw !== "object" || raw === null) continue;
     const receipt = raw as Record<string, unknown>;
     if (typeof receipt["idempotency_key"] !== "string") continue;
+    ackKeys.push(receipt["idempotency_key"]);
     if (typeof receipt["event_type"] !== "string") continue;
     if (typeof receipt["occurred_at"] !== "string") continue;
     const row: Record<string, unknown> = { user_id: userId };
@@ -269,10 +275,14 @@ export async function drainReceipts(
     }
     rows.push(row);
   }
-  if (rows.length === 0) return 0;
-  const { error } = await supabase
-    .from("learning_events")
-    .upsert(rows, { onConflict: "user_id,idempotency_key", ignoreDuplicates: true });
-  if (error) throw new Error(`receipt drain insert failed: ${error.message}`);
+  if (rows.length > 0) {
+    const { error } = await supabase
+      .from("learning_events")
+      .upsert(rows, { onConflict: "user_id,idempotency_key", ignoreDuplicates: true });
+    if (error) throw new Error(`receipt drain insert failed: ${error.message}`);
+  }
+  if (ackKeys.length > 0) {
+    await callDaemon(supabase, userId, "receipts.ack", { idempotency_keys: ackKeys }, resolved);
+  }
   return rows.length;
 }

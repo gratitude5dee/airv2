@@ -195,16 +195,29 @@ def enqueue_receipt(conn: sqlite3.Connection, receipt: dict) -> None:
 
 
 def drain_receipts(conn: sqlite3.Connection, limit: int = 100) -> list[dict]:
+    """Peek at undrained receipts without marking them.
+
+    Rows stay in the outbox until ack_receipts confirms the central write,
+    so delivery is at-least-once and the idempotency key deduplicates.
+    """
     rows = conn.execute(
-        "select seq, receipt_json from receipts_outbox where drained = 0 order by seq limit ?",
+        "select receipt_json from receipts_outbox where drained = 0 order by seq limit ?",
         (limit,),
     ).fetchall()
-    receipts = []
+    return [json.loads(row["receipt_json"]) for row in rows]
+
+
+def ack_receipts(conn: sqlite3.Connection, idempotency_keys: list[str]) -> int:
+    """Mark receipts drained after the control plane confirms the central upsert."""
+    acked = 0
     with conn:
-        for row in rows:
-            receipts.append(json.loads(row["receipt_json"]))
-            conn.execute("update receipts_outbox set drained = 1 where seq = ?", (row["seq"],))
-    return receipts
+        for key in idempotency_keys:
+            cursor = conn.execute(
+                "update receipts_outbox set drained = 1 where idempotency_key = ? and drained = 0",
+                (key,),
+            )
+            acked += cursor.rowcount
+    return acked
 
 
 def counts(conn: sqlite3.Connection) -> dict[str, int]:
