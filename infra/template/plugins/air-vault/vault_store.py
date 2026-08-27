@@ -2,7 +2,7 @@
 
 Envelope: ``v2:<iv hex>:<tag hex>:<ciphertext hex>`` — AES-256-GCM with a
 12-byte random IV, a 32-byte key (64 hex chars), and associated data (AAD)
-binding the envelope to the store version and the sealed scope, so a
+binding the envelope to its envelope version and the sealed scope, so a
 ciphertext cannot be replayed into a different slot of the vault even by
 someone holding the key. ``v1:`` envelopes (same layout, AAD ``None``) still
 open, so stores written before the AAD hardening keep working; the next
@@ -84,14 +84,16 @@ def key_bytes(hex_key: str) -> bytes:
 
 
 def envelope_aad(scope: str) -> bytes:
-    """Associated data for a ``v2`` envelope: store version + sealed scope.
+    """Associated data for a ``v2`` envelope: envelope version + scope.
 
     Authenticated but not encrypted, and reconstructed at open time — so a
-    ciphertext only opens back into the scope it was sealed for.
+    ciphertext only opens back into the scope it was sealed for. Deliberately
+    independent of ``STORE_VERSION``: the plaintext schema may be migrated
+    without making already-sealed stores unopenable.
     """
     if not scope:
         raise VaultError("bad_payload", "sealed scope must be non-empty")
-    return f"air-vault:{ENVELOPE_VERSION}:{STORE_VERSION}:{scope}".encode("utf-8")
+    return f"air-vault:{ENVELOPE_VERSION}:{scope}".encode("utf-8")
 
 
 def seal(plaintext: str, hex_key: str, scope: str = STORE_SCOPE) -> str:

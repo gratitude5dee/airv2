@@ -41,6 +41,14 @@ def test_v2_envelope_is_bound_to_its_scope():
     assert exc.value.code == "store_locked"
 
 
+def test_v2_aad_survives_a_store_schema_bump(monkeypatch):
+    """The AAD binds the envelope version, not the plaintext schema version,
+    so bumping STORE_VERSION for a migration still opens sealed stores."""
+    sealed = vault_store.seal("scoped", KEY)
+    monkeypatch.setattr(vault_store, "STORE_VERSION", vault_store.STORE_VERSION + 1)
+    assert vault_store.open_sealed(sealed, KEY) == "scoped"
+
+
 def test_v2_envelope_cannot_be_downgraded_to_v1():
     """Relabelling v2 as v1 drops the AAD — and fails the tag check."""
     sealed = vault_store.seal("scoped", KEY)

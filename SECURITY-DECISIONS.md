@@ -152,9 +152,10 @@ production-shaped sweep runbook is `scripts/c18-box-sweep.sh`.
 
 **Envelope AAD binding (`v2:`).** The box-side envelope in
 `infra/template/plugins/air-vault/vault_store.py` binds associated data into
-AES-GCM (`air-vault:v2:<store version>:<scope>`) instead of passing `None`,
-so a ciphertext only opens back into the store version and scope it was
-sealed for — a sealed blob cannot be replayed into a different slot, and a
+AES-GCM (`air-vault:v2:<scope>` — the envelope version, deliberately not the
+plaintext `STORE_VERSION`, so a schema migration cannot lock stores out)
+instead of passing `None`, so a ciphertext only opens back into the scope it
+was sealed for — a sealed blob cannot be replayed into a different slot, and a
 `v2:` envelope relabelled `v1:` fails authentication. Writes are always
 `v2:`; `v1:` envelopes still decrypt (same key, same layout, no AAD) and are
 upgraded on the next save, so existing stores keep opening. This is a
