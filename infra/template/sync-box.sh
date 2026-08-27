@@ -85,8 +85,11 @@ sudo chmod +x /usr/local/bin/open-miniapp-card
 
 # ── 3. Browser runtime (Node 22 + agent-browser + dedicated CDP profile) ─────
 HERMES_NODE="$HOME_DIR/.hermes/node"
-if [ ! -x "$HERMES_NODE/bin/node" ]; then
+# Reinstall when the runtime predates v22 — old boxes carry a node whose
+# bundled npm fails its own engine validation, wedging every npm install.
+if [ "$("$HERMES_NODE/bin/node" -v 2>/dev/null | cut -d. -f1)" != "v22" ]; then
   curl -fsSLo /tmp/node22.tar.xz https://nodejs.org/dist/v22.22.0/node-v22.22.0-linux-x64.tar.xz
+  rm -rf "$HERMES_NODE"
   mkdir -p "$HERMES_NODE"
   tar -xJf /tmp/node22.tar.xz -C "$HERMES_NODE" --strip-components=1
   rm -f /tmp/node22.tar.xz
