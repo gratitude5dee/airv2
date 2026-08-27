@@ -329,7 +329,9 @@ import re, sys, pathlib
 setup = pathlib.Path(sys.argv[1]).read_text()
 soul = pathlib.Path(sys.argv[2])
 existing = soul.read_text() if soul.exists() else ""
-blocks = re.findall(r"<<'EOF'\n(## .*?)\nEOF", setup, re.DOTALL)
+# Appended sections open with a blank line after the heredoc marker; the
+# identity block does not — tolerate both.
+blocks = re.findall(r"<<'EOF'\n\s*(## .*?)\nEOF", setup, re.DOTALL)
 identity = re.search(r"<<'EOF'\n(## You are air.*?)\nEOF", setup, re.DOTALL)
 out = existing
 if identity and "## You are air" not in out:
