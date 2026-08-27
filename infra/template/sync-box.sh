@@ -29,7 +29,8 @@ if [ ! -x "$HERMES_VENV/bin/python" ]; then
   echo "hermes venv missing — bootstrapping $HERMES_VENV"
   export PATH="$HOME_DIR/.local/bin:$PATH"
   uv venv "$HERMES_VENV" --python 3.11
-  (cd "$HOME_DIR/hermes-agent" && UV_PROJECT_ENVIRONMENT="$HERMES_VENV" uv pip install -e ".[all]" --python "$HERMES_VENV/bin/python")
+  (cd "$HOME_DIR/hermes-agent" && UV_PROJECT_ENVIRONMENT="$HERMES_VENV" uv pip install -e ".[all]" --python "$HERMES_VENV/bin/python") \
+    || { rm -rf "$HERMES_VENV"; echo "FATAL: hermes venv bootstrap failed — removed partial venv, re-run sync-box" >&2; exit 1; }
 fi
 
 # ── 1. Template skills (replace template-owned dirs; user-installed skills
