@@ -38,6 +38,13 @@ function unauthorized(): NextResponse {
   return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 }
 
+/** Router decision facts recorded alongside usage — the admin trace row. */
+interface RouteTrace {
+  requestedModel: string | null;
+  reasoningEffort: string | null;
+  startedAtMs: number;
+}
+
 async function meter(
   userId: string,
   tier: "fast" | "balanced" | "deep",
@@ -45,7 +52,8 @@ async function meter(
   usage: Usage,
   model?: string,
   /** Served on the user's own provider key — their spend, cost 0 here. */
-  onPersonalKey = false
+  onPersonalKey = false,
+  trace?: RouteTrace
 ): Promise<void> {
   const promptTokens = usage.prompt_tokens ?? 0;
   const completionTokens = usage.completion_tokens ?? 0;
@@ -63,6 +71,10 @@ async function meter(
     completion_tokens: completionTokens,
     model_family: family,
     model: model ?? null,
+    speed_tier: tier,
+    requested_model: trace?.requestedModel ?? null,
+    reasoning_effort: trace?.reasoningEffort ?? null,
+    latency_ms: trace ? Date.now() - trace.startedAtMs : null,
   });
   if (runError) {
     console.error(JSON.stringify({ msg: "agent_runs insert failed", user_id: userId, error: runError.message }));
@@ -228,7 +240,11 @@ export async function POST(
   // resolving through the entitlement as before.
   const tier = rawBody["model"] === "fast" ? "fast" : entitledTier;
 
+  const requestStartedMs = Date.now();
+  const requestedModel =
+    typeof rawBody["model"] === "string" ? (rawBody["model"] as string) : null;
   let servedModel = "";
+  let servedReasoning: string | null = null;
   let servedOnPersonalKey = false;
 
   const dispatch = async (
@@ -250,6 +266,10 @@ export async function POST(
       if (reasoning && body["reasoning_effort"] === undefined) {
         body["reasoning_effort"] = reasoning;
       }
+      servedReasoning =
+        typeof body["reasoning_effort"] === "string"
+          ? (body["reasoning_effort"] as string)
+          : null;
     }
     // service_tier is OpenAI-only, like reasoning_effort above.
     const provider = providerForFamily(toFamily);
@@ -440,9 +460,22 @@ export async function POST(
     const meteredFamily = servedFamily;
     const meteredModel = servedModel;
     const meteredPersonal = servedOnPersonalKey;
+    const meteredTrace: RouteTrace = {
+      requestedModel,
+      reasoningEffort: servedReasoning,
+      startedAtMs: requestStartedMs,
+    };
     const stream = meteringTee(upstream.body, (usage) => {
       after(
-        meter(userId, tier, meteredFamily, usage, meteredModel, meteredPersonal)
+        meter(
+          userId,
+          tier,
+          meteredFamily,
+          usage,
+          meteredModel,
+          meteredPersonal,
+          meteredTrace
+        )
       );
     });
     return new Response(stream, {
@@ -458,7 +491,11 @@ export async function POST(
   if (json.usage) {
     const usage = json.usage;
     after(
-      meter(userId, tier, servedFamily, usage, servedModel, servedOnPersonalKey)
+      meter(userId, tier, servedFamily, usage, servedModel, servedOnPersonalKey, {
+        requestedModel,
+        reasoningEffort: servedReasoning,
+        startedAtMs: requestStartedMs,
+      })
     );
   }
   return NextResponse.json(json, { status: 200 });

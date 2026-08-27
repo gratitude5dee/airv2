@@ -28,6 +28,9 @@ const entitlement: { row: EntitlementRow } = {
   },
 };
 
+/** Rows written into agent_runs by the gateway's meter() — the router trace. */
+const meteredRows: Record<string, unknown>[] = [];
+
 vi.mock("@/lib/supabase", () => ({
   serviceClient: () =>
     ({
@@ -40,9 +43,20 @@ vi.mock("@/lib/supabase", () => ({
                 : { data: entitlement.row },
           }),
         }),
+        insert: async (row: Record<string, unknown>) => {
+          if (table === "agent_runs") meteredRows.push(row);
+          return { error: null };
+        },
       }),
+      rpc: async () => ({ error: null }),
     }) as unknown as SupabaseClient,
 }));
+// meter() runs through next/server's after(), which needs a request scope
+// vitest doesn't provide — run the work inline instead.
+vi.mock("next/server", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("next/server")>();
+  return { ...actual, after: (task: unknown) => void task };
+});
 vi.mock("@/lib/entitlements/spend", () => ({
   currentPeriodSpend: vi.fn(async () => 0),
 }));
@@ -186,6 +200,68 @@ describe("gateway fast-tier delegation override", () => {
     process.env["MODEL_REASONING_FAST"] = "";
     const sent = await upstreamBody({ model: "fast", messages: [] });
     expect(sent["reasoning_effort"]).toBeUndefined();
+  });
+});
+
+describe("gateway task-router traces", () => {
+  beforeEach(() => {
+    setEntitlement({ speed_tier: "balanced", model_family: "openai" });
+    process.env["MODEL_REASONING_FAST"] = "low";
+    meteredRows.length = 0;
+  });
+  afterEach(() => {
+    delete process.env["MODEL_REASONING_FAST"];
+    vi.unstubAllGlobals();
+  });
+
+  async function completeWithUsage(
+    body: Record<string, unknown>
+  ): Promise<Record<string, unknown>> {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            choices: [{ message: { content: "ok" } }],
+            usage: { prompt_tokens: 11, completion_tokens: 7 },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      )
+    );
+    const response = await POST(completionRequest(body), {
+      params: Promise.resolve({ path: ["chat", "completions"] }),
+    });
+    expect(response.status).toBe(200);
+    // meter() is queued via after(); the mock runs it as a floating promise.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(meteredRows.length).toBe(1);
+    return meteredRows[0]!;
+  }
+
+  it("stamps the resolved tier, requested model, effort, and latency", async () => {
+    const row = await completeWithUsage({ messages: [], model: "fast" });
+    expect(row["speed_tier"]).toBe("fast");
+    expect(row["requested_model"]).toBe("fast");
+    expect(row["reasoning_effort"]).toBe("low");
+    expect(row["model"]).toBe("gpt-5.6-luna");
+    expect(typeof row["latency_ms"]).toBe("number");
+    expect(row["prompt_tokens"]).toBe(11);
+    expect(row["completion_tokens"]).toBe(7);
+  });
+
+  it("records the entitled tier when the box sends its default model", async () => {
+    const row = await completeWithUsage({ messages: [], model: "balanced" });
+    expect(row["speed_tier"]).toBe("balanced");
+    expect(row["requested_model"]).toBe("balanced");
+  });
+
+  it("never writes prompt or message content into the trace row", async () => {
+    const row = await completeWithUsage({
+      messages: [{ role: "user", content: "top secret prompt" }],
+      model: "fast",
+    });
+    expect(JSON.stringify(row)).not.toContain("top secret");
   });
 });
 

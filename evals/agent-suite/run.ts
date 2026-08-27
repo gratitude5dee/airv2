@@ -208,6 +208,11 @@ interface RawRun {
   box_seconds: number | null;
   prompt_tokens: number | null;
   completion_tokens: number | null;
+  speed_tier: string | null;
+  model: string | null;
+  requested_model: string | null;
+  reasoning_effort: string | null;
+  latency_ms: number | null;
 }
 
 function toRunRow(row: RawRun): AgentRunRow {
@@ -221,12 +226,18 @@ function toRunRow(row: RawRun): AgentRunRow {
     box_seconds: row.box_seconds === null ? null : num(row.box_seconds),
     prompt_tokens: row.prompt_tokens === null ? null : num(row.prompt_tokens),
     completion_tokens: row.completion_tokens === null ? null : num(row.completion_tokens),
+    speed_tier: row.speed_tier ?? null,
+    model: row.model ?? null,
+    requested_model: row.requested_model ?? null,
+    reasoning_effort: row.reasoning_effort ?? null,
+    latency_ms: row.latency_ms === null ? null : num(row.latency_ms),
   };
 }
 
 const RUN_COLS =
   "hermes_run_id,trigger,outcome,started_at,ended_at,cost_usd,box_seconds," +
-  "prompt_tokens,completion_tokens";
+  "prompt_tokens,completion_tokens,speed_tier,model,requested_model," +
+  "reasoning_effort,latency_ms";
 
 /**
  * Every agent_runs row the case produced: the chat row the relay opened plus

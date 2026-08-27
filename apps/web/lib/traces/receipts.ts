@@ -20,6 +20,13 @@ export const RECEIPT_COLUMNS = [
   "ended_at",
   "box_seconds",
   "cost_usd",
+  "tier",
+  "model",
+  "requested_model",
+  "reasoning_effort",
+  "latency_ms",
+  "prompt_tokens",
+  "completion_tokens",
 ] as const;
 
 export type ReceiptColumn = (typeof RECEIPT_COLUMNS)[number];
@@ -63,6 +70,13 @@ export function mapAgentRun(row: Row): TraceReceipt {
     ended_at: str(row["ended_at"]),
     box_seconds: num(row["box_seconds"]),
     cost_usd: num(row["cost_usd"]),
+    tier: str(row["speed_tier"]),
+    model: str(row["model"]),
+    requested_model: str(row["requested_model"]),
+    reasoning_effort: str(row["reasoning_effort"]),
+    latency_ms: num(row["latency_ms"]),
+    prompt_tokens: num(row["prompt_tokens"]),
+    completion_tokens: num(row["completion_tokens"]),
   });
 }
 
@@ -129,7 +143,7 @@ const SOURCES: readonly Source[] = [
     table: "agent_runs",
     tsColumn: "started_at",
     select:
-      "id, hermes_run_id, trigger, started_at, ended_at, outcome, box_seconds, cost_usd",
+      "id, hermes_run_id, trigger, started_at, ended_at, outcome, box_seconds, cost_usd, speed_tier, model, requested_model, reasoning_effort, latency_ms, prompt_tokens, completion_tokens",
     map: mapAgentRun,
   },
   {

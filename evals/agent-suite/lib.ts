@@ -120,6 +120,13 @@ export interface AgentRunRow {
   box_seconds: number | null;
   prompt_tokens: number | null;
   completion_tokens: number | null;
+  /** Router trace: resolved tier, box-requested model, served model,
+   * injected reasoning effort, and gateway wall-clock latency. */
+  speed_tier: string | null;
+  model: string | null;
+  requested_model: string | null;
+  reasoning_effort: string | null;
+  latency_ms: number | null;
 }
 
 export interface CaseResult {
