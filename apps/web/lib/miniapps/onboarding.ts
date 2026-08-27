@@ -25,6 +25,7 @@ export const ONBOARDING_STEPS = [
   "link",
   "agent",
   "walkthrough",
+  "import",
 ] as const;
 
 export type OnboardingStepId = (typeof ONBOARDING_STEPS)[number];
