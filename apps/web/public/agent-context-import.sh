@@ -22,7 +22,7 @@ if [ -z "$TICKET" ]; then
 fi
 
 /usr/bin/env python3 - "$ENDPOINT" "$TICKET" <<'PYEOF'
-import json, os, re, sys, urllib.request
+import json, os, re, sys, urllib.error, urllib.request
 
 endpoint, ticket = sys.argv[1:3]
 home = os.path.expanduser("~")
@@ -92,16 +92,30 @@ def collect(root, entries):
                 files.append((os.path.relpath(full, root), full))
     return files
 
+TRUNCATION_MARKER = "\n...[truncated]...\n"
+
 def read_capped(path):
+    # Budget in UTF-8 bytes — the server enforces MAX_FILE_BYTES on bytes,
+    # so character counts (or an unbudgeted marker) would overshoot the cap
+    # and get the whole chunk rejected.
     try:
         size = os.path.getsize(path)
-        with open(path, "r", encoding="utf-8", errors="replace") as f:
+        with open(path, "rb") as f:
             if size <= MAX_FILE_BYTES:
-                return redact(f.read())
-            # keep head + tail of oversized transcripts
-            head = f.read(MAX_FILE_BYTES // 2)
-            f.seek(max(0, size - MAX_FILE_BYTES // 2))
-            return redact(head + "\n...[truncated]...\n" + f.read())
+                text = f.read().decode("utf-8", errors="replace")
+            else:
+                # keep head + tail of oversized transcripts, marker included
+                # in the budget (replacement chars can widen 1 byte -> 3, so
+                # leave that headroom too)
+                half = (MAX_FILE_BYTES - len(TRUNCATION_MARKER.encode())) // 2 // 3
+                head = f.read(half).decode("utf-8", errors="replace")
+                f.seek(size - half)
+                tail = f.read().decode("utf-8", errors="replace")
+                text = head + TRUNCATION_MARKER + tail
+        text = redact(text)
+        while len(text.encode()) > MAX_FILE_BYTES:
+            text = text[: len(text) // 2] + TRUNCATION_MARKER
+        return text
     except OSError:
         return None
 
@@ -111,8 +125,17 @@ def post(payload):
         headers={"Content-Type": "application/json",
                  "Authorization": f"Bearer {ticket}"},
         method="POST")
-    with urllib.request.urlopen(req) as resp:
-        return json.load(resp)
+    try:
+        with urllib.request.urlopen(req) as resp:
+            return json.load(resp)
+    except urllib.error.HTTPError as error:
+        detail = ""
+        try:
+            detail = json.load(error).get("error", "")
+        except Exception:
+            pass
+        print(f"Upload failed ({error.code}): {detail or error.reason}", file=sys.stderr)
+        sys.exit(1)
 
 batches = []  # (source, files) upload plan built first so we know the last one
 total_bytes = 0
