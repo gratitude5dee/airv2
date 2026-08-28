@@ -127,6 +127,7 @@ import {
   tokenBlock,
   type Theme,
 } from "../themes";
+import { timedFetch, timedPart, timedParts } from "../timing";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
 const STEP_TITLES: Record<OnboardingStepId, string> = {
@@ -237,7 +238,9 @@ async function loadSnapshot(
   let state = defaultOnboardingState();
   let boxBusy = false;
   try {
-    state = await readOnboardingState(supabase, userId);
+    state = await timedFetch("onboarding", "state", () =>
+      readOnboardingState(supabase, userId)
+    );
   } catch (error) {
     if (!(error instanceof StartLimitError)) throw error;
     boxBusy = true;
@@ -260,56 +263,92 @@ async function loadSnapshot(
     avatarAssetId,
     twin,
     { data: boxRow },
-  ] = await Promise.all([
-    supabase.from("users").select("username").eq("id", userId).maybeSingle(),
-    supabase
-      .from("agent_addresses")
-      .select("address")
-      .eq("user_id", userId)
-      .eq("is_primary", true)
-      .is("retired_at", null)
-      .maybeSingle(),
-    supabase
-      .from("connections")
-      .select("toolkit, status, connected_at")
-      .eq("user_id", userId),
-    listManagers(supabase, userId).catch(() => [] as ManagerStatus[]),
-    supabase
-      .from("vault_items")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", userId)
-      .is("deleted_at", null),
-    onairosProvider.status(supabase, userId).catch(
-      (): OnairosStatus => ({
-        available: false,
-        connected: false,
-        connect_url: null,
-      })
-    ),
-    supabase
-      .from("entitlements")
-      .select("speed_tier")
-      .eq("user_id", userId)
-      .maybeSingle(),
-    getMerchant(supabase, userId).catch(() => null),
-    readLinkAuthDoc(supabase, userId).catch(() => null),
-    supabase
-      .from("plugin_tokens")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", userId)
-      .is("revoked_at", null),
-    readIngestStatus(supabase, userId).catch(() => null),
-    readImportStatus(supabase, userId).catch(() => null),
-    readBrowserProfileStatus(supabase, userId).catch(() => null),
-    listIdentityMediaViews(supabase, userId),
-    getAvatarAssetId(supabase, userId).catch(() => null),
-    getDigitalTwin(supabase, userId).catch(() => null),
-    supabase
-      .from("boxes")
-      .select("environment")
-      .eq("user_id", userId)
-      .maybeSingle(),
-  ]);
+  ] = await timedParts("onboarding", "snapshot", (parts) =>
+    Promise.all([
+      timedPart(parts, "user", () =>
+        supabase.from("users").select("username").eq("id", userId).maybeSingle()
+      ),
+      timedPart(parts, "address", () =>
+        supabase
+          .from("agent_addresses")
+          .select("address")
+          .eq("user_id", userId)
+          .eq("is_primary", true)
+          .is("retired_at", null)
+          .maybeSingle()
+      ),
+      timedPart(parts, "connections", () =>
+        supabase
+          .from("connections")
+          .select("toolkit, status, connected_at")
+          .eq("user_id", userId)
+      ),
+      timedPart(parts, "managers", () =>
+        listManagers(supabase, userId).catch(() => [] as ManagerStatus[])
+      ),
+      timedPart(parts, "vault_count", () =>
+        supabase
+          .from("vault_items")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", userId)
+          .is("deleted_at", null)
+      ),
+      timedPart(parts, "onairos", () =>
+        onairosProvider.status(supabase, userId).catch(
+          (): OnairosStatus => ({
+            available: false,
+            connected: false,
+            connect_url: null,
+          })
+        )
+      ),
+      timedPart(parts, "entitlement", () =>
+        supabase
+          .from("entitlements")
+          .select("speed_tier")
+          .eq("user_id", userId)
+          .maybeSingle()
+      ),
+      timedPart(parts, "merchant", () =>
+        getMerchant(supabase, userId).catch(() => null)
+      ),
+      timedPart(parts, "link", () =>
+        readLinkAuthDoc(supabase, userId).catch(() => null)
+      ),
+      timedPart(parts, "plugin_count", () =>
+        supabase
+          .from("plugin_tokens")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", userId)
+          .is("revoked_at", null)
+      ),
+      timedPart(parts, "ingest", () =>
+        readIngestStatus(supabase, userId).catch(() => null)
+      ),
+      timedPart(parts, "imports", () =>
+        readImportStatus(supabase, userId).catch(() => null)
+      ),
+      timedPart(parts, "browser_profile", () =>
+        readBrowserProfileStatus(supabase, userId).catch(() => null)
+      ),
+      timedPart(parts, "identity_media", () =>
+        listIdentityMediaViews(supabase, userId)
+      ),
+      timedPart(parts, "avatar", () =>
+        getAvatarAssetId(supabase, userId).catch(() => null)
+      ),
+      timedPart(parts, "twin", () =>
+        getDigitalTwin(supabase, userId).catch(() => null)
+      ),
+      timedPart(parts, "box", () =>
+        supabase
+          .from("boxes")
+          .select("environment")
+          .eq("user_id", userId)
+          .maybeSingle()
+      ),
+    ])
+  );
   return {
     state,
     environment: toComputeEnvironment(boxRow?.environment),
