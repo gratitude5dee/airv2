@@ -800,7 +800,7 @@ function stepBody(
     // the lite/Messages and no-camera path (capture="user" opens the iPhone
     // camera directly from the picker).
     const booth = lite ? "" : boothMount("photo");
-    const upload = `<details${lite ? " open" : ""}><summary>Upload from your library</summary><form method="post" enctype="multipart/form-data" class="row"><input type="hidden" name="action" value="upload_selfie"><input type="file" name="file" accept="image/png,image/jpeg,image/webp" capture="user"><button>Upload</button></form></details>`;
+    const upload = `<details${lite ? " open" : ""}><summary>Upload from your library</summary><form method="post" enctype="multipart/form-data" class="row"><input type="hidden" name="action" value="upload_selfie"><input type="file" name="file" accept="image/png,image/jpeg,image/webp,image/heic,image/heif" capture="user"><button>Upload</button></form><p class="muted">iPhone HEIC photos convert automatically.</p></details>`;
     // Two-step character sheet, same card: generate renders a draft; the
     // owner then saves it into the vault or discards it.
     const draft = snapshot.identityMedia.find(
@@ -1162,7 +1162,7 @@ main.slide{flex:1;display:flex;flex-direction:column;align-items:center;justify-
 main.slide .kicker{animation:riseIn var(--slide-in) cubic-bezier(0.22,1,0.36,1) backwards;animation-delay:60ms}
 main.slide h1{animation:riseIn var(--slide-in) cubic-bezier(0.22,1,0.36,1) backwards;animation-delay:130ms}
 main.slide .panel{animation:riseIn var(--slide-in) cubic-bezier(0.22,1,0.36,1) backwards;animation-delay:200ms}
-@media(prefers-reduced-motion:reduce){main.slide,main.slide .kicker,main.slide h1,main.slide .panel{animation:none}.navlink,button,.dots a{transition:none}}
+@media(prefers-reduced-motion:reduce){main.slide,main.slide .kicker,main.slide h1,main.slide .panel{animation:none}.navlink,button,.stepnode,.stepline i{transition:none}}
 .kicker{font-family:var(--font-ui);font-size:clamp(0.68rem,0.8vw,0.85rem);letter-spacing:0.14em;text-transform:uppercase;color:var(--accent);margin:0 0 0.9rem;text-align:center}
 h1{font-weight:400;font-size:clamp(1.9rem,5.4vw,3.6rem);letter-spacing:-0.045em;line-height:0.98;margin:0 0 1.4rem;text-align:center;max-width:26ch;text-shadow:var(--text-shadow)}
 .panel{width:min(100%,34rem);border-radius:var(--radius-panel);border:1px solid var(--ring);background:var(--panel-bg);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);box-shadow:var(--shadow);padding:clamp(1rem,3.4vw,1.5rem)}
@@ -1171,12 +1171,16 @@ footer.nav{display:flex;align-items:center;justify-content:space-between;gap:0.7
 .navlink{display:inline-flex;align-items:center;min-height:2.75rem;padding:0 1.1rem;border-radius:var(--radius-pill);border:1px solid var(--ring);background:var(--panel-bg);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);font-size:0.66rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink);text-decoration:none;white-space:nowrap;transition:box-shadow 200ms ease,transform 200ms ease}
 .navlink:hover{transform:scale(1.04)}
 .navlink.ghosted{opacity:0.35;pointer-events:none}
-.dots{display:flex;gap:0.42rem;align-items:center;flex-wrap:wrap;min-width:0}
-.dots a{width:1.5rem;height:1.5rem;padding:0.5rem;border-radius:50%;background:var(--ring);background-clip:content-box;display:block;transition:transform 200ms ease}
-.dots a:hover{transform:scale(1.5)}
-.dots a.done{background:var(--accent)}
-.dots a.skipped{background:var(--ink-muted)}
-.dots a.active{outline:1.5px solid var(--accent);outline-offset:2.5px;background:var(--accent)}
+.dots{display:flex;align-items:center;flex-wrap:nowrap;min-width:0;overflow-x:auto;scrollbar-width:none}
+.dots::-webkit-scrollbar{display:none}
+.stepnode{flex:none;width:1.7rem;height:1.7rem;border-radius:50%;border:1.5px solid var(--ring);background:var(--panel-bg);color:var(--ink-muted);display:flex;align-items:center;justify-content:center;font-family:var(--font-ui);font-size:0.64rem;text-decoration:none;transition:transform 200ms ease,background 200ms ease,color 200ms ease,border-color 200ms ease}
+.stepnode:hover{transform:scale(1.15)}
+.stepnode.done{background:#30d158;border-color:#30d158;color:#fff}
+.stepnode.skipped{background:var(--ink-muted);border-color:var(--ink-muted);color:var(--panel-bg)}
+.stepnode.active{background:var(--accent);border-color:var(--accent);color:var(--panel-bg);outline:1.5px solid var(--accent);outline-offset:2.5px}
+.stepline{flex:none;width:0.9rem;height:2px;background:var(--ring);position:relative;overflow:hidden}
+.stepline i{position:absolute;inset:0;background:#30d158;transform:scaleX(0);transform-origin:left;transition:transform 300ms ease}
+.stepline.complete i{transform:scaleX(1)}
 p{font-size:0.95rem;line-height:1.5;margin:0 0 0.6rem}
 a{color:var(--accent)}
 button{font-family:var(--font-ui);background:var(--ink);color:var(--on-ink);border:0;border-radius:var(--radius-pill);min-height:2.75rem;padding:0.5rem 1.15rem;font-size:0.72rem;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;transition:transform 180ms ease}
@@ -1243,34 +1247,75 @@ input[type=file]{flex:1;min-width:0;color:var(--ink-muted);font-size:0.85rem;fon
 .sheetcard{border:1px solid var(--ring);border-radius:var(--radius-well);background:var(--well-bg);padding:0.7rem 0.85rem;margin:0.6rem 0}
 .sheetpreview{display:block;width:100%;max-height:280px;object-fit:contain;border-radius:var(--radius-well);border:1px solid var(--ring);margin:0.4rem 0 0.6rem;background:var(--well-bg)}
 .booth{display:grid;gap:0.6rem;margin:0.4rem 0 0.8rem}
-.booth-stage{position:relative;border-radius:var(--radius-well);border:1px solid var(--ring);background:var(--well-bg);overflow:hidden;min-height:120px;display:flex;align-items:center;justify-content:center}
-.booth-stage.on{aspect-ratio:4/3}
-.booth-video{display:none;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
-.booth-stage.on .booth-video{display:block}
-.booth-flash{position:absolute;inset:0;background:#fff;opacity:0.85;animation:boothFlash 220ms ease-out forwards}
-@keyframes boothFlash{to{opacity:0}}
-.booth-count{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--font-ui);font-size:4rem;color:#fff;text-shadow:0 2px 18px rgba(0,0,0,0.6)}
-.booth-rec{position:absolute;top:0.6rem;left:0.7rem;font-family:var(--font-ui);font-size:0.62rem;letter-spacing:0.12em;color:#ff5a5a;text-shadow:0 1px 6px rgba(0,0,0,0.6)}
-.booth-start{margin:1.4rem}
-.booth-saving{font-family:var(--font-ui);font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-muted);padding:1.4rem}
 .booth-controls{display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap}
-.booth-hint{font-family:var(--font-ui);font-size:0.62rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-muted)}
 .booth-error{color:var(--ink);font-size:0.85rem;margin:0}
-.booth-shutter{width:3.4rem;height:3.4rem;min-height:0;padding:0;border-radius:50%;background:var(--ink);border:3px solid var(--ring);box-shadow:0 0 0 3px var(--ink) inset}
-.booth-shutter:disabled{opacity:0.4;cursor:default}
 .booth-clip{display:grid;gap:0.5rem}
 .booth-playback{width:100%;border-radius:var(--radius-well);border:1px solid var(--ring);background:#000}
-.dcar{position:relative;perspective:1100px;touch-action:pan-y;outline:none;user-select:none;-webkit-user-select:none;cursor:grab}
-.dcar-stage{position:relative;height:190px;transform-style:preserve-3d}
-.dcar-card{position:absolute;left:50%;top:50%;width:132px;height:158px;border-radius:var(--radius-well);border:1px solid var(--ring);overflow:hidden;background:var(--well-bg);box-shadow:var(--shadow);transition:opacity 180ms ease}
-.dcar-card img{width:100%;height:100%;object-fit:cover;display:block}
-.dcar-card.dropped img{opacity:0.3;filter:grayscale(1)}
-.dcar-card.front{border-color:var(--accent)}
-.dcar-toggle{position:absolute;left:50%;bottom:0.4rem;transform:translateX(-50%);min-height:0;padding:0.25rem 0.7rem;font-size:0.58rem}
-.dcar-dots{display:flex;gap:0.4rem;justify-content:center;margin-top:0.4rem}
-.dcar-dot{width:0.55rem;height:0.55rem;min-height:0;padding:0;border-radius:50%;background:var(--ring)}
-.dcar-dot.on{background:var(--accent)}
-@media(prefers-reduced-motion:reduce){.booth-flash{animation:none;opacity:0}.dcar-card{transition:none}}
+/* iPhone-style camera chrome: black surface, grid, mode strip, ring shutter. */
+.cam{border-radius:var(--radius-well);border:1px solid var(--ring);background:#000;overflow:hidden}
+.cam-stage{position:relative;min-height:120px;display:flex;align-items:center;justify-content:center;background:#000}
+.cam.on .cam-stage{aspect-ratio:3/4;max-height:420px;width:100%}
+.cam-video{display:none;width:100%;height:100%;object-fit:cover}
+.cam-video.mirror{transform:scaleX(-1)}
+.cam.on .cam-video{display:block}
+.cam-grid{position:absolute;inset:0;pointer-events:none;opacity:0.55}
+.cam-grid i{position:absolute;background:rgba(255,255,255,0.32)}
+.cam-grid i:nth-child(1){left:33.33%;top:0;bottom:0;width:1px}
+.cam-grid i:nth-child(2){left:66.66%;top:0;bottom:0;width:1px}
+.cam-grid i:nth-child(3){top:33.33%;left:0;right:0;height:1px}
+.cam-grid i:nth-child(4){top:66.66%;left:0;right:0;height:1px}
+.cam-flash{position:absolute;inset:0;background:#fff;opacity:0.85;animation:boothFlash 200ms ease-out forwards}
+@keyframes boothFlash{to{opacity:0}}
+.cam-clock{position:absolute;top:0.55rem;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:0.35rem;padding:0.15rem 0.6rem;border-radius:var(--radius-pill);background:rgba(0,0,0,0.55);font-family:var(--font-ui);font-size:0.72rem;letter-spacing:0.08em;color:#fff}
+.cam-reddot{width:0.5rem;height:0.5rem;border-radius:50%;background:#ff453a;animation:camPulse 1.1s ease-in-out infinite}
+@keyframes camPulse{50%{opacity:0.35}}
+.cam-count{position:absolute;top:0.55rem;right:0.7rem;padding:0.15rem 0.55rem;border-radius:var(--radius-pill);background:rgba(0,0,0,0.55);font-family:var(--font-ui);font-size:0.66rem;letter-spacing:0.08em;color:#fff}
+.cam-start{margin:1.4rem}
+.cam-saving{font-family:var(--font-ui);font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;color:#fff;padding:1.4rem}
+.cam-deck{display:grid;gap:0.55rem;padding:0.6rem 0.9rem 0.8rem;background:#000}
+.cam-modes{display:flex;gap:1.3rem;justify-content:center}
+.cam-mode{font-family:var(--font-ui);font-size:0.66rem;letter-spacing:0.14em;color:rgba(255,255,255,0.65);text-decoration:none;padding:0.15rem 0.2rem}
+.cam-mode.on{color:#ffd60a}
+.cam-row{display:grid;grid-template-columns:1fr auto 1fr;align-items:center}
+.cam-thumb{justify-self:start;width:2.6rem;height:2.6rem;border-radius:0.55rem;border:1.5px solid rgba(255,255,255,0.7);background:rgba(255,255,255,0.08);overflow:hidden;display:block}
+.cam-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.cam-shutter{justify-self:center;width:3.9rem;height:3.9rem;min-height:0;padding:0;border-radius:50%;background:#fff;border:none;box-shadow:0 0 0 3px #000 inset,0 0 0 5.5px #fff;transition:transform 120ms ease}
+.cam-shutter:active{transform:scale(0.92)}
+.cam-shutter:disabled{opacity:0.4;cursor:default}
+.cam-shutter.rec{background:#ff453a;box-shadow:0 0 0 3px #000 inset,0 0 0 5.5px #fff}
+.cam-shutter.rec.on{border-radius:0.85rem;transform:scale(0.72)}
+.cam-flip{justify-self:end;width:2.7rem;height:2.7rem;min-height:0;padding:0;border-radius:50%;border:none;background:rgba(255,255,255,0.14);color:#fff;display:flex;align-items:center;justify-content:center}
+.cam-flip:disabled{opacity:0.4}
+/* Circular gallery review: cards bent along an arc; tap = select. */
+.cgal{position:relative;touch-action:pan-y;outline:none;user-select:none;-webkit-user-select:none;cursor:grab;overflow:hidden}
+.cgal-stage{position:relative;height:206px}
+.cgal-card{position:absolute;left:50%;top:44%;width:136px;height:164px;border-radius:var(--radius-well);border:1.5px solid var(--ring);overflow:hidden;background:var(--well-bg);box-shadow:var(--shadow);transition:opacity 180ms ease,border-color 180ms ease}
+.cgal-card img{width:100%;height:100%;object-fit:cover;display:block}
+.cgal-card.picked{border-color:#30d158}
+.cgal-card:not(.picked) img{opacity:0.55}
+.cgal-card.front{box-shadow:0 10px 30px rgba(0,0,0,0.35)}
+.cgal-check{position:absolute;top:0.4rem;right:0.4rem;width:1.5rem;height:1.5rem;border-radius:50%;display:flex;align-items:center;justify-content:center;border:1.5px solid rgba(255,255,255,0.85);background:rgba(0,0,0,0.35);color:transparent;transition:background 150ms ease,color 150ms ease}
+.cgal-check.on{background:#30d158;border-color:#30d158;color:#fff}
+.cgal-dots{display:flex;gap:0.4rem;justify-content:center;margin-top:0.3rem}
+.cgal-dot{width:0.55rem;height:0.55rem;min-height:0;padding:0;border-radius:50%;background:var(--ring)}
+.cgal-dot.on{background:var(--accent)}
+.cgal-hint{font-family:var(--font-ui);font-size:0.6rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-muted);text-align:center;margin:0.35rem 0 0}
+.cam-confirm{display:inline-flex;align-items:center;gap:0.5rem;background:#30d158;border-color:#30d158;color:#fff}
+.cam-confirm .cgal-check{position:static;width:1.3rem;height:1.3rem;background:rgba(255,255,255,0.2);border-color:transparent;color:#fff}
+.cam-confirm:disabled{opacity:0.45}
+/* In-slide stepper: circles + connectors above the panels, one at a time. */
+.stepper-head{display:flex;align-items:center;justify-content:center;margin:0.2rem 0 0.9rem}
+.stepper-node{display:flex;align-items:center}
+.stepper-ind{width:2.1rem;height:2.1rem;min-height:0;padding:0;border-radius:50%;border:1.5px solid var(--ring);background:var(--panel-bg);color:var(--ink-muted);font-family:var(--font-ui);font-size:0.72rem;display:flex;align-items:center;justify-content:center;transition:background 200ms ease,color 200ms ease,border-color 200ms ease}
+.stepper-ind.active{background:var(--accent);border-color:var(--accent);color:var(--panel-bg)}
+.stepper-ind.complete{background:#30d158;border-color:#30d158;color:#fff}
+.stepper-line{width:2.6rem;height:2px;background:var(--ring);position:relative;overflow:hidden}
+.stepper-line i{position:absolute;inset:0;background:#30d158;transform:scaleX(0);transform-origin:left;transition:transform 300ms ease}
+.stepper-line.complete i{transform:scaleX(1)}
+.stepper-panel-hidden{display:none}
+.stepper-nav{display:flex;justify-content:space-between;align-items:center;margin-top:0.4rem}
+.stepper-nav .spacer{flex:1}
+@media(prefers-reduced-motion:reduce){.cam-flash{animation:none;opacity:0}.cam-reddot{animation:none}.cgal-card,.stepper-ind,.stepper-line i{transition:none}}
 `;
 
 /**
@@ -1314,15 +1359,28 @@ export function renderOnboarding(
       ? `?step=${esc(step)}`
       : `?step=${esc(step)}&amp;theme=${esc(current.id)}`;
   };
+  // Stepper-style deck indicators: numbered circles joined by connectors,
+  // done slides get a green check, the active slide is highlighted. Each
+  // indicator stays a plain anchor — jump to any slide, no JS required.
+  const check =
+    '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M5 12.5l4.2 4.2L19 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   const dots = SLIDE_GROUPS.map((target, i) => {
     const status = slideStatus(snapshot, target);
+    const done = status === "done";
     const cls = [
+      "stepnode",
       target === slide ? "active" : "",
-      status === "done" ? "done" : status === "skipped" ? "skipped" : "",
+      done ? "done" : status === "skipped" ? "skipped" : "",
     ]
       .filter(Boolean)
       .join(" ");
-    return `<a href="${href(target)}"${cls ? ` class="${cls}"` : ""} aria-label="${pad(i + 1)} ${esc(target.title)}" title="${esc(target.title)}"></a>`;
+    const n = numbered.indexOf(target);
+    const glyph = done ? check : n === -1 ? "•" : String(n + 1);
+    const before = SLIDE_GROUPS[i - 1];
+    const line = before
+      ? `<span class="stepline${slideStatus(snapshot, before) === "done" ? " complete" : ""}" aria-hidden="true"><i></i></span>`
+      : "";
+    return `${line}<a href="${href(target)}" class="${cls}" aria-label="${pad(i + 1)} ${esc(target.title)}" title="${esc(target.title)}">${glyph}</a>`;
   }).join("");
   const noticeHtml = notice
     ? `<div class="notice">${esc(notice)}</div>`
@@ -1375,6 +1433,14 @@ export function renderOnboarding(
   const panes = lite
     ? []
     : [...new Set(slide.sections.map((s) => s.pane).filter(Boolean))] as string[];
+  // A stacked multi-section slide (no pager, no split columns) renders as
+  // a stepper; deep links land on the panel that owns the active step.
+  const stepper =
+    !lite && !slide.split && panes.length <= 1 && slide.sections.length > 1;
+  const activeSection = Math.max(
+    0,
+    slide.sections.findIndex((s) => SECTION_STEPS[s.key].includes(active))
+  );
   const sections =
     panes.length > 1
       ? (() => {
@@ -1410,8 +1476,11 @@ export function renderOnboarding(
     // The deck swipes like an iPhone: a horizontal touch swipe anywhere on
     // the slide navigates back/forward (same-origin bundle, touch only).
     lite ? "" : '<script src="/creator-os/deck-swipe.js" defer></script>',
+    // Multi-section slides fold into a stepper (one panel at a time with
+    // indicator circles); with no JS the panels simply stack.
+    stepper ? '<script src="/creator-os/deck-stepper.js" defer></script>' : "",
   ].join("");
-  const deck = `<div class="deck${slide.split ? " split" : ""}">${sections}</div>${scripts}`;
+  const deck = `<div class="deck${slide.split ? " split" : ""}"${stepper ? ` data-stepper data-stepper-active="${activeSection}"` : ""}>${sections}</div>${scripts}`;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>Onboarding — ${esc(slide.title)}</title>${fonts}<style>${tokenBlock(current.tokens)}${SLIDE_CSS}${lite ? LITE_CSS : ""}</style>${shader}</head><body>${backdropHtml}${scrim}${grain}<div class="frame"${prev ? ` data-swipe-prev="${href(prev)}"` : ""}${next ? ` data-swipe-next="${href(next)}"` : ""}><header class="bar"><span class="logo-pill"><img src="/creator-os/wzrd-wordmark-1600.png" alt="WZRD.tech"></span><span class="counter">${counter}${esc(statusTag)}</span></header><main class="slide">${busy}${noticeHtml}<p class="kicker">${kickerNumber}${esc(slide.kicker)}</p><h1>${esc(slide.title)}</h1>${deck}</main><footer class="nav">${prev ? `<a class="navlink" href="${href(prev)}">← Back</a>` : '<span class="navlink ghosted">← Back</span>'}<nav class="dots" aria-label="Slides">${dots}</nav>${next ? `<a class="navlink" href="${href(next)}">Next →</a>` : '<span class="navlink ghosted">Next →</span>'}</footer></div></body></html>`;
 }
 
