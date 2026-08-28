@@ -14,10 +14,15 @@ import type Stripe from "stripe";
 import {
   createConnectCheckoutSession,
   createConnectPaymentIntent,
+  isAccountInvalidError,
   retrieveConnectPaymentIntent,
 } from "../payments/stripe";
 import { createTransferRequest, validateSendAddress } from "../wallet/send";
-import { CommerceError, getMerchant } from "./merchants";
+import {
+  CommerceError,
+  getMerchant,
+  markMerchantAccountInvalid,
+} from "./merchants";
 
 export interface PaymentRequest {
   id: string;
@@ -143,10 +148,20 @@ export async function createPaymentRequest(
       .eq("id", request.id);
     throw new CommerceError("could not create the approval", 500);
   }
-  await supabase
+  const { error: linkError } = await supabase
     .from("payment_requests")
     .update({ decision_id: decision.id })
     .eq("id", request.id);
+  if (linkError) {
+    console.error(
+      JSON.stringify({
+        msg: "payment request decision link failed",
+        request_id: request.id,
+        decision_id: decision.id,
+        error: linkError.message,
+      })
+    );
+  }
   return {
     requestId: request.id as string,
     decisionId: decision.id as string,
@@ -154,19 +169,33 @@ export async function createPaymentRequest(
 }
 
 /** Both approval surfaces (Pay page + decisions API) converge here so the
- * Needs-you card can't go stale. */
+ * Needs-you card can't go stale. Falls back to the decision's `ref` when
+ * the request row never got its `decision_id` backfilled (the link update
+ * is a separate write and can be lost), so the webhook can still resolve
+ * the pending card instead of stranding it. */
 async function resolveLinkedDecision(
   supabase: SupabaseClient,
   userId: string,
   decisionId: string | null,
-  status: "approved" | "dismissed"
+  status: "approved" | "dismissed",
+  requestId?: string
 ): Promise<void> {
-  if (!decisionId) return;
+  if (decisionId) {
+    await supabase
+      .from("decisions")
+      .update({ status, resolved_at: new Date().toISOString() })
+      .eq("id", decisionId)
+      .eq("user_id", userId)
+      .eq("status", "pending");
+    return;
+  }
+  if (!requestId) return;
   await supabase
     .from("decisions")
     .update({ status, resolved_at: new Date().toISOString() })
-    .eq("id", decisionId)
     .eq("user_id", userId)
+    .eq("kind", "payment_request")
+    .eq("ref", requestId)
     .eq("status", "pending");
 }
 
@@ -225,16 +254,28 @@ export async function approvePaymentRequest(
     if (!merchant || !merchant.charges_enabled) {
       throw new CommerceError("payee can no longer accept payments", 409);
     }
-    const session = await createConnectCheckoutSession(
-      merchant.stripe_account_id,
-      {
-        amountCents: request.amount_cents,
-        productName: request.memo || `Payment to ${request.payee}`,
-        successUrl: returnUrl,
-        cancelUrl: returnUrl,
-        metadata: { payment_request_id: request.id },
+    let session;
+    try {
+      session = await createConnectCheckoutSession(
+        merchant.stripe_account_id,
+        {
+          amountCents: request.amount_cents,
+          productName: request.memo || `Payment to ${request.payee}`,
+          successUrl: returnUrl,
+          cancelUrl: returnUrl,
+          metadata: { payment_request_id: request.id },
+        }
+      );
+    } catch (error) {
+      if (isAccountInvalidError(error)) {
+        await markMerchantAccountInvalid(supabase, merchant.stripe_account_id);
+        throw new CommerceError(
+          "payee's payment account needs to be reconnected",
+          409
+        );
       }
-    );
+      throw error;
+    }
     if (!session.url) {
       throw new CommerceError("checkout session has no URL", 502);
     }
@@ -243,7 +284,13 @@ export async function approvePaymentRequest(
       .update({ status: "approved", stripe_session_id: session.id })
       .eq("id", request.id)
       .eq("status", "pending");
-    await resolveLinkedDecision(supabase, userId, request.decision_id, "approved");
+    await resolveLinkedDecision(
+      supabase,
+      userId,
+      request.decision_id,
+      "approved",
+      request.id
+    );
     return { checkoutUrl: session.url };
   }
 
@@ -259,7 +306,13 @@ export async function approvePaymentRequest(
     .update({ status: "approved", transfer_id: transferId })
     .eq("id", request.id)
     .eq("status", "pending");
-  await resolveLinkedDecision(supabase, userId, request.decision_id, "approved");
+  await resolveLinkedDecision(
+    supabase,
+    userId,
+    request.decision_id,
+    "approved",
+    request.id
+  );
   return { walletDecisionId: decisionId };
 }
 
@@ -328,11 +381,23 @@ export async function createExpressPaymentIntent(
       }
     }
   }
-  const intent = await createConnectPaymentIntent(merchant.stripe_account_id, {
-    amountCents: request.amount_cents,
-    description: request.memo || `Payment to ${request.payee}`,
-    metadata: { payment_request_id: request.id },
-  });
+  let intent;
+  try {
+    intent = await createConnectPaymentIntent(merchant.stripe_account_id, {
+      amountCents: request.amount_cents,
+      description: request.memo || `Payment to ${request.payee}`,
+      metadata: { payment_request_id: request.id },
+    });
+  } catch (error) {
+    if (isAccountInvalidError(error)) {
+      await markMerchantAccountInvalid(supabase, merchant.stripe_account_id);
+      throw new CommerceError(
+        "payee's payment account needs to be reconnected",
+        409
+      );
+    }
+    throw error;
+  }
   if (!intent.clientSecret) {
     throw new CommerceError("payment intent has no client secret", 502);
   }
@@ -362,7 +427,13 @@ export async function dismissPaymentRequest(
     .eq("user_id", userId)
     .eq("status", "pending");
   if (request) {
-    await resolveLinkedDecision(supabase, userId, request.decision_id, "dismissed");
+    await resolveLinkedDecision(
+      supabase,
+      userId,
+      request.decision_id,
+      "dismissed",
+      request.id
+    );
   }
 }
 
@@ -401,7 +472,13 @@ export async function markPaymentRequestPaidByIntent(
     | { user_id: string; decision_id: string | null }
     | undefined;
   if (!row) return false;
-  await resolveLinkedDecision(supabase, row.user_id, row.decision_id, "approved");
+  await resolveLinkedDecision(
+    supabase,
+    row.user_id,
+    row.decision_id,
+    "approved",
+    requestId
+  );
   return true;
 }
 
