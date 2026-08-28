@@ -61,6 +61,7 @@ import {
 import { env } from "@/lib/env";
 import { sendMiniAppCard } from "@/lib/miniapps/cards";
 import { claimCardSend, type CardClaim } from "@/lib/miniapps/cardSends";
+import { ComposioApiError } from "@/lib/composio/client";
 import {
   beginConnect,
   syncConnections,
@@ -1829,10 +1830,30 @@ export const onboarding: MiniAppModule = {
         );
       }
       const callback = `${externalOrigin(ctx.request)}${ctx.basePath}?step=connect`;
-      const link = await beginConnect(supabase, userId, toolkit, callback);
-      return withBaseHeaders(
-        NextResponse.redirect(link.redirect_url, 303)
-      );
+      try {
+        const link = await beginConnect(supabase, userId, toolkit, callback);
+        return withBaseHeaders(
+          NextResponse.redirect(link.redirect_url, 303)
+        );
+      } catch (error) {
+        if (error instanceof ComposioApiError) {
+          console.error(
+            JSON.stringify({
+              msg: "connect link failed",
+              user_id: userId,
+              toolkit,
+              status: error.status,
+              error: error.message,
+            })
+          );
+          return respond(
+            ctx,
+            "connect",
+            "That tool can't be connected right now — try another, or try again in a moment."
+          );
+        }
+        throw error;
+      }
     }
 
     if (action === "set_speed") {
