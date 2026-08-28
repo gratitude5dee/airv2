@@ -20,10 +20,13 @@ import {
   resolveSenderHandle,
 } from "@/lib/routing/inbound";
 import {
+  carryQuickAckMarker,
   enqueueInbound,
   flushAfterDebounce,
+  isBurstStart,
   type InboundMessage,
 } from "@/lib/orchestrator/flush";
+import { quickAckReply } from "@/lib/orchestrator/sharedBridge";
 import { prewarmBox } from "@/lib/orchestrator/boxes";
 import { createSpectrumSender } from "@/lib/spectrum/sender";
 import { handleOnboarding } from "@/lib/provisioning/onboarding";
@@ -301,6 +304,33 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       await sender
         .startTyping(message.spaceId, message.phone)
         .catch(() => undefined);
+      // Instant first bubble: on the first message of a burst (owner only,
+      // not a /command or bare attachment) a tightly-bounded fast-lane
+      // completion answers right away while the real turn runs. The carry
+      // marker goes in BEFORE the completion so the agent's turn always
+      // knows an ack went out and never double-greets. Best-effort: any
+      // failure leaves only the typing indicator.
+      if (
+        message.senderTier === 0 &&
+        !body.trimStart().startsWith("/") &&
+        !body.trimStart().startsWith("[attachment:")
+      ) {
+        try {
+          if (await isBurstStart(supabase, message.spaceId)) {
+            await carryQuickAckMarker(
+              supabase,
+              message.userId,
+              message.spaceId,
+            );
+            const ack = await quickAckReply(supabase, message.userId, body);
+            if (ack) {
+              await sender.sendText(message.spaceId, message.phone, ack);
+            }
+          }
+        } catch {
+          // quick ack is best-effort; the flush owns the real reply
+        }
+      }
     }
     try {
       await flushAfterDebounce(supabase, message, runAt);

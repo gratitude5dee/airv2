@@ -1,7 +1,7 @@
 /**
  * Burst debouncing and the debounced turn (goal.md M2 task 3, C14).
  *
- * One flush job per chat. Every inbound resets run_at to now()+5s; the
+ * One flush job per chat. Every inbound resets run_at to now()+DEBOUNCE_MS; the
  * invocation that still owns the deadline when it fires claims the drain
  * atomically. Messages stay in batch_queue until the handler reads them —
  * the enqueuer never carries them in a payload. A chain cancelled
@@ -42,12 +42,14 @@ import {
   BRIDGE_MESSAGE_ID_PREFIX,
   bridgeCarryMarker,
   isBridgeMarkerId,
+  QUICK_ACK_CARRY_MARKER,
   sharedBridgeReply,
 } from "./sharedBridge";
+import { streamBubbles } from "./bubbles";
 
 const ATTACHMENT_MARKER = /^\[attachment:([^\]]+)\]$/;
 
-export const DEBOUNCE_MS = 5_000;
+export const DEBOUNCE_MS = 2_500;
 const MAX_ATTEMPTS = 5;
 const CANCEL_POLL_MS = 2_000;
 
@@ -791,7 +793,7 @@ export async function runFlush(
           yield next.value;
         }
       }
-      await sender.streamText(job.spaceId, job.phone, remainder());
+      await streamBubbles(sender, job.spaceId, job.phone, remainder());
     }
 
     if (!cancelled && stripped.files.length > 0) {
@@ -853,6 +855,46 @@ export async function runFlush(
     await armStopAfter(supabase, job.userId).catch(() => undefined);
     await sender.close().catch(() => undefined);
   }
+}
+
+/**
+ * True when this message opened a fresh burst: nothing else queued or
+ * carried for the chat, so the quick-ack lane may speak once. Mid-burst
+ * messages and retry turns (which already sent a holding line) stay quiet.
+ */
+export async function isBurstStart(
+  supabase: SupabaseClient,
+  spaceId: string
+): Promise<boolean> {
+  const [queued, carried] = await Promise.all([
+    supabase
+      .from("batch_queue")
+      .select("id", { count: "exact", head: true })
+      .eq("space_id", spaceId),
+    supabase
+      .from("carried_messages")
+      .select("id", { count: "exact", head: true })
+      .eq("space_id", spaceId),
+  ]);
+  return (queued.count ?? 0) <= 1 && (carried.count ?? 0) === 0;
+}
+
+/**
+ * Record that a quick ack went out (or is about to): inserted BEFORE the
+ * ack is generated so the real turn can never drain the queue first and
+ * answer unaware, double-greeting the user.
+ */
+export async function carryQuickAckMarker(
+  supabase: SupabaseClient,
+  userId: string,
+  spaceId: string
+): Promise<void> {
+  await supabase.from("carried_messages").insert({
+    user_id: userId,
+    space_id: spaceId,
+    message_id: `${BRIDGE_MESSAGE_ID_PREFIX}ack-${Date.now()}`,
+    body: QUICK_ACK_CARRY_MARKER,
+  });
 }
 
 /** Debounce wait + claim + run; the webhook route calls this via after(). */
