@@ -391,6 +391,10 @@ async function requeueMessages(
  * persists its transcript) and an empty replay against a session the box
  * already had is logged as a dropped replay. Counts only — transcript
  * content never enters control-plane logs (C4).
+ *
+ * Returns null when an existing session replays empty even after a retry —
+ * running that turn would answer with total amnesia, so the caller should
+ * hold the burst and try again rather than reply blank.
  */
 export async function replayHistory(
   target: HermesBoxTarget,
@@ -402,7 +406,7 @@ export async function replayHistory(
     /** Set when the caller already ensured the session this turn. */
     firstTurn?: boolean;
   }
-): Promise<ConversationMessage[]> {
+): Promise<ConversationMessage[] | null> {
   let firstTurn = context.firstTurn ?? false;
   try {
     if (context.firstTurn === undefined) {
@@ -420,7 +424,12 @@ export async function replayHistory(
       })
     );
   }
-  const history = await loadConversationHistory(target, sessionId);
+  let history = await loadConversationHistory(target, sessionId);
+  if (history.length === 0 && !firstTurn) {
+    // One immediate retry: the load is best-effort and a transient proxy
+    // hiccup or a box mid-resume often clears within a moment.
+    history = await loadConversationHistory(target, sessionId);
+  }
   if (history.length === 0 && !firstTurn) {
     console.error(
       JSON.stringify({
@@ -430,6 +439,7 @@ export async function replayHistory(
         session_id: sessionId,
       })
     );
+    return null;
   } else {
     console.log(
       JSON.stringify({
@@ -683,7 +693,7 @@ export async function runFlush(
       );
     }
 
-    const conversationHistory = await replayHistory(runTarget, runSession, {
+    const replayed = await replayHistory(runTarget, runSession, {
       userId: job.userId,
       spaceId: job.spaceId,
       title: runSession === MAIN_SESSION ? MAIN_SESSION_TITLE : BOT_CHAT_TITLE,
@@ -692,6 +702,16 @@ export async function runFlush(
         ? {}
         : { firstTurn: botSessionCreated }),
     });
+    if (replayed === null && job.attempts < MAX_ATTEMPTS) {
+      // An existing session replayed empty: running now would answer with
+      // total amnesia. Hold the burst and retry, same as a wake failure.
+      await carryMessages(supabase, job.userId, job.spaceId, drained);
+      await rescheduleWithBackoff(supabase, job.spaceId, job.attempts);
+      return;
+    }
+    // At max attempts a degraded (blank-context) answer beats dropping the
+    // burst on the floor.
+    const conversationHistory = replayed ?? [];
 
     const run = await createRun(runTarget, {
       input: runInput,

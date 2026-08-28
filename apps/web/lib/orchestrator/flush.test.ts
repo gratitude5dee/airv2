@@ -202,7 +202,7 @@ describe("runFlush history replay", () => {
     });
   });
 
-  it("logs a dropped replay when an existing session loads no history", async () => {
+  it("retries once, then holds the burst when an existing session replays empty", async () => {
     vi.mocked(loadConversationHistory).mockResolvedValue([]);
     const errors = vi.spyOn(console, "error").mockImplementation(() => {});
     await runFlush(
@@ -215,6 +215,20 @@ describe("runFlush history replay", () => {
         String(call[0]).includes("history replay empty on existing session")
       )
     ).toBe(true);
+    errors.mockRestore();
+    // Load attempted twice (retry), and the amnesiac run never started.
+    expect(vi.mocked(loadConversationHistory)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(createRun)).not.toHaveBeenCalled();
+  });
+
+  it("runs blank rather than dropping the burst once retries are exhausted", async () => {
+    vi.mocked(loadConversationHistory).mockResolvedValue([]);
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    await runFlush(
+      fakeSupabase([{ id: "q1", message_id: "m1", body: "94587" }]),
+      { ...job, attempts: 5 },
+      new Date().toISOString()
+    );
     errors.mockRestore();
     expect(vi.mocked(createRun).mock.calls[0]?.[1].conversationHistory).toEqual(
       []
