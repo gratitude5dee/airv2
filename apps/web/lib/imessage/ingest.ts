@@ -169,7 +169,7 @@ function defaultStatus(): IngestStatus {
   };
 }
 
-function normalizeStatus(raw: unknown): IngestStatus {
+export function normalizeIngestStatus(raw: unknown): IngestStatus {
   const status = defaultStatus();
   const doc = asRecord(raw);
   if (!doc) return status;
@@ -189,7 +189,7 @@ export async function readIngestStatus(
 ): Promise<IngestStatus> {
   const box = await ensureBoxAwake(supabase, userId);
   try {
-    return normalizeStatus(JSON.parse(await readFile(box.boxId, STATUS_PATH)));
+    return normalizeIngestStatus(JSON.parse(await readFile(box.boxId, STATUS_PATH)));
   } catch {
     return defaultStatus();
   }
@@ -204,7 +204,7 @@ export async function storeChunk(
   const box = await ensureBoxAwake(supabase, userId);
   let status = defaultStatus();
   try {
-    status = normalizeStatus(JSON.parse(await readFile(box.boxId, STATUS_PATH)));
+    status = normalizeIngestStatus(JSON.parse(await readFile(box.boxId, STATUS_PATH)));
   } catch {
     // first upload
   }

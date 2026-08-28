@@ -18,6 +18,7 @@ import {
   storeChunk,
   verifyIngestTicket,
 } from "@/lib/imessage/ingest";
+import { writeStatusMirror } from "@/lib/miniapps/onboardingMirror";
 import { armStopAfter, StartLimitError } from "@/lib/orchestrator/boxes";
 import { serviceClient } from "@/lib/supabase";
 import { env } from "@/lib/env";
@@ -42,6 +43,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const supabase = serviceClient();
   try {
     const status = await readIngestStatus(supabase, userId);
+    await writeStatusMirror(supabase, userId, { ingest: status });
     const ticket = mintIngestTicket(userId);
     const command = `curl -fsSL ${env.appOrigin()}/imessage-ingest.sh -o /tmp/air-ingest.sh && AIR_INGEST_ENDPOINT=${env.appOrigin()}/api/me/imessage-history bash /tmp/air-ingest.sh ${ticket}`;
     return NextResponse.json({ status, command }, { headers: NO_STORE });
@@ -86,6 +88,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const chunk = parseChunk(body);
     const status = await storeChunk(supabase, claims.userId, chunk);
+    await writeStatusMirror(supabase, claims.userId, { ingest: status });
     return NextResponse.json({ ok: true, status }, { headers: NO_STORE });
   } catch (error) {
     if (error instanceof IngestInputError) {

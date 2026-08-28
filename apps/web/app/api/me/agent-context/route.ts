@@ -21,6 +21,7 @@ import {
   storeImportChunk,
   verifyImportTicket,
 } from "@/lib/context/importer";
+import { writeStatusMirror } from "@/lib/miniapps/onboardingMirror";
 import { armStopAfter, StartLimitError } from "@/lib/orchestrator/boxes";
 import { serviceClient } from "@/lib/supabase";
 import { env } from "@/lib/env";
@@ -96,6 +97,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       status = await startDictionaryRun(supabase, claims.userId);
       dictionary_started = true;
     }
+    await writeStatusMirror(supabase, claims.userId, { imports: status });
     return NextResponse.json(
       { ok: true, status, dictionary_started },
       { headers: NO_STORE }
