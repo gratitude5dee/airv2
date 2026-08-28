@@ -146,12 +146,15 @@ chmod 600 "$ENV_FILE"
 # ── 3c. OpenViking deep memory (docs/memory-upgrade.md, layer 2) ───────────
 # Boxes forked before the deep-memory layer never got the venv/service. The
 # workspace (~/.openviking/data) is user data — never touched here.
+# The install runs unconditionally so an existing venv is upgraded to the
+# pinned version (0.4.13's semantic retrieval is broken — zero-result queries
+# with "Strings must be encoded before hashing" errors; 0.4.16 fixes it).
 OV_VENV="$HOME_DIR/.openviking-venv"
 if [ ! -x "$OV_VENV/bin/openviking-server" ]; then
   uv venv "$OV_VENV" --python 3.12 || true
   sudo apt-get install -y --no-install-recommends cmake build-essential
-  uv pip install --python "$OV_VENV/bin/python" 'openviking[local-embed]==0.4.13' 'openviking-sdk==0.1.7'
 fi
+CMAKE_ARGS="-DGGML_NATIVE=OFF" uv pip install --python "$OV_VENV/bin/python" --no-binary llama-cpp-python 'openviking[local-embed]==0.4.16' 'openviking-sdk==0.1.7'
 mkdir -p "$HOME_DIR/.openviking" && chmod 700 "$HOME_DIR/.openviking"
 cp "$TEMPLATE_DIR/openviking/ovctl.py" "$HOME_DIR/.openviking/ovctl.py"
 chmod 755 "$HOME_DIR/.openviking/ovctl.py"
@@ -409,7 +412,7 @@ sudo cp "$TEMPLATE_DIR"/openviking.service /etc/systemd/system/
 sudo cp "$TEMPLATE_DIR"/learning/systemd/air-learningd.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable hermes-gateway.service hermes-dashboard.service hermes-host.service openviking.service air-learningd.service
-sudo systemctl restart hermes-gateway.service hermes-dashboard.service hermes-host.service air-learningd.service
+sudo systemctl restart hermes-gateway.service hermes-dashboard.service hermes-host.service openviking.service air-learningd.service
 
 # Render ov.conf from this box's per-fork gateway credentials and (re)start
 # the server. Best effort: deep memory degrades, the box never breaks.

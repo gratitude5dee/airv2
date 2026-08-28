@@ -304,7 +304,7 @@ uv venv "$OV_VENV" --python 3.12 || true
 # on any host missing the build machine's instruction set (openviking.service
 # crash-looped with status=4/ILL on EPYC-Rome until rebuilt portably).
 sudo apt-get install -y --no-install-recommends cmake build-essential
-CMAKE_ARGS="-DGGML_NATIVE=OFF" uv pip install --python "$OV_VENV/bin/python" --no-binary llama-cpp-python 'openviking[local-embed]==0.4.13' 'openviking-sdk==0.1.7'
+CMAKE_ARGS="-DGGML_NATIVE=OFF" uv pip install --python "$OV_VENV/bin/python" --no-binary llama-cpp-python 'openviking[local-embed]==0.4.16' 'openviking-sdk==0.1.7'
 mkdir -p "$HOME_DIR/.openviking" && chmod 700 "$HOME_DIR/.openviking"
 cp "$TEMPLATE_DIR/openviking/ovctl.py" "$HOME_DIR/.openviking/ovctl.py"
 chmod 755 "$HOME_DIR/.openviking/ovctl.py"
