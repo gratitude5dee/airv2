@@ -291,7 +291,7 @@ class Handler(BaseHTTPRequestHandler):
             latency_budget_ms = doc.get("latency_budget_ms")
             if latency_budget_ms is not None:
                 latency_budget_ms = int(latency_budget_ms)
-        except (ValueError, TypeError, json.JSONDecodeError):
+        except (ValueError, TypeError, AttributeError, json.JSONDecodeError):
             self._json(400, {"error": "bad request"})
             return
         if not text.strip():
