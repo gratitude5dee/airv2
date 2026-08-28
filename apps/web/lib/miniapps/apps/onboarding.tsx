@@ -11,7 +11,7 @@
  * connections let the agent act across the user's apps.
  * Owner-only: no guest actions (MA4).
  */
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   armStopAfter,
@@ -48,7 +48,6 @@ import {
 import {
   disableBrowserProfile,
   mintBrowserProfileTicket,
-  readBrowserProfileStatus,
   type BrowserProfileStatus,
 } from "@/lib/context/browser-profile";
 import { env } from "@/lib/env";
@@ -62,14 +61,18 @@ import {
 } from "@/lib/connectors/manage";
 import { createRun, MAIN_SESSION } from "@/lib/hermes/client";
 import {
-  defaultOnboardingState,
   isOnboardingStep,
   markOnboardingStep,
   ONBOARDING_STEPS,
-  readOnboardingState,
   type OnboardingState,
   type OnboardingStepId,
 } from "../onboarding";
+import {
+  MIRROR_STALE_MS,
+  readStatusMirror,
+  refreshStatusMirror,
+  writeStatusMirror,
+} from "../onboardingMirror";
 import {
   getAvatarAssetId,
   listIdentityAssets,
@@ -94,6 +97,7 @@ import {
 } from "@/lib/identity/twin";
 import {
   checkLinkAuth,
+  defaultLinkAuthDoc,
   readLinkAuthDoc,
   safeVerificationUrl,
   startLinkAuth,
@@ -127,7 +131,7 @@ import {
   tokenBlock,
   type Theme,
 } from "../themes";
-import { timedPart, timedParts } from "../timing";
+import { timedFetch, timedPart, timedParts } from "../timing";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
 const STEP_TITLES: Record<OnboardingStepId, string> = {
@@ -222,6 +226,8 @@ export interface OnboardingSnapshot {
   browserProfile: BrowserProfileStatus | null;
   browserProfileCommand: string | null;
   boxBusy: boolean;
+  /** A pairing phrase/URL exists box-side but isn't in `link` yet. */
+  linkPairing: boolean;
 }
 
 export async function loadOnboardingSnapshot(
@@ -235,9 +241,8 @@ async function loadSnapshot(
   supabase: SupabaseClient,
   userId: string
 ): Promise<OnboardingSnapshot> {
-  let boxBusy = false;
   const [
-    state,
+    mirror,
     { data: user },
     { data: addressRow },
     { data: connectionRows },
@@ -246,23 +251,15 @@ async function loadSnapshot(
     onairos,
     { data: entitlement },
     merchant,
-    link,
     { count: pluginCount },
-    ingest,
-    imports,
-    browserProfile,
     identityMedia,
     avatarAssetId,
     twin,
     { data: boxRow },
   ] = await timedParts("onboarding", "snapshot", (parts) =>
     Promise.all([
-      timedPart(parts, "state", () =>
-        readOnboardingState(supabase, userId).catch((error) => {
-          if (!(error instanceof StartLimitError)) throw error;
-          boxBusy = true;
-          return defaultOnboardingState();
-        })
+      timedPart(parts, "mirror", () =>
+        readStatusMirror(supabase, userId).catch(() => null)
       ),
       timedPart(parts, "user", () =>
         supabase.from("users").select("username").eq("id", userId).maybeSingle()
@@ -311,24 +308,12 @@ async function loadSnapshot(
       timedPart(parts, "merchant", () =>
         getMerchant(supabase, userId).catch(() => null)
       ),
-      timedPart(parts, "link", () =>
-        readLinkAuthDoc(supabase, userId).catch(() => null)
-      ),
       timedPart(parts, "plugin_count", () =>
         supabase
           .from("plugin_tokens")
           .select("id", { count: "exact", head: true })
           .eq("user_id", userId)
           .is("revoked_at", null)
-      ),
-      timedPart(parts, "ingest", () =>
-        readIngestStatus(supabase, userId).catch(() => null)
-      ),
-      timedPart(parts, "imports", () =>
-        readImportStatus(supabase, userId).catch(() => null)
-      ),
-      timedPart(parts, "browser_profile", () =>
-        readBrowserProfileStatus(supabase, userId).catch(() => null)
       ),
       timedPart(parts, "identity_media", () =>
         listIdentityMediaViews(supabase, userId)
@@ -348,6 +333,55 @@ async function loadSnapshot(
       ),
     ])
   );
+
+  // Mirror hit: render from Postgres metadata alone — no Box round trips.
+  // The link meta carries no phrase/verification_url; the link slide
+  // fetches the live doc separately while pairing. Miss (or the box is
+  // mid-start): read the Box documents live and backfill the row.
+  let state: OnboardingState;
+  let ingest: IngestStatus | null;
+  let imports: ImportStatus | null;
+  let browserProfile: BrowserProfileStatus | null;
+  let link: LinkAuthDoc | null;
+  let linkPairing = false;
+  let boxBusy = false;
+  // A row written only by a step-mark (state present, docs never refreshed)
+  // still counts as a hit; a row with no state yet does not.
+  if (mirror?.state) {
+    state = mirror.state;
+    ingest = mirror.ingest;
+    imports = mirror.imports;
+    browserProfile = mirror.browserProfile;
+    link = mirror.link
+      ? {
+          ...defaultLinkAuthDoc(),
+          installed: mirror.link.installed,
+          authenticated: mirror.link.authenticated,
+          updated_at: mirror.link.updated_at,
+        }
+      : null;
+    linkPairing = mirror.link?.pairing === true;
+    const age = mirror.refreshedAt
+      ? Date.now() - Date.parse(mirror.refreshedAt)
+      : Number.POSITIVE_INFINITY;
+    if (!(age < MIRROR_STALE_MS)) {
+      try {
+        after(() =>
+          refreshStatusMirror(supabase, userId).catch(() => undefined)
+        );
+      } catch {
+        // outside a request scope — skip the background refresh
+      }
+    }
+  } else {
+    const live = await timedFetch("onboarding", "mirror_backfill", () =>
+      refreshStatusMirror(supabase, userId)
+    );
+    ({ state, ingest, imports, browserProfile, link, boxBusy } = live);
+    linkPairing =
+      link?.phrase != null || link?.verification_url != null;
+  }
+
   return {
     state,
     environment: toComputeEnvironment(boxRow?.environment),
@@ -372,6 +406,7 @@ async function loadSnapshot(
     browserProfile,
     browserProfileCommand: buildBrowserProfileCommand(userId),
     boxBusy,
+    linkPairing,
   };
 }
 
@@ -1096,6 +1131,27 @@ function rendersNativeOnairos(
   return step === "onairos" && snapshot.onairos.available;
 }
 
+/**
+ * The link slide renders the transient pairing phrase and verification URL,
+ * which are never mirrored to Postgres — fetch the live doc from the Box
+ * only when that slide is about to render mid-pairing.
+ */
+async function withLiveLink(
+  supabase: SupabaseClient,
+  userId: string,
+  snapshot: OnboardingSnapshot,
+  active: OnboardingStepId
+): Promise<void> {
+  if (active !== "link" || snapshot.boxBusy) return;
+  if (!snapshot.linkPairing || snapshot.link?.authenticated) return;
+  if (snapshot.link?.phrase || snapshot.link?.verification_url) return;
+  const live = await readLinkAuthDoc(supabase, userId).catch(() => null);
+  if (live) {
+    snapshot.link = live;
+    await writeStatusMirror(supabase, userId, { link: live });
+  }
+}
+
 async function respond(
   ctx: MiniAppContext,
   step: OnboardingStepId | null,
@@ -1104,6 +1160,7 @@ async function respond(
   const snapshot = await loadSnapshot(ctx.supabase, ctx.session.userId);
   const current = activeTheme(ctx);
   const active = step ?? firstOpenStep(snapshot);
+  await withLiveLink(ctx.supabase, ctx.session.userId, snapshot, active);
   return slides(
     current,
     renderOnboarding(
@@ -1127,7 +1184,8 @@ async function markSafely(
   status: "done" | "skipped" | "todo"
 ): Promise<boolean> {
   try {
-    await markOnboardingStep(supabase, userId, step, status);
+    const state = await markOnboardingStep(supabase, userId, step, status);
+    await writeStatusMirror(supabase, userId, { state });
     return true;
   } catch (error) {
     if (error instanceof StartLimitError) return false;
@@ -1182,6 +1240,7 @@ export const onboarding: MiniAppModule = {
     }
     const current = activeTheme(ctx);
     const active = activeStep(ctx, snapshot);
+    await withLiveLink(ctx.supabase, ctx.session.userId, snapshot, active);
     return slides(
       current,
       renderOnboarding(
@@ -1480,6 +1539,7 @@ export const onboarding: MiniAppModule = {
 
     if (action === "refresh_import") {
       const imports = await readImportStatus(supabase, userId).catch(() => null);
+      if (imports) await writeStatusMirror(supabase, userId, { imports });
       if (imports?.dictionary_built_at) {
         await markSafely(supabase, userId, "import", "done");
         return respond(
@@ -1493,7 +1553,8 @@ export const onboarding: MiniAppModule = {
 
     if (action === "build_dictionary") {
       try {
-        await startDictionaryRun(supabase, userId);
+        const imports = await startDictionaryRun(supabase, userId);
+        await writeStatusMirror(supabase, userId, { imports });
       } catch (error) {
         if (error instanceof StartLimitError) {
           return respond(
@@ -1520,7 +1581,8 @@ export const onboarding: MiniAppModule = {
 
     if (action === "disable_browser_profile") {
       try {
-        await disableBrowserProfile(supabase, userId);
+        const browserProfile = await disableBrowserProfile(supabase, userId);
+        await writeStatusMirror(supabase, userId, { browserProfile });
       } catch {
         return respond(
           ctx,
@@ -1537,6 +1599,7 @@ export const onboarding: MiniAppModule = {
 
     if (action === "refresh_ingest") {
       const ingest = await readIngestStatus(supabase, userId).catch(() => null);
+      if (ingest) await writeStatusMirror(supabase, userId, { ingest });
       if (ingest && ingest.chunks > 0) {
         await markSafely(supabase, userId, "imessage", "done");
       }
@@ -1570,6 +1633,7 @@ export const onboarding: MiniAppModule = {
           action === "link_connect"
             ? await startLinkAuth(supabase, userId)
             : await checkLinkAuth(supabase, userId);
+        await writeStatusMirror(supabase, userId, { link: doc });
         if (doc.authenticated) {
           await markSafely(supabase, userId, "link", "done");
           return respond(ctx, "link", "Link connected.");

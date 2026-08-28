@@ -15,6 +15,7 @@ import { command, writeFile } from "@/lib/box/client";
 import { shellQuote } from "@/lib/box/shell";
 import { env } from "@/lib/env";
 import { requestSignal } from "@/lib/http/timeout";
+import { writeStatusMirror } from "@/lib/miniapps/onboardingMirror";
 import { armStopAfter, ensureBoxAwake } from "@/lib/orchestrator/boxes";
 import { markOnboardingStep } from "@/lib/miniapps/onboarding";
 import { OnairosError } from "./context";
@@ -180,7 +181,7 @@ export async function storeSpectrumGrants(
     await armStopAfter(supabase, userId).catch(() => undefined);
   }
   await setSpectrumFlow(supabase, userId, "active");
-  await markOnboardingStep(supabase, userId, "onairos", "done").catch(
-    () => undefined,
-  );
+  await markOnboardingStep(supabase, userId, "onairos", "done")
+    .then((state) => writeStatusMirror(supabase, userId, { state }))
+    .catch(() => undefined);
 }

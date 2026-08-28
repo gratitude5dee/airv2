@@ -21,6 +21,7 @@ import {
   storeBrowserProfileChunk,
   verifyBrowserProfileTicket,
 } from "@/lib/context/browser-profile";
+import { writeStatusMirror } from "@/lib/miniapps/onboardingMirror";
 import { armStopAfter, StartLimitError } from "@/lib/orchestrator/boxes";
 import { serviceClient } from "@/lib/supabase";
 import { env } from "@/lib/env";
@@ -89,6 +90,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const chunk = parseBrowserProfileChunk(body);
     const status = await storeBrowserProfileChunk(supabase, claims.userId, chunk);
+    await writeStatusMirror(supabase, claims.userId, { browserProfile: status });
     return NextResponse.json({ ok: true, status }, { headers: NO_STORE });
   } catch (error) {
     if (error instanceof BrowserProfileInputError) {
@@ -115,6 +117,7 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
   const supabase = serviceClient();
   try {
     const status = await disableBrowserProfile(supabase, userId);
+    await writeStatusMirror(supabase, userId, { browserProfile: status });
     return NextResponse.json({ ok: true, status }, { headers: NO_STORE });
   } catch (error) {
     if (error instanceof StartLimitError) return busy();

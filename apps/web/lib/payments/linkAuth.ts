@@ -9,9 +9,11 @@
  *
  * Custody stays box-side: the CLI credential file lives on the box (600
  * inside a 700 dir, snapshotted with /home/user) and never transits the
- * control plane. The mirror doc below carries pairing STATE only —
+ * control plane. The box doc below carries pairing STATE only —
  * booleans, the link.com verification URL, and the human pairing phrase —
- * never tokens. Spend requests still require the owner's approval in their
+ * never tokens. The Postgres status mirror (lib/miniapps/onboardingMirror)
+ * gets booleans and timestamps only — never the phrase or URL.
+ * Spend requests still require the owner's approval in their
  * Link app per purchase, and the purchase_review stop is untouched.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";

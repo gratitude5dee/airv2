@@ -49,7 +49,7 @@ export function defaultOnboardingState(): OnboardingState {
   return { steps, updated_at: null };
 }
 
-function normalize(raw: unknown): OnboardingState {
+export function normalizeOnboardingState(raw: unknown): OnboardingState {
   const state = defaultOnboardingState();
   if (typeof raw !== "object" || raw === null) return state;
   const doc = raw as { steps?: unknown; updated_at?: unknown };
@@ -73,7 +73,7 @@ export async function readOnboardingState(
   const target = await ensureComputeAwake(supabase, userId);
   try {
     const raw = await readComputeFile(target, STATE_PATH);
-    return normalize(JSON.parse(raw));
+    return normalizeOnboardingState(JSON.parse(raw));
   } catch {
     return defaultOnboardingState();
   }
