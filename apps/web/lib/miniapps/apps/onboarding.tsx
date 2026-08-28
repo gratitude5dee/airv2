@@ -27,10 +27,18 @@ import {
 } from "@/lib/vault/managers";
 import {
   isSpeedTier,
+  MODEL_FAMILY_LABELS,
+  setModelFamily,
   setSpeedTier,
   setUsername,
   SPEED_TIERS,
 } from "@/lib/settings/account";
+import {
+  DEFAULT_MODEL_FAMILY,
+  isModelFamily,
+  requiresConsent,
+  type ModelFamily,
+} from "@/lib/entitlements/models";
 import { getMerchant, startOnboarding, type Merchant } from "@/lib/commerce/merchants";
 import {
   mintIngestTicket,
@@ -134,44 +142,147 @@ import {
 import { timedFetch, timedPart, timedParts } from "../timing";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
-const STEP_TITLES: Record<OnboardingStepId, string> = {
-  environment: "Pick your agent's computer",
-  username: "Pick your username",
-  email: "Your agent's email",
-  model: "Model preference",
-  selfies: "Take selfies & pro photos",
-  twin: "Record your digital twin",
-  avatar: "Create your avatar",
-  imessage: "Ingest iMessage history",
-  onairos: "Personal context",
-  connect: "Connect your apps",
-  secrets: "Secrets",
-  stripe: "Stripe account",
-  link: "Connect Link",
-  agent: "Meet your agent",
-  walkthrough: "Walkthrough & first workflows",
-  import: "Import your AI context",
+/**
+ * The deck: a welcome intro plus six grouped slides. The step IDs above stay
+ * the state model — agent-side tools and effectiveStatus() keep reading them
+ * individually — while a slide concatenates the bodies of the sub-steps it
+ * owns, so the counter reads "N / 06" instead of one page per step.
+ *
+ * A section key is either a step ID, or one of the two composites that split
+ * or merge step bodies for presentation only: `computer` renders the
+ * environment/username/email trio as one card, and `browser` renders the
+ * browser-profile half of the `import` step as its own numbered card.
+ */
+export type SlideSectionKey = OnboardingStepId | "computer" | "browser";
+
+export interface SlideSection {
+  key: SlideSectionKey;
+  /** Sub-heading above the card; null renders the body bare. */
+  label: string | null;
+  /** Pager pane this section lives on; sections without one stack. */
+  pane?: string;
+}
+
+export interface OnboardingSlide {
+  id: string;
+  title: string;
+  kicker: string;
+  sections: readonly SlideSection[];
+  /** Two-column on wide viewports (the Computer slide's model card). */
+  split?: boolean;
+}
+
+/** Which steps a section's body reads and writes. */
+const SECTION_STEPS: Record<SlideSectionKey, readonly OnboardingStepId[]> = {
+  welcome: ["welcome"],
+  computer: ["environment", "username", "email"],
+  environment: ["environment"],
+  username: ["username"],
+  email: ["email"],
+  model: ["model"],
+  selfies: ["selfies"],
+  twin: ["twin"],
+  avatar: ["avatar"],
+  imessage: ["imessage"],
+  browser: ["import"],
+  import: ["import"],
+  onairos: ["onairos"],
+  connect: ["connect"],
+  secrets: ["secrets"],
+  stripe: ["stripe"],
+  link: ["link"],
+  agent: ["agent"],
+  walkthrough: ["walkthrough"],
 };
 
-/** Mono kicker line above each slide title — the "why" in one breath. */
-const STEP_KICKERS: Record<OnboardingStepId, string> = {
-  environment: "Computer",
-  username: "Identity",
-  email: "Inbox",
-  model: "Thinking speed",
-  selfies: "Image Vault",
-  twin: "Digital Twin",
-  avatar: "Avatar",
-  imessage: "Context · iMessage",
-  onairos: "Context · Onairos",
-  connect: "Actions · Integrations",
-  secrets: "Key vault",
-  stripe: "Get paid",
-  link: "Agent payments",
-  agent: "First contact",
-  walkthrough: "Tour & workflows",
-  import: "Context · Hyperpersonalize",
-};
+// Titles and kickers live on the slide now — the deck is the display unit.
+export const SLIDE_GROUPS: readonly [OnboardingSlide, ...OnboardingSlide[]] = [
+  {
+    id: "welcome",
+    title: "welcome to air",
+    kicker: "Intro",
+    sections: [{ key: "welcome", label: null }],
+  },
+  {
+    id: "computer",
+    title: "Your agent's computer",
+    kicker: "Computer",
+    split: true,
+    sections: [
+      { key: "computer", label: "Pick a machine" },
+      { key: "model", label: "Choose model" },
+    ],
+  },
+  {
+    id: "booth",
+    title: "Photo Booth",
+    kicker: "Photo Booth",
+    sections: [
+      { key: "selfies", label: "Step into the booth", pane: "Photo" },
+      { key: "twin", label: "Digital twin — optional", pane: "Video" },
+      { key: "avatar", label: "Avatar — optional", pane: "Video" },
+    ],
+  },
+  {
+    id: "context",
+    title: "Context retrieval",
+    kicker: "Context Retrieval",
+    sections: [
+      { key: "imessage", label: "Step 1 — iMessage history" },
+      { key: "browser", label: "Step 2 — Browser profile" },
+      { key: "import", label: "Step 3 — AI context" },
+    ],
+  },
+  {
+    id: "personality",
+    title: "Personality engine",
+    kicker: "Personality Engine",
+    sections: [{ key: "onairos", label: null }],
+  },
+  {
+    id: "apps",
+    title: "Connect your apps",
+    kicker: "Connect your Apps",
+    sections: [
+      { key: "connect", label: "Your apps" },
+      { key: "secrets", label: "Secrets" },
+      { key: "stripe", label: "Get paid — create your store" },
+      { key: "link", label: "Get paid — Connect Link" },
+    ],
+  },
+  {
+    id: "start",
+    title: "Get started",
+    kicker: "Get started",
+    sections: [
+      { key: "agent", label: "Try a prompt" },
+      { key: "walkthrough", label: "Your launcher" },
+    ],
+  },
+];
+
+/** Every step a slide owns, in section order and without duplicates. */
+export function slideSteps(slide: OnboardingSlide): OnboardingStepId[] {
+  const steps: OnboardingStepId[] = [];
+  for (const section of slide.sections) {
+    for (const step of SECTION_STEPS[section.key]) {
+      if (!steps.includes(step)) steps.push(step);
+    }
+  }
+  return steps;
+}
+
+/** Deep links stay step-scoped (`?step=selfies`) — resolve to their slide. */
+export function slideForStep(step: OnboardingStepId): OnboardingSlide {
+  return (
+    SLIDE_GROUPS.find((slide) => slideSteps(slide).includes(step)) ??
+    SLIDE_GROUPS[0]
+  );
+}
+
+export function slideById(id: string): OnboardingSlide | null {
+  return SLIDE_GROUPS.find((slide) => slide.id === id) ?? null;
+}
 
 /** Guided, read-only first workflows — fixed prompts, never client text. */
 const WALKTHROUGH_WORKFLOWS: Array<[string, string, string]> = [
@@ -192,6 +303,35 @@ const WALKTHROUGH_WORKFLOWS: Array<[string, string, string]> = [
   ],
 ];
 
+/**
+ * Get started: fixed sample prompts to paste into iMessage. The first three
+ * mirror WALKTHROUGH_WORKFLOWS, so they can also be run right here; the last
+ * two are copy-only. Fixed text, never client input.
+ */
+const SAMPLE_PROMPTS: Array<{
+  label: string;
+  prompt: string;
+  workflow: string | null;
+}> = [
+  ...WALKTHROUGH_WORKFLOWS.map(([workflow, label, prompt]) => ({
+    label,
+    prompt,
+    workflow,
+  })),
+  {
+    label: "Prep my day",
+    prompt:
+      "Look at my calendar for today and tell me what to prepare for each thing on it. Read-only — don't send or change anything.",
+    workflow: null,
+  },
+  {
+    label: "Learn my voice",
+    prompt:
+      "Read back what you know about how I write — tone, length, the words I actually use — and where you're still guessing.",
+    workflow: null,
+  },
+];
+
 /** Onboarding offers the golden-path action toolkits; the Connect app has all. */
 const ONBOARDING_TOOLKITS: Array<[string, string]> = [
   ["gmail", "Gmail"],
@@ -199,6 +339,10 @@ const ONBOARDING_TOOLKITS: Array<[string, string]> = [
   ["notion", "Notion"],
   ["slack", "Slack"],
   ["github", "GitHub"],
+  ["googledrive", "Google Drive"],
+  ["linear", "Linear"],
+  ["twitter", "X (Twitter)"],
+  ["discord", "Discord"],
 ];
 
 export interface OnboardingSnapshot {
@@ -207,6 +351,8 @@ export interface OnboardingSnapshot {
   environment: ComputeEnvironment;
   username: string | null;
   address: string | null;
+  /** Domain the agent's mailbox is provisioned on (AGENT_EMAIL_DOMAIN). */
+  mailboxDomain: string;
   identityMedia: IdentityMediaView[];
   avatarAssetId: string | null;
   twin: DigitalTwin | null;
@@ -216,6 +362,7 @@ export interface OnboardingSnapshot {
   vaultItemCount: number;
   onairos: OnairosStatus;
   speedTier: string | null;
+  modelFamily: ModelFamily;
   merchant: Merchant | null;
   link: LinkAuthDoc | null;
   pluginSessions: number;
@@ -301,7 +448,7 @@ async function loadSnapshot(
       timedPart(parts, "entitlement", () =>
         supabase
           .from("entitlements")
-          .select("speed_tier")
+          .select("speed_tier, model_family")
           .eq("user_id", userId)
           .maybeSingle()
       ),
@@ -387,6 +534,7 @@ async function loadSnapshot(
     environment: toComputeEnvironment(boxRow?.environment),
     username: (user?.username as string | null) ?? null,
     address: (addressRow?.address as string | null) ?? null,
+    mailboxDomain: env.agentEmailDomain(),
     identityMedia,
     avatarAssetId,
     twin,
@@ -396,6 +544,9 @@ async function loadSnapshot(
     vaultItemCount: count ?? 0,
     onairos,
     speedTier: (entitlement?.speed_tier as string | null) ?? null,
+    modelFamily: isModelFamily(String(entitlement?.model_family ?? ""))
+      ? (entitlement?.model_family as ModelFamily)
+      : DEFAULT_MODEL_FAMILY,
     merchant,
     link,
     pluginSessions: pluginCount ?? 0,
@@ -454,6 +605,15 @@ export function effectiveStatus(
   const recorded = snapshot.state.steps[step];
   if (recorded === "done" || recorded === "skipped") return recorded;
   switch (step) {
+    case "welcome":
+      // The intro is done once the owner taps Continue — or, for state files
+      // written before the welcome step existed, once any real step has
+      // progress: a mid-flow owner never gets bounced back to the intro.
+      return ONBOARDING_STEPS.some(
+        (other) => other !== "welcome" && snapshot.state.steps[other] !== "todo"
+      )
+        ? "done"
+        : "todo";
     case "environment":
       // boxes.environment has a default, so its presence proves nothing —
       // only an explicit choice (recorded above) counts, mirroring "model".
@@ -504,7 +664,19 @@ function firstOpenStep(snapshot: OnboardingSnapshot): OnboardingStepId {
   for (const step of ONBOARDING_STEPS) {
     if (effectiveStatus(snapshot, step) === "todo") return step;
   }
-  return "import";
+  return "walkthrough";
+}
+
+/** Slide-level status for the deck dots: done once no sub-step is open. */
+function slideStatus(
+  snapshot: OnboardingSnapshot,
+  slide: OnboardingSlide
+): "todo" | "done" | "skipped" {
+  const statuses = slideSteps(slide).map((step) =>
+    effectiveStatus(snapshot, step)
+  );
+  if (statuses.every((status) => status === "skipped")) return "skipped";
+  return statuses.every((status) => status !== "todo") ? "done" : "todo";
 }
 
 /** Confirmed vault references — drafts and the avatar pointer excluded. */
@@ -512,9 +684,11 @@ const isVaultMedia = (m: IdentityMediaView): boolean =>
   m.role === "selfie" || m.role === "character_sheet";
 
 /** Same-origin photo-booth mount (script-src 'self'); the plain upload
- * forms below it stay the lite/Messages and no-camera path. */
+ * forms below it stay the lite/Messages and no-camera path. The bundle is
+ * loaded once per slide by renderOnboarding — a grouped slide can hold both
+ * the photo and the video booth. */
 function boothMount(mode: "photo" | "video"): string {
-  return `<div id="identity-booth" data-mode="${mode}"></div><script src="/creator-os/identity-booth.js" defer></script>`;
+  return `<div class="identity-booth" data-mode="${mode}"></div>`;
 }
 
 function skipForm(step: OnboardingStepId, label = "Skip for now"): string {
@@ -525,30 +699,83 @@ function doneForm(step: OnboardingStepId, label: string): string {
   return `<form method="post" class="inline"><input type="hidden" name="action" value="mark_done"><input type="hidden" name="step" value="${esc(step)}"><button>${esc(label)}</button></form>`;
 }
 
+/** Card marks for the compute row — inline, currentColor, no asset fetch. */
+const ENV_MARKS: Record<ComputeEnvironment, string> = {
+  ubuntu: `<svg class="envmark" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6"/><circle cx="12" cy="3.6" r="2"/><circle cx="4.7" cy="16.2" r="2"/><circle cx="19.3" cy="16.2" r="2"/></svg>`,
+  omarchy: `<svg class="envmark" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 3.5 20.5h17L12 3Z"/><path d="M12 11 8.2 20.5h7.6L12 11Z"/></svg>`,
+  macos: `<svg class="envmark" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.8" y="4.5" width="18.4" height="12" rx="2"/><path d="M1.5 20h21"/></svg>`,
+};
+
+/** Horizontal compute cards — one row, logo + name + one-line blurb. */
+function environmentCards(snapshot: OnboardingSnapshot): string {
+  const cards = COMPUTE_ENVIRONMENTS.map((environment) => {
+    const profile = ENVIRONMENT_PROFILES[environment];
+    const current = environment === snapshot.environment;
+    const name = `<span class="envname">${esc(profile.label)}${current ? '<span class="envtag">Current</span>' : ""}${profile.comingSoon && !current ? '<span class="envtag soon">Soon</span>' : ""}</span>`;
+    const inner = `${ENV_MARKS[environment]}${name}<span class="envblurb">${esc(profile.blurb)}</span>`;
+    if (profile.comingSoon && !current) {
+      return `<div class="envcard off" aria-disabled="true">${inner}</div>`;
+    }
+    return `<form method="post" class="envform"><input type="hidden" name="action" value="set_environment"><input type="hidden" name="environment" value="${esc(environment)}"><button class="envcard${current ? " current" : ""}">${inner}</button></form>`;
+  }).join("");
+  return `<div class="envgrid">${cards}</div>`;
+}
+
+/**
+ * Computer card: machine, username, and the mailbox that follows it. The
+ * address is `<username>@<AGENT_EMAIL_DOMAIN>` (lib/provisioning/email.ts),
+ * so "editing the mailbox" is the same write as changing the username — the
+ * field posts set_username and the inbox is re-provisioned behind it.
+ */
+function computerBody(snapshot: OnboardingSnapshot): string {
+  const domain =
+    snapshot.address?.split("@")[1] ?? snapshot.mailboxDomain;
+  const mailbox = snapshot.address
+    ? `<div class="mailbox"><span class="chip">Mailbox</span><strong>${esc(snapshot.address)}</strong></div><p class="muted">Your agent reads and drafts here; sending always waits for your approval. Edit the address below — the old one keeps routing forever.</p>`
+    : `<p class="muted">Lowercase letters, digits, underscore — 2–24 characters. Your agent's mailbox is provisioned from it automatically.</p>`;
+  const form = `<form method="post" class="row mailform"><input type="hidden" name="action" value="set_username"><input type="text" name="username" value="${esc(snapshot.username ?? "")}" placeholder="username" maxlength="24" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="text" enterkeyhint="done"><span class="suffix">@${esc(domain)}</span><button>${snapshot.address ? "Update" : "Save"}</button></form>`;
+  return `<p class="muted">Your agent gets its own computer. Pick where it lives — you can switch later, but its files start fresh on the new machine.</p>${environmentCards(snapshot)}${mailbox}${form}<div class="row actions">${skipForm("username", "Skip — name it later")}</div>`;
+}
+
+/** The families offered during onboarding; Settings has the full menu. */
+const ONBOARDING_FAMILIES: readonly ModelFamily[] = [
+  "openai",
+  "anthropic",
+  "minimax-m3",
+  "minimax-m2.7",
+];
+
+function modelBody(snapshot: OnboardingSnapshot): string {
+  const families = ONBOARDING_FAMILIES.map(
+    (family) =>
+      `<form method="post" class="famform"><input type="hidden" name="action" value="set_model_family"><input type="hidden" name="model_family" value="${esc(family)}"><button${family === snapshot.modelFamily ? "" : ' class="ghost"'}>${esc(MODEL_FAMILY_LABELS[family])}</button></form>`
+  ).join("");
+  const tiers = SPEED_TIERS.map(
+    (tier) =>
+      `<form method="post" class="inline"><input type="hidden" name="action" value="set_speed"><input type="hidden" name="speed_tier" value="${esc(tier)}"><button${tier === snapshot.speedTier ? "" : ' class="ghost"'}>${esc(tier)}</button></form>`
+  ).join("");
+  return `<p class="muted">Pick the family your agent thinks with.</p><div class="famgrid">${families}</div><p class="muted">(you can select others in settings later)</p><p class="muted">Thinking speed — faster answers or deeper reasoning:</p><div class="row">${tiers}</div><div class="row actions">${skipForm("model")}</div>`;
+}
+
 function stepBody(
   snapshot: OnboardingSnapshot,
   step: OnboardingStepId,
   browserSignin: string | null,
   lite = false
 ): string {
+  if (step === "welcome") {
+    // Lite/Messages sessions run on a tight memory budget — the intro is a
+    // still there, and the video only plays in the full webview.
+    const intro = lite
+      ? ""
+      : `<video class="introvid" src="/creator-os/welcome-air.mp4" autoplay muted loop playsinline preload="auto" aria-label="Sunrise over the clouds"></video>`;
+    return `${intro}<p>An agent of your own: its own computer, its own mailbox, and your context — set up in six short steps.</p><p class="muted">Everything here is optional and re-enterable. Skip anything, come back any time.</p><div class="row actions">${doneForm("welcome", "Continue")}</div>`;
+  }
   if (step === "environment") {
-    const cards = COMPUTE_ENVIRONMENTS.map((environment) => {
-      const profile = ENVIRONMENT_PROFILES[environment];
-      const current = environment === snapshot.environment;
-      const name = `<span class="envname">${esc(profile.label)}${current ? '<span class="envtag">Current</span>' : ""}${profile.comingSoon && !current ? '<span class="envtag soon">Coming soon</span>' : ""}</span>`;
-      const inner = `${name}<span class="envblurb">${esc(profile.blurb)}</span>`;
-      if (profile.comingSoon && !current) {
-        return `<div class="envcard off" aria-disabled="true">${inner}</div>`;
-      }
-      return `<form method="post" class="envform"><input type="hidden" name="action" value="set_environment"><input type="hidden" name="environment" value="${esc(environment)}"><button class="envcard${current ? " current" : ""}">${inner}</button></form>`;
-    }).join("");
-    return `<p class="muted">Your agent gets its own computer. Pick where it lives — you can switch later, but its files start fresh on the new machine.</p><div class="envgrid">${cards}</div>`;
+    return `<p class="muted">Your agent gets its own computer. Pick where it lives — you can switch later, but its files start fresh on the new machine.</p>${environmentCards(snapshot)}`;
   }
   if (step === "username") {
-    const current = snapshot.username
-      ? `<p>Current: <strong>@${esc(snapshot.username)}</strong></p>`
-      : "";
-    return `${current}<p class="muted">Lowercase letters, digits, underscore — 2–24 characters. Your agent's email follows it.</p><form method="post" class="row"><input type="hidden" name="action" value="set_username"><input type="text" name="username" placeholder="username" maxlength="24" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="text" enterkeyhint="done"><button>Save</button></form><div class="row actions">${skipForm("username")}</div>`;
+    return computerBody(snapshot);
   }
   if (step === "email") {
     const line = snapshot.address
@@ -557,11 +784,7 @@ function stepBody(
     return `${line}<div class="row actions">${snapshot.address ? doneForm("email", "Looks good") : ""}${skipForm("email")}</div>`;
   }
   if (step === "model") {
-    const buttons = SPEED_TIERS.map(
-      (tier) =>
-        `<form method="post" class="inline"><input type="hidden" name="action" value="set_speed"><input type="hidden" name="speed_tier" value="${esc(tier)}"><button${tier === snapshot.speedTier ? "" : ' class="ghost"'}>${esc(tier)}</button></form>`
-    ).join("");
-    return `<p class="muted">Pick how your agent thinks — faster answers or deeper reasoning. A tier, never a specific model; change it any time in Settings.</p><div class="row">${buttons}</div><div class="row actions">${skipForm("model")}</div>`;
+    return modelBody(snapshot);
   }
   if (step === "selfies") {
     const references = snapshot.identityMedia.filter(isVaultMedia);
@@ -588,7 +811,7 @@ function stepBody(
       : draft
         ? `<div class="sheetcard"><p class="muted">Step 2 of 2 — review your character sheet, then save it to the vault or discard it.</p>${draft.url ? `<img class="sheetpreview" src="${esc(draft.url)}" alt="character sheet draft">` : ""}<div class="row"><form method="post" class="inline"><input type="hidden" name="action" value="save_character_sheet"><input type="hidden" name="asset_id" value="${esc(draft.assetId)}"><button>Save to vault</button></form><form method="post" class="inline"><input type="hidden" name="action" value="discard_character_sheet"><input type="hidden" name="asset_id" value="${esc(draft.assetId)}"><button class="ghost">Discard</button></form></div></div>`
         : `<div class="sheetcard"><p class="muted">Step 1 of 2 — generate a character sheet from your photos; you review it before anything is saved.</p><form method="post" class="inline"><input type="hidden" name="action" value="generate_character_sheet"><button${references.length > 0 ? "" : ' class="ghost"'}>Generate character sheet</button></form></div>`;
-    return `<p class="muted">Step into the booth — photos live privately in your image vault and anchor your @${esc(snapshot.username ?? "username")} identity for generated media.</p>${booth}${gallery}${upload}${sheet}<div class="row actions">${skipForm("selfies")}</div>`;
+    return `<p class="muted">Step into the booth — shoot from your iPhone or your MacBook camera, or upload from your library. Photos live privately in your image vault and anchor your @${esc(snapshot.username ?? "username")} identity for generated media.</p>${booth}${gallery}${upload}${sheet}<div class="row actions">${skipForm("selfies")}</div>`;
   }
   if (step === "twin") {
     if (!snapshot.twinAvailable) {
@@ -607,18 +830,18 @@ function stepBody(
     const statusLine = twin
       ? `<p>Twin status: <strong>${esc(twin.status)}</strong>.</p>`
       : "";
-    return `<p class="muted">Create a HeyGen Avatar IV talking-head twin from your reference photo. The video is delivered privately — only you can share it.</p>${statusLine}${consent}${create}<div class="row actions">${skipForm("twin")}</div>`;
+    return `<p class="muted">Optional — create a talking-head twin from your reference photo. Record the consent line below, and the video is delivered privately: only you can share it.</p>${statusLine}${consent}${create}<div class="row actions">${skipForm("twin")}</div>`;
   }
   if (step === "avatar") {
-    // First option: mint a HeyGen avatar ID from an identity image (when
+    // First option: train a reusable avatar from an identity image (when
     // configured). Fallback: pick a photo directly — renders go straight
-    // through GMI with the raw image.
-    const heygenBlock = heygenAvailable()
+    // through with the raw image.
+    const trainedBlock = heygenAvailable()
       ? snapshot.twin?.provider_avatar_id
-        ? `<p>HeyGen avatar ready — videos render with your trained avatar ID.</p>`
+        ? `<p>Trained avatar ready — videos render with it.</p>`
         : snapshot.identityMedia.some(isVaultMedia)
-          ? `<form method="post" class="inline"><input type="hidden" name="action" value="create_heygen_avatar"><button>Create HeyGen avatar</button></form><p class="muted">Recommended — trains a reusable avatar ID from your newest identity image.</p>`
-          : `<p class="muted">Add a photo on the <a href="?step=selfies">selfies step</a> to create a HeyGen avatar.</p>`
+          ? `<form method="post" class="inline"><input type="hidden" name="action" value="create_heygen_avatar"><button>Train an avatar</button></form><p class="muted">Recommended — trains a reusable avatar from your newest identity image.</p>`
+          : `<p class="muted">Add a photo in the booth above to train an avatar.</p>`
       : "";
     const choices = snapshot.identityMedia
       .filter((m) => isVaultMedia(m) && m.url)
@@ -633,7 +856,7 @@ function stepBody(
     const generate = snapshot.username
       ? `<form method="post" class="inline"><input type="hidden" name="action" value="generate_character_sheet"><button class="ghost">Generate a new look</button></form>`
       : "";
-    return `<p class="muted">Pick the image that represents @${esc(snapshot.username ?? "you")} — generated media can reference it as your likeness.</p>${heygenBlock}${gallery}<div class="row actions">${generate}${skipForm("avatar")}</div>`;
+    return `<p class="muted">Optional — pick the image that represents @${esc(snapshot.username ?? "you")}, or generate a new look. Generated media can reference it as your likeness.</p>${trainedBlock}${gallery}<div class="row actions">${generate}${skipForm("avatar")}</div>`;
   }
   if (step === "connect") {
     // Same webview constraint as the Onairos slide: Google refuses OAuth
@@ -716,9 +939,9 @@ function stepBody(
     const connectForm = (label: string): string =>
       `<form method="post" class="inline"><input type="hidden" name="action" value="connect_stripe"><button>${esc(label)}</button></form>`;
     const status = !merchant
-      ? `<p class="muted">Connect your own Stripe account (Stripe Connect) so you can sell through your storefront — funds settle directly to you; the platform never holds your money. You can do this now or later.</p><div class="row actions">${connectForm("Connect Stripe")}${skipForm("stripe", "Later")}</div>`
+      ? `<p class="muted">Create your store: connect your own Stripe account so you can sell through your storefront — funds settle directly to you; the platform never holds your money. You can do this now or later.</p><div class="row actions">${connectForm("Create your store")}${skipForm("stripe", "Later")}</div>`
       : merchant.charges_enabled
-        ? `<p>Stripe connected — charges enabled. Manage it from the Shop app.</p><div class="row actions">${skipForm("stripe", "Continue")}</div>`
+        ? `<p>Your store is live — charges enabled. Manage it from the Shop app.</p><div class="row actions">${skipForm("stripe", "Continue")}</div>`
         : `<p>Stripe onboarding in progress.</p><div class="row actions">${connectForm("Resume onboarding")}${skipForm("stripe", "Later")}</div>`;
     return status;
   }
@@ -779,17 +1002,7 @@ function stepBody(
         ? `<form method="post" class="inline"><input type="hidden" name="action" value="build_dictionary"><button>${built ? "Rebuild dictionary" : "Build my dictionary"}</button></form>`
         : "";
     const refreshForm = `<form method="post" class="inline"><input type="hidden" name="action" value="refresh_import"><button class="ghost">Refresh status</button></form>`;
-    const browser = snapshot.browserProfile;
-    const browserStatus = browser?.enabled
-      ? `<div class="item"><span class="grow">Real profile browsing</span><span class="chip">on · ${esc(browser.browser ?? "browser")} · ${browser.files} files</span></div><p class="muted">Your agent browses with your logins and cookies. Run the command again after new sign-ins to re-sync; turning it off deletes the snapshot from your agent's computer.</p>`
-      : `<div class="item"><span class="grow">Real profile browsing</span><span class="chip">off</span></div><p class="muted">By default the agent browses in a clean, throwaway profile — logged into nothing. Turn this on to let it browse as you: one command copies your default browser's <strong>active</strong> profile (cookies, saved logins, preferences — never your other profiles) straight to your agent's computer. Only enable it when you want the agent acting as you.</p>`;
-    const browserCommand = snapshot.browserProfileCommand
-      ? `<details><summary>${browser?.enabled ? "Re-sync my browser profile" : "Turn on real profile browsing"}</summary><p class="muted">Run in Terminal on the machine where you browse (Chrome, Edge, Brave, or Chromium; link valid ~30 minutes; on Windows fully quit the browser first):</p><pre>${esc(snapshot.browserProfileCommand)}</pre></details>`
-      : "";
-    const browserDisable = browser?.enabled
-      ? `<form method="post" class="inline"><input type="hidden" name="action" value="disable_browser_profile"><button class="ghost">Turn off &amp; delete snapshot</button></form>`
-      : "";
-    return `${statusLine}${perSource}${command}<hr>${browserStatus}${browserCommand}<div class="row actions">${buildForm}${browserDisable}${refreshForm}${skipForm("import")}</div>`;
+    return `${statusLine}${perSource}${command}<div class="row actions">${buildForm}${refreshForm}${skipForm("import")}</div>`;
   }
   if (step === "walkthrough") {
     const tour = `<p>Home is your launcher — here's the clickthrough:</p><ul><li><strong>Home grid</strong> — every app as a one-tap tile: calendar, vault, pay, shop, inbox, persona, and more.</li><li><strong>Chat</strong> — one conversation with your agent, same on iMessage and the web.</li><li><strong>Needs you</strong> — every action with side effects (emails, payments, publishes) waits for your approval.</li><li><strong>Settings</strong> — username, speed, memory, context, plugin sessions.</li></ul><p class="muted">Finish setup and the Home app arrives as your next message — tap it and try each tile.</p>`;
@@ -800,7 +1013,43 @@ function stepBody(
     return `${tour}<p class="muted">Try a first workflow — all read-only; your agent replies in chat:</p><div class="row">${buttons}</div><div class="row actions">${doneForm("walkthrough", "Finish setup")}</div>`;
   }
   // agent
-  return `<p class="muted">Say hello — your agent replies in your chat (iMessage or the web tab), same conversation everywhere.</p><form method="post" class="row"><input type="hidden" name="action" value="ask_agent"><input type="text" name="text" placeholder="e.g. What can you do for me?" maxlength="4000" enterkeyhint="send"><button>Send</button></form><div class="row actions">${skipForm("agent")}</div>`;
+  const prompts = SAMPLE_PROMPTS.map((sample) => {
+    const run = sample.workflow
+      ? `<form method="post" class="inline"><input type="hidden" name="action" value="run_workflow"><input type="hidden" name="workflow" value="${esc(sample.workflow)}"><button class="ghost">Run here</button></form>`
+      : "";
+    // data-prompt is read by /creator-os/prompt-copy.js; without it the
+    // buttons stay inert and the prompt text is still selectable.
+    const copy = `<button class="ghost" type="button" data-copy>Copy</button><button class="ghost" type="button" data-copy data-close>Copy &amp; close</button>`;
+    return `<div class="prompt" data-prompt="${esc(sample.prompt)}"><strong>${esc(sample.label)}</strong><span class="muted">${esc(sample.prompt)}</span><div class="row">${copy}${run}</div></div>`;
+  }).join("");
+  return `<p class="muted">Copy a prompt, close this, and paste it to your agent in iMessage — same conversation everywhere.</p><div class="prompts">${prompts}</div><details><summary>Or type your own</summary><form method="post" class="row"><input type="hidden" name="action" value="ask_agent"><input type="text" name="text" placeholder="e.g. What can you do for me?" maxlength="4000" enterkeyhint="send"><button>Send</button></form></details><div class="row actions">${skipForm("agent")}</div>`;
+}
+
+/** Browser-profile half of the `import` step, rendered as its own card. */
+function browserBody(snapshot: OnboardingSnapshot): string {
+  const browser = snapshot.browserProfile;
+  const status = browser?.enabled
+    ? `<div class="item"><span class="grow">Real profile browsing</span><span class="chip">on · ${esc(browser.browser ?? "browser")} · ${browser.files} files</span></div><p class="muted">Your agent browses with your logins and cookies. Run the command again after new sign-ins to re-sync; turning it off deletes the snapshot from your agent's computer.</p>`
+    : `<div class="item"><span class="grow">Real profile browsing</span><span class="chip">off</span></div><p class="muted">By default the agent browses in a clean, throwaway profile — logged into nothing. Turn this on to let it browse as you: one command copies your default browser's <strong>active</strong> profile (cookies, saved logins, preferences — never your other profiles) straight to your agent's computer. Only enable it when you want the agent acting as you.</p>`;
+  const command = snapshot.browserProfileCommand
+    ? `<details><summary>${browser?.enabled ? "Re-sync my browser profile" : "Turn on real profile browsing"}</summary><p class="muted">Run in Terminal on the machine where you browse (Chrome, Edge, Brave, or Chromium; link valid ~30 minutes; on Windows fully quit the browser first):</p><pre>${esc(snapshot.browserProfileCommand)}</pre></details>`
+    : "";
+  const disable = browser?.enabled
+    ? `<form method="post" class="inline"><input type="hidden" name="action" value="disable_browser_profile"><button class="ghost">Turn off &amp; delete snapshot</button></form>`
+    : "";
+  return `${status}${command}${disable ? `<div class="row actions">${disable}</div>` : ""}`;
+}
+
+/** Renders one slide section — a step body, or a composite of several. */
+function sectionBody(
+  snapshot: OnboardingSnapshot,
+  key: SlideSectionKey,
+  browserSignin: string | null,
+  lite: boolean
+): string {
+  if (key === "computer") return computerBody(snapshot);
+  if (key === "browser") return browserBody(snapshot);
+  return stepBody(snapshot, key, browserSignin, lite);
 }
 
 /**
@@ -816,7 +1065,10 @@ function slides(
   body: string,
   nativeOnairos = false,
   identityMedia = false,
-  booth = false
+  booth = false,
+  prompts = false,
+  intro = false,
+  swipe = false
 ): NextResponse {
   const headers = baseHeaders();
   // The Onairos slide runs the vendor SDK bundle (served same-origin) which
@@ -860,6 +1112,22 @@ function slides(
       ? csp.replace(/media-src ([^;]+)/, "media-src $1 blob:")
       : csp + "; media-src blob:";
     csp += "; connect-src 'self'";
+  }
+  if (prompts) {
+    // Get started ships a same-origin bundle whose only powers are the
+    // clipboard and window.close() — no network, no other origins.
+    if (!csp.includes("script-src")) csp += "; script-src 'self'";
+  }
+  if (swipe) {
+    // Every full (non-lite) slide ships the same-origin swipe-navigation
+    // bundle — its only power is location.assign to server-rendered hrefs.
+    if (!csp.includes("script-src")) csp += "; script-src 'self'";
+  }
+  if (intro) {
+    // The welcome film is a first-party file under /creator-os.
+    csp = csp.includes("media-src")
+      ? csp.replace(/media-src ([^;]+)/, "media-src $1 'self'")
+      : csp + "; media-src 'self'";
   }
   // Chrome enforces form-action on the redirect that follows a form POST, so
   // the Composio connect and Stripe onboarding redirects to their hosted
@@ -934,9 +1202,29 @@ form.stack select{background:var(--well-bg);color:var(--ink);border:1px solid va
 .row{display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center}
 .row.actions{margin-top:0.85rem}
 @media(max-width:480px){.row.actions{flex-direction:column;align-items:stretch}.row.actions form.inline{display:flex}.row.actions form.inline button{flex:1;width:100%}}
-.envgrid{display:grid;gap:0.6rem;margin-top:0.6rem}
-form.envform{display:block}
-.envcard{display:flex;flex-direction:column;align-items:flex-start;gap:0.35rem;width:100%;min-height:4.5rem;padding:0.9rem 1rem;border-radius:var(--radius-well);border:1px solid var(--ring);background:var(--well-bg);text-align:left;text-transform:none;letter-spacing:0;color:var(--ink)}
+.deck{width:min(100%,34rem);display:grid;gap:0.9rem}
+.deck.split{width:min(100%,60rem)}
+@media(min-width:900px){.deck.split{grid-template-columns:1.4fr 1fr;align-items:start}}
+.deck .panel{width:100%}
+.subhead{font-family:var(--font-ui);font-size:0.66rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--accent);margin:0 0 0.7rem}
+.seg{display:inline-flex;gap:2px;justify-self:center;padding:3px;border-radius:var(--radius-pill);border:1px solid var(--ring);background:var(--panel-bg);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur)}
+.seg a{padding:0.42rem 1.2rem;border-radius:var(--radius-pill);font-family:var(--font-ui);font-size:0.66rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--ink);text-decoration:none}
+.seg a.on{background:var(--accent);color:var(--panel-bg)}
+.pager{display:flex;gap:0.9rem;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scroll-behavior:smooth;overscroll-behavior-x:contain;scrollbar-width:none;margin:0 -0.25rem;padding:0 0.25rem}
+.pager::-webkit-scrollbar{display:none}
+.pane{flex:0 0 100%;scroll-snap-align:center;scroll-snap-stop:always;display:grid;gap:0.9rem;align-content:start;min-width:0}
+.introvid{display:block;width:100%;border-radius:var(--radius-well);border:1px solid var(--ring);background:var(--well-bg);margin-bottom:0.9rem}
+.envgrid{display:grid;gap:0.6rem;margin-top:0.6rem;grid-template-columns:repeat(auto-fit,minmax(9.5rem,1fr));align-items:stretch}
+form.envform{display:block;height:100%}
+.envmark{width:1.5rem;height:1.5rem;fill:none;stroke:currentColor;stroke-width:1.4;color:var(--accent)}
+.mailbox{display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;border:1px solid var(--accent);border-radius:var(--radius-well);background:var(--well-bg);padding:0.7rem 0.85rem;margin:0.8rem 0 0.6rem;font-size:0.95rem;word-break:break-all}
+.mailform .suffix{font-family:var(--font-ui);font-size:0.72rem;letter-spacing:0.06em;color:var(--ink-muted)}
+.famgrid{display:grid;gap:0.5rem;grid-template-columns:repeat(auto-fit,minmax(9rem,1fr));margin:0.5rem 0 0.7rem}
+.famform button{width:100%}
+.prompts{display:grid;gap:0.6rem;margin:0.5rem 0 0.8rem}
+.prompt{display:grid;gap:0.45rem;border:1px solid var(--ring);border-radius:var(--radius-well);background:var(--well-bg);padding:0.75rem 0.85rem}
+.prompt strong{font-family:var(--font-ui);font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase}
+.envcard{display:flex;flex-direction:column;align-items:flex-start;gap:0.35rem;width:100%;height:100%;min-height:4.5rem;padding:0.9rem 1rem;border-radius:var(--radius-well);border:1px solid var(--ring);background:var(--well-bg);text-align:left;text-transform:none;letter-spacing:0;color:var(--ink)}
 button.envcard:hover{transform:none;border-color:var(--accent)}
 button.envcard:active{transform:scale(0.99)}
 .envcard.current{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
@@ -1005,25 +1293,36 @@ export function renderOnboarding(
   lite = false,
   browserSignin: string | null = null
 ): string {
-  const index = ONBOARDING_STEPS.indexOf(active);
-  const prev = index > 0 ? ONBOARDING_STEPS[index - 1] : null;
-  const next =
-    index < ONBOARDING_STEPS.length - 1 ? ONBOARDING_STEPS[index + 1] : null;
+  // The deck navigates by slide; `active` stays a step ID so deep links,
+  // agent-side tools, and post-action redirects keep addressing sub-steps.
+  const slide = slideForStep(active);
+  const index = SLIDE_GROUPS.indexOf(slide);
+  const prev = index > 0 ? SLIDE_GROUPS[index - 1] : null;
+  const next = index < SLIDE_GROUPS.length - 1 ? SLIDE_GROUPS[index + 1] : null;
   const pad = (n: number): string => String(n).padStart(2, "0");
+  // The welcome intro is unnumbered — the counter reads N / 06 over the six
+  // grouped slides, matching the "six short steps" welcome copy.
+  const numbered = SLIDE_GROUPS.filter((s) => s.id !== "welcome");
+  const number = numbered.indexOf(slide);
+  const counter =
+    number === -1 ? "Intro" : `${pad(number + 1)} / ${pad(numbered.length)}`;
+  const kickerNumber = number === -1 ? "" : `${pad(number + 1)} / `;
   // Keep a non-default theme across slide navigation.
-  const href = (step: OnboardingStepId): string =>
-    current.id === DEFAULT_THEME
+  const href = (target: OnboardingSlide): string => {
+    const step = slideSteps(target)[0] ?? "welcome";
+    return current.id === DEFAULT_THEME
       ? `?step=${esc(step)}`
       : `?step=${esc(step)}&amp;theme=${esc(current.id)}`;
-  const dots = ONBOARDING_STEPS.map((step, i) => {
-    const status = effectiveStatus(snapshot, step);
+  };
+  const dots = SLIDE_GROUPS.map((target, i) => {
+    const status = slideStatus(snapshot, target);
     const cls = [
-      step === active ? "active" : "",
+      target === slide ? "active" : "",
       status === "done" ? "done" : status === "skipped" ? "skipped" : "",
     ]
       .filter(Boolean)
       .join(" ");
-    return `<a href="${href(step)}"${cls ? ` class="${cls}"` : ""} aria-label="${pad(i + 1)} ${esc(STEP_TITLES[step])}" title="${esc(STEP_TITLES[step])}"></a>`;
+    return `<a href="${href(target)}"${cls ? ` class="${cls}"` : ""} aria-label="${pad(i + 1)} ${esc(target.title)}" title="${esc(target.title)}"></a>`;
   }).join("");
   const noticeHtml = notice
     ? `<div class="notice">${esc(notice)}</div>`
@@ -1031,7 +1330,7 @@ export function renderOnboarding(
   const busy = snapshot.boxBusy
     ? '<div class="notice">Your agent\'s computer is busy starting up — progress will save once it\'s awake.</div>'
     : "";
-  const status = effectiveStatus(snapshot, active);
+  const status = slideStatus(snapshot, slide);
   const statusTag =
     status === "done"
       ? " · done"
@@ -1061,7 +1360,59 @@ export function renderOnboarding(
     current.tokens.scrim === "none"
       ? ""
       : '<div class="scrim" aria-hidden="true"></div>';
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>Onboarding — ${esc(STEP_TITLES[active])}</title>${fonts}<style>${tokenBlock(current.tokens)}${SLIDE_CSS}${lite ? LITE_CSS : ""}</style>${shader}</head><body>${backdropHtml}${scrim}${grain}<div class="frame"><header class="bar"><span class="logo-pill"><img src="/creator-os/wzrd-wordmark-1600.png" alt="WZRD.tech"></span><span class="counter">${pad(index + 1)} / ${pad(ONBOARDING_STEPS.length)}${esc(statusTag)}</span></header><main class="slide">${busy}${noticeHtml}<p class="kicker">${pad(index + 1)} / ${esc(STEP_KICKERS[active])}</p><h1>${esc(STEP_TITLES[active])}</h1><section class="panel">${stepBody(snapshot, active, browserSignin, lite)}</section></main><footer class="nav">${prev ? `<a class="navlink" href="${href(prev)}">← Back</a>` : '<span class="navlink ghosted">← Back</span>'}<nav class="dots" aria-label="Steps">${dots}</nav>${next ? `<a class="navlink" href="${href(next)}">Next →</a>` : '<span class="navlink ghosted">Next →</span>'}</footer></div></body></html>`;
+  // Each section is one card; a slide is the concatenation of the bodies of
+  // the steps it owns, so every sub-step keeps its own forms and actions.
+  const card = (section: SlideSection): string => {
+    const heading = section.label
+      ? `<h2 class="subhead">${esc(section.label)}</h2>`
+      : "";
+    return `<section class="panel">${heading}${sectionBody(snapshot, section.key, browserSignin, lite)}</section>`;
+  };
+  // Sections that declare a pane render inside a scroll-snap pager — the
+  // Photo Booth's photo/video two-part flow — with a segmented control on
+  // top; anchors + CSS scroll-snap keep it working without JS, and lite
+  // (Messages webview) renders stay a plain stack.
+  const panes = lite
+    ? []
+    : [...new Set(slide.sections.map((s) => s.pane).filter(Boolean))] as string[];
+  const sections =
+    panes.length > 1
+      ? (() => {
+          const paneId = (pane: string): string =>
+            `pane-${pane.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+          const seg = panes
+            .map(
+              (pane, i) =>
+                `<a href="#${paneId(pane)}"${i === 0 ? ' class="on"' : ""}>${esc(pane)}</a>`
+            )
+            .join("");
+          const paged = panes
+            .map(
+              (pane) =>
+                `<div class="pane" id="${paneId(pane)}">${slide.sections
+                  .filter((s) => s.pane === pane)
+                  .map(card)
+                  .join("")}</div>`
+            )
+            .join("");
+          const rest = slide.sections.filter((s) => !s.pane).map(card).join("");
+          return `<div class="seg" role="tablist" aria-label="${esc(slide.title)} modes">${seg}</div><div class="pager">${paged}</div>${rest}`;
+        })()
+      : slide.sections.map(card).join("");
+  // Same-origin bundles, one per slide that needs one.
+  const scripts = [
+    !lite && slide.id === "booth"
+      ? '<script src="/creator-os/identity-booth.js" defer></script>'
+      : "",
+    slide.id === "start"
+      ? '<script src="/creator-os/prompt-copy.js" defer></script>'
+      : "",
+    // The deck swipes like an iPhone: a horizontal touch swipe anywhere on
+    // the slide navigates back/forward (same-origin bundle, touch only).
+    lite ? "" : '<script src="/creator-os/deck-swipe.js" defer></script>',
+  ].join("");
+  const deck = `<div class="deck${slide.split ? " split" : ""}">${sections}</div>${scripts}`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>Onboarding — ${esc(slide.title)}</title>${fonts}<style>${tokenBlock(current.tokens)}${SLIDE_CSS}${lite ? LITE_CSS : ""}</style>${shader}</head><body>${backdropHtml}${scrim}${grain}<div class="frame"${prev ? ` data-swipe-prev="${href(prev)}"` : ""}${next ? ` data-swipe-next="${href(next)}"` : ""}><header class="bar"><span class="logo-pill"><img src="/creator-os/wzrd-wordmark-1600.png" alt="WZRD.tech"></span><span class="counter">${counter}${esc(statusTag)}</span></header><main class="slide">${busy}${noticeHtml}<p class="kicker">${kickerNumber}${esc(slide.kicker)}</p><h1>${esc(slide.title)}</h1>${deck}</main><footer class="nav">${prev ? `<a class="navlink" href="${href(prev)}">← Back</a>` : '<span class="navlink ghosted">← Back</span>'}<nav class="dots" aria-label="Slides">${dots}</nav>${next ? `<a class="navlink" href="${href(next)}">Next →</a>` : '<span class="navlink ghosted">Next →</span>'}</footer></div></body></html>`;
 }
 
 function activeStep(ctx: MiniAppContext, snapshot: OnboardingSnapshot): OnboardingStepId {
@@ -1091,7 +1442,10 @@ function browserSigninHref(
   active: OnboardingStepId
 ): string | null {
   if (ctx.session.via !== "card") return null;
-  if (active !== "connect" && !rendersNativeOnairos(snapshot, active)) {
+  if (
+    slideForStep(active).id !== "apps" &&
+    !rendersNativeOnairos(snapshot, active)
+  ) {
     return null;
   }
   const token = mintToken(
@@ -1106,20 +1460,12 @@ function browserSigninHref(
 /** Identity slides preview signed private media — the CSP widens only for
  * those renders. */
 const rendersIdentityMedia = (step: OnboardingStepId): boolean =>
-  step === "selfies" || step === "twin" || step === "avatar";
+  slideForStep(step).id === "booth";
 
 /** The selfies/twin slides mount the same-origin photo booth — never in
  * lite/Messages card sessions (tight memory/GPU budget, no camera UX). */
-const rendersBooth = (
-  snapshot: OnboardingSnapshot,
-  step: OnboardingStepId,
-  lite: boolean
-): boolean =>
-  !lite &&
-  (step === "selfies" ||
-    (step === "twin" &&
-      snapshot.twinAvailable &&
-      !snapshot.twin?.consent_video_key));
+const rendersBooth = (step: OnboardingStepId, lite: boolean): boolean =>
+  !lite && slideForStep(step).id === "booth";
 
 /** The Onairos slide mounts the vendor SDK whenever the key is configured —
  * connected accounts keep it mounted to add more connectors — and the CSP
@@ -1128,8 +1474,16 @@ function rendersNativeOnairos(
   snapshot: OnboardingSnapshot,
   step: OnboardingStepId
 ): boolean {
-  return step === "onairos" && snapshot.onairos.available;
+  return slideForStep(step).id === "personality" && snapshot.onairos.available;
 }
+
+/** The Get started slide ships the same-origin clipboard/close bundle. */
+const rendersPrompts = (step: OnboardingStepId): boolean =>
+  slideForStep(step).id === "start";
+
+/** The welcome slide plays the intro film from /creator-os. */
+const rendersIntro = (step: OnboardingStepId, lite: boolean): boolean =>
+  !lite && slideForStep(step).id === "welcome";
 
 /**
  * The link slide renders the transient pairing phrase and verification URL,
@@ -1173,7 +1527,10 @@ async function respond(
     ),
     rendersNativeOnairos(snapshot, active),
     rendersIdentityMedia(active),
-    rendersBooth(snapshot, active, ctx.session.via === "card")
+    rendersBooth(active, ctx.session.via === "card"),
+    rendersPrompts(active),
+    rendersIntro(active, ctx.session.via === "card"),
+    ctx.session.via !== "card"
   );
 }
 
@@ -1253,7 +1610,10 @@ export const onboarding: MiniAppModule = {
       ),
       rendersNativeOnairos(snapshot, active),
       rendersIdentityMedia(active),
-      rendersBooth(snapshot, active, ctx.session.via === "card")
+      rendersBooth(active, ctx.session.via === "card"),
+      rendersPrompts(active),
+      rendersIntro(active, ctx.session.via === "card"),
+      ctx.session.via !== "card"
     );
   },
 
@@ -1362,7 +1722,25 @@ export const onboarding: MiniAppModule = {
       return respond(
         ctx,
         null,
-        `You're @${result.username}${result.address ? ` — your agent's email is ${result.address}` : ""}.`
+        `You're @${result.username}${result.address ? ` — your agent has a new mailbox: ${result.address}` : ""}.`
+      );
+    }
+
+    if (action === "set_model_family") {
+      const family = String(form.get("model_family") ?? "");
+      // Onboarding offers only the plain families — the consent-gated free
+      // endpoints stay in Settings, which carries the terms and checkbox.
+      if (!isModelFamily(family) || requiresConsent(family)) {
+        return forbidden("invalid model family");
+      }
+      const ok = await setModelFamily(supabase, userId, family);
+      if (ok) await markSafely(supabase, userId, "model", "done");
+      return respond(
+        ctx,
+        ok ? null : "model",
+        ok
+          ? `Model set to ${MODEL_FAMILY_LABELS[family]}.`
+          : "Update failed — try again."
       );
     }
 

@@ -119,11 +119,22 @@ afterEach(() => {
 });
 
 describe("onboarding environment step", () => {
-  it("is the first step, before username", () => {
-    expect(ONBOARDING_STEPS[0]).toBe("environment");
+  it("is the first real step after the welcome intro, before username", () => {
+    expect(ONBOARDING_STEPS[0]).toBe("welcome");
+    expect(ONBOARDING_STEPS[1]).toBe("environment");
     expect(ONBOARDING_STEPS.indexOf("environment")).toBeLessThan(
       ONBOARDING_STEPS.indexOf("username")
     );
+  });
+
+  it("widens media-src for the welcome intro film on the live render path", async () => {
+    const response = await onboarding.render(
+      makeCtx("https://mini.example/mini/setup?step=welcome")
+    );
+    expect(response.status).toBe(200);
+    const csp = response.headers.get("Content-Security-Policy") ?? "";
+    expect(csp).toContain("media-src 'self'");
+    expect(await response.text()).toContain("/creator-os/welcome-air.mp4");
   });
 
   it("renders the three environment choices with no provider names leaking", async () => {
@@ -135,7 +146,7 @@ describe("onboarding environment step", () => {
     expect(body).toContain('value="ubuntu"');
     expect(body).not.toContain('value="omarchy"');
     expect(body).not.toContain('value="macos"');
-    expect(body).toContain("Coming soon");
+    expect(body).toContain("Soon");
     expect(body).toContain("Ubuntu");
     expect(body).toContain("Omarchy");
     expect(body).toContain("macOS");

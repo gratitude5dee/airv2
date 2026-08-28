@@ -47,6 +47,21 @@ function containerType(mime: string): string {
   return mime.split(";")[0] ?? mime;
 }
 
+/** Fire a plain (fileless) action post; the reload after it renders the result. */
+async function postAction(action: string): Promise<void> {
+  const form = new FormData();
+  form.set("action", action);
+  try {
+    await fetch(window.location.href, {
+      method: "POST",
+      body: form,
+      credentials: "same-origin",
+    });
+  } catch {
+    // Best effort — the slide still offers the manual generate button.
+  }
+}
+
 async function postCapture(
   action: string,
   blob: Blob,
@@ -251,6 +266,7 @@ function Booth({ mode }: { mode: BoothMode }): React.ReactElement {
   const [active, setActive] = useState(0);
   const [clip, setClip] = useState<{ blob: Blob; url: string } | null>(null);
   const [saved, setSaved] = useState(0);
+  const [generating, setGenerating] = useState(false);
 
   const stopStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -389,6 +405,10 @@ function Booth({ mode }: { mode: BoothMode }): React.ReactElement {
       }
     }
     if (ok === kept.length) {
+      // Confirming the shots kicks off the character-sheet draft right away
+      // — the reload lands on the review step (save to vault or discard).
+      setGenerating(true);
+      await postAction("generate_character_sheet");
       window.location.reload();
       return;
     }
@@ -435,7 +455,11 @@ function Booth({ mode }: { mode: BoothMode }): React.ReactElement {
           ) : null}
           {phase === "saving" ? (
             <div className="booth-saving" aria-live="polite">
-              {mode === "photo" ? `Saving ${saved}/${keptCount}…` : "Uploading…"}
+              {mode !== "photo"
+                ? "Uploading…"
+                : generating
+                  ? "Generating your character sheet…"
+                  : `Saving ${saved}/${keptCount}…`}
             </div>
           ) : null}
         </div>
@@ -533,8 +557,11 @@ function Booth({ mode }: { mode: BoothMode }): React.ReactElement {
   );
 }
 
-const mount = document.getElementById("identity-booth");
-if (mount) {
+// A grouped slide can hold several booths (photo capture and the twin's
+// consent recorder), so every mount point gets its own root.
+for (const mount of document.querySelectorAll<HTMLElement>(
+  "#identity-booth, .identity-booth"
+)) {
   const mode: BoothMode =
     mount.getAttribute("data-mode") === "video" ? "video" : "photo";
   mount.replaceChildren();

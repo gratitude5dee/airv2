@@ -6,9 +6,13 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import {
   renderOnboarding,
+  SLIDE_GROUPS,
   type OnboardingSnapshot,
 } from "../lib/miniapps/apps/onboarding";
-import { ONBOARDING_STEPS, defaultOnboardingState } from "../lib/miniapps/onboarding";
+import {
+  defaultOnboardingState,
+  isOnboardingStep,
+} from "../lib/miniapps/onboarding";
 import { isThemeId, theme, DEFAULT_THEME } from "../lib/miniapps/themes";
 
 const [outDir = "/tmp/onboarding-preview", themeArg = DEFAULT_THEME] =
@@ -20,6 +24,7 @@ const snapshot: OnboardingSnapshot = {
   environment: "ubuntu",
   username: "gratitude",
   address: "gratitude@agents.wzrd.tech",
+  mailboxDomain: "agents.wzrd.tech",
   identityMedia: [],
   avatarAssetId: null,
   twin: null,
@@ -41,6 +46,7 @@ const snapshot: OnboardingSnapshot = {
   vaultItemCount: 2,
   onairos: { available: true, connected: false, connect_url: null },
   speedTier: "balanced",
+  modelFamily: "openai",
   merchant: null,
   link: {
     installed: true,
@@ -86,8 +92,12 @@ const snapshot: OnboardingSnapshot = {
 };
 
 mkdirSync(outDir, { recursive: true });
-for (const step of ONBOARDING_STEPS) {
+for (const slide of SLIDE_GROUPS) {
+  const first = slide.sections.find((section) =>
+    isOnboardingStep(section.key)
+  );
+  const step = first && isOnboardingStep(first.key) ? first.key : "welcome";
   const html = renderOnboarding(current, snapshot, step, null);
-  writeFileSync(`${outDir}/${step}.html`, html);
+  writeFileSync(`${outDir}/${slide.id}.html`, html);
 }
-process.stdout.write(`${ONBOARDING_STEPS.length} slides -> ${outDir}\n`);
+process.stdout.write(`${SLIDE_GROUPS.length} slides -> ${outDir}\n`);

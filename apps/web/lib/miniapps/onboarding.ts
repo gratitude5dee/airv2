@@ -3,6 +3,11 @@
  * `.hermes/miniapps/onboarding/state.json` (C4: no content in shared
  * Postgres) — the agent's own tools and the mini-app read and write the
  * same document. Every step is skippable and re-enterable (goal.md §MA5 #1).
+ *
+ * The step IDs are the state model, not the presentation: the mini-app renders
+ * them grouped under a welcome intro plus six slides (SLIDE_GROUPS in
+ * apps/onboarding.tsx), while the agent-side tools keep reading and writing
+ * individual steps here.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ensureComputeAwake } from "../compute/awake";
@@ -10,6 +15,7 @@ import { readComputeFile, writeComputeFile } from "../compute/runtime";
 import { asRecord } from "../records";
 
 export const ONBOARDING_STEPS = [
+  "welcome",
   "environment",
   "username",
   "email",
@@ -18,6 +24,7 @@ export const ONBOARDING_STEPS = [
   "twin",
   "avatar",
   "imessage",
+  "import",
   "onairos",
   "connect",
   "secrets",
@@ -25,7 +32,6 @@ export const ONBOARDING_STEPS = [
   "link",
   "agent",
   "walkthrough",
-  "import",
 ] as const;
 
 export type OnboardingStepId = (typeof ONBOARDING_STEPS)[number];
