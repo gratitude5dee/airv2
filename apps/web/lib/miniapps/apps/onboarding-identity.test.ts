@@ -75,6 +75,9 @@ vi.mock("@/lib/identity/assets", () => ({
   listIdentityMediaViews: vi.fn(async () => [
     { assetId: "asset-1", role: "selfie", url: "https://signed.example/a.png" },
   ]),
+  listIdentityMediaRoles: vi.fn(async () => [
+    { assetId: "asset-1", role: "selfie", url: null },
+  ]),
   getAvatarAssetId: vi.fn(async () => null),
   setAvatarAssetId: (...args: unknown[]) =>
     setAvatarAssetId(...(args as [])),

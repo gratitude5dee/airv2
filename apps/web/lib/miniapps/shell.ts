@@ -195,10 +195,10 @@ export function renderShell(options: ShellOptions): string {
   // ratio (the entry caps DPR when data-lite is set) so the Messages
   // webview's tight GPU budget still holds.
   const background = activeBackground();
+  // Self-hosted and inline: no third-party stylesheet between the response
+  // and first paint (the faces themselves load with font-display:swap).
   const fonts =
-    current.fontStylesheet === null
-      ? ""
-      : `<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="${esc(current.fontStylesheet)}">`;
+    current.fontFaces === null ? "" : `<style>${current.fontFaces}</style>`;
   const backdrop = current.backdrop;
   const shader =
     background !== "theme"

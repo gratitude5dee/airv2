@@ -47,6 +47,7 @@ import {
 import { recordOpsEvent } from "@/lib/security/limits";
 import {
   userStyle,
+  withProfileCache,
   withStyle,
   type MiniStyle,
 } from "@/lib/miniapps/themeContext";
@@ -270,7 +271,56 @@ function refreshCookie(
   return response;
 }
 
-export async function GET(
+export function GET(
+  request: NextRequest,
+  context: { params: Promise<{ app: string }> }
+): Promise<NextResponse> {
+  return withProfileCache(() => handleGet(request, context));
+}
+
+export function POST(
+  request: NextRequest,
+  context: { params: Promise<{ app: string }> }
+): Promise<NextResponse> {
+  return withProfileCache(() => handlePost(request, context));
+}
+
+/**
+ * The style of the session the request already carries. A cookie is signed
+ * and scoped to this slug, so its user id is authentic before the gate chain
+ * runs — the read can overlap the registry lookup and the chain instead of
+ * waiting behind them. It is only *used* once the chain has approved the
+ * same user; the prefetch itself decides nothing.
+ */
+function prefetchStyle(
+  request: NextRequest,
+  supabase: SupabaseClient,
+  slug: string
+): { userId: string; style: Promise<MiniStyle> } | null {
+  const params = request.nextUrl.searchParams;
+  if (params.get("t") || params.get("g")) return null;
+  const session = sessionFromCookie(request, slug);
+  if (!session) return null;
+  const style = userStyle(supabase, session.userId);
+  // A gate may block before anything awaits this — keep a failed read from
+  // surfacing as an unhandled rejection.
+  void style.catch(() => undefined);
+  return { userId: session.userId, style };
+}
+
+/** The prefetched style when it belongs to the session the gates approved. */
+async function styleFor(
+  supabase: SupabaseClient,
+  session: MiniSession,
+  prefetched: { userId: string; style: Promise<MiniStyle> } | null
+): Promise<MiniStyle> {
+  if (prefetched && prefetched.userId === session.userId) {
+    return prefetched.style;
+  }
+  return userStyle(supabase, session.userId);
+}
+
+async function handleGet(
   request: NextRequest,
   context: { params: Promise<{ app: string }> }
 ): Promise<NextResponse> {
@@ -278,6 +328,10 @@ export async function GET(
   const { app: slug } = await context.params;
   const log: LoadLog = { slug, method: "GET", start, lane: "gated_render" };
   const supabase = serviceClient();
+  // Registry lookup, session verification and the style read are independent
+  // of each other — start them together so the gated_render lane pays for
+  // one round trip instead of three.
+  const prefetched = prefetchStyle(request, supabase, slug);
   const app = await getRegistryApp(supabase, slug);
   if (!app) {
     log.lane = "unknown_app";
@@ -414,7 +468,7 @@ export async function GET(
   }
 
   const renderStart = performance.now();
-  const style = await userStyle(supabase, gate.session.userId);
+  const style = await styleFor(supabase, gate.session, prefetched);
   const response = await withStyle(
     sessionStyle(style, gate.session, slug, basePath),
     () =>
@@ -431,7 +485,7 @@ export async function GET(
   return refreshCookie(response, gate.session, slug, basePath);
 }
 
-export async function POST(
+async function handlePost(
   request: NextRequest,
   context: { params: Promise<{ app: string }> }
 ): Promise<NextResponse> {

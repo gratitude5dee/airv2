@@ -82,11 +82,14 @@ function thenable(rows: unknown, single: unknown = null) {
   return builder;
 }
 
-function makeCtx(url = "https://mini.example/mini/setup?step=onairos") {
+function makeCtx(
+  url = "https://mini.example/mini/setup?step=onairos",
+  connections: unknown[] = []
+) {
   const tables: Record<string, ReturnType<typeof thenable>> = {
     users: thenable([], { username: "grat" }),
     agent_addresses: thenable([], { address: "grat@wzrd.tech" }),
-    connections: thenable([]),
+    connections: thenable(connections),
     vault_items: thenable([]),
     entitlements: thenable([], { speed_tier: "balanced" }),
     plugin_tokens: thenable([]),
@@ -157,12 +160,16 @@ describe("onboarding onairos slide (native connect)", () => {
 
   it("keeps the native mount and widened CSP after connecting so more connectors can be added", async () => {
     vi.stubEnv("ONAIROS_API_KEY", "dev-key-123");
-    onairosStatusMock.mockResolvedValueOnce({
-      configured: true,
-      status: "active",
-      connectedAt: "2026-08-22T00:00:00Z",
-    });
-    const response = await onboarding.render(makeCtx());
+    const response = await onboarding.render(
+      makeCtx("https://mini.example/mini/setup?step=onairos", [
+        {
+          provider: "onairos",
+          toolkit: "persona",
+          status: "active",
+          connected_at: "2026-08-22T00:00:00Z",
+        },
+      ])
+    );
     const body = await response.text();
     expect(body).toContain("Connected");
     expect(body).toContain('id="onairos-connect"');
@@ -175,11 +182,7 @@ describe("onboarding onairos slide (native connect)", () => {
   });
 
   it("keeps the CSP narrow and hides the native mount when unconfigured", async () => {
-    onairosStatusMock.mockResolvedValueOnce({
-      configured: false,
-      status: "disconnected",
-      connectedAt: null,
-    });
+    vi.stubEnv("ONAIROS_API_KEY", undefined);
     const response = await onboarding.render(makeCtx());
     const body = await response.text();
     expect(body).not.toContain("onairos-connect");
