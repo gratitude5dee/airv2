@@ -24,6 +24,7 @@ import {
   enqueueInbound,
   flushAfterDebounce,
   isBurstStart,
+  updateQuickAckMarker,
   type InboundMessage,
 } from "@/lib/orchestrator/flush";
 import { quickAckReply } from "@/lib/orchestrator/sharedBridge";
@@ -317,7 +318,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       ) {
         try {
           if (await isBurstStart(supabase, message.spaceId)) {
-            await carryQuickAckMarker(
+            const markerId = await carryQuickAckMarker(
               supabase,
               message.userId,
               message.spaceId,
@@ -325,6 +326,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             const ack = await quickAckReply(supabase, message.userId, body);
             if (ack) {
               await sender.sendText(message.spaceId, message.phone, ack);
+              // Embed the ack text so the agent knows exactly what went out
+              // and never re-answers a question the ack fully covered.
+              await updateQuickAckMarker(
+                supabase,
+                message.spaceId,
+                markerId,
+                ack,
+              );
             }
           }
         } catch {

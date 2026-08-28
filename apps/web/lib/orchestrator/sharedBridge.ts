@@ -145,3 +145,12 @@ export function bridgeCarryMarker(reply: string): string {
  */
 export const QUICK_ACK_CARRY_MARKER =
   "[You already sent a brief one-line acknowledgment for this message — do not open with another greeting or acknowledgment; answer directly]";
+
+/**
+ * Once the ack text is known it replaces the generic marker, so the agent
+ * sees exactly what already went out and never repeats an answer the quick
+ * ack fully gave (same contract as bridgeCarryMarker).
+ */
+export function quickAckCarryMarker(reply: string): string {
+  return `[You already sent this brief reply for this message: "${reply}" — continue from it, don't repeat it; if it already fully answered, add only what's genuinely new or send a single tapback emoji]`;
+}

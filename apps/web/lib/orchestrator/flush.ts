@@ -43,6 +43,7 @@ import {
   bridgeCarryMarker,
   isBridgeMarkerId,
   QUICK_ACK_CARRY_MARKER,
+  quickAckCarryMarker,
   sharedBridgeReply,
 } from "./sharedBridge";
 import { streamBubbles } from "./bubbles";
@@ -888,13 +889,35 @@ export async function carryQuickAckMarker(
   supabase: SupabaseClient,
   userId: string,
   spaceId: string
-): Promise<void> {
+): Promise<string> {
+  const messageId = `${BRIDGE_MESSAGE_ID_PREFIX}ack-${Date.now()}`;
   await supabase.from("carried_messages").insert({
     user_id: userId,
     space_id: spaceId,
-    message_id: `${BRIDGE_MESSAGE_ID_PREFIX}ack-${Date.now()}`,
+    message_id: messageId,
     body: QUICK_ACK_CARRY_MARKER,
   });
+  return messageId;
+}
+
+/**
+ * Swap the generic marker for one that embeds the ack text the moment it's
+ * known, so the agent sees exactly what went out and never re-answers a
+ * question the ack fully covered. Best-effort: if the turn already drained
+ * the generic marker, the update matches nothing and the generic contract
+ * still holds.
+ */
+export async function updateQuickAckMarker(
+  supabase: SupabaseClient,
+  spaceId: string,
+  messageId: string,
+  ack: string
+): Promise<void> {
+  await supabase
+    .from("carried_messages")
+    .update({ body: quickAckCarryMarker(ack) })
+    .eq("space_id", spaceId)
+    .eq("message_id", messageId);
 }
 
 /** Debounce wait + claim + run; the webhook route calls this via after(). */
