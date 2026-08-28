@@ -86,10 +86,17 @@ function thenable(rows: unknown, single: unknown = null) {
   return builder;
 }
 
-function makeCtx(url = "https://mini.example/mini/setup?step=environment") {
+function makeCtx(
+  url = "https://mini.example/mini/setup?step=environment",
+  options: { username?: string | null } = {}
+) {
+  const username = options.username === undefined ? "grat" : options.username;
   const tables: Record<string, ReturnType<typeof thenable>> = {
-    users: thenable([], { username: "grat" }),
-    agent_addresses: thenable([], { address: "grat@wzrd.tech" }),
+    users: thenable([], { username }),
+    agent_addresses: thenable(
+      [],
+      username ? { address: `${username}@wzrd.tech` } : null
+    ),
     connections: thenable([]),
     vault_items: thenable([]),
     entitlements: thenable([], { speed_tier: "balanced" }),
@@ -125,6 +132,31 @@ describe("onboarding environment step", () => {
     expect(ONBOARDING_STEPS.indexOf("environment")).toBeLessThan(
       ONBOARDING_STEPS.indexOf("username")
     );
+  });
+
+  it("locks slides past Computer until a username exists", async () => {
+    const gated = await (
+      await onboarding.render(
+        makeCtx("https://mini.example/mini/setup?step=imessage", {
+          username: null,
+        })
+      )
+    ).text();
+    // Deep link into a locked slide lands back on the Computer slide.
+    expect(gated).toContain('value="set_username"');
+    expect(gated).toContain('<span class="locked"');
+    expect(gated).not.toContain("data-swipe-next=");
+    expect(gated).toContain("unlock the rest");
+    // No skip on the username gate.
+    expect(gated).not.toContain('value="skip"><input type="hidden" name="step" value="username"');
+
+    const open = await (
+      await onboarding.render(
+        makeCtx("https://mini.example/mini/setup?step=imessage")
+      )
+    ).text();
+    expect(open).not.toContain('<span class="locked"');
+    expect(open).toContain("data-swipe-next=");
   });
 
   it("widens media-src for the welcome intro film on the live render path", async () => {
