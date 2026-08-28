@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { composeInput, hermesDeltas, isCancelled, runFlush } from "./flush";
+import {
+  composeInput,
+  dropQuickAckMarker,
+  hermesDeltas,
+  isCancelled,
+  runFlush,
+} from "./flush";
 import {
   createRun,
   ensureSession,
@@ -233,6 +239,20 @@ describe("runFlush history replay", () => {
     expect(vi.mocked(createRun).mock.calls[0]?.[1].conversationHistory).toEqual(
       []
     );
+  });
+});
+
+describe("dropQuickAckMarker", () => {
+  it("deletes exactly the marker row for the space", async () => {
+    const del = { eq: vi.fn() };
+    del.eq.mockReturnValueOnce(del).mockResolvedValueOnce({ error: null });
+    const supabase = {
+      from: vi.fn(() => ({ delete: vi.fn(() => del) })),
+    } as unknown as SupabaseClient;
+    await dropQuickAckMarker(supabase, "space-1", "bridge:ack-123");
+    expect(vi.mocked(supabase.from)).toHaveBeenCalledWith("carried_messages");
+    expect(del.eq).toHaveBeenNthCalledWith(1, "space_id", "space-1");
+    expect(del.eq).toHaveBeenNthCalledWith(2, "message_id", "bridge:ack-123");
   });
 });
 
