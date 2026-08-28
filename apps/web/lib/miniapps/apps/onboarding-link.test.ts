@@ -134,7 +134,7 @@ describe("onboarding link step", () => {
     const body = await response.text();
     expect(body).toContain("Connect Link");
     expect(body).toContain('value="link_connect"');
-    expect(body).toContain("final Pay button");
+    expect(body).toContain("one-tap approval sheet");
     // Skippable — Link never blocks onboarding.
     expect(body).toContain('value="link"');
   });

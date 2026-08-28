@@ -18,7 +18,11 @@ import { approveContentPlan, dismissContentPlan } from "@/lib/publish/propose";
 import { armStopAfter, ensureBoxAwake } from "@/lib/orchestrator/boxes";
 import { approveRun, HermesApiError } from "@/lib/hermes/client";
 import { approveInboxEvent, dismissInboxEvent } from "@/lib/calendar/store";
-import { resolvePurchaseReview, PurchaseError } from "@/lib/vault/purchase";
+import {
+  hostedErrorResponse,
+  resolveHostedDecision,
+  type HostedDecision,
+} from "@/lib/approvals/hosted";
 import { applyPatchOnBox, sanitizePatch } from "@/lib/crm/store";
 import {
   denyTransfer,
@@ -33,14 +37,7 @@ import {
   SCHEDULE_COLUMNS,
   parseAgentSchedule,
 } from "@/lib/calendar/schedule";
-import {
-  approvePaymentRequest,
-  dismissPaymentRequest,
-} from "@/lib/commerce/paymentRequests";
 import { applyCatalogPublish } from "@/lib/commerce/catalog";
-import { CommerceError } from "@/lib/commerce/merchants";
-import { env } from "@/lib/env";
-import { updateMiniAppCard } from "@/lib/miniapps/cards";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -250,35 +247,25 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
   }
 
-  if (decision.kind === "purchase_review") {
-    // V6 (C20): approving mints + redeems the single-use fill ticket,
-    // delivers it to the box, and resumes the paused run; denying writes
-    // the fill_denied receipt and resumes the run with approved=false.
+  if (
+    decision.kind === "purchase_review" ||
+    decision.kind === "payment_request"
+  ) {
+    // Shared with the hosted approval page (lib/approvals/hosted) so both
+    // surfaces resolve through the same rails and can never disagree.
     try {
-      // Denying needs no box — the fill_denied receipt must always be
-      // writable, even while the box is start-limited; the run resume on
-      // deny is already best-effort inside resolvePurchaseReview.
-      // Link selection mints no ticket, so like deny it must resolve even
-      // while the box is start-limited (its run resume is best-effort too).
-      const box =
-        body.action === "approve" && body.method !== "link"
-          ? await ensureBoxAwake(supabase, userId)
-          : await ensureBoxAwake(supabase, userId).catch(() => null);
-      await resolvePurchaseReview(
+      const result = await resolveHostedDecision(
         supabase,
         userId,
-        decision as { id: string; ref: string | null; payload: unknown },
-        body.action === "approve",
-        box,
+        decision as HostedDecision,
+        body.action === "approve" ? "approve" : "dismiss",
         body.method === "link" ? "link" : "fill",
       );
+      return NextResponse.json({ ok: true, ...result });
     } catch (error) {
-      if (error instanceof PurchaseError) {
-        return NextResponse.json(
-          { error: error.code, message: error.message },
-          { status: error.status },
-        );
-      }
+      const mapped = hostedErrorResponse(error);
+      if (mapped) return mapped;
+      if (decision.kind === "payment_request") throw error;
       console.error(
         JSON.stringify({
           msg: "purchase_review resolution failed",
@@ -290,40 +277,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         { error: "could not resolve the purchase review — try again" },
         { status: 502 },
       );
-    } finally {
-      await armStopAfter(supabase, userId).catch(() => undefined);
-    }
-  }
-
-  if (decision.kind === "payment_request" && decision.ref) {
-    // MA8 #12: approval resolves through rails with their own invariants —
-    // fiat mints a Stripe Checkout (Link) session on the payee's connected
-    // account (the response carries the URL to open); USDC files the
-    // existing wallet transfer intent whose own approval executes the send.
-    try {
-      if (body.action === "approve") {
-        const result = await approvePaymentRequest(
-          supabase,
-          userId,
-          decision.ref as string,
-          `${env.appOrigin()}/home`,
-        );
-        await supabase
-          .from("decisions")
-          .update({ status: "approved", resolved_at: new Date().toISOString() })
-          .eq("id", decision.id)
-          .eq("user_id", userId);
-        return NextResponse.json({ ok: true, ...result });
-      }
-      await dismissPaymentRequest(supabase, userId, decision.ref as string);
-    } catch (error) {
-      if (error instanceof CommerceError) {
-        return NextResponse.json(
-          { error: error.message },
-          { status: error.status },
-        );
-      }
-      throw error;
     }
   }
 
@@ -489,8 +442,5 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     })
     .eq("id", decision.id)
     .eq("user_id", userId);
-  if (decision.kind === "purchase_review") {
-    await updateMiniAppCard(supabase, userId, "vault", "default");
-  }
   return NextResponse.json({ ok: true });
 }

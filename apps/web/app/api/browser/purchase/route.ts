@@ -29,6 +29,7 @@ import {
 import { MAX_TTL_MINUTES } from "@/lib/vault/tickets";
 import { sendMiniAppCard } from "@/lib/miniapps/cards";
 import { claimCardSend, type CardClaim } from "@/lib/miniapps/cardSends";
+import { mintApprovalUrl } from "@/lib/approvals/token";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -92,7 +93,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 async function sendPurchaseCard(
   supabase: SupabaseClient,
   userId: string,
-  review?: { host: string; amountBand: string; cardName: string }
+  review?: {
+    host: string;
+    amountBand: string;
+    cardName: string;
+    approvalUrl: string;
+  }
 ): Promise<void> {
   const { data: dest } = await supabase
     .from("imessage_destinations")
@@ -115,7 +121,7 @@ async function sendPurchaseCard(
         ? {
             caption: "Approve payment",
             subcaption: `${review.amountBand} on ${review.host}`,
-            summary: `Approve payment — ${review.cardName}, ${review.amountBand} on ${review.host}. You still click the final Pay button.`,
+            summary: `Approve payment — ${review.cardName}, ${review.amountBand} on ${review.host}. Review and approve: ${review.approvalUrl}`,
           }
         : undefined
     );
@@ -165,10 +171,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         summary,
         amountUsd,
       });
+      // Hosted approval deep link — minted at send time, never stored. It
+      // carries owner authority, so it goes only to the owner's phone via
+      // the iMessage card; the box never sees it (C20).
+      const approvalUrl = mintApprovalUrl(userId, result.decisionId);
       await sendPurchaseCard(supabase, userId, {
         host: normalizeHost(host),
         amountBand: result.amountBand,
         cardName: result.cardName,
+        approvalUrl,
       });
       return NextResponse.json({
         ok: true,

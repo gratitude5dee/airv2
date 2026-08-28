@@ -10,6 +10,7 @@
  *  - checkout.session.completed → order fulfillment / payment_request paid
  *  - checkout.session.expired   → abandoned checkout release
  *  - charge.refunded            → order reconciliation
+ *  - payment_intent.succeeded   → express-checkout payment_request paid
  * A handler failure releases the event-id claim and returns 500 so Stripe
  * redelivers.
  */
@@ -27,6 +28,7 @@ import {
 import {
   expirePaymentRequestSession,
   markPaymentRequestPaid,
+  markPaymentRequestPaidByIntent,
 } from "@/lib/commerce/paymentRequests";
 
 export const runtime = "nodejs";
@@ -52,6 +54,9 @@ async function dispatch(
       await expirePaymentRequestSession(supabase, session);
       return;
     }
+    case "payment_intent.succeeded":
+      await markPaymentRequestPaidByIntent(supabase, event.data.object);
+      return;
     case "charge.refunded":
       await reconcileRefund(supabase, event.data.object);
       return;
