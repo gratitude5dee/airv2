@@ -336,6 +336,23 @@ describe("twin step", () => {
     expect(lite).not.toContain("identity-booth");
   });
 
+  it("renders the booth as a swipeable photo/video pager outside lite mode", async () => {
+    const full = await (await onboarding.render(makeCtx("selfies"))).text();
+    expect(full).toContain('class="pager"');
+    expect(full).toContain('id="pane-photo"');
+    expect(full).toContain('id="pane-video"');
+    expect(full).toContain('href="#pane-video"');
+    expect(full).toContain("/creator-os/deck-swipe.js");
+    expect(full).toContain("data-swipe-prev=");
+    expect(full).toContain("data-swipe-next=");
+
+    const lite = await (
+      await onboarding.render(makeCtx("selfies", { via: "card" }))
+    ).text();
+    expect(lite).not.toContain('class="pager"');
+    expect(lite).not.toContain("deck-swipe.js");
+  });
+
   it("upload_consent and create_twin go through the shared twin module", async () => {
     vi.stubEnv("GMI_CLOUD_API_KEY", "gmi-key");
     const consent = new FormData();

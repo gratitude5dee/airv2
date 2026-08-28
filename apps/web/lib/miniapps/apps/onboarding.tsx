@@ -159,6 +159,8 @@ export interface SlideSection {
   key: SlideSectionKey;
   /** Sub-heading above the card; null renders the body bare. */
   label: string | null;
+  /** Pager pane this section lives on; sections without one stack. */
+  pane?: string;
 }
 
 export interface OnboardingSlide {
@@ -216,9 +218,9 @@ export const SLIDE_GROUPS: readonly [OnboardingSlide, ...OnboardingSlide[]] = [
     title: "Photo Booth",
     kicker: "Photo Booth",
     sections: [
-      { key: "selfies", label: "Step into the booth" },
-      { key: "twin", label: "Digital twin — optional" },
-      { key: "avatar", label: "Avatar — optional" },
+      { key: "selfies", label: "Step into the booth", pane: "Photo" },
+      { key: "twin", label: "Digital twin — optional", pane: "Video" },
+      { key: "avatar", label: "Avatar — optional", pane: "Video" },
     ],
   },
   {
@@ -1065,7 +1067,8 @@ function slides(
   identityMedia = false,
   booth = false,
   prompts = false,
-  intro = false
+  intro = false,
+  swipe = false
 ): NextResponse {
   const headers = baseHeaders();
   // The Onairos slide runs the vendor SDK bundle (served same-origin) which
@@ -1113,6 +1116,11 @@ function slides(
   if (prompts) {
     // Get started ships a same-origin bundle whose only powers are the
     // clipboard and window.close() — no network, no other origins.
+    if (!csp.includes("script-src")) csp += "; script-src 'self'";
+  }
+  if (swipe) {
+    // Every full (non-lite) slide ships the same-origin swipe-navigation
+    // bundle — its only power is location.assign to server-rendered hrefs.
     if (!csp.includes("script-src")) csp += "; script-src 'self'";
   }
   if (intro) {
@@ -1199,6 +1207,12 @@ form.stack select{background:var(--well-bg);color:var(--ink);border:1px solid va
 @media(min-width:900px){.deck.split{grid-template-columns:1.4fr 1fr;align-items:start}}
 .deck .panel{width:100%}
 .subhead{font-family:var(--font-ui);font-size:0.66rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--accent);margin:0 0 0.7rem}
+.seg{display:inline-flex;gap:2px;justify-self:center;padding:3px;border-radius:var(--radius-pill);border:1px solid var(--ring);background:var(--panel-bg);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur)}
+.seg a{padding:0.42rem 1.2rem;border-radius:var(--radius-pill);font-family:var(--font-ui);font-size:0.66rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--ink);text-decoration:none}
+.seg a.on{background:var(--accent);color:var(--panel-bg)}
+.pager{display:flex;gap:0.9rem;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scroll-behavior:smooth;overscroll-behavior-x:contain;scrollbar-width:none;margin:0 -0.25rem;padding:0 0.25rem}
+.pager::-webkit-scrollbar{display:none}
+.pane{flex:0 0 100%;scroll-snap-align:center;scroll-snap-stop:always;display:grid;gap:0.9rem;align-content:start;min-width:0}
 .introvid{display:block;width:100%;border-radius:var(--radius-well);border:1px solid var(--ring);background:var(--well-bg);margin-bottom:0.9rem}
 .envgrid{display:grid;gap:0.6rem;margin-top:0.6rem;grid-template-columns:repeat(auto-fit,minmax(9.5rem,1fr));align-items:stretch}
 form.envform{display:block;height:100%}
@@ -1341,14 +1355,43 @@ export function renderOnboarding(
       : '<div class="scrim" aria-hidden="true"></div>';
   // Each section is one card; a slide is the concatenation of the bodies of
   // the steps it owns, so every sub-step keeps its own forms and actions.
-  const sections = slide.sections
-    .map((section) => {
-      const heading = section.label
-        ? `<h2 class="subhead">${esc(section.label)}</h2>`
-        : "";
-      return `<section class="panel">${heading}${sectionBody(snapshot, section.key, browserSignin, lite)}</section>`;
-    })
-    .join("");
+  const card = (section: SlideSection): string => {
+    const heading = section.label
+      ? `<h2 class="subhead">${esc(section.label)}</h2>`
+      : "";
+    return `<section class="panel">${heading}${sectionBody(snapshot, section.key, browserSignin, lite)}</section>`;
+  };
+  // Sections that declare a pane render inside a scroll-snap pager — the
+  // Photo Booth's photo/video two-part flow — with a segmented control on
+  // top; anchors + CSS scroll-snap keep it working without JS, and lite
+  // (Messages webview) renders stay a plain stack.
+  const panes = lite
+    ? []
+    : [...new Set(slide.sections.map((s) => s.pane).filter(Boolean))] as string[];
+  const sections =
+    panes.length > 1
+      ? (() => {
+          const paneId = (pane: string): string =>
+            `pane-${pane.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+          const seg = panes
+            .map(
+              (pane, i) =>
+                `<a href="#${paneId(pane)}"${i === 0 ? ' class="on"' : ""}>${esc(pane)}</a>`
+            )
+            .join("");
+          const paged = panes
+            .map(
+              (pane) =>
+                `<div class="pane" id="${paneId(pane)}">${slide.sections
+                  .filter((s) => s.pane === pane)
+                  .map(card)
+                  .join("")}</div>`
+            )
+            .join("");
+          const rest = slide.sections.filter((s) => !s.pane).map(card).join("");
+          return `<div class="seg" role="tablist" aria-label="${esc(slide.title)} modes">${seg}</div><div class="pager">${paged}</div>${rest}`;
+        })()
+      : slide.sections.map(card).join("");
   // Same-origin bundles, one per slide that needs one.
   const scripts = [
     !lite && slide.id === "booth"
@@ -1357,9 +1400,12 @@ export function renderOnboarding(
     slide.id === "start"
       ? '<script src="/creator-os/prompt-copy.js" defer></script>'
       : "",
+    // The deck swipes like an iPhone: a horizontal touch swipe anywhere on
+    // the slide navigates back/forward (same-origin bundle, touch only).
+    lite ? "" : '<script src="/creator-os/deck-swipe.js" defer></script>',
   ].join("");
   const deck = `<div class="deck${slide.split ? " split" : ""}">${sections}</div>${scripts}`;
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>Onboarding — ${esc(slide.title)}</title>${fonts}<style>${tokenBlock(current.tokens)}${SLIDE_CSS}${lite ? LITE_CSS : ""}</style>${shader}</head><body>${backdropHtml}${scrim}${grain}<div class="frame"><header class="bar"><span class="logo-pill"><img src="/creator-os/wzrd-wordmark-1600.png" alt="WZRD.tech"></span><span class="counter">${pad(index + 1)} / ${pad(SLIDE_GROUPS.length)}${esc(statusTag)}</span></header><main class="slide">${busy}${noticeHtml}<p class="kicker">${pad(index + 1)} / ${esc(slide.kicker)}</p><h1>${esc(slide.title)}</h1>${deck}</main><footer class="nav">${prev ? `<a class="navlink" href="${href(prev)}">← Back</a>` : '<span class="navlink ghosted">← Back</span>'}<nav class="dots" aria-label="Slides">${dots}</nav>${next ? `<a class="navlink" href="${href(next)}">Next →</a>` : '<span class="navlink ghosted">Next →</span>'}</footer></div></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>Onboarding — ${esc(slide.title)}</title>${fonts}<style>${tokenBlock(current.tokens)}${SLIDE_CSS}${lite ? LITE_CSS : ""}</style>${shader}</head><body>${backdropHtml}${scrim}${grain}<div class="frame"${prev ? ` data-swipe-prev="${href(prev)}"` : ""}${next ? ` data-swipe-next="${href(next)}"` : ""}><header class="bar"><span class="logo-pill"><img src="/creator-os/wzrd-wordmark-1600.png" alt="WZRD.tech"></span><span class="counter">${pad(index + 1)} / ${pad(SLIDE_GROUPS.length)}${esc(statusTag)}</span></header><main class="slide">${busy}${noticeHtml}<p class="kicker">${pad(index + 1)} / ${esc(slide.kicker)}</p><h1>${esc(slide.title)}</h1>${deck}</main><footer class="nav">${prev ? `<a class="navlink" href="${href(prev)}">← Back</a>` : '<span class="navlink ghosted">← Back</span>'}<nav class="dots" aria-label="Slides">${dots}</nav>${next ? `<a class="navlink" href="${href(next)}">Next →</a>` : '<span class="navlink ghosted">Next →</span>'}</footer></div></body></html>`;
 }
 
 function activeStep(ctx: MiniAppContext, snapshot: OnboardingSnapshot): OnboardingStepId {
@@ -1476,7 +1522,8 @@ async function respond(
     rendersIdentityMedia(active),
     rendersBooth(active, ctx.session.via === "card"),
     rendersPrompts(active),
-    rendersIntro(active, ctx.session.via === "card")
+    rendersIntro(active, ctx.session.via === "card"),
+    ctx.session.via !== "card"
   );
 }
 
@@ -1558,7 +1605,8 @@ export const onboarding: MiniAppModule = {
       rendersIdentityMedia(active),
       rendersBooth(active, ctx.session.via === "card"),
       rendersPrompts(active),
-      rendersIntro(active, ctx.session.via === "card")
+      rendersIntro(active, ctx.session.via === "card"),
+      ctx.session.via !== "card"
     );
   },
 
