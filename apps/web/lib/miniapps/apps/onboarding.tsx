@@ -1556,7 +1556,9 @@ export const onboarding: MiniAppModule = {
       ),
       rendersNativeOnairos(snapshot, active),
       rendersIdentityMedia(active),
-      rendersBooth(active, ctx.session.via === "card")
+      rendersBooth(active, ctx.session.via === "card"),
+      rendersPrompts(active),
+      rendersIntro(active, ctx.session.via === "card")
     );
   },
 

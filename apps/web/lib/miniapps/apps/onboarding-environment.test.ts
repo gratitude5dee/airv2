@@ -127,6 +127,16 @@ describe("onboarding environment step", () => {
     );
   });
 
+  it("widens media-src for the welcome intro film on the live render path", async () => {
+    const response = await onboarding.render(
+      makeCtx("https://mini.example/mini/setup?step=welcome")
+    );
+    expect(response.status).toBe(200);
+    const csp = response.headers.get("Content-Security-Policy") ?? "";
+    expect(csp).toContain("media-src 'self'");
+    expect(await response.text()).toContain("/creator-os/welcome-air.mp4");
+  });
+
   it("renders the three environment choices with no provider names leaking", async () => {
     const response = await onboarding.render(makeCtx());
     expect(response.status).toBe(200);
