@@ -320,6 +320,21 @@ describe("home launcher", () => {
     expect(claims?.userId).toBe("user-1");
   });
 
+  it("keeps the full session when the browser also holds a card one", async () => {
+    const request = new NextRequest("https://mini.example/mini/home");
+    request.cookies.set(
+      "mini_home_card",
+      mintToken("user-1", "home", "default", 15, { via: "card" })
+    );
+    request.cookies.set("mini_home", mintToken("user-1", "home", "default", 15));
+    const res = await GET(request, params("home"));
+    expect(res.status).toBe(200);
+    // Only the full cookie is refreshed — the card session is left intact.
+    const setCookie = res.headers.get("set-cookie") ?? "";
+    expect(setCookie).toContain("mini_home=");
+    expect(setCookie).not.toContain("mini_home_card=");
+  });
+
   it("persists a press-and-hold rearrangement and renders it first", async () => {
     testDb.apps.push(makeApp({ slug: "todo", kind: "render", name: "Todo" }));
     const form = new FormData();
@@ -556,6 +571,21 @@ describe("middleware hardening (MA11)", () => {
     const value = decodeURIComponent(cookie.split("=").slice(1).join("="));
     const claims = verifyToken(value, "kanban");
     expect(claims?.via).toBe("card");
+  });
+
+  it("gives card and browser launches separate cookies", async () => {
+    const open = async (via?: "card"): Promise<string> => {
+      const token = mintToken("user-1", "kanban", "default", 15, { via });
+      const res = await GET(
+        new NextRequest(`https://mini.wzrd.tech/kanban?t=${token}`, {
+          headers: { host: "mini.wzrd.tech", "x-mini-host": "1" },
+        }),
+        params("kanban")
+      );
+      return res.headers.get("set-cookie") ?? "";
+    };
+    expect(await open()).toContain("mini_kanban=");
+    expect(await open("card")).toContain("mini_kanban_card=");
   });
 });
 

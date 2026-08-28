@@ -51,8 +51,13 @@ export type GateOutcome =
   | { ok: true; session: MiniSession; timings?: GateTimings }
   | { ok: false; response: NextResponse; timings?: GateTimings };
 
-export function cookieName(app: string): string {
-  return `mini_${app}`;
+/**
+ * One cookie per surface, so a Messages card link and a browser launch of
+ * the same app hold independent sessions instead of overwriting each other
+ * (they differ only in `via`, which decides lite vs full rendering).
+ */
+export function cookieName(app: string, via?: "card" | undefined): string {
+  return via === "card" ? `mini_${app}_card` : `mini_${app}`;
 }
 
 /**
@@ -70,7 +75,12 @@ export function sessionFromCookie(
   request: NextRequest,
   app: string
 ): MiniSession | null {
-  const raw = request.cookies.get(cookieName(app))?.value;
+  // A real Messages webview has its own cookie jar, so only one of these
+  // exists there. When both do (same browser opened both link types), the
+  // full session wins — a browser can always render the full experience.
+  const raw =
+    request.cookies.get(cookieName(app))?.value ??
+    request.cookies.get(cookieName(app, "card"))?.value;
   if (!raw) return null;
   const claims = verifyToken(raw, app);
   if (!claims) return null;
