@@ -2,8 +2,10 @@
  * CM8 task 6: creative cost dashboard. Per-user render spend (cost_events
  * ledger rows recorded from completed box jobs), storage spend (bytes of
  * content-addressed creative assets at a flat monthly rate), ad spend
- * (platform-reported spend_reports over the window), and each user's ad
- * spend ceiling so the dashboard shows spend against cap in one read.
+ * (platform-reported spend_reports over the window), each user's ad
+ * spend ceiling so the dashboard shows spend against cap in one read, and
+ * Cortex (Mitosis) call counts — the content-free ledger of calls made
+ * against the user's own office, for watching trial/credit burn.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuthorized } from "@/lib/admin/auth";
@@ -24,6 +26,8 @@ interface UserCosts {
   storage_cents_month: number;
   ad_spend_cents: number;
   ad_ceiling_cents: number | null;
+  cortex_calls: number;
+  cortex_errors: number;
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
@@ -35,7 +39,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const sinceIso = since.toISOString();
   const sinceDate = sinceIso.slice(0, 10);
 
-  const [renders, assets, spend, settings] = await Promise.all([
+  const [renders, assets, spend, settings, cortex] = await Promise.all([
     supabase
       .from("cost_events")
       .select("user_id, kind, amount_cents")
@@ -47,6 +51,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       .select("user_id, spend_cents")
       .gte("report_date", sinceDate),
     supabase.from("ad_settings").select("user_id, spend_ceiling_cents"),
+    supabase
+      .from("cortex_calls")
+      .select("user_id, ok")
+      .gte("created_at", sinceIso),
   ]);
 
   const users = new Map<string, UserCosts>();
@@ -60,6 +68,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         storage_cents_month: 0,
         ad_spend_cents: 0,
         ad_ceiling_cents: null,
+        cortex_calls: 0,
+        cortex_errors: 0,
       };
       users.set(userId, entry);
     }
@@ -78,6 +88,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   for (const row of settings.data ?? []) {
     forUser(row.user_id as string).ad_ceiling_cents =
       row.spend_ceiling_cents as number;
+  }
+  for (const row of cortex.data ?? []) {
+    const entry = forUser(row.user_id as string);
+    entry.cortex_calls += 1;
+    if (row.ok !== true) entry.cortex_errors += 1;
   }
   for (const entry of users.values()) {
     entry.storage_cents_month = Math.ceil(

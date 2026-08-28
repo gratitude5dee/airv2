@@ -8,6 +8,7 @@
  * best-effort: an unconfigured or unreachable Cortex renders as a quiet
  * empty state, never an error page.
  */
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { command } from "@/lib/box/client";
 import { asRecord } from "@/lib/records";
 
@@ -22,6 +23,14 @@ export interface CortexSource {
   items: number;
 }
 
+/** Content-free telemetry for one MCP call against the user's office —
+ * tool name, latency, outcome. Never the question or any memory content. */
+export interface CortexCall {
+  call: "cortex_manifest" | "cortex_ask";
+  ms: number;
+  ok: boolean;
+}
+
 export interface CortexOverview {
   configured: boolean;
   reachable: boolean;
@@ -30,6 +39,7 @@ export interface CortexOverview {
   totals: { raw: number; embedded: number; entities: number };
   sources: CortexSource[];
   recent: CortexRecentItem[];
+  calls: CortexCall[];
 }
 
 export const CORTEX_UNAVAILABLE: CortexOverview = {
@@ -40,6 +50,7 @@ export const CORTEX_UNAVAILABLE: CortexOverview = {
   totals: { raw: 0, embedded: 0, entities: 0 },
   sources: [],
   recent: [],
+  calls: [],
 };
 
 /** Box-side probe: reads the per-user Mitosis credentials from
@@ -47,7 +58,7 @@ export const CORTEX_UNAVAILABLE: CortexOverview = {
  * same rule as ovctl) and calls the office-scoped MCP endpoint for a
  * manifest + the most recent memories. Prints one compact JSON object. */
 const CORTEX_PROBE = `python3 - <<'PYEOF'
-import json, pathlib, urllib.request
+import json, pathlib, time, urllib.request
 
 env = {}
 try:
@@ -62,6 +73,8 @@ key = env.get("MITOSIS_API_KEY", "")
 if not office or not key:
     print(json.dumps({"configured": False}))
     raise SystemExit(0)
+
+calls = []
 
 def call(name, args):
     body = json.dumps({
@@ -78,15 +91,21 @@ def call(name, args):
             "X-Mitosis-Agent": "hermes",
         },
     )
-    with urllib.request.urlopen(req, timeout=20) as res:
-        doc = json.loads(res.read())
+    start = time.monotonic()
+    try:
+        with urllib.request.urlopen(req, timeout=20) as res:
+            doc = json.loads(res.read())
+    except Exception:
+        calls.append({"call": name, "ms": int((time.monotonic() - start) * 1000), "ok": False})
+        raise
+    calls.append({"call": name, "ms": int((time.monotonic() - start) * 1000), "ok": True})
     return (doc.get("result") or {}).get("structuredContent") or {}
 
 try:
     manifest = call("cortex_manifest", {})
     recent = call("cortex_ask", {"question": "most recent facts and activity saved about the user"})
 except Exception:
-    print(json.dumps({"configured": True, "reachable": False}))
+    print(json.dumps({"configured": True, "reachable": False, "calls": calls}))
     raise SystemExit(0)
 
 mem = manifest.get("memory") or {}
@@ -116,6 +135,7 @@ print(json.dumps({
     },
     "sources": sources,
     "recent": items,
+    "calls": calls,
 }))
 PYEOF`;
 
@@ -141,8 +161,9 @@ export async function cortexOverview(boxId: string): Promise<CortexOverview> {
       : null;
   if (!doc) return CORTEX_UNAVAILABLE;
   if (doc["configured"] !== true) return CORTEX_UNAVAILABLE;
+  const calls = parseCalls(doc["calls"]);
   if (doc["reachable"] !== true) {
-    return { ...CORTEX_UNAVAILABLE, configured: true };
+    return { ...CORTEX_UNAVAILABLE, configured: true, calls };
   }
   const totals = asRecord(doc["totals"]) ?? {};
   const sources: CortexSource[] = [];
@@ -185,5 +206,50 @@ export async function cortexOverview(boxId: string): Promise<CortexOverview> {
     },
     sources,
     recent,
+    calls,
   };
+}
+
+function parseCalls(value: unknown): CortexCall[] {
+  if (!Array.isArray(value)) return [];
+  const calls: CortexCall[] = [];
+  for (const entry of value) {
+    const record = asRecord(entry);
+    if (!record) continue;
+    const call = record["call"];
+    if (call !== "cortex_manifest" && call !== "cortex_ask") continue;
+    calls.push({
+      call,
+      ms: num(record["ms"]),
+      ok: record["ok"] === true,
+    });
+  }
+  return calls;
+}
+
+/** Persist the content-free call ledger rows (best-effort — a failed insert
+ * never breaks the surface that made the calls). */
+export async function logCortexCalls(
+  supabase: SupabaseClient,
+  userId: string,
+  calls: CortexCall[]
+): Promise<void> {
+  if (calls.length === 0) return;
+  const { error } = await supabase.from("cortex_calls").insert(
+    calls.map((entry) => ({
+      user_id: userId,
+      call: entry.call,
+      ms: entry.ms,
+      ok: entry.ok,
+    }))
+  );
+  if (error) {
+    console.error(
+      JSON.stringify({
+        msg: "cortex_calls insert failed",
+        user_id: userId,
+        error: error.message,
+      })
+    );
+  }
 }
