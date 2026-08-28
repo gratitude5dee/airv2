@@ -171,9 +171,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         summary,
         amountUsd,
       });
-      // Hosted approval deep link — minted at send time, never stored. The
-      // agent relays it (iMessage) so the owner lands on the Link-style
-      // approval sheet at app.wzrd.tech with one tap.
+      // Hosted approval deep link — minted at send time, never stored. It
+      // carries owner authority, so it goes only to the owner's phone via
+      // the iMessage card; the box never sees it (C20).
       const approvalUrl = mintApprovalUrl(userId, result.decisionId);
       await sendPurchaseCard(supabase, userId, {
         host: normalizeHost(host),
@@ -185,7 +185,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         ok: true,
         decision_id: result.decisionId,
         amount_band: result.amountBand,
-        approval_url: approvalUrl,
       });
     } catch (error) {
       if (error instanceof PurchaseError) {
