@@ -104,6 +104,36 @@ export async function createConnectAccount(): Promise<string> {
   return account.id;
 }
 
+/**
+ * True when the error means the platform key can no longer act on the
+ * connected account (revoked, deleted, or belonging to another platform —
+ * Stripe reports these as `account_invalid` / permission failures).
+ */
+export function isAccountInvalidError(error: unknown): boolean {
+  const e = error as { code?: string; type?: string } | null;
+  return (
+    !!e &&
+    (e.code === "account_invalid" || e.type === "StripePermissionError")
+  );
+}
+
+/**
+ * Whether the platform key can still reach a connected account. Only an
+ * account-invalid/permission failure counts as inaccessible; transient
+ * errors (network, rate limit) rethrow so callers don't churn accounts.
+ */
+export async function connectAccountAccessible(
+  accountId: string
+): Promise<boolean> {
+  try {
+    await stripeClient().accounts.retrieve(accountId);
+    return true;
+  } catch (error) {
+    if (isAccountInvalidError(error)) return false;
+    throw error;
+  }
+}
+
 /** Hosted onboarding link for a Standard account. */
 export async function createAccountLink(
   accountId: string,

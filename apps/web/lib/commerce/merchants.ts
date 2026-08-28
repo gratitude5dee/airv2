@@ -6,7 +6,11 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type Stripe from "stripe";
-import { createAccountLink, createConnectAccount } from "../payments/stripe";
+import {
+  connectAccountAccessible,
+  createAccountLink,
+  createConnectAccount,
+} from "../payments/stripe";
 
 export class CommerceError extends Error {
   constructor(
@@ -63,12 +67,68 @@ export async function startOnboarding(
       throw new CommerceError("could not record the merchant account", 500);
     }
     merchant = data as Merchant;
+  } else if (!(await connectAccountAccessible(merchant.stripe_account_id))) {
+    // The stored account is unreachable under the platform's current key
+    // (revoked, deleted, or from a previous platform account) — re-onboard
+    // onto a fresh connected account instead of minting dead links.
+    merchant = await replaceMerchantAccount(supabase, userId, merchant);
   }
   return await createAccountLink(
     merchant.stripe_account_id,
     refreshUrl,
     returnUrl
   );
+}
+
+/**
+ * Swap a merchant onto a brand-new connected account, resetting capability
+ * flags (they re-enable via `account.updated` once onboarding completes).
+ */
+async function replaceMerchantAccount(
+  supabase: SupabaseClient,
+  userId: string,
+  merchant: Merchant
+): Promise<Merchant> {
+  const accountId = await createConnectAccount();
+  const { data, error } = await supabase
+    .from("merchants")
+    .update({
+      stripe_account_id: accountId,
+      charges_enabled: false,
+      details_submitted: false,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("user_id", userId)
+    .eq("stripe_account_id", merchant.stripe_account_id)
+    .select(MERCHANT_COLUMNS)
+    .maybeSingle();
+  if (error || !data) {
+    throw new CommerceError("could not update the merchant account", 500);
+  }
+  console.log(
+    JSON.stringify({
+      msg: "merchant account replaced",
+      user_id: userId,
+      old_account: merchant.stripe_account_id,
+      new_account: accountId,
+    })
+  );
+  return data as Merchant;
+}
+
+/**
+ * Flag a merchant whose connected account rejected a platform call with
+ * `account_invalid`: charges are disabled so new requests fail fast with a
+ * clear message, and the payee's next onboarding pass re-mints the account.
+ */
+export async function markMerchantAccountInvalid(
+  supabase: SupabaseClient,
+  stripeAccountId: string
+): Promise<void> {
+  await supabase
+    .from("merchants")
+    .update({ charges_enabled: false, updated_at: new Date().toISOString() })
+    .eq("stripe_account_id", stripeAccountId);
 }
 
 /**

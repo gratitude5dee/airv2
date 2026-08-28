@@ -14,10 +14,15 @@ import type Stripe from "stripe";
 
 const connectCalls: { account: string; params: Record<string, unknown> }[] = [];
 let connectSessionError: Error | null = null;
+let accountAccessible = true;
+let createdAccounts = 0;
 
 vi.mock("@/lib/payments/stripe", () => ({
-  createConnectAccount: async () => "acct_test_merchant",
+  createConnectAccount: async () => `acct_test_merchant_${++createdAccounts}`,
   createAccountLink: async () => "https://connect.stripe.com/setup/test",
+  connectAccountAccessible: async () => accountAccessible,
+  isAccountInvalidError: (error: unknown) =>
+    (error as { code?: string } | null)?.code === "account_invalid",
   createConnectCheckoutSession: async (
     account: string,
     params: Record<string, unknown>
@@ -210,6 +215,7 @@ import {
   approvePaymentRequest,
   createPaymentRequest,
   markPaymentRequestPaid,
+  markPaymentRequestPaidByIntent,
 } from "./paymentRequests";
 import { startOnboarding, syncAccountFromEvent } from "./merchants";
 
@@ -219,6 +225,8 @@ function seed(): void {
   nextId = 0;
   connectCalls.length = 0;
   connectSessionError = null;
+  accountAccessible = true;
+  createdAccounts = 0;
   transferCalls.length = 0;
   boxCatalog = { items: [] };
   tables = {
@@ -612,6 +620,43 @@ describe("payment requests: decision-gated, expiring, webhook-confirmed", () => 
     expect(connectCalls).toHaveLength(0);
   });
 
+  it("an account_invalid rejection flags the merchant and fails with 409", async () => {
+    const supabase = makeSupabase();
+    const { requestId } = await createPaymentRequest(supabase, "user-payer", {
+      currency: "usd",
+      amount: 500,
+      payee: "casey",
+    });
+    connectSessionError = Object.assign(new Error("account invalid"), {
+      code: "account_invalid",
+    });
+    await expect(
+      approvePaymentRequest(supabase, "user-payer", requestId, "https://x")
+    ).rejects.toMatchObject({ status: 409 });
+    // The merchant is flagged so later requests fail fast until re-onboarded.
+    expect(at(tables.merchants, 0)["charges_enabled"]).toBe(false);
+  });
+
+  it("the paid webhook resolves the decision by ref when decision_id is missing", async () => {
+    const supabase = makeSupabase();
+    const { requestId } = await createPaymentRequest(supabase, "user-payer", {
+      currency: "usd",
+      amount: 500,
+      payee: "casey",
+    });
+    // Simulate a lost decision_id backfill.
+    at(tables.payment_requests, 0)["decision_id"] = null;
+    at(tables.payment_requests, 0)["stripe_payment_intent_id"] = "pi_test_1";
+    expect(
+      await markPaymentRequestPaidByIntent(supabase, {
+        id: "pi_test_1",
+        metadata: { payment_request_id: requestId },
+      } as unknown as Stripe.PaymentIntent)
+    ).toBe(true);
+    expect(at(tables.payment_requests, 0)["status"]).toBe("paid");
+    expect(at(tables.decisions, 0)["status"]).toBe("approved");
+  });
+
   it("approving someone else's request fails", async () => {
     const supabase = makeSupabase();
     const { requestId } = await createPaymentRequest(supabase, "user-payer", {
@@ -634,6 +679,18 @@ describe("merchant onboarding", () => {
     expect(tables.merchants).toHaveLength(1);
     await startOnboarding(supabase, MERCHANT, "https://r", "https://r");
     expect(tables.merchants).toHaveLength(1);
+  });
+
+  it("re-mints the connected account when the stored one is unreachable", async () => {
+    accountAccessible = false;
+    const supabase = makeSupabase();
+    const url = await startOnboarding(supabase, MERCHANT, "https://r", "https://r");
+    expect(url).toContain("connect.stripe.com");
+    expect(tables.merchants).toHaveLength(1);
+    const merchant = at(tables.merchants, 0);
+    expect(merchant["stripe_account_id"]).toBe("acct_test_merchant_1");
+    expect(merchant["charges_enabled"]).toBe(false);
+    expect(merchant["details_submitted"]).toBe(false);
   });
 
   it("capability flags flow only from account.updated and provision the storefront", async () => {
