@@ -707,6 +707,9 @@ function slideLocked(
   snapshot: OnboardingSnapshot,
   slide: OnboardingSlide
 ): boolean {
+  // An existing username unlocks regardless of the recorded step status —
+  // accounts that skipped the step but have a provisioned @name aren't gated.
+  if (snapshot.username) return false;
   if (effectiveStatus(snapshot, "username") === "done") return false;
   const gate = SLIDE_GROUPS.findIndex((s) => s.id === "computer");
   return SLIDE_GROUPS.indexOf(slide) > gate;
@@ -1537,10 +1540,19 @@ export function renderOnboarding(
   // a stepper; deep links land on the panel that owns the active step.
   const stepper =
     !lite && !slide.split && panes.length <= 1 && slide.sections.length > 1;
-  const activeSection = Math.max(
-    0,
-    slide.sections.findIndex((s) => SECTION_STEPS[s.key].includes(shownStep))
-  );
+  // A pending character-sheet draft pulls the booth to its review panel —
+  // generate/confirm actions land back on ?step=selfies, which would
+  // otherwise reopen the first panel and hide the Save/Discard controls.
+  const draftPending =
+    slide.id === "booth" &&
+    shownStep === "selfies" &&
+    snapshot.identityMedia.some((m) => m.role === "character_sheet_draft");
+  const activeSection = draftPending
+    ? slide.sections.findIndex((s) => s.key === "sheet")
+    : Math.max(
+        0,
+        slide.sections.findIndex((s) => SECTION_STEPS[s.key].includes(shownStep))
+      );
   const sections =
     panes.length > 1
       ? (() => {

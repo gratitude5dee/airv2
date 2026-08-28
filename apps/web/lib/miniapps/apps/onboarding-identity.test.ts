@@ -358,6 +358,18 @@ describe("twin step", () => {
     expect(full).toContain("data-swipe-prev=");
     expect(full).toContain("data-swipe-next=");
     // Deep links land on the panel owning the step.
+    const { listIdentityMediaViews } = await import("@/lib/identity/assets");
+    vi.mocked(listIdentityMediaViews).mockResolvedValueOnce([
+      { assetId: "asset-1", role: "selfie", url: "https://signed.example/a.png" },
+      {
+        assetId: "asset-2",
+        role: "character_sheet_draft",
+        url: "https://signed.example/d.png",
+      },
+    ]);
+    // A pending draft pulls ?step=selfies to the review (sheet) panel.
+    const draft = await (await onboarding.render(makeCtx("selfies"))).text();
+    expect(draft).toContain('data-stepper data-stepper-active="2"');
     const twin = await (await onboarding.render(makeCtx("twin"))).text();
     expect(twin).toContain('data-stepper data-stepper-active="3"');
     const avatar = await (await onboarding.render(makeCtx("avatar"))).text();

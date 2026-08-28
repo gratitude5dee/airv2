@@ -157,6 +157,23 @@ describe("onboarding environment step", () => {
     ).text();
     expect(open).not.toContain('<span class="locked"');
     expect(open).toContain("data-swipe-next=");
+
+    // A provisioned username unlocks even when the recorded step status is
+    // "skipped" — accounts that skipped the step but have an @name aren't gated.
+    boxFiles.set(
+      ".hermes/miniapps/onboarding/state.json",
+      JSON.stringify({
+        steps: { username: "skipped" },
+        updated_at: "2026-01-01T00:00:00Z",
+      })
+    );
+    const skippedButNamed = await (
+      await onboarding.render(
+        makeCtx("https://mini.example/mini/setup?step=imessage")
+      )
+    ).text();
+    expect(skippedButNamed).not.toContain('<span class="locked"');
+    expect(skippedButNamed).toContain("data-swipe-next=");
   });
 
   it("widens media-src for the welcome intro film on the live render path", async () => {
