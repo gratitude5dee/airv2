@@ -19,6 +19,7 @@ import {
 import { ONBOARDING_STEPS } from "../onboarding";
 import {
   cortexOverview,
+  logCortexCalls,
   CORTEX_UNAVAILABLE,
   type CortexOverview,
 } from "@/lib/memory/cortex";
@@ -267,6 +268,7 @@ export const persona: MiniAppModule = {
         deepMemoryStatus(box.boxId).catch(() => null),
         deepMemoryHistory(box.boxId).catch(() => null),
       ]);
+      await logCortexCalls(supabase, session.userId, cortex.calls);
     } catch {
       // sleeping/limited box — render the empty states below
     } finally {
