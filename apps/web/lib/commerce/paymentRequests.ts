@@ -14,6 +14,7 @@ import type Stripe from "stripe";
 import {
   createConnectCheckoutSession,
   createConnectPaymentIntent,
+  retrieveConnectPaymentIntent,
 } from "../payments/stripe";
 import { createTransferRequest, validateSendAddress } from "../wallet/send";
 import { CommerceError, getMerchant } from "./merchants";
@@ -303,6 +304,29 @@ export async function createExpressPaymentIntent(
   const merchant = await getMerchant(supabase, request.payee_user_id);
   if (!merchant || !merchant.charges_enabled) {
     throw new CommerceError("payee can no longer accept payments", 409);
+  }
+  // Double-charge guard: one live intent per request. A stored intent is
+  // reused while still confirmable; a succeeded/processing one blocks a
+  // second charge outright (the webhook will flip the request to paid);
+  // only a dead intent (canceled, or unknown to Stripe) is replaced.
+  if (request.stripe_payment_intent_id) {
+    const existing = await retrieveConnectPaymentIntent(
+      merchant.stripe_account_id,
+      request.stripe_payment_intent_id
+    );
+    if (existing) {
+      if (existing.status === "succeeded" || existing.status === "processing") {
+        throw new CommerceError("this request was already paid", 409);
+      }
+      if (existing.status !== "canceled" && existing.clientSecret) {
+        return {
+          clientSecret: existing.clientSecret,
+          paymentIntentId: existing.id,
+          stripeAccount: merchant.stripe_account_id,
+          amountCents: request.amount_cents,
+        };
+      }
+    }
   }
   const intent = await createConnectPaymentIntent(merchant.stripe_account_id, {
     amountCents: request.amount_cents,

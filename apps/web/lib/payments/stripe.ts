@@ -134,6 +134,7 @@ export interface ConnectIntentParams {
 export interface ConnectIntent {
   id: string;
   clientSecret: string | null;
+  status: string;
 }
 
 /**
@@ -156,7 +157,34 @@ export async function createConnectPaymentIntent(
     },
     { stripeAccount }
   );
-  return { id: intent.id, clientSecret: intent.client_secret };
+  return {
+    id: intent.id,
+    clientSecret: intent.client_secret,
+    status: intent.status,
+  };
+}
+
+/** Look up an existing connected-account PaymentIntent (double-charge
+ * guard: a request's stored intent is reused or blocked, never shadowed
+ * by a fresh one). Null when Stripe no longer knows the id. */
+export async function retrieveConnectPaymentIntent(
+  stripeAccount: string,
+  intentId: string
+): Promise<ConnectIntent | null> {
+  try {
+    const intent = await stripeClient().paymentIntents.retrieve(
+      intentId,
+      {},
+      { stripeAccount }
+    );
+    return {
+      id: intent.id,
+      clientSecret: intent.client_secret,
+      status: intent.status,
+    };
+  } catch {
+    return null;
+  }
 }
 
 /**
