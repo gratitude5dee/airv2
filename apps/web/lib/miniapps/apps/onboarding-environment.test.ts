@@ -119,8 +119,9 @@ afterEach(() => {
 });
 
 describe("onboarding environment step", () => {
-  it("is the first step, before username", () => {
-    expect(ONBOARDING_STEPS[0]).toBe("environment");
+  it("is the first real step after the welcome intro, before username", () => {
+    expect(ONBOARDING_STEPS[0]).toBe("welcome");
+    expect(ONBOARDING_STEPS[1]).toBe("environment");
     expect(ONBOARDING_STEPS.indexOf("environment")).toBeLessThan(
       ONBOARDING_STEPS.indexOf("username")
     );
@@ -135,7 +136,7 @@ describe("onboarding environment step", () => {
     expect(body).toContain('value="ubuntu"');
     expect(body).not.toContain('value="omarchy"');
     expect(body).not.toContain('value="macos"');
-    expect(body).toContain("Coming soon");
+    expect(body).toContain("Soon");
     expect(body).toContain("Ubuntu");
     expect(body).toContain("Omarchy");
     expect(body).toContain("macOS");

@@ -278,7 +278,7 @@ describe("selfies step", () => {
 
   it("mounts the photo booth bundle outside lite mode only", async () => {
     const full = await (await onboarding.render(makeCtx("selfies"))).text();
-    expect(full).toContain('id="identity-booth"');
+    expect(full).toContain('class="identity-booth"');
     expect(full).toContain('data-mode="photo"');
     expect(full).toContain("/creator-os/identity-booth.js");
     expect(full).toContain('capture="user"');
@@ -373,14 +373,16 @@ describe("avatar step", () => {
     expect(body).toContain('value="set_avatar"');
     expect(body).toContain('value="asset-1"');
     expect(body).toContain('value="skip"');
-    expect(body).not.toContain("Create HeyGen avatar");
+    expect(body).not.toContain("Train an avatar");
+    expect(body).not.toContain("HeyGen");
   });
 
-  it("offers the HeyGen avatar path first when configured", async () => {
+  it("offers the trained avatar path first when configured, without naming the provider", async () => {
     heygenAvailable.mockReturnValue(true);
     const body = await (await onboarding.render(makeCtx("avatar"))).text();
     expect(body).toContain('value="create_heygen_avatar"');
-    expect(body).toContain("Create HeyGen avatar");
+    expect(body).toContain("Train an avatar");
+    expect(body).not.toContain(">HeyGen");
   });
 
   it("create_heygen_avatar mints an avatar ID via the shared helper", async () => {

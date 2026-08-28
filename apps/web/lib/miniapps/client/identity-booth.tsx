@@ -533,8 +533,11 @@ function Booth({ mode }: { mode: BoothMode }): React.ReactElement {
   );
 }
 
-const mount = document.getElementById("identity-booth");
-if (mount) {
+// A grouped slide can hold several booths (photo capture and the twin's
+// consent recorder), so every mount point gets its own root.
+for (const mount of document.querySelectorAll<HTMLElement>(
+  "#identity-booth, .identity-booth"
+)) {
   const mode: BoothMode =
     mount.getAttribute("data-mode") === "video" ? "video" : "photo";
   mount.replaceChildren();

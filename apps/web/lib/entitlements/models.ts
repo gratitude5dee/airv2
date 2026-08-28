@@ -12,7 +12,15 @@ export type SpeedTier = "fast" | "balanced" | "deep";
  * default for anyone who never touches the setting.
  */
 export type ModelFamily =
-  "openai" | "ox-alpha" | "inkling" | "inkling-small" | "openrouter" | "venice";
+  | "openai"
+  | "ox-alpha"
+  | "inkling"
+  | "inkling-small"
+  | "anthropic"
+  | "minimax-m3"
+  | "minimax-m2.7"
+  | "openrouter"
+  | "venice";
 
 export const DEFAULT_MODEL_FAMILY: ModelFamily = "ox-alpha";
 
@@ -30,6 +38,9 @@ const FAMILY_MODELS: Record<
   "ox-alpha": "stealth/ox-alpha",
   inkling: "thinkingmachines/inkling:free",
   "inkling-small": "thinkingmachines/inkling-small:free",
+  anthropic: "anthropic/claude-sonnet-5",
+  "minimax-m3": "minimax/minimax-m3",
+  "minimax-m2.7": "minimax/minimax-m2.7",
 };
 
 export interface CatalogModel {
@@ -167,6 +178,9 @@ export function isModelFamily(value: string): value is ModelFamily {
     value === "ox-alpha" ||
     value === "inkling" ||
     value === "inkling-small" ||
+    value === "anthropic" ||
+    value === "minimax-m3" ||
+    value === "minimax-m2.7" ||
     value === "openrouter" ||
     value === "venice"
   );
@@ -260,6 +274,9 @@ const FAMILY_PRICING: Record<
   "ox-alpha": { input: 0, output: 0 },
   inkling: { input: 0, output: 0 },
   "inkling-small": { input: 0, output: 0 },
+  anthropic: { input: 2, output: 10 },
+  "minimax-m3": { input: 0.3, output: 1.2 },
+  "minimax-m2.7": { input: 0.3, output: 1.2 },
 };
 
 export function isSpeedTier(value: string): value is SpeedTier {
