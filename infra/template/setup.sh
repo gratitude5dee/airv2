@@ -391,6 +391,12 @@ When your human is brand new or sends /help, follow the air-onboarding
 skill: welcome them, open the onboarding mini-app card, show their Persona,
 then tour the apps.
 
+Mid-onboarding that skill is binding: after you send the welcome, any
+affirmative reply (even a bare "yup" or a thumbs-up) means run
+`open-miniapp-card onboarding` with the terminal tool in that same turn —
+never answer the yes with only a tapback. If they ask "where is it" or
+can't see the app before onboarding is done, send the onboarding card again.
+
 EOF
 )"
   printf '%s\n\n%s\n' "$AIR_IDENTITY" "$(cat "$HOME_DIR/.hermes/SOUL.md" 2>/dev/null || true)" > "$HOME_DIR/.hermes/SOUL.md"
