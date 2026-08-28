@@ -21,11 +21,15 @@ GIT_SHA="$(git -C "$REPO_ROOT" rev-parse HEAD)"
 VERSION="$(date -u +%Y.%m.%d)-${GIT_SHA:0:7}"
 HERMES_REF="$(grep -m1 '^HERMES_REF=' "$REPO_ROOT/infra/template/setup.sh" \
   | sed -E 's/.*:-([0-9a-f]+)\}.*/\1/' || true)"
-ARTIFACT_B64="$(tar czf - -C "$REPO_ROOT/infra" template | base64 -w0)"
+# Via a file, not an env var: the base64 template tarball is megabytes and
+# passing it in the environment blows the exec argument limit (E2BIG).
+ARTIFACT_FILE="$(mktemp)"
+trap 'rm -f "$ARTIFACT_FILE"' EXIT
+tar czf - -C "$REPO_ROOT/infra" template | base64 -w0 > "$ARTIFACT_FILE"
 
 RELEASE_ORIGIN="$ORIGIN" RELEASE_KEY="$KEY" RELEASE_VERSION="$VERSION" \
 RELEASE_GIT_SHA="$GIT_SHA" RELEASE_HERMES_REF="$HERMES_REF" \
-RELEASE_NOTES="$NOTES" RELEASE_ARTIFACT_B64="$ARTIFACT_B64" \
+RELEASE_NOTES="$NOTES" RELEASE_ARTIFACT_FILE="$ARTIFACT_FILE" \
 python3 - <<'EOF'
 import json, os, urllib.request
 body = json.dumps({
@@ -33,7 +37,7 @@ body = json.dumps({
     "git_sha": os.environ["RELEASE_GIT_SHA"],
     "hermes_ref": os.environ.get("RELEASE_HERMES_REF") or None,
     "notes": os.environ.get("RELEASE_NOTES") or None,
-    "artifact_base64": os.environ["RELEASE_ARTIFACT_B64"],
+    "artifact_base64": open(os.environ["RELEASE_ARTIFACT_FILE"]).read(),
 }).encode()
 req = urllib.request.Request(
     f"{os.environ['RELEASE_ORIGIN']}/api/admin/fleet/releases",
