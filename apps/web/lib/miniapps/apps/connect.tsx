@@ -7,7 +7,11 @@
  * or the MCP endpoint, C10); disconnect revokes. Owner-only (MA4).
  */
 import { NextResponse } from "next/server";
-import { listToolkits, type ComposioToolkit } from "@/lib/composio/client";
+import {
+  ComposioApiError,
+  listToolkits,
+  type ComposioToolkit,
+} from "@/lib/composio/client";
 import { connectionHealth, type ConnectionHealth } from "@/lib/connectors/meta";
 import {
   beginConnect,
@@ -222,8 +226,32 @@ export const connect: MiniAppModule = {
         );
       }
       const callback = `${externalOrigin(ctx.request)}${ctx.basePath}`;
-      const link = await beginConnect(ctx.supabase, userId, toolkit, callback);
-      return withBaseHeaders(NextResponse.redirect(link.redirect_url, 303));
+      try {
+        const link = await beginConnect(
+          ctx.supabase,
+          userId,
+          toolkit,
+          callback
+        );
+        return withBaseHeaders(NextResponse.redirect(link.redirect_url, 303));
+      } catch (error) {
+        if (error instanceof ComposioApiError) {
+          console.error(
+            JSON.stringify({
+              msg: "connect link failed",
+              user_id: userId,
+              toolkit,
+              status: error.status,
+              error: error.message,
+            })
+          );
+          return loadAndRender(
+            ctx,
+            "That tool can't be connected right now \u2014 try another, or try again in a moment."
+          );
+        }
+        throw error;
+      }
     }
 
     if (action === "disconnect") {

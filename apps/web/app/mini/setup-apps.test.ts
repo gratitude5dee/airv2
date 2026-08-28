@@ -28,6 +28,13 @@ vi.mock("@/lib/orchestrator/boxes", () => ({
   StartLimitError: class extends Error {},
 }));
 vi.mock("@/lib/composio/client", () => ({
+  ComposioApiError: class extends Error {
+    status: number;
+    constructor(status: number, message: string) {
+      super(message);
+      this.status = status;
+    }
+  },
   listToolkits: vi.fn(async () => [
     { slug: "gmail", name: "Gmail" },
     { slug: "notion", name: "Notion" },

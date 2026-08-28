@@ -10,7 +10,18 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MiniAppContext } from "@/lib/miniapps/apps/types";
 import { makeApp } from "@/app/mini/loader-test-utils";
 
+const { FakeComposioApiError } = vi.hoisted(() => {
+  class FakeComposioApiError extends Error {
+    status: number;
+    constructor(status: number, message: string) {
+      super(`composio api ${status}: ${message}`);
+      this.status = status;
+    }
+  }
+  return { FakeComposioApiError };
+});
 vi.mock("@/lib/composio/client", () => ({
+  ComposioApiError: FakeComposioApiError,
   listToolkits: vi.fn(async () => [
     { slug: "gmail", name: "Gmail" },
     { slug: "notion", name: "Notion" },
@@ -122,6 +133,19 @@ describe("connect mini-app card sessions", () => {
     const response = await connect.render(makeCtx());
     const csp = response.headers.get("Content-Security-Policy") ?? "";
     expect(csp).toContain("form-action 'self' https://*.composio.dev");
+  });
+
+  it("a Composio link failure re-renders with a notice instead of a 500", async () => {
+    beginConnect.mockRejectedValueOnce(
+      new FakeComposioApiError(400, "Toolkit composio does not require authentication.")
+    );
+    const form = new FormData();
+    form.set("action", "connect");
+    form.set("toolkit", "composio");
+    const response = await connect.action!(makeCtx(), form);
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toContain("can't be connected right now");
   });
 
   it("refresh surfaces a sync failure instead of hiding it", async () => {

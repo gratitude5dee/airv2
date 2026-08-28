@@ -46,14 +46,17 @@ async function composioFetch<T>(
 export interface ComposioToolkit {
   slug: string;
   name: string;
+  no_auth?: boolean;
   meta?: { logo?: string; description?: string };
 }
 
+/** Connectable toolkits only — no-auth toolkits (composio_search, browser
+ *  tool, …) have no Connect Link and the link endpoint 400s on them. */
 export async function listToolkits(): Promise<ComposioToolkit[]> {
   const result = await composioFetch<{ items?: ComposioToolkit[] }>(
     "/toolkits?limit=100&managed_by=composio&sort_by=usage"
   );
-  return result.items ?? [];
+  return (result.items ?? []).filter((toolkit) => !toolkit.no_auth);
 }
 
 export interface ComposioSession {
