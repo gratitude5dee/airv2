@@ -5,15 +5,9 @@ const nextConfig: NextConfig = {
   // Mini-app shells are no-store, but the assets they pull are static and
   // were being refetched on every card tap.
   async headers() {
+    // Later matches win on a duplicate header key, so the broad rule comes
+    // first and the font rule overrides it.
     return [
-      // Font files are content-addressed by family + subset in their name,
-      // so a new face means a new URL — safe to freeze for a year.
-      {
-        source: "/creator-os/fonts/:path*",
-        headers: [
-          { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
-        ],
-      },
       // The bundles keep stable names across deploys, so they are cached
       // hard but still revalidated — never permanently stale.
       {
@@ -23,6 +17,14 @@ const nextConfig: NextConfig = {
             key: "Cache-Control",
             value: "public, max-age=86400, stale-while-revalidate=604800",
           },
+        ],
+      },
+      // Font files are content-addressed by family + subset in their name,
+      // so a new face means a new URL — safe to freeze for a year.
+      {
+        source: "/creator-os/fonts/:path*",
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
         ],
       },
     ];
