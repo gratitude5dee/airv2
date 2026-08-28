@@ -1300,6 +1300,13 @@ export function renderOnboarding(
   const prev = index > 0 ? SLIDE_GROUPS[index - 1] : null;
   const next = index < SLIDE_GROUPS.length - 1 ? SLIDE_GROUPS[index + 1] : null;
   const pad = (n: number): string => String(n).padStart(2, "0");
+  // The welcome intro is unnumbered — the counter reads N / 06 over the six
+  // grouped slides, matching the "six short steps" welcome copy.
+  const numbered = SLIDE_GROUPS.filter((s) => s.id !== "welcome");
+  const number = numbered.indexOf(slide);
+  const counter =
+    number === -1 ? "Intro" : `${pad(number + 1)} / ${pad(numbered.length)}`;
+  const kickerNumber = number === -1 ? "" : `${pad(number + 1)} / `;
   // Keep a non-default theme across slide navigation.
   const href = (target: OnboardingSlide): string => {
     const step = slideSteps(target)[0] ?? "welcome";
@@ -1405,7 +1412,7 @@ export function renderOnboarding(
     lite ? "" : '<script src="/creator-os/deck-swipe.js" defer></script>',
   ].join("");
   const deck = `<div class="deck${slide.split ? " split" : ""}">${sections}</div>${scripts}`;
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>Onboarding — ${esc(slide.title)}</title>${fonts}<style>${tokenBlock(current.tokens)}${SLIDE_CSS}${lite ? LITE_CSS : ""}</style>${shader}</head><body>${backdropHtml}${scrim}${grain}<div class="frame"${prev ? ` data-swipe-prev="${href(prev)}"` : ""}${next ? ` data-swipe-next="${href(next)}"` : ""}><header class="bar"><span class="logo-pill"><img src="/creator-os/wzrd-wordmark-1600.png" alt="WZRD.tech"></span><span class="counter">${pad(index + 1)} / ${pad(SLIDE_GROUPS.length)}${esc(statusTag)}</span></header><main class="slide">${busy}${noticeHtml}<p class="kicker">${pad(index + 1)} / ${esc(slide.kicker)}</p><h1>${esc(slide.title)}</h1>${deck}</main><footer class="nav">${prev ? `<a class="navlink" href="${href(prev)}">← Back</a>` : '<span class="navlink ghosted">← Back</span>'}<nav class="dots" aria-label="Slides">${dots}</nav>${next ? `<a class="navlink" href="${href(next)}">Next →</a>` : '<span class="navlink ghosted">Next →</span>'}</footer></div></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>Onboarding — ${esc(slide.title)}</title>${fonts}<style>${tokenBlock(current.tokens)}${SLIDE_CSS}${lite ? LITE_CSS : ""}</style>${shader}</head><body>${backdropHtml}${scrim}${grain}<div class="frame"${prev ? ` data-swipe-prev="${href(prev)}"` : ""}${next ? ` data-swipe-next="${href(next)}"` : ""}><header class="bar"><span class="logo-pill"><img src="/creator-os/wzrd-wordmark-1600.png" alt="WZRD.tech"></span><span class="counter">${counter}${esc(statusTag)}</span></header><main class="slide">${busy}${noticeHtml}<p class="kicker">${kickerNumber}${esc(slide.kicker)}</p><h1>${esc(slide.title)}</h1>${deck}</main><footer class="nav">${prev ? `<a class="navlink" href="${href(prev)}">← Back</a>` : '<span class="navlink ghosted">← Back</span>'}<nav class="dots" aria-label="Slides">${dots}</nav>${next ? `<a class="navlink" href="${href(next)}">Next →</a>` : '<span class="navlink ghosted">Next →</span>'}</footer></div></body></html>`;
 }
 
 function activeStep(ctx: MiniAppContext, snapshot: OnboardingSnapshot): OnboardingStepId {
