@@ -253,7 +253,7 @@ function refreshCookie(
   // Synthetic storefront guests never had a cookie — don't mint one.
   if (session.role === "guest" && !session.grantId) return response;
   response.cookies.set(
-    cookieName(slug),
+    cookieName(slug, session.via),
     mintToken(session.userId, slug, session.resourceId, 15, {
       role: session.role,
       grantId: session.grantId,
@@ -327,7 +327,7 @@ export async function GET(
       NextResponse.redirect(new URL(basePath, externalOrigin(request)), 303)
     );
     response.cookies.set(
-      cookieName(slug),
+      cookieName(slug, claims.via),
       mintToken(claims.userId, slug, claims.resourceId, 15, {
         role: claims.role ?? "owner",
         grantId: claims.grantId,
