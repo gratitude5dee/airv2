@@ -36,7 +36,11 @@ function sanitizeLabel(value: string): string {
 export interface InviteSummary {
   summary?: string;
   startsAt?: string;
+  /** VEVENT UID — the hosted-calendar event id an RSVP is addressed to. */
+  uid?: string;
 }
+
+const UID_RE = /^[A-Za-z0-9@._:+-]{1,255}$/;
 
 /**
  * Pull SUMMARY and DTSTART from the first VEVENT for the decision label.
@@ -64,6 +68,9 @@ export function extractInviteSummary(ics: string): InviteSummary {
     } else if (name === "DTSTART" && !result.startsAt) {
       const dtstart = match[2].trim();
       if (/^[0-9TZ:+-]{8,32}$/.test(dtstart)) result.startsAt = dtstart;
+    } else if (name === "UID" && !result.uid) {
+      const uid = match[2].trim();
+      if (UID_RE.test(uid)) result.uid = uid;
     }
   }
   return result;

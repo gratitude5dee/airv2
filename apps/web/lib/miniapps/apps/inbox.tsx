@@ -173,7 +173,14 @@ function renderThread(
     ? `<form method="post" class="addrow"><input type="hidden" name="action" value="reply"><input type="hidden" name="to" value="${esc(replyTo)}"><input type="hidden" name="subject" value="${esc(subject.startsWith("Re:") ? subject : `Re: ${subject}`)}"><input type="text" name="text" placeholder="Reply as a draft\u2026" required><button>Draft reply</button></form><p class="when">Replies are drafts \u2014 they wait in Needs&nbsp;you until you approve the send.</p>`
     : "";
   const body = `<section class="panel"><a href="${esc(basePath)}" style="text-decoration:none" class="when">\u2190 Inbox</a>${rows}${reply}</section>`;
-  return renderShell({ title: subject, kicker: "Mail", body, lite });
+  // A right swipe goes back to the thread list, like iOS Mail.
+  return renderShell({
+    title: subject,
+    kicker: "Mail",
+    body,
+    lite,
+    swipe: { prev: basePath },
+  });
 }
 
 export const inbox: MiniAppModule = {

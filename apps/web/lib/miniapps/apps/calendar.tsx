@@ -30,6 +30,13 @@ import {
   readPeople,
   type CrmAvatar,
 } from "@/lib/crm/store";
+import {
+  createBookingLink,
+  createCalendarEvent,
+  getCalendarFreeBusy,
+  rsvpCalendarEvent,
+  type FreeBusySlot,
+} from "@/lib/agentmail/calendar";
 import { externalOrigin } from "../gates";
 import { esc, withBaseHeaders } from "../html";
 import { renderShell, shellHtml } from "../shell";
@@ -41,6 +48,21 @@ interface InviteDecision {
   id: string;
   label: string | null;
   sender: string | null;
+}
+
+/** The agent's primary AgentMail inbox — the identity its hosted calendar
+ * (events, RSVP, free/busy, booking page) lives at. */
+async function agentInboxId(
+  ctx: MiniAppContext
+): Promise<string | null> {
+  const { data } = await ctx.supabase
+    .from("agent_addresses")
+    .select("agentmail_inbox_id")
+    .eq("user_id", ctx.session.userId)
+    .eq("is_primary", true)
+    .is("retired_at", null)
+    .maybeSingle();
+  return (data?.agentmail_inbox_id as string | undefined) ?? null;
 }
 
 interface SourceRow {
@@ -55,6 +77,8 @@ interface SourceRow {
 type CalendarView = "agenda" | "timeline" | "month";
 
 const PERSONA_RE = /^[a-z0-9 _-]{1,24}$/i;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const BOOKING_URL_RE = /^https:\/\/[\w.-]+(?::\d+)?\/[\w~/#?&=.%-]*$/;
 const COLOR_RE = /^#[0-9a-f]{6}$/i;
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const LOCAL_ID_RE = /^local:[a-f0-9]{16}$/;
@@ -184,6 +208,7 @@ ${day ? `<input type="hidden" name="day" value="${esc(day)}">` : ""}
 <label class="when">Ends <input type="datetime-local" name="ends_at" value="${esc(endsLocal)}"></label>
 <label class="when" style="display:flex;align-items:center;gap:0.4rem"><input type="checkbox" name="all_day" value="1"${editing && event.all_day ? " checked" : ""}> All day</label>
 <input type="text" name="location" placeholder="Location (optional)" maxlength="200" value="${editing && event.location ? esc(event.location) : ""}">
+${editing ? "" : '<input type="text" name="attendees" placeholder="Invite by email — comma-separated (optional)" maxlength="600" inputmode="email" autocapitalize="off">'}
 <div class="row" style="display:flex;gap:6px"><button>${editing ? "Save changes" : "Add event"}</button>${
     editing
       ? `</div></form><form method="post"><input type="hidden" name="action" value="delete_event"><input type="hidden" name="event" value="${esc(event.id)}"><input type="hidden" name="view" value="${esc(view)}">${persona ? `<input type="hidden" name="persona" value="${esc(persona)}">` : ""}${day ? `<input type="hidden" name="day" value="${esc(day)}">` : ""}<button class="ghost">Delete</button></form>`
@@ -256,9 +281,12 @@ function agendaBody(
       (invite) =>
         `<div class="card pending">${esc(invite.label ?? "Calendar invite")}${
           invite.sender ? `<div class="when">${esc(invite.sender)}</div>` : ""
-        }<div class="row" style="margin-top:0.4rem"><form method="post"><input type="hidden" name="action" value="approve"><input type="hidden" name="decision" value="${esc(invite.id)}"><button>Add to calendar</button></form><form method="post"><input type="hidden" name="action" value="dismiss"><input type="hidden" name="decision" value="${esc(invite.id)}"><button class="ghost">Dismiss</button></form></div></div>`
+        }<div class="row" style="margin-top:0.4rem"><form method="post"><input type="hidden" name="action" value="approve"><input type="hidden" name="decision" value="${esc(invite.id)}"><button>✓ Accept</button></form><form method="post"><input type="hidden" name="action" value="dismiss"><input type="hidden" name="decision" value="${esc(invite.id)}"><button class="ghost">Decline</button></form></div></div>`
     )
     .join("");
+  const invitesSection = inviteRows
+    ? `<div class="day">Invites — one tap replies for you</div>${inviteRows}`
+    : "";
 
   const byDay = new Map<string, CalendarEvent[]>();
   for (const event of upcoming) {
@@ -300,7 +328,61 @@ function agendaBody(
     ? `<div class="day">Sources</div>${sourceRows}`
     : "";
 
-  return `${tabs}${inviteRows}${days}${empty}${sourcesSection}`;
+  return `${tabs}${invitesSection}${days}${empty}${sourcesSection}`;
+}
+
+/** Free/busy strip: the agent's next 7 days as day columns over an
+ * 8:00–20:00 window; busy intervals paint as filled blocks. */
+function freeBusyStrip(slots: FreeBusySlot[]): string {
+  const WINDOW_START = 8;
+  const WINDOW_HOURS = 12;
+  const columns: string[] = [];
+  const today = new Date();
+  for (let i = 0; i < 7; i += 1) {
+    const day = new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate() + i
+    );
+    const windowStart =
+      new Date(day).setHours(WINDOW_START, 0, 0, 0);
+    const windowEnd = windowStart + WINDOW_HOURS * 60 * 60 * 1000;
+    const blocks = slots
+      .flatMap((slot) => {
+        const start = Date.parse(slot.start);
+        const end = Date.parse(slot.end);
+        if (!Number.isFinite(start) || !Number.isFinite(end)) return [];
+        const from = Math.max(start, windowStart);
+        const to = Math.min(end, windowEnd);
+        if (to <= from) return [];
+        const top = ((from - windowStart) / (windowEnd - windowStart)) * 100;
+        const height = ((to - from) / (windowEnd - windowStart)) * 100;
+        return [
+          `<span style="position:absolute;left:15%;right:15%;top:${top.toFixed(1)}%;height:${Math.max(height, 4).toFixed(1)}%;border-radius:3px;background:var(--accent);opacity:0.85"></span>`,
+        ];
+      })
+      .join("");
+    const label = day.toLocaleDateString([], { weekday: "narrow" });
+    const isToday = i === 0;
+    columns.push(
+      `<div style="min-width:0"><div class="when" style="text-align:center;margin-bottom:3px${isToday ? ";color:var(--accent)" : ""}">${esc(label)}</div><div style="position:relative;height:56px;border:1px solid var(--ring);border-radius:8px;background:var(--well-bg);overflow:hidden">${blocks}</div></div>`
+    );
+  }
+  return `<div class="day">Free / busy — 8am to 8pm</div><div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">${columns.join("")}</div>`;
+}
+
+/** Booking-link card: enable with one tap; once minted, copy or open. The
+ * URL round-trips through the redirect query and is validated before it is
+ * reflected — https only, no quotes/spaces, AgentMail-shaped path. */
+function bookingSection(
+  view: CalendarView,
+  persona: string | null,
+  bookingUrl: string | null
+): string {
+  if (bookingUrl) {
+    return `<div class="day">Booking page</div><div class="card prompt" data-prompt="${esc(bookingUrl)}"><div class="when" style="white-space:normal;word-break:break-all">${esc(bookingUrl)}</div><div class="row" style="margin-top:0.5rem"><button type="button" data-copy>Copy link</button><a href="${esc(bookingUrl)}" target="_blank" rel="noopener noreferrer" style="text-decoration:none"><button type="button" class="ghost">Open</button></a></div></div>`;
+  }
+  return `<div class="day">Booking page</div><form method="post"><input type="hidden" name="action" value="booking"><input type="hidden" name="view" value="${esc(view)}">${persona ? `<input type="hidden" name="persona" value="${esc(persona)}">` : ""}<button class="ghost">Get shareable booking link</button></form><p class="when" style="white-space:normal">Anyone with the link can pick a free slot — it lands on your agent's calendar.</p>`;
 }
 
 /** Timeline: a vertical spine of the next 30 days across all calendars. */
@@ -552,8 +634,44 @@ export const calendar: MiniAppModule = {
       } else if (isOwner) {
         body += eventForm("agenda", activePersona, null);
       }
+      if (isOwner) {
+        // Agent-calendar extras (free/busy, booking) are best-effort: the
+        // agenda never breaks because the hosted calendar is unreachable.
+        const inboxId = await agentInboxId(ctx);
+        if (inboxId) {
+          try {
+            const start = new Date();
+            const end = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000);
+            const slots = await timedFetch("calendar", "free-busy", () =>
+              getCalendarFreeBusy(
+                inboxId,
+                start.toISOString(),
+                end.toISOString()
+              )
+            );
+            body += freeBusyStrip(slots);
+          } catch {
+            // Free/busy is decoration; the agenda stands without it.
+          }
+          const bookingParam = params.get("booking") ?? "";
+          const bookingUrl =
+            bookingParam.length <= 300 && BOOKING_URL_RE.test(bookingParam)
+              ? bookingParam
+              : null;
+          body += bookingSection("agenda", activePersona, bookingUrl);
+          if (bookingUrl) {
+            body += '<script src="/creator-os/prompt-copy.js" defer></script>';
+          }
+        }
+      }
     }
 
+    // Swipe left/right walks the Agenda → Timeline → Month deck, exactly
+    // like the onboarding slides.
+    const order: CalendarView[] = ["agenda", "timeline", "month"];
+    const at = order.indexOf(view);
+    const prevView = order[at - 1];
+    const nextView = order[at + 1];
     const full = `<section class="panel">${viewTabs(ctx.basePath, view, activePersona)}${body}
 ${isOwner ? promptBar("Ask your agent — e.g. block focus time tomorrow morning…") : ""}</section>`;
     return shellHtml(
@@ -562,6 +680,14 @@ ${isOwner ? promptBar("Ask your agent — e.g. block focus time tomorrow morning
         kicker: "Schedule",
         body: full,
         lite: ctx.session.via === "card",
+        swipe: {
+          ...(prevView
+            ? { prev: viewHref(ctx.basePath, prevView, activePersona) }
+            : {}),
+          ...(nextView
+            ? { next: viewHref(ctx.basePath, nextView, activePersona) }
+            : {}),
+        },
       })
     );
   },
@@ -618,6 +744,13 @@ ${isOwner ? promptBar("Ask your agent — e.g. block focus time tomorrow morning
             .trim()
             .slice(0, 200);
           const idValue = String(form.get("event") ?? "");
+          // Attendee emails ride the hosted-calendar event (below), which
+          // mails each one a normal .ics invite from the agent's address.
+          const attendees = String(form.get("attendees") ?? "")
+            .split(",")
+            .map((email) => email.trim().toLowerCase())
+            .filter((email) => email.length <= 320 && EMAIL_RE.test(email))
+            .slice(0, 10);
           if (title && startsAt) {
             await upsertLocalEvent(box.boxId, {
               ...(LOCAL_ID_RE.test(idValue) ? { id: idValue } : {}),
@@ -629,6 +762,31 @@ ${isOwner ? promptBar("Ask your agent — e.g. block focus time tomorrow morning
               all_day: allDay,
               ...(location ? { location } : {}),
             });
+            if (attendees.length > 0 && !LOCAL_ID_RE.test(idValue)) {
+              const inboxId = await agentInboxId(ctx);
+              if (inboxId) {
+                try {
+                  await createCalendarEvent(inboxId, {
+                    summary: title,
+                    start: allDay ? startsAt.slice(0, 10) : startsAt,
+                    end: allDay
+                      ? (endsAt ?? startsAt).slice(0, 10)
+                      : (endsAt ?? startsAt),
+                    attendees: attendees.map((email) => ({ email })),
+                  });
+                } catch (error) {
+                  console.error(
+                    JSON.stringify({
+                      msg: "agent calendar event create failed",
+                      error:
+                        error instanceof Error
+                          ? error.message
+                          : String(error),
+                    })
+                  );
+                }
+              }
+            }
           }
         }
       } catch (error) {
@@ -640,6 +798,30 @@ ${isOwner ? promptBar("Ask your agent — e.g. block focus time tomorrow morning
         await armStopAfter(ctx.supabase, ctx.session.userId).catch(
           () => undefined
         );
+      }
+      return back();
+    }
+    if (action === "booking" && ctx.session.role === "owner") {
+      // Enable (idempotently) the agent's public booking page; the URL
+      // rides the redirect query so the re-render can offer copy/share.
+      const inboxId = await agentInboxId(ctx);
+      if (inboxId) {
+        try {
+          const url = await createBookingLink(inboxId);
+          const target = new URL(
+            viewHref(ctx.basePath, view, persona, day),
+            externalOrigin(ctx.request)
+          );
+          target.searchParams.set("booking", url);
+          return withBaseHeaders(NextResponse.redirect(target, 303));
+        } catch (error) {
+          console.error(
+            JSON.stringify({
+              msg: "booking link create failed",
+              error: error instanceof Error ? error.message : String(error),
+            })
+          );
+        }
       }
       return back();
     }
@@ -665,7 +847,7 @@ ${isOwner ? promptBar("Ask your agent — e.g. block focus time tomorrow morning
     if ((action === "approve" || action === "dismiss") && decisionId) {
       const { data: decision } = await ctx.supabase
         .from("decisions")
-        .select("id, kind, ref, status")
+        .select("id, kind, ref, status, payload")
         .eq("id", decisionId)
         .eq("user_id", ctx.session.userId)
         .maybeSingle();
@@ -681,6 +863,30 @@ ${isOwner ? promptBar("Ask your agent — e.g. block focus time tomorrow morning
             await approveInboxEvent(box.boxId, decision.ref as string);
           } else {
             await dismissInboxEvent(box.boxId, decision.ref as string);
+          }
+          // Also answer the organizer: RSVP the hosted-calendar event when
+          // the invite carried a VEVENT UID. Best-effort — the box-side
+          // resolution above is the source of truth either way.
+          const eventUid = (
+            decision.payload as { event_uid?: string } | null
+          )?.event_uid;
+          if (eventUid) {
+            const inboxId = await agentInboxId(ctx);
+            if (inboxId) {
+              await rsvpCalendarEvent(
+                inboxId,
+                eventUid,
+                action === "approve" ? "accepted" : "declined"
+              ).catch((error) =>
+                console.error(
+                  JSON.stringify({
+                    msg: "calendar rsvp failed",
+                    error:
+                      error instanceof Error ? error.message : String(error),
+                  })
+                )
+              );
+            }
           }
           await ctx.supabase
             .from("decisions")
