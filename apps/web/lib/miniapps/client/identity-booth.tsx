@@ -500,8 +500,24 @@ function Booth({ mode }: { mode: BoothMode }): React.ReactElement {
   const cameraOn = phase === "live" || phase === "recording";
   const lastShot = shots[shots.length - 1] ?? null;
 
-  // The other booth mode lives on the sibling pager pane — the mode strip
-  // scrolls to it like the iPhone camera's mode dial.
+  // When the other booth mode lives on a sibling pager pane, the mode strip
+  // scrolls to it like the iPhone camera's mode dial; when the modes are
+  // separate stepper panels the inactive label is inert chrome.
+  const otherPane =
+    typeof document !== "undefined" &&
+    document.getElementById(mode === "photo" ? "pane-video" : "pane-photo")
+      ? `#pane-${mode === "photo" ? "video" : "photo"}`
+      : null;
+  const inactive = (label: string): React.ReactElement =>
+    otherPane ? (
+      <a className="cam-mode" role="tab" aria-selected="false" href={otherPane}>
+        {label}
+      </a>
+    ) : (
+      <span className="cam-mode off" role="tab" aria-selected="false">
+        {label}
+      </span>
+    );
   const modeStrip = (
     <div className="cam-modes" role="tablist" aria-label="camera mode">
       {mode === "photo" ? (
@@ -509,15 +525,11 @@ function Booth({ mode }: { mode: BoothMode }): React.ReactElement {
           <span className="cam-mode on" role="tab" aria-selected="true">
             PHOTO
           </span>
-          <a className="cam-mode" role="tab" aria-selected="false" href="#pane-video">
-            VIDEO
-          </a>
+          {inactive("VIDEO")}
         </>
       ) : (
         <>
-          <a className="cam-mode" role="tab" aria-selected="false" href="#pane-photo">
-            PHOTO
-          </a>
+          {inactive("PHOTO")}
           <span className="cam-mode on" role="tab" aria-selected="true">
             VIDEO
           </span>

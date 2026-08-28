@@ -153,7 +153,15 @@ import type { MiniAppContext, MiniAppModule } from "./types";
  * environment/username/email trio as one card, and `browser` renders the
  * browser-profile half of the `import` step as its own numbered card.
  */
-export type SlideSectionKey = OnboardingStepId | "computer" | "browser";
+export type SlideSectionKey =
+  | OnboardingStepId
+  | "computer"
+  | "browser"
+  | "booth_photo"
+  | "photo_select"
+  | "sheet"
+  | "booth_video"
+  | "twin_create";
 
 export interface SlideSection {
   key: SlideSectionKey;
@@ -181,7 +189,12 @@ const SECTION_STEPS: Record<SlideSectionKey, readonly OnboardingStepId[]> = {
   email: ["email"],
   model: ["model"],
   selfies: ["selfies"],
+  booth_photo: ["selfies"],
+  photo_select: ["selfies"],
+  sheet: ["selfies"],
   twin: ["twin"],
+  booth_video: ["twin"],
+  twin_create: ["twin"],
   avatar: ["avatar"],
   imessage: ["imessage"],
   browser: ["import"],
@@ -217,10 +230,16 @@ export const SLIDE_GROUPS: readonly [OnboardingSlide, ...OnboardingSlide[]] = [
     id: "booth",
     title: "Photo Booth",
     kicker: "Photo Booth",
+    // Six stepper panels — the deck-stepper folds them into a one-at-a-time
+    // wizard with green-check progress; state still lives on the three step
+    // IDs (selfies/twin/avatar) each panel reads and writes.
     sections: [
-      { key: "selfies", label: "Step into the booth", pane: "Photo" },
-      { key: "twin", label: "Digital twin — optional", pane: "Video" },
-      { key: "avatar", label: "Avatar — optional", pane: "Video" },
+      { key: "booth_photo", label: "Take photo" },
+      { key: "photo_select", label: "Photo selection" },
+      { key: "sheet", label: "Generate character sheet" },
+      { key: "booth_video", label: "Take video" },
+      { key: "twin_create", label: "Create digital twin" },
+      { key: "avatar", label: "Avatar selection" },
     ],
   },
   {
@@ -679,6 +698,23 @@ function slideStatus(
   return statuses.every((status) => status !== "todo") ? "done" : "todo";
 }
 
+/**
+ * Every slide is skippable by swiping on, except that everything past the
+ * Computer slide stays locked until a username exists — the agent's mailbox
+ * is provisioned from it and later steps assume the @name.
+ */
+function slideLocked(
+  snapshot: OnboardingSnapshot,
+  slide: OnboardingSlide
+): boolean {
+  // An existing username unlocks regardless of the recorded step status —
+  // accounts that skipped the step but have a provisioned @name aren't gated.
+  if (snapshot.username) return false;
+  if (effectiveStatus(snapshot, "username") === "done") return false;
+  const gate = SLIDE_GROUPS.findIndex((s) => s.id === "computer");
+  return SLIDE_GROUPS.indexOf(slide) > gate;
+}
+
 /** Confirmed vault references — drafts and the avatar pointer excluded. */
 const isVaultMedia = (m: IdentityMediaView): boolean =>
   m.role === "selfie" || m.role === "character_sheet";
@@ -734,7 +770,10 @@ function computerBody(snapshot: OnboardingSnapshot): string {
     ? `<div class="mailbox"><span class="chip">Mailbox</span><strong>${esc(snapshot.address)}</strong></div><p class="muted">Your agent reads and drafts here; sending always waits for your approval. Edit the address below — the old one keeps routing forever.</p>`
     : `<p class="muted">Lowercase letters, digits, underscore — 2–24 characters. Your agent's mailbox is provisioned from it automatically.</p>`;
   const form = `<form method="post" class="row mailform"><input type="hidden" name="action" value="set_username"><input type="text" name="username" value="${esc(snapshot.username ?? "")}" placeholder="username" maxlength="24" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="text" enterkeyhint="done"><span class="suffix">@${esc(domain)}</span><button>${snapshot.address ? "Update" : "Save"}</button></form>`;
-  return `<p class="muted">Your agent gets its own computer. Pick where it lives — you can switch later, but its files start fresh on the new machine.</p>${environmentCards(snapshot)}${mailbox}${form}<div class="row actions">${skipForm("username", "Skip — name it later")}</div>`;
+  const gateNote = snapshot.username
+    ? ""
+    : '<p class="muted">Pick a username to unlock the rest — it provisions your agent\u2019s mailbox. Everything after this is skippable.</p>';
+  return `<p class="muted">Your agent gets its own computer. Pick where it lives — you can switch later, but its files start fresh on the new machine.</p>${environmentCards(snapshot)}${mailbox}${form}${gateNote}`;
 }
 
 /** The families offered during onboarding; Settings has the full menu. */
@@ -787,50 +826,10 @@ function stepBody(
     return modelBody(snapshot);
   }
   if (step === "selfies") {
-    const references = snapshot.identityMedia.filter(isVaultMedia);
-    const thumbs = references
-      .filter((m) => m.url)
-      .map(
-        (m) =>
-          `<img class="idthumb" src="${esc(m.url ?? "")}" alt="${esc(m.role === "character_sheet" ? "character sheet" : "selfie")}">`
-      )
-      .join("");
-    const gallery = thumbs ? `<div class="idgrid">${thumbs}</div>` : "";
-    // Booth captures post upload_selfie on finalize; the plain form stays
-    // the lite/Messages and no-camera path (capture="user" opens the iPhone
-    // camera directly from the picker).
-    const booth = lite ? "" : boothMount("photo");
-    const upload = `<details${lite ? " open" : ""}><summary>Upload from your library</summary><form method="post" enctype="multipart/form-data" class="row"><input type="hidden" name="action" value="upload_selfie"><input type="file" name="file" accept="image/png,image/jpeg,image/webp,image/heic,image/heif" capture="user"><button>Upload</button></form><p class="muted">iPhone HEIC photos convert automatically.</p></details>`;
-    // Two-step character sheet, same card: generate renders a draft; the
-    // owner then saves it into the vault or discards it.
-    const draft = snapshot.identityMedia.find(
-      (m) => m.role === "character_sheet_draft"
-    );
-    const sheet = !snapshot.username
-      ? `<p class="muted">Set a <a href="?step=username">username</a> first — the character sheet is bound to your @name.</p>`
-      : draft
-        ? `<div class="sheetcard"><p class="muted">Step 2 of 2 — review your character sheet, then save it to the vault or discard it.</p>${draft.url ? `<img class="sheetpreview" src="${esc(draft.url)}" alt="character sheet draft">` : ""}<div class="row"><form method="post" class="inline"><input type="hidden" name="action" value="save_character_sheet"><input type="hidden" name="asset_id" value="${esc(draft.assetId)}"><button>Save to vault</button></form><form method="post" class="inline"><input type="hidden" name="action" value="discard_character_sheet"><input type="hidden" name="asset_id" value="${esc(draft.assetId)}"><button class="ghost">Discard</button></form></div></div>`
-        : `<div class="sheetcard"><p class="muted">Step 1 of 2 — generate a character sheet from your photos; you review it before anything is saved.</p><form method="post" class="inline"><input type="hidden" name="action" value="generate_character_sheet"><button${references.length > 0 ? "" : ' class="ghost"'}>Generate character sheet</button></form></div>`;
-    return `<p class="muted">Step into the booth — shoot from your iPhone or your MacBook camera, or upload from your library. Photos live privately in your image vault and anchor your @${esc(snapshot.username ?? "username")} identity for generated media.</p>${booth}${gallery}${upload}${sheet}<div class="row actions">${skipForm("selfies")}</div>`;
+    return `${boothPhotoBody(snapshot, lite)}${photoSelectBody(snapshot)}${sheetBody(snapshot)}`;
   }
   if (step === "twin") {
-    if (!snapshot.twinAvailable) {
-      return `<p class="muted">Digital twin creation isn't configured on this deployment — set it up later from Settings once it is. Nothing here blocks the rest of setup.</p><div class="row actions">${skipForm("twin", "Skip — not configured")}</div>`;
-    }
-    const twin = snapshot.twin;
-    const consent = twin?.consent_video_key
-      ? `<p>Consent recording on file.</p>`
-      : `${lite ? "" : boothMount("video")}<details${lite ? " open" : ""}><summary>Upload a recording instead</summary><p class="muted">Record or upload a short video of yourself saying you consent to creating a digital twin of your likeness.</p><form method="post" enctype="multipart/form-data" class="row"><input type="hidden" name="action" value="upload_consent"><input type="file" name="file" accept="video/mp4,video/webm" capture="user"><button>Upload consent</button></form></details>`;
-    const reference = snapshot.identityMedia.find(
-      (m) => isVaultMedia(m) && m.url
-    );
-    const create = reference
-      ? `<form method="post" class="stack"><input type="hidden" name="action" value="create_twin"><input type="text" name="script" placeholder="What should @${esc(snapshot.username ?? "you")} say? (a sentence or two)" maxlength="500"><button>Create twin video</button></form>`
-      : `<p class="muted">Add a photo on the <a href="?step=selfies">selfies step</a> first — the twin animates your reference image.</p>`;
-    const statusLine = twin
-      ? `<p>Twin status: <strong>${esc(twin.status)}</strong>.</p>`
-      : "";
-    return `<p class="muted">Optional — create a talking-head twin from your reference photo. Record the consent line below, and the video is delivered privately: only you can share it.</p>${statusLine}${consent}${create}<div class="row actions">${skipForm("twin")}</div>`;
+    return `${boothVideoBody(snapshot, lite)}${twinCreateBody(snapshot)}`;
   }
   if (step === "avatar") {
     // First option: train a reusable avatar from an identity image (when
@@ -1040,6 +1039,103 @@ function browserBody(snapshot: OnboardingSnapshot): string {
   return `${status}${command}${disable ? `<div class="row actions">${disable}</div>` : ""}`;
 }
 
+/**
+ * Photo Booth wizard panels — the slide's six stepper steps. Each reads and
+ * writes the same three step IDs (selfies/twin/avatar) as before; only the
+ * presentation is split.
+ */
+function boothPhotoBody(snapshot: OnboardingSnapshot, lite: boolean): string {
+  // Booth captures post upload_selfie on finalize; the plain form stays
+  // the lite/Messages and no-camera path (capture="user" opens the iPhone
+  // camera directly from the picker).
+  const booth = lite ? "" : boothMount("photo");
+  const upload = `<details${lite ? " open" : ""}><summary>Upload from your library</summary><form method="post" enctype="multipart/form-data" class="row"><input type="hidden" name="action" value="upload_selfie"><input type="file" name="file" accept="image/png,image/jpeg,image/webp,image/heic,image/heif" capture="user"><button>Upload</button></form><p class="muted">iPhone HEIC photos convert automatically.</p></details>`;
+  return `<p class="muted">Step into the booth — shoot from your iPhone or your MacBook camera, or upload from your library. Photos live privately in your image vault and anchor your @${esc(snapshot.username ?? "username")} identity for generated media.</p>${booth}${upload}<div class="row actions">${skipForm("selfies")}</div>`;
+}
+
+function photoSelectBody(snapshot: OnboardingSnapshot): string {
+  const references = snapshot.identityMedia.filter(isVaultMedia);
+  const thumbs = references
+    .filter((m) => m.url)
+    .map(
+      (m) =>
+        `<img class="idthumb" src="${esc(m.url ?? "")}" alt="${esc(m.role === "character_sheet" ? "character sheet" : "selfie")}">`
+    )
+    .join("");
+  const gallery = thumbs
+    ? `<div class="idgrid">${thumbs}</div>`
+    : `<p class="muted">Nothing selected yet — take or upload a photo first, then tap shots in the booth gallery and confirm with the green check.</p>`;
+  return `<p class="muted">Your confirmed photos — these live privately in your vault and anchor generated media.</p>${gallery}`;
+}
+
+function sheetBody(snapshot: OnboardingSnapshot): string {
+  const references = snapshot.identityMedia.filter(isVaultMedia);
+  // Two-step character sheet, same card: generate renders a draft; the
+  // owner then saves it into the vault or discards it.
+  const draft = snapshot.identityMedia.find(
+    (m) => m.role === "character_sheet_draft"
+  );
+  return !snapshot.username
+    ? `<p class="muted">Set a <a href="?step=username">username</a> first — the character sheet is bound to your @name.</p>`
+    : draft
+      ? `<div class="sheetcard"><p class="muted">Step 2 of 2 — review your character sheet, then save it to the vault or discard it.</p>${draft.url ? `<img class="sheetpreview" src="${esc(draft.url)}" alt="character sheet draft">` : ""}<div class="row"><form method="post" class="inline"><input type="hidden" name="action" value="save_character_sheet"><input type="hidden" name="asset_id" value="${esc(draft.assetId)}"><button>Save to vault</button></form><form method="post" class="inline"><input type="hidden" name="action" value="discard_character_sheet"><input type="hidden" name="asset_id" value="${esc(draft.assetId)}"><button class="ghost">Discard</button></form></div></div>`
+      : `<div class="sheetcard"><p class="muted">Step 1 of 2 — generate a character sheet from your photos; you review it before anything is saved.</p><form method="post" class="inline"><input type="hidden" name="action" value="generate_character_sheet"><button${references.length > 0 ? "" : ' class="ghost"'}>Generate character sheet</button></form></div>`;
+}
+
+function boothVideoBody(snapshot: OnboardingSnapshot, lite: boolean): string {
+  if (!snapshot.twinAvailable) {
+    return `<p class="muted">Digital twin creation isn't configured on this deployment — set it up later from Settings once it is. Nothing here blocks the rest of setup.</p><div class="row actions">${skipForm("twin", "Skip — not configured")}</div>`;
+  }
+  const consent = snapshot.twin?.consent_video_key
+    ? `<p>Consent recording on file.</p>`
+    : `${lite ? "" : boothMount("video")}<details${lite ? " open" : ""}><summary>Upload a recording instead</summary><p class="muted">Record or upload a short video of yourself saying you consent to creating a digital twin of your likeness.</p><form method="post" enctype="multipart/form-data" class="row"><input type="hidden" name="action" value="upload_consent"><input type="file" name="file" accept="video/mp4,video/webm" capture="user"><button>Upload consent</button></form></details>`;
+  return `<p class="muted">Optional — record the consent line for a talking-head twin of your likeness. The video is delivered privately: only you can share it.</p>${consent}<div class="row actions">${skipForm("twin")}</div>`;
+}
+
+function twinCreateBody(snapshot: OnboardingSnapshot): string {
+  if (!snapshot.twinAvailable) {
+    return `<p class="muted">Digital twin creation isn't configured on this deployment — nothing here blocks the rest of setup.</p>`;
+  }
+  const twin = snapshot.twin;
+  const reference = snapshot.identityMedia.find(
+    (m) => isVaultMedia(m) && m.url
+  );
+  const create = reference
+    ? `<form method="post" class="stack"><input type="hidden" name="action" value="create_twin"><input type="text" name="script" placeholder="What should @${esc(snapshot.username ?? "you")} say? (a sentence or two)" maxlength="500"><button>Create twin video</button></form>`
+    : `<p class="muted">Add a photo on the <a href="?step=selfies">selfies step</a> first — the twin animates your reference image.</p>`;
+  const statusLine = twin
+    ? `<p>Twin status: <strong>${esc(twin.status)}</strong>.</p>`
+    : "";
+  return `<p class="muted">Optional — create a talking-head twin from your reference photo.</p>${statusLine}${create}`;
+}
+
+/**
+ * Whether a stepper panel's own stage is genuinely complete — drives the
+ * green checks on the in-slide stepper. Booth panels check the artifact each
+ * stage produces; generic sections fall back to their steps' statuses.
+ */
+function sectionDone(
+  snapshot: OnboardingSnapshot,
+  key: SlideSectionKey
+): boolean {
+  const hasVaultMedia = snapshot.identityMedia.some(
+    (m) => isVaultMedia(m) && m.url
+  );
+  if (key === "booth_photo" || key === "photo_select") return hasVaultMedia;
+  if (key === "sheet")
+    return snapshot.identityMedia.some((m) => m.role === "character_sheet");
+  if (key === "booth_video") return Boolean(snapshot.twin?.consent_video_key);
+  if (key === "twin_create")
+    return Boolean(snapshot.twin && snapshot.twin.status !== "avatar_only");
+  if (key === "avatar")
+    return Boolean(
+      snapshot.avatarAssetId || snapshot.twin?.provider_avatar_id
+    );
+  return SECTION_STEPS[key].every(
+    (step) => effectiveStatus(snapshot, step) === "done"
+  );
+}
+
 /** Renders one slide section — a step body, or a composite of several. */
 function sectionBody(
   snapshot: OnboardingSnapshot,
@@ -1049,6 +1145,11 @@ function sectionBody(
 ): string {
   if (key === "computer") return computerBody(snapshot);
   if (key === "browser") return browserBody(snapshot);
+  if (key === "booth_photo") return boothPhotoBody(snapshot, lite);
+  if (key === "photo_select") return photoSelectBody(snapshot);
+  if (key === "sheet") return sheetBody(snapshot);
+  if (key === "booth_video") return boothVideoBody(snapshot, lite);
+  if (key === "twin_create") return twinCreateBody(snapshot);
   return stepBody(snapshot, key, browserSignin, lite);
 }
 
@@ -1162,7 +1263,7 @@ main.slide{flex:1;display:flex;flex-direction:column;align-items:center;justify-
 main.slide .kicker{animation:riseIn var(--slide-in) cubic-bezier(0.22,1,0.36,1) backwards;animation-delay:60ms}
 main.slide h1{animation:riseIn var(--slide-in) cubic-bezier(0.22,1,0.36,1) backwards;animation-delay:130ms}
 main.slide .panel{animation:riseIn var(--slide-in) cubic-bezier(0.22,1,0.36,1) backwards;animation-delay:200ms}
-@media(prefers-reduced-motion:reduce){main.slide,main.slide .kicker,main.slide h1,main.slide .panel{animation:none}.navlink,button,.stepnode,.stepline i{transition:none}}
+@media(prefers-reduced-motion:reduce){main.slide,main.slide .kicker,main.slide h1,main.slide .panel{animation:none}.navlink,button,.dots a{transition:none}}
 .kicker{font-family:var(--font-ui);font-size:clamp(0.68rem,0.8vw,0.85rem);letter-spacing:0.14em;text-transform:uppercase;color:var(--accent);margin:0 0 0.9rem;text-align:center}
 h1{font-weight:400;font-size:clamp(1.9rem,5.4vw,3.6rem);letter-spacing:-0.045em;line-height:0.98;margin:0 0 1.4rem;text-align:center;max-width:26ch;text-shadow:var(--text-shadow)}
 .panel{width:min(100%,34rem);border-radius:var(--radius-panel);border:1px solid var(--ring);background:var(--panel-bg);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);box-shadow:var(--shadow);padding:clamp(1rem,3.4vw,1.5rem)}
@@ -1171,16 +1272,13 @@ footer.nav{display:flex;align-items:center;justify-content:space-between;gap:0.7
 .navlink{display:inline-flex;align-items:center;min-height:2.75rem;padding:0 1.1rem;border-radius:var(--radius-pill);border:1px solid var(--ring);background:var(--panel-bg);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);font-size:0.66rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink);text-decoration:none;white-space:nowrap;transition:box-shadow 200ms ease,transform 200ms ease}
 .navlink:hover{transform:scale(1.04)}
 .navlink.ghosted{opacity:0.35;pointer-events:none}
-.dots{display:flex;align-items:center;flex-wrap:nowrap;min-width:0;overflow-x:auto;scrollbar-width:none}
-.dots::-webkit-scrollbar{display:none}
-.stepnode{flex:none;width:1.7rem;height:1.7rem;border-radius:50%;border:1.5px solid var(--ring);background:var(--panel-bg);color:var(--ink-muted);display:flex;align-items:center;justify-content:center;font-family:var(--font-ui);font-size:0.64rem;text-decoration:none;transition:transform 200ms ease,background 200ms ease,color 200ms ease,border-color 200ms ease}
-.stepnode:hover{transform:scale(1.15)}
-.stepnode.done{background:#30d158;border-color:#30d158;color:#fff}
-.stepnode.skipped{background:var(--ink-muted);border-color:var(--ink-muted);color:var(--panel-bg)}
-.stepnode.active{background:var(--accent);border-color:var(--accent);color:var(--panel-bg);outline:1.5px solid var(--accent);outline-offset:2.5px}
-.stepline{flex:none;width:0.9rem;height:2px;background:var(--ring);position:relative;overflow:hidden}
-.stepline i{position:absolute;inset:0;background:#30d158;transform:scaleX(0);transform-origin:left;transition:transform 300ms ease}
-.stepline.complete i{transform:scaleX(1)}
+.dots{display:flex;gap:0.42rem;align-items:center;flex-wrap:wrap;min-width:0}
+.dots a{width:1.5rem;height:1.5rem;padding:0.5rem;border-radius:50%;background:var(--ring);background-clip:content-box;display:block;transition:transform 200ms ease}
+.dots a:hover{transform:scale(1.5)}
+.dots a.done{background:var(--accent)}
+.dots a.skipped{background:var(--ink-muted)}
+.dots a.active{outline:1.5px solid var(--accent);outline-offset:2.5px;background:var(--accent)}
+.dots .locked{width:1.5rem;height:1.5rem;padding:0.5rem;border-radius:50%;background:var(--ring);background-clip:content-box;display:block;opacity:0.35}
 p{font-size:0.95rem;line-height:1.5;margin:0 0 0.6rem}
 a{color:var(--accent)}
 button{font-family:var(--font-ui);background:var(--ink);color:var(--on-ink);border:0;border-radius:var(--radius-pill);min-height:2.75rem;padding:0.5rem 1.15rem;font-size:0.72rem;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;transition:transform 180ms ease}
@@ -1276,6 +1374,7 @@ input[type=file]{flex:1;min-width:0;color:var(--ink-muted);font-size:0.85rem;fon
 .cam-modes{display:flex;gap:1.3rem;justify-content:center}
 .cam-mode{font-family:var(--font-ui);font-size:0.66rem;letter-spacing:0.14em;color:rgba(255,255,255,0.65);text-decoration:none;padding:0.15rem 0.2rem}
 .cam-mode.on{color:#ffd60a}
+.cam-mode.off{opacity:0.45}
 .cam-row{display:grid;grid-template-columns:1fr auto 1fr;align-items:center}
 .cam-thumb{justify-self:start;width:2.6rem;height:2.6rem;border-radius:0.55rem;border:1.5px solid rgba(255,255,255,0.7);background:rgba(255,255,255,0.08);overflow:hidden;display:block}
 .cam-thumb img{width:100%;height:100%;object-fit:cover;display:block}
@@ -1340,10 +1439,19 @@ export function renderOnboarding(
 ): string {
   // The deck navigates by slide; `active` stays a step ID so deep links,
   // agent-side tools, and post-action redirects keep addressing sub-steps.
-  const slide = slideForStep(active);
+  // Deep links into locked slides land on the Computer slide's username gate.
+  const requestedSlide = slideForStep(active);
+  const slide = slideLocked(snapshot, requestedSlide)
+    ? SLIDE_GROUPS.find((s) => s.id === "computer") ?? requestedSlide
+    : requestedSlide;
+  const shownStep: OnboardingStepId =
+    slide !== requestedSlide ? "username" : active;
   const index = SLIDE_GROUPS.indexOf(slide);
   const prev = index > 0 ? SLIDE_GROUPS[index - 1] : null;
-  const next = index < SLIDE_GROUPS.length - 1 ? SLIDE_GROUPS[index + 1] : null;
+  const nextSlide =
+    index < SLIDE_GROUPS.length - 1 ? SLIDE_GROUPS[index + 1] : null;
+  const next =
+    nextSlide && slideLocked(snapshot, nextSlide) ? null : nextSlide;
   const pad = (n: number): string => String(n).padStart(2, "0");
   // The welcome intro is unnumbered — the counter reads N / 06 over the six
   // grouped slides, matching the "six short steps" welcome copy.
@@ -1359,28 +1467,22 @@ export function renderOnboarding(
       ? `?step=${esc(step)}`
       : `?step=${esc(step)}&amp;theme=${esc(current.id)}`;
   };
-  // Stepper-style deck indicators: numbered circles joined by connectors,
-  // done slides get a green check, the active slide is highlighted. Each
-  // indicator stays a plain anchor — jump to any slide, no JS required.
-  const check =
-    '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M5 12.5l4.2 4.2L19 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  // iPhone-style page dots: swipe (or tap a dot) to move between slides and
+  // skip anything — except that slides past Computer stay locked until the
+  // username (agent mailbox) exists.
   const dots = SLIDE_GROUPS.map((target, i) => {
     const status = slideStatus(snapshot, target);
-    const done = status === "done";
     const cls = [
-      "stepnode",
       target === slide ? "active" : "",
-      done ? "done" : status === "skipped" ? "skipped" : "",
+      status === "done" ? "done" : status === "skipped" ? "skipped" : "",
     ]
       .filter(Boolean)
       .join(" ");
-    const n = numbered.indexOf(target);
-    const glyph = done ? check : n === -1 ? "•" : String(n + 1);
-    const before = SLIDE_GROUPS[i - 1];
-    const line = before
-      ? `<span class="stepline${slideStatus(snapshot, before) === "done" ? " complete" : ""}" aria-hidden="true"><i></i></span>`
-      : "";
-    return `${line}<a href="${href(target)}" class="${cls}" aria-label="${pad(i + 1)} ${esc(target.title)}" title="${esc(target.title)}">${glyph}</a>`;
+    const label = `aria-label="${pad(i + 1)} ${esc(target.title)}" title="${esc(target.title)}"`;
+    if (slideLocked(snapshot, target)) {
+      return `<span class="locked" ${label}></span>`;
+    }
+    return `<a href="${href(target)}"${cls ? ` class="${cls}"` : ""} ${label}></a>`;
   }).join("");
   const noticeHtml = notice
     ? `<div class="notice">${esc(notice)}</div>`
@@ -1424,7 +1526,8 @@ export function renderOnboarding(
     const heading = section.label
       ? `<h2 class="subhead">${esc(section.label)}</h2>`
       : "";
-    return `<section class="panel">${heading}${sectionBody(snapshot, section.key, browserSignin, lite)}</section>`;
+    const done = sectionDone(snapshot, section.key) ? " data-step-done" : "";
+    return `<section class="panel"${done}>${heading}${sectionBody(snapshot, section.key, browserSignin, lite)}</section>`;
   };
   // Sections that declare a pane render inside a scroll-snap pager — the
   // Photo Booth's photo/video two-part flow — with a segmented control on
@@ -1437,10 +1540,19 @@ export function renderOnboarding(
   // a stepper; deep links land on the panel that owns the active step.
   const stepper =
     !lite && !slide.split && panes.length <= 1 && slide.sections.length > 1;
-  const activeSection = Math.max(
-    0,
-    slide.sections.findIndex((s) => SECTION_STEPS[s.key].includes(active))
-  );
+  // A pending character-sheet draft pulls the booth to its review panel —
+  // generate/confirm actions land back on ?step=selfies, which would
+  // otherwise reopen the first panel and hide the Save/Discard controls.
+  const draftPending =
+    slide.id === "booth" &&
+    shownStep === "selfies" &&
+    snapshot.identityMedia.some((m) => m.role === "character_sheet_draft");
+  const activeSection = draftPending
+    ? slide.sections.findIndex((s) => s.key === "sheet")
+    : Math.max(
+        0,
+        slide.sections.findIndex((s) => SECTION_STEPS[s.key].includes(shownStep))
+      );
   const sections =
     panes.length > 1
       ? (() => {

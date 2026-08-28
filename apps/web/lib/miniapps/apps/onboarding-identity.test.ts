@@ -344,29 +344,51 @@ describe("twin step", () => {
     expect(lite).not.toContain("identity-booth");
   });
 
-  it("renders the booth as a swipeable photo/video pager outside lite mode", async () => {
+  it("renders the booth as a six-stage stepper outside lite mode", async () => {
     const full = await (await onboarding.render(makeCtx("selfies"))).text();
-    expect(full).toContain('class="pager"');
-    expect(full).toContain('id="pane-photo"');
-    expect(full).toContain('id="pane-video"');
-    expect(full).toContain('href="#pane-video"');
+    expect(full).toContain('data-stepper data-stepper-active="0"');
+    expect(full).toContain("/creator-os/deck-stepper.js");
+    expect(full).toContain("Take photo");
+    expect(full).toContain("Photo selection");
+    expect(full).toContain("Generate character sheet");
+    expect(full).toContain("Take video");
+    expect(full).toContain("Create digital twin");
+    expect(full).toContain("Avatar selection");
     expect(full).toContain("/creator-os/deck-swipe.js");
     expect(full).toContain("data-swipe-prev=");
     expect(full).toContain("data-swipe-next=");
+    // Deep links land on the panel owning the step.
+    const { listIdentityMediaViews } = await import("@/lib/identity/assets");
+    vi.mocked(listIdentityMediaViews).mockResolvedValueOnce([
+      { assetId: "asset-1", role: "selfie", url: "https://signed.example/a.png" },
+      {
+        assetId: "asset-2",
+        role: "character_sheet_draft",
+        url: "https://signed.example/d.png",
+      },
+    ]);
+    // A pending draft pulls ?step=selfies to the review (sheet) panel.
+    const draft = await (await onboarding.render(makeCtx("selfies"))).text();
+    expect(draft).toContain('data-stepper data-stepper-active="2"');
+    const twin = await (await onboarding.render(makeCtx("twin"))).text();
+    expect(twin).toContain('data-stepper data-stepper-active="3"');
+    const avatar = await (await onboarding.render(makeCtx("avatar"))).text();
+    expect(avatar).toContain('data-stepper data-stepper-active="5"');
 
     const lite = await (
       await onboarding.render(makeCtx("selfies", { via: "card" }))
     ).text();
-    expect(lite).not.toContain('class="pager"');
+    expect(lite).not.toContain("data-stepper");
     expect(lite).not.toContain("deck-swipe.js");
   });
 
-  it("renders stepper deck indicators and steppers multi-section slides", async () => {
+  it("renders iPhone-style page dots and steppers multi-section slides", async () => {
     const booth = await (await onboarding.render(makeCtx("selfies"))).text();
-    expect(booth).toContain('class="stepnode active"');
-    expect(booth).toContain('class="stepline"');
-    // Paged slides keep the Photo|Video pager instead of a stepper.
-    expect(booth).not.toContain("data-stepper");
+    expect(booth).toContain('class="dots"');
+    expect(booth).not.toContain("stepnode");
+    // Green checks come from server-reported stage completion, not position:
+    // a stage marks data-step-done only once its artifact exists.
+    expect(booth).toContain("data-step-done");
 
     const context = await (await onboarding.render(makeCtx("imessage"))).text();
     expect(context).toContain('data-stepper data-stepper-active="0"');

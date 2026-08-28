@@ -73,12 +73,20 @@ function attachStepper(): void {
     panels.forEach((panel, i) =>
       panel.classList.toggle("stepper-panel-hidden", i !== current)
     );
+    // Green checks mirror server-reported stage completion (data-step-done),
+    // not position — a skipped or untouched stage never shows complete.
     indicators.forEach((button, i) => {
+      const done = panels[i]?.hasAttribute("data-step-done") ?? false;
       button.classList.toggle("active", i === current);
-      button.classList.toggle("complete", i < current);
-      button.innerHTML = i < current ? CHECK : String(i + 1);
+      button.classList.toggle("complete", done);
+      button.innerHTML = done ? CHECK : String(i + 1);
     });
-    lines.forEach((line, i) => line.classList.toggle("complete", i < current));
+    lines.forEach((line, i) =>
+      line.classList.toggle(
+        "complete",
+        panels[i]?.hasAttribute("data-step-done") ?? false
+      )
+    );
     back.disabled = current === 0;
     // The last step's Continue hands off to the next slide when one exists.
     const next = document
