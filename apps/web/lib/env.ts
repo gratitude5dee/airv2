@@ -228,6 +228,11 @@ export const env = {
   cdpApiKeyId: (): string | null => process.env["CDP_API_KEY_ID"] ?? null,
   cdpApiKeySecret: (): string | null => process.env["CDP_API_KEY_SECRET"] ?? null,
   stripeSecretKey: (): string => required("STRIPE_SECRET_KEY"),
+  // Publishable by definition (it renders in browser payloads) — served to
+  // the hosted approval page for the Express Checkout Element. Optional:
+  // without it the page simply offers the Checkout redirect instead.
+  stripePublishableKey: (): string | null =>
+    process.env["STRIPE_PUBLISHABLE_KEY"] ?? null,
   stripeWebhookSecret: (): string => required("STRIPE_WEBHOOK_SECRET"),
   // MA2.4 plugin sign-in. Hashes plugin bearer tokens at rest; defaults to
   // the web session secret so the beta needs no new deploy config.

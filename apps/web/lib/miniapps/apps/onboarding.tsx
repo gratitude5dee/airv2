@@ -947,22 +947,24 @@ function stepBody(
   }
   if (step === "link") {
     const link = snapshot.link;
-    const intro = `<p class="muted">Link is Stripe's wallet. Pairing your agent's computer with your Link account lets it request one-time-use payment credentials for purchases and bookings — every spend still waits for your approval at link.com, and you always click the final Pay button.</p>`;
+    const intro = `<p class="muted">Link is Stripe's wallet. Pair it once and your agent can request one-time-use payment credentials for purchases — every spend still comes back to you as a one-tap approval sheet, and your real card details are never shared.</p>`;
     if (link?.authenticated) {
-      return `${intro}<p>Link connected — your agent can request payment credentials, and each spend still needs your approval.</p><div class="row actions">${skipForm("link", "Continue")}</div>`;
+      return `${intro}<p>Link connected — your agent can request payment credentials, and each spend still needs your one-tap approval.</p><div class="row actions">${skipForm("link", "Continue")}</div>`;
     }
     if (link && !link.installed) {
       return `${intro}<p class="muted">The Link CLI isn't on your agent's computer yet — it arrives with the next computer update. Skip for now and connect later from here.</p><div class="row actions">${skipForm("link", "Skip — not ready yet")}</div>`;
     }
-    const connectForm = (label: string): string =>
-      `<form method="post" class="inline"><input type="hidden" name="action" value="link_connect"><button>${esc(label)}</button></form>`;
+    const connectForm = (label: string, ghost = false): string =>
+      `<form method="post" class="inline"><input type="hidden" name="action" value="link_connect"><button${ghost ? ' class="ghost"' : ""}>${esc(label)}</button></form>`;
     const checkForm = `<form method="post" class="inline"><input type="hidden" name="action" value="link_check"><button>I approved — check status</button></form>`;
     const pendingUrl = safeVerificationUrl(link?.verification_url ?? null);
     if (pendingUrl) {
+      // One tap to link.com (primary CTA), phrase shown big for the match
+      // check there, then a single confirm tap back here.
       const phrase = link?.phrase
-        ? `<p>Confirm this phrase at link.com: <strong>${esc(link.phrase)}</strong></p>`
+        ? `<div class="linkphrase">${esc(link.phrase)}</div><p class="muted">Link shows this phrase — confirm it matches.</p>`
         : "";
-      return `${intro}<p><a href="${esc(pendingUrl)}" target="_blank" rel="noopener">Approve the connection at link.com</a></p>${phrase}<p class="muted">Opens in your browser — no app to install. Log in or sign up with the email on your Link wallet. The code expires after a few minutes; use Start over for a fresh one.</p><div class="row actions">${checkForm}${connectForm("Start over")}${skipForm("link", "Later")}</div>`;
+      return `${intro}<a class="linkcta" href="${esc(pendingUrl)}" target="_blank" rel="noopener">Approve at link.com →</a>${phrase}<p class="muted">Opens in your browser — log in with the email on your Link wallet. The code expires after a few minutes.</p><div class="row actions">${checkForm}${connectForm("Start over", true)}${skipForm("link", "Later")}</div>`;
     }
     return `${intro}<div class="row actions">${connectForm("Connect Link")}${skipForm("link", "Later")}</div>`;
   }
@@ -1225,6 +1227,9 @@ form.envform{display:block;height:100%}
 .mailform .suffix{font-family:var(--font-ui);font-size:0.72rem;letter-spacing:0.06em;color:var(--ink-muted)}
 .famgrid{display:grid;gap:0.5rem;grid-template-columns:repeat(auto-fit,minmax(9rem,1fr));margin:0.5rem 0 0.7rem}
 .famform button{width:100%}
+.linkcta{display:flex;align-items:center;justify-content:center;gap:0.5rem;background:var(--ink);color:var(--on-ink);border-radius:var(--radius-pill);min-height:2.75rem;padding:0.5rem 1.15rem;font-family:var(--font-ui);font-size:0.72rem;letter-spacing:0.06em;text-transform:uppercase;text-decoration:none;transition:transform 180ms ease}
+.linkcta:hover{transform:scale(1.03)}
+.linkphrase{display:flex;align-items:center;justify-content:center;border:1px solid var(--accent);border-radius:var(--radius-well);background:var(--well-bg);padding:0.7rem 0.85rem;margin:0.6rem 0;font-size:1.1rem;letter-spacing:0.04em;font-weight:600}
 .prompts{display:grid;gap:0.6rem;margin:0.5rem 0 0.8rem}
 .prompt{display:grid;gap:0.45rem;border:1px solid var(--ring);border-radius:var(--radius-well);background:var(--well-bg);padding:0.75rem 0.85rem}
 .prompt strong{font-family:var(--font-ui);font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase}

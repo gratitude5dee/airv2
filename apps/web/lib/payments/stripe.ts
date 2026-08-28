@@ -123,6 +123,42 @@ export interface ConnectCheckoutParams extends CheckoutParams {
   quantity?: number;
 }
 
+export interface ConnectIntentParams {
+  /** Amount in USD cents. */
+  amountCents: number;
+  description: string;
+  /** Attributed back on the webhook (e.g. payment_request_id). */
+  metadata?: Record<string, string>;
+}
+
+export interface ConnectIntent {
+  id: string;
+  clientSecret: string | null;
+}
+
+/**
+ * Direct-charge PaymentIntent ON the merchant's connected account — the
+ * server half of the Express Checkout Element (Link / Apple Pay / Google
+ * Pay one-click buttons on the hosted approval page). Only the client
+ * secret leaves the server; the secret key never does (C2).
+ */
+export async function createConnectPaymentIntent(
+  stripeAccount: string,
+  params: ConnectIntentParams
+): Promise<ConnectIntent> {
+  const intent = await stripeClient().paymentIntents.create(
+    {
+      amount: params.amountCents,
+      currency: "usd",
+      description: params.description,
+      automatic_payment_methods: { enabled: true },
+      metadata: params.metadata ?? {},
+    },
+    { stripeAccount }
+  );
+  return { id: intent.id, clientSecret: intent.client_secret };
+}
+
 /**
  * Direct-charge Checkout session created ON the merchant's connected
  * account (the `stripeAccount` request option): the merchant is the payee

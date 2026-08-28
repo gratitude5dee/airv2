@@ -29,6 +29,7 @@ import {
 import { MAX_TTL_MINUTES } from "@/lib/vault/tickets";
 import { sendMiniAppCard } from "@/lib/miniapps/cards";
 import { claimCardSend, type CardClaim } from "@/lib/miniapps/cardSends";
+import { mintApprovalUrl } from "@/lib/approvals/token";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -92,7 +93,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 async function sendPurchaseCard(
   supabase: SupabaseClient,
   userId: string,
-  review?: { host: string; amountBand: string; cardName: string }
+  review?: {
+    host: string;
+    amountBand: string;
+    cardName: string;
+    approvalUrl: string;
+  }
 ): Promise<void> {
   const { data: dest } = await supabase
     .from("imessage_destinations")
@@ -115,7 +121,7 @@ async function sendPurchaseCard(
         ? {
             caption: "Approve payment",
             subcaption: `${review.amountBand} on ${review.host}`,
-            summary: `Approve payment — ${review.cardName}, ${review.amountBand} on ${review.host}. You still click the final Pay button.`,
+            summary: `Approve payment — ${review.cardName}, ${review.amountBand} on ${review.host}. Review and approve: ${review.approvalUrl}`,
           }
         : undefined
     );
@@ -165,15 +171,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         summary,
         amountUsd,
       });
+      // Hosted approval deep link — minted at send time, never stored. The
+      // agent relays it (iMessage) so the owner lands on the Link-style
+      // approval sheet at app.wzrd.tech with one tap.
+      const approvalUrl = mintApprovalUrl(userId, result.decisionId);
       await sendPurchaseCard(supabase, userId, {
         host: normalizeHost(host),
         amountBand: result.amountBand,
         cardName: result.cardName,
+        approvalUrl,
       });
       return NextResponse.json({
         ok: true,
         decision_id: result.decisionId,
         amount_band: result.amountBand,
+        approval_url: approvalUrl,
       });
     } catch (error) {
       if (error instanceof PurchaseError) {
