@@ -1,0 +1,23 @@
+name: Apply database migrations
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/**"
+  workflow_dispatch:
+
+concurrency:
+  group: db-migrations
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply pending migrations to production
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: imkbxdsxfgmkylbgaygv
+        run: bash scripts/apply-migrations.sh
