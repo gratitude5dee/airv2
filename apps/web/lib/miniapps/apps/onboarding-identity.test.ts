@@ -212,6 +212,14 @@ describe("selfies step", () => {
     expect(body).toContain('value="skip"');
   });
 
+  it("accepts iPhone HEIC uploads on the selfie form", async () => {
+    const body = await (await onboarding.render(makeCtx("selfies"))).text();
+    expect(body).toContain(
+      'accept="image/png,image/jpeg,image/webp,image/heic,image/heif"'
+    );
+    expect(body).toContain("HEIC photos convert automatically");
+  });
+
   it("upload_selfie goes through the shared helper and marks the step done", async () => {
     const form = new FormData();
     form.set("action", "upload_selfie");
@@ -351,6 +359,24 @@ describe("twin step", () => {
     ).text();
     expect(lite).not.toContain('class="pager"');
     expect(lite).not.toContain("deck-swipe.js");
+  });
+
+  it("renders stepper deck indicators and steppers multi-section slides", async () => {
+    const booth = await (await onboarding.render(makeCtx("selfies"))).text();
+    expect(booth).toContain('class="stepnode active"');
+    expect(booth).toContain('class="stepline"');
+    // Paged slides keep the Photo|Video pager instead of a stepper.
+    expect(booth).not.toContain("data-stepper");
+
+    const context = await (await onboarding.render(makeCtx("imessage"))).text();
+    expect(context).toContain('data-stepper data-stepper-active="0"');
+    expect(context).toContain("/creator-os/deck-stepper.js");
+
+    const lite = await (
+      await onboarding.render(makeCtx("imessage", { via: "card" }))
+    ).text();
+    expect(lite).not.toContain("data-stepper");
+    expect(lite).not.toContain("deck-stepper.js");
   });
 
   it("upload_consent and create_twin go through the shared twin module", async () => {

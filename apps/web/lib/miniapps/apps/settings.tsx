@@ -472,7 +472,7 @@ function identityVaultBody(data: SettingsData): string {
     .join("");
   const gallery =
     items || '<div class="card muted">No identity images yet.</div>';
-  const upload = `<div class="card"><form method="post" enctype="multipart/form-data" class="row"><input type="hidden" name="action" value="upload_selfie"><input type="file" name="file" accept="image/png,image/jpeg,image/webp"><button>Upload image</button></form><p class="muted">PNG, JPEG, or WebP — stored privately in your image vault.</p>${
+  const upload = `<div class="card"><form method="post" enctype="multipart/form-data" class="row"><input type="hidden" name="action" value="upload_selfie"><input type="file" name="file" accept="image/png,image/jpeg,image/webp,image/heic,image/heif"><button>Upload image</button></form><p class="muted">PNG, JPEG, WebP, or HEIC (iPhone photos convert automatically) — stored privately in your image vault.</p>${
     data.username
       ? `<form method="post" class="inline"><input type="hidden" name="action" value="generate_character_sheet"><button class="ghost">Re-generate character sheet</button></form>`
       : '<p class="muted">Set a username to generate a character sheet.</p>'

@@ -12,7 +12,7 @@
  */
 
 const IGNORE =
-  ".pager, .dcar, .identity-booth, input, textarea, select, video, [data-noswipe]";
+  ".pager, .cgal, .identity-booth, input, textarea, select, video, [data-noswipe]";
 
 function attachSwipe(): void {
   const frame = document.querySelector<HTMLElement>("[data-swipe-prev], [data-swipe-next]");

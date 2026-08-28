@@ -16,6 +16,7 @@ import {
 } from "../assets/pipeline";
 import { ingestUploadedMedia } from "../creative/store";
 import { guardMediaUpload, MediaGuardError } from "../storage/guard";
+import { heifToJpeg, isHeif } from "./heif";
 
 export const IDENTITY_ROLES = [
   "selfie",
@@ -70,13 +71,30 @@ export async function uploadIdentityImage(
   file: File,
   role: IdentityRole
 ): Promise<{ ok: true; asset: CreativeAsset } | { ok: false; error: string }> {
-  const contentType = file.type.toLowerCase();
+  let contentType = file.type.toLowerCase();
+  let raw: Buffer = Buffer.from(await file.arrayBuffer());
+  // iPhone photos arrive as HEIC — convert once at ingest so the vault and
+  // the image-generation lane only ever see plain JPEGs.
+  if (isHeif(contentType, raw)) {
+    if (raw.length > IDENTITY_IMAGE_MAX_BYTES) {
+      return { ok: false, error: "image is too large — 8 MB max." };
+    }
+    try {
+      raw = await heifToJpeg(raw);
+      contentType = "image/jpeg";
+    } catch {
+      return {
+        ok: false,
+        error: "couldn't read that HEIC image — export it as JPEG and retry.",
+      };
+    }
+  }
   if (!IDENTITY_IMAGE_TYPES.has(contentType)) {
-    return { ok: false, error: "image must be png, jpeg, or webp." };
+    return { ok: false, error: "image must be png, jpeg, webp, or heic." };
   }
   let bytes: Buffer;
   try {
-    bytes = guardMediaUpload(Buffer.from(await file.arrayBuffer()), contentType, {
+    bytes = guardMediaUpload(raw, contentType, {
       maxBytes: IDENTITY_IMAGE_MAX_BYTES,
     });
   } catch (error) {
