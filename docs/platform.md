@@ -193,6 +193,9 @@ Full rationale in [`SECURITY-DECISIONS.md`](../SECURITY-DECISIONS.md).
   `?user_id=`), as JSON or a `?format=csv|jsonl` download. Metadata only (C4).
 - `GET /api/admin/feedback` — the feedback mini-app inbox (`?kind=`,
   `?status=`, `?limit=`).
+- `GET /api/admin/onboarding` — onboarding telemetry: the step funnel across
+  all users, mirror health (warm/cold/stale), and per-user progress rows from
+  the Postgres status mirror plus the onboarding card send. Metadata only (C4).
 - The operator dashboard (admin.wzrd.tech, `gratitude5dee/admin`) is the only
   consumer of these; it holds `ADMIN_API_KEY` server-side and never exposes it
   to the browser.
