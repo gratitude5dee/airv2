@@ -21,6 +21,7 @@ import {
 } from "@/lib/routing/inbound";
 import {
   carryQuickAckMarker,
+  dropQuickAckMarker,
   enqueueInbound,
   flushAfterDebounce,
   isBurstStart,
@@ -323,17 +324,27 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
               message.userId,
               message.spaceId,
             );
-            const ack = await quickAckReply(supabase, message.userId, body);
-            if (ack) {
-              await sender.sendText(message.spaceId, message.phone, ack);
-              // Embed the ack text so the agent knows exactly what went out
-              // and never re-answers a question the ack fully covered.
-              await updateQuickAckMarker(
-                supabase,
-                message.spaceId,
-                markerId,
-                ack,
-              );
+            let sent = false;
+            try {
+              const ack = await quickAckReply(supabase, message.userId, body);
+              if (ack) {
+                await sender.sendText(message.spaceId, message.phone, ack);
+                sent = true;
+                // Embed the ack text so the agent knows exactly what went out
+                // and never re-answers a question the ack fully covered.
+                await updateQuickAckMarker(
+                  supabase,
+                  message.spaceId,
+                  markerId,
+                  ack,
+                );
+              }
+            } finally {
+              if (!sent) {
+                // Nothing actually reached the user: drop the marker so the
+                // real turn is never told an acknowledgment was sent.
+                await dropQuickAckMarker(supabase, message.spaceId, markerId);
+              }
             }
           }
         } catch {

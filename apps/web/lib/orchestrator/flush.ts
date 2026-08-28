@@ -920,6 +920,24 @@ export async function updateQuickAckMarker(
     .eq("message_id", messageId);
 }
 
+/**
+ * Remove the marker when no ack actually reached the user (completion
+ * returned null or the send failed), so the real turn is never told an
+ * acknowledgment went out when none did. Best-effort like the update:
+ * if the turn already drained the row, the delete matches nothing.
+ */
+export async function dropQuickAckMarker(
+  supabase: SupabaseClient,
+  spaceId: string,
+  messageId: string
+): Promise<void> {
+  await supabase
+    .from("carried_messages")
+    .delete()
+    .eq("space_id", spaceId)
+    .eq("message_id", messageId);
+}
+
 /** Debounce wait + claim + run; the webhook route calls this via after(). */
 export async function flushAfterDebounce(
   supabase: SupabaseClient,
