@@ -73,13 +73,19 @@ export function cardLayout(appSlug: string): {
   };
 }
 
+/**
+ * `via` marks the surface the link opens in: `"card"` for a Messages webview
+ * (lite renders — no camera, no video), undefined for a real browser window.
+ * Links minted for /home's launcher must not claim the card surface.
+ */
 export function mintSignedLink(
   userId: string,
   appSlug: string,
-  resourceId: string
+  resourceId: string,
+  via?: "card" | undefined
 ): string {
   // Apps live at mini.wzrd.tech/<slug> (MA0); legacy /mini/<slug> 301s there.
-  return `${env.miniappOrigin()}/${appSlug}?t=${mintToken(userId, appSlug, resourceId, CARD_LINK_TTL_MINUTES, { via: "card" })}`;
+  return `${env.miniappOrigin()}/${appSlug}?t=${mintToken(userId, appSlug, resourceId, CARD_LINK_TTL_MINUTES, { via })}`;
 }
 
 /** Per-send copy override so a card bubble can carry its occasion (e.g. a
@@ -104,7 +110,7 @@ export async function sendMiniAppCard(
     const message = await sender.sendApp(
       spaceId,
       phone,
-      () => mintSignedLink(userId, appSlug, resourceId),
+      () => mintSignedLink(userId, appSlug, resourceId, "card"),
       { ...cardLayout(appSlug), ...layout }
     );
     await persistCardSession(
@@ -245,7 +251,7 @@ export async function updateMiniAppCard(
       spaceId,
       phone,
       session,
-      () => mintSignedLink(userId, appSlug, resourceId),
+      () => mintSignedLink(userId, appSlug, resourceId, "card"),
       cardLayout(appSlug)
     );
     if (!refreshed) {

@@ -35,5 +35,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!app || app.status !== "published") {
     return NextResponse.json({ error: "unknown app" }, { status: 400 });
   }
+  // /home launches into a real browser window, so the session is not a
+  // Messages card and apps render their full (non-lite) experience.
   return NextResponse.json({ url: mintSignedLink(userId, slug, "default") });
 }

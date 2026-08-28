@@ -3,9 +3,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { UnsupportedError } from "spectrum-ts";
 import { createSpectrumSender } from "../spectrum/sender";
 import {
+  mintSignedLink,
   sendMiniAppCard,
   updateMiniAppCard,
 } from "./cards";
+import { verifyToken } from "./tokens";
 
 vi.mock("../spectrum/sender", () => ({
   createSpectrumSender: vi.fn(),
@@ -158,5 +160,29 @@ describe("mini-app card session lifecycle", () => {
       )
     ).resolves.toBeUndefined();
     expect(senderMock.sendApp).toHaveBeenCalledOnce();
+  });
+});
+
+describe("mintSignedLink surface", () => {
+  beforeEach(() => {
+    process.env["MINIAPP_SIGNING_KEY"] = "test-signing-key";
+    process.env["MINIAPP_ORIGIN"] = "https://mini.example";
+  });
+
+  function claims(url: string) {
+    const token = new URL(url).searchParams.get("t") ?? "";
+    return verifyToken(token, "onboarding");
+  }
+
+  it("marks card links as opening in a Messages webview", () => {
+    expect(
+      claims(mintSignedLink("user-1", "onboarding", "default", "card"))?.via
+    ).toBe("card");
+  });
+
+  it("leaves browser launches unmarked so apps render full", () => {
+    expect(
+      claims(mintSignedLink("user-1", "onboarding", "default"))?.via
+    ).toBeUndefined();
   });
 });
