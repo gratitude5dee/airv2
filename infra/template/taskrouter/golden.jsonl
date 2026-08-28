@@ -1,0 +1,24 @@
+{"text": "hey what's up", "tier": "fast", "needs_approval": false, "tools": [], "payment": false}
+{"text": "thanks!", "tier": "fast", "needs_approval": false, "tools": [], "payment": false}
+{"text": "what's 15% tip on $84", "tier": "fast", "needs_approval": false, "tools": [], "payment": false}
+{"text": "remind me what we said about the venue yesterday", "tier": "fast", "needs_approval": false, "tools": [], "payment": false}
+{"text": "look up the weather in Austin this weekend", "tier": "fast", "needs_approval": false, "tools": ["browser"], "payment": false}
+{"text": "find me the cheapest flight from SFO to JFK on friday", "tier": "balanced", "needs_approval": false, "tools": ["browser"], "payment": false}
+{"text": "book the 7am flight and pay with my saved card", "tier": "balanced", "needs_approval": true, "tools": ["browser"], "payment": true}
+{"text": "buy 2 tickets to the warriors game tonight", "tier": "balanced", "needs_approval": true, "tools": ["browser"], "payment": true}
+{"text": "order my usual from doordash", "tier": "balanced", "needs_approval": true, "tools": ["browser"], "payment": true}
+{"text": "send an email to my landlord about the broken heater", "tier": "balanced", "needs_approval": false, "tools": ["email"], "payment": false}
+{"text": "draft a reply to sarah's email and send it", "tier": "balanced", "needs_approval": false, "tools": ["email"], "payment": false}
+{"text": "put lunch with dev on my calendar for tuesday at noon", "tier": "fast", "needs_approval": false, "tools": ["calendar"], "payment": false}
+{"text": "when am I free next week?", "tier": "fast", "needs_approval": false, "tools": ["calendar"], "payment": false}
+{"text": "make me a logo for my new coffee brand", "tier": "balanced", "needs_approval": false, "tools": ["creative"], "payment": false}
+{"text": "generate a 10s video teaser for the drop", "tier": "balanced", "needs_approval": false, "tools": ["creative"], "payment": false}
+{"text": "organize my downloads folder", "tier": "balanced", "needs_approval": false, "tools": ["filesystem"], "payment": false}
+{"text": "save that file to my notes", "tier": "fast", "needs_approval": false, "tools": ["filesystem"], "payment": false}
+{"text": "research the top 5 CRM tools for a 3-person team and compare pricing, then write a recommendation", "tier": "deep", "needs_approval": false, "tools": ["browser"], "payment": false}
+{"text": "plan a full 3-city tour itinerary with budgets, travel, and lodging options", "tier": "deep", "needs_approval": false, "tools": ["browser"], "payment": false}
+{"text": "analyze last month's ad spend and tell me what to cut", "tier": "deep", "needs_approval": false, "tools": [], "payment": false}
+{"text": "wire $500 to alex for the deposit", "tier": "balanced", "needs_approval": true, "tools": [], "payment": true}
+{"text": "cancel my comcast subscription", "tier": "balanced", "needs_approval": true, "tools": ["browser"], "payment": true}
+{"text": "renew my domain, it's on the saved card", "tier": "balanced", "needs_approval": true, "tools": ["browser"], "payment": true}
+{"text": "write a long-term content strategy for my label across tiktok and ig", "tier": "deep", "needs_approval": false, "tools": [], "payment": false}
