@@ -104,6 +104,9 @@ async function handleCalendarInvites(
         sender: from || undefined,
         ref: path,
         label: inviteLabel(summary),
+        // The VEVENT UID lets the calendar mini-app RSVP the hosted-calendar
+        // event when the owner taps Accept/Decline.
+        ...(summary.uid ? { payload: { event_uid: summary.uid } } : {}),
       });
     }
     // Merge the drops as pending events so the store reflects them promptly.

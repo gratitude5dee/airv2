@@ -54,6 +54,20 @@ describe("extractInviteSummary", () => {
     expect(result.summary).not.toContain("\\n");
   });
 
+  it("pulls the VEVENT UID for hosted-calendar RSVPs", () => {
+    expect(extractInviteSummary(INVITE).uid).toBe("abc123");
+  });
+
+  it("rejects a UID with shell/markup characters", () => {
+    const bad = [
+      "BEGIN:VEVENT",
+      "SUMMARY:x",
+      "UID:$(rm -rf /)<script>",
+      "END:VEVENT",
+    ].join("\r\n");
+    expect(extractInviteSummary(bad).uid).toBeUndefined();
+  });
+
   it("rejects a DTSTART that is not a plausible date token", () => {
     const bad = [
       "BEGIN:VEVENT",

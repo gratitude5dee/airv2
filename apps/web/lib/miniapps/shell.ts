@@ -182,6 +182,9 @@ export interface ShellOptions {
   headline?: boolean;
   /** Theme; defaults to the WZRD atmosphere look. */
   theme?: Theme;
+  /** iPhone-like deck swipe (deck-swipe.js): hrefs a horizontal touch
+   * swipe navigates to. Same-app URLs only — sessions are per-app. */
+  swipe?: { prev?: string; next?: string };
 }
 
 export function renderShell(options: ShellOptions): string {
@@ -227,7 +230,13 @@ export function renderShell(options: ShellOptions): string {
     options.headline === false
       ? ""
       : `<p class="kicker">${esc(options.kicker)}</p><h1>${esc(options.title)}</h1>`;
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>${esc(options.title)}</title>${fonts}<style>${tokenBlock(current.tokens)}${SHELL_CSS}${lite ? LITE_CSS : ""}</style>${shader}</head><body>${backdropHtml}${scrim}${grain}<div class="frame"><header class="bar">${logoPill()}<span class="app-pill">${esc(options.kicker)}</span></header><main class="app">${noticeHtml}${headline}${options.body}</main></div></body></html>`;
+  const swipe = lite ? undefined : options.swipe;
+  const swipeAttrs = `${swipe?.prev ? ` data-swipe-prev="${esc(swipe.prev)}"` : ""}${swipe?.next ? ` data-swipe-next="${esc(swipe.next)}"` : ""}`;
+  const swipeScript =
+    swipe?.prev || swipe?.next
+      ? '<script src="/creator-os/deck-swipe.js" defer></script>'
+      : "";
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>${esc(options.title)}</title>${fonts}<style>${tokenBlock(current.tokens)}${SHELL_CSS}${lite ? LITE_CSS : ""}</style>${shader}</head><body>${backdropHtml}${scrim}${grain}<div class="frame"${swipeAttrs}><header class="bar">${logoPill()}<span class="app-pill">${esc(options.kicker)}</span></header><main class="app">${noticeHtml}${headline}${options.body}</main></div>${swipeScript}</body></html>`;
 }
 
 /** The header wordmark — a link back to the Home mini-app when the session
@@ -252,8 +261,7 @@ export function shellHtml(
   // so the CSP only widens when the script is actually emitted.
   const csp = themeCsp(current);
   const scriptSrc =
-    (body.includes('src="/creator-os/bg/bg.js"') ||
-      body.includes('<script src="/creator-os/ui.js"')) &&
+    /<script [^>]*src="\/creator-os\/[\w/-]+\.js"/.test(body) &&
     !csp.includes("script-src")
       ? "; script-src 'self'"
       : "";
