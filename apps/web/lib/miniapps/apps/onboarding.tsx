@@ -604,9 +604,7 @@ function stepBody(
     if (!snapshot.onairos.available) {
       return `<p class="muted">Onairos personal context isn't configured on this deployment — connect it later from Settings once it is. Nothing here blocks the rest of setup.</p><div class="row actions">${skipForm("onairos", "Skip — not configured")}</div>`;
     }
-    if (snapshot.onairos.connected) {
-      return `<p>Connected — your imported context lives on your computer, and Settings has Re-sync / Disconnect.</p><div class="row actions">${skipForm("onairos")}</div>`;
-    }
+    const connected = snapshot.onairos.connected;
     const apiKey = env.onairosApiKey() ?? "";
     const googleClientId = env.onairosGoogleClientId();
     const googleAttr = googleClientId
@@ -620,8 +618,13 @@ function stepBody(
       : "";
     // The native SDK flow runs right here; the key only ever renders on the
     // owner's own authenticated slide (never in a public bundle), and the
-    // handoff posts back as a regular form (action=onairos_handoff).
-    return `<p class="muted">Sign in with Onairos to import your personal context — the consent flow opens right here, and your imported context lives on your computer, never on the platform.</p><div id="onairos-connect" data-api-key="${esc(apiKey)}"${googleAttr}><p class="muted">Loading Onairos sign-in…</p></div><script src="/creator-os/onairos-connect.js" defer></script>${browserLine}<details><summary>Or connect via iMessage</summary><p class="muted">Onairos asks for your account email, a verification code, and your YES right in your iMessage thread.</p><form method="post" class="inline"><input type="hidden" name="action" value="connect_onairos"><button class="ghost">Connect via iMessage</button></form></details><div class="row actions">${skipForm("onairos")}</div>`;
+    // handoff posts back as a regular form (action=onairos_handoff). A
+    // connected account keeps the flow mounted so more connectors can be
+    // added after the initial sync.
+    const intro = connected
+      ? `<p>Connected — your imported context lives on your computer, and Settings has Re-sync / Disconnect.</p><p class="muted">Want more sources? Open Onairos again below to connect other platforms — each new connection re-imports your context.</p>`
+      : `<p class="muted">Sign in with Onairos to import your personal context — the consent flow opens right here, and your imported context lives on your computer, never on the platform.</p>`;
+    return `${intro}<div id="onairos-connect" data-api-key="${esc(apiKey)}"${googleAttr}><p class="muted">Loading Onairos sign-in…</p></div><script src="/creator-os/onairos-connect.js" defer></script>${browserLine}<details><summary>Or connect via iMessage</summary><p class="muted">Onairos asks for your account email, a verification code, and your YES right in your iMessage thread.</p><form method="post" class="inline"><input type="hidden" name="action" value="connect_onairos"><button class="ghost">Connect via iMessage</button></form></details><div class="row actions">${skipForm("onairos", connected ? "Continue" : undefined)}</div>`;
   }
   if (step === "secrets") {
     const managerLines = snapshot.managers
@@ -1045,17 +1048,14 @@ const rendersBooth = (
       snapshot.twinAvailable &&
       !snapshot.twin?.consent_video_key));
 
-/** The Onairos slide mounts the vendor SDK when a native connect is possible
- * — the CSP widens only for that render. */
+/** The Onairos slide mounts the vendor SDK whenever the key is configured —
+ * connected accounts keep it mounted to add more connectors — and the CSP
+ * widens only for that render. */
 function rendersNativeOnairos(
   snapshot: OnboardingSnapshot,
   step: OnboardingStepId
 ): boolean {
-  return (
-    step === "onairos" &&
-    snapshot.onairos.available &&
-    !snapshot.onairos.connected
-  );
+  return step === "onairos" && snapshot.onairos.available;
 }
 
 async function respond(

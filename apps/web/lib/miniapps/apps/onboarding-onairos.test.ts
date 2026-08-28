@@ -155,6 +155,25 @@ describe("onboarding onairos slide (native connect)", () => {
     expect(body).not.toContain("data-google-client-id");
   });
 
+  it("keeps the native mount and widened CSP after connecting so more connectors can be added", async () => {
+    vi.stubEnv("ONAIROS_API_KEY", "dev-key-123");
+    onairosStatusMock.mockResolvedValueOnce({
+      configured: true,
+      status: "active",
+      connectedAt: "2026-08-22T00:00:00Z",
+    });
+    const response = await onboarding.render(makeCtx());
+    const body = await response.text();
+    expect(body).toContain("Connected");
+    expect(body).toContain('id="onairos-connect"');
+    expect(body).toContain('src="/creator-os/onairos-connect.js"');
+    expect(body).toContain('value="connect_onairos"');
+    const csp = response.headers.get("Content-Security-Policy") ?? "";
+    expect(csp).toContain(
+      "connect-src 'self' https://api2.onairos.uk https://api.onairos.uk https://accounts.google.com/gsi/"
+    );
+  });
+
   it("keeps the CSP narrow and hides the native mount when unconfigured", async () => {
     onairosStatusMock.mockResolvedValueOnce({
       configured: false,
