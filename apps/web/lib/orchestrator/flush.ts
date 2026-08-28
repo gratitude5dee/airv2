@@ -15,10 +15,14 @@ import { command, writeFile } from "../box/client";
 import {
   createRun,
   ensureSession,
+  loadConversationHistory,
   MAIN_SESSION,
+  MAIN_SESSION_TITLE,
   runEvents,
   stopRun,
+  type HermesBoxTarget,
 } from "../hermes/client";
+import type { ConversationMessage } from "../hermes/history";
 import { botTarget, BOT_CHAT_SESSION, BOT_CHAT_TITLE } from "../bots/client";
 import { parseMention } from "../bots/mentions";
 import { listBots } from "../bots/store";
@@ -377,6 +381,71 @@ async function requeueMessages(
 }
 
 /**
+ * Explicit, observable history replay for an iMessage turn.
+ *
+ * createRun replays the transcript itself when `conversationHistory` is
+ * omitted, but that load degrades to an empty history on any error — an
+ * unreachable box or an odd payload silently starts the turn blank and the
+ * agent re-asks for what the human already sent. Doing it here makes the
+ * degradation visible: the session is ensured first (so a first turn
+ * persists its transcript) and an empty replay against a session the box
+ * already had is logged as a dropped replay. Counts only — transcript
+ * content never enters control-plane logs (C4).
+ */
+export async function replayHistory(
+  target: HermesBoxTarget,
+  sessionId: string,
+  context: {
+    userId: string;
+    spaceId: string;
+    title: string;
+    /** Set when the caller already ensured the session this turn. */
+    firstTurn?: boolean;
+  }
+): Promise<ConversationMessage[]> {
+  let firstTurn = context.firstTurn ?? false;
+  try {
+    if (context.firstTurn === undefined) {
+      firstTurn = (await ensureSession(target, sessionId, context.title))
+        .created;
+    }
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        msg: "session ensure failed before run",
+        user_id: context.userId,
+        space_id: context.spaceId,
+        session_id: sessionId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    );
+  }
+  const history = await loadConversationHistory(target, sessionId);
+  if (history.length === 0 && !firstTurn) {
+    console.error(
+      JSON.stringify({
+        msg: "history replay empty on existing session",
+        user_id: context.userId,
+        space_id: context.spaceId,
+        session_id: sessionId,
+      })
+    );
+  } else {
+    console.log(
+      JSON.stringify({
+        msg: "history replayed",
+        user_id: context.userId,
+        space_id: context.spaceId,
+        session_id: sessionId,
+        messages: history.length,
+        first_turn: firstTurn,
+      })
+    );
+  }
+  return history;
+}
+
+/**
  * Run one debounced turn for a chat. Called after the claim succeeds; owns
  * drain → resume → run → stream → stop_after re-arm.
  */
@@ -585,6 +654,7 @@ export async function runFlush(
     let runSession = MAIN_SESSION;
     let runInput = input;
     let botPrefix = "";
+    let botSessionCreated: boolean | undefined;
     try {
       const roster = await listBots(supabase, job.userId);
       const hit = parseMention(
@@ -595,7 +665,9 @@ export async function runFlush(
         const bot = roster.find((b) => b.name === hit.bot);
         if (bot) {
           runTarget = botTarget(box.target, bot.name, bot.api_server_key);
-          await ensureSession(runTarget, BOT_CHAT_SESSION, BOT_CHAT_TITLE);
+          botSessionCreated = (
+            await ensureSession(runTarget, BOT_CHAT_SESSION, BOT_CHAT_TITLE)
+          ).created;
           runSession = BOT_CHAT_SESSION;
           runInput = hit.input;
           botPrefix = `\u{1F916} ${bot.name}: `;
@@ -611,9 +683,20 @@ export async function runFlush(
       );
     }
 
+    const conversationHistory = await replayHistory(runTarget, runSession, {
+      userId: job.userId,
+      spaceId: job.spaceId,
+      title: runSession === MAIN_SESSION ? MAIN_SESSION_TITLE : BOT_CHAT_TITLE,
+      // The delegation branch above already ensured the bot chat session.
+      ...(botSessionCreated === undefined
+        ? {}
+        : { firstTurn: botSessionCreated }),
+    });
+
     const run = await createRun(runTarget, {
       input: runInput,
       sessionId: runSession,
+      conversationHistory,
       metadata: { channel: "imessage" },
     });
     await supabase

@@ -26,6 +26,8 @@ export interface HermesBoxTarget {
  * stays per-thread because threads are the conversation unit there.
  */
 export const MAIN_SESSION = "air-main";
+/** Title used when creating MAIN_SESSION on first use. */
+export const MAIN_SESSION_TITLE = "Air";
 
 /** Calls traverse the hosted proxy into the box; generous but bounded. */
 const HERMES_REQUEST_TIMEOUT_MS = 60_000;
@@ -335,23 +337,26 @@ export async function listSessions(
 /**
  * Create a session with an explicit id + title. A 409/exists answer is
  * success for callers that want ensure-once semantics (the canonical
- * per-bot "Bot Chat" session).
+ * per-bot "Bot Chat" session). `created` is false when the box reported the
+ * session already existed, which tells callers a transcript should be there
+ * to replay.
  */
 export async function ensureSession(
   target: HermesBoxTarget,
   sessionId: string,
   title: string
-): Promise<void> {
+): Promise<{ created: boolean }> {
   const response = await fetch(url(target, "/api/sessions"), {
     method: "POST",
     signal: requestSignal(HERMES_REQUEST_TIMEOUT_MS),
     headers: headers(target),
     body: JSON.stringify({ id: sessionId, title }),
   });
-  if (response.ok || response.status === 409) return;
+  if (response.status === 409) return { created: false };
+  if (response.ok) return { created: true };
   const body = await response.text();
   // Older builds answer duplicate creates with a 400 "exists" error.
-  if (response.status === 400 && /exist/i.test(body)) return;
+  if (response.status === 400 && /exist/i.test(body)) return { created: false };
   throw new HermesApiError(response.status, body.slice(0, 500));
 }
 
