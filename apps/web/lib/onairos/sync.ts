@@ -37,9 +37,10 @@ import {
   OV_ONAIROS_URI,
 } from "@/lib/memory/deep";
 import { USER_PROFILE_PATH } from "@/lib/memory/files";
+import { ONAIROS_PROVIDER, ONAIROS_TOOLKIT } from "./ids";
 
-const PROVIDER = "onairos";
-const TOOLKIT = "persona";
+const PROVIDER = ONAIROS_PROVIDER;
+const TOOLKIT = ONAIROS_TOOLKIT;
 
 export interface OnairosState {
   /** True when ONAIROS_API_KEY is set (the SDK button can be offered). */

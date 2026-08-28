@@ -46,22 +46,72 @@ export function activeHomeHref(): string | undefined {
   return store.getStore()?.homeHref;
 }
 
+/**
+ * The columns of the `users` row every mini-app request needs: the style the
+ * shell renders in, plus the handle renderers show. One row, one read.
+ */
+export interface MiniUserProfile {
+  username: string | null;
+  miniappTheme: string | null;
+  miniappBackground: string | null;
+}
+
+const profiles = new AsyncLocalStorage<Map<string, Promise<MiniUserProfile>>>();
+
+/**
+ * Memoize the `users` row for the duration of one request. The loader
+ * resolves the style before the renderer runs, so without this an app that
+ * also needs `username` (onboarding) would read the same row twice.
+ */
+export function withProfileCache<T>(fn: () => T): T {
+  return profiles.run(new Map(), fn);
+}
+
+async function readProfile(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<MiniUserProfile> {
+  const { data } = await supabase
+    .from("users")
+    .select("username, miniapp_theme, miniapp_background")
+    .eq("id", userId)
+    .maybeSingle();
+  return {
+    username: (data?.username as string | null) ?? null,
+    miniappTheme: (data?.miniapp_theme as string | null) ?? null,
+    miniappBackground: (data?.miniapp_background as string | null) ?? null,
+  };
+}
+
+/** The user's profile row, shared with anything else in this request. */
+export function userProfile(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<MiniUserProfile> {
+  const cache = profiles.getStore();
+  if (!cache) return readProfile(supabase, userId);
+  const hit = cache.get(userId);
+  if (hit) return hit;
+  const pending = readProfile(supabase, userId);
+  cache.set(userId, pending);
+  return pending;
+}
+
+export function styleFromProfile(profile: MiniUserProfile): MiniStyle {
+  const id = String(profile.miniappTheme ?? "");
+  const background = String(profile.miniappBackground ?? "");
+  return {
+    theme: theme(isThemeId(id) ? id : DEFAULT_THEME),
+    background: isBackgroundId(background) ? background : DEFAULT_BACKGROUND,
+  };
+}
+
 /** The saved style for a user (guests see the app owner's choice). */
 export async function userStyle(
   supabase: SupabaseClient,
   userId: string
 ): Promise<MiniStyle> {
-  const { data } = await supabase
-    .from("users")
-    .select("miniapp_theme, miniapp_background")
-    .eq("id", userId)
-    .maybeSingle();
-  const id = String(data?.miniapp_theme ?? "");
-  const background = String(data?.miniapp_background ?? "");
-  return {
-    theme: theme(isThemeId(id) ? id : DEFAULT_THEME),
-    background: isBackgroundId(background) ? background : DEFAULT_BACKGROUND,
-  };
+  return styleFromProfile(await userProfile(supabase, userId));
 }
 
 /** The saved theme for a user (guests see the app owner's choice). */

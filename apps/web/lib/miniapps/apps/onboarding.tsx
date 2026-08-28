@@ -85,6 +85,7 @@ import {
 import {
   getAvatarAssetId,
   listIdentityAssets,
+  listIdentityMediaRoles,
   listIdentityMediaViews,
   setAvatarAssetId,
   signedIdentityUrl,
@@ -120,7 +121,7 @@ import {
   type ComputeEnvironment,
 } from "@/lib/compute/environments";
 import { switchEnvironment } from "@/lib/provisioning/provision";
-import { onairosProvider, type OnairosStatus } from "./onairos";
+import { onairosStatusFromRows, type OnairosStatus } from "./onairos";
 import {
   relayToOnairos,
   setSpectrumFlow,
@@ -141,6 +142,7 @@ import {
   type Theme,
 } from "../themes";
 import { timedFetch, timedPart, timedParts } from "../timing";
+import { userProfile } from "../themeContext";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
 /**
@@ -395,7 +397,24 @@ export interface OnboardingSnapshot {
   boxBusy: boolean;
   /** A pairing phrase/URL exists box-side but isn't in `link` yet. */
   linkPairing: boolean;
+  /**
+   * Which optional parts this snapshot actually read. A slide-scoped load
+   * skips the ones only that slide renders; `hydrateSlide` tops them up
+   * once the active slide is known. Absent means "everything".
+   */
+  loaded?: SnapshotParts;
 }
+
+interface SnapshotParts {
+  /** identityMedia carries signed thumbnail URLs, not just roles. */
+  identityUrls: boolean;
+  twin: boolean;
+  managers: boolean;
+  merchant: boolean;
+}
+
+/** What a render needs beyond the always-loaded parts. */
+type SnapshotScope = OnboardingSlide | "status";
 
 export async function loadOnboardingSnapshot(
   supabase: SupabaseClient,
@@ -404,33 +423,29 @@ export async function loadOnboardingSnapshot(
   return loadSnapshot(supabase, userId);
 }
 
+/**
+ * The onboarding snapshot. `slide` is the deck page about to render: fetches
+ * whose only other consumer is the deck's dot/lock status are then skipped
+ * whenever the mirror already records that step as resolved, so opening the
+ * welcome slide no longer pays for the photo-booth's and the app slide's
+ * data. Omit it (loadOnboardingSnapshot) for the complete snapshot.
+ */
 async function loadSnapshot(
   supabase: SupabaseClient,
-  userId: string
+  userId: string,
+  scope?: SnapshotScope
 ): Promise<OnboardingSnapshot> {
-  const [
-    mirror,
-    { data: user },
-    { data: addressRow },
-    { data: connectionRows },
-    managers,
-    { count },
-    onairos,
-    { data: entitlement },
-    merchant,
-    { count: pluginCount },
-    identityMedia,
-    avatarAssetId,
-    twin,
-    { data: boxRow },
-  ] = await timedParts("onboarding", "snapshot", (parts) =>
-    Promise.all([
-      timedPart(parts, "mirror", () =>
-        readStatusMirror(supabase, userId).catch(() => null)
-      ),
-      timedPart(parts, "user", () =>
-        supabase.from("users").select("username").eq("id", userId).maybeSingle()
-      ),
+  const rendering = (id: string): boolean =>
+    scope === undefined || (scope !== "status" && scope.id === id);
+
+  return timedParts("onboarding", "snapshot", async (parts) => {
+    // The mirror decides what else is worth fetching, so it leads; every
+    // always-needed read runs alongside it rather than behind it.
+    const mirrorRead = timedPart(parts, "mirror", () =>
+      readStatusMirror(supabase, userId).catch(() => null)
+    );
+    const always = Promise.all([
+      timedPart(parts, "user", () => userProfile(supabase, userId)),
       timedPart(parts, "address", () =>
         supabase
           .from("agent_addresses")
@@ -440,14 +455,13 @@ async function loadSnapshot(
           .is("retired_at", null)
           .maybeSingle()
       ),
+      // `provider` comes back so the Onairos step reads its status from
+      // these rows instead of querying the same table a second time.
       timedPart(parts, "connections", () =>
         supabase
           .from("connections")
-          .select("toolkit, status, connected_at")
+          .select("provider, toolkit, status, connected_at")
           .eq("user_id", userId)
-      ),
-      timedPart(parts, "managers", () =>
-        listManagers(supabase, userId).catch(() => [] as ManagerStatus[])
       ),
       timedPart(parts, "vault_count", () =>
         supabase
@@ -456,24 +470,12 @@ async function loadSnapshot(
           .eq("user_id", userId)
           .is("deleted_at", null)
       ),
-      timedPart(parts, "onairos", () =>
-        onairosProvider.status(supabase, userId).catch(
-          (): OnairosStatus => ({
-            available: false,
-            connected: false,
-            connect_url: null,
-          })
-        )
-      ),
       timedPart(parts, "entitlement", () =>
         supabase
           .from("entitlements")
           .select("speed_tier, model_family")
           .eq("user_id", userId)
           .maybeSingle()
-      ),
-      timedPart(parts, "merchant", () =>
-        getMerchant(supabase, userId).catch(() => null)
       ),
       timedPart(parts, "plugin_count", () =>
         supabase
@@ -482,14 +484,12 @@ async function loadSnapshot(
           .eq("user_id", userId)
           .is("revoked_at", null)
       ),
+      // Signed thumbnail URLs are only looked at on the booth slide; every
+      // other slide needs the roles alone (selfie present? avatar set?).
       timedPart(parts, "identity_media", () =>
-        listIdentityMediaViews(supabase, userId)
-      ),
-      timedPart(parts, "avatar", () =>
-        getAvatarAssetId(supabase, userId).catch(() => null)
-      ),
-      timedPart(parts, "twin", () =>
-        getDigitalTwin(supabase, userId).catch(() => null)
+        rendering("booth")
+          ? listIdentityMediaViews(supabase, userId)
+          : listIdentityMediaRoles(supabase, userId)
       ),
       timedPart(parts, "box", () =>
         supabase
@@ -498,87 +498,224 @@ async function loadSnapshot(
           .eq("user_id", userId)
           .maybeSingle()
       ),
-    ])
-  );
+    ]);
 
-  // Mirror hit: render from Postgres metadata alone — no Box round trips.
-  // The link meta carries no phrase/verification_url; the link slide
-  // fetches the live doc separately while pairing. Miss (or the box is
-  // mid-start): read the Box documents live and backfill the row.
-  let state: OnboardingState;
-  let ingest: IngestStatus | null;
-  let imports: ImportStatus | null;
-  let browserProfile: BrowserProfileStatus | null;
-  let link: LinkAuthDoc | null;
-  let linkPairing = false;
-  let boxBusy = false;
-  // A row written only by a step-mark (state present, docs never refreshed)
-  // still counts as a hit; a row with no state yet does not.
-  if (mirror?.state) {
-    state = mirror.state;
-    ingest = mirror.ingest;
-    imports = mirror.imports;
-    browserProfile = mirror.browserProfile;
-    link = mirror.link
-      ? {
-          ...defaultLinkAuthDoc(),
-          installed: mirror.link.installed,
-          authenticated: mirror.link.authenticated,
-          updated_at: mirror.link.updated_at,
+    // Mirror hit: render from Postgres metadata alone — no Box round trips.
+    // The link meta carries no phrase/verification_url; the link slide
+    // fetches the live doc separately while pairing. Miss (or the box is
+    // mid-start): read the Box documents live and backfill the row.
+    const mirror = await mirrorRead;
+    let state: OnboardingState;
+    let ingest: IngestStatus | null;
+    let imports: ImportStatus | null;
+    let browserProfile: BrowserProfileStatus | null;
+    let link: LinkAuthDoc | null;
+    let linkPairing = false;
+    let boxBusy = false;
+    // A row written only by a step-mark (state present, docs never refreshed)
+    // still counts as a hit; a row with no state yet does not.
+    if (mirror?.state) {
+      state = mirror.state;
+      ingest = mirror.ingest;
+      imports = mirror.imports;
+      browserProfile = mirror.browserProfile;
+      link = mirror.link
+        ? {
+            ...defaultLinkAuthDoc(),
+            installed: mirror.link.installed,
+            authenticated: mirror.link.authenticated,
+            updated_at: mirror.link.updated_at,
+          }
+        : null;
+      linkPairing = mirror.link?.pairing === true;
+      const age = mirror.refreshedAt
+        ? Date.now() - Date.parse(mirror.refreshedAt)
+        : Number.POSITIVE_INFINITY;
+      if (!(age < MIRROR_STALE_MS)) {
+        try {
+          after(() =>
+            refreshStatusMirror(supabase, userId).catch(() => undefined)
+          );
+        } catch {
+          // outside a request scope — skip the background refresh
         }
-      : null;
-    linkPairing = mirror.link?.pairing === true;
-    const age = mirror.refreshedAt
-      ? Date.now() - Date.parse(mirror.refreshedAt)
-      : Number.POSITIVE_INFINITY;
-    if (!(age < MIRROR_STALE_MS)) {
-      try {
-        after(() =>
-          refreshStatusMirror(supabase, userId).catch(() => undefined)
-        );
-      } catch {
-        // outside a request scope — skip the background refresh
       }
+    } else {
+      const live = await timedFetch("onboarding", "mirror_backfill", () =>
+        refreshStatusMirror(supabase, userId)
+      );
+      ({ state, ingest, imports, browserProfile, link, boxBusy } = live);
+      linkPairing = link?.phrase != null || link?.verification_url != null;
     }
-  } else {
-    const live = await timedFetch("onboarding", "mirror_backfill", () =>
-      refreshStatusMirror(supabase, userId)
-    );
-    ({ state, ingest, imports, browserProfile, link, boxBusy } = live);
-    linkPairing =
-      link?.phrase != null || link?.verification_url != null;
-  }
 
-  return {
-    state,
-    environment: toComputeEnvironment(boxRow?.environment),
-    username: (user?.username as string | null) ?? null,
-    address: (addressRow?.address as string | null) ?? null,
-    mailboxDomain: env.agentEmailDomain(),
-    identityMedia,
-    avatarAssetId,
-    twin,
-    twinAvailable: env.gmiCloudApiKey() !== null,
-    connections: (connectionRows ?? []) as ConnectionRow[],
-    managers,
-    vaultItemCount: count ?? 0,
-    onairos,
-    speedTier: (entitlement?.speed_tier as string | null) ?? null,
-    modelFamily: isModelFamily(String(entitlement?.model_family ?? ""))
-      ? (entitlement?.model_family as ModelFamily)
-      : DEFAULT_MODEL_FAMILY,
-    merchant,
-    link,
-    pluginSessions: pluginCount ?? 0,
-    ingest,
-    ingestCommand: buildIngestCommand(userId),
-    imports,
-    importCommand: buildImportCommand(userId),
-    browserProfile,
-    browserProfileCommand: buildBrowserProfileCommand(userId),
-    boxBusy,
-    linkPairing,
-  };
+    // A step the state file already resolves needs no live evidence:
+    // effectiveStatus returns the recorded value without reading these.
+    const open = (step: OnboardingStepId): boolean =>
+      state.steps[step] !== "done" && state.steps[step] !== "skipped";
+    const identityNeeded =
+      rendering("booth") || open("twin") || open("avatar");
+    const managersNeeded = rendering("apps") || open("secrets");
+    const merchantNeeded = rendering("apps") || open("stripe");
+    const [twin, avatarAssetId, managers, merchant] = await Promise.all([
+      identityNeeded
+        ? timedPart(parts, "twin", () =>
+            getDigitalTwin(supabase, userId).catch(() => null)
+          )
+        : null,
+      identityNeeded
+        ? timedPart(parts, "avatar", () =>
+            getAvatarAssetId(supabase, userId).catch(() => null)
+          )
+        : null,
+      managersNeeded
+        ? timedPart(parts, "managers", () =>
+            listManagers(supabase, userId).catch(() => [] as ManagerStatus[])
+          )
+        : ([] as ManagerStatus[]),
+      merchantNeeded
+        ? timedPart(parts, "merchant", () =>
+            getMerchant(supabase, userId).catch(() => null)
+          )
+        : null,
+    ]);
+
+    const [
+      user,
+      { data: addressRow },
+      { data: connectionRows },
+      { count },
+      { data: entitlement },
+      { count: pluginCount },
+      identityMedia,
+      { data: boxRow },
+    ] = await always;
+    const connections = (connectionRows ?? []) as Array<
+      ConnectionRow & { provider?: string | null }
+    >;
+
+    return {
+      state,
+      environment: toComputeEnvironment(boxRow?.environment),
+      username: user.username,
+      address: (addressRow?.address as string | null) ?? null,
+      mailboxDomain: env.agentEmailDomain(),
+      identityMedia,
+      avatarAssetId,
+      twin,
+      twinAvailable: env.gmiCloudApiKey() !== null,
+      connections,
+      managers,
+      vaultItemCount: count ?? 0,
+      onairos: onairosStatusFromRows(connections),
+      speedTier: (entitlement?.speed_tier as string | null) ?? null,
+      modelFamily: isModelFamily(String(entitlement?.model_family ?? ""))
+        ? (entitlement?.model_family as ModelFamily)
+        : DEFAULT_MODEL_FAMILY,
+      merchant,
+      link,
+      pluginSessions: pluginCount ?? 0,
+      ingest,
+      ingestCommand: buildIngestCommand(userId),
+      imports,
+      importCommand: buildImportCommand(userId),
+      browserProfile,
+      browserProfileCommand: buildBrowserProfileCommand(userId),
+      boxBusy,
+      linkPairing,
+      loaded: {
+        identityUrls: rendering("booth"),
+        twin: identityNeeded,
+        managers: managersNeeded,
+        merchant: merchantNeeded,
+      },
+    };
+  });
+}
+
+/**
+ * Top up a scoped snapshot for the slide that turned out to be active — the
+ * deck opens on the first unfinished step, which is only known once the
+ * status parts are in hand.
+ */
+async function hydrateSlide(
+  supabase: SupabaseClient,
+  userId: string,
+  snapshot: OnboardingSnapshot,
+  slide: OnboardingSlide
+): Promise<void> {
+  const loaded = snapshot.loaded;
+  if (!loaded) return;
+  const jobs: Array<Promise<unknown>> = [];
+  if (slide.id === "booth") {
+    if (!loaded.identityUrls) {
+      loaded.identityUrls = true;
+      jobs.push(
+        listIdentityMediaViews(supabase, userId)
+          .then((views) => {
+            snapshot.identityMedia = views;
+          })
+          .catch(() => undefined)
+      );
+    }
+    if (!loaded.twin) {
+      loaded.twin = true;
+      jobs.push(
+        getDigitalTwin(supabase, userId)
+          .then((twin) => {
+            snapshot.twin = twin;
+          })
+          .catch(() => undefined),
+        getAvatarAssetId(supabase, userId)
+          .then((assetId) => {
+            snapshot.avatarAssetId = assetId;
+          })
+          .catch(() => undefined)
+      );
+    }
+  }
+  if (slide.id === "apps") {
+    if (!loaded.managers) {
+      loaded.managers = true;
+      jobs.push(
+        listManagers(supabase, userId)
+          .then((managers) => {
+            snapshot.managers = managers;
+          })
+          .catch(() => undefined)
+      );
+    }
+    if (!loaded.merchant) {
+      loaded.merchant = true;
+      jobs.push(
+        getMerchant(supabase, userId)
+          .then((merchant) => {
+            snapshot.merchant = merchant;
+          })
+          .catch(() => undefined)
+      );
+    }
+  }
+  if (jobs.length === 0) return;
+  await timedFetch("onboarding", "slide_hydrate", () => Promise.all(jobs));
+}
+
+/**
+ * The snapshot a render works from: scoped to the requested step when the
+ * URL names one, then topped up for the slide the deck actually opens on.
+ */
+async function snapshotForRender(
+  supabase: SupabaseClient,
+  userId: string,
+  requested: OnboardingStepId | null
+): Promise<{ snapshot: OnboardingSnapshot; active: OnboardingStepId }> {
+  const snapshot = await loadSnapshot(
+    supabase,
+    userId,
+    requested ? slideForStep(requested) : "status"
+  );
+  const active = requested ?? firstOpenStep(snapshot);
+  await hydrateSlide(supabase, userId, snapshot, slideForStep(active));
+  return { snapshot, active };
 }
 
 /** The one-command packager shown on the import step — owner-only page,
@@ -1503,10 +1640,10 @@ export function renderOnboarding(
       : status === "skipped"
         ? " · skipped"
         : "";
+  // Self-hosted and inline: no third-party stylesheet between the response
+  // and first paint (the faces themselves load with font-display:swap).
   const fonts =
-    current.fontStylesheet === null
-      ? ""
-      : `<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="${esc(current.fontStylesheet)}">`;
+    current.fontFaces === null ? "" : `<style>${current.fontFaces}</style>`;
   const backdrop = current.backdrop;
   const shader =
     backdrop.kind === "shader" && !lite
@@ -1602,9 +1739,10 @@ export function renderOnboarding(
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>Onboarding — ${esc(slide.title)}</title>${fonts}<style>${tokenBlock(current.tokens)}${SLIDE_CSS}${lite ? LITE_CSS : ""}</style>${shader}</head><body>${backdropHtml}${scrim}${grain}<div class="frame"${prev ? ` data-swipe-prev="${href(prev)}"` : ""}${next ? ` data-swipe-next="${href(next)}"` : ""}><header class="bar"><span class="logo-pill"><img src="/creator-os/wzrd-wordmark-1600.png" alt="WZRD.tech"></span><span class="counter">${counter}${esc(statusTag)}</span></header><main class="slide">${busy}${noticeHtml}<p class="kicker">${kickerNumber}${esc(slide.kicker)}</p><h1>${esc(slide.title)}</h1>${deck}</main><footer class="nav">${prev ? `<a class="navlink" href="${href(prev)}">← Back</a>` : '<span class="navlink ghosted">← Back</span>'}<nav class="dots" aria-label="Slides">${dots}</nav>${next ? `<a class="navlink" href="${href(next)}">Next →</a>` : '<span class="navlink ghosted">Next →</span>'}</footer></div></body></html>`;
 }
 
-function activeStep(ctx: MiniAppContext, snapshot: OnboardingSnapshot): OnboardingStepId {
+/** The step the URL asks for, if it names a real one. */
+function requestedStep(ctx: MiniAppContext): OnboardingStepId | null {
   const requested = ctx.request.nextUrl.searchParams.get("step") ?? "";
-  return isOnboardingStep(requested) ? requested : firstOpenStep(snapshot);
+  return isOnboardingStep(requested) ? requested : null;
 }
 
 /**
@@ -1698,9 +1836,12 @@ async function respond(
   step: OnboardingStepId | null,
   notice: string | null
 ): Promise<NextResponse> {
-  const snapshot = await loadSnapshot(ctx.supabase, ctx.session.userId);
+  const { snapshot, active } = await snapshotForRender(
+    ctx.supabase,
+    ctx.session.userId,
+    step
+  );
   const current = activeTheme(ctx);
-  const active = step ?? firstOpenStep(snapshot);
   await withLiveLink(ctx.supabase, ctx.session.userId, snapshot, active);
   return slides(
     current,
@@ -1773,17 +1914,26 @@ async function sendHomeCard(
 
 export const onboarding: MiniAppModule = {
   async render(ctx: MiniAppContext): Promise<NextResponse> {
-    const snapshot = await loadSnapshot(ctx.supabase, ctx.session.userId);
-    // A pending Connect Link may have completed on the hosted page — sync
-    // the mirror before rendering so the chip is truthful.
+    const { snapshot, active } = await snapshotForRender(
+      ctx.supabase,
+      ctx.session.userId,
+      requestedStep(ctx)
+    );
+    // A pending Connect Link may have completed on the hosted page. Reading
+    // that back from Composio is a third-party round trip, so the page
+    // renders from the mirror and the sync lands before the next open.
     if (snapshot.connections.some((c) => c.status === "pending")) {
-      snapshot.connections = await syncConnections(
-        ctx.supabase,
-        ctx.session.userId
-      ).catch(() => snapshot.connections);
+      try {
+        after(() =>
+          syncConnections(ctx.supabase, ctx.session.userId).catch(
+            () => undefined
+          )
+        );
+      } catch {
+        // outside a request scope — skip the background sync
+      }
     }
     const current = activeTheme(ctx);
-    const active = activeStep(ctx, snapshot);
     await withLiveLink(ctx.supabase, ctx.session.userId, snapshot, active);
     return slides(
       current,

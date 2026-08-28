@@ -292,6 +292,27 @@ export async function listIdentityMediaViews(
   }
 }
 
+/**
+ * The same views without the creative_assets join or the signed URLs — one
+ * indexed read. Enough for "does a selfie exist?" / "which asset is the
+ * avatar?"; a caller that renders thumbnails wants listIdentityMediaViews.
+ */
+export async function listIdentityMediaRoles(
+  supabase: SupabaseClient,
+  userId: string,
+  limit = 12
+): Promise<IdentityMediaView[]> {
+  const { data } = await supabase
+    .from("identity_assets")
+    .select("asset_id, role")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  return ((data ?? []) as Array<{ asset_id: string; role: IdentityRole }>).map(
+    (row) => ({ assetId: row.asset_id, role: row.role, url: null })
+  );
+}
+
 /** Short-TTL signed URL for one identity asset's private object. */
 export async function signedIdentityUrl(
   supabase: SupabaseClient,

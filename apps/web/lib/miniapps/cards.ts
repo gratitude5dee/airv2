@@ -19,6 +19,7 @@ import {
 import type { MiniAppCardSession } from "./cardSessions";
 import type { CardKind } from "./cardSends";
 import { mintToken } from "./tokens";
+import { warmStatusMirror } from "./onboardingMirror";
 import type { Message } from "spectrum-ts";
 
 /** Card links stay tappable for a day — cards linger in the transcript. */
@@ -121,6 +122,10 @@ export async function sendMiniAppCard(
       spaceId,
       message
     );
+    // The onboarding card is usually opened within seconds of arriving, and
+    // a cold mirror makes that first open pay for five Box reads. Warm it
+    // now, off the send path.
+    if (appSlug === "onboarding") warmStatusMirror(supabase, userId);
   } finally {
     // Best-effort: a teardown failure after a successful send must not
     // surface as a delivery failure (callers may retry on error).

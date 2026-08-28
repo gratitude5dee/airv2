@@ -94,12 +94,25 @@ export interface Theme {
   readonly description: string;
   readonly tokens: ThemeTokens;
   readonly backdrop: ThemeBackdrop;
-  /** Web-font stylesheet to link, when the theme isn't system-font only. */
-  readonly fontStylesheet: string | null;
+  /**
+   * Inline `@font-face` block for the theme's web fonts, or null when the
+   * theme is system-font only. Inline and self-hosted on purpose: a
+   * third-party stylesheet in the Messages webview costs a DNS + TLS +
+   * round trip before first paint.
+   */
+  readonly fontFaces: string | null;
 }
 
-const WZRD_FONTS =
-  "https://fonts.googleapis.com/css2?family=Azeret+Mono:wght@300..800&family=Newsreader:opsz,wght@6..72,200..700&display=swap";
+/**
+ * Latin subsets of the two variable faces, served from /creator-os/fonts
+ * with immutable caching (see next.config.ts). `swap` keeps first paint on
+ * the fallback rather than on the network.
+ */
+const WZRD_FONT_FACES =
+  "@font-face{font-family:'Azeret Mono';font-style:normal;font-weight:300 800;" +
+  "font-display:swap;src:url(/creator-os/fonts/azeret-mono-latin.woff2) format('woff2')}" +
+  "@font-face{font-family:'Newsreader';font-style:normal;font-weight:200 700;" +
+  "font-display:swap;src:url(/creator-os/fonts/newsreader-latin.woff2) format('woff2')}";
 
 /**
  * Atmosphere — the WZRD Creator OS look: the fBm cloud + light-ray GLSL field
@@ -148,7 +161,7 @@ const atmosphere: Theme = {
     element: '<wz-sky mode="full" rays="0.9" aria-hidden="true"></wz-sky>',
     grain: true,
   },
-  fontStylesheet: WZRD_FONTS,
+  fontFaces: WZRD_FONT_FACES,
 };
 
 /**
@@ -190,7 +203,7 @@ const pixel: Theme = {
     slideIn: "0ms",
   },
   backdrop: { kind: "css", grain: false },
-  fontStylesheet: null,
+  fontFaces: null,
 };
 
 export const THEMES: Record<ThemeId, Theme> = { atmosphere, pixel };
@@ -239,11 +252,7 @@ export function themeCsp(current: Theme): string {
     current.backdrop.grain ? "img-src 'self' data:" : "img-src 'self'",
   ];
   if (current.backdrop.kind === "shader") directives.push("script-src 'self'");
-  if (current.fontStylesheet === null) {
-    directives.push("style-src 'unsafe-inline'");
-  } else {
-    directives.push("style-src 'unsafe-inline' https://fonts.googleapis.com");
-    directives.push("font-src https://fonts.gstatic.com");
-  }
+  directives.push("style-src 'unsafe-inline'");
+  if (current.fontFaces !== null) directives.push("font-src 'self'");
   return directives.join("; ");
 }

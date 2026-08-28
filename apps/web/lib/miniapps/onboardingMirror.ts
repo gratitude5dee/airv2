@@ -12,6 +12,7 @@
  * write and lazily (stale-while-revalidate) on render, and mirror writes
  * are best-effort — a failed write never fails the request.
  */
+import { after } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { StartLimitError } from "../orchestrator/boxes";
 import {
@@ -199,4 +200,25 @@ export async function refreshStatusMirror(
     });
   }
   return { state, ingest, imports, browserProfile, link, boxBusy };
+}
+
+/**
+ * Refresh the mirror off the response path so the owner's next open reads a
+ * warm row instead of paying for five Box reads. Best-effort in every sense:
+ * outside a request scope it runs detached, and a failure is silent.
+ */
+export function warmStatusMirror(
+  supabase: SupabaseClient,
+  userId: string
+): void {
+  const run = (): Promise<void> =>
+    refreshStatusMirror(supabase, userId).then(
+      () => undefined,
+      () => undefined
+    );
+  try {
+    after(run);
+  } catch {
+    void run();
+  }
 }

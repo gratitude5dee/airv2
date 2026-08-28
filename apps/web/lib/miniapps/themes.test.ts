@@ -44,7 +44,9 @@ describe("themeCsp", () => {
   it("widens script-src and font-src only for the assets a theme uses", () => {
     const atmosphere = themeCsp(theme("atmosphere"));
     expect(atmosphere).toContain("script-src 'self'");
-    expect(atmosphere).toContain("font-src https://fonts.gstatic.com");
+    // Fonts are self-hosted and declared inline — no third-party origin.
+    expect(atmosphere).toContain("font-src 'self'");
+    expect(atmosphere).not.toContain("fonts.g");
     const pixel = themeCsp(theme("pixel"));
     expect(pixel).not.toContain("script-src");
     expect(pixel).not.toContain("font-src");
