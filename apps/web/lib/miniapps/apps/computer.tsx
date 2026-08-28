@@ -13,6 +13,7 @@ import { captureScreenshotPng } from "@/lib/box/screenshot";
 import { esc, forbidden } from "../html";
 import { renderShell, shellHtml } from "../shell";
 import { renderPassthrough } from "./passthrough";
+import { timedFetch } from "../timing";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
 interface BoxRow {
@@ -88,25 +89,27 @@ export const computer: MiniAppModule = {
     }
 
     const [{ data: boxRow }, { data: runRows }, { data: stateRows }] =
-      await Promise.all([
-      ctx.supabase
-        .from("boxes")
-        .select("provider_box_id, state")
-        .eq("user_id", ctx.session.userId)
-        .maybeSingle(),
-      ctx.supabase
-        .from("agent_runs")
-        .select("started_at, ended_at, trigger, outcome")
-        .eq("user_id", ctx.session.userId)
-        .order("started_at", { ascending: false })
-        .limit(1),
-      ctx.supabase
-        .from("box_state_events")
-        .select("state, created_at")
-        .eq("user_id", ctx.session.userId)
-        .order("created_at", { ascending: false })
-        .limit(1),
-    ]);
+      await timedFetch("computer", "box+runs+state", () =>
+        Promise.all([
+          ctx.supabase
+            .from("boxes")
+            .select("provider_box_id, state")
+            .eq("user_id", ctx.session.userId)
+            .maybeSingle(),
+          ctx.supabase
+            .from("agent_runs")
+            .select("started_at, ended_at, trigger, outcome")
+            .eq("user_id", ctx.session.userId)
+            .order("started_at", { ascending: false })
+            .limit(1),
+          ctx.supabase
+            .from("box_state_events")
+            .select("state, created_at")
+            .eq("user_id", ctx.session.userId)
+            .order("created_at", { ascending: false })
+            .limit(1),
+        ])
+      );
     const box = boxRow as BoxRow | null;
     const run = ((runRows ?? [])[0] as RunRow | undefined) ?? null;
     const awake = box?.state === "ready" || box?.state === "idle";
@@ -119,7 +122,9 @@ export const computer: MiniAppModule = {
     let screenshot: string | null = null;
     if (box && awake && !embed) {
       try {
-        const png = await captureScreenshotPng(box.provider_box_id, 8);
+        const png = await timedFetch("computer", "screenshot", () =>
+          captureScreenshotPng(box.provider_box_id, 8)
+        );
         screenshot = `data:image/png;base64,${png.toString("base64")}`;
       } catch {
         screenshot = null;

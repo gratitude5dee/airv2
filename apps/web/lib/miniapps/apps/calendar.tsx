@@ -34,6 +34,7 @@ import { externalOrigin } from "../gates";
 import { esc, withBaseHeaders } from "../html";
 import { renderShell, shellHtml } from "../shell";
 import { promptBar, runPrompt } from "../promptBar";
+import { timedFetch } from "../timing";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
 interface InviteDecision {
@@ -454,31 +455,42 @@ export const calendar: MiniAppModule = {
   async render(ctx: MiniAppContext): Promise<NextResponse> {
     // Invite approvals come from Postgres metadata (instant); event rows
     // need the box store, so a sleeping box degrades to invites-only.
-    const [{ data: decisionRows }, { data: sourceRows }] = await Promise.all([
-      ctx.supabase
-        .from("decisions")
-        .select("id, label, sender")
-        .eq("user_id", ctx.session.userId)
-        .eq("kind", "calendar_add")
-        .eq("status", "pending")
-        .order("created_at", { ascending: false })
-        .limit(20),
-      ctx.supabase
-        .from("calendar_accounts")
-        .select("id, provider, label, persona, color, status")
-        .eq("user_id", ctx.session.userId)
-        .neq("status", "revoked")
-        .order("created_at", { ascending: true }),
-    ]);
+    const [{ data: decisionRows }, { data: sourceRows }] = await timedFetch(
+      "calendar",
+      "decisions+accounts",
+      () =>
+        Promise.all([
+          ctx.supabase
+            .from("decisions")
+            .select("id, label, sender")
+            .eq("user_id", ctx.session.userId)
+            .eq("kind", "calendar_add")
+            .eq("status", "pending")
+            .order("created_at", { ascending: false })
+            .limit(20),
+          ctx.supabase
+            .from("calendar_accounts")
+            .select("id, provider, label, persona, color, status")
+            .eq("user_id", ctx.session.userId)
+            .neq("status", "revoked")
+            .order("created_at", { ascending: true }),
+        ])
+    );
     let events: CalendarEvent[] = [];
     let avatars = new Map<string, CrmAvatar>();
     let boxAwake = true;
     try {
-      const box = await ensureBoxAwake(ctx.supabase, ctx.session.userId);
-      events = await readEventsStore(box.boxId);
+      const box = await timedFetch("calendar", "box wake", () =>
+        ensureBoxAwake(ctx.supabase, ctx.session.userId)
+      );
+      events = await timedFetch("calendar", "box events", () =>
+        readEventsStore(box.boxId)
+      );
       // Attendee avatars come from the owner's OWN box store, read inside
       // this owner-scoped session — no cross-owner resolution can exist.
-      avatars = avatarIndex(await readPeople(box.boxId));
+      avatars = avatarIndex(
+        await timedFetch("calendar", "box people", () => readPeople(box.boxId))
+      );
     } catch {
       boxAwake = false;
     } finally {
