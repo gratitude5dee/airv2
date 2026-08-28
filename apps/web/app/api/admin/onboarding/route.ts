@@ -15,9 +15,36 @@ import {
 } from "@/lib/miniapps/onboarding";
 import { MIRROR_STALE_MS } from "@/lib/miniapps/onboardingMirror";
 import { serviceClient } from "@/lib/supabase";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const PAGE = 1000;
+
+async function readAll<T>(
+  supabase: SupabaseClient,
+  table: string,
+  columns: string,
+  orderBy: string,
+  filter?: { column: string; value: string }
+): Promise<T[]> {
+  const rows: T[] = [];
+  for (let offset = 0; ; offset += PAGE) {
+    let query = supabase
+      .from(table)
+      .select(columns)
+      .order(orderBy, { ascending: true })
+      .range(offset, offset + PAGE - 1);
+    if (filter) query = query.eq(filter.column, filter.value);
+    const { data, error } = await query;
+    if (error) break;
+    const page = (data ?? []) as T[];
+    rows.push(...page);
+    if (page.length < PAGE) break;
+  }
+  return rows;
+}
 
 type StepCounts = Record<OnboardingStepStatus, number>;
 
@@ -39,26 +66,40 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
   const supabase = serviceClient();
 
-  const [usersRes, mirrorsRes, cardsRes] = await Promise.all([
-    supabase.from("users").select("id, username, created_at"),
-    supabase
-      .from("onboarding_status_mirror")
-      .select("user_id, state, refreshed_at"),
-    supabase.from("card_sends").select("user_id, sent_at").eq("kind", "onboarding"),
+  const [userRows, mirrorRows, cardRows] = await Promise.all([
+    readAll<{ id: unknown; username: unknown; created_at: unknown }>(
+      supabase,
+      "users",
+      "id, username, created_at",
+      "id"
+    ),
+    readAll<{ user_id: unknown; state: unknown; refreshed_at: unknown }>(
+      supabase,
+      "onboarding_status_mirror",
+      "user_id, state, refreshed_at",
+      "user_id"
+    ),
+    readAll<{ user_id: unknown; sent_at: unknown }>(
+      supabase,
+      "card_sends",
+      "user_id, sent_at",
+      "user_id",
+      { column: "kind", value: "onboarding" }
+    ),
   ]);
 
   const mirrors = new Map<
     string,
     { steps: Record<OnboardingStepId, OnboardingStepStatus>; refreshedAt: string }
   >();
-  for (const row of mirrorsRes.data ?? []) {
+  for (const row of mirrorRows) {
     mirrors.set(String(row.user_id), {
       steps: normalizeOnboardingState(row.state).steps,
       refreshedAt: String(row.refreshed_at),
     });
   }
   const cards = new Map<string, string>();
-  for (const row of cardsRes.data ?? []) {
+  for (const row of cardRows) {
     cards.set(String(row.user_id), String(row.sent_at));
   }
 
@@ -71,7 +112,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   let completed = 0;
   let stale = 0;
   const users: UserRow[] = [];
-  for (const user of usersRes.data ?? []) {
+  for (const user of userRows) {
     const userId = String(user.id);
     const mirror = mirrors.get(userId) ?? null;
     let done = 0;
