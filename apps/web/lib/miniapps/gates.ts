@@ -20,7 +20,10 @@ import {
   sessionExpired,
 } from "./html";
 import type { RegistryApp } from "./registry";
+import { elapsedMs } from "./timing";
 import { verifyToken, type MiniAppRole } from "./tokens";
+
+export { elapsedMs };
 
 export interface MiniSession {
   userId: string;
@@ -32,9 +35,21 @@ export interface MiniSession {
   via?: "card" | undefined;
 }
 
+/**
+ * Per-gate wall time for the request-level latency log. Only gates that
+ * actually ran appear; the chain short-circuits.
+ */
+export interface GateTimings {
+  visibilityMs?: number;
+  passwordMs?: number;
+  x402Ms?: number;
+  sessionMs?: number;
+  totalMs: number;
+}
+
 export type GateOutcome =
-  | { ok: true; session: MiniSession }
-  | { ok: false; response: NextResponse };
+  | { ok: true; session: MiniSession; timings?: GateTimings }
+  | { ok: false; response: NextResponse; timings?: GateTimings };
 
 export function cookieName(app: string): string {
   return `mini_${app}`;
@@ -225,10 +240,22 @@ export async function runGateChain(
   basePath: string,
   submittedPassword?: string
 ): Promise<GateOutcome> {
-  const visibility = visibilityGate(app);
-  if (visibility) return { ok: false, response: visibility };
+  const chainStart = performance.now();
+  const timings: GateTimings = { totalMs: 0 };
+  const done = (): GateTimings => ({
+    ...timings,
+    totalMs: elapsedMs(chainStart),
+  });
 
+  let mark = performance.now();
+  const visibility = visibilityGate(app);
+  timings.visibilityMs = elapsedMs(mark);
+  if (visibility)
+    return { ok: false, response: visibility, timings: done() };
+
+  mark = performance.now();
   const password = passwordGate(request, app, basePath, submittedPassword);
+  timings.passwordMs = elapsedMs(mark);
   if (password) {
     await logGateEvent(
       supabase,
@@ -237,16 +264,21 @@ export async function runGateChain(
       password.settled ? "gate_settled" : "gate_challenged",
       "password"
     );
-    return { ok: false, response: password.response };
+    return { ok: false, response: password.response, timings: done() };
   }
 
+  mark = performance.now();
   const payment = await x402Gate(request, app, { basePath });
+  timings.x402Ms = elapsedMs(mark);
   if (payment) {
     await logGateEvent(supabase, app.id, null, "gate_challenged", "x402");
-    return { ok: false, response: payment };
+    return { ok: false, response: payment, timings: done() };
   }
 
-  return sessionGate(request, app);
+  mark = performance.now();
+  const outcome = sessionGate(request, app);
+  timings.sessionMs = elapsedMs(mark);
+  return { ...outcome, timings: done() };
 }
 
 /** MA9 gate ledger — best-effort, never blocks the request. */

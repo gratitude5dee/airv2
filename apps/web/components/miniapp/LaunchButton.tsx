@@ -23,14 +23,44 @@ export function LaunchButton({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  function logFailure(status: number, reason: string, ms: number) {
+    console.error(
+      JSON.stringify({
+        msg: "store launch failed",
+        slug,
+        status,
+        reason,
+        ms: Math.round(ms * 10) / 10,
+      })
+    );
+  }
+
   async function open() {
     setBusy(true);
     setError(null);
-    const res = await fetch("/api/mini/launch", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ slug }),
-    });
+    const t0 = performance.now();
+    let res: Response;
+    try {
+      res = await fetch("/api/mini/launch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug }),
+      });
+    } catch (err) {
+      setBusy(false);
+      console.error(
+        JSON.stringify({
+          msg: "store launch failed",
+          slug,
+          reason: "fetch_threw",
+          error: err instanceof Error ? err.message : String(err),
+          ms: Math.round((performance.now() - t0) * 10) / 10,
+        })
+      );
+      setError("Couldn't open this app right now.");
+      return;
+    }
+    const ms = performance.now() - t0;
     setBusy(false);
     if (res.ok) {
       const data = (await res.json()) as { url: string };
@@ -38,6 +68,7 @@ export function LaunchButton({
       return;
     }
     if (res.status === 401) {
+      logFailure(res.status, "no_store_session", ms);
       if (signInUrl.startsWith("/")) {
         router.push(signInUrl);
       } else {
@@ -46,6 +77,7 @@ export function LaunchButton({
       return;
     }
     if (res.status === 402) {
+      logFailure(res.status, "payment_required", ms);
       if (payUrl) {
         window.location.assign(payUrl);
       } else {
@@ -53,6 +85,7 @@ export function LaunchButton({
       }
       return;
     }
+    logFailure(res.status, "launch_not_ok", ms);
     setError("Couldn't open this app right now.");
   }
 

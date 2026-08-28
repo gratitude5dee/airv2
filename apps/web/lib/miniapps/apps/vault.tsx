@@ -32,6 +32,7 @@ import { externalOrigin } from "../gates";
 import { promptBar, runPrompt } from "../promptBar";
 import { esc, forbidden, withBaseHeaders } from "../html";
 import { renderShell, shellHtml } from "../shell";
+import { timedFetch } from "../timing";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
 // V2 (C18/C20): card values never render on this reduced-trust surface —
@@ -287,23 +288,28 @@ async function vaultPage(
 
 export const vault: MiniAppModule = {
   async render(ctx: MiniAppContext): Promise<NextResponse> {
-    const [{ data }, { data: reviewRows }, context] = await Promise.all([
-      ctx.supabase
-        .from("vault_items")
-        .select(ITEM_COLUMNS)
-        .eq("user_id", ctx.session.userId)
-        .is("deleted_at", null)
-        .order("created_at", { ascending: true }),
-      ctx.supabase
-        .from("decisions")
-        .select("id, label, payload")
-        .eq("user_id", ctx.session.userId)
-        .eq("kind", "purchase_review")
-        .eq("status", "pending")
-        .order("created_at", { ascending: false })
-        .limit(10),
-      vaultContext(ctx.supabase, ctx.session.userId),
-    ]);
+    const [{ data }, { data: reviewRows }, context] = await timedFetch(
+      "vault",
+      "items+reviews+context",
+      () =>
+        Promise.all([
+          ctx.supabase
+            .from("vault_items")
+            .select(ITEM_COLUMNS)
+            .eq("user_id", ctx.session.userId)
+            .is("deleted_at", null)
+            .order("created_at", { ascending: true }),
+          ctx.supabase
+            .from("decisions")
+            .select("id, label, payload")
+            .eq("user_id", ctx.session.userId)
+            .eq("kind", "purchase_review")
+            .eq("status", "pending")
+            .order("created_at", { ascending: false })
+            .limit(10),
+          vaultContext(ctx.supabase, ctx.session.userId),
+        ])
+    );
     return shellHtml(
       renderVault(
         (data ?? []) as VaultItemRow[],

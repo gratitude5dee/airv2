@@ -12,6 +12,7 @@ import { publicUrl } from "@/lib/storage/r2";
 import { setMiniappHomeOrder } from "@/lib/settings/account";
 import { externalOrigin } from "../gates";
 import { listFirstPartyApps } from "../registry";
+import { timedFetch } from "../timing";
 import { mintToken } from "../tokens";
 import { esc, forbidden, withBaseHeaders } from "../html";
 import { avatarHtml, renderShell, shellHtml, tintHue } from "../shell";
@@ -83,10 +84,9 @@ async function savedOrder(
 export const home: MiniAppModule = {
   async render(ctx: MiniAppContext) {
     const { session, supabase, basePath } = ctx;
-    const [allApps, saved] = await Promise.all([
-      listFirstPartyApps(supabase),
-      savedOrder(ctx),
-    ]);
+    const [allApps, saved] = await timedFetch("home", "registry+order", () =>
+      Promise.all([listFirstPartyApps(supabase), savedOrder(ctx)])
+    );
     const apps = allApps.filter((app) => app.status === "published");
     apps.sort((a, b) => rank(a.slug, saved) - rank(b.slug, saved));
     // basePath is `/mini/home` on the main origin, `/home` on the mini host;
