@@ -64,7 +64,7 @@ export async function maybeSendMiniAppLink(
     const message = await sender.sendApp(
       job.spaceId,
       job.phone,
-      () => mintSignedLink(job.userId, app.slug, "default"),
+      () => mintSignedLink(job.userId, app.slug, "default", "card"),
       cardLayout(app.slug)
     );
     if (isCardKind(app.slug)) {
@@ -78,7 +78,7 @@ export async function maybeSendMiniAppLink(
       );
     }
   } catch {
-    const url = mintSignedLink(job.userId, app.slug, "default");
+    const url = mintSignedLink(job.userId, app.slug, "default", "card");
     try {
       await sender.sendRichLink(job.spaceId, job.phone, url);
     } catch {
