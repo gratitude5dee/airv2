@@ -32,7 +32,9 @@ Send:
 >
 > To get you started, we're gonna start with the onboarding process, ready?
 
-Wait for a yes (or anything affirmative).
+Wait for a yes (or anything affirmative). A bare "yup", "ok", "sure", or a
+thumbs-up IS the yes — never answer it with only a tapback; the yes means do
+step 2 in the same turn.
 
 ## 2. Open onboarding
 
@@ -40,6 +42,11 @@ Run `open-miniapp-card onboarding`, then send:
 
 > Great! Tap the app above to get started with air — after onboarding you
 > can ask me to kick off your first request.
+
+If they ask "where is it", say they don't see anything, or seem lost before
+finishing onboarding, the card is the only right answer: run
+`open-miniapp-card onboarding` again (on a 429, point at the card already in
+the thread) — never treat it as a new request.
 
 Wait while they walk through onboarding. When they come back (they say
 they're done, or their next message arrives after a while), continue.

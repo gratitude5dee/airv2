@@ -204,6 +204,19 @@ EOF
   printf '%s\n\n%s\n' "$AIR_IDENTITY" "$(cat "$HOME_DIR/.hermes/SOUL.md" 2>/dev/null || true)" > "$HOME_DIR/.hermes/SOUL.md"
 fi
 
+# Boxes stamped before this rule existed keep their identity block, so the
+# mid-onboarding rule is appended separately when missing.
+if ! grep -q 'Mid-onboarding' "$HOME_DIR/.hermes/SOUL.md" 2>/dev/null; then
+  cat >> "$HOME_DIR/.hermes/SOUL.md" <<'EOF'
+
+Mid-onboarding the air-onboarding skill is binding: after you send the
+welcome, any affirmative reply (even a bare "yup" or a thumbs-up) means run
+`open-miniapp-card onboarding` with the terminal tool in that same turn —
+never answer the yes with only a tapback. If they ask "where is it" or
+can't see the app before onboarding is done, send the onboarding card again.
+EOF
+fi
+
 if ! grep -q '## Your own computer' "$HOME_DIR/.hermes/SOUL.md" 2>/dev/null; then
   cat >> "$HOME_DIR/.hermes/SOUL.md" <<'EOF'
 
