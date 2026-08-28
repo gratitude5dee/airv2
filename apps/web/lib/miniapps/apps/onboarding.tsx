@@ -127,7 +127,7 @@ import {
   tokenBlock,
   type Theme,
 } from "../themes";
-import { timedFetch, timedPart, timedParts } from "../timing";
+import { timedPart, timedParts } from "../timing";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
 const STEP_TITLES: Record<OnboardingStepId, string> = {
@@ -235,17 +235,9 @@ async function loadSnapshot(
   supabase: SupabaseClient,
   userId: string
 ): Promise<OnboardingSnapshot> {
-  let state = defaultOnboardingState();
   let boxBusy = false;
-  try {
-    state = await timedFetch("onboarding", "state", () =>
-      readOnboardingState(supabase, userId)
-    );
-  } catch (error) {
-    if (!(error instanceof StartLimitError)) throw error;
-    boxBusy = true;
-  }
   const [
+    state,
     { data: user },
     { data: addressRow },
     { data: connectionRows },
@@ -265,6 +257,13 @@ async function loadSnapshot(
     { data: boxRow },
   ] = await timedParts("onboarding", "snapshot", (parts) =>
     Promise.all([
+      timedPart(parts, "state", () =>
+        readOnboardingState(supabase, userId).catch((error) => {
+          if (!(error instanceof StartLimitError)) throw error;
+          boxBusy = true;
+          return defaultOnboardingState();
+        })
+      ),
       timedPart(parts, "user", () =>
         supabase.from("users").select("username").eq("id", userId).maybeSingle()
       ),
