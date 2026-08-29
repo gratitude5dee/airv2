@@ -1,14 +1,19 @@
 /**
- * One strict-JSON Groq call compiles a deterministically locked command mode
- * into a generation plan (ported from outsideairworker src/router.ts). The
- * lane only ever runs for an explicit slash command, so this router always
+ * One strict-JSON call compiles a deterministically locked command mode into
+ * a generation plan (ported from outsideairworker src/router.ts). The lane
+ * only ever runs for an explicit slash command, so this router always
  * receives a locked mode; the model can refuse but never re-route the paid
  * mode (enforceExplicitCommandIntent re-locks after the call). Router
  * failure becomes a clarification plan, never a user-visible provider error.
+ *
+ * /zap compiles on luna-fast (the fast speed tier's model); every other lane
+ * compiles on the Groq router model. The strict-plan contract is the same on
+ * both paths.
  */
 import type { MediaInput } from "./gmi";
 import { CreativeUnconfiguredError, groqChat } from "./groq";
 import { chatLine, deliveryLine } from "./limits";
+import { lunaChat, lunaModel } from "./luna";
 import { GENERATION_SYSTEMS, PROMPT_VERSIONS } from "./prompts";
 import type { CreativeMode } from "./parse";
 import {
@@ -18,7 +23,21 @@ import {
   type RouterPlan,
 } from "./schema";
 
-const ROUTER_MODEL = "openai/gpt-oss-20b";
+export const ROUTER_MODEL = "openai/gpt-oss-20b";
+
+export type CreativeChat = typeof groqChat;
+
+export interface PromptCompiler {
+  chat: CreativeChat;
+  model: string;
+}
+
+/** Which model compiles expanded_prompt for a lane, and over which client. */
+export function compilerForMode(mode: CreativeMode): PromptCompiler {
+  return mode === "zap"
+    ? { chat: lunaChat, model: lunaModel() }
+    : { chat: groqChat, model: ROUTER_MODEL };
+}
 
 export interface CreativeCommandTurn {
   mode: CreativeMode;
@@ -127,15 +146,17 @@ const normalize = (plan: RouterPlan): RouterPlan => ({
   delivery_line: isGenerationPlan(plan) ? deliveryLine(plan.delivery_line) : "",
 });
 
-/** One strict Groq call compiles the deterministically locked mode. */
+/** One strict compile call for the deterministically locked mode. */
 export async function routeExplicitCommand(
   turn: CreativeCommandTurn,
   imageDescription: string | null,
-  chat: typeof groqChat = groqChat,
+  /** Chat client override (tests); the lane's own client is used when absent. */
+  chat?: CreativeChat,
   /** Prompting guide for the model that will render the plan (metaprompt).
    * Appended to the system prompt only — never changes the locked mode. */
   modelGuide?: string | null
 ): Promise<RouterPlan> {
+  const compiler = compilerForMode(turn.mode);
   const context = {
     prompt_version: PROMPT_VERSIONS[turn.mode],
     locked_mode: turn.mode,
@@ -157,8 +178,8 @@ export async function routeExplicitCommand(
   };
 
   try {
-    const content = await chat({
-      model: ROUTER_MODEL,
+    const content = await (chat ?? compiler.chat)({
+      model: compiler.model,
       maxTokens: 750,
       reasoningEffort: "low",
       temperature: 0.7,

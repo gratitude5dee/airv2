@@ -12,10 +12,12 @@ import {
   GmiRequestError,
   type CreativeTurn,
 } from "./gmi";
+import { buildFalZapRequest } from "./fal";
 import {
   assertSafeGeneratedMediaUrl,
   fetchSafeGeneratedMedia,
 } from "./media-url";
+import { compilerForMode, routeExplicitCommand, ROUTER_MODEL } from "./router";
 import { maybeRunCreativeLane } from "./imessage";
 import { underDailyLimit } from "./jobs";
 import { creativePreflight, REQUIRED_GMI_MODELS } from "./preflight";
@@ -184,30 +186,102 @@ describe("buildGenerationRequest", () => {
     expect(request.payload["generate_audio"]).toBe(false);
   });
 
-  it("zap builds gemini payload with reference/video caps and auto duration", () => {
-    const images = Array.from({ length: 6 }, (_, i) => ({
-      kind: "image" as const,
-      url: `https://x.test/i${i}.png`,
-    }));
-    const videos = Array.from({ length: 4 }, (_, i) => ({
-      kind: "video" as const,
-      url: `https://x.test/v${i}.mp4`,
-    }));
-    const request = buildGenerationRequest(
-      plan({ mode: "zap", params: { ...plan().params, duration: 30 } }),
-      turn({ mediaInputs: [...images, ...videos] })
+  it("refuses to build a GMI payload for zap (that lane renders on fal)", () => {
+    expect(() => buildGenerationRequest(plan({ mode: "zap" }), turn())).toThrow(
+      /Cannot generate media/
     );
-    expect(request.model).toBe("gemini-omni-flash-preview");
-    expect(request.payload["reference_image"]).toHaveLength(5);
-    expect(request.payload["video"]).toHaveLength(3);
-    // With input video the provider derives duration.
-    expect(request.payload["durationSeconds"]).toBe("auto");
+  });
+});
 
-    const noVideo = buildGenerationRequest(
-      plan({ mode: "zap", params: { ...plan().params, duration: 30 } }),
+describe("buildFalZapRequest", () => {
+  it("submits text-to-video with a clamped short duration and 768P", () => {
+    const request = buildFalZapRequest(
+      plan({
+        mode: "zap",
+        params: { ...plan().params, aspect_ratio: "9:16", duration: 30 },
+      }),
       turn()
     );
-    expect(noVideo.payload["durationSeconds"]).toBe(10);
+    expect(request).toEqual({
+      kind: "video",
+      model: "minimax/h3-max/text-to-video",
+      input: {
+        prompt: "a fox in the fog",
+        duration: 10,
+        resolution: "768P",
+        prompt_expansion_mode: "balanced",
+        aspect_ratio: "9:16",
+      },
+    });
+  });
+
+  it("gives the first two images the first/last frame jobs", () => {
+    const request = buildFalZapRequest(
+      plan({ mode: "zap" }),
+      turn({
+        mediaInputs: [
+          { kind: "image", url: "https://x.test/a.png" },
+          { kind: "image", url: "https://x.test/b.png" },
+          { kind: "image", url: "https://x.test/c.png" },
+          { kind: "video", url: "https://x.test/v.mp4" },
+        ],
+      })
+    );
+    expect(request.model).toBe("minimax/h3-max/image-to-video");
+    expect(request.input["image_url"]).toBe("https://x.test/a.png");
+    expect(request.input["end_image_url"]).toBe("https://x.test/b.png");
+    // The endpoint derives the ratio from the first frame and takes no video.
+    expect(request.input["aspect_ratio"]).toBeUndefined();
+    expect(request.input["video"]).toBeUndefined();
+    expect(request.input["duration"]).toBe(5);
+  });
+
+  it("accepts fal.media artifact URLs and still rejects other hosts", () => {
+    expect(
+      assertSafeGeneratedMediaUrl("https://v3b.fal.media/files/out.mp4")
+    ).toBe("https://v3b.fal.media/files/out.mp4");
+    expect(() =>
+      assertSafeGeneratedMediaUrl("https://evil.test/out.mp4")
+    ).toThrow();
+  });
+});
+
+describe("prompt compiler routing", () => {
+  it("compiles /zap on luna-fast and other lanes on the Groq router", async () => {
+    vi.stubEnv("MODEL_PROVIDER_API_KEY", "sk-test");
+    vi.stubEnv("MODEL_PROVIDER_BASE_URL", "https://provider.test/v1");
+    expect(compilerForMode("zap").model).toBe("gpt-5.6-luna");
+    expect(compilerForMode("imagine").model).toBe(ROUTER_MODEL);
+    expect(compilerForMode("animate").model).toBe(ROUTER_MODEL);
+
+    const seen: string[] = [];
+    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
+      seen.push(String(init.body));
+      return new Response(
+        JSON.stringify({
+          choices: [{ message: { content: JSON.stringify(plan({ mode: "zap" })) } }],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await routeExplicitCommand(
+      { mode: "zap", cleanedText: "a fox", text: "/zap a fox", mediaInputs: [] },
+      null
+    );
+    expect(result.mode).toBe("zap");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://provider.test/v1/chat/completions",
+      expect.anything()
+    );
+    const body = JSON.parse(seen[0] ?? "{}") as Record<string, unknown>;
+    // gpt-5.6 parameter contract: no max_tokens, no sampling knobs.
+    expect(body["model"]).toBe("gpt-5.6-luna");
+    expect(body["service_tier"]).toBe("fast");
+    expect(body["max_completion_tokens"]).toBe(750);
+    expect(body["max_tokens"]).toBeUndefined();
+    expect(body["temperature"]).toBeUndefined();
   });
 });
 

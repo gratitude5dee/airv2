@@ -1,8 +1,12 @@
 /**
  * Creative job executor shared by the web SSE lane and the iMessage lane.
- * Drives one job through routing → GMI submit/poll → validated download →
- * asset pipeline, recording lifecycle transitions in creative_jobs (metadata
- * only — no prompts, no media, no provider URLs).
+ * Drives one job through routing → provider submit/poll → validated download
+ * → asset pipeline, recording lifecycle transitions in creative_jobs
+ * (metadata only — no prompts, no media, no provider URLs).
+ *
+ * /zap renders on fal (MiniMax H3 Max); every other lane renders on the GMI
+ * queue. Both paths return the same GeneratedMedia, so download, ingestion,
+ * and native-video delivery are identical.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CreativeAsset } from "../assets/pipeline";
@@ -19,6 +23,7 @@ import {
   type GeneratedMedia,
   type GmiLifecycleEvent,
 } from "./gmi";
+import { generateZapVideo } from "./fal";
 import { CreativeUnconfiguredError } from "./groq";
 import { insertRenderCostEvent, updateCreativeJob, underDailyLimit, DAILY_LIMIT_LINE } from "./jobs";
 import { fetchSafeGeneratedMedia } from "./media-url";
@@ -148,15 +153,22 @@ export async function executeCreativeJob(
     onLifecycle,
     ...(personalGmiKey ? { apiKey: personalGmiKey } : {}),
   };
+  // A personal GMI key is meaningless on the fal lane, so /zap always renders
+  // on the platform key and always books a platform cost event.
+  const onFal = plan.mode === "zap";
   let media: GeneratedMedia;
   try {
-    media = await generate(
-      plan,
-      creativeTurn,
-      DEFAULT_GENERATION_TIMEOUT_MS,
-      generationOptions,
-      prefs
-    );
+    media = onFal
+      ? await generateZapVideo(plan, creativeTurn, DEFAULT_GENERATION_TIMEOUT_MS, {
+          onLifecycle,
+        })
+      : await generate(
+          plan,
+          creativeTurn,
+          DEFAULT_GENERATION_TIMEOUT_MS,
+          generationOptions,
+          prefs
+        );
   } catch (error) {
     if (error instanceof CreativeUnconfiguredError) {
       return await fail("failed", UNCONFIGURED_LINE);
@@ -195,7 +207,7 @@ export async function executeCreativeJob(
     });
     // A render on the user's personal GMI key is their own provider spend —
     // no platform cost event (the job still counts toward the daily cap).
-    if (!personalGmiKey) {
+    if (onFal || !personalGmiKey) {
       await insertRenderCostEvent(supabase, userId, jobId, media.kind);
     }
     return {

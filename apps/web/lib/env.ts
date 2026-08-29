@@ -183,6 +183,9 @@ export const env = {
   // instead of failing the deploy.
   groqApiKey: (): string | null => process.env["GROQ_API_KEY"] ?? null,
   gmiCloudApiKey: (): string | null => process.env["GMI_CLOUD_API_KEY"] ?? null,
+  // fal.ai renders the /zap lane (MiniMax H3 Max). Control-plane only: this
+  // key is never handed to a box or a browser.
+  falKey: (): string | null => process.env["FAL_KEY"] ?? null,
   // Direct HeyGen API key — used only to create per-user avatar IDs
   // (POST /v3/avatars); video rendering stays on the GMI queue.
   heygenApiKey: (): string | null => process.env["HEYGEN_API_KEY"] ?? null,

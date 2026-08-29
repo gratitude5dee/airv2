@@ -81,10 +81,14 @@ natural physics ("handheld 35mm, shallow focus"). Avoid surreal instructions.
 
 ## /zap — video editing
 
-### Google Omni (`gemini-omni-flash-preview`) — default
-Tight kinetic 3–6 second instruction: one subject, one motion, one strong
-visual hook. With attached video, phrase it as an edit instruction; attached
-images are shared visual context.
+### H3 Max (`minimax/h3-max`, fal) — default
+Direct one-shot film direction, 5–10 seconds. Give each reference a job: the
+first image is the opening frame, a second image is the closing frame. Order
+shot → subject action → one named camera move with lens → lighting → audio as
+a plain instruction. A timed beat list is allowed when the shot has distinct
+beats. No negatives, no tag soup. Attached video is not an input this model
+accepts, so the shot is described in full instead.
 
-> Example: Make the skateboard trail rainbow light as it lands, quick whip
-> pan to the rider's grin.
+> Example: Low-angle 35mm shot, skateboard lands and throws a rainbow light
+> trail; whip pan to the rider's grin, hard afternoon sun. 0-2s the landing,
+> 2-5s the pan. audio: wheels on concrete, no music.

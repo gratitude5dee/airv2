@@ -223,11 +223,6 @@ const seedanceRatioFor = (
   ratio: RouterPlan["params"]["aspect_ratio"],
 ): string => (ratio === "auto" ? "16:9" : ratio);
 
-const zapAspectRatioFor = (
-  ratio: RouterPlan["params"]["aspect_ratio"],
-): "16:9" | "9:16" | "auto" =>
-  ratio === "16:9" || ratio === "9:16" ? ratio : "auto";
-
 /** Pure payload builder, kept separate from queue I/O for deterministic tests. */
 export function buildGenerationRequest(
   plan: RouterPlan,
@@ -239,10 +234,6 @@ export function buildGenerationRequest(
   const imageInputs = turn.mediaInputs.filter(
     (media) => media.kind === "image",
   );
-  const videoInputs = turn.mediaInputs.filter(
-    (media) => media.kind === "video",
-  );
-
   if (plan.mode === "imagine") {
     const size = imageSizeFor(plan.params.aspect_ratio);
     const quality = qualityFor(plan.params.quality);
@@ -357,34 +348,8 @@ export function buildGenerationRequest(
     };
   }
 
-  if (plan.mode === "zap") {
-    const hasVideo = videoInputs.length > 0;
-    return {
-      kind: "video",
-      model: models.zap,
-      payload: {
-        prompt,
-        ...(imageInputs.length > 0
-          ? {
-              reference_image: imageInputs
-                .slice(0, 5)
-                .map((media) => media.url),
-            }
-          : {}),
-        ...(hasVideo
-          ? { video: videoInputs.slice(0, 3).map((media) => media.url) }
-          : {}),
-        durationSeconds: hasVideo
-          ? "auto"
-          : plan.params.duration === null
-            ? "auto"
-            : clamp(plan.params.duration, 3, 10),
-        aspectRatio: zapAspectRatioFor(plan.params.aspect_ratio),
-        resolution: "720p",
-      },
-    };
-  }
-
+  // /zap renders on fal (MiniMax H3 Max), not the GMI queue: executeCreativeJob
+  // dispatches that lane to fal.ts buildFalZapRequest before reaching here.
   throw new Error(`Cannot generate media for router mode "${plan.mode}"`);
 }
 

@@ -68,7 +68,7 @@ vi.mock("@/lib/creative/model-prefs", async (importOriginal) => ({
     imagine: "gpt-image-2-generate",
     edit: "gpt-image-2-edit",
     animate: "seedance-2-0-fast-260128",
-    zap: "gemini-omni-flash-preview",
+    zap: "minimax/h3-max",
   })),
   setCreativeModel: (...args: unknown[]) => setCreativeModel(...(args as [])),
 }));

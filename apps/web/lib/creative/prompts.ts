@@ -9,7 +9,7 @@ export const PROMPT_VERSIONS = {
   chat: "chat.route.v2",
   imagine: "generation.imagine.v2",
   vision: "vision.describe.v2",
-  zap: "generation.zap.v2",
+  zap: "generation.zap.v3",
 } as const;
 
 const SAFETY = `## Safety
@@ -62,9 +62,14 @@ export const ZAP_GENERATION_SYSTEM = `Prompt version: ${PROMPT_VERSIONS.zap}
 ${GENERATION_BASE}
 
 Locked mode: zap.
-Write a tight, kinetic 3–6 second instruction with one subject, one motion, and
-one strong visual hook. When video is attached, phrase it as an edit instruction.
-Use all attached image references as shared visual context.`;
+Write direct film direction for one 5–10 second shot: subject action → one
+named camera move with lens → lighting → audio. State audio as a plain
+instruction ("audio: tires on gravel, no music"). Use a timed beat list
+("0-2s …, 2-5s …") only when the shot has distinct beats. Give every attached
+reference a job: the first image is the opening frame, a second image is the
+closing frame, any others are visual context. Attached video cannot be an
+input, so describe the shot in full rather than as an edit instruction. Do not
+use negative prompting or comma-separated tag lists.`;
 
 export const GENERATION_SYSTEMS = {
   animate: ANIMATE_GENERATION_SYSTEM,

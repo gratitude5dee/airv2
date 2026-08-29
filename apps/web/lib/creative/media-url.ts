@@ -47,8 +47,11 @@ const MAX_REDIRECTS = 3;
 const GENERATED_MEDIA_DOWNLOAD_TIMEOUT_MS = 60_000;
 export const MAX_GENERATED_MEDIA_BYTES = 100 * 1024 * 1024;
 
-/** GMI's image model delivers through Google Cloud Storage. */
-const BUILTIN_MEDIA_HOSTS = ["storage.googleapis.com"] as const;
+/**
+ * GMI's image model delivers through Google Cloud Storage; fal (the /zap
+ * lane) delivers through fal.media subdomains.
+ */
+const BUILTIN_MEDIA_HOSTS = ["storage.googleapis.com", "fal.media"] as const;
 
 export const generatedMediaHosts = (): readonly string[] => [
   ...BUILTIN_MEDIA_HOSTS,

@@ -20,7 +20,6 @@ export const REQUIRED_GMI_MODELS = [
   "gpt-image-2-generate",
   "gpt-image-2-edit",
   "seedance-2-0-fast-260128",
-  "gemini-omni-flash-preview",
   "heygen-avatar-v4",
 ] as const;
 
@@ -30,14 +29,6 @@ export const REQUIRED_GMI_MODELS = [
  * before a media request becomes a paid failure.
  */
 export const REQUIRED_GMI_MODEL_PARAMETERS = {
-  "gemini-omni-flash-preview": [
-    "prompt",
-    "reference_image",
-    "video",
-    "durationSeconds",
-    "aspectRatio",
-    "resolution",
-  ],
   "gpt-image-2-edit": ["prompt", "image", "size", "quality"],
   "gpt-image-2-generate": ["prompt", "size", "quality", "output_format", "n"],
   "seedance-2-0-fast-260128": [
