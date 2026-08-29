@@ -9,6 +9,12 @@
  * Delivery is native attachment bytes first, then the caption; a rich-link
  * or bare-URL fallback uses only the short-TTL signed delivery URL — a
  * provider URL is never sent (C3/C4).
+ *
+ * Outbound sends stay best-effort — a dead Spectrum connection must not
+ * abort a job whose asset is already stored — but every failed send is
+ * logged, and a turn where nothing at all reached the chat is logged as
+ * `creative delivery silent`: total silence on the user's side is otherwise
+ * indistinguishable from success in the database.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ASSETS_BUCKET } from "../assets/keys";
@@ -24,6 +30,32 @@ import { executeCreativeJob } from "./run";
 import { removeStagedInputs, stageCreativeInput } from "./store";
 
 const ATTACHMENT_MARKER = /\[attachment:([^\]]+)\]/g;
+
+/**
+ * Best-effort send that reports whether the bubble actually left. Failures
+ * are swallowed for control flow but never for observability.
+ */
+async function trySend(
+  stage: string,
+  job: CreativeFlushJob,
+  send: () => Promise<unknown>
+): Promise<boolean> {
+  try {
+    await send();
+    return true;
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        msg: "creative delivery send failed",
+        stage,
+        user_id: job.userId,
+        space_id: job.spaceId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    );
+    return false;
+  }
+}
 
 export interface CreativeFlushJob {
   spaceId: string;
@@ -87,9 +119,9 @@ export async function maybeRunCreativeLane(
   }
 
   const ack = deterministicGenerationLines(command.mode, mediaInputs);
-  await sender
-    .sendText(job.spaceId, job.phone, ack.chat_reply)
-    .catch(() => undefined);
+  const ackSent = await trySend("ack", job, () =>
+    sender.sendText(job.spaceId, job.phone, ack.chat_reply)
+  );
 
   const creativeJob = await createCreativeJob(
     supabase,
@@ -123,31 +155,51 @@ export async function maybeRunCreativeLane(
   if (!download.error && download.data) {
     const bytes = Buffer.from(await download.data.arrayBuffer());
     const name = `wzrd-${result.asset.sha256.slice(0, 8)}.${result.asset.ext}`;
-    sent = await sender
-      .sendAttachment(job.spaceId, job.phone, bytes, {
-        name,
-        mimeType: downloadMime(result.asset.ext),
+    const mimeType = downloadMime(result.asset.ext);
+    sent = await trySend("attachment", job, () =>
+      sender.sendAttachment(job.spaceId, job.phone, bytes, { name, mimeType })
+    );
+  } else {
+    console.error(
+      JSON.stringify({
+        msg: "creative delivery send failed",
+        stage: "asset_download",
+        user_id: job.userId,
+        space_id: job.spaceId,
+        error: download.error?.message ?? "empty asset download",
       })
-      .then(() => true)
-      .catch(() => false);
+    );
   }
   if (!sent && result.deliveryUrl) {
     // Fallbacks carry only the short-TTL signed delivery URL.
-    sent = await sender
-      .sendRichLink(job.spaceId, job.phone, result.deliveryUrl)
-      .then(() => true)
-      .catch(() => false);
+    const deliveryUrl = result.deliveryUrl;
+    sent = await trySend("rich_link", job, () =>
+      sender.sendRichLink(job.spaceId, job.phone, deliveryUrl)
+    );
     if (!sent) {
-      sent = await sender
-        .sendText(job.spaceId, job.phone, result.deliveryUrl)
-        .then(() => true)
-        .catch(() => false);
+      sent = await trySend("delivery_url", job, () =>
+        sender.sendText(job.spaceId, job.phone, deliveryUrl)
+      );
     }
   }
   const caption = sent
     ? (result.deliveryLine ?? "made this for you")
     : "made it, but couldn't send it here. check the app.";
-  await sender.sendText(job.spaceId, job.phone, caption).catch(() => undefined);
+  const captionSent = await trySend("caption", job, () =>
+    sender.sendText(job.spaceId, job.phone, caption)
+  );
+  if (!ackSent && !sent && !captionSent) {
+    // The job is `delivered` in the database and the chat saw nothing.
+    console.error(
+      JSON.stringify({
+        msg: "creative delivery silent",
+        user_id: job.userId,
+        space_id: job.spaceId,
+        job_id: creativeJob.id,
+        mode: command.mode,
+      })
+    );
+  }
   return true;
 }
 
