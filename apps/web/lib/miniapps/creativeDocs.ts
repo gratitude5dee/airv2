@@ -162,8 +162,13 @@ const MAX_GROUP_DEPTH = 6;
 const MAX_HISTORY = 20;
 const HISTORY_MERGE_MS = 1500;
 
+let idCounter = 0;
+
 function newId(prefix: string): string {
-  return `${prefix}${Date.now().toString(36)}${Math.floor(Math.random() * 1296)
+  idCounter += 1;
+  return `${prefix}${Date.now().toString(36)}${idCounter.toString(36)}${Math.floor(
+    Math.random() * 1296
+  )
     .toString(36)
     .padStart(2, "0")}`;
 }
