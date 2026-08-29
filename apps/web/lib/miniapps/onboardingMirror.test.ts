@@ -90,7 +90,7 @@ describe("writeStatusMirror", () => {
     });
     expect(upserts).toHaveLength(1);
     expect(JSON.stringify(upserts[0])).not.toContain("q-r-s");
-    expect(upserts[0]["link"]).toMatchObject({
+    expect(upserts[0]?.["link"]).toMatchObject({
       installed: true,
       authenticated: false,
       pairing: true,
@@ -146,15 +146,13 @@ describe("refreshStatusMirror", () => {
     expect(live.boxBusy).toBe(false);
     expect(live.state.steps.username).toBe("todo");
     expect(upserts).toHaveLength(1);
-    expect(Object.keys(upserts[0])).toEqual(
+    expect(Object.keys(upserts[0] ?? {})).toEqual(
       expect.arrayContaining(["state", "ingest", "imports", "browser_profile", "link"])
     );
   });
 
   it("skips the row write while the box is starting", async () => {
-    vi.mocked(ensureComputeAwake).mockRejectedValueOnce(
-      new StartLimitError("starting")
-    );
+    vi.mocked(ensureComputeAwake).mockRejectedValueOnce(new StartLimitError());
     const { supabase, upserts } = fakeSupabase(null);
     const live = await refreshStatusMirror(supabase, "user-1");
     expect(live.boxBusy).toBe(true);

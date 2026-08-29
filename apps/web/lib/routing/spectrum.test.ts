@@ -99,6 +99,27 @@ describe("parseInboundSpectrumMessage", () => {
     });
   });
 
+  it("extracts text and attachment ids from a group bubble", () => {
+    const body = makeBody({
+      message: {
+        id: "msg-4",
+        direction: "inbound",
+        platform: "imessage",
+        sender: { id: "+15552223333" },
+        content: {
+          type: "group",
+          contents: [
+            { type: "attachment", id: "att-1", name: "logo.png" },
+            { type: "text", text: "/zap intro animation" },
+          ],
+        },
+      },
+    });
+    const inbound = parseInboundSpectrumMessage(body, {});
+    expect(inbound?.text).toBe("/zap intro animation");
+    expect(inbound?.attachmentIds).toEqual(["att-1"]);
+  });
+
   it("ignores outbound echoes", () => {
     const body = Buffer.from(
       JSON.stringify({
