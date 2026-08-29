@@ -9,6 +9,7 @@ optimized for the model that will actually render it. Keep the two in sync.
 ## /imagine — image generation
 
 ### OpenAI Image 2 (`gpt-image-2-generate`) — default
+
 Dense natural-language brief ordered subject → action → setting → lighting →
 lens or medium → color palette → mood. Best-in-class rendered text: put the
 exact copy in double quotes. Never use negative prompting.
@@ -18,6 +19,7 @@ exact copy in double quotes. Never use negative prompting.
 > terracotta palette, focused calm. Sign reads "OPEN STUDIO".
 
 ### Flux (`Flux2-Dev`)
+
 One-sentence scene followed by concise comma-separated visual tags. Strong
 at photorealism and graphic composition; always specify camera and lighting.
 
@@ -25,6 +27,7 @@ at photorealism and graphic composition; always specify camera and lighting.
 > shallow depth of field, cinematic teal-orange, motion blur on wheels.
 
 ### Seedream (`seedream-4-0-250828`)
+
 Cinematic one-paragraph description leading with style keywords, then
 subject and setting. Handles multi-subject scenes well; keep rendered text
 minimal.
@@ -35,18 +38,21 @@ minimal.
 ## /edit — image editing
 
 ### OpenAI Image 2 Edit (`gpt-image-2-edit`) — default
+
 Describe only the change and name what must stay identical first.
 
 > Example: Same person, same pose and lighting — replace the denim jacket
 > with a black leather jacket. Keep the background unchanged.
 
 ### Nano Banana (`gemini-3.1-flash-image`)
+
 Short imperative instruction, one change per request. Identity preservation
 is strong — say "the person in the image" instead of re-describing them.
 
 > Example: Give the person in the image a red beanie. Change nothing else.
 
 ### Reve (`reve-edit-20250915`)
+
 Precise spatial language: name the region, then the replacement. Excellent
 typography edits — quote exact replacement text.
 
@@ -56,6 +62,7 @@ typography edits — quote exact replacement text.
 ## /animate — video generation
 
 ### Seedance 2.0 (`seedance-2-0-fast-260128`) — default
+
 Shot direction: subject action → one camera move → environmental motion →
 light behavior → ambient sound. One continuous motion; with a first frame,
 describe only what changes.
@@ -64,31 +71,43 @@ describe only what changes.
 > curtains swaying, stage light warming from blue to amber, soft crowd murmur.
 
 ### Seedance 2.5 (`seedance-2-5-260628`)
+
 Same structure with better multi-shot coherence — up to two cuts allowed
 ("cut to close-up"). Name audio cues explicitly.
 
 ### LTX (`ltx-2-fast-text-to-video`)
+
 Motion-first: lead with the movement verb, keep the scene simple. One
 subject, one camera move, flat lighting descriptions.
 
 ### Happyhorse (`happyhorse-1.1-t2v`)
+
 Stylized, expressive motion. Describe mood and energy alongside the action;
 strong for character animation and seamless loops.
 
 ### H3 (`MiniMax-H3`)
+
 High-fidelity realism. Write like a cinematographer — lens, depth of field,
 natural physics ("handheld 35mm, shallow focus"). Avoid surreal instructions.
 
 ## /zap — video editing
 
 ### H3 Max (`minimax/h3-max`, fal) — default
-Direct one-shot film direction, 5–10 seconds. Give each reference a job: the
-first image is the opening frame, a second image is the closing frame. Order
-shot → subject action → one named camera move with lens → lighting → audio as
-a plain instruction. A timed beat list is allowed when the shot has distinct
-beats. No negatives, no tag soup. Attached video is not an input this model
+
+Direct one-shot film direction, 5–10 seconds, with the sound directed as
+deliberately as the picture. Give each reference an explicit job: the first
+image is the opening frame, a second image is the closing frame, any others
+are visual context. Order shot → subject action → one named camera move with
+lens and film language ("handheld 35mm push-in, shallow focus, fine grain") →
+lighting → style or mood → audio as a plain instruction covering ambience,
+effects, and music. Use a timed beat list when the shot has distinct beats and
+time audio cues to the beats. The model renders legible on-screen text: quote
+exact titles or UI copy and say how the type animates. Long concrete briefs
+are fine. No negatives, no tag soup. Attached video is not an input this model
 accepts, so the shot is described in full instead.
 
-> Example: Low-angle 35mm shot, skateboard lands and throws a rainbow light
-> trail; whip pan to the rider's grin, hard afternoon sun. 0-2s the landing,
-> 2-5s the pan. audio: wheels on concrete, no music.
+> Example: Low-angle handheld 35mm shot, fine grain — skateboard lands and
+> throws a rainbow light trail; whip pan to the rider's grin, hard afternoon
+> sun, sun-bleached skate-video mood. 0-2s the landing, 2-5s the pan, title
+> "GOLDEN HOUR" resolves from blur at 4s. audio: wheels on concrete and a
+> crowd cheer on the landing, no music.

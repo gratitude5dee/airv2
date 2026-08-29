@@ -26,7 +26,7 @@ import type {
   GmiLifecycleEvent,
   MediaInput,
 } from "./gmi";
-import { withCreativeSlot } from "./gmi";
+import { GmiCapacityError, withCreativeSlot } from "./gmi";
 import { CreativeUnconfiguredError } from "./groq";
 import { assertSafeGeneratedMediaUrl, generatedMediaHosts } from "./media-url";
 import type { RouterPlan } from "./schema";
@@ -51,11 +51,11 @@ export interface FalGenerationRequest {
 export interface FalQueueReader {
   status: (
     endpointId: string,
-    options: { requestId: string },
+    options: { requestId: string; abortSignal?: AbortSignal },
   ) => Promise<{ status: string }>;
   result: (
     endpointId: string,
-    options: { requestId: string },
+    options: { requestId: string; abortSignal?: AbortSignal },
   ) => Promise<{ data: unknown }>;
 }
 
@@ -188,6 +188,7 @@ const videoUrlOf = (data: unknown): string | undefined => {
 const submitZapRequest = async (
   request: FalGenerationRequest,
   submit: typeof fetch,
+  deadline: number,
 ): Promise<string> => {
   const credentials = falKeyOrThrow();
   let response: Response;
@@ -199,7 +200,7 @@ const submitZapRequest = async (
         "Content-Type": "application/json",
       },
       body: JSON.stringify(request.input),
-      signal: AbortSignal.timeout(SUBMIT_TIMEOUT_MS),
+      signal: budgetSignal(deadline, SUBMIT_TIMEOUT_MS),
     });
   } catch {
     throw new FalSubmitUnknownError(
@@ -220,10 +221,20 @@ const submitZapRequest = async (
 const wait = async (milliseconds: number): Promise<void> =>
   await new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 
+/** A signal bounded by the remaining end-to-end budget (and an optional cap). */
+const budgetSignal = (deadline: number, capMs = Infinity): AbortSignal =>
+  AbortSignal.timeout(Math.max(1, Math.min(capMs, deadline - Date.now())));
+
 const httpStatusOf = (error: unknown): number | undefined => {
   const status = asRecord(error)?.["status"];
   return typeof status === "number" ? status : undefined;
 };
+
+/**
+ * Statuses that say nothing about the render itself — the read may succeed
+ * later, so the enqueued render's outcome stays unknown, never retryable.
+ */
+const TRANSIENT_RESULT_STATUSES = new Set([408, 425, 429]);
 
 /**
  * Result reads are safe to repeat (the SDK retries them). A definitive 4xx
@@ -235,14 +246,25 @@ const resultOrThrow = async (
   queue: FalQueueReader,
   model: string,
   requestId: string,
+  deadline: number,
 ): Promise<unknown> => {
   try {
-    return (await queue.result(model, { requestId })).data;
+    return (
+      await queue.result(model, {
+        requestId,
+        abortSignal: budgetSignal(deadline),
+      })
+    ).data;
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "fal result lookup failed";
     const status = httpStatusOf(error);
-    if (status !== undefined && status >= 400 && status < 500) {
+    if (
+      status !== undefined &&
+      status >= 400 &&
+      status < 500 &&
+      !TRANSIENT_RESULT_STATUSES.has(status)
+    ) {
       // Provider messages carry moderation/safety reasons, but never a
       // payload, a prompt, or a credential.
       throw new FalRequestError(message);
@@ -262,7 +284,14 @@ export async function generateZapVideo(
   const deadline = Date.now() + timeoutMs;
   // Paid renders share the provider-neutral creative concurrency permit.
   return await withCreativeSlot(
-    async () => await runZapRequest(request, deadline, options),
+    async () => {
+      // A permit granted at the wire buys nothing: an expired budget must not
+      // submit a paid render.
+      if (Date.now() >= deadline) {
+        throw new GmiCapacityError();
+      }
+      return await runZapRequest(request, deadline, options);
+    },
     Math.max(1, deadline - Date.now()),
   );
 }
@@ -281,7 +310,7 @@ const runZapRequest = async (
   };
   await emit({ stage: "submitting", kind: "video", model: request.model });
 
-  const requestId = await submitZapRequest(request, submit);
+  const requestId = await submitZapRequest(request, submit, deadline);
   await emit({
     stage: "submitted",
     kind: "video",
@@ -292,7 +321,10 @@ const runZapRequest = async (
   let inProgress = false;
   try {
     for (;;) {
-      const status = await queue.status(request.model, { requestId });
+      const status = await queue.status(request.model, {
+        requestId,
+        abortSignal: budgetSignal(deadline),
+      });
       if (status.status === "COMPLETED") {
         break;
       }
@@ -319,11 +351,11 @@ const runZapRequest = async (
     }
     // One last result lookup before declaring the enqueued render's outcome
     // unknown — the poll failure may be transient while the job finished.
-    const data = await resultOrThrow(queue, request.model, requestId);
+    const data = await resultOrThrow(queue, request.model, requestId, deadline);
     return await finishZapRequest(data, request, requestId, emit);
   }
 
-  const data = await resultOrThrow(queue, request.model, requestId);
+  const data = await resultOrThrow(queue, request.model, requestId, deadline);
   return await finishZapRequest(data, request, requestId, emit);
 };
 

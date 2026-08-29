@@ -112,7 +112,7 @@ export const LANE_MODELS: Record<CreativeLane, readonly CreativeLaneModel[]> = {
       slug: "minimax/h3-max",
       label: "H3 Max (MiniMax, fal)",
       guide:
-        "Direct one-shot film direction, 5–10s. Give each reference a job: first image is the opening frame, a second image is the closing frame. Write shot, subject action, one camera move (lens and movement named), lighting, then audio as a plain instruction (\"audio: rain on metal, no music\"). A timed beat list (\"0-2s …, 2-5s …\") is allowed when the shot has distinct beats. Avoid negatives and tag soup.",
+        'Direct one-shot film direction, 5–10s; direct the sound as deliberately as the picture. Give each reference an explicit job: first image is the opening frame, a second image is the closing frame, others are context. Write shot, subject action, one camera move with lens and film language ("handheld 35mm push-in, fine grain"), lighting, style, then audio as a plain instruction ("audio: rain on metal, one low synth pulse, no dialogue"). Use a timed beat list ("0-2s …, 2-5s …") when the shot has distinct beats and time audio to the beats. Renders legible text: quote exact on-screen copy and say how the type animates. Long concrete briefs are fine; avoid negatives and tag soup.',
     },
   ],
 };

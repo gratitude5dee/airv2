@@ -9,6 +9,7 @@ import {
   buildHeygenAvatarRequest,
   generateCompiledRequest,
   isAmbiguousSubmission,
+  GmiCapacityError,
   GmiRequestError,
   type CreativeTurn,
 } from "./gmi";
@@ -58,8 +59,12 @@ afterEach(() => {
 
 describe("parseExplicitGenerationCommand", () => {
   it("returns undefined for ordinary prose (falls through to Hermes)", () => {
-    expect(parseExplicitGenerationCommand("what's the weather?")).toBeUndefined();
-    expect(parseExplicitGenerationCommand("read /etc/hosts please")).toBeUndefined();
+    expect(
+      parseExplicitGenerationCommand("what's the weather?"),
+    ).toBeUndefined();
+    expect(
+      parseExplicitGenerationCommand("read /etc/hosts please"),
+    ).toBeUndefined();
   });
 
   it("recognizes standalone tokens case-insensitively anywhere in prose", () => {
@@ -78,9 +83,13 @@ describe("parseExplicitGenerationCommand", () => {
   });
 
   it("does not match embedded or path-like tokens", () => {
-    expect(parseExplicitGenerationCommand("re/imagine the app")).toBeUndefined();
+    expect(
+      parseExplicitGenerationCommand("re/imagine the app"),
+    ).toBeUndefined();
     expect(parseExplicitGenerationCommand("see docs//imagine")).toBeUndefined();
-    expect(parseExplicitGenerationCommand("/imagines of grandeur")).toBeUndefined();
+    expect(
+      parseExplicitGenerationCommand("/imagines of grandeur"),
+    ).toBeUndefined();
   });
 
   it("allows repeats of one command but rejects mixed modes", () => {
@@ -92,7 +101,7 @@ describe("parseExplicitGenerationCommand", () => {
       ambiguous: true,
     });
     expect(AMBIGUOUS_COMMAND_LINE).toBe(
-      "use one command: /imagine, /animate, or /zap"
+      "use one command: /imagine, /animate, or /zap",
     );
   });
 });
@@ -105,13 +114,13 @@ describe("parseRouterPlan", () => {
   it("rejects unknown keys, bad enums, and non-integer durations", () => {
     expect(() => parseRouterPlan({ ...plan(), extra: 1 })).toThrow();
     expect(() =>
-      parseRouterPlan(plan({ mode: "paint" as RouterPlan["mode"] }))
+      parseRouterPlan(plan({ mode: "paint" as RouterPlan["mode"] })),
     ).toThrow();
     expect(() =>
       parseRouterPlan({
         ...plan(),
         params: { ...plan().params, duration: 4.5 },
-      })
+      }),
     ).toThrow();
     expect(() => parseRouterPlan(null)).toThrow();
   });
@@ -137,7 +146,7 @@ describe("buildGenerationRequest", () => {
       plan({ params: { ...plan().params, aspect_ratio: "9:16" } }),
       turn({
         mediaInputs: [{ kind: "image", url: "https://x.test/in.png" }],
-      })
+      }),
     );
     expect(request.model).toBe("gpt-image-2-edit");
     expect(request.payload).toEqual({
@@ -153,7 +162,7 @@ describe("buildGenerationRequest", () => {
     const sizeFor = (aspect_ratio: RouterPlan["params"]["aspect_ratio"]) =>
       buildGenerationRequest(
         plan({ params: { ...plan().params, aspect_ratio } }),
-        turn()
+        turn(),
       ).payload["size"];
     expect(sizeFor("3:4")).toBe("1024x1536");
     expect(sizeFor("16:9")).toBe("1536x1024");
@@ -169,7 +178,7 @@ describe("buildGenerationRequest", () => {
       }),
       turn({
         mediaInputs: [{ kind: "image", url: "https://x.test/frame.png" }],
-      })
+      }),
     );
     expect(request).toEqual({
       kind: "video",
@@ -189,14 +198,14 @@ describe("buildGenerationRequest", () => {
   it("animate honors an explicit user request for silence", () => {
     const request = buildGenerationRequest(
       plan({ mode: "animate" }),
-      turn({ text: "a fox, no audio please" })
+      turn({ text: "a fox, no audio please" }),
     );
     expect(request.payload["generate_audio"]).toBe(false);
   });
 
   it("refuses to build a GMI payload for zap (that lane renders on fal)", () => {
     expect(() => buildGenerationRequest(plan({ mode: "zap" }), turn())).toThrow(
-      /Cannot generate media/
+      /Cannot generate media/,
     );
   });
 });
@@ -208,7 +217,7 @@ describe("buildFalZapRequest", () => {
         mode: "zap",
         params: { ...plan().params, aspect_ratio: "9:16", duration: 30 },
       }),
-      turn()
+      turn(),
     );
     expect(request).toEqual({
       kind: "video",
@@ -233,7 +242,7 @@ describe("buildFalZapRequest", () => {
           { kind: "image", url: "https://x.test/c.png" },
           { kind: "video", url: "https://x.test/v.mp4" },
         ],
-      })
+      }),
     );
     expect(request.model).toBe("minimax/h3-max/image-to-video");
     expect(request.input["image_url"]).toBe("https://x.test/a.png");
@@ -246,10 +255,10 @@ describe("buildFalZapRequest", () => {
 
   it("accepts fal.media artifact URLs and still rejects other hosts", () => {
     expect(
-      assertSafeGeneratedMediaUrl("https://v3b.fal.media/files/out.mp4")
+      assertSafeGeneratedMediaUrl("https://v3b.fal.media/files/out.mp4"),
     ).toBe("https://v3b.fal.media/files/out.mp4");
     expect(() =>
-      assertSafeGeneratedMediaUrl("https://evil.test/out.mp4")
+      assertSafeGeneratedMediaUrl("https://evil.test/out.mp4"),
     ).toThrow();
   });
 });
@@ -267,21 +276,28 @@ describe("prompt compiler routing", () => {
       seen.push(String(init.body));
       return new Response(
         JSON.stringify({
-          choices: [{ message: { content: JSON.stringify(plan({ mode: "zap" })) } }],
+          choices: [
+            { message: { content: JSON.stringify(plan({ mode: "zap" })) } },
+          ],
         }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
+        { status: 200, headers: { "Content-Type": "application/json" } },
       );
     });
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await routeExplicitCommand(
-      { mode: "zap", cleanedText: "a fox", text: "/zap a fox", mediaInputs: [] },
-      null
+      {
+        mode: "zap",
+        cleanedText: "a fox",
+        text: "/zap a fox",
+        mediaInputs: [],
+      },
+      null,
     );
     expect(result.mode).toBe("zap");
     expect(fetchMock).toHaveBeenCalledWith(
       "https://provider.test/v1/chat/completions",
-      expect.anything()
+      expect.anything(),
     );
     const body = JSON.parse(seen[0] ?? "{}") as Record<string, unknown>;
     // gpt-5.6 parameter contract: no max_tokens, no sampling knobs.
@@ -299,7 +315,7 @@ describe("buildHeygenAvatarRequest", () => {
       buildHeygenAvatarRequest({
         avatarImageUrl: "https://signed.example/face.png",
         script: "Hello from my twin.",
-      })
+      }),
     ).toEqual({
       kind: "video",
       model: "heygen-avatar-v4",
@@ -349,7 +365,10 @@ describe("generated media SSRF protection", () => {
 
   it("accepts only allowlisted public https hosts", () => {
     expect(
-      assertSafeGeneratedMediaUrl("https://storage.googleapis.com/a/b.png", hosts)
+      assertSafeGeneratedMediaUrl(
+        "https://storage.googleapis.com/a/b.png",
+        hosts,
+      ),
     ).toBe("https://storage.googleapis.com/a/b.png");
   });
 
@@ -372,21 +391,19 @@ describe("generated media SSRF protection", () => {
   });
 
   it("re-validates every redirect hop before following it", async () => {
-    const fetcher = vi
-      .fn()
-      .mockResolvedValueOnce(
-        new Response(null, {
-          status: 302,
-          headers: { location: "https://evil.test/steal" },
-        })
-      );
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(null, {
+        status: 302,
+        headers: { location: "https://evil.test/steal" },
+      }),
+    );
     await expect(
       fetchSafeGeneratedMedia(
         "https://storage.googleapis.com/a.png",
         "image",
         hosts,
-        fetcher
-      )
+        fetcher,
+      ),
     ).rejects.toThrow();
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
@@ -399,13 +416,13 @@ describe("generated media SSRF protection", () => {
       new Response(pngBytes, {
         status: 200,
         headers: { "content-type": "image/png" },
-      })
+      }),
     );
     const media = await fetchSafeGeneratedMedia(
       "https://cdn.example.com/out.png",
       "image",
       hosts,
-      fetcher
+      fetcher,
     );
     expect(media.mimeType).toBe("image/png");
     expect(media.bytes.equals(pngBytes)).toBe(true);
@@ -416,15 +433,15 @@ describe("generated media SSRF protection", () => {
       new Response(Buffer.from("not really a png"), {
         status: 200,
         headers: { "content-type": "image/png" },
-      })
+      }),
     );
     await expect(
       fetchSafeGeneratedMedia(
         "https://cdn.example.com/out.png",
         "image",
         hosts,
-        fetcher
-      )
+        fetcher,
+      ),
     ).rejects.toThrow(/match their MIME/);
   });
 
@@ -433,15 +450,15 @@ describe("generated media SSRF protection", () => {
       new Response(Buffer.from("x"), {
         status: 200,
         headers: { "content-type": "video/mp4" },
-      })
+      }),
     );
     await expect(
       fetchSafeGeneratedMedia(
         "https://cdn.example.com/out",
         "image",
         hosts,
-        fetcher
-      )
+        fetcher,
+      ),
     ).rejects.toThrow(/MIME/);
   });
 });
@@ -450,21 +467,23 @@ describe("submission ambiguity (C23)", () => {
   it("marks submit timeouts and connection drops ambiguous — never resubmit", () => {
     expect(
       isAmbiguousSubmission(
-        new GmiRequestError("timed out", { stage: "submit", timedOut: true })
-      )
-    ).toBe(true);
-    expect(
-      isAmbiguousSubmission(new GmiRequestError("unreachable", { stage: "submit" }))
+        new GmiRequestError("timed out", { stage: "submit", timedOut: true }),
+      ),
     ).toBe(true);
     expect(
       isAmbiguousSubmission(
-        new GmiRequestError("rejected", { stage: "submit", status: 400 })
-      )
+        new GmiRequestError("unreachable", { stage: "submit" }),
+      ),
+    ).toBe(true);
+    expect(
+      isAmbiguousSubmission(
+        new GmiRequestError("rejected", { stage: "submit", status: 400 }),
+      ),
     ).toBe(false);
     expect(
       isAmbiguousSubmission(
-        new GmiRequestError("poll drop", { stage: "poll", timedOut: true })
-      )
+        new GmiRequestError("poll drop", { stage: "poll", timedOut: true }),
+      ),
     ).toBe(false);
     expect(isAmbiguousSubmission(new Error("misc"))).toBe(false);
   });
@@ -475,15 +494,15 @@ describe("submission ambiguity (C23)", () => {
       new Response(JSON.stringify({ status: "created" }), {
         status: 200,
         headers: { "content-type": "application/json" },
-      })
+      }),
     );
     vi.stubGlobal("fetch", fetchMock);
     try {
       await expect(
         generateCompiledRequest(
           { kind: "image", model: "gpt-image-2-generate", payload: {} },
-          5_000
-        )
+          5_000,
+        ),
       ).rejects.toSatisfy(isAmbiguousSubmission);
       expect(fetchMock).toHaveBeenCalledTimes(1);
     } finally {
@@ -511,9 +530,11 @@ describe("concurrency semaphore", () => {
         JSON.stringify({
           status: "success",
           request_id: "r1",
-          outcome: { media_urls: [{ url: "https://storage.googleapis.com/a.png" }] },
+          outcome: {
+            media_urls: [{ url: "https://storage.googleapis.com/a.png" }],
+          },
         }),
-        { status: 200, headers: { "content-type": "application/json" } }
+        { status: 200, headers: { "content-type": "application/json" } },
       );
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -545,11 +566,15 @@ describe("fal /zap queue discipline", () => {
       new Response(JSON.stringify({ request_id: "req-1" }), {
         status: 200,
         headers: { "content-type": "application/json" },
-      })
+      }),
     );
-  const queueOf = (overrides: Partial<FalQueueReader> = {}): FalQueueReader => ({
+  const queueOf = (
+    overrides: Partial<FalQueueReader> = {},
+  ): FalQueueReader => ({
     status: vi.fn().mockResolvedValue({ status: "COMPLETED" }),
-    result: vi.fn().mockResolvedValue({ data: { video: { url: FAL_VIDEO_URL } } }),
+    result: vi
+      .fn()
+      .mockResolvedValue({ data: { video: { url: FAL_VIDEO_URL } } }),
     ...overrides,
   });
 
@@ -557,13 +582,18 @@ describe("fal /zap queue discipline", () => {
     vi.stubEnv("FAL_KEY", "test-key");
     const submit = okSubmit();
     const stages: string[] = [];
-    const media = await generateZapVideo(plan({ mode: "zap" }), turn(), 10_000, {
-      submit,
-      queue: queueOf(),
-      onLifecycle: (event) => {
-        stages.push(event.stage);
+    const media = await generateZapVideo(
+      plan({ mode: "zap" }),
+      turn(),
+      10_000,
+      {
+        submit,
+        queue: queueOf(),
+        onLifecycle: (event) => {
+          stages.push(event.stage);
+        },
       },
-    });
+    );
     expect(media).toEqual({ kind: "video", url: FAL_VIDEO_URL });
     expect(submit).toHaveBeenCalledTimes(1);
     expect(stages).toEqual(["submitting", "submitted", "artifact_ready"]);
@@ -571,14 +601,17 @@ describe("fal /zap queue discipline", () => {
 
   it("a submit with no response is ambiguous — never resubmitted", async () => {
     vi.stubEnv("FAL_KEY", "test-key");
-    const submit = vi.fn<typeof fetch>().mockRejectedValue(new TypeError("fetch failed"));
+    const submit = vi
+      .fn<typeof fetch>()
+      .mockRejectedValue(new TypeError("fetch failed"));
     await expect(
       generateZapVideo(plan({ mode: "zap" }), turn(), 10_000, {
         submit,
         queue: queueOf(),
-      })
+      }),
     ).rejects.toSatisfy(
-      (error) => error instanceof FalSubmitUnknownError && isFalUnknownOutcome(error)
+      (error) =>
+        error instanceof FalSubmitUnknownError && isFalUnknownOutcome(error),
     );
     expect(submit).toHaveBeenCalledTimes(1);
   });
@@ -592,20 +625,26 @@ describe("fal /zap queue discipline", () => {
       generateZapVideo(plan({ mode: "zap" }), turn(), 10_000, {
         submit,
         queue: queueOf(),
-      })
+      }),
     ).rejects.toSatisfy(
-      (error) => error instanceof FalRequestError && !isFalUnknownOutcome(error)
+      (error) =>
+        error instanceof FalRequestError && !isFalUnknownOutcome(error),
     );
   });
 
   it("recovers a finished render when polling drops but the result reads back", async () => {
     vi.stubEnv("FAL_KEY", "test-key");
-    const media = await generateZapVideo(plan({ mode: "zap" }), turn(), 10_000, {
-      submit: okSubmit(),
-      queue: queueOf({
-        status: vi.fn().mockRejectedValue(new Error("connection reset")),
-      }),
-    });
+    const media = await generateZapVideo(
+      plan({ mode: "zap" }),
+      turn(),
+      10_000,
+      {
+        submit: okSubmit(),
+        queue: queueOf({
+          status: vi.fn().mockRejectedValue(new Error("connection reset")),
+        }),
+      },
+    );
     expect(media).toEqual({ kind: "video", url: FAL_VIDEO_URL });
   });
 
@@ -618,23 +657,25 @@ describe("fal /zap queue discipline", () => {
           status: vi.fn().mockRejectedValue(new Error("connection reset")),
           result: vi.fn().mockRejectedValue(new Error("still down")),
         }),
-      })
+      }),
     ).rejects.toSatisfy(
       (error) =>
         error instanceof FalEnqueuedError &&
         error.requestId === "req-1" &&
-        isFalUnknownOutcome(error)
+        isFalUnknownOutcome(error),
     );
   });
 
   it("a 4xx result is the provider's verdict, not an unknown outcome", async () => {
     vi.stubEnv("FAL_KEY", "test-key");
-    const rejection = Object.assign(new Error("content policy"), { status: 422 });
+    const rejection = Object.assign(new Error("content policy"), {
+      status: 422,
+    });
     await expect(
       generateZapVideo(plan({ mode: "zap" }), turn(), 10_000, {
         submit: okSubmit(),
         queue: queueOf({ result: vi.fn().mockRejectedValue(rejection) }),
-      })
+      }),
     ).rejects.toSatisfy((error) => error instanceof FalRequestError);
   });
 
@@ -646,9 +687,61 @@ describe("fal /zap queue discipline", () => {
         queue: queueOf({
           status: vi.fn().mockResolvedValue({ status: "IN_QUEUE" }),
         }),
-      })
+      }),
     ).rejects.toSatisfy(
-      (error) => error instanceof FalEnqueuedError && error.requestId === "req-1"
+      (error) =>
+        error instanceof FalEnqueuedError && error.requestId === "req-1",
+    );
+  });
+
+  it("a transient 4xx on result (429) keeps the enqueued render terminal-unknown", async () => {
+    vi.stubEnv("FAL_KEY", "test-key");
+    const rejection = Object.assign(new Error("rate limited"), { status: 429 });
+    await expect(
+      generateZapVideo(plan({ mode: "zap" }), turn(), 10_000, {
+        submit: okSubmit(),
+        queue: queueOf({
+          status: vi.fn().mockRejectedValue(new Error("read failed")),
+          result: vi.fn().mockRejectedValue(rejection),
+        }),
+      }),
+    ).rejects.toSatisfy(
+      (error) =>
+        error instanceof FalEnqueuedError && isFalUnknownOutcome(error),
+    );
+  });
+
+  it("an expired budget never submits a paid render, even with a free permit", async () => {
+    vi.stubEnv("FAL_KEY", "test-key");
+    const submit = okSubmit();
+    await expect(
+      generateZapVideo(plan({ mode: "zap" }), turn(), 0, {
+        submit,
+        queue: queueOf(),
+      }),
+    ).rejects.toThrow(GmiCapacityError);
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it("a stalled queue read is cut off at the deadline and stays terminal-unknown", async () => {
+    vi.stubEnv("FAL_KEY", "test-key");
+    const hangUntilAborted = (
+      _endpoint: string,
+      options: { requestId: string; abortSignal?: AbortSignal },
+    ) =>
+      new Promise<never>((_resolve, reject) => {
+        options.abortSignal?.addEventListener("abort", () =>
+          reject(new Error("aborted")),
+        );
+      });
+    await expect(
+      generateZapVideo(plan({ mode: "zap" }), turn(), 300, {
+        submit: okSubmit(),
+        queue: { status: hangUntilAborted, result: hangUntilAborted },
+      }),
+    ).rejects.toSatisfy(
+      (error) =>
+        error instanceof FalEnqueuedError && error.requestId === "req-1",
     );
   });
 
@@ -708,7 +801,7 @@ describe("iMessage lane fallthrough", () => {
       supabaseNever(),
       s,
       { spaceId: "sp", userId: "u1", phone: "+1555" },
-      "what's on my calendar today?\n[attachment:att-1]"
+      "what's on my calendar today?\n[attachment:att-1]",
     );
     expect(handled).toBe(false);
     expect(s.sendText).not.toHaveBeenCalled();
@@ -721,10 +814,14 @@ describe("iMessage lane fallthrough", () => {
       supabaseNever(),
       s,
       { spaceId: "sp", userId: "u1", phone: "+1555" },
-      "/imagine or /animate a fox"
+      "/imagine or /animate a fox",
     );
     expect(handled).toBe(true);
-    expect(s.sendText).toHaveBeenCalledWith("sp", "+1555", AMBIGUOUS_COMMAND_LINE);
+    expect(s.sendText).toHaveBeenCalledWith(
+      "sp",
+      "+1555",
+      AMBIGUOUS_COMMAND_LINE,
+    );
     expect(s.getAttachment).not.toHaveBeenCalled();
   });
 });
