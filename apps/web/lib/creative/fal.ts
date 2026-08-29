@@ -1,7 +1,15 @@
 /**
- * fal.ai client for the /zap lane: MiniMax H3 Max, submitted through fal's
- * queue with `subscribe` (submit + poll in one call). Control-plane only —
- * FAL_KEY lives in Vercel env, never in a box or a browser (C2).
+ * fal.ai client for the /zap lane: MiniMax H3 Max on fal's request queue.
+ * Control-plane only — FAL_KEY lives in Vercel env, never in a box or a
+ * browser (C2).
+ *
+ * The queue is driven manually (submit → poll by ID → result) instead of
+ * `client.subscribe`: the SDK retries the non-idempotent submit POST on
+ * transport errors, which can pay for duplicate renders. The submit here is
+ * a single un-retried request; only reads (status/result, safe to repeat)
+ * go through the SDK. C23 applies as on GMI: an ambiguous submission is
+ * never resubmitted, and a known request ID is never downgraded to a
+ * retryable failure.
  *
  * H3 Max exposes two sibling endpoints and no reference-image parameter:
  * text-to-video takes `aspect_ratio`, image-to-video derives the ratio from
@@ -9,11 +17,7 @@
  * (last frame). Attached *video* is not an input this model accepts, so a
  * /zap with video renders from the compiled prompt alone.
  */
-import {
-  createFalClient,
-  type FalClient,
-  type QueueStatus,
-} from "@fal-ai/client";
+import { createFalClient, type FalClient } from "@fal-ai/client";
 import { env } from "../env";
 import { asRecord } from "../records";
 import type {
@@ -22,6 +26,7 @@ import type {
   GmiLifecycleEvent,
   MediaInput,
 } from "./gmi";
+import { withCreativeSlot } from "./gmi";
 import { CreativeUnconfiguredError } from "./groq";
 import { assertSafeGeneratedMediaUrl, generatedMediaHosts } from "./media-url";
 import type { RouterPlan } from "./schema";
@@ -33,6 +38,8 @@ export const FAL_ZAP_IMAGE_TO_VIDEO = "minimax/h3-max/image-to-video";
 const MIN_DURATION_SECONDS = 5;
 const MAX_DURATION_SECONDS = 10;
 const POLL_INTERVAL_MS = 1_000;
+const SUBMIT_TIMEOUT_MS = 20_000;
+const FAL_QUEUE_BASE_URL = "https://queue.fal.run";
 
 export interface FalGenerationRequest {
   kind: "video";
@@ -40,18 +47,64 @@ export interface FalGenerationRequest {
   input: Record<string, unknown>;
 }
 
+/** The read-only queue surface generateZapVideo needs; injected in tests. */
+export interface FalQueueReader {
+  status: (
+    endpointId: string,
+    options: { requestId: string },
+  ) => Promise<{ status: string }>;
+  result: (
+    endpointId: string,
+    options: { requestId: string },
+  ) => Promise<{ data: unknown }>;
+}
+
 export interface FalGenerationOptions {
   onLifecycle?: (event: GmiLifecycleEvent) => Promise<void> | void;
   /** Injected in tests; production uses a key-configured singleton client. */
-  client?: FalClient;
+  queue?: FalQueueReader;
+  /** Injected in tests; production submits with global fetch. */
+  submit?: typeof fetch;
 }
 
+/** The request was definitively rejected before any work was enqueued. */
 export class FalRequestError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "FalRequestError";
   }
 }
+
+/**
+ * The submission's outcome is unknown: fal may or may not have accepted the
+ * work, and no request ID came back. The caller must persist `submit_unknown`
+ * and never automatically resubmit (C23).
+ */
+export class FalSubmitUnknownError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "FalSubmitUnknownError";
+  }
+}
+
+/**
+ * fal confirmed the request ID, but its completion could not be determined
+ * (poll/result failures or the end-to-end budget elapsing). The paid render
+ * may still be running, so this is terminal-unknown, not a retryable failure.
+ */
+export class FalEnqueuedError extends Error {
+  constructor(
+    readonly requestId: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "FalEnqueuedError";
+  }
+}
+
+/** Errors whose outcome is undetermined — persisted as submit_unknown. */
+export const isFalUnknownOutcome = (error: unknown): boolean =>
+  error instanceof FalSubmitUnknownError || error instanceof FalEnqueuedError;
 
 const clamp = (value: number, min: number, max: number): number =>
   Math.max(min, Math.min(max, value));
@@ -108,19 +161,94 @@ export function buildFalZapRequest(
 
 let singleton: FalClient | undefined;
 
-const falClient = (): FalClient => {
+const falKeyOrThrow = (): string => {
   const credentials = env.falKey();
   if (!credentials) {
     throw new CreativeUnconfiguredError("fal");
   }
-  singleton ??= createFalClient({ credentials });
-  return singleton;
+  return credentials;
+};
+
+const falQueue = (): FalQueueReader => {
+  singleton ??= createFalClient({ credentials: falKeyOrThrow() });
+  return singleton.queue;
 };
 
 const videoUrlOf = (data: unknown): string | undefined => {
   const video = asRecord(asRecord(data)?.["video"]);
   const url = video?.["url"];
   return typeof url === "string" && url.length > 0 ? url : undefined;
+};
+
+/**
+ * One un-retried submit POST. A definitive rejection (any HTTP response
+ * without a request ID) is a FalRequestError; a transport error or timeout,
+ * where fal may have accepted the work, is a FalSubmitUnknownError.
+ */
+const submitZapRequest = async (
+  request: FalGenerationRequest,
+  submit: typeof fetch,
+): Promise<string> => {
+  const credentials = falKeyOrThrow();
+  let response: Response;
+  try {
+    response = await submit(`${FAL_QUEUE_BASE_URL}/${request.model}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Key ${credentials}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(request.input),
+      signal: AbortSignal.timeout(SUBMIT_TIMEOUT_MS),
+    });
+  } catch {
+    throw new FalSubmitUnknownError(
+      "fal submit outcome is unknown (no response)",
+    );
+  }
+  if (!response.ok) {
+    throw new FalRequestError(`fal rejected the request (${response.status})`);
+  }
+  const body: unknown = await response.json().catch(() => undefined);
+  const requestId = asRecord(body)?.["request_id"];
+  if (typeof requestId !== "string" || requestId.length === 0) {
+    throw new FalSubmitUnknownError("fal accepted without a request_id");
+  }
+  return requestId;
+};
+
+const wait = async (milliseconds: number): Promise<void> =>
+  await new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+
+const httpStatusOf = (error: unknown): number | undefined => {
+  const status = asRecord(error)?.["status"];
+  return typeof status === "number" ? status : undefined;
+};
+
+/**
+ * Result reads are safe to repeat (the SDK retries them). A definitive 4xx
+ * here is the provider's verdict on the finished job — moderation, invalid
+ * input — so it fails the job; anything else leaves the enqueued render's
+ * outcome unknown.
+ */
+const resultOrThrow = async (
+  queue: FalQueueReader,
+  model: string,
+  requestId: string,
+): Promise<unknown> => {
+  try {
+    return (await queue.result(model, { requestId })).data;
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "fal result lookup failed";
+    const status = httpStatusOf(error);
+    if (status !== undefined && status >= 400 && status < 500) {
+      // Provider messages carry moderation/safety reasons, but never a
+      // payload, a prompt, or a credential.
+      throw new FalRequestError(message);
+    }
+    throw new FalEnqueuedError(requestId, message);
+  }
 };
 
 /** Submits one /zap render and returns the queue's finished video artifact. */
@@ -131,50 +259,80 @@ export async function generateZapVideo(
   options?: FalGenerationOptions,
 ): Promise<GeneratedMedia> {
   const request = buildFalZapRequest(plan, turn);
-  const client = options?.client ?? falClient();
+  const deadline = Date.now() + timeoutMs;
+  // Paid renders share the provider-neutral creative concurrency permit.
+  return await withCreativeSlot(
+    async () => await runZapRequest(request, deadline, options),
+    Math.max(1, deadline - Date.now()),
+  );
+}
+
+const runZapRequest = async (
+  request: FalGenerationRequest,
+  deadline: number,
+  options?: FalGenerationOptions,
+): Promise<GeneratedMedia> => {
+  const queue = options?.queue ?? falQueue();
+  const submit = options?.submit ?? fetch;
+  // Every emit is awaited in order, so no lifecycle write can land after
+  // this function returns and overwrite a terminal creative_jobs status.
   const emit = async (event: GmiLifecycleEvent): Promise<void> => {
     await options?.onLifecycle?.(event);
   };
   await emit({ stage: "submitting", kind: "video", model: request.model });
 
-  let requestId: string | undefined;
-  let data: unknown;
+  const requestId = await submitZapRequest(request, submit);
+  await emit({
+    stage: "submitted",
+    kind: "video",
+    model: request.model,
+    requestId,
+  });
+
+  let inProgress = false;
   try {
-    const result = await client.subscribe(request.model, {
-      input: request.input,
-      pollInterval: POLL_INTERVAL_MS,
-      timeout: timeoutMs,
-      onEnqueue: (id: string) => {
-        requestId = id;
-        void emit({
-          stage: "submitted",
+    for (;;) {
+      const status = await queue.status(request.model, { requestId });
+      if (status.status === "COMPLETED") {
+        break;
+      }
+      if (status.status === "IN_PROGRESS" && !inProgress) {
+        inProgress = true;
+        await emit({
+          stage: "polling",
           kind: "video",
           model: request.model,
-          requestId: id,
+          requestId,
         });
-      },
-      onQueueUpdate: (status: QueueStatus) => {
-        if (status.status === "IN_PROGRESS") {
-          requestId = status.request_id;
-          void emit({
-            stage: "polling",
-            kind: "video",
-            model: request.model,
-            requestId: status.request_id,
-          });
-        }
-      },
-    });
-    requestId = result.requestId ?? requestId;
-    data = result.data;
+      }
+      if (Date.now() + POLL_INTERVAL_MS >= deadline) {
+        throw new FalEnqueuedError(
+          requestId,
+          "fal render did not finish within the generation budget",
+        );
+      }
+      await wait(POLL_INTERVAL_MS);
+    }
   } catch (error) {
-    // Provider messages carry moderation/safety reasons the caller maps to a
-    // refusal, but never a payload, a prompt, or a credential.
-    throw new FalRequestError(
-      error instanceof Error ? error.message : "fal generation failed",
-    );
+    if (error instanceof FalEnqueuedError) {
+      throw error;
+    }
+    // One last result lookup before declaring the enqueued render's outcome
+    // unknown — the poll failure may be transient while the job finished.
+    const data = await resultOrThrow(queue, request.model, requestId);
+    return await finishZapRequest(data, request, requestId, emit);
   }
 
+  const data = await resultOrThrow(queue, request.model, requestId);
+  return await finishZapRequest(data, request, requestId, emit);
+};
+
+const finishZapRequest = async (
+  data: unknown,
+  request: FalGenerationRequest,
+  requestId: string,
+  emit: (event: GmiLifecycleEvent) => Promise<void>,
+): Promise<GeneratedMedia> => {
   const url = videoUrlOf(data);
   if (!url) {
     throw new FalRequestError("fal succeeded without a video URL");
@@ -187,7 +345,7 @@ export async function generateZapVideo(
     stage: "artifact_ready",
     kind: "video",
     model: request.model,
-    ...(requestId ? { requestId } : {}),
+    requestId,
   });
   return media;
-}
+};
