@@ -149,12 +149,21 @@ export function parseInboundSpectrumMessage(
     const id = asString(content?.["id"]);
     if (id) attachmentIds.push(id);
   }
+  // A group bubble (image + caption sent as one message) nests its parts in
+  // `contents`; text lives on the items, not on the group itself.
+  const textParts: string[] = [];
+  const topText = asString(content?.["text"]);
+  if (topText) textParts.push(topText);
   const groupItems = Array.isArray(content?.["contents"]) ? content["contents"] : [];
   for (const item of groupItems) {
     const record = asRecord(item);
-    if (asString(record?.["type"])?.toLowerCase() === "attachment") {
+    const itemType = asString(record?.["type"])?.toLowerCase();
+    if (itemType === "attachment") {
       const id = asString(record?.["id"]);
       if (id) attachmentIds.push(id);
+    } else {
+      const itemText = asString(record?.["text"]);
+      if (itemText) textParts.push(itemText);
     }
   }
   return {
@@ -164,7 +173,7 @@ export function parseInboundSpectrumMessage(
     senderId: asString(sender?.["id"]),
     spaceId,
     webhookId: headers.webhookId,
-    text: asString(content?.["text"]),
+    text: textParts.length > 0 ? textParts.join("\n") : undefined,
     attachmentIds,
   };
 }

@@ -124,12 +124,22 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ ok: true }, { status: 200 });
   }
 
-  const body =
-    inbound.text ??
-    (inbound.attachmentIds.length > 0
+  const marker =
+    inbound.attachmentIds.length > 0
       ? `[attachment:${inbound.attachmentIds.join(",")}]`
-      : "");
+      : "";
+  const body = [marker, inbound.text ?? ""].filter(Boolean).join("\n");
   if (!body) {
+    // Identifiers only (C4): a conversational payload whose content parsed to
+    // nothing would otherwise vanish without a trace.
+    console.error(
+      JSON.stringify({
+        msg: "imessage inbound empty body",
+        user_id: route.userId,
+        space_id: inbound.spaceId,
+        message_id: inbound.messageId,
+      }),
+    );
     return NextResponse.json({ ok: true }, { status: 200 });
   }
 
