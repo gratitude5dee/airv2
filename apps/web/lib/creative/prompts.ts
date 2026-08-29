@@ -9,7 +9,7 @@ export const PROMPT_VERSIONS = {
   chat: "chat.route.v2",
   imagine: "generation.imagine.v2",
   vision: "vision.describe.v2",
-  zap: "generation.zap.v3",
+  zap: "generation.zap.v4",
 } as const;
 
 const SAFETY = `## Safety
@@ -62,13 +62,19 @@ export const ZAP_GENERATION_SYSTEM = `Prompt version: ${PROMPT_VERSIONS.zap}
 ${GENERATION_BASE}
 
 Locked mode: zap.
-Write direct film direction for one 5–10 second shot: subject action → one
-named camera move with lens → lighting → audio. State audio as a plain
-instruction ("audio: tires on gravel, no music"). Use a timed beat list
-("0-2s …, 2-5s …") only when the shot has distinct beats. Give every attached
-reference a job: the first image is the opening frame, a second image is the
+Write direct film direction for one 5–10 second shot, and direct the sound as
+deliberately as the picture. Order: subject action → one named camera move
+with lens and film language ("handheld 35mm push-in, shallow focus, fine
+grain") → lighting → style or mood → audio. State audio as a plain
+instruction covering ambience, effects, and music ("audio: rain on metal, one
+low synth pulse, no dialogue"). Use a timed beat list ("0-2s …, 2-5s …") when
+the shot has distinct beats, and time audio cues to the beats. The model
+renders legible on-screen text: put any required titles or UI copy in double
+quotes and say how the type animates. Give every attached reference an
+explicit job: the first image is the opening frame, a second image is the
 closing frame, any others are visual context. Attached video cannot be an
-input, so describe the shot in full rather than as an edit instruction. Do not
+input, so describe the shot in full rather than as an edit instruction. Be
+generous with concrete detail — the model accepts long briefs — but do not
 use negative prompting or comma-separated tag lists.`;
 
 export const GENERATION_SYSTEMS = {
