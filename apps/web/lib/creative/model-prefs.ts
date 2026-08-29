@@ -7,7 +7,9 @@
  *
  * Slugs are verified against GMI's live model listing
  * (GET <queue>/models); each model's payload is adapted to its advertised
- * parameter schema in gmi.ts buildGenerationRequest.
+ * parameter schema in gmi.ts buildGenerationRequest. The /zap lane is the
+ * exception: it renders on fal.ai, so its slug is a fal endpoint family and
+ * its payload is built in fal.ts.
  *
  * Each catalog entry carries a short prompting guide, mirrored in
  * prompt-guides/prompt.md — the router appends the selected model's guide
@@ -107,10 +109,10 @@ export const LANE_MODELS: Record<CreativeLane, readonly CreativeLaneModel[]> = {
   ],
   zap: [
     {
-      slug: "gemini-omni-flash-preview",
-      label: "Google Omni",
+      slug: "minimax/h3-max",
+      label: "H3 Max (MiniMax, fal)",
       guide:
-        "Tight kinetic 3–6s instruction: one subject, one motion, one visual hook. With attached video, phrase it as an edit instruction; reference images are shared visual context.",
+        "Direct one-shot film direction, 5–10s. Give each reference a job: first image is the opening frame, a second image is the closing frame. Write shot, subject action, one camera move (lens and movement named), lighting, then audio as a plain instruction (\"audio: rain on metal, no music\"). A timed beat list (\"0-2s …, 2-5s …\") is allowed when the shot has distinct beats. Avoid negatives and tag soup.",
     },
   ],
 };
@@ -119,7 +121,7 @@ export const DEFAULT_LANE_MODELS: Record<CreativeLane, string> = {
   imagine: "gpt-image-2-generate",
   edit: "gpt-image-2-edit",
   animate: "seedance-2-0-fast-260128",
-  zap: "gemini-omni-flash-preview",
+  zap: "minimax/h3-max",
 };
 
 export type CreativePrefs = Record<CreativeLane, string>;

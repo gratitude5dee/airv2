@@ -176,7 +176,7 @@ describe("buildGenerationRequest with prefs", () => {
       imagine: "Flux2-Dev",
       edit: "gemini-3.1-flash-image",
       animate: "ltx-2-fast-text-to-video",
-      zap: "gemini-omni-flash-preview",
+      zap: "minimax/h3-max",
     };
     const imagineRequest = buildGenerationRequest(plan(), turn(), prefs);
     expect(imagineRequest.model).toBe("Flux2-Dev");
@@ -209,9 +209,10 @@ describe("buildGenerationRequest with prefs", () => {
       resolution: "720p",
       generate_audio: true,
     });
-    expect(
-      buildGenerationRequest(plan({ mode: "zap" }), turn(), prefs).model,
-    ).toBe("gemini-omni-flash-preview");
+    // /zap renders on fal, so it has no GMI payload at all.
+    expect(() =>
+      buildGenerationRequest(plan({ mode: "zap" }), turn(), prefs),
+    ).toThrow();
   });
 
   it("keeps the shipped defaults without prefs", () => {
