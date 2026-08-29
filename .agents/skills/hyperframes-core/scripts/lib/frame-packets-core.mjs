@@ -72,6 +72,26 @@ export function knownRuleIds(animationDir) {
     .map((name) => name.replace(/\.md$/, ""));
 }
 
+// null = the animation skill is not installed, so no blueprint id can be judged.
+export function knownBlueprintIds(animationDir) {
+  const blueprintsDir = join(animationDir, "blueprints");
+  if (!existsSync(blueprintsDir)) {
+    console.warn(
+      `frame-packets: no blueprints dir at ${blueprintsDir} — packets will inline no blueprint`,
+    );
+    return null;
+  }
+  return readdirSync(blueprintsDir)
+    .filter((name) => name.endsWith(".md"))
+    .map((name) => name.replace(/\.md$/, ""));
+}
+
+// `blueprint:` is the id plus an optional `(Reproduce)` / `(Adapt)` qualifier; the
+// qualifier is direction for the worker, not part of the document's name.
+export function blueprintId(blueprint) {
+  return basename(String(blueprint).trim().split(/\s+/)[0]).replace(/\.md$/i, "");
+}
+
 export function citedRules(block, ruleIds) {
   const explicit = (field(block, "rules") ?? "")
     .split(/[,\s]+/)
@@ -83,13 +103,19 @@ export function citedRules(block, ruleIds) {
   return [...new Set([...explicit, ...mentioned])].filter((id) => ruleIds.includes(id));
 }
 
-export function resourceSections(block, { animationDir, ruleIds }) {
+export function resourceSections(block, { animationDir, ruleIds, blueprintIds, frameId: id }) {
   let sections = "";
   const blueprint = field(block, "blueprint");
-  if (blueprint && blueprint.toLowerCase() !== "compose") {
+  const selected = blueprint ? blueprintId(blueprint) : "";
+  if (selected && selected.toLowerCase() !== "compose" && blueprintIds) {
+    if (!blueprintIds.includes(selected)) {
+      throw new Error(
+        `${id}: blueprint "${blueprint}" has no file under ${join(animationDir, "blueprints")}`,
+      );
+    }
     sections += selectedFile(
-      join(animationDir, "blueprints", `${blueprint}.md`),
-      `Selected blueprint: ${blueprint}`,
+      join(animationDir, "blueprints", `${selected}.md`),
+      `Selected blueprint: ${selected}`,
     );
   }
   for (const rule of citedRules(block, ruleIds)) {
@@ -131,11 +157,12 @@ export function buildFramePackets({
   const frames = splitFrames(storyboard);
   if (frames.length === 0) throw new Error("STORYBOARD.md has no frame blocks");
   const ruleIds = knownRuleIds(animationDir);
+  const blueprintIds = knownBlueprintIds(animationDir);
 
   const packets = frames.map((frame) => {
     const id = frameId(frame);
     if (validateFrame) validateFrame(frame, id);
-    const packet = `# Frame packet: ${id}\n\n## Project inputs\n\n- Project: ${resolve(projectDir)}\n${designTruthLine(projectDir)}\n- RULES_DIR: ${join(animationDir, "rules")}\n\n## Assigned storyboard block\n\n${frame.block}\n${resourceSections(frame.block, { animationDir, ruleIds })}${extraSections ? extraSections(frame.block) : ""}`;
+    const packet = `# Frame packet: ${id}\n\n## Project inputs\n\n- Project: ${resolve(projectDir)}\n${designTruthLine(projectDir)}\n- RULES_DIR: ${join(animationDir, "rules")}\n\n## Assigned storyboard block\n\n${frame.block}\n${resourceSections(frame.block, { animationDir, ruleIds, blueprintIds, frameId: id })}${extraSections ? extraSections(frame.block) : ""}`;
     const bytes = Buffer.byteLength(packet);
     if (bytes > maxPacketBytes) {
       throw new Error(`${id}: frame packet is ${bytes} bytes (limit ${maxPacketBytes})`);
