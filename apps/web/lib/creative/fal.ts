@@ -191,6 +191,13 @@ const submitZapRequest = async (
   deadline: number,
 ): Promise<string> => {
   const credentials = falKeyOrThrow();
+  // Lifecycle persistence may have consumed the budget since the permit
+  // check; an expired budget must never dispatch a paid POST, and a locally
+  // expired pre-submit budget is a capacity failure, not an ambiguous
+  // provider outcome.
+  if (Date.now() >= deadline) {
+    throw new GmiCapacityError();
+  }
   let response: Response;
   try {
     response = await submit(`${FAL_QUEUE_BASE_URL}/${request.model}`, {
@@ -225,6 +232,31 @@ const wait = async (milliseconds: number): Promise<void> =>
 const budgetSignal = (deadline: number, capMs = Infinity): AbortSignal =>
   AbortSignal.timeout(Math.max(1, Math.min(capMs, deadline - Date.now())));
 
+/**
+ * The fal SDK's internal retry backoff sleeps are not abortable, so an
+ * abort signal alone cannot stop a queue read from holding the creative
+ * permit past the budget. Racing the read against the deadline caps the
+ * hold; the abandoned read's own signal still fires so it dies quietly.
+ */
+const raceDeadline = async <T>(
+  deadline: number,
+  work: Promise<T>,
+): Promise<T> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const cutoff = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(
+      () => reject(new Error("fal queue read exceeded the generation budget")),
+      Math.max(1, deadline - Date.now()),
+    );
+  });
+  try {
+    return await Promise.race([work, cutoff]);
+  } finally {
+    clearTimeout(timer);
+    work.catch(() => undefined);
+  }
+};
+
 const httpStatusOf = (error: unknown): number | undefined => {
   const status = asRecord(error)?.["status"];
   return typeof status === "number" ? status : undefined;
@@ -250,10 +282,13 @@ const resultOrThrow = async (
 ): Promise<unknown> => {
   try {
     return (
-      await queue.result(model, {
-        requestId,
-        abortSignal: budgetSignal(deadline),
-      })
+      await raceDeadline(
+        deadline,
+        queue.result(model, {
+          requestId,
+          abortSignal: budgetSignal(deadline),
+        }),
+      )
     ).data;
   } catch (error) {
     const message =
@@ -321,10 +356,13 @@ const runZapRequest = async (
   let inProgress = false;
   try {
     for (;;) {
-      const status = await queue.status(request.model, {
-        requestId,
-        abortSignal: budgetSignal(deadline),
-      });
+      const status = await raceDeadline(
+        deadline,
+        queue.status(request.model, {
+          requestId,
+          abortSignal: budgetSignal(deadline),
+        }),
+      );
       if (status.status === "COMPLETED") {
         break;
       }

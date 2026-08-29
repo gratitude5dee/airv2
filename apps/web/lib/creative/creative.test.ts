@@ -723,6 +723,35 @@ describe("fal /zap queue discipline", () => {
     expect(submit).not.toHaveBeenCalled();
   });
 
+  it("a budget consumed by lifecycle persistence never submits a paid render", async () => {
+    vi.stubEnv("FAL_KEY", "test-key");
+    const submit = okSubmit();
+    await expect(
+      generateZapVideo(plan({ mode: "zap" }), turn(), 50, {
+        submit,
+        queue: queueOf(),
+        onLifecycle: async () => {
+          await new Promise((resolve) => setTimeout(resolve, 120));
+        },
+      }),
+    ).rejects.toThrow(GmiCapacityError);
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it("a queue read that ignores its abort signal is still cut off at the deadline", async () => {
+    vi.stubEnv("FAL_KEY", "test-key");
+    const hangForever = () => new Promise<never>(() => undefined);
+    await expect(
+      generateZapVideo(plan({ mode: "zap" }), turn(), 300, {
+        submit: okSubmit(),
+        queue: { status: hangForever, result: hangForever },
+      }),
+    ).rejects.toSatisfy(
+      (error) =>
+        error instanceof FalEnqueuedError && error.requestId === "req-1",
+    );
+  });
+
   it("a stalled queue read is cut off at the deadline and stays terminal-unknown", async () => {
     vi.stubEnv("FAL_KEY", "test-key");
     const hangUntilAborted = (
