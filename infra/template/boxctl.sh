@@ -1,12 +1,28 @@
 #!/usr/bin/env bash
 # Thin operator helper around the Box API for template builds.
-# Usage: BOX_API_KEY=... ./boxctl.sh <cmd> <boxId> [args...]
+# Usage: BOX_API_KEY=... ./boxctl.sh <cmd> [boxId] [args...]
+# Commands: create [name] [body] | get | ip | sshkey <id> <pubkey> | wait |
+#           cmd | stop | resume | fork
+# Never pass force to stop (C6). Never put BOX_API_KEY in a box's env (C1).
 set -euo pipefail
 BASE="${BOX_API_BASE:-https://ascii.dev/api/box/v1}"
 auth=(-H "Authorization: Bearer ${BOX_API_KEY}" -H "Content-Type: application/json")
 
 case "$1" in
+  create) # create [name] [body-json] — bare box, no account secrets, no auto-stop
+    body="${3:-{\"type\":\"default\",\"ttlSeconds\":null,\"noEnv\":true}}"
+    created=$(curl -sS -X POST "${auth[@]}" "$BASE/boxes" -d "$body")
+    echo "$created"
+    if [ -n "${2:-}" ]; then
+      id=$(printf '%s' "$created" | python3 -c 'import sys,json;print(json.load(sys.stdin)["box"]["id"])')
+      curl -sS -X PATCH "${auth[@]}" "$BASE/boxes/$id" -d "{\"name\":$(python3 -c 'import json,sys;print(json.dumps(sys.argv[1]))' "$2")}" >/dev/null
+      echo "$id"
+    fi ;;
   get)   curl -sS "${auth[@]}" "$BASE/boxes/$2" ;;
+  ip)    curl -sS "${auth[@]}" "$BASE/boxes/$2" | python3 -c 'import sys,json;print(json.load(sys.stdin)["box"]["ip"] or "")' ;;
+  sshkey) # sshkey <boxId> <pubKeyPath> — authorize a public key for user@<box ip>
+    curl -sS -X POST "${auth[@]}" "$BASE/boxes/$2/sshkey" \
+      -d "$(python3 -c 'import json,sys;print(json.dumps({"key":open(sys.argv[1]).read().strip()}))' "$3")" ;;
   wait)  # wait for ready/idle
     for _ in $(seq 1 120); do
       state=$(curl -sS "${auth[@]}" "$BASE/boxes/$2" | python3 -c 'import sys,json;print(json.load(sys.stdin)["box"]["state"])')
