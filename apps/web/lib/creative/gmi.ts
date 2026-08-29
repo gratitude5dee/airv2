@@ -110,6 +110,14 @@ const withGmiSlot = async <T>(
   }
 };
 
+/**
+ * The global creative-generation permit (CREATIVE_MAX_CONCURRENCY) is
+ * provider-neutral: every paid render — GMI or fal — must hold one from
+ * submit through terminal result. Throws GmiCapacityError when no slot
+ * frees within the timeout.
+ */
+export const withCreativeSlot = withGmiSlot;
+
 export interface GmiGenerationRequest {
   kind: GeneratedMedia["kind"];
   model: string;

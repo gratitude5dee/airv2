@@ -12,7 +12,15 @@ import {
   GmiRequestError,
   type CreativeTurn,
 } from "./gmi";
-import { buildFalZapRequest } from "./fal";
+import {
+  buildFalZapRequest,
+  FalEnqueuedError,
+  FalRequestError,
+  FalSubmitUnknownError,
+  generateZapVideo,
+  isFalUnknownOutcome,
+  type FalQueueReader,
+} from "./fal";
 import {
   assertSafeGeneratedMediaUrl,
   fetchSafeGeneratedMedia,
@@ -527,6 +535,152 @@ describe("concurrency semaphore", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe("fal /zap queue discipline", () => {
+  const FAL_VIDEO_URL = "https://v3b.fal.media/files/out.mp4";
+  const okSubmit = () =>
+    vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ request_id: "req-1" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })
+    );
+  const queueOf = (overrides: Partial<FalQueueReader> = {}): FalQueueReader => ({
+    status: vi.fn().mockResolvedValue({ status: "COMPLETED" }),
+    result: vi.fn().mockResolvedValue({ data: { video: { url: FAL_VIDEO_URL } } }),
+    ...overrides,
+  });
+
+  it("submits once, polls by ID, and emits lifecycle in order", async () => {
+    vi.stubEnv("FAL_KEY", "test-key");
+    const submit = okSubmit();
+    const stages: string[] = [];
+    const media = await generateZapVideo(plan({ mode: "zap" }), turn(), 10_000, {
+      submit,
+      queue: queueOf(),
+      onLifecycle: (event) => {
+        stages.push(event.stage);
+      },
+    });
+    expect(media).toEqual({ kind: "video", url: FAL_VIDEO_URL });
+    expect(submit).toHaveBeenCalledTimes(1);
+    expect(stages).toEqual(["submitting", "submitted", "artifact_ready"]);
+  });
+
+  it("a submit with no response is ambiguous — never resubmitted", async () => {
+    vi.stubEnv("FAL_KEY", "test-key");
+    const submit = vi.fn<typeof fetch>().mockRejectedValue(new TypeError("fetch failed"));
+    await expect(
+      generateZapVideo(plan({ mode: "zap" }), turn(), 10_000, {
+        submit,
+        queue: queueOf(),
+      })
+    ).rejects.toSatisfy(
+      (error) => error instanceof FalSubmitUnknownError && isFalUnknownOutcome(error)
+    );
+    expect(submit).toHaveBeenCalledTimes(1);
+  });
+
+  it("a definitive submit rejection is an ordinary retryable failure", async () => {
+    vi.stubEnv("FAL_KEY", "test-key");
+    const submit = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response("bad input", { status: 400 }));
+    await expect(
+      generateZapVideo(plan({ mode: "zap" }), turn(), 10_000, {
+        submit,
+        queue: queueOf(),
+      })
+    ).rejects.toSatisfy(
+      (error) => error instanceof FalRequestError && !isFalUnknownOutcome(error)
+    );
+  });
+
+  it("recovers a finished render when polling drops but the result reads back", async () => {
+    vi.stubEnv("FAL_KEY", "test-key");
+    const media = await generateZapVideo(plan({ mode: "zap" }), turn(), 10_000, {
+      submit: okSubmit(),
+      queue: queueOf({
+        status: vi.fn().mockRejectedValue(new Error("connection reset")),
+      }),
+    });
+    expect(media).toEqual({ kind: "video", url: FAL_VIDEO_URL });
+  });
+
+  it("an enqueued render whose outcome can't be determined is terminal-unknown", async () => {
+    vi.stubEnv("FAL_KEY", "test-key");
+    await expect(
+      generateZapVideo(plan({ mode: "zap" }), turn(), 10_000, {
+        submit: okSubmit(),
+        queue: queueOf({
+          status: vi.fn().mockRejectedValue(new Error("connection reset")),
+          result: vi.fn().mockRejectedValue(new Error("still down")),
+        }),
+      })
+    ).rejects.toSatisfy(
+      (error) =>
+        error instanceof FalEnqueuedError &&
+        error.requestId === "req-1" &&
+        isFalUnknownOutcome(error)
+    );
+  });
+
+  it("a 4xx result is the provider's verdict, not an unknown outcome", async () => {
+    vi.stubEnv("FAL_KEY", "test-key");
+    const rejection = Object.assign(new Error("content policy"), { status: 422 });
+    await expect(
+      generateZapVideo(plan({ mode: "zap" }), turn(), 10_000, {
+        submit: okSubmit(),
+        queue: queueOf({ result: vi.fn().mockRejectedValue(rejection) }),
+      })
+    ).rejects.toSatisfy((error) => error instanceof FalRequestError);
+  });
+
+  it("a render that outlives the budget stays terminal-unknown by its ID", async () => {
+    vi.stubEnv("FAL_KEY", "test-key");
+    await expect(
+      generateZapVideo(plan({ mode: "zap" }), turn(), 500, {
+        submit: okSubmit(),
+        queue: queueOf({
+          status: vi.fn().mockResolvedValue({ status: "IN_QUEUE" }),
+        }),
+      })
+    ).rejects.toSatisfy(
+      (error) => error instanceof FalEnqueuedError && error.requestId === "req-1"
+    );
+  });
+
+  it("shares the creative concurrency permit with GMI renders", async () => {
+    vi.stubEnv("FAL_KEY", "test-key");
+    vi.stubEnv("CREATIVE_MAX_CONCURRENCY", "1");
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const submit = vi.fn<typeof fetch>().mockImplementation(async () => {
+      await gate;
+      return new Response(JSON.stringify({ request_id: "req-1" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    const queue = queueOf();
+    const first = generateZapVideo(plan({ mode: "zap" }), turn(), 10_000, {
+      submit,
+      queue,
+    });
+    const second = generateZapVideo(plan({ mode: "zap" }), turn(), 10_000, {
+      submit,
+      queue,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    // Only one submission is in flight while the slot is held.
+    expect(submit).toHaveBeenCalledTimes(1);
+    release?.();
+    await Promise.all([first, second]);
+    expect(submit).toHaveBeenCalledTimes(2);
   });
 });
 

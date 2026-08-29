@@ -23,7 +23,7 @@ import {
   type GeneratedMedia,
   type GmiLifecycleEvent,
 } from "./gmi";
-import { generateZapVideo } from "./fal";
+import { generateZapVideo, isFalUnknownOutcome } from "./fal";
 import { CreativeUnconfiguredError } from "./groq";
 import { insertRenderCostEvent, updateCreativeJob, underDailyLimit, DAILY_LIMIT_LINE } from "./jobs";
 import { fetchSafeGeneratedMedia } from "./media-url";
@@ -188,7 +188,7 @@ export async function executeCreativeJob(
       return await fail("failed", BUSY_LINE);
     } else if (error instanceof GmiJobError && isModerationFailure(error)) {
       return await fail("refused", REFUSAL_LINE);
-    } else if (isAmbiguousSubmission(error)) {
+    } else if (isAmbiguousSubmission(error) || isFalUnknownOutcome(error)) {
       // The provider may or may not have accepted the work (C23). Persist
       // the ambiguity; never automatically resubmit.
       return await fail("submit_unknown", SUBMIT_UNKNOWN_LINE);
