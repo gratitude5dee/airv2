@@ -252,3 +252,19 @@ def test_read_failure_never_relays_op_output(
     assert payload["error"] == "op_read_failed"
     assert "isn't a secret" not in payload["message"]
     assert out == ""
+
+
+def test_listing_caps_segment_length_to_match_control_plane(home, monkeypatch):
+    long = "x" * 65
+    ok = "x" * 64
+    listing = json.dumps([
+        {"title": long, "vault": {"name": "Private"}},
+        {"title": ok, "vault": {"name": "Private"}},
+    ])
+    monkeypatch.setattr(
+        onepassword.subprocess, "run",
+        lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0, listing, ""),
+    )
+    assert [e["item"] for e in onepassword.list_logins("token")] == [ok]
+    with pytest.raises(onepassword.VaultError):
+        onepassword.parse_ref(f"op://Private/{long}/password")

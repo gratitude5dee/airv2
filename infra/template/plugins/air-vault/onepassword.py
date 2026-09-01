@@ -32,8 +32,10 @@ _TIMEOUT = 30.0
 
 # op://<vault>/<item>/<field>. Vault and item names may contain spaces (most
 # 1Password vaults do) but never a slash, which would make the reference
-# ambiguous; the field may be a section path ("section/label").
-_SEGMENT = r"[^/\\\s](?:[^/\\]*[^/\\\s])?"
+# ambiguous; the field may be a section path ("section/label"). Capped at 64
+# characters to match the control plane's OP_SEGMENT_RE, so everything listed
+# here is also grantable there.
+_SEGMENT = r"[^/\\\s](?:[^/\\]{0,62}[^/\\\s])?"
 _REF_RE = re.compile(
     rf"^op://({_SEGMENT})/({_SEGMENT})/([^\s](?:.*[^\s])?)$"
 )
