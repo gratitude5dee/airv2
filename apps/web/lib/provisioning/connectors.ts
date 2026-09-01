@@ -13,6 +13,7 @@ import {
 } from "../compute/runtime";
 import { profileFor, restartCommand } from "../compute/environments";
 import { createSession, getSession } from "../composio/client";
+import { ensureMasterkeyConnection } from "../masterkey/client";
 
 export async function ensureComposioSession(
   supabase: SupabaseClient,
@@ -104,5 +105,43 @@ export async function installComposioMcp(
   );
   if (result.exitCode !== 0) {
     throw new Error(`composio mcp install failed: ${result.stderr}`);
+  }
+}
+
+/**
+ * Install (or refresh) the MasterKey MCP entry on the user's machine, same
+ * shape as Composio: the compute is pointed at our /api/mcp/masterkey proxy
+ * and authenticates with its own gateway token. The per-user MasterKey OAuth
+ * token (and the partner secret used to mint it) stay in the control plane.
+ */
+export async function installMasterkeyMcp(
+  supabase: SupabaseClient,
+  userId: string,
+  /** Freshly provisioned instance, when the boxes row is not readable yet. */
+  provisioned?: ComputeTarget
+): Promise<void> {
+  // Mints the user's MasterKey account + wallet before the compute ever hits
+  // the proxy, and records the connections row.
+  await ensureMasterkeyConnection(supabase, userId);
+  const target = provisioned ?? (await ensureComputeAwake(supabase, userId));
+  const homeDir = profileFor(target.environment).homeDir;
+  const proxyUrl = `${env.appOrigin()}/api/mcp/masterkey`;
+  const script = [
+    "import yaml, pathlib",
+    `p = pathlib.Path("${homeDir}/.hermes/config.yaml")`,
+    "cfg = yaml.safe_load(p.read_text()) or {}",
+    'mcp = cfg.get("mcp_servers")',
+    "mcp = mcp if isinstance(mcp, dict) else {}",
+    `mcp["masterkey"] = {"url": "${proxyUrl}", "enabled": True, "headers": {"Authorization": "Bearer " + cfg["model"]["api_key"]}}`,
+    'cfg["mcp_servers"] = mcp',
+    "p.write_text(yaml.safe_dump(cfg, default_flow_style=False))",
+  ].join("\n");
+  const result = await runCommand(
+    target,
+    `${hermesBin(target, "python")} - <<'PYEOF' && ${restartCommand(target.environment, ["hermes-gateway"])}\n${script}\nPYEOF`,
+    180
+  );
+  if (result.exitCode !== 0) {
+    throw new Error(`masterkey mcp install failed: ${result.stderr}`);
   }
 }

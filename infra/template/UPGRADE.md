@@ -1,12 +1,31 @@
 # V0 — Hermes upgrade runbook (pin, rebuild, migrate the fleet)
 
 The template pins Hermes at `HERMES_REF` (see `setup.sh`; currently
-`fcbd1076a93841fa88855acce810e342a5b78101` = tag `v2026.8.19`, pyproject
-`0.20.5`, released 2026-08-21). Re-pin deliberately with a delta review —
-never float back to `main`. `infra/template-macos/setup.sh` stays on
-`7339f5f1` until that lane's own template build is re-run.
+`29112bef099274229cadff79cdff7bf7b99c4b77` = tag `v2026.8.31`, pyproject
+`0.21.0`, released 2026-08-31). Re-pin deliberately with a delta review —
+never float back to `main`. `infra/template-macos/setup.sh` carries the same
+pin; `infra/template-omarchy/setup.sh` overlays the Linux template and
+inherits it.
 
-## 0. Delta review for the v2026.8.16.2 → v2026.8.19 re-pin (963 commits)
+## 0. Delta review for the v2026.8.19 → v2026.8.31 re-pin
+
+- **C24 platform union** — `plugins/platforms/*/` (22 dirs) and the
+  `register_platform(` call count (66) are identical across the two
+  revisions, so no box can gain a second door from the upgrade. Re-run
+  `generate_platforms.py --verify` on the box anyway.
+- **Secret-source API (V1)** — `SECRET_SOURCE_API_VERSION` is still `1`;
+  `agent/secret_sources/base.py` and `tests/secret_sources/conformance.py`
+  are byte-identical, so the vendored air-vault conformance kit holds.
+- **Session DB schema** — `hermes_state.py` grew but the schema-version
+  bump path is unchanged; safe on boxes that already migrated.
+- **`hermes mcp add/list/test`** — `hermes_cli/mcp_config.py` only changed
+  in the `configure` tool picker (glob `tools.exclude` handling);
+  `cmd_mcp_add` / `cmd_mcp_list` / `cmd_mcp_test` and the `mcp_servers`
+  config shape the Composio and MasterKey proxies write are untouched.
+- `web.cache_enabled` / `web.cache_ttl_minutes` still do not exist — keep
+  not seeding them.
+
+## 0a. Delta review for the v2026.8.16.2 → v2026.8.19 re-pin (963 commits)
 
 The three things a re-pin can break in this repo, and what the delta says:
 
@@ -35,7 +54,7 @@ do not ship.
    the C24 platform generation fails or any platform except `api_server` is
    enabled.
 3. Confirm `~/.hermes/.template-hermes-ref` holds the resolved SHA and
-   `~/.hermes-venv/bin/hermes --version` reports the expected 0.20.x.
+   `~/.hermes-venv/bin/hermes --version` reports the expected 0.21.x.
 4. Verify the secret-source re-pull (#64177) — V1 depends on it:
 
    ```bash
@@ -83,7 +102,7 @@ Existing boxes carry `~/.hermes` state (memory, sessions, skills); a re-fork
 destroys it. For each box (resume it first):
 
 ```bash
-HERMES_REF=fcbd1076a93841fa88855acce810e342a5b78101
+HERMES_REF=29112bef099274229cadff79cdff7bf7b99c4b77
 cd ~/hermes-agent
 git fetch --depth 1 origin "$HERMES_REF" && git checkout --force FETCH_HEAD
 UV_PROJECT_ENVIRONMENT=~/.hermes-venv uv pip install -e ".[all]" \

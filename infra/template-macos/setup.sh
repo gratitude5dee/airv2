@@ -13,7 +13,7 @@ set -euo pipefail
 
 HERMES_REPO="${HERMES_REPO:-https://github.com/NousResearch/hermes-agent.git}"
 # V0: pinned Hermes revision — keep in lockstep with infra/template/setup.sh.
-HERMES_REF="${HERMES_REF:-7339f5f160db5c96657a3bab60151227cc61f66c}"
+HERMES_REF="${HERMES_REF:-29112bef099274229cadff79cdff7bf7b99c4b77}"
 HOME_DIR="$HOME"
 TEMPLATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BASE_TEMPLATE_DIR="$(cd "$TEMPLATE_DIR/../template" && pwd)"

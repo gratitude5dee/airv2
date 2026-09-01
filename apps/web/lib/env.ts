@@ -109,6 +109,17 @@ export const env = {
   agentEmailDomain: (): string =>
     optional("AGENT_EMAIL_DOMAIN", "agentmail.to"),
   composioApiKey: (): string => required("COMPOSIO_API_KEY"),
+  // MasterKey (x402 service catalog + MCP). The partner secret is the
+  // server-to-server credential the /api/mcp/masterkey proxy uses to mint
+  // per-user MCP tokens; it never reaches a box or browser.
+  masterkeyOrigin: (): string =>
+    optional("MASTERKEY_ORIGIN", "https://masterkey.sh").replace(/\/+$/, ""),
+  masterkeyPartnerSecret: (): string => required("MASTERKEY_PARTNER_SECRET"),
+  // Hard ceiling on a single MasterKey run_service call, in USD.
+  masterkeyPerCallMaxUsd: (): number => {
+    const parsed = Number(optional("MASTERKEY_PER_CALL_MAX_USD", "5"));
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 5;
+  },
   miniappSigningKey: (): string => required("MINIAPP_SIGNING_KEY"),
   // Desktop pairing/device tokens. Defaults to the web session secret so the
   // desktop surface needs no new deploy config; set it to rotate desktop
