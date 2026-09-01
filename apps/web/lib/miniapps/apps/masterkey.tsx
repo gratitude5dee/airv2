@@ -12,10 +12,13 @@ import { esc, forbidden, withBaseHeaders } from "../html";
 import { renderShell, shellHtml } from "../shell";
 import {
   fetchCatalog,
+  fetchMasterkeyWallet,
   MasterkeyError,
   type Catalog,
   type CatalogEntry,
+  type MasterkeyWallet,
 } from "@/lib/masterkey/client";
+import { createTransferRequest, shortAddress, WalletSendError } from "@/lib/wallet/send";
 import {
   createRunRequest,
   listMasterkeyRuns,
@@ -79,6 +82,17 @@ function runCard(run: MasterkeyRun): string {
   return `<div class="card${run.status === "pending" ? " pending" : ""}"><div class="row"><strong>${esc(run.service_name ?? run.service_id)}</strong> <span class="when">${esc(run.status)}${cost ? ` · ${esc(cost)}` : ""}</span></div>${hint}${result}</div>`;
 }
 
+function walletCard(wallet: MasterkeyWallet | null): string {
+  if (!wallet?.baseAddress) {
+    return '<div class="card"><strong>Service wallet</strong><div class="muted">Not provisioned yet — it is created the first time your agent connects.</div></div>';
+  }
+  const balance = wallet.usdcBase !== null ? `${esc(wallet.usdcBase)} USDC` : "balance unavailable";
+  return `<div class="card"><div class="row"><strong>Service wallet</strong> <span class="when">${balance} on Base</span></div>
+<div class="muted">Runs are paid from this wallet (${esc(shortAddress(wallet.baseAddress))}). Top-ups move USDC from your wallet and need your approval.</div>
+<form method="post" class="addrow"><input type="hidden" name="action" value="topup">
+<input type="text" name="amount" inputmode="decimal" placeholder="Amount (USDC)" maxlength="20"><button>Top up</button></form></div>`;
+}
+
 function pageLink(basePath: string, query: StoreQuery, page: number, label: string): string {
   const params = new URLSearchParams();
   if (query.q) params.set("q", query.q);
@@ -91,6 +105,7 @@ function pageLink(basePath: string, query: StoreQuery, page: number, label: stri
 function renderStore(
   catalog: Catalog | null,
   runs: MasterkeyRun[],
+  wallet: MasterkeyWallet | null,
   query: StoreQuery,
   basePath: string,
   note: string | null,
@@ -119,6 +134,7 @@ function renderStore(
       ? `<div class="row actions">${page > 1 ? pageLink(basePath, query, page - 1, "← Previous") : ""}<span class="when">Page ${page} of ${pages}</span>${page < pages ? pageLink(basePath, query, page + 1, "Next →") : ""}</div>`
       : "";
   const body = `<section class="panel">
+<div class="day">Wallet</div>${walletCard(wallet)}
 ${active.length > 0 ? `<div class="day">Your runs</div>${active.map(runCard).join("")}` : ""}
 <div class="day">Catalog${catalog ? ` · ${catalog.entries.length} services` : ""}</div>
 <form method="get" class="addrow"><input type="text" name="q" value="${esc(query.q)}" placeholder="Search services…" maxlength="80"><select name="cat"><option value="">All categories</option>${categories}</select><button>Search</button></form>
@@ -149,7 +165,7 @@ export const masterkey: MiniAppModule = {
     if (ctx.session.role !== "owner") {
       return forbidden("this view is owner-only");
     }
-    const [catalog, runs] = await Promise.all([
+    const [catalog, runs, wallet] = await Promise.all([
       fetchCatalog().catch((error: unknown) => {
         console.error(
           JSON.stringify({
@@ -160,10 +176,19 @@ export const masterkey: MiniAppModule = {
         return null;
       }),
       listMasterkeyRuns(ctx.supabase, ctx.session.userId),
+      fetchMasterkeyWallet(ctx.supabase, ctx.session.userId).catch(() => null),
     ]);
     const note = ctx.request.nextUrl.searchParams.get("note");
     return shellHtml(
-      renderStore(catalog, runs, readQuery(ctx), ctx.basePath, note, ctx.session.via === "card")
+      renderStore(
+        catalog,
+        runs,
+        wallet,
+        readQuery(ctx),
+        ctx.basePath,
+        note,
+        ctx.session.via === "card"
+      )
     );
   },
 
@@ -188,6 +213,18 @@ export const masterkey: MiniAppModule = {
         await runPrompt(ctx, String(form.get("text") ?? ""));
         return back("sent to your agent");
       }
+      if (action === "topup") {
+        const wallet = await fetchMasterkeyWallet(ctx.supabase, ctx.session.userId);
+        if (!wallet?.baseAddress) return back("no service wallet to fund yet");
+        await createTransferRequest(
+          ctx.supabase,
+          ctx.session.userId,
+          wallet.baseAddress,
+          String(form.get("amount") ?? ""),
+          "usdc"
+        );
+        return back("approve the top-up in Needs you");
+      }
       if (action === "run") {
         const serviceId = String(form.get("service_id") ?? "").trim();
         if (!serviceId) return back("pick a service first");
@@ -200,7 +237,11 @@ export const masterkey: MiniAppModule = {
         return back("approve the run in Needs you — it pays from your wallet");
       }
     } catch (error) {
-      if (error instanceof MasterkeyRunError || error instanceof MasterkeyError) {
+      if (
+        error instanceof MasterkeyRunError ||
+        error instanceof MasterkeyError ||
+        error instanceof WalletSendError
+      ) {
         return back(error.message);
       }
       if (error instanceof StartLimitError) {

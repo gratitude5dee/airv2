@@ -142,6 +142,68 @@ export async function ensureMasterkeyConnection(
   await ensureMasterkeyToken(supabase, userId);
 }
 
+// ─── per-user wallet (partner-secret gated, display-only) ───────────────────
+
+export interface MasterkeyWallet {
+  /** Base funding address of the user's Sponge agent wallet. */
+  baseAddress: string | null;
+  /** USDC balance on Base, as MasterKey reports it (display string). */
+  usdcBase: string | null;
+  addresses: Record<string, string>;
+  spend: {
+    monthlyLimitUsd: number | null;
+    perCallMaxUsd: number | null;
+    spentThisPeriodUsd: number | null;
+  };
+}
+
+interface PartnerWalletResponse {
+  wallet: {
+    agentId: string;
+    addresses: Record<string, string>;
+    balances: Record<string, Record<string, string>>;
+  } | null;
+  spend?: {
+    monthly_limit_usd?: number | null;
+    per_call_max_usd?: number | null;
+    spent_this_period_usd?: number | null;
+  };
+}
+
+/**
+ * The user's MasterKey wallet — funding address + balance so the Store can
+ * offer owner-approved thirdweb USDC top-ups. Read-only; no key material.
+ */
+export async function fetchMasterkeyWallet(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<MasterkeyWallet | null> {
+  await ensureMasterkeyToken(supabase, userId);
+  const response = await fetch(
+    `${env.masterkeyOrigin()}/api/partner/airv2/wallet?external_user_id=${encodeURIComponent(userId)}`,
+    {
+      headers: { authorization: `Bearer ${env.masterkeyPartnerSecret()}` },
+      cache: "no-store",
+    }
+  );
+  if (!response.ok) return null;
+  const json = (await response.json()) as PartnerWalletResponse;
+  if (!json.wallet) return null;
+  const usdc = Object.entries(json.wallet.balances["base"] ?? {}).find(
+    ([symbol]) => symbol.toUpperCase() === "USDC"
+  );
+  return {
+    baseAddress: json.wallet.addresses["base"] ?? null,
+    usdcBase: usdc ? usdc[1] : null,
+    addresses: json.wallet.addresses,
+    spend: {
+      monthlyLimitUsd: json.spend?.monthly_limit_usd ?? null,
+      perCallMaxUsd: json.spend?.per_call_max_usd ?? null,
+      spentThisPeriodUsd: json.spend?.spent_this_period_usd ?? null,
+    },
+  };
+}
+
 // ─── catalog (public, summary-only) ─────────────────────────────────────────
 
 export interface CatalogEntry {
