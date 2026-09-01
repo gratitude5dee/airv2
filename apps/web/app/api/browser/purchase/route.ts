@@ -17,7 +17,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { serviceClient } from "@/lib/supabase";
-import { appendVaultEvent } from "@/lib/vault/client";
+import { appendVaultEvent, reconcileMirror } from "@/lib/vault/client";
 import {
   normalizeHost,
   proposePurchaseReview,
@@ -40,27 +40,40 @@ const ID_RE = /^[A-Za-z0-9._-]{1,64}$/;
 // report line can never smuggle a value into the audit trail (C18).
 const FIELD_GROUPS = new Set(["number", "expiry", "cvv", "zip"]);
 
-async function boxUserId(
+async function callingBox(
   supabase: SupabaseClient,
   request: NextRequest
-): Promise<string | null> {
+): Promise<{ userId: string; boxId: string } | null> {
   const authHeader = request.headers.get("authorization") ?? "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
   if (!token) return null;
   const { data: box } = await supabase
     .from("boxes")
-    .select("user_id")
+    .select("user_id, provider_box_id")
     .eq("gateway_token", token)
     .maybeSingle();
-  return box ? (box.user_id as string) : null;
+  if (!box) return null;
+  return {
+    userId: box.user_id as string,
+    boxId: box.provider_box_id as string,
+  };
+}
+
+async function boxUserId(
+  supabase: SupabaseClient,
+  request: NextRequest
+): Promise<string | null> {
+  const box = await callingBox(supabase, request);
+  return box ? box.userId : null;
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const supabase = serviceClient();
-  const userId = await boxUserId(supabase, request);
-  if (!userId) {
+  const box = await callingBox(supabase, request);
+  if (!box) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+  const userId = box.userId;
   const [
     { data: cards, error: cardsError },
     { data: open, error: openError },
@@ -95,6 +108,33 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       { status: 502, headers: { "Cache-Control": "no-store" } }
     );
   }
+  const mirrored = cards ?? [];
+  let eligible = mirrored;
+  if (mirrored.length > 0) {
+    try {
+      const live = await reconcileMirror(
+        supabase,
+        box.boxId,
+        userId,
+        mirrored.map((card) => card.id as string)
+      );
+      eligible = mirrored.filter((card) => live.has(card.id as string));
+    } catch (error) {
+      // The store, not the mirror, decides: a box that cannot be read must
+      // not hand the agent a card it may be unable to fill.
+      console.error(
+        JSON.stringify({
+          msg: "purchase eligibility store read failed",
+          user_id: userId,
+          error: error instanceof Error ? error.message : "unknown",
+        })
+      );
+      return NextResponse.json(
+        { error: "store_unavailable" },
+        { status: 502, headers: { "Cache-Control": "no-store" } }
+      );
+    }
+  }
   const openHosts = (open ?? [])
     .map((row) => {
       const payload = row.payload as { host?: unknown } | null;
@@ -102,7 +142,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     })
     .filter((host): host is string => host !== null);
   return NextResponse.json(
-    { cards: cards ?? [], open_review_hosts: openHosts },
+    { cards: eligible, open_review_hosts: openHosts },
     { headers: { "Cache-Control": "no-store" } }
   );
 }

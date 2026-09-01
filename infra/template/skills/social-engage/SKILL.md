@@ -31,6 +31,31 @@ post there) — do NOT post via the browser. Use the browser only for actions
 the adapters don't cover (likes, follows, replies on platforms without an
 adapter).
 
+## A plan the owner can approve, not a paragraph
+
+When the ask is a calendar, a campaign week, or a set of posts ("plan launch
+week", "a 2-week content calendar", "a hook strategy for X"), the turn ends
+with a staged plan, not prose. File it the same turn:
+
+```bash
+set -a; . ~/.hermes/.env; set +a
+curl -fsS -X POST "${OPENAI_BASE_URL%/api/gateway/v1}/api/content/plan" \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"label":"Launch week","timezone":"America/Los_Angeles","steps":[
+        {"platform":"instagram","brief":"<what this post says>","scheduled_at":"2026-09-08T18:00:00Z"},
+        {"platform":"tiktok","brief":"<what this post says>","scheduled_at":"2026-09-09T18:00:00Z"}]}'
+```
+
+`{"ok":true,"status":"pending_approval"}` means it is in Needs-you; slots are
+proposals until the owner approves, so staging publishes nothing.
+
+Missing details are not a reason to stop. Pick obvious defaults (a two-week
+cadence from today, one post per named platform, evening local slots), stage
+the plan, and say which assumptions you made so the owner can correct them
+when they review. Never end a planning turn with a question and nothing in
+Needs-you.
+
 ## Likes / reactions — standing rules only
 
 Rule-covered actions (likes, reactions) run without asking, but ONLY when the
@@ -60,7 +85,11 @@ Anything that publishes text in the human's name (a comment, a reply, a post)
 ALWAYS requires their approval first, even when a standing rule exists:
 
 1. Compose the exact final text and identify the exact target.
-2. File the decision card FIRST:
+2. File the decision card FIRST — always, including when the platform has no
+   connected account and when the owner left a detail out. A proposal is a
+   card the owner can read and correct; a question is not. If a caption needs
+   an asset you cannot see, propose the caption and name the missing asset in
+   the same turn.
 
 ```bash
 curl -fsS -X POST "${OPENAI_BASE_URL%/api/gateway/v1}/api/browser/social" \

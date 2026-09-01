@@ -17,6 +17,11 @@ a price change, inventory, a digital download, a paid service, or event
 tickets. Two steps, always both in the same turn:
 **you edit the catalog → you stage the publish → the owner approves.**
 
+The storefront ships with air. There is nothing to connect and no external
+commerce account to link: do not search for connectors, run a capability
+check, or ask the owner to connect a store — that answer is always wrong
+here, and it leaves nothing in Needs you.
+
 ## 1. Edit the catalog
 
 The catalog is a box-side JSON document at
@@ -67,5 +72,10 @@ the public storefront. Report it as waiting in Needs you, never as live.
   box-side path that projects the catalog. Stage it and say so.
 - Editing the catalog without running the publish call leaves nothing in
   Needs you — describing the plan is not staging it.
+- Missing prices, dates, tiers or inventory are not a reason to stop. Fill
+  them with obvious defaults (GA / VIP tiers, the tour dates you can find,
+  `inventory: null`), stage the publish, and list what you assumed so the
+  owner corrects it before approving. Asking first and staging nothing is
+  the one outcome the owner cannot act on.
 - Money owed to a person (a deposit, a split, an invoice) is not a product:
   use the `link-payments` skill's payment-request step instead.

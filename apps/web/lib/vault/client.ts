@@ -290,6 +290,45 @@ export async function applyBatch(
 }
 
 /**
+ * Drop mirror rows the box store no longer holds, and return the ids that
+ * survived. The store is the only source of truth (C18): a box that was
+ * re-forked or restored comes back with an empty store, and until the mirror
+ * catches up it advertises cards no fill can ever use.
+ */
+export async function reconcileMirror(
+  supabase: SupabaseClient,
+  boxId: string,
+  userId: string,
+  mirroredIds: readonly string[]
+): Promise<Set<string>> {
+  const live = new Set((await listItems(boxId)).map((item) => item.id));
+  const stale = mirroredIds.filter((id) => !live.has(id));
+  if (stale.length > 0) {
+    const { error } = await supabase
+      .from("vault_items")
+      .update({ deleted_at: new Date().toISOString(), env_var: null })
+      .eq("user_id", userId)
+      .in("id", stale);
+    if (error) {
+      vaultLogError({
+        msg: "vault_items reconcile failed",
+        user_id: userId,
+        box_id: boxId,
+        error: error.message,
+      });
+    } else {
+      vaultLog({
+        msg: "vault_items reconciled",
+        user_id: userId,
+        box_id: boxId,
+        stale: stale.length,
+      });
+    }
+  }
+  return live;
+}
+
+/**
  * Owner reveal of exactly one field. Returns the plaintext to the caller —
  * it is never logged, never persisted, and the reveal is audited.
  */
