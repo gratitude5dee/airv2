@@ -55,6 +55,21 @@ describe("parseOnePasswordLogins", () => {
     ]);
   });
 
+  it("keeps names with spaces, which the box CLI can still address", () => {
+    const stdout = JSON.stringify({
+      items: [{ vault: "Personal Vault", item: "My Bank" }],
+    });
+    expect(parseOnePasswordLogins(stdout)).toEqual([
+      {
+        id: "op:Personal Vault/My Bank",
+        vault: "Personal Vault",
+        item: "My Bank",
+        ref_prefix: "op://Personal Vault/My Bank",
+      },
+    ]);
+    expect(isOpGrantKey("op:Personal Vault/My Bank")).toBe(true);
+  });
+
   it("reads as empty when op returns nothing usable", () => {
     expect(parseOnePasswordLogins("")).toEqual([]);
     expect(parseOnePasswordLogins("op: command not found")).toEqual([]);

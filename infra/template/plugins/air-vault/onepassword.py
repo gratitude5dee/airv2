@@ -30,8 +30,15 @@ TOKEN_ENV = "OP_SERVICE_ACCOUNT_TOKEN"
 OP_BIN = "op"
 _TIMEOUT = 30.0
 
-# op://<vault>/<item>/<field> — field may be a section path ("section/label").
-_REF_RE = re.compile(r"^op://([^/\s]+)/([^/\s]+)/([^\s]+)$")
+# op://<vault>/<item>/<field>. Vault and item names may contain spaces (most
+# 1Password vaults do) but never a slash, which would make the reference
+# ambiguous; the field may be a section path ("section/label"). Capped at 64
+# characters to match the control plane's OP_SEGMENT_RE, so everything listed
+# here is also grantable there.
+_SEGMENT = r"[^/\\\s](?:[^/\\]{0,62}[^/\\\s])?"
+_REF_RE = re.compile(
+    rf"^op://({_SEGMENT})/({_SEGMENT})/([^\s](?:.*[^\s])?)$"
+)
 
 
 def connected() -> bool:
@@ -77,6 +84,11 @@ def _child_env(token: str) -> Dict[str, str]:
     return env
 
 
+def _addressable(name: str) -> bool:
+    """Whether a vault/item name survives a round-trip through ``parse_ref``."""
+    return bool(re.fullmatch(_SEGMENT, name))
+
+
 def list_logins(token: str) -> list:
     """Item titles, vaults and ids for the connected account's LOGIN items.
     ``op item list`` never returns field values."""
@@ -110,7 +122,7 @@ def list_logins(token: str) -> list:
         vault_name = vault.get("name") if isinstance(vault, dict) else None
         if not isinstance(title, str) or not isinstance(vault_name, str):
             continue
-        if "/" in title or "/" in vault_name:
+        if not _addressable(vault_name) or not _addressable(title):
             continue  # not addressable as an unambiguous op:// reference
         items.append({
             "vault": vault_name,
@@ -123,7 +135,7 @@ def list_logins(token: str) -> list:
 
 def read_value(ref: str, token: str) -> str:
     """Resolve ONE field with ``op read``. The value is returned, never
-    printed; stderr is surfaced only as a short failure reason."""
+    printed, and ``op``'s own output never reaches the error message."""
     try:
         result = subprocess.run(
             [OP_BIN, "read", "--no-newline", ref],
@@ -138,11 +150,12 @@ def read_value(ref: str, token: str) -> str:
     except subprocess.TimeoutExpired:
         raise VaultError("op_read_failed", "1Password timed out")
     if result.returncode != 0:
-        reason = (result.stderr or "").strip().splitlines()
+        # `op`'s stderr is never relayed: it can echo the reference and other
+        # account detail into logs and transcripts (C18).
         raise VaultError(
             "op_read_failed",
-            f"1Password refused: {reason[-1][:200]}" if reason else
-            "1Password refused the read",
+            "1Password refused the read — check the reference and the service "
+            "account's vault access",
         )
     value = result.stdout
     if not value:
