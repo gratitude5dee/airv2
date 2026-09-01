@@ -199,3 +199,56 @@ def test_op_list_returns_names_only_and_needs_the_opt_in(
         "vault": "Private", "item": "GitHub",
         "grant_key": GRANT_KEY, "ref_prefix": "op://Private/GitHub",
     }]}
+
+
+def test_spaced_names_round_trip_between_listing_and_fill(
+    home, connected, capsys, fake_browser, fake_op
+):
+    # Most 1Password vaults and titles contain spaces; a listed item must be
+    # fillable under the grant key the control plane derives from it.
+    vault, item, field = onepassword.parse_ref("op://Personal Vault/My Bank/password")
+    assert (vault, item, field) == ("Personal Vault", "My Bank", "password")
+    key = onepassword.grant_key(vault, item)
+    assert key == "op:Personal Vault/My Bank"
+    grant(home, key, ["github.com"])
+    ref = "op://Personal Vault/My Bank/password"
+    code, out, err = run(capsys, "op-fill", "--ref", ref)
+    assert code == 0 and err == ""
+    assert fake_browser["typed"] == [SECRET]
+    assert out.strip() == f"typed {ref} into github.com"
+
+
+def test_listing_skips_names_no_reference_can_address(home, monkeypatch):
+    listing = json.dumps([
+        {"title": "My Bank", "vault": {"name": "Personal Vault"}},
+        {"title": " Padded ", "vault": {"name": "Private"}},
+        {"title": "Bank/Joint", "vault": {"name": "Private"}},
+    ])
+    monkeypatch.setattr(
+        onepassword.subprocess, "run",
+        lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0, listing, ""),
+    )
+    listed = onepassword.list_logins("token")
+    assert [entry["item"] for entry in listed] == ["My Bank"]
+    for entry in listed:
+        assert onepassword.grant_key(
+            *onepassword.parse_ref(entry["ref_prefix"] + "/password")[:2]
+        ) == entry["grant_key"]
+
+
+def test_read_failure_never_relays_op_output(
+    home, connected, capsys, fake_browser, monkeypatch
+):
+    leak = "[ERROR] op://Private/GitHub/password isn't a secret you can read"
+
+    def failing(cmd, **kwargs):
+        return subprocess.CompletedProcess(cmd, 1, "", leak)
+
+    monkeypatch.setattr(onepassword.subprocess, "run", failing)
+    grant(home, GRANT_KEY, ["github.com"])
+    code, out, err = run(capsys, "op-fill", "--ref", REF)
+    assert code == 1
+    payload = json.loads(err)
+    assert payload["error"] == "op_read_failed"
+    assert "isn't a secret" not in payload["message"]
+    assert out == ""
