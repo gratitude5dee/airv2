@@ -383,7 +383,8 @@ export const vault: MiniAppModule = {
         ctx.session.via === "card",
         (reviewRows ?? []) as PurchaseReviewRow[],
         context.managers,
-        context.siteGrants
+        context.siteGrants,
+        context.opLabels
       )
     );
   },
