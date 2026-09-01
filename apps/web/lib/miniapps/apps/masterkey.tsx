@@ -123,7 +123,7 @@ function renderStore(
     ? catalog.categories
         .map(
           (category) =>
-            `<option value="${esc(category.name)}"${category.name === query.category ? " selected" : ""}>${esc(category.name)} (${category.count})</option>`
+            `<option value="${esc(category.slug)}"${category.slug === query.category ? " selected" : ""}>${esc(category.name)} (${category.count})</option>`
         )
         .join("")
     : "";
