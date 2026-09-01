@@ -27,7 +27,7 @@ import {
   type ManagerStatus,
 } from "@/lib/vault/managers";
 import { normalizeHost, setSiteGrant } from "@/lib/browser/grants";
-import { isOpGrantKey, parseOpGrantKey } from "@/lib/vault/onepassword";
+import { isOpGrantKey } from "@/lib/vault/onepassword";
 import { updateMiniAppCard } from "../cards";
 import { externalOrigin } from "../gates";
 import { promptBar, runPrompt } from "../promptBar";
@@ -62,20 +62,20 @@ interface GrantEventRow {
 /**
  * Split a grant event into (item, host). Local items carry the id in
  * `item_id` and the bare host in `context`; a 1Password grant has no mirror
- * row to point at, so its stable key rides in `context` ahead of the host:
- * `op:<vault>/<item> <host>`.
+ * row to point at, so its stable key rides in `context` ahead of the host,
+ * optionally followed by a display label (the key is opaque, so the label is
+ * the only human-readable handle): `op:<item-id> <host> <vault> / <title>`.
  */
 function grantSubject(
   event: GrantEventRow
-): { itemId: string; host: string } | null {
+): { itemId: string; host: string; label?: string } | null {
   const context = event.context ?? "";
   if (!context) return null;
   if (!event.item_id) {
-    const space = context.lastIndexOf(" ");
-    if (space <= 0) return null;
-    const itemId = context.slice(0, space);
-    if (!isOpGrantKey(itemId)) return null;
-    return { itemId, host: context.slice(space + 1) };
+    const [itemId, host, ...rest] = context.split(" ");
+    if (!itemId || !host || !isOpGrantKey(itemId)) return null;
+    const label = rest.join(" ").trim();
+    return { itemId, host, ...(label ? { label } : {}) };
   }
   return { itemId: event.item_id, host: context };
 }
@@ -85,12 +85,17 @@ function grantSubject(
  * ledger (MA5 #2): the latest event per (item, host) wins. The box grant
  * file stays authoritative for fills; this surface mirrors the audit trail.
  */
-function foldSiteGrants(events: GrantEventRow[]): Map<string, string[]> {
+function foldSiteGrants(events: GrantEventRow[]): {
+  byItem: Map<string, string[]>;
+  opLabels: Map<string, string>;
+} {
   const latest = new Map<string, { allow: boolean; itemId: string; host: string }>();
+  const opLabels = new Map<string, string>();
   for (const event of events) {
     const subject = grantSubject(event);
     if (!subject) continue;
-    const { itemId, host } = subject;
+    const { itemId, host, label } = subject;
+    if (label && !opLabels.has(itemId)) opLabels.set(itemId, label);
     const key = `${itemId}\u0000${host}`;
     if (!latest.has(key)) {
       latest.set(key, {
@@ -107,7 +112,7 @@ function foldSiteGrants(events: GrantEventRow[]): Map<string, string[]> {
     hosts.push(host);
     byItem.set(itemId, hosts.sort());
   }
-  return byItem;
+  return { byItem, opLabels };
 }
 
 const MANAGER_LABELS: Record<ManagerId, string> = {
@@ -120,7 +125,8 @@ const MANAGER_LABELS: Record<ManagerId, string> = {
  * labels and counts only — never a token or a secret value (C18). */
 function renderManagers(
   managers: ManagerStatus[],
-  siteGrants: Map<string, string[]>
+  siteGrants: Map<string, string[]>,
+  opLabels: Map<string, string>
 ): string {
   const rows = managers
     .map((m) => {
@@ -146,8 +152,9 @@ function renderManagers(
     ? [...siteGrants.entries()]
         .filter(([key]) => isOpGrantKey(key))
         .map(([key, hosts]) => {
-          const parsed = parseOpGrantKey(key);
-          const label = parsed ? `${parsed.vault} / ${parsed.item}` : key;
+          // The key is an opaque item id; the human-readable handle is the
+          // label captured with the grant event.
+          const label = opLabels.get(key) ?? key;
           const chips = hosts
             .map(
               (host) =>
@@ -200,7 +207,8 @@ function renderVault(
   lite: boolean,
   reviews: PurchaseReviewRow[] = [],
   managers: ManagerStatus[] = [],
-  siteGrants: Map<string, string[]> = new Map()
+  siteGrants: Map<string, string[]> = new Map(),
+  opLabels: Map<string, string> = new Map()
 ): string {
   const sections: [string, string, string][] = [
     ["login", "LOGINS", "Add a login…"],
@@ -264,7 +272,7 @@ function renderVault(
     .join("");
   const addLogin = `<details><summary>Add login</summary><p class="muted">Values are encrypted in your vault.</p><form method="post" class="stack"><input type="hidden" name="action" value="add_login"><input type="text" name="name" placeholder="e.g. &quot;Gmail&quot;, &quot;GitHub&quot;" maxlength="120"><input type="text" name="username" placeholder="Username" maxlength="200"><input type="text" name="password" placeholder="🔒 Password" maxlength="500" autocomplete="off"><button>Save</button></form></details>`;
   const addCard = `<details><summary>Add card</summary><p class="muted">Values are encrypted in your vault.</p><form method="post" class="stack"><input type="hidden" name="action" value="add_card"><input type="text" name="name" placeholder="e.g. &quot;Amex&quot;, &quot;Chase&quot;" maxlength="120"><input type="text" name="number" placeholder="🔒 Card number" inputmode="numeric" maxlength="23" autocomplete="off"><input type="text" name="expiry_month" placeholder="Expiry month" inputmode="numeric" maxlength="2"><input type="text" name="expiry_year" placeholder="Expiry year" inputmode="numeric" maxlength="4"><input type="text" name="cvv" placeholder="🔒 CVV" inputmode="numeric" maxlength="4" autocomplete="off"><input type="text" name="zip" placeholder="Billing ZIP" inputmode="numeric" maxlength="10"><button>Save</button></form></details>`;
-  const content = `<section class="panel">${renderPurchaseReviews(reviews)}${body}${addLogin}${addCard}${renderManagers(managers, siteGrants)}
+  const content = `<section class="panel">${renderPurchaseReviews(reviews)}${body}${addLogin}${addCard}${renderManagers(managers, siteGrants, opLabels)}
 ${promptBar("Ask your agent — e.g. which logins haven't I used in a while…")}</section>`;
   return renderShell({
     title: "Vault",
@@ -291,7 +299,11 @@ async function vaultItems(
 async function vaultContext(
   supabase: SupabaseClient,
   userId: string
-): Promise<{ managers: ManagerStatus[]; siteGrants: Map<string, string[]> }> {
+): Promise<{
+  managers: ManagerStatus[];
+  siteGrants: Map<string, string[]>;
+  opLabels: Map<string, string>;
+}> {
   const eventQuery = (action: "grant_site" | "revoke_site") =>
     supabase
       .from("vault_events")
@@ -309,7 +321,8 @@ async function vaultContext(
     ...((grants ?? []) as GrantEventRow[]),
     ...((revokes ?? []) as GrantEventRow[]),
   ].sort((a, b) => b.created_at.localeCompare(a.created_at));
-  return { managers, siteGrants: foldSiteGrants(events) };
+  const { byItem, opLabels } = foldSiteGrants(events);
+  return { managers, siteGrants: byItem, opLabels };
 }
 
 /** Full page reload used by action responses (managers + grants included). */
@@ -332,7 +345,8 @@ async function vaultPage(
       lite,
       [],
       context.managers,
-      context.siteGrants
+      context.siteGrants,
+      context.opLabels
     )
   );
 }
@@ -369,7 +383,8 @@ export const vault: MiniAppModule = {
         ctx.session.via === "card",
         (reviewRows ?? []) as PurchaseReviewRow[],
         context.managers,
-        context.siteGrants
+        context.siteGrants,
+        context.opLabels
       )
     );
   },

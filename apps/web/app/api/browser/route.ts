@@ -242,15 +242,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         const box = await ensureBoxAwake(supabase, userId);
         try {
           const known = await listOnePasswordLogins(box.boxId);
-          if (!known.some((entry) => entry.id === itemId)) {
+          const entry = known.find((candidate) => candidate.id === itemId);
+          if (!entry) {
             return NextResponse.json({ error: "not found" }, { status: 404 });
           }
           const grants = await setSiteGrant(box.boxId, itemId, host, allow);
+          // The key is an opaque item id, so the audit row carries the
+          // display label after the host for the Vault surface to render.
           await supabase.from("vault_events").insert({
             user_id: userId,
             item_id: null,
             action: allow ? "grant_site" : "revoke_site",
-            context: `${itemId} ${normalizeHost(host)}`,
+            context: `${itemId} ${normalizeHost(host)} ${entry.vault} / ${entry.item}`,
           });
           return NextResponse.json({ ok: true, hosts: grants[itemId] ?? [] });
         } finally {

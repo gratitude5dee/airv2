@@ -48,20 +48,23 @@ chose "Bring your own manager" and connected a 1Password account. Check
 before assuming it:
 
 ```bash
-air-vault op-fill --ref "op://<vault>/<item>/password"
+air-vault op-list
 # {"error": "op_not_connected", ...}  → they never connected it. Stop:
 # use the built-in vault above, and do not mention op again.
 ```
 
 When it IS connected, you can list their items — names and ids only, never
-values — and fill one field at a time:
+values — and fill one field at a time. Each listed item carries a
+`ref_prefix` built from its opaque 1Password ids (`op://<vault-id>/<item-id>`);
+append the field to it. Never build a reference from vault or item names —
+the CLI refuses them.
 
 ```bash
-air-vault op-list              # names/vaults only; never `op item get`
+air-vault op-list              # names/vaults/ids only; never `op item get`
                                # with a field, never `op read` yourself
-air-vault op-fill --ref "op://Private/GitHub/username"
+air-vault op-fill --ref "<ref_prefix>/username"
 # focus the password field, then:
-air-vault op-fill --ref "op://Private/GitHub/password"
+air-vault op-fill --ref "<ref_prefix>/password"
 ```
 
 `op-fill` resolves the value in its own process and delivers it over the same

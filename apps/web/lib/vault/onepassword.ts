@@ -2,8 +2,10 @@
  * 1Password site grants (opt-in half of V5's fill path).
  *
  * A 1Password login is grantable per host exactly like a local vault item:
- * the control plane writes the stable key `op:<vault>/<item>` into the box's
- * site_grants.json, and `air-vault op-fill` refuses unless the frontmost
+ * the control plane writes the stable key `op:<item-id>` (the opaque
+ * 1Password item id — vault/title strings are display labels only, so
+ * duplicate titles stay distinct and renames don't orphan grants) into the
+ * box's site_grants.json, and `air-vault op-fill` refuses unless the frontmost
  * page's host is listed under it. Nothing here runs unless the owner
  * connected a 1Password account (vault_managers.onepassword.enabled), and
  * the only thing ever read out of the box is item NAMES and ids — never a
@@ -15,21 +17,22 @@ import { asRecord } from "../records";
 
 export const OP_GRANT_PREFIX = "op:";
 
-/** Vault names and item titles as they appear in an `op://` reference: no
- * slashes (they would make the reference ambiguous), no control characters. */
-const OP_SEGMENT_RE = /^[^/\\\s][^/\\]{0,62}[^/\\\s]$|^[^/\\\s]$/;
+/** Opaque 1Password ids: 26 lowercase base32 characters. */
+const OP_ID_RE = /^[a-z0-9]{26}$/;
 
 export interface OnePasswordItem {
-  /** Stable grant key — `op:<vault>/<item>`, field-independent. */
+  /** Stable grant key — `op:<item-id>`, field-independent. */
   id: string;
+  /** Display label only — never part of the grant identity. */
   vault: string;
+  /** Display label only — never part of the grant identity. */
   item: string;
-  /** The reference prefix the agent completes with a field name. */
+  /** The id-form reference prefix the agent completes with a field name. */
   ref_prefix: string;
 }
 
-export function opGrantKey(vault: string, item: string): string {
-  return `${OP_GRANT_PREFIX}${vault}/${item}`;
+export function opGrantKey(itemId: string): string {
+  return `${OP_GRANT_PREFIX}${itemId}`;
 }
 
 export function isOpGrantKey(key: string): boolean {
@@ -37,17 +40,11 @@ export function isOpGrantKey(key: string): boolean {
 }
 
 /** Inverse of {@link opGrantKey}; null when the key is not a well-formed one. */
-export function parseOpGrantKey(
-  key: string
-): { vault: string; item: string } | null {
+export function parseOpGrantKey(key: string): { itemId: string } | null {
   if (!key.startsWith(OP_GRANT_PREFIX)) return null;
-  const rest = key.slice(OP_GRANT_PREFIX.length);
-  const slash = rest.indexOf("/");
-  if (slash <= 0) return null;
-  const vault = rest.slice(0, slash);
-  const item = rest.slice(slash + 1);
-  if (!OP_SEGMENT_RE.test(vault) || !OP_SEGMENT_RE.test(item)) return null;
-  return { vault, item };
+  const itemId = key.slice(OP_GRANT_PREFIX.length);
+  if (!OP_ID_RE.test(itemId)) return null;
+  return { itemId };
 }
 
 /** True only when the owner explicitly connected a 1Password account. */
@@ -93,15 +90,21 @@ export function parseOnePasswordLogins(stdout: string): OnePasswordItem[] {
   for (const entry of entries) {
     const record = asRecord(entry);
     if (!record) continue;
+    const itemId = typeof record["id"] === "string" ? record["id"] : "";
     const item = typeof record["item"] === "string" ? record["item"] : "";
     const vault = typeof record["vault"] === "string" ? record["vault"] : "";
-    // Titles or vaults carrying a slash cannot be addressed unambiguously in
-    // an op:// reference, so they are not grantable here.
-    if (!OP_SEGMENT_RE.test(vault) || !OP_SEGMENT_RE.test(item)) continue;
-    const id = opGrantKey(vault, item);
+    const refPrefix =
+      typeof record["ref_prefix"] === "string" ? record["ref_prefix"] : "";
+    if (!OP_ID_RE.test(itemId)) continue;
+    // The ref prefix must be the id form `op://<vault-id>/<item-id>` — names
+    // never enter a reference.
+    const refMatch = /^op:\/\/([a-z0-9]{26})\/([a-z0-9]{26})$/.exec(refPrefix);
+    if (!refMatch || refMatch[2] !== itemId) continue;
+    if (!vault || !item) continue;
+    const id = opGrantKey(itemId);
     if (seen.has(id)) continue;
     seen.add(id);
-    items.push({ id, vault, item, ref_prefix: `op://${vault}/${item}` });
+    items.push({ id, vault, item, ref_prefix: refPrefix });
   }
   return items.sort((a, b) => a.id.localeCompare(b.id));
 }
