@@ -1,6 +1,6 @@
 ---
 name: meta-ads-confirm
-description: "Confirm a Meta Ads connection to the control plane once the Meta login has succeeded and you can read the ad account through the Meta Ads MCP."
+description: "Meta Ads writes: confirm the connection after login, and stage every live change — ad copy and creatives, budgets, schedules, audiences, pausing ad sets — as an ad_write decision instead of applying it."
 version: 1.0.0
 author: air
 license: MIT

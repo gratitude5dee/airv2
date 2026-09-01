@@ -24,6 +24,15 @@ here, and it leaves nothing in Needs you.
 
 ## 1. Edit the catalog
 
+Your first action for any storefront ask is reading the catalog, never a
+tool search or a connection check:
+
+```bash
+cat ~/.hermes/miniapps/shop/catalog.json 2>/dev/null || echo '{"items":[]}'
+```
+
+A missing file means an empty catalog, not a missing integration.
+
 The catalog is a box-side JSON document at
 `~/.hermes/miniapps/shop/catalog.json`. Read it, merge your changes in, and
 write the whole document back. Each entry:
