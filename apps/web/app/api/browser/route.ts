@@ -26,6 +26,12 @@ import {
 } from "@/lib/browser/probe";
 import { normalizeHost, readSiteGrants, setSiteGrant } from "@/lib/browser/grants";
 import {
+  isOpGrantKey,
+  listOnePasswordLogins,
+  onePasswordConnected,
+  type OnePasswordItem,
+} from "@/lib/vault/onepassword";
+import {
   DEFAULT_DAILY_CAP,
   RULE_PLATFORMS,
   RULE_PLAYBOOKS,
@@ -90,16 +96,23 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   let sessions: string[] = [];
   let grants: Record<string, string[]> = {};
   let recordings: BrowserRecording[] = [];
+  let opLogins: OnePasswordItem[] = [];
   let boxAwake = true;
+  // Only boxes whose owner connected 1Password pay for the item listing;
+  // for everyone else the panel is exactly what it was before.
+  const opConnected = await onePasswordConnected(supabase, userId);
   try {
     const box = await ensureBoxAwake(supabase, userId);
-    [probe, sessions, grants, recordings] = await Promise.all([
+    [probe, sessions, grants, recordings, opLogins] = await Promise.all([
       probeBrowser(box.boxId).catch(
         (): BrowserProbe => ({ running: false, pages: [], currentUrl: null })
       ),
       listSessions(box.boxId).catch((): string[] => []),
       readSiteGrants(box.boxId),
       listRecordings(box.boxId).catch((): BrowserRecording[] => []),
+      opConnected
+        ? listOnePasswordLogins(box.boxId).catch((): OnePasswordItem[] => [])
+        : Promise.resolve([]),
     ]);
   } catch {
     boxAwake = false;
@@ -117,6 +130,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         hosts: grants[item.id as string] ?? [],
         last_used: lastUsed[item.id as string] ?? null,
       })),
+      onepassword: {
+        connected: opConnected,
+        logins: opLogins.map((item) => ({
+          ...item,
+          hosts: grants[item.id] ?? [],
+        })),
+      },
       rules: rules ?? [],
       rule_options: { playbooks: RULE_PLAYBOOKS, platforms: RULE_PLATFORMS },
       activity: runs ?? [],
@@ -209,7 +229,35 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       const itemId = typeof body?.["item_id"] === "string" ? body["item_id"] : "";
       const host = typeof body?.["host"] === "string" ? body["host"] : "";
       const allow = body?.["allow"] === true;
-      if (!ID_RE.test(itemId) || !normalizeHost(host)) {
+      if (!normalizeHost(host)) {
+        return NextResponse.json({ error: "invalid request" }, { status: 400 });
+      }
+      // A 1Password grant key names an item the control plane never sees the
+      // contents of, so the ownership check is "did this user connect
+      // 1Password" — without that, the key is not grantable at all.
+      if (isOpGrantKey(itemId)) {
+        if (!(await onePasswordConnected(supabase, userId))) {
+          return NextResponse.json({ error: "not found" }, { status: 404 });
+        }
+        const box = await ensureBoxAwake(supabase, userId);
+        try {
+          const known = await listOnePasswordLogins(box.boxId);
+          if (!known.some((entry) => entry.id === itemId)) {
+            return NextResponse.json({ error: "not found" }, { status: 404 });
+          }
+          const grants = await setSiteGrant(box.boxId, itemId, host, allow);
+          await supabase.from("vault_events").insert({
+            user_id: userId,
+            item_id: null,
+            action: allow ? "grant_site" : "revoke_site",
+            context: `${itemId} ${normalizeHost(host)}`,
+          });
+          return NextResponse.json({ ok: true, hosts: grants[itemId] ?? [] });
+        } finally {
+          await armStopAfter(supabase, userId).catch(() => undefined);
+        }
+      }
+      if (!ID_RE.test(itemId)) {
         return NextResponse.json({ error: "invalid request" }, { status: 400 });
       }
       // The item must be the owner's own login (mirror check) before its id

@@ -16,6 +16,11 @@ logged (C18/C19):
 * ``air-vault type <id> --field <f>``   fill the focused browser field via CDP
                                         (V5); prints only
                                         ``typed <item>/<field> into <host>``
+* ``air-vault op-list``                 names/vaults of the owner's 1Password
+                                        logins — never a value
+* ``air-vault op-fill --ref op://v/i/f``  same fill, resolved from the owner's
+                                        1Password account — only when they
+                                        connected one (opt-in)
 
 Apply payload shape::
 
@@ -43,10 +48,12 @@ if __package__ in (None, ""):
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import browser_fill
     import fill_ticket
+    import onepassword
     import vault_store
 else:
     from . import browser_fill
     from . import fill_ticket
+    from . import onepassword
     from . import vault_store
 
 VaultError = vault_store.VaultError
@@ -154,20 +161,27 @@ def _site_grants(home: Path) -> dict:
     return grants if isinstance(grants, dict) else {}
 
 
-def _deliver_to_browser(item_id: str, value: str) -> str:
+def _granted_target(grant_key: str):
     """CLI-enforced guards (C19/C22 are code, not prompt): the frontmost
-    page's host must be granted for this item in site_grants.json before the
-    value crosses into the browser. Returns the host typed into."""
+    page's host must be granted for this item in site_grants.json before any
+    value crosses into the browser. Returns (target, host)."""
     port = browser_fill.debug_port()
     target = browser_fill.frontmost_page(browser_fill.list_targets(port))
     host = browser_fill.page_host(target)
     grants = _site_grants(_home_path())
-    if not browser_fill.host_granted(host, grants.get(item_id)):
+    if not browser_fill.host_granted(host, grants.get(grant_key)):
         raise VaultError(
             "site_not_granted",
             f"{host} is not granted for this item — flip 'Allow agent "
             "sign-in' for it in the Browser tab's Site access panel",
         )
+    return target, host
+
+
+def _deliver_to_browser(item_id: str, value: str) -> str:
+    """Type a resolved value into the granted frontmost page; returns the
+    host typed into."""
+    target, host = _granted_target(item_id)
     browser_fill.insert_text(target, value)
     return host
 
@@ -210,6 +224,28 @@ def cmd_type(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_op_list(args: argparse.Namespace) -> int:
+    # Names, vaults and reference prefixes only — `op item list` carries no
+    # field values, and none are resolved here.
+    token = onepassword.require_connected()
+    print(json.dumps({"items": onepassword.list_logins(token)}))
+    return 0
+
+
+def cmd_op_fill(args: argparse.Namespace) -> int:
+    # Opt-in guard first: with no OP_SERVICE_ACCOUNT_TOKEN in the box env the
+    # owner never connected 1Password, and `op` is never spawned. The host
+    # gate then runs BEFORE the value is resolved, so an ungranted page never
+    # causes a read (same order of guards as the card path).
+    token = onepassword.require_connected()
+    vault_name, item_name, _field = onepassword.parse_ref(args.ref)
+    target, host = _granted_target(onepassword.grant_key(vault_name, item_name))
+    value = onepassword.read_value(args.ref, token)
+    browser_fill.insert_text(target, value)
+    print(f"typed {args.ref} into {host}")
+    return 0
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="air-vault")
     sub = parser.add_subparsers(dest="verb", required=True)
@@ -237,6 +273,13 @@ def main(argv=None) -> int:
     p_type.add_argument("id")
     p_type.add_argument("--field", required=True)
     p_type.set_defaults(func=cmd_type)
+
+    p_op_list = sub.add_parser("op-list")
+    p_op_list.set_defaults(func=cmd_op_list)
+
+    p_op = sub.add_parser("op-fill")
+    p_op.add_argument("--ref", required=True)
+    p_op.set_defaults(func=cmd_op_fill)
 
     args = parser.parse_args(argv)
     try:

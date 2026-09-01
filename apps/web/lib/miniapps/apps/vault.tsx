@@ -27,6 +27,7 @@ import {
   type ManagerStatus,
 } from "@/lib/vault/managers";
 import { normalizeHost, setSiteGrant } from "@/lib/browser/grants";
+import { isOpGrantKey, parseOpGrantKey } from "@/lib/vault/onepassword";
 import { updateMiniAppCard } from "../cards";
 import { externalOrigin } from "../gates";
 import { promptBar, runPrompt } from "../promptBar";
@@ -59,6 +60,27 @@ interface GrantEventRow {
 }
 
 /**
+ * Split a grant event into (item, host). Local items carry the id in
+ * `item_id` and the bare host in `context`; a 1Password grant has no mirror
+ * row to point at, so its stable key rides in `context` ahead of the host:
+ * `op:<vault>/<item> <host>`.
+ */
+function grantSubject(
+  event: GrantEventRow
+): { itemId: string; host: string } | null {
+  const context = event.context ?? "";
+  if (!context) return null;
+  if (!event.item_id) {
+    const space = context.lastIndexOf(" ");
+    if (space <= 0) return null;
+    const itemId = context.slice(0, space);
+    if (!isOpGrantKey(itemId)) return null;
+    return { itemId, host: context.slice(space + 1) };
+  }
+  return { itemId: event.item_id, host: context };
+}
+
+/**
  * Current per-site grants, folded from the grant_site/revoke_site event
  * ledger (MA5 #2): the latest event per (item, host) wins. The box grant
  * file stays authoritative for fills; this surface mirrors the audit trail.
@@ -66,13 +88,15 @@ interface GrantEventRow {
 function foldSiteGrants(events: GrantEventRow[]): Map<string, string[]> {
   const latest = new Map<string, { allow: boolean; itemId: string; host: string }>();
   for (const event of events) {
-    if (!event.item_id || !event.context) continue;
-    const key = `${event.item_id}\u0000${event.context}`;
+    const subject = grantSubject(event);
+    if (!subject) continue;
+    const { itemId, host } = subject;
+    const key = `${itemId}\u0000${host}`;
     if (!latest.has(key)) {
       latest.set(key, {
         allow: event.action === "grant_site",
-        itemId: event.item_id,
-        host: event.context,
+        itemId,
+        host,
       });
     }
   }
@@ -94,7 +118,10 @@ const MANAGER_LABELS: Record<ManagerId, string> = {
 
 /** Manager choice surfaced in the vault, not only Settings (MA5 #2). Status
  * labels and counts only — never a token or a secret value (C18). */
-function renderManagers(managers: ManagerStatus[]): string {
+function renderManagers(
+  managers: ManagerStatus[],
+  siteGrants: Map<string, string[]>
+): string {
   const rows = managers
     .map((m) => {
       const label = MANAGER_LABELS[m.manager];
@@ -110,8 +137,32 @@ function renderManagers(managers: ManagerStatus[]): string {
       return `<div class="item"><span class="grow">${esc(label)} <span class="when">${esc(status)}</span>${warning}</span>${toggle}</div>`;
     })
     .join("");
+  const opConnected = managers.some(
+    (m) => m.manager === "onepassword" && m.enabled
+  );
+  // Only meaningful once 1Password is connected; otherwise the whole
+  // 1Password sign-in surface stays absent.
+  const opGrants = opConnected
+    ? [...siteGrants.entries()]
+        .filter(([key]) => isOpGrantKey(key))
+        .map(([key, hosts]) => {
+          const parsed = parseOpGrantKey(key);
+          const label = parsed ? `${parsed.vault} / ${parsed.item}` : key;
+          const chips = hosts
+            .map(
+              (host) =>
+                ` <span class="chip">${esc(host)}</span> <form method="post" class="inline"><input type="hidden" name="action" value="revoke_site"><input type="hidden" name="id" value="${esc(key)}"><input type="hidden" name="host" value="${esc(host)}"><button class="ghost">Revoke</button></form>`
+            )
+            .join("");
+          return `<div class="item"><span class="grow">${esc(label)}${chips}</span></div>`;
+        })
+        .join("")
+    : "";
+  const opSection = opConnected
+    ? `<h2>1PASSWORD SIGN-INS</h2>${opGrants || '<div class="card pending muted">No sites allowed yet — turn on “Allow agent sign-in” for a 1Password login in the Browser tab.</div>'}`
+    : "";
   const enable = `<details><summary>Bring your own manager</summary><form method="post" class="stack"><input type="hidden" name="action" value="enable_manager"><select name="manager"><option value="bitwarden">Bitwarden (machine-account token)</option><option value="onepassword">1Password (service-account token)</option></select><input type="password" name="token" placeholder="Access token" maxlength="512" autocomplete="off"><button>Enable</button></form><p class="muted">The token goes straight to your agent's computer — never stored on the platform, never shown again.</p></details>`;
-  return `<h2>SECRET MANAGERS</h2>${rows}${enable}`;
+  return `<h2>SECRET MANAGERS</h2>${rows}${enable}${opSection}`;
 }
 
 /** V6: the purchase_review live card — site, order summary, amount band,
@@ -213,7 +264,7 @@ function renderVault(
     .join("");
   const addLogin = `<details><summary>Add login</summary><p class="muted">Values are encrypted in your vault.</p><form method="post" class="stack"><input type="hidden" name="action" value="add_login"><input type="text" name="name" placeholder="e.g. &quot;Gmail&quot;, &quot;GitHub&quot;" maxlength="120"><input type="text" name="username" placeholder="Username" maxlength="200"><input type="text" name="password" placeholder="🔒 Password" maxlength="500" autocomplete="off"><button>Save</button></form></details>`;
   const addCard = `<details><summary>Add card</summary><p class="muted">Values are encrypted in your vault.</p><form method="post" class="stack"><input type="hidden" name="action" value="add_card"><input type="text" name="name" placeholder="e.g. &quot;Amex&quot;, &quot;Chase&quot;" maxlength="120"><input type="text" name="number" placeholder="🔒 Card number" inputmode="numeric" maxlength="23" autocomplete="off"><input type="text" name="expiry_month" placeholder="Expiry month" inputmode="numeric" maxlength="2"><input type="text" name="expiry_year" placeholder="Expiry year" inputmode="numeric" maxlength="4"><input type="text" name="cvv" placeholder="🔒 CVV" inputmode="numeric" maxlength="4" autocomplete="off"><input type="text" name="zip" placeholder="Billing ZIP" inputmode="numeric" maxlength="10"><button>Save</button></form></details>`;
-  const content = `<section class="panel">${renderPurchaseReviews(reviews)}${body}${addLogin}${addCard}${renderManagers(managers)}
+  const content = `<section class="panel">${renderPurchaseReviews(reviews)}${body}${addLogin}${addCard}${renderManagers(managers, siteGrants)}
 ${promptBar("Ask your agent — e.g. which logins haven't I used in a while…")}</section>`;
   return renderShell({
     title: "Vault",
@@ -484,18 +535,30 @@ export const vault: MiniAppModule = {
       // the mirror, box grant file write, then the audit event.
       const id = String(form.get("id") ?? "");
       const host = normalizeHost(String(form.get("host") ?? ""));
-      if (!/^[A-Za-z0-9._-]{1,64}$/.test(id) || !host) {
+      const isOp = isOpGrantKey(id);
+      if ((!isOp && !/^[A-Za-z0-9._-]{1,64}$/.test(id)) || !host) {
         return forbidden("invalid request");
       }
-      const { data: item } = await supabase
-        .from("vault_items")
-        .select("id")
-        .eq("user_id", userId)
-        .eq("id", id)
-        .eq("kind", "login")
-        .is("deleted_at", null)
-        .maybeSingle();
-      if (!item) return forbidden("not found");
+      if (isOp) {
+        // A 1Password key is only revocable while 1Password is connected;
+        // disconnecting already strips the token that made it usable.
+        const managers = await listManagers(supabase, userId).catch(
+          () => [] as ManagerStatus[]
+        );
+        if (!managers.some((m) => m.manager === "onepassword" && m.enabled)) {
+          return forbidden("not found");
+        }
+      } else {
+        const { data: item } = await supabase
+          .from("vault_items")
+          .select("id")
+          .eq("user_id", userId)
+          .eq("id", id)
+          .eq("kind", "login")
+          .is("deleted_at", null)
+          .maybeSingle();
+        if (!item) return forbidden("not found");
+      }
       try {
         const box = await ensureBoxAwake(supabase, userId);
         try {
@@ -505,9 +568,9 @@ export const vault: MiniAppModule = {
         }
         await supabase.from("vault_events").insert({
           user_id: userId,
-          item_id: id,
+          item_id: isOp ? null : id,
           action: "revoke_site",
-          context: host,
+          context: isOp ? `${id} ${host}` : host,
         });
       } catch (error) {
         if (error instanceof StartLimitError) return busyPage();

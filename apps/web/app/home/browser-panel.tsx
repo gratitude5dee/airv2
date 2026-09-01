@@ -50,11 +50,22 @@ interface RecordingRow {
   modified_at: string | null;
 }
 
+/** A 1Password LOGIN item, surfaced only when the owner connected an
+ * account. `id` is the stable grant key the box CLI enforces. */
+interface OpLoginRow {
+  id: string;
+  vault: string;
+  item: string;
+  ref_prefix: string;
+  hosts: string[];
+}
+
 interface BrowserState {
   box_awake: boolean;
   browser: BrowserProbe;
   sessions: string[];
   logins: LoginRow[];
+  onepassword?: { connected: boolean; logins: OpLoginRow[] };
   rules: RuleRow[];
   rule_options: { playbooks: string[]; platforms: string[] };
   activity: ActivityRow[];
@@ -414,6 +425,60 @@ export function BrowserPanels({
           <p className="muted m-0 text-[13px]">
             No logins in the vault yet — add one in the Vault tab.
           </p>
+        ) : null}
+        {state?.onepassword?.connected ? (
+          <>
+            <h4 className="muted m-0 mt-1 text-[12px] font-semibold uppercase tracking-wide">
+              1Password
+            </h4>
+            {state.onepassword.logins.map((login) => (
+              <div key={login.id} className="rounded-xl bg-surface-2 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="m-0 truncate text-[13px] font-medium">
+                    {login.item}
+                  </p>
+                  <span className="muted shrink-0 text-[11px]">{login.vault}</span>
+                </div>
+                {login.hosts.length > 0 ? (
+                  <div className="mt-1 grid gap-1">
+                    {login.hosts.map((host) => (
+                      <label
+                        key={host}
+                        className="flex items-center justify-between gap-2 text-[12px]"
+                      >
+                        <span className="truncate">{host}</span>
+                        <span className="muted flex items-center gap-2">
+                          Allow agent sign-in
+                          <input
+                            type="checkbox"
+                            checked
+                            disabled={browser.busy !== null}
+                            onChange={() =>
+                              void browser.toggleGrant(login.id, host, false)
+                            }
+                          />
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="muted m-0 mt-1 text-[12px]">
+                    No sites allowed yet — the agent can&rsquo;t sign in with this
+                    1Password login.
+                  </p>
+                )}
+                <GrantAdder
+                  disabled={browser.busy !== null}
+                  onAdd={(host) => void browser.toggleGrant(login.id, host, true)}
+                />
+              </div>
+            ))}
+            {state.onepassword.logins.length === 0 ? (
+              <p className="muted m-0 text-[13px]">
+                No 1Password logins found for the connected service account.
+              </p>
+            ) : null}
+          </>
         ) : null}
       </section>
 

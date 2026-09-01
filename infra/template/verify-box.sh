@@ -24,6 +24,9 @@ check "air-vault" command -v air-vault
 check "open-miniapp-card" command -v open-miniapp-card
 check "box-browser-use" command -v box-browser-use
 check "link-cli" test -x "$HOME_DIR/.hermes/node/bin/link-cli"
+# Present for everyone, active only for boxes whose owner connected
+# 1Password (OP_SERVICE_ACCOUNT_TOKEN); `op --version` reads no credential.
+check "op-cli" op --version
 check "skill-air-onboarding" test -f "$HOME_DIR/.hermes/skills/air-onboarding/SKILL.md"
 check "skill-open-miniapp" test -f "$HOME_DIR/.hermes/skills/open-miniapp/SKILL.md"
 check "plugin-creative" test -d "$HOME_DIR/.hermes/plugins/creative"

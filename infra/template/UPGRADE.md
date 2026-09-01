@@ -143,6 +143,31 @@ existing boxes, `sync-box.sh` §3b performs the same install + wrapper write.
 Verify: `box-browser-use --doctor` connects to the daemon Chrome, and
 `~/.hermes/skills/browser-use/SKILL.md` is present.
 
+## 5b. 1Password CLI (`op`) — installed for everyone, active only on opt-in
+
+`setup.sh` §3b2d (and `sync-box.sh` §3b++ for existing boxes) downloads the
+pinned 1Password CLI `op_linux_amd64_v2.35.0.zip` from
+`cache.agilebits.com`, verifies its sha256
+(`4457ade59850b852c64c77164235b34dd0b984ef7826eb0ccd32f1fd78a2ceb7`),
+installs it as `/usr/local/bin/op`, and confirms `op --version`.
+`verify-box.sh` gates on the same command.
+
+The binary carries NO credential and reads nothing on its own. It only
+resolves anything after the owner explicitly connects a 1Password account
+(onboarding's optional "Bring your own manager" form or the Vault tab →
+`enable_manager`), which writes `OP_SERVICE_ACCOUNT_TOKEN` into
+`~/.hermes/.env` via `lib/vault/managers.ts`. Boxes whose owner never
+connects 1Password behave exactly as before: `air-vault op-fill` exits
+non-zero with `op_not_connected` before it ever spawns `op`.
+
+With the token present, `air-vault op-fill --ref "op://vault/item/field"`
+resolves ONE field in-process (`op read`, token from env, never argv) and
+delivers it into the frontmost browser page over the same CDP transport as
+local vault items — refusing unless the page host is granted for the item's
+stable grant key `op:<vault>/<item>` in `~/.hermes/vault/site_grants.json`.
+Only `typed <ref> into <host>` is ever printed. `skills/vault-use` teaches
+the flow and marks it conditional on 1Password being connected.
+
 ## 6. Baseline parity — `sync-box.sh`
 
 `infra/template/sync-box.sh` reconciles an EXISTING box to the current air
