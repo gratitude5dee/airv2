@@ -19,8 +19,11 @@ import cli
 import onepassword
 
 SECRET = "op-hunter2-never-printed"
-REF = "op://Private/GitHub/password"
-GRANT_KEY = "op:Private/GitHub"
+VAULT_ID = "v" * 25 + "1"
+ITEM_ID = "i" * 25 + "1"
+ITEM_ID_2 = "i" * 25 + "2"
+REF = f"op://{VAULT_ID}/{ITEM_ID}/password"
+GRANT_KEY = f"op:{ITEM_ID}"
 
 
 @pytest.fixture
@@ -146,7 +149,14 @@ def test_op_fill_grant_covers_subdomains(
 def test_op_fill_rejects_malformed_ref(
     home, capsys, connected, fake_op, fake_browser
 ):
-    for bad in ["github.com", "op://Private/GitHub", "op:///GitHub/password"]:
+    for bad in [
+        "github.com",
+        f"op://{VAULT_ID}/{ITEM_ID}",
+        f"op:///{ITEM_ID}/password",
+        # Name-form references are refused: identity is the opaque item id.
+        "op://Private/GitHub/password",
+        "op://Personal Vault/My Bank/password",
+    ]:
         code, _, err = run(capsys, "op-fill", "--ref", bad)
         assert code == 1, bad
         assert json.loads(err)["error"] == "bad_op_ref", bad
@@ -169,11 +179,11 @@ def test_op_fill_surfaces_op_failure_without_leaking(
 
 
 def test_grant_key_is_stable_and_field_independent():
-    vault, item, field = onepassword.parse_ref("op://Private/GitHub/username")
-    assert (vault, item, field) == ("Private", "GitHub", "username")
-    assert onepassword.grant_key(vault, item) == GRANT_KEY
+    vault, item, field = onepassword.parse_ref(f"op://{VAULT_ID}/{ITEM_ID}/username")
+    assert (vault, item, field) == (VAULT_ID, ITEM_ID, "username")
+    assert onepassword.grant_key(item) == GRANT_KEY
     assert onepassword.grant_key(
-        *onepassword.parse_ref("op://Private/GitHub/password")[:2]
+        onepassword.parse_ref(f"op://{VAULT_ID}/{ITEM_ID}/password")[1]
     ) == GRANT_KEY
 
 
@@ -186,8 +196,11 @@ def test_op_list_returns_names_only_and_needs_the_opt_in(
 
     monkeypatch.setenv(onepassword.TOKEN_ENV, "ops_service_account_token")
     listing = json.dumps([
-        {"id": "abc", "title": "GitHub", "vault": {"name": "Private"}},
-        {"id": "def", "title": "Bank / Joint", "vault": {"name": "Private"}},
+        {"id": ITEM_ID, "title": "GitHub",
+         "vault": {"id": VAULT_ID, "name": "Private"}},
+        {"id": "short", "title": "Bad id",
+         "vault": {"id": VAULT_ID, "name": "Private"}},
+        {"id": ITEM_ID_2, "title": "No vault id", "vault": {"name": "Private"}},
     ])
     monkeypatch.setattr(
         onepassword.subprocess, "run",
@@ -196,50 +209,65 @@ def test_op_list_returns_names_only_and_needs_the_opt_in(
     code, out, err = run(capsys, "op-list")
     assert code == 0
     assert json.loads(out) == {"items": [{
-        "vault": "Private", "item": "GitHub",
-        "grant_key": GRANT_KEY, "ref_prefix": "op://Private/GitHub",
+        "id": ITEM_ID, "vault": "Private", "item": "GitHub",
+        "grant_key": GRANT_KEY, "ref_prefix": f"op://{VAULT_ID}/{ITEM_ID}",
     }]}
 
 
-def test_spaced_names_round_trip_between_listing_and_fill(
-    home, connected, capsys, fake_browser, fake_op
-):
-    # Most 1Password vaults and titles contain spaces; a listed item must be
-    # fillable under the grant key the control plane derives from it.
-    vault, item, field = onepassword.parse_ref("op://Personal Vault/My Bank/password")
-    assert (vault, item, field) == ("Personal Vault", "My Bank", "password")
-    key = onepassword.grant_key(vault, item)
-    assert key == "op:Personal Vault/My Bank"
-    grant(home, key, ["github.com"])
-    ref = "op://Personal Vault/My Bank/password"
-    code, out, err = run(capsys, "op-fill", "--ref", ref)
-    assert code == 0 and err == ""
-    assert fake_browser["typed"] == [SECRET]
-    assert out.strip() == f"typed {ref} into github.com"
-
-
-def test_listing_skips_names_no_reference_can_address(home, monkeypatch):
+def test_duplicate_titles_stay_distinct_and_round_trip(home, monkeypatch):
+    # Two logins with the same title in the same vault: ids keep them apart,
+    # each with its own grant key and reference.
     listing = json.dumps([
-        {"title": "My Bank", "vault": {"name": "Personal Vault"}},
-        {"title": " Padded ", "vault": {"name": "Private"}},
-        {"title": "Bank/Joint", "vault": {"name": "Private"}},
+        {"id": ITEM_ID, "title": "GitHub",
+         "vault": {"id": VAULT_ID, "name": "Private"}},
+        {"id": ITEM_ID_2, "title": "GitHub",
+         "vault": {"id": VAULT_ID, "name": "Private"}},
     ])
     monkeypatch.setattr(
         onepassword.subprocess, "run",
         lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0, listing, ""),
     )
     listed = onepassword.list_logins("token")
-    assert [entry["item"] for entry in listed] == ["My Bank"]
+    assert [entry["item"] for entry in listed] == ["GitHub", "GitHub"]
+    keys = {entry["grant_key"] for entry in listed}
+    assert keys == {f"op:{ITEM_ID}", f"op:{ITEM_ID_2}"}
     for entry in listed:
         assert onepassword.grant_key(
-            *onepassword.parse_ref(entry["ref_prefix"] + "/password")[:2]
+            onepassword.parse_ref(entry["ref_prefix"] + "/password")[1]
         ) == entry["grant_key"]
+
+
+def test_spaced_labels_list_fine_and_fill_by_id(
+    home, connected, capsys, fake_browser, fake_op, monkeypatch
+):
+    # Spaced vault/title strings are labels only; the fill addresses the item
+    # by id, so the names never enter the reference or the grant key.
+    listing = json.dumps([
+        {"id": ITEM_ID, "title": "My Bank",
+         "vault": {"id": VAULT_ID, "name": "Personal Vault"}},
+    ])
+    fill_run = onepassword.subprocess.run  # the fake_op recorder
+
+    def routed(cmd, **kwargs):
+        if "list" in cmd:
+            return subprocess.CompletedProcess(cmd, 0, listing, "")
+        return fill_run(cmd, **kwargs)
+
+    monkeypatch.setattr(onepassword.subprocess, "run", routed)
+    [entry] = onepassword.list_logins("token")
+    assert entry["vault"] == "Personal Vault" and entry["item"] == "My Bank"
+    grant(home, entry["grant_key"], ["github.com"])
+    ref = entry["ref_prefix"] + "/password"
+    code, out, err = run(capsys, "op-fill", "--ref", ref)
+    assert code == 0 and err == ""
+    assert fake_browser["typed"] == [SECRET]
+    assert out.strip() == f"typed {ref} into github.com"
 
 
 def test_read_failure_never_relays_op_output(
     home, connected, capsys, fake_browser, monkeypatch
 ):
-    leak = "[ERROR] op://Private/GitHub/password isn't a secret you can read"
+    leak = f"[ERROR] {REF} isn't a secret you can read"
 
     def failing(cmd, **kwargs):
         return subprocess.CompletedProcess(cmd, 1, "", leak)
@@ -254,17 +282,17 @@ def test_read_failure_never_relays_op_output(
     assert out == ""
 
 
-def test_listing_caps_segment_length_to_match_control_plane(home, monkeypatch):
-    long = "x" * 65
-    ok = "x" * 64
+def test_any_title_is_listable_since_names_are_labels_only(home, monkeypatch):
+    # Titles with slashes, padding or extreme length are fine: they never
+    # enter a reference or a grant key.
     listing = json.dumps([
-        {"title": long, "vault": {"name": "Private"}},
-        {"title": ok, "vault": {"name": "Private"}},
+        {"id": ITEM_ID, "title": "Bank/Joint " + "x" * 100,
+         "vault": {"id": VAULT_ID, "name": " Padded "}},
     ])
     monkeypatch.setattr(
         onepassword.subprocess, "run",
         lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0, listing, ""),
     )
-    assert [e["item"] for e in onepassword.list_logins("token")] == [ok]
-    with pytest.raises(onepassword.VaultError):
-        onepassword.parse_ref(f"op://Private/{long}/password")
+    [entry] = onepassword.list_logins("token")
+    assert entry["grant_key"] == GRANT_KEY
+    onepassword.parse_ref(entry["ref_prefix"] + "/password")

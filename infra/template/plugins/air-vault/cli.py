@@ -18,7 +18,7 @@ logged (C18/C19):
                                         ``typed <item>/<field> into <host>``
 * ``air-vault op-list``                 names/vaults of the owner's 1Password
                                         logins — never a value
-* ``air-vault op-fill --ref op://v/i/f``  same fill, resolved from the owner's
+* ``air-vault op-fill --ref op://<vault-id>/<item-id>/<field>``  same fill, resolved from the owner's
                                         1Password account — only when they
                                         connected one (opt-in)
 
@@ -238,8 +238,8 @@ def cmd_op_fill(args: argparse.Namespace) -> int:
     # gate then runs BEFORE the value is resolved, so an ungranted page never
     # causes a read (same order of guards as the card path).
     token = onepassword.require_connected()
-    vault_name, item_name, _field = onepassword.parse_ref(args.ref)
-    target, host = _granted_target(onepassword.grant_key(vault_name, item_name))
+    _vault_id, item_id, _field = onepassword.parse_ref(args.ref)
+    target, host = _granted_target(onepassword.grant_key(item_id))
     value = onepassword.read_value(args.ref, token)
     browser_fill.insert_text(target, value)
     print(f"typed {args.ref} into {host}")

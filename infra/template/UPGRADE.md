@@ -160,11 +160,14 @@ resolves anything after the owner explicitly connects a 1Password account
 connects 1Password behave exactly as before: `air-vault op-fill` exits
 non-zero with `op_not_connected` before it ever spawns `op`.
 
-With the token present, `air-vault op-fill --ref "op://vault/item/field"`
+With the token present, `air-vault op-fill --ref "op://<vault-id>/<item-id>/<field>"`
 resolves ONE field in-process (`op read`, token from env, never argv) and
 delivers it into the frontmost browser page over the same CDP transport as
 local vault items — refusing unless the page host is granted for the item's
-stable grant key `op:<vault>/<item>` in `~/.hermes/vault/site_grants.json`.
+stable grant key `op:<item-id>` in `~/.hermes/vault/site_grants.json`.
+References and grant keys use the opaque 1Password ids from
+`air-vault op-list` (vault/item titles are display labels only), so
+duplicate titles stay distinct and renames don't orphan grants.
 Only `typed <ref> into <host>` is ever printed. `skills/vault-use` teaches
 the flow and marks it conditional on 1Password being connected.
 

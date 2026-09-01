@@ -30,15 +30,14 @@ TOKEN_ENV = "OP_SERVICE_ACCOUNT_TOKEN"
 OP_BIN = "op"
 _TIMEOUT = 30.0
 
-# op://<vault>/<item>/<field>. Vault and item names may contain spaces (most
-# 1Password vaults do) but never a slash, which would make the reference
-# ambiguous; the field may be a section path ("section/label"). Capped at 64
-# characters to match the control plane's OP_SEGMENT_RE, so everything listed
-# here is also grantable there.
-_SEGMENT = r"[^/\\\s](?:[^/\\]{0,62}[^/\\\s])?"
-_REF_RE = re.compile(
-    rf"^op://({_SEGMENT})/({_SEGMENT})/([^\s](?:.*[^\s])?)$"
-)
+# References address vault and item by their opaque 1Password ids (26
+# lowercase base32 characters), never by name: two logins can share a title
+# in one vault, but never an id, so ids keep the grant deterministic. `op
+# read` accepts id-form references directly. The field may be a section path
+# ("section/label").
+_OP_ID = r"[a-z0-9]{26}"
+_OP_ID_RE = re.compile(rf"^{_OP_ID}$")
+_REF_RE = re.compile(rf"^op://({_OP_ID})/({_OP_ID})/([^\s](?:.*[^\s])?)$")
 
 
 def connected() -> bool:
@@ -57,23 +56,30 @@ def require_connected() -> str:
 
 
 def parse_ref(ref: str) -> Tuple[str, str, str]:
-    """Split an ``op://vault/item/field`` reference; anything else refuses."""
+    """Split an ``op://<vault-id>/<item-id>/<field>`` reference.
+
+    Name-form references are refused: take the ``ref_prefix`` from
+    ``air-vault op-list`` and append the field.
+    """
     match = _REF_RE.match((ref or "").strip())
     if not match:
         raise VaultError(
             "bad_op_ref",
-            'reference must look like "op://<vault>/<item>/<field>"',
+            'reference must look like "op://<vault-id>/<item-id>/<field>" — '
+            "use the ref_prefix from `air-vault op-list`",
         )
     return match.group(1), match.group(2), match.group(3)
 
 
-def grant_key(vault: str, item: str) -> str:
-    """Stable site-grant key for a 1Password item: ``op:<vault>/<item>``.
+def grant_key(item_id: str) -> str:
+    """Stable site-grant key for a 1Password item: ``op:<item-id>``.
 
-    The same key is written by the control plane's grant surface, so a
+    Keyed on the opaque item id — not the mutable vault/title strings — so
+    duplicate titles stay distinct and renames don't orphan a grant. The
+    same key is written by the control plane's grant surface, so a
     1Password login is allowlisted per host exactly like a local item.
     """
-    return f"op:{vault}/{item}"
+    return f"op:{item_id}"
 
 
 def _child_env(token: str) -> Dict[str, str]:
@@ -82,11 +88,6 @@ def _child_env(token: str) -> Dict[str, str]:
     # A service account never has a local desktop/session to fall back on.
     env.pop("OP_SESSION", None)
     return env
-
-
-def _addressable(name: str) -> bool:
-    """Whether a vault/item name survives a round-trip through ``parse_ref``."""
-    return bool(re.fullmatch(_SEGMENT, name))
 
 
 def list_logins(token: str) -> list:
@@ -117,18 +118,24 @@ def list_logins(token: str) -> list:
     for entry in payload:
         if not isinstance(entry, dict):
             continue
+        item_id = entry.get("id")
         title = entry.get("title")
-        vault = entry.get("vault")
-        vault_name = vault.get("name") if isinstance(vault, dict) else None
+        vault = entry.get("vault") if isinstance(entry.get("vault"), dict) else {}
+        vault_id = vault.get("id")
+        vault_name = vault.get("name")
+        if not isinstance(item_id, str) or not _OP_ID_RE.match(item_id):
+            continue
+        if not isinstance(vault_id, str) or not _OP_ID_RE.match(vault_id):
+            continue
         if not isinstance(title, str) or not isinstance(vault_name, str):
             continue
-        if not _addressable(vault_name) or not _addressable(title):
-            continue  # not addressable as an unambiguous op:// reference
+        # Vault/title are display labels only; identity is the item id.
         items.append({
+            "id": item_id,
             "vault": vault_name,
             "item": title,
-            "grant_key": grant_key(vault_name, title),
-            "ref_prefix": f"op://{vault_name}/{title}",
+            "grant_key": grant_key(item_id),
+            "ref_prefix": f"op://{vault_id}/{item_id}",
         })
     return sorted(items, key=lambda entry: entry["grant_key"])
 
