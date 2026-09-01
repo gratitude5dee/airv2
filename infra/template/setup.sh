@@ -204,6 +204,22 @@ uv tool install --python 3.12 'browser-use==0.13.8'
 npm install -g @stripe/link-cli@0.13.1 --no-audit --no-fund
 mkdir -p "$HOME_DIR/.hermes/link" && chmod 700 "$HOME_DIR/.hermes/link"
 
+# ── 3b2d. 1Password CLI (pinned, checksum-verified) ─────────────────────────
+# Opt-in only: the binary ships with every box but reads nothing until the
+# owner connects a 1Password account from onboarding/Settings, which writes
+# OP_SERVICE_ACCOUNT_TOKEN into ~/.hermes/.env. Without that token
+# `air-vault op-fill` refuses and the agent never invokes `op`. The template
+# carries NO 1Password credential.
+OP_VERSION="2.35.0"
+OP_SHA256="4457ade59850b852c64c77164235b34dd0b984ef7826eb0ccd32f1fd78a2ceb7"
+curl -fsSL -o /tmp/op.zip \
+  "https://cache.agilebits.com/dist/1P/op2/pkg/v${OP_VERSION}/op_linux_amd64_v${OP_VERSION}.zip"
+echo "${OP_SHA256}  /tmp/op.zip" | sha256sum -c -
+rm -rf /tmp/op-dist && python3 -m zipfile -e /tmp/op.zip /tmp/op-dist
+sudo install -m 755 /tmp/op-dist/op /usr/local/bin/op
+rm -rf /tmp/op.zip /tmp/op-dist
+op --version
+
 sudo tee /usr/local/bin/box-browser-use >/dev/null <<SH
 #!/usr/bin/env bash
 set -euo pipefail
@@ -629,6 +645,12 @@ set -euo pipefail
 if [ -z "\${AIR_VAULT_KEY:-}" ] && [ -f "$HOME_DIR/.hermes/.env" ]; then
   AIR_VAULT_KEY="\$(grep -m1 '^AIR_VAULT_KEY=' "$HOME_DIR/.hermes/.env" | cut -d= -f2- || true)"
   export AIR_VAULT_KEY
+fi
+# Only present once the owner connected 1Password; op-fill refuses without
+# it, and it travels in env — never argv.
+if [ -z "\${OP_SERVICE_ACCOUNT_TOKEN:-}" ] && [ -f "$HOME_DIR/.hermes/.env" ]; then
+  OP_SERVICE_ACCOUNT_TOKEN="\$(grep -m1 '^OP_SERVICE_ACCOUNT_TOKEN=' "$HOME_DIR/.hermes/.env" | cut -d= -f2- || true)"
+  if [ -n "\$OP_SERVICE_ACCOUNT_TOKEN" ]; then export OP_SERVICE_ACCOUNT_TOKEN; fi
 fi
 exec "$HERMES_VENV/bin/python" "$HOME_DIR/.hermes/plugins/air-vault/cli.py" "\$@"
 SH

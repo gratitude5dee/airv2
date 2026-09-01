@@ -68,6 +68,12 @@ if [ -z "\${AIR_VAULT_KEY:-}" ] && [ -f "$HOME_DIR/.hermes/.env" ]; then
   AIR_VAULT_KEY="\$(grep -m1 '^AIR_VAULT_KEY=' "$HOME_DIR/.hermes/.env" | cut -d= -f2- || true)"
   export AIR_VAULT_KEY
 fi
+# Only present once the owner connected 1Password; op-fill refuses without
+# it, and it travels in env — never argv.
+if [ -z "\${OP_SERVICE_ACCOUNT_TOKEN:-}" ] && [ -f "$HOME_DIR/.hermes/.env" ]; then
+  OP_SERVICE_ACCOUNT_TOKEN="\$(grep -m1 '^OP_SERVICE_ACCOUNT_TOKEN=' "$HOME_DIR/.hermes/.env" | cut -d= -f2- || true)"
+  if [ -n "\$OP_SERVICE_ACCOUNT_TOKEN" ]; then export OP_SERVICE_ACCOUNT_TOKEN; fi
+fi
 exec "$HERMES_VENV/bin/python" "$HOME_DIR/.hermes/plugins/air-vault/cli.py" "\$@"
 SH
 sudo chmod +x /usr/local/bin/air-vault
@@ -118,6 +124,21 @@ uv tool install --python 3.12 'browser-use==0.13.8'
 # ── 3b+. Stripe Link CLI (pinned) — owner-approved payment credentials ───────
 command -v link-cli >/dev/null || npm install -g @stripe/link-cli@0.13.1 --no-audit --no-fund
 mkdir -p "$HOME_DIR/.hermes/link" && chmod 700 "$HOME_DIR/.hermes/link"
+
+# ── 3b++. 1Password CLI (pinned, checksum-verified) — opt-in fill path ───────
+# Installed for everyone, active for nobody: `op` only resolves anything once
+# the owner connects 1Password (OP_SERVICE_ACCOUNT_TOKEN in ~/.hermes/.env).
+OP_VERSION="2.35.0"
+OP_SHA256="4457ade59850b852c64c77164235b34dd0b984ef7826eb0ccd32f1fd78a2ceb7"
+if [ "$(op --version 2>/dev/null || true)" != "$OP_VERSION" ]; then
+  curl -fsSL -o /tmp/op.zip \
+    "https://cache.agilebits.com/dist/1P/op2/pkg/v${OP_VERSION}/op_linux_amd64_v${OP_VERSION}.zip"
+  echo "${OP_SHA256}  /tmp/op.zip" | sha256sum -c -
+  rm -rf /tmp/op-dist && python3 -m zipfile -e /tmp/op.zip /tmp/op-dist
+  sudo install -m 755 /tmp/op-dist/op /usr/local/bin/op
+  rm -rf /tmp/op.zip /tmp/op-dist
+  op --version
+fi
 
 sudo tee /usr/local/bin/box-browser-use >/dev/null <<SH
 #!/usr/bin/env bash
