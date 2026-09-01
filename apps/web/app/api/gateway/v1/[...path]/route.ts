@@ -43,6 +43,8 @@ interface RouteTrace {
   requestedModel: string | null;
   reasoningEffort: string | null;
   startedAtMs: number;
+  /** The entitled family, which differs from the served one on a fallback. */
+  requestedFamily: ModelFamily;
 }
 
 async function meter(
@@ -71,6 +73,8 @@ async function meter(
     completion_tokens: completionTokens,
     model_family: family,
     model: model ?? null,
+    fallback_from:
+      trace && trace.requestedFamily !== family ? trace.requestedFamily : null,
     speed_tier: tier,
     requested_model: trace?.requestedModel ?? null,
     reasoning_effort: trace?.reasoningEffort ?? null,
@@ -78,6 +82,17 @@ async function meter(
   });
   if (runError) {
     console.error(JSON.stringify({ msg: "agent_runs insert failed", user_id: userId, error: runError.message }));
+  }
+  if (trace && trace.requestedFamily !== family) {
+    console.warn(
+      JSON.stringify({
+        msg: "gateway provider fallback",
+        user_id: userId,
+        requested_family: trace.requestedFamily,
+        served_family: family,
+        served_model: model ?? null,
+      })
+    );
   }
   const { error: spendError } = await supabase.rpc("add_spend", {
     p_user_id: userId,
@@ -464,6 +479,7 @@ export async function POST(
       requestedModel,
       reasoningEffort: servedReasoning,
       startedAtMs: requestStartedMs,
+      requestedFamily: family,
     };
     const stream = meteringTee(upstream.body, (usage) => {
       after(
@@ -495,6 +511,7 @@ export async function POST(
         requestedModel,
         reasoningEffort: servedReasoning,
         startedAtMs: requestStartedMs,
+        requestedFamily: family,
       })
     );
   }

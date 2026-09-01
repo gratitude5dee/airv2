@@ -61,7 +61,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const [{ data: cards }, { data: open }] = await Promise.all([
+  const [
+    { data: cards, error: cardsError },
+    { data: open, error: openError },
+  ] = await Promise.all([
     supabase
       .from("vault_items")
       .select("id, name, masked")
@@ -75,6 +78,23 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       .eq("kind", "purchase_review")
       .eq("status", "pending"),
   ]);
+  // A schema or permission error must not read to the agent as "the owner
+  // has no cards" — that is indistinguishable from a real empty vault and
+  // silently kills the offer-the-fill path.
+  const queryError = cardsError ?? openError;
+  if (queryError) {
+    console.error(
+      JSON.stringify({
+        msg: "purchase eligibility query failed",
+        user_id: userId,
+        error: queryError.message,
+      })
+    );
+    return NextResponse.json(
+      { error: "query_failed", message: queryError.message },
+      { status: 502, headers: { "Cache-Control": "no-store" } }
+    );
+  }
   const openHosts = (open ?? [])
     .map((row) => {
       const payload = row.payload as { host?: unknown } | null;

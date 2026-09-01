@@ -25,7 +25,11 @@ type Script = Record<string, Row[] | Row | null>;
 
 /** Thenable query stub: every chain method returns itself; awaiting yields
  * the scripted rows for the table (maybeSingle/single unwrap the first). */
-function fakeSupabase(script: Script, inserts: Record<string, Row[]> = {}) {
+function fakeSupabase(
+  script: Script,
+  inserts: Record<string, Row[]> = {},
+  errors: Record<string, string> = {}
+) {
   function builder(table: string) {
     let single = false;
     let inserted: Row | null = null;
@@ -56,12 +60,17 @@ function fakeSupabase(script: Script, inserts: Record<string, Row[]> = {}) {
       return self;
     };
     self["then"] = (
-      resolve: (value: { data: unknown; error: null }) => unknown
+      resolve: (value: {
+        data: unknown;
+        error: { message: string } | null;
+      }) => unknown
     ) => {
       if (inserted && table === "decisions") {
         return resolve({ data: { id: "decision-1" }, error: null });
       }
       if (inserted) return resolve({ data: null, error: null });
+      const failure = errors[table];
+      if (failure) return resolve({ data: null, error: { message: failure } });
       const scripted = script[table] ?? null;
       const rows = Array.isArray(scripted)
         ? scripted
@@ -128,6 +137,18 @@ describe("resolveActiveTurn", () => {
     const turn = await resolveActiveTurn(supabase, "user-1");
     expect(turn).toEqual({ runId: "run-2", ownerInitiated: true });
   });
+
+  it("surfaces a failed turn read instead of reading as not-the-owner", async () => {
+    const supabase = fakeSupabase(
+      { agent_runs: null, flush_jobs: null },
+      {},
+      { flush_jobs: "permission denied for table flush_jobs" }
+    );
+    await expect(resolveActiveTurn(supabase, "user-1")).rejects.toMatchObject({
+      code: "query_failed",
+      status: 502,
+    });
+  });
 });
 
 describe("proposePurchaseReview", () => {
@@ -158,6 +179,28 @@ describe("proposePurchaseReview", () => {
     await expect(
       proposePurchaseReview(supabase, "user-1", input)
     ).rejects.toMatchObject({ code: "no_card" });
+  });
+
+  it("surfaces a failed vault read instead of reporting no_card", async () => {
+    const supabase = fakeSupabase(
+      { agent_runs: null, flush_jobs: OWNER_FLUSH },
+      {},
+      { vault_items: "column vault_items.kind does not exist" }
+    );
+    await expect(
+      proposePurchaseReview(supabase, "user-1", input)
+    ).rejects.toMatchObject({ code: "query_failed", status: 502 });
+  });
+
+  it("surfaces a failed open-review read instead of proposing anyway", async () => {
+    const supabase = fakeSupabase(
+      { agent_runs: null, flush_jobs: OWNER_FLUSH, vault_items: CARD },
+      {},
+      { decisions: "permission denied for table decisions" }
+    );
+    await expect(
+      proposePurchaseReview(supabase, "user-1", input)
+    ).rejects.toMatchObject({ code: "query_failed", status: 502 });
   });
 
   it("allows at most one open review per site", async () => {

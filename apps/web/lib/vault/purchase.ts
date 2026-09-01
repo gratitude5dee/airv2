@@ -44,6 +44,24 @@ export class PurchaseError extends Error {
   }
 }
 
+/**
+ * A failed query is not an empty result. Collapsing one into `data ?? []` (or
+ * a falsy `card`) turned a vault schema drift into "no such card in the
+ * vault", which reads as a legitimate owner-facing answer — so every read on
+ * this path raises instead.
+ */
+function assertQueryOk(
+  error: { message: string } | null,
+  what: string
+): void {
+  if (!error) return;
+  throw new PurchaseError(
+    "query_failed",
+    `could not read ${what}: ${error.message}`,
+    502
+  );
+}
+
 export function normalizeHost(raw: string): string {
   const host = raw.trim().toLowerCase().replace(/^www\./, "");
   if (!HOST_RE.test(host)) {
@@ -72,7 +90,7 @@ export async function resolveActiveTurn(
   supabase: SupabaseClient,
   userId: string
 ): Promise<{ runId: string | null; ownerInitiated: boolean }> {
-  const { data: openRun } = await supabase
+  const { data: openRun, error: runError } = await supabase
     .from("agent_runs")
     .select("hermes_run_id, started_at")
     .eq("user_id", userId)
@@ -81,7 +99,7 @@ export async function resolveActiveTurn(
     .order("started_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  const { data: flushJob } = await supabase
+  const { data: flushJob, error: flushError } = await supabase
     .from("flush_jobs")
     .select("hermes_run_id, chain_started_at, sender_tier")
     .eq("user_id", userId)
@@ -90,6 +108,8 @@ export async function resolveActiveTurn(
     .order("chain_started_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+  assertQueryOk(runError, "the active run");
+  assertQueryOk(flushError, "the active flush job");
 
   const runStarted = openRun?.started_at
     ? Date.parse(String(openRun.started_at))
@@ -137,7 +157,7 @@ export async function proposePurchaseReview(
     );
   }
 
-  const { data: card } = await supabase
+  const { data: card, error: cardError } = await supabase
     .from("vault_items")
     .select("id, kind, name, masked")
     .eq("user_id", userId)
@@ -145,6 +165,7 @@ export async function proposePurchaseReview(
     .eq("kind", "card")
     .is("deleted_at", null)
     .maybeSingle();
+  assertQueryOk(cardError, "the vault");
   if (!card) {
     throw new PurchaseError(
       "no_card",
@@ -153,12 +174,13 @@ export async function proposePurchaseReview(
     );
   }
 
-  const { data: open } = await supabase
+  const { data: open, error: openError } = await supabase
     .from("decisions")
     .select("id, payload")
     .eq("user_id", userId)
     .eq("kind", "purchase_review")
     .eq("status", "pending");
+  assertQueryOk(openError, "the open purchase reviews");
   const alreadyOpen = (open ?? []).some((row) => {
     const payload = row.payload as { host?: unknown } | null;
     return typeof payload?.host === "string" && payload.host === host;
@@ -326,7 +348,7 @@ export async function resolvePurchaseReview(
     throw new PurchaseError("bad_decision", "malformed purchase review", 409);
   }
   // The card must still exist at approval time.
-  const { data: card } = await supabase
+  const { data: card, error: cardError } = await supabase
     .from("vault_items")
     .select("id")
     .eq("user_id", userId)
@@ -334,6 +356,7 @@ export async function resolvePurchaseReview(
     .eq("kind", "card")
     .is("deleted_at", null)
     .maybeSingle();
+  assertQueryOk(cardError, "the vault");
   if (!card) {
     throw new PurchaseError("no_card", "the card is no longer in the vault", 409);
   }

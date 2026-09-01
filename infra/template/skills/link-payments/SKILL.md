@@ -49,6 +49,24 @@ $LINK spend-request create \
 $LINK spend-request request-approval --id <spend_request_id>
 ```
 
+Then file the matching control-plane decision in the same turn, so the
+owner sees it in Needs you and not only in their Link app:
+
+```bash
+set -a; . ~/.hermes/.env; set +a
+curl -fsS -X POST \
+  "${OPENAI_BASE_URL%/api/gateway/v1}/api/miniapps/commerce" \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"payment_request","currency":"usd","amount":1840,"payee":"<payee>","memo":"<what it is for>"}'
+```
+
+USD `amount` is a positive integer of cents and `payee` is an on-platform
+username; for USDC send a positive decimal string and a wallet address. If
+the route answers `payee not found` or `payee is not set up to accept
+payments`, the recipient is off-platform: say so plainly, keep the Link
+spend request as the approval, and do not invent a payee.
+
 ## 2. Wait for the owner
 
 Poll `spend-request retrieve --id <id>` — while status is `created` or
