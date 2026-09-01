@@ -12,7 +12,16 @@ interface Insert {
   rows: unknown;
 }
 
-function fakeSupabase(options: { slotError?: boolean } = {}) {
+function fakeSupabase(
+  options: {
+    slotError?: boolean;
+    /** The first moment insert collides, as a same-key replan does. */
+    momentConflict?: boolean;
+    /** Status of the decision the colliding moment already points at. */
+    existingStatus?: string;
+  } = {}
+) {
+  let momentInserts = 0;
   const inserts: Insert[] = [];
   const deletes: string[] = [];
   const updates: { table: string; row: Record<string, unknown> }[] = [];
@@ -41,12 +50,37 @@ function fakeSupabase(options: { slotError?: boolean } = {}) {
                 }),
             };
           }
+          if (table === "calendar_moments") {
+            momentInserts += 1;
+            if (options.momentConflict && momentInserts === 1) {
+              return {
+                select: () => ({
+                  single: () =>
+                    Promise.resolve({
+                      data: null,
+                      error: { message: "duplicate key" },
+                    }),
+                }),
+              };
+            }
+          }
           const id = table === "calendar_moments" ? "moment-1" : "decision-1";
           return {
             select: () => ({
               single: () => Promise.resolve({ data: { id }, error: null }),
             }),
           };
+        },
+        select() {
+          const data =
+            table === "calendar_moments"
+              ? { id: "moment-0", decision_id: "decision-0" }
+              : { status: options.existingStatus ?? "pending" };
+          const node: Record<string, unknown> = {
+            maybeSingle: () => Promise.resolve({ data, error: null }),
+          };
+          node["eq"] = () => node;
+          return node;
         },
         update(row: Record<string, unknown>) {
           updates.push({ table, row });
@@ -136,6 +170,72 @@ describe("proposeAgentPlan", () => {
       Date.now() + 3_000_000
     );
   });
+
+  it("shifts a backdated plan as a sequence so the cadence survives", async () => {
+    const supabase = fakeSupabase();
+    await proposeAgentPlan(supabase.client, "user-1", {
+      label: "Backdated week",
+      timezone: "UTC",
+      steps: [
+        {
+          platform: "instagram",
+          brief: "teaser",
+          scheduledAt: new Date(Date.now() - 172_800_000),
+        },
+        {
+          platform: "tiktok",
+          brief: "announce",
+          scheduledAt: new Date(Date.now() - 86_400_000),
+        },
+      ],
+    });
+    const slots = supabase.inserts.find(
+      (insert) => insert.table === "content_slots"
+    )?.rows as { scheduled_at: string }[];
+    const times = slots.map((slot) => new Date(slot.scheduled_at).getTime());
+    expect(times[0]!).toBeGreaterThan(Date.now() + 3_000_000);
+    expect(times[1]! - times[0]!).toBe(86_400_000);
+  });
+
+  it("reuses the staged plan while its decision is still pending", async () => {
+    const supabase = fakeSupabase({ momentConflict: true });
+    const result = await proposeAgentPlan(supabase.client, "user-1", {
+      label: "Launch week",
+      timezone: "UTC",
+      steps: STEPS,
+    });
+    expect(result).toEqual({
+      momentId: "moment-0",
+      decisionId: "decision-0",
+      slots: 0,
+    });
+  });
+
+  it.each(["approved", "dismissed"])(
+    "restages the plan once the earlier decision is %s",
+    async (status) => {
+      const supabase = fakeSupabase({
+        momentConflict: true,
+        existingStatus: status,
+      });
+      const result = await proposeAgentPlan(supabase.client, "user-1", {
+        label: "Launch week",
+        timezone: "UTC",
+        steps: STEPS,
+      });
+      expect(result).toEqual({
+        momentId: "moment-1",
+        decisionId: "decision-1",
+        slots: 2,
+      });
+      const moments = supabase.inserts.filter(
+        (insert) => insert.table === "calendar_moments"
+      );
+      expect(
+        (moments.at(-1)?.rows as { moment_key: string }).moment_key
+      ).toContain(":v2");
+    }
+  );
 
   it("rolls the moment back when the slots cannot be staged", async () => {
     const supabase = fakeSupabase({ slotError: true });

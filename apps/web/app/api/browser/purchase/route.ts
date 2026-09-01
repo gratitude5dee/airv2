@@ -109,31 +109,31 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     );
   }
   const mirrored = cards ?? [];
-  let eligible = mirrored;
-  if (mirrored.length > 0) {
-    try {
-      const live = await reconcileMirror(
-        supabase,
-        box.boxId,
-        userId,
-        mirrored.map((card) => card.id as string)
-      );
-      eligible = mirrored.filter((card) => live.has(card.id as string));
-    } catch (error) {
-      // The store, not the mirror, decides: a box that cannot be read must
-      // not hand the agent a card it may be unable to fill.
-      console.error(
-        JSON.stringify({
-          msg: "purchase eligibility store read failed",
-          user_id: userId,
-          error: error instanceof Error ? error.message : "unknown",
-        })
-      );
-      return NextResponse.json(
-        { error: "store_unavailable" },
-        { status: 502, headers: { "Cache-Control": "no-store" } }
-      );
-    }
+  let eligible: { id: string; name: string; masked: string | null }[];
+  try {
+    const live = await reconcileMirror(
+      supabase,
+      box.boxId,
+      userId,
+      mirrored.map((card) => card.id as string)
+    );
+    eligible = live
+      .filter((item) => item.kind === "card")
+      .map((item) => ({ id: item.id, name: item.name, masked: item.masked }));
+  } catch (error) {
+    // The store, not the mirror, decides: a box that cannot be read must not
+    // hand the agent a card it may be unable to fill.
+    console.error(
+      JSON.stringify({
+        msg: "purchase eligibility store read failed",
+        user_id: userId,
+        error: error instanceof Error ? error.message : "unknown",
+      })
+    );
+    return NextResponse.json(
+      { error: "store_unavailable" },
+      { status: 502, headers: { "Cache-Control": "no-store" } }
+    );
   }
   const openHosts = (open ?? [])
     .map((row) => {

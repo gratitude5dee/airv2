@@ -33,10 +33,14 @@ export interface AgentPlanRequest {
 /** Slots must not fire the instant the owner approves. */
 const MIN_LEAD_MS = 3_600_000;
 
+/** A replanned key gets a version suffix; a few rounds is plenty. */
+const MAX_RESTAGE_ATTEMPTS = 8;
+
 export async function proposeAgentPlan(
   supabase: SupabaseClient,
   userId: string,
-  request: AgentPlanRequest
+  request: AgentPlanRequest,
+  attempt = 0
 ): Promise<{ momentId: string; decisionId: string; slots: number }> {
   if (request.steps.length === 0) {
     throw new AgentPlanError("a plan needs at least one step", 400);
@@ -46,7 +50,7 @@ export async function proposeAgentPlan(
   );
   const momentKey = `agent:${request.label.slice(0, 120)}:${occursAt
     .toISOString()
-    .slice(0, 10)}`;
+    .slice(0, 10)}${attempt > 0 ? `:v${attempt + 1}` : ""}`;
 
   const { data: moment, error: momentError } = await supabase
     .from("calendar_moments")
@@ -70,25 +74,40 @@ export async function proposeAgentPlan(
       .eq("moment_key", momentKey)
       .maybeSingle();
     if (existing?.decision_id) {
-      return {
-        momentId: existing.id as string,
-        decisionId: existing.decision_id as string,
-        slots: 0,
-      };
+      // Only a still-pending decision is the same plan. Once the owner has
+      // approved or dismissed it, asking again is a new ask and must produce
+      // something they can act on.
+      const { data: decision } = await supabase
+        .from("decisions")
+        .select("status")
+        .eq("id", existing.decision_id)
+        .maybeSingle();
+      if (decision?.status === "pending") {
+        return {
+          momentId: existing.id as string,
+          decisionId: existing.decision_id as string,
+          slots: 0,
+        };
+      }
+      if (attempt < MAX_RESTAGE_ATTEMPTS) {
+        return proposeAgentPlan(supabase, userId, request, attempt + 1);
+      }
     }
     throw new AgentPlanError("could not stage the plan", 500);
   }
 
   const momentId = moment.id as string;
-  const floor = Date.now() + MIN_LEAD_MS;
+  // Backdated plans move as a sequence: one shift for the whole calendar keeps
+  // the cadence the owner asked for instead of stacking every late post on the
+  // same minute.
+  const rawTimes = request.steps.map((step) => step.scheduledAt.getTime());
+  const shift = Math.max(0, Date.now() + MIN_LEAD_MS - Math.min(...rawTimes));
   const slotRows = request.steps.map((step, index) => ({
     user_id: userId,
     platform: step.platform,
     account_ref: "primary",
     package_ref: `plan:${momentId}:s${index + 1}`,
-    scheduled_at: new Date(
-      Math.max(step.scheduledAt.getTime(), floor)
-    ).toISOString(),
+    scheduled_at: new Date((rawTimes[index] as number) + shift).toISOString(),
     timezone: request.timezone,
     status: "proposed",
     source_id: "agent",

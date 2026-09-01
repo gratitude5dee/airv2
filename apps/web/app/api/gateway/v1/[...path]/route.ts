@@ -389,6 +389,16 @@ export async function POST(
   }
   const canFallBack = providerForFamily(family) !== "openai";
   if (canFallBack && (!upstream.ok || !upstream.body)) {
+    console.warn(
+      JSON.stringify({
+        msg: "gateway upstream rejected",
+        user_id: userId,
+        family,
+        model: servedModel,
+        status: upstream.status,
+        detail: (await upstream.clone().text().catch(() => "")).slice(0, 400),
+      })
+    );
     servedFamily = "openai";
     upstream = await dispatch(servedFamily);
   } else if (canFallBack && !streaming) {

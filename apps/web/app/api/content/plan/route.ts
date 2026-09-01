@@ -13,6 +13,7 @@ import {
   proposeAgentPlan,
   type AgentPlanStep,
 } from "@/lib/publish/agentPlan";
+import { SLOT_PLATFORMS } from "@/lib/publish/slots";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,7 +34,7 @@ function parseSteps(value: unknown): AgentPlanStep[] | null {
   for (const raw of value as StepBody[]) {
     if (
       typeof raw?.platform !== "string" ||
-      raw.platform.length === 0 ||
+      !(SLOT_PLATFORMS as readonly string[]).includes(raw.platform) ||
       typeof raw.brief !== "string" ||
       raw.brief.length === 0 ||
       typeof raw.scheduled_at !== "string"
@@ -43,7 +44,7 @@ function parseSteps(value: unknown): AgentPlanStep[] | null {
     const scheduledAt = new Date(raw.scheduled_at);
     if (Number.isNaN(scheduledAt.getTime())) return null;
     steps.push({
-      platform: raw.platform.slice(0, 40),
+      platform: raw.platform,
       brief: raw.brief.slice(0, 2000),
       scheduledAt,
     });

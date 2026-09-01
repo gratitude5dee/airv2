@@ -290,18 +290,24 @@ export async function applyBatch(
 }
 
 /**
- * Drop mirror rows the box store no longer holds, and return the ids that
- * survived. The store is the only source of truth (C18): a box that was
- * re-forked or restored comes back with an empty store, and until the mirror
- * catches up it advertises cards no fill can ever use.
+ * Reconcile the metadata mirror against the box store in both directions and
+ * return what the store actually holds. The store is the only source of truth
+ * (C18): a re-forked box comes back empty and the mirror would keep
+ * advertising cards no fill can ever use, while a mirror write that failed
+ * (schema drift, a transient error) hides a card the owner really saved.
  */
 export async function reconcileMirror(
   supabase: SupabaseClient,
   boxId: string,
   userId: string,
   mirroredIds: readonly string[]
-): Promise<Set<string>> {
-  const live = new Set((await listItems(boxId)).map((item) => item.id));
+): Promise<VaultItemMetadata[]> {
+  const items = await listItems(boxId);
+  const live = new Set(items.map((item) => item.id));
+  const mirrored = new Set(mirroredIds);
+  for (const item of items) {
+    if (!mirrored.has(item.id)) await mirrorItem(supabase, userId, item);
+  }
   const stale = mirroredIds.filter((id) => !live.has(id));
   if (stale.length > 0) {
     const { error } = await supabase
@@ -325,7 +331,7 @@ export async function reconcileMirror(
       });
     }
   }
-  return live;
+  return items;
 }
 
 /**
