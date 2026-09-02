@@ -6,7 +6,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getDraft } from "@/lib/agentmail/client";
+import { getDraft } from "@/lib/mail/client";
 import { queueEmailDraftReview } from "@/lib/email/review";
 import { serviceClient } from "@/lib/supabase";
 

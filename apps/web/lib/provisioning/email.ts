@@ -1,42 +1,82 @@
 /**
- * AgentMail provisioning (goal.md M3 step 7): pod (client_id = user_id) →
+ * Mail provisioning (goal.md M3 step 7): pod (client_id = user_id) →
  * inbox <username>@domain → draft-only box key → webhook → agent_addresses.
+ * Provider-neutral via lib/mail/client (MAIL_PROVIDER); only the box-side
+ * env-var names and MCP server differ per provider.
  * Idempotent: safe to re-run on username change (old addresses are retired,
  * never deleted — they route forever).
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "../env";
 import {
-  AgentMailApiError,
+  MailApiError,
   createDraftOnlyKey,
   createInbox,
   ensurePod,
   ensureWebhook,
-} from "../agentmail/client";
+  mailProvider,
+  type MailProvider,
+} from "../mail/client";
 import { command, readFile, writeFile } from "../box/client";
 
+interface BoxMailWiring {
+  /** Hermes mcp_servers entry name. */
+  mcpName: string;
+  mcpUrl: string;
+  /** Prefix of the .hermes/.env vars this provider owns (replaced on re-run). */
+  envPrefix: string;
+  apiKeyVar: string;
+  inboxIdVar: string;
+}
+
+/** Which env names / hosted MCP the box gets for the active provider. */
+export function boxMailWiring(provider: MailProvider = mailProvider()): BoxMailWiring {
+  if (provider === "wzrdmail") {
+    return {
+      mcpName: "wzrdmail",
+      mcpUrl: env.wzrdmailMcpUrl(),
+      envPrefix: "WZRDMAIL_",
+      apiKeyVar: "WZRDMAIL_API_KEY",
+      inboxIdVar: "WZRDMAIL_INBOX_ID",
+    };
+  }
+  return {
+    mcpName: "agentmail",
+    mcpUrl: "https://mcp.agentmail.to/mcp",
+    envPrefix: "AGENTMAIL_",
+    apiKeyVar: "AGENTMAIL_API_KEY",
+    inboxIdVar: "AGENTMAIL_INBOX_ID",
+  };
+}
+
 /**
- * Registers AgentMail's hosted MCP server in the box's Hermes config
- * (goal.md M3 step 7). The header holds only the `${AGENTMAIL_API_KEY}`
+ * Registers the provider's hosted MCP server in the box's Hermes config
+ * (goal.md M3 step 7). The header holds only the `${<PROVIDER>_API_KEY}`
  * interpolation template — Hermes resolves it from ~/.hermes/.env at
  * connect time, so no secret appears in the command line or config file.
+ * The other provider's entry is disabled so the box has exactly one mail MCP.
  */
-async function installAgentmailMcp(boxId: string): Promise<void> {
-  const script = [
+export function mailMcpInstallScript(wiring: BoxMailWiring): string {
+  const other = wiring.mcpName === "wzrdmail" ? "agentmail" : "wzrdmail";
+  return [
     "import yaml",
     'cf = "/home/user/.hermes/config.yaml"',
     "c = yaml.safe_load(open(cf)) or {}",
     's = c.setdefault("mcp_servers", {})',
-    's["agentmail"] = {"url": "https://mcp.agentmail.to/mcp", "headers": {"x-api-key": "${AGENTMAIL_API_KEY}"}, "enabled": True}',
+    `s[${JSON.stringify(wiring.mcpName)}] = {"url": ${JSON.stringify(wiring.mcpUrl)}, "headers": {"x-api-key": "\${${wiring.apiKeyVar}}"}, "enabled": True}`,
+    `if ${JSON.stringify(other)} in s: s[${JSON.stringify(other)}]["enabled"] = False`,
     "yaml.safe_dump(c, open(cf, 'w'), default_flow_style=False, sort_keys=False)",
   ].join("\n");
+}
+
+async function installMailMcp(boxId: string, wiring: BoxMailWiring): Promise<void> {
   const result = await command(
     boxId,
-    `python3 - <<'PYEOF'\n${script}\nPYEOF\nsudo systemctl restart hermes-gateway`,
+    `python3 - <<'PYEOF'\n${mailMcpInstallScript(wiring)}\nPYEOF\nsudo systemctl restart hermes-gateway`,
     120
   );
   if (result.exitCode !== 0) {
-    throw new Error(`agentmail mcp install failed: ${result.stderr}`);
+    throw new Error(`${wiring.mcpName} mcp install failed: ${result.stderr}`);
   }
 }
 
@@ -65,9 +105,14 @@ export async function provisionEmail(
   try {
     inbox = await createInbox(pod.pod_id, inboxUsername);
   } catch (error) {
-    if (error instanceof AgentMailApiError && error.status === 403) {
-      const parsed = JSON.parse(error.message) as { suggestions?: string[] };
-      const suggestion = parsed.suggestions?.[0];
+    if (error instanceof MailApiError && error.status === 403) {
+      let suggestion: string | undefined;
+      try {
+        suggestion = (JSON.parse(error.message) as { suggestions?: string[] })
+          .suggestions?.[0];
+      } catch {
+        suggestion = undefined;
+      }
       if (!suggestion) throw error;
       inboxUsername = suggestion;
       inbox = await createInbox(pod.pod_id, inboxUsername);
@@ -104,6 +149,7 @@ export async function provisionEmail(
     .maybeSingle();
   if (box?.provider_box_id) {
     const boxId = box.provider_box_id as string;
+    const wiring = boxMailWiring();
     try {
       const draftKey = await createDraftOnlyKey(
         inbox.inbox_id,
@@ -114,15 +160,15 @@ export async function provisionEmail(
       const current = await readFile(boxId, ".hermes/.env").catch(() => "");
       const kept = current
         .split("\n")
-        .filter((line) => line && !line.startsWith("AGENTMAIL_"));
-      kept.push(`AGENTMAIL_API_KEY=${draftKey}`);
-      kept.push(`AGENTMAIL_INBOX_ID=${inbox.inbox_id}`);
+        .filter((line) => line && !line.startsWith(wiring.envPrefix));
+      kept.push(`${wiring.apiKeyVar}=${draftKey}`);
+      kept.push(`${wiring.inboxIdVar}=${inbox.inbox_id}`);
       await writeFile(boxId, ".hermes/.env", kept.join("\n") + "\n");
-      await installAgentmailMcp(boxId);
+      await installMailMcp(boxId, wiring);
     } catch (error) {
       console.error(
         JSON.stringify({
-          msg: "box agentmail key injection failed",
+          msg: `box ${wiring.mcpName} key injection failed`,
           user_id: userId,
           box_id: boxId,
           error: error instanceof Error ? error.message : String(error),

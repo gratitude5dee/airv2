@@ -11,7 +11,7 @@ import { serviceClient } from "@/lib/supabase";
 import {
   addInboxBlockEntry,
   removeInboxBlockEntry,
-} from "@/lib/agentmail/client";
+} from "@/lib/mail/client";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

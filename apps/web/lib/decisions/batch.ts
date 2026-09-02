@@ -5,7 +5,7 @@
  * other kind resolves one at a time through the single-decision path.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { sendDraft } from "../agentmail/client";
+import { sendDraft } from "../mail/client";
 
 export interface BatchResult {
   approved: string[];

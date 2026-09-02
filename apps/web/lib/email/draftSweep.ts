@@ -7,7 +7,7 @@
  * covered. It only ever adds a review; it can never send.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { listDrafts } from "../agentmail/client";
+import { listDrafts } from "../mail/client";
 import { queueEmailDraftReview } from "./review";
 
 /** Only users whose box was active recently are swept, bounding API calls. */

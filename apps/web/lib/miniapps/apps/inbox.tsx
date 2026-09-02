@@ -18,9 +18,9 @@ import {
   getDraft,
   getThread,
   listThreads,
-  type AgentMailMessage,
-  type AgentMailThread,
-} from "@/lib/agentmail/client";
+  type MailMessage as AgentMailMessage,
+  type MailThread as AgentMailThread,
+} from "@/lib/mail/client";
 import { queueEmailDraftReview } from "@/lib/email/review";
 import {
   EmailDraftError,

@@ -1,11 +1,13 @@
 /**
- * AgentMail inbound webhook (goal.md M5 §1) for `message.received`.
+ * Mail inbound webhook (goal.md M5 §1) for `message.received` — one endpoint
+ * for both providers (AgentMail / wzrdmail), selected by MAIL_PROVIDER.
  * Same order as the iMessage ingress: verify (Svix) → resolve → dedupe →
  * 200 → work. Recipients resolve through agent_addresses INCLUDING
  * retired aliases — a retired address routes forever.
  */
 import { after, NextRequest, NextResponse } from "next/server";
-import { env } from "@/lib/env";
+import { inboundWebhookSecret, mailProvider } from "@/lib/mail/client";
+import { parseInboundEvent, type InboundMessageEvent } from "@/lib/mail/inbound-event";
 import { serviceClient } from "@/lib/supabase";
 import {
   SvixWebhookError,
@@ -20,16 +22,6 @@ export const maxDuration = 800;
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-interface AgentMailMessageEvent {
-  event_type?: string;
-  event_id?: string;
-  message?: {
-    message_id?: string;
-    to?: string[] | string;
-    inbox_id?: string;
-  };
-}
-
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const rawBody = new Uint8Array(await request.arrayBuffer());
   const headers = svixHeaders(request.headers);
@@ -38,7 +30,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     verifySvixSignature({
       headers,
       rawBody,
-      secret: env.agentmailWebhookSecret(),
+      secret: inboundWebhookSecret(),
     });
   } catch (error) {
     if (error instanceof SvixWebhookError) {
@@ -47,13 +39,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     throw error;
   }
 
-  let event: AgentMailMessageEvent;
+  let event: InboundMessageEvent;
   try {
-    event = JSON.parse(Buffer.from(rawBody).toString("utf8")) as AgentMailMessageEvent;
+    event = parseInboundEvent(JSON.parse(Buffer.from(rawBody).toString("utf8")));
   } catch {
     return NextResponse.json({ error: "invalid JSON body" }, { status: 400 });
   }
-  if (event.event_type !== "message.received") {
+  if (event.eventType !== "message.received") {
     // Spam / blocked / unauthenticated variants and other events: ack only.
     return NextResponse.json({ ok: true }, { status: 200 });
   }
@@ -82,7 +74,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const { alreadySeen } = await dedupeInboundEvent(
     supabase,
-    { webhookId: headers.id ?? "agentmail", messageId },
+    { webhookId: headers.id ?? mailProvider(), messageId },
     userId
   );
   if (alreadySeen) {

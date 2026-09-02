@@ -9,6 +9,7 @@ import { command } from "../box/client";
 import { hermesBin, runCommand, type ComputeTarget } from "../compute/runtime";
 import { shellQuote } from "../box/shell";
 import { ensureBoxAwake } from "../orchestrator/boxes";
+import { mailProvider, type MailProvider } from "../mail/client";
 
 const QUERY_RE = /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$/;
 const IDENTIFIER_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$/;
@@ -19,7 +20,6 @@ const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
  * bundled skill library Hermes ships with).
  */
 export const BASE_SKILLS = [
-  "official/email/agentmail",
   "official/research/duckduckgo-search",
   // Eval-test set (V0 web latency work). Every identifier below was
   // confirmed with a real `hermes skills search` against the pinned CLI —
@@ -44,10 +44,24 @@ export const BASE_SKILLS = [
   "skills-sh/aradotso/security-skills/anthropic-cybersecurity-skills",
 ] as const;
 
+/**
+ * Hub skill for the active mail provider. The native wzrdmail skill is not a
+ * hub skill: the template bakes it from infra/template/skills/wzrdmail, so the
+ * wzrdmail path installs nothing here.
+ */
+export const MAIL_PROVIDER_SKILLS: Record<MailProvider, readonly string[]> = {
+  agentmail: ["official/email/agentmail"],
+  wzrdmail: [],
+};
+
+export function baseSkillsFor(provider: MailProvider = mailProvider()): readonly string[] {
+  return [...MAIL_PROVIDER_SKILLS[provider], ...BASE_SKILLS];
+}
+
 /** Best-effort base-skill install on an already-awake instance (provisioning). */
 export async function installBaseSkills(target: ComputeTarget): Promise<void> {
   const boxId = target.instanceId;
-  for (const identifier of BASE_SKILLS) {
+  for (const identifier of baseSkillsFor()) {
     try {
       const result = await runCommand(
         target,

@@ -1,13 +1,13 @@
 ---
 name: email-draft-review
-description: "Use whenever the user asks to send, draft, write, reply to, or forward an email. Compose the body, create an AgentMail draft, then file it for review — the box can only draft, never send."
+description: "Use whenever the user asks to send, draft, write, reply to, or forward an email. Compose the body, create a draft via the mail MCP (wzrdmail or AgentMail), then file it for review — the box can only draft, never send."
 version: 1.0.0
 author: air
 license: MIT
 platforms: [linux]
 metadata:
   hermes:
-    tags: [Email, Drafts, Approval, AgentMail]
+    tags: [Email, Drafts, Approval, wzrdmail, AgentMail]
 ---
 
 # Email draft review
@@ -22,8 +22,11 @@ here, and all of them are work you do in this turn:
    composed — use it verbatim rather than asking for it again. Only ask when
    the recipient or the content genuinely does not exist anywhere in the
    conversation.
-2. Call the AgentMail MCP `create_draft` with that recipient, subject, and
-   body.
+2. Call the mail MCP `create_draft` with that recipient, subject, and body.
+   The box has exactly one mail MCP enabled: `wzrdmail`
+   (https://mcp.mail.wzrd.tech/mcp, key `WZRDMAIL_API_KEY`) or, on legacy
+   boxes, `agentmail` (key `AGENTMAIL_API_KEY`). Both expose the same
+   `create_draft` tool.
 3. Immediately POST the returned `draft_id` (plus `inbox_id`) to the review
    route below, in the same turn.
 4. Reply in one line that it is waiting for them, e.g. "Drafted — approve it
@@ -37,7 +40,7 @@ Worked example — the owner pastes a short "Checking in" note, names an
 address, and says "can you send this":
 
 ```bash
-# 1. AgentMail MCP: create_draft
+# 1. mail MCP (wzrdmail / agentmail): create_draft
 #      to=["them@example.com"], subject="Checking in", text=<the pasted note>
 #    → returns draft_id (and the inbox_id it landed in)
 # 2. file it for review, same turn:
@@ -51,7 +54,7 @@ curl -fsS -X POST \
 
 Then: "Drafted — approve it in Needs-you to send."
 
-If `create_draft` is unavailable (no AgentMail MCP on this box), say exactly
+If `create_draft` is unavailable (no mail MCP on this box), say exactly
 that and do not claim a draft exists.
 
 ## Draft first, ask inside the draft
@@ -73,8 +76,8 @@ that, rather than asking for details and stopping silently.
 Treat filing as a postcondition of drafting, not a follow-up. After every
 `create_draft`, immediately POST the returned `draft_id` to the review route
 before replying to the owner. A draft that is not filed is invisible in
-Needs-you, so the owner can never send it. The AgentMail MCP may create the
-draft in an inbox other than `AGENTMAIL_INBOX_ID`; pass the `inbox_id` returned
+Needs-you, so the owner can never send it. The MCP may create the draft in an
+inbox other than `WZRDMAIL_INBOX_ID` / `AGENTMAIL_INBOX_ID`; pass the `inbox_id` returned
 by the create call alongside `draft_id`:
 
 ```bash
@@ -87,8 +90,8 @@ curl -fsS -X POST \
 ```
 
 The request body also accepts optional `to` and `subject` fallbacks. The
-control plane verifies the draft and derives its metadata from AgentMail
-before filing an `email_draft` decision.
+control plane verifies the draft and derives its metadata from the mail
+provider before filing an `email_draft` decision.
 
 - Treat `{"ok":true,"status":"pending_approval"}` as queued in Needs-you.
 - Treat `{"ok":true,"status":"already_pending"}` as already queued.
@@ -98,5 +101,6 @@ before filing an `email_draft` decision.
   queued for approval.
 - Never claim that an email was sent from the box.
 
-The box's AgentMail key is draft-only. Sending from the box is structurally
+The box's mail key (`WZRDMAIL_API_KEY`, an inbox-scoped `read,drafts` key, or
+the AgentMail equivalent) is draft-only. Sending from the box is structurally
 impossible; only the owner's approval path can send a held draft.
