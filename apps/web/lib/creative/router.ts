@@ -128,20 +128,29 @@ export function enforceExplicitCommandIntent(
   };
 }
 
-const ASPECT_RATIO_CUES: ReadonlyArray<[RegExp, AspectRatio]> = [
-  [/\b9\s*[:x]\s*16\b|\bvertical\b|\bportrait\b|\btiktok\b|\breels?\b|\bshorts?\b|\bstory\b|\bstories\b/i, "9:16"],
-  [/\b21\s*[:x]\s*9\b|\banamorphic\b|\bultra-?wide\b/i, "21:9"],
+/** Explicit ratios ("9:16", "16x9") win over descriptive words. */
+const NUMERIC_RATIO_CUES: ReadonlyArray<[RegExp, AspectRatio]> = [
+  [/\b9\s*[:x]\s*16\b/i, "9:16"],
+  [/\b21\s*[:x]\s*9\b/i, "21:9"],
   [/\b3\s*[:x]\s*4\b/i, "3:4"],
   [/\b4\s*[:x]\s*3\b/i, "4:3"],
-  [/\b1\s*[:x]\s*1\b|\bsquare\b/i, "1:1"],
-  [/\b16\s*[:x]\s*9\b|\bhorizontal\b|\blandscape\b|\bwidescreen\b/i, "16:9"],
+  [/\b1\s*[:x]\s*1\b/i, "1:1"],
+  [/\b16\s*[:x]\s*9\b/i, "16:9"],
+];
+const WORD_RATIO_CUES: ReadonlyArray<[RegExp, AspectRatio]> = [
+  [/\bvertical\b|\bportrait\b|\btiktok\b|\breels?\b|\bshorts?\b|\bstory\b|\bstories\b/i, "9:16"],
+  [/\banamorphic\b|\bultra-?wide\b/i, "21:9"],
+  [/\bsquare\b/i, "1:1"],
+  [/\bhorizontal\b|\blandscape\b|\bwidescreen\b/i, "16:9"],
 ];
 
 /** Aspect ratio named in the user's words; "auto" when none is. */
 export const aspectRatioFromText = (text: string): AspectRatio =>
-  ASPECT_RATIO_CUES.find(([cue]) => cue.test(text))?.[1] ?? "auto";
+  NUMERIC_RATIO_CUES.find(([cue]) => cue.test(text))?.[1] ??
+  WORD_RATIO_CUES.find(([cue]) => cue.test(text))?.[1] ??
+  "auto";
 
-const DURATION_CUE = /\b(\d{1,2})\s*(?:s|sec|secs|second|seconds)\b/i;
+const DURATION_CUE = /\b(\d+)\s*(?:s|sec|secs|second|seconds)\b/i;
 
 /** Duration in seconds named in the user's words; null when none is. */
 export const durationFromText = (text: string): number | null => {
