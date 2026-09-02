@@ -934,6 +934,52 @@ function modelBody(snapshot: OnboardingSnapshot): string {
   return `<p class="muted">Pick the family your agent thinks with.</p><div class="famgrid">${families}</div><p class="muted">(you can select others in settings later)</p><p class="muted">Thinking speed — faster answers or deeper reasoning:</p><div class="row">${tiers}</div><div class="row actions">${skipForm("model")}</div>`;
 }
 
+/**
+ * Personality engine (Onairos) step: a status well, the native sign-in well,
+ * iMessage folded away as the alternative, and one actions row — Continue
+ * (primary, once connected) or Skip, plus Refresh for card sessions that
+ * finished a Google sign-in in the real browser. The key only ever renders
+ * on the owner's own authenticated slide (never in a public bundle), the
+ * SDK handoff posts back as a regular form (action=onairos_handoff), and a
+ * connected account keeps the flow mounted so more sources can be added.
+ */
+function onairosBody(
+  snapshot: OnboardingSnapshot,
+  browserSignin: string | null
+): string {
+  if (!snapshot.onairos.available) {
+    return `<div class="oa-status"><span class="oa-dot"></span><span class="chip">Not configured</span><p>Onairos personal context isn't configured on this deployment — connect it later from Settings once it is. Nothing here blocks the rest of setup.</p></div><div class="row actions">${skipForm("onairos", "Skip — not configured")}</div>`;
+  }
+  const connected = snapshot.onairos.connected;
+  const apiKey = env.onairosApiKey() ?? "";
+  const googleClientId = env.onairosGoogleClientId();
+  const googleAttr = googleClientId
+    ? ` data-google-client-id="${esc(googleClientId)}"`
+    : "";
+  const status = connected
+    ? `<div class="oa-status on"><span class="oa-dot"></span><span class="chip">Connected</span><p>Your imported context lives on your computer. Re-sync or disconnect any time from Settings.</p></div>`
+    : `<div class="oa-status"><span class="oa-dot"></span><span class="chip">Not connected</span><p>Import your personal context from the platforms you already use. What you approve lives on your computer — never on the platform.</p></div>`;
+  // Google blocks OAuth inside embedded webviews (disallowed_useragent),
+  // so a card-opened Messages sheet offers a signed jump into the real
+  // browser where the Google path works.
+  const browserNote = browserSignin
+    ? `<p class="oa-note">Signing in with Google? Google blocks it inside Messages — <a href="${esc(browserSignin)}" target="_blank" rel="noopener">open this step in your browser</a>, finish there, then tap Refresh here.</p>`
+    : "";
+  const refresh = browserSignin
+    ? `<form method="post" class="inline"><input type="hidden" name="action" value="noop"><button class="ghost">Refresh</button></form>`
+    : "";
+  const label = connected ? "Add more sources" : "Sign in with Onairos";
+  const hint = connected
+    ? "Open Onairos again to connect other platforms — each new connection re-imports your context."
+    : "The consent flow opens right here — approve what to share and your context imports in one step.";
+  const connect = `<div class="oa-connect"><span class="chip">${label}</span><p class="muted">${hint}</p><div id="onairos-connect" class="oa-mount" data-api-key="${esc(apiKey)}"${googleAttr}><p class="muted">Loading Onairos sign-in…</p></div>${browserNote}</div><script src="/creator-os/onairos-connect.js" defer></script>`;
+  const imessage = `<details><summary>Or connect via iMessage</summary><p class="muted">Onairos asks for your account email, a verification code, and your YES right in your iMessage thread.</p><form method="post" class="inline"><input type="hidden" name="action" value="connect_onairos"><button class="ghost">Connect via iMessage</button></form></details>`;
+  const primary = connected
+    ? doneForm("onairos", "Continue")
+    : skipForm("onairos");
+  return `${status}${connect}${imessage}<div class="row actions">${primary}${refresh}</div>`;
+}
+
 function stepBody(
   snapshot: OnboardingSnapshot,
   step: OnboardingStepId,
@@ -1034,30 +1080,7 @@ function stepBody(
     return `${statusLine}${command}${pluginLine}<div class="row actions">${skipForm("imessage")}</div>`;
   }
   if (step === "onairos") {
-    if (!snapshot.onairos.available) {
-      return `<p class="muted">Onairos personal context isn't configured on this deployment — connect it later from Settings once it is. Nothing here blocks the rest of setup.</p><div class="row actions">${skipForm("onairos", "Skip — not configured")}</div>`;
-    }
-    const connected = snapshot.onairos.connected;
-    const apiKey = env.onairosApiKey() ?? "";
-    const googleClientId = env.onairosGoogleClientId();
-    const googleAttr = googleClientId
-      ? ` data-google-client-id="${esc(googleClientId)}"`
-      : "";
-    // Google blocks OAuth inside embedded webviews (disallowed_useragent),
-    // so a card-opened Messages sheet offers a signed jump into the real
-    // browser where the Google path works.
-    const browserLine = browserSignin
-      ? `<p class="muted">Using Google to sign in? Google blocks sign-in inside Messages — <a href="${esc(browserSignin)}" target="_blank" rel="noopener">open this step in your browser</a>, finish there, then come back and tap Refresh.</p><form method="post" class="inline"><input type="hidden" name="action" value="noop"><button class="ghost">Refresh</button></form>`
-      : "";
-    // The native SDK flow runs right here; the key only ever renders on the
-    // owner's own authenticated slide (never in a public bundle), and the
-    // handoff posts back as a regular form (action=onairos_handoff). A
-    // connected account keeps the flow mounted so more connectors can be
-    // added after the initial sync.
-    const intro = connected
-      ? `<p>Connected — your imported context lives on your computer, and Settings has Re-sync / Disconnect.</p><p class="muted">Want more sources? Open Onairos again below to connect other platforms — each new connection re-imports your context.</p>`
-      : `<p class="muted">Sign in with Onairos to import your personal context — the consent flow opens right here, and your imported context lives on your computer, never on the platform.</p>`;
-    return `${intro}<div id="onairos-connect" data-api-key="${esc(apiKey)}"${googleAttr}><p class="muted">Loading Onairos sign-in…</p></div><script src="/creator-os/onairos-connect.js" defer></script>${browserLine}<details><summary>Or connect via iMessage</summary><p class="muted">Onairos asks for your account email, a verification code, and your YES right in your iMessage thread.</p><form method="post" class="inline"><input type="hidden" name="action" value="connect_onairos"><button class="ghost">Connect via iMessage</button></form></details><div class="row actions">${skipForm("onairos", connected ? "Continue" : undefined)}</div>`;
+    return onairosBody(snapshot, browserSignin);
   }
   if (step === "secrets") {
     const managerLines = snapshot.managers
@@ -1479,6 +1502,19 @@ button.envcard:active{transform:scale(0.99)}
 .envtag.soon{color:var(--ink-muted);border-color:var(--ring)}
 .envblurb{font-family:var(--font-body);font-size:0.85rem;line-height:1.45;color:var(--ink-muted)}
 .grow{flex:1}
+/* Personality engine: status well (dot + chip + line) over the sign-in well. */
+.oa-status{display:flex;align-items:center;flex-wrap:wrap;gap:0.55rem;border:1px solid var(--ring);border-radius:var(--radius-well);background:var(--well-bg);padding:0.8rem 0.95rem;margin-bottom:0.7rem}
+.oa-status p{flex-basis:100%;margin:0.2rem 0 0;font-size:0.9rem;line-height:1.5}
+.oa-status .chip{color:var(--ink)}
+.oa-dot{width:0.55rem;height:0.55rem;border-radius:50%;background:var(--ink-muted);box-shadow:0 0 0 3px var(--ring)}
+.oa-status.on{border-color:rgba(48,209,88,0.38)}
+.oa-status.on .oa-dot{background:#30d158;box-shadow:0 0 0 3px rgba(48,209,88,0.22)}
+.oa-status.on .chip{color:#30d158}
+.oa-connect{display:grid;gap:0.5rem;border:1px solid var(--ring);border-radius:var(--radius-well);background:var(--well-bg);padding:0.85rem 0.95rem;margin-bottom:0.6rem}
+.oa-connect .chip{color:var(--accent)}
+.oa-connect p{margin:0}
+.oa-mount{display:flex;align-items:center;flex-wrap:wrap;gap:0.5rem;min-height:2.75rem;margin-top:0.15rem}
+.oa-note{font-size:0.8rem;line-height:1.45;color:var(--ink-muted);padding-top:0.6rem;border-top:1px solid var(--ring)}
 .muted{color:var(--ink-muted);font-size:0.85rem}
 .chip{font-family:var(--font-ui);font-size:0.6rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-muted)}
 input[type=file]{flex:1;min-width:0;color:var(--ink-muted);font-size:0.85rem;font-family:var(--font-body)}
