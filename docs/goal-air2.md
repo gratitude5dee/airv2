@@ -26,7 +26,7 @@ Violating any of these is a stop-the-line bug, not a style disagreement. If a ta
 | **C9** | **Treat all inbound content as hostile.** It is attacker-controlled input to a tool-using agent. Trust tiers (§M4) are not optional polish. |
 | **C10** | **The box's AgentMail key is inbox-scoped and cannot send.** Drafts are created by the agent; sending happens only from the control plane after approval. This makes the approval gate structurally unbypassable rather than prompt-enforced. |
 | **C11** | **A line is bound to one handle at provisioning, before it is ever used.** The user's phone is known first; the line is created second. Anyone else who texts it is tier 2 and gets nothing. There is no public onboarding number and no claim code to steal. |
-| **C17** | **Mini-apps are served from `mini.wzrd.tech/<app-name>` — a separate origin from the main app.** No cookies, no `localStorage`, no session shared with `air.wzrd.tech`. Never collapse them onto a path of the main app. |
+| **C17** | **Mini-apps are served from `mini.wzrd.tech/<app-name>` — a separate origin from the main app.** No cookies, no `localStorage`, no session shared with `app.wzrd.tech`. Never collapse them onto a path of the main app. |
 | **C15** | **A mini-app URL is minted at send time, scoped to `(user, app, resource, nonce)`, TTL in minutes, single-use if it has a side effect.** Never stored, never reusable, never broader than the action it was minted for. Cards are forwardable. |
 | **C16** | **No box URL ever reaches a browser** — including the Box desktop-streaming URL behind Computer Use. Proxy it on a short-lived ticket. It is a credential to the user's whole machine. |
 | **C13** | **Inbound-first, always.** Neither line ever initiates a conversation with a number it has not heard from. New personal lines are opened by an `sms:` deep link the *user* sends. Apple filters on behavior, and outbound-first gets lines flagged. |
@@ -366,7 +366,7 @@ Fifteen mini-apps is one contract and fifteen views, not fifteen products — **
 ### Tasks
 
 1. **Extend the existing emitter, do not build a parallel one.** `tools/desktop_ui.py` already bridges tools to a renderer via an emitter the gateway installs at session start, keyed on `HERMES_UI_SESSION_ID`. Add a second renderer target that emits a UI intent — `{ app, resource, state }` — instead of inventing a mini-app tool API. **The agent must not learn that mini-apps exist**; it calls `kanban_move_card` as it always did, and the channel decides the rendering.
-2. **Mini-app registry** in the control plane: `id · slug · route · kind (render|input|passthrough) · scopes[] · backing_tool`. Routes resolve to **`mini.wzrd.tech/<app-name>`** — a separate origin from `air.wzrd.tech`, so a mini-app in a Messages webview shares no cookie, storage, or session with the main app (C17).
+2. **Mini-app registry** in the control plane: `id · slug · route · kind (render|input|passthrough) · scopes[] · backing_tool`. Routes resolve to **`mini.wzrd.tech/<app-name>`** — a separate origin from `app.wzrd.tech`, so a mini-app in a Messages webview shares no cookie, storage, or session with the main app (C17).
 3. **Token minting.** Sign `(user_id, app, resource_id, nonce, exp)`. TTL in minutes. Single-use for anything with a side effect. Mint inside Photon's `app()` thunk — `app(() => mintSignedLink(ctx))` — so no live URL is ever stored (C15).
 3b. **Three origin rules**, all consequences of one shared subdomain:
    - **The path is a routing hint, never an authorization.** Verify `token.app === path.app` and reject the mismatch — otherwise a Kanban token loads at `/wallet`.
@@ -388,7 +388,7 @@ Fifteen mini-apps is one contract and fifteen views, not fifteen products — **
 - [ ] A mini-app URL captured from one card cannot be redeemed twice, cannot be redeemed by a different user, and expires within its TTL.
 - [ ] A Kanban token returns `403` against `mini.wzrd.tech/wallet`.
 - [ ] After load, the token is **gone from the address bar**, and nothing is written to `localStorage` or `sessionStorage`.
-- [ ] A mini-app cannot read any cookie or storage belonging to `air.wzrd.tech`.
+- [ ] A mini-app cannot read any cookie or storage belonging to `app.wzrd.tech`.
 - [ ] Computer Use streams the desktop with **no `*.on.ascii.dev` URL in devtools** — proxied only.
 - [ ] Mint, open, and redeem appear as three distinct log events.
 - [ ] A message from a tier-2 sender produces zero minted URLs.
