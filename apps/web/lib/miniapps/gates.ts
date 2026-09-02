@@ -20,6 +20,7 @@ import {
   sessionExpired,
 } from "./html";
 import type { RegistryApp } from "./registry";
+import { resolveVia } from "./surface";
 import { elapsedMs } from "./timing";
 import { verifyToken, type MiniAppRole } from "./tokens";
 
@@ -30,8 +31,9 @@ export interface MiniSession {
   resourceId: string;
   role: MiniAppRole;
   grantId?: string | undefined;
-  /** Present when the session began from a message card — the app runs in
-   *  a messaging webview (Messages extension), not a full browser. */
+  /** Present when the session runs in a messaging webview (Messages
+   *  extension), not a full browser — see ./surface for how a card link
+   *  opened in Safari loses the marker. */
   via?: "card" | undefined;
 }
 
@@ -89,7 +91,7 @@ export function sessionFromCookie(
     resourceId: claims.resourceId,
     role: claims.role ?? "owner",
     grantId: claims.grantId,
-    via: claims.via,
+    via: resolveVia(claims.via, request.headers.get("user-agent")),
   };
 }
 

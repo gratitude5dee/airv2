@@ -1218,15 +1218,15 @@ function boothPhotoBody(snapshot: OnboardingSnapshot, lite: boolean): string {
 
 function photoSelectBody(snapshot: OnboardingSnapshot): string {
   const references = snapshot.identityMedia.filter(isVaultMedia);
-  const thumbs = references
+  const cards = references
     .filter((m) => m.url)
-    .map(
-      (m) =>
-        `<img class="idthumb" src="${esc(m.url ?? "")}" alt="${esc(m.role === "character_sheet" ? "character sheet" : "selfie")}">`
-    )
+    .map((m) => {
+      const label = m.role === "character_sheet" ? "character sheet" : "selfie";
+      return `<figure class="pickcard"><img src="${esc(m.url ?? "")}" alt="${esc(label)}"><span class="cgal-check on" aria-hidden="true"><svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5l4 4 8-9"></path></svg></span><figcaption class="chip">${esc(label)}</figcaption></figure>`;
+    })
     .join("");
-  const gallery = thumbs
-    ? `<div class="idgrid">${thumbs}</div>`
+  const gallery = cards
+    ? `<div class="pickgrid">${cards}</div>`
     : `<p class="muted">Nothing selected yet — take or upload a photo first, then tap shots in the booth gallery and confirm with the green check.</p>`;
   return `<p class="muted">Your confirmed photos — these live privately in your vault and anchor generated media.</p>${gallery}`;
 }
@@ -1521,6 +1521,12 @@ input[type=file]{flex:1;min-width:0;color:var(--ink-muted);font-size:0.85rem;fon
 .idgrid{display:flex;gap:0.6rem;flex-wrap:wrap;margin:0.4rem 0 0.8rem}
 .idthumb{width:92px;height:92px;object-fit:cover;border-radius:var(--radius-well);border:1px solid var(--ring);display:block}
 .idpick{display:grid;gap:0.4rem;justify-items:center}
+.pickgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:0.75rem;margin:0.4rem 0 0.8rem;perspective:900px}
+.pickcard{position:relative;margin:0;aspect-ratio:5/6;border-radius:var(--radius-well);border:1.5px solid #30d158;overflow:hidden;background:var(--well-bg);box-shadow:var(--shadow);transform-style:preserve-3d;transition:transform 220ms cubic-bezier(.2,.8,.2,1),box-shadow 220ms ease}
+.pickcard img{width:100%;height:100%;object-fit:cover;display:block}
+.pickcard::after{content:"";position:absolute;inset:0;background:linear-gradient(160deg,rgba(255,255,255,0.18),transparent 45%,rgba(0,0,0,0.35));pointer-events:none}
+.pickcard figcaption{position:absolute;left:0.5rem;bottom:0.45rem;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.6)}
+.pickcard:hover{transform:translateY(-4px) rotateX(4deg) rotateY(-4deg);box-shadow:0 14px 34px rgba(0,0,0,0.4)}
 .sheetcard{border:1px solid var(--ring);border-radius:var(--radius-well);background:var(--well-bg);padding:0.7rem 0.85rem;margin:0.6rem 0}
 .sheetpreview{display:block;width:100%;max-height:280px;object-fit:contain;border-radius:var(--radius-well);border:1px solid var(--ring);margin:0.4rem 0 0.6rem;background:var(--well-bg)}
 .booth{display:grid;gap:0.6rem;margin:0.4rem 0 0.8rem}
@@ -1593,7 +1599,7 @@ input[type=file]{flex:1;min-width:0;color:var(--ink-muted);font-size:0.85rem;fon
 .stepper-panel-hidden{display:none}
 .stepper-nav{display:flex;justify-content:space-between;align-items:center;margin-top:0.4rem}
 .stepper-nav .spacer{flex:1}
-@media(prefers-reduced-motion:reduce){.cam-flash{animation:none;opacity:0}.cam-reddot{animation:none}.cgal-card,.stepper-ind,.stepper-line i{transition:none}}
+@media(prefers-reduced-motion:reduce){.cam-flash{animation:none;opacity:0}.cam-reddot{animation:none}.cgal-card,.pickcard,.stepper-ind,.stepper-line i{transition:none}.pickcard:hover{transform:none}}
 `;
 
 /**
