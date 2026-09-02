@@ -335,6 +335,27 @@ describe("home launcher", () => {
     expect(setCookie).not.toContain("mini_home_card=");
   });
 
+  it("renders an existing card session full when a real browser presents it", async () => {
+    const request = new NextRequest("https://mini.example/mini/home", {
+      headers: {
+        "user-agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15",
+      },
+    });
+    request.cookies.set(
+      "mini_home_card",
+      mintToken("user-1", "home", "default", 15, { via: "card" })
+    );
+    const res = await GET(request, params("home"));
+    expect(res.status).toBe(200);
+    // The refreshed cookie is the full one; launcher links stop claiming
+    // the card surface.
+    expect(res.headers.get("set-cookie") ?? "").toContain("mini_home=");
+    const body = await res.text();
+    const token = (body.match(/href="\/mini\/calendar\?t=([^"]+)"/) ?? [])[1] ?? "";
+    expect(verifyToken(decodeURIComponent(token), "calendar")?.via).toBeUndefined();
+  });
+
   it("persists a press-and-hold rearrangement and renders it first", async () => {
     testDb.apps.push(makeApp({ slug: "todo", kind: "render", name: "Todo" }));
     const form = new FormData();
@@ -586,6 +607,41 @@ describe("middleware hardening (MA11)", () => {
     };
     expect(await open()).toContain("mini_kanban=");
     expect(await open("card")).toContain("mini_kanban_card=");
+  });
+
+  it("a card link opened in a real browser mints a full session", async () => {
+    const open = async (userAgent: string): Promise<string> => {
+      const token = mintToken("user-1", "kanban", "default", 15, {
+        via: "card",
+      });
+      const res = await GET(
+        new NextRequest(`https://mini.wzrd.tech/kanban?t=${token}`, {
+          headers: {
+            host: "mini.wzrd.tech",
+            "x-mini-host": "1",
+            "user-agent": userAgent,
+          },
+        }),
+        params("kanban")
+      );
+      expect(res.status).toBe(303);
+      return res.headers.get("set-cookie") ?? "";
+    };
+    // Messages on a Mac hands card links to Safari.
+    const safari = await open(
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15"
+    );
+    expect(safari).toContain("mini_kanban=");
+    expect(safari).not.toContain("mini_kanban_card=");
+    const value = decodeURIComponent(
+      (safari.match(/mini_kanban=([^;]+)/) ?? [])[1] ?? ""
+    );
+    expect(verifyToken(value, "kanban")?.via).toBeUndefined();
+    // The iOS Messages extension is a WKWebView (no Safari product token).
+    const webview = await open(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148"
+    );
+    expect(webview).toContain("mini_kanban_card=");
   });
 });
 

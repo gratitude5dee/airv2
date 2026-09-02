@@ -32,6 +32,7 @@ import {
   type GateTimings,
 } from "@/lib/miniapps/gates";
 import { guestRateLimited, redeemGuestGrant } from "@/lib/miniapps/guests";
+import { resolveVia } from "@/lib/miniapps/surface";
 import { FIRST_PARTY_MODULES, type MiniAppModule } from "@/lib/miniapps/apps";
 import { publishedModule } from "@/lib/miniapps/apps/published";
 import { isStorefrontApp, storefront } from "@/lib/miniapps/apps/storefront";
@@ -380,12 +381,13 @@ async function handleGet(
     const response = withBaseHeaders(
       NextResponse.redirect(new URL(basePath, externalOrigin(request)), 303)
     );
+    const via = resolveVia(claims.via, request.headers.get("user-agent"));
     response.cookies.set(
-      cookieName(slug, claims.via),
+      cookieName(slug, via),
       mintToken(claims.userId, slug, claims.resourceId, 15, {
         role: claims.role ?? "owner",
         grantId: claims.grantId,
-        via: claims.via,
+        via,
       }),
       {
         httpOnly: true,
