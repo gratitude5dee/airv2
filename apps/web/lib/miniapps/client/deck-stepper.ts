@@ -24,10 +24,15 @@ function attachStepper(): void {
   );
   if (panels.length < 2) return;
 
-  const initial = Math.min(
+  const initialStep = Math.min(
     panels.length - 1,
     Math.max(0, Number(deck.getAttribute("data-stepper-active")) || 0)
   );
+  const initialPanel = new URL(window.location.href).searchParams.get("panel");
+  const initialPanelIndex = initialPanel
+    ? panels.findIndex((panel) => panel.dataset["section"] === initialPanel)
+    : -1;
+  const initial = initialPanelIndex >= 0 ? initialPanelIndex : initialStep;
 
   const head = document.createElement("div");
   head.className = "stepper-head";
@@ -68,9 +73,13 @@ function attachStepper(): void {
   nav.append(back, spacer, forward);
 
   let current = initial;
-  const updateUrl = (step: string, replace: boolean): void => {
+  const updateUrl = (panel: HTMLElement, replace: boolean): void => {
+    const step = panel.dataset["step"];
+    const section = panel.dataset["section"];
+    if (!step || !section) return;
     const url = new URL(window.location.href);
     url.searchParams.set("step", step);
+    url.searchParams.set("panel", section);
     const target = `${url.pathname}${url.search}${url.hash}`;
     if (replace) history.replaceState(null, "", target);
     else history.pushState(null, "", target);
@@ -109,9 +118,9 @@ function attachStepper(): void {
       forward.textContent = "Continue";
       forward.style.visibility = "visible";
     }
-    const step = panels[current]?.dataset["step"];
-    if (step && historyMode !== "none") {
-      updateUrl(step, historyMode === "replace");
+    const panel = panels[current];
+    if (panel && historyMode !== "none") {
+      updateUrl(panel, historyMode === "replace");
     }
   };
   back.addEventListener("click", () => show(current - 1));
@@ -126,10 +135,18 @@ function attachStepper(): void {
     show(current + 1);
   });
   window.addEventListener("popstate", () => {
-    const step = new URL(window.location.href).searchParams.get("step");
-    const index = step
-      ? panels.findIndex((panel) => panel.dataset["step"] === step)
+    const url = new URL(window.location.href);
+    const panel = url.searchParams.get("panel");
+    const step = url.searchParams.get("step");
+    const panelIndex = panel
+      ? panels.findIndex((item) => item.dataset["section"] === panel)
       : -1;
+    const index =
+      panelIndex >= 0
+        ? panelIndex
+        : step
+          ? panels.findIndex((item) => item.dataset["step"] === step)
+          : -1;
     if (index >= 0) show(index, "none");
   });
   document.addEventListener("deck:navigate", (event) => {

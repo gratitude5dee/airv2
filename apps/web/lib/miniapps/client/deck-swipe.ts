@@ -77,14 +77,14 @@ function attachSwipe(): void {
         performance.now() - from.at >= 800
       )
         return;
-      const href = dx < 0 ? next : prev;
-      if (!href) return;
       const dir = dx < 0 ? 1 : -1;
       const navigation = new CustomEvent("deck:navigate", {
         detail: { dir },
         cancelable: true,
       });
-      if (document.dispatchEvent(navigation)) {
+      const dispatched = document.dispatchEvent(navigation);
+      const href = dx < 0 ? next : prev;
+      if (dispatched && href) {
         window.location.assign(href);
       }
     },

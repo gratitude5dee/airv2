@@ -223,6 +223,12 @@ describe("onboarding environment step", () => {
     expect(stepper).toContain('data-step="selfies"');
     expect(stepper).toContain('data-step="twin"');
     expect(stepper).toContain('data-step="avatar"');
+    expect(stepper).toContain('data-section="booth_photo"');
+    expect(stepper).toContain('data-section="photo_select"');
+    expect(stepper).toContain('data-section="sheet"');
+    expect(stepper).toContain('data-section="booth_video"');
+    expect(stepper).toContain('data-section="twin_create"');
+    expect(stepper).toContain('data-section="avatar"');
   });
 
   it("renders the three environment choices with no provider names leaking", async () => {

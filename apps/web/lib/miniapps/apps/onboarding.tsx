@@ -1750,7 +1750,8 @@ export function renderOnboarding(
     const done = sectionDone(snapshot, section.key) ? " data-step-done" : "";
     const step = SECTION_STEPS[section.key][0] ?? "";
     const stepAttr = step ? ` data-step="${esc(step)}"` : "";
-    return `<section class="panel"${done}${stepAttr}>${heading}${sectionBody(snapshot, section.key, browserSignin, lite)}</section>`;
+    const sectionAttr = ` data-section="${esc(section.key)}"`;
+    return `<section class="panel"${done}${stepAttr}${sectionAttr}>${heading}${sectionBody(snapshot, section.key, browserSignin, lite)}</section>`;
   };
   // Sections that declare a pane render inside a scroll-snap pager — the
   // Photo Booth's photo/video two-part flow — with a segmented control on
