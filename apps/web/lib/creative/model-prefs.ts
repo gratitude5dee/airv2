@@ -110,9 +110,9 @@ export const LANE_MODELS: Record<CreativeLane, readonly CreativeLaneModel[]> = {
   zap: [
     {
       slug: "minimax/h3-max",
-      label: "H3 Max (MiniMax, fal)",
+      label: "H3 Max Turbo (MiniMax, fal)",
       guide:
-        'Direct one-shot film direction, 5–10s; direct the sound as deliberately as the picture. Give each reference an explicit job: first image is the opening frame, a second image is the closing frame, others are context. Write shot, subject action, one camera move with lens and film language ("handheld 35mm push-in, fine grain"), lighting, style, then audio as a plain instruction ("audio: rain on metal, one low synth pulse, no dialogue"). Use a timed beat list ("0-2s …, 2-5s …") when the shot has distinct beats and time audio to the beats. Renders legible text: quote exact on-screen copy and say how the type animates. Long concrete briefs are fine; avoid negatives and tag soup.',
+        'Direct one-shot film direction, 5–10s; direct the sound as deliberately as the picture. Give each reference an explicit job: first image is the opening frame, a second image is the closing frame, others are context. Write shot, subject action, one camera move with lens and film language ("handheld 35mm push-in, fine grain"), lighting, style, then audio as a plain instruction ("audio: rain on metal, one low synth pulse, no dialogue"). Name the framing in words — "horizontal" for 16:9, "vertical" for 9:16. Use a timed beat list ("0-2s …, 2-5s …") when the shot has distinct beats and time audio to the beats. Renders legible text: quote exact on-screen copy and say how the type animates. Long concrete briefs are fine; avoid negatives and tag soup.',
     },
   ],
 };

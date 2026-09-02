@@ -356,7 +356,7 @@ export function buildGenerationRequest(
     };
   }
 
-  // /zap renders on fal (MiniMax H3 Max), not the GMI queue: executeCreativeJob
+  // /zap renders on fal (MiniMax H3 Max Turbo), not the GMI queue: executeCreativeJob
   // dispatches that lane to fal.ts buildFalZapRequest before reaching here.
   throw new Error(`Cannot generate media for router mode "${plan.mode}"`);
 }

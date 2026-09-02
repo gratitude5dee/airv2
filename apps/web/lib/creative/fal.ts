@@ -1,5 +1,5 @@
 /**
- * fal.ai client for the /zap lane: MiniMax H3 Max on fal's request queue.
+ * fal.ai client for the /zap lane: MiniMax H3 Max Turbo on fal's request queue.
  * Control-plane only — FAL_KEY lives in Vercel env, never in a box or a
  * browser (C2).
  *
@@ -11,7 +11,7 @@
  * never resubmitted, and a known request ID is never downgraded to a
  * retryable failure.
  *
- * H3 Max exposes two sibling endpoints and no reference-image parameter:
+ * H3 Max Turbo exposes two sibling endpoints and no reference-image parameter:
  * text-to-video takes `aspect_ratio`, image-to-video derives the ratio from
  * `image_url` (first frame) and optionally interpolates to `end_image_url`
  * (last frame). Attached *video* is not an input this model accepts, so a
@@ -31,10 +31,10 @@ import { CreativeUnconfiguredError } from "./groq";
 import { assertSafeGeneratedMediaUrl, generatedMediaHosts } from "./media-url";
 import type { RouterPlan } from "./schema";
 
-export const FAL_ZAP_TEXT_TO_VIDEO = "minimax/h3-max/text-to-video";
-export const FAL_ZAP_IMAGE_TO_VIDEO = "minimax/h3-max/image-to-video";
+export const FAL_ZAP_TEXT_TO_VIDEO = "minimax/h3-max-turbo/text-to-video";
+export const FAL_ZAP_IMAGE_TO_VIDEO = "minimax/h3-max-turbo/image-to-video";
 
-/** H3 Max accepts 5–15s; /zap stays at the short end for delivery latency. */
+/** H3 Max Turbo accepts 5–15s; /zap stays at the short end for delivery latency. */
 const MIN_DURATION_SECONDS = 5;
 const MAX_DURATION_SECONDS = 10;
 const POLL_INTERVAL_MS = 1_000;
@@ -130,7 +130,8 @@ export function buildFalZapRequest(
       MAX_DURATION_SECONDS,
     ),
     resolution: "768P",
-    prompt_expansion_mode: "balanced",
+    prompt_expansion_mode: "quality",
+    enable_safety_checker: true,
   };
 
   const firstFrame = images[0];
