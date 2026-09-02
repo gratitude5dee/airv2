@@ -232,7 +232,7 @@ describe("buildFalZapRequest", () => {
         prompt: "a fox in the fog",
         duration: 10,
         resolution: "768P",
-        prompt_expansion_mode: "quality",
+        prompt_expansion_mode: "balanced",
         enable_safety_checker: true,
         aspect_ratio: "9:16",
       },
