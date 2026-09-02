@@ -130,7 +130,9 @@ export function buildFalZapRequest(
       MAX_DURATION_SECONDS,
     ),
     resolution: "768P",
-    prompt_expansion_mode: "quality",
+    // fal rewrites the prompt server-side: "balanced" returns in ~1s,
+    // "quality" spends up to ~30s. The user's words are the whole prompt.
+    prompt_expansion_mode: "balanced",
     enable_safety_checker: true,
   };
 

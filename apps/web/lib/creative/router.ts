@@ -6,20 +6,22 @@
  * mode (enforceExplicitCommandIntent re-locks after the call). Router
  * failure becomes a clarification plan, never a user-visible provider error.
  *
- * /zap compiles on luna-fast (the fast speed tier's model); every other lane
- * compiles on the Groq router model. The strict-plan contract is the same on
- * both paths.
+ * /zap does not compile at all: H3 Max Turbo expands the prompt on fal's
+ * side (`prompt_expansion_mode`) and screens it (`enable_safety_checker`),
+ * so `directZapPlan` hands the user's own words straight to the renderer and
+ * only reads aspect ratio and duration out of the text. Every other lane
+ * compiles on the Groq router model.
  */
 import type { MediaInput } from "./gmi";
 import { CreativeUnconfiguredError, groqChat } from "./groq";
 import { chatLine, deliveryLine } from "./limits";
-import { lunaChat, lunaModel } from "./luna";
 import { GENERATION_SYSTEMS, PROMPT_VERSIONS } from "./prompts";
 import type { CreativeMode } from "./parse";
 import {
   isGenerationPlan,
   parseRouterPlan,
   ROUTER_RESPONSE_FORMAT,
+  type AspectRatio,
   type RouterPlan,
 } from "./schema";
 
@@ -32,11 +34,9 @@ export interface PromptCompiler {
   model: string;
 }
 
-/** Which model compiles expanded_prompt for a lane, and over which client. */
-export function compilerForMode(mode: CreativeMode): PromptCompiler {
-  return mode === "zap"
-    ? { chat: lunaChat, model: lunaModel() }
-    : { chat: groqChat, model: ROUTER_MODEL };
+/** The model that compiles expanded_prompt for routed lanes, and its client. */
+export function compilerForMode(): PromptCompiler {
+  return { chat: groqChat, model: ROUTER_MODEL };
 }
 
 export interface CreativeCommandTurn {
@@ -128,6 +128,53 @@ export function enforceExplicitCommandIntent(
   };
 }
 
+const ASPECT_RATIO_CUES: ReadonlyArray<[RegExp, AspectRatio]> = [
+  [/\b9\s*[:x]\s*16\b|\bvertical\b|\bportrait\b|\btiktok\b|\breels?\b|\bshorts?\b|\bstory\b|\bstories\b/i, "9:16"],
+  [/\b21\s*[:x]\s*9\b|\banamorphic\b|\bultra-?wide\b/i, "21:9"],
+  [/\b3\s*[:x]\s*4\b/i, "3:4"],
+  [/\b4\s*[:x]\s*3\b/i, "4:3"],
+  [/\b1\s*[:x]\s*1\b|\bsquare\b/i, "1:1"],
+  [/\b16\s*[:x]\s*9\b|\bhorizontal\b|\blandscape\b|\bwidescreen\b/i, "16:9"],
+];
+
+/** Aspect ratio named in the user's words; "auto" when none is. */
+export const aspectRatioFromText = (text: string): AspectRatio =>
+  ASPECT_RATIO_CUES.find(([cue]) => cue.test(text))?.[1] ?? "auto";
+
+const DURATION_CUE = /\b(\d{1,2})\s*(?:s|sec|secs|second|seconds)\b/i;
+
+/** Duration in seconds named in the user's words; null when none is. */
+export const durationFromText = (text: string): number | null => {
+  const match = DURATION_CUE.exec(text);
+  return match ? Number(match[1]) : null;
+};
+
+/**
+ * The /zap plan without a compile call. The renderer expands and screens
+ * the prompt itself, so the user's text is the prompt; the only parameters
+ * the plan contributes are those the model reads structurally (aspect ratio
+ * for text-to-video, duration) and the attachment roles fal already fixes
+ * (first image = opening frame).
+ */
+export function directZapPlan(turn: CreativeCommandTurn): RouterPlan {
+  const hasImage = turn.mediaInputs.some((media) => media.kind === "image");
+  const words = turn.cleanedText.trim();
+  return {
+    mode: "zap",
+    needs_input: false,
+    ...deterministicGenerationLines("zap", turn.mediaInputs),
+    expanded_prompt:
+      words || fallbackPromptForCommand({ ...turn, cleanedText: words }, null),
+    params: {
+      aspect_ratio: aspectRatioFromText(words),
+      duration: durationFromText(words),
+      generate_audio: true,
+      quality: "auto",
+      use_input_image_as: hasImage ? "first_frame" : "none",
+    },
+  };
+}
+
 export class CreativeRouterUnavailableError extends Error {
   constructor() {
     super("creative router unavailable");
@@ -156,7 +203,7 @@ export async function routeExplicitCommand(
    * Appended to the system prompt only — never changes the locked mode. */
   modelGuide?: string | null
 ): Promise<RouterPlan> {
-  const compiler = compilerForMode(turn.mode);
+  const compiler = compilerForMode();
   const context = {
     prompt_version: PROMPT_VERSIONS[turn.mode],
     locked_mode: turn.mode,

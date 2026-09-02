@@ -26,7 +26,13 @@ import {
   assertSafeGeneratedMediaUrl,
   fetchSafeGeneratedMedia,
 } from "./media-url";
-import { compilerForMode, routeExplicitCommand, ROUTER_MODEL } from "./router";
+import {
+  aspectRatioFromText,
+  compilerForMode,
+  directZapPlan,
+  durationFromText,
+  ROUTER_MODEL,
+} from "./router";
 import { maybeRunCreativeLane } from "./imessage";
 import { underDailyLimit } from "./jobs";
 import { creativePreflight, REQUIRED_GMI_MODELS } from "./preflight";
@@ -226,7 +232,7 @@ describe("buildFalZapRequest", () => {
         prompt: "a fox in the fog",
         duration: 10,
         resolution: "768P",
-        prompt_expansion_mode: "quality",
+        prompt_expansion_mode: "balanced",
         enable_safety_checker: true,
         aspect_ratio: "9:16",
       },
@@ -265,48 +271,80 @@ describe("buildFalZapRequest", () => {
 });
 
 describe("prompt compiler routing", () => {
-  it("compiles /zap on luna-fast and other lanes on the Groq router", async () => {
-    vi.stubEnv("MODEL_PROVIDER_API_KEY", "sk-test");
-    vi.stubEnv("MODEL_PROVIDER_BASE_URL", "https://provider.test/v1");
-    expect(compilerForMode("zap").model).toBe("gpt-5.6-luna");
-    expect(compilerForMode("imagine").model).toBe(ROUTER_MODEL);
-    expect(compilerForMode("animate").model).toBe(ROUTER_MODEL);
+  it("compiles routed lanes on the Groq router", () => {
+    expect(compilerForMode().model).toBe(ROUTER_MODEL);
+  });
+});
 
-    const seen: string[] = [];
-    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
-      seen.push(String(init.body));
-      return new Response(
-        JSON.stringify({
-          choices: [
-            { message: { content: JSON.stringify(plan({ mode: "zap" })) } },
-          ],
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      );
-    });
+describe("directZapPlan", () => {
+  const zapTurn = (
+    cleanedText: string,
+    mediaInputs: CreativeTurn["mediaInputs"] = [],
+  ) => ({
+    mode: "zap" as const,
+    cleanedText,
+    text: `/zap ${cleanedText}`,
+    mediaInputs,
+  });
+
+  it("ships the user's words as the prompt without a model call", () => {
+    const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-
-    const result = await routeExplicitCommand(
-      {
-        mode: "zap",
-        cleanedText: "a fox",
-        text: "/zap a fox",
-        mediaInputs: [],
+    const result = directZapPlan(
+      zapTurn("spiderverse style animation of the Ferry Building"),
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      mode: "zap",
+      needs_input: false,
+      chat_reply: "creating your video",
+      delivery_line: "here is your video",
+      expanded_prompt: "spiderverse style animation of the Ferry Building",
+      params: {
+        aspect_ratio: "auto",
+        duration: null,
+        generate_audio: true,
+        quality: "auto",
+        use_input_image_as: "none",
       },
-      null,
+    });
+  });
+
+  it("reads orientation and duration out of the text", () => {
+    const result = directZapPlan(
+      zapTurn("vertical clip of rain on neon glass, 8 seconds"),
     );
-    expect(result.mode).toBe("zap");
-    expect(fetchMock).toHaveBeenCalledWith(
-      "https://provider.test/v1/chat/completions",
-      expect.anything(),
+    expect(result.params.aspect_ratio).toBe("9:16");
+    expect(result.params.duration).toBe(8);
+    expect(result.expanded_prompt).toBe(
+      "vertical clip of rain on neon glass, 8 seconds",
     );
-    const body = JSON.parse(seen[0] ?? "{}") as Record<string, unknown>;
-    // gpt-5.6 parameter contract: no max_tokens, no sampling knobs.
-    expect(body["model"]).toBe("gpt-5.6-luna");
-    expect(body["service_tier"]).toBe("fast");
-    expect(body["max_completion_tokens"]).toBe(750);
-    expect(body["max_tokens"]).toBeUndefined();
-    expect(body["temperature"]).toBeUndefined();
+
+    expect(aspectRatioFromText("make it 16:9")).toBe("16:9");
+    expect(aspectRatioFromText("square loop")).toBe("1:1");
+    expect(aspectRatioFromText("for reels")).toBe("9:16");
+    expect(aspectRatioFromText("a fox")).toBe("auto");
+    expect(durationFromText("10s push-in")).toBe(10);
+    expect(durationFromText("a fox")).toBeNull();
+  });
+
+  it("uses the attached image as the first frame and the zap ack lines", () => {
+    const result = directZapPlan(
+      zapTurn("make it Ghibli", [
+        { kind: "image", url: "https://signed.example/frame.jpg" },
+      ]),
+    );
+    expect(result.chat_reply).toBe("zapping your image");
+    expect(result.params.use_input_image_as).toBe("first_frame");
+    expect(buildFalZapRequest(result, { text: "", mediaInputs: [
+      { kind: "image", url: "https://signed.example/frame.jpg" },
+    ] }).model).toBe("minimax/h3-max-turbo/image-to-video");
+  });
+
+  it("falls back to a generic brief when the command has no words", () => {
+    expect(directZapPlan(zapTurn("   ")).expanded_prompt).toBe(
+      "Create a short kinetic video from the user's creative idea, with one clear motion and a strong visual hook.",
+    );
   });
 });
 
