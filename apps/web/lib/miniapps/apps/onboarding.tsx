@@ -357,6 +357,7 @@ const SAMPLE_PROMPTS: Array<{
 /** Onboarding offers the golden-path action toolkits; the Connect app has all. */
 const ONBOARDING_TOOLKITS: Array<[string, string]> = [
   ["gmail", "Gmail"],
+  ["outlook", "Outlook"],
   ["googlecalendar", "Google Calendar"],
   ["notion", "Notion"],
   ["slack", "Slack"],
