@@ -220,6 +220,9 @@ describe("onboarding environment step", () => {
     const stepper = await (
       await onboarding.render(makeCtx("https://mini.example/mini/setup?step=selfies"))
     ).text();
+    const dots = stepper.match(/<nav class="dots"[^>]*>.*?<\/nav>/)?.[0] ?? "";
+    expect(dots.match(/<(?:a|span) /g) ?? []).toHaveLength(6);
+    expect(dots).not.toContain("welcome");
     expect(stepper).toContain('data-step="selfies"');
     expect(stepper).toContain('data-step="twin"');
     expect(stepper).toContain('data-step="avatar"');
