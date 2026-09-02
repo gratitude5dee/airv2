@@ -9,7 +9,7 @@ export const PROMPT_VERSIONS = {
   chat: "chat.route.v2",
   imagine: "generation.imagine.v2",
   vision: "vision.describe.v2",
-  zap: "generation.zap.v5",
+  zap: "generation.zap.v6",
 } as const;
 
 const SAFETY = `## Safety
@@ -57,6 +57,11 @@ motion → light behavior → ambient sound. Use one continuous motion unless th
 user requests multiple shots. With an input image, describe only what changes
 from the first frame because the frame already defines the look.`;
 
+/**
+ * Compile-side guidance for /zap. The live lane ships the user's words to fal
+ * uncompiled (router.directZapPlan) and lets H3 Max Turbo's prompt expansion
+ * do this work; kept for the generic router path and the Settings guide.
+ */
 export const ZAP_GENERATION_SYSTEM = `Prompt version: ${PROMPT_VERSIONS.zap}
 
 ${GENERATION_BASE}

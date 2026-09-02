@@ -4,9 +4,12 @@
  * → asset pipeline, recording lifecycle transitions in creative_jobs
  * (metadata only — no prompts, no media, no provider URLs).
  *
- * /zap renders on fal (MiniMax H3 Max Turbo); every other lane renders on the GMI
- * queue. Both paths return the same GeneratedMedia, so download, ingestion,
- * and native-video delivery are identical.
+ * /zap renders on fal (MiniMax H3 Max Turbo) straight from the user's words —
+ * no vision pass, no compile call — because the model expands and screens the
+ * prompt itself. Every other lane runs the vision pre-pass and the Groq
+ * router, then renders on the GMI queue. Both paths return the same
+ * GeneratedMedia, so download, ingestion, and native-video delivery are
+ * identical.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CreativeAsset } from "../assets/pipeline";
@@ -32,9 +35,11 @@ import { getProviderKey } from "../providers/keys";
 import { PROMPT_VERSIONS } from "./prompts";
 import {
   CreativeRouterUnavailableError,
+  directZapPlan,
   routeExplicitCommand,
   type CreativeCommandTurn,
 } from "./router";
+import type { RouterPlan } from "./schema";
 import { ingestGeneratedMedia, mintJobDelivery } from "./store";
 import { describeImage } from "./vision";
 
@@ -89,46 +94,61 @@ export async function executeCreativeJob(
     return await fail("failed", FAILED_LINE);
   }
 
-  // Non-fatal vision pre-pass over attached images.
-  let imageDescription: string | null = null;
-  const imageUrls = turn.mediaInputs
-    .filter((media) => media.kind === "image")
-    .map((media) => media.url);
-  if (imageUrls.length > 0) {
-    imageDescription = await describeImage(imageUrls).catch(() => null);
-  }
+  // A personal GMI key is meaningless on the fal lane, so /zap always renders
+  // on the platform key and always books a platform cost event.
+  const onFal = turn.mode === "zap";
 
-  // The user's lane model choices (Settings) and, when saved, their
-  // personal GMI key. Both degrade to platform defaults on any failure.
-  const prefs = await loadCreativePrefs(supabase, userId).catch(() => undefined);
-  const personalGmiKey = await getProviderKey(supabase, userId, "gmi").catch(
-    () => null
-  );
-  // Metaprompt: the guide for the model this turn will render on. /imagine
-  // with an attached image runs the edit lane's model.
-  const laneModel = prefs
-    ? turn.mode === "imagine"
-      ? turn.mediaInputs.some((media) => media.kind === "image")
-        ? prefs.edit
-        : prefs.imagine
-      : prefs[turn.mode]
-    : null;
-  const modelGuide = laneModel ? guideForModel(laneModel) : null;
-
-  let plan;
-  try {
-    plan = await routeExplicitCommand(turn, imageDescription, undefined, modelGuide);
-  } catch (error) {
-    if (error instanceof CreativeUnconfiguredError) {
-      return await fail("failed", UNCONFIGURED_LINE);
+  let plan: RouterPlan;
+  let prefs: Awaited<ReturnType<typeof loadCreativePrefs>> | undefined;
+  let personalGmiKey: string | null = null;
+  if (onFal) {
+    plan = directZapPlan(turn);
+  } else {
+    // Non-fatal vision pre-pass over attached images.
+    let imageDescription: string | null = null;
+    const imageUrls = turn.mediaInputs
+      .filter((media) => media.kind === "image")
+      .map((media) => media.url);
+    if (imageUrls.length > 0) {
+      imageDescription = await describeImage(imageUrls).catch(() => null);
     }
-    if (error instanceof CreativeRouterUnavailableError) {
+
+    // The user's lane model choices (Settings) and, when saved, their
+    // personal GMI key. Both degrade to platform defaults on any failure.
+    prefs = await loadCreativePrefs(supabase, userId).catch(() => undefined);
+    personalGmiKey = await getProviderKey(supabase, userId, "gmi").catch(
+      () => null
+    );
+    // Metaprompt: the guide for the model this turn will render on. /imagine
+    // with an attached image runs the edit lane's model.
+    const laneModel = prefs
+      ? turn.mode === "imagine"
+        ? turn.mediaInputs.some((media) => media.kind === "image")
+          ? prefs.edit
+          : prefs.imagine
+        : prefs[turn.mode]
+      : null;
+    const modelGuide = laneModel ? guideForModel(laneModel) : null;
+
+    try {
+      plan = await routeExplicitCommand(
+        turn,
+        imageDescription,
+        undefined,
+        modelGuide
+      );
+    } catch (error) {
+      if (error instanceof CreativeUnconfiguredError) {
+        return await fail("failed", UNCONFIGURED_LINE);
+      }
+      if (error instanceof CreativeRouterUnavailableError) {
+        return await fail("failed", ROUTER_DOWN_LINE);
+      }
       return await fail("failed", ROUTER_DOWN_LINE);
     }
-    return await fail("failed", ROUTER_DOWN_LINE);
-  }
-  if (plan.mode === "refuse") {
-    return await fail("refused", REFUSAL_LINE);
+    if (plan.mode === "refuse") {
+      return await fail("refused", REFUSAL_LINE);
+    }
   }
 
   const creativeTurn: CreativeTurn = {
@@ -153,9 +173,6 @@ export async function executeCreativeJob(
     onLifecycle,
     ...(personalGmiKey ? { apiKey: personalGmiKey } : {}),
   };
-  // A personal GMI key is meaningless on the fal lane, so /zap always renders
-  // on the platform key and always books a platform cost event.
-  const onFal = plan.mode === "zap";
   let media: GeneratedMedia;
   try {
     media = onFal
