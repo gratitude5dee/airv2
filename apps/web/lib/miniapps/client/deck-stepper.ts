@@ -68,7 +68,20 @@ function attachStepper(): void {
   nav.append(back, spacer, forward);
 
   let current = initial;
-  const show = (index: number): void => {
+  const updateUrl = (step: string, replace: boolean): void => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("step", step);
+    if (url.searchParams.get("theme") === "atmosphere") {
+      url.searchParams.delete("theme");
+    }
+    const target = `${url.pathname}${url.search}${url.hash}`;
+    if (replace) history.replaceState(null, "", target);
+    else history.pushState(null, "", target);
+  };
+  const show = (
+    index: number,
+    historyMode: "push" | "replace" | "none" = "push"
+  ): void => {
     current = Math.min(panels.length - 1, Math.max(0, index));
     panels.forEach((panel, i) =>
       panel.classList.toggle("stepper-panel-hidden", i !== current)
@@ -99,6 +112,10 @@ function attachStepper(): void {
       forward.textContent = "Continue";
       forward.style.visibility = "visible";
     }
+    const step = panels[current]?.dataset["step"];
+    if (step && historyMode !== "none") {
+      updateUrl(step, historyMode === "replace");
+    }
   };
   back.addEventListener("click", () => show(current - 1));
   forward.addEventListener("click", () => {
@@ -111,13 +128,30 @@ function attachStepper(): void {
     }
     show(current + 1);
   });
+  window.addEventListener("popstate", () => {
+    const step = new URL(window.location.href).searchParams.get("step");
+    const index = step
+      ? panels.findIndex((panel) => panel.dataset["step"] === step)
+      : -1;
+    if (index >= 0) show(index, "none");
+  });
+  document.addEventListener("deck:navigate", (event) => {
+    const dir = (event as CustomEvent<{ dir?: number }>).detail?.dir;
+    if (dir === 1 && current < panels.length - 1) {
+      event.preventDefault();
+      show(current + 1);
+    } else if (dir === -1 && current > 0) {
+      event.preventDefault();
+      show(current - 1);
+    }
+  });
 
   const first = panels[0];
   const last = panels[panels.length - 1];
   if (!first || !last) return;
   deck.insertBefore(head, first);
   last.insertAdjacentElement("afterend", nav);
-  show(initial);
+  show(initial, "replace");
 }
 
 attachStepper();
