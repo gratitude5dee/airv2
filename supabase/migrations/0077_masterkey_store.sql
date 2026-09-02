@@ -34,7 +34,7 @@ create table masterkey_runs (
   input         jsonb,
   source        text not null check (source in ('mcp','store')),
   status        text not null default 'pending'
-                check (status in ('pending','approved','succeeded','failed','denied')),
+                check (status in ('pending','approved','succeeded','failed','denied','unknown')),
   estimate_usd  numeric(12,6),
   cost_usd      numeric(12,6),
   result_text   text,

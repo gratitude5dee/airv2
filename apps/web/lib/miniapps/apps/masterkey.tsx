@@ -78,7 +78,9 @@ function runCard(run: MasterkeyRun): string {
       ? '<div class="muted">Waiting for your approval in Needs you.</div>'
       : run.status === "failed" && run.error_code
         ? `<div class="muted">Failed: ${esc(run.error_code)}</div>`
-        : "";
+        : run.status === "unknown"
+          ? '<div class="muted">Outcome unknown — the run was submitted but the reply was lost. It may have completed and been charged.</div>'
+          : "";
   return `<div class="card${run.status === "pending" ? " pending" : ""}"><div class="row"><strong>${esc(run.service_name ?? run.service_id)}</strong> <span class="when">${esc(run.status)}${cost ? ` · ${esc(cost)}` : ""}</span></div>${hint}${result}</div>`;
 }
 

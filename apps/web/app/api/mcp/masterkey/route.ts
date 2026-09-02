@@ -61,28 +61,29 @@ interface RunServiceCall {
   operation: string | null;
 }
 
-/** The run_service call in a POST body, if that's what it is. */
-function findRunServiceCall(body: string): RunServiceCall | null {
+/** Every run_service call in a POST body — each one must pass the spend gate. */
+function findRunServiceCalls(body: string): RunServiceCall[] {
   let parsed: unknown;
   try {
     parsed = JSON.parse(body);
   } catch {
-    return null;
+    return [];
   }
   const messages = (Array.isArray(parsed) ? parsed : [parsed]) as JsonRpcRequest[];
+  const calls: RunServiceCall[] = [];
   for (const message of messages) {
     if (message?.method !== "tools/call") continue;
     if (message.params?.name !== "run_service") continue;
     const args = message.params.arguments ?? {};
     const serviceId = args["serviceId"];
     const operation = args["operation"];
-    return {
+    calls.push({
       id: message.id ?? null,
       serviceId: typeof serviceId === "string" ? serviceId : "",
       operation: typeof operation === "string" ? operation : null,
-    };
+    });
   }
-  return null;
+  return calls;
 }
 
 function jsonRpcError(id: number | string | null, code: number, message: string, status: number): Response {
@@ -128,7 +129,13 @@ async function proxy(request: NextRequest): Promise<Response> {
 
   const hasBody = request.method !== "GET" && request.method !== "HEAD";
   const body = hasBody ? await request.text() : undefined;
-  const run = body ? findRunServiceCall(body) : null;
+  const runs = body ? findRunServiceCalls(body) : [];
+  // One paid call per request: a batch with several run_service messages could
+  // only be gated/metered as a unit, so it is rejected outright.
+  if (runs.length > 1) {
+    return jsonRpcError(runs[0]?.id ?? null, -32000, "one run_service call per request", 400);
+  }
+  const run = runs[0] ?? null;
 
   if (run) {
     if (!run.serviceId) {

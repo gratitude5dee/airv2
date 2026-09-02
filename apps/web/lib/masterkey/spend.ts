@@ -61,9 +61,16 @@ export interface RunReceipt {
   operation?: string | null;
   source: MasterkeySource;
   ok: boolean;
+  /** The reply was lost after submission — the run may have completed and charged. */
+  unknown?: boolean;
   costUsd: number | null;
   latencyMs: number;
   errorCode?: string | null;
+}
+
+function receiptStatus(receipt: RunReceipt): "succeeded" | "failed" | "unknown" {
+  if (receipt.ok) return "succeeded";
+  return receipt.unknown ? "unknown" : "failed";
 }
 
 /** Persist the receipt + the metadata-only agent_runs row and meter spend. */
@@ -91,7 +98,7 @@ export async function recordMasterkeyRun(
     await supabase
       .from("masterkey_runs")
       .update({
-        status: receipt.ok ? "succeeded" : "failed",
+        status: receiptStatus(receipt),
         cost_usd: receipt.costUsd,
         error_code: receipt.errorCode ?? null,
         latency_ms: receipt.latencyMs,
@@ -105,7 +112,7 @@ export async function recordMasterkeyRun(
       service_id: receipt.serviceId,
       operation: receipt.operation ?? null,
       source: receipt.source,
-      status: receipt.ok ? "succeeded" : "failed",
+      status: receiptStatus(receipt),
       cost_usd: receipt.costUsd,
       error_code: receipt.errorCode ?? null,
       latency_ms: receipt.latencyMs,

@@ -20,7 +20,8 @@ export type MasterkeyRunStatus =
   | "approved"
   | "succeeded"
   | "failed"
-  | "denied";
+  | "denied"
+  | "unknown";
 
 export interface MasterkeyRun {
   id: string;
@@ -174,6 +175,7 @@ export async function executeMasterkeyRun(
 
   const startedAt = Date.now();
   let ok = false;
+  let unknown = false;
   let costUsd: number | null = null;
   let errorCode: string | null = null;
   let text = "";
@@ -192,8 +194,19 @@ export async function executeMasterkeyRun(
       errorCode = typeof code === "string" ? code : "tool_error";
     }
   } catch (error) {
-    errorCode = error instanceof MasterkeyError ? "upstream" : "internal";
-    text = error instanceof Error ? error.message.slice(0, 500) : "run failed";
+    if (error instanceof MasterkeyError) {
+      // MasterKey answered with an error envelope — the run did not complete.
+      errorCode = "upstream";
+      text = error.message.slice(0, 500);
+    } else {
+      // The request may have reached MasterKey and been charged before the
+      // connection died — the outcome is unknown, not a failure. The
+      // idempotency key above means a retry cannot double-charge.
+      unknown = true;
+      errorCode = "submit_unknown";
+      text =
+        "The run was submitted but the reply was lost — it may have completed and been charged. Check the service wallet before retrying.";
+    }
   }
   await supabase
     .from("masterkey_runs")
@@ -205,6 +218,7 @@ export async function executeMasterkeyRun(
     operation: run.operation,
     source: "store",
     ok,
+    unknown,
     costUsd,
     latencyMs: Date.now() - startedAt,
     errorCode,
