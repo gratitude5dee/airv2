@@ -93,7 +93,7 @@ function attachIntro(): void {
       blastHost,
       mark.currentSrc || mark.src,
       rect.height,
-      (rect.top + rect.height / 2) / window.innerHeight
+      1 - (rect.top + rect.height / 2) / window.innerHeight
     ).then((made) => {
       blastPending = false;
       // The charge can end (or be abandoned) while the shader compiles.
