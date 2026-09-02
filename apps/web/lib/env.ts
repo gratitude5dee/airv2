@@ -104,10 +104,28 @@ export const env = {
   spectrumProjectId: (): string => required("SPECTRUM_PROJECT_ID"),
   spectrumProjectSecret: (): string => required("SPECTRUM_PROJECT_SECRET"),
   spectrumWebhookSecret: (): string => required("SPECTRUM_WEBHOOK_SECRET"),
+  // Mail provider cutover flag: AgentMail stays the default until the
+  // wzrdmail staging validation passes (see lib/mail/provider.ts).
+  mailProvider: (): "agentmail" | "wzrdmail" => {
+    const value = optional("MAIL_PROVIDER", "agentmail");
+    if (value !== "agentmail" && value !== "wzrdmail") {
+      throw new Error(`MAIL_PROVIDER must be "agentmail" or "wzrdmail", got "${value}"`);
+    }
+    return value;
+  },
   agentmailApiKey: (): string => required("AGENTMAIL_API_KEY"),
   agentmailWebhookSecret: (): string => required("AGENTMAIL_WEBHOOK_SECRET"),
+  wzrdmailApiKey: (): string => required("WZRDMAIL_API_KEY"),
+  wzrdmailBaseUrl: (): string =>
+    optional("WZRDMAIL_BASE_URL", "https://api.wzrd.tech").replace(/\/+$/, ""),
+  wzrdmailWebhookSecret: (): string => required("WZRDMAIL_WEBHOOK_SECRET"),
+  wzrdmailMcpUrl: (): string =>
+    optional("WZRDMAIL_MCP_URL", "https://mcp.mail.wzrd.tech/mcp"),
   agentEmailDomain: (): string =>
-    optional("AGENT_EMAIL_DOMAIN", "agentmail.to"),
+    optional(
+      "AGENT_EMAIL_DOMAIN",
+      optional("MAIL_PROVIDER", "agentmail") === "wzrdmail" ? "wzrd.tech" : "agentmail.to",
+    ),
   composioApiKey: (): string => required("COMPOSIO_API_KEY"),
   // MasterKey (x402 service catalog + MCP). The partner secret is the
   // server-to-server credential the /api/mcp/masterkey proxy uses to mint

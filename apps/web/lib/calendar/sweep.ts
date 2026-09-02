@@ -10,7 +10,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { command, readFile } from "../box/client";
-import { createDraft, sendDraft } from "../agentmail/client";
+import { createDraft, sendDraft } from "../mail/client";
 import { createRun, MAIN_SESSION, runEvents } from "../hermes/client";
 import { armStopAfter, ensureBoxAwake } from "../orchestrator/boxes";
 import { hermesDeltas } from "../orchestrator/flush";

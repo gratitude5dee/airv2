@@ -273,6 +273,11 @@ printf 'y\n' | "$HERMES_VENV/bin/hermes" mcp add daytona --command /usr/local/bi
 # guessed) and mirrored in BASE_SKILLS (apps/web/lib/skills/hub.ts) so
 # provisioning re-asserts them per fork. The eval-test set (V0 web latency)
 # rides along so the agent-suite can exercise them without per-box installs.
+# Mail: official/email/agentmail is the legacy AgentMail path
+# (MAIL_PROVIDER=agentmail); the native wzrdmail skill is not a hub skill and
+# is baked from skills/wzrdmail in the local-skills loop below. Provisioning
+# enables exactly one mail MCP (wzrdmail or agentmail) per box, so having both
+# skills on the image is harmless during the cutover.
 for skill in \
   official/email/agentmail \
   official/research/duckduckgo-search \

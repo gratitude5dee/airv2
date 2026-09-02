@@ -5,18 +5,17 @@
  */
 import { env } from "../env";
 import { DEFAULT_REQUEST_TIMEOUT_MS, requestSignal } from "../http/timeout";
+import { MailApiError } from "../mail/errors";
 
 const AGENTMAIL_API = "https://api.agentmail.to/v0";
 
 /** Attachment bytes can be large; allow a longer download window. */
 const ATTACHMENT_TIMEOUT_MS = 60_000;
 
-export class AgentMailApiError extends Error {
-  readonly status: number;
+export class AgentMailApiError extends MailApiError {
   constructor(status: number, message: string) {
-    super(message);
+    super(status, message);
     this.name = "AgentMailApiError";
-    this.status = status;
   }
 }
 

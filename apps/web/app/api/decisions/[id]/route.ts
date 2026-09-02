@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sessionUserId } from "@/lib/auth/user";
 import { serviceClient } from "@/lib/supabase";
-import { getDraft } from "@/lib/agentmail/client";
+import { getDraft } from "@/lib/mail/client";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

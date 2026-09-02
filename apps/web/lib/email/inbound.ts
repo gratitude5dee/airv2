@@ -18,8 +18,8 @@ import {
   getAttachmentBytes,
   getMessage,
   replyToMessage,
-  type AgentMailMessage,
-} from "../agentmail/client";
+  type MailMessage as AgentMailMessage,
+} from "../mail/client";
 import { queueEmailDraftReview } from "./review";
 import { createRun, runEvents } from "../hermes/client";
 import { armStopAfter, ensureBoxAwake } from "../orchestrator/boxes";

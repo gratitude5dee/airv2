@@ -11,7 +11,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminAuthorized } from "@/lib/admin/auth";
 import { serviceClient } from "@/lib/supabase";
 import { deleteBox, stop } from "@/lib/box/client";
-import { deletePod } from "@/lib/agentmail/client";
+import { deletePod } from "@/lib/mail/client";
 import { daytonaConfigured, deleteTenantKey } from "@/lib/daytona/client";
 import {
   deleteConnectedAccount,

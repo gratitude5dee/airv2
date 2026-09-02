@@ -7,7 +7,7 @@
  * nothing), and a conditional status flip that loses races cleanly.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { sendDraft } from "../agentmail/client";
+import { sendDraft } from "../mail/client";
 
 export class EmailDraftError extends Error {
   readonly status: number;
