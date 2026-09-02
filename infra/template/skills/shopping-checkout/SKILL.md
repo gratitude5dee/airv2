@@ -33,12 +33,20 @@ details — **plus the link** to the checkout page. The owner can always take
 the link and finish manually; never degrade or withhold this path to push
 the fill flow.
 
+This step survives every uncertainty. If you cannot pin down the exact
+product (a vague "the charger I bought last month", no order history), serve
+the two or three closest candidates with their links and ask which one —
+never end a shopping turn with a question and no link.
+
 ## 3. Offer the fill — optional
 
 Only offer when ALL of these hold (the control plane enforces them too):
 
 - the request came from the owner themselves (never a tier-1 contact),
-- at least one card exists in the vault,
+- at least one card comes back from the eligibility call below — that
+  response is the only source of truth for this; `air-vault list` is for
+  filling a field you already have approval for, and an empty store there
+  is not an answer about eligibility,
 - no purchase review for this site is already waiting on the owner.
 
 Check eligibility, then file the offer:

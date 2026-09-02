@@ -277,7 +277,7 @@ describe("gateway model families", () => {
   it("falls back to Ox Alpha when the entitlement carries no family", async () => {
     setEntitlement({ speed_tier: "fast", model_family: null });
     const call = await upstreamCall({ messages: [], max_tokens: 100 });
-    expect(call.body["model"]).toBe("stealth/ox-alpha");
+    expect(call.body["model"]).toBe("z-ai/glm-5.3-flash");
     // OpenAI-only params are never injected for an OpenRouter slug
     expect(call.body["reasoning_effort"]).toBeUndefined();
     expect(call.body["max_tokens"]).toBe(100);
@@ -363,6 +363,59 @@ describe("gateway model families", () => {
       choices: { message: { content: string } }[];
     };
     expect(payload.choices[0]?.message.content).toBe("hi");
+  });
+
+  it("attributes a fallback turn to OpenAI and records the requested family", async () => {
+    setEntitlement({ speed_tier: "fast", model_family: "ox-alpha" });
+    meteredRows.length = 0;
+    const fetchMock = vi.fn(async (url: RequestInfo | URL) =>
+      String(url).includes("openrouter")
+        ? new Response("no endpoints found", { status: 404 })
+        : new Response(
+            JSON.stringify({
+              choices: [{ message: { role: "assistant", content: "hi" } }],
+              usage: { prompt_tokens: 3, completion_tokens: 5 },
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } }
+          )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await POST(completionRequest({ messages: [] }), {
+      params: Promise.resolve({ path: ["chat", "completions"] }),
+    });
+    expect(response.status).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const row = meteredRows[0]!;
+    expect(row["model_family"]).toBe("openai");
+    expect(row["model"]).toBe("gpt-5.6-luna");
+    expect(row["fallback_from"]).toBe("ox-alpha");
+    // OpenAI tier rates, not the family's — the cost follows what served.
+    expect(row["cost_usd"]).toBeCloseTo((3 * 0.4 + 5 * 2.4) / 1_000_000, 12);
+  });
+
+  it("leaves fallback_from null when the requested family serves", async () => {
+    setEntitlement({ speed_tier: "fast", model_family: "ox-alpha" });
+    meteredRows.length = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            choices: [{ message: { role: "assistant", content: "hi" } }],
+            usage: { prompt_tokens: 3, completion_tokens: 5 },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      )
+    );
+    const response = await POST(completionRequest({ messages: [] }), {
+      params: Promise.resolve({ path: ["chat", "completions"] }),
+    });
+    expect(response.status).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const row = meteredRows[0]!;
+    expect(row["model_family"]).toBe("ox-alpha");
+    expect(row["fallback_from"]).toBeNull();
   });
 
   it("does not fall back when OpenRouter answers with content", async () => {

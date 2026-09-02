@@ -54,6 +54,20 @@ Then: "Drafted — approve it in Needs-you to send."
 If `create_draft` is unavailable (no AgentMail MCP on this box), say exactly
 that and do not claim a draft exists.
 
+## Draft first, ask inside the draft
+
+A missing detail is not a reason to end the turn with a question. Draft with
+the best available content, leave a clearly marked `[…]` placeholder for what
+you genuinely do not know (a date, a link, a press angle), file the draft, and
+tell the owner which placeholders to fill before approving. The owner reads
+every draft before it can send, so a placeholder is safe and an unanswered
+question is not.
+
+When a recipient address is unknown, draft to the addresses you can find in
+the People store or the inbox and name the ones you could not resolve. Only
+skip drafting entirely when there is no plausible recipient at all — and say
+that, rather than asking for details and stopping silently.
+
 ## File the draft
 
 Treat filing as a postcondition of drafting, not a follow-up. After every

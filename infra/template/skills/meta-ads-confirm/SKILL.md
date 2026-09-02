@@ -1,6 +1,6 @@
 ---
 name: meta-ads-confirm
-description: "Confirm a Meta Ads connection to the control plane once the Meta login has succeeded and you can read the ad account through the Meta Ads MCP."
+description: "Meta Ads writes: confirm the connection after login, and stage every live change — ad copy and creatives, budgets, schedules, audiences, pausing ad sets — as an ad_write decision instead of applying it."
 version: 1.0.0
 author: air
 license: MIT
@@ -33,6 +33,31 @@ curl -fsS -X POST "${OPENAI_BASE_URL%/api/gateway/v1}/api/ads/meta/confirm" \
 Replace `account_ref` with the real ad account id from step 1 and `label`
 with its human-readable name. A `{"ok":true}` response means the dashboard's
 Ads panel now shows the account as connected.
+
+## Ad copy and ad changes are staged writes
+
+Every change to a live account (new campaign, budget change, pause/resume,
+new creative) goes through the write gate — the control plane files it as a
+pending `ad_write` decision and only owner approval executes it:
+
+```bash
+set -a; . ~/.hermes/.env; set +a
+curl -fsS -X POST "${OPENAI_BASE_URL%/api/gateway/v1}/api/ads/writes" \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"account_id":"<ad_accounts.id>","kind":"create_ad",
+       "campaign_ref":"<campaign>","args":{"ad_group_ref":"<group>",
+       "headline":"...","primary_text":"...","cta":"..."}}'
+```
+
+`GET /api/ads/writes` lists the account ids and the gate state of earlier
+writes. Never call a platform write tool for a change that has no approved
+write behind it.
+
+When there is no connected ad account, the write cannot be staged. Say so in
+those words — the copy or budget change exists but is not queued for approval
+because no ad account is connected — and hand the owner the copy. Do not
+present ad creative as if it were scheduled or live.
 
 Notes:
 

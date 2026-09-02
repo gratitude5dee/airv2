@@ -9,6 +9,7 @@ import { serviceClient } from "../supabase";
 import {
   applyBatch,
   listItems,
+  reconcileMirror,
   reveal,
   totp,
   VaultCliError,
@@ -44,6 +45,10 @@ function fakeSupabase() {
       eq: () => ({
         eq: () => {
           updates.push({ table, row });
+          return Promise.resolve({ error: null });
+        },
+        in: (_column: string, ids: string[]) => {
+          updates.push({ table, row: { ...row, ids } });
           return Promise.resolve({ error: null });
         },
       }),
@@ -307,6 +312,56 @@ describe("vault control-plane client", () => {
     vi.mocked(command).mockResolvedValue(cliOk("123456\n"));
     await expect(totp("bx_1", "user-1", "item-9")).resolves.toBe("123456");
     expect(supabase.inserts[0]?.row["action"]).toBe("reveal");
+  });
+
+  it("reconcileMirror tombstones the rows the box store no longer holds", async () => {
+    vi.mocked(command).mockResolvedValue(
+      cliOk(JSON.stringify({ items: [{ id: "item-live", kind: "card" }] }))
+    );
+    const live = await reconcileMirror(
+      supabase.client as unknown as ReturnType<typeof serviceClient>,
+      "bx_1",
+      "user-1",
+      ["item-live", "item-gone"]
+    );
+    expect(live.map((item) => item.id)).toEqual(["item-live"]);
+    expect(supabase.updates[0]?.table).toBe("vault_items");
+    expect(supabase.updates[0]?.row["ids"]).toEqual(["item-gone"]);
+    expect(supabase.updates[0]?.row["env_var"]).toBeNull();
+  });
+
+  it("reconcileMirror leaves the mirror alone when the store agrees", async () => {
+    vi.mocked(command).mockResolvedValue(
+      cliOk(JSON.stringify({ items: [{ id: "item-live", kind: "card" }] }))
+    );
+    await reconcileMirror(
+      supabase.client as unknown as ReturnType<typeof serviceClient>,
+      "bx_1",
+      "user-1",
+      ["item-live"]
+    );
+    expect(supabase.updates).toHaveLength(0);
+    expect(supabase.upserts).toHaveLength(0);
+  });
+
+  it("reconcileMirror re-mirrors a live card the mirror never recorded", async () => {
+    vi.mocked(command).mockResolvedValue(
+      cliOk(
+        JSON.stringify({
+          items: [{ id: "item-live", kind: "card", name: "Personal Visa" }],
+        })
+      )
+    );
+    const live = await reconcileMirror(
+      supabase.client as unknown as ReturnType<typeof serviceClient>,
+      "bx_1",
+      "user-1",
+      []
+    );
+    expect(live.map((item) => item.id)).toEqual(["item-live"]);
+    expect(supabase.upserts[0]?.table).toBe("vault_items");
+    expect(supabase.upserts[0]?.row["id"]).toBe("item-live");
+    expect(supabase.upserts[0]?.row["deleted_at"]).toBeNull();
   });
 
   it("surfaces machine-readable CLI failures as typed errors", async () => {

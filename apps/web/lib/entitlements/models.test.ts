@@ -45,10 +45,10 @@ describe("speed tiers", () => {
 });
 
 describe("model families", () => {
-  it("defaults to Ox Alpha", () => {
+  it("defaults to the ox-alpha family, served by its GLM successor", () => {
     expect(DEFAULT_MODEL_FAMILY).toBe("ox-alpha");
     expect(modelForSelection(DEFAULT_MODEL_FAMILY, "balanced")).toBe(
-      "stealth/ox-alpha"
+      "z-ai/glm-5.3-flash"
     );
   });
 
@@ -87,9 +87,9 @@ describe("model families", () => {
     expect(requiresConsent("openai")).toBe(false);
   });
 
-  it("meters the free families at zero", () => {
+  it("meters the free families at zero and priced families above it", () => {
     expect(costUsd("deep", 1000, 1000, "inkling")).toBe(0);
-    expect(costUsd("deep", 1000, 1000, "ox-alpha")).toBe(0);
+    expect(costUsd("deep", 1000, 1000, "ox-alpha")).toBeGreaterThan(0);
     expect(costUsd("deep", 1000, 1000, "openai")).toBeGreaterThan(0);
   });
 });

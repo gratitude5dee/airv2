@@ -1,11 +1,13 @@
 /**
  * CM6 CC0 gate, request side. POST proposes an ad write — it never executes
  * here; it lands in the "Needs you" queue as an 'ad_write' decision. GET
- * lists the user's writes so a client (or the box, via its owner's session)
+ * lists the user's writes so a client (or the box, via its gateway token)
  * can poll a write's gate state before invoking a platform write tool.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { boxUserId } from "@/lib/auth/box";
 import { sessionUserId } from "@/lib/auth/user";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { serviceClient } from "@/lib/supabase";
 import {
   requestAdWrite,
@@ -25,12 +27,24 @@ const WRITE_KINDS: AdWriteKind[] = [
   "update_ad",
 ];
 
+/**
+ * The owner's browser sends a session cookie; the box sends its gateway
+ * token. Both act for the same user, and the box needs this route to stage a
+ * write instead of describing one.
+ */
+async function callerUserId(
+  supabase: SupabaseClient,
+  request: NextRequest
+): Promise<string | undefined> {
+  return sessionUserId(request) ?? (await boxUserId(supabase, request));
+}
+
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const userId = sessionUserId(request);
+  const supabase = serviceClient();
+  const userId = await callerUserId(supabase, request);
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const supabase = serviceClient();
   const { data } = await supabase
     .from("ad_writes")
     .select(
@@ -43,7 +57,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const userId = sessionUserId(request);
+  const supabase = serviceClient();
+  const userId = await callerUserId(supabase, request);
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
@@ -69,7 +84,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   ) {
     return NextResponse.json({ error: "bad status" }, { status: 400 });
   }
-  const supabase = serviceClient();
   try {
     const result = await requestAdWrite(supabase, userId, {
       accountId: body.account_id,

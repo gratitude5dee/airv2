@@ -290,6 +290,51 @@ export async function applyBatch(
 }
 
 /**
+ * Reconcile the metadata mirror against the box store in both directions and
+ * return what the store actually holds. The store is the only source of truth
+ * (C18): a re-forked box comes back empty and the mirror would keep
+ * advertising cards no fill can ever use, while a mirror write that failed
+ * (schema drift, a transient error) hides a card the owner really saved.
+ */
+export async function reconcileMirror(
+  supabase: SupabaseClient,
+  boxId: string,
+  userId: string,
+  mirroredIds: readonly string[]
+): Promise<VaultItemMetadata[]> {
+  const items = await listItems(boxId);
+  const live = new Set(items.map((item) => item.id));
+  const mirrored = new Set(mirroredIds);
+  for (const item of items) {
+    if (!mirrored.has(item.id)) await mirrorItem(supabase, userId, item);
+  }
+  const stale = mirroredIds.filter((id) => !live.has(id));
+  if (stale.length > 0) {
+    const { error } = await supabase
+      .from("vault_items")
+      .update({ deleted_at: new Date().toISOString(), env_var: null })
+      .eq("user_id", userId)
+      .in("id", stale);
+    if (error) {
+      vaultLogError({
+        msg: "vault_items reconcile failed",
+        user_id: userId,
+        box_id: boxId,
+        error: error.message,
+      });
+    } else {
+      vaultLog({
+        msg: "vault_items reconciled",
+        user_id: userId,
+        box_id: boxId,
+        stale: stale.length,
+      });
+    }
+  }
+  return items;
+}
+
+/**
  * Owner reveal of exactly one field. Returns the plaintext to the caller —
  * it is never logged, never persisted, and the reveal is audited.
  */

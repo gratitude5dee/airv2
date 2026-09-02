@@ -8,8 +8,9 @@ export type SpeedTier = "fast" | "balanced" | "deep";
 
 /**
  * The model family sits on top of the tiers: `openai` resolves through the
- * speed tier, every other family is a single upstream slug. Ox Alpha is the
- * default for anyone who never touches the setting.
+ * speed tier, every other family is a single upstream slug. `ox-alpha` is the
+ * default for anyone who never touches the setting; the stealth endpoint it
+ * was named after graduated into Z.ai's GLM 5.3 Flash, which now serves it.
  */
 export type ModelFamily =
   | "openai"
@@ -35,7 +36,7 @@ const FAMILY_MODELS: Record<
   Exclude<ModelFamily, "openai" | "openrouter" | "venice">,
   string
 > = {
-  "ox-alpha": "stealth/ox-alpha",
+  "ox-alpha": "z-ai/glm-5.3-flash",
   inkling: "thinkingmachines/inkling:free",
   "inkling-small": "thinkingmachines/inkling-small:free",
   anthropic: "anthropic/claude-sonnet-5",
@@ -266,12 +267,12 @@ const TIER_PRICING: Record<SpeedTier, { input: number; output: number }> = {
 };
 
 /** USD per 1M tokens for the non-tier families (OpenRouter list prices —
- * Ox Alpha and both `:free` Inkling endpoints are free today). */
+ * both `:free` Inkling endpoints are free today). */
 const FAMILY_PRICING: Record<
   Exclude<ModelFamily, "openai" | "openrouter" | "venice">,
   { input: number; output: number }
 > = {
-  "ox-alpha": { input: 0, output: 0 },
+  "ox-alpha": { input: 0.075, output: 0.25 },
   inkling: { input: 0, output: 0 },
   "inkling-small": { input: 0, output: 0 },
   anthropic: { input: 2, output: 10 },
