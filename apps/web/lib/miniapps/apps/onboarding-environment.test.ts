@@ -191,6 +191,23 @@ describe("onboarding environment step", () => {
     expect(body).toContain("/creator-os/wzrd-wordmark-1600.png");
     // The done-form stays in the DOM for the intro bundle to submit.
     expect(body).toContain('name="step" value="welcome"');
+    expect(body).toContain('<html lang="en" class="cine-page">');
+    expect(body).toContain('<body class="cine-page" data-swipe-next=');
+    expect(body).toContain('<div class="cine" data-intro>');
+    expect(body).toContain('class="cine-blast"');
+    expect(body).toContain("html.cine-page,body.cine-page{background:#000}");
+    expect(body).not.toContain('<div class="frame"');
+    expect(body).not.toContain('<header class="bar">');
+    expect(body).not.toContain('<main class="slide">');
+    expect(body).not.toContain('<p class="kicker">');
+    expect(body).not.toContain("<h1>");
+    expect(body).not.toContain('<footer class="nav">');
+    expect(body).not.toContain('<section class="panel"');
+
+    const liteCtx = makeCtx("https://mini.example/mini/setup?step=welcome");
+    liteCtx.session.via = "card";
+    const lite = await (await onboarding.render(liteCtx)).text();
+    expect(lite).not.toContain('class="cine-blast"');
   });
 
   it("renders the three environment choices with no provider names leaking", async () => {
