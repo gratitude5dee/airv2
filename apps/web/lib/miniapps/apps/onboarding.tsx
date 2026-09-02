@@ -1003,7 +1003,7 @@ function stepBody(
     if (lite) {
       return `<p>An agent of your own: its own computer, its own mailbox, and your context — set up in six short steps.</p><p class="muted">Everything here is optional and re-enterable. Skip anything, come back any time.</p><div class="row actions">${doneForm("welcome", "Continue")}</div>`;
     }
-    return `<div class="cine" data-intro><div class="cine-stage"><span class="wzrd-glow" aria-hidden="true"></span><img class="cine-mark" src="/creator-os/wzrd-wordmark-1600.png" alt="WZRD.tech"><button type="button" class="cine-cta">Begin</button></div><video class="cine-film" playsinline muted preload="auto" aria-label="air introduction film"><source src="/creator-os/airintrofin.mp4" type="video/mp4"><source src="/creator-os/airintrofin.mov" type="video/quicktime"></video><div class="cine-done">${doneForm("welcome", "Continue")}</div></div>`;
+    return `<div class="cine" data-intro><div class="cine-stage"><span class="wzrd-glow" aria-hidden="true"></span><img class="cine-mark" src="/creator-os/wzrd-wordmark-1600.png" alt="WZRD.tech"><button type="button" class="cine-cta">Begin</button></div><div class="cine-blast" aria-hidden="true"></div><video class="cine-film" playsinline muted preload="auto" aria-label="air introduction film"><source src="/creator-os/airintrofin.mp4" type="video/mp4"><source src="/creator-os/airintrofin.mov" type="video/quicktime"></video><div class="cine-done">${doneForm("welcome", "Continue")}</div></div>`;
   }
   if (step === "environment") {
     return `<p class="muted">Your agent gets its own computer. Pick where it lives — you can switch later, but its files start fresh on the new machine.</p>${environmentCards(snapshot)}`;
@@ -1504,7 +1504,11 @@ html.cine-page,body.cine-page{background:#000}
 .cine:not(.is-pressed) .cine-cta{transition:transform 260ms cubic-bezier(0.34,1.56,0.64,1),background 200ms ease,box-shadow 200ms ease}
 .cine.is-charging .cine-stage{animation:cineShake 90ms linear infinite}
 @keyframes cineShake{0%{transform:translate(calc(var(--cine-intensity,0)*-7px),calc(var(--cine-intensity,0)*3px))}25%{transform:translate(calc(var(--cine-intensity,0)*6px),calc(var(--cine-intensity,0)*-5px))}50%{transform:translate(calc(var(--cine-intensity,0)*-4px),calc(var(--cine-intensity,0)*-3px))}75%{transform:translate(calc(var(--cine-intensity,0)*7px),calc(var(--cine-intensity,0)*4px))}100%{transform:translate(calc(var(--cine-intensity,0)*-6px),calc(var(--cine-intensity,0)*5px))}}
-.cine-film{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;opacity:0;transform:scale(1.06);transition:opacity 900ms ease,transform 1400ms cubic-bezier(0.22,1,0.36,1);pointer-events:none}
+.cine-blast{position:absolute;inset:0;z-index:1;opacity:0;pointer-events:none;transition:opacity 180ms linear}
+.cine.is-blast .cine-blast{opacity:1}
+.cine.is-blast.is-film .cine-blast{opacity:0;transition:opacity 320ms ease}
+.cine-film{position:absolute;inset:0;z-index:2;width:100%;height:100%;object-fit:contain;opacity:0;transform:scale(1.06);transition:opacity 900ms ease,transform 1400ms cubic-bezier(0.22,1,0.36,1);pointer-events:none}
+.cine.is-blast.is-film .cine-film{transition:opacity 320ms ease,transform 900ms cubic-bezier(0.22,1,0.36,1)}
 .cine.is-flash .cine-stage{opacity:0}
 .cine.is-film .cine-stage{opacity:0;pointer-events:none}
 .cine.is-film .cine-film{opacity:1;transform:scale(1)}
