@@ -36,7 +36,7 @@ import {
   writeComputeFile,
   type ComputeTarget,
 } from "../compute/runtime";
-import { installComposioMcp } from "./connectors";
+import { installComposioMcp, installMasterkeyMcp } from "./connectors";
 import { provisionDaytona } from "./daytona";
 import { normalizeAddress } from "../routing/trust";
 import { sealSecret } from "../crypto/secretbox";
@@ -655,6 +655,14 @@ async function finishSetup(
     const message = error instanceof Error ? error.message : "unknown error";
     console.error(
       JSON.stringify({ msg: "composio preinstall failed", user_id: userId, error: message })
+    );
+  }
+  try {
+    await installMasterkeyMcp(supabase, userId, target);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown error";
+    console.error(
+      JSON.stringify({ msg: "masterkey preinstall failed", user_id: userId, error: message })
     );
   }
   // P1-11: per-user Daytona child key — the template carries no credential.

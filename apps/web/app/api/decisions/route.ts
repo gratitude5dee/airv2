@@ -19,6 +19,12 @@ import { armStopAfter, ensureBoxAwake } from "@/lib/orchestrator/boxes";
 import { approveRun, HermesApiError } from "@/lib/hermes/client";
 import { approveInboxEvent, dismissInboxEvent } from "@/lib/calendar/store";
 import {
+  denyMasterkeyRun,
+  executeMasterkeyRun,
+  findPendingMasterkeyRun,
+  MasterkeyRunError,
+} from "@/lib/masterkey/runs";
+import {
   hostedErrorResponse,
   resolveHostedDecision,
   type HostedDecision,
@@ -372,6 +378,43 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         }
       } else {
         await denyTransfer(supabase, userId, transfer.id);
+      }
+    }
+  }
+
+  if (decision.kind === "run_approval" && decision.ref) {
+    // Store "Pay & run": approve executes MasterKey run_service server-side
+    // from the user's per-user wallet; dismiss denies it and nothing is
+    // charged. A spend-gate refusal at execution time resolves the run as
+    // failed but leaves the decision to fall through and close normally.
+    const run = await findPendingMasterkeyRun(
+      supabase,
+      userId,
+      decision.ref as string,
+    );
+    if (run) {
+      if (body.action === "approve") {
+        try {
+          await executeMasterkeyRun(supabase, userId, run);
+        } catch (error) {
+          if (error instanceof MasterkeyRunError) {
+            await supabase
+              .from("decisions")
+              .update({
+                status: "approved",
+                resolved_at: new Date().toISOString(),
+              })
+              .eq("id", decision.id)
+              .eq("user_id", userId);
+            return NextResponse.json(
+              { error: error.message },
+              { status: error.status },
+            );
+          }
+          throw error;
+        }
+      } else {
+        await denyMasterkeyRun(supabase, userId, run.id);
       }
     }
   }
