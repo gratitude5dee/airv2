@@ -71,9 +71,6 @@ function attachStepper(): void {
   const updateUrl = (step: string, replace: boolean): void => {
     const url = new URL(window.location.href);
     url.searchParams.set("step", step);
-    if (url.searchParams.get("theme") === "atmosphere") {
-      url.searchParams.delete("theme");
-    }
     const target = `${url.pathname}${url.search}${url.hash}`;
     if (replace) history.replaceState(null, "", target);
     else history.pushState(null, "", target);

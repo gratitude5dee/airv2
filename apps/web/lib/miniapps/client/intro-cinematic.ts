@@ -132,7 +132,7 @@ function attachIntro(): void {
     if (unlocked && typeof unlocked.then === "function") {
       void unlocked
         .then(() => {
-          if (run !== myRun || phase !== "charging") return;
+          if (run !== myRun || root.classList.contains("is-film")) return;
           video.pause();
           video.currentTime = 0;
         })
@@ -159,13 +159,9 @@ function attachIntro(): void {
     root.classList.add("is-film");
     video.muted = false;
     video.volume = 1;
-    if (video.muted) {
-      playSilently(myRun);
-    } else {
-      const played = video.play();
-      if (played && typeof played.catch === "function") {
-        void played.catch(() => playSilently(myRun));
-      }
+    const played = video.play();
+    if (played && typeof played.catch === "function") {
+      void played.catch(() => playSilently(myRun));
     }
     // If the film never fires `ended` (stalled network, decode failure),
     // still move the owner along — its duration once known, else a cap.
