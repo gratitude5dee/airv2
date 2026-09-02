@@ -45,7 +45,8 @@ write the whole document back. Each entry:
       "kind": "event_ticket",
       "name": "Austin — General Admission",
       "description": "Mohawk, Mar 14, doors 8pm",
-      "price_cents": 3500,
+      "imageUrl": null,
+      "priceCents": 3500,
       "inventory": 200,
       "active": true
     }
@@ -55,8 +56,11 @@ write the whole document back. Each entry:
 
 `kind` is one of `physical`, `digital`, `service`, `event_ticket`. `key` is
 lowercase `[a-z0-9_-]`, unique and stable — reusing a key edits that
-product. `price_cents` is a positive integer; `inventory` is an integer or
-`null` for unlimited. Tiered pricing is separate entries, one per tier.
+product. `priceCents` is a positive integer; `inventory` is an integer or
+`null` for unlimited. `imageUrl` must be a public media URL from
+`/api/media/publish` (anything else is dropped). Fields are camelCase; the
+snake_case spellings `price_cents` and `image_url` are accepted as aliases.
+Tiered pricing is separate entries, one per tier.
 
 ## 2. Stage the publish
 
