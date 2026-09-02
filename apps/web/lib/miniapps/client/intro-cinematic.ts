@@ -154,6 +154,22 @@ function attachIntro(): void {
     window.cancelAnimationFrame(frame);
     window.clearTimeout(fallback);
   });
+
+  // A back-forward cache restore revives the document mid-sequence with its
+  // animation frame and timers cancelled — reset to the idle stage so the
+  // button works again (the done-form only submits from a fresh run).
+  window.addEventListener("pageshow", (event) => {
+    if (!event.persisted) return;
+    phase = "idle";
+    holding = false;
+    cta.disabled = false;
+    root.classList.remove("is-charging", "is-pressed", "is-flash", "is-film");
+    setIntensity(0);
+    video.pause();
+    video.currentTime = 0;
+    video.removeEventListener("ended", finish);
+    video.removeEventListener("error", finish);
+  });
 }
 
 attachIntro();
