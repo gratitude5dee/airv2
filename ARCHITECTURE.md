@@ -316,9 +316,11 @@ The agent never learns that mini-apps exist. It calls `kanban_move_card` the way
 
 ### (d) The URL scheme, and why the subdomain matters
 
+Three origins, three jobs: `air.wzrd.tech` is the marketing/landing page (no user session), `app.wzrd.tech` is the authenticated app (`APP_ORIGIN`), and `mini.wzrd.tech` is the sandboxed mini-app origin.
+
 Mini-apps are served from **`mini.wzrd.tech/<app-name>`** — Kanban at `/kanban`, Wallet at `/wallet`, and so on.
 
-The separate subdomain is doing real security work, not just organizing routes. It is **a different origin from the main app**, so a mini-app rendered in a Messages webview shares no cookies, no `localStorage`, and no session with `air.wzrd.tech`. A bug in a mini-app cannot reach the user's main session. Keep that property deliberately — do not "simplify" these onto a path of the main app.
+The separate subdomain is doing real security work, not just organizing routes. It is **a different origin from the main app**, so a mini-app rendered in a Messages webview shares no cookies, no `localStorage`, and no session with `app.wzrd.tech`. A bug in a mini-app cannot reach the user's main session. Keep that property deliberately — do not "simplify" these onto a path of the main app.
 
 Three consequences that follow from the scheme:
 
@@ -816,7 +818,7 @@ app.add_middleware(
 )
 ```
 
-CORS is a hardcoded localhost regex with no configuration knob, and WebSocket upgrades carry their own independent `Host`/`Origin` guard (`_ws_host_origin_reason`). **A browser on `air.wzrd.tech` calling a box origin directly is closed by design.**
+CORS is a hardcoded localhost regex with no configuration knob, and WebSocket upgrades carry their own independent `Host`/`Origin` guard (`_ws_host_origin_reason`). **A browser on `app.wzrd.tech` calling a box origin directly is closed by design.**
 
 ### Reverse proxy is the supported path
 
