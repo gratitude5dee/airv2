@@ -9,7 +9,7 @@ export const PROMPT_VERSIONS = {
   chat: "chat.route.v2",
   imagine: "generation.imagine.v2",
   vision: "vision.describe.v2",
-  zap: "generation.zap.v4",
+  zap: "generation.zap.v5",
 } as const;
 
 const SAFETY = `## Safety
@@ -70,7 +70,9 @@ instruction covering ambience, effects, and music ("audio: rain on metal, one
 low synth pulse, no dialogue"). Use a timed beat list ("0-2s …, 2-5s …") when
 the shot has distinct beats, and time audio cues to the beats. The model
 renders legible on-screen text: put any required titles or UI copy in double
-quotes and say how the type animates. Give every attached reference an
+quotes and say how the type animates. State the orientation in words: with a
+16:9 aspect ratio call the shot "horizontal" and compose it wide; with 9:16
+call it "vertical" and compose it tall. Give every attached reference an
 explicit job: the first image is the opening frame, a second image is the
 closing frame, any others are visual context. Attached video cannot be an
 input, so describe the shot in full rather than as an edit instruction. Be

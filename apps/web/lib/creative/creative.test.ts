@@ -221,12 +221,13 @@ describe("buildFalZapRequest", () => {
     );
     expect(request).toEqual({
       kind: "video",
-      model: "minimax/h3-max/text-to-video",
+      model: "minimax/h3-max-turbo/text-to-video",
       input: {
         prompt: "a fox in the fog",
         duration: 10,
         resolution: "768P",
-        prompt_expansion_mode: "balanced",
+        prompt_expansion_mode: "quality",
+        enable_safety_checker: true,
         aspect_ratio: "9:16",
       },
     });
@@ -244,7 +245,7 @@ describe("buildFalZapRequest", () => {
         ],
       }),
     );
-    expect(request.model).toBe("minimax/h3-max/image-to-video");
+    expect(request.model).toBe("minimax/h3-max-turbo/image-to-video");
     expect(request.input["image_url"]).toBe("https://x.test/a.png");
     expect(request.input["end_image_url"]).toBe("https://x.test/b.png");
     // The endpoint derives the ratio from the first frame and takes no video.

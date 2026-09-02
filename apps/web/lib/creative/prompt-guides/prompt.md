@@ -92,7 +92,7 @@ natural physics ("handheld 35mm, shallow focus"). Avoid surreal instructions.
 
 ## /zap — video editing
 
-### H3 Max (`minimax/h3-max`, fal) — default
+### H3 Max Turbo (`minimax/h3-max`, fal) — default
 
 Direct one-shot film direction, 5–10 seconds, with the sound directed as
 deliberately as the picture. Give each reference an explicit job: the first
@@ -102,7 +102,8 @@ lens and film language ("handheld 35mm push-in, shallow focus, fine grain") →
 lighting → style or mood → audio as a plain instruction covering ambience,
 effects, and music. Use a timed beat list when the shot has distinct beats and
 time audio cues to the beats. The model renders legible on-screen text: quote
-exact titles or UI copy and say how the type animates. Long concrete briefs
+exact titles or UI copy and say how the type animates. Name the framing in
+words — "horizontal" for 16:9, "vertical" for 9:16. Long concrete briefs
 are fine. No negatives, no tag soup. Attached video is not an input this model
 accepts, so the shot is described in full instead.
 

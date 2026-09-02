@@ -4,7 +4,7 @@
  * → asset pipeline, recording lifecycle transitions in creative_jobs
  * (metadata only — no prompts, no media, no provider URLs).
  *
- * /zap renders on fal (MiniMax H3 Max); every other lane renders on the GMI
+ * /zap renders on fal (MiniMax H3 Max Turbo); every other lane renders on the GMI
  * queue. Both paths return the same GeneratedMedia, so download, ingestion,
  * and native-video delivery are identical.
  */

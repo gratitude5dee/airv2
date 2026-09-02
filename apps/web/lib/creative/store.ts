@@ -19,6 +19,7 @@ import {
   type CreativeAsset,
   type Delivery,
 } from "../assets/pipeline";
+import { heifToJpeg, isHeif } from "../identity/heif";
 import type { FetchedGeneratedMedia } from "./media-url";
 
 const EXT_BY_MIME: Record<string, string> = {
@@ -156,6 +157,10 @@ export async function signedDeliveryForJob(
  * Stage an inbound attachment as a short-lived signed input URL for the
  * provider (edit source / first frame / reference). The object lives under
  * the user's prefix so account deletion removes it with the rest.
+ *
+ * iPhone attachments arrive as HEIC, which no generation provider accepts as
+ * an input image, so they are decoded to JPEG here — before the object and
+ * its signed URL exist — and staged as image/jpeg.
  */
 export async function stageCreativeInput(
   supabase: SupabaseClient,
@@ -166,13 +171,23 @@ export async function stageCreativeInput(
   | { url: string; kind: "image" | "video"; mimeType: string; storageKey: string }
   | undefined
 > {
-  const ext = EXT_BY_MIME[mimeType];
+  let staged = bytes;
+  let stagedType = mimeType;
+  if (isHeif(stagedType, staged)) {
+    try {
+      staged = await heifToJpeg(staged);
+      stagedType = "image/jpeg";
+    } catch {
+      return undefined;
+    }
+  }
+  const ext = EXT_BY_MIME[stagedType];
   if (!ext) return undefined;
-  const kind = mimeType.startsWith("video/") ? ("video" as const) : ("image" as const);
+  const kind = stagedType.startsWith("video/") ? ("video" as const) : ("image" as const);
   const key = `${userId}/deliveries/${randomBytes(16).toString("hex")}.${ext}`;
   const upload = await supabase.storage
     .from(ASSETS_BUCKET)
-    .upload(key, bytes, { contentType: contentType(ext) });
+    .upload(key, staged, { contentType: contentType(ext) });
   if (upload.error) return undefined;
   const signed = await supabase.storage
     .from(ASSETS_BUCKET)
@@ -183,7 +198,7 @@ export async function stageCreativeInput(
   }
   // The key is unguessable and the signature expires with the URL; the
   // caller removes the object once the generation settles.
-  return { url: signed.data.signedUrl, kind, mimeType, storageKey: key };
+  return { url: signed.data.signedUrl, kind, mimeType: stagedType, storageKey: key };
 }
 
 /** Remove staged provider-input objects once the generation settles. */
