@@ -994,12 +994,16 @@ function stepBody(
   lite = false
 ): string {
   if (step === "welcome") {
-    // Lite/Messages sessions run on a tight memory budget — the intro is a
-    // still there, and the video only plays in the full webview.
-    const intro = lite
-      ? ""
-      : `<video class="introvid" src="/creator-os/welcome-air.mp4" autoplay muted loop playsinline preload="auto" aria-label="Sunrise over the clouds"></video>`;
-    return `${intro}<p>An agent of your own: its own computer, its own mailbox, and your context — set up in six short steps.</p><p class="muted">Everything here is optional and re-enterable. Skip anything, come back any time.</p><div class="row actions">${doneForm("welcome", "Continue")}</div>`;
+    // Lite/Messages sessions run on a tight memory budget — they keep the
+    // plain wordmark-and-Continue card. The full webview gets the cinematic
+    // intro: black stage, wordmark with an ambient glow, a single button
+    // whose press-and-hold escalates into the intro film, and the standard
+    // done-form kept in the DOM (visually hidden) so the client bundle can
+    // submit it when the film ends and the server redirects onward.
+    if (lite) {
+      return `<p>An agent of your own: its own computer, its own mailbox, and your context — set up in six short steps.</p><p class="muted">Everything here is optional and re-enterable. Skip anything, come back any time.</p><div class="row actions">${doneForm("welcome", "Continue")}</div>`;
+    }
+    return `<div class="cine" data-intro><div class="cine-stage"><span class="wzrd-glow" aria-hidden="true"></span><img class="cine-mark" src="/creator-os/wzrd-wordmark-1600.png" alt="WZRD.tech"><button type="button" class="cine-cta">Begin</button></div><video class="cine-film" playsinline muted preload="auto" aria-label="air introduction film"><source src="/creator-os/airintrofin.mp4" type="video/mp4"><source src="/creator-os/airintrofin.mov" type="video/quicktime"></video><div class="cine-done">${doneForm("welcome", "Continue")}</div></div>`;
   }
   if (step === "environment") {
     return `<p class="muted">Your agent gets its own computer. Pick where it lives — you can switch later, but its files start fresh on the new machine.</p>${environmentCards(snapshot)}`;
@@ -1395,10 +1399,12 @@ function slides(
     if (!csp.includes("script-src")) csp += "; script-src 'self'";
   }
   if (intro) {
-    // The welcome film is a first-party file under /creator-os.
+    // The welcome film is a first-party file under /creator-os, and the
+    // cinematic intro ships a same-origin bundle regardless of the theme.
     csp = csp.includes("media-src")
       ? csp.replace(/media-src ([^;]+)/, "media-src $1 'self'")
       : csp + "; media-src 'self'";
+    if (!csp.includes("script-src")) csp += "; script-src 'self'";
   }
   // Chrome enforces form-action on the redirect that follows a form POST, so
   // the Composio connect and Stripe onboarding redirects to their hosted
@@ -1485,7 +1491,25 @@ form.stack select{background:var(--well-bg);color:var(--ink);border:1px solid va
 .pager{display:flex;gap:0.9rem;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scroll-behavior:smooth;overscroll-behavior-x:contain;scrollbar-width:none;margin:0 -0.25rem;padding:0 0.25rem}
 .pager::-webkit-scrollbar{display:none}
 .pane{flex:0 0 100%;scroll-snap-align:center;scroll-snap-stop:always;display:grid;gap:0.9rem;align-content:start;min-width:0}
-.introvid{display:block;width:100%;border-radius:var(--radius-well);border:1px solid var(--ring);background:var(--well-bg);margin-bottom:0.9rem}
+.cine{position:fixed;inset:0;z-index:40;background:#000;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.cine-stage{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2.4rem;transition:opacity 600ms ease;transform:translateX(calc(var(--cine-intensity,0)*0px))}
+.wzrd-glow{position:absolute;top:50%;left:50%;width:min(80vw,34rem);height:min(80vw,34rem);transform:translate(-50%,-58%);border-radius:50%;pointer-events:none;background:radial-gradient(circle,rgba(255,255,255,0.3) 0%,rgba(255,255,255,0.08) 42%,transparent 70%);opacity:calc(0.55 + var(--cine-intensity,0)*0.45);animation:cineBreathe 5.2s ease-in-out infinite;filter:blur(calc(6px + var(--cine-intensity,0)*10px))}
+@keyframes cineBreathe{0%,100%{transform:translate(-50%,-58%) scale(1)}50%{transform:translate(-50%,-58%) scale(1.08)}}
+.cine-mark{position:relative;width:min(62vw,22rem);height:auto;filter:drop-shadow(0 0 calc(8px + var(--cine-intensity,0)*26px) rgba(255,255,255,calc(0.25 + var(--cine-intensity,0)*0.5)))}
+.cine-cta{position:relative;background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.35);min-width:9rem;transition:transform 120ms linear,background 200ms ease,box-shadow 200ms ease;box-shadow:0 0 calc(var(--cine-intensity,0)*34px) rgba(255,255,255,calc(var(--cine-intensity,0)*0.55))}
+.cine-cta:hover{transform:scale(1.04);background:rgba(255,255,255,0.14)}
+.cine.is-pressed .cine-cta{transform:scale(0.94);transition:transform 90ms linear}
+.cine:not(.is-pressed) .cine-cta{transition:transform 260ms cubic-bezier(0.34,1.56,0.64,1),background 200ms ease,box-shadow 200ms ease}
+.cine.is-charging .cine-stage{animation:cineShake 90ms linear infinite}
+@keyframes cineShake{0%{transform:translate(calc(var(--cine-intensity,0)*-7px),calc(var(--cine-intensity,0)*3px))}25%{transform:translate(calc(var(--cine-intensity,0)*6px),calc(var(--cine-intensity,0)*-5px))}50%{transform:translate(calc(var(--cine-intensity,0)*-4px),calc(var(--cine-intensity,0)*-3px))}75%{transform:translate(calc(var(--cine-intensity,0)*7px),calc(var(--cine-intensity,0)*4px))}100%{transform:translate(calc(var(--cine-intensity,0)*-6px),calc(var(--cine-intensity,0)*5px))}}
+.cine-film{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;opacity:0;transform:scale(1.06);transition:opacity 900ms ease,transform 1400ms cubic-bezier(0.22,1,0.36,1);pointer-events:none}
+.cine.is-flash .cine-stage{opacity:0}
+.cine.is-film .cine-stage{opacity:0;pointer-events:none}
+.cine.is-film .cine-film{opacity:1;transform:scale(1)}
+.cine-done{position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden}
+.cine:not(.is-ready) .cine-done{position:static;width:auto;height:auto;overflow:visible;margin-top:1.2rem}
+.cine:not(.is-ready) .cine-cta{display:none}
+@media(prefers-reduced-motion:reduce){.wzrd-glow{animation:none}.cine.is-charging .cine-stage{animation:none}.cine-film{transition:opacity 300ms ease;transform:none}.cine.is-reduced .cine-done{position:static;width:auto;height:auto;overflow:visible;margin-top:1.2rem}}
 .envgrid{display:grid;gap:0.6rem;margin-top:0.6rem;grid-template-columns:repeat(auto-fit,minmax(9.5rem,1fr));align-items:stretch}
 form.envform{display:block;height:100%}
 .envmark{width:1.5rem;height:1.5rem;fill:none;stroke:currentColor;stroke-width:1.4;color:var(--accent)}
@@ -1789,6 +1813,11 @@ export function renderOnboarding(
     // The deck swipes like an iPhone: a horizontal touch swipe anywhere on
     // the slide navigates back/forward (same-origin bundle, touch only).
     lite ? "" : '<script src="/creator-os/deck-swipe.js" defer></script>',
+    // The cinematic welcome intro: press-and-hold escalation into the film,
+    // then a programmatic submit of the hidden done-form.
+    !lite && slide.id === "welcome"
+      ? '<script src="/creator-os/intro-cinematic.js" defer></script>'
+      : "",
     // Multi-section slides fold into a stepper (one panel at a time with
     // indicator circles); with no JS the panels simply stack.
     stepper ? '<script src="/creator-os/deck-stepper.js" defer></script>' : "",
