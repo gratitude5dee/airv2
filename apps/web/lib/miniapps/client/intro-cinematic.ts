@@ -41,6 +41,7 @@ function attachIntro(): void {
   const root = document.querySelector<HTMLElement>("[data-intro]");
   if (!root) return;
   const cta = root.querySelector<HTMLButtonElement>(".cine-cta");
+  const sound = root.querySelector<HTMLButtonElement>(".cine-sound");
   const video = root.querySelector<HTMLVideoElement>("video.cine-film");
   const form = root.querySelector<HTMLFormElement>(".cine-done form");
   const mark = root.querySelector<HTMLImageElement>(".cine-mark");
@@ -64,6 +65,7 @@ function attachIntro(): void {
   let fallback = 0;
   let flash = 0;
   let run = 0;
+  let audioUnlocked = false;
   let onEnd: (() => void) | null = null;
   let onError: (() => void) | null = null;
   let blast: WordmarkBlast | null = null;
@@ -122,15 +124,44 @@ function attachIntro(): void {
     else form.submit();
   };
 
-  const rollFilm = (myRun: number): void => {
+  const unlockAudio = (myRun: number): void => {
+    if (audioUnlocked || run !== myRun) return;
+    audioUnlocked = true;
+    video.muted = true;
+    const unlocked = video.play();
+    if (unlocked && typeof unlocked.then === "function") {
+      void unlocked
+        .then(() => {
+          if (run !== myRun || root.classList.contains("is-film")) return;
+          video.pause();
+          video.currentTime = 0;
+        })
+        .catch(() => undefined);
+    }
+  };
+
+  const playSilently = (myRun: number): void => {
     if (run !== myRun) return;
-    root.classList.add("is-film");
+    video.muted = true;
+    root.classList.add("is-silent");
+    if (sound) sound.hidden = false;
     const played = video.play();
     if (played && typeof played.catch === "function") {
-      played.catch(() => {
+      void played.catch(() => {
         if (run !== myRun) return;
         finish(myRun);
       });
+    }
+  };
+
+  const rollFilm = (myRun: number): void => {
+    if (run !== myRun) return;
+    root.classList.add("is-film");
+    video.muted = false;
+    video.volume = 1;
+    const played = video.play();
+    if (played && typeof played.catch === "function") {
+      void played.catch(() => playSilently(myRun));
     }
     // If the film never fires `ended` (stalled network, decode failure),
     // still move the owner along — its duration once known, else a cap.
@@ -215,6 +246,7 @@ function attachIntro(): void {
     if (phase !== "idle") return;
     run += 1;
     const myRun = run;
+    unlockAudio(myRun);
     if (reduced) {
       phase = "charging";
       startFilm(myRun);
@@ -227,6 +259,23 @@ function attachIntro(): void {
     prepareBlast();
     frame = window.requestAnimationFrame((now) => tick(now, myRun));
   };
+
+  sound?.addEventListener("click", () => {
+    const myRun = run;
+    video.muted = false;
+    video.volume = 1;
+    root.classList.remove("is-silent");
+    sound.hidden = true;
+    const played = video.play();
+    if (played && typeof played.catch === "function") {
+      void played.catch(() => {
+        if (run !== myRun) return;
+        video.muted = true;
+        root.classList.add("is-silent");
+        sound.hidden = false;
+      });
+    }
+  });
 
   const pressIn = (): void => {
     holding = true;
@@ -284,10 +333,14 @@ function attachIntro(): void {
     holding = false;
     cta.disabled = false;
     root.classList.remove("is-charging", "is-pressed", "is-flash", "is-film");
+    root.classList.remove("is-silent");
     setIntensity(0);
     dropBlast();
     video.pause();
     video.currentTime = 0;
+    video.muted = true;
+    audioUnlocked = false;
+    if (sound) sound.hidden = true;
     detachVideoListeners();
   });
 }

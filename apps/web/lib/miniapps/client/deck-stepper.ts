@@ -24,10 +24,15 @@ function attachStepper(): void {
   );
   if (panels.length < 2) return;
 
-  const initial = Math.min(
+  const initialStep = Math.min(
     panels.length - 1,
     Math.max(0, Number(deck.getAttribute("data-stepper-active")) || 0)
   );
+  const initialPanel = new URL(window.location.href).searchParams.get("panel");
+  const initialPanelIndex = initialPanel
+    ? panels.findIndex((panel) => panel.dataset["section"] === initialPanel)
+    : -1;
+  const initial = initialPanelIndex >= 0 ? initialPanelIndex : initialStep;
 
   const head = document.createElement("div");
   head.className = "stepper-head";
@@ -68,7 +73,21 @@ function attachStepper(): void {
   nav.append(back, spacer, forward);
 
   let current = initial;
-  const show = (index: number): void => {
+  const updateUrl = (panel: HTMLElement, replace: boolean): void => {
+    const step = panel.dataset["step"];
+    const section = panel.dataset["section"];
+    if (!step || !section) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("step", step);
+    url.searchParams.set("panel", section);
+    const target = `${url.pathname}${url.search}${url.hash}`;
+    if (replace) history.replaceState(null, "", target);
+    else history.pushState(null, "", target);
+  };
+  const show = (
+    index: number,
+    historyMode: "push" | "replace" | "none" = "push"
+  ): void => {
     current = Math.min(panels.length - 1, Math.max(0, index));
     panels.forEach((panel, i) =>
       panel.classList.toggle("stepper-panel-hidden", i !== current)
@@ -99,6 +118,10 @@ function attachStepper(): void {
       forward.textContent = "Continue";
       forward.style.visibility = "visible";
     }
+    const panel = panels[current];
+    if (panel && historyMode !== "none") {
+      updateUrl(panel, historyMode === "replace");
+    }
   };
   back.addEventListener("click", () => show(current - 1));
   forward.addEventListener("click", () => {
@@ -111,13 +134,38 @@ function attachStepper(): void {
     }
     show(current + 1);
   });
+  window.addEventListener("popstate", () => {
+    const url = new URL(window.location.href);
+    const panel = url.searchParams.get("panel");
+    const step = url.searchParams.get("step");
+    const panelIndex = panel
+      ? panels.findIndex((item) => item.dataset["section"] === panel)
+      : -1;
+    const index =
+      panelIndex >= 0
+        ? panelIndex
+        : step
+          ? panels.findIndex((item) => item.dataset["step"] === step)
+          : -1;
+    if (index >= 0) show(index, "none");
+  });
+  document.addEventListener("deck:navigate", (event) => {
+    const dir = (event as CustomEvent<{ dir?: number }>).detail?.dir;
+    if (dir === 1 && current < panels.length - 1) {
+      event.preventDefault();
+      show(current + 1);
+    } else if (dir === -1 && current > 0) {
+      event.preventDefault();
+      show(current - 1);
+    }
+  });
 
   const first = panels[0];
   const last = panels[panels.length - 1];
   if (!first || !last) return;
   deck.insertBefore(head, first);
   last.insertAdjacentElement("afterend", nav);
-  show(initial);
+  show(initial, "replace");
 }
 
 attachStepper();

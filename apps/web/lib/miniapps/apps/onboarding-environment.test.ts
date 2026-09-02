@@ -193,9 +193,17 @@ describe("onboarding environment step", () => {
     expect(body).toContain('name="step" value="welcome"');
     expect(body).toContain('<html lang="en" class="cine-page">');
     expect(body).toContain('<body class="cine-page" data-swipe-next=');
-    expect(body).toContain('<div class="cine" data-intro>');
+    expect(body).toContain('<div class="cine" data-intro data-noswipe>');
     expect(body).toContain('class="cine-blast"');
+    expect(body).toContain('<button type="button" class="cine-sound" hidden>Sound on</button>');
+    expect(body).toContain('<video class="cine-film" playsinline muted');
+    expect(body.indexOf("/creator-os/airintrofin.mp4")).toBeLessThan(
+      body.indexOf("/creator-os/airintrofin.mov")
+    );
     expect(body).toContain("html.cine-page,body.cine-page{background:#000}");
+    expect(body).toContain(
+      "@media (orientation:portrait){.cine-film{object-fit:cover;object-position:center}}"
+    );
     expect(body).not.toContain('<div class="frame"');
     expect(body).not.toContain('<header class="bar">');
     expect(body).not.toContain('<main class="slide">');
@@ -208,6 +216,19 @@ describe("onboarding environment step", () => {
     liteCtx.session.via = "card";
     const lite = await (await onboarding.render(liteCtx)).text();
     expect(lite).not.toContain('class="cine-blast"');
+
+    const stepper = await (
+      await onboarding.render(makeCtx("https://mini.example/mini/setup?step=selfies"))
+    ).text();
+    expect(stepper).toContain('data-step="selfies"');
+    expect(stepper).toContain('data-step="twin"');
+    expect(stepper).toContain('data-step="avatar"');
+    expect(stepper).toContain('data-section="booth_photo"');
+    expect(stepper).toContain('data-section="photo_select"');
+    expect(stepper).toContain('data-section="sheet"');
+    expect(stepper).toContain('data-section="booth_video"');
+    expect(stepper).toContain('data-section="twin_create"');
+    expect(stepper).toContain('data-section="avatar"');
   });
 
   it("renders the three environment choices with no provider names leaking", async () => {

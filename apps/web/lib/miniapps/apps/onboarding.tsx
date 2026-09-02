@@ -1003,7 +1003,7 @@ function stepBody(
     if (lite) {
       return `<p>An agent of your own: its own computer, its own mailbox, and your context — set up in six short steps.</p><p class="muted">Everything here is optional and re-enterable. Skip anything, come back any time.</p><div class="row actions">${doneForm("welcome", "Continue")}</div>`;
     }
-    return `<div class="cine" data-intro><div class="cine-stage"><span class="wzrd-glow" aria-hidden="true"></span><img class="cine-mark" src="/creator-os/wzrd-wordmark-1600.png" alt="WZRD.tech"><button type="button" class="cine-cta">Begin</button></div><div class="cine-blast" aria-hidden="true"></div><video class="cine-film" playsinline muted preload="auto" aria-label="air introduction film"><source src="/creator-os/airintrofin.mp4" type="video/mp4"><source src="/creator-os/airintrofin.mov" type="video/quicktime"></video><div class="cine-done">${doneForm("welcome", "Continue")}</div></div>`;
+    return `<div class="cine" data-intro data-noswipe><div class="cine-stage"><span class="wzrd-glow" aria-hidden="true"></span><img class="cine-mark" src="/creator-os/wzrd-wordmark-1600.png" alt="WZRD.tech"><button type="button" class="cine-cta">Begin</button></div><div class="cine-blast" aria-hidden="true"></div><video class="cine-film" playsinline muted preload="auto" aria-label="air introduction film"><source src="/creator-os/airintrofin.mp4" type="video/mp4"><source src="/creator-os/airintrofin.mov" type="video/quicktime"></video><button type="button" class="cine-sound" hidden>Sound on</button><div class="cine-done">${doneForm("welcome", "Continue")}</div></div>`;
   }
   if (step === "environment") {
     return `<p class="muted">Your agent gets its own computer. Pick where it lives — you can switch later, but its files start fresh on the new machine.</p>${environmentCards(snapshot)}`;
@@ -1504,11 +1504,14 @@ html.cine-page,body.cine-page{background:#000}
 .cine:not(.is-pressed) .cine-cta{transition:transform 260ms cubic-bezier(0.34,1.56,0.64,1),background 200ms ease,box-shadow 200ms ease}
 .cine.is-charging .cine-stage{animation:cineShake 90ms linear infinite}
 @keyframes cineShake{0%{transform:translate(calc(var(--cine-intensity,0)*-7px),calc(var(--cine-intensity,0)*3px))}25%{transform:translate(calc(var(--cine-intensity,0)*6px),calc(var(--cine-intensity,0)*-5px))}50%{transform:translate(calc(var(--cine-intensity,0)*-4px),calc(var(--cine-intensity,0)*-3px))}75%{transform:translate(calc(var(--cine-intensity,0)*7px),calc(var(--cine-intensity,0)*4px))}100%{transform:translate(calc(var(--cine-intensity,0)*-6px),calc(var(--cine-intensity,0)*5px))}}
+.cine-sound{display:none;position:absolute;left:50%;bottom:clamp(1.4rem,6vw,3rem);z-index:3;min-width:7rem;transform:translateX(-50%);background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.35);font-size:0.68rem;letter-spacing:0.08em;text-transform:uppercase}
+.cine.is-silent.is-film .cine-sound{display:block}
 .cine-blast{position:absolute;inset:0;z-index:1;opacity:0;pointer-events:none;transition:opacity 180ms linear}
 .cine.is-blast .cine-blast{opacity:1}
 .cine.is-blast.is-film .cine-blast{opacity:0;transition:opacity 320ms ease}
 .cine-film{position:absolute;inset:0;z-index:2;width:100%;height:100%;object-fit:contain;opacity:0;transform:scale(1.06);transition:opacity 900ms ease,transform 1400ms cubic-bezier(0.22,1,0.36,1);pointer-events:none}
 .cine.is-blast.is-film .cine-film{transition:opacity 320ms ease,transform 900ms cubic-bezier(0.22,1,0.36,1)}
+@media (orientation:portrait){.cine-film{object-fit:cover;object-position:center}}
 .cine.is-flash .cine-stage{opacity:0}
 .cine.is-film .cine-stage{opacity:0;pointer-events:none}
 .cine.is-film .cine-film{opacity:1;transform:scale(1)}
@@ -1516,6 +1519,12 @@ html.cine-page,body.cine-page{background:#000}
 .cine:not(.is-ready) .cine-done{position:static;width:auto;height:auto;overflow:visible;margin-top:1.2rem}
 .cine:not(.is-ready) .cine-cta{display:none}
 @media(prefers-reduced-motion:reduce){.wzrd-glow{animation:none}.cine.is-charging .cine-stage{animation:none}.cine-film{transition:opacity 300ms ease;transform:none}.cine.is-reduced .cine-done{position:static;width:auto;height:auto;overflow:visible;margin-top:1.2rem}}
+@view-transition{navigation:auto}
+::view-transition-old(root){animation:220ms ease both cine-view-out}
+::view-transition-new(root){animation:220ms ease both cine-view-in}
+@keyframes cine-view-out{to{opacity:0}}
+@keyframes cine-view-in{from{opacity:0}}
+@media(prefers-reduced-motion:reduce){::view-transition-old(root),::view-transition-new(root){animation:none}}
 .envgrid{display:grid;gap:0.6rem;margin-top:0.6rem;grid-template-columns:repeat(auto-fit,minmax(9.5rem,1fr));align-items:stretch}
 form.envform{display:block;height:100%}
 .envmark{width:1.5rem;height:1.5rem;fill:none;stroke:currentColor;stroke-width:1.4;color:var(--accent)}
@@ -1739,7 +1748,10 @@ export function renderOnboarding(
       ? `<h2 class="subhead">${esc(section.label)}</h2>`
       : "";
     const done = sectionDone(snapshot, section.key) ? " data-step-done" : "";
-    return `<section class="panel"${done}>${heading}${sectionBody(snapshot, section.key, browserSignin, lite)}</section>`;
+    const step = SECTION_STEPS[section.key][0] ?? "";
+    const stepAttr = step ? ` data-step="${esc(step)}"` : "";
+    const sectionAttr = ` data-section="${esc(section.key)}"`;
+    return `<section class="panel"${done}${stepAttr}${sectionAttr}>${heading}${sectionBody(snapshot, section.key, browserSignin, lite)}</section>`;
   };
   // Sections that declare a pane render inside a scroll-snap pager — the
   // Photo Booth's photo/video two-part flow — with a segmented control on
