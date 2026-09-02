@@ -6,6 +6,8 @@ One user = one Hermes agent inside one Box sandbox, orchestrated by a Next.js co
 
 **Start here:** [`docs/platform.md`](docs/platform.md) — how the deployed system fits together (lifecycle, channels, gateway, Daytona sandboxes, security).
 
+**Commerce:** [`docs/commerce-zaps.md`](docs/commerce-zaps.md) — how a Zap stages a storefront listing that the owner approves and a buyer pays for through Stripe Connect.
+
 **Specification of record:** [`goal.md`](goal.md) (executable milestone plan) and [`ARCHITECTURE.md`](ARCHITECTURE.md) (reasoning; tie-breaker where they disagree). Security posture decisions live in [`SECURITY-DECISIONS.md`](SECURITY-DECISIONS.md).
 
 ## Layout
