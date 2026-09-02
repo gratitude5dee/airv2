@@ -283,8 +283,9 @@ export interface WordmarkBlast {
 
 /**
  * Builds the blast over `host`, drawing `src` at `restHeight` CSS pixels
- * tall with its centre at `restCenter` (a fraction of the host's height) so
- * the canvas at rest sits exactly where the stage's own wordmark was.
+ * tall with its centre `restCenter` of the host's height up from the
+ * BOTTOM edge (the shader works in `gl_FragCoord`'s bottom-origin space),
+ * so the canvas at rest sits exactly where the stage's own wordmark was.
  * Resolves once the artwork is in the atlas and the resting frame is on
  * screen; never rejects — check `ok` on the result.
  */
