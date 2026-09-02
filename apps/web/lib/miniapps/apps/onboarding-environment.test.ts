@@ -183,7 +183,14 @@ describe("onboarding environment step", () => {
     expect(response.status).toBe(200);
     const csp = response.headers.get("Content-Security-Policy") ?? "";
     expect(csp).toContain("media-src 'self'");
-    expect(await response.text()).toContain("/creator-os/welcome-air.mp4");
+    expect(csp).toContain("script-src 'self'");
+    const body = await response.text();
+    expect(body).toContain("/creator-os/airintrofin.mp4");
+    expect(body).toContain("/creator-os/airintrofin.mov");
+    expect(body).toContain("/creator-os/intro-cinematic.js");
+    expect(body).toContain("/creator-os/wzrd-wordmark-1600.png");
+    // The done-form stays in the DOM for the intro bundle to submit.
+    expect(body).toContain('name="step" value="welcome"');
   });
 
   it("renders the three environment choices with no provider names leaking", async () => {
