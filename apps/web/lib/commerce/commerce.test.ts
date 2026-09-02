@@ -556,6 +556,26 @@ describe("catalog: owner-approved projection of public data only", () => {
     });
     expect(both?.priceCents).toBe(900);
     expect(both?.imageUrl).toBe(`${r2}?camel`);
+    // A present-but-null camelCase key still wins: clearing imageUrl must not
+    // resurrect a stale image_url, and a null price must not publish.
+    const cleared = sanitizeCatalogItem({
+      key: "ok",
+      kind: "digital",
+      name: "x",
+      priceCents: 900,
+      imageUrl: null,
+      image_url: r2,
+    });
+    expect(cleared?.imageUrl).toBeNull();
+    expect(
+      sanitizeCatalogItem({
+        key: "ok",
+        kind: "digital",
+        name: "x",
+        priceCents: null,
+        price_cents: 700,
+      })
+    ).toBeNull();
     // The alias is subject to the same constraints as the canonical field.
     expect(
       sanitizeCatalogItem({ key: "ok", kind: "digital", name: "x", price_cents: -5 })

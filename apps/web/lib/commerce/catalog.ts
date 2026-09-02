@@ -79,7 +79,7 @@ function publicImageUrl(value: unknown): string | null {
 
 /** Loose catalog entry: box-side JSON is agent-written, so fields stay
  * unknown and are clamped below. `price_cents` / `image_url` are accepted
- * as snake_case aliases; camelCase wins when both are present. */
+ * as snake_case aliases; a present camelCase key (even null) wins. */
 const CatalogEntryRow = z.object({
   key: z.unknown(),
   kind: z.unknown(),
@@ -108,7 +108,7 @@ export function sanitizeCatalogItem(raw: unknown): CatalogItem | null {
   if (!isProductKind(kind)) return null;
   const name = typeof item.name === "string" ? item.name.trim().slice(0, 200) : "";
   if (!name) return null;
-  const priceCents = item.priceCents ?? item.price_cents;
+  const priceCents = "priceCents" in item ? item.priceCents : item.price_cents;
   if (
     typeof priceCents !== "number" ||
     !Number.isInteger(priceCents) ||
@@ -131,7 +131,9 @@ export function sanitizeCatalogItem(raw: unknown): CatalogItem | null {
       typeof item.description === "string"
         ? item.description.slice(0, 2000)
         : "",
-    imageUrl: publicImageUrl(item.imageUrl ?? item.image_url),
+    imageUrl: publicImageUrl(
+      "imageUrl" in item ? item.imageUrl : item.image_url
+    ),
     priceCents,
     inventory,
     active: item.active !== false,
