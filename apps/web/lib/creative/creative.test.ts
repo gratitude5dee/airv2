@@ -333,6 +333,10 @@ describe("directZapPlan", () => {
     expect(aspectRatioFromText("9:16 landscape of dunes")).toBe("9:16");
     expect(aspectRatioFromText("square 4:3 frame")).toBe("4:3");
     expect(durationFromText("a 120 second odyssey")).toBe(120);
+    expect(durationFromText("15s push-in")).toBe(15);
+    expect(durationFromText("1920s silent film")).toBeNull();
+    expect(durationFromText("early 2000s style")).toBeNull();
+    expect(durationFromText("80s synthwave")).toBeNull();
     const request = buildFalZapRequest(
       directZapPlan(zapTurn("a 120 second odyssey")),
       turn(),

@@ -150,12 +150,22 @@ export const aspectRatioFromText = (text: string): AspectRatio =>
   WORD_RATIO_CUES.find(([cue]) => cue.test(text))?.[1] ??
   "auto";
 
-const DURATION_CUE = /\b(\d+)\s*(?:s|sec|secs|second|seconds)\b/i;
+/**
+ * "8 seconds" / "120 sec" at any length; the bare "8s" form only below 20 so
+ * decades ("1920s", "80s style") never read as a clip length.
+ */
+const DURATION_CUES = [
+  /\b(\d+)\s*(?:sec|secs|second|seconds)\b/i,
+  /\b(1?\d)\s*s\b/i,
+];
 
 /** Duration in seconds named in the user's words; null when none is. */
 export const durationFromText = (text: string): number | null => {
-  const match = DURATION_CUE.exec(text);
-  return match ? Number(match[1]) : null;
+  for (const cue of DURATION_CUES) {
+    const match = cue.exec(text);
+    if (match) return Number(match[1]);
+  }
+  return null;
 };
 
 /**
