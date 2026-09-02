@@ -934,14 +934,20 @@ function modelBody(snapshot: OnboardingSnapshot): string {
   return `<p class="muted">Pick the family your agent thinks with.</p><div class="famgrid">${families}</div><p class="muted">(you can select others in settings later)</p><p class="muted">Thinking speed — faster answers or deeper reasoning:</p><div class="row">${tiers}</div><div class="row actions">${skipForm("model")}</div>`;
 }
 
+/** Messages app glyph — green tile with a white speech bubble. */
+const IMESSAGE_ICON = `<svg class="oa-appicon" viewBox="0 0 24 24" aria-hidden="true"><defs><linearGradient id="oa-imsg-g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6ff283"/><stop offset="1" stop-color="#1fc84d"/></linearGradient></defs><rect width="24" height="24" rx="5.6" fill="url(#oa-imsg-g)"/><path fill="#fff" d="M12 5.2c-4.3 0-7.6 2.7-7.6 6.1 0 1.9 1.1 3.6 2.8 4.7-.1.9-.5 1.9-1.3 2.7 1.4-.2 2.7-.8 3.7-1.6.8.2 1.6.3 2.4.3 4.3 0 7.6-2.7 7.6-6.1S16.3 5.2 12 5.2Z"/></svg>`;
+
+/** Speech-bubble tail hanging off the bubble's bottom-left corner. */
+const BUBBLE_TAIL = `<svg class="oa-tail" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M14 0C14 6.5 9.5 12.5 1 15.6c6.5.6 12-2.2 15-6.6V0Z"/></svg>`;
+
 /**
  * Personality engine (Onairos) step: a status well, the native sign-in well,
- * iMessage folded away as the alternative, and one actions row — Continue
- * (primary, once connected) or Skip, plus Refresh for card sessions that
- * finished a Google sign-in in the real browser. The key only ever renders
- * on the owner's own authenticated slide (never in a public bundle), the
- * SDK handoff posts back as a regular form (action=onairos_handoff), and a
- * connected account keeps the flow mounted so more sources can be added.
+ * the iMessage alternative as a chat-bubble button, and one actions row —
+ * Continue (primary, once connected) or Skip, plus Refresh for card sessions
+ * that finished a Google sign-in in the real browser. The key only ever
+ * renders on the owner's own authenticated slide (never in a public bundle),
+ * the SDK handoff posts back as a regular form (action=onairos_handoff), and
+ * a connected account keeps the flow mounted so more sources can be added.
  */
 function onairosBody(
   snapshot: OnboardingSnapshot,
@@ -973,7 +979,7 @@ function onairosBody(
     ? "Open Onairos again to connect other platforms — each new connection re-imports your context."
     : "The consent flow opens right here — approve what to share and your context imports in one step.";
   const connect = `<div class="oa-connect"><span class="chip">${label}</span><p class="muted">${hint}</p><div id="onairos-connect" class="oa-mount" data-api-key="${esc(apiKey)}"${googleAttr}><p class="muted">Loading Onairos sign-in…</p></div>${browserNote}</div><script src="/creator-os/onairos-connect.js" defer></script>`;
-  const imessage = `<details><summary>Or connect via iMessage</summary><p class="muted">Onairos asks for your account email, a verification code, and your YES right in your iMessage thread.</p><form method="post" class="inline"><input type="hidden" name="action" value="connect_onairos"><button class="ghost">Connect via iMessage</button></form></details>`;
+  const imessage = `<div class="oa-alt"><span class="chip">Or connect via iMessage</span><form method="post" class="inline"><input type="hidden" name="action" value="connect_onairos"><button class="oa-bubble"><span>Connect via iMessage</span>${IMESSAGE_ICON}${BUBBLE_TAIL}</button></form><p class="muted">Onairos asks for your account email, a verification code, and your YES right in your iMessage thread.</p></div>`;
   const primary = connected
     ? doneForm("onairos", "Continue")
     : skipForm("onairos");
@@ -1515,6 +1521,15 @@ button.envcard:active{transform:scale(0.99)}
 .oa-connect p{margin:0}
 .oa-mount{display:flex;align-items:center;flex-wrap:wrap;gap:0.5rem;min-height:2.75rem;margin-top:0.15rem}
 .oa-note{font-size:0.8rem;line-height:1.45;color:var(--ink-muted);padding-top:0.6rem;border-top:1px solid var(--ring)}
+.oa-alt{display:grid;gap:0.55rem;justify-items:start;padding:0.35rem 0.15rem 0;margin-bottom:0.2rem}
+.oa-alt .chip{color:var(--ink-muted)}
+.oa-alt p{margin:0;font-size:0.82rem;line-height:1.45}
+.oa-bubble{position:relative;display:inline-flex;align-items:center;gap:0.65rem;background:#0b84fe;color:#fff;border-radius:1.4rem;min-height:2.9rem;padding:0.6rem 0.85rem 0.6rem 1.15rem;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;box-shadow:0 8px 22px -10px rgba(11,132,254,0.75)}
+.oa-bubble:hover{background:#1a8dff}
+.oa-bubble:focus-visible{outline-color:#0b84fe}
+.oa-appicon{width:1.45rem;height:1.45rem;flex:none;border-radius:0.35rem;box-shadow:0 1px 2px rgba(0,0,0,0.25)}
+.oa-tail{position:absolute;left:-0.42rem;bottom:-0.04rem;width:1.05rem;height:1.05rem;color:#0b84fe;pointer-events:none}
+.oa-bubble:hover .oa-tail{color:#1a8dff}
 .muted{color:var(--ink-muted);font-size:0.85rem}
 .chip{font-family:var(--font-ui);font-size:0.6rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-muted)}
 input[type=file]{flex:1;min-width:0;color:var(--ink-muted);font-size:0.85rem;font-family:var(--font-body)}
