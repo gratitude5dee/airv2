@@ -42,22 +42,34 @@ function attachIntro(): void {
   let holding = false;
   let nextPulseAt = 0;
   let fallback = 0;
+  let flash = 0;
+  let run = 0;
+  let onEnd: (() => void) | null = null;
+  let onError: (() => void) | null = null;
 
   const setIntensity = (value: number): void => {
     root.style.setProperty("--cine-intensity", value.toFixed(3));
   };
 
-  const finish = (): void => {
-    if (phase === "done") return;
+  const detachVideoListeners = (): void => {
+    if (onEnd) video.removeEventListener("ended", onEnd);
+    if (onError) video.removeEventListener("error", onError);
+    onEnd = null;
+    onError = null;
+  };
+
+  const finish = (myRun: number): void => {
+    if (run !== myRun || phase === "done") return;
     phase = "done";
+    window.clearTimeout(flash);
     window.clearTimeout(fallback);
     if (canVibrate) navigator.vibrate(0);
     if (typeof form.requestSubmit === "function") form.requestSubmit();
     else form.submit();
   };
 
-  const startFilm = (): void => {
-    if (phase !== "charging") return;
+  const startFilm = (myRun: number): void => {
+    if (run !== myRun || phase !== "charging") return;
     phase = "film";
     holding = false;
     cta.disabled = true;
@@ -65,14 +77,20 @@ function attachIntro(): void {
     root.classList.add("is-flash");
     setIntensity(0);
     if (canVibrate) navigator.vibrate([40, 30, 80]);
-    video.addEventListener("ended", finish, { once: true });
-    video.addEventListener("error", finish, { once: true });
-    window.setTimeout(() => {
+    onEnd = () => finish(myRun);
+    onError = () => finish(myRun);
+    video.addEventListener("ended", onEnd, { once: true });
+    video.addEventListener("error", onError, { once: true });
+    flash = window.setTimeout(() => {
+      if (run !== myRun) return;
       root.classList.remove("is-flash");
       root.classList.add("is-film");
       const played = video.play();
       if (played && typeof played.catch === "function") {
-        played.catch(() => finish());
+        played.catch(() => {
+          if (run !== myRun) return;
+          finish(myRun);
+        });
       }
       // If the film never fires `ended` (stalled network, decode failure),
       // still move the owner along — its duration once known, else a cap.
@@ -80,12 +98,12 @@ function attachIntro(): void {
         Number.isFinite(video.duration) && video.duration > 0
           ? video.duration * 1000 + 4000
           : FILM_FALLBACK_MS;
-      fallback = window.setTimeout(finish, budget);
+      fallback = window.setTimeout(() => finish(myRun), budget);
     }, FLASH_MS);
   };
 
-  const tick = (now: number): void => {
-    if (phase !== "charging") return;
+  const tick = (now: number, myRun: number): void => {
+    if (run !== myRun || phase !== "charging") return;
     const progress = Math.min(1, (now - startedAt) / HOLD_MS);
     // Ease-in so the first second is a tremor and the last is a quake.
     setIntensity(progress * progress);
@@ -95,24 +113,26 @@ function attachIntro(): void {
       nextPulseAt = now + Math.max(50, 360 - progress * 300);
     }
     if (progress >= 1) {
-      startFilm();
+      startFilm(myRun);
       return;
     }
-    frame = window.requestAnimationFrame(tick);
+    frame = window.requestAnimationFrame((next) => tick(next, myRun));
   };
 
   const begin = (): void => {
     if (phase !== "idle") return;
+    run += 1;
+    const myRun = run;
     if (reduced) {
       phase = "charging";
-      startFilm();
+      startFilm(myRun);
       return;
     }
     phase = "charging";
     startedAt = performance.now();
     nextPulseAt = startedAt;
     root.classList.add("is-charging");
-    frame = window.requestAnimationFrame(tick);
+    frame = window.requestAnimationFrame((now) => tick(now, myRun));
   };
 
   const pressIn = (): void => {
@@ -151,8 +171,11 @@ function attachIntro(): void {
   });
 
   window.addEventListener("pagehide", () => {
+    run += 1;
     window.cancelAnimationFrame(frame);
+    window.clearTimeout(flash);
     window.clearTimeout(fallback);
+    detachVideoListeners();
   });
 
   // A back-forward cache restore revives the document mid-sequence with its
@@ -160,6 +183,10 @@ function attachIntro(): void {
   // button works again (the done-form only submits from a fresh run).
   window.addEventListener("pageshow", (event) => {
     if (!event.persisted) return;
+    run += 1;
+    window.cancelAnimationFrame(frame);
+    window.clearTimeout(flash);
+    window.clearTimeout(fallback);
     phase = "idle";
     holding = false;
     cta.disabled = false;
@@ -167,8 +194,7 @@ function attachIntro(): void {
     setIntensity(0);
     video.pause();
     video.currentTime = 0;
-    video.removeEventListener("ended", finish);
-    video.removeEventListener("error", finish);
+    detachVideoListeners();
   });
 }
 

@@ -1492,6 +1492,8 @@ form.stack select{background:var(--well-bg);color:var(--ink);border:1px solid va
 .pager::-webkit-scrollbar{display:none}
 .pane{flex:0 0 100%;scroll-snap-align:center;scroll-snap-stop:always;display:grid;gap:0.9rem;align-content:start;min-width:0}
 .cine{position:fixed;inset:0;z-index:40;background:#000;display:flex;align-items:center;justify-content:center;overflow:hidden}
+html.cine-page,body.cine-page{background:#000}
+.cine-notices{position:fixed;top:0;left:0;right:0;z-index:50;display:flex;flex-direction:column;align-items:center;gap:0.5rem;padding:clamp(0.9rem,3.2vw,1.35rem) clamp(1rem,4.5vw,1.7rem)}
 .cine-stage{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2.4rem;transition:opacity 600ms ease;transform:translateX(calc(var(--cine-intensity,0)*0px))}
 .wzrd-glow{position:absolute;top:50%;left:50%;width:min(80vw,34rem);height:min(80vw,34rem);transform:translate(-50%,-58%);border-radius:50%;pointer-events:none;background:radial-gradient(circle,rgba(255,255,255,0.3) 0%,rgba(255,255,255,0.08) 42%,transparent 70%);opacity:calc(0.55 + var(--cine-intensity,0)*0.45);animation:cineBreathe 5.2s ease-in-out infinite;filter:blur(calc(6px + var(--cine-intensity,0)*10px))}
 @keyframes cineBreathe{0%,100%{transform:translate(-50%,-58%) scale(1)}50%{transform:translate(-50%,-58%) scale(1.08)}}
@@ -1726,25 +1728,6 @@ export function renderOnboarding(
   // and first paint (the faces themselves load with font-display:swap).
   const fonts =
     current.fontFaces === null ? "" : `<style>${current.fontFaces}</style>`;
-  const backdrop = current.backdrop;
-  const shader =
-    backdrop.kind === "shader" && !lite
-      ? `<script src="${esc(backdrop.script)}" defer></script>`
-      : "";
-  // The shader element paints itself; if fx.js or WebGL is unavailable it
-  // stays an empty inert box and the canvas gradient carries the page.
-  const backdropHtml =
-    backdrop.kind === "shader" && !lite
-      ? backdrop.element.replace("<wz-sky", '<wz-sky class="backdrop"')
-      : "";
-  const grain =
-    backdrop.grain && !lite
-      ? '<div class="grain" aria-hidden="true"></div>'
-      : "";
-  const scrim =
-    current.tokens.scrim === "none"
-      ? ""
-      : '<div class="scrim" aria-hidden="true"></div>';
   // Each section is one card; a slide is the concatenation of the bodies of
   // the steps it owns, so every sub-step keeps its own forms and actions.
   const card = (section: SlideSection): string => {
@@ -1765,6 +1748,26 @@ export function renderOnboarding(
   // a stepper; deep links land on the panel that owns the active step.
   const stepper =
     !lite && !slide.split && panes.length <= 1 && slide.sections.length > 1;
+  const cinematic = !lite && slide.id === "welcome";
+  const backdrop = current.backdrop;
+  const shader =
+    !cinematic && backdrop.kind === "shader" && !lite
+      ? `<script src="${esc(backdrop.script)}" defer></script>`
+      : "";
+  // The shader element paints itself; if fx.js or WebGL is unavailable it
+  // stays an empty inert box and the canvas gradient carries the page.
+  const backdropHtml =
+    !cinematic && backdrop.kind === "shader" && !lite
+      ? backdrop.element.replace("<wz-sky", '<wz-sky class="backdrop"')
+      : "";
+  const grain =
+    !cinematic && backdrop.grain && !lite
+      ? '<div class="grain" aria-hidden="true"></div>'
+      : "";
+  const scrim =
+    !cinematic && current.tokens.scrim !== "none"
+      ? '<div class="scrim" aria-hidden="true"></div>'
+      : "";
   // A pending character-sheet draft pulls the booth to its review panel —
   // generate/confirm actions land back on ?step=selfies, which would
   // otherwise reopen the first panel and hide the Save/Discard controls.
@@ -1822,6 +1825,14 @@ export function renderOnboarding(
     // indicator circles); with no JS the panels simply stack.
     stepper ? '<script src="/creator-os/deck-stepper.js" defer></script>' : "",
   ].join("");
+  if (cinematic) {
+    const notices =
+      busy || noticeHtml
+        ? `<div class="cine-notices">${busy}${noticeHtml}</div>`
+        : "";
+    const intro = sectionBody(snapshot, "welcome", browserSignin, lite);
+    return `<!doctype html><html lang="en" class="cine-page"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>Onboarding — ${esc(slide.title)}</title>${fonts}<style>${tokenBlock(current.tokens)}${SLIDE_CSS}</style></head><body class="cine-page"${prev ? ` data-swipe-prev="${href(prev)}"` : ""}${next ? ` data-swipe-next="${href(next)}"` : ""}>${notices}${intro}${scripts}</body></html>`;
+  }
   const deck = `<div class="deck${slide.split ? " split" : ""}"${stepper ? ` data-stepper data-stepper-active="${activeSection}"` : ""}>${sections}</div>${scripts}`;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>Onboarding — ${esc(slide.title)}</title>${fonts}<style>${tokenBlock(current.tokens)}${SLIDE_CSS}${lite ? LITE_CSS : ""}</style>${shader}</head><body>${backdropHtml}${scrim}${grain}<div class="frame"${prev ? ` data-swipe-prev="${href(prev)}"` : ""}${next ? ` data-swipe-next="${href(next)}"` : ""}><header class="bar"><span class="logo-pill"><img src="/creator-os/wzrd-wordmark-1600.png" alt="WZRD.tech"></span><span class="counter">${counter}${esc(statusTag)}</span></header><main class="slide">${busy}${noticeHtml}<p class="kicker">${kickerNumber}${esc(slide.kicker)}</p><h1>${esc(slide.title)}</h1>${deck}</main><footer class="nav">${prev ? `<a class="navlink" href="${href(prev)}">← Back</a>` : '<span class="navlink ghosted">← Back</span>'}<nav class="dots" aria-label="Slides">${dots}</nav>${next ? `<a class="navlink" href="${href(next)}">Next →</a>` : '<span class="navlink ghosted">Next →</span>'}</footer></div></body></html>`;
 }
