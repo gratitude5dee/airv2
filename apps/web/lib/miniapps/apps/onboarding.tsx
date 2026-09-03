@@ -26,13 +26,22 @@ import {
   type ManagerStatus,
 } from "@/lib/vault/managers";
 import {
+  availableHarnesses,
   isSpeedTier,
   MODEL_FAMILY_LABELS,
+  setHarness,
   setModelFamily,
   setSpeedTier,
   setUsername,
   SPEED_TIERS,
 } from "@/lib/settings/account";
+import {
+  AGENT_HARNESSES,
+  HARNESS_PROFILES,
+  isAgentHarness,
+  toAgentHarness,
+  type AgentHarness,
+} from "@/lib/agent/harness";
 import {
   DEFAULT_MODEL_FAMILY,
   isModelFamily,
@@ -68,7 +77,7 @@ import {
   TOOLKIT_SLUG_PATTERN,
   type ConnectionRow,
 } from "@/lib/connectors/manage";
-import { createRun, MAIN_SESSION } from "@/lib/hermes/client";
+import { createRun, MAIN_SESSION } from "@/lib/agent/client";
 import {
   isOnboardingStep,
   markOnboardingStep,
@@ -386,6 +395,9 @@ export interface OnboardingSnapshot {
   onairos: OnairosStatus;
   speedTier: string | null;
   modelFamily: ModelFamily;
+  harness: AgentHarness;
+  /** Harnesses with a registered template for the current environment. */
+  harnessAvailable: Record<AgentHarness, boolean>;
   merchant: Merchant | null;
   link: LinkAuthDoc | null;
   pluginSessions: number;
@@ -495,7 +507,7 @@ async function loadSnapshot(
       timedPart(parts, "box", () =>
         supabase
           .from("boxes")
-          .select("environment")
+          .select("environment, harness")
           .eq("user_id", userId)
           .maybeSingle()
       ),
@@ -594,9 +606,21 @@ async function loadSnapshot(
       ConnectionRow & { provider?: string | null }
     >;
 
+    const environment = toComputeEnvironment(boxRow?.environment);
+    const harnessAvailable = await timedPart(parts, "harnesses", () =>
+      availableHarnesses(supabase, environment).catch(
+        () =>
+          Object.fromEntries(
+            AGENT_HARNESSES.map((h) => [h, h === "hermes"])
+          ) as Record<AgentHarness, boolean>
+      )
+    );
+
     return {
       state,
-      environment: toComputeEnvironment(boxRow?.environment),
+      environment,
+      harness: toAgentHarness(boxRow?.harness),
+      harnessAvailable,
       username: user.username,
       address: (addressRow?.address as string | null) ?? null,
       mailboxDomain: env.agentEmailDomain(),
@@ -897,6 +921,26 @@ function environmentCards(snapshot: OnboardingSnapshot): string {
 }
 
 /**
+ * Agent cards — same shape as the compute row. A harness without a registered
+ * template for the current environment renders disabled ("Soon"), exactly
+ * like a coming-soon machine.
+ */
+function harnessCards(snapshot: OnboardingSnapshot): string {
+  const cards = AGENT_HARNESSES.map((harness) => {
+    const profile = HARNESS_PROFILES[harness];
+    const current = harness === snapshot.harness;
+    const available = snapshot.harnessAvailable[harness];
+    const name = `<span class="envname">${esc(profile.label)}${current ? '<span class="envtag">Current</span>' : ""}${!available && !current ? '<span class="envtag soon">Soon</span>' : ""}</span>`;
+    const inner = `${name}<span class="envblurb">${esc(profile.blurb)}</span>`;
+    if (!available && !current) {
+      return `<div class="envcard off" aria-disabled="true">${inner}</div>`;
+    }
+    return `<form method="post" class="envform"><input type="hidden" name="action" value="set_harness"><input type="hidden" name="harness" value="${esc(harness)}"><button class="envcard${current ? " current" : ""}">${inner}</button></form>`;
+  }).join("");
+  return `<p class="muted">Choose your agent — the runtime that thinks and acts on that machine. Switching rebuilds the machine.</p><div class="envgrid">${cards}</div>`;
+}
+
+/**
  * Computer card: machine, username, and the mailbox that follows it. The
  * address is `<username>@<AGENT_EMAIL_DOMAIN>` (lib/provisioning/email.ts),
  * so "editing the mailbox" is the same write as changing the username — the
@@ -912,7 +956,7 @@ function computerBody(snapshot: OnboardingSnapshot): string {
   const gateNote = snapshot.username
     ? ""
     : '<p class="muted">Pick a username to unlock the rest — it provisions your agent\u2019s mailbox. Everything after this is skippable.</p>';
-  return `<p class="muted">Your agent gets its own computer. Pick where it lives — you can switch later, but its files start fresh on the new machine.</p>${environmentCards(snapshot)}${mailbox}${form}${gateNote}`;
+  return `<p class="muted">Your agent gets its own computer. Pick where it lives — you can switch later, but its files start fresh on the new machine.</p>${environmentCards(snapshot)}${harnessCards(snapshot)}${mailbox}${form}${gateNote}`;
 }
 
 /** The families offered during onboarding; Settings has the full menu. */
@@ -2152,6 +2196,32 @@ export const onboarding: MiniAppModule = {
         null,
         `Your agent now lives on ${ENVIRONMENT_PROFILES[value].label}.`
       );
+    }
+
+    if (action === "set_harness") {
+      const value = String(form.get("harness") ?? "");
+      if (!isAgentHarness(value)) return forbidden("unknown harness");
+      const snapshot = await loadSnapshot(supabase, userId);
+      const label = HARNESS_PROFILES[value].label;
+      if (value === snapshot.harness) {
+        return respond(ctx, null, `Staying with ${label}.`);
+      }
+      if (!snapshot.harnessAvailable[value]) {
+        return respond(
+          ctx,
+          "environment",
+          `${label} is coming soon — your agent stays on ${HARNESS_PROFILES[snapshot.harness].label} for now.`
+        );
+      }
+      const ok = await setHarness(supabase, userId, value);
+      if (!ok) {
+        return respond(
+          ctx,
+          "environment",
+          `${label} isn't available right now — try again, or switch later.`
+        );
+      }
+      return respond(ctx, null, `Your agent now runs ${label}.`);
     }
 
     if (action === "set_username") {

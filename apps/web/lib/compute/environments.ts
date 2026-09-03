@@ -15,6 +15,8 @@
  *            is driven over the template's control bridge, not an exec API.
  */
 
+import { harnessServicesFor } from "@/lib/agent/harness";
+
 export const COMPUTE_ENVIRONMENTS = ["ubuntu", "omarchy", "macos"] as const;
 
 export type ComputeEnvironment = (typeof COMPUTE_ENVIRONMENTS)[number];
@@ -151,15 +153,19 @@ export function hermesPath(
 /**
  * Restart command for a set of services: systemd on a box (both Linux
  * environments), launchd on macOS, where the units are per-user LaunchAgents
- * labelled tech.wzrd.air.<service>.
+ * labelled tech.wzrd.air.<service>. Units are filtered to those the
+ * environment's default profile or any harness declares for its compute
+ * kind, so a caller can never restart an arbitrary unit name.
  */
 export function restartCommand(
   environment: ComputeEnvironment,
   services: readonly string[] = profileFor(environment).services,
 ): string {
-  const wanted = services.filter((service) =>
-    profileFor(environment).services.includes(service),
-  );
+  const known = new Set([
+    ...profileFor(environment).services,
+    ...harnessServicesFor(kindFor(environment)),
+  ]);
+  const wanted = services.filter((service) => known.has(service));
   if (wanted.length === 0) return "true";
   switch (kindFor(environment)) {
     case "box":

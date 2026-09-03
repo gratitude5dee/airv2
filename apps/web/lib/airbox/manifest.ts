@@ -19,12 +19,13 @@ import {
   type ComputeProvider,
 } from "@/lib/compute/environments";
 import {
-  API_SERVER_PORT,
-  DASHBOARD_PORT,
-} from "@/lib/orchestrator/boxes";
+  DEFAULT_HARNESS,
+  HERMES_REF,
+  harnessProfile,
+  type AgentHarness,
+} from "@/lib/agent/harness";
 
-/** Pinned Hermes revision baked into the Linux templates (infra/template/setup.sh). */
-export const HERMES_REF = "fcbd1076a93841fa88855acce810e342a5b78101";
+export { HERMES_REF };
 
 /**
  * Per-environment pins: each entry mirrors that template's setup.sh so the
@@ -53,14 +54,21 @@ export interface AirboxManifest {
   /** Manifest schema version — bump on breaking shape changes. */
   version: 1;
   environment: ComputeEnvironment;
+  /** Agent runtime on the machine; hermes unless the user chose otherwise. */
+  harness: AgentHarness;
   lane: AirboxLane;
   provider: ComputeProvider;
   kind: ComputeKind;
   homeDir: string;
-  /** infra/ directory whose setup.sh builds this template. */
+  /** Template directory whose bake builds this box. */
   templateDir: string;
+  /** Harness build ref the template pins. `hermesRef` on Hermes boxes. */
+  harnessRef: string;
   hermesRef: string;
-  ports: { hermes: number; dashboard: number };
+  /** Harness state root (~/.hermes, ~/.exo) relative to homeDir. */
+  stateDir: string;
+  /** `hermes` is the api_server-contract port whichever harness serves it. */
+  ports: { hermes: number; dashboard: number | null };
   /** Units the per-user secret merge must bounce (systemd or launchd). */
   services: readonly string[];
   enabledPlatforms: readonly string[];
@@ -73,23 +81,56 @@ const TEMPLATE_DIRS: Record<ComputeEnvironment, string> = {
   macos: "infra/template-macos",
 };
 
-/** The agent manifest for an onboarding environment. */
+/**
+ * The agent manifest for an onboarding environment. Hermes projects the
+ * environment profile unchanged; any other harness derives template,
+ * services, ports, and enabled surfaces from its HarnessProfile instead of
+ * the Hermes constants (the environment still decides provider/home/desktop).
+ */
 export function airboxManifest(
   environment: ComputeEnvironment,
+  harness: AgentHarness = DEFAULT_HARNESS,
 ): AirboxManifest {
   const profile = ENVIRONMENT_PROFILES[environment];
+  const hermesRef = HERMES_REFS[environment];
+  if (harness === "hermes") {
+    return {
+      version: 1,
+      environment,
+      harness,
+      lane: "agent",
+      provider: profile.provider,
+      kind: profile.kind,
+      homeDir: profile.homeDir,
+      templateDir: TEMPLATE_DIRS[environment],
+      harnessRef: hermesRef,
+      hermesRef,
+      stateDir: harnessProfile("hermes").stateDir,
+      ports: {
+        hermes: harnessProfile("hermes").ports.api,
+        dashboard: harnessProfile("hermes").ports.dashboard,
+      },
+      services: profile.services,
+      enabledPlatforms: ENABLED_PLATFORMS,
+      headedBrowser: profile.headedBrowser,
+    };
+  }
+  const agent = harnessProfile(harness);
   return {
     version: 1,
     environment,
+    harness,
     lane: "agent",
     provider: profile.provider,
     kind: profile.kind,
     homeDir: profile.homeDir,
-    templateDir: TEMPLATE_DIRS[environment],
-    hermesRef: HERMES_REFS[environment],
-    ports: { hermes: API_SERVER_PORT, dashboard: DASHBOARD_PORT },
-    services: profile.services,
-    enabledPlatforms: ENABLED_PLATFORMS,
+    templateDir: agent.templateDir,
+    harnessRef: agent.templateRef,
+    hermesRef,
+    stateDir: agent.stateDir,
+    ports: { hermes: agent.ports.api, dashboard: agent.ports.dashboard },
+    services: agent.services[profile.kind],
+    enabledPlatforms: agent.enabledPlatforms,
     headedBrowser: profile.headedBrowser,
   };
 }

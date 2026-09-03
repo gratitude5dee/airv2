@@ -186,7 +186,12 @@ describe("provisionUser environments", () => {
 
   it("omarchy forks the registered omarchy template box", async () => {
     tables["box_environment_templates"] = [
-      { channel: "prod", environment: "omarchy", template_ref: "template-omarchy" },
+      {
+        channel: "prod",
+        environment: "omarchy",
+        harness: "hermes",
+        template_ref: "template-omarchy",
+      },
     ];
     const result = await provisionUser({ environment: "omarchy" });
     expect(result.environment).toBe("omarchy");
@@ -213,6 +218,7 @@ describe("provisionUser environments", () => {
       {
         channel: "prod",
         environment: "macos",
+        harness: "hermes",
         template_ref: "https://air.test/mac-bootstrap.sh",
       },
     ];
@@ -232,6 +238,96 @@ describe("provisionUser environments", () => {
     });
     expect(upserts["boxes"]?.[0]?.["control_token"]).toEqual(expect.any(String));
     expect(installComposioMcp).toHaveBeenCalled();
+  });
+});
+
+describe("provisionUser harnesses", () => {
+  beforeEach(() => {
+    vi.mocked(boxClient.writeFile).mockClear();
+    boxCommand.mockClear();
+  });
+
+  function written(): Array<[string, string]> {
+    return vi
+      .mocked(boxClient.writeFile)
+      .mock.calls.map(([, path, content]) => [path, content] as [string, string]);
+  }
+
+  it("defaults to hermes and writes the Hermes env + config.yaml unchanged", async () => {
+    const result = await provisionUser();
+    expect(result.harness).toBe("hermes");
+    const paths = written().map(([path]) => path);
+    expect(paths).toContain(".hermes/.env.perbox");
+    const commands = boxCommand.mock.calls.map(([, cmd]) => cmd);
+    expect(commands).toContainEqual(
+      expect.stringMatching(/\.hermes\/config\.yaml/)
+    );
+    expect(upserts["boxes"]?.[0]).toMatchObject({
+      harness: "hermes",
+      dashboard_url: "https://box-9119.on.ascii.dev",
+    });
+  });
+
+  it("exo with no registered template fails instead of forking hermes", async () => {
+    await expect(provisionUser({ harness: "exo" })).rejects.toThrow(
+      /no ubuntu template registered for exo/
+    );
+    expect(fork).not.toHaveBeenCalled();
+  });
+
+  it("exo forks the exo template and writes exo config without a provider key", async () => {
+    tables["box_environment_templates"] = [
+      {
+        channel: "prod",
+        environment: "ubuntu",
+        harness: "exo",
+        template_ref: "template-exo",
+      },
+    ];
+    const result = await provisionUser({ harness: "exo" });
+    expect(result.harness).toBe("exo");
+    expect(result.environment).toBe("ubuntu");
+    expect(fork).toHaveBeenCalledWith(
+      expect.objectContaining({ templateId: "template-exo" })
+    );
+
+    const files = written();
+    const paths = files.map(([path]) => path);
+    expect(paths).toContain(".exo/.env.perbox");
+    expect(paths).not.toContain(".hermes/.env.perbox");
+    const perbox = files.find(([path]) => path === ".exo/.env.perbox")?.[1] ?? "";
+    expect(perbox).toMatch(/^API_SERVER_KEY=\S+$/m);
+    expect(perbox).toContain("API_SERVER_HOST_PORT=0.0.0.0:8642");
+    expect(perbox).toContain(
+      "EXO_MODEL_BASE_URL=https://air.test/api/gateway/v1"
+    );
+    expect(perbox).not.toMatch(/OPENAI_|ANTHROPIC_|sk-/);
+
+    const commands = boxCommand.mock.calls.map(([, cmd]) => cmd);
+    expect(commands).toContainEqual(
+      expect.stringMatching(
+        /exo --root \/home\/user\/\.exo --harness exo secret set GATEWAY_TOKEN --env GATEWAY_TOKEN/
+      )
+    );
+    expect(commands).toContainEqual(
+      expect.stringMatching(
+        /model register gateway --model balanced --secret GATEWAY_TOKEN --base-url https:\/\/air\.test\/api\/gateway\/v1/
+      )
+    );
+    expect(commands.join("\n")).not.toMatch(/OPENAI_API_KEY|\.hermes\//);
+    expect(commands).toContainEqual(
+      expect.stringMatching(/exo-agentd/)
+    );
+    expect(commands).toContainEqual(expect.stringMatching(/\.template-exo-ref/));
+
+    expect(upserts["boxes"]?.[0]).toMatchObject({
+      harness: "exo",
+      environment: "ubuntu",
+      hosted_url: "https://box-8642.on.ascii.dev",
+      dashboard_url: null,
+      dashboard_token: null,
+    });
+    expect(installComposioMcp).not.toHaveBeenCalled();
   });
 });
 

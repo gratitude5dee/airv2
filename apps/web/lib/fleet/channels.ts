@@ -6,6 +6,7 @@
  * soaked on dev is what prod boxes receive.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { DEFAULT_HARNESS, type AgentHarness } from "../agent/harness";
 import type { ComputeEnvironment } from "../compute/environments";
 import { FleetError, getRelease, type TemplateRelease } from "./releases";
 
@@ -113,31 +114,51 @@ export async function templateForEnvironment(
   supabase: SupabaseClient,
   name: ChannelName,
   environment: ComputeEnvironment,
-  fallback: string | null
+  fallback: string | null,
+  harness: AgentHarness = DEFAULT_HARNESS
 ): Promise<string> {
+  const pointer = await registeredTemplate(supabase, name, environment, harness);
+  const resolved = pointer || (harness === DEFAULT_HARNESS ? fallback : null);
+  if (!resolved) {
+    throw new FleetError(
+      `no ${environment} template registered for ${harness} on channel ${name}`,
+      409
+    );
+  }
+  return resolved;
+}
+
+/**
+ * The registered pointer for an (environment, harness) pair, or null. The
+ * harness is a second axis on box_environment_templates: a Hermes pointer
+ * never serves an exo user (different agent, different units), so a harness
+ * without a pointer is unavailable rather than silently Hermes. Only the
+ * ubuntu/hermes pair keeps reading box_channels (and BOX_TEMPLATE_ID) so the
+ * default path is byte-identical to before either axis existed.
+ */
+export async function registeredTemplate(
+  supabase: SupabaseClient,
+  name: ChannelName,
+  environment: ComputeEnvironment,
+  harness: AgentHarness
+): Promise<string | null> {
   let pointer: string | null = null;
   const { data, error } = await supabase
     .from("box_environment_templates")
     .select("template_ref")
     .eq("channel", name)
     .eq("environment", environment)
+    .eq("harness", harness)
     .maybeSingle();
   // A missing table (pre-migration) or a missing row both mean "not
   // registered" — fall through to the per-environment fallback.
   if (!error && data) {
     pointer = (data as { template_ref: string | null }).template_ref;
   }
-  if (environment === "ubuntu" && !pointer) {
-    pointer = await templateBoxFor(supabase, name, fallback ?? "");
+  if (environment === "ubuntu" && harness === DEFAULT_HARNESS && !pointer) {
+    pointer = await templateBoxFor(supabase, name, "");
   }
-  const resolved = pointer || fallback;
-  if (!resolved) {
-    throw new FleetError(
-      `no ${environment} template registered for channel ${name}`,
-      409
-    );
-  }
-  return resolved;
+  return pointer || null;
 }
 
 export async function setEnvironmentTemplate(
@@ -145,16 +166,18 @@ export async function setEnvironmentTemplate(
   name: ChannelName,
   environment: ComputeEnvironment,
   /** Template box id (ubuntu, omarchy) or bootstrap URL (macos). */
-  templateRef: string
+  templateRef: string,
+  harness: AgentHarness = DEFAULT_HARNESS
 ): Promise<void> {
   const { error } = await supabase.from("box_environment_templates").upsert(
     {
       channel: name,
       environment,
+      harness,
       template_ref: templateRef,
       updated_at: new Date().toISOString(),
     },
-    { onConflict: "channel,environment" }
+    { onConflict: "channel,environment,harness" }
   );
   if (error) {
     throw new FleetError(

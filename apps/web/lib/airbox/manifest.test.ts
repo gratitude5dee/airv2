@@ -45,6 +45,21 @@ describe("airbox manifests", () => {
     }
   });
 
+  it("the exo manifest projects the exo harness profile", () => {
+    const exo = airboxManifest("ubuntu", "exo");
+    const ubuntu = airboxManifest("ubuntu");
+    expect(ubuntu.harness).toBe("hermes");
+    expect(exo.harness).toBe("exo");
+    expect(exo.provider).toBe(ubuntu.provider);
+    expect(exo.homeDir).toBe(ubuntu.homeDir);
+    expect(exo.templateDir).toBe("zap/packages/templates/zap-heavy-exo");
+    expect(exo.stateDir).toBe(".exo");
+    expect(exo.services).toEqual(["exo-agentd", "exo-host"]);
+    expect(exo.ports).toEqual({ hermes: 8642, dashboard: null });
+    expect(exo.enabledPlatforms).toEqual(["api_server"]);
+    expect(JSON.parse(JSON.stringify(exo))).toEqual(exo);
+  });
+
   it("environments map to their template directories", () => {
     expect(airboxManifest("omarchy").templateDir).toBe(
       "infra/template-omarchy"

@@ -8,8 +8,17 @@ import type { ModelFamily } from "../entitlements/models";
 import type { ThemeId } from "../miniapps/themes";
 import type { BackgroundId } from "../miniapps/backgrounds";
 import { provisionEmail } from "../provisioning/email";
+import { switchHarness } from "../provisioning/provision";
+import { registeredTemplate } from "../fleet/channels";
 import { renameBox } from "../box/client";
 import { isReservedWord } from "../miniapps/reserved";
+import {
+  AGENT_HARNESSES,
+  DEFAULT_HARNESS,
+  toAgentHarness,
+  type AgentHarness,
+} from "../agent/harness";
+import type { ComputeEnvironment } from "../compute/environments";
 
 export const USERNAME_PATTERN = /^[a-z0-9_]{2,24}$/;
 
@@ -97,6 +106,72 @@ export async function setUsername(
     );
   }
   return { ok: true, username, address };
+}
+
+/** The harness the user's compute currently runs (boxes.harness). */
+export async function currentHarness(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<AgentHarness> {
+  const { data } = await supabase
+    .from("boxes")
+    .select("harness")
+    .eq("user_id", userId)
+    .maybeSingle();
+  return toAgentHarness((data as { harness?: string | null } | null)?.harness);
+}
+
+/**
+ * Which harnesses can be provisioned on an environment right now: the default
+ * always (it has the static template fallback); every other harness only once
+ * a template is registered for the pair — the same gate the coming-soon
+ * environments sit behind.
+ */
+export async function availableHarnesses(
+  supabase: SupabaseClient,
+  environment: ComputeEnvironment
+): Promise<Record<AgentHarness, boolean>> {
+  const entries = await Promise.all(
+    AGENT_HARNESSES.map(async (harness) => {
+      if (harness === DEFAULT_HARNESS) return [harness, true] as const;
+      const pointer = await registeredTemplate(
+        supabase,
+        "prod",
+        environment,
+        harness
+      ).catch(() => null);
+      return [harness, pointer !== null] as const;
+    })
+  );
+  return Object.fromEntries(entries) as Record<AgentHarness, boolean>;
+}
+
+/**
+ * Switches the user's agent harness. The choice lives on the boxes row, and
+ * a box only ever runs one harness, so a change rebuilds the compute
+ * (switchHarness) — the rebuilt row carries the new value. Same harness is a
+ * no-op success.
+ */
+export async function setHarness(
+  supabase: SupabaseClient,
+  userId: string,
+  harness: AgentHarness
+): Promise<boolean> {
+  if ((await currentHarness(supabase, userId)) === harness) return true;
+  try {
+    await switchHarness(supabase, userId, harness);
+    return true;
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        msg: "harness switch failed",
+        user_id: userId,
+        harness,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    );
+    return false;
+  }
 }
 
 export const SPEED_TIERS = ["fast", "balanced", "deep"] as const;

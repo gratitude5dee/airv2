@@ -8,6 +8,11 @@
  * The environment only changes WHERE the agent runs: the per-box secret set,
  * the config.yaml rewrite, the skills, and the Composio connector install are
  * the same in all three, and run through lib/compute/runtime.ts.
+ *
+ * The harness changes WHICH agent runs (lib/agent/harness.ts): it picks the
+ * template pointer, the per-box files that carry API_SERVER_KEY and the
+ * gateway binding, and the units bounced afterwards. The hosted route, the
+ * run contract, and the boxes row are the same for every harness.
  */
 import { randomBytes } from "node:crypto";
 import { env } from "../env";
@@ -19,13 +24,12 @@ import {
   waitForBridge,
   waitForInstance,
   BRIDGE_PORT,
-  DASHBOARD_PORT as NS_DASHBOARD_PORT,
-  HERMES_PORT as NS_HERMES_PORT,
 } from "../namespace/client";
 import {
   DEFAULT_ENVIRONMENT,
   kindFor,
   profileFor,
+  toComputeEnvironment,
   type ComputeEnvironment,
 } from "../compute/environments";
 import {
@@ -42,6 +46,13 @@ import { normalizeAddress } from "../routing/trust";
 import { sealSecret } from "../crypto/secretbox";
 import { installBaseSkills } from "../skills/hub";
 import { templateForEnvironment } from "../fleet/channels";
+import {
+  DEFAULT_HARNESS,
+  harnessProfile,
+  toAgentHarness,
+  type AgentHarness,
+  type HarnessProfile,
+} from "../agent/harness";
 
 export interface ProvisionOptions {
   displayName?: string | undefined;
@@ -50,14 +61,24 @@ export interface ProvisionOptions {
   operator?: string | undefined;
   /** Compute the agent lives on. Defaults to ubuntu — the original path. */
   environment?: ComputeEnvironment | undefined;
+  /** Agent runtime on that compute. Defaults to hermes — the original path. */
+  harness?: AgentHarness | undefined;
+}
+
+/** The (environment, harness) pair a compute instance is built for. */
+export interface ComputeSelection {
+  environment: ComputeEnvironment;
+  harness: AgentHarness;
 }
 
 export interface ProvisionResult {
   userId: string;
   boxId: string;
   hostedUrl: string;
+  /** Empty for harnesses without a dashboard surface (exo). */
   dashboardUrl: string;
   environment: ComputeEnvironment;
+  harness: AgentHarness;
   inviteLink?: string | undefined;
 }
 
@@ -83,14 +104,16 @@ interface HostedRoute {
 }
 
 interface ComputeRoutes {
+  /** The run surface (api_server contract) on the harness's api port. */
   hermes: HostedRoute;
-  dashboard: HostedRoute;
+  dashboard: HostedRoute | null;
 }
 
 /** Everything the boxes row needs about a freshly built compute instance. */
 interface ProvisionedCompute {
   target: ComputeTarget;
   routes: ComputeRoutes;
+  /** Harness build ref the template baked (Hermes SHA, exo ref). */
   templateHermesRef: string | null;
   gatewayToken: string;
   apiServerKey: string;
@@ -121,6 +144,8 @@ export async function provisionUser(
 ): Promise<ProvisionResult> {
   const supabase = serviceClient();
   const environment = options.environment ?? DEFAULT_ENVIRONMENT;
+  const harness = options.harness ?? DEFAULT_HARNESS;
+  const selection: ComputeSelection = { environment, harness };
 
   // M3: users + provisioning(bound_phone) + tier-0 handles are written
   // BEFORE any line exists (goal.md M3 step 1).
@@ -212,15 +237,16 @@ export async function provisionUser(
 
   let built: ProvisionedCompute | undefined;
   try {
-    built = await buildCompute(supabase, userId, environment);
-    await persistBox(supabase, userId, environment, built);
-    await finishSetup(supabase, userId, built.target);
+    built = await buildCompute(supabase, userId, selection);
+    await persistBox(supabase, userId, selection, built);
+    await finishSetup(supabase, userId, built.target, harness);
     return {
       userId,
       boxId: built.target.instanceId,
       hostedUrl: built.routes.hermes.url,
-      dashboardUrl: built.routes.dashboard.url,
+      dashboardUrl: built.routes.dashboard?.url ?? "",
       environment,
+      harness,
       inviteLink,
     };
   } catch (error) {
@@ -254,11 +280,12 @@ export async function provisionUser(
 export async function switchEnvironment(
   supabase: ReturnType<typeof serviceClient>,
   userId: string,
-  environment: ComputeEnvironment
+  environment: ComputeEnvironment,
+  harness?: AgentHarness
 ): Promise<ProvisionResult> {
   const { data: existing, error } = await supabase
     .from("boxes")
-    .select("provider_box_id, environment, control_url, control_token")
+    .select("provider_box_id, environment, harness, control_url, control_token")
     .eq("user_id", userId)
     .maybeSingle();
   if (error) {
@@ -280,15 +307,22 @@ export async function switchEnvironment(
             : undefined,
       }
     : null;
+  // Switching only the machine keeps the agent the user already runs.
+  const selection: ComputeSelection = {
+    environment,
+    harness:
+      harness ??
+      toAgentHarness((existing as { harness?: string | null } | null)?.harness),
+  };
 
-  const built = await buildCompute(supabase, userId, environment);
+  const built = await buildCompute(supabase, userId, selection);
   try {
-    await persistBox(supabase, userId, environment, built);
+    await persistBox(supabase, userId, selection, built);
   } catch (persistError) {
     await teardown(built.target);
     throw persistError;
   }
-  await finishSetup(supabase, userId, built.target);
+  await finishSetup(supabase, userId, built.target, selection.harness);
   if (previous && previous.instanceId !== built.target.instanceId) {
     await teardown(previous);
   }
@@ -296,9 +330,30 @@ export async function switchEnvironment(
     userId,
     boxId: built.target.instanceId,
     hostedUrl: built.routes.hermes.url,
-    dashboardUrl: built.routes.dashboard.url,
+    dashboardUrl: built.routes.dashboard?.url ?? "",
     environment,
+    harness: selection.harness,
   };
+}
+
+/** Move an existing user to a different harness on their current environment. */
+export async function switchHarness(
+  supabase: ReturnType<typeof serviceClient>,
+  userId: string,
+  harness: AgentHarness
+): Promise<ProvisionResult> {
+  const { data, error } = await supabase
+    .from("boxes")
+    .select("environment")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) {
+    throw new Error(`box lookup failed for user ${userId}: ${error.message}`);
+  }
+  const environment = toComputeEnvironment(
+    (data as { environment?: string | null } | null)?.environment
+  );
+  return switchEnvironment(supabase, userId, environment, harness);
 }
 
 async function teardown(target: ComputeTarget): Promise<void> {
@@ -319,15 +374,17 @@ async function teardown(target: ComputeTarget): Promise<void> {
 
 /**
  * Create the instance and bring it to the state the boxes row describes:
- * per-instance secrets merged into ~/.hermes/.env, config.yaml pointed at the
- * gateway, services restarted, Hermes + dashboard published.
+ * per-instance secrets merged into the harness's env file, its model binding
+ * pointed at the gateway, services restarted, run surface (+ dashboard)
+ * published.
  */
 async function buildCompute(
   supabase: ReturnType<typeof serviceClient>,
   userId: string,
-  environment: ComputeEnvironment
+  { environment, harness }: ComputeSelection
 ): Promise<ProvisionedCompute> {
   const profile = profileFor(environment);
+  const agent = harnessProfile(harness);
   const gatewayToken = randomBytes(32).toString("hex");
   const apiServerKey = randomBytes(32).toString("hex");
   const dashPassword = randomBytes(16).toString("hex");
@@ -343,7 +400,8 @@ async function buildCompute(
     supabase,
     "prod",
     environment,
-    templateFallback(environment)
+    templateFallback(environment),
+    harness
   );
 
   const created = await createInstance(
@@ -360,6 +418,7 @@ async function buildCompute(
   try {
     return await configureCompute(created, {
       profile,
+      agent,
       environment,
       gatewayToken,
       apiServerKey,
@@ -375,6 +434,7 @@ async function buildCompute(
 
 interface ComputeSecrets {
   profile: ReturnType<typeof profileFor>;
+  agent: HarnessProfile;
   environment: ComputeEnvironment;
   gatewayToken: string;
   apiServerKey: string;
@@ -387,6 +447,47 @@ async function configureCompute(
   created: Awaited<ReturnType<typeof createInstance>>,
   secrets: ComputeSecrets
 ): Promise<ProvisionedCompute> {
+  const { profile, agent, environment, gatewayToken, apiServerKey } = secrets;
+  const target = created.target;
+
+  // V0: which harness build is this instance on — read the ref the template
+  // baked at build time so support can answer from the boxes row alone.
+  const refResult = await runCommand(
+    target,
+    `cat ${profile.homeDir}/${agent.stateDir}/${agent.templateRefFile} 2>/dev/null || true`
+  );
+  const templateHermesRef = refResult.stdout.trim() || null;
+
+  switch (agent.configStrategy) {
+    case "hermes-config":
+      await configureHermes(target, secrets);
+      break;
+    case "exo-model":
+      await configureExo(target, secrets);
+      break;
+  }
+
+  await restartServices(target, agent.services[kindFor(environment)]);
+
+  const routes = await publishRoutes(target, created.ports, agent);
+  return {
+    target,
+    routes,
+    templateHermesRef,
+    gatewayToken,
+    apiServerKey,
+    dashPassword: secrets.dashPassword,
+  };
+}
+
+/**
+ * Hermes: API key + gateway binding merged into ~/.hermes/.env as OPENAI_*,
+ * dashboard basic auth, and model.base_url/api_key rewritten in config.yaml.
+ */
+async function configureHermes(
+  target: ComputeTarget,
+  secrets: ComputeSecrets
+): Promise<void> {
   const {
     profile,
     environment,
@@ -396,15 +497,6 @@ async function configureCompute(
     dashSecret,
     airVaultKey,
   } = secrets;
-  const target = created.target;
-
-  // V0: which Hermes is this instance on — read the SHA the template baked at
-  // build time so support can answer from the boxes row alone.
-  const refResult = await runCommand(
-    target,
-    `cat ${profile.homeDir}/.hermes/.template-hermes-ref 2>/dev/null || true`
-  );
-  const templateHermesRef = refResult.stdout.trim() || null;
 
   const hashResult = await runCommand(
     target,
@@ -457,18 +549,62 @@ async function configureCompute(
     target,
     `sed -i${sedSuffix(environment)} -e '/^  api_key:/d' -e 's|base_url:.*|base_url: "${gatewayUrl}"\\n  api_key: "${gatewayToken}"|' ${profile.homeDir}/.hermes/config.yaml`
   );
+}
 
-  await restartServices(target);
+/** The exo model name the zap-heavy-exo template's agent is created with. */
+const EXO_GATEWAY_MODEL = "gateway";
 
-  const routes = await publishRoutes(target, created.ports);
-  return {
+/**
+ * exo: API_SERVER_KEY + bind merged into ~/.exo/.env (the template's
+ * render-env leaves the model binding to us), then the gateway token stored
+ * as an exoharness secret and the `gateway` model registered against
+ * /api/gateway/v1. No OPENAI_* env, no config.yaml, no provider key: the
+ * secret store holds the box's GATEWAY_TOKEN and nothing else.
+ */
+async function configureExo(
+  target: ComputeTarget,
+  secrets: ComputeSecrets
+): Promise<void> {
+  const { profile, agent, environment, gatewayToken, apiServerKey } = secrets;
+  const root = `${profile.homeDir}/${agent.stateDir}`;
+  const gatewayUrl = `${env.appOrigin()}/api/gateway/v1`;
+
+  const perBoxEnv = [
+    `API_SERVER_KEY=${apiServerKey}`,
+    `API_SERVER_HOST_PORT=0.0.0.0:${agent.ports.api}`,
+    `${agent.gatewayEnv.baseUrl}=${gatewayUrl}`,
+    "",
+  ];
+  await writeComputeFile(
     target,
-    routes,
-    templateHermesRef,
-    gatewayToken,
-    apiServerKey,
-    dashPassword,
-  };
+    `${agent.stateDir}/.env.perbox`,
+    perBoxEnv.join("\n")
+  );
+  const envKeys = perBoxEnv
+    .map((line) => line.split("=")[0])
+    .filter((key) => key !== "");
+  const envPath = `${root}/.env`;
+  const mergeResult = await runCommand(
+    target,
+    `touch ${envPath} && sed -i${sedSuffix(environment)} ${envKeys
+      .map((key) => `-e '/^${key}=/d'`)
+      .join(" ")} ${envPath} && cat ${envPath}.perbox >> ${envPath} && rm ${envPath}.perbox && chmod 600 ${envPath}`
+  );
+  if (mergeResult.exitCode !== 0) {
+    throw new Error(`env merge failed: ${mergeResult.stderr}`);
+  }
+
+  // The gateway serves tier names as model ids (C2); "balanced" is the same
+  // default Hermes' config.yaml pins.
+  const exo = `exo --root ${root} --harness exo`;
+  const modelResult = await runCommand(
+    target,
+    `${agent.gatewayEnv.token}='${gatewayToken}' ${exo} secret set ${agent.gatewayEnv.token} --env ${agent.gatewayEnv.token} && ${exo} model register ${EXO_GATEWAY_MODEL} --model balanced --secret ${agent.gatewayEnv.token} --base-url ${gatewayUrl}`,
+    120
+  );
+  if (modelResult.exitCode !== 0) {
+    throw new Error(`exo model registration failed: ${modelResult.stderr}`);
+  }
 }
 
 /** BSD sed on macOS needs an explicit backup suffix; GNU sed must not have one. */
@@ -554,28 +690,37 @@ async function createInstance(
   }
 }
 
-/** Publish Hermes (8642) and the dashboard (9119) for the control plane. */
+/** Publish the harness's run surface and dashboard (if any) for the control plane. */
 async function publishRoutes(
   target: ComputeTarget,
-  ports: Record<number, string>
+  ports: Record<number, string>,
+  agent: HarnessProfile
 ): Promise<ComputeRoutes> {
+  const { api, dashboard: dashboardPort } = agent.ports;
   if (kindFor(target.environment) === "box") {
+    const hostUrls = [api, dashboardPort]
+      .filter((port): port is number => port !== null)
+      .map((port) => `/home/user/.ascii/host url ${port} --timeout 120 --private`)
+      .join(" && ");
     const hostResult = await command(
       target.instanceId,
-      `eval "$(grep '^export ASCII_' /home/user/.bashrc)"; /home/user/.ascii/host url 8642 --timeout 120 --private && /home/user/.ascii/host url 9119 --timeout 120 --private`,
+      `eval "$(grep '^export ASCII_' /home/user/.bashrc)"; ${hostUrls}`,
       300
     );
     if (hostResult.exitCode !== 0) {
       throw new Error(`host registration failed: ${hostResult.stderr}`);
     }
     return {
-      hermes: parseHostedUrl(hostResult.stdout, 8642),
-      dashboard: parseHostedUrl(hostResult.stdout, 9119),
+      hermes: parseHostedUrl(hostResult.stdout, api),
+      dashboard:
+        dashboardPort === null
+          ? null
+          : parseHostedUrl(hostResult.stdout, dashboardPort),
     };
   }
-  const hermes = ports[NS_HERMES_PORT];
-  const dashboard = ports[NS_DASHBOARD_PORT];
-  if (!hermes || !dashboard) {
+  const hermes = ports[api];
+  const dashboard = dashboardPort === null ? null : ports[dashboardPort];
+  if (!hermes || (dashboardPort !== null && !dashboard)) {
     throw new Error(
       `instance ${target.instanceId} ingress missing hermes/dashboard`
     );
@@ -585,14 +730,14 @@ async function publishRoutes(
   // slot stays empty rather than holding a fake secret.
   return {
     hermes: { url: hermes, token: "" },
-    dashboard: { url: dashboard, token: "" },
+    dashboard: dashboard ? { url: dashboard, token: "" } : null,
   };
 }
 
 async function persistBox(
   supabase: ReturnType<typeof serviceClient>,
   userId: string,
-  environment: ComputeEnvironment,
+  { environment, harness }: ComputeSelection,
   built: ProvisionedCompute
 ): Promise<void> {
   const dashboardAuthKey = env.boxDashboardAuthKey();
@@ -610,13 +755,14 @@ async function persistBox(
       provider: profileFor(environment).provider,
       provider_box_id: built.target.instanceId,
       environment,
+      harness,
       state: "ready",
       hosted_url: built.routes.hermes.url,
       hosted_token: built.routes.hermes.token,
       // The dashboard route backs the allowlisted History/Skills proxy on every
       // surface, so it has to outlive provisioning.
-      dashboard_url: built.routes.dashboard.url,
-      dashboard_token: built.routes.dashboard.token,
+      dashboard_url: built.routes.dashboard?.url ?? null,
+      dashboard_token: built.routes.dashboard?.token ?? null,
       // Sealed basic-auth password for dashboard (9119) surfaces the proxy is
       // allowed to reach (CM1 task 0 / CC10, see SECURITY-DECISIONS.md).
       dashboard_auth: dashboardAuthKey
@@ -641,13 +787,17 @@ async function persistBox(
  * Best-effort: base skills, the per-user Composio MCP endpoint, and the
  * Daytona child key, so a fresh agent starts with its email/search skills and
  * connector tooling. Identical in every environment — failures log and
- * continue, the user can install from the dashboard.
+ * continue, the user can install from the dashboard. Every step drives the
+ * Hermes CLI/env, so other harnesses ship the equivalent in their template
+ * (zap-heavy-exo bakes the skills store and recipe tooling) and skip it.
  */
 async function finishSetup(
   supabase: ReturnType<typeof serviceClient>,
   userId: string,
-  target: ComputeTarget
+  target: ComputeTarget,
+  harness: AgentHarness
 ): Promise<void> {
+  if (harness !== "hermes") return;
   await installBaseSkills(target);
   try {
     await installComposioMcp(supabase, userId, target);
