@@ -30,10 +30,12 @@ mints a ticket code on purchase).
      (`{ "items": [...] }`), and
    - `POST ${OPENAI_BASE_URL%/api/gateway/v1}/api/miniapps/commerce` with
      `Authorization: Bearer $OPENAI_API_KEY` (the box gateway token) and body
-     `{"action":"publish_catalog"}`. That route
+     `{"action":"publish_catalog","note":"<why>"}`. That route
      (`apps/web/app/api/miniapps/commerce/route.ts`) calls
-     `requestCatalogPublish`, which files one pending `shop_publish` decision.
-     Re-running the Zap reuses the open decision instead of piling up.
+     `requestCatalogPublish`, which files one pending `shop_publish` decision
+     with the note in its payload so you can see why the agent staged it.
+     Re-running the Zap reuses the open decision instead of piling up; each
+     new reason is appended to the note.
 3. **You approve** the decision in Needs you. `POST /api/decisions` with
    `action: "approve"` (`apps/web/app/api/decisions/route.ts`) calls
    `applyCatalogPublish` (`apps/web/lib/commerce/catalog.ts`), which reads the
