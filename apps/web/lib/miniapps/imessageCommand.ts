@@ -14,6 +14,9 @@ const ALIASES: Readonly<Record<string, string>> = {
   tasks: "todo",
 };
 
+/** Sent instead of a card when a non-owner sender would have received one. */
+export const OWNER_ONLY_CARD_LINE = "only the owner can open mini-apps.";
+
 export class MiniAppRegistryLookupError extends Error {
   override name = "MiniAppRegistryLookupError";
 }
@@ -49,11 +52,7 @@ export async function maybeSendMiniAppLink(
   }
   if (!app || app.status !== "published") return false;
   if (job.senderTier !== 0) {
-    await sender.sendText(
-      job.spaceId,
-      job.phone,
-      "only the owner can open mini-apps."
-    );
+    await sender.sendText(job.spaceId, job.phone, OWNER_ONLY_CARD_LINE);
     return true;
   }
 

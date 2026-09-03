@@ -66,6 +66,36 @@ describe("stripSendFileMarkers", () => {
     expect(text).toBe("both sent");
     expect(stripped.files).toEqual(["/home/user/1.png", "/home/user/2.jpg"]);
   });
+
+  it("strips card markers and records kinds once each, in order", async () => {
+    const stripped = stripSendFileMarkers(
+      chunks(
+        "Let's get you set up.\n[card: onboarding]\nthen your Persona\n[CARD:persona]\n[card: onboarding]"
+      )
+    );
+    const text = await collect(stripped.deltas);
+    expect(text).toBe("Let's get you set up.\n\nthen your Persona\n\n");
+    expect(stripped.cards).toEqual(["onboarding", "persona"]);
+    expect(stripped.files).toEqual([]);
+  });
+
+  it("handles a card marker split across deltas without leaking it", async () => {
+    const stripped = stripSendFileMarkers(
+      chunks("tap the card [ca", "rd: onbo", "arding] above")
+    );
+    const text = await collect(stripped.deltas);
+    expect(text).toBe("tap the card  above");
+    expect(stripped.cards).toEqual(["onboarding"]);
+  });
+
+  it("leaves card-looking text with spaces or paths alone", async () => {
+    const stripped = stripSendFileMarkers(
+      chunks("[card: not a kind] and [card:/etc/x] stay")
+    );
+    const text = await collect(stripped.deltas);
+    expect(text).toBe("[card: not a kind] and [card:/etc/x] stay");
+    expect(stripped.cards).toEqual([]);
+  });
 });
 
 describe("isSendablePath", () => {

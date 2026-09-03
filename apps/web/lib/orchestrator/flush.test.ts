@@ -16,6 +16,7 @@ import {
 import { createSpectrumSender } from "../spectrum/sender";
 import { ensureBoxAwake } from "./boxes";
 import { probeForTapback } from "../spectrum/tapbacks";
+import { sendMarkedCards } from "../miniapps/cards";
 
 vi.mock("../spectrum/sender", () => ({ createSpectrumSender: vi.fn() }));
 vi.mock("../box/client", () => ({ command: vi.fn(), writeFile: vi.fn() }));
@@ -42,6 +43,10 @@ vi.mock("../creative/imessage", () => ({
 vi.mock("../miniapps/imessageCommand", () => ({
   maybeSendMiniAppLink: vi.fn().mockResolvedValue(false),
   MiniAppRegistryLookupError: class extends Error {},
+  OWNER_ONLY_CARD_LINE: "only the owner can open mini-apps.",
+}));
+vi.mock("../miniapps/cards", () => ({
+  sendMarkedCards: vi.fn().mockResolvedValue(1),
 }));
 vi.mock("./boxes", () => ({
   armStopAfter: vi.fn().mockResolvedValue(undefined),
@@ -239,6 +244,85 @@ describe("runFlush history replay", () => {
     expect(vi.mocked(createRun).mock.calls[0]?.[1].conversationHistory).toEqual(
       []
     );
+  });
+
+  describe("card markers", () => {
+    const drainingProbe = async (
+      iterator: AsyncIterator<string>
+    ): Promise<{ buffered: string; ended: true }> => {
+      let buffered = "";
+      for (;;) {
+        const next = await iterator.next();
+        if (next.done) break;
+        buffered += next.value;
+      }
+      return { buffered, ended: true };
+    };
+
+    beforeEach(() => {
+      vi.mocked(sendMarkedCards).mockClear();
+      vi.mocked(loadConversationHistory).mockResolvedValue([
+        { role: "user", content: "hi" },
+        { role: "assistant", content: "hey" },
+      ]);
+      vi.mocked(runEvents).mockResolvedValue(
+        sse([
+          {
+            event: "run.completed",
+            output: "Let's get you set up.\n[card: onboarding]",
+          },
+        ]) as never
+      );
+      vi.mocked(probeForTapback).mockImplementation(drainingProbe as never);
+    });
+
+    it("sends the marked card to the owner after the text", async () => {
+      await runFlush(
+        fakeSupabase([{ id: "q1", message_id: "m1", body: "start onboarding" }]),
+        job,
+        new Date().toISOString()
+      );
+      expect(vi.mocked(sendMarkedCards)).toHaveBeenCalledWith(
+        expect.anything(),
+        { userId: "user-1", spaceId: "space-1", phone: "+15551234567" },
+        ["onboarding"]
+      );
+    });
+
+    const lastSender = async () =>
+      (await vi.mocked(createSpectrumSender).mock.results.at(-1)!.value) as {
+        sendText: ReturnType<typeof vi.fn>;
+      };
+
+    it("tells a shared-line contact the card is owner-only instead of minting it", async () => {
+      await runFlush(
+        fakeSupabase([{ id: "q1", message_id: "m1", body: "start onboarding" }]),
+        { ...job, senderTier: 1 },
+        new Date().toISOString()
+      );
+      expect(vi.mocked(sendMarkedCards)).not.toHaveBeenCalled();
+      expect((await lastSender()).sendText).toHaveBeenCalledWith(
+        "space-1",
+        "+15551234567",
+        "only the owner can open mini-apps."
+      );
+    });
+
+    it("sends no owner-only line when the reply carried no marker", async () => {
+      vi.mocked(runEvents).mockResolvedValue(
+        sse([{ event: "run.completed", output: "Sure thing." }]) as never
+      );
+      await runFlush(
+        fakeSupabase([{ id: "q1", message_id: "m1", body: "hey" }]),
+        { ...job, senderTier: 1 },
+        new Date().toISOString()
+      );
+      expect((await lastSender()).sendText).not.toHaveBeenCalledWith(
+        "space-1",
+        "+15551234567",
+        "only the owner can open mini-apps."
+      );
+    });
   });
 });
 

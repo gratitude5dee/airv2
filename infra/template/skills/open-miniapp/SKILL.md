@@ -1,7 +1,7 @@
 ---
 name: open-miniapp
-description: "Open/view/show a wzrd.tech mini-app for your human: run `open-miniapp-card <kind>` with the terminal tool (never execute_code, never a browser) to send them a tappable card in the current conversation. Not for action requests — scheduling an event or drafting an email is work you do, not a card you send."
-version: 1.0.0
+description: "Open/view/show a wzrd.tech mini-app for your human: put `[card: <kind>]` on its own line in your reply and a tappable card lands in the conversation right after your text (no tool call, never a browser). Not for action requests — scheduling an event or drafting an email is work you do, not a card you send."
+version: 2.0.0
 author: air
 license: MIT
 platforms: [linux]
@@ -14,9 +14,34 @@ metadata:
 
 This skill is the ONLY correct way to open a mini-app. ANY request of the
 form "open/show/launch/pull up the <X> mini-app" (or "open my calendar",
-"show me the vault", "take me to onboarding") MUST be handled by the single
-`POST /api/cards/<kind>` call below — nothing else. The mini-apps run on the
-owner's phone: you send them a card and they tap it.
+"show me the vault", "take me to onboarding") MUST be handled by the card
+marker below — nothing else. The mini-apps run on the owner's phone: you
+send them a card and they tap it.
+
+## Send the card
+
+Write your reply and put the marker on its own line:
+
+```text
+Here's your calendar — tap the card below.
+[card: calendar]
+```
+
+The marker is stripped from what the owner reads, and the control plane
+mints a signed link scoped to the owner and drops the card into their
+conversation right after your text. There is no tool call, nothing to run,
+nothing to wait for — the marker IS the send. Saying "I'll open the card" or
+"sent, tap above" without the marker in that same reply sends nothing.
+
+One marker per kind per reply. A kind sent moments ago is skipped
+automatically, so don't repeat it — point at the card already in the thread.
+
+Only when you are NOT replying to a message (a scheduled job, a reminder
+firing) and there is no reply to carry the marker, run
+`open-miniapp-card <kind>` with the `terminal` tool instead (never
+`execute_code`, which waits on an approval that never comes). It hits the
+same control-plane endpoint; HTTP 429 means the card was just sent, HTTP 409
+means the owner hasn't messaged over iMessage yet.
 
 ## Not for action requests
 
@@ -26,8 +51,8 @@ NOT send a card instead:
 
 | The owner asks | Handled by | Never |
 | --- | --- | --- |
-| "schedule an appointment", "add/move/cancel an event", "book X" | `calendar-native` (`sync.py upsert`) | `open-miniapp-card calendar` |
-| "send/draft/reply to/forward an email" | `email-draft-review` (`create_draft` + the review route) | `open-miniapp-card inbox` |
+| "schedule an appointment", "add/move/cancel an event", "book X" | `calendar-native` (`sync.py upsert`) | `[card: calendar]` |
+| "send/draft/reply to/forward an email" | `email-draft-review` (`create_draft` + the review route) | `[card: inbox]` |
 | "pay/send money", "buy this", "post this" | the matching action skill, which stages a decision | a card |
 
 "Open my calendar" → card. "Put a nap on my calendar at 5pm tomorrow" →
@@ -37,17 +62,14 @@ request hands the work back to the owner and the action never happens.
 Hard rules — no exceptions:
 
 - MUST NOT use the computer-use or browser tool for this. There is nothing
-  to click; the card send is one curl command.
+  to click.
 - MUST NOT open or send any local URL: never `localhost:3000`,
   `127.0.0.1`, `0.0.0.0`, or any port on this machine.
 - MUST NOT open the Hermes dashboard on port 9119 or its sign-in page —
   that is this box's own control panel, not a mini-app.
 - MUST NOT paste a raw link into the chat instead of sending the card; the
   signed link is minted control-plane-side and only works from the card.
-- MUST run `open-miniapp-card <kind>` with the `terminal` tool. NEVER use
-  `execute_code` for it — `execute_code` waits on an approval that never
-  comes and the card never sends. The command is read-only on this machine
-  and needs no consent.
+- MUST NOT promise a card without the marker in the same reply.
 
 Bad (never do these):
 
@@ -55,31 +77,12 @@ Bad (never do these):
 - "open the calendar miniapp" → opening `http://127.0.0.1:9119` (Hermes
   dashboard sign-in) ✗
 - "show me onboarding" → launching Chrome / any computer-use action ✗
+- "show me onboarding" → "Opening the onboarding card now!" with no marker ✗
 
-Good: "open the calendar miniapp" → terminal: `open-miniapp-card calendar`,
-then tell the owner to tap the card. ✓
+Good: "open the calendar miniapp" → reply "Here you go — tap the card below."
+followed by `[card: calendar]` on its own line. ✓
 
-## Send the card
-
-Pick the matching kind and run this one command with the `terminal` tool
-(not `execute_code`). The control plane mints a signed link scoped to the
-owner and drops the card into their conversation:
-
-```bash
-open-miniapp-card <kind>
-```
-
-If that command is missing on this box, fall back to the equivalent curl
-(still terminal, never execute_code):
-
-```bash
-OPENAI_BASE_URL="$(grep -m1 '^OPENAI_BASE_URL=' ~/.hermes/.env | cut -d= -f2-)"
-OPENAI_API_KEY="$(grep -m1 '^OPENAI_API_KEY=' ~/.hermes/.env | cut -d= -f2-)"
-curl -fsS -X POST "${OPENAI_BASE_URL%/api/gateway/v1}/api/cards/<kind>" \
-  -H "Authorization: Bearer $OPENAI_API_KEY"
-```
-
-Valid kinds and when to use them:
+## Kinds
 
 | Kind | Owner asks for |
 | --- | --- |
@@ -111,16 +114,9 @@ Common aliases — map silently, never explain kind names to the owner:
 - "my persona", "my profile", "what you know about me" → `persona`
 - "report a bug", "this is broken", "feature request", "I wish air could…" → `feedback`
 
-After a successful send, tell them in ONE short sentence to tap the card you
-just sent (e.g. "Sent — tap the card above to open it."). Do not explain
-which kind you picked, that an alias was used, or how the card system works.
-
-## Errors
-
-- HTTP 409: they haven't messaged you over iMessage yet — ask them to open
-  the app from the web dashboard at app.wzrd.tech instead.
-- HTTP 429: a card of that kind was sent moments ago — do NOT retry; point
-  them at the card already in their messages.
+Keep the words around the marker to ONE short sentence telling them to tap
+the card (e.g. "Sent — tap the card below to open it."). Do not explain which
+kind you picked, that an alias was used, or how the card system works.
 
 ## Anything else
 

@@ -32,7 +32,9 @@ import { maybeRunCreativeLane } from "../creative/imessage";
 import {
   maybeSendMiniAppLink,
   MiniAppRegistryLookupError,
+  OWNER_ONLY_CARD_LINE,
 } from "../miniapps/imessageCommand";
+import { sendMarkedCards } from "../miniapps/cards";
 import {
   armStopAfter,
   ensureBoxAwake,
@@ -731,8 +733,9 @@ export async function runFlush(
     let cancelled = false;
     let lastCancelCheck = Date.now();
     const events = await runEvents(runTarget, run.run_id);
-    // Outbound media lane: `[send-file: …]` markers are stripped from the
-    // streamed text and delivered as native attachments after the stream.
+    // Outbound marker lanes: `[send-file: …]` and `[card: …]` markers are
+    // stripped from the streamed text and delivered (native attachments,
+    // mini-app cards) after the stream.
     const stripped = stripSendFileMarkers(hermesDeltas(events));
     const deltas = stripped.deltas;
 
@@ -805,6 +808,24 @@ export async function runFlush(
         job.phone,
         stripped.files
       ).catch(() => 0);
+    }
+
+    // Cards are owner-scoped (C15): only a tier-0 thread is the owner's own
+    // conversation, so a marker in a reply to a shared-line contact is never
+    // minted into their thread. The reply text may still promise a card, so
+    // the contact gets the same owner-only line as the explicit /<app> path.
+    if (!cancelled && stripped.cards.length > 0) {
+      if (job.senderTier === 0) {
+        await sendMarkedCards(
+          supabase,
+          { userId: job.userId, spaceId: job.spaceId, phone: job.phone },
+          stripped.cards
+        ).catch(() => 0);
+      } else {
+        await sender
+          .sendText(job.spaceId, job.phone, OWNER_ONLY_CARD_LINE)
+          .catch(() => undefined);
+      }
     }
 
     if (cancelled) {
