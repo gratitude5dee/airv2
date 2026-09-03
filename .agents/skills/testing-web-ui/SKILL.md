@@ -228,3 +228,10 @@ Real Supabase creds can be fetched at runtime — no `.env` needed and no OTP lo
 
 ### Devin Secrets Needed
 - `BOX_API_KEY` (box command endpoint), `SUPABASE_ACCESS_TOKEN` (fetch service-role key via the Management API).
+
+## Commerce staging (publish_catalog → shop_publish decision) testing
+- `POST /api/miniapps/commerce` auth is a box `gateway_token` (Bearer) looked up via `boxes.gateway_token` — seed a `boxes` row `{user_id, gateway_token}` in the :4545 mock and the route runs end-to-end without a real box. Body `{"action":"publish_catalog","note":"..."}`; response `{ok,decisionId,staged}` — `staged:true` on the insert, `false` when a pending shop_publish already exists (the PATCH lane).
+- The mock needs PostgREST `GET decisions?select=id,payload&user_id=eq.&kind=eq.&status=eq.` honoring `Accept: application/vnd.pgrst.object+json` (maybeSingle: return 406/PGRST116 on 0 rows, never `[]`), plus `PATCH decisions?id=eq.&status=eq.` — log inserts/patches to a file and assert on them (generic table store + filter parser, seedable from a JSON file).
+- Needs You is `/home?s=personal.needs`. shop_publish cards render `payload.note` in a `.bg-surface-2` box (assert `querySelectorAll('section .bg-surface-2').length` is 1 with a note, 0 without); note lines are `\n`-joined and render as separate lines via whitespace-pre-wrap. Both the card and the Details drawer use the per-kind approve CTA ("Publish shop").
+- Approving shop_publish against the mock fails gracefully with the inline note "couldn't reach your agent's computer — try again" (applyCatalogPublish needs a real box); the decision stays pending — don't treat it as a bug.
+- Gotcha (again): `pkill -f "node /tmp/x/mock[.]js"` in the SAME exec call that restarts the mock still killed the shell (exit -1, mock left down) — kill and restart in separate exec calls and re-check `ss -ltnp | grep 4545`.

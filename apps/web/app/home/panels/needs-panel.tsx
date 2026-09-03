@@ -18,8 +18,16 @@ export interface Decision {
   status?: string;
   created_at: string;
   resolved_at?: string | null;
-  /** social_post: the exact text + target the agent proposes to publish. */
-  payload?: ({ text?: string; target?: string } & Record<string, unknown>) | null;
+  /**
+   * social_post: the exact text + target the agent proposes to publish.
+   * shop_publish: the agent's reason(s) for staging, one per line.
+   */
+  payload?:
+    | ({ text?: string; target?: string; note?: string } & Record<
+        string,
+        unknown
+      >)
+    | null;
 }
 
 interface DecisionDetail {
@@ -41,6 +49,7 @@ const DECISION_KIND_LABELS: Record<string, string> = {
   social_post: "Social post awaiting approval",
   purchase_review: "Card fill awaiting approval",
   crm_update: "CRM update awaiting approval",
+  shop_publish: "Shop catalog awaiting publish",
   new_contact: "New contact",
   tier2_contact: "New contact",
 };
@@ -62,6 +71,7 @@ const DECISION_APPROVE_CTAS: Record<string, string> = {
   revise: "Retry",
   social_post: "Post it",
   purchase_review: "Fill card",
+  shop_publish: "Publish shop",
 };
 
 const NO_APPROVE_KINDS = new Set(["new_contact", "tier2_contact"]);
@@ -338,7 +348,9 @@ export function NeedsPanel({
                   void resolveDecision(detail.decision.id, "approve")
                 }
               >
-                {decisionBusy === detail.decision.id ? "Working\u2026" : "Approve"}
+                {decisionBusy === detail.decision.id
+                  ? "Working\u2026"
+                  : (decisionApproveCta(detail.decision.kind) ?? "Approve")}
               </button>
               <button
                 className="btn btn-ghost !px-3 !py-1.5 !text-[12px]"
@@ -446,6 +458,13 @@ export function NeedsPanel({
                               → {d.payload.target}
                             </p>
                           ) : null}
+                        </div>
+                      ) : null}
+                      {d.kind === "shop_publish" && d.payload?.note ? (
+                        <div className="mb-2 rounded-lg bg-surface-2 p-2">
+                          <p className="m-0 whitespace-pre-wrap text-[13px]">
+                            {d.payload.note}
+                          </p>
                         </div>
                       ) : null}
                       <div className="flex gap-2">

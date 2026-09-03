@@ -690,6 +690,58 @@ describe("Zap-staged listings (commerce.stage_listing)", () => {
     expect(productRow("neon-wolf-tee")).toBeUndefined();
   });
 
+  it("the agent's staging note reaches the owner's shop_publish decision", async () => {
+    boxCatalog = { items: [zapListing()] };
+    const supabase = makeSupabase();
+    const first = await requestCatalogPublish(supabase, MERCHANT, {
+      note: "  copy says ticket;\n tee title carries the buyer's words  ",
+    });
+    expect(first.staged).toBe(true);
+    expect(at(tables.decisions, 0)["payload"]).toEqual({
+      note: "copy says ticket; tee title carries the buyer's words",
+    });
+    // Restaging while pending appends its reason rather than replacing it,
+    // and an identical reason is not repeated.
+    await requestCatalogPublish(supabase, MERCHANT, {
+      note: "copy says ticket; tee title carries the buyer's words",
+    });
+    const second = await requestCatalogPublish(supabase, MERCHANT, {
+      note: "poster swapped for the final artwork",
+    });
+    expect(second.staged).toBe(false);
+    expect(tables.decisions).toHaveLength(1);
+    expect(at(tables.decisions, 0)["payload"]).toEqual({
+      note:
+        "copy says ticket; tee title carries the buyer's words\n" +
+        "poster swapped for the final artwork",
+    });
+    // A staging with no usable note leaves the payload alone.
+    await requestCatalogPublish(supabase, MERCHANT, { note: 42 });
+    await requestCatalogPublish(supabase, MERCHANT);
+    expect(at(tables.decisions, 0)["payload"]).toEqual({
+      note:
+        "copy says ticket; tee title carries the buyer's words\n" +
+        "poster swapped for the final artwork",
+    });
+    expect(productRow("neon-wolf-tee")).toBeUndefined();
+  });
+
+  it("a staging note is bounded and never a new decision without one", async () => {
+    boxCatalog = { items: [zapListing()] };
+    const supabase = makeSupabase();
+    const first = await requestCatalogPublish(supabase, MERCHANT, {
+      note: "x".repeat(2000),
+    });
+    expect(first.staged).toBe(true);
+    const payload = at(tables.decisions, 0)["payload"] as { note: string };
+    expect(payload.note).toHaveLength(500);
+    const bare = await requestCatalogPublish(supabase, "user-other", {
+      note: "",
+    });
+    expect(bare.staged).toBe(true);
+    expect(at(tables.decisions, 1)["payload"]).toEqual({});
+  });
+
   it("approval projects the staged listing with an R2 image and no source metadata", async () => {
     boxCatalog = { items: [zapListing(), zapTicketListing()] };
     const supabase = makeSupabase();

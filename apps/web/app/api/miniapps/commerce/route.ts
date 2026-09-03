@@ -1,7 +1,8 @@
 /**
  * MA8 commerce backing tool (gateway-token auth, same pattern as
  * /api/miniapps/publish). The agent can only STAGE:
- *  - publish_catalog: file a shop_publish decision — the projection into
+ *  - publish_catalog: file a shop_publish decision (an optional `note` says
+ *    why, and is shown to the owner) — the projection into
  *    storefront_products happens only on owner approval;
  *  - payment_request: file a payment_request + its decision — nothing moves
  *    until the owner approves (fiat → Stripe Checkout on the payee's
@@ -47,10 +48,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     amount?: unknown;
     payee?: unknown;
     memo?: unknown;
+    note?: unknown;
   } | null;
   try {
     if (body?.action === "publish_catalog") {
-      const result = await requestCatalogPublish(supabase, userId);
+      const result = await requestCatalogPublish(supabase, userId, {
+        note: body.note,
+      });
       return NextResponse.json({ ok: true, ...result });
     }
     if (body?.action === "payment_request") {
