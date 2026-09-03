@@ -13,6 +13,7 @@
  * draft-only, C10), threaded with an Idempotency-Key.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { parseAddress } from "./address";
 import {
   createDraft,
   getAttachmentBytes,
@@ -59,11 +60,7 @@ export function stripQuotedHistory(text: string): string {
   return kept.join("\n").trim();
 }
 
-/** Extract a bare address from "Name <a@b.c>" or "a@b.c". */
-export function parseAddress(value: string): string {
-  const match = /<([^>]+)>/.exec(value);
-  return (match?.[1] ?? value).trim().toLowerCase();
-}
+export { parseAddress };
 
 /**
  * V3 email-invite branch: detect `.ics` / text-calendar attachments, drop the
