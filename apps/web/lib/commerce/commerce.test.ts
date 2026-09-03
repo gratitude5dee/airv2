@@ -1208,6 +1208,40 @@ describe("Zap-staged listings (commerce.stage_listing)", () => {
     expect(tables.decisions).toHaveLength(1);
   });
 
+  it("a failed projection whose undo also fails is a 502, not a silently approved card", async () => {
+    boxCatalog = { items: [zapListing()] };
+    const supabase = makeSupabase();
+    const { decisionId } = await requestCatalogPublish(supabase, MERCHANT);
+    const decision = at(tables.decisions, 0);
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    beforeCatalogRead = () => {
+      // The claim landed; the undo after the failed projection will not.
+      decisionUpdateError = { message: "connection reset" };
+      throw new Error("box unreachable");
+    };
+    await expect(
+      approveCatalogPublish(supabase, MERCHANT, { id: decisionId })
+    ).rejects.toMatchObject({
+      status: 502,
+      message: expect.stringContaining("could not be reopened"),
+    });
+    expect(decision["status"]).toBe("approved");
+    expect(productRow("neon-wolf-tee")).toBeUndefined();
+    expect(logged).toHaveBeenCalledWith(
+      expect.stringContaining("could not be reopened")
+    );
+    logged.mockRestore();
+    // The next staging files a fresh card; its approval re-projects everything.
+    beforeCatalogRead = null;
+    const next = await requestCatalogPublish(supabase, MERCHANT);
+    expect(next.staged).toBe(true);
+    const approval = await approveCatalogPublish(supabase, MERCHANT, {
+      id: next.decisionId,
+    });
+    expect(approval).toEqual({ outcome: "approved", published: 1 });
+    expect(productRow("neon-wolf-tee")?.["active"]).toBe(true);
+  });
+
   it("a failed projection does not undo the claim when a newer card already exists", async () => {
     boxCatalog = { items: [zapListing()] };
     const supabase = makeSupabase();

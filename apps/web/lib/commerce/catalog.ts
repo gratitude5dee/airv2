@@ -352,7 +352,12 @@ export type CatalogPublishApproval =
  * the claim is in the catalog.json the projection reads. If the projection
  * fails the claim is undone so the card is back in Needs You to retry; if a
  * newer card was filed meanwhile the undo hits `one_pending_shop_publish`
- * and that card is the retry instead.
+ * and that card is the retry instead. An undo that fails for any other
+ * reason is surfaced (502) rather than leaving a silently approved card.
+ *
+ * The projection is whole-catalog and idempotent, so a card left approved by
+ * a process death between the claim and the projection is healed by the next
+ * staging: it files a fresh card whose approval re-projects everything.
  */
 export async function approveCatalogPublish(
   supabase: SupabaseClient,
@@ -375,13 +380,28 @@ export async function approveCatalogPublish(
     const published = await applyCatalogPublish(supabase, userId);
     return { outcome: "approved", published };
   } catch (cause) {
-    await supabase
+    const { error: undoError } = await supabase
       .from("decisions")
       .update({ status: "pending", resolved_at: null })
       .eq("id", decision.id)
       .eq("user_id", userId)
       .eq("status", "approved")
       .eq("resolved_at", claimedAt);
+    if (undoError && undoError.code !== UNIQUE_VIOLATION) {
+      console.error(
+        JSON.stringify({
+          msg: "shop_publish claim could not be reopened after a failed projection",
+          user_id: userId,
+          decision_id: decision.id,
+          projection_error: cause instanceof Error ? cause.message : "unknown",
+          error: undoError.message,
+        })
+      );
+      throw new CommerceError(
+        "the publish failed and the card could not be reopened — have your agent stage the catalog again",
+        502
+      );
+    }
     throw cause;
   }
 }

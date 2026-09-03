@@ -6,8 +6,8 @@
 -- the same rules as requestCatalogPublish: one line per note, whitespace
 -- collapsed, 500 chars per note, no repeats, unrelated payload keys untouched,
 -- and the aggregate capped at 2000 chars by keeping the NEWEST lines (older
--- duplicates first, the survivor's own lines last, so right() trims history,
--- not the latest reason).
+-- duplicates first, the survivor's own lines last, and a repeated line keeps
+-- its LATEST position, so right() trims history, not the latest reason).
 --
 -- Only rows 0079 itself dismissed are touched. scripts/apply-migrations.sh
 -- sends a migration and its applied_migrations insert as one request, i.e.
@@ -77,7 +77,7 @@ begin
     select user_id, line, seq
     from (
       select user_id, line, seq,
-             row_number() over (partition by user_id, line order by seq) as dup
+             row_number() over (partition by user_id, line order by seq desc) as dup
       from lines
       where line <> ''
     ) d

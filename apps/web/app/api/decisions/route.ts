@@ -44,6 +44,7 @@ import {
   parseAgentSchedule,
 } from "@/lib/calendar/schedule";
 import { approveCatalogPublish } from "@/lib/commerce/catalog";
+import { CommerceError } from "@/lib/commerce/merchants";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -296,7 +297,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       approval = await approveCatalogPublish(supabase, userId, {
         id: decision.id as string,
       });
-    } catch {
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          msg: "shop_publish approval failed",
+          user_id: userId,
+          decision_id: decision.id,
+          error: error instanceof Error ? error.message : "unknown",
+        }),
+      );
+      if (error instanceof CommerceError) {
+        return NextResponse.json(
+          { error: error.message },
+          { status: error.status },
+        );
+      }
       return NextResponse.json(
         { error: "couldn't reach your agent's computer — try again" },
         { status: 502 },
@@ -486,14 +501,36 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       .eq("status", "parked");
   }
 
-  await supabase
+  // Only a still-pending row takes this resolution. A concurrent request
+  // that resolved it first owns the recorded choice: the same choice is
+  // reported as done, the opposite one as a conflict, never as success.
+  const status = body.action === "approve" ? "approved" : "dismissed";
+  const { data: resolved, error: resolveError } = await supabase
     .from("decisions")
-    .update({
-      status: body.action === "approve" ? "approved" : "dismissed",
-      resolved_at: new Date().toISOString(),
-    })
+    .update({ status, resolved_at: new Date().toISOString() })
     .eq("id", decision.id)
     .eq("user_id", userId)
-    .eq("status", "pending");
+    .eq("status", "pending")
+    .select("id");
+  if (resolveError) {
+    return NextResponse.json(
+      { error: "could not record the decision — try again" },
+      { status: 500 },
+    );
+  }
+  if (!resolved || resolved.length === 0) {
+    const { data: current } = await supabase
+      .from("decisions")
+      .select("status")
+      .eq("id", decision.id)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (current?.status !== status) {
+      return NextResponse.json(
+        { error: "this was already resolved the other way" },
+        { status: 409 },
+      );
+    }
+  }
   return NextResponse.json({ ok: true });
 }
