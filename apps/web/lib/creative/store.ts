@@ -33,6 +33,32 @@ const EXT_BY_MIME: Record<string, string> = {
   "video/webm": "webm",
 };
 
+/**
+ * Attachment types accepted as provider *inputs*. Audio joins here (a voice
+ * memo or a song as a reference-to-video track) but not in EXT_BY_MIME: a
+ * render never produces audio, so ingest keeps rejecting it.
+ */
+const INPUT_EXT_BY_MIME: Record<string, string> = {
+  ...EXT_BY_MIME,
+  "audio/aac": "aac",
+  "audio/m4a": "m4a",
+  "audio/mp4": "m4a",
+  "audio/mpeg": "mp3",
+  "audio/ogg": "ogg",
+  "audio/wav": "wav",
+  "audio/x-m4a": "m4a",
+  "audio/x-wav": "wav",
+};
+
+export type StagedInputKind = "image" | "video" | "audio";
+
+const stagedKindOf = (mimeType: string): StagedInputKind =>
+  mimeType.startsWith("video/")
+    ? "video"
+    : mimeType.startsWith("audio/")
+      ? "audio"
+      : "image";
+
 export const deliveryPurpose = (jobId: string): string => `creative:${jobId}`;
 
 /** Content-addressed ingest shared by provider downloads and owner uploads. */
@@ -168,7 +194,7 @@ export async function stageCreativeInput(
   bytes: Buffer,
   mimeType: string
 ): Promise<
-  | { url: string; kind: "image" | "video"; mimeType: string; storageKey: string }
+  | { url: string; kind: StagedInputKind; mimeType: string; storageKey: string }
   | undefined
 > {
   let staged = bytes;
@@ -181,9 +207,9 @@ export async function stageCreativeInput(
       return undefined;
     }
   }
-  const ext = EXT_BY_MIME[stagedType];
+  const ext = INPUT_EXT_BY_MIME[stagedType];
   if (!ext) return undefined;
-  const kind = stagedType.startsWith("video/") ? ("video" as const) : ("image" as const);
+  const kind = stagedKindOf(stagedType);
   const key = `${userId}/deliveries/${randomBytes(16).toString("hex")}.${ext}`;
   const upload = await supabase.storage
     .from(ASSETS_BUCKET)

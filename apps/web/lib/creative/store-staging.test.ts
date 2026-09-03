@@ -108,3 +108,57 @@ describe("stageCreativeInput HEIC handling", () => {
     expect(heifToJpeg).not.toHaveBeenCalled();
   });
 });
+
+describe("stageCreativeInput clips", () => {
+  beforeEach(() => {
+    uploads.length = 0;
+  });
+
+  it("stages an iPhone video as a video reference", async () => {
+    const staged = await stageCreativeInput(
+      fakeSupabase(),
+      "u1",
+      Buffer.from("mov-bytes"),
+      "video/quicktime"
+    );
+
+    expect(staged?.kind).toBe("video");
+    expect(staged?.mimeType).toBe("video/quicktime");
+    expect(staged?.storageKey.endsWith(".mov")).toBe(true);
+    expect(uploads[0]?.contentType).toBe("video/quicktime");
+  });
+
+  it("stages a voice memo or song as an audio reference", async () => {
+    const memo = await stageCreativeInput(
+      fakeSupabase(),
+      "u1",
+      Buffer.from("m4a-bytes"),
+      "audio/x-m4a"
+    );
+    const song = await stageCreativeInput(
+      fakeSupabase(),
+      "u1",
+      Buffer.from("mp3-bytes"),
+      "audio/mpeg"
+    );
+
+    expect(memo?.kind).toBe("audio");
+    expect(memo?.storageKey.endsWith(".m4a")).toBe(true);
+    expect(uploads[0]?.contentType).toBe("audio/mp4");
+    expect(song?.kind).toBe("audio");
+    expect(song?.storageKey.endsWith(".mp3")).toBe(true);
+    expect(uploads[1]?.contentType).toBe("audio/mpeg");
+  });
+
+  it("refuses attachment types no endpoint accepts", async () => {
+    const staged = await stageCreativeInput(
+      fakeSupabase(),
+      "u1",
+      Buffer.from("%PDF-1.7"),
+      "application/pdf"
+    );
+
+    expect(staged).toBeUndefined();
+    expect(uploads).toHaveLength(0);
+  });
+});

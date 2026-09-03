@@ -31,7 +31,7 @@ const PENDING_STATUSES = new Set([
 ]);
 
 export interface MediaInput {
-  kind: "image" | "video";
+  kind: "image" | "video" | "audio";
   url: string;
   mimeType?: string;
   durationSeconds?: number;

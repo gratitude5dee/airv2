@@ -2,9 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   composeInput,
+  DEBOUNCE_MS,
+  debounceMsFor,
   dropQuickAckMarker,
   hermesDeltas,
   isCancelled,
+  REFERENCE_WINDOW_MS,
   runFlush,
 } from "./flush";
 import {
@@ -93,6 +96,27 @@ describe("composeInput", () => {
     expect(composeInput([], [{ id: "1", message_id: "m", body: "hi" }])).toBe(
       "hi"
     );
+  });
+});
+
+describe("debounceMsFor", () => {
+  it("holds a media-only bubble open for the reference window", () => {
+    expect(debounceMsFor("[attachment:att-1]")).toBe(REFERENCE_WINDOW_MS);
+    expect(debounceMsFor("[attachment:att-1,att-2]\ncheck this")).toBe(
+      REFERENCE_WINDOW_MS
+    );
+  });
+
+  it("holds a bare creative command open for media that follows it", () => {
+    expect(debounceMsFor("/zap make it rain")).toBe(REFERENCE_WINDOW_MS);
+    expect(debounceMsFor("/imagine a fox")).toBe(REFERENCE_WINDOW_MS);
+    expect(debounceMsFor("/animate slowly")).toBe(REFERENCE_WINDOW_MS);
+  });
+
+  it("keeps the short debounce for prose and ambiguous commands", () => {
+    expect(debounceMsFor("what's on my calendar")).toBe(DEBOUNCE_MS);
+    expect(debounceMsFor("/imagine or /zap it")).toBe(DEBOUNCE_MS);
+    expect(REFERENCE_WINDOW_MS).toBeGreaterThan(DEBOUNCE_MS);
   });
 });
 
