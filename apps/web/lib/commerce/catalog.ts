@@ -164,6 +164,7 @@ export async function readCatalog(
 const PUBLISH_NOTE_MAX = 500;
 const PUBLISH_NOTES_MAX = 2000;
 const PUBLISH_STAGE_ATTEMPTS = 5;
+const PUBLISH_APPROVE_ATTEMPTS = 3;
 /** Postgres unique_violation: another staging filed the pending decision first. */
 const UNIQUE_VIOLATION = "23505";
 
@@ -181,6 +182,24 @@ function mergePublishNotes(existing: unknown, note: string): string {
   return (prior ? `${prior}\n${note}` : note).slice(-PUBLISH_NOTES_MAX);
 }
 
+/** How many stagings a pending decision has folded in (see approveCatalogPublish). */
+function countStagings(payload: Record<string, unknown>): number {
+  const raw = payload["stagings"];
+  return typeof raw === "number" && Number.isSafeInteger(raw) && raw > 0
+    ? raw
+    : 0;
+}
+
+/** Filter a decisions query to the payload exactly as it was read. */
+function wherePayloadIs<T extends { eq(c: string, v: string): T; is(c: string, v: null): T }>(
+  query: T,
+  payload: unknown
+): T {
+  return payload === null || payload === undefined
+    ? query.is("payload", null)
+    : query.eq("payload", JSON.stringify(payload));
+}
+
 /**
  * Stage a catalog publish: file a shop_publish decision (one pending per
  * user — restaging must not pile up Needs-you items). Nothing is projected
@@ -192,10 +211,11 @@ function mergePublishNotes(existing: unknown, note: string): string {
  * `one_pending_shop_publish` (0079): a losing concurrent insert gets a
  * unique_violation and merges into the winner instead. Reuse of a pending
  * decision is always confirmed by a conditional write (status still pending,
- * payload as read): concurrent appends never clobber each other, a malformed
- * stored note is replaced rather than wedged on, and an approval that landed
- * after the lookup is noticed so a fresh decision is filed for the new
- * catalog state.
+ * payload as read) that bumps `payload.stagings`: concurrent appends never
+ * clobber each other, a malformed stored note is replaced rather than wedged
+ * on, an approval that landed after the lookup is noticed so a fresh decision
+ * is filed for the new catalog state, and an approval in flight sees the bump
+ * when it tries to resolve (approveCatalogPublish) so it re-projects.
  */
 export async function requestCatalogPublish(
   supabase: SupabaseClient,
@@ -228,19 +248,19 @@ export async function requestCatalogPublish(
           ? (raw as Record<string, unknown>)
           : {};
       const merged = mergePublishNotes(payload["note"], note);
-      const next =
-        merged && merged !== payload["note"]
-          ? { ...payload, note: merged }
-          : payload;
-      let update = supabase
-        .from("decisions")
-        .update({ payload: next })
-        .eq("id", decisionId)
-        .eq("status", "pending");
-      update =
-        raw === null || raw === undefined
-          ? update.is("payload", null)
-          : update.eq("payload", JSON.stringify(raw));
+      const next = {
+        ...payload,
+        ...(merged && merged !== payload["note"] ? { note: merged } : {}),
+        stagings: countStagings(payload) + 1,
+      };
+      const update = wherePayloadIs(
+        supabase
+          .from("decisions")
+          .update({ payload: next })
+          .eq("id", decisionId)
+          .eq("status", "pending"),
+        raw
+      );
       const { data: swapped, error } = await update.select("id");
       if (error) {
         throw new CommerceError("could not update the catalog publish", 500);
@@ -255,7 +275,7 @@ export async function requestCatalogPublish(
         kind: "shop_publish",
         ref: "catalog",
         label: "Publish your shop catalog",
-        payload: note ? { note } : {},
+        payload: note ? { note, stagings: 1 } : { stagings: 1 },
       })
       .select("id")
       .single();
@@ -314,6 +334,62 @@ export async function applyCatalogPublish(
       .eq("user_id", userId);
   }
   return items.length;
+}
+
+export type CatalogPublishApproval =
+  | { outcome: "approved"; published: number }
+  | { outcome: "restaged" }
+  | { outcome: "resolved" };
+
+/**
+ * Owner approval of a pending shop_publish decision: project, then resolve.
+ *
+ * The projection reads catalog.json as it is now. A staging that confirms
+ * into this same decision after that read (requestCatalogPublish saw the row
+ * still pending) has changed the catalog in a way the projection missed, and
+ * marking the decision approved would leave that change with no card. So the
+ * resolve is fenced on the payload the decision was read with — every
+ * staging confirm bumps `payload.stagings`, so a confirm after our read is a
+ * fence miss — and a miss re-reads and re-projects. If the agent keeps
+ * restaging, the card stays pending ("restaged") rather than approving
+ * something the owner has not seen; the projection that did happen is what
+ * they approved. "resolved" means someone else resolved the row meanwhile.
+ */
+export async function approveCatalogPublish(
+  supabase: SupabaseClient,
+  userId: string,
+  decision: { id: string; payload: unknown }
+): Promise<CatalogPublishApproval> {
+  let payload = decision.payload;
+  for (let attempt = 0; attempt < PUBLISH_APPROVE_ATTEMPTS; attempt++) {
+    const published = await applyCatalogPublish(supabase, userId);
+    const update = wherePayloadIs(
+      supabase
+        .from("decisions")
+        .update({ status: "approved", resolved_at: new Date().toISOString() })
+        .eq("id", decision.id)
+        .eq("user_id", userId)
+        .eq("status", "pending"),
+      payload
+    );
+    const { data: swapped, error } = await update.select("id");
+    if (error) {
+      throw new CommerceError("could not resolve the catalog publish", 500);
+    }
+    if (swapped && swapped.length > 0) return { outcome: "approved", published };
+    const { data: row, error: lookupError } = await supabase
+      .from("decisions")
+      .select("status, payload")
+      .eq("id", decision.id)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (lookupError) {
+      throw new CommerceError("could not read the catalog publish", 500);
+    }
+    if (!row || row.status !== "pending") return { outcome: "resolved" };
+    payload = row.payload;
+  }
+  return { outcome: "restaged" };
 }
 
 /** Public listing for the storefront page: active products only. */

@@ -88,7 +88,7 @@ let nextId = 0;
 /** Fails the next `update` on `decisions` (simulates a lost DB write). */
 let decisionUpdateError: { message: string } | null = null;
 /** Runs before each `update` on `decisions` is applied (interleaving hook). */
-let beforeDecisionUpdate: (() => void) | null = null;
+let beforeDecisionUpdate: (() => void | Promise<void>) | null = null;
 /** Runs before each `insert` on `decisions` is applied (interleaving hook). */
 let beforeDecisionInsert: (() => void) | null = null;
 /** Fails the next lookup on `decisions` (simulates a failed read). */
@@ -174,7 +174,7 @@ function makeSupabase(): SupabaseClient {
     const store = tables as unknown as Record<string, Row[]>;
     const rows = () => (store[table] ??= []);
     const matches = () => rows().filter((row) => filters.every((f) => f(row)));
-    const apply = () => {
+    const apply = async () => {
       if (inserted) {
         if (table === "decisions") beforeDecisionInsert?.();
         const full = inserted.map((row) => ({
@@ -193,7 +193,7 @@ function makeSupabase(): SupabaseClient {
         return rows().slice(rows().length - inserted.length);
       }
       if (patch) {
-        if (table === "decisions") beforeDecisionUpdate?.();
+        if (table === "decisions") await beforeDecisionUpdate?.();
         const hit = matches();
         for (const row of hit) Object.assign(row, patch);
         return hit;
@@ -250,7 +250,7 @@ function makeSupabase(): SupabaseClient {
           decisionLookupError = null;
           return { data: null, error };
         }
-        const hit = apply();
+        const hit = await apply();
         return hit.length > 1
           ? { data: null, error: { code: "PGRST116", message: "more than one row" } }
           : { data: hit[0] ?? null, error: null };
@@ -258,7 +258,7 @@ function makeSupabase(): SupabaseClient {
       async single() {
         let hit: Row[];
         try {
-          hit = apply();
+          hit = await apply();
         } catch (error) {
           const { code, message } = error as { code?: string; message: string };
           return { data: null, error: { code, message } };
@@ -279,11 +279,10 @@ function makeSupabase(): SupabaseClient {
           resolve({ data: null, error });
           return;
         }
-        try {
-          resolve({ data: apply(), error: null });
-        } catch (error) {
-          resolve({ data: null, error: error as { message: string } });
-        }
+        apply().then(
+          (data) => resolve({ data, error: null }),
+          (error) => resolve({ data: null, error: error as { message: string } })
+        );
       },
     };
     return chain;
@@ -302,6 +301,7 @@ import {
 } from "./checkout";
 import {
   applyCatalogPublish,
+  approveCatalogPublish,
   parseStorefrontProduct,
   requestCatalogPublish,
   sanitizeCatalogItem,
@@ -798,6 +798,7 @@ describe("Zap-staged listings (commerce.stage_listing)", () => {
     expect(first.staged).toBe(true);
     expect(at(tables.decisions, 0)["payload"]).toEqual({
       note: "copy says ticket; tee title carries the buyer's words",
+      stagings: 1,
     });
     // Restaging while pending appends its reason rather than replacing it,
     // and an identical reason is not repeated.
@@ -813,14 +814,16 @@ describe("Zap-staged listings (commerce.stage_listing)", () => {
       note:
         "copy says ticket; tee title carries the buyer's words\n" +
         "poster swapped for the final artwork",
+      stagings: 3,
     });
-    // A staging with no usable note leaves the payload alone.
+    // A staging with no usable note leaves the notes alone but still counts.
     await requestCatalogPublish(supabase, MERCHANT, { note: 42 });
     await requestCatalogPublish(supabase, MERCHANT);
     expect(at(tables.decisions, 0)["payload"]).toEqual({
       note:
         "copy says ticket; tee title carries the buyer's words\n" +
         "poster swapped for the final artwork",
+      stagings: 5,
     });
     expect(productRow("neon-wolf-tee")).toBeUndefined();
   });
@@ -838,7 +841,7 @@ describe("Zap-staged listings (commerce.stage_listing)", () => {
       note: "",
     });
     expect(bare.staged).toBe(true);
-    expect(at(tables.decisions, 1)["payload"]).toEqual({});
+    expect(at(tables.decisions, 1)["payload"]).toEqual({ stagings: 1 });
   });
 
   it("a failed note update is an error, not a silent 'reused'", async () => {
@@ -849,7 +852,10 @@ describe("Zap-staged listings (commerce.stage_listing)", () => {
     await expect(
       requestCatalogPublish(supabase, MERCHANT, { note: "second" })
     ).rejects.toMatchObject({ status: 500 });
-    expect(at(tables.decisions, 0)["payload"]).toEqual({ note: "first" });
+    expect(at(tables.decisions, 0)["payload"]).toEqual({
+      note: "first",
+      stagings: 1,
+    });
     expect(tables.decisions).toHaveLength(1);
   });
 
@@ -864,7 +870,7 @@ describe("Zap-staged listings (commerce.stage_listing)", () => {
       if (interleaved) return;
       interleaved = true;
       const decision = at(tables.decisions, 0);
-      decision["payload"] = { note: "first\nfrom B" };
+      decision["payload"] = { note: "first\nfrom B", stagings: 2 };
     };
     const result = await requestCatalogPublish(supabase, MERCHANT, {
       note: "from A",
@@ -874,6 +880,7 @@ describe("Zap-staged listings (commerce.stage_listing)", () => {
     expect(tables.decisions).toHaveLength(1);
     expect(at(tables.decisions, 0)["payload"]).toEqual({
       note: "first\nfrom B\nfrom A",
+      stagings: 3,
     });
   });
 
@@ -901,6 +908,7 @@ describe("Zap-staged listings (commerce.stage_listing)", () => {
     expect(tables.decisions).toHaveLength(1);
     expect(at(tables.decisions, 0)["payload"]).toEqual({
       note: "from B\nfrom A",
+      stagings: 1,
     });
     // An approval completed in between still allows a fresh pending decision.
     at(tables.decisions, 0)["status"] = "approved";
@@ -939,7 +947,9 @@ describe("Zap-staged listings (commerce.stage_listing)", () => {
       expect(tables.decisions).toHaveLength(before + 1);
       const fresh = tables.decisions.find((row) => row["id"] === result.decisionId);
       expect(fresh?.["status"]).toBe("pending");
-      expect(fresh?.["payload"]).toEqual(note ? { note } : {});
+      expect(fresh?.["payload"]).toEqual(
+        note ? { note, stagings: 1 } : { stagings: 1 }
+      );
       expect(
         tables.decisions.filter((row) => row["status"] === "pending")
       ).toHaveLength(1);
@@ -948,7 +958,10 @@ describe("Zap-staged listings (commerce.stage_listing)", () => {
     expect(
       tables.decisions.filter((row) => row["status"] === "approved")
     ).toHaveLength(2);
-    expect(at(tables.decisions, 0)["payload"]).toEqual({ note: "first" });
+    expect(at(tables.decisions, 0)["payload"]).toEqual({
+      note: "first",
+      stagings: 1,
+    });
   });
 
   it("a malformed stored note is replaced, not a wedge that blocks every later staging", async () => {
@@ -971,6 +984,7 @@ describe("Zap-staged listings (commerce.stage_listing)", () => {
       expect(at(tables.decisions, 0)["payload"]).toEqual({
         note: "readable",
         extra: "kept",
+        stagings: 1,
       });
     }
     // A pending decision with no payload at all gets one.
@@ -984,7 +998,25 @@ describe("Zap-staged listings (commerce.stage_listing)", () => {
       },
     ];
     await requestCatalogPublish(supabase, MERCHANT, { note: "readable" });
-    expect(at(tables.decisions, 0)["payload"]).toEqual({ note: "readable" });
+    expect(at(tables.decisions, 0)["payload"]).toEqual({
+      note: "readable",
+      stagings: 1,
+    });
+    // A pre-0079 row that was never counted starts counting from here; a
+    // garbage count is replaced rather than trusted.
+    for (const garbage of [-4, 1.5, "7", Number.MAX_VALUE]) {
+      tables.decisions = [
+        {
+          id: "decisions-legacy",
+          user_id: MERCHANT,
+          kind: "shop_publish",
+          status: "pending",
+          payload: { stagings: garbage },
+        },
+      ];
+      await requestCatalogPublish(supabase, MERCHANT);
+      expect(at(tables.decisions, 0)["payload"]).toEqual({ stagings: 1 });
+    }
   });
 
   it("a failed pending lookup is an error, never another approval", async () => {
@@ -1033,6 +1065,124 @@ describe("Zap-staged listings (commerce.stage_listing)", () => {
     const show = productRow("neon-wolf-live");
     expect(show?.["kind"]).toBe("event_ticket");
     expect(show?.["inventory"]).toBe(50);
+  });
+
+  it("owner approval projects the catalog and resolves the pending decision", async () => {
+    boxCatalog = { items: [zapListing()] };
+    const supabase = makeSupabase();
+    const { decisionId } = await requestCatalogPublish(supabase, MERCHANT, {
+      note: "first",
+    });
+    const decision = at(tables.decisions, 0);
+    const approval = await approveCatalogPublish(supabase, MERCHANT, {
+      id: decisionId,
+      payload: decision["payload"],
+    });
+    expect(approval).toEqual({ outcome: "approved", published: 1 });
+    expect(decision["status"]).toBe("approved");
+    expect(decision["resolved_at"]).toEqual(expect.any(String));
+    expect(productRow("neon-wolf-tee")?.["active"]).toBe(true);
+    // A staging that arrives after the resolve files a fresh card.
+    const next = await requestCatalogPublish(supabase, MERCHANT);
+    expect(next.staged).toBe(true);
+    expect(tables.decisions).toHaveLength(2);
+  });
+
+  it("a staging that confirms after approval read the catalog is re-projected, not approved unseen", async () => {
+    boxCatalog = { items: [zapListing()] };
+    const supabase = makeSupabase();
+    const { decisionId } = await requestCatalogPublish(supabase, MERCHANT, {
+      note: "tee",
+    });
+    const decision = at(tables.decisions, 0);
+    const captured = decision["payload"];
+    // Interleave: approval has projected the catalog (one tee) and is about to
+    // mark the decision approved. Before that write, a Zap run adds the zine
+    // to catalog.json and requestCatalogPublish confirms into the still-pending
+    // row (payload bumped). Approving now would leave the zine with no card.
+    let interleaved = false;
+    beforeDecisionUpdate = async () => {
+      if (interleaved) return;
+      interleaved = true;
+      expect(productRow("neon-wolf-tee")).toBeDefined();
+      expect(productRow("zine")).toBeUndefined();
+      boxCatalog = {
+        items: [zapListing(), zapListing({ key: "zine", name: "Zine" })],
+      };
+      const restaged = await requestCatalogPublish(supabase, MERCHANT, {
+        note: "zine",
+      });
+      expect(restaged).toEqual({ decisionId, staged: false });
+      expect(decision["payload"]).toEqual({ note: "tee\nzine", stagings: 2 });
+    };
+    const approval = await approveCatalogPublish(supabase, MERCHANT, {
+      id: decisionId,
+      payload: captured,
+    });
+    beforeDecisionUpdate = null;
+    // The fence missed, so approval re-read the row and re-projected with the
+    // zine before resolving — the storefront matches what the card now covers.
+    expect(approval).toEqual({ outcome: "approved", published: 2 });
+    expect(decision["status"]).toBe("approved");
+    expect(decision["payload"]).toEqual({ note: "tee\nzine", stagings: 2 });
+    expect(productRow("zine")?.["active"]).toBe(true);
+    expect(tables.decisions).toHaveLength(1);
+  });
+
+  it("an agent that keeps restaging through the approval leaves the card pending", async () => {
+    boxCatalog = { items: [zapListing()] };
+    const supabase = makeSupabase();
+    const { decisionId } = await requestCatalogPublish(supabase, MERCHANT);
+    const decision = at(tables.decisions, 0);
+    let bumps = 0;
+    beforeDecisionUpdate = () => {
+      bumps += 1;
+      decision["payload"] = { stagings: 1 + bumps };
+    };
+    const approval = await approveCatalogPublish(supabase, MERCHANT, {
+      id: decisionId,
+      payload: decision["payload"],
+    });
+    beforeDecisionUpdate = null;
+    expect(approval).toEqual({ outcome: "restaged" });
+    expect(bumps).toBe(3);
+    expect(decision["status"]).toBe("pending");
+    expect(decision["resolved_at"]).toBeUndefined();
+    // What the owner approved was projected; the later stagings still need them.
+    expect(productRow("neon-wolf-tee")?.["active"]).toBe(true);
+    expect(
+      tables.decisions.filter((row) => row["status"] === "pending")
+    ).toHaveLength(1);
+  });
+
+  it("approval of a row someone else resolved meanwhile does not resolve it twice", async () => {
+    boxCatalog = { items: [zapListing()] };
+    const supabase = makeSupabase();
+    const { decisionId } = await requestCatalogPublish(supabase, MERCHANT);
+    const decision = at(tables.decisions, 0);
+    const captured = decision["payload"];
+    beforeDecisionUpdate = () => {
+      decision["status"] = "dismissed";
+      decision["resolved_at"] = "2026-01-01T00:00:00.000Z";
+    };
+    const approval = await approveCatalogPublish(supabase, MERCHANT, {
+      id: decisionId,
+      payload: captured,
+    });
+    beforeDecisionUpdate = null;
+    expect(approval).toEqual({ outcome: "resolved" });
+    expect(decision["status"]).toBe("dismissed");
+    expect(decision["resolved_at"]).toBe("2026-01-01T00:00:00.000Z");
+    // A failed resolve is an error, never a silent approval.
+    const { decisionId: again } = await requestCatalogPublish(supabase, MERCHANT);
+    decisionUpdateError = { message: "connection reset" };
+    await expect(
+      approveCatalogPublish(supabase, MERCHANT, {
+        id: again,
+        payload: at(tables.decisions, 1)["payload"],
+      })
+    ).rejects.toMatchObject({ status: 500 });
+    expect(at(tables.decisions, 1)["status"]).toBe("pending");
   });
 
   it("approval drops a non-R2 image URL the Zap left behind", async () => {
