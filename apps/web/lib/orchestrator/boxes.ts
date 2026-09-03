@@ -8,6 +8,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { command, getBox, isStartLimit, resume, waitForBox } from "../box/client";
 import { health, type HermesBoxTarget } from "../hermes/client";
+import { HARNESS_PROFILES, toAgentHarness } from "../agent/harness";
 import { mirrorBrandIfStale } from "../brand/mirror";
 import { recordBoxStateEvent } from "../box/events";
 
@@ -42,6 +43,7 @@ interface BoxRow {
   dashboard_url: string | null;
   dashboard_token: string | null;
   dashboard_auth: string | null;
+  harness: string | null;
 }
 
 export const API_SERVER_PORT = 8642;
@@ -176,7 +178,7 @@ export async function ensureBoxAwake(
   const { data, error: selectError } = await supabase
     .from("boxes")
     .select(
-      "provider_box_id, hosted_url, hosted_token, api_server_key, dashboard_url, dashboard_token, dashboard_auth"
+      "provider_box_id, hosted_url, hosted_token, api_server_key, dashboard_url, dashboard_token, dashboard_auth, harness"
     )
     .eq("user_id", userId)
     .maybeSingle();
@@ -191,6 +193,7 @@ export async function ensureBoxAwake(
   }
   const row = data as BoxRow;
   const boxId = row.provider_box_id;
+  const profile = HARNESS_PROFILES[toAgentHarness(row.harness)];
 
   await supabase
     .from("boxes")
@@ -262,7 +265,7 @@ export async function ensureBoxAwake(
   let restarted = false;
   while (!(await health(target))) {
     if (Date.now() > deadline) {
-      throw new Error(`hermes on ${boxId} not healthy after resume`);
+      throw new Error(`${profile.harness} on ${boxId} not healthy after resume`);
     }
     if (refreshed && !restarted) {
       // Still unhealthy on a fresh token: the gateway/host units are
@@ -271,7 +274,7 @@ export async function ensureBoxAwake(
       restarted = true;
       await command(
         boxId,
-        "sudo systemctl restart hermes-gateway hermes-dashboard hermes-host",
+        `sudo systemctl restart ${profile.services.box.join(" ")}`,
         60
       ).catch(() => undefined);
     }
@@ -302,7 +305,7 @@ export async function ensureBoxAwake(
   // The dashboard token rotated too; refresh it in the background so the
   // wake deadline is never spent on it. Dashboard-upstream proxy requests
   // that lose this race retry once with a synchronous refresh.
-  if (refreshed) {
+  if (refreshed && profile.ports.dashboard !== null) {
     void refreshDashboardRoute(supabase, boxId);
   }
 

@@ -22,6 +22,8 @@ const current = theme(isThemeId(themeArg) ? themeArg : DEFAULT_THEME);
 const snapshot: OnboardingSnapshot = {
   state: defaultOnboardingState(),
   environment: "ubuntu",
+  harness: "hermes",
+  harnessAvailable: { hermes: true, exo: false },
   username: "gratitude",
   address: "gratitude@agents.wzrd.tech",
   mailboxDomain: "agents.wzrd.tech",
