@@ -9,14 +9,19 @@
 -- duplicates first, the survivor's own lines last, so right() trims history,
 -- not the latest reason).
 --
--- Only rows 0079 itself dismissed are touched: its update and the
--- applied_migrations insert run in one request, so their timestamps match
--- (a one-minute window guards against the statements being split). The
--- survivor is the user's pending shop_publish row created before that
--- instant — the partial unique index means there is at most one. Owners who
--- already resolved the survivor acted on it; their rows are left alone.
--- Environments without applied_migrations (Supabase branching, local resets)
--- were built from scratch after 0079 and have nothing to fold.
+-- Only rows 0079 itself dismissed are touched. scripts/apply-migrations.sh
+-- sends a migration and its applied_migrations insert as one request, i.e.
+-- one implicit transaction, and now() is the transaction start, so 0079's
+-- `resolved_at = now()` equals the recorded applied_at to the microsecond.
+-- An owner's dismissal is stamped by the web route from a JavaScript clock
+-- and can never share that instant, so exact equality is the discriminator;
+-- a wider window would fold notes the owner rejected. If the timestamps were
+-- ever split across transactions the fold quietly finds nothing, which is the
+-- safe failure. The survivor is the user's pending shop_publish row created
+-- before that instant — the partial unique index means there is at most one.
+-- Owners who already resolved the survivor acted on it; their rows are left
+-- alone. Environments without applied_migrations (Supabase branching, local
+-- resets) were built from scratch after 0079 and have nothing to fold.
 do $$
 declare
   ran_0079 timestamptz;
@@ -37,8 +42,8 @@ begin
     from decisions
     where kind = 'shop_publish'
       and status = 'dismissed'
-      and resolved_at between ran_0079 - interval '1 minute'
-                          and ran_0079 + interval '1 minute'
+      and resolved_at = ran_0079
+      and created_at < ran_0079
   ),
   survivor as (
     select s.id, s.user_id, s.payload, s.created_at

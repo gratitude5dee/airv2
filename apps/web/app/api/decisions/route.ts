@@ -288,15 +288,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   if (decision.kind === "shop_publish" && body.action === "approve") {
     // MA8 #13: owner approval projects the box-side catalog into the public
-    // storefront_products rows — the agent can only stage. The decision is
-    // resolved by approveCatalogPublish itself, fenced on the payload the
-    // projection read under, so a staging that slips in between leaves the
-    // card pending instead of being approved unseen.
+    // storefront_products rows — the agent can only stage. approveCatalogPublish
+    // claims the decision before it projects, so a dismissal that wins the
+    // race publishes nothing and a staging that lands after files a new card.
     let approval;
     try {
       approval = await approveCatalogPublish(supabase, userId, {
         id: decision.id as string,
-        payload: decision.payload,
       });
     } catch {
       return NextResponse.json(
@@ -305,15 +303,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     } finally {
       await armStopAfter(supabase, userId).catch(() => undefined);
-    }
-    if (approval.outcome === "restaged") {
-      return NextResponse.json(
-        {
-          error:
-            "your agent restaged the catalog while you were approving — review it again",
-        },
-        { status: 409 },
-      );
     }
     if (approval.outcome === "resolved") {
       return NextResponse.json({ error: "not found" }, { status: 404 });
@@ -504,6 +493,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       resolved_at: new Date().toISOString(),
     })
     .eq("id", decision.id)
-    .eq("user_id", userId);
+    .eq("user_id", userId)
+    .eq("status", "pending");
   return NextResponse.json({ ok: true });
 }

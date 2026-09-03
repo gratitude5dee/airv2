@@ -164,7 +164,6 @@ export async function readCatalog(
 const PUBLISH_NOTE_MAX = 500;
 const PUBLISH_NOTES_MAX = 2000;
 const PUBLISH_STAGE_ATTEMPTS = 5;
-const PUBLISH_APPROVE_ATTEMPTS = 3;
 /** Postgres unique_violation: another staging filed the pending decision first. */
 const UNIQUE_VIOLATION = "23505";
 
@@ -182,7 +181,7 @@ function mergePublishNotes(existing: unknown, note: string): string {
   return (prior ? `${prior}\n${note}` : note).slice(-PUBLISH_NOTES_MAX);
 }
 
-/** How many stagings a pending decision has folded in (see approveCatalogPublish). */
+/** How many stagings the pending decision covers (every confirm bumps it). */
 function countStagings(payload: Record<string, unknown>): number {
   const raw = payload["stagings"];
   return typeof raw === "number" && Number.isSafeInteger(raw) && raw > 0
@@ -213,9 +212,11 @@ function wherePayloadIs<T extends { eq(c: string, v: string): T; is(c: string, v
  * decision is always confirmed by a conditional write (status still pending,
  * payload as read) that bumps `payload.stagings`: concurrent appends never
  * clobber each other, a malformed stored note is replaced rather than wedged
- * on, an approval that landed after the lookup is noticed so a fresh decision
- * is filed for the new catalog state, and an approval in flight sees the bump
- * when it tries to resolve (approveCatalogPublish) so it re-projects.
+ * on, and an approval that landed after the lookup is noticed so a fresh
+ * decision is filed for the new catalog state. Approval claims the row before
+ * it projects (approveCatalogPublish), so every confirm that lands on the
+ * pending row is covered by that projection and every later one gets a new
+ * card.
  */
 export async function requestCatalogPublish(
   supabase: SupabaseClient,
@@ -338,58 +339,51 @@ export async function applyCatalogPublish(
 
 export type CatalogPublishApproval =
   | { outcome: "approved"; published: number }
-  | { outcome: "restaged" }
   | { outcome: "resolved" };
 
 /**
- * Owner approval of a pending shop_publish decision: project, then resolve.
+ * Owner approval of a pending shop_publish decision: claim, then project.
  *
- * The projection reads catalog.json as it is now. A staging that confirms
- * into this same decision after that read (requestCatalogPublish saw the row
- * still pending) has changed the catalog in a way the projection missed, and
- * marking the decision approved would leave that change with no card. So the
- * resolve is fenced on the payload the decision was read with — every
- * staging confirm bumps `payload.stagings`, so a confirm after our read is a
- * fence miss — and a miss re-reads and re-projects. If the agent keeps
- * restaging, the card stays pending ("restaged") rather than approving
- * something the owner has not seen; the projection that did happen is what
- * they approved. "resolved" means someone else resolved the row meanwhile.
+ * The claim (pending → approved, conditional on still pending) is the
+ * linearization point. Nothing is projected until it lands, so a dismissal
+ * that wins the race leaves the storefront untouched ("resolved"), and after
+ * it lands no staging can ride this decision: requestCatalogPublish finds no
+ * pending row and files a fresh card, while everything that confirmed before
+ * the claim is in the catalog.json the projection reads. If the projection
+ * fails the claim is undone so the card is back in Needs You to retry; if a
+ * newer card was filed meanwhile the undo hits `one_pending_shop_publish`
+ * and that card is the retry instead.
  */
 export async function approveCatalogPublish(
   supabase: SupabaseClient,
   userId: string,
-  decision: { id: string; payload: unknown }
+  decision: { id: string }
 ): Promise<CatalogPublishApproval> {
-  let payload = decision.payload;
-  for (let attempt = 0; attempt < PUBLISH_APPROVE_ATTEMPTS; attempt++) {
+  const claimedAt = new Date().toISOString();
+  const { data: claimed, error } = await supabase
+    .from("decisions")
+    .update({ status: "approved", resolved_at: claimedAt })
+    .eq("id", decision.id)
+    .eq("user_id", userId)
+    .eq("status", "pending")
+    .select("id");
+  if (error) {
+    throw new CommerceError("could not resolve the catalog publish", 500);
+  }
+  if (!claimed || claimed.length === 0) return { outcome: "resolved" };
+  try {
     const published = await applyCatalogPublish(supabase, userId);
-    const update = wherePayloadIs(
-      supabase
-        .from("decisions")
-        .update({ status: "approved", resolved_at: new Date().toISOString() })
-        .eq("id", decision.id)
-        .eq("user_id", userId)
-        .eq("status", "pending"),
-      payload
-    );
-    const { data: swapped, error } = await update.select("id");
-    if (error) {
-      throw new CommerceError("could not resolve the catalog publish", 500);
-    }
-    if (swapped && swapped.length > 0) return { outcome: "approved", published };
-    const { data: row, error: lookupError } = await supabase
+    return { outcome: "approved", published };
+  } catch (cause) {
+    await supabase
       .from("decisions")
-      .select("status, payload")
+      .update({ status: "pending", resolved_at: null })
       .eq("id", decision.id)
       .eq("user_id", userId)
-      .maybeSingle();
-    if (lookupError) {
-      throw new CommerceError("could not read the catalog publish", 500);
-    }
-    if (!row || row.status !== "pending") return { outcome: "resolved" };
-    payload = row.payload;
+      .eq("status", "approved")
+      .eq("resolved_at", claimedAt);
+    throw cause;
   }
-  return { outcome: "restaged" };
 }
 
 /** Public listing for the storefront page: active products only. */
