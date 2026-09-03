@@ -163,7 +163,9 @@ export async function readCatalog(
 
 const PUBLISH_NOTE_MAX = 500;
 const PUBLISH_NOTES_MAX = 2000;
-const NOTE_MERGE_ATTEMPTS = 5;
+const PUBLISH_STAGE_ATTEMPTS = 5;
+/** Postgres unique_violation: another staging filed the pending decision first. */
+const UNIQUE_VIOLATION = "23505";
 
 /** The agent's stated reason for a staging, one line, bounded. */
 export function sanitizePublishNote(raw: unknown): string {
@@ -185,6 +187,12 @@ function mergePublishNotes(existing: unknown, note: string): string {
  * until the owner approves. The agent's `note` (why it staged this) rides in
  * `payload.note`; restaging while one is pending appends to it so the owner
  * sees every reason behind the single approval.
+ *
+ * "One pending per user" is enforced by the partial unique index
+ * `one_pending_shop_publish` (0079): a losing concurrent insert gets a
+ * unique_violation and merges into the winner instead. The note append is a
+ * compare-and-swap on the whole payload as read, so concurrent appends never
+ * clobber each other and a malformed stored note is replaced, not wedged on.
  */
 export async function requestCatalogPublish(
   supabase: SupabaseClient,
@@ -192,62 +200,62 @@ export async function requestCatalogPublish(
   options: { note?: unknown } = {}
 ): Promise<{ decisionId: string; staged: boolean }> {
   const note = sanitizePublishNote(options.note);
-  let contended = false;
-  for (let attempt = 0; attempt < NOTE_MERGE_ATTEMPTS; attempt++) {
-    contended = false;
-    const { data: pending } = await supabase
+  for (let attempt = 0; attempt < PUBLISH_STAGE_ATTEMPTS; attempt++) {
+    const { data: pending, error: lookupError } = await supabase
       .from("decisions")
       .select("id, payload")
       .eq("user_id", userId)
       .eq("kind", "shop_publish")
       .eq("status", "pending")
       .maybeSingle();
-    if (!pending) break;
-    const decisionId = pending.id as string;
-    if (!note) return { decisionId, staged: false };
-    const payload =
-      pending.payload && typeof pending.payload === "object"
-        ? (pending.payload as Record<string, unknown>)
-        : {};
-    const prior = typeof payload["note"] === "string" ? payload["note"] : null;
-    const merged = mergePublishNotes(prior, note);
-    if (merged === prior) return { decisionId, staged: false };
-    // Compare-and-swap on the note we read: a concurrent restaging that
-    // appended first makes this update match zero rows, and we re-read.
-    let update = supabase
-      .from("decisions")
-      .update({ payload: { ...payload, note: merged } })
-      .eq("id", decisionId)
-      .eq("status", "pending");
-    update =
-      prior === null
-        ? update.is("payload->>note", null)
-        : update.eq("payload->>note", prior);
-    const { data: swapped, error } = await update.select("id");
-    if (error) {
-      throw new CommerceError("could not update the catalog publish", 500);
+    if (lookupError) {
+      throw new CommerceError("could not read the catalog publish", 500);
     }
-    if (swapped && swapped.length > 0) return { decisionId, staged: false };
-    contended = true;
+    if (pending) {
+      const decisionId = pending.id as string;
+      if (!note) return { decisionId, staged: false };
+      const raw: unknown = pending.payload;
+      const payload =
+        raw && typeof raw === "object" && !Array.isArray(raw)
+          ? (raw as Record<string, unknown>)
+          : {};
+      const merged = mergePublishNotes(payload["note"], note);
+      if (merged === payload["note"]) return { decisionId, staged: false };
+      let update = supabase
+        .from("decisions")
+        .update({ payload: { ...payload, note: merged } })
+        .eq("id", decisionId)
+        .eq("status", "pending");
+      update =
+        raw === null || raw === undefined
+          ? update.is("payload", null)
+          : update.eq("payload", JSON.stringify(raw));
+      const { data: swapped, error } = await update.select("id");
+      if (error) {
+        throw new CommerceError("could not update the catalog publish", 500);
+      }
+      if (swapped && swapped.length > 0) return { decisionId, staged: false };
+      continue;
+    }
+    const { data: decision, error } = await supabase
+      .from("decisions")
+      .insert({
+        user_id: userId,
+        kind: "shop_publish",
+        ref: "catalog",
+        label: "Publish your shop catalog",
+        payload: note ? { note } : {},
+      })
+      .select("id")
+      .single();
+    if (!error && decision) {
+      return { decisionId: decision.id as string, staged: true };
+    }
+    if (error?.code !== UNIQUE_VIOLATION) {
+      throw new CommerceError("could not stage the catalog publish", 500);
+    }
   }
-  if (contended) {
-    throw new CommerceError("could not update the catalog publish", 500);
-  }
-  const { data: decision, error } = await supabase
-    .from("decisions")
-    .insert({
-      user_id: userId,
-      kind: "shop_publish",
-      ref: "catalog",
-      label: "Publish your shop catalog",
-      payload: note ? { note } : {},
-    })
-    .select("id")
-    .single();
-  if (error || !decision) {
-    throw new CommerceError("could not stage the catalog publish", 500);
-  }
-  return { decisionId: decision.id as string, staged: true };
+  throw new CommerceError("could not update the catalog publish", 500);
 }
 
 /**

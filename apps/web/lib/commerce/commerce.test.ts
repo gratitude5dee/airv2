@@ -89,6 +89,47 @@ let nextId = 0;
 let decisionUpdateError: { message: string } | null = null;
 /** Runs before each `update` on `decisions` is applied (interleaving hook). */
 let beforeDecisionUpdate: (() => void) | null = null;
+/** Runs before each `insert` on `decisions` is applied (interleaving hook). */
+let beforeDecisionInsert: (() => void) | null = null;
+/** Fails the next lookup on `decisions` (simulates a failed read). */
+let decisionLookupError: { message: string } | null = null;
+
+/** jsonb canonical form: key order does not matter, whitespace does not exist. */
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => v !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`);
+    return `{${entries.join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+/** PostgREST `eq`: a JSON-column filter value is text that Postgres casts to jsonb. */
+function filterEquals(stored: unknown, wanted: unknown): boolean {
+  if (stored !== null && typeof stored === "object" && typeof wanted === "string") {
+    try {
+      return canonicalJson(stored) === canonicalJson(JSON.parse(wanted));
+    } catch {
+      return false;
+    }
+  }
+  return stored === wanted;
+}
+
+/** Partial unique indexes the real schema has (0079_one_pending_shop_publish.sql). */
+function uniqueViolation(table: string, row: Row, rows: Row[]): boolean {
+  if (table !== "decisions") return false;
+  if (row["kind"] !== "shop_publish" || row["status"] !== "pending") return false;
+  return rows.some(
+    (r) =>
+      r["user_id"] === row["user_id"] &&
+      r["kind"] === "shop_publish" &&
+      r["status"] === "pending"
+  );
+}
 
 /** Column read with PostgREST JSON path support (`payload->>note`). */
 function column(row: Row, path: string): unknown {
@@ -135,12 +176,19 @@ function makeSupabase(): SupabaseClient {
     const matches = () => rows().filter((row) => filters.every((f) => f(row)));
     const apply = () => {
       if (inserted) {
-        for (const row of inserted) {
-          rows().push({
-            id: `${table}-${++nextId}`,
-            ...(COLUMN_DEFAULTS[table]?.() ?? {}),
-            ...row,
-          });
+        if (table === "decisions") beforeDecisionInsert?.();
+        const full = inserted.map((row) => ({
+          id: `${table}-${++nextId}`,
+          ...(COLUMN_DEFAULTS[table]?.() ?? {}),
+          ...row,
+        }));
+        for (const row of full) {
+          if (uniqueViolation(table, row, rows())) {
+            throw Object.assign(new Error("duplicate key value"), {
+              code: "23505",
+            });
+          }
+          rows().push(row);
         }
         return rows().slice(rows().length - inserted.length);
       }
@@ -174,7 +222,7 @@ function makeSupabase(): SupabaseClient {
         };
       },
       eq(path: string, value: unknown) {
-        filters.push((row) => column(row, path) === value);
+        filters.push((row) => filterEquals(column(row, path), value));
         return chain;
       },
       not(column: string, _op: string, value: string) {
@@ -197,10 +245,24 @@ function makeSupabase(): SupabaseClient {
       order: () => chain,
       limit: () => chain,
       async maybeSingle() {
-        return { data: apply()[0] ?? null, error: null };
+        if (table === "decisions" && decisionLookupError) {
+          const error = decisionLookupError;
+          decisionLookupError = null;
+          return { data: null, error };
+        }
+        const hit = apply();
+        return hit.length > 1
+          ? { data: null, error: { code: "PGRST116", message: "more than one row" } }
+          : { data: hit[0] ?? null, error: null };
       },
       async single() {
-        const hit = apply();
+        let hit: Row[];
+        try {
+          hit = apply();
+        } catch (error) {
+          const { code, message } = error as { code?: string; message: string };
+          return { data: null, error: { code, message } };
+        }
         return hit.length === 1
           ? { data: hit[0], error: null }
           : { data: null, error: { message: "not exactly one row" } };
@@ -217,7 +279,11 @@ function makeSupabase(): SupabaseClient {
           resolve({ data: null, error });
           return;
         }
-        resolve({ data: apply(), error: null });
+        try {
+          resolve({ data: apply(), error: null });
+        } catch (error) {
+          resolve({ data: null, error: error as { message: string } });
+        }
       },
     };
     return chain;
@@ -259,6 +325,8 @@ function seed(): void {
   transferCalls.length = 0;
   decisionUpdateError = null;
   beforeDecisionUpdate = null;
+  beforeDecisionInsert = null;
+  decisionLookupError = null;
   boxCatalog = { items: [] };
   tables = {
     users: [
@@ -807,6 +875,100 @@ describe("Zap-staged listings (commerce.stage_listing)", () => {
     expect(at(tables.decisions, 0)["payload"]).toEqual({
       note: "first\nfrom B\nfrom A",
     });
+  });
+
+  it("concurrent first stagings file one decision: the loser merges into the winner", async () => {
+    boxCatalog = { items: [zapListing()] };
+    const supabase = makeSupabase();
+    // Interleave: A sees no pending decision; before A's insert lands, B files
+    // one. The partial unique index rejects A's insert and A merges its note.
+    let interleaved = false;
+    beforeDecisionInsert = () => {
+      if (interleaved) return;
+      interleaved = true;
+      tables.decisions.push({
+        id: "decisions-B",
+        user_id: MERCHANT,
+        kind: "shop_publish",
+        status: "pending",
+        payload: { note: "from B" },
+      });
+    };
+    const result = await requestCatalogPublish(supabase, MERCHANT, {
+      note: "from A",
+    });
+    expect(result).toEqual({ decisionId: "decisions-B", staged: false });
+    expect(tables.decisions).toHaveLength(1);
+    expect(at(tables.decisions, 0)["payload"]).toEqual({
+      note: "from B\nfrom A",
+    });
+    // An approval completed in between still allows a fresh pending decision.
+    at(tables.decisions, 0)["status"] = "approved";
+    const fresh = await requestCatalogPublish(supabase, MERCHANT, {
+      note: "again",
+    });
+    expect(fresh.staged).toBe(true);
+    expect(tables.decisions).toHaveLength(2);
+  });
+
+  it("a malformed stored note is replaced, not a wedge that blocks every later staging", async () => {
+    boxCatalog = { items: [zapListing()] };
+    const supabase = makeSupabase();
+    for (const malformed of [42, true, { nested: 1 }, ["a"], null]) {
+      tables.decisions = [
+        {
+          id: "decisions-legacy",
+          user_id: MERCHANT,
+          kind: "shop_publish",
+          status: "pending",
+          payload: { note: malformed, extra: "kept" },
+        },
+      ];
+      const result = await requestCatalogPublish(supabase, MERCHANT, {
+        note: "readable",
+      });
+      expect(result).toEqual({ decisionId: "decisions-legacy", staged: false });
+      expect(at(tables.decisions, 0)["payload"]).toEqual({
+        note: "readable",
+        extra: "kept",
+      });
+    }
+    // A pending decision with no payload at all gets one.
+    tables.decisions = [
+      {
+        id: "decisions-bare",
+        user_id: MERCHANT,
+        kind: "shop_publish",
+        status: "pending",
+        payload: null,
+      },
+    ];
+    await requestCatalogPublish(supabase, MERCHANT, { note: "readable" });
+    expect(at(tables.decisions, 0)["payload"]).toEqual({ note: "readable" });
+  });
+
+  it("a failed pending lookup is an error, never another approval", async () => {
+    boxCatalog = { items: [zapListing()] };
+    const supabase = makeSupabase();
+    await requestCatalogPublish(supabase, MERCHANT, { note: "first" });
+    decisionLookupError = { message: "connection reset" };
+    await expect(
+      requestCatalogPublish(supabase, MERCHANT, { note: "second" })
+    ).rejects.toMatchObject({ status: 500 });
+    expect(tables.decisions).toHaveLength(1);
+    // Legacy duplicates (pre-0079) make maybeSingle return an error too:
+    // surface it rather than adding a third card.
+    tables.decisions.push({
+      id: "decisions-dup",
+      user_id: MERCHANT,
+      kind: "shop_publish",
+      status: "pending",
+      payload: {},
+    });
+    await expect(
+      requestCatalogPublish(supabase, MERCHANT, { note: "third" })
+    ).rejects.toMatchObject({ status: 500 });
+    expect(tables.decisions).toHaveLength(2);
   });
 
   it("approval projects the staged listing with an R2 image and no source metadata", async () => {
