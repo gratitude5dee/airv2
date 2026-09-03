@@ -1,10 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   composeInput,
   DEBOUNCE_MS,
   debounceMsFor,
   dropQuickAckMarker,
+  enqueueInbound,
   hermesDeltas,
   isCancelled,
   REFERENCE_WINDOW_MS,
@@ -117,6 +118,103 @@ describe("debounceMsFor", () => {
     expect(debounceMsFor("what's on my calendar")).toBe(DEBOUNCE_MS);
     expect(debounceMsFor("/imagine or /zap it")).toBe(DEBOUNCE_MS);
     expect(REFERENCE_WINDOW_MS).toBeGreaterThan(DEBOUNCE_MS);
+  });
+});
+
+describe("enqueueInbound scheduling", () => {
+  const message = {
+    userId: "u1",
+    spaceId: "space-1",
+    phone: "+15550001111",
+    messageId: "m-1",
+    senderTier: 0,
+  };
+
+  function fakeSupabase(existingRunAt: string | null) {
+    const upserts: Array<{ table: string; values: Record<string, unknown> }> =
+      [];
+    const supabase = {
+      from: (table: string) => ({
+        insert: () => Promise.resolve({ error: null }),
+        upsert: (values: Record<string, unknown>) => {
+          upserts.push({ table, values });
+          return Promise.resolve({ error: null });
+        },
+        select: () => ({
+          eq: () => ({
+            maybeSingle: () =>
+              Promise.resolve({
+                data:
+                  table === "flush_jobs" && existingRunAt
+                    ? { run_at: existingRunAt }
+                    : null,
+                error: null,
+              }),
+          }),
+        }),
+      }),
+    };
+    return { supabase: supabase as unknown as SupabaseClient, upserts };
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-02T12:00:00.000Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("schedules a fresh burst by the message's own debounce", async () => {
+    const { supabase, upserts } = fakeSupabase(null);
+    const { runAt } = await enqueueInbound(supabase, {
+      ...message,
+      body: "hey",
+    });
+    expect(Date.parse(runAt) - Date.now()).toBe(DEBOUNCE_MS);
+    const job = upserts.find((u) => u.table === "flush_jobs");
+    expect(job?.values["run_at"]).toBe(runAt);
+  });
+
+  it("lets prose inside an open reference window keep the later deadline", async () => {
+    const open = new Date(Date.now() + REFERENCE_WINDOW_MS - 300).toISOString();
+    const { supabase } = fakeSupabase(open);
+    const { runAt } = await enqueueInbound(supabase, {
+      ...message,
+      body: "hey",
+    });
+    expect(Date.parse(runAt)).toBe(Date.parse(open) + 1);
+  });
+
+  it("extends the window when media or a command lands inside it", async () => {
+    const open = new Date(Date.now() + 1_000).toISOString();
+    const { supabase } = fakeSupabase(open);
+    const { runAt } = await enqueueInbound(supabase, {
+      ...message,
+      body: "/zap make it rain",
+    });
+    expect(Date.parse(runAt) - Date.now()).toBe(REFERENCE_WINDOW_MS);
+  });
+
+  it("pulls a backoff-rescheduled deadline in for fresh input", async () => {
+    const backedOff = new Date(Date.now() + 4 * 60_000).toISOString();
+    const { supabase } = fakeSupabase(backedOff);
+    const { runAt } = await enqueueInbound(supabase, {
+      ...message,
+      body: "hello?",
+    });
+    expect(Date.parse(runAt) - Date.now()).toBe(DEBOUNCE_MS);
+  });
+
+  it("ignores a stale deadline already in the past", async () => {
+    const stale = new Date(Date.now() - 60_000).toISOString();
+    const { supabase } = fakeSupabase(stale);
+    const { runAt } = await enqueueInbound(supabase, {
+      ...message,
+      body: "[attachment:att-1]",
+    });
+    expect(Date.parse(runAt) - Date.now()).toBe(REFERENCE_WINDOW_MS);
   });
 });
 
