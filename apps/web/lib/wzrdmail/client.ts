@@ -202,6 +202,20 @@ export async function getThread(
   );
 }
 
+/** A 200 with state "rejected" means no recipient received the message. */
+interface SendOutcome {
+  state?: "sent" | "rejected" | "scheduled";
+  rejected_recipients?: { address: string; error: string }[];
+}
+
+function assertDelivered(outcome: SendOutcome | undefined): void {
+  if (outcome?.state !== "rejected") return;
+  const detail = (outcome.rejected_recipients ?? [])
+    .map((r) => `${r.address}: ${r.error}`)
+    .join("; ");
+  throw new WzrdMailApiError(502, `send rejected${detail ? `: ${detail}` : ""}`);
+}
+
 /** Control-plane reply; Idempotency-Key makes retried sends single-effect. */
 export async function replyToMessage(
   inboxId: string,
@@ -209,7 +223,7 @@ export async function replyToMessage(
   text: string,
   idempotencyKey: string
 ): Promise<void> {
-  await wzrdmailFetch(
+  const outcome = await wzrdmailFetch<SendOutcome>(
     `/inboxes/${encodeURIComponent(inboxId)}/messages/${encodeURIComponent(messageId)}/reply`,
     {
       method: "POST",
@@ -217,6 +231,7 @@ export async function replyToMessage(
       body: { text },
     }
   );
+  assertDelivered(outcome);
 }
 
 export async function createDraft(
@@ -229,9 +244,29 @@ export async function createDraft(
     client_id?: string;
   }
 ): Promise<string> {
+  // in_reply_to only threads; recipients/subject must be supplied explicitly.
+  let body = draft;
+  if (draft.in_reply_to && !(draft.to && draft.to.length > 0)) {
+    const parent = await getMessage(inboxId, draft.in_reply_to);
+    const to = parent.from;
+    if (!to) {
+      throw new WzrdMailApiError(
+        400,
+        `reply parent ${draft.in_reply_to} has no sender address`
+      );
+    }
+    const subject =
+      draft.subject ??
+      (parent.subject
+        ? /^re:/i.test(parent.subject)
+          ? parent.subject
+          : `Re: ${parent.subject}`
+        : "");
+    body = { ...draft, to: [to], subject };
+  }
   const result = await wzrdmailFetch<{ draft_id: string }>(
     `/inboxes/${encodeURIComponent(inboxId)}/drafts`,
-    { method: "POST", body: draft }
+    { method: "POST", body }
   );
   return result.draft_id;
 }
@@ -254,6 +289,7 @@ export async function sendDraft(
     const body = await response.text();
     throw new WzrdMailApiError(response.status, body.slice(0, 500));
   }
+  assertDelivered((await response.json()) as SendOutcome);
 }
 
 export async function listDrafts(
