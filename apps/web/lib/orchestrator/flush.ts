@@ -6,7 +6,8 @@
  * atomically. A message that is media or an explicit creative command holds
  * the burst open for REFERENCE_WINDOW_MS instead, so a photo/clip and its
  * /zap sent as separate bubbles within that window drain as one burst and
- * render as one job. Messages stay in batch_queue until the handler reads them —
+ * render as one job; a shorter bubble arriving inside an open window never
+ * shortens it. Messages stay in batch_queue until the handler reads them —
  * the enqueuer never carries them in a payload. A chain cancelled
  * mid-generation moves its drained messages to carried_messages, and the
  * next batch prepends them as "[Earlier message] …". Cancellation compares
@@ -93,6 +94,33 @@ export function debounceMsFor(body: string): number {
   return DEBOUNCE_MS;
 }
 
+/**
+ * The deadline this message moves the flush to. Every inbound owns a fresh,
+ * strictly later run_at (claimFlush matches on it), but a short-debounce
+ * bubble must not pull an open reference window in: a caption typed right
+ * after a photo lands inside its 3s, so the later of the two deadlines wins.
+ * Only a deadline still within the window counts — a backoff reschedule
+ * (minutes out) must still be pulled in by fresh input.
+ */
+async function nextRunAt(
+  supabase: SupabaseClient,
+  message: InboundMessage
+): Promise<string> {
+  const now = Date.now();
+  const own = now + debounceMsFor(message.body);
+  const { data } = await supabase
+    .from("flush_jobs")
+    .select("run_at")
+    .eq("space_id", message.spaceId)
+    .maybeSingle();
+  const current = data?.run_at ? Date.parse(String(data.run_at)) : NaN;
+  const holdsWindow =
+    Number.isFinite(current) &&
+    current >= own &&
+    current <= now + REFERENCE_WINDOW_MS;
+  return new Date(holdsWindow ? current + 1 : own).toISOString();
+}
+
 /** Enqueue + (re)schedule the chat's flush job. Returns the new deadline. */
 export async function enqueueInbound(
   supabase: SupabaseClient,
@@ -137,7 +165,7 @@ export async function enqueueInbound(
     }
   }
 
-  const runAt = new Date(Date.now() + debounceMsFor(message.body)).toISOString();
+  const runAt = await nextRunAt(supabase, message);
   const { error: jobError } = await supabase.from("flush_jobs").upsert(
     {
       space_id: message.spaceId,

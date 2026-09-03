@@ -119,7 +119,6 @@ function collectContent(
   if (type && ATTACHMENT_TYPES.has(type)) {
     const id = asString(node["id"]);
     if (id) attachmentIds.push(id);
-    return;
   }
   const text = asString(node["text"]);
   if (text) textParts.push(text);

@@ -148,6 +148,26 @@ describe("parseInboundSpectrumMessage", () => {
     expect(inbound?.attachmentIds).toEqual(["att-heic", "att-mov"]);
   });
 
+  it("keeps a caption carried on the attachment record itself", () => {
+    const body = makeBody({
+      message: {
+        id: "msg-5x",
+        direction: "inbound",
+        platform: "imessage",
+        sender: { id: "+15552223333" },
+        content: {
+          type: "attachment",
+          id: "att-cap",
+          mimeType: "image/jpeg",
+          text: "/zap make it rain",
+        },
+      },
+    });
+    const inbound = parseInboundSpectrumMessage(body, {});
+    expect(inbound?.text).toBe("/zap make it rain");
+    expect(inbound?.attachmentIds).toEqual(["att-cap"]);
+  });
+
   it("treats a voice memo as a fetchable attachment", () => {
     const body = makeBody({
       message: {
