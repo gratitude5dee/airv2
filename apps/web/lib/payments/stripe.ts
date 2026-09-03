@@ -151,6 +151,8 @@ export async function createAccountLink(
 
 export interface ConnectCheckoutParams extends CheckoutParams {
   quantity?: number;
+  /** Stripe request idempotency key, so a retried create reuses one session. */
+  idempotencyKey?: string;
 }
 
 export interface ConnectIntentParams {
@@ -246,7 +248,10 @@ export async function createConnectCheckoutSession(
       metadata: params.metadata ?? {},
       expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
     },
-    { stripeAccount }
+    {
+      stripeAccount,
+      ...(params.idempotencyKey ? { idempotencyKey: params.idempotencyKey } : {}),
+    }
   );
   return { id: session.id, url: session.url };
 }

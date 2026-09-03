@@ -313,10 +313,15 @@ describe("selected-row parsers", () => {
   });
 });
 
-function completedSession(sessionId: string): Stripe.Checkout.Session {
+function completedSession(
+  sessionId: string,
+  settled?: { amountTotal?: number; currency?: string }
+): Stripe.Checkout.Session {
   return {
     id: sessionId,
     payment_intent: "pi_test_1",
+    ...(settled?.amountTotal !== undefined ? { amount_total: settled.amountTotal } : {}),
+    ...(settled?.currency !== undefined ? { currency: settled.currency } : {}),
   } as unknown as Stripe.Checkout.Session;
 }
 
@@ -446,6 +451,42 @@ describe("fulfillment: webhook-only, replay-safe", () => {
       await fulfillCheckoutSession(supabase, completedSession("cs_forged"))
     ).toBe(false);
     expect(tables.orders).toHaveLength(0);
+  });
+
+  it("keys the Stripe session create on the order id so a retry cannot mint a second session", async () => {
+    const supabase = makeSupabase();
+    const start = await startCheckout(supabase, MERCHANT, "tee", "1", null, "https://x");
+    expect(connectCalls[0]?.params["idempotencyKey"]).toBe(`checkout-${start.orderId}`);
+  });
+
+  it("refuses to fulfill when the settled total or currency disagrees with the order", async () => {
+    const supabase = makeSupabase();
+    await startCheckout(supabase, MERCHANT, "tee", "2", null, "https://x");
+    const sessionId = at(tables.orders, 0)["stripe_session_id"] as string;
+    const expected = at(tables.orders, 0)["amount_cents"] as number;
+
+    expect(
+      await fulfillCheckoutSession(
+        supabase,
+        completedSession(sessionId, { amountTotal: expected - 1, currency: "usd" })
+      )
+    ).toBe(false);
+    expect(
+      await fulfillCheckoutSession(
+        supabase,
+        completedSession(sessionId, { amountTotal: expected, currency: "eur" })
+      )
+    ).toBe(false);
+    expect(at(tables.orders, 0)["status"]).toBe("pending");
+    expect(at(tables.storefront_products, 0)["inventory"]).toBe(3);
+
+    expect(
+      await fulfillCheckoutSession(
+        supabase,
+        completedSession(sessionId, { amountTotal: expected, currency: "usd" })
+      )
+    ).toBe(true);
+    expect(at(tables.orders, 0)["status"]).toBe("paid");
   });
 });
 

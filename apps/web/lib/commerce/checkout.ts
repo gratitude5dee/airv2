@@ -193,6 +193,7 @@ export async function startCheckout(
       successUrl: `${storefrontUrl}?order=${orderId}&k=${buyerKey}`,
       cancelUrl: storefrontUrl,
       metadata: { order_id: orderId },
+      idempotencyKey: `checkout-${orderId}`,
     });
     if (!session.url) throw new Error("checkout session has no URL");
   } catch (cause) {
@@ -271,6 +272,19 @@ export async function fulfillCheckoutSession(
   if (!found) return false;
   const order = parseOrder(found);
   if (!order) return false;
+  if (!sessionMatchesOrder(session, order)) {
+    console.error(
+      JSON.stringify({
+        msg: "checkout session amount mismatch; order left pending for reconciliation",
+        orderId: order.id,
+        sessionId: session.id,
+        expectedCents: order.amount_cents,
+        amountTotal: session.amount_total,
+        currency: session.currency,
+      })
+    );
+    return false;
+  }
   const paymentIntent =
     typeof session.payment_intent === "string"
       ? session.payment_intent
@@ -320,6 +334,30 @@ export async function fulfillCheckoutSession(
       "storefront_purchase",
       order.amount_cents
     );
+  }
+  return true;
+}
+
+/**
+ * Backstop against fulfilling on a session whose settled total or currency
+ * differs from the server-derived order amount. Sessions carry both fields
+ * once completed; a missing field is not treated as a mismatch.
+ */
+function sessionMatchesOrder(
+  session: Stripe.Checkout.Session,
+  order: Order
+): boolean {
+  if (
+    typeof session.amount_total === "number" &&
+    session.amount_total !== order.amount_cents
+  ) {
+    return false;
+  }
+  if (
+    typeof session.currency === "string" &&
+    session.currency.toLowerCase() !== "usd"
+  ) {
+    return false;
   }
   return true;
 }
