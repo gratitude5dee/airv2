@@ -14,12 +14,14 @@ import {
   type CreativeTurn,
 } from "./gmi";
 import {
+  AUDIO_NEEDS_VISUAL_LINE,
   buildFalZapRequest,
   FalEnqueuedError,
   FalRequestError,
   FalSubmitUnknownError,
   generateZapVideo,
   isFalUnknownOutcome,
+  zapReferenceProblem,
   type FalQueueReader,
 } from "./fal";
 import {
@@ -247,17 +249,101 @@ describe("buildFalZapRequest", () => {
           { kind: "image", url: "https://x.test/a.png" },
           { kind: "image", url: "https://x.test/b.png" },
           { kind: "image", url: "https://x.test/c.png" },
-          { kind: "video", url: "https://x.test/v.mp4" },
         ],
       }),
     );
     expect(request.model).toBe("minimax/h3-max-turbo/image-to-video");
     expect(request.input["image_url"]).toBe("https://x.test/a.png");
     expect(request.input["end_image_url"]).toBe("https://x.test/b.png");
-    // The endpoint derives the ratio from the first frame and takes no video.
+    // The endpoint derives the ratio from the first frame.
     expect(request.input["aspect_ratio"]).toBeUndefined();
-    expect(request.input["video"]).toBeUndefined();
     expect(request.input["duration"]).toBe(5);
+  });
+
+  it("moves a video reference to H3 Max reference-to-video with labelled lists", () => {
+    const request = buildFalZapRequest(
+      plan({ mode: "zap", expanded_prompt: "make it rain" }),
+      turn({
+        mediaInputs: [
+          { kind: "image", url: "https://x.test/a.jpg", mimeType: "image/jpeg" },
+          { kind: "video", url: "https://x.test/v.mov", mimeType: "video/quicktime" },
+        ],
+      }),
+    );
+    expect(request).toEqual({
+      kind: "video",
+      model: "minimax/h3-max/reference-to-video",
+      input: {
+        prompt:
+          "make it rain Use Video 1 as the motion reference, Image 1 as the subject reference.",
+        duration: 5,
+        resolution: "768P",
+        prompt_expansion_mode: "balanced",
+        enable_safety_checker: true,
+        aspect_ratio: "adaptive",
+        reference_image_urls: ["https://x.test/a.jpg"],
+        reference_video_urls: ["https://x.test/v.mov"],
+      },
+    });
+  });
+
+  it("sends audio with a visual as a reference-to-video soundtrack", () => {
+    const request = buildFalZapRequest(
+      plan({
+        mode: "zap",
+        expanded_prompt: "dance to this",
+        params: { ...plan().params, aspect_ratio: "9:16" },
+      }),
+      turn({
+        mediaInputs: [
+          { kind: "audio", url: "https://x.test/memo.m4a", mimeType: "audio/mp4" },
+          { kind: "image", url: "https://x.test/a.jpg" },
+        ],
+      }),
+    );
+    expect(request.model).toBe("minimax/h3-max/reference-to-video");
+    expect(request.input["aspect_ratio"]).toBe("9:16");
+    expect(request.input["reference_audio_urls"]).toEqual(["https://x.test/memo.m4a"]);
+    expect(request.input["reference_image_urls"]).toEqual(["https://x.test/a.jpg"]);
+    expect(request.input["reference_video_urls"]).toBeUndefined();
+    expect(request.input["image_url"]).toBeUndefined();
+    expect(request.input["prompt"]).toBe(
+      "dance to this Use Image 1 as the subject reference, Audio 1 as the soundtrack.",
+    );
+  });
+
+  it("leaves a prompt alone when it already addresses a reference, and caps the lists", () => {
+    const clips = (n: number, ext: string) =>
+      Array.from({ length: n }, (_, i) => ({
+        kind: ext === "mp4" ? ("video" as const) : ("audio" as const),
+        url: `https://x.test/${i}.${ext}`,
+      }));
+    const request = buildFalZapRequest(
+      plan({ mode: "zap", expanded_prompt: "Video 1 pans, Audio 1 plays" }),
+      turn({ mediaInputs: [...clips(4, "mp4"), ...clips(4, "mp3")] }),
+    );
+    expect(request.input["prompt"]).toBe("Video 1 pans, Audio 1 plays");
+    expect(request.input["reference_video_urls"]).toHaveLength(3);
+    expect(request.input["reference_audio_urls"]).toHaveLength(3);
+  });
+
+  it("refuses audio without a picture or clip before anything is submitted", () => {
+    expect(
+      zapReferenceProblem(
+        turn({ mediaInputs: [{ kind: "audio", url: "https://x.test/a.m4a" }] }),
+      ),
+    ).toBe(AUDIO_NEEDS_VISUAL_LINE);
+    expect(
+      zapReferenceProblem(
+        turn({
+          mediaInputs: [
+            { kind: "audio", url: "https://x.test/a.m4a" },
+            { kind: "video", url: "https://x.test/v.mp4" },
+          ],
+        }),
+      ),
+    ).toBeUndefined();
+    expect(zapReferenceProblem(turn())).toBeUndefined();
   });
 
   it("accepts fal.media artifact URLs and still rejects other hosts", () => {

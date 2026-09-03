@@ -75,6 +75,7 @@ export const deterministicGenerationLines = (
 ): { chat_reply: string; delivery_line: string } => {
   const imageCount = mediaInputs.filter((media) => media.kind === "image").length;
   const hasVideo = mediaInputs.some((media) => media.kind === "video");
+  const hasAudio = mediaInputs.some((media) => media.kind === "audio");
 
   switch (mode) {
     case "imagine":
@@ -92,7 +93,7 @@ export const deterministicGenerationLines = (
       return {
         chat_reply: hasVideo
           ? "editing your video"
-          : imageCount > 1
+          : hasAudio || imageCount > 1
             ? "zapping your references"
             : imageCount === 1
               ? "zapping your image"

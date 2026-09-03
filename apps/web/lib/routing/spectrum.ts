@@ -99,6 +99,45 @@ export function verifySpectrumSignature(input: {
   }
 }
 
+/** Content types whose `id` is fetchable through getAttachment (voice memos included). */
+const ATTACHMENT_TYPES = new Set(["attachment", "voice"]);
+
+/**
+ * Walk one content node, collecting attachment ids and text in message order.
+ * A group bubble (photo + caption, an album) is `{type: "group", items:
+ * Message[]}` where every item is a full message carrying its own `content`;
+ * effects and replies wrap a single inner `content`. The pre-`items` shape
+ * (`contents: Content[]`) is still accepted.
+ */
+function collectContent(
+  node: UnknownRecord | undefined,
+  attachmentIds: string[],
+  textParts: string[]
+): void {
+  if (!node) return;
+  const type = asString(node["type"])?.toLowerCase();
+  if (type && ATTACHMENT_TYPES.has(type)) {
+    const id = asString(node["id"]);
+    if (id) attachmentIds.push(id);
+    return;
+  }
+  const text = asString(node["text"]);
+  if (text) textParts.push(text);
+  const inner = asRecord(node["content"]);
+  if (inner) collectContent(inner, attachmentIds, textParts);
+  for (const key of ["items", "contents"] as const) {
+    const items = node[key];
+    if (!Array.isArray(items)) continue;
+    for (const item of items) {
+      const record = asRecord(item);
+      if (!record) continue;
+      // An `items` entry is a message (content nested); a `contents` entry
+      // is the content itself.
+      collectContent(asRecord(record["content"]) ?? record, attachmentIds, textParts);
+    }
+  }
+}
+
 /**
  * Reduces a verified Spectrum event to routing identifiers. Returns undefined
  * for non-conversational deliveries (outbound echoes, read receipts, other
@@ -144,28 +183,8 @@ export function parseInboundSpectrumMessage(
   }
   const sender = asRecord(message["sender"]);
   const attachmentIds: string[] = [];
-  const contentType = asString(content?.["type"])?.toLowerCase();
-  if (contentType === "attachment") {
-    const id = asString(content?.["id"]);
-    if (id) attachmentIds.push(id);
-  }
-  // A group bubble (image + caption sent as one message) nests its parts in
-  // `contents`; text lives on the items, not on the group itself.
   const textParts: string[] = [];
-  const topText = asString(content?.["text"]);
-  if (topText) textParts.push(topText);
-  const groupItems = Array.isArray(content?.["contents"]) ? content["contents"] : [];
-  for (const item of groupItems) {
-    const record = asRecord(item);
-    const itemType = asString(record?.["type"])?.toLowerCase();
-    if (itemType === "attachment") {
-      const id = asString(record?.["id"]);
-      if (id) attachmentIds.push(id);
-    } else {
-      const itemText = asString(record?.["text"]);
-      if (itemText) textParts.push(itemText);
-    }
-  }
+  collectContent(content, attachmentIds, textParts);
   return {
     messageId,
     phone: asString(space?.["phone"]) ?? asString(embeddedSpace?.["phone"]),

@@ -120,6 +120,75 @@ describe("parseInboundSpectrumMessage", () => {
     expect(inbound?.attachmentIds).toEqual(["att-1"]);
   });
 
+  it("reads a Spectrum group whose items are nested messages (photo + caption)", () => {
+    const body = makeBody({
+      message: {
+        id: "msg-5",
+        direction: "inbound",
+        platform: "imessage",
+        sender: { id: "+15552223333" },
+        content: {
+          type: "group",
+          items: [
+            {
+              id: "msg-5a",
+              content: { type: "attachment", id: "att-heic", mimeType: "image/heic" },
+            },
+            {
+              id: "msg-5b",
+              content: { type: "attachment", id: "att-mov", mimeType: "video/quicktime" },
+            },
+            { id: "msg-5c", content: { type: "text", text: "/zap make it rain" } },
+          ],
+        },
+      },
+    });
+    const inbound = parseInboundSpectrumMessage(body, {});
+    expect(inbound?.text).toBe("/zap make it rain");
+    expect(inbound?.attachmentIds).toEqual(["att-heic", "att-mov"]);
+  });
+
+  it("treats a voice memo as a fetchable attachment", () => {
+    const body = makeBody({
+      message: {
+        id: "msg-6",
+        direction: "inbound",
+        platform: "imessage",
+        sender: { id: "+15552223333" },
+        content: { type: "voice", id: "att-voice", mimeType: "audio/x-m4a" },
+      },
+    });
+    const inbound = parseInboundSpectrumMessage(body, {});
+    expect(inbound?.text).toBeUndefined();
+    expect(inbound?.attachmentIds).toEqual(["att-voice"]);
+  });
+
+  it("unwraps effect and reply envelopes without following reply targets", () => {
+    const body = makeBody({
+      message: {
+        id: "msg-7",
+        direction: "inbound",
+        platform: "imessage",
+        sender: { id: "+15552223333" },
+        content: {
+          type: "reply",
+          content: {
+            type: "effect",
+            effect: "slam",
+            content: { type: "text", text: "/zap louder" },
+          },
+          target: {
+            id: "msg-old",
+            content: { type: "attachment", id: "att-old" },
+          },
+        },
+      },
+    });
+    const inbound = parseInboundSpectrumMessage(body, {});
+    expect(inbound?.text).toBe("/zap louder");
+    expect(inbound?.attachmentIds).toEqual([]);
+  });
+
   it("ignores outbound echoes", () => {
     const body = Buffer.from(
       JSON.stringify({

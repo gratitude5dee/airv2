@@ -26,7 +26,11 @@ import {
   type GeneratedMedia,
   type GmiLifecycleEvent,
 } from "./gmi";
-import { generateZapVideo, isFalUnknownOutcome } from "./fal";
+import {
+  generateZapVideo,
+  isFalUnknownOutcome,
+  zapReferenceProblem,
+} from "./fal";
 import { CreativeUnconfiguredError } from "./groq";
 import { insertRenderCostEvent, updateCreativeJob, underDailyLimit, DAILY_LIMIT_LINE } from "./jobs";
 import { fetchSafeGeneratedMedia } from "./media-url";
@@ -102,6 +106,10 @@ export async function executeCreativeJob(
   let prefs: Awaited<ReturnType<typeof loadCreativePrefs>> | undefined;
   let personalGmiKey: string | null = null;
   if (onFal) {
+    const problem = zapReferenceProblem(turn);
+    if (problem) {
+      return await fail("refused", problem);
+    }
     plan = directZapPlan(turn);
   } else {
     // Non-fatal vision pre-pass over attached images.

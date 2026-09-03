@@ -3,7 +3,10 @@
  *
  * One flush job per chat. Every inbound resets run_at to now()+DEBOUNCE_MS; the
  * invocation that still owns the deadline when it fires claims the drain
- * atomically. Messages stay in batch_queue until the handler reads them —
+ * atomically. A message that is media or an explicit creative command holds
+ * the burst open for REFERENCE_WINDOW_MS instead, so a photo/clip and its
+ * /zap sent as separate bubbles within that window drain as one burst and
+ * render as one job. Messages stay in batch_queue until the handler reads them —
  * the enqueuer never carries them in a payload. A chain cancelled
  * mid-generation moves its drained messages to carried_messages, and the
  * next batch prepends them as "[Earlier message] …". Cancellation compares
@@ -29,6 +32,7 @@ import { listBots } from "../bots/store";
 import { createSpectrumSender, type SpectrumSender } from "../spectrum/sender";
 import { probeForTapback } from "../spectrum/tapbacks";
 import { maybeRunCreativeLane } from "../creative/imessage";
+import { parseExplicitGenerationCommand } from "../creative/parse";
 import {
   maybeSendMiniAppLink,
   MiniAppRegistryLookupError,
@@ -53,6 +57,12 @@ import { streamBubbles } from "./bubbles";
 const ATTACHMENT_MARKER = /^\[attachment:([^\]]+)\]$/;
 
 export const DEBOUNCE_MS = 2_500;
+/**
+ * How long a media bubble or a creative command waits for its counterpart.
+ * iMessage sends a photo and its typed caption as separate webhooks when the
+ * user attaches, then types; either order lands inside this window.
+ */
+export const REFERENCE_WINDOW_MS = 3_000;
 const MAX_ATTEMPTS = 5;
 const CANCEL_POLL_MS = 2_000;
 
@@ -71,6 +81,16 @@ interface QueuedMessage {
   id: string;
   message_id: string;
   body: string;
+}
+
+const HAS_ATTACHMENT_MARKER = /\[attachment:[^\]]+\]/;
+
+/** The debounce a message earns: media and creative commands wait for each other. */
+export function debounceMsFor(body: string): number {
+  if (HAS_ATTACHMENT_MARKER.test(body)) return REFERENCE_WINDOW_MS;
+  const command = parseExplicitGenerationCommand(body);
+  if (command && !("ambiguous" in command)) return REFERENCE_WINDOW_MS;
+  return DEBOUNCE_MS;
 }
 
 /** Enqueue + (re)schedule the chat's flush job. Returns the new deadline. */
@@ -117,7 +137,7 @@ export async function enqueueInbound(
     }
   }
 
-  const runAt = new Date(Date.now() + DEBOUNCE_MS).toISOString();
+  const runAt = new Date(Date.now() + debounceMsFor(message.body)).toISOString();
   const { error: jobError } = await supabase.from("flush_jobs").upsert(
     {
       space_id: message.spaceId,

@@ -11,11 +11,14 @@
  * never resubmitted, and a known request ID is never downgraded to a
  * retryable failure.
  *
- * H3 Max Turbo exposes two sibling endpoints and no reference-image parameter:
- * text-to-video takes `aspect_ratio`, image-to-video derives the ratio from
- * `image_url` (first frame) and optionally interpolates to `end_image_url`
- * (last frame). Attached *video* is not an input this model accepts, so a
- * /zap with video renders from the compiled prompt alone.
+ * Three endpoints, chosen by what the user attached. H3 Max Turbo has two
+ * siblings and no reference parameter: text-to-video takes `aspect_ratio`,
+ * image-to-video derives the ratio from `image_url` (first frame) and
+ * optionally interpolates to `end_image_url` (last frame). A video or audio
+ * attachment moves the job to H3 Max reference-to-video, which takes
+ * separate `reference_{image,video,audio}_urls` lists the prompt addresses as
+ * "Image 1", "Video 1", "Audio 1". Audio cannot be the only reference there;
+ * that case is refused before anything is submitted.
  */
 import { createFalClient, type FalClient } from "@fal-ai/client";
 import { env } from "../env";
@@ -33,6 +36,14 @@ import type { RouterPlan } from "./schema";
 
 export const FAL_ZAP_TEXT_TO_VIDEO = "minimax/h3-max-turbo/text-to-video";
 export const FAL_ZAP_IMAGE_TO_VIDEO = "minimax/h3-max-turbo/image-to-video";
+export const FAL_ZAP_REFERENCE_TO_VIDEO = "minimax/h3-max/reference-to-video";
+
+/** reference-to-video caps per modality (the schema's maxItems). */
+const MAX_REFERENCE_IMAGES = 9;
+const MAX_REFERENCE_CLIPS = 3;
+
+export const AUDIO_NEEDS_VISUAL_LINE =
+  "audio alone isn't enough — send a photo or clip with it and i'll zap them together.";
 
 /** H3 Max Turbo accepts 5–15s; /zap stays at the short end for delivery latency. */
 const MIN_DURATION_SECONDS = 5;
@@ -113,15 +124,65 @@ const falAspectRatioFor = (
   ratio: RouterPlan["params"]["aspect_ratio"],
 ): string => (ratio === "auto" ? "16:9" : ratio);
 
-const imagesOf = (turn: CreativeTurn): readonly MediaInput[] =>
-  turn.mediaInputs.filter((media) => media.kind === "image");
+const ofKind = (
+  turn: CreativeTurn,
+  kind: MediaInput["kind"],
+): readonly MediaInput[] =>
+  turn.mediaInputs.filter((media) => media.kind === kind);
+
+const urls = (media: readonly MediaInput[], max: number): string[] =>
+  media.slice(0, max).map((item) => item.url);
+
+const MENTIONS_REFERENCE = /\b(?:image|video|audio)\s+\d\b/i;
+
+const labels = (noun: string, count: number): string =>
+  Array.from({ length: count }, (_, index) => `${noun} ${index + 1}`).join(
+    " and ",
+  );
+
+/**
+ * reference-to-video binds assets to the prompt by "Image 1" / "Video 1" /
+ * "Audio 1" labels. A user typing "make it dance to this" never writes those,
+ * so the legend is appended unless the prompt already addresses a reference.
+ */
+function withReferenceLegend(
+  prompt: string,
+  counts: { images: number; videos: number; audio: number },
+): string {
+  if (MENTIONS_REFERENCE.test(prompt)) return prompt;
+  const roles: string[] = [];
+  if (counts.videos > 0) {
+    roles.push(`${labels("Video", counts.videos)} as the motion reference`);
+  }
+  if (counts.images > 0) {
+    roles.push(`${labels("Image", counts.images)} as the subject reference`);
+  }
+  if (counts.audio > 0) {
+    roles.push(`${labels("Audio", counts.audio)} as the soundtrack`);
+  }
+  return `${prompt.trim()} Use ${roles.join(", ")}.`;
+}
+
+/**
+ * Why this turn cannot render on any /zap endpoint, or undefined when it
+ * can. Checked before submit so an invalid request never costs a render.
+ */
+export function zapReferenceProblem(turn: CreativeTurn): string | undefined {
+  const hasAudio = turn.mediaInputs.some((media) => media.kind === "audio");
+  const hasVisual = turn.mediaInputs.some(
+    (media) => media.kind === "image" || media.kind === "video",
+  );
+  return hasAudio && !hasVisual ? AUDIO_NEEDS_VISUAL_LINE : undefined;
+}
 
 /** Pure input builder, kept separate from queue I/O for deterministic tests. */
 export function buildFalZapRequest(
   plan: RouterPlan,
   turn: CreativeTurn,
 ): FalGenerationRequest {
-  const images = imagesOf(turn);
+  const images = ofKind(turn, "image");
+  const videos = ofKind(turn, "video");
+  const audio = ofKind(turn, "audio");
   const shared = {
     prompt: plan.expanded_prompt,
     duration: clamp(
@@ -135,6 +196,31 @@ export function buildFalZapRequest(
     prompt_expansion_mode: "balanced",
     enable_safety_checker: true,
   };
+
+  if (videos.length > 0 || audio.length > 0) {
+    // Reference clips carry their own framing; only an explicit ratio
+    // overrides the endpoint's "adaptive" default.
+    const ratio = plan.params.aspect_ratio;
+    const imageUrls = urls(images, MAX_REFERENCE_IMAGES);
+    const videoUrls = urls(videos, MAX_REFERENCE_CLIPS);
+    const audioUrls = urls(audio, MAX_REFERENCE_CLIPS);
+    return {
+      kind: "video",
+      model: FAL_ZAP_REFERENCE_TO_VIDEO,
+      input: {
+        ...shared,
+        prompt: withReferenceLegend(shared.prompt, {
+          images: imageUrls.length,
+          videos: videoUrls.length,
+          audio: audioUrls.length,
+        }),
+        aspect_ratio: ratio === "auto" ? "adaptive" : ratio,
+        ...(imageUrls.length > 0 ? { reference_image_urls: imageUrls } : {}),
+        ...(videoUrls.length > 0 ? { reference_video_urls: videoUrls } : {}),
+        ...(audioUrls.length > 0 ? { reference_audio_urls: audioUrls } : {}),
+      },
+    };
+  }
 
   const firstFrame = images[0];
   if (!firstFrame) {
