@@ -43,6 +43,7 @@ vi.mock("../creative/imessage", () => ({
 vi.mock("../miniapps/imessageCommand", () => ({
   maybeSendMiniAppLink: vi.fn().mockResolvedValue(false),
   MiniAppRegistryLookupError: class extends Error {},
+  OWNER_ONLY_CARD_LINE: "only the owner can open mini-apps.",
 }));
 vi.mock("../miniapps/cards", () => ({
   sendMarkedCards: vi.fn().mockResolvedValue(1),
@@ -288,13 +289,39 @@ describe("runFlush history replay", () => {
       );
     });
 
-    it("drops the marker in a shared-line contact's thread", async () => {
+    const lastSender = async () =>
+      (await vi.mocked(createSpectrumSender).mock.results.at(-1)!.value) as {
+        sendText: ReturnType<typeof vi.fn>;
+      };
+
+    it("tells a shared-line contact the card is owner-only instead of minting it", async () => {
       await runFlush(
         fakeSupabase([{ id: "q1", message_id: "m1", body: "start onboarding" }]),
         { ...job, senderTier: 1 },
         new Date().toISOString()
       );
       expect(vi.mocked(sendMarkedCards)).not.toHaveBeenCalled();
+      expect((await lastSender()).sendText).toHaveBeenCalledWith(
+        "space-1",
+        "+15551234567",
+        "only the owner can open mini-apps."
+      );
+    });
+
+    it("sends no owner-only line when the reply carried no marker", async () => {
+      vi.mocked(runEvents).mockResolvedValue(
+        sse([{ event: "run.completed", output: "Sure thing." }]) as never
+      );
+      await runFlush(
+        fakeSupabase([{ id: "q1", message_id: "m1", body: "hey" }]),
+        { ...job, senderTier: 1 },
+        new Date().toISOString()
+      );
+      expect((await lastSender()).sendText).not.toHaveBeenCalledWith(
+        "space-1",
+        "+15551234567",
+        "only the owner can open mini-apps."
+      );
     });
   });
 });

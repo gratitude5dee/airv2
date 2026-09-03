@@ -32,6 +32,7 @@ import { maybeRunCreativeLane } from "../creative/imessage";
 import {
   maybeSendMiniAppLink,
   MiniAppRegistryLookupError,
+  OWNER_ONLY_CARD_LINE,
 } from "../miniapps/imessageCommand";
 import { sendMarkedCards } from "../miniapps/cards";
 import {
@@ -810,14 +811,21 @@ export async function runFlush(
     }
 
     // Cards are owner-scoped (C15): only a tier-0 thread is the owner's own
-    // conversation, so a marker in a reply to a shared-line contact is dropped
-    // rather than minted into their thread.
-    if (!cancelled && stripped.cards.length > 0 && job.senderTier === 0) {
-      await sendMarkedCards(
-        supabase,
-        { userId: job.userId, spaceId: job.spaceId, phone: job.phone },
-        stripped.cards
-      ).catch(() => 0);
+    // conversation, so a marker in a reply to a shared-line contact is never
+    // minted into their thread. The reply text may still promise a card, so
+    // the contact gets the same owner-only line as the explicit /<app> path.
+    if (!cancelled && stripped.cards.length > 0) {
+      if (job.senderTier === 0) {
+        await sendMarkedCards(
+          supabase,
+          { userId: job.userId, spaceId: job.spaceId, phone: job.phone },
+          stripped.cards
+        ).catch(() => 0);
+      } else {
+        await sender
+          .sendText(job.spaceId, job.phone, OWNER_ONLY_CARD_LINE)
+          .catch(() => undefined);
+      }
     }
 
     if (cancelled) {
