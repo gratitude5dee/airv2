@@ -161,23 +161,61 @@ export async function readCatalog(
   return out;
 }
 
+const PUBLISH_NOTE_MAX = 500;
+const PUBLISH_NOTES_MAX = 2000;
+
+/** The agent's stated reason for a staging, one line, bounded. */
+export function sanitizePublishNote(raw: unknown): string {
+  return typeof raw === "string"
+    ? raw.replace(/\s+/g, " ").trim().slice(0, PUBLISH_NOTE_MAX)
+    : "";
+}
+
+/** Append a staging note to the notes already on a pending decision. */
+function mergePublishNotes(existing: unknown, note: string): string {
+  const prior = typeof existing === "string" ? existing : "";
+  if (!note || prior.split("\n").includes(note)) return prior;
+  return (prior ? `${prior}\n${note}` : note).slice(-PUBLISH_NOTES_MAX);
+}
+
 /**
  * Stage a catalog publish: file a shop_publish decision (one pending per
  * user — restaging must not pile up Needs-you items). Nothing is projected
- * until the owner approves.
+ * until the owner approves. The agent's `note` (why it staged this) rides in
+ * `payload.note`; restaging while one is pending appends to it so the owner
+ * sees every reason behind the single approval.
  */
 export async function requestCatalogPublish(
   supabase: SupabaseClient,
-  userId: string
+  userId: string,
+  options: { note?: unknown } = {}
 ): Promise<{ decisionId: string; staged: boolean }> {
+  const note = sanitizePublishNote(options.note);
   const { data: pending } = await supabase
     .from("decisions")
-    .select("id")
+    .select("id, payload")
     .eq("user_id", userId)
     .eq("kind", "shop_publish")
     .eq("status", "pending")
     .maybeSingle();
-  if (pending) return { decisionId: pending.id as string, staged: false };
+  if (pending) {
+    const decisionId = pending.id as string;
+    if (note) {
+      const payload =
+        pending.payload && typeof pending.payload === "object"
+          ? (pending.payload as Record<string, unknown>)
+          : {};
+      const merged = mergePublishNotes(payload["note"], note);
+      if (merged !== payload["note"]) {
+        await supabase
+          .from("decisions")
+          .update({ payload: { ...payload, note: merged } })
+          .eq("id", decisionId)
+          .eq("status", "pending");
+      }
+    }
+    return { decisionId, staged: false };
+  }
   const { data: decision, error } = await supabase
     .from("decisions")
     .insert({
@@ -185,7 +223,7 @@ export async function requestCatalogPublish(
       kind: "shop_publish",
       ref: "catalog",
       label: "Publish your shop catalog",
-      payload: {},
+      payload: note ? { note } : {},
     })
     .select("id")
     .single();
