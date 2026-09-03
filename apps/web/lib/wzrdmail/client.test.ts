@@ -156,6 +156,38 @@ describe("drafts + sends", () => {
     });
   });
 
+  it("createDraft strips the display name from the parent sender", async () => {
+    const calls = stubFetch(({ url }) =>
+      url.includes("/messages/")
+        ? json({ message_id: "m1", inbox_id: "sam@wzrd.tech", from: "Friend <Friend@Example.com>", subject: "Re: Hi" })
+        : json({ draft_id: "d3" }, 201)
+    );
+    await createDraft("sam@wzrd.tech", { in_reply_to: "m1", text: "t" });
+    expect(JSON.parse(calls[1]!.init.body as string)).toMatchObject({
+      to: ["friend@example.com"],
+      subject: "Re: Hi",
+    });
+  });
+
+  it("createDraft derives only the subject when recipients are explicit", async () => {
+    const calls = stubFetch(({ url }) =>
+      url.includes("/messages/")
+        ? json({ message_id: "m1", inbox_id: "sam@wzrd.tech", from: "ana@x.com", subject: "Hi" })
+        : json({ draft_id: "d4" }, 201)
+    );
+    await createDraft("sam@wzrd.tech", { in_reply_to: "m1", to: ["bob@y.com"], text: "t" });
+    expect(JSON.parse(calls[1]!.init.body as string)).toMatchObject({
+      to: ["bob@y.com"],
+      subject: "Re: Hi",
+    });
+  });
+
+  it("createDraft skips the parent lookup when to and subject are explicit", async () => {
+    const calls = stubFetch(() => json({ draft_id: "d5" }, 201));
+    await createDraft("sam@wzrd.tech", { in_reply_to: "m1", to: ["bob@y.com"], subject: "S", text: "t" });
+    expect(calls).toHaveLength(1);
+  });
+
   it("sendDraft + replyToMessage fail when the provider rejected every recipient", async () => {
     stubFetch(() =>
       json({

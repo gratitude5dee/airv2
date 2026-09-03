@@ -11,6 +11,7 @@
  *    lib/mail/inbound-event.ts for the normaliser)
  *  - pods: POST /pods { client_id } is idempotent (retry returns the same pod)
  */
+import { parseAddress } from "../email/address";
 import { env } from "../env";
 import { DEFAULT_REQUEST_TIMEOUT_MS, requestSignal } from "../http/timeout";
 import { MailApiError } from "../mail/errors";
@@ -246,23 +247,28 @@ export async function createDraft(
 ): Promise<string> {
   // in_reply_to only threads; recipients/subject must be supplied explicitly.
   let body = draft;
-  if (draft.in_reply_to && !(draft.to && draft.to.length > 0)) {
+  const needsTo = !(draft.to && draft.to.length > 0);
+  const needsSubject = draft.subject === undefined;
+  if (draft.in_reply_to && (needsTo || needsSubject)) {
     const parent = await getMessage(inboxId, draft.in_reply_to);
-    const to = parent.from;
-    if (!to) {
-      throw new WzrdMailApiError(
-        400,
-        `reply parent ${draft.in_reply_to} has no sender address`
-      );
+    body = { ...draft };
+    if (needsTo) {
+      const to = parent.from ? parseAddress(parent.from) : "";
+      if (!to.includes("@")) {
+        throw new WzrdMailApiError(
+          400,
+          `reply parent ${draft.in_reply_to} has no sender address`
+        );
+      }
+      body.to = [to];
     }
-    const subject =
-      draft.subject ??
-      (parent.subject
+    if (needsSubject) {
+      body.subject = parent.subject
         ? /^re:/i.test(parent.subject)
           ? parent.subject
           : `Re: ${parent.subject}`
-        : "");
-    body = { ...draft, to: [to], subject };
+        : "";
+    }
   }
   const result = await wzrdmailFetch<{ draft_id: string }>(
     `/inboxes/${encodeURIComponent(inboxId)}/drafts`,
