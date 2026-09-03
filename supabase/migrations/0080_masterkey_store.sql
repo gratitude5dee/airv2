@@ -3,6 +3,13 @@
 -- providers from a per-user Sponge agent wallet; airv2 keeps identity, the
 -- approval gate and the spend cap. No token is stored here — the connections
 -- row is status only, and masterkey_runs is the per-user receipt ledger.
+--
+-- Was 0077_masterkey_store.sql: it shared its version with
+-- 0077_vault_items_reconcile.sql, which Supabase branching rejects (one
+-- schema_migrations row per version), and it never applied to production
+-- because masterkey_runs already existed there. Every statement is
+-- idempotent so it converges on both a fresh database and one that already
+-- has the table.
 
 -- ─── Store mini-app registry row ─────────────────────────────────────────────
 insert into mini_apps
@@ -24,7 +31,7 @@ on conflict (slug) do update set
   updated_at = now();
 
 -- ─── per-run receipts ────────────────────────────────────────────────────────
-create table masterkey_runs (
+create table if not exists masterkey_runs (
   id            uuid primary key default gen_random_uuid(),
   user_id       uuid not null references users(id) on delete cascade,
   service_id    text not null,
@@ -44,13 +51,14 @@ create table masterkey_runs (
   created_at    timestamptz not null default now(),
   resolved_at   timestamptz
 );
-create index masterkey_runs_user_idx on masterkey_runs (user_id, created_at desc);
+create index if not exists masterkey_runs_user_idx on masterkey_runs (user_id, created_at desc);
 
 alter table masterkey_runs enable row level security;
+drop policy if exists own_masterkey_runs on masterkey_runs;
 create policy own_masterkey_runs on masterkey_runs
   for select using (user_id = auth.uid());
 
 -- Box-originated MCP tool calls are metered like every other surface.
-alter table agent_runs drop constraint agent_runs_trigger_check;
+alter table agent_runs drop constraint if exists agent_runs_trigger_check;
 alter table agent_runs add constraint agent_runs_trigger_check
   check (trigger in ('imessage','voice','web','desktop','email','cron','mcp'));
