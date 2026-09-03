@@ -163,6 +163,7 @@ export async function readCatalog(
 
 const PUBLISH_NOTE_MAX = 500;
 const PUBLISH_NOTES_MAX = 2000;
+const NOTE_MERGE_ATTEMPTS = 5;
 
 /** The agent's stated reason for a staging, one line, bounded. */
 export function sanitizePublishNote(raw: unknown): string {
@@ -191,30 +192,46 @@ export async function requestCatalogPublish(
   options: { note?: unknown } = {}
 ): Promise<{ decisionId: string; staged: boolean }> {
   const note = sanitizePublishNote(options.note);
-  const { data: pending } = await supabase
-    .from("decisions")
-    .select("id, payload")
-    .eq("user_id", userId)
-    .eq("kind", "shop_publish")
-    .eq("status", "pending")
-    .maybeSingle();
-  if (pending) {
+  let contended = false;
+  for (let attempt = 0; attempt < NOTE_MERGE_ATTEMPTS; attempt++) {
+    contended = false;
+    const { data: pending } = await supabase
+      .from("decisions")
+      .select("id, payload")
+      .eq("user_id", userId)
+      .eq("kind", "shop_publish")
+      .eq("status", "pending")
+      .maybeSingle();
+    if (!pending) break;
     const decisionId = pending.id as string;
-    if (note) {
-      const payload =
-        pending.payload && typeof pending.payload === "object"
-          ? (pending.payload as Record<string, unknown>)
-          : {};
-      const merged = mergePublishNotes(payload["note"], note);
-      if (merged !== payload["note"]) {
-        await supabase
-          .from("decisions")
-          .update({ payload: { ...payload, note: merged } })
-          .eq("id", decisionId)
-          .eq("status", "pending");
-      }
+    if (!note) return { decisionId, staged: false };
+    const payload =
+      pending.payload && typeof pending.payload === "object"
+        ? (pending.payload as Record<string, unknown>)
+        : {};
+    const prior = typeof payload["note"] === "string" ? payload["note"] : null;
+    const merged = mergePublishNotes(prior, note);
+    if (merged === prior) return { decisionId, staged: false };
+    // Compare-and-swap on the note we read: a concurrent restaging that
+    // appended first makes this update match zero rows, and we re-read.
+    let update = supabase
+      .from("decisions")
+      .update({ payload: { ...payload, note: merged } })
+      .eq("id", decisionId)
+      .eq("status", "pending");
+    update =
+      prior === null
+        ? update.is("payload->>note", null)
+        : update.eq("payload->>note", prior);
+    const { data: swapped, error } = await update.select("id");
+    if (error) {
+      throw new CommerceError("could not update the catalog publish", 500);
     }
-    return { decisionId, staged: false };
+    if (swapped && swapped.length > 0) return { decisionId, staged: false };
+    contended = true;
+  }
+  if (contended) {
+    throw new CommerceError("could not update the catalog publish", 500);
   }
   const { data: decision, error } = await supabase
     .from("decisions")

@@ -85,6 +85,23 @@ interface Tables {
 
 let tables: Tables;
 let nextId = 0;
+/** Fails the next `update` on `decisions` (simulates a lost DB write). */
+let decisionUpdateError: { message: string } | null = null;
+/** Runs before each `update` on `decisions` is applied (interleaving hook). */
+let beforeDecisionUpdate: (() => void) | null = null;
+
+/** Column read with PostgREST JSON path support (`payload->>note`). */
+function column(row: Row, path: string): unknown {
+  const [head, ...keys] = path.split("->>");
+  let value: unknown = head ? row[head] : undefined;
+  for (const key of keys) {
+    value =
+      value && typeof value === "object"
+        ? (value as Record<string, unknown>)[key]
+        : undefined;
+  }
+  return value ?? null;
+}
 
 /** Indexed row access under noUncheckedIndexedAccess. */
 function at(rows: Row[], index = 0): Row {
@@ -128,6 +145,7 @@ function makeSupabase(): SupabaseClient {
         return rows().slice(rows().length - inserted.length);
       }
       if (patch) {
+        if (table === "decisions") beforeDecisionUpdate?.();
         const hit = matches();
         for (const row of hit) Object.assign(row, patch);
         return hit;
@@ -155,8 +173,8 @@ function makeSupabase(): SupabaseClient {
           },
         };
       },
-      eq(column: string, value: unknown) {
-        filters.push((row) => row[column] === value);
+      eq(path: string, value: unknown) {
+        filters.push((row) => column(row, path) === value);
         return chain;
       },
       not(column: string, _op: string, value: string) {
@@ -164,8 +182,8 @@ function makeSupabase(): SupabaseClient {
         filters.push((row) => !list.includes(String(row[column])));
         return chain;
       },
-      is(column: string, value: unknown) {
-        filters.push((row) => (row[column] ?? null) === value);
+      is(path: string, value: unknown) {
+        filters.push((row) => column(row, path) === value);
         return chain;
       },
       in(column: string, values: unknown[]) {
@@ -187,7 +205,18 @@ function makeSupabase(): SupabaseClient {
           ? { data: hit[0], error: null }
           : { data: null, error: { message: "not exactly one row" } };
       },
-      then(resolve: (result: { data: Row[]; error: null }) => void) {
+      then(
+        resolve: (result: {
+          data: Row[] | null;
+          error: { message: string } | null;
+        }) => void
+      ) {
+        if (patch && table === "decisions" && decisionUpdateError) {
+          const error = decisionUpdateError;
+          decisionUpdateError = null;
+          resolve({ data: null, error });
+          return;
+        }
         resolve({ data: apply(), error: null });
       },
     };
@@ -228,6 +257,8 @@ function seed(): void {
   accountAccessible = true;
   createdAccounts = 0;
   transferCalls.length = 0;
+  decisionUpdateError = null;
+  beforeDecisionUpdate = null;
   boxCatalog = { items: [] };
   tables = {
     users: [
@@ -740,6 +771,42 @@ describe("Zap-staged listings (commerce.stage_listing)", () => {
     });
     expect(bare.staged).toBe(true);
     expect(at(tables.decisions, 1)["payload"]).toEqual({});
+  });
+
+  it("a failed note update is an error, not a silent 'reused'", async () => {
+    boxCatalog = { items: [zapListing()] };
+    const supabase = makeSupabase();
+    await requestCatalogPublish(supabase, MERCHANT, { note: "first" });
+    decisionUpdateError = { message: "connection reset" };
+    await expect(
+      requestCatalogPublish(supabase, MERCHANT, { note: "second" })
+    ).rejects.toMatchObject({ status: 500 });
+    expect(at(tables.decisions, 0)["payload"]).toEqual({ note: "first" });
+    expect(tables.decisions).toHaveLength(1);
+  });
+
+  it("concurrent restagings keep both notes on the single pending decision", async () => {
+    boxCatalog = { items: [zapListing()] };
+    const supabase = makeSupabase();
+    await requestCatalogPublish(supabase, MERCHANT, { note: "first" });
+    // Interleave: while A is between its read and its update, B lands its
+    // own note. A's conditional update must miss and re-read, not clobber B.
+    let interleaved = false;
+    beforeDecisionUpdate = () => {
+      if (interleaved) return;
+      interleaved = true;
+      const decision = at(tables.decisions, 0);
+      decision["payload"] = { note: "first\nfrom B" };
+    };
+    const result = await requestCatalogPublish(supabase, MERCHANT, {
+      note: "from A",
+    });
+    beforeDecisionUpdate = null;
+    expect(result.staged).toBe(false);
+    expect(tables.decisions).toHaveLength(1);
+    expect(at(tables.decisions, 0)["payload"]).toEqual({
+      note: "first\nfrom B\nfrom A",
+    });
   });
 
   it("approval projects the staged listing with an R2 image and no source metadata", async () => {
