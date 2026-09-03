@@ -17,7 +17,12 @@ import {
   upsertMiniAppCardSession,
 } from "./cardSessions";
 import type { MiniAppCardSession } from "./cardSessions";
-import type { CardKind } from "./cardSends";
+import {
+  claimCardSend,
+  isCardKind,
+  type CardClaim,
+  type CardKind,
+} from "./cardSends";
 import { mintToken } from "./tokens";
 import { warmStatusMirror } from "./onboardingMirror";
 import type { Message } from "spectrum-ts";
@@ -131,6 +136,56 @@ export async function sendMiniAppCard(
     // surface as a delivery failure (callers may retry on error).
     await sender.close().catch(() => undefined);
   }
+}
+
+/** Most cards one reply may fan out (the onboarding tour sends a few). */
+const MAX_MARKED_CARDS = 4;
+
+/**
+ * Deliver the `[card: <kind>]` markers stripped from an agent reply, in
+ * order, to the owner's thread. Same contract as POST /api/cards/<kind>:
+ * unknown kinds are ignored, each kind is rate limited by claimCardSend
+ * (a kind still in cooldown is skipped, never retried), and one failed send
+ * never blocks the rest or the turn. Returns how many cards went out.
+ */
+export async function sendMarkedCards(
+  supabase: SupabaseClient,
+  owner: { userId: string; spaceId: string; phone: string },
+  kinds: readonly string[]
+): Promise<number> {
+  let sent = 0;
+  for (const kind of kinds.slice(0, MAX_MARKED_CARDS)) {
+    if (!isCardKind(kind)) continue;
+    let claim: CardClaim | undefined;
+    try {
+      claim = await claimCardSend(supabase, owner.userId, kind);
+      if (!claim) continue;
+      await sendMiniAppCard(
+        supabase,
+        owner.spaceId,
+        owner.phone,
+        owner.userId,
+        kind,
+        "default"
+      );
+      sent += 1;
+      console.log(
+        JSON.stringify({ msg: "card sent", kind, user_id: owner.userId, via: "marker" })
+      );
+    } catch (error) {
+      await claim?.release().catch(() => undefined);
+      console.error(
+        JSON.stringify({
+          msg: "card send failed",
+          kind,
+          user_id: owner.userId,
+          via: "marker",
+          error: error instanceof Error ? error.message : "unknown error",
+        })
+      );
+    }
+  }
+  return sent;
 }
 
 /** Persist the card session returned by a send so later updates can edit

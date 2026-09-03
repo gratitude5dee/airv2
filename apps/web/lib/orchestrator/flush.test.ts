@@ -16,6 +16,7 @@ import {
 import { createSpectrumSender } from "../spectrum/sender";
 import { ensureBoxAwake } from "./boxes";
 import { probeForTapback } from "../spectrum/tapbacks";
+import { sendMarkedCards } from "../miniapps/cards";
 
 vi.mock("../spectrum/sender", () => ({ createSpectrumSender: vi.fn() }));
 vi.mock("../box/client", () => ({ command: vi.fn(), writeFile: vi.fn() }));
@@ -42,6 +43,9 @@ vi.mock("../creative/imessage", () => ({
 vi.mock("../miniapps/imessageCommand", () => ({
   maybeSendMiniAppLink: vi.fn().mockResolvedValue(false),
   MiniAppRegistryLookupError: class extends Error {},
+}));
+vi.mock("../miniapps/cards", () => ({
+  sendMarkedCards: vi.fn().mockResolvedValue(1),
 }));
 vi.mock("./boxes", () => ({
   armStopAfter: vi.fn().mockResolvedValue(undefined),
@@ -239,6 +243,59 @@ describe("runFlush history replay", () => {
     expect(vi.mocked(createRun).mock.calls[0]?.[1].conversationHistory).toEqual(
       []
     );
+  });
+
+  describe("card markers", () => {
+    const drainingProbe = async (
+      iterator: AsyncIterator<string>
+    ): Promise<{ buffered: string; ended: true }> => {
+      let buffered = "";
+      for (;;) {
+        const next = await iterator.next();
+        if (next.done) break;
+        buffered += next.value;
+      }
+      return { buffered, ended: true };
+    };
+
+    beforeEach(() => {
+      vi.mocked(sendMarkedCards).mockClear();
+      vi.mocked(loadConversationHistory).mockResolvedValue([
+        { role: "user", content: "hi" },
+        { role: "assistant", content: "hey" },
+      ]);
+      vi.mocked(runEvents).mockResolvedValue(
+        sse([
+          {
+            event: "run.completed",
+            output: "Let's get you set up.\n[card: onboarding]",
+          },
+        ]) as never
+      );
+      vi.mocked(probeForTapback).mockImplementation(drainingProbe as never);
+    });
+
+    it("sends the marked card to the owner after the text", async () => {
+      await runFlush(
+        fakeSupabase([{ id: "q1", message_id: "m1", body: "start onboarding" }]),
+        job,
+        new Date().toISOString()
+      );
+      expect(vi.mocked(sendMarkedCards)).toHaveBeenCalledWith(
+        expect.anything(),
+        { userId: "user-1", spaceId: "space-1", phone: "+15551234567" },
+        ["onboarding"]
+      );
+    });
+
+    it("drops the marker in a shared-line contact's thread", async () => {
+      await runFlush(
+        fakeSupabase([{ id: "q1", message_id: "m1", body: "start onboarding" }]),
+        { ...job, senderTier: 1 },
+        new Date().toISOString()
+      );
+      expect(vi.mocked(sendMarkedCards)).not.toHaveBeenCalled();
+    });
   });
 });
 

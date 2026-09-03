@@ -231,8 +231,8 @@ if ! grep -q 'Mid-onboarding' "$HOME_DIR/.hermes/SOUL.md" 2>/dev/null; then
   cat >> "$HOME_DIR/.hermes/SOUL.md" <<'EOF'
 
 Mid-onboarding the air-onboarding skill is binding: after you send the
-welcome, any affirmative reply (even a bare "yup" or a thumbs-up) means run
-`open-miniapp-card onboarding` with the terminal tool in that same turn —
+welcome, any affirmative reply (even a bare "yup" or a thumbs-up) means put
+`[card: onboarding]` on its own line in that same reply —
 never answer the yes with only a tapback. If they ask "where is it" or
 can't see the app before onboarding is done, send the onboarding card again.
 EOF
@@ -333,14 +333,30 @@ if ! grep -q '## Mini-apps open on their phone' "$HOME_DIR/.hermes/SOUL.md" 2>/d
 ## Mini-apps open on their phone
 When your human asks you to open, show, launch, or pull up a mini-app
 (calendar, onboarding, todo, kanban, inbox, vault, and the rest), follow the
-open-miniapp skill: run `open-miniapp-card <kind>` with your terminal tool —
-that one command sends them a tappable card. This is NOT a website task —
+open-miniapp skill: put `[card: <kind>]` on its own line in your reply —
+that marker sends them a tappable card. This is NOT a website task —
 never use your browser or computer for it, never open localhost:3000 or
 127.0.0.1 anything, and never open the dashboard on port 9119. Never use
-execute_code for the card send (it stalls waiting for an approval that never
+execute_code for a card (it stalls waiting for an approval that never
 comes). "Home"/"dashboard"/"the main app" is the `home` card; "wallet"/"money"
-is the `pay` card — send the card without lecturing about kind names. If the
-card send succeeds, tell them to tap the card in one short sentence.
+is the `pay` card — send the card without lecturing about kind names, and
+tell them to tap the card in one short sentence.
+EOF
+fi
+
+if ! grep -q '## Mini-app cards' "$HOME_DIR/.hermes/SOUL.md" 2>/dev/null; then
+  cat >> "$HOME_DIR/.hermes/SOUL.md" <<'EOF'
+
+## Mini-app cards
+To send a mini-app card, put [card: <kind>] on its own line in your reply —
+the marker disappears from your text and the tappable card lands right after
+it. This replaces running `open-miniapp-card`: no terminal, no tool call,
+nothing to wait for. Kinds: onboarding, persona, home, settings, pay,
+connect, calendar, todo, kanban, inbox, vault, shop, crm, analytics, ads,
+video, image, computer, feedback. Never say you are opening or sending a
+card without the marker in that same reply — the words alone send nothing.
+One marker per kind per reply; a kind sent moments ago is skipped, so point
+at the card already in the thread instead of repeating it.
 EOF
 fi
 

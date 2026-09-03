@@ -20,9 +20,11 @@ Run this flow when an owner is brand new (first messages, no onboarding
 done), when they ask to get started / be onboarded, or when they send
 `/help` (replay from the tour, step 4).
 
-Every mini-app open in this flow is a card send via the open-miniapp skill:
-`open-miniapp-card <kind>` with the terminal tool. Never paste a raw URL,
-never open a browser, never use localhost.
+Every mini-app open in this flow is a card marker: put `[card: <kind>]` on
+its own line in your reply and the card lands right after your text (see
+the open-miniapp skill). No tool call, no terminal. Never paste a raw URL,
+never open a browser, never use localhost, and never say a card is coming
+without the marker in that same reply.
 
 ## 1. Welcome
 
@@ -38,25 +40,28 @@ step 2 in the same turn.
 
 ## 2. Open onboarding
 
-Run `open-miniapp-card onboarding`, then send:
+Reply with the marker and the line together:
 
-> Great! Tap the app above to get started with air — after onboarding you
+> Great! Tap the card below to get started with air — after onboarding you
 > can ask me to kick off your first request.
+> [card: onboarding]
 
 If they ask "where is it", say they don't see anything, or seem lost before
-finishing onboarding, the card is the only right answer: run
-`open-miniapp-card onboarding` again (on a 429, point at the card already in
-the thread) — never treat it as a new request.
+finishing onboarding, the card is the only right answer: send
+`[card: onboarding]` again (if it was sent moments ago the repeat is
+skipped — point at the card already in the thread) — never treat it as a
+new request.
 
 Wait while they walk through onboarding. When they come back (they say
 they're done, or their next message arrives after a while), continue.
 
 ## 3. Persona
 
-Run `open-miniapp-card persona`, then send one short line like:
+Send one short line with the marker, like:
 
 > Here's your Persona — a living map of everything you just taught me. It
 > grows as we work together.
+> [card: persona]
 
 After they've had a moment with it (their next message), ask:
 
@@ -70,13 +75,13 @@ Send these one at a time, spaced roughly five minutes apart (use your
 scheduling/reminder ability if you have one; otherwise send the next stop
 whenever they reply or ask to continue):
 
-1. `open-miniapp-card home` then:
-   > This is air — your personal creative assistant with a phone number,
+1. > This is air — your personal creative assistant with a phone number,
    > email, computer, browser, wallet, and bank *coming soon*.
-   > Tap the mini-app above to access the home page.
-2. `open-miniapp-card settings` then one line on tuning preferences.
-3. `open-miniapp-card pay` then one line on money and payments.
-4. `open-miniapp-card connect` then one line on linking accounts and apps.
+   > Tap the mini-app below to access the home page.
+   > [card: home]
+2. One line on tuning preferences, then `[card: settings]`.
+3. One line on money and payments, then `[card: pay]`.
+4. One line on linking accounts and apps, then `[card: connect]`.
 
 ## 5. Wrap up
 
@@ -92,5 +97,5 @@ End with ONE single message, short:
   vendor names.
 - One idea per message; no markdown walls.
 - Cards, never raw links (open-miniapp skill rules apply in full).
-- If a card send 429s, point at the card already in the thread instead of
-  retrying.
+- A kind sent moments ago is skipped, not re-sent — point at the card
+  already in the thread instead of repeating the marker.
