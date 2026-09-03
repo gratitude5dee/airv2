@@ -95,30 +95,38 @@ export function debounceMsFor(body: string): number {
 }
 
 /**
- * The deadline this message moves the flush to. Every inbound owns a fresh,
- * strictly later run_at (claimFlush matches on it), but a short-debounce
- * bubble must not pull an open reference window in: a caption typed right
- * after a photo lands inside its 3s, so the later of the two deadlines wins.
- * Only a deadline still within the window counts — a backoff reschedule
- * (minutes out) must still be pulled in by fresh input.
+ * Move the chat's flush deadline for this message and return it. The choice
+ * happens inside the upsert (schedule_flush, migration 0082) so overlapping
+ * webhooks serialize on the row: every inbound owns a fresh, strictly later
+ * run_at (claimFlush matches on it), but a short-debounce bubble must not
+ * pull an open reference window in — a caption typed right after a photo
+ * lands inside its 3s, so the later deadline wins (+1ms for ownership). Only
+ * a deadline still within the window counts; a backoff reschedule (minutes
+ * out) is pulled in by fresh input.
  */
-async function nextRunAt(
+async function scheduleFlush(
   supabase: SupabaseClient,
   message: InboundMessage
 ): Promise<string> {
   const now = Date.now();
-  const own = now + debounceMsFor(message.body);
-  const { data } = await supabase
-    .from("flush_jobs")
-    .select("run_at")
-    .eq("space_id", message.spaceId)
-    .maybeSingle();
-  const current = data?.run_at ? Date.parse(String(data.run_at)) : NaN;
-  const holdsWindow =
-    Number.isFinite(current) &&
-    current >= own &&
-    current <= now + REFERENCE_WINDOW_MS;
-  return new Date(holdsWindow ? current + 1 : own).toISOString();
+  const { data, error } = await supabase.rpc("schedule_flush", {
+    p_space_id: message.spaceId,
+    p_user_id: message.userId,
+    p_phone: message.phone,
+    // V6 (C20): the purchase route reads this to keep offer-the-fill
+    // owner-initiated. Fail closed: unknown tier is never owner.
+    p_sender_tier: message.senderTier ?? null,
+    p_run_at: new Date(now + debounceMsFor(message.body)).toISOString(),
+    p_window_end: new Date(now + REFERENCE_WINDOW_MS).toISOString(),
+  });
+  if (error) {
+    throw new Error(`schedule_flush failed: ${error.message}`);
+  }
+  const runAt = new Date(String(data)).getTime();
+  if (!Number.isFinite(runAt)) {
+    throw new Error(`schedule_flush returned no deadline: ${String(data)}`);
+  }
+  return new Date(runAt).toISOString();
 }
 
 /** Enqueue + (re)schedule the chat's flush job. Returns the new deadline. */
@@ -165,24 +173,7 @@ export async function enqueueInbound(
     }
   }
 
-  const runAt = await nextRunAt(supabase, message);
-  const { error: jobError } = await supabase.from("flush_jobs").upsert(
-    {
-      space_id: message.spaceId,
-      user_id: message.userId,
-      phone: message.phone,
-      run_at: runAt,
-      cancelled_at: new Date().toISOString(),
-      // V6 (C20): the purchase route reads this to keep offer-the-fill
-      // owner-initiated. Fail closed: unknown tier is never owner.
-      sender_tier: message.senderTier ?? null,
-    },
-    { onConflict: "space_id" }
-  );
-  if (jobError) {
-    throw new Error(`flush_jobs upsert failed: ${jobError.message}`);
-  }
-  return { runAt };
+  return { runAt: await scheduleFlush(supabase, message) };
 }
 
 /**
