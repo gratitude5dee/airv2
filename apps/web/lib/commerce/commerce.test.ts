@@ -911,6 +911,46 @@ describe("Zap-staged listings (commerce.stage_listing)", () => {
     expect(tables.decisions).toHaveLength(2);
   });
 
+  it("an approval that lands between the lookup and 'reused' files a fresh decision instead", async () => {
+    boxCatalog = { items: [zapListing({ key: "zine", name: "Zine" })] };
+    const supabase = makeSupabase();
+    await requestCatalogPublish(supabase, MERCHANT, { note: "first" });
+    // Interleave: the owner approves (projecting the catalog as it was before
+    // this staging) after our lookup saw the row pending but before we would
+    // have reported it reused. Both the no-note and the duplicate-note paths
+    // must notice and stage a new decision, or the new listing never gets an
+    // approval card.
+    for (const note of [undefined, "first"]) {
+      const before = tables.decisions.length;
+      let interleaved = false;
+      beforeDecisionUpdate = () => {
+        if (interleaved) return;
+        interleaved = true;
+        const pending = tables.decisions.find(
+          (row) => row["status"] === "pending"
+        );
+        if (!pending) throw new Error("expected a pending decision");
+        pending["status"] = "approved";
+        pending["resolved_at"] = "2026-01-01T00:00:00.000Z";
+      };
+      const result = await requestCatalogPublish(supabase, MERCHANT, { note });
+      beforeDecisionUpdate = null;
+      expect(result.staged).toBe(true);
+      expect(tables.decisions).toHaveLength(before + 1);
+      const fresh = tables.decisions.find((row) => row["id"] === result.decisionId);
+      expect(fresh?.["status"]).toBe("pending");
+      expect(fresh?.["payload"]).toEqual(note ? { note } : {});
+      expect(
+        tables.decisions.filter((row) => row["status"] === "pending")
+      ).toHaveLength(1);
+    }
+    // The resolved rows were left untouched by the missed confirmations.
+    expect(
+      tables.decisions.filter((row) => row["status"] === "approved")
+    ).toHaveLength(2);
+    expect(at(tables.decisions, 0)["payload"]).toEqual({ note: "first" });
+  });
+
   it("a malformed stored note is replaced, not a wedge that blocks every later staging", async () => {
     boxCatalog = { items: [zapListing()] };
     const supabase = makeSupabase();

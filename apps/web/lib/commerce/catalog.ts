@@ -190,9 +190,12 @@ function mergePublishNotes(existing: unknown, note: string): string {
  *
  * "One pending per user" is enforced by the partial unique index
  * `one_pending_shop_publish` (0079): a losing concurrent insert gets a
- * unique_violation and merges into the winner instead. The note append is a
- * compare-and-swap on the whole payload as read, so concurrent appends never
- * clobber each other and a malformed stored note is replaced, not wedged on.
+ * unique_violation and merges into the winner instead. Reuse of a pending
+ * decision is always confirmed by a conditional write (status still pending,
+ * payload as read): concurrent appends never clobber each other, a malformed
+ * stored note is replaced rather than wedged on, and an approval that landed
+ * after the lookup is noticed so a fresh decision is filed for the new
+ * catalog state.
  */
 export async function requestCatalogPublish(
   supabase: SupabaseClient,
@@ -212,18 +215,26 @@ export async function requestCatalogPublish(
       throw new CommerceError("could not read the catalog publish", 500);
     }
     if (pending) {
+      // Reusing the pending decision is only safe if it is still pending when
+      // we say so: the owner may have approved it (projecting the catalog as
+      // it was before this staging) between the lookup and here. A
+      // conditional write serializes against that approval, so even a
+      // staging with nothing to add confirms through it rather than returning
+      // on the read alone; a miss falls through to file a fresh decision.
       const decisionId = pending.id as string;
-      if (!note) return { decisionId, staged: false };
       const raw: unknown = pending.payload;
       const payload =
         raw && typeof raw === "object" && !Array.isArray(raw)
           ? (raw as Record<string, unknown>)
           : {};
       const merged = mergePublishNotes(payload["note"], note);
-      if (merged === payload["note"]) return { decisionId, staged: false };
+      const next =
+        merged && merged !== payload["note"]
+          ? { ...payload, note: merged }
+          : payload;
       let update = supabase
         .from("decisions")
-        .update({ payload: { ...payload, note: merged } })
+        .update({ payload: next })
         .eq("id", decisionId)
         .eq("status", "pending");
       update =
