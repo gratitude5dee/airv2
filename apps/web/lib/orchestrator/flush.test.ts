@@ -186,6 +186,7 @@ describe("enqueueInbound scheduling", () => {
       p_sender_tier: 0,
       p_run_at: new Date(Date.now() + DEBOUNCE_MS).toISOString(),
       p_window_end: new Date(Date.now() + REFERENCE_WINDOW_MS).toISOString(),
+      p_cancelled_at: new Date().toISOString(),
     });
     expect(runAt).toBe(new Date(Date.now() + DEBOUNCE_MS).toISOString());
   });

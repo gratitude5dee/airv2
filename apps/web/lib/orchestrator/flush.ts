@@ -102,7 +102,8 @@ export function debounceMsFor(body: string): number {
  * pull an open reference window in — a caption typed right after a photo
  * lands inside its 3s, so the later deadline wins (+1ms for ownership). Only
  * a deadline still within the window counts; a backoff reschedule (minutes
- * out) is pulled in by fresh input.
+ * out) is pulled in by fresh input. cancelled_at is stamped here, on the same
+ * clock that writes chain_started_at, so isCancelled compares like with like.
  */
 async function scheduleFlush(
   supabase: SupabaseClient,
@@ -118,6 +119,7 @@ async function scheduleFlush(
     p_sender_tier: message.senderTier ?? null,
     p_run_at: new Date(now + debounceMsFor(message.body)).toISOString(),
     p_window_end: new Date(now + REFERENCE_WINDOW_MS).toISOString(),
+    p_cancelled_at: new Date(now).toISOString(),
   });
   if (error) {
     throw new Error(`schedule_flush failed: ${error.message}`);
