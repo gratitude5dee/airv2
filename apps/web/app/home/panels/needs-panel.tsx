@@ -348,7 +348,9 @@ export function NeedsPanel({
                   void resolveDecision(detail.decision.id, "approve")
                 }
               >
-                {decisionBusy === detail.decision.id ? "Working\u2026" : "Approve"}
+                {decisionBusy === detail.decision.id
+                  ? "Working\u2026"
+                  : (decisionApproveCta(detail.decision.kind) ?? "Approve")}
               </button>
               <button
                 className="btn btn-ghost !px-3 !py-1.5 !text-[12px]"
