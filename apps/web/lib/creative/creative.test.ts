@@ -806,6 +806,130 @@ describe("fal /zap queue discipline", () => {
     expect(stages).toEqual(["submitting", "submitted", "artifact_ready"]);
   });
 
+  const submittedInput = (submit: ReturnType<typeof okSubmit>) =>
+    JSON.parse(String(submit.mock.calls[0]?.[1]?.body)) as Record<
+      string,
+      unknown
+    >;
+  const WAV_URL = "https://v3b.fal.media/files/normalized_audio.wav";
+  const CLIP_URL = "https://x.supabase.co/sign/clip.mov?token=a";
+  const MEMO_URL = "https://x.supabase.co/sign/memo.m4a?token=b";
+  const withReferences = (): CreativeTurn =>
+    turn({
+      mediaInputs: [
+        { kind: "video", url: CLIP_URL, mimeType: "video/quicktime" },
+        {
+          kind: "audio",
+          url: "https://x.supabase.co/sign/clip.m4a?token=c",
+          mimeType: "audio/mp4",
+          soundtrackOf: CLIP_URL,
+        },
+        { kind: "audio", url: MEMO_URL, mimeType: "audio/mp4" },
+      ],
+    });
+
+  it("hands fal the WAV it made from each audio reference, not the staged M4A", async () => {
+    vi.stubEnv("FAL_KEY", "test-key");
+    const submit = okSubmit();
+    const transcode = vi
+      .fn()
+      .mockResolvedValue({ audio: { url: WAV_URL, file_name: "n.wav" } });
+    await generateZapVideo(plan({ mode: "zap" }), withReferences(), 10_000, {
+      submit,
+      queue: queueOf(),
+      transcode,
+    });
+    expect(transcode).toHaveBeenCalledTimes(2);
+    expect(transcode.mock.calls.map((call) => call[0])).toEqual([
+      "https://x.supabase.co/sign/clip.m4a?token=c",
+      MEMO_URL,
+    ]);
+    const input = submittedInput(submit);
+    expect(input["reference_video_urls"]).toEqual([CLIP_URL]);
+    expect(input["reference_audio_urls"]).toEqual([WAV_URL, WAV_URL]);
+  });
+
+  it("does not transcode when nothing was attached as audio", async () => {
+    vi.stubEnv("FAL_KEY", "test-key");
+    const transcode = vi.fn();
+    await generateZapVideo(plan({ mode: "zap" }), turn(), 10_000, {
+      submit: okSubmit(),
+      queue: queueOf(),
+      transcode,
+    });
+    expect(transcode).not.toHaveBeenCalled();
+  });
+
+  it("a memo that fails to convert fails the turn before any render is paid for", async () => {
+    vi.stubEnv("FAL_KEY", "test-key");
+    const submit = okSubmit();
+    await expect(
+      generateZapVideo(
+        plan({ mode: "zap" }),
+        turn({
+          mediaInputs: [
+            { kind: "image", url: "https://x.supabase.co/sign/a.jpg?token=d" },
+            { kind: "audio", url: MEMO_URL, mimeType: "audio/mp4" },
+          ],
+        }),
+        10_000,
+        {
+          submit,
+          queue: queueOf(),
+          transcode: vi.fn().mockRejectedValue(new Error("ffmpeg failed")),
+        },
+      ),
+    ).rejects.toSatisfy(
+      (error) =>
+        error instanceof FalRequestError && !isFalUnknownOutcome(error),
+    );
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it("a lifted soundtrack that fails to convert degrades to the clip alone", async () => {
+    vi.stubEnv("FAL_KEY", "test-key");
+    const submit = okSubmit();
+    const references = withReferences();
+    await generateZapVideo(
+      plan({ mode: "zap" }),
+      turn({ mediaInputs: references.mediaInputs.slice(0, 2) }),
+      10_000,
+      {
+        submit,
+        queue: queueOf(),
+        transcode: vi.fn().mockRejectedValue(new Error("ffmpeg failed")),
+      },
+    );
+    const input = submittedInput(submit);
+    expect(input["reference_video_urls"]).toEqual([CLIP_URL]);
+    expect(input["reference_audio_urls"]).toBeUndefined();
+  });
+
+  it("a converted WAV off fal's storage is never handed to the render", async () => {
+    vi.stubEnv("FAL_KEY", "test-key");
+    const submit = okSubmit();
+    await expect(
+      generateZapVideo(
+        plan({ mode: "zap" }),
+        turn({
+          mediaInputs: [
+            { kind: "image", url: "https://x.supabase.co/sign/a.jpg?token=d" },
+            { kind: "audio", url: MEMO_URL, mimeType: "audio/mp4" },
+          ],
+        }),
+        10_000,
+        {
+          submit,
+          queue: queueOf(),
+          transcode: vi.fn().mockResolvedValue({
+            audio: { url: "https://evil.example/normalized_audio.wav" },
+          }),
+        },
+      ),
+    ).rejects.toSatisfy((error) => error instanceof FalRequestError);
+    expect(submit).not.toHaveBeenCalled();
+  });
+
   it("a submit with no response is ambiguous — never resubmitted", async () => {
     vi.stubEnv("FAL_KEY", "test-key");
     const submit = vi
