@@ -9,7 +9,12 @@
  *   mini host  /mini/<app>?t=…  → 301 /<app>?t=…           (legacy links;
  *                                 the single-use token rides the redirect)
  *   mini host  /<slug>          → rewrite /mini/<slug>     (loader v2)
+ *   mini host  /<u>             → rewrite /mini/u/<u>      (publisher page, V11)
+ *   mini host  /<u>/<a>[/…]     → rewrite /mini/<u>-<a>[/…] marked x-mini-nested: 1
+ *   mini host  /<u>/<a>/store   → rewrite /mini/store/<u>-<a>
+ *   mini host  /<u>-<a>[/…]     → 301 /<u>/<a>[/…]        (flat legacy URL)
  *   mini host  /api/mini/*      → pass through, marked x-mini-host: 1
+ *   mini host  /api/create/*    → pass through, marked x-mini-host: 1
  *   main host  /mini            → serve store home         (canonical)
  *   main host  /mini/<slug>     → rewrite /mini/store/<slug> (canonical detail)
  *   main host  /mini/store/<s>  → 308 /mini/<s>            (legacy links)
@@ -19,6 +24,7 @@
  * redirects to the external /<slug> path.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { parseNestedPath, splitPublishedSlug } from "./lib/miniapps/nested";
 
 function miniHost(): string {
   const origin = process.env["MINIAPP_ORIGIN"] ?? "https://mini.wzrd.tech";
@@ -38,9 +44,11 @@ export function middleware(request: NextRequest): NextResponse {
   // client — a spoofed value would steer loader cookie paths and the
   // post-gate redirect origins downstream. Strip it from every request;
   // only the mini-origin rewrite below sets it back.
-  const spoofed = request.headers.has("x-mini-host");
+  const spoofed =
+    request.headers.has("x-mini-host") || request.headers.has("x-mini-nested");
   const headers = new Headers(request.headers);
   headers.delete("x-mini-host");
+  headers.delete("x-mini-nested");
 
   if (!onMini) {
     // Discovery is served from the mini origin (MA10); the backing search
@@ -116,7 +124,10 @@ export function middleware(request: NextRequest): NextResponse {
     // Store/loader APIs mint app cookies and redirects, so they carry the
     // same external-path marker as rewritten app requests: gates scope the
     // paid session cookie to /<slug>, where the app is actually served.
-    if (pathname.startsWith("/api/mini/")) {
+    if (
+      pathname.startsWith("/api/mini/") ||
+      pathname.startsWith("/api/create/")
+    ) {
       headers.set("x-mini-host", "1");
       return NextResponse.next({ request: { headers } });
     }
@@ -133,11 +144,37 @@ export function middleware(request: NextRequest): NextResponse {
     return NextResponse.next({ request: { headers } });
   }
 
+  headers.set("x-mini-host", "1");
+
+  // V11 §6 nested URLs. The registry key stays the flat <u>-<a> slug; the
+  // mini origin serves it at /<u>/<a> (cookies scope there), lists the
+  // publisher at /<u>, and 301s the flat form so old links keep working —
+  // ?t= rides the redirect and is still redeemed exactly once.
+  const [firstSegment = "", ...moreSegments] = pathname.split("/").filter(Boolean);
+  const flat = splitPublishedSlug(firstSegment);
+  if (flat) {
+    const target = new URL(request.nextUrl);
+    target.pathname = ["", flat.username, flat.appname, ...moreSegments].join("/");
+    return NextResponse.redirect(target, 301);
+  }
+  const nested = parseNestedPath(pathname);
+  if (nested) {
+    const rewritten = new URL(request.nextUrl);
+    if (nested.kind === "publisher") {
+      rewritten.pathname = `/mini/u/${nested.username}`;
+    } else if (nested.kind === "detail") {
+      rewritten.pathname = `/mini/store/${nested.slug}`;
+    } else {
+      rewritten.pathname = `/mini/${nested.slug}${nested.rest}`;
+      headers.set("x-mini-nested", "1");
+    }
+    return NextResponse.rewrite(rewritten, { request: { headers } });
+  }
+
   // Everything else on the mini host is store or loader territory: rewrite
   // under /mini and mark the request so the loader uses external paths.
   const rewritten = new URL(request.nextUrl);
   rewritten.pathname = pathname === "/" ? "/mini" : `/mini${pathname}`;
-  headers.set("x-mini-host", "1");
   const response = NextResponse.rewrite(rewritten, { request: { headers } });
   // MA11 load: the store home is public, session-free SSR — let the edge
   // cache it briefly. Loaders (/<slug>) stay dynamic: they carry cookies.

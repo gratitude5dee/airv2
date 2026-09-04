@@ -82,7 +82,14 @@ describe("buildIndex", () => {
       "updated_at",
       "url",
     ]);
-    expect(paid.publisher).toEqual({ username: "alice", agent_identity: null });
+    expect(paid.url).toBe("https://mini.wzrd.tech/alice/notes");
+    expect(paid.publisher).toEqual({
+      username: "alice",
+      agent_identity: null,
+      url: "https://mini.wzrd.tech/alice",
+    });
+    expect(entries[1]!.url).toBe("https://mini.wzrd.tech/kanban");
+    expect(entries[1]!.publisher.url).toBeNull();
     expect(paid.gates).toEqual({
       password: false,
       x402: { price_usdc: 1.5 },
@@ -168,7 +175,9 @@ describe("agentMd", () => {
     expect(md).toContain("# Notes");
     expect(md).toContain("$1.5 USDC");
     expect(md).toContain("X-PAYMENT");
-    expect(md).toContain("https://mini.wzrd.tech/alice-notes");
+    expect(md).toContain("https://mini.wzrd.tech/alice/notes");
+    expect(md).toContain("https://mini.wzrd.tech/alice");
+    expect(md).not.toContain("https://mini.wzrd.tech/alice-notes");
     expect(md).toContain("- `add_note`");
     expect(md).not.toContain("0xdeadbeef");
   });

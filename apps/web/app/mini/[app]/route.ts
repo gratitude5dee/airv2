@@ -18,6 +18,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { serviceClient } from "@/lib/supabase";
 import { mintToken, recordRedemption, verifyToken } from "@/lib/miniapps/tokens";
 import { getRegistryApp, type RegistryApp } from "@/lib/miniapps/registry";
+import { splitPublishedSlug } from "@/lib/miniapps/nested";
 import {
   cookieName,
   elapsedMs,
@@ -109,12 +110,22 @@ function logLoad(
 /**
  * External base path for the app: on mini.wzrd.tech the middleware rewrites
  * /<slug> → /mini/<slug> and marks the request, so redirects and cookie
- * paths must use the external /<slug> form there.
+ * paths must use the external /<slug> form there. Published apps arrive via
+ * the nested /<username>/<appname> URL (V11 §6) and are marked again, so the
+ * cookie path and every redirect stay on the nested form.
  */
 function basePathFor(request: NextRequest, slug: string): string {
-  return request.headers.get("x-mini-host") === "1"
-    ? `/${slug}`
-    : `/mini/${slug}`;
+  if (request.headers.get("x-mini-host") !== "1") return `/mini/${slug}`;
+  if (request.headers.get("x-mini-nested") === "1") {
+    const parts = splitPublishedSlug(slug);
+    if (parts) return `/${parts.username}/${parts.appname}`;
+  }
+  return `/${slug}`;
+}
+
+/** Where first-party apps live relative to this request's external origin. */
+function homePrefixFor(request: NextRequest): string {
+  return request.headers.get("x-mini-host") === "1" ? "/" : "/mini/";
 }
 
 /**
@@ -232,11 +243,9 @@ async function runPublicGateChain(
 function sessionStyle(
   style: MiniStyle,
   session: MiniSession,
-  slug: string,
-  basePath: string
+  prefix: string
 ): MiniStyle {
   if (session.role !== "owner") return style;
-  const prefix = basePath.slice(0, basePath.length - slug.length);
   const homeHref = `${prefix}home?t=${mintToken(session.userId, "home", "default", 15, { via: session.via })}`;
   return { ...style, homeHref };
 }
@@ -472,7 +481,7 @@ async function handleGet(
   const renderStart = performance.now();
   const style = await styleFor(supabase, gate.session, prefetched);
   const response = await withStyle(
-    sessionStyle(style, gate.session, slug, basePath),
+    sessionStyle(style, gate.session, homePrefixFor(request)),
     () =>
       appModule.render({
         request,
@@ -550,7 +559,7 @@ async function handlePost(
   const renderStart = performance.now();
   const style = await userStyle(supabase, gate.session.userId);
   const response = await withStyle(
-    sessionStyle(style, gate.session, slug, basePath),
+    sessionStyle(style, gate.session, homePrefixFor(request)),
     () =>
       appModule.action!(
         { request, supabase, app, session: gate.session, basePath },

@@ -4,7 +4,9 @@
  *  - fire flush jobs whose invocation died before draining;
  *  - 48h TTL on transient transport rows (inbound_events, batch_queue);
  *  - release abandoned presign reservations so their pre-charged bytes
- *    don't leak storage quota (MA4).
+ *    don't leak storage quota (MA4);
+ *  - retire mini-app versions past retention (V11 §13.1): superseded live
+ *    versions after 30 days, unpublished drafts beyond the newest five.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual } from "node:crypto";
@@ -16,6 +18,7 @@ import { recordBoxStateEvent } from "@/lib/box/events";
 import { sweepAbandonedUploads } from "@/lib/storage/confirm";
 import { runSyncJobs } from "@/lib/fleet/sync";
 import { sweepUnfiledDrafts } from "@/lib/email/draftSweep";
+import { sweepVersions } from "@/lib/create/versions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -195,6 +198,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     );
   }
 
+  let versionsRetired = 0;
+  try {
+    versionsRetired = await sweepVersions(supabase);
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        msg: "sweeper version retention failed",
+        error: error instanceof Error ? error.message : String(error),
+      })
+    );
+  }
+
   const ttlCutoff = new Date(Date.now() - 48 * 3600_000).toISOString();
   await supabase.from("inbound_events").delete().lt("received_at", ttlCutoff);
   await supabase.from("batch_queue").delete().lt("received_at", ttlCutoff);
@@ -211,5 +226,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     uploadsReleased,
     fleet,
     draftsFiled,
+    versionsRetired,
   });
 }

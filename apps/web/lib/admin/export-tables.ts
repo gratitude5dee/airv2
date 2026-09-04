@@ -77,7 +77,18 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
       "id, slug, route, kind, scopes, backing_tool, name, description, icon_key, " +
       "publisher_username, publisher_wallet, agent_identity, visibility, access, " +
       "x402_enabled, x402_price_usdc, x402_config, plugin_signin_enabled, status, " +
-      "bundle_version, listed_at, updated_at",
+      "bundle_version, listed_at, updated_at, " +
+      "appname, draft_version, lane, functions_enabled, kit_version, create_budget_usd",
+  },
+  // V11 Create — version metadata is digests and sizes (CR5); Functions
+  // holds names/ids only; runtime tokens export as issuance dates, never the
+  // hash.
+  all("miniapp_versions"),
+  all("miniapp_functions"),
+  {
+    table: "miniapp_runtime_tokens",
+    column: "user_id",
+    select: "id, app_id, created_at, revoked_at",
   },
   all("miniapp_installs"),
   { table: "miniapp_guest_grants", column: "created_by", select: "*" },

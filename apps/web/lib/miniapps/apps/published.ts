@@ -10,10 +10,16 @@
  * The render also mints the Apps API cookie: the session cookie is scoped to
  * /<slug>, which fetch("/api/apps/v1/…") would not carry — so a second
  * HttpOnly cookie carrying the same claims goes out scoped to /api/apps.
+ *
+ * V11: a version deployed to the app origin is not rendered here at all —
+ * the approved session is handed off with a 60-second app token (§11.3).
+ * Pre-V11 bundles (no worker digest) stay on this legacy lane, frozen.
  */
 import { NextResponse } from "next/server";
 import { env } from "../../env";
+import { handoffUrl, servedOnAppOrigin } from "../../functions/handoff";
 import { getObject, r2Configured } from "../../storage/r2";
+import { withBaseHeaders } from "../html";
 import { mintToken } from "../tokens";
 import type { RegistryApp } from "../registry";
 import type { MiniAppContext, MiniAppModule } from "./types";
@@ -51,6 +57,20 @@ async function render(ctx: MiniAppContext): Promise<NextResponse> {
   const version = ctx.app.bundle_version;
   if (!version) {
     return new NextResponse("not found", { status: 404 });
+  }
+  if (await servedOnAppOrigin(ctx.supabase, ctx.app)) {
+    const target = handoffUrl(ctx.app, ctx.session);
+    if (target) {
+      console.log(
+        JSON.stringify({
+          msg: "miniapp handoff",
+          app: ctx.app.slug,
+          version,
+          role: ctx.session.role,
+        })
+      );
+      return withBaseHeaders(NextResponse.redirect(target, 303));
+    }
   }
   if (!r2Configured()) {
     return new NextResponse("app storage unavailable", { status: 503 });

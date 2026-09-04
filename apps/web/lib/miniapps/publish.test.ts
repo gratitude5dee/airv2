@@ -89,10 +89,38 @@ describe("parseRegistryApp", () => {
     bundle_version: "v1",
     listed_at: "2026-08-01T00:00:00Z",
     updated_at: "2026-08-01T00:00:00Z",
+    appname: "notes",
+    draft_version: null,
+    lane: "drop",
+    functions_enabled: false,
+    kit_version: null,
+    create_budget_usd: "5.00",
   };
 
   it("accepts a complete selected row", () => {
-    expect(parseRegistryApp(valid)).toEqual(valid);
+    expect(parseRegistryApp(valid)).toEqual({ ...valid, create_budget_usd: 5 });
+  });
+
+  it("normalizes pre-0082 rows that lack the V11 columns", () => {
+    const legacy: Record<string, unknown> = { ...valid };
+    for (const column of [
+      "appname",
+      "draft_version",
+      "lane",
+      "functions_enabled",
+      "kit_version",
+      "create_budget_usd",
+    ]) {
+      delete legacy[column];
+    }
+    expect(parseRegistryApp(legacy)).toMatchObject({
+      appname: null,
+      draft_version: null,
+      lane: null,
+      functions_enabled: false,
+      kit_version: null,
+      create_budget_usd: 5,
+    });
   });
 
   it("coerces numeric prices returned as strings", () => {

@@ -192,6 +192,30 @@ export const env = {
   r2Bucket: (): string => optional("R2_BUCKET", "air-media"),
   r2PublicBaseUrl: (): string =>
     optional("R2_PUBLIC_BASE_URL", "https://media.wzrd.tech"),
+  // V11 Create: per-app origins and Functions (docs/goal-create-v11.md §14.3).
+  // Two origins, two keys — the app-origin key never mints a mini-origin
+  // token and vice versa. Cloudflare credentials are server-side only, read
+  // exclusively by lib/functions/cloudflare.ts (CR6, C18). Any nullable
+  // accessor returning null means "lane unconfigured": new publishes stay on
+  // the legacy R2 lane and the loader never hands off.
+  appOriginSigningKey: (): string | null =>
+    process.env["APP_ORIGIN_SIGNING_KEY"] ?? null,
+  appsOriginSuffix: (): string =>
+    optional("APPS_ORIGIN_SUFFIX", "apps.wzrd.tech"),
+  cloudflareAccountId: (): string | null =>
+    process.env["CLOUDFLARE_ACCOUNT_ID"] ?? null,
+  cloudflareApiToken: (): string | null =>
+    process.env["CLOUDFLARE_API_TOKEN"] ?? null,
+  cfDispatchNamespace: (): string =>
+    optional("CF_DISPATCH_NAMESPACE", "air-apps"),
+  cfManifestKvId: (): string | null => process.env["CF_MANIFEST_KV_ID"] ?? null,
+  cfDispatchHealthUrl: (): string =>
+    optional(
+      "CF_DISPATCH_HEALTH_URL",
+      "https://dispatch.apps.wzrd.tech/__air/health"
+    ),
+  createFunctionsEnabled: (): boolean =>
+    optional("CREATE_FUNCTIONS_ENABLED", "false") === "true",
   operatorAllowlist: (): string[] =>
     optional("OPERATOR_ALLOWLIST", "")
       .split(",")
