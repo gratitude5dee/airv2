@@ -304,20 +304,20 @@ export async function uploadVersion(
     // the registry now says is selected so neither origin serves a release
     // the registry does not name (the draft Worker is shared, so the loser's
     // deploy may have landed after the winner's), then surface the failure.
-    // A lost CAS means the pointers this call observed are stale, so only an
-    // authoritative re-read may drive the restore; when the registry cannot
-    // be read the origin is left alone rather than reverted to a stale or
-    // empty release, and the next successful write re-syncs it.
+    // The pointers this call observed prove nothing now — a lost swap means
+    // another writer moved them, and a failed swap does not mean nobody did —
+    // so only an authoritative re-read may drive the restore. When the
+    // registry stays unreadable the origin is left as it is: the served
+    // manifest names this version, which is what reconcileAppOrigins (cron)
+    // keys on to put the origin back once the registry can be read again.
     if (deployed) {
-      const known = { bundle_version: app.bundle_version, draft_version: app.draft_version };
-      const current =
-        (await authoritativePointers(supabase, app.id)) ?? (error ? known : null);
+      const current = await authoritativePointers(supabase, app.id);
       if (current) {
         await restoreAppOrigin(supabase, app, current, version, goesLive);
       } else {
         console.error(
           JSON.stringify({
-            msg: "app origin not restored; registry pointers unreadable",
+            msg: "app origin not restored; registry pointers unreadable, left to reconcile",
             slug: app.slug,
             version,
           })
