@@ -134,7 +134,25 @@ describe("enqueueInbound scheduling", () => {
   // row lock, so the fake serializes calls against one shared row.
   function fakeSupabase(existingRunAt: string | null) {
     let current = existingRunAt ? Date.parse(existingRunAt) : null;
+    let cancelledAt: number | null = null;
     const calls: Array<{ fn: string; args: Record<string, unknown> }> = [];
+    // Set to hold the next rpc until released, to reorder completions.
+    let gate: { held: Promise<void>; entered: () => void } | null = null;
+    const apply = (args: Record<string, unknown>) => {
+      const own = Date.parse(String(args["p_run_at"]));
+      const windowEnd = Date.parse(String(args["p_window_end"]));
+      const stamp = Date.parse(String(args["p_cancelled_at"]));
+      current =
+        current !== null && current >= own && current <= windowEnd
+          ? current + 1
+          : own;
+      cancelledAt = cancelledAt === null ? stamp : Math.max(cancelledAt, stamp);
+      // PostgREST renders timestamptz with an offset, not a Z.
+      const rendered = new Date(current)
+        .toISOString()
+        .replace("Z", "+00:00");
+      return { data: rendered, error: null };
+    };
     const supabase = {
       from: () => ({
         insert: () => Promise.resolve({ error: null }),
@@ -142,23 +160,30 @@ describe("enqueueInbound scheduling", () => {
       }),
       rpc: (fn: string, args: Record<string, unknown>) => {
         calls.push({ fn, args });
-        const own = Date.parse(String(args["p_run_at"]));
-        const windowEnd = Date.parse(String(args["p_window_end"]));
-        current =
-          current !== null && current >= own && current <= windowEnd
-            ? current + 1
-            : own;
-        // PostgREST renders timestamptz with an offset, not a Z.
-        const rendered = new Date(current)
-          .toISOString()
-          .replace("Z", "+00:00");
-        return Promise.resolve({ data: rendered, error: null });
+        const held = gate;
+        gate = null;
+        if (!held) return Promise.resolve(apply(args));
+        held.entered();
+        return held.held.then(() => apply(args));
       },
     };
     return {
       supabase: supabase as unknown as SupabaseClient,
       calls,
       rowRunAt: () => current,
+      rowCancelledAt: () => cancelledAt,
+      holdNextRpc: () => {
+        let release = () => {};
+        let entered = () => {};
+        const held = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        const reached = new Promise<void>((resolve) => {
+          entered = resolve;
+        });
+        gate = { held, entered };
+        return { reached, release };
+      },
     };
   }
 
@@ -245,6 +270,28 @@ describe("enqueueInbound scheduling", () => {
     expect(Date.parse(prose2.runAt) - Date.now()).toBe(DEBOUNCE_MS);
     expect(Date.parse(media2.runAt) - Date.now()).toBe(REFERENCE_WINDOW_MS);
     expect(reversedRow()).toBe(Date.parse(media2.runAt));
+  });
+
+  it("never moves cancelled_at backwards when a stale webhook lands late", async () => {
+    // A stamps T, stalls; B stamps T+200 and lands first; a chain that
+    // started at T+100 must still see B's cancellation once A completes.
+    const { supabase, rowCancelledAt, holdNextRpc } = fakeSupabase(null);
+    const t0 = Date.now();
+    const { reached, release } = holdNextRpc();
+    const late = enqueueInbound(supabase, { ...message, body: "first" });
+    await reached;
+    vi.setSystemTime(t0 + 200);
+    await enqueueInbound(supabase, { ...message, body: "second" });
+    expect(rowCancelledAt()).toBe(t0 + 200);
+    release();
+    await late;
+    expect(rowCancelledAt()).toBe(t0 + 200);
+    expect(
+      isCancelled(
+        new Date(rowCancelledAt() ?? 0).toISOString(),
+        new Date(t0 + 100).toISOString()
+      )
+    ).toBe(true);
   });
 });
 
