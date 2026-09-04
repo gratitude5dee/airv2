@@ -304,12 +304,25 @@ export async function uploadVersion(
     // the registry now says is selected so neither origin serves a release
     // the registry does not name (the draft Worker is shared, so the loser's
     // deploy may have landed after the winner's), then surface the failure.
+    // The pointers this call observed prove nothing now — a lost swap means
+    // another writer moved them, and a failed swap does not mean nobody did —
+    // so only an authoritative re-read may drive the restore. When the
+    // registry stays unreadable the origin is left as it is: the served
+    // manifest names this version, which is what reconcileAppOrigins (cron)
+    // keys on to put the origin back once the registry can be read again.
     if (deployed) {
-      const known = { bundle_version: app.bundle_version, draft_version: app.draft_version };
-      const current = error
-        ? known
-        : await currentPointers(supabase, app.id).catch(() => known);
-      await restoreAppOrigin(supabase, app, current, version, goesLive);
+      const current = await authoritativePointers(supabase, app.id);
+      if (current) {
+        await restoreAppOrigin(supabase, app, current, version, goesLive);
+      } else {
+        console.error(
+          JSON.stringify({
+            msg: "app origin not restored; registry pointers unreadable, left to reconcile",
+            slug: app.slug,
+            version,
+          })
+        );
+      }
     }
     await discardVersion(supabase, app, row.id, version);
     if (error) throw new Error(`bundle version update failed: ${error.message}`);
@@ -402,6 +415,25 @@ async function currentLiveVersion(
   appId: string
 ): Promise<string | null> {
   return (await currentPointers(supabase, appId)).bundle_version;
+}
+
+const POINTER_READ_ATTEMPTS = 3;
+
+/** currentPointers with bounded retries; null when the registry stays unreadable. */
+async function authoritativePointers(
+  supabase: SupabaseClient,
+  appId: string
+): Promise<{ bundle_version: string | null; draft_version: string | null } | null> {
+  for (let attempt = 1; attempt <= POINTER_READ_ATTEMPTS; attempt += 1) {
+    try {
+      return await currentPointers(supabase, appId);
+    } catch {
+      if (attempt < POINTER_READ_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, 25 * attempt));
+      }
+    }
+  }
+  return null;
 }
 
 /** The registry's current pointers; throws when they cannot be read, so a

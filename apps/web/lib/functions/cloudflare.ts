@@ -10,7 +10,7 @@
  *   workers/dispatch/namespaces/{ns}/scripts/{script}                 PUT/DELETE
  *   workers/dispatch/namespaces/{ns}/scripts/{script}/assets-upload-session  POST
  *   workers/assets/upload?base64=true                                 POST (jwt)
- *   storage/kv/namespaces/{kv}/values/{key}                           PUT/DELETE
+ *   storage/kv/namespaces/{kv}/values/{key}                           GET/PUT/DELETE
  *   d1/database                                                       POST
  *   storage/kv/namespaces                                             POST
  *
@@ -292,6 +292,28 @@ export async function putKvValue(key: string, value: string): Promise<void> {
       body: value,
     }
   );
+}
+
+/** Raw KV value (the GET endpoint returns the value, not an envelope); null when unset. */
+export async function getKvValue(key: string): Promise<string | null> {
+  const creds = credentials();
+  const url =
+    `${API}/accounts/${creds.accountId}/storage/kv/namespaces/${manifestKv()}` +
+    `/values/${encodeURIComponent(key)}`;
+  const headers = { Authorization: `Bearer ${creds.apiToken}` };
+  let response = await fetch(url, { headers });
+  if (response.status >= 500) {
+    response = await fetch(url, { headers });
+  }
+  if (response.status === 404) return null;
+  const text = await response.text();
+  if (!response.ok) {
+    throw new CloudflareError(
+      response.status,
+      `cloudflare GET kv ${key} failed: ${text.slice(0, 200)}`
+    );
+  }
+  return text;
 }
 
 export async function deleteKvValue(key: string): Promise<void> {

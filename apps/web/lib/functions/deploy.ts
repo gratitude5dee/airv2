@@ -20,7 +20,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "../env";
 import { bundleContentType, bundleKey, type BundleFile } from "../miniapps/bundles";
-import type { RegistryApp } from "../miniapps/registry";
+import {
+  parseRegistryApp,
+  REGISTRY_COLUMNS,
+  type RegistryApp,
+} from "../miniapps/registry";
 import { getObject, listKeys, r2Configured } from "../storage/r2";
 import {
   cloudflareConfigured,
@@ -31,7 +35,12 @@ import {
   type AssetFile,
 } from "./cloudflare";
 import { appPrincipal } from "./identity";
-import { deleteManifest, writeManifest, type AppManifest } from "./manifest";
+import {
+  deleteManifest,
+  readManifest,
+  writeManifest,
+  type AppManifest,
+} from "./manifest";
 import { STATIC_STUB_MAIN, STATIC_STUB_MODULE } from "./staticStub";
 import { appOriginConfigured } from "./tokens";
 
@@ -344,6 +353,110 @@ async function restoreLiveWorker(
     files,
     target: "live",
   });
+}
+
+/**
+ * A manifest that disagrees with the registry and is younger than this is an
+ * upload mid-flight (the manifest is written before the pointer swap), not
+ * drift. Uploads are bounded well below it by the bundle caps.
+ */
+export const ORIGIN_DRIFT_GRACE_MS = 10 * 60_000;
+
+/**
+ * Durable reconciliation of the app origin with the registry (cron). An
+ * upload that lost its pointer swap and then could not re-read the registry
+ * leaves the Dispatcher on a release the registry does not name; so can any
+ * crash between a vendor write and the registry commit. For every app that
+ * ever had a Worker, the served manifest is compared with the registry row;
+ * where they disagree past the grace window the live Worker, the draft
+ * Worker and the manifest are put back on the registry's releases. Apps
+ * with no manifest (never written, or torn down by deletion) are left alone.
+ * No-op when the lane is unconfigured.
+ */
+export async function reconcileAppOrigins(
+  supabase: SupabaseClient,
+  now = new Date()
+): Promise<{ repaired: number }> {
+  if (!appOriginLaneReady()) return { repaired: 0 };
+  const { data, error } = await supabase
+    .from("mini_apps")
+    .select(REGISTRY_COLUMNS)
+    .not("app_origin_deployed_at", "is", null);
+  if (error) throw new Error(`app origin reconcile failed: ${error.message}`);
+  let repaired = 0;
+  for (const raw of data ?? []) {
+    const app = parseRegistryApp(raw);
+    if (!app || !app.owner_user_id) continue;
+    try {
+      if (await reconcileAppOrigin(supabase, app, now)) repaired += 1;
+    } catch (error) {
+      // Deletion owns the origin now; the deleter tears it down.
+      if (error instanceof AppOriginRefusedError) continue;
+      console.error(
+        JSON.stringify({
+          msg: "app origin reconcile failed",
+          slug: app.slug,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      );
+    }
+  }
+  if (repaired > 0) {
+    console.log(JSON.stringify({ msg: "app origins reconciled", repaired }));
+  }
+  return { repaired };
+}
+
+async function reconcileAppOrigin(
+  supabase: SupabaseClient,
+  app: RegistryApp,
+  now: Date
+): Promise<boolean> {
+  const served = await readManifest(app.slug);
+  if (!served) return false;
+  const expected = manifestFor(app);
+  if (
+    served.status === expected.status &&
+    served.live === expected.live &&
+    served.draft === expected.draft
+  ) {
+    return false;
+  }
+  const manifestAge = now.getTime() - Date.parse(served.updated_at);
+  const registryAge = now.getTime() - Date.parse(app.updated_at);
+  if (
+    !Number.isFinite(manifestAge) ||
+    manifestAge < ORIGIN_DRIFT_GRACE_MS ||
+    (Number.isFinite(registryAge) && registryAge < ORIGIN_DRIFT_GRACE_MS)
+  ) {
+    return false;
+  }
+  if (expected.live && served.live !== expected.live) {
+    await promoteVersion(supabase, app, expected.live);
+  }
+  if (expected.draft && served.draft !== expected.draft && app.owner_user_id) {
+    const files = await loadBundleFiles(app.slug, expected.draft);
+    if (files.length > 0) {
+      await deployStaticVersion(supabase, {
+        appId: app.id,
+        slug: app.slug,
+        version: expected.draft,
+        ownerUserId: app.owner_user_id,
+        files,
+        target: "draft",
+      });
+    }
+  }
+  await syncManifest(supabase, app);
+  console.log(
+    JSON.stringify({
+      msg: "app origin reconciled",
+      slug: app.slug,
+      served: { status: served.status, live: served.live, draft: served.draft },
+      registry: { status: expected.status, live: expected.live, draft: expected.draft },
+    })
+  );
+  return true;
 }
 
 const DRAFT_SUFFIX = "-draft";
