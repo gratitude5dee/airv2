@@ -27,7 +27,7 @@ import {
 } from "./parse";
 import { deterministicGenerationLines } from "./router";
 import { executeCreativeJob } from "./run";
-import { removeStagedInputs, stageCreativeInput } from "./store";
+import { removeStagedInputs, stageCreativeInputs } from "./store";
 
 const ATTACHMENT_MARKER = /\[attachment:([^\]]+)\]/g;
 
@@ -102,13 +102,12 @@ export async function maybeRunCreativeLane(
       .getAttachment(id, job.phone)
       .catch(() => undefined);
     if (!fetched) continue;
-    const staged = await stageCreativeInput(
+    for (const staged of await stageCreativeInputs(
       supabase,
       job.userId,
       fetched.data,
       fetched.mimeType
-    );
-    if (staged) {
+    )) {
       mediaInputs.push({
         url: staged.url,
         kind: staged.kind,

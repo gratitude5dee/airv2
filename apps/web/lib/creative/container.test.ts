@@ -3,7 +3,11 @@
  * it reaches fal as a soundtrack and not as a silent motion reference.
  */
 import { describe, expect, it } from "vitest";
-import { audioOnlyMimeType, isoBmffTrackHandlers } from "./container";
+import {
+  audioOnlyMimeType,
+  extractAudioTrack,
+  isoBmffTrackHandlers,
+} from "./container";
 
 const box = (type: string, ...body: Buffer[]): Buffer => {
   const payload = Buffer.concat(body);
@@ -191,5 +195,121 @@ describe("audioOnlyMimeType", () => {
     expect(audioOnlyMimeType("video/mp4", Buffer.from("mov-bytes"))).toBe(
       undefined,
     );
+  });
+});
+
+const u32 = (...values: number[]): Buffer => {
+  const out = Buffer.alloc(4 * values.length);
+  values.forEach((value, i) => out.writeUInt32BE(value, 4 * i));
+  return out;
+};
+
+/**
+ * A clip whose mdat interleaves picture and sound chunks. The sound track
+ * has five 2-byte samples: two in the first chunk, three in the second.
+ */
+function clipWithSoundtrack(
+  options: { co64?: boolean; truncate?: boolean } = {},
+) {
+  const picture = [Buffer.from("VVVVVVVV"), Buffer.from("WWWWWWWW")];
+  const sound = [Buffer.from("a1a1"), Buffer.from("b2b2b2")];
+  const mdatBody = Buffer.concat([
+    picture[0]!,
+    sound[0]!,
+    picture[1]!,
+    sound[1]!,
+  ]);
+  const mdatStart = ftyp.length + 8;
+  const soundOffsets = [
+    mdatStart + picture[0]!.length,
+    mdatStart + picture[0]!.length + sound[0]!.length + picture[1]!.length,
+  ];
+  const offsets = options.co64
+    ? box(
+        "co64",
+        u32(0, 2),
+        ...soundOffsets.map((offset) => {
+          const wide = Buffer.alloc(8);
+          wide.writeBigUInt64BE(BigInt(offset));
+          return wide;
+        }),
+      )
+    : box("stco", u32(0, 2, ...soundOffsets));
+  const soundTrak = box(
+    "trak",
+    box(
+      "mdia",
+      hdlr("soun"),
+      box(
+        "minf",
+        box(
+          "stbl",
+          box("stsz", u32(0, 2, options.truncate ? 4 : 5)),
+          box("stsc", u32(0, 2, 1, 2, 1, 2, 3, 1)),
+          offsets,
+        ),
+      ),
+    ),
+  );
+  const file = Buffer.concat([
+    ftyp,
+    box("mdat", mdatBody),
+    box("moov", box("mvhd", Buffer.alloc(100)), trak("vide"), soundTrak),
+  ]);
+  return { file, sound: Buffer.concat(sound), soundTrak };
+}
+
+/** The chunk offsets the remuxed file's own table points at, dereferenced. */
+function chunksOf(m4a: Buffer, wide: boolean): Buffer[] {
+  const table = wide ? "co64" : "stco";
+  const at = m4a.indexOf(table, 0, "latin1") + 4;
+  const count = m4a.readUInt32BE(at + 4);
+  return Array.from({ length: count }, (_, i) => {
+    const offset = wide
+      ? Number(m4a.readBigUInt64BE(at + 8 + 8 * i))
+      : m4a.readUInt32BE(at + 8 + 4 * i);
+    return m4a.subarray(offset, offset + (i === 0 ? 4 : 6));
+  });
+}
+
+describe("extractAudioTrack", () => {
+  it("remuxes only the sound track, with chunk offsets that point at its samples", () => {
+    const { file, sound, soundTrak } = clipWithSoundtrack();
+    const m4a = extractAudioTrack(file);
+
+    expect(m4a).toBeDefined();
+    expect(isoBmffTrackHandlers(m4a!)).toEqual(new Set(["soun"]));
+    expect(m4a!.toString("latin1", 8, 12)).toBe("M4A ");
+    expect(Buffer.concat(chunksOf(m4a!, false)).equals(sound)).toBe(true);
+    // A 28-byte M4A ftyp, then mvhd and the sound trak copied verbatim.
+    expect(m4a!.length).toBe(
+      28 + 8 + (100 + 8) + soundTrak.length + 8 + sound.length,
+    );
+    expect(m4a!.indexOf("VVVV")).toBe(-1);
+  });
+
+  it("rewrites 64-bit chunk offsets too", () => {
+    const { file, sound } = clipWithSoundtrack({ co64: true });
+    const m4a = extractAudioTrack(file);
+
+    expect(m4a).toBeDefined();
+    expect(Buffer.concat(chunksOf(m4a!, true)).equals(sound)).toBe(true);
+  });
+
+  it("yields nothing for a silent clip, a sound-only file, or a fragmented one", () => {
+    expect(extractAudioTrack(mp4With("vide"))).toBe(undefined);
+    expect(extractAudioTrack(mp4With("soun"))).toBe(undefined);
+    const { file } = clipWithSoundtrack();
+    expect(extractAudioTrack(Buffer.concat([file, box("moof")]))).toBe(
+      undefined,
+    );
+  });
+
+  it("refuses sample tables that promise more samples than exist", () => {
+    expect(extractAudioTrack(clipWithSoundtrack({ truncate: true }).file)).toBe(
+      undefined,
+    );
+    // A track with no sample tables at all.
+    expect(extractAudioTrack(mp4With("vide", "soun"))).toBe(undefined);
   });
 });

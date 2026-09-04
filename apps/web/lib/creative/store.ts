@@ -20,7 +20,7 @@ import {
   type Delivery,
 } from "../assets/pipeline";
 import { heifToJpeg, isHeif } from "../identity/heif";
-import { audioOnlyMimeType } from "./container";
+import { audioOnlyMimeType, extractAudioTrack } from "./container";
 import type { FetchedGeneratedMedia } from "./media-url";
 
 const EXT_BY_MIME: Record<string, string> = {
@@ -52,6 +52,13 @@ const INPUT_EXT_BY_MIME: Record<string, string> = {
 };
 
 export type StagedInputKind = "image" | "video" | "audio";
+
+export interface StagedInput {
+  url: string;
+  kind: StagedInputKind;
+  mimeType: string;
+  storageKey: string;
+}
 
 const stagedKindOf = (mimeType: string): StagedInputKind =>
   mimeType.startsWith("video/")
@@ -196,10 +203,7 @@ export async function stageCreativeInput(
   userId: string,
   bytes: Buffer,
   mimeType: string
-): Promise<
-  | { url: string; kind: StagedInputKind; mimeType: string; storageKey: string }
-  | undefined
-> {
+): Promise<StagedInput | undefined> {
   let staged = bytes;
   let stagedType = mimeType;
   if (isHeif(stagedType, staged)) {
@@ -229,6 +233,27 @@ export async function stageCreativeInput(
   // The key is unguessable and the signature expires with the URL; the
   // caller removes the object once the generation settles.
   return { url: signed.data.signedUrl, kind, mimeType: stagedType, storageKey: key };
+}
+
+/**
+ * Stage one attachment as every provider input it carries. A clip with a
+ * soundtrack yields two: the clip as a video (motion) reference and its
+ * sound track, remuxed to M4A, as an audio reference — the provider does not
+ * hear the sound inside a video reference.
+ */
+export async function stageCreativeInputs(
+  supabase: SupabaseClient,
+  userId: string,
+  bytes: Buffer,
+  mimeType: string
+): Promise<StagedInput[]> {
+  const staged = await stageCreativeInput(supabase, userId, bytes, mimeType);
+  if (!staged) return [];
+  if (staged.kind !== "video") return [staged];
+  const soundtrack = extractAudioTrack(bytes);
+  if (!soundtrack) return [staged];
+  const audio = await stageCreativeInput(supabase, userId, soundtrack, "audio/mp4");
+  return audio ? [staged, audio] : [staged];
 }
 
 /** Remove staged provider-input objects once the generation settles. */
