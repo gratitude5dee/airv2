@@ -15,6 +15,7 @@ import {
 import {
   ensureComposioSession,
   installComposioMcp,
+  writeConnectedToolsFile,
 } from "../provisioning/connectors";
 
 export const TOOLKIT_SLUG_PATTERN = /^[a-z0-9_-]{1,64}$/;
@@ -69,10 +70,12 @@ export async function syncConnections(
   );
   const statusById = new Map(accounts.map((a) => [a.id, a.status ?? ""]));
   let newlyActive = false;
+  let changed = false;
   for (const row of rows ?? []) {
     const accountId = activeByToolkit.get(row.toolkit as string);
     if (accountId && row.status !== "active") {
       newlyActive = true;
+      changed = true;
       await supabase
         .from("connections")
         .update({
@@ -91,6 +94,7 @@ export async function syncConnections(
         ? (statusById.get(row.external_account_id as string) ?? null)
         : null;
       if (!accountStatus || !LIVE_ACCOUNT_STATUSES.has(accountStatus)) {
+        changed = true;
         await supabase
           .from("connections")
           .update({ status: "revoked" })
@@ -111,6 +115,7 @@ export async function syncConnections(
       );
     }
   }
+  if (changed) await refreshConnectedTools(supabase, userId);
   const { data: refreshed } = await supabase
     .from("connections")
     .select("toolkit, status, connected_at")
@@ -154,5 +159,24 @@ export async function disconnectToolkit(
     .from("connections")
     .update({ status: "revoked" })
     .eq("id", row.id);
+  await refreshConnectedTools(supabase, userId);
   return "ok";
+}
+
+/** Best-effort: the agent's connected-tools note must never fail a mutation. */
+async function refreshConnectedTools(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<void> {
+  try {
+    await writeConnectedToolsFile(supabase, userId);
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        msg: "connected-tools write failed",
+        user_id: userId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    );
+  }
 }

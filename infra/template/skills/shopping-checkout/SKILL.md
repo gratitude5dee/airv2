@@ -1,6 +1,6 @@
 ---
 name: shopping-checkout
-description: "Safe shopping assistance (Amazon, Ticketmaster, any store): find the item, serve the checkout URL, optionally offer a vault card fill — the human always clicks the final buy button."
+description: "Shop Amazon/tickets/any store: find item, hand off checkout"
 version: 1.0.0
 author: air
 license: MIT

@@ -1,6 +1,6 @@
 ---
 name: link-payments
-description: "Pay with the owner's Stripe Link wallet: create a spend request, wait for the owner's in-app approval, use the one-time credential at checkout — the human always clicks the final Pay button."
+description: "Pay, buy, checkout with owner's Link wallet: spend request"
 version: 1.0.0
 author: air
 license: MIT

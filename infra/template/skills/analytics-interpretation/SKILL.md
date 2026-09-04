@@ -1,6 +1,6 @@
 ---
 name: analytics-interpretation
-description: "Read the control-plane analytics panels and explain only figures supported by their returned rows."
+description: "Spend, revenue, conversions, CAC, funnel, dashboard, trends"
 version: 1.0.0
 author: air
 license: MIT

@@ -1,6 +1,6 @@
 ---
 name: crm-people
-description: "Maintain the box-side People store and route contact edits through the CRM approval boundary."
+description: "Contacts, CRM, People store: add, tag, merge, note, segment"
 version: 1.0.0
 author: air
 license: MIT

@@ -10,6 +10,7 @@ import { command, getBox, isStartLimit, resume, waitForBox } from "../box/client
 import { health, type HermesBoxTarget } from "../hermes/client";
 import { mirrorBrandIfStale } from "../brand/mirror";
 import { recordBoxStateEvent } from "../box/events";
+import { boxTarget } from "../compute/runtime";
 
 export const STOP_AFTER_MINUTES = 20;
 
@@ -309,6 +310,26 @@ export async function ensureBoxAwake(
   // A box asleep through brand edits gets the current compile on wake
   // (CM0: mirror, don't sync). Best-effort, off the critical path.
   void mirrorBrandIfStale(supabase, userId, boxId);
+
+  // Refresh the agent's connected-tools note after a resume; lazy import avoids
+  // the provisioning↔orchestrator cycle.
+  if (wroteStarting) {
+    void (async () => {
+      try {
+        const { writeConnectedToolsFile } =
+          await import("../provisioning/connectors");
+        await writeConnectedToolsFile(supabase, userId, boxTarget(boxId));
+      } catch (error) {
+        console.log(
+          JSON.stringify({
+            msg: "post-wake connector convergence failed",
+            box_id: boxId,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
+      }
+    })();
+  }
 
   await supabase
     .from("boxes")

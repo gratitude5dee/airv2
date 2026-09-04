@@ -1,6 +1,6 @@
 ---
 name: app-store-search
-description: "Find apps on the wzrd.tech app store: search the public directory by keyword and hand back a link the owner can open."
+description: "Find/open an app in the wzrd.tech app store by keyword"
 version: 1.0.0
 author: air
 license: MIT
