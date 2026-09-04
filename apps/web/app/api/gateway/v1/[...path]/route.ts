@@ -21,9 +21,11 @@ import {
   modelForCreateTier,
   modelForSelection,
   parseCreateModel,
+  parseLegacyCreateTier,
   providerForFamily,
   reasoningForTier,
   serviceTierForTier,
+  type CreateModelRequest,
   type ModelFamily,
   type ModelSelection,
 } from "@/lib/entitlements/models";
@@ -33,6 +35,7 @@ import {
   budgetExhausted,
   createRunAttributable,
   createRunLabel,
+  openCreateRun,
   projectBudget,
 } from "@/lib/create/budget";
 
@@ -275,12 +278,25 @@ export async function POST(
   // only reachable from inside a Create run and two projects running at once
   // each meter their own calls. The project's budget is checked against its
   // own metered rows before the upstream call.
-  const createModel = parseCreateModel(rawBody["model"]);
+  let createModel: CreateModelRequest | null = parseCreateModel(rawBody["model"]);
   if (createModel === null && isCreateModelRequest(rawBody["model"])) {
-    return NextResponse.json(
-      { error: "invalid_request", reason: "create_project_required" },
-      { status: 400 }
-    );
+    const legacyTier = parseLegacyCreateTier(rawBody["model"]);
+    if (legacyTier === null) {
+      return NextResponse.json(
+        { error: "invalid_request", reason: "create_project_required" },
+        { status: 400 }
+      );
+    }
+    // Transitional (see parseLegacyCreateTier): a run started before the
+    // project-bearing format is the owner's only open Create run.
+    const open = await openCreateRun(supabase, userId);
+    if (open === null) {
+      return NextResponse.json(
+        { error: "forbidden", reason: "create_run_required" },
+        { status: 403 }
+      );
+    }
+    createModel = { tier: legacyTier, slug: open.slug };
   }
   const createTier = createModel?.tier ?? null;
   const tier =

@@ -346,6 +346,19 @@ export function parseCreateModel(model: unknown): CreateModelRequest | null {
   return tier && slug && isSpeedTier(tier) ? { tier, slug } : null;
 }
 
+/**
+ * Transitional: the project-less `create-<tier>` a Hermes run started before
+ * the project-bearing format shipped keeps sending for the rest of its life
+ * (a run's model is fixed at createRun; runs live at most
+ * CREATE_RUN_MAX_MINUTES). The gateway attributes it to the caller's single
+ * open Create run, as before. Remove once no such run can still be open.
+ */
+export function parseLegacyCreateTier(model: unknown): SpeedTier | null {
+  if (typeof model !== "string" || !model.startsWith("create-")) return null;
+  const tier = model.slice("create-".length);
+  return isSpeedTier(tier) ? tier : null;
+}
+
 /** True for anything in the Create namespace, well-formed or not, so a
  * malformed `create-*` request is refused rather than served on the chat
  * family and charged to the owner's general spend. */

@@ -95,13 +95,17 @@ function table(name: string): Record<string, unknown> {
   };
   builder["maybeSingle"] = async () => {
     if (name !== "agent_runs") return answer();
+    // `eq("label")` is createRunAttributable's exact project; without it the
+    // query is openCreateRun's `like("create:%")` for the owner's open run.
     const run = state.runs.find(
       (row) =>
         row.user_id === eqs["user_id"] &&
-        row.label === eqs["label"] &&
+        (eqs["label"] === undefined ? row.label.startsWith("create:") : row.label === eqs["label"]) &&
         notNull.every((column) => row[column] !== null)
     );
-    return { data: run ? { id: "row-1" } : null };
+    return {
+      data: run ? { id: "row-1", label: run.label, hermes_run_id: run.hermes_run_id ?? "run-1" } : null,
+    };
   };
   builder["then"] = (resolve: (v: unknown) => unknown) =>
     Promise.resolve(answer()).then(resolve);
@@ -348,8 +352,25 @@ describe("gateway Create tier family (MC4 §9.1)", () => {
       expect(meteredRows.length).toBe(0);
     });
 
-    it("refuses create-<tier> with no project rather than serving it unlabelled (400)", async () => {
-      for (const model of ["create-balanced", "create-balanced:", "create-balanced:Alice", "create-turbo:alice-countdown"]) {
+    it("transitional: a project-less create-<tier> from a run started before the format changed bills the owner's open run", async () => {
+      state.runs = [{ user_id: "user-1", label: "create:alice-recipes" }];
+      const { response, url } = await complete({ messages: [], model: "create-balanced" });
+      expect(response.status).toBe(200);
+      expect(url).toBe("https://upstream.test/v1/chat/completions");
+      expect(meteredRows.map((row) => row["label"])).toEqual(["create:alice-recipes"]);
+    });
+
+    it("transitional: a project-less create-<tier> with no open run is refused (403), not guessed", async () => {
+      state.runs = [];
+      const { response, url } = await complete({ messages: [], model: "create-balanced" });
+      expect(response.status).toBe(403);
+      expect(await response.json()).toEqual({ error: "forbidden", reason: "create_run_required" });
+      expect(url).toBeNull();
+      expect(meteredRows.length).toBe(0);
+    });
+
+    it("refuses malformed create-* rather than serving it unlabelled (400)", async () => {
+      for (const model of ["create-balanced:", "create-balanced:Alice", "create-turbo:alice-countdown", "create-turbo"]) {
         const { response, url } = await complete({ messages: [], model });
         expect(response.status).toBe(400);
         expect(await response.json()).toEqual({

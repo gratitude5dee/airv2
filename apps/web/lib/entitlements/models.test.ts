@@ -13,6 +13,7 @@ import {
   createModelFor,
   isCreateModelRequest,
   parseCreateModel,
+  parseLegacyCreateTier,
   requiresConsent,
 } from "./models";
 
@@ -134,6 +135,15 @@ describe("Create tier family (MC4 §9.1)", () => {
     expect(isCreateModelRequest("create-fast:alice-x")).toBe(true);
     expect(isCreateModelRequest("fast")).toBe(false);
     expect(isCreateModelRequest(undefined)).toBe(false);
+  });
+
+  it("transitional: parses the project-less create-<tier> of runs started before the format changed", () => {
+    expect(parseLegacyCreateTier("create-fast")).toBe("fast");
+    expect(parseLegacyCreateTier("create-deep")).toBe("deep");
+    expect(parseLegacyCreateTier("create-fast:alice-x")).toBeNull();
+    expect(parseLegacyCreateTier("create-turbo")).toBeNull();
+    expect(parseLegacyCreateTier("create-")).toBeNull();
+    expect(parseLegacyCreateTier("fast")).toBeNull();
   });
 
   it("clamps to the entitled tier and never upgrades", () => {
