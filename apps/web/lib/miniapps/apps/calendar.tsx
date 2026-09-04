@@ -167,10 +167,17 @@ function timeLabel(event: CalendarEvent): string {
 }
 
 function dayKey(date: Date): string {
-  const y = date.getFullYear();
+  const y = String(date.getFullYear()).padStart(4, "0");
   const m = String(date.getMonth() + 1).padStart(2, "0");
   const d = String(date.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
+}
+
+function localDate(year: number, month: number, day: number): Date {
+  const date = new Date(0);
+  date.setFullYear(year, month, day);
+  date.setHours(12, 0, 0, 0);
+  return date;
 }
 
 function viewHref(
@@ -197,6 +204,7 @@ function dock(
   active: CalendarView,
   persona: string | null,
   isOwner: boolean,
+  showPersonas: boolean,
   monthKey: string,
   todayKey: string
 ): string {
@@ -225,7 +233,7 @@ function dock(
     active === "month"
       ? `${viewHref(basePath, "month", persona, todayKey, undefined, { new: true })}#new`
       : `${viewHref(basePath, active, persona, undefined, undefined, { new: true })}#new`;
-  return `<nav class="mo-dock" aria-label="Calendar">${item("Agenda", viewHref(basePath, "agenda", persona), "agenda", active === "agenda" || active === "timeline")}${item("Month", viewHref(basePath, "month", persona), "month", active === "month")}${isOwner ? item("Add event", addHref, "plus") : ""}${item("Personas", personaHref, "persona")}${isOwner ? item("Ask", "#prompt", "ask") : ""}</nav>`;
+  return `<nav class="mo-dock" aria-label="Calendar">${item("Agenda", viewHref(basePath, "agenda", persona), "agenda", active === "agenda" || active === "timeline")}${item("Month", viewHref(basePath, "month", persona), "month", active === "month")}${isOwner ? item("Add event", addHref, "plus") : ""}${showPersonas ? item("Personas", personaHref, "persona") : ""}${isOwner ? item("Ask", "#prompt", "ask") : ""}</nav>`;
 }
 
 /** Add/edit form for a local event. Owner-only; agent edits go via sync.py. */
@@ -553,7 +561,7 @@ function mosaicChips(
     .join("");
   const more =
     dayEvents.length > moreLimit
-      ? `<li class="mo-chip more"><a href="${esc(viewHref(basePath, "agenda", persona))}">+${dayEvents.length - moreLimit} more · Agenda</a></li>`
+      ? `<li class="mo-chip more"><a href="${esc(viewHref(basePath, "month", persona, day))}">+${dayEvents.length - moreLimit} more</a></li>`
       : "";
   return `${chips}${more}`;
 }
@@ -607,13 +615,14 @@ function monthBody(
     persona ? dayEvents.filter((event) => personaOf(event) === persona) : dayEvents;
   const year = monthStart.getFullYear();
   const month = monthStart.getMonth();
-  const first = new Date(year, month, 1);
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
+  const first = localDate(year, month, 1);
+  const daysInMonth = localDate(year, month + 1, 0).getDate();
+  const monthKey = `${String(year).padStart(4, "0")}-${String(month + 1).padStart(2, "0")}`;
   const todayKey = dayKey(new Date());
   const currentYear = new Date().getFullYear();
   const monthTitle = first.toLocaleDateString([], { month: "long" });
-  const title = year === currentYear ? monthTitle : `${monthTitle} ${year}`;
+  const fullTitle = `${monthTitle} ${String(year).padStart(4, "0")}`;
+  const title = year === currentYear ? monthTitle : fullTitle;
   const monthEvents = [...allByDay.entries()]
     .filter(([day]) => day.startsWith(`${monthKey}-`))
     .flatMap(([, list]) => visibleEvents(list));
@@ -625,10 +634,10 @@ function monthBody(
     people,
     pending: monthEvents.filter((event) => event.status === "pending").length,
   };
-  const prev = new Date(year, month - 1, 1);
-  const next = new Date(year, month + 1, 1);
-  const prevKey = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, "0")}`;
-  const nextKey = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`;
+  const prev = localDate(year, month - 1, 1);
+  const next = localDate(year, month + 1, 1);
+  const prevKey = dayKey(prev).slice(0, 7);
+  const nextKey = dayKey(next).slice(0, 7);
   const dayLabel = (key: string): string =>
     new Date(`${key}T12:00:00`).toLocaleDateString([], {
       weekday: "long",
@@ -709,7 +718,7 @@ function monthBody(
     const rowOfDay = Math.floor((leading + Number(selectedDay.slice(-2)) - 1) / 7);
     const stripEvents = visibleEvents(allByDay.get(selectedDay) ?? []);
     const stripContent = stripEvents.length
-      ? `<ul class="mo-chips" data-noswipe>${mosaicChips(basePath, selectedDay, stripEvents, providerMeta, avatars, isOwner, persona)}</ul>`
+      ? `<ul class="mo-chips" data-noswipe>${mosaicChips(basePath, selectedDay, stripEvents, providerMeta, avatars, isOwner, persona, Infinity)}</ul>`
       : `<p class="mo-empty">Nothing on this day</p>${isOwner ? `<a class="mo-addlink" href="${esc(viewHref(basePath, "month", persona, selectedDay, undefined, { new: true }))}#new">+ Add</a>` : ""}`;
     rows.splice(stripRowFor(rowOfDay, rowCount), 0, `<li class="mo-strip" role="region" aria-label="${esc(dayLabel(selectedDay))}" data-for="${esc(selectedDay)}"><a class="mo-close" href="${esc(viewHref(basePath, "month", persona, undefined, monthKey))}" aria-label="Close day">×</a>${stripContent}</li>`);
   }
@@ -719,7 +728,7 @@ function monthBody(
       const visible = visibleEvents(list);
       return visible.length
         ? [
-            `<template class="mo-day" data-day="${esc(day)}"><ul class="mo-chips" data-noswipe>${mosaicChips(basePath, day, visible, providerMeta, avatars, isOwner, persona)}</ul></template>`,
+            `<template class="mo-day" data-day="${esc(day)}"><ul class="mo-chips" data-noswipe>${mosaicChips(basePath, day, visible, providerMeta, avatars, isOwner, persona, monthEvents.length > 400 ? 12 : Infinity)}</ul></template>`,
           ]
         : [];
     })
@@ -727,7 +736,7 @@ function monthBody(
   const form = isOwner
     ? eventForm("month", persona, selectedDay, editEvent, wantNew)
     : "";
-  return `${header}<ol class="mo-grid" aria-label="${esc(first.toLocaleDateString([], { month: "long", year: "numeric" }))}">${rows.join("")}</ol>${templates}${form}`;
+  return `${header}<ol class="mo-grid" aria-label="${esc(fullTitle)}">${rows.join("")}</ol>${templates}${form}`;
 }
 
 const CALENDAR_CSS = `
@@ -741,7 +750,8 @@ const CALENDAR_CSS = `
 .mo-personas::-webkit-scrollbar{display:none}
 .mo-persona{flex:0 0 auto;display:inline-flex;align-items:center;gap:.3rem;padding:.35rem .6rem;border:1px solid var(--ring);border-radius:var(--radius-pill);color:var(--ink);text-decoration:none;font:500 .65rem var(--font-ui)}
 .mo-persona.on{background:var(--accent);color:var(--on-accent)}
-.mo-grid,.mo-week{min-width:0}.mo-grid{display:grid;gap:8px;list-style:none;margin:0;padding:0}
+#new form input:not([type=checkbox]){min-width:0;max-width:100%;box-sizing:border-box}#new label.when{display:flex;flex-wrap:wrap;gap:.3rem;align-items:center}
+.mo-grid,.mo-week{min-width:0}.mo-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;list-style:none;margin:0;padding:0}
 .mo-week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;align-items:center;justify-items:center}
 .mo-cell{aspect-ratio:1;width:100%;min-width:0}.mo-blank{display:block}
 .mo-dot{display:block;width:6px;height:6px;border-radius:50%;background:var(--ink-muted);opacity:.55;align-self:center;justify-self:center}
@@ -891,10 +901,7 @@ export const calendar: MiniAppModule = {
         body += eventForm("timeline", activePersona, null, editEvent, wantNew);
       }
     } else if (view === "month") {
-      title = monthAnchor.toLocaleDateString([], {
-        month: "long",
-        year: "numeric",
-      });
+      title = `${monthAnchor.toLocaleDateString([], { month: "long" })} ${String(monthAnchor.getFullYear()).padStart(4, "0")}`;
       body = monthBody(
         ctx.basePath,
         events,
@@ -962,7 +969,10 @@ export const calendar: MiniAppModule = {
     const at = order.indexOf(view);
     const prevView = order[at - 1];
     const nextView = order[at + 1];
-    const monthKey = `${monthAnchor.getFullYear()}-${String(monthAnchor.getMonth() + 1).padStart(2, "0")}`;
+    const monthKey = dayKey(monthAnchor).slice(0, 7);
+    const personaCount = new Set(
+      [...personaByProvider(sources).values()].map((meta) => meta.persona)
+    ).size;
     const todayKey = dayKey(new Date());
     const panelClass =
       view === "month"
@@ -973,7 +983,7 @@ export const calendar: MiniAppModule = {
         ? ` data-month="${esc(monthKey)}" data-today="${esc(todayKey)}"${selectedDay ? ` data-open="${esc(selectedDay)}"` : ""}`
         : "";
     const full = `<style>${CALENDAR_CSS}${ctx.session.via === "card" ? CALENDAR_LITE_CSS : ""}</style><section class="${panelClass}"${panelAttrs}>${body}
-${isOwner ? `<div id="prompt">${promptBar("Ask your agent — e.g. block focus time tomorrow morning…")}</div>` : ""}</section>${dock(ctx.basePath, view, activePersona, isOwner, monthKey, todayKey)}${view === "month" && ctx.session.via !== "card" ? '<script src="/creator-os/calendar-month.js" defer></script>' : ""}`;
+${isOwner ? `<div id="prompt">${promptBar("Ask your agent — e.g. block focus time tomorrow morning…")}</div>` : ""}</section>${dock(ctx.basePath, view, activePersona, isOwner, personaCount > 1 || activePersona !== null, monthKey, todayKey)}${view === "month" && ctx.session.via !== "card" ? '<script src="/creator-os/calendar-month.js" defer></script>' : ""}`;
     return calendarHtml(
       renderShell({
         title,

@@ -8,6 +8,10 @@ const fixture = vi.hoisted(() => ({
   events: [] as Array<Record<string, unknown>>,
   people: [] as Array<Record<string, unknown>>,
   prefix: undefined as string | undefined,
+  sources: [
+    { id: "s1", provider: "google", persona: "work", color: "#2b7fff", status: "active" },
+    { id: "s2", provider: "calcom", persona: "personal", color: "#7c5cff", status: "active" },
+  ],
 }));
 
 const events = Array.from({ length: 40 }, (_, index) => ({
@@ -86,10 +90,7 @@ function supabase(): SupabaseClient {
       Promise.resolve({
         data:
           table === "calendar_accounts"
-            ? [
-                { id: "s1", provider: "google", persona: "work", color: "#2b7fff", status: "active" },
-                { id: "s2", provider: "calcom", persona: "personal", color: "#7c5cff", status: "active" },
-              ]
+            ? fixture.sources
             : [],
         error: null,
       }).then(resolve);
@@ -116,6 +117,10 @@ beforeEach(() => {
   fixture.events = events;
   fixture.people = [];
   fixture.prefix = undefined;
+  fixture.sources = [
+    { id: "s1", provider: "google", persona: "work", color: "#2b7fff", status: "active" },
+    { id: "s2", provider: "calcom", persona: "personal", color: "#7c5cff", status: "active" },
+  ];
 });
 
 describe("calendar month mosaic", () => {
@@ -164,6 +169,37 @@ describe("calendar month mosaic", () => {
     const html = await (await calendar.render(context("?view=month&month=2026-09", "owner", "card"))).text();
     expect(html).toContain('class="mo-grid"');
     expect(html).not.toContain("calendar-month.js");
+  });
+
+  it("shows the dock Personas item only when it has a target", async () => {
+    fixture.sources = [
+      { id: "s1", provider: "google", persona: "work", color: "#2b7fff", status: "active" },
+    ];
+    const single = await (
+      await calendar.render(context("?view=month&month=2026-09"))
+    ).text();
+    const singleDock = single.slice(single.indexOf('<nav class="mo-dock"'));
+    expect(singleDock).not.toContain('aria-label="Personas"');
+
+    fixture.sources.push({
+      id: "s2",
+      provider: "calcom",
+      persona: "personal",
+      color: "#7c5cff",
+      status: "active",
+    });
+    const multiple = await (
+      await calendar.render(context("?view=month&month=2026-09"))
+    ).text();
+    const multipleDock = multiple.slice(multiple.indexOf('<nav class="mo-dock"'));
+    expect(multipleDock).toContain('aria-label="Personas"');
+
+    fixture.sources = [fixture.sources[0]!];
+    const filtered = await (
+      await calendar.render(context("?view=month&month=2026-09&persona=work"))
+    ).text();
+    const filteredDock = filtered.slice(filtered.indexOf('<nav class="mo-dock"'));
+    expect(filteredDock).toContain('aria-label="Personas"');
   });
 
   it("anchors the month from month= and lets day= override it", async () => {
@@ -335,7 +371,7 @@ describe("calendar month mosaic", () => {
     }
   });
 
-  it("limits overloaded day strips to twelve chips and an agenda link", async () => {
+  it("caps overloaded templates while keeping open-day strips complete", async () => {
     fixture.events = Array.from({ length: 401 }, (_, index) => ({
       ...events[0],
       id: `event-${index}`,
@@ -352,10 +388,50 @@ describe("calendar month mosaic", () => {
       html.indexOf("<template")
     );
     expect((strip.match(/class="mo-chip(?: pending| local)?"/g) ?? []).length).toBe(
+      401
+    );
+    expect(strip).not.toContain('class="mo-chip more"');
+    const template = html.slice(
+      html.indexOf('<template class="mo-day" data-day="2026-09-01"'),
+      html.indexOf("</template>", html.indexOf('<template class="mo-day" data-day="2026-09-01"'))
+    );
+    expect((template.match(/class="mo-chip(?: pending| local)?"/g) ?? []).length).toBe(
       12
     );
-    expect(strip).toContain('class="mo-chip more"');
-    expect(strip).toContain("+389 more · Agenda");
+    expect(template).toContain('class="mo-chip more"');
+    expect(template).toContain('href="/mini/calendar?view=month&amp;day=2026-09-01"');
+    expect(template).toContain("+389 more</a>");
+  });
+
+  it("leaves templates uncapped for a 40-event month", async () => {
+    fixture.events = Array.from({ length: 40 }, (_, index) => ({
+      ...events[0],
+      id: `event-${index}`,
+      starts_at: `2026-09-01T${String(index % 24).padStart(2, "0")}:00:00`,
+      ends_at: `2026-09-01T${String((index % 24) + 1).padStart(2, "0")}:00:00`,
+    }));
+    const html = await (
+      await calendar.render(context("?view=month&month=2026-09"))
+    ).text();
+    const template = html.slice(
+      html.indexOf('<template class="mo-day" data-day="2026-09-01"'),
+      html.indexOf("</template>", html.indexOf('<template class="mo-day" data-day="2026-09-01"'))
+    );
+    expect((template.match(/class="mo-chip(?: pending| local)?"/g) ?? []).length).toBe(
+      40
+    );
+    expect(template).not.toContain('class="mo-chip more"');
+  });
+
+  it("preserves four-digit years in month navigation", async () => {
+    const html = await (
+      await calendar.render(context("?view=month&month=0050-09"))
+    ).text();
+    expect(html).toContain("September 0050");
+    expect(html).toContain('data-month="0050-09"');
+    expect(html).toContain('aria-label="September 0050"');
+    expect(html).toContain('href="/mini/calendar?view=month&amp;month=0050-08"');
+    expect(html).toContain('href="/mini/calendar?view=month&amp;month=0050-10"');
   });
 
   it("renders only owner-prefixed CRM photos", async () => {
