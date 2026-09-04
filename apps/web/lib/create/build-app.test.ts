@@ -14,12 +14,27 @@ vi.mock("./preview", () => ({
   draftPreviewUrl: (app: { slug: string; draft_version: string | null }) =>
     `https://${app.slug}.apps.wzrd.tech/__air/enter?v=${app.draft_version}`,
 }));
-const drop = vi.hoisted(() => ({ resolveDropApp: vi.fn() }));
+const drop = vi.hoisted(() => ({ resolveOrCreateDropApp: vi.fn() }));
 vi.mock("./drop", () => drop);
-vi.mock("../compute/awake", () => ({
-  ensureComputeAwake: vi.fn(async () => {
+const awake = vi.hoisted(() => ({
+  ensureComputeAwake: vi.fn(async (): Promise<{ instanceId: string; environment: string }> => {
     throw new Error("the Box must not be woken when files are supplied");
   }),
+}));
+vi.mock("../compute/awake", () => awake);
+const runtime = vi.hoisted(() => ({
+  runCommand: vi.fn(async (): Promise<{ exitCode: number; stdout: string }> => {
+    throw new Error("box unreachable");
+  }),
+}));
+vi.mock("../compute/runtime", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../compute/runtime")>()),
+  runCommand: runtime.runCommand,
+}));
+const boxes = vi.hoisted(() => ({ armStopAfter: vi.fn(async () => undefined) }));
+vi.mock("../orchestrator/boxes", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../orchestrator/boxes")>()),
+  armStopAfter: boxes.armStopAfter,
 }));
 
 import { AIR_APP_SCHEMA, buildApp, type WorkspaceFile } from "./build";
@@ -67,7 +82,7 @@ createRoot(document.getElementById("root")!).render(<main className={cn("app")}>
 
 beforeEach(() => {
   vi.clearAllMocks();
-  drop.resolveDropApp.mockResolvedValue(app);
+  drop.resolveOrCreateDropApp.mockResolvedValue({ app, created: false });
 });
 
 describe("buildApp", () => {
@@ -91,7 +106,7 @@ describe("buildApp", () => {
     const manifest = JSON.parse(files.find((f) => f.path === "manifest.json")!.bytes.toString());
     expect(manifest).not.toHaveProperty("visibility");
     expect(manifest).not.toHaveProperty("price");
-    expect(drop.resolveDropApp).toHaveBeenCalledWith(
+    expect(drop.resolveOrCreateDropApp).toHaveBeenCalledWith(
       supabase,
       "user-alice",
       { appname: "countdown", name: "Tour countdown", description: "" },
@@ -109,6 +124,30 @@ describe("buildApp", () => {
     expect(result.findings.some((f) => f.severity === "hard")).toBe(true);
     expect(versions.uploadVersion).not.toHaveBeenCalled();
   }, 60_000);
+
+  it("re-arms the Box idle deadline after pulling the workspace, even when the pull fails", async () => {
+    awake.ensureComputeAwake.mockResolvedValueOnce({ instanceId: "box-1", environment: "ubuntu" });
+    await expect(buildApp(supabase, "user-alice", { appname: "countdown" })).rejects.toThrow(
+      /box unreachable/
+    );
+    expect(boxes.armStopAfter).toHaveBeenCalledTimes(1);
+    expect(boxes.armStopAfter).toHaveBeenCalledWith(supabase, "user-alice");
+
+    awake.ensureComputeAwake.mockResolvedValueOnce({ instanceId: "box-1", environment: "ubuntu" });
+    runtime.runCommand.mockResolvedValueOnce({ exitCode: 3, stdout: "" });
+    await expect(buildApp(supabase, "user-alice", { appname: "countdown" })).rejects.toThrow(
+      /no workspace/
+    );
+    expect(boxes.armStopAfter).toHaveBeenCalledTimes(2);
+  });
+
+  it("leaves the idle deadline alone for native compute environments", async () => {
+    awake.ensureComputeAwake.mockResolvedValueOnce({ instanceId: "ns-1", environment: "macos" });
+    await expect(buildApp(supabase, "user-alice", { appname: "countdown" })).rejects.toThrow(
+      /box unreachable/
+    );
+    expect(boxes.armStopAfter).not.toHaveBeenCalled();
+  });
 
   it("refuses an air.json that names another app", async () => {
     const files = tree(GOOD);

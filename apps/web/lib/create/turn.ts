@@ -11,6 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { armStopAfter, ensureBoxAwake } from "../orchestrator/boxes";
+import { CREATE_SESSION_PREFIX } from "../chat/relay";
 import { createRun, ensureSession } from "../hermes/client";
 import { isSpeedTier, type SpeedTier } from "../entitlements/models";
 import {
@@ -22,12 +23,12 @@ import {
 import type { RegistryApp } from "../miniapps/registry";
 import { kitRoot, kitVersion } from "./kit";
 import { createRunLabel, openCreateRun } from "./budget";
-import { resolveDropApp } from "./drop";
+import { resolveOrCreateDropApp } from "./drop";
 import { WORKSPACE_ROOT } from "./build";
 
 /** `air-create-<appname>` — the per-app thread inside air-main's namespace. */
 export const CREATE_SESSION_RE = /^air-create-[a-z0-9-]{1,48}$/;
-export const CREATE_SESSION_PREFIX = "air-create-";
+export { CREATE_SESSION_PREFIX };
 export const PROMPT_MAX_CHARS = 8_000;
 
 export function createSessionId(appname: string): string {
@@ -152,7 +153,7 @@ export async function startCreateTurn(
       409
     );
   }
-  const app = await resolveDropApp(supabase, userId, { appname }, "vibe");
+  const { app } = await resolveOrCreateDropApp(supabase, userId, { appname }, "vibe");
   const session = createSessionId(appname);
   const box = await ensureBoxAwake(supabase, userId);
   try {

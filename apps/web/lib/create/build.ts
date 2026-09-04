@@ -23,6 +23,8 @@ import esbuild from "esbuild";
 import { z } from "zod";
 import { runCommand, type ComputeTarget } from "../compute/runtime";
 import { ensureComputeAwake } from "../compute/awake";
+import { isBoxEnvironment } from "../compute/environments";
+import { armStopAfter } from "../orchestrator/boxes";
 import { env } from "../env";
 import {
   BundleError,
@@ -34,7 +36,7 @@ import { nestedPathFor } from "../miniapps/nested";
 import { PublishError, validateAppName } from "../miniapps/publish";
 import type { RegistryApp } from "../miniapps/registry";
 import { buildStylesheet, type ThemeName } from "./css";
-import { resolveDropApp } from "./drop";
+import { resolveOrCreateDropApp } from "./drop";
 import {
   classifySpecifier,
   ensureRestrictedExtracted,
@@ -521,8 +523,24 @@ function htmlShell(air: AirJson, version: string): string {
   ].join("\n");
 }
 
-function injectIntoHtml(html: string): string {
-  let out = html;
+const VIEWPORT_META = '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">';
+
+/** A custom `src/index.html` keeps its markup but not the platform-owned
+ * bits: `data-theme`/`data-version` come from air.json and the build (the Kit
+ * theme CSS and `useLite()` key off them), and the shell's viewport meta is
+ * added when the app has none. Returns null when the document lacks the
+ * `<html>`, `<head>`, and `<body>` the injection needs. */
+function injectIntoHtml(html: string, air: AirJson, version: string): string | null {
+  if (!/<html[\s>]/i.test(html) || !/<\/head>/i.test(html) || !/<\/body>/i.test(html)) return null;
+  let out = html.replace(/<html([^>]*)>/i, (_match, attrs: string) => {
+    const kept = attrs
+      .replace(/\s+data-theme\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+      .replace(/\s+data-version\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "");
+    return `<html${kept} data-theme="${air.theme}" data-version="${version}">`;
+  });
+  if (!/<meta[^>]+name\s*=\s*["']?viewport/i.test(out)) {
+    out = out.replace(/<head([^>]*)>/i, `<head$1>\n${VIEWPORT_META}`);
+  }
   if (!/<link[^>]+app\.css/.test(out)) {
     out = out.replace(/<\/head>/i, '<link rel="stylesheet" href="app.css">\n</head>');
   }
@@ -681,7 +699,15 @@ export async function compileWorkspace(
     if (hard(findings).length > 0) return stop();
 
     const htmlSource = files.find((file) => file.path === "src/index.html");
-    const html = htmlSource ? injectIntoHtml(htmlSource.bytes.toString("utf8")) : htmlShell(air, version);
+    const html = htmlSource
+      ? injectIntoHtml(htmlSource.bytes.toString("utf8"), air, version)
+      : htmlShell(air, version);
+    if (html === null) {
+      findings.push(
+        finding("src/index.html", "html", "src/index.html needs <html>, <head> and <body> elements (or delete it to use the default shell)")
+      );
+      return stop();
+    }
     const stylesheet = await buildStylesheet({
       theme: air.theme,
       lite: air.surface.lite,
@@ -814,25 +840,39 @@ export async function buildApp(
   let files = input.files;
   if (!files) {
     const target = await ensureComputeAwake(supabase, userId);
-    files = await pullWorkspace(target, appname);
+    try {
+      files = await pullWorkspace(target, appname);
+    } finally {
+      // Waking a Box (ensureBoxAwake) clears its idle deadline; re-arm it
+      // whether or not the pull succeeded so a build never leaves the machine
+      // running. The native wake path leaves stop_after alone.
+      if (isBoxEnvironment(target.environment)) {
+        await armStopAfter(supabase, userId).catch(() => undefined);
+      }
+    }
   }
   const airFile = files.find((file) => file.path === "air.json");
   const parsedAir = airFile ? parseAirJson(airFile.bytes.toString("utf8")) : null;
   if (parsedAir?.air && parsedAir.air.appname !== appname) {
     throw new BuildError(`air.json names ${parsedAir.air.appname}, not ${appname}`, 400, parsedAir.findings);
   }
+  // A Vibe project outlives a failed build (the workspace is still in the
+  // Box and the next turn iterates on it), so an app row created here is
+  // kept even when nothing is staged — unlike a one-shot Drop.
   const app =
     input.app ??
-    (await resolveDropApp(
-      supabase,
-      userId,
-      {
-        appname,
-        name: parsedAir?.air?.name,
-        description: parsedAir?.air?.description,
-      },
-      "vibe"
-    ));
+    (
+      await resolveOrCreateDropApp(
+        supabase,
+        userId,
+        {
+          appname,
+          name: parsedAir?.air?.name,
+          description: parsedAir?.air?.description,
+        },
+        "vibe"
+      )
+    ).app;
   const version = newVersionId();
   const output = await compileWorkspace(files, { version });
   for (const line of output.log) input.onLog?.(line);
@@ -1020,7 +1060,7 @@ export async function trackedBuild(
   userId: string,
   appname: string
 ): Promise<{ buildId: string; done: Promise<BuildResult> }> {
-  const app = await resolveDropApp(supabase, userId, { appname }, "vibe");
+  const { app } = await resolveOrCreateDropApp(supabase, userId, { appname }, "vibe");
   const buildId = await openBuild(supabase, app, userId);
   const log: string[] = [];
   const done = buildApp(supabase, userId, {

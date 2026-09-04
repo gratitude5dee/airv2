@@ -1167,7 +1167,6 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
 
   useEffect(() => {
     setStatus(null);
-    setMessages([]);
     setPreviewUrl(null);
     lastDraft.current = null;
     if (slug)
@@ -1175,6 +1174,17 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
         setMessage("could not load that project"),
       );
   }, [slug, loadStatus]);
+
+  // An owner switching projects starts a fresh conversation. The first turn
+  // of a new project also assigns the slug (via `send`), and must keep the
+  // in-flight exchange — so the reset lives here, not in the slug effect.
+  function selectProject(next: string | null) {
+    if (next === slug) return;
+    events.current?.close();
+    setMessages([]);
+    setBusy(false);
+    setSlug(next);
+  }
 
   useEffect(() => {
     if (initialSlug) setSlug(initialSlug);
@@ -1362,7 +1372,7 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
         className="rounded border border-current/20 bg-transparent px-2 py-1 text-[12px]"
         value={slug ?? ""}
         aria-label="Project"
-        onChange={(event) => setSlug(event.currentTarget.value || null)}
+        onChange={(event) => selectProject(event.currentTarget.value || null)}
       >
         <option value="">New app…</option>
         {projects.map((p) => (
@@ -1481,7 +1491,7 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
                     <button
                       type="button"
                       className="underline"
-                      onClick={() => setSlug(p.slug)}
+                      onClick={() => selectProject(p.slug)}
                     >
                       {p.name}
                     </button>{" "}

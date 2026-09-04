@@ -21,6 +21,15 @@ export type ChatTrigger = ChatChannel | "voice";
  * (goal-create-v11 §9.2). */
 export const CHAT_SESSION_RE = /^air-[a-z0-9-]{1,48}$/;
 
+/** `air-create-<appname>` threads are owned by the Create surface: their runs
+ * carry the Kit system prompt, `create-<tier>` model, and the project budget
+ * label, so ordinary chat may not drive them. */
+export const CREATE_SESSION_PREFIX = "air-create-";
+
+export function isCreateSession(sessionId: string): boolean {
+  return sessionId.startsWith(CREATE_SESSION_PREFIX);
+}
+
 export async function startChatRun(
   supabase: SupabaseClient,
   userId: string,

@@ -235,6 +235,33 @@ describe("compileWorkspace", () => {
     expect(out.findings.some((f) => f.rule === "external-script" && f.severity === "hard")).toBe(true);
   }, 60_000);
 
+  it("stamps a custom src/index.html with the project's theme, version and viewport", async () => {
+    const out = await compileWorkspace(
+      workspace({
+        "air.json": JSON.stringify({ ...AIR, theme: "pixel" }),
+        "src/index.html": `<!doctype html>\n<html lang="fr" data-theme="atmosphere" class="x">\n<head><title>Mine</title></head>\n<body><main id="root"></main></body>\n</html>`,
+      }),
+      { version: "v1700000000001", restricted: false }
+    );
+    expect(hard(out.findings)).toEqual([]);
+    const html = out.files.find((f) => f.path === "index.html")!.bytes.toString();
+    expect(html).toContain('<html lang="fr" class="x" data-theme="pixel" data-version="v1700000000001">');
+    expect(html).not.toContain('data-theme="atmosphere"');
+    expect(html).toContain("viewport-fit=cover");
+    expect(html).toContain("<title>Mine</title>");
+    expect(html).toContain('<main id="root">');
+    expect(html).toContain('href="app.css"');
+    expect(html).toContain('src="app.js"');
+    expect(html.match(/name="viewport"/g)).toHaveLength(1);
+
+    const fragment = await compileWorkspace(
+      workspace({ "src/index.html": `<div id="root"></div>` }),
+      { restricted: false }
+    );
+    expect(fragment.files).toEqual([]);
+    expect(fragment.findings.some((f) => f.rule === "html" && f.severity === "hard")).toBe(true);
+  }, 60_000);
+
   it("carries public/ assets and reports a collision with build output", async () => {
     const ok = await compileWorkspace(
       workspace({ "public/hero.png": "not-really-png" }),
