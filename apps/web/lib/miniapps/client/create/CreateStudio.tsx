@@ -1191,7 +1191,7 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
   useEffect(() => {
     if (initialSlug === seenInitialSlug.current) return;
     seenInitialSlug.current = initialSlug;
-    if (initialSlug) selectProject(initialSlug);
+    selectProject(initialSlug);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- react only to the prop, never to the slug it sets
   }, [initialSlug]);
 

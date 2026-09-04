@@ -541,13 +541,22 @@ function injectIntoHtml(html: string, air: AirJson, version: string): string | n
   if (!/<meta[^>]+name\s*=\s*["']?viewport/i.test(out)) {
     out = out.replace(/<head([^>]*)>/i, `<head$1>\n${VIEWPORT_META}`);
   }
-  if (!/<link[^>]+app\.css/i.test(out)) {
+  if (!referencesAsset(out, "link", "app.css")) {
     out = out.replace(/<\/head>/i, '<link rel="stylesheet" href="app.css">\n</head>');
   }
-  if (!/<script[^>]+app\.js/i.test(out)) {
+  if (!referencesAsset(out, "script", "app.js")) {
     out = out.replace(/<\/body>/i, '<script type="module" src="app.js"></script>\n</body>');
   }
   return out;
+}
+
+/** Whether any `<tag …>` (tag name in any case) names `asset` exactly: the
+ * app origin serves lowercase bundle paths only, so `APP.JS` is not one. */
+function referencesAsset(html: string, tag: string, asset: string): boolean {
+  const tags = html.match(new RegExp(`<${tag}\\b[^>]*>`, "gi")) ?? [];
+  const value = asset.replace(".", "\\.");
+  const named = new RegExp(`=\\s*(["']?)(?:\\.?/)?${value}(?:[?#][^"'\\s>]*)?\\1(?=[\\s>/]|$)`);
+  return tags.some((t) => named.test(t));
 }
 
 export interface CompileOptions {
