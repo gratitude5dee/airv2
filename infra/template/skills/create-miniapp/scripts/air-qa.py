@@ -12,6 +12,7 @@ URLs, or console bodies into the report.
 """
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -136,6 +137,11 @@ def strip_token(url):
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
 
 
+def redact_token(text):
+    """The single-use token must never reach the log (stderr goes to the Box)."""
+    return re.sub(r"([?&])t=[^&\s:]*", r"\1t=<redacted>", text)
+
+
 def redeem(session, url):
     """Exchange the single-use `?t=` token for the app-origin session cookie.
 
@@ -143,7 +149,10 @@ def redeem(session, url):
     without `t`; every later pass must open that token-free URL, riding the
     cookie the exchange set (a second `?t=` open is `unauthorized`).
     """
-    ab(session, "open", url)
+    try:
+        ab(session, "open", url)
+    except RuntimeError as exc:
+        raise RuntimeError(redact_token(str(exc))) from None
     landed = ab_eval(session, "location.href")
     if not isinstance(landed, str) or "t" in dict(parse_qsl(urlsplit(landed).query)):
         raise RuntimeError("preview link was not accepted (expired or already used)")
