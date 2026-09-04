@@ -163,6 +163,9 @@ export async function createDraft(
     if (error.code === "23514") {
       throw new PublishError("invalid app slug");
     }
+    if (error.message.includes("account is being deleted")) {
+      throw new PublishError("account is being deleted", 409);
+    }
     throw new Error(`draft create failed: ${error.message}`);
   }
   console.log(
@@ -217,19 +220,21 @@ export async function setPublishStatus(
   }
   const version =
     app.bundle_version && (await getVersion(supabase, app.id, app.bundle_version));
-  if (status === "published" && version) {
-    try {
+  try {
+    if (status === "published" && version) {
       await promoteVersion(supabase, app, version.version);
-    } catch (error) {
-      if (error instanceof AppOriginRefusedError) {
-        throw new PublishError("app is being deleted", 409);
-      }
-      throw error;
     }
-    await pointLiveAt(supabase, app, version.version);
+    if (status === "draft") {
+      await syncManifest(supabase, { ...app, status: "draft" });
+    }
+  } catch (error) {
+    if (error instanceof AppOriginRefusedError) {
+      throw new PublishError("app is being deleted", 409);
+    }
+    throw error;
   }
-  if (status === "draft") {
-    await syncManifest({ ...app, status: "draft" });
+  if (status === "published" && version) {
+    await pointLiveAt(supabase, app, version.version);
   }
   const { error } = await supabase
     .from("mini_apps")
@@ -245,11 +250,18 @@ export async function setPublishStatus(
     // The manifest already moved; put it back to what the registry still
     // says so a delist that failed to flip does not leave the app dark (or a
     // publish that failed to flip serving).
-    await syncManifest(app).catch(() => false);
+    await syncManifest(supabase, app).catch(() => false);
     throw new Error(`status flip failed: ${error.message}`);
   }
   if (status === "published" && version) {
-    await syncManifest({ ...app, status: "published" });
+    try {
+      await syncManifest(supabase, { ...app, status: "published" });
+    } catch (error) {
+      if (error instanceof AppOriginRefusedError) {
+        throw new PublishError("app is being deleted", 409);
+      }
+      throw error;
+    }
   }
   console.log(
     JSON.stringify({ msg: "miniapp status flip", user_id: userId, slug, status })

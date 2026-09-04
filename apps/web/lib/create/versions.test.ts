@@ -669,6 +669,7 @@ describe("rollbackTo (§13.3)", () => {
     expect(db.apps[0]!.bundle_version).toBe("v1700000000000");
     expect(deploy.promoteVersion).toHaveBeenCalledWith(supabase, app, "v1700000000000");
     expect(deploy.syncManifest).toHaveBeenCalledWith(
+      supabase,
       expect.objectContaining({ slug: "alice-notes", bundle_version: "v1700000000000" })
     );
     expect(limits.recordOpsEvent).toHaveBeenCalledWith(

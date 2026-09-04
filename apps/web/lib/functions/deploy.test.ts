@@ -1,8 +1,9 @@
 /**
- * CR16 deploy/delete protocol: a Worker is only put for an app whose row was
- * claimed (exists, not under deletion) through the same client that owns the
- * ledger, and a deletion that begins between the claim and the vendor write
- * finds the Worker torn down again by the deploy itself.
+ * CR16 deploy/delete protocol: a Worker or manifest is only written for an
+ * app that was claimed (exists, neither it nor its account under deletion)
+ * through the same client that owns the ledger, and a deletion that begins
+ * between the claim and the vendor write finds the origin torn down again by
+ * the writer itself.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -37,6 +38,7 @@ import {
   deployStaticVersion,
   promoteVersion,
   reconcileAppOriginMarks,
+  syncManifest,
 } from "./deploy";
 import { makeApp } from "@/app/mini/loader-test-utils";
 
@@ -49,10 +51,16 @@ interface AppRow {
 
 const db = {
   apps: [] as AppRow[],
+  /** users.deleting_at for the one owner every app here belongs to. */
+  accountDeletingAt: null as string | null,
   rpcError: null as { message: string } | null,
-  readError: null as { message: string } | null,
-  /** Runs once, after the claim and before the vendor write is confirmed. */
+  /** Fails the RPC from its second call on (the claim succeeded, the confirm cannot read). */
+  confirmError: null as { message: string } | null,
+  claims: 0,
+  /** Runs once, before the second claim (i.e. after the first vendor write). */
   betweenClaimAndConfirm: null as (() => void) | null,
+  /** Runs once, before the Nth claim (1-based); for races later in a multi-write flow. */
+  beforeClaim: null as { n: number; run: () => void } | null,
 };
 
 function fakeSupabase(): SupabaseClient {
@@ -60,9 +68,23 @@ function fakeSupabase(): SupabaseClient {
     if (fn !== "miniapp_claim_app_origin") {
       return { data: null, error: { message: `unknown rpc ${fn}` } };
     }
+    db.claims += 1;
+    if (db.claims === 2 && db.betweenClaimAndConfirm) {
+      const hook = db.betweenClaimAndConfirm;
+      db.betweenClaimAndConfirm = null;
+      hook();
+    }
+    if (db.beforeClaim && db.beforeClaim.n === db.claims) {
+      const hook = db.beforeClaim;
+      db.beforeClaim = null;
+      hook.run();
+    }
     if (db.rpcError) return { data: null, error: db.rpcError };
+    if (db.claims > 1 && db.confirmError) return { data: null, error: db.confirmError };
     const row = db.apps.find((a) => a.id === args.p_app_id);
-    if (!row || row.deleting_at !== null) return { data: false, error: null };
+    if (!row || row.deleting_at !== null || db.accountDeletingAt !== null) {
+      return { data: false, error: null };
+    }
     row.app_origin_deployed_at ??= "2026-02-01T00:00:00.000Z";
     return { data: true, error: null };
   });
@@ -87,16 +109,6 @@ function fakeSupabase(): SupabaseClient {
       update: (values: Partial<AppRow>) => {
         pending = values;
         return chain;
-      },
-      maybeSingle: async () => {
-        if (db.betweenClaimAndConfirm) {
-          const hook = db.betweenClaimAndConfirm;
-          db.betweenClaimAndConfirm = null;
-          hook();
-        }
-        if (db.readError) return { data: null, error: db.readError };
-        const row = db.apps.find((a) => filters.every((f) => f(a))) ?? null;
-        return { data: row ? { deleting_at: row.deleting_at } : null, error: null };
       },
       then: (resolve: (value: { data: unknown; error: unknown }) => unknown) => {
         const rows = db.apps.filter((a) => filters.every((f) => f(a)));
@@ -133,9 +145,12 @@ beforeEach(() => {
   db.apps = [
     { id: "app-1", slug: "alice-notes", deleting_at: null, app_origin_deployed_at: null },
   ];
+  db.accountDeletingAt = null;
   db.rpcError = null;
-  db.readError = null;
+  db.confirmError = null;
+  db.claims = 0;
   db.betweenClaimAndConfirm = null;
+  db.beforeClaim = null;
   tokens.appOriginConfigured.mockReturnValue(true);
   cloudflare.cloudflareConfigured.mockReturnValue(true);
   cloudflare.uploadAssets.mockClear();
@@ -164,6 +179,15 @@ describe("deployStaticVersion — claim before the vendor write", () => {
 
   it("refuses an app under deletion without touching the vendor", async () => {
     db.apps[0]!.deleting_at = "2026-03-01T00:00:00.000Z";
+    await expect(deployStaticVersion(fakeSupabase(), input)).rejects.toBeInstanceOf(
+      AppOriginRefusedError
+    );
+    expect(cloudflare.uploadAssets).not.toHaveBeenCalled();
+    expect(cloudflare.putDispatchScript).not.toHaveBeenCalled();
+  });
+
+  it("refuses an app whose account is under deletion, even before its own row is marked", async () => {
+    db.accountDeletingAt = "2026-03-01T00:00:00.000Z";
     await expect(deployStaticVersion(fakeSupabase(), input)).rejects.toBeInstanceOf(
       AppOriginRefusedError
     );
@@ -219,8 +243,18 @@ describe("deployStaticVersion — deletion that begins mid-deploy", () => {
     expect(cloudflare.deleteDispatchScript).toHaveBeenCalledTimes(2);
   });
 
+  it("tears down when the account's deletion started after the claim", async () => {
+    db.betweenClaimAndConfirm = () => {
+      db.accountDeletingAt = "2026-03-01T00:00:00.000Z";
+    };
+    await expect(deployStaticVersion(fakeSupabase(), input)).rejects.toBeInstanceOf(
+      AppOriginRefusedError
+    );
+    expect(cloudflare.deleteDispatchScript).toHaveBeenCalledTimes(2);
+  });
+
   it("leaves the Worker up (claim on record) when the confirm read fails", async () => {
-    db.readError = { message: "connection reset" };
+    db.confirmError = { message: "connection reset" };
     await expect(deployStaticVersion(fakeSupabase(), input)).rejects.toThrow(
       /app origin confirm failed/
     );
@@ -250,6 +284,65 @@ describe("promoteVersion", () => {
     expect(cloudflare.putDispatchScript).not.toHaveBeenCalled();
     expect(manifest.writeManifest).not.toHaveBeenCalled();
   });
+
+  it("does not write the manifest when deletion began after the Worker was confirmed", async () => {
+    // Claims: 1 deploy claim, 2 deploy confirm, 3 manifest claim.
+    db.beforeClaim = {
+      n: 3,
+      run: () => {
+        db.apps[0]!.deleting_at = "2026-03-01T00:00:00.000Z";
+      },
+    };
+    await expect(
+      promoteVersion(fakeSupabase(), app, "v1700000000001")
+    ).rejects.toBeInstanceOf(AppOriginRefusedError);
+    expect(cloudflare.putDispatchScript).toHaveBeenCalledTimes(1);
+    expect(manifest.writeManifest).not.toHaveBeenCalled();
+  });
+
+  it("tears the origin down when deletion began during the manifest write", async () => {
+    // Claims: 1 deploy claim, 2 deploy confirm, 3 manifest claim, 4 manifest confirm.
+    db.beforeClaim = {
+      n: 4,
+      run: () => {
+        db.accountDeletingAt = "2026-03-01T00:00:00.000Z";
+      },
+    };
+    await expect(
+      promoteVersion(fakeSupabase(), app, "v1700000000001")
+    ).rejects.toBeInstanceOf(AppOriginRefusedError);
+    expect(manifest.writeManifest).toHaveBeenCalledTimes(1);
+    expect(manifest.deleteManifest).toHaveBeenCalledWith("alice-notes");
+    expect(cloudflare.deleteDispatchScript).toHaveBeenCalledWith("alice-notes");
+    expect(cloudflare.deleteDispatchScript).toHaveBeenCalledWith("alice-notes-draft");
+  });
+});
+
+describe("syncManifest — manifest writes follow the same protocol", () => {
+  it("refuses without writing when the account is under deletion", async () => {
+    db.accountDeletingAt = "2026-03-01T00:00:00.000Z";
+    await expect(syncManifest(fakeSupabase(), app)).rejects.toBeInstanceOf(
+      AppOriginRefusedError
+    );
+    expect(manifest.writeManifest).not.toHaveBeenCalled();
+  });
+
+  it("removes the manifest it just wrote when deletion began underneath it", async () => {
+    db.betweenClaimAndConfirm = () => {
+      db.apps[0]!.deleting_at = "2026-03-01T00:00:00.000Z";
+    };
+    await expect(syncManifest(fakeSupabase(), app)).rejects.toBeInstanceOf(
+      AppOriginRefusedError
+    );
+    expect(manifest.writeManifest).toHaveBeenCalledTimes(1);
+    expect(manifest.deleteManifest).toHaveBeenCalledWith("alice-notes");
+  });
+
+  it("writes and marks the app when nothing is being deleted", async () => {
+    await expect(syncManifest(fakeSupabase(), app)).resolves.toBe(true);
+    expect(manifest.writeManifest).toHaveBeenCalledTimes(1);
+    expect(db.apps[0]!.app_origin_deployed_at).not.toBeNull();
+  });
 });
 
 describe("reconcileAppOriginMarks — vendor inventory is the source of truth", () => {
@@ -269,6 +362,27 @@ describe("reconcileAppOriginMarks — vendor inventory is the source of truth", 
     expect(result).toEqual({ marked: 1, unmatched: ["carol-gone"] });
     expect(db.apps[0]!.app_origin_deployed_at).not.toBeNull();
     expect(db.apps[1]!.app_origin_deployed_at).toBe("2026-01-01T00:00:00.000Z");
+  });
+
+  it("matches a live script for an app whose slug itself ends in -draft", async () => {
+    db.apps = [
+      { id: "app-3", slug: "dave-draft", deleting_at: null, app_origin_deployed_at: null },
+    ];
+    cloudflare.listDispatchScripts.mockResolvedValue(["dave-draft"]);
+    const result = await reconcileAppOriginMarks(fakeSupabase());
+    expect(result).toEqual({ marked: 1, unmatched: [] });
+    expect(db.apps[0]!.app_origin_deployed_at).not.toBeNull();
+  });
+
+  it("marks both apps a -draft script can belong to", async () => {
+    db.apps = [
+      { id: "app-3", slug: "dave-draft", deleting_at: null, app_origin_deployed_at: null },
+      { id: "app-4", slug: "dave", deleting_at: null, app_origin_deployed_at: null },
+    ];
+    cloudflare.listDispatchScripts.mockResolvedValue(["dave-draft"]);
+    const result = await reconcileAppOriginMarks(fakeSupabase());
+    expect(result).toEqual({ marked: 2, unmatched: [] });
+    expect(db.apps.every((row) => row.app_origin_deployed_at !== null)).toBe(true);
   });
 
   it("is a no-op on the legacy lane", async () => {

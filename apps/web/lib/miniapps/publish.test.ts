@@ -226,6 +226,7 @@ describe("setPublishStatus (V11 §13.2 manifest ordering)", () => {
     await setPublishStatus(fakeSupabase(live), "user-alice", "alice-notes", "draft");
     expect(deploy.syncManifest).toHaveBeenCalledTimes(1);
     expect(deploy.syncManifest).toHaveBeenCalledWith(
+      expect.anything(),
       expect.objectContaining({ slug: "alice-notes", status: "draft" })
     );
     expect(deploy.promoteVersion).not.toHaveBeenCalled();
@@ -238,6 +239,7 @@ describe("setPublishStatus (V11 §13.2 manifest ordering)", () => {
     ).rejects.toThrow(/status flip failed/);
     expect(deploy.syncManifest).toHaveBeenCalledTimes(2);
     expect(deploy.syncManifest).toHaveBeenLastCalledWith(
+      expect.anything(),
       expect.objectContaining({
         slug: "alice-notes",
         status: "published",
@@ -255,6 +257,7 @@ describe("setPublishStatus (V11 §13.2 manifest ordering)", () => {
     ).rejects.toThrow(/status flip failed/);
     expect(deploy.promoteVersion).toHaveBeenCalledWith(supabase, draft, "v1700000000001");
     expect(deploy.syncManifest).toHaveBeenLastCalledWith(
+      supabase,
       expect.objectContaining({ slug: "alice-notes", status: "draft" })
     );
   });

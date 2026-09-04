@@ -9,13 +9,13 @@
  * The lane is optional: when the app-origin env is unset every function here
  * is a no-op returning null and callers keep the legacy R2 render.
  *
- * CR16 deploy/delete protocol: every Worker put first claims the app row via
- * miniapp_claim_app_origin (refused once mini_apps.deleting_at is set; sets
- * app_origin_deployed_at, first deploy wins), and re-reads deleting_at after
- * the vendor write — a deletion that began in between finds the origin torn
- * down again by the deploy itself. The claim is the durable record that an
- * origin may be serving; account deletion refuses to proceed without the lane
- * whenever it is set.
+ * CR16 deploy/delete protocol: every origin write (Worker put, manifest
+ * write) first claims the app via miniapp_claim_app_origin (refused once the
+ * app or its owner's account is under deletion; sets app_origin_deployed_at,
+ * first deploy wins) and claims again after the vendor write — a deletion
+ * that began in between finds the origin torn down again by the writer
+ * itself. The claim is the durable record that an origin may be serving;
+ * account deletion refuses to proceed without the lane whenever it is set.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "../env";
@@ -93,22 +93,32 @@ export interface StaticDeploy {
   target: DeployTarget;
 }
 
+async function appOriginOpen(
+  supabase: SupabaseClient,
+  appId: string,
+  stage: "claim" | "confirm"
+): Promise<boolean> {
+  const { data, error } = await supabase.rpc("miniapp_claim_app_origin", {
+    p_app_id: appId,
+  });
+  if (error) throw new Error(`app origin ${stage} failed: ${error.message}`);
+  return data === true;
+}
+
 async function claimAppOrigin(
   supabase: SupabaseClient,
   appId: string,
   slug: string
 ): Promise<void> {
-  const { data, error } = await supabase.rpc("miniapp_claim_app_origin", {
-    p_app_id: appId,
-  });
-  if (error) throw new Error(`app origin claim failed: ${error.message}`);
-  if (data !== true) throw new AppOriginRefusedError(slug);
+  if (!(await appOriginOpen(supabase, appId, "claim"))) {
+    throw new AppOriginRefusedError(slug);
+  }
 }
 
 /**
- * After the vendor write: if deletion began since the claim, the Worker just
- * put is torn down here (the deleter may already have run its teardown). A
- * read failure leaves the deploy standing — the claim is on record, so a
+ * After a vendor write: if deletion began since the claim, everything just
+ * written is torn down here (the deleter may already have run its teardown).
+ * A read failure leaves the write standing — the claim is on record, so a
  * later deletion still tears it down.
  */
 async function confirmAppOrigin(
@@ -116,16 +126,20 @@ async function confirmAppOrigin(
   appId: string,
   slug: string
 ): Promise<void> {
-  const { data, error } = await supabase
-    .from("mini_apps")
-    .select("deleting_at")
-    .eq("id", appId)
-    .maybeSingle();
-  if (error) throw new Error(`app origin confirm failed: ${error.message}`);
-  const row = data as { deleting_at: string | null } | null;
-  if (row && row.deleting_at === null) return;
+  if (await appOriginOpen(supabase, appId, "confirm")) return;
   await teardownAppOrigin(slug);
   throw new AppOriginRefusedError(slug);
+}
+
+/** Manifest write under the same claim/confirm protocol as a Worker put. */
+async function writeManifestGuarded(
+  supabase: SupabaseClient,
+  app: Pick<RegistryApp, "id" | "slug">,
+  manifest: AppManifest
+): Promise<void> {
+  await claimAppOrigin(supabase, app.id, app.slug);
+  await writeManifest(manifest);
+  await confirmAppOrigin(supabase, app.id, app.slug);
 }
 
 /**
@@ -196,10 +210,16 @@ export function manifestFor(app: RegistryApp): AppManifest {
   };
 }
 
-/** Write the KV pointer for an app from its registry row. No-op when unconfigured. */
-export async function syncManifest(app: RegistryApp): Promise<boolean> {
+/**
+ * Write the KV pointer for an app from its registry row. No-op when
+ * unconfigured. Throws AppOriginRefusedError when the app is being deleted.
+ */
+export async function syncManifest(
+  supabase: SupabaseClient,
+  app: RegistryApp
+): Promise<boolean> {
   if (!appOriginLaneReady() || !app.owner_user_id) return false;
-  await writeManifest(manifestFor(app));
+  await writeManifestGuarded(supabase, app, manifestFor(app));
   return true;
 }
 
@@ -208,9 +228,16 @@ export async function syncManifest(app: RegistryApp): Promise<boolean> {
  * registry row flips, so there is never a window where discovery is gone
  * but the Worker still answers.
  */
-export async function suspendOnAppOrigin(app: RegistryApp): Promise<void> {
+export async function suspendOnAppOrigin(
+  supabase: SupabaseClient,
+  app: RegistryApp
+): Promise<void> {
   if (!appOriginLaneReady() || !app.owner_user_id) return;
-  await writeManifest({ ...manifestFor(app), status: "suspended", live: null });
+  await writeManifestGuarded(supabase, app, {
+    ...manifestFor(app),
+    status: "suspended",
+    live: null,
+  });
 }
 
 /** Tenant teardown for /api/admin/delete (CR16): both scripts + the pointer. */
@@ -243,7 +270,7 @@ export async function promoteVersion(
     files,
     target: "live",
   });
-  await writeManifest({
+  await writeManifestGuarded(supabase, app, {
     ...manifestFor(app),
     status: "published",
     live: version,
@@ -251,25 +278,28 @@ export async function promoteVersion(
   return deployed;
 }
 
+const DRAFT_SUFFIX = "-draft";
+
+/** The app slugs a dispatch script name may belong to (`-draft` is a legal slug tail). */
+function slugCandidates(script: string): string[] {
+  return script.endsWith(DRAFT_SUFFIX)
+    ? [script, script.slice(0, -DRAFT_SUFFIX.length)]
+    : [script];
+}
+
 /**
  * Reconcile the deploy marks against the vendor inventory: every script in
- * the dispatch namespace names an app (`<slug>` or `<slug>-draft`); apps
- * found there get app_origin_deployed_at set if they lack it. Covers Workers
- * put before the mark existed. Scripts naming no app are reported so ops can
- * remove them. No-op when the lane is unconfigured.
+ * the dispatch namespace names an app (`<slug>` or `<slug>-draft`); every app
+ * a script can name gets app_origin_deployed_at set if it lacks it. Covers
+ * Workers put before the mark existed. Scripts naming no app are reported so
+ * ops can remove them. No-op when the lane is unconfigured.
  */
 export async function reconcileAppOriginMarks(
   supabase: SupabaseClient
 ): Promise<{ marked: number; unmatched: string[] }> {
   if (!appOriginLaneReady()) return { marked: 0, unmatched: [] };
   const scripts = await listDispatchScripts();
-  const slugs = [
-    ...new Set(
-      scripts.map((name) =>
-        name.endsWith("-draft") ? name.slice(0, -"-draft".length) : name
-      )
-    ),
-  ];
+  const slugs = [...new Set(scripts.flatMap(slugCandidates))];
   if (slugs.length === 0) return { marked: 0, unmatched: [] };
   const { data, error } = await supabase
     .from("mini_apps")
@@ -282,7 +312,9 @@ export async function reconcileAppOriginMarks(
     app_origin_deployed_at: string | null;
   }>;
   const known = new Set(rows.map((row) => row.slug));
-  const unmatched = slugs.filter((slug) => !known.has(slug));
+  const unmatched = scripts.filter(
+    (script) => !slugCandidates(script).some((slug) => known.has(slug))
+  );
   const unmarked = rows.filter((row) => row.app_origin_deployed_at === null);
   if (unmarked.length > 0) {
     const { error: markError } = await supabase

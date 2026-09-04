@@ -38,6 +38,13 @@ export class VersionError extends Error {
   }
 }
 
+function rethrowRefusedAsVersionError(error: unknown): never {
+  if (error instanceof AppOriginRefusedError) {
+    throw new VersionError("app is being deleted", 409);
+  }
+  throw error;
+}
+
 export const VERSION_RE = /^v[0-9]{10,16}$/;
 const SHA256_RE = /^[0-9a-f]{64}$/;
 export const RETAIN_SUPERSEDED_DAYS = 30;
@@ -267,11 +274,11 @@ export async function uploadVersion(
     // and retired exactly like Worker releases (retention depends on it).
     await stampLive(supabase, app.id, version, app.bundle_version, now);
     if (!deployed) {
-      await syncManifest({
+      await syncManifest(supabase, {
         ...app,
         bundle_version: version,
         draft_version: version,
-      });
+      }).catch(rethrowRefusedAsVersionError);
     }
   }
   console.log(
@@ -470,7 +477,9 @@ export async function rollbackTo(
     }
     throw error;
   }
-  await syncManifest({ ...app, bundle_version: target.version });
+  await syncManifest(supabase, { ...app, bundle_version: target.version }).catch(
+    rethrowRefusedAsVersionError
+  );
   await recordOpsEvent(supabase, "rollback", app.owner_user_id, app.slug);
   console.log(
     JSON.stringify({
