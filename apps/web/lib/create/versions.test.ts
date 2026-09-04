@@ -626,8 +626,55 @@ describe("uploadVersion", () => {
     expect(deploys[1]).toBe("draft:v1700000000009");
     expect(db.apps[0]!.bundle_version).toBe("v1700000000001");
     expect(db.apps[0]!.draft_version).toBe("v1700000000009");
-    expect(deploy.syncManifest).not.toHaveBeenCalled();
+    expect(deploy.syncManifest).toHaveBeenLastCalledWith(
+      expect.objectContaining({ bundle_version: "v1700000000001", draft_version: "v1700000000009" })
+    );
     expect(db.versions).toHaveLength(0);
+  });
+
+  it("the manifest is written before the registry commits; a lost write fails cleanly and restores the draft Worker", async () => {
+    const staged = { ...app, status: "published" as const, draft_version: "v1700000000001" };
+    db.apps[0]!.draft_version = "v1700000000001";
+    const deploys: string[] = [];
+    deploy.deployStaticVersion.mockImplementation(async (input) => {
+      deploys.push(`${input.target}:${input.version}`);
+      return { workerSha256: "a".repeat(64) };
+    });
+    deploy.syncManifest.mockRejectedValueOnce(new Error("kv unavailable"));
+    await expect(
+      uploadVersion(supabase, staged, zip, "drop", { promote: false })
+    ).rejects.toThrow(/kv unavailable/);
+    expect(deploys).toHaveLength(2);
+    expect(deploys[1]).toBe("draft:v1700000000001");
+    expect(deploy.syncManifest).toHaveBeenCalledTimes(2);
+    expect(deploy.syncManifest).toHaveBeenLastCalledWith(
+      expect.objectContaining({ bundle_version: "v1700000000001", draft_version: "v1700000000001" })
+    );
+    expect(db.apps[0]!.draft_version).toBe("v1700000000001");
+    expect(db.versions).toHaveLength(0);
+    expect(r2.deletePrefix).toHaveBeenCalledWith(expect.stringContaining("alice-notes/v"));
+  });
+
+  it("a lost manifest write on a live upload also puts the live Worker back before failing", async () => {
+    deploy.deployStaticVersion.mockResolvedValue({ workerSha256: "a".repeat(64) });
+    deploy.syncManifest.mockRejectedValueOnce(new Error("kv unavailable"));
+    await expect(uploadVersion(supabase, app, zip)).rejects.toThrow(/kv unavailable/);
+    expect(deploy.promoteVersion).toHaveBeenCalledTimes(2);
+    expect(deploy.promoteVersion).toHaveBeenLastCalledWith(app, "v1700000000001");
+    expect(db.apps[0]!.bundle_version).toBe("v1700000000001");
+    expect(db.versions).toHaveLength(0);
+  });
+
+  it("the manifest write precedes the registry commit, so nothing after the commit can fail the upload", async () => {
+    deploy.deployStaticVersion.mockResolvedValue({ workerSha256: "a".repeat(64) });
+    const pointerAtManifestWrite: (string | null)[] = [];
+    deploy.syncManifest.mockImplementation(async () => {
+      pointerAtManifestWrite.push(db.apps[0]!.bundle_version);
+      return undefined;
+    });
+    const version = await uploadVersion(supabase, app, zip);
+    expect(pointerAtManifestWrite).toEqual(["v1700000000001"]);
+    expect(db.apps[0]!.bundle_version).toBe(version);
   });
 
   it("stage-only: a lost CAS on a draft app also restores the winner's draft Worker", async () => {

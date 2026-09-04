@@ -82,7 +82,7 @@ function DraftResult({
 }: {
   draft: StatusResponse;
   busy: boolean;
-  onPublish: (slug: string) => void;
+  onPublish: (draft: StatusResponse) => void;
 }) {
   const isLive = draft.status === "published";
   const staged =
@@ -116,7 +116,7 @@ function DraftResult({
           <button
             className="btn-ghost text-[12px]"
             disabled={busy || !draft.draft}
-            onClick={() => onPublish(draft.slug)}
+            onClick={() => onPublish(draft)}
           >
             {isLive ? "Publish draft" : "Publish"}
           </button>
@@ -213,12 +213,18 @@ function CreateSurface() {
     });
   }
 
-  function publish(slug: string) {
+  /** First publication makes the app public; a live app keeps its visibility. */
+  function publish(target: StatusResponse) {
+    const { slug } = target;
     void run(async () => {
       const res = await fetch("/api/mini/publish/status", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ slug, status: "published", visibility: "public" }),
+        body: JSON.stringify({
+          slug,
+          status: "published",
+          ...(target.status === "published" ? {} : { visibility: "public" }),
+        }),
       });
       const data = await readJson<{ ok: true }>(res);
       if (!res.ok) throw new Error(data.error ?? "publish failed");

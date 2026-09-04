@@ -93,20 +93,22 @@ export default function PublishPage() {
     void refresh();
   }
 
-  async function flipStatus(slug: string, status: "published" | "draft") {
+  /** First publication makes the app public; a live app keeps its visibility. */
+  async function flipStatus(app: PublishedApp, status: "published" | "draft") {
     setBusy(true);
     setMessage(null);
+    const firstPublish = status === "published" && app.status !== "published";
     const res = await fetch("/api/mini/publish/status", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        slug,
+        slug: app.slug,
         status,
-        ...(status === "published" ? { visibility: "public" } : {}),
+        ...(firstPublish ? { visibility: "public" } : {}),
       }),
     });
     const data = (await res.json()) as { error?: string };
-    setMessage(res.ok ? `Now ${status}: ${slug}` : data.error ?? "failed");
+    setMessage(res.ok ? `Now ${status}: ${app.slug}` : data.error ?? "failed");
     setBusy(false);
     void refresh();
   }
@@ -236,7 +238,7 @@ export default function PublishPage() {
                         <button
                           className="btn text-[12px]"
                           disabled={busy}
-                          onClick={() => void flipStatus(app.slug, "published")}
+                          onClick={() => void flipStatus(app, "published")}
                         >
                           Publish draft
                         </button>
@@ -244,7 +246,7 @@ export default function PublishPage() {
                       <button
                         className="btn-ghost text-[12px]"
                         disabled={busy}
-                        onClick={() => void flipStatus(app.slug, "draft")}
+                        onClick={() => void flipStatus(app, "draft")}
                       >
                         Unpublish
                       </button>
@@ -253,7 +255,7 @@ export default function PublishPage() {
                     <button
                       className="btn text-[12px]"
                       disabled={busy || !app.bundle_version}
-                      onClick={() => void flipStatus(app.slug, "published")}
+                      onClick={() => void flipStatus(app, "published")}
                     >
                       Publish
                     </button>

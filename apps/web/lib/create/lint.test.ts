@@ -4,6 +4,8 @@ import {
   LARGE_DATA_URI_BYTES,
   LintError,
   blankCommentsAndStrings,
+  blankCssComments,
+  blankHtmlComments,
   enforceCsp,
   hardFindings,
   lintBundle,
@@ -344,6 +346,100 @@ describe("lintBundle", () => {
     it("blanks strings without moving line numbers", () => {
       expect(blankCommentsAndStrings("a = 'x\\'y';\n// c\nb = `t${c}u`;")).toBe(
         "a = '    ';\n    \nb = ` ${c} `;"
+      );
+    });
+  });
+
+  describe("comments", () => {
+    it("JS: a remote import in a comment is prose; a // inside a URL literal is not a comment", () => {
+      expect(
+        rules([
+          html(""),
+          file(
+            "app.js",
+            [
+              "// import x from 'https://cdn.example.com/x.js'",
+              "/* import('https://cdn.example.com/y.js') */",
+              "const ok = 1;",
+            ].join("\n")
+          ),
+        ])
+      ).toEqual([]);
+      const findings = lintBundle([
+        html(""),
+        file("app.js", "// nothing here\nimport x from 'https://cdn.example.com/x.js';\nx();"),
+      ]);
+      expect(findings.map((f) => [f.rule, f.line])).toEqual([["external-script", 2]]);
+    });
+
+    it("JS: keeps line numbers across blanked comments", () => {
+      expect(blankCommentsAndStrings("a; // 'x'\n/* b\nc */ d = 'https://e';", false)).toBe(
+        "a;       \n    \n     d = 'https://e';"
+      );
+    });
+
+    it("CSS: @import and url() inside /* */ are prose; url(//cdn) is not a comment", () => {
+      expect(
+        rules([
+          html(""),
+          file(
+            "style.css",
+            [
+              "/* @import url(https://fonts.example.com/a.css); */",
+              "/* @font-face { src: url(https://fonts.example.com/a.woff2); } */",
+              "body { color: red; }",
+            ].join("\n")
+          ),
+        ])
+      ).toEqual([]);
+      const findings = lintBundle([
+        html(""),
+        file("style.css", "/* c */\n@import url(//cdn.example.com/a.css);\nbody { background: url(//cdn.example.com/b.css); }"),
+      ]);
+      expect(findings.map((f) => [f.rule, f.line])).toEqual([
+        ["external-style", 2],
+        ["external-style", 3],
+      ]);
+      expect(blankCssComments("a{content:'/* s */'}/* c\nd */b{}")).toBe("a{content:'/* s */'}    \n    b{}");
+    });
+
+    it("HTML: tags, handlers, refs and data URIs inside <!-- --> are prose", () => {
+      const big = "A".repeat(Math.ceil((LARGE_DATA_URI_BYTES + 1024) / 3) * 4);
+      expect(
+        rules([
+          html(
+            [
+              `<!-- <script src="https://cdn.example.com/a.js"></script> -->`,
+              `<!-- <iframe src="https://x.example.com"></iframe> -->`,
+              `<!-- <button onclick="go()">go</button> -->`,
+              `<!-- <img src="missing.png"> -->`,
+              `<!-- <img src="data:image/png;base64,${big}"> -->`,
+              `<!--\n<script>localStorage.setItem('a', 1)</script>\n-->`,
+              `<p>hi</p>`,
+            ].join("\n"),
+            `<!-- <link rel="stylesheet" href="https://x.com/a.css"> --><!-- <meta http-equiv="x" content="y"> -->`
+          ),
+        ])
+      ).toEqual([]);
+    });
+
+    it("HTML: line numbers hold after a comment, and <!-- inside a script body is code", () => {
+      const findings = lintBundle([
+        html(
+          [
+            `<!-- a\nb -->`,
+            `<script src="https://cdn.example.com/a.js"></script>`,
+            `<script>\n<!--\nlocalStorage.x = 1;\n//-->\n</script>`,
+          ].join("\n")
+        ),
+      ]);
+      expect(findings.map((f) => [f.rule, f.line])).toEqual([
+        ["external-script", 9],
+        ["inline-script", 10],
+        ["client-storage", 12],
+      ]);
+      expect(blankHtmlComments("<!-- x\ny --><style>/*<!-- z -->*/</style><b>")).toBe(
+        "      \n     <style>/*<!-- z -->*/</style><b>"
       );
     });
   });

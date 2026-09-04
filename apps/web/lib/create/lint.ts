@@ -165,19 +165,27 @@ const FONT_FACE_RE = /@font-face\s*\{[^}]*\}/gi;
 const JS_IMPORT_RE =
   /\bimport\s*(?:[^'";]*?\bfrom\s*)?["']((?:https?:)?\/\/[^"']+)["']|\bimport\s*\(\s*["']((?:https?:)?\/\/[^"']+)["']/gi;
 
+/** Overwrite `[from, to)` with spaces, keeping newlines so line numbers hold. */
+function blankRange(out: string[], from: number, to: number): void {
+  for (let i = from; i < to; i += 1) {
+    if (out[i] !== "\n") out[i] = " ";
+  }
+}
+
 /**
- * Blank comments and string/template literal text (keeping newlines and
- * `${…}` expressions) so identifiers mentioned in prose are not linted as
- * calls. Regex literals are left as-is: `/` vs division is not decidable
- * without a parser, and a false hit there is rare.
+ * Blank JS comments and, unless `strings` is false, string/template literal
+ * text (keeping newlines and `${…}` expressions) so identifiers mentioned in
+ * prose are not linted as calls. Strings are always tracked so a `//` inside
+ * a URL literal never starts a comment. Regex literals are left as-is: `/`
+ * vs division is not decidable without a parser, and a false hit there is
+ * rare.
  */
-export function blankCommentsAndStrings(source: string): string {
+export function blankCommentsAndStrings(source: string, strings = true): string {
   const out = source.split("");
   const blank = (from: number, to: number): void => {
-    for (let i = from; i < to; i += 1) {
-      if (out[i] !== "\n") out[i] = " ";
-    }
+    blankRange(out, from, to);
   };
+  const blankText = strings ? blank : () => undefined;
   const n = source.length;
   let i = 0;
   const templateDepth: number[] = [];
@@ -200,7 +208,7 @@ export function blankCommentsAndStrings(source: string): string {
         if (source[j] === "\\") j += 1;
         j += 1;
       }
-      blank(i + 1, Math.min(j, n));
+      blankText(i + 1, Math.min(j, n));
       i = j + 1;
     } else if (ch === "`") {
       // Template text is blanked up to the next `${` or closing backtick;
@@ -217,7 +225,7 @@ export function blankCommentsAndStrings(source: string): string {
         }
         j += 1;
       }
-      blank(i + 1, Math.min(j, n));
+      blankText(i + 1, Math.min(j, n));
       i = templateDepth.length > 0 && source[j] === "$" ? j + 2 : j + 1;
     } else if (templateDepth.length > 0 && ch === "{") {
       const last = templateDepth.length - 1;
@@ -242,7 +250,7 @@ export function blankCommentsAndStrings(source: string): string {
           }
           j += 1;
         }
-        blank(i + 1, Math.min(j, n));
+        blankText(i + 1, Math.min(j, n));
         if (reopened) {
           templateDepth.push(0);
           i = j + 2;
@@ -260,20 +268,88 @@ export function blankCommentsAndStrings(source: string): string {
   return out.join("");
 }
 
+/**
+ * Blank `/* … *\/` comments in CSS. Quoted strings are skipped, not blanked,
+ * and `//` is never a comment here (it is how `url(//cdn…)` starts).
+ */
+export function blankCssComments(source: string): string {
+  const out = source.split("");
+  const n = source.length;
+  let i = 0;
+  while (i < n) {
+    const ch = source[i];
+    if (ch === '"' || ch === "'") {
+      let j = i + 1;
+      while (j < n && source[j] !== ch && source[j] !== "\n") {
+        if (source[j] === "\\") j += 1;
+        j += 1;
+      }
+      i = j + 1;
+    } else if (ch === "/" && source[i + 1] === "*") {
+      const end = source.indexOf("*/", i + 2);
+      const stop = end === -1 ? n : end + 2;
+      blankRange(out, i, stop);
+      i = stop;
+    } else {
+      i += 1;
+    }
+  }
+  return out.join("");
+}
+
+const RAW_TEXT_OPEN_RE = /^<(script|style)(?=[\s/>])/i;
+
+/**
+ * Blank `<!-- … -->` in HTML. `<script>` and `<style>` bodies are raw text
+ * to the parser (a `<!--` inside them is code, not markup), so they are
+ * skipped here and left to their own comment rules.
+ */
+export function blankHtmlComments(source: string): string {
+  const out = source.split("");
+  const lower = source.toLowerCase();
+  const n = source.length;
+  let i = 0;
+  while (i < n) {
+    if (source[i] !== "<") {
+      i += 1;
+      continue;
+    }
+    if (source.startsWith("<!--", i)) {
+      const end = source.indexOf("-->", i + 4);
+      const stop = end === -1 ? n : end + 3;
+      blankRange(out, i, stop);
+      i = stop;
+      continue;
+    }
+    const open = RAW_TEXT_OPEN_RE.exec(source.slice(i, i + 8));
+    if (open) {
+      const close = `</${(open[1] ?? "").toLowerCase()}`;
+      const end = lower.indexOf(close, i + open[0].length);
+      i = end === -1 ? n : end + close.length;
+      continue;
+    }
+    i += 1;
+  }
+  return out.join("");
+}
+
 function lintScriptText(collector: Collector, source: string, base: number): void {
-  const text = blankCommentsAndStrings(source);
-  for (const match of text.matchAll(STORAGE_RE)) {
+  const code = blankCommentsAndStrings(source);
+  for (const match of code.matchAll(STORAGE_RE)) {
     report(collector, "client-storage", base + (match.index ?? 0));
   }
-  for (const match of text.matchAll(EVAL_RE)) {
+  for (const match of code.matchAll(EVAL_RE)) {
     report(collector, "eval", base + (match.index ?? 0));
   }
-  for (const match of source.matchAll(JS_IMPORT_RE)) {
+  // Import specifiers live in string literals, so only comments go.
+  const literals = blankCommentsAndStrings(source, false);
+  for (const match of literals.matchAll(JS_IMPORT_RE)) {
     report(collector, "external-script", base + (match.index ?? 0));
   }
 }
 
-function lintStyleText(collector: Collector, text: string, base: number): void {
+function lintStyleText(collector: Collector, source: string, base: number): void {
+  const text = blankCssComments(source);
   const importRanges: Array<[number, number]> = [];
   for (const match of text.matchAll(IMPORT_URL_RE)) {
     const start = match.index ?? 0;
@@ -344,7 +420,7 @@ function isFontLink(tag: string): boolean {
 }
 
 function lintHtml(collector: Collector, paths: ReadonlySet<string>): void {
-  const { text } = collector;
+  const text = blankHtmlComments(collector.text);
   for (const match of text.matchAll(TAG_RE)) {
     const tag = match[0];
     const name = (match[1] ?? "").toLowerCase();
@@ -396,7 +472,7 @@ function lintHtml(collector: Collector, paths: ReadonlySet<string>): void {
     );
   }
   lintDataUris(collector, text);
-  lintDanglingRefs(collector, paths);
+  lintDanglingRefs(collector, text, paths);
 }
 
 /**
@@ -449,8 +525,11 @@ function resolveRelative(from: string, ref: string): string | null {
 }
 
 /** A relative `src`/`href` on a resource tag that matches nothing in the bundle. */
-function lintDanglingRefs(collector: Collector, paths: ReadonlySet<string>): void {
-  const { text } = collector;
+function lintDanglingRefs(
+  collector: Collector,
+  text: string,
+  paths: ReadonlySet<string>
+): void {
   for (const match of text.matchAll(REF_ATTR_RE)) {
     const ref = (match[1] ?? match[2] ?? "").trim();
     if (
@@ -495,10 +574,10 @@ export function lintBundle(files: BundleFile[]): LintFinding[] {
       lintHtml(collector, paths);
     } else if (CSS_RE.test(type)) {
       lintStyleText(collector, collector.text, 0);
-      lintDataUris(collector, collector.text);
+      lintDataUris(collector, blankCssComments(collector.text));
     } else if (JS_RE.test(type)) {
       lintScriptText(collector, collector.text, 0);
-      lintDataUris(collector, collector.text);
+      lintDataUris(collector, blankCommentsAndStrings(collector.text, false));
     }
   }
   return findings;

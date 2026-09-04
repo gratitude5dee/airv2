@@ -217,6 +217,7 @@ export async function uploadVersion(
     findings: options.findings ?? [],
   });
   let deployed: { workerSha256: string } | null = null;
+  let liveMoved = false;
   try {
     await storeBundle(app.slug, version, files);
     if (appOriginLaneReady()) await markAppOriginDeployed(supabase, app);
@@ -241,9 +242,29 @@ export async function uploadVersion(
     // Published apps: the live Worker moves before the registry pointer, so
     // a failed promotion leaves both origins on the previous version.
     if (goesLive && deployed) {
+      liveMoved = true;
       await promoteVersion(app, version);
     }
+    // The Dispatcher reads pointers from the manifest, and it serves a draft
+    // Worker only when the manifest names it (CR13). The manifest is written
+    // before the registry commits so that a lost write is still a clean
+    // failure: everything up to the pointer swap can be put back.
+    if (goesLive || deployed) {
+      await syncManifest({
+        ...app,
+        bundle_version: goesLive ? version : app.bundle_version,
+        draft_version: version,
+      });
+    }
   } catch (error) {
+    if (deployed) {
+      await restoreAppOrigin(
+        app,
+        { bundle_version: app.bundle_version, draft_version: app.draft_version },
+        version,
+        liveMoved
+      );
+    }
     await discardVersion(supabase, app, row.id, version);
     throw error;
   }
@@ -270,20 +291,15 @@ export async function uploadVersion(
     : move.is("draft_version", null);
   const { data: moved, error } = await move.select("id");
   if (error || !moved || moved.length === 0) {
-    // The Workers already moved; put them back on whatever the registry now
-    // says is selected so neither origin serves a release the registry does
-    // not name (the draft Worker is shared, so the loser's deploy may have
-    // landed after the winner's), then surface the registry failure.
+    // The Workers and the manifest already moved; put them back on whatever
+    // the registry now says is selected so neither origin serves a release
+    // the registry does not name (the draft Worker is shared, so the loser's
+    // deploy may have landed after the winner's), then surface the failure.
     if (deployed) {
       const current = error
         ? { bundle_version: app.bundle_version, draft_version: app.draft_version }
         : await currentPointers(supabase, app.id);
-      if (goesLive && current.bundle_version) {
-        await promoteVersion(app, current.bundle_version).catch(() => null);
-      }
-      if (current.draft_version && current.draft_version !== version) {
-        await redeployDraft(app, current.draft_version).catch(() => null);
-      }
+      await restoreAppOrigin(app, current, version, goesLive);
     }
     await discardVersion(supabase, app, row.id, version);
     if (error) throw new Error(`bundle version update failed: ${error.message}`);
@@ -294,16 +310,6 @@ export async function uploadVersion(
     // R2 renderer follows bundle_version too, so its releases are published
     // and retired exactly like Worker releases (retention depends on it).
     await stampLive(supabase, app.id, version, app.bundle_version, now);
-  }
-  // The Dispatcher reads pointers from the manifest, and it serves a draft
-  // Worker only when the manifest names it (CR13) — so every upload that
-  // reached the app origin, or that moved live, rewrites the pointer.
-  if (goesLive || deployed) {
-    await syncManifest({
-      ...app,
-      bundle_version: stageOnly ? app.bundle_version : version,
-      draft_version: version,
-    });
   }
   console.log(
     JSON.stringify({
@@ -318,6 +324,27 @@ export async function uploadVersion(
     })
   );
   return version;
+}
+
+/**
+ * Put the app origin back on the release(s) the registry names after an
+ * upload of `version` failed past its deploy: the live Worker (when this
+ * upload moved it), the shared draft Worker, then the manifest. Best effort
+ * — the registry is the source of truth and the caller is already failing.
+ */
+async function restoreAppOrigin(
+  app: RegistryApp,
+  pointers: { bundle_version: string | null; draft_version: string | null },
+  version: string,
+  liveMoved: boolean
+): Promise<void> {
+  if (liveMoved && pointers.bundle_version) {
+    await promoteVersion(app, pointers.bundle_version).catch(() => null);
+  }
+  if (pointers.draft_version && pointers.draft_version !== version) {
+    await redeployDraft(app, pointers.draft_version).catch(() => null);
+  }
+  await syncManifest({ ...app, ...pointers }).catch(() => null);
 }
 
 /**
