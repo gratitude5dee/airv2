@@ -3,7 +3,8 @@
  * then only the events that matter reach the import layer. A failed sync
  * still answers 200 (GitHub does not retry; the next push is the retry),
  * while a handler that throws gives the delivery id back so a redelivery
- * runs it again instead of being called a duplicate.
+ * runs it again instead of being called a duplicate — and when even that
+ * release fails, the lease on the id expires so the redelivery still runs.
  */
 import { createHmac } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -11,29 +12,52 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { RepoLink } from "@/lib/create/import";
 
 const db = vi.hoisted(() => ({
-  deliveries: new Set<string>(),
+  /** github_deliveries rows: lease start + whether the attempt finished. */
+  deliveries: new Map<string, { received_at: number; processed_at: number | null }>(),
   claimError: null as { code: string; message: string } | null,
+  releaseError: null as { code: string; message: string } | null,
   deleted: [] as { installation: number; repos: number[] }[],
   released: [] as string[],
+  completed: [] as string[],
 }));
 
 vi.mock("@/lib/supabase", () => ({
   serviceClient: () =>
     ({
+      // The 0091 RPC: insert, or take over an unfinished row whose lease
+      // has run out; a processed row or a live lease refuses.
+      rpc: async (
+        fn: string,
+        args: { p_delivery_id: string; p_event: string; p_lease_seconds: number }
+      ) => {
+        if (fn !== "github_delivery_claim") throw new Error(`unexpected rpc ${fn}`);
+        if (db.claimError) return { data: null, error: db.claimError };
+        const now = Date.now();
+        const row = db.deliveries.get(args.p_delivery_id);
+        if (row) {
+          const expired = row.received_at < now - args.p_lease_seconds * 1000;
+          if (row.processed_at !== null || !expired) return { data: false, error: null };
+        }
+        db.deliveries.set(args.p_delivery_id, { received_at: now, processed_at: null });
+        return { data: true, error: null };
+      },
       from(table: string) {
         if (table === "github_deliveries") {
           return {
-            insert: async (row: { delivery_id: string }) => {
-              if (db.claimError) return { error: db.claimError };
-              if (db.deliveries.has(row.delivery_id)) {
-                return { error: { code: "23505", message: "duplicate" } };
-              }
-              db.deliveries.add(row.delivery_id);
-              return { error: null };
+            update(patch: { processed_at: string }) {
+              return {
+                eq: async (_col: string, value: string) => {
+                  const row = db.deliveries.get(value);
+                  if (row) row.processed_at = Date.parse(patch.processed_at);
+                  db.completed.push(value);
+                  return { error: null };
+                },
+              };
             },
             delete() {
               return {
                 eq: async (_col: string, value: string) => {
+                  if (db.releaseError) return { error: db.releaseError };
                   db.released.push(value);
                   db.deliveries.delete(value);
                   return { error: null };
@@ -129,8 +153,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   db.deliveries.clear();
   db.claimError = null;
+  db.releaseError = null;
   db.deleted.length = 0;
   db.released.length = 0;
+  db.completed.length = 0;
   process.env["GITHUB_APP_ID"] = "4242";
   process.env["GITHUB_APP_SLUG"] = "wzrd-create";
   process.env["GITHUB_APP_PRIVATE_KEY"] = "-----BEGIN RSA PRIVATE KEY-----\\nx\\n-----END RSA PRIVATE KEY-----";
@@ -308,12 +334,44 @@ describe("POST /api/inbound/github — failed handlers", () => {
     expect(db.released).toEqual(["d-push"]);
   });
 
-  it("keeps the claim for a delivery that was fully processed", async () => {
+  it("marks a fully processed delivery final: a redelivery is a duplicate even after the lease", async () => {
     await POST(deliver("installation", { action: "deleted", installation: { id: 10 } }, { delivery: "d-done" }));
     expect(db.released).toEqual([]);
+    expect(db.completed).toEqual(["d-done"]);
+    expect(db.deliveries.get("d-done")?.processed_at).not.toBeNull();
+
+    db.deliveries.get("d-done")!.received_at -= 3600_000;
     const again = await POST(deliver("installation", { action: "deleted", installation: { id: 10 } }, { delivery: "d-done" }));
     expect(await again.json()).toEqual({ ok: true, duplicate: true });
     expect(imports.markInstallation).toHaveBeenCalledTimes(1);
+  });
+
+  it("a failed release cannot acknowledge the redelivery forever: the lease expires and it runs", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    imports.markInstallation.mockRejectedValueOnce(new Error("db down"));
+    db.releaseError = { code: "XX000", message: "connection reset" };
+    const body = { action: "deleted", installation: { id: 10 } };
+    await expect(POST(deliver("installation", body, { delivery: "d-stuck" }))).rejects.toThrow("db down");
+    expect(db.released).toEqual([]);
+    expect(db.deliveries.get("d-stuck")).toMatchObject({ processed_at: null });
+    spy.mockRestore();
+
+    // While the lease is live the redelivery waits (the attempt may still be running)…
+    const early = await POST(deliver("installation", body, { delivery: "d-stuck" }));
+    expect(await early.json()).toEqual({ ok: true, duplicate: true });
+    expect(imports.markInstallation).toHaveBeenCalledTimes(1);
+
+    // …and once it has run out, the unfinished row is taken over and processed.
+    db.releaseError = null;
+    db.deliveries.get("d-stuck")!.received_at -= 16 * 60_000;
+    const retry = await POST(deliver("installation", body, { delivery: "d-stuck" }));
+    expect(await retry.json()).toEqual({ ok: true });
+    expect(imports.markInstallation).toHaveBeenCalledTimes(2);
+    expect(db.completed).toEqual(["d-stuck"]);
+
+    const done = await POST(deliver("installation", body, { delivery: "d-stuck" }));
+    expect(await done.json()).toEqual({ ok: true, duplicate: true });
+    expect(imports.markInstallation).toHaveBeenCalledTimes(2);
   });
 
   it("keeps the claim when a static sync fails (recorded on the link, 200 to GitHub)", async () => {
@@ -322,5 +380,6 @@ describe("POST /api/inbound/github — failed handlers", () => {
     const response = await POST(deliver("push", push, { delivery: "d-sync" }));
     expect(response.status).toBe(200);
     expect(db.released).toEqual([]);
+    expect(db.completed).toEqual(["d-sync"]);
   });
 });

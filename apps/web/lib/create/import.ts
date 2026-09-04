@@ -279,6 +279,38 @@ async function saveLink(
   return linkRow.parse(data);
 }
 
+const RESTORE_ATTEMPTS = 3;
+
+/**
+ * Put a link row back exactly as it was read before a re-import moved it
+ * (`saveLink` keeps the row, so this is an update by id). Retried on
+ * transient errors; a unique-source refusal means another app took the old
+ * source in the meantime and the restore cannot happen. Returns the error
+ * it could not get past, null on success.
+ */
+async function restoreLink(supabase: SupabaseClient, previous: RepoLink): Promise<string | null> {
+  const { id, created_at, ...fields } = previous;
+  void created_at;
+  let lastError = "unknown";
+  for (let attempt = 1; attempt <= RESTORE_ATTEMPTS; attempt += 1) {
+    const { data, error } = await supabase
+      .from("github_repo_links")
+      .update(fields)
+      .eq("id", id)
+      .select("id");
+    if (!error && (data ?? []).length > 0) return null;
+    lastError = error ? error.message : "link row missing";
+    if (error?.code === "23505" || !error) break;
+    if (attempt < RESTORE_ATTEMPTS) {
+      await new Promise((resolve) => setTimeout(resolve, 50 * attempt));
+    }
+  }
+  console.error(
+    JSON.stringify({ msg: "repo link restore failed", link: id, app_id: previous.app_id, error: lastError })
+  );
+  return lastError;
+}
+
 /** Unlink: the app and its versions stay; pushes stop landing. */
 export async function unlinkRepo(
   supabase: SupabaseClient,
@@ -864,18 +896,32 @@ export async function linkRepository(
     last_error: null,
   };
 
+  // The link row is the one write that can be refused for a reason of its
+  // own (the unique source index, the database), so it goes first: a refusal
+  // here has changed nothing — no draft moved, no workflow committed. Only
+  // then do the external effects run, and if one of them fails the row is
+  // put back: removed again for a first link (with the app this request
+  // created for it), restored field-for-field for a re-link, so the owner
+  // is left with the working link they had rather than a half-moved one.
+  let link: RepoLink;
+  try {
+    link = await saveLink(supabase, linkFields);
+  } catch (error) {
+    if (created) await discardEmptyDraft(supabase, userId, app.id);
+    throw error;
+  }
   let version: string | null = null;
   let workflowPath: string | null = null;
   try {
-    // A first link is written before staging so the owner sees a connected
-    // app while it uploads; a re-link keeps the working link exactly as it
-    // is until the replacement has actually staged (or committed its
-    // workflow), so a failed re-import changes nothing.
-    let link = existingLink ? null : await saveLink(supabase, linkFields);
     if (staged) {
       version = await uploadVersion(supabase, app, staged.files, "import", {
         findings: staged.findings,
         promote: false,
+      });
+      await stampLink(supabase, link.id, {
+        last_sha: sha,
+        last_synced_at: new Date().toISOString(),
+        last_error: null,
       });
     } else {
       workflowPath = await commitWorkflow(installation.installation_id, {
@@ -885,19 +931,17 @@ export async function linkRepository(
         plan,
       });
     }
-    link ??= await saveLink(supabase, linkFields);
-    if (staged) {
-      await stampLink(supabase, link.id, {
-        last_sha: sha,
-        last_synced_at: new Date().toISOString(),
-        last_error: null,
-      });
-    }
   } catch (error) {
-    // A link that never produced anything is undone — and an app this request
-    // created for it goes too — so the owner retries from a clean state
-    // instead of finding a half-connected or empty app.
-    if (!existingLink) {
+    if (existingLink) {
+      const restoreError = await restoreLink(supabase, existingLink);
+      if (restoreError) {
+        throw new ImportError(
+          `${errorText(error)}; the previous link (${existingLink.full_name}@${existingLink.branch}` +
+            `${existingLink.dir ? `/${existingLink.dir}` : ""}) could not be restored: ${restoreError} — import again`,
+          502
+        );
+      }
+    } else {
       await unlinkRepo(supabase, userId, app.id).catch(() => false);
       if (created) await discardEmptyDraft(supabase, userId, app.id);
     }

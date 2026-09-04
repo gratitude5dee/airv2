@@ -1,10 +1,11 @@
 /**
- * V11 §11 Import, linking a repository to an app: a first import creates the
- * link (and app) only to keep them when something actually staged; a
- * re-import leaves the working link untouched until the replacement has
- * staged; a source already feeding another app is refused before any row
- * exists; an app this request created is removed again when the link
- * cannot be kept.
+ * V11 §11 Import, linking a repository to an app: the link row is written
+ * before any external effect, so a refused or failed write (unique source,
+ * database) stages nothing and commits nothing; a first import keeps the
+ * link (and app) only when something actually staged; a failed re-import
+ * puts the working link back field-for-field; a source already feeding
+ * another app is refused before any row exists; an app this request
+ * created is removed again when the link cannot be kept.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -20,6 +21,10 @@ const db = vi.hoisted(() => ({
   log: [] as string[],
   /** Runs right before an upsert is applied (a concurrent writer). */
   beforeUpsert: null as (() => void) | null,
+  /** Errors the next N upserts return (the database refusing). */
+  failUpserts: 0,
+  /** Errors the next N updates return. */
+  failUpdates: 0,
 }));
 
 vi.mock("@/lib/supabase", () => ({ serviceClient: () => ({}) }));
@@ -42,12 +47,20 @@ function supabase(): SupabaseClient {
         return { data: gone, error: null };
       }
       if (op.kind === "update") {
+        if (db.failUpdates > 0) {
+          db.failUpdates -= 1;
+          return { data: [], error: { code: "XX000", message: "connection reset" } };
+        }
         const hit = matches();
         for (const row of hit) Object.assign(row, op.values);
         db.log.push(`update:${table}`);
         return { data: hit, error: null };
       }
       const incoming = op.row;
+      if (db.failUpserts > 0) {
+        db.failUpserts -= 1;
+        return { data: [], error: { code: "XX000", message: "connection reset" } };
+      }
       db.beforeUpsert?.();
       const byApp = rows().find((row) => row["app_id"] === incoming["app_id"]);
       const clash = rows().find(
@@ -224,6 +237,8 @@ beforeEach(() => {
   db.nextId = 1;
   db.log = [];
   db.beforeUpsert = null;
+  db.failUpserts = 0;
+  db.failUpdates = 0;
   process.env["MINIAPP_ORIGIN"] = "https://mini.wzrd.test";
   drop.resolveOrCreateDropApp.mockResolvedValue({ app, created: true });
   github.downloadZipball.mockResolvedValue(zipball({ "index.html": HTML, "site/index.html": HTML }));
@@ -285,26 +300,68 @@ describe("linkRepository — re-import", () => {
     drop.resolveOrCreateDropApp.mockResolvedValue({ app, created: false });
   });
 
-  it("replaces the link only after the new source has staged", async () => {
+  it("moves the link (same row) before staging, then stamps the new head", async () => {
+    versions.uploadVersion.mockImplementationOnce(async () => {
+      // By the time the draft stages, the row already names the new source.
+      expect(links()[0]).toMatchObject({ id: "link-old", dir: "", last_sha: "a".repeat(40) });
+      return "v1700000000000";
+    });
     const result = await linkRepository(supabase(), "user-alice", { ...input, dir: "" });
     expect(result.dir).toBe("");
     expect(links()).toHaveLength(1);
     expect(links()[0]).toMatchObject({ id: "link-old", dir: "", last_sha: SHA, last_error: null });
-    const upsertAt = db.log.indexOf("upsert:github_repo_links");
-    expect(upsertAt).toBeGreaterThanOrEqual(0);
     expect(versions.uploadVersion).toHaveBeenCalledTimes(1);
   });
 
-  it("leaves the working link exactly as it was when the replacement fails to stage", async () => {
+  it("a refused link write stages nothing: the source is taken at write time", async () => {
+    // The pre-check saw nothing, but another app claims the source just
+    // before the upsert; the unique index decides and no draft moves.
+    db.beforeUpsert = () => {
+      db.tables["github_repo_links"]!.push(
+        existingLink({ id: "link-bob", app_id: "app-bob", user_id: "user-bob", dir: "" })
+      );
+    };
+    await expect(linkRepository(supabase(), "user-alice", { ...input, dir: "" })).rejects.toMatchObject({
+      status: 409,
+    });
+    expect(versions.uploadVersion).not.toHaveBeenCalled();
+    expect(links().find((l) => l["id"] === "link-old")).toEqual(existingLink());
+  });
+
+  it("a database failure on the link write stages nothing and commits nothing", async () => {
+    db.failUpserts = 1;
+    await expect(linkRepository(supabase(), "user-alice", { ...input, dir: "" })).rejects.toThrow(
+      /link save failed: connection reset/
+    );
+    expect(versions.uploadVersion).not.toHaveBeenCalled();
+    expect(github.putFile).not.toHaveBeenCalled();
+    expect(links()).toEqual([existingLink()]);
+  });
+
+  it("puts the working link back exactly as it was when the replacement fails to stage", async () => {
     versions.uploadVersion.mockRejectedValueOnce(new Error("r2 down"));
     await expect(linkRepository(supabase(), "user-alice", { ...input, dir: "" })).rejects.toThrow("r2 down");
     expect(links()).toEqual([existingLink()]);
-    expect(db.log).not.toContain("upsert:github_repo_links");
     expect(db.log).not.toContain("delete:github_repo_links:1");
     expect(drop.discardEmptyDraft).not.toHaveBeenCalled();
   });
 
-  it("leaves the working link when switching to build mode fails to commit the workflow", async () => {
+  it("retries the restore, and reports it when the old link cannot be put back", async () => {
+    versions.uploadVersion.mockRejectedValueOnce(new Error("r2 down"));
+    db.failUpdates = 2;
+    await expect(linkRepository(supabase(), "user-alice", { ...input, dir: "" })).rejects.toThrow("r2 down");
+    expect(links()).toEqual([existingLink()]);
+
+    db.tables["github_repo_links"] = [existingLink()];
+    versions.uploadVersion.mockRejectedValueOnce(new Error("r2 down"));
+    db.failUpdates = 3;
+    await expect(linkRepository(supabase(), "user-alice", { ...input, dir: "" })).rejects.toMatchObject({
+      status: 502,
+      message: expect.stringMatching(/previous link \(alice\/site@main\/site\) could not be restored/),
+    });
+  });
+
+  it("puts the working link back when switching to build mode fails to commit the workflow", async () => {
     github.downloadZipball.mockResolvedValue(
       zipball({
         "package.json": JSON.stringify({ scripts: { build: "vite build" }, devDependencies: { vite: "6" } }),
@@ -315,6 +372,21 @@ describe("linkRepository — re-import", () => {
     await expect(
       linkRepository(supabase(), "user-alice", { ...input, dir: "", commitWorkflow: true })
     ).rejects.toThrow("contents:write refused");
+    expect(links()).toEqual([existingLink()]);
+  });
+
+  it("a refused link write for build mode never touches the repository", async () => {
+    github.downloadZipball.mockResolvedValue(
+      zipball({
+        "package.json": JSON.stringify({ scripts: { build: "vite build" }, devDependencies: { vite: "6" } }),
+        "package-lock.json": "{}",
+      })
+    );
+    db.failUpserts = 1;
+    await expect(
+      linkRepository(supabase(), "user-alice", { ...input, dir: "", commitWorkflow: true })
+    ).rejects.toMatchObject({ status: 502 });
+    expect(github.putFile).not.toHaveBeenCalled();
     expect(links()).toEqual([existingLink()]);
   });
 

@@ -2,8 +2,11 @@
  * GitHub App webhook → verify `X-Hub-Signature-256` over the raw body
  * (before any DB write) → dedupe by `X-GitHub-Delivery` → dispatch → 200.
  * Same discipline as every other inbound webhook (goal.md §MA2.3): a bad
- * signature rejects before any write, a redelivery acknowledges without
- * reprocessing.
+ * signature rejects before any write, a redelivery of a processed event
+ * acknowledges without reprocessing. The delivery id is held as a lease
+ * while its handler runs and marked final only when it succeeds, so a
+ * failed attempt — even one whose release never landed — is run again by
+ * the redelivery rather than acknowledged forever.
  *
  * Events that matter:
  *   installation               deleted / suspend / unsuspend → installation row
@@ -55,24 +58,59 @@ const pushEvent = z.object({
   installation: z.object({ id: z.number().int() }).optional(),
 });
 
-/** Claim the delivery id; false when GitHub already delivered it. */
+/**
+ * How long one processing attempt may hold a delivery before a redelivery
+ * is allowed to take it over. A push sync (zipball → R2) finishes well
+ * inside this; a handler that died without releasing does not hold the id
+ * forever.
+ */
+const DELIVERY_LEASE_SECONDS = 15 * 60;
+
+/**
+ * Claim the delivery id for this attempt (RPC `github_delivery_claim`,
+ * migration 0091). False when the delivery was already processed, or is
+ * being processed right now under a live lease. A delivery whose earlier
+ * attempt failed — and whose release never landed — comes back true once
+ * that lease has expired, so no failure mode turns into a permanent
+ * "duplicate" for an event that never ran.
+ */
 async function claimDelivery(
   supabase: SupabaseClient,
   deliveryId: string,
   event: string
 ): Promise<boolean> {
-  const { error } = await supabase
-    .from("github_deliveries")
-    .insert({ delivery_id: deliveryId, event });
-  if (!error) return true;
-  if (error.code === "23505") return false;
-  throw new Error(`delivery claim failed: ${error.message}`);
+  const { data, error } = await supabase.rpc("github_delivery_claim", {
+    p_delivery_id: deliveryId,
+    p_event: event,
+    p_lease_seconds: DELIVERY_LEASE_SECONDS,
+  });
+  if (error) throw new Error(`delivery claim failed: ${error.message}`);
+  return data === true;
 }
 
 /**
- * Give a delivery back when its handler threw: the claim only means
- * "processed", so a redelivery of a failed one must run again instead of
- * being acknowledged as a duplicate.
+ * Mark the delivery final: from here a redelivery is a duplicate for good.
+ * Only the successful dispatch path reaches this, so a row without
+ * `processed_at` is by definition an attempt that did not finish.
+ */
+async function completeDelivery(supabase: SupabaseClient, deliveryId: string): Promise<void> {
+  const { error } = await supabase
+    .from("github_deliveries")
+    .update({ processed_at: new Date().toISOString() })
+    .eq("delivery_id", deliveryId);
+  if (error) {
+    // The lease still expires; the worst case is one re-run of an
+    // idempotent handler after DELIVERY_LEASE_SECONDS.
+    console.error(
+      JSON.stringify({ msg: "github delivery complete failed", delivery: deliveryId, error: error.message })
+    );
+  }
+}
+
+/**
+ * Give a delivery back when its handler threw, so a redelivery runs it again
+ * right away. Best effort: if this delete fails too, the row is left as an
+ * unfinished attempt and the lease expiry hands it to the next redelivery.
  */
 async function releaseDelivery(supabase: SupabaseClient, deliveryId: string): Promise<void> {
   const { error } = await supabase
@@ -170,12 +208,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!(await claimDelivery(supabase, deliveryId, event))) {
     return NextResponse.json({ ok: true, duplicate: true });
   }
+  let response: NextResponse;
   try {
-    return await dispatch(supabase, event, body);
+    response = await dispatch(supabase, event, body);
   } catch (error) {
     await releaseDelivery(supabase, deliveryId);
     throw error;
   }
+  await completeDelivery(supabase, deliveryId);
+  return response;
 }
 
 async function dispatch(

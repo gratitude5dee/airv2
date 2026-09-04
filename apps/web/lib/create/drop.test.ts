@@ -14,7 +14,12 @@ const preview = vi.hoisted(() => ({
 vi.mock("./preview", () => preview);
 
 const publish = vi.hoisted(() => ({
-  createDraft: vi.fn(async () => ({ id: "app-alice-promo", slug: "alice-promo", name: "Promo" })),
+  createDraft: vi.fn(async () => ({
+    id: "app-alice-promo",
+    slug: "alice-promo",
+    name: "Promo",
+    created: true,
+  })),
   ownedApp: vi.fn(),
   publisherUsername: vi.fn(async () => "alice"),
 }));
@@ -36,7 +41,14 @@ vi.mock("../miniapps/registry", async (importOriginal) => ({
 import { BundleError } from "../miniapps/bundles";
 import { PublishError } from "../miniapps/publish";
 import { LintError } from "./lint";
-import { appnameFromFilename, dropBundle, dropKind, normalizeDrop } from "./drop";
+import {
+  appnameFromFilename,
+  discardEmptyDraft,
+  dropBundle,
+  dropKind,
+  normalizeDrop,
+  resolveOrCreateDropApp,
+} from "./drop";
 
 const supabase = {} as SupabaseClient;
 const OWNER = "user-alice";
@@ -230,5 +242,81 @@ describe("dropBundle", () => {
       dropBundle(supabase, OWNER, { appname: "promo", file: { name: "site.zip", bytes: zip } })
     ).rejects.toBeInstanceOf(BundleError);
     expect(publish.publisherUsername).not.toHaveBeenCalled();
+  });
+});
+
+describe("resolveOrCreateDropApp — creation ownership", () => {
+  it("two concurrent calls for one new appname: only the insert that won created it", async () => {
+    // Both lookups miss (the row does not exist yet); createDraft decides.
+    registry.getRegistryApp.mockResolvedValue(null);
+    publish.createDraft
+      .mockResolvedValueOnce({ id: "app-alice-promo", slug: "alice-promo", name: "Promo", created: true })
+      .mockResolvedValueOnce({ id: "app-alice-promo", slug: "alice-promo", name: "Promo", created: false });
+    const [a, b] = await Promise.all([
+      resolveOrCreateDropApp(supabase, OWNER, { appname: "promo" }),
+      resolveOrCreateDropApp(supabase, OWNER, { appname: "promo" }),
+    ]);
+    expect(a.app.slug).toBe("alice-promo");
+    expect(b.app.slug).toBe("alice-promo");
+    expect([a.created, b.created].sort()).toEqual([false, true]);
+  });
+
+  it("an app the lookup already found was not created by this call", async () => {
+    registry.getRegistryApp.mockResolvedValue(draftApp);
+    const out = await resolveOrCreateDropApp(supabase, OWNER, { appname: "promo" });
+    expect(out).toEqual({ app: draftApp, created: false });
+    expect(publish.createDraft).not.toHaveBeenCalled();
+  });
+});
+
+describe("discardEmptyDraft", () => {
+  type Row = Record<string, unknown>;
+  function miniApps(rows: Row[]): SupabaseClient {
+    const filters: ((row: Row) => boolean)[] = [];
+    const chain = {
+      delete: () => chain,
+      eq: (col: string, value: unknown) => {
+        filters.push((row) => row[col] === value);
+        return chain;
+      },
+      is: (col: string, value: unknown) => {
+        filters.push((row) => {
+          if (!(col in row)) throw new Error(`column ${col} does not exist`);
+          return (row[col] ?? null) === value;
+        });
+        return chain;
+      },
+      select: async () => {
+        const gone = rows.filter((row) => filters.every((f) => f(row)));
+        for (const row of gone) rows.splice(rows.indexOf(row), 1);
+        return { data: gone, error: null };
+      },
+    };
+    return { from: () => chain } as unknown as SupabaseClient;
+  }
+  const base = { id: "app-1", owner_user_id: OWNER, status: "draft", draft_version: null, bundle_version: null };
+
+  it("removes an owned draft that never received a version", async () => {
+    const rows = [{ ...base }];
+    expect(await discardEmptyDraft(miniApps(rows), OWNER, "app-1")).toBe(true);
+    expect(rows).toEqual([]);
+  });
+
+  it("keeps an app once either pointer is set (a concurrent upload landed)", async () => {
+    const staged = [{ ...base, draft_version: "v1" }];
+    expect(await discardEmptyDraft(miniApps(staged), OWNER, "app-1")).toBe(false);
+    expect(staged).toHaveLength(1);
+    const uploaded = [{ ...base, bundle_version: "v1" }];
+    expect(await discardEmptyDraft(miniApps(uploaded), OWNER, "app-1")).toBe(false);
+    expect(uploaded).toHaveLength(1);
+  });
+
+  it("never touches another owner's app or a non-draft", async () => {
+    const other = [{ ...base, owner_user_id: "user-bob" }];
+    expect(await discardEmptyDraft(miniApps(other), OWNER, "app-1")).toBe(false);
+    expect(other).toHaveLength(1);
+    const live = [{ ...base, status: "published" }];
+    expect(await discardEmptyDraft(miniApps(live), OWNER, "app-1")).toBe(false);
+    expect(live).toHaveLength(1);
   });
 });

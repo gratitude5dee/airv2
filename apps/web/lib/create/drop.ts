@@ -128,7 +128,13 @@ export async function resolveDropApp(
   return (await resolveOrCreateDropApp(supabase, userId, input, lane)).app;
 }
 
-/** As `resolveDropApp`, also saying whether this call created the row. */
+/**
+ * As `resolveDropApp`, also saying whether this call created the row.
+ * `created` comes from the insert itself, never from the lookup that
+ * preceded it: two concurrent calls for one new appname both miss the
+ * lookup, but only the one whose insert won is told it created the app,
+ * so only that one may ever discard it (`discardEmptyDraft`).
+ */
 export async function resolveOrCreateDropApp(
   supabase: SupabaseClient,
   userId: string,
@@ -148,19 +154,21 @@ export async function resolveOrCreateDropApp(
     }
     return { app: existing, created: false };
   }
-  await createDraft(supabase, userId, {
+  const draft = await createDraft(supabase, userId, {
     appname,
     name: input.name?.trim() || titleFor(appname),
     description: input.description ?? "",
     lane,
   });
-  return { app: await ownedApp(supabase, userId, slug), created: true };
+  return { app: await ownedApp(supabase, userId, slug), created: draft.created };
 }
 
 /**
  * Undo a draft row this request created and never filled: only an owned
- * `draft` with no version pointer goes, so a concurrent upload to the same
- * name is never deleted from under its owner.
+ * `draft` with neither pointer set goes (`bundle_version` is what a
+ * published or legacy upload sets, `draft_version` what staging sets), so
+ * a concurrent upload to the same name is never deleted from under its
+ * owner.
  */
 export async function discardEmptyDraft(
   supabase: SupabaseClient,
@@ -174,7 +182,7 @@ export async function discardEmptyDraft(
     .eq("owner_user_id", userId)
     .eq("status", "draft")
     .is("draft_version", null)
-    .is("live_version", null)
+    .is("bundle_version", null)
     .select("id");
   if (error) {
     console.error(JSON.stringify({ msg: "empty draft discard failed", app_id: appId, error: error.message }));
