@@ -34,8 +34,8 @@ git clone https://github.com/DavidHDev/react-bits /tmp/react-bits && git -C /tmp
 KIT_CLONE_REACTBITS=/tmp/react-bits npx tsx packages/create-kit/scripts/pack-restricted.ts
 ```
 
-The script refuses to run if `LICENSE.md` no longer contains both `MIT License` and
-`Commons Clause` (a relicensing means the tier must be re-decided, not silently
+The script refuses to run if `LICENSE.md` no longer contains both `MIT + Commons Clause License Condition` and
+`Commons Clause Restriction` (a relicensing means the tier must be re-decided, not silently
 repackaged), if the checkout lives inside this repository, or if any allowlisted file has
 a hard CSP finding after normalization. Upload with the Build Service's R2 credential
 (`putObject` in `apps/web/lib/storage/r2.ts`, key from the manifest's `r2Key`); the

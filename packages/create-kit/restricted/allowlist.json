@@ -7,7 +7,7 @@
     "spdx": "MIT AND LicenseRef-Commons-Clause-1.0",
     "tier": "B",
     "licenseFile": "LICENSE.md",
-    "licenseMustContain": ["MIT License", "Commons Clause"]
+    "licenseMustContain": ["MIT + Commons Clause License Condition", "Commons Clause Restriction"]
   },
   "components": [
     { "id": "reactbits/beams", "upstream": "src/content/Backgrounds/Beams/Beams.jsx", "kind": "background", "lite": false },
