@@ -501,8 +501,8 @@ sudo systemctl enable hermes-gateway.service hermes-dashboard.service hermes-hos
 # Hermes pins each session's system prompt at creation (sessions.system_prompt_hash);
 # clearing it makes the next turn rebuild from the current SOUL/skills without touching messages.
 if [ -f "$HOME_DIR/.hermes/state.db" ]; then
-  sudo systemctl stop hermes-gateway.service
-  python3 - "$HOME_DIR/.hermes/state.db" <<'PY' || { sudo systemctl start hermes-gateway.service; exit 1; }
+  sudo systemctl stop hermes-gateway.service hermes-dashboard.service
+  python3 - "$HOME_DIR/.hermes/state.db" <<'PY' || { sudo systemctl start hermes-gateway.service hermes-dashboard.service; exit 1; }
 import sqlite3
 import sys
 
@@ -511,7 +511,7 @@ try:
         db.execute(
             "UPDATE sessions "
             "SET system_prompt = NULL, system_prompt_hash = NULL "
-            "WHERE system_prompt_hash IS NOT NULL"
+            "WHERE system_prompt_hash IS NOT NULL OR system_prompt IS NOT NULL"
         )
         db.execute(
             "DELETE FROM system_prompts "
