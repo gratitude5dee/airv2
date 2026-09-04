@@ -21,6 +21,10 @@ interface EntitlementRow {
 interface RunRow {
   user_id: string;
   label: string;
+  /** Run rows carry a trigger; metered completion rows do not. */
+  trigger?: string | null;
+  hermes_run_id?: string | null;
+  [column: string]: unknown;
 }
 
 const state: {
@@ -76,20 +80,28 @@ function table(name: string): Record<string, unknown> {
         return { data: null };
     }
   };
+  const notNull: string[] = [];
   const builder: Record<string, unknown> = {};
-  for (const f of ["select", "like", "not", "is", "or", "gte", "order", "limit"]) {
+  for (const f of ["select", "like", "is", "or", "gte", "order", "limit"]) {
     builder[f] = () => builder;
   }
   builder["eq"] = (column: string, value: unknown) => {
     eqs[column] = value;
     return builder;
   };
+  builder["not"] = (column: string, operator: string, value: unknown) => {
+    if (operator === "is" && value === null) notNull.push(column);
+    return builder;
+  };
   builder["maybeSingle"] = async () => {
     if (name !== "agent_runs") return answer();
     const run = state.runs.find(
-      (row) => row.user_id === eqs["user_id"] && row.label === eqs["label"]
+      (row) =>
+        row.user_id === eqs["user_id"] &&
+        row.label === eqs["label"] &&
+        notNull.every((column) => row[column] !== null)
     );
-    return { data: run ? { hermes_run_id: "run-1" } : null };
+    return { data: run ? { id: "row-1" } : null };
   };
   builder["then"] = (resolve: (v: unknown) => unknown) =>
     Promise.resolve(answer()).then(resolve);
@@ -312,6 +324,25 @@ describe("gateway Create tier family (MC4 §9.1)", () => {
       state.runs = [...state.runs, { user_id: "user-2", label: "create:bob-countdown" }];
       state.budgets = { ...state.budgets, "bob-countdown": 5 };
       const { response, url } = await complete({ messages: [], model: "create-balanced:bob-countdown" });
+      expect(response.status).toBe(403);
+      expect(url).toBeNull();
+      expect(meteredRows.length).toBe(0);
+    });
+
+    it("a run row opened before its Hermes run is linked already attributes", async () => {
+      state.runs = [
+        { user_id: "user-1", label: "create:alice-countdown", trigger: "web", hermes_run_id: null },
+      ];
+      const { response } = await complete({ messages: [], model: COUNTDOWN });
+      expect(response.status).toBe(200);
+      expect(meteredRows.map((row) => row["label"])).toEqual(["create:alice-countdown"]);
+    });
+
+    it("metered completion rows (no trigger) never make a project attributable", async () => {
+      state.runs = [
+        { user_id: "user-1", label: "create:alice-countdown", trigger: null, hermes_run_id: null },
+      ];
+      const { response, url } = await complete({ messages: [], model: COUNTDOWN });
       expect(response.status).toBe(403);
       expect(url).toBeNull();
       expect(meteredRows.length).toBe(0);

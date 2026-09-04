@@ -4,7 +4,10 @@
  * box_seconds from the agent_runs receipts. Each row is labeled with the
  * user's username, verified handles, and provider box id so an operator can
  * identify a specific user's box without cross-referencing /api/admin/users.
- * Identity and usage metadata only — no message content, prompts, or memory
+ * Fleet position rides along: channel, baseline_version (the template release
+ * sync-box.sh last converged the box to), baseline_synced_at, and
+ * template_version (the pinned Hermes ref once a release with hermes_ref has
+ * been applied). Identity and usage metadata only — no message content, prompts, or memory
  * (C4).
  */
 import { NextRequest, NextResponse } from "next/server";
@@ -26,7 +29,10 @@ interface UserBox {
   provider_box_id: string | null;
   state: string | null;
   provider: string | null;
+  channel: string | null;
   template_version: string | null;
+  baseline_version: string | null;
+  baseline_synced_at: string | null;
   last_active_at: string | null;
   stop_after: string | null;
   created_at: string | null;
@@ -72,7 +78,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         provider_box_id: null,
         state: null,
         provider: null,
+        channel: null,
         template_version: null,
+        baseline_version: null,
+        baseline_synced_at: null,
         last_active_at: null,
         stop_after: null,
         created_at: null,
@@ -96,7 +105,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const { data, error } = await supabase
       .from("boxes")
       .select(
-        "user_id, provider, provider_box_id, state, template_version, last_active_at, stop_after, created_at",
+        "user_id, provider, provider_box_id, state, channel, template_version, baseline_version, baseline_synced_at, last_active_at, stop_after, created_at",
       )
       .order("user_id", { ascending: true })
       .range(offset, offset + PAGE - 1);
@@ -107,7 +116,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       entry.state = (row.state as string | null) ?? null;
       entry.provider = (row.provider as string | null) ?? null;
       entry.provider_box_id = (row.provider_box_id as string | null) ?? null;
+      entry.channel = (row.channel as string | null) ?? null;
       entry.template_version = (row.template_version as string | null) ?? null;
+      entry.baseline_version = (row.baseline_version as string | null) ?? null;
+      entry.baseline_synced_at =
+        (row.baseline_synced_at as string | null) ?? null;
       entry.last_active_at = (row.last_active_at as string | null) ?? null;
       entry.stop_after = (row.stop_after as string | null) ?? null;
       entry.created_at = (row.created_at as string | null) ?? null;

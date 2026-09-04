@@ -15,7 +15,7 @@ import os
 import subprocess
 import sys
 import time
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 VIEWPORTS = [(390, 360), (390, 760), (390, 844)]
 SETTLE_MS = 1200
@@ -130,6 +130,26 @@ def origin_of(url):
     return f"{parts.scheme}://{parts.netloc}".lower()
 
 
+def strip_token(url):
+    parts = urlsplit(url)
+    query = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True) if k != "t"]
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
+
+
+def redeem(session, url):
+    """Exchange the single-use `?t=` token for the app-origin session cookie.
+
+    The Dispatcher redeems a token exactly once and 303s to the same URL
+    without `t`; every later pass must open that token-free URL, riding the
+    cookie the exchange set (a second `?t=` open is `unauthorized`).
+    """
+    ab(session, "open", url)
+    landed = ab_eval(session, "location.href")
+    if not isinstance(landed, str) or "t" in dict(parse_qsl(urlsplit(landed).query)):
+        raise RuntimeError("preview link was not accepted (expired or already used)")
+    return strip_token(url)
+
+
 def off_origin(requests, origin):
     count = 0
     for req in requests:
@@ -204,12 +224,18 @@ def main(argv):
     passes = []
     failures = []
     try:
-        for width, height in VIEWPORTS:
-            for reduced in (False, True):
-                try:
-                    passes.append(run_pass(session, url, origin, width, height, reduced, out_dir))
-                except Exception as exc:  # one broken pass must not hide the others
-                    failures.append(f"{width}x{height} rm={int(reduced)}: {str(exc)[:160]}")
+        try:
+            page = redeem(session, url)
+        except Exception as exc:
+            failures.append(f"redeem: {str(exc)[:160]}")
+            page = None
+        if page:
+            for width, height in VIEWPORTS:
+                for reduced in (False, True):
+                    try:
+                        passes.append(run_pass(session, page, origin, width, height, reduced, out_dir))
+                    except Exception as exc:  # one broken pass must not hide the others
+                        failures.append(f"{width}x{height} rm={int(reduced)}: {str(exc)[:160]}")
     finally:
         ab(session, "close", check=False)
     report = {

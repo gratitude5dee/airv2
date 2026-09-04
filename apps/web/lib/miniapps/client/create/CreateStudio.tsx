@@ -1186,8 +1186,13 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
     setSlug(next);
   }
 
+  // A parent-driven project change (deep link, tile) is a switch like any other.
+  const seenInitialSlug = useRef(initialSlug);
   useEffect(() => {
-    if (initialSlug) setSlug(initialSlug);
+    if (initialSlug === seenInitialSlug.current) return;
+    seenInitialSlug.current = initialSlug;
+    if (initialSlug) selectProject(initialSlug);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- react only to the prop, never to the slug it sets
   }, [initialSlug]);
 
   useEffect(() => () => events.current?.close(), []);

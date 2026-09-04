@@ -132,8 +132,12 @@ export function normalizePrompt(input: unknown): string {
 
 /**
  * Start a turn: ensure the app exists as the owner's draft (lane vibe when
- * new), ensure the Box session, create the run, and open the labelled
- * agent_runs row the budget meter sums over.
+ * new), open the labelled agent_runs row the gateway attributes `create-*`
+ * spend to, then ensure the Box session and create the run. The row exists
+ * before Hermes can issue its first completion — a run that starts without
+ * it would be refused (`create_run_required`) or spend unattributed — so a
+ * turn whose row cannot be written does not start, and a run that fails to
+ * start closes its row again.
  */
 export async function startCreateTurn(
   supabase: SupabaseClient,
@@ -157,31 +161,68 @@ export async function startCreateTurn(
   }
   const { app } = await resolveOrCreateDropApp(supabase, userId, { appname }, "vibe");
   const session = createSessionId(appname);
-  const box = await ensureBoxAwake(supabase, userId);
-  try {
-    await ensureSession(box.target, session, `Create · ${app.name}`);
-    const run = await createRun(box.target, {
-      input: prompt,
-      sessionId: session,
-      model: createModelFor(tier, app.slug),
-      instructions: createInstructions({
-        appname,
-        slug: app.slug,
-        lane: app.lane,
-        status: app.status,
-        draftVersion: app.draft_version,
-        liveVersion: app.status === "published" ? app.bundle_version : null,
-        kitVersion: kitVersion(),
-        budget: context.budget,
-      }),
-      metadata: { app: "create", resource: appname, surface: "miniapp" },
-    });
-    await supabase.from("agent_runs").insert({
+  const { data: opened, error: openError } = await supabase
+    .from("agent_runs")
+    .insert({
       user_id: userId,
-      hermes_run_id: run.run_id,
       trigger: input.trigger ?? "web",
       label: createRunLabel(app.slug),
-    });
+    })
+    .select("id")
+    .single();
+  const rowId = (opened as { id: string } | null)?.id;
+  if (openError || !rowId) {
+    throw new PublishError("could not open the Create run; try again", 503);
+  }
+  const closeRow = async (): Promise<void> => {
+    await supabase
+      .from("agent_runs")
+      .update({ ended_at: new Date().toISOString(), outcome: "failed" })
+      .eq("id", rowId)
+      .is("ended_at", null);
+  };
+  let box: Awaited<ReturnType<typeof ensureBoxAwake>>;
+  try {
+    box = await ensureBoxAwake(supabase, userId);
+  } catch (error) {
+    await closeRow().catch(() => undefined);
+    throw error;
+  }
+  try {
+    let run: Awaited<ReturnType<typeof createRun>>;
+    try {
+      await ensureSession(box.target, session, `Create · ${app.name}`);
+      run = await createRun(box.target, {
+        input: prompt,
+        sessionId: session,
+        model: createModelFor(tier, app.slug),
+        instructions: createInstructions({
+          appname,
+          slug: app.slug,
+          lane: app.lane,
+          status: app.status,
+          draftVersion: app.draft_version,
+          liveVersion: app.status === "published" ? app.bundle_version : null,
+          kitVersion: kitVersion(),
+          budget: context.budget,
+        }),
+        metadata: { app: "create", resource: appname, surface: "miniapp" },
+      });
+    } catch (error) {
+      await closeRow().catch(() => undefined);
+      throw error;
+    }
+    // The events relay closes the row by hermes_run_id; without it the row
+    // ages out at CREATE_RUN_MAX_MINUTES, still attributing this run's spend.
+    const { error: linkError } = await supabase
+      .from("agent_runs")
+      .update({ hermes_run_id: run.run_id })
+      .eq("id", rowId);
+    if (linkError) {
+      console.error(
+        JSON.stringify({ msg: "create run link failed", user_id: userId, run_id: run.run_id, error: linkError.message })
+      );
+    }
     return { run_id: run.run_id, session, slug: app.slug, appname, tier };
   } finally {
     await armStopAfter(supabase, userId).catch(() => undefined);
