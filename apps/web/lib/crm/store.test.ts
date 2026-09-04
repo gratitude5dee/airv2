@@ -85,6 +85,63 @@ describe("avatarIndex", () => {
     const avatar = index.get("ada@example.com");
     expect(avatar?.initials).toBe("AL");
     expect(avatar?.color).toMatch(/^#[0-9a-f]{6}$/);
+    expect(avatar?.photoKey).toBeNull();
     expect(initialsFor("ada@example.com")).toBe("A");
+  });
+
+  it("keeps only the first safe photo under the owner's public prefix", () => {
+    const { store } = applyPatch(
+      storeWith([]),
+      {
+        name: "Ada Lovelace",
+        emails: ["Ada@Example.com"],
+        photos: [
+          "../u/alice/x.png",
+          "u/alice/../bob/x.png",
+          "/u/alice/x.png",
+          "u/other/x.png",
+          "data:image/png;base64,AAAA",
+          "https://media.example/u/alice/x.png",
+          "u/alice/",
+          "u/alice/ada.png",
+          "u/alice/later.png",
+        ],
+      },
+      PROV
+    );
+    expect(avatarIndex(store, "u/alice/").get("ada@example.com")?.photoKey).toBe(
+      "u/alice/ada.png"
+    );
+  });
+
+  it("rejects unsafe refs and omits photos without a prefix", () => {
+    const hostile = [
+      "../u/alice/x.png",
+      "u/alice/../bob/x.png",
+      "/u/alice/x.png",
+      "u/other/x.png",
+      "data:image/png;base64,AAAA",
+      "https://media.example/u/alice/x.png",
+      "u/alice/",
+    ];
+    const people = hostile.map((photo, index) => ({
+      id: `person-${index}`,
+      name: `Person ${index}`,
+      emails: [`person${index}@example.com`],
+      phones: [],
+      sender_ids: [],
+      photos: [photo],
+      tags: [],
+      notes: "",
+      provenance: [],
+      created_at: "2026-01-01T00:00:00Z",
+      updated_at: "2026-01-01T00:00:00Z",
+    }));
+    const store = storeWith(people);
+    const prefixed = avatarIndex(store, "u/alice/");
+    for (const person of people) {
+      expect(prefixed.get(person.emails[0] ?? "")?.photoKey).toBeNull();
+    }
+    expect(avatarIndex(store).get("person0@example.com")?.photoKey).toBeNull();
   });
 });
