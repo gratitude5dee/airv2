@@ -436,7 +436,7 @@ const REGISTRY_READ_ATTEMPTS = 3;
 
 /** The registry row as it stands now, with bounded retries; null when the
  * registry stays unreadable (or the row is gone / no longer parses). */
-async function authoritativeApp(
+export async function authoritativeApp(
   supabase: SupabaseClient,
   appId: string
 ): Promise<RegistryApp | null> {
@@ -595,8 +595,9 @@ export async function rollbackTo(
     }
     throw error;
   }
+  let committedAt: string;
   try {
-    await pointLiveAt(supabase, app, target.version);
+    committedAt = await pointLiveAt(supabase, app, target.version);
   } catch (error) {
     // The Worker is on the target but the registry names another release —
     // the previous one, or whatever a concurrent move won with; put the
@@ -610,9 +611,16 @@ export async function rollbackTo(
     }
     throw error;
   }
-  await syncManifest(supabase, { ...app, bundle_version: target.version }).catch(
-    rethrowRefusedAsVersionError
-  );
+  // The manifest follows the row as it stands after the commit, so a delist
+  // or edit that landed since is not written over with the row this call
+  // read. The fenced swap proved that row current as of the commit, which is
+  // what stands in when the registry cannot be re-read.
+  const current = (await authoritativeApp(supabase, app.id)) ?? {
+    ...app,
+    bundle_version: target.version,
+    updated_at: committedAt,
+  };
+  await syncManifest(supabase, current).catch(rethrowRefusedAsVersionError);
   await recordOpsEvent(supabase, "rollback", app.owner_user_id, app.slug);
   console.log(
     JSON.stringify({

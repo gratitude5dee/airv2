@@ -1010,6 +1010,26 @@ describe("rollbackTo (§13.3)", () => {
     expect(db.versions[1]!.retired_at).not.toBeNull();
   });
 
+  it("the manifest is written from the row as re-read after the commit, not the row this call read", async () => {
+    await seed();
+    // The owner delists between our pointer commit and our manifest write.
+    deploy.promoteVersion.mockImplementationOnce(async () => {
+      db.apps[0]!.status = "draft";
+      db.apps[0]!.visibility = "private";
+    });
+    const target = await rollbackTo(supabase, app, "v1700000000000");
+    expect(target.version).toBe("v1700000000000");
+    expect(deploy.syncManifest).toHaveBeenCalledTimes(1);
+    expect(deploy.syncManifest).toHaveBeenCalledWith(
+      supabase,
+      expect.objectContaining({
+        status: "draft",
+        visibility: "private",
+        bundle_version: "v1700000000000",
+      })
+    );
+  });
+
   it("a failed pointer move puts the Worker back on the release the registry still names", async () => {
     await seed();
     db.fail = { table: "miniapp_point_live", op: "rpc" };
