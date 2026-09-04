@@ -500,10 +500,30 @@ sudo systemctl enable hermes-gateway.service hermes-dashboard.service hermes-hos
 
 # Hermes pins each session's system prompt at creation (sessions.system_prompt_hash);
 # clearing it makes the next turn rebuild from the current SOUL/skills without touching messages.
-if [ -f "$HOME_DIR/.hermes/state.db" ] && command -v sqlite3 >/dev/null 2>&1; then
-  sqlite3 "$HOME_DIR/.hermes/state.db" \
-    "UPDATE sessions SET system_prompt = NULL, system_prompt_hash = NULL WHERE system_prompt_hash IS NOT NULL;" \
-    || echo "warn: could not clear cached system prompts"
+if [ -f "$HOME_DIR/.hermes/state.db" ]; then
+  sudo systemctl stop hermes-gateway.service
+  python3 - "$HOME_DIR/.hermes/state.db" <<'PY'
+import sqlite3
+import sys
+
+try:
+    with sqlite3.connect(sys.argv[1], timeout=15) as db:
+        db.execute(
+            "UPDATE sessions "
+            "SET system_prompt = NULL, system_prompt_hash = NULL "
+            "WHERE system_prompt_hash IS NOT NULL"
+        )
+        db.execute(
+            "DELETE FROM system_prompts "
+            "WHERE hash NOT IN ("
+            "SELECT system_prompt_hash FROM sessions "
+            "WHERE system_prompt_hash IS NOT NULL"
+            ")"
+        )
+except Exception as err:
+    print(f"error: could not clear cached system prompts: {err}", file=sys.stderr)
+    raise SystemExit(1)
+PY
 fi
 
 sudo systemctl restart hermes-gateway.service hermes-dashboard.service hermes-host.service openviking.service air-learningd.service
