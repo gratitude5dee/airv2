@@ -122,6 +122,8 @@ interface Message {
   role: "owner" | "agent";
   text: string;
   tools?: string[];
+  /** Set when the run ended without completing; the text above it is partial. */
+  failed?: string;
 }
 
 type Reply<T> = Partial<T> & { error?: string; reason?: string };
@@ -271,7 +273,7 @@ function Chat({
   tier,
   busy,
   messages,
-  log,
+  build,
   onTier,
   onSend,
   onAppname,
@@ -281,7 +283,7 @@ function Chat({
   tier: Tier;
   busy: boolean;
   messages: Message[];
-  log: string[];
+  build: BuildState | null;
   onTier: (tier: Tier) => void;
   onSend: (text: string) => void;
   onAppname: (appname: string) => void;
@@ -289,6 +291,13 @@ function Chat({
   const [text, setText] = useState("");
   const [showLog, setShowLog] = useState(false);
   const bottom = useRef<HTMLDivElement | null>(null);
+  const log = build?.log ?? [];
+  const buildNote =
+    build?.status === "failed"
+      ? `Build failed${build.error ? `: ${build.error}` : ""}`
+      : build?.status === "queued" || build?.status === "running"
+        ? `Build ${build.status}…`
+        : null;
   useEffect(() => {
     bottom.current?.scrollIntoView({ block: "end" });
   }, [messages]);
@@ -345,10 +354,17 @@ function Chat({
                   className={`inline-block max-w-[92%] whitespace-pre-wrap rounded-xl px-3 py-1.5 text-left ${
                     m.role === "owner"
                       ? "bg-current/10"
-                      : "border border-current/10"
+                      : m.failed
+                        ? "border border-red-500/40"
+                        : "border border-current/10"
                   }`}
                 >
                   {m.text || (busy && i === messages.length - 1 ? "…" : "")}
+                  {m.failed ? (
+                    <div role="alert" className="mt-1 text-[11px] text-red-500">
+                      {m.failed}
+                    </div>
+                  ) : null}
                   {m.tools && m.tools.length > 0 ? (
                     <div className="mt-1 flex flex-wrap gap-1">
                       {m.tools.map((tool, j) => (
@@ -391,6 +407,16 @@ function Chat({
       </form>
       <div className="mt-3 flex flex-col gap-2 border-t border-current/10 pt-3">
         {status ? <BudgetBar budget={status.budget} /> : null}
+        {buildNote ? (
+          <p
+            role={build?.status === "failed" ? "alert" : undefined}
+            className={`m-0 text-[11px] ${
+              build?.status === "failed" ? "text-red-500" : "text-muted"
+            }`}
+          >
+            {buildNote}
+          </p>
+        ) : null}
         <button
           type="button"
           className="self-start text-[11px] text-muted underline"
@@ -1155,6 +1181,20 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
     ]);
   }, [slug, loadStatus, loadProjects]);
 
+  // Builds land out of band (iMessage turns, `air-create build` from the Box),
+  // so the status is polled: quickly while a build is in flight, slowly otherwise.
+  const buildInFlight =
+    status?.build?.status === "queued" || status?.build?.status === "running";
+  useEffect(() => {
+    if (!slug) return;
+    const tick = () => {
+      if (document.visibilityState === "visible")
+        void loadStatus(slug).catch(() => undefined);
+    };
+    const id = setInterval(tick, buildInFlight ? 4_000 : 15_000);
+    return () => clearInterval(id);
+  }, [slug, buildInFlight, loadStatus]);
+
   function run(action: () => Promise<void>) {
     setBusy(true);
     setMessage(null);
@@ -1209,7 +1249,7 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
         events.current = stream;
         let acc = "";
         const tools: string[] = [];
-        const update = (text: string) =>
+        const update = (text: string, failed?: string) =>
           setMessages((m) => {
             const last = m[m.length - 1];
             if (!last || last.role !== "agent") return m;
@@ -1219,13 +1259,17 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
                 role: "agent",
                 text,
                 ...(tools.length ? { tools: [...tools] } : {}),
+                ...(failed ? { failed } : {}),
               },
             ];
           });
-        const finish = (fallback: string) => {
+        const finish = (fallback: string, failed?: string) => {
           stream.close();
           setBusy(false);
-          if (!acc) update(fallback);
+          if (failed) {
+            update(acc, failed);
+            setMessage(failed);
+          } else if (!acc) update(fallback);
           void refresh().catch(() => undefined);
         };
         stream.onmessage = (event) => {
@@ -1252,12 +1296,13 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
               if (!acc && parsed.output) acc = parsed.output;
               finish(acc || "(no reply)");
             }
-            if (parsed.event === "run.failed") finish("Something went wrong.");
+            if (parsed.event === "run.failed")
+              finish("", "The run failed before it finished.");
           } catch {
             /* keep-alive or non-JSON frame */
           }
         };
-        stream.onerror = () => finish("Lost the connection to the run.");
+        stream.onerror = () => finish("", "Lost the connection to the run.");
       })
       .catch((error: unknown) => {
         setMessages((m) => m.slice(0, -1));
@@ -1295,7 +1340,7 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
       .then(() => setEpoch((n) => n + 1));
   }
 
-  const log = status?.build?.log ?? [];
+  const build = status?.build ?? null;
   const drafts = projects.filter((p) => p.slug !== slug);
 
   const picker = (
@@ -1320,9 +1365,7 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
           {status.versions.length === 1 ? "" : "s"}
         </span>
       ) : null}
-      {message ? (
-        <span className="ml-auto text-muted">{message}</span>
-      ) : null}
+      {message ? <span className="ml-auto text-muted">{message}</span> : null}
     </div>
   );
 
@@ -1347,7 +1390,7 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
             tier={tier}
             busy={busy}
             messages={messages}
-            log={log}
+            build={build}
             onTier={changeTier}
             onSend={send}
             onAppname={setAppname}
@@ -1388,7 +1431,7 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
           tier={tier}
           busy={busy}
           messages={messages}
-          log={log}
+          build={build}
           onTier={changeTier}
           onSend={send}
           onAppname={setAppname}
