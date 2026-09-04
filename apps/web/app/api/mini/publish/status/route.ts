@@ -12,6 +12,7 @@ import {
   setPublishStatus,
   type PublishStatusFlip,
 } from "@/lib/miniapps/publish";
+import { VersionError } from "@/lib/create/versions";
 import { publishRateLimited, recordOpsEvent } from "@/lib/security/limits";
 
 export const runtime = "nodejs";
@@ -65,7 +66,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
     return NextResponse.json({ ok: true });
   } catch (error) {
-    if (error instanceof PublishError) {
+    if (error instanceof PublishError || error instanceof VersionError) {
       return NextResponse.json(
         { error: error.message },
         { status: error.status }

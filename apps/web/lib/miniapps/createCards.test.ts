@@ -105,7 +105,7 @@ describe("Create card links", () => {
 function fakeSender() {
   return {
     sendApp: vi.fn(async () => undefined),
-    editApp: vi.fn(async () => undefined),
+    editApp: vi.fn(async (_space: string, _phone: string, session: unknown) => session),
     sendRichLink: vi.fn(async () => undefined),
     sendText: vi.fn(async () => undefined),
     close: vi.fn(async () => undefined),
@@ -201,5 +201,55 @@ describe("sendOrUpdateAppCard", () => {
     sessions.readMiniAppCardSession.mockResolvedValue(undefined);
     sends.claimCardSend.mockResolvedValueOnce(null);
     expect(await sendOrUpdateAppCard(supabase, owner, "alice-promo")).toBe("cooldown");
+  });
+
+  it("does not report an edit the line rejected as updated", async () => {
+    const sender = fakeSender();
+    sender.editApp.mockRejectedValueOnce(new Error("line unreachable"));
+    vi.mocked(createSpectrumSender).mockResolvedValue(sender as unknown as SpectrumSender);
+    sessions.readMiniAppCardSession.mockResolvedValue({ sessionId: "s" });
+    await expect(sendOrUpdateAppCard(supabase, owner, "alice-promo")).rejects.toThrow(
+      /app card update failed/
+    );
+    expect(sender.sendApp).not.toHaveBeenCalled();
+    expect(sends.claimCardSend).not.toHaveBeenCalled();
+    expect(sessions.deleteMiniAppCardSession).not.toHaveBeenCalled();
+  });
+
+  it("fails rather than claiming success when no destination is on file", async () => {
+    const sender = fakeSender();
+    vi.mocked(createSpectrumSender).mockResolvedValue(sender as unknown as SpectrumSender);
+    sessions.readMiniAppCardSession.mockResolvedValue({ sessionId: "s" });
+    const noDestination = {
+      from: () => ({
+        select: () => ({
+          eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }),
+        }),
+      }),
+    } as unknown as SupabaseClient;
+    await expect(sendOrUpdateAppCard(noDestination, owner, "alice-promo")).rejects.toThrow(
+      /app card update failed/
+    );
+    expect(sender.editApp).not.toHaveBeenCalled();
+    expect(sender.sendApp).not.toHaveBeenCalled();
+  });
+
+  it("sends a fresh card under the claim when the stored bubble is gone", async () => {
+    const sender = fakeSender();
+    sender.editApp.mockResolvedValueOnce(undefined);
+    vi.mocked(createSpectrumSender).mockResolvedValue(sender as unknown as SpectrumSender);
+    sessions.readMiniAppCardSession.mockResolvedValue({ sessionId: "s" });
+    registry.getRegistryApp.mockResolvedValueOnce({
+      slug: "alice-promo",
+      name: "Promo",
+      owner_user_id: "user-1",
+      status: "draft",
+      draft_version: "v1",
+      bundle_version: null,
+    } as never);
+    expect(await sendOrUpdateAppCard(supabase, owner, "alice-promo")).toBe("sent");
+    expect(sessions.deleteMiniAppCardSession).toHaveBeenCalledTimes(1);
+    expect(sends.claimCardSend).toHaveBeenCalledWith(supabase, "user-1", "app");
+    expect(sender.sendApp).toHaveBeenCalledTimes(1);
   });
 });

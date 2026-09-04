@@ -3,6 +3,7 @@ import type { BundleFile } from "../miniapps/bundles";
 import {
   LARGE_DATA_URI_BYTES,
   LintError,
+  blankCommentsAndStrings,
   enforceCsp,
   hardFindings,
   lintBundle,
@@ -132,10 +133,72 @@ describe("lintBundle", () => {
         rules([html(`<iframe src="https://www.youtube.com/embed/x"></iframe>`)])
       ).toEqual(["external-frame"]);
     });
-    it("allows a same-bundle frame", () => {
+    it("reports a same-bundle frame as soft, not hard", () => {
+      const findings = lintBundle([
+        html(`<iframe src="inner.html"></iframe>`),
+        file("inner.html", ""),
+      ]);
+      expect(findings.map((f) => [f.rule, f.severity])).toEqual([
+        ["bundled-frame", "soft"],
+      ]);
+    });
+  });
+
+  describe("bundled-frame (frame-src falls back to default-src 'none')", () => {
+    it("reports relative and root-relative frame sources with a why", () => {
+      const findings = lintBundle([
+        html(`<iframe src="/inner.html"></iframe><frame src="./x.html">`),
+        file("inner.html", ""),
+        file("x.html", ""),
+      ]);
+      expect(findings.map((f) => f.rule)).toEqual(["bundled-frame", "bundled-frame"]);
+      expect(findings[0]?.hint).toMatch(/frame-src/);
+    });
+    it("ignores frames without a source or with about:blank", () => {
       expect(
-        rules([html(`<iframe src="inner.html"></iframe>`), file("inner.html", "")])
+        rules([html(`<iframe></iframe><iframe src="about:blank"></iframe>`)])
       ).toEqual([]);
+    });
+  });
+
+  describe("inline-script (script-src 'self' has no 'unsafe-inline')", () => {
+    it("reports a non-empty inline script as soft with a move-to-file hint", () => {
+      const findings = lintBundle([
+        html(`<script>\n  document.title = 'x';\n</script>`),
+      ]);
+      expect(findings).toHaveLength(1);
+      expect(findings[0]).toMatchObject({
+        rule: "inline-script",
+        severity: "soft",
+        line: 7,
+      });
+      expect(findings[0]?.hint).toMatch(/<script src>/);
+    });
+    it("reports module and importmap bodies too", () => {
+      expect(
+        rules([
+          html(
+            `<script type="module">import './a.js'</script><script type="importmap">{"imports":{}}</script>`
+          ),
+          file("a.js", ""),
+        ])
+      ).toEqual(["inline-script", "inline-script"]);
+    });
+    it("leaves external references, empty tags and data blocks alone", () => {
+      expect(
+        rules([
+          html(
+            `<script src="a.js"></script><script></script>` +
+              `<script type="application/json">{"a":1}</script>` +
+              `<script type="application/ld+json">{}</script>` +
+              `<script type="text/template"><b>x</b></script>`
+          ),
+          file("a.js", ""),
+        ])
+      ).toEqual([]);
+    });
+    it("a page whose only script is inline still stages (soft only)", () => {
+      expect(() => enforceCsp([html(`<script>go()</script>`)])).not.toThrow();
     });
   });
 
@@ -143,10 +206,17 @@ describe("lintBundle", () => {
     it("flags localStorage, sessionStorage and indexedDB", () => {
       expect(
         rules([
-          html(`<script>localStorage.setItem('a', 1)</script>`),
+          html(`<script src="b.js"></script>`),
+          file("b.js", "localStorage.setItem('a', 1)"),
           file("a.js", "sessionStorage.clear(); window.indexedDB.open('x');"),
         ])
       ).toEqual(["client-storage", "client-storage", "client-storage"]);
+    });
+    it("flags storage inside an inline script alongside the inline finding", () => {
+      expect(rules([html(`<script>localStorage.setItem('a', 1)</script>`)])).toEqual([
+        "inline-script",
+        "client-storage",
+      ]);
     });
     it("does not flag prose outside scripts", () => {
       expect(rules([html(`<p>we never use localStorage</p>`)])).toEqual([]);
@@ -187,11 +257,14 @@ describe("lintBundle", () => {
       const findings = lintBundle([html(`<button onclick="go()">go</button>`)]);
       expect(findings).toHaveLength(1);
       expect(findings[0]).toMatchObject({ rule: "inline-handler", severity: "soft" });
-      expect(findings[0]?.hint).toMatch(/^onclick: /);
+      expect(findings[0]?.hint).toMatch(/^onclick: .*does not run inline handlers/);
     });
-    it("allows addEventListener", () => {
+    it("allows addEventListener in a bundled script", () => {
       expect(
-        rules([html(`<button id="b">go</button><script>b.addEventListener('click', go)</script>`)])
+        rules([
+          html(`<button id="b">go</button><script src="b.js"></script>`),
+          file("b.js", "b.addEventListener('click', go)"),
+        ])
       ).toEqual([]);
     });
   });
@@ -226,6 +299,96 @@ describe("lintBundle", () => {
           ),
           file("logo.png", ""),
           file("page.html", ""),
+        ])
+      ).toEqual([]);
+    });
+  });
+
+  describe("comments and strings", () => {
+    it("does not lint storage or eval mentioned in comments", () => {
+      expect(
+        rules([
+          html(""),
+          file(
+            "app.js",
+            [
+              "// never use localStorage here",
+              "/* eval( is banned",
+              "   and so is new Function( */",
+              "const note = 'sessionStorage is off'; const t = `indexedDB ${1} eval(`;",
+              'const q = "eval(x)";',
+            ].join("\n")
+          ),
+        ])
+      ).toEqual([]);
+    });
+
+    it("still flags real usage next to a comment and inside template expressions", () => {
+      const findings = lintBundle([
+        html(""),
+        file(
+          "app.js",
+          [
+            "// storage note",
+            "const s = 'x'; localStorage.setItem('k', s); // trailing eval( comment",
+            "const v = `value ${eval('1')}`;",
+          ].join("\n")
+        ),
+      ]);
+      expect(findings.map((f) => [f.rule, f.line])).toEqual([
+        ["client-storage", 2],
+        ["eval", 3],
+      ]);
+    });
+
+    it("blanks strings without moving line numbers", () => {
+      expect(blankCommentsAndStrings("a = 'x\\'y';\n// c\nb = `t${c}u`;")).toBe(
+        "a = '    ';\n    \nb = ` ${c} `;"
+      );
+    });
+  });
+
+  describe("external-media", () => {
+    it("reports off-origin images, media, posters and srcsets as soft", () => {
+      const findings = lintBundle([
+        html(
+          [
+            `<img src="https://cdn.example.com/a.png">`,
+            `<video poster="https://cdn.example.com/p.jpg" src="movie.mp4"></video>`,
+            `<audio src="//cdn.example.com/a.mp3"></audio>`,
+            `<picture><source srcset="pic.webp 1x, https://cdn.example.com/pic@2x.webp 2x"></picture>`,
+            `<video><source src="https://cdn.example.com/m.webm" type="video/webm"></video>`,
+          ].join("\n")
+        ),
+        file("movie.mp4", ""),
+        file("pic.webp", ""),
+      ]);
+      expect(findings.map((f) => f.rule)).toEqual(Array(5).fill("external-media"));
+      expect(findings.every((f) => f.severity === "soft")).toBe(true);
+      expect(findings[0]?.hint).toContain("https://cdn.example.com/a.png");
+    });
+
+    it("allows the platform media origin for images but not for audio/video", () => {
+      expect(
+        rules([
+          html(
+            `<img src="https://media.wzrd.tech/u/1.png"><video poster="https://media.wzrd.tech/u/p.jpg" src="v.mp4"></video><img src="data:image/png;base64,AAAA">`
+          ),
+          file("v.mp4", ""),
+        ])
+      ).toEqual([]);
+      expect(
+        rules([html(`<video src="https://media.wzrd.tech/u/v.mp4"></video>`)])
+      ).toEqual(["external-media"]);
+    });
+
+    it("passes relative media", () => {
+      expect(
+        rules([
+          html(`<img src="a.png" srcset="a.png 1x, a@2x.png 2x"><audio src="s.mp3"></audio>`),
+          file("a.png", ""),
+          file("a@2x.png", ""),
+          file("s.mp3", ""),
         ])
       ).toEqual([]);
     });

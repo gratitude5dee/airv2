@@ -14,6 +14,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import {
   deployStaticVersion,
+  loadBundleFiles,
   promoteVersion,
   syncManifest,
 } from "../functions/deploy";
@@ -267,12 +268,20 @@ export async function uploadVersion(
     : move.is("draft_version", null);
   const { data: moved, error } = await move.select("id");
   if (error || !moved || moved.length === 0) {
-    // The Worker already moved; put it back on whatever the registry now
-    // says is live so neither origin advertises a release the other does
-    // not serve, then surface the registry failure.
-    if (goesLive && deployed) {
-      const current = error ? app.bundle_version : await currentLiveVersion(supabase, app.id);
-      if (current) await promoteVersion(app, current).catch(() => null);
+    // The Workers already moved; put them back on whatever the registry now
+    // says is selected so neither origin serves a release the registry does
+    // not name (the draft Worker is shared, so the loser's deploy may have
+    // landed after the winner's), then surface the registry failure.
+    if (deployed) {
+      const current = error
+        ? { bundle_version: app.bundle_version, draft_version: app.draft_version }
+        : await currentPointers(supabase, app.id);
+      if (goesLive && current.bundle_version) {
+        await promoteVersion(app, current.bundle_version).catch(() => null);
+      }
+      if (current.draft_version && current.draft_version !== version) {
+        await redeployDraft(app, current.draft_version).catch(() => null);
+      }
     }
     await discardVersion(supabase, app, row.id, version);
     if (error) throw new Error(`bundle version update failed: ${error.message}`);
@@ -345,13 +354,37 @@ async function currentLiveVersion(
   supabase: SupabaseClient,
   appId: string
 ): Promise<string | null> {
+  return (await currentPointers(supabase, appId)).bundle_version;
+}
+
+async function currentPointers(
+  supabase: SupabaseClient,
+  appId: string
+): Promise<{ bundle_version: string | null; draft_version: string | null }> {
   const { data } = await supabase
     .from("mini_apps")
-    .select("bundle_version")
+    .select("bundle_version, draft_version")
     .eq("id", appId)
     .maybeSingle();
-  const live = (data as { bundle_version?: unknown } | null)?.bundle_version;
-  return typeof live === "string" ? live : null;
+  const row = data as { bundle_version?: unknown; draft_version?: unknown } | null;
+  return {
+    bundle_version: typeof row?.bundle_version === "string" ? row.bundle_version : null,
+    draft_version: typeof row?.draft_version === "string" ? row.draft_version : null,
+  };
+}
+
+/** Put the shared draft Worker back on the version the registry selects. */
+async function redeployDraft(app: RegistryApp, version: string): Promise<void> {
+  if (!app.owner_user_id) return;
+  const files = await loadBundleFiles(app.slug, version);
+  if (files.length === 0) return;
+  await deployStaticVersion({
+    slug: app.slug,
+    version,
+    ownerUserId: app.owner_user_id,
+    files,
+    target: "draft",
+  });
 }
 
 export async function getVersion(

@@ -2,7 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 const deploy = vi.hoisted(() => ({
-  deployStaticVersion: vi.fn(async () => null as { workerSha256: string } | null),
+  deployStaticVersion: vi.fn<
+    (input: { target: string; version: string }) => Promise<{ workerSha256: string } | null>
+  >(async () => null),
+  loadBundleFiles: vi.fn(async () => [{ path: "index.html", data: Buffer.from("<h1>winner</h1>") }]),
   promoteVersion: vi.fn(async () => undefined),
   syncManifest: vi.fn(async () => undefined),
 }));
@@ -317,6 +320,7 @@ beforeEach(() => {
   ];
   deploy.deployStaticVersion.mockReset();
   deploy.deployStaticVersion.mockResolvedValue(null);
+  deploy.loadBundleFiles.mockClear();
   deploy.promoteVersion.mockReset();
   deploy.promoteVersion.mockResolvedValue(undefined);
   deploy.syncManifest.mockClear();
@@ -543,6 +547,47 @@ describe("uploadVersion", () => {
     expect(db.apps[0]!.bundle_version).toBe("v1700000000009");
     expect(db.versions).toHaveLength(0);
     expect(r2.deletePrefix).toHaveBeenCalledWith(expect.stringContaining("alice-notes/v"));
+  });
+
+  it("stage-only: two concurrent staged uploads agree on one draft; the loser puts the shared draft Worker back on the winner", async () => {
+    const staged = { ...app, status: "published" as const, draft_version: "v1700000000001" };
+    db.apps[0]!.draft_version = "v1700000000001";
+    const deploys: string[] = [];
+    deploy.deployStaticVersion.mockImplementation(async (input) => {
+      deploys.push(`${input.target}:${input.version}`);
+      // The other staged upload commits after our deploy but before our CAS.
+      if (deploys.length === 1) db.apps[0]!.draft_version = "v1700000000009";
+      return { workerSha256: "a".repeat(64) };
+    });
+    await expect(
+      uploadVersion(supabase, staged, zip, "drop", { promote: false })
+    ).rejects.toMatchObject({ status: 409 });
+    expect(deploy.promoteVersion).not.toHaveBeenCalled();
+    expect(deploy.loadBundleFiles).toHaveBeenCalledWith("alice-notes", "v1700000000009");
+    expect(deploys).toHaveLength(2);
+    expect(deploys[1]).toBe("draft:v1700000000009");
+    expect(db.apps[0]!.bundle_version).toBe("v1700000000001");
+    expect(db.apps[0]!.draft_version).toBe("v1700000000009");
+    expect(deploy.syncManifest).not.toHaveBeenCalled();
+    expect(db.versions).toHaveLength(0);
+  });
+
+  it("stage-only: a lost CAS on a draft app also restores the winner's draft Worker", async () => {
+    db.apps[0]!.bundle_version = null;
+    const draftApp = { ...app, status: "draft" as const, bundle_version: null, draft_version: null };
+    deploy.deployStaticVersion.mockImplementation(async () => {
+      if (db.apps[0]!.draft_version === null) {
+        db.apps[0]!.bundle_version = "v1700000000009";
+        db.apps[0]!.draft_version = "v1700000000009";
+      }
+      return { workerSha256: "a".repeat(64) };
+    });
+    await expect(uploadVersion(supabase, draftApp, zip, "drop")).rejects.toMatchObject({
+      status: 409,
+    });
+    expect(deploy.deployStaticVersion).toHaveBeenLastCalledWith(
+      expect.objectContaining({ target: "draft", version: "v1700000000009" })
+    );
   });
 
   it("app-origin lane: promotes the Worker before moving the registry pointer", async () => {

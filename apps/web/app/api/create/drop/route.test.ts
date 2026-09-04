@@ -196,7 +196,11 @@ describe("POST /api/create/drop — Box entry", () => {
     const body = (await response.json()) as { error: string; findings: unknown[] };
     expect(body.error).not.toContain("\n");
     expect(body.error).toMatch(/client-storage/);
-    expect(body.findings).toHaveLength(1);
+    // Every finding rides along: the hard one plus the soft inline-script note.
+    expect(body.findings.map((f) => (f as { rule: string }).rule).sort()).toEqual([
+      "client-storage",
+      "inline-script",
+    ]);
     expect(versions.uploadVersion).not.toHaveBeenCalled();
     expect(limits.recordOpsEvent).toHaveBeenCalledWith(
       expect.anything(),

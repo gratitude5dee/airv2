@@ -48,6 +48,14 @@ function mb(bytes: number): string {
   return `${Math.round(bytes / (1024 * 1024))}MB`;
 }
 
+type Reply<T> = Partial<T> & { error?: string | undefined };
+
+async function readJson<T>(res: Response): Promise<Reply<T>> {
+  const data = (await res.json().catch(() => null)) as Reply<T> | null;
+  if (data) return data;
+  return { error: res.ok ? "unexpected reply" : `request failed (${res.status})` } as Reply<T>;
+}
+
 function Findings({ findings }: { findings: Finding[] }) {
   if (findings.length === 0) {
     return <p className="m-0 text-[12px] text-muted">No findings.</p>;
@@ -77,13 +85,15 @@ function DraftResult({
   onPublish: (slug: string) => void;
 }) {
   const isLive = draft.status === "published";
+  const staged =
+    draft.draft !== null && draft.draft.version !== draft.live?.version;
   return (
     <section className="panel mb-8 !p-5">
       <div className="flex items-center gap-2">
         <strong className="text-[13px]">{draft.name}</strong>
         <code className="text-[11px] text-muted">{draft.slug}</code>
         <span className="ml-auto rounded-full border border-current px-2 py-0.5 text-[10px] text-muted">
-          {isLive ? (draft.draft && draft.draft.version !== draft.live?.version ? "live · draft staged" : "live") : "draft"}
+          {isLive ? (staged ? "live · draft staged" : "live") : "draft"}
         </span>
       </div>
       <p className="mb-2 mt-1 text-[12px] text-muted">
@@ -102,13 +112,13 @@ function DraftResult({
         ) : (
           <span className="text-[12px] text-muted">Preview unavailable</span>
         )}
-        {!isLive ? (
+        {!isLive || staged ? (
           <button
             className="btn-ghost text-[12px]"
             disabled={busy || !draft.draft}
             onClick={() => onPublish(draft.slug)}
           >
-            Publish
+            {isLive ? "Publish draft" : "Publish"}
           </button>
         ) : null}
         <Link className="btn-ghost text-[12px]" href="/publish">
@@ -152,69 +162,75 @@ function CreateSurface() {
         setUnauthorized(true);
         return;
       }
-      if (preselected) void loadStatus(preselected);
-    })();
+      if (preselected) await loadStatus(preselected);
+    })().catch(() => setMessage("could not reach the server; reload to try again"));
   }, [preselected, loadStatus]);
 
-  async function drop(file: Blob, filename: string) {
-    if (file.size > BUNDLE_MAX_ZIP_BYTES) {
-      setMessage(`that is larger than ${mb(BUNDLE_MAX_ZIP_BYTES)}`);
-      return;
-    }
+  /** Runs one owner action with the pickers disabled; any failure surfaces as the message. */
+  async function run(action: () => Promise<void>) {
     setBusy(true);
     setMessage(null);
+    try {
+      await action();
+    } catch (error) {
+      setMessage(error instanceof Error && error.message ? error.message : "something went wrong");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function drop(file: Blob, filename: string) {
     setRejected([]);
+    if (file.size > BUNDLE_MAX_ZIP_BYTES) {
+      throw new Error(`that is larger than ${mb(BUNDLE_MAX_ZIP_BYTES)}`);
+    }
     const form = new FormData();
     form.set("file", file, filename);
     const res = await fetch("/api/create/drop", { method: "POST", body: form });
-    const data = (await res.json()) as Partial<DropResponse> & {
-      error?: string;
-      findings?: Finding[];
-    };
+    const data = await readJson<DropResponse>(res);
     if (!res.ok || !data.slug) {
-      setMessage(data.error ?? "drop failed");
       setRejected(data.findings ?? []);
-      setBusy(false);
-      return;
+      throw new Error(data.error ?? "drop failed");
     }
     setMessage(`Draft staged: ${data.slug} (${data.version})`);
-    await loadStatus(data.slug);
-    setBusy(false);
+    // The draft exists either way; a failed refresh must not read as a failed drop.
+    await loadStatus(data.slug).catch(() => null);
   }
 
-  async function dropFiles(files: FileList | File[]) {
+  function dropFiles(files: FileList | File[]) {
     const list = Array.from(files);
     if (list.length === 0) return;
     const single = list[0];
-    if (list.length === 1 && single && !single.webkitRelativePath) {
-      await drop(single, single.name);
-      return;
-    }
-    setBusy(true);
-    setMessage("zipping folder…");
-    const zip = await zipFolder(list);
-    const root = list[0]?.webkitRelativePath.split("/")[0] || "site";
-    await drop(zip, `${root}.zip`);
+    void run(async () => {
+      if (list.length === 1 && single && !single.webkitRelativePath) {
+        await drop(single, single.name);
+        return;
+      }
+      setMessage("zipping folder…");
+      const zip = await zipFolder(list);
+      const root = list[0]?.webkitRelativePath.split("/")[0] || "site";
+      await drop(zip, `${root}.zip`);
+    });
   }
 
-  async function publish(slug: string) {
-    setBusy(true);
-    setMessage(null);
-    const res = await fetch("/api/mini/publish/status", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ slug, status: "published", visibility: "public" }),
+  function publish(slug: string) {
+    void run(async () => {
+      const res = await fetch("/api/mini/publish/status", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ slug, status: "published", visibility: "public" }),
+      });
+      const data = await readJson<{ ok: true }>(res);
+      if (!res.ok) throw new Error(data.error ?? "publish failed");
+      setMessage(`Published: ${slug}`);
+      await loadStatus(slug).catch(() => null);
     });
-    const data = (await res.json()) as { error?: string };
-    setMessage(res.ok ? `Published: ${slug}` : data.error ?? "failed");
-    await loadStatus(slug);
-    setBusy(false);
   }
 
   function onDrop(event: DragEvent<HTMLElement>) {
     event.preventDefault();
     setDragging(false);
-    void dropFiles(event.dataTransfer.files);
+    dropFiles(event.dataTransfer.files);
   }
 
   if (unauthorized) {
@@ -256,7 +272,7 @@ function CreateSurface() {
         </section>
       ) : null}
 
-      {draft ? <DraftResult draft={draft} busy={busy} onPublish={(slug) => void publish(slug)} /> : null}
+      {draft ? <DraftResult draft={draft} busy={busy} onPublish={publish} /> : null}
 
       <section
         className={`panel mb-8 !p-6 text-center ${dragging ? "outline outline-2 outline-current" : ""}`}
@@ -283,7 +299,7 @@ function CreateSurface() {
               className="hidden"
               disabled={busy}
               onChange={(event) => {
-                if (event.currentTarget.files) void dropFiles(event.currentTarget.files);
+                if (event.currentTarget.files) dropFiles(event.currentTarget.files);
                 event.currentTarget.value = "";
               }}
             />
@@ -298,7 +314,7 @@ function CreateSurface() {
               webkitdirectory=""
               multiple
               onChange={(event) => {
-                if (event.currentTarget.files) void dropFiles(event.currentTarget.files);
+                if (event.currentTarget.files) dropFiles(event.currentTarget.files);
                 event.currentTarget.value = "";
               }}
             />

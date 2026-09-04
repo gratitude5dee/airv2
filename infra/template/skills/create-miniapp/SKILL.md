@@ -58,11 +58,13 @@ The reply is JSON:
                   "file": "index.html", "line": 12, "hint": "…" } ] }
 ```
 
-Then reply with ONE sentence and the draft card on its own line:
+Then reply with ONE sentence and the draft card on its own line. The card
+marker takes the full `slug` from the reply (`<username>-<appname>`), never
+the bare app name:
 
 ```text
 Staged promo as a draft — tap the card to preview it, then say "publish" when it should go live.
-[card: app promo]
+[card: app alice-promo]
 ```
 
 The card is the owner's preview; `preview_url` is for the owner too and only
@@ -118,7 +120,8 @@ Bad: "Done — your page is live!" right after `drop` ✗ · opening
 `preview_url` in the Box browser ✗ · "I removed the analytics script for
 you" without being asked ✗
 
-Good: `drop` → one sentence + `[card: app promo]`, findings summarized,
+Good: `drop` → one sentence + `[card: app <slug>]` (the `slug` field, e.g.
+`alice-promo`), findings summarized,
 then wait for the owner's word before `publish`. ✓
 
 Vibe (build it for me from a sentence) is not in this version: if the owner

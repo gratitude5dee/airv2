@@ -252,3 +252,94 @@ describe("setPublishStatus (V11 §13.2 manifest ordering)", () => {
     );
   });
 });
+
+describe("setPublishStatus promotes a staged draft (V11 §8 Drop onto a live app)", () => {
+  const live = makeApp({
+    id: "app-notes",
+    slug: "alice-notes",
+    owner_user_id: "user-alice",
+    publisher_username: "alice",
+    appname: "notes",
+    status: "published",
+    bundle_version: "v1700000000001",
+    draft_version: "v1700000000002",
+  });
+
+  function fakeSupabase(app: ReturnType<typeof makeApp>): SupabaseClient {
+    const builder = {
+      select: () => builder,
+      update: () => builder,
+      eq: () => builder,
+      maybeSingle: async () => ({ data: app, error: null }),
+      then: (resolve: (value: { data: unknown; error: unknown }) => unknown) =>
+        Promise.resolve({ data: null, error: null }).then(resolve),
+    };
+    return { from: () => builder } as unknown as SupabaseClient;
+  }
+
+  beforeEach(() => {
+    deploy.promoteVersion.mockClear();
+    deploy.syncManifest.mockClear();
+    versions.getVersion.mockReset();
+    versions.pointLiveAt.mockReset();
+    versions.pointLiveAt.mockResolvedValue(undefined);
+  });
+
+  it("publishing a live app with a newer draft promotes the draft, not the live version", async () => {
+    versions.getVersion.mockResolvedValue({ version: "v1700000000002" });
+    await setPublishStatus(fakeSupabase(live), "user-alice", "alice-notes", "published");
+    expect(versions.getVersion).toHaveBeenCalledWith(expect.anything(), "app-notes", "v1700000000002");
+    expect(deploy.promoteVersion).toHaveBeenCalledTimes(1);
+    expect(deploy.promoteVersion).toHaveBeenCalledWith(live, "v1700000000002");
+    expect(versions.pointLiveAt).toHaveBeenCalledWith(expect.anything(), live, "v1700000000002");
+    expect(deploy.syncManifest).toHaveBeenLastCalledWith(
+      expect.objectContaining({ status: "published", bundle_version: "v1700000000002" })
+    );
+  });
+
+  it("with no staged draft the live version is (re)published as before", async () => {
+    const same = makeApp({ ...live, draft_version: "v1700000000001" });
+    versions.getVersion.mockResolvedValue({ version: "v1700000000001" });
+    await setPublishStatus(fakeSupabase(same), "user-alice", "alice-notes", "published");
+    expect(versions.getVersion).toHaveBeenCalledWith(expect.anything(), "app-notes", "v1700000000001");
+    expect(deploy.promoteVersion).toHaveBeenCalledWith(same, "v1700000000001");
+  });
+
+  it("a first publish of a draft app still goes through bundle_version", async () => {
+    const draft = makeApp({ ...live, status: "draft", draft_version: "v1700000000001" });
+    versions.getVersion.mockResolvedValue({ version: "v1700000000001" });
+    await setPublishStatus(fakeSupabase(draft), "user-alice", "alice-notes", "published");
+    expect(deploy.promoteVersion).toHaveBeenCalledWith(draft, "v1700000000001");
+    expect(deploy.syncManifest).toHaveBeenLastCalledWith(
+      expect.objectContaining({ status: "published", bundle_version: "v1700000000001" })
+    );
+  });
+
+  it("a lost pointer swap puts the live Worker back on the previous release", async () => {
+    versions.getVersion.mockResolvedValue({ version: "v1700000000002" });
+    versions.pointLiveAt.mockRejectedValueOnce(new Error("live version changed underneath this request; retry"));
+    await expect(
+      setPublishStatus(fakeSupabase(live), "user-alice", "alice-notes", "published")
+    ).rejects.toThrow(/changed underneath/);
+    expect(deploy.promoteVersion).toHaveBeenCalledTimes(2);
+    expect(deploy.promoteVersion).toHaveBeenLastCalledWith(live, "v1700000000001");
+    expect(deploy.syncManifest).not.toHaveBeenCalled();
+  });
+
+  it("refuses a staged draft whose files were swept", async () => {
+    versions.getVersion.mockResolvedValue(null);
+    await expect(
+      setPublishStatus(fakeSupabase(live), "user-alice", "alice-notes", "published")
+    ).rejects.toMatchObject({ status: 409 });
+    expect(deploy.promoteVersion).not.toHaveBeenCalled();
+  });
+
+  it("unpublishing ignores the staged draft", async () => {
+    await setPublishStatus(fakeSupabase(live), "user-alice", "alice-notes", "draft");
+    expect(deploy.promoteVersion).not.toHaveBeenCalled();
+    expect(versions.pointLiveAt).not.toHaveBeenCalled();
+    expect(deploy.syncManifest).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "draft", bundle_version: "v1700000000001" })
+    );
+  });
+});

@@ -15,6 +15,7 @@ interface PublishedApp {
   status: string;
   visibility: string;
   bundle_version: string | null;
+  draft_version?: string | null;
   agent_identity: string | null;
   access: "single" | "multiplayer";
   x402_enabled: boolean;
@@ -211,6 +212,9 @@ export default function PublishPage() {
                   {app.bundle_version
                     ? `bundle ${app.bundle_version}`
                     : "no bundle uploaded"}
+                  {app.draft_version && app.draft_version !== app.bundle_version
+                    ? ` · draft ${app.draft_version} staged`
+                    : ""}
                 </p>
                 <div className="flex flex-wrap items-center gap-2">
                   <label className="btn-ghost cursor-pointer text-[12px]">
@@ -227,13 +231,24 @@ export default function PublishPage() {
                     />
                   </label>
                   {app.status === "published" ? (
-                    <button
-                      className="btn-ghost text-[12px]"
-                      disabled={busy}
-                      onClick={() => void flipStatus(app.slug, "draft")}
-                    >
-                      Unpublish
-                    </button>
+                    <>
+                      {app.draft_version && app.draft_version !== app.bundle_version ? (
+                        <button
+                          className="btn text-[12px]"
+                          disabled={busy}
+                          onClick={() => void flipStatus(app.slug, "published")}
+                        >
+                          Publish draft
+                        </button>
+                      ) : null}
+                      <button
+                        className="btn-ghost text-[12px]"
+                        disabled={busy}
+                        onClick={() => void flipStatus(app.slug, "draft")}
+                      >
+                        Unpublish
+                      </button>
+                    </>
                   ) : (
                     <button
                       className="btn text-[12px]"

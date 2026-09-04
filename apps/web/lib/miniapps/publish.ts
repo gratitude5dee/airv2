@@ -199,6 +199,11 @@ export type PublishStatusFlip = "published" | "draft";
  * copies the draft Worker to the live script and writes the KV manifest, so
  * the app origin serves the version the owner previewed. Delisting writes
  * the manifest too — the app origin stops answering before the row flips.
+ *
+ * A staged draft (`draft_version` ahead of `bundle_version`, what a Drop onto
+ * a live app leaves behind) is what "publish" makes live: the pointer moves
+ * to it under the same compare-and-swap as a rollback, and a lost swap puts
+ * the live Worker back on the release the registry still names.
  */
 export async function setPublishStatus(
   supabase: SupabaseClient,
@@ -208,14 +213,28 @@ export async function setPublishStatus(
   visibility?: "public" | "unlisted" | "private"
 ): Promise<void> {
   const app = await ownedApp(supabase, userId, slug);
-  if (status === "published" && !app.bundle_version) {
+  const staged =
+    app.draft_version && app.draft_version !== app.bundle_version
+      ? app.draft_version
+      : null;
+  const target = staged ?? app.bundle_version;
+  if (status === "published" && !target) {
     throw new PublishError("upload a bundle before publishing", 409);
   }
-  const version =
-    app.bundle_version && (await getVersion(supabase, app.id, app.bundle_version));
+  const version = target && (await getVersion(supabase, app.id, target));
+  if (status === "published" && staged && !version) {
+    throw new PublishError("that draft's files are no longer stored", 409);
+  }
   if (status === "published" && version) {
     await promoteVersion(app, version.version);
-    await pointLiveAt(supabase, app, version.version);
+    try {
+      await pointLiveAt(supabase, app, version.version);
+    } catch (error) {
+      if (staged && app.bundle_version) {
+        await promoteVersion(app, app.bundle_version).catch(() => null);
+      }
+      throw error;
+    }
   }
   if (status === "draft") {
     await syncManifest({ ...app, status: "draft" });
@@ -233,12 +252,19 @@ export async function setPublishStatus(
   if (error) {
     // The manifest already moved; put it back to what the registry still
     // says so a delist that failed to flip does not leave the app dark (or a
-    // publish that failed to flip serving).
-    await syncManifest(app).catch(() => false);
+    // publish that failed to flip serving). The live pointer, if it moved,
+    // stays moved — the registry is the source of truth for it.
+    await syncManifest(
+      status === "published" && version ? { ...app, bundle_version: version.version } : app
+    ).catch(() => false);
     throw new Error(`status flip failed: ${error.message}`);
   }
   if (status === "published" && version) {
-    await syncManifest({ ...app, status: "published" });
+    await syncManifest({
+      ...app,
+      status: "published",
+      bundle_version: version.version,
+    });
   }
   console.log(
     JSON.stringify({ msg: "miniapp status flip", user_id: userId, slug, status })

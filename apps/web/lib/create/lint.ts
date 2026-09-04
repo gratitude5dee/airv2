@@ -4,9 +4,12 @@
  * connect-src 'self'`, CR12), so anything the ceiling forbids is caught here
  * before a version exists: external scripts, styles, fonts and frames, client
  * storage, and `eval`. Those are hard findings and reject the Drop. Inline
- * event handlers, `<meta http-equiv>`, oversized base64 blobs and dangling
- * relative references are soft: they ride along on the version row for the
- * agent to act on. The linter reports; it never rewrites the owner's files.
+ * scripts and event handlers (script-src 'self' has no 'unsafe-inline'),
+ * bundled frames (frame-src falls back to default-src 'none'), off-origin
+ * media, `<meta http-equiv>`, oversized base64 blobs and dangling relative
+ * references are soft: the page stages and the finding tells the owner what
+ * will not load and why (§8.4). The linter reports; it never rewrites the
+ * owner's files.
  */
 import { bundleContentType, type BundleFile } from "../miniapps/bundles";
 
@@ -20,8 +23,11 @@ export type LintRule =
   | "client-storage"
   | "eval"
   | "meta-http-equiv"
+  | "inline-script"
   | "inline-handler"
+  | "bundled-frame"
   | "large-data-uri"
+  | "external-media"
   | "dangling-ref";
 
 export interface LintFinding {
@@ -75,13 +81,34 @@ const HINTS: Record<LintRule, string> = {
   eval: "replace eval/new Function with plain code; the CSP has no 'unsafe-eval'",
   "meta-http-equiv":
     "remove the <meta http-equiv> tag; response headers are set by the platform and cannot be overridden",
+  "inline-script":
+    "move the code into a .js file in the bundle and load it with <script src>; script-src 'self' does not run inline scripts",
   "inline-handler":
-    "move the handler into a script file with addEventListener; inline handlers are allowed but harder to review",
+    "move the handler into a script file with addEventListener; script-src 'self' does not run inline handlers",
+  "bundled-frame":
+    "render the page's content directly instead of framing it; the CSP allows no frames at all (frame-src falls back to default-src 'none')",
   "large-data-uri":
     "save the base64 blob as a file in the bundle and reference it by path; inline data over 2 MiB slows every load",
+  "external-media":
+    "ship the image/audio/video in the bundle or host it on the platform media origin; img-src and media-src allow no other hosts",
   "dangling-ref":
     "add the referenced file to the bundle or fix the path; nothing in the bundle matches it",
 };
+
+/** Image origins the publisher CSP admits besides 'self' and data: (§14.1). */
+export function allowedImageOrigins(): string[] {
+  const configured = process.env["R2_PUBLIC_BASE_URL"];
+  return ["https://media.wzrd.tech", ...(configured ? [configured] : [])].map(
+    (origin) => origin.replace(/\/+$/, "").toLowerCase()
+  );
+}
+
+function isAllowedImage(url: string): boolean {
+  const lower = url.trim().toLowerCase();
+  return allowedImageOrigins().some(
+    (origin) => lower === origin || lower.startsWith(`${origin}/`)
+  );
+}
 
 const HTML_RE = /^text\/html/;
 const CSS_RE = /^text\/css/;
@@ -138,14 +165,110 @@ const FONT_FACE_RE = /@font-face\s*\{[^}]*\}/gi;
 const JS_IMPORT_RE =
   /\bimport\s*(?:[^'";]*?\bfrom\s*)?["']((?:https?:)?\/\/[^"']+)["']|\bimport\s*\(\s*["']((?:https?:)?\/\/[^"']+)["']/gi;
 
-function lintScriptText(collector: Collector, text: string, base: number): void {
+/**
+ * Blank comments and string/template literal text (keeping newlines and
+ * `${…}` expressions) so identifiers mentioned in prose are not linted as
+ * calls. Regex literals are left as-is: `/` vs division is not decidable
+ * without a parser, and a false hit there is rare.
+ */
+export function blankCommentsAndStrings(source: string): string {
+  const out = source.split("");
+  const blank = (from: number, to: number): void => {
+    for (let i = from; i < to; i += 1) {
+      if (out[i] !== "\n") out[i] = " ";
+    }
+  };
+  const n = source.length;
+  let i = 0;
+  const templateDepth: number[] = [];
+  while (i < n) {
+    const ch = source[i];
+    const next = source[i + 1];
+    if (ch === "/" && next === "/") {
+      const end = source.indexOf("\n", i);
+      const stop = end === -1 ? n : end;
+      blank(i, stop);
+      i = stop;
+    } else if (ch === "/" && next === "*") {
+      const end = source.indexOf("*/", i + 2);
+      const stop = end === -1 ? n : end + 2;
+      blank(i, stop);
+      i = stop;
+    } else if (ch === '"' || ch === "'") {
+      let j = i + 1;
+      while (j < n && source[j] !== ch && source[j] !== "\n") {
+        if (source[j] === "\\") j += 1;
+        j += 1;
+      }
+      blank(i + 1, Math.min(j, n));
+      i = j + 1;
+    } else if (ch === "`") {
+      // Template text is blanked up to the next `${` or closing backtick;
+      // the expression inside `${…}` is scanned like ordinary code.
+      let j = i + 1;
+      while (j < n && source[j] !== "`") {
+        if (source[j] === "\\") {
+          j += 2;
+          continue;
+        }
+        if (source[j] === "$" && source[j + 1] === "{") {
+          templateDepth.push(0);
+          break;
+        }
+        j += 1;
+      }
+      blank(i + 1, Math.min(j, n));
+      i = templateDepth.length > 0 && source[j] === "$" ? j + 2 : j + 1;
+    } else if (templateDepth.length > 0 && ch === "{") {
+      const last = templateDepth.length - 1;
+      templateDepth[last] = (templateDepth[last] ?? 0) + 1;
+      i += 1;
+    } else if (templateDepth.length > 0 && ch === "}") {
+      const depth = templateDepth[templateDepth.length - 1] ?? 0;
+      if (depth === 0) {
+        // Back inside the template text: blank until the next `${` or the
+        // closing backtick.
+        templateDepth.pop();
+        let j = i + 1;
+        let reopened = false;
+        while (j < n && source[j] !== "`") {
+          if (source[j] === "\\") {
+            j += 2;
+            continue;
+          }
+          if (source[j] === "$" && source[j + 1] === "{") {
+            reopened = true;
+            break;
+          }
+          j += 1;
+        }
+        blank(i + 1, Math.min(j, n));
+        if (reopened) {
+          templateDepth.push(0);
+          i = j + 2;
+        } else {
+          i = j + 1;
+        }
+      } else {
+        templateDepth[templateDepth.length - 1] = depth - 1;
+        i += 1;
+      }
+    } else {
+      i += 1;
+    }
+  }
+  return out.join("");
+}
+
+function lintScriptText(collector: Collector, source: string, base: number): void {
+  const text = blankCommentsAndStrings(source);
   for (const match of text.matchAll(STORAGE_RE)) {
     report(collector, "client-storage", base + (match.index ?? 0));
   }
   for (const match of text.matchAll(EVAL_RE)) {
     report(collector, "eval", base + (match.index ?? 0));
   }
-  for (const match of text.matchAll(JS_IMPORT_RE)) {
+  for (const match of source.matchAll(JS_IMPORT_RE)) {
     report(collector, "external-script", base + (match.index ?? 0));
   }
 }
@@ -189,12 +312,24 @@ function lintDataUris(collector: Collector, text: string): void {
   }
 }
 
-const TAG_RE = /<(script|link|iframe|frame|meta|style)\b[^>]*>/gi;
+const TAG_RE = /<(script|link|iframe|frame|meta|style|img|source|audio|video|track)\b[^>]*>/gi;
+const SRCSET_URL_RE = /(?:^|,)\s*(\S+)/g;
 const SCRIPT_BLOCK_RE = /<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi;
 const STYLE_BLOCK_RE = /<style\b[^>]*>([\s\S]*?)<\/style\s*>/gi;
 const INLINE_HANDLER_RE = /<[a-z][^>]*\s(on[a-z]+)\s*=/gi;
 const REF_ATTR_RE =
   /<(?:script|link|img|source|audio|video|a)\b[^>]*?\s(?:src|href)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
+
+/** `type` values whose body the browser executes as script (data blocks do not). */
+function isScriptType(type: string | null): boolean {
+  const value = (type ?? "").trim().toLowerCase();
+  return (
+    value === "" ||
+    value === "module" ||
+    value === "importmap" ||
+    /^(?:text|application)\/(?:x-)?(?:java|ecma)script$/.test(value)
+  );
+}
 
 function isStylesheetLink(tag: string): boolean {
   const rel = (attr(tag, "rel") ?? "").toLowerCase();
@@ -217,6 +352,11 @@ function lintHtml(collector: Collector, paths: ReadonlySet<string>): void {
     if (name === "script") {
       const src = attr(tag, "src");
       if (src && isExternal(src)) report(collector, "external-script", at);
+      if (src === null && isScriptType(attr(tag, "type"))) {
+        const end = text.indexOf("</script", at + tag.length);
+        const body = text.slice(at + tag.length, end === -1 ? undefined : end);
+        if (body.trim() !== "") report(collector, "inline-script", at);
+      }
     } else if (name === "link") {
       const href = attr(tag, "href");
       if (href && isExternal(href)) {
@@ -226,10 +366,15 @@ function lintHtml(collector: Collector, paths: ReadonlySet<string>): void {
     } else if (name === "iframe" || name === "frame") {
       const src = attr(tag, "src");
       if (src && isExternal(src)) report(collector, "external-frame", at);
+      else if (src && src.trim() !== "" && !/^about:/i.test(src.trim())) {
+        report(collector, "bundled-frame", at);
+      }
     } else if (name === "meta") {
       if (attr(tag, "http-equiv") !== null) {
         report(collector, "meta-http-equiv", at);
       }
+    } else {
+      lintMediaTag(collector, tag, name, at);
     }
   }
   for (const match of text.matchAll(SCRIPT_BLOCK_RE)) {
@@ -252,6 +397,38 @@ function lintHtml(collector: Collector, paths: ReadonlySet<string>): void {
   }
   lintDataUris(collector, text);
   lintDanglingRefs(collector, paths);
+}
+
+/**
+ * `<img>`, `<source>`, `<audio>`, `<video>`, `<track>` (and `<video poster>`)
+ * pointing off-origin: img-src admits only 'self', data: and the platform
+ * media origin; media-src only 'self'. Soft — the page still stages, the
+ * resource just will not load.
+ */
+function lintMediaTag(collector: Collector, tag: string, name: string, at: number): void {
+  const urls: string[] = [];
+  const src = attr(tag, "src");
+  if (src) urls.push(src);
+  const poster = attr(tag, "poster");
+  if (poster) urls.push(poster);
+  const srcset = attr(tag, "srcset");
+  if (srcset) {
+    for (const match of srcset.matchAll(SRCSET_URL_RE)) {
+      if (match[1]) urls.push(match[1]);
+    }
+  }
+  // A <source> is an image when it sits in <picture> (srcset / image type);
+  // with a bare src or an audio/video type it is media-src territory.
+  const imageLike =
+    name === "img" ||
+    (name === "source" &&
+      (srcset !== null || /^image\//i.test(attr(tag, "type") ?? "")));
+  for (const url of urls) {
+    if (!isExternal(url)) continue;
+    if ((imageLike || url === poster) && isAllowedImage(url)) continue;
+    report(collector, "external-media", at, `${url}: ${HINTS["external-media"]}`);
+    return;
+  }
 }
 
 function resolveRelative(from: string, ref: string): string | null {

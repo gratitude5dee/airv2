@@ -35,7 +35,12 @@ describe("create-miniapp skill", () => {
 
   it("frames publishing as the owner's decision and sends the draft card", () => {
     expect(skill).toMatch(/only the owner|the owner does|THEY flip/i);
-    expect(skill).toContain("[card: app promo]");
+    // The marker carries the API's full slug (<username>-<appname>), not the app name.
+    expect(skill).toContain("[card: app alice-promo]");
+    expect(skill).not.toMatch(/\[card: app promo\]/);
+    for (const marker of skill.matchAll(/\[card: app ([^\]]+)\]/g)) {
+      expect(marker[1]).toMatch(/^(?:[a-z0-9_]{2,24}-[a-z0-9-]+|<slug>)$/);
+    }
     expect(skill).toContain("Needs-you");
   });
 

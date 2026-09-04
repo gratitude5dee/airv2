@@ -206,7 +206,10 @@ export function parseCardMarker(
 /**
  * An `app` card is one bubble per app: when the owner already has one for
  * this slug, refresh it in place instead of claiming a new send (V11 §13.5
- * "cards update in place"). Returns whether an existing bubble was updated.
+ * "cards update in place"). A bubble the line no longer knows (its session
+ * was dropped) is gone for good, so that case falls through to a fresh send
+ * under the usual claim; a delivery failure surfaces as a thrown error, the
+ * same as a failed send.
  */
 export async function sendOrUpdateAppCard(
   supabase: SupabaseClient,
@@ -220,8 +223,9 @@ export async function sendOrUpdateAppCard(
     slug
   ).catch(() => undefined);
   if (existing) {
-    await updateMiniAppCard(supabase, owner.userId, "app", slug);
-    return "updated";
+    const outcome = await updateMiniAppCard(supabase, owner.userId, "app", slug);
+    if (outcome === "updated") return "updated";
+    if (outcome === "failed") throw new Error("app card update failed");
   }
   const claim = await claimCardSend(supabase, owner.userId, "app");
   if (!claim) return "cooldown";
@@ -327,16 +331,24 @@ export async function persistCardSession(
 }
 
 /**
+ * Outcome of an in-place card refresh: `stale` means there is no bubble to
+ * edit any more (no session, or the line rejected the stored one and it was
+ * dropped); `failed` means the bubble may still exist but this edit did not
+ * reach it.
+ */
+export type CardUpdateOutcome = "updated" | "stale" | "failed";
+
+/**
  * Refresh an existing card without claiming a new notification slot. A
  * missing or invalid session is not a new notification, so this never sends
- * a replacement card.
+ * a replacement card; callers decide what a `stale` outcome means for them.
  */
 export async function updateMiniAppCard(
   supabase: SupabaseClient,
   userId: string,
   appSlug: CardKind,
   resourceId: string
-): Promise<void> {
+): Promise<CardUpdateOutcome> {
   let destination:
     | { space_id?: unknown; phone?: unknown }
     | null
@@ -360,9 +372,9 @@ export async function updateMiniAppCard(
         error: error instanceof Error ? error.message : "unknown",
       })
     );
-    return;
+    return "failed";
   }
-  if (destinationError || !destination?.space_id || !destination.phone) return;
+  if (destinationError || !destination?.space_id || !destination.phone) return "failed";
   const spaceId = String(destination.space_id);
   const phone = String(destination.phone);
 
@@ -384,10 +396,11 @@ export async function updateMiniAppCard(
         error: error instanceof Error ? error.message : "unknown",
       })
     );
+    return "failed";
   }
 
   if (!session) {
-    return;
+    return "stale";
   }
 
   let sender: SpectrumSender;
@@ -403,7 +416,7 @@ export async function updateMiniAppCard(
         error: error instanceof Error ? error.message : "unknown",
       })
     );
-    return;
+    return "failed";
   }
   try {
     const refreshed = await sender.editApp(
@@ -433,7 +446,7 @@ export async function updateMiniAppCard(
           })
         );
       });
-      return;
+      return "stale";
     }
     try {
       await upsertMiniAppCardSession(
@@ -455,6 +468,7 @@ export async function updateMiniAppCard(
         })
       );
     }
+    return "updated";
   } catch (error) {
     if (error instanceof UnsupportedError) {
       await deleteMiniAppCardSession(
@@ -473,17 +487,18 @@ export async function updateMiniAppCard(
           })
         );
       });
-    } else {
-      console.error(
-        JSON.stringify({
-          msg: "mini-app card update failed",
-          user_id: userId,
-          kind: appSlug,
-          resource_id: resourceId,
-          error: error instanceof Error ? error.message : "unknown",
-        })
-      );
+      return "stale";
     }
+    console.error(
+      JSON.stringify({
+        msg: "mini-app card update failed",
+        user_id: userId,
+        kind: appSlug,
+        resource_id: resourceId,
+        error: error instanceof Error ? error.message : "unknown",
+      })
+    );
+    return "failed";
   } finally {
     await sender.close().catch(() => undefined);
   }
