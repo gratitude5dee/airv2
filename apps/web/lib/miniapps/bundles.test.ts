@@ -155,17 +155,20 @@ describe("validateBundle", () => {
       "navigator['SERVICEWORKER']",
       "navigator[\"serviceworker\"]",
       'const k = "ServiceWorker"; navigator[k]',
+      'const k = "serviceworker"; navigator[k.replace("w", "W")]',
+      'const k = { x: "serviceworker" }; navigator[k.x]',
+      'CASE "serviceworker":',
     ]) {
       expect(() => validateBundle([file("index.html", "x"), file("app.js", text)])).toThrowError(
         /service worker/i
       );
     }
-    expect(() =>
-      validateBundle([
-        file("index.html", "x"),
-        file("app.js", 'switch (as) { case "serviceworker": case "audioworklet": break }'),
-      ])
-    ).not.toThrow();
+    for (const text of [
+      'switch (as) { case "serviceworker": case "audioworklet": break }',
+      'switch(a){case"serviceworker":case"audioworklet":break}',
+    ]) {
+      expect(() => validateBundle([file("index.html", "x"), file("app.js", text)])).not.toThrow();
+    }
   });
   it("rejects publisher meta CSP overrides", () => {
     expect(() =>

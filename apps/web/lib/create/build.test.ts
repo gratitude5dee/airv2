@@ -254,6 +254,17 @@ describe("compileWorkspace", () => {
     expect(html).toContain('src="app.js"');
     expect(html.match(/name="viewport"/g)).toHaveLength(1);
 
+    const upper = await compileWorkspace(
+      workspace({
+        "src/index.html": `<!DOCTYPE HTML>\n<HTML>\n<HEAD><LINK REL="stylesheet" HREF="app.css"></HEAD>\n<BODY><DIV id="root"></DIV><SCRIPT TYPE="module" SRC="app.js"></SCRIPT></BODY>\n</HTML>`,
+      }),
+      { restricted: false }
+    );
+    expect(hard(upper.findings)).toEqual([]);
+    const upperHtml = upper.files.find((f) => f.path === "index.html")!.bytes.toString();
+    expect(upperHtml.match(/app\.js/gi)).toHaveLength(1);
+    expect(upperHtml.match(/app\.css/gi)).toHaveLength(1);
+
     const fragment = await compileWorkspace(
       workspace({ "src/index.html": `<div id="root"></div>` }),
       { restricted: false }

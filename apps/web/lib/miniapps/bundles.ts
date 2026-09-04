@@ -156,10 +156,10 @@ const SAFE_PATH = /^[a-zA-Z0-9_][a-zA-Z0-9._/-]*$/;
 const META_CSP_RE =
   /<meta[^>]+http-equiv\s*=\s*["']?content-security-policy/i;
 const SERVICE_WORKER_RE =
-  /["']?serviceworker["']?|navigator\[.{0,40}serviceworker/gi;
-// react-dom carries `case "serviceworker":` (a `<link as>` value); that exact
-// lowercase literal is never the DOM property, every other spelling counts.
-const SERVICE_WORKER_AS_VALUE = /^["']serviceworker["']$/;
+  /(?:case\s*)?["']?serviceworker["']?(?:\s*:)?|navigator\[.{0,40}serviceworker/gi;
+// react-dom carries `case "serviceworker":` (a `<link as>` value). Only that
+// exact switch label is exempt; a bare literal can feed `navigator[key]`.
+const SERVICE_WORKER_AS_VALUE = /^case\s*["']serviceworker["']\s*:$/;
 
 export function mentionsServiceWorker(text: string): boolean {
   for (const match of text.matchAll(SERVICE_WORKER_RE)) {

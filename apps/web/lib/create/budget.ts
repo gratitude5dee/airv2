@@ -33,24 +33,26 @@ function minutesAgo(minutes: number): string {
  * The user's open Create run, if any. Gateway calls carry no run id (Hermes
  * speaks plain OpenAI to the gateway), so attribution rests on the turn
  * route keeping at most one Create run open per user: while one is open,
- * every `create-*` completion is that project's.
+ * every `create-*` completion is that project's. Run rows carry a trigger;
+ * the metered completion rows sharing the label do not, and a run row is
+ * opened before its Hermes run exists (hermes_run_id lands once it does).
  */
 export async function openCreateRun(
   supabase: SupabaseClient,
   userId: string
-): Promise<{ slug: string; run_id: string } | null> {
+): Promise<{ slug: string; run_id: string | null } | null> {
   const { data } = await supabase
     .from("agent_runs")
     .select("label, hermes_run_id")
     .eq("user_id", userId)
     .like("label", `${CREATE_LABEL_PREFIX}%`)
-    .not("hermes_run_id", "is", null)
+    .not("trigger", "is", null)
     .is("ended_at", null)
     .gte("started_at", minutesAgo(CREATE_RUN_MAX_MINUTES))
     .order("started_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  const row = data as { label: string | null; hermes_run_id: string } | null;
+  const row = data as { label: string | null; hermes_run_id: string | null } | null;
   const slug = slugFromRunLabel(row?.label);
   return slug && row ? { slug, run_id: row.hermes_run_id } : null;
 }
@@ -69,7 +71,7 @@ export async function activeCreateSlug(
     .select("label, ended_at, started_at")
     .eq("user_id", userId)
     .like("label", `${CREATE_LABEL_PREFIX}%`)
-    .not("hermes_run_id", "is", null)
+    .not("trigger", "is", null)
     .or(
       `and(ended_at.is.null,started_at.gte.${minutesAgo(CREATE_RUN_MAX_MINUTES)}),` +
         `ended_at.gte.${minutesAgo(CREATE_RUN_ATTRIBUTION_MINUTES)}`

@@ -541,10 +541,10 @@ function injectIntoHtml(html: string, air: AirJson, version: string): string | n
   if (!/<meta[^>]+name\s*=\s*["']?viewport/i.test(out)) {
     out = out.replace(/<head([^>]*)>/i, `<head$1>\n${VIEWPORT_META}`);
   }
-  if (!/<link[^>]+app\.css/.test(out)) {
+  if (!/<link[^>]+app\.css/i.test(out)) {
     out = out.replace(/<\/head>/i, '<link rel="stylesheet" href="app.css">\n</head>');
   }
-  if (!/<script[^>]+app\.js/.test(out)) {
+  if (!/<script[^>]+app\.js/i.test(out)) {
     out = out.replace(/<\/body>/i, '<script type="module" src="app.js"></script>\n</body>');
   }
   return out;
