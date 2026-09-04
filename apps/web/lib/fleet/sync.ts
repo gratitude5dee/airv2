@@ -303,16 +303,76 @@ async function claimWave(
 ): Promise<JobBoxRow[]> {
   const claimed: JobBoxRow[] = [];
   for (const row of candidates) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("sync_job_boxes")
       .update({ state: "syncing", started_at: new Date().toISOString() })
       .eq("job_id", jobId)
       .eq("provider_box_id", row.provider_box_id)
       .eq("state", "pending")
       .select("provider_box_id");
+    if (error) {
+      throw new FleetError(`wave claim failed: ${error.message}`, 500);
+    }
     if ((data ?? []).length > 0) claimed.push(row);
   }
   return claimed;
+}
+
+/** Hand claimed-but-unstarted rows back so a resume can pick them up. */
+async function releaseClaims(
+  supabase: SupabaseClient,
+  jobId: string,
+  rows: JobBoxRow[],
+): Promise<void> {
+  if (rows.length === 0) return;
+  await supabase
+    .from("sync_job_boxes")
+    .update({ state: "pending", started_at: null })
+    .eq("job_id", jobId)
+    .eq("state", "syncing")
+    .in(
+      "provider_box_id",
+      rows.map((row) => row.provider_box_id),
+    );
+}
+
+/**
+ * Add one to sync_jobs.failures with a compare-and-set loop, so sweeps that
+ * run boxes side by side never overwrite each other's count. Returns the new
+ * total.
+ */
+async function bumpFailures(
+  supabase: SupabaseClient,
+  jobId: string,
+): Promise<number> {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const { data: current, error: readError } = await supabase
+      .from("sync_jobs")
+      .select("failures")
+      .eq("id", jobId)
+      .single();
+    if (readError || !current) {
+      throw new FleetError(
+        `failure count read failed: ${readError?.message ?? "no job"}`,
+        500,
+      );
+    }
+    const seen = current.failures as number;
+    const { data: written, error: writeError } = await supabase
+      .from("sync_jobs")
+      .update({ failures: seen + 1, updated_at: new Date().toISOString() })
+      .eq("id", jobId)
+      .eq("failures", seen)
+      .select("failures");
+    if (writeError) {
+      throw new FleetError(
+        `failure count write failed: ${writeError.message}`,
+        500,
+      );
+    }
+    if ((written ?? []).length > 0) return seen + 1;
+  }
+  throw new FleetError("failure count contended", 500);
 }
 
 /**
@@ -381,8 +441,7 @@ export async function runSyncJobs(
     return totals;
   }
 
-  let failures = job.failures;
-  for (const row of rows) {
+  for (const [index, row] of rows.entries()) {
     const boxId = row.provider_box_id;
     let outcome: BoxOutcome;
     let boxError: string | undefined;
@@ -403,9 +462,10 @@ export async function runSyncJobs(
         .eq("provider_box_id", boxId);
       continue;
     }
+    let failures = 0;
     if (outcome === "failed") {
       totals.failed += 1;
-      failures += 1;
+      failures = await bumpFailures(supabase, job.id);
       console.error(
         JSON.stringify({
           msg: "fleet sync box failed",
@@ -427,20 +487,18 @@ export async function runSyncJobs(
       .eq("job_id", job.id)
       .eq("provider_box_id", boxId);
     if (failures >= job.failure_threshold) {
+      await releaseClaims(supabase, job.id, rows.slice(index + 1));
       await supabase
         .from("sync_jobs")
-        .update({
-          state: "paused",
-          failures,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", job.id);
+        .update({ state: "paused", updated_at: new Date().toISOString() })
+        .eq("id", job.id)
+        .in("state", ["canary", "rolling"]);
       return totals;
     }
   }
   await supabase
     .from("sync_jobs")
-    .update({ failures, updated_at: new Date().toISOString() })
+    .update({ updated_at: new Date().toISOString() })
     .eq("id", job.id);
   return totals;
 }
