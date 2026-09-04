@@ -23,6 +23,7 @@ import { z } from "zod";
 import { env } from "../env";
 import {
   branchHeadSha,
+  deleteFile,
   deleteInstallation,
   downloadZipball,
   getFile,
@@ -30,6 +31,7 @@ import {
   GitHubError,
   installationToken,
   putFile,
+  type RepoFile,
   type Repository,
 } from "../github/app";
 import {
@@ -287,7 +289,8 @@ async function saveLink(
   return linkRow.parse(data);
 }
 
-const RESTORE_ATTEMPTS = 3;
+/** Bookkeeping writes to the link row are retried this often on transient errors. */
+const LINK_WRITE_ATTEMPTS = 3;
 
 /**
  * Put a link row back exactly as it was read before a re-import moved it
@@ -306,7 +309,7 @@ async function restoreLink(
   const { id, created_at, ...fields } = previous;
   void created_at;
   let lastError = "unknown";
-  for (let attempt = 1; attempt <= RESTORE_ATTEMPTS; attempt += 1) {
+  for (let attempt = 1; attempt <= LINK_WRITE_ATTEMPTS; attempt += 1) {
     const { data, error } = await supabase
       .from("github_repo_links")
       .update(fields)
@@ -321,7 +324,7 @@ async function restoreLink(
     }
     lastError = error.message;
     if (error.code === "23505") break;
-    if (attempt < RESTORE_ATTEMPTS) {
+    if (attempt < LINK_WRITE_ATTEMPTS) {
       await new Promise((resolve) => setTimeout(resolve, 50 * attempt));
     }
   }
@@ -353,26 +356,37 @@ async function removeOwnLink(supabase: SupabaseClient, link: RepoLink): Promise<
 /**
  * The import's last write to its row: stamp it (or, for a build link, just
  * touch it) if and only if the row still carries this import's `import_id`.
- * Zero rows means another import of the same app replaced the link while
- * this one was staging or committing; the caller then fails so its
- * compensation runs — which is fenced too, and therefore leaves the newer
- * link exactly as that import wrote it.
+ * False means another import of the same app replaced the link while this
+ * one was staging or committing, and that import's link stands. The write
+ * is retried on transient errors; when it still fails, the row is left as
+ * saved — it already names what was staged or committed — and the caller
+ * reports the stamp, never undoes the effect.
  */
 async function confirmLink(
   supabase: SupabaseClient,
   link: RepoLink,
   patch: { last_sha?: string; last_synced_at?: string; last_error: null }
-): Promise<void> {
-  const { data, error } = await supabase
-    .from("github_repo_links")
-    .update(patch)
-    .eq("id", link.id)
-    .eq("import_id", link.import_id)
-    .select("id");
-  if (error) throw new ImportError(`link stamp failed: ${error.message}`, 502);
-  if ((data ?? []).length === 0) {
-    throw new ImportError("another import of this app replaced the link while this one ran", 409);
+): Promise<boolean> {
+  let lastError = "unknown";
+  for (let attempt = 1; attempt <= LINK_WRITE_ATTEMPTS; attempt += 1) {
+    const { data, error } = await supabase
+      .from("github_repo_links")
+      .update(patch)
+      .eq("id", link.id)
+      .eq("import_id", link.import_id)
+      .select("id");
+    if (!error) return (data ?? []).length > 0;
+    lastError = error.message;
+    if (attempt < LINK_WRITE_ATTEMPTS) {
+      await new Promise((resolve) => setTimeout(resolve, 50 * attempt));
+    }
   }
+  console.error(JSON.stringify({ msg: "repo link stamp failed", link: link.id, error: lastError }));
+  throw new ImportError(
+    `the link is saved and the import went through, but its sync record could not be written ` +
+      `(${lastError}) — import again to refresh it`,
+    502
+  );
 }
 
 /** Unlink: the app and its versions stay; pushes stop landing. */
@@ -391,15 +405,26 @@ export async function unlinkRepo(
   return (data ?? []).length > 0;
 }
 
+/**
+ * Record a sync's outcome on its link. The head stamped here is what makes
+ * a redelivered push a no-op, so the write is retried before it is given up
+ * on (the sync itself already happened either way).
+ */
 async function stampLink(
   supabase: SupabaseClient,
   linkId: string,
   patch: { last_sha?: string; last_synced_at?: string; last_error: string | null }
 ): Promise<void> {
-  const { error } = await supabase.from("github_repo_links").update(patch).eq("id", linkId);
-  if (error) {
-    console.error(JSON.stringify({ msg: "repo link stamp failed", error: error.message }));
+  let lastError = "unknown";
+  for (let attempt = 1; attempt <= LINK_WRITE_ATTEMPTS; attempt += 1) {
+    const { error } = await supabase.from("github_repo_links").update(patch).eq("id", linkId);
+    if (!error) return;
+    lastError = error.message;
+    if (attempt < LINK_WRITE_ATTEMPTS) {
+      await new Promise((resolve) => setTimeout(resolve, 50 * attempt));
+    }
   }
+  console.error(JSON.stringify({ msg: "repo link stamp failed", link: linkId, error: lastError }));
 }
 
 /**
@@ -895,7 +920,8 @@ export async function previewRepository(
  * and, for a static tree, stage its first draft in the same call. For a
  * project that builds, commit the workflow instead; the first draft arrives
  * when that workflow runs. The workflow commit is the one repository write
- * Import ever performs and it requires `commitWorkflow: true` — the owner's
+ * Import ever performs of its own accord (taking that same commit back is
+ * the other) and it requires `commitWorkflow: true` — the owner's
  * confirmation of the preview — or the call refuses before creating anything.
  */
 export async function linkRepository(
@@ -937,67 +963,65 @@ export async function linkRepository(
     { appname, name: titleFor(appname), description: "" },
     "import"
   );
-  const existingLink = await linkForApp(supabase, userId, app.id);
-  if (existingLink && existingLink.repo_id !== repo.id) {
-    if (created) await discardEmptyDraft(supabase, userId, app.id);
-    throw new ImportError(`${app.slug} is already linked to ${existingLink.full_name}`, 409);
-  }
-  if (taken && taken.app_id !== app.id) {
-    if (created) await discardEmptyDraft(supabase, userId, app.id);
-    throw new ImportError("that repository, branch and directory already feed another app", 409);
-  }
 
-  const linkFields = {
-    user_id: userId,
-    installation_id: installation.installation_id,
-    app_id: app.id,
-    repo_id: repo.id,
-    full_name: repo.full_name,
-    branch,
-    dir,
-    mode: plan.mode,
-    workflow_path: plan.mode === "build" ? WORKFLOW_PATH : null,
-    last_error: null,
-  };
-
+  // Until the link row is written, an app this request created has nothing
+  // pointing at it, so every exit from here — a refusal, a failed lookup,
+  // a refused write — removes it again (only the request whose insert made
+  // the app may do that: `created`).
+  //
   // The link row is the one write that can be refused for a reason of its
-  // own (the unique source index, the database), so it goes first: a refusal
-  // here has changed nothing — no draft moved, no workflow committed. Only
-  // then do the external effects run, and if one of them fails the row is
-  // put back: removed again for a first link (with the app this request
-  // created for it), restored field-for-field for a re-link, so the owner
-  // is left with the working link they had rather than a half-moved one.
-  // Every one of those writes, and the final stamp, is fenced on the
-  // `import_id` this request wrote, so two imports of one app cannot undo
-  // each other: the later save wins the row, the earlier one reports it.
+  // own (the unique source index, the database), so it goes before any
+  // external effect: a refusal here has changed nothing — no draft moved,
+  // no workflow committed. Only then do the external effects run, and if one
+  // of them fails the row is put back: removed again for a first link (with
+  // the app this request created for it), restored field-for-field for a
+  // re-link, so the owner is left with the working link they had rather
+  // than a half-moved one. Every one of those writes, and the final stamp,
+  // is fenced on the `import_id` this request wrote, so two imports of one
+  // app cannot undo each other: the later save wins the row, the earlier
+  // one reports it.
+  let existingLink: RepoLink | null;
   let link: RepoLink;
   try {
-    link = await saveLink(supabase, linkFields);
+    existingLink = await linkForApp(supabase, userId, app.id);
+    if (existingLink && existingLink.repo_id !== repo.id) {
+      throw new ImportError(`${app.slug} is already linked to ${existingLink.full_name}`, 409);
+    }
+    if (taken && taken.app_id !== app.id) {
+      throw new ImportError("that repository, branch and directory already feed another app", 409);
+    }
+    link = await saveLink(supabase, {
+      user_id: userId,
+      installation_id: installation.installation_id,
+      app_id: app.id,
+      repo_id: repo.id,
+      full_name: repo.full_name,
+      branch,
+      dir,
+      mode: plan.mode,
+      workflow_path: plan.mode === "build" ? WORKFLOW_PATH : null,
+      last_error: null,
+    });
   } catch (error) {
     if (created) await discardEmptyDraft(supabase, userId, app.id);
     throw error;
   }
+
   let version: string | null = null;
-  let workflowPath: string | null = null;
+  let workflow: WorkflowCommit | null = null;
   try {
     if (staged) {
       version = await uploadVersion(supabase, app, staged.files, "import", {
         findings: staged.findings,
         promote: false,
       });
-      await confirmLink(supabase, link, {
-        last_sha: sha,
-        last_synced_at: new Date().toISOString(),
-        last_error: null,
-      });
     } else {
-      workflowPath = await commitWorkflow(installation.installation_id, {
+      workflow = await commitWorkflow(installation.installation_id, {
         fullName: repo.full_name,
         branch,
         dir,
         plan,
       });
-      await confirmLink(supabase, link, { last_error: null });
     }
   } catch (error) {
     if (existingLink) {
@@ -1013,6 +1037,38 @@ export async function linkRepository(
       if (created) await discardEmptyDraft(supabase, userId, app.id);
     }
     throw error;
+  }
+
+  // The effect is done and the row names it; from here nothing is put back
+  // on this import's account. A stamp the database will not take leaves the
+  // link as saved (confirmLink reports it). A row that is no longer this
+  // import's belongs to a later import of the same app, whose link stands
+  // together with what it staged or committed — so this import's own effect
+  // is withdrawn where it would contradict that link: a workflow it wrote is
+  // taken back (fenced on the blob it wrote, and kept when that later link
+  // needs exactly this file). A draft it staged stays as a version of the
+  // owner's app, exactly as a static import followed by another import
+  // leaves it: the registry pointer names what the owner sees and retention
+  // retires the rest.
+  const confirmed = await confirmLink(
+    supabase,
+    link,
+    version
+      ? { last_sha: sha, last_synced_at: new Date().toISOString(), last_error: null }
+      : { last_error: null }
+  );
+  if (!confirmed) {
+    if (workflow?.wrote) {
+      await revertWorkflow(supabase, installation.installation_id, {
+        userId,
+        appId: app.id,
+        repo,
+        branch,
+        archive,
+        wrote: workflow.wrote,
+      });
+    }
+    throw new ImportError("another import of this app replaced the link while this one ran", 409);
   }
   await recordOpsEvent(supabase, "import", userId, `${repo.full_name}@${branch}`);
 
@@ -1030,20 +1086,26 @@ export async function linkRepository(
     findings: staged?.findings ?? [],
     skipped: staged?.skipped ?? [],
     plan,
-    workflow_path: workflowPath,
+    workflow_path: workflow?.path ?? null,
     status: app.status,
   };
 }
 
-/** Write (or refresh) the workflow file on the linked branch. */
-async function commitWorkflow(
-  installationId: number,
-  input: { fullName: string; branch: string; dir: string; plan: RepoPlan }
-): Promise<string> {
-  const token = await installationToken(installationId, {
-    permissions: { contents: "write", metadata: "read" },
-  });
-  const content = Buffer.from(
+/** What `commitWorkflow` put on the branch: the blob it wrote over what was there. */
+interface WorkflowWrite {
+  blobSha: string;
+  content: Buffer;
+  previous: RepoFile | null;
+}
+
+interface WorkflowCommit {
+  path: string;
+  /** Null when the branch already had exactly this file (nothing was written). */
+  wrote: WorkflowWrite | null;
+}
+
+function workflowFor(input: { branch: string; dir: string; plan: RepoPlan }): Buffer {
+  return Buffer.from(
     workflowYaml({
       branch: input.branch,
       dir: input.dir,
@@ -1053,10 +1115,21 @@ async function commitWorkflow(
     }),
     "utf8"
   );
+}
+
+/** Write (or refresh) the workflow file on the linked branch. */
+async function commitWorkflow(
+  installationId: number,
+  input: { fullName: string; branch: string; dir: string; plan: RepoPlan }
+): Promise<WorkflowCommit> {
+  const token = await installationToken(installationId, {
+    permissions: { contents: "write", metadata: "read" },
+  });
+  const content = workflowFor(input);
   const current = await getFile(token, input.fullName, WORKFLOW_PATH, input.branch);
-  if (current && current.content.equals(content)) return WORKFLOW_PATH;
+  if (current && current.content.equals(content)) return { path: WORKFLOW_PATH, wrote: null };
   try {
-    await putFile(token, input.fullName, {
+    const { blobSha } = await putFile(token, input.fullName, {
       path: WORKFLOW_PATH,
       branch: input.branch,
       message: current
@@ -1065,6 +1138,7 @@ async function commitWorkflow(
       content,
       sha: current?.sha,
     });
+    return { path: WORKFLOW_PATH, wrote: { blobSha, content, previous: current } };
   } catch (error) {
     if (error instanceof GitHubError && (error.status === 403 || error.status === 404)) {
       throw new ImportError(
@@ -1074,7 +1148,76 @@ async function commitWorkflow(
     }
     throw error;
   }
-  return WORKFLOW_PATH;
+}
+
+/**
+ * Take back the workflow file an import wrote after its link was replaced
+ * by a later import of the same app: the file goes back to what it replaced
+ * (or away, if there was none) — unless the link that stands is a build link
+ * on this same branch that needs exactly this file, which it then found in
+ * place and did not write again. The write is fenced on the blob this
+ * import created: GitHub refuses it once anyone has written the file since,
+ * so a later commit is never undone. Best effort — the app is already
+ * reporting the conflict, and a workflow left behind is one the owner can
+ * see and delete.
+ */
+async function revertWorkflow(
+  supabase: SupabaseClient,
+  installationId: number,
+  input: {
+    userId: string;
+    appId: string;
+    repo: Repository;
+    branch: string;
+    archive: BundleFile[];
+    wrote: WorkflowWrite;
+  }
+): Promise<void> {
+  const { repo, branch, wrote } = input;
+  try {
+    const standing = await linkForApp(supabase, input.userId, input.appId);
+    if (
+      standing &&
+      standing.mode === "build" &&
+      standing.repo_id === repo.id &&
+      standing.branch === branch &&
+      workflowFor({ branch, dir: standing.dir, plan: planRepository(subtreeRaw(input.archive, standing.dir)) }).equals(
+        wrote.content
+      )
+    ) {
+      console.log(JSON.stringify({ msg: "workflow kept: the standing link needs it", repo: repo.full_name, branch }));
+      return;
+    }
+    const token = await installationToken(installationId, {
+      permissions: { contents: "write", metadata: "read" },
+    });
+    if (wrote.previous) {
+      await putFile(token, repo.full_name, {
+        path: WORKFLOW_PATH,
+        branch,
+        message: "chore: put back the workflow an interrupted WZRD Create import replaced",
+        content: wrote.previous.content,
+        sha: wrote.blobSha,
+      });
+    } else {
+      await deleteFile(token, repo.full_name, {
+        path: WORKFLOW_PATH,
+        branch,
+        message: "chore: remove the workflow an interrupted WZRD Create import added",
+        sha: wrote.blobSha,
+      });
+    }
+  } catch (error) {
+    const superseded = error instanceof GitHubError && (error.status === 409 || error.status === 422);
+    console[superseded ? "log" : "error"](
+      JSON.stringify({
+        msg: superseded ? "workflow revert skipped: the file was written since" : "workflow revert failed",
+        repo: repo.full_name,
+        branch,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    );
+  }
 }
 
 /* -------------------------------------------------------------- sync */
@@ -1171,7 +1314,12 @@ export interface PushEvent {
   installation?: { id: number } | undefined;
 }
 
-/** Links a push lands on: this branch, `static`, fed by the delivering installation. */
+/**
+ * Links a push lands on: this branch, `static`, fed by the delivering
+ * installation, and not already synced to this very head — a link that
+ * stamped `after` has staged this push, so a redelivery of the same event
+ * (a lost response, an unfinished lease) does not stage it twice.
+ */
 export function pushTargets(links: RepoLink[], body: PushEvent): RepoLink[] {
   if (body.deleted) return [];
   return links.filter(
@@ -1179,7 +1327,8 @@ export function pushTargets(links: RepoLink[], body: PushEvent): RepoLink[] {
       link.mode === "static" &&
       link.repo_id === body.repository.id &&
       body.ref === `refs/heads/${link.branch}` &&
-      (body.installation === undefined || body.installation.id === link.installation_id)
+      (body.installation === undefined || body.installation.id === link.installation_id) &&
+      link.last_sha !== body.after
   );
 }
 

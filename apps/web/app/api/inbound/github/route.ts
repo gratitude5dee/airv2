@@ -6,7 +6,10 @@
  * acknowledges without reprocessing. The delivery id is held as a lease
  * while its handler runs and marked final only when it succeeds, so a
  * failed attempt — even one whose release never landed — is run again by
- * the redelivery rather than acknowledged forever.
+ * the redelivery rather than acknowledged forever. The handlers themselves
+ * are idempotent (a push is staged once per link and head, an installation
+ * mark is absolute), so the one re-run a lost final mark can cause after the
+ * lease changes nothing.
  *
  * Events that matter:
  *   installation               deleted / suspend / unsuspend → installation row
@@ -88,23 +91,33 @@ async function claimDelivery(
   return data === true;
 }
 
+const COMPLETE_ATTEMPTS = 3;
+
 /**
  * Mark the delivery final: from here a redelivery is a duplicate for good.
  * Only the successful dispatch path reaches this, so a row without
- * `processed_at` is by definition an attempt that did not finish.
+ * `processed_at` is by definition an attempt that did not finish. The write
+ * is retried; if it still fails the lease expires and the redelivery runs
+ * the handler once more — which, the handlers being idempotent on the
+ * effects they already recorded (the link's `last_sha`, the installation
+ * row), stages and marks nothing new.
  */
 async function completeDelivery(supabase: SupabaseClient, deliveryId: string): Promise<void> {
-  const { error } = await supabase
-    .from("github_deliveries")
-    .update({ processed_at: new Date().toISOString() })
-    .eq("delivery_id", deliveryId);
-  if (error) {
-    // The lease still expires; the worst case is one re-run of an
-    // idempotent handler after DELIVERY_LEASE_SECONDS.
-    console.error(
-      JSON.stringify({ msg: "github delivery complete failed", delivery: deliveryId, error: error.message })
-    );
+  let lastError = "unknown";
+  for (let attempt = 1; attempt <= COMPLETE_ATTEMPTS; attempt += 1) {
+    const { error } = await supabase
+      .from("github_deliveries")
+      .update({ processed_at: new Date().toISOString() })
+      .eq("delivery_id", deliveryId);
+    if (!error) return;
+    lastError = error.message;
+    if (attempt < COMPLETE_ATTEMPTS) {
+      await new Promise((resolve) => setTimeout(resolve, 50 * attempt));
+    }
   }
+  console.error(
+    JSON.stringify({ msg: "github delivery complete failed", delivery: deliveryId, error: lastError })
+  );
 }
 
 /**

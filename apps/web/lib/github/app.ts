@@ -374,17 +374,26 @@ export async function getFile(
   }
 }
 
-/** Create or update one file on `branch` (the only write the App performs). */
+function contentsPath(fullName: string, path: string): string {
+  return `/repos/${assertFullName(fullName)}/contents/${path
+    .split("/")
+    .map(encodeURIComponent)
+    .join("/")}`;
+}
+
+/**
+ * Create or update one file on `branch`. `sha` is the blob being replaced;
+ * GitHub refuses (409) when the file no longer has it, so a write conditioned
+ * on it never lands over someone else's. Returns the blob written, for the
+ * same fence on a later write.
+ */
 export async function putFile(
   token: string,
   fullName: string,
   input: { path: string; branch: string; message: string; content: Buffer; sha?: string | undefined }
-): Promise<{ commitSha: string }> {
-  const { data } = await call<{ commit: { sha: string } }>(
-    `/repos/${assertFullName(fullName)}/contents/${input.path
-      .split("/")
-      .map(encodeURIComponent)
-      .join("/")}`,
+): Promise<{ commitSha: string; blobSha: string }> {
+  const { data } = await call<{ commit: { sha: string }; content: { sha: string } }>(
+    contentsPath(fullName, input.path),
     {
       method: "PUT",
       token,
@@ -396,6 +405,20 @@ export async function putFile(
       },
     }
   );
+  return { commitSha: data.commit.sha, blobSha: data.content.sha };
+}
+
+/** Delete one file on `branch`, only while it still holds blob `sha`. */
+export async function deleteFile(
+  token: string,
+  fullName: string,
+  input: { path: string; branch: string; message: string; sha: string }
+): Promise<{ commitSha: string }> {
+  const { data } = await call<{ commit: { sha: string } }>(contentsPath(fullName, input.path), {
+    method: "DELETE",
+    token,
+    body: { message: input.message, branch: input.branch, sha: input.sha },
+  });
   return { commitSha: data.commit.sha };
 }
 

@@ -5,6 +5,9 @@
  * while a handler that throws gives the delivery id back so a redelivery
  * runs it again instead of being called a duplicate — and when even that
  * release fails, the lease on the id expires so the redelivery still runs.
+ * The final mark is retried, and a handler that ran to completion has
+ * recorded its effect (the link's head), so the re-run a lost mark allows
+ * stages nothing twice.
  */
 import { createHmac } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -16,6 +19,9 @@ const db = vi.hoisted(() => ({
   deliveries: new Map<string, { received_at: number; processed_at: number | null }>(),
   claimError: null as { code: string; message: string } | null,
   releaseError: null as { code: string; message: string } | null,
+  /** Errors the next N final marks return. */
+  failCompletes: 0,
+  completeAttempts: 0,
   deleted: [] as { installation: number; repos: number[] }[],
   released: [] as string[],
   completed: [] as string[],
@@ -47,6 +53,11 @@ vi.mock("@/lib/supabase", () => ({
             update(patch: { processed_at: string }) {
               return {
                 eq: async (_col: string, value: string) => {
+                  db.completeAttempts += 1;
+                  if (db.failCompletes > 0) {
+                    db.failCompletes -= 1;
+                    return { error: { code: "XX000", message: "connection reset" } };
+                  }
                   const row = db.deliveries.get(value);
                   if (row) row.processed_at = Date.parse(patch.processed_at);
                   db.completed.push(value);
@@ -155,6 +166,8 @@ beforeEach(() => {
   db.deliveries.clear();
   db.claimError = null;
   db.releaseError = null;
+  db.failCompletes = 0;
+  db.completeAttempts = 0;
   db.deleted.length = 0;
   db.released.length = 0;
   db.completed.length = 0;
@@ -373,6 +386,56 @@ describe("POST /api/inbound/github — failed handlers", () => {
     const done = await POST(deliver("installation", body, { delivery: "d-stuck" }));
     expect(await done.json()).toEqual({ ok: true, duplicate: true });
     expect(imports.markInstallation).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries the final mark, so a transient failure still makes the redelivery a duplicate", async () => {
+    db.failCompletes = 2;
+    await POST(deliver("installation", { action: "deleted", installation: { id: 10 } }, { delivery: "d-flaky" }));
+    expect(db.completeAttempts).toBe(3);
+    expect(db.completed).toEqual(["d-flaky"]);
+
+    db.deliveries.get("d-flaky")!.received_at -= 3600_000;
+    const again = await POST(deliver("installation", { action: "deleted", installation: { id: 10 } }, { delivery: "d-flaky" }));
+    expect(await again.json()).toEqual({ ok: true, duplicate: true });
+    expect(imports.markInstallation).toHaveBeenCalledTimes(1);
+  });
+
+  it("a lost final mark cannot stage a push twice: the synced head makes the re-run a no-op", async () => {
+    // The sync stamps the link's head; the final mark then fails for good.
+    // After the lease the redelivery is taken over and runs the handler again,
+    // which finds every link already at this head and stages nothing.
+    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const stamped = link({ id: "l-1" });
+    imports.linksForRepo.mockResolvedValue([stamped]);
+    imports.syncStaticLink.mockImplementationOnce(async () => {
+      stamped.last_sha = push.after;
+      return { slug: "alice-site", version: "v1", sha: push.after, findings: [] };
+    });
+    db.failCompletes = 3;
+    const first = await POST(deliver("push", push, { delivery: "d-lost" }));
+    expect(first.status).toBe(200);
+    expect(await first.json()).toEqual({ ok: true, synced: ["alice-site"], failed: [] });
+    expect(db.completeAttempts).toBe(3);
+    expect(db.deliveries.get("d-lost")).toMatchObject({ processed_at: null });
+    spy.mockRestore();
+
+    db.deliveries.get("d-lost")!.received_at -= 16 * 60_000;
+    const again = await POST(deliver("push", push, { delivery: "d-lost" }));
+    expect(await again.json()).toEqual({ ok: true, synced: [], failed: [] });
+    expect(imports.syncStaticLink).toHaveBeenCalledTimes(1);
+    expect(db.completed).toEqual(["d-lost"]);
+  });
+
+  it("a link already at the pushed head is not staged again", async () => {
+    imports.linksForRepo.mockResolvedValue([link({ id: "same", last_sha: push.after }), link({ id: "behind" })]);
+    const response = await POST(deliver("push", push));
+    expect(await response.json()).toEqual({ ok: true, synced: ["alice-site"], failed: [] });
+    expect(imports.syncStaticLink).toHaveBeenCalledTimes(1);
+    expect(imports.syncStaticLink).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ id: "behind" }),
+      push.after
+    );
   });
 
   it("keeps the claim when a static sync fails (recorded on the link, 200 to GitHub)", async () => {

@@ -5,9 +5,13 @@
  * link (and app) only when something actually staged; a failed re-import
  * puts the working link back field-for-field; a source already feeding
  * another app is refused before any row exists; an app this request
- * created is removed again when the link cannot be kept. Two imports of one
- * app may overlap: each fences its writes on its own import_id, so the one
- * that fails never undoes the one that succeeded.
+ * created is removed again when the link cannot be kept — whatever fails
+ * between creating it and writing the link. Two imports of one app may
+ * overlap: each fences its writes on its own import_id, so the one that
+ * fails never undoes the one that succeeded; and once an import's effect is
+ * done, a stamp that fails or finds the row taken never rolls that effect
+ * back on the row — a workflow the losing import wrote is taken back from the
+ * branch instead, unless the standing link needs it.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -27,6 +31,8 @@ const db = vi.hoisted(() => ({
   failUpserts: 0,
   /** Errors the next N updates return. */
   failUpdates: 0,
+  /** Fail one select on `table` after letting `skip` of them through. */
+  failSelect: null as { table: string; skip: number } | null,
 }));
 
 vi.mock("@/lib/supabase", () => ({ serviceClient: () => ({}) }));
@@ -41,7 +47,16 @@ function supabase(): SupabaseClient {
     };
     const matches = () => rows().filter((row) => filters.every((f) => f(row)));
     const run = (): { data: Row[]; error: { code: string; message: string } | null } => {
-      if (op.kind === "select") return { data: matches(), error: null };
+      if (op.kind === "select") {
+        if (db.failSelect && db.failSelect.table === table) {
+          if (db.failSelect.skip > 0) db.failSelect.skip -= 1;
+          else {
+            db.failSelect = null;
+            return { data: [], error: { code: "XX000", message: "connection reset" } };
+          }
+        }
+        return { data: matches(), error: null };
+      }
       if (op.kind === "delete") {
         const gone = matches();
         db.tables[table] = rows().filter((row) => !gone.includes(row));
@@ -143,8 +158,12 @@ const github = vi.hoisted(() => ({
   })),
   branchHeadSha: vi.fn(async () => "b".repeat(40)),
   downloadZipball: vi.fn(async (): Promise<Buffer> => Buffer.alloc(0)),
-  getFile: vi.fn(async () => null),
-  putFile: vi.fn(async () => ({ commitSha: "c".repeat(40) })),
+  getFile: vi.fn(async (): Promise<{ path: string; sha: string; content: Buffer } | null> => null),
+  putFile: vi.fn(async (..._args: [string, string, { content: Buffer }]) => ({
+    commitSha: "c".repeat(40),
+    blobSha: "blob-new",
+  })),
+  deleteFile: vi.fn(async () => ({ commitSha: "d".repeat(40) })),
 }));
 vi.mock("@/lib/github/app", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/github/app")>()),
@@ -186,6 +205,7 @@ vi.mock("@/lib/security/limits", async (importOriginal) => ({
   ...limits,
 }));
 
+import { GitHubError } from "@/lib/github/app";
 import { WORKFLOW_PATH, linkRepository } from "./import";
 
 function zipball(files: Record<string, string>): Buffer {
@@ -242,6 +262,7 @@ beforeEach(() => {
   db.beforeUpsert = null;
   db.failUpserts = 0;
   db.failUpdates = 0;
+  db.failSelect = null;
   process.env["MINIAPP_ORIGIN"] = "https://mini.wzrd.test";
   drop.resolveOrCreateDropApp.mockResolvedValue({ app, created: true });
   github.downloadZipball.mockResolvedValue(zipball({ "index.html": HTML, "site/index.html": HTML }));
@@ -297,6 +318,26 @@ describe("linkRepository — first import", () => {
     expect(links()[0]).toMatchObject({ app_id: "app-1", dir: "", last_sha: SHA, last_error: null });
     expect(drop.discardEmptyDraft).not.toHaveBeenCalled();
     expect(db.log).not.toContain("delete:github_repo_links:1");
+  });
+
+  it("removes the app it created when the link lookup after creating it fails", async () => {
+    // First select on the links table is the source pre-check; the second,
+    // right after the app row is inserted, is the app's own link.
+    db.failSelect = { table: "github_repo_links", skip: 1 };
+    await expect(linkRepository(supabase(), "user-alice", input)).rejects.toMatchObject({
+      status: 502,
+      message: expect.stringMatching(/link lookup failed: connection reset/),
+    });
+    expect(versions.uploadVersion).not.toHaveBeenCalled();
+    expect(links()).toEqual([]);
+    expect(drop.discardEmptyDraft).toHaveBeenCalledWith(expect.anything(), "user-alice", "app-1");
+  });
+
+  it("keeps a pre-existing app when the link lookup fails", async () => {
+    drop.resolveOrCreateDropApp.mockResolvedValue({ app, created: false });
+    db.failSelect = { table: "github_repo_links", skip: 1 };
+    await expect(linkRepository(supabase(), "user-alice", input)).rejects.toMatchObject({ status: 502 });
+    expect(drop.discardEmptyDraft).not.toHaveBeenCalled();
   });
 
   it("removes the app it created when the link cannot be saved", async () => {
@@ -453,6 +494,126 @@ describe("linkRepository — re-import", () => {
     expect(links()).toHaveLength(1);
     expect(links()[0]).toMatchObject({ id: "link-old", dir: "site", last_sha: SHA, last_error: null });
     expect(links()[0]!["last_synced_at"]).not.toBe("2026-09-01T00:00:00Z");
+    expect(db.log).not.toContain("delete:github_repo_links:1");
+    expect(github.deleteFile).not.toHaveBeenCalled();
+  });
+
+  it("a stamp the database will not take leaves the moved link and the staged draft in place", async () => {
+    // The draft is staged and the row already names the new source; the
+    // stamp is retried, then reported — nothing is put back over a finished
+    // import, and no draft is discarded.
+    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    versions.uploadVersion.mockImplementationOnce(async () => {
+      db.failUpdates = 3;
+      return "v1700000000000";
+    });
+    await expect(linkRepository(supabase(), "user-alice", { ...input, dir: "" })).rejects.toMatchObject({
+      status: 502,
+      message: expect.stringMatching(/import went through, but its sync record could not be written/),
+    });
+    spy.mockRestore();
+    expect(links()).toHaveLength(1);
+    expect(links()[0]).toMatchObject({ id: "link-old", dir: "", last_sha: "a".repeat(40) });
+    expect(links()[0]!["import_id"]).not.toBe("import-old");
+    expect(db.log.filter((entry) => entry === "update:github_repo_links")).toEqual([]);
+    expect(db.log).not.toContain("delete:github_repo_links:1");
+    expect(drop.discardEmptyDraft).not.toHaveBeenCalled();
+  });
+
+  it("a transient stamp failure is retried and the import still succeeds", async () => {
+    versions.uploadVersion.mockImplementationOnce(async () => {
+      db.failUpdates = 2;
+      return "v1700000000000";
+    });
+    const result = await linkRepository(supabase(), "user-alice", { ...input, dir: "" });
+    expect(result.version).toBe("v1700000000000");
+    expect(links()[0]).toMatchObject({ id: "link-old", dir: "", last_sha: SHA, last_error: null });
+  });
+
+  const buildRepo = {
+    "package.json": JSON.stringify({ scripts: { build: "vite build" }, devDependencies: { vite: "6" } }),
+    "package-lock.json": "{}",
+    "site/index.html": HTML,
+  };
+
+  it("a build import overtaken by a static one takes its workflow back off the branch", async () => {
+    // A (build, dir "") commits the workflow; while it does, B (static, dir
+    // "site") saves over the row and finishes. A's stamp finds the row gone;
+    // the workflow A added — which nothing now needs — is deleted, fenced on
+    // the blob A wrote; B's link stands.
+    github.downloadZipball.mockResolvedValue(zipball(buildRepo));
+    github.putFile.mockImplementationOnce(async () => {
+      await linkRepository(supabase(), "user-alice", { ...input, dir: "site" });
+      return { commitSha: "c".repeat(40), blobSha: "blob-a" };
+    });
+    await expect(
+      linkRepository(supabase(), "user-alice", { ...input, dir: "", commitWorkflow: true })
+    ).rejects.toMatchObject({ status: 409 });
+    expect(github.putFile).toHaveBeenCalledTimes(1);
+    expect(github.deleteFile).toHaveBeenCalledTimes(1);
+    expect(github.deleteFile).toHaveBeenCalledWith("ghs_short_lived", "alice/site", {
+      path: WORKFLOW_PATH,
+      branch: "main",
+      message: expect.any(String),
+      sha: "blob-a",
+    });
+    expect(links()).toHaveLength(1);
+    expect(links()[0]).toMatchObject({ id: "link-old", dir: "site", mode: "static", last_sha: SHA });
+  });
+
+  it("an overtaken build import puts back the workflow it replaced", async () => {
+    github.downloadZipball.mockResolvedValue(zipball(buildRepo));
+    const previous = { path: WORKFLOW_PATH, sha: "blob-prev", content: Buffer.from("name: theirs\n") };
+    github.getFile.mockResolvedValueOnce(previous);
+    github.putFile.mockImplementationOnce(async () => {
+      await linkRepository(supabase(), "user-alice", { ...input, dir: "site" });
+      return { commitSha: "c".repeat(40), blobSha: "blob-a" };
+    });
+    await expect(
+      linkRepository(supabase(), "user-alice", { ...input, dir: "", commitWorkflow: true })
+    ).rejects.toMatchObject({ status: 409 });
+    expect(github.deleteFile).not.toHaveBeenCalled();
+    expect(github.putFile).toHaveBeenCalledTimes(2);
+    expect(github.putFile).toHaveBeenLastCalledWith("ghs_short_lived", "alice/site", {
+      path: WORKFLOW_PATH,
+      branch: "main",
+      message: expect.any(String),
+      content: previous.content,
+      sha: "blob-a",
+    });
+  });
+
+  it("keeps the workflow when the import that overtook it is a build of the same tree", async () => {
+    // A commits the workflow for dir ""; B, also build for dir "", finds
+    // A's file already in place and writes nothing. A's stamp loses; the
+    // file B relies on stays.
+    github.downloadZipball.mockResolvedValue(zipball(buildRepo));
+    github.putFile.mockImplementationOnce(async (_token, _repo, written) => {
+      github.getFile.mockResolvedValueOnce({ path: WORKFLOW_PATH, sha: "blob-a", content: written.content });
+      await linkRepository(supabase(), "user-alice", { ...input, dir: "", commitWorkflow: true });
+      return { commitSha: "c".repeat(40), blobSha: "blob-a" };
+    });
+    await expect(
+      linkRepository(supabase(), "user-alice", { ...input, dir: "", commitWorkflow: true })
+    ).rejects.toMatchObject({ status: 409 });
+    expect(github.putFile).toHaveBeenCalledTimes(1);
+    expect(github.deleteFile).not.toHaveBeenCalled();
+    expect(links()[0]).toMatchObject({ id: "link-old", mode: "build", dir: "", workflow_path: WORKFLOW_PATH });
+  });
+
+  it("leaves a workflow alone once someone else has written it since", async () => {
+    github.downloadZipball.mockResolvedValue(zipball(buildRepo));
+    github.putFile.mockImplementationOnce(async () => {
+      await linkRepository(supabase(), "user-alice", { ...input, dir: "site" });
+      return { commitSha: "c".repeat(40), blobSha: "blob-a" };
+    });
+    github.deleteFile.mockRejectedValueOnce(new GitHubError(409, "github 409: sha does not match"));
+    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    await expect(
+      linkRepository(supabase(), "user-alice", { ...input, dir: "", commitWorkflow: true })
+    ).rejects.toMatchObject({ status: 409, message: expect.stringMatching(/another import/) });
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 
   it("refuses to point the app at a different repository", async () => {
