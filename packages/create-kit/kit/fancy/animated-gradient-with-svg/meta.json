@@ -1,0 +1,49 @@
+{
+  "id": "fancy/animated-gradient-with-svg",
+  "title": "Animated Gradient (SVG)",
+  "tags": [
+    "background",
+    "motion",
+    "ambient"
+  ],
+  "when": "Soft moving color blobs behind a panel. Uses blur; pixel theme and lite render it flat.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {
+    "colors": "string[]",
+    "speed": "number?",
+    "blur": "\"light\" | \"medium\" | \"heavy\"?"
+  },
+  "deps": [
+    "clsx",
+    "tailwind-merge"
+  ],
+  "weightKb": {
+    "js": 0.8,
+    "css": 0.1,
+    "jsFull": 10
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "static",
+  "author": "daniel petho",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "danielpetho/fancy@f9f62c61207b"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 32,
+    "errors": []
+  },
+  "notes": []
+}

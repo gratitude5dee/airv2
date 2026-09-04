@@ -1,0 +1,64 @@
+{
+  "id": "fancy/media-between-text",
+  "title": "Media Between Text",
+  "tags": [
+    "text",
+    "media",
+    "motion",
+    "hero"
+  ],
+  "when": "Headline where an image expands between two words on hover/view.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {
+    "firstText": "string",
+    "secondText": "string",
+    "mediaUrl": "string",
+    "mediaType": "\"image\" | \"video\"",
+    "mediaContainerClassName": "string?",
+    "fallbackUrl": "string?",
+    "as": "ElementType?",
+    "autoPlay": "boolean?",
+    "loop": "boolean?",
+    "muted": "boolean?",
+    "playsInline": "boolean?",
+    "alt": "string?",
+    "triggerType": "\"hover\" | \"ref\" | \"inView\"?",
+    "containerRef": "React.RefObject<HTMLDivElement | null>?",
+    "useInViewOptionsProp": "UseInViewOptions?",
+    "animationVariants": "object?",
+    "leftTextClassName": "string?",
+    "rightTextClassName": "string?"
+  },
+  "deps": [
+    "motion"
+  ],
+  "weightKb": {
+    "js": 0.9,
+    "css": 0.1,
+    "jsFull": 49.9
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "static",
+  "author": "daniel petho",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "danielpetho/fancy@f9f62c61207b"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 71,
+    "errors": []
+  },
+  "notes": []
+}

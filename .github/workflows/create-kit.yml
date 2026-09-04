@@ -1,0 +1,29 @@
+name: Verify create-kit
+
+on:
+  pull_request:
+    paths:
+      - "packages/create-kit/**"
+      - "infra/template/skills/create-miniapp/DESIGN.md"
+      - ".github/workflows/create-kit.yml"
+  push:
+    branches: [main]
+    paths:
+      - "packages/create-kit/**"
+      - "infra/template/skills/create-miniapp/DESIGN.md"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install workspace (@types for tsc; the Kit itself has no install step)
+        run: npm ci --ignore-scripts
+      - name: Typecheck kit scripts
+        run: npx --yes -p typescript@5 tsc -p packages/create-kit/tsconfig.json
+      - name: Verify Kit (locks, tiers, budgets, CSP, generated docs)
+        run: npx --yes tsx@4 packages/create-kit/scripts/verify.ts

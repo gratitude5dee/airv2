@@ -1,0 +1,49 @@
+{
+  "id": "fancy/float",
+  "title": "Float",
+  "tags": [
+    "motion",
+    "ambient",
+    "decor"
+  ],
+  "when": "Gentle idle float for a hero image or badge. One per screen.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {
+    "speed": "number?",
+    "amplitude": "[number, number, number]?",
+    "rotationRange": "[number, number, number]?",
+    "timeOffset": "number?"
+  },
+  "deps": [
+    "motion"
+  ],
+  "weightKb": {
+    "js": 0.6,
+    "css": 0.1,
+    "jsFull": 49.6
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "static",
+  "author": "daniel petho",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "danielpetho/fancy@f9f62c61207b"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 1,
+    "errors": []
+  },
+  "notes": []
+}

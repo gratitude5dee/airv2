@@ -1,0 +1,51 @@
+{
+  "id": "fancy/pixel-trail",
+  "title": "Pixel Trail",
+  "tags": [
+    "background",
+    "pointer",
+    "motion"
+  ],
+  "when": "Pixels light up under the pointer/finger. Decorative background for one screen.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {
+    "pixelSize": "number",
+    "fadeDuration": "number?",
+    "delay": "number?",
+    "pixelClassName": "string?"
+  },
+  "deps": [
+    "motion",
+    "clsx",
+    "tailwind-merge"
+  ],
+  "weightKb": {
+    "js": 1,
+    "css": 0.1,
+    "jsFull": 50.1
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "none",
+  "author": "daniel petho",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "danielpetho/fancy@f9f62c61207b"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 1,
+    "errors": []
+  },
+  "notes": []
+}

@@ -1,0 +1,43 @@
+{
+  "id": "aicss/orbs",
+  "title": "Orb",
+  "tags": [
+    "ai",
+    "status",
+    "avatar",
+    "ambient"
+  ],
+  "when": "Ambient CSS orb as the agent's presence. Use thinking-orbs when you need named states.",
+  "kind": "component",
+  "entry": "index.ts",
+  "props": {},
+  "deps": [],
+  "weightKb": {
+    "js": 3.1,
+    "css": 2.5,
+    "jsFull": 3.1
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "static",
+  "author": "Kevin Kelder (kvnkld)",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "kvnkld/aicss@4556a918fd8c"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 20,
+    "errors": []
+  },
+  "notes": []
+}

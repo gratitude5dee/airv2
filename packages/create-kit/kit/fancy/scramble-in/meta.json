@@ -1,0 +1,51 @@
+{
+  "id": "fancy/scramble-in",
+  "title": "Scramble In",
+  "tags": [
+    "text",
+    "motion",
+    "reveal"
+  ],
+  "when": "Reveal a short label by unscrambling it once on mount or on view.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {
+    "text": "string",
+    "scrambleSpeed": "number?",
+    "scrambledLetterCount": "number?",
+    "characters": "string?",
+    "scrambledClassName": "string?",
+    "autoStart": "boolean?",
+    "onStart": "() => void?",
+    "onComplete": "() => void?"
+  },
+  "deps": [],
+  "weightKb": {
+    "js": 0.7,
+    "css": 0.1,
+    "jsFull": 0.7
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "static",
+  "author": "daniel petho",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "danielpetho/fancy@f9f62c61207b"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 18,
+    "errors": []
+  },
+  "notes": []
+}

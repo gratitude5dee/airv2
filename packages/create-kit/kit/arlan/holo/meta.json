@@ -1,0 +1,46 @@
+{
+  "id": "arlan/holo",
+  "title": "Holo Card",
+  "tags": [
+    "card",
+    "tilt",
+    "motion",
+    "3d",
+    "pointer"
+  ],
+  "when": "Holographic foil card that tilts with the pointer or device orientation. One per screen; heavy blend modes.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {},
+  "deps": [],
+  "weightKb": {
+    "js": 5.9,
+    "css": 0.1,
+    "jsFull": 5.9
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "static",
+  "author": "Arlan Marat",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "arlan.me/vault@2026-09-04"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 123,
+    "errors": []
+  },
+  "notes": [
+    "Upstream baked a site photo into the foil tile layer; the Kit takes `tileSrc` on applyFoil (unset → no tile)."
+  ]
+}

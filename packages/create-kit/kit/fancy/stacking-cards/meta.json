@@ -1,0 +1,48 @@
+{
+  "id": "fancy/stacking-cards",
+  "title": "Stacking Cards",
+  "tags": [
+    "layout",
+    "scroll",
+    "cards"
+  ],
+  "when": "Sections that stack as the page scrolls. Needs at least three cards to read.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {
+    "scrollOptions": "UseScrollOptions?",
+    "scaleMultiplier": "number?",
+    "totalCards": "number"
+  },
+  "deps": [
+    "motion"
+  ],
+  "weightKb": {
+    "js": 0.7,
+    "css": 0.1,
+    "jsFull": 52.6
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "reduced",
+  "author": "Khoa Phan",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "danielpetho/fancy@f9f62c61207b"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 1,
+    "errors": []
+  },
+  "notes": []
+}

@@ -1,0 +1,53 @@
+{
+  "id": "libraries/border-beam",
+  "title": "Border Beam",
+  "tags": [
+    "decor",
+    "motion",
+    "card",
+    "focus"
+  ],
+  "when": "Animated beam around one card that deserves attention (the pending approval, the live item).",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {
+    "size": "'sm'|'md'|'line'|'pulse-outside'|'pulse-inner'",
+    "colorVariant": "'colorful'|'mono'|'ocean'|'sunset'",
+    "theme": "'dark'|'light'|'auto'",
+    "strength": "number",
+    "duration": "number",
+    "active": "boolean",
+    "borderRadius": "number"
+  },
+  "deps": [
+    "border-beam"
+  ],
+  "weightKb": {
+    "js": 0.5,
+    "css": 0.1,
+    "jsFull": 10.6
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "static",
+  "author": "Jakub Antalik",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "Jakubantalik/Libraries.dev@aea4c00db4b7"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 1,
+    "errors": []
+  },
+  "notes": []
+}

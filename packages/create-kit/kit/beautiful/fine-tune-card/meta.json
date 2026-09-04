@@ -1,0 +1,48 @@
+{
+  "id": "beautiful/fine-tune-card",
+  "title": "Fine-tune Card",
+  "tags": [
+    "card",
+    "settings",
+    "sliders"
+  ],
+  "when": "Card of sliders/toggles to tune a result before confirming.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {
+    "variant": "string?",
+    "fields": "FineTuneField[]?",
+    "options": "string[]?",
+    "labels": "Partial<FineTuneCardLabels>?",
+    "onChange": "(state: FineTuneState) => void?"
+  },
+  "deps": [],
+  "weightKb": {
+    "js": 3,
+    "css": 0.1,
+    "jsFull": 3
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "n/a",
+  "author": "Shane Levine",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "beautifului.dev@2026-09-04"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 457,
+    "errors": []
+  },
+  "notes": []
+}

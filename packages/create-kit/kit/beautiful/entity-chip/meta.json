@@ -1,0 +1,42 @@
+{
+  "id": "beautiful/entity-chip",
+  "title": "Entity Chip (atom)",
+  "tags": [
+    "chip",
+    "atom",
+    "helper"
+  ],
+  "when": "Small entity chip used by recommendation-card.",
+  "kind": "helper",
+  "entry": "index.tsx",
+  "props": {},
+  "deps": [],
+  "weightKb": {
+    "js": 0.4,
+    "css": 0.1,
+    "jsFull": 0.4
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "n/a",
+  "author": "Shane Levine",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "beautifului.dev@2026-09-04"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 18,
+    "errors": []
+  },
+  "notes": []
+}

@@ -1,0 +1,50 @@
+{
+  "id": "fancy/underline-center",
+  "title": "Underline (center)",
+  "tags": [
+    "text",
+    "link",
+    "hover",
+    "motion"
+  ],
+  "when": "Inline link whose underline grows from the center on hover/focus.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {
+    "as": "ElementType?",
+    "transition": "ValueAnimationTransition?",
+    "underlineHeightRatio": "number?",
+    "underlinePaddingRatio": "number?"
+  },
+  "deps": [
+    "motion"
+  ],
+  "weightKb": {
+    "js": 0.8,
+    "css": 0.1,
+    "jsFull": 49.6
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "reduced",
+  "author": "daniel petho",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "danielpetho/fancy@f9f62c61207b"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 2,
+    "errors": []
+  },
+  "notes": []
+}

@@ -1,0 +1,51 @@
+{
+  "id": "libraries/thinking-orbs",
+  "title": "Thinking Orbs",
+  "tags": [
+    "ai",
+    "status",
+    "thinking",
+    "canvas"
+  ],
+  "when": "Nine named agent states (working, searching, solving…) on a 2D canvas. Best 'the agent is doing X' indicator.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {
+    "paused": "boolean",
+    "state": "'working'|'searching'|'solving'|'listening'|'connecting'|'weaving'|'composing'|'breathing'|'shaping'",
+    "size": "20 | 64",
+    "speed": "number",
+    "theme": "'auto'|'dark'|'light'"
+  },
+  "deps": [
+    "thinking-orbs"
+  ],
+  "weightKb": {
+    "js": 0.6,
+    "css": 0.1,
+    "jsFull": 6.4
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "static",
+  "author": "Jakub Antalik",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "Jakubantalik/Libraries.dev@aea4c00db4b7"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 20,
+    "errors": []
+  },
+  "notes": []
+}

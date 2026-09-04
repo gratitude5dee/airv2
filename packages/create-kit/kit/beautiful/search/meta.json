@@ -1,0 +1,42 @@
+{
+  "id": "beautiful/search",
+  "title": "Search",
+  "tags": [
+    "search",
+    "list",
+    "input"
+  ],
+  "when": "Search field with a filtered result list and glide highlight.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {},
+  "deps": [],
+  "weightKb": {
+    "js": 1.6,
+    "css": 0.1,
+    "jsFull": 1.6
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "reduced",
+  "author": "Shane Levine",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "beautifului.dev@2026-09-04"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 241,
+    "errors": []
+  },
+  "notes": []
+}

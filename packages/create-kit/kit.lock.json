@@ -1,0 +1,2747 @@
+{
+  "version": 1,
+  "kit": {
+    "version": "2026.09",
+    "components": 76,
+    "liteJsKb": 177.1,
+    "liteCssKb": 19.7,
+    "budgets": {
+      "liteJsKb": 300,
+      "cssKb": 200,
+      "hardJsKb": 1024,
+      "imageKb": 2048
+    }
+  },
+  "files": {
+    "kit/aicss/agent-input/PromptInput.module.css": {
+      "component": "aicss/agent-input",
+      "computedHash": "05f35b30f4b9350f3e2c21fe29e40ebc67faca508df336a2539b94c772528946",
+      "skillPath": "ai-agent-input/PromptInput.module.css",
+      "source": "kvnkld/aicss@4556a918fd8c",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "05f35b30f4b9350f3e2c21fe29e40ebc67faca508df336a2539b94c772528946"
+    },
+    "kit/aicss/agent-input/PromptInput.tsx": {
+      "component": "aicss/agent-input",
+      "computedHash": "93df59bef1c07ff13fc38945a7be24c631a10e4cdcb056aed81500c48499d95c",
+      "skillPath": "ai-agent-input/PromptInput.tsx",
+      "source": "kvnkld/aicss@4556a918fd8c",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "93df59bef1c07ff13fc38945a7be24c631a10e4cdcb056aed81500c48499d95c"
+    },
+    "kit/aicss/agent-input/index.ts": {
+      "component": "aicss/agent-input",
+      "computedHash": "02a0f643f4d64709eaab6c01ddae6f374145a9ac80c17834a89f562db2e11539",
+      "skillPath": "ai-agent-input/index.ts",
+      "source": "kvnkld/aicss@4556a918fd8c",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "02a0f643f4d64709eaab6c01ddae6f374145a9ac80c17834a89f562db2e11539"
+    },
+    "kit/aicss/agent-input/meta.json": {
+      "component": "aicss/agent-input",
+      "computedHash": "7e1845889da6757b20f40cc2f80a19e320af41f057f850ef3d57f798c0903f69",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/aicss/agent-input/ref.md": {
+      "component": "aicss/agent-input",
+      "computedHash": "1b579e9e5010e74c268fb2a20ca7a11ae7c78f166609a44804dbba454a9f5c0a",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/aicss/approval-card/ApprovalCard.module.css": {
+      "component": "aicss/approval-card",
+      "computedHash": "3b437a695ac7798b5412e5e7bb0e9ed9d1ac172499e57d089ce56cbcc374925e",
+      "skillPath": "approval-card/ApprovalCard.module.css",
+      "source": "kvnkld/aicss@4556a918fd8c",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "3b437a695ac7798b5412e5e7bb0e9ed9d1ac172499e57d089ce56cbcc374925e"
+    },
+    "kit/aicss/approval-card/ApprovalCard.tsx": {
+      "component": "aicss/approval-card",
+      "computedHash": "1815714c309895a4ca4bf2916b670b00dbe659cf04a370c69eb27acbd333e1e1",
+      "skillPath": "approval-card/ApprovalCard.tsx",
+      "source": "kvnkld/aicss@4556a918fd8c",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "1815714c309895a4ca4bf2916b670b00dbe659cf04a370c69eb27acbd333e1e1"
+    },
+    "kit/aicss/approval-card/index.ts": {
+      "component": "aicss/approval-card",
+      "computedHash": "39dffa9e77d059550e5833f320b2e4f6a93ddcbfcf8f795a72c53c3da5544c8f",
+      "skillPath": "approval-card/index.ts",
+      "source": "kvnkld/aicss@4556a918fd8c",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "39dffa9e77d059550e5833f320b2e4f6a93ddcbfcf8f795a72c53c3da5544c8f"
+    },
+    "kit/aicss/approval-card/meta.json": {
+      "component": "aicss/approval-card",
+      "computedHash": "be4ea290d90841c8f983f6516c6f894e84fe7908fa9e7794ac6bac06f51bdaa6",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/aicss/approval-card/ref.md": {
+      "component": "aicss/approval-card",
+      "computedHash": "bd4780a76c2a368279cda73cc528313cfcba170da471a37a22601c93f7e98678",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/aicss/code-block/CodeBlock.module.css": {
+      "component": "aicss/code-block",
+      "computedHash": "6a215ffed191f6233b5ac27246a15fa4a066b3eace19d7c4b9ca615f90f4edc5",
+      "skillPath": "code-block/CodeBlock.module.css",
+      "source": "kvnkld/aicss@4556a918fd8c",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "6a215ffed191f6233b5ac27246a15fa4a066b3eace19d7c4b9ca615f90f4edc5"
+    },
+    "kit/aicss/code-block/CodeBlock.tsx": {
+      "component": "aicss/code-block",
+      "computedHash": "e2084e9982bfa5dfd8431f03978914a66c47cb3c41b73c76fff094461dde3f1e",
+      "skillPath": "code-block/CodeBlock.tsx",
+      "source": "kvnkld/aicss@4556a918fd8c",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "e2084e9982bfa5dfd8431f03978914a66c47cb3c41b73c76fff094461dde3f1e"
+    },
+    "kit/aicss/code-block/index.ts": {
+      "component": "aicss/code-block",
+      "computedHash": "f57dcea2e43b038331ea4aff99ccbb60ec0f2f6812037b3b02ec8015c0f770c9",
+      "skillPath": "code-block/index.ts",
+      "source": "kvnkld/aicss@4556a918fd8c",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "f57dcea2e43b038331ea4aff99ccbb60ec0f2f6812037b3b02ec8015c0f770c9"
+    },
+    "kit/aicss/code-block/meta.json": {
+      "component": "aicss/code-block",
+      "computedHash": "9badac62503880124fb75dd12fdb6f7bb2ef041d96fdf2e79f7657b1231eb49d",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/aicss/code-block/ref.md": {
+      "component": "aicss/code-block",
+      "computedHash": "3255f3c77a9a39573525e77555ab5d5c46128f68ec382aede71f7c0c8ef6e339",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/aicss/data-table/DataTable.module.css": {
+      "component": "aicss/data-table",
+      "computedHash": "f3011d974eeb7fb883f0c2eed11842d2c17c1ca40934de6bd73a54279fba221a",
+      "skillPath": "data-table/DataTable.module.css",
+      "source": "kvnkld/aicss@4556a918fd8c",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "f3011d974eeb7fb883f0c2eed11842d2c17c1ca40934de6bd73a54279fba221a"
+    },
+    "kit/aicss/data-table/DataTable.tsx": {
+      "component": "aicss/data-table",
+      "computedHash": "1b8e6d31504425b75144821a6ab83478d43babb66474ee44349ac40c96327efc",
+      "skillPath": "data-table/DataTable.tsx",
+      "source": "kvnkld/aicss@4556a918fd8c",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "1b8e6d31504425b75144821a6ab83478d43babb66474ee44349ac40c96327efc"
+    },
+    "kit/aicss/data-table/index.ts": {
+      "component": "aicss/data-table",
+      "computedHash": "541354702e42a7fe032821a46110583f2210b972a92739a1589cafedc6eebf3d",
+      "skillPath": "data-table/index.ts",
+      "source": "kvnkld/aicss@4556a918fd8c",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "541354702e42a7fe032821a46110583f2210b972a92739a1589cafedc6eebf3d"
+    },
+    "kit/aicss/data-table/meta.json": {
+      "component": "aicss/data-table",
+      "computedHash": "49bdcad5bfc465b454192eeaeaeaf19de8eaee76e23d45fee31f0024f7a6e8d1",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/aicss/data-table/ref.md": {
+      "component": "aicss/data-table",
+      "computedHash": "b8343d27e3eb1cd880f535c727d8908dd5024ea9ac9e59a03c7d5e50aa0ab248",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/aicss/orbs/Orb.module.css": {
+      "component": "aicss/orbs",
+      "computedHash": "7a4c3d2803093dfc6b13770a740eae94e9cbb72a0fab02c00e88905db9964662",
+      "skillPath": "orbs/Orb.module.css",
+      "source": "kvnkld/aicss@4556a918fd8c",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "7a4c3d2803093dfc6b13770a740eae94e9cbb72a0fab02c00e88905db9964662"
+    },
+    "kit/aicss/orbs/Orb.tsx": {
+      "component": "aicss/orbs",
+      "computedHash": "a088f58e12f85d3a493e7dfb91b7e1625facff87ef2c2baaf698eddcfd1f43de",
+      "skillPath": "orbs/Orb.tsx",
+      "source": "kvnkld/aicss@4556a918fd8c",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "a088f58e12f85d3a493e7dfb91b7e1625facff87ef2c2baaf698eddcfd1f43de"
+    },
+    "kit/aicss/orbs/index.ts": {
+      "component": "aicss/orbs",
+      "computedHash": "3ac481de0a3e27b77529400daead2f7f2a774bf32cb02050ed71f0351e8530d2",
+      "skillPath": "orbs/index.ts",
+      "source": "kvnkld/aicss@4556a918fd8c",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "3ac481de0a3e27b77529400daead2f7f2a774bf32cb02050ed71f0351e8530d2"
+    },
+    "kit/aicss/orbs/meta.json": {
+      "component": "aicss/orbs",
+      "computedHash": "96e71aa5e9d5cc30c30cc744c3c541c5817855f8b31af35567f392f9514a1d29",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/aicss/orbs/ref.md": {
+      "component": "aicss/orbs",
+      "computedHash": "0f561fe382d60fa6c5f83281b1cb8dc7277904507ff3af63787414fbc9c741c9",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/aicss/streaming-text/StreamingText.module.css": {
+      "component": "aicss/streaming-text",
+      "computedHash": "3a93b26ecadccbd9c4390ef73fa2517aac4bfe073a9f9f3716c6a6c07728b8c5",
+      "skillPath": "streaming-text/StreamingText.module.css",
+      "source": "kvnkld/aicss@4556a918fd8c",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "3a93b26ecadccbd9c4390ef73fa2517aac4bfe073a9f9f3716c6a6c07728b8c5"
+    },
+    "kit/aicss/streaming-text/StreamingText.tsx": {
+      "component": "aicss/streaming-text",
+      "computedHash": "1bef2140048f6e7ea58c40580a36e566a87ac742223c2582cd98dda109335d0f",
+      "skillPath": "streaming-text/StreamingText.tsx",
+      "source": "kvnkld/aicss@4556a918fd8c",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "1bef2140048f6e7ea58c40580a36e566a87ac742223c2582cd98dda109335d0f"
+    },
+    "kit/aicss/streaming-text/index.ts": {
+      "component": "aicss/streaming-text",
+      "computedHash": "6d0af00df1f48dc6ac31591f1d5701deada6ffae808e7118712a01295a5734cb",
+      "skillPath": "streaming-text/index.ts",
+      "source": "kvnkld/aicss@4556a918fd8c",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "6d0af00df1f48dc6ac31591f1d5701deada6ffae808e7118712a01295a5734cb"
+    },
+    "kit/aicss/streaming-text/meta.json": {
+      "component": "aicss/streaming-text",
+      "computedHash": "bec19db74c8ec5d78798bb501605d9b535a5c8ff35b69d20108eff91f3c14cf7",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/aicss/streaming-text/ref.md": {
+      "component": "aicss/streaming-text",
+      "computedHash": "1c74b0029702be706e7da2429f85b285615f7a5cb50ac4a4dcdc8e03e430647a",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/aicss/text-response/TextResponse.module.css": {
+      "component": "aicss/text-response",
+      "computedHash": "f29b39b861f247f2c72a60d251b3d186caef5de96622c72d5e0ad069d145ccc0",
+      "skillPath": "text-response/TextResponse.module.css",
+      "source": "kvnkld/aicss@4556a918fd8c",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "f29b39b861f247f2c72a60d251b3d186caef5de96622c72d5e0ad069d145ccc0"
+    },
+    "kit/aicss/text-response/TextResponse.tsx": {
+      "component": "aicss/text-response",
+      "computedHash": "0b662e7d47c1e31ef6d6d336b3f9498ea7ee9707bb7df7dfa7ddea307e40b83e",
+      "skillPath": "text-response/TextResponse.tsx",
+      "source": "kvnkld/aicss@4556a918fd8c",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "0b662e7d47c1e31ef6d6d336b3f9498ea7ee9707bb7df7dfa7ddea307e40b83e"
+    },
+    "kit/aicss/text-response/index.ts": {
+      "component": "aicss/text-response",
+      "computedHash": "48fc685d6b5152ffe6fe7f8301db52371d178efeffe4499299e1561749f2a1ad",
+      "skillPath": "text-response/index.ts",
+      "source": "kvnkld/aicss@4556a918fd8c",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "48fc685d6b5152ffe6fe7f8301db52371d178efeffe4499299e1561749f2a1ad"
+    },
+    "kit/aicss/text-response/meta.json": {
+      "component": "aicss/text-response",
+      "computedHash": "fa5fe461ad167a4ce7e0ca8c2d43c54ae1d21e70894b7418cfe24d5b78b8ae9f",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/aicss/text-response/ref.md": {
+      "component": "aicss/text-response",
+      "computedHash": "0b6e7baa46a1efc2448648c82dd9280ca036514fa6f3770e2b5de065edb49043",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/aicss/thinking-reasoning/ThinkingReasoning.module.css": {
+      "component": "aicss/thinking-reasoning",
+      "computedHash": "3368bb9897255b4bec3bdaf44702ed79acd3e77da9e830f79c74f63b52f5eb87",
+      "skillPath": "thinking-reasoning/ThinkingReasoning.module.css",
+      "source": "kvnkld/aicss@4556a918fd8c",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "3368bb9897255b4bec3bdaf44702ed79acd3e77da9e830f79c74f63b52f5eb87"
+    },
+    "kit/aicss/thinking-reasoning/ThinkingReasoning.tsx": {
+      "component": "aicss/thinking-reasoning",
+      "computedHash": "e09f3926be5a4b7cb395bcb3d1e6e2d4286c3b7a3944655b70b8c1d1fb858a6e",
+      "skillPath": "thinking-reasoning/ThinkingReasoning.tsx",
+      "source": "kvnkld/aicss@4556a918fd8c",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "e09f3926be5a4b7cb395bcb3d1e6e2d4286c3b7a3944655b70b8c1d1fb858a6e"
+    },
+    "kit/aicss/thinking-reasoning/index.ts": {
+      "component": "aicss/thinking-reasoning",
+      "computedHash": "8eff84ee8d7dba4eccbf8f7ea4c7ab386ea28dc95e50729831b6373d68417370",
+      "skillPath": "thinking-reasoning/index.ts",
+      "source": "kvnkld/aicss@4556a918fd8c",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "8eff84ee8d7dba4eccbf8f7ea4c7ab386ea28dc95e50729831b6373d68417370"
+    },
+    "kit/aicss/thinking-reasoning/meta.json": {
+      "component": "aicss/thinking-reasoning",
+      "computedHash": "4f02df924d9de0661425e83e37414ec7ff7eb681fb8746466304cd297b108288",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/aicss/thinking-reasoning/ref.md": {
+      "component": "aicss/thinking-reasoning",
+      "computedHash": "03f210ac65bfc59a0be254cd600af9bbf430ce96070c4d4c984ab2c9f58d9b19",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/aicss/thinking-state/ThinkingState.module.css": {
+      "component": "aicss/thinking-state",
+      "computedHash": "0dd3017af1eebb607fbd18b4bc90c8c191a70df49d2c07c49ab78214b766b402",
+      "skillPath": "thinking-state/ThinkingState.module.css",
+      "source": "kvnkld/aicss@4556a918fd8c",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "0dd3017af1eebb607fbd18b4bc90c8c191a70df49d2c07c49ab78214b766b402"
+    },
+    "kit/aicss/thinking-state/ThinkingState.tsx": {
+      "component": "aicss/thinking-state",
+      "computedHash": "c8436e1266a7c2918a3053365a48a1dc94162223627a7bb694881091da85b118",
+      "skillPath": "thinking-state/ThinkingState.tsx",
+      "source": "kvnkld/aicss@4556a918fd8c",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "c8436e1266a7c2918a3053365a48a1dc94162223627a7bb694881091da85b118"
+    },
+    "kit/aicss/thinking-state/index.ts": {
+      "component": "aicss/thinking-state",
+      "computedHash": "0f11bc2aabdd9c509b87d6b22d776f115be9b282bd17da7bb27ec83678ae7013",
+      "skillPath": "thinking-state/index.ts",
+      "source": "kvnkld/aicss@4556a918fd8c",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "0f11bc2aabdd9c509b87d6b22d776f115be9b282bd17da7bb27ec83678ae7013"
+    },
+    "kit/aicss/thinking-state/meta.json": {
+      "component": "aicss/thinking-state",
+      "computedHash": "09da7c2e8f444652f2b32c674a4abb5033d8c50d336054b43ad7de5ee8cc354e",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/aicss/thinking-state/ref.md": {
+      "component": "aicss/thinking-state",
+      "computedHash": "0c323146e8c619c0283761efc64ea3a9fcd1cdfb2894007a53aadc3833c56738",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/aicss/todo-list/TodoList.module.css": {
+      "component": "aicss/todo-list",
+      "computedHash": "169f7cec5415339403b79e08ea842e357d183e598fbb111fd04bfbfe1527ab0f",
+      "skillPath": "task-list/TodoList.module.css",
+      "source": "kvnkld/aicss@4556a918fd8c",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "169f7cec5415339403b79e08ea842e357d183e598fbb111fd04bfbfe1527ab0f"
+    },
+    "kit/aicss/todo-list/TodoList.tsx": {
+      "component": "aicss/todo-list",
+      "computedHash": "04964ef8299765671e561fb2b0420054f4e0794025db5950e6a1d28fe35f322e",
+      "skillPath": "task-list/TodoList.tsx",
+      "source": "kvnkld/aicss@4556a918fd8c",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "04964ef8299765671e561fb2b0420054f4e0794025db5950e6a1d28fe35f322e"
+    },
+    "kit/aicss/todo-list/index.ts": {
+      "component": "aicss/todo-list",
+      "computedHash": "cdba0c183360fd2ada53144791f8eeb59ccbfad6b4cabd982d06d584448816e6",
+      "skillPath": "task-list/index.ts",
+      "source": "kvnkld/aicss@4556a918fd8c",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "cdba0c183360fd2ada53144791f8eeb59ccbfad6b4cabd982d06d584448816e6"
+    },
+    "kit/aicss/todo-list/meta.json": {
+      "component": "aicss/todo-list",
+      "computedHash": "a3f6821b1d9db4f3aeed59a9527588d8153fdf4298546dcc53c2c89d55ae39e1",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/aicss/todo-list/ref.md": {
+      "component": "aicss/todo-list",
+      "computedHash": "691d7e76c5c90c70615d7eff8177ba6bf4ac2eba1ec253b5d3b0c032715c7589",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/air/fonts/azeret-mono-latin.woff2": {
+      "component": "air",
+      "computedHash": "d090ca8b9080094d42b06c43f2987bfa8b36fd5565611fd59db84db53c5f74bb",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/air/fonts/newsreader-latin.woff2": {
+      "component": "air",
+      "computedHash": "6e4f2958c3a7c4a80acde4e5a679abe7e01bc1e30b92be3c7a8b696ef401d101",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/air/index.ts": {
+      "component": "air",
+      "computedHash": "d84d5bac28d032f9837147a8c180edbe5deb3052fe383d481cbdad65a3dc4282",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/air/meta.json": {
+      "component": "air",
+      "computedHash": "c5bd1f791eef2d80aa476c5af2fc9ea600251ac2eb2bfbe96008d707d6508aac",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/air/ref.md": {
+      "component": "air",
+      "computedHash": "91fdfae8f391aab9dc0cb5a3a8f8621dce94de1b1ae0d50aa71a90d74c9d8c25",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/air/shell.css": {
+      "component": "air",
+      "computedHash": "66c9f7e92494bd0ef8b11f36c7e1ccc763976a99a4091599e2e382682ac844d9",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/air/theme.css": {
+      "component": "air",
+      "computedHash": "ef0f971ff604f3fd8e33ac1c4262aa7c6f8ea086e201f5ee3f930666722e6ac7",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/arlan/color-depth/SKILL.md": {
+      "component": "arlan/color-depth",
+      "computedHash": "db27b4580c81e55f6a012dbb0dc46e947d1dd7c1de647ba23b4861118e52ad12",
+      "skillPath": "color-depth/standalone/SKILL.md",
+      "source": "arlan.me/vault@2026-09-04",
+      "sourceType": "pages",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "db27b4580c81e55f6a012dbb0dc46e947d1dd7c1de647ba23b4861118e52ad12"
+    },
+    "kit/arlan/color-depth/color-depth.css": {
+      "component": "arlan/color-depth",
+      "computedHash": "7daa8eea6d10b30742bfdd42788be91c40ecca91178337c659007bb4ec248740",
+      "skillPath": "color-depth/standalone/color-depth.css",
+      "source": "arlan.me/vault@2026-09-04",
+      "sourceType": "pages",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "7daa8eea6d10b30742bfdd42788be91c40ecca91178337c659007bb4ec248740"
+    },
+    "kit/arlan/color-depth/color-depth.ts": {
+      "component": "arlan/color-depth",
+      "computedHash": "0ded5016c9e02fa2b9a164e2c1d069f21215439d88ecaf9a290349329ae0f76f",
+      "skillPath": "color-depth/standalone/color-depth.js",
+      "source": "arlan.me/vault@2026-09-04",
+      "sourceType": "pages",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "f3779e36c2a4ecc58db55d1253321f9c647a0745ea99e1df4dfb46371b32a845"
+    },
+    "kit/arlan/color-depth/index.tsx": {
+      "component": "arlan/color-depth",
+      "computedHash": "b98043ee4dd72f952644b511d3bf1a9e902fdb5e3fa6b2703063ecbab1401eca",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/arlan/color-depth/meta.json": {
+      "component": "arlan/color-depth",
+      "computedHash": "25ac831f1f8d1af839b2ab9dd00ab8a4c3ed1d9e63ba8ac9e6ad743c617ed058",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/arlan/color-depth/ref.md": {
+      "component": "arlan/color-depth",
+      "computedHash": "058aa19539bdf87e8397ad6d28580543e0a633ae93b1533d315a3841ac556441",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/arlan/ghosty-reveal/index.tsx": {
+      "component": "arlan/ghosty-reveal",
+      "computedHash": "adfaad54738fde549431cf655d4fc7fdb7636a3729cb39ed3cf4b0bf0bfe8578",
+      "skillPath": "ghosty-reveal/standalone/GhostReveal.tsx",
+      "source": "arlan.me/vault@2026-09-04",
+      "sourceType": "pages",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "adfaad54738fde549431cf655d4fc7fdb7636a3729cb39ed3cf4b0bf0bfe8578"
+    },
+    "kit/arlan/ghosty-reveal/meta.json": {
+      "component": "arlan/ghosty-reveal",
+      "computedHash": "08f9a681975730131c96c82d3771a59952c1a102dcdbe1bbc6f50b7b6b94ac81",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/arlan/ghosty-reveal/ref.md": {
+      "component": "arlan/ghosty-reveal",
+      "computedHash": "26926708b72d25312b08bd9a031d1c8969dc5eff4f55f1da6a3342c75d4f2dc7",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/arlan/holo/engine.ts": {
+      "component": "arlan/holo",
+      "computedHash": "7f404ff6ce80403b3cfab1b3ad1876a478e967115c6147ceff8a425987ea5074",
+      "skillPath": "holo/engine.ts",
+      "source": "arlan.me/vault@2026-09-04",
+      "sourceType": "pages",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "bdf69f0f2d3e80a0934e9f99693da6bca7878915410aedf7ea61f8d0a37a4706"
+    },
+    "kit/arlan/holo/index.tsx": {
+      "component": "arlan/holo",
+      "computedHash": "a9b405e25d63a1d4814d8165c10f731e5f9450a7db6d101be32fc59986d0f717",
+      "skillPath": "holo/HoloCard.tsx",
+      "source": "arlan.me/vault@2026-09-04",
+      "sourceType": "pages",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "21d29fe7331ab76ae7c449e1b9285aeb7de0d1ed3f9886c50df39a28673fcfa0"
+    },
+    "kit/arlan/holo/meta.json": {
+      "component": "arlan/holo",
+      "computedHash": "039cec670e414a08fa2cda393fcbd386c7e84ee15a45093dca1ddc3574513234",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/arlan/holo/ref.md": {
+      "component": "arlan/holo",
+      "computedHash": "3b7613d23acea07c274436f228b535a141d0438f3c7f03f69f641fa199474649",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/arlan/holo/view-transition.ts": {
+      "component": "arlan/holo",
+      "computedHash": "5b2195e0cf130d63867a322b1608b680df7ccae7b718390528d178c58a8cf95a",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/arlan/liquid-ui/engine.ts": {
+      "component": "arlan/liquid-ui",
+      "computedHash": "24d3a928d0a86c3d44020d05ce3ad7616fd9b708a43c5ef2c0c08d9207cbbf58",
+      "skillPath": "liquid/engine.ts",
+      "source": "arlan.me/vault@2026-09-04",
+      "sourceType": "pages",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "24d3a928d0a86c3d44020d05ce3ad7616fd9b708a43c5ef2c0c08d9207cbbf58"
+    },
+    "kit/arlan/liquid-ui/index.tsx": {
+      "component": "arlan/liquid-ui",
+      "computedHash": "bc6b694a4a9cc417bf93b20fdf13b4bfb897aaf2b958804eda15f582a14b20dc",
+      "skillPath": "liquid/LiquidGroup.tsx",
+      "source": "arlan.me/vault@2026-09-04",
+      "sourceType": "pages",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "bc6b694a4a9cc417bf93b20fdf13b4bfb897aaf2b958804eda15f582a14b20dc"
+    },
+    "kit/arlan/liquid-ui/marching-squares.ts": {
+      "component": "arlan/liquid-ui",
+      "computedHash": "3fd8063676984d6e8733652339b63e77f4a2a14e25b7d9be66a9214dfa22e18f",
+      "skillPath": "liquid/marching-squares.ts",
+      "source": "arlan.me/vault@2026-09-04",
+      "sourceType": "pages",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "c5116efe60f126ae606e829247c06feb5e78abe4e8207cc399595d401a0865f4"
+    },
+    "kit/arlan/liquid-ui/meta.json": {
+      "component": "arlan/liquid-ui",
+      "computedHash": "2757511a7083bdb235f8c50957f83fc1f281f699d09acbe73d0ab5bcb5fc1309",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/arlan/liquid-ui/ref.md": {
+      "component": "arlan/liquid-ui",
+      "computedHash": "4df46f96ad9ee816bcab57b1b820089ada8584aa7588c442cdc8005e5ccb50cc",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/arlan/liquid-ui/sdf.ts": {
+      "component": "arlan/liquid-ui",
+      "computedHash": "6d834bbd001711a509bc808007048c4951dfd44afd4f3a56cf59707d9e63a56c",
+      "skillPath": "liquid/sdf.ts",
+      "source": "arlan.me/vault@2026-09-04",
+      "sourceType": "pages",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "aee97e4998a94aec3fb0d7f076099cf0f291975fa0b1d1da3834f280372dd010"
+    },
+    "kit/arlan/squircle/index.tsx": {
+      "component": "arlan/squircle",
+      "computedHash": "7ff6637cf0bb6e1a0efa194dd56698c504ebb9ea705657c725350453b7c0439f",
+      "skillPath": "squircle/Squircle.tsx",
+      "source": "arlan.me/vault@2026-09-04",
+      "sourceType": "pages",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "7ff6637cf0bb6e1a0efa194dd56698c504ebb9ea705657c725350453b7c0439f"
+    },
+    "kit/arlan/squircle/meta.json": {
+      "component": "arlan/squircle",
+      "computedHash": "68e2263bb3d0d30b5f61867ba32294832c211519a87a0b8e0856c7a209b15fa7",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/arlan/squircle/ref.md": {
+      "component": "arlan/squircle",
+      "computedHash": "e469226c039e5a041995c44e2f4a869702f166857d1ecdbbddee066fa035179c",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/arlan/squircle/superellipse.ts": {
+      "component": "arlan/squircle",
+      "computedHash": "e736cdb45a30baf63302f32df72ada762b944011099fe0edb7c607a862368ca8",
+      "skillPath": "squircle/superellipse.ts",
+      "source": "arlan.me/vault@2026-09-04",
+      "sourceType": "pages",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "e736cdb45a30baf63302f32df72ada762b944011099fe0edb7c607a862368ca8"
+    },
+    "kit/arlan/squircle/tokens.ts": {
+      "component": "arlan/squircle",
+      "computedHash": "6ab50ab8c3b00409ccedc8ce6962698821e7d385d1e8295e62c56798a93c2642",
+      "skillPath": "squircle/tokens.ts",
+      "source": "arlan.me/vault@2026-09-04",
+      "sourceType": "pages",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "6ab50ab8c3b00409ccedc8ce6962698821e7d385d1e8295e62c56798a93c2642"
+    },
+    "kit/arlan/typer/index.tsx": {
+      "component": "arlan/typer",
+      "computedHash": "59669856c2d2242c33d14fb14a22ec7b934fadad60d2c14fb258acee94791c69",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/arlan/typer/meta.json": {
+      "component": "arlan/typer",
+      "computedHash": "da6e605212c24129b024882e55e14e4d81f3acc703a021dda16d1ebc8b703dbc",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/arlan/typer/ref.md": {
+      "component": "arlan/typer",
+      "computedHash": "38c2e5a5d5a5b6e370da24c61da16c2c951623993e7a91ee56f38c5580463b31",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/arlan/typer/typer.css": {
+      "component": "arlan/typer",
+      "computedHash": "f970f3ae4baf365c48d4c90f3448aba8c2c82024cadcc4d6283fe8fdd85f8fc7",
+      "skillPath": "typer/standalone/typer.css",
+      "source": "arlan.me/vault@2026-09-04",
+      "sourceType": "pages",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "f970f3ae4baf365c48d4c90f3448aba8c2c82024cadcc4d6283fe8fdd85f8fc7"
+    },
+    "kit/arlan/typer/typer.ts": {
+      "component": "arlan/typer",
+      "computedHash": "36fd4f63e9a469127d99207ad5e73cee8c2780c4040479ac8c11e6d0a20fa472",
+      "skillPath": "typer/standalone/typer.ts",
+      "source": "arlan.me/vault@2026-09-04",
+      "sourceType": "pages",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "36fd4f63e9a469127d99207ad5e73cee8c2780c4040479ac8c11e6d0a20fa472"
+    },
+    "kit/beautiful/approval-card/index.tsx": {
+      "component": "beautiful/approval-card",
+      "computedHash": "5aefabed4d37c3f55d5cf1e4e8ad92015b384377f641a220321464d3c94cfffe",
+      "skillPath": "components/primitives/ApprovalCard.tsx",
+      "source": "beautifului.dev@2026-09-04",
+      "sourceType": "registry",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "5e90ba19b79f4d385a34e9cf703b15e819c72df93d70a72c8c01aa85d500ca95"
+    },
+    "kit/beautiful/approval-card/meta.json": {
+      "component": "beautiful/approval-card",
+      "computedHash": "1fae762aa7f4dc62e1d91a4c43ed92ebfb19e699f4927b6d5c5fbc4388f41383",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/approval-card/ref.md": {
+      "component": "beautiful/approval-card",
+      "computedHash": "062fbac1211e39ddce2894786e6bcad9c2a26b03e9b3d1fece8a12e412569e24",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/button/cva.ts": {
+      "component": "beautiful/button",
+      "computedHash": "963b10b02761d9c85d201b19d38cda16b25f2dd2e8a3895cacc89b0bde7a78ab",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/button/index.tsx": {
+      "component": "beautiful/button",
+      "computedHash": "1d9eed872e702bb511a539194de77aceee69a1437922954e87c5952320095f94",
+      "skillPath": "components/atoms/Button.tsx",
+      "source": "beautifului.dev@2026-09-04",
+      "sourceType": "registry",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "1d939f68820366648a7b3292b88001da41253154bc49494be60cb8188100f0b0"
+    },
+    "kit/beautiful/button/meta.json": {
+      "component": "beautiful/button",
+      "computedHash": "863a2dd775c9a27cb6b03470414c9a59793ecbd8e63242dfde374428c45fbe4d",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/button/ref.md": {
+      "component": "beautiful/button",
+      "computedHash": "ad3c8e56a1a24788ea2d24e7a5f71c83e5b2f7c8be7ea62dec9481a60eeceb06",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/chat-composer/index.tsx": {
+      "component": "beautiful/chat-composer",
+      "computedHash": "1b8ac6cd342a5ccab92c0e0265d7431a35703e23496bd85c4cf64d883e6cc7f5",
+      "skillPath": "components/primitives/ChatComposer.tsx",
+      "source": "beautifului.dev@2026-09-04",
+      "sourceType": "registry",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "1b8ac6cd342a5ccab92c0e0265d7431a35703e23496bd85c4cf64d883e6cc7f5"
+    },
+    "kit/beautiful/chat-composer/meta.json": {
+      "component": "beautiful/chat-composer",
+      "computedHash": "2935b31af8a32a27da8e9df41a20a83bc7f2babe1c568513721905450d48b7a1",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/chat-composer/ref.md": {
+      "component": "beautiful/chat-composer",
+      "computedHash": "1d0f117fc3e85108e895991c120100bb0a8102c5a8fd10d415a55db2a2bac652",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/code-block/index.tsx": {
+      "component": "beautiful/code-block",
+      "computedHash": "8a6226378fae2334cc3070abf3b768cc09c99e47f711cca4db013a3441b5abe5",
+      "skillPath": "components/primitives/CodeBlock.tsx",
+      "source": "beautifului.dev@2026-09-04",
+      "sourceType": "registry",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "8a6226378fae2334cc3070abf3b768cc09c99e47f711cca4db013a3441b5abe5"
+    },
+    "kit/beautiful/code-block/meta.json": {
+      "component": "beautiful/code-block",
+      "computedHash": "1ca91b4592ae5a7ea05e8ff675fbc7b473fe3def541479956740d8cf27fe8bf6",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/code-block/ref.md": {
+      "component": "beautiful/code-block",
+      "computedHash": "5eb3b4a0b1721985427e93137eaac177eb07bbf2f4d225ee1757c0495b9af6c2",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/context-cards/index.tsx": {
+      "component": "beautiful/context-cards",
+      "computedHash": "64cdf631c76bbe1516a9580237599e45657f8ce2691a512286c1ce062da78ee0",
+      "skillPath": "components/primitives/ContextCards.tsx",
+      "source": "beautifului.dev@2026-09-04",
+      "sourceType": "registry",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "64cdf631c76bbe1516a9580237599e45657f8ce2691a512286c1ce062da78ee0"
+    },
+    "kit/beautiful/context-cards/meta.json": {
+      "component": "beautiful/context-cards",
+      "computedHash": "469c3d69f78bfe5e4d83989a70d2f07c9189eecde0658a6833f0612420a08bb0",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/context-cards/ref.md": {
+      "component": "beautiful/context-cards",
+      "computedHash": "0ce0f1c621daf875b60953cc64e5687c8b05e9970e7cf0f96e3d7a784f62dbe2",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/diff-table/index.tsx": {
+      "component": "beautiful/diff-table",
+      "computedHash": "9f297ec7f452eeebff317d68f4709ef7a450c2880425e01b335ce720a1f7b042",
+      "skillPath": "components/primitives/DiffTable.tsx",
+      "source": "beautifului.dev@2026-09-04",
+      "sourceType": "registry",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "e15f0958af2c25dc112a8b90b16f20243a34392f96b300cee513afe82ec55460"
+    },
+    "kit/beautiful/diff-table/meta.json": {
+      "component": "beautiful/diff-table",
+      "computedHash": "f4fd45fe14957b922588695d4ce62ca339c6bc0cc76d752038f0308ef8c191ff",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/diff-table/ref.md": {
+      "component": "beautiful/diff-table",
+      "computedHash": "7e9560c1b565612319a84aa61ead5481b33c9a510ee6266f12b325db5a27dc56",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/entity-chip/index.tsx": {
+      "component": "beautiful/entity-chip",
+      "computedHash": "d8c194f2adf0a48af9ab20c70361cd3ba4f89636f267200ef6263a32af432e52",
+      "skillPath": "components/atoms/EntityChip.tsx",
+      "source": "beautifului.dev@2026-09-04",
+      "sourceType": "registry",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "d8c194f2adf0a48af9ab20c70361cd3ba4f89636f267200ef6263a32af432e52"
+    },
+    "kit/beautiful/entity-chip/meta.json": {
+      "component": "beautiful/entity-chip",
+      "computedHash": "675d019db24c5dfd2d6c96ebd23f40c9de94506c64c2616e7252938ca5e5b579",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/entity-chip/ref.md": {
+      "component": "beautiful/entity-chip",
+      "computedHash": "0727600f0d30aaee45bf2fd52b45e36f06c79d038b0f1937f8f43b7e2e9e1686",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/filter-table/index.tsx": {
+      "component": "beautiful/filter-table",
+      "computedHash": "7075a6ff652f2a539f835a4ed77e4357404906aff4ba5fb786255965d7aefa74",
+      "skillPath": "components/primitives/FilterTable.tsx",
+      "source": "beautifului.dev@2026-09-04",
+      "sourceType": "registry",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "7075a6ff652f2a539f835a4ed77e4357404906aff4ba5fb786255965d7aefa74"
+    },
+    "kit/beautiful/filter-table/meta.json": {
+      "component": "beautiful/filter-table",
+      "computedHash": "8fd9dccdd1f4c3acf2aa929da6e8adc3e8ca6d32bf0921255763bbde16b1126c",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/filter-table/ref.md": {
+      "component": "beautiful/filter-table",
+      "computedHash": "e69a3fc8598423237e1ed0a06a4c9b5adbb2a294841a0187f170d543aebf197f",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/fine-tune-card/index.tsx": {
+      "component": "beautiful/fine-tune-card",
+      "computedHash": "35cfad63185ff022e1ece4c52d02b4eb6c6c9ebec39eb39a76c387b4066316f8",
+      "skillPath": "components/primitives/FineTuneCard.tsx",
+      "source": "beautifului.dev@2026-09-04",
+      "sourceType": "registry",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "fb8df4d8c5aabbb399d115b143af39fcf3bf8a00b77bd7375a01a77ee8e93c24"
+    },
+    "kit/beautiful/fine-tune-card/meta.json": {
+      "component": "beautiful/fine-tune-card",
+      "computedHash": "387ace71a6af89d7170fd015d52b682079b214bdd3d71ec28d5e0ae138194b0c",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/fine-tune-card/ref.md": {
+      "component": "beautiful/fine-tune-card",
+      "computedHash": "b4865097cd77dee09675326b2cd5842c3f0de64f0e36a65678e1800e5bc875fa",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/flowchart/index.tsx": {
+      "component": "beautiful/flowchart",
+      "computedHash": "2f1a0e7c29df38916a06cdbc00f6d1ce043bf9052bc2bb3e780beaa339077d23",
+      "skillPath": "components/primitives/Flowchart.tsx",
+      "source": "beautifului.dev@2026-09-04",
+      "sourceType": "registry",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "2f1a0e7c29df38916a06cdbc00f6d1ce043bf9052bc2bb3e780beaa339077d23"
+    },
+    "kit/beautiful/flowchart/meta.json": {
+      "component": "beautiful/flowchart",
+      "computedHash": "178a4b1f1144e4eae0ea5957a5d3bd2e34c4e1740d04ad43358bff16410ba57b",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/flowchart/ref.md": {
+      "component": "beautiful/flowchart",
+      "computedHash": "5137376e417354c9373ca6424047536e05607440d3daa3c49b682d667a87bbb5",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/foundation/foundation.css": {
+      "component": "beautiful/foundation",
+      "computedHash": "f133163cf22aa3a713b5c76eb6829fd05240094eb235403fb11f53b1f7314b67",
+      "skillPath": "app/beautifui/foundation.css",
+      "source": "beautifului.dev@2026-09-04",
+      "sourceType": "registry",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "32c68b62b5bfa18fc33cb291f6966d02dc2585a87e75e925c86225b2cf058e1d"
+    },
+    "kit/beautiful/foundation/index.ts": {
+      "component": "beautiful/foundation",
+      "computedHash": "26e25c7739195cadb01d43b9d39706f91f20e9be55a68fef98649f58a9f3684f",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/foundation/meta.json": {
+      "component": "beautiful/foundation",
+      "computedHash": "bec5b5ad407e36c0742f31a5876c7a963c802e872af13d9843082162ee5865a8",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/foundation/ref.md": {
+      "component": "beautiful/foundation",
+      "computedHash": "b05b5b98daeeb27938efbda426651f5e60dff1c5bebb7c80c220db02d301ccab",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/glide-menu/index.tsx": {
+      "component": "beautiful/glide-menu",
+      "computedHash": "2b8b64092740dad23aed3367b1e7eaa3e15a8bc0a2ed559c3dec13bb4ba2e00f",
+      "skillPath": "components/primitives/GlideMenu.tsx",
+      "source": "beautifului.dev@2026-09-04",
+      "sourceType": "registry",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "2b8b64092740dad23aed3367b1e7eaa3e15a8bc0a2ed559c3dec13bb4ba2e00f"
+    },
+    "kit/beautiful/glide-menu/meta.json": {
+      "component": "beautiful/glide-menu",
+      "computedHash": "6808ebade6d0ae3dee9020457ca064ee7aee7f68ee668c5ddcecd797a7a7cc2d",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/glide-menu/ref.md": {
+      "component": "beautiful/glide-menu",
+      "computedHash": "3dce1492cbe92b08a718e67d470181d108f5be177a05283df9935c175c511214",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/loading-state/index.tsx": {
+      "component": "beautiful/loading-state",
+      "computedHash": "127dbd50e3c95080577e2ca85a916dfc18a72ee68eb794a57d51db61071849ad",
+      "skillPath": "components/primitives/LoadingState.tsx",
+      "source": "beautifului.dev@2026-09-04",
+      "sourceType": "registry",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "1b1ee1273717be0b2dfc12abc6853a3c118e543c05bc522b4c80378dd88e8a0d"
+    },
+    "kit/beautiful/loading-state/meta.json": {
+      "component": "beautiful/loading-state",
+      "computedHash": "e9f6f3365ffceffb3891f4188b876a44e837ff0c4db7c42960635bcaa763b9f2",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/loading-state/ref.md": {
+      "component": "beautiful/loading-state",
+      "computedHash": "c399dcb887b7a7b868d3ae57d5c5d57effcda994d9a46b1a23a504b549fb797f",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/recommendation-card/index.tsx": {
+      "component": "beautiful/recommendation-card",
+      "computedHash": "5d6a7afaeed316cfc86b60278a576920a27b3dded692b832f17d88e6095b3312",
+      "skillPath": "components/primitives/RecommendationCard.tsx",
+      "source": "beautifului.dev@2026-09-04",
+      "sourceType": "registry",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "fe4c56f271f147bb84cdef3f2c7238bdc9eb9a5643a0e4a949e62adb9e25abba"
+    },
+    "kit/beautiful/recommendation-card/meta.json": {
+      "component": "beautiful/recommendation-card",
+      "computedHash": "4ad8bf7de51e9434dfc441ae5c717c9c007d57ac2af93d7b66b31a8d4d384cd3",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/recommendation-card/ref.md": {
+      "component": "beautiful/recommendation-card",
+      "computedHash": "d9423c4828b79d8e0778ea30a48b57d4ab2d3c11107a374e9456225c402f3cd4",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/records-table/index.tsx": {
+      "component": "beautiful/records-table",
+      "computedHash": "1be74f20c340a739c988199ed48dd92d38d87e23a3fcda5221a22d6a3b72aa97",
+      "skillPath": "components/primitives/RecordsTable.tsx",
+      "source": "beautifului.dev@2026-09-04",
+      "sourceType": "registry",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "e96875352a82d06cdb96e7657db2adbf51d70c8697e4f8ef584086e933f38f29"
+    },
+    "kit/beautiful/records-table/meta.json": {
+      "component": "beautiful/records-table",
+      "computedHash": "7abf2e311647f39da93a1b6bb8ec6e94ebee7e0d091908060d8bd1343f34c5ce",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/records-table/records-table.css": {
+      "component": "beautiful/records-table",
+      "computedHash": "06e425ae35aae9fc06edaf8f49111490fe5387c9c9d49f6b7db9e0fcb35d919b",
+      "skillPath": "app/beautifui/records-table.css",
+      "source": "beautifului.dev@2026-09-04",
+      "sourceType": "registry",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "2b3e944ce7c4fd861882810654ea2ab93b9b08f320ea30f83ea6e4c2524a2e46"
+    },
+    "kit/beautiful/records-table/ref.md": {
+      "component": "beautiful/records-table",
+      "computedHash": "995dc3a3983a2099a47c8c77bb175e325e903f6d518ec10c51f08b02e23ba524",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/search/index.tsx": {
+      "component": "beautiful/search",
+      "computedHash": "87702be01d28c094eeb5b891fc24f63b0ec32d2dfc2f1ced886c3605217f5585",
+      "skillPath": "components/primitives/SearchList.tsx",
+      "source": "beautifului.dev@2026-09-04",
+      "sourceType": "registry",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "9fdb3720c5bc06f62915317f967f7ae0fe340e4f9c6181731794558e2248b3bf"
+    },
+    "kit/beautiful/search/meta.json": {
+      "component": "beautiful/search",
+      "computedHash": "292dc7fe28622af71e0ef14fe9f356054c7a41e652754aebc6870c75e295bb72",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/search/ref.md": {
+      "component": "beautiful/search",
+      "computedHash": "3263fd02b12b63c5af395d5508dfdb98f55f6f3ac06778b4a13acba529a2526f",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/selection-actions/index.tsx": {
+      "component": "beautiful/selection-actions",
+      "computedHash": "5194ff86cdf6f01ef4285b948263647d9b11e41672c8995b13f8ac4769fb230d",
+      "skillPath": "components/primitives/SelectionActions.tsx",
+      "source": "beautifului.dev@2026-09-04",
+      "sourceType": "registry",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "5447a5488c3d390bc877acde5e0c3c04096ec89b2ee5b12d11e2523032c007c6"
+    },
+    "kit/beautiful/selection-actions/meta.json": {
+      "component": "beautiful/selection-actions",
+      "computedHash": "a55e8d4b72221c5362e12b400f5fa49ecd62045ed66dc413324325b8c2c79eab",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/selection-actions/ref.md": {
+      "component": "beautiful/selection-actions",
+      "computedHash": "a057f4de97f774e66c3f26bd47b7f5061b619ed42e5ba347e1f3a7514f6c4558",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/shimmer/index.tsx": {
+      "component": "beautiful/shimmer",
+      "computedHash": "f93280df5726018b9efec117ea9fe90e6e128d0b530250553bf4a4aee9363c28",
+      "skillPath": "components/atoms/Shimmer.tsx",
+      "source": "beautifului.dev@2026-09-04",
+      "sourceType": "registry",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "f93280df5726018b9efec117ea9fe90e6e128d0b530250553bf4a4aee9363c28"
+    },
+    "kit/beautiful/shimmer/meta.json": {
+      "component": "beautiful/shimmer",
+      "computedHash": "b1bab461b2d0df780400311b7b279d09407b507fe6b7b43087edf5f49871c256",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/shimmer/ref.md": {
+      "component": "beautiful/shimmer",
+      "computedHash": "52a21f2f6d3d4a529be4e980861d357e4bbe63d3cd6d8a97a2ec9167a0280c32",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/stream-text/index.tsx": {
+      "component": "beautiful/stream-text",
+      "computedHash": "a98d273d90965b7691e97520e12f6f32df7555ccf08ea60e3eed1b24966bae6f",
+      "skillPath": "components/atoms/StreamText.tsx",
+      "source": "beautifului.dev@2026-09-04",
+      "sourceType": "registry",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "a98d273d90965b7691e97520e12f6f32df7555ccf08ea60e3eed1b24966bae6f"
+    },
+    "kit/beautiful/stream-text/meta.json": {
+      "component": "beautiful/stream-text",
+      "computedHash": "928a05b0bf2c8a1ed18c4e4e65e9837c2fe2287874d5973c273f0ef2c9d86144",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/stream-text/ref.md": {
+      "component": "beautiful/stream-text",
+      "computedHash": "c8580088b562fee2731b7036bbe5241e79697aa0232236a0e1746c83b5f241cb",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/streaming-text/index.tsx": {
+      "component": "beautiful/streaming-text",
+      "computedHash": "d27edd75006c99d37d24378815a6da36b2841b025b6f9adbe888090216cdf4cb",
+      "skillPath": "components/primitives/StreamingText.tsx",
+      "source": "beautifului.dev@2026-09-04",
+      "sourceType": "registry",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "8b17569fbc9c75aef1f82a5310f2402209cc8ab1b13f65fdd71251cb1e1f14d3"
+    },
+    "kit/beautiful/streaming-text/meta.json": {
+      "component": "beautiful/streaming-text",
+      "computedHash": "dd693b72d56fe1d8800c81fe9d78b966a60c8552459b163c5c24a72ca115a556",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/streaming-text/ref.md": {
+      "component": "beautiful/streaming-text",
+      "computedHash": "a85f91bd7a86143d8523b79419d45870325f6583bf4ae6cc2f92984f576c13a4",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/task-rows/index.tsx": {
+      "component": "beautiful/task-rows",
+      "computedHash": "7a81c2a264528405826b8ac9db9e92d4c14ef6fa3fcdb39010022df3cf4c0920",
+      "skillPath": "components/primitives/TaskRows.tsx",
+      "source": "beautifului.dev@2026-09-04",
+      "sourceType": "registry",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "7a81c2a264528405826b8ac9db9e92d4c14ef6fa3fcdb39010022df3cf4c0920"
+    },
+    "kit/beautiful/task-rows/meta.json": {
+      "component": "beautiful/task-rows",
+      "computedHash": "e80811ff22807321c6c3ee936b848e3d431360ad02cbcbc4d9755bb6471641fb",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/task-rows/ref.md": {
+      "component": "beautiful/task-rows",
+      "computedHash": "f282707778902c6fd7b9f59dc3a04b6f9e820f7f6dcb74f77200415cb458f669",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/thinking/index.tsx": {
+      "component": "beautiful/thinking",
+      "computedHash": "18ee7f4cb4169822dcc5bf1d3c04ea1898872898fafc0112dda6f87cc4e47aee",
+      "skillPath": "components/primitives/ThinkingState.tsx",
+      "source": "beautifului.dev@2026-09-04",
+      "sourceType": "registry",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "8806141f0d94f461ba2086b4e0780dafa08577fb5b055a6b25560fabe52f8449"
+    },
+    "kit/beautiful/thinking/meta.json": {
+      "component": "beautiful/thinking",
+      "computedHash": "d5b974a0a7ae2635e7978e7eba72cbbf301cb6e29523b09bfa54a08ef96eb449",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/thinking/ref.md": {
+      "component": "beautiful/thinking",
+      "computedHash": "58edd897478fc5123ade6712830ea50aeefd113b7ac6e2b4ec02ec7669372e6a",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/tool-chips/index.tsx": {
+      "component": "beautiful/tool-chips",
+      "computedHash": "dc06a0ec805825622bf622f0f56cc8305f79751fe7fcb55727a59869b443c9c8",
+      "skillPath": "components/primitives/ToolChips.tsx",
+      "source": "beautifului.dev@2026-09-04",
+      "sourceType": "registry",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "dc06a0ec805825622bf622f0f56cc8305f79751fe7fcb55727a59869b443c9c8"
+    },
+    "kit/beautiful/tool-chips/meta.json": {
+      "component": "beautiful/tool-chips",
+      "computedHash": "d8ea43b15687d5b2b991dc92f77409e8114494857676b3aa76ea7fbcba11bad4",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/tool-chips/ref.md": {
+      "component": "beautiful/tool-chips",
+      "computedHash": "abf269391cb655412aa7c75bb84ab7e8f5f0c856f413c6dc161188c279353368",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/value-pill/index.tsx": {
+      "component": "beautiful/value-pill",
+      "computedHash": "685ca5fba3cccfc1bc23bc6203c066567c200809e83d5d81d3c3491d0a4c9a0a",
+      "skillPath": "components/atoms/ValuePill.tsx",
+      "source": "beautifului.dev@2026-09-04",
+      "sourceType": "registry",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "685ca5fba3cccfc1bc23bc6203c066567c200809e83d5d81d3c3491d0a4c9a0a"
+    },
+    "kit/beautiful/value-pill/meta.json": {
+      "component": "beautiful/value-pill",
+      "computedHash": "ccb3fee7cd0b608368afa2d86964a1cb59e15de363f5cbf802310ee6c0d1b2fc",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/beautiful/value-pill/ref.md": {
+      "component": "beautiful/value-pill",
+      "computedHash": "9bdc45e4623c51fa63e891002097bfc9b926455a4dc7689f67d28b6198c5867b",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/animated-gradient-with-svg/index.tsx": {
+      "component": "fancy/animated-gradient-with-svg",
+      "computedHash": "37e3bf9d1cfafaf37497a35bb380233d6691d2704fb651c835faade8212b46f1",
+      "skillPath": "fancy/components/background/animated-gradient-with-svg.tsx",
+      "source": "danielpetho/fancy@f9f62c61207b",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "ec3965fdd10770e97072d6b8f542b854c92589395b3ee0c5213e398fc0c7b234"
+    },
+    "kit/fancy/animated-gradient-with-svg/meta.json": {
+      "component": "fancy/animated-gradient-with-svg",
+      "computedHash": "5a87d98f4f01fd0035243a4c3464159e34480b70e9ad8e6ed6380314c78015ef",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/animated-gradient-with-svg/ref.md": {
+      "component": "fancy/animated-gradient-with-svg",
+      "computedHash": "0610ad4d3879e9446764536bed0c2adbaec4648b47fde4858285b3f5104d51ab",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/animated-gradient-with-svg/use-debounced-dimensions.ts": {
+      "component": "fancy/animated-gradient-with-svg",
+      "computedHash": "7791d0533a6c4c2951b12c62ba9c28e2f63574593ef3700b2d0fab1af49e9c64",
+      "skillPath": "hooks/use-debounced-dimensions.ts",
+      "source": "danielpetho/fancy@f9f62c61207b",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "7791d0533a6c4c2951b12c62ba9c28e2f63574593ef3700b2d0fab1af49e9c64"
+    },
+    "kit/fancy/basic-number-ticker/index.tsx": {
+      "component": "fancy/basic-number-ticker",
+      "computedHash": "7a93c33712b077bfe3ed1903150ed843f2367d7a066ad4bdf05cd8f7c4d42514",
+      "skillPath": "fancy/components/text/basic-number-ticker.tsx",
+      "source": "danielpetho/fancy@f9f62c61207b",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "a91113d04895e56101c564ca3406712bf27e8ba1aede92eaf5b959f0e0f2a68d"
+    },
+    "kit/fancy/basic-number-ticker/meta.json": {
+      "component": "fancy/basic-number-ticker",
+      "computedHash": "f2a099a6e530fa5a8ef2650c3a3beab546f4265388d13650a1363805c19a6bba",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/basic-number-ticker/ref.md": {
+      "component": "fancy/basic-number-ticker",
+      "computedHash": "a7c2b7f3c05b1d67539e7480d73e55d055246b293f8396997c846ff99fd519aa",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/breathing-text/index.tsx": {
+      "component": "fancy/breathing-text",
+      "computedHash": "29e5aec2c81f2df94a5eac414865bce1d63b0e0d91e76c1307ae1aa40d2aa666",
+      "skillPath": "fancy/components/text/breathing-text.tsx",
+      "source": "danielpetho/fancy@f9f62c61207b",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "059e18c40e045c0cdb226c86dfe2f4999917a542e0d85397a589950b088936b2"
+    },
+    "kit/fancy/breathing-text/meta.json": {
+      "component": "fancy/breathing-text",
+      "computedHash": "e5c8b99d6db1b14a796d57b74e69d3196f6a18df3be1b5b028bdc343b3387120",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/breathing-text/ref.md": {
+      "component": "fancy/breathing-text",
+      "computedHash": "169f67ee1a7960f47a3088ac07ff9a759505395fdafe905dba8efb04cf2fc47e",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/circling-elements/index.tsx": {
+      "component": "fancy/circling-elements",
+      "computedHash": "ca3d072a1a9b1808be22f14adc8ef6afc78bfa5feba49600ba72cc0458d0c6a8",
+      "skillPath": "fancy/components/blocks/circling-elements.tsx",
+      "source": "danielpetho/fancy@f9f62c61207b",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "cf167784baa2e7b69bdf7a0401041cfe02aa158419b7b5cd9249b4c70c581bca"
+    },
+    "kit/fancy/circling-elements/meta.json": {
+      "component": "fancy/circling-elements",
+      "computedHash": "b98a420cdfd1e7e5f64dc53106f0a9730d33be643ee5b52ded94f4599105b08e",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/circling-elements/ref.md": {
+      "component": "fancy/circling-elements",
+      "computedHash": "becd2a7d6d5053ea3ae7c3b44620896e5a6938f796301b8b4fbc7f1f98e4ffb8",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/css-box/index.tsx": {
+      "component": "fancy/css-box",
+      "computedHash": "62ff4c6e14165b1c3d8d5a6d84a0ce287039a7f231eaa7b83e9dcfee65edeada",
+      "skillPath": "fancy/components/blocks/css-box.tsx",
+      "source": "danielpetho/fancy@f9f62c61207b",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "464ed65eaaa4519e0d3d97913397bb499c9b76619fa7269940deefe28c819496"
+    },
+    "kit/fancy/css-box/meta.json": {
+      "component": "fancy/css-box",
+      "computedHash": "e376d8c3fe7cebd0e0a0965e919878a1dadbc6da72ec36b2a4a7958918902315",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/css-box/ref.md": {
+      "component": "fancy/css-box",
+      "computedHash": "869745284dd35d02a14f83d523ea9a88a19d67aedf3b401fb29fa8093758eb03",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/elastic-line/index.tsx": {
+      "component": "fancy/elastic-line",
+      "computedHash": "866859dcc3a343aa6e1bf8ad3bd54a5586dba8b01d61ff7ffef14dabdb68c972",
+      "skillPath": "fancy/components/physics/elastic-line.tsx",
+      "source": "danielpetho/fancy@f9f62c61207b",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "f07d9470968e8255d2939b9c268015d0379509f8cdd3813ae4e5611623a68cc9"
+    },
+    "kit/fancy/elastic-line/meta.json": {
+      "component": "fancy/elastic-line",
+      "computedHash": "e91d25d02cdd01888563d35eaff42a3d3c3409eec9e2c87c30c6d895db807769",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/elastic-line/ref.md": {
+      "component": "fancy/elastic-line",
+      "computedHash": "e2a2920323117ff9030c373467c18974dabb4e2fe20eba3cae048bb67eaeb331",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/elastic-line/use-dimensions.ts": {
+      "component": "fancy/elastic-line",
+      "computedHash": "b0cd18872b3e69dc5bd91c8cba7dae0ec8b5d8c1bac9a35f2d38269d492b9012",
+      "skillPath": "hooks/use-dimensions.ts",
+      "source": "danielpetho/fancy@f9f62c61207b",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "b0cd18872b3e69dc5bd91c8cba7dae0ec8b5d8c1bac9a35f2d38269d492b9012"
+    },
+    "kit/fancy/elastic-line/use-elastic-line-events.ts": {
+      "component": "fancy/elastic-line",
+      "computedHash": "3aa7e74b1132f679bef08695c1d1b34a6714e0114bc586251a5648ec2e361fd2",
+      "skillPath": "hooks/use-elastic-line-events.ts",
+      "source": "danielpetho/fancy@f9f62c61207b",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "44d0ee49e2b00ccc7f218a22964925e9fa83818ea4a5a50296f0bc261e7683c4"
+    },
+    "kit/fancy/elastic-line/use-mouse-position.ts": {
+      "component": "fancy/elastic-line",
+      "computedHash": "827ab212dfe21afb73ca5916016c022c21993c69d347e3cb460383c28d3a4ef1",
+      "skillPath": "hooks/use-mouse-position.ts",
+      "source": "danielpetho/fancy@f9f62c61207b",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "827ab212dfe21afb73ca5916016c022c21993c69d347e3cb460383c28d3a4ef1"
+    },
+    "kit/fancy/float/index.tsx": {
+      "component": "fancy/float",
+      "computedHash": "61c47c4cbdc81efd52992ab9dc02c466dd4453cf4975145253a63eaee3b8fe4e",
+      "skillPath": "fancy/components/blocks/float.tsx",
+      "source": "danielpetho/fancy@f9f62c61207b",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "6e2a67a3aeb6c133d776e10ff42dd77f0f162e25b598db5e4e7e4e6cdd3005d6"
+    },
+    "kit/fancy/float/meta.json": {
+      "component": "fancy/float",
+      "computedHash": "48e40f193298ddd5133e7c54987803f54f40e45aa80751c1e7828145129e707c",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/float/ref.md": {
+      "component": "fancy/float",
+      "computedHash": "644cb1f88cc1fd954e4ef177e06615163f65c971b488cc1a79e1ff9dc320bc01",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/gooey-svg-filter/index.tsx": {
+      "component": "fancy/gooey-svg-filter",
+      "computedHash": "d06a3858bb66a1537dabfd3dcb30886997da974a3e1f6d76f9855dc519fcfc90",
+      "skillPath": "fancy/components/filter/gooey-svg-filter.tsx",
+      "source": "danielpetho/fancy@f9f62c61207b",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "d06a3858bb66a1537dabfd3dcb30886997da974a3e1f6d76f9855dc519fcfc90"
+    },
+    "kit/fancy/gooey-svg-filter/meta.json": {
+      "component": "fancy/gooey-svg-filter",
+      "computedHash": "f5aacc6003938e66eae9e34851d98396a3f241be0ba27726346a8279410c2bd4",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/gooey-svg-filter/ref.md": {
+      "component": "fancy/gooey-svg-filter",
+      "computedHash": "1ee5b3bacca2d4e631456b1a88abe466a08b15b472641ef6a14645ca6c6ec020",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/letter-3d-swap/index.tsx": {
+      "component": "fancy/letter-3d-swap",
+      "computedHash": "5eb0b4cfd2412e07c7db818a45db0dd43cd6d24f88ea32114a1b5c9282e77bd2",
+      "skillPath": "fancy/components/text/letter-3d-swap.tsx",
+      "source": "danielpetho/fancy@f9f62c61207b",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "3fbd19aca00e671a8b80611adf36504d2f2851b4c6d71a9f42d4dcd214d66f19"
+    },
+    "kit/fancy/letter-3d-swap/meta.json": {
+      "component": "fancy/letter-3d-swap",
+      "computedHash": "a970545f22bd06a18be244c3df29ebc9f4d1a336e411c31155f9ac89ab6b9891",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/letter-3d-swap/ref.md": {
+      "component": "fancy/letter-3d-swap",
+      "computedHash": "efaf9bf1edc5391473c082faf51c954b80059da87dbf92298deb4e74a72a0266",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/letter-swap-forward-anim/index.tsx": {
+      "component": "fancy/letter-swap-forward-anim",
+      "computedHash": "083a67c99797e8e78c9ed7d9cfcc2d0870f17146d95c3f26066427ad41bdc9bf",
+      "skillPath": "fancy/components/text/letter-swap-forward-anim.tsx",
+      "source": "danielpetho/fancy@f9f62c61207b",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "083a67c99797e8e78c9ed7d9cfcc2d0870f17146d95c3f26066427ad41bdc9bf"
+    },
+    "kit/fancy/letter-swap-forward-anim/meta.json": {
+      "component": "fancy/letter-swap-forward-anim",
+      "computedHash": "4d1a06f1e08824af7738c9a1c138fd4b0dd8dad07f3ae07c1b04c4f71ac0308d",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/letter-swap-forward-anim/ref.md": {
+      "component": "fancy/letter-swap-forward-anim",
+      "computedHash": "a10f7b3cd7f17e76d7b854b506525e9f6467afefdb24bf469b83bb7884db3102",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/letter-swap-pingpong-anim/index.tsx": {
+      "component": "fancy/letter-swap-pingpong-anim",
+      "computedHash": "8fc3cc8a455ecf75546c93262ce4192093bd0d71576d3cb50e17d6170fee9689",
+      "skillPath": "fancy/components/text/letter-swap-pingpong-anim.tsx",
+      "source": "danielpetho/fancy@f9f62c61207b",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "a11a4cbe89e872f8badeb6094b591a7068988eedaaa8d4b611c4e4a768576dfc"
+    },
+    "kit/fancy/letter-swap-pingpong-anim/meta.json": {
+      "component": "fancy/letter-swap-pingpong-anim",
+      "computedHash": "4b97334e3a9ab022b3063e3c483589c009f7ba80a23df543a6f2bab8a60e0f87",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/letter-swap-pingpong-anim/ref.md": {
+      "component": "fancy/letter-swap-pingpong-anim",
+      "computedHash": "8b6263ef1a532d64e5b3ed5459c13e4c672ce345ea42e77f88a8268bab928fc6",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/media-between-text/index.tsx": {
+      "component": "fancy/media-between-text",
+      "computedHash": "d994820744d225d6cec1062828cd606d9d2a401b5544d0a63b5b12cccb23b7bb",
+      "skillPath": "fancy/components/blocks/media-between-text.tsx",
+      "source": "danielpetho/fancy@f9f62c61207b",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "e7bd4cd5fa83c12d8177e2fb9b21e77a9f6a0e8c6192b9c53801017261cff9c7"
+    },
+    "kit/fancy/media-between-text/meta.json": {
+      "component": "fancy/media-between-text",
+      "computedHash": "75fbb675da63d1788652d8ebf8a936ea091b6af35a4e88eb460f93a62f5b1944",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/media-between-text/ref.md": {
+      "component": "fancy/media-between-text",
+      "computedHash": "84f90fa1ed9f693a20a2bcb8f0adcfd54abd414af95571bede3fc13a035f92df",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/pixel-trail/index.tsx": {
+      "component": "fancy/pixel-trail",
+      "computedHash": "c784fdc87b5b809598d6d59256f536fbc7f5ab48da0f4ba4ca513c3bbbd03d85",
+      "skillPath": "fancy/components/background/pixel-trail.tsx",
+      "source": "danielpetho/fancy@f9f62c61207b",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "b68a287d1ff87df4a83cb636031c856165ff83a511322abbad6171473429e90d"
+    },
+    "kit/fancy/pixel-trail/meta.json": {
+      "component": "fancy/pixel-trail",
+      "computedHash": "49d7b2abc4143bfa4744a7eaa22f4518c47e8292efcd4b069b53b650a686696f",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/pixel-trail/ref.md": {
+      "component": "fancy/pixel-trail",
+      "computedHash": "aeae1560bac528f386fd4332aa33c51c2f1f439d8bf64c76beb7e556f8ad2d09",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/pixel-trail/use-dimensions.ts": {
+      "component": "fancy/pixel-trail",
+      "computedHash": "b0cd18872b3e69dc5bd91c8cba7dae0ec8b5d8c1bac9a35f2d38269d492b9012",
+      "skillPath": "hooks/use-dimensions.ts",
+      "source": "danielpetho/fancy@f9f62c61207b",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "b0cd18872b3e69dc5bd91c8cba7dae0ec8b5d8c1bac9a35f2d38269d492b9012"
+    },
+    "kit/fancy/pixelate-svg-filter/index.tsx": {
+      "component": "fancy/pixelate-svg-filter",
+      "computedHash": "554b9b58b748c460fe0ff443c25ce575bec47ebc40ef3400a874675fdb392e71",
+      "skillPath": "fancy/components/filter/pixelate-svg-filter.tsx",
+      "source": "danielpetho/fancy@f9f62c61207b",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "554b9b58b748c460fe0ff443c25ce575bec47ebc40ef3400a874675fdb392e71"
+    },
+    "kit/fancy/pixelate-svg-filter/meta.json": {
+      "component": "fancy/pixelate-svg-filter",
+      "computedHash": "c4e80d818cb411b2e9a73e94927c7660894b3849c20be2c3256bc2811cda02c7",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/pixelate-svg-filter/ref.md": {
+      "component": "fancy/pixelate-svg-filter",
+      "computedHash": "de01a03a64c143d3a28683785bfc21ca765037b91d180288a5feb8d273414e58",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/random-letter-swap-forward-anim/index.tsx": {
+      "component": "fancy/random-letter-swap-forward-anim",
+      "computedHash": "5f7f6983a289e0e7211b7769c5158e742a694c104ef5e8c496914c0b10028a32",
+      "skillPath": "fancy/components/text/random-letter-swap-forward-anim.tsx",
+      "source": "danielpetho/fancy@f9f62c61207b",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "5ee2d2daddd0afc1b84e4c46a05cdfed9f8d8251a3c1da86ddc53dd75a83972b"
+    },
+    "kit/fancy/random-letter-swap-forward-anim/meta.json": {
+      "component": "fancy/random-letter-swap-forward-anim",
+      "computedHash": "d94366467b4ec51ad7af7b2415c21b3e055cf51d48f58070be23741c67fda154",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/random-letter-swap-forward-anim/ref.md": {
+      "component": "fancy/random-letter-swap-forward-anim",
+      "computedHash": "3cbee23ecc1538ea636f23884cc1f15eb565d8f01764464013a2417c601f15eb",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/random-letter-swap-pingpong-anim/index.tsx": {
+      "component": "fancy/random-letter-swap-pingpong-anim",
+      "computedHash": "048ffaf0f2c2f3c21873a6c7bc4470357e4793ec5fb27993097aacfe7ce4341b",
+      "skillPath": "fancy/components/text/random-letter-swap-pingpong-anim.tsx",
+      "source": "danielpetho/fancy@f9f62c61207b",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "bfbfaad726c5841eb09b2a2db4c0e594e7e2ebe803aeda44094c65d37c4e4015"
+    },
+    "kit/fancy/random-letter-swap-pingpong-anim/meta.json": {
+      "component": "fancy/random-letter-swap-pingpong-anim",
+      "computedHash": "28d34875933cfc37f52f43cfc90b75068c1222bfa7a471fe703d3b6f2c5683ea",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/random-letter-swap-pingpong-anim/ref.md": {
+      "component": "fancy/random-letter-swap-pingpong-anim",
+      "computedHash": "417a69aa93cda636d4bcd80306b21a0e1507be284eccb849181f28619e7d4a83",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/scramble-hover/index.tsx": {
+      "component": "fancy/scramble-hover",
+      "computedHash": "5981ffe9846066cc936697b85e9e3548edf2ea5fc17599f764b7a8b537734a26",
+      "skillPath": "fancy/components/text/scramble-hover.tsx",
+      "source": "danielpetho/fancy@f9f62c61207b",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "74b3253412b6f3d222c50b42e9f967c9dc064f162e469e125e833bd2b61c0741"
+    },
+    "kit/fancy/scramble-hover/meta.json": {
+      "component": "fancy/scramble-hover",
+      "computedHash": "46d01d911c1fee9d4914f96df2d6c5a06e176ed45c6a39f58f35f816f9b50be3",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/scramble-hover/ref.md": {
+      "component": "fancy/scramble-hover",
+      "computedHash": "e7dd00a5553f1061ec6600ffcc2e55c08df2e5ff0e533d2d9c857bf5d27fe952",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/scramble-in/index.tsx": {
+      "component": "fancy/scramble-in",
+      "computedHash": "15c5bbce175996fb8a5baa406d065eb1dcd2bc84a483a74f8ca357e49a030cd9",
+      "skillPath": "fancy/components/text/scramble-in.tsx",
+      "source": "danielpetho/fancy@f9f62c61207b",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "15c5bbce175996fb8a5baa406d065eb1dcd2bc84a483a74f8ca357e49a030cd9"
+    },
+    "kit/fancy/scramble-in/meta.json": {
+      "component": "fancy/scramble-in",
+      "computedHash": "b1a592f25d619ca5e559754610215193cfa31ccd5f54cb4d613e16e3e0ce7b58",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/scramble-in/ref.md": {
+      "component": "fancy/scramble-in",
+      "computedHash": "02351b7525a89a75b2578d4d125b5c3e868872f15e5e60cd04122d9293953712",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/screensaver/index.tsx": {
+      "component": "fancy/screensaver",
+      "computedHash": "9f071c6b76fdfbc00dd8d020b2026d35f8f399c3056b28ef871e1de0c4c6d00a",
+      "skillPath": "fancy/components/blocks/screensaver.tsx",
+      "source": "danielpetho/fancy@f9f62c61207b",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "403f8503a962910247e6174de90e4bf90819f92418b6380c1f3b4137f7d2e340"
+    },
+    "kit/fancy/screensaver/meta.json": {
+      "component": "fancy/screensaver",
+      "computedHash": "9c72dc4a2c6eb88539d62d315ff02173f2b2c84d7eaa5e12ed1d53e69090dae3",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/screensaver/ref.md": {
+      "component": "fancy/screensaver",
+      "computedHash": "9a385bd05e8cf13a6cec31a201da6c7c7a6f3a651646f87368c99aa3f6d493b3",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/screensaver/use-dimensions.ts": {
+      "component": "fancy/screensaver",
+      "computedHash": "b0cd18872b3e69dc5bd91c8cba7dae0ec8b5d8c1bac9a35f2d38269d492b9012",
+      "skillPath": "hooks/use-dimensions.ts",
+      "source": "danielpetho/fancy@f9f62c61207b",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "b0cd18872b3e69dc5bd91c8cba7dae0ec8b5d8c1bac9a35f2d38269d492b9012"
+    },
+    "kit/fancy/simple-carousel/index.tsx": {
+      "component": "fancy/simple-carousel",
+      "computedHash": "9577d5bab45db58dfd43a9ca1730695d11382c10250d8c2270e1f1882f7e9982",
+      "skillPath": "fancy/components/blocks/simple-carousel.tsx",
+      "source": "danielpetho/fancy@f9f62c61207b",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "19f301b05b7b39ca1c0f9f768d8a2c15aa24d2e5717bcbf62812b4afac0177ae"
+    },
+    "kit/fancy/simple-carousel/meta.json": {
+      "component": "fancy/simple-carousel",
+      "computedHash": "ae034bec1b3f57db7a4cfe790772e5f4bbd5eba87832de57f990859f212aae2e",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/simple-carousel/ref.md": {
+      "component": "fancy/simple-carousel",
+      "computedHash": "e9e1cf4b422c29d1fd70c3bb44b9fd31f80eb8fd9d48880a64a38df373e1358d",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/simple-marquee/index.tsx": {
+      "component": "fancy/simple-marquee",
+      "computedHash": "6582ef2ecf97459c7e4a5c9b12ef5fa9db0f776aab5e74c806fd34c38c74c62d",
+      "skillPath": "fancy/components/blocks/simple-marquee.tsx",
+      "source": "danielpetho/fancy@f9f62c61207b",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "4c43713ae62398b3aacfc52f2267aadc615fed06823db850d47b3b822d880799"
+    },
+    "kit/fancy/simple-marquee/meta.json": {
+      "component": "fancy/simple-marquee",
+      "computedHash": "492aba82745013d5121fd4c2fa58bcd4322288051f336ac5e24dd7bf2f4d5f35",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/simple-marquee/ref.md": {
+      "component": "fancy/simple-marquee",
+      "computedHash": "8a1719c2e1fe06d10a7068c29f0cf4c958dfda9ac4907d7c56983325ec93ee7d",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/stacking-cards/index.tsx": {
+      "component": "fancy/stacking-cards",
+      "computedHash": "03109e3c153950ff9f25fb7570856de30ff6f9d15ed9e857b5f00a77d4104902",
+      "skillPath": "fancy/components/blocks/stacking-cards.tsx",
+      "source": "danielpetho/fancy@f9f62c61207b",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "e44b9a352d3cb15f7a7929399d41df8902664e2a66eae63b065167242d00b228"
+    },
+    "kit/fancy/stacking-cards/meta.json": {
+      "component": "fancy/stacking-cards",
+      "computedHash": "efd2f870f672d9b25ff778c20a9049fe6dbb5cbc627cc9037d08d39f169a64f1",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/stacking-cards/ref.md": {
+      "component": "fancy/stacking-cards",
+      "computedHash": "d841bd2184f574ea509f69435a91c468cad74086f3e9bec6c5d5a6aa748846ae",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/text-along-path/index.tsx": {
+      "component": "fancy/text-along-path",
+      "computedHash": "916d4ce0838ebea3825cae14dd13bcc17883f4dd46f76242f39ff79b29ff8f86",
+      "skillPath": "fancy/components/text/text-along-path.tsx",
+      "source": "danielpetho/fancy@f9f62c61207b",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "250d64e7fd3f5317578484209136a6191a4b021d5d4a5aae4ac8274a989384d6"
+    },
+    "kit/fancy/text-along-path/meta.json": {
+      "component": "fancy/text-along-path",
+      "computedHash": "f86e5b0a75f3ea3877c9a47e245fbe71690ed93f70450a407a8bddad1fa79844",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/text-along-path/ref.md": {
+      "component": "fancy/text-along-path",
+      "computedHash": "90ac6a7982baa0fd9ffe5259251662a0bab48fdd579912ac958fddafbaaffeb4",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/text-highlighter/index.tsx": {
+      "component": "fancy/text-highlighter",
+      "computedHash": "dd790a1658cf880cefebbdaf9c50b67ca854dce1edf333caeef662a050e335e3",
+      "skillPath": "fancy/components/text/text-highlighter.tsx",
+      "source": "danielpetho/fancy@f9f62c61207b",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "5c37e234ce1b07dcdf516d4cf6bb7924cb2e56348d0d4596187ace1d3811f438"
+    },
+    "kit/fancy/text-highlighter/meta.json": {
+      "component": "fancy/text-highlighter",
+      "computedHash": "f1ee51737eaaad6fff4a740822cb6e2511d5926cf2bf56ec1c3c0cf219ac831a",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/text-highlighter/ref.md": {
+      "component": "fancy/text-highlighter",
+      "computedHash": "60dc183b055a77827b756c8c6d760850f936938d6fe5bb592b4b0284d5a6249c",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/text-rotate/index.tsx": {
+      "component": "fancy/text-rotate",
+      "computedHash": "6595df7a09b052c47c78b93ad6ac516296bad598efed4b6896f464f6aad5f587",
+      "skillPath": "fancy/components/text/text-rotate.tsx",
+      "source": "danielpetho/fancy@f9f62c61207b",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "4fe43f10972e8dc875e90ed0d63838363cb601ff7c540bf4a7a4d736d1b5c2af"
+    },
+    "kit/fancy/text-rotate/meta.json": {
+      "component": "fancy/text-rotate",
+      "computedHash": "e4773ce925c9706da8dc490aa909481bdbb88bfa3d27bbeb9f5309e73331a74b",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/text-rotate/ref.md": {
+      "component": "fancy/text-rotate",
+      "computedHash": "d00bcb79abb0d1efc2abba0938f42a0a3ba5ed483730ac392ce5f1df7269eb7a",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/typewriter/index.tsx": {
+      "component": "fancy/typewriter",
+      "computedHash": "9dc6efabbf8d527d060d9a5bf993891feb1942c22cada0712d07886a1761d1d7",
+      "skillPath": "fancy/components/text/typewriter.tsx",
+      "source": "danielpetho/fancy@f9f62c61207b",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "b2ea185767d7a4c2008cf75064f6f72d297baf7eb310c8c2b5d54fbb0960c2c0"
+    },
+    "kit/fancy/typewriter/meta.json": {
+      "component": "fancy/typewriter",
+      "computedHash": "12c1c3c70e1dcfac37b5bd4a67f8296ad8821106debc0a78bbea795ede7e10cf",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/typewriter/ref.md": {
+      "component": "fancy/typewriter",
+      "computedHash": "7fcbe4058db39ade2e4783033e308966547d24e8bc891051943d4735f9e66e31",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/underline-center/index.tsx": {
+      "component": "fancy/underline-center",
+      "computedHash": "15bbdaa49c5c327d38a3b9acb76e0e414aef0c2365b2dcf84ab82233182e3918",
+      "skillPath": "fancy/components/text/underline-center.tsx",
+      "source": "danielpetho/fancy@f9f62c61207b",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "f3f58f950e5c4b05b63f3c1e29b46ffbf85630d70430c0db4adbee23e407456d"
+    },
+    "kit/fancy/underline-center/meta.json": {
+      "component": "fancy/underline-center",
+      "computedHash": "50e7c855ddc9d245a01b78ddd281d8e67bf9180fa1c1ccf3d6c36586bd2818cc",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/underline-center/ref.md": {
+      "component": "fancy/underline-center",
+      "computedHash": "e6cc41caeac38058de7467510a5e83f47cb4248df204480bf97cc52ec57ee4d0",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/underline-comes-in-goes-out/index.tsx": {
+      "component": "fancy/underline-comes-in-goes-out",
+      "computedHash": "607ff87fe32e00bef11ed8566ba42604624648b7cd045437aa100b31111d01c6",
+      "skillPath": "fancy/components/text/underline-comes-in-goes-out.tsx",
+      "source": "danielpetho/fancy@f9f62c61207b",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "607ff87fe32e00bef11ed8566ba42604624648b7cd045437aa100b31111d01c6"
+    },
+    "kit/fancy/underline-comes-in-goes-out/meta.json": {
+      "component": "fancy/underline-comes-in-goes-out",
+      "computedHash": "137e7e869da5d1a52338a7f14578c5e54c5c7d0a0865e263e4fba5f641829870",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/underline-comes-in-goes-out/ref.md": {
+      "component": "fancy/underline-comes-in-goes-out",
+      "computedHash": "4c53ca4ee2cfdb4420010126fba0e6c79d3fdc773665603642ad099e0c64550f",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/underline-goes-out-comes-in/index.tsx": {
+      "component": "fancy/underline-goes-out-comes-in",
+      "computedHash": "e402baeaab53003204d9ef08e329d308ccbfec610cb39af51f75ce6a465864e1",
+      "skillPath": "fancy/components/text/underline-goes-out-comes-in.tsx",
+      "source": "danielpetho/fancy@f9f62c61207b",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "e402baeaab53003204d9ef08e329d308ccbfec610cb39af51f75ce6a465864e1"
+    },
+    "kit/fancy/underline-goes-out-comes-in/meta.json": {
+      "component": "fancy/underline-goes-out-comes-in",
+      "computedHash": "05bdd0cd720db121604c94355c7669659360ad6a8448513b8c068a3dea43e8f5",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/underline-goes-out-comes-in/ref.md": {
+      "component": "fancy/underline-goes-out-comes-in",
+      "computedHash": "1122495fe353190dd05f986eb05afea56ad03e695f9a193d7f10422a8d927853",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/underline-to-background/index.tsx": {
+      "component": "fancy/underline-to-background",
+      "computedHash": "9e738b214acb93d7ec8ffd4e89009fd6dba539b897d2c480c320ec7028e06289",
+      "skillPath": "fancy/components/text/underline-to-background.tsx",
+      "source": "danielpetho/fancy@f9f62c61207b",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "9f1e5f0583c24c09a5f02055bf8c151ab07745cf898ee22a6b06fb7d6bdd7ebf"
+    },
+    "kit/fancy/underline-to-background/meta.json": {
+      "component": "fancy/underline-to-background",
+      "computedHash": "478181987e593b10193c29beb0b8b0c818cae32e427269023b955adc997b77a0",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/underline-to-background/ref.md": {
+      "component": "fancy/underline-to-background",
+      "computedHash": "e2314860862d9b57c551735a607b6f5726ee79cac7a7067935205433f4ec2b4a",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/vertical-cut-reveal/index.tsx": {
+      "component": "fancy/vertical-cut-reveal",
+      "computedHash": "b3cc42f2ee35d02f36b7042ded4b34db3a22d639b0fdd8a7dec7b9e86786fd70",
+      "skillPath": "fancy/components/text/vertical-cut-reveal.tsx",
+      "source": "danielpetho/fancy@f9f62c61207b",
+      "sourceType": "github",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": "31e998a3d991d6596c391f25d88e0bc02e0c4bb2759db53b1a4cc4e4924509ae"
+    },
+    "kit/fancy/vertical-cut-reveal/meta.json": {
+      "component": "fancy/vertical-cut-reveal",
+      "computedHash": "25f2f88075d4ee465d634a9c8995af49cf7327765016f87346eb517693531093",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/fancy/vertical-cut-reveal/ref.md": {
+      "component": "fancy/vertical-cut-reveal",
+      "computedHash": "fec61d02fd7103743f97de1fcab4a4cfc6c6c7159f5cb1830c999e0c5f53820b",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/libraries/border-beam/index.tsx": {
+      "component": "libraries/border-beam",
+      "computedHash": "04d4be3c187868f9c6f1fd28253885ccbd027c1bf90b96511b683f8b044450a0",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/libraries/border-beam/meta.json": {
+      "component": "libraries/border-beam",
+      "computedHash": "169ff608a4dfcda298fafc203dcb0e64c5aab5969c4b0aa4d52b6103951d1a17",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/libraries/border-beam/ref.md": {
+      "component": "libraries/border-beam",
+      "computedHash": "d7406319e8cdb2d1816aba24aa87a6fd0d1071148e22799192dad1775b48b283",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/libraries/liquid-gooey/index.tsx": {
+      "component": "libraries/liquid-gooey",
+      "computedHash": "dc5e7b595d8b216961b6e33145539dd669af176431c2a93f62f2dbce76149c86",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/libraries/liquid-gooey/meta.json": {
+      "component": "libraries/liquid-gooey",
+      "computedHash": "cced2e0aa2b731319b196eba04835899b0312a086a73bc518d6a6de3af159751",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/libraries/liquid-gooey/ref.md": {
+      "component": "libraries/liquid-gooey",
+      "computedHash": "72a65d2310b51f179b8c4ab751e8297122e379eef54cbf240016545f76d5157a",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/libraries/metal-fx/index.tsx": {
+      "component": "libraries/metal-fx",
+      "computedHash": "e15bcec0896f3a5a387cc9a0fdccb79d653702b1e5e2b27b80552d31006bcf07",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/libraries/metal-fx/meta.json": {
+      "component": "libraries/metal-fx",
+      "computedHash": "dd86e8e4cf3509f73da8fa71c606d6d8636291b7c37bf12061ae2defbbbd98d8",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/libraries/metal-fx/ref.md": {
+      "component": "libraries/metal-fx",
+      "computedHash": "4f9d0856b2a407df007c2abe610350d5230b0fa7af5ad8ff475c9edd79cde490",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/libraries/thinking-orbs/index.tsx": {
+      "component": "libraries/thinking-orbs",
+      "computedHash": "0576eaf288032a82fcaa176b9d323b3409e584b4f170ce37e7c9ae4dde9b79de",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/libraries/thinking-orbs/meta.json": {
+      "component": "libraries/thinking-orbs",
+      "computedHash": "5c6daa6fff09411eb31e9ce4c5b6513611a43b72f9ea97db874daa3e8efa1778",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    },
+    "kit/libraries/thinking-orbs/ref.md": {
+      "component": "libraries/thinking-orbs",
+      "computedHash": "f0177ccb860d8159a15ca8cade27d3afb993ba15e70e979d2482cd0e5a9c7109",
+      "skillPath": null,
+      "source": "gratitude5dee/airv2",
+      "sourceType": "air",
+      "spdx": "MIT",
+      "tier": "A",
+      "upstreamHash": null
+    }
+  }
+}

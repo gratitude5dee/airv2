@@ -1,0 +1,54 @@
+{
+  "id": "fancy/letter-3d-swap",
+  "title": "Letter 3D Swap",
+  "tags": [
+    "text",
+    "motion",
+    "hover",
+    "3d"
+  ],
+  "when": "Letters flip on a 3D axis on hover. Hover-only; heavier than the 2D swaps.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {
+    "as": "ElementType?",
+    "mainClassName": "string?",
+    "frontFaceClassName": "string?",
+    "secondFaceClassName": "string?",
+    "staggerDuration": "number?",
+    "staggerFrom": "\"first\" | \"last\" | \"center\" | number | \"random\"?",
+    "transition": "ValueAnimationTransition | AnimationOptions?",
+    "rotateDirection": "\"top\" | \"right\" | \"bottom\" | \"left\"?"
+  },
+  "deps": [
+    "motion"
+  ],
+  "weightKb": {
+    "js": 1.5,
+    "css": 0.1,
+    "jsFull": 32.9
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": false,
+  "reducedMotion": "none",
+  "author": "daniel petho",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "danielpetho/fancy@f9f62c61207b"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 10,
+    "errors": []
+  },
+  "notes": []
+}

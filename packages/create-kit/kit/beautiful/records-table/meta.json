@@ -1,0 +1,46 @@
+{
+  "id": "beautiful/records-table",
+  "title": "Records Table",
+  "tags": [
+    "table",
+    "data",
+    "records"
+  ],
+  "when": "Spreadsheet-like records grid with sticky first column and column selection. Heavy; one per app.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {},
+  "deps": [],
+  "weightKb": {
+    "js": 10.8,
+    "css": 2.8,
+    "jsFull": 10.8
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "n/a",
+  "author": "Shane Levine",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "beautifului.dev@2026-09-04"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 440,
+    "errors": []
+  },
+  "notes": [
+    "Row `website` is rendered as given (no https:// prefix is added); pass full URLs.",
+    "Upstream records-table.css is missing the closing brace of its final @media block; restored.",
+    "index.tsx: demo URL replaced with \"#\": https://${row.website}"
+  ]
+}

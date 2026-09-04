@@ -1,0 +1,63 @@
+{
+  "id": "fancy/text-rotate",
+  "title": "Text Rotate",
+  "tags": [
+    "text",
+    "motion",
+    "hero"
+  ],
+  "when": "One slot in a headline that cycles through a short list of words.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {
+    "texts": "string[]",
+    "as": "ElementType?",
+    "rotationInterval": "number?",
+    "initial": "MotionProps[\"initial\"] | MotionProps[\"initial\"][]?",
+    "animate": "MotionProps[\"animate\"] | MotionProps[\"animate\"][]?",
+    "exit": "MotionProps[\"exit\"] | MotionProps[\"exit\"][]?",
+    "animatePresenceMode": "AnimatePresenceProps[\"mode\"]?",
+    "animatePresenceInitial": "boolean?",
+    "staggerDuration": "number?",
+    "staggerFrom": "\"first\" | \"last\" | \"center\" | number | \"random\"?",
+    "transition": "Transition?",
+    "loop": "boolean?",
+    "auto": "boolean?",
+    "splitBy": "\"words\" | \"characters\" | \"lines\" | string?",
+    "onNext": "(index: number) => void?",
+    "mainClassName": "string?",
+    "splitLevelClassName": "string?",
+    "elementLevelClassName": "string?"
+  },
+  "deps": [
+    "motion"
+  ],
+  "weightKb": {
+    "js": 1.4,
+    "css": 0.1,
+    "jsFull": 52
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "static",
+  "author": "daniel petho",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "danielpetho/fancy@f9f62c61207b"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 34,
+    "errors": []
+  },
+  "notes": []
+}

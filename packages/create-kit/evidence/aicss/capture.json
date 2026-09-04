@@ -1,0 +1,281 @@
+{
+  "../../../LICENSE": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "../../../LICENSE"
+    ],
+    "sha256": "04df760be634b1e68ef88f2bcb8348647c4dc1d1ff758d82059745eb199cc8e9",
+    "url": "https://raw.githubusercontent.com/kvnkld/aicss/4556a918fd8c9358d42d2b24a3866301b8ea10a2/LICENSE",
+    "via": "local-clone"
+  },
+  "ai-agent-input/PromptInput.module.css": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "ai-agent-input/PromptInput.module.css"
+    ],
+    "sha256": "05f35b30f4b9350f3e2c21fe29e40ebc67faca508df336a2539b94c772528946",
+    "url": "https://raw.githubusercontent.com/kvnkld/aicss/4556a918fd8c9358d42d2b24a3866301b8ea10a2/packages/react/src/ai-agent-input/PromptInput.module.css",
+    "via": "local-clone"
+  },
+  "ai-agent-input/PromptInput.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "ai-agent-input/PromptInput.tsx"
+    ],
+    "sha256": "93df59bef1c07ff13fc38945a7be24c631a10e4cdcb056aed81500c48499d95c",
+    "url": "https://raw.githubusercontent.com/kvnkld/aicss/4556a918fd8c9358d42d2b24a3866301b8ea10a2/packages/react/src/ai-agent-input/PromptInput.tsx",
+    "via": "local-clone"
+  },
+  "ai-agent-input/index.ts": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "ai-agent-input/index.ts"
+    ],
+    "sha256": "02a0f643f4d64709eaab6c01ddae6f374145a9ac80c17834a89f562db2e11539",
+    "url": "https://raw.githubusercontent.com/kvnkld/aicss/4556a918fd8c9358d42d2b24a3866301b8ea10a2/packages/react/src/ai-agent-input/index.ts",
+    "via": "local-clone"
+  },
+  "approval-card/ApprovalCard.module.css": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "approval-card/ApprovalCard.module.css"
+    ],
+    "sha256": "3b437a695ac7798b5412e5e7bb0e9ed9d1ac172499e57d089ce56cbcc374925e",
+    "url": "https://raw.githubusercontent.com/kvnkld/aicss/4556a918fd8c9358d42d2b24a3866301b8ea10a2/packages/react/src/approval-card/ApprovalCard.module.css",
+    "via": "local-clone"
+  },
+  "approval-card/ApprovalCard.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "approval-card/ApprovalCard.tsx"
+    ],
+    "sha256": "1815714c309895a4ca4bf2916b670b00dbe659cf04a370c69eb27acbd333e1e1",
+    "url": "https://raw.githubusercontent.com/kvnkld/aicss/4556a918fd8c9358d42d2b24a3866301b8ea10a2/packages/react/src/approval-card/ApprovalCard.tsx",
+    "via": "local-clone"
+  },
+  "approval-card/index.ts": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "approval-card/index.ts"
+    ],
+    "sha256": "39dffa9e77d059550e5833f320b2e4f6a93ddcbfcf8f795a72c53c3da5544c8f",
+    "url": "https://raw.githubusercontent.com/kvnkld/aicss/4556a918fd8c9358d42d2b24a3866301b8ea10a2/packages/react/src/approval-card/index.ts",
+    "via": "local-clone"
+  },
+  "code-block/CodeBlock.module.css": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "code-block/CodeBlock.module.css"
+    ],
+    "sha256": "6a215ffed191f6233b5ac27246a15fa4a066b3eace19d7c4b9ca615f90f4edc5",
+    "url": "https://raw.githubusercontent.com/kvnkld/aicss/4556a918fd8c9358d42d2b24a3866301b8ea10a2/packages/react/src/code-block/CodeBlock.module.css",
+    "via": "local-clone"
+  },
+  "code-block/CodeBlock.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "code-block/CodeBlock.tsx"
+    ],
+    "sha256": "e2084e9982bfa5dfd8431f03978914a66c47cb3c41b73c76fff094461dde3f1e",
+    "url": "https://raw.githubusercontent.com/kvnkld/aicss/4556a918fd8c9358d42d2b24a3866301b8ea10a2/packages/react/src/code-block/CodeBlock.tsx",
+    "via": "local-clone"
+  },
+  "code-block/index.ts": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "code-block/index.ts"
+    ],
+    "sha256": "f57dcea2e43b038331ea4aff99ccbb60ec0f2f6812037b3b02ec8015c0f770c9",
+    "url": "https://raw.githubusercontent.com/kvnkld/aicss/4556a918fd8c9358d42d2b24a3866301b8ea10a2/packages/react/src/code-block/index.ts",
+    "via": "local-clone"
+  },
+  "data-table/DataTable.module.css": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "data-table/DataTable.module.css"
+    ],
+    "sha256": "f3011d974eeb7fb883f0c2eed11842d2c17c1ca40934de6bd73a54279fba221a",
+    "url": "https://raw.githubusercontent.com/kvnkld/aicss/4556a918fd8c9358d42d2b24a3866301b8ea10a2/packages/react/src/data-table/DataTable.module.css",
+    "via": "local-clone"
+  },
+  "data-table/DataTable.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "data-table/DataTable.tsx"
+    ],
+    "sha256": "1b8e6d31504425b75144821a6ab83478d43babb66474ee44349ac40c96327efc",
+    "url": "https://raw.githubusercontent.com/kvnkld/aicss/4556a918fd8c9358d42d2b24a3866301b8ea10a2/packages/react/src/data-table/DataTable.tsx",
+    "via": "local-clone"
+  },
+  "data-table/index.ts": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "data-table/index.ts"
+    ],
+    "sha256": "541354702e42a7fe032821a46110583f2210b972a92739a1589cafedc6eebf3d",
+    "url": "https://raw.githubusercontent.com/kvnkld/aicss/4556a918fd8c9358d42d2b24a3866301b8ea10a2/packages/react/src/data-table/index.ts",
+    "via": "local-clone"
+  },
+  "orbs/Orb.module.css": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "orbs/Orb.module.css"
+    ],
+    "sha256": "7a4c3d2803093dfc6b13770a740eae94e9cbb72a0fab02c00e88905db9964662",
+    "url": "https://raw.githubusercontent.com/kvnkld/aicss/4556a918fd8c9358d42d2b24a3866301b8ea10a2/packages/react/src/orbs/Orb.module.css",
+    "via": "local-clone"
+  },
+  "orbs/Orb.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "orbs/Orb.tsx"
+    ],
+    "sha256": "a088f58e12f85d3a493e7dfb91b7e1625facff87ef2c2baaf698eddcfd1f43de",
+    "url": "https://raw.githubusercontent.com/kvnkld/aicss/4556a918fd8c9358d42d2b24a3866301b8ea10a2/packages/react/src/orbs/Orb.tsx",
+    "via": "local-clone"
+  },
+  "orbs/index.ts": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "orbs/index.ts"
+    ],
+    "sha256": "3ac481de0a3e27b77529400daead2f7f2a774bf32cb02050ed71f0351e8530d2",
+    "url": "https://raw.githubusercontent.com/kvnkld/aicss/4556a918fd8c9358d42d2b24a3866301b8ea10a2/packages/react/src/orbs/index.ts",
+    "via": "local-clone"
+  },
+  "streaming-text/StreamingText.module.css": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "streaming-text/StreamingText.module.css"
+    ],
+    "sha256": "3a93b26ecadccbd9c4390ef73fa2517aac4bfe073a9f9f3716c6a6c07728b8c5",
+    "url": "https://raw.githubusercontent.com/kvnkld/aicss/4556a918fd8c9358d42d2b24a3866301b8ea10a2/packages/react/src/streaming-text/StreamingText.module.css",
+    "via": "local-clone"
+  },
+  "streaming-text/StreamingText.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "streaming-text/StreamingText.tsx"
+    ],
+    "sha256": "1bef2140048f6e7ea58c40580a36e566a87ac742223c2582cd98dda109335d0f",
+    "url": "https://raw.githubusercontent.com/kvnkld/aicss/4556a918fd8c9358d42d2b24a3866301b8ea10a2/packages/react/src/streaming-text/StreamingText.tsx",
+    "via": "local-clone"
+  },
+  "streaming-text/index.ts": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "streaming-text/index.ts"
+    ],
+    "sha256": "6d0af00df1f48dc6ac31591f1d5701deada6ffae808e7118712a01295a5734cb",
+    "url": "https://raw.githubusercontent.com/kvnkld/aicss/4556a918fd8c9358d42d2b24a3866301b8ea10a2/packages/react/src/streaming-text/index.ts",
+    "via": "local-clone"
+  },
+  "task-list/TodoList.module.css": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "task-list/TodoList.module.css"
+    ],
+    "sha256": "169f7cec5415339403b79e08ea842e357d183e598fbb111fd04bfbfe1527ab0f",
+    "url": "https://raw.githubusercontent.com/kvnkld/aicss/4556a918fd8c9358d42d2b24a3866301b8ea10a2/packages/react/src/task-list/TodoList.module.css",
+    "via": "local-clone"
+  },
+  "task-list/TodoList.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "task-list/TodoList.tsx"
+    ],
+    "sha256": "04964ef8299765671e561fb2b0420054f4e0794025db5950e6a1d28fe35f322e",
+    "url": "https://raw.githubusercontent.com/kvnkld/aicss/4556a918fd8c9358d42d2b24a3866301b8ea10a2/packages/react/src/task-list/TodoList.tsx",
+    "via": "local-clone"
+  },
+  "task-list/index.ts": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "task-list/index.ts"
+    ],
+    "sha256": "cdba0c183360fd2ada53144791f8eeb59ccbfad6b4cabd982d06d584448816e6",
+    "url": "https://raw.githubusercontent.com/kvnkld/aicss/4556a918fd8c9358d42d2b24a3866301b8ea10a2/packages/react/src/task-list/index.ts",
+    "via": "local-clone"
+  },
+  "text-response/TextResponse.module.css": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "text-response/TextResponse.module.css"
+    ],
+    "sha256": "f29b39b861f247f2c72a60d251b3d186caef5de96622c72d5e0ad069d145ccc0",
+    "url": "https://raw.githubusercontent.com/kvnkld/aicss/4556a918fd8c9358d42d2b24a3866301b8ea10a2/packages/react/src/text-response/TextResponse.module.css",
+    "via": "local-clone"
+  },
+  "text-response/TextResponse.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "text-response/TextResponse.tsx"
+    ],
+    "sha256": "0b662e7d47c1e31ef6d6d336b3f9498ea7ee9707bb7df7dfa7ddea307e40b83e",
+    "url": "https://raw.githubusercontent.com/kvnkld/aicss/4556a918fd8c9358d42d2b24a3866301b8ea10a2/packages/react/src/text-response/TextResponse.tsx",
+    "via": "local-clone"
+  },
+  "text-response/index.ts": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "text-response/index.ts"
+    ],
+    "sha256": "48fc685d6b5152ffe6fe7f8301db52371d178efeffe4499299e1561749f2a1ad",
+    "url": "https://raw.githubusercontent.com/kvnkld/aicss/4556a918fd8c9358d42d2b24a3866301b8ea10a2/packages/react/src/text-response/index.ts",
+    "via": "local-clone"
+  },
+  "thinking-reasoning/ThinkingReasoning.module.css": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "thinking-reasoning/ThinkingReasoning.module.css"
+    ],
+    "sha256": "3368bb9897255b4bec3bdaf44702ed79acd3e77da9e830f79c74f63b52f5eb87",
+    "url": "https://raw.githubusercontent.com/kvnkld/aicss/4556a918fd8c9358d42d2b24a3866301b8ea10a2/packages/react/src/thinking-reasoning/ThinkingReasoning.module.css",
+    "via": "local-clone"
+  },
+  "thinking-reasoning/ThinkingReasoning.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "thinking-reasoning/ThinkingReasoning.tsx"
+    ],
+    "sha256": "e09f3926be5a4b7cb395bcb3d1e6e2d4286c3b7a3944655b70b8c1d1fb858a6e",
+    "url": "https://raw.githubusercontent.com/kvnkld/aicss/4556a918fd8c9358d42d2b24a3866301b8ea10a2/packages/react/src/thinking-reasoning/ThinkingReasoning.tsx",
+    "via": "local-clone"
+  },
+  "thinking-reasoning/index.ts": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "thinking-reasoning/index.ts"
+    ],
+    "sha256": "8eff84ee8d7dba4eccbf8f7ea4c7ab386ea28dc95e50729831b6373d68417370",
+    "url": "https://raw.githubusercontent.com/kvnkld/aicss/4556a918fd8c9358d42d2b24a3866301b8ea10a2/packages/react/src/thinking-reasoning/index.ts",
+    "via": "local-clone"
+  },
+  "thinking-state/ThinkingState.module.css": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "thinking-state/ThinkingState.module.css"
+    ],
+    "sha256": "0dd3017af1eebb607fbd18b4bc90c8c191a70df49d2c07c49ab78214b766b402",
+    "url": "https://raw.githubusercontent.com/kvnkld/aicss/4556a918fd8c9358d42d2b24a3866301b8ea10a2/packages/react/src/thinking-state/ThinkingState.module.css",
+    "via": "local-clone"
+  },
+  "thinking-state/ThinkingState.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "thinking-state/ThinkingState.tsx"
+    ],
+    "sha256": "c8436e1266a7c2918a3053365a48a1dc94162223627a7bb694881091da85b118",
+    "url": "https://raw.githubusercontent.com/kvnkld/aicss/4556a918fd8c9358d42d2b24a3866301b8ea10a2/packages/react/src/thinking-state/ThinkingState.tsx",
+    "via": "local-clone"
+  },
+  "thinking-state/index.ts": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "thinking-state/index.ts"
+    ],
+    "sha256": "0f11bc2aabdd9c509b87d6b22d776f115be9b282bd17da7bb27ec83678ae7013",
+    "url": "https://raw.githubusercontent.com/kvnkld/aicss/4556a918fd8c9358d42d2b24a3866301b8ea10a2/packages/react/src/thinking-state/index.ts",
+    "via": "local-clone"
+  }
+}

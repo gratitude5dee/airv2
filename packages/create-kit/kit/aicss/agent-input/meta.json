@@ -1,0 +1,48 @@
+{
+  "id": "aicss/agent-input",
+  "title": "Agent Input",
+  "tags": [
+    "input",
+    "chat",
+    "composer"
+  ],
+  "when": "Prompt composer with attachments and send. Default composer for the chat recipe.",
+  "kind": "component",
+  "entry": "index.ts",
+  "props": {},
+  "deps": [
+    "lucide-react"
+  ],
+  "weightKb": {
+    "js": 6.9,
+    "css": 2.6,
+    "jsFull": 8
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "n/a",
+  "author": "Kevin Kelder (kvnkld)",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "kvnkld/aicss@4556a918fd8c"
+  },
+  "csp": {
+    "ok": true,
+    "findings": [
+      "soft raw-html aicss/agent-input/PromptInput.tsx:242 Raw HTML injection; make sure the string is not user-controlled.",
+      "soft raw-html aicss/agent-input/PromptInput.tsx:511 Raw HTML injection; make sure the string is not user-controlled.",
+      "soft raw-html aicss/agent-input/PromptInput.tsx:599 Raw HTML injection; make sure the string is not user-controlled."
+    ]
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 94,
+    "errors": []
+  },
+  "notes": []
+}

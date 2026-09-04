@@ -1,0 +1,54 @@
+{
+  "id": "libraries/metal-fx",
+  "title": "Metal FX",
+  "tags": [
+    "shader",
+    "webgl",
+    "decor",
+    "hero"
+  ],
+  "when": "Liquid-metal surface behind a hero word. Non-lite only; renders a flat plate when WebGL is off.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {
+    "children": "ReactNode",
+    "speed": "number",
+    "intensity": "number"
+  },
+  "deps": [
+    "metal-fx"
+  ],
+  "weightKb": {
+    "js": 0.7,
+    "css": 0.1,
+    "jsFull": 18
+  },
+  "lite": false,
+  "liteReason": "policy: WebGL shader surface; lite has no WebGL",
+  "touch": true,
+  "reducedMotion": "static",
+  "author": "Jakub Antalik",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "Jakubantalik/Libraries.dev@aea4c00db4b7"
+  },
+  "csp": {
+    "ok": true,
+    "findings": [
+      "soft webgl libraries/metal-fx/index.tsx:17 WebGL: component must stay non-lite and degrade to a static frame.",
+      "soft webgl libraries/metal-fx/index.tsx:17 WebGL: component must stay non-lite and degrade to a static frame."
+    ]
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 1,
+    "errors": []
+  },
+  "notes": [
+    "Apache-2.0 shader attribution from upstream NOTICE is preserved in evidence/libraries/metal-fx.NOTICE and must ship with any app that bundles it."
+  ]
+}

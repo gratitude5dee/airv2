@@ -1,0 +1,58 @@
+{
+  "id": "fancy/vertical-cut-reveal",
+  "title": "Vertical Cut Reveal",
+  "tags": [
+    "text",
+    "motion",
+    "reveal",
+    "hero"
+  ],
+  "when": "Reveal a headline line by line (or word by word) with a clipped upward slide.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {
+    "reverse": "boolean?",
+    "transition": "AnimationOptions?",
+    "splitBy": "\"words\" | \"characters\" | \"lines\" | string?",
+    "staggerDuration": "number?",
+    "staggerFrom": "\"first\" | \"last\" | \"center\" | \"random\" | number?",
+    "containerClassName": "string?",
+    "wordLevelClassName": "string?",
+    "elementLevelClassName": "string?",
+    "onClick": "() => void?",
+    "onStart": "() => void?",
+    "onComplete": "() => void?",
+    "autoStart": "boolean?"
+  },
+  "deps": [
+    "motion"
+  ],
+  "weightKb": {
+    "js": 1.3,
+    "css": 0.1,
+    "jsFull": 50
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "static",
+  "author": "daniel petho",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "danielpetho/fancy@f9f62c61207b"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 1,
+    "errors": []
+  },
+  "notes": []
+}

@@ -1,0 +1,42 @@
+{
+  "id": "beautiful/context-cards",
+  "title": "Context Cards",
+  "tags": [
+    "cards",
+    "context",
+    "sources"
+  ],
+  "when": "Small stack of context/source cards the agent used.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {},
+  "deps": [],
+  "weightKb": {
+    "js": 1.3,
+    "css": 0.1,
+    "jsFull": 1.3
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "reduced",
+  "author": "Shane Levine",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "beautifului.dev@2026-09-04"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 269,
+    "errors": []
+  },
+  "notes": []
+}

@@ -1,0 +1,6 @@
+# Scratch produced by scripts/*.ts. Nothing here is a source of truth.
+.cache/
+.harness/
+vendor/.extracted/
+restricted/*.tgz
+restricted/*.manifest.json

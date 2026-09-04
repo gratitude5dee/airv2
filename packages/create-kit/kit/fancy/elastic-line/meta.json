@@ -1,0 +1,52 @@
+{
+  "id": "fancy/elastic-line",
+  "title": "Elastic Line",
+  "tags": [
+    "physics",
+    "pointer",
+    "motion",
+    "divider"
+  ],
+  "when": "A divider line that stretches toward the pointer and snaps back. Non-lite (physics).",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {
+    "isVertical": "boolean?",
+    "grabThreshold": "number?",
+    "releaseThreshold": "number?",
+    "strokeWidth": "number?",
+    "transition": "ValueAnimationTransition?",
+    "animateInTransition": "ValueAnimationTransition?"
+  },
+  "deps": [
+    "motion"
+  ],
+  "weightKb": {
+    "js": 1.2,
+    "css": 0.1,
+    "jsFull": 43.6
+  },
+  "lite": false,
+  "liteReason": "policy: continuous pointer physics (rAF spring) is too costly for the lite webview",
+  "touch": false,
+  "reducedMotion": "static",
+  "author": "daniel petho",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "danielpetho/fancy@f9f62c61207b"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 18,
+    "errors": []
+  },
+  "notes": []
+}

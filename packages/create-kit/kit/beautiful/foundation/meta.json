@@ -1,0 +1,44 @@
+{
+  "id": "beautiful/foundation",
+  "title": "Beautiful UI foundation",
+  "tags": [
+    "style",
+    "tokens",
+    "helper"
+  ],
+  "when": "Shared CSS for every beautiful/* component: token bridge onto Air, keyframes, primitive classes. Import once.",
+  "kind": "style",
+  "entry": "index.ts",
+  "props": {},
+  "deps": [],
+  "weightKb": {
+    "js": 0.1,
+    "css": 2.4,
+    "jsFull": 0.1
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "n/a",
+  "author": "Shane Levine",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "beautifului.dev@2026-09-04"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 66,
+    "errors": []
+  },
+  "notes": [
+    "Upstream foundation.css carries an orphaned `.records-footer-hint {} }` fragment (unbalanced brace); dropped."
+  ]
+}

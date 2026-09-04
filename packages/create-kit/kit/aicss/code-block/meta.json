@@ -1,0 +1,42 @@
+{
+  "id": "aicss/code-block",
+  "title": "Code Block",
+  "tags": [
+    "code",
+    "chat",
+    "text"
+  ],
+  "when": "Monospace block with a copy affordance; no highlighter dependency.",
+  "kind": "component",
+  "entry": "index.ts",
+  "props": {},
+  "deps": [],
+  "weightKb": {
+    "js": 0.7,
+    "css": 0.9,
+    "jsFull": 0.7
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "n/a",
+  "author": "Kevin Kelder (kvnkld)",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "kvnkld/aicss@4556a918fd8c"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 91,
+    "errors": []
+  },
+  "notes": []
+}

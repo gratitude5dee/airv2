@@ -1,0 +1,195 @@
+{
+  "approval-card": {
+    "url": "https://beautifului.dev/r/approval-card.json",
+    "capturedAt": "2026-09-04",
+    "sha256": "b10c4670c04c6510c4364561d06cc5a670317993a0fd1473b1af254de64b244e",
+    "files": [
+      "components/primitives/ApprovalCard.tsx"
+    ]
+  },
+  "button": {
+    "url": "https://beautifului.dev/r/button.json",
+    "capturedAt": "2026-09-04",
+    "sha256": "cdc7affc58ab3353dc159d33bd87e826c581856ea39fa6bbab7cb11f67ac3352",
+    "files": [
+      "components/atoms/Button.tsx"
+    ]
+  },
+  "chat-composer": {
+    "url": "https://beautifului.dev/r/chat-composer.json",
+    "capturedAt": "2026-09-04",
+    "sha256": "79c9f3f70215d1b36b7f68d5f2956ec3ffad5c61a16e79c1314536a9625c5dce",
+    "files": [
+      "components/primitives/ChatComposer.tsx"
+    ]
+  },
+  "code-block": {
+    "url": "https://beautifului.dev/r/code-block.json",
+    "capturedAt": "2026-09-04",
+    "sha256": "ffc7dabbef3aafe076320101f5dc61ef9549592c2535ad45bce17cffc97939e2",
+    "files": [
+      "components/primitives/CodeBlock.tsx"
+    ]
+  },
+  "context-cards": {
+    "url": "https://beautifului.dev/r/context-cards.json",
+    "capturedAt": "2026-09-04",
+    "sha256": "086d3e60ef3381498a74dde8e9019e9936310c39e71044cae28df8c668c2c38d",
+    "files": [
+      "components/primitives/ContextCards.tsx"
+    ]
+  },
+  "diff-table": {
+    "url": "https://beautifului.dev/r/diff-table.json",
+    "capturedAt": "2026-09-04",
+    "sha256": "640eb8f40a4d503062b862484e42b8a9715b8725fdf20a7685f3e20603a7eeb9",
+    "files": [
+      "components/primitives/DiffTable.tsx"
+    ]
+  },
+  "entity-chip": {
+    "url": "https://beautifului.dev/r/entity-chip.json",
+    "capturedAt": "2026-09-04",
+    "sha256": "2575a4995808154e91acdf0ce94d7185e8c5dab1cddb099f224c3aa64d115390",
+    "files": [
+      "components/atoms/EntityChip.tsx"
+    ]
+  },
+  "filter-table": {
+    "url": "https://beautifului.dev/r/filter-table.json",
+    "capturedAt": "2026-09-04",
+    "sha256": "92a895c0c38d533c7f4f794b2ac4cfe1abe185aae93b1268def812082fa04a03",
+    "files": [
+      "components/primitives/FilterTable.tsx"
+    ]
+  },
+  "fine-tune-card": {
+    "url": "https://beautifului.dev/r/fine-tune-card.json",
+    "capturedAt": "2026-09-04",
+    "sha256": "2bfcb0277ab73e4a79ed169f128820f8b395a263d4a09de5ec0b15c272c1e371",
+    "files": [
+      "components/primitives/FineTuneCard.tsx"
+    ]
+  },
+  "flowchart": {
+    "url": "https://beautifului.dev/r/flowchart.json",
+    "capturedAt": "2026-09-04",
+    "sha256": "e63ecaca58d5254899772523ef6681ff6220b986cc186ade82563cf5885aa1e9",
+    "files": [
+      "components/primitives/Flowchart.tsx"
+    ]
+  },
+  "foundation": {
+    "url": "https://beautifului.dev/r/foundation.json",
+    "capturedAt": "2026-09-04",
+    "sha256": "c3b97e7d7cac0c53b78823611b8fd793f136bfde72b8e4635147fb83f6fc162c",
+    "files": [
+      "app/beautifui/foundation.css"
+    ]
+  },
+  "glide-menu": {
+    "url": "https://beautifului.dev/r/glide-menu.json",
+    "capturedAt": "2026-09-04",
+    "sha256": "8ca85bd9719332b57c5a16306cbb7548ac1c17ad5b9e0061358d231b60a30462",
+    "files": [
+      "components/primitives/GlideMenu.tsx"
+    ]
+  },
+  "loading-state": {
+    "url": "https://beautifului.dev/r/loading-state.json",
+    "capturedAt": "2026-09-04",
+    "sha256": "d8b933ddcb9e507126f67ff08d97c5607472ed27a48c750ef4be34f872d55ddd",
+    "files": [
+      "components/primitives/LoadingState.tsx"
+    ]
+  },
+  "recommendation-card": {
+    "url": "https://beautifului.dev/r/recommendation-card.json",
+    "capturedAt": "2026-09-04",
+    "sha256": "40f4567ee36cb8136da20eb8e90898a67b2111b56ea348175a0cf6d03410f796",
+    "files": [
+      "components/primitives/RecommendationCard.tsx"
+    ]
+  },
+  "records-table": {
+    "url": "https://beautifului.dev/r/records-table.json",
+    "capturedAt": "2026-09-04",
+    "sha256": "5b25292ac596c9e1fc41a2ac4824fb143e758b53466db11b8a3554ed80b78d68",
+    "files": [
+      "components/primitives/RecordsTable.tsx",
+      "app/beautifui/records-table.css"
+    ]
+  },
+  "search": {
+    "url": "https://beautifului.dev/r/search.json",
+    "capturedAt": "2026-09-04",
+    "sha256": "22993a95c0d0cf35ed65eb2c94b0cb4e6f4393a00a35c9b4283efe95500425c5",
+    "files": [
+      "components/primitives/SearchList.tsx"
+    ]
+  },
+  "selection-actions": {
+    "url": "https://beautifului.dev/r/selection-actions.json",
+    "capturedAt": "2026-09-04",
+    "sha256": "d20877569884ef34f3327b5515962576d8590cff3f8b871ad6803a81db1e4789",
+    "files": [
+      "components/primitives/SelectionActions.tsx"
+    ]
+  },
+  "shimmer": {
+    "url": "https://beautifului.dev/r/shimmer.json",
+    "capturedAt": "2026-09-04",
+    "sha256": "3f7e02ba2ad044b8a717d162a69f48efbdb7bb22f3eaeb576eb349cd72619a8e",
+    "files": [
+      "components/atoms/Shimmer.tsx"
+    ]
+  },
+  "stream-text": {
+    "url": "https://beautifului.dev/r/stream-text.json",
+    "capturedAt": "2026-09-04",
+    "sha256": "99b82b8960aacc752c20f359b4258c2b1a07f5e211448cf7d55e067c2195621b",
+    "files": [
+      "components/atoms/StreamText.tsx"
+    ]
+  },
+  "streaming-text": {
+    "url": "https://beautifului.dev/r/streaming-text.json",
+    "capturedAt": "2026-09-04",
+    "sha256": "f2dd3322858f99a92c19f92ce1f4dad7162237f176d3775e7320f857363fcba8",
+    "files": [
+      "components/primitives/StreamingText.tsx"
+    ]
+  },
+  "task-rows": {
+    "url": "https://beautifului.dev/r/task-rows.json",
+    "capturedAt": "2026-09-04",
+    "sha256": "a195e9caa440f795fb42d11001e00d29066b78a353850b054069fd32236742ef",
+    "files": [
+      "components/primitives/TaskRows.tsx"
+    ]
+  },
+  "thinking-state": {
+    "url": "https://beautifului.dev/r/thinking-state.json",
+    "capturedAt": "2026-09-04",
+    "sha256": "3a537a94b11b62ce5bebd59ac982cada66601a38a6372bedff7f5eadc034305a",
+    "files": [
+      "components/primitives/ThinkingState.tsx"
+    ]
+  },
+  "tool-chips": {
+    "url": "https://beautifului.dev/r/tool-chips.json",
+    "capturedAt": "2026-09-04",
+    "sha256": "67035ec579eb8d4cb7d714d67e5c945760c1855d37fb37fea6cd8c37bc617938",
+    "files": [
+      "components/primitives/ToolChips.tsx"
+    ]
+  },
+  "value-pill": {
+    "url": "https://beautifului.dev/r/value-pill.json",
+    "capturedAt": "2026-09-04",
+    "sha256": "070958ca2f12154a943733d65d781931ed51260fffcb0f2c7d52a632dff5e2c8",
+    "files": [
+      "components/atoms/ValuePill.tsx"
+    ]
+  }
+}

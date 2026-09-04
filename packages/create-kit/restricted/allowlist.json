@@ -1,0 +1,27 @@
+{
+  "$schema": "air-create-kit/restricted-allowlist@1",
+  "source": {
+    "id": "reactbits",
+    "name": "React Bits",
+    "repo": "DavidHDev/react-bits",
+    "spdx": "MIT AND LicenseRef-Commons-Clause-1.0",
+    "tier": "B",
+    "licenseFile": "LICENSE.md",
+    "licenseMustContain": ["MIT License", "Commons Clause"]
+  },
+  "components": [
+    { "id": "reactbits/beams", "upstream": "src/content/Backgrounds/Beams/Beams.jsx", "kind": "background", "lite": false },
+    { "id": "reactbits/dither", "upstream": "src/content/Backgrounds/Dither/Dither.jsx", "kind": "background", "lite": false },
+    { "id": "reactbits/faulty-terminal", "upstream": "src/content/Backgrounds/FaultyTerminal/FaultyTerminal.jsx", "kind": "background", "lite": false },
+    { "id": "reactbits/galaxy", "upstream": "src/content/Backgrounds/Galaxy/Galaxy.jsx", "kind": "background", "lite": false },
+    { "id": "reactbits/grainient", "upstream": "src/content/Backgrounds/Grainient/Grainient.jsx", "kind": "background", "lite": false },
+    { "id": "reactbits/iridescence", "upstream": "src/content/Backgrounds/Iridescence/Iridescence.jsx", "kind": "background", "lite": false },
+    { "id": "reactbits/light-rays", "upstream": "src/content/Backgrounds/LightRays/LightRays.jsx", "kind": "background", "lite": false },
+    { "id": "reactbits/liquid-chrome", "upstream": "src/content/Backgrounds/LiquidChrome/LiquidChrome.jsx", "kind": "background", "lite": false },
+    { "id": "reactbits/liquid-ether", "upstream": "src/content/Backgrounds/LiquidEther/LiquidEther.jsx", "kind": "background", "lite": false },
+    { "id": "reactbits/molten-metal", "upstream": "src/content/Backgrounds/MoltenMetal/MoltenMetal.jsx", "kind": "background", "lite": false },
+    { "id": "reactbits/prism", "upstream": "src/content/Backgrounds/Prism/Prism.jsx", "kind": "background", "lite": false },
+    { "id": "reactbits/side-rays", "upstream": "src/content/Backgrounds/SideRays/SideRays.jsx", "kind": "background", "lite": false },
+    { "id": "reactbits/silk", "upstream": "src/content/Backgrounds/Silk/Silk.jsx", "kind": "background", "lite": false }
+  ]
+}

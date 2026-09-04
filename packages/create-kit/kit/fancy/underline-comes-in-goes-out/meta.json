@@ -1,0 +1,52 @@
+{
+  "id": "fancy/underline-comes-in-goes-out",
+  "title": "Underline (comes in, goes out)",
+  "tags": [
+    "text",
+    "link",
+    "hover",
+    "motion"
+  ],
+  "when": "Inline link underline that enters from one side and exits the other.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {
+    "as": "ElementType?",
+    "direction": "\"left\" | \"right\"?",
+    "underlineHeightRatio": "number?",
+    "underlinePaddingRatio": "number?",
+    "transition": "ValueAnimationTransition?"
+  },
+  "deps": [
+    "motion",
+    "clsx"
+  ],
+  "weightKb": {
+    "js": 0.8,
+    "css": 0.1,
+    "jsFull": 40.9
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "reduced",
+  "author": "daniel petho",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "danielpetho/fancy@f9f62c61207b"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 1,
+    "errors": []
+  },
+  "notes": []
+}

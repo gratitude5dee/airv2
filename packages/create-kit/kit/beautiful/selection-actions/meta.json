@@ -1,0 +1,55 @@
+{
+  "id": "beautiful/selection-actions",
+  "title": "Selection Actions",
+  "tags": [
+    "actions",
+    "menu",
+    "text",
+    "ai"
+  ],
+  "when": "Floating action bar for a text selection (rewrite, shorten, ask).",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {
+    "variant": "string?",
+    "text": "Partial<SelectionText>?",
+    "actions": "SelectionActionSet?",
+    "labels": "Partial<SelectionActionsLabels>?",
+    "onAction": "(action: string) => void?"
+  },
+  "deps": [
+    "clsx",
+    "tailwind-merge",
+    "lucide-react"
+  ],
+  "weightKb": {
+    "js": 4.1,
+    "css": 0.1,
+    "jsFull": 14.6
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "reduced",
+  "author": "Shane Levine",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "beautifului.dev@2026-09-04"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 380,
+    "errors": []
+  },
+  "notes": [
+    "Icons remapped from iconoir-react to lucide-react equivalents (proprietary/extra icon packages are not in the vendor snapshot)."
+  ]
+}

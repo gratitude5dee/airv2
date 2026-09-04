@@ -1,0 +1,65 @@
+{
+  "id": "fancy/text-along-path",
+  "title": "Text Along Path",
+  "tags": [
+    "text",
+    "svg",
+    "motion",
+    "hero"
+  ],
+  "when": "Text set along an SVG path (circles, arcs). Decorative headers only.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {
+    "path": "string",
+    "pathId": "string?",
+    "pathClassName": "string?",
+    "preserveAspectRatio": "PreserveAspectRatio?",
+    "showPath": "boolean?",
+    "width": "string | number?",
+    "height": "string | number?",
+    "viewBox": "string?",
+    "svgClassName": "string?",
+    "text": "string",
+    "textClassName": "string?",
+    "textAnchor": "\"start\" | \"middle\" | \"end\"?",
+    "animationType": "\"auto\" | \"scroll\"?",
+    "duration": "number?",
+    "repeatCount": "number | \"indefinite\"?",
+    "easingFunction": "object?",
+    "scrollContainer": "RefObject<HTMLElement | null>?",
+    "scrollOffset": "UseScrollOptions[\"offset\"]?",
+    "scrollTransformValues": "[number, number]?"
+  },
+  "deps": [
+    "motion"
+  ],
+  "weightKb": {
+    "js": 0.9,
+    "css": 0.1,
+    "jsFull": 8.9
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "static",
+  "author": "daniel petho",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "danielpetho/fancy@f9f62c61207b"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 305,
+    "errors": []
+  },
+  "notes": []
+}
