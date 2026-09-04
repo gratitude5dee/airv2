@@ -11,13 +11,14 @@
  * Cards (SOUL.md "Mini-app cards"): a `[card: <kind>]` marker asks the
  * control plane to drop the matching mini-app card into the owner's thread
  * after the text — the same mint/rate-limit path as POST /api/cards/<kind>,
- * minus the terminal round-trip the agent used to need.
+ * minus the terminal round-trip the agent used to need. `[card: app <slug>]`
+ * names the owner app the card is for (V11 §13.5).
  */
 import { command } from "../box/client";
 import type { SpectrumSender } from "../spectrum/sender";
 
 export const SEND_FILE_MARKER = /\[send-file:\s*([^\]\n]+)\]/g;
-export const CARD_MARKER = /\[card:\s*([a-z0-9-]+)\s*\]/gi;
+export const CARD_MARKER = /\[card:\s*([a-z0-9-]+(?:\s+[a-z0-9_-]+)?)\s*\]/gi;
 
 const MARKER_PREFIXES = ["[send-file:", "[card:"];
 
@@ -97,7 +98,7 @@ export function stripSendFileMarkers(
         return "";
       })
       .replace(CARD_MARKER, (_, kind: string) => {
-        const slug = kind.toLowerCase();
+        const slug = kind.toLowerCase().replace(/\s+/g, " ");
         if (!cards.includes(slug)) cards.push(slug);
         return "";
       });

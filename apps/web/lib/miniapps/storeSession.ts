@@ -31,6 +31,15 @@ export function storeSessionUserId(request: NextRequest): string | null {
   return verifyToken(raw, STORE_APP)?.userId ?? null;
 }
 
+/** Post-handoff landing pages beyond the store home: the Create surface,
+ * optionally with one app preselected (V11 §13.5 cards). Anything else
+ * falls back to `/`, so the redirect can never leave the store. */
+const STORE_NEXT_RE = /^\/create(?:\?app=[a-z0-9][a-z0-9_-]{0,63})?$/;
+
+export function storeNextPath(next: string | null | undefined): string {
+  return next && STORE_NEXT_RE.test(next) ? next : "/";
+}
+
 export function storeCookieOptions(): {
   httpOnly: true;
   secure: true;

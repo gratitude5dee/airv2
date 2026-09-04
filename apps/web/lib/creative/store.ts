@@ -20,6 +20,7 @@ import {
   type Delivery,
 } from "../assets/pipeline";
 import { heifToJpeg, isHeif } from "../identity/heif";
+import { audioOnlyMimeType } from "./container";
 import type { FetchedGeneratedMedia } from "./media-url";
 
 const EXT_BY_MIME: Record<string, string> = {
@@ -186,7 +187,9 @@ export async function signedDeliveryForJob(
  *
  * iPhone attachments arrive as HEIC, which no generation provider accepts as
  * an input image, so they are decoded to JPEG here — before the object and
- * its signed URL exist — and staged as image/jpeg.
+ * its signed URL exist — and staged as image/jpeg. Audio that arrives in a
+ * video-labelled container (an .m4a relayed as video/mp4) is staged as audio
+ * so it reaches the provider as a soundtrack rather than a motion reference.
  */
 export async function stageCreativeInput(
   supabase: SupabaseClient,
@@ -207,6 +210,7 @@ export async function stageCreativeInput(
       return undefined;
     }
   }
+  stagedType = audioOnlyMimeType(stagedType, staged) ?? stagedType;
   const ext = INPUT_EXT_BY_MIME[stagedType];
   if (!ext) return undefined;
   const kind = stagedKindOf(stagedType);

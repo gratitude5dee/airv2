@@ -31,7 +31,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const { data: apps } = await supabase
     .from("mini_apps")
     .select(
-      "slug, name, description, status, visibility, bundle_version, " +
+      "slug, name, description, status, visibility, bundle_version, draft_version, " +
         "agent_identity, access, x402_enabled, x402_price_usdc, " +
         "plugin_signin_enabled, password_hash"
     )

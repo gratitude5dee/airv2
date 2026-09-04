@@ -2,7 +2,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 const deploy = vi.hoisted(() => ({
-  deployStaticVersion: vi.fn(async () => null as { workerSha256: string } | null),
+  AppOriginRefusedError: class AppOriginRefusedError extends Error {
+    constructor(slug: string) {
+      super(`app ${slug} is being deleted`);
+      this.name = "AppOriginRefusedError";
+    }
+  },
+  deployStaticVersion: vi.fn<
+    (
+      supabase: unknown,
+      input: { target: string; version: string }
+    ) => Promise<{ workerSha256: string } | null>
+  >(async () => null),
+  loadBundleFiles: vi.fn(async () => [{ path: "index.html", data: Buffer.from("<h1>winner</h1>") }]),
   promoteVersion: vi.fn(async () => undefined),
   syncManifest: vi.fn(async () => undefined),
 }));
@@ -33,6 +45,7 @@ import {
   VERSION_RE,
   VersionError,
   bundleDigest,
+  getVersion,
   newVersionId,
   parseVersionRow,
   pointLiveAt,
@@ -70,6 +83,7 @@ interface AppRowLike {
   bundle_version: string | null;
   draft_version: string | null;
   updated_at: string;
+  app_origin_deployed_at: string | null;
 }
 
 const db = {
@@ -235,7 +249,7 @@ function query(table: "miniapp_versions" | "mini_apps") {
   return builder;
 }
 
-/** Mirrors 0084_create_v11_pointer_rpcs.sql: one atomic step per call. */
+/** Mirrors 0085_create_v11_lock_order_deploy_mark.sql: one atomic step per call. */
 function rpc(fn: string, args: Record<string, unknown>) {
   if (db.beforeRpc) {
     const hook = db.beforeRpc;
@@ -313,10 +327,12 @@ beforeEach(() => {
       bundle_version: "v1700000000001",
       draft_version: null,
       updated_at: "2026-01-01T00:00:00.000Z",
+      app_origin_deployed_at: null,
     },
   ];
   deploy.deployStaticVersion.mockReset();
   deploy.deployStaticVersion.mockResolvedValue(null);
+  deploy.loadBundleFiles.mockClear();
   deploy.promoteVersion.mockReset();
   deploy.promoteVersion.mockResolvedValue(undefined);
   deploy.syncManifest.mockClear();
@@ -505,19 +521,59 @@ describe("uploadVersion", () => {
     db.fail = { table: "mini_apps", op: "update" };
     await expect(uploadVersion(supabase, app, zip)).rejects.toThrow(/bundle version update failed/);
     expect(deploy.promoteVersion).toHaveBeenCalledTimes(2);
-    expect(deploy.promoteVersion).toHaveBeenLastCalledWith(app, "v1700000000001");
+    expect(deploy.promoteVersion).toHaveBeenLastCalledWith(supabase, app, "v1700000000001");
     expect(db.apps[0]!.bundle_version).toBe("v1700000000001");
     expect(db.versions).toHaveLength(0);
     expect(r2.deletePrefix).toHaveBeenCalledWith(expect.stringContaining("alice-notes/v"));
   });
 
-  it("a discard whose row delete fails keeps the artifacts with the row", async () => {
+  it("a discard whose row delete fails leaves a tombstone, never a selectable row", async () => {
     deploy.deployStaticVersion.mockResolvedValue({ workerSha256: "a".repeat(64) });
     deploy.promoteVersion.mockRejectedValue(new Error("vendor 502"));
     db.fail = { table: "miniapp_versions", op: "delete" };
     await expect(uploadVersion(supabase, app, zip)).rejects.toThrow(/vendor 502/);
     expect(db.versions).toHaveLength(1);
-    expect(r2.deletePrefix).not.toHaveBeenCalled();
+    expect(db.versions[0]!.purged_at).not.toBeNull();
+    expect(r2.deletePrefix).toHaveBeenCalledTimes(1);
+  });
+
+  it("a discard whose R2 delete fails leaves a tombstone the next sweep finishes", async () => {
+    deploy.deployStaticVersion.mockResolvedValue({ workerSha256: "a".repeat(64) });
+    deploy.promoteVersion.mockRejectedValue(new Error("vendor 502"));
+    r2.deletePrefix.mockRejectedValueOnce(new Error("r2 down"));
+    await expect(uploadVersion(supabase, app, zip)).rejects.toThrow(/vendor 502/);
+    expect(db.versions).toHaveLength(1);
+    const left = db.versions[0]!;
+    expect(left.purged_at).not.toBeNull();
+    expect(r2.deletePrefix).toHaveBeenCalledTimes(1);
+
+    await expect(getVersion(supabase, app.id, left.version)).resolves.toBeNull();
+    expect(await sweepVersions(supabase)).toBe(1);
+    expect(db.versions).toHaveLength(0);
+    expect(r2.deletePrefix).toHaveBeenCalledTimes(2);
+    expect(r2.deletePrefix).toHaveBeenLastCalledWith(`apps/alice-notes/${left.version}/`);
+  });
+
+  it("the deploy claims the app row through the same client that owns the ledger", async () => {
+    deploy.deployStaticVersion.mockResolvedValue({ workerSha256: "a".repeat(64) });
+    await uploadVersion(supabase, app, zip);
+    expect(deploy.deployStaticVersion).toHaveBeenCalledWith(
+      supabase,
+      expect.objectContaining({ appId: app.id, slug: app.slug, target: "draft" })
+    );
+  });
+
+  it("an app under deletion refuses the upload as 409 and discards the row (CR16)", async () => {
+    deploy.deployStaticVersion.mockRejectedValue(
+      new deploy.AppOriginRefusedError(app.slug)
+    );
+    await expect(uploadVersion(supabase, app, zip)).rejects.toMatchObject({
+      status: 409,
+      message: /being deleted/,
+    });
+    expect(db.versions).toHaveLength(0);
+    expect(db.apps[0]!.bundle_version).toBe("v1700000000001");
+    expect(db.apps[0]!.draft_version).toBeNull();
   });
 
   it("a lost worker digest write fails the upload and discards the version", async () => {
@@ -539,10 +595,101 @@ describe("uploadVersion", () => {
     });
     await expect(uploadVersion(supabase, app, zip)).rejects.toMatchObject({ status: 409 });
     expect(deploy.promoteVersion).toHaveBeenCalledTimes(2);
-    expect(deploy.promoteVersion).toHaveBeenLastCalledWith(app, "v1700000000009");
+    expect(deploy.promoteVersion).toHaveBeenLastCalledWith(supabase, app, "v1700000000009");
     expect(db.apps[0]!.bundle_version).toBe("v1700000000009");
     expect(db.versions).toHaveLength(0);
     expect(r2.deletePrefix).toHaveBeenCalledWith(expect.stringContaining("alice-notes/v"));
+  });
+
+  it("stage-only: two concurrent staged uploads agree on one draft; the loser puts the shared draft Worker back on the winner", async () => {
+    const staged = { ...app, status: "published" as const, draft_version: "v1700000000001" };
+    db.apps[0]!.draft_version = "v1700000000001";
+    const deploys: string[] = [];
+    deploy.deployStaticVersion.mockImplementation(async (_supabase, input) => {
+      deploys.push(`${input.target}:${input.version}`);
+      // The other staged upload commits after our deploy but before our CAS.
+      if (deploys.length === 1) db.apps[0]!.draft_version = "v1700000000009";
+      return { workerSha256: "a".repeat(64) };
+    });
+    await expect(
+      uploadVersion(supabase, staged, zip, "drop", { promote: false })
+    ).rejects.toMatchObject({ status: 409 });
+    expect(deploy.promoteVersion).not.toHaveBeenCalled();
+    expect(deploy.loadBundleFiles).toHaveBeenCalledWith("alice-notes", "v1700000000009");
+    expect(deploys).toHaveLength(2);
+    expect(deploys[1]).toBe("draft:v1700000000009");
+    expect(db.apps[0]!.bundle_version).toBe("v1700000000001");
+    expect(db.apps[0]!.draft_version).toBe("v1700000000009");
+    expect(deploy.syncManifest).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ bundle_version: "v1700000000001", draft_version: "v1700000000009" })
+    );
+    expect(db.versions).toHaveLength(0);
+  });
+
+  it("the manifest is written before the registry commits; a lost write fails cleanly and restores the draft Worker", async () => {
+    const staged = { ...app, status: "published" as const, draft_version: "v1700000000001" };
+    db.apps[0]!.draft_version = "v1700000000001";
+    const deploys: string[] = [];
+    deploy.deployStaticVersion.mockImplementation(async (_supabase, input) => {
+      deploys.push(`${input.target}:${input.version}`);
+      return { workerSha256: "a".repeat(64) };
+    });
+    deploy.syncManifest.mockRejectedValueOnce(new Error("kv unavailable"));
+    await expect(
+      uploadVersion(supabase, staged, zip, "drop", { promote: false })
+    ).rejects.toThrow(/kv unavailable/);
+    expect(deploys).toHaveLength(2);
+    expect(deploys[1]).toBe("draft:v1700000000001");
+    expect(deploy.syncManifest).toHaveBeenCalledTimes(2);
+    expect(deploy.syncManifest).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ bundle_version: "v1700000000001", draft_version: "v1700000000001" })
+    );
+    expect(db.apps[0]!.draft_version).toBe("v1700000000001");
+    expect(db.versions).toHaveLength(0);
+    expect(r2.deletePrefix).toHaveBeenCalledWith(expect.stringContaining("alice-notes/v"));
+  });
+
+  it("a lost manifest write on a live upload also puts the live Worker back before failing", async () => {
+    deploy.deployStaticVersion.mockResolvedValue({ workerSha256: "a".repeat(64) });
+    deploy.syncManifest.mockRejectedValueOnce(new Error("kv unavailable"));
+    await expect(uploadVersion(supabase, app, zip)).rejects.toThrow(/kv unavailable/);
+    expect(deploy.promoteVersion).toHaveBeenCalledTimes(2);
+    expect(deploy.promoteVersion).toHaveBeenLastCalledWith(supabase, app, "v1700000000001");
+    expect(db.apps[0]!.bundle_version).toBe("v1700000000001");
+    expect(db.versions).toHaveLength(0);
+  });
+
+  it("the manifest write precedes the registry commit, so nothing after the commit can fail the upload", async () => {
+    deploy.deployStaticVersion.mockResolvedValue({ workerSha256: "a".repeat(64) });
+    const pointerAtManifestWrite: (string | null)[] = [];
+    deploy.syncManifest.mockImplementation(async () => {
+      pointerAtManifestWrite.push(db.apps[0]!.bundle_version);
+      return undefined;
+    });
+    const version = await uploadVersion(supabase, app, zip);
+    expect(pointerAtManifestWrite).toEqual(["v1700000000001"]);
+    expect(db.apps[0]!.bundle_version).toBe(version);
+  });
+
+  it("stage-only: a lost CAS on a draft app also restores the winner's draft Worker", async () => {
+    db.apps[0]!.bundle_version = null;
+    const draftApp = { ...app, status: "draft" as const, bundle_version: null, draft_version: null };
+    deploy.deployStaticVersion.mockImplementation(async () => {
+      if (db.apps[0]!.draft_version === null) {
+        db.apps[0]!.bundle_version = "v1700000000009";
+        db.apps[0]!.draft_version = "v1700000000009";
+      }
+      return { workerSha256: "a".repeat(64) };
+    });
+    await expect(uploadVersion(supabase, draftApp, zip, "drop")).rejects.toMatchObject({
+      status: 409,
+    });
+    expect(deploy.deployStaticVersion).toHaveBeenLastCalledWith(
+      supabase,
+      expect.objectContaining({ target: "draft", version: "v1700000000009" })
+    );
   });
 
   it("app-origin lane: promotes the Worker before moving the registry pointer", async () => {
@@ -618,8 +765,9 @@ describe("rollbackTo (§13.3)", () => {
     const target = await rollbackTo(supabase, app, "v1700000000000");
     expect(target.version).toBe("v1700000000000");
     expect(db.apps[0]!.bundle_version).toBe("v1700000000000");
-    expect(deploy.promoteVersion).toHaveBeenCalledWith(app, "v1700000000000");
+    expect(deploy.promoteVersion).toHaveBeenCalledWith(supabase, app, "v1700000000000");
     expect(deploy.syncManifest).toHaveBeenCalledWith(
+      supabase,
       expect.objectContaining({ slug: "alice-notes", bundle_version: "v1700000000000" })
     );
     expect(limits.recordOpsEvent).toHaveBeenCalledWith(
@@ -637,7 +785,7 @@ describe("rollbackTo (§13.3)", () => {
       /live pointer move failed/
     );
     expect(deploy.promoteVersion).toHaveBeenCalledTimes(2);
-    expect(deploy.promoteVersion).toHaveBeenLastCalledWith(app, "v1700000000001");
+    expect(deploy.promoteVersion).toHaveBeenLastCalledWith(supabase, app, "v1700000000001");
     expect(db.apps[0]!.bundle_version).toBe("v1700000000001");
     expect(limits.recordOpsEvent).not.toHaveBeenCalled();
   });
@@ -657,7 +805,7 @@ describe("rollbackTo (§13.3)", () => {
       status: 409,
     });
     expect(deploy.promoteVersion).toHaveBeenCalledTimes(2);
-    expect(deploy.promoteVersion).toHaveBeenLastCalledWith(app, "v1700000000002");
+    expect(deploy.promoteVersion).toHaveBeenLastCalledWith(supabase, app, "v1700000000002");
     expect(db.apps[0]!.bundle_version).toBe("v1700000000002");
     expect(db.versions[0]!.published_at).toBe("2026-01-01T00:00:00.000Z");
     expect(deploy.syncManifest).not.toHaveBeenCalled();
@@ -673,7 +821,7 @@ describe("rollbackTo (§13.3)", () => {
       status: 409,
     });
     expect(db.apps[0]!.bundle_version).toBe("v1700000000001");
-    expect(deploy.promoteVersion).toHaveBeenLastCalledWith(app, "v1700000000001");
+    expect(deploy.promoteVersion).toHaveBeenLastCalledWith(supabase, app, "v1700000000001");
   });
 
   it("refuses versions of another app, unknown versions, and the live one", async () => {
@@ -796,6 +944,7 @@ describe("sweepVersions (§13.1 retention)", () => {
       slug: "bob-thing",
       bundle_version: null,
       draft_version: null,
+      app_origin_deployed_at: null,
       updated_at: "2026-01-01T00:00:00.000Z",
     });
     for (let i = 0; i < RETAIN_DRAFTS; i++) version(`v170000000040${i}`);

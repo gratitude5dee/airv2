@@ -2,6 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 const deploy = vi.hoisted(() => ({
+  AppOriginRefusedError: class AppOriginRefusedError extends Error {
+    constructor(slug: string) {
+      super(`app ${slug} is being deleted`);
+      this.name = "AppOriginRefusedError";
+    }
+  },
   promoteVersion: vi.fn(async () => null),
   syncManifest: vi.fn(async () => true),
 }));
@@ -220,6 +226,7 @@ describe("setPublishStatus (V11 §13.2 manifest ordering)", () => {
     await setPublishStatus(fakeSupabase(live), "user-alice", "alice-notes", "draft");
     expect(deploy.syncManifest).toHaveBeenCalledTimes(1);
     expect(deploy.syncManifest).toHaveBeenCalledWith(
+      expect.anything(),
       expect.objectContaining({ slug: "alice-notes", status: "draft" })
     );
     expect(deploy.promoteVersion).not.toHaveBeenCalled();
@@ -232,6 +239,7 @@ describe("setPublishStatus (V11 §13.2 manifest ordering)", () => {
     ).rejects.toThrow(/status flip failed/);
     expect(deploy.syncManifest).toHaveBeenCalledTimes(2);
     expect(deploy.syncManifest).toHaveBeenLastCalledWith(
+      expect.anything(),
       expect.objectContaining({
         slug: "alice-notes",
         status: "published",
@@ -243,12 +251,164 @@ describe("setPublishStatus (V11 §13.2 manifest ordering)", () => {
   it("a publish whose row flip fails leaves the manifest on draft, not serving", async () => {
     const draft = makeApp({ ...live, status: "draft" });
     statusFlipFails = true;
+    const supabase = fakeSupabase(draft);
+    await expect(
+      setPublishStatus(supabase, "user-alice", "alice-notes", "published")
+    ).rejects.toThrow(/status flip failed/);
+    expect(deploy.promoteVersion).toHaveBeenCalledWith(supabase, draft, "v1700000000001");
+    expect(deploy.syncManifest).toHaveBeenLastCalledWith(
+      supabase,
+      expect.objectContaining({ slug: "alice-notes", status: "draft" })
+    );
+  });
+
+  it("publishing an app under deletion is refused as 409 before the row flips", async () => {
+    const draft = makeApp({ ...live, status: "draft" });
+    deploy.promoteVersion.mockRejectedValueOnce(
+      new deploy.AppOriginRefusedError("alice-notes")
+    );
     await expect(
       setPublishStatus(fakeSupabase(draft), "user-alice", "alice-notes", "published")
-    ).rejects.toThrow(/status flip failed/);
-    expect(deploy.promoteVersion).toHaveBeenCalledWith(draft, "v1700000000001");
+    ).rejects.toMatchObject({ status: 409, message: /being deleted/ });
+    expect(versions.pointLiveAt).not.toHaveBeenCalled();
+  });
+});
+
+describe("setPublishStatus promotes a staged draft (V11 §8 Drop onto a live app)", () => {
+  const live = makeApp({
+    id: "app-notes",
+    slug: "alice-notes",
+    owner_user_id: "user-alice",
+    publisher_username: "alice",
+    appname: "notes",
+    status: "published",
+    bundle_version: "v1700000000001",
+    draft_version: "v1700000000002",
+  });
+
+  let statusFlipFails = false;
+
+  function fakeSupabase(app: ReturnType<typeof makeApp>): SupabaseClient {
+    const builder = {
+      select: () => builder,
+      update: () => builder,
+      eq: () => builder,
+      maybeSingle: async () => ({ data: app, error: null }),
+      then: (resolve: (value: { data: unknown; error: unknown }) => unknown) =>
+        Promise.resolve(
+          statusFlipFails
+            ? { data: null, error: { message: "connection reset" } }
+            : { data: null, error: null }
+        ).then(resolve),
+    };
+    return { from: () => builder } as unknown as SupabaseClient;
+  }
+
+  beforeEach(() => {
+    statusFlipFails = false;
+    deploy.promoteVersion.mockClear();
+    deploy.syncManifest.mockClear();
+    versions.getVersion.mockReset();
+    versions.pointLiveAt.mockReset();
+    versions.pointLiveAt.mockResolvedValue(undefined);
+  });
+
+  it("publishing a live app with a newer draft promotes the draft, not the live version", async () => {
+    versions.getVersion.mockResolvedValue({ version: "v1700000000002" });
+    await setPublishStatus(fakeSupabase(live), "user-alice", "alice-notes", "published");
+    expect(versions.getVersion).toHaveBeenCalledWith(expect.anything(), "app-notes", "v1700000000002");
+    expect(deploy.promoteVersion).toHaveBeenCalledTimes(1);
+    expect(deploy.promoteVersion).toHaveBeenCalledWith(expect.anything(), live, "v1700000000002");
+    expect(versions.pointLiveAt).toHaveBeenCalledWith(expect.anything(), live, "v1700000000002");
     expect(deploy.syncManifest).toHaveBeenLastCalledWith(
-      expect.objectContaining({ slug: "alice-notes", status: "draft" })
+      expect.anything(),
+      expect.objectContaining({ status: "published", bundle_version: "v1700000000002" })
+    );
+  });
+
+  it("with no staged draft the live version is (re)published as before", async () => {
+    const same = makeApp({ ...live, draft_version: "v1700000000001" });
+    versions.getVersion.mockResolvedValue({ version: "v1700000000001" });
+    await setPublishStatus(fakeSupabase(same), "user-alice", "alice-notes", "published");
+    expect(versions.getVersion).toHaveBeenCalledWith(expect.anything(), "app-notes", "v1700000000001");
+    expect(deploy.promoteVersion).toHaveBeenCalledWith(expect.anything(), same, "v1700000000001");
+  });
+
+  it("a first publish of a draft app still goes through bundle_version", async () => {
+    const draft = makeApp({ ...live, status: "draft", draft_version: "v1700000000001" });
+    versions.getVersion.mockResolvedValue({ version: "v1700000000001" });
+    await setPublishStatus(fakeSupabase(draft), "user-alice", "alice-notes", "published");
+    expect(deploy.promoteVersion).toHaveBeenCalledWith(expect.anything(), draft, "v1700000000001");
+    expect(deploy.syncManifest).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ status: "published", bundle_version: "v1700000000001" })
+    );
+  });
+
+  it("a lost pointer swap puts the live Worker back on the previous release", async () => {
+    versions.getVersion.mockResolvedValue({ version: "v1700000000002" });
+    versions.pointLiveAt.mockRejectedValueOnce(new Error("live version changed underneath this request; retry"));
+    await expect(
+      setPublishStatus(fakeSupabase(live), "user-alice", "alice-notes", "published")
+    ).rejects.toThrow(/changed underneath/);
+    expect(deploy.promoteVersion).toHaveBeenCalledTimes(2);
+    expect(deploy.promoteVersion).toHaveBeenLastCalledWith(expect.anything(), live, "v1700000000001");
+    expect(deploy.syncManifest).not.toHaveBeenCalled();
+  });
+
+  it("a metadata write that fails after the swap restores the previous release, Worker first", async () => {
+    versions.getVersion.mockResolvedValue({ version: "v1700000000002" });
+    statusFlipFails = true;
+    await expect(
+      setPublishStatus(fakeSupabase(live), "user-alice", "alice-notes", "published")
+    ).rejects.toThrow(/status flip failed/);
+    expect(deploy.promoteVersion).toHaveBeenCalledTimes(2);
+    expect(deploy.promoteVersion).toHaveBeenLastCalledWith(expect.anything(), live, "v1700000000001");
+    expect(versions.pointLiveAt).toHaveBeenCalledTimes(2);
+    expect(versions.pointLiveAt).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ bundle_version: "v1700000000002" }),
+      "v1700000000001"
+    );
+    expect(deploy.promoteVersion.mock.invocationCallOrder[1]).toBeLessThan(
+      versions.pointLiveAt.mock.invocationCallOrder[1] ?? 0
+    );
+    expect(deploy.syncManifest).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ status: "published", bundle_version: "v1700000000001" })
+    );
+  });
+
+  it("when the restore itself loses the swap, the manifest follows the registry's new pointer", async () => {
+    versions.getVersion.mockResolvedValue({ version: "v1700000000002" });
+    statusFlipFails = true;
+    versions.pointLiveAt
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("live version changed underneath this request; retry"));
+    await expect(
+      setPublishStatus(fakeSupabase(live), "user-alice", "alice-notes", "published")
+    ).rejects.toThrow(/status flip failed/);
+    expect(deploy.syncManifest).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ bundle_version: "v1700000000002" })
+    );
+  });
+
+  it("refuses a staged draft whose files were swept", async () => {
+    versions.getVersion.mockResolvedValue(null);
+    await expect(
+      setPublishStatus(fakeSupabase(live), "user-alice", "alice-notes", "published")
+    ).rejects.toMatchObject({ status: 409 });
+    expect(deploy.promoteVersion).not.toHaveBeenCalled();
+  });
+
+  it("unpublishing ignores the staged draft", async () => {
+    await setPublishStatus(fakeSupabase(live), "user-alice", "alice-notes", "draft");
+    expect(deploy.promoteVersion).not.toHaveBeenCalled();
+    expect(versions.pointLiveAt).not.toHaveBeenCalled();
+    expect(deploy.syncManifest).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ status: "draft", bundle_version: "v1700000000001" })
     );
   });
 });

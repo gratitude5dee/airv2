@@ -30,6 +30,23 @@ describe("migration ledger", () => {
     for (const version of versions) expect(version).toMatch(/^\d{4}$/);
     expect(new Set(versions).size).toBe(files.length);
   });
+
+  it("every rename in scripts/migration-renames.txt maps a gone file to a present one", () => {
+    // apply-migrations.sh tracks by filename; a database that applied a file
+    // under its old name must not re-run it under the new one.
+    const files = new Set(readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql")));
+    const renames = readFileSync(join(MIGRATIONS_DIR, "../../scripts/migration-renames.txt"), "utf8")
+      .split("\n")
+      .filter((line) => line.trim() && !line.startsWith("#"))
+      .map((line) => line.trim().split(/\s+/));
+    expect(renames.length).toBeGreaterThan(0);
+    for (const entry of renames) {
+      expect(entry).toHaveLength(2);
+      const [from, to] = entry as [string, string];
+      expect(files.has(from)).toBe(false);
+      expect(files.has(to)).toBe(true);
+    }
+  });
 });
 
 describe("deletion checklist (no orphan rows after user delete)", () => {

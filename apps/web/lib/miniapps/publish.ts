@@ -12,7 +12,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { hashPassword } from "./gates";
 import { asRecord } from "../records";
 import { getVersion, pointLiveAt } from "../create/versions";
-import { promoteVersion, syncManifest } from "../functions/deploy";
+import {
+  AppOriginRefusedError,
+  promoteVersion,
+  syncManifest,
+} from "../functions/deploy";
 import {
   REGISTRY_COLUMNS,
   parseNullableNumeric,
@@ -159,6 +163,12 @@ export async function createDraft(
     if (error.code === "23514") {
       throw new PublishError("invalid app slug");
     }
+    if (error.message.includes("account is being deleted")) {
+      throw new PublishError("account is being deleted", 409);
+    }
+    if (error.message.includes("app name is on hold")) {
+      throw new PublishError("that app name was just deleted; try again in an hour", 409);
+    }
     throw new Error(`draft create failed: ${error.message}`);
   }
   console.log(
@@ -199,6 +209,14 @@ export type PublishStatusFlip = "published" | "draft";
  * copies the draft Worker to the live script and writes the KV manifest, so
  * the app origin serves the version the owner previewed. Delisting writes
  * the manifest too — the app origin stops answering before the row flips.
+ *
+ * A staged draft (`draft_version` ahead of `bundle_version`, what a Drop onto
+ * a live app leaves behind) is what "publish" makes live: the pointer moves
+ * to it under the same compare-and-swap as a rollback, and a lost swap puts
+ * the live Worker back on the release the registry still names. When the
+ * metadata write after the swap fails on an app that was already live, the
+ * previous release comes back too (Worker first, then the pointer) so a
+ * request that reports failure never leaves the staged draft serving.
  */
 export async function setPublishStatus(
   supabase: SupabaseClient,
@@ -208,17 +226,40 @@ export async function setPublishStatus(
   visibility?: "public" | "unlisted" | "private"
 ): Promise<void> {
   const app = await ownedApp(supabase, userId, slug);
-  if (status === "published" && !app.bundle_version) {
+  const staged =
+    app.draft_version && app.draft_version !== app.bundle_version
+      ? app.draft_version
+      : null;
+  const target = staged ?? app.bundle_version;
+  if (status === "published" && !target) {
     throw new PublishError("upload a bundle before publishing", 409);
   }
-  const version =
-    app.bundle_version && (await getVersion(supabase, app.id, app.bundle_version));
-  if (status === "published" && version) {
-    await promoteVersion(app, version.version);
-    await pointLiveAt(supabase, app, version.version);
+  const version = target && (await getVersion(supabase, app.id, target));
+  if (status === "published" && staged && !version) {
+    throw new PublishError("that draft's files are no longer stored", 409);
   }
-  if (status === "draft") {
-    await syncManifest({ ...app, status: "draft" });
+  try {
+    if (status === "published" && version) {
+      await promoteVersion(supabase, app, version.version);
+    }
+    if (status === "draft") {
+      await syncManifest(supabase, { ...app, status: "draft" });
+    }
+  } catch (error) {
+    if (error instanceof AppOriginRefusedError) {
+      throw new PublishError("app is being deleted", 409);
+    }
+    throw error;
+  }
+  if (status === "published" && version) {
+    try {
+      await pointLiveAt(supabase, app, version.version);
+    } catch (error) {
+      if (staged && app.bundle_version) {
+        await promoteVersion(supabase, app, app.bundle_version).catch(() => null);
+      }
+      throw error;
+    }
   }
   const { error } = await supabase
     .from("mini_apps")
@@ -233,16 +274,69 @@ export async function setPublishStatus(
   if (error) {
     // The manifest already moved; put it back to what the registry still
     // says so a delist that failed to flip does not leave the app dark (or a
-    // publish that failed to flip serving).
-    await syncManifest(app).catch(() => false);
+    // first publish that failed to flip serving). A first publish keeps its
+    // moved pointer — the row still says draft, so nothing serves — while a
+    // live app gets its previous release restored before the error surfaces.
+    const restored =
+      status === "published" && version && staged && app.status === "published"
+        ? await restoreRelease(supabase, app, version.version)
+        : false;
+    await syncManifest(
+      supabase,
+      status === "published" && version && !restored
+        ? { ...app, bundle_version: version.version }
+        : app
+    ).catch(() => false);
     throw new Error(`status flip failed: ${error.message}`);
   }
   if (status === "published" && version) {
-    await syncManifest({ ...app, status: "published" });
+    try {
+      await syncManifest(supabase, {
+        ...app,
+        status: "published",
+        bundle_version: version.version,
+      });
+    } catch (error) {
+      if (error instanceof AppOriginRefusedError) {
+        throw new PublishError("app is being deleted", 409);
+      }
+      throw error;
+    }
   }
   console.log(
     JSON.stringify({ msg: "miniapp status flip", user_id: userId, slug, status })
   );
+}
+
+/**
+ * Undo a staged-draft publication that got as far as the pointer: the live
+ * Worker goes back to the release `app` observed, then the pointer swaps
+ * back from `from` under the same compare-and-swap. False when either step
+ * failed and the registry's new pointer must stand.
+ */
+async function restoreRelease(
+  supabase: SupabaseClient,
+  app: RegistryApp,
+  from: string
+): Promise<boolean> {
+  const previous = app.bundle_version;
+  if (!previous) return false;
+  try {
+    await promoteVersion(supabase, app, previous);
+    await pointLiveAt(supabase, { ...app, bundle_version: from }, previous);
+    return true;
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        msg: "miniapp release restore failed",
+        slug: app.slug,
+        version: from,
+        previous,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    );
+    return false;
+  }
 }
 
 /**

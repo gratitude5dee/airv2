@@ -61,34 +61,52 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // is touched. Teardown is idempotent; if any app's origin cannot be torn
   // down the whole deletion aborts here, with nothing destroyed yet, and the
   // operator retries once the vendor is back.
+  //
+  // The account is closed first: with users.deleting_at set no new app row
+  // can be created for it and no origin write is claimable, so the owned-app
+  // inventory read next is complete and stays complete. The marker stays set
+  // if the deletion aborts below — an account under deletion keeps refusing
+  // new apps and deploys until the retry succeeds.
+  const { error: accountCloseError } = await supabase
+    .from("users")
+    .update({ deleting_at: new Date().toISOString() })
+    .eq("id", userId)
+    .is("deleting_at", null);
+  if (accountCloseError) {
+    steps["app_origin"] = `error: could not close the account to new apps; nothing deleted`;
+    return NextResponse.json({ ok: false, steps, retry: true }, { status: 502 });
+  }
   const { data: ownedApps, error: ownedAppsError } = await supabase
     .from("mini_apps")
-    .select("id, slug")
+    .select("slug, app_origin_deployed_at")
     .eq("owner_user_id", userId);
   if (ownedAppsError) {
     steps["app_origin"] = `error: owned-app lookup failed; nothing deleted`;
     return NextResponse.json({ ok: false, steps, retry: true }, { status: 502 });
   }
   const ownedSlugs = (ownedApps ?? []).map((app) => app.slug as string);
-  const ownedIds = (ownedApps ?? []).map((app) => app.id as string);
-  if (ownedSlugs.length > 0 && !appOriginLaneReady()) {
-    // Missing credentials say nothing about what was deployed earlier: the
-    // ledger does. Any version with a Worker digest means an origin may
-    // still serve, and only a configured lane can take it down.
-    const { data: deployedRows, error: deployedError } = await supabase
-      .from("miniapp_versions")
-      .select("id")
-      .in("app_id", ownedIds)
-      .not("worker_sha256", "is", null)
-      .limit(1);
-    if (deployedError) {
-      steps["app_origin"] = `error: deployed-version lookup failed; nothing deleted`;
+  // Missing credentials say nothing about what was deployed earlier: the app
+  // row does. `app_origin_deployed_at` is set before an app's first Worker
+  // goes up and survives discarded uploads, so any owned app carrying it may
+  // still be serving, and only a configured lane can take it down.
+  const everDeployed = (ownedApps ?? []).some(
+    (app) => app.app_origin_deployed_at !== null
+  );
+  if (everDeployed && !appOriginLaneReady()) {
+    steps["app_origin"] =
+      "error: app origin lane not configured but apps were deployed to it; nothing deleted";
+    return NextResponse.json({ ok: false, steps, retry: true }, { status: 503 });
+  }
+  // Per-app marker, so the state travels with the row a deploy reads.
+  if (ownedSlugs.length > 0) {
+    const { error: closeError } = await supabase
+      .from("mini_apps")
+      .update({ deleting_at: new Date().toISOString() })
+      .eq("owner_user_id", userId)
+      .is("deleting_at", null);
+    if (closeError) {
+      steps["app_origin"] = `error: could not close apps to deploys; nothing deleted`;
       return NextResponse.json({ ok: false, steps, retry: true }, { status: 502 });
-    }
-    if ((deployedRows ?? []).length > 0) {
-      steps["app_origin"] =
-        "error: app origin lane not configured but deployed versions exist; nothing deleted";
-      return NextResponse.json({ ok: false, steps, retry: true }, { status: 503 });
     }
   }
   if (ownedSlugs.length > 0 && appOriginLaneReady()) {
@@ -107,7 +125,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     steps["app_origin"] = `tore down ${ownedSlugs.length} app(s)`;
   } else {
     steps["app_origin"] =
-      ownedSlugs.length > 0 ? "lane not configured; no deployed versions" : "none";
+      ownedSlugs.length > 0 ? "lane not configured; never deployed" : "none";
   }
 
   // CM8: neutralize live state before rows disappear. Unfired slots are

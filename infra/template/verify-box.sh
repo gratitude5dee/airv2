@@ -22,6 +22,7 @@ check() {
 check "soul-identity" grep -q '^## You are air' "$HOME_DIR/.hermes/SOUL.md"
 check "air-vault" command -v air-vault
 check "open-miniapp-card" command -v open-miniapp-card
+check "air-create" command -v air-create
 check "box-browser-use" command -v box-browser-use
 check "link-cli" test -x "$HOME_DIR/.hermes/node/bin/link-cli"
 # Present for everyone, active only for boxes whose owner connected
@@ -29,6 +30,7 @@ check "link-cli" test -x "$HOME_DIR/.hermes/node/bin/link-cli"
 check "op-cli" op --version
 check "skill-air-onboarding" test -f "$HOME_DIR/.hermes/skills/air-onboarding/SKILL.md"
 check "skill-open-miniapp" test -f "$HOME_DIR/.hermes/skills/open-miniapp/SKILL.md"
+check "skill-create-miniapp" test -f "$HOME_DIR/.hermes/skills/create-miniapp/SKILL.md"
 check "plugin-creative" test -d "$HOME_DIR/.hermes/plugins/creative"
 check "plugin-air-vault" test -d "$HOME_DIR/.hermes/plugins/air-vault"
 check "unit-hermes-gateway" systemctl is-active --quiet hermes-gateway

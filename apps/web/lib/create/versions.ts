@@ -13,7 +13,9 @@ import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import {
+  AppOriginRefusedError,
   deployStaticVersion,
+  loadBundleFiles,
   promoteVersion,
   syncManifest,
 } from "../functions/deploy";
@@ -37,6 +39,13 @@ export class VersionError extends Error {
   }
 }
 
+function rethrowRefusedAsVersionError(error: unknown): never {
+  if (error instanceof AppOriginRefusedError) {
+    throw new VersionError("app is being deleted", 409);
+  }
+  throw error;
+}
+
 export const VERSION_RE = /^v[0-9]{10,16}$/;
 const SHA256_RE = /^[0-9a-f]{64}$/;
 export const RETAIN_SUPERSEDED_DAYS = 30;
@@ -47,6 +56,8 @@ export interface Finding {
   line?: number | undefined;
   rule: string;
   hint: string;
+  /** Hard findings never reach a version row (CR12); absent means soft. */
+  severity?: "hard" | "soft" | undefined;
 }
 
 export interface VersionRow {
@@ -73,6 +84,7 @@ const FindingSchema = z.object({
   line: z.number().int().optional(),
   rule: z.string(),
   hint: z.string(),
+  severity: z.enum(["hard", "soft"]).optional(),
 });
 
 const VersionSchema = z.object({
@@ -166,23 +178,39 @@ export async function recordVersion(
   return row;
 }
 
+export interface UploadVersionOptions {
+  /** Soft lint findings to store on the row (CR12: hard ones never get here). */
+  findings?: Finding[] | undefined;
+  /**
+   * `false` stages a draft on an already-published app without moving what
+   * is live (CR4: the agent stages, the owner publishes). Default `true`
+   * keeps the MA3 upload semantics — live follows the upload.
+   */
+  promote?: boolean | undefined;
+}
+
 /**
- * Validate + store a zip for an owned app as a new version: files to
+ * Validate + store a bundle for an owned app as a new version: files to
  * apps/<slug>/<version>/ on R2, the draft Worker on the app origin (when the
  * lane is configured), one miniapp_versions row, and the registry pointers.
+ * Accepts a zip or files already unpacked by `readZip`; either way the
+ * bundle contract (`validateBundle`) runs here, so no caller can skip it.
  * Uploading a draft app never publishes; uploading to an already-published
  * app replaces what is live, exactly as the MA3 upload did, so the live
- * Worker is promoted in the same call to keep both origins on one version.
+ * Worker is promoted in the same call to keep both origins on one version —
+ * unless `promote: false`, which leaves live alone and only moves the draft.
  */
 export async function uploadVersion(
   supabase: SupabaseClient,
   app: RegistryApp,
-  zip: Buffer,
-  lane: CreateLane = "push"
+  bundle: Buffer | BundleFile[],
+  lane: CreateLane = "push",
+  options: UploadVersionOptions = {}
 ): Promise<string> {
   if (!app.owner_user_id) throw new VersionError("app not found", 404);
-  const files = readZip(zip);
+  const files = Buffer.isBuffer(bundle) ? readZip(bundle) : bundle;
   validateBundle(files);
+  const goesLive = app.status === "published" && options.promote !== false;
   // The ledger row is written first: the unique (app_id, version) index is
   // what makes the R2 prefix exclusively ours, so two same-millisecond uploads
   // can never interleave files under one version.
@@ -193,11 +221,14 @@ export async function uploadVersion(
     version,
     lane,
     files,
+    findings: options.findings ?? [],
   });
   let deployed: { workerSha256: string } | null = null;
+  let liveMoved = false;
   try {
     await storeBundle(app.slug, version, files);
-    deployed = await deployStaticVersion({
+    deployed = await deployStaticVersion(supabase, {
+      appId: app.id,
       slug: app.slug,
       version,
       ownerUserId: app.owner_user_id,
@@ -217,21 +248,45 @@ export async function uploadVersion(
     }
     // Published apps: the live Worker moves before the registry pointer, so
     // a failed promotion leaves both origins on the previous version.
-    if (app.status === "published" && deployed) {
-      await promoteVersion(app, version);
+    if (goesLive && deployed) {
+      liveMoved = true;
+      await promoteVersion(supabase, app, version);
+    }
+    // The Dispatcher reads pointers from the manifest, and it serves a draft
+    // Worker only when the manifest names it (CR13). The manifest is written
+    // before the registry commits so that a lost write is still a clean
+    // failure: everything up to the pointer swap can be put back.
+    if (goesLive || deployed) {
+      await syncManifest(supabase, {
+        ...app,
+        bundle_version: goesLive ? version : app.bundle_version,
+        draft_version: version,
+      });
     }
   } catch (error) {
+    // A refused claim means deletion owns the origin now; nothing to restore.
+    if (deployed && !(error instanceof AppOriginRefusedError)) {
+      await restoreAppOrigin(
+        supabase,
+        app,
+        { bundle_version: app.bundle_version, draft_version: app.draft_version },
+        version,
+        liveMoved
+      );
+    }
     await discardVersion(supabase, app, row.id, version);
-    throw error;
+    rethrowRefusedAsVersionError(error);
   }
   const now = new Date().toISOString();
   // Compare-and-swap on the pointers this call observed: two concurrent
   // uploads then agree on one winner, and the loser undoes its promotion
   // instead of leaving the Worker and the registry on different releases.
+  // A staged draft on a live app moves only the draft pointer.
+  const stageOnly = app.status === "published" && !goesLive;
   let move = supabase
     .from("mini_apps")
     .update({
-      bundle_version: version,
+      ...(stageOnly ? {} : { bundle_version: version }),
       draft_version: version,
       lane,
       updated_at: now,
@@ -245,29 +300,25 @@ export async function uploadVersion(
     : move.is("draft_version", null);
   const { data: moved, error } = await move.select("id");
   if (error || !moved || moved.length === 0) {
-    // The Worker already moved; put it back on whatever the registry now
-    // says is live so neither origin advertises a release the other does
-    // not serve, then surface the registry failure.
-    if (app.status === "published" && deployed) {
-      const current = error ? app.bundle_version : await currentLiveVersion(supabase, app.id);
-      if (current) await promoteVersion(app, current).catch(() => null);
+    // The Workers and the manifest already moved; put them back on whatever
+    // the registry now says is selected so neither origin serves a release
+    // the registry does not name (the draft Worker is shared, so the loser's
+    // deploy may have landed after the winner's), then surface the failure.
+    if (deployed) {
+      const current = error
+        ? { bundle_version: app.bundle_version, draft_version: app.draft_version }
+        : await currentPointers(supabase, app.id);
+      await restoreAppOrigin(supabase, app, current, version, goesLive);
     }
     await discardVersion(supabase, app, row.id, version);
     if (error) throw new Error(`bundle version update failed: ${error.message}`);
     throw new VersionError("another upload finished first; retry", 409);
   }
-  if (app.status === "published") {
+  if (goesLive) {
     // The ledger tracks what is live on whichever lane serves it; the legacy
     // R2 renderer follows bundle_version too, so its releases are published
     // and retired exactly like Worker releases (retention depends on it).
     await stampLive(supabase, app.id, version, app.bundle_version, now);
-    if (!deployed) {
-      await syncManifest({
-        ...app,
-        bundle_version: version,
-        draft_version: version,
-      });
-    }
   }
   console.log(
     JSON.stringify({
@@ -276,17 +327,42 @@ export async function uploadVersion(
       version,
       lane,
       files: files.length,
+      findings: options.findings?.length ?? 0,
       app_origin: deployed !== null,
+      staged: stageOnly,
     })
   );
   return version;
 }
 
 /**
- * Undo a reserved version that never became a pointer: row, then R2 prefix.
- * The prefix goes only once the row is gone — a row that outlives its files
- * would be selectable with nothing behind it, whereas orphaned files under a
- * row that stays are just a draft the retention sweep collects later.
+ * Put the app origin back on the release(s) the registry names after an
+ * upload of `version` failed past its deploy: the live Worker (when this
+ * upload moved it), the shared draft Worker, then the manifest. Best effort
+ * — the registry is the source of truth and the caller is already failing.
+ */
+async function restoreAppOrigin(
+  supabase: SupabaseClient,
+  app: RegistryApp,
+  pointers: { bundle_version: string | null; draft_version: string | null },
+  version: string,
+  liveMoved: boolean
+): Promise<void> {
+  if (liveMoved && pointers.bundle_version) {
+    await promoteVersion(supabase, app, pointers.bundle_version).catch(() => null);
+  }
+  if (pointers.draft_version && pointers.draft_version !== version) {
+    await redeployDraft(supabase, app, pointers.draft_version).catch(() => null);
+  }
+  await syncManifest(supabase, { ...app, ...pointers }).catch(() => null);
+}
+
+/**
+ * Undo a reserved version that never became a pointer, in the same
+ * tombstone order as the retention sweep: mark the row purged (it stops
+ * being selectable), delete the R2 prefix, then the row. A failure after the
+ * tombstone leaves a row the next sweep finishes, so a lost R2 delete never
+ * strands files with no record of them.
  */
 async function discardVersion(
   supabase: SupabaseClient,
@@ -294,23 +370,29 @@ async function discardVersion(
   rowId: string,
   version: string
 ): Promise<void> {
-  const { error } = await supabase
-    .from("miniapp_versions")
-    .delete()
-    .eq("id", rowId);
-  if (error) {
+  try {
+    const { data, error } = await supabase.rpc("miniapp_tombstone_version", {
+      p_id: rowId,
+    });
+    if (error) throw new Error(error.message);
+    if (data !== true) return;
+    if (r2Configured()) {
+      await deletePrefix(bundleKey(app.slug, version, ""));
+    }
+    const { error: rowError } = await supabase
+      .from("miniapp_versions")
+      .delete()
+      .eq("id", rowId);
+    if (rowError) throw new Error(rowError.message);
+  } catch (error) {
     console.error(
       JSON.stringify({
-        msg: "version discard kept row",
+        msg: "version discard incomplete; sweep will finish it",
         slug: app.slug,
         version,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
       })
     );
-    return;
-  }
-  if (r2Configured()) {
-    await deletePrefix(bundleKey(app.slug, version, "")).catch(() => 0);
   }
 }
 
@@ -318,13 +400,42 @@ async function currentLiveVersion(
   supabase: SupabaseClient,
   appId: string
 ): Promise<string | null> {
+  return (await currentPointers(supabase, appId)).bundle_version;
+}
+
+async function currentPointers(
+  supabase: SupabaseClient,
+  appId: string
+): Promise<{ bundle_version: string | null; draft_version: string | null }> {
   const { data } = await supabase
     .from("mini_apps")
-    .select("bundle_version")
+    .select("bundle_version, draft_version")
     .eq("id", appId)
     .maybeSingle();
-  const live = (data as { bundle_version?: unknown } | null)?.bundle_version;
-  return typeof live === "string" ? live : null;
+  const row = data as { bundle_version?: unknown; draft_version?: unknown } | null;
+  return {
+    bundle_version: typeof row?.bundle_version === "string" ? row.bundle_version : null,
+    draft_version: typeof row?.draft_version === "string" ? row.draft_version : null,
+  };
+}
+
+/** Put the shared draft Worker back on the version the registry selects. */
+async function redeployDraft(
+  supabase: SupabaseClient,
+  app: RegistryApp,
+  version: string
+): Promise<void> {
+  if (!app.owner_user_id) return;
+  const files = await loadBundleFiles(app.slug, version);
+  if (files.length === 0) return;
+  await deployStaticVersion(supabase, {
+    appId: app.id,
+    slug: app.slug,
+    version,
+    ownerUserId: app.owner_user_id,
+    files,
+    target: "draft",
+  });
 }
 
 export async function getVersion(
@@ -435,7 +546,14 @@ export async function rollbackTo(
   if (target.version === app.bundle_version) {
     throw new VersionError("that version is already live", 409);
   }
-  await promoteVersion(app, target.version);
+  try {
+    await promoteVersion(supabase, app, target.version);
+  } catch (error) {
+    if (error instanceof AppOriginRefusedError) {
+      throw new VersionError("app is being deleted", 409);
+    }
+    throw error;
+  }
   try {
     await pointLiveAt(supabase, app, target.version);
   } catch (error) {
@@ -447,11 +565,13 @@ export async function rollbackTo(
         ? await currentLiveVersion(supabase, app.id).catch(() => app.bundle_version)
         : app.bundle_version;
     if (current) {
-      await promoteVersion(app, current).catch(() => null);
+      await promoteVersion(supabase, app, current).catch(() => null);
     }
     throw error;
   }
-  await syncManifest({ ...app, bundle_version: target.version });
+  await syncManifest(supabase, { ...app, bundle_version: target.version }).catch(
+    rethrowRefusedAsVersionError
+  );
   await recordOpsEvent(supabase, "rollback", app.owner_user_id, app.slug);
   console.log(
     JSON.stringify({

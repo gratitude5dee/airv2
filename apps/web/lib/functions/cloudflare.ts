@@ -6,6 +6,7 @@
  * holds anything.
  *
  * Surface (all under /accounts/{account_id}):
+ *   workers/dispatch/namespaces/{ns}/scripts                          GET
  *   workers/dispatch/namespaces/{ns}/scripts/{script}                 PUT/DELETE
  *   workers/dispatch/namespaces/{ns}/scripts/{script}/assets-upload-session  POST
  *   workers/assets/upload?base64=true                                 POST (jwt)
@@ -177,6 +178,14 @@ export function scriptDigest(upload: ScriptUpload): string {
     })
   );
   return hash.digest("hex");
+}
+
+/** Names of every script in the dispatch namespace: the vendor-side inventory. */
+export async function listDispatchScripts(): Promise<string[]> {
+  const result = await call<Array<{ id: string }>>(
+    `workers/dispatch/namespaces/${env.cfDispatchNamespace()}/scripts`
+  );
+  return result.map((script) => script.id);
 }
 
 export async function deleteDispatchScript(script: string): Promise<void> {

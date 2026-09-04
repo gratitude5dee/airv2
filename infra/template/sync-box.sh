@@ -89,6 +89,9 @@ exec curl -fsS -X POST "\${base%/api/gateway/v1}/api/cards/\${kind}" \\
 SH
 sudo chmod +x /usr/local/bin/open-miniapp-card
 
+chmod +x "$HOME_DIR/.hermes/skills/create-miniapp/scripts/air-create"
+sudo ln -sf "$HOME_DIR/.hermes/skills/create-miniapp/scripts/air-create" /usr/local/bin/air-create
+
 # ── 3. Browser runtime (Node 22 + agent-browser + dedicated CDP profile) ─────
 HERMES_NODE="$HOME_DIR/.hermes/node"
 # Reinstall when the runtime predates v22 — old boxes carry a node whose
@@ -288,6 +291,7 @@ if [ ! -f "$HOME_DIR/.hermes/connected-tools.md" ]; then
 - Vault: saved logins and secrets — skill `vault-use`.
 - Browser: drive websites — skill `browser-use`.
 - Mini-apps and cards on your human's phone — skill `open-miniapp`.
+- Host a page your human sends (html / zip / folder) as a draft mini-app — skill `create-miniapp`. You stage; they publish.
 
 ## Connected by your human
 Connected: nothing yet.
@@ -497,6 +501,35 @@ sudo cp "$TEMPLATE_DIR"/openviking.service /etc/systemd/system/
 sudo cp "$TEMPLATE_DIR"/learning/systemd/air-learningd.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable hermes-gateway.service hermes-dashboard.service hermes-host.service openviking.service air-learningd.service
+
+# Hermes pins each session's system prompt at creation (sessions.system_prompt_hash);
+# clearing it makes the next turn rebuild from the current SOUL/skills without touching messages.
+if [ -f "$HOME_DIR/.hermes/state.db" ]; then
+  sudo systemctl stop hermes-gateway.service
+  python3 - "$HOME_DIR/.hermes/state.db" <<'PY' || { sudo systemctl start hermes-gateway.service; exit 1; }
+import sqlite3
+import sys
+
+try:
+    with sqlite3.connect(sys.argv[1], timeout=15) as db:
+        db.execute(
+            "UPDATE sessions "
+            "SET system_prompt = NULL, system_prompt_hash = NULL "
+            "WHERE system_prompt_hash IS NOT NULL"
+        )
+        db.execute(
+            "DELETE FROM system_prompts "
+            "WHERE hash NOT IN ("
+            "SELECT system_prompt_hash FROM sessions "
+            "WHERE system_prompt_hash IS NOT NULL"
+            ")"
+        )
+except Exception as err:
+    print(f"error: could not clear cached system prompts: {err}", file=sys.stderr)
+    raise SystemExit(1)
+PY
+fi
+
 sudo systemctl restart hermes-gateway.service hermes-dashboard.service hermes-host.service openviking.service air-learningd.service
 
 # Render ov.conf from this box's per-fork gateway credentials and (re)start

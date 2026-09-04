@@ -6,11 +6,16 @@
  * control-plane-side and the single-use token goes only to the owner's
  * iMessage thread (C15: owner-scoped — never an arbitrary recipient), rate
  * limited per (user, kind) by claimCardSend.
+ *
+ * `app` cards (V11 §13.5) name the owner's app in the JSON body
+ * (`{"resource_id": "<slug>"}`); an existing bubble for that slug is edited
+ * in place instead of sending another.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
-import { sendMiniAppCard } from "@/lib/miniapps/cards";
+import { sendMiniAppCard, sendOrUpdateAppCard } from "@/lib/miniapps/cards";
 import { claimCardSend, type CardClaim } from "@/lib/miniapps/cardSends";
+import { ownedApp, PublishError } from "@/lib/miniapps/publish";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,6 +42,8 @@ const CARD_KINDS = [
   "home",
   "persona",
   "feedback",
+  "create",
+  "app",
 ] as const;
 
 type Kind = (typeof CARD_KINDS)[number];
@@ -85,6 +92,32 @@ export async function POST(
       { error: "no known imessage destination for this user" },
       { status: 409 }
     );
+  }
+
+  if (kind === "app") {
+    const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+    const slug = typeof body?.["resource_id"] === "string" ? body["resource_id"] : "";
+    try {
+      await ownedApp(supabase, userId, slug);
+      const outcome = await sendOrUpdateAppCard(supabase, { userId, spaceId, phone }, slug);
+      if (outcome === "cooldown") {
+        return NextResponse.json(
+          { error: "an app card was sent recently — wait before sending another" },
+          { status: 429 }
+        );
+      }
+      console.log(JSON.stringify({ msg: "card sent", kind, user_id: userId, outcome }));
+      return NextResponse.json({ ok: true, outcome });
+    } catch (error) {
+      if (error instanceof PublishError) {
+        return NextResponse.json({ error: error.message }, { status: error.status });
+      }
+      const message = error instanceof Error ? error.message : "unknown error";
+      console.error(
+        JSON.stringify({ msg: "card send failed", kind, user_id: userId, error: message })
+      );
+      return NextResponse.json({ error: "card send failed" }, { status: 502 });
+    }
   }
 
   let claim: CardClaim | undefined;

@@ -42,6 +42,17 @@ export async function maybeSendMiniAppLink(
   const slug = parseMiniAppCommand(input);
   if (!slug) return false;
 
+  // V11 §5.2 `/create`: the Create surface is a store page, not a registry
+  // app — owner-only like every card, no cooldown (the owner asked for it).
+  if (slug === "create") {
+    if (job.senderTier !== 0) {
+      await sender.sendText(job.spaceId, job.phone, OWNER_ONLY_CARD_LINE);
+      return true;
+    }
+    await sendCard(supabase, sender, job, "create");
+    return true;
+  }
+
   let app;
   try {
     app = await getRegistryApp(supabase, slug);
@@ -56,33 +67,44 @@ export async function maybeSendMiniAppLink(
     return true;
   }
 
-  // Full mini-app card (same bubble as agent-initiated cards): tapping it
-  // opens the full-screen mini-app sheet. A bare richlink renders as a flat
-  // "Tap to Load Preview" bubble, so it is only the fallback path.
+  await sendCard(supabase, sender, job, app.slug);
+  return true;
+}
+
+/**
+ * Full mini-app card (same bubble as agent-initiated cards): tapping it
+ * opens the full-screen mini-app sheet. A bare richlink renders as a flat
+ * "Tap to Load Preview" bubble, so it is only the fallback path.
+ */
+async function sendCard(
+  supabase: SupabaseClient,
+  sender: SpectrumSender,
+  job: { spaceId: string; userId: string; phone: string },
+  slug: string
+): Promise<void> {
   try {
     const message = await sender.sendApp(
       job.spaceId,
       job.phone,
-      () => mintSignedLink(job.userId, app.slug, "default", "card"),
-      cardLayout(app.slug)
+      () => mintSignedLink(job.userId, slug, "default", "card"),
+      cardLayout(slug)
     );
-    if (isCardKind(app.slug)) {
+    if (isCardKind(slug)) {
       await persistCardSession(
         supabase,
         job.userId,
-        app.slug,
+        slug,
         "default",
         job.spaceId,
         message
       );
     }
   } catch {
-    const url = mintSignedLink(job.userId, app.slug, "default", "card");
+    const url = mintSignedLink(job.userId, slug, "default", "card");
     try {
       await sender.sendRichLink(job.spaceId, job.phone, url);
     } catch {
       await sender.sendText(job.spaceId, job.phone, url);
     }
   }
-  return true;
 }
