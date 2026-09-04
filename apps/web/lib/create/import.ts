@@ -42,8 +42,8 @@ import {
 import { nestedPathFor } from "../miniapps/nested";
 import { PublishError } from "../miniapps/publish";
 import { getRegistryApp, type RegistryApp } from "../miniapps/registry";
-import { recordOpsEvent } from "../security/limits";
-import { resolveDropApp, titleFor } from "./drop";
+import { pushRateLimited, recordOpsEvent } from "../security/limits";
+import { discardEmptyDraft, resolveOrCreateDropApp, titleFor } from "./drop";
 import { enforceCsp, type LintFinding } from "./lint";
 import { draftPreviewUrl } from "./preview";
 import { uploadVersion } from "./versions";
@@ -229,6 +229,54 @@ export async function linkForApp(
     .maybeSingle();
   if (error) throw new ImportError(`link lookup failed: ${error.message}`, 502);
   return data ? linkRow.parse(data) : null;
+}
+
+/** The link (any owner) already fed by this repository, branch and dir. */
+async function linkForSource(
+  supabase: SupabaseClient,
+  repoId: number,
+  branch: string,
+  dir: string
+): Promise<RepoLink | null> {
+  const { data, error } = await supabase
+    .from("github_repo_links")
+    .select(LINK_COLUMNS)
+    .eq("repo_id", repoId)
+    .eq("branch", branch)
+    .eq("dir", dir)
+    .maybeSingle();
+  if (error) throw new ImportError(`link lookup failed: ${error.message}`, 502);
+  return data ? linkRow.parse(data) : null;
+}
+
+/** Insert or replace (by app) the link row; the unique source index decides ties. */
+async function saveLink(
+  supabase: SupabaseClient,
+  fields: {
+    user_id: string;
+    installation_id: number;
+    app_id: string;
+    repo_id: number;
+    full_name: string;
+    branch: string;
+    dir: string;
+    mode: ImportMode;
+    workflow_path: string | null;
+    last_error: null;
+  }
+): Promise<RepoLink> {
+  const { data, error } = await supabase
+    .from("github_repo_links")
+    .upsert(fields, { onConflict: "app_id" })
+    .select(LINK_COLUMNS)
+    .single();
+  if (error) {
+    if (error.code === "23505") {
+      throw new ImportError("that repository, branch and directory already feed another app", 409);
+    }
+    throw new ImportError(`link save failed: ${error.message}`, 502);
+  }
+  return linkRow.parse(data);
 }
 
 /** Unlink: the app and its versions stay; pushes stop landing. */
@@ -504,8 +552,24 @@ export function planRepository(tree: BundleFile[]): RepoPlan {
 
 /* ------------------------------------------------------------ workflow */
 
+/**
+ * One double-quoted YAML scalar, whatever the input: backslashes and quotes
+ * escaped, every control character (newlines above all) written as an
+ * escape, so a value taken from the repository can only ever be *one*
+ * string in *this* position — never a second line, key or step.
+ */
 function yamlQuote(value: string): string {
-  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+  const escaped = value
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/\t/g, "\\t")
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u0085\u2028\u2029]/g, (c) =>
+      `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`
+    );
+  return `"${escaped}"`;
 }
 
 /**
@@ -580,7 +644,7 @@ export function workflowYaml(input: {
     ...setup,
     `      - run: ${install}`,
     `        working-directory: ${yamlQuote(workdir)}`,
-    `      - run: ${plan.buildCommand ?? `${pm} run build`}`,
+    `      - run: ${yamlQuote(plan.buildCommand ?? `${pm} run build`)}`,
     `        working-directory: ${yamlQuote(workdir)}`,
     "      - name: Zip the static output",
     `        run: (cd ${yamlQuote(out)} && zip -qr "$RUNNER_TEMP/site.zip" .)`,
@@ -768,7 +832,10 @@ export async function linkRepository(
     staged = stageable(archive, dir);
   }
 
-  const app = await resolveDropApp(
+  // Another app already fed from this exact source? Refuse before a row is
+  // created for this one (the unique index still decides under a race).
+  const taken = await linkForSource(supabase, repo.id, branch, dir);
+  const { app, created } = await resolveOrCreateDropApp(
     supabase,
     userId,
     { appname, name: titleFor(appname), description: "" },
@@ -776,48 +843,39 @@ export async function linkRepository(
   );
   const existingLink = await linkForApp(supabase, userId, app.id);
   if (existingLink && existingLink.repo_id !== repo.id) {
+    if (created) await discardEmptyDraft(supabase, userId, app.id);
     throw new ImportError(`${app.slug} is already linked to ${existingLink.full_name}`, 409);
   }
-
-  const { data: linkData, error: linkError } = await supabase
-    .from("github_repo_links")
-    .upsert(
-      {
-        user_id: userId,
-        installation_id: installation.installation_id,
-        app_id: app.id,
-        repo_id: repo.id,
-        full_name: repo.full_name,
-        branch,
-        dir,
-        mode: plan.mode,
-        workflow_path: plan.mode === "build" ? WORKFLOW_PATH : null,
-        last_error: null,
-      },
-      { onConflict: "app_id" }
-    )
-    .select(LINK_COLUMNS)
-    .single();
-  if (linkError) {
-    if (linkError.code === "23505") {
-      throw new ImportError("that repository, branch and directory already feed another app", 409);
-    }
-    throw new ImportError(`link save failed: ${linkError.message}`, 502);
+  if (taken && taken.app_id !== app.id) {
+    if (created) await discardEmptyDraft(supabase, userId, app.id);
+    throw new ImportError("that repository, branch and directory already feed another app", 409);
   }
-  const link = linkRow.parse(linkData);
+
+  const linkFields = {
+    user_id: userId,
+    installation_id: installation.installation_id,
+    app_id: app.id,
+    repo_id: repo.id,
+    full_name: repo.full_name,
+    branch,
+    dir,
+    mode: plan.mode,
+    workflow_path: plan.mode === "build" ? WORKFLOW_PATH : null,
+    last_error: null,
+  };
 
   let version: string | null = null;
   let workflowPath: string | null = null;
   try {
+    // A first link is written before staging so the owner sees a connected
+    // app while it uploads; a re-link keeps the working link exactly as it
+    // is until the replacement has actually staged (or committed its
+    // workflow), so a failed re-import changes nothing.
+    let link = existingLink ? null : await saveLink(supabase, linkFields);
     if (staged) {
       version = await uploadVersion(supabase, app, staged.files, "import", {
         findings: staged.findings,
         promote: false,
-      });
-      await stampLink(supabase, link.id, {
-        last_sha: sha,
-        last_synced_at: new Date().toISOString(),
-        last_error: null,
       });
     } else {
       workflowPath = await commitWorkflow(installation.installation_id, {
@@ -827,10 +885,22 @@ export async function linkRepository(
         plan,
       });
     }
+    link ??= await saveLink(supabase, linkFields);
+    if (staged) {
+      await stampLink(supabase, link.id, {
+        last_sha: sha,
+        last_synced_at: new Date().toISOString(),
+        last_error: null,
+      });
+    }
   } catch (error) {
-    // A link that never produced anything is undone, so the owner can retry
-    // from a clean state instead of finding a half-connected app.
-    if (!existingLink) await unlinkRepo(supabase, userId, app.id).catch(() => false);
+    // A link that never produced anything is undone — and an app this request
+    // created for it goes too — so the owner retries from a clean state
+    // instead of finding a half-connected or empty app.
+    if (!existingLink) {
+      await unlinkRepo(supabase, userId, app.id).catch(() => false);
+      if (created) await discardEmptyDraft(supabase, userId, app.id);
+    }
     throw error;
   }
   await recordOpsEvent(supabase, "import", userId, `${repo.full_name}@${branch}`);
@@ -940,6 +1010,12 @@ export async function syncStaticLink(
       throw new ImportError("GitHub installation is no longer active", 409);
     }
     const app = await linkedApp(supabase, link);
+    // A repository push is an upload on the owner's hourly budget, like a
+    // build-mode push; it never spends the daily budget for owner-initiated
+    // imports.
+    if (await pushRateLimited(supabase, link.user_id)) {
+      throw new ImportError("too many pushes this hour", 429);
+    }
     const token = await installationToken(link.installation_id, {
       repositoryIds: [link.repo_id],
       permissions: { contents: "read", metadata: "read" },
@@ -963,7 +1039,12 @@ export async function syncStaticLink(
       last_synced_at: new Date().toISOString(),
       last_error: null,
     });
-    await recordOpsEvent(supabase, "import", link.user_id, `${link.full_name}@${sha.slice(0, 12)}`);
+    await recordOpsEvent(
+      supabase,
+      "create.push",
+      link.user_id,
+      `${link.full_name}@${sha.slice(0, 12)}`
+    );
     return { slug: app.slug, version, sha, findings };
   } catch (error) {
     await stampLink(supabase, link.id, { last_error: errorText(error) });
@@ -994,8 +1075,10 @@ export function pushTargets(links: RepoLink[], body: PushEvent): RepoLink[] {
 /**
  * The one `build` link a set of Actions OIDC claims may feed: same
  * repository id, the linked branch, and the workflow file Import committed
- * (`job_workflow_ref` is `<owner>/<repo>/<path>@<ref>`). A fork, another
- * branch, or a renamed workflow on the same repository matches nothing.
+ * *as checked out from that same branch* (`job_workflow_ref` is
+ * `<owner>/<repo>/<path>@<ref>`). A fork, another branch, a renamed
+ * workflow, or the linked workflow path taken from any other ref matches
+ * nothing.
  */
 export function matchBuildLink(
   links: RepoLink[],
@@ -1008,7 +1091,7 @@ export function matchBuildLink(
         link.workflow_path !== null &&
         String(link.repo_id) === claims.repository_id &&
         claims.ref === `refs/heads/${link.branch}` &&
-        claims.job_workflow_ref.startsWith(`${link.full_name}/${link.workflow_path}@`)
+        claims.job_workflow_ref === `${link.full_name}/${link.workflow_path}@refs/heads/${link.branch}`
     ) ?? null
   );
 }

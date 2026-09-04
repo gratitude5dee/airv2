@@ -194,15 +194,24 @@ export function GitHubImport({
     if (installation === null) return;
     setRepos([]);
     setRepo("");
-    fetch(`/api/create/github/repos?installation=${installation}`)
+    const controller = new AbortController();
+    fetch(`/api/create/github/repos?installation=${installation}`, { signal: controller.signal })
       .then(async (res) => {
-        const data = await readJson<{ repositories: Repository[] }>(res);
+        const data = await readJson<{ repositories: Repository[]; truncated?: boolean }>(res);
         if (!res.ok) throw new Error(data.error ?? "could not list repositories");
+        if (controller.signal.aborted) return;
         setRepos(data.repositories ?? []);
+        if (data.truncated) {
+          setMessage(
+            "Only the first repositories are listed — narrow the installation to the repositories you want to import."
+          );
+        }
       })
-      .catch((error: unknown) =>
-        setMessage(error instanceof Error ? error.message : "could not list repositories")
-      );
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        setMessage(error instanceof Error ? error.message : "could not list repositories");
+      });
+    return () => controller.abort();
   }, [installation]);
 
   async function run(action: () => Promise<void>) {

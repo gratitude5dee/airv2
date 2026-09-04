@@ -71,9 +71,13 @@ vi.mock("@/lib/miniapps/registry", async (importOriginal) => ({
   getRegistryApp: registry.getRegistryApp,
 }));
 
+const limits = vi.hoisted(() => ({
+  recordOpsEvent: vi.fn(async (..._args: [unknown, string, string, string]) => undefined),
+  pushRateLimited: vi.fn(async () => false),
+}));
 vi.mock("@/lib/security/limits", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/security/limits")>()),
-  recordOpsEvent: vi.fn(async () => undefined),
+  ...limits,
 }));
 
 import { forgetInstallations, syncStaticLink, type RepoLink } from "./import";
@@ -151,6 +155,21 @@ describe("syncStaticLink", () => {
     const stamp = db.updates.find((u) => u.table === "github_repo_links");
     expect(stamp?.values).toMatchObject({ last_sha: SHA, last_error: null });
     expect(typeof stamp?.values["last_synced_at"]).toBe("string");
+  });
+
+  it("accounts a repository push as create.push, never as an owner import", async () => {
+    await syncStaticLink(supabase(), link, SHA);
+    expect(limits.recordOpsEvent).toHaveBeenCalledTimes(1);
+    expect(limits.recordOpsEvent.mock.calls[0]?.[1]).toBe("create.push");
+    expect(limits.recordOpsEvent.mock.calls.some((call) => call[1] === "import")).toBe(false);
+  });
+
+  it("refuses a push once the owner's hourly upload budget is spent, before any GitHub call", async () => {
+    limits.pushRateLimited.mockResolvedValueOnce(true);
+    await expect(syncStaticLink(supabase(), link, SHA)).rejects.toMatchObject({ status: 429 });
+    expect(github.installationToken).not.toHaveBeenCalled();
+    expect(versions.uploadVersion).not.toHaveBeenCalled();
+    expect(lastError()).toMatch(/too many pushes/);
   });
 
   it("resolves the branch head itself when the caller has none", async () => {

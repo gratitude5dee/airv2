@@ -125,6 +125,16 @@ export async function resolveDropApp(
   input: { appname: string; name?: string | undefined; description?: string | undefined },
   lane: CreateLane = "drop"
 ): Promise<RegistryApp> {
+  return (await resolveOrCreateDropApp(supabase, userId, input, lane)).app;
+}
+
+/** As `resolveDropApp`, also saying whether this call created the row. */
+export async function resolveOrCreateDropApp(
+  supabase: SupabaseClient,
+  userId: string,
+  input: { appname: string; name?: string | undefined; description?: string | undefined },
+  lane: CreateLane = "drop"
+): Promise<{ app: RegistryApp; created: boolean }> {
   const appname = validateAppName(input.appname);
   const username = await publisherUsername(supabase, userId);
   const slug = slugFor(username, appname);
@@ -136,7 +146,7 @@ export async function resolveDropApp(
     if (existing.status === "suspended") {
       throw new PublishError("that app is suspended", 409);
     }
-    return existing;
+    return { app: existing, created: false };
   }
   await createDraft(supabase, userId, {
     appname,
@@ -144,7 +154,33 @@ export async function resolveDropApp(
     description: input.description ?? "",
     lane,
   });
-  return ownedApp(supabase, userId, slug);
+  return { app: await ownedApp(supabase, userId, slug), created: true };
+}
+
+/**
+ * Undo a draft row this request created and never filled: only an owned
+ * `draft` with no version pointer goes, so a concurrent upload to the same
+ * name is never deleted from under its owner.
+ */
+export async function discardEmptyDraft(
+  supabase: SupabaseClient,
+  userId: string,
+  appId: string
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("mini_apps")
+    .delete()
+    .eq("id", appId)
+    .eq("owner_user_id", userId)
+    .eq("status", "draft")
+    .is("draft_version", null)
+    .is("live_version", null)
+    .select("id");
+  if (error) {
+    console.error(JSON.stringify({ msg: "empty draft discard failed", app_id: appId, error: error.message }));
+    return false;
+  }
+  return (data ?? []).length > 0;
 }
 
 export async function dropBundle(

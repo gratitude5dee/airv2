@@ -87,7 +87,7 @@ async function call<T>(
     accept?: string;
     timeoutMs?: number;
   }
-): Promise<{ status: number; data: T }> {
+): Promise<{ status: number; data: T; headers: Headers }> {
   const url = `${env.githubApiBase()}${path}`;
   let response: Response;
   try {
@@ -121,8 +121,34 @@ async function call<T>(
     }
     throw new GitHubError(response.status, `github ${response.status}: ${message}`);
   }
-  if (response.status === 204) return { status: 204, data: undefined as T };
-  return { status: response.status, data: (await response.json()) as T };
+  if (response.status === 204) {
+    return { status: 204, data: undefined as T, headers: response.headers };
+  }
+  return {
+    status: response.status,
+    data: (await response.json()) as T,
+    headers: response.headers,
+  };
+}
+
+/**
+ * GitHub paginates with `Link: <url?page=N>; rel="next"`; the next page
+ * number, or null on the last page.
+ */
+export function nextPage(link: string | null): number | null {
+  if (!link) return null;
+  for (const part of link.split(",")) {
+    const match = /<([^>]+)>\s*;\s*rel="next"/.exec(part.trim());
+    if (!match?.[1]) continue;
+    let page: string | null;
+    try {
+      page = new URL(match[1]).searchParams.get("page");
+    } catch {
+      return null;
+    }
+    return page && /^\d+$/.test(page) ? Number(page) : null;
+  }
+  return null;
 }
 
 export interface Installation {
@@ -183,29 +209,52 @@ export interface Repository {
   archived: boolean;
 }
 
-/** Repositories the installation grants; a few pages at most (the owner picks). */
+/** Pages of 100 walked for one picker before it says "narrow the installation". */
+export const REPOSITORY_LIST_MAX_PAGES = 50;
+
+export interface RepositoryList {
+  repositories: Repository[];
+  /** GitHub still had a next page when the walk stopped at the page cap. */
+  truncated: boolean;
+  total_count: number;
+}
+
+/**
+ * Every repository the installation grants, following GitHub's `Link`
+ * pagination to the end (or to the page cap, reported as `truncated` so
+ * the picker can say so instead of silently hiding repositories).
+ */
 export async function listInstallationRepositories(
   installationId: number
-): Promise<Repository[]> {
+): Promise<RepositoryList> {
   const token = await installationToken(installationId, {
     permissions: { metadata: "read" },
   });
   const repos: Repository[] = [];
-  for (let page = 1; page <= 5; page += 1) {
-    const { data } = await call<{ repositories: Repository[] }>(
-      `/installation/repositories?per_page=100&page=${page}`,
+  let total = 0;
+  let next: number | null = 1;
+  let pages = 0;
+  while (next !== null && pages < REPOSITORY_LIST_MAX_PAGES) {
+    pages += 1;
+    const { data, headers } = await call<{ total_count?: number; repositories: Repository[] }>(
+      `/installation/repositories?per_page=100&page=${next}`,
       { token }
     );
     repos.push(...data.repositories);
-    if (data.repositories.length < 100) break;
+    total = typeof data.total_count === "number" ? data.total_count : repos.length;
+    next = nextPage(headers.get("link"));
   }
-  return repos.map((repo) => ({
-    id: repo.id,
-    full_name: repo.full_name,
-    private: repo.private,
-    default_branch: repo.default_branch,
-    archived: repo.archived,
-  }));
+  return {
+    repositories: repos.map((repo) => ({
+      id: repo.id,
+      full_name: repo.full_name,
+      private: repo.private,
+      default_branch: repo.default_branch,
+      archived: repo.archived,
+    })),
+    truncated: next !== null,
+    total_count: Math.max(total, repos.length),
+  };
 }
 
 const FULL_NAME_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;

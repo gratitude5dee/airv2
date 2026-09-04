@@ -1,7 +1,9 @@
 /**
  * GitHub App webhook: signature before anything else, one delivery id once,
  * then only the events that matter reach the import layer. A failed sync
- * still answers 200 (GitHub does not retry; the next push is the retry).
+ * still answers 200 (GitHub does not retry; the next push is the retry),
+ * while a handler that throws gives the delivery id back so a redelivery
+ * runs it again instead of being called a duplicate.
  */
 import { createHmac } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -12,6 +14,7 @@ const db = vi.hoisted(() => ({
   deliveries: new Set<string>(),
   claimError: null as { code: string; message: string } | null,
   deleted: [] as { installation: number; repos: number[] }[],
+  released: [] as string[],
 }));
 
 vi.mock("@/lib/supabase", () => ({
@@ -27,6 +30,15 @@ vi.mock("@/lib/supabase", () => ({
               }
               db.deliveries.add(row.delivery_id);
               return { error: null };
+            },
+            delete() {
+              return {
+                eq: async (_col: string, value: string) => {
+                  db.released.push(value);
+                  db.deliveries.delete(value);
+                  return { error: null };
+                },
+              };
             },
           };
         }
@@ -118,6 +130,7 @@ beforeEach(() => {
   db.deliveries.clear();
   db.claimError = null;
   db.deleted.length = 0;
+  db.released.length = 0;
   process.env["GITHUB_APP_ID"] = "4242";
   process.env["GITHUB_APP_SLUG"] = "wzrd-create";
   process.env["GITHUB_APP_PRIVATE_KEY"] = "-----BEGIN RSA PRIVATE KEY-----\\nx\\n-----END RSA PRIVATE KEY-----";
@@ -273,5 +286,41 @@ describe("POST /api/inbound/github — installation lifecycle", () => {
   it("acknowledges and ignores unrelated events", async () => {
     const response = await POST(deliver("star", { action: "created" }));
     expect(await response.json()).toEqual({ ok: true, ignored: "star" });
+  });
+});
+
+describe("POST /api/inbound/github — failed handlers", () => {
+  it("releases the delivery when the handler throws, so a redelivery is processed", async () => {
+    imports.markInstallation.mockRejectedValueOnce(new Error("db down"));
+    const body = { action: "deleted", installation: { id: 10 } };
+    await expect(POST(deliver("installation", body, { delivery: "d-retry" }))).rejects.toThrow("db down");
+    expect(db.released).toEqual(["d-retry"]);
+    expect(db.deliveries.has("d-retry")).toBe(false);
+
+    const retry = await POST(deliver("installation", body, { delivery: "d-retry" }));
+    expect(await retry.json()).toEqual({ ok: true });
+    expect(imports.markInstallation).toHaveBeenCalledTimes(2);
+  });
+
+  it("releases the delivery when the push lookup throws", async () => {
+    imports.linksForRepo.mockRejectedValueOnce(new Error("lookup failed"));
+    await expect(POST(deliver("push", push, { delivery: "d-push" }))).rejects.toThrow("lookup failed");
+    expect(db.released).toEqual(["d-push"]);
+  });
+
+  it("keeps the claim for a delivery that was fully processed", async () => {
+    await POST(deliver("installation", { action: "deleted", installation: { id: 10 } }, { delivery: "d-done" }));
+    expect(db.released).toEqual([]);
+    const again = await POST(deliver("installation", { action: "deleted", installation: { id: 10 } }, { delivery: "d-done" }));
+    expect(await again.json()).toEqual({ ok: true, duplicate: true });
+    expect(imports.markInstallation).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the claim when a static sync fails (recorded on the link, 200 to GitHub)", async () => {
+    imports.linksForRepo.mockResolvedValue([link({})]);
+    imports.syncStaticLink.mockRejectedValueOnce(new Error("zipball too large"));
+    const response = await POST(deliver("push", push, { delivery: "d-sync" }));
+    expect(response.status).toBe(200);
+    expect(db.released).toEqual([]);
   });
 });

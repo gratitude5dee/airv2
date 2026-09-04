@@ -69,6 +69,23 @@ async function claimDelivery(
   throw new Error(`delivery claim failed: ${error.message}`);
 }
 
+/**
+ * Give a delivery back when its handler threw: the claim only means
+ * "processed", so a redelivery of a failed one must run again instead of
+ * being acknowledged as a duplicate.
+ */
+async function releaseDelivery(supabase: SupabaseClient, deliveryId: string): Promise<void> {
+  const { error } = await supabase
+    .from("github_deliveries")
+    .delete()
+    .eq("delivery_id", deliveryId);
+  if (error) {
+    console.error(
+      JSON.stringify({ msg: "github delivery release failed", delivery: deliveryId, error: error.message })
+    );
+  }
+}
+
 async function onInstallation(supabase: SupabaseClient, body: InstallationEvent): Promise<void> {
   const id = body.installation.id;
   switch (body.action) {
@@ -153,6 +170,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!(await claimDelivery(supabase, deliveryId, event))) {
     return NextResponse.json({ ok: true, duplicate: true });
   }
+  try {
+    return await dispatch(supabase, event, body);
+  } catch (error) {
+    await releaseDelivery(supabase, deliveryId);
+    throw error;
+  }
+}
+
+async function dispatch(
+  supabase: SupabaseClient,
+  event: string,
+  body: object
+): Promise<NextResponse> {
   switch (event) {
     case "installation": {
       const parsed = installationEvent.safeParse(body);
