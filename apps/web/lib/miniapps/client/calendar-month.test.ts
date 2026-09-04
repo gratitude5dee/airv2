@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  arrowTarget,
   next,
   shouldIntercept,
   type State,
@@ -145,5 +146,37 @@ describe("calendar month module safety", () => {
     ]) {
       expect(source).not.toContain(token);
     }
+  });
+});
+
+describe("calendar month keyboard targets", () => {
+  const cells = [
+    { tile: true, week: 0, column: 0 },
+    { tile: false, week: 0, column: 1 },
+    { tile: true, week: 0, column: 2 },
+    { tile: false, week: 0, column: 3 },
+    { tile: true, week: 0, column: 4 },
+    { tile: false, week: 0, column: 5 },
+    { tile: false, week: 0, column: 6 },
+    { tile: false, week: 1, column: 0 },
+    { tile: false, week: 1, column: 1 },
+    { tile: true, week: 1, column: 2 },
+    { tile: false, week: 1, column: 3 },
+    { tile: true, week: 1, column: 4 },
+    { tile: false, week: 1, column: 5 },
+    { tile: true, week: 1, column: 6 },
+  ];
+
+  it("navigates sparse rows and skips muted or empty cells", () => {
+    expect(arrowTarget(cells, 2, "ArrowLeft")).toBe(0);
+    expect(arrowTarget(cells, 0, "ArrowRight")).toBe(2);
+    expect(arrowTarget(cells, 9, "ArrowUp")).toBe(2);
+    expect(arrowTarget(cells, 2, "ArrowDown")).toBe(9);
+    expect(arrowTarget(cells, 8, "ArrowUp")).toBe(0);
+    expect(arrowTarget(cells, 11, "ArrowUp")).toBe(4);
+    expect(arrowTarget(cells, 9, "Home")).toBe(9);
+    expect(arrowTarget(cells, 9, "End")).toBe(13);
+    expect(arrowTarget(cells, 0, "ArrowUp")).toBeNull();
+    expect(arrowTarget(cells, 13, "ArrowRight")).toBeNull();
   });
 });

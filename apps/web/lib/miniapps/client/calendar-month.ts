@@ -23,6 +23,48 @@ export function shouldIntercept(input: InterceptInput): boolean {
   return input.closestClasses.includes("mo-tile");
 }
 
+export function arrowTarget(
+  cells: { tile: boolean; week: number; column: number }[],
+  index: number,
+  key: string
+): number | null {
+  if (index < 0 || index >= cells.length) return null;
+  if (key === "ArrowLeft" || key === "ArrowRight") {
+    const step = key === "ArrowLeft" ? -1 : 1;
+    for (
+      let next = index + step;
+      next >= 0 && next < cells.length;
+      next += step
+    ) {
+      if (cells[next]?.tile) return next;
+    }
+    return null;
+  }
+  if (key === "Home" || key === "End") {
+    const week = cells[index]?.week;
+    if (week === undefined) return null;
+    const row = cells
+      .map((cell, cellIndex) => ({ ...cell, index: cellIndex }))
+      .filter((cell) => cell.tile && cell.week === week);
+    return row[key === "Home" ? 0 : row.length - 1]?.index ?? null;
+  }
+  if (key !== "ArrowUp" && key !== "ArrowDown") return null;
+  const step = key === "ArrowUp" ? -7 : 7;
+  const targetIndex = index + step;
+  const target = cells[targetIndex];
+  if (!target) return null;
+  if (target.tile) return targetIndex;
+  const nearest = cells
+    .map((cell, cellIndex) => ({ ...cell, index: cellIndex }))
+    .filter((cell) => cell.tile && cell.week === target.week)
+    .sort(
+      (a, b) =>
+        Math.abs(a.column - target.column) -
+        Math.abs(b.column - target.column)
+    );
+  return nearest[0]?.index ?? null;
+}
+
 export type State = { open: string | null; animating: boolean };
 
 export type Action =
@@ -238,25 +280,25 @@ export function mount(doc: Document, win: Window): void {
     open: mosaic.dataset["open"] ?? null,
     animating: false,
   };
-  const originals = new WeakMap<Element, Node[]>();
+  const originalTilts = new WeakMap<HTMLElement, string>();
+  for (const tile of tiles(grid)) {
+    originalTilts.set(tile, tile.style.getPropertyValue("--tilt"));
+  }
 
   const setTileOpen = (day: string, isOpen: boolean): void => {
     const tile = tileFor(grid, day);
     if (!tile) return;
-    const face = tile.querySelector<HTMLElement>(".mo-face");
-    if (!face) return;
     tile.classList.toggle("is-open", isOpen);
     if (isOpen) {
-      originals.set(tile, Array.from(face.childNodes));
-      const close = doc.createElement("span");
-      close.className = "mo-x";
-      close.textContent = "×";
-      face.replaceChildren(close);
+      if (!originalTilts.has(tile)) {
+        originalTilts.set(tile, tile.style.getPropertyValue("--tilt"));
+      }
+      tile.style.setProperty("--tilt", "0deg");
       tile.setAttribute("aria-expanded", "true");
     } else {
-      const original = originals.get(tile);
-      if (original) face.replaceChildren(...original);
-      originals.delete(tile);
+      const original = originalTilts.get(tile) ?? "";
+      if (original) tile.style.setProperty("--tilt", original);
+      else tile.style.removeProperty("--tilt");
       tile.removeAttribute("aria-expanded");
     }
   };
@@ -351,15 +393,6 @@ export function mount(doc: Document, win: Window): void {
       dispatch({ type: "close" });
       return;
     }
-    if (!tile) return;
-    const all = tiles(grid);
-    const index = all.indexOf(tile);
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      const day = dayOf(tile);
-      if (day) dispatch({ type: "open", day });
-      return;
-    }
     if (event.key === "PageUp" || event.key === "PageDown") {
       const navs = Array.from(
         mosaic.querySelectorAll<HTMLAnchorElement>(".mo-nav")
@@ -371,23 +404,27 @@ export function mount(doc: Document, win: Window): void {
       }
       return;
     }
-    let nextIndex = index;
-    if (event.key === "ArrowLeft") nextIndex -= 1;
-    else if (event.key === "ArrowRight") nextIndex += 1;
-    else if (event.key === "ArrowUp") nextIndex -= 7;
-    else if (event.key === "ArrowDown") nextIndex += 7;
-    else if (event.key === "Home" || event.key === "End") {
-      const row = tile.closest(".mo-week");
-      const rowTiles = row ? Array.from(row.querySelectorAll<HTMLElement>(".mo-tile")) : [];
-      const destination = event.key === "Home" ? rowTiles[0] : rowTiles.at(-1);
-      if (destination) {
-        event.preventDefault();
-        destination.focus();
-      }
+    if (!tile) return;
+    const cells = Array.from(grid.querySelectorAll<HTMLElement>(".mo-cell"));
+    const weeks = Array.from(grid.querySelectorAll(".mo-week"));
+    const metadata = cells.map((cell) => {
+      const row = cell.closest(".mo-week");
+      return {
+        tile: cell.classList.contains("mo-tile") && !cell.classList.contains("is-muted"),
+        week: row ? weeks.indexOf(row) : -1,
+        column: row ? Array.from(row.querySelectorAll(".mo-cell")).indexOf(cell) : -1,
+      };
+    });
+    const index = cells.indexOf(tile);
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      const day = dayOf(tile);
+      if (day) dispatch({ type: "open", day });
       return;
-    } else return;
-    const destination = all[nextIndex];
-    if (destination) {
+    }
+    const targetIndex = arrowTarget(metadata, index, event.key);
+    const destination = targetIndex === null ? null : cells[targetIndex];
+    if (destination?.classList.contains("mo-tile")) {
       event.preventDefault();
       destination.focus();
     }

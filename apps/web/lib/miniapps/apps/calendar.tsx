@@ -94,6 +94,21 @@ const MONTH_RE = /^\d{4}-\d{2}$/;
 const LOCAL_ID_RE = /^local:[a-f0-9]{16}$/;
 const LOCAL_COLOR = "#8b5cf6";
 
+function realDay(key: string): boolean {
+  if (!DAY_RE.test(key)) return false;
+  const date = new Date(`${key}T12:00:00`);
+  return (
+    Number.isFinite(date.getTime()) &&
+    date.getFullYear() === Number(key.slice(0, 4)) &&
+    date.getMonth() + 1 === Number(key.slice(5, 7)) &&
+    date.getDate() === Number(key.slice(8, 10))
+  );
+}
+
+function realMonth(key: string): boolean {
+  return MONTH_RE.test(key) && Number(key.slice(5, 7)) >= 1 && Number(key.slice(5, 7)) <= 12;
+}
+
 /** provider → persona/color, from the owner's sources. Stored events carry
  * only a provider (no per-account ref), so persona is effectively
  * PER-PROVIDER: with two accounts from the same provider, the first active
@@ -599,7 +614,9 @@ function monthBody(
   const currentYear = new Date().getFullYear();
   const monthTitle = first.toLocaleDateString([], { month: "long" });
   const title = year === currentYear ? monthTitle : `${monthTitle} ${year}`;
-  const monthEvents = [...allByDay.values()].flatMap(visibleEvents);
+  const monthEvents = [...allByDay.entries()]
+    .filter(([day]) => day.startsWith(`${monthKey}-`))
+    .flatMap(([, list]) => visibleEvents(list));
   const people = new Set(
     monthEvents.flatMap((event) => (event.attendees ?? []).map((email) => email.toLowerCase()))
   ).size;
@@ -667,28 +684,24 @@ function monthBody(
       const href = isOpen
         ? viewHref(basePath, "month", persona, undefined, monthKey)
         : viewHref(basePath, "month", persona, key, undefined);
-      const stickers = isOpen
-        ? '<span class="mo-x" aria-hidden="true">×</span>'
-        : stickersFor(dayEvents)
-            .map((sticker) =>
-              sticker.kind === "pending"
-                ? '<span class="mo-sticker pend" aria-hidden="true">?</span>'
-                : sticker.kind === "loc"
-                  ? `<span class="mo-sticker loc" title="${esc(sticker.full)}">${esc(sticker.text)}</span>`
-                  : '<span class="mo-sticker allday">all day</span>'
-            )
-            .join("");
-      const cover = isOpen
-        ? ""
-        : coverMarkup(
-            coverFor(
-              dayEvents,
-              avatars,
-              publicUrl,
-              color
-            )
-          );
-      cells.push(`<a class="mo-cell mo-tile${isOpen ? " is-open" : ""}${isToday ? " is-today" : ""}${muted ? " is-muted" : ""}${dayEvents.some((event) => event.status === "pending") ? " is-pending" : ""}" data-day="${esc(key)}" data-count="${dayEvents.length}" data-personas="${esc(personas.toLowerCase())}" href="${esc(href)}" aria-label="${esc(isOpen ? `Close ${dayLabel(key)}` : label)}"${isOpen ? ' aria-expanded="true"' : ""}${muted ? ' aria-hidden="true" tabindex="-1"' : ""} style="--tilt:${isOpen ? "0" : tiltFor(key)}deg;--persona:${esc(color)}"><span class="mo-face">${cover}${stickers}</span></a>`);
+      const stickers = stickersFor(dayEvents)
+        .map((sticker) =>
+          sticker.kind === "pending"
+            ? '<span class="mo-sticker pend" aria-hidden="true">?</span>'
+            : sticker.kind === "loc"
+              ? `<span class="mo-sticker loc" title="${esc(sticker.full)}">${esc(sticker.text)}</span>`
+              : '<span class="mo-sticker allday">all day</span>'
+        )
+        .join("");
+      const cover = coverMarkup(
+        coverFor(
+          dayEvents,
+          avatars,
+          publicUrl,
+          color
+        )
+      );
+      cells.push(`<a class="mo-cell mo-tile${isOpen ? " is-open" : ""}${isToday ? " is-today" : ""}${muted ? " is-muted" : ""}${dayEvents.some((event) => event.status === "pending") ? " is-pending" : ""}" data-day="${esc(key)}" data-count="${dayEvents.length}" data-personas="${esc(personas.toLowerCase())}" href="${esc(href)}" aria-label="${esc(isOpen ? `Close ${dayLabel(key)}` : label)}"${isOpen ? ' aria-expanded="true"' : ""}${muted ? ' aria-hidden="true" tabindex="-1"' : ""} style="--tilt:${isOpen ? "0" : tiltFor(key)}deg;--persona:${esc(color)}"><span class="mo-face">${cover}${stickers}<span class="mo-x" aria-hidden="true">×</span></span></a>`);
     }
     rows.push(`<li class="mo-week">${cells.join("")}</li>`);
   }
@@ -701,10 +714,15 @@ function monthBody(
     rows.splice(stripRowFor(rowOfDay, rowCount), 0, `<li class="mo-strip" role="region" aria-label="${esc(dayLabel(selectedDay))}" data-for="${esc(selectedDay)}"><a class="mo-close" href="${esc(viewHref(basePath, "month", persona, undefined, monthKey))}" aria-label="Close day">×</a>${stripContent}</li>`);
   }
   const templates = [...allByDay.entries()]
-    .map(
-      ([day, list]) =>
-        `<template class="mo-day" data-day="${esc(day)}"><ul class="mo-chips" data-noswipe>${mosaicChips(basePath, day, list, providerMeta, avatars, isOwner, persona)}</ul></template>`
-    )
+    .filter(([day]) => day.startsWith(`${monthKey}-`))
+    .flatMap(([day, list]) => {
+      const visible = visibleEvents(list);
+      return visible.length
+        ? [
+            `<template class="mo-day" data-day="${esc(day)}"><ul class="mo-chips" data-noswipe>${mosaicChips(basePath, day, visible, providerMeta, avatars, isOwner, persona)}</ul></template>`,
+          ]
+        : [];
+    })
     .join("");
   const form = isOwner
     ? eventForm("month", persona, selectedDay, editEvent, wantNew)
@@ -736,7 +754,7 @@ const CALENDAR_CSS = `
 .mo-sticker{position:absolute;left:6px;bottom:6px;z-index:1;font:600 .55rem var(--font-ui);padding:2px 6px;border-radius:var(--radius-pill);background:var(--panel-bg);color:var(--ink);max-width:calc(100% - 12px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mo-sticker.pend{left:auto;right:6px;top:6px;bottom:auto;background:var(--accent);color:var(--on-accent)}.mo-sticker+.mo-sticker{bottom:26px}
 .mo-tile.is-today .mo-face{outline:2px solid var(--accent);outline-offset:2px}.mo-tile.is-pending .mo-face{box-shadow:inset 0 0 0 2px var(--accent);border:2px dashed var(--accent)}
-.mo-tile.is-open .mo-face{background:var(--well-bg);display:grid;place-items:center;transform:none}.mo-x{font:400 1.5rem var(--font-ui);color:var(--ink-muted)}
+.mo-x{display:none}.mo-tile.is-open .mo-face{background:var(--well-bg);display:grid;place-items:center;transform:none}.mo-tile.is-open .mo-face>:not(.mo-x){display:none}.mo-tile.is-open .mo-x{display:grid;place-items:center;width:100%;height:100%;font-size:1.6rem;color:var(--ink)}
 .is-filtered .mo-tile.is-muted{opacity:.28;filter:saturate(.4);pointer-events:none}.mosaic.is-dim .mo-tile:not(.is-open){opacity:.35}
 .mo-strip{grid-column:1/-1;background:var(--well-bg);border:1px solid var(--ring);border-radius:var(--radius-well);box-shadow:var(--shadow);padding:.55rem;position:relative;backdrop-filter:var(--blur)}
 .mo-chips{display:flex;gap:.5rem;overflow-x:auto;scroll-snap-type:x mandatory;list-style:none;margin:0;padding:0 .2rem}.mo-chip{scroll-snap-align:start;flex:0 0 auto;min-width:11rem;max-width:78%;display:flex;align-items:center;gap:.4rem;padding:.35rem .6rem;border-radius:var(--radius-pill);background:rgba(255,255,255,.08);border:1px solid var(--ring);color:var(--ink);text-decoration:none;font:500 .68rem var(--font-ui)}.mo-chip.pending{border-style:dashed}.mo-chip .mo-ttl{max-width:12rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mo-time,.mo-loc{color:var(--ink-muted);white-space:nowrap}.mo-loc{overflow:hidden;text-overflow:ellipsis;max-width:8rem}
@@ -848,12 +866,11 @@ export const calendar: MiniAppModule = {
       personaParam && PERSONA_RE.test(personaParam) ? personaParam : null;
     const view = parseView(params.get("view"));
     const dayParam = params.get("day");
-    const selectedDay =
-      dayParam && DAY_RE.test(dayParam) ? dayParam : null;
+    const selectedDay = dayParam && realDay(dayParam) ? dayParam : null;
     const monthParam = params.get("month");
     const monthAnchor = selectedDay
       ? new Date(`${selectedDay}T12:00:00`)
-      : monthParam && MONTH_RE.test(monthParam)
+      : monthParam && realMonth(monthParam)
         ? new Date(`${monthParam}-01T12:00:00`)
         : new Date();
     const editParam = params.get("edit");

@@ -139,6 +139,7 @@ describe("calendar month mosaic", () => {
     expect(html).toContain('data-for="2026-09-08"');
     expect(html).toContain('class="mo-cell mo-tile is-open');
     expect(html).toContain('class="mo-x"');
+    expect(html).toContain('class="mo-cover mo-plate"');
     expect(html).toContain('class="panel mosaic is-dim"');
   });
 
@@ -156,6 +157,7 @@ describe("calendar month mosaic", () => {
     expect(html).toContain('class="panel mosaic is-filtered"');
     expect(html).toContain("is-muted");
     expect(html).toContain('aria-hidden="true" tabindex="-1"');
+    expect(html).not.toContain('<template class="mo-day" data-day="2026-09-01"');
   });
 
   it("renders the lite DOM without a client script", async () => {
@@ -179,6 +181,26 @@ describe("calendar month mosaic", () => {
     ).text();
     expect(selected).toContain('data-month="2026-09"');
     expect(selected).toContain('data-for="2026-09-08"');
+  });
+
+  it("rejects impossible day and month query values", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-15T12:00:00Z"));
+    try {
+      for (const query of [
+        "?view=month&day=2026-02-30",
+        "?view=month&day=2026-09-00",
+        "?view=month&month=2026-13",
+        "?view=month&month=2026-00",
+      ]) {
+        const html = await (await calendar.render(context(query))).text();
+        expect(html).toContain('data-month="2026-09"');
+        expect(html).not.toContain('class="mo-strip"');
+        expect(html).not.toContain("Invalid Date");
+      }
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("places row-zero strips below row one and later strips before their row", async () => {
