@@ -311,33 +311,25 @@ export async function ensureBoxAwake(
   // (CM0: mirror, don't sync). Best-effort, off the critical path.
   void mirrorBrandIfStale(supabase, userId, boxId);
 
-  // Keep connector state and the agent's availability note converged after
-  // every wake. Lazy import avoids the provisioning/orchestrator cycle.
-  void (async () => {
-    try {
-      const { data } = await supabase
-        .from("connections")
-        .select("id")
-        .eq("user_id", userId)
-        .eq("status", "active")
-        .limit(1);
-      const { installComposioMcp, writeConnectedToolsFile } =
-        await import("../provisioning/connectors");
-      const target = boxTarget(boxId);
-      if (data && data.length > 0) {
-        await installComposioMcp(supabase, userId, target);
+  // Refresh the agent's connected-tools note after a resume; lazy import avoids
+  // the provisioning↔orchestrator cycle.
+  if (wroteStarting) {
+    void (async () => {
+      try {
+        const { writeConnectedToolsFile } =
+          await import("../provisioning/connectors");
+        await writeConnectedToolsFile(supabase, userId, boxTarget(boxId));
+      } catch (error) {
+        console.log(
+          JSON.stringify({
+            msg: "post-wake connector convergence failed",
+            box_id: boxId,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
       }
-      await writeConnectedToolsFile(supabase, userId, target);
-    } catch (error) {
-      console.log(
-        JSON.stringify({
-          msg: "post-wake connector convergence failed",
-          box_id: boxId,
-          error: error instanceof Error ? error.message : String(error),
-        }),
-      );
-    }
-  })();
+    })();
+  }
 
   await supabase
     .from("boxes")
