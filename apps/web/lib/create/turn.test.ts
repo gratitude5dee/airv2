@@ -62,11 +62,15 @@ const state = vi.hoisted(() => ({
 /** In-memory agent_runs: rows are opened through the rpc; the turn only updates them here. */
 function agentRuns(): Record<string, unknown> {
   const filters: ((row: Row) => boolean)[] = [];
-  let pending: { update?: Partial<Row> } = {};
+  let pending: { update?: Partial<Row>; select?: boolean } = {};
   const matching = (): Row[] => state.rows.filter((row) => filters.every((f) => f(row)));
   const builder: Record<string, unknown> = {
     update(values: Partial<Row>) {
       pending = { update: values };
+      return builder;
+    },
+    select() {
+      pending.select = true;
       return builder;
     },
     eq(column: keyof Row, value: unknown) {
@@ -87,8 +91,12 @@ function agentRuns(): Record<string, unknown> {
           state.closeFailures -= 1;
           return Promise.resolve({ data: null, error: { message: "write failed" } }).then(resolve);
         }
-        for (const row of matching()) Object.assign(row, pending.update);
-        return Promise.resolve({ data: null, error: null }).then(resolve);
+        const touched = matching();
+        for (const row of touched) Object.assign(row, pending.update);
+        return Promise.resolve({
+          data: pending.select ? touched.map((row) => ({ id: row.id })) : null,
+          error: null,
+        }).then(resolve);
       }
       return Promise.resolve({ data: matching(), error: null }).then(resolve);
     },
@@ -318,6 +326,29 @@ describe("startCreateTurn attribution", () => {
     expect(again.run_id).toBe("run-1");
     expect(state.rows[0]).toMatchObject({ outcome: "failed" });
     expect(state.rows[0]!.ended_at).not.toBeNull();
+  });
+
+  it("stops a run whose row was retired while the Box woke, instead of linking it to nothing", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    // Cold Box: another project's turn arrives past the grace period and
+    // create_run_open retires this row, then opens its own.
+    hermes.createRun.mockResolvedValueOnce({ run_id: "run-1" }).mockResolvedValueOnce({ run_id: "run-2" });
+    boxes.ensureBoxAwake.mockImplementationOnce(async () => {
+      state.rows[0]!.started_at = new Date(Date.now() - (CREATE_RUN_LINK_GRACE_MINUTES + 1) * 60_000).toISOString();
+      const other = await startCreateTurn(supabase, "user-alice", { ...input, appname: "other" }, context);
+      expect(other.run_id).toBe("run-1");
+      return { target: { baseUrl: "http://box", token: "t" } };
+    });
+    const error = await startCreateTurn(supabase, "user-alice", input, context).catch((e: unknown) => e);
+    expect((error as PublishError).status).toBe(503);
+    expect(JSON.parse(spy.mock.calls[0]![0] as string).msg).toBe("create run row retired before link");
+    expect(hermes.stopRun).toHaveBeenCalledTimes(1);
+    expect(hermes.stopRun).toHaveBeenCalledWith(expect.anything(), "run-2");
+    expect(state.rows.map((row) => ({ label: row.label, run: row.hermes_run_id, open: row.ended_at === null }))).toEqual([
+      { label: "create:alice-countdown", run: null, open: false },
+      { label: "create:alice-other", run: "run-1", open: true },
+    ]);
+    spy.mockRestore();
   });
 
   it("stops the run and closes the row when the run id cannot be linked", async () => {

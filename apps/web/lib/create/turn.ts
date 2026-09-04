@@ -216,14 +216,24 @@ export async function startCreateTurn(
     }
     // The events relay closes the row by hermes_run_id; a row left unlinked
     // would stay open (blocking the owner's other projects) until it ages
-    // out, so an unlinkable run is stopped and its row closed instead.
-    const { error: linkError } = await supabase
+    // out, so an unlinkable run is stopped and its row closed instead. The
+    // link only lands on a still-open row: one retired while the Box was
+    // waking (create_run_open's grace sweep) may already be superseded by
+    // another project's run, and a run linked to nothing would spend on it.
+    const { data: linked, error: linkError } = await supabase
       .from("agent_runs")
       .update({ hermes_run_id: run.run_id })
-      .eq("id", rowId);
-    if (linkError) {
+      .eq("id", rowId)
+      .is("ended_at", null)
+      .select("id");
+    if (linkError || !(Array.isArray(linked) && linked.length > 0)) {
       console.error(
-        JSON.stringify({ msg: "create run link failed", user_id: userId, run_id: run.run_id, error: linkError.message })
+        JSON.stringify({
+          msg: linkError ? "create run link failed" : "create run row retired before link",
+          user_id: userId,
+          run_id: run.run_id,
+          error: linkError?.message,
+        })
       );
       await stopRun(box.target, run.run_id).catch(() => undefined);
       await closeRow();
