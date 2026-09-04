@@ -647,11 +647,11 @@ function monthBody(
       day: "numeric",
     });
   const prevNav = hasPrev
-    ? `<a class="mo-nav" href="${esc(viewHref(basePath, "month", persona, undefined, prevKey))}" aria-label="${esc(new Date(`${prevKey}-01T12:00:00`).toLocaleDateString([], { month: "long", year: "numeric" }))}">‹</a>`
-    : '<span class="mo-nav is-disabled" aria-hidden="true">‹</span>';
+    ? `<a class="mo-nav" data-nav="prev" href="${esc(viewHref(basePath, "month", persona, undefined, prevKey))}" aria-label="${esc(new Date(`${prevKey}-01T12:00:00`).toLocaleDateString([], { month: "long", year: "numeric" }))}">‹</a>`
+    : '<span class="mo-nav is-disabled" data-nav="prev" aria-hidden="true">‹</span>';
   const nextNav = hasNext
-    ? `<a class="mo-nav" href="${esc(viewHref(basePath, "month", persona, undefined, nextKey))}" aria-label="${esc(new Date(`${nextKey}-01T12:00:00`).toLocaleDateString([], { month: "long", year: "numeric" }))}">›</a>`
-    : '<span class="mo-nav is-disabled" aria-hidden="true">›</span>';
+    ? `<a class="mo-nav" data-nav="next" href="${esc(viewHref(basePath, "month", persona, undefined, nextKey))}" aria-label="${esc(new Date(`${nextKey}-01T12:00:00`).toLocaleDateString([], { month: "long", year: "numeric" }))}">›</a>`
+    : '<span class="mo-nav is-disabled" data-nav="next" aria-hidden="true">›</span>';
   const header = `<header class="mo-head">${prevNav}<h2 class="mo-title">${esc(title)}</h2>${nextNav}<p class="mo-sub">${esc(subCopy(counts))}</p>${monthPersonas(basePath, providerMeta, personaColors, persona, monthKey, selectedDay)}</header>`;
   const leading = first.getDay();
   const rowCount = Math.ceil((leading + daysInMonth) / 7);

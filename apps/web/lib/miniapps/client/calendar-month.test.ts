@@ -149,6 +149,29 @@ describe("calendar month module safety", () => {
   });
 });
 
+describe("calendar month paging", () => {
+  it("does not navigate PageUp when only the next nav is an anchor", () => {
+    const source = readFileSync(
+      fileURLToPath(new URL("./calendar-month.ts", import.meta.url)),
+      "utf8"
+    );
+    const header = [
+      { tag: "span", direction: "prev", href: null },
+      { tag: "a", direction: "next", href: "/mini/calendar?month=2026-02" },
+    ];
+    const previous = header.find(
+      (control) => control.tag === "a" && control.direction === "prev"
+    );
+    const next = header.find(
+      (control) => control.tag === "a" && control.direction === "next"
+    );
+    expect(previous?.href ?? null).toBeNull();
+    expect(next?.href).toBe("/mini/calendar?month=2026-02");
+    expect(source).toContain('a.mo-nav[data-nav="prev"]');
+    expect(source).toContain('a.mo-nav[data-nav="next"]');
+  });
+});
+
 describe("calendar month keyboard targets", () => {
   const cells = [
     { tile: true, week: 0, column: 0 },

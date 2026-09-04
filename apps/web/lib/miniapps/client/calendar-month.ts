@@ -394,10 +394,11 @@ export function mount(doc: Document, win: Window): void {
       return;
     }
     if (event.key === "PageUp" || event.key === "PageDown") {
-      const navs = Array.from(
-        mosaic.querySelectorAll<HTMLAnchorElement>(".mo-nav")
+      const nav = mosaic.querySelector<HTMLAnchorElement>(
+        event.key === "PageUp"
+          ? 'a.mo-nav[data-nav="prev"]'
+          : 'a.mo-nav[data-nav="next"]'
       );
-      const nav = event.key === "PageUp" ? navs[0] : navs.at(-1);
       if (nav?.href) {
         event.preventDefault();
         win.location.assign(nav.href);

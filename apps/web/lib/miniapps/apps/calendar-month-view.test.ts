@@ -453,7 +453,7 @@ describe("calendar month mosaic", () => {
     );
     expect(minimumHeader.match(/<a class="mo-nav"/g) ?? []).toHaveLength(1);
     expect(minimumHeader).toContain(
-      '<span class="mo-nav is-disabled" aria-hidden="true">‹</span>'
+      '<span class="mo-nav is-disabled" data-nav="prev" aria-hidden="true">‹</span>'
     );
     expect(minimumHeader).toContain(
       'href="/mini/calendar?view=month&amp;month=0000-02"'
@@ -468,7 +468,7 @@ describe("calendar month mosaic", () => {
     );
     expect(maximumHeader.match(/<a class="mo-nav"/g) ?? []).toHaveLength(1);
     expect(maximumHeader).toContain(
-      '<span class="mo-nav is-disabled" aria-hidden="true">›</span>'
+      '<span class="mo-nav is-disabled" data-nav="next" aria-hidden="true">›</span>'
     );
     expect(maximumHeader).toContain(
       'href="/mini/calendar?view=month&amp;month=9999-11"'
