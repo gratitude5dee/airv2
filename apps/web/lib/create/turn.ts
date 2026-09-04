@@ -12,7 +12,7 @@ import path from "node:path";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { armStopAfter, ensureBoxAwake } from "../orchestrator/boxes";
 import { CREATE_SESSION_PREFIX } from "../chat/relay";
-import { createRun, ensureSession } from "../hermes/client";
+import { createRun, ensureSession, stopRun } from "../hermes/client";
 import { isSpeedTier, type SpeedTier } from "../entitlements/models";
 import {
   PublishError,
@@ -136,7 +136,7 @@ export function normalizePrompt(input: unknown): string {
  * before Hermes can issue its first completion — a run that starts without
  * it would be refused (`create_run_required`) or spend unattributed — so a
  * turn whose row cannot be written does not start, and a run that fails to
- * start closes its row again.
+ * start (or whose id cannot be linked to the row) closes its row again.
  */
 export async function startCreateTurn(
   supabase: SupabaseClient,
@@ -210,8 +210,9 @@ export async function startCreateTurn(
       await closeRow().catch(() => undefined);
       throw error;
     }
-    // The events relay closes the row by hermes_run_id; without it the row
-    // ages out at CREATE_RUN_MAX_MINUTES, still attributing this run's spend.
+    // The events relay closes the row by hermes_run_id; a row left unlinked
+    // would stay open (blocking the owner's other projects) until it ages
+    // out, so an unlinkable run is stopped and its row closed instead.
     const { error: linkError } = await supabase
       .from("agent_runs")
       .update({ hermes_run_id: run.run_id })
@@ -220,6 +221,9 @@ export async function startCreateTurn(
       console.error(
         JSON.stringify({ msg: "create run link failed", user_id: userId, run_id: run.run_id, error: linkError.message })
       );
+      await stopRun(box.target, run.run_id).catch(() => undefined);
+      await closeRow().catch(() => undefined);
+      throw new PublishError("could not open the Create run; try again", 503);
     }
     return { run_id: run.run_id, session, slug: app.slug, appname, tier };
   } finally {
