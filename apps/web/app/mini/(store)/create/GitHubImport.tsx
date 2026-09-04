@@ -299,7 +299,24 @@ export function GitHubImport({
     });
   }
 
-  if (!state || !state.configured) return null;
+  if (!state) return null;
+
+  if (!state.configured) {
+    return (
+      <section className="panel mb-8 !p-6">
+        <div className="flex items-center gap-2">
+          <h2 className="m-0 text-[16px] font-semibold tracking-[-0.02em]">Import from GitHub</h2>
+          <button className="btn-ghost ml-auto text-[12px]" disabled title="GitHub import is not set up on this Air yet">
+            Connect GitHub
+          </button>
+        </div>
+        <p className="m-0 mt-1 text-[13px] text-muted">
+          Connecting a repository is not available yet — the WZRD GitHub App has not been set up on
+          this Air. Drop a folder or zip above to publish in the meantime.
+        </p>
+      </section>
+    );
+  }
 
   const active = state.installations.filter((i) => !i.suspended);
 

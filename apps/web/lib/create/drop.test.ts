@@ -271,28 +271,29 @@ describe("resolveOrCreateDropApp — creation ownership", () => {
 
 describe("discardEmptyDraft", () => {
   type Row = Record<string, unknown>;
-  function miniApps(rows: Row[]): SupabaseClient {
-    const filters: ((row: Row) => boolean)[] = [];
-    const chain = {
-      delete: () => chain,
-      eq: (col: string, value: unknown) => {
-        filters.push((row) => row[col] === value);
-        return chain;
-      },
-      is: (col: string, value: unknown) => {
-        filters.push((row) => {
-          if (!(col in row)) throw new Error(`column ${col} does not exist`);
-          return (row[col] ?? null) === value;
-        });
-        return chain;
-      },
-      select: async () => {
-        const gone = rows.filter((row) => filters.every((f) => f(row)));
+  /**
+   * The 0092 RPC as the database runs it: owned `draft`, both pointers null,
+   * and no link or version row naming the app. The lock it takes is what
+   * makes those checks final; the mock models only the checks.
+   */
+  function miniApps(rows: Row[], claims: { links?: string[]; versions?: string[] } = {}): SupabaseClient {
+    return {
+      rpc: async (fn: string, args: { p_app_id: string; p_owner_user_id: string }) => {
+        if (fn !== "miniapp_discard_empty_draft") throw new Error(`unexpected rpc ${fn}`);
+        const gone = rows.filter(
+          (row) =>
+            row["id"] === args.p_app_id &&
+            row["owner_user_id"] === args.p_owner_user_id &&
+            row["status"] === "draft" &&
+            row["draft_version"] === null &&
+            row["bundle_version"] === null &&
+            !(claims.links ?? []).includes(args.p_app_id) &&
+            !(claims.versions ?? []).includes(args.p_app_id)
+        );
         for (const row of gone) rows.splice(rows.indexOf(row), 1);
-        return { data: gone, error: null };
+        return { data: gone.length > 0, error: null };
       },
-    };
-    return { from: () => chain } as unknown as SupabaseClient;
+    } as unknown as SupabaseClient;
   }
   const base = { id: "app-1", owner_user_id: OWNER, status: "draft", draft_version: null, bundle_version: null };
 
@@ -311,6 +312,15 @@ describe("discardEmptyDraft", () => {
     expect(uploaded).toHaveLength(1);
   });
 
+  it("keeps an app another request has claimed but not yet filled (link or version row)", async () => {
+    const linked = [{ ...base }];
+    expect(await discardEmptyDraft(miniApps(linked, { links: ["app-1"] }), OWNER, "app-1")).toBe(false);
+    expect(linked).toHaveLength(1);
+    const reserved = [{ ...base }];
+    expect(await discardEmptyDraft(miniApps(reserved, { versions: ["app-1"] }), OWNER, "app-1")).toBe(false);
+    expect(reserved).toHaveLength(1);
+  });
+
   it("never touches another owner's app or a non-draft", async () => {
     const other = [{ ...base, owner_user_id: "user-bob" }];
     expect(await discardEmptyDraft(miniApps(other), OWNER, "app-1")).toBe(false);
@@ -318,5 +328,15 @@ describe("discardEmptyDraft", () => {
     const live = [{ ...base, status: "published" }];
     expect(await discardEmptyDraft(miniApps(live), OWNER, "app-1")).toBe(false);
     expect(live).toHaveLength(1);
+  });
+
+  it("reports a database failure as not discarded", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const supabase = {
+      rpc: async () => ({ data: null, error: { message: "connection reset" } }),
+    } as unknown as SupabaseClient;
+    expect(await discardEmptyDraft(supabase, OWNER, "app-1")).toBe(false);
+    expect(spy).toHaveBeenCalledOnce();
+    spy.mockRestore();
   });
 });

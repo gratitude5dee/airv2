@@ -165,30 +165,26 @@ export async function resolveOrCreateDropApp(
 
 /**
  * Undo a draft row this request created and never filled: only an owned
- * `draft` with neither pointer set goes (`bundle_version` is what a
- * published or legacy upload sets, `draft_version` what staging sets), so
- * a concurrent upload to the same name is never deleted from under its
- * owner.
+ * `draft` with neither pointer set and no link or version row naming it
+ * goes (RPC `miniapp_discard_empty_draft`, migration 0092, under the app
+ * row's lock), so a concurrent request that found the row and started
+ * staging — its link or version row written, its pointer not yet set — is
+ * never cut off.
  */
 export async function discardEmptyDraft(
   supabase: SupabaseClient,
   userId: string,
   appId: string
 ): Promise<boolean> {
-  const { data, error } = await supabase
-    .from("mini_apps")
-    .delete()
-    .eq("id", appId)
-    .eq("owner_user_id", userId)
-    .eq("status", "draft")
-    .is("draft_version", null)
-    .is("bundle_version", null)
-    .select("id");
+  const { data, error } = await supabase.rpc("miniapp_discard_empty_draft", {
+    p_app_id: appId,
+    p_owner_user_id: userId,
+  });
   if (error) {
     console.error(JSON.stringify({ msg: "empty draft discard failed", app_id: appId, error: error.message }));
     return false;
   }
-  return (data ?? []).length > 0;
+  return data === true;
 }
 
 export async function dropBundle(

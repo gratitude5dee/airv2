@@ -37,7 +37,35 @@ const db = vi.hoisted(() => ({
 
 vi.mock("@/lib/supabase", () => ({ serviceClient: () => ({}) }));
 
-/** Just enough PostgREST: filters, maybeSingle/single, upsert with the two unique keys, delete, update. */
+/**
+ * `miniapp_discard_empty_draft` (migration 0092) as the database runs it: an
+ * owned empty draft goes only while no link or version row names it; the
+ * app row's cascade takes the link rows with it.
+ */
+function discardEmptyDraftRpc(args: { p_app_id: string; p_owner_user_id: string }): boolean {
+  const apps = (db.tables["mini_apps"] ??= []);
+  const claimed = (table: string) => (db.tables[table] ?? []).some((row) => row["app_id"] === args.p_app_id);
+  const gone = apps.filter(
+    (row) =>
+      row["id"] === args.p_app_id &&
+      row["owner_user_id"] === args.p_owner_user_id &&
+      row["status"] === "draft" &&
+      row["draft_version"] === null &&
+      row["bundle_version"] === null &&
+      !claimed("github_repo_links") &&
+      !claimed("miniapp_versions")
+  );
+  db.tables["mini_apps"] = apps.filter((row) => !gone.includes(row));
+  if (gone.length > 0) {
+    db.tables["github_repo_links"] = (db.tables["github_repo_links"] ?? []).filter(
+      (row) => row["app_id"] !== args.p_app_id
+    );
+  }
+  db.log.push(`rpc:miniapp_discard_empty_draft:${gone.length}`);
+  return gone.length > 0;
+}
+
+/** Just enough PostgREST: filters, maybeSingle/single, upsert with the two unique keys, delete, update, the 0092 RPC. */
 function supabase(): SupabaseClient {
   function builder(table: string) {
     const rows = () => (db.tables[table] ??= []);
@@ -141,7 +169,13 @@ function supabase(): SupabaseClient {
     chain["then"] = (resolve: (value: unknown) => unknown) => Promise.resolve(run()).then(resolve);
     return chain;
   }
-  return { from: builder } as unknown as SupabaseClient;
+  return {
+    from: builder,
+    rpc: async (fn: string, args: { p_app_id: string; p_owner_user_id: string }) => {
+      if (fn !== "miniapp_discard_empty_draft") return { data: null, error: { code: "42883", message: `unknown rpc ${fn}` } };
+      return { data: discardEmptyDraftRpc(args), error: null };
+    },
+  } as unknown as SupabaseClient;
 }
 
 const SHA = "b".repeat(40);
@@ -190,7 +224,7 @@ const app = makeApp({
 });
 const drop = vi.hoisted(() => ({
   resolveOrCreateDropApp: vi.fn(async () => ({ app: {} as unknown, created: true })),
-  discardEmptyDraft: vi.fn(async () => true),
+  discardEmptyDraft: vi.fn(async (..._args: [SupabaseClient, string, string]) => true),
 }));
 vi.mock("@/lib/create/drop", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/create/drop")>()),
@@ -318,6 +352,64 @@ describe("linkRepository — first import", () => {
     expect(links()[0]).toMatchObject({ app_id: "app-1", dir: "", last_sha: SHA, last_error: null });
     expect(drop.discardEmptyDraft).not.toHaveBeenCalled();
     expect(db.log).not.toContain("delete:github_repo_links:1");
+  });
+
+  it("a first import that fails never removes the app a concurrent import has just linked but not yet staged", async () => {
+    // A's insert wins the app. Before A reaches its own link lookup, B finds
+    // the app (`created` false), saves the link and is staging — its draft
+    // pointer still unset. A's lookup fails and A cleans up: the real
+    // discardEmptyDraft runs the 0092 predicate, which sees B's link and
+    // keeps the app, so B finishes with its link and draft intact.
+    const realDrop = await vi.importActual<typeof import("@/lib/create/drop")>("@/lib/create/drop");
+    drop.discardEmptyDraft.mockImplementationOnce(realDrop.discardEmptyDraft);
+    db.tables["mini_apps"] = [
+      { id: "app-1", owner_user_id: "user-alice", status: "draft", draft_version: null, bundle_version: null },
+    ];
+    let bLinked!: () => void;
+    const bHasLinked = new Promise<void>((resolve) => (bLinked = resolve));
+    let releaseB!: () => void;
+    const bMayStage = new Promise<void>((resolve) => (releaseB = resolve));
+    let b: ReturnType<typeof linkRepository> | undefined;
+    drop.resolveOrCreateDropApp
+      .mockImplementationOnce(async () => {
+        versions.uploadVersion.mockImplementationOnce(async () => {
+          bLinked();
+          await bMayStage;
+          return "v1700000000000";
+        });
+        b = linkRepository(supabase(), "user-alice", input);
+        await bHasLinked;
+        db.failSelect = { table: "github_repo_links", skip: 0 };
+        return { app, created: true };
+      })
+      .mockResolvedValueOnce({ app, created: false });
+
+    await expect(linkRepository(supabase(), "user-alice", input)).rejects.toMatchObject({
+      status: 502,
+      message: expect.stringMatching(/link lookup failed/),
+    });
+    expect(drop.discardEmptyDraft).toHaveBeenCalledWith(expect.anything(), "user-alice", "app-1");
+    expect(db.log).toContain("rpc:miniapp_discard_empty_draft:0");
+    expect(db.tables["mini_apps"]).toHaveLength(1);
+    expect(links()).toHaveLength(1);
+
+    releaseB();
+    await expect(b).resolves.toMatchObject({ slug: "alice-site", version: "v1700000000000" });
+    expect(links()).toHaveLength(1);
+    expect(links()[0]).toMatchObject({ app_id: "app-1", dir: "", last_sha: SHA, last_error: null });
+  });
+
+  it("a first import that fails before anyone else claims the app removes it", async () => {
+    const realDrop = await vi.importActual<typeof import("@/lib/create/drop")>("@/lib/create/drop");
+    drop.discardEmptyDraft.mockImplementationOnce(realDrop.discardEmptyDraft);
+    db.tables["mini_apps"] = [
+      { id: "app-1", owner_user_id: "user-alice", status: "draft", draft_version: null, bundle_version: null },
+    ];
+    db.failSelect = { table: "github_repo_links", skip: 1 };
+    await expect(linkRepository(supabase(), "user-alice", input)).rejects.toMatchObject({ status: 502 });
+    expect(db.log).toContain("rpc:miniapp_discard_empty_draft:1");
+    expect(db.tables["mini_apps"]).toEqual([]);
+    expect(links()).toEqual([]);
   });
 
   it("removes the app it created when the link lookup after creating it fails", async () => {
