@@ -8,7 +8,6 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { createRequire } from "node:module";
 import { compile as compileTailwind } from "tailwindcss";
 import { kitDir } from "./kit";
 
@@ -197,12 +196,12 @@ export function themeUsesFonts(theme: ThemeName): boolean {
 
 /* ------------------------------------------------------------ tailwind */
 
+/** Nearest `node_modules/tailwindcss` above cwd; a plain walk so the bundler leaves it alone. */
 function tailwindDir(): string | null {
-  try {
-    const require = createRequire(path.join(process.cwd(), "package.json"));
-    return path.dirname(require.resolve("tailwindcss/package.json"));
-  } catch {
-    return null;
+  for (let dir = process.cwd(); ; dir = path.dirname(dir)) {
+    const candidate = path.join(dir, "node_modules", "tailwindcss");
+    if (fs.existsSync(path.join(candidate, "theme.css"))) return candidate;
+    if (path.dirname(dir) === dir) return null;
   }
 }
 

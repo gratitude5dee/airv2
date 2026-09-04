@@ -5,6 +5,20 @@ const nextConfig: NextConfig = {
   // The Build Service (lib/create/build.ts) drives esbuild's native binary at
   // request time; it must be required from node_modules, not bundled.
   serverExternalPackages: ["esbuild"],
+  // The Build Service reads the Kit, its vendor tarballs and Tailwind's theme
+  // from disk at request time; none of that is reachable from the import graph.
+  outputFileTracingIncludes: {
+    "/api/create/build": [
+      "../../packages/create-kit/kit/**",
+      "../../packages/create-kit/vendor/**",
+      "../../packages/create-kit/kit.lock.json",
+      "../../node_modules/tailwindcss/**",
+    ],
+    "/api/create/turn": [
+      "../../packages/create-kit/kit.lock.json",
+      "../../packages/create-kit/prompts/create-agent.system.md",
+    ],
+  },
   // Mini-app shells are no-store, but the assets they pull are static and
   // were being refetched on every card tap.
   async headers() {
