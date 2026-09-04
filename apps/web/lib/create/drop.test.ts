@@ -50,7 +50,8 @@ import {
   resolveOrCreateDropApp,
 } from "./drop";
 
-const supabase = {} as SupabaseClient;
+const rpc = vi.fn(async () => ({ data: true, error: null }));
+const supabase = { rpc } as unknown as SupabaseClient;
 const OWNER = "user-alice";
 const draftApp = makeApp({
   slug: "alice-promo",
@@ -66,6 +67,7 @@ const PAGE = Buffer.from(
 const CLEAN = Buffer.from("<!doctype html><html><body><h1>hi</h1></body></html>");
 
 beforeEach(() => {
+  rpc.mockClear();
   versions.uploadVersion.mockClear();
   publish.createDraft.mockClear();
   publish.ownedApp.mockReset();
@@ -234,6 +236,42 @@ describe("dropBundle", () => {
     });
     expect(publish.createDraft).not.toHaveBeenCalled();
     expect(versions.uploadVersion).not.toHaveBeenCalled();
+  });
+
+  it("a failed first drop takes its empty draft back down", async () => {
+    versions.uploadVersion.mockRejectedValueOnce(new Error("r2 unavailable"));
+    await expect(
+      dropBundle(supabase, OWNER, { file: { name: "promo.html", bytes: CLEAN } })
+    ).rejects.toThrow("r2 unavailable");
+    expect(publish.createDraft).toHaveBeenCalledOnce();
+    expect(rpc).toHaveBeenCalledWith("miniapp_discard_empty_draft", {
+      p_app_id: draftApp.id,
+      p_owner_user_id: OWNER,
+    });
+  });
+
+  it("a failed drop onto an app the owner already had leaves that app alone", async () => {
+    registry.getRegistryApp.mockResolvedValue(draftApp);
+    versions.uploadVersion.mockRejectedValueOnce(new Error("r2 unavailable"));
+    await expect(
+      dropBundle(supabase, OWNER, { appname: "promo", file: { name: "index.html", bytes: CLEAN } })
+    ).rejects.toThrow("r2 unavailable");
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("a failed drop that lost the create race to a concurrent drop does not discard the winner's app", async () => {
+    // Both lookups miss; the other request's insert won, so this one did not create the row.
+    publish.createDraft.mockResolvedValueOnce({
+      id: "app-alice-promo",
+      slug: "alice-promo",
+      name: "Promo",
+      created: false,
+    });
+    versions.uploadVersion.mockRejectedValueOnce(new Error("r2 unavailable"));
+    await expect(
+      dropBundle(supabase, OWNER, { file: { name: "promo.html", bytes: CLEAN } })
+    ).rejects.toThrow("r2 unavailable");
+    expect(rpc).not.toHaveBeenCalled();
   });
 
   it("a zip without a root index.html is refused before any registry write", async () => {

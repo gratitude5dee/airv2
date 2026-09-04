@@ -118,18 +118,7 @@ export function titleFor(appname: string): string {
  * exist. A slug held by someone else is "taken" (same answer as createDraft,
  * so the two paths cannot be told apart by probing). Suspended apps refuse
  * new versions — suspension is fail-closed everywhere (§13.3).
- */
-export async function resolveDropApp(
-  supabase: SupabaseClient,
-  userId: string,
-  input: { appname: string; name?: string | undefined; description?: string | undefined },
-  lane: CreateLane = "drop"
-): Promise<RegistryApp> {
-  return (await resolveOrCreateDropApp(supabase, userId, input, lane)).app;
-}
-
-/**
- * As `resolveDropApp`, also saying whether this call created the row.
+ *
  * `created` comes from the insert itself, never from the lookup that
  * preceded it: two concurrent calls for one new appname both miss the
  * lookup, but only the one whose insert won is told it created the app,
@@ -200,15 +189,23 @@ export async function dropBundle(
   // Bundle contract before the registry: a bad bundle never creates an app.
   validateBundle(files);
   const findings = enforceCsp(files);
-  const app = await resolveDropApp(supabase, userId, {
+  const { app, created } = await resolveOrCreateDropApp(supabase, userId, {
     appname,
     name: input.name,
     description: input.description,
   });
-  const version = await uploadVersion(supabase, app, files, "drop", {
-    findings,
-    promote: false,
-  });
+  let version: string;
+  try {
+    version = await uploadVersion(supabase, app, files, "drop", {
+      findings,
+      promote: false,
+    });
+  } catch (error) {
+    // A draft this drop created and never filled must not outlive the drop;
+    // an app the owner already had is theirs to keep, whatever happened here.
+    if (created) await discardEmptyDraft(supabase, userId, app.id);
+    throw error;
+  }
   const staged: RegistryApp = { ...app, draft_version: version };
   return {
     slug: app.slug,

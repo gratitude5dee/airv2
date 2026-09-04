@@ -10,12 +10,14 @@
 -- takes the row over and runs the event again. A live lease still refuses
 -- a concurrent redelivery, so an event is never processed twice at once.
 --
--- Rows already here were written under the old rule, where a row meant the
--- event ran (a failed handler deleted its row), so they are stamped as
--- processed: none of them may be picked up again as an expired lease.
+-- Rows already here were written under the old rule, which inserted the row
+-- before dispatch and never removed it when the handler threw — so an old
+-- row does not prove its event ran. They are deliberately left with
+-- `processed_at` null: once past the lease, a redelivery of a lost event is
+-- processed once more (the handlers are idempotent), while a row whose
+-- event never comes back costs nothing.
 alter table github_deliveries
   add column processed_at timestamptz;
-update github_deliveries set processed_at = received_at where processed_at is null;
 
 -- Claim `delivery_id` for one processing attempt. Returns true when this
 -- call owns the delivery: the id was new, or its previous attempt neither
