@@ -1,0 +1,277 @@
+/**
+ * GitHub App webhook: signature before anything else, one delivery id once,
+ * then only the events that matter reach the import layer. A failed sync
+ * still answers 200 (GitHub does not retry; the next push is the retry).
+ */
+import { createHmac } from "node:crypto";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { RepoLink } from "@/lib/create/import";
+
+const db = vi.hoisted(() => ({
+  deliveries: new Set<string>(),
+  claimError: null as { code: string; message: string } | null,
+  deleted: [] as { installation: number; repos: number[] }[],
+}));
+
+vi.mock("@/lib/supabase", () => ({
+  serviceClient: () =>
+    ({
+      from(table: string) {
+        if (table === "github_deliveries") {
+          return {
+            insert: async (row: { delivery_id: string }) => {
+              if (db.claimError) return { error: db.claimError };
+              if (db.deliveries.has(row.delivery_id)) {
+                return { error: { code: "23505", message: "duplicate" } };
+              }
+              db.deliveries.add(row.delivery_id);
+              return { error: null };
+            },
+          };
+        }
+        if (table === "github_repo_links") {
+          let installation = 0;
+          return {
+            delete() {
+              return this;
+            },
+            eq(_col: string, value: number) {
+              installation = value;
+              return this;
+            },
+            in: async (_col: string, repos: number[]) => {
+              db.deleted.push({ installation, repos });
+              return { error: null };
+            },
+          };
+        }
+        throw new Error(`unexpected table ${table}`);
+      },
+    }) as unknown as SupabaseClient,
+}));
+
+const imports = vi.hoisted(() => ({
+  linksForRepo: vi.fn(async (): Promise<RepoLink[]> => []),
+  markInstallation: vi.fn(async () => undefined),
+  syncStaticLink: vi.fn(async () => ({ slug: "alice-site", version: "v1", sha: "b".repeat(40), findings: [] })),
+}));
+vi.mock("@/lib/create/import", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/create/import")>()),
+  linksForRepo: imports.linksForRepo,
+  markInstallation: imports.markInstallation,
+  syncStaticLink: imports.syncStaticLink,
+}));
+
+import { NextRequest } from "next/server";
+import { POST } from "./route";
+
+const SECRET = "whsec-test";
+let deliveryCounter = 0;
+
+function deliver(
+  event: string,
+  body: unknown,
+  options: { secret?: string; delivery?: string | null; signature?: string | null; raw?: string } = {}
+): NextRequest {
+  const raw = options.raw ?? JSON.stringify(body);
+  const headers = new Headers({ "content-type": "application/json", "x-github-event": event });
+  const signature =
+    options.signature === undefined
+      ? `sha256=${createHmac("sha256", options.secret ?? SECRET).update(raw).digest("hex")}`
+      : options.signature;
+  if (signature !== null) headers.set("x-hub-signature-256", signature);
+  const delivery = options.delivery === undefined ? `d-${++deliveryCounter}` : options.delivery;
+  if (delivery !== null) headers.set("x-github-delivery", delivery);
+  return new NextRequest("https://air.test/api/inbound/github", { method: "POST", headers, body: raw });
+}
+
+function link(over: Partial<RepoLink>): RepoLink {
+  return {
+    id: "link-1",
+    user_id: "user-alice",
+    installation_id: 10,
+    app_id: "app-1",
+    repo_id: 123,
+    full_name: "alice/site",
+    branch: "main",
+    dir: "",
+    mode: "static",
+    workflow_path: null,
+    last_sha: null,
+    last_synced_at: null,
+    last_error: null,
+    created_at: "2026-09-01T00:00:00Z",
+    ...over,
+  };
+}
+
+const push = {
+  ref: "refs/heads/main",
+  after: "b".repeat(40),
+  repository: { id: 123, full_name: "alice/site" },
+  installation: { id: 10 },
+};
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  db.deliveries.clear();
+  db.claimError = null;
+  db.deleted.length = 0;
+  process.env["GITHUB_APP_ID"] = "4242";
+  process.env["GITHUB_APP_SLUG"] = "wzrd-create";
+  process.env["GITHUB_APP_PRIVATE_KEY"] = "-----BEGIN RSA PRIVATE KEY-----\\nx\\n-----END RSA PRIVATE KEY-----";
+  process.env["GITHUB_APP_WEBHOOK_SECRET"] = SECRET;
+  imports.linksForRepo.mockResolvedValue([]);
+});
+
+describe("POST /api/inbound/github — gate", () => {
+  it("503 when the App is not configured, before reading anything", async () => {
+    delete process.env["GITHUB_APP_WEBHOOK_SECRET"];
+    const response = await POST(deliver("push", push));
+    expect(response.status).toBe(503);
+    expect(db.deliveries.size).toBe(0);
+  });
+
+  it.each([
+    ["missing", { signature: null }],
+    ["wrong secret", { secret: "other" }],
+    ["malformed", { signature: "sha256=nope" }],
+  ])("401 on a %s signature and writes nothing", async (_label, options) => {
+    const response = await POST(deliver("push", push, options));
+    expect(response.status).toBe(401);
+    expect(db.deliveries.size).toBe(0);
+    expect(imports.linksForRepo).not.toHaveBeenCalled();
+  });
+
+  it("401 when the body was altered after signing", async () => {
+    const signed = JSON.stringify(push);
+    const tampered = JSON.stringify({ ...push, after: "c".repeat(40) });
+    const response = await POST(
+      deliver("push", push, {
+        raw: tampered,
+        signature: `sha256=${createHmac("sha256", SECRET).update(signed).digest("hex")}`,
+      })
+    );
+    expect(response.status).toBe(401);
+  });
+
+  it.each([
+    ["no delivery id", { delivery: null }],
+    ["bad delivery id", { delivery: "x y" }],
+  ])("400 with %s", async (_label, options) => {
+    const response = await POST(deliver("push", push, options));
+    expect(response.status).toBe(400);
+    expect(db.deliveries.size).toBe(0);
+  });
+
+  it("400 without an event name", async () => {
+    const request = deliver("", push);
+    request.headers.delete("x-github-event");
+    expect((await POST(request)).status).toBe(400);
+  });
+
+  it("400 on invalid JSON that was nonetheless signed", async () => {
+    const response = await POST(deliver("push", null, { raw: "{not json" }));
+    expect(response.status).toBe(400);
+    expect(db.deliveries.size).toBe(0);
+  });
+
+  it("acknowledges a redelivered id without reprocessing", async () => {
+    imports.linksForRepo.mockResolvedValue([link({})]);
+    const first = await POST(deliver("push", push, { delivery: "dup-1" }));
+    expect(first.status).toBe(200);
+    expect(imports.syncStaticLink).toHaveBeenCalledTimes(1);
+    const second = await POST(deliver("push", push, { delivery: "dup-1" }));
+    expect(second.status).toBe(200);
+    expect(await second.json()).toEqual({ ok: true, duplicate: true });
+    expect(imports.syncStaticLink).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails loudly when the delivery table is unavailable", async () => {
+    db.claimError = { code: "42P01", message: "relation missing" };
+    await expect(POST(deliver("push", push))).rejects.toThrow(/delivery claim failed/);
+  });
+});
+
+describe("POST /api/inbound/github — push", () => {
+  it("stages a draft for each matching static link and reports it", async () => {
+    imports.linksForRepo.mockResolvedValue([
+      link({ id: "yes" }),
+      link({ id: "dev", branch: "dev" }),
+      link({ id: "build", mode: "build", workflow_path: ".github/workflows/wzrd-create.yml" }),
+    ]);
+    const response = await POST(deliver("push", push));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, synced: ["alice-site"], failed: [] });
+    expect(imports.linksForRepo).toHaveBeenCalledWith(expect.anything(), 123);
+    expect(imports.syncStaticLink).toHaveBeenCalledTimes(1);
+    expect(imports.syncStaticLink).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ id: "yes" }),
+      "b".repeat(40)
+    );
+  });
+
+  it("does not sync a link from a different installation on the same repo", async () => {
+    imports.linksForRepo.mockResolvedValue([link({ installation_id: 11 })]);
+    const response = await POST(deliver("push", push));
+    expect(await response.json()).toEqual({ ok: true, synced: [], failed: [] });
+    expect(imports.syncStaticLink).not.toHaveBeenCalled();
+  });
+
+  it("answers 200 and names the link when a sync fails", async () => {
+    imports.linksForRepo.mockResolvedValue([link({ id: "l-fail" })]);
+    imports.syncStaticLink.mockRejectedValueOnce(new Error("zipball too large"));
+    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const response = await POST(deliver("push", push));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, synced: [], failed: ["l-fail"] });
+    spy.mockRestore();
+  });
+
+  it("ignores a branch deletion", async () => {
+    imports.linksForRepo.mockResolvedValue([link({})]);
+    const response = await POST(deliver("push", { ...push, deleted: true, after: "0".repeat(40) }));
+    expect(await response.json()).toEqual({ ok: true, synced: [], failed: [] });
+    expect(imports.syncStaticLink).not.toHaveBeenCalled();
+  });
+
+  it("400 on a malformed push (non-sha head)", async () => {
+    expect((await POST(deliver("push", { ...push, after: "HEAD" }))).status).toBe(400);
+  });
+});
+
+describe("POST /api/inbound/github — installation lifecycle", () => {
+  it.each([
+    ["deleted", { removed_at: expect.any(String) }],
+    ["suspend", { suspended_at: expect.any(String) }],
+    ["unsuspend", { suspended_at: null }],
+  ])("marks the installation on %s", async (action, patch) => {
+    const response = await POST(deliver("installation", { action, installation: { id: 10 } }));
+    expect(response.status).toBe(200);
+    expect(imports.markInstallation).toHaveBeenCalledWith(expect.anything(), 10, patch);
+  });
+
+  it("leaves the row alone on other installation actions", async () => {
+    await POST(deliver("installation", { action: "new_permissions_accepted", installation: { id: 10 } }));
+    expect(imports.markInstallation).not.toHaveBeenCalled();
+  });
+
+  it("drops the links of repositories removed from the installation", async () => {
+    const response = await POST(
+      deliver("installation_repositories", {
+        action: "removed",
+        installation: { id: 10 },
+        repositories_removed: [{ id: 123 }, { id: 124 }],
+      })
+    );
+    expect(response.status).toBe(200);
+    expect(db.deleted).toEqual([{ installation: 10, repos: [123, 124] }]);
+  });
+
+  it("acknowledges and ignores unrelated events", async () => {
+    const response = await POST(deliver("star", { action: "created" }));
+    expect(await response.json()).toEqual({ ok: true, ignored: "star" });
+  });
+});

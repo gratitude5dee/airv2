@@ -294,6 +294,26 @@ export const env = {
   // the web session secret so the beta needs no new deploy config.
   pluginTokenSigningKey: (): string =>
     process.env["PLUGIN_TOKEN_SIGNING_KEY"] ?? required("SESSION_SECRET"),
+  // V11 MC7 Import: the WZRD Tech Inc GitHub App. All optional — absent
+  // means the Import lane reports itself unconfigured and /create hides
+  // "Connect GitHub". The private key is PEM (newlines may be escaped as
+  // \n); it signs 10-minute App JWTs and never leaves this process.
+  githubAppId: (): string | null => process.env["GITHUB_APP_ID"] ?? null,
+  githubAppSlug: (): string | null => process.env["GITHUB_APP_SLUG"] ?? null,
+  githubAppPrivateKey: (): string | null => {
+    const raw = process.env["GITHUB_APP_PRIVATE_KEY"];
+    return raw ? raw.replace(/\\n/g, "\n") : null;
+  },
+  githubAppWebhookSecret: (): string | null =>
+    process.env["GITHUB_APP_WEBHOOK_SECRET"] ?? null,
+  githubApiBase: (): string =>
+    optional("GITHUB_API_BASE", "https://api.github.com"),
+  /** Signs the connect→setup state round trip; defaults to the session secret. */
+  githubStateSigningKey: (): string =>
+    process.env["GITHUB_STATE_SIGNING_KEY"] ?? required("SESSION_SECRET"),
+  /** The `aud` a repo's Actions OIDC token must carry to push to /api/create/push. */
+  githubOidcAudience: (): string =>
+    optional("GITHUB_OIDC_AUDIENCE", "wzrd-create"),
   // MA9.2 Onairos developer API key. Optional: absent = the connect step
   // reports itself unconfigured and the onboarding UI hides the button.
   // Never NEXT_PUBLIC_ (goal.md §5): the key is not baked into any client

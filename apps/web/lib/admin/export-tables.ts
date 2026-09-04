@@ -90,6 +90,10 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
     column: "user_id",
     select: "id, app_id, created_at, revoked_at",
   },
+  // V11 MC7 Import: installation and repository ids only — the tables hold
+  // no tokens.
+  all("github_installations"),
+  all("github_repo_links"),
   all("miniapp_installs"),
   { table: "miniapp_guest_grants", column: "created_by", select: "*" },
   all("miniapp_gate_events"),

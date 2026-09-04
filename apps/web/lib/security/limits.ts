@@ -24,7 +24,8 @@ export type OpsEventKind =
   | "fn_capped"
   | "rollback"
   | "import"
-  | "create.drop";
+  | "create.drop"
+  | "create.push";
 
 /** Per-user launch mints (store session or plugin bearer), per hour. */
 export const LAUNCHES_PER_HOUR = 60;
@@ -38,6 +39,8 @@ export const GRANTS_PER_HOUR = 30;
 export const ROLLBACKS_PER_DAY = 20;
 /** Unauthenticated pairing-code exchange attempts, per source per hour. */
 export const PAIR_ATTEMPTS_PER_HOUR = 20;
+/** Repository imports (link + first sync), per user per day (V11 §14.2). */
+export const IMPORTS_PER_DAY = 10;
 
 const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
@@ -186,9 +189,12 @@ async function uploadBudgetSpent(
 ): Promise<boolean> {
   const uploads = await countRecent(supabase, "upload", userId, HOUR_MS);
   const drops = await countRecent(supabase, "create.drop", userId, HOUR_MS);
+  const pushes = await countRecent(supabase, "create.push", userId, HOUR_MS);
   const rejected = await countRecent(supabase, "upload_rejected", userId, HOUR_MS);
-  if (uploads === null || drops === null || rejected === null) return false; // fail open
-  if (uploads + drops + rejected < UPLOADS_PER_HOUR) return false;
+  if (uploads === null || drops === null || pushes === null || rejected === null) {
+    return false; // fail open
+  }
+  if (uploads + drops + pushes + rejected < UPLOADS_PER_HOUR) return false;
   await markRateLimited(supabase, userId, kind, HOUR_MS);
   return true;
 }
@@ -205,6 +211,21 @@ export function dropRateLimited(
   userId: string
 ): Promise<boolean> {
   return uploadBudgetSpent(supabase, userId, "create.drop");
+}
+
+/** A CI push (V11 §10 Import, build mode) spends the owner's upload budget. */
+export function pushRateLimited(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<boolean> {
+  return uploadBudgetSpent(supabase, userId, "create.push");
+}
+
+export function importRateLimited(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<boolean> {
+  return overLimit(supabase, "import", userId, IMPORTS_PER_DAY, DAY_MS);
 }
 
 /**

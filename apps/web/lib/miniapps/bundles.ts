@@ -76,16 +76,34 @@ function findEocd(zip: Buffer): number {
   throw new BundleError("not a zip file");
 }
 
-/** Parse a zip's central directory into in-memory files. */
-export function readZip(zip: Buffer): BundleFile[] {
-  if (zip.length > BUNDLE_MAX_ZIP_BYTES) {
-    throw new BundleError(`bundle exceeds ${BUNDLE_MAX_ZIP_BYTES} bytes`, 413);
+export interface ZipLimits {
+  maxZipBytes: number;
+  maxUnpackedBytes: number;
+  maxFiles: number;
+}
+
+const BUNDLE_ZIP_LIMITS: ZipLimits = {
+  maxZipBytes: BUNDLE_MAX_ZIP_BYTES,
+  maxUnpackedBytes: BUNDLE_MAX_UNPACKED_BYTES,
+  maxFiles: BUNDLE_MAX_FILES,
+};
+
+/**
+ * Parse a zip's central directory into in-memory files. Defaults to the
+ * bundle caps; a caller unpacking something larger than a bundle (a whole
+ * repository archive, of which only a subtree becomes the bundle) passes
+ * its own caps and still runs `validateBundle` on what it keeps.
+ */
+export function readZip(zip: Buffer, limits: ZipLimits = BUNDLE_ZIP_LIMITS): BundleFile[] {
+  const { maxZipBytes, maxUnpackedBytes, maxFiles } = limits;
+  if (zip.length > maxZipBytes) {
+    throw new BundleError(`bundle exceeds ${maxZipBytes} bytes`, 413);
   }
   const eocd = findEocd(zip);
   const count = zip.readUInt16LE(eocd + 10);
   let offset = zip.readUInt32LE(eocd + 16);
-  if (count > BUNDLE_MAX_FILES) {
-    throw new BundleError(`bundle exceeds ${BUNDLE_MAX_FILES} files`);
+  if (count > maxFiles) {
+    throw new BundleError(`bundle exceeds ${maxFiles} files`);
   }
   const files: BundleFile[] = [];
   let unpacked = 0;
@@ -106,7 +124,7 @@ export function readZip(zip: Buffer): BundleFile[] {
     offset += 46 + nameLength + extraLength + commentLength;
     if (name.endsWith("/")) continue; // directory entry
     unpacked += uncompressedSize;
-    if (unpacked > BUNDLE_MAX_UNPACKED_BYTES) {
+    if (unpacked > maxUnpackedBytes) {
       throw new BundleError("bundle unpacks too large", 413);
     }
     if (localOffset + 30 > zip.length || zip.readUInt32LE(localOffset) !== LOCAL_SIGNATURE) {
@@ -121,7 +139,7 @@ export function readZip(zip: Buffer): BundleFile[] {
       bytes = Buffer.from(data);
     } else if (method === 8) {
       bytes = inflateRawSync(data, {
-        maxOutputLength: BUNDLE_MAX_UNPACKED_BYTES,
+        maxOutputLength: maxUnpackedBytes,
       });
     } else {
       throw new BundleError(`unsupported compression method in ${name}`);

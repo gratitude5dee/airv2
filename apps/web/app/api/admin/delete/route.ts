@@ -21,6 +21,8 @@ import {
 import { ASSETS_BUCKET, userPrefix } from "@/lib/assets/keys";
 import { deletePrefix, r2Configured } from "@/lib/storage/r2";
 import { appOriginLaneReady, teardownAppOrigin } from "@/lib/functions/deploy";
+import { forgetInstallations } from "@/lib/create/import";
+import { githubAppConfigured } from "@/lib/github/app";
 import { openAdsKey, updateCampaign } from "@/lib/ads/openai";
 import {
   V9_SET_NULL_TABLES,
@@ -261,6 +263,24 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
   } else {
     steps["agentmail_pod"] = "none";
+  }
+
+  // V11 Lane C: stop GitHub from feeding this account. Rows are marked
+  // removed before the vendor call so a push landing mid-deletion is
+  // refused even if the uninstall fails; the user can also remove the App
+  // from their GitHub settings.
+  if (githubAppConfigured()) {
+    try {
+      const github = await forgetInstallations(supabase, userId);
+      steps["github"] =
+        github.failed > 0
+          ? `uninstalled ${github.uninstalled}, ${github.failed} still installed on GitHub`
+          : `uninstalled ${github.uninstalled}`;
+    } catch (error) {
+      steps["github"] = `error: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  } else {
+    steps["github"] = "none";
   }
 
   try {

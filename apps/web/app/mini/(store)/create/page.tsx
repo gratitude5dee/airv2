@@ -6,13 +6,16 @@
  * POST /api/create/drop; the result is a staged draft — preview URL, lint
  * findings, and the owner's Publish decision (CR9). Vibe chat, preview
  * pane, files, and settings are MC4 and appear only as disabled tiles.
- * `?app=<slug>` (from an app card) opens that app's status instead.
+ * `?app=<slug>` (from an app card) opens that app's status instead. The
+ * Import tile (MC7, GitHub App) lives in GitHubImport and hands the staged
+ * draft back here through the same status view.
  */
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState, type DragEvent } from "react";
 import { zipFolder } from "@/lib/create/clientZip";
 import { BUNDLE_MAX_ZIP_BYTES } from "@/lib/miniapps/bundleLimits";
+import { GitHubImport } from "./GitHubImport";
 
 interface Finding {
   rule: string;
@@ -138,6 +141,7 @@ function DraftResult({
 function CreateSurface() {
   const params = useSearchParams();
   const preselected = params.get("app");
+  const githubReturn = params.get("github");
   const [unauthorized, setUnauthorized] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -327,6 +331,13 @@ function CreateSurface() {
           </label>
         </div>
       </section>
+
+      <GitHubImport
+        returned={githubReturn}
+        onImported={(slug) => {
+          loadStatus(slug).catch(() => null);
+        }}
+      />
 
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {MC4_TILES.map((tile) => (
