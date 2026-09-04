@@ -964,18 +964,14 @@ ${isOwner ? `<div id="prompt">${promptBar("Ask your agent — e.g. block focus t
         body: full,
         lite: ctx.session.via === "card",
         ...(view === "month" ? { headline: false } : {}),
-        ...(!(ctx.session.role === "guest" && view === "agenda")
-          ? {
-              swipe: {
-                ...(prevView
-                  ? { prev: viewHref(ctx.basePath, prevView, activePersona) }
-                  : {}),
-                ...(nextView
-                  ? { next: viewHref(ctx.basePath, nextView, activePersona) }
-                  : {}),
-              },
-            }
-          : {}),
+        swipe: {
+          ...(prevView
+            ? { prev: viewHref(ctx.basePath, prevView, activePersona) }
+            : {}),
+          ...(nextView
+            ? { next: viewHref(ctx.basePath, nextView, activePersona) }
+            : {}),
+        },
       })
     );
   },

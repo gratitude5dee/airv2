@@ -115,11 +115,11 @@ describe("calendar CSP", () => {
     expect(await agenda.text()).not.toContain("calendar-month.js");
   });
 
-  it("adds script-src for Pixel Month but not guest Pixel Agenda", async () => {
+  it("adds script-src for Pixel Month but not guest Pixel lite Agenda", async () => {
     const month = await rendered("pixel");
     const agenda = await withTheme(theme("pixel"), async () =>
       calendar.render({
-        ...context("guest"),
+        ...context("guest", "card"),
         request: new NextRequest("https://app.wzrd.tech/mini/calendar"),
       })
     );
