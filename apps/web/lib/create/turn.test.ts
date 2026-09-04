@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 const hermes = vi.hoisted(() => ({
   ensureSession: vi.fn(async () => ({ created: true })),
   createRun: vi.fn(async () => ({ run_id: "run-1" })),
+  stopRun: vi.fn(async () => undefined),
 }));
 vi.mock("../hermes/client", () => hermes);
 const boxes = vi.hoisted(() => ({
@@ -46,7 +47,8 @@ interface Row {
 const state = vi.hoisted(() => ({
   rows: [] as Row[],
   insertError: null as { message: string } | null,
-  updateError: null as { message: string } | null,
+  /** Fails only the `hermes_run_id` link update. */
+  linkError: null as { message: string } | null,
   /** Ordered log of the calls that matter for attribution ordering. */
   log: [] as string[],
 }));
@@ -121,7 +123,9 @@ function agentRuns(): Record<string, unknown> {
       }
       if (pending.update) {
         state.log.push(`agent_runs.update:${Object.keys(pending.update).join(",")}`);
-        if (state.updateError) return Promise.resolve({ data: null, error: state.updateError }).then(resolve);
+        if (state.linkError && "hermes_run_id" in pending.update) {
+          return Promise.resolve({ data: null, error: state.linkError }).then(resolve);
+        }
         for (const row of matching()) Object.assign(row, pending.update);
         return Promise.resolve({ data: null, error: null }).then(resolve);
       }
@@ -145,7 +149,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   state.rows = [];
   state.insertError = null;
-  state.updateError = null;
+  state.linkError = null;
   state.log = [];
   hermes.createRun.mockImplementation(async () => {
     state.log.push("hermes.createRun");
@@ -219,17 +223,19 @@ describe("startCreateTurn attribution", () => {
     expect(hermes.createRun).not.toHaveBeenCalled();
   });
 
-  it("returns the run and logs when linking the run id fails after Hermes started", async () => {
+  it("stops the run and closes the row when the run id cannot be linked", async () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    hermes.createRun.mockImplementationOnce(async () => {
-      state.log.push("hermes.createRun");
-      state.updateError = { message: "write failed" };
-      return { run_id: "run-1" };
-    });
-    const result = await startCreateTurn(supabase, "user-alice", input, context);
-    expect(result.run_id).toBe("run-1");
+    state.linkError = { message: "write failed" };
+    const error = await startCreateTurn(supabase, "user-alice", input, context).catch((e: unknown) => e);
+    expect((error as PublishError).status).toBe(503);
     expect(spy).toHaveBeenCalledTimes(1);
-    expect(state.rows[0]).toMatchObject({ hermes_run_id: null, ended_at: null });
+    expect(hermes.stopRun).toHaveBeenCalledWith(expect.anything(), "run-1");
+    expect(state.rows[0]).toMatchObject({ hermes_run_id: null, outcome: "failed" });
+    expect(state.rows[0]!.ended_at).not.toBeNull();
     spy.mockRestore();
+
+    state.linkError = null;
+    const again = await startCreateTurn(supabase, "user-alice", { ...input, appname: "other" }, context);
+    expect(again.run_id).toBe("run-1");
   });
 });
