@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+# air-create — Drop lane CLI for the create-miniapp skill (V11 §8).
+#
+#   air-create drop <file.html|file.zip|dir> [--name <app-name>] [--title <t>]
+#   air-create status <slug>            (the slug `drop` printed)
+#   air-create publish <app-name> [--title <t>]
+#
+# drop    stages a DRAFT version through the control plane, which pulls the
+#         bytes out of this Box itself (nothing here talks to storage).
+# status  shows the draft/live versions and lint findings for an app.
+# publish files a Needs-you decision; the OWNER approves it on their phone.
+#         This command never flips an app live.
+#
+# Folders are zipped with python3 -m zipfile (no `zip` binary is assumed).
+set -euo pipefail
+
+usage() {
+  sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//' >&2
+  exit 2
+}
+
+env_value() {
+  grep -m1 "^$1=" "$HOME/.hermes/.env" | cut -d= -f2-
+}
+
+BASE_URL="${OPENAI_BASE_URL:-$(env_value OPENAI_BASE_URL)}"
+API_KEY="${OPENAI_API_KEY:-$(env_value OPENAI_API_KEY)}"
+BASE="${BASE_URL%/api/gateway/v1}"
+[ -n "$BASE" ] && [ -n "$API_KEY" ] || {
+  echo "air-create: gateway credentials missing from ~/.hermes/.env" >&2
+  exit 1
+}
+
+json_string() {
+  python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$1"
+}
+
+api() {
+  local method="$1" path="$2" body="${3:-}"
+  if [ -n "$body" ]; then
+    curl -sS -X "$method" "$BASE$path" \
+      -H "Authorization: Bearer $API_KEY" \
+      -H "Content-Type: application/json" \
+      -d "$body" -w '\n%{http_code}'
+  else
+    curl -sS -X "$method" "$BASE$path" \
+      -H "Authorization: Bearer $API_KEY" -w '\n%{http_code}'
+  fi
+}
+
+# Print the body, exit non-zero on a non-2xx status; the body is the JSON
+# error ({"error": "<one-line reason>", "findings": [...]}).
+finish() {
+  local response="$1"
+  local status="${response##*$'\n'}"
+  local body="${response%$'\n'*}"
+  printf '%s\n' "$body"
+  case "$status" in 2*) return 0 ;; *) return 1 ;; esac
+}
+
+name_from_path() {
+  local base
+  base="$(basename "$1")"
+  base="${base%.*}"
+  base="$(printf '%s' "$base" | tr '[:upper:]' '[:lower:]' | sed -E 's/^[0-9]+-//; s/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')"
+  printf '%s' "${base:0:32}"
+}
+
+cmd_drop() {
+  local src="" name="" title="" desc=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --name) name="$2"; shift 2 ;;
+      --title) title="$2"; shift 2 ;;
+      --description) desc="$2"; shift 2 ;;
+      -*) usage ;;
+      *) src="$1"; shift ;;
+    esac
+  done
+  [ -n "$src" ] || usage
+  src="$(cd "$(dirname "$src")" && pwd)/$(basename "$src")"
+  [ -e "$src" ] || { echo "air-create: no such file: $src" >&2; exit 1; }
+
+  case "$src" in
+    *.png|*.jpg|*.jpeg|*.gif|*.webp|*.heic|*.mov|*.mp4|*.m4v|*.webm)
+      echo "air-create: that is an image or video, not a page — use /api/media/publish for a public media link" >&2
+      exit 3 ;;
+  esac
+
+  local path="$src"
+  if [ -d "$src" ]; then
+    [ -n "$name" ] || name="$(name_from_path "$src")"
+    mkdir -p "$HOME/.hermes/create/.drop"
+    path="$HOME/.hermes/create/.drop/${name:-site}.zip"
+    rm -f "$path"
+    # zipfile -c <archive> <dir>/ zips the directory's contents at the root.
+    (cd "$src" && python3 -m zipfile -c "$path" ./*)
+  else
+    case "$src" in
+      *.html|*.htm|*.zip) ;;
+      *) echo "air-create: drop takes one .html, one .zip, or a folder" >&2; exit 3 ;;
+    esac
+  fi
+
+  local body
+  body="{\"path\":$(json_string "$path")"
+  [ -n "$name" ] && body="$body,\"appname\":$(json_string "$name")"
+  [ -n "$title" ] && body="$body,\"name\":$(json_string "$title")"
+  [ -n "$desc" ] && body="$body,\"description\":$(json_string "$desc")"
+  body="$body}"
+  finish "$(api POST /api/create/drop "$body")"
+}
+
+cmd_status() {
+  local slug="${1:-}"
+  [ -n "$slug" ] || usage
+  finish "$(api GET "/api/create/status?slug=$(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$slug")")"
+}
+
+cmd_publish() {
+  local name="" title="" desc=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --title) title="$2"; shift 2 ;;
+      --description) desc="$2"; shift 2 ;;
+      -*) usage ;;
+      *) name="$1"; shift ;;
+    esac
+  done
+  [ -n "$name" ] || usage
+  local body
+  body="{\"appname\":$(json_string "$name"),\"name\":$(json_string "${title:-$name}"),\"description\":$(json_string "$desc")}"
+  finish "$(api POST /api/miniapps/publish "$body")"
+}
+
+case "${1:-}" in
+  drop) shift; cmd_drop "$@" ;;
+  status) shift; cmd_status "$@" ;;
+  publish) shift; cmd_publish "$@" ;;
+  *) usage ;;
+esac

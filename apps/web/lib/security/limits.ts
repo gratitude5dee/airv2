@@ -23,7 +23,8 @@ export type OpsEventKind =
   | "deploy_fn"
   | "fn_capped"
   | "rollback"
-  | "import";
+  | "import"
+  | "create.drop";
 
 /** Per-user launch mints (store session or plugin bearer), per hour. */
 export const LAUNCHES_PER_HOUR = 60;
@@ -186,6 +187,20 @@ export async function uploadRateLimited(
   if (uploads === null || rejected === null) return false; // fail open
   if (uploads + rejected < UPLOADS_PER_HOUR) return false;
   await markRateLimited(supabase, userId, "upload", HOUR_MS);
+  return true;
+}
+
+/** Drops share the hourly upload budget: a staged draft is an upload too. */
+export async function dropRateLimited(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<boolean> {
+  const drops = await countRecent(supabase, "create.drop", userId, HOUR_MS);
+  const uploads = await countRecent(supabase, "upload", userId, HOUR_MS);
+  const rejected = await countRecent(supabase, "upload_rejected", userId, HOUR_MS);
+  if (drops === null || uploads === null || rejected === null) return false; // fail open
+  if (drops + uploads + rejected < UPLOADS_PER_HOUR) return false;
+  await markRateLimited(supabase, userId, "create.drop", HOUR_MS);
   return true;
 }
 

@@ -47,6 +47,8 @@ export interface Finding {
   line?: number | undefined;
   rule: string;
   hint: string;
+  /** Hard findings never reach a version row (CR12); absent means soft. */
+  severity?: "hard" | "soft" | undefined;
 }
 
 export interface VersionRow {
@@ -73,6 +75,7 @@ const FindingSchema = z.object({
   line: z.number().int().optional(),
   rule: z.string(),
   hint: z.string(),
+  severity: z.enum(["hard", "soft"]).optional(),
 });
 
 const VersionSchema = z.object({
@@ -166,23 +169,39 @@ export async function recordVersion(
   return row;
 }
 
+export interface UploadVersionOptions {
+  /** Soft lint findings to store on the row (CR12: hard ones never get here). */
+  findings?: Finding[] | undefined;
+  /**
+   * `false` stages a draft on an already-published app without moving what
+   * is live (CR4: the agent stages, the owner publishes). Default `true`
+   * keeps the MA3 upload semantics — live follows the upload.
+   */
+  promote?: boolean | undefined;
+}
+
 /**
- * Validate + store a zip for an owned app as a new version: files to
+ * Validate + store a bundle for an owned app as a new version: files to
  * apps/<slug>/<version>/ on R2, the draft Worker on the app origin (when the
  * lane is configured), one miniapp_versions row, and the registry pointers.
+ * Accepts a zip or files already unpacked by `readZip`; either way the
+ * bundle contract (`validateBundle`) runs here, so no caller can skip it.
  * Uploading a draft app never publishes; uploading to an already-published
  * app replaces what is live, exactly as the MA3 upload did, so the live
- * Worker is promoted in the same call to keep both origins on one version.
+ * Worker is promoted in the same call to keep both origins on one version —
+ * unless `promote: false`, which leaves live alone and only moves the draft.
  */
 export async function uploadVersion(
   supabase: SupabaseClient,
   app: RegistryApp,
-  zip: Buffer,
-  lane: CreateLane = "push"
+  bundle: Buffer | BundleFile[],
+  lane: CreateLane = "push",
+  options: UploadVersionOptions = {}
 ): Promise<string> {
   if (!app.owner_user_id) throw new VersionError("app not found", 404);
-  const files = readZip(zip);
+  const files = Buffer.isBuffer(bundle) ? readZip(bundle) : bundle;
   validateBundle(files);
+  const goesLive = app.status === "published" && options.promote !== false;
   // The ledger row is written first: the unique (app_id, version) index is
   // what makes the R2 prefix exclusively ours, so two same-millisecond uploads
   // can never interleave files under one version.
@@ -193,6 +212,7 @@ export async function uploadVersion(
     version,
     lane,
     files,
+    findings: options.findings ?? [],
   });
   let deployed: { workerSha256: string } | null = null;
   try {
@@ -217,7 +237,7 @@ export async function uploadVersion(
     }
     // Published apps: the live Worker moves before the registry pointer, so
     // a failed promotion leaves both origins on the previous version.
-    if (app.status === "published" && deployed) {
+    if (goesLive && deployed) {
       await promoteVersion(app, version);
     }
   } catch (error) {
@@ -228,10 +248,12 @@ export async function uploadVersion(
   // Compare-and-swap on the pointers this call observed: two concurrent
   // uploads then agree on one winner, and the loser undoes its promotion
   // instead of leaving the Worker and the registry on different releases.
+  // A staged draft on a live app moves only the draft pointer.
+  const stageOnly = app.status === "published" && !goesLive;
   let move = supabase
     .from("mini_apps")
     .update({
-      bundle_version: version,
+      ...(stageOnly ? {} : { bundle_version: version }),
       draft_version: version,
       lane,
       updated_at: now,
@@ -248,7 +270,7 @@ export async function uploadVersion(
     // The Worker already moved; put it back on whatever the registry now
     // says is live so neither origin advertises a release the other does
     // not serve, then surface the registry failure.
-    if (app.status === "published" && deployed) {
+    if (goesLive && deployed) {
       const current = error ? app.bundle_version : await currentLiveVersion(supabase, app.id);
       if (current) await promoteVersion(app, current).catch(() => null);
     }
@@ -256,18 +278,21 @@ export async function uploadVersion(
     if (error) throw new Error(`bundle version update failed: ${error.message}`);
     throw new VersionError("another upload finished first; retry", 409);
   }
-  if (app.status === "published") {
+  if (goesLive) {
     // The ledger tracks what is live on whichever lane serves it; the legacy
     // R2 renderer follows bundle_version too, so its releases are published
     // and retired exactly like Worker releases (retention depends on it).
     await stampLive(supabase, app.id, version, app.bundle_version, now);
-    if (!deployed) {
-      await syncManifest({
-        ...app,
-        bundle_version: version,
-        draft_version: version,
-      });
-    }
+  }
+  // The Dispatcher reads pointers from the manifest, and it serves a draft
+  // Worker only when the manifest names it (CR13) — so every upload that
+  // reached the app origin, or that moved live, rewrites the pointer.
+  if (goesLive || deployed) {
+    await syncManifest({
+      ...app,
+      bundle_version: stageOnly ? app.bundle_version : version,
+      draft_version: version,
+    });
   }
   console.log(
     JSON.stringify({
@@ -276,7 +301,9 @@ export async function uploadVersion(
       version,
       lane,
       files: files.length,
+      findings: options.findings?.length ?? 0,
       app_origin: deployed !== null,
+      staged: stageOnly,
     })
   );
   return version;

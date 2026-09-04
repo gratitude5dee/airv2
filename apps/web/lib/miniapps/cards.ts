@@ -24,6 +24,8 @@ import {
   type CardKind,
 } from "./cardSends";
 import { nestedPathFor } from "./nested";
+import { getRegistryApp } from "./registry";
+import { STORE_APP } from "./storeSession";
 import { mintToken } from "./tokens";
 import { warmStatusMirror } from "./onboardingMirror";
 import type { Message } from "spectrum-ts";
@@ -58,7 +60,23 @@ const CARD_COPY: Partial<Record<string, { name: string; line: string }>> = {
   settings: { name: "Settings", line: "Preferences" },
   persona: { name: "Persona", line: "A living map of your context" },
   feedback: { name: "Feedback", line: "Report a bug or ask for a feature" },
+  create: { name: "Create", line: "Build a mini-app" },
+  app: { name: "Your app", line: "Draft — preview & publish" },
 };
+
+/**
+ * V11 §13.5: the Create kinds open the owner's Create surface (a store page,
+ * not a mini-app), so their links are store handoffs that land on /create —
+ * with the app preselected for an `app` card. Only the owner's store
+ * session can render either page (CR13).
+ */
+const STORE_PAGE_KINDS: ReadonlySet<string> = new Set(["create", "app"]);
+
+export function createSurfacePath(kind: string, resourceId: string): string {
+  return kind === "app" && resourceId !== "default"
+    ? `/create?app=${encodeURIComponent(resourceId)}`
+    : "/create";
+}
 
 export function cardLayout(appSlug: string): {
   caption: string;
@@ -91,6 +109,10 @@ export function mintSignedLink(
   resourceId: string,
   via?: "card" | undefined
 ): string {
+  if (STORE_PAGE_KINDS.has(appSlug)) {
+    const next = createSurfacePath(appSlug, resourceId);
+    return `${env.miniappOrigin()}/api/mini/session?t=${mintToken(userId, STORE_APP, "store", CARD_LINK_TTL_MINUTES, { via })}&next=${encodeURIComponent(next)}`;
+  }
   // First-party apps live at mini.wzrd.tech/<slug> (MA0), published apps at
   // /<username>/<appname> (V11); legacy /mini/<slug> and flat slugs 301 there.
   return `${env.miniappOrigin()}${nestedPathFor(appSlug)}?t=${mintToken(userId, appSlug, resourceId, CARD_LINK_TTL_MINUTES, { via })}`;
@@ -102,6 +124,27 @@ export interface CardLayoutOverride {
   caption?: string;
   subcaption?: string;
   summary?: string;
+}
+
+/**
+ * Bubble copy for an `app` card: the owner's app name and where it stands.
+ * Never a URL or a version's contents — the same value-free rule as
+ * CARD_COPY. Unknown/foreign apps fall back to the generic kind copy.
+ */
+export async function appCardLayout(
+  supabase: SupabaseClient,
+  userId: string,
+  slug: string
+): Promise<CardLayoutOverride> {
+  const app = await getRegistryApp(supabase, slug).catch(() => null);
+  if (!app || app.owner_user_id !== userId) return {};
+  const line =
+    app.status === "published"
+      ? app.draft_version && app.draft_version !== app.bundle_version
+        ? "Live — new draft staged"
+        : "Live"
+      : "Draft — preview & publish";
+  return { caption: app.name, subcaption: line, summary: `${app.name} — ${line}` };
 }
 
 export async function sendMiniAppCard(
@@ -119,7 +162,11 @@ export async function sendMiniAppCard(
       spaceId,
       phone,
       () => mintSignedLink(userId, appSlug, resourceId, "card"),
-      { ...cardLayout(appSlug), ...layout }
+      {
+        ...cardLayout(appSlug),
+        ...(appSlug === "app" ? await appCardLayout(supabase, userId, resourceId) : {}),
+        ...layout,
+      }
     );
     await persistCardSession(
       supabase,
@@ -143,6 +190,50 @@ export async function sendMiniAppCard(
 /** Most cards one reply may fan out (the onboarding tour sends a few). */
 const MAX_MARKED_CARDS = 4;
 
+/** `[card: app <slug>]` carries a resource; every other marker is bare. */
+export function parseCardMarker(
+  marker: string
+): { kind: CardKind; resourceId: string } | null {
+  const [kind = "", resource] = marker.trim().toLowerCase().split(/\s+/, 2);
+  if (!isCardKind(kind)) return null;
+  if (kind === "app") {
+    if (!resource || !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(resource)) return null;
+    return { kind, resourceId: resource };
+  }
+  return { kind, resourceId: "default" };
+}
+
+/**
+ * An `app` card is one bubble per app: when the owner already has one for
+ * this slug, refresh it in place instead of claiming a new send (V11 §13.5
+ * "cards update in place"). Returns whether an existing bubble was updated.
+ */
+export async function sendOrUpdateAppCard(
+  supabase: SupabaseClient,
+  owner: { userId: string; spaceId: string; phone: string },
+  slug: string
+): Promise<"updated" | "sent" | "cooldown"> {
+  const existing = await readMiniAppCardSession(
+    supabase,
+    owner.userId,
+    "app",
+    slug
+  ).catch(() => undefined);
+  if (existing) {
+    await updateMiniAppCard(supabase, owner.userId, "app", slug);
+    return "updated";
+  }
+  const claim = await claimCardSend(supabase, owner.userId, "app");
+  if (!claim) return "cooldown";
+  try {
+    await sendMiniAppCard(supabase, owner.spaceId, owner.phone, owner.userId, "app", slug);
+  } catch (error) {
+    await claim.release().catch(() => undefined);
+    throw error;
+  }
+  return "sent";
+}
+
 /**
  * Deliver the `[card: <kind>]` markers stripped from an agent reply, in
  * order, to the owner's thread. Same contract as POST /api/cards/<kind>:
@@ -156,20 +247,26 @@ export async function sendMarkedCards(
   kinds: readonly string[]
 ): Promise<number> {
   let sent = 0;
-  for (const kind of kinds.slice(0, MAX_MARKED_CARDS)) {
-    if (!isCardKind(kind)) continue;
+  for (const marker of kinds.slice(0, MAX_MARKED_CARDS)) {
+    const parsed = parseCardMarker(marker);
+    if (!parsed) continue;
+    const { kind, resourceId } = parsed;
     let claim: CardClaim | undefined;
     try {
-      claim = await claimCardSend(supabase, owner.userId, kind);
-      if (!claim) continue;
-      await sendMiniAppCard(
-        supabase,
-        owner.spaceId,
-        owner.phone,
-        owner.userId,
-        kind,
-        "default"
-      );
+      if (kind === "app") {
+        if ((await sendOrUpdateAppCard(supabase, owner, resourceId)) === "cooldown") continue;
+      } else {
+        claim = await claimCardSend(supabase, owner.userId, kind);
+        if (!claim) continue;
+        await sendMiniAppCard(
+          supabase,
+          owner.spaceId,
+          owner.phone,
+          owner.userId,
+          kind,
+          resourceId
+        );
+      }
       sent += 1;
       console.log(
         JSON.stringify({ msg: "card sent", kind, user_id: owner.userId, via: "marker" })
@@ -314,7 +411,10 @@ export async function updateMiniAppCard(
       phone,
       session,
       () => mintSignedLink(userId, appSlug, resourceId, "card"),
-      cardLayout(appSlug)
+      {
+        ...cardLayout(appSlug),
+        ...(appSlug === "app" ? await appCardLayout(supabase, userId, resourceId) : {}),
+      }
     );
     if (!refreshed) {
       await deleteMiniAppCardSession(

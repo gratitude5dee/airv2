@@ -1,0 +1,74 @@
+/**
+ * The create-miniapp Box skill (V11 §8.3, CR9/CR10): the agent stages and the
+ * owner publishes, so the skill text must never let the agent claim an app is
+ * published; the CLI must zip with python (no `zip` binary) and pull nothing
+ * to storage itself.
+ */
+import { readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+
+const skillDir = join(
+  __dirname,
+  "..",
+  "..",
+  "..",
+  "..",
+  "infra",
+  "template",
+  "skills",
+  "create-miniapp"
+);
+const skill = readFileSync(join(skillDir, "SKILL.md"), "utf8");
+const cli = readFileSync(join(skillDir, "scripts", "air-create"), "utf8");
+
+/** Prose only: fenced blocks and inline code carry literal API values. */
+function prose(markdown: string): string {
+  return markdown.replace(/```[\s\S]*?```/g, "").replace(/`[^`\n]*`/g, "");
+}
+
+describe("create-miniapp skill", () => {
+  it("never claims an app is published", () => {
+    expect(prose(skill)).not.toMatch(/\bpublished\b/i);
+    expect(cli).not.toMatch(/\bpublished\b/i);
+  });
+
+  it("frames publishing as the owner's decision and sends the draft card", () => {
+    expect(skill).toMatch(/only the owner|the owner does|THEY flip/i);
+    expect(skill).toContain("[card: app promo]");
+    expect(skill).toContain("Needs-you");
+  });
+
+  it("recognizes hosting phrasings and declines images and videos", () => {
+    for (const phrase of ["host this", "put this up", "make this live", "share this as a page"]) {
+      expect(skill.toLowerCase().replace(/\s+/g, " ")).toContain(phrase);
+    }
+    expect(skill).toContain("/api/media/publish");
+    expect(cli).toContain("/api/media/publish");
+    expect(cli).toMatch(/\*\.png\|\*\.jpg/);
+  });
+
+  it("supports drop, status, and publish only", () => {
+    const subcommands = [...cli.matchAll(/^\s{2}(\w+)\) shift; cmd_\w+/gm)].map((m) => m[1]);
+    expect(subcommands.sort()).toEqual(["drop", "publish", "status"]);
+    expect(cli).not.toMatch(/cmd_build/);
+  });
+
+  it("zips folders with python and never assumes a zip binary", () => {
+    expect(cli).toContain("python3 -m zipfile -c");
+    expect(cli).not.toMatch(/^\s*zip\s+-/m);
+  });
+
+  it("uses the gateway base and token from the Box env, and only control-plane routes", () => {
+    expect(cli).toContain("${BASE_URL%/api/gateway/v1}");
+    expect(cli).toContain("/api/create/drop");
+    expect(cli).toContain("/api/create/status");
+    expect(cli).toContain("/api/miniapps/publish");
+    expect(cli).not.toMatch(/r2\.cloudflarestorage|amazonaws|s3:\/\//);
+    expect(cli).not.toMatch(/publish\/status/);
+  });
+
+  it("is executable", () => {
+    expect(statSync(join(skillDir, "scripts", "air-create")).mode & 0o111).not.toBe(0);
+  });
+});
