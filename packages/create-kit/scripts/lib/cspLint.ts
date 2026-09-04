@@ -1,10 +1,12 @@
 /**
  * CSP / webview lint over Kit component files (goal-create-v11 §8.2, CR12).
  *
- * `apps/web/lib/create/lint.ts` did not exist on `main` when this was written,
- * so the §8.2 rule set is implemented here. When MC4 lands the platform linter,
- * import it from there and delete the duplicate rules (see DESIGN.md
- * "Reconciliation").
+ * The platform linter (`apps/web/lib/create/lint.ts`) checks a Drop's built
+ * bundle (HTML/CSS/JS) and pulls in the R2 bundle store, so it is not imported
+ * here: this lint runs over component *source* (TSX/CSS) with no apps/web
+ * dependency, and adds the Kit-only rules (WebGL, service workers, raw HTML).
+ * Keep the shared rules (hosts, storage, eval, meta http-equiv, frames,
+ * external styles/fonts, inline handlers, base64 size) in step with §8.2 there.
  *
  * Hard findings reject a component; soft findings are recorded in meta.json
  * (`csp.soft`) for the agent to act on.

@@ -358,10 +358,10 @@ The Box copy of the Air Create Design doc (goal-create-v11 §12.3) is a
 `infra/template/skills/create-miniapp/DESIGN.md`. Never edit either copy by
 hand — `npx tsx packages/create-kit/scripts/verify.ts` (CI) fails when the
 two differ or when either drifts from `kit/**/meta.json` + `prompts/src/`.
-MC2 owns `skills/create-miniapp/SKILL.md`; until it lands the directory
-carries only `DESIGN.md`, and `sync-box.sh` §1 already copies every
-`skills/*/` directory, so no sync-box change is needed for the doc to reach
-`~/.hermes/skills/create-miniapp/DESIGN.md`.
+`skills/create-miniapp/SKILL.md` and `scripts/air-create` belong to the Drop
+lane (MC2); `DESIGN.md` sits beside them. `sync-box.sh` §1 already copies
+every `skills/*/` directory, so no sync-box change is needed for the doc to
+reach `~/.hermes/skills/create-miniapp/DESIGN.md`.
 
 Rollout is the ordinary §7 flow — regenerate, commit, then
 `ADMIN_API_KEY=... APP_ORIGIN=... infra/template/release.sh "create-kit
