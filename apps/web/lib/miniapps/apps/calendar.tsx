@@ -686,14 +686,17 @@ function monthBody(
         { counts: new Map<string, number>(), max: 0, value: personaOf(allDayEvents[0]!) }
       ).value;
       const color = personaColors.get(dominant) ?? ditherColor(dominant);
+      const muted = persona !== null && dayEvents.length === 0;
+      const artworkEvents = muted ? allDayEvents : dayEvents;
       const names = dayEvents.map((event) => event.title).join(", ");
       const countText = `${dayEvents.length} event${dayEvents.length === 1 ? "" : "s"}`;
-      const label = `${dayLabel(key)} — ${countText}: ${names}`;
-      const muted = persona !== null && dayEvents.length === 0;
+      const label = muted
+        ? `${dayLabel(key)} — no ${persona} events`
+        : `${dayLabel(key)} — ${countText}: ${names}`;
       const href = isOpen
         ? viewHref(basePath, "month", persona, undefined, monthKey)
         : viewHref(basePath, "month", persona, key, undefined);
-      const stickers = stickersFor(dayEvents)
+      const stickers = stickersFor(artworkEvents)
         .map((sticker) =>
           sticker.kind === "pending"
             ? '<span class="mo-sticker pend" aria-hidden="true">?</span>'
@@ -703,12 +706,7 @@ function monthBody(
         )
         .join("");
       const cover = coverMarkup(
-        coverFor(
-          dayEvents,
-          avatars,
-          publicUrl,
-          color
-        )
+        coverFor(artworkEvents, avatars, publicUrl, color)
       );
       cells.push(`<a class="mo-cell mo-tile${isOpen ? " is-open" : ""}${isToday ? " is-today" : ""}${muted ? " is-muted" : ""}${dayEvents.some((event) => event.status === "pending") ? " is-pending" : ""}" data-day="${esc(key)}" data-count="${dayEvents.length}" data-personas="${esc(personas.toLowerCase())}" href="${esc(href)}" aria-label="${esc(isOpen ? `Close ${dayLabel(key)}` : label)}"${isOpen ? ' aria-expanded="true"' : ""}${muted ? ' aria-hidden="true" tabindex="-1"' : ""} style="--tilt:${isOpen ? "0" : tiltFor(key)}deg;--persona:${esc(color)}"><span class="mo-face">${cover}${stickers}<span class="mo-x" aria-hidden="true">×</span></span></a>`);
     }

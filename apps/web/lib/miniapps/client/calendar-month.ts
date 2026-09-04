@@ -430,6 +430,17 @@ export function mount(doc: Document, win: Window): void {
     }
   });
 
+  doc.addEventListener("keydown", (event) => {
+    if (
+      event.key === "Escape" &&
+      state.open &&
+      !mosaic.contains(event.target as Node)
+    ) {
+      event.preventDefault();
+      dispatch({ type: "close" });
+    }
+  });
+
   win.addEventListener("popstate", () => {
     const day = new URL(win.location.href).searchParams.get("day");
     dispatch({ type: "popstate", day });

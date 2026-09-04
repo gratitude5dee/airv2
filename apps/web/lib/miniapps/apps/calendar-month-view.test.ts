@@ -162,6 +162,15 @@ describe("calendar month mosaic", () => {
     expect(html).toContain('class="panel mosaic is-filtered"');
     expect(html).toContain("is-muted");
     expect(html).toContain('aria-hidden="true" tabindex="-1"');
+    expect(html).toMatch(
+      /<a class="mo-cell mo-tile[^>]*data-day="2026-09-01"[^>]*aria-label="[^"]+ — no work events"/
+    );
+    const mutedTile = html.slice(
+      html.indexOf('data-day="2026-09-01"'),
+      html.indexOf('data-day="2026-09-02"')
+    );
+    expect(mutedTile).toContain('class="mo-cover mo-plate"');
+    expect(mutedTile).not.toContain(">0<");
     expect(html).not.toContain('<template class="mo-day" data-day="2026-09-01"');
   });
 
