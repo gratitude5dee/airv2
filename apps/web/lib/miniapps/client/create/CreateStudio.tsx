@@ -116,7 +116,8 @@ const TAB_LABEL: Record<Tab, string> = {
   share: "Share",
 };
 
-const APPNAME_RE = /^[a-z0-9][a-z0-9-]{1,47}$/;
+/** Mirrors `validateAppName` in lib/miniapps/publish.ts: 1–32 chars, no leading or trailing hyphen. */
+const APPNAME_RE = /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/;
 
 interface Message {
   role: "owner" | "agent";
@@ -438,7 +439,7 @@ function Chat({
 
 function Preview({
   status,
-  epoch,
+  previewUrl,
   device,
   lite,
   onDevice,
@@ -447,7 +448,8 @@ function Preview({
   compact,
 }: {
   status: StatusResponse | null;
-  epoch: number;
+  /** Frozen by the studio: changes only on a new draft, a reload or the lite toggle. */
+  previewUrl: string | null;
   device: DeviceId;
   lite: boolean;
   onDevice: (device: DeviceId) => void;
@@ -457,12 +459,11 @@ function Preview({
 }) {
   const preset = DEVICES.find((d) => d.id === device) ?? DEVICES[1];
   const src = useMemo(() => {
-    if (!status?.preview_url) return null;
-    const url = new URL(status.preview_url);
+    if (!previewUrl) return null;
+    const url = new URL(previewUrl);
     if (lite) url.searchParams.set("lite", "1");
-    url.searchParams.set("_", String(epoch));
     return url.toString();
-  }, [status?.preview_url, lite, epoch]);
+  }, [previewUrl, lite]);
   const frame = preset.w
     ? { width: preset.w, height: preset.h, maxWidth: "100%" }
     : { width: "100%", height: compact ? 480 : 720 };
@@ -1119,7 +1120,11 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
   const [message, setMessage] = useState<string | null>(null);
   const [device, setDevice] = useState<DeviceId>("expanded");
   const [lite, setLite] = useState(false);
-  const [epoch, setEpoch] = useState(0);
+  // The iframe src. A preview URL carries a 60 s owner token that the app
+  // origin swaps for a cookie on first load, so the src is pinned here and
+  // replaced only when a new draft lands or the owner asks for a reload —
+  // never on an ordinary status poll, which would discard the draft's state.
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const events = useRef<EventSource | null>(null);
   const lastDraft = useRef<string | null>(null);
 
@@ -1130,18 +1135,20 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
     setProjects(data.projects ?? []);
   }, []);
 
-  const loadStatus = useCallback(async (target: string) => {
-    const res = await fetch(
-      `/api/create/status?slug=${encodeURIComponent(target)}`,
-    );
-    if (!res.ok) return;
-    const next = (await res.json()) as StatusResponse;
-    setStatus(next);
-    if (next.draft_version && next.draft_version !== lastDraft.current) {
+  const loadStatus = useCallback(
+    async (target: string, { remountPreview = false } = {}) => {
+      const res = await fetch(
+        `/api/create/status?slug=${encodeURIComponent(target)}`,
+      );
+      if (!res.ok) return;
+      const next = (await res.json()) as StatusResponse;
+      setStatus(next);
+      const newDraft = next.draft_version !== lastDraft.current;
       lastDraft.current = next.draft_version;
-      setEpoch((n) => n + 1);
-    }
-  }, []);
+      if (newDraft || remountPreview) setPreviewUrl(next.preview_url);
+    },
+    [],
+  );
 
   useEffect(() => {
     void loadProjects();
@@ -1161,6 +1168,7 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
   useEffect(() => {
     setStatus(null);
     setMessages([]);
+    setPreviewUrl(null);
     lastDraft.current = null;
     if (slug)
       void loadStatus(slug).catch(() =>
@@ -1219,10 +1227,10 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
   }
 
   function send(text: string) {
-    const target = status?.appname ?? appname.trim();
+    const target = status?.appname ?? appname.trim().toLowerCase();
     if (!APPNAME_RE.test(target)) {
       setMessage(
-        "pick an app name first: 2–48 lowercase letters, digits or dashes",
+        "pick an app name first: 1–32 lowercase letters, digits or hyphens, not starting or ending with a hyphen",
       );
       return;
     }
@@ -1335,9 +1343,13 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
   /** A preview token lives 60 s, so a reload is a status refresh (fresh token) plus a remount. */
   function reloadPreview() {
     if (!slug) return;
-    void loadStatus(slug)
-      .catch(() => undefined)
-      .then(() => setEpoch((n) => n + 1));
+    void loadStatus(slug, { remountPreview: true }).catch(() => undefined);
+  }
+
+  /** The lite toggle re-enters the app origin, so it needs a fresh token too. */
+  function toggleLite(next: boolean) {
+    setLite(next);
+    reloadPreview();
   }
 
   const build = status?.build ?? null;
@@ -1376,7 +1388,7 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
         <div className="flex flex-col gap-3">
           <Preview
             status={status}
-            epoch={epoch}
+            previewUrl={previewUrl}
             device="compact"
             lite={true}
             onDevice={() => undefined}
@@ -1438,11 +1450,11 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
         />
         <Preview
           status={status}
-          epoch={epoch}
+          previewUrl={previewUrl}
           device={device}
           lite={lite}
           onDevice={setDevice}
-          onLite={setLite}
+          onLite={toggleLite}
           onReload={reloadPreview}
           compact={false}
         />

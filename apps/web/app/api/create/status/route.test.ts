@@ -169,4 +169,22 @@ describe("GET /api/create/status", () => {
     );
     expect(badBuild.status).toBe(400);
   });
+
+  it("scopes ?build= to the selected app, so another project's build never shows here", async () => {
+    box.boxUserId.mockResolvedValue("user-alice");
+    const response = await GET(
+      new NextRequest(
+        "https://air.test/api/create/status?slug=alice-promo&build=0f0e0d0c-0b0a-4908-8706-050403020100",
+        { headers: { authorization: "Bearer gw-1" } }
+      )
+    );
+    expect(response.status).toBe(200);
+    expect(ledger.getBuild).toHaveBeenCalledWith(
+      expect.anything(),
+      "user-alice",
+      app.id,
+      "0f0e0d0c-0b0a-4908-8706-050403020100"
+    );
+    expect(((await response.json()) as { build: unknown }).build).toBeNull();
+  });
 });

@@ -1,4 +1,6 @@
+import { gzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
+import { KitError, readTarGz, safeArchivePath } from "./kit";
 import {
   AIR_APP_SCHEMA,
   checkWorkspace,
@@ -107,6 +109,26 @@ describe("workspace safety", () => {
     expect(safeWorkspacePath(".build/findings.json")).toBeNull();
     expect(safeWorkspacePath("functions/index.ts")).toBeNull();
     expect(safeWorkspacePath("node_modules/react/index.js")).toBeNull();
+  });
+
+  it("folds duplicate separators and dot segments before deciding", () => {
+    expect(safeArchivePath("src//main.tsx")).toBe("src/main.tsx");
+    expect(safeArchivePath("./src/./a/../b.ts")).toBe("src/b.ts");
+    expect(safeArchivePath("src\\..\\..\\etc\\passwd")).toBeNull();
+    expect(safeArchivePath("src/..//../x")).toBeNull();
+    expect(safeArchivePath("..")).toBeNull();
+    expect(safeArchivePath("./")).toBeNull();
+    expect(safeArchivePath("a\0b")).toBeNull();
+    expect(safeWorkspacePath("public//../src/main.tsx")).toBe("src/main.tsx");
+  });
+
+  it("refuses an archive that inflates past the cap before reading it", () => {
+    const bomb = gzipSync(Buffer.alloc(4 * 1024 * 1024));
+    expect(bomb.length).toBeLessThan(64 * 1024);
+    expect(() => readTarGz(bomb, { maxBytes: 1024 * 1024 })).toThrowError(
+      expect.objectContaining({ status: 413 }) as KitError
+    );
+    expect(readTarGz(bomb, { maxBytes: 8 * 1024 * 1024 })).toEqual([]);
   });
 
   it("caps source size and refuses svg assets", () => {

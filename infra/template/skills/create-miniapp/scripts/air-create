@@ -334,13 +334,18 @@ cmd_drop() {
   finish "$(api POST /api/create/drop "$body")"
 }
 
+# A slug is `<username>-<appname>`, indistinguishable from an app name by
+# shape, so the reference is tried as an app name first and as a slug only when
+# the app lookup says not-found or not-an-app-name (a slug may run past the
+# 32-character app-name cap); any other API error is reported as-is.
 cmd_status() {
-  local ref="${1:-}"
+  local ref="${1:-}" response
   [ -n "$ref" ] || ref="$(resolve_appname "")"
-  case "$ref" in
-    */*) finish "$(api GET "/api/create/status?slug=$(url_encode "$ref")")" ;;
-    *) finish "$(api GET "/api/create/status?app=$(url_encode "$ref")")" ;;
+  response="$(api GET "/api/create/status?app=$(url_encode "$ref")")"
+  case "${response##*$'\n'}" in
+    400|404) response="$(api GET "/api/create/status?slug=$(url_encode "$ref")")" ;;
   esac
+  finish "$response"
 }
 
 cmd_publish() {

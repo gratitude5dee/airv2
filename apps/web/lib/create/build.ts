@@ -302,7 +302,11 @@ export async function pullWorkspace(
   }
   let entries;
   try {
-    entries = readTarGz(archive, WORKSPACE_MAX_FILES + 1);
+    entries = readTarGz(archive, {
+      maxFiles: WORKSPACE_MAX_FILES + 1,
+      // tar headers + 512-byte padding on top of the content cap
+      maxBytes: WORKSPACE_MAX_BYTES + (WORKSPACE_MAX_FILES + 1) * 1024 + 1,
+    });
   } catch (error) {
     if (error instanceof KitError) throw new BuildError(error.message, error.status);
     throw error;
@@ -975,9 +979,11 @@ export async function latestBuild(
   return data ? asBuildRecord(data as Record<string, unknown>) : null;
 }
 
+/** One build by id, only if it belongs to this owner *and* this app. */
 export async function getBuild(
   supabase: SupabaseClient,
   userId: string,
+  appId: string,
   buildId: string
 ): Promise<BuildRecord | null> {
   const { data } = await supabase
@@ -985,6 +991,7 @@ export async function getBuild(
     .select(BUILD_COLUMNS)
     .eq("id", buildId)
     .eq("user_id", userId)
+    .eq("app_id", appId)
     .maybeSingle();
   return data ? asBuildRecord(data as Record<string, unknown>) : null;
 }

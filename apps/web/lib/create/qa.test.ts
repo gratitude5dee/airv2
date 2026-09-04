@@ -90,6 +90,19 @@ describe("scoreReport", () => {
     expect(summary.failed).toEqual(["incomplete-matrix"]);
   });
 
+  it("six passes on the wrong viewports do not count as the matrix", () => {
+    const wrong = [500, 600, 700].flatMap((height) =>
+      [false, true].map((reduced_motion) => pass({ viewport: { width: 390, height }, reduced_motion }))
+    );
+    expect(scoreReport(report(wrong)).failed).toEqual(["incomplete-matrix"]);
+    // Five required cells plus a stray one is still short by a cell.
+    const nearly = [...fullMatrix().slice(0, 5), pass({ viewport: { width: 390, height: 500 } })];
+    expect(scoreReport(report(nearly)).failed).toEqual(["incomplete-matrix"]);
+    // Duplicates of one required cell never fill in for another.
+    const repeated = [...fullMatrix().slice(0, 5), pass()];
+    expect(scoreReport(report(repeated)).failed).toEqual(["incomplete-matrix"]);
+  });
+
   it("page errors and CSP reports are the heaviest single penalties", () => {
     expect(scoreReport(report(fullMatrix({ page_errors: 1 }))).score).toBe(70);
     expect(scoreReport(report(fullMatrix({ csp_reports: 2 }))).score).toBe(75);

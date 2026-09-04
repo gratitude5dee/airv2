@@ -31,6 +31,15 @@ export const QA_THRESHOLDS = {
 /** Passes short of the full matrix (3 viewports × motion on/off) cap the score. */
 export const QA_PASS_MATRIX = QA_VIEWPORTS.length * 2;
 
+function matrixCell(viewport: { width: number; height: number }, reducedMotion: boolean): string {
+  return `${viewport.width}x${viewport.height}:${reducedMotion ? 1 : 0}`;
+}
+
+/** Every (viewport, reduced-motion) cell a complete run must report. */
+export const QA_MATRIX_CELLS: ReadonlySet<string> = new Set(
+  QA_VIEWPORTS.flatMap((viewport) => [matrixCell(viewport, false), matrixCell(viewport, true)])
+);
+
 const count = z.number().int().min(0).max(1_000_000);
 
 export const QaPassSchema = z
@@ -121,10 +130,14 @@ export function scoreReport(report: QaReport): QaSummary {
     failed.add("off-origin-requests");
     score = 0;
   }
-  const covered = new Set(
-    report.passes.map((p) => `${p.viewport.width}x${p.viewport.height}:${p.reduced_motion ? 1 : 0}`)
-  ).size;
-  if (covered < QA_PASS_MATRIX) {
+  // Only the fixed matrix counts as coverage: a pass on some other viewport
+  // is scored for faults above but never stands in for a required cell.
+  const covered = new Set<string>();
+  for (const pass of report.passes) {
+    const cell = matrixCell(pass.viewport, pass.reduced_motion);
+    if (QA_MATRIX_CELLS.has(cell)) covered.add(cell);
+  }
+  if (covered.size < QA_MATRIX_CELLS.size) {
     failed.add("incomplete-matrix");
     score = Math.min(score, 60);
   }

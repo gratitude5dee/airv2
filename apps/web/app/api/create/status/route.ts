@@ -72,7 +72,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const app = await ownedApp(supabase, userId, slug);
     const [versions, build, spent] = await Promise.all([
       listVersions(supabase, app.id),
-      buildId ? getBuild(supabase, userId, buildId) : latestBuild(supabase, app.id),
+      buildId ? getBuild(supabase, userId, app.id, buildId) : latestBuild(supabase, app.id),
       createSpendUsd(supabase, userId, app.slug),
     ]);
     const live = app.status === "published" ? app.bundle_version : null;

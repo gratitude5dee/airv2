@@ -227,24 +227,52 @@ export function readTar(archive: Buffer, maxFiles = 20_000): TarEntry[] {
   return entries;
 }
 
-export function readTarGz(archive: Buffer, maxFiles?: number): TarEntry[] {
+/** Largest tar a vendored or restricted tarball may inflate to. */
+export const ARCHIVE_MAX_UNPACKED_BYTES = 256 * 1024 * 1024;
+
+export interface ReadTarGzOptions {
+  maxFiles?: number | undefined;
+  /** Inflated size cap; a gzip bomb fails here before any byte is read. */
+  maxBytes?: number | undefined;
+}
+
+export function readTarGz(
+  archive: Buffer,
+  { maxFiles, maxBytes = ARCHIVE_MAX_UNPACKED_BYTES }: ReadTarGzOptions = {}
+): TarEntry[] {
   let tar: Buffer;
   try {
-    tar = gunzipSync(archive);
-  } catch {
+    tar = gunzipSync(archive, { maxOutputLength: maxBytes });
+  } catch (error) {
+    if ((error as { code?: string }).code === "ERR_BUFFER_TOO_LARGE") {
+      throw new KitError("archive inflates past the size cap", 413);
+    }
     throw new KitError("archive is not gzip", 400);
   }
   return readTar(tar, maxFiles);
 }
 
-/** Refuse anything a tarball could use to escape its extraction root. */
+/**
+ * The entry's path as a clean relative POSIX path, or null when it could
+ * escape the extraction root: absolute, `..`-bearing, NUL, or empty once
+ * `./` and duplicate separators are folded away.
+ */
 export function safeArchivePath(entryPath: string): string | null {
-  const normalized = entryPath.replace(/\\/g, "/").replace(/^\.\/+/, "");
-  if (!normalized || normalized.startsWith("/") || /(^|\/)\.\.(\/|$)/.test(normalized)) {
-    return null;
-  }
-  if (normalized.includes("\0")) return null;
+  if (!entryPath || entryPath.includes("\0")) return null;
+  const slashed = entryPath.replace(/\\/g, "/");
+  if (slashed.startsWith("/")) return null;
+  const normalized = path.posix.normalize(slashed).replace(/\/+$/, "");
+  if (!normalized || normalized === ".") return null;
+  if (normalized === ".." || normalized.startsWith("../")) return null;
+  if (normalized.split("/").some((segment) => segment === "..")) return null;
   return normalized;
+}
+
+/** `root/<safe>` if it stays under root, else null. */
+function destinationUnder(root: string, safe: string): string | null {
+  const base = path.resolve(root);
+  const dest = path.resolve(base, safe);
+  return dest.startsWith(base + path.sep) ? dest : null;
 }
 
 function scratchRoot(): string {
@@ -297,7 +325,8 @@ async function extractVendor(root: string): Promise<string> {
       if (!safe || !safe.startsWith("package/")) continue;
       const rel = safe.slice("package/".length);
       if (!rel) continue;
-      const dest = path.join(pkgDir, rel);
+      const dest = destinationUnder(pkgDir, rel);
+      if (!dest) continue;
       fs.mkdirSync(path.dirname(dest), { recursive: true });
       fs.writeFileSync(dest, entry.bytes);
     }
@@ -388,7 +417,8 @@ async function extractRestricted(): Promise<string | null> {
   for (const entry of readTarGz(object.body)) {
     const safe = safeArchivePath(entry.path);
     if (!safe || !safe.startsWith("components/")) continue;
-    const dest = path.join(staging, safe);
+    const dest = destinationUnder(staging, safe);
+    if (!dest) continue;
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     fs.writeFileSync(dest, entry.bytes);
   }

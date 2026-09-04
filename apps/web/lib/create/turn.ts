@@ -13,10 +13,15 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { armStopAfter, ensureBoxAwake } from "../orchestrator/boxes";
 import { createRun, ensureSession } from "../hermes/client";
 import { isSpeedTier, type SpeedTier } from "../entitlements/models";
-import { PublishError, validateAppName } from "../miniapps/publish";
+import {
+  PublishError,
+  publisherUsername,
+  slugFor,
+  validateAppName,
+} from "../miniapps/publish";
 import type { RegistryApp } from "../miniapps/registry";
 import { kitRoot, kitVersion } from "./kit";
-import { createRunLabel } from "./budget";
+import { createRunLabel, openCreateRun } from "./budget";
 import { resolveDropApp } from "./drop";
 import { WORKSPACE_ROOT } from "./build";
 
@@ -138,6 +143,15 @@ export async function startCreateTurn(
   const prompt = normalizePrompt(input.input);
   const tier: SpeedTier =
     input.tier && isSpeedTier(input.tier) ? input.tier : "balanced";
+  // One open Create run per owner: the gateway attributes `create-*` spend
+  // to the open run, so a second project may not start until it closes.
+  const open = await openCreateRun(supabase, userId);
+  if (open && open.slug !== slugFor(await publisherUsername(supabase, userId), appname)) {
+    throw new PublishError(
+      "another Create project is still running; wait for it to finish",
+      409
+    );
+  }
   const app = await resolveDropApp(supabase, userId, { appname }, "vibe");
   const session = createSessionId(appname);
   const box = await ensureBoxAwake(supabase, userId);

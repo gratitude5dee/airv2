@@ -10,8 +10,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const CREATE_LABEL_PREFIX = "create:";
 export const DEFAULT_CREATE_BUDGET_USD = 5;
-/** How long after its last turn a Create run still attributes gateway usage. */
+/** How long after it ends a Create run still attributes gateway usage. */
 export const CREATE_RUN_ATTRIBUTION_MINUTES = 30;
+/** An open Create run older than this never closed cleanly; it stops counting. */
+export const CREATE_RUN_MAX_MINUTES = 60;
 
 export function createRunLabel(slug: string): string {
   return `${CREATE_LABEL_PREFIX}${slug}`;
@@ -23,25 +25,56 @@ export function slugFromRunLabel(label: string | null | undefined): string | nul
   return slug ? slug : null;
 }
 
+function minutesAgo(minutes: number): string {
+  return new Date(Date.now() - minutes * 60_000).toISOString();
+}
+
 /**
- * The project a `create-*` gateway call belongs to: the user's most recent
- * Create run that is still open (or closed within the attribution window,
- * for the trailing completions that land after the terminal event).
+ * The user's open Create run, if any. Gateway calls carry no run id (Hermes
+ * speaks plain OpenAI to the gateway), so attribution rests on the turn
+ * route keeping at most one Create run open per user: while one is open,
+ * every `create-*` completion is that project's.
+ */
+export async function openCreateRun(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<{ slug: string; run_id: string } | null> {
+  const { data } = await supabase
+    .from("agent_runs")
+    .select("label, hermes_run_id")
+    .eq("user_id", userId)
+    .like("label", `${CREATE_LABEL_PREFIX}%`)
+    .not("hermes_run_id", "is", null)
+    .is("ended_at", null)
+    .gte("started_at", minutesAgo(CREATE_RUN_MAX_MINUTES))
+    .order("started_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const row = data as { label: string | null; hermes_run_id: string } | null;
+  const slug = slugFromRunLabel(row?.label);
+  return slug && row ? { slug, run_id: row.hermes_run_id } : null;
+}
+
+/**
+ * The project a `create-*` gateway call belongs to: the open Create run, or
+ * the one that closed most recently within the attribution window (for the
+ * trailing completions that land after the terminal event).
  */
 export async function activeCreateSlug(
   supabase: SupabaseClient,
   userId: string
 ): Promise<string | null> {
-  const since = new Date(
-    Date.now() - CREATE_RUN_ATTRIBUTION_MINUTES * 60_000
-  ).toISOString();
   const { data } = await supabase
     .from("agent_runs")
     .select("label, ended_at, started_at")
     .eq("user_id", userId)
     .like("label", `${CREATE_LABEL_PREFIX}%`)
     .not("hermes_run_id", "is", null)
-    .gte("started_at", since)
+    .or(
+      `and(ended_at.is.null,started_at.gte.${minutesAgo(CREATE_RUN_MAX_MINUTES)}),` +
+        `ended_at.gte.${minutesAgo(CREATE_RUN_ATTRIBUTION_MINUTES)}`
+    )
+    .order("ended_at", { ascending: false, nullsFirst: true })
     .order("started_at", { ascending: false })
     .limit(1)
     .maybeSingle();

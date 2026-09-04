@@ -270,7 +270,8 @@ export async function POST(
   // the entitlement the same way, resolved on the Create tier family and
   // always served by OpenAI whatever the owner's chat family is. The
   // project's budget is checked against its own metered rows before the
-  // upstream call.
+  // upstream call, and the family is only reachable from inside a Create
+  // run — nothing else may spend on it.
   const createTier = parseCreateTier(rawBody["model"]);
   const tier =
     createTier !== null
@@ -281,15 +282,19 @@ export async function POST(
   let createLabel: string | null = null;
   if (createTier !== null) {
     const slug = await activeCreateSlug(supabase, userId);
-    if (slug) {
-      createLabel = createRunLabel(slug);
-      const meter = await projectBudget(supabase, userId, slug);
-      if (meter && budgetExhausted(meter)) {
-        return NextResponse.json(
-          { error: "insufficient_quota", reason: "create_budget" },
-          { status: 429 }
-        );
-      }
+    if (!slug) {
+      return NextResponse.json(
+        { error: "forbidden", reason: "create_run_required" },
+        { status: 403 }
+      );
+    }
+    createLabel = createRunLabel(slug);
+    const meter = await projectBudget(supabase, userId, slug);
+    if (meter && budgetExhausted(meter)) {
+      return NextResponse.json(
+        { error: "insufficient_quota", reason: "create_budget" },
+        { status: 429 }
+      );
     }
   }
 

@@ -61,7 +61,7 @@ function table(name: string): Record<string, unknown> {
     }
   };
   const builder: Record<string, unknown> = {};
-  for (const f of ["select", "eq", "like", "not", "gte", "order", "limit"]) {
+  for (const f of ["select", "eq", "like", "not", "is", "or", "gte", "order", "limit"]) {
     builder[f] = () => builder;
   }
   builder["maybeSingle"] = async () =>
@@ -227,10 +227,18 @@ describe("gateway Create tier family (MC4 §9.1)", () => {
     expect(response.status).toBe(200);
   });
 
-  it("does not budget-gate a Create call with no active project", async () => {
+  it("refuses create-* with no open or recent Create run (403 create_run_required)", async () => {
     state.activeRun = null;
-    state.spentRows = [{ cost_usd: 99 }];
-    const { response } = await complete({ messages: [], model: "create-balanced" });
+    const { response, url } = await complete({ messages: [], model: "create-balanced" });
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: "forbidden", reason: "create_run_required" });
+    expect(url).toBeNull();
+    expect(meteredRows.length).toBe(0);
+  });
+
+  it("still serves plain tiers with no Create run open", async () => {
+    state.activeRun = null;
+    const { response } = await complete({ messages: [], model: "fast" });
     expect(response.status).toBe(200);
     expect(meteredRows[0]?.["label"]).toBeUndefined();
   });
