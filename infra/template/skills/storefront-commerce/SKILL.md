@@ -1,6 +1,6 @@
 ---
 name: storefront-commerce
-description: "Set up the owner's storefront: edit the box-side catalog for merch, digital goods, services, and event tickets, then stage the publish as an owner decision — nothing goes live from the box."
+description: "Storefront, merch, digital goods catalog, orders, revenue"
 version: 1.0.0
 author: air
 license: MIT

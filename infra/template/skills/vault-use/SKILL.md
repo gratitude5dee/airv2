@@ -1,6 +1,6 @@
 ---
 name: vault-use
-description: "Sign in to websites with the human's vault: type credentials straight into the browser with air-vault, never through chat or your own output."
+description: "Log in to sites with saved vault credentials; save secrets"
 version: 1.1.0
 author: air
 license: MIT

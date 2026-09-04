@@ -1,6 +1,6 @@
 ---
 name: email-draft-review
-description: "Use whenever the user asks to send, draft, write, reply to, or forward an email. Compose the body, create a draft via the mail MCP (wzrdmail or AgentMail), then file it for review — the box can only draft, never send."
+description: "Send, draft, reply, forward email: compose draft for approval"
 version: 1.0.0
 author: air
 license: MIT

@@ -1,6 +1,6 @@
 ---
 name: tour-planning
-description: "Plan tours and event logistics — dates, venues, run-of-show timelines, guest lists, rehearsal and travel bookings, ticket add-ons, and on-sale alerts — staging every outreach, publication, and payment step for owner approval."
+description: "Tours, shows, venues, run-of-show, guest lists, logistics"
 version: 1.0.0
 author: air
 license: MIT

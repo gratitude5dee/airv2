@@ -1,6 +1,6 @@
 ---
 name: calendar-native
-description: Read AND create/edit/delete the user's calendar events in the box-resident event store. Use whenever the user asks about their schedule OR asks to schedule/create/add/book/move/cancel an appointment, event, or meeting.
+description: "Calendar: view, add, move, delete events, reminders, clashes"
 ---
 
 # Calendar (box-native)

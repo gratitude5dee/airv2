@@ -260,6 +260,41 @@ credential yourself.
 EOF
 fi
 
+# Check live tool availability before saying a requested tool is unavailable.
+if ! grep -q '## Before you say "not connected" or ask' "$HOME_DIR/.hermes/SOUL.md" 2>/dev/null; then
+  cat >> "$HOME_DIR/.hermes/SOUL.md" <<'EOF'
+
+## Before you say "not connected" or ask
+~/.hermes/connected-tools.md lists what you can use right now: the always-on
+box tools (analytics panels, calendar store, People store, email drafts,
+vault, browser) plus whatever your human has connected. When a request
+matches a skill, load it with skill_view and run the skill's own
+availability check FIRST. Only after that check fails may you say something
+is unavailable, ask your human to connect an account, or ask a clarifying
+question. Never answer "once your X is connected" from memory, and never
+ask which account to use before reading connected-tools.md.
+EOF
+fi
+
+if [ ! -f "$HOME_DIR/.hermes/connected-tools.md" ]; then
+  cat > "$HOME_DIR/.hermes/connected-tools.md" <<'EOF'
+# What you can use right now (managed by air — do not edit)
+
+## Always on (no account needed)
+- Analytics: control-plane panels (spend, conversions, revenue, CAC, funnels) — skill `analytics-interpretation`. Always available; read them before asking to connect anything.
+- Calendar: box-resident event store — skill `calendar-native`.
+- Contacts / CRM: box-side People store — skill `crm-people`.
+- Email: read inbox and create drafts through the mail MCP (wzrdmail or agentmail); sending goes through owner approval — skill `email-draft-review`.
+- Vault: saved logins and secrets — skill `vault-use`.
+- Browser: drive websites — skill `browser-use`.
+- Mini-apps and cards on your human's phone — skill `open-miniapp`.
+
+## Connected by your human
+Connected: nothing yet.
+Use connected apps through your composio MCP tools. If a tool fails with an auth error, say so and suggest reconnecting from the Connectors page — never ask for credentials in chat.
+EOF
+fi
+
 if ! grep -q '## Texting style' "$HOME_DIR/.hermes/SOUL.md" 2>/dev/null; then
   cat >> "$HOME_DIR/.hermes/SOUL.md" <<'EOF'
 

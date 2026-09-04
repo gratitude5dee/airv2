@@ -1,6 +1,6 @@
 ---
 name: social-engage
-description: "Social posting and engagement: content calendars, scheduled posts, captions, cross-posting, likes under the human's standing rules, and comments/replies — every public action lands as an approval decision, APIs before browser."
+description: "Social posts, content calendar, captions, engagement, DMs"
 version: 1.0.0
 author: air
 license: MIT

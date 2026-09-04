@@ -1,6 +1,6 @@
 ---
 name: browser-use
-description: "Drive websites with Browser Use CLI 3.0: pipe Python into `box-browser-use` to control this computer's headed Chrome over CDP for multi-step web work."
+description: "Drive websites, fill forms, scrape pages via box-browser-use"
 version: 1.0.0
 author: air
 license: MIT

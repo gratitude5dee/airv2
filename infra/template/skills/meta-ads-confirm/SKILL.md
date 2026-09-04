@@ -1,6 +1,6 @@
 ---
 name: meta-ads-confirm
-description: "Meta Ads writes: confirm the connection after login, and stage every live change — ad copy and creatives, budgets, schedules, audiences, pausing ad sets — as an ad_write decision instead of applying it."
+description: "Meta ads campaigns, budgets, audiences, pixel: staged writes"
 version: 1.0.0
 author: air
 license: MIT

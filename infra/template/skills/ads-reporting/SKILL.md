@@ -1,6 +1,6 @@
 ---
 name: ads-reporting
-description: "Fetch yesterday's Meta ads insights through the Meta Ads MCP reporting tools and post them to the control plane's metrics ingest."
+description: "Ad results, ROAS, CPC, daily ad report: Meta Ads insights"
 version: 1.0.0
 author: air
 license: MIT

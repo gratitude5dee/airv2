@@ -10,6 +10,7 @@ import { command, getBox, isStartLimit, resume, waitForBox } from "../box/client
 import { health, type HermesBoxTarget } from "../hermes/client";
 import { mirrorBrandIfStale } from "../brand/mirror";
 import { recordBoxStateEvent } from "../box/events";
+import { boxTarget } from "../compute/runtime";
 
 export const STOP_AFTER_MINUTES = 20;
 
@@ -309,6 +310,34 @@ export async function ensureBoxAwake(
   // A box asleep through brand edits gets the current compile on wake
   // (CM0: mirror, don't sync). Best-effort, off the critical path.
   void mirrorBrandIfStale(supabase, userId, boxId);
+
+  // Keep connector state and the agent's availability note converged after
+  // every wake. Lazy import avoids the provisioning/orchestrator cycle.
+  void (async () => {
+    try {
+      const { data } = await supabase
+        .from("connections")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("status", "active")
+        .limit(1);
+      const { installComposioMcp, writeConnectedToolsFile } =
+        await import("../provisioning/connectors");
+      const target = boxTarget(boxId);
+      if (data && data.length > 0) {
+        await installComposioMcp(supabase, userId, target);
+      }
+      await writeConnectedToolsFile(supabase, userId, target);
+    } catch (error) {
+      console.log(
+        JSON.stringify({
+          msg: "post-wake connector convergence failed",
+          box_id: boxId,
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    }
+  })();
 
   await supabase
     .from("boxes")

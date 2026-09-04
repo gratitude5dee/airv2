@@ -1,6 +1,6 @@
 ---
 name: wzrdmail
-description: Build with the wzrdmail TypeScript (WzrdMailClient) or Python (WzrdMail) SDK, or the raw /v0 REST API, for inbox, message, thread, draft, attachment, domain, allow/block list, pod, API-key, and webhook workflows, including programmatic agent sign-up and inbox-scoped draft-only keys. Use when implementing or reviewing wzrdmail API code; do not use for direct mailbox operations, CLI usage, MCP setup, or framework-toolkit integration.
+description: Read inbox, threads, create email drafts via wzrdmail SDK/API
 version: 1.0.0
 author: wzrdmail
 license: MIT
