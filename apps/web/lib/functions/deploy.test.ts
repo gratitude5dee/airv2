@@ -79,6 +79,8 @@ const db = {
   readError: null as { message: string } | null,
   /** Paged reads issued (reconcileAppOrigins). */
   pages: 0,
+  /** Runs before each page read after the first: stands in for concurrent writers. */
+  betweenPages: null as ((page: number) => void) | null,
 };
 
 function fakeSupabase(): SupabaseClient {
@@ -110,13 +112,22 @@ function fakeSupabase(): SupabaseClient {
     if (table !== "mini_apps") throw new Error(`unexpected table ${table}`);
     const filters: ((row: AppRow) => boolean)[] = [];
     let pending: Partial<AppRow> | null = null;
-    let window: [number, number] | null = null;
+    let ordered: keyof AppRow | null = null;
+    let max: number | null = null;
     const chain = {
       select: () => chain,
-      order: () => chain,
-      range: (from: number, to: number) => {
-        window = [from, to];
+      order: (col: keyof AppRow) => {
+        ordered = col;
+        return chain;
+      },
+      limit: (n: number) => {
+        max = n;
         db.pages += 1;
+        if (db.pages > 1) db.betweenPages?.(db.pages);
+        return chain;
+      },
+      gt: (col: keyof AppRow, value: string) => {
+        filters.push((row) => String(row[col]) > value);
         return chain;
       },
       eq: (col: keyof AppRow, value: unknown) => {
@@ -147,7 +158,11 @@ function fakeSupabase(): SupabaseClient {
       then: (resolve: (value: { data: unknown; error: unknown }) => unknown) => {
         let rows = db.apps.filter((a) => filters.every((f) => f(a)));
         if (pending) for (const row of rows) Object.assign(row, pending);
-        if (window) rows = rows.slice(window[0], window[1] + 1);
+        if (ordered) {
+          const col = ordered;
+          rows = [...rows].sort((a, b) => String(a[col]).localeCompare(String(b[col])));
+        }
+        if (max !== null) rows = rows.slice(0, max);
         return Promise.resolve({ data: rows, error: null }).then(resolve);
       },
     };
@@ -188,6 +203,7 @@ beforeEach(() => {
   db.beforeClaim = null;
   db.readError = null;
   db.pages = 0;
+  db.betweenPages = null;
   tokens.appOriginConfigured.mockReturnValue(true);
   cloudflare.cloudflareConfigured.mockReturnValue(true);
   cloudflare.uploadAssets.mockClear();
@@ -648,6 +664,39 @@ describe("reconcileAppOrigins — the registry is the source of truth for the or
     expect(result).toEqual({ repaired: 1 });
     expect(db.pages).toBe(3);
     expect(manifest.readManifest).toHaveBeenCalledTimes(401);
+    expect(cloudflare.putDispatchScript).toHaveBeenCalledWith(
+      expect.objectContaining({ script: "alice-a400-draft" })
+    );
+  });
+
+  it("pages by keyset, so apps marked or deleted behind the cursor mid-sweep skip or repeat nothing ahead of it", async () => {
+    const row = (i: number) =>
+      registryRow({ id: `app-${String(i).padStart(4, "0")}`, slug: `alice-a${i}` });
+    db.apps = Array.from({ length: 401 }, (_, i) => row(i));
+    db.betweenPages = (page) => {
+      // Between page reads: three early rows lose their mark (deleted / torn
+      // down) and two brand-new apps get marked with ids that sort first.
+      if (page === 2) db.apps = db.apps.filter((a) => !/^app-000[0-2]$/.test(a.id));
+      if (page === 3) {
+        db.apps.unshift(
+          registryRow({ id: "app-0000-new1", slug: "alice-new1" }),
+          registryRow({ id: "app-0000-new2", slug: "alice-new2" })
+        );
+      }
+    };
+    manifest.readManifest.mockImplementation(async (slug: string) =>
+      slug === "alice-a400" ? servedManifest({ slug, draft: "v1700000000009" }) : null
+    );
+    const result = await reconcileAppOrigins(fakeSupabase(), NOW);
+    expect(result).toEqual({ repaired: 1 });
+    const visited = manifest.readManifest.mock.calls.map((c) => c[0]);
+    // Every app that existed throughout was visited exactly once; an offset
+    // would have skipped a3..a5 after the deletes and repeated others after
+    // the inserts.
+    for (let i = 3; i <= 400; i += 1) {
+      expect(visited.filter((s) => s === `alice-a${i}`)).toHaveLength(1);
+    }
+    expect(visited).not.toContain("alice-new1");
     expect(cloudflare.putDispatchScript).toHaveBeenCalledWith(
       expect.objectContaining({ script: "alice-a400-draft" })
     );

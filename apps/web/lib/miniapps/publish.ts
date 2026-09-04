@@ -11,7 +11,7 @@ import { randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { hashPassword } from "./gates";
 import { asRecord } from "../records";
-import { getVersion, pointLiveAt } from "../create/versions";
+import { authoritativeApp, getVersion, pointLiveAt } from "../create/versions";
 import {
   AppOriginRefusedError,
   promoteVersion,
@@ -228,10 +228,14 @@ export type PublishStatusFlip = "published" | "draft";
  * A staged draft (`draft_version` ahead of `bundle_version`, what a Drop onto
  * a live app leaves behind) is what "publish" makes live: the pointer moves
  * to it under the same compare-and-swap as a rollback, and a lost swap puts
- * the live Worker back on the release the registry still names. When the
- * metadata write after the swap fails on an app that was already live, the
- * previous release comes back too (Worker first, then the pointer) so a
- * request that reports failure never leaves the staged draft serving.
+ * the live Worker back on the release the registry still names. The row
+ * flip after the swap carries the generation the swap committed, so a write
+ * that landed in between (a delist, an edit, an origin repair) fails the
+ * flip instead of being written over. A flip that fails on an app that was
+ * already live brings the previous release back too (Worker first, then a
+ * fenced reverse swap) so a request that reports failure never leaves the
+ * staged draft serving — unless the registry has moved on since the commit,
+ * in which case the origin follows what the row says now.
  */
 export async function setPublishStatus(
   supabase: SupabaseClient,
@@ -266,9 +270,10 @@ export async function setPublishStatus(
     }
     throw error;
   }
+  let committedAt: string | null = null;
   if (status === "published" && version) {
     try {
-      await pointLiveAt(supabase, app, version.version);
+      committedAt = await pointLiveAt(supabase, app, version.version);
     } catch (error) {
       if (staged && app.bundle_version) {
         await promoteVersion(supabase, app, app.bundle_version).catch(() => null);
@@ -276,7 +281,7 @@ export async function setPublishStatus(
       throw error;
     }
   }
-  const { error } = await supabase
+  let flip = supabase
     .from("mini_apps")
     .update({
       status,
@@ -286,23 +291,19 @@ export async function setPublishStatus(
     })
     .eq("id", app.id)
     .eq("owner_user_id", userId);
-  if (error) {
-    // The manifest already moved; put it back to what the registry still
-    // says so a delist that failed to flip does not leave the app dark (or a
-    // first publish that failed to flip serving). A first publish keeps its
-    // moved pointer — the row still says draft, so nothing serves — while a
-    // live app gets its previous release restored before the error surfaces.
-    const restored =
-      status === "published" && version && staged && app.status === "published"
-        ? await restoreRelease(supabase, app, version.version)
-        : false;
-    await syncManifest(
-      supabase,
-      status === "published" && version && !restored
-        ? { ...app, bundle_version: version.version }
-        : app
-    ).catch(() => false);
-    throw new Error(`status flip failed: ${error.message}`);
+  if (committedAt) flip = flip.eq("updated_at", committedAt);
+  const { data: flipped, error } = await flip.select("id");
+  const lost = !error && committedAt !== null && (flipped ?? []).length === 0;
+  if (error || lost) {
+    if (committedAt && version) {
+      await undoPublish(supabase, app, version.version, staged !== null, committedAt);
+    } else {
+      // Nothing moved but the manifest; put it back to what the registry
+      // still says so a delist that failed to flip does not leave the app dark.
+      await syncManifest(supabase, app).catch(() => false);
+    }
+    if (error) throw new Error(`status flip failed: ${error.message}`);
+    throw new PublishError("app changed underneath this request; retry", 409);
   }
   if (status === "published" && version) {
     try {
@@ -324,34 +325,75 @@ export async function setPublishStatus(
 }
 
 /**
- * Undo a staged-draft publication that got as far as the pointer: the live
- * Worker goes back to the release `app` observed, then the pointer swaps
- * back from `from` under the same compare-and-swap. False when either step
- * failed and the registry's new pointer must stand.
+ * The pointer moved to `from` (committing `committedAt`) but the row flip did
+ * not land. Only the registry as re-read says what the origin should serve.
+ * When the row still stands exactly where the commit left it and this was a
+ * live app's staged draft, the previous release comes back: Worker first,
+ * then the pointer under a reverse swap fenced on `committedAt`. Otherwise —
+ * the row moved on since, or that reverse swap lost — the live Worker and
+ * manifest go on what the row says now. A first publish keeps its moved
+ * pointer either way: the row still says draft, so nothing serves. When the
+ * registry stays unreadable the origin is left as it is; the manifest still
+ * names the earlier release, which reconcileAppOrigins (cron) keys on.
  */
-async function restoreRelease(
+async function undoPublish(
   supabase: SupabaseClient,
   app: RegistryApp,
-  from: string
-): Promise<boolean> {
+  from: string,
+  staged: boolean,
+  committedAt: string
+): Promise<void> {
+  let current = await authoritativeApp(supabase, app.id);
   const previous = app.bundle_version;
-  if (!previous) return false;
-  try {
-    await promoteVersion(supabase, app, previous);
-    await pointLiveAt(supabase, { ...app, bundle_version: from }, previous);
-    return true;
-  } catch (error) {
+  if (
+    current &&
+    staged &&
+    previous &&
+    app.status === "published" &&
+    current.bundle_version === from &&
+    current.updated_at === committedAt
+  ) {
+    try {
+      await promoteVersion(supabase, current, previous);
+      await pointLiveAt(supabase, current, previous);
+      await syncManifest(supabase, { ...current, bundle_version: previous });
+      return;
+    } catch (error) {
+      logRestoreFailure(app, from, previous, error);
+      current = await authoritativeApp(supabase, app.id);
+    }
+  }
+  if (!current) {
     console.error(
       JSON.stringify({
-        msg: "miniapp release restore failed",
+        msg: "app origin not restored; registry unreadable after a failed flip, left to reconcile",
         slug: app.slug,
         version: from,
-        previous,
-        error: error instanceof Error ? error.message : String(error),
       })
     );
-    return false;
+    return;
   }
+  if (current.bundle_version) {
+    await promoteVersion(supabase, current, current.bundle_version).catch(() => null);
+  }
+  await syncManifest(supabase, current).catch(() => null);
+}
+
+function logRestoreFailure(
+  app: RegistryApp,
+  from: string,
+  previous: string,
+  error: unknown
+): void {
+  console.error(
+    JSON.stringify({
+      msg: "miniapp release restore failed",
+      slug: app.slug,
+      version: from,
+      previous,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  );
 }
 
 /**
