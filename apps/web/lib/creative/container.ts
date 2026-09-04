@@ -224,8 +224,8 @@ export function extractAudioTrack(bytes: Buffer): Buffer | undefined {
   }
   if (!picture) return undefined;
 
-  // Enabled tracks first (tkhd flag bit 0); a disabled track is what an
-  // editor muted, and only stands in when nothing else remuxes.
+  // A disabled track (tkhd flag bit 0 clear) is what an editor muted; the
+  // render must not bring it back.
   const enabled = (trak: Box): boolean => {
     const tkhd = findChild(bytes, trak.start, trak.end, "tkhd");
     return (
@@ -234,10 +234,7 @@ export function extractAudioTrack(bytes: Buffer): Buffer | undefined {
       ((bytes[tkhd.start + 3] ?? 1) & 1) === 1
     );
   };
-  const candidates = [
-    ...sounds.filter(enabled),
-    ...sounds.filter((t) => !enabled(t)),
-  ];
+  const candidates = sounds.filter(enabled);
 
   let sound: Box | undefined;
   let chunks: ReturnType<typeof trackChunks> = undefined;

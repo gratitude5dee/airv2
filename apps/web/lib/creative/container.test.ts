@@ -220,6 +220,8 @@ function clipWithSoundtrack(
      * one sample is the first picture chunk, or one with no sample tables.
      */
     decoy?: "disabled" | "tableless";
+    /** Flag the real sound track disabled in its tkhd. */
+    muted?: boolean;
   } = {},
 ) {
   const count = options.sampleCount ?? 5;
@@ -264,6 +266,9 @@ function clipWithSoundtrack(
     : box("stco", u32(0, 2, ...soundOffsets));
   const soundTrak = box(
     "trak",
+    options.muted
+      ? box("tkhd", Buffer.from([0, 0, 0, 0]), Buffer.alloc(80))
+      : Buffer.alloc(0),
     box(
       "mdia",
       hdlr("soun"),
@@ -366,6 +371,17 @@ describe("extractAudioTrack", () => {
       expect(Buffer.concat(chunksOf(m4a!, false)).equals(sound)).toBe(true);
       expect(m4a!.indexOf("VVVV")).toBe(-1);
     }
+  });
+
+  it("leaves a clip silent when every sound track is muted", () => {
+    expect(extractAudioTrack(clipWithSoundtrack({ muted: true }).file)).toBe(
+      undefined,
+    );
+    expect(
+      extractAudioTrack(
+        clipWithSoundtrack({ muted: true, decoy: "disabled" }).file,
+      ),
+    ).toBe(undefined);
   });
 
   it("yields nothing for a sound track with no samples", () => {
