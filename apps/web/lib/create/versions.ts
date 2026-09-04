@@ -26,7 +26,12 @@ import {
   validateBundle,
   type BundleFile,
 } from "../miniapps/bundles";
-import type { CreateLane, RegistryApp } from "../miniapps/registry";
+import {
+  parseRegistryApp,
+  REGISTRY_COLUMNS,
+  type CreateLane,
+  type RegistryApp,
+} from "../miniapps/registry";
 import { recordOpsEvent } from "../security/limits";
 import { deletePrefix, r2Configured } from "../storage/r2";
 
@@ -266,13 +271,7 @@ export async function uploadVersion(
   } catch (error) {
     // A refused claim means deletion owns the origin now; nothing to restore.
     if (deployed && !(error instanceof AppOriginRefusedError)) {
-      await restoreAppOrigin(
-        supabase,
-        app,
-        { bundle_version: app.bundle_version, draft_version: app.draft_version },
-        version,
-        liveMoved
-      );
+      await restoreAppOrigin(supabase, app, version, liveMoved);
     }
     await discardVersion(supabase, app, row.id, version);
     rethrowRefusedAsVersionError(error);
@@ -310,14 +309,16 @@ export async function uploadVersion(
     // deploy may have landed after the winner's), then surface the failure.
     // The pointers this call observed prove nothing now — a lost swap means
     // another writer moved them, and a failed swap does not mean nobody did —
-    // so only an authoritative re-read may drive the restore. When the
-    // registry stays unreadable the origin is left as it is: the served
-    // manifest names this version, which is what reconcileAppOrigins (cron)
-    // keys on to put the origin back once the registry can be read again.
+    // so only an authoritative re-read may drive the restore — the whole row,
+    // since the swap also loses to a status or metadata change and the
+    // manifest carries those too. When the registry stays unreadable the
+    // origin is left as it is: the served manifest names this version, which
+    // is what reconcileAppOrigins (cron) keys on to put the origin back once
+    // the registry can be read again.
     if (deployed) {
-      const current = await authoritativePointers(supabase, app.id);
+      const current = await authoritativeApp(supabase, app.id);
       if (current) {
-        await restoreAppOrigin(supabase, app, current, version, goesLive);
+        await restoreAppOrigin(supabase, current, version, goesLive);
       } else {
         console.error(
           JSON.stringify({
@@ -356,23 +357,23 @@ export async function uploadVersion(
 /**
  * Put the app origin back on the release(s) the registry names after an
  * upload of `version` failed past its deploy: the live Worker (when this
- * upload moved it), the shared draft Worker, then the manifest. Best effort
- * — the registry is the source of truth and the caller is already failing.
+ * upload moved it), the shared draft Worker, then the manifest — all from
+ * `current`, the registry row as re-read after the failure. Best effort —
+ * the registry is the source of truth and the caller is already failing.
  */
 async function restoreAppOrigin(
   supabase: SupabaseClient,
-  app: RegistryApp,
-  pointers: { bundle_version: string | null; draft_version: string | null },
+  current: RegistryApp,
   version: string,
   liveMoved: boolean
 ): Promise<void> {
-  if (liveMoved && pointers.bundle_version) {
-    await promoteVersion(supabase, app, pointers.bundle_version).catch(() => null);
+  if (liveMoved && current.bundle_version) {
+    await promoteVersion(supabase, current, current.bundle_version).catch(() => null);
   }
-  if (pointers.draft_version && pointers.draft_version !== version) {
-    await redeployDraft(supabase, app, pointers.draft_version).catch(() => null);
+  if (current.draft_version && current.draft_version !== version) {
+    await redeployDraft(supabase, current, current.draft_version).catch(() => null);
   }
-  await syncManifest(supabase, { ...app, ...pointers }).catch(() => null);
+  await syncManifest(supabase, current).catch(() => null);
 }
 
 /**
@@ -414,50 +415,43 @@ async function discardVersion(
   }
 }
 
+/** The registry's current live pointer; throws when it cannot be read, so a
+ * failed lookup is never mistaken for "nothing is live". */
 async function currentLiveVersion(
   supabase: SupabaseClient,
   appId: string
 ): Promise<string | null> {
-  return (await currentPointers(supabase, appId)).bundle_version;
-}
-
-const POINTER_READ_ATTEMPTS = 3;
-
-/** currentPointers with bounded retries; null when the registry stays unreadable. */
-async function authoritativePointers(
-  supabase: SupabaseClient,
-  appId: string
-): Promise<{ bundle_version: string | null; draft_version: string | null } | null> {
-  for (let attempt = 1; attempt <= POINTER_READ_ATTEMPTS; attempt += 1) {
-    try {
-      return await currentPointers(supabase, appId);
-    } catch {
-      if (attempt < POINTER_READ_ATTEMPTS) {
-        await new Promise((resolve) => setTimeout(resolve, 25 * attempt));
-      }
-    }
-  }
-  return null;
-}
-
-/** The registry's current pointers; throws when they cannot be read, so a
- * failed lookup is never mistaken for "nothing is selected". */
-async function currentPointers(
-  supabase: SupabaseClient,
-  appId: string
-): Promise<{ bundle_version: string | null; draft_version: string | null }> {
   const { data, error } = await supabase
     .from("mini_apps")
-    .select("bundle_version, draft_version")
+    .select("bundle_version")
     .eq("id", appId)
     .maybeSingle();
   if (error) throw new Error(`pointer lookup failed: ${error.message}`);
   if (!data) throw new Error("pointer lookup failed: app row missing");
-  const row = data as { bundle_version?: unknown; draft_version?: unknown };
-  return {
-    bundle_version: typeof row?.bundle_version === "string" ? row.bundle_version : null,
-    draft_version: typeof row?.draft_version === "string" ? row.draft_version : null,
-  };
+  const row = data as { bundle_version?: unknown };
+  return typeof row.bundle_version === "string" ? row.bundle_version : null;
+}
+
+const REGISTRY_READ_ATTEMPTS = 3;
+
+/** The registry row as it stands now, with bounded retries; null when the
+ * registry stays unreadable (or the row is gone / no longer parses). */
+async function authoritativeApp(
+  supabase: SupabaseClient,
+  appId: string
+): Promise<RegistryApp | null> {
+  for (let attempt = 1; attempt <= REGISTRY_READ_ATTEMPTS; attempt += 1) {
+    const { data, error } = await supabase
+      .from("mini_apps")
+      .select(REGISTRY_COLUMNS)
+      .eq("id", appId)
+      .maybeSingle();
+    if (!error) return parseRegistryApp(data);
+    if (attempt < REGISTRY_READ_ATTEMPTS) {
+      await new Promise((resolve) => setTimeout(resolve, 25 * attempt));
+    }
+  }
+  return null;
 }
 
 /** Put the shared draft Worker back on the version the registry selects. */
@@ -517,28 +511,34 @@ export async function listVersions(
 /**
  * Point `bundle_version` at `version` and stamp the ledger: the new row gets
  * `published_at`, the previously live row (if different) gets `retired_at`.
- * One transaction (`miniapp_point_live`) that compares the pointer with the
- * value `app` observed and re-checks that `version` is still selectable, so
- * neither a concurrent pointer move nor a retention tombstone can slip in
- * between the read and the write. Throws a 409 `VersionError` when it lost.
+ * One transaction (`miniapp_point_live`) that compares the pointer *and*
+ * `updated_at` with the values `app` observed and re-checks that `version` is
+ * still selectable, so neither a concurrent pointer move, a retention
+ * tombstone, nor an origin repair (which touches `updated_at` after putting
+ * the Workers back on the registry's releases — possibly over the Worker the
+ * caller just wrote) can slip in between the read and the write. Resolves to
+ * the `updated_at` it committed, which a follow-up move against the same row
+ * must observe; throws a 409 `VersionError` when it lost.
  */
 export async function pointLiveAt(
   supabase: SupabaseClient,
   app: RegistryApp,
   version: string
-): Promise<void> {
+): Promise<string> {
   const { data, error } = await supabase.rpc("miniapp_point_live", {
     p_app_id: app.id,
     p_version: version,
     p_expected: app.bundle_version,
+    p_expected_updated_at: app.updated_at,
   });
   if (error) throw new Error(`live pointer move failed: ${error.message}`);
-  if (data !== true) {
+  if (typeof data !== "string" || data.length === 0) {
     throw new VersionError(
       "live version changed underneath this request; retry",
       409
     );
   }
+  return data;
 }
 
 async function stampLive(

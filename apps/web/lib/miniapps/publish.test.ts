@@ -8,13 +8,15 @@ const deploy = vi.hoisted(() => ({
       this.name = "AppOriginRefusedError";
     }
   },
-  promoteVersion: vi.fn(async () => null),
+  promoteVersion: vi.fn(async (_supabase: unknown, _app: unknown, _version: string) => null),
   syncManifest: vi.fn(async () => true),
 }));
 vi.mock("../functions/deploy", () => deploy);
+/** What the fenced RPC hands back: the updated_at the pointer move committed. */
+const COMMITTED_AT = vi.hoisted(() => "2026-02-02T00:00:00.000+00:00");
 const versions = vi.hoisted(() => ({
   getVersion: vi.fn(async () => null as { version: string } | null),
-  pointLiveAt: vi.fn(async () => undefined),
+  pointLiveAt: vi.fn(async () => COMMITTED_AT),
 }));
 vi.mock("../create/versions", () => versions);
 
@@ -428,7 +430,7 @@ describe("setPublishStatus promotes a staged draft (V11 §8 Drop onto a live app
     deploy.syncManifest.mockClear();
     versions.getVersion.mockReset();
     versions.pointLiveAt.mockReset();
-    versions.pointLiveAt.mockResolvedValue(undefined);
+    versions.pointLiveAt.mockResolvedValue(COMMITTED_AT);
   });
 
   it("publishing a live app with a newer draft promotes the draft, not the live version", async () => {
@@ -485,7 +487,10 @@ describe("setPublishStatus promotes a staged draft (V11 §8 Drop onto a live app
     expect(versions.pointLiveAt).toHaveBeenCalledTimes(2);
     expect(versions.pointLiveAt).toHaveBeenLastCalledWith(
       expect.anything(),
-      expect.objectContaining({ bundle_version: "v1700000000002" }),
+      expect.objectContaining({
+        bundle_version: "v1700000000002",
+        updated_at: COMMITTED_AT,
+      }),
       "v1700000000001"
     );
     expect(deploy.promoteVersion.mock.invocationCallOrder[1]).toBeLessThan(
@@ -501,11 +506,18 @@ describe("setPublishStatus promotes a staged draft (V11 §8 Drop onto a live app
     versions.getVersion.mockResolvedValue({ version: "v1700000000002" });
     statusFlipFails = true;
     versions.pointLiveAt
-      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(COMMITTED_AT)
       .mockRejectedValueOnce(new Error("live version changed underneath this request; retry"));
     await expect(
       setPublishStatus(fakeSupabase(live), "user-alice", "alice-notes", "published")
     ).rejects.toThrow(/status flip failed/);
+    // Worker: draft (publish) -> previous (restore) -> draft again, since the
+    // registry kept the new pointer.
+    expect(deploy.promoteVersion.mock.calls.map((c) => c[2])).toEqual([
+      "v1700000000002",
+      "v1700000000001",
+      "v1700000000002",
+    ]);
     expect(deploy.syncManifest).toHaveBeenLastCalledWith(
       expect.anything(),
       expect.objectContaining({ bundle_version: "v1700000000002" })

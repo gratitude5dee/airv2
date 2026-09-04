@@ -77,14 +77,8 @@ interface VersionRowLike {
   purged_at: string | null;
 }
 
-interface AppRowLike {
-  id: string;
-  slug: string;
-  bundle_version: string | null;
-  draft_version: string | null;
-  updated_at: string;
-  app_origin_deployed_at: string | null;
-}
+/** A full mini_apps row: REGISTRY_COLUMNS re-reads must parse. */
+type AppRowLike = ReturnType<typeof makeApp> & { app_origin_deployed_at: string | null };
 
 const db = {
   versions: [] as VersionRowLike[],
@@ -260,7 +254,7 @@ function query(table: "miniapp_versions" | "mini_apps") {
   return builder;
 }
 
-/** Mirrors 0085_create_v11_lock_order_deploy_mark.sql: one atomic step per call. */
+/** Mirrors 0085 + 0090 (point_live fence): one atomic step per call. */
 function rpc(fn: string, args: Record<string, unknown>) {
   if (db.beforeRpc) {
     const hook = db.beforeRpc;
@@ -275,9 +269,12 @@ function rpc(fn: string, args: Record<string, unknown>) {
       (v) => v.app_id === args["p_app_id"] && v.version === args["p_version"] && !v.purged_at
     );
     const app = db.apps.find((a) => a.id === args["p_app_id"]);
-    if (!row || !app) return Promise.resolve({ data: false, error: null });
+    if (!row || !app) return Promise.resolve({ data: null, error: null });
     if ((app.bundle_version ?? null) !== (args["p_expected"] ?? null)) {
-      return Promise.resolve({ data: false, error: null });
+      return Promise.resolve({ data: null, error: null });
+    }
+    if (app.updated_at !== args["p_expected_updated_at"]) {
+      return Promise.resolve({ data: null, error: null });
     }
     app.bundle_version = row.version;
     app.updated_at = now;
@@ -291,7 +288,7 @@ function rpc(fn: string, args: Record<string, unknown>) {
         }
       }
     }
-    return Promise.resolve({ data: true, error: null });
+    return Promise.resolve({ data: now, error: null });
   }
   if (fn === "miniapp_tombstone_version") {
     const row = db.versions.find((v) => v.id === args["p_id"]);
@@ -331,16 +328,7 @@ beforeEach(() => {
   db.versions = [];
   db.fail = null;
   db.beforeRpc = null;
-  db.apps = [
-    {
-      id: "app-notes",
-      slug: "alice-notes",
-      bundle_version: "v1700000000001",
-      draft_version: null,
-      updated_at: "2026-01-01T00:00:00.000Z",
-      app_origin_deployed_at: null,
-    },
-  ];
+  db.apps = [{ ...app, app_origin_deployed_at: null }];
   deploy.deployStaticVersion.mockReset();
   deploy.deployStaticVersion.mockResolvedValue(null);
   deploy.loadBundleFiles.mockClear();
@@ -606,10 +594,74 @@ describe("uploadVersion", () => {
     });
     await expect(uploadVersion(supabase, app, zip)).rejects.toMatchObject({ status: 409 });
     expect(deploy.promoteVersion).toHaveBeenCalledTimes(2);
-    expect(deploy.promoteVersion).toHaveBeenLastCalledWith(supabase, app, "v1700000000009");
+    // The restore runs on the row as re-read, not on the `app` this call observed.
+    expect(deploy.promoteVersion).toHaveBeenLastCalledWith(
+      supabase,
+      expect.objectContaining({ id: "app-notes", bundle_version: "v1700000000009" }),
+      "v1700000000009"
+    );
     expect(db.apps[0]!.bundle_version).toBe("v1700000000009");
     expect(db.versions).toHaveLength(0);
     expect(r2.deletePrefix).toHaveBeenCalledWith(expect.stringContaining("alice-notes/v"));
+  });
+
+  it("stage-only: a lost CAS restores from the current row, so a concurrent delist is not re-published at the manifest", async () => {
+    const staged = { ...app, status: "published" as const, draft_version: "v1700000000001" };
+    db.apps[0]!.draft_version = "v1700000000001";
+    deploy.deployStaticVersion.mockImplementation(async () => {
+      // The owner delisted between our read of `app` and our CAS.
+      db.apps[0]!.status = "draft";
+      db.apps[0]!.visibility = "private";
+      db.apps[0]!.updated_at = "2026-01-01T00:05:00.000Z";
+      return { workerSha256: "a".repeat(64) };
+    });
+    await expect(
+      uploadVersion(supabase, staged, zip, "drop", { promote: false })
+    ).rejects.toMatchObject({ status: 409 });
+    expect(deploy.syncManifest).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        status: "draft",
+        visibility: "private",
+        bundle_version: "v1700000000001",
+        draft_version: "v1700000000001",
+      })
+    );
+    expect(deploy.syncManifest).not.toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ status: "published" })
+    );
+    expect(db.versions).toHaveLength(0);
+  });
+
+  it("live: a lost CAS to a concurrent publish restores that publish's status and pointer, not the stale start", async () => {
+    const draft = { ...app, status: "draft" as const, bundle_version: null, draft_version: null };
+    db.apps[0]!.status = "draft";
+    db.apps[0]!.bundle_version = null;
+    deploy.deployStaticVersion.mockImplementation(async () => {
+      // Another upload landed and the owner published it before our CAS.
+      db.apps[0]!.status = "published";
+      db.apps[0]!.bundle_version = "v1700000000009";
+      db.apps[0]!.draft_version = "v1700000000009";
+      db.apps[0]!.updated_at = "2026-01-01T00:05:00.000Z";
+      return { workerSha256: "a".repeat(64) };
+    });
+    await expect(uploadVersion(supabase, draft, zip)).rejects.toMatchObject({ status: 409 });
+    // The live Worker was never ours to move; the shared draft Worker goes
+    // back on the winner's draft, and the manifest carries the publish.
+    expect(deploy.promoteVersion).not.toHaveBeenCalled();
+    expect(deploy.deployStaticVersion).toHaveBeenLastCalledWith(
+      supabase,
+      expect.objectContaining({ target: "draft", version: "v1700000000009" })
+    );
+    expect(deploy.syncManifest).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ status: "published", bundle_version: "v1700000000009" })
+    );
+    expect(deploy.syncManifest).not.toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ status: "draft" })
+    );
   });
 
   it("stage-only: two concurrent staged uploads agree on one draft; the loser puts the shared draft Worker back on the winner", async () => {
@@ -888,6 +940,43 @@ describe("pointLiveAt", () => {
     });
     expect(db.apps[0]!.bundle_version).toBe("v1700000000001");
   });
+
+  it("is fenced on updated_at: an origin repair that touched the row since the read loses the swap", async () => {
+    await recordVersion(supabase, {
+      appId: "app-notes", userId: "user-alice", version: "v1700000000002", lane: "push", files,
+    });
+    // Same pointer, newer updated_at: the reconciler put the live Worker back
+    // on v...001 (over the v...002 the caller just wrote) and fenced it.
+    db.apps[0]!.updated_at = "2026-01-01T00:05:00.000Z";
+    await expect(pointLiveAt(supabase, app, "v1700000000002")).rejects.toMatchObject({
+      status: 409,
+    });
+    expect(db.apps[0]!.bundle_version).toBe("v1700000000001");
+    expect(db.versions[0]!.published_at).toBeNull();
+  });
+
+  it("resolves to the updated_at it committed, which the next move against the row must observe", async () => {
+    await recordVersion(supabase, {
+      appId: "app-notes", userId: "user-alice", version: "v1700000000002", lane: "push", files,
+    });
+    const committed = await pointLiveAt(supabase, app, "v1700000000002");
+    expect(committed).toBe(db.apps[0]!.updated_at);
+    expect(committed).not.toBe(app.updated_at);
+    await expect(
+      pointLiveAt(supabase, { ...app, bundle_version: "v1700000000002" }, "v1700000000001")
+    ).rejects.toMatchObject({ status: 409 });
+    await recordVersion(supabase, {
+      appId: "app-notes", userId: "user-alice", version: "v1700000000001", lane: "push", files,
+    });
+    await expect(
+      pointLiveAt(
+        supabase,
+        { ...app, bundle_version: "v1700000000002", updated_at: committed },
+        "v1700000000001"
+      )
+    ).resolves.toBeTruthy();
+    expect(db.apps[0]!.bundle_version).toBe("v1700000000001");
+  });
 });
 
 describe("rollbackTo (§13.3)", () => {
@@ -1083,12 +1172,8 @@ describe("sweepVersions (§13.1 retention)", () => {
 
   it("counts drafts per app, not globally", async () => {
     db.apps.push({
-      id: "app-other",
-      slug: "bob-thing",
-      bundle_version: null,
-      draft_version: null,
+      ...makeApp({ id: "app-other", slug: "bob-thing", owner_user_id: "user-bob" }),
       app_origin_deployed_at: null,
-      updated_at: "2026-01-01T00:00:00.000Z",
     });
     for (let i = 0; i < RETAIN_DRAFTS; i++) version(`v170000000040${i}`);
     for (let i = 0; i < RETAIN_DRAFTS; i++) version(`v170000000050${i}`, {}, "app-other");

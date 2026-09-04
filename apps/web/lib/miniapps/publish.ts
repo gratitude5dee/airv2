@@ -266,9 +266,10 @@ export async function setPublishStatus(
     }
     throw error;
   }
+  let committedAt: string | null = null;
   if (status === "published" && version) {
     try {
-      await pointLiveAt(supabase, app, version.version);
+      committedAt = await pointLiveAt(supabase, app, version.version);
     } catch (error) {
       if (staged && app.bundle_version) {
         await promoteVersion(supabase, app, app.bundle_version).catch(() => null);
@@ -294,7 +295,7 @@ export async function setPublishStatus(
     // live app gets its previous release restored before the error surfaces.
     const restored =
       status === "published" && version && staged && app.status === "published"
-        ? await restoreRelease(supabase, app, version.version)
+        ? await restoreRelease(supabase, app, version.version, committedAt)
         : false;
     await syncManifest(
       supabase,
@@ -326,32 +327,54 @@ export async function setPublishStatus(
 /**
  * Undo a staged-draft publication that got as far as the pointer: the live
  * Worker goes back to the release `app` observed, then the pointer swaps
- * back from `from` under the same compare-and-swap. False when either step
- * failed and the registry's new pointer must stand.
+ * back from `from` under the same compare-and-swap, against the `updated_at`
+ * the forward move committed (`committedAt`). False when either step failed
+ * and the registry's new pointer must stand — the live Worker is then put
+ * back on `from` so the origin keeps agreeing with the registry.
  */
 async function restoreRelease(
   supabase: SupabaseClient,
   app: RegistryApp,
-  from: string
+  from: string,
+  committedAt: string | null
 ): Promise<boolean> {
   const previous = app.bundle_version;
-  if (!previous) return false;
+  if (!previous || !committedAt) return false;
   try {
     await promoteVersion(supabase, app, previous);
-    await pointLiveAt(supabase, { ...app, bundle_version: from }, previous);
-    return true;
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "miniapp release restore failed",
-        slug: app.slug,
-        version: from,
-        previous,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
+    logRestoreFailure(app, from, previous, error);
     return false;
   }
+  try {
+    await pointLiveAt(
+      supabase,
+      { ...app, bundle_version: from, updated_at: committedAt },
+      previous
+    );
+    return true;
+  } catch (error) {
+    logRestoreFailure(app, from, previous, error);
+    await promoteVersion(supabase, app, from).catch(() => null);
+    return false;
+  }
+}
+
+function logRestoreFailure(
+  app: RegistryApp,
+  from: string,
+  previous: string,
+  error: unknown
+): void {
+  console.error(
+    JSON.stringify({
+      msg: "miniapp release restore failed",
+      slug: app.slug,
+      version: from,
+      previous,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  );
 }
 
 /**
