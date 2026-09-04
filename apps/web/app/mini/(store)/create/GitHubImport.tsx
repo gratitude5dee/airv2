@@ -201,11 +201,11 @@ export function GitHubImport({
         if (!res.ok) throw new Error(data.error ?? "could not list repositories");
         if (controller.signal.aborted) return;
         setRepos(data.repositories ?? []);
-        if (data.truncated) {
-          setMessage(
-            "Only the first repositories are listed — narrow the installation to the repositories you want to import."
-          );
-        }
+        setMessage(
+          data.truncated
+            ? "Only the first repositories are listed — narrow the installation to the repositories you want to import."
+            : null
+        );
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;

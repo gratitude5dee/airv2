@@ -100,6 +100,7 @@ const link: RepoLink = {
   last_synced_at: null,
   last_error: null,
   created_at: "2026-09-01T00:00:00Z",
+  import_id: "import-old",
 };
 
 function installation(over: Record<string, unknown> = {}) {

@@ -9,8 +9,13 @@
 -- the lease expired (the handler crashed, or its release never landed)
 -- takes the row over and runs the event again. A live lease still refuses
 -- a concurrent redelivery, so an event is never processed twice at once.
+--
+-- Rows already here were written under the old rule, where a row meant the
+-- event ran (a failed handler deleted its row), so they are stamped as
+-- processed: none of them may be picked up again as an expired lease.
 alter table github_deliveries
   add column processed_at timestamptz;
+update github_deliveries set processed_at = received_at where processed_at is null;
 
 -- Claim `delivery_id` for one processing attempt. Returns true when this
 -- call owns the delivery: the id was new, or its previous attempt neither
@@ -42,3 +47,11 @@ $$;
 
 revoke all on function github_delivery_claim(text, text, integer) from public;
 grant execute on function github_delivery_claim(text, text, integer) to service_role;
+
+-- Each import writes its own `import_id` onto the app's link row. Imports of
+-- one app can overlap (the row is shared, keyed by app), and the one that
+-- fails must not undo the one that succeeded: every compensating write —
+-- restore, delete, the final stamp — is fenced on the id the request wrote,
+-- so it is a no-op once another import has replaced the row.
+alter table github_repo_links
+  add column import_id uuid not null default gen_random_uuid();

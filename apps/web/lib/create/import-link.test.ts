@@ -5,7 +5,9 @@
  * link (and app) only when something actually staged; a failed re-import
  * puts the working link back field-for-field; a source already feeding
  * another app is refused before any row exists; an app this request
- * created is removed again when the link cannot be kept.
+ * created is removed again when the link cannot be kept. Two imports of one
+ * app may overlap: each fences its writes on its own import_id, so the one
+ * that fails never undoes the one that succeeded.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -208,6 +210,7 @@ function existingLink(over: Row = {}): Row {
     last_synced_at: "2026-09-01T00:00:00Z",
     last_error: null,
     created_at: "2026-09-01T00:00:00Z",
+    import_id: "import-old",
     ...over,
   };
 }
@@ -276,6 +279,24 @@ describe("linkRepository — first import", () => {
     expect(versions.uploadVersion).not.toHaveBeenCalled();
     expect(drop.discardEmptyDraft).toHaveBeenCalledWith(expect.anything(), "user-alice", "app-1");
     expect(links().map((l) => l["id"])).toEqual(["link-bob"]);
+  });
+
+  it("two first imports of one new app: the one that fails keeps neither the app nor the link from the other", async () => {
+    // A wins the app insert, saves the link and starts staging; B finds the
+    // app, saves over the same row, stages and stamps; then A fails. A's
+    // delete is fenced on its own import_id, so B's link (and the app) stay.
+    drop.resolveOrCreateDropApp
+      .mockResolvedValueOnce({ app, created: true })
+      .mockResolvedValueOnce({ app, created: false });
+    versions.uploadVersion.mockImplementationOnce(async () => {
+      await linkRepository(supabase(), "user-alice", input);
+      throw new Error("r2 down");
+    });
+    await expect(linkRepository(supabase(), "user-alice", input)).rejects.toThrow("r2 down");
+    expect(links()).toHaveLength(1);
+    expect(links()[0]).toMatchObject({ app_id: "app-1", dir: "", last_sha: SHA, last_error: null });
+    expect(drop.discardEmptyDraft).not.toHaveBeenCalled();
+    expect(db.log).not.toContain("delete:github_repo_links:1");
   });
 
   it("removes the app it created when the link cannot be saved", async () => {
@@ -400,6 +421,38 @@ describe("linkRepository — re-import", () => {
     const result = await linkRepository(supabase(), "user-alice", { ...input, dir: "", commitWorkflow: true });
     expect(result).toMatchObject({ mode: "build", workflow_path: WORKFLOW_PATH, version: null });
     expect(links()[0]).toMatchObject({ id: "link-old", mode: "build", dir: "", workflow_path: WORKFLOW_PATH });
+  });
+
+  it("a failing re-import leaves a concurrent one's finished link alone", async () => {
+    // A saves its row, then B saves over it, stages and stamps; then A's
+    // staging fails. A's restore is fenced on the import_id it wrote, which
+    // B replaced, so B's working link stands and the old one is not put back.
+    versions.uploadVersion.mockImplementationOnce(async () => {
+      await linkRepository(supabase(), "user-alice", { ...input, dir: "" });
+      throw new Error("r2 down");
+    });
+    await expect(linkRepository(supabase(), "user-alice", { ...input, dir: "" })).rejects.toThrow("r2 down");
+    expect(links()).toHaveLength(1);
+    expect(links()[0]).toMatchObject({ id: "link-old", dir: "", last_sha: SHA, last_error: null });
+    expect(links()[0]!["import_id"]).not.toBe("import-old");
+    expect(versions.uploadVersion).toHaveBeenCalledTimes(2);
+    expect(db.log).not.toContain("delete:github_repo_links:1");
+  });
+
+  it("an import overtaken while staging reports it and leaves the newer link as written", async () => {
+    // A saves dir "", B saves dir "site" over it and finishes; A's draft
+    // stages fine but its final stamp finds the row is no longer its own.
+    versions.uploadVersion.mockImplementationOnce(async () => {
+      await linkRepository(supabase(), "user-alice", { ...input, dir: "site" });
+      return "v1700000000001";
+    });
+    await expect(linkRepository(supabase(), "user-alice", { ...input, dir: "" })).rejects.toMatchObject({
+      status: 409,
+      message: expect.stringMatching(/another import of this app replaced the link/),
+    });
+    expect(links()).toHaveLength(1);
+    expect(links()[0]).toMatchObject({ id: "link-old", dir: "site", last_sha: SHA, last_error: null });
+    expect(links()[0]!["last_synced_at"]).not.toBe("2026-09-01T00:00:00Z");
   });
 
   it("refuses to point the app at a different repository", async () => {

@@ -320,6 +320,7 @@ function link(over: Partial<RepoLink>): RepoLink {
     last_synced_at: null,
     last_error: null,
     created_at: "2026-09-01T00:00:00Z",
+    import_id: "import-old",
     ...over,
   };
 }

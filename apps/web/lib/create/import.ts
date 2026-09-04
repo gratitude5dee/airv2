@@ -17,6 +17,7 @@
  * Scan (`planRepository`) is the static-analysis half of §10's plan: it
  * reads package.json and lockfiles, never executes them.
  */
+import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { env } from "../env";
@@ -97,12 +98,14 @@ const linkRow = z.object({
   last_synced_at: z.string().nullable(),
   last_error: z.string().nullable(),
   created_at: z.string(),
+  /** Written by the import that last saved the row; fences its compensation. */
+  import_id: z.string(),
 });
 export type RepoLink = z.infer<typeof linkRow>;
 
 const LINK_COLUMNS =
   "id, user_id, installation_id, app_id, repo_id, full_name, branch, dir, mode, " +
-  "workflow_path, last_sha, last_synced_at, last_error, created_at";
+  "workflow_path, last_sha, last_synced_at, last_error, created_at, import_id";
 const INSTALLATION_COLUMNS =
   "installation_id, user_id, account_login, account_type, suspended_at, removed_at";
 
@@ -249,7 +252,12 @@ async function linkForSource(
   return data ? linkRow.parse(data) : null;
 }
 
-/** Insert or replace (by app) the link row; the unique source index decides ties. */
+/**
+ * Insert or replace (by app) the link row; the unique source index decides
+ * ties. The row comes back carrying this call's fresh `import_id`: every
+ * later write this import makes to the row is conditioned on it, so the
+ * import that overwrote the row in the meantime is never undone by this one.
+ */
 async function saveLink(
   supabase: SupabaseClient,
   fields: {
@@ -267,7 +275,7 @@ async function saveLink(
 ): Promise<RepoLink> {
   const { data, error } = await supabase
     .from("github_repo_links")
-    .upsert(fields, { onConflict: "app_id" })
+    .upsert({ ...fields, import_id: randomUUID() }, { onConflict: "app_id" })
     .select(LINK_COLUMNS)
     .single();
   if (error) {
@@ -283,12 +291,18 @@ const RESTORE_ATTEMPTS = 3;
 
 /**
  * Put a link row back exactly as it was read before a re-import moved it
- * (`saveLink` keeps the row, so this is an update by id). Retried on
+ * (`saveLink` keeps the row, so this is an update by id), but only while the
+ * row still carries this import's `fence`: once another import has written
+ * it, the restore is a no-op and that import's link stands. Retried on
  * transient errors; a unique-source refusal means another app took the old
  * source in the meantime and the restore cannot happen. Returns the error
- * it could not get past, null on success.
+ * it could not get past, null when the row is back or no longer ours.
  */
-async function restoreLink(supabase: SupabaseClient, previous: RepoLink): Promise<string | null> {
+async function restoreLink(
+  supabase: SupabaseClient,
+  previous: RepoLink,
+  fence: string
+): Promise<string | null> {
   const { id, created_at, ...fields } = previous;
   void created_at;
   let lastError = "unknown";
@@ -297,10 +311,16 @@ async function restoreLink(supabase: SupabaseClient, previous: RepoLink): Promis
       .from("github_repo_links")
       .update(fields)
       .eq("id", id)
+      .eq("import_id", fence)
       .select("id");
-    if (!error && (data ?? []).length > 0) return null;
-    lastError = error ? error.message : "link row missing";
-    if (error?.code === "23505" || !error) break;
+    if (!error) {
+      if ((data ?? []).length === 0) {
+        console.log(JSON.stringify({ msg: "repo link restore skipped: superseded", link: id }));
+      }
+      return null;
+    }
+    lastError = error.message;
+    if (error.code === "23505") break;
     if (attempt < RESTORE_ATTEMPTS) {
       await new Promise((resolve) => setTimeout(resolve, 50 * attempt));
     }
@@ -309,6 +329,50 @@ async function restoreLink(supabase: SupabaseClient, previous: RepoLink): Promis
     JSON.stringify({ msg: "repo link restore failed", link: id, app_id: previous.app_id, error: lastError })
   );
   return lastError;
+}
+
+/**
+ * Remove the row a failed first import wrote, if it is still that row.
+ * True when it was; false when another import has since replaced it, in
+ * which case the app is theirs to keep.
+ */
+async function removeOwnLink(supabase: SupabaseClient, link: RepoLink): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("github_repo_links")
+    .delete()
+    .eq("id", link.id)
+    .eq("import_id", link.import_id)
+    .select("id");
+  if (error) {
+    console.error(JSON.stringify({ msg: "repo link remove failed", link: link.id, error: error.message }));
+    return false;
+  }
+  return (data ?? []).length > 0;
+}
+
+/**
+ * The import's last write to its row: stamp it (or, for a build link, just
+ * touch it) if and only if the row still carries this import's `import_id`.
+ * Zero rows means another import of the same app replaced the link while
+ * this one was staging or committing; the caller then fails so its
+ * compensation runs — which is fenced too, and therefore leaves the newer
+ * link exactly as that import wrote it.
+ */
+async function confirmLink(
+  supabase: SupabaseClient,
+  link: RepoLink,
+  patch: { last_sha?: string; last_synced_at?: string; last_error: null }
+): Promise<void> {
+  const { data, error } = await supabase
+    .from("github_repo_links")
+    .update(patch)
+    .eq("id", link.id)
+    .eq("import_id", link.import_id)
+    .select("id");
+  if (error) throw new ImportError(`link stamp failed: ${error.message}`, 502);
+  if ((data ?? []).length === 0) {
+    throw new ImportError("another import of this app replaced the link while this one ran", 409);
+  }
 }
 
 /** Unlink: the app and its versions stay; pushes stop landing. */
@@ -903,6 +967,9 @@ export async function linkRepository(
   // put back: removed again for a first link (with the app this request
   // created for it), restored field-for-field for a re-link, so the owner
   // is left with the working link they had rather than a half-moved one.
+  // Every one of those writes, and the final stamp, is fenced on the
+  // `import_id` this request wrote, so two imports of one app cannot undo
+  // each other: the later save wins the row, the earlier one reports it.
   let link: RepoLink;
   try {
     link = await saveLink(supabase, linkFields);
@@ -918,7 +985,7 @@ export async function linkRepository(
         findings: staged.findings,
         promote: false,
       });
-      await stampLink(supabase, link.id, {
+      await confirmLink(supabase, link, {
         last_sha: sha,
         last_synced_at: new Date().toISOString(),
         last_error: null,
@@ -930,10 +997,11 @@ export async function linkRepository(
         dir,
         plan,
       });
+      await confirmLink(supabase, link, { last_error: null });
     }
   } catch (error) {
     if (existingLink) {
-      const restoreError = await restoreLink(supabase, existingLink);
+      const restoreError = await restoreLink(supabase, existingLink, link.import_id);
       if (restoreError) {
         throw new ImportError(
           `${errorText(error)}; the previous link (${existingLink.full_name}@${existingLink.branch}` +
@@ -941,8 +1009,7 @@ export async function linkRepository(
           502
         );
       }
-    } else {
-      await unlinkRepo(supabase, userId, app.id).catch(() => false);
+    } else if (await removeOwnLink(supabase, link)) {
       if (created) await discardEmptyDraft(supabase, userId, app.id);
     }
     throw error;
