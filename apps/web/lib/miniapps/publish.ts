@@ -12,7 +12,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { hashPassword } from "./gates";
 import { asRecord } from "../records";
 import { getVersion, pointLiveAt } from "../create/versions";
-import { promoteVersion, syncManifest } from "../functions/deploy";
+import {
+  AppOriginRefusedError,
+  promoteVersion,
+  syncManifest,
+} from "../functions/deploy";
 import {
   REGISTRY_COLUMNS,
   parseNullableNumeric,
@@ -214,7 +218,14 @@ export async function setPublishStatus(
   const version =
     app.bundle_version && (await getVersion(supabase, app.id, app.bundle_version));
   if (status === "published" && version) {
-    await promoteVersion(app, version.version);
+    try {
+      await promoteVersion(supabase, app, version.version);
+    } catch (error) {
+      if (error instanceof AppOriginRefusedError) {
+        throw new PublishError("app is being deleted", 409);
+      }
+      throw error;
+    }
     await pointLiveAt(supabase, app, version.version);
   }
   if (status === "draft") {

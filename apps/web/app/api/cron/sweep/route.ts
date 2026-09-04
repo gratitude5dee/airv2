@@ -19,6 +19,7 @@ import { sweepAbandonedUploads } from "@/lib/storage/confirm";
 import { runSyncJobs } from "@/lib/fleet/sync";
 import { sweepUnfiledDrafts } from "@/lib/email/draftSweep";
 import { sweepVersions } from "@/lib/create/versions";
+import { reconcileAppOriginMarks } from "@/lib/functions/deploy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -210,6 +211,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     );
   }
 
+  let originsMarked = 0;
+  try {
+    originsMarked = (await reconcileAppOriginMarks(supabase)).marked;
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        msg: "sweeper app origin reconcile failed",
+        error: error instanceof Error ? error.message : String(error),
+      })
+    );
+  }
+
   const ttlCutoff = new Date(Date.now() - 48 * 3600_000).toISOString();
   await supabase.from("inbound_events").delete().lt("received_at", ttlCutoff);
   await supabase.from("batch_queue").delete().lt("received_at", ttlCutoff);
@@ -227,5 +240,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     fleet,
     draftsFiled,
     versionsRetired,
+    originsMarked,
   });
 }

@@ -82,6 +82,22 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       "error: app origin lane not configured but apps were deployed to it; nothing deleted";
     return NextResponse.json({ ok: false, steps, retry: true }, { status: 503 });
   }
+  // Close the apps to new deploys before tearing origins down: a deploy that
+  // claims an app after this write is refused, and one that claimed it
+  // earlier re-reads the flag after its vendor write and tears itself down.
+  // The flag stays set if the deletion aborts below — an account under
+  // deletion keeps refusing uploads until the retry succeeds.
+  if (ownedSlugs.length > 0) {
+    const { error: closeError } = await supabase
+      .from("mini_apps")
+      .update({ deleting_at: new Date().toISOString() })
+      .eq("owner_user_id", userId)
+      .is("deleting_at", null);
+    if (closeError) {
+      steps["app_origin"] = `error: could not close apps to deploys; nothing deleted`;
+      return NextResponse.json({ ok: false, steps, retry: true }, { status: 502 });
+    }
+  }
   if (ownedSlugs.length > 0 && appOriginLaneReady()) {
     const failed: string[] = [];
     for (const slug of ownedSlugs) {

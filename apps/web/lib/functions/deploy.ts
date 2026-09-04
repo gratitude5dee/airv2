@@ -8,7 +8,16 @@
  *
  * The lane is optional: when the app-origin env is unset every function here
  * is a no-op returning null and callers keep the legacy R2 render.
+ *
+ * CR16 deploy/delete protocol: every Worker put first claims the app row via
+ * miniapp_claim_app_origin (refused once mini_apps.deleting_at is set; sets
+ * app_origin_deployed_at, first deploy wins), and re-reads deleting_at after
+ * the vendor write — a deletion that began in between finds the origin torn
+ * down again by the deploy itself. The claim is the durable record that an
+ * origin may be serving; account deletion refuses to proceed without the lane
+ * whenever it is set.
  */
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "../env";
 import { bundleContentType, bundleKey, type BundleFile } from "../miniapps/bundles";
 import type { RegistryApp } from "../miniapps/registry";
@@ -16,6 +25,7 @@ import { getObject, listKeys, r2Configured } from "../storage/r2";
 import {
   cloudflareConfigured,
   deleteDispatchScript,
+  listDispatchScripts,
   putDispatchScript,
   uploadAssets,
   type AssetFile,
@@ -28,6 +38,14 @@ import { appOriginConfigured } from "./tokens";
 export const WORKER_COMPATIBILITY_DATE = "2026-01-01";
 
 export type DeployTarget = "live" | "draft";
+
+/** The app row is gone or under deletion: nothing may be deployed for it. */
+export class AppOriginRefusedError extends Error {
+  constructor(slug: string) {
+    super(`app ${slug} is being deleted`);
+    this.name = "AppOriginRefusedError";
+  }
+}
 
 export function appOriginLaneReady(): boolean {
   return (
@@ -67,6 +85,7 @@ export async function loadBundleFiles(
 }
 
 export interface StaticDeploy {
+  appId: string;
   slug: string;
   version: string;
   ownerUserId: string;
@@ -74,14 +93,52 @@ export interface StaticDeploy {
   target: DeployTarget;
 }
 
+async function claimAppOrigin(
+  supabase: SupabaseClient,
+  appId: string,
+  slug: string
+): Promise<void> {
+  const { data, error } = await supabase.rpc("miniapp_claim_app_origin", {
+    p_app_id: appId,
+  });
+  if (error) throw new Error(`app origin claim failed: ${error.message}`);
+  if (data !== true) throw new AppOriginRefusedError(slug);
+}
+
+/**
+ * After the vendor write: if deletion began since the claim, the Worker just
+ * put is torn down here (the deleter may already have run its teardown). A
+ * read failure leaves the deploy standing — the claim is on record, so a
+ * later deletion still tears it down.
+ */
+async function confirmAppOrigin(
+  supabase: SupabaseClient,
+  appId: string,
+  slug: string
+): Promise<void> {
+  const { data, error } = await supabase
+    .from("mini_apps")
+    .select("deleting_at")
+    .eq("id", appId)
+    .maybeSingle();
+  if (error) throw new Error(`app origin confirm failed: ${error.message}`);
+  const row = data as { deleting_at: string | null } | null;
+  if (row && row.deleting_at === null) return;
+  await teardownAppOrigin(slug);
+  throw new AppOriginRefusedError(slug);
+}
+
 /**
  * Upload a static bundle as a Worker. Returns the worker digest, or null when
- * the lane is unconfigured (caller stays on the legacy R2 path).
+ * the lane is unconfigured (caller stays on the legacy R2 path). Throws
+ * AppOriginRefusedError when the app is being deleted.
  */
 export async function deployStaticVersion(
+  supabase: SupabaseClient,
   input: StaticDeploy
 ): Promise<{ workerSha256: string } | null> {
   if (!appOriginLaneReady()) return null;
+  await claimAppOrigin(supabase, input.appId, input.slug);
   const script = scriptNameFor(input.slug, input.target);
   const assets = await uploadAssets(
     script,
@@ -117,6 +174,7 @@ export async function deployStaticVersion(
       files: input.files.length,
     })
   );
+  await confirmAppOrigin(supabase, input.appId, input.slug);
   return { workerSha256: digest };
 }
 
@@ -168,6 +226,7 @@ export async function teardownAppOrigin(slug: string): Promise<void> {
  * digest as the draft that was previewed) and the pointer moves.
  */
 export async function promoteVersion(
+  supabase: SupabaseClient,
   app: RegistryApp,
   version: string
 ): Promise<{ workerSha256: string } | null> {
@@ -176,7 +235,8 @@ export async function promoteVersion(
   if (files.length === 0) {
     throw new Error(`version ${version} has no stored bundle for ${app.slug}`);
   }
-  const deployed = await deployStaticVersion({
+  const deployed = await deployStaticVersion(supabase, {
+    appId: app.id,
     slug: app.slug,
     version,
     ownerUserId: app.owner_user_id,
@@ -189,4 +249,61 @@ export async function promoteVersion(
     live: version,
   });
   return deployed;
+}
+
+/**
+ * Reconcile the deploy marks against the vendor inventory: every script in
+ * the dispatch namespace names an app (`<slug>` or `<slug>-draft`); apps
+ * found there get app_origin_deployed_at set if they lack it. Covers Workers
+ * put before the mark existed. Scripts naming no app are reported so ops can
+ * remove them. No-op when the lane is unconfigured.
+ */
+export async function reconcileAppOriginMarks(
+  supabase: SupabaseClient
+): Promise<{ marked: number; unmatched: string[] }> {
+  if (!appOriginLaneReady()) return { marked: 0, unmatched: [] };
+  const scripts = await listDispatchScripts();
+  const slugs = [
+    ...new Set(
+      scripts.map((name) =>
+        name.endsWith("-draft") ? name.slice(0, -"-draft".length) : name
+      )
+    ),
+  ];
+  if (slugs.length === 0) return { marked: 0, unmatched: [] };
+  const { data, error } = await supabase
+    .from("mini_apps")
+    .select("id, slug, app_origin_deployed_at")
+    .in("slug", slugs);
+  if (error) throw new Error(`app origin reconcile failed: ${error.message}`);
+  const rows = (data ?? []) as Array<{
+    id: string;
+    slug: string;
+    app_origin_deployed_at: string | null;
+  }>;
+  const known = new Set(rows.map((row) => row.slug));
+  const unmatched = slugs.filter((slug) => !known.has(slug));
+  const unmarked = rows.filter((row) => row.app_origin_deployed_at === null);
+  if (unmarked.length > 0) {
+    const { error: markError } = await supabase
+      .from("mini_apps")
+      .update({ app_origin_deployed_at: new Date().toISOString() })
+      .in(
+        "id",
+        unmarked.map((row) => row.id)
+      )
+      .is("app_origin_deployed_at", null);
+    if (markError) {
+      throw new Error(`app origin reconcile failed: ${markError.message}`);
+    }
+  }
+  if (unmatched.length > 0) {
+    console.error(
+      JSON.stringify({
+        msg: "dispatch scripts without an app row",
+        scripts: unmatched,
+      })
+    );
+  }
+  return { marked: unmarked.length, unmatched };
 }
