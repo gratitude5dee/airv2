@@ -27,10 +27,13 @@ vi.mock("../composio/client", () => ({
 }));
 
 const installComposioMcp = vi.fn(async () => undefined);
+const writeConnectedToolsFile = vi.fn(async () => undefined);
 vi.mock("../provisioning/connectors", () => ({
   ensureComposioSession: vi.fn(),
   installComposioMcp: (...args: unknown[]) =>
     installComposioMcp(...(args as [])),
+  writeConnectedToolsFile: (...args: unknown[]) =>
+    writeConnectedToolsFile(...(args as [])),
 }));
 
 import { syncConnections } from "./manage";
@@ -66,6 +69,7 @@ function makeSupabase(rows: Row[]) {
 beforeEach(() => {
   listAllConnectedAccounts.mockClear();
   installComposioMcp.mockClear();
+  writeConnectedToolsFile.mockClear();
 });
 
 describe("syncConnections", () => {
@@ -88,6 +92,7 @@ describe("syncConnections", () => {
       external_account_id: "ca_new",
     });
     expect(installComposioMcp).toHaveBeenCalledTimes(1);
+    expect(writeConnectedToolsFile).toHaveBeenCalledTimes(1);
   });
 
   it("marks a pending row revoked when its Connect Link expired", async () => {
@@ -105,6 +110,7 @@ describe("syncConnections", () => {
     await syncConnections(supabase, "user-1");
     expect(updates).toEqual([{ id: "row-1", patch: { status: "revoked" } }]);
     expect(installComposioMcp).not.toHaveBeenCalled();
+    expect(writeConnectedToolsFile).toHaveBeenCalledTimes(1);
   });
 
   it("marks a pending row revoked when its account no longer exists", async () => {
@@ -151,6 +157,7 @@ describe("syncConnections", () => {
     ]);
     await syncConnections(supabase, "user-1");
     expect(updates).toHaveLength(0);
+    expect(writeConnectedToolsFile).not.toHaveBeenCalled();
   });
 
   it("does not activate from a non-ACTIVE account status", async () => {

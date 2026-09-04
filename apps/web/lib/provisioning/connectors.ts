@@ -129,11 +129,14 @@ export async function writeConnectedToolsFile(
   userId: string,
   provisioned?: ComputeTarget,
 ): Promise<void> {
-  const { data: rows } = await supabase
+  const { data: rows, error } = await supabase
     .from("connections")
     .select("toolkit")
     .eq("user_id", userId)
     .eq("status", "active");
+  if (error) {
+    throw new Error(`connected-tools query failed: ${error.message}`);
+  }
   const toolkits = (rows ?? [])
     .map((row) => row.toolkit as string)
     .filter(Boolean)

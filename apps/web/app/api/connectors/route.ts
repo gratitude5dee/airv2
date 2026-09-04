@@ -18,7 +18,6 @@ import {
   syncConnections,
   TOOLKIT_SLUG_PATTERN,
 } from "@/lib/connectors/manage";
-import { writeConnectedToolsFile } from "@/lib/provisioning/connectors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -90,17 +89,6 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
   }
   const supabase = serviceClient();
   const connections = await syncConnections(supabase, userId);
-  try {
-    await writeConnectedToolsFile(supabase, userId);
-  } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "connected-tools write failed",
-        user_id: userId,
-        error: error instanceof Error ? error.message : String(error),
-      }),
-    );
-  }
   return NextResponse.json({ connections });
 }
 
@@ -121,17 +109,6 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
   }
   if (result === "revoke_failed") {
     return NextResponse.json({ error: "revoke failed" }, { status: 502 });
-  }
-  try {
-    await writeConnectedToolsFile(supabase, userId);
-  } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "connected-tools write failed",
-        user_id: userId,
-        error: error instanceof Error ? error.message : String(error),
-      }),
-    );
   }
   return NextResponse.json({ ok: true });
 }
