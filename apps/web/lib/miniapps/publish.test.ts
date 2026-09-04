@@ -114,7 +114,7 @@ describe("createDraft refresh keeps existing metadata", () => {
       name: "",
       description: "",
     });
-    expect(result).toEqual({ id: "app-1", slug: "alice-promo", name: "Spring Promo" });
+    expect(result).toEqual({ id: "app-1", slug: "alice-promo", name: "Spring Promo", created: false });
     expect(inserted).toHaveLength(0);
     expect(updates).toHaveLength(1);
     expect(updates[0]).not.toHaveProperty("name");
@@ -140,6 +140,28 @@ describe("createDraft refresh keeps existing metadata", () => {
       createDraft(supabase, "user-1", { appname: "promo", name: "", description: "" })
     ).rejects.toMatchObject({ message: "name required" });
     expect(inserted).toHaveLength(0);
+  });
+
+  it("reports `created` only for the call whose insert made the row", async () => {
+    const fresh = draftSupabase(null);
+    const winner = await createDraft(fresh.supabase, "user-1", {
+      appname: "promo",
+      name: "Promo",
+      description: "",
+    });
+    expect(winner.created).toBe(true);
+    expect(fresh.inserted).toHaveLength(1);
+
+    // The concurrent loser: its lookup saw nothing, its insert hit the unique
+    // slug, and the refresh handed it the winner's row — not as a creation.
+    const raced = draftSupabase(existing);
+    const loser = await createDraft(raced.supabase, "user-1", {
+      appname: "promo",
+      name: "Promo",
+      description: "",
+    });
+    expect(loser).toMatchObject({ id: "app-1", created: false });
+    expect(raced.inserted).toHaveLength(1);
   });
 
   it("a failed refresh surfaces as a failure, not as 'name required' or 'taken'", async () => {

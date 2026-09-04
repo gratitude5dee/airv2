@@ -118,13 +118,18 @@ export function titleFor(appname: string): string {
  * exist. A slug held by someone else is "taken" (same answer as createDraft,
  * so the two paths cannot be told apart by probing). Suspended apps refuse
  * new versions — suspension is fail-closed everywhere (§13.3).
+ *
+ * `created` comes from the insert itself, never from the lookup that
+ * preceded it: two concurrent calls for one new appname both miss the
+ * lookup, but only the one whose insert won is told it created the app,
+ * so only that one may ever discard it (`discardEmptyDraft`).
  */
-export async function resolveDropApp(
+export async function resolveOrCreateDropApp(
   supabase: SupabaseClient,
   userId: string,
   input: { appname: string; name?: string | undefined; description?: string | undefined },
   lane: CreateLane = "drop"
-): Promise<RegistryApp> {
+): Promise<{ app: RegistryApp; created: boolean }> {
   const appname = validateAppName(input.appname);
   const username = await publisherUsername(supabase, userId);
   const slug = slugFor(username, appname);
@@ -136,15 +141,39 @@ export async function resolveDropApp(
     if (existing.status === "suspended") {
       throw new PublishError("that app is suspended", 409);
     }
-    return existing;
+    return { app: existing, created: false };
   }
-  await createDraft(supabase, userId, {
+  const draft = await createDraft(supabase, userId, {
     appname,
     name: input.name?.trim() || titleFor(appname),
     description: input.description ?? "",
     lane,
   });
-  return ownedApp(supabase, userId, slug);
+  return { app: await ownedApp(supabase, userId, slug), created: draft.created };
+}
+
+/**
+ * Undo a draft row this request created and never filled: only an owned
+ * `draft` with neither pointer set and no link or version row naming it
+ * goes (RPC `miniapp_discard_empty_draft`, migration 0092, under the app
+ * row's lock), so a concurrent request that found the row and started
+ * staging — its link or version row written, its pointer not yet set — is
+ * never cut off.
+ */
+export async function discardEmptyDraft(
+  supabase: SupabaseClient,
+  userId: string,
+  appId: string
+): Promise<boolean> {
+  const { data, error } = await supabase.rpc("miniapp_discard_empty_draft", {
+    p_app_id: appId,
+    p_owner_user_id: userId,
+  });
+  if (error) {
+    console.error(JSON.stringify({ msg: "empty draft discard failed", app_id: appId, error: error.message }));
+    return false;
+  }
+  return data === true;
 }
 
 export async function dropBundle(
@@ -160,15 +189,23 @@ export async function dropBundle(
   // Bundle contract before the registry: a bad bundle never creates an app.
   validateBundle(files);
   const findings = enforceCsp(files);
-  const app = await resolveDropApp(supabase, userId, {
+  const { app, created } = await resolveOrCreateDropApp(supabase, userId, {
     appname,
     name: input.name,
     description: input.description,
   });
-  const version = await uploadVersion(supabase, app, files, "drop", {
-    findings,
-    promote: false,
-  });
+  let version: string;
+  try {
+    version = await uploadVersion(supabase, app, files, "drop", {
+      findings,
+      promote: false,
+    });
+  } catch (error) {
+    // A draft this drop created and never filled must not outlive the drop;
+    // an app the owner already had is theirs to keep, whatever happened here.
+    if (created) await discardEmptyDraft(supabase, userId, app.id);
+    throw error;
+  }
   const staged: RegistryApp = { ...app, draft_version: version };
   return {
     slug: app.slug,

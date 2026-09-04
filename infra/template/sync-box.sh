@@ -509,6 +509,9 @@ if [ -f "$HOME_DIR/.hermes/state.db" ]; then
     sudo systemctl start hermes-gateway.service hermes-dashboard.service || true
     exit 1
   fi
+  # SQLite -shm/-wal sidecars can come back root-owned after a fork/resume,
+  # which leaves the store read-only for Hermes and for this script.
+  sudo chown "$(id -u):$(id -g)" "$HOME_DIR"/.hermes/*.db "$HOME_DIR"/.hermes/*.db-* 2>/dev/null || true
   python3 - "$HOME_DIR/.hermes/state.db" <<'PY' || { sudo systemctl start hermes-gateway.service hermes-dashboard.service; exit 1; }
 import sqlite3
 import sys
