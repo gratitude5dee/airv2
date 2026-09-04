@@ -1,7 +1,10 @@
 /**
  * Fleet channels: GET lists dev/prod pointers; POST points a channel at a
  * release (deploy-to-dev, promote-to-prod, and rollback are all this call)
- * or sets the channel's template box for new forks.
+ * or sets the channel's template box for new forks. A release move may carry
+ * `expected_release_id` (a release id, or null for "no release yet"): the
+ * move then applies only while the channel still points there and answers
+ * 409 otherwise.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuthorized } from "@/lib/admin/auth";
@@ -44,6 +47,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   let body: {
     channel?: unknown;
     release_id?: unknown;
+    expected_release_id?: unknown;
     template_box_id?: unknown;
   };
   try {
@@ -60,10 +64,22 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const supabase = serviceClient();
     if (typeof body.release_id === "string") {
+      const expected = body.expected_release_id;
+      if (
+        expected !== undefined &&
+        expected !== null &&
+        typeof expected !== "string"
+      ) {
+        return NextResponse.json(
+          { error: "expected_release_id must be a release id or null" },
+          { status: 400 }
+        );
+      }
       const release = await setChannelRelease(
         supabase,
         body.channel,
-        body.release_id
+        body.release_id,
+        expected
       );
       return NextResponse.json({ channel: body.channel, release });
     }
