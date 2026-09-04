@@ -476,9 +476,10 @@ export async function runSyncJobs(
   // left from it on is released in `finally`, on every exit path.
   let next = 0;
   try {
-    for (; next < rows.length; next += 1) {
+    for (const [index, row] of rows.entries()) {
+      next = index;
       if (!(await jobActive(supabase, job.id))) return totals;
-      const boxId = rows[next].provider_box_id;
+      const boxId = row.provider_box_id;
       let outcome: BoxOutcome;
       let boxError: string | undefined;
       try {
@@ -534,6 +535,7 @@ export async function runSyncJobs(
         return totals;
       }
     }
+    next = rows.length;
   } finally {
     await releaseClaims(supabase, job.id, rows.slice(next));
   }
