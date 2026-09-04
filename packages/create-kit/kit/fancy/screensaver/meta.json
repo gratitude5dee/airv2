@@ -1,0 +1,49 @@
+{
+  "id": "fancy/screensaver",
+  "title": "Screensaver",
+  "tags": [
+    "motion",
+    "ambient",
+    "decor"
+  ],
+  "when": "DVD-logo bounce for a badge inside a container. Ambient only.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {
+    "containerRef": "React.RefObject<HTMLElement | null>",
+    "speed": "number?",
+    "startPosition": "object?",
+    "startAngle": "number?"
+  },
+  "deps": [
+    "motion"
+  ],
+  "weightKb": {
+    "js": 0.8,
+    "css": 0.1,
+    "jsFull": 49.7
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "static",
+  "author": "daniel petho",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "danielpetho/fancy@f9f62c61207b"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 1,
+    "errors": []
+  },
+  "notes": []
+}

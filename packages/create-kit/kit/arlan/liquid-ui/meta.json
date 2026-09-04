@@ -1,0 +1,52 @@
+{
+  "id": "arlan/liquid-ui",
+  "title": "Liquid UI",
+  "tags": [
+    "motion",
+    "svg",
+    "cards",
+    "decor"
+  ],
+  "when": "SDF + marching-squares liquid silhouettes that merge cards. Decorative group backgrounds only.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {
+    "id": "string",
+    "x": "number",
+    "y": "number",
+    "w": "number",
+    "h": "number",
+    "radius": "number?"
+  },
+  "deps": [],
+  "weightKb": {
+    "js": 2.8,
+    "css": 0.1,
+    "jsFull": 2.8
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "static",
+  "author": "Arlan Marat",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "arlan.me/vault@2026-09-04"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 1,
+    "errors": []
+  },
+  "notes": [
+    "The SDF field method `eval()` is renamed `sample()` so the CSP lint's eval rule stays a plain token match."
+  ]
+}

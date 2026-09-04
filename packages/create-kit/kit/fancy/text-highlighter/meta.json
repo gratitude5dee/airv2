@@ -1,0 +1,51 @@
+{
+  "id": "fancy/text-highlighter",
+  "title": "Text Highlighter",
+  "tags": [
+    "text",
+    "motion",
+    "emphasis"
+  ],
+  "when": "Marker-style highlight that sweeps across a phrase when it scrolls into view.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {
+    "as": "ElementType?",
+    "triggerType": "\"hover\" | \"ref\" | \"inView\" | \"auto\"?",
+    "transition": "Transition?",
+    "useInViewOptions": "UseInViewOptions?",
+    "highlightColor": "string?",
+    "direction": "HighlightDirection?"
+  },
+  "deps": [
+    "motion"
+  ],
+  "weightKb": {
+    "js": 0.9,
+    "css": 0.1,
+    "jsFull": 50
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "static",
+  "author": "daniel petho",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "danielpetho/fancy@f9f62c61207b"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 1,
+    "errors": []
+  },
+  "notes": []
+}

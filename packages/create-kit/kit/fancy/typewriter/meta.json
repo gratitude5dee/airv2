@@ -1,0 +1,58 @@
+{
+  "id": "fancy/typewriter",
+  "title": "Typewriter",
+  "tags": [
+    "text",
+    "motion",
+    "hero",
+    "status"
+  ],
+  "when": "A headline or status line that should feel typed by someone; not for body copy.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {
+    "text": "string | string[]",
+    "as": "ElementType?",
+    "speed": "number?",
+    "initialDelay": "number?",
+    "waitTime": "number?",
+    "deleteSpeed": "number?",
+    "loop": "boolean?",
+    "showCursor": "boolean?",
+    "hideCursorOnType": "boolean?",
+    "cursorChar": "string | React.ReactNode?",
+    "cursorAnimationVariants": "object?",
+    "cursorClassName": "string?"
+  },
+  "deps": [
+    "motion"
+  ],
+  "weightKb": {
+    "js": 0.8,
+    "css": 0.1,
+    "jsFull": 49.6
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "static",
+  "author": "daniel petho",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "danielpetho/fancy@f9f62c61207b"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 18,
+    "errors": []
+  },
+  "notes": []
+}

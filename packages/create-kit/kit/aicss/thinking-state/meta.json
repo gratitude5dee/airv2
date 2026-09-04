@@ -1,0 +1,43 @@
+{
+  "id": "aicss/thinking-state",
+  "title": "Thinking State",
+  "tags": [
+    "ai",
+    "status",
+    "loading",
+    "thinking"
+  ],
+  "when": "The agent is working and you have a verb for it. Default for the status/thinking recipe.",
+  "kind": "component",
+  "entry": "index.ts",
+  "props": {},
+  "deps": [],
+  "weightKb": {
+    "js": 0.2,
+    "css": 0.3,
+    "jsFull": 0.2
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "reduced",
+  "author": "Kevin Kelder (kvnkld)",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "kvnkld/aicss@4556a918fd8c"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 18,
+    "errors": []
+  },
+  "notes": []
+}

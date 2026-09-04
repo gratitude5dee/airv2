@@ -1,0 +1,42 @@
+{
+  "id": "beautiful/flowchart",
+  "title": "Flowchart",
+  "tags": [
+    "diagram",
+    "svg",
+    "plan"
+  ],
+  "when": "Simple node/edge flowchart for a plan or pipeline.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {},
+  "deps": [],
+  "weightKb": {
+    "js": 3.7,
+    "css": 0.1,
+    "jsFull": 3.7
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "reduced",
+  "author": "Shane Levine",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "beautifului.dev@2026-09-04"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 331,
+    "errors": []
+  },
+  "notes": []
+}

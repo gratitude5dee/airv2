@@ -349,3 +349,28 @@ hermes mcp test agentmail                        # must list create_draft
 If the `agentmail` MCP block is absent, re-run provisioning's
 `installAgentmailMcp` for that box rather than hand-writing the key — the
 value is the per-user `${AGENTMAIL_API_KEY}` from the box env.
+
+## 9. Create Kit Design doc — `skills/create-miniapp/DESIGN.md`
+
+The Box copy of the Air Create Design doc (goal-create-v11 §12.3) is a
+**generated** file: `packages/create-kit/scripts/harvest.ts` writes
+`packages/create-kit/DESIGN.md` and mirrors it byte-for-byte to
+`infra/template/skills/create-miniapp/DESIGN.md`. Never edit either copy by
+hand — `npx tsx packages/create-kit/scripts/verify.ts` (CI) fails when the
+two differ or when either drifts from `kit/**/meta.json` + `prompts/src/`.
+`skills/create-miniapp/SKILL.md` and `scripts/air-create` belong to the Drop
+lane (MC2); `DESIGN.md` sits beside them. `sync-box.sh` §1 already copies
+every `skills/*/` directory, so no sync-box change is needed for the doc to
+reach `~/.hermes/skills/create-miniapp/DESIGN.md`.
+
+Rollout is the ordinary §7 flow — regenerate, commit, then
+`ADMIN_API_KEY=... APP_ORIGIN=... infra/template/release.sh "create-kit
+<version>"` and point `dev` at the new release. Verify on a box:
+
+```bash
+head -3 ~/.hermes/skills/create-miniapp/DESIGN.md   # GENERATED banner + Kit version
+```
+
+The Kit itself (`kit/`, `vendor/`) is **not** in the template: Boxes get the
+Design doc and reference pages; component source reaches an app through the
+Build Service (MC4), which reads `packages/create-kit` offline.

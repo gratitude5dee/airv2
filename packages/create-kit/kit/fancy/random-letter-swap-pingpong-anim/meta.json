@@ -1,0 +1,51 @@
+{
+  "id": "fancy/random-letter-swap-pingpong-anim",
+  "title": "Random Letter Swap (ping-pong)",
+  "tags": [
+    "text",
+    "motion",
+    "hover",
+    "nav"
+  ],
+  "when": "Randomized Letter Swap that rolls back on hover-out. Hover-only.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {
+    "label": "string",
+    "reverse": "boolean?",
+    "transition": "AnimationOptions?",
+    "staggerDuration": "number?",
+    "onClick": "() => void?"
+  },
+  "deps": [
+    "motion"
+  ],
+  "weightKb": {
+    "js": 0.7,
+    "css": 0.1,
+    "jsFull": 43.2
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": false,
+  "reducedMotion": "none",
+  "author": "daniel petho",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "danielpetho/fancy@f9f62c61207b"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 18,
+    "errors": []
+  },
+  "notes": []
+}

@@ -1,0 +1,42 @@
+{
+  "id": "fancy/gooey-svg-filter",
+  "title": "Gooey SVG Filter",
+  "tags": [
+    "filter",
+    "svg",
+    "helper"
+  ],
+  "when": "Provides an SVG goo filter by id for blobby merges. Pair with liquid-gooey only when that package is too heavy.",
+  "kind": "helper",
+  "entry": "index.tsx",
+  "props": {},
+  "deps": [],
+  "weightKb": {
+    "js": 0.4,
+    "css": 0.1,
+    "jsFull": 0.4
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "n/a",
+  "author": "daniel petho",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "danielpetho/fancy@f9f62c61207b"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 155,
+    "errors": []
+  },
+  "notes": []
+}

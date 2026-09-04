@@ -1,0 +1,43 @@
+{
+  "id": "aicss/thinking-reasoning",
+  "title": "Thinking Reasoning",
+  "tags": [
+    "ai",
+    "status",
+    "disclosure",
+    "thinking"
+  ],
+  "when": "Collapsible reasoning trace under a thinking indicator.",
+  "kind": "component",
+  "entry": "index.ts",
+  "props": {},
+  "deps": [],
+  "weightKb": {
+    "js": 1.6,
+    "css": 1,
+    "jsFull": 1.6
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "reduced",
+  "author": "Kevin Kelder (kvnkld)",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "kvnkld/aicss@4556a918fd8c"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 206,
+    "errors": []
+  },
+  "notes": []
+}

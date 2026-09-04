@@ -1,0 +1,55 @@
+{
+  "id": "air",
+  "title": "Air shell, theme and hooks",
+  "tags": [
+    "air",
+    "layout",
+    "hooks",
+    "state",
+    "theme"
+  ],
+  "when": "Always: theme.css + shell.css give every screen its tokens and vocabulary; index.ts gives useLite(), useReducedMotion(), useTheme(), useAirState().",
+  "kind": "helper",
+  "entry": "index.ts",
+  "props": {
+    "useAirState(resource?, initial?)": "{ state, status, canWrite, error, save, update, reload }",
+    "useLite()": "boolean",
+    "useReducedMotion()": "boolean",
+    "useTheme()": "\"atmosphere\" | \"pixel\"",
+    "cn(...classes)": "string"
+  },
+  "deps": [
+    "clsx",
+    "tailwind-merge"
+  ],
+  "weightKb": {
+    "js": 1.3,
+    "css": 4.4,
+    "jsFull": 10.4
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "n/a",
+  "author": "Air",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "gratitude5dee/airv2"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 0,
+    "errors": []
+  },
+  "notes": [
+    "Generated from apps/web/lib/miniapps/themes.ts and shell.ts; regenerate with harvest, never edit theme.css/shell.css."
+  ]
+}

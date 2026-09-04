@@ -1,0 +1,53 @@
+{
+  "id": "arlan/squircle",
+  "title": "Squircle",
+  "tags": [
+    "shape",
+    "button",
+    "card",
+    "svg"
+  ],
+  "when": "True superellipse corners for a button or card via clip-path; the Air pill radius but smoother.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {
+    "radius": "number",
+    "smoothing": "number",
+    "exponent": "number?",
+    "fill": "string?",
+    "stroke": "string?",
+    "strokeGradient": "string[]?",
+    "strokeWidth": "number?",
+    "compare": "boolean?",
+    "contentClassName": "string?"
+  },
+  "deps": [],
+  "weightKb": {
+    "js": 1.5,
+    "css": 0.1,
+    "jsFull": 1.5
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "n/a",
+  "author": "Arlan Marat",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "arlan.me/vault@2026-09-04"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 1,
+    "errors": []
+  },
+  "notes": []
+}

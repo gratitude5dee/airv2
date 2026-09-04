@@ -1,0 +1,45 @@
+{
+  "id": "arlan/color-depth",
+  "title": "Color Depth",
+  "tags": [
+    "button",
+    "style",
+    "skeuomorphic",
+    "css"
+  ],
+  "when": "Ten layered-light materials (glossy, metal, glass, neon…) for buttons. Pure CSS classes; the SKILL.md ships as ref.",
+  "kind": "style",
+  "entry": "index.tsx",
+  "props": {},
+  "deps": [],
+  "weightKb": {
+    "js": 0.7,
+    "css": 2.7,
+    "jsFull": 0.7
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "n/a",
+  "author": "Arlan Marat",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "arlan.me/vault@2026-09-04"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 66,
+    "errors": []
+  },
+  "notes": [
+    "Upstream self-initialised on import; the Kit exports initColorDepth/useColorDepth instead."
+  ]
+}

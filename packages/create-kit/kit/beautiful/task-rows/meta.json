@@ -1,0 +1,42 @@
+{
+  "id": "beautiful/task-rows",
+  "title": "Task Rows",
+  "tags": [
+    "list",
+    "tasks",
+    "status"
+  ],
+  "when": "Task rows with progress and owners; heavier than aicss/todo-list.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {},
+  "deps": [],
+  "weightKb": {
+    "js": 2.1,
+    "css": 0.1,
+    "jsFull": 2.1
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "reduced",
+  "author": "Shane Levine",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "beautifului.dev@2026-09-04"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 282,
+    "errors": []
+  },
+  "notes": []
+}

@@ -1,0 +1,49 @@
+{
+  "id": "beautiful/code-block",
+  "title": "Code Block",
+  "tags": [
+    "code",
+    "text"
+  ],
+  "when": "Code block with line numbers and copy. aicss/code-block is the lighter default.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {
+    "variant": "string?",
+    "lines": "string[]?",
+    "code": "string?",
+    "diff": "DiffRow[]?",
+    "filename": "string?",
+    "labels": "Partial<CodeBlockLabels>?",
+    "onCopy": "(text: string) => void?"
+  },
+  "deps": [],
+  "weightKb": {
+    "js": 2.3,
+    "css": 0.1,
+    "jsFull": 2.3
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "n/a",
+  "author": "Shane Levine",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "beautifului.dev@2026-09-04"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 398,
+    "errors": []
+  },
+  "notes": []
+}

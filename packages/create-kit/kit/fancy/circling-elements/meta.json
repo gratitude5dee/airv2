@@ -1,0 +1,52 @@
+{
+  "id": "fancy/circling-elements",
+  "title": "Circling Elements",
+  "tags": [
+    "motion",
+    "ambient",
+    "decor",
+    "gallery"
+  ],
+  "when": "Small items orbiting a center: avatars around a host, badges around a logo.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {
+    "radius": "number?",
+    "duration": "number?",
+    "easing": "string?",
+    "direction": "\"normal\" | \"reverse\"?",
+    "pauseOnHover": "boolean?"
+  },
+  "deps": [
+    "clsx",
+    "tailwind-merge"
+  ],
+  "weightKb": {
+    "js": 0.6,
+    "css": 0.1,
+    "jsFull": 49.5
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "static",
+  "author": "daniel petho",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "danielpetho/fancy@f9f62c61207b"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 1,
+    "errors": []
+  },
+  "notes": []
+}

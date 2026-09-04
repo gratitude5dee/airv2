@@ -1,0 +1,42 @@
+{
+  "id": "beautiful/shimmer",
+  "title": "Shimmer (atom)",
+  "tags": [
+    "loading",
+    "atom",
+    "helper"
+  ],
+  "when": "Text shimmer used by selection-actions.",
+  "kind": "helper",
+  "entry": "index.tsx",
+  "props": {},
+  "deps": [],
+  "weightKb": {
+    "js": 0.3,
+    "css": 0.1,
+    "jsFull": 0.3
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "static",
+  "author": "Shane Levine",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "beautifului.dev@2026-09-04"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 1,
+    "errors": []
+  },
+  "notes": []
+}

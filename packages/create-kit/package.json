@@ -1,0 +1,13 @@
+{
+  "name": "@air/create-kit",
+  "version": "2026.09.0",
+  "private": true,
+  "type": "module",
+  "description": "Air Create Kit: closed, pinned, licensed component set + generated Design doc (goal-create-v11 §12). Not published; consumed by the Build Service and synced into Boxes.",
+  "scripts": {
+    "harvest": "tsx scripts/harvest.ts",
+    "verify": "tsx scripts/verify.ts",
+    "vendor": "tsx scripts/vendor.ts",
+    "pack-restricted": "tsx scripts/pack-restricted.ts"
+  }
+}

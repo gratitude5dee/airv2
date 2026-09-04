@@ -1,0 +1,66 @@
+{
+  "color-depth": {
+    "url": "https://arlan.me/vault/color-depth",
+    "capturedAt": "2026-09-04",
+    "sha256": "39613ad5489681770e007c7ba417aa37a870e883ea525b950d6a5aaf5bf137c9",
+    "files": [
+      "color-depth/standalone/SKILL.md",
+      "color-depth/standalone/color-depth.css",
+      "color-depth/standalone/color-depth.html",
+      "color-depth/standalone/color-depth.js"
+    ]
+  },
+  "ghosty-reveal": {
+    "url": "https://arlan.me/vault/ghosty-reveal",
+    "capturedAt": "2026-09-04",
+    "sha256": "fc9e751b0236c9a3061b8bd8488e314d21ae7d25edea26f11a33be2152211caf",
+    "files": [
+      "ghosty-reveal/standalone/GhostReveal.tsx"
+    ]
+  },
+  "holo": {
+    "url": "https://arlan.me/vault/holo",
+    "capturedAt": "2026-09-04",
+    "sha256": "939a3ade8233ac39d2176d74408836cf7ae17872f3c0f13177cdaa63b1243944",
+    "files": [
+      "holo/HoloCard.tsx",
+      "holo/engine.ts"
+    ]
+  },
+  "liquid-ui": {
+    "url": "https://arlan.me/vault/liquid-ui",
+    "capturedAt": "2026-09-04",
+    "sha256": "3eab8009706dcb3ee6cd9712d2b1aa444a43efc9ea3705995b0123ff12644e07",
+    "files": [
+      "liquid/LiquidCard.tsx",
+      "liquid/LiquidGroup.tsx",
+      "liquid/engine.ts",
+      "liquid/marching-squares.ts",
+      "liquid/playground.tsx",
+      "liquid/scenes.tsx",
+      "liquid/sdf.ts"
+    ]
+  },
+  "squircle": {
+    "url": "https://arlan.me/vault/squircle",
+    "capturedAt": "2026-09-04",
+    "sha256": "6ef8e39ca303f2213d9426a98767b9c337de34af65dade2a5907377171372b07",
+    "files": [
+      "squircle/Squircle.tsx",
+      "squircle/parts.tsx",
+      "squircle/playground.tsx",
+      "squircle/superellipse.ts",
+      "squircle/tokens.ts"
+    ]
+  },
+  "typer": {
+    "url": "https://arlan.me/vault/typer",
+    "capturedAt": "2026-09-04",
+    "sha256": "573b0a1a4894ba9091bf01458028a83a79c1fa45b13c15eb383136a4c2c3c84b",
+    "files": [
+      "typer/standalone/typer.css",
+      "typer/standalone/typer.html",
+      "typer/standalone/typer.ts"
+    ]
+  }
+}

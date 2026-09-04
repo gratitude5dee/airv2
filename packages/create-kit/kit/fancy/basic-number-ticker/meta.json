@@ -1,0 +1,53 @@
+{
+  "id": "fancy/basic-number-ticker",
+  "title": "Number Ticker",
+  "tags": [
+    "number",
+    "motion",
+    "hero",
+    "status",
+    "countdown"
+  ],
+  "when": "A number that counts to its value: RSVP totals, countdowns, prices.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {
+    "from": "number",
+    "target": "number",
+    "transition": "ValueAnimationTransition?",
+    "onStart": "() => void?",
+    "onComplete": "() => void?",
+    "autoStart": "boolean?"
+  },
+  "deps": [
+    "motion"
+  ],
+  "weightKb": {
+    "js": 0.6,
+    "css": 0.1,
+    "jsFull": 52.4
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "static",
+  "author": "daniel petho",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "danielpetho/fancy@f9f62c61207b"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 18,
+    "errors": []
+  },
+  "notes": []
+}

@@ -1,0 +1,50 @@
+{
+  "id": "arlan/typer",
+  "title": "Typer",
+  "tags": [
+    "text",
+    "motion",
+    "hero",
+    "status"
+  ],
+  "when": "Eased typing with in/out variations as a vanilla class plus a React wrapper; alternative to fancy/typewriter when you need the out-animation.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {
+    "text": "string",
+    "play": "\"in\" | \"out\" | \"inout\"?",
+    "as": "\"span\" | \"p\" | \"h1\" | \"h2\" | \"h3\"?"
+  },
+  "deps": [],
+  "weightKb": {
+    "js": 2.1,
+    "css": 0.6,
+    "jsFull": 2.1
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "static",
+  "author": "Arlan Marat",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "arlan.me/vault@2026-09-04"
+  },
+  "csp": {
+    "ok": true,
+    "findings": [
+      "soft raw-html arlan/typer/typer.ts:128 Raw HTML injection; make sure the string is not user-controlled.",
+      "soft raw-html arlan/typer/typer.ts:283 Raw HTML injection; make sure the string is not user-controlled."
+    ]
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 1,
+    "errors": []
+  },
+  "notes": []
+}

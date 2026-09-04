@@ -1,0 +1,45 @@
+{
+  "id": "beautiful/recommendation-card",
+  "title": "Recommendation Card",
+  "tags": [
+    "card",
+    "decision",
+    "actions"
+  ],
+  "when": "One recommendation with entity chips, a value and accept/skip.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {},
+  "deps": [
+    "clsx",
+    "tailwind-merge"
+  ],
+  "weightKb": {
+    "js": 2.4,
+    "css": 0.1,
+    "jsFull": 11.6
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "n/a",
+  "author": "Shane Levine",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "beautifului.dev@2026-09-04"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 332,
+    "errors": []
+  },
+  "notes": []
+}

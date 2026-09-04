@@ -1,0 +1,63 @@
+{
+  "id": "fancy/simple-marquee",
+  "title": "Simple Marquee",
+  "tags": [
+    "layout",
+    "motion",
+    "gallery",
+    "ambient"
+  ],
+  "when": "Endless horizontal strip of logos, photos or words. Pauses on reduced motion.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {
+    "direction": "\"left\" | \"right\" | \"up\" | \"down\"?",
+    "baseVelocity": "number?",
+    "easing": "(value: number) => number?",
+    "slowdownOnHover": "boolean?",
+    "slowDownFactor": "number?",
+    "slowDownSpringConfig": "SpringOptions?",
+    "useScrollVelocity": "boolean?",
+    "scrollAwareDirection": "boolean?",
+    "scrollSpringConfig": "SpringOptions?",
+    "scrollContainer": "RefObject<HTMLElement | null> | HTMLElement | null?",
+    "repeat": "number?",
+    "draggable": "boolean?",
+    "dragSensitivity": "number?",
+    "dragVelocityDecay": "number?",
+    "dragAwareDirection": "boolean?",
+    "dragAngle": "number?",
+    "grabCursor": "boolean?"
+  },
+  "deps": [
+    "motion"
+  ],
+  "weightKb": {
+    "js": 1.3,
+    "css": 0.1,
+    "jsFull": 53.6
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "static",
+  "author": "daniel petho",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "danielpetho/fancy@f9f62c61207b"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 1,
+    "errors": []
+  },
+  "notes": []
+}

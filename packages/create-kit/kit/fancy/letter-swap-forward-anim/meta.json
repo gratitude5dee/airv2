@@ -1,0 +1,52 @@
+{
+  "id": "fancy/letter-swap-forward-anim",
+  "title": "Letter Swap (forward)",
+  "tags": [
+    "text",
+    "motion",
+    "hover",
+    "nav"
+  ],
+  "when": "Nav/button label whose letters roll upward on hover. Hover-only.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {
+    "label": "string",
+    "reverse": "boolean?",
+    "transition": "AnimationOptions?",
+    "staggerDuration": "number?",
+    "staggerFrom": "\"first\" | \"last\" | \"center\" | number?",
+    "onClick": "() => void?"
+  },
+  "deps": [
+    "motion"
+  ],
+  "weightKb": {
+    "js": 0.6,
+    "css": 0.1,
+    "jsFull": 43.2
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": false,
+  "reducedMotion": "none",
+  "author": "daniel petho",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "danielpetho/fancy@f9f62c61207b"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 18,
+    "errors": []
+  },
+  "notes": []
+}

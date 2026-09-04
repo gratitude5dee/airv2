@@ -1,0 +1,47 @@
+{
+  "border-beam/LICENSE": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "border-beam/LICENSE"
+    ],
+    "sha256": "915a283980628a0ca9e7b423ebafc6f3a0fa1e630ff17d34e59034808d92011c",
+    "url": "https://raw.githubusercontent.com/Jakubantalik/Libraries.dev/aea4c00db4b7ad634cbf43357afa80cdf050b68d/packages/border-beam/LICENSE",
+    "via": "local-clone"
+  },
+  "liquid-gooey/LICENSE": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "liquid-gooey/LICENSE"
+    ],
+    "sha256": "85de31d4956c450a28775726784a083848dd9dcfe50a23ceedbd326292b14f42",
+    "url": "https://raw.githubusercontent.com/Jakubantalik/Libraries.dev/aea4c00db4b7ad634cbf43357afa80cdf050b68d/packages/liquid-gooey/LICENSE",
+    "via": "local-clone"
+  },
+  "metal-fx/LICENSE": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "metal-fx/LICENSE"
+    ],
+    "sha256": "915a283980628a0ca9e7b423ebafc6f3a0fa1e630ff17d34e59034808d92011c",
+    "url": "https://raw.githubusercontent.com/Jakubantalik/Libraries.dev/aea4c00db4b7ad634cbf43357afa80cdf050b68d/packages/metal-fx/LICENSE",
+    "via": "local-clone"
+  },
+  "metal-fx/NOTICE": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "metal-fx/NOTICE"
+    ],
+    "sha256": "ce2ded85f7aa51aeafd7b4a11436463efb25e1bac33527e14a2e3f7fde8851b4",
+    "url": "https://raw.githubusercontent.com/Jakubantalik/Libraries.dev/aea4c00db4b7ad634cbf43357afa80cdf050b68d/packages/metal-fx/NOTICE",
+    "via": "local-clone"
+  },
+  "thinking-orbs/LICENSE": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "thinking-orbs/LICENSE"
+    ],
+    "sha256": "915a283980628a0ca9e7b423ebafc6f3a0fa1e630ff17d34e59034808d92011c",
+    "url": "https://raw.githubusercontent.com/Jakubantalik/Libraries.dev/aea4c00db4b7ad634cbf43357afa80cdf050b68d/packages/thinking-orbs/LICENSE",
+    "via": "local-clone"
+  }
+}

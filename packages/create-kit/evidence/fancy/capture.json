@@ -1,0 +1,326 @@
+{
+  "../LICENSE": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "../LICENSE"
+    ],
+    "sha256": "39b0d9c112b4e80383da88660cbaa64972f741e80205c14fa1b779ff1989cc09",
+    "url": "https://raw.githubusercontent.com/danielpetho/fancy/f9f62c61207b2dd3210476dd98af3c9a5be24094/LICENSE",
+    "via": "local-clone"
+  },
+  "fancy/components/background/animated-gradient-with-svg.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "fancy/components/background/animated-gradient-with-svg.tsx"
+    ],
+    "sha256": "ec3965fdd10770e97072d6b8f542b854c92589395b3ee0c5213e398fc0c7b234",
+    "url": "https://raw.githubusercontent.com/danielpetho/fancy/f9f62c61207b2dd3210476dd98af3c9a5be24094/src/fancy/components/background/animated-gradient-with-svg.tsx",
+    "via": "local-clone"
+  },
+  "fancy/components/background/pixel-trail.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "fancy/components/background/pixel-trail.tsx"
+    ],
+    "sha256": "b68a287d1ff87df4a83cb636031c856165ff83a511322abbad6171473429e90d",
+    "url": "https://raw.githubusercontent.com/danielpetho/fancy/f9f62c61207b2dd3210476dd98af3c9a5be24094/src/fancy/components/background/pixel-trail.tsx",
+    "via": "local-clone"
+  },
+  "fancy/components/blocks/circling-elements.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "fancy/components/blocks/circling-elements.tsx"
+    ],
+    "sha256": "cf167784baa2e7b69bdf7a0401041cfe02aa158419b7b5cd9249b4c70c581bca",
+    "url": "https://raw.githubusercontent.com/danielpetho/fancy/f9f62c61207b2dd3210476dd98af3c9a5be24094/src/fancy/components/blocks/circling-elements.tsx",
+    "via": "local-clone"
+  },
+  "fancy/components/blocks/css-box.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "fancy/components/blocks/css-box.tsx"
+    ],
+    "sha256": "464ed65eaaa4519e0d3d97913397bb499c9b76619fa7269940deefe28c819496",
+    "url": "https://raw.githubusercontent.com/danielpetho/fancy/f9f62c61207b2dd3210476dd98af3c9a5be24094/src/fancy/components/blocks/css-box.tsx",
+    "via": "local-clone"
+  },
+  "fancy/components/blocks/float.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "fancy/components/blocks/float.tsx"
+    ],
+    "sha256": "6e2a67a3aeb6c133d776e10ff42dd77f0f162e25b598db5e4e7e4e6cdd3005d6",
+    "url": "https://raw.githubusercontent.com/danielpetho/fancy/f9f62c61207b2dd3210476dd98af3c9a5be24094/src/fancy/components/blocks/float.tsx",
+    "via": "local-clone"
+  },
+  "fancy/components/blocks/media-between-text.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "fancy/components/blocks/media-between-text.tsx"
+    ],
+    "sha256": "e7bd4cd5fa83c12d8177e2fb9b21e77a9f6a0e8c6192b9c53801017261cff9c7",
+    "url": "https://raw.githubusercontent.com/danielpetho/fancy/f9f62c61207b2dd3210476dd98af3c9a5be24094/src/fancy/components/blocks/media-between-text.tsx",
+    "via": "local-clone"
+  },
+  "fancy/components/blocks/screensaver.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "fancy/components/blocks/screensaver.tsx"
+    ],
+    "sha256": "403f8503a962910247e6174de90e4bf90819f92418b6380c1f3b4137f7d2e340",
+    "url": "https://raw.githubusercontent.com/danielpetho/fancy/f9f62c61207b2dd3210476dd98af3c9a5be24094/src/fancy/components/blocks/screensaver.tsx",
+    "via": "local-clone"
+  },
+  "fancy/components/blocks/simple-carousel.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "fancy/components/blocks/simple-carousel.tsx"
+    ],
+    "sha256": "19f301b05b7b39ca1c0f9f768d8a2c15aa24d2e5717bcbf62812b4afac0177ae",
+    "url": "https://raw.githubusercontent.com/danielpetho/fancy/f9f62c61207b2dd3210476dd98af3c9a5be24094/src/fancy/components/blocks/simple-carousel.tsx",
+    "via": "local-clone"
+  },
+  "fancy/components/blocks/simple-marquee.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "fancy/components/blocks/simple-marquee.tsx"
+    ],
+    "sha256": "4c43713ae62398b3aacfc52f2267aadc615fed06823db850d47b3b822d880799",
+    "url": "https://raw.githubusercontent.com/danielpetho/fancy/f9f62c61207b2dd3210476dd98af3c9a5be24094/src/fancy/components/blocks/simple-marquee.tsx",
+    "via": "local-clone"
+  },
+  "fancy/components/blocks/stacking-cards.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "fancy/components/blocks/stacking-cards.tsx"
+    ],
+    "sha256": "e44b9a352d3cb15f7a7929399d41df8902664e2a66eae63b065167242d00b228",
+    "url": "https://raw.githubusercontent.com/danielpetho/fancy/f9f62c61207b2dd3210476dd98af3c9a5be24094/src/fancy/components/blocks/stacking-cards.tsx",
+    "via": "local-clone"
+  },
+  "fancy/components/filter/gooey-svg-filter.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "fancy/components/filter/gooey-svg-filter.tsx"
+    ],
+    "sha256": "d06a3858bb66a1537dabfd3dcb30886997da974a3e1f6d76f9855dc519fcfc90",
+    "url": "https://raw.githubusercontent.com/danielpetho/fancy/f9f62c61207b2dd3210476dd98af3c9a5be24094/src/fancy/components/filter/gooey-svg-filter.tsx",
+    "via": "local-clone"
+  },
+  "fancy/components/filter/pixelate-svg-filter.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "fancy/components/filter/pixelate-svg-filter.tsx"
+    ],
+    "sha256": "554b9b58b748c460fe0ff443c25ce575bec47ebc40ef3400a874675fdb392e71",
+    "url": "https://raw.githubusercontent.com/danielpetho/fancy/f9f62c61207b2dd3210476dd98af3c9a5be24094/src/fancy/components/filter/pixelate-svg-filter.tsx",
+    "via": "local-clone"
+  },
+  "fancy/components/physics/elastic-line.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "fancy/components/physics/elastic-line.tsx"
+    ],
+    "sha256": "f07d9470968e8255d2939b9c268015d0379509f8cdd3813ae4e5611623a68cc9",
+    "url": "https://raw.githubusercontent.com/danielpetho/fancy/f9f62c61207b2dd3210476dd98af3c9a5be24094/src/fancy/components/physics/elastic-line.tsx",
+    "via": "local-clone"
+  },
+  "fancy/components/text/basic-number-ticker.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "fancy/components/text/basic-number-ticker.tsx"
+    ],
+    "sha256": "a91113d04895e56101c564ca3406712bf27e8ba1aede92eaf5b959f0e0f2a68d",
+    "url": "https://raw.githubusercontent.com/danielpetho/fancy/f9f62c61207b2dd3210476dd98af3c9a5be24094/src/fancy/components/text/basic-number-ticker.tsx",
+    "via": "local-clone"
+  },
+  "fancy/components/text/breathing-text.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "fancy/components/text/breathing-text.tsx"
+    ],
+    "sha256": "059e18c40e045c0cdb226c86dfe2f4999917a542e0d85397a589950b088936b2",
+    "url": "https://raw.githubusercontent.com/danielpetho/fancy/f9f62c61207b2dd3210476dd98af3c9a5be24094/src/fancy/components/text/breathing-text.tsx",
+    "via": "local-clone"
+  },
+  "fancy/components/text/letter-3d-swap.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "fancy/components/text/letter-3d-swap.tsx"
+    ],
+    "sha256": "3fbd19aca00e671a8b80611adf36504d2f2851b4c6d71a9f42d4dcd214d66f19",
+    "url": "https://raw.githubusercontent.com/danielpetho/fancy/f9f62c61207b2dd3210476dd98af3c9a5be24094/src/fancy/components/text/letter-3d-swap.tsx",
+    "via": "local-clone"
+  },
+  "fancy/components/text/letter-swap-forward-anim.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "fancy/components/text/letter-swap-forward-anim.tsx"
+    ],
+    "sha256": "083a67c99797e8e78c9ed7d9cfcc2d0870f17146d95c3f26066427ad41bdc9bf",
+    "url": "https://raw.githubusercontent.com/danielpetho/fancy/f9f62c61207b2dd3210476dd98af3c9a5be24094/src/fancy/components/text/letter-swap-forward-anim.tsx",
+    "via": "local-clone"
+  },
+  "fancy/components/text/letter-swap-pingpong-anim.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "fancy/components/text/letter-swap-pingpong-anim.tsx"
+    ],
+    "sha256": "a11a4cbe89e872f8badeb6094b591a7068988eedaaa8d4b611c4e4a768576dfc",
+    "url": "https://raw.githubusercontent.com/danielpetho/fancy/f9f62c61207b2dd3210476dd98af3c9a5be24094/src/fancy/components/text/letter-swap-pingpong-anim.tsx",
+    "via": "local-clone"
+  },
+  "fancy/components/text/random-letter-swap-forward-anim.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "fancy/components/text/random-letter-swap-forward-anim.tsx"
+    ],
+    "sha256": "5ee2d2daddd0afc1b84e4c46a05cdfed9f8d8251a3c1da86ddc53dd75a83972b",
+    "url": "https://raw.githubusercontent.com/danielpetho/fancy/f9f62c61207b2dd3210476dd98af3c9a5be24094/src/fancy/components/text/random-letter-swap-forward-anim.tsx",
+    "via": "local-clone"
+  },
+  "fancy/components/text/random-letter-swap-pingpong-anim.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "fancy/components/text/random-letter-swap-pingpong-anim.tsx"
+    ],
+    "sha256": "bfbfaad726c5841eb09b2a2db4c0e594e7e2ebe803aeda44094c65d37c4e4015",
+    "url": "https://raw.githubusercontent.com/danielpetho/fancy/f9f62c61207b2dd3210476dd98af3c9a5be24094/src/fancy/components/text/random-letter-swap-pingpong-anim.tsx",
+    "via": "local-clone"
+  },
+  "fancy/components/text/scramble-hover.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "fancy/components/text/scramble-hover.tsx"
+    ],
+    "sha256": "74b3253412b6f3d222c50b42e9f967c9dc064f162e469e125e833bd2b61c0741",
+    "url": "https://raw.githubusercontent.com/danielpetho/fancy/f9f62c61207b2dd3210476dd98af3c9a5be24094/src/fancy/components/text/scramble-hover.tsx",
+    "via": "local-clone"
+  },
+  "fancy/components/text/scramble-in.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "fancy/components/text/scramble-in.tsx"
+    ],
+    "sha256": "15c5bbce175996fb8a5baa406d065eb1dcd2bc84a483a74f8ca357e49a030cd9",
+    "url": "https://raw.githubusercontent.com/danielpetho/fancy/f9f62c61207b2dd3210476dd98af3c9a5be24094/src/fancy/components/text/scramble-in.tsx",
+    "via": "local-clone"
+  },
+  "fancy/components/text/text-along-path.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "fancy/components/text/text-along-path.tsx"
+    ],
+    "sha256": "250d64e7fd3f5317578484209136a6191a4b021d5d4a5aae4ac8274a989384d6",
+    "url": "https://raw.githubusercontent.com/danielpetho/fancy/f9f62c61207b2dd3210476dd98af3c9a5be24094/src/fancy/components/text/text-along-path.tsx",
+    "via": "local-clone"
+  },
+  "fancy/components/text/text-highlighter.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "fancy/components/text/text-highlighter.tsx"
+    ],
+    "sha256": "5c37e234ce1b07dcdf516d4cf6bb7924cb2e56348d0d4596187ace1d3811f438",
+    "url": "https://raw.githubusercontent.com/danielpetho/fancy/f9f62c61207b2dd3210476dd98af3c9a5be24094/src/fancy/components/text/text-highlighter.tsx",
+    "via": "local-clone"
+  },
+  "fancy/components/text/text-rotate.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "fancy/components/text/text-rotate.tsx"
+    ],
+    "sha256": "4fe43f10972e8dc875e90ed0d63838363cb601ff7c540bf4a7a4d736d1b5c2af",
+    "url": "https://raw.githubusercontent.com/danielpetho/fancy/f9f62c61207b2dd3210476dd98af3c9a5be24094/src/fancy/components/text/text-rotate.tsx",
+    "via": "local-clone"
+  },
+  "fancy/components/text/typewriter.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "fancy/components/text/typewriter.tsx"
+    ],
+    "sha256": "b2ea185767d7a4c2008cf75064f6f72d297baf7eb310c8c2b5d54fbb0960c2c0",
+    "url": "https://raw.githubusercontent.com/danielpetho/fancy/f9f62c61207b2dd3210476dd98af3c9a5be24094/src/fancy/components/text/typewriter.tsx",
+    "via": "local-clone"
+  },
+  "fancy/components/text/underline-center.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "fancy/components/text/underline-center.tsx"
+    ],
+    "sha256": "f3f58f950e5c4b05b63f3c1e29b46ffbf85630d70430c0db4adbee23e407456d",
+    "url": "https://raw.githubusercontent.com/danielpetho/fancy/f9f62c61207b2dd3210476dd98af3c9a5be24094/src/fancy/components/text/underline-center.tsx",
+    "via": "local-clone"
+  },
+  "fancy/components/text/underline-comes-in-goes-out.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "fancy/components/text/underline-comes-in-goes-out.tsx"
+    ],
+    "sha256": "607ff87fe32e00bef11ed8566ba42604624648b7cd045437aa100b31111d01c6",
+    "url": "https://raw.githubusercontent.com/danielpetho/fancy/f9f62c61207b2dd3210476dd98af3c9a5be24094/src/fancy/components/text/underline-comes-in-goes-out.tsx",
+    "via": "local-clone"
+  },
+  "fancy/components/text/underline-goes-out-comes-in.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "fancy/components/text/underline-goes-out-comes-in.tsx"
+    ],
+    "sha256": "e402baeaab53003204d9ef08e329d308ccbfec610cb39af51f75ce6a465864e1",
+    "url": "https://raw.githubusercontent.com/danielpetho/fancy/f9f62c61207b2dd3210476dd98af3c9a5be24094/src/fancy/components/text/underline-goes-out-comes-in.tsx",
+    "via": "local-clone"
+  },
+  "fancy/components/text/underline-to-background.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "fancy/components/text/underline-to-background.tsx"
+    ],
+    "sha256": "9f1e5f0583c24c09a5f02055bf8c151ab07745cf898ee22a6b06fb7d6bdd7ebf",
+    "url": "https://raw.githubusercontent.com/danielpetho/fancy/f9f62c61207b2dd3210476dd98af3c9a5be24094/src/fancy/components/text/underline-to-background.tsx",
+    "via": "local-clone"
+  },
+  "fancy/components/text/vertical-cut-reveal.tsx": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "fancy/components/text/vertical-cut-reveal.tsx"
+    ],
+    "sha256": "31e998a3d991d6596c391f25d88e0bc02e0c4bb2759db53b1a4cc4e4924509ae",
+    "url": "https://raw.githubusercontent.com/danielpetho/fancy/f9f62c61207b2dd3210476dd98af3c9a5be24094/src/fancy/components/text/vertical-cut-reveal.tsx",
+    "via": "local-clone"
+  },
+  "hooks/use-debounced-dimensions.ts": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "hooks/use-debounced-dimensions.ts"
+    ],
+    "sha256": "7791d0533a6c4c2951b12c62ba9c28e2f63574593ef3700b2d0fab1af49e9c64",
+    "url": "https://raw.githubusercontent.com/danielpetho/fancy/f9f62c61207b2dd3210476dd98af3c9a5be24094/src/hooks/use-debounced-dimensions.ts",
+    "via": "local-clone"
+  },
+  "hooks/use-dimensions.ts": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "hooks/use-dimensions.ts"
+    ],
+    "sha256": "b0cd18872b3e69dc5bd91c8cba7dae0ec8b5d8c1bac9a35f2d38269d492b9012",
+    "url": "https://raw.githubusercontent.com/danielpetho/fancy/f9f62c61207b2dd3210476dd98af3c9a5be24094/src/hooks/use-dimensions.ts",
+    "via": "local-clone"
+  },
+  "hooks/use-elastic-line-events.ts": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "hooks/use-elastic-line-events.ts"
+    ],
+    "sha256": "44d0ee49e2b00ccc7f218a22964925e9fa83818ea4a5a50296f0bc261e7683c4",
+    "url": "https://raw.githubusercontent.com/danielpetho/fancy/f9f62c61207b2dd3210476dd98af3c9a5be24094/src/hooks/use-elastic-line-events.ts",
+    "via": "local-clone"
+  },
+  "hooks/use-mouse-position.ts": {
+    "capturedAt": "2026-09-04",
+    "files": [
+      "hooks/use-mouse-position.ts"
+    ],
+    "sha256": "827ab212dfe21afb73ca5916016c022c21993c69d347e3cb460383c28d3a4ef1",
+    "url": "https://raw.githubusercontent.com/danielpetho/fancy/f9f62c61207b2dd3210476dd98af3c9a5be24094/src/hooks/use-mouse-position.ts",
+    "via": "local-clone"
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "id": "beautiful/diff-table",
+  "title": "Diff Table",
+  "tags": [
+    "table",
+    "diff",
+    "review"
+  ],
+  "when": "Before/after rows with accept controls.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {},
+  "deps": [
+    "clsx",
+    "tailwind-merge"
+  ],
+  "weightKb": {
+    "js": 2.8,
+    "css": 0.1,
+    "jsFull": 11.9
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "n/a",
+  "author": "Shane Levine",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "beautifului.dev@2026-09-04"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 328,
+    "errors": []
+  },
+  "notes": []
+}

@@ -31,6 +31,12 @@
       "skillPath": "skills/composio/SKILL.md",
       "computedHash": "11b975f122ecbf455b437e4e42ebf8f30fad84220894c3d52549eefea92a7795"
     },
+    "create-kit": {
+      "source": "gratitude5dee/airv2",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/create-kit/SKILL.md",
+      "computedHash": "3562694478c0e9adb8f35947d69f9a0d44da914f491e47008e7b45ace13e274d"
+    },
     "cut-the-curve": {
       "source": "heygen-com/hyperframes",
       "sourceType": "github",

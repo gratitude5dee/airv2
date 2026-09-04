@@ -1,0 +1,51 @@
+{
+  "id": "libraries/liquid-gooey",
+  "title": "Liquid Gooey",
+  "tags": [
+    "motion",
+    "menu",
+    "decor",
+    "svg"
+  ],
+  "when": "Items that merge like liquid: a plus-menu that splits into droplets, a tab thumb that trails.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {
+    "blur": "number",
+    "contrast": "number",
+    "fill": "string",
+    "shadow": "string",
+    "children": "Liquid.Item[]"
+  },
+  "deps": [
+    "liquid-gooey"
+  ],
+  "weightKb": {
+    "js": 0.5,
+    "css": 0.1,
+    "jsFull": 17.1
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "reduced",
+  "author": "Jakub Antalik",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "Jakubantalik/Libraries.dev@aea4c00db4b7"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 1,
+    "errors": []
+  },
+  "notes": []
+}

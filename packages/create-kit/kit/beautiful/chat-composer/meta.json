@@ -1,0 +1,42 @@
+{
+  "id": "beautiful/chat-composer",
+  "title": "Chat Composer",
+  "tags": [
+    "input",
+    "chat",
+    "composer"
+  ],
+  "when": "Multi-line composer with mode pills. aicss/agent-input is the lighter default.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {},
+  "deps": [],
+  "weightKb": {
+    "js": 2,
+    "css": 0.1,
+    "jsFull": 2
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "n/a",
+  "author": "Shane Levine",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "beautifului.dev@2026-09-04"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 322,
+    "errors": []
+  },
+  "notes": []
+}

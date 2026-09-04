@@ -1,0 +1,47 @@
+{
+  "id": "beautiful/thinking",
+  "title": "Thinking",
+  "tags": [
+    "ai",
+    "status",
+    "thinking",
+    "sources"
+  ],
+  "when": "Thinking indicator that lists steps and sources as they arrive.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {},
+  "deps": [],
+  "weightKb": {
+    "js": 2.5,
+    "css": 0.1,
+    "jsFull": 2.5
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "reduced",
+  "author": "Shane Levine",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "beautifului.dev@2026-09-04"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 176,
+    "errors": []
+  },
+  "notes": [
+    "index.tsx: demo URL replaced with \"#\": https://joycone.com/fs_products/waffle-cones/",
+    "index.tsx: demo URL replaced with \"#\": https://www.webstaurantstore.com/ice-cream-shop-supplies.html",
+    "index.tsx: demo URL replaced with \"#\": https://www.thekonery.com/"
+  ]
+}

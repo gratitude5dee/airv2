@@ -1,0 +1,42 @@
+{
+  "id": "beautiful/filter-table",
+  "title": "Filter Table",
+  "tags": [
+    "table",
+    "data",
+    "filter"
+  ],
+  "when": "Table with filter chips and sorting.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {},
+  "deps": [],
+  "weightKb": {
+    "js": 1.4,
+    "css": 0.1,
+    "jsFull": 1.4
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "n/a",
+  "author": "Shane Levine",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "beautifului.dev@2026-09-04"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 721,
+    "errors": []
+  },
+  "notes": []
+}

@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "jsx": "react-jsx",
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "react": ["../../node_modules/@types/react"],
+      "react/*": ["../../node_modules/@types/react/*"],
+      "*": ["vendor/.extracted/node_modules/*"]
+    }
+  },
+  "include": ["scripts/**/*.ts", "scripts/**/*.tsx", "kit/air/*.ts", "functions/**/*.ts"],
+  "exclude": ["vendor", ".cache", ".harness", "scripts/glue"]
+}

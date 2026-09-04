@@ -1,0 +1,45 @@
+{
+  "id": "beautiful/button",
+  "title": "Button (atom)",
+  "tags": [
+    "button",
+    "atom",
+    "helper"
+  ],
+  "when": "Beautiful UI button used by its cards and tables. Prefer Air's .row.actions buttons for app chrome.",
+  "kind": "helper",
+  "entry": "index.tsx",
+  "props": {},
+  "deps": [
+    "clsx",
+    "tailwind-merge"
+  ],
+  "weightKb": {
+    "js": 0.9,
+    "css": 0.1,
+    "jsFull": 10
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "n/a",
+  "author": "Shane Levine",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "beautifului.dev@2026-09-04"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 44,
+    "errors": []
+  },
+  "notes": []
+}

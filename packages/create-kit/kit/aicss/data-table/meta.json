@@ -1,0 +1,41 @@
+{
+  "id": "aicss/data-table",
+  "title": "Data Table",
+  "tags": [
+    "table",
+    "data"
+  ],
+  "when": "Small read-only data table inside a reply. For sorting/filtering use beautiful/filter-table.",
+  "kind": "component",
+  "entry": "index.ts",
+  "props": {},
+  "deps": [],
+  "weightKb": {
+    "js": 2,
+    "css": 0.6,
+    "jsFull": 2
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "n/a",
+  "author": "Kevin Kelder (kvnkld)",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "kvnkld/aicss@4556a918fd8c"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 136,
+    "errors": []
+  },
+  "notes": []
+}

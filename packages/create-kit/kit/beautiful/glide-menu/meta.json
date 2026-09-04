@@ -1,0 +1,45 @@
+{
+  "id": "beautiful/glide-menu",
+  "title": "Glide Menu (atom)",
+  "tags": [
+    "menu",
+    "atom",
+    "helper"
+  ],
+  "when": "Sliding highlight menu used inside approval-card, records-table, search.",
+  "kind": "helper",
+  "entry": "index.tsx",
+  "props": {
+    "highlightClassName": "string?",
+    "rowSelector": "string?"
+  },
+  "deps": [],
+  "weightKb": {
+    "js": 0.6,
+    "css": 0.1,
+    "jsFull": 0.6
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "reduced",
+  "author": "Shane Levine",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "beautifului.dev@2026-09-04"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 1,
+    "errors": []
+  },
+  "notes": []
+}

@@ -1,0 +1,46 @@
+{
+  "id": "fancy/pixelate-svg-filter",
+  "title": "Pixelate SVG Filter",
+  "tags": [
+    "filter",
+    "svg",
+    "helper"
+  ],
+  "when": "Provides an SVG pixelation filter by id; apply to an image that resolves on load.",
+  "kind": "helper",
+  "entry": "index.tsx",
+  "props": {
+    "id": "string",
+    "size": "number?",
+    "crossLayers": "boolean?"
+  },
+  "deps": [],
+  "weightKb": {
+    "js": 0.6,
+    "css": 0.1,
+    "jsFull": 0.6
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "n/a",
+  "author": "daniel petho",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "danielpetho/fancy@f9f62c61207b"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 155,
+    "errors": []
+  },
+  "notes": []
+}

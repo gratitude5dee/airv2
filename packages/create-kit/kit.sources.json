@@ -1,0 +1,253 @@
+{
+  "$schema": "air-create-kit/sources@1",
+  "kit": "2026.09",
+  "sources": [
+    {
+      "id": "fancy",
+      "name": "Fancy Components",
+      "homepage": "fancycomponents.dev",
+      "author": "daniel petho",
+      "spdx": "MIT",
+      "tier": "A",
+      "pin": {
+        "kind": "github",
+        "repo": "danielpetho/fancy",
+        "commit": "f9f62c61207b2dd3210476dd98af3c9a5be24094",
+        "base": "src/"
+      },
+      "licenseEvidence": [
+        "evidence/fancy/LICENSE"
+      ],
+      "harvested": [
+        "fancy/typewriter",
+        "fancy/text-rotate",
+        "fancy/scramble-in",
+        "fancy/scramble-hover",
+        "fancy/vertical-cut-reveal",
+        "fancy/breathing-text",
+        "fancy/letter-swap-forward-anim",
+        "fancy/letter-swap-pingpong-anim",
+        "fancy/random-letter-swap-forward-anim",
+        "fancy/random-letter-swap-pingpong-anim",
+        "fancy/letter-3d-swap",
+        "fancy/underline-center",
+        "fancy/underline-comes-in-goes-out",
+        "fancy/underline-goes-out-comes-in",
+        "fancy/underline-to-background",
+        "fancy/basic-number-ticker",
+        "fancy/text-highlighter",
+        "fancy/text-along-path",
+        "fancy/simple-marquee",
+        "fancy/stacking-cards",
+        "fancy/simple-carousel",
+        "fancy/float",
+        "fancy/circling-elements",
+        "fancy/screensaver",
+        "fancy/css-box",
+        "fancy/media-between-text",
+        "fancy/gooey-svg-filter",
+        "fancy/pixelate-svg-filter",
+        "fancy/animated-gradient-with-svg",
+        "fancy/pixel-trail",
+        "fancy/elastic-line"
+      ],
+      "excluded": [
+        {
+          "name": "text/variable-font-*",
+          "reason": "needs variable web fonts the mini origin does not self-host (CR12 font-src 'self')"
+        },
+        {
+          "name": "text/text-cursor-proximity, blocks/drag-elements",
+          "reason": "pointer-hover interactions with no touch equivalent"
+        },
+        {
+          "name": "physics/gravity, physics/cursor-attractor-and-gravity",
+          "reason": "matter-js is not in the vendor snapshot; physics is non-lite only"
+        },
+        {
+          "name": "image/*, carousel/*, background/* except the two harvested",
+          "reason": "WebGL or heavy image pipelines outside the webview profile"
+        }
+      ],
+      "gaps": []
+    },
+    {
+      "id": "aicss",
+      "name": "AI CSS (free tier)",
+      "homepage": "aicss.dev",
+      "author": "Kevin Kelder (kvnkld)",
+      "spdx": "MIT",
+      "tier": "A",
+      "pin": {
+        "kind": "github",
+        "repo": "kvnkld/aicss",
+        "commit": "4556a918fd8c9358d42d2b24a3866301b8ea10a2",
+        "base": "packages/react/src/"
+      },
+      "licenseEvidence": [
+        "evidence/aicss/LICENSE",
+        "evidence/aicss/license-page.md"
+      ],
+      "harvested": [
+        "aicss/thinking-state",
+        "aicss/thinking-reasoning",
+        "aicss/orbs",
+        "aicss/text-response",
+        "aicss/streaming-text",
+        "aicss/code-block",
+        "aicss/todo-list",
+        "aicss/data-table",
+        "aicss/agent-input",
+        "aicss/approval-card"
+      ],
+      "excluded": [
+        {
+          "name": "file-diff, image-generation, inline-citations, comparison-table",
+          "reason": "Pro components; private source, paid license (aicss.dev/license)"
+        }
+      ],
+      "gaps": []
+    },
+    {
+      "id": "beautiful",
+      "name": "Beautiful UI",
+      "homepage": "beautifului.dev",
+      "author": "Shane Levine",
+      "spdx": "MIT",
+      "tier": "A",
+      "pin": {
+        "kind": "registry",
+        "url": "https://beautifului.dev/r/",
+        "captured": "2026-09-04"
+      },
+      "licenseEvidence": [
+        "evidence/beautiful/license-page.md"
+      ],
+      "harvested": [
+        "beautiful/foundation",
+        "beautiful/button",
+        "beautiful/glide-menu",
+        "beautiful/entity-chip",
+        "beautiful/value-pill",
+        "beautiful/shimmer",
+        "beautiful/stream-text",
+        "beautiful/loading-state",
+        "beautiful/thinking",
+        "beautiful/streaming-text",
+        "beautiful/approval-card",
+        "beautiful/tool-chips",
+        "beautiful/task-rows",
+        "beautiful/chat-composer",
+        "beautiful/recommendation-card",
+        "beautiful/context-cards",
+        "beautiful/diff-table",
+        "beautiful/records-table",
+        "beautiful/filter-table",
+        "beautiful/search",
+        "beautiful/flowchart",
+        "beautiful/code-block",
+        "beautiful/fine-tune-card",
+        "beautiful/selection-actions"
+      ],
+      "excluded": [
+        {
+          "name": "prompt-bar",
+          "reason": "depends on glimm (WebGL)"
+        },
+        {
+          "name": "sidebar-nav",
+          "reason": "depends on @central-icons-react (proprietary icon set)"
+        },
+        {
+          "name": "insight-cards",
+          "reason": "depends on liveline (chart runtime; over the lite budget)"
+        }
+      ],
+      "gaps": [
+        {
+          "name": "agent-screen",
+          "reason": "registry lists it but /r/agent-screen.json returns 404; not fabricated"
+        }
+      ]
+    },
+    {
+      "id": "libraries",
+      "name": "libraries.dev",
+      "homepage": "libraries.dev",
+      "author": "Jakub Antalik",
+      "spdx": "MIT",
+      "tier": "A",
+      "pin": {
+        "kind": "github",
+        "repo": "Jakubantalik/Libraries.dev",
+        "commit": "aea4c00db4b7ad634cbf43357afa80cdf050b68d",
+        "base": "packages/"
+      },
+      "licenseEvidence": [
+        "evidence/libraries/thinking-orbs.LICENSE",
+        "evidence/libraries/border-beam.LICENSE",
+        "evidence/libraries/liquid-gooey.LICENSE",
+        "evidence/libraries/metal-fx.LICENSE",
+        "evidence/libraries/metal-fx.NOTICE"
+      ],
+      "harvested": [
+        "libraries/thinking-orbs",
+        "libraries/border-beam",
+        "libraries/liquid-gooey",
+        "libraries/metal-fx"
+      ],
+      "excluded": [
+        {
+          "name": "img-fx",
+          "reason": "image pipeline over the lite budget"
+        },
+        {
+          "name": "metal-fx (lite)",
+          "reason": "WebGL shader; harvested as non-lite only, NOTICE preserved"
+        }
+      ],
+      "gaps": []
+    },
+    {
+      "id": "arlan",
+      "name": "arlan.me vault",
+      "homepage": "arlan.me/vault",
+      "author": "Arlan Marat",
+      "spdx": "MIT",
+      "tier": "A",
+      "pin": {
+        "kind": "pages",
+        "url": "https://arlan.me/vault/",
+        "captured": "2026-09-04"
+      },
+      "licenseEvidence": [
+        "evidence/arlan/license-page.md",
+        "evidence/arlan/vault-index.md"
+      ],
+      "harvested": [
+        "arlan/squircle",
+        "arlan/typer",
+        "arlan/color-depth",
+        "arlan/ghosty-reveal",
+        "arlan/holo",
+        "arlan/liquid-ui"
+      ],
+      "excluded": [
+        {
+          "name": "amo, midjourney, figma, dia-gradient",
+          "reason": "recreations of third-party trade dress"
+        },
+        {
+          "name": "arcade-pixel, fade-motion, chroma-glow, emboss",
+          "reason": "WebGL"
+        }
+      ],
+      "gaps": [
+        {
+          "name": "ransom-note",
+          "reason": "component is a manifest of site-hosted cut-out letter images (/vault/ransom/manifest.json) we did not capture; shipping it would redistribute unlicensed imagery"
+        }
+      ]
+    }
+  ]
+}
