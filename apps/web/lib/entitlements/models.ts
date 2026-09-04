@@ -31,6 +31,19 @@ const TIER_MODELS: Record<SpeedTier, string> = {
   deep: "gpt-5.6-terra",
 };
 
+/**
+ * Create sessions (goal-create-v11 §9.1) resolve on their own tier family so
+ * the Vibe lane can move models without touching the chat lane. Served by
+ * the `openai` provider regardless of the owner's `model_family`.
+ */
+export const CREATE_TIER_MODELS: Record<SpeedTier, string> = {
+  fast: "gpt-5.6-luna",
+  balanced: "gpt-5.6-terra",
+  deep: "gpt-5.6-terra",
+};
+
+export const CREATE_MODEL_RE = /^create-(fast|balanced|deep)$/;
+
 /** OpenRouter slugs for the fixed families that don't go through the tiers. */
 const FAMILY_MODELS: Record<
   Exclude<ModelFamily, "openai" | "openrouter" | "venice">,
@@ -286,6 +299,41 @@ export function isSpeedTier(value: string): value is SpeedTier {
 
 export function modelForTier(tier: SpeedTier): string {
   return tierOverride(tier) ?? TIER_MODELS[tier];
+}
+
+/** MODEL_CREATE_FAST / _BALANCED / _DEEP — Create-only; never falls back to
+ * MODEL_FAST/… so the two lanes can be re-pinned independently. */
+function createTierOverride(tier: SpeedTier): string | undefined {
+  const byTier: Record<SpeedTier, string | undefined> = {
+    fast: process.env["MODEL_CREATE_FAST"],
+    balanced: process.env["MODEL_CREATE_BALANCED"],
+    deep: process.env["MODEL_CREATE_DEEP"],
+  };
+  const value = byTier[tier];
+  return value && value.trim() ? value.trim() : undefined;
+}
+
+export function modelForCreateTier(tier: SpeedTier): string {
+  return createTierOverride(tier) ?? CREATE_TIER_MODELS[tier];
+}
+
+const TIER_RANK: Record<SpeedTier, number> = { fast: 0, balanced: 1, deep: 2 };
+
+/** `create-<tier>` from a Box, or null when the request is not a Create turn. */
+export function parseCreateTier(model: unknown): SpeedTier | null {
+  if (typeof model !== "string") return null;
+  const match = CREATE_MODEL_RE.exec(model);
+  const tier = match?.[1];
+  return tier && isSpeedTier(tier) ? tier : null;
+}
+
+/** The requested Create tier clamped to the entitlement: a Box may ask for
+ * less than the owner pays for, never more. */
+export function clampCreateTier(
+  requested: SpeedTier,
+  entitled: SpeedTier,
+): SpeedTier {
+  return TIER_RANK[requested] > TIER_RANK[entitled] ? entitled : requested;
 }
 
 /**

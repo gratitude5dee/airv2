@@ -16,14 +16,9 @@ export const LOCK_FILE = path.join(KIT_ROOT, "kit.lock.json");
 export const SOURCES_FILE = path.join(KIT_ROOT, "kit.sources.json");
 export const DESIGN_FILE = path.join(KIT_ROOT, "DESIGN.md");
 export const SYSTEM_PROMPT_FILE = path.join(PROMPTS_DIR, "create-agent.system.md");
-export const TEMPLATE_DESIGN_FILE = path.join(
-  REPO_ROOT,
-  "infra",
-  "template",
-  "skills",
-  "create-miniapp",
-  "DESIGN.md"
-);
+export const TEMPLATE_SKILL_DIR = path.join(REPO_ROOT, "infra", "template", "skills", "create-miniapp");
+export const TEMPLATE_DESIGN_FILE = path.join(TEMPLATE_SKILL_DIR, "DESIGN.md");
+export const TEMPLATE_SKILL_FILE = path.join(TEMPLATE_SKILL_DIR, "SKILL.md");
 
 export function rel(p: string): string {
   return path.relative(KIT_ROOT, p).split(path.sep).join("/");

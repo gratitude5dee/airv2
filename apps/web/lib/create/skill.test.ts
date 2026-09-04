@@ -53,10 +53,28 @@ describe("create-miniapp skill", () => {
     expect(cli).toMatch(/\*\.png\|\*\.jpg/);
   });
 
-  it("supports drop, status, and publish only", () => {
+  it("supports new, build, qa, drop, status, and publish only (skill v2)", () => {
     const subcommands = [...cli.matchAll(/^\s{2}(\w+)\) shift; cmd_\w+/gm)].map((m) => m[1]);
-    expect(subcommands.sort()).toEqual(["drop", "publish", "status"]);
-    expect(cli).not.toMatch(/cmd_build/);
+    expect(subcommands.sort()).toEqual(["build", "drop", "new", "publish", "qa", "status"]);
+  });
+
+  it("builds through the control plane and never installs or resolves the Kit itself", () => {
+    expect(cli).toContain("/api/create/build");
+    expect(cli).toContain("/api/create/preview-link");
+    expect(cli).toContain("/api/create/qa");
+    expect(cli).not.toMatch(/npm install|npx |esbuild|node_modules/);
+    expect(skill).toMatch(/never run `npm install`/);
+  });
+
+  it("records and resolves the active project", () => {
+    expect(cli).toContain('ACTIVE_FILE="$CREATE_ROOT/.active"');
+    expect(skill).toContain("~/.hermes/create/.active");
+  });
+
+  it("frames the draft as awaiting approval, with findings quoted verbatim", () => {
+    expect(skill).toContain("ready for your approval");
+    expect(skill).toMatch(/verbatim/);
+    expect(skill).toContain("[card: app alice-countdown]");
   });
 
   it("zips folders with python and never assumes a zip binary", () => {

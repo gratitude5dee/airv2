@@ -192,6 +192,11 @@ export interface UploadVersionOptions {
    * keeps the MA3 upload semantics — live follows the upload.
    */
   promote?: boolean | undefined;
+  /** A version id minted by the caller (the Build Service stamps it into the
+   * bundle's manifest before uploading); fresh when absent. */
+  version?: string | undefined;
+  /** Kit version the bundle was built against (Vibe lane). */
+  kitVersion?: string | null | undefined;
 }
 
 /**
@@ -219,7 +224,8 @@ export async function uploadVersion(
   // The ledger row is written first: the unique (app_id, version) index is
   // what makes the R2 prefix exclusively ours, so two same-millisecond uploads
   // can never interleave files under one version.
-  const version = newVersionId();
+  const version = options.version ?? newVersionId();
+  if (!VERSION_RE.test(version)) throw new VersionError("invalid version id", 400);
   const row = await recordVersion(supabase, {
     appId: app.id,
     userId: app.owner_user_id,
@@ -227,6 +233,7 @@ export async function uploadVersion(
     lane,
     files,
     findings: options.findings ?? [],
+    kitVersion: options.kitVersion ?? null,
   });
   let deployed: { workerSha256: string } | null = null;
   let liveMoved = false;

@@ -20,3 +20,4 @@ apps/web/public/creator-os/prompt-copy.js
 apps/web/public/creator-os/deck-swipe.js
 apps/web/public/creator-os/deck-stepper.js
 apps/web/public/creator-os/intro-cinematic.js
+apps/web/public/creator-os/create.js

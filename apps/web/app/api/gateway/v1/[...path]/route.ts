@@ -11,12 +11,15 @@ import { env } from "@/lib/env";
 import { asRecord } from "@/lib/records";
 import { serviceClient } from "@/lib/supabase";
 import {
+  clampCreateTier,
   costUsd,
   DEFAULT_MODEL_FAMILY,
   isModelFamily,
   isReasoningModel,
   isSpeedTier,
+  modelForCreateTier,
   modelForSelection,
+  parseCreateTier,
   providerForFamily,
   reasoningForTier,
   serviceTierForTier,
@@ -25,6 +28,12 @@ import {
 } from "@/lib/entitlements/models";
 import { currentPeriodSpend } from "@/lib/entitlements/spend";
 import { getProviderKey } from "@/lib/providers/keys";
+import {
+  activeCreateSlug,
+  budgetExhausted,
+  createRunLabel,
+  projectBudget,
+} from "@/lib/create/budget";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,6 +54,9 @@ interface RouteTrace {
   startedAtMs: number;
   /** The entitled family, which differs from the served one on a fallback. */
   requestedFamily: ModelFamily;
+  /** `create:<slug>` when the completion is a Create turn's; drives the
+   * per-project budget (goal-create-v11 §9.1). */
+  label?: string | null;
 }
 
 async function meter(
@@ -79,6 +91,7 @@ async function meter(
     requested_model: trace?.requestedModel ?? null,
     reasoning_effort: trace?.reasoningEffort ?? null,
     latency_ms: trace ? Date.now() - trace.startedAtMs : null,
+    ...(trace?.label ? { label: trace.label } : {}),
   });
   if (runError) {
     console.error(JSON.stringify({ msg: "agent_runs insert failed", user_id: userId, error: runError.message }));
@@ -253,7 +266,32 @@ export async function POST(
   // the user's Settings tier, never upgrade it (spend stays entitlement-
   // bounded), and the box's static `model.default: "balanced"` keeps
   // resolving through the entitlement as before.
-  const tier = rawBody["model"] === "fast" ? "fast" : entitledTier;
+  // Create turns (goal-create-v11 §9.1) ask for `create-<tier>`: clamped to
+  // the entitlement the same way, resolved on the Create tier family and
+  // always served by OpenAI whatever the owner's chat family is. The
+  // project's budget is checked against its own metered rows before the
+  // upstream call.
+  const createTier = parseCreateTier(rawBody["model"]);
+  const tier =
+    createTier !== null
+      ? clampCreateTier(createTier, entitledTier)
+      : rawBody["model"] === "fast"
+        ? "fast"
+        : entitledTier;
+  let createLabel: string | null = null;
+  if (createTier !== null) {
+    const slug = await activeCreateSlug(supabase, userId);
+    if (slug) {
+      createLabel = createRunLabel(slug);
+      const meter = await projectBudget(supabase, userId, slug);
+      if (meter && budgetExhausted(meter)) {
+        return NextResponse.json(
+          { error: "insufficient_quota", reason: "create_budget" },
+          { status: 429 }
+        );
+      }
+    }
+  }
 
   const requestStartedMs = Date.now();
   const requestedModel =
@@ -268,7 +306,10 @@ export async function POST(
     // The tier and family names are the only things that ever appear in a
     // box's config — the real model ID is resolved here and only here.
     const body: Record<string, unknown> = { ...rawBody };
-    body["model"] = modelForSelection(toFamily, tier, selection);
+    body["model"] =
+      createTier !== null
+        ? modelForCreateTier(tier)
+        : modelForSelection(toFamily, tier, selection);
     servedModel = String(body["model"]);
     // gpt-5.6 on /v1/chat/completions rejects function tools with any
     // reasoning_effort other than "none", so tool-bearing calls (every Hermes
@@ -371,8 +412,9 @@ export async function POST(
     });
   };
 
-  let servedFamily = family;
-  let upstream = await dispatch(family);
+  // The Create family is OpenAI-only: the owner's chat family never applies.
+  let servedFamily: ModelFamily = createTier !== null ? "openai" : family;
+  let upstream = await dispatch(servedFamily);
 
   // OpenRouter families can degrade to empty completions (e.g. a stealth
   // endpoint answering tool-bearing calls with `native_finish_reason:
@@ -387,7 +429,7 @@ export async function POST(
       headers: { "Content-Type": "application/json" },
     });
   }
-  const canFallBack = providerForFamily(family) !== "openai";
+  const canFallBack = providerForFamily(servedFamily) !== "openai";
   if (canFallBack && (!upstream.ok || !upstream.body)) {
     console.warn(
       JSON.stringify({
@@ -489,7 +531,8 @@ export async function POST(
       requestedModel,
       reasoningEffort: servedReasoning,
       startedAtMs: requestStartedMs,
-      requestedFamily: family,
+      requestedFamily: createTier !== null ? "openai" : family,
+      label: createLabel,
     };
     const stream = meteringTee(upstream.body, (usage) => {
       after(
@@ -521,7 +564,8 @@ export async function POST(
         requestedModel,
         reasoningEffort: servedReasoning,
         startedAtMs: requestStartedMs,
-        requestedFamily: family,
+        requestedFamily: createTier !== null ? "openai" : family,
+        label: createLabel,
       })
     );
   }

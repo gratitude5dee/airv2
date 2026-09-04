@@ -26,6 +26,7 @@ const publish = vi.hoisted(() => ({ ownedApp: vi.fn() }));
 vi.mock("@/lib/miniapps/publish", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/miniapps/publish")>()),
   ownedApp: publish.ownedApp,
+  publisherUsername: async () => "alice",
 }));
 
 const row = (version: string, findings: unknown[] = []) => ({
@@ -57,6 +58,20 @@ vi.mock("@/lib/create/versions", async (importOriginal) => ({
 }));
 vi.mock("@/lib/create/preview", () => ({
   draftPreviewUrl: () => "https://alice-promo.apps.wzrd.tech/__air/enter?t=x",
+}));
+// MC4: the status route also reads the build ledger and the budget meter.
+const ledger = vi.hoisted(() => ({
+  latestBuild: vi.fn(async (): Promise<unknown> => null),
+  getBuild: vi.fn(async (): Promise<unknown> => null),
+}));
+vi.mock("@/lib/create/build", () => ({
+  ...ledger,
+  logTail: (log: string[]) => log.slice(-50),
+}));
+const budget = vi.hoisted(() => ({ spent: 0 }));
+vi.mock("@/lib/create/budget", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/create/budget")>()),
+  createSpendUsd: async () => budget.spent,
 }));
 
 import { NextRequest } from "next/server";
@@ -112,5 +127,46 @@ describe("GET /api/create/status", () => {
   it("400 on a malformed slug", async () => {
     session.storeSessionUserId.mockReturnValue("user-alice");
     expect((await GET(statusRequest("Bad%20Slug"))).status).toBe(400);
+  });
+
+  it("reports the latest build's content-free tail, the draft qa_score and the budget meter (MC4)", async () => {
+    session.storeSessionUserId.mockReturnValue("user-alice");
+    budget.spent = 1.25;
+    ledger.latestBuild.mockResolvedValue({
+      id: "b1",
+      status: "failed",
+      log: Array.from({ length: 60 }, (_, i) => `line ${i}`),
+      findings: [{ file: "src/main.tsx", line: 1, rule: "kit-foreign", severity: "hard", hint: "no" }],
+      sizes: null,
+      version: null,
+      error: "hard findings",
+      started_at: "2026-01-01T00:00:00.000Z",
+      finished_at: "2026-01-01T00:00:05.000Z",
+    });
+    const body = await (await GET(statusRequest("alice-promo"))).json();
+    expect(body.draft_version).toBe("v1700000000001");
+    expect(body.qa_score).toBeNull();
+    expect(body.build).toMatchObject({ id: "b1", status: "failed", version: null });
+    expect(body.build.log).toHaveLength(50);
+    expect(body.build.log[0]).toBe("line 10");
+    expect(body.budget).toEqual({ budget_usd: 5, spent_usd: 1.25, remaining_usd: 3.75 });
+    budget.spent = 0;
+  });
+
+  it("resolves ?app=<appname> to the owner's slug and refuses a bad build id", async () => {
+    box.boxUserId.mockResolvedValue("user-alice");
+    const byApp = await GET(
+      new NextRequest("https://air.test/api/create/status?app=promo", {
+        headers: { authorization: "Bearer gw-1" },
+      })
+    );
+    expect(byApp.status).toBe(200);
+    expect(publish.ownedApp).toHaveBeenCalledWith(expect.anything(), "user-alice", "alice-promo");
+    const badBuild = await GET(
+      new NextRequest("https://air.test/api/create/status?slug=alice-promo&build=nope", {
+        headers: { authorization: "Bearer gw-1" },
+      })
+    );
+    expect(badBuild.status).toBe(400);
   });
 });

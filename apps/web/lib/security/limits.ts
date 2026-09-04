@@ -25,7 +25,10 @@ export type OpsEventKind =
   | "rollback"
   | "import"
   | "create.drop"
-  | "create.push";
+  | "create.push"
+  | "create.build"
+  | "create.turn"
+  | "create.qa";
 
 /** Per-user launch mints (store session or plugin bearer), per hour. */
 export const LAUNCHES_PER_HOUR = 60;
@@ -41,6 +44,12 @@ export const ROLLBACKS_PER_DAY = 20;
 export const PAIR_ATTEMPTS_PER_HOUR = 20;
 /** Repository imports (link + first sync), per user per day (V11 §14.2). */
 export const IMPORTS_PER_DAY = 10;
+/** Build Service runs (Vibe), per user per hour (V11 §9.3). */
+export const BUILDS_PER_HOUR = 60;
+/** Create turns started from the web surface, per user per hour (V11 §9.2). */
+export const CREATE_TURNS_PER_HOUR = 120;
+/** Preview QA runs, per user per hour (V11 §9.6). */
+export const QA_RUNS_PER_HOUR = 30;
 
 const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
@@ -226,6 +235,27 @@ export function importRateLimited(
   userId: string
 ): Promise<boolean> {
   return overLimit(supabase, "import", userId, IMPORTS_PER_DAY, DAY_MS);
+}
+
+export function buildRateLimited(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<boolean> {
+  return overLimit(supabase, "create.build", userId, BUILDS_PER_HOUR, HOUR_MS);
+}
+
+export function createTurnRateLimited(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<boolean> {
+  return overLimit(supabase, "create.turn", userId, CREATE_TURNS_PER_HOUR, HOUR_MS);
+}
+
+export function qaRateLimited(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<boolean> {
+  return overLimit(supabase, "create.qa", userId, QA_RUNS_PER_HOUR, HOUR_MS);
 }
 
 /**

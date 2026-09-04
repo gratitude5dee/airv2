@@ -2,6 +2,9 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // The Build Service (lib/create/build.ts) drives esbuild's native binary at
+  // request time; it must be required from node_modules, not bundled.
+  serverExternalPackages: ["esbuild"],
   // Mini-app shells are no-store, but the assets they pull are static and
   // were being refetched on every card tap.
   async headers() {

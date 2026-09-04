@@ -155,7 +155,9 @@ export function readZip(zip: Buffer, limits: ZipLimits = BUNDLE_ZIP_LIMITS): Bun
 const SAFE_PATH = /^[a-zA-Z0-9_][a-zA-Z0-9._/-]*$/;
 const META_CSP_RE =
   /<meta[^>]+http-equiv\s*=\s*["']?content-security-policy/i;
-const SERVICE_WORKER_RE = /serviceWorker|navigator\[.{0,40}serviceWorker/i;
+// Case-sensitive: the DOM property is `serviceWorker`; a lowercase
+// "serviceworker" is only ever an attribute value (react-dom's `<link as>`).
+const SERVICE_WORKER_RE = /serviceWorker|navigator\[.{0,40}serviceWorker/;
 
 /**
  * Validate an unpacked bundle: safe relative paths, allowlisted extensions,
