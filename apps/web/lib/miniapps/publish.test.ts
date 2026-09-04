@@ -21,6 +21,7 @@ vi.mock("../create/versions", () => versions);
 import { makeApp } from "@/app/mini/loader-test-utils";
 import { isReservedWord, RESERVED_WORDS } from "./reserved";
 import {
+  createDraft,
   parseGateSettingsRow,
   PublishError,
   setPublishStatus,
@@ -28,6 +29,101 @@ import {
   validateAppName,
 } from "./publish";
 import { parseRegistryApp } from "./registry";
+
+describe("createDraft refresh keeps existing metadata", () => {
+  function draftSupabase(existing: Record<string, unknown> | null) {
+    const updates: Record<string, unknown>[] = [];
+    const inserted: Record<string, unknown>[] = [];
+    const supabase = {
+      from(table: string) {
+        if (table === "users") {
+          return {
+            select: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({
+                  data: { username: "alice", wallet_address: null },
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
+        if (table !== "mini_apps") throw new Error(`unexpected table ${table}`);
+        return {
+          update(values: Record<string, unknown>) {
+            updates.push(values);
+            return {
+              eq: () => ({
+                eq: () => ({
+                  select: () => ({
+                    maybeSingle: async () => ({
+                      data: existing ? { ...existing, ...values } : null,
+                      error: null,
+                    }),
+                  }),
+                }),
+              }),
+            };
+          },
+          insert(row: Record<string, unknown>) {
+            inserted.push(row);
+            return {
+              select: () => ({
+                single: async () =>
+                  existing
+                    ? { data: null, error: { code: "23505", message: "dup" } }
+                    : { data: { ...row, id: "app-1" }, error: null },
+              }),
+            };
+          },
+        };
+      },
+    } as unknown as SupabaseClient;
+    return { supabase, updates, inserted };
+  }
+
+  const existing = {
+    id: "app-1",
+    slug: "alice-promo",
+    name: "Spring Promo",
+    description: "Our spring line.",
+  };
+
+  it("an omitted name and description leave the app's own metadata alone", async () => {
+    const { supabase, updates, inserted } = draftSupabase(existing);
+    const result = await createDraft(supabase, "user-1", {
+      appname: "promo",
+      name: "",
+      description: "",
+    });
+    expect(result).toEqual({ id: "app-1", slug: "alice-promo", name: "Spring Promo" });
+    expect(inserted).toHaveLength(0);
+    expect(updates).toHaveLength(1);
+    expect(updates[0]).not.toHaveProperty("name");
+    expect(updates[0]).not.toHaveProperty("description");
+    expect(updates[0]).not.toHaveProperty("agent_identity");
+  });
+
+  it("a supplied title replaces only the title on refresh", async () => {
+    const { supabase, updates } = draftSupabase(existing);
+    await createDraft(supabase, "user-1", {
+      appname: "promo",
+      name: "Summer Promo",
+      description: "",
+    });
+    expect(updates).toHaveLength(1);
+    expect(updates[0]).toMatchObject({ name: "Summer Promo" });
+    expect(updates[0]).not.toHaveProperty("description");
+  });
+
+  it("a new app still needs a name", async () => {
+    const { supabase, inserted } = draftSupabase(null);
+    await expect(
+      createDraft(supabase, "user-1", { appname: "promo", name: "", description: "" })
+    ).rejects.toMatchObject({ message: "name required" });
+    expect(inserted).toHaveLength(0);
+  });
+});
 
 describe("reserved words (both directions)", () => {
   it("reserves platform routes and first-party slugs", () => {

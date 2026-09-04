@@ -47,8 +47,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       appname: typeof body?.appname === "string" ? body.appname : "",
       name: typeof body?.name === "string" ? body.name : "",
       description: typeof body?.description === "string" ? body.description : "",
-      agentIdentity:
-        typeof body?.agentIdentity === "string" ? body.agentIdentity : null,
+      ...(typeof body?.agentIdentity === "string"
+        ? { agentIdentity: body.agentIdentity }
+        : {}),
     });
     // One pending decision per app: re-staging refreshes the draft but must
     // not pile up duplicate Needs-you items.

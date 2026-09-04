@@ -174,34 +174,37 @@ export function rollbackRateLimited(
 }
 
 /**
- * Rejected attempts count against the hourly upload budget too, so a user
- * spamming invalid presign requests trips this limit instead of writing an
- * unbounded stream of upload_rejected rows.
+ * One hourly upload budget for every entry point: presign/bundle/icon/media
+ * uploads, Drops (a staged draft is an upload too) and rejected attempts,
+ * so a user spamming invalid presign requests trips this limit instead of
+ * writing an unbounded stream of upload_rejected rows.
  */
-export async function uploadRateLimited(
+async function uploadBudgetSpent(
   supabase: SupabaseClient,
-  userId: string
+  userId: string,
+  kind: OpsEventKind
 ): Promise<boolean> {
   const uploads = await countRecent(supabase, "upload", userId, HOUR_MS);
+  const drops = await countRecent(supabase, "create.drop", userId, HOUR_MS);
   const rejected = await countRecent(supabase, "upload_rejected", userId, HOUR_MS);
-  if (uploads === null || rejected === null) return false; // fail open
-  if (uploads + rejected < UPLOADS_PER_HOUR) return false;
-  await markRateLimited(supabase, userId, "upload", HOUR_MS);
+  if (uploads === null || drops === null || rejected === null) return false; // fail open
+  if (uploads + drops + rejected < UPLOADS_PER_HOUR) return false;
+  await markRateLimited(supabase, userId, kind, HOUR_MS);
   return true;
 }
 
-/** Drops share the hourly upload budget: a staged draft is an upload too. */
-export async function dropRateLimited(
+export function uploadRateLimited(
   supabase: SupabaseClient,
   userId: string
 ): Promise<boolean> {
-  const drops = await countRecent(supabase, "create.drop", userId, HOUR_MS);
-  const uploads = await countRecent(supabase, "upload", userId, HOUR_MS);
-  const rejected = await countRecent(supabase, "upload_rejected", userId, HOUR_MS);
-  if (drops === null || uploads === null || rejected === null) return false; // fail open
-  if (drops + uploads + rejected < UPLOADS_PER_HOUR) return false;
-  await markRateLimited(supabase, userId, "create.drop", HOUR_MS);
-  return true;
+  return uploadBudgetSpent(supabase, userId, "upload");
+}
+
+export function dropRateLimited(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<boolean> {
+  return uploadBudgetSpent(supabase, userId, "create.drop");
 }
 
 /**

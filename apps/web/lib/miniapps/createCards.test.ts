@@ -10,6 +10,7 @@ import {
   createSurfacePath,
   mintSignedLink,
   parseCardMarker,
+  sendMarkedCards,
   sendOrUpdateAppCard,
 } from "./cards";
 import { isCardKind } from "./cardSends";
@@ -250,6 +251,59 @@ describe("sendOrUpdateAppCard", () => {
     expect(await sendOrUpdateAppCard(supabase, owner, "alice-promo")).toBe("sent");
     expect(sessions.deleteMiniAppCardSession).toHaveBeenCalledTimes(1);
     expect(sends.claimCardSend).toHaveBeenCalledWith(supabase, "user-1", "app");
+    expect(sender.sendApp).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("sendMarkedCards app markers", () => {
+  const owner = { userId: "user-1", spaceId: "space-1", phone: "+15550001111" };
+  const supabase = {
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({
+            data: { space_id: "space-1", phone: "+15550001111" },
+            error: null,
+          }),
+        }),
+      }),
+    }),
+  } as unknown as SupabaseClient;
+  const app = (owner_user_id: string) =>
+    ({
+      slug: "alice-promo",
+      name: "Promo",
+      owner_user_id,
+      status: "draft",
+      draft_version: "v1",
+      bundle_version: null,
+    }) as never;
+
+  it("skips a slug the registry does not know", async () => {
+    const sender = fakeSender();
+    vi.mocked(createSpectrumSender).mockResolvedValue(sender as unknown as SpectrumSender);
+    registry.getRegistryApp.mockResolvedValueOnce(null);
+    expect(await sendMarkedCards(supabase, owner, ["app alice-promo"])).toBe(0);
+    expect(sender.sendApp).not.toHaveBeenCalled();
+    expect(sends.claimCardSend).not.toHaveBeenCalled();
+  });
+
+  it("skips another owner's app", async () => {
+    const sender = fakeSender();
+    vi.mocked(createSpectrumSender).mockResolvedValue(sender as unknown as SpectrumSender);
+    registry.getRegistryApp.mockResolvedValueOnce(app("user-2"));
+    sessions.readMiniAppCardSession.mockResolvedValue({ sessionId: "s" });
+    expect(await sendMarkedCards(supabase, owner, ["app alice-promo"])).toBe(0);
+    expect(sender.sendApp).not.toHaveBeenCalled();
+    expect(sender.editApp).not.toHaveBeenCalled();
+  });
+
+  it("sends the owner's own app", async () => {
+    const sender = fakeSender();
+    vi.mocked(createSpectrumSender).mockResolvedValue(sender as unknown as SpectrumSender);
+    sessions.readMiniAppCardSession.mockResolvedValue(undefined);
+    registry.getRegistryApp.mockResolvedValue(app("user-1"));
+    expect(await sendMarkedCards(supabase, owner, ["app alice-promo"])).toBe(1);
     expect(sender.sendApp).toHaveBeenCalledTimes(1);
   });
 });

@@ -305,9 +305,10 @@ export async function uploadVersion(
     // the registry does not name (the draft Worker is shared, so the loser's
     // deploy may have landed after the winner's), then surface the failure.
     if (deployed) {
+      const known = { bundle_version: app.bundle_version, draft_version: app.draft_version };
       const current = error
-        ? { bundle_version: app.bundle_version, draft_version: app.draft_version }
-        : await currentPointers(supabase, app.id);
+        ? known
+        : await currentPointers(supabase, app.id).catch(() => known);
       await restoreAppOrigin(supabase, app, current, version, goesLive);
     }
     await discardVersion(supabase, app, row.id, version);
@@ -403,16 +404,20 @@ async function currentLiveVersion(
   return (await currentPointers(supabase, appId)).bundle_version;
 }
 
+/** The registry's current pointers; throws when they cannot be read, so a
+ * failed lookup is never mistaken for "nothing is selected". */
 async function currentPointers(
   supabase: SupabaseClient,
   appId: string
 ): Promise<{ bundle_version: string | null; draft_version: string | null }> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("mini_apps")
     .select("bundle_version, draft_version")
     .eq("id", appId)
     .maybeSingle();
-  const row = data as { bundle_version?: unknown; draft_version?: unknown } | null;
+  if (error) throw new Error(`pointer lookup failed: ${error.message}`);
+  if (!data) throw new Error("pointer lookup failed: app row missing");
+  const row = data as { bundle_version?: unknown; draft_version?: unknown };
   return {
     bundle_version: typeof row?.bundle_version === "string" ? row.bundle_version : null,
     draft_version: typeof row?.draft_version === "string" ? row.draft_version : null,

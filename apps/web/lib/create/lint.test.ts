@@ -85,9 +85,40 @@ describe("lintBundle", () => {
       expect(
         rules([html(""), file("a.css", `@import "http://x.com/b.css";`)])
       ).toEqual(["external-style"]);
+    });
+    it("treats a CSS image url() like <img src>: platform origins pass, other hosts are soft external-media", () => {
       expect(
-        rules([html(""), file("a.css", `body { background: url(https://x.com/bg.png) }`)])
+        rules([
+          html(""),
+          file(
+            "a.css",
+            [
+              `body { background: url(https://media.wzrd.tech/u/bg.png) }`,
+              `.m { mask-image: url("https://media.wzrd.tech/u/m.svg"); cursor: url(https://media.wzrd.tech/u/c.cur), auto }`,
+              `li { list-style-image: url('https://media.wzrd.tech/u/dot.png') }`,
+            ].join("\n")
+          ),
+        ])
+      ).toEqual([]);
+      const findings = lintBundle([
+        html(""),
+        file("a.css", `body { background: url(https://x.com/bg.png) }\n.m { mask: url(//cdn.example.com/m.svg) }`),
+      ]);
+      expect(findings.map((f) => [f.rule, f.severity, f.line])).toEqual([
+        ["external-media", "soft", 1],
+        ["external-media", "soft", 2],
+      ]);
+      expect(findings[0]?.hint).toContain("https://x.com/bg.png");
+      // @import and @font-face keep their own directives regardless of host.
+      expect(
+        rules([html(""), file("a.css", `@import url(https://media.wzrd.tech/u/a.css);`)])
       ).toEqual(["external-style"]);
+      expect(
+        rules([
+          html(""),
+          file("a.css", `@font-face { font-family: X; src: url(https://media.wzrd.tech/u/x.woff2); }`),
+        ])
+      ).toEqual(["external-font"]);
     });
     it("allows same-bundle stylesheets", () => {
       expect(
@@ -394,11 +425,11 @@ describe("lintBundle", () => {
       ).toEqual([]);
       const findings = lintBundle([
         html(""),
-        file("style.css", "/* c */\n@import url(//cdn.example.com/a.css);\nbody { background: url(//cdn.example.com/b.css); }"),
+        file("style.css", "/* c */\n@import url(//cdn.example.com/a.css);\nbody { background: url(//cdn.example.com/b.png); }"),
       ]);
       expect(findings.map((f) => [f.rule, f.line])).toEqual([
         ["external-style", 2],
-        ["external-style", 3],
+        ["external-media", 3],
       ]);
       expect(blankCssComments("a{content:'/* s */'}/* c\nd */b{}")).toBe("a{content:'/* s */'}    \n    b{}");
     });

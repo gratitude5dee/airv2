@@ -128,8 +128,13 @@ cmd_publish() {
     esac
   done
   [ -n "$name" ] || usage
+  # Only send metadata the agent was given: the app keeps its own title and
+  # description otherwise.
   local body
-  body="{\"appname\":$(json_string "$name"),\"name\":$(json_string "${title:-$name}"),\"description\":$(json_string "$desc")}"
+  body="{\"appname\":$(json_string "$name")"
+  [ -n "$title" ] && body="$body,\"name\":$(json_string "$title")"
+  [ -n "$desc" ] && body="$body,\"description\":$(json_string "$desc")"
+  body="$body}"
   finish "$(api POST /api/miniapps/publish "$body")"
 }
 

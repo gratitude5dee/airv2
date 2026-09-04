@@ -363,17 +363,19 @@ function lintStyleText(collector: Collector, source: string, base: number): void
     const start = face.index ?? 0;
     fontRanges.push([start, start + face[0].length]);
   }
+  // Outside @import and @font-face a url() is an image (background, mask,
+  // border-image, cursor, list-style…) and img-src governs it, exactly like
+  // <img src>: platform image origins load, anything else is soft.
   for (const match of text.matchAll(CSS_URL_RE)) {
     const url = match[1] ?? "";
     if (!isExternal(url)) continue;
     const at = match.index ?? 0;
     if (importRanges.some(([s, e]) => at >= s && at < e)) continue;
-    const inFontFace = fontRanges.some(([s, e]) => at >= s && at < e);
-    report(
-      collector,
-      inFontFace ? "external-font" : "external-style",
-      base + at
-    );
+    if (fontRanges.some(([s, e]) => at >= s && at < e)) {
+      report(collector, "external-font", base + at);
+    } else if (!isAllowedImage(url)) {
+      report(collector, "external-media", base + at, `${url}: ${HINTS["external-media"]}`);
+    }
   }
 }
 
