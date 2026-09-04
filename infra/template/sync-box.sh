@@ -502,7 +502,7 @@ sudo systemctl enable hermes-gateway.service hermes-dashboard.service hermes-hos
 # clearing it makes the next turn rebuild from the current SOUL/skills without touching messages.
 if [ -f "$HOME_DIR/.hermes/state.db" ]; then
   sudo systemctl stop hermes-gateway.service
-  python3 - "$HOME_DIR/.hermes/state.db" <<'PY'
+  python3 - "$HOME_DIR/.hermes/state.db" <<'PY' || { sudo systemctl start hermes-gateway.service; exit 1; }
 import sqlite3
 import sys
 
