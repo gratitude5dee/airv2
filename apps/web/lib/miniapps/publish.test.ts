@@ -2,6 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 const deploy = vi.hoisted(() => ({
+  AppOriginRefusedError: class AppOriginRefusedError extends Error {
+    constructor(slug: string) {
+      super(`app ${slug} is being deleted`);
+      this.name = "AppOriginRefusedError";
+    }
+  },
   promoteVersion: vi.fn(async () => null),
   syncManifest: vi.fn(async () => true),
 }));
@@ -220,6 +226,7 @@ describe("setPublishStatus (V11 §13.2 manifest ordering)", () => {
     await setPublishStatus(fakeSupabase(live), "user-alice", "alice-notes", "draft");
     expect(deploy.syncManifest).toHaveBeenCalledTimes(1);
     expect(deploy.syncManifest).toHaveBeenCalledWith(
+      expect.anything(),
       expect.objectContaining({ slug: "alice-notes", status: "draft" })
     );
     expect(deploy.promoteVersion).not.toHaveBeenCalled();
@@ -232,6 +239,7 @@ describe("setPublishStatus (V11 §13.2 manifest ordering)", () => {
     ).rejects.toThrow(/status flip failed/);
     expect(deploy.syncManifest).toHaveBeenCalledTimes(2);
     expect(deploy.syncManifest).toHaveBeenLastCalledWith(
+      expect.anything(),
       expect.objectContaining({
         slug: "alice-notes",
         status: "published",
@@ -243,12 +251,25 @@ describe("setPublishStatus (V11 §13.2 manifest ordering)", () => {
   it("a publish whose row flip fails leaves the manifest on draft, not serving", async () => {
     const draft = makeApp({ ...live, status: "draft" });
     statusFlipFails = true;
+    const supabase = fakeSupabase(draft);
     await expect(
-      setPublishStatus(fakeSupabase(draft), "user-alice", "alice-notes", "published")
+      setPublishStatus(supabase, "user-alice", "alice-notes", "published")
     ).rejects.toThrow(/status flip failed/);
-    expect(deploy.promoteVersion).toHaveBeenCalledWith(draft, "v1700000000001");
+    expect(deploy.promoteVersion).toHaveBeenCalledWith(supabase, draft, "v1700000000001");
     expect(deploy.syncManifest).toHaveBeenLastCalledWith(
+      supabase,
       expect.objectContaining({ slug: "alice-notes", status: "draft" })
     );
+  });
+
+  it("publishing an app under deletion is refused as 409 before the row flips", async () => {
+    const draft = makeApp({ ...live, status: "draft" });
+    deploy.promoteVersion.mockRejectedValueOnce(
+      new deploy.AppOriginRefusedError("alice-notes")
+    );
+    await expect(
+      setPublishStatus(fakeSupabase(draft), "user-alice", "alice-notes", "published")
+    ).rejects.toMatchObject({ status: 409, message: /being deleted/ });
+    expect(versions.pointLiveAt).not.toHaveBeenCalled();
   });
 });

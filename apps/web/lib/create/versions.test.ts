@@ -2,7 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 const deploy = vi.hoisted(() => ({
-  appOriginLaneReady: vi.fn(() => false),
+  AppOriginRefusedError: class AppOriginRefusedError extends Error {
+    constructor(slug: string) {
+      super(`app ${slug} is being deleted`);
+      this.name = "AppOriginRefusedError";
+    }
+  },
   deployStaticVersion: vi.fn(async () => null as { workerSha256: string } | null),
   promoteVersion: vi.fn(async () => undefined),
   syncManifest: vi.fn(async () => undefined),
@@ -319,8 +324,6 @@ beforeEach(() => {
       app_origin_deployed_at: null,
     },
   ];
-  deploy.appOriginLaneReady.mockReset();
-  deploy.appOriginLaneReady.mockReturnValue(false);
   deploy.deployStaticVersion.mockReset();
   deploy.deployStaticVersion.mockResolvedValue(null);
   deploy.promoteVersion.mockReset();
@@ -511,7 +514,7 @@ describe("uploadVersion", () => {
     db.fail = { table: "mini_apps", op: "update" };
     await expect(uploadVersion(supabase, app, zip)).rejects.toThrow(/bundle version update failed/);
     expect(deploy.promoteVersion).toHaveBeenCalledTimes(2);
-    expect(deploy.promoteVersion).toHaveBeenLastCalledWith(app, "v1700000000001");
+    expect(deploy.promoteVersion).toHaveBeenLastCalledWith(supabase, app, "v1700000000001");
     expect(db.apps[0]!.bundle_version).toBe("v1700000000001");
     expect(db.versions).toHaveLength(0);
     expect(r2.deletePrefix).toHaveBeenCalledWith(expect.stringContaining("alice-notes/v"));
@@ -544,38 +547,26 @@ describe("uploadVersion", () => {
     expect(r2.deletePrefix).toHaveBeenLastCalledWith(`apps/alice-notes/${left.version}/`);
   });
 
-  it("a failed upload on the app-origin lane still marks the app as deployed (CR16)", async () => {
-    deploy.appOriginLaneReady.mockReturnValue(true);
+  it("the deploy claims the app row through the same client that owns the ledger", async () => {
     deploy.deployStaticVersion.mockResolvedValue({ workerSha256: "a".repeat(64) });
-    deploy.promoteVersion.mockRejectedValue(new Error("vendor 502"));
-    await expect(uploadVersion(supabase, app, zip)).rejects.toThrow(/vendor 502/);
-    // The draft Worker was put and the ledger row is gone: the app row is the
-    // only durable record that an origin may still be serving.
-    expect(db.versions).toHaveLength(0);
-    expect(db.apps[0]!.app_origin_deployed_at).not.toBeNull();
-  });
-
-  it("the deploy mark is written before the first Worker; a lost write fails the upload", async () => {
-    deploy.appOriginLaneReady.mockReturnValue(true);
-    deploy.deployStaticVersion.mockResolvedValue({ workerSha256: "a".repeat(64) });
-    db.fail = { table: "mini_apps", op: "update" };
-    await expect(uploadVersion(supabase, app, zip)).rejects.toThrow(/deploy mark failed/);
-    expect(deploy.deployStaticVersion).not.toHaveBeenCalled();
-    expect(db.versions).toHaveLength(0);
-    expect(db.apps[0]!.app_origin_deployed_at).toBeNull();
-  });
-
-  it("the deploy mark is skipped on the legacy lane", async () => {
     await uploadVersion(supabase, app, zip);
-    expect(db.apps[0]!.app_origin_deployed_at).toBeNull();
+    expect(deploy.deployStaticVersion).toHaveBeenCalledWith(
+      supabase,
+      expect.objectContaining({ appId: app.id, slug: app.slug, target: "draft" })
+    );
   });
 
-  it("the deploy mark keeps the first deploy's timestamp", async () => {
-    deploy.appOriginLaneReady.mockReturnValue(true);
-    deploy.deployStaticVersion.mockResolvedValue({ workerSha256: "a".repeat(64) });
-    db.apps[0]!.app_origin_deployed_at = "2026-01-01T00:00:00.000Z";
-    await uploadVersion(supabase, app, zip);
-    expect(db.apps[0]!.app_origin_deployed_at).toBe("2026-01-01T00:00:00.000Z");
+  it("an app under deletion refuses the upload as 409 and discards the row (CR16)", async () => {
+    deploy.deployStaticVersion.mockRejectedValue(
+      new deploy.AppOriginRefusedError(app.slug)
+    );
+    await expect(uploadVersion(supabase, app, zip)).rejects.toMatchObject({
+      status: 409,
+      message: /being deleted/,
+    });
+    expect(db.versions).toHaveLength(0);
+    expect(db.apps[0]!.bundle_version).toBe("v1700000000001");
+    expect(db.apps[0]!.draft_version).toBeNull();
   });
 
   it("a lost worker digest write fails the upload and discards the version", async () => {
@@ -597,7 +588,7 @@ describe("uploadVersion", () => {
     });
     await expect(uploadVersion(supabase, app, zip)).rejects.toMatchObject({ status: 409 });
     expect(deploy.promoteVersion).toHaveBeenCalledTimes(2);
-    expect(deploy.promoteVersion).toHaveBeenLastCalledWith(app, "v1700000000009");
+    expect(deploy.promoteVersion).toHaveBeenLastCalledWith(supabase, app, "v1700000000009");
     expect(db.apps[0]!.bundle_version).toBe("v1700000000009");
     expect(db.versions).toHaveLength(0);
     expect(r2.deletePrefix).toHaveBeenCalledWith(expect.stringContaining("alice-notes/v"));
@@ -676,8 +667,9 @@ describe("rollbackTo (§13.3)", () => {
     const target = await rollbackTo(supabase, app, "v1700000000000");
     expect(target.version).toBe("v1700000000000");
     expect(db.apps[0]!.bundle_version).toBe("v1700000000000");
-    expect(deploy.promoteVersion).toHaveBeenCalledWith(app, "v1700000000000");
+    expect(deploy.promoteVersion).toHaveBeenCalledWith(supabase, app, "v1700000000000");
     expect(deploy.syncManifest).toHaveBeenCalledWith(
+      supabase,
       expect.objectContaining({ slug: "alice-notes", bundle_version: "v1700000000000" })
     );
     expect(limits.recordOpsEvent).toHaveBeenCalledWith(
@@ -695,7 +687,7 @@ describe("rollbackTo (§13.3)", () => {
       /live pointer move failed/
     );
     expect(deploy.promoteVersion).toHaveBeenCalledTimes(2);
-    expect(deploy.promoteVersion).toHaveBeenLastCalledWith(app, "v1700000000001");
+    expect(deploy.promoteVersion).toHaveBeenLastCalledWith(supabase, app, "v1700000000001");
     expect(db.apps[0]!.bundle_version).toBe("v1700000000001");
     expect(limits.recordOpsEvent).not.toHaveBeenCalled();
   });
@@ -715,7 +707,7 @@ describe("rollbackTo (§13.3)", () => {
       status: 409,
     });
     expect(deploy.promoteVersion).toHaveBeenCalledTimes(2);
-    expect(deploy.promoteVersion).toHaveBeenLastCalledWith(app, "v1700000000002");
+    expect(deploy.promoteVersion).toHaveBeenLastCalledWith(supabase, app, "v1700000000002");
     expect(db.apps[0]!.bundle_version).toBe("v1700000000002");
     expect(db.versions[0]!.published_at).toBe("2026-01-01T00:00:00.000Z");
     expect(deploy.syncManifest).not.toHaveBeenCalled();
@@ -731,7 +723,7 @@ describe("rollbackTo (§13.3)", () => {
       status: 409,
     });
     expect(db.apps[0]!.bundle_version).toBe("v1700000000001");
-    expect(deploy.promoteVersion).toHaveBeenLastCalledWith(app, "v1700000000001");
+    expect(deploy.promoteVersion).toHaveBeenLastCalledWith(supabase, app, "v1700000000001");
   });
 
   it("refuses versions of another app, unknown versions, and the live one", async () => {

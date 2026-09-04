@@ -12,21 +12,37 @@ const db = vi.hoisted(() => ({
   rows: {} as Record<string, Record<string, unknown>[]>,
   errors: {} as Record<string, { message: string }>,
   deletes: [] as string[],
+  updates: [] as { table: string; values: Record<string, unknown> }[],
+  updateErrors: {} as Record<string, { message: string }>,
+  /** `select:<table>` / `update:<table>` in call order. */
+  log: [] as string[],
 }));
 
 vi.mock("@/lib/supabase", () => {
   function builder(table: string) {
     const chain: Record<string, unknown> = {};
     const self = () => chain;
-    for (const method of ["select", "eq", "in", "not", "is", "limit", "update"]) {
+    let updating = false;
+    for (const method of ["eq", "in", "not", "is", "limit"]) {
       chain[method] = vi.fn(self);
     }
+    chain["select"] = vi.fn(() => {
+      db.log.push(`select:${table}`);
+      return chain;
+    });
+    chain["update"] = vi.fn((values: Record<string, unknown>) => {
+      updating = true;
+      db.log.push(`update:${table}`);
+      db.updates.push({ table, values });
+      return chain;
+    });
     chain["delete"] = vi.fn(() => {
       db.deletes.push(table);
       return chain;
     });
     const result = () => {
-      const error = db.errors[table] ?? null;
+      const error =
+        (updating ? db.updateErrors[table] : db.errors[table]) ?? null;
       return { data: error ? null : (db.rows[table] ?? []), error };
     };
     chain["maybeSingle"] = () => {
@@ -60,6 +76,9 @@ beforeEach(() => {
   db.rows = { users: [{ id: "u1", composio_session_id: null }] };
   db.errors = {};
   db.deletes = [];
+  db.updates = [];
+  db.updateErrors = {};
+  db.log = [];
   deploy.appOriginLaneReady.mockReset();
   deploy.appOriginLaneReady.mockReturnValue(false);
   deploy.teardownAppOrigin.mockClear();
@@ -98,6 +117,54 @@ describe("POST /api/admin/delete — app origin guard (CR16)", () => {
     const res = await POST(authed({ user_id: "u1" }));
     expect(res.status).toBe(502);
     expect(deploy.teardownAppOrigin).toHaveBeenCalledTimes(2);
+    expect(db.deletes).toEqual([]);
+  });
+
+  it("closes every owned app to new deploys before the first teardown", async () => {
+    deploy.appOriginLaneReady.mockReturnValue(true);
+    db.rows["mini_apps"] = [{ slug: "alice-notes", app_origin_deployed_at: null }];
+    let closedBeforeTeardown = false;
+    deploy.teardownAppOrigin.mockImplementationOnce(async () => {
+      closedBeforeTeardown = db.updates.some(
+        (u) => u.table === "mini_apps" && typeof u.values["deleting_at"] === "string"
+      );
+      throw new Error("stop here");
+    });
+    const res = await POST(authed({ user_id: "u1" }));
+    expect(res.status).toBe(502);
+    expect(closedBeforeTeardown).toBe(true);
+  });
+
+  it("closes the account (users.deleting_at) before reading the owned-app inventory", async () => {
+    deploy.appOriginLaneReady.mockReturnValue(true);
+    db.rows["mini_apps"] = [{ slug: "alice-notes", app_origin_deployed_at: null }];
+    deploy.teardownAppOrigin.mockRejectedValueOnce(new Error("stop here"));
+    await POST(authed({ user_id: "u1" }));
+    const accountClosed = db.updates.findIndex(
+      (u) => u.table === "users" && typeof u.values["deleting_at"] === "string"
+    );
+    expect(accountClosed).toBe(0);
+    expect(db.log.indexOf("update:users")).toBeLessThan(db.log.indexOf("select:mini_apps"));
+  });
+
+  it("aborts, deleting nothing, when the account cannot be closed to new apps", async () => {
+    deploy.appOriginLaneReady.mockReturnValue(true);
+    db.rows["mini_apps"] = [{ slug: "alice-notes", app_origin_deployed_at: null }];
+    db.updateErrors["users"] = { message: "db down" };
+    const res = await POST(authed({ user_id: "u1" }));
+    expect(res.status).toBe(502);
+    expect(db.log).not.toContain("select:mini_apps");
+    expect(deploy.teardownAppOrigin).not.toHaveBeenCalled();
+    expect(db.deletes).toEqual([]);
+  });
+
+  it("aborts, deleting nothing, when the apps cannot be closed to deploys", async () => {
+    deploy.appOriginLaneReady.mockReturnValue(true);
+    db.rows["mini_apps"] = [{ slug: "alice-notes", app_origin_deployed_at: null }];
+    db.updateErrors["mini_apps"] = { message: "db down" };
+    const res = await POST(authed({ user_id: "u1" }));
+    expect(res.status).toBe(502);
+    expect(deploy.teardownAppOrigin).not.toHaveBeenCalled();
     expect(db.deletes).toEqual([]);
   });
 });
