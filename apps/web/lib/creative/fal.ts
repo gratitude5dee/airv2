@@ -19,6 +19,12 @@
  * separate `reference_{image,video,audio}_urls` lists the prompt addresses as
  * "Image 1", "Video 1", "Audio 1". Audio cannot be the only reference there;
  * that case is refused before anything is submitted.
+ *
+ * reference-to-video's audio loader only reads WAV and MP3 in practice (an
+ * M4A — every iPhone voice memo and every soundtrack lifted from a clip —
+ * fails with audio_load_error despite the schema listing it), so each audio
+ * reference is first run through fal's ffmpeg loudnorm endpoint, which
+ * returns a WAV on fal's own storage, and that URL is what the render sees.
  */
 import { createFalClient, type FalClient } from "@fal-ai/client";
 import { env } from "../env";
@@ -52,6 +58,10 @@ const POLL_INTERVAL_MS = 1_000;
 const SUBMIT_TIMEOUT_MS = 20_000;
 const FAL_QUEUE_BASE_URL = "https://queue.fal.run";
 
+/** Audio → WAV conversion (EBU R128 normalised) ahead of a reference render. */
+export const FAL_AUDIO_TO_WAV = "fal-ai/ffmpeg-api/loudnorm";
+const TRANSCODE_TIMEOUT_MS = 30_000;
+
 export interface FalGenerationRequest {
   kind: "video";
   model: string;
@@ -70,12 +80,20 @@ export interface FalQueueReader {
   ) => Promise<{ data: unknown }>;
 }
 
+/** Runs FAL_AUDIO_TO_WAV on one audio URL; resolves to the endpoint's output. */
+export type FalAudioTranscoder = (
+  audioUrl: string,
+  abortSignal: AbortSignal,
+) => Promise<unknown>;
+
 export interface FalGenerationOptions {
   onLifecycle?: (event: GmiLifecycleEvent) => Promise<void> | void;
   /** Injected in tests; production uses a key-configured singleton client. */
   queue?: FalQueueReader;
   /** Injected in tests; production submits with global fetch. */
   submit?: typeof fetch;
+  /** Injected in tests; production runs the singleton client's sync endpoint. */
+  transcode?: FalAudioTranscoder;
 }
 
 /** The request was definitively rejected before any work was enqueued. */
@@ -133,6 +151,22 @@ const ofKind = (
 const urls = (media: readonly MediaInput[], max: number): string[] =>
   media.slice(0, max).map((item) => item.url);
 
+/**
+ * Audio the user attached outranks a soundtrack lifted out of a clip, and a
+ * lifted soundtrack only rides along with the clip it came from; once the
+ * clip falls past the cap its soundtrack goes with it.
+ */
+const selectedAudio = (turn: CreativeTurn): MediaInput[] => {
+  const audio = ofKind(turn, "audio");
+  const videoUrls = urls(ofKind(turn, "video"), MAX_REFERENCE_CLIPS);
+  return [
+    ...audio.filter((item) => !item.soundtrackOf),
+    ...audio.filter(
+      (item) => item.soundtrackOf && videoUrls.includes(item.soundtrackOf),
+    ),
+  ].slice(0, MAX_REFERENCE_CLIPS);
+};
+
 const MENTIONS_REFERENCE = /\b(?:image|video|audio)\s+\d\b/i;
 
 const labels = (noun: string, count: number): string =>
@@ -183,6 +217,7 @@ export function buildFalZapRequest(
   const images = ofKind(turn, "image");
   const videos = ofKind(turn, "video");
   const audio = ofKind(turn, "audio");
+  const soundUrls = urls(selectedAudio(turn), MAX_REFERENCE_CLIPS);
   const shared = {
     prompt: plan.expanded_prompt,
     duration: clamp(
@@ -203,7 +238,6 @@ export function buildFalZapRequest(
     const ratio = plan.params.aspect_ratio;
     const imageUrls = urls(images, MAX_REFERENCE_IMAGES);
     const videoUrls = urls(videos, MAX_REFERENCE_CLIPS);
-    const audioUrls = urls(audio, MAX_REFERENCE_CLIPS);
     return {
       kind: "video",
       model: FAL_ZAP_REFERENCE_TO_VIDEO,
@@ -212,12 +246,12 @@ export function buildFalZapRequest(
         prompt: withReferenceLegend(shared.prompt, {
           images: imageUrls.length,
           videos: videoUrls.length,
-          audio: audioUrls.length,
+          audio: soundUrls.length,
         }),
         aspect_ratio: ratio === "auto" ? "adaptive" : ratio,
         ...(imageUrls.length > 0 ? { reference_image_urls: imageUrls } : {}),
         ...(videoUrls.length > 0 ? { reference_video_urls: videoUrls } : {}),
-        ...(audioUrls.length > 0 ? { reference_audio_urls: audioUrls } : {}),
+        ...(soundUrls.length > 0 ? { reference_audio_urls: soundUrls } : {}),
       },
     };
   }
@@ -258,16 +292,81 @@ const falKeyOrThrow = (): string => {
   return credentials;
 };
 
-const falQueue = (): FalQueueReader => {
+const falClient = (): FalClient => {
   singleton ??= createFalClient({ credentials: falKeyOrThrow() });
-  return singleton.queue;
+  return singleton;
 };
 
-const videoUrlOf = (data: unknown): string | undefined => {
-  const video = asRecord(asRecord(data)?.["video"]);
-  const url = video?.["url"];
+const falQueue = (): FalQueueReader => falClient().queue;
+
+const falTranscoder = (): FalAudioTranscoder => {
+  const client = falClient();
+  return async (audioUrl, abortSignal) =>
+    (
+      await client.run(FAL_AUDIO_TO_WAV, {
+        input: { audio_url: audioUrl },
+        abortSignal,
+      })
+    ).data;
+};
+
+const fileUrlOf = (data: unknown, field: string): string | undefined => {
+  const file = asRecord(asRecord(data)?.[field]);
+  const url = file?.["url"];
   return typeof url === "string" && url.length > 0 ? url : undefined;
 };
+
+const videoUrlOf = (data: unknown): string | undefined =>
+  fileUrlOf(data, "video");
+
+/**
+ * Swap each audio reference that will reach fal for its WAV on fal storage;
+ * audio past the cap is neither converted nor able to fail the turn. Audio
+ * the user attached is the point of their request, so a conversion that
+ * fails there fails the turn before any render is paid for; a soundtrack
+ * lifted out of a clip degrades to the clip alone, as it does when
+ * extraction fails.
+ */
+async function withWavAudio(
+  turn: CreativeTurn,
+  deadline: number,
+  transcoder: FalAudioTranscoder | undefined,
+): Promise<CreativeTurn> {
+  const chosen = selectedAudio(turn);
+  if (chosen.length === 0) return turn;
+  const transcode = transcoder ?? falTranscoder();
+  const converted = await Promise.all(
+    chosen.map(async (media): Promise<MediaInput | undefined> => {
+      try {
+        const data = await raceDeadline(
+          deadline,
+          transcode(media.url, budgetSignal(deadline, TRANSCODE_TIMEOUT_MS)),
+        );
+        const url = fileUrlOf(data, "audio");
+        if (!url) throw new Error("fal transcode returned no audio URL");
+        return {
+          ...media,
+          url: assertSafeGeneratedMediaUrl(url, generatedMediaHosts()),
+          mimeType: "audio/wav",
+        };
+      } catch (error) {
+        if (media.soundtrackOf) return undefined;
+        throw new FalRequestError(
+          error instanceof Error
+            ? `fal audio transcode failed: ${error.message}`
+            : "fal audio transcode failed",
+        );
+      }
+    }),
+  );
+  return {
+    ...turn,
+    mediaInputs: [
+      ...turn.mediaInputs.filter((media) => media.kind !== "audio"),
+      ...converted.filter((media): media is MediaInput => media !== undefined),
+    ],
+  };
+}
 
 /**
  * One un-retried submit POST. A definitive rejection (any HTTP response
@@ -404,8 +503,12 @@ export async function generateZapVideo(
   timeoutMs: number,
   options?: FalGenerationOptions,
 ): Promise<GeneratedMedia> {
-  const request = buildFalZapRequest(plan, turn);
   const deadline = Date.now() + timeoutMs;
+  // Conversion runs outside the permit: it is fal's ffmpeg, not a render.
+  const request = buildFalZapRequest(
+    plan,
+    await withWavAudio(turn, deadline, options?.transcode),
+  );
   // Paid renders share the provider-neutral creative concurrency permit.
   return await withCreativeSlot(
     async () => {

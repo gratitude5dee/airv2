@@ -240,6 +240,7 @@ export interface CrmAvatar {
   name: string;
   initials: string;
   color: string;
+  photoKey: string | null;
 }
 
 const AVATAR_COLORS = [
@@ -265,14 +266,29 @@ export function initialsFor(name: string): string {
 
 /** email (lowercased) → avatar, for calendar attendee chips (MA6 #6).
  * Owner-scoped by construction: the store came from the owner's own box. */
-export function avatarIndex(store: CrmStore): Map<string, CrmAvatar> {
+export function avatarIndex(
+  store: CrmStore,
+  publicPrefix?: string
+): Map<string, CrmAvatar> {
   const index = new Map<string, CrmAvatar>();
   for (const person of store.people) {
+    const photoKey =
+      typeof publicPrefix === "string" && publicPrefix.length > 0
+        ? person.photos.find(
+            (photo) =>
+              photo.startsWith(publicPrefix) &&
+              photo.length > publicPrefix.length &&
+              !photo.includes("..") &&
+              !photo.startsWith("/") &&
+              /^[\w\-./]+$/.test(photo)
+          ) ?? null
+        : null;
     for (const email of person.emails) {
       index.set(email.toLowerCase(), {
         name: person.name,
         initials: initialsFor(person.name),
         color: ditherColor(person.id),
+        photoKey,
       });
     }
   }

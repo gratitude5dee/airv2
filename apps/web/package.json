@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
-    "prebuild": "node scripts/build-onairos-connect.mjs && node scripts/build-backgrounds.mjs && node scripts/build-identity-booth.mjs && node scripts/build-image-editor.mjs && node scripts/build-prompt-copy.mjs && node scripts/build-deck-swipe.mjs && node scripts/build-deck-stepper.mjs && node scripts/build-intro-cinematic.mjs"
+    "prebuild": "node scripts/build-onairos-connect.mjs && node scripts/build-backgrounds.mjs && node scripts/build-identity-booth.mjs && node scripts/build-image-editor.mjs && node scripts/build-prompt-copy.mjs && node scripts/build-deck-swipe.mjs && node scripts/build-calendar-month.mjs && node scripts/build-deck-stepper.mjs && node scripts/build-intro-cinematic.mjs"
   },
   "dependencies": {
     "@coinbase/x402": "^1.0.1",

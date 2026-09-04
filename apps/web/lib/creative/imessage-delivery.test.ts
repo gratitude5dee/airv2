@@ -14,7 +14,7 @@ vi.mock("./jobs", () => ({ createCreativeJob: vi.fn() }));
 vi.mock("./run", () => ({ executeCreativeJob: vi.fn() }));
 vi.mock("./store", () => ({
   removeStagedInputs: vi.fn().mockResolvedValue(undefined),
-  stageCreativeInput: vi.fn(),
+  stageCreativeInputs: vi.fn().mockResolvedValue([]),
 }));
 
 const job = { spaceId: "sp", userId: "u1", phone: "+1555" };

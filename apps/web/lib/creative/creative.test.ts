@@ -265,8 +265,16 @@ describe("buildFalZapRequest", () => {
       plan({ mode: "zap", expanded_prompt: "make it rain" }),
       turn({
         mediaInputs: [
-          { kind: "image", url: "https://x.test/a.jpg", mimeType: "image/jpeg" },
-          { kind: "video", url: "https://x.test/v.mov", mimeType: "video/quicktime" },
+          {
+            kind: "image",
+            url: "https://x.test/a.jpg",
+            mimeType: "image/jpeg",
+          },
+          {
+            kind: "video",
+            url: "https://x.test/v.mov",
+            mimeType: "video/quicktime",
+          },
         ],
       }),
     );
@@ -296,15 +304,23 @@ describe("buildFalZapRequest", () => {
       }),
       turn({
         mediaInputs: [
-          { kind: "audio", url: "https://x.test/memo.m4a", mimeType: "audio/mp4" },
+          {
+            kind: "audio",
+            url: "https://x.test/memo.m4a",
+            mimeType: "audio/mp4",
+          },
           { kind: "image", url: "https://x.test/a.jpg" },
         ],
       }),
     );
     expect(request.model).toBe("minimax/h3-max/reference-to-video");
     expect(request.input["aspect_ratio"]).toBe("9:16");
-    expect(request.input["reference_audio_urls"]).toEqual(["https://x.test/memo.m4a"]);
-    expect(request.input["reference_image_urls"]).toEqual(["https://x.test/a.jpg"]);
+    expect(request.input["reference_audio_urls"]).toEqual([
+      "https://x.test/memo.m4a",
+    ]);
+    expect(request.input["reference_image_urls"]).toEqual([
+      "https://x.test/a.jpg",
+    ]);
     expect(request.input["reference_video_urls"]).toBeUndefined();
     expect(request.input["image_url"]).toBeUndefined();
     expect(request.input["prompt"]).toBe(
@@ -325,6 +341,51 @@ describe("buildFalZapRequest", () => {
     expect(request.input["prompt"]).toBe("Video 1 pans, Audio 1 plays");
     expect(request.input["reference_video_urls"]).toHaveLength(3);
     expect(request.input["reference_audio_urls"]).toHaveLength(3);
+  });
+
+  it("drops a clip's soundtrack with the clip, and seats attached audio first", () => {
+    const clip = (i: number) => `https://x.test/${i}.mov`;
+    const withSoundtracks = Array.from({ length: 4 }, (_, i) => [
+      { kind: "video" as const, url: clip(i) },
+      {
+        kind: "audio" as const,
+        url: `https://x.test/${i}.m4a`,
+        soundtrackOf: clip(i),
+      },
+    ]).flat();
+
+    let request = buildFalZapRequest(
+      plan({ mode: "zap", expanded_prompt: "cut these together" }),
+      turn({ mediaInputs: withSoundtracks }),
+    );
+    expect(request.input["reference_video_urls"]).toEqual([
+      clip(0),
+      clip(1),
+      clip(2),
+    ]);
+    expect(request.input["reference_audio_urls"]).toEqual([
+      "https://x.test/0.m4a",
+      "https://x.test/1.m4a",
+      "https://x.test/2.m4a",
+    ]);
+
+    request = buildFalZapRequest(
+      plan({ mode: "zap", expanded_prompt: "score it with my memo" }),
+      turn({
+        mediaInputs: [
+          ...withSoundtracks.slice(0, 6),
+          { kind: "audio", url: "https://x.test/memo.m4a" },
+        ],
+      }),
+    );
+    expect(request.input["reference_audio_urls"]).toEqual([
+      "https://x.test/memo.m4a",
+      "https://x.test/0.m4a",
+      "https://x.test/1.m4a",
+    ]);
+    expect(request.input["prompt"]).toBe(
+      "score it with my memo Use Video 1 and Video 2 and Video 3 as the motion reference, Audio 1 and Audio 2 and Audio 3 as the soundtrack.",
+    );
   });
 
   it("refuses audio without a picture or clip before anything is submitted", () => {
@@ -438,9 +499,14 @@ describe("directZapPlan", () => {
     );
     expect(result.chat_reply).toBe("zapping your image");
     expect(result.params.use_input_image_as).toBe("first_frame");
-    expect(buildFalZapRequest(result, { text: "", mediaInputs: [
-      { kind: "image", url: "https://signed.example/frame.jpg" },
-    ] }).model).toBe("minimax/h3-max-turbo/image-to-video");
+    expect(
+      buildFalZapRequest(result, {
+        text: "",
+        mediaInputs: [
+          { kind: "image", url: "https://signed.example/frame.jpg" },
+        ],
+      }).model,
+    ).toBe("minimax/h3-max-turbo/image-to-video");
   });
 
   it("falls back to a generic brief when the command has no words", () => {
@@ -738,6 +804,171 @@ describe("fal /zap queue discipline", () => {
     expect(media).toEqual({ kind: "video", url: FAL_VIDEO_URL });
     expect(submit).toHaveBeenCalledTimes(1);
     expect(stages).toEqual(["submitting", "submitted", "artifact_ready"]);
+  });
+
+  const submittedInput = (submit: ReturnType<typeof okSubmit>) =>
+    JSON.parse(String(submit.mock.calls[0]?.[1]?.body)) as Record<
+      string,
+      unknown
+    >;
+  const WAV_URL = "https://v3b.fal.media/files/normalized_audio.wav";
+  const CLIP_URL = "https://x.supabase.co/sign/clip.mov?token=a";
+  const MEMO_URL = "https://x.supabase.co/sign/memo.m4a?token=b";
+  const withReferences = (): CreativeTurn =>
+    turn({
+      mediaInputs: [
+        { kind: "video", url: CLIP_URL, mimeType: "video/quicktime" },
+        {
+          kind: "audio",
+          url: "https://x.supabase.co/sign/clip.m4a?token=c",
+          mimeType: "audio/mp4",
+          soundtrackOf: CLIP_URL,
+        },
+        { kind: "audio", url: MEMO_URL, mimeType: "audio/mp4" },
+      ],
+    });
+
+  it("hands fal the WAV it made from each audio reference, not the staged M4A", async () => {
+    vi.stubEnv("FAL_KEY", "test-key");
+    const submit = okSubmit();
+    const transcode = vi
+      .fn()
+      .mockResolvedValue({ audio: { url: WAV_URL, file_name: "n.wav" } });
+    await generateZapVideo(plan({ mode: "zap" }), withReferences(), 10_000, {
+      submit,
+      queue: queueOf(),
+      transcode,
+    });
+    expect(transcode).toHaveBeenCalledTimes(2);
+    expect(transcode.mock.calls.map((call) => call[0]).sort()).toEqual(
+      ["https://x.supabase.co/sign/clip.m4a?token=c", MEMO_URL].sort(),
+    );
+    const input = submittedInput(submit);
+    expect(input["reference_video_urls"]).toEqual([CLIP_URL]);
+    expect(input["reference_audio_urls"]).toEqual([WAV_URL, WAV_URL]);
+  });
+
+  it("does not transcode when nothing was attached as audio", async () => {
+    vi.stubEnv("FAL_KEY", "test-key");
+    const transcode = vi.fn();
+    await generateZapVideo(plan({ mode: "zap" }), turn(), 10_000, {
+      submit: okSubmit(),
+      queue: queueOf(),
+      transcode,
+    });
+    expect(transcode).not.toHaveBeenCalled();
+  });
+
+  it("a memo that fails to convert fails the turn before any render is paid for", async () => {
+    vi.stubEnv("FAL_KEY", "test-key");
+    const submit = okSubmit();
+    await expect(
+      generateZapVideo(
+        plan({ mode: "zap" }),
+        turn({
+          mediaInputs: [
+            { kind: "image", url: "https://x.supabase.co/sign/a.jpg?token=d" },
+            { kind: "audio", url: MEMO_URL, mimeType: "audio/mp4" },
+          ],
+        }),
+        10_000,
+        {
+          submit,
+          queue: queueOf(),
+          transcode: vi.fn().mockRejectedValue(new Error("ffmpeg failed")),
+        },
+      ),
+    ).rejects.toSatisfy(
+      (error) =>
+        error instanceof FalRequestError && !isFalUnknownOutcome(error),
+    );
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it("a lifted soundtrack that fails to convert degrades to the clip alone", async () => {
+    vi.stubEnv("FAL_KEY", "test-key");
+    const submit = okSubmit();
+    const references = withReferences();
+    await generateZapVideo(
+      plan({ mode: "zap" }),
+      turn({ mediaInputs: references.mediaInputs.slice(0, 2) }),
+      10_000,
+      {
+        submit,
+        queue: queueOf(),
+        transcode: vi.fn().mockRejectedValue(new Error("ffmpeg failed")),
+      },
+    );
+    const input = submittedInput(submit);
+    expect(input["reference_video_urls"]).toEqual([CLIP_URL]);
+    expect(input["reference_audio_urls"]).toBeUndefined();
+  });
+
+  it("audio past the cap is neither converted nor able to fail the render", async () => {
+    vi.stubEnv("FAL_KEY", "test-key");
+    const submit = okSubmit();
+    const memo = (n: number) =>
+      `https://x.supabase.co/sign/memo${n}.m4a?token=m${n}`;
+    const orphanClip = "https://x.supabase.co/sign/orphan.mov?token=o";
+    const transcode = vi.fn((url: string) =>
+      url === memo(4) || url.includes("orphan")
+        ? Promise.reject(new Error("never asked for"))
+        : Promise.resolve({ audio: { url: `${WAV_URL}#${url.slice(-2)}` } }),
+    );
+    await generateZapVideo(
+      plan({ mode: "zap" }),
+      turn({
+        mediaInputs: [
+          { kind: "video", url: CLIP_URL },
+          {
+            kind: "audio",
+            url: "https://x.supabase.co/sign/orphan.m4a?token=x",
+            soundtrackOf: orphanClip,
+          },
+          ...[1, 2, 3, 4].map((n) => ({
+            kind: "audio" as const,
+            url: memo(n),
+          })),
+        ],
+      }),
+      10_000,
+      { submit, queue: queueOf(), transcode },
+    );
+    expect(transcode.mock.calls.map((call) => call[0])).toEqual([
+      memo(1),
+      memo(2),
+      memo(3),
+    ]);
+    expect(submittedInput(submit)["reference_audio_urls"]).toEqual([
+      `${WAV_URL}#m1`,
+      `${WAV_URL}#m2`,
+      `${WAV_URL}#m3`,
+    ]);
+  });
+
+  it("a converted WAV off fal's storage is never handed to the render", async () => {
+    vi.stubEnv("FAL_KEY", "test-key");
+    const submit = okSubmit();
+    await expect(
+      generateZapVideo(
+        plan({ mode: "zap" }),
+        turn({
+          mediaInputs: [
+            { kind: "image", url: "https://x.supabase.co/sign/a.jpg?token=d" },
+            { kind: "audio", url: MEMO_URL, mimeType: "audio/mp4" },
+          ],
+        }),
+        10_000,
+        {
+          submit,
+          queue: queueOf(),
+          transcode: vi.fn().mockResolvedValue({
+            audio: { url: "https://evil.example/normalized_audio.wav" },
+          }),
+        },
+      ),
+    ).rejects.toSatisfy((error) => error instanceof FalRequestError);
+    expect(submit).not.toHaveBeenCalled();
   });
 
   it("a submit with no response is ambiguous — never resubmitted", async () => {

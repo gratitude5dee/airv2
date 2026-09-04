@@ -27,7 +27,7 @@ import {
 } from "./parse";
 import { deterministicGenerationLines } from "./router";
 import { executeCreativeJob } from "./run";
-import { removeStagedInputs, stageCreativeInput } from "./store";
+import { removeStagedInputs, stageCreativeInputs } from "./store";
 
 const ATTACHMENT_MARKER = /\[attachment:([^\]]+)\]/g;
 
@@ -38,7 +38,7 @@ const ATTACHMENT_MARKER = /\[attachment:([^\]]+)\]/g;
 async function trySend(
   stage: string,
   job: CreativeFlushJob,
-  send: () => Promise<unknown>
+  send: () => Promise<unknown>,
 ): Promise<boolean> {
   try {
     await send();
@@ -51,7 +51,7 @@ async function trySend(
         user_id: job.userId,
         space_id: job.spaceId,
         error: error instanceof Error ? error.message : String(error),
-      })
+      }),
     );
     return false;
   }
@@ -71,7 +71,7 @@ export async function maybeRunCreativeLane(
   supabase: SupabaseClient,
   sender: SpectrumSender,
   job: CreativeFlushJob,
-  rawInput: string
+  rawInput: string,
 ): Promise<boolean> {
   // Strip debounce framing so the parser sees only the user's words.
   const attachmentIds: string[] = [];
@@ -102,17 +102,17 @@ export async function maybeRunCreativeLane(
       .getAttachment(id, job.phone)
       .catch(() => undefined);
     if (!fetched) continue;
-    const staged = await stageCreativeInput(
+    for (const staged of await stageCreativeInputs(
       supabase,
       job.userId,
       fetched.data,
-      fetched.mimeType
-    );
-    if (staged) {
+      fetched.mimeType,
+    )) {
       mediaInputs.push({
         url: staged.url,
         kind: staged.kind,
         mimeType: staged.mimeType,
+        ...(staged.soundtrackOf ? { soundtrackOf: staged.soundtrackOf } : {}),
       });
       stagedKeys.push(staged.storageKey);
     }
@@ -120,14 +120,14 @@ export async function maybeRunCreativeLane(
 
   const ack = deterministicGenerationLines(command.mode, mediaInputs);
   const ackSent = await trySend("ack", job, () =>
-    sender.sendText(job.spaceId, job.phone, ack.chat_reply)
+    sender.sendText(job.spaceId, job.phone, ack.chat_reply),
   );
 
   const creativeJob = await createCreativeJob(
     supabase,
     job.userId,
     "imessage",
-    command.mode
+    command.mode,
   );
   let result: Awaited<ReturnType<typeof executeCreativeJob>>;
   try {
@@ -157,7 +157,7 @@ export async function maybeRunCreativeLane(
     const name = `wzrd-${result.asset.sha256.slice(0, 8)}.${result.asset.ext}`;
     const mimeType = downloadMime(result.asset.ext);
     sent = await trySend("attachment", job, () =>
-      sender.sendAttachment(job.spaceId, job.phone, bytes, { name, mimeType })
+      sender.sendAttachment(job.spaceId, job.phone, bytes, { name, mimeType }),
     );
   } else {
     console.error(
@@ -167,18 +167,18 @@ export async function maybeRunCreativeLane(
         user_id: job.userId,
         space_id: job.spaceId,
         error: download.error?.message ?? "empty asset download",
-      })
+      }),
     );
   }
   if (!sent && result.deliveryUrl) {
     // Fallbacks carry only the short-TTL signed delivery URL.
     const deliveryUrl = result.deliveryUrl;
     sent = await trySend("rich_link", job, () =>
-      sender.sendRichLink(job.spaceId, job.phone, deliveryUrl)
+      sender.sendRichLink(job.spaceId, job.phone, deliveryUrl),
     );
     if (!sent) {
       sent = await trySend("delivery_url", job, () =>
-        sender.sendText(job.spaceId, job.phone, deliveryUrl)
+        sender.sendText(job.spaceId, job.phone, deliveryUrl),
       );
     }
   }
@@ -186,7 +186,7 @@ export async function maybeRunCreativeLane(
     ? (result.deliveryLine ?? "made this for you")
     : "made it, but couldn't send it here. check the app.";
   const captionSent = await trySend("caption", job, () =>
-    sender.sendText(job.spaceId, job.phone, caption)
+    sender.sendText(job.spaceId, job.phone, caption),
   );
   if (!ackSent && !sent && !captionSent) {
     // The job is `delivered` in the database and the chat saw nothing.
@@ -197,7 +197,7 @@ export async function maybeRunCreativeLane(
         space_id: job.spaceId,
         job_id: creativeJob.id,
         mode: command.mode,
-      })
+      }),
     );
   }
   return true;

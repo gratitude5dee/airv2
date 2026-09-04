@@ -7,11 +7,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { heifToJpeg } from "../identity/heif";
-import { stageCreativeInput } from "./store";
+import { extractAudioTrack } from "./container";
+import { stageCreativeInput, stageCreativeInputs } from "./store";
 
 vi.mock("../identity/heif", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../identity/heif")>()),
   heifToJpeg: vi.fn(),
+}));
+
+vi.mock("./container", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./container")>()),
+  extractAudioTrack: vi.fn(),
 }));
 
 /** A HEIC container header — enough for isHeif's ftyp sniff. */
@@ -28,7 +34,11 @@ const fakeSupabase = () =>
   ({
     storage: {
       from: () => ({
-        upload: (key: string, bytes: Buffer, options: { contentType: string }) => {
+        upload: (
+          key: string,
+          bytes: Buffer,
+          options: { contentType: string },
+        ) => {
           uploads.push({ key, bytes, contentType: options.contentType });
           return Promise.resolve({ error: null });
         },
@@ -56,7 +66,7 @@ describe("stageCreativeInput HEIC handling", () => {
       fakeSupabase(),
       "u1",
       heicBytes(),
-      "image/heic"
+      "image/heic",
     );
 
     expect(staged?.kind).toBe("image");
@@ -75,7 +85,7 @@ describe("stageCreativeInput HEIC handling", () => {
       fakeSupabase(),
       "u1",
       heicBytes(),
-      "application/octet-stream"
+      "application/octet-stream",
     );
 
     expect(staged?.mimeType).toBe("image/jpeg");
@@ -89,7 +99,7 @@ describe("stageCreativeInput HEIC handling", () => {
       fakeSupabase(),
       "u1",
       heicBytes(),
-      "image/heic"
+      "image/heic",
     );
 
     expect(staged).toBeUndefined();
@@ -101,7 +111,7 @@ describe("stageCreativeInput HEIC handling", () => {
       fakeSupabase(),
       "u1",
       Buffer.from([0xff, 0xd8, 0xff, 0xe0]),
-      "image/jpeg"
+      "image/jpeg",
     );
 
     expect(staged?.mimeType).toBe("image/jpeg");
@@ -112,6 +122,7 @@ describe("stageCreativeInput HEIC handling", () => {
 describe("stageCreativeInput clips", () => {
   beforeEach(() => {
     uploads.length = 0;
+    vi.mocked(extractAudioTrack).mockReset();
   });
 
   it("stages an iPhone video as a video reference", async () => {
@@ -119,7 +130,7 @@ describe("stageCreativeInput clips", () => {
       fakeSupabase(),
       "u1",
       Buffer.from("mov-bytes"),
-      "video/quicktime"
+      "video/quicktime",
     );
 
     expect(staged?.kind).toBe("video");
@@ -133,13 +144,13 @@ describe("stageCreativeInput clips", () => {
       fakeSupabase(),
       "u1",
       Buffer.from("m4a-bytes"),
-      "audio/x-m4a"
+      "audio/x-m4a",
     );
     const song = await stageCreativeInput(
       fakeSupabase(),
       "u1",
       Buffer.from("mp3-bytes"),
-      "audio/mpeg"
+      "audio/mpeg",
     );
 
     expect(memo?.kind).toBe("audio");
@@ -166,13 +177,23 @@ describe("stageCreativeInput clips", () => {
           "trak",
           box(
             "mdia",
-            box("hdlr", Buffer.alloc(8), Buffer.from("soun", "latin1"), Buffer.alloc(4))
-          )
-        )
+            box(
+              "hdlr",
+              Buffer.alloc(8),
+              Buffer.from("soun", "latin1"),
+              Buffer.alloc(4),
+            ),
+          ),
+        ),
       ),
     ]);
 
-    const staged = await stageCreativeInput(fakeSupabase(), "u1", m4a, "video/mp4");
+    const staged = await stageCreativeInput(
+      fakeSupabase(),
+      "u1",
+      m4a,
+      "video/mp4",
+    );
 
     expect(staged?.kind).toBe("audio");
     expect(staged?.mimeType).toBe("audio/mp4");
@@ -180,12 +201,102 @@ describe("stageCreativeInput clips", () => {
     expect(uploads[0]?.contentType).toBe("audio/mp4");
   });
 
+  it("stages a clip with a soundtrack as a video and an audio reference", async () => {
+    const m4a = Buffer.from("remuxed-m4a");
+    vi.mocked(extractAudioTrack).mockReturnValue(m4a);
+
+    const staged = await stageCreativeInputs(
+      fakeSupabase(),
+      "u1",
+      Buffer.from("mov-bytes"),
+      "video/quicktime",
+    );
+
+    expect(staged.map((input) => input.kind)).toEqual(["video", "audio"]);
+    expect(staged[1]?.mimeType).toBe("audio/mp4");
+    expect(staged[1]?.storageKey.endsWith(".m4a")).toBe(true);
+    expect(staged[1]?.soundtrackOf).toBe(staged[0]?.url);
+    expect(staged[0]?.soundtrackOf).toBeUndefined();
+    expect(uploads).toHaveLength(2);
+    expect(uploads[1]?.contentType).toBe("audio/mp4");
+    expect(uploads[1]?.bytes.equals(m4a)).toBe(true);
+  });
+
+  it("keeps the clip when its soundtrack cannot be extracted or staged", async () => {
+    vi.mocked(extractAudioTrack).mockImplementation(() => {
+      throw new RangeError("out of bounds");
+    });
+    let staged = await stageCreativeInputs(
+      fakeSupabase(),
+      "u1",
+      Buffer.from("mov-bytes"),
+      "video/quicktime",
+    );
+    expect(staged.map((input) => input.kind)).toEqual(["video"]);
+    expect(uploads).toHaveLength(1);
+
+    uploads.length = 0;
+    vi.mocked(extractAudioTrack).mockReturnValue(Buffer.from("remuxed-m4a"));
+    const bucket = fakeSupabase().storage.from("assets");
+    const flaky = {
+      storage: {
+        from: () => ({
+          ...bucket,
+          upload: (
+            key: string,
+            bytes: Buffer,
+            options: { contentType: string },
+          ) =>
+            uploads.length === 0
+              ? bucket.upload(key, bytes, options)
+              : Promise.reject(new Error("network")),
+        }),
+      },
+    } as unknown as SupabaseClient;
+    staged = await stageCreativeInputs(
+      flaky,
+      "u1",
+      Buffer.from("mov-bytes"),
+      "video/quicktime",
+    );
+    expect(staged.map((input) => input.kind)).toEqual(["video"]);
+    expect(staged[0]?.storageKey).toBe(uploads[0]?.key);
+  });
+
+  it("stages a silent clip, a photo, or a song as one input", async () => {
+    vi.mocked(extractAudioTrack).mockReturnValue(undefined);
+
+    const clip = await stageCreativeInputs(
+      fakeSupabase(),
+      "u1",
+      Buffer.from("mov-bytes"),
+      "video/quicktime",
+    );
+    const photo = await stageCreativeInputs(
+      fakeSupabase(),
+      "u1",
+      Buffer.from([0xff, 0xd8, 0xff, 0xe0]),
+      "image/jpeg",
+    );
+    const song = await stageCreativeInputs(
+      fakeSupabase(),
+      "u1",
+      Buffer.from("mp3-bytes"),
+      "audio/mpeg",
+    );
+
+    expect(clip.map((input) => input.kind)).toEqual(["video"]);
+    expect(photo.map((input) => input.kind)).toEqual(["image"]);
+    expect(song.map((input) => input.kind)).toEqual(["audio"]);
+    expect(extractAudioTrack).toHaveBeenCalledOnce();
+  });
+
   it("refuses attachment types no endpoint accepts", async () => {
     const staged = await stageCreativeInput(
       fakeSupabase(),
       "u1",
       Buffer.from("%PDF-1.7"),
-      "application/pdf"
+      "application/pdf",
     );
 
     expect(staged).toBeUndefined();

@@ -382,38 +382,58 @@ export async function reconcileAppOrigins(
 ): Promise<{ repaired: number }> {
   if (!appOriginLaneReady()) return { repaired: 0 };
   let repaired = 0;
-  for (let from = 0; ; from += RECONCILE_PAGE) {
-    const { data, error } = await supabase
+  // Keyset pages on id: rows marked or removed behind the cursor while the
+  // sweep runs cannot shift what is still ahead of it, as an offset would.
+  let after: string | null = null;
+  for (;;) {
+    let page = supabase
       .from("mini_apps")
       .select(REGISTRY_COLUMNS)
-      .not("app_origin_deployed_at", "is", null)
+      .not("app_origin_deployed_at", "is", null);
+    if (after) page = page.gt("id", after);
+    const { data, error } = await page
       .order("id", { ascending: true })
-      .range(from, from + RECONCILE_PAGE - 1);
+      .limit(RECONCILE_PAGE);
     if (error) throw new Error(`app origin reconcile failed: ${error.message}`);
     const rows = data ?? [];
-    for (const raw of rows) {
-      const app = parseRegistryApp(raw);
-      if (!app || !app.owner_user_id) continue;
-      try {
-        if (await reconcileAppOrigin(supabase, app, now)) repaired += 1;
-      } catch (error) {
-        // Deletion owns the origin now; the deleter tears it down.
-        if (error instanceof AppOriginRefusedError) continue;
-        console.error(
-          JSON.stringify({
-            msg: "app origin reconcile failed",
-            slug: app.slug,
-            error: error instanceof Error ? error.message : String(error),
-          })
-        );
-      }
-    }
+    repaired += await reconcilePage(supabase, rows, now);
     if (rows.length < RECONCILE_PAGE) break;
+    const last = (rows[rows.length - 1] as { id?: unknown }).id;
+    if (typeof last !== "string" || (after !== null && last <= after)) {
+      throw new Error("app origin reconcile failed: page without a usable cursor");
+    }
+    after = last;
   }
   if (repaired > 0) {
     console.log(JSON.stringify({ msg: "app origins reconciled", repaired }));
   }
   return { repaired };
+}
+
+async function reconcilePage(
+  supabase: SupabaseClient,
+  rows: unknown[],
+  now: Date
+): Promise<number> {
+  let repaired = 0;
+  for (const raw of rows) {
+    const app = parseRegistryApp(raw);
+    if (!app || !app.owner_user_id) continue;
+    try {
+      if (await reconcileAppOrigin(supabase, app, now)) repaired += 1;
+    } catch (error) {
+      // Deletion owns the origin now; the deleter tears it down.
+      if (error instanceof AppOriginRefusedError) continue;
+      console.error(
+        JSON.stringify({
+          msg: "app origin reconcile failed",
+          slug: app.slug,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      );
+    }
+  }
+  return repaired;
 }
 
 function originAgrees(served: AppManifest, expected: AppManifest): boolean {
@@ -447,13 +467,13 @@ async function reconcileAppOrigin(
 
 /**
  * Put the origin on `app`'s releases, then fence. Every pointer commit bumps
- * mini_apps.updated_at and an upload's swap requires it unchanged since the
- * upload's read, so a conditional touch of updated_at after the vendor
- * writes settles every race: a writer that commits before the touch is seen
- * here (the touch finds the row moved on), and one that read before the
- * touch loses its own swap and restores from the registry. Seen → the row is
- * re-read and the origin put on what it says now, without grace, since this
- * repair may have written over that commit's Workers.
+ * mini_apps.updated_at and every swap (an upload's CAS, `miniapp_point_live`)
+ * requires it unchanged since its read, so a conditional touch of updated_at
+ * after the vendor writes settles every race: a writer that commits before
+ * the touch is seen here (the touch finds the row moved on), and one that
+ * read before the touch loses its own swap and restores from the registry.
+ * Seen → the row is re-read and the origin put on what it says now, without
+ * grace, since this repair may have written over that commit's Workers.
  */
 async function repairAppOrigin(
   supabase: SupabaseClient,
