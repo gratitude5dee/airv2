@@ -44,7 +44,7 @@ export const CREATE_TIER_MODELS: Record<SpeedTier, string> = {
 
 export const CREATE_MODEL_RE = /^create-(fast|balanced|deep)$/;
 
-/** OpenRouter slugs for the fixed families that don't go through the tiers. */
+/** Slugs for the fixed families that don't go through the tiers. */
 const FAMILY_MODELS: Record<
   Exclude<ModelFamily, "openai" | "openrouter" | "venice">,
   string
@@ -53,8 +53,8 @@ const FAMILY_MODELS: Record<
   inkling: "thinkingmachines/inkling:free",
   "inkling-small": "thinkingmachines/inkling-small:free",
   anthropic: "anthropic/claude-sonnet-5",
-  "minimax-m3": "minimax/minimax-m3",
-  "minimax-m2.7": "minimax/minimax-m2.7",
+  "minimax-m3": "MiniMaxAI/MiniMax-M3",
+  "minimax-m2.7": "MiniMaxAI/MiniMax-M2.7",
 };
 
 export interface CatalogModel {
@@ -200,13 +200,13 @@ export function isModelFamily(value: string): value is ModelFamily {
   );
 }
 
-export type ModelProvider = "openai" | "openrouter" | "venice";
+export type ModelProvider = "openai" | "openrouter" | "venice" | "gmi";
 
-/** Which upstream serves a family. Everything but OpenAI and Venice rides
- * OpenRouter. */
+/** Which upstream serves a family. */
 export function providerForFamily(family: ModelFamily): ModelProvider {
   if (family === "openai") return "openai";
   if (family === "venice") return "venice";
+  if (family === "minimax-m3" || family === "minimax-m2.7") return "gmi";
   return "openrouter";
 }
 
@@ -279,8 +279,7 @@ const TIER_PRICING: Record<SpeedTier, { input: number; output: number }> = {
   deep: { input: 4, output: 24 },
 };
 
-/** USD per 1M tokens for the non-tier families (OpenRouter list prices —
- * both `:free` Inkling endpoints are free today). */
+/** USD per 1M tokens for the fixed model families. */
 const FAMILY_PRICING: Record<
   Exclude<ModelFamily, "openai" | "openrouter" | "venice">,
   { input: number; output: number }
@@ -367,8 +366,13 @@ export function modelLabelForFamily(
 ): string {
   if (family === "openai") return modelLabelForTier(tier);
   const slug = modelForSelection(family, tier, selection);
-  const catalog = family === "venice" ? VENICE_MODELS : OPENROUTER_MODELS;
-  return catalog.find((model) => model.slug === slug)?.label ?? slug;
+  const catalog =
+    family === "venice"
+      ? VENICE_MODELS
+      : family === "openrouter"
+        ? OPENROUTER_MODELS
+        : null;
+  return catalog?.find((model) => model.slug === slug)?.label ?? slug;
 }
 
 /**

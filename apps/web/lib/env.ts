@@ -58,10 +58,10 @@ export const env = {
   supabaseServiceRoleKey: (): string => required("SUPABASE_SERVICE_ROLE_KEY"),
   modelProviderApiKey: (): string => required("MODEL_PROVIDER_API_KEY"),
   modelProviderBaseUrl: (): string => required("MODEL_PROVIDER_BASE_URL"),
-  // OpenRouter serves every non-OpenAI model family (Ox Alpha, Inkling).
+  // OpenRouter serves its non-OpenAI model families (Ox Alpha, Inkling).
   // Defaults to the main model provider, so a single OpenRouter
   // MODEL_PROVIDER_* pair works for all families; set the OPENROUTER_* pair
-  // to keep OpenAI on its native endpoint while the rest go to OpenRouter.
+  // to keep OpenAI on its native endpoint while those families go to OpenRouter.
   openRouterBaseUrl: (): string =>
     process.env["OPENROUTER_BASE_URL"] ?? required("MODEL_PROVIDER_BASE_URL"),
   openRouterApiKey: (): string =>
@@ -72,6 +72,11 @@ export const env = {
   veniceBaseUrl: (): string =>
     optional("VENICE_BASE_URL", "https://api.venice.ai/api/v1"),
   veniceApiKey: (): string | null => process.env["VENICE_API_KEY"] ?? null,
+  // GMI Cloud's OpenAI-compatible inference endpoint. The platform key is
+  // optional: without it the MiniMax families only work for users who saved
+  // a personal key in Settings.
+  gmiInferenceBaseUrl: (): string =>
+    optional("GMI_INFERENCE_BASE_URL", "https://api.gmi-serving.com/v1"),
   // Seals per-user provider API keys (Settings → provider keys) at rest.
   // A dedicated 64-hex key with no fallback: provider-key storage stays
   // disabled until it is set, and it rotates independently of every other
