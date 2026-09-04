@@ -388,16 +388,25 @@ describe("POST /api/inbound/github — failed handlers", () => {
     expect(imports.markInstallation).toHaveBeenCalledTimes(2);
   });
 
-  it("a delivery row from before 0091 (claimed, handler threw, never released) is claimable once past the lease", async () => {
-    // The pre-lease route inserted the row before dispatch and left it there when
-    // the handler threw; 0091 adds processed_at as null and does not backfill it.
-    db.deliveries.set("d-old", { received_at: Date.now() - 3 * 86_400_000, processed_at: null });
-    const body = { action: "deleted", installation: { id: 10 } };
-    const retry = await POST(deliver("installation", body, { delivery: "d-old" }));
-    expect(await retry.json()).toEqual({ ok: true });
+  it("a row from before 0091 stays the permanent acknowledgement it was: stamped final by the migration, never replayed", async () => {
+    // The pre-lease route recorded no outcome, so 0091 stamps every existing row
+    // processed; a stale suspend redelivered past the lease must not land.
+    const migrated = Date.now() - 3 * 86_400_000;
+    db.deliveries.set("d-old", { received_at: migrated, processed_at: migrated });
+    const again = await POST(
+      deliver("installation", { action: "suspend", installation: { id: 10 } }, { delivery: "d-old" })
+    );
+    expect(await again.json()).toEqual({ ok: true, duplicate: true });
+    expect(imports.markInstallation).not.toHaveBeenCalled();
+
+    // A lost old event is replayed by deleting its row: the redelivery is a fresh claim.
+    db.deliveries.delete("d-old");
+    const replay = await POST(
+      deliver("installation", { action: "suspend", installation: { id: 10 } }, { delivery: "d-old" })
+    );
+    expect(await replay.json()).toEqual({ ok: true });
     expect(imports.markInstallation).toHaveBeenCalledTimes(1);
     expect(db.completed).toEqual(["d-old"]);
-    expect(db.deliveries.get("d-old")?.processed_at).not.toBeNull();
   });
 
   it("retries the final mark, so a transient failure still makes the redelivery a duplicate", async () => {

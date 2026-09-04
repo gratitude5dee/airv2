@@ -10,14 +10,20 @@
 -- takes the row over and runs the event again. A live lease still refuses
 -- a concurrent redelivery, so an event is never processed twice at once.
 --
--- Rows already here were written under the old rule, which inserted the row
--- before dispatch and never removed it when the handler threw — so an old
--- row does not prove its event ran. They are deliberately left with
--- `processed_at` null: once past the lease, a redelivery of a lost event is
--- processed once more (the handlers are idempotent), while a row whose
--- event never comes back costs nothing.
+-- Rows already here were written under the old rule, which recorded no
+-- outcome: the row went in before dispatch and stayed whether the handler
+-- returned or threw, so nothing tells a completed delivery from a failed
+-- one. They are stamped final, which is exactly what they already were —
+-- a permanent acknowledgement — so this migration changes nothing about
+-- them. Leaving them open instead would let a redelivery replay every one
+-- of them past the lease, and a push handler stages the event's own head
+-- while suspend/unsuspend are last-writer-wins: an old push or suspension
+-- redelivered after a newer one would overwrite the newer state. An old
+-- event known to have been lost is replayed by deleting its row and
+-- redelivering it — a fresh id is a fresh claim.
 alter table github_deliveries
   add column processed_at timestamptz;
+update github_deliveries set processed_at = received_at where processed_at is null;
 
 -- Claim `delivery_id` for one processing attempt. Returns true when this
 -- call owns the delivery: the id was new, or its previous attempt neither
