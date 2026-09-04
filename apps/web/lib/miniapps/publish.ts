@@ -114,14 +114,18 @@ export async function createDraft(
       : {}),
     ...(input.lane ? { lane: input.lane } : {}),
   };
+  /** The caller's own row, refreshed; null only when no such owned row exists. */
   const refreshDraft = async (): Promise<DraftResult | null> => {
-    const { data: refreshed } = await supabase
+    const { data: refreshed, error: refreshError } = await supabase
       .from("mini_apps")
       .update({ ...refresh, updated_at: new Date().toISOString() })
       .eq("slug", slug)
       .eq("owner_user_id", userId)
       .select(REGISTRY_COLUMNS)
       .maybeSingle();
+    if (refreshError) {
+      throw new Error(`draft refresh failed: ${refreshError.message}`);
+    }
     const parsed = parseDraftResult(refreshed);
     if (parsed) {
       console.log(

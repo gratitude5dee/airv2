@@ -89,8 +89,9 @@ interface AppRowLike {
 const db = {
   versions: [] as VersionRowLike[],
   apps: [] as AppRowLike[],
-  /** Make the next matching op fail, e.g. { table: "miniapp_versions", op: "delete" }. */
-  fail: null as { table: string; op: FakeOp } | null,
+  /** Make the next matching op fail, e.g. { table: "miniapp_versions", op: "delete" };
+   * `persist` keeps failing until cleared. */
+  fail: null as { table: string; op: FakeOp; persist?: boolean } | null,
   /** Runs once, just before the next rpc: stands in for a concurrent commit. */
   beforeRpc: null as (() => void) | null,
 };
@@ -101,7 +102,7 @@ let seq = 0;
 
 function failing(table: string, op: FakeOp) {
   if (db.fail && db.fail.table === table && db.fail.op === op) {
-    db.fail = null;
+    if (!db.fail.persist) db.fail = null;
     return { data: null, error: { message: `${op} on ${table} refused` } };
   }
   return null;
@@ -629,7 +630,7 @@ describe("uploadVersion", () => {
     expect(db.versions).toHaveLength(0);
   });
 
-  it("stage-only: a lost CAS whose pointer re-read fails restores the pointers the upload started from, never empty ones", async () => {
+  it("stage-only: a lost CAS whose pointer re-read fails once retries and restores the winner, not the stale start", async () => {
     const staged = { ...app, status: "published" as const, draft_version: "v1700000000001" };
     db.apps[0]!.draft_version = "v1700000000001";
     deploy.deployStaticVersion.mockImplementation(async () => {
@@ -644,17 +645,65 @@ describe("uploadVersion", () => {
     ).rejects.toMatchObject({ status: 409 });
     expect(deploy.deployStaticVersion).toHaveBeenLastCalledWith(
       supabase,
-      expect.objectContaining({ target: "draft", version: "v1700000000001" })
+      expect.objectContaining({ target: "draft", version: "v1700000000009" })
     );
     expect(deploy.syncManifest).toHaveBeenLastCalledWith(
       expect.anything(),
-      expect.objectContaining({ bundle_version: "v1700000000001", draft_version: "v1700000000001" })
+      expect.objectContaining({ bundle_version: "v1700000000001", draft_version: "v1700000000009" })
     );
     expect(deploy.syncManifest).not.toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ bundle_version: null, draft_version: null })
+      expect.objectContaining({ draft_version: "v1700000000001" })
     );
     expect(db.versions).toHaveLength(0);
+  });
+
+  it("stage-only: a lost CAS whose pointer re-read keeps failing leaves the origin alone rather than writing stale or empty pointers", async () => {
+    const staged = { ...app, status: "published" as const, draft_version: "v1700000000001" };
+    db.apps[0]!.draft_version = "v1700000000001";
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    deploy.deployStaticVersion.mockImplementation(async () => {
+      if (db.apps[0]!.draft_version === "v1700000000001") {
+        db.apps[0]!.draft_version = "v1700000000009";
+        db.fail = { table: "mini_apps", op: "select", persist: true };
+      }
+      return { workerSha256: "a".repeat(64) };
+    });
+    await expect(
+      uploadVersion(supabase, staged, zip, "drop", { promote: false })
+    ).rejects.toMatchObject({ status: 409 });
+    db.fail = null;
+    // Only our own deploy and manifest write happened; nothing was "restored".
+    expect(deploy.deployStaticVersion).toHaveBeenCalledTimes(1);
+    expect(deploy.syncManifest).toHaveBeenCalledTimes(1);
+    expect(deploy.promoteVersion).not.toHaveBeenCalled();
+    expect(errors.mock.calls.map((c) => String(c[0]))).toEqual(
+      expect.arrayContaining([expect.stringContaining("registry pointers unreadable")])
+    );
+    expect(db.apps[0]!.draft_version).toBe("v1700000000009");
+    expect(db.versions).toHaveLength(0);
+    errors.mockRestore();
+  });
+
+  it("live: a lost CAS whose pointer re-read keeps failing does not promote the stale release back", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    deploy.deployStaticVersion.mockImplementation(async () => {
+      if (db.apps[0]!.bundle_version === "v1700000000001") {
+        db.apps[0]!.bundle_version = "v1700000000009";
+        db.apps[0]!.draft_version = "v1700000000009";
+        db.fail = { table: "mini_apps", op: "select", persist: true };
+      }
+      return { workerSha256: "a".repeat(64) };
+    });
+    await expect(uploadVersion(supabase, app, zip)).rejects.toMatchObject({ status: 409 });
+    db.fail = null;
+    // promoteVersion ran once, for our own version; never again for the stale one.
+    expect(deploy.promoteVersion).toHaveBeenCalledTimes(1);
+    expect(deploy.promoteVersion).not.toHaveBeenCalledWith(supabase, app, "v1700000000001");
+    expect(deploy.syncManifest).toHaveBeenCalledTimes(1);
+    expect(db.apps[0]!.bundle_version).toBe("v1700000000009");
+    expect(db.versions).toHaveLength(0);
+    errors.mockRestore();
   });
 
   it("the manifest is written before the registry commits; a lost write fails cleanly and restores the draft Worker", async () => {
