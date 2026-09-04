@@ -19,6 +19,19 @@ function migrationSql(): string {
     .join("\n");
 }
 
+describe("migration ledger", () => {
+  it("every migration has a unique numeric version prefix", () => {
+    // Supabase Branching keys schema_migrations by the numeric prefix alone;
+    // two files sharing one (e.g. 0082_a.sql + 0082_b.sql) fail every branch
+    // deploy with a duplicate-key error even though apply-migrations.sh,
+    // which tracks by filename, is happy.
+    const files = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql"));
+    const versions = files.map((f) => f.split("_")[0]);
+    for (const version of versions) expect(version).toMatch(/^\d{4}$/);
+    expect(new Set(versions).size).toBe(files.length);
+  });
+});
+
 describe("deletion checklist (no orphan rows after user delete)", () => {
   const sql = migrationSql().toLowerCase();
 

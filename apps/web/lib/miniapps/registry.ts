@@ -80,7 +80,7 @@ const RegistryAppSchema = z.object({
   bundle_version: z.string().nullable(),
   listed_at: z.string().nullable(),
   updated_at: z.string(),
-  // V11 columns (0082). Optional so pre-0082 fixtures and narrower selects
+  // V11 columns (0083). Optional so pre-0083 fixtures and narrower selects
   // still parse; normalized below.
   appname: z.string().nullable().optional(),
   draft_version: z.string().nullable().optional(),
