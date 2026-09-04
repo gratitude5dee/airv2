@@ -213,7 +213,7 @@ export function dropRateLimited(
   return uploadBudgetSpent(supabase, userId, "create.drop");
 }
 
-/** A CI push (V11 §10 Import, build mode) spends the owner's upload budget. */
+/** A repository push (V11 §10 Import: CI build output or a static sync) spends the owner's upload budget. */
 export function pushRateLimited(
   supabase: SupabaseClient,
   userId: string

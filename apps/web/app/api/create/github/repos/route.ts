@@ -29,9 +29,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     if (installation.suspended_at) {
       return NextResponse.json({ error: "installation suspended" }, { status: 409 });
     }
-    const repositories = await listInstallationRepositories(installationId);
+    const { repositories, truncated } = await listInstallationRepositories(installationId);
     return NextResponse.json({
       ok: true,
+      truncated,
       repositories: repositories
         .filter((repo) => !repo.archived)
         .map((repo) => ({

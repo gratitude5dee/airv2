@@ -22,7 +22,7 @@ vi.mock("@/lib/calendar/store", () => ({
 }));
 vi.mock("@/lib/crm/store", () => ({
   avatarIndex: () => new Map(),
-  readPeople: vi.fn(async () => []),
+  readPeople: vi.fn(async () => ({ version: 1, people: [] })),
   ditherColor: () => "#2b7fff",
   initialsFor: () => "X",
 }));

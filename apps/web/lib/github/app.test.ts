@@ -4,12 +4,15 @@
  * arriving installation to the session that started it.
  */
 import { createHmac, createVerify, generateKeyPairSync } from "node:crypto";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  REPOSITORY_LIST_MAX_PAGES,
   appJwt,
   assertFullName,
   githubAppConfigured,
   installUrl,
+  listInstallationRepositories,
+  nextPage,
   signSetupState,
   verifySetupState,
   verifyWebhookSignature,
@@ -145,6 +148,92 @@ describe("setup state", () => {
     expect(verifySetupState(state)).toBeNull();
     expect(verifySetupState(signSetupState("user-alice"))).toBe("user-alice");
     delete process.env["GITHUB_STATE_SIGNING_KEY"];
+  });
+});
+
+describe("nextPage", () => {
+  it("reads the next page number from GitHub's Link header", () => {
+    expect(
+      nextPage(
+        '<https://api.github.com/installation/repositories?per_page=100&page=3>; rel="next", ' +
+          '<https://api.github.com/installation/repositories?per_page=100&page=7>; rel="last"'
+      )
+    ).toBe(3);
+  });
+
+  it.each([
+    ["no header", null],
+    ["only prev/first", '<https://api.github.com/x?page=1>; rel="prev", <https://api.github.com/x?page=1>; rel="first"'],
+    ["a next without a page", '<https://api.github.com/x>; rel="next"'],
+    ["a non-numeric page", '<https://api.github.com/x?page=abc>; rel="next"'],
+    ["garbage", "<not a url; rel=\"next\""],
+  ])("is null for %s", (_label, header) => {
+    expect(nextPage(header)).toBeNull();
+  });
+});
+
+describe("listInstallationRepositories", () => {
+  function repo(id: number) {
+    return { id, full_name: `alice/r${id}`, private: false, default_branch: "main", archived: false, extra: "x" };
+  }
+
+  function serve(pages: number, perPage = 100) {
+    const total = pages * perPage;
+    return vi.fn(async (input: string | URL | Request) => {
+      const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
+      if (url.pathname.endsWith("/access_tokens")) {
+        return new Response(JSON.stringify({ token: "ghs_x" }), { status: 201 });
+      }
+      const page = Number(url.searchParams.get("page") ?? "1");
+      const start = (page - 1) * perPage;
+      const repositories = Array.from({ length: perPage }, (_, i) => repo(start + i + 1));
+      const headers = new Headers({ "content-type": "application/json" });
+      if (page < pages) {
+        headers.set(
+          "link",
+          `<https://api.github.com/installation/repositories?per_page=${perPage}&page=${page + 1}>; rel="next"`
+        );
+      }
+      return new Response(JSON.stringify({ total_count: total, repositories }), { status: 200, headers });
+    });
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("follows Link pagination past the old 500-repository ceiling", async () => {
+    const fetchMock = serve(7);
+    vi.stubGlobal("fetch", fetchMock);
+    const list = await listInstallationRepositories(10);
+    expect(list.repositories).toHaveLength(700);
+    expect(list.truncated).toBe(false);
+    expect(list.total_count).toBe(700);
+    expect(list.repositories[699]).toEqual({
+      id: 700,
+      full_name: "alice/r700",
+      private: false,
+      default_branch: "main",
+      archived: false,
+    });
+    // one token mint + seven pages
+    expect(fetchMock).toHaveBeenCalledTimes(8);
+  });
+
+  it("stops at a single page when GitHub sends no next link", async () => {
+    const fetchMock = serve(1, 3);
+    vi.stubGlobal("fetch", fetchMock);
+    const list = await listInstallationRepositories(10);
+    expect(list.repositories.map((r) => r.id)).toEqual([1, 2, 3]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("reports truncation instead of hiding repositories past the page cap", async () => {
+    vi.stubGlobal("fetch", serve(REPOSITORY_LIST_MAX_PAGES + 2, 2));
+    const list = await listInstallationRepositories(10);
+    expect(list.repositories).toHaveLength(REPOSITORY_LIST_MAX_PAGES * 2);
+    expect(list.truncated).toBe(true);
+    expect(list.total_count).toBe((REPOSITORY_LIST_MAX_PAGES + 2) * 2);
   });
 });
 

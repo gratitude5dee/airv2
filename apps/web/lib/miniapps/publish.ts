@@ -80,15 +80,22 @@ export interface DraftInput {
   lane?: CreateLane | undefined;
 }
 
-type DraftResult = Pick<RegistryApp, "id" | "slug" | "name">;
+type DraftResult = Pick<RegistryApp, "id" | "slug" | "name"> & {
+  /**
+   * True only when this call's insert made the row. A refresh of the
+   * caller's existing app — including one a concurrent call inserted a
+   * moment earlier — is `false`, so exactly one caller ever owns creation.
+   */
+  created: boolean;
+};
 
-function parseDraftResult(value: unknown): DraftResult | null {
+function parseDraftResult(value: unknown, created: boolean): DraftResult | null {
   const row = asRecord(value);
   if (!row) return null;
   return typeof row["id"] === "string" &&
     typeof row["slug"] === "string" &&
     typeof row["name"] === "string"
-    ? { id: row["id"], slug: row["slug"], name: row["name"] }
+    ? { id: row["id"], slug: row["slug"], name: row["name"], created }
     : null;
 }
 
@@ -126,7 +133,7 @@ export async function createDraft(
     if (refreshError) {
       throw new Error(`draft refresh failed: ${refreshError.message}`);
     }
-    const parsed = parseDraftResult(refreshed);
+    const parsed = parseDraftResult(refreshed, false);
     if (parsed) {
       console.log(
         JSON.stringify({ msg: "miniapp draft refreshed", user_id: userId, slug })
@@ -189,7 +196,7 @@ export async function createDraft(
   console.log(
     JSON.stringify({ msg: "miniapp draft created", user_id: userId, slug })
   );
-  const parsed = parseDraftResult(data);
+  const parsed = parseDraftResult(data, true);
   if (!parsed) throw new Error("draft create returned an invalid row");
   return parsed;
 }

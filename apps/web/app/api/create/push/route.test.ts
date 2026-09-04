@@ -77,6 +77,7 @@ const buildLink: RepoLink = {
   last_synced_at: null,
   last_error: null,
   created_at: "2026-09-01T00:00:00Z",
+  import_id: "import-old",
 };
 
 const ZIP = makeZip([{ name: "index.html", data: "<!doctype html><html><body>built</body></html>" }]);

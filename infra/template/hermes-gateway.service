@@ -14,6 +14,10 @@ Environment=UV_PROJECT_ENVIRONMENT=/home/user/.hermes-venv
 Environment=API_SERVER_HOST=0.0.0.0
 Environment=API_SERVER_PORT=8642
 EnvironmentFile=-/home/user/.hermes/.env
+# SQLite -shm/-wal sidecars can come back root-owned after a fork/resume,
+# which leaves the session store read-only ("state.db is not writable").
+# The leading + runs this one step as root regardless of User=.
+ExecStartPre=+/bin/sh -c 'chown user:user /home/user/.hermes/*.db /home/user/.hermes/*.db-* 2>/dev/null || true'
 ExecStart=/home/user/.local/bin/uv run hermes gateway run
 Restart=always
 RestartSec=3

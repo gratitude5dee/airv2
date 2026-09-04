@@ -14,7 +14,12 @@ const preview = vi.hoisted(() => ({
 vi.mock("./preview", () => preview);
 
 const publish = vi.hoisted(() => ({
-  createDraft: vi.fn(async () => ({ id: "app-alice-promo", slug: "alice-promo", name: "Promo" })),
+  createDraft: vi.fn(async () => ({
+    id: "app-alice-promo",
+    slug: "alice-promo",
+    name: "Promo",
+    created: true,
+  })),
   ownedApp: vi.fn(),
   publisherUsername: vi.fn(async () => "alice"),
 }));
@@ -36,9 +41,17 @@ vi.mock("../miniapps/registry", async (importOriginal) => ({
 import { BundleError } from "../miniapps/bundles";
 import { PublishError } from "../miniapps/publish";
 import { LintError } from "./lint";
-import { appnameFromFilename, dropBundle, dropKind, normalizeDrop } from "./drop";
+import {
+  appnameFromFilename,
+  discardEmptyDraft,
+  dropBundle,
+  dropKind,
+  normalizeDrop,
+  resolveOrCreateDropApp,
+} from "./drop";
 
-const supabase = {} as SupabaseClient;
+const rpc = vi.fn(async () => ({ data: true, error: null }));
+const supabase = { rpc } as unknown as SupabaseClient;
 const OWNER = "user-alice";
 const draftApp = makeApp({
   slug: "alice-promo",
@@ -54,6 +67,7 @@ const PAGE = Buffer.from(
 const CLEAN = Buffer.from("<!doctype html><html><body><h1>hi</h1></body></html>");
 
 beforeEach(() => {
+  rpc.mockClear();
   versions.uploadVersion.mockClear();
   publish.createDraft.mockClear();
   publish.ownedApp.mockReset();
@@ -224,11 +238,143 @@ describe("dropBundle", () => {
     expect(versions.uploadVersion).not.toHaveBeenCalled();
   });
 
+  it("a failed first drop takes its empty draft back down", async () => {
+    versions.uploadVersion.mockRejectedValueOnce(new Error("r2 unavailable"));
+    await expect(
+      dropBundle(supabase, OWNER, { file: { name: "promo.html", bytes: CLEAN } })
+    ).rejects.toThrow("r2 unavailable");
+    expect(publish.createDraft).toHaveBeenCalledOnce();
+    expect(rpc).toHaveBeenCalledWith("miniapp_discard_empty_draft", {
+      p_app_id: draftApp.id,
+      p_owner_user_id: OWNER,
+    });
+  });
+
+  it("a failed drop onto an app the owner already had leaves that app alone", async () => {
+    registry.getRegistryApp.mockResolvedValue(draftApp);
+    versions.uploadVersion.mockRejectedValueOnce(new Error("r2 unavailable"));
+    await expect(
+      dropBundle(supabase, OWNER, { appname: "promo", file: { name: "index.html", bytes: CLEAN } })
+    ).rejects.toThrow("r2 unavailable");
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("a failed drop that lost the create race to a concurrent drop does not discard the winner's app", async () => {
+    // Both lookups miss; the other request's insert won, so this one did not create the row.
+    publish.createDraft.mockResolvedValueOnce({
+      id: "app-alice-promo",
+      slug: "alice-promo",
+      name: "Promo",
+      created: false,
+    });
+    versions.uploadVersion.mockRejectedValueOnce(new Error("r2 unavailable"));
+    await expect(
+      dropBundle(supabase, OWNER, { file: { name: "promo.html", bytes: CLEAN } })
+    ).rejects.toThrow("r2 unavailable");
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
   it("a zip without a root index.html is refused before any registry write", async () => {
     const zip = makeZip([{ name: "site/index.html", data: CLEAN }]);
     await expect(
       dropBundle(supabase, OWNER, { appname: "promo", file: { name: "site.zip", bytes: zip } })
     ).rejects.toBeInstanceOf(BundleError);
     expect(publish.publisherUsername).not.toHaveBeenCalled();
+  });
+});
+
+describe("resolveOrCreateDropApp — creation ownership", () => {
+  it("two concurrent calls for one new appname: only the insert that won created it", async () => {
+    // Both lookups miss (the row does not exist yet); createDraft decides.
+    registry.getRegistryApp.mockResolvedValue(null);
+    publish.createDraft
+      .mockResolvedValueOnce({ id: "app-alice-promo", slug: "alice-promo", name: "Promo", created: true })
+      .mockResolvedValueOnce({ id: "app-alice-promo", slug: "alice-promo", name: "Promo", created: false });
+    const [a, b] = await Promise.all([
+      resolveOrCreateDropApp(supabase, OWNER, { appname: "promo" }),
+      resolveOrCreateDropApp(supabase, OWNER, { appname: "promo" }),
+    ]);
+    expect(a.app.slug).toBe("alice-promo");
+    expect(b.app.slug).toBe("alice-promo");
+    expect([a.created, b.created].sort()).toEqual([false, true]);
+  });
+
+  it("an app the lookup already found was not created by this call", async () => {
+    registry.getRegistryApp.mockResolvedValue(draftApp);
+    const out = await resolveOrCreateDropApp(supabase, OWNER, { appname: "promo" });
+    expect(out).toEqual({ app: draftApp, created: false });
+    expect(publish.createDraft).not.toHaveBeenCalled();
+  });
+});
+
+describe("discardEmptyDraft", () => {
+  type Row = Record<string, unknown>;
+  /**
+   * The 0092 RPC as the database runs it: owned `draft`, both pointers null,
+   * and no link or version row naming the app. The lock it takes is what
+   * makes those checks final; the mock models only the checks.
+   */
+  function miniApps(rows: Row[], claims: { links?: string[]; versions?: string[] } = {}): SupabaseClient {
+    return {
+      rpc: async (fn: string, args: { p_app_id: string; p_owner_user_id: string }) => {
+        if (fn !== "miniapp_discard_empty_draft") throw new Error(`unexpected rpc ${fn}`);
+        const gone = rows.filter(
+          (row) =>
+            row["id"] === args.p_app_id &&
+            row["owner_user_id"] === args.p_owner_user_id &&
+            row["status"] === "draft" &&
+            row["draft_version"] === null &&
+            row["bundle_version"] === null &&
+            !(claims.links ?? []).includes(args.p_app_id) &&
+            !(claims.versions ?? []).includes(args.p_app_id)
+        );
+        for (const row of gone) rows.splice(rows.indexOf(row), 1);
+        return { data: gone.length > 0, error: null };
+      },
+    } as unknown as SupabaseClient;
+  }
+  const base = { id: "app-1", owner_user_id: OWNER, status: "draft", draft_version: null, bundle_version: null };
+
+  it("removes an owned draft that never received a version", async () => {
+    const rows = [{ ...base }];
+    expect(await discardEmptyDraft(miniApps(rows), OWNER, "app-1")).toBe(true);
+    expect(rows).toEqual([]);
+  });
+
+  it("keeps an app once either pointer is set (a concurrent upload landed)", async () => {
+    const staged = [{ ...base, draft_version: "v1" }];
+    expect(await discardEmptyDraft(miniApps(staged), OWNER, "app-1")).toBe(false);
+    expect(staged).toHaveLength(1);
+    const uploaded = [{ ...base, bundle_version: "v1" }];
+    expect(await discardEmptyDraft(miniApps(uploaded), OWNER, "app-1")).toBe(false);
+    expect(uploaded).toHaveLength(1);
+  });
+
+  it("keeps an app another request has claimed but not yet filled (link or version row)", async () => {
+    const linked = [{ ...base }];
+    expect(await discardEmptyDraft(miniApps(linked, { links: ["app-1"] }), OWNER, "app-1")).toBe(false);
+    expect(linked).toHaveLength(1);
+    const reserved = [{ ...base }];
+    expect(await discardEmptyDraft(miniApps(reserved, { versions: ["app-1"] }), OWNER, "app-1")).toBe(false);
+    expect(reserved).toHaveLength(1);
+  });
+
+  it("never touches another owner's app or a non-draft", async () => {
+    const other = [{ ...base, owner_user_id: "user-bob" }];
+    expect(await discardEmptyDraft(miniApps(other), OWNER, "app-1")).toBe(false);
+    expect(other).toHaveLength(1);
+    const live = [{ ...base, status: "published" }];
+    expect(await discardEmptyDraft(miniApps(live), OWNER, "app-1")).toBe(false);
+    expect(live).toHaveLength(1);
+  });
+
+  it("reports a database failure as not discarded", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const supabase = {
+      rpc: async () => ({ data: null, error: { message: "connection reset" } }),
+    } as unknown as SupabaseClient;
+    expect(await discardEmptyDraft(supabase, OWNER, "app-1")).toBe(false);
+    expect(spy).toHaveBeenCalledOnce();
+    spy.mockRestore();
   });
 });
