@@ -1,10 +1,11 @@
 /**
  * Per-project Create budget (goal-create-v11 §9.1). A Create turn opens an
- * agent_runs row labelled `create:<slug>`; every gateway completion served
- * on a `create-<tier>` model while that run is open is metered under the
- * same label, so the project's spend is a sum over its own usage rows and
- * never a copy of anything the Box holds. The owner raises the budget on
- * PATCH /api/create/projects (up to the monthly cap); the agent cannot.
+ * agent_runs row labelled `create:<slug>` and pins the run's model to
+ * `create-<tier>:<slug>`; every gateway completion carrying that model is
+ * metered under the same label, so the project's spend is a sum over its
+ * own usage rows and never a copy of anything the Box holds. The owner
+ * raises the budget on PATCH /api/create/projects (up to the monthly cap);
+ * the agent cannot.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -41,14 +42,12 @@ export type OpenCreateRun =
 
 /**
  * Open the user's Create run row for `slug`, or learn which other project's
- * open run blocks it. Gateway calls carry no run id (Hermes speaks plain
- * OpenAI to the gateway), so attribution rests on at most one Create run
- * being open per user: while one is open, every `create-*` completion is
- * that project's. The check and the insert run under a per-user lock in
- * `create_run_open` (0095), which also retires rows that never closed
- * cleanly. Run rows carry a trigger; the metered completion rows sharing
- * the label do not, and a run row is opened before its Hermes run exists
- * (hermes_run_id lands once it does).
+ * open run blocks it. At most one Create run is open per owner (a Box works
+ * one project at a time); the check and the insert run under a per-user
+ * lock in `create_run_open` (0095), which also retires rows that never
+ * closed cleanly. Run rows carry a trigger; the metered completion rows
+ * sharing the label do not, and a run row is opened before its Hermes run
+ * exists (hermes_run_id lands once it does).
  */
 export async function openCreateRun(
   supabase: SupabaseClient,
@@ -75,19 +74,51 @@ export async function openCreateRun(
 }
 
 /**
- * The project a `create-*` gateway call belongs to: the open Create run, or
- * the one that closed most recently within the attribution window (for the
- * trailing completions that land after the terminal event). An open row
- * still unlinked past the grace period is an orphan, and a closed row that
- * never got a Hermes run has no trailing completions; neither attributes.
+ * Whether the named project may be charged for a `create-*` gateway call
+ * right now: the owner has a Create run for it that is open, or closed
+ * within the attribution window (for the trailing completions that land
+ * after the terminal event). The project comes from the model the Box
+ * requested, so two projects running side by side each meter their own
+ * calls; a slug with no such run is refused rather than guessed. An open
+ * row still unlinked past the grace period is an orphan, and a closed row
+ * that never got a Hermes run has no trailing completions; neither
+ * attributes.
  */
-export async function activeCreateSlug(
+export async function createRunAttributable(
+  supabase: SupabaseClient,
+  userId: string,
+  slug: string
+): Promise<boolean> {
+  const { data } = await supabase
+    .from("agent_runs")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("label", createRunLabel(slug))
+    .not("trigger", "is", null)
+    .or(
+      `and(ended_at.is.null,started_at.gte.${minutesAgo(CREATE_RUN_MAX_MINUTES)}),` +
+        `and(ended_at.gte.${minutesAgo(CREATE_RUN_ATTRIBUTION_MINUTES)},hermes_run_id.not.is.null)`
+    )
+    .or(`hermes_run_id.not.is.null,started_at.gte.${minutesAgo(CREATE_RUN_LINK_GRACE_MINUTES)}`)
+    .limit(1)
+    .maybeSingle();
+  return data !== null && data !== undefined;
+}
+
+/**
+ * Transitional (see parseLegacyCreateTier): the one project a project-less
+ * `create-<tier>` call can belong to — the owner's sole attributable Create
+ * run (open, or closed within the trailing window). Null when there is none
+ * or more than one candidate project: an ambiguous legacy call is refused
+ * rather than charged to whichever run happens to be newest.
+ */
+export async function soleAttributableCreateSlug(
   supabase: SupabaseClient,
   userId: string
 ): Promise<string | null> {
   const { data } = await supabase
     .from("agent_runs")
-    .select("label, ended_at, started_at")
+    .select("label")
     .eq("user_id", userId)
     .like("label", `${CREATE_LABEL_PREFIX}%`)
     .not("trigger", "is", null)
@@ -96,12 +127,13 @@ export async function activeCreateSlug(
         `and(ended_at.gte.${minutesAgo(CREATE_RUN_ATTRIBUTION_MINUTES)},hermes_run_id.not.is.null)`
     )
     .or(`hermes_run_id.not.is.null,started_at.gte.${minutesAgo(CREATE_RUN_LINK_GRACE_MINUTES)}`)
-    .order("ended_at", { ascending: false, nullsFirst: true })
-    .order("started_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const row = data as { label: string | null } | null;
-  return slugFromRunLabel(row?.label);
+    .limit(100);
+  const slugs = new Set<string>();
+  for (const row of (data ?? []) as { label: string | null }[]) {
+    const slug = slugFromRunLabel(row.label);
+    if (slug) slugs.add(slug);
+  }
+  return slugs.size === 1 ? [...slugs][0]! : null;
 }
 
 export interface BudgetMeter {

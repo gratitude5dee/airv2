@@ -42,9 +42,22 @@ export const CREATE_TIER_MODELS: Record<SpeedTier, string> = {
   deep: "gpt-5.6-terra",
 };
 
-export const CREATE_MODEL_RE = /^create-(fast|balanced|deep)$/;
+/**
+ * A Create turn's model request: `create-<tier>:<project slug>`. The slug is
+ * the project the run was opened for (`agent_runs.label = create:<slug>`),
+ * so every completion is attributed — and budgeted — to the project that
+ * made it, not to whichever of the owner's runs happened to start last.
+ * Still tier names only on the Box side (C2): the gateway resolves the
+ * model slug.
+ */
+export const CREATE_MODEL_RE = /^create-(fast|balanced|deep):([a-z0-9_][a-z0-9_-]{0,79})$/;
 
-/** OpenRouter slugs for the fixed families that don't go through the tiers. */
+export interface CreateModelRequest {
+  tier: SpeedTier;
+  slug: string;
+}
+
+/** Slugs for the fixed families that don't go through the tiers. */
 const FAMILY_MODELS: Record<
   Exclude<ModelFamily, "openai" | "openrouter" | "venice">,
   string
@@ -53,8 +66,8 @@ const FAMILY_MODELS: Record<
   inkling: "thinkingmachines/inkling:free",
   "inkling-small": "thinkingmachines/inkling-small:free",
   anthropic: "anthropic/claude-sonnet-5",
-  "minimax-m3": "minimax/minimax-m3",
-  "minimax-m2.7": "minimax/minimax-m2.7",
+  "minimax-m3": "MiniMaxAI/MiniMax-M3",
+  "minimax-m2.7": "MiniMaxAI/MiniMax-M2.7",
 };
 
 export interface CatalogModel {
@@ -200,13 +213,13 @@ export function isModelFamily(value: string): value is ModelFamily {
   );
 }
 
-export type ModelProvider = "openai" | "openrouter" | "venice";
+export type ModelProvider = "openai" | "openrouter" | "venice" | "gmi";
 
-/** Which upstream serves a family. Everything but OpenAI and Venice rides
- * OpenRouter. */
+/** Which upstream serves a family. */
 export function providerForFamily(family: ModelFamily): ModelProvider {
   if (family === "openai") return "openai";
   if (family === "venice") return "venice";
+  if (family === "minimax-m3" || family === "minimax-m2.7") return "gmi";
   return "openrouter";
 }
 
@@ -279,8 +292,7 @@ const TIER_PRICING: Record<SpeedTier, { input: number; output: number }> = {
   deep: { input: 4, output: 24 },
 };
 
-/** USD per 1M tokens for the non-tier families (OpenRouter list prices —
- * both `:free` Inkling endpoints are free today). */
+/** USD per 1M tokens for the fixed model families. */
 const FAMILY_PRICING: Record<
   Exclude<ModelFamily, "openai" | "openrouter" | "venice">,
   { input: number; output: number }
@@ -319,12 +331,38 @@ export function modelForCreateTier(tier: SpeedTier): string {
 
 const TIER_RANK: Record<SpeedTier, number> = { fast: 0, balanced: 1, deep: 2 };
 
-/** `create-<tier>` from a Box, or null when the request is not a Create turn. */
-export function parseCreateTier(model: unknown): SpeedTier | null {
+export function createModelFor(tier: SpeedTier, slug: string): string {
+  return `create-${tier}:${slug}`;
+}
+
+/** `create-<tier>:<slug>` from a Box, or null when the request is not a
+ * well-formed Create turn. */
+export function parseCreateModel(model: unknown): CreateModelRequest | null {
   if (typeof model !== "string") return null;
   const match = CREATE_MODEL_RE.exec(model);
   const tier = match?.[1];
-  return tier && isSpeedTier(tier) ? tier : null;
+  const slug = match?.[2];
+  return tier && slug && isSpeedTier(tier) ? { tier, slug } : null;
+}
+
+/**
+ * Transitional: the project-less `create-<tier>` a Hermes run started before
+ * the project-bearing format shipped keeps sending for the rest of its life
+ * (a run's model is fixed at createRun; runs live at most
+ * CREATE_RUN_MAX_MINUTES). The gateway attributes it to the caller's single
+ * open Create run, as before. Remove once no such run can still be open.
+ */
+export function parseLegacyCreateTier(model: unknown): SpeedTier | null {
+  if (typeof model !== "string" || !model.startsWith("create-")) return null;
+  const tier = model.slice("create-".length);
+  return isSpeedTier(tier) ? tier : null;
+}
+
+/** True for anything in the Create namespace, well-formed or not, so a
+ * malformed `create-*` request is refused rather than served on the chat
+ * family and charged to the owner's general spend. */
+export function isCreateModelRequest(model: unknown): boolean {
+  return typeof model === "string" && model.startsWith("create-");
 }
 
 /** The requested Create tier clamped to the entitlement: a Box may ask for
@@ -367,8 +405,13 @@ export function modelLabelForFamily(
 ): string {
   if (family === "openai") return modelLabelForTier(tier);
   const slug = modelForSelection(family, tier, selection);
-  const catalog = family === "venice" ? VENICE_MODELS : OPENROUTER_MODELS;
-  return catalog.find((model) => model.slug === slug)?.label ?? slug;
+  const catalog =
+    family === "venice"
+      ? VENICE_MODELS
+      : family === "openrouter"
+        ? OPENROUTER_MODELS
+        : null;
+  return catalog?.find((model) => model.slug === slug)?.label ?? slug;
 }
 
 /**

@@ -46,6 +46,8 @@ describe("model catalog", () => {
     expect(providerForFamily("venice")).toBe("venice");
     expect(providerForFamily("openai")).toBe("openai");
     expect(providerForFamily("ox-alpha")).toBe("openrouter");
+    expect(providerForFamily("minimax-m3")).toBe("gmi");
+    expect(providerForFamily("minimax-m2.7")).toBe("gmi");
     expect(isOpenRouterFamily("venice")).toBe(false);
     expect(isOpenRouterFamily("ox-alpha")).toBe(true);
   });
@@ -75,6 +77,12 @@ describe("model catalog", () => {
     expect(
       modelForSelection("venice", "balanced", { veniceModel: "nope" }),
     ).toBe(DEFAULT_VENICE_MODEL);
+    expect(modelForSelection("minimax-m3", "balanced")).toBe(
+      "MiniMaxAI/MiniMax-M3",
+    );
+    expect(modelForSelection("minimax-m2.7", "balanced")).toBe(
+      "MiniMaxAI/MiniMax-M2.7",
+    );
     expect(isVeniceModel("nope")).toBe(false);
   });
 

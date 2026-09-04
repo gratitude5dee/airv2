@@ -671,7 +671,7 @@ All routes are owner-session authenticated (store session on the mini origin, or
 | `POST /api/create/build` | store session or gateway token | Pull tree → Build Service → draft version → draft deploy; returns findings |
 | `GET /api/create/status?app=` | store session or gateway token | Build log tail, `draft_version`, QA score, budget meter |
 | `POST /api/create/preview-link` | store session or gateway token | Mint a draft app-origin link for the owner or the Box browser (CR13) |
-| `POST /api/create/turn` | store session | Prompt bar for `air-create-<app>` sessions; passes `model: "create-<tier>"` and `instructions` (the Create system prompt + project context) on the Hermes run; returns `run_id` |
+| `POST /api/create/turn` | store session | Prompt bar for `air-create-<app>` sessions; passes `model: "create-<tier>:<slug>"` (the tier plus the project every completion is charged to; §9.1) and `instructions` (the Create system prompt + project context) on the Hermes run; returns `run_id` |
 | `GET /api/create/events/[runId]` | store session | Mini-origin SSE relay over `chatEventStream`; the main-origin `/api/chat/[runId]/events` is not reachable on the mini host |
 | `GET/PUT /api/create/files?app=&path=` | store session | Files tab over `readComputeFile`/`writeComputeFile`; text files ≤ 512 KiB |
 | `POST /api/create/import` | store session | Lane C (P2): upload or repo URL → scan → sandbox build |

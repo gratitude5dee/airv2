@@ -15,24 +15,28 @@ import {
   costUsd,
   DEFAULT_MODEL_FAMILY,
   isModelFamily,
+  isCreateModelRequest,
   isReasoningModel,
   isSpeedTier,
   modelForCreateTier,
   modelForSelection,
-  parseCreateTier,
+  parseCreateModel,
+  parseLegacyCreateTier,
   providerForFamily,
   reasoningForTier,
   serviceTierForTier,
+  type CreateModelRequest,
   type ModelFamily,
   type ModelSelection,
 } from "@/lib/entitlements/models";
 import { currentPeriodSpend } from "@/lib/entitlements/spend";
-import { getProviderKey } from "@/lib/providers/keys";
+import { getProviderKey, PROVIDER_LABELS } from "@/lib/providers/keys";
 import {
-  activeCreateSlug,
   budgetExhausted,
+  createRunAttributable,
   createRunLabel,
   projectBudget,
+  soleAttributableCreateSlug,
 } from "@/lib/create/budget";
 
 export const runtime = "nodejs";
@@ -245,6 +249,7 @@ export async function POST(
       () => null
     ),
     venice: await getProviderKey(supabase, userId, "venice").catch(() => null),
+    gmi: await getProviderKey(supabase, userId, "gmi").catch(() => null),
   };
 
   let parsedBody: unknown;
@@ -266,13 +271,37 @@ export async function POST(
   // the user's Settings tier, never upgrade it (spend stays entitlement-
   // bounded), and the box's static `model.default: "balanced"` keeps
   // resolving through the entitlement as before.
-  // Create turns (goal-create-v11 §9.1) ask for `create-<tier>`: clamped to
-  // the entitlement the same way, resolved on the Create tier family and
-  // always served by OpenAI whatever the owner's chat family is. The
-  // project's budget is checked against its own metered rows before the
-  // upstream call, and the family is only reachable from inside a Create
-  // run — nothing else may spend on it.
-  const createTier = parseCreateTier(rawBody["model"]);
+  // Create turns (goal-create-v11 §9.1) ask for `create-<tier>:<slug>`:
+  // clamped to the entitlement the same way, resolved on the Create tier
+  // family and always served by OpenAI whatever the owner's chat family is.
+  // The slug names the project the call is charged to; it must belong to
+  // this owner and have a Create run open (or just closed), so the family is
+  // only reachable from inside a Create run and two projects running at once
+  // each meter their own calls. The project's budget is checked against its
+  // own metered rows before the upstream call.
+  let createModel: CreateModelRequest | null = parseCreateModel(rawBody["model"]);
+  if (createModel === null && isCreateModelRequest(rawBody["model"])) {
+    const legacyTier = parseLegacyCreateTier(rawBody["model"]);
+    if (legacyTier === null) {
+      return NextResponse.json(
+        { error: "invalid_request", reason: "create_project_required" },
+        { status: 400 }
+      );
+    }
+    // Transitional (see parseLegacyCreateTier): a project-less call can
+    // only be charged when exactly one of the owner's projects could have
+    // made it; with none, or two candidates, it is refused rather than
+    // charged to the wrong one.
+    const slug = await soleAttributableCreateSlug(supabase, userId);
+    if (slug === null) {
+      return NextResponse.json(
+        { error: "forbidden", reason: "create_run_required" },
+        { status: 403 }
+      );
+    }
+    createModel = { tier: legacyTier, slug };
+  }
+  const createTier = createModel?.tier ?? null;
   const tier =
     createTier !== null
       ? clampCreateTier(createTier, entitledTier)
@@ -280,9 +309,9 @@ export async function POST(
         ? "fast"
         : entitledTier;
   let createLabel: string | null = null;
-  if (createTier !== null) {
-    const slug = await activeCreateSlug(supabase, userId);
-    if (!slug) {
+  if (createModel !== null) {
+    const { slug } = createModel;
+    if (!(await createRunAttributable(supabase, userId, slug))) {
       return NextResponse.json(
         { error: "forbidden", reason: "create_run_required" },
         { status: 403 }
@@ -360,34 +389,44 @@ export async function POST(
       body["stream_options"] = { ...(body["stream_options"] as object), include_usage: true };
     }
 
-    const baseUrl =
-      provider === "venice"
-        ? env.veniceBaseUrl()
-        : openRouter
-          ? env.openRouterBaseUrl()
-          : env.modelProviderBaseUrl();
-    const personalKey =
-      provider === "venice"
-        ? personalKeys.venice
-        : openRouter
-          ? personalKeys.openrouter
-          : null;
-    const platformKey =
-      provider === "venice"
-        ? env.veniceApiKey()
-        : openRouter
-          ? env.openRouterApiKey()
-          : env.modelProviderApiKey();
+    let baseUrl: string;
+    let personalKey: string | null;
+    let platformKey: string | null;
+    let providerLabel: string;
+    switch (provider) {
+      case "gmi":
+        baseUrl = env.gmiInferenceBaseUrl();
+        personalKey = personalKeys.gmi;
+        platformKey = env.gmiCloudApiKey();
+        providerLabel = PROVIDER_LABELS.gmi;
+        break;
+      case "venice":
+        baseUrl = env.veniceBaseUrl();
+        personalKey = personalKeys.venice;
+        platformKey = env.veniceApiKey();
+        providerLabel = PROVIDER_LABELS.venice;
+        break;
+      case "openrouter":
+        baseUrl = env.openRouterBaseUrl();
+        personalKey = personalKeys.openrouter;
+        platformKey = env.openRouterApiKey();
+        providerLabel = PROVIDER_LABELS.openrouter;
+        break;
+      case "openai":
+        baseUrl = env.modelProviderBaseUrl();
+        personalKey = null;
+        platformKey = env.modelProviderApiKey();
+        providerLabel = "OpenAI";
+        break;
+    }
     const apiKey = personalKey ?? platformKey;
     servedOnPersonalKey = personalKey !== null;
     if (!apiKey) {
-      // Venice has no platform key on this deployment and the user saved
-      // none — an explicit 503 beats an opaque upstream 401.
       return new Response(
         JSON.stringify({
           error: {
             message:
-              "Venice isn't configured — add a personal Venice API key in Settings.",
+              `${providerLabel} isn't configured — add a personal ${providerLabel} API key in Settings.`,
             type: "provider_unconfigured",
           },
         }),
@@ -421,11 +460,11 @@ export async function POST(
   let servedFamily: ModelFamily = createTier !== null ? "openai" : family;
   let upstream = await dispatch(servedFamily);
 
-  // OpenRouter families can degrade to empty completions (e.g. a stealth
-  // endpoint answering tool-bearing calls with `native_finish_reason:
-  // "network_error"` and a null message). The box would otherwise retry into
-  // the same wall and the user gets silence, so a dead or empty OpenRouter
-  // (or Venice) answer falls back once to the tier-resolved OpenAI model.
+  // Non-OpenAI families can degrade to empty completions (e.g. an endpoint
+  // answering tool-bearing calls with `native_finish_reason: "network_error"`
+  // and a null message). The box would otherwise retry into the same wall and
+  // the user gets silence, so a dead or empty upstream falls back once to the
+  // tier-resolved OpenAI model.
   // An unconfigured provider is a user-facing settings problem, not a dead
   // upstream — surface the 503 instead of silently answering with OpenAI.
   if (upstream.headers.get("X-Provider-Unconfigured") === "1") {
@@ -480,7 +519,7 @@ export async function POST(
     });
   }
 
-  // Streamed OpenRouter answers get the same empty check: the whole SSE body
+  // Streamed non-OpenAI answers get the same empty check: the whole SSE body
   // is buffered (these families answer in one burst) and replayed, or
   // replaced by an OpenAI stream when no delta ever carried content.
   if (streaming && servedFamily !== "openai" && canFallBack) {
