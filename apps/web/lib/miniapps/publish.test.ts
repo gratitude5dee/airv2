@@ -31,7 +31,10 @@ import {
 import { parseRegistryApp } from "./registry";
 
 describe("createDraft refresh keeps existing metadata", () => {
-  function draftSupabase(existing: Record<string, unknown> | null) {
+  function draftSupabase(
+    existing: Record<string, unknown> | null,
+    opts: { refreshFails?: boolean } = {}
+  ) {
     const updates: Record<string, unknown>[] = [];
     const inserted: Record<string, unknown>[] = [];
     const supabase = {
@@ -56,10 +59,13 @@ describe("createDraft refresh keeps existing metadata", () => {
               eq: () => ({
                 eq: () => ({
                   select: () => ({
-                    maybeSingle: async () => ({
-                      data: existing ? { ...existing, ...values } : null,
-                      error: null,
-                    }),
+                    maybeSingle: async () =>
+                      opts.refreshFails
+                        ? { data: null, error: { message: "connection reset" } }
+                        : {
+                            data: existing ? { ...existing, ...values } : null,
+                            error: null,
+                          },
                   }),
                 }),
               }),
@@ -122,6 +128,22 @@ describe("createDraft refresh keeps existing metadata", () => {
       createDraft(supabase, "user-1", { appname: "promo", name: "", description: "" })
     ).rejects.toMatchObject({ message: "name required" });
     expect(inserted).toHaveLength(0);
+  });
+
+  it("a failed refresh surfaces as a failure, not as 'name required' or 'taken'", async () => {
+    const omitted = draftSupabase(existing, { refreshFails: true });
+    await expect(
+      createDraft(omitted.supabase, "user-1", { appname: "promo", name: "", description: "" })
+    ).rejects.toThrow(/draft refresh failed: connection reset/);
+    const duplicate = draftSupabase(existing, { refreshFails: true });
+    await expect(
+      createDraft(duplicate.supabase, "user-1", {
+        appname: "promo",
+        name: "Promo",
+        description: "",
+      })
+    ).rejects.toThrow(/draft refresh failed: connection reset/);
+    expect(duplicate.inserted).toHaveLength(1);
   });
 });
 
