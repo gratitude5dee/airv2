@@ -13,6 +13,11 @@ set -euo pipefail
 
 API="https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_REF}/database/query"
 MIGRATIONS_DIR="$(dirname "$0")/../supabase/migrations"
+# "<old name> <new name>" per line: a migration renamed after it was applied
+# somewhere (e.g. renumbered to dodge a prefix collision). A database that
+# recorded the old name gets the new one recorded too, so the file is not
+# re-run. Fresh databases never see the old name and apply the new file.
+RENAMES_FILE="$(dirname "$0")/migration-renames.txt"
 
 run_sql() {
   local body http
@@ -32,6 +37,17 @@ run_sql() {
 echo "create table if not exists applied_migrations (name text primary key, applied_at timestamptz not null default now());" | run_sql > /dev/null
 
 applied=$(echo "select coalesce(json_agg(name), '[]'::json) from applied_migrations;" | run_sql | jq -r '.[0].coalesce | join("\n")')
+
+if [ -f "$RENAMES_FILE" ]; then
+  while read -r old new; do
+    case "$old" in ""|\#*) continue ;; esac
+    if grep -qxF "$old" <<< "$applied" && ! grep -qxF "$new" <<< "$applied"; then
+      echo "Recording $new as applied (was applied as $old)"
+      printf "insert into applied_migrations (name) values (%s) on conflict do nothing;\n" "'$new'" | run_sql > /dev/null
+      applied="$applied"$'\n'"$new"
+    fi
+  done < "$RENAMES_FILE"
+fi
 
 pending=0
 for file in $(ls "$MIGRATIONS_DIR"/*.sql | sort); do

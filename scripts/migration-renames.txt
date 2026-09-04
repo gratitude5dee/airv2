@@ -1,0 +1,4 @@
+# Migrations renamed after being applied somewhere. Read by apply-migrations.sh:
+# a database whose applied_migrations lists <old> has <new> recorded too.
+# Format: <old filename> <new filename>
+0082_create_v11_versions.sql 0083_create_v11_versions.sql
