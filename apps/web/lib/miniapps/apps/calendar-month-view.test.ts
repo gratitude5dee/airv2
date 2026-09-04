@@ -1,8 +1,14 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MiniAppContext } from "./types";
 import { makeApp } from "@/app/mini/loader-test-utils";
+
+const fixture = vi.hoisted(() => ({
+  events: [] as Array<Record<string, unknown>>,
+  people: [] as Array<Record<string, unknown>>,
+  prefix: undefined as string | undefined,
+}));
 
 const events = Array.from({ length: 40 }, (_, index) => ({
   id: index === 0 ? "local:0123456789abcdef" : `google-${index}`,
@@ -25,7 +31,7 @@ const events = Array.from({ length: 40 }, (_, index) => ({
 }));
 
 vi.mock("@/lib/calendar/store", () => ({
-  readEventsStore: vi.fn(async () => events),
+  readEventsStore: vi.fn(async () => fixture.events),
   approveInboxEvent: vi.fn(),
   dismissInboxEvent: vi.fn(),
   removeLocalEvent: vi.fn(),
@@ -38,8 +44,15 @@ vi.mock("@/lib/orchestrator/boxes", () => ({
 }));
 vi.mock("@/lib/crm/store", async (original) => ({
   ...(await original()),
-  readPeople: vi.fn(async () => ({ version: 1, people: [] })),
+  readPeople: vi.fn(async () => ({ version: 1, people: fixture.people })),
 }));
+vi.mock("@/lib/env", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/env")>();
+  return {
+    ...actual,
+    env: { ...actual.env, r2PublicBaseUrl: () => "https://media.example" },
+  };
+});
 vi.mock("@/lib/agentmail/calendar", () => ({
   createCalendarEvent: vi.fn(),
   rsvpCalendarEvent: vi.fn(),
@@ -61,7 +74,12 @@ function supabase(): SupabaseClient {
       builder[method] = chain;
     }
     builder["maybeSingle"] = async () => ({
-      data: table === "agent_addresses" ? { agentmail_inbox_id: "inbox-1" } : null,
+      data:
+        table === "agent_addresses"
+          ? { agentmail_inbox_id: "inbox-1" }
+          : table === "user_buckets" && fixture.prefix
+            ? { prefix: fixture.prefix }
+            : null,
       error: null,
     });
     builder["then"] = (resolve: (value: { data: unknown[]; error: null }) => unknown) =>
@@ -93,6 +111,12 @@ function context(
     basePath: "/mini/calendar",
   } as MiniAppContext;
 }
+
+beforeEach(() => {
+  fixture.events = events;
+  fixture.people = [];
+  fixture.prefix = undefined;
+});
 
 describe("calendar month mosaic", () => {
   it("renders Sunday-first weeks, event tiles, templates, and the dock", async () => {
@@ -138,5 +162,214 @@ describe("calendar month mosaic", () => {
     const html = await (await calendar.render(context("?view=month&month=2026-09", "owner", "card"))).text();
     expect(html).toContain('class="mo-grid"');
     expect(html).not.toContain("calendar-month.js");
+  });
+
+  it("anchors the month from month= and lets day= override it", async () => {
+    const march = await (
+      await calendar.render(context("?view=month&month=2026-03"))
+    ).text();
+    expect(march).toContain("March 2026");
+    expect(march).toContain('aria-label="March 2026"');
+    expect(march).not.toContain('class="mo-strip"');
+
+    const selected = await (
+      await calendar.render(
+        context("?view=month&month=2026-03&day=2026-09-08")
+      )
+    ).text();
+    expect(selected).toContain('data-month="2026-09"');
+    expect(selected).toContain('data-for="2026-09-08"');
+  });
+
+  it("places row-zero strips below row one and later strips before their row", async () => {
+    const firstRow = await (
+      await calendar.render(
+        context("?view=month&month=2026-09&day=2026-09-02")
+      )
+    ).text();
+    const firstWeek = firstRow.indexOf('class="mo-week"');
+    expect(firstRow.indexOf('class="mo-strip"')).toBeGreaterThan(firstWeek);
+
+    const laterRow = await (
+      await calendar.render(
+        context("?view=month&month=2026-09&day=2026-09-16")
+      )
+    ).text();
+    const weeks = [...laterRow.matchAll(/class="mo-week"/g)].map(
+      (match) => match.index ?? -1
+    );
+    const strip = laterRow.indexOf('class="mo-strip"');
+    expect(strip).toBeGreaterThan(weeks[1] ?? -1);
+    expect(strip).toBeLessThan(weeks[2] ?? Number.MAX_SAFE_INTEGER);
+  });
+
+  it("renders sticker priority and truncates long locations with a title", async () => {
+    fixture.events = [
+      {
+        ...events[0],
+        id: "pending-location",
+        starts_at: "2026-09-03T09:00:00Z",
+        ends_at: "2026-09-03T10:00:00Z",
+        status: "pending",
+        location: "A location that is forty characters long exactly",
+      },
+      {
+        ...events[1],
+        id: "all-day-only",
+        starts_at: "2026-09-04T09:00:00Z",
+        ends_at: "2026-09-04T10:00:00Z",
+        all_day: true,
+        status: "confirmed",
+        location: undefined,
+      },
+    ];
+    const html = await (
+      await calendar.render(context("?view=month&month=2026-09"))
+    ).text();
+    const pendingDay = html.slice(
+      html.indexOf('data-day="2026-09-03"'),
+      html.indexOf('data-day="2026-09-04"')
+    );
+    expect(pendingDay).toContain('class="mo-sticker pend"');
+    expect(pendingDay).toContain('class="mo-sticker loc"');
+    expect(pendingDay).not.toContain("allday");
+    expect(pendingDay).toContain(
+      'title="A location that is forty characters long exactly"'
+    );
+    expect(pendingDay).toContain("A location th…");
+    expect(html).toContain('class="mo-sticker allday"');
+  });
+
+  it("creates one template per event-bearing day", async () => {
+    const html = await (
+      await calendar.render(context("?view=month&month=2026-09"))
+    ).text();
+    expect((html.match(/<template class="mo-day"/g) ?? []).length).toBe(
+      new Set(events.map((event) => event.starts_at.slice(0, 10))).size
+    );
+  });
+
+  it("shows an owner add tile and a guest today dot on an empty month", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-15T12:00:00Z"));
+    fixture.events = [];
+    try {
+      const owner = await (
+        await calendar.render(context("?view=month&month=2026-09"))
+      ).text();
+      const guest = await (
+        await calendar.render(context("?view=month&month=2026-09", "guest"))
+      ).text();
+      expect(owner).toContain('<a class="mo-cell mo-add"');
+      expect(guest).toContain('class="mo-cell mo-dot is-today"');
+      expect(guest).not.toContain('<a class="mo-cell mo-add"');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps guest month rendering read-only", async () => {
+    const html = await (
+      await calendar.render(context("?view=month&month=2026-09", "guest"))
+    ).text();
+    expect(html).not.toContain('<a class="mo-cell mo-add"');
+    expect(html).not.toContain('id="new"');
+    expect(html).not.toContain('id="prompt"');
+    expect(html).not.toContain("Add event");
+    expect(html).not.toContain(">Ask<");
+    expect(html).toContain('class="mo-cell mo-tile');
+    expect(html).toContain('<template class="mo-day"');
+  });
+
+  it("keeps all body hrefs in the safe query grammar", async () => {
+    const html = await (
+      await calendar.render(
+        context("?view=month&month=2026-09&day=2026-09-08")
+      )
+    ).text();
+    const hrefs = [...html.matchAll(/href="([^"]*)"/g)].map(
+      (match) => (match[1] ?? "").replaceAll("&amp;", "&")
+    );
+    const grammar =
+      /^[^?#"]*(\?[a-z]+=[^&"]*(&[a-z]+=[^&"]*)*)?(#\w+)?$/;
+    expect(hrefs.every((href) => grammar.test(href))).toBe(true);
+    expect(html).not.toContain("?&");
+    expect(html).not.toContain("&&");
+  });
+
+  it("keeps agenda navigation, timeline forms, and local edit links", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-01T08:00:00Z"));
+    try {
+      const agenda = await (await calendar.render(context("?"))).text();
+      expect(agenda).toContain('href="/mini/calendar?view=timeline"');
+      expect(agenda).toContain("edit=local%3A0123456789abcdef");
+      const timeline = await (
+        await calendar.render(context("?view=timeline"))
+      ).text();
+      expect(timeline).toContain('id="new"');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("limits overloaded day strips to twelve chips and an agenda link", async () => {
+    fixture.events = Array.from({ length: 401 }, (_, index) => ({
+      ...events[0],
+      id: `event-${index}`,
+      starts_at: `2026-09-01T${String(index % 24).padStart(2, "0")}:00:00`,
+      ends_at: `2026-09-01T${String((index % 24) + 1).padStart(2, "0")}:00:00`,
+    }));
+    const html = await (
+      await calendar.render(
+        context("?view=month&month=2026-09&day=2026-09-01")
+      )
+    ).text();
+    const strip = html.slice(
+      html.indexOf('<li class="mo-strip"'),
+      html.indexOf("<template")
+    );
+    expect((strip.match(/class="mo-chip(?: pending| local)?"/g) ?? []).length).toBe(
+      12
+    );
+    expect(strip).toContain('class="mo-chip more"');
+    expect(strip).toContain("+389 more · Agenda");
+  });
+
+  it("renders only owner-prefixed CRM photos", async () => {
+    fixture.people = [
+      {
+        id: "person-0",
+        name: "Ada",
+        emails: ["person0@example.test"],
+        photos: ["u/alice/ada.png", "https://evil.example/x.png"],
+      },
+    ];
+    fixture.prefix = "u/alice/";
+    const html = await (
+      await calendar.render(context("?view=month&month=2026-09&day=2026-09-01"))
+    ).text();
+    expect(html).toContain(
+      '<img src="https://media.example/u/alice/ada.png" alt="" width="96" height="96" loading="lazy" decoding="async">'
+    );
+    expect(html).not.toContain("https://evil.example/x.png");
+  });
+
+  it("uses plates when the owner bucket row is missing", async () => {
+    fixture.people = [
+      {
+        id: "person-0",
+        name: "Ada",
+        emails: ["person0@example.test"],
+        photos: ["u/alice/ada.png"],
+      },
+    ];
+    fixture.prefix = undefined;
+    const html = await (
+      await calendar.render(context("?view=month&month=2026-09&day=2026-09-01"))
+    ).text();
+    const section = html.slice(html.indexOf("<section"), html.indexOf("</section>"));
+    expect(section).not.toContain("<img");
+    expect(html).toContain("mo-plate");
   });
 });

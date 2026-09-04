@@ -51,7 +51,6 @@ import {
   stripRowFor,
   subCopy,
   tiltFor,
-  type MosaicEvent,
 } from "./calendar-mosaic";
 
 interface InviteDecision {
@@ -206,7 +205,7 @@ function dock(
   const personaHref =
     active === "month"
       ? `${viewHref(basePath, "month", null, undefined, monthKey)}#personas`
-      : `${viewHref(basePath, active === "timeline" ? "agenda" : "agenda", persona)}#personas`;
+      : `${viewHref(basePath, "agenda", persona)}#personas`;
   const addHref =
     active === "month"
       ? `${viewHref(basePath, "month", persona, todayKey, undefined, { new: true })}#new`
@@ -472,6 +471,7 @@ function timelineBody(
 function monthPersonas(
   basePath: string,
   providerMeta: Map<string, { persona: string; color: string }>,
+  personaColors: Map<string, string>,
   activePersona: string | null,
   monthKey: string,
   selectedDay: string | null
@@ -491,9 +491,7 @@ function monthPersonas(
   };
   return `<nav class="mo-personas" id="personas" aria-label="Personas" data-noswipe>${chip("All", null)}${personas
     .map((persona) => {
-      const color =
-        [...providerMeta.values()].find((meta) => meta.persona === persona)?.color ??
-        ditherColor(persona);
+      const color = personaColors.get(persona) ?? ditherColor(persona);
       return chip(persona, persona, color);
     })
     .join("")}</nav>`;
@@ -509,12 +507,6 @@ function mosaicChips(
   persona: string | null,
   moreLimit = 12
 ): string {
-  const photoIndex = new Map<string, { photoKey: string | null }>(
-    [...avatars].map(([email, avatar]) => [
-      email,
-      { photoKey: (avatar as { photoKey?: string | null }).photoKey ?? null },
-    ])
-  );
   const ordered = [...dayEvents].sort(
     (a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at)
   );
@@ -527,7 +519,7 @@ function mosaicChips(
         ? `<span class="mo-avs">${attendees
             .map((email) => {
               const avatar = avatars.get(email);
-              const photoKey = photoIndex.get(email)?.photoKey;
+              const photoKey = avatar?.photoKey;
               if (photoKey) {
                 return `<img class="mo-av" src="${esc(publicUrl(photoKey))}" alt="" width="20" height="20" loading="lazy" decoding="async">`;
               }
@@ -580,6 +572,11 @@ function monthBody(
   wantNew: boolean
 ): string {
   const providerMeta = personaByProvider(sources);
+  const personaColors = new Map<string, string>();
+  for (const meta of providerMeta.values()) {
+    if (!personaColors.has(meta.persona)) personaColors.set(meta.persona, meta.color);
+  }
+  if (!personaColors.has("personal")) personaColors.set("personal", LOCAL_COLOR);
   const allByDay = new Map<string, CalendarEvent[]>();
   for (const event of events) {
     const t = Date.parse(event.starts_at);
@@ -621,7 +618,7 @@ function monthBody(
       month: "long",
       day: "numeric",
     });
-  const header = `<header class="mo-head"><a class="mo-nav" href="${esc(viewHref(basePath, "month", persona, undefined, prevKey))}" aria-label="${esc(new Date(`${prevKey}-01T12:00:00`).toLocaleDateString([], { month: "long", year: "numeric" }))}">‹</a><h2 class="mo-title">${esc(title)}</h2><a class="mo-nav" href="${esc(viewHref(basePath, "month", persona, undefined, nextKey))}" aria-label="${esc(new Date(`${nextKey}-01T12:00:00`).toLocaleDateString([], { month: "long", year: "numeric" }))}">›</a><p class="mo-sub">${esc(subCopy(counts))}</p>${monthPersonas(basePath, providerMeta, persona, monthKey, selectedDay)}</header>`;
+  const header = `<header class="mo-head"><a class="mo-nav" href="${esc(viewHref(basePath, "month", persona, undefined, prevKey))}" aria-label="${esc(new Date(`${prevKey}-01T12:00:00`).toLocaleDateString([], { month: "long", year: "numeric" }))}">‹</a><h2 class="mo-title">${esc(title)}</h2><a class="mo-nav" href="${esc(viewHref(basePath, "month", persona, undefined, nextKey))}" aria-label="${esc(new Date(`${nextKey}-01T12:00:00`).toLocaleDateString([], { month: "long", year: "numeric" }))}">›</a><p class="mo-sub">${esc(subCopy(counts))}</p>${monthPersonas(basePath, providerMeta, personaColors, persona, monthKey, selectedDay)}</header>`;
   const leading = first.getDay();
   const rowCount = Math.ceil((leading + daysInMonth) / 7);
   const rows: string[] = [];
@@ -662,7 +659,7 @@ function monthBody(
         },
         { counts: new Map<string, number>(), max: 0, value: personaOf(allDayEvents[0]!) }
       ).value;
-      const color = providerMeta.get(dominant)?.color ?? ditherColor(dominant);
+      const color = personaColors.get(dominant) ?? ditherColor(dominant);
       const names = dayEvents.map((event) => event.title).join(", ");
       const countText = `${dayEvents.length} event${dayEvents.length === 1 ? "" : "s"}`;
       const label = `${dayLabel(key)} — ${countText}: ${names}`;
@@ -685,13 +682,8 @@ function monthBody(
         ? ""
         : coverMarkup(
             coverFor(
-              dayEvents as MosaicEvent[],
-              new Map(
-                [...avatars].map(([email, avatar]) => [
-                  email,
-                  { photoKey: (avatar as { photoKey?: string | null }).photoKey ?? null },
-                ])
-              ),
+              dayEvents,
+              avatars,
               publicUrl,
               color
             )
@@ -732,7 +724,7 @@ const CALENDAR_CSS = `
 .mo-persona{flex:0 0 auto;display:inline-flex;align-items:center;gap:.3rem;padding:.35rem .6rem;border:1px solid var(--ring);border-radius:var(--radius-pill);color:var(--ink);text-decoration:none;font:500 .65rem var(--font-ui)}
 .mo-persona.on{background:var(--accent);color:var(--on-accent)}
 .mo-grid,.mo-week{min-width:0}.mo-grid{display:grid;gap:8px;list-style:none;margin:0;padding:0}
-.mo-week{position:relative;z-index:calc(20 - var(--row,0));display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;align-items:center;justify-items:center}
+.mo-week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;align-items:center;justify-items:center}
 .mo-cell{aspect-ratio:1;width:100%;min-width:0}.mo-blank{display:block}
 .mo-dot{display:block;width:6px;height:6px;border-radius:50%;background:var(--ink-muted);opacity:.55;align-self:center;justify-self:center}
 .mo-dot.is-today{box-shadow:0 0 0 2px var(--accent)}
@@ -750,7 +742,7 @@ const CALENDAR_CSS = `
 .mo-chips{display:flex;gap:.5rem;overflow-x:auto;scroll-snap-type:x mandatory;list-style:none;margin:0;padding:0 .2rem}.mo-chip{scroll-snap-align:start;flex:0 0 auto;min-width:11rem;max-width:78%;display:flex;align-items:center;gap:.4rem;padding:.35rem .6rem;border-radius:var(--radius-pill);background:rgba(255,255,255,.08);border:1px solid var(--ring);color:var(--ink);text-decoration:none;font:500 .68rem var(--font-ui)}.mo-chip.pending{border-style:dashed}.mo-chip .mo-ttl{max-width:12rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mo-time,.mo-loc{color:var(--ink-muted);white-space:nowrap}.mo-loc{overflow:hidden;text-overflow:ellipsis;max-width:8rem}
 .mo-avs{display:inline-flex;flex:0 0 auto}.mo-av{display:block;width:20px;height:20px;border-radius:50%;object-fit:cover;font:600 .55rem var(--font-ui);color:var(--on-accent);text-align:center;line-height:20px}.mo-av+.mo-av{margin-left:-5px}.mo-pdot{display:inline-block;width:8px;height:8px;border-radius:50%;flex:none}
 .mo-close{position:absolute;top:.3rem;right:.4rem;color:var(--ink-muted);text-decoration:none;font-size:1.2rem}.mo-empty{margin:.2rem 2rem .2rem 0;color:var(--ink-muted);font:500 .7rem var(--font-ui)}.mo-addlink{font:500 .7rem var(--font-ui);color:var(--ink);text-decoration:underline}
-.mo-add{border-radius:28%;border:1.5px dashed var(--ring);color:var(--ink-muted);display:grid;place-items:center;font-size:1.4rem;text-decoration:none}.mo-week:has(.mo-strip){z-index:30}
+.mo-add{border-radius:28%;border:1.5px dashed var(--ring);color:var(--ink-muted);display:grid;place-items:center;font-size:1.4rem;text-decoration:none}
 .mo-dock{position:sticky;bottom:.75rem;margin:.75rem auto 0;display:flex;gap:.25rem;padding:.3rem;border:1px solid var(--ring);border-radius:var(--radius-pill);background:var(--panel-bg);box-shadow:var(--shadow);backdrop-filter:var(--blur);width:max-content;max-width:100%;z-index:2}.mo-dock-item{min-width:44px;min-height:44px;display:grid;place-items:center;border-radius:var(--radius-pill);color:var(--ink);text-decoration:none;font:500 .6rem var(--font-ui)}.mo-dock-item svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.75}.mo-dock-item.on{background:rgba(255,255,255,.14)}.mo-dock-label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 @media(prefers-reduced-motion:reduce){.mo-tile .mo-face{transform:none!important}.mo-strip,.mo-dock{backdrop-filter:none;-webkit-backdrop-filter:none}.mo-tile,.mo-tile .mo-face{transition:opacity .15s}}
 `;
@@ -832,9 +824,17 @@ export const calendar: MiniAppModule = {
       );
       // Attendee avatars come from the owner's OWN box store, read inside
       // this owner-scoped session — no cross-owner resolution can exist.
-      avatars = avatarIndex(
-        await timedFetch("calendar", "box people", () => readPeople(box.boxId))
+      const store = await timedFetch("calendar", "box people", () =>
+        readPeople(box.boxId)
       );
+      const { data: bucket } = await ctx.supabase
+        .from("user_buckets")
+        .select("prefix")
+        .eq("user_id", ctx.session.userId)
+        .maybeSingle();
+      const prefix =
+        typeof bucket?.prefix === "string" ? bucket.prefix : undefined;
+      avatars = avatarIndex(store, prefix);
     } catch {
       boxAwake = false;
     } finally {
@@ -956,7 +956,7 @@ export const calendar: MiniAppModule = {
         ? ` data-month="${esc(monthKey)}" data-today="${esc(todayKey)}"${selectedDay ? ` data-open="${esc(selectedDay)}"` : ""}`
         : "";
     const full = `<style>${CALENDAR_CSS}${ctx.session.via === "card" ? CALENDAR_LITE_CSS : ""}</style><section class="${panelClass}"${panelAttrs}>${body}
-${isOwner ? `<div id="prompt">${promptBar("Ask your agent — e.g. block focus time tomorrow morning…")}</div>` : ""}</section>${dock(ctx.basePath, view, activePersona, isOwner, monthKey, todayKey)}`;
+${isOwner ? `<div id="prompt">${promptBar("Ask your agent — e.g. block focus time tomorrow morning…")}</div>` : ""}</section>${dock(ctx.basePath, view, activePersona, isOwner, monthKey, todayKey)}${view === "month" && ctx.session.via !== "card" ? '<script src="/creator-os/calendar-month.js" defer></script>' : ""}`;
     return calendarHtml(
       renderShell({
         title,
@@ -964,14 +964,18 @@ ${isOwner ? `<div id="prompt">${promptBar("Ask your agent — e.g. block focus t
         body: full,
         lite: ctx.session.via === "card",
         ...(view === "month" ? { headline: false } : {}),
-        swipe: {
-          ...(prevView
-            ? { prev: viewHref(ctx.basePath, prevView, activePersona) }
-            : {}),
-          ...(nextView
-            ? { next: viewHref(ctx.basePath, nextView, activePersona) }
-            : {}),
-        },
+        ...(!(ctx.session.role === "guest" && view === "agenda")
+          ? {
+              swipe: {
+                ...(prevView
+                  ? { prev: viewHref(ctx.basePath, prevView, activePersona) }
+                  : {}),
+                ...(nextView
+                  ? { next: viewHref(ctx.basePath, nextView, activePersona) }
+                  : {}),
+              },
+            }
+          : {}),
       })
     );
   },
