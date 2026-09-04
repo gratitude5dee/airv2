@@ -130,31 +130,61 @@ describe("enqueueInbound scheduling", () => {
     senderTier: 0,
   };
 
+  // Mirrors schedule_flush (migration 0082): the deadline is chosen under the
+  // row lock, so the fake serializes calls against one shared row.
   function fakeSupabase(existingRunAt: string | null) {
-    const upserts: Array<{ table: string; values: Record<string, unknown> }> =
-      [];
-    const supabase = {
-      from: (table: string) => ({
-        insert: () => Promise.resolve({ error: null }),
-        upsert: (values: Record<string, unknown>) => {
-          upserts.push({ table, values });
-          return Promise.resolve({ error: null });
-        },
-        select: () => ({
-          eq: () => ({
-            maybeSingle: () =>
-              Promise.resolve({
-                data:
-                  table === "flush_jobs" && existingRunAt
-                    ? { run_at: existingRunAt }
-                    : null,
-                error: null,
-              }),
-          }),
-        }),
-      }),
+    let current = existingRunAt ? Date.parse(existingRunAt) : null;
+    let cancelledAt: number | null = null;
+    const calls: Array<{ fn: string; args: Record<string, unknown> }> = [];
+    // Set to hold the next rpc until released, to reorder completions.
+    let gate: { held: Promise<void>; entered: () => void } | null = null;
+    const apply = (args: Record<string, unknown>) => {
+      const own = Date.parse(String(args["p_run_at"]));
+      const windowEnd = Date.parse(String(args["p_window_end"]));
+      const stamp = Date.parse(String(args["p_cancelled_at"]));
+      current =
+        current !== null && current >= own && current <= windowEnd
+          ? current + 1
+          : own;
+      cancelledAt = cancelledAt === null ? stamp : Math.max(cancelledAt, stamp);
+      // PostgREST renders timestamptz with an offset, not a Z.
+      const rendered = new Date(current)
+        .toISOString()
+        .replace("Z", "+00:00");
+      return { data: rendered, error: null };
     };
-    return { supabase: supabase as unknown as SupabaseClient, upserts };
+    const supabase = {
+      from: () => ({
+        insert: () => Promise.resolve({ error: null }),
+        upsert: () => Promise.resolve({ error: null }),
+      }),
+      rpc: (fn: string, args: Record<string, unknown>) => {
+        calls.push({ fn, args });
+        const held = gate;
+        gate = null;
+        if (!held) return Promise.resolve(apply(args));
+        held.entered();
+        return held.held.then(() => apply(args));
+      },
+    };
+    return {
+      supabase: supabase as unknown as SupabaseClient,
+      calls,
+      rowRunAt: () => current,
+      rowCancelledAt: () => cancelledAt,
+      holdNextRpc: () => {
+        let release = () => {};
+        let entered = () => {};
+        const held = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        const reached = new Promise<void>((resolve) => {
+          entered = resolve;
+        });
+        gate = { held, entered };
+        return { reached, release };
+      },
+    };
   }
 
   beforeEach(() => {
@@ -166,55 +196,102 @@ describe("enqueueInbound scheduling", () => {
     vi.useRealTimers();
   });
 
-  it("schedules a fresh burst by the message's own debounce", async () => {
-    const { supabase, upserts } = fakeSupabase(null);
+  it("asks the database for the deadline with the message's own debounce and the window", async () => {
+    const { supabase, calls } = fakeSupabase(null);
     const { runAt } = await enqueueInbound(supabase, {
       ...message,
       body: "hey",
     });
-    expect(Date.parse(runAt) - Date.now()).toBe(DEBOUNCE_MS);
-    const job = upserts.find((u) => u.table === "flush_jobs");
-    expect(job?.values["run_at"]).toBe(runAt);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.fn).toBe("schedule_flush");
+    expect(calls[0]?.args).toMatchObject({
+      p_space_id: "space-1",
+      p_user_id: "u1",
+      p_phone: "+15550001111",
+      p_sender_tier: 0,
+      p_run_at: new Date(Date.now() + DEBOUNCE_MS).toISOString(),
+      p_window_end: new Date(Date.now() + REFERENCE_WINDOW_MS).toISOString(),
+      p_cancelled_at: new Date().toISOString(),
+    });
+    expect(runAt).toBe(new Date(Date.now() + DEBOUNCE_MS).toISOString());
   });
 
-  it("lets prose inside an open reference window keep the later deadline", async () => {
+  it("returns the deadline the database chose, normalized to ISO", async () => {
     const open = new Date(Date.now() + REFERENCE_WINDOW_MS - 300).toISOString();
-    const { supabase } = fakeSupabase(open);
+    const { supabase, rowRunAt } = fakeSupabase(open);
     const { runAt } = await enqueueInbound(supabase, {
       ...message,
       body: "hey",
     });
-    expect(Date.parse(runAt)).toBe(Date.parse(open) + 1);
+    expect(runAt).toBe(new Date(Date.parse(open) + 1).toISOString());
+    expect(rowRunAt()).toBe(Date.parse(runAt));
   });
 
-  it("extends the window when media or a command lands inside it", async () => {
-    const open = new Date(Date.now() + 1_000).toISOString();
-    const { supabase } = fakeSupabase(open);
-    const { runAt } = await enqueueInbound(supabase, {
+  it("sends an unknown tier as null so the row never reads as owner", async () => {
+    const { supabase, calls } = fakeSupabase(null);
+    await enqueueInbound(supabase, {
       ...message,
-      body: "/zap make it rain",
+      senderTier: undefined,
+      body: "hey",
     });
-    expect(Date.parse(runAt) - Date.now()).toBe(REFERENCE_WINDOW_MS);
+    expect(calls[0]?.args["p_sender_tier"]).toBeNull();
   });
 
-  it("pulls a backoff-rescheduled deadline in for fresh input", async () => {
-    const backedOff = new Date(Date.now() + 4 * 60_000).toISOString();
-    const { supabase } = fakeSupabase(backedOff);
-    const { runAt } = await enqueueInbound(supabase, {
-      ...message,
-      body: "hello?",
-    });
-    expect(Date.parse(runAt) - Date.now()).toBe(DEBOUNCE_MS);
+  it("fails loudly when the database does not return a deadline", async () => {
+    const supabase = {
+      from: () => ({
+        insert: () => Promise.resolve({ error: null }),
+        upsert: () => Promise.resolve({ error: null }),
+      }),
+      rpc: () => Promise.resolve({ data: null, error: null }),
+    } as unknown as SupabaseClient;
+    await expect(
+      enqueueInbound(supabase, { ...message, body: "hey" })
+    ).rejects.toThrow(/schedule_flush/);
   });
 
-  it("ignores a stale deadline already in the past", async () => {
-    const stale = new Date(Date.now() - 60_000).toISOString();
-    const { supabase } = fakeSupabase(stale);
-    const { runAt } = await enqueueInbound(supabase, {
-      ...message,
-      body: "[attachment:att-1]",
-    });
-    expect(Date.parse(runAt) - Date.now()).toBe(REFERENCE_WINDOW_MS);
+  it("keeps the window when media and prose are scheduled back to back", async () => {
+    // Two webhooks in flight at once resolve in whatever order the row lock
+    // hands out; either order must leave the 3s window intact.
+    const { supabase, rowRunAt } = fakeSupabase(null);
+    const [media, prose] = await Promise.all([
+      enqueueInbound(supabase, { ...message, body: "[attachment:att-1]" }),
+      enqueueInbound(supabase, { ...message, body: "hey" }),
+    ]);
+    expect(Date.parse(media.runAt) - Date.now()).toBe(REFERENCE_WINDOW_MS);
+    expect(Date.parse(prose.runAt) - Date.now()).toBe(REFERENCE_WINDOW_MS + 1);
+    expect(rowRunAt()).toBe(Date.parse(prose.runAt));
+
+    const { supabase: reversed, rowRunAt: reversedRow } = fakeSupabase(null);
+    const [prose2, media2] = await Promise.all([
+      enqueueInbound(reversed, { ...message, body: "hey" }),
+      enqueueInbound(reversed, { ...message, body: "[attachment:att-1]" }),
+    ]);
+    expect(Date.parse(prose2.runAt) - Date.now()).toBe(DEBOUNCE_MS);
+    expect(Date.parse(media2.runAt) - Date.now()).toBe(REFERENCE_WINDOW_MS);
+    expect(reversedRow()).toBe(Date.parse(media2.runAt));
+  });
+
+  it("never moves cancelled_at backwards when a stale webhook lands late", async () => {
+    // A stamps T, stalls; B stamps T+200 and lands first; a chain that
+    // started at T+100 must still see B's cancellation once A completes.
+    const { supabase, rowCancelledAt, holdNextRpc } = fakeSupabase(null);
+    const t0 = Date.now();
+    const { reached, release } = holdNextRpc();
+    const late = enqueueInbound(supabase, { ...message, body: "first" });
+    await reached;
+    vi.setSystemTime(t0 + 200);
+    await enqueueInbound(supabase, { ...message, body: "second" });
+    expect(rowCancelledAt()).toBe(t0 + 200);
+    release();
+    await late;
+    expect(rowCancelledAt()).toBe(t0 + 200);
+    expect(
+      isCancelled(
+        new Date(rowCancelledAt() ?? 0).toISOString(),
+        new Date(t0 + 100).toISOString()
+      )
+    ).toBe(true);
   });
 });
 
