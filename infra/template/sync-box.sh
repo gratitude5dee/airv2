@@ -501,7 +501,10 @@ sudo systemctl enable hermes-gateway.service hermes-dashboard.service hermes-hos
 # Hermes pins each session's system prompt at creation (sessions.system_prompt_hash);
 # clearing it makes the next turn rebuild from the current SOUL/skills without touching messages.
 if [ -f "$HOME_DIR/.hermes/state.db" ]; then
-  sudo systemctl stop hermes-gateway.service hermes-dashboard.service
+  if ! sudo systemctl stop hermes-gateway.service hermes-dashboard.service; then
+    sudo systemctl start hermes-gateway.service hermes-dashboard.service || true
+    exit 1
+  fi
   python3 - "$HOME_DIR/.hermes/state.db" <<'PY' || { sudo systemctl start hermes-gateway.service hermes-dashboard.service; exit 1; }
 import sqlite3
 import sys
