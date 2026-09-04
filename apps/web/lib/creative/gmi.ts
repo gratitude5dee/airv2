@@ -35,6 +35,8 @@ export interface MediaInput {
   url: string;
   mimeType?: string;
   durationSeconds?: number;
+  /** For audio lifted out of a clip: the URL of that clip. */
+  soundtrackOf?: string;
 }
 
 export interface CreativeTurn {

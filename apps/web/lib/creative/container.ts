@@ -189,7 +189,7 @@ function trackChunks(
     if (offset + length > bytes.length) return undefined;
     lengths.push(length);
   }
-  if (sample !== sizes.count) return undefined;
+  if (sizes.count === 0 || sample !== sizes.count) return undefined;
   return { offsets, width, entries, lengths };
 }
 
@@ -212,7 +212,7 @@ export function extractAudioTrack(bytes: Buffer): Buffer | undefined {
   const mvhd = findChild(bytes, moov.start, moov.end, "mvhd");
   if (!mvhd) return undefined;
 
-  let sound: Box | undefined;
+  const sounds: Box[] = [];
   let picture = false;
   for (const trak of children(bytes, moov.start, moov.end, "trak")) {
     const mdia = findChild(bytes, trak.start, trak.end, "mdia");
@@ -220,15 +220,38 @@ export function extractAudioTrack(bytes: Buffer): Buffer | undefined {
     if (!hdlr || hdlr.end - hdlr.start < 12) continue;
     const handler = bytes.toString("latin1", hdlr.start + 8, hdlr.start + 12);
     if (handler === "vide") picture = true;
-    if (handler === "soun") sound ??= trak;
+    if (handler === "soun") sounds.push(trak);
   }
-  if (!sound || !picture) return undefined;
+  if (!picture) return undefined;
 
-  const mdia = findChild(bytes, sound.start, sound.end, "mdia");
-  const minf = mdia && findChild(bytes, mdia.start, mdia.end, "minf");
-  const stbl = minf && findChild(bytes, minf.start, minf.end, "stbl");
-  const chunks = stbl && trackChunks(bytes, stbl);
-  if (!chunks) return undefined;
+  // Enabled tracks first (tkhd flag bit 0); a disabled track is what an
+  // editor muted, and only stands in when nothing else remuxes.
+  const enabled = (trak: Box): boolean => {
+    const tkhd = findChild(bytes, trak.start, trak.end, "tkhd");
+    return (
+      !tkhd ||
+      tkhd.end - tkhd.start < 4 ||
+      ((bytes[tkhd.start + 3] ?? 1) & 1) === 1
+    );
+  };
+  const candidates = [
+    ...sounds.filter(enabled),
+    ...sounds.filter((t) => !enabled(t)),
+  ];
+
+  let sound: Box | undefined;
+  let chunks: ReturnType<typeof trackChunks> = undefined;
+  for (const trak of candidates) {
+    const mdia = findChild(bytes, trak.start, trak.end, "mdia");
+    const minf = mdia && findChild(bytes, mdia.start, mdia.end, "minf");
+    const stbl = minf && findChild(bytes, minf.start, minf.end, "stbl");
+    chunks = stbl && trackChunks(bytes, stbl);
+    if (chunks) {
+      sound = trak;
+      break;
+    }
+  }
+  if (!sound || !chunks) return undefined;
 
   const ftyp = box("ftyp", Buffer.from("M4A \0\0\0\0M4A mp42isom", "latin1"));
   const mvhdBytes = bytes.subarray(mvhd.offset, mvhd.end);

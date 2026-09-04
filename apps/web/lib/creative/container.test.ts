@@ -215,6 +215,11 @@ function clipWithSoundtrack(
     sampleCount?: number;
     /** Compact stz2 field width instead of a full stsz table. */
     stz2?: 4 | 8 | 16;
+    /**
+     * An extra sound track listed before the real one: a muted track whose
+     * one sample is the first picture chunk, or one with no sample tables.
+     */
+    decoy?: "disabled" | "tableless";
   } = {},
 ) {
   const count = options.sampleCount ?? 5;
@@ -268,10 +273,32 @@ function clipWithSoundtrack(
       ),
     ),
   );
+  const decoy =
+    options.decoy === "disabled"
+      ? box(
+          "trak",
+          box("tkhd", Buffer.from([0, 0, 0, 0]), Buffer.alloc(80)),
+          box(
+            "mdia",
+            hdlr("soun"),
+            box(
+              "minf",
+              box(
+                "stbl",
+                box("stsz", u32(0, picture[0]!.length, 1)),
+                box("stsc", u32(0, 1, 1, 1, 1)),
+                box("stco", u32(0, 1, mdatStart)),
+              ),
+            ),
+          ),
+        )
+      : options.decoy === "tableless"
+        ? trak("soun")
+        : Buffer.alloc(0);
   const file = Buffer.concat([
     ftyp,
     box("mdat", mdatBody),
-    box("moov", box("mvhd", Buffer.alloc(100)), trak("vide"), soundTrak),
+    box("moov", box("mvhd", Buffer.alloc(100)), trak("vide"), decoy, soundTrak),
   ]);
   return { file, sound: Buffer.concat(sound), soundTrak };
 }
@@ -329,6 +356,41 @@ describe("extractAudioTrack", () => {
       expect(m4a, `stz2 ${stz2}-bit`).toBeDefined();
       expect(Buffer.concat(chunksOf(m4a!, false)).equals(sound)).toBe(true);
     }
+  });
+
+  it("passes over a muted or tableless sound track for one that plays", () => {
+    for (const decoy of ["disabled", "tableless"] as const) {
+      const { file, sound } = clipWithSoundtrack({ decoy });
+      const m4a = extractAudioTrack(file);
+      expect(m4a, decoy).toBeDefined();
+      expect(Buffer.concat(chunksOf(m4a!, false)).equals(sound)).toBe(true);
+      expect(m4a!.indexOf("VVVV")).toBe(-1);
+    }
+  });
+
+  it("yields nothing for a sound track with no samples", () => {
+    const empty = box(
+      "trak",
+      box(
+        "mdia",
+        hdlr("soun"),
+        box(
+          "minf",
+          box(
+            "stbl",
+            box("stsz", u32(0, 0, 0)),
+            box("stsc", u32(0, 0)),
+            box("stco", u32(0, 0)),
+          ),
+        ),
+      ),
+    );
+    const file = Buffer.concat([
+      ftyp,
+      box("mdat", Buffer.alloc(16)),
+      box("moov", box("mvhd", Buffer.alloc(100)), trak("vide"), empty),
+    ]);
+    expect(extractAudioTrack(file)).toBe(undefined);
   });
 
   it("refuses sample tables that disagree with the chunk map", () => {

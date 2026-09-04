@@ -215,6 +215,8 @@ describe("stageCreativeInput clips", () => {
     expect(staged.map((input) => input.kind)).toEqual(["video", "audio"]);
     expect(staged[1]?.mimeType).toBe("audio/mp4");
     expect(staged[1]?.storageKey.endsWith(".m4a")).toBe(true);
+    expect(staged[1]?.soundtrackOf).toBe(staged[0]?.url);
+    expect(staged[0]?.soundtrackOf).toBeUndefined();
     expect(uploads).toHaveLength(2);
     expect(uploads[1]?.contentType).toBe("audio/mp4");
     expect(uploads[1]?.bytes.equals(m4a)).toBe(true);

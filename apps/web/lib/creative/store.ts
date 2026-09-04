@@ -58,6 +58,8 @@ export interface StagedInput {
   kind: StagedInputKind;
   mimeType: string;
   storageKey: string;
+  /** URL of the staged clip this audio was extracted from. */
+  soundtrackOf?: string;
 }
 
 const stagedKindOf = (mimeType: string): StagedInputKind =>
@@ -275,7 +277,7 @@ export async function stageCreativeInputs(
       soundtrack,
       "audio/mp4",
     );
-    return audio ? [staged, audio] : [staged];
+    return audio ? [staged, { ...audio, soundtrackOf: staged.url }] : [staged];
   } catch {
     return [staged];
   }

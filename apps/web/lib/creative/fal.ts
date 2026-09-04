@@ -133,6 +133,25 @@ const ofKind = (
 const urls = (media: readonly MediaInput[], max: number): string[] =>
   media.slice(0, max).map((item) => item.url);
 
+/**
+ * Audio the user attached outranks a soundtrack lifted out of a clip, and a
+ * lifted soundtrack only rides along with the clip it came from; once the
+ * clip falls past the cap its soundtrack goes with it.
+ */
+const audioUrls = (
+  audio: readonly MediaInput[],
+  videoUrls: readonly string[],
+): string[] =>
+  urls(
+    [
+      ...audio.filter((item) => !item.soundtrackOf),
+      ...audio.filter(
+        (item) => item.soundtrackOf && videoUrls.includes(item.soundtrackOf),
+      ),
+    ],
+    MAX_REFERENCE_CLIPS,
+  );
+
 const MENTIONS_REFERENCE = /\b(?:image|video|audio)\s+\d\b/i;
 
 const labels = (noun: string, count: number): string =>
@@ -203,7 +222,7 @@ export function buildFalZapRequest(
     const ratio = plan.params.aspect_ratio;
     const imageUrls = urls(images, MAX_REFERENCE_IMAGES);
     const videoUrls = urls(videos, MAX_REFERENCE_CLIPS);
-    const audioUrls = urls(audio, MAX_REFERENCE_CLIPS);
+    const soundUrls = audioUrls(audio, videoUrls);
     return {
       kind: "video",
       model: FAL_ZAP_REFERENCE_TO_VIDEO,
@@ -212,12 +231,12 @@ export function buildFalZapRequest(
         prompt: withReferenceLegend(shared.prompt, {
           images: imageUrls.length,
           videos: videoUrls.length,
-          audio: audioUrls.length,
+          audio: soundUrls.length,
         }),
         aspect_ratio: ratio === "auto" ? "adaptive" : ratio,
         ...(imageUrls.length > 0 ? { reference_image_urls: imageUrls } : {}),
         ...(videoUrls.length > 0 ? { reference_video_urls: videoUrls } : {}),
-        ...(audioUrls.length > 0 ? { reference_audio_urls: audioUrls } : {}),
+        ...(soundUrls.length > 0 ? { reference_audio_urls: soundUrls } : {}),
       },
     };
   }
