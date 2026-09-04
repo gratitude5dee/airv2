@@ -443,6 +443,38 @@ describe("calendar month mosaic", () => {
     expect(html).toContain('href="/mini/calendar?view=month&amp;month=0050-10"');
   });
 
+  it("disables month navigation at the representable year boundaries", async () => {
+    const minimum = await (
+      await calendar.render(context("?view=month&month=0000-01"))
+    ).text();
+    const minimumHeader = minimum.slice(
+      minimum.indexOf('<header class="mo-head"'),
+      minimum.indexOf("</header>", minimum.indexOf('<header class="mo-head"'))
+    );
+    expect(minimumHeader.match(/<a class="mo-nav"/g) ?? []).toHaveLength(1);
+    expect(minimumHeader).toContain(
+      '<span class="mo-nav is-disabled" aria-hidden="true">‹</span>'
+    );
+    expect(minimumHeader).toContain(
+      'href="/mini/calendar?view=month&amp;month=0000-02"'
+    );
+
+    const maximum = await (
+      await calendar.render(context("?view=month&month=9999-12"))
+    ).text();
+    const maximumHeader = maximum.slice(
+      maximum.indexOf('<header class="mo-head"'),
+      maximum.indexOf("</header>", maximum.indexOf('<header class="mo-head"'))
+    );
+    expect(maximumHeader.match(/<a class="mo-nav"/g) ?? []).toHaveLength(1);
+    expect(maximumHeader).toContain(
+      '<span class="mo-nav is-disabled" aria-hidden="true">›</span>'
+    );
+    expect(maximumHeader).toContain(
+      'href="/mini/calendar?view=month&amp;month=9999-11"'
+    );
+  });
+
   it("renders only owner-prefixed CRM photos", async () => {
     fixture.people = [
       {

@@ -636,15 +636,23 @@ function monthBody(
   };
   const prev = localDate(year, month - 1, 1);
   const next = localDate(year, month + 1, 1);
-  const prevKey = dayKey(prev).slice(0, 7);
-  const nextKey = dayKey(next).slice(0, 7);
+  const hasPrev = !(year === 0 && month === 0);
+  const hasNext = !(year === 9999 && month === 11);
+  const prevKey = hasPrev ? dayKey(prev).slice(0, 7) : "";
+  const nextKey = hasNext ? dayKey(next).slice(0, 7) : "";
   const dayLabel = (key: string): string =>
     new Date(`${key}T12:00:00`).toLocaleDateString([], {
       weekday: "long",
       month: "long",
       day: "numeric",
     });
-  const header = `<header class="mo-head"><a class="mo-nav" href="${esc(viewHref(basePath, "month", persona, undefined, prevKey))}" aria-label="${esc(new Date(`${prevKey}-01T12:00:00`).toLocaleDateString([], { month: "long", year: "numeric" }))}">‹</a><h2 class="mo-title">${esc(title)}</h2><a class="mo-nav" href="${esc(viewHref(basePath, "month", persona, undefined, nextKey))}" aria-label="${esc(new Date(`${nextKey}-01T12:00:00`).toLocaleDateString([], { month: "long", year: "numeric" }))}">›</a><p class="mo-sub">${esc(subCopy(counts))}</p>${monthPersonas(basePath, providerMeta, personaColors, persona, monthKey, selectedDay)}</header>`;
+  const prevNav = hasPrev
+    ? `<a class="mo-nav" href="${esc(viewHref(basePath, "month", persona, undefined, prevKey))}" aria-label="${esc(new Date(`${prevKey}-01T12:00:00`).toLocaleDateString([], { month: "long", year: "numeric" }))}">‹</a>`
+    : '<span class="mo-nav is-disabled" aria-hidden="true">‹</span>';
+  const nextNav = hasNext
+    ? `<a class="mo-nav" href="${esc(viewHref(basePath, "month", persona, undefined, nextKey))}" aria-label="${esc(new Date(`${nextKey}-01T12:00:00`).toLocaleDateString([], { month: "long", year: "numeric" }))}">›</a>`
+    : '<span class="mo-nav is-disabled" aria-hidden="true">›</span>';
+  const header = `<header class="mo-head">${prevNav}<h2 class="mo-title">${esc(title)}</h2>${nextNav}<p class="mo-sub">${esc(subCopy(counts))}</p>${monthPersonas(basePath, providerMeta, personaColors, persona, monthKey, selectedDay)}</header>`;
   const leading = first.getDay();
   const rowCount = Math.ceil((leading + daysInMonth) / 7);
   const rows: string[] = [];
@@ -742,6 +750,7 @@ const CALENDAR_CSS = `
 .mo-head{display:grid;grid-template-columns:44px 1fr 44px;align-items:center;text-align:center}
 .mo-title{grid-column:2;margin:0;font:600 1.15rem var(--font-ui);color:var(--ink)}
 .mo-nav{width:44px;height:44px;display:grid;place-items:center;color:var(--ink);font-size:1.8rem;text-decoration:none}
+.mo-nav.is-disabled{opacity:.35;pointer-events:none}
 .mo-head>.mo-nav:first-child{grid-column:1;grid-row:1}.mo-head>.mo-nav:last-of-type{grid-column:3;grid-row:1}
 .mo-sub{grid-column:1/-1;margin:.15rem 0 .55rem;color:var(--ink-muted);font:500 .68rem var(--font-ui)}
 .mo-personas{grid-column:1/-1;display:flex;gap:.35rem;overflow-x:auto;list-style:none;margin:0 0 .75rem;padding:.1rem 0;scrollbar-width:none}
