@@ -24,10 +24,19 @@ CREATE_FUNCTIONS_ENABLED = "0"
 CPU_MS = "50"
 
 # The live/draft/status pointer written by the control plane (lib/functions/manifest.ts).
-# Also holds the 2-minute jti replay set for token exchange.
 [[kv_namespaces]]
 binding = "AIR_MANIFEST"
 id = "REPLACE_WITH_CF_MANIFEST_KV_ID"
+
+# Exactly-once token exchange: one Durable Object per jti (single-writer),
+# self-deleting after 2× the token TTL. KV cannot give this guarantee.
+[[durable_objects.bindings]]
+name = "TOKEN_REPLAY"
+class_name = "TokenReplay"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["TokenReplay"]
 
 # Content-free CSP report counter per app per day (§17). Optional.
 [[kv_namespaces]]

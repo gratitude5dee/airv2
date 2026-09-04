@@ -38,7 +38,9 @@ create unique index mini_apps_publisher_appname_idx
   where owner_user_id is not null;
 
 -- 2. Immutable versions: one row per build, v<epoch>, digests only. Nothing
--- updates a row except published_at, retired_at and qa_score (§13.1).
+-- updates a row except published_at, retired_at, qa_score (§13.1) and the
+-- purged_at tombstone the retention sweep sets before it deletes artifacts,
+-- so a row can never point at storage that is already gone.
 create table miniapp_versions (
   id uuid primary key default gen_random_uuid(),
   app_id uuid not null references mini_apps(id) on delete cascade,
@@ -55,9 +57,12 @@ create table miniapp_versions (
   created_at timestamptz not null default now(),
   published_at timestamptz,
   retired_at timestamptz,
+  purged_at timestamptz,
   unique (app_id, version)
 );
 create index miniapp_versions_app_idx on miniapp_versions (app_id, created_at desc);
+create index miniapp_versions_purged_idx on miniapp_versions (purged_at)
+  where purged_at is not null;
 create index miniapp_versions_user_idx on miniapp_versions (user_id, created_at desc);
 
 -- 3. Functions: one optional backend per app. Holds names and ids, never

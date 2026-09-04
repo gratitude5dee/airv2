@@ -71,6 +71,7 @@ async function render(ctx: MiniAppContext): Promise<NextResponse> {
       );
       return withBaseHeaders(NextResponse.redirect(target, 303));
     }
+    return new NextResponse("forbidden", { status: 403 });
   }
   if (!r2Configured()) {
     return new NextResponse("app storage unavailable", { status: 503 });

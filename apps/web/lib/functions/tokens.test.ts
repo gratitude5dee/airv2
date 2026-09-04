@@ -7,7 +7,7 @@ import {
   mintRuntimeToken,
   verifyAppToken,
 } from "./tokens";
-import { anonPrincipal, appPrincipal } from "./identity";
+import { anonPrincipal, appPrincipal, guestPrincipal } from "./identity";
 import { appOriginUrl, appRoleFor, handoffUrl } from "./handoff";
 import { makeApp } from "@/app/mini/loader-test-utils";
 import { verifyToken } from "@/lib/miniapps/tokens";
@@ -108,6 +108,20 @@ describe("pseudonymous identity (CR9)", () => {
     expect(today).not.toContain("203.0.113.9");
     expect(today).not.toBe(anonPrincipal("203.0.113.9", "app-1", "2026-09-05"));
   });
+
+  it("anonymous principals are keyed, so an address cannot be confirmed offline", () => {
+    const withKey = anonPrincipal("203.0.113.9", "app-1", "2026-09-04");
+    process.env["APP_ORIGIN_SIGNING_KEY"] = "rotated";
+    expect(anonPrincipal("203.0.113.9", "app-1", "2026-09-04")).not.toBe(withKey);
+  });
+
+  it("guest principals derive from the grant, not the granting owner", () => {
+    const g = guestPrincipal("grant-1", "app-1");
+    expect(g).toMatch(/^g_[0-9a-f]{32}$/);
+    expect(g).toBe(guestPrincipal("grant-1", "app-1"));
+    expect(g).not.toBe(guestPrincipal("grant-2", "app-1"));
+    expect(g).not.toBe(guestPrincipal("grant-1", "app-2"));
+  });
 });
 
 describe("runtime tokens (CR6)", () => {
@@ -150,6 +164,30 @@ describe("mini → app-origin hand-off", () => {
   it("maps guest sessions to the guest role", () => {
     expect(appRoleFor({ userId: "u", resourceId: "r", role: "guest" })).toBe("guest");
     expect(appRoleFor({ userId: "u", resourceId: "r", role: "owner" })).toBe("owner");
+  });
+
+  it("a guest never inherits the owner's principal", () => {
+    // Guest cookies carry the granting owner's user id (grant.created_by).
+    const owner = handoffUrl(app, {
+      userId: "user-alice",
+      resourceId: "default",
+      role: "owner",
+    });
+    const guest = handoffUrl(app, {
+      userId: "user-alice",
+      resourceId: "default",
+      role: "guest",
+      grantId: "grant-77",
+    });
+    const ownerClaims = verifyAppToken(owner!.searchParams.get("t")!, "alice-notes");
+    const guestClaims = verifyAppToken(guest!.searchParams.get("t")!, "alice-notes");
+    expect(guestClaims?.role).toBe("guest");
+    expect(guestClaims?.principal).toBe(guestPrincipal("grant-77", "app-notes"));
+    expect(guestClaims?.principal).not.toBe(ownerClaims?.principal);
+    // A guest session with no grant to bind to gets no token at all.
+    expect(
+      handoffUrl(app, { userId: "user-alice", resourceId: "default", role: "guest" })
+    ).toBeNull();
   });
 
   it("is null when the app-origin lane is unconfigured", () => {

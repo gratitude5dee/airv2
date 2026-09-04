@@ -5,18 +5,23 @@
  * visitor, and no header ever carries a uuid, phone, email, wallet, or
  * username. Anonymous visitors get a daily-rotating hash of their address.
  */
-import { createHash, createHmac } from "node:crypto";
+import { createHmac } from "node:crypto";
 import { env } from "../env";
 
-export type Principal = `p_${string}` | `anon:${string}`;
+export type Principal = `p_${string}` | `g_${string}` | `anon:${string}`;
+
+function mac(...parts: string[]): string {
+  const key = env.appOriginSigningKey() ?? env.miniappSigningKey();
+  return createHmac("sha256", key).update(parts.join("\n")).digest("hex");
+}
 
 export function appPrincipal(userId: string, appId: string): Principal {
-  const key = env.appOriginSigningKey() ?? env.miniappSigningKey();
-  const mac = createHmac("sha256", key)
-    .update(`${appId}\n${userId}`)
-    .digest("hex")
-    .slice(0, 32);
-  return `p_${mac}`;
+  return `p_${mac("user", appId, userId).slice(0, 32)}`;
+}
+
+/** A guest link's identity is the grant that admitted it, not its creator. */
+export function guestPrincipal(grantId: string, appId: string): Principal {
+  return `g_${mac("grant", appId, grantId).slice(0, 32)}`;
 }
 
 export function anonPrincipal(
@@ -24,11 +29,7 @@ export function anonPrincipal(
   appId: string,
   day = new Date().toISOString().slice(0, 10)
 ): Principal {
-  const digest = createHash("sha256")
-    .update(`${appId}\n${day}\n${ip}`)
-    .digest("hex")
-    .slice(0, 16);
-  return `anon:${digest}`;
+  return `anon:${mac("anon", appId, day, ip).slice(0, 16)}`;
 }
 
 /** Header names the Dispatcher sets (and strips inbound) on `/api/*`. */

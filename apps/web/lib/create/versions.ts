@@ -65,6 +65,7 @@ export interface VersionRow {
   created_at: string;
   published_at: string | null;
   retired_at: string | null;
+  purged_at: string | null;
 }
 
 const FindingSchema = z.object({
@@ -90,12 +91,13 @@ const VersionSchema = z.object({
   created_at: z.string(),
   published_at: z.string().nullable(),
   retired_at: z.string().nullable(),
+  purged_at: z.string().nullable().default(null),
 });
 
 export const VERSION_COLUMNS =
   "id, app_id, user_id, version, lane, bundle_sha256, bundle_bytes, " +
   "file_count, worker_sha256, kit_version, findings, qa_score, created_at, " +
-  "published_at, retired_at";
+  "published_at, retired_at, purged_at";
 
 export function parseVersionRow(value: unknown): VersionRow | null {
   const parsed = VersionSchema.safeParse(value);
@@ -153,7 +155,12 @@ export async function recordVersion(
     })
     .select(VERSION_COLUMNS)
     .single();
-  if (error) throw new Error(`version insert failed: ${error.message}`);
+  if (error) {
+    if (error.code === "23505" || /duplicate key/i.test(error.message)) {
+      throw new VersionError("another upload is in progress; retry", 409);
+    }
+    throw new Error(`version insert failed: ${error.message}`);
+  }
   const row = parseVersionRow(data);
   if (!row) throw new Error("version insert returned an invalid row");
   return row;
@@ -176,23 +183,45 @@ export async function uploadVersion(
   if (!app.owner_user_id) throw new VersionError("app not found", 404);
   const files = readZip(zip);
   validateBundle(files);
+  // The ledger row is written first: the unique (app_id, version) index is
+  // what makes the R2 prefix exclusively ours, so two same-millisecond uploads
+  // can never interleave files under one version.
   const version = newVersionId();
-  await storeBundle(app.slug, version, files);
-  const deployed = await deployStaticVersion({
-    slug: app.slug,
-    version,
-    ownerUserId: app.owner_user_id,
-    files,
-    target: "draft",
-  });
-  await recordVersion(supabase, {
+  const row = await recordVersion(supabase, {
     appId: app.id,
     userId: app.owner_user_id,
     version,
     lane,
     files,
-    workerSha256: deployed?.workerSha256 ?? null,
   });
+  let deployed: { workerSha256: string } | null = null;
+  try {
+    await storeBundle(app.slug, version, files);
+    deployed = await deployStaticVersion({
+      slug: app.slug,
+      version,
+      ownerUserId: app.owner_user_id,
+      files,
+      target: "draft",
+    });
+    if (deployed) {
+      await supabase
+        .from("miniapp_versions")
+        .update({ worker_sha256: deployed.workerSha256 })
+        .eq("id", row.id);
+    }
+    // Published apps: the live Worker moves before the registry pointer, so
+    // a failed promotion leaves both origins on the previous version.
+    if (app.status === "published" && deployed) {
+      await promoteVersion(app, version);
+    }
+  } catch (error) {
+    await supabase.from("miniapp_versions").delete().eq("id", row.id);
+    if (r2Configured()) {
+      await deletePrefix(bundleKey(app.slug, version, "")).catch(() => 0);
+    }
+    throw error;
+  }
   const now = new Date().toISOString();
   const { error } = await supabase
     .from("mini_apps")
@@ -203,28 +232,26 @@ export async function uploadVersion(
       updated_at: now,
     })
     .eq("id", app.id);
-  if (error) throw new Error(`bundle version update failed: ${error.message}`);
-  if (app.status === "published" && deployed) {
-    await promoteVersion(app, version);
-    await supabase
-      .from("miniapp_versions")
-      .update({ published_at: now })
-      .eq("app_id", app.id)
-      .eq("version", version);
-    if (app.bundle_version && app.bundle_version !== version) {
-      await supabase
-        .from("miniapp_versions")
-        .update({ retired_at: now })
-        .eq("app_id", app.id)
-        .eq("version", app.bundle_version)
-        .is("retired_at", null);
+  if (error) {
+    // The Worker already moved; put it back so neither origin advertises a
+    // release the other does not serve, then surface the registry failure.
+    if (app.status === "published" && deployed && app.bundle_version) {
+      await promoteVersion(app, app.bundle_version).catch(() => null);
     }
-  } else if (app.status === "published") {
-    await syncManifest({
-      ...app,
-      bundle_version: version,
-      draft_version: version,
-    });
+    throw new Error(`bundle version update failed: ${error.message}`);
+  }
+  if (app.status === "published") {
+    // The ledger tracks what is live on whichever lane serves it; the legacy
+    // R2 renderer follows bundle_version too, so its releases are published
+    // and retired exactly like Worker releases (retention depends on it).
+    await stampLive(supabase, app.id, version, app.bundle_version, now);
+    if (!deployed) {
+      await syncManifest({
+        ...app,
+        bundle_version: version,
+        draft_version: version,
+      });
+    }
   }
   console.log(
     JSON.stringify({
@@ -250,6 +277,7 @@ export async function getVersion(
     .select(VERSION_COLUMNS)
     .eq("app_id", appId)
     .eq("version", version)
+    .is("purged_at", null)
     .maybeSingle();
   if (error) throw new Error(`version lookup failed: ${error.message}`);
   return parseVersionRow(data);
@@ -264,6 +292,7 @@ export async function listVersions(
     .from("miniapp_versions")
     .select(VERSION_COLUMNS)
     .eq("app_id", appId)
+    .is("purged_at", null)
     .order("created_at", { ascending: false })
     .limit(limit);
   if (error) throw new Error(`version list failed: ${error.message}`);
@@ -282,22 +311,31 @@ export async function pointLiveAt(
   version: string
 ): Promise<void> {
   const now = new Date().toISOString();
-  const previous = app.bundle_version;
   const { error } = await supabase
     .from("mini_apps")
     .update({ bundle_version: version, updated_at: now })
     .eq("id", app.id);
   if (error) throw new Error(`live pointer move failed: ${error.message}`);
+  await stampLive(supabase, app.id, version, app.bundle_version, now);
+}
+
+async function stampLive(
+  supabase: SupabaseClient,
+  appId: string,
+  version: string,
+  previous: string | null,
+  now: string
+): Promise<void> {
   await supabase
     .from("miniapp_versions")
     .update({ published_at: now, retired_at: null })
-    .eq("app_id", app.id)
+    .eq("app_id", appId)
     .eq("version", version);
   if (previous && previous !== version) {
     await supabase
       .from("miniapp_versions")
       .update({ retired_at: now })
-      .eq("app_id", app.id)
+      .eq("app_id", appId)
       .eq("version", previous)
       .is("retired_at", null);
   }
@@ -305,9 +343,10 @@ export async function pointLiveAt(
 
 /**
  * §13.3 rollback: an owner action that moves `bundle_version`, the live
- * script, and the KV manifest to a prior version. The caller has already
- * resolved `app` through `ownedApp`. Refuses versions this app never built
- * and versions whose artifacts were already garbage-collected.
+ * script, and the KV manifest to a prior *published* version. The caller has
+ * already resolved `app` through `ownedApp`. Refuses versions this app never
+ * built, drafts that never went live, and versions whose artifacts were
+ * already garbage-collected.
  */
 export async function rollbackTo(
   supabase: SupabaseClient,
@@ -320,6 +359,9 @@ export async function rollbackTo(
   }
   const target = await getVersion(supabase, app.id, version);
   if (!target) throw new VersionError("version not found", 404);
+  if (!target.published_at) {
+    throw new VersionError("only a previously published version can go live", 409);
+  }
   if (target.version === app.bundle_version) {
     throw new VersionError("that version is already live", 409);
   }
@@ -345,69 +387,124 @@ interface SweepCandidate {
   version: string;
   published_at: string | null;
   retired_at: string | null;
+  purged_at: string | null;
   created_at: string;
   slug: string | null;
   bundle_version: string | null;
   draft_version: string | null;
 }
 
+const SWEEP_COLUMNS =
+  "id, app_id, version, published_at, retired_at, purged_at, created_at, " +
+  "mini_apps!inner(slug, bundle_version, draft_version)";
+export const SWEEP_PAGE = 1000;
+
+function toSweepCandidate(raw: unknown): SweepCandidate | null {
+  const row = raw as Record<string, unknown>;
+  const joined = (Array.isArray(row["mini_apps"])
+    ? row["mini_apps"][0]
+    : row["mini_apps"]) as Record<string, unknown> | undefined;
+  if (
+    typeof row["id"] !== "string" ||
+    typeof row["app_id"] !== "string" ||
+    typeof row["version"] !== "string" ||
+    typeof row["created_at"] !== "string"
+  ) {
+    return null;
+  }
+  const str = (value: unknown): string | null =>
+    typeof value === "string" ? value : null;
+  return {
+    id: row["id"],
+    app_id: row["app_id"],
+    version: row["version"],
+    created_at: row["created_at"],
+    published_at: str(row["published_at"]),
+    retired_at: str(row["retired_at"]),
+    purged_at: str(row["purged_at"]),
+    slug: str(joined?.["slug"]),
+    bundle_version: str(joined?.["bundle_version"]),
+    draft_version: str(joined?.["draft_version"]),
+  };
+}
+
+/**
+ * Every version row, newest first, in keyset pages — the per-app draft count
+ * needs the global order, and a fixed cap would strand rows older than it.
+ */
+async function* allVersions(
+  supabase: SupabaseClient
+): AsyncGenerator<SweepCandidate> {
+  let before: string | null = null;
+  for (;;) {
+    let query = supabase
+      .from("miniapp_versions")
+      .select(SWEEP_COLUMNS)
+      .order("created_at", { ascending: false })
+      .limit(SWEEP_PAGE);
+    if (before) query = query.lt("created_at", before);
+    const { data, error } = await query;
+    if (error) throw new Error(`version sweep read failed: ${error.message}`);
+    const rows = data ?? [];
+    for (const raw of rows) {
+      const row = toSweepCandidate(raw);
+      if (row) yield row;
+    }
+    if (rows.length < SWEEP_PAGE) return;
+    const last = toSweepCandidate(rows[rows.length - 1]);
+    if (!last || last.created_at === before) return;
+    before = last.created_at;
+  }
+}
+
+/**
+ * Remove one doomed version in tombstone order: the row is marked purged
+ * first (rollback and the ledger stop seeing it), then the R2 prefix goes,
+ * then the row. A crash between any two steps leaves a tombstone the next
+ * sweep resumes from — never a selectable row whose artifacts are gone.
+ */
+async function purgeVersion(
+  supabase: SupabaseClient,
+  row: SweepCandidate,
+  now: Date
+): Promise<void> {
+  if (!row.purged_at) {
+    const { error } = await supabase
+      .from("miniapp_versions")
+      .update({ purged_at: now.toISOString() })
+      .eq("id", row.id)
+      .is("purged_at", null);
+    if (error) throw new Error(error.message);
+  }
+  if (row.slug && r2Configured()) {
+    await deletePrefix(bundleKey(row.slug, row.version, ""));
+  }
+  const { error } = await supabase
+    .from("miniapp_versions")
+    .delete()
+    .eq("id", row.id);
+  if (error) throw new Error(error.message);
+}
+
 /**
  * Retention sweep (cron): delete R2 artifacts and rows for superseded
  * versions past the window and drafts beyond the five newest, never touching
- * the live or draft pointer of any app. Returns the number of versions
+ * the live or draft pointer of any app. Tombstoned rows from an earlier,
+ * interrupted sweep are finished first. Returns the number of versions
  * removed.
  */
 export async function sweepVersions(
   supabase: SupabaseClient,
   now = new Date()
 ): Promise<number> {
-  const { data, error } = await supabase
-    .from("miniapp_versions")
-    .select(
-      "id, app_id, version, published_at, retired_at, created_at, " +
-        "mini_apps!inner(slug, bundle_version, draft_version)"
-    )
-    .order("created_at", { ascending: false })
-    .limit(5000);
-  if (error) throw new Error(`version sweep read failed: ${error.message}`);
-  const candidates: SweepCandidate[] = [];
-  for (const raw of data ?? []) {
-    const row = raw as unknown as Record<string, unknown>;
-    const joined = (Array.isArray(row["mini_apps"])
-      ? row["mini_apps"][0]
-      : row["mini_apps"]) as Record<string, unknown> | undefined;
-    if (
-      typeof row["id"] !== "string" ||
-      typeof row["app_id"] !== "string" ||
-      typeof row["version"] !== "string" ||
-      typeof row["created_at"] !== "string"
-    ) {
-      continue;
-    }
-    candidates.push({
-      id: row["id"],
-      app_id: row["app_id"],
-      version: row["version"],
-      created_at: row["created_at"],
-      published_at:
-        typeof row["published_at"] === "string" ? row["published_at"] : null,
-      retired_at:
-        typeof row["retired_at"] === "string" ? row["retired_at"] : null,
-      slug: typeof joined?.["slug"] === "string" ? joined["slug"] : null,
-      bundle_version:
-        typeof joined?.["bundle_version"] === "string"
-          ? joined["bundle_version"]
-          : null,
-      draft_version:
-        typeof joined?.["draft_version"] === "string"
-          ? joined["draft_version"]
-          : null,
-    });
-  }
   const cutoff = now.getTime() - RETAIN_SUPERSEDED_DAYS * 86_400_000;
   const draftsSeen = new Map<string, number>();
   const doomed: SweepCandidate[] = [];
-  for (const row of candidates) {
+  for await (const row of allVersions(supabase)) {
+    if (row.purged_at) {
+      doomed.push(row);
+      continue;
+    }
     if (row.version === row.bundle_version || row.version === row.draft_version) {
       continue;
     }
@@ -421,24 +518,18 @@ export async function sweepVersions(
   }
   let removed = 0;
   for (const row of doomed) {
-    if (row.slug && r2Configured()) {
-      await deletePrefix(bundleKey(row.slug, row.version, ""));
-    }
-    const { error: deleteError } = await supabase
-      .from("miniapp_versions")
-      .delete()
-      .eq("id", row.id);
-    if (deleteError) {
+    try {
+      await purgeVersion(supabase, row, now);
+      removed += 1;
+    } catch (error) {
       console.error(
         JSON.stringify({
-          msg: "version sweep delete failed",
+          msg: "version sweep purge failed",
           version: row.version,
-          error: deleteError.message,
+          error: error instanceof Error ? error.message : String(error),
         })
       );
-      continue;
     }
-    removed += 1;
   }
   if (removed > 0) {
     console.log(JSON.stringify({ msg: "version sweep", removed }));

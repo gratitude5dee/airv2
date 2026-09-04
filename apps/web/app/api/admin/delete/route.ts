@@ -20,6 +20,7 @@ import {
 } from "@/lib/composio/client";
 import { ASSETS_BUCKET, userPrefix } from "@/lib/assets/keys";
 import { deletePrefix, r2Configured } from "@/lib/storage/r2";
+import { appOriginLaneReady, teardownAppOrigin } from "@/lib/functions/deploy";
 import { openAdsKey, updateCampaign } from "@/lib/ads/openai";
 import {
   V9_SET_NULL_TABLES,
@@ -54,6 +55,34 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const steps: Record<string, string> = {};
+
+  // V11 CR16: a deleted publisher must never keep a serving origin, so the
+  // app origins (live + draft Workers, KV pointer) go before anything else
+  // is touched. Teardown is idempotent; if any app's origin cannot be torn
+  // down the whole deletion aborts here, with nothing destroyed yet, and the
+  // operator retries once the vendor is back.
+  const { data: ownedApps } = await supabase
+    .from("mini_apps")
+    .select("slug")
+    .eq("owner_user_id", userId);
+  const ownedSlugs = (ownedApps ?? []).map((app) => app.slug as string);
+  if (ownedSlugs.length > 0 && appOriginLaneReady()) {
+    const failed: string[] = [];
+    for (const slug of ownedSlugs) {
+      try {
+        await teardownAppOrigin(slug);
+      } catch {
+        failed.push(slug);
+      }
+    }
+    if (failed.length > 0) {
+      steps["app_origin"] = `error: ${failed.length} of ${ownedSlugs.length} app(s) still serving; nothing deleted`;
+      return NextResponse.json({ ok: false, steps, retry: true }, { status: 502 });
+    }
+    steps["app_origin"] = `tore down ${ownedSlugs.length} app(s)`;
+  } else {
+    steps["app_origin"] = ownedSlugs.length > 0 ? "lane not configured" : "none";
+  }
 
   // CM8: neutralize live state before rows disappear. Unfired slots are
   // cancelled so a sweep racing this deletion cannot publish; active
@@ -232,19 +261,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // the user's u/<username>/ prefix — delete each owned app's bundle tree
   // before the mini_apps rows cascade away (the slugs are the only pointer).
   try {
-    const { data: ownedApps } = await supabase
-      .from("mini_apps")
-      .select("slug")
-      .eq("owner_user_id", userId);
-    const slugs = (ownedApps ?? []).map((app) => app.slug as string);
-    if (slugs.length > 0 && r2Configured()) {
+    if (ownedSlugs.length > 0 && r2Configured()) {
       let removed = 0;
-      for (const slug of slugs) {
+      for (const slug of ownedSlugs) {
         removed += await deletePrefix(`apps/${slug}/`);
       }
-      steps["bundles"] = `removed ${removed} object(s) across ${slugs.length} app(s)`;
+      steps["bundles"] = `removed ${removed} object(s) across ${ownedSlugs.length} app(s)`;
     } else {
-      steps["bundles"] = slugs.length > 0 ? "r2 not configured" : "none";
+      steps["bundles"] = ownedSlugs.length > 0 ? "r2 not configured" : "none";
     }
   } catch (error) {
     steps["bundles"] = `error: ${error instanceof Error ? error.message : String(error)}`;

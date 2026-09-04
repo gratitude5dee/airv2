@@ -4,8 +4,11 @@
 //  1. `/__air/health` and `/__air/csp` are answered here (content-free).
 //  2. `?t=<app token>` is exchanged exactly once for the host-only
 //     `__Host-air_app` cookie and a 303 to the same path without `?t=` (§6.4).
-//     Otherwise the cookie is verified. No cookie → 401 that links back to
-//     the mini origin, which re-runs the gate chain.
+//     "Once" is enforced by the TOKEN_REPLAY Durable Object, one instance per
+//     jti: its storage is single-writer, so two concurrent redemptions of the
+//     same token cannot both pass (KV is eventually consistent and cannot
+//     promise that). Otherwise the cookie is verified. No cookie → 401 that
+//     links back to the mini origin, which re-runs the gate chain.
 //  3. The signed manifest `app:<slug>` in AIR_MANIFEST decides: suspended or
 //     unpublished → 404 (unless an owner carries `draft`), and which script
 //     (`<slug>` or `<slug>-draft`) serves.
@@ -19,6 +22,8 @@
 // Vercel) and no platform credential. It never talks to Supabase, R2, the Box,
 // or the mini origin; suspension reaches it only through the manifest (CR16).
 
+import { DurableObject } from "cloudflare:workers";
+
 const TOKEN_TTL_S = 60;
 const COOKIE_TTL_S = 15 * 60;
 const COOKIE_NAME = "__Host-air_app";
@@ -26,6 +31,31 @@ const MANIFEST_TTL_S = 60;
 const ROLES = new Set(["owner", "guest", "anon", "agent"]);
 
 const encoder = new TextEncoder();
+
+/**
+ * One instance per token jti. `redeem` is atomic: a Durable Object processes
+ * one request at a time and storage reads/writes inside it are not
+ * interleaved with other requests, so the first caller gets `true` and every
+ * later (or concurrent) caller gets `false`. The instance erases itself once
+ * the token could no longer verify anyway.
+ */
+export class TokenReplay extends DurableObject {
+  async redeem(ttlSeconds) {
+    if (await this.ctx.storage.get("used")) return false;
+    await this.ctx.storage.put("used", 1);
+    await this.ctx.storage.setAlarm(Date.now() + ttlSeconds * 2 * 1000);
+    return true;
+  }
+
+  async alarm() {
+    await this.ctx.storage.deleteAll();
+  }
+}
+
+async function redeemOnce(env, jti) {
+  const stub = env.TOKEN_REPLAY.get(env.TOKEN_REPLAY.idFromName(jti));
+  return stub.redeem(TOKEN_TTL_S);
+}
 
 function b64urlDecode(text) {
   const pad = "=".repeat((4 - (text.length % 4)) % 4);
@@ -266,11 +296,7 @@ export default {
     if (t) {
       const claims = await verifyAppToken(env.APP_ORIGIN_SIGNING_KEY, t, slug, now);
       if (!claims) return unauthorized(env, slug);
-      const jtiKey = `jti:${claims.jti}`;
-      if (await env.AIR_MANIFEST.get(jtiKey)) return unauthorized(env, slug);
-      ctx.waitUntil(
-        env.AIR_MANIFEST.put(jtiKey, "1", { expirationTtl: TOKEN_TTL_S * 2 })
-      );
+      if (!(await redeemOnce(env, claims.jti))) return unauthorized(env, slug);
       url.searchParams.delete("t");
       return new Response(null, {
         status: 303,

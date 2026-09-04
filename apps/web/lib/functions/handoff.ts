@@ -13,7 +13,7 @@ import type { MiniSession } from "../miniapps/gates";
 import { appOriginHost } from "../miniapps/nested";
 import type { RegistryApp } from "../miniapps/registry";
 import { appOriginLaneReady } from "./deploy";
-import { appPrincipal } from "./identity";
+import { appPrincipal, guestPrincipal, type Principal } from "./identity";
 import { mintAppToken, type AppRole } from "./tokens";
 
 export const ENTER_PATH = "/__air/enter";
@@ -38,11 +38,24 @@ export function appRoleFor(session: MiniSession): AppRole {
   return session.role === "guest" ? "guest" : "owner";
 }
 
+/**
+ * A guest session carries the granting owner's user id (the grant is what
+ * admitted it), so its principal is derived from the grant, never from that id.
+ */
+export function principalFor(app: RegistryApp, session: MiniSession): Principal | null {
+  if (session.role === "guest") {
+    return session.grantId ? guestPrincipal(session.grantId, app.id) : null;
+  }
+  return appPrincipal(session.userId, app.id);
+}
+
 /** The hand-off URL for an approved session, or null when the lane is off. */
 export function handoffUrl(app: RegistryApp, session: MiniSession): URL | null {
+  const principal = principalFor(app, session);
+  if (!principal) return null;
   const token = mintAppToken({
     app: app.slug,
-    principal: appPrincipal(session.userId, app.id),
+    principal,
     role: appRoleFor(session),
     resource: session.resourceId,
   });

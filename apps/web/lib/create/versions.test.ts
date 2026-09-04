@@ -11,8 +11,15 @@ vi.mock("../functions/deploy", () => deploy);
 const r2 = vi.hoisted(() => ({
   deletePrefix: vi.fn(async () => 0),
   r2Configured: vi.fn(() => true),
+  putObject: vi.fn(async () => undefined),
 }));
 vi.mock("../storage/r2", () => r2);
+
+const bundles = vi.hoisted(() => ({ storeBundle: vi.fn(async () => undefined) }));
+vi.mock("../miniapps/bundles", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../miniapps/bundles")>()),
+  storeBundle: bundles.storeBundle,
+}));
 
 const limits = vi.hoisted(() => ({
   recordOpsEvent: vi.fn(async () => undefined),
@@ -22,6 +29,7 @@ vi.mock("../security/limits", () => limits);
 import {
   RETAIN_DRAFTS,
   RETAIN_SUPERSEDED_DAYS,
+  SWEEP_PAGE,
   VERSION_RE,
   VersionError,
   bundleDigest,
@@ -31,6 +39,7 @@ import {
   recordVersion,
   rollbackTo,
   sweepVersions,
+  uploadVersion,
 } from "./versions";
 import { makeApp } from "@/app/mini/loader-test-utils";
 
@@ -52,6 +61,7 @@ interface VersionRowLike {
   created_at: string;
   published_at: string | null;
   retired_at: string | null;
+  purged_at: string | null;
 }
 
 interface AppRowLike {
@@ -65,9 +75,19 @@ interface AppRowLike {
 const db = {
   versions: [] as VersionRowLike[],
   apps: [] as AppRowLike[],
+  /** Make the next matching op fail, e.g. { table: "miniapp_versions", op: "delete" }. */
+  fail: null as { table: string; op: "insert" | "update" | "delete" } | null,
 };
 
 let seq = 0;
+
+function failing(table: string, op: "insert" | "update" | "delete") {
+  if (db.fail && db.fail.table === table && db.fail.op === op) {
+    db.fail = null;
+    return { data: null, error: { message: `${op} on ${table} refused` } };
+  }
+  return null;
+}
 
 type Filter = (row: Record<string, unknown>) => boolean;
 
@@ -102,6 +122,8 @@ function query(table: "miniapp_versions" | "mini_apps") {
 
   const execute = () => {
     if (pendingInsert) {
+      const refused = failing(table, "insert");
+      if (refused) return refused;
       const row = {
         id: `ver-${++seq}`,
         created_at: new Date(1_700_000_000_000 + seq * 1000).toISOString(),
@@ -111,6 +133,7 @@ function query(table: "miniapp_versions" | "mini_apps") {
         qa_score: null,
         published_at: null,
         retired_at: null,
+        purged_at: null,
         ...pendingInsert,
       } as unknown as VersionRowLike;
       if (
@@ -118,17 +141,24 @@ function query(table: "miniapp_versions" | "mini_apps") {
           (v) => v.app_id === row.app_id && v.version === row.version
         )
       ) {
-        return { data: null, error: { message: "duplicate key (app_id, version)" } };
+        return {
+          data: null,
+          error: { code: "23505", message: "duplicate key (app_id, version)" },
+        };
       }
       db.versions.push(row);
       return { data: row, error: null };
     }
     const matched = rows();
     if (pendingUpdate) {
+      const refused = failing(table, "update");
+      if (refused) return refused;
       for (const row of matched) Object.assign(row, pendingUpdate);
       return { data: matched, error: null };
     }
     if (pendingDelete) {
+      const refused = failing(table, "delete");
+      if (refused) return refused;
       const ids = new Set(matched.map((r) => r["id"]));
       if (table === "miniapp_versions") {
         db.versions = db.versions.filter((v) => !ids.has(v.id));
@@ -169,6 +199,10 @@ function query(table: "miniapp_versions" | "mini_apps") {
     },
     is: (column: string, value: unknown) => {
       filters.push((row) => row[column] === value);
+      return builder;
+    },
+    lt: (column: string, value: string) => {
+      filters.push((row) => String(row[column]) < value);
       return builder;
     },
     order: (column: string, opts?: { ascending?: boolean }) => {
@@ -218,6 +252,7 @@ const app = makeApp({
 beforeEach(() => {
   seq = 0;
   db.versions = [];
+  db.fail = null;
   db.apps = [
     {
       id: "app-notes",
@@ -227,11 +262,54 @@ beforeEach(() => {
       updated_at: "2026-01-01T00:00:00.000Z",
     },
   ];
-  deploy.promoteVersion.mockClear();
+  deploy.deployStaticVersion.mockReset();
+  deploy.deployStaticVersion.mockResolvedValue(null);
+  deploy.promoteVersion.mockReset();
+  deploy.promoteVersion.mockResolvedValue(undefined);
   deploy.syncManifest.mockClear();
+  bundles.storeBundle.mockReset();
+  bundles.storeBundle.mockResolvedValue(undefined);
   r2.deletePrefix.mockClear();
   limits.recordOpsEvent.mockClear();
 });
+
+/** Minimal stored-only zip writer. */
+function makeZip(entries: { name: string; data: Buffer }[]): Buffer {
+  const locals: Buffer[] = [];
+  const centrals: Buffer[] = [];
+  let offset = 0;
+  for (const entry of entries) {
+    const name = Buffer.from(entry.name, "utf8");
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt32LE(entry.data.length, 18);
+    local.writeUInt32LE(entry.data.length, 22);
+    local.writeUInt16LE(name.length, 26);
+    const localFull = Buffer.concat([local, name, entry.data]);
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt32LE(entry.data.length, 20);
+    central.writeUInt32LE(entry.data.length, 24);
+    central.writeUInt16LE(name.length, 28);
+    central.writeUInt32LE(offset, 42);
+    centrals.push(Buffer.concat([central, name]));
+    locals.push(localFull);
+    offset += localFull.length;
+  }
+  const centralBytes = Buffer.concat(centrals);
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(entries.length, 8);
+  eocd.writeUInt16LE(entries.length, 10);
+  eocd.writeUInt32LE(centralBytes.length, 12);
+  eocd.writeUInt32LE(offset, 16);
+  return Buffer.concat([...locals, centralBytes, eocd]);
+}
+
+const zip = makeZip([
+  { name: "index.html", data: Buffer.from("<!doctype html><h1>hi</h1>") },
+  { name: "app.js", data: Buffer.from("console.log(1)") },
+]);
 
 /* ------------------------------------------------------------ tests */
 
@@ -287,7 +365,7 @@ describe("recordVersion (CR14: metadata only)", () => {
       files,
     };
     await recordVersion(supabase, input);
-    await expect(recordVersion(supabase, input)).rejects.toThrow(/duplicate/);
+    await expect(recordVersion(supabase, input)).rejects.toMatchObject({ status: 409 });
   });
 
   it("parseVersionRow rejects malformed rows", () => {
@@ -311,6 +389,84 @@ describe("recordVersion (CR14: metadata only)", () => {
         retired_at: null,
       })
     ).toBeNull();
+  });
+
+  it("reports a same-millisecond collision as a retryable 409", async () => {
+    const input = {
+      appId: "app-notes", userId: "user-alice", version: "v1700000000002", lane: "push" as const, files,
+    };
+    await recordVersion(supabase, input);
+    await expect(recordVersion(supabase, input)).rejects.toMatchObject({ status: 409 });
+  });
+});
+
+describe("uploadVersion", () => {
+  it("reserves the ledger row before touching R2, so a collision never shares a prefix", async () => {
+    db.versions.push({
+      id: "ver-live", app_id: "app-notes", user_id: "user-alice",
+      version: newVersionId(), lane: "push", bundle_sha256: "0".repeat(64),
+      bundle_bytes: 1, file_count: 1, worker_sha256: null, kit_version: null,
+      findings: [], qa_score: null, created_at: "2026-01-01T00:00:00.000Z",
+      published_at: null, retired_at: null, purged_at: null,
+    });
+    // Freeze the clock so the next id collides with the row above.
+    const spy = vi.spyOn(Date, "now").mockReturnValue(Number(db.versions[0]!.version.slice(1)));
+    try {
+      await expect(uploadVersion(supabase, app, zip)).rejects.toMatchObject({ status: 409 });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(bundles.storeBundle).not.toHaveBeenCalled();
+    expect(db.versions).toHaveLength(1);
+  });
+
+  it("legacy lane: a published upload is stamped published and retires its predecessor", async () => {
+    db.versions.push({
+      id: "ver-prev", app_id: "app-notes", user_id: "user-alice",
+      version: "v1700000000001", lane: "push", bundle_sha256: "0".repeat(64),
+      bundle_bytes: 1, file_count: 1, worker_sha256: null, kit_version: null,
+      findings: [], qa_score: null, created_at: "2026-01-01T00:00:00.000Z",
+      published_at: "2026-01-01T00:00:00.000Z", retired_at: null, purged_at: null,
+    });
+    const version = await uploadVersion(supabase, app, zip);
+    const row = db.versions.find((v) => v.version === version)!;
+    expect(row.published_at).not.toBeNull();
+    expect(db.versions[0]!.retired_at).not.toBeNull();
+    expect(db.apps[0]!.bundle_version).toBe(version);
+    expect(deploy.promoteVersion).not.toHaveBeenCalled();
+    expect(deploy.syncManifest).toHaveBeenCalled();
+  });
+
+  it("a failed promotion leaves the registry, ledger and R2 on the previous release", async () => {
+    deploy.deployStaticVersion.mockResolvedValue({ workerSha256: "a".repeat(64) });
+    deploy.promoteVersion.mockRejectedValue(new Error("vendor 502"));
+    await expect(uploadVersion(supabase, app, zip)).rejects.toThrow(/vendor 502/);
+    expect(db.apps[0]!.bundle_version).toBe("v1700000000001");
+    expect(db.versions).toHaveLength(0);
+    expect(r2.deletePrefix).toHaveBeenCalledWith(expect.stringContaining("alice-notes/v"));
+  });
+
+  it("a failed registry move after promotion puts the Worker back on the previous release", async () => {
+    deploy.deployStaticVersion.mockResolvedValue({ workerSha256: "a".repeat(64) });
+    db.fail = { table: "mini_apps", op: "update" };
+    await expect(uploadVersion(supabase, app, zip)).rejects.toThrow(/bundle version update failed/);
+    expect(deploy.promoteVersion).toHaveBeenCalledTimes(2);
+    expect(deploy.promoteVersion).toHaveBeenLastCalledWith(app, "v1700000000001");
+    expect(db.apps[0]!.bundle_version).toBe("v1700000000001");
+  });
+
+  it("app-origin lane: promotes the Worker before moving the registry pointer", async () => {
+    deploy.deployStaticVersion.mockResolvedValue({ workerSha256: "a".repeat(64) });
+    const order: string[] = [];
+    deploy.promoteVersion.mockImplementation(async () => {
+      order.push(`promote:${db.apps[0]!.bundle_version}`);
+    });
+    const version = await uploadVersion(supabase, app, zip);
+    expect(order).toEqual(["promote:v1700000000001"]);
+    expect(db.apps[0]!.bundle_version).toBe(version);
+    const row = db.versions.find((v) => v.version === version)!;
+    expect(row.worker_sha256).toBe("a".repeat(64));
+    expect(row.published_at).not.toBeNull();
   });
 });
 
@@ -381,6 +537,21 @@ describe("rollbackTo (§13.3)", () => {
     expect(deploy.promoteVersion).not.toHaveBeenCalled();
   });
 
+  it("refuses drafts that were never published and tombstoned rows", async () => {
+    await seed();
+    await recordVersion(supabase, {
+      appId: "app-notes", userId: "user-alice", version: "v1700000000002", lane: "push", files,
+    });
+    await expect(rollbackTo(supabase, app, "v1700000000002")).rejects.toMatchObject({
+      status: 409,
+    });
+    db.versions[0]!.purged_at = "2026-03-01T00:00:00.000Z";
+    await expect(rollbackTo(supabase, app, "v1700000000000")).rejects.toMatchObject({
+      status: 404,
+    });
+    expect(deploy.promoteVersion).not.toHaveBeenCalled();
+  });
+
   it("is owner-only and published-only", async () => {
     await seed();
     await expect(
@@ -417,6 +588,7 @@ describe("sweepVersions (§13.1 retention)", () => {
       created_at: new Date(Number(v.slice(1))).toISOString(),
       published_at: null,
       retired_at: null,
+      purged_at: null,
       ...extra,
     };
     db.versions.push(row);
@@ -471,5 +643,47 @@ describe("sweepVersions (§13.1 retention)", () => {
     for (let i = 0; i < RETAIN_DRAFTS; i++) version(`v170000000050${i}`, {}, "app-other");
     expect(await sweepVersions(supabase, now)).toBe(0);
     expect(db.versions).toHaveLength(RETAIN_DRAFTS * 2);
+  });
+
+  it("tombstones before deleting artifacts; a failed row delete leaves no selectable row", async () => {
+    db.apps[0]!.bundle_version = "v1700000000100";
+    version("v1700000000100", { published_at: "2026-01-01T00:00:00.000Z" });
+    const old = version("v1700000000050", {
+      published_at: "2025-01-01T00:00:00.000Z",
+      retired_at: new Date(now.getTime() - (RETAIN_SUPERSEDED_DAYS + 1) * day).toISOString(),
+    });
+    db.fail = { table: "miniapp_versions", op: "delete" };
+    expect(await sweepVersions(supabase, now)).toBe(0);
+    expect(old.purged_at).not.toBeNull();
+    expect(r2.deletePrefix).toHaveBeenCalledTimes(1);
+    await expect(rollbackTo(supabase, { ...app, bundle_version: "v1700000000100" }, old.version))
+      .rejects.toMatchObject({ status: 404 });
+    // The next sweep finishes the job.
+    expect(await sweepVersions(supabase, now)).toBe(1);
+    expect(db.versions.map((v) => v.version)).toEqual(["v1700000000100"]);
+  });
+
+  it("a failed R2 delete leaves the tombstone for the next sweep and never the artifacts orphaned", async () => {
+    db.apps[0]!.bundle_version = "v1700000000100";
+    version("v1700000000100", { published_at: "2026-01-01T00:00:00.000Z" });
+    const old = version("v1700000000050", {
+      published_at: "2025-01-01T00:00:00.000Z",
+      retired_at: new Date(now.getTime() - (RETAIN_SUPERSEDED_DAYS + 1) * day).toISOString(),
+    });
+    r2.deletePrefix.mockRejectedValueOnce(new Error("r2 down"));
+    expect(await sweepVersions(supabase, now)).toBe(0);
+    expect(old.purged_at).not.toBeNull();
+    expect(db.versions).toHaveLength(2);
+    expect(await sweepVersions(supabase, now)).toBe(1);
+    expect(r2.deletePrefix).toHaveBeenCalledTimes(2);
+  });
+
+  it("pages through every row instead of stopping at a fixed cap", async () => {
+    const total = SWEEP_PAGE * 2 + 7;
+    for (let i = 0; i < total; i++) {
+      version(`v${String(1_600_000_000_000 + i * 1000)}`);
+    }
+    expect(await sweepVersions(supabase, now)).toBe(total - RETAIN_DRAFTS);
+    expect(db.versions).toHaveLength(RETAIN_DRAFTS);
   });
 });
