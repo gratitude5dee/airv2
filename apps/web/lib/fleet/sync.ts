@@ -32,10 +32,16 @@ export const DEFAULT_WAVE_SIZE = 3;
 const SYNC_TIMEOUT_SECONDS = 600;
 const HERMES_STEP_TIMEOUT_SECONDS = 600;
 const ARTIFACT_URL_TTL_SECONDS = 900;
-// A claim is a lease. The sweep route is killed at maxDuration (800s), so a
-// 'syncing' row whose started_at is older than this cannot belong to a live
-// invocation — its finally block never ran — and is safe to hand back.
-export const CLAIM_LEASE_MS = 15 * 60_000;
+// A claim is a lease. The sweep route is killed at maxDuration, and the one
+// box command it may have had in flight keeps running on the box until the
+// provider's cap kills it too, so a 'syncing' row whose started_at is older
+// than both together has no live owner anywhere and is safe to hand back.
+const SWEEP_MAX_DURATION_SECONDS = 800;
+export const CLAIM_LEASE_MS =
+  (SWEEP_MAX_DURATION_SECONDS +
+    Math.max(SYNC_TIMEOUT_SECONDS, HERMES_STEP_TIMEOUT_SECONDS) +
+    60) *
+  1000;
 
 export interface SyncJob {
   id: string;
