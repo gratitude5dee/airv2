@@ -230,7 +230,13 @@ export async function setPublishStatus(
     })
     .eq("id", app.id)
     .eq("owner_user_id", userId);
-  if (error) throw new Error(`status flip failed: ${error.message}`);
+  if (error) {
+    // The manifest already moved; put it back to what the registry still
+    // says so a delist that failed to flip does not leave the app dark (or a
+    // publish that failed to flip serving).
+    await syncManifest(app).catch(() => false);
+    throw new Error(`status flip failed: ${error.message}`);
+  }
   if (status === "published" && version) {
     await syncManifest({ ...app, status: "published" });
   }

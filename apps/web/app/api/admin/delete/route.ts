@@ -61,10 +61,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // is touched. Teardown is idempotent; if any app's origin cannot be torn
   // down the whole deletion aborts here, with nothing destroyed yet, and the
   // operator retries once the vendor is back.
-  const { data: ownedApps } = await supabase
+  const { data: ownedApps, error: ownedAppsError } = await supabase
     .from("mini_apps")
     .select("slug")
     .eq("owner_user_id", userId);
+  if (ownedAppsError) {
+    steps["app_origin"] = `error: owned-app lookup failed; nothing deleted`;
+    return NextResponse.json({ ok: false, steps, retry: true }, { status: 502 });
+  }
   const ownedSlugs = (ownedApps ?? []).map((app) => app.slug as string);
   if (ownedSlugs.length > 0 && appOriginLaneReady()) {
     const failed: string[] = [];

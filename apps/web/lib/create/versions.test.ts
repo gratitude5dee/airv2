@@ -270,6 +270,7 @@ beforeEach(() => {
   bundles.storeBundle.mockReset();
   bundles.storeBundle.mockResolvedValue(undefined);
   r2.deletePrefix.mockClear();
+  r2.r2Configured.mockReturnValue(true);
   limits.recordOpsEvent.mockClear();
 });
 
@@ -455,6 +456,31 @@ describe("uploadVersion", () => {
     expect(db.apps[0]!.bundle_version).toBe("v1700000000001");
   });
 
+  it("a lost worker digest write fails the upload and discards the version", async () => {
+    deploy.deployStaticVersion.mockResolvedValue({ workerSha256: "a".repeat(64) });
+    db.fail = { table: "miniapp_versions", op: "update" };
+    await expect(uploadVersion(supabase, app, zip)).rejects.toThrow(/worker digest write failed/);
+    expect(deploy.promoteVersion).not.toHaveBeenCalled();
+    expect(db.apps[0]!.bundle_version).toBe("v1700000000001");
+    expect(db.versions).toHaveLength(0);
+    expect(r2.deletePrefix).toHaveBeenCalledWith(expect.stringContaining("alice-notes/v"));
+  });
+
+  it("a concurrent upload that moved the pointer first wins; the loser re-promotes it and discards itself", async () => {
+    deploy.deployStaticVersion.mockResolvedValue({ workerSha256: "a".repeat(64) });
+    deploy.promoteVersion.mockImplementationOnce(async () => {
+      // The other upload commits between our read of `app` and our CAS.
+      db.apps[0]!.bundle_version = "v1700000000009";
+      db.apps[0]!.draft_version = "v1700000000009";
+    });
+    await expect(uploadVersion(supabase, app, zip)).rejects.toMatchObject({ status: 409 });
+    expect(deploy.promoteVersion).toHaveBeenCalledTimes(2);
+    expect(deploy.promoteVersion).toHaveBeenLastCalledWith(app, "v1700000000009");
+    expect(db.apps[0]!.bundle_version).toBe("v1700000000009");
+    expect(db.versions).toHaveLength(0);
+    expect(r2.deletePrefix).toHaveBeenCalledWith(expect.stringContaining("alice-notes/v"));
+  });
+
   it("app-origin lane: promotes the Worker before moving the registry pointer", async () => {
     deploy.deployStaticVersion.mockResolvedValue({ workerSha256: "a".repeat(64) });
     const order: string[] = [];
@@ -515,6 +541,18 @@ describe("rollbackTo (§13.3)", () => {
     // The rolled-back-to row is live again; the superseded one is retired.
     expect(db.versions[0]!.retired_at).toBeNull();
     expect(db.versions[1]!.retired_at).not.toBeNull();
+  });
+
+  it("a failed pointer move puts the Worker back on the release the registry still names", async () => {
+    await seed();
+    db.fail = { table: "mini_apps", op: "update" };
+    await expect(rollbackTo(supabase, app, "v1700000000000")).rejects.toThrow(
+      /live pointer move failed/
+    );
+    expect(deploy.promoteVersion).toHaveBeenCalledTimes(2);
+    expect(deploy.promoteVersion).toHaveBeenLastCalledWith(app, "v1700000000001");
+    expect(db.apps[0]!.bundle_version).toBe("v1700000000001");
+    expect(limits.recordOpsEvent).not.toHaveBeenCalled();
   });
 
   it("refuses versions of another app, unknown versions, and the live one", async () => {
@@ -676,6 +714,20 @@ describe("sweepVersions (§13.1 retention)", () => {
     expect(db.versions).toHaveLength(2);
     expect(await sweepVersions(supabase, now)).toBe(1);
     expect(r2.deletePrefix).toHaveBeenCalledTimes(2);
+  });
+
+  it("without R2 nothing is removed: rows outlive the sweep so artifacts stay reachable", async () => {
+    r2.r2Configured.mockReturnValue(false);
+    db.apps[0]!.bundle_version = "v1700000000100";
+    version("v1700000000100", { published_at: "2026-01-01T00:00:00.000Z" });
+    const old = version("v1700000000050", {
+      published_at: "2025-01-01T00:00:00.000Z",
+      retired_at: new Date(now.getTime() - (RETAIN_SUPERSEDED_DAYS + 1) * day).toISOString(),
+    });
+    expect(await sweepVersions(supabase, now)).toBe(0);
+    expect(old.purged_at).toBeNull();
+    expect(db.versions).toHaveLength(2);
+    expect(r2.deletePrefix).not.toHaveBeenCalled();
   });
 
   it("pages through every row instead of stopping at a fixed cap", async () => {
