@@ -138,6 +138,21 @@ describe("audioOnlyMimeType", () => {
         Buffer.concat([page("\u0080theora"), page("\u0001vorbis")]),
       ),
     ).toBe(undefined);
+    // Chained file: an audio stream ends, then a video stream begins.
+    expect(
+      audioOnlyMimeType(
+        "video/ogg",
+        Buffer.concat([
+          page("\u0001vorbis"),
+          page("x", false),
+          page("\u0080theora"),
+        ]),
+      ),
+    ).toBe(undefined);
+    // A page whose body was cut off is not trusted.
+    expect(
+      audioOnlyMimeType("video/ogg", page("\u0001vorbis").subarray(0, 40)),
+    ).toBe(undefined);
   });
 
   it("recognises tagged mp3 and wav bytes behind a video label; a bare Ogg page is not enough", () => {

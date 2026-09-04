@@ -98,9 +98,12 @@ function oggStreamCodecs(bytes: Buffer): string[] | undefined {
     for (let i = 0; i < segments; i++) {
       dataLength += bytes[offset + 27 + i] ?? 0;
     }
-    // Only beginning-of-stream pages carry a codec header; they all come first.
-    if ((flags & 0x02) === 0) break;
-    codecs.push(bytes.toString("latin1", dataStart, dataStart + 8));
+    if (dataStart + dataLength > bytes.length) return undefined;
+    // Every beginning-of-stream page carries a codec header; a chained file
+    // may open a new set of streams part-way through, so walk every page.
+    if ((flags & 0x02) !== 0) {
+      codecs.push(bytes.toString("latin1", dataStart, dataStart + 8));
+    }
     offset = dataStart + dataLength;
   }
   return codecs.length > 0 ? codecs : undefined;
