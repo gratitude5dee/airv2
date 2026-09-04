@@ -62,7 +62,7 @@ const SYNCABLE_STATES = ["ready", "stopped"];
 
 export async function startSyncJob(
   supabase: SupabaseClient,
-  input: StartSyncJobInput
+  input: StartSyncJobInput,
 ): Promise<SyncJob> {
   const channel = await getChannel(supabase, input.channel);
   if (!channel.release_id) {
@@ -89,12 +89,12 @@ export async function startSyncJob(
     throw new FleetError(`no syncable boxes on ${input.channel}`, 409);
   }
   const canaries = new Set(
-    (input.canaryBoxIds ?? []).filter((id) => boxIds.includes(id))
+    (input.canaryBoxIds ?? []).filter((id) => boxIds.includes(id)),
   );
   if ((input.canaryBoxIds ?? []).length > 0 && canaries.size === 0) {
     throw new FleetError(
       `no requested canary box is syncable on ${input.channel}`,
-      409
+      409,
     );
   }
   const { data: job, error: jobError } = await supabase
@@ -119,7 +119,7 @@ export async function startSyncJob(
       job_id: typedJob.id,
       provider_box_id: boxId,
       is_canary: canaries.has(boxId),
-    }))
+    })),
   );
   if (rowError) {
     throw new FleetError(`job box insert failed: ${rowError.message}`, 500);
@@ -130,7 +130,7 @@ export async function startSyncJob(
 export async function setJobState(
   supabase: SupabaseClient,
   jobId: string,
-  state: "canary" | "rolling" | "paused" | "aborted"
+  state: "canary" | "rolling" | "paused" | "aborted",
 ): Promise<void> {
   const { error } = await supabase
     .from("sync_jobs")
@@ -143,7 +143,7 @@ export async function setJobState(
 /** Resume a paused job into the right phase (canary if canaries remain). */
 export async function resumeJob(
   supabase: SupabaseClient,
-  jobId: string
+  jobId: string,
 ): Promise<void> {
   const { data: pendingCanary } = await supabase
     .from("sync_job_boxes")
@@ -208,7 +208,7 @@ async function syncOneBox(
   supabase: SupabaseClient,
   job: SyncJob,
   release: TemplateRelease,
-  boxId: string
+  boxId: string,
 ): Promise<{ outcome: BoxOutcome; error?: string }> {
   const box = await getBox(boxId).catch(() => null);
   if (!box) return { outcome: "failed", error: "box lookup failed" };
@@ -242,7 +242,7 @@ async function syncOneBox(
     const result = await command(
       boxId,
       syncCommand(release),
-      SYNC_TIMEOUT_SECONDS
+      SYNC_TIMEOUT_SECONDS,
     );
     if (result.exitCode !== 0) {
       return {
@@ -263,7 +263,7 @@ async function syncOneBox(
       const verify = await command(
         boxId,
         "bash /tmp/air-template/template/verify-box.sh",
-        SYNC_TIMEOUT_SECONDS
+        SYNC_TIMEOUT_SECONDS,
       );
       if (verify.exitCode !== 0) {
         return {
@@ -291,13 +291,38 @@ async function syncOneBox(
 }
 
 /**
+ * Move a wave's rows pending→syncing before any of them runs. Sweeps overlap
+ * (a tick fires every minute, a box sync takes several), so the transition is
+ * conditional on the row still being pending; a row another sweep already
+ * took is dropped here rather than synced twice on the same box.
+ */
+async function claimWave(
+  supabase: SupabaseClient,
+  jobId: string,
+  candidates: JobBoxRow[],
+): Promise<JobBoxRow[]> {
+  const claimed: JobBoxRow[] = [];
+  for (const row of candidates) {
+    const { data } = await supabase
+      .from("sync_job_boxes")
+      .update({ state: "syncing", started_at: new Date().toISOString() })
+      .eq("job_id", jobId)
+      .eq("provider_box_id", row.provider_box_id)
+      .eq("state", "pending")
+      .select("provider_box_id");
+    if ((data ?? []).length > 0) claimed.push(row);
+  }
+  return claimed;
+}
+
+/**
  * One sweep tick of the active sync job: process up to wave_size boxes
  * (canaries first while in the canary phase), advance canary→rolling when
  * every canary passed, and pause the job when failures cross the threshold.
  * Returns counts for the sweep log.
  */
 export async function runSyncJobs(
-  supabase: SupabaseClient
+  supabase: SupabaseClient,
 ): Promise<{ synced: number; failed: number; deferred: number }> {
   const totals = { synced: 0, failed: 0, deferred: 0 };
   const { data: jobs } = await supabase
@@ -318,7 +343,11 @@ export async function runSyncJobs(
     .limit(job.wave_size);
   if (job.state === "canary") query = query.eq("is_canary", true);
   const { data: pending } = await query;
-  const rows = (pending ?? []) as JobBoxRow[];
+  const rows = await claimWave(
+    supabase,
+    job.id,
+    (pending ?? []) as JobBoxRow[],
+  );
 
   if (rows.length === 0) {
     // A row stuck in 'syncing' means an interrupted invocation — don't
@@ -355,11 +384,6 @@ export async function runSyncJobs(
   let failures = job.failures;
   for (const row of rows) {
     const boxId = row.provider_box_id;
-    await supabase
-      .from("sync_job_boxes")
-      .update({ state: "syncing", started_at: new Date().toISOString() })
-      .eq("job_id", job.id)
-      .eq("provider_box_id", boxId);
     let outcome: BoxOutcome;
     let boxError: string | undefined;
     try {
@@ -388,7 +412,7 @@ export async function runSyncJobs(
           job_id: job.id,
           box_id: boxId,
           error: boxError ?? "unknown",
-        })
+        }),
       );
     } else {
       totals.synced += 1;
