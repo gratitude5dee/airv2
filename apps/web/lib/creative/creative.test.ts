@@ -265,8 +265,16 @@ describe("buildFalZapRequest", () => {
       plan({ mode: "zap", expanded_prompt: "make it rain" }),
       turn({
         mediaInputs: [
-          { kind: "image", url: "https://x.test/a.jpg", mimeType: "image/jpeg" },
-          { kind: "video", url: "https://x.test/v.mov", mimeType: "video/quicktime" },
+          {
+            kind: "image",
+            url: "https://x.test/a.jpg",
+            mimeType: "image/jpeg",
+          },
+          {
+            kind: "video",
+            url: "https://x.test/v.mov",
+            mimeType: "video/quicktime",
+          },
         ],
       }),
     );
@@ -296,15 +304,23 @@ describe("buildFalZapRequest", () => {
       }),
       turn({
         mediaInputs: [
-          { kind: "audio", url: "https://x.test/memo.m4a", mimeType: "audio/mp4" },
+          {
+            kind: "audio",
+            url: "https://x.test/memo.m4a",
+            mimeType: "audio/mp4",
+          },
           { kind: "image", url: "https://x.test/a.jpg" },
         ],
       }),
     );
     expect(request.model).toBe("minimax/h3-max/reference-to-video");
     expect(request.input["aspect_ratio"]).toBe("9:16");
-    expect(request.input["reference_audio_urls"]).toEqual(["https://x.test/memo.m4a"]);
-    expect(request.input["reference_image_urls"]).toEqual(["https://x.test/a.jpg"]);
+    expect(request.input["reference_audio_urls"]).toEqual([
+      "https://x.test/memo.m4a",
+    ]);
+    expect(request.input["reference_image_urls"]).toEqual([
+      "https://x.test/a.jpg",
+    ]);
     expect(request.input["reference_video_urls"]).toBeUndefined();
     expect(request.input["image_url"]).toBeUndefined();
     expect(request.input["prompt"]).toBe(
@@ -325,6 +341,51 @@ describe("buildFalZapRequest", () => {
     expect(request.input["prompt"]).toBe("Video 1 pans, Audio 1 plays");
     expect(request.input["reference_video_urls"]).toHaveLength(3);
     expect(request.input["reference_audio_urls"]).toHaveLength(3);
+  });
+
+  it("drops a clip's soundtrack with the clip, and seats attached audio first", () => {
+    const clip = (i: number) => `https://x.test/${i}.mov`;
+    const withSoundtracks = Array.from({ length: 4 }, (_, i) => [
+      { kind: "video" as const, url: clip(i) },
+      {
+        kind: "audio" as const,
+        url: `https://x.test/${i}.m4a`,
+        soundtrackOf: clip(i),
+      },
+    ]).flat();
+
+    let request = buildFalZapRequest(
+      plan({ mode: "zap", expanded_prompt: "cut these together" }),
+      turn({ mediaInputs: withSoundtracks }),
+    );
+    expect(request.input["reference_video_urls"]).toEqual([
+      clip(0),
+      clip(1),
+      clip(2),
+    ]);
+    expect(request.input["reference_audio_urls"]).toEqual([
+      "https://x.test/0.m4a",
+      "https://x.test/1.m4a",
+      "https://x.test/2.m4a",
+    ]);
+
+    request = buildFalZapRequest(
+      plan({ mode: "zap", expanded_prompt: "score it with my memo" }),
+      turn({
+        mediaInputs: [
+          ...withSoundtracks.slice(0, 6),
+          { kind: "audio", url: "https://x.test/memo.m4a" },
+        ],
+      }),
+    );
+    expect(request.input["reference_audio_urls"]).toEqual([
+      "https://x.test/memo.m4a",
+      "https://x.test/0.m4a",
+      "https://x.test/1.m4a",
+    ]);
+    expect(request.input["prompt"]).toBe(
+      "score it with my memo Use Video 1 and Video 2 and Video 3 as the motion reference, Audio 1 and Audio 2 and Audio 3 as the soundtrack.",
+    );
   });
 
   it("refuses audio without a picture or clip before anything is submitted", () => {
@@ -438,9 +499,14 @@ describe("directZapPlan", () => {
     );
     expect(result.chat_reply).toBe("zapping your image");
     expect(result.params.use_input_image_as).toBe("first_frame");
-    expect(buildFalZapRequest(result, { text: "", mediaInputs: [
-      { kind: "image", url: "https://signed.example/frame.jpg" },
-    ] }).model).toBe("minimax/h3-max-turbo/image-to-video");
+    expect(
+      buildFalZapRequest(result, {
+        text: "",
+        mediaInputs: [
+          { kind: "image", url: "https://signed.example/frame.jpg" },
+        ],
+      }).model,
+    ).toBe("minimax/h3-max-turbo/image-to-video");
   });
 
   it("falls back to a generic brief when the command has no words", () => {
