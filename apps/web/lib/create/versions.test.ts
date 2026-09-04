@@ -95,7 +95,7 @@ const db = {
   beforeRpc: null as (() => void) | null,
 };
 
-type FakeOp = "insert" | "update" | "delete" | "rpc";
+type FakeOp = "insert" | "update" | "delete" | "rpc" | "select";
 
 let seq = 0;
 
@@ -185,6 +185,8 @@ function query(table: "miniapp_versions" | "mini_apps") {
       }
       return { data: null, error: null };
     }
+    const refusedRead = failing(table, "select");
+    if (refusedRead) return refusedRead;
     let out = matched.map(withJoin);
     if (ordered) {
       const { column, ascending } = ordered;
@@ -623,6 +625,34 @@ describe("uploadVersion", () => {
     expect(deploy.syncManifest).toHaveBeenLastCalledWith(
       expect.anything(),
       expect.objectContaining({ bundle_version: "v1700000000001", draft_version: "v1700000000009" })
+    );
+    expect(db.versions).toHaveLength(0);
+  });
+
+  it("stage-only: a lost CAS whose pointer re-read fails restores the pointers the upload started from, never empty ones", async () => {
+    const staged = { ...app, status: "published" as const, draft_version: "v1700000000001" };
+    db.apps[0]!.draft_version = "v1700000000001";
+    deploy.deployStaticVersion.mockImplementation(async () => {
+      if (db.apps[0]!.draft_version === "v1700000000001") {
+        db.apps[0]!.draft_version = "v1700000000009";
+        db.fail = { table: "mini_apps", op: "select" };
+      }
+      return { workerSha256: "a".repeat(64) };
+    });
+    await expect(
+      uploadVersion(supabase, staged, zip, "drop", { promote: false })
+    ).rejects.toMatchObject({ status: 409 });
+    expect(deploy.deployStaticVersion).toHaveBeenLastCalledWith(
+      supabase,
+      expect.objectContaining({ target: "draft", version: "v1700000000001" })
+    );
+    expect(deploy.syncManifest).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ bundle_version: "v1700000000001", draft_version: "v1700000000001" })
+    );
+    expect(deploy.syncManifest).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ bundle_version: null, draft_version: null })
     );
     expect(db.versions).toHaveLength(0);
   });

@@ -72,6 +72,7 @@ export function slugFor(username: string, appname: string): string {
 
 export interface DraftInput {
   appname: string;
+  /** Empty values leave an existing app's metadata alone; a new app needs a name. */
   name: string;
   description: string;
   agentIdentity?: string | null;
@@ -105,7 +106,35 @@ export async function createDraft(
   }
   const name = input.name.trim().slice(0, 64);
   const description = input.description.trim().slice(0, 500);
-  if (!name) throw new PublishError("name required");
+  const refresh = {
+    ...(name ? { name } : {}),
+    ...(description ? { description } : {}),
+    ...(input.agentIdentity !== undefined
+      ? { agent_identity: input.agentIdentity?.trim().slice(0, 200) || null }
+      : {}),
+    ...(input.lane ? { lane: input.lane } : {}),
+  };
+  const refreshDraft = async (): Promise<DraftResult | null> => {
+    const { data: refreshed } = await supabase
+      .from("mini_apps")
+      .update({ ...refresh, updated_at: new Date().toISOString() })
+      .eq("slug", slug)
+      .eq("owner_user_id", userId)
+      .select(REGISTRY_COLUMNS)
+      .maybeSingle();
+    const parsed = parseDraftResult(refreshed);
+    if (parsed) {
+      console.log(
+        JSON.stringify({ msg: "miniapp draft refreshed", user_id: userId, slug })
+      );
+    }
+    return parsed;
+  };
+  if (!name) {
+    const existing = await refreshDraft();
+    if (existing) return existing;
+    throw new PublishError("name required");
+  }
   const { data: wallet } = await supabase
     .from("users")
     .select("wallet_address")
@@ -138,26 +167,8 @@ export async function createDraft(
     if (error.code === "23505") {
       // Slug exists: refresh the caller's own draft in place; only a slug
       // owned by someone else is actually "taken".
-      const { data: refreshed } = await supabase
-        .from("mini_apps")
-        .update({
-          name,
-          description,
-          agent_identity: input.agentIdentity?.trim().slice(0, 200) || null,
-          ...(input.lane ? { lane: input.lane } : {}),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("slug", slug)
-        .eq("owner_user_id", userId)
-        .select(REGISTRY_COLUMNS)
-        .maybeSingle();
-      const parsedRefreshed = parseDraftResult(refreshed);
-      if (parsedRefreshed) {
-        console.log(
-          JSON.stringify({ msg: "miniapp draft refreshed", user_id: userId, slug })
-        );
-        return parsedRefreshed;
-      }
+      const parsedRefreshed = await refreshDraft();
+      if (parsedRefreshed) return parsedRefreshed;
       throw new PublishError("that app name is taken", 409);
     }
     if (error.code === "23514") {

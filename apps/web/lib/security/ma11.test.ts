@@ -31,6 +31,7 @@ import {
   recordOpsEvent,
   recordStoreOpen,
   uploadRateLimited,
+  dropRateLimited,
 } from "@/lib/security/limits";
 import { miniAppOps, type MiniAppOpsInput } from "@/lib/admin/ops";
 import { EXPORT_TABLES } from "@/lib/admin/export-tables";
@@ -184,6 +185,23 @@ describe("durable ops-ledger rate limits (MA11)", () => {
     expect(
       db.rows.filter((r) => r.kind === "rate_limited" && r.ref === "upload")
     ).toHaveLength(1);
+  });
+
+  it("drops and uploads share one hourly budget in both directions", async () => {
+    const db: FakeOps = { rows: [] };
+    const supabase = fakeSupabase(db);
+    for (let i = 0; i < UPLOADS_PER_HOUR; i += 1) {
+      await recordOpsEvent(supabase, "create.drop", "user-1");
+    }
+    expect(await uploadRateLimited(supabase, "user-1")).toBe(true);
+    expect(await dropRateLimited(supabase, "user-1")).toBe(true);
+    const other: FakeOps = { rows: [] };
+    const otherSupabase = fakeSupabase(other);
+    for (let i = 0; i < UPLOADS_PER_HOUR; i += 1) {
+      await recordOpsEvent(otherSupabase, "upload", "user-1");
+    }
+    expect(await dropRateLimited(otherSupabase, "user-1")).toBe(true);
+    expect(await uploadRateLimited(otherSupabase, "user-2")).toBe(false);
   });
 
   function headers(map: Record<string, string>): { get(name: string): string | null } {

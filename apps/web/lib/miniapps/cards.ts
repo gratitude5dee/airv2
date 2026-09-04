@@ -242,8 +242,9 @@ export async function sendOrUpdateAppCard(
  * Deliver the `[card: <kind>]` markers stripped from an agent reply, in
  * order, to the owner's thread. Same contract as POST /api/cards/<kind>:
  * unknown kinds are ignored, each kind is rate limited by claimCardSend
- * (a kind still in cooldown is skipped, never retried), and one failed send
- * never blocks the rest or the turn. Returns how many cards went out.
+ * (a kind still in cooldown is skipped, never retried), an `app` marker must
+ * name one of the owner's apps, and one failed send never blocks the rest
+ * or the turn. Returns how many cards went out.
  */
 export async function sendMarkedCards(
   supabase: SupabaseClient,
@@ -258,6 +259,10 @@ export async function sendMarkedCards(
     let claim: CardClaim | undefined;
     try {
       if (kind === "app") {
+        const app = await getRegistryApp(supabase, resourceId);
+        if (!app || app.owner_user_id !== owner.userId) {
+          throw new Error("app not found");
+        }
         if ((await sendOrUpdateAppCard(supabase, owner, resourceId)) === "cooldown") continue;
       } else {
         claim = await claimCardSend(supabase, owner.userId, kind);
