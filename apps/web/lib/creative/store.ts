@@ -20,7 +20,7 @@ import {
   type Delivery,
 } from "../assets/pipeline";
 import { heifToJpeg, isHeif } from "../identity/heif";
-import { audioOnlyMimeType } from "./container";
+import { audioOnlyMimeType, extractAudioTrack } from "./container";
 import type { FetchedGeneratedMedia } from "./media-url";
 
 const EXT_BY_MIME: Record<string, string> = {
@@ -53,6 +53,13 @@ const INPUT_EXT_BY_MIME: Record<string, string> = {
 
 export type StagedInputKind = "image" | "video" | "audio";
 
+export interface StagedInput {
+  url: string;
+  kind: StagedInputKind;
+  mimeType: string;
+  storageKey: string;
+}
+
 const stagedKindOf = (mimeType: string): StagedInputKind =>
   mimeType.startsWith("video/")
     ? "video"
@@ -68,7 +75,7 @@ async function ingestBytes(
   userId: string,
   bytes: Buffer,
   mimeType: string,
-  refPrefix: string
+  refPrefix: string,
 ): Promise<CreativeAsset> {
   const ext = EXT_BY_MIME[mimeType];
   if (!ext) {
@@ -92,7 +99,7 @@ async function ingestBytes(
     .upload(key, bytes, { contentType: contentType(ext), upsert: true });
   if (upload.error) {
     throw new AssetPipelineError(
-      `storage upload failed: ${upload.error.message}`
+      `storage upload failed: ${upload.error.message}`,
     );
   }
 
@@ -123,9 +130,15 @@ async function ingestBytes(
 export async function ingestGeneratedMedia(
   supabase: SupabaseClient,
   userId: string,
-  media: FetchedGeneratedMedia
+  media: FetchedGeneratedMedia,
 ): Promise<CreativeAsset> {
-  return await ingestBytes(supabase, userId, media.bytes, media.mimeType, "gmi");
+  return await ingestBytes(
+    supabase,
+    userId,
+    media.bytes,
+    media.mimeType,
+    "gmi",
+  );
 }
 
 /**
@@ -136,7 +149,7 @@ export async function ingestUploadedMedia(
   supabase: SupabaseClient,
   userId: string,
   bytes: Buffer,
-  mimeType: string
+  mimeType: string,
 ): Promise<CreativeAsset> {
   return await ingestBytes(supabase, userId, bytes, mimeType, "upload");
 }
@@ -145,7 +158,7 @@ export async function ingestUploadedMedia(
 export async function mintJobDelivery(
   supabase: SupabaseClient,
   asset: CreativeAsset,
-  jobId: string
+  jobId: string,
 ): Promise<Delivery> {
   return await mintDelivery(supabase, asset, deliveryPurpose(jobId));
 }
@@ -157,7 +170,7 @@ export async function mintJobDelivery(
 export async function signedDeliveryForJob(
   supabase: SupabaseClient,
   userId: string,
-  jobId: string
+  jobId: string,
 ): Promise<{ url: string; ext: string } | undefined> {
   const { data } = await supabase
     .from("asset_deliveries")
@@ -195,11 +208,8 @@ export async function stageCreativeInput(
   supabase: SupabaseClient,
   userId: string,
   bytes: Buffer,
-  mimeType: string
-): Promise<
-  | { url: string; kind: StagedInputKind; mimeType: string; storageKey: string }
-  | undefined
-> {
+  mimeType: string,
+): Promise<StagedInput | undefined> {
   let staged = bytes;
   let stagedType = mimeType;
   if (isHeif(stagedType, staged)) {
@@ -221,20 +231,60 @@ export async function stageCreativeInput(
   if (upload.error) return undefined;
   const signed = await supabase.storage
     .from(ASSETS_BUCKET)
-    .createSignedUrl(key, DELIVERY_TTL_SECONDS);
-  if (signed.error || !signed.data) {
-    await supabase.storage.from(ASSETS_BUCKET).remove([key]).catch(() => undefined);
+    .createSignedUrl(key, DELIVERY_TTL_SECONDS)
+    .catch(() => undefined);
+  if (!signed || signed.error || !signed.data) {
+    await supabase.storage
+      .from(ASSETS_BUCKET)
+      .remove([key])
+      .catch(() => undefined);
     return undefined;
   }
   // The key is unguessable and the signature expires with the URL; the
   // caller removes the object once the generation settles.
-  return { url: signed.data.signedUrl, kind, mimeType: stagedType, storageKey: key };
+  return {
+    url: signed.data.signedUrl,
+    kind,
+    mimeType: stagedType,
+    storageKey: key,
+  };
+}
+
+/**
+ * Stage one attachment as every provider input it carries. A clip with a
+ * soundtrack yields two: the clip as a video (motion) reference and its
+ * sound track, remuxed to M4A, as an audio reference — the provider does not
+ * hear the sound inside a video reference. A soundtrack that cannot be
+ * extracted or staged degrades to the clip alone; the clip is never lost.
+ */
+export async function stageCreativeInputs(
+  supabase: SupabaseClient,
+  userId: string,
+  bytes: Buffer,
+  mimeType: string,
+): Promise<StagedInput[]> {
+  const staged = await stageCreativeInput(supabase, userId, bytes, mimeType);
+  if (!staged) return [];
+  if (staged.kind !== "video") return [staged];
+  try {
+    const soundtrack = extractAudioTrack(bytes);
+    if (!soundtrack) return [staged];
+    const audio = await stageCreativeInput(
+      supabase,
+      userId,
+      soundtrack,
+      "audio/mp4",
+    );
+    return audio ? [staged, audio] : [staged];
+  } catch {
+    return [staged];
+  }
 }
 
 /** Remove staged provider-input objects once the generation settles. */
 export async function removeStagedInputs(
   supabase: SupabaseClient,
-  storageKeys: readonly string[]
+  storageKeys: readonly string[],
 ): Promise<void> {
   if (storageKeys.length === 0) return;
   await supabase.storage

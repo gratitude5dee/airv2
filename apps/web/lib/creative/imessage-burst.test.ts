@@ -10,14 +10,14 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { SpectrumSender } from "../spectrum/sender";
 import { createCreativeJob } from "./jobs";
 import { executeCreativeJob } from "./run";
-import { removeStagedInputs, stageCreativeInput } from "./store";
+import { removeStagedInputs, stageCreativeInputs } from "./store";
 import { maybeRunCreativeLane } from "./imessage";
 import { composeInput } from "../orchestrator/flush";
 
 vi.mock("./jobs", () => ({ createCreativeJob: vi.fn() }));
 vi.mock("./run", () => ({ executeCreativeJob: vi.fn() }));
 vi.mock("./store", () => ({
-  stageCreativeInput: vi.fn(),
+  stageCreativeInputs: vi.fn(),
   removeStagedInputs: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -61,7 +61,7 @@ describe("/zap and its media as separate bubbles", () => {
   beforeEach(() => {
     vi.mocked(createCreativeJob).mockReset();
     vi.mocked(executeCreativeJob).mockReset();
-    vi.mocked(stageCreativeInput).mockReset();
+    vi.mocked(stageCreativeInputs).mockReset();
     vi.mocked(removeStagedInputs).mockClear();
     vi.mocked(createCreativeJob).mockResolvedValue({
       id: "job-1",
@@ -70,15 +70,17 @@ describe("/zap and its media as separate bubbles", () => {
       status: "refused",
       line: "stubbed",
     });
-    vi.mocked(stageCreativeInput).mockImplementation(
+    vi.mocked(stageCreativeInputs).mockImplementation(
       (_db, _user, bytes, mimeType) => {
         const kind = ATTACHMENTS[bytes.toString()]?.kind ?? "image";
-        return Promise.resolve({
-          url: `https://storage.test/${bytes.toString()}`,
-          kind,
-          mimeType: mimeType === "image/heic" ? "image/jpeg" : mimeType,
-          storageKey: `staged/${bytes.toString()}`,
-        });
+        return Promise.resolve([
+          {
+            url: `https://storage.test/${bytes.toString()}`,
+            kind,
+            mimeType: mimeType === "image/heic" ? "image/jpeg" : mimeType,
+            storageKey: `staged/${bytes.toString()}`,
+          },
+        ]);
       }
     );
   });
