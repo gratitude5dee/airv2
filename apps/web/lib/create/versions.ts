@@ -281,7 +281,10 @@ export async function uploadVersion(
   // Compare-and-swap on the pointers this call observed: two concurrent
   // uploads then agree on one winner, and the loser undoes its promotion
   // instead of leaving the Worker and the registry on different releases.
-  // A staged draft on a live app moves only the draft pointer.
+  // A staged draft on a live app moves only the draft pointer. updated_at is
+  // part of the compare: the origin reconciler (cron) touches it after
+  // putting the Workers back on the registry's releases, so an upload whose
+  // Worker that repair may have written over cannot commit as if it hadn't.
   const stageOnly = app.status === "published" && !goesLive;
   let move = supabase
     .from("mini_apps")
@@ -291,7 +294,8 @@ export async function uploadVersion(
       lane,
       updated_at: now,
     })
-    .eq("id", app.id);
+    .eq("id", app.id)
+    .eq("updated_at", app.updated_at);
   move = app.bundle_version
     ? move.eq("bundle_version", app.bundle_version)
     : move.is("bundle_version", null);
@@ -326,7 +330,7 @@ export async function uploadVersion(
     }
     await discardVersion(supabase, app, row.id, version);
     if (error) throw new Error(`bundle version update failed: ${error.message}`);
-    throw new VersionError("another upload finished first; retry", 409);
+    throw new VersionError("the app changed underneath this upload; retry", 409);
   }
   if (goesLive) {
     // The ledger tracks what is live on whichever lane serves it; the legacy
