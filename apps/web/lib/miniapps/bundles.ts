@@ -155,7 +155,18 @@ export function readZip(zip: Buffer, limits: ZipLimits = BUNDLE_ZIP_LIMITS): Bun
 const SAFE_PATH = /^[a-zA-Z0-9_][a-zA-Z0-9._/-]*$/;
 const META_CSP_RE =
   /<meta[^>]+http-equiv\s*=\s*["']?content-security-policy/i;
-const SERVICE_WORKER_RE = /serviceWorker|navigator\[.{0,40}serviceWorker/i;
+const SERVICE_WORKER_RE =
+  /["']?serviceworker["']?|navigator\[.{0,40}serviceworker/gi;
+// react-dom carries `case "serviceworker":` (a `<link as>` value); that exact
+// lowercase literal is never the DOM property, every other spelling counts.
+const SERVICE_WORKER_AS_VALUE = /^["']serviceworker["']$/;
+
+export function mentionsServiceWorker(text: string): boolean {
+  for (const match of text.matchAll(SERVICE_WORKER_RE)) {
+    if (!SERVICE_WORKER_AS_VALUE.test(match[0])) return true;
+  }
+  return false;
+}
 
 /**
  * Validate an unpacked bundle: safe relative paths, allowlisted extensions,
@@ -182,7 +193,7 @@ export function validateBundle(files: BundleFile[]): void {
       contentType.startsWith("text/") || contentType === "application/json";
     if (isText) {
       const text = file.bytes.toString("utf8");
-      if (SERVICE_WORKER_RE.test(text)) {
+      if (mentionsServiceWorker(text)) {
         throw new BundleError(
           `service workers are not allowed (${file.path})`
         );

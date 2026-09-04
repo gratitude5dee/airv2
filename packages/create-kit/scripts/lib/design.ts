@@ -106,6 +106,35 @@ export function buildSystemPrompt(inputs: DesignInputs): string {
   );
 }
 
+/**
+ * The Box skill (goal-create-v11 §9.5). Frontmatter matches the other
+ * template skills; the body is prompts/src/skill.md verbatim plus a Kit
+ * stamp, so the skill and the system prompt share one source.
+ */
+export function buildSkill(inputs: DesignInputs): string {
+  const liteCount = inputs.metas.filter((m) => m.lite).length;
+  const frontmatter = [
+    "---",
+    "name: create-miniapp",
+    'description: "Build or host a wzrd.tech mini-app for your human: a sentence (Vibe) or an HTML file / zip / folder (Drop) becomes a DRAFT at mini.wzrd.tech/<username>/<app-name>. You plan, build, QA and stage; only the owner makes it live."',
+    "version: 2.0.0",
+    "author: air",
+    "license: MIT",
+    "platforms: [linux]",
+    "metadata:",
+    "  hermes:",
+    "    tags: [Apps, Create, Mini-Apps, Vibe, Approval]",
+    "---",
+  ].join("\n");
+  return (
+    frontmatter +
+    "\n\n" +
+    GENERATED("Box skill body (goal-create-v11 §9.5).") +
+    readText(path.join(PROMPTS_SRC, "skill.md")).trim() +
+    `\n\n---\n\nKit ${KIT_VERSION}: ${inputs.metas.length} components, ${liteCount} lite. DESIGN.md beside this file is the catalog.\n`
+  );
+}
+
 function propsTable(props: Readonly<Record<string, string>>): string {
   const keys = Object.keys(props);
   if (keys.length === 0) return "_No props beyond `className`/`children`._";

@@ -3,7 +3,7 @@
  *
  * Runs by hand on a branch. Never in a Box, never at build time.
  *
- *   npx tsx packages/create-kit/scripts/harvest.ts [--refresh] [--skip-harness] [--only <id>]
+ *   npx tsx packages/create-kit/scripts/harvest.ts [--refresh] [--skip-harness] [--only <id>] [--docs-only]
  *
  * Offline by default: upstream bytes come from evidence/<source>/upstream/ (committed
  * captures). `--refresh` re-fetches through the network (or a local clone via
@@ -21,7 +21,7 @@ import { writeAirAssets } from "./lib/air.ts";
 import { buildSbom, extractVendor, DIRECT, NON_LITE } from "./lib/vendor.ts";
 import { bundle, gzKb, measureComponent } from "./lib/measure.ts";
 import { runHarness, type Verdict } from "./lib/harness.ts";
-import { buildDesign, buildRef, buildSystemPrompt } from "./lib/design.ts";
+import { buildDesign, buildRef, buildSkill, buildSystemPrompt } from "./lib/design.ts";
 import { BUDGETS, KIT_VERSION, type Lock, type LockEntry, type Meta, type SourcesJsonEntry } from "./lib/meta.ts";
 import {
   DESIGN_FILE,
@@ -33,12 +33,14 @@ import {
   SOURCES_FILE,
   SYSTEM_PROMPT_FILE,
   TEMPLATE_DESIGN_FILE,
+  TEMPLATE_SKILL_FILE,
 } from "./lib/paths.ts";
 import { exists, readJson, readText, sha256, sortKeys, walk, writeJson, writeText } from "./lib/fsx.ts";
 
 const args = new Set(process.argv.slice(2));
 const REFRESH = args.has("--refresh");
 const SKIP_HARNESS = args.has("--skip-harness");
+const DOCS_ONLY = args.has("--docs-only");
 const onlyIdx = process.argv.indexOf("--only");
 const ONLY = onlyIdx > 0 ? process.argv[onlyIdx + 1] : undefined;
 
@@ -183,7 +185,21 @@ function extractProps(text: string): Record<string, string> {
 
 // ── 4. main ──────────────────────────────────────────────────────────────────
 
+/** Regenerate DESIGN.md, the system prompt and the Box skill from what is on disk (prompts/src edits). */
+function writeDocs(inputs: { metas: Meta[]; liteJsKb: number; liteCssKb: number }): void {
+  writeText(DESIGN_FILE, buildDesign(inputs));
+  writeText(SYSTEM_PROMPT_FILE, buildSystemPrompt(inputs));
+  writeText(TEMPLATE_DESIGN_FILE, readText(DESIGN_FILE));
+  writeText(TEMPLATE_SKILL_FILE, buildSkill(inputs));
+  log(`wrote ${path.relative(KIT_ROOT, DESIGN_FILE)}, ${path.relative(KIT_ROOT, SYSTEM_PROMPT_FILE)}, ${path.relative(KIT_ROOT, TEMPLATE_DESIGN_FILE)}, ${path.relative(KIT_ROOT, TEMPLATE_SKILL_FILE)}`);
+}
+
 async function main(): Promise<void> {
+  if (DOCS_ONLY) {
+    const lock = readJson<Lock>(LOCK_FILE);
+    writeDocs({ metas: mergeWithExisting(new Map()), liteJsKb: lock.kit.liteJsKb, liteCssKb: lock.kit.liteCssKb });
+    return;
+  }
   const specs = ONLY ? COMPONENTS.filter((c) => c.id === ONLY) : COMPONENTS;
   if (specs.length === 0) throw new Error(`no component matches --only ${ONLY}`);
 
@@ -338,11 +354,7 @@ async function main(): Promise<void> {
   writeJson(SOURCES_FILE, { $schema: "air-create-kit/sources@1", kit: KIT_VERSION, sources: sourcesJson });
 
   // Docs.
-  const inputs = { metas: allMetas, liteJsKb, liteCssKb };
-  writeText(DESIGN_FILE, buildDesign(inputs));
-  writeText(SYSTEM_PROMPT_FILE, buildSystemPrompt(inputs));
-  writeText(TEMPLATE_DESIGN_FILE, readText(DESIGN_FILE));
-  log(`wrote ${path.relative(KIT_ROOT, DESIGN_FILE)}, ${path.relative(KIT_ROOT, SYSTEM_PROMPT_FILE)}, ${path.relative(KIT_ROOT, TEMPLATE_DESIGN_FILE)}`);
+  writeDocs({ metas: allMetas, liteJsKb, liteCssKb });
   if (gaps.size) log(`GAPS: ${[...gaps].map(([s, g]) => `${s}: ${g.join(", ")}`).join("; ")}`);
 }
 

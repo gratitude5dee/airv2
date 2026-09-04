@@ -23,7 +23,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { hardFindings, lintFile } from "./lib/cspLint.ts";
-import { buildDesign, buildSystemPrompt } from "./lib/design.ts";
+import { buildDesign, buildSkill, buildSystemPrompt } from "./lib/design.ts";
 import { exists, readJson, readText, sha256, walk } from "./lib/fsx.ts";
 import { BUDGETS, type Lock, type Meta, type SourcesJsonEntry } from "./lib/meta.ts";
 import {
@@ -35,6 +35,7 @@ import {
   SOURCES_FILE,
   SYSTEM_PROMPT_FILE,
   TEMPLATE_DESIGN_FILE,
+  TEMPLATE_SKILL_FILE,
   VENDOR_DIR,
   VENDOR_TARBALLS,
   rel,
@@ -157,6 +158,8 @@ if (readText(DESIGN_FILE) !== design) fail(`${rel(DESIGN_FILE)} differs from reg
 if (readText(SYSTEM_PROMPT_FILE) !== buildSystemPrompt(inputs)) fail(`${rel(SYSTEM_PROMPT_FILE)} differs from regeneration`);
 if (!exists(TEMPLATE_DESIGN_FILE)) fail(`${path.relative(KIT_ROOT, TEMPLATE_DESIGN_FILE)} missing (run harvest to sync)`);
 else if (readText(TEMPLATE_DESIGN_FILE) !== design) fail(`Box template DESIGN.md is out of sync with packages/create-kit/DESIGN.md`);
+if (!exists(TEMPLATE_SKILL_FILE)) fail(`${path.relative(KIT_ROOT, TEMPLATE_SKILL_FILE)} missing (run harvest to sync)`);
+else if (readText(TEMPLATE_SKILL_FILE) !== buildSkill(inputs)) fail(`Box template SKILL.md differs from regeneration (edit prompts/src/skill.md and re-run harvest)`);
 
 // --- 7. kit.sources.json ⇄ directories --------------------------------------
 const sources = readJson<{ sources: SourcesJsonEntry[] }>(SOURCES_FILE);

@@ -17,8 +17,18 @@ export type ChatChannel = "web" | "desktop";
 export type ChatTrigger = ChatChannel | "voice";
 
 /** Thread ids share air-main's namespace (spec §3): additive sessions, never
- * a rewrite of the shared one. */
-export const CHAT_SESSION_RE = /^air-[a-z0-9-]{1,32}$/;
+ * a rewrite of the shared one. Wide enough for `air-create-<appname>`
+ * (goal-create-v11 §9.2). */
+export const CHAT_SESSION_RE = /^air-[a-z0-9-]{1,48}$/;
+
+/** `air-create-<appname>` threads are owned by the Create surface: their runs
+ * carry the Kit system prompt, `create-<tier>` model, and the project budget
+ * label, so ordinary chat may not drive them. */
+export const CREATE_SESSION_PREFIX = "air-create-";
+
+export function isCreateSession(sessionId: string): boolean {
+  return sessionId.startsWith(CREATE_SESSION_PREFIX);
+}
 
 export async function startChatRun(
   supabase: SupabaseClient,

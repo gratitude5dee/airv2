@@ -731,7 +731,7 @@ exec curl -fsS -X POST "\${base%/api/gateway/v1}/api/cards/\${kind}" \\
 SH
 sudo chmod +x /usr/local/bin/open-miniapp-card
 
-# air-create <drop|status|publish>: the create-miniapp skill's CLI (V11 §8.3).
+# air-create <new|build|qa|drop|status|publish>: the create-miniapp skill's CLI (V11 §9.5).
 # Same reasoning — a plain command name keeps the agent on the terminal tool.
 chmod +x "$HOME_DIR/.hermes/skills/create-miniapp/scripts/air-create"
 sudo ln -sf "$HOME_DIR/.hermes/skills/create-miniapp/scripts/air-create" /usr/local/bin/air-create

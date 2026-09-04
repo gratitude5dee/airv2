@@ -43,6 +43,12 @@ export interface RunRequest {
   /** Explicit history replay; when omitted and sessionId is set, createRun
    * loads the persisted session transcript itself. */
   conversationHistory?: ConversationMessage[];
+  /** Gateway model selection (`fast` | `create-<tier>`); the Box only ever
+   * sees tier names, the gateway resolves the slug (C2). */
+  model?: string;
+  /** Extra system instructions for this run (Create injects the Kit's
+   * system prompt + project context here, §9.2). */
+  instructions?: string;
 }
 
 const RunResponseSchema = z.object({ run_id: z.string() });
@@ -144,6 +150,8 @@ export async function createRun(
       ...(request.sessionId ? { session_id: request.sessionId } : {}),
       ...(history.length > 0 ? { conversation_history: history } : {}),
       ...(request.metadata ? { metadata: request.metadata } : {}),
+      ...(request.model ? { model: request.model } : {}),
+      ...(request.instructions ? { instructions: request.instructions } : {}),
     }),
   });
 }

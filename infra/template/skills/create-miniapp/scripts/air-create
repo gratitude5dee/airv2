@@ -1,26 +1,36 @@
 #!/usr/bin/env bash
-# air-create — Drop lane CLI for the create-miniapp skill (V11 §8).
+# air-create — Vibe + Drop CLI for the create-miniapp skill (V11 §8, §9.5).
 #
+#   air-create new <appname> [--lane vibe|drop|import] [--title <t>]
+#   air-create build <appname>
+#   air-create qa <appname>
+#   air-create status <appname|slug>
 #   air-create drop <file.html|file.zip|dir> [--name <app-name>] [--title <t>]
-#   air-create status <slug>            (the slug `drop` printed)
 #   air-create publish <app-name> [--title <t>]
 #
-# drop    stages a DRAFT version through the control plane, which pulls the
-#         bytes out of this Box itself (nothing here talks to storage).
-# status  shows the draft/live versions and lint findings for an app.
+# new     scaffolds ~/.hermes/create/<appname>/ (air.json, create.plan.md,
+#         src/main.tsx, public/) and records it in ~/.hermes/create/.active.
+# build   asks the control plane to compile the workspace into a DRAFT
+#         version; the Build Service pulls the tree, resolves the Kit, lints
+#         and validates the bundle. A hard finding produces no version.
+# qa      drives this Box's agent-browser over the draft (3 viewports ×
+#         reduced-motion on/off), writes screenshots to .build/qa/ and posts
+#         a content-free report; the control plane never runs a browser.
+# status  shows draft/live versions, the last build, qa_score and budget.
+# drop    stages a DRAFT version from an HTML file, zip, or folder.
 # publish files a Needs-you decision; the OWNER approves it on their phone.
-#         This command never flips an app live.
+#         Nothing here ever flips an app live.
 #
 # Folders are zipped with python3 -m zipfile (no `zip` binary is assumed).
 set -euo pipefail
 
 usage() {
-  sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//' >&2
+  sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//' >&2
   exit 2
 }
 
 env_value() {
-  grep -m1 "^$1=" "$HOME/.hermes/.env" | cut -d= -f2-
+  grep -m1 "^$1=" "$HOME/.hermes/.env" 2>/dev/null | cut -d= -f2- || true
 }
 
 BASE_URL="${OPENAI_BASE_URL:-$(env_value OPENAI_BASE_URL)}"
@@ -31,8 +41,37 @@ BASE="${BASE_URL%/api/gateway/v1}"
   exit 1
 }
 
+CREATE_ROOT="$HOME/.hermes/create"
+ACTIVE_FILE="$CREATE_ROOT/.active"
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+BUILD_POLL_SECONDS=5
+BUILD_POLL_LIMIT=60
+
 json_string() {
   python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$1"
+}
+
+json_get() {
+  # json_get <json> <key> — prints the top-level value ("" for null/missing).
+  python3 -c '
+import json, sys
+try:
+    v = json.loads(sys.argv[1]).get(sys.argv[2])
+except Exception:
+    v = None
+if v is None:
+    print("")
+elif isinstance(v, bool):
+    print("true" if v else "false")
+elif isinstance(v, (dict, list)):
+    print(json.dumps(v))
+else:
+    print(v)
+' "$1" "$2"
+}
+
+url_encode() {
+  python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$1"
 }
 
 api() {
@@ -58,12 +97,196 @@ finish() {
   case "$status" in 2*) return 0 ;; *) return 1 ;; esac
 }
 
+check_appname() {
+  case "$1" in
+    "") usage ;;
+    *[!a-z0-9-]*|-*|*-|*--*) echo "air-create: app name must be lowercase letters, digits and single hyphens" >&2; exit 3 ;;
+  esac
+  [ "${#1}" -le 32 ] || { echo "air-create: app name is longer than 32 characters" >&2; exit 3; }
+}
+
+# `.active` names the project a bare `build`/`qa`/`status` acts on (§9.5).
+set_active() {
+  mkdir -p "$CREATE_ROOT"
+  printf '%s\n' "$1" > "$ACTIVE_FILE"
+}
+
+resolve_appname() {
+  local name="${1:-}"
+  if [ -z "$name" ] && [ -f "$ACTIVE_FILE" ]; then
+    name="$(head -n1 "$ACTIVE_FILE" | tr -d '[:space:]')"
+  fi
+  [ -n "$name" ] || { echo "air-create: no app name given and ~/.hermes/create/.active is empty" >&2; exit 3; }
+  check_appname "$name"
+  printf '%s' "$name"
+}
+
 name_from_path() {
   local base
   base="$(basename "$1")"
   base="${base%.*}"
   base="$(printf '%s' "$base" | tr '[:upper:]' '[:lower:]' | sed -E 's/^[0-9]+-//; s/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')"
   printf '%s' "${base:0:32}"
+}
+
+cmd_new() {
+  local name="" lane="vibe" title=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --lane) lane="$2"; shift 2 ;;
+      --title) title="$2"; shift 2 ;;
+      -*) usage ;;
+      *) name="$1"; shift ;;
+    esac
+  done
+  check_appname "$name"
+  case "$lane" in vibe|drop|import) ;; *) echo "air-create: --lane must be vibe, drop or import" >&2; exit 3 ;; esac
+  [ -n "$title" ] || title="$name"
+
+  local dir="$CREATE_ROOT/$name"
+  if [ -e "$dir/air.json" ]; then
+    echo "air-create: $dir already exists; edit it or pick another name" >&2
+    exit 3
+  fi
+  mkdir -p "$dir/src" "$dir/public" "$dir/.build"
+  python3 - "$dir/air.json" "$name" "$title" "$lane" <<'EOF'
+import json, sys
+path, name, title, lane = sys.argv[1:5]
+with open(path, "w") as f:
+    json.dump({
+        "schema": "air.app.v1",
+        "appname": name,
+        "name": title,
+        "description": "",
+        "lane": lane,
+        "entry": "src/main.tsx",
+        "theme": "atmosphere",
+        "surface": {"lite": True, "expanded": True},
+        "kit": {"components": ["air"]},
+        "actions": [],
+        "guestActions": [],
+        "functions": None,
+    }, f, indent=2)
+    f.write("\n")
+EOF
+  cat > "$dir/create.plan.md" <<EOF
+# $title
+
+## Goal
+<one sentence: what the owner asked for>
+
+## Screens / states
+- 
+
+## Kit components
+- @kit/air (shell, tokens)
+
+## Open questions
+- 
+EOF
+  cat > "$dir/src/main.tsx" <<'EOF'
+import { createRoot } from "react-dom/client";
+import { cn, useLite } from "@kit/air";
+
+function App() {
+  const lite = useLite();
+  return (
+    <main className={cn("flex min-h-full flex-col items-center justify-center gap-3 p-4 text-center", lite && "lite")}>
+      <h1 className="text-2xl text-ink">Hello, Air</h1>
+      <p className="text-sm text-ink-muted">Edit src/main.tsx, then run air-create build.</p>
+    </main>
+  );
+}
+
+createRoot(document.getElementById("root")!).render(<App />);
+EOF
+  set_active "$name"
+  printf '{"ok":true,"appname":%s,"lane":%s,"workspace":%s,"active":true}\n' \
+    "$(json_string "$name")" "$(json_string "$lane")" "$(json_string "$dir")"
+}
+
+cmd_build() {
+  local name
+  name="$(resolve_appname "${1:-}")"
+  [ -f "$CREATE_ROOT/$name/air.json" ] || {
+    echo "air-create: $CREATE_ROOT/$name/air.json missing — run air-create new $name first" >&2
+    exit 3
+  }
+  set_active "$name"
+  mkdir -p "$CREATE_ROOT/$name/.build"
+  local response status body
+  response="$(api POST /api/create/build "{\"appname\":$(json_string "$name")}")"
+  status="${response##*$'\n'}"
+  body="${response%$'\n'*}"
+  if [ "$status" != "202" ]; then
+    printf '%s\n' "$body" | tee "$CREATE_ROOT/$name/.build/build.json"
+    case "$status" in 2*) return 0 ;; *) return 1 ;; esac
+  fi
+  # The control plane held the request as long as it could; poll the ledger.
+  local build_id
+  build_id="$(json_get "$body" build_id)"
+  [ -n "$build_id" ] || { printf '%s\n' "$body"; return 1; }
+  local i=0 state=""
+  while [ "$i" -lt "$BUILD_POLL_LIMIT" ]; do
+    sleep "$BUILD_POLL_SECONDS"
+    i=$((i + 1))
+    response="$(api GET "/api/create/status?app=$(url_encode "$name")&build=$(url_encode "$build_id")")"
+    status="${response##*$'\n'}"
+    body="${response%$'\n'*}"
+    case "$status" in 2*) ;; *) printf '%s\n' "$body"; return 1 ;; esac
+    state="$(python3 -c 'import json,sys; b=(json.loads(sys.argv[1]).get("build") or {}); print(b.get("status") or "")' "$body")"
+    case "$state" in running|"") continue ;; *) break ;; esac
+  done
+  python3 -c '
+import json, sys
+s = json.loads(sys.argv[1]); b = s.get("build") or {}
+out = {
+  "ok": b.get("status") == "succeeded",
+  "build_id": b.get("id"), "status": b.get("status") or "running",
+  "slug": s.get("slug"), "appname": s.get("appname"),
+  "version": b.get("version"), "preview_url": s.get("preview_url") if b.get("status") == "succeeded" else None,
+  "url": s.get("url"), "findings": b.get("findings") or [], "sizes": b.get("sizes"),
+  "log": b.get("log") or [], "error": b.get("error"),
+}
+print(json.dumps(out))
+sys.exit(0 if out["ok"] else 1)
+' "$body" | tee "$CREATE_ROOT/$name/.build/build.json"
+}
+
+cmd_qa() {
+  local name
+  name="$(resolve_appname "${1:-}")"
+  local dir="$CREATE_ROOT/$name"
+  [ -f "$dir/air.json" ] || { echo "air-create: $dir/air.json missing" >&2; exit 3; }
+  command -v agent-browser >/dev/null 2>&1 || {
+    echo "air-create: agent-browser is not installed in this Box" >&2
+    exit 1
+  }
+  local response status body
+  response="$(api POST /api/create/preview-link "{\"appname\":$(json_string "$name")}")"
+  status="${response##*$'\n'}"
+  body="${response%$'\n'*}"
+  case "$status" in 2*) ;; *) printf '%s\n' "$body"; return 1 ;; esac
+  local preview version
+  preview="$(json_get "$body" preview_url)"
+  version="$(json_get "$body" version)"
+  [ -n "$preview" ] && [ -n "$version" ] || { echo "air-create: no draft version to QA — run air-create build first" >&2; exit 1; }
+
+  local out_dir="$dir/.build/qa"
+  rm -rf "$out_dir"
+  mkdir -p "$out_dir"
+  local report
+  # The preview token is single-use and owner-only: it goes to the browser here and nowhere else.
+  report="$(python3 "$SCRIPT_DIR/air-qa.py" "$preview" "$version" "$out_dir" --session "air-qa-$name")" || {
+    echo "air-create: QA run produced no passes" >&2
+    exit 1
+  }
+  printf '%s\n' "$report" > "$out_dir/report.json"
+  response="$(api POST /api/create/qa "{\"appname\":$(json_string "$name"),\"report\":$report}")"
+  status="${response##*$'\n'}"
+  body="${response%$'\n'*}"
+  printf '%s\n' "$body"
+  case "$status" in 2*) return 0 ;; *) return 1 ;; esac
 }
 
 cmd_drop() {
@@ -90,8 +313,8 @@ cmd_drop() {
   local path="$src"
   if [ -d "$src" ]; then
     [ -n "$name" ] || name="$(name_from_path "$src")"
-    mkdir -p "$HOME/.hermes/create/.drop"
-    path="$HOME/.hermes/create/.drop/${name:-site}.zip"
+    mkdir -p "$CREATE_ROOT/.drop"
+    path="$CREATE_ROOT/.drop/${name:-site}.zip"
     rm -f "$path"
     # zipfile -c <archive> <dir>/ zips the directory's contents at the root.
     (cd "$src" && python3 -m zipfile -c "$path" ./*)
@@ -111,10 +334,18 @@ cmd_drop() {
   finish "$(api POST /api/create/drop "$body")"
 }
 
+# A slug is `<username>-<appname>`, indistinguishable from an app name by
+# shape, so the reference is tried as an app name first and as a slug only when
+# the app lookup says not-found or not-an-app-name (a slug may run past the
+# 32-character app-name cap); any other API error is reported as-is.
 cmd_status() {
-  local slug="${1:-}"
-  [ -n "$slug" ] || usage
-  finish "$(api GET "/api/create/status?slug=$(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$slug")")"
+  local ref="${1:-}" response
+  [ -n "$ref" ] || ref="$(resolve_appname "")"
+  response="$(api GET "/api/create/status?app=$(url_encode "$ref")")"
+  case "${response##*$'\n'}" in
+    400|404) response="$(api GET "/api/create/status?slug=$(url_encode "$ref")")" ;;
+  esac
+  finish "$response"
 }
 
 cmd_publish() {
@@ -139,6 +370,9 @@ cmd_publish() {
 }
 
 case "${1:-}" in
+  new) shift; cmd_new "$@" ;;
+  build) shift; cmd_build "$@" ;;
+  qa) shift; cmd_qa "$@" ;;
   drop) shift; cmd_drop "$@" ;;
   status) shift; cmd_status "$@" ;;
   publish) shift; cmd_publish "$@" ;;

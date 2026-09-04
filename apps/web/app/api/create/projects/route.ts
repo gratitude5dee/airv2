@@ -6,6 +6,9 @@
  *    version digests and sizes, never bundle contents (CR5).
  *  - POST stages a registry draft for a new project with its lane. The Box
  *    workspace skeleton (MC4) is created by the Create session, not here.
+ *  - PATCH lets the owner raise (or lower) one project's Create budget, up
+ *    to their plan's monthly cap (§9.1). Only the owner — the agent never
+ *    sets budgets (§9.7).
  *
  * Store session only — agents reach projects through their own lanes
  * (`/api/miniapps/publish`, later `/api/create/drop|build`), never this route.
@@ -13,7 +16,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
 import { storeSessionUserId } from "@/lib/miniapps/storeSession";
-import { createDraft, PublishError } from "@/lib/miniapps/publish";
+import { createDraft, ownedApp, PublishError } from "@/lib/miniapps/publish";
+import { budgetMeter, clampBudget, createSpendUsd } from "@/lib/create/budget";
 import {
   parseRegistryApp,
   REGISTRY_COLUMNS,
@@ -101,6 +105,54 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     )
   );
   return NextResponse.json({ projects });
+}
+
+export async function PATCH(request: NextRequest): Promise<NextResponse> {
+  const userId = storeSessionUserId(request);
+  if (!userId) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+  const body = (await request.json().catch(() => null)) as {
+    slug?: unknown;
+    create_budget_usd?: unknown;
+  } | null;
+  const slug = typeof body?.slug === "string" ? body.slug : "";
+  if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(slug)) {
+    return NextResponse.json({ error: "invalid slug" }, { status: 400 });
+  }
+  const requested = body?.create_budget_usd;
+  if (typeof requested !== "number" || !Number.isFinite(requested) || requested < 0) {
+    return NextResponse.json({ error: "invalid create_budget_usd" }, { status: 400 });
+  }
+  const supabase = serviceClient();
+  try {
+    const app = await ownedApp(supabase, userId, slug);
+    const { data: entitlement } = await supabase
+      .from("entitlements")
+      .select("monthly_cap_usd")
+      .eq("user_id", userId)
+      .maybeSingle();
+    const cap = Number((entitlement as { monthly_cap_usd?: unknown } | null)?.monthly_cap_usd ?? 0);
+    const budget = clampBudget(requested, cap);
+    const { error } = await supabase
+      .from("mini_apps")
+      .update({ create_budget_usd: budget })
+      .eq("id", app.id)
+      .eq("owner_user_id", userId);
+    if (error) throw new Error(`budget update failed: ${error.message}`);
+    const spent = await createSpendUsd(supabase, userId, app.slug);
+    return NextResponse.json({
+      ok: true,
+      slug: app.slug,
+      monthly_cap_usd: cap,
+      budget: budgetMeter(budget, spent),
+    });
+  } catch (error) {
+    if (error instanceof PublishError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    throw error;
+  }
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {

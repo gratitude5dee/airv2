@@ -374,3 +374,31 @@ head -3 ~/.hermes/skills/create-miniapp/DESIGN.md   # GENERATED banner + Kit ver
 The Kit itself (`kit/`, `vendor/`) is **not** in the template: Boxes get the
 Design doc and reference pages; component source reaches an app through the
 Build Service (MC4), which reads `packages/create-kit` offline.
+
+## 10. Create skill v2 — `air-create new|build|qa` (MC4 Vibe)
+
+`skills/create-miniapp/` now carries the Vibe lane: `SKILL.md` v2 (still
+generated from `packages/create-kit/prompts/src/skill.md` — edit the source
+and run `npx tsx packages/create-kit/scripts/harvest.ts --docs-only`),
+`scripts/air-create` with `new | build | qa` beside `drop | status | publish`,
+and `scripts/air-qa.py`, the Preview QA runner. Nothing new is installed:
+`air-qa.py` drives the `agent-browser` CLI that setup.sh §3 already bakes
+(`--session air-qa-<appname>`, so it never collides with the agent's own
+browser session) and writes screenshots under
+`~/.hermes/create/<appname>/.build/qa/`. `~/.hermes/create/.active` names
+the project iMessage-initiated turns refer to; `new` and `build` write it.
+
+Rollout is the ordinary §7 flow — commit, `release.sh "create skill v2"`,
+point `dev` at the release, then `prod`. `sync-box.sh` §1 copies the whole
+`skills/create-miniapp/` directory and re-links `/usr/local/bin/air-create`,
+so no sync-box change is needed. Verify on a box:
+
+```bash
+air-create 2>&1 | head -3                                  # usage lists new/build/qa
+python3 ~/.hermes/skills/create-miniapp/scripts/air-qa.py  # usage line, exit 2
+head -3 ~/.hermes/skills/create-miniapp/SKILL.md           # GENERATED banner, version 2.0.0
+```
+
+The Box still holds no Kit source and never runs `npm install`: `build` is a
+`curl` to `POST /api/create/build`, and the Build Service resolves the Kit
+from `packages/create-kit` on the control plane.

@@ -1,12 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
+  clampCreateTier,
   costUsd,
+  CREATE_TIER_MODELS,
   DEFAULT_MODEL_FAMILY,
   isModelFamily,
   isReasoningModel,
   isSpeedTier,
+  modelForCreateTier,
   modelForSelection,
   modelForTier,
+  parseCreateTier,
   requiresConsent,
 } from "./models";
 
@@ -91,5 +95,44 @@ describe("model families", () => {
     expect(costUsd("deep", 1000, 1000, "inkling")).toBe(0);
     expect(costUsd("deep", 1000, 1000, "ox-alpha")).toBeGreaterThan(0);
     expect(costUsd("deep", 1000, 1000, "openai")).toBeGreaterThan(0);
+  });
+});
+
+describe("Create tier family (MC4 §9.1)", () => {
+  afterEach(() => {
+    delete process.env["MODEL_CREATE_DEEP"];
+    delete process.env["MODEL_DEEP"];
+  });
+
+  it("parses only create-<tier> selections", () => {
+    expect(parseCreateTier("create-fast")).toBe("fast");
+    expect(parseCreateTier("create-deep")).toBe("deep");
+    expect(parseCreateTier("fast")).toBeNull();
+    expect(parseCreateTier("create-turbo")).toBeNull();
+    expect(parseCreateTier(42)).toBeNull();
+  });
+
+  it("clamps to the entitled tier and never upgrades", () => {
+    expect(clampCreateTier("deep", "balanced")).toBe("balanced");
+    expect(clampCreateTier("balanced", "fast")).toBe("fast");
+    expect(clampCreateTier("fast", "deep")).toBe("fast");
+    expect(clampCreateTier("balanced", "balanced")).toBe("balanced");
+  });
+
+  it("defaults to the gpt-5.6 luna/terra family", () => {
+    expect(CREATE_TIER_MODELS).toEqual({
+      fast: "gpt-5.6-luna",
+      balanced: "gpt-5.6-terra",
+      deep: "gpt-5.6-terra",
+    });
+    expect(modelForCreateTier("deep")).toBe("gpt-5.6-terra");
+  });
+
+  it("reads MODEL_CREATE_* and never the ordinary MODEL_* override", () => {
+    process.env["MODEL_DEEP"] = "ordinary-deep";
+    expect(modelForCreateTier("deep")).toBe("gpt-5.6-terra");
+    process.env["MODEL_CREATE_DEEP"] = "gpt-5.6-astra";
+    expect(modelForCreateTier("deep")).toBe("gpt-5.6-astra");
+    expect(modelForTier("deep")).toBe("ordinary-deep");
   });
 });

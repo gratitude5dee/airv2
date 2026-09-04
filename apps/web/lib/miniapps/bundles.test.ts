@@ -149,6 +149,24 @@ describe("validateBundle", () => {
       ])
     ).toThrowError(/service worker/i);
   });
+  it("scans for service workers case-insensitively, minus react-dom's <link as> literal", () => {
+    for (const text of [
+      "navigator.ServiceWorker.register('/sw.js')",
+      "navigator['SERVICEWORKER']",
+      "navigator[\"serviceworker\"]",
+      'const k = "ServiceWorker"; navigator[k]',
+    ]) {
+      expect(() => validateBundle([file("index.html", "x"), file("app.js", text)])).toThrowError(
+        /service worker/i
+      );
+    }
+    expect(() =>
+      validateBundle([
+        file("index.html", "x"),
+        file("app.js", 'switch (as) { case "serviceworker": case "audioworklet": break }'),
+      ])
+    ).not.toThrow();
+  });
   it("rejects publisher meta CSP overrides", () => {
     expect(() =>
       validateBundle([

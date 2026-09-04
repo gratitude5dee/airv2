@@ -7,7 +7,7 @@ import { after, NextRequest, NextResponse } from "next/server";
 import { sessionUserId } from "@/lib/auth/user";
 import { serviceClient } from "@/lib/supabase";
 import { StartLimitError } from "@/lib/orchestrator/boxes";
-import { CHAT_SESSION_RE, startChatRun } from "@/lib/chat/relay";
+import { CHAT_SESSION_RE, isCreateSession, startChatRun } from "@/lib/chat/relay";
 import {
   AMBIGUOUS_COMMAND_LINE,
   parseExplicitGenerationCommand,
@@ -43,6 +43,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (body.session !== undefined) {
     if (typeof body.session !== "string" || !CHAT_SESSION_RE.test(body.session)) {
       return NextResponse.json({ error: "bad session" }, { status: 400 });
+    }
+    // Create threads take turns only through /api/create/turn (Kit prompt,
+    // create-<tier> model, project budget) — never as plain chat.
+    if (isCreateSession(body.session)) {
+      return NextResponse.json({ error: "create session" }, { status: 400 });
     }
     session = body.session;
   }
