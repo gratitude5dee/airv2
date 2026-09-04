@@ -20,6 +20,9 @@ import { FleetError } from "@/lib/fleet/releases";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function errorResponse(error: unknown): NextResponse {
   if (error instanceof FleetError) {
     return NextResponse.json({ error: error.message }, { status: error.status });
@@ -68,7 +71,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       if (
         expected !== undefined &&
         expected !== null &&
-        typeof expected !== "string"
+        (typeof expected !== "string" || !UUID_RE.test(expected))
       ) {
         return NextResponse.json(
           { error: "expected_release_id must be a release id or null" },
