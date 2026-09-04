@@ -10,6 +10,7 @@
 import { createHash } from "node:crypto";
 import { env } from "../env";
 import type { RegistryApp } from "./registry";
+import { nestedPathFor, splitPublishedSlug } from "./nested";
 
 
 export interface IndexEntry {
@@ -17,7 +18,11 @@ export interface IndexEntry {
   description: string;
   slug: string;
   url: string;
-  publisher: { username: string | null; agent_identity: string | null };
+  publisher: {
+    username: string | null;
+    agent_identity: string | null;
+    url: string | null;
+  };
   gates: {
     password: boolean;
     x402: { price_usdc: number } | null;
@@ -41,6 +46,12 @@ export function canonicalDetailUrl(slug: string): string {
   return `${env.appOrigin().replace(/\/$/, "")}/mini/${slug}`;
 }
 
+/** Publisher page on the mini origin (V11 §6), or null for first-party apps. */
+export function publisherUrl(app: RegistryApp): string | null {
+  const parts = splitPublishedSlug(app.slug);
+  return parts ? `${origin()}/${parts.username}` : null;
+}
+
 /** True only for rows allowed on any discovery surface (MA7). */
 export function discoverable(app: RegistryApp): boolean {
   return app.status === "published" && app.visibility === "public";
@@ -51,10 +62,11 @@ export function indexEntry(app: RegistryApp): IndexEntry {
     name: app.name || app.slug,
     description: app.description,
     slug: app.slug,
-    url: `${origin()}/${app.slug}`,
+    url: `${origin()}${nestedPathFor(app.slug)}`,
     publisher: {
       username: app.publisher_username,
       agent_identity: app.agent_identity,
+      url: publisherUrl(app),
     },
     gates: {
       password: Boolean(app.password_hash),
@@ -129,7 +141,7 @@ export function agentMd(app: RegistryApp, actions: string[]): string {
     "",
     `- URL: ${entry.url}`,
     `- Detail page: ${canonicalDetailUrl(entry.slug)}`,
-    `- Publisher: @${publisher}`,
+    `- Publisher: @${publisher}${entry.publisher.url ? ` (${entry.publisher.url})` : ""}`,
     ...(entry.publisher.agent_identity
       ? [`- Publisher agent identity: ${entry.publisher.agent_identity}`]
       : []),
@@ -175,7 +187,8 @@ export function llmsTxt(apps: RegistryApp[]): string {
     `- Machine-readable index: ${base}/api/store/index.json (ETag + cache headers)`,
     `- Per-app agent card: ${base}/store/<slug>/agent.md`,
     `- App detail (HTML + JSON-LD): ${base}/store/<slug>`,
-    `- Open an app: GET ${base}/<slug> — server-side gates: visibility, password, x402 (HTTP 402 with an accepts payload; retry with X-PAYMENT), then session.`,
+    `- Open an app: GET ${base}/<slug> (first-party) or ${base}/<username>/<appname> (published) — server-side gates: visibility, password, x402 (HTTP 402 with an accepts payload; retry with X-PAYMENT), then session.`,
+    `- Publisher page: ${base}/<username> lists everything a publisher has shipped.`,
     `- Publish an app: sign in at ${base}/publish — static bundle upload, platform Apps API for dynamic behavior.`,
     "",
     "## Apps",
@@ -254,6 +267,7 @@ export function jsonLd(app: RegistryApp): Record<string, unknown> {
     author: {
       "@type": entry.publisher.username ? "Person" : "Organization",
       name: entry.publisher.username ?? "Air",
+      ...(entry.publisher.url ? { url: entry.publisher.url } : {}),
       ...(entry.publisher.agent_identity
         ? { identifier: entry.publisher.agent_identity }
         : {}),

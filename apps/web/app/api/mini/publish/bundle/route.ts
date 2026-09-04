@@ -1,18 +1,16 @@
 /**
  * MA3 bundle upload: multipart zip for an owned app → validate (25 MB cap,
  * static allowlist, no service workers, no CSP overrides, index.html
- * required) → apps/<slug>/<version>/ on R2 → registry points at the new
- * version. Uploading never publishes — the status flip is separate.
+ * required) → apps/<slug>/<version>/ on R2 → one miniapp_versions row and
+ * the draft Worker on the app origin (V11 §13.1) → registry points at the
+ * new version. Uploading never publishes — the status flip is separate.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
 import { storeSessionUserId } from "@/lib/miniapps/storeSession";
 import { ownedApp, PublishError } from "@/lib/miniapps/publish";
-import {
-  BUNDLE_MAX_ZIP_BYTES,
-  BundleError,
-  uploadBundle,
-} from "@/lib/miniapps/bundles";
+import { BUNDLE_MAX_ZIP_BYTES, BundleError } from "@/lib/miniapps/bundles";
+import { uploadVersion, VersionError } from "@/lib/create/versions";
 import { r2Configured } from "@/lib/storage/r2";
 import { recordOpsEvent, uploadRateLimited } from "@/lib/security/limits";
 
@@ -47,11 +45,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const app = await ownedApp(supabase, userId, slug);
     const zip = Buffer.from(await file.arrayBuffer());
-    const version = await uploadBundle(supabase, app.id, app.slug, zip);
+    const version = await uploadVersion(supabase, app, zip, "push");
     await recordOpsEvent(supabase, "upload", userId, `bundle:${app.slug}`, zip.length);
     return NextResponse.json({ ok: true, version });
   } catch (error) {
-    if (error instanceof PublishError || error instanceof BundleError) {
+    if (
+      error instanceof PublishError ||
+      error instanceof BundleError ||
+      error instanceof VersionError
+    ) {
       if (error instanceof BundleError) {
         await recordOpsEvent(supabase, "upload_rejected", userId, error.message);
       }

@@ -9,7 +9,6 @@
  * inflateRawSync — no dependency, no symlinks, no zip64.
  */
 import { inflateRawSync } from "node:zlib";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { putObject } from "../storage/r2";
 import {
   BUNDLE_MAX_ZIP_BYTES,
@@ -184,31 +183,15 @@ export function bundleKey(slug: string, version: string, path: string): string {
   return `apps/${slug}/${version}/${path}`;
 }
 
-/**
- * Validate + upload a zip for an owned draft/published app, then point the
- * registry row at the new immutable version.
- */
-export async function uploadBundle(
-  supabase: SupabaseClient,
-  appId: string,
+/** Store validated files at apps/<slug>/<version>/ (the immutable prefix). */
+export async function storeBundle(
   slug: string,
-  zip: Buffer
-): Promise<string> {
-  const files = readZip(zip);
-  validateBundle(files);
-  const version = `v${Date.now()}`;
+  version: string,
+  files: BundleFile[]
+): Promise<void> {
   for (const file of files) {
     const contentType = bundleContentType(file.path);
     if (!contentType) throw new BundleError(`file type not allowed: ${file.path}`);
     await putObject(bundleKey(slug, version, file.path), file.bytes, contentType);
   }
-  const { error } = await supabase
-    .from("mini_apps")
-    .update({ bundle_version: version, updated_at: new Date().toISOString() })
-    .eq("id", appId);
-  if (error) throw new Error(`bundle version update failed: ${error.message}`);
-  console.log(
-    JSON.stringify({ msg: "miniapp bundle uploaded", slug, version, files: files.length })
-  );
-  return version;
 }

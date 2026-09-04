@@ -10,6 +10,7 @@ import { serviceClient } from "@/lib/supabase";
 import { sessionUserId } from "@/lib/auth/user";
 import { env } from "@/lib/env";
 import { getRegistryApp } from "@/lib/miniapps/registry";
+import { nestedPathFor } from "@/lib/miniapps/nested";
 import { createGuestGrant } from "@/lib/miniapps/guests";
 import { grantRateLimited, recordOpsEvent } from "@/lib/security/limits";
 
@@ -67,7 +68,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   await recordOpsEvent(supabase, "grant", userId, app.slug);
   return NextResponse.json({
     grant_id: grant.id,
-    url: `${env.miniappOrigin()}/${app.slug}?g=${grant.id}`,
+    url: `${env.miniappOrigin()}${nestedPathFor(app.slug)}?g=${grant.id}`,
     expires_at: grant.expires_at,
     max_uses: grant.max_uses,
   });

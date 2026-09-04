@@ -23,6 +23,7 @@ import {
   type CardClaim,
   type CardKind,
 } from "./cardSends";
+import { nestedPathFor } from "./nested";
 import { mintToken } from "./tokens";
 import { warmStatusMirror } from "./onboardingMirror";
 import type { Message } from "spectrum-ts";
@@ -90,8 +91,9 @@ export function mintSignedLink(
   resourceId: string,
   via?: "card" | undefined
 ): string {
-  // Apps live at mini.wzrd.tech/<slug> (MA0); legacy /mini/<slug> 301s there.
-  return `${env.miniappOrigin()}/${appSlug}?t=${mintToken(userId, appSlug, resourceId, CARD_LINK_TTL_MINUTES, { via })}`;
+  // First-party apps live at mini.wzrd.tech/<slug> (MA0), published apps at
+  // /<username>/<appname> (V11); legacy /mini/<slug> and flat slugs 301 there.
+  return `${env.miniappOrigin()}${nestedPathFor(appSlug)}?t=${mintToken(userId, appSlug, resourceId, CARD_LINK_TTL_MINUTES, { via })}`;
 }
 
 /** Per-send copy override so a card bubble can carry its occasion (e.g. a

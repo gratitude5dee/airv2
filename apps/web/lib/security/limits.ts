@@ -17,7 +17,13 @@ export type OpsEventKind =
   | "guest_session"
   | "grant"
   | "rate_limited"
-  | "pair_attempt";
+  | "pair_attempt"
+  | "build"
+  | "build_failed"
+  | "deploy_fn"
+  | "fn_capped"
+  | "rollback"
+  | "import";
 
 /** Per-user launch mints (store session or plugin bearer), per hour. */
 export const LAUNCHES_PER_HOUR = 60;
@@ -27,6 +33,8 @@ export const PUBLISHES_PER_DAY = 20;
 export const UPLOADS_PER_HOUR = 60;
 /** Guest grant mints, per owner per hour. */
 export const GRANTS_PER_HOUR = 30;
+/** Live-pointer rollbacks, per publisher per day (V11 CR16). */
+export const ROLLBACKS_PER_DAY = 20;
 /** Unauthenticated pairing-code exchange attempts, per source per hour. */
 export const PAIR_ATTEMPTS_PER_HOUR = 20;
 
@@ -155,6 +163,13 @@ export function publishRateLimited(
   userId: string
 ): Promise<boolean> {
   return overLimit(supabase, "publish", userId, PUBLISHES_PER_DAY, DAY_MS);
+}
+
+export function rollbackRateLimited(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<boolean> {
+  return overLimit(supabase, "rollback", userId, ROLLBACKS_PER_DAY, DAY_MS);
 }
 
 /**

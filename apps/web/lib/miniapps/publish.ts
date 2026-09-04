@@ -11,9 +11,13 @@ import { randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { hashPassword } from "./gates";
 import { asRecord } from "../records";
+import { getVersion, pointLiveAt } from "../create/versions";
+import { promoteVersion, syncManifest } from "../functions/deploy";
 import {
+  REGISTRY_COLUMNS,
   parseNullableNumeric,
   parseRegistryApp,
+  type CreateLane,
   type RegistryApp,
 } from "./registry";
 import { isReservedWord } from "./reserved";
@@ -62,17 +66,13 @@ export function slugFor(username: string, appname: string): string {
   return `${username}-${appname}`;
 }
 
-const REGISTRY_COLUMNS =
-  "id, slug, kind, owner_user_id, name, description, icon_key, " +
-  "publisher_username, publisher_wallet, agent_identity, visibility, " +
-  "access, password_hash, x402_enabled, x402_price_usdc, " +
-  "plugin_signin_enabled, status, bundle_version, listed_at, updated_at";
-
 export interface DraftInput {
   appname: string;
   name: string;
   description: string;
   agentIdentity?: string | null;
+  /** V11 lane that produced the project; absent for pre-V11 publisher drafts. */
+  lane?: CreateLane | undefined;
 }
 
 type DraftResult = Pick<RegistryApp, "id" | "slug" | "name">;
@@ -111,6 +111,7 @@ export async function createDraft(
     .from("mini_apps")
     .insert({
       slug,
+      appname,
       route: `/mini/${slug}`,
       kind: "render",
       owner_user_id: userId,
@@ -122,6 +123,7 @@ export async function createDraft(
           ? wallet.wallet_address
           : null,
       agent_identity: input.agentIdentity?.trim().slice(0, 200) || null,
+      ...(input.lane ? { lane: input.lane } : {}),
       visibility: "unlisted",
       access: "single",
       status: "draft",
@@ -138,6 +140,7 @@ export async function createDraft(
           name,
           description,
           agent_identity: input.agentIdentity?.trim().slice(0, 200) || null,
+          ...(input.lane ? { lane: input.lane } : {}),
           updated_at: new Date().toISOString(),
         })
         .eq("slug", slug)
@@ -191,6 +194,11 @@ export type PublishStatusFlip = "published" | "draft";
  * The status flip — always an owner action. Publishing requires an uploaded
  * bundle; the agent can never reach this function (its route only stages
  * drafts + decisions).
+ *
+ * V11 §13.2: when the bundle has a miniapp_versions row, publishing also
+ * copies the draft Worker to the live script and writes the KV manifest, so
+ * the app origin serves the version the owner previewed. Delisting writes
+ * the manifest too — the app origin stops answering before the row flips.
  */
 export async function setPublishStatus(
   supabase: SupabaseClient,
@@ -203,6 +211,15 @@ export async function setPublishStatus(
   if (status === "published" && !app.bundle_version) {
     throw new PublishError("upload a bundle before publishing", 409);
   }
+  const version =
+    app.bundle_version && (await getVersion(supabase, app.id, app.bundle_version));
+  if (status === "published" && version) {
+    await promoteVersion(app, version.version);
+    await pointLiveAt(supabase, app, version.version);
+  }
+  if (status === "draft") {
+    await syncManifest({ ...app, status: "draft" });
+  }
   const { error } = await supabase
     .from("mini_apps")
     .update({
@@ -213,7 +230,16 @@ export async function setPublishStatus(
     })
     .eq("id", app.id)
     .eq("owner_user_id", userId);
-  if (error) throw new Error(`status flip failed: ${error.message}`);
+  if (error) {
+    // The manifest already moved; put it back to what the registry still
+    // says so a delist that failed to flip does not leave the app dark (or a
+    // publish that failed to flip serving).
+    await syncManifest(app).catch(() => false);
+    throw new Error(`status flip failed: ${error.message}`);
+  }
+  if (status === "published" && version) {
+    await syncManifest({ ...app, status: "published" });
+  }
   console.log(
     JSON.stringify({ msg: "miniapp status flip", user_id: userId, slug, status })
   );

@@ -1,0 +1,57 @@
+# Air platform Workers (V11 §15). Only the Dispatcher and the static stub live
+# here; user Workers are uploaded by the control plane through the vendor API
+# (apps/web/lib/functions/deploy.ts) and never touch wrangler.
+#
+# Secrets (set with `wrangler secret put`, never in this file):
+#   APP_ORIGIN_SIGNING_KEY   mirrors the Vercel value; verifies app tokens and manifests
+#
+# Deploy: infra/workers/release.sh (build → digest → upload → verify).
+
+name = "air-dispatcher"
+main = "dispatcher/index.mjs"
+compatibility_date = "2025-06-01"
+workers_dev = false
+
+routes = [
+  { pattern = "*.apps.wzrd.tech/*", zone_name = "wzrd.tech" },
+]
+
+[vars]
+APPS_ORIGIN_SUFFIX = "apps.wzrd.tech"
+MINI_ORIGIN = "https://mini.wzrd.tech"
+APP_ORIGIN = "https://app.wzrd.tech"
+CREATE_FUNCTIONS_ENABLED = "0"
+CPU_MS = "50"
+
+# The live/draft/status pointer written by the control plane (lib/functions/manifest.ts).
+[[kv_namespaces]]
+binding = "AIR_MANIFEST"
+id = "REPLACE_WITH_CF_MANIFEST_KV_ID"
+
+# Exactly-once token exchange: one Durable Object per jti (single-writer),
+# self-deleting after 2× the token TTL. KV cannot give this guarantee.
+[[durable_objects.bindings]]
+name = "TOKEN_REPLAY"
+class_name = "TokenReplay"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["TokenReplay"]
+
+# Content-free CSP report counter per app per day (§17). Optional.
+[[kv_namespaces]]
+binding = "CSP_COUNTS"
+id = "REPLACE_WITH_CSP_COUNTS_KV_ID"
+
+[[dispatch_namespaces]]
+binding = "DISPATCHER"
+namespace = "air-apps"
+
+[observability]
+enabled = true
+head_sampling_rate = 0.1
+
+# --- static stub -----------------------------------------------------------
+# Not deployed by wrangler: apps/web/lib/functions/staticStub.ts embeds
+# static-stub/index.mjs and uploads it as each Drop app's main_module.
+# staticStub.test.ts pins the two copies byte for byte.

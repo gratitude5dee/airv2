@@ -1,8 +1,23 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+const deploy = vi.hoisted(() => ({
+  promoteVersion: vi.fn(async () => null),
+  syncManifest: vi.fn(async () => true),
+}));
+vi.mock("../functions/deploy", () => deploy);
+const versions = vi.hoisted(() => ({
+  getVersion: vi.fn(async () => null as { version: string } | null),
+  pointLiveAt: vi.fn(async () => undefined),
+}));
+vi.mock("../create/versions", () => versions);
+
+import { makeApp } from "@/app/mini/loader-test-utils";
 import { isReservedWord, RESERVED_WORDS } from "./reserved";
 import {
   parseGateSettingsRow,
   PublishError,
+  setPublishStatus,
   slugFor,
   validateAppName,
 } from "./publish";
@@ -89,10 +104,38 @@ describe("parseRegistryApp", () => {
     bundle_version: "v1",
     listed_at: "2026-08-01T00:00:00Z",
     updated_at: "2026-08-01T00:00:00Z",
+    appname: "notes",
+    draft_version: null,
+    lane: "drop",
+    functions_enabled: false,
+    kit_version: null,
+    create_budget_usd: "5.00",
   };
 
   it("accepts a complete selected row", () => {
-    expect(parseRegistryApp(valid)).toEqual(valid);
+    expect(parseRegistryApp(valid)).toEqual({ ...valid, create_budget_usd: 5 });
+  });
+
+  it("normalizes pre-0082 rows that lack the V11 columns", () => {
+    const legacy: Record<string, unknown> = { ...valid };
+    for (const column of [
+      "appname",
+      "draft_version",
+      "lane",
+      "functions_enabled",
+      "kit_version",
+      "create_budget_usd",
+    ]) {
+      delete legacy[column];
+    }
+    expect(parseRegistryApp(legacy)).toMatchObject({
+      appname: null,
+      draft_version: null,
+      lane: null,
+      functions_enabled: false,
+      kit_version: null,
+      create_budget_usd: 5,
+    });
   });
 
   it("coerces numeric prices returned as strings", () => {
@@ -133,5 +176,79 @@ describe("parseGateSettingsRow", () => {
         x402_price_usdc: "  ",
       })
     ).toBeNull();
+  });
+});
+
+describe("setPublishStatus (V11 §13.2 manifest ordering)", () => {
+  const live = makeApp({
+    id: "app-notes",
+    slug: "alice-notes",
+    owner_user_id: "user-alice",
+    publisher_username: "alice",
+    appname: "notes",
+    status: "published",
+    bundle_version: "v1700000000001",
+  });
+  let statusFlipFails = false;
+
+  function fakeSupabase(app: ReturnType<typeof makeApp>): SupabaseClient {
+    const builder = {
+      select: () => builder,
+      update: () => builder,
+      eq: () => builder,
+      maybeSingle: async () => ({ data: app, error: null }),
+      then: (resolve: (value: { data: unknown; error: unknown }) => unknown) =>
+        Promise.resolve(
+          statusFlipFails
+            ? { data: null, error: { message: "connection reset" } }
+            : { data: null, error: null }
+        ).then(resolve),
+    };
+    return { from: () => builder } as unknown as SupabaseClient;
+  }
+
+  beforeEach(() => {
+    statusFlipFails = false;
+    deploy.promoteVersion.mockClear();
+    deploy.syncManifest.mockClear();
+    versions.getVersion.mockReset();
+    versions.getVersion.mockResolvedValue({ version: "v1700000000001" });
+    versions.pointLiveAt.mockClear();
+  });
+
+  it("delisting writes the draft manifest before the row flips", async () => {
+    await setPublishStatus(fakeSupabase(live), "user-alice", "alice-notes", "draft");
+    expect(deploy.syncManifest).toHaveBeenCalledTimes(1);
+    expect(deploy.syncManifest).toHaveBeenCalledWith(
+      expect.objectContaining({ slug: "alice-notes", status: "draft" })
+    );
+    expect(deploy.promoteVersion).not.toHaveBeenCalled();
+  });
+
+  it("a delist whose row flip fails restores the published manifest so the app stays up", async () => {
+    statusFlipFails = true;
+    await expect(
+      setPublishStatus(fakeSupabase(live), "user-alice", "alice-notes", "draft")
+    ).rejects.toThrow(/status flip failed/);
+    expect(deploy.syncManifest).toHaveBeenCalledTimes(2);
+    expect(deploy.syncManifest).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        slug: "alice-notes",
+        status: "published",
+        bundle_version: "v1700000000001",
+      })
+    );
+  });
+
+  it("a publish whose row flip fails leaves the manifest on draft, not serving", async () => {
+    const draft = makeApp({ ...live, status: "draft" });
+    statusFlipFails = true;
+    await expect(
+      setPublishStatus(fakeSupabase(draft), "user-alice", "alice-notes", "published")
+    ).rejects.toThrow(/status flip failed/);
+    expect(deploy.promoteVersion).toHaveBeenCalledWith(draft, "v1700000000001");
+    expect(deploy.syncManifest).toHaveBeenLastCalledWith(
+      expect.objectContaining({ slug: "alice-notes", status: "draft" })
+    );
   });
 });

@@ -29,6 +29,12 @@ export function makeApp(overrides: Partial<RegistryApp>): RegistryApp {
     bundle_version: null,
     listed_at: null,
     updated_at: "2026-01-01T00:00:00.000Z",
+    appname: null,
+    draft_version: null,
+    lane: null,
+    functions_enabled: false,
+    kit_version: null,
+    create_budget_usd: 5,
     ...overrides,
   };
 }

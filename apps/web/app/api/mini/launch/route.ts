@@ -15,6 +15,7 @@ import { serviceClient } from "@/lib/supabase";
 import { env } from "@/lib/env";
 import { mintToken } from "@/lib/miniapps/tokens";
 import { getRegistryApp } from "@/lib/miniapps/registry";
+import { nestedPathFor } from "@/lib/miniapps/nested";
 import { logGateEvent, visibilityGate, x402Gate } from "@/lib/miniapps/gates";
 import { storeSessionUserId } from "@/lib/miniapps/storeSession";
 import { verifyPluginToken } from "@/lib/plugin/auth";
@@ -62,10 +63,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // served at /<slug> on the mini origin, so the paid session cookie must be
   // scoped there, and a settled payment answers with {url} — the JSON
   // contract of this route — rather than the gate's redirect.
+  const appPath = nestedPathFor(app.slug);
   const payment = await x402Gate(request, app, {
-    basePath: `/${app.slug}`,
+    basePath: appPath,
     settled: () =>
-      NextResponse.json({ url: `${env.miniappOrigin()}/${app.slug}` }),
+      NextResponse.json({ url: `${env.miniappOrigin()}${appPath}` }),
   });
   if (payment) {
     if (payment.status === 200) {
@@ -80,6 +82,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   await recordOpsEvent(supabase, "launch", userId, slug);
   const token = mintToken(userId, slug, "default");
   return NextResponse.json({
-    url: `${env.miniappOrigin()}/${slug}?t=${token}`,
+    url: `${env.miniappOrigin()}${appPath}?t=${token}`,
   });
 }
