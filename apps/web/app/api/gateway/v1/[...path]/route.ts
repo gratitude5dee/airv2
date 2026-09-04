@@ -35,8 +35,8 @@ import {
   budgetExhausted,
   createRunAttributable,
   createRunLabel,
-  openCreateRun,
   projectBudget,
+  soleAttributableCreateSlug,
 } from "@/lib/create/budget";
 
 export const runtime = "nodejs";
@@ -287,16 +287,18 @@ export async function POST(
         { status: 400 }
       );
     }
-    // Transitional (see parseLegacyCreateTier): a run started before the
-    // project-bearing format is the owner's only open Create run.
-    const open = await openCreateRun(supabase, userId);
-    if (open === null) {
+    // Transitional (see parseLegacyCreateTier): a project-less call can
+    // only be charged when exactly one of the owner's projects could have
+    // made it; with none, or two candidates, it is refused rather than
+    // charged to the wrong one.
+    const slug = await soleAttributableCreateSlug(supabase, userId);
+    if (slug === null) {
       return NextResponse.json(
         { error: "forbidden", reason: "create_run_required" },
         { status: 403 }
       );
     }
-    createModel = { tier: legacyTier, slug: open.slug };
+    createModel = { tier: legacyTier, slug };
   }
   const createTier = createModel?.tier ?? null;
   const tier =

@@ -84,6 +84,36 @@ export async function createRunAttributable(
   return data !== null && data !== undefined;
 }
 
+/**
+ * Transitional (see parseLegacyCreateTier): the one project a project-less
+ * `create-<tier>` call can belong to — the owner's sole attributable Create
+ * run (open, or closed within the trailing window). Null when there is none
+ * or more than one candidate project: an ambiguous legacy call is refused
+ * rather than charged to whichever run happens to be newest.
+ */
+export async function soleAttributableCreateSlug(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<string | null> {
+  const { data } = await supabase
+    .from("agent_runs")
+    .select("label")
+    .eq("user_id", userId)
+    .like("label", `${CREATE_LABEL_PREFIX}%`)
+    .not("trigger", "is", null)
+    .or(
+      `and(ended_at.is.null,started_at.gte.${minutesAgo(CREATE_RUN_MAX_MINUTES)}),` +
+        `ended_at.gte.${minutesAgo(CREATE_RUN_ATTRIBUTION_MINUTES)}`
+    )
+    .limit(100);
+  const slugs = new Set<string>();
+  for (const row of (data ?? []) as { label: string | null }[]) {
+    const slug = slugFromRunLabel(row.label);
+    if (slug) slugs.add(slug);
+  }
+  return slugs.size === 1 ? [...slugs][0]! : null;
+}
+
 export interface BudgetMeter {
   budget_usd: number;
   spent_usd: number;

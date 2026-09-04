@@ -56,6 +56,7 @@ const meteredRows: Record<string, unknown>[] = [];
  * answer by table *and* by the row the query asked for. */
 function table(name: string): Record<string, unknown> {
   const eqs: Record<string, unknown> = {};
+  const notNull: string[] = [];
   const answer = (): { data: unknown } => {
     switch (name) {
       case "boxes":
@@ -63,6 +64,20 @@ function table(name: string): Record<string, unknown> {
       case "entitlements":
         return { data: state.entitlement };
       case "agent_runs": {
+        // No exact label: soleAttributableCreateSlug listing the owner's
+        // run rows. With one: createSpendUsd over the project's meter rows.
+        if (eqs["label"] === undefined) {
+          return {
+            data: state.runs
+              .filter(
+                (row) =>
+                  row.user_id === eqs["user_id"] &&
+                  row.label.startsWith("create:") &&
+                  notNull.every((column) => row[column] !== null)
+              )
+              .map((row) => ({ label: row.label })),
+          };
+        }
         const label = String(eqs["label"]);
         return { data: state.spent[label] ?? [] };
       }
@@ -80,7 +95,6 @@ function table(name: string): Record<string, unknown> {
         return { data: null };
     }
   };
-  const notNull: string[] = [];
   const builder: Record<string, unknown> = {};
   for (const f of ["select", "like", "is", "or", "gte", "order", "limit"]) {
     builder[f] = () => builder;
@@ -95,17 +109,13 @@ function table(name: string): Record<string, unknown> {
   };
   builder["maybeSingle"] = async () => {
     if (name !== "agent_runs") return answer();
-    // `eq("label")` is createRunAttributable's exact project; without it the
-    // query is openCreateRun's `like("create:%")` for the owner's open run.
     const run = state.runs.find(
       (row) =>
         row.user_id === eqs["user_id"] &&
-        (eqs["label"] === undefined ? row.label.startsWith("create:") : row.label === eqs["label"]) &&
+        row.label === eqs["label"] &&
         notNull.every((column) => row[column] !== null)
     );
-    return {
-      data: run ? { id: "row-1", label: run.label, hermes_run_id: run.hermes_run_id ?? "run-1" } : null,
-    };
+    return { data: run ? { id: "row-1" } : null };
   };
   builder["then"] = (resolve: (v: unknown) => unknown) =>
     Promise.resolve(answer()).then(resolve);
@@ -367,6 +377,29 @@ describe("gateway Create tier family (MC4 §9.1)", () => {
       expect(await response.json()).toEqual({ error: "forbidden", reason: "create_run_required" });
       expect(url).toBeNull();
       expect(meteredRows.length).toBe(0);
+    });
+
+    it("transitional: two candidate projects (two runs, or a trailing run beside a newer one) make a project-less call ambiguous → 403", async () => {
+      state.runs = [
+        { user_id: "user-1", label: "create:alice-recipes" },
+        { user_id: "user-1", label: "create:alice-countdown" },
+      ];
+      const { response, url } = await complete({ messages: [], model: "create-balanced" });
+      expect(response.status).toBe(403);
+      expect(url).toBeNull();
+      expect(meteredRows.length).toBe(0);
+    });
+
+    it("transitional: two runs of the same project are not ambiguous; another owner's run does not count", async () => {
+      state.runs = [
+        { user_id: "user-1", label: "create:alice-recipes" },
+        { user_id: "user-1", label: "create:alice-recipes" },
+        { user_id: "user-2", label: "create:bob-app" },
+        { user_id: "user-1", label: "create:alice-ended", trigger: null },
+      ];
+      const { response } = await complete({ messages: [], model: "create-balanced" });
+      expect(response.status).toBe(200);
+      expect(meteredRows.map((row) => row["label"])).toEqual(["create:alice-recipes"]);
     });
 
     it("refuses malformed create-* rather than serving it unlabelled (400)", async () => {
