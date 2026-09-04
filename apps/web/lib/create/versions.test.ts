@@ -638,6 +638,30 @@ describe("uploadVersion", () => {
     expect(db.versions).toHaveLength(0);
   });
 
+  it("stage-only: an origin repair that touched the row mid-upload makes the swap lose; the origin is put back on the registry", async () => {
+    const staged = { ...app, status: "published" as const, draft_version: "v1700000000001" };
+    db.apps[0]!.draft_version = "v1700000000001";
+    deploy.deployStaticVersion.mockImplementation(async () => {
+      // The cron reconciler fenced a repair (same pointers, newer updated_at)
+      // between our read of `app` and our CAS — our draft Worker may be under it.
+      db.apps[0]!.updated_at = "2026-01-01T00:05:00.000Z";
+      return { workerSha256: "a".repeat(64) };
+    });
+    await expect(
+      uploadVersion(supabase, staged, zip, "drop", { promote: false })
+    ).rejects.toMatchObject({ status: 409 });
+    expect(deploy.deployStaticVersion).toHaveBeenLastCalledWith(
+      supabase,
+      expect.objectContaining({ target: "draft", version: "v1700000000001" })
+    );
+    expect(deploy.syncManifest).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ bundle_version: "v1700000000001", draft_version: "v1700000000001" })
+    );
+    expect(db.apps[0]!.draft_version).toBe("v1700000000001");
+    expect(db.versions).toHaveLength(0);
+  });
+
   it("stage-only: a lost CAS whose pointer re-read fails once retries and restores the winner, not the stale start", async () => {
     const staged = { ...app, status: "published" as const, draft_version: "v1700000000001" };
     db.apps[0]!.draft_version = "v1700000000001";

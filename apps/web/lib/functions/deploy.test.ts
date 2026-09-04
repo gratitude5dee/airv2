@@ -77,6 +77,8 @@ const db = {
   beforeClaim: null as { n: number; run: () => void } | null,
   /** Fails every plain table read (the slug-owner check before a teardown). */
   readError: null as { message: string } | null,
+  /** Paged reads issued (reconcileAppOrigins). */
+  pages: 0,
 };
 
 function fakeSupabase(): SupabaseClient {
@@ -108,8 +110,15 @@ function fakeSupabase(): SupabaseClient {
     if (table !== "mini_apps") throw new Error(`unexpected table ${table}`);
     const filters: ((row: AppRow) => boolean)[] = [];
     let pending: Partial<AppRow> | null = null;
+    let window: [number, number] | null = null;
     const chain = {
       select: () => chain,
+      order: () => chain,
+      range: (from: number, to: number) => {
+        window = [from, to];
+        db.pages += 1;
+        return chain;
+      },
       eq: (col: keyof AppRow, value: unknown) => {
         filters.push((row) => row[col] === value);
         return chain;
@@ -136,8 +145,9 @@ function fakeSupabase(): SupabaseClient {
         return { data: rows[0] ?? null, error: null };
       },
       then: (resolve: (value: { data: unknown; error: unknown }) => unknown) => {
-        const rows = db.apps.filter((a) => filters.every((f) => f(a)));
+        let rows = db.apps.filter((a) => filters.every((f) => f(a)));
         if (pending) for (const row of rows) Object.assign(row, pending);
+        if (window) rows = rows.slice(window[0], window[1] + 1);
         return Promise.resolve({ data: rows, error: null }).then(resolve);
       },
     };
@@ -177,6 +187,7 @@ beforeEach(() => {
   db.betweenClaimAndConfirm = null;
   db.beforeClaim = null;
   db.readError = null;
+  db.pages = 0;
   tokens.appOriginConfigured.mockReturnValue(true);
   cloudflare.cloudflareConfigured.mockReturnValue(true);
   cloudflare.uploadAssets.mockClear();
@@ -525,7 +536,15 @@ describe("reconcileAppOrigins — the registry is the source of truth for the or
     };
   }
 
-  const servedManifest = (over: Partial<{ live: string | null; draft: string | null; status: string; updated_at: string }>) => ({
+  const servedManifest = (
+    over: Partial<{
+      slug: string;
+      live: string | null;
+      draft: string | null;
+      status: string;
+      updated_at: string;
+    }>
+  ) => ({
     slug: "alice-notes",
     status: "published",
     live: "v1700000000001",
@@ -616,5 +635,66 @@ describe("reconcileAppOrigins — the registry is the source of truth for the or
     tokens.appOriginConfigured.mockReturnValue(false);
     await expect(reconcileAppOrigins(fakeSupabase(), NOW)).resolves.toEqual({ repaired: 0 });
     expect(manifest.readManifest).not.toHaveBeenCalled();
+  });
+
+  it("visits every marked app across pages, not only the first response", async () => {
+    db.apps = Array.from({ length: 401 }, (_, i) =>
+      registryRow({ id: `app-${String(i).padStart(4, "0")}`, slug: `alice-a${i}` })
+    );
+    manifest.readManifest.mockImplementation(async (slug: string) =>
+      slug === "alice-a400" ? servedManifest({ slug, draft: "v1700000000009" }) : null
+    );
+    const result = await reconcileAppOrigins(fakeSupabase(), NOW);
+    expect(result).toEqual({ repaired: 1 });
+    expect(db.pages).toBe(3);
+    expect(manifest.readManifest).toHaveBeenCalledTimes(401);
+    expect(cloudflare.putDispatchScript).toHaveBeenCalledWith(
+      expect.objectContaining({ script: "alice-a400-draft" })
+    );
+  });
+
+  it("a repair is fenced: updated_at is touched only if no pointer commit landed meanwhile", async () => {
+    manifest.readManifest.mockResolvedValue(servedManifest({ draft: "v1700000000009" }));
+    await expect(reconcileAppOrigins(fakeSupabase(), NOW)).resolves.toEqual({ repaired: 1 });
+    expect(db.apps[0]!.updated_at).not.toBe(OLD);
+    expect(db.apps[0]!.draft_version).toBe("v1700000000001");
+  });
+
+  it("an upload that committed while the repair was writing is put back on top, not written over", async () => {
+    manifest.readManifest.mockResolvedValue(servedManifest({ draft: "v1700000000009" }));
+    // Between the repair's draft-Worker write and its fence, an upload commits v...002
+    // (its own Worker landed before ours, so ours — v...001 — is what the origin serves).
+    cloudflare.putDispatchScript.mockImplementationOnce(async () => {
+      db.apps[0]!.draft_version = "v1700000000002";
+      db.apps[0]!.updated_at = "2026-03-01T11:59:59.000Z";
+      return { digest: "d".repeat(64) };
+    });
+    const result = await reconcileAppOrigins(fakeSupabase(), NOW);
+    expect(result).toEqual({ repaired: 1 });
+    const scripts = cloudflare.putDispatchScript.mock.calls.map((c) => c[0].script);
+    expect(scripts).toEqual(["alice-notes-draft", "alice-notes", "alice-notes-draft"]);
+    expect(r2.listKeys).toHaveBeenLastCalledWith("apps/alice-notes/v1700000000002/", 1000);
+    expect(manifest.writeManifest).toHaveBeenLastCalledWith(
+      expect.objectContaining({ live: "v1700000000001", draft: "v1700000000002" })
+    );
+    expect(db.apps[0]!.draft_version).toBe("v1700000000002");
+    expect(db.apps[0]!.updated_at).not.toBe("2026-03-01T11:59:59.000Z");
+  });
+
+  it("gives up fencing after bounded attempts and leaves the app to the next sweep", async () => {
+    manifest.readManifest.mockResolvedValue(servedManifest({ draft: "v1700000000009" }));
+    let commits = 0;
+    cloudflare.putDispatchScript.mockImplementation(async () => {
+      commits += 1;
+      db.apps[0]!.updated_at = `2026-03-01T11:59:${String(commits).padStart(2, "0")}.000Z`;
+      return { digest: "d".repeat(64) };
+    });
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const result = await reconcileAppOrigins(fakeSupabase(), NOW);
+    const logged = errors.mock.calls.map((c) => String(c[0]));
+    errors.mockRestore();
+    expect(result).toEqual({ repaired: 1 });
+    expect(logged).toEqual(expect.arrayContaining([expect.stringContaining("unfenced")]));
+    expect(manifest.writeManifest.mock.calls.length).toBeGreaterThanOrEqual(3);
   });
 });

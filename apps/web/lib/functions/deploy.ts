@@ -362,6 +362,9 @@ async function restoreLiveWorker(
  */
 export const ORIGIN_DRIFT_GRACE_MS = 10 * 60_000;
 
+const RECONCILE_PAGE = 200;
+const REPAIR_ATTEMPTS = 3;
+
 /**
  * Durable reconciliation of the app origin with the registry (cron). An
  * upload that lost its pointer swap and then could not re-read the registry
@@ -378,33 +381,47 @@ export async function reconcileAppOrigins(
   now = new Date()
 ): Promise<{ repaired: number }> {
   if (!appOriginLaneReady()) return { repaired: 0 };
-  const { data, error } = await supabase
-    .from("mini_apps")
-    .select(REGISTRY_COLUMNS)
-    .not("app_origin_deployed_at", "is", null);
-  if (error) throw new Error(`app origin reconcile failed: ${error.message}`);
   let repaired = 0;
-  for (const raw of data ?? []) {
-    const app = parseRegistryApp(raw);
-    if (!app || !app.owner_user_id) continue;
-    try {
-      if (await reconcileAppOrigin(supabase, app, now)) repaired += 1;
-    } catch (error) {
-      // Deletion owns the origin now; the deleter tears it down.
-      if (error instanceof AppOriginRefusedError) continue;
-      console.error(
-        JSON.stringify({
-          msg: "app origin reconcile failed",
-          slug: app.slug,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+  for (let from = 0; ; from += RECONCILE_PAGE) {
+    const { data, error } = await supabase
+      .from("mini_apps")
+      .select(REGISTRY_COLUMNS)
+      .not("app_origin_deployed_at", "is", null)
+      .order("id", { ascending: true })
+      .range(from, from + RECONCILE_PAGE - 1);
+    if (error) throw new Error(`app origin reconcile failed: ${error.message}`);
+    const rows = data ?? [];
+    for (const raw of rows) {
+      const app = parseRegistryApp(raw);
+      if (!app || !app.owner_user_id) continue;
+      try {
+        if (await reconcileAppOrigin(supabase, app, now)) repaired += 1;
+      } catch (error) {
+        // Deletion owns the origin now; the deleter tears it down.
+        if (error instanceof AppOriginRefusedError) continue;
+        console.error(
+          JSON.stringify({
+            msg: "app origin reconcile failed",
+            slug: app.slug,
+            error: error instanceof Error ? error.message : String(error),
+          })
+        );
+      }
     }
+    if (rows.length < RECONCILE_PAGE) break;
   }
   if (repaired > 0) {
     console.log(JSON.stringify({ msg: "app origins reconciled", repaired }));
   }
   return { repaired };
+}
+
+function originAgrees(served: AppManifest, expected: AppManifest): boolean {
+  return (
+    served.status === expected.status &&
+    served.live === expected.live &&
+    served.draft === expected.draft
+  );
 }
 
 async function reconcileAppOrigin(
@@ -414,14 +431,7 @@ async function reconcileAppOrigin(
 ): Promise<boolean> {
   const served = await readManifest(app.slug);
   if (!served) return false;
-  const expected = manifestFor(app);
-  if (
-    served.status === expected.status &&
-    served.live === expected.live &&
-    served.draft === expected.draft
-  ) {
-    return false;
-  }
+  if (originAgrees(served, manifestFor(app))) return false;
   const manifestAge = now.getTime() - Date.parse(served.updated_at);
   const registryAge = now.getTime() - Date.parse(app.updated_at);
   if (
@@ -431,10 +441,66 @@ async function reconcileAppOrigin(
   ) {
     return false;
   }
-  if (expected.live && served.live !== expected.live) {
+  await repairAppOrigin(supabase, app, served);
+  return true;
+}
+
+/**
+ * Put the origin on `app`'s releases, then fence. Every pointer commit bumps
+ * mini_apps.updated_at and an upload's swap requires it unchanged since the
+ * upload's read, so a conditional touch of updated_at after the vendor
+ * writes settles every race: a writer that commits before the touch is seen
+ * here (the touch finds the row moved on), and one that read before the
+ * touch loses its own swap and restores from the registry. Seen → the row is
+ * re-read and the origin put on what it says now, without grace, since this
+ * repair may have written over that commit's Workers.
+ */
+async function repairAppOrigin(
+  supabase: SupabaseClient,
+  app: RegistryApp,
+  served: AppManifest
+): Promise<void> {
+  let current = app;
+  let known: AppManifest | null = served;
+  for (let attempt = 1; attempt <= REPAIR_ATTEMPTS; attempt += 1) {
+    await putOriginOn(supabase, current, known);
+    if (await touchAppOrigin(supabase, current)) {
+      const registry = manifestFor(current);
+      console.log(
+        JSON.stringify({
+          msg: "app origin reconciled",
+          slug: app.slug,
+          served: { status: served.status, live: served.live, draft: served.draft },
+          registry: { status: registry.status, live: registry.live, draft: registry.draft },
+          attempt,
+        })
+      );
+      return;
+    }
+    const fresh = await readRegistryRow(supabase, app.id);
+    if (!fresh || !fresh.owner_user_id) return;
+    current = fresh;
+    known = null;
+  }
+  console.error(
+    JSON.stringify({
+      msg: "app origin repair unfenced; pointers kept moving, next sweep re-checks",
+      slug: app.slug,
+    })
+  );
+}
+
+/** Live Worker, draft Worker and manifest onto `app`'s releases; `known` null → all of them. */
+async function putOriginOn(
+  supabase: SupabaseClient,
+  app: RegistryApp,
+  known: AppManifest | null
+): Promise<void> {
+  const expected = manifestFor(app);
+  if (expected.live && (!known || known.live !== expected.live)) {
     await promoteVersion(supabase, app, expected.live);
   }
-  if (expected.draft && served.draft !== expected.draft && app.owner_user_id) {
+  if (expected.draft && (!known || known.draft !== expected.draft) && app.owner_user_id) {
     const files = await loadBundleFiles(app.slug, expected.draft);
     if (files.length > 0) {
       await deployStaticVersion(supabase, {
@@ -448,15 +514,33 @@ async function reconcileAppOrigin(
     }
   }
   await syncManifest(supabase, app);
-  console.log(
-    JSON.stringify({
-      msg: "app origin reconciled",
-      slug: app.slug,
-      served: { status: served.status, live: served.live, draft: served.draft },
-      registry: { status: expected.status, live: expected.live, draft: expected.draft },
-    })
-  );
-  return true;
+}
+
+async function touchAppOrigin(
+  supabase: SupabaseClient,
+  app: RegistryApp
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("mini_apps")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", app.id)
+    .eq("updated_at", app.updated_at)
+    .select("id");
+  if (error) throw new Error(`app origin fence failed: ${error.message}`);
+  return (data ?? []).length > 0;
+}
+
+async function readRegistryRow(
+  supabase: SupabaseClient,
+  appId: string
+): Promise<RegistryApp | null> {
+  const { data, error } = await supabase
+    .from("mini_apps")
+    .select(REGISTRY_COLUMNS)
+    .eq("id", appId)
+    .maybeSingle();
+  if (error) throw new Error(`registry read failed: ${error.message}`);
+  return data ? parseRegistryApp(data) : null;
 }
 
 const DRAFT_SUFFIX = "-draft";
