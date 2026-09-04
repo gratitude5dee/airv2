@@ -230,6 +230,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     .from("carried_messages")
     .delete()
     .lt("received_at", ttlCutoff);
+  await supabase.from("github_deliveries").delete().lt("received_at", ttlCutoff);
   await supabase
     .from("miniapp_slug_holds")
     .delete()

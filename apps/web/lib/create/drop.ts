@@ -24,7 +24,7 @@ import {
   slugFor,
   validateAppName,
 } from "../miniapps/publish";
-import { getRegistryApp, type RegistryApp } from "../miniapps/registry";
+import { getRegistryApp, type CreateLane, type RegistryApp } from "../miniapps/registry";
 import { enforceCsp, type LintFinding } from "./lint";
 import { draftPreviewUrl } from "./preview";
 import { uploadVersion } from "./versions";
@@ -105,7 +105,7 @@ export function appnameFromFilename(name: string): string | null {
   return slug;
 }
 
-function titleFor(appname: string): string {
+export function titleFor(appname: string): string {
   return appname
     .split("-")
     .filter(Boolean)
@@ -122,7 +122,8 @@ function titleFor(appname: string): string {
 export async function resolveDropApp(
   supabase: SupabaseClient,
   userId: string,
-  input: { appname: string; name?: string | undefined; description?: string | undefined }
+  input: { appname: string; name?: string | undefined; description?: string | undefined },
+  lane: CreateLane = "drop"
 ): Promise<RegistryApp> {
   const appname = validateAppName(input.appname);
   const username = await publisherUsername(supabase, userId);
@@ -141,7 +142,7 @@ export async function resolveDropApp(
     appname,
     name: input.name?.trim() || titleFor(appname),
     description: input.description ?? "",
-    lane: "drop",
+    lane,
   });
   return ownedApp(supabase, userId, slug);
 }
