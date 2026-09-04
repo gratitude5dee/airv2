@@ -32,6 +32,10 @@ export const DEFAULT_WAVE_SIZE = 3;
 const SYNC_TIMEOUT_SECONDS = 600;
 const HERMES_STEP_TIMEOUT_SECONDS = 600;
 const ARTIFACT_URL_TTL_SECONDS = 900;
+// A claim is a lease. The sweep route is killed at maxDuration (800s), so a
+// 'syncing' row whose started_at is older than this cannot belong to a live
+// invocation — its finally block never ran — and is safe to hand back.
+export const CLAIM_LEASE_MS = 15 * 60_000;
 
 export interface SyncJob {
   id: string;
@@ -324,6 +328,37 @@ async function claimWave(
 }
 
 /**
+ * Hand back claims whose lease has expired: the invocation that took them was
+ * killed before its cleanup ran, so the rows would otherwise sit in 'syncing'
+ * forever and block every later sweep from advancing the job.
+ */
+async function reclaimExpiredLeases(
+  supabase: SupabaseClient,
+  jobId: string,
+): Promise<void> {
+  const cutoff = new Date(Date.now() - CLAIM_LEASE_MS).toISOString();
+  const { data, error } = await supabase
+    .from("sync_job_boxes")
+    .update({ state: "pending", started_at: null })
+    .eq("job_id", jobId)
+    .eq("state", "syncing")
+    .lt("started_at", cutoff)
+    .select("provider_box_id");
+  if (error) {
+    throw new FleetError(`lease reclaim failed: ${error.message}`, 500);
+  }
+  for (const row of data ?? []) {
+    console.warn(
+      JSON.stringify({
+        msg: "fleet sync claim expired",
+        job_id: jobId,
+        box_id: row.provider_box_id,
+      }),
+    );
+  }
+}
+
+/**
  * Hand claimed rows that never ran (still 'syncing') back to 'pending' so a
  * resume or the next sweep can pick them up. Rows already finalized by this
  * sweep are untouched.
@@ -426,6 +461,8 @@ export async function runSyncJobs(
   if (!job) return totals;
   const release = await getRelease(supabase, job.release_id);
 
+  await reclaimExpiredLeases(supabase, job.id);
+
   let query = supabase
     .from("sync_job_boxes")
     .select("provider_box_id, is_canary")
@@ -441,8 +478,8 @@ export async function runSyncJobs(
   );
 
   if (rows.length === 0) {
-    // A row stuck in 'syncing' means an interrupted invocation — don't
-    // advance the phase past it; the operator can retry or abort.
+    // A live 'syncing' row belongs to a sweep still inside its lease — don't
+    // advance the phase past it; an expired one was handed back above.
     const { data: inFlight } = await supabase
       .from("sync_job_boxes")
       .select("provider_box_id")
