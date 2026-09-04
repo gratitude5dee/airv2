@@ -1,11 +1,12 @@
 /**
  * A Create turn (goal-create-v11 §9.2): one owner prompt into the app's own
  * Hermes session `air-create-<appname>` on the owner's existing Box. The
- * run pins `model: "create-<tier>"` — a tier name, never a slug (C2) — and
- * carries the Kit's generated system prompt plus a small project context
- * as instructions. The agent_runs row is labelled `create:<slug>` so the
- * gateway can attribute every completion of the turn to the project's
- * budget (§9.1). Nothing here reads the workspace or the Kit's source.
+ * run pins `model: "create-<tier>:<project slug>"` — a tier name and the
+ * project, never a model ID (C2) — and carries the Kit's generated system
+ * prompt plus a small project context as instructions. The agent_runs row
+ * is labelled `create:<slug>` and the gateway attributes every completion
+ * that names that project to its budget (§9.1). Nothing here reads the
+ * workspace or the Kit's source.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -13,7 +14,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { armStopAfter, ensureBoxAwake } from "../orchestrator/boxes";
 import { CREATE_SESSION_PREFIX } from "../chat/relay";
 import { createRun, ensureSession, stopRun } from "../hermes/client";
-import { isSpeedTier, type SpeedTier } from "../entitlements/models";
+import { createModelFor, isSpeedTier, type SpeedTier } from "../entitlements/models";
 import {
   PublishError,
   publisherUsername,
@@ -148,8 +149,9 @@ export async function startCreateTurn(
   const prompt = normalizePrompt(input.input);
   const tier: SpeedTier =
     input.tier && isSpeedTier(input.tier) ? input.tier : "balanced";
-  // One open Create run per owner: the gateway attributes `create-*` spend
-  // to the open run, so a second project may not start until it closes.
+  // One open Create run per owner: a Box works one project at a time, so a
+  // second project may not start until the open run closes. (Attribution
+  // does not depend on this — every gateway call names its project.)
   const open = await openCreateRun(supabase, userId);
   if (open && open.slug !== slugFor(await publisherUsername(supabase, userId), appname)) {
     throw new PublishError(
@@ -193,7 +195,7 @@ export async function startCreateTurn(
       run = await createRun(box.target, {
         input: prompt,
         sessionId: session,
-        model: `create-${tier}`,
+        model: createModelFor(tier, app.slug),
         instructions: createInstructions({
           appname,
           slug: app.slug,

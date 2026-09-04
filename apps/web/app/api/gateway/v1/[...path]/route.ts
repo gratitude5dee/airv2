@@ -15,24 +15,28 @@ import {
   costUsd,
   DEFAULT_MODEL_FAMILY,
   isModelFamily,
+  isCreateModelRequest,
   isReasoningModel,
   isSpeedTier,
   modelForCreateTier,
   modelForSelection,
-  parseCreateTier,
+  parseCreateModel,
+  parseLegacyCreateTier,
   providerForFamily,
   reasoningForTier,
   serviceTierForTier,
+  type CreateModelRequest,
   type ModelFamily,
   type ModelSelection,
 } from "@/lib/entitlements/models";
 import { currentPeriodSpend } from "@/lib/entitlements/spend";
 import { getProviderKey, PROVIDER_LABELS } from "@/lib/providers/keys";
 import {
-  activeCreateSlug,
   budgetExhausted,
+  createRunAttributable,
   createRunLabel,
   projectBudget,
+  soleAttributableCreateSlug,
 } from "@/lib/create/budget";
 
 export const runtime = "nodejs";
@@ -267,13 +271,37 @@ export async function POST(
   // the user's Settings tier, never upgrade it (spend stays entitlement-
   // bounded), and the box's static `model.default: "balanced"` keeps
   // resolving through the entitlement as before.
-  // Create turns (goal-create-v11 §9.1) ask for `create-<tier>`: clamped to
-  // the entitlement the same way, resolved on the Create tier family and
-  // always served by OpenAI whatever the owner's chat family is. The
-  // project's budget is checked against its own metered rows before the
-  // upstream call, and the family is only reachable from inside a Create
-  // run — nothing else may spend on it.
-  const createTier = parseCreateTier(rawBody["model"]);
+  // Create turns (goal-create-v11 §9.1) ask for `create-<tier>:<slug>`:
+  // clamped to the entitlement the same way, resolved on the Create tier
+  // family and always served by OpenAI whatever the owner's chat family is.
+  // The slug names the project the call is charged to; it must belong to
+  // this owner and have a Create run open (or just closed), so the family is
+  // only reachable from inside a Create run and two projects running at once
+  // each meter their own calls. The project's budget is checked against its
+  // own metered rows before the upstream call.
+  let createModel: CreateModelRequest | null = parseCreateModel(rawBody["model"]);
+  if (createModel === null && isCreateModelRequest(rawBody["model"])) {
+    const legacyTier = parseLegacyCreateTier(rawBody["model"]);
+    if (legacyTier === null) {
+      return NextResponse.json(
+        { error: "invalid_request", reason: "create_project_required" },
+        { status: 400 }
+      );
+    }
+    // Transitional (see parseLegacyCreateTier): a project-less call can
+    // only be charged when exactly one of the owner's projects could have
+    // made it; with none, or two candidates, it is refused rather than
+    // charged to the wrong one.
+    const slug = await soleAttributableCreateSlug(supabase, userId);
+    if (slug === null) {
+      return NextResponse.json(
+        { error: "forbidden", reason: "create_run_required" },
+        { status: 403 }
+      );
+    }
+    createModel = { tier: legacyTier, slug };
+  }
+  const createTier = createModel?.tier ?? null;
   const tier =
     createTier !== null
       ? clampCreateTier(createTier, entitledTier)
@@ -281,9 +309,9 @@ export async function POST(
         ? "fast"
         : entitledTier;
   let createLabel: string | null = null;
-  if (createTier !== null) {
-    const slug = await activeCreateSlug(supabase, userId);
-    if (!slug) {
+  if (createModel !== null) {
+    const { slug } = createModel;
+    if (!(await createRunAttributable(supabase, userId, slug))) {
       return NextResponse.json(
         { error: "forbidden", reason: "create_run_required" },
         { status: 403 }
