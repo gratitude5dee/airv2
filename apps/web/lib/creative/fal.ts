@@ -156,19 +156,16 @@ const urls = (media: readonly MediaInput[], max: number): string[] =>
  * lifted soundtrack only rides along with the clip it came from; once the
  * clip falls past the cap its soundtrack goes with it.
  */
-const audioUrls = (
-  audio: readonly MediaInput[],
-  videoUrls: readonly string[],
-): string[] =>
-  urls(
-    [
-      ...audio.filter((item) => !item.soundtrackOf),
-      ...audio.filter(
-        (item) => item.soundtrackOf && videoUrls.includes(item.soundtrackOf),
-      ),
-    ],
-    MAX_REFERENCE_CLIPS,
-  );
+const selectedAudio = (turn: CreativeTurn): MediaInput[] => {
+  const audio = ofKind(turn, "audio");
+  const videoUrls = urls(ofKind(turn, "video"), MAX_REFERENCE_CLIPS);
+  return [
+    ...audio.filter((item) => !item.soundtrackOf),
+    ...audio.filter(
+      (item) => item.soundtrackOf && videoUrls.includes(item.soundtrackOf),
+    ),
+  ].slice(0, MAX_REFERENCE_CLIPS);
+};
 
 const MENTIONS_REFERENCE = /\b(?:image|video|audio)\s+\d\b/i;
 
@@ -220,6 +217,7 @@ export function buildFalZapRequest(
   const images = ofKind(turn, "image");
   const videos = ofKind(turn, "video");
   const audio = ofKind(turn, "audio");
+  const soundUrls = urls(selectedAudio(turn), MAX_REFERENCE_CLIPS);
   const shared = {
     prompt: plan.expanded_prompt,
     duration: clamp(
@@ -240,7 +238,6 @@ export function buildFalZapRequest(
     const ratio = plan.params.aspect_ratio;
     const imageUrls = urls(images, MAX_REFERENCE_IMAGES);
     const videoUrls = urls(videos, MAX_REFERENCE_CLIPS);
-    const soundUrls = audioUrls(audio, videoUrls);
     return {
       kind: "video",
       model: FAL_ZAP_REFERENCE_TO_VIDEO,
@@ -323,21 +320,23 @@ const videoUrlOf = (data: unknown): string | undefined =>
   fileUrlOf(data, "video");
 
 /**
- * Swap every audio reference for its WAV on fal storage. Audio the user
- * attached is the point of their request, so a conversion that fails there
- * fails the turn before any render is paid for; a soundtrack lifted out of a
- * clip degrades to the clip alone, as it does when extraction fails.
+ * Swap each audio reference that will reach fal for its WAV on fal storage;
+ * audio past the cap is neither converted nor able to fail the turn. Audio
+ * the user attached is the point of their request, so a conversion that
+ * fails there fails the turn before any render is paid for; a soundtrack
+ * lifted out of a clip degrades to the clip alone, as it does when
+ * extraction fails.
  */
 async function withWavAudio(
   turn: CreativeTurn,
   deadline: number,
   transcoder: FalAudioTranscoder | undefined,
 ): Promise<CreativeTurn> {
-  if (!turn.mediaInputs.some((media) => media.kind === "audio")) return turn;
+  const chosen = selectedAudio(turn);
+  if (chosen.length === 0) return turn;
   const transcode = transcoder ?? falTranscoder();
   const converted = await Promise.all(
-    turn.mediaInputs.map(async (media): Promise<MediaInput | undefined> => {
-      if (media.kind !== "audio") return media;
+    chosen.map(async (media): Promise<MediaInput | undefined> => {
       try {
         const data = await raceDeadline(
           deadline,
@@ -362,9 +361,10 @@ async function withWavAudio(
   );
   return {
     ...turn,
-    mediaInputs: converted.filter(
-      (media): media is MediaInput => media !== undefined,
-    ),
+    mediaInputs: [
+      ...turn.mediaInputs.filter((media) => media.kind !== "audio"),
+      ...converted.filter((media): media is MediaInput => media !== undefined),
+    ],
   };
 }
 

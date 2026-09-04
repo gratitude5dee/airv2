@@ -840,10 +840,9 @@ describe("fal /zap queue discipline", () => {
       transcode,
     });
     expect(transcode).toHaveBeenCalledTimes(2);
-    expect(transcode.mock.calls.map((call) => call[0])).toEqual([
-      "https://x.supabase.co/sign/clip.m4a?token=c",
-      MEMO_URL,
-    ]);
+    expect(transcode.mock.calls.map((call) => call[0]).sort()).toEqual(
+      ["https://x.supabase.co/sign/clip.m4a?token=c", MEMO_URL].sort(),
+    );
     const input = submittedInput(submit);
     expect(input["reference_video_urls"]).toEqual([CLIP_URL]);
     expect(input["reference_audio_urls"]).toEqual([WAV_URL, WAV_URL]);
@@ -903,6 +902,48 @@ describe("fal /zap queue discipline", () => {
     const input = submittedInput(submit);
     expect(input["reference_video_urls"]).toEqual([CLIP_URL]);
     expect(input["reference_audio_urls"]).toBeUndefined();
+  });
+
+  it("audio past the cap is neither converted nor able to fail the render", async () => {
+    vi.stubEnv("FAL_KEY", "test-key");
+    const submit = okSubmit();
+    const memo = (n: number) =>
+      `https://x.supabase.co/sign/memo${n}.m4a?token=m${n}`;
+    const orphanClip = "https://x.supabase.co/sign/orphan.mov?token=o";
+    const transcode = vi.fn((url: string) =>
+      url === memo(4) || url.includes("orphan")
+        ? Promise.reject(new Error("never asked for"))
+        : Promise.resolve({ audio: { url: `${WAV_URL}#${url.slice(-2)}` } }),
+    );
+    await generateZapVideo(
+      plan({ mode: "zap" }),
+      turn({
+        mediaInputs: [
+          { kind: "video", url: CLIP_URL },
+          {
+            kind: "audio",
+            url: "https://x.supabase.co/sign/orphan.m4a?token=x",
+            soundtrackOf: orphanClip,
+          },
+          ...[1, 2, 3, 4].map((n) => ({
+            kind: "audio" as const,
+            url: memo(n),
+          })),
+        ],
+      }),
+      10_000,
+      { submit, queue: queueOf(), transcode },
+    );
+    expect(transcode.mock.calls.map((call) => call[0])).toEqual([
+      memo(1),
+      memo(2),
+      memo(3),
+    ]);
+    expect(submittedInput(submit)["reference_audio_urls"]).toEqual([
+      `${WAV_URL}#m1`,
+      `${WAV_URL}#m2`,
+      `${WAV_URL}#m3`,
+    ]);
   });
 
   it("a converted WAV off fal's storage is never handed to the render", async () => {
