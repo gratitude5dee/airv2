@@ -91,21 +91,29 @@ const db = {
   apps: [] as AppRowLike[],
   /** Make the next matching op fail, e.g. { table: "miniapp_versions", op: "delete" };
    * `persist` keeps failing until cleared. */
-  fail: null as { table: string; op: FakeOp; persist?: boolean } | null,
+  fail: null as FakeFailure | FakeFailure[] | null,
   /** Runs once, just before the next rpc: stands in for a concurrent commit. */
   beforeRpc: null as (() => void) | null,
 };
 
 type FakeOp = "insert" | "update" | "delete" | "rpc" | "select";
+interface FakeFailure {
+  table: string;
+  op: FakeOp;
+  persist?: boolean;
+}
 
 let seq = 0;
 
 function failing(table: string, op: FakeOp) {
-  if (db.fail && db.fail.table === table && db.fail.op === op) {
-    if (!db.fail.persist) db.fail = null;
-    return { data: null, error: { message: `${op} on ${table} refused` } };
+  const failures = Array.isArray(db.fail) ? db.fail : db.fail ? [db.fail] : [];
+  const hit = failures.find((f) => f.table === table && f.op === op);
+  if (!hit) return null;
+  if (!hit.persist) {
+    const rest = failures.filter((f) => f !== hit);
+    db.fail = rest.length === 0 ? null : rest;
   }
-  return null;
+  return { data: null, error: { message: `${op} on ${table} refused` } };
 }
 
 type Filter = (row: Record<string, unknown>) => boolean;
@@ -656,6 +664,38 @@ describe("uploadVersion", () => {
       expect.objectContaining({ draft_version: "v1700000000001" })
     );
     expect(db.versions).toHaveLength(0);
+  });
+
+  it("a CAS that errors while the registry is unreadable never restores the start pointers (another upload may have won)", async () => {
+    const staged = { ...app, status: "published" as const, draft_version: "v1700000000001" };
+    db.apps[0]!.draft_version = "v1700000000001";
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    deploy.deployStaticVersion.mockImplementation(async () => {
+      if (db.apps[0]!.draft_version === "v1700000000001") {
+        db.apps[0]!.draft_version = "v1700000000009";
+        db.fail = [
+          { table: "mini_apps", op: "update" },
+          { table: "mini_apps", op: "select", persist: true },
+        ];
+      }
+      return { workerSha256: "a".repeat(64) };
+    });
+    await expect(
+      uploadVersion(supabase, staged, zip, "drop", { promote: false })
+    ).rejects.toThrow(/bundle version update failed/);
+    db.fail = null;
+    // No redeploy of v...001 (the observed start) and no manifest naming it.
+    expect(deploy.deployStaticVersion).toHaveBeenCalledTimes(1);
+    expect(deploy.syncManifest).toHaveBeenCalledTimes(1);
+    expect(deploy.syncManifest).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ draft_version: "v1700000000001" })
+    );
+    expect(errors.mock.calls.map((c) => String(c[0]))).toEqual(
+      expect.arrayContaining([expect.stringContaining("left to reconcile")])
+    );
+    expect(db.apps[0]!.draft_version).toBe("v1700000000009");
+    errors.mockRestore();
   });
 
   it("stage-only: a lost CAS whose pointer re-read keeps failing leaves the origin alone rather than writing stale or empty pointers", async () => {

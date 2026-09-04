@@ -11,7 +11,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 const cloudflare = vi.hoisted(() => ({
   cloudflareConfigured: vi.fn(() => true),
   uploadAssets: vi.fn(async () => ({ jwt: "jwt", uploaded: 1 })),
-  putDispatchScript: vi.fn(async () => ({ digest: "d".repeat(64) })),
+  putDispatchScript: vi.fn(async (_upload: { script: string }) => ({ digest: "d".repeat(64) })),
   deleteDispatchScript: vi.fn(async () => undefined),
   listDispatchScripts: vi.fn(async () => [] as string[]),
 }));
@@ -20,6 +20,17 @@ vi.mock("./cloudflare", () => cloudflare);
 const manifest = vi.hoisted(() => ({
   writeManifest: vi.fn(async () => undefined),
   deleteManifest: vi.fn(async () => undefined),
+  readManifest: vi.fn(
+    async (_slug: string): Promise<{
+      slug: string;
+      status: string;
+      live: string | null;
+      draft: string | null;
+      owner_ref: string;
+      functions: boolean;
+      updated_at: string;
+    } | null> => null
+  ),
 }));
 vi.mock("./manifest", () => manifest);
 
@@ -36,13 +47,16 @@ vi.mock("../storage/r2", () => r2);
 import {
   AppOriginRefusedError,
   deployStaticVersion,
+  ORIGIN_DRIFT_GRACE_MS,
   promoteVersion,
   reconcileAppOriginMarks,
+  reconcileAppOrigins,
   syncManifest,
 } from "./deploy";
 import { makeApp } from "@/app/mini/loader-test-utils";
+import type { RegistryApp } from "../miniapps/registry";
 
-interface AppRow {
+interface AppRow extends Partial<RegistryApp> {
   id: string;
   slug: string;
   deleting_at: string | null;
@@ -108,6 +122,10 @@ function fakeSupabase(): SupabaseClient {
         filters.push((row) => row[col] === value);
         return chain;
       },
+      not: (col: keyof AppRow, _op: "is", value: null) => {
+        filters.push((row) => row[col] !== value);
+        return chain;
+      },
       update: (values: Partial<AppRow>) => {
         pending = values;
         return chain;
@@ -168,6 +186,8 @@ beforeEach(() => {
   cloudflare.listDispatchScripts.mockResolvedValue([]);
   manifest.writeManifest.mockClear();
   manifest.deleteManifest.mockClear();
+  manifest.readManifest.mockReset();
+  manifest.readManifest.mockResolvedValue(null);
 });
 
 describe("deployStaticVersion — claim before the vendor write", () => {
@@ -479,5 +499,122 @@ describe("reconcileAppOriginMarks — vendor inventory is the source of truth", 
       unmatched: [],
     });
     expect(cloudflare.listDispatchScripts).not.toHaveBeenCalled();
+  });
+});
+
+describe("reconcileAppOrigins — the registry is the source of truth for the origin", () => {
+  const NOW = new Date("2026-03-01T12:00:00.000Z");
+  const OLD = new Date(NOW.getTime() - 2 * ORIGIN_DRIFT_GRACE_MS).toISOString();
+  const FRESH = new Date(NOW.getTime() - ORIGIN_DRIFT_GRACE_MS / 2).toISOString();
+
+  function registryRow(overrides: Partial<RegistryApp> = {}): AppRow {
+    return {
+      ...makeApp({
+        id: "app-1",
+        slug: "alice-notes",
+        owner_user_id: "user-alice",
+        publisher_username: "alice",
+        status: "published",
+        bundle_version: "v1700000000001",
+        draft_version: "v1700000000001",
+        updated_at: OLD,
+        ...overrides,
+      }),
+      deleting_at: null,
+      app_origin_deployed_at: "2026-01-01T00:00:00.000Z",
+    };
+  }
+
+  const servedManifest = (over: Partial<{ live: string | null; draft: string | null; status: string; updated_at: string }>) => ({
+    slug: "alice-notes",
+    status: "published",
+    live: "v1700000000001",
+    draft: "v1700000000001",
+    owner_ref: "alice",
+    functions: false,
+    updated_at: OLD,
+    ...over,
+  });
+
+  beforeEach(() => {
+    db.apps = [registryRow()];
+  });
+
+  it("a stale draft Worker left by a lost upload race is put back on the registry's draft", async () => {
+    // The loser's manifest (naming its own version) landed last; the registry says v...001.
+    manifest.readManifest.mockResolvedValue(servedManifest({ draft: "v1700000000009" }));
+    const result = await reconcileAppOrigins(fakeSupabase(), NOW);
+    expect(result).toEqual({ repaired: 1 });
+    expect(r2.listKeys).toHaveBeenCalledWith("apps/alice-notes/v1700000000001/", 1000);
+    expect(cloudflare.putDispatchScript).toHaveBeenCalledTimes(1);
+    expect(cloudflare.putDispatchScript).toHaveBeenCalledWith(
+      expect.objectContaining({ script: "alice-notes-draft" })
+    );
+    expect(manifest.writeManifest).toHaveBeenLastCalledWith(
+      expect.objectContaining({ live: "v1700000000001", draft: "v1700000000001" })
+    );
+  });
+
+  it("a live Worker the registry does not name is re-promoted from the registry's live version", async () => {
+    manifest.readManifest.mockResolvedValue(
+      servedManifest({ live: "v1700000000009", draft: "v1700000000009" })
+    );
+    const result = await reconcileAppOrigins(fakeSupabase(), NOW);
+    expect(result).toEqual({ repaired: 1 });
+    const scripts = cloudflare.putDispatchScript.mock.calls.map((c) => c[0].script);
+    expect(scripts).toEqual(["alice-notes", "alice-notes-draft"]);
+    expect(manifest.writeManifest).toHaveBeenLastCalledWith(
+      expect.objectContaining({ status: "published", live: "v1700000000001", draft: "v1700000000001" })
+    );
+  });
+
+  it("leaves a manifest that agrees with the registry alone", async () => {
+    manifest.readManifest.mockResolvedValue(servedManifest({}));
+    await expect(reconcileAppOrigins(fakeSupabase(), NOW)).resolves.toEqual({ repaired: 0 });
+    expect(cloudflare.putDispatchScript).not.toHaveBeenCalled();
+    expect(manifest.writeManifest).not.toHaveBeenCalled();
+  });
+
+  it("does not touch an upload still in flight (manifest or registry younger than the grace window)", async () => {
+    manifest.readManifest.mockResolvedValue(
+      servedManifest({ draft: "v1700000000009", updated_at: FRESH })
+    );
+    await expect(reconcileAppOrigins(fakeSupabase(), NOW)).resolves.toEqual({ repaired: 0 });
+
+    db.apps = [registryRow({ updated_at: FRESH })];
+    manifest.readManifest.mockResolvedValue(servedManifest({ draft: "v1700000000009" }));
+    await expect(reconcileAppOrigins(fakeSupabase(), NOW)).resolves.toEqual({ repaired: 0 });
+    expect(cloudflare.putDispatchScript).not.toHaveBeenCalled();
+    expect(manifest.writeManifest).not.toHaveBeenCalled();
+  });
+
+  it("skips apps with no served manifest (never deployed, or torn down by deletion)", async () => {
+    manifest.readManifest.mockResolvedValue(null);
+    await expect(reconcileAppOrigins(fakeSupabase(), NOW)).resolves.toEqual({ repaired: 0 });
+    expect(cloudflare.putDispatchScript).not.toHaveBeenCalled();
+  });
+
+  it("an app under deletion is left to the deleter, and one failure does not stop the sweep", async () => {
+    db.apps = [
+      { ...registryRow(), deleting_at: "2026-02-01T00:00:00.000Z" },
+      registryRow({ id: "app-2", slug: "alice-todo", bundle_version: null, status: "draft" }),
+    ];
+    manifest.readManifest.mockImplementation(async (slug: string) =>
+      slug === "alice-notes"
+        ? servedManifest({ draft: "v1700000000009" })
+        : { ...servedManifest({ draft: "v1700000000009", live: null, status: "draft" }), slug }
+    );
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const result = await reconcileAppOrigins(fakeSupabase(), NOW);
+    errors.mockRestore();
+    expect(result).toEqual({ repaired: 1 });
+    const scripts = cloudflare.putDispatchScript.mock.calls.map((c) => c[0].script);
+    expect(scripts).toEqual(["alice-todo-draft"]);
+  });
+
+  it("is a no-op on the legacy lane", async () => {
+    tokens.appOriginConfigured.mockReturnValue(false);
+    await expect(reconcileAppOrigins(fakeSupabase(), NOW)).resolves.toEqual({ repaired: 0 });
+    expect(manifest.readManifest).not.toHaveBeenCalled();
   });
 });

@@ -8,11 +8,15 @@
  * The manifest is signed under APP_ORIGIN_SIGNING_KEY: a KV write by anything
  * other than the control plane is ignored by the Dispatcher.
  */
-import { createHmac } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { env } from "../env";
-import { deleteKvValue, putKvValue } from "./cloudflare";
+import { deleteKvValue, getKvValue, putKvValue } from "./cloudflare";
 
 export type ManifestStatus = "draft" | "published" | "suspended";
+
+function isManifestStatus(value: unknown): value is ManifestStatus {
+  return value === "draft" || value === "published" || value === "suspended";
+}
 
 export interface AppManifest {
   slug: string;
@@ -58,6 +62,59 @@ export async function writeManifest(manifest: AppManifest): Promise<void> {
       draft: manifest.draft,
     })
   );
+}
+
+/**
+ * The manifest the Dispatcher currently serves for `slug`, or null when
+ * none is stored or the stored value is not a manifest this control plane
+ * signed (the Dispatcher ignores those too).
+ */
+export async function readManifest(slug: string): Promise<AppManifest | null> {
+  const raw = await getKvValue(manifestKey(slug));
+  if (raw === null) return null;
+  let signed: unknown;
+  try {
+    signed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (
+    typeof signed !== "object" ||
+    signed === null ||
+    typeof (signed as SignedManifest).payload !== "string" ||
+    typeof (signed as SignedManifest).sig !== "string"
+  ) {
+    return null;
+  }
+  const { payload, sig } = signed as SignedManifest;
+  const key = env.appOriginSigningKey();
+  if (!key) return null;
+  const expected = createHmac("sha256", key).update(payload).digest("base64url");
+  if (
+    expected.length !== sig.length ||
+    !timingSafeEqual(Buffer.from(expected), Buffer.from(sig))
+  ) {
+    return null;
+  }
+  try {
+    const manifest = JSON.parse(
+      Buffer.from(payload, "base64url").toString("utf8")
+    ) as Partial<AppManifest>;
+    if (typeof manifest.slug !== "string" || !isManifestStatus(manifest.status)) {
+      return null;
+    }
+    return {
+      slug: manifest.slug,
+      status: manifest.status,
+      live: typeof manifest.live === "string" ? manifest.live : null,
+      draft: typeof manifest.draft === "string" ? manifest.draft : null,
+      owner_ref: typeof manifest.owner_ref === "string" ? manifest.owner_ref : "",
+      functions: manifest.functions === true,
+      updated_at: typeof manifest.updated_at === "string" ? manifest.updated_at : "",
+    };
+  } catch {
+    return null;
+  }
 }
 
 export async function deleteManifest(slug: string): Promise<void> {
