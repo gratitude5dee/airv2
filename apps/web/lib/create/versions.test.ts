@@ -76,12 +76,16 @@ const db = {
   versions: [] as VersionRowLike[],
   apps: [] as AppRowLike[],
   /** Make the next matching op fail, e.g. { table: "miniapp_versions", op: "delete" }. */
-  fail: null as { table: string; op: "insert" | "update" | "delete" } | null,
+  fail: null as { table: string; op: FakeOp } | null,
+  /** Runs once, just before the next rpc: stands in for a concurrent commit. */
+  beforeRpc: null as (() => void) | null,
 };
+
+type FakeOp = "insert" | "update" | "delete" | "rpc";
 
 let seq = 0;
 
-function failing(table: string, op: "insert" | "update" | "delete") {
+function failing(table: string, op: FakeOp) {
   if (db.fail && db.fail.table === table && db.fail.op === op) {
     db.fail = null;
     return { data: null, error: { message: `${op} on ${table} refused` } };
@@ -231,8 +235,56 @@ function query(table: "miniapp_versions" | "mini_apps") {
   return builder;
 }
 
+/** Mirrors 0083_create_v11_pointer_rpcs.sql: one atomic step per call. */
+function rpc(fn: string, args: Record<string, unknown>) {
+  if (db.beforeRpc) {
+    const hook = db.beforeRpc;
+    db.beforeRpc = null;
+    hook();
+  }
+  const refused = failing(fn, "rpc");
+  if (refused) return Promise.resolve(refused);
+  const now = new Date().toISOString();
+  if (fn === "miniapp_point_live") {
+    const row = db.versions.find(
+      (v) => v.app_id === args["p_app_id"] && v.version === args["p_version"] && !v.purged_at
+    );
+    const app = db.apps.find((a) => a.id === args["p_app_id"]);
+    if (!row || !app) return Promise.resolve({ data: false, error: null });
+    if ((app.bundle_version ?? null) !== (args["p_expected"] ?? null)) {
+      return Promise.resolve({ data: false, error: null });
+    }
+    app.bundle_version = row.version;
+    app.updated_at = now;
+    row.published_at = now;
+    row.retired_at = null;
+    const previous = args["p_expected"];
+    if (typeof previous === "string" && previous !== row.version) {
+      for (const v of db.versions) {
+        if (v.app_id === app.id && v.version === previous && !v.retired_at) {
+          v.retired_at = now;
+        }
+      }
+    }
+    return Promise.resolve({ data: true, error: null });
+  }
+  if (fn === "miniapp_tombstone_version") {
+    const row = db.versions.find((v) => v.id === args["p_id"]);
+    if (!row) return Promise.resolve({ data: false, error: null });
+    if (row.purged_at) return Promise.resolve({ data: true, error: null });
+    const app = db.apps.find((a) => a.id === row.app_id);
+    if (app && (app.bundle_version === row.version || app.draft_version === row.version)) {
+      return Promise.resolve({ data: false, error: null });
+    }
+    row.purged_at = now;
+    return Promise.resolve({ data: true, error: null });
+  }
+  return Promise.resolve({ data: null, error: { message: `unknown rpc ${fn}` } });
+}
+
 const supabase = {
   from: (table: "miniapp_versions" | "mini_apps") => query(table),
+  rpc,
 } as unknown as SupabaseClient;
 
 const files = [
@@ -253,6 +305,7 @@ beforeEach(() => {
   seq = 0;
   db.versions = [];
   db.fail = null;
+  db.beforeRpc = null;
   db.apps = [
     {
       id: "app-notes",
@@ -447,13 +500,24 @@ describe("uploadVersion", () => {
     expect(r2.deletePrefix).toHaveBeenCalledWith(expect.stringContaining("alice-notes/v"));
   });
 
-  it("a failed registry move after promotion puts the Worker back on the previous release", async () => {
+  it("a failed registry move after promotion puts the Worker back on the previous release and discards the version", async () => {
     deploy.deployStaticVersion.mockResolvedValue({ workerSha256: "a".repeat(64) });
     db.fail = { table: "mini_apps", op: "update" };
     await expect(uploadVersion(supabase, app, zip)).rejects.toThrow(/bundle version update failed/);
     expect(deploy.promoteVersion).toHaveBeenCalledTimes(2);
     expect(deploy.promoteVersion).toHaveBeenLastCalledWith(app, "v1700000000001");
     expect(db.apps[0]!.bundle_version).toBe("v1700000000001");
+    expect(db.versions).toHaveLength(0);
+    expect(r2.deletePrefix).toHaveBeenCalledWith(expect.stringContaining("alice-notes/v"));
+  });
+
+  it("a discard whose row delete fails keeps the artifacts with the row", async () => {
+    deploy.deployStaticVersion.mockResolvedValue({ workerSha256: "a".repeat(64) });
+    deploy.promoteVersion.mockRejectedValue(new Error("vendor 502"));
+    db.fail = { table: "miniapp_versions", op: "delete" };
+    await expect(uploadVersion(supabase, app, zip)).rejects.toThrow(/vendor 502/);
+    expect(db.versions).toHaveLength(1);
+    expect(r2.deletePrefix).not.toHaveBeenCalled();
   });
 
   it("a lost worker digest write fails the upload and discards the version", async () => {
@@ -511,6 +575,29 @@ describe("pointLiveAt", () => {
     expect(db.versions[1]!.retired_at).toBeNull();
     expect(db.versions[0]!.retired_at).not.toBeNull();
   });
+
+  it("is a compare-and-swap on the pointer the caller observed", async () => {
+    await recordVersion(supabase, {
+      appId: "app-notes", userId: "user-alice", version: "v1700000000002", lane: "push", files,
+    });
+    db.apps[0]!.bundle_version = "v1700000000009";
+    await expect(pointLiveAt(supabase, app, "v1700000000002")).rejects.toMatchObject({
+      status: 409,
+    });
+    expect(db.apps[0]!.bundle_version).toBe("v1700000000009");
+    expect(db.versions[0]!.published_at).toBeNull();
+  });
+
+  it("refuses a version tombstoned since it was read", async () => {
+    await recordVersion(supabase, {
+      appId: "app-notes", userId: "user-alice", version: "v1700000000002", lane: "push", files,
+    });
+    db.versions[0]!.purged_at = "2026-03-01T00:00:00.000Z";
+    await expect(pointLiveAt(supabase, app, "v1700000000002")).rejects.toMatchObject({
+      status: 409,
+    });
+    expect(db.apps[0]!.bundle_version).toBe("v1700000000001");
+  });
 });
 
 describe("rollbackTo (§13.3)", () => {
@@ -545,7 +632,7 @@ describe("rollbackTo (§13.3)", () => {
 
   it("a failed pointer move puts the Worker back on the release the registry still names", async () => {
     await seed();
-    db.fail = { table: "mini_apps", op: "update" };
+    db.fail = { table: "miniapp_point_live", op: "rpc" };
     await expect(rollbackTo(supabase, app, "v1700000000000")).rejects.toThrow(
       /live pointer move failed/
     );
@@ -553,6 +640,40 @@ describe("rollbackTo (§13.3)", () => {
     expect(deploy.promoteVersion).toHaveBeenLastCalledWith(app, "v1700000000001");
     expect(db.apps[0]!.bundle_version).toBe("v1700000000001");
     expect(limits.recordOpsEvent).not.toHaveBeenCalled();
+  });
+
+  it("two concurrent rollbacks: the loser re-promotes the winner's release and reports 409", async () => {
+    await seed();
+    await recordVersion(supabase, {
+      appId: "app-notes", userId: "user-alice", version: "v1700000000002", lane: "push", files,
+    });
+    db.versions[2]!.published_at = "2026-01-03T00:00:00.000Z";
+    db.versions[2]!.retired_at = "2026-01-04T00:00:00.000Z";
+    deploy.promoteVersion.mockImplementationOnce(async () => {
+      // The other rollback commits v...002 between our read of `app` and our CAS.
+      db.apps[0]!.bundle_version = "v1700000000002";
+    });
+    await expect(rollbackTo(supabase, app, "v1700000000000")).rejects.toMatchObject({
+      status: 409,
+    });
+    expect(deploy.promoteVersion).toHaveBeenCalledTimes(2);
+    expect(deploy.promoteVersion).toHaveBeenLastCalledWith(app, "v1700000000002");
+    expect(db.apps[0]!.bundle_version).toBe("v1700000000002");
+    expect(db.versions[0]!.published_at).toBe("2026-01-01T00:00:00.000Z");
+    expect(deploy.syncManifest).not.toHaveBeenCalled();
+    expect(limits.recordOpsEvent).not.toHaveBeenCalled();
+  });
+
+  it("a version the sweep tombstoned after the read is refused, not made live", async () => {
+    await seed();
+    deploy.promoteVersion.mockImplementationOnce(async () => {
+      db.versions[0]!.purged_at = "2026-03-01T00:00:00.000Z";
+    });
+    await expect(rollbackTo(supabase, app, "v1700000000000")).rejects.toMatchObject({
+      status: 409,
+    });
+    expect(db.apps[0]!.bundle_version).toBe("v1700000000001");
+    expect(deploy.promoteVersion).toHaveBeenLastCalledWith(app, "v1700000000001");
   });
 
   it("refuses versions of another app, unknown versions, and the live one", async () => {
@@ -699,6 +820,23 @@ describe("sweepVersions (§13.1 retention)", () => {
     // The next sweep finishes the job.
     expect(await sweepVersions(supabase, now)).toBe(1);
     expect(db.versions.map((v) => v.version)).toEqual(["v1700000000100"]);
+  });
+
+  it("a candidate a rollback made live since the read is left alone", async () => {
+    db.apps[0]!.bundle_version = "v1700000000100";
+    version("v1700000000100", { published_at: "2026-01-01T00:00:00.000Z" });
+    const old = version("v1700000000050", {
+      published_at: "2025-01-01T00:00:00.000Z",
+      retired_at: new Date(now.getTime() - (RETAIN_SUPERSEDED_DAYS + 1) * day).toISOString(),
+    });
+    // The sweep read `old` as retired; a rollback commits before the tombstone.
+    db.beforeRpc = () => {
+      db.apps[0]!.bundle_version = "v1700000000050";
+    };
+    expect(await sweepVersions(supabase, now)).toBe(0);
+    expect(old.purged_at).toBeNull();
+    expect(db.versions).toHaveLength(2);
+    expect(r2.deletePrefix).not.toHaveBeenCalled();
   });
 
   it("a failed R2 delete leaves the tombstone for the next sweep and never the artifacts orphaned", async () => {

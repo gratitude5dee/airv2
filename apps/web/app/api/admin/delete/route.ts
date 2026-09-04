@@ -63,13 +63,34 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // operator retries once the vendor is back.
   const { data: ownedApps, error: ownedAppsError } = await supabase
     .from("mini_apps")
-    .select("slug")
+    .select("id, slug")
     .eq("owner_user_id", userId);
   if (ownedAppsError) {
     steps["app_origin"] = `error: owned-app lookup failed; nothing deleted`;
     return NextResponse.json({ ok: false, steps, retry: true }, { status: 502 });
   }
   const ownedSlugs = (ownedApps ?? []).map((app) => app.slug as string);
+  const ownedIds = (ownedApps ?? []).map((app) => app.id as string);
+  if (ownedSlugs.length > 0 && !appOriginLaneReady()) {
+    // Missing credentials say nothing about what was deployed earlier: the
+    // ledger does. Any version with a Worker digest means an origin may
+    // still serve, and only a configured lane can take it down.
+    const { data: deployedRows, error: deployedError } = await supabase
+      .from("miniapp_versions")
+      .select("id")
+      .in("app_id", ownedIds)
+      .not("worker_sha256", "is", null)
+      .limit(1);
+    if (deployedError) {
+      steps["app_origin"] = `error: deployed-version lookup failed; nothing deleted`;
+      return NextResponse.json({ ok: false, steps, retry: true }, { status: 502 });
+    }
+    if ((deployedRows ?? []).length > 0) {
+      steps["app_origin"] =
+        "error: app origin lane not configured but deployed versions exist; nothing deleted";
+      return NextResponse.json({ ok: false, steps, retry: true }, { status: 503 });
+    }
+  }
   if (ownedSlugs.length > 0 && appOriginLaneReady()) {
     const failed: string[] = [];
     for (const slug of ownedSlugs) {
@@ -85,7 +106,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
     steps["app_origin"] = `tore down ${ownedSlugs.length} app(s)`;
   } else {
-    steps["app_origin"] = ownedSlugs.length > 0 ? "lane not configured" : "none";
+    steps["app_origin"] =
+      ownedSlugs.length > 0 ? "lane not configured; no deployed versions" : "none";
   }
 
   // CM8: neutralize live state before rows disappear. Unfired slots are

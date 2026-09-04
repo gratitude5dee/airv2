@@ -252,8 +252,8 @@ export async function uploadVersion(
       const current = error ? app.bundle_version : await currentLiveVersion(supabase, app.id);
       if (current) await promoteVersion(app, current).catch(() => null);
     }
-    if (error) throw new Error(`bundle version update failed: ${error.message}`);
     await discardVersion(supabase, app, row.id, version);
+    if (error) throw new Error(`bundle version update failed: ${error.message}`);
     throw new VersionError("another upload finished first; retry", 409);
   }
   if (app.status === "published") {
@@ -282,14 +282,33 @@ export async function uploadVersion(
   return version;
 }
 
-/** Undo a reserved version that never became a pointer: row, then R2 prefix. */
+/**
+ * Undo a reserved version that never became a pointer: row, then R2 prefix.
+ * The prefix goes only once the row is gone — a row that outlives its files
+ * would be selectable with nothing behind it, whereas orphaned files under a
+ * row that stays are just a draft the retention sweep collects later.
+ */
 async function discardVersion(
   supabase: SupabaseClient,
   app: RegistryApp,
   rowId: string,
   version: string
 ): Promise<void> {
-  await supabase.from("miniapp_versions").delete().eq("id", rowId);
+  const { error } = await supabase
+    .from("miniapp_versions")
+    .delete()
+    .eq("id", rowId);
+  if (error) {
+    console.error(
+      JSON.stringify({
+        msg: "version discard kept row",
+        slug: app.slug,
+        version,
+        error: error.message,
+      })
+    );
+    return;
+  }
   if (r2Configured()) {
     await deletePrefix(bundleKey(app.slug, version, "")).catch(() => 0);
   }
@@ -346,19 +365,28 @@ export async function listVersions(
 /**
  * Point `bundle_version` at `version` and stamp the ledger: the new row gets
  * `published_at`, the previously live row (if different) gets `retired_at`.
+ * One transaction (`miniapp_point_live`) that compares the pointer with the
+ * value `app` observed and re-checks that `version` is still selectable, so
+ * neither a concurrent pointer move nor a retention tombstone can slip in
+ * between the read and the write. Throws a 409 `VersionError` when it lost.
  */
 export async function pointLiveAt(
   supabase: SupabaseClient,
   app: RegistryApp,
   version: string
 ): Promise<void> {
-  const now = new Date().toISOString();
-  const { error } = await supabase
-    .from("mini_apps")
-    .update({ bundle_version: version, updated_at: now })
-    .eq("id", app.id);
+  const { data, error } = await supabase.rpc("miniapp_point_live", {
+    p_app_id: app.id,
+    p_version: version,
+    p_expected: app.bundle_version,
+  });
   if (error) throw new Error(`live pointer move failed: ${error.message}`);
-  await stampLive(supabase, app.id, version, app.bundle_version, now);
+  if (data !== true) {
+    throw new VersionError(
+      "live version changed underneath this request; retry",
+      409
+    );
+  }
 }
 
 async function stampLive(
@@ -411,10 +439,15 @@ export async function rollbackTo(
   try {
     await pointLiveAt(supabase, app, target.version);
   } catch (error) {
-    // The Worker is on the target but the registry still names the previous
-    // release; put the Worker back so both origins agree before failing.
-    if (app.bundle_version) {
-      await promoteVersion(app, app.bundle_version).catch(() => null);
+    // The Worker is on the target but the registry names another release —
+    // the previous one, or whatever a concurrent move won with; put the
+    // Worker back on that so both origins agree before failing.
+    const current =
+      error instanceof VersionError
+        ? await currentLiveVersion(supabase, app.id).catch(() => app.bundle_version)
+        : app.bundle_version;
+    if (current) {
+      await promoteVersion(app, current).catch(() => null);
     }
     throw error;
   }
@@ -516,21 +549,22 @@ async function* allVersions(
  */
 async function purgeVersion(
   supabase: SupabaseClient,
-  row: SweepCandidate,
-  now: Date
-): Promise<void> {
+  row: SweepCandidate
+): Promise<boolean> {
   // Every version's files live under its R2 prefix; without R2 the row is
   // the only record of them, so it must outlive this sweep.
   if (!r2Configured()) {
     throw new Error("R2 not configured; version artifacts cannot be deleted");
   }
   if (!row.purged_at) {
-    const { error } = await supabase
-      .from("miniapp_versions")
-      .update({ purged_at: now.toISOString() })
-      .eq("id", row.id)
-      .is("purged_at", null);
+    // The tombstone re-checks the pointers under the registry row lock: a
+    // rollback that selected this version since the sweep read it wins, and
+    // the sweep leaves the row alone.
+    const { data, error } = await supabase.rpc("miniapp_tombstone_version", {
+      p_id: row.id,
+    });
     if (error) throw new Error(error.message);
+    if (data !== true) return false;
   }
   if (row.slug) {
     await deletePrefix(bundleKey(row.slug, row.version, ""));
@@ -540,6 +574,7 @@ async function purgeVersion(
     .delete()
     .eq("id", row.id);
   if (error) throw new Error(error.message);
+  return true;
 }
 
 /**
@@ -575,8 +610,7 @@ export async function sweepVersions(
   let removed = 0;
   for (const row of doomed) {
     try {
-      await purgeVersion(supabase, row, now);
-      removed += 1;
+      if (await purgeVersion(supabase, row)) removed += 1;
     } catch (error) {
       console.error(
         JSON.stringify({
