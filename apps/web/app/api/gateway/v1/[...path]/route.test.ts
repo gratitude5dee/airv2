@@ -66,6 +66,8 @@ vi.mock("@/lib/env", () => ({
     modelProviderApiKey: () => "provider-key",
     openRouterBaseUrl: () => "https://openrouter.test/api/v1",
     openRouterApiKey: () => "openrouter-key",
+    gmiInferenceBaseUrl: () => "https://gmi.test/v1",
+    gmiCloudApiKey: () => "gmi-key",
     appOrigin: () => "https://app.test",
   },
 }));
@@ -322,6 +324,16 @@ describe("gateway model families", () => {
     expect(call.url).toBe("https://upstream.test/v1/chat/completions");
     const headers = call.init.headers as Record<string, string>;
     expect(headers["Authorization"]).toBe("Bearer provider-key");
+    expect(headers["HTTP-Referer"]).toBeUndefined();
+  });
+
+  it("routes MiniMax families to GMI Cloud", async () => {
+    setEntitlement({ speed_tier: "balanced", model_family: "minimax-m3" });
+    const call = await upstreamCall({ messages: [] });
+    expect(call.body["model"]).toBe("MiniMaxAI/MiniMax-M3");
+    expect(call.url).toBe("https://gmi.test/v1/chat/completions");
+    const headers = call.init.headers as Record<string, string>;
+    expect(headers["Authorization"]).toBe("Bearer gmi-key");
     expect(headers["HTTP-Referer"]).toBeUndefined();
   });
 
