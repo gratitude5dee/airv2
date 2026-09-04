@@ -13,6 +13,7 @@ import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import {
+  appOriginLaneReady,
   deployStaticVersion,
   loadBundleFiles,
   promoteVersion,
@@ -218,6 +219,7 @@ export async function uploadVersion(
   let deployed: { workerSha256: string } | null = null;
   try {
     await storeBundle(app.slug, version, files);
+    if (appOriginLaneReady()) await markAppOriginDeployed(supabase, app);
     deployed = await deployStaticVersion({
       slug: app.slug,
       version,
@@ -319,10 +321,32 @@ export async function uploadVersion(
 }
 
 /**
- * Undo a reserved version that never became a pointer: row, then R2 prefix.
- * The prefix goes only once the row is gone — a row that outlives its files
- * would be selectable with nothing behind it, whereas orphaned files under a
- * row that stays are just a draft the retention sweep collects later.
+ * The app row remembers that a Worker was ever put for it (CR16). The mark
+ * goes in before the deploy, and a lost write fails the upload: account
+ * deletion reads this column to decide whether an origin may still serve,
+ * and version rows cannot carry that fact because a failed upload discards
+ * its row after the draft Worker is already up.
+ */
+async function markAppOriginDeployed(
+  supabase: SupabaseClient,
+  app: RegistryApp
+): Promise<void> {
+  const { error } = await supabase
+    .from("mini_apps")
+    .update({ app_origin_deployed_at: new Date().toISOString() })
+    .eq("id", app.id)
+    .is("app_origin_deployed_at", null);
+  if (error) {
+    throw new Error(`app origin deploy mark failed: ${error.message}`);
+  }
+}
+
+/**
+ * Undo a reserved version that never became a pointer, in the same
+ * tombstone order as the retention sweep: mark the row purged (it stops
+ * being selectable), delete the R2 prefix, then the row. A failure after the
+ * tombstone leaves a row the next sweep finishes, so a lost R2 delete never
+ * strands files with no record of them.
  */
 async function discardVersion(
   supabase: SupabaseClient,
@@ -330,23 +354,29 @@ async function discardVersion(
   rowId: string,
   version: string
 ): Promise<void> {
-  const { error } = await supabase
-    .from("miniapp_versions")
-    .delete()
-    .eq("id", rowId);
-  if (error) {
+  try {
+    const { data, error } = await supabase.rpc("miniapp_tombstone_version", {
+      p_id: rowId,
+    });
+    if (error) throw new Error(error.message);
+    if (data !== true) return;
+    if (r2Configured()) {
+      await deletePrefix(bundleKey(app.slug, version, ""));
+    }
+    const { error: rowError } = await supabase
+      .from("miniapp_versions")
+      .delete()
+      .eq("id", rowId);
+    if (rowError) throw new Error(rowError.message);
+  } catch (error) {
     console.error(
       JSON.stringify({
-        msg: "version discard kept row",
+        msg: "version discard incomplete; sweep will finish it",
         slug: app.slug,
         version,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
       })
     );
-    return;
-  }
-  if (r2Configured()) {
-    await deletePrefix(bundleKey(app.slug, version, "")).catch(() => 0);
   }
 }
 

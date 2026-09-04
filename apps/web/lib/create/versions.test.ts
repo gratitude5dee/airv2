@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 const deploy = vi.hoisted(() => ({
+  appOriginLaneReady: vi.fn(() => false),
   deployStaticVersion: vi.fn<
     (input: { target: string; version: string }) => Promise<{ workerSha256: string } | null>
   >(async () => null),
@@ -36,6 +37,7 @@ import {
   VERSION_RE,
   VersionError,
   bundleDigest,
+  getVersion,
   newVersionId,
   parseVersionRow,
   pointLiveAt,
@@ -73,6 +75,7 @@ interface AppRowLike {
   bundle_version: string | null;
   draft_version: string | null;
   updated_at: string;
+  app_origin_deployed_at: string | null;
 }
 
 const db = {
@@ -238,7 +241,7 @@ function query(table: "miniapp_versions" | "mini_apps") {
   return builder;
 }
 
-/** Mirrors 0084_create_v11_pointer_rpcs.sql: one atomic step per call. */
+/** Mirrors 0085_create_v11_lock_order_deploy_mark.sql: one atomic step per call. */
 function rpc(fn: string, args: Record<string, unknown>) {
   if (db.beforeRpc) {
     const hook = db.beforeRpc;
@@ -316,8 +319,11 @@ beforeEach(() => {
       bundle_version: "v1700000000001",
       draft_version: null,
       updated_at: "2026-01-01T00:00:00.000Z",
+      app_origin_deployed_at: null,
     },
   ];
+  deploy.appOriginLaneReady.mockReset();
+  deploy.appOriginLaneReady.mockReturnValue(false);
   deploy.deployStaticVersion.mockReset();
   deploy.deployStaticVersion.mockResolvedValue(null);
   deploy.loadBundleFiles.mockClear();
@@ -515,13 +521,65 @@ describe("uploadVersion", () => {
     expect(r2.deletePrefix).toHaveBeenCalledWith(expect.stringContaining("alice-notes/v"));
   });
 
-  it("a discard whose row delete fails keeps the artifacts with the row", async () => {
+  it("a discard whose row delete fails leaves a tombstone, never a selectable row", async () => {
     deploy.deployStaticVersion.mockResolvedValue({ workerSha256: "a".repeat(64) });
     deploy.promoteVersion.mockRejectedValue(new Error("vendor 502"));
     db.fail = { table: "miniapp_versions", op: "delete" };
     await expect(uploadVersion(supabase, app, zip)).rejects.toThrow(/vendor 502/);
     expect(db.versions).toHaveLength(1);
-    expect(r2.deletePrefix).not.toHaveBeenCalled();
+    expect(db.versions[0]!.purged_at).not.toBeNull();
+    expect(r2.deletePrefix).toHaveBeenCalledTimes(1);
+  });
+
+  it("a discard whose R2 delete fails leaves a tombstone the next sweep finishes", async () => {
+    deploy.deployStaticVersion.mockResolvedValue({ workerSha256: "a".repeat(64) });
+    deploy.promoteVersion.mockRejectedValue(new Error("vendor 502"));
+    r2.deletePrefix.mockRejectedValueOnce(new Error("r2 down"));
+    await expect(uploadVersion(supabase, app, zip)).rejects.toThrow(/vendor 502/);
+    expect(db.versions).toHaveLength(1);
+    const left = db.versions[0]!;
+    expect(left.purged_at).not.toBeNull();
+    expect(r2.deletePrefix).toHaveBeenCalledTimes(1);
+
+    await expect(getVersion(supabase, app.id, left.version)).resolves.toBeNull();
+    expect(await sweepVersions(supabase)).toBe(1);
+    expect(db.versions).toHaveLength(0);
+    expect(r2.deletePrefix).toHaveBeenCalledTimes(2);
+    expect(r2.deletePrefix).toHaveBeenLastCalledWith(`apps/alice-notes/${left.version}/`);
+  });
+
+  it("a failed upload on the app-origin lane still marks the app as deployed (CR16)", async () => {
+    deploy.appOriginLaneReady.mockReturnValue(true);
+    deploy.deployStaticVersion.mockResolvedValue({ workerSha256: "a".repeat(64) });
+    deploy.promoteVersion.mockRejectedValue(new Error("vendor 502"));
+    await expect(uploadVersion(supabase, app, zip)).rejects.toThrow(/vendor 502/);
+    // The draft Worker was put and the ledger row is gone: the app row is the
+    // only durable record that an origin may still be serving.
+    expect(db.versions).toHaveLength(0);
+    expect(db.apps[0]!.app_origin_deployed_at).not.toBeNull();
+  });
+
+  it("the deploy mark is written before the first Worker; a lost write fails the upload", async () => {
+    deploy.appOriginLaneReady.mockReturnValue(true);
+    deploy.deployStaticVersion.mockResolvedValue({ workerSha256: "a".repeat(64) });
+    db.fail = { table: "mini_apps", op: "update" };
+    await expect(uploadVersion(supabase, app, zip)).rejects.toThrow(/deploy mark failed/);
+    expect(deploy.deployStaticVersion).not.toHaveBeenCalled();
+    expect(db.versions).toHaveLength(0);
+    expect(db.apps[0]!.app_origin_deployed_at).toBeNull();
+  });
+
+  it("the deploy mark is skipped on the legacy lane", async () => {
+    await uploadVersion(supabase, app, zip);
+    expect(db.apps[0]!.app_origin_deployed_at).toBeNull();
+  });
+
+  it("the deploy mark keeps the first deploy's timestamp", async () => {
+    deploy.appOriginLaneReady.mockReturnValue(true);
+    deploy.deployStaticVersion.mockResolvedValue({ workerSha256: "a".repeat(64) });
+    db.apps[0]!.app_origin_deployed_at = "2026-01-01T00:00:00.000Z";
+    await uploadVersion(supabase, app, zip);
+    expect(db.apps[0]!.app_origin_deployed_at).toBe("2026-01-01T00:00:00.000Z");
   });
 
   it("a lost worker digest write fails the upload and discards the version", async () => {
@@ -841,6 +899,7 @@ describe("sweepVersions (§13.1 retention)", () => {
       slug: "bob-thing",
       bundle_version: null,
       draft_version: null,
+      app_origin_deployed_at: null,
       updated_at: "2026-01-01T00:00:00.000Z",
     });
     for (let i = 0; i < RETAIN_DRAFTS; i++) version(`v170000000040${i}`);
