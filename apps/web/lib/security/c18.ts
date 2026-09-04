@@ -189,7 +189,7 @@ export const V9_USER_TABLES: readonly { table: string; column: string }[] = [
   { table: "payment_requests", column: "user_id" },
   { table: "storefront_events", column: "user_id" },
   { table: "ops_events", column: "user_id" },
-  // V11 Create (0082)
+  // V11 Create (0083)
   { table: "miniapp_versions", column: "user_id" },
   { table: "miniapp_functions", column: "user_id" },
   { table: "miniapp_runtime_tokens", column: "user_id" },

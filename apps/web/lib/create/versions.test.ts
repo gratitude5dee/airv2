@@ -235,7 +235,7 @@ function query(table: "miniapp_versions" | "mini_apps") {
   return builder;
 }
 
-/** Mirrors 0083_create_v11_pointer_rpcs.sql: one atomic step per call. */
+/** Mirrors 0084_create_v11_pointer_rpcs.sql: one atomic step per call. */
 function rpc(fn: string, args: Record<string, unknown>) {
   if (db.beforeRpc) {
     const hook = db.beforeRpc;

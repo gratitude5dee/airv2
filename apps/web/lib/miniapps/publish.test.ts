@@ -116,7 +116,7 @@ describe("parseRegistryApp", () => {
     expect(parseRegistryApp(valid)).toEqual({ ...valid, create_budget_usd: 5 });
   });
 
-  it("normalizes pre-0082 rows that lack the V11 columns", () => {
+  it("normalizes pre-0083 rows that lack the V11 columns", () => {
     const legacy: Record<string, unknown> = { ...valid };
     for (const column of [
       "appname",
