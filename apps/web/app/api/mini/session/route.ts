@@ -2,7 +2,9 @@
  * MA0 store-session handoff redemption (mini origin). /home mints a
  * single-use tokened URL via POST /api/mini/link {target:"store"}; this
  * route redeems it, sets the mini-origin store cookie, and redirects to the
- * store home with the token stripped from the URL (C15).
+ * store home with the token stripped from the URL (C15). Create cards (V11
+ * §13.5) pass `next` to land on the Create surface instead; only that page
+ * is an allowed target, so the redirect can never leave the store.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
@@ -13,6 +15,7 @@ import {
   mintStoreSessionToken,
   STORE_COOKIE,
   storeCookieOptions,
+  storeNextPath,
 } from "@/lib/miniapps/storeSession";
 
 export const runtime = "nodejs";
@@ -28,7 +31,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.redirect(new URL("/login", env.miniappOrigin()), 303);
   }
   const response = NextResponse.redirect(
-    new URL("/", env.miniappOrigin()),
+    new URL(storeNextPath(request.nextUrl.searchParams.get("next")), env.miniappOrigin()),
     303
   );
   response.cookies.set(

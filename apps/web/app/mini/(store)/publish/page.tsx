@@ -15,6 +15,7 @@ interface PublishedApp {
   status: string;
   visibility: string;
   bundle_version: string | null;
+  draft_version?: string | null;
   agent_identity: string | null;
   access: "single" | "multiplayer";
   x402_enabled: boolean;
@@ -92,20 +93,22 @@ export default function PublishPage() {
     void refresh();
   }
 
-  async function flipStatus(slug: string, status: "published" | "draft") {
+  /** First publication makes the app public; a live app keeps its visibility. */
+  async function flipStatus(app: PublishedApp, status: "published" | "draft") {
     setBusy(true);
     setMessage(null);
+    const firstPublish = status === "published" && app.status !== "published";
     const res = await fetch("/api/mini/publish/status", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        slug,
+        slug: app.slug,
         status,
-        ...(status === "published" ? { visibility: "public" } : {}),
+        ...(firstPublish ? { visibility: "public" } : {}),
       }),
     });
     const data = (await res.json()) as { error?: string };
-    setMessage(res.ok ? `Now ${status}: ${slug}` : data.error ?? "failed");
+    setMessage(res.ok ? `Now ${status}: ${app.slug}` : data.error ?? "failed");
     setBusy(false);
     void refresh();
   }
@@ -211,6 +214,9 @@ export default function PublishPage() {
                   {app.bundle_version
                     ? `bundle ${app.bundle_version}`
                     : "no bundle uploaded"}
+                  {app.draft_version && app.draft_version !== app.bundle_version
+                    ? ` · draft ${app.draft_version} staged`
+                    : ""}
                 </p>
                 <div className="flex flex-wrap items-center gap-2">
                   <label className="btn-ghost cursor-pointer text-[12px]">
@@ -227,18 +233,29 @@ export default function PublishPage() {
                     />
                   </label>
                   {app.status === "published" ? (
-                    <button
-                      className="btn-ghost text-[12px]"
-                      disabled={busy}
-                      onClick={() => void flipStatus(app.slug, "draft")}
-                    >
-                      Unpublish
-                    </button>
+                    <>
+                      {app.draft_version && app.draft_version !== app.bundle_version ? (
+                        <button
+                          className="btn text-[12px]"
+                          disabled={busy}
+                          onClick={() => void flipStatus(app, "published")}
+                        >
+                          Publish draft
+                        </button>
+                      ) : null}
+                      <button
+                        className="btn-ghost text-[12px]"
+                        disabled={busy}
+                        onClick={() => void flipStatus(app, "draft")}
+                      >
+                        Unpublish
+                      </button>
+                    </>
                   ) : (
                     <button
                       className="btn text-[12px]"
                       disabled={busy || !app.bundle_version}
-                      onClick={() => void flipStatus(app.slug, "published")}
+                      onClick={() => void flipStatus(app, "published")}
                     >
                       Publish
                     </button>

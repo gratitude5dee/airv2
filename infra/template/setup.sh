@@ -477,6 +477,7 @@ if [ ! -f "$HOME_DIR/.hermes/connected-tools.md" ]; then
 - Vault: saved logins and secrets — skill `vault-use`.
 - Browser: drive websites — skill `browser-use`.
 - Mini-apps and cards on your human's phone — skill `open-miniapp`.
+- Host a page your human sends (html / zip / folder) as a draft mini-app — skill `create-miniapp`. You stage; they publish.
 
 ## Connected by your human
 Connected: nothing yet.
@@ -729,6 +730,11 @@ exec curl -fsS -X POST "\${base%/api/gateway/v1}/api/cards/\${kind}" \\
   -H "Authorization: Bearer \$key"
 SH
 sudo chmod +x /usr/local/bin/open-miniapp-card
+
+# air-create <drop|status|publish>: the create-miniapp skill's CLI (V11 §8.3).
+# Same reasoning — a plain command name keeps the agent on the terminal tool.
+chmod +x "$HOME_DIR/.hermes/skills/create-miniapp/scripts/air-create"
+sudo ln -sf "$HOME_DIR/.hermes/skills/create-miniapp/scripts/air-create" /usr/local/bin/air-create
 
 # User plugins are opt-in: the dashboard only imports a user plugin's backend
 # (plugin_api.py) when its name is in the plugins.enabled allow-list in

@@ -8,7 +8,9 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-/** One kind per store app the agent may send a card for (goal.md §4.3). */
+/** One kind per store app the agent may send a card for (goal.md §4.3), plus
+ * the V11 Create kinds (§13.5): `create` opens the Create surface, `app`
+ * carries one owner app (resource_id = slug) and is edited in place. */
 export const CARD_KINDS = [
   "ads",
   "computer",
@@ -30,6 +32,8 @@ export const CARD_KINDS = [
   "home",
   "persona",
   "feedback",
+  "create",
+  "app",
 ] as const;
 
 export type CardKind = (typeof CARD_KINDS)[number];
