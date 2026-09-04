@@ -3,9 +3,9 @@
  * surface. The owner (store session on the mini origin) sends a prompt for
  * one app; the control plane ensures the app exists as the owner's draft,
  * ensures the Box session `air-create-<appname>`, and creates a Hermes run
- * with `model: "create-<tier>"` (a tier name — the Box never sees a slug,
- * C2), the generated Create system prompt plus project context, and the
- * run metadata the gateway attributes usage by. Returns the run id; the
+ * with `model: "create-<tier>:<project slug>"` (a tier name and the project
+ * — the Box never sees a model ID, C2), the generated Create system prompt
+ * plus project context, and the run metadata. Returns the run id; the
  * browser streams it from `GET /api/create/events/[runId]`.
  */
 import { NextRequest, NextResponse } from "next/server";

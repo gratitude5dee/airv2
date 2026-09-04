@@ -1,10 +1,11 @@
 /**
  * Per-project Create budget (goal-create-v11 §9.1). A Create turn opens an
- * agent_runs row labelled `create:<slug>`; every gateway completion served
- * on a `create-<tier>` model while that run is open is metered under the
- * same label, so the project's spend is a sum over its own usage rows and
- * never a copy of anything the Box holds. The owner raises the budget on
- * PATCH /api/create/projects (up to the monthly cap); the agent cannot.
+ * agent_runs row labelled `create:<slug>` and pins the run's model to
+ * `create-<tier>:<slug>`; every gateway completion carrying that model is
+ * metered under the same label, so the project's spend is a sum over its
+ * own usage rows and never a copy of anything the Box holds. The owner
+ * raises the budget on PATCH /api/create/projects (up to the monthly cap);
+ * the agent cannot.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -30,10 +31,8 @@ function minutesAgo(minutes: number): string {
 }
 
 /**
- * The user's open Create run, if any. Gateway calls carry no run id (Hermes
- * speaks plain OpenAI to the gateway), so attribution rests on the turn
- * route keeping at most one Create run open per user: while one is open,
- * every `create-*` completion is that project's.
+ * The user's open Create run, if any. The turn route keeps at most one open
+ * per owner (a Box works one project at a time).
  */
 export async function openCreateRun(
   supabase: SupabaseClient,
@@ -56,30 +55,31 @@ export async function openCreateRun(
 }
 
 /**
- * The project a `create-*` gateway call belongs to: the open Create run, or
- * the one that closed most recently within the attribution window (for the
- * trailing completions that land after the terminal event).
+ * Whether the named project may be charged for a `create-*` gateway call
+ * right now: the owner has a Create run for it that is open, or closed
+ * within the attribution window (for the trailing completions that land
+ * after the terminal event). The project comes from the model the Box
+ * requested, so two projects running side by side each meter their own
+ * calls; a slug with no such run is refused rather than guessed.
  */
-export async function activeCreateSlug(
+export async function createRunAttributable(
   supabase: SupabaseClient,
-  userId: string
-): Promise<string | null> {
+  userId: string,
+  slug: string
+): Promise<boolean> {
   const { data } = await supabase
     .from("agent_runs")
-    .select("label, ended_at, started_at")
+    .select("hermes_run_id")
     .eq("user_id", userId)
-    .like("label", `${CREATE_LABEL_PREFIX}%`)
+    .eq("label", createRunLabel(slug))
     .not("hermes_run_id", "is", null)
     .or(
       `and(ended_at.is.null,started_at.gte.${minutesAgo(CREATE_RUN_MAX_MINUTES)}),` +
         `ended_at.gte.${minutesAgo(CREATE_RUN_ATTRIBUTION_MINUTES)}`
     )
-    .order("ended_at", { ascending: false, nullsFirst: true })
-    .order("started_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  const row = data as { label: string | null } | null;
-  return slugFromRunLabel(row?.label);
+  return data !== null && data !== undefined;
 }
 
 export interface BudgetMeter {

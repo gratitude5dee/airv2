@@ -10,7 +10,9 @@ import {
   modelForCreateTier,
   modelForSelection,
   modelForTier,
-  parseCreateTier,
+  createModelFor,
+  isCreateModelRequest,
+  parseCreateModel,
   requiresConsent,
 } from "./models";
 
@@ -104,12 +106,34 @@ describe("Create tier family (MC4 §9.1)", () => {
     delete process.env["MODEL_DEEP"];
   });
 
-  it("parses only create-<tier> selections", () => {
-    expect(parseCreateTier("create-fast")).toBe("fast");
-    expect(parseCreateTier("create-deep")).toBe("deep");
-    expect(parseCreateTier("fast")).toBeNull();
-    expect(parseCreateTier("create-turbo")).toBeNull();
-    expect(parseCreateTier(42)).toBeNull();
+  it("parses only create-<tier>:<slug> selections", () => {
+    expect(parseCreateModel("create-fast:alice-countdown")).toEqual({
+      tier: "fast",
+      slug: "alice-countdown",
+    });
+    expect(parseCreateModel("create-deep:bob_app-2")).toEqual({
+      tier: "deep",
+      slug: "bob_app-2",
+    });
+    expect(parseCreateModel(createModelFor("balanced", "alice-x"))).toEqual({
+      tier: "balanced",
+      slug: "alice-x",
+    });
+    expect(parseCreateModel("create-fast")).toBeNull();
+    expect(parseCreateModel("create-fast:")).toBeNull();
+    expect(parseCreateModel("create-fast:Alice")).toBeNull();
+    expect(parseCreateModel("create-fast:a/b")).toBeNull();
+    expect(parseCreateModel(`create-fast:${"a".repeat(81)}`)).toBeNull();
+    expect(parseCreateModel("fast")).toBeNull();
+    expect(parseCreateModel("create-turbo:alice-x")).toBeNull();
+    expect(parseCreateModel(42)).toBeNull();
+  });
+
+  it("recognises the Create namespace even when malformed", () => {
+    expect(isCreateModelRequest("create-fast")).toBe(true);
+    expect(isCreateModelRequest("create-fast:alice-x")).toBe(true);
+    expect(isCreateModelRequest("fast")).toBe(false);
+    expect(isCreateModelRequest(undefined)).toBe(false);
   });
 
   it("clamps to the entitled tier and never upgrades", () => {

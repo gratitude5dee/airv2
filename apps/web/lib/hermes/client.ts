@@ -43,8 +43,9 @@ export interface RunRequest {
   /** Explicit history replay; when omitted and sessionId is set, createRun
    * loads the persisted session transcript itself. */
   conversationHistory?: ConversationMessage[];
-  /** Gateway model selection (`fast` | `create-<tier>`); the Box only ever
-   * sees tier names, the gateway resolves the slug (C2). */
+  /** Gateway model selection (`fast` | `create-<tier>:<project slug>`); the
+   * Box only ever sees a tier name (plus the project it is charged to), the
+   * gateway resolves the model ID (C2). */
   model?: string;
   /** Extra system instructions for this run (Create injects the Kit's
    * system prompt + project context here, §9.2). */
