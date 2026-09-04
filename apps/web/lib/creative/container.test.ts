@@ -46,6 +46,16 @@ describe("isoBmffTrackHandlers", () => {
     expect(isoBmffTrackHandlers(bytes)).toEqual(new Set(["soun"]));
   });
 
+  it("reads a QuickTime file that opens with wide/mdat instead of ftyp", () => {
+    const mov = Buffer.concat([
+      box("wide"),
+      box("mdat", Buffer.alloc(32)),
+      box("moov", trak("soun")),
+    ]);
+
+    expect(isoBmffTrackHandlers(mov)).toEqual(new Set(["soun"]));
+  });
+
   it("stops at a truncated or foreign container", () => {
     expect(isoBmffTrackHandlers(Buffer.from("ID3\u0004\u0000"))).toEqual(
       new Set(),
@@ -77,7 +87,60 @@ describe("audioOnlyMimeType", () => {
     expect(audioOnlyMimeType("image/jpeg", mp4With("soun"))).toBe(undefined);
   });
 
-  it("recognises mp3, wav and ogg bytes behind a video label", () => {
+  it("tells ADTS AAC from MP3 frame headers", () => {
+    const raw = (...head: number[]) =>
+      Buffer.concat([Buffer.from(head), Buffer.alloc(12)]);
+
+    expect(audioOnlyMimeType("video/mp4", raw(0xff, 0xf1, 0x50, 0x80))).toBe(
+      "audio/aac",
+    );
+    expect(audioOnlyMimeType("video/mp4", raw(0xff, 0xf9, 0x50, 0x80))).toBe(
+      "audio/aac",
+    );
+    expect(audioOnlyMimeType("video/mp4", raw(0xff, 0xfb, 0x90, 0x00))).toBe(
+      "audio/mpeg",
+    );
+    expect(audioOnlyMimeType("video/mp4", raw(0xff, 0xe3, 0x90, 0x00))).toBe(
+      "audio/mpeg",
+    );
+    // Layer I/II are not something fal plays.
+    expect(audioOnlyMimeType("video/mp4", raw(0xff, 0xfd, 0x90, 0x00))).toBe(
+      undefined,
+    );
+    expect(audioOnlyMimeType("video/mp4", raw(0xff, 0xff, 0x90, 0x00))).toBe(
+      undefined,
+    );
+  });
+
+  it("accepts Ogg only when every stream is an audio codec", () => {
+    const page = (codec: string, bos = true): Buffer => {
+      const body = Buffer.from(codec.padEnd(30, "\u0000"), "latin1");
+      const header = Buffer.alloc(27);
+      header.write("OggS", 0, "latin1");
+      header[5] = bos ? 0x02 : 0x00;
+      header[26] = 1;
+      return Buffer.concat([header, Buffer.from([body.length]), body]);
+    };
+
+    expect(
+      audioOnlyMimeType(
+        "video/ogg",
+        Buffer.concat([page("\u0001vorbis"), page("x", false)]),
+      ),
+    ).toBe("audio/ogg");
+    expect(audioOnlyMimeType("video/ogg", page("OpusHead"))).toBe("audio/ogg");
+    expect(audioOnlyMimeType("video/ogg", page("\u0080theora"))).toBe(
+      undefined,
+    );
+    expect(
+      audioOnlyMimeType(
+        "video/ogg",
+        Buffer.concat([page("\u0080theora"), page("\u0001vorbis")]),
+      ),
+    ).toBe(undefined);
+  });
+
+  it("recognises tagged mp3 and wav bytes behind a video label; a bare Ogg page is not enough", () => {
     expect(
       audioOnlyMimeType(
         "video/mp4",
@@ -106,7 +169,7 @@ describe("audioOnlyMimeType", () => {
           "latin1",
         ),
       ),
-    ).toBe("audio/ogg");
+    ).toBe(undefined);
   });
 
   it("does not guess from unrecognised bytes", () => {
