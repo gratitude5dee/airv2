@@ -88,9 +88,51 @@ function box(type: string, ...body: Buffer[]): Buffer {
 }
 
 /**
+ * Per-sample byte sizes from a full (stsz) or compact (stz2) table.
+ * Undefined when neither is present or the table is truncated.
+ */
+function sampleSizes(
+  bytes: Buffer,
+  stbl: Box,
+): { count: number; sizeOf: (index: number) => number } | undefined {
+  const stsz = findChild(bytes, stbl.start, stbl.end, "stsz");
+  if (stsz) {
+    if (stsz.end - stsz.start < 12) return undefined;
+    const uniform = bytes.readUInt32BE(stsz.start + 4);
+    const count = bytes.readUInt32BE(stsz.start + 8);
+    if (uniform === 0 && stsz.end - stsz.start < 12 + 4 * count) {
+      return undefined;
+    }
+    return {
+      count,
+      sizeOf: (index) =>
+        uniform || bytes.readUInt32BE(stsz.start + 12 + 4 * index),
+    };
+  }
+  const stz2 = findChild(bytes, stbl.start, stbl.end, "stz2");
+  if (!stz2 || stz2.end - stz2.start < 12) return undefined;
+  const fieldBits = bytes[stz2.start + 7] ?? 0;
+  const count = bytes.readUInt32BE(stz2.start + 8);
+  if (![4, 8, 16].includes(fieldBits)) return undefined;
+  if (stz2.end - stz2.start < 12 + Math.ceil((fieldBits * count) / 8)) {
+    return undefined;
+  }
+  const table = stz2.start + 12;
+  return {
+    count,
+    sizeOf: (index) => {
+      if (fieldBits === 16) return bytes.readUInt16BE(table + 2 * index);
+      const byte = bytes[table + (fieldBits === 8 ? index : index >> 1)] ?? 0;
+      if (fieldBits === 8) return byte;
+      return index % 2 === 0 ? byte >> 4 : byte & 0x0f;
+    },
+  };
+}
+
+/**
  * The byte range of every chunk of one track, in chunk order, from its
- * sample tables. Undefined when the tables are absent, truncated, or point
- * outside the file.
+ * sample tables. Undefined when the tables are absent, truncated, do not
+ * account for every sample, or point outside the file.
  */
 function trackChunks(
   bytes: Buffer,
@@ -98,24 +140,17 @@ function trackChunks(
 ):
   | { offsets: Box; width: 4 | 8; entries: number[]; lengths: number[] }
   | undefined {
-  const stsz = findChild(bytes, stbl.start, stbl.end, "stsz");
+  const sizes = sampleSizes(bytes, stbl);
   const stsc = findChild(bytes, stbl.start, stbl.end, "stsc");
   const stco = findChild(bytes, stbl.start, stbl.end, "stco");
   const co64 = stco
     ? undefined
     : findChild(bytes, stbl.start, stbl.end, "co64");
   const offsets = stco ?? co64;
-  if (!stsz || !stsc || !offsets) return undefined;
-  if (stsz.end - stsz.start < 12 || stsc.end - stsc.start < 8) return undefined;
-  if (offsets.end - offsets.start < 8) return undefined;
-
-  const uniformSize = bytes.readUInt32BE(stsz.start + 4);
-  const sampleCount = bytes.readUInt32BE(stsz.start + 8);
-  if (uniformSize === 0 && stsz.end - stsz.start < 12 + 4 * sampleCount) {
+  if (!sizes || !stsc || !offsets) return undefined;
+  if (stsc.end - stsc.start < 8 || offsets.end - offsets.start < 8) {
     return undefined;
   }
-  const sampleSize = (index: number): number =>
-    uniformSize || bytes.readUInt32BE(stsz.start + 12 + 4 * index);
 
   const runCount = bytes.readUInt32BE(stsc.start + 4);
   if (stsc.end - stsc.start < 8 + 12 * runCount) return undefined;
@@ -147,13 +182,14 @@ function trackChunks(
       run++;
     }
     const perChunk = runs[run]?.samplesPerChunk ?? 0;
-    if (perChunk === 0 || sample + perChunk > sampleCount) return undefined;
+    if (perChunk === 0 || sample + perChunk > sizes.count) return undefined;
     let length = 0;
-    for (let i = 0; i < perChunk; i++) length += sampleSize(sample++);
+    for (let i = 0; i < perChunk; i++) length += sizes.sizeOf(sample++);
     const offset = entries[chunk - 1] ?? 0;
     if (offset + length > bytes.length) return undefined;
     lengths.push(length);
   }
+  if (sample !== sizes.count) return undefined;
   return { offsets, width, entries, lengths };
 }
 

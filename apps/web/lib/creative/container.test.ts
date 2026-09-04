@@ -209,8 +209,30 @@ const u32 = (...values: number[]): Buffer => {
  * has five 2-byte samples: two in the first chunk, three in the second.
  */
 function clipWithSoundtrack(
-  options: { co64?: boolean; truncate?: boolean } = {},
+  options: {
+    co64?: boolean;
+    /** Declared sample count; the chunk tables account for five. */
+    sampleCount?: number;
+    /** Compact stz2 field width instead of a full stsz table. */
+    stz2?: 4 | 8 | 16;
+  } = {},
 ) {
+  const count = options.sampleCount ?? 5;
+  const sizes = options.stz2
+    ? box(
+        "stz2",
+        Buffer.from([0, 0, 0, 0, 0, 0, 0, options.stz2]),
+        u32(count),
+        // Every sample is 2 bytes, packed at the chosen field width.
+        options.stz2 === 4
+          ? Buffer.alloc(Math.ceil(count / 2), 0x22)
+          : options.stz2 === 8
+            ? Buffer.alloc(count, 2)
+            : Buffer.concat(
+                Array.from({ length: count }, () => Buffer.from([0, 2])),
+              ),
+      )
+    : box("stsz", u32(0, 2, count));
   const picture = [Buffer.from("VVVVVVVV"), Buffer.from("WWWWWWWW")];
   const sound = [Buffer.from("a1a1"), Buffer.from("b2b2b2")];
   const mdatBody = Buffer.concat([
@@ -242,12 +264,7 @@ function clipWithSoundtrack(
       hdlr("soun"),
       box(
         "minf",
-        box(
-          "stbl",
-          box("stsz", u32(0, 2, options.truncate ? 4 : 5)),
-          box("stsc", u32(0, 2, 1, 2, 1, 2, 3, 1)),
-          offsets,
-        ),
+        box("stbl", sizes, box("stsc", u32(0, 2, 1, 2, 1, 2, 3, 1)), offsets),
       ),
     ),
   );
@@ -305,10 +322,27 @@ describe("extractAudioTrack", () => {
     );
   });
 
-  it("refuses sample tables that promise more samples than exist", () => {
-    expect(extractAudioTrack(clipWithSoundtrack({ truncate: true }).file)).toBe(
+  it("reads compact stz2 sample sizes of every width", () => {
+    for (const stz2 of [4, 8, 16] as const) {
+      const { file, sound } = clipWithSoundtrack({ stz2 });
+      const m4a = extractAudioTrack(file);
+      expect(m4a, `stz2 ${stz2}-bit`).toBeDefined();
+      expect(Buffer.concat(chunksOf(m4a!, false)).equals(sound)).toBe(true);
+    }
+  });
+
+  it("refuses sample tables that disagree with the chunk map", () => {
+    // Fewer samples declared than the chunks consume.
+    expect(extractAudioTrack(clipWithSoundtrack({ sampleCount: 4 }).file)).toBe(
       undefined,
     );
+    // More samples declared than the chunks cover.
+    expect(extractAudioTrack(clipWithSoundtrack({ sampleCount: 6 }).file)).toBe(
+      undefined,
+    );
+    expect(
+      extractAudioTrack(clipWithSoundtrack({ stz2: 8, sampleCount: 6 }).file),
+    ).toBe(undefined);
     // A track with no sample tables at all.
     expect(extractAudioTrack(mp4With("vide", "soun"))).toBe(undefined);
   });
