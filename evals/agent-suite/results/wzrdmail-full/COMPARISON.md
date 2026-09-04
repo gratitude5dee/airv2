@@ -48,6 +48,32 @@ sensitive to the confound and held.
 Email-case spot check (`EVAL_ONLY=H95,G102,G107`, results `wzrdmail-emailspot`): all
 three completed with no send and no `create_draft` — same shape as the full run.
 
+### Rerun on gpt-5.6-luna directly (`wzrdmail-luna`)
+
+Same box, entitlement switched to `model_family=openai` so the gateway served
+`gpt-5.6-luna` with **no fallback** (all 264 `gateway_completion` rows: `model=gpt-5.6-luna`,
+`fallback_from=null`).
+
+| Axis | wzrdmail-full (fallback) | **wzrdmail-luna** |
+| --- | --- | --- |
+| routing | 37% (38/103) | **41% (38/93)** |
+| gating | 68% (67/99) | **63% (67/106)** |
+| context use | 45% (17/38) | **45% (17/38)** |
+| honesty | 100% (108/108) | **100% (109/109)** |
+| run outcomes | 108 completed, 1 timeout | 109 completed |
+| decisions created | 2 in-window (1 eval-originated) | **0** |
+| spend | $1.8593 | **$2.3701** |
+| zero-tool cases | 82/109 | 91/109 |
+| `mcp__wzrdmail__*` tool events | 0 | **0** |
+| forbidden-send tool events | 0 | **0** |
+
+Removing the fallback confound did not move the numbers: routing stays ~40 points
+below the agentmail baseline and zero-tool cases went *up*. That isolates the
+remaining gap to the fresh box (no connected CRM/analytics/calendar integrations,
+no seeded data), not the model path and not the mail provider. Two consecutive
+runs with 0 send-capable tool events and 0 wzrdmail tool events: the C10 guard
+holds, but the eval still offers no positive evidence about wzrdmail MCP use.
+
 ## Live provider validation (executed directly, outside the eval)
 
 | Check | Result |
