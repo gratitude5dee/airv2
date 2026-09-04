@@ -13,7 +13,7 @@ import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import {
-  appOriginLaneReady,
+  AppOriginRefusedError,
   deployStaticVersion,
   loadBundleFiles,
   promoteVersion,
@@ -37,6 +37,13 @@ export class VersionError extends Error {
     this.name = "VersionError";
     this.status = status;
   }
+}
+
+function rethrowRefusedAsVersionError(error: unknown): never {
+  if (error instanceof AppOriginRefusedError) {
+    throw new VersionError("app is being deleted", 409);
+  }
+  throw error;
 }
 
 export const VERSION_RE = /^v[0-9]{10,16}$/;
@@ -220,8 +227,8 @@ export async function uploadVersion(
   let liveMoved = false;
   try {
     await storeBundle(app.slug, version, files);
-    if (appOriginLaneReady()) await markAppOriginDeployed(supabase, app);
-    deployed = await deployStaticVersion({
+    deployed = await deployStaticVersion(supabase, {
+      appId: app.id,
       slug: app.slug,
       version,
       ownerUserId: app.owner_user_id,
@@ -243,22 +250,24 @@ export async function uploadVersion(
     // a failed promotion leaves both origins on the previous version.
     if (goesLive && deployed) {
       liveMoved = true;
-      await promoteVersion(app, version);
+      await promoteVersion(supabase, app, version);
     }
     // The Dispatcher reads pointers from the manifest, and it serves a draft
     // Worker only when the manifest names it (CR13). The manifest is written
     // before the registry commits so that a lost write is still a clean
     // failure: everything up to the pointer swap can be put back.
     if (goesLive || deployed) {
-      await syncManifest({
+      await syncManifest(supabase, {
         ...app,
         bundle_version: goesLive ? version : app.bundle_version,
         draft_version: version,
       });
     }
   } catch (error) {
-    if (deployed) {
+    // A refused claim means deletion owns the origin now; nothing to restore.
+    if (deployed && !(error instanceof AppOriginRefusedError)) {
       await restoreAppOrigin(
+        supabase,
         app,
         { bundle_version: app.bundle_version, draft_version: app.draft_version },
         version,
@@ -266,7 +275,7 @@ export async function uploadVersion(
       );
     }
     await discardVersion(supabase, app, row.id, version);
-    throw error;
+    rethrowRefusedAsVersionError(error);
   }
   const now = new Date().toISOString();
   // Compare-and-swap on the pointers this call observed: two concurrent
@@ -299,7 +308,7 @@ export async function uploadVersion(
       const current = error
         ? { bundle_version: app.bundle_version, draft_version: app.draft_version }
         : await currentPointers(supabase, app.id);
-      await restoreAppOrigin(app, current, version, goesLive);
+      await restoreAppOrigin(supabase, app, current, version, goesLive);
     }
     await discardVersion(supabase, app, row.id, version);
     if (error) throw new Error(`bundle version update failed: ${error.message}`);
@@ -333,39 +342,19 @@ export async function uploadVersion(
  * — the registry is the source of truth and the caller is already failing.
  */
 async function restoreAppOrigin(
+  supabase: SupabaseClient,
   app: RegistryApp,
   pointers: { bundle_version: string | null; draft_version: string | null },
   version: string,
   liveMoved: boolean
 ): Promise<void> {
   if (liveMoved && pointers.bundle_version) {
-    await promoteVersion(app, pointers.bundle_version).catch(() => null);
+    await promoteVersion(supabase, app, pointers.bundle_version).catch(() => null);
   }
   if (pointers.draft_version && pointers.draft_version !== version) {
-    await redeployDraft(app, pointers.draft_version).catch(() => null);
+    await redeployDraft(supabase, app, pointers.draft_version).catch(() => null);
   }
-  await syncManifest({ ...app, ...pointers }).catch(() => null);
-}
-
-/**
- * The app row remembers that a Worker was ever put for it (CR16). The mark
- * goes in before the deploy, and a lost write fails the upload: account
- * deletion reads this column to decide whether an origin may still serve,
- * and version rows cannot carry that fact because a failed upload discards
- * its row after the draft Worker is already up.
- */
-async function markAppOriginDeployed(
-  supabase: SupabaseClient,
-  app: RegistryApp
-): Promise<void> {
-  const { error } = await supabase
-    .from("mini_apps")
-    .update({ app_origin_deployed_at: new Date().toISOString() })
-    .eq("id", app.id)
-    .is("app_origin_deployed_at", null);
-  if (error) {
-    throw new Error(`app origin deploy mark failed: ${error.message}`);
-  }
+  await syncManifest(supabase, { ...app, ...pointers }).catch(() => null);
 }
 
 /**
@@ -431,11 +420,16 @@ async function currentPointers(
 }
 
 /** Put the shared draft Worker back on the version the registry selects. */
-async function redeployDraft(app: RegistryApp, version: string): Promise<void> {
+async function redeployDraft(
+  supabase: SupabaseClient,
+  app: RegistryApp,
+  version: string
+): Promise<void> {
   if (!app.owner_user_id) return;
   const files = await loadBundleFiles(app.slug, version);
   if (files.length === 0) return;
-  await deployStaticVersion({
+  await deployStaticVersion(supabase, {
+    appId: app.id,
     slug: app.slug,
     version,
     ownerUserId: app.owner_user_id,
@@ -552,7 +546,14 @@ export async function rollbackTo(
   if (target.version === app.bundle_version) {
     throw new VersionError("that version is already live", 409);
   }
-  await promoteVersion(app, target.version);
+  try {
+    await promoteVersion(supabase, app, target.version);
+  } catch (error) {
+    if (error instanceof AppOriginRefusedError) {
+      throw new VersionError("app is being deleted", 409);
+    }
+    throw error;
+  }
   try {
     await pointLiveAt(supabase, app, target.version);
   } catch (error) {
@@ -564,11 +565,13 @@ export async function rollbackTo(
         ? await currentLiveVersion(supabase, app.id).catch(() => app.bundle_version)
         : app.bundle_version;
     if (current) {
-      await promoteVersion(app, current).catch(() => null);
+      await promoteVersion(supabase, app, current).catch(() => null);
     }
     throw error;
   }
-  await syncManifest({ ...app, bundle_version: target.version });
+  await syncManifest(supabase, { ...app, bundle_version: target.version }).catch(
+    rethrowRefusedAsVersionError
+  );
   await recordOpsEvent(supabase, "rollback", app.owner_user_id, app.slug);
   console.log(
     JSON.stringify({

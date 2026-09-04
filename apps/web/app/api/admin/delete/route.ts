@@ -61,6 +61,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // is touched. Teardown is idempotent; if any app's origin cannot be torn
   // down the whole deletion aborts here, with nothing destroyed yet, and the
   // operator retries once the vendor is back.
+  //
+  // The account is closed first: with users.deleting_at set no new app row
+  // can be created for it and no origin write is claimable, so the owned-app
+  // inventory read next is complete and stays complete. The marker stays set
+  // if the deletion aborts below — an account under deletion keeps refusing
+  // new apps and deploys until the retry succeeds.
+  const { error: accountCloseError } = await supabase
+    .from("users")
+    .update({ deleting_at: new Date().toISOString() })
+    .eq("id", userId)
+    .is("deleting_at", null);
+  if (accountCloseError) {
+    steps["app_origin"] = `error: could not close the account to new apps; nothing deleted`;
+    return NextResponse.json({ ok: false, steps, retry: true }, { status: 502 });
+  }
   const { data: ownedApps, error: ownedAppsError } = await supabase
     .from("mini_apps")
     .select("slug, app_origin_deployed_at")
@@ -81,6 +96,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     steps["app_origin"] =
       "error: app origin lane not configured but apps were deployed to it; nothing deleted";
     return NextResponse.json({ ok: false, steps, retry: true }, { status: 503 });
+  }
+  // Per-app marker, so the state travels with the row a deploy reads.
+  if (ownedSlugs.length > 0) {
+    const { error: closeError } = await supabase
+      .from("mini_apps")
+      .update({ deleting_at: new Date().toISOString() })
+      .eq("owner_user_id", userId)
+      .is("deleting_at", null);
+    if (closeError) {
+      steps["app_origin"] = `error: could not close apps to deploys; nothing deleted`;
+      return NextResponse.json({ ok: false, steps, retry: true }, { status: 502 });
+    }
   }
   if (ownedSlugs.length > 0 && appOriginLaneReady()) {
     const failed: string[] = [];

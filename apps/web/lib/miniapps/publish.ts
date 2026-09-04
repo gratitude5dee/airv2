@@ -12,7 +12,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { hashPassword } from "./gates";
 import { asRecord } from "../records";
 import { getVersion, pointLiveAt } from "../create/versions";
-import { promoteVersion, syncManifest } from "../functions/deploy";
+import {
+  AppOriginRefusedError,
+  promoteVersion,
+  syncManifest,
+} from "../functions/deploy";
 import {
   REGISTRY_COLUMNS,
   parseNullableNumeric,
@@ -159,6 +163,12 @@ export async function createDraft(
     if (error.code === "23514") {
       throw new PublishError("invalid app slug");
     }
+    if (error.message.includes("account is being deleted")) {
+      throw new PublishError("account is being deleted", 409);
+    }
+    if (error.message.includes("app name is on hold")) {
+      throw new PublishError("that app name was just deleted; try again in an hour", 409);
+    }
     throw new Error(`draft create failed: ${error.message}`);
   }
   console.log(
@@ -228,19 +238,28 @@ export async function setPublishStatus(
   if (status === "published" && staged && !version) {
     throw new PublishError("that draft's files are no longer stored", 409);
   }
+  try {
+    if (status === "published" && version) {
+      await promoteVersion(supabase, app, version.version);
+    }
+    if (status === "draft") {
+      await syncManifest(supabase, { ...app, status: "draft" });
+    }
+  } catch (error) {
+    if (error instanceof AppOriginRefusedError) {
+      throw new PublishError("app is being deleted", 409);
+    }
+    throw error;
+  }
   if (status === "published" && version) {
-    await promoteVersion(app, version.version);
     try {
       await pointLiveAt(supabase, app, version.version);
     } catch (error) {
       if (staged && app.bundle_version) {
-        await promoteVersion(app, app.bundle_version).catch(() => null);
+        await promoteVersion(supabase, app, app.bundle_version).catch(() => null);
       }
       throw error;
     }
-  }
-  if (status === "draft") {
-    await syncManifest({ ...app, status: "draft" });
   }
   const { error } = await supabase
     .from("mini_apps")
@@ -263,6 +282,7 @@ export async function setPublishStatus(
         ? await restoreRelease(supabase, app, version.version)
         : false;
     await syncManifest(
+      supabase,
       status === "published" && version && !restored
         ? { ...app, bundle_version: version.version }
         : app
@@ -270,11 +290,18 @@ export async function setPublishStatus(
     throw new Error(`status flip failed: ${error.message}`);
   }
   if (status === "published" && version) {
-    await syncManifest({
-      ...app,
-      status: "published",
-      bundle_version: version.version,
-    });
+    try {
+      await syncManifest(supabase, {
+        ...app,
+        status: "published",
+        bundle_version: version.version,
+      });
+    } catch (error) {
+      if (error instanceof AppOriginRefusedError) {
+        throw new PublishError("app is being deleted", 409);
+      }
+      throw error;
+    }
   }
   console.log(
     JSON.stringify({ msg: "miniapp status flip", user_id: userId, slug, status })
@@ -295,7 +322,7 @@ async function restoreRelease(
   const previous = app.bundle_version;
   if (!previous) return false;
   try {
-    await promoteVersion(app, previous);
+    await promoteVersion(supabase, app, previous);
     await pointLiveAt(supabase, { ...app, bundle_version: from }, previous);
     return true;
   } catch (error) {
