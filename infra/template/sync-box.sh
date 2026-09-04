@@ -497,6 +497,15 @@ sudo cp "$TEMPLATE_DIR"/openviking.service /etc/systemd/system/
 sudo cp "$TEMPLATE_DIR"/learning/systemd/air-learningd.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable hermes-gateway.service hermes-dashboard.service hermes-host.service openviking.service air-learningd.service
+
+# Hermes pins each session's system prompt at creation (sessions.system_prompt_hash);
+# clearing it makes the next turn rebuild from the current SOUL/skills without touching messages.
+if [ -f "$HOME_DIR/.hermes/state.db" ] && command -v sqlite3 >/dev/null 2>&1; then
+  sqlite3 "$HOME_DIR/.hermes/state.db" \
+    "UPDATE sessions SET system_prompt = NULL, system_prompt_hash = NULL WHERE system_prompt_hash IS NOT NULL;" \
+    || echo "warn: could not clear cached system prompts"
+fi
+
 sudo systemctl restart hermes-gateway.service hermes-dashboard.service hermes-host.service openviking.service air-learningd.service
 
 # Render ov.conf from this box's per-fork gateway credentials and (re)start
