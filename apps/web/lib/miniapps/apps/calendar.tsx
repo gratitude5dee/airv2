@@ -30,6 +30,7 @@ import {
   readPeople,
   type CrmAvatar,
 } from "@/lib/crm/store";
+import { publicUrl } from "@/lib/storage/r2";
 import {
   createBookingLink,
   createCalendarEvent,
@@ -38,11 +39,20 @@ import {
   type FreeBusySlot,
 } from "@/lib/agentmail/calendar";
 import { externalOrigin } from "../gates";
+import { env } from "@/lib/env";
 import { esc, withBaseHeaders } from "../html";
 import { renderShell, shellHtml } from "../shell";
 import { promptBar, runPrompt } from "../promptBar";
 import { timedFetch } from "../timing";
 import type { MiniAppContext, MiniAppModule } from "./types";
+import {
+  coverFor,
+  stickersFor,
+  stripRowFor,
+  subCopy,
+  tiltFor,
+  type MosaicEvent,
+} from "./calendar-mosaic";
 
 interface InviteDecision {
   id: string;
@@ -81,6 +91,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const BOOKING_URL_RE = /^https:\/\/[\w.-]+(?::\d+)?\/[\w~/#?&=.%-]*$/;
 const COLOR_RE = /^#[0-9a-f]{6}$/i;
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const MONTH_RE = /^\d{4}-\d{2}$/;
 const LOCAL_ID_RE = /^local:[a-f0-9]{16}$/;
 const LOCAL_COLOR = "#8b5cf6";
 
@@ -152,30 +163,55 @@ function viewHref(
   basePath: string,
   view: CalendarView,
   persona: string | null,
-  day?: string
+  day?: string,
+  month?: string,
+  flags?: { new?: boolean; edit?: string }
 ): string {
   const params = new URLSearchParams();
   if (view !== "agenda") params.set("view", view);
   if (persona) params.set("persona", persona);
   if (day) params.set("day", day);
+  if (month) params.set("month", month);
+  if (flags?.edit) params.set("edit", flags.edit);
+  if (flags?.new) params.set("new", "1");
   const query = params.toString();
   return query ? `${basePath}?${query}` : basePath;
 }
 
-/** Top-level view tabs: Agenda / Timeline / Month. */
-function viewTabs(
+function dock(
   basePath: string,
   active: CalendarView,
-  persona: string | null
+  persona: string | null,
+  isOwner: boolean,
+  monthKey: string,
+  todayKey: string
 ): string {
-  const tab = (view: CalendarView, label: string): string => {
-    const current = view === active;
-    return `<a href="${esc(viewHref(basePath, view, persona))}" style="text-decoration:none;flex:1"><button class="${current ? "" : "ghost"}" style="width:100%">${esc(label)}</button></a>`;
+  const glyphs: Record<string, string> = {
+    agenda:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h9"/></svg>',
+    month:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h4v4H5zM10 5h4v4h-4zM15 5h4v4h-4zM5 10h4v4H5zM10 10h4v4h-4zM15 10h4v4h-4zM5 15h4v4H5zM10 15h4v4h-4zM15 15h4v4h-4z"/></svg>',
+    plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
+    persona:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"/><path d="M12 5a7 7 0 0 1 0 14"/></svg>',
+    ask: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 1.7 6.3L20 11l-6.3 1.7L12 19l-1.7-6.3L4 11l6.3-1.7z"/></svg>',
   };
-  return `<div class="row" style="display:flex;gap:6px;margin-bottom:0.9rem">${tab(
-    "agenda",
-    "Agenda"
-  )}${tab("timeline", "Timeline")}${tab("month", "Month")}</div>`;
+  const item = (
+    label: string,
+    href: string,
+    key: string,
+    current = false
+  ): string =>
+    `<a class="mo-dock-item${current ? " on" : ""}" href="${esc(href)}"${current ? ' aria-current="page"' : ""} aria-label="${esc(label)}">${glyphs[key]}<span class="mo-dock-label">${esc(label)}</span></a>`;
+  const personaHref =
+    active === "month"
+      ? `${viewHref(basePath, "month", null, undefined, monthKey)}#personas`
+      : `${viewHref(basePath, active === "timeline" ? "agenda" : "agenda", persona)}#personas`;
+  const addHref =
+    active === "month"
+      ? `${viewHref(basePath, "month", persona, todayKey, undefined, { new: true })}#new`
+      : `${viewHref(basePath, active, persona, undefined, undefined, { new: true })}#new`;
+  return `<nav class="mo-dock" aria-label="Calendar">${item("Agenda", viewHref(basePath, "agenda", persona), "agenda", active === "agenda" || active === "timeline")}${item("Month", viewHref(basePath, "month", persona), "month", active === "month")}${isOwner ? item("Add event", addHref, "plus") : ""}${item("Personas", personaHref, "persona")}${isOwner ? item("Ask", "#prompt", "ask") : ""}</nav>`;
 }
 
 /** Add/edit form for a local event. Owner-only; agent edits go via sync.py. */
@@ -183,7 +219,8 @@ function eventForm(
   view: CalendarView,
   persona: string | null,
   day: string | null,
-  event?: CalendarEvent
+  event?: CalendarEvent,
+  open = false
 ): string {
   const editing = event !== undefined;
   const startsLocal = editing
@@ -196,7 +233,7 @@ function eventForm(
       ? `${event.ends_at.slice(0, 10)}T10:00`
       : event.ends_at.slice(0, 16)
     : `${day ?? dayKey(new Date())}T10:00`;
-  return `<details${editing ? " open" : ""} style="margin-top:0.6rem"><summary class="when" style="cursor:pointer">${editing ? "Edit event" : "+ New event"}</summary>
+  return `<details id="new"${editing || open ? " open" : ""} style="margin-top:0.6rem"><summary class="when" style="cursor:pointer">${editing ? "Edit event" : "+ New event"}</summary>
 <form method="post" style="display:flex;flex-direction:column;gap:0.5rem;margin-top:0.5rem">
 <input type="hidden" name="action" value="save_event">
 ${editing ? `<input type="hidden" name="event" value="${esc(event.id)}">` : ""}
@@ -273,7 +310,7 @@ function agendaBody(
   };
   const tabs =
     personas.length > 1 || activePersona !== null
-      ? `<div class="row" style="margin-bottom:0.8rem">${tab("All", null)}${personas.map((p) => tab(p, p)).join("")}</div>`
+      ? `<div class="row" id="personas" style="margin-bottom:0.8rem">${tab("All", null)}${personas.map((p) => tab(p, p)).join("")}</div>`
       : "";
 
   const inviteRows = invites
@@ -302,7 +339,9 @@ function agendaBody(
             providerMeta,
             avatars,
             isOwner && LOCAL_ID_RE.test(event.id)
-              ? `${viewHref(basePath, "agenda", activePersona)}${activePersona ? "&" : "?"}edit=${encodeURIComponent(event.id)}`
+              ? viewHref(basePath, "agenda", activePersona, undefined, undefined, {
+                  edit: event.id,
+                })
               : null
           )
         )
@@ -328,7 +367,7 @@ function agendaBody(
     ? `<div class="day">Sources</div>${sourceRows}`
     : "";
 
-  return `${tabs}${invitesSection}${days}${empty}${sourcesSection}`;
+  return `${tabs}${invitesSection}${days}${empty}${sourcesSection}<p class="when" style="margin-top:0.6rem"><a href="${esc(viewHref(basePath, "timeline", activePersona))}">Next 30 days →</a></p>`;
 }
 
 /** Free/busy strip: the agent's next 7 days as day columns over an
@@ -430,7 +469,104 @@ function timelineBody(
   return sections;
 }
 
-/** Month: a calendar grid of the current month, tappable day detail. */
+function monthPersonas(
+  basePath: string,
+  providerMeta: Map<string, { persona: string; color: string }>,
+  activePersona: string | null,
+  monthKey: string,
+  selectedDay: string | null
+): string {
+  const personas = [...new Set([...providerMeta.values()].map((m) => m.persona))].sort();
+  if (personas.length <= 1 && activePersona === null) return "";
+  const chip = (label: string, value: string | null, color?: string): string => {
+    const active = value === activePersona;
+    const href = viewHref(
+      basePath,
+      "month",
+      value,
+      selectedDay ?? undefined,
+      monthKey
+    );
+    return `<a class="mo-persona${active ? " on" : ""}" href="${esc(href)}"${active ? ' aria-current="page"' : ""}>${color ? `<span class="mo-pdot" style="background:${esc(color)}"></span>` : ""}${esc(label)}</a>`;
+  };
+  return `<nav class="mo-personas" id="personas" aria-label="Personas" data-noswipe>${chip("All", null)}${personas
+    .map((persona) => {
+      const color =
+        [...providerMeta.values()].find((meta) => meta.persona === persona)?.color ??
+        ditherColor(persona);
+      return chip(persona, persona, color);
+    })
+    .join("")}</nav>`;
+}
+
+function mosaicChips(
+  basePath: string,
+  day: string,
+  dayEvents: CalendarEvent[],
+  providerMeta: Map<string, { persona: string; color: string }>,
+  avatars: Map<string, CrmAvatar>,
+  isOwner: boolean,
+  persona: string | null,
+  moreLimit = 12
+): string {
+  const photoIndex = new Map<string, { photoKey: string | null }>(
+    [...avatars].map(([email, avatar]) => [
+      email,
+      { photoKey: (avatar as { photoKey?: string | null }).photoKey ?? null },
+    ])
+  );
+  const ordered = [...dayEvents].sort(
+    (a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at)
+  );
+  const visible = ordered.slice(0, moreLimit);
+  const chips = visible
+    .map((event) => {
+      const eventColorValue = eventColor(event, providerMeta);
+      const attendees = [...new Set((event.attendees ?? []).map((email) => email.toLowerCase()))].slice(0, 3);
+      const avatarsHtml = attendees.length
+        ? `<span class="mo-avs">${attendees
+            .map((email) => {
+              const avatar = avatars.get(email);
+              const photoKey = photoIndex.get(email)?.photoKey;
+              if (photoKey) {
+                return `<img class="mo-av" src="${esc(publicUrl(photoKey))}" alt="" width="20" height="20" loading="lazy" decoding="async">`;
+              }
+              return `<span class="mo-av" style="background:${esc(avatar?.color ?? ditherColor(email))}">${esc(avatar?.initials ?? initialsFor(email))}</span>`;
+            })
+            .join("")}</span>`
+        : `<span class="mo-pdot" style="background:${esc(eventColorValue)}"></span>`;
+      const body = `${avatarsHtml}<span class="mo-time">${esc(timeLabel(event))}</span> <span class="mo-ttl">${esc(event.title)}</span>${event.location ? `<span class="mo-loc">${esc(event.location)}</span>` : ""}`;
+      const chipClass = `mo-chip${event.status === "pending" ? " pending" : ""}${event.source === "local" ? " local" : ""}`;
+      const content =
+        isOwner && LOCAL_ID_RE.test(event.id)
+          ? `<a href="${esc(viewHref(basePath, "month", persona, day, undefined, { edit: event.id }))}">${body}</a>`
+          : body;
+      return `<li class="${chipClass}" style="--persona:${esc(eventColorValue)}">${content}</li>`;
+    })
+    .join("");
+  const more =
+    dayEvents.length > moreLimit
+      ? `<li class="mo-chip more"><a href="${esc(viewHref(basePath, "agenda", persona))}">+${dayEvents.length - moreLimit} more · Agenda</a></li>`
+      : "";
+  return `${chips}${more}`;
+}
+
+function coverMarkup(
+  cover: ReturnType<typeof coverFor>
+): string {
+  if (cover.kind === "photos") {
+    const count = Math.min(cover.urls.length, 4);
+    return `<span class="mo-cover n${count}">${cover.urls
+      .map(
+        (url) =>
+          `<img src="${esc(url)}" alt="" width="96" height="96" loading="lazy" decoding="async">`
+      )
+      .join("")}</span>`;
+  }
+  return `<span class="mo-cover mo-plate" style="--persona:${esc(cover.color)}"><span class="mo-plate-txt">${esc(cover.initial || String(cover.count))}</span></span>`;
+}
+
+/** Month: a mosaic grid with an in-place server-rendered day strip. */
 function monthBody(
   basePath: string,
   events: CalendarEvent[],
@@ -440,80 +576,206 @@ function monthBody(
   persona: string | null,
   selectedDay: string | null,
   editEvent: CalendarEvent | undefined,
-  monthStart: Date
+  monthStart: Date,
+  wantNew: boolean
 ): string {
   const providerMeta = personaByProvider(sources);
-  const byDay = new Map<string, CalendarEvent[]>();
+  const allByDay = new Map<string, CalendarEvent[]>();
   for (const event of events) {
     const t = Date.parse(event.starts_at);
     if (!Number.isFinite(t)) continue;
     const key = dayKey(new Date(t));
-    byDay.set(key, [...(byDay.get(key) ?? []), event]);
+    allByDay.set(key, [...(allByDay.get(key) ?? []), event]);
   }
-
+  const personaOf = (event: CalendarEvent): string =>
+    event.source === "local"
+      ? "personal"
+      : (providerMeta.get(event.source)?.persona ?? "personal");
+  const visibleEvents = (dayEvents: CalendarEvent[]): CalendarEvent[] =>
+    persona ? dayEvents.filter((event) => personaOf(event) === persona) : dayEvents;
   const year = monthStart.getFullYear();
   const month = monthStart.getMonth();
   const first = new Date(year, month, 1);
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const leading = first.getDay();
+  const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
   const todayKey = dayKey(new Date());
-
-  const headers = ["S", "M", "T", "W", "T", "F", "S"]
+  const currentYear = new Date().getFullYear();
+  const monthTitle = first.toLocaleDateString([], { month: "long" });
+  const title = year === currentYear ? monthTitle : `${monthTitle} ${year}`;
+  const monthEvents = [...allByDay.values()].flatMap(visibleEvents);
+  const people = new Set(
+    monthEvents.flatMap((event) => (event.attendees ?? []).map((email) => email.toLowerCase()))
+  ).size;
+  const counts = {
+    events: monthEvents.length,
+    people,
+    pending: monthEvents.filter((event) => event.status === "pending").length,
+  };
+  const prev = new Date(year, month - 1, 1);
+  const next = new Date(year, month + 1, 1);
+  const prevKey = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, "0")}`;
+  const nextKey = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`;
+  const dayLabel = (key: string): string =>
+    new Date(`${key}T12:00:00`).toLocaleDateString([], {
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+    });
+  const header = `<header class="mo-head"><a class="mo-nav" href="${esc(viewHref(basePath, "month", persona, undefined, prevKey))}" aria-label="${esc(new Date(`${prevKey}-01T12:00:00`).toLocaleDateString([], { month: "long", year: "numeric" }))}">‹</a><h2 class="mo-title">${esc(title)}</h2><a class="mo-nav" href="${esc(viewHref(basePath, "month", persona, undefined, nextKey))}" aria-label="${esc(new Date(`${nextKey}-01T12:00:00`).toLocaleDateString([], { month: "long", year: "numeric" }))}">›</a><p class="mo-sub">${esc(subCopy(counts))}</p>${monthPersonas(basePath, providerMeta, persona, monthKey, selectedDay)}</header>`;
+  const leading = first.getDay();
+  const rowCount = Math.ceil((leading + daysInMonth) / 7);
+  const rows: string[] = [];
+  for (let row = 0; row < rowCount; row += 1) {
+    const cells: string[] = [];
+    for (let column = 0; column < 7; column += 1) {
+      const number = row * 7 + column - leading + 1;
+      if (number < 1 || number > daysInMonth) {
+        cells.push('<span class="mo-cell mo-blank" aria-hidden="true"></span>');
+        continue;
+      }
+      const key = `${monthKey}-${String(number).padStart(2, "0")}`;
+      const allDayEvents = (allByDay.get(key) ?? []).sort(
+        (a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at)
+      );
+      const dayEvents = visibleEvents(allDayEvents);
+      const isToday = key === todayKey;
+      const isOpen = key === selectedDay;
+      if (allDayEvents.length === 0) {
+        if (isOwner && isToday) {
+          cells.push(`<a class="mo-cell mo-add" data-day="${esc(key)}" href="${esc(viewHref(basePath, "month", persona, key, undefined, { new: true }))}#new" aria-label="Today — add an event">+</a>`);
+        } else {
+          cells.push(`<span class="mo-cell mo-dot${isToday ? " is-today" : ""}" data-day="${esc(key)}" aria-label="${esc(dayLabel(key))} — no events"></span>`);
+        }
+        continue;
+      }
+      const personas = [...new Set(allDayEvents.map(personaOf))].join(" ");
+      const dominant = allDayEvents.reduce(
+        (best, event) => {
+          const value = personaOf(event);
+          const count = (best.counts.get(value) ?? 0) + 1;
+          best.counts.set(value, count);
+          if (count > best.max) {
+            best.max = count;
+            best.value = value;
+          }
+          return best;
+        },
+        { counts: new Map<string, number>(), max: 0, value: personaOf(allDayEvents[0]!) }
+      ).value;
+      const color = providerMeta.get(dominant)?.color ?? ditherColor(dominant);
+      const names = dayEvents.map((event) => event.title).join(", ");
+      const countText = `${dayEvents.length} event${dayEvents.length === 1 ? "" : "s"}`;
+      const label = `${dayLabel(key)} — ${countText}: ${names}`;
+      const muted = persona !== null && dayEvents.length === 0;
+      const href = isOpen
+        ? viewHref(basePath, "month", persona, undefined, monthKey)
+        : viewHref(basePath, "month", persona, key, undefined);
+      const stickers = isOpen
+        ? '<span class="mo-x" aria-hidden="true">×</span>'
+        : stickersFor(dayEvents)
+            .map((sticker) =>
+              sticker.kind === "pending"
+                ? '<span class="mo-sticker pend" aria-hidden="true">?</span>'
+                : sticker.kind === "loc"
+                  ? `<span class="mo-sticker loc" title="${esc(sticker.full)}">${esc(sticker.text)}</span>`
+                  : '<span class="mo-sticker allday">all day</span>'
+            )
+            .join("");
+      const cover = isOpen
+        ? ""
+        : coverMarkup(
+            coverFor(
+              dayEvents as MosaicEvent[],
+              new Map(
+                [...avatars].map(([email, avatar]) => [
+                  email,
+                  { photoKey: (avatar as { photoKey?: string | null }).photoKey ?? null },
+                ])
+              ),
+              publicUrl,
+              color
+            )
+          );
+      cells.push(`<a class="mo-cell mo-tile${isOpen ? " is-open" : ""}${isToday ? " is-today" : ""}${muted ? " is-muted" : ""}${dayEvents.some((event) => event.status === "pending") ? " is-pending" : ""}" data-day="${esc(key)}" data-count="${dayEvents.length}" data-personas="${esc(personas.toLowerCase())}" href="${esc(href)}" aria-label="${esc(isOpen ? `Close ${dayLabel(key)}` : label)}"${isOpen ? ' aria-expanded="true"' : ""}${muted ? ' aria-hidden="true" tabindex="-1"' : ""} style="--tilt:${isOpen ? "0" : tiltFor(key)}deg;--persona:${esc(color)}"><span class="mo-face">${cover}${stickers}</span></a>`);
+    }
+    rows.push(`<li class="mo-week">${cells.join("")}</li>`);
+  }
+  if (selectedDay) {
+    const rowOfDay = Math.floor((leading + Number(selectedDay.slice(-2)) - 1) / 7);
+    const stripEvents = visibleEvents(allByDay.get(selectedDay) ?? []);
+    const stripContent = stripEvents.length
+      ? `<ul class="mo-chips" data-noswipe>${mosaicChips(basePath, selectedDay, stripEvents, providerMeta, avatars, isOwner, persona)}</ul>`
+      : `<p class="mo-empty">Nothing on this day</p>${isOwner ? `<a class="mo-addlink" href="${esc(viewHref(basePath, "month", persona, selectedDay, undefined, { new: true }))}#new">+ Add</a>` : ""}`;
+    rows.splice(stripRowFor(rowOfDay, rowCount), 0, `<li class="mo-strip" role="region" aria-label="${esc(dayLabel(selectedDay))}" data-for="${esc(selectedDay)}"><a class="mo-close" href="${esc(viewHref(basePath, "month", persona, undefined, monthKey))}" aria-label="Close day">×</a>${stripContent}</li>`);
+  }
+  const templates = [...allByDay.entries()]
     .map(
-      (d) =>
-        `<div class="when" style="text-align:center;padding:0.2rem 0">${d}</div>`
+      ([day, list]) =>
+        `<template class="mo-day" data-day="${esc(day)}"><ul class="mo-chips" data-noswipe>${mosaicChips(basePath, day, list, providerMeta, avatars, isOwner, persona)}</ul></template>`
     )
     .join("");
-  const cells: string[] = [];
-  for (let i = 0; i < leading; i += 1) cells.push("<div></div>");
-  for (let day = 1; day <= daysInMonth; day += 1) {
-    const key = dayKey(new Date(year, month, day));
-    const list = (byDay.get(key) ?? []).slice(0, 4);
-    const dots = list
-      .map(
-        (event) =>
-          `<span style="display:inline-block;width:5px;height:5px;border-radius:999px;background:${esc(eventColor(event, providerMeta))}"></span>`
-      )
-      .join("");
-    const isToday = key === todayKey;
-    const isSelected = key === selectedDay;
-    cells.push(
-      `<a href="${esc(viewHref(basePath, "month", persona, key))}" style="text-decoration:none;color:inherit"><div style="min-height:44px;border-radius:10px;padding:0.25rem;text-align:center;${isSelected ? "background:rgba(255,255,255,0.18);" : isToday ? "background:rgba(255,255,255,0.08);" : ""}${isToday ? "font-weight:700;" : ""}"><div>${day}</div><div style="display:flex;gap:2px;justify-content:center;margin-top:2px">${dots}</div></div></a>`
-    );
-  }
-  const monthName = first.toLocaleDateString([], {
-    month: "long",
-    year: "numeric",
-  });
-  const grid = `<div class="day">${esc(monthName)}</div><div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px">${headers}${cells.join("")}</div>`;
+  const form = isOwner
+    ? eventForm("month", persona, selectedDay, editEvent, wantNew)
+    : "";
+  return `${header}<ol class="mo-grid" aria-label="${esc(first.toLocaleDateString([], { month: "long", year: "numeric" }))}">${rows.join("")}</ol>${templates}${form}`;
+}
 
-  let detail = "";
-  if (selectedDay) {
-    const list = (byDay.get(selectedDay) ?? []).sort(
-      (a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at)
-    );
-    const rows = list
-      .map((event) =>
-        eventRow(
-          event,
-          providerMeta,
-          avatars,
-          isOwner && LOCAL_ID_RE.test(event.id)
-            ? `${viewHref(basePath, "month", persona, selectedDay)}&edit=${encodeURIComponent(event.id)}`
-            : null
-        )
+const CALENDAR_CSS = `
+.panel.mosaic{margin-bottom:4.5rem;padding-inline:clamp(.5rem,2.5vw,1.1rem)}
+.mo-head{display:grid;grid-template-columns:44px 1fr 44px;align-items:center;text-align:center}
+.mo-title{grid-column:2;margin:0;font:600 1.15rem var(--font-ui);color:var(--ink)}
+.mo-nav{width:44px;height:44px;display:grid;place-items:center;color:var(--ink);font-size:1.8rem;text-decoration:none}
+.mo-head>.mo-nav:first-child{grid-column:1;grid-row:1}.mo-head>.mo-nav:last-of-type{grid-column:3;grid-row:1}
+.mo-sub{grid-column:1/-1;margin:.15rem 0 .55rem;color:var(--ink-muted);font:500 .68rem var(--font-ui)}
+.mo-personas{grid-column:1/-1;display:flex;gap:.35rem;overflow-x:auto;list-style:none;margin:0 0 .75rem;padding:.1rem 0;scrollbar-width:none}
+.mo-personas::-webkit-scrollbar{display:none}
+.mo-persona{flex:0 0 auto;display:inline-flex;align-items:center;gap:.3rem;padding:.35rem .6rem;border:1px solid var(--ring);border-radius:var(--radius-pill);color:var(--ink);text-decoration:none;font:500 .65rem var(--font-ui)}
+.mo-persona.on{background:var(--accent);color:var(--on-accent)}
+.mo-grid,.mo-week{min-width:0}.mo-grid{display:grid;gap:8px;list-style:none;margin:0;padding:0}
+.mo-week{position:relative;z-index:calc(20 - var(--row,0));display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;align-items:center;justify-items:center}
+.mo-cell{aspect-ratio:1;width:100%;min-width:0}.mo-blank{display:block}
+.mo-dot{display:block;width:6px;height:6px;border-radius:50%;background:var(--ink-muted);opacity:.55;align-self:center;justify-self:center}
+.mo-dot.is-today{box-shadow:0 0 0 2px var(--accent)}
+.mo-tile{display:block;color:var(--ink);text-decoration:none;transition:opacity .22s,transform .3s}
+.mo-tile .mo-face{position:relative;display:block;width:100%;height:100%;border-radius:28%;overflow:hidden;transform:rotate(var(--tilt,0deg));background:var(--persona,var(--accent));box-shadow:var(--shadow),inset 0 0 0 1px rgba(255,255,255,.28);transition:opacity .22s,transform .3s}
+.mo-cover{display:grid;width:100%;height:100%;overflow:hidden}.mo-cover img{display:block;width:100%;height:100%;object-fit:cover;object-position:50% 30%}
+.mo-cover.n2{grid-template-columns:1fr 1fr}.mo-cover.n3{grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr}.mo-cover.n3 img:first-child{grid-row:1/3}.mo-cover.n4{grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr}
+.mo-plate{place-items:center;background:var(--persona,var(--accent))}.mo-plate-txt{font:600 .78rem var(--font-ui);color:var(--on-accent)}
+.mo-sticker{position:absolute;left:6px;bottom:6px;z-index:1;font:600 .55rem var(--font-ui);padding:2px 6px;border-radius:var(--radius-pill);background:var(--panel-bg);color:var(--ink);max-width:calc(100% - 12px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mo-sticker.pend{left:auto;right:6px;top:6px;bottom:auto;background:var(--accent);color:var(--on-accent)}.mo-sticker+.mo-sticker{bottom:26px}
+.mo-tile.is-today .mo-face{outline:2px solid var(--accent);outline-offset:2px}.mo-tile.is-pending .mo-face{box-shadow:inset 0 0 0 2px var(--accent);border:2px dashed var(--accent)}
+.mo-tile.is-open .mo-face{background:var(--well-bg);display:grid;place-items:center;transform:none}.mo-x{font:400 1.5rem var(--font-ui);color:var(--ink-muted)}
+.is-filtered .mo-tile.is-muted{opacity:.28;filter:saturate(.4);pointer-events:none}.mosaic.is-dim .mo-tile:not(.is-open){opacity:.35}
+.mo-strip{grid-column:1/-1;background:var(--well-bg);border:1px solid var(--ring);border-radius:var(--radius-well);box-shadow:var(--shadow);padding:.55rem;position:relative;backdrop-filter:var(--blur)}
+.mo-chips{display:flex;gap:.5rem;overflow-x:auto;scroll-snap-type:x mandatory;list-style:none;margin:0;padding:0 .2rem}.mo-chip{scroll-snap-align:start;flex:0 0 auto;min-width:11rem;max-width:78%;display:flex;align-items:center;gap:.4rem;padding:.35rem .6rem;border-radius:var(--radius-pill);background:rgba(255,255,255,.08);border:1px solid var(--ring);color:var(--ink);text-decoration:none;font:500 .68rem var(--font-ui)}.mo-chip.pending{border-style:dashed}.mo-chip .mo-ttl{max-width:12rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mo-time,.mo-loc{color:var(--ink-muted);white-space:nowrap}.mo-loc{overflow:hidden;text-overflow:ellipsis;max-width:8rem}
+.mo-avs{display:inline-flex;flex:0 0 auto}.mo-av{display:block;width:20px;height:20px;border-radius:50%;object-fit:cover;font:600 .55rem var(--font-ui);color:var(--on-accent);text-align:center;line-height:20px}.mo-av+.mo-av{margin-left:-5px}.mo-pdot{display:inline-block;width:8px;height:8px;border-radius:50%;flex:none}
+.mo-close{position:absolute;top:.3rem;right:.4rem;color:var(--ink-muted);text-decoration:none;font-size:1.2rem}.mo-empty{margin:.2rem 2rem .2rem 0;color:var(--ink-muted);font:500 .7rem var(--font-ui)}.mo-addlink{font:500 .7rem var(--font-ui);color:var(--ink);text-decoration:underline}
+.mo-add{border-radius:28%;border:1.5px dashed var(--ring);color:var(--ink-muted);display:grid;place-items:center;font-size:1.4rem;text-decoration:none}.mo-week:has(.mo-strip){z-index:30}
+.mo-dock{position:sticky;bottom:.75rem;margin:.75rem auto 0;display:flex;gap:.25rem;padding:.3rem;border:1px solid var(--ring);border-radius:var(--radius-pill);background:var(--panel-bg);box-shadow:var(--shadow);backdrop-filter:var(--blur);width:max-content;max-width:100%;z-index:2}.mo-dock-item{min-width:44px;min-height:44px;display:grid;place-items:center;border-radius:var(--radius-pill);color:var(--ink);text-decoration:none;font:500 .6rem var(--font-ui)}.mo-dock-item svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.75}.mo-dock-item.on{background:rgba(255,255,255,.14)}.mo-dock-label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+@media(prefers-reduced-motion:reduce){.mo-tile .mo-face{transform:none!important}.mo-strip,.mo-dock{backdrop-filter:none;-webkit-backdrop-filter:none}.mo-tile,.mo-tile .mo-face{transition:opacity .15s}}
+`;
+
+const CALENDAR_LITE_CSS = `
+.mo-strip,.mo-dock{backdrop-filter:none;-webkit-backdrop-filter:none}.mo-tile .mo-face{transform:none}.mo-tile,.mo-tile .mo-face{transition:none}
+`;
+
+function calendarHtml(body: string): NextResponse {
+  const response = shellHtml(body);
+  const csp = response.headers.get("Content-Security-Policy");
+  if (csp) {
+    response.headers.set(
+      "Content-Security-Policy",
+      csp.replace(
+        /img-src ([^;]+)/,
+        (_, value: string) => `img-src ${value} ${env.r2PublicBaseUrl()}`
       )
-      .join("");
-    const dayName = new Date(`${selectedDay}T12:00:00`).toDateString();
-    detail = `<div class="day" style="margin-top:0.8rem">${esc(dayName)}</div>${rows || '<p class="when">No events.</p>'}${isOwner ? eventForm("month", persona, selectedDay, editEvent) : ""}`;
-  } else if (isOwner) {
-    detail = eventForm("month", persona, null, editEvent);
+    );
   }
-  return `${grid}${detail}`;
+  return response;
 }
 
 const unavailable = (lite: boolean) =>
-  shellHtml(
+  calendarHtml(
     renderShell({
       title: "Calendar",
       kicker: "Schedule",
@@ -588,8 +850,15 @@ export const calendar: MiniAppModule = {
     const dayParam = params.get("day");
     const selectedDay =
       dayParam && DAY_RE.test(dayParam) ? dayParam : null;
+    const monthParam = params.get("month");
+    const monthAnchor = selectedDay
+      ? new Date(`${selectedDay}T12:00:00`)
+      : monthParam && MONTH_RE.test(monthParam)
+        ? new Date(`${monthParam}-01T12:00:00`)
+        : new Date();
     const editParam = params.get("edit");
     const isOwner = ctx.session.role === "owner";
+    const wantNew = isOwner && params.get("new") === "1";
     const editEvent =
       isOwner && editParam && LOCAL_ID_RE.test(editParam)
         ? events.find((event) => event.id === editParam)
@@ -601,11 +870,14 @@ export const calendar: MiniAppModule = {
     if (view === "timeline") {
       title = "Timeline";
       body = timelineBody(events, boxAwake, sources, avatars);
+      if (isOwner) {
+        body += eventForm("timeline", activePersona, null, editEvent, wantNew);
+      }
     } else if (view === "month") {
-      title = "This month";
-      const monthAnchor = selectedDay
-        ? new Date(`${selectedDay}T12:00:00`)
-        : new Date();
+      title = monthAnchor.toLocaleDateString([], {
+        month: "long",
+        year: "numeric",
+      });
       body = monthBody(
         ctx.basePath,
         events,
@@ -615,7 +887,8 @@ export const calendar: MiniAppModule = {
         activePersona,
         selectedDay,
         editEvent,
-        monthAnchor
+        monthAnchor,
+        wantNew
       );
     } else {
       title = "Next 7 days";
@@ -630,9 +903,9 @@ export const calendar: MiniAppModule = {
         isOwner
       );
       if (isOwner && editEvent) {
-        body += eventForm("agenda", activePersona, null, editEvent);
+        body += eventForm("agenda", activePersona, null, editEvent, wantNew);
       } else if (isOwner) {
-        body += eventForm("agenda", activePersona, null);
+        body += eventForm("agenda", activePersona, null, undefined, wantNew);
       }
       if (isOwner) {
         // Agent-calendar extras (free/busy, booking) are best-effort: the
@@ -672,14 +945,25 @@ export const calendar: MiniAppModule = {
     const at = order.indexOf(view);
     const prevView = order[at - 1];
     const nextView = order[at + 1];
-    const full = `<section class="panel">${viewTabs(ctx.basePath, view, activePersona)}${body}
-${isOwner ? promptBar("Ask your agent — e.g. block focus time tomorrow morning…") : ""}</section>`;
-    return shellHtml(
+    const monthKey = `${monthAnchor.getFullYear()}-${String(monthAnchor.getMonth() + 1).padStart(2, "0")}`;
+    const todayKey = dayKey(new Date());
+    const panelClass =
+      view === "month"
+        ? `panel mosaic${activePersona ? " is-filtered" : ""}${selectedDay ? " is-dim" : ""}`
+        : "panel";
+    const panelAttrs =
+      view === "month"
+        ? ` data-month="${esc(monthKey)}" data-today="${esc(todayKey)}"${selectedDay ? ` data-open="${esc(selectedDay)}"` : ""}`
+        : "";
+    const full = `<style>${CALENDAR_CSS}${ctx.session.via === "card" ? CALENDAR_LITE_CSS : ""}</style><section class="${panelClass}"${panelAttrs}>${body}
+${isOwner ? `<div id="prompt">${promptBar("Ask your agent — e.g. block focus time tomorrow morning…")}</div>` : ""}</section>${dock(ctx.basePath, view, activePersona, isOwner, monthKey, todayKey)}`;
+    return calendarHtml(
       renderShell({
         title,
         kicker: "Schedule",
         body: full,
         lite: ctx.session.via === "card",
+        ...(view === "month" ? { headline: false } : {}),
         swipe: {
           ...(prevView
             ? { prev: viewHref(ctx.basePath, prevView, activePersona) }
