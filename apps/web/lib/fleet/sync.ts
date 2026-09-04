@@ -302,30 +302,39 @@ async function claimWave(
   candidates: JobBoxRow[],
 ): Promise<JobBoxRow[]> {
   const claimed: JobBoxRow[] = [];
-  for (const row of candidates) {
-    const { data, error } = await supabase
-      .from("sync_job_boxes")
-      .update({ state: "syncing", started_at: new Date().toISOString() })
-      .eq("job_id", jobId)
-      .eq("provider_box_id", row.provider_box_id)
-      .eq("state", "pending")
-      .select("provider_box_id");
-    if (error) {
-      throw new FleetError(`wave claim failed: ${error.message}`, 500);
+  try {
+    for (const row of candidates) {
+      const { data, error } = await supabase
+        .from("sync_job_boxes")
+        .update({ state: "syncing", started_at: new Date().toISOString() })
+        .eq("job_id", jobId)
+        .eq("provider_box_id", row.provider_box_id)
+        .eq("state", "pending")
+        .select("provider_box_id");
+      if (error) {
+        throw new FleetError(`wave claim failed: ${error.message}`, 500);
+      }
+      if ((data ?? []).length > 0) claimed.push(row);
     }
-    if ((data ?? []).length > 0) claimed.push(row);
+  } catch (error) {
+    await releaseClaims(supabase, jobId, claimed);
+    throw error;
   }
   return claimed;
 }
 
-/** Hand claimed-but-unstarted rows back so a resume can pick them up. */
+/**
+ * Hand claimed rows that never ran (still 'syncing') back to 'pending' so a
+ * resume or the next sweep can pick them up. Rows already finalized by this
+ * sweep are untouched.
+ */
 async function releaseClaims(
   supabase: SupabaseClient,
   jobId: string,
   rows: JobBoxRow[],
 ): Promise<void> {
   if (rows.length === 0) return;
-  await supabase
+  const { error } = await supabase
     .from("sync_job_boxes")
     .update({ state: "pending", started_at: null })
     .eq("job_id", jobId)
@@ -334,6 +343,28 @@ async function releaseClaims(
       "provider_box_id",
       rows.map((row) => row.provider_box_id),
     );
+  if (error) {
+    throw new FleetError(`claim release failed: ${error.message}`, 500);
+  }
+}
+
+/** True while the job is still canary/rolling; sweeps stop between boxes otherwise. */
+async function jobActive(
+  supabase: SupabaseClient,
+  jobId: string,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("sync_jobs")
+    .select("state")
+    .eq("id", jobId)
+    .single();
+  if (error || !data) {
+    throw new FleetError(
+      `job state read failed: ${error?.message ?? "no job"}`,
+      500,
+    );
+  }
+  return data.state === "canary" || data.state === "rolling";
 }
 
 /**
@@ -441,31 +472,47 @@ export async function runSyncJobs(
     return totals;
   }
 
-  for (const [index, row] of rows.entries()) {
-    const boxId = row.provider_box_id;
-    let outcome: BoxOutcome;
-    let boxError: string | undefined;
-    try {
-      const result = await syncOneBox(supabase, job, release, boxId);
-      outcome = result.outcome;
-      boxError = result.error;
-    } catch (error) {
-      outcome = "failed";
-      boxError = error instanceof Error ? error.message : "sync threw";
-    }
-    if (outcome === "deferred") {
-      totals.deferred += 1;
+  // `next` is the first claimed row this sweep has not finalized; whatever is
+  // left from it on is released in `finally`, on every exit path.
+  let next = 0;
+  try {
+    for (; next < rows.length; next += 1) {
+      if (!(await jobActive(supabase, job.id))) return totals;
+      const boxId = rows[next].provider_box_id;
+      let outcome: BoxOutcome;
+      let boxError: string | undefined;
+      try {
+        const result = await syncOneBox(supabase, job, release, boxId);
+        outcome = result.outcome;
+        boxError = result.error;
+      } catch (error) {
+        outcome = "failed";
+        boxError = error instanceof Error ? error.message : "sync threw";
+      }
+      if (outcome === "deferred") {
+        totals.deferred += 1;
+        await supabase
+          .from("sync_job_boxes")
+          .update({ state: "pending", started_at: null })
+          .eq("job_id", job.id)
+          .eq("provider_box_id", boxId);
+        continue;
+      }
       await supabase
         .from("sync_job_boxes")
-        .update({ state: "pending", started_at: null })
+        .update({
+          state: outcome,
+          error: boxError ?? null,
+          finished_at: new Date().toISOString(),
+        })
         .eq("job_id", job.id)
         .eq("provider_box_id", boxId);
-      continue;
-    }
-    let failures = 0;
-    if (outcome === "failed") {
+      if (outcome !== "failed") {
+        totals.synced += 1;
+        continue;
+      }
       totals.failed += 1;
-      failures = await bumpFailures(supabase, job.id);
+      const failures = await bumpFailures(supabase, job.id);
       console.error(
         JSON.stringify({
           msg: "fleet sync box failed",
@@ -474,27 +521,21 @@ export async function runSyncJobs(
           error: boxError ?? "unknown",
         }),
       );
-    } else {
-      totals.synced += 1;
+      if (failures >= job.failure_threshold) {
+        // Pause before releasing: once the job is off canary/rolling no sweep
+        // claims (runSyncJobs only picks active jobs) and sweeps mid-wave stop
+        // at their next jobActive check.
+        await supabase
+          .from("sync_jobs")
+          .update({ state: "paused", updated_at: new Date().toISOString() })
+          .eq("id", job.id)
+          .in("state", ["canary", "rolling"]);
+        next += 1;
+        return totals;
+      }
     }
-    await supabase
-      .from("sync_job_boxes")
-      .update({
-        state: outcome,
-        error: boxError ?? null,
-        finished_at: new Date().toISOString(),
-      })
-      .eq("job_id", job.id)
-      .eq("provider_box_id", boxId);
-    if (failures >= job.failure_threshold) {
-      await releaseClaims(supabase, job.id, rows.slice(index + 1));
-      await supabase
-        .from("sync_jobs")
-        .update({ state: "paused", updated_at: new Date().toISOString() })
-        .eq("id", job.id)
-        .in("state", ["canary", "rolling"]);
-      return totals;
-    }
+  } finally {
+    await releaseClaims(supabase, job.id, rows.slice(next));
   }
   await supabase
     .from("sync_jobs")
