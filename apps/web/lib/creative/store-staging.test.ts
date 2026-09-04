@@ -150,6 +150,36 @@ describe("stageCreativeInput clips", () => {
     expect(uploads[1]?.contentType).toBe("audio/mpeg");
   });
 
+  it("stages a sound-only MP4 relayed as video/mp4 as an audio reference", async () => {
+    const box = (type: string, ...body: Buffer[]): Buffer => {
+      const payload = Buffer.concat(body);
+      const header = Buffer.alloc(8);
+      header.writeUInt32BE(payload.length + 8, 0);
+      header.write(type, 4, "latin1");
+      return Buffer.concat([header, payload]);
+    };
+    const m4a = Buffer.concat([
+      box("ftyp", Buffer.from("M4A ", "latin1"), Buffer.alloc(8)),
+      box(
+        "moov",
+        box(
+          "trak",
+          box(
+            "mdia",
+            box("hdlr", Buffer.alloc(8), Buffer.from("soun", "latin1"), Buffer.alloc(4))
+          )
+        )
+      ),
+    ]);
+
+    const staged = await stageCreativeInput(fakeSupabase(), "u1", m4a, "video/mp4");
+
+    expect(staged?.kind).toBe("audio");
+    expect(staged?.mimeType).toBe("audio/mp4");
+    expect(staged?.storageKey.endsWith(".m4a")).toBe(true);
+    expect(uploads[0]?.contentType).toBe("audio/mp4");
+  });
+
   it("refuses attachment types no endpoint accepts", async () => {
     const staged = await stageCreativeInput(
       fakeSupabase(),
