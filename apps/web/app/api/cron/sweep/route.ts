@@ -230,6 +230,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     .from("carried_messages")
     .delete()
     .lt("received_at", ttlCutoff);
+  await supabase
+    .from("miniapp_slug_holds")
+    .delete()
+    .lt("held_until", new Date().toISOString());
 
   return NextResponse.json({
     ok: true,

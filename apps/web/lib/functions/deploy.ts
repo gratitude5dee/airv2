@@ -120,7 +120,11 @@ async function claimAppOrigin(
  * account is gone the username is free and a new owner can recreate the same
  * `<username>-<appname>`. A stale writer must therefore never tear down a
  * slug that a different row now owns — that row's own claim/confirm protocol
- * governs the origin from then on.
+ * governs the origin from then on. The read here cannot be atomic with the
+ * vendor delete; the gap is closed in the database, where a deployed app's
+ * slug stays on hold (miniapp_slug_holds) for longer than any request can
+ * run after its row is deleted, so no new row can take the slug while a
+ * writer like this one may still be in flight.
  */
 async function teardownUnlessReassigned(
   supabase: SupabaseClient,

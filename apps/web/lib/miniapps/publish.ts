@@ -166,6 +166,9 @@ export async function createDraft(
     if (error.message.includes("account is being deleted")) {
       throw new PublishError("account is being deleted", 409);
     }
+    if (error.message.includes("app name is on hold")) {
+      throw new PublishError("that app name was just deleted; try again in an hour", 409);
+    }
     throw new Error(`draft create failed: ${error.message}`);
   }
   console.log(
