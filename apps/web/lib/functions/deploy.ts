@@ -116,6 +116,34 @@ async function claimAppOrigin(
 }
 
 /**
+ * Origin resources are keyed by slug, and a slug outlives its row: once the
+ * account is gone the username is free and a new owner can recreate the same
+ * `<username>-<appname>`. A stale writer must therefore never tear down a
+ * slug that a different row now owns — that row's own claim/confirm protocol
+ * governs the origin from then on.
+ */
+async function teardownUnlessReassigned(
+  supabase: SupabaseClient,
+  appId: string,
+  slug: string
+): Promise<void> {
+  const { data, error } = await supabase
+    .from("mini_apps")
+    .select("id")
+    .eq("slug", slug)
+    .maybeSingle();
+  if (error) throw new Error(`app origin owner check failed: ${error.message}`);
+  const owner = (data as { id: string } | null)?.id ?? null;
+  if (owner !== null && owner !== appId) {
+    console.warn(
+      JSON.stringify({ msg: "app origin slug reassigned; teardown skipped", app: slug })
+    );
+    return;
+  }
+  await teardownAppOrigin(slug);
+}
+
+/**
  * After a vendor write: if deletion began since the claim, everything just
  * written is torn down here (the deleter may already have run its teardown).
  * A read failure leaves the write standing — the claim is on record, so a
@@ -127,7 +155,7 @@ async function confirmAppOrigin(
   slug: string
 ): Promise<void> {
   if (await appOriginOpen(supabase, appId, "confirm")) return;
-  await teardownAppOrigin(slug);
+  await teardownUnlessReassigned(supabase, appId, slug);
   throw new AppOriginRefusedError(slug);
 }
 
@@ -270,12 +298,48 @@ export async function promoteVersion(
     files,
     target: "live",
   });
-  await writeManifestGuarded(supabase, app, {
-    ...manifestFor(app),
-    status: "published",
-    live: version,
-  });
+  try {
+    await writeManifestGuarded(supabase, app, {
+      ...manifestFor(app),
+      status: "published",
+      live: version,
+    });
+  } catch (error) {
+    // The live Worker already serves `version` while the pointer still names
+    // the previous release: never leave that standing. Deletion → the origin
+    // goes (the deleter may abort before its own teardown); anything else →
+    // the Worker returns to the release the pointer names.
+    if (error instanceof AppOriginRefusedError) {
+      await teardownUnlessReassigned(supabase, app.id, app.slug).catch(() => null);
+    } else {
+      await restoreLiveWorker(supabase, app, version).catch(() => null);
+    }
+    throw error;
+  }
   return deployed;
+}
+
+async function restoreLiveWorker(
+  supabase: SupabaseClient,
+  app: RegistryApp,
+  attempted: string
+): Promise<void> {
+  const previous = app.status === "published" ? app.bundle_version : null;
+  if (previous === attempted) return;
+  if (!previous || !app.owner_user_id) {
+    await deleteDispatchScript(scriptNameFor(app.slug, "live"));
+    return;
+  }
+  const files = await loadBundleFiles(app.slug, previous);
+  if (files.length === 0) return;
+  await deployStaticVersion(supabase, {
+    appId: app.id,
+    slug: app.slug,
+    version: previous,
+    ownerUserId: app.owner_user_id,
+    files,
+    target: "live",
+  });
 }
 
 const DRAFT_SUFFIX = "-draft";

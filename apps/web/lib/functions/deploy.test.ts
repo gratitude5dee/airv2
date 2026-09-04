@@ -61,6 +61,8 @@ const db = {
   betweenClaimAndConfirm: null as (() => void) | null,
   /** Runs once, before the Nth claim (1-based); for races later in a multi-write flow. */
   beforeClaim: null as { n: number; run: () => void } | null,
+  /** Fails every plain table read (the slug-owner check before a teardown). */
+  readError: null as { message: string } | null,
 };
 
 function fakeSupabase(): SupabaseClient {
@@ -110,6 +112,11 @@ function fakeSupabase(): SupabaseClient {
         pending = values;
         return chain;
       },
+      maybeSingle: async () => {
+        if (db.readError) return { data: null, error: db.readError };
+        const rows = db.apps.filter((a) => filters.every((f) => f(a)));
+        return { data: rows[0] ?? null, error: null };
+      },
       then: (resolve: (value: { data: unknown; error: unknown }) => unknown) => {
         const rows = db.apps.filter((a) => filters.every((f) => f(a)));
         if (pending) for (const row of rows) Object.assign(row, pending);
@@ -151,6 +158,7 @@ beforeEach(() => {
   db.claims = 0;
   db.betweenClaimAndConfirm = null;
   db.beforeClaim = null;
+  db.readError = null;
   tokens.appOriginConfigured.mockReturnValue(true);
   cloudflare.cloudflareConfigured.mockReturnValue(true);
   cloudflare.uploadAssets.mockClear();
@@ -261,6 +269,48 @@ describe("deployStaticVersion — deletion that begins mid-deploy", () => {
     expect(cloudflare.deleteDispatchScript).not.toHaveBeenCalled();
     expect(db.apps[0]!.app_origin_deployed_at).not.toBeNull();
   });
+
+  it("does not tear down a slug that a new app row owns by the time the stale confirm runs", async () => {
+    // Old account deleted and its username re-registered; the new owner
+    // recreated `alice-notes` and deployed it before this writer confirmed.
+    db.betweenClaimAndConfirm = () => {
+      db.apps = [
+        {
+          id: "app-2",
+          slug: "alice-notes",
+          deleting_at: null,
+          app_origin_deployed_at: "2026-03-02T00:00:00.000Z",
+        },
+      ];
+    };
+    await expect(deployStaticVersion(fakeSupabase(), input)).rejects.toBeInstanceOf(
+      AppOriginRefusedError
+    );
+    expect(cloudflare.deleteDispatchScript).not.toHaveBeenCalled();
+    expect(manifest.deleteManifest).not.toHaveBeenCalled();
+    expect(db.apps[0]!.app_origin_deployed_at).toBe("2026-03-02T00:00:00.000Z");
+  });
+
+  it("still tears down when the row is gone and nobody else holds the slug", async () => {
+    db.betweenClaimAndConfirm = () => {
+      db.apps = [];
+    };
+    await expect(deployStaticVersion(fakeSupabase(), input)).rejects.toBeInstanceOf(
+      AppOriginRefusedError
+    );
+    expect(cloudflare.deleteDispatchScript).toHaveBeenCalledTimes(2);
+  });
+
+  it("leaves the Worker standing when the slug-owner check cannot be read", async () => {
+    db.betweenClaimAndConfirm = () => {
+      db.apps[0]!.deleting_at = "2026-03-01T00:00:00.000Z";
+    };
+    db.readError = { message: "connection reset" };
+    await expect(deployStaticVersion(fakeSupabase(), input)).rejects.toThrow(
+      /app origin owner check failed/
+    );
+    expect(cloudflare.deleteDispatchScript).not.toHaveBeenCalled();
+  });
 });
 
 describe("promoteVersion", () => {
@@ -285,12 +335,14 @@ describe("promoteVersion", () => {
     expect(manifest.writeManifest).not.toHaveBeenCalled();
   });
 
-  it("does not write the manifest when deletion began after the Worker was confirmed", async () => {
-    // Claims: 1 deploy claim, 2 deploy confirm, 3 manifest claim.
+  it("tears the replaced live Worker down when deletion began after it was confirmed", async () => {
+    // Claims: 1 deploy claim, 2 deploy confirm, 3 manifest claim. The account
+    // marker is set and the deleter may abort before its own teardown, so the
+    // attempted release must not stay serving.
     db.beforeClaim = {
       n: 3,
       run: () => {
-        db.apps[0]!.deleting_at = "2026-03-01T00:00:00.000Z";
+        db.accountDeletingAt = "2026-03-01T00:00:00.000Z";
       },
     };
     await expect(
@@ -298,6 +350,41 @@ describe("promoteVersion", () => {
     ).rejects.toBeInstanceOf(AppOriginRefusedError);
     expect(cloudflare.putDispatchScript).toHaveBeenCalledTimes(1);
     expect(manifest.writeManifest).not.toHaveBeenCalled();
+    expect(cloudflare.deleteDispatchScript).toHaveBeenCalledWith("alice-notes");
+    expect(cloudflare.deleteDispatchScript).toHaveBeenCalledWith("alice-notes-draft");
+    expect(manifest.deleteManifest).toHaveBeenCalledWith("alice-notes");
+  });
+
+  it("puts the previous release back on the live Worker when the manifest write fails", async () => {
+    manifest.writeManifest.mockRejectedValueOnce(new Error("kv 502"));
+    await expect(promoteVersion(fakeSupabase(), app, "v1700000000001")).rejects.toThrow(
+      /kv 502/
+    );
+    expect(cloudflare.putDispatchScript).toHaveBeenCalledTimes(2);
+    expect(cloudflare.putDispatchScript).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        script: "alice-notes",
+        tags: expect.arrayContaining(["version:v1700000000000"]),
+      })
+    );
+    expect(cloudflare.deleteDispatchScript).not.toHaveBeenCalled();
+  });
+
+  it("removes the live Worker when a first publish's manifest write fails", async () => {
+    const draft = makeApp({
+      id: "app-1",
+      slug: "alice-notes",
+      owner_user_id: "user-alice",
+      status: "draft",
+      bundle_version: "v1700000000001",
+    });
+    manifest.writeManifest.mockRejectedValueOnce(new Error("kv 502"));
+    await expect(promoteVersion(fakeSupabase(), draft, "v1700000000001")).rejects.toThrow(
+      /kv 502/
+    );
+    expect(cloudflare.putDispatchScript).toHaveBeenCalledTimes(1);
+    expect(cloudflare.deleteDispatchScript).toHaveBeenCalledTimes(1);
+    expect(cloudflare.deleteDispatchScript).toHaveBeenCalledWith("alice-notes");
   });
 
   it("tears the origin down when deletion began during the manifest write", async () => {
