@@ -1,11 +1,12 @@
 /**
  * A Create turn (goal-create-v11 §9.2): one owner prompt into the app's own
  * Hermes session `air-create-<appname>` on the owner's existing Box. The
- * run pins `model: "create-<tier>"` — a tier name, never a slug (C2) — and
- * carries the Kit's generated system prompt plus a small project context
- * as instructions. The agent_runs row is labelled `create:<slug>` so the
- * gateway can attribute every completion of the turn to the project's
- * budget (§9.1). Nothing here reads the workspace or the Kit's source.
+ * run pins `model: "create-<tier>:<project slug>"` — a tier name and the
+ * project, never a model ID (C2) — and carries the Kit's generated system
+ * prompt plus a small project context as instructions. The agent_runs row
+ * is labelled `create:<slug>` and the gateway attributes every completion
+ * that names that project to its budget (§9.1). Nothing here reads the
+ * workspace or the Kit's source.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -13,23 +14,27 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { armStopAfter, ensureBoxAwake } from "../orchestrator/boxes";
 import { CREATE_SESSION_PREFIX } from "../chat/relay";
 import { createRun, ensureSession, stopRun } from "../hermes/client";
-import { isSpeedTier, type SpeedTier } from "../entitlements/models";
+import { createModelFor, isSpeedTier, type SpeedTier } from "../entitlements/models";
 import {
   PublishError,
-  publisherUsername,
-  slugFor,
   validateAppName,
 } from "../miniapps/publish";
 import type { RegistryApp } from "../miniapps/registry";
 import { kitRoot, kitVersion } from "./kit";
-import { createRunLabel, openCreateRun } from "./budget";
-import { resolveOrCreateDropApp } from "./drop";
+import { openCreateRun } from "./budget";
+import { discardEmptyDraft, resolveOrCreateDropApp } from "./drop";
 import { WORKSPACE_ROOT } from "./build";
 
 /** `air-create-<appname>` — the per-app thread inside air-main's namespace. */
 export const CREATE_SESSION_RE = /^air-create-[a-z0-9-]{1,48}$/;
 export { CREATE_SESSION_PREFIX };
 export const PROMPT_MAX_CHARS = 8_000;
+const CLOSE_ROW_ATTEMPTS = 3;
+const CLOSE_ROW_BACKOFF_MS = 200;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export function createSessionId(appname: string): string {
   const id = `${CREATE_SESSION_PREFIX}${validateAppName(appname)}`;
@@ -136,7 +141,9 @@ export function normalizePrompt(input: unknown): string {
  * before Hermes can issue its first completion — a run that starts without
  * it would be refused (`create_run_required`) or spend unattributed — so a
  * turn whose row cannot be written does not start, and a run that fails to
- * start (or whose id cannot be linked to the row) closes its row again.
+ * start (or whose id cannot be linked to the row) closes its row again. A
+ * row that could not be closed either is retired by the next open attempt
+ * once it has sat unlinked past CREATE_RUN_LINK_GRACE_MINUTES.
  */
 export async function startCreateTurn(
   supabase: SupabaseClient,
@@ -148,42 +155,41 @@ export async function startCreateTurn(
   const prompt = normalizePrompt(input.input);
   const tier: SpeedTier =
     input.tier && isSpeedTier(input.tier) ? input.tier : "balanced";
-  // One open Create run per owner: the gateway attributes `create-*` spend
-  // to the open run, so a second project may not start until it closes.
-  const open = await openCreateRun(supabase, userId);
-  if (open && open.slug !== slugFor(await publisherUsername(supabase, userId), appname)) {
+  const { app, created } = await resolveOrCreateDropApp(supabase, userId, { appname }, "vibe");
+  const session = createSessionId(appname);
+  // One open Create run per owner: a Box works one project at a time, so a
+  // second project may not start until the open run closes. (Attribution
+  // does not depend on this — every gateway call names its project.)
+  const opened = await openCreateRun(supabase, userId, app.slug, input.trigger ?? "web");
+  if (!opened) {
+    if (created) await discardEmptyDraft(supabase, userId, app.id);
+    throw new PublishError("could not open the Create run; try again", 503);
+  }
+  if (opened.id === null) {
+    if (created) await discardEmptyDraft(supabase, userId, app.id);
     throw new PublishError(
       "another Create project is still running; wait for it to finish",
       409
     );
   }
-  const { app } = await resolveOrCreateDropApp(supabase, userId, { appname }, "vibe");
-  const session = createSessionId(appname);
-  const { data: opened, error: openError } = await supabase
-    .from("agent_runs")
-    .insert({
-      user_id: userId,
-      trigger: input.trigger ?? "web",
-      label: createRunLabel(app.slug),
-    })
-    .select("id")
-    .single();
-  const rowId = (opened as { id: string } | null)?.id;
-  if (openError || !rowId) {
-    throw new PublishError("could not open the Create run; try again", 503);
-  }
+  const rowId = opened.id;
   const closeRow = async (): Promise<void> => {
-    await supabase
-      .from("agent_runs")
-      .update({ ended_at: new Date().toISOString(), outcome: "failed" })
-      .eq("id", rowId)
-      .is("ended_at", null);
+    for (let attempt = 0; attempt < CLOSE_ROW_ATTEMPTS; attempt += 1) {
+      const { error } = await supabase
+        .from("agent_runs")
+        .update({ ended_at: new Date().toISOString(), outcome: "failed" })
+        .eq("id", rowId)
+        .is("ended_at", null);
+      if (!error) return;
+      if (attempt + 1 < CLOSE_ROW_ATTEMPTS) await sleep(CLOSE_ROW_BACKOFF_MS * (attempt + 1));
+    }
+    console.error(JSON.stringify({ msg: "create run close failed", user_id: userId, row_id: rowId }));
   };
   let box: Awaited<ReturnType<typeof ensureBoxAwake>>;
   try {
     box = await ensureBoxAwake(supabase, userId);
   } catch (error) {
-    await closeRow().catch(() => undefined);
+    await closeRow();
     throw error;
   }
   try {
@@ -193,7 +199,7 @@ export async function startCreateTurn(
       run = await createRun(box.target, {
         input: prompt,
         sessionId: session,
-        model: `create-${tier}`,
+        model: createModelFor(tier, app.slug),
         instructions: createInstructions({
           appname,
           slug: app.slug,
@@ -207,22 +213,32 @@ export async function startCreateTurn(
         metadata: { app: "create", resource: appname, surface: "miniapp" },
       });
     } catch (error) {
-      await closeRow().catch(() => undefined);
+      await closeRow();
       throw error;
     }
     // The events relay closes the row by hermes_run_id; a row left unlinked
     // would stay open (blocking the owner's other projects) until it ages
-    // out, so an unlinkable run is stopped and its row closed instead.
-    const { error: linkError } = await supabase
+    // out, so an unlinkable run is stopped and its row closed instead. The
+    // link only lands on a still-open row: one retired while the Box was
+    // waking (create_run_open's grace sweep) may already be superseded by
+    // another project's run, and a run linked to nothing would spend on it.
+    const { data: linked, error: linkError } = await supabase
       .from("agent_runs")
       .update({ hermes_run_id: run.run_id })
-      .eq("id", rowId);
-    if (linkError) {
+      .eq("id", rowId)
+      .is("ended_at", null)
+      .select("id");
+    if (linkError || !(Array.isArray(linked) && linked.length > 0)) {
       console.error(
-        JSON.stringify({ msg: "create run link failed", user_id: userId, run_id: run.run_id, error: linkError.message })
+        JSON.stringify({
+          msg: linkError ? "create run link failed" : "create run row retired before link",
+          user_id: userId,
+          run_id: run.run_id,
+          error: linkError?.message,
+        })
       );
       await stopRun(box.target, run.run_id).catch(() => undefined);
-      await closeRow().catch(() => undefined);
+      await closeRow();
       throw new PublishError("could not open the Create run; try again", 503);
     }
     return { run_id: run.run_id, session, slug: app.slug, appname, tier };

@@ -42,7 +42,20 @@ export const CREATE_TIER_MODELS: Record<SpeedTier, string> = {
   deep: "gpt-5.6-terra",
 };
 
-export const CREATE_MODEL_RE = /^create-(fast|balanced|deep)$/;
+/**
+ * A Create turn's model request: `create-<tier>:<project slug>`. The slug is
+ * the project the run was opened for (`agent_runs.label = create:<slug>`),
+ * so every completion is attributed — and budgeted — to the project that
+ * made it, not to whichever of the owner's runs happened to start last.
+ * Still tier names only on the Box side (C2): the gateway resolves the
+ * model slug.
+ */
+export const CREATE_MODEL_RE = /^create-(fast|balanced|deep):([a-z0-9_][a-z0-9_-]{0,79})$/;
+
+export interface CreateModelRequest {
+  tier: SpeedTier;
+  slug: string;
+}
 
 /** Slugs for the fixed families that don't go through the tiers. */
 const FAMILY_MODELS: Record<
@@ -318,12 +331,38 @@ export function modelForCreateTier(tier: SpeedTier): string {
 
 const TIER_RANK: Record<SpeedTier, number> = { fast: 0, balanced: 1, deep: 2 };
 
-/** `create-<tier>` from a Box, or null when the request is not a Create turn. */
-export function parseCreateTier(model: unknown): SpeedTier | null {
+export function createModelFor(tier: SpeedTier, slug: string): string {
+  return `create-${tier}:${slug}`;
+}
+
+/** `create-<tier>:<slug>` from a Box, or null when the request is not a
+ * well-formed Create turn. */
+export function parseCreateModel(model: unknown): CreateModelRequest | null {
   if (typeof model !== "string") return null;
   const match = CREATE_MODEL_RE.exec(model);
   const tier = match?.[1];
-  return tier && isSpeedTier(tier) ? tier : null;
+  const slug = match?.[2];
+  return tier && slug && isSpeedTier(tier) ? { tier, slug } : null;
+}
+
+/**
+ * Transitional: the project-less `create-<tier>` a Hermes run started before
+ * the project-bearing format shipped keeps sending for the rest of its life
+ * (a run's model is fixed at createRun; runs live at most
+ * CREATE_RUN_MAX_MINUTES). The gateway attributes it to the caller's single
+ * open Create run, as before. Remove once no such run can still be open.
+ */
+export function parseLegacyCreateTier(model: unknown): SpeedTier | null {
+  if (typeof model !== "string" || !model.startsWith("create-")) return null;
+  const tier = model.slice("create-".length);
+  return isSpeedTier(tier) ? tier : null;
+}
+
+/** True for anything in the Create namespace, well-formed or not, so a
+ * malformed `create-*` request is refused rather than served on the chat
+ * family and charged to the owner's general spend. */
+export function isCreateModelRequest(model: unknown): boolean {
+  return typeof model === "string" && model.startsWith("create-");
 }
 
 /** The requested Create tier clamped to the entitlement: a Box may ask for

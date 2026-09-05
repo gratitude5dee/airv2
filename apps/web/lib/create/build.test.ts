@@ -266,6 +266,40 @@ describe("compileWorkspace", () => {
     expect(upperHtml.match(/app\.js/gi)).toHaveLength(1);
     expect(upperHtml.match(/app\.css/gi)).toHaveLength(1);
 
+    // The app origin serves lowercase paths only: a document naming APP.JS,
+    // or some other-app.js, still gets the real bundle injected.
+    const mixed = await compileWorkspace(
+      workspace({
+        "src/index.html": `<!doctype html>\n<html>\n<head><link rel="stylesheet" href="APP.CSS"><link rel="stylesheet" href="my-app.css"></head>\n<body><div id="root"></div><script type="module" src="./APP.JS"></script><script src="vendor-app.js?v=1"></script></body>\n</html>`,
+      }),
+      { restricted: false }
+    );
+    const mixedHtml = mixed.files.find((f) => f.path === "index.html")!.bytes.toString();
+    expect(mixedHtml).toContain('<link rel="stylesheet" href="app.css">');
+    expect(mixedHtml).toContain('<script type="module" src="app.js"></script>');
+
+    const cached = await compileWorkspace(
+      workspace({
+        "src/index.html": `<!doctype html>\n<html>\n<head><link rel=stylesheet href=./app.css?v=2></head>\n<body><div id="root"></div><script type="module" src='/app.js#x'></script></body>\n</html>`,
+      }),
+      { restricted: false }
+    );
+    const cachedHtml = cached.files.find((f) => f.path === "index.html")!.bytes.toString();
+    expect(cachedHtml.match(/app\.js/g)).toHaveLength(1);
+    expect(cachedHtml.match(/app\.css/g)).toHaveLength(1);
+
+    // Only `src` loads a script and only `href` a stylesheet: naming the
+    // bundle in some other attribute does not count as loading it.
+    const decoy = await compileWorkspace(
+      workspace({
+        "src/index.html": `<!doctype html>\n<html>\n<head><link rel="stylesheet" data-href="app.css" href="theme.css"></head>\n<body><div id="root"></div><script type="module" data-src="app.js" src="boot.js"></script></body>\n</html>`,
+      }),
+      { restricted: false }
+    );
+    const decoyHtml = decoy.files.find((f) => f.path === "index.html")!.bytes.toString();
+    expect(decoyHtml).toContain('<link rel="stylesheet" href="app.css">');
+    expect(decoyHtml).toContain('<script type="module" src="app.js"></script>');
+
     const fragment = await compileWorkspace(
       workspace({ "src/index.html": `<div id="root"></div>` }),
       { restricted: false }

@@ -337,6 +337,54 @@ describe("gateway model families", () => {
     expect(headers["HTTP-Referer"]).toBeUndefined();
   });
 
+  it("retries a transient GMI error before serving MiniMax", async () => {
+    setEntitlement({ speed_tier: "balanced", model_family: "minimax-m3" });
+    const completion = {
+      choices: [{ message: { role: "assistant", content: "hi" } }],
+    };
+    const fetchMock = vi.fn(async (url: RequestInfo | URL) => {
+      expect(String(url)).toBe("https://gmi.test/v1/chat/completions");
+      return fetchMock.mock.calls.length === 1
+        ? new Response("temporarily unavailable", { status: 429 })
+        : new Response(JSON.stringify(completion), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await POST(completionRequest({ messages: [] }), {
+      params: Promise.resolve({ path: ["chat", "completions"] }),
+    });
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect((await response.json()).choices[0].message.content).toBe("hi");
+  });
+
+  it("falls back to OpenAI after a retryable GMI error repeats", async () => {
+    setEntitlement({ speed_tier: "balanced", model_family: "minimax-m3" });
+    const completion = {
+      choices: [{ message: { role: "assistant", content: "hi" } }],
+    };
+    const fetchMock = vi.fn(async (url: RequestInfo | URL) =>
+      String(url).includes("gmi.test")
+        ? new Response("temporarily unavailable", { status: 429 })
+        : new Response(JSON.stringify(completion), { status: 200 })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await POST(completionRequest({ messages: [] }), {
+      params: Promise.resolve({ path: ["chat", "completions"] }),
+    });
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+      "https://gmi.test/v1/chat/completions"
+    );
+    expect(String(fetchMock.mock.calls[1]?.[0])).toBe(
+      "https://gmi.test/v1/chat/completions"
+    );
+    expect(String(fetchMock.mock.calls[2]?.[0])).toBe(
+      "https://upstream.test/v1/chat/completions"
+    );
+    expect((await response.json()).choices[0].message.content).toBe("hi");
+  });
+
   it("falls back to the OpenAI tier model when OpenRouter answers empty", async () => {
     setEntitlement({ speed_tier: "fast", model_family: "ox-alpha" });
     const emptyCompletion = {

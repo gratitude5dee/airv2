@@ -47,19 +47,39 @@ export async function listChannels(
  * Point a channel at a release (deploy-to-dev, promote-to-prod, and rollback
  * are all this operation with different release ids). Returns the release so
  * callers can kick a sync job for it.
+ *
+ * With `expected` set, the move is compare-and-set: it applies only while the
+ * channel still points at `expected` (null for "no release yet") and fails
+ * with 409 otherwise, so a rollback can't overwrite a move that landed in
+ * between reading the pointer and writing it.
  */
 export async function setChannelRelease(
   supabase: SupabaseClient,
   name: ChannelName,
-  releaseId: string
+  releaseId: string,
+  expected?: string | null
 ): Promise<TemplateRelease> {
   const release = await getRelease(supabase, releaseId);
-  const { error } = await supabase
+  let query = supabase
     .from("box_channels")
     .update({ release_id: release.id, updated_at: new Date().toISOString() })
     .eq("name", name);
+  if (expected !== undefined) {
+    query =
+      expected === null
+        ? query.is("release_id", null)
+        : query.eq("release_id", expected);
+  }
+  const { data, error } = await query.select("name");
   if (error) {
     throw new FleetError(`channel update failed: ${error.message}`, 500);
+  }
+  if (expected !== undefined && (data ?? []).length === 0) {
+    const current = await getChannel(supabase, name);
+    throw new FleetError(
+      `channel ${name} moved to ${current.release_id ?? "none"} since it was read`,
+      409
+    );
   }
   return release;
 }
