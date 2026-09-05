@@ -1,10 +1,16 @@
+import { spawnSync } from "node:child_process";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   BoxApiError,
-  READ_FILE_MISSING_EXIT,
+  type CommandResult,
+  classifyReadFile,
   deleteBox,
   getBox,
   readFile,
+  readFileCommand,
 } from "./client";
 
 const fetchMock = vi.fn();
@@ -77,44 +83,91 @@ function commandResponse(exitCode: number, stdout = "", stderr = ""): Response {
   });
 }
 
-async function readError(): Promise<BoxApiError> {
+function classify(path: string, result: CommandResult): BoxApiError | string {
   try {
-    await readFile("bx_1", "/home/user/.hermes/miniapps/party/actions.json");
+    return classifyReadFile(path, result);
   } catch (error) {
     if (error instanceof BoxApiError) return error;
     throw error;
   }
-  throw new Error("readFile resolved");
+}
+
+/** What the Box command endpoint would hand back for `readFileCommand(path)`. */
+function runLocally(path: string, env: Record<string, string> = {}): CommandResult {
+  const run = spawnSync("sh", ["-c", readFileCommand(path)], {
+    encoding: "utf8",
+    env: { ...process.env, ...env },
+  });
+  return { exitCode: run.status ?? -1, stdout: run.stdout, stderr: run.stderr };
 }
 
 describe("readFile", () => {
-  it("probes for the path before cat so a missing file has its own exit code", async () => {
+  it("sends a C-locale cat and returns stdout on success", async () => {
     fetchMock.mockResolvedValueOnce(commandResponse(0, "[1]"));
     await expect(readFile("bx_1", "/home/user/a b.json")).resolves.toBe("[1]");
     const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as {
       command: string;
     };
-    expect(body.command).toBe(
-      `[ -e "/home/user/a b.json" ] || exit ${READ_FILE_MISSING_EXIT}; cat "/home/user/a b.json"`
-    );
+    expect(body.command).toBe('LC_ALL=C cat "/home/user/a b.json"');
   });
 
-  it("maps only the missing-path exit to 404", async () => {
-    fetchMock.mockResolvedValueOnce(commandResponse(READ_FILE_MISSING_EXIT));
-    expect((await readError()).status).toBe(404);
+  it("maps a 500 classification through to the caller", async () => {
+    fetchMock.mockResolvedValueOnce(commandResponse(137, "", ""));
+    await expect(readFile("bx_1", "/x")).rejects.toMatchObject({ status: 500 });
   });
 
-  it("surfaces permission, I/O and killed reads as 500, never 404", async () => {
-    for (const [exitCode, stderr] of [
-      [1, "cat: actions.json: Permission denied"],
-      [1, "cat: actions.json: Input/output error"],
-      [137, ""],
-      [124, "timed out"],
-    ] as const) {
-      fetchMock.mockResolvedValueOnce(commandResponse(exitCode, "", stderr));
-      const error = await readError();
-      expect(error.status).toBe(500);
-      expect(error.message).toContain(`exit ${exitCode}`);
+  it("never treats a killed or timed-out cat as missing", () => {
+    for (const result of [
+      { exitCode: 137, stdout: "", stderr: "" },
+      { exitCode: 124, stdout: "", stderr: "timed out" },
+      { exitCode: 1, stdout: "", stderr: "cat: x: Input/output error" },
+      { exitCode: 2, stdout: "", stderr: "No such file or directory" },
+    ]) {
+      const error = classify("/x", result);
+      expect(error).toBeInstanceOf(BoxApiError);
+      expect((error as BoxApiError).status).toBe(500);
     }
+  });
+
+  describe("against a real shell", () => {
+    let dir: string;
+    beforeEach(() => {
+      dir = mkdtempSync(join(tmpdir(), "airv2-readfile-"));
+    });
+    afterEach(() => {
+      try {
+        chmodSync(join(dir, "locked"), 0o700);
+      } catch {
+        // only the permission test creates it
+      }
+      rmSync(dir, { recursive: true, force: true });
+    });
+
+    it("reads an existing file, 404s a missing one even under a non-C LANG", () => {
+      const present = join(dir, "present.json");
+      writeFileSync(present, '{"a":1}');
+      expect(classify(present, runLocally(present))).toBe('{"a":1}');
+
+      const missing = join(dir, "missing.json");
+      const result = runLocally(missing, { LANG: "fr_FR.UTF-8", LC_ALL: "fr_FR.UTF-8" });
+      expect(result.exitCode).toBe(1);
+      expect((classify(missing, result) as BoxApiError).status).toBe(404);
+    });
+
+    it("a file behind an unreadable parent is a 500, not a missing file", () => {
+      const locked = join(dir, "locked");
+      mkdirSync(locked);
+      const path = join(locked, "actions.json");
+      writeFileSync(path, "[]");
+      chmodSync(locked, 0o000);
+      const result = runLocally(path);
+      if (result.exitCode === 0) {
+        // root ignores directory modes; the classifier still saw a real read.
+        expect(process.getuid?.()).toBe(0);
+        return;
+      }
+      expect(result.stderr).toMatch(/Permission denied/);
+      expect((classify(path, result) as BoxApiError).status).toBe(500);
+    });
   });
 });

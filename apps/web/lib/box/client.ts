@@ -251,30 +251,33 @@ export async function command(
   });
 }
 
-/** Exit code the read command reserves for "path does not exist". */
-export const READ_FILE_MISSING_EXIT = 44;
+/** `cat` in the C locale so ENOENT has one spelling regardless of the Box's LANG. */
+export function readFileCommand(path: string): string {
+  return `LC_ALL=C cat ${JSON.stringify(path)}`;
+}
+
+/** strerror(ENOENT) in the C locale (coreutils and busybox alike). */
+const ENOENT_MESSAGE = /No such file or directory/;
 
 /**
- * Reads via the command endpoint; the files API is write-oriented. Only an
- * absent path is a 404; any other failure (permissions, I/O, killed) is a
- * 500 so read-modify-write callers don't mistake it for an empty file.
+ * Only ENOENT is a 404; any other failure (permission denied on the file or
+ * a parent, I/O error, killed, timed out) is a 500 so read-modify-write
+ * callers don't mistake an unreadable file for an empty one.
  */
-export async function readFile(boxId: string, path: string): Promise<string> {
-  const quoted = JSON.stringify(path);
-  const result = await command(
-    boxId,
-    `[ -e ${quoted} ] || exit ${READ_FILE_MISSING_EXIT}; cat ${quoted}`
+export function classifyReadFile(path: string, result: CommandResult): string {
+  if (result.exitCode === 0) return result.stdout;
+  if (result.exitCode === 1 && ENOENT_MESSAGE.test(result.stderr)) {
+    throw new BoxApiError(404, `readFile ${path}: ${result.stderr.trim()}`);
+  }
+  throw new BoxApiError(
+    500,
+    `readFile ${path}: exit ${result.exitCode}: ${result.stderr.trim()}`
   );
-  if (result.exitCode === READ_FILE_MISSING_EXIT) {
-    throw new BoxApiError(404, `readFile ${path}: no such file`);
-  }
-  if (result.exitCode !== 0) {
-    throw new BoxApiError(
-      500,
-      `readFile ${path}: exit ${result.exitCode}: ${result.stderr}`
-    );
-  }
-  return result.stdout;
+}
+
+/** Reads via the command endpoint; the files API is write-oriented. */
+export async function readFile(boxId: string, path: string): Promise<string> {
+  return classifyReadFile(path, await command(boxId, readFileCommand(path)));
 }
 
 export async function writeFile(
