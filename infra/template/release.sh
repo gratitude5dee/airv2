@@ -12,15 +12,16 @@ ORIGIN="${APP_ORIGIN:?set APP_ORIGIN to the control-plane origin}"
 KEY="${ADMIN_API_KEY:?set ADMIN_API_KEY}"
 NOTES="${1:-}"
 
-if ! git -C "$REPO_ROOT" diff --quiet -- infra/template; then
-  echo "FATAL: infra/template has uncommitted changes — commit first" >&2
+if ! git -C "$REPO_ROOT" diff --quiet HEAD -- infra/template \
+  || [ -n "$(git -C "$REPO_ROOT" ls-files --others --exclude-standard -- infra/template)" ]; then
+  echo "FATAL: infra/template has uncommitted or untracked changes — commit first" >&2
   exit 1
 fi
 
 GIT_SHA="$(git -C "$REPO_ROOT" rev-parse HEAD)"
 VERSION="$(date -u +%Y.%m.%d)-${GIT_SHA:0:7}"
-HERMES_REF="$(grep -m1 '^HERMES_REF=' "$REPO_ROOT/infra/template/setup.sh" \
-  | sed -E 's/.*:-([0-9a-f]+)\}.*/\1/' || true)"
+HERMES_REF="$(git -C "$REPO_ROOT" show "$GIT_SHA:infra/template/setup.sh" \
+  | grep -m1 '^HERMES_REF=' | sed -E 's/.*:-([0-9a-f]+)\}.*/\1/' || true)"
 # Via a file, not an env var: the base64 template tarball is megabytes and
 # passing it in the environment blows the exec argument limit (E2BIG).
 ARTIFACT_FILE="$(mktemp)"
@@ -29,7 +30,10 @@ trap 'rm -rf "$ARTIFACT_FILE" "$STAGE_DIR"' EXIT
 # The artifact carries its own identity: setup.sh / sync-box.sh copy RELEASE
 # to ~/.hermes/.template-release, which is how provisioning tells that a
 # fork really came from the channel's release (never from a working tree).
-cp -a "$REPO_ROOT/infra/template" "$STAGE_DIR/template"
+# Packed from the commit itself, so the stamped git_sha identifies exactly
+# the bytes shipped — nothing staged or untracked can ride along.
+git -C "$REPO_ROOT" archive --format=tar "$GIT_SHA" infra/template \
+  | tar xf - -C "$STAGE_DIR" --strip-components=1
 printf 'version=%s\ngit_sha=%s\nhermes_ref=%s\n' "$VERSION" "$GIT_SHA" "$HERMES_REF" \
   > "$STAGE_DIR/template/RELEASE"
 tar czf - -C "$STAGE_DIR" template | base64 -w0 > "$ARTIFACT_FILE"
