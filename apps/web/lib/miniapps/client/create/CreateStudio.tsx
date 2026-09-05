@@ -158,6 +158,18 @@ async function postJson<T>(
   return data;
 }
 
+/** Ask the control plane to stop a Create run the owner has walked away
+ * from. Fire-and-forget: `keepalive` lets it outlive a page unload, and the
+ * result is nobody's concern — the conversation it belonged to is gone. */
+function stopTurn(runId: string): void {
+  void fetch(`/api/create/turn/${encodeURIComponent(runId)}/stop`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{}",
+    keepalive: true,
+  }).catch(() => undefined);
+}
+
 function kb(bytes: number | undefined | null): string {
   if (!bytes) return "—";
   return bytes >= 1024 * 1024
@@ -1126,9 +1138,12 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
   // never on an ordinary status poll, which would discard the draft's state.
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const events = useRef<EventSource | null>(null);
-  // Bumped on every project switch; a turn started under an older value
-  // belongs to a conversation the owner has left and is dropped on arrival.
+  // Bumped on every project switch (and on unmount); a turn started under an
+  // older value belongs to a conversation the owner has left and is dropped
+  // on arrival.
   const turnGeneration = useRef(0);
+  // The Hermes run the open event stream belongs to, until it ends.
+  const activeRun = useRef<string | null>(null);
   const lastDraft = useRef<string | null>(null);
 
   const loadProjects = useCallback(async () => {
@@ -1183,11 +1198,23 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
   // in-flight exchange — so the reset lives here, not in the slug effect.
   function selectProject(next: string | null) {
     if (next === slug) return;
-    turnGeneration.current += 1;
-    events.current?.close();
+    leaveConversation();
     setMessages([]);
     setBusy(false);
     setSlug(next);
+  }
+
+  // Leaving a conversation abandons its run: nobody streams it any more, and
+  // only the events relay closes a run's row on its terminal event, so a run
+  // left live would keep editing and keep blocking the owner's other projects
+  // until it aged out. Turns still starting are stopped when their reply lands.
+  function leaveConversation() {
+    turnGeneration.current += 1;
+    events.current?.close();
+    events.current = null;
+    const runId = activeRun.current;
+    activeRun.current = null;
+    if (runId) stopTurn(runId);
   }
 
   // A parent-driven project change (deep link, tile) is a switch like any other.
@@ -1199,7 +1226,7 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- react only to the prop, never to the slug it sets
   }, [initialSlug]);
 
-  useEffect(() => () => events.current?.close(), []);
+  useEffect(() => () => leaveConversation(), []);
 
   const refresh = useCallback(async () => {
     await Promise.all([
@@ -1270,24 +1297,18 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
     })
       .then((turn) => {
         if (stale()) {
-          // The owner left this project while the turn was starting: the
-          // run is live on the Box and nobody will stream it, so stop it
-          // rather than let it keep editing until it ages out.
-          if (turn.run_id) {
-            void postJson(
-              `/api/create/turn/${encodeURIComponent(turn.run_id)}/stop`,
-              {},
-            ).catch(() => undefined);
-          }
+          if (turn.run_id) stopTurn(turn.run_id);
           return;
         }
         if (!turn.run_id || !turn.slug) throw new Error("no run started");
         if (turn.slug !== slug) setSlug(turn.slug);
+        const runId = turn.run_id;
         const stream = new EventSource(
-          `/api/create/events/${encodeURIComponent(turn.run_id)}`,
+          `/api/create/events/${encodeURIComponent(runId)}`,
         );
         events.current?.close();
         events.current = stream;
+        activeRun.current = runId;
         let acc = "";
         const tools: string[] = [];
         const update = (text: string, failed?: string) =>
@@ -1306,6 +1327,7 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
           });
         const finish = (fallback: string, failed?: string) => {
           stream.close();
+          if (activeRun.current === runId) activeRun.current = null;
           setBusy(false);
           if (failed) {
             update(acc, failed);

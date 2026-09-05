@@ -251,7 +251,7 @@ export async function stopCreateTurn(
   userId: string,
   runId: string
 ): Promise<boolean> {
-  const { data: row } = await supabase
+  const { data: row, error } = await supabase
     .from("agent_runs")
     .select("id")
     .eq("user_id", userId)
@@ -259,6 +259,7 @@ export async function stopCreateTurn(
     .like("label", "create:%")
     .is("ended_at", null)
     .maybeSingle();
+  if (error) throw new PublishError("could not look up the Create run; try again", 503);
   if (!row) return false;
   // A stop that did not reach the Box leaves the row open: the run may well
   // still be editing, and closing it would only let a second run in beside it.

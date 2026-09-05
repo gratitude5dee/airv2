@@ -55,6 +55,8 @@ const state = vi.hoisted(() => ({
   linkError: null as { message: string } | null,
   /** Fails the close (`ended_at`) update this many more times. */
   closeFailures: 0,
+  /** Fails the next single-row read. */
+  readError: null as { message: string } | null,
   /** Ordered log of the calls that matter for attribution ordering. */
   log: [] as string[],
 }));
@@ -87,6 +89,11 @@ function agentRuns(): Record<string, unknown> {
       return builder;
     },
     maybeSingle() {
+      if (state.readError) {
+        const error = state.readError;
+        state.readError = null;
+        return Promise.resolve({ data: null, error });
+      }
       return Promise.resolve({ data: matching()[0] ?? null, error: null });
     },
     then(resolve: (value: { data: unknown; error: unknown }) => unknown) {
@@ -189,6 +196,7 @@ beforeEach(() => {
   state.insertError = null;
   state.linkError = null;
   state.closeFailures = 0;
+  state.readError = null;
   state.log = [];
   hermes.createRun.mockImplementation(async () => {
     state.log.push("hermes.createRun");
@@ -449,6 +457,16 @@ describe("stopCreateTurn", () => {
     expect(spy).toHaveBeenCalledTimes(1);
     expect(spy.mock.calls[0]![0]).not.toContain("run-8");
     spy.mockRestore();
+  });
+
+  it("a failed lookup is an error, not an absent run", async () => {
+    state.rows.push(openRow("create:alice-countdown", 1, "run-9"));
+    state.readError = { message: "connection reset" };
+    const error = await stopCreateTurn(supabase, "user-alice", "run-9").catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(PublishError);
+    expect((error as PublishError).status).toBe(503);
+    expect(hermes.stopRun).not.toHaveBeenCalled();
+    expect(state.rows[0]!.ended_at).toBeNull();
   });
 
   it("leaves the row open when the stop never reached the Box", async () => {

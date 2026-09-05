@@ -586,18 +586,33 @@ function appliesStylesheet(tag: string): boolean {
   return rel !== undefined && rel.toLowerCase().split(/\s+/).includes("stylesheet");
 }
 
-const JS_SCRIPT_TYPES = new Set([
-  "",
-  "module",
-  "text/javascript",
-  "application/javascript",
-  "text/ecmascript",
+/** The JavaScript MIME type essence strings (MIME Sniffing §4.6). */
+const JS_MIME_ESSENCES = new Set([
   "application/ecmascript",
+  "application/javascript",
+  "application/x-ecmascript",
+  "application/x-javascript",
+  "text/ecmascript",
+  "text/javascript",
+  "text/javascript1.0",
+  "text/javascript1.1",
+  "text/javascript1.2",
+  "text/javascript1.3",
+  "text/javascript1.4",
+  "text/javascript1.5",
+  "text/jscript",
+  "text/livescript",
+  "text/x-ecmascript",
+  "text/x-javascript",
 ]);
 
-/** A classic or module script runs; importmap, JSON and other data blocks do not. */
+/** Mirrors "prepare the script element": no type, an empty type or an exact
+ * essence match is a classic script and `module` a module script; anything
+ * else — importmap, JSON, templates, and a JS type carrying parameters such
+ * as `text/javascript;charset=utf-8` — is a data block browsers never run. */
 function executesScript(tag: string): boolean {
-  return JS_SCRIPT_TYPES.has((attrValue(tag, "type") ?? "").trim().toLowerCase());
+  const type = (attrValue(tag, "type") ?? "").trim().toLowerCase();
+  return type === "" || type === "module" || JS_MIME_ESSENCES.has(type);
 }
 
 export interface CompileOptions {
