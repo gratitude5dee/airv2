@@ -1269,7 +1269,18 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
       ...(status ? { session: `air-create-${status.appname}` } : {}),
     })
       .then((turn) => {
-        if (stale()) return;
+        if (stale()) {
+          // The owner left this project while the turn was starting: the
+          // run is live on the Box and nobody will stream it, so stop it
+          // rather than let it keep editing until it ages out.
+          if (turn.run_id) {
+            void postJson(
+              `/api/create/turn/${encodeURIComponent(turn.run_id)}/stop`,
+              {},
+            ).catch(() => undefined);
+          }
+          return;
+        }
         if (!turn.run_id || !turn.slug) throw new Error("no run started");
         if (turn.slug !== slug) setSlug(turn.slug);
         const stream = new EventSource(

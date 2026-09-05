@@ -541,26 +541,63 @@ function injectIntoHtml(html: string, air: AirJson, version: string): string | n
   if (!/<meta[^>]+name\s*=\s*["']?viewport/i.test(out)) {
     out = out.replace(/<head([^>]*)>/i, `<head$1>\n${VIEWPORT_META}`);
   }
-  if (!referencesAsset(out, "link", "href", "app.css")) {
+  if (!referencesAsset(out, "link", "href", "app.css", appliesStylesheet)) {
     out = out.replace(/<\/head>/i, '<link rel="stylesheet" href="app.css">\n</head>');
   }
-  if (!referencesAsset(out, "script", "src", "app.js")) {
+  if (!referencesAsset(out, "script", "src", "app.js", executesScript)) {
     out = out.replace(/<\/body>/i, '<script type="module" src="app.js"></script>\n</body>');
   }
   return out;
 }
 
 /** Whether any `<tag …>` has `attr` (tag and attribute names in any case)
- * naming `asset` exactly: the app origin serves lowercase bundle paths only,
- * so `APP.JS` is not one, and `data-src="app.js"` loads nothing. */
-function referencesAsset(html: string, tag: string, attr: string, asset: string): boolean {
+ * naming `asset` exactly and `uses` the asset: the app origin serves
+ * lowercase bundle paths only, so `APP.JS` is not one, `data-src="app.js"`
+ * loads nothing, and a preload or a data block runs nothing. */
+function referencesAsset(
+  html: string,
+  tag: string,
+  attr: string,
+  asset: string,
+  uses: (tag: string) => boolean
+): boolean {
   const tags = html.match(new RegExp(`<${tag}\\b[^>]*>`, "gi")) ?? [];
-  const name = [...attr].map((c) => `[${c}${c.toUpperCase()}]`).join("");
   const value = asset.replace(".", "\\.");
   const named = new RegExp(
-    `\\s${name}\\s*=\\s*(["']?)(?:\\.?/)?${value}(?:[?#][^"'\\s>]*)?\\1(?=[\\s>/]|$)`
+    `\\s${attrName(attr)}\\s*=\\s*(["']?)(?:\\.?/)?${value}(?:[?#][^"'\\s>]*)?\\1(?=[\\s>/]|$)`
   );
-  return tags.some((t) => named.test(t));
+  return tags.some((t) => named.test(t) && uses(t));
+}
+
+function attrName(attr: string): string {
+  return [...attr].map((c) => `[${c}${c.toUpperCase()}]`).join("");
+}
+
+/** The attribute's value, unquoted, or `undefined` when the tag lacks it. */
+function attrValue(tag: string, attr: string): string | undefined {
+  const m = new RegExp(`\\s${attrName(attr)}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s>]+))`).exec(tag);
+  if (!m) return undefined;
+  return m[2] ?? m[3] ?? m[4] ?? "";
+}
+
+/** `<link rel="stylesheet">` applies; preload, prefetch, icon, … do not. */
+function appliesStylesheet(tag: string): boolean {
+  const rel = attrValue(tag, "rel");
+  return rel !== undefined && rel.toLowerCase().split(/\s+/).includes("stylesheet");
+}
+
+const JS_SCRIPT_TYPES = new Set([
+  "",
+  "module",
+  "text/javascript",
+  "application/javascript",
+  "text/ecmascript",
+  "application/ecmascript",
+]);
+
+/** A classic or module script runs; importmap, JSON and other data blocks do not. */
+function executesScript(tag: string): boolean {
+  return JS_SCRIPT_TYPES.has((attrValue(tag, "type") ?? "").trim().toLowerCase());
 }
 
 export interface CompileOptions {

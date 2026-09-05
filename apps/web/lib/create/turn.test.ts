@@ -35,7 +35,7 @@ vi.mock("./drop", () => drop);
 
 import { PublishError } from "../miniapps/publish";
 import { CREATE_RUN_LINK_GRACE_MINUTES, CREATE_RUN_MAX_MINUTES } from "./budget";
-import { startCreateTurn } from "./turn";
+import { startCreateTurn, stopCreateTurn } from "./turn";
 
 interface Row {
   id: string;
@@ -81,6 +81,14 @@ function agentRuns(): Record<string, unknown> {
       filters.push((row) => row[column] === value);
       return builder;
     },
+    like(column: keyof Row, pattern: string) {
+      const prefix = pattern.replace(/%$/, "");
+      filters.push((row) => typeof row[column] === "string" && (row[column] as string).startsWith(prefix));
+      return builder;
+    },
+    maybeSingle() {
+      return Promise.resolve({ data: matching()[0] ?? null, error: null });
+    },
     then(resolve: (value: { data: unknown; error: unknown }) => unknown) {
       if (pending.update) {
         state.log.push(`agent_runs.update:${Object.keys(pending.update).join(",")}`);
@@ -104,7 +112,7 @@ function agentRuns(): Record<string, unknown> {
   return builder;
 }
 
-/** What `create_run_open` (0095) does under the per-user lock. */
+/** What `create_run_open` (0095, 0096) does under the per-user lock. */
 async function createRunOpen(args: {
   p_user_id: string;
   p_trigger: string;
@@ -263,6 +271,15 @@ describe("startCreateTurn attribution", () => {
     expect(state.rows).toHaveLength(2);
   });
 
+  it("an older open row of another project blocks, even behind a newer row of this project", async () => {
+    state.rows.push(openRow("create:alice-other", 5, "run-a"));
+    state.rows.push(openRow("create:alice-countdown", 1, "run-b"));
+    const error = await startCreateTurn(supabase, "user-alice", input, context).catch((e: unknown) => e);
+    expect((error as PublishError).status).toBe(409);
+    expect(hermes.createRun).not.toHaveBeenCalled();
+    expect(state.rows).toHaveLength(2);
+  });
+
   it("opens rows one at a time: concurrent turns for two projects admit exactly one", async () => {
     const results = await Promise.all([
       startCreateTurn(supabase, "user-alice", input, context).catch((e: unknown) => e),
@@ -386,5 +403,39 @@ describe("startCreateTurn attribution", () => {
     state.linkError = null;
     const again = await startCreateTurn(supabase, "user-alice", { ...input, appname: "other" }, context);
     expect(again.run_id).toBe("run-1");
+  });
+});
+
+describe("stopCreateTurn", () => {
+  it("stops the owner's run, closes its row as interrupted, and unblocks the next project", async () => {
+    state.rows.push(openRow("create:alice-countdown", 1, "run-9"));
+    await expect(stopCreateTurn(supabase, "user-alice", "run-9")).resolves.toBe(true);
+    expect(hermes.stopRun).toHaveBeenCalledWith({ baseUrl: "http://box", token: "t" }, "run-9");
+    expect(state.rows[0]).toMatchObject({ outcome: "interrupted" });
+    expect(state.rows[0]!.ended_at).not.toBeNull();
+    expect(boxes.armStopAfter).toHaveBeenCalledTimes(1);
+
+    const next = await startCreateTurn(supabase, "user-alice", { ...input, appname: "other" }, context);
+    expect(next.run_id).toBe("run-1");
+  });
+
+  it("does not touch a run that is not one of this owner's open Create runs", async () => {
+    state.rows.push({ ...openRow("create:bob-thing", 1, "run-9"), user_id: "user-bob" });
+    state.rows.push({ ...openRow("create:alice-done", 1, "run-8"), ended_at: new Date().toISOString(), outcome: "success" });
+    state.rows.push({ ...openRow("chat", 1, "run-7"), label: null, trigger: null });
+    for (const runId of ["run-9", "run-8", "run-7", "run-nope"]) {
+      await expect(stopCreateTurn(supabase, "user-alice", runId)).resolves.toBe(false);
+    }
+    expect(hermes.stopRun).not.toHaveBeenCalled();
+    expect(state.rows[0]!.ended_at).toBeNull();
+    expect(state.rows[1]!.outcome).toBe("success");
+  });
+
+  it("leaves the row open when the stop never reached the Box", async () => {
+    state.rows.push(openRow("create:alice-countdown", 1, "run-9"));
+    hermes.stopRun.mockRejectedValueOnce(new Error("box unreachable"));
+    await expect(stopCreateTurn(supabase, "user-alice", "run-9")).rejects.toThrow("box unreachable");
+    expect(state.rows[0]!.ended_at).toBeNull();
+    expect(boxes.armStopAfter).toHaveBeenCalledTimes(1);
   });
 });

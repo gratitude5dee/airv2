@@ -246,3 +246,41 @@ export async function startCreateTurn(
     await armStopAfter(supabase, userId).catch(() => undefined);
   }
 }
+
+/**
+ * Stop one of the owner's Create runs and close its row as interrupted. The
+ * events relay closes a row only when it sees the run's terminal event, so a
+ * run nobody is streaming any more (the owner switched projects, or a turn
+ * answered after the owner had already left it) would otherwise keep editing
+ * and keep its row open — blocking every other project — until it aged out.
+ * Returns false when the run is not one of this owner's open Create runs.
+ */
+export async function stopCreateTurn(
+  supabase: SupabaseClient,
+  userId: string,
+  runId: string
+): Promise<boolean> {
+  const { data: row } = await supabase
+    .from("agent_runs")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("hermes_run_id", runId)
+    .like("label", "create:%")
+    .is("ended_at", null)
+    .maybeSingle();
+  if (!row) return false;
+  // A stop that did not reach the Box leaves the row open: the run may well
+  // still be editing, and closing it would only let a second run in beside it.
+  try {
+    const box = await ensureBoxAwake(supabase, userId);
+    await stopRun(box.target, runId);
+  } finally {
+    await armStopAfter(supabase, userId).catch(() => undefined);
+  }
+  await supabase
+    .from("agent_runs")
+    .update({ outcome: "interrupted", ended_at: new Date().toISOString() })
+    .eq("id", row.id)
+    .is("ended_at", null);
+  return true;
+}
