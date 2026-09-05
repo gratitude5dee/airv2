@@ -42,6 +42,8 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const RETRY_DELAY_MS = process.env.NODE_ENV === "test" ? 0 : 1500;
+
 interface Usage {
   prompt_tokens?: number;
   completion_tokens?: number;
@@ -474,6 +476,25 @@ export async function POST(
     });
   }
   const canFallBack = providerForFamily(servedFamily) !== "openai";
+  if (
+    canFallBack &&
+    [429, 500, 502, 503, 504].includes(upstream.status)
+  ) {
+    console.warn(
+      JSON.stringify({
+        msg: "gateway upstream retry",
+        user_id: userId,
+        family,
+        model: servedModel,
+        status: upstream.status,
+      })
+    );
+    await upstream.body?.cancel().catch(() => undefined);
+    if (RETRY_DELAY_MS > 0) {
+      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+    }
+    upstream = await dispatch(servedFamily);
+  }
   if (canFallBack && (!upstream.ok || !upstream.body)) {
     console.warn(
       JSON.stringify({
