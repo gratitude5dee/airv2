@@ -2,14 +2,15 @@
  * Runtime API (goal-create-v11 §11.3): put a file at the owner's public
  * prefix (`u/<username>/apps/<slug>/…`). Owner role only. The full MA8 guard
  * runs on the bytes in hand (type allowlist, size, text scrub, EXIF strip)
- * and the owner's quota is charged — the same accounting as the Apps API
- * presign path, minus the presign: the Worker never holds an R2 URL.
+ * and the owner's quota is reserved before the bytes reach R2 — released if
+ * the put fails — the same accounting as the Apps API presign path, minus
+ * the presign: the Worker never holds an R2 URL.
  */
 import { randomBytes } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
 import { ALLOWED_MEDIA_TYPES, guardMediaUpload, MediaGuardError } from "@/lib/storage/guard";
-import { addUsage, assertWithinQuota, ensureUserBucket } from "@/lib/storage/buckets";
+import { ensureUserBucket, releaseQuota, reserveQuota } from "@/lib/storage/buckets";
 import { publicUrl, putObject, r2Configured } from "@/lib/storage/r2";
 import { recordOpsEvent, uploadRateLimited } from "@/lib/security/limits";
 import {
@@ -42,13 +43,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     try {
       const sanitized = guardMediaUpload(bytes, contentType, { maxBytes: MEDIA_MAX_BYTES });
       const bucket = await ensureUserBucket(supabase, userId);
-      assertWithinQuota(bucket, sanitized.length);
       const filename = request.nextUrl.searchParams.get("filename") ?? "";
       const ext =
         EXT_RE.exec(filename.toLowerCase())?.[1] ?? ALLOWED_MEDIA_TYPES[contentType];
       const key = `${bucket.prefix}apps/${slug}/${randomBytes(8).toString("hex")}${ext ? `.${ext}` : ""}`;
-      await putObject(key, sanitized, contentType);
-      await addUsage(supabase, userId, sanitized.length);
+      const hold = await reserveQuota(supabase, userId, sanitized.length);
+      try {
+        await putObject(key, sanitized, contentType);
+      } catch (error) {
+        await releaseQuota(supabase, hold);
+        throw error;
+      }
       await recordOpsEvent(supabase, "upload", userId, `functions:${slug}`, sanitized.length);
       return runtimeJson({
         url: publicUrl(key),

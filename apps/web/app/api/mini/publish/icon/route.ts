@@ -16,9 +16,9 @@ import {
   MediaGuardError,
 } from "@/lib/storage/guard";
 import {
-  addUsage,
-  assertWithinQuota,
   ensureUserBucket,
+  releaseQuota,
+  reserveQuota,
 } from "@/lib/storage/buckets";
 import {
   deleteObject,
@@ -69,21 +69,39 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       maxBytes: ICON_MAX_BYTES,
     });
     const bucket = await ensureUserBucket(supabase, userId);
-    assertWithinQuota(bucket, bytes.length);
     const key = `${bucket.prefix}icons/${app.slug}.${ALLOWED_MEDIA_TYPES[contentType]}`;
-    // The key is deterministic per app, so an upload overwrites: charge only
-    // the delta, and clean up a stale object left under a previous extension.
-    const previous = await headObject(key);
-    let reclaimed = previous?.sizeBytes ?? 0;
+    // The key is deterministic per app, so an upload overwrites. The new
+    // icon is reserved in full before the put (same atomic check as every
+    // other upload); the bytes it replaces — the object at this key and a
+    // stale one under a previous extension — are released only once they
+    // are gone, so the row never under-counts what is in R2.
+    const hold = await reserveQuota(supabase, userId, bytes.length);
+    let reclaimed = 0;
+    try {
+      const previous = await headObject(key);
+      reclaimed = previous?.sizeBytes ?? 0;
+      await putObject(key, bytes, contentType);
+    } catch (error) {
+      await releaseQuota(supabase, hold);
+      throw error;
+    }
+    // From here the new icon is in R2 and its charge stays; only the bytes
+    // it demonstrably displaced go back.
     if (app.icon_key && app.icon_key !== key) {
-      const stale = await headObject(app.icon_key);
-      if (stale) {
-        await deleteObject(app.icon_key);
-        reclaimed += stale.sizeBytes;
+      try {
+        const stale = await headObject(app.icon_key);
+        if (stale) {
+          await deleteObject(app.icon_key);
+          reclaimed += stale.sizeBytes;
+        }
+      } catch (error) {
+        if (reclaimed > 0) await releaseQuota(supabase, { userId, bytes: reclaimed });
+        throw error;
       }
     }
-    await putObject(key, bytes, contentType);
-    await addUsage(supabase, userId, bytes.length - reclaimed);
+    if (reclaimed > 0) {
+      await releaseQuota(supabase, { userId, bytes: reclaimed });
+    }
     const { error } = await supabase
       .from("mini_apps")
       .update({ icon_key: key, updated_at: new Date().toISOString() })

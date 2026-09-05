@@ -16,11 +16,7 @@ import {
   MEDIA_MAX_BYTES,
   MediaGuardError,
 } from "@/lib/storage/guard";
-import {
-  addUsage,
-  assertWithinQuota,
-  ensureUserBucket,
-} from "@/lib/storage/buckets";
+import { ensureUserBucket, releaseQuota, reserveQuota } from "@/lib/storage/buckets";
 import { confirmUpload, reserveUpload } from "@/lib/storage/confirm";
 import { presignPut, publicUrl, r2Configured } from "@/lib/storage/r2";
 import { recordOpsEvent, uploadRateLimited } from "@/lib/security/limits";
@@ -75,10 +71,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
   try {
     const bucket = await ensureUserBucket(supabase, auth.session.userId);
-    assertWithinQuota(bucket, sizeBytes);
     const key = `${bucket.prefix}apps/${auth.app.slug}/${randomBytes(8).toString("hex")}`;
-    await addUsage(supabase, auth.session.userId, sizeBytes);
-    await reserveUpload(supabase, auth.session.userId, key, sizeBytes);
+    const hold = await reserveQuota(supabase, auth.session.userId, sizeBytes);
+    try {
+      await reserveUpload(supabase, auth.session.userId, key, sizeBytes);
+    } catch (error) {
+      await releaseQuota(supabase, hold);
+      throw error;
+    }
     await recordOpsEvent(
       supabase,
       "upload",
