@@ -19,9 +19,10 @@ create table miniapp_state_leases (
 alter table miniapp_state_leases enable row level security;
 -- Default-deny; the service role is the sole reader/writer.
 
--- Take the lease when it is free or expired; false when another writer holds
--- it. The upsert is one statement, so two racing callers serialize on the
--- primary key and exactly one sees the row as free.
+-- Take the lease when it is free or expired, or extend it when the caller
+-- already holds it; false when another writer holds it. The upsert is one
+-- statement, so two racing callers serialize on the primary key and exactly
+-- one sees the row as free.
 create or replace function miniapp_state_lease(
   p_user_id uuid, p_app text, p_resource text, p_holder uuid, p_ttl_ms integer
 ) returns boolean as $$
@@ -33,6 +34,7 @@ create or replace function miniapp_state_lease(
       set holder = excluded.holder,
           expires_at = excluded.expires_at
       where miniapp_state_leases.expires_at <= now()
+         or miniapp_state_leases.holder = excluded.holder
     returning 1
   )
   select exists (select 1 from taken);

@@ -60,7 +60,8 @@ vi.mock("@/lib/supabase", () => ({
       rpc: async (fn: string, args: Record<string, unknown>) => {
         const key = `${args["p_user_id"]}/${args["p_app"]}/${args["p_resource"]}`;
         if (fn === "miniapp_state_lease") {
-          if (leases.has(key)) return { data: false, error: null };
+          const held = leases.get(key);
+          if (held && held !== args["p_holder"]) return { data: false, error: null };
           leases.set(key, String(args["p_holder"]));
           return { data: true, error: null };
         }

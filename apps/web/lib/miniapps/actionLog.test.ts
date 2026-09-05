@@ -31,7 +31,7 @@ vi.mock("../box/client", () => ({
 }));
 
 // In-memory twin of miniapp_state_lease / miniapp_state_release (0099):
-// one row per (user, app, resource); take when absent or expired.
+// one row per (user, app, resource); take when absent, expired or already ours.
 interface LeaseRow {
   holder: string;
   expiresAt: number;
@@ -47,7 +47,9 @@ const supabase = {
     if (fn === "miniapp_state_lease") {
       if (leaseError) return { data: null, error: { message: leaseError } };
       const row = leases.get(key);
-      if (row && row.expiresAt > Date.now()) return { data: false, error: null };
+      if (row && row.expiresAt > Date.now() && row.holder !== args["p_holder"]) {
+        return { data: false, error: null };
+      }
       leases.set(key, {
         holder: String(args["p_holder"]),
         expiresAt: Date.now() + Number(args["p_ttl_ms"]),
@@ -197,6 +199,53 @@ describe("appendActionLogEntry", () => {
     expect(log().map((e) => e.action)).toEqual(["next"]);
   });
 
+  it("aborts instead of writing when the lease expired mid-read and was re-taken", async () => {
+    const { appendActionLogEntry, ActionLogBusyError } = await import("./actionLog");
+    files.set(LOG_PATH, "[]");
+    let open!: () => void;
+    readGate = new Promise((resolve) => (open = resolve));
+    // A's lease is 5ms; its read stalls past that, B takes the lease and lands.
+    const a = appendActionLogEntry(supabase, "u1", "party", entry("slow"), {
+      ttlMs: 5,
+      attempts: 1,
+    });
+    await vi.waitFor(() => expect(boxCalls).toContain(`read ${LOG_PATH}`));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const bHolderBefore = leases.get("u1/party/actions")?.holder;
+    const b = appendActionLogEntry(supabase, "u1", "party", entry("fast"), {
+      attempts: 1,
+    });
+    await vi.waitFor(() =>
+      expect(leases.get("u1/party/actions")?.holder).not.toBe(bHolderBefore)
+    );
+    open();
+    await expect(a).rejects.toBeInstanceOf(ActionLogBusyError);
+    await b;
+    expect(log().map((e) => e.action)).toEqual(["fast"]);
+    expect(boxCalls.filter((c) => c.startsWith("write"))).toHaveLength(1);
+  });
+
+  it("renews its own lease before the write so a slow read never lets it lapse", async () => {
+    const { appendActionLogEntry } = await import("./actionLog");
+    files.set(LOG_PATH, "[]");
+    let open!: () => void;
+    readGate = new Promise((resolve) => (open = resolve));
+    const a = appendActionLogEntry(supabase, "u1", "party", entry("rsvp"), {
+      ttlMs: 1_000,
+      attempts: 1,
+    });
+    await vi.waitFor(() => expect(boxCalls).toContain(`read ${LOG_PATH}`));
+    const before = leases.get("u1/party/actions")?.expiresAt ?? 0;
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    open();
+    await a;
+    expect(rpcCalls.filter((c) => c === "miniapp_state_lease")).toHaveLength(2);
+    expect(log().map((e) => e.action)).toEqual(["rsvp"]);
+    expect(leases.size).toBe(0);
+    // the renewal happened after the read, i.e. it pushed the expiry out
+    expect(before).toBeGreaterThan(0);
+  });
+
   it("a lease RPC failure is an error, not a silent unleased write", async () => {
     const { appendActionLogEntry, ActionLogBusyError } = await import("./actionLog");
     leaseError = "connection refused";
@@ -212,7 +261,8 @@ describe("appendActionLogEntry", () => {
     await appendActionLogEntry(supabase, "u1", "other", entry("rsvp"), { attempts: 1 });
     await appendActionLogEntry(supabase, "u2", "party", entry("rsvp"), { attempts: 1 });
     expect(files.get(".hermes/miniapps/other/actions.json")).toBeDefined();
-    expect(rpcCalls.filter((c) => c === "miniapp_state_lease")).toHaveLength(2);
+    // one take + one renewal per append, no retries against the busy row
+    expect(rpcCalls.filter((c) => c === "miniapp_state_lease")).toHaveLength(4);
     expect(leases.get("u1/party/actions")?.holder).toBe("busy");
   });
 });

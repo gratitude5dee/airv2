@@ -4,7 +4,9 @@
  * API — and the Box files API has no compare-and-swap. Appends serialize on a
  * short Postgres lease (migration 0099) taken around the read-modify-write:
  * the Box is woken first so the lease only covers the bounded `cat` + PUT,
- * and a lease that outlives a crashed writer expires on its own.
+ * the holder renews it between the read and the write (and aborts instead of
+ * writing when the renewal is refused), and a lease that outlives a crashed
+ * writer expires on its own.
  */
 import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -14,7 +16,8 @@ import { readAppState, writeAppState } from "./store";
 export const ACTION_LOG_RESOURCE = "actions";
 export const ACTION_LOG_MAX_ENTRIES = 200;
 
-export const LEASE_TTL_MS = 30_000;
+/** Longer than one Box request timeout, so a single `cat` or PUT cannot outlive the lease. */
+export const LEASE_TTL_MS = 90_000;
 export const LEASE_ATTEMPTS = 6;
 export const LEASE_BACKOFF_MS = 50;
 
@@ -43,6 +46,25 @@ export interface LeaseOptions {
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
+async function tryLease(
+  supabase: SupabaseClient,
+  userId: string,
+  app: string,
+  resource: string,
+  holder: string,
+  ttlMs: number
+): Promise<boolean> {
+  const { data, error } = await supabase.rpc("miniapp_state_lease", {
+    p_user_id: userId,
+    p_app: app,
+    p_resource: resource,
+    p_holder: holder,
+    p_ttl_ms: ttlMs,
+  });
+  if (error) throw new Error(`state lease failed: ${error.message}`);
+  return data === true;
+}
+
 async function acquireLease(
   supabase: SupabaseClient,
   userId: string,
@@ -53,19 +75,12 @@ async function acquireLease(
 ): Promise<void> {
   const attempts = options.attempts ?? LEASE_ATTEMPTS;
   const backoffMs = options.backoffMs ?? LEASE_BACKOFF_MS;
+  const ttlMs = options.ttlMs ?? LEASE_TTL_MS;
   for (let attempt = 0; attempt < attempts; attempt++) {
     if (attempt > 0) {
       await sleep(backoffMs * 2 ** (attempt - 1) * (1 + Math.random() / 2));
     }
-    const { data, error } = await supabase.rpc("miniapp_state_lease", {
-      p_user_id: userId,
-      p_app: app,
-      p_resource: resource,
-      p_holder: holder,
-      p_ttl_ms: options.ttlMs ?? LEASE_TTL_MS,
-    });
-    if (error) throw new Error(`state lease failed: ${error.message}`);
-    if (data === true) return;
+    if (await tryLease(supabase, userId, app, resource, holder, ttlMs)) return;
   }
   throw new ActionLogBusyError();
 }
@@ -116,6 +131,17 @@ export async function appendActionLogEntry(
       ? (existing as ActionLogEntry[])
       : [];
     entries.push(entry);
+    // The same holder extends its own lease; a refusal means it expired and
+    // someone else took it, so writing now would race their read-modify-write.
+    const stillHeld = await tryLease(
+      supabase,
+      userId,
+      app,
+      ACTION_LOG_RESOURCE,
+      holder,
+      options.ttlMs ?? LEASE_TTL_MS
+    );
+    if (!stillHeld) throw new ActionLogBusyError();
     await writeAppState(
       supabase,
       userId,
