@@ -1,0 +1,24 @@
+# Air Outbound Worker (V11 §11.3) — the dispatch namespace's `outbound`
+# service (see ../wrangler.toml). Deployed before the Dispatcher by
+# ../release.sh so the service binding resolves.
+#
+# No secrets. RUNTIME_TOKENS is this Worker's own KV: the control plane
+# writes each app's runtime token under `rt:<token id>`
+# (apps/web/lib/functions/runtime.ts, CF_RUNTIME_KV_ID) and nothing else
+# ever reads it.
+
+name = "air-outbound"
+main = "index.mjs"
+compatibility_date = "2025-06-01"
+workers_dev = false
+
+[vars]
+CONTROL_PLANE_ORIGIN = "https://app.wzrd.tech"
+
+[[kv_namespaces]]
+binding = "RUNTIME_TOKENS"
+id = "REPLACE_WITH_CF_RUNTIME_KV_ID"
+
+[observability]
+enabled = true
+head_sampling_rate = 0.1

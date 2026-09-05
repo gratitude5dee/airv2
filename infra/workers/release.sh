@@ -3,8 +3,10 @@
 # infra/template/release.sh: immutable artifact, sha256, channel pointer.
 #
 #   1. refuse a dirty infra/workers tree;
-#   2. digest dispatcher/index.mjs and static-stub/index.mjs;
-#   3. deploy the Dispatcher with wrangler, tagged with the version + digest;
+#   2. digest dispatcher/index.mjs, outbound/index.mjs and static-stub/index.mjs;
+#   3. deploy the Outbound Worker, then the Dispatcher (whose dispatch
+#      namespace binds `air-outbound` as its outbound service), tagged with
+#      the version + digest;
 #   4. verify through the health path;
 #   5. print the release record (version, git sha, digests) for the deploy log.
 #
@@ -27,6 +29,7 @@ fi
 GIT_SHA="$(git -C "$REPO_ROOT" rev-parse HEAD)"
 VERSION="$(date -u +%Y.%m.%d)-${GIT_SHA:0:7}"
 DISPATCHER_SHA="$(sha256sum "$WORKERS/dispatcher/index.mjs" | cut -d' ' -f1)"
+OUTBOUND_SHA="$(sha256sum "$WORKERS/outbound/index.mjs" | cut -d' ' -f1)"
 STUB_SHA="$(sha256sum "$WORKERS/static-stub/index.mjs" | cut -d' ' -f1)"
 
 # The control plane embeds the stub; a drift here would ship two stubs.
@@ -36,6 +39,11 @@ if ! grep -q "$STUB_SHA" "$REPO_ROOT/apps/web/lib/functions/staticStub.ts" 2>/de
 fi
 
 cd "$WORKERS"
+npx --yes wrangler@4 deploy \
+  --config outbound/wrangler.toml \
+  --var "RELEASE_VERSION:$VERSION" \
+  --var "RELEASE_SHA256:$OUTBOUND_SHA"
+
 npx --yes wrangler@4 deploy \
   --config wrangler.toml \
   --var "RELEASE_VERSION:$VERSION" \
@@ -58,6 +66,7 @@ cat <<EOF
   "version": "$VERSION",
   "git_sha": "$GIT_SHA",
   "dispatcher_sha256": "$DISPATCHER_SHA",
+  "outbound_sha256": "$OUTBOUND_SHA",
   "static_stub_sha256": "$STUB_SHA",
   "health": "$HEALTH_URL"
 }

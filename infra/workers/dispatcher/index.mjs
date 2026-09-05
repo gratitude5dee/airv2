@@ -14,7 +14,10 @@
 //     (`<slug>` or `<slug>-draft`) serves.
 //  4. `/api/*` goes to the app's user Worker with every inbound `X-Air-*`
 //     stripped and the pseudonymous identity headers set; everything else is
-//     the script's static assets.
+//     the script's static assets. The user Worker's own `fetch()` lands on the
+//     Outbound Worker (outbound/index.mjs) with `params` taken from the
+//     signed manifest: the approved egress list, the approved budget and the
+//     opaque runtime-token reference — never a credential (CR6, CR16).
 //  5. Response headers the user code cannot override: the CSP ceiling (CR12),
 //     Referrer-Policy, nosniff, cache rules, Report-To → /__air/csp.
 //
@@ -240,6 +243,27 @@ function finalize(response, env, url) {
   return new Response(response.body, { status: response.status, headers });
 }
 
+/**
+ * What the Outbound Worker learns about this request (§11.3): identity for
+ * the runtime API, the owner-approved egress list and cap (from the signed
+ * manifest, never the working tree — CR7/CR8) and the runtime-token
+ * *reference*. The token itself lives only in the Outbound Worker's KV.
+ */
+function outboundParams(manifest, session, slug, version) {
+  const runtime = manifest.runtime ?? {};
+  const killed = runtime.killed === true;
+  return {
+    app: slug,
+    owner_ref: manifest.owner_ref,
+    principal: session.principal,
+    role: session.role,
+    version,
+    egress: killed || !Array.isArray(runtime.egress) ? [] : runtime.egress.filter((h) => typeof h === "string"),
+    budget_usd: killed ? 0 : Number(runtime.budget_usd) || 0,
+    token_ref: killed || typeof runtime.token_ref !== "string" ? null : runtime.token_ref,
+  };
+}
+
 function miniUrl(env, slug) {
   const dash = slug.indexOf("-");
   return `${env.MINI_ORIGIN}/${slug.slice(0, dash)}/${slug.slice(dash + 1)}`;
@@ -368,11 +392,7 @@ export default {
         {},
         {
           limits: { cpuMs: Number(env.CPU_MS ?? 50), subRequests: 20 },
-          outbound: {
-            app: slug,
-            owner_ref: manifest.owner_ref,
-            role: session.role,
-          },
+          outbound: { params: outboundParams(manifest, session, slug, version) },
         }
       );
     } catch {
