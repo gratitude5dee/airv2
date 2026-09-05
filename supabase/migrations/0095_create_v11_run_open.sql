@@ -11,8 +11,9 @@
 -- cleanly, so they neither block the owner nor attract another run's spend:
 -- an open row older than p_max_minutes (the relay never saw a terminal
 -- event), and an open row still without hermes_run_id after
--- p_link_grace_minutes (the turn links the id seconds after inserting; a
--- row unlinked for minutes belongs to a turn that failed and could not close
+-- p_link_grace_minutes (the turn links the id once the Box is awake and the
+-- run exists; the caller sets the grace above the bounded cold-wake time, so
+-- a row unlinked past it belongs to a turn that failed and could not close
 -- it either). A second turn on the *same* project while its run is open is
 -- still admitted, as before.
 --

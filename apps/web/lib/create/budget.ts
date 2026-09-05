@@ -16,11 +16,13 @@ export const CREATE_RUN_ATTRIBUTION_MINUTES = 30;
 /** An open Create run older than this never closed cleanly; it stops counting. */
 export const CREATE_RUN_MAX_MINUTES = 60;
 /**
- * A run row gets its hermes_run_id seconds after it is opened; one still
- * unlinked after this long belongs to a turn that failed and could not
- * close it. It stops blocking and stops attributing.
+ * A run row is opened before the Box is woken, and gets its hermes_run_id
+ * once the run starts. Waking a cold Box is bounded (waitForBox 240 s +
+ * the hermes health loop 180 s), so a row still unlinked past this bound
+ * belongs to a turn that failed and could not close it. It stops blocking
+ * and stops attributing.
  */
-export const CREATE_RUN_LINK_GRACE_MINUTES = 2;
+export const CREATE_RUN_LINK_GRACE_MINUTES = 10;
 
 export function createRunLabel(slug: string): string {
   return `${CREATE_LABEL_PREFIX}${slug}`;

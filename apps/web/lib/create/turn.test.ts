@@ -328,6 +328,27 @@ describe("startCreateTurn attribution", () => {
     expect(state.rows[0]!.ended_at).not.toBeNull();
   });
 
+  it("a row unlinked for the whole cold-wake bound is neither retired nor blocking-stale", async () => {
+    // ensureBoxAwake may spend waitForBox (240 s) + the hermes health loop
+    // (180 s) before createRun; the grace must outlast that so a slow but
+    // legitimate first turn still links its row.
+    const wakeBoundMinutes = (240 + 180) / 60;
+    expect(CREATE_RUN_LINK_GRACE_MINUTES).toBeGreaterThan(wakeBoundMinutes);
+    boxes.ensureBoxAwake.mockImplementationOnce(async () => {
+      state.rows[0]!.started_at = new Date(Date.now() - wakeBoundMinutes * 60_000).toISOString();
+      // Another project's turn arriving now must still see this run as open.
+      const other = await startCreateTurn(supabase, "user-alice", { ...input, appname: "other" }, context).catch(
+        (e: unknown) => e
+      );
+      expect((other as PublishError).status).toBe(409);
+      return { target: { baseUrl: "http://box", token: "t" } };
+    });
+    const out = await startCreateTurn(supabase, "user-alice", input, context);
+    expect(out.run_id).toBe("run-1");
+    expect(state.rows).toHaveLength(1);
+    expect(state.rows[0]).toMatchObject({ label: "create:alice-countdown", hermes_run_id: "run-1", ended_at: null });
+  });
+
   it("stops a run whose row was retired while the Box woke, instead of linking it to nothing", async () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
     // Cold Box: another project's turn arrives past the grace period and
