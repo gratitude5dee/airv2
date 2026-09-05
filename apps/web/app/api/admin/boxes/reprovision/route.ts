@@ -7,22 +7,34 @@
  * per user.
  *
  * The caller names the box it means to replace (`box_id`) and the row is
- * claimed with a conditional update before any compute is built, so a retry
- * after the row has moved on, or a second overlapping call for the same
- * user, is a 409 rather than a second fork that would leave an instance
- * orphaned.
+ * claimed (`boxes.replace_claimed_at`) with a conditional update before any
+ * compute is built, so a retry after the row has moved on, or a second
+ * overlapping call for the same user, is a 409 rather than a second fork that
+ * would leave an instance orphaned. The claim is its own column because the
+ * box lifecycle rewrites `state` at will; it carries its timestamp so a call
+ * killed mid-flight (deploy, hard timeout) can be taken over once it is older
+ * than any request could still be running, and it is released on every exit.
+ *
+ * A fork that fails before the row is repointed is a plain 500 with the
+ * claim released; if the new box is already live and only its post-fork
+ * setup failed, the 500 carries `committed: true` and the new `box_id`, since
+ * that is now the user's box and the one a retry must name.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuthorized } from "@/lib/admin/auth";
 import { toComputeEnvironment } from "@/lib/compute/environments";
-import { switchEnvironment } from "@/lib/provisioning/provision";
+import {
+  SwitchSetupError,
+  switchEnvironment,
+} from "@/lib/provisioning/provision";
 import { serviceClient } from "@/lib/supabase";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-const CLAIM_STATE = "provisioning";
+/** A claim older than this outlives any request that could hold it. */
+const CLAIM_TTL_MS = 2 * maxDuration * 1000;
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!adminAuthorized(request)) {
@@ -44,7 +56,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const supabase = serviceClient();
   const { data: box, error } = await supabase
     .from("boxes")
-    .select("provider_box_id, environment, state")
+    .select("provider_box_id, environment")
     .eq("user_id", userId)
     .maybeSingle();
   if (error) {
@@ -56,7 +68,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const current = box as {
     provider_box_id: string;
     environment: string | null;
-    state: string;
   };
   if (current.provider_box_id !== boxId) {
     return NextResponse.json(
@@ -65,12 +76,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
+  const claimedAt = new Date().toISOString();
+  const staleBefore = new Date(Date.now() - CLAIM_TTL_MS).toISOString();
   const { data: claimed, error: claimError } = await supabase
     .from("boxes")
-    .update({ state: CLAIM_STATE })
+    .update({ replace_claimed_at: claimedAt })
     .eq("user_id", userId)
     .eq("provider_box_id", boxId)
-    .neq("state", CLAIM_STATE)
+    .or(`replace_claimed_at.is.null,replace_claimed_at.lt.${staleBefore}`)
     .select("provider_box_id");
   if (claimError) {
     return NextResponse.json({ error: claimError.message }, { status: 500 });
@@ -92,13 +105,24 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       environment: result.environment,
     });
   } catch (err) {
+    const message = err instanceof Error ? err.message : "unknown error";
+    if (err instanceof SwitchSetupError) {
+      return NextResponse.json(
+        {
+          error: message,
+          committed: true,
+          previous_box_id: boxId,
+          box_id: err.boxId,
+        },
+        { status: 500 },
+      );
+    }
+    return NextResponse.json({ error: message }, { status: 500 });
+  } finally {
     await supabase
       .from("boxes")
-      .update({ state: current.state })
+      .update({ replace_claimed_at: null })
       .eq("user_id", userId)
-      .eq("provider_box_id", boxId)
-      .eq("state", CLAIM_STATE);
-    const message = err instanceof Error ? err.message : "unknown error";
-    return NextResponse.json({ error: message }, { status: 500 });
+      .eq("replace_claimed_at", claimedAt);
   }
 }
