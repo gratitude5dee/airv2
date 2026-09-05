@@ -35,6 +35,14 @@ import {
 import { nestedPathFor } from "../miniapps/nested";
 import { PublishError, validateAppName } from "../miniapps/publish";
 import type { RegistryApp } from "../miniapps/registry";
+import { appOriginLaneReady } from "../functions/deploy";
+import { stageDeclaration } from "../functions/backend";
+import {
+  functionsDeclarationSchema,
+  type FunctionsDeclaration,
+} from "../functions/egress";
+import { ensureResources } from "../functions/provision";
+import { textContainsSecrets } from "../storage/guard";
 import { buildStylesheet, type ThemeName } from "./css";
 import { resolveOrCreateDropApp } from "./drop";
 import {
@@ -68,12 +76,18 @@ export const WORKSPACE_MAX_FILES = 400;
 export const WORKSPACE_MAX_BYTES = 24 * 1024 * 1024;
 export const SOURCE_MAX_BYTES = 512 * 1024;
 export const ASSET_MAX_BYTES = 2 * 1024 * 1024;
+/** §11.6: the built Functions module, minified, before upload. */
+export const FUNCTIONS_MODULE_MAX_BYTES = 1024 * 1024;
 export const LOG_TAIL_LINES = 50;
 
 const APPNAME_RE = /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/;
 const KIT_ID_RE = /^(air|[a-z0-9-]+\/[a-z0-9-]+)$/;
 const ACTION_RE = /^[a-z][a-z0-9_-]{0,47}$/;
 const SOURCE_EXT = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".css", ".json", ".html", ".txt", ".md"]);
+const FUNCTIONS_EXT = new Set([".ts", ".js", ".mjs", ".json"]);
+const SWEPT_EXT = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".json", ".html", ".txt", ".md", ".css"]);
+/** The only bare imports a Functions module may make (§11.6). */
+export const FUNCTIONS_IMPORTS = ["@air/functions", "hono", "zod"] as const;
 const ASSET_EXT = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".woff", ".woff2", ".mp3", ".mp4", ".webm", ".json", ".txt", ".md"]);
 
 export const airJsonSchema = z
@@ -99,7 +113,7 @@ export const airJsonSchema = z
       .default({ components: [] }),
     actions: z.array(z.string().regex(ACTION_RE)).max(64).default([]),
     guestActions: z.array(z.string().regex(ACTION_RE)).max(64).default([]),
-    functions: z.null().or(z.object({ entry: z.string() })).default(null),
+    functions: z.null().or(functionsDeclarationSchema).default(null),
     visibility: z.enum(["public", "unlisted", "private"]).optional(),
     access: z.enum(["single", "multiplayer"]).optional(),
     password: z.string().optional(),
@@ -134,6 +148,8 @@ export interface CompileOutput {
   /** Content-free build log: stage names and counts, never source. */
   log: string[];
   air: AirJson | null;
+  /** The built Functions module (§11.6), null for a static app. */
+  functions: { module: Buffer; bytes: number } | null;
 }
 
 export interface BuildManifest {
@@ -143,7 +159,8 @@ export interface BuildManifest {
   theme: ThemeName;
   actions: string[];
   guestActions: string[];
-  functions: null;
+  /** Public and content-free: the module's declared resources only. */
+  functions: { db: boolean; kv: boolean } | null;
   kit: { version: string; components: string[] };
   surface: { lite: boolean; expanded: boolean };
   version: string;
@@ -216,16 +233,6 @@ export function parseAirJson(text: string): { air: AirJson | null; findings: Fin
       );
     }
   }
-  if (air.functions !== null) {
-    findings.push(
-      finding(
-        "air.json",
-        "functions",
-        "functions are not built in this lane yet (MC5); set functions to null",
-        "soft"
-      )
-    );
-  }
   return { air: findings.some((f) => f.severity === "hard") ? null : air, findings };
 }
 
@@ -242,7 +249,7 @@ export function safeWorkspacePath(entryPath: string): string | null {
   const top = safe.split("/")[0]!;
   if (top === "air.json" && safe === top) return safe;
   if (top === "create.plan.md" && safe === top) return safe;
-  if (!["src", "public"].includes(top)) return null;
+  if (!["src", "public", "functions"].includes(top)) return null;
   return safe;
 }
 
@@ -265,6 +272,12 @@ export function checkWorkspace(files: WorkspaceFile[]): Finding[] {
       } else if (file.bytes.length > SOURCE_MAX_BYTES) {
         findings.push(finding(file.path, "size", `source files are capped at ${SOURCE_MAX_BYTES / 1024} KiB`));
       }
+    } else if (file.path.startsWith("functions/")) {
+      if (!FUNCTIONS_EXT.has(ext)) {
+        findings.push(finding(file.path, "workspace", `${ext || "extensionless"} files do not belong in functions/`));
+      } else if (file.bytes.length > SOURCE_MAX_BYTES) {
+        findings.push(finding(file.path, "size", `source files are capped at ${SOURCE_MAX_BYTES / 1024} KiB`));
+      }
     } else if (file.path.startsWith("public/")) {
       if (ext === ".svg") {
         findings.push(finding(file.path, "workspace", "svg is scriptable; export png or webp"));
@@ -282,9 +295,29 @@ export function checkWorkspace(files: WorkspaceFile[]): Finding[] {
 }
 
 /**
+ * §11.4: a credential pasted into source fails the build before anything is
+ * compiled or stored. The finding names the file and points at the Secrets
+ * tab; the matched text is never repeated (CR12).
+ */
+export function sweepWorkspaceSecrets(files: WorkspaceFile[]): Finding[] {
+  const findings: Finding[] = [];
+  for (const file of files) {
+    if (!file.path.startsWith("src/") && !file.path.startsWith("functions/")) continue;
+    if (!SWEPT_EXT.has(path.posix.extname(file.path).toLowerCase())) continue;
+    const reason = textContainsSecrets(file.bytes.toString("utf8"));
+    if (reason) {
+      findings.push(
+        finding(file.path, "secret", `${reason}; remove it and set it under Functions → Secrets instead`)
+      );
+    }
+  }
+  return findings;
+}
+
+/**
  * The tree as one gzipped tar over the command lane — one round trip, size-
  * capped on the Box side so a runaway workspace is a finding, not a payload.
- * `.build/`, `functions/` and anything hidden stay in the Box.
+ * `.build/` and anything hidden stay in the Box.
  */
 export async function pullWorkspace(
   target: ComputeTarget,
@@ -294,7 +327,7 @@ export async function pullWorkspace(
   const cap = WORKSPACE_MAX_BYTES + 1;
   const cmd =
     `cd "$HOME/${dir}" 2>/dev/null || exit 3; ` +
-    `tar -czf - --exclude='.*' --exclude='node_modules' air.json create.plan.md src public 2>/dev/null | head -c ${cap} | base64 -w0`;
+    `tar -czf - --exclude='.*' --exclude='node_modules' air.json create.plan.md src public functions 2>/dev/null | head -c ${cap} | base64 -w0`;
   const result = await runCommand(target, cmd, 60);
   if (result.exitCode === 3) throw new BuildError("no workspace for that app", 404);
   const archive = Buffer.from(result.stdout.trim(), "base64");
@@ -328,7 +361,7 @@ export interface WorkspaceEntry {
 }
 
 /** Paths and sizes only (the Files tab's tree); the same visibility rules
- * as `pullWorkspace`, so `.build/` and `functions/` never list. */
+ * as `pullWorkspace`, so `.build/` never lists. */
 export async function listWorkspace(
   target: ComputeTarget,
   appname: string
@@ -336,7 +369,7 @@ export async function listWorkspace(
   const dir = workspacePath(appname);
   const cmd =
     `cd "$HOME/${dir}" 2>/dev/null || exit 3; ` +
-    `find air.json create.plan.md src public -type f -not -path '*/.*' -not -path '*/node_modules/*' -printf '%s %p\\n' 2>/dev/null | head -n ${WORKSPACE_MAX_FILES}`;
+    `find air.json create.plan.md src public functions -type f -not -path '*/.*' -not -path '*/node_modules/*' -printf '%s %p\\n' 2>/dev/null | head -n ${WORKSPACE_MAX_FILES}`;
   const result = await runCommand(target, cmd, 30);
   if (result.exitCode === 3) throw new BuildError("no workspace for that app", 404);
   const entries: WorkspaceEntry[] = [];
@@ -464,6 +497,150 @@ function kitPlugin(
   };
 }
 
+/** The vendored `@air/functions` SDK the Build Service resolves (pinned
+ * byte-for-byte to packages/air-functions by sdk.test.ts). */
+export function functionsSdkEntry(root = kitRoot()): string {
+  return path.join(root, "functions", "index.ts");
+}
+
+/**
+ * §11.6 resolution policy for the Functions module: relative imports stay
+ * under `functions/`, bare imports are `@air/functions` (the vendored SDK),
+ * `hono` or `zod` from the vendor snapshot — nothing else, no `node:*`, no
+ * `cloudflare:*`, nothing from `src/`. Refusals are hard findings.
+ */
+function functionsPlugin(
+  sandbox: string,
+  nodeModules: string,
+  findings: Finding[]
+): esbuild.Plugin {
+  const sdk = functionsSdkEntry();
+  const sdkDir = path.dirname(sdk);
+  const fnRoot = path.join(sandbox, "functions");
+  const fromVendor = (dir: string) => within(nodeModules, dir) || within(sdkDir, dir);
+  const refuse = (importer: string, reason: string, rule = "foreign-import") => {
+    const file = within(sandbox, importer) ? relTo(sandbox, importer) : path.basename(importer);
+    findings.push(finding(file, rule, reason));
+    return { errors: [{ text: reason }] };
+  };
+  return {
+    name: "air-functions",
+    setup(build) {
+      build.onResolve({ filter: /^[^./]/ }, (args) => {
+        if (args.kind === "entry-point" || within(nodeModules, args.resolveDir)) return null;
+        if (args.path === "@air/functions") return { path: sdk };
+        const pkg = packageNameOf(args.path);
+        if ((FUNCTIONS_IMPORTS as readonly string[]).includes(pkg) && pkg !== "@air/functions") {
+          return null;
+        }
+        return refuse(
+          args.importer,
+          `${args.path} is not available to functions/ (only ${FUNCTIONS_IMPORTS.join(", ")})`
+        );
+      });
+      build.onResolve({ filter: /^\./ }, (args) => {
+        if (args.kind === "entry-point" || fromVendor(args.resolveDir)) return null;
+        const target = path.resolve(args.resolveDir, args.path);
+        if (!within(fnRoot, target)) {
+          return refuse(args.importer, `${args.path} escapes functions/`, "path-escape");
+        }
+        const resolved = resolveSandboxFile(target);
+        return resolved
+          ? { path: resolved }
+          : refuse(args.importer, `${args.path} does not exist under functions/`, "missing-import");
+      });
+      build.onResolve({ filter: /^\// }, (args) =>
+        args.kind === "entry-point"
+          ? null
+          : refuse(args.importer, `${args.path}: absolute imports are not allowed`, "path-escape")
+      );
+    },
+  };
+}
+
+/**
+ * Build the Functions entry into one ESM module for the user Worker
+ * (§11.6: es2023, ≤ 1 MiB). Problems are findings; `module` is null when
+ * any is hard. The sandbox must still exist.
+ */
+async function compileFunctions(
+  sandbox: string,
+  declared: FunctionsDeclaration,
+  nodeModules: string
+): Promise<{ module: Buffer | null; findings: Finding[] }> {
+  const findings: Finding[] = [];
+  const entry = path.join(sandbox, ...declared.entry.split("/"));
+  if (!fs.existsSync(entry)) {
+    return {
+      module: null,
+      findings: [finding("air.json", "schema", `functions.entry ${declared.entry} is not in the workspace`)],
+    };
+  }
+  try {
+    const result = await esbuild.build({
+      entryPoints: [entry],
+      plugins: [functionsPlugin(sandbox, nodeModules, findings)],
+      bundle: true,
+      write: false,
+      minify: true,
+      format: "esm",
+      platform: "neutral",
+      mainFields: ["workerd", "browser", "module", "main"],
+      conditions: ["workerd", "worker", "browser"],
+      target: ["es2023"],
+      logLevel: "silent",
+      legalComments: "none",
+      outdir: path.join(sandbox, ".fn"),
+      entryNames: "functions",
+      nodePaths: [nodeModules],
+      define: { "process.env.NODE_ENV": '"production"' },
+      absWorkingDir: sandbox,
+    });
+    const out = result.outputFiles.find((file) => file.path.endsWith(".js"));
+    if (!out) {
+      return { module: null, findings: [finding(declared.entry, "compile", "functions build produced no module")] };
+    }
+    for (const warning of result.warnings) {
+      const file = warning.location?.file;
+      if (file && !within(sandbox, path.resolve(sandbox, file))) continue;
+      findings.push(finding(file ?? declared.entry, "compile", warning.text, "soft", warning.location?.line));
+    }
+    const module = Buffer.from(out.contents);
+    if (module.length > FUNCTIONS_MODULE_MAX_BYTES) {
+      findings.push(
+        finding(
+          declared.entry,
+          "size",
+          `functions module is ${(module.length / 1024).toFixed(0)} KiB; the limit is ${FUNCTIONS_MODULE_MAX_BYTES / 1024} KiB`
+        )
+      );
+      return { module: null, findings };
+    }
+    return { module, findings };
+  } catch (error) {
+    if (hard(findings).length > 0) return { module: null, findings };
+    const messages =
+      error instanceof Error && "errors" in error && Array.isArray((error as { errors: unknown }).errors)
+        ? ((error as { errors: esbuild.Message[] }).errors ?? [])
+        : [];
+    if (messages.length === 0) {
+      throw new BuildError(error instanceof Error ? error.message : "functions compile failed", 500);
+    }
+    return {
+      module: null,
+      findings: messages.slice(0, 20).map((message) => {
+        const file = message.location?.file;
+        const rel = file
+          ? within(sandbox, path.resolve(sandbox, file))
+            ? relTo(sandbox, path.resolve(sandbox, file))
+            : path.basename(file)
+          : declared.entry;
+        return finding(rel, "compile", message.text, "hard", message.location?.line);
+      }),
+    };
+  }
+}
+
 function resolveSandboxFile(target: string): string | null {
   if (fs.existsSync(target) && fs.statSync(target).isFile()) return target;
   for (const ext of [".tsx", ".ts", ".jsx", ".js", ".css", ".json"]) {
@@ -572,13 +749,15 @@ export async function compileWorkspace(
   const stop = (extra: Finding[] = []): CompileOutput => {
     findings.push(...extra);
     log.push(`stopped: ${hard(findings).length} hard finding(s)`);
-    return { files: [], findings, sizes: emptySizes(), manifest: null, log, air: null };
+    return { files: [], findings, sizes: emptySizes(), manifest: null, log, air: null, functions: null };
   };
 
   log.push(`workspace: ${files.length} files`);
   const shape = checkWorkspace(files);
   if (hard(shape).length > 0) return stop(shape);
   findings.push(...shape);
+  const swept = sweepWorkspaceSecrets(files);
+  if (swept.length > 0) return stop(swept);
 
   const airFile = files.find((file) => file.path === "air.json");
   if (!airFile) return stop([finding("air.json", "schema", "air.json is missing")]);
@@ -698,6 +877,15 @@ export async function compileWorkspace(
     }
     if (hard(findings).length > 0) return stop();
 
+    let functions: CompileOutput["functions"] = null;
+    if (air.functions) {
+      const built = await compileFunctions(sandbox, air.functions, nodeModules);
+      findings.push(...built.findings);
+      if (!built.module) return stop();
+      functions = { module: built.module, bytes: built.module.length };
+      log.push(`functions: ${(built.module.length / 1024).toFixed(1)} KiB module`);
+    }
+
     const htmlSource = files.find((file) => file.path === "src/index.html");
     const html = htmlSource
       ? injectIntoHtml(htmlSource.bytes.toString("utf8"), air, version)
@@ -737,7 +925,7 @@ export async function compileWorkspace(
       theme: air.theme,
       actions: air.actions,
       guestActions: air.guestActions,
-      functions: null,
+      functions: air.functions ? { db: air.functions.db, kv: air.functions.kv } : null,
       kit: { version: kitVersion(), components: [...state.used].sort() },
       surface: air.surface,
       version,
@@ -774,7 +962,7 @@ export async function compileWorkspace(
       throw error;
     }
     log.push(`bundle: ${bundle.length} files, ${(sizes.total / 1024).toFixed(1)} KiB`);
-    return { files: bundle, findings, sizes, manifest, log, air };
+    return { files: bundle, findings, sizes, manifest, log, air, functions };
   }
 }
 
@@ -890,11 +1078,25 @@ export async function buildApp(
       status: app.status,
     };
   }
+  // A declared backend is staged, never enabled (CR4): the row records the
+  // declaration, resources are provisioned once so the draft can use them,
+  // and the owner's `miniapp_backend` decision is what publish files.
+  if (output.functions && output.air?.functions) {
+    const row = await stageDeclaration(supabase, app, output.air.functions);
+    if (appOriginLaneReady()) {
+      await ensureResources(supabase, row, app.slug, {
+        db: output.air.functions.db,
+        kv: output.air.functions.kv,
+      });
+    }
+    output.log.push(`functions: declared (db=${output.air.functions.db}, kv=${output.air.functions.kv}, egress=${output.air.functions.egress.length})`);
+  }
   const stored = await uploadVersion(supabase, app, output.files, "vibe", {
     findings: output.findings,
     promote: false,
     version,
     kitVersion: output.manifest?.kit.version ?? null,
+    functionsModule: output.functions?.module ?? null,
   });
   output.log.push(`version: ${stored} staged as draft`);
   const staged: RegistryApp = { ...app, draft_version: stored };

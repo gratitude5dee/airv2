@@ -19,13 +19,21 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "../env";
-import { bundleContentType, bundleKey, type BundleFile } from "../miniapps/bundles";
+import {
+  bundleContentType,
+  bundleKey,
+  FUNCTIONS_MAIN,
+  FUNCTIONS_MODULE_DIR,
+  functionsModuleKey,
+  type BundleFile,
+} from "../miniapps/bundles";
 import {
   parseRegistryApp,
   REGISTRY_COLUMNS,
   type RegistryApp,
 } from "../miniapps/registry";
 import { getObject, listKeys, r2Configured } from "../storage/r2";
+import { loadFunctions, moduleAllowed, resourcesFor, type FunctionsRow } from "./backend";
 import {
   cloudflareConfigured,
   deleteDispatchScript,
@@ -33,6 +41,7 @@ import {
   putDispatchScript,
   uploadAssets,
   type AssetFile,
+  type ScriptBinding,
 } from "./cloudflare";
 import { appPrincipal } from "./identity";
 import {
@@ -40,11 +49,15 @@ import {
   readManifest,
   writeManifest,
   type AppManifest,
+  type ManifestRuntime,
 } from "./manifest";
+import { resourceId } from "./provision";
 import { STATIC_STUB_MAIN, STATIC_STUB_MODULE } from "./staticStub";
 import { appOriginConfigured } from "./tokens";
 
 export const WORKER_COMPATIBILITY_DATE = "2026-01-01";
+export const FUNCTIONS_CPU_MS = { free: 50, paid: 200 } as const;
+export const FUNCTIONS_SUBREQUESTS = 20;
 
 export type DeployTarget = "live" | "draft";
 
@@ -82,15 +95,34 @@ export async function loadBundleFiles(
   version: string
 ): Promise<BundleFile[]> {
   if (!r2Configured()) return [];
+  return (await loadRelease(slug, version)).files;
+}
+
+/**
+ * A version's assets plus its Functions module (§11.6), from one listing of
+ * the version prefix. The module sits under the prefix's dot-directory, which
+ * no bundle path can name, so it is purged with the version and never served
+ * as an asset.
+ */
+export async function loadRelease(
+  slug: string,
+  version: string
+): Promise<{ files: BundleFile[]; module: Buffer | null }> {
+  if (!r2Configured()) return { files: [], module: null };
   const prefix = bundleKey(slug, version, "");
+  const moduleKey = functionsModuleKey(slug, version);
   const keys = await listKeys(prefix, 1000);
   const files: BundleFile[] = [];
+  let module: Buffer | null = null;
   for (const key of keys) {
     const object = await getObject(key);
     if (!object) continue;
-    files.push({ path: key.slice(prefix.length), bytes: object.body });
+    if (key === moduleKey) module = object.body;
+    else if (!key.slice(prefix.length).startsWith(FUNCTIONS_MODULE_DIR)) {
+      files.push({ path: key.slice(prefix.length), bytes: object.body });
+    }
   }
-  return files;
+  return { files, module };
 }
 
 export interface StaticDeploy {
@@ -100,6 +132,37 @@ export interface StaticDeploy {
   ownerUserId: string;
   files: BundleFile[];
   target: DeployTarget;
+  /** The version's Functions module; read from the version prefix when
+   * omitted (a redeploy), `null` for a version built without one. */
+  module?: Buffer | null;
+}
+
+async function ownerPlan(supabase: SupabaseClient, userId: string): Promise<"free" | "paid"> {
+  const { data } = await supabase
+    .from("entitlements")
+    .select("plan")
+    .eq("user_id", userId)
+    .maybeSingle();
+  return (data as { plan?: unknown } | null)?.plan === "paid" ? "paid" : "free";
+}
+
+/**
+ * §11.1 binding table, nothing else: the user Worker sees `ASSETS`, its own
+ * `DB`/`KV` when approved (live) or declared (draft) and provisioned, and the
+ * owner-set `secret_text`s the upload keeps in place. No R2, no service
+ * binding, no platform key — ever (CR6).
+ */
+export function functionsBindings(
+  row: FunctionsRow,
+  target: DeployTarget
+): ScriptBinding[] {
+  const bindings: ScriptBinding[] = [{ type: "assets", name: "ASSETS" }];
+  const wants = resourcesFor(row, target);
+  const db = resourceId(row, "db");
+  const kv = resourceId(row, "kv");
+  if (wants.db && db) bindings.push({ type: "d1", name: "DB", id: db });
+  if (wants.kv && kv) bindings.push({ type: "kv_namespace", name: "KV", namespace_id: kv });
+  return bindings;
 }
 
 async function appOriginOpen(
@@ -195,31 +258,63 @@ export async function deployStaticVersion(
   if (!appOriginLaneReady()) return null;
   await claimAppOrigin(supabase, input.appId, input.slug);
   const script = scriptNameFor(input.slug, input.target);
+  // The module runs only where the backend row allows it for this target
+  // (§11.6: draft follows the declaration, live the approved manifest; the
+  // kill switch blocks both). Otherwise the version serves as a static app.
+  const module =
+    input.module === undefined
+      ? (await loadRelease(input.slug, input.version)).module
+      : input.module;
+  const backend = module ? await loadFunctions(supabase, input.appId) : null;
+  const runsFunctions = module !== null && backend !== null && moduleAllowed(backend, input.target);
   const assets = await uploadAssets(
     script,
     toAssetFiles(input.files),
     input.ownerUserId
   );
-  const { digest } = await putDispatchScript({
-    script,
-    mainModule: STATIC_STUB_MAIN,
-    modules: [
-      {
-        name: STATIC_STUB_MAIN,
-        content: STATIC_STUB_MODULE,
-        type: "application/javascript+module",
-      },
-    ],
-    bindings: [{ type: "assets", name: "ASSETS" }],
-    tags: [
-      `owner:${input.ownerUserId}`,
-      `app:${input.slug}`,
-      `version:${input.version}`,
-    ],
-    compatibilityDate: WORKER_COMPATIBILITY_DATE,
-    limits: { cpu_ms: 50, subrequests: 0 },
-    assetsJwt: assets.jwt,
-  });
+  const tags = [
+    `owner:${input.ownerUserId}`,
+    `app:${input.slug}`,
+    `version:${input.version}`,
+  ];
+  const { digest } =
+    runsFunctions && backend
+      ? await putDispatchScript({
+          script,
+          mainModule: FUNCTIONS_MAIN,
+          modules: [
+            {
+              name: FUNCTIONS_MAIN,
+              content: module.toString("utf8"),
+              type: "application/javascript+module",
+            },
+          ],
+          bindings: functionsBindings(backend, input.target),
+          keepSecrets: true,
+          tags,
+          compatibilityDate: WORKER_COMPATIBILITY_DATE,
+          limits: {
+            cpu_ms: FUNCTIONS_CPU_MS[await ownerPlan(supabase, input.ownerUserId)],
+            subrequests: FUNCTIONS_SUBREQUESTS,
+          },
+          assetsJwt: assets.jwt,
+        })
+      : await putDispatchScript({
+          script,
+          mainModule: STATIC_STUB_MAIN,
+          modules: [
+            {
+              name: STATIC_STUB_MAIN,
+              content: STATIC_STUB_MODULE,
+              type: "application/javascript+module",
+            },
+          ],
+          bindings: [{ type: "assets", name: "ASSETS" }],
+          tags,
+          compatibilityDate: WORKER_COMPATIBILITY_DATE,
+          limits: { cpu_ms: 50, subrequests: 0 },
+          assetsJwt: assets.jwt,
+        });
   console.log(
     JSON.stringify({
       msg: "app worker deployed",
@@ -227,28 +322,72 @@ export async function deployStaticVersion(
       version: input.version,
       target: input.target,
       files: input.files.length,
+      functions: runsFunctions,
     })
   );
   await confirmAppOrigin(supabase, input.appId, input.slug);
   return { workerSha256: digest };
 }
 
-export function manifestFor(app: RegistryApp): AppManifest {
+/**
+ * What the Dispatcher hands the Outbound Worker (§11.3): the approved egress
+ * list and budget — never the declaration — the resource flags, and the
+ * opaque runtime-token reference. Absent until a backend is declared.
+ */
+export function runtimeFor(row: FunctionsRow | null): ManifestRuntime | undefined {
+  if (!row || row.status === "disabled") return undefined;
+  const approved = row.approved_manifest;
+  return {
+    egress: approved?.egress ?? [],
+    budget_usd: approved?.dailyCapUsd ?? 0,
+    db: approved?.db === true,
+    kv: approved?.kv === true,
+    token_ref: row.runtime_token_id,
+    draft: moduleAllowed(row, "draft"),
+    killed: row.killed_at !== null,
+  };
+}
+
+export function manifestFor(app: RegistryApp, backend: FunctionsRow | null = null): AppManifest {
   const status: AppManifest["status"] =
     app.status === "suspended"
       ? "suspended"
       : app.status === "published"
         ? "published"
         : "draft";
+  const runtime = runtimeFor(backend);
   return {
     slug: app.slug,
     status,
     live: app.status === "published" ? app.bundle_version : null,
     draft: app.draft_version,
     owner_ref: app.owner_user_id ? appPrincipal(app.owner_user_id, app.id) : "",
-    functions: app.functions_enabled,
+    functions: app.functions_enabled && (runtime === undefined || !runtime.killed),
     updated_at: new Date().toISOString(),
+    ...(runtime ? { runtime } : {}),
   };
+}
+
+/** The backend row for the manifest; a read failure is fail-closed only when
+ * the app has a backend to lose (a static app's manifest needs no row). */
+async function backendForManifest(
+  supabase: SupabaseClient,
+  app: RegistryApp
+): Promise<FunctionsRow | null> {
+  try {
+    return await loadFunctions(supabase, app.id);
+  } catch (error) {
+    if (app.functions_enabled) throw error;
+    return null;
+  }
+}
+
+/** The registry row's manifest with the backend row folded in. */
+export async function currentManifest(
+  supabase: SupabaseClient,
+  app: RegistryApp
+): Promise<AppManifest> {
+  return manifestFor(app, await backendForManifest(supabase, app));
 }
 
 /**
@@ -260,7 +399,7 @@ export async function syncManifest(
   app: RegistryApp
 ): Promise<boolean> {
   if (!appOriginLaneReady() || !app.owner_user_id) return false;
-  await writeManifestGuarded(supabase, app, manifestFor(app));
+  await writeManifestGuarded(supabase, app, await currentManifest(supabase, app));
   return true;
 }
 
@@ -275,7 +414,7 @@ export async function suspendOnAppOrigin(
 ): Promise<void> {
   if (!appOriginLaneReady() || !app.owner_user_id) return;
   await writeManifestGuarded(supabase, app, {
-    ...manifestFor(app),
+    ...(await currentManifest(supabase, app)),
     status: "suspended",
     live: null,
   });
@@ -299,7 +438,7 @@ export async function promoteVersion(
   version: string
 ): Promise<{ workerSha256: string } | null> {
   if (!appOriginLaneReady() || !app.owner_user_id) return null;
-  const files = await loadBundleFiles(app.slug, version);
+  const { files, module } = await loadRelease(app.slug, version);
   if (files.length === 0) {
     throw new Error(`version ${version} has no stored bundle for ${app.slug}`);
   }
@@ -309,11 +448,12 @@ export async function promoteVersion(
     version,
     ownerUserId: app.owner_user_id,
     files,
+    module,
     target: "live",
   });
   try {
     await writeManifestGuarded(supabase, app, {
-      ...manifestFor(app),
+      ...(await currentManifest(supabase, app)),
       status: "published",
       live: version,
     });
@@ -343,7 +483,7 @@ async function restoreLiveWorker(
     await deleteDispatchScript(scriptNameFor(app.slug, "live"));
     return;
   }
-  const files = await loadBundleFiles(app.slug, previous);
+  const { files, module } = await loadRelease(app.slug, previous);
   if (files.length === 0) return;
   await deployStaticVersion(supabase, {
     appId: app.id,
@@ -351,6 +491,7 @@ async function restoreLiveWorker(
     version: previous,
     ownerUserId: app.owner_user_id,
     files,
+    module,
     target: "live",
   });
 }
@@ -521,7 +662,7 @@ async function putOriginOn(
     await promoteVersion(supabase, app, expected.live);
   }
   if (expected.draft && (!known || known.draft !== expected.draft) && app.owner_user_id) {
-    const files = await loadBundleFiles(app.slug, expected.draft);
+    const { files, module } = await loadRelease(app.slug, expected.draft);
     if (files.length > 0) {
       await deployStaticVersion(supabase, {
         appId: app.id,
@@ -529,6 +670,7 @@ async function putOriginOn(
         version: expected.draft,
         ownerUserId: app.owner_user_id,
         files,
+        module,
         target: "draft",
       });
     }

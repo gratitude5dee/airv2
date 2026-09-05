@@ -18,6 +18,28 @@ function isManifestStatus(value: unknown): value is ManifestStatus {
   return value === "draft" || value === "published" || value === "suspended";
 }
 
+/**
+ * MC5 (§11.3, §11.5, §11.7): what the Dispatcher hands the Outbound Worker
+ * for a Functions app — the *approved* reach and spend, and an opaque
+ * reference to the runtime token (the Outbound Worker resolves it from its
+ * own KV; the token itself is in no manifest, param, or binding — CR6/CR16).
+ * Content-free by construction: hostnames, booleans, one dollar figure.
+ */
+export interface ManifestRuntime {
+  /** Exact hosts the owner approved; `air.internal` is implicit. */
+  egress: string[];
+  /** Approved daily inference cap in USD (CR8). */
+  budget_usd: number;
+  db: boolean;
+  kv: boolean;
+  /** Opaque runtime-token reference (`miniapp_runtime_tokens.id`), or null. */
+  token_ref: string | null;
+  /** The draft Worker may run a user module (agent testing before approval). */
+  draft: boolean;
+  /** Kill switch: no user module on either target, static assets still serve. */
+  killed: boolean;
+}
+
 export interface AppManifest {
   slug: string;
   status: ManifestStatus;
@@ -27,8 +49,28 @@ export interface AppManifest {
   draft: string | null;
   /** Owner pseudonym for `outbound.params` — never the user id (CR9). */
   owner_ref: string;
+  /** The live Worker runs an approved user module (§11.6). */
   functions: boolean;
   updated_at: string;
+  /** Absent for apps that never declared a backend. */
+  runtime?: ManifestRuntime;
+}
+
+export function parseManifestRuntime(value: unknown): ManifestRuntime | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const r = value as Record<string, unknown>;
+  const budget = Number(r["budget_usd"]);
+  return {
+    egress: Array.isArray(r["egress"])
+      ? r["egress"].filter((h): h is string => typeof h === "string")
+      : [],
+    budget_usd: Number.isFinite(budget) && budget > 0 ? budget : 0,
+    db: r["db"] === true,
+    kv: r["kv"] === true,
+    token_ref: typeof r["token_ref"] === "string" ? r["token_ref"] : null,
+    draft: r["draft"] === true,
+    killed: r["killed"] === true,
+  };
 }
 
 export interface SignedManifest {
@@ -103,6 +145,7 @@ export async function readManifest(slug: string): Promise<AppManifest | null> {
     if (typeof manifest.slug !== "string" || !isManifestStatus(manifest.status)) {
       return null;
     }
+    const runtime = parseManifestRuntime(manifest.runtime);
     return {
       slug: manifest.slug,
       status: manifest.status,
@@ -111,6 +154,7 @@ export async function readManifest(slug: string): Promise<AppManifest | null> {
       owner_ref: typeof manifest.owner_ref === "string" ? manifest.owner_ref : "",
       functions: manifest.functions === true,
       updated_at: typeof manifest.updated_at === "string" ? manifest.updated_at : "",
+      ...(runtime ? { runtime } : {}),
     };
   } catch {
     return null;

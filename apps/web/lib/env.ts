@@ -214,6 +214,8 @@ export const env = {
   cfDispatchNamespace: (): string =>
     optional("CF_DISPATCH_NAMESPACE", "air-apps"),
   cfManifestKvId: (): string | null => process.env["CF_MANIFEST_KV_ID"] ?? null,
+  /** The Outbound Worker's KV: runtime tokens by opaque reference (§11.3). */
+  cfRuntimeKvId: (): string | null => process.env["CF_RUNTIME_KV_ID"] ?? null,
   cfDispatchHealthUrl: (): string =>
     optional(
       "CF_DISPATCH_HEALTH_URL",
