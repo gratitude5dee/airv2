@@ -58,10 +58,17 @@ export function baseSkillsFor(provider: MailProvider = mailProvider()): readonly
   return [...MAIL_PROVIDER_SKILLS[provider], ...BASE_SKILLS];
 }
 
-/** Best-effort base-skill install on an already-awake instance (provisioning). */
-export async function installBaseSkills(target: ComputeTarget): Promise<void> {
+/**
+ * Best-effort base-skill install on an already-awake instance (provisioning).
+ * `identifiers` narrows the list to the skills a verified template fork is
+ * known to be missing; the default re-asserts every base skill.
+ */
+export async function installBaseSkills(
+  target: ComputeTarget,
+  identifiers: readonly string[] = baseSkillsFor()
+): Promise<void> {
   const boxId = target.instanceId;
-  for (const identifier of baseSkillsFor()) {
+  for (const identifier of identifiers) {
     try {
       const result = await runCommand(
         target,

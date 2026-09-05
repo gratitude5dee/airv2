@@ -278,6 +278,11 @@ printf 'y\n' | "$HERMES_VENV/bin/hermes" mcp add daytona --command /usr/local/bi
 # is baked from skills/wzrdmail in the local-skills loop below. Provisioning
 # enables exactly one mail MCP (wzrdmail or agentmail) per box, so having both
 # skills on the image is harmless during the cutover.
+# Every install that succeeds is recorded in ~/.hermes/.template-skills;
+# provisioning re-asserts only the identifiers missing from that manifest, so
+# a warned-past failure here is never mistaken for a baked skill on a fork.
+SKILLS_MANIFEST="$HOME_DIR/.hermes/.template-skills"
+: > "$SKILLS_MANIFEST.tmp"
 for skill in \
   official/email/agentmail \
   official/research/duckduckgo-search \
@@ -297,8 +302,13 @@ for skill in \
   skills-sh/calesthio/openmontage/ai-video-gen \
   skills-sh/aradotso/security-skills/anthropic-cybersecurity-skills \
 ; do
-  "$HERMES_VENV/bin/hermes" skills install "$skill" --yes || echo "WARN: base skill $skill install failed" >&2
+  if "$HERMES_VENV/bin/hermes" skills install "$skill" --yes; then
+    printf '%s\n' "$skill" >> "$SKILLS_MANIFEST.tmp"
+  else
+    echo "WARN: base skill $skill install failed" >&2
+  fi
 done
+mv "$SKILLS_MANIFEST.tmp" "$SKILLS_MANIFEST"
 
 # Bake local skills shipped with this template (e.g. the computer relay,
 # which teaches the agent to send its human a live screen card for logins).
@@ -821,6 +831,14 @@ sudo systemctl start hermes-gateway.service hermes-dashboard.service hermes-host
 # memory layer must never fail the template build (graceful degradation is
 # the acceptance posture in docs/memory-upgrade.md).
 ovctl ensure || echo "WARN: openviking ensure failed — deep memory degraded" >&2
+
+# Release identity (written by release.sh into the artifact). A build from a
+# working tree has none, and must not leave a stale marker behind.
+if [ -f "$TEMPLATE_DIR/RELEASE" ]; then
+  cp "$TEMPLATE_DIR/RELEASE" "$HOME_DIR/.hermes/.template-release"
+else
+  rm -f "$HOME_DIR/.hermes/.template-release"
+fi
 
 echo "Template setup complete."
 echo "Next (operator steps, per goal.md M0):"

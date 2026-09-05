@@ -544,4 +544,13 @@ sudo systemctl restart hermes-gateway.service hermes-dashboard.service hermes-ho
 # the server. Best effort: deep memory degrades, the box never breaks.
 ovctl ensure || echo "WARN: openviking ensure failed — deep memory degraded" >&2
 
+# Release identity (written by release.sh into the artifact). A sync from a
+# working tree has none, and must not leave a stale marker behind: forks of a
+# template synced that way take the full post-fork setup.
+if [ -f "$TEMPLATE_DIR/RELEASE" ]; then
+  cp "$TEMPLATE_DIR/RELEASE" "$HOME_DIR/.hermes/.template-release"
+else
+  rm -f "$HOME_DIR/.hermes/.template-release"
+fi
+
 echo "Baseline sync complete."

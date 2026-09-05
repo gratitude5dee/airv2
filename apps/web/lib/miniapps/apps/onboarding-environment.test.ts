@@ -381,6 +381,42 @@ describe("onboarding environment step", () => {
     expect(state.steps.environment).toBe("done");
   });
 
+  it("a failed box lookup never falls through to an unleased switch", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const ctx = switchingCtx();
+    const from = (ctx.supabase as unknown as { from: (t: string) => unknown })
+      .from;
+    (ctx.supabase as unknown as { from: (t: string) => unknown }).from = (
+      table: string
+    ) => {
+      const builder = from(table) as Record<string, unknown>;
+      if (table === "boxes") {
+        // Only the lease's own `provider_box_id` lookup fails; the snapshot
+        // reads that precede it still see the omarchy row.
+        let columns = "";
+        builder["select"] = vi.fn((selected: string) => {
+          columns = selected;
+          return builder;
+        });
+        const snapshotRead = builder["maybeSingle"] as () => Promise<unknown>;
+        builder["maybeSingle"] = async () =>
+          columns === "provider_box_id"
+            ? { data: null, error: { message: "connection reset" } }
+            : snapshotRead();
+      }
+      return builder;
+    };
+    const response = await onboarding.action!(ctx, setEnvironmentForm("ubuntu"));
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("try again in a moment");
+    expect(replaceBox).not.toHaveBeenCalled();
+    expect(switchEnvironment).not.toHaveBeenCalled();
+    const state = JSON.parse(
+      boxFiles.get(".hermes/miniapps/onboarding/state.json") ?? "{}"
+    );
+    expect(state.steps?.environment ?? "todo").toBe("todo");
+  });
+
   it("rejects an unknown environment value", async () => {
     const form = new FormData();
     form.set("action", "set_environment");

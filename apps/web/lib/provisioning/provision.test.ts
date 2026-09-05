@@ -130,9 +130,26 @@ const fakeSupabase = {
 vi.mock("../supabase", () => ({ serviceClient: () => fakeSupabase }));
 
 const fork = vi.fn(async () => ({ id: "box-new" }));
+/**
+ * What the fake fork's template stamped on itself: the release it was built
+ * from (~/.hermes/.template-release) and the hub skills setup.sh managed to
+ * install (~/.hermes/.template-skills). Tests set these per scenario.
+ */
+const templateStamp = { release: "", skills: [] as string[] };
+function stampTemplate(release: string, skills: readonly string[]) {
+  templateStamp.release = release;
+  templateStamp.skills = [...skills];
+}
 const boxCommand = vi.fn(async (_id: string, cmd: string) => {
   if (cmd.includes(".template-hermes-ref")) {
     return { exitCode: 0, stdout: "sha-1\n", stderr: "" };
+  }
+  if (cmd.includes(".template-release")) {
+    return {
+      exitCode: 0,
+      stdout: `${templateStamp.release}\n---template-skills---\n${templateStamp.skills.join("\n")}\n`,
+      stderr: "",
+    };
   }
   if (cmd.includes("hash_password")) {
     return { exitCode: 0, stdout: "hash-1\n", stderr: "" };
@@ -195,7 +212,9 @@ vi.mock("./connectors", () => ({
 }));
 vi.mock("./daytona", () => ({ provisionDaytona: vi.fn() }));
 const installBaseSkills = vi.fn();
+const BASE_SKILLS = ["official/research/duckduckgo-search", "browser-harness"];
 vi.mock("../skills/hub", () => ({
+  baseSkillsFor: () => BASE_SKILLS,
   installBaseSkills: (...args: unknown[]) => installBaseSkills(...(args as [])),
 }));
 vi.mock("../crypto/secretbox", () => ({ sealSecret: vi.fn() }));
@@ -210,7 +229,9 @@ vi.mock("../env", () => ({
 }));
 
 import {
+  LONGEST_REPLACE_CALLER_SECONDS,
   provisionUser,
+  REPLACE_CLAIM_TTL_MS,
   replaceBox,
   ReplaceInProgressError,
   switchEnvironment,
@@ -218,10 +239,11 @@ import {
 } from "./provision";
 import * as boxClient from "../box/client";
 
-/** A channel pointing at a release whose Hermes ref the fake fork reports. */
+/** A channel pointing at a release, by default the one the fake fork's template is stamped with. */
 function pointChannelAtCurrentRelease(
   channel: "dev" | "prod",
-  hermesRef: string | null = "sha-1"
+  hermesRef: string | null = "sha-1",
+  stamp: { version?: string; gitSha?: string } | null = {}
 ) {
   tables["box_channels"] = [
     ...(tables["box_channels"] ?? []),
@@ -232,10 +254,16 @@ function pointChannelAtCurrentRelease(
     {
       id: `rel-${channel}`,
       version: `2026.09.05-${channel}`,
-      git_sha: "abc",
+      git_sha: `sha-${channel}`,
       hermes_ref: hermesRef,
     },
   ];
+  if (stamp) {
+    stampTemplate(
+      `version=${stamp.version ?? `2026.09.05-${channel}`}\ngit_sha=${stamp.gitSha ?? `sha-${channel}`}\nhermes_ref=sha-1\n`,
+      BASE_SKILLS
+    );
+  }
 }
 
 beforeEach(() => {
@@ -244,6 +272,7 @@ beforeEach(() => {
   }
   boxUpdates.length = 0;
   failBoxUpdate = null;
+  stampTemplate("", []);
   fork.mockClear();
   createMacInstance.mockClear();
   installComposioMcp.mockClear();
@@ -400,7 +429,7 @@ describe("fleet position of a fresh fork", () => {
     });
   });
 
-  it("a fork from the channel's current release skips the hub installs and records the baseline", async () => {
+  it("a fork stamped with the channel's release and every base skill skips the hub installs and records the baseline", async () => {
     pointChannelAtCurrentRelease("prod");
     await provisionUser();
     expect(fork).toHaveBeenCalledWith(
@@ -413,6 +442,47 @@ describe("fleet position of a fresh fork", () => {
       baseline_version: "2026.09.05-prod",
       baseline_synced_at: expect.any(String),
     });
+  });
+
+  it("a verified fork still installs the base skills the template failed to bake", async () => {
+    pointChannelAtCurrentRelease("prod");
+    stampTemplate(
+      "version=2026.09.05-prod\ngit_sha=sha-prod\nhermes_ref=sha-1\n",
+      ["official/research/duckduckgo-search"]
+    );
+    await provisionUser();
+    expect(installBaseSkills).toHaveBeenCalledTimes(1);
+    expect(installBaseSkills).toHaveBeenCalledWith(expect.anything(), [
+      "browser-harness",
+    ]);
+    expect(upserts["boxes"]?.[0]).toMatchObject({
+      baseline_version: "2026.09.05-prod",
+    });
+  });
+
+  it("a matching Hermes ref alone never claims a release: an unstamped template takes the full setup", async () => {
+    pointChannelAtCurrentRelease("prod", "sha-1", null);
+    await provisionUser();
+    expect(installBaseSkills).toHaveBeenCalledTimes(1);
+    expect(installBaseSkills).toHaveBeenCalledWith(expect.anything());
+    expect(upserts["boxes"]?.[0]).toMatchObject({
+      baseline_version: null,
+      baseline_synced_at: null,
+    });
+  });
+
+  it("a template stamped with a different release than the channel points at is not claimed", async () => {
+    pointChannelAtCurrentRelease("prod", "sha-1", { version: "2026.09.01-old" });
+    await provisionUser();
+    expect(installBaseSkills).toHaveBeenCalledTimes(1);
+    expect(upserts["boxes"]?.[0]).toMatchObject({ baseline_version: null });
+  });
+
+  it("a stamp whose git sha disagrees with the release row is not claimed", async () => {
+    pointChannelAtCurrentRelease("prod", "sha-1", { gitSha: "sha-elsewhere" });
+    await provisionUser();
+    expect(installBaseSkills).toHaveBeenCalledTimes(1);
+    expect(upserts["boxes"]?.[0]).toMatchObject({ baseline_version: null });
   });
 
   it("a release whose Hermes ref the template does not carry is not claimed", async () => {
@@ -526,9 +596,21 @@ describe("replaceBox", () => {
     expect(releaseUpdates()).toHaveLength(0);
   });
 
+  it("a claim as old as the longest caller budget is still live", async () => {
+    const live = new Date(
+      Date.now() - (LONGEST_REPLACE_CALLER_SECONDS * 1000 - 5_000)
+    ).toISOString();
+    boxRow()["replace_claimed_at"] = live;
+    await expect(
+      replaceBox(fakeSupabase, "user-1", "box-old", "ubuntu")
+    ).rejects.toBeInstanceOf(ReplaceInProgressError);
+    expect(fork).not.toHaveBeenCalled();
+    expect(boxRow()["replace_claimed_at"]).toBe(live);
+  });
+
   it("a claim older than any request could still hold is taken over", async () => {
     boxRow()["replace_claimed_at"] = new Date(
-      Date.now() - 11 * 60_000
+      Date.now() - REPLACE_CLAIM_TTL_MS - 60_000
     ).toISOString();
     const result = await replaceBox(fakeSupabase, "user-1", "box-old", "ubuntu");
     expect(result.boxId).toBe("box-new");
