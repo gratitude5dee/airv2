@@ -43,15 +43,19 @@ vi.mock("@/lib/orchestrator/boxes", () => ({
 }));
 
 const files: Record<string, string> = {};
-vi.mock("@/lib/box/client", () => ({
-  readFile: async (_boxId: string, path: string) => {
-    if (!(path in files)) throw new Error("not found");
-    return files[path];
-  },
-  writeFile: async (_boxId: string, path: string, body: string) => {
-    files[path] = body;
-  },
-}));
+vi.mock("@/lib/box/client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/box/client")>();
+  return {
+    BoxApiError: actual.BoxApiError,
+    readFile: async (_boxId: string, path: string) => {
+      if (!(path in files)) throw new actual.BoxApiError(404, "not found");
+      return files[path];
+    },
+    writeFile: async (_boxId: string, path: string, body: string) => {
+      files[path] = body;
+    },
+  };
+});
 
 import { GET } from "./route";
 import { POST as ACTION } from "../action/route";

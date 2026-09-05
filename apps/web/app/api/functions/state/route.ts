@@ -2,11 +2,14 @@
  * Runtime API (goal-create-v11 §11.3): GET/PUT the app's owner-side state
  * document `.hermes/miniapps/<slug>/<resource>.json`, the same store the
  * MA3 Apps API uses. Caller is the Outbound Worker with the app's runtime
- * token; owners write, everyone else reads. 256 KiB.
+ * token; owners write, everyone else reads. 256 KiB. A PUT to the `actions`
+ * resource goes through the action-log lease so it can't interleave with an
+ * append (`/api/functions/actions`, Apps API `/action`).
  */
 import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
-import { readAppState, writeAppState } from "@/lib/miniapps/store";
+import { readAppState } from "@/lib/miniapps/store";
+import { ActionLogBusyError, putAppState } from "@/lib/miniapps/actionLog";
 import {
   handleRuntime,
   parseJson,
@@ -48,13 +51,20 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
     const resource = resourceOf(request);
     if (call.role !== "owner") throw new RuntimeApiError(403, "owner_only");
     const state = parseJson(await readBoundedText(request, STATE_MAX_BYTES));
-    await writeAppState(
-      supabase,
-      call.principal.userId,
-      call.principal.slug,
-      resource,
-      state
-    );
+    try {
+      await putAppState(
+        supabase,
+        call.principal.userId,
+        call.principal.slug,
+        resource,
+        state
+      );
+    } catch (error) {
+      if (error instanceof ActionLogBusyError) {
+        throw new RuntimeApiError(503, "state_busy");
+      }
+      throw error;
+    }
     return runtimeJson({ ok: true });
   });
 }

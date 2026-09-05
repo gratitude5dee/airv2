@@ -5,7 +5,7 @@
  * mini-app views read and write the same state.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { readFile, writeFile } from "../box/client";
+import { BoxApiError, readFile, writeFile } from "../box/client";
 import { ensureBoxAwake } from "../orchestrator/boxes";
 
 export interface KanbanCard {
@@ -107,15 +107,26 @@ export async function writeAppState(
 
 /**
  * Same documents against a Box the caller already woke: one bounded Box
- * request each, no wake/resume inside — for callers holding a lease.
+ * request each, no wake/resume inside — for callers holding a lease. A
+ * missing file (`cat` exit ≠ 0 → 404) or unparseable one reads as `{}`;
+ * anything else (timeout, Box 5xx, network) propagates, because a
+ * read-modify-write caller that treated it as empty would overwrite the
+ * document with a fresh one.
  */
 export async function readAppStateFrom(
   boxId: string,
   app: string,
   resourceId: string
 ): Promise<unknown> {
+  let raw: string;
   try {
-    return JSON.parse(await readFile(boxId, docPath(app, resourceId))) as unknown;
+    raw = await readFile(boxId, docPath(app, resourceId));
+  } catch (error) {
+    if (error instanceof BoxApiError && error.status === 404) return {};
+    throw error;
+  }
+  try {
+    return JSON.parse(raw) as unknown;
   } catch {
     return {};
   }

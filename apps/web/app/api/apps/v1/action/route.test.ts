@@ -1,7 +1,9 @@
 /**
  * The Apps API (MA3) and the Functions runtime API (MC5) append to the same
  * `actions.json`. Interleave one POST from each against a Box whose read
- * stalls and show both entries land, in order, through the shared lease.
+ * stalls and show both entries land, in order, through the shared lease —
+ * and that a whole-document PUT of `resource=actions` on either state route
+ * waits for that lease instead of landing inside an append.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -20,6 +22,11 @@ const appsSession: AppsApiSession = {
   app,
   session: { userId: "user-1", resourceId: "u-a", role: "owner" },
 };
+const actionsSession: AppsApiSession = {
+  app,
+  session: { userId: "user-1", resourceId: "actions", role: "owner" },
+};
+let currentSession = appsSession;
 const principal: RuntimePrincipal = {
   tokenId: "tok-a",
   appId: "app-a",
@@ -81,7 +88,7 @@ vi.mock("@/lib/miniapps/store", () => ({
   }),
 }));
 vi.mock("@/lib/miniapps/appsApi", () => ({
-  appsApiSession: vi.fn(async () => appsSession),
+  appsApiSession: vi.fn(async () => currentSession),
   bundleManifest: vi.fn(async () => ({ actions: ["rsvp"], guestActions: ["rsvp"] })),
   stateUserId: (auth: AppsApiSession) => auth.session.userId,
 }));
@@ -116,12 +123,21 @@ vi.mock("@/lib/miniapps/actionLog", async (importOriginal) => {
       backoffMs: 2,
       ...(args[4] ?? {}),
     }),
+    putAppState: (...args: Parameters<typeof actual.putAppState>) =>
+      args[3] === actual.ACTION_LOG_RESOURCE
+        ? actual.replaceActionLog(args[0], args[1], args[2], args[4], {
+            attempts: 8,
+            backoffMs: 2,
+          })
+        : actual.putAppState(...args),
   };
 });
 
 import { NextRequest } from "next/server";
 import { POST as appsPost } from "./route";
+import { PUT as appsStatePut } from "../state/route";
 import { POST as functionsPost } from "../../../functions/actions/route";
+import { PUT as functionsStatePut } from "../../../functions/state/route";
 
 const appsReq = (action: string): NextRequest =>
   new NextRequest("https://app.test/api/apps/v1/action", {
@@ -141,6 +157,24 @@ const functionsReq = (action: string): NextRequest => {
     body,
   });
 };
+const appsStateReq = (state: unknown): NextRequest =>
+  new NextRequest("https://app.test/api/apps/v1/state", {
+    method: "PUT",
+    body: JSON.stringify(state),
+  });
+const functionsStateReq = (resource: string, state: unknown): NextRequest => {
+  const body = JSON.stringify(state);
+  return new NextRequest(`https://air.test/api/functions/state?resource=${resource}`, {
+    method: "PUT",
+    headers: {
+      authorization: "Bearer art_a",
+      "X-Air-Role": "owner",
+      "X-Air-Version": "v1",
+      "content-length": String(Buffer.byteLength(body)),
+    },
+    body,
+  });
+};
 const log = (): Array<Record<string, unknown>> =>
   (docs.get("user-1/u-a/actions") as Array<Record<string, unknown>> | undefined) ?? [];
 
@@ -150,6 +184,7 @@ beforeEach(() => {
   reads.length = 0;
   readGate = null;
   leaseAlwaysBusy = false;
+  currentSession = appsSession;
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -194,5 +229,59 @@ describe("action log: Apps API and Functions runtime share one leased append", (
     expect(await fns.json()).toEqual({ error: "state_busy" });
     expect(reads).toHaveLength(0);
     expect(log()).toEqual([]);
+  });
+});
+
+describe("state PUT of resource=actions goes through the same lease", () => {
+  it("Functions PUT state?resource=actions waits for an in-flight Apps API append", async () => {
+    let open!: () => void;
+    readGate = new Promise((resolve) => (open = resolve));
+    const append = appsPost(appsReq("rsvp"));
+    await vi.waitFor(() => expect(reads).toHaveLength(1));
+    readGate = null;
+    const put = functionsStatePut(functionsStateReq("actions", []));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    // the PUT has not landed: an unleased write here would be clobbered by the append's write
+    expect(docs.has("user-1/u-a/actions")).toBe(false);
+    open();
+    const [a, p] = await Promise.all([append, put]);
+    expect(a.status).toBe(200);
+    expect(p.status).toBe(200);
+    // append wrote first, then the PUT replaced the document: last writer wins, nothing interleaved
+    expect(log()).toEqual([]);
+    expect(leases.size).toBe(0);
+  });
+
+  it("Apps API PUT state (session resource `actions`) waits for an in-flight Functions append", async () => {
+    currentSession = actionsSession;
+    let open!: () => void;
+    readGate = new Promise((resolve) => (open = resolve));
+    const append = functionsPost(functionsReq("rsvp"));
+    await vi.waitFor(() => expect(reads).toHaveLength(1));
+    readGate = null;
+    const put = appsStatePut(appsStateReq([{ action: "seed" }]));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(docs.has("user-1/u-a/actions")).toBe(false);
+    open();
+    const [a, p] = await Promise.all([append, put]);
+    expect(a.status).toBe(200);
+    expect(p.status).toBe(200);
+    expect(log()).toEqual([{ action: "seed" }]);
+    expect(leases.size).toBe(0);
+  });
+
+  it("both PUTs answer 503 when the lease cannot be taken; other resources are unaffected", async () => {
+    leaseAlwaysBusy = true;
+    const fns = await functionsStatePut(functionsStateReq("actions", []));
+    expect(fns.status).toBe(503);
+    expect(await fns.json()).toEqual({ error: "state_busy" });
+    currentSession = actionsSession;
+    const apps = await appsStatePut(appsStateReq([]));
+    expect(apps.status).toBe(503);
+    expect(apps.headers.get("retry-after")).toBe("1");
+    expect(docs.has("user-1/u-a/actions")).toBe(false);
+    const other = await functionsStatePut(functionsStateReq("default", { score: 7 }));
+    expect(other.status).toBe(200);
+    expect(docs.get("user-1/u-a/default")).toEqual({ score: 7 });
   });
 });

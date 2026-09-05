@@ -4,12 +4,14 @@
  * Owner sessions have full access; guest sessions read only (writes go
  * through declared guest actions on /action). The app can never name another
  * app's slug or another user's resource: both come from the verified cookie
- * claims, never the request.
+ * claims, never the request. A PUT to the `actions` resource takes the
+ * action-log lease so it can't interleave with an append on /action.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
 import { appsApiSession, stateUserId } from "@/lib/miniapps/appsApi";
-import { readAppState, writeAppState } from "@/lib/miniapps/store";
+import { readAppState } from "@/lib/miniapps/store";
+import { ActionLogBusyError, putAppState } from "@/lib/miniapps/actionLog";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -58,12 +60,22 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
   } catch {
     return NextResponse.json({ error: "invalid json" }, { status: 400 });
   }
-  await writeAppState(
-    supabase,
-    auth.session.userId,
-    auth.app.slug,
-    auth.session.resourceId,
-    state
-  );
+  try {
+    await putAppState(
+      supabase,
+      auth.session.userId,
+      auth.app.slug,
+      auth.session.resourceId,
+      state
+    );
+  } catch (error) {
+    if (error instanceof ActionLogBusyError) {
+      return NextResponse.json(
+        { error: "busy, try again" },
+        { status: 503, headers: { "Retry-After": "1" } }
+      );
+    }
+    throw error;
+  }
   return NextResponse.json({ ok: true });
 }
