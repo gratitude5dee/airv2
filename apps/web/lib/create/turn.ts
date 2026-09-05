@@ -174,16 +174,7 @@ export async function startCreateTurn(
   }
   const rowId = opened.id;
   const closeRow = async (): Promise<void> => {
-    for (let attempt = 0; attempt < CLOSE_ROW_ATTEMPTS; attempt += 1) {
-      const { error } = await supabase
-        .from("agent_runs")
-        .update({ ended_at: new Date().toISOString(), outcome: "failed" })
-        .eq("id", rowId)
-        .is("ended_at", null);
-      if (!error) return;
-      if (attempt + 1 < CLOSE_ROW_ATTEMPTS) await sleep(CLOSE_ROW_BACKOFF_MS * (attempt + 1));
-    }
-    console.error(JSON.stringify({ msg: "create run close failed", user_id: userId, row_id: rowId }));
+    await closeCreateRunRow(supabase, userId, rowId, "failed");
   };
   let box: Awaited<ReturnType<typeof ensureBoxAwake>>;
   try {
@@ -245,4 +236,62 @@ export async function startCreateTurn(
   } finally {
     await armStopAfter(supabase, userId).catch(() => undefined);
   }
+}
+
+/**
+ * Stop one of the owner's Create runs and close its row as interrupted. The
+ * events relay closes a row only when it sees the run's terminal event, so a
+ * run nobody is streaming any more (the owner switched projects, or a turn
+ * answered after the owner had already left it) would otherwise keep editing
+ * and keep its row open — blocking every other project — until it aged out.
+ * Returns false when the run is not one of this owner's open Create runs.
+ */
+export async function stopCreateTurn(
+  supabase: SupabaseClient,
+  userId: string,
+  runId: string
+): Promise<boolean> {
+  const { data: row, error } = await supabase
+    .from("agent_runs")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("hermes_run_id", runId)
+    .like("label", "create:%")
+    .is("ended_at", null)
+    .maybeSingle();
+  if (error) throw new PublishError("could not look up the Create run; try again", 503);
+  if (!row) return false;
+  // A stop that did not reach the Box leaves the row open: the run may well
+  // still be editing, and closing it would only let a second run in beside it.
+  try {
+    const box = await ensureBoxAwake(supabase, userId);
+    await stopRun(box.target, runId);
+  } finally {
+    await armStopAfter(supabase, userId).catch(() => undefined);
+  }
+  if (!(await closeCreateRunRow(supabase, userId, row.id, "interrupted"))) {
+    throw new PublishError("the run was stopped but its row could not be closed", 503);
+  }
+  return true;
+}
+
+/** Close an open Create run row, retrying a failed write a bounded number
+ * of times; false (after a content-free log line) when it stayed open. */
+async function closeCreateRunRow(
+  supabase: SupabaseClient,
+  userId: string,
+  rowId: string,
+  outcome: "failed" | "interrupted"
+): Promise<boolean> {
+  for (let attempt = 0; attempt < CLOSE_ROW_ATTEMPTS; attempt += 1) {
+    const { error } = await supabase
+      .from("agent_runs")
+      .update({ ended_at: new Date().toISOString(), outcome })
+      .eq("id", rowId)
+      .is("ended_at", null);
+    if (!error) return true;
+    if (attempt + 1 < CLOSE_ROW_ATTEMPTS) await sleep(CLOSE_ROW_BACKOFF_MS * (attempt + 1));
+  }
+  console.error(JSON.stringify({ msg: "create run close failed", user_id: userId, row_id: rowId }));
+  return false;
 }

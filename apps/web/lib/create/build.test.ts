@@ -299,6 +299,52 @@ describe("compileWorkspace", () => {
     expect(decoyHtml).toContain('<link rel="stylesheet" href="app.css">');
     expect(decoyHtml).toContain('<script type="module" src="app.js"></script>');
 
+    // A preload link applies no styles and a data block runs no code: the
+    // functional tags are still injected alongside them.
+    const inert = await compileWorkspace(
+      workspace({
+        "src/index.html": `<!doctype html>\n<html>\n<head><link rel="preload" as="style" href="app.css"><link rel="icon" href="app.css"></head>\n<body><div id="root"></div><script type="importmap" src="app.js"></script><script type="text/template" src="app.js"></script></body>\n</html>`,
+      }),
+      { restricted: false }
+    );
+    const inertHtml = inert.files.find((f) => f.path === "index.html")!.bytes.toString();
+    expect(inertHtml).toContain('<link rel="preload" as="style" href="app.css">');
+    expect(inertHtml).toContain('<link rel="stylesheet" href="app.css">');
+    expect(inertHtml).toContain('<script type="module" src="app.js"></script>');
+
+    // A classic script and a rel list that includes stylesheet both count.
+    const classic = await compileWorkspace(
+      workspace({
+        "src/index.html": `<!doctype html>\n<html>\n<head><link rel="preload stylesheet" href="app.css"></head>\n<body><div id="root"></div><script src="app.js"></script></body>\n</html>`,
+      }),
+      { restricted: false }
+    );
+    const classicHtml = classic.files.find((f) => f.path === "index.html")!.bytes.toString();
+    expect(classicHtml.match(/app\.css/g)).toHaveLength(1);
+    expect(classicHtml.match(/app\.js/g)).toHaveLength(1);
+
+    // Legacy JavaScript essences run (one tag); a JS type with parameters is
+    // a data block per "prepare the script element", so the bundle is still
+    // injected next to it.
+    const legacy = await compileWorkspace(
+      workspace({
+        "src/index.html": `<!doctype html>\n<html>\n<head></head>\n<body><div id="root"></div><script type="text/x-javascript" src="app.js"></script></body>\n</html>`,
+      }),
+      { restricted: false }
+    );
+    const legacyHtml = legacy.files.find((f) => f.path === "index.html")!.bytes.toString();
+    expect(legacyHtml.match(/app\.js/g)).toHaveLength(1);
+
+    const parameterized = await compileWorkspace(
+      workspace({
+        "src/index.html": `<!doctype html>\n<html>\n<head></head>\n<body><div id="root"></div><script type="text/javascript;charset=utf-8" src="app.js"></script></body>\n</html>`,
+      }),
+      { restricted: false }
+    );
+    const parameterizedHtml = parameterized.files.find((f) => f.path === "index.html")!.bytes.toString();
+    expect(parameterizedHtml).toContain('<script type="text/javascript;charset=utf-8" src="app.js"></script>');
+    expect(parameterizedHtml).toContain('<script type="module" src="app.js"></script>');
+
     const fragment = await compileWorkspace(
       workspace({ "src/index.html": `<div id="root"></div>` }),
       { restricted: false }
