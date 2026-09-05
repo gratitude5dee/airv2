@@ -21,7 +21,8 @@ alter table miniapp_functions
   add column if not exists runtime_token_id uuid references miniapp_runtime_tokens(id) on delete set null,
   add column if not exists secret_set_at jsonb not null default '{}'::jsonb,
   add column if not exists killed_at timestamptz,
-  add column if not exists killed_by text check (killed_by is null or killed_by in ('owner','admin'));
+  add column if not exists killed_by text check (killed_by is null or killed_by in ('owner','admin')),
+  add column if not exists updated_at timestamptz not null default now();
 
 alter table miniapp_versions
   add column if not exists functions jsonb;
