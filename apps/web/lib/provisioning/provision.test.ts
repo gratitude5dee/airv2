@@ -128,7 +128,10 @@ vi.mock("./connectors", () => ({
     installComposioMcp(...(args as [])),
 }));
 vi.mock("./daytona", () => ({ provisionDaytona: vi.fn() }));
-vi.mock("../skills/hub", () => ({ installBaseSkills: vi.fn() }));
+const installBaseSkills = vi.fn();
+vi.mock("../skills/hub", () => ({
+  installBaseSkills: (...args: unknown[]) => installBaseSkills(...(args as [])),
+}));
 vi.mock("../crypto/secretbox", () => ({ sealSecret: vi.fn() }));
 vi.mock("../env", () => ({
   env: {
@@ -140,7 +143,7 @@ vi.mock("../env", () => ({
   },
 }));
 
-import { provisionUser } from "./provision";
+import { provisionUser, switchEnvironment, SwitchSetupError } from "./provision";
 import * as boxClient from "../box/client";
 
 beforeEach(() => {
@@ -150,6 +153,7 @@ beforeEach(() => {
   fork.mockClear();
   createMacInstance.mockClear();
   installComposioMcp.mockClear();
+  installBaseSkills.mockReset();
   vi.mocked(boxClient.waitForBox)
     .mockReset()
     .mockResolvedValue({ id: "box-new" } as Awaited<
@@ -244,6 +248,49 @@ describe("provisionUser rollback", () => {
     expect(boxClient.stop).toHaveBeenCalledWith("box-new");
     expect(boxClient.deleteBox).toHaveBeenCalledWith("box-new");
     expect(upserts["boxes"]).toBeUndefined();
+  });
+});
+
+describe("switchEnvironment", () => {
+  beforeEach(() => {
+    tables["boxes"] = [
+      { user_id: "user-1", provider_box_id: "box-old", environment: "ubuntu" },
+    ];
+  });
+
+  it("repoints the row at the new box, then tears the old one down", async () => {
+    const result = await switchEnvironment(fakeSupabase, "user-1", "ubuntu");
+    expect(result.boxId).toBe("box-new");
+    expect(upserts["boxes"]?.[0]).toMatchObject({
+      user_id: "user-1",
+      provider_box_id: "box-new",
+    });
+    expect(boxClient.stop).toHaveBeenCalledWith("box-old");
+    expect(boxClient.deleteBox).toHaveBeenCalledWith("box-old");
+    expect(boxClient.deleteBox).not.toHaveBeenCalledWith("box-new");
+  });
+
+  it("a setup failure after the row moved still retires the old box and names the new one", async () => {
+    installBaseSkills.mockRejectedValueOnce(new Error("hub unreachable"));
+    const failure = await switchEnvironment(fakeSupabase, "user-1", "ubuntu").catch(
+      (error: unknown) => error
+    );
+    expect(failure).toBeInstanceOf(SwitchSetupError);
+    expect((failure as SwitchSetupError).boxId).toBe("box-new");
+    expect((failure as Error).message).toMatch(/hub unreachable/);
+    expect(upserts["boxes"]?.[0]).toMatchObject({ provider_box_id: "box-new" });
+    expect(boxClient.deleteBox).toHaveBeenCalledWith("box-old");
+    expect(boxClient.deleteBox).not.toHaveBeenCalledWith("box-new");
+  });
+
+  it("a fork that never becomes ready destroys only the new box", async () => {
+    vi.mocked(boxClient.waitForBox).mockRejectedValueOnce(new Error("never ready"));
+    await expect(switchEnvironment(fakeSupabase, "user-1", "ubuntu")).rejects.toThrow(
+      "never ready"
+    );
+    expect(upserts["boxes"]).toBeUndefined();
+    expect(boxClient.deleteBox).toHaveBeenCalledWith("box-new");
+    expect(boxClient.deleteBox).not.toHaveBeenCalledWith("box-old");
   });
 });
 
