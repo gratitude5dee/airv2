@@ -450,7 +450,7 @@ export async function POST(
   const canFallBack = providerForFamily(servedFamily) !== "openai";
   if (
     canFallBack &&
-    [429, 502, 503, 504].includes(upstream.status)
+    [429, 500, 502, 503, 504].includes(upstream.status)
   ) {
     console.warn(
       JSON.stringify({
@@ -461,6 +461,7 @@ export async function POST(
         status: upstream.status,
       })
     );
+    await upstream.body?.cancel().catch(() => undefined);
     if (RETRY_DELAY_MS > 0) {
       await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
     }
