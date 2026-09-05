@@ -15,11 +15,7 @@ import {
   guardMediaUpload,
   MediaGuardError,
 } from "@/lib/storage/guard";
-import {
-  addUsage,
-  assertWithinQuota,
-  ensureUserBucket,
-} from "@/lib/storage/buckets";
+import { ensureUserBucket, releaseQuota, reserveQuota } from "@/lib/storage/buckets";
 import { publicUrl, putObject, r2Configured } from "@/lib/storage/r2";
 
 export interface PublicExportResult {
@@ -89,10 +85,14 @@ export const publicExporter: PublicExporter = {
     try {
       const bucket = await ensureUserBucket(supabase, userId);
       const bytes = guardMediaUpload(raw, contentType);
-      assertWithinQuota(bucket, bytes.length);
       const key = `${bucket.prefix}media/${randomBytes(6).toString("hex")}-${asset.id}.${asset.ext}`;
-      await putObject(key, bytes, contentType);
-      await addUsage(supabase, userId, bytes.length);
+      const hold = await reserveQuota(supabase, userId, bytes.length);
+      try {
+        await putObject(key, bytes, contentType);
+      } catch (error) {
+        await releaseQuota(supabase, hold);
+        throw error;
+      }
       const url = publicUrl(key);
       return { ok: true, url, line: `public link: ${url}` };
     } catch (error) {

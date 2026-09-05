@@ -18,11 +18,7 @@ import {
   MEDIA_MAX_BYTES,
   MediaGuardError,
 } from "@/lib/storage/guard";
-import {
-  addUsage,
-  assertWithinQuota,
-  ensureUserBucket,
-} from "@/lib/storage/buckets";
+import { ensureUserBucket, releaseQuota, reserveQuota } from "@/lib/storage/buckets";
 import {
   confirmUpload,
   PRESIGN_TTL_SECONDS,
@@ -91,10 +87,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
   try {
     const bucket = await ensureUserBucket(supabase, session.userId);
-    assertWithinQuota(bucket, sizeBytes);
     const key = `${bucket.prefix}media/${randomBytes(6).toString("hex")}-${filename}`;
-    await addUsage(supabase, session.userId, sizeBytes);
-    await reserveUpload(supabase, session.userId, key, sizeBytes);
+    const hold = await reserveQuota(supabase, session.userId, sizeBytes);
+    try {
+      await reserveUpload(supabase, session.userId, key, sizeBytes);
+    } catch (error) {
+      await releaseQuota(supabase, hold);
+      throw error;
+    }
     return NextResponse.json({
       uploadUrl: presignPut(key, contentType, PRESIGN_TTL_SECONDS),
       key,

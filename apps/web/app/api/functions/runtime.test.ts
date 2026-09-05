@@ -51,9 +51,31 @@ const manifests: Record<string, unknown> = {
   "apps/u-a/v1/manifest.json": { actions: ["rsvp", "admin.reset"], guestActions: ["rsvp"] },
 };
 const uploaded: { key: string; bytes: number }[] = [];
+/** In-memory user_buckets row + the 0100 RPCs: check and charge are one step. */
+const quota = { bytes_used: 0, quota_bytes: 1024 * 1024 };
+let putFails = false;
+
+function rpc(name: string, args: Record<string, unknown>): { data: unknown; error: null } {
+  const bytes = Number(args["p_bytes"]);
+  if (name === "user_bucket_reserve") {
+    if (bytes >= 0 && quota.bytes_used + bytes <= quota.quota_bytes) {
+      quota.bytes_used += bytes;
+      return { data: true, error: null };
+    }
+    return { data: false, error: null };
+  }
+  if (name === "user_bucket_release") {
+    quota.bytes_used = Math.max(quota.bytes_used - bytes, 0);
+    return { data: quota.bytes_used, error: null };
+  }
+  throw new Error(`unexpected rpc ${name}`);
+}
 
 vi.mock("@/lib/supabase", () => ({
-  serviceClient: () => ({}) as unknown as SupabaseClient,
+  serviceClient: () =>
+    ({
+      rpc: async (name: string, args: Record<string, unknown>) => rpc(name, args),
+    }) as unknown as SupabaseClient,
 }));
 vi.mock("@/lib/functions/runtime", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/functions/runtime")>();
@@ -88,25 +110,32 @@ vi.mock("@/lib/storage/r2", () => ({
     key in manifests ? { body: Buffer.from(JSON.stringify(manifests[key])) } : null
   ),
   putObject: vi.fn(async (key: string, bytes: Buffer) => {
+    const fail = putFails;
+    // Yield so a racing upload's reserve runs before this put settles.
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    if (fail) throw new Error("r2 down");
     uploaded.push({ key, bytes: bytes.length });
   }),
   publicUrl: (key: string) => `https://cdn.test/${key}`,
 }));
-vi.mock("@/lib/storage/buckets", () => ({
-  ensureUserBucket: vi.fn(async () => ({
-    user_id: "user-1",
-    prefix: "u/alice/",
-    bytes_used: 0,
-    quota_bytes: 1024 * 1024,
-  })),
-  assertWithinQuota: vi.fn(async () => undefined),
-  addUsage: vi.fn(async () => undefined),
-}));
+vi.mock("@/lib/storage/buckets", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/storage/buckets")>();
+  return {
+    ...actual,
+    ensureUserBucket: vi.fn(async () => ({
+      user_id: "user-1",
+      prefix: "u/alice/",
+      bytes_used: quota.bytes_used,
+      quota_bytes: quota.quota_bytes,
+    })),
+  };
+});
 
 import { NextRequest } from "next/server";
 import { GET as stateGet, PUT as statePut } from "./state/route";
 import { POST as actionsPost } from "./actions/route";
 import { POST as mediaPost } from "./media/route";
+import { guardMediaUpload } from "@/lib/storage/guard";
 
 function req(
   url: string,
@@ -131,6 +160,9 @@ beforeEach(() => {
   docs.clear();
   opsRows.length = 0;
   uploaded.length = 0;
+  quota.bytes_used = 0;
+  quota.quota_bytes = 1024 * 1024;
+  putFails = false;
 });
 afterEach(() => vi.unstubAllGlobals());
 
@@ -333,5 +365,89 @@ describe("/api/functions/media", () => {
     expect(await html.json()).toEqual({ error: "media_rejected" });
     expect(uploaded).toHaveLength(0);
     expect(opsRows.some((row) => row.kind === "upload_rejected")).toBe(true);
+    expect(quota.bytes_used).toBe(0);
+  });
+
+  // The guard rewrites the PNG, so the reserved and charged size is the
+  // sanitized length, not the request body.
+  const stored = guardMediaUpload(png, "image/png").length;
+  const upload = () =>
+    mediaPost(
+      req("https://air.test/api/functions/media", {
+        bearer: "art_a",
+        role: "owner",
+        body: png,
+        type: "image/png",
+      })
+    );
+
+  it("charges the quota before the bytes reach R2 and keeps the charge after", async () => {
+    const res = await upload();
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { bytes: number }).bytes).toBe(stored);
+    expect(uploaded[0]!.bytes).toBe(stored);
+    expect(quota.bytes_used).toBe(stored);
+  });
+
+  it("refuses with 413 when the reservation would overflow, without touching R2", async () => {
+    quota.quota_bytes = stored - 1;
+    const res = await upload();
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({ error: "media_rejected" });
+    expect(uploaded).toHaveLength(0);
+    expect(quota.bytes_used).toBe(0);
+    expect(opsRows.some((row) => row.kind === "upload_rejected")).toBe(true);
+  });
+
+  it("two uploads racing under a quota that fits one: exactly one lands", async () => {
+    // Room for one PNG and a bit — the stale read-then-upload gate let both
+    // through here because each saw bytes_used = 0.
+    quota.quota_bytes = stored + 10;
+    const [a, b] = await Promise.all([upload(), upload()]);
+    expect([a.status, b.status].sort()).toEqual([200, 413]);
+    expect(uploaded).toHaveLength(1);
+    expect(quota.bytes_used).toBe(stored);
+    expect(quota.bytes_used).toBeLessThanOrEqual(quota.quota_bytes);
+  });
+
+  it("eight concurrent uploads never overshoot the quota", async () => {
+    quota.quota_bytes = stored * 3;
+    const results = await Promise.all(Array.from({ length: 8 }, upload));
+    const ok = results.filter((r) => r.status === 200).length;
+    expect(ok).toBe(3);
+    expect(results.filter((r) => r.status === 413)).toHaveLength(5);
+    expect(uploaded).toHaveLength(3);
+    expect(quota.bytes_used).toBe(stored * 3);
+  });
+
+  it("releases the reservation when the R2 put fails, so the next upload fits", async () => {
+    quota.quota_bytes = stored;
+    putFails = true;
+    const failed = await upload();
+    expect(failed.status).toBe(500);
+    expect(await failed.json()).toEqual({ error: "internal" });
+    expect(uploaded).toHaveLength(0);
+    expect(quota.bytes_used).toBe(0);
+    putFails = false;
+    const retry = await upload();
+    expect(retry.status).toBe(200);
+    expect(quota.bytes_used).toBe(stored);
+  });
+
+  it("a failed upload racing a live one gives its bytes back to the live one's successor", async () => {
+    quota.quota_bytes = stored * 2;
+    putFails = true;
+    const first = upload();
+    await new Promise((resolve) => setTimeout(resolve, 1));
+    putFails = false;
+    const second = upload();
+    const [f, s] = await Promise.all([first, second]);
+    expect(f.status).toBe(500);
+    expect(s.status).toBe(200);
+    expect(quota.bytes_used).toBe(stored);
+    const third = await upload();
+    expect(third.status).toBe(200);
+    expect(quota.bytes_used).toBe(stored * 2);
+    expect(uploaded).toHaveLength(2);
   });
 });

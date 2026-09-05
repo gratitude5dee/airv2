@@ -29,8 +29,8 @@ vi.mock("@/lib/storage/r2", () => ({
 }));
 vi.mock("@/lib/storage/buckets", () => ({
   ensureUserBucket: vi.fn(async () => ({ prefix: "user-1/" })),
-  assertWithinQuota: vi.fn(),
-  addUsage: vi.fn(async () => undefined),
+  reserveQuota: vi.fn(async (_s: unknown, userId: string, bytes: number) => ({ userId, bytes })),
+  releaseQuota: vi.fn(async () => undefined),
 }));
 vi.mock("@/lib/storage/guard", () => ({
   ALLOWED_MEDIA_TYPES: { "image/png": "png" },
