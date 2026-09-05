@@ -371,8 +371,8 @@ describe("gateway app principal (MC5 §11.3)", () => {
       expect(response.status).toBe(200);
       expect(meteredRows).toHaveLength(1);
       const cost = Number(meteredRows[0]?.["cost_usd"]);
-      expect(ledger["app-a"].reserved).toBe(0);
-      expect(ledger["app-a"].spent).toBeCloseTo(spent + cost, 10);
+      expect(ledger["app-a"]?.reserved).toBe(0);
+      expect(ledger["app-a"]?.spent).toBeCloseTo(spent + cost, 10);
     });
 
     it("the other app of the same owner is not held back by the first app's hold", async () => {
@@ -426,14 +426,14 @@ describe("gateway app principal (MC5 §11.3)", () => {
       );
       const response = await post("art_a", { model: "fast", messages: [], stream: true });
       expect(response.status).toBe(200);
-      expect(ledger["app-a"].reserved).toBe(appReserveUsd("fast"));
+      expect(ledger["app-a"]?.reserved).toBe(appReserveUsd("fast"));
       await response.text();
       await tick();
       expect(meteredRows).toHaveLength(1);
       const cost = Number(meteredRows[0]?.["cost_usd"]);
       expect(cost).toBeGreaterThan(0);
-      expect(ledger["app-a"].reserved).toBe(0);
-      expect(ledger["app-a"].spent).toBeCloseTo(spent + cost, 10);
+      expect(ledger["app-a"]?.reserved).toBe(0);
+      expect(ledger["app-a"]?.spent).toBeCloseTo(spent + cost, 10);
     });
 
     it("a stream that closes without usage releases the hold and meters nothing", async () => {
