@@ -193,11 +193,16 @@ export function syncCommand(release: TemplateRelease): string {
  * UPGRADE.md §2 in-place Hermes re-pin, gated on the release's hermes_ref.
  * Split into sequential commands so each fits the provider's 600s cap:
  * checkout, dependency install, then ref write + service restart.
+ *
+ * A fetch killed mid-flight (box stopped or archived under it) leaves
+ * .git/shallow.lock behind and every later fetch fails with "File exists",
+ * so stale locks are cleared first when no git process holds them.
  */
 export function hermesCommands(hermesRef: string): string[] {
   return [
     [
       `cd ~/hermes-agent`,
+      "pgrep -x git >/dev/null || rm -f .git/shallow.lock .git/index.lock .git/FETCH_HEAD.lock",
       `git fetch --depth 1 origin ${shellQuote(hermesRef)}`,
       "git checkout --force FETCH_HEAD",
     ].join(" && "),
