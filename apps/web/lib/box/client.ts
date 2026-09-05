@@ -252,6 +252,38 @@ export async function command(
   });
 }
 
+/**
+ * Probe for the provider's post-resume restore: while the snapshot is being
+ * hydrated, /home/user is a FUSE mount that the platform swaps out for the
+ * real disk once done, killing every process with a cwd or open file under
+ * it. Prints HYDRATING while the mount is up, STEADY once it is gone.
+ */
+export const HOME_STEADY_PROBE =
+  "mountpoint -q /home/user && echo HYDRATING || echo STEADY";
+
+/**
+ * Block until the home tree has settled onto the real disk. The box reports
+ * ready as soon as the mount is browsable, so anything long-running started
+ * before this returns can die part-way through.
+ */
+export async function waitForHomeSteady(
+  boxId: string,
+  timeoutMs = 240_000
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const probe = await command(boxId, HOME_STEADY_PROBE, 20);
+    if (probe.exitCode === 0 && probe.stdout.trim() === "STEADY") return;
+    if (Date.now() > deadline) {
+      throw new BoxApiError(
+        504,
+        `box ${boxId} home still hydrating after ${timeoutMs}ms`
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5_000));
+  }
+}
+
 /** `cat` in the C locale so ENOENT has one spelling regardless of the Box's LANG. */
 export function readFileCommand(path: string): string {
   return `LC_ALL=C cat ${shellQuote(path)}`;

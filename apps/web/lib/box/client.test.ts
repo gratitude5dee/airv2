@@ -18,6 +18,7 @@ import {
   getBox,
   readFile,
   readFileCommand,
+  waitForHomeSteady,
 } from "./client";
 
 const fetchMock = vi.fn();
@@ -89,6 +90,37 @@ function commandResponse(exitCode: number, stdout = "", stderr = ""): Response {
     headers: { "content-type": "application/json" },
   });
 }
+
+describe("waitForHomeSteady", () => {
+  it("keeps probing while the home tree is still a hydrating mount", async () => {
+    vi.useFakeTimers();
+    try {
+      fetchMock
+        .mockResolvedValueOnce(commandResponse(0, "HYDRATING\n"))
+        .mockResolvedValueOnce(commandResponse(0, "HYDRATING\n"))
+        .mockResolvedValueOnce(commandResponse(0, "STEADY\n"));
+      const settled = waitForHomeSteady("bx_1");
+      await vi.advanceTimersByTimeAsync(11_000);
+      await expect(settled).resolves.toBeUndefined();
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("gives up with a 504 once the deadline passes", async () => {
+    vi.useFakeTimers();
+    try {
+      fetchMock.mockImplementation(async () => commandResponse(0, "HYDRATING"));
+      const settled = waitForHomeSteady("bx_1", 7_000);
+      const failure = expect(settled).rejects.toMatchObject({ status: 504 });
+      await vi.advanceTimersByTimeAsync(20_000);
+      await failure;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
 
 function classify(path: string, result: CommandResult): BoxApiError | string {
   try {
