@@ -20,6 +20,7 @@ import {
   resume,
   stop,
   waitForBox,
+  waitForHomeSteady,
 } from "../box/client";
 import { presignGet } from "../storage/r2";
 import { FleetError, getRelease, type TemplateRelease } from "./releases";
@@ -249,6 +250,11 @@ async function syncOneBox(
   }
   try {
     await waitForBox(boxId);
+    // A resumed box (by us or by any other caller, e.g. prewarm) reports
+    // ready while its snapshot is still being hydrated onto /home/user;
+    // sync-box.sh started inside that window is killed when the platform
+    // swaps the real disk back in.
+    await waitForHomeSteady(boxId);
     const result = await command(
       boxId,
       syncCommand(release),
