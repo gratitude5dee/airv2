@@ -1,8 +1,10 @@
 /**
  * Environment step: the FIRST onboarding step lets the user pick which
  * computer their agent lives on (ubuntu / omarchy / macos). Choosing a
- * different environment rebuilds the compute via switchEnvironment; the
- * browser only ever sees the three labels, never a provider credential.
+ * different environment rebuilds the compute via replaceBox — the same row
+ * lease the operator reprovision route takes, so a double-tap or a concurrent
+ * operator replacement never forks two boxes; the browser only ever sees the
+ * three labels, never a provider credential.
  */
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
@@ -54,16 +56,36 @@ vi.mock("@/lib/onairos/sync", () => ({
   })),
 }));
 
-const switchEnvironment = vi.fn(async () => ({
+const replaceBox = vi.fn(async () => ({
   userId: "user-1",
   boxId: "box-2",
   hostedUrl: "https://h.example",
   dashboardUrl: "https://d.example",
   environment: "omarchy" as const,
 }));
+const switchEnvironment = vi.fn();
+const ReplaceInProgressError = vi.hoisted(
+  () =>
+    class ReplaceInProgressError extends Error {
+      constructor(readonly boxId: string) {
+        super(`box ${boxId} is already being replaced`);
+      }
+    }
+);
+const SwitchSetupError = vi.hoisted(
+  () =>
+    class SwitchSetupError extends Error {
+      constructor(readonly boxId: string) {
+        super(`box ${boxId} is live but its setup failed: skills`);
+      }
+    }
+);
 vi.mock("@/lib/provisioning/provision", () => ({
+  replaceBox: (...args: unknown[]) => replaceBox(...(args as [])),
   switchEnvironment: (...args: unknown[]) =>
     switchEnvironment(...(args as [])),
+  ReplaceInProgressError,
+  SwitchSetupError,
 }));
 
 import { onboarding } from "@/lib/miniapps/apps/onboarding";
@@ -121,9 +143,35 @@ function makeCtx(
 }
 
 afterEach(() => {
+  replaceBox.mockClear();
   switchEnvironment.mockClear();
   boxFiles.clear();
 });
+
+/** A ctx whose boxes row is on omarchy, so choosing ubuntu is a real switch. */
+function switchingCtx() {
+  const ctx = makeCtx();
+  (ctx.supabase as unknown as { from: (t: string) => unknown }).from = (
+    table: string
+  ) =>
+    table === "boxes"
+      ? thenable([], {
+          provider_box_id: "box-1",
+          environment: "omarchy",
+          control_url: null,
+          control_token: null,
+          state: "ready",
+        })
+      : thenable([], null);
+  return ctx;
+}
+
+function setEnvironmentForm(environment: string) {
+  const form = new FormData();
+  form.set("action", "set_environment");
+  form.set("environment", environment);
+  return form;
+}
 
 describe("onboarding environment step", () => {
   it("is the first real step after the welcome intro, before username", () => {
@@ -259,6 +307,7 @@ describe("onboarding environment step", () => {
     expect(response.status).toBe(200);
     const body = await response.text();
     expect(body).toContain("coming soon");
+    expect(replaceBox).not.toHaveBeenCalled();
     expect(switchEnvironment).not.toHaveBeenCalled();
     const state = JSON.parse(
       boxFiles.get(".hermes/miniapps/onboarding/state.json") ?? "{}"
@@ -272,7 +321,60 @@ describe("onboarding environment step", () => {
     form.set("environment", "ubuntu");
     const response = await onboarding.action!(makeCtx(), form);
     expect(response.status).toBe(200);
+    expect(replaceBox).not.toHaveBeenCalled();
     expect(switchEnvironment).not.toHaveBeenCalled();
+    const state = JSON.parse(
+      boxFiles.get(".hermes/miniapps/onboarding/state.json") ?? "{}"
+    );
+    expect(state.steps.environment).toBe("done");
+  });
+
+  it("a real switch leases the current box through replaceBox", async () => {
+    const response = await onboarding.action!(
+      switchingCtx(),
+      setEnvironmentForm("ubuntu")
+    );
+    expect(response.status).toBe(200);
+    expect(replaceBox).toHaveBeenCalledWith(
+      expect.anything(),
+      "user-1",
+      "box-1",
+      "ubuntu"
+    );
+    expect(switchEnvironment).not.toHaveBeenCalled();
+    expect(await response.text()).toContain("now lives on Ubuntu");
+    const state = JSON.parse(
+      boxFiles.get(".hermes/miniapps/onboarding/state.json") ?? "{}"
+    );
+    expect(state.steps.environment).toBe("done");
+  });
+
+  it("a switch already in flight keeps the step open without forking again", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    replaceBox.mockRejectedValueOnce(new ReplaceInProgressError("box-1"));
+    const response = await onboarding.action!(
+      switchingCtx(),
+      setEnvironmentForm("ubuntu")
+    );
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("already being moved");
+    const state = JSON.parse(
+      boxFiles.get(".hermes/miniapps/onboarding/state.json") ?? "{}"
+    );
+    expect(state.steps?.environment ?? "todo").toBe("todo");
+  });
+
+  it("a setup failure after the row moved still marks the step done and says so", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    replaceBox.mockRejectedValueOnce(new SwitchSetupError("box-2"));
+    const response = await onboarding.action!(
+      switchingCtx(),
+      setEnvironmentForm("ubuntu")
+    );
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toContain("now lives on Ubuntu");
+    expect(body).toContain("starter skills");
     const state = JSON.parse(
       boxFiles.get(".hermes/miniapps/onboarding/state.json") ?? "{}"
     );
@@ -285,30 +387,16 @@ describe("onboarding environment step", () => {
     form.set("environment", "windows");
     const response = await onboarding.action!(makeCtx(), form);
     expect(response.status).toBe(403);
-    expect(switchEnvironment).not.toHaveBeenCalled();
+    expect(replaceBox).not.toHaveBeenCalled();
   });
 
   it("a failed switch keeps the step open with a retry notice", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
-    switchEnvironment.mockRejectedValueOnce(new Error("box gone"));
-    const form = new FormData();
-    form.set("action", "set_environment");
-    form.set("environment", "ubuntu");
-    const ctx = makeCtx();
-    // Current environment differs so ubuntu is a real switch.
-    (
-      ctx.supabase as unknown as { from: (t: string) => unknown }
-    ).from = (table: string) =>
-      table === "boxes"
-        ? thenable([], {
-            provider_box_id: "box-1",
-            environment: "omarchy",
-            control_url: null,
-            control_token: null,
-            state: "ready",
-          })
-        : thenable([], null);
-    const response = await onboarding.action!(ctx, form);
+    replaceBox.mockRejectedValueOnce(new Error("box gone"));
+    const response = await onboarding.action!(
+      switchingCtx(),
+      setEnvironmentForm("ubuntu")
+    );
     expect(response.status).toBe(200);
     const body = await response.text();
     expect(body).toContain("isn't available right now");

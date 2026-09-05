@@ -6,14 +6,12 @@
  * state (memory, sessions, user-installed skills) is lost, so callers opt in
  * per user.
  *
- * The caller names the box it means to replace (`box_id`) and the row is
- * claimed (`boxes.replace_claimed_at`) with a conditional update before any
- * compute is built, so a retry after the row has moved on, or a second
- * overlapping call for the same user, is a 409 rather than a second fork that
- * would leave an instance orphaned. The claim is its own column because the
- * box lifecycle rewrites `state` at will; it carries its timestamp so a call
- * killed mid-flight (deploy, hard timeout) can be taken over once it is older
- * than any request could still be running, and it is released on every exit.
+ * The caller names the box it means to replace (`box_id`); replaceBox leases
+ * the row on that id (`boxes.replace_claimed_at`) before any compute is
+ * built, so a retry after the row has moved on, or a second overlapping
+ * replacement for the same user (another operator call, or the user's own
+ * onboarding environment switch), is a 409 rather than a second fork that
+ * would leave an instance orphaned. The new box keeps the old one's channel.
  *
  * A fork that fails before the row is repointed is a plain 500 with the
  * claim released; if the new box is already live and only its post-fork
@@ -24,17 +22,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminAuthorized } from "@/lib/admin/auth";
 import { toComputeEnvironment } from "@/lib/compute/environments";
 import {
+  ReplaceInProgressError,
   SwitchSetupError,
-  switchEnvironment,
+  replaceBox,
 } from "@/lib/provisioning/provision";
 import { serviceClient } from "@/lib/supabase";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+/**
+ * Must stay under the replacement lease TTL (provision.REPLACE_CLAIM_TTL_MS)
+ * or a live replace can be taken over.
+ */
 export const maxDuration = 300;
-
-/** A claim older than this outlives any request that could hold it. */
-const CLAIM_TTL_MS = 2 * maxDuration * 1000;
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!adminAuthorized(request)) {
@@ -76,28 +76,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const claimedAt = new Date().toISOString();
-  const staleBefore = new Date(Date.now() - CLAIM_TTL_MS).toISOString();
-  const { data: claimed, error: claimError } = await supabase
-    .from("boxes")
-    .update({ replace_claimed_at: claimedAt })
-    .eq("user_id", userId)
-    .eq("provider_box_id", boxId)
-    .or(`replace_claimed_at.is.null,replace_claimed_at.lt.${staleBefore}`)
-    .select("provider_box_id");
-  if (claimError) {
-    return NextResponse.json({ error: claimError.message }, { status: 500 });
-  }
-  if (!claimed || claimed.length === 0) {
-    return NextResponse.json(
-      { error: "box is already being replaced" },
-      { status: 409 },
-    );
-  }
-
   const environment = toComputeEnvironment(current.environment);
   try {
-    const result = await switchEnvironment(supabase, userId, environment);
+    const result = await replaceBox(supabase, userId, boxId, environment);
     return NextResponse.json({
       user_id: result.userId,
       previous_box_id: boxId,
@@ -106,6 +87,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown error";
+    if (err instanceof ReplaceInProgressError) {
+      return NextResponse.json(
+        { error: "box is already being replaced" },
+        { status: 409 },
+      );
+    }
     if (err instanceof SwitchSetupError) {
       return NextResponse.json(
         {
@@ -118,11 +105,5 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
     return NextResponse.json({ error: message }, { status: 500 });
-  } finally {
-    await supabase
-      .from("boxes")
-      .update({ replace_claimed_at: null })
-      .eq("user_id", userId)
-      .eq("replace_claimed_at", claimedAt);
   }
 }
