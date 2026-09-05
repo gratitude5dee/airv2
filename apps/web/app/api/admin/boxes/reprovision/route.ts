@@ -30,7 +30,10 @@ import { serviceClient } from "@/lib/supabase";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-/** Must stay under REPLACE_CLAIM_TTL_MS or a live replace can be taken over. */
+/**
+ * Must stay under the replacement lease TTL (provision.REPLACE_CLAIM_TTL_MS)
+ * or a live replace can be taken over.
+ */
 export const maxDuration = 300;
 
 export async function POST(request: NextRequest): Promise<NextResponse> {

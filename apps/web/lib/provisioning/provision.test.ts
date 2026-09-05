@@ -20,6 +20,9 @@ const upserts: Record<string, Row[]> = {};
 const tables: Record<string, Row[]> = {};
 /** Every update() applied to `boxes`, with the filters it carried. */
 const boxUpdates: Array<{ values: Row; filters: string[] }> = [];
+/** When set, a `boxes` update carrying these values fails with this message. */
+let failBoxUpdate: { when: (values: Row) => boolean; message: string } | null =
+  null;
 
 type Filter = (row: Row) => boolean;
 
@@ -87,7 +90,14 @@ function tableApi(table: string) {
         select: async () => ({ data: [{ id: "line-1" }], error: null }),
       }),
       select: async () => ({ data: apply(), error: null }),
-      then(resolve: (value: { error: null }) => unknown) {
+      then(
+        resolve: (value: { error: { message: string } | null }) => unknown
+      ) {
+        if (table === "boxes" && failBoxUpdate?.when(values)) {
+          return Promise.resolve({
+            error: { message: failBoxUpdate.message },
+          }).then(resolve);
+        }
         apply();
         return Promise.resolve({ error: null }).then(resolve);
       },
@@ -233,6 +243,7 @@ beforeEach(() => {
     for (const key of Object.keys(store)) delete store[key];
   }
   boxUpdates.length = 0;
+  failBoxUpdate = null;
   fork.mockClear();
   createMacInstance.mockClear();
   installComposioMcp.mockClear();
@@ -552,6 +563,33 @@ describe("replaceBox", () => {
     ).catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(SwitchSetupError);
     expect(boxRow()["replace_claimed_at"]).toBeNull();
+  });
+
+  it("a failed claim release never masks the switch's own outcome", async () => {
+    failBoxUpdate = {
+      when: (values) => values["replace_claimed_at"] === null,
+      message: "connection reset",
+    };
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const result = await replaceBox(fakeSupabase, "user-1", "box-old", "ubuntu");
+    expect(result.boxId).toBe("box-new");
+
+    installBaseSkills.mockRejectedValueOnce(new Error("hub unreachable"));
+    boxRow()["replace_claimed_at"] = null;
+    const failure = await replaceBox(
+      fakeSupabase,
+      "user-1",
+      "box-old",
+      "ubuntu"
+    ).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(SwitchSetupError);
+
+    const releaseFailures = errorLog.mock.calls.filter((call) =>
+      String(call[0]).includes("replace claim release failed")
+    );
+    expect(releaseFailures).toHaveLength(2);
+    errorLog.mockRestore();
   });
 });
 

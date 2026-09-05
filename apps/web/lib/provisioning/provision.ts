@@ -329,11 +329,36 @@ export async function replaceBox(
   try {
     return await switchEnvironment(supabase, userId, environment);
   } finally {
-    await supabase
+    await releaseClaim(supabase, userId, claimedAt);
+  }
+}
+
+/**
+ * Best effort: the switch's own outcome (a committed SwitchSetupError above
+ * all) must reach the caller even if the release fails, and a stuck claim
+ * expires on its own after REPLACE_CLAIM_TTL_MS.
+ */
+async function releaseClaim(
+  supabase: ReturnType<typeof serviceClient>,
+  userId: string,
+  claimedAt: string
+): Promise<void> {
+  try {
+    const { error } = await supabase
       .from("boxes")
       .update({ replace_claimed_at: null })
       .eq("user_id", userId)
       .eq("replace_claimed_at", claimedAt);
+    if (error) throw new Error(error.message);
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        msg: "replace claim release failed",
+        user_id: userId,
+        claimed_at: claimedAt,
+        error: error instanceof Error ? error.message : "unknown",
+      })
+    );
   }
 }
 
