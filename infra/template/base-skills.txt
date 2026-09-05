@@ -1,0 +1,24 @@
+# Hub skills baked into the template image (setup.sh step 3c), one identifier
+# per line. Pinned from real `hermes skills search` results, never guessed, and
+# mirrored in BASE_SKILLS (apps/web/lib/skills/hub.ts) so provisioning can
+# re-assert whichever ones a fork proves to be missing. A skill Hermes bundles
+# (so the hub never writes it to the lockfile) carries `builtin=<path under
+# ~/.hermes/skills>`; skills-manifest.py counts it when that exact path holds a
+# SKILL.md.
+official/email/agentmail
+official/research/duckduckgo-search
+official/creative/hyperframes
+skills-sh/kepano/obsidian-skills/defuddle
+browser-harness
+skills-sh/panniantong/agent-reach/agent-reach
+skills-sh/jakubkrehel/make-interfaces-feel-better/make-interfaces-feel-better
+skills-sh/addyosmani/agent-skills/browser-testing-with-devtools
+skills-sh/composiohq/skills/composio
+skills-sh/zeropointrepo/youtube-skills/youtube-full
+skills-sh/nousresearch/hermes-agent/humanizer builtin=creative/humanizer
+skills-sh/mattpocock/skills/setup-matt-pocock-skills
+skills-sh/aradotso/trending-skills/skillclaw-skill-evolution
+skills-sh/aradotso/mcp-skills/codebase-memory-mcp-intelligence
+skills-sh/forward-future/loopy/loopy
+skills-sh/calesthio/openmontage/ai-video-gen
+skills-sh/aradotso/security-skills/anthropic-cybersecurity-skills
