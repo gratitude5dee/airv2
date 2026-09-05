@@ -4,3 +4,4 @@
 0082_create_v11_versions.sql 0083_create_v11_versions.sql
 0090_create_v11_point_live_fence.sql 0093_create_v11_point_live_fence.sql
 0096_create_v11_functions.sql 0097_create_v11_functions.sql
+0099_create_v11_state_leases.sql 0101_create_v11_state_leases.sql

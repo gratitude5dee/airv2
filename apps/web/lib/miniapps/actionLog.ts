@@ -2,21 +2,22 @@
  * The per-app action log (`.hermes/miniapps/<slug>/actions.json`) is a Box
  * file appended to by two routes — the MA3 Apps API and the Functions runtime
  * API — and the Box files API has no compare-and-swap. Appends serialize on a
- * short Postgres lease (migration 0099) taken around the read-modify-write:
- * the Box is woken first so the lease only covers the bounded `cat` + PUT,
- * the holder renews it between the read and the write (and aborts instead of
+ * short Postgres lease (migration 0101) taken around the read-modify-write:
+ * the Box is woken first so the lease only covers one bounded `cat` and one
+ * bounded PUT against that already-resolved Box (no wake/resume inside), the
+ * holder renews it between the read and the write (and aborts instead of
  * writing when the renewal is refused), and a lease that outlives a crashed
  * writer expires on its own.
  */
 import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ensureBoxAwake } from "../orchestrator/boxes";
-import { readAppState, writeAppState } from "./store";
+import { readAppStateFrom, writeAppStateTo } from "./store";
 
 export const ACTION_LOG_RESOURCE = "actions";
 export const ACTION_LOG_MAX_ENTRIES = 200;
 
-/** Longer than one Box request timeout, so a single `cat` or PUT cannot outlive the lease. */
+/** Longer than one Box request timeout (`BOX_REQUEST_TIMEOUT_MS`), so a single `cat` or PUT cannot outlive the lease. */
 export const LEASE_TTL_MS = 90_000;
 export const LEASE_ATTEMPTS = 6;
 export const LEASE_BACKOFF_MS = 50;
@@ -122,11 +123,11 @@ export async function appendActionLogEntry(
   entry: ActionLogEntry,
   options: LeaseOptions = {}
 ): Promise<void> {
-  await ensureBoxAwake(supabase, userId);
+  const box = await ensureBoxAwake(supabase, userId);
   const holder = randomUUID();
   await acquireLease(supabase, userId, app, ACTION_LOG_RESOURCE, holder, options);
   try {
-    const existing = await readAppState(supabase, userId, app, ACTION_LOG_RESOURCE);
+    const existing = await readAppStateFrom(box.boxId, app, ACTION_LOG_RESOURCE);
     const entries: ActionLogEntry[] = Array.isArray(existing)
       ? (existing as ActionLogEntry[])
       : [];
@@ -142,9 +143,8 @@ export async function appendActionLogEntry(
       options.ttlMs ?? LEASE_TTL_MS
     );
     if (!stillHeld) throw new ActionLogBusyError();
-    await writeAppState(
-      supabase,
-      userId,
+    await writeAppStateTo(
+      box.boxId,
       app,
       ACTION_LOG_RESOURCE,
       entries.slice(-ACTION_LOG_MAX_ENTRIES)

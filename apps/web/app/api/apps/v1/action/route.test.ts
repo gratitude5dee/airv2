@@ -70,6 +70,15 @@ vi.mock("@/lib/miniapps/store", () => ({
       docs.set(`${userId}/${slug}/${resource}`, state);
     }
   ),
+  // Box-scoped twins used under the action-log lease; box-1 is user-1's Box.
+  readAppStateFrom: vi.fn(async (_box: string, slug: string, resource: string) => {
+    reads.push(resource);
+    if (readGate) await readGate;
+    return docs.get(`user-1/${slug}/${resource}`) ?? {};
+  }),
+  writeAppStateTo: vi.fn(async (_box: string, slug: string, resource: string, state: unknown) => {
+    docs.set(`user-1/${slug}/${resource}`, state);
+  }),
 }));
 vi.mock("@/lib/miniapps/appsApi", () => ({
   appsApiSession: vi.fn(async () => appsSession),

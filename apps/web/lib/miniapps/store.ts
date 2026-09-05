@@ -105,6 +105,31 @@ export async function writeAppState(
   await writeDoc(supabase, userId, app, resourceId, state);
 }
 
+/**
+ * Same documents against a Box the caller already woke: one bounded Box
+ * request each, no wake/resume inside — for callers holding a lease.
+ */
+export async function readAppStateFrom(
+  boxId: string,
+  app: string,
+  resourceId: string
+): Promise<unknown> {
+  try {
+    return JSON.parse(await readFile(boxId, docPath(app, resourceId))) as unknown;
+  } catch {
+    return {};
+  }
+}
+
+export async function writeAppStateTo(
+  boxId: string,
+  app: string,
+  resourceId: string,
+  state: unknown
+): Promise<void> {
+  await writeFile(boxId, docPath(app, resourceId), JSON.stringify(state, null, 2));
+}
+
 export async function getKanban(
   supabase: SupabaseClient,
   userId: string,

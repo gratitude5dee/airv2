@@ -1,7 +1,7 @@
 /**
  * The action log is a Box file appended to by two routes; the Box files API
  * has no compare-and-swap. These tests interleave two appenders against a
- * simulated Box and the 0099 lease RPCs to show the lease is what keeps
+ * simulated Box and the 0101 lease RPCs to show the lease is what keeps
  * both entries, and that a lease never outlives its writer.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -30,7 +30,7 @@ vi.mock("../box/client", () => ({
   }),
 }));
 
-// In-memory twin of miniapp_state_lease / miniapp_state_release (0099):
+// In-memory twin of miniapp_state_lease / miniapp_state_release (0101):
 // one row per (user, app, resource); take when absent, expired or already ours.
 interface LeaseRow {
   holder: string;
@@ -244,6 +244,26 @@ describe("appendActionLogEntry", () => {
     expect(leases.size).toBe(0);
     // the renewal happened after the read, i.e. it pushed the expiry out
     expect(before).toBeGreaterThan(0);
+  });
+
+  it("wakes the Box once, before the lease; only the bounded cat/PUT run inside it", async () => {
+    const { appendActionLogEntry } = await import("./actionLog");
+    const { ensureBoxAwake } = await import("../orchestrator/boxes");
+    vi.mocked(ensureBoxAwake).mockClear();
+    vi.mocked(ensureBoxAwake).mockImplementationOnce(async () => {
+      expect(rpcCalls).toHaveLength(0);
+      expect(boxCalls).toHaveLength(0);
+      return { boxId: "box-1" } as Awaited<ReturnType<typeof ensureBoxAwake>>;
+    });
+    await appendActionLogEntry(supabase, "u1", "party", entry("rsvp"));
+    // wake → take → cat → renew → PUT → release: no second wake anywhere inside the lease.
+    expect(ensureBoxAwake).toHaveBeenCalledTimes(1);
+    expect(boxCalls).toEqual([`read ${LOG_PATH}`, `write ${LOG_PATH}`]);
+    expect(rpcCalls).toEqual([
+      "miniapp_state_lease",
+      "miniapp_state_lease",
+      "miniapp_state_release",
+    ]);
   });
 
   it("a lease RPC failure is an error, not a silent unleased write", async () => {
