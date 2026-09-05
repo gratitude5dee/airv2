@@ -15,6 +15,14 @@ export const DEFAULT_CREATE_BUDGET_USD = 5;
 export const CREATE_RUN_ATTRIBUTION_MINUTES = 30;
 /** An open Create run older than this never closed cleanly; it stops counting. */
 export const CREATE_RUN_MAX_MINUTES = 60;
+/**
+ * A run row is opened before the Box is woken, and gets its hermes_run_id
+ * once the run starts. Waking a cold Box is bounded (waitForBox 240 s +
+ * the hermes health loop 180 s), so a row still unlinked past this bound
+ * belongs to a turn that failed and could not close it. It stops blocking
+ * and stops attributing.
+ */
+export const CREATE_RUN_LINK_GRACE_MINUTES = 10;
 
 export function createRunLabel(slug: string): string {
   return `${CREATE_LABEL_PREFIX}${slug}`;
@@ -30,30 +38,41 @@ function minutesAgo(minutes: number): string {
   return new Date(Date.now() - minutes * 60_000).toISOString();
 }
 
+export type OpenCreateRun =
+  | { id: string; blocked_by: null }
+  | { id: null; blocked_by: string };
+
 /**
- * The user's open Create run, if any. The turn route keeps at most one open
- * per owner (a Box works one project at a time). Run rows carry a trigger;
- * the metered completion rows sharing the label do not, and a run row is
- * opened before its Hermes run exists (hermes_run_id lands once it does).
+ * Open the user's Create run row for `slug`, or learn which other project's
+ * open run blocks it. At most one Create run is open per owner (a Box works
+ * one project at a time); the check and the insert run under a per-user
+ * lock in `create_run_open` (0095), which also retires rows that never
+ * closed cleanly. Run rows carry a trigger; the metered completion rows
+ * sharing the label do not, and a run row is opened before its Hermes run
+ * exists (hermes_run_id lands once it does).
  */
 export async function openCreateRun(
   supabase: SupabaseClient,
-  userId: string
-): Promise<{ slug: string; run_id: string | null } | null> {
-  const { data } = await supabase
-    .from("agent_runs")
-    .select("label, hermes_run_id")
-    .eq("user_id", userId)
-    .like("label", `${CREATE_LABEL_PREFIX}%`)
-    .not("trigger", "is", null)
-    .is("ended_at", null)
-    .gte("started_at", minutesAgo(CREATE_RUN_MAX_MINUTES))
-    .order("started_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const row = data as { label: string | null; hermes_run_id: string | null } | null;
-  const slug = slugFromRunLabel(row?.label);
-  return slug && row ? { slug, run_id: row.hermes_run_id } : null;
+  userId: string,
+  slug: string,
+  trigger: string
+): Promise<OpenCreateRun | null> {
+  const { data, error } = await supabase.rpc("create_run_open", {
+    p_user_id: userId,
+    p_trigger: trigger,
+    p_label: createRunLabel(slug),
+    p_max_minutes: CREATE_RUN_MAX_MINUTES,
+    p_link_grace_minutes: CREATE_RUN_LINK_GRACE_MINUTES,
+  });
+  if (error) return null;
+  const rows = (Array.isArray(data) ? data : data ? [data] : []) as {
+    id: string | null;
+    blocked_by: string | null;
+  }[];
+  const row = rows[0];
+  if (!row) return null;
+  if (row.blocked_by) return { id: null, blocked_by: row.blocked_by };
+  return row.id ? { id: row.id, blocked_by: null } : null;
 }
 
 /**
@@ -62,7 +81,10 @@ export async function openCreateRun(
  * within the attribution window (for the trailing completions that land
  * after the terminal event). The project comes from the model the Box
  * requested, so two projects running side by side each meter their own
- * calls; a slug with no such run is refused rather than guessed.
+ * calls; a slug with no such run is refused rather than guessed. An open
+ * row still unlinked past the grace period is an orphan, and a closed row
+ * that never got a Hermes run has no trailing completions; neither
+ * attributes.
  */
 export async function createRunAttributable(
   supabase: SupabaseClient,
@@ -77,8 +99,9 @@ export async function createRunAttributable(
     .not("trigger", "is", null)
     .or(
       `and(ended_at.is.null,started_at.gte.${minutesAgo(CREATE_RUN_MAX_MINUTES)}),` +
-        `ended_at.gte.${minutesAgo(CREATE_RUN_ATTRIBUTION_MINUTES)}`
+        `and(ended_at.gte.${minutesAgo(CREATE_RUN_ATTRIBUTION_MINUTES)},hermes_run_id.not.is.null)`
     )
+    .or(`hermes_run_id.not.is.null,started_at.gte.${minutesAgo(CREATE_RUN_LINK_GRACE_MINUTES)}`)
     .limit(1)
     .maybeSingle();
   return data !== null && data !== undefined;
@@ -103,8 +126,9 @@ export async function soleAttributableCreateSlug(
     .not("trigger", "is", null)
     .or(
       `and(ended_at.is.null,started_at.gte.${minutesAgo(CREATE_RUN_MAX_MINUTES)}),` +
-        `ended_at.gte.${minutesAgo(CREATE_RUN_ATTRIBUTION_MINUTES)}`
+        `and(ended_at.gte.${minutesAgo(CREATE_RUN_ATTRIBUTION_MINUTES)},hermes_run_id.not.is.null)`
     )
+    .or(`hermes_run_id.not.is.null,started_at.gte.${minutesAgo(CREATE_RUN_LINK_GRACE_MINUTES)}`)
     .limit(100);
   const slugs = new Set<string>();
   for (const row of (data ?? []) as { label: string | null }[]) {

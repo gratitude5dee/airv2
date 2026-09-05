@@ -1126,6 +1126,9 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
   // never on an ordinary status poll, which would discard the draft's state.
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const events = useRef<EventSource | null>(null);
+  // Bumped on every project switch; a turn started under an older value
+  // belongs to a conversation the owner has left and is dropped on arrival.
+  const turnGeneration = useRef(0);
   const lastDraft = useRef<string | null>(null);
 
   const loadProjects = useCallback(async () => {
@@ -1180,6 +1183,7 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
   // in-flight exchange — so the reset lives here, not in the slug effect.
   function selectProject(next: string | null) {
     if (next === slug) return;
+    turnGeneration.current += 1;
     events.current?.close();
     setMessages([]);
     setBusy(false);
@@ -1191,7 +1195,7 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
   useEffect(() => {
     if (initialSlug === seenInitialSlug.current) return;
     seenInitialSlug.current = initialSlug;
-    if (initialSlug) selectProject(initialSlug);
+    selectProject(initialSlug);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- react only to the prop, never to the slug it sets
   }, [initialSlug]);
 
@@ -1256,6 +1260,8 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
       { role: "owner", text },
       { role: "agent", text: "" },
     ]);
+    const generation = turnGeneration.current;
+    const stale = () => generation !== turnGeneration.current;
     postJson<{ run_id: string; slug: string }>("/api/create/turn", {
       appname: target,
       input: text,
@@ -1263,6 +1269,7 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
       ...(status ? { session: `air-create-${status.appname}` } : {}),
     })
       .then((turn) => {
+        if (stale()) return;
         if (!turn.run_id || !turn.slug) throw new Error("no run started");
         if (turn.slug !== slug) setSlug(turn.slug);
         const stream = new EventSource(
@@ -1328,6 +1335,7 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
         stream.onerror = () => finish("", "Lost the connection to the run.");
       })
       .catch((error: unknown) => {
+        if (stale()) return;
         setMessages((m) => m.slice(0, -1));
         setBusy(false);
         setMessage(

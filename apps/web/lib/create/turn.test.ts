@@ -16,21 +16,25 @@ vi.mock("../miniapps/publish", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../miniapps/publish")>()),
   publisherUsername: async () => "alice",
 }));
-vi.mock("./drop", () => ({
-  resolveOrCreateDropApp: async () => ({
+const drop = vi.hoisted(() => ({
+  resolveOrCreateDropApp: vi.fn(async (_s: unknown, _u: string, input: { appname: string }) => ({
     app: {
-      id: "app-1",
-      slug: "alice-countdown",
-      name: "countdown",
+      id: `app-${input.appname}`,
+      slug: `alice-${input.appname}`,
+      name: input.appname,
       lane: "vibe",
       status: "draft",
       draft_version: null,
       bundle_version: null,
     },
-  }),
+    created: false,
+  })),
+  discardEmptyDraft: vi.fn(async () => true),
 }));
+vi.mock("./drop", () => drop);
 
 import { PublishError } from "../miniapps/publish";
+import { CREATE_RUN_LINK_GRACE_MINUTES, CREATE_RUN_MAX_MINUTES } from "./budget";
 import { startCreateTurn } from "./turn";
 
 interface Row {
@@ -49,85 +53,50 @@ const state = vi.hoisted(() => ({
   insertError: null as { message: string } | null,
   /** Fails only the `hermes_run_id` link update. */
   linkError: null as { message: string } | null,
+  /** Fails the close (`ended_at`) update this many more times. */
+  closeFailures: 0,
   /** Ordered log of the calls that matter for attribution ordering. */
   log: [] as string[],
 }));
 
-/** In-memory agent_runs: the only table the turn touches after the app resolves. */
+/** In-memory agent_runs: rows are opened through the rpc; the turn only updates them here. */
 function agentRuns(): Record<string, unknown> {
   const filters: ((row: Row) => boolean)[] = [];
-  let pending: { insert?: Partial<Row>; update?: Partial<Row> } = {};
+  let pending: { update?: Partial<Row>; select?: boolean } = {};
   const matching = (): Row[] => state.rows.filter((row) => filters.every((f) => f(row)));
   const builder: Record<string, unknown> = {
-    insert(values: Partial<Row>) {
-      pending = { insert: values };
-      return builder;
-    },
     update(values: Partial<Row>) {
       pending = { update: values };
       return builder;
     },
     select() {
+      pending.select = true;
       return builder;
     },
     eq(column: keyof Row, value: unknown) {
       filters.push((row) => row[column] === value);
       return builder;
     },
-    like(column: keyof Row, pattern: string) {
-      const prefix = pattern.replace(/%$/, "");
-      filters.push((row) => typeof row[column] === "string" && (row[column] as string).startsWith(prefix));
-      return builder;
-    },
-    not(column: keyof Row, _op: string, value: unknown) {
-      filters.push((row) => row[column] !== value);
-      return builder;
-    },
     is(column: keyof Row, value: unknown) {
       filters.push((row) => row[column] === value);
       return builder;
     },
-    gte(column: keyof Row, value: string) {
-      filters.push((row) => String(row[column]) >= value);
-      return builder;
-    },
-    order() {
-      return builder;
-    },
-    limit() {
-      return builder;
-    },
-    async maybeSingle() {
-      return { data: matching()[0] ?? null, error: null };
-    },
-    single() {
-      return builder;
-    },
     then(resolve: (value: { data: unknown; error: unknown }) => unknown) {
-      if (pending.insert) {
-        state.log.push("agent_runs.insert");
-        if (state.insertError) return Promise.resolve({ data: null, error: state.insertError }).then(resolve);
-        const row: Row = {
-          id: `row-${state.rows.length + 1}`,
-          user_id: "",
-          trigger: null,
-          label: null,
-          hermes_run_id: null,
-          started_at: new Date().toISOString(),
-          ended_at: null,
-          outcome: null,
-          ...pending.insert,
-        };
-        state.rows.push(row);
-        return Promise.resolve({ data: { id: row.id }, error: null }).then(resolve);
-      }
       if (pending.update) {
         state.log.push(`agent_runs.update:${Object.keys(pending.update).join(",")}`);
         if (state.linkError && "hermes_run_id" in pending.update) {
           return Promise.resolve({ data: null, error: state.linkError }).then(resolve);
         }
-        for (const row of matching()) Object.assign(row, pending.update);
-        return Promise.resolve({ data: null, error: null }).then(resolve);
+        if (state.closeFailures > 0 && "ended_at" in pending.update) {
+          state.closeFailures -= 1;
+          return Promise.resolve({ data: null, error: { message: "write failed" } }).then(resolve);
+        }
+        const touched = matching();
+        for (const row of touched) Object.assign(row, pending.update);
+        return Promise.resolve({
+          data: pending.select ? touched.map((row) => ({ id: row.id })) : null,
+          error: null,
+        }).then(resolve);
       }
       return Promise.resolve({ data: matching(), error: null }).then(resolve);
     },
@@ -135,12 +104,73 @@ function agentRuns(): Record<string, unknown> {
   return builder;
 }
 
+/** What `create_run_open` (0095) does under the per-user lock. */
+async function createRunOpen(args: {
+  p_user_id: string;
+  p_trigger: string;
+  p_label: string;
+  p_max_minutes: number;
+  p_link_grace_minutes: number;
+}): Promise<{ data: unknown; error: { message: string } | null }> {
+  state.log.push("agent_runs.insert");
+  if (state.insertError) return { data: null, error: state.insertError };
+  const now = Date.now();
+  const open = state.rows.filter(
+    (row) =>
+      row.user_id === args.p_user_id &&
+      row.label?.startsWith("create:") &&
+      row.trigger !== null &&
+      row.ended_at === null
+  );
+  for (const row of open) {
+    const age = now - Date.parse(row.started_at);
+    if (
+      age > args.p_max_minutes * 60_000 ||
+      (row.hermes_run_id === null && age > args.p_link_grace_minutes * 60_000)
+    ) {
+      row.ended_at = new Date(now).toISOString();
+      row.outcome = "failed";
+    }
+  }
+  const blocking = open.find((row) => row.ended_at === null && row.label !== args.p_label);
+  if (blocking) return { data: [{ id: null, blocked_by: blocking.label }], error: null };
+  const row: Row = {
+    id: `row-${state.rows.length + 1}`,
+    user_id: args.p_user_id,
+    trigger: args.p_trigger,
+    label: args.p_label,
+    hermes_run_id: null,
+    started_at: new Date(now).toISOString(),
+    ended_at: null,
+    outcome: null,
+  };
+  state.rows.push(row);
+  return { data: [{ id: row.id, blocked_by: null }], error: null };
+}
+
 const supabase = {
   from: (name: string) => {
     if (name !== "agent_runs") throw new Error(`unexpected table ${name}`);
     return agentRuns();
   },
+  rpc: (name: string, args: Parameters<typeof createRunOpen>[0]) => {
+    if (name !== "create_run_open") throw new Error(`unexpected rpc ${name}`);
+    return createRunOpen(args);
+  },
 } as unknown as SupabaseClient;
+
+function openRow(label: string, ageMinutes: number, hermesRunId: string | null = null): Row {
+  return {
+    id: `row-${label}`,
+    user_id: "user-alice",
+    trigger: "web",
+    label,
+    hermes_run_id: hermesRunId,
+    started_at: new Date(Date.now() - ageMinutes * 60_000).toISOString(),
+    ended_at: null,
+    outcome: null,
+  };
+}
 
 const input = { appname: "countdown", input: "Make a countdown", trigger: "web" as const };
 const context = { budget: { budget_usd: 5, spent_usd: 0, remaining_usd: 5 } };
@@ -150,6 +180,7 @@ beforeEach(() => {
   state.rows = [];
   state.insertError = null;
   state.linkError = null;
+  state.closeFailures = 0;
   state.log = [];
   hermes.createRun.mockImplementation(async () => {
     state.log.push("hermes.createRun");
@@ -208,19 +239,137 @@ describe("startCreateTurn attribution", () => {
   });
 
   it("a row that is open but not yet linked still counts as the running project", async () => {
-    state.rows.push({
-      id: "row-0",
-      user_id: "user-alice",
-      trigger: "web",
-      label: "create:alice-other",
-      hermes_run_id: null,
-      started_at: new Date().toISOString(),
-      ended_at: null,
-      outcome: null,
-    });
+    state.rows.push(openRow("create:alice-other", 0));
     const error = await startCreateTurn(supabase, "user-alice", input, context).catch((e: unknown) => e);
     expect((error as PublishError).status).toBe(409);
     expect(hermes.createRun).not.toHaveBeenCalled();
+  });
+
+  it("a blocked turn on a brand-new name leaves no empty draft behind", async () => {
+    state.rows.push(openRow("create:alice-other", 0, "run-0"));
+    drop.resolveOrCreateDropApp.mockImplementationOnce(async () => ({
+      app: { id: "app-new", slug: "alice-new", name: "new", lane: "vibe", status: "draft", draft_version: null, bundle_version: null },
+      created: true,
+    }));
+    const error = await startCreateTurn(supabase, "user-alice", { ...input, appname: "new" }, context).catch((e: unknown) => e);
+    expect((error as PublishError).status).toBe(409);
+    expect(drop.discardEmptyDraft).toHaveBeenCalledWith(supabase, "user-alice", "app-new");
+  });
+
+  it("a second turn on the same project while its run is open is admitted", async () => {
+    state.rows.push(openRow("create:alice-countdown", 1, "run-0"));
+    const result = await startCreateTurn(supabase, "user-alice", input, context);
+    expect(result.run_id).toBe("run-1");
+    expect(state.rows).toHaveLength(2);
+  });
+
+  it("opens rows one at a time: concurrent turns for two projects admit exactly one", async () => {
+    const results = await Promise.all([
+      startCreateTurn(supabase, "user-alice", input, context).catch((e: unknown) => e),
+      startCreateTurn(supabase, "user-alice", { ...input, appname: "other" }, context).catch((e: unknown) => e),
+    ]);
+    const statuses = results.map((r) => (r instanceof PublishError ? r.status : "ok"));
+    expect(statuses.sort()).toEqual([409, "ok"]);
+    expect(state.rows.filter((row) => row.ended_at === null)).toHaveLength(1);
+    expect(hermes.createRun).toHaveBeenCalledTimes(1);
+  });
+
+  it("retires an open row that aged out, and one never linked past the grace period", async () => {
+    state.rows.push(openRow("create:alice-stale", CREATE_RUN_MAX_MINUTES + 1, "run-stale"));
+    state.rows.push(openRow("create:alice-orphan", CREATE_RUN_LINK_GRACE_MINUTES + 1));
+    const result = await startCreateTurn(supabase, "user-alice", input, context);
+    expect(result.run_id).toBe("run-1");
+    expect(state.rows.filter((row) => row.ended_at === null).map((row) => row.label)).toEqual([
+      "create:alice-countdown",
+    ]);
+    expect(state.rows.slice(0, 2).every((row) => row.outcome === "failed")).toBe(true);
+  });
+
+  it("a linked open row younger than the max is not retired", async () => {
+    state.rows.push(openRow("create:alice-other", CREATE_RUN_LINK_GRACE_MINUTES + 5, "run-0"));
+    const error = await startCreateTurn(supabase, "user-alice", input, context).catch((e: unknown) => e);
+    expect((error as PublishError).status).toBe(409);
+  });
+
+  it("retries a failed close and closes the row once the database answers again", async () => {
+    hermes.createRun.mockRejectedValueOnce(new Error("box unreachable"));
+    state.closeFailures = 2;
+    await expect(startCreateTurn(supabase, "user-alice", input, context)).rejects.toThrow("box unreachable");
+    expect(state.closeFailures).toBe(0);
+    expect(state.rows[0]).toMatchObject({ outcome: "failed" });
+    expect(state.rows[0]!.ended_at).not.toBeNull();
+  });
+
+  it("when both the link and every close attempt fail, the row stops blocking after the grace period", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    state.linkError = { message: "write failed" };
+    state.closeFailures = 3;
+    const error = await startCreateTurn(supabase, "user-alice", input, context).catch((e: unknown) => e);
+    expect((error as PublishError).status).toBe(503);
+    expect(hermes.stopRun).toHaveBeenCalledWith(expect.anything(), "run-1");
+    expect(state.closeFailures).toBe(0);
+    expect(spy.mock.calls.map((call) => JSON.parse(call[0] as string).msg)).toEqual([
+      "create run link failed",
+      "create run close failed",
+    ]);
+    expect(state.rows[0]).toMatchObject({ hermes_run_id: null, ended_at: null });
+    spy.mockRestore();
+
+    state.linkError = null;
+    const blocked = await startCreateTurn(supabase, "user-alice", { ...input, appname: "other" }, context).catch(
+      (e: unknown) => e
+    );
+    expect((blocked as PublishError).status).toBe(409);
+
+    state.rows[0]!.started_at = new Date(Date.now() - (CREATE_RUN_LINK_GRACE_MINUTES + 1) * 60_000).toISOString();
+    const again = await startCreateTurn(supabase, "user-alice", { ...input, appname: "other" }, context);
+    expect(again.run_id).toBe("run-1");
+    expect(state.rows[0]).toMatchObject({ outcome: "failed" });
+    expect(state.rows[0]!.ended_at).not.toBeNull();
+  });
+
+  it("a row unlinked for the whole cold-wake bound is neither retired nor blocking-stale", async () => {
+    // ensureBoxAwake may spend waitForBox (240 s) + the hermes health loop
+    // (180 s) before createRun; the grace must outlast that so a slow but
+    // legitimate first turn still links its row.
+    const wakeBoundMinutes = (240 + 180) / 60;
+    expect(CREATE_RUN_LINK_GRACE_MINUTES).toBeGreaterThan(wakeBoundMinutes);
+    boxes.ensureBoxAwake.mockImplementationOnce(async () => {
+      state.rows[0]!.started_at = new Date(Date.now() - wakeBoundMinutes * 60_000).toISOString();
+      // Another project's turn arriving now must still see this run as open.
+      const other = await startCreateTurn(supabase, "user-alice", { ...input, appname: "other" }, context).catch(
+        (e: unknown) => e
+      );
+      expect((other as PublishError).status).toBe(409);
+      return { target: { baseUrl: "http://box", token: "t" } };
+    });
+    const out = await startCreateTurn(supabase, "user-alice", input, context);
+    expect(out.run_id).toBe("run-1");
+    expect(state.rows).toHaveLength(1);
+    expect(state.rows[0]).toMatchObject({ label: "create:alice-countdown", hermes_run_id: "run-1", ended_at: null });
+  });
+
+  it("stops a run whose row was retired while the Box woke, instead of linking it to nothing", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    // Cold Box: another project's turn arrives past the grace period and
+    // create_run_open retires this row, then opens its own.
+    hermes.createRun.mockResolvedValueOnce({ run_id: "run-1" }).mockResolvedValueOnce({ run_id: "run-2" });
+    boxes.ensureBoxAwake.mockImplementationOnce(async () => {
+      state.rows[0]!.started_at = new Date(Date.now() - (CREATE_RUN_LINK_GRACE_MINUTES + 1) * 60_000).toISOString();
+      const other = await startCreateTurn(supabase, "user-alice", { ...input, appname: "other" }, context);
+      expect(other.run_id).toBe("run-1");
+      return { target: { baseUrl: "http://box", token: "t" } };
+    });
+    const error = await startCreateTurn(supabase, "user-alice", input, context).catch((e: unknown) => e);
+    expect((error as PublishError).status).toBe(503);
+    expect(JSON.parse(spy.mock.calls[0]![0] as string).msg).toBe("create run row retired before link");
+    expect(hermes.stopRun).toHaveBeenCalledTimes(1);
+    expect(hermes.stopRun).toHaveBeenCalledWith(expect.anything(), "run-2");
+    expect(state.rows.map((row) => ({ label: row.label, run: row.hermes_run_id, open: row.ended_at === null }))).toEqual([
+      { label: "create:alice-countdown", run: null, open: false },
+      { label: "create:alice-other", run: "run-1", open: true },
+    ]);
+    spy.mockRestore();
   });
 
   it("stops the run and closes the row when the run id cannot be linked", async () => {
