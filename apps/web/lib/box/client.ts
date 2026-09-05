@@ -182,9 +182,16 @@ export async function stop(boxId: string): Promise<Box> {
   return envelope.box;
 }
 
-/** Deleting a box deletes its snapshots with it (goal.md M8). */
+/**
+ * Deleting a box deletes its snapshots with it (goal.md M8). The API refuses
+ * (409 delete_confirmation_required) unless the target id is echoed in
+ * X-Ascii-Confirm-Delete.
+ */
 export async function deleteBox(boxId: string): Promise<void> {
-  await boxFetch(`/boxes/${boxId}`, z.unknown(), { method: "DELETE" });
+  await boxFetch(`/boxes/${boxId}`, z.unknown(), {
+    method: "DELETE",
+    headers: { "X-Ascii-Confirm-Delete": boxId },
+  });
 }
 
 /**

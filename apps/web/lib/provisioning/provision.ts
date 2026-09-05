@@ -41,7 +41,23 @@ import { provisionDaytona } from "./daytona";
 import { normalizeAddress } from "../routing/trust";
 import { sealSecret } from "../crypto/secretbox";
 import { installBaseSkills } from "../skills/hub";
-import { templateForEnvironment } from "../fleet/channels";
+import {
+  getChannel,
+  isChannelName,
+  templateForEnvironment,
+  type ChannelName,
+} from "../fleet/channels";
+import { getRelease, type TemplateRelease } from "../fleet/releases";
+
+/** Channel a brand-new user's box subscribes to. Existing boxes keep theirs. */
+export const DEFAULT_CHANNEL: ChannelName = "prod";
+
+/**
+ * A replacement claim (boxes.replace_claimed_at) older than this outlives any
+ * request that could still hold it — twice the longest route budget — and is
+ * taken over rather than honoured.
+ */
+export const REPLACE_CLAIM_TTL_MS = 10 * 60 * 1000;
 
 export interface ProvisionOptions {
   displayName?: string | undefined;
@@ -95,6 +111,15 @@ interface ProvisionedCompute {
   gatewayToken: string;
   apiServerKey: string;
   dashPassword: string;
+  channel: ChannelName;
+  /**
+   * The channel's release when the fork's baked Hermes ref matches it: the
+   * template it came from IS that release, so the box starts converged —
+   * baseline_version is recorded and the hub skills the template already
+   * carries are not re-installed. Null when the channel has no release, the
+   * fork came from the static fallback template, or the refs disagree.
+   */
+  release: TemplateRelease | null;
 }
 
 /** A created instance, plus any ingress the provider allocated with it. */
@@ -212,9 +237,9 @@ export async function provisionUser(
 
   let built: ProvisionedCompute | undefined;
   try {
-    built = await buildCompute(supabase, userId, environment);
+    built = await buildCompute(supabase, userId, environment, DEFAULT_CHANNEL);
     await persistBox(supabase, userId, environment, built);
-    await finishSetup(supabase, userId, built.target);
+    await finishSetup(supabase, userId, built);
     return {
       userId,
       boxId: built.target.instanceId,
@@ -260,15 +285,71 @@ export class SwitchSetupError extends Error {
   }
 }
 
+/** Another call already holds the replacement claim on this user's box. */
+export class ReplaceInProgressError extends Error {
+  constructor(readonly boxId: string) {
+    super(`box ${boxId} is already being replaced`);
+    this.name = "ReplaceInProgressError";
+  }
+}
+
+/**
+ * switchEnvironment under a lease on the boxes row. `boxId` is the box the
+ * caller believes is current: the claim is a conditional update on
+ * (user, that box, no live claim), so a second overlapping call — an operator
+ * reprovision racing the user's own onboarding switch, or a retry after the
+ * row has moved on — is a ReplaceInProgressError rather than a second fork
+ * that would leave an instance orphaned. The claim is its own column because
+ * the box lifecycle rewrites `state` at will; it carries its timestamp so a
+ * call killed mid-flight (deploy, hard timeout) is taken over once it is
+ * older than REPLACE_CLAIM_TTL_MS, and only the caller's own claim is
+ * released on exit.
+ */
+export async function replaceBox(
+  supabase: ReturnType<typeof serviceClient>,
+  userId: string,
+  boxId: string,
+  environment: ComputeEnvironment
+): Promise<ProvisionResult> {
+  const claimedAt = new Date().toISOString();
+  const staleBefore = new Date(Date.now() - REPLACE_CLAIM_TTL_MS).toISOString();
+  const { data: claimed, error } = await supabase
+    .from("boxes")
+    .update({ replace_claimed_at: claimedAt })
+    .eq("user_id", userId)
+    .eq("provider_box_id", boxId)
+    .or(`replace_claimed_at.is.null,replace_claimed_at.lt.${staleBefore}`)
+    .select("provider_box_id");
+  if (error) {
+    throw new Error(`box claim failed for user ${userId}: ${error.message}`);
+  }
+  if (!claimed || claimed.length === 0) {
+    throw new ReplaceInProgressError(boxId);
+  }
+  try {
+    return await switchEnvironment(supabase, userId, environment);
+  } finally {
+    await supabase
+      .from("boxes")
+      .update({ replace_claimed_at: null })
+      .eq("user_id", userId)
+      .eq("replace_claimed_at", claimedAt);
+  }
+}
+
 /**
  * Move an existing user to a different environment: build the new compute,
  * repoint the boxes row at it, then tear the old instance down. The user's
- * account, line, and connectors are untouched — the connectors are re-installed
- * on the new machine by finishSetup (Composio is provider-agnostic: the same
- * per-user MCP URL is registered wherever the agent happens to live). Once the
- * row points at the new box the old one is torn down even if setup fails, so
- * no instance is left running unreferenced; that case surfaces as
- * SwitchSetupError.
+ * account, line, connectors, and fleet channel are untouched — the new box is
+ * forked from the template of the channel the old one was on, and the
+ * connectors are re-installed on the new machine by finishSetup (Composio is
+ * provider-agnostic: the same per-user MCP URL is registered wherever the
+ * agent happens to live). Once the row points at the new box the old one is
+ * torn down even if setup fails, so no instance is left running
+ * unreferenced; that case surfaces as SwitchSetupError.
+ *
+ * Callers that can race (operator reprovision, onboarding) go through
+ * replaceBox, which wraps this in the row lease.
  */
 export async function switchEnvironment(
   supabase: ReturnType<typeof serviceClient>,
@@ -277,12 +358,16 @@ export async function switchEnvironment(
 ): Promise<ProvisionResult> {
   const { data: existing, error } = await supabase
     .from("boxes")
-    .select("provider_box_id, environment, control_url, control_token")
+    .select("provider_box_id, environment, channel, control_url, control_token")
     .eq("user_id", userId)
     .maybeSingle();
   if (error) {
     throw new Error(`box lookup failed for user ${userId}: ${error.message}`);
   }
+  const existingChannel = (existing as { channel?: unknown } | null)?.channel;
+  const channel = isChannelName(existingChannel)
+    ? existingChannel
+    : DEFAULT_CHANNEL;
   const previous = existing
     ? {
         instanceId: (existing as { provider_box_id: string }).provider_box_id,
@@ -300,7 +385,7 @@ export async function switchEnvironment(
       }
     : null;
 
-  const built = await buildCompute(supabase, userId, environment);
+  const built = await buildCompute(supabase, userId, environment, channel);
   try {
     await persistBox(supabase, userId, environment, built);
   } catch (persistError) {
@@ -309,7 +394,7 @@ export async function switchEnvironment(
   }
   let setupError: unknown = null;
   try {
-    await finishSetup(supabase, userId, built.target);
+    await finishSetup(supabase, userId, built);
   } catch (error) {
     setupError = error;
   }
@@ -352,7 +437,8 @@ async function teardown(target: ComputeTarget): Promise<void> {
 async function buildCompute(
   supabase: ReturnType<typeof serviceClient>,
   userId: string,
-  environment: ComputeEnvironment
+  environment: ComputeEnvironment,
+  channel: ChannelName
 ): Promise<ProvisionedCompute> {
   const profile = profileFor(environment);
   const gatewayToken = randomBytes(32).toString("hex");
@@ -363,15 +449,16 @@ async function buildCompute(
   // box's .env — never persisted in Postgres or logged by the control plane.
   const airVaultKey = randomBytes(32).toString("hex");
 
-  // New users come from the prod channel's template for their environment;
-  // the static env var pointer is the fallback until the channel is
-  // bootstrapped (ubuntu only — the others must be registered).
+  // The fork comes from the channel's template for its environment; the
+  // static env var pointer is the fallback until the channel is bootstrapped
+  // (ubuntu only — the others must be registered).
   const templateId = await templateForEnvironment(
     supabase,
-    "prod",
+    channel,
     environment,
     templateFallback(environment)
   );
+  const channelRelease = await releaseForChannel(supabase, channel);
 
   const created = await createInstance(
     userId,
@@ -385,7 +472,7 @@ async function buildCompute(
   // tear it down before rethrowing so a mid-build failure never leaks a
   // running instance the caller has no handle to.
   try {
-    return await configureCompute(created, {
+    const configured = await configureCompute(created, {
       profile,
       environment,
       gatewayToken,
@@ -394,9 +481,32 @@ async function buildCompute(
       dashSecret,
       airVaultKey,
     });
+    const release =
+      channelRelease?.hermes_ref &&
+      channelRelease.hermes_ref === configured.templateHermesRef
+        ? channelRelease
+        : null;
+    return { ...configured, channel, release };
   } catch (error) {
     await teardown(target);
     throw error;
+  }
+}
+
+/**
+ * The release a channel currently points at, or null when the channel has
+ * none yet (or the fleet tables predate this box). Never fatal: a fork with
+ * unknown provenance just takes the full post-fork setup.
+ */
+async function releaseForChannel(
+  supabase: ReturnType<typeof serviceClient>,
+  channel: ChannelName
+): Promise<TemplateRelease | null> {
+  try {
+    const { release_id } = await getChannel(supabase, channel);
+    return release_id ? await getRelease(supabase, release_id) : null;
+  } catch {
+    return null;
   }
 }
 
@@ -413,7 +523,7 @@ interface ComputeSecrets {
 async function configureCompute(
   created: Awaited<ReturnType<typeof createInstance>>,
   secrets: ComputeSecrets
-): Promise<ProvisionedCompute> {
+): Promise<Omit<ProvisionedCompute, "channel" | "release">> {
   const {
     profile,
     environment,
@@ -654,7 +764,12 @@ async function persistBox(
       api_server_key: built.apiServerKey,
       gateway_token: built.gatewayToken,
       template_version: built.templateHermesRef,
-      channel: "prod",
+      channel: built.channel,
+      // A fork from the channel's current release starts converged on it;
+      // anything else is unsynced until fleet sync converges it (explicit
+      // nulls so a replaced box never inherits the old row's baseline).
+      baseline_version: built.release?.version ?? null,
+      baseline_synced_at: built.release ? new Date().toISOString() : null,
       last_active_at: new Date().toISOString(),
     },
     { onConflict: "user_id" }
@@ -669,13 +784,31 @@ async function persistBox(
  * Daytona child key, so a fresh agent starts with its email/search skills and
  * connector tooling. Identical in every environment — failures log and
  * continue, the user can install from the dashboard.
+ *
+ * The hub installs are the expensive part (one `hermes skills install` per
+ * base skill, sequential, minutes in total) and the template's setup.sh
+ * bakes the same list, so a fork known to come from the channel's current
+ * release skips them — that is what keeps a replacement inside a single
+ * request budget. Forks of unknown provenance still re-assert them.
  */
 async function finishSetup(
   supabase: ReturnType<typeof serviceClient>,
   userId: string,
-  target: ComputeTarget
+  built: ProvisionedCompute
 ): Promise<void> {
-  await installBaseSkills(target);
+  const { target } = built;
+  if (built.release) {
+    console.log(
+      JSON.stringify({
+        msg: "base skills preinstalled by template release, skipping hub installs",
+        user_id: userId,
+        box_id: target.instanceId,
+        release: built.release.version,
+      })
+    );
+  } else {
+    await installBaseSkills(target);
+  }
   try {
     await installComposioMcp(supabase, userId, target);
   } catch (error) {

@@ -803,6 +803,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 sudo cp "$SCRIPT_DIR"/hermes-gateway.service /etc/systemd/system/
 sudo cp "$SCRIPT_DIR"/hermes-dashboard.service /etc/systemd/system/
 sudo cp "$SCRIPT_DIR"/hermes-host.service /etc/systemd/system/
+sudo cp "$SCRIPT_DIR"/hermes-sidecar-owner.service /etc/systemd/system/
+sudo cp "$SCRIPT_DIR"/hermes-sidecar-owner.timer /etc/systemd/system/
 sudo cp "$SCRIPT_DIR"/openviking.service /etc/systemd/system/
 sudo cp "$SCRIPT_DIR"/taskrouter.service /etc/systemd/system/
 sudo cp "$SCRIPT_DIR"/learning/systemd/air-learningd.service /etc/systemd/system/
@@ -810,8 +812,8 @@ sudo cp "$SCRIPT_DIR"/learning/systemd/air-learningd.service /etc/systemd/system
 # Settings opt-in is the only thing that starts it (I3 stays intact).
 sudo cp "$SCRIPT_DIR"/tailscaled.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable hermes-gateway.service hermes-dashboard.service hermes-host.service openviking.service taskrouter.service air-learningd.service
-sudo systemctl start hermes-gateway.service hermes-dashboard.service hermes-host.service
+sudo systemctl enable hermes-gateway.service hermes-dashboard.service hermes-host.service hermes-sidecar-owner.timer openviking.service taskrouter.service air-learningd.service
+sudo systemctl start hermes-gateway.service hermes-dashboard.service hermes-host.service hermes-sidecar-owner.timer
 
 # Render ov.conf (template stage: no gateway token yet → VLM block omitted;
 # the first post-provision `ovctl ensure` re-renders with the per-fork

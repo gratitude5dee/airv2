@@ -120,7 +120,12 @@ import {
   toComputeEnvironment,
   type ComputeEnvironment,
 } from "@/lib/compute/environments";
-import { switchEnvironment } from "@/lib/provisioning/provision";
+import {
+  ReplaceInProgressError,
+  SwitchSetupError,
+  replaceBox,
+  switchEnvironment,
+} from "@/lib/provisioning/provision";
 import { onairosStatusFromRows, type OnairosStatus } from "./onairos";
 import {
   relayToOnairos,
@@ -2129,8 +2134,23 @@ export const onboarding: MiniAppModule = {
           `Staying on ${ENVIRONMENT_PROFILES[value].label}.`
         );
       }
+      // Same row lease as the operator reprovision route: a double-tap here,
+      // or an operator replacing this box at the same moment, must not fork
+      // two boxes for one user.
+      const { data: currentBox } = await supabase
+        .from("boxes")
+        .select("provider_box_id")
+        .eq("user_id", userId)
+        .maybeSingle();
+      const currentBoxId = (currentBox as { provider_box_id?: unknown } | null)
+        ?.provider_box_id;
+      let setupIncomplete = false;
       try {
-        await switchEnvironment(supabase, userId, value);
+        if (typeof currentBoxId === "string" && currentBoxId.length > 0) {
+          await replaceBox(supabase, userId, currentBoxId, value);
+        } else {
+          await switchEnvironment(supabase, userId, value);
+        }
       } catch (error) {
         console.error(
           JSON.stringify({
@@ -2140,17 +2160,31 @@ export const onboarding: MiniAppModule = {
             error: error instanceof Error ? error.message : "unknown",
           })
         );
-        return respond(
-          ctx,
-          "environment",
-          `${ENVIRONMENT_PROFILES[value].label} isn't available right now — try another, or skip and switch later.`
-        );
+        if (error instanceof ReplaceInProgressError) {
+          return respond(
+            ctx,
+            "environment",
+            "Your computer is already being moved — give it a minute, then check back."
+          );
+        }
+        if (!(error instanceof SwitchSetupError)) {
+          return respond(
+            ctx,
+            "environment",
+            `${ENVIRONMENT_PROFILES[value].label} isn't available right now — try another, or skip and switch later.`
+          );
+        }
+        // The row already points at the new box; only its starter setup
+        // failed, and the user can finish that from the dashboard.
+        setupIncomplete = true;
       }
       await markSafely(supabase, userId, "environment", "done");
       return respond(
         ctx,
         null,
-        `Your agent now lives on ${ENVIRONMENT_PROFILES[value].label}.`
+        setupIncomplete
+          ? `Your agent now lives on ${ENVIRONMENT_PROFILES[value].label} — some starter skills didn't install; add them from the dashboard.`
+          : `Your agent now lives on ${ENVIRONMENT_PROFILES[value].label}.`
       );
     }
 

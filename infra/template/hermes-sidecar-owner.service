@@ -1,0 +1,13 @@
+[Unit]
+Description=Reclaim root-owned Hermes SQLite sidecars
+# The platform hydrates /home/user from the box snapshot as root for about a
+# minute after a fork/resume, well after hermes-gateway has started, so the
+# gateway's own ExecStartPre chown runs too early to catch the -shm/-wal files
+# it lays down. A root-owned sidecar leaves the session store read-only
+# ("attempt to write a readonly database"), and a connection that already
+# mapped it read-only stays that way, so the gateway is restarted whenever
+# ownership actually had to be repaired. Driven by hermes-sidecar-owner.timer.
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'find /home/user/.hermes -maxdepth 1 -name "*.db*" ! -user user 2>/dev/null | grep -q . || exit 0; find /home/user/.hermes -maxdepth 1 -name "*.db*" ! -user user -exec chown user:user {} + && systemctl restart hermes-gateway.service'

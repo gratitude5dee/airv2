@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getBox } from "./client";
+import { deleteBox, getBox } from "./client";
 
 const fetchMock = vi.fn();
 
@@ -43,5 +43,23 @@ describe("getBox", () => {
     fetchMock.mockResolvedValueOnce(boxResponse({ id: "bx_1", state: "archived" }));
     const box = await getBox("bx_1");
     expect(box.url).toBeUndefined();
+  });
+});
+
+describe("deleteBox", () => {
+  it("confirms the delete by echoing the target id in the header the API requires", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ ok: true, type: "box.deleting" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })
+    );
+    await deleteBox("bx_old");
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toMatch(/\/boxes\/bx_old$/);
+    expect(init.method).toBe("DELETE");
+    expect(new Headers(init.headers).get("X-Ascii-Confirm-Delete")).toBe(
+      "bx_old"
+    );
   });
 });

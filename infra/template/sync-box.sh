@@ -497,10 +497,12 @@ mkdir -p "$HOME_DIR/.hermes/learning" && chmod 700 "$HOME_DIR/.hermes/learning"
 sudo cp "$TEMPLATE_DIR"/hermes-gateway.service /etc/systemd/system/
 sudo cp "$TEMPLATE_DIR"/hermes-dashboard.service /etc/systemd/system/
 sudo cp "$TEMPLATE_DIR"/hermes-host.service /etc/systemd/system/
+sudo cp "$TEMPLATE_DIR"/hermes-sidecar-owner.service /etc/systemd/system/
+sudo cp "$TEMPLATE_DIR"/hermes-sidecar-owner.timer /etc/systemd/system/
 sudo cp "$TEMPLATE_DIR"/openviking.service /etc/systemd/system/
 sudo cp "$TEMPLATE_DIR"/learning/systemd/air-learningd.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable hermes-gateway.service hermes-dashboard.service hermes-host.service openviking.service air-learningd.service
+sudo systemctl enable hermes-gateway.service hermes-dashboard.service hermes-host.service hermes-sidecar-owner.timer openviking.service air-learningd.service
 
 # Hermes pins each session's system prompt at creation (sessions.system_prompt_hash);
 # clearing it makes the next turn rebuild from the current SOUL/skills without touching messages.
@@ -536,7 +538,7 @@ except Exception as err:
 PY
 fi
 
-sudo systemctl restart hermes-gateway.service hermes-dashboard.service hermes-host.service openviking.service air-learningd.service
+sudo systemctl restart hermes-gateway.service hermes-dashboard.service hermes-host.service hermes-sidecar-owner.timer openviking.service air-learningd.service
 
 # Render ov.conf from this box's per-fork gateway credentials and (re)start
 # the server. Best effort: deep memory degrades, the box never breaks.

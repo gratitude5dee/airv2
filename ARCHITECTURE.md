@@ -652,12 +652,14 @@ Box (ascii.dev) supplies four primitives that map exactly onto the invariants:
 /etc/systemd/system/
   hermes-gateway.service        # enabled — restarts on boot, resume, and fork
   hermes-host.service           # enabled, oneshot — re-registers the public port
+  hermes-sidecar-owner.timer    # enabled — re-owns root-created SQLite sidecars
 ```
 
-Two details that will bite if missed:
+Three details that will bite if missed:
 
 1. **Snapshots do not capture open ports or running processes.** They capture the filesystem — including `/etc`, so *enabled systemd units restart themselves* on resume. Anything hand-run does not come back. Hermes must therefore be a systemd unit, not a `nohup`.
 2. **`host` must be re-run after every resume.** The URL and token are stable and sticky, but the route binds to the machine's current address, and open ports are explicitly not snapshotted. `hermes-host.service` is a `oneshot` with `After=hermes-gateway.service` that runs `host 8642 --private`. Bake it into the template; do not do it from the orchestrator, where it becomes a round-trip on every cold start.
+3. **The platform hydrates `/home/user` as root after boot.** On a fork/resume the snapshot is lazily materialised for about a minute, well after `hermes-gateway` is up, and SQLite `-shm`/`-wal` sidecars laid down in that window come back root-owned — the session store turns read-only and every turn fails. The gateway unit chowns them on start, but that runs too early to see them; `hermes-sidecar-owner.timer` re-checks every 30s and restarts the gateway only when it actually had to repair something.
 
 Hermes's `api_server` must bind `0.0.0.0` for the Box gateway to reach it (the gateway connects from outside the process, not over loopback) — set `API_SERVER_HOST=0.0.0.0` and `API_SERVER_KEY` to a per-box random value. The upstream `docker-compose.yml` warns against exposing this adapter, and that warning is correct: it is safe here *only* because the `host --private` token gates the route and the key gates the API. Both, not either.
 
