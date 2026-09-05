@@ -265,6 +265,8 @@ export function appReserveUsd(tier: SpeedTier): number {
 export interface AppHold {
   appId: string;
   reservedUsd: number;
+  /** UTC day (YYYY-MM-DD) the ledger booked the hold on. */
+  day: string;
 }
 
 export type AppReservation =
@@ -297,8 +299,8 @@ export async function reserveAppSpend(
     );
     return { status: "unavailable" };
   }
-  return data === true
-    ? { status: "held", hold: { appId: row.app_id, reservedUsd } }
+  return typeof data === "string" && data.length > 0
+    ? { status: "held", hold: { appId: row.app_id, reservedUsd, day: data } }
     : { status: "capped" };
 }
 
@@ -316,6 +318,7 @@ export async function settleAppSpend(
     p_app_id: hold.appId,
     p_reserved: hold.reservedUsd,
     p_usd: usd > 0 ? usd : 0,
+    p_day: hold.day,
   });
   if (error) {
     console.error(

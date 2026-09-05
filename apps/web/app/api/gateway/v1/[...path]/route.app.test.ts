@@ -56,9 +56,19 @@ const appSpend: { appId: string; usd: number }[] = [];
 /** The miniapp_functions counters the RPCs update atomically. */
 const ledger: Record<string, { spent: number; reserved: number }> = {};
 let reserveFails = false;
+/** The ledger's UTC day (`now() at time zone 'utc'`), advanced by a test. */
+let ledgerDay = today;
+/** ai_spend_day per app; a counter from another day reads as zero. */
+const ledgerDays: Record<string, string> = {};
 
 function counters(appId: string): { spent: number; reserved: number } {
-  return (ledger[appId] ??= { spent: 0, reserved: 0 });
+  const row = (ledger[appId] ??= { spent: 0, reserved: 0 });
+  if ((ledgerDays[appId] ??= ledgerDay) !== ledgerDay) {
+    row.spent = 0;
+    row.reserved = 0;
+    ledgerDays[appId] = ledgerDay;
+  }
+  return row;
 }
 
 /** miniapp_fn_reserve / miniapp_fn_settle with the migration's semantics. */
@@ -71,15 +81,16 @@ async function rpc(
     const row = counters(String(args["p_app_id"]));
     if (row.spent + row.reserved < Number(args["p_cap"])) {
       row.reserved += Number(args["p_usd"]);
-      return { data: true, error: null };
+      return { data: ledgerDay, error: null };
     }
-    return { data: false, error: null };
+    return { data: null, error: null };
   }
   if (fn === "miniapp_fn_settle") {
     const appId = String(args["p_app_id"]);
     const row = counters(appId);
     row.spent += Number(args["p_usd"]);
-    row.reserved = Math.max(row.reserved - Number(args["p_reserved"]), 0);
+    const bookedToday = args["p_day"] === ledgerDay;
+    row.reserved = Math.max(row.reserved - (bookedToday ? Number(args["p_reserved"]) : 0), 0);
     appSpend.push({ appId, usd: Number(args["p_usd"]) });
     return { data: row.spent, error: null };
   }
@@ -226,6 +237,8 @@ describe("gateway app principal (MC5 §11.3)", () => {
     opsRows.length = 0;
     appSpend.length = 0;
     for (const key of Object.keys(ledger)) delete ledger[key];
+    for (const key of Object.keys(ledgerDays)) delete ledgerDays[key];
+    ledgerDay = today;
     reserveFails = false;
     providerKeys.getProviderKey.mockResolvedValue(null);
   });
@@ -373,6 +386,49 @@ describe("gateway app principal (MC5 §11.3)", () => {
       const cost = Number(meteredRows[0]?.["cost_usd"]);
       expect(ledger["app-a"]?.reserved).toBe(0);
       expect(ledger["app-a"]?.spent).toBeCloseTo(spent + cost, 10);
+    });
+
+    it("a hold that settles after UTC midnight does not come out of the new day's in-flight total", async () => {
+      nearCap();
+      let releaseUpstream: (() => void) | null = null;
+      const gate = new Promise<void>((resolve) => {
+        releaseUpstream = resolve;
+      });
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => {
+          await gate;
+          return new Response(
+            JSON.stringify({
+              choices: [{ message: { content: "ok" } }],
+              usage: { prompt_tokens: 10, completion_tokens: 5 },
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } }
+          );
+        })
+      );
+      const yesterdays = post("art_a", { model: "fast", messages: [] });
+      await tick();
+      expect(ledger["app-a"]).toEqual({ spent, reserved: appReserveUsd("fast") });
+
+      // Midnight: the day rolls, a fresh hold is booked against the new day.
+      ledgerDay = "2099-01-01";
+      state.tokens["art_a"] = principal("app-a", "alice-rsvp", {
+        approved_manifest: { egress: [], db: false, kv: false, dailyCapUsd: cap, secretNames: [] },
+      });
+      const todays = post("art_a", { model: "fast", messages: [] });
+      await tick();
+      expect(ledger["app-a"]).toEqual({ spent: 0, reserved: appReserveUsd("fast") });
+
+      releaseUpstream!();
+      expect((await yesterdays).status).toBe(200);
+      expect((await todays).status).toBe(200);
+      await tick();
+      // Both costs land on the new day; only the new day's hold is released.
+      expect(ledger["app-a"]?.reserved).toBe(0);
+      expect(appSpend).toHaveLength(2);
+      const landed = appSpend.reduce((sum, s) => sum + s.usd, 0);
+      expect(ledger["app-a"]?.spent).toBeCloseTo(landed, 10);
     });
 
     it("the other app of the same owner is not held back by the first app's hold", async () => {

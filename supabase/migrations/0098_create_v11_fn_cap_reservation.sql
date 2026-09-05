@@ -14,11 +14,15 @@
 alter table miniapp_functions
   add column if not exists ai_reserved_today_usd numeric(10,4) not null default 0;
 
--- Hold p_usd against p_cap. True when the hold was taken. The admission test
--- is the one the read-then-dispatch gate applied (spent + held < cap), so a
--- cap of $0.05 still admits one deep call; it can no longer admit two at once.
-create or replace function miniapp_fn_reserve(p_app_id uuid, p_usd numeric, p_cap numeric)
-returns boolean as $$
+-- Hold p_usd against p_cap. Returns the UTC day the hold was booked on, or
+-- null when refused. The admission test is the one the read-then-dispatch
+-- gate applied (spent + held < cap): a cap of $0.05 still admits one deep
+-- call while the day's total is under the cap, and the hold it takes is what
+-- the next caller sees — racing callers serialize on the row, so a second
+-- call is admitted only if the first's hold still leaves the total under cap.
+drop function if exists miniapp_fn_reserve(uuid, numeric, numeric);
+create function miniapp_fn_reserve(p_app_id uuid, p_usd numeric, p_cap numeric)
+returns date as $$
   with held as (
     update miniapp_functions
        set ai_spent_today_usd = case
@@ -37,15 +41,18 @@ returns boolean as $$
                then ai_spent_today_usd + ai_reserved_today_usd
              else 0
            end < p_cap
-    returning 1
+    returning ai_spend_day
   )
-  select exists (select 1 from held);
+  select ai_spend_day from held;
 $$ language sql security definer;
 
--- Turn a hold of p_reserved into p_usd of settled spend (p_usd = 0 releases).
--- A hold taken yesterday settles into today's counters; the release side
--- clamps at zero so a stale hold never goes negative.
-create or replace function miniapp_fn_settle(p_app_id uuid, p_reserved numeric, p_usd numeric)
+-- Turn a hold of p_reserved, booked on p_day, into p_usd of settled spend
+-- (p_usd = 0 releases). The cost lands on today's counter like
+-- miniapp_fn_spend; the hold is subtracted only if it was booked today — a
+-- hold from an earlier UTC day was already zeroed by the day roll, so it must
+-- not come out of today's in-flight total. Clamped at zero.
+drop function if exists miniapp_fn_settle(uuid, numeric, numeric);
+create function miniapp_fn_settle(p_app_id uuid, p_reserved numeric, p_usd numeric, p_day date)
 returns numeric as $$
   update miniapp_functions
      set ai_spent_today_usd = case
@@ -56,7 +63,10 @@ returns numeric as $$
            case
              when ai_spend_day = (now() at time zone 'utc')::date then ai_reserved_today_usd
              else 0
-           end - p_reserved,
+           end - case
+             when p_day = (now() at time zone 'utc')::date then p_reserved
+             else 0
+           end,
            0
          ),
          ai_spend_day = (now() at time zone 'utc')::date,
@@ -67,5 +77,5 @@ $$ language sql security definer;
 
 revoke all on function miniapp_fn_reserve(uuid, numeric, numeric) from public;
 grant execute on function miniapp_fn_reserve(uuid, numeric, numeric) to service_role;
-revoke all on function miniapp_fn_settle(uuid, numeric, numeric) from public;
-grant execute on function miniapp_fn_settle(uuid, numeric, numeric) to service_role;
+revoke all on function miniapp_fn_settle(uuid, numeric, numeric, date) from public;
+grant execute on function miniapp_fn_settle(uuid, numeric, numeric, date) to service_role;
