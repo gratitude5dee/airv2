@@ -23,6 +23,7 @@ import {
   bundleKey,
   readZip,
   storeBundle,
+  storeFunctionsModule,
   validateBundle,
   type BundleFile,
 } from "../miniapps/bundles";
@@ -76,6 +77,9 @@ export interface VersionRow {
   file_count: number;
   worker_sha256: string | null;
   kit_version: string | null;
+  /** Content-free record of the version's Functions module (§11.6), null
+   * for a static version. */
+  functions: VersionFunctions | null;
   findings: Finding[];
   qa_score: number | null;
   created_at: string;
@@ -83,6 +87,16 @@ export interface VersionRow {
   retired_at: string | null;
   purged_at: string | null;
 }
+
+export interface VersionFunctions {
+  sha256: string;
+  bytes: number;
+}
+
+const VersionFunctionsSchema = z.object({
+  sha256: z.string().regex(SHA256_RE),
+  bytes: z.coerce.number(),
+});
 
 const FindingSchema = z.object({
   file: z.string(),
@@ -103,6 +117,7 @@ const VersionSchema = z.object({
   file_count: z.coerce.number(),
   worker_sha256: z.string().regex(SHA256_RE).nullable(),
   kit_version: z.string().nullable(),
+  functions: VersionFunctionsSchema.nullable().catch(null),
   findings: z.array(FindingSchema).catch([]),
   qa_score: z.number().nullable(),
   created_at: z.string(),
@@ -113,7 +128,7 @@ const VersionSchema = z.object({
 
 export const VERSION_COLUMNS =
   "id, app_id, user_id, version, lane, bundle_sha256, bundle_bytes, " +
-  "file_count, worker_sha256, kit_version, findings, qa_score, created_at, " +
+  "file_count, worker_sha256, kit_version, functions, findings, qa_score, created_at, " +
   "published_at, retired_at, purged_at";
 
 export function parseVersionRow(value: unknown): VersionRow | null {
@@ -148,7 +163,12 @@ export interface RecordVersionInput {
   files: BundleFile[];
   workerSha256?: string | null;
   kitVersion?: string | null;
+  functions?: VersionFunctions | null;
   findings?: Finding[];
+}
+
+export function functionsDigest(module: Buffer): VersionFunctions {
+  return { sha256: createHash("sha256").update(module).digest("hex"), bytes: module.length };
 }
 
 export async function recordVersion(
@@ -168,6 +188,7 @@ export async function recordVersion(
       file_count: digest.fileCount,
       worker_sha256: input.workerSha256 ?? null,
       kit_version: input.kitVersion ?? null,
+      functions: input.functions ?? null,
       findings: input.findings ?? [],
     })
     .select(VERSION_COLUMNS)
@@ -197,6 +218,10 @@ export interface UploadVersionOptions {
   version?: string | undefined;
   /** Kit version the bundle was built against (Vibe lane). */
   kitVersion?: string | null | undefined;
+  /** The built Functions module for this version (§11.6); stored beside the
+   * bundle and mounted as the draft Worker's main module when the backend
+   * row allows it. */
+  functionsModule?: Buffer | null | undefined;
 }
 
 /**
@@ -234,11 +259,14 @@ export async function uploadVersion(
     files,
     findings: options.findings ?? [],
     kitVersion: options.kitVersion ?? null,
+    functions: options.functionsModule ? functionsDigest(options.functionsModule) : null,
   });
+  const functionsModule = options.functionsModule ?? null;
   let deployed: { workerSha256: string } | null = null;
   let liveMoved = false;
   try {
     await storeBundle(app.slug, version, files);
+    if (functionsModule) await storeFunctionsModule(app.slug, version, functionsModule);
     deployed = await deployStaticVersion(supabase, {
       appId: app.id,
       slug: app.slug,
@@ -246,6 +274,7 @@ export async function uploadVersion(
       ownerUserId: app.owner_user_id,
       files,
       target: "draft",
+      module: functionsModule,
     });
     if (deployed) {
       // The hand-off keys on this digest: a version without it stays on the

@@ -1,5 +1,6 @@
-# Air platform Workers (V11 §15). Only the Dispatcher and the static stub live
-# here; user Workers are uploaded by the control plane through the vendor API
+# Air platform Workers (V11 §15). The Dispatcher (this file), the Outbound
+# Worker (outbound/wrangler.toml) and the static stub live here; user Workers
+# are uploaded by the control plane through the vendor API
 # (apps/web/lib/functions/deploy.ts) and never touch wrangler.
 #
 # Secrets (set with `wrangler secret put`, never in this file):
@@ -43,9 +44,16 @@ new_sqlite_classes = ["TokenReplay"]
 binding = "CSP_COUNTS"
 id = "REPLACE_WITH_CSP_COUNTS_KV_ID"
 
+# Every user-Worker fetch() is routed through the Outbound Worker (§11.3).
+# `params` is the one object the Dispatcher passes on `DISPATCHER.get()`:
+# app, owner_ref, principal, role, version, egress, budget_usd, token_ref.
 [[dispatch_namespaces]]
 binding = "DISPATCHER"
 namespace = "air-apps"
+
+  [dispatch_namespaces.outbound]
+  service = "air-outbound"
+  parameters = ["params"]
 
 [observability]
 enabled = true

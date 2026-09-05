@@ -117,7 +117,7 @@ export function buildSkill(inputs: DesignInputs): string {
     "---",
     "name: create-miniapp",
     'description: "Build or host a wzrd.tech mini-app for your human: a sentence (Vibe) or an HTML file / zip / folder (Drop) becomes a DRAFT at mini.wzrd.tech/<username>/<app-name>. You plan, build, QA and stage; only the owner makes it live."',
-    "version: 2.0.0",
+    "version: 3.0.0",
     "author: air",
     "license: MIT",
     "platforms: [linux]",

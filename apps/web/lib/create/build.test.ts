@@ -99,7 +99,7 @@ describe("air.json (air.app.v1)", () => {
 });
 
 describe("workspace safety", () => {
-  it("only admits air.json, the plan, src/ and public/", () => {
+  it("only admits air.json, the plan, src/, public/ and functions/", () => {
     expect(safeWorkspacePath("air.json")).toBe("air.json");
     expect(safeWorkspacePath("./src/main.tsx")).toBe("src/main.tsx");
     expect(safeWorkspacePath("public/hero.png")).toBe("public/hero.png");
@@ -107,7 +107,8 @@ describe("workspace safety", () => {
     expect(safeWorkspacePath("src/../../.ssh/id_rsa")).toBeNull();
     expect(safeWorkspacePath("/etc/passwd")).toBeNull();
     expect(safeWorkspacePath(".build/findings.json")).toBeNull();
-    expect(safeWorkspacePath("functions/index.ts")).toBeNull();
+    expect(safeWorkspacePath("functions/index.ts")).toBe("functions/index.ts");
+    expect(safeWorkspacePath("functions/../.env")).toBeNull();
     expect(safeWorkspacePath("node_modules/react/index.js")).toBeNull();
   });
 

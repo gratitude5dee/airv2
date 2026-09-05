@@ -102,6 +102,18 @@ describe("C18 sweep — schema audit", () => {
     expect(columns.get("agent_runs")).toContain("schedule_source");
   });
 
+  it("MC5 Functions columns are metadata only (goal-create-v11 §11.4, §14.2)", () => {
+    const columns = tableColumns(sql);
+    const functions = columns.get("miniapp_functions") ?? [];
+    for (const name of ["secret_names", "secret_set_at", "approved_manifest", "declared", "runtime_token_id", "killed_at"]) {
+      expect(functions).toContain(name);
+    }
+    expect(functions.some((c) => /secret_value|secret_text|token_secret/.test(c))).toBe(false);
+    expect(columns.get("miniapp_runtime_tokens")).toContain("token_hash");
+    expect(columns.get("miniapp_runtime_tokens")).not.toContain("token");
+    expect(columns.get("miniapp_versions")).toContain("functions");
+  });
+
   it("every wave table exists and carries user_id uuid not null (§9)", () => {
     const tables = new Map(
       parseCreateTables(sql).map((table) => [table.name, table])
@@ -197,6 +209,44 @@ describe("C18 sweep — Postgres row audit", () => {
         status: "submitted",
       },
       box_state_events: { state: "ready" },
+    };
+    expect(findPlantedHits(JSON.stringify(rows), PLANTED_VALUES)).toEqual([]);
+  });
+
+  it("MC5 Functions rows hold names, hashes and references — never a secret or token value", () => {
+    // Shaped as secrets.ts / runtime.ts / backend.ts write them for an app
+    // whose owner set STRIPE_KEY to the planted API key and whose runtime
+    // token was minted from the planted password as entropy.
+    const rows: Record<string, unknown> = {
+      miniapp_functions: {
+        secret_names: ["STRIPE_KEY"],
+        secret_set_at: { STRIPE_KEY: { at: "2026-09-04T00:00:00.000Z", live: true, draft: true } },
+        approved_manifest: { egress: ["api.stripe.com"], db: true, kv: false, dailyCapUsd: 1, secretNames: ["STRIPE_KEY"] },
+        declared: { entry: "functions/index.ts", db: true, egress: ["api.stripe.com"], ai: { dailyCapUsd: 1 } },
+        runtime_token_id: "2f1c1d9e-0000-4000-8000-000000000001",
+        status: "live",
+      },
+      miniapp_runtime_tokens: {
+        id: "2f1c1d9e-0000-4000-8000-000000000001",
+        token_hash: "9b74c9897bac770ffc029102a200c5de",
+        revoked_at: null,
+      },
+      decisions_miniapp_backend: {
+        kind: "miniapp_backend",
+        payload: {
+          egress: ["api.stripe.com"],
+          db: true,
+          kv: false,
+          ai: { dailyCapUsd: 1 },
+          secret_names: ["STRIPE_KEY"],
+          previously_approved: null,
+        },
+      },
+      ops_events: [
+        { kind: "fn_secret", label: "alice/rsvp:set" },
+        { kind: "fn_request", label: "alice/rsvp:200" },
+        { kind: "fn_capped", label: "alice/rsvp" },
+      ],
     };
     expect(findPlantedHits(JSON.stringify(rows), PLANTED_VALUES)).toEqual([]);
   });

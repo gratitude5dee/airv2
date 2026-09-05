@@ -1,7 +1,7 @@
 ---
 name: create-miniapp
 description: "Build or host a wzrd.tech mini-app for your human: a sentence (Vibe) or an HTML file / zip / folder (Drop) becomes a DRAFT at mini.wzrd.tech/<username>/<app-name>. You plan, build, QA and stage; only the owner makes it live."
-version: 2.0.0
+version: 3.0.0
 author: air
 license: MIT
 platforms: [linux]
@@ -58,6 +58,7 @@ air-create qa <appname>           # Preview QA in this Box's browser; posts qa_s
 air-create status <appname|slug>  # draft/live versions, findings, build log, qa_score, budget
 air-create drop <path> [--name <appname>] [--title "<name>"]
 air-create publish <appname> [--title "<name>"]   # files the owner's decision; never flips live
+air-create functions <appname> [--egress <host> …] [--cap <usd>] [--db] [--kv]   # stages the backend; the owner approves
 ```
 
 Each is `curl` to `/api/create/*` on the control plane with this Box's gateway token; nothing here talks to storage, Cloudflare or npm.
@@ -142,16 +143,44 @@ That files a **Needs-you** decision on their phone. Reply:
 Publish request is ready for your approval — tap Needs-you to make it live at mini.wzrd.tech/alice/countdown.
 ```
 
+## 7a. Functions — a backend the owner approves
+
+An app needs a backend when it must remember something across visitors, call inference, or reach one outside API. Add `functions/index.ts` (one Worker; imports only `@air/functions`, `hono`, `zod`) and declare it in `air.json`:
+
+```json
+"functions": { "entry": "functions/index.ts", "db": true, "egress": ["api.example.com"], "ai": { "dailyCapUsd": 0.5 } }
+```
+
+```ts
+import { air } from "@air/functions";
+const app = air.router();
+app.post("/api/rsvp", async (c) => {
+  if (c.user.role === "anon") return c.json({ error: "sign in" }, 401); // role is set by the platform, never the client
+  await c.db.prepare("insert into rsvps (who) values (?)").bind(c.user.principal).run();
+  return c.json({ ok: true });
+});
+export default app;
+```
+
+The page calls `/api/rsvp` on its own origin. `air.ai.chat()`, `air.state`, `air.actions` and `air.media` are the only ways out besides the hosts in `egress`; every other `fetch` is refused with `egress_denied`. `build` compiles the Worker into the DRAFT and files (or refreshes) a **miniapp_backend** Needs-you decision listing exactly the hosts, database / kv, daily cap and secret *names*. `air-create functions <appname> --egress api.example.com --cap 0.50` stages the same declaration without a build; with no flags it prints the backend status. Reply:
+
+```text
+Backend changes are staged — they need your approval in Needs-you (or the Functions tab) before the app can reach api.example.com or spend on inference.
+```
+
+Until the owner approves, the live app has no backend and the draft runs against nothing the owner did not already approve. Secrets (`API_KEY`) are set by the owner in the Functions tab and arrive as `env.API_KEY` in the Worker — never write one into `functions/`.
+
 ## 8. Reporting rules — no exceptions
 
 - MUST NOT say the app is live, up, public, or shipped until `air-create status` shows `"status": "published"`. You stage; the owner publishes.
 - MUST quote `findings` and QA `failed` rules verbatim (rule id, file, line, hint). Do not paraphrase them away.
 - MUST report the preview as `[card: app <slug>]`. `preview_url` is the owner's and only works from their phone: never paste it, never open it, never curl it. `air-create qa` is the only thing that visits it.
 - MUST NOT put a secret — key, token, password, phone number, address — in `src/`, `public/`, `functions/` or `air.json`. If the owner pastes one, say secrets go in the Functions Secrets tab on their Create surface and leave it out.
+- MUST NOT say a backend is enabled, approved, connected, or reaching a host until `air-create functions` shows `"status": "live"`. You stage a `miniapp_backend` decision; the owner approves it. Never widen `egress`, raise `dailyCapUsd`, or turn on `db`/`kv` beyond what the owner asked for.
 - MUST NOT run `npm install` (or any installer), fetch code or fonts from the network, change `visibility`/`access`/`price` on a live app, raise the project budget, or touch `bundle_version`. A `429` with `"reason": "create_budget"` means the project's Create budget is spent: stop and tell the owner to raise it on the Create surface.
 - MUST NOT claim "done" while the last build has a hard finding or QA failed `off-origin-requests`, `csp-violations` or `page-errors`.
 
-Bad: "Done — your countdown is live!" after `build` ✗ · opening `preview_url` in the browser ✗ · `npm install framer-motion` ✗ · summarizing three findings as "a few CSP things" ✗
+Bad: "Done — your countdown is live!" after `build` ✗ · "backend enabled, it can now call Stripe" after `functions` ✗ · opening `preview_url` in the browser ✗ · `npm install framer-motion` ✗ · summarizing three findings as "a few CSP things" ✗
 
 Good: `new` → plan → `build` → `qa` → one sentence + `[card: app alice-countdown]`, findings quoted, then wait for the owner's word before `publish`. ✓
 

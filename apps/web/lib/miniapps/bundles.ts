@@ -224,3 +224,23 @@ export async function storeBundle(
     await putObject(bundleKey(slug, version, file.path), file.bytes, contentType);
   }
 }
+
+/**
+ * The compiled Functions module (§11.6) lives under the version prefix in a
+ * dot-directory: `SAFE_PATH` never admits one from a bundle, so it cannot
+ * collide with or be served as an asset, and it is purged with the version.
+ */
+export const FUNCTIONS_MODULE_DIR = ".fn/";
+export const FUNCTIONS_MAIN = "functions.mjs";
+
+export function functionsModuleKey(slug: string, version: string): string {
+  return bundleKey(slug, version, `${FUNCTIONS_MODULE_DIR}${FUNCTIONS_MAIN}`);
+}
+
+export async function storeFunctionsModule(
+  slug: string,
+  version: string,
+  module: Buffer
+): Promise<void> {
+  await putObject(functionsModuleKey(slug, version), module, "text/javascript");
+}

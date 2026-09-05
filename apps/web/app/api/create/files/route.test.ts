@@ -51,13 +51,14 @@ describe("/api/create/files", () => {
     expect((await PUT(put("app=countdown&path=src/main.tsx", { content: "x" }))).status).toBe(401);
   });
 
-  it("lists the workspace tree without `path`, hiding .build/ and functions/", async () => {
+  it("lists the workspace tree without `path`, hiding .build/ (functions/ is source since MC5)", async () => {
     const response = await GET(get("app=countdown"));
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       app: "countdown",
       files: [
         { path: "air.json", bytes: 120 },
+        { path: "functions/x.ts", bytes: 7 },
         { path: "src/main.tsx", bytes: 900 },
       ],
     });
@@ -87,7 +88,7 @@ describe("/api/create/files", () => {
       "/etc/passwd",
       "%2Fetc%2Fpasswd",
       ".build/qa/report.json",
-      "functions/index.ts",
+      "functions/../.hermes/.env",
       "node_modules/react/index.js",
       "src/",
       "src/.env",

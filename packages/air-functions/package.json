@@ -1,0 +1,10 @@
+{
+  "name": "@air/functions",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "SDK for mini-app Functions Workers (goal-create-v11 §11). Not published; vendored into packages/create-kit/functions by hand and pinned byte for byte by apps/web/lib/functions/sdk.test.ts.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "sideEffects": false
+}

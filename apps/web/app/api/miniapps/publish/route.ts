@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { serviceClient } from "@/lib/supabase";
 import { createDraft, PublishError } from "@/lib/miniapps/publish";
+import { fileBackendDecision, loadFunctions } from "@/lib/functions/backend";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -78,12 +79,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       }
       decisionId = decision.id as string;
     }
+    // MC5 (V11 §4.1): a declared backend the approved manifest does not
+    // cover yet needs its own owner decision alongside the publish one.
+    const backend = await loadFunctions(supabase, app.id);
+    const backendDecisionId = backend
+      ? await fileBackendDecision(supabase, { ...app, owner_user_id: userId }, backend)
+      : null;
     return NextResponse.json({
       ok: true,
       slug: app.slug,
       status: "draft",
       decision_id: decisionId,
-      note: "Draft staged. Publishing is an owner decision in Needs-you / the Publish page.",
+      backend_decision_id: backendDecisionId,
+      note: backendDecisionId
+        ? "Draft staged. Publishing and the backend changes are owner decisions in Needs-you / the Publish page."
+        : "Draft staged. Publishing is an owner decision in Needs-you / the Publish page.",
     });
   } catch (error) {
     if (error instanceof PublishError) {

@@ -8,6 +8,8 @@
  * Surface (all under /accounts/{account_id}):
  *   workers/dispatch/namespaces/{ns}/scripts                          GET
  *   workers/dispatch/namespaces/{ns}/scripts/{script}                 PUT/DELETE
+ *   workers/dispatch/namespaces/{ns}/scripts/{script}/secrets         PUT
+ *   workers/dispatch/namespaces/{ns}/scripts/{script}/secrets/{name}  DELETE
  *   workers/dispatch/namespaces/{ns}/scripts/{script}/assets-upload-session  POST
  *   workers/assets/upload?base64=true                                 POST (jwt)
  *   storage/kv/namespaces/{kv}/values/{key}                           GET/PUT/DELETE
@@ -111,6 +113,12 @@ export interface ScriptUpload {
   tags: string[];
   compatibilityDate: string;
   limits: { cpu_ms: number; subrequests: number };
+  /**
+   * Carry the script's existing `secret_text` bindings (owner secrets set
+   * through the secrets endpoint) across this upload; the control plane
+   * never holds their values so it cannot restate them (§11.4).
+   */
+  keepSecrets?: boolean;
   /** Completion token from the assets upload; omitted for Functions-only scripts. */
   assetsJwt?: string;
   assetsConfig?: {
@@ -133,6 +141,7 @@ export async function putDispatchScript(
     bindings: upload.bindings,
     tags: upload.tags,
     limits: upload.limits,
+    ...(upload.keepSecrets ? { keep_bindings: ["secret_text"] } : {}),
     ...(upload.assetsJwt
       ? {
           assets: {
@@ -192,6 +201,48 @@ export async function deleteDispatchScript(script: string): Promise<void> {
   try {
     await call(
       `workers/dispatch/namespaces/${env.cfDispatchNamespace()}/scripts/${encodeURIComponent(script)}?force=true`,
+      { method: "DELETE" }
+    );
+  } catch (error) {
+    if (error instanceof CloudflareError && error.status === 404) return;
+    throw error;
+  }
+}
+
+/**
+ * Set one owner secret on a dispatch script (§11.4). The value goes to
+ * Cloudflare and nowhere else — never logged, never persisted here.
+ * `false` when the script does not exist yet (the binding lands once the
+ * owner re-enters the value after that target's first deploy).
+ */
+export async function putDispatchScriptSecret(
+  script: string,
+  name: string,
+  text: string
+): Promise<boolean> {
+  try {
+    await call(
+      `workers/dispatch/namespaces/${env.cfDispatchNamespace()}/scripts/${encodeURIComponent(script)}/secrets`,
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name, text, type: "secret_text" }),
+      }
+    );
+    return true;
+  } catch (error) {
+    if (error instanceof CloudflareError && error.status === 404) return false;
+    throw error;
+  }
+}
+
+export async function deleteDispatchScriptSecret(
+  script: string,
+  name: string
+): Promise<void> {
+  try {
+    await call(
+      `workers/dispatch/namespaces/${env.cfDispatchNamespace()}/scripts/${encodeURIComponent(script)}/secrets/${encodeURIComponent(name)}`,
       { method: "DELETE" }
     );
   } catch (error) {
@@ -281,6 +332,43 @@ function manifestKv(): string {
   const id = env.cfManifestKvId();
   if (!id) throw new CloudflareError(503, "manifest KV is not configured");
   return id;
+}
+
+/**
+ * The Outbound Worker's own KV (§11.3): runtime tokens live here under an
+ * opaque reference and nowhere a user Worker or the Dispatcher can read.
+ */
+function runtimeKv(): string {
+  const id = env.cfRuntimeKvId();
+  if (!id) throw new CloudflareError(503, "runtime KV is not configured");
+  return id;
+}
+
+export function runtimeKvConfigured(): boolean {
+  return Boolean(env.cfRuntimeKvId());
+}
+
+export async function putRuntimeKvValue(key: string, value: string): Promise<void> {
+  await call(
+    `storage/kv/namespaces/${runtimeKv()}/values/${encodeURIComponent(key)}`,
+    {
+      method: "PUT",
+      headers: { "content-type": "text/plain" },
+      body: value,
+    }
+  );
+}
+
+export async function deleteRuntimeKvValue(key: string): Promise<void> {
+  try {
+    await call(
+      `storage/kv/namespaces/${runtimeKv()}/values/${encodeURIComponent(key)}`,
+      { method: "DELETE" }
+    );
+  } catch (error) {
+    if (error instanceof CloudflareError && error.status === 404) return;
+    throw error;
+  }
 }
 
 export async function putKvValue(key: string, value: string): Promise<void> {
