@@ -251,11 +251,28 @@ export async function command(
   });
 }
 
-/** Reads via the command endpoint; the files API is write-oriented. */
+/** Exit code the read command reserves for "path does not exist". */
+export const READ_FILE_MISSING_EXIT = 44;
+
+/**
+ * Reads via the command endpoint; the files API is write-oriented. Only an
+ * absent path is a 404; any other failure (permissions, I/O, killed) is a
+ * 500 so read-modify-write callers don't mistake it for an empty file.
+ */
 export async function readFile(boxId: string, path: string): Promise<string> {
-  const result = await command(boxId, `cat ${JSON.stringify(path)}`);
+  const quoted = JSON.stringify(path);
+  const result = await command(
+    boxId,
+    `[ -e ${quoted} ] || exit ${READ_FILE_MISSING_EXIT}; cat ${quoted}`
+  );
+  if (result.exitCode === READ_FILE_MISSING_EXIT) {
+    throw new BoxApiError(404, `readFile ${path}: no such file`);
+  }
   if (result.exitCode !== 0) {
-    throw new BoxApiError(404, `readFile ${path}: ${result.stderr}`);
+    throw new BoxApiError(
+      500,
+      `readFile ${path}: exit ${result.exitCode}: ${result.stderr}`
+    );
   }
   return result.stdout;
 }

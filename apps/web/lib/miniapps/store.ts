@@ -108,8 +108,8 @@ export async function writeAppState(
 /**
  * Same documents against a Box the caller already woke: one bounded Box
  * request each, no wake/resume inside — for callers holding a lease. A
- * missing file (`cat` exit ≠ 0 → 404) or unparseable one reads as `{}`;
- * anything else (timeout, Box 5xx, network) propagates, because a
+ * missing file (404) or unparseable one reads as `{}`; anything else (failed
+ * `cat`, timeout, Box 5xx, network) propagates, because a
  * read-modify-write caller that treated it as empty would overwrite the
  * document with a fresh one.
  */

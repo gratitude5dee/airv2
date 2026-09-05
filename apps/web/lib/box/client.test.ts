@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { deleteBox, getBox } from "./client";
+import {
+  BoxApiError,
+  READ_FILE_MISSING_EXIT,
+  deleteBox,
+  getBox,
+  readFile,
+} from "./client";
 
 const fetchMock = vi.fn();
 
@@ -61,5 +67,54 @@ describe("deleteBox", () => {
     expect(new Headers(init.headers).get("X-Ascii-Confirm-Delete")).toBe(
       "bx_old"
     );
+  });
+});
+
+function commandResponse(exitCode: number, stdout = "", stderr = ""): Response {
+  return new Response(JSON.stringify({ exitCode, stdout, stderr }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+async function readError(): Promise<BoxApiError> {
+  try {
+    await readFile("bx_1", "/home/user/.hermes/miniapps/party/actions.json");
+  } catch (error) {
+    if (error instanceof BoxApiError) return error;
+    throw error;
+  }
+  throw new Error("readFile resolved");
+}
+
+describe("readFile", () => {
+  it("probes for the path before cat so a missing file has its own exit code", async () => {
+    fetchMock.mockResolvedValueOnce(commandResponse(0, "[1]"));
+    await expect(readFile("bx_1", "/home/user/a b.json")).resolves.toBe("[1]");
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as {
+      command: string;
+    };
+    expect(body.command).toBe(
+      `[ -e "/home/user/a b.json" ] || exit ${READ_FILE_MISSING_EXIT}; cat "/home/user/a b.json"`
+    );
+  });
+
+  it("maps only the missing-path exit to 404", async () => {
+    fetchMock.mockResolvedValueOnce(commandResponse(READ_FILE_MISSING_EXIT));
+    expect((await readError()).status).toBe(404);
+  });
+
+  it("surfaces permission, I/O and killed reads as 500, never 404", async () => {
+    for (const [exitCode, stderr] of [
+      [1, "cat: actions.json: Permission denied"],
+      [1, "cat: actions.json: Input/output error"],
+      [137, ""],
+      [124, "timed out"],
+    ] as const) {
+      fetchMock.mockResolvedValueOnce(commandResponse(exitCode, "", stderr));
+      const error = await readError();
+      expect(error.status).toBe(500);
+      expect(error.message).toContain(`exit ${exitCode}`);
+    }
   });
 });
