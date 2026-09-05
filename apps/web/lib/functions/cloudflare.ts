@@ -359,6 +359,32 @@ export async function putRuntimeKvValue(key: string, value: string): Promise<voi
   );
 }
 
+/**
+ * Whether the Outbound Worker can resolve `key`. Uses the metadata endpoint
+ * so the secret itself never travels back to the control plane.
+ */
+export async function hasRuntimeKvValue(key: string): Promise<boolean> {
+  const creds = credentials();
+  const url =
+    `${API}/accounts/${creds.accountId}/storage/kv/namespaces/${runtimeKv()}` +
+    `/metadata/${encodeURIComponent(key)}`;
+  const headers = { Authorization: `Bearer ${creds.apiToken}` };
+  let response = await fetch(url, { headers });
+  if (response.status >= 500) {
+    await response.arrayBuffer().catch(() => undefined);
+    response = await fetch(url, { headers });
+  }
+  const text = await response.text();
+  if (response.status === 404) return false;
+  if (!response.ok) {
+    throw new CloudflareError(
+      response.status,
+      `cloudflare HEAD runtime kv ${key} failed: ${text.slice(0, 200)}`
+    );
+  }
+  return true;
+}
+
 export async function deleteRuntimeKvValue(key: string): Promise<void> {
   try {
     await call(
@@ -426,6 +452,14 @@ export async function createD1Database(name: string): Promise<{ uuid: string }> 
   });
 }
 
+/** The D1 database with exactly this name, if one exists (`?name=` is a search). */
+export async function findD1Database(name: string): Promise<string | null> {
+  const rows = await call<Array<{ uuid: string; name: string }>>(
+    `d1/database?name=${encodeURIComponent(name)}&per_page=100`
+  );
+  return rows.find((row) => row.name === name)?.uuid ?? null;
+}
+
 export async function deleteD1Database(uuid: string): Promise<void> {
   try {
     await call(`d1/database/${encodeURIComponent(uuid)}`, { method: "DELETE" });
@@ -441,6 +475,19 @@ export async function createKvNamespace(title: string): Promise<{ id: string }> 
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ title }),
   });
+}
+
+/** The KV namespace titled exactly this, if one exists (the list has no name filter). */
+export async function findKvNamespace(title: string): Promise<string | null> {
+  for (let page = 1; page <= 50; page++) {
+    const rows = await call<Array<{ id: string; title: string }>>(
+      `storage/kv/namespaces?per_page=100&page=${page}&order=title&direction=asc`
+    );
+    const hit = rows.find((row) => row.title === title);
+    if (hit) return hit.id;
+    if (rows.length < 100) return null;
+  }
+  return null;
 }
 
 export async function deleteKvNamespace(id: string): Promise<void> {

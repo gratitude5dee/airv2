@@ -9,7 +9,11 @@
  * KV and sets the Bearer toward the gateway. So: the user Worker never sees
  * the token (its bindings are ASSETS/DB/KV/secrets only), the Dispatcher
  * never holds a credential, the Box never learns it, and Postgres holds a
- * hash. Rotation = one insert, one revoke, one KV write, one KV delete.
+ * hash. Rotation = one insert, one KV write, a compare-and-swap of the app's
+ * active reference, then revoke + KV delete of what it replaced. Two
+ * rotations racing on one app resolve on the CAS: the loser revokes only its
+ * own fresh token, the winner only tokens older than itself, so the app is
+ * never left without an active token.
  *
  * The other half is the gateway `app` principal: hash the Bearer, find the
  * active row, and meter against the app's daily cap (CR8) before the owner's
@@ -18,6 +22,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   deleteRuntimeKvValue,
+  hasRuntimeKvValue,
   putRuntimeKvValue,
   runtimeKvConfigured,
 } from "./cloudflare";
@@ -40,49 +45,96 @@ export function runtimeTokenKey(tokenId: string): string {
   return `${RUNTIME_KV_PREFIX}${tokenId}`;
 }
 
+/** The Outbound Worker can only resolve a token that reached its KV. */
+export function runtimeTokensReady(): boolean {
+  return runtimeKvConfigured();
+}
+
+function requireRuntimeKv(): void {
+  if (!runtimeKvConfigured()) {
+    throw new BackendError(503, "the Functions runtime is not configured (runtime KV)");
+  }
+}
+
+async function revokeTokens(supabase: SupabaseClient, ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await supabase
+    .from("miniapp_runtime_tokens")
+    .update({ revoked_at: new Date().toISOString() })
+    .in("id", ids)
+    .is("revoked_at", null);
+  for (const id of ids) {
+    await deleteRuntimeKvValue(runtimeTokenKey(id)).catch(() => undefined);
+  }
+}
+
 /**
  * Mint a fresh runtime token for an app and make it the active one. The
  * secret leaves this function only as a KV write; the return value is the
- * opaque reference the manifest will carry.
+ * opaque reference the manifest will carry. Refuses (nothing persisted)
+ * when the runtime KV is not configured: a token the Outbound Worker
+ * cannot resolve would approve a backend that answers nothing.
  */
 export async function rotateRuntimeToken(
   supabase: SupabaseClient,
   appId: string,
   userId: string
 ): Promise<{ tokenId: string }> {
+  requireRuntimeKv();
+  const { data: before } = await supabase
+    .from("miniapp_functions")
+    .select("runtime_token_id")
+    .eq("app_id", appId)
+    .maybeSingle();
+  const previousRef =
+    typeof before?.runtime_token_id === "string" ? before.runtime_token_id : null;
   const { secret, hash } = mintRuntimeToken();
   const { data: inserted, error } = await supabase
     .from("miniapp_runtime_tokens")
     .insert({ app_id: appId, user_id: userId, token_hash: hash })
-    .select("id")
+    .select("id, created_at")
     .single();
   if (error || !inserted) throw new BackendError(502, "runtime token mint failed");
   const tokenId = inserted.id as string;
-  if (runtimeKvConfigured()) {
+  const createdAt = inserted.created_at as string;
+  try {
     await putRuntimeKvValue(runtimeTokenKey(tokenId), secret);
+  } catch (error) {
+    await revokeTokens(supabase, [tokenId]);
+    throw error;
   }
-  const { data: previous } = await supabase
+  // CAS on the active reference: only the rotation that observed the current
+  // pointer moves it. `is null` when no token existed yet.
+  let swap = supabase
+    .from("miniapp_functions")
+    .update({ runtime_token_id: tokenId })
+    .eq("app_id", appId);
+  swap = previousRef === null ? swap.is("runtime_token_id", null) : swap.eq("runtime_token_id", previousRef);
+  const { data: swapped } = await swap.select("app_id");
+  if (!Array.isArray(swapped) || swapped.length === 0) {
+    await revokeTokens(supabase, [tokenId]);
+    const { data: winner } = await supabase
+      .from("miniapp_functions")
+      .select("runtime_token_id")
+      .eq("app_id", appId)
+      .maybeSingle();
+    const ref = typeof winner?.runtime_token_id === "string" ? winner.runtime_token_id : null;
+    if (!ref) throw new BackendError(409, "runtime token rotation raced; retry");
+    return { tokenId: ref };
+  }
+  // Everything older than the new active token goes; a newer one belongs to
+  // a rotation that will either win its own CAS or revoke itself.
+  const { data: older } = await supabase
     .from("miniapp_runtime_tokens")
     .select("id")
     .eq("app_id", appId)
     .is("revoked_at", null)
-    .neq("id", tokenId);
-  const revokedIds = ((previous ?? []) as Array<{ id: string }>).map((r) => r.id);
-  if (revokedIds.length > 0) {
-    await supabase
-      .from("miniapp_runtime_tokens")
-      .update({ revoked_at: new Date().toISOString() })
-      .in("id", revokedIds);
-    if (runtimeKvConfigured()) {
-      for (const id of revokedIds) {
-        await deleteRuntimeKvValue(runtimeTokenKey(id));
-      }
-    }
-  }
-  await supabase
-    .from("miniapp_functions")
-    .update({ runtime_token_id: tokenId })
-    .eq("app_id", appId);
+    .neq("id", tokenId)
+    .lt("created_at", createdAt);
+  await revokeTokens(
+    supabase,
+    ((older ?? []) as Array<{ id: string }>).map((r) => r.id)
+  );
   console.log(JSON.stringify({ msg: "runtime token rotated", app_id: appId }));
   return { tokenId };
 }
@@ -99,7 +151,11 @@ export async function ensureRuntimeToken(
       .eq("id", row.runtime_token_id)
       .is("revoked_at", null)
       .maybeSingle();
-    if (data) return row.runtime_token_id;
+    // An active row whose secret the Outbound Worker cannot resolve (minted
+    // before the runtime KV existed, or a lost write) is useless; rotate it.
+    if (data && (await hasRuntimeKvValue(runtimeTokenKey(row.runtime_token_id)))) {
+      return row.runtime_token_id;
+    }
   }
   return (await rotateRuntimeToken(supabase, row.app_id, row.user_id)).tokenId;
 }

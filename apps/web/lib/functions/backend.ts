@@ -216,6 +216,28 @@ export async function stageDeclaration(
   return { ...row, declared, declared_at: patch["declared_at"] as string, status: row.status === "disabled" ? "draft" : row.status };
 }
 
+/**
+ * Put back what a build staged over when its version never got stored.
+ * Fenced on `declared_at`: a build that staged since keeps its own row.
+ */
+export async function unstageDeclaration(
+  supabase: SupabaseClient,
+  appId: string,
+  previous: FunctionsRow,
+  stagedAt: string
+): Promise<void> {
+  const patch: Record<string, unknown> = {
+    declared: previous.declared,
+    declared_at: previous.declared_at,
+  };
+  if (previous.status === "disabled") patch["status"] = "disabled";
+  await supabase
+    .from("miniapp_functions")
+    .update(patch)
+    .eq("app_id", appId)
+    .eq("declared_at", stagedAt);
+}
+
 export const BACKEND_DECISION_KIND = "miniapp_backend";
 
 /** The card's payload: verbatim what the owner is approving, nothing else. */

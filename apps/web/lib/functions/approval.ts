@@ -16,6 +16,7 @@ import {
   BackendError,
   fileBackendDecision,
   loadFunctions,
+  pendingProposal,
   setKillSwitch,
   stageDeclaration,
   type FunctionsRow,
@@ -28,7 +29,8 @@ import {
   syncManifest,
 } from "./deploy";
 import type { FunctionsDeclaration } from "./egress";
-import { ensureRuntimeToken, rotateRuntimeToken } from "./runtime";
+import { ensureResources } from "./provision";
+import { ensureRuntimeToken, rotateRuntimeToken, runtimeTokensReady } from "./runtime";
 import type { RegistryApp } from "../miniapps/registry";
 
 export type BackendResolution = "approved" | "dismissed";
@@ -61,18 +63,59 @@ export async function approveBackendForOwner(
   slug: string
 ): Promise<FunctionsRow | null> {
   const app = await ownedApp(supabase, userId, slug);
+  // Nothing is stamped when the runtime cannot mint a resolvable token: an
+  // approved backend whose every call 401s is worse than a pending card.
+  if (!runtimeTokensReady()) {
+    throw new BackendError(503, "the Functions runtime is not configured (runtime KV)");
+  }
   const approval = await approveBackend(supabase, app.id);
   if (!approval) return null;
-  await ensureRuntimeToken(supabase, approval.row);
-  // Reload: approveBackend flipped functions_enabled, which the manifest reads.
-  const current = await ownedApp(supabase, userId, slug);
-  if (current.status === "published" && current.bundle_version) {
-    await promoteVersion(supabase, current, current.bundle_version);
-  } else {
-    await syncManifest(supabase, current);
+  try {
+    let row = approval.row;
+    if (appOriginLaneReady()) {
+      row = await ensureResources(supabase, row, slug, {
+        db: approval.approved.db,
+        kv: approval.approved.kv,
+      });
+    }
+    await ensureRuntimeToken(supabase, row);
+    // Reload: approveBackend flipped functions_enabled, which the manifest reads.
+    const current = await ownedApp(supabase, userId, slug);
+    if (current.status === "published" && current.bundle_version) {
+      await promoteVersion(supabase, current, current.bundle_version);
+    } else {
+      await syncManifest(supabase, current);
+    }
+  } catch (error) {
+    await supabase
+      .from("miniapp_functions")
+      .update({ last_error: error instanceof Error ? error.message.slice(0, 500) : "deploy failed" })
+      .eq("app_id", app.id);
+    throw error;
   }
+  await supabase
+    .from("miniapp_functions")
+    .update({ deployed_at: new Date().toISOString(), last_error: null })
+    .eq("app_id", app.id);
   await recordOpsEvent(supabase, "fn_backend", userId, `${slug}:approved`);
   return (await loadFunctions(supabase, app.id)) ?? approval.row;
+}
+
+/**
+ * True when the approved manifest is what actually runs: nothing new is
+ * declared and the last approval's deploy finished. Anything else — a
+ * failed redeploy, an approval that never reached the Worker — means a
+ * fresh owner tap should run the approval again rather than say "unchanged".
+ */
+export function approvalDeployed(row: FunctionsRow): boolean {
+  return (
+    pendingProposal(row) === null &&
+    row.status === "live" &&
+    row.last_error === null &&
+    row.deployed_at !== null &&
+    row.approved_at !== null &&
+    row.deployed_at >= row.approved_at
+  );
 }
 
 /**
@@ -87,7 +130,10 @@ export async function stageBackend(
   declared: FunctionsDeclaration
 ): Promise<{ row: FunctionsRow; decision: string | null }> {
   const app = await ownedApp(supabase, userId, slug);
-  const row = await stageDeclaration(supabase, app, declared);
+  let row = await stageDeclaration(supabase, app, declared);
+  if (appOriginLaneReady()) {
+    row = await ensureResources(supabase, row, slug, { db: declared.db, kv: declared.kv });
+  }
   const decision = await fileBackendDecision(supabase, app, row);
   await syncManifest(supabase, await ownedApp(supabase, userId, slug)).catch((error) => {
     console.warn(

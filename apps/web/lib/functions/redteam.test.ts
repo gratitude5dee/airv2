@@ -157,6 +157,25 @@ describe("Outbound Worker — egress is deny-by-default (CR7)", () => {
     expect(egressAllowed({ egress: ["example.com"] }, "api.example.com")).toBe(false);
   });
 
+  it("an approved host is reachable on 443 only — no other port on it", async () => {
+    const { fn } = mockFetch();
+    for (const port of [":22", ":8443", ":80"]) {
+      const res = await workerFetch(
+        new Request(`https://api.example.com${port}/v1`),
+        outboundEnv({ egress: ["api.example.com"] })
+      );
+      expect(res.status).toBe(403);
+      expect(await res.json()).toEqual({ error: "egress_denied", host: "api.example.com" });
+    }
+    expect(fn).not.toHaveBeenCalled();
+    const ok = await workerFetch(
+      new Request("https://api.example.com:443/v1"),
+      outboundEnv({ egress: ["api.example.com"] })
+    );
+    expect(ok.status).not.toBe(403);
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
   it("forged X-Air-* headers are stripped from user-originated requests", async () => {
     const { calls } = mockFetch();
     const res = await workerFetch(

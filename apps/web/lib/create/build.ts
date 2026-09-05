@@ -36,7 +36,14 @@ import { nestedPathFor } from "../miniapps/nested";
 import { PublishError, validateAppName } from "../miniapps/publish";
 import type { RegistryApp } from "../miniapps/registry";
 import { appOriginLaneReady } from "../functions/deploy";
-import { fileBackendDecision, stageDeclaration } from "../functions/backend";
+import {
+  ensureFunctionsRow,
+  fileBackendDecision,
+  loadFunctions,
+  stageDeclaration,
+  unstageDeclaration,
+  type FunctionsRow,
+} from "../functions/backend";
 import {
   functionsDeclarationSchema,
   type FunctionsDeclaration,
@@ -302,7 +309,13 @@ export function checkWorkspace(files: WorkspaceFile[]): Finding[] {
 export function sweepWorkspaceSecrets(files: WorkspaceFile[]): Finding[] {
   const findings: Finding[] = [];
   for (const file of files) {
-    if (!file.path.startsWith("src/") && !file.path.startsWith("functions/")) continue;
+    if (
+      !file.path.startsWith("src/") &&
+      !file.path.startsWith("functions/") &&
+      !file.path.startsWith("public/")
+    ) {
+      continue;
+    }
     if (!SWEPT_EXT.has(path.posix.extname(file.path).toLowerCase())) continue;
     const reason = textContainsSecrets(file.bytes.toString("utf8"));
     if (reason) {
@@ -569,7 +582,14 @@ async function compileFunctions(
   nodeModules: string
 ): Promise<{ module: Buffer | null; findings: Finding[] }> {
   const findings: Finding[] = [];
-  const entry = path.join(sandbox, ...declared.entry.split("/"));
+  const fnRoot = path.join(sandbox, "functions");
+  const entry = path.resolve(sandbox, ...declared.entry.split("/"));
+  if (!within(fnRoot, entry) || entry === fnRoot) {
+    return {
+      module: null,
+      findings: [finding("air.json", "path-escape", "functions.entry must stay under functions/")],
+    };
+  }
   if (!fs.existsSync(entry)) {
     return {
       module: null,
@@ -1144,28 +1164,58 @@ export async function buildApp(
     };
   }
   // A declared backend is staged, never enabled (CR4): the row records the
-  // declaration, resources are provisioned once so the draft can use them,
-  // and anything the approved manifest does not already cover becomes the
-  // owner's `miniapp_backend` decision (one pending per app, refreshed).
-  if (output.functions && output.air?.functions) {
-    const row = await stageDeclaration(supabase, app, output.air.functions);
-    if (appOriginLaneReady()) {
-      await ensureResources(supabase, row, app.slug, {
-        db: output.air.functions.db,
-        kv: output.air.functions.kv,
-      });
+  // declaration (the draft Worker's bindings follow it), resources are
+  // provisioned once so the draft can use them, and — only once the version
+  // that carries the module is stored — anything the approved manifest does
+  // not already cover becomes the owner's `miniapp_backend` decision (one
+  // pending per app, refreshed). A build that fails anywhere after staging
+  // (provisioning or the upload itself) puts the previous declaration back so
+  // the card never describes a module that was never uploaded; a build that
+  // was overtaken leaves the card to the newer one. Provisioned resources
+  // stay: they are per app, not per build.
+  const declared = output.functions ? output.air?.functions ?? null : null;
+  let before: FunctionsRow | null = null;
+  let stagedAt: string | null = null;
+  let stored: string;
+  try {
+    if (declared) {
+      before = await ensureFunctionsRow(supabase, app);
+      const row = await stageDeclaration(supabase, app, declared);
+      stagedAt = row.declared_at;
+      if (appOriginLaneReady()) {
+        await ensureResources(supabase, row, app.slug, { db: declared.db, kv: declared.kv });
+      }
+      output.log.push(`functions: declared (db=${declared.db}, kv=${declared.kv}, egress=${declared.egress.length})`);
     }
-    const decision = await fileBackendDecision(supabase, app, row);
-    output.log.push(`functions: declared (db=${output.air.functions.db}, kv=${output.air.functions.kv}, egress=${output.air.functions.egress.length})`);
-    if (decision) output.log.push("functions: backend changes need the owner's approval");
+    stored = await uploadVersion(supabase, app, output.files, "vibe", {
+      findings: output.findings,
+      promote: false,
+      version,
+      kitVersion: output.manifest?.kit.version ?? null,
+      functionsModule: output.functions?.module ?? null,
+    });
+  } catch (error) {
+    if (before && stagedAt) {
+      await unstageDeclaration(supabase, app.id, before, stagedAt).catch(() => undefined);
+    }
+    throw error;
   }
-  const stored = await uploadVersion(supabase, app, output.files, "vibe", {
-    findings: output.findings,
-    promote: false,
-    version,
-    kitVersion: output.manifest?.kit.version ?? null,
-    functionsModule: output.functions?.module ?? null,
-  });
+  // The version and draft pointer are committed at this point, so a card that
+  // fails to file is a warning, not a failed build: the next build refiles it
+  // and the Functions tab's "Enable backend" files it on demand.
+  if (declared && stagedAt) {
+    try {
+      const current = await loadFunctions(supabase, app.id);
+      if (current && current.declared_at === stagedAt) {
+        const decision = await fileBackendDecision(supabase, app, current);
+        if (decision) output.log.push("functions: backend changes need the owner's approval");
+      }
+    } catch {
+      output.log.push(
+        "functions: warning — the approval card could not be filed; open the Functions tab to request approval"
+      );
+    }
+  }
   output.log.push(`version: ${stored} staged as draft`);
   const staged: RegistryApp = { ...app, draft_version: stored };
   return {
