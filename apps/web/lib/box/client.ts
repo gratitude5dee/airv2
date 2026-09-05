@@ -9,6 +9,7 @@
 import { z } from "zod";
 import { env } from "../env";
 import { requestSignal } from "../http/timeout";
+import { shellQuote } from "./shell";
 
 export type BoxState =
   | "provisioned"
@@ -253,11 +254,15 @@ export async function command(
 
 /** `cat` in the C locale so ENOENT has one spelling regardless of the Box's LANG. */
 export function readFileCommand(path: string): string {
-  return `LC_ALL=C cat ${JSON.stringify(path)}`;
+  return `LC_ALL=C cat ${shellQuote(path)}`;
 }
 
-/** strerror(ENOENT) in the C locale (coreutils and busybox alike). */
-const ENOENT_MESSAGE = /No such file or directory/;
+/**
+ * `cat: <path>: No such file or directory` — strerror(ENOENT) in the C locale
+ * (coreutils and busybox alike), anchored to the end so the path itself
+ * can't spell it.
+ */
+const ENOENT_MESSAGE = /: No such file or directory\s*$/;
 
 /**
  * Only ENOENT is a 404; any other failure (permission denied on the file or

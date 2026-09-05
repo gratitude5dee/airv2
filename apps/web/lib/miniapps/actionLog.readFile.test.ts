@@ -108,7 +108,7 @@ describe("appendActionLogEntry through the real readFile", () => {
   it("a genuinely missing log file starts a fresh one", async () => {
     const { appendActionLogEntry } = await import("./actionLog");
     await appendActionLogEntry(supabase, "u1", "party", entry("first"), { attempts: 1 });
-    expect(commands[0]).toMatch(/^LC_ALL=C cat "/);
+    expect(commands[0]).toMatch(/^LC_ALL=C cat '/);
     expect(writes).toHaveLength(1);
     expect(JSON.parse(writes[0]!.content)).toEqual([entry("first")]);
   });
