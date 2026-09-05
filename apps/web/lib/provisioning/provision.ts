@@ -40,7 +40,7 @@ import { installComposioMcp, installMasterkeyMcp } from "./connectors";
 import { provisionDaytona } from "./daytona";
 import { normalizeAddress } from "../routing/trust";
 import { sealSecret } from "../crypto/secretbox";
-import { installBaseSkills } from "../skills/hub";
+import { baseSkillsFor, installBaseSkills } from "../skills/hub";
 import {
   getChannel,
   isChannelName,
@@ -53,11 +53,19 @@ import { getRelease, type TemplateRelease } from "../fleet/releases";
 export const DEFAULT_CHANNEL: ChannelName = "prod";
 
 /**
+ * The longest request budget of any route that calls replaceBox: the mini-app
+ * action route (onboarding's environment step) runs up to 800s; the admin
+ * reprovision route 300s. Both routes' `maxDuration` must stay at or below
+ * this.
+ */
+export const LONGEST_REPLACE_CALLER_SECONDS = 800;
+
+/**
  * A replacement claim (boxes.replace_claimed_at) older than this outlives any
- * request that could still hold it — twice the longest route budget — and is
+ * request that could still hold it — twice the longest caller budget — and is
  * taken over rather than honoured.
  */
-export const REPLACE_CLAIM_TTL_MS = 10 * 60 * 1000;
+export const REPLACE_CLAIM_TTL_MS = 2 * LONGEST_REPLACE_CALLER_SECONDS * 1000;
 
 export interface ProvisionOptions {
   displayName?: string | undefined;
@@ -103,23 +111,89 @@ interface ComputeRoutes {
   dashboard: HostedRoute;
 }
 
+/**
+ * The release identity a template stamps on itself (~/.hermes/.template-release,
+ * copied from the artifact's RELEASE file by setup.sh / sync-box.sh). Absent on
+ * templates built or synced from a working tree.
+ */
+export interface TemplateReleaseStamp {
+  version: string;
+  gitSha: string;
+  hermesRef: string | null;
+}
+
 /** Everything the boxes row needs about a freshly built compute instance. */
 interface ProvisionedCompute {
   target: ComputeTarget;
   routes: ComputeRoutes;
   templateHermesRef: string | null;
+  /** What the template says it was built from; null when it does not say. */
+  templateRelease: TemplateReleaseStamp | null;
+  /**
+   * Hub skill identifiers the template's setup.sh installed successfully
+   * (~/.hermes/.template-skills). A base skill absent here is not on the fork
+   * however the template was built.
+   */
+  templateSkills: readonly string[];
   gatewayToken: string;
   apiServerKey: string;
   dashPassword: string;
   channel: ChannelName;
   /**
-   * The channel's release when the fork's baked Hermes ref matches it: the
-   * template it came from IS that release, so the box starts converged —
-   * baseline_version is recorded and the hub skills the template already
-   * carries are not re-installed. Null when the channel has no release, the
-   * fork came from the static fallback template, or the refs disagree.
+   * The channel's release when the fork proves it came from it: the
+   * template's release stamp names this exact release (version + git sha) and
+   * the baked Hermes ref agrees. The box then starts converged —
+   * baseline_version is recorded and only the base skills missing from the
+   * template's install manifest are re-asserted. Null when the channel has no
+   * release, the template carries no stamp (working-tree build or the static
+   * fallback template), or the identities disagree.
    */
   release: TemplateRelease | null;
+}
+
+const STAMP_SEPARATOR = "---template-skills---";
+
+/**
+ * Parse a `key=value` release stamp. Anything short of a version and git sha
+ * is treated as no stamp at all.
+ */
+export function parseTemplateReleaseStamp(
+  text: string
+): TemplateReleaseStamp | null {
+  const fields = new Map<string, string>();
+  for (const line of text.split("\n")) {
+    const eq = line.indexOf("=");
+    if (eq > 0) fields.set(line.slice(0, eq).trim(), line.slice(eq + 1).trim());
+  }
+  const version = fields.get("version");
+  const gitSha = fields.get("git_sha");
+  if (!version || !gitSha) return null;
+  return { version, gitSha, hermesRef: fields.get("hermes_ref") || null };
+}
+
+/**
+ * The channel release a fork is proven to come from, or null. Every identity
+ * the template can vouch for must agree: the stamp's version and git sha name
+ * this release, and the Hermes ref it baked is the one the release pins.
+ */
+export function verifiedTemplateRelease(
+  channelRelease: TemplateRelease | null,
+  template: {
+    templateRelease: TemplateReleaseStamp | null;
+    templateHermesRef: string | null;
+  }
+): TemplateRelease | null {
+  const stamp = template.templateRelease;
+  if (!channelRelease || !stamp) return null;
+  if (stamp.version !== channelRelease.version) return null;
+  if (stamp.gitSha !== channelRelease.git_sha) return null;
+  if (
+    channelRelease.hermes_ref &&
+    channelRelease.hermes_ref !== template.templateHermesRef
+  ) {
+    return null;
+  }
+  return channelRelease;
 }
 
 /** A created instance, plus any ingress the provider allocated with it. */
@@ -506,11 +580,7 @@ async function buildCompute(
       dashSecret,
       airVaultKey,
     });
-    const release =
-      channelRelease?.hermes_ref &&
-      channelRelease.hermes_ref === configured.templateHermesRef
-        ? channelRelease
-        : null;
+    const release = verifiedTemplateRelease(channelRelease, configured);
     return { ...configured, channel, release };
   } catch (error) {
     await teardown(target);
@@ -567,6 +637,21 @@ async function configureCompute(
     `cat ${profile.homeDir}/.hermes/.template-hermes-ref 2>/dev/null || true`
   );
   const templateHermesRef = refResult.stdout.trim() || null;
+
+  // Release stamp + base-skill install manifest, both written by the template
+  // build (see setup.sh §3c and the RELEASE copy at its end). One round trip.
+  const stampResult = await runCommand(
+    target,
+    `cat ${profile.homeDir}/.hermes/.template-release 2>/dev/null; echo; echo '${STAMP_SEPARATOR}'; cat ${profile.homeDir}/.hermes/.template-skills 2>/dev/null || true`
+  );
+  const [stampText = "", skillsText = ""] = stampResult.stdout.split(
+    `${STAMP_SEPARATOR}\n`
+  );
+  const templateRelease = parseTemplateReleaseStamp(stampText);
+  const templateSkills = skillsText
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
 
   const hashResult = await runCommand(
     target,
@@ -627,6 +712,8 @@ async function configureCompute(
     target,
     routes,
     templateHermesRef,
+    templateRelease,
+    templateSkills,
     gatewayToken,
     apiServerKey,
     dashPassword,
@@ -812,9 +899,10 @@ async function persistBox(
  *
  * The hub installs are the expensive part (one `hermes skills install` per
  * base skill, sequential, minutes in total) and the template's setup.sh
- * bakes the same list, so a fork known to come from the channel's current
- * release skips them — that is what keeps a replacement inside a single
- * request budget. Forks of unknown provenance still re-assert them.
+ * bakes the same list, so a fork proven to come from the channel's current
+ * release installs only what the template's manifest says it failed to bake
+ * — that is what keeps a replacement inside a single request budget. Forks
+ * of unknown provenance still re-assert the whole list.
  */
 async function finishSetup(
   supabase: ReturnType<typeof serviceClient>,
@@ -823,14 +911,19 @@ async function finishSetup(
 ): Promise<void> {
   const { target } = built;
   if (built.release) {
+    const baked = new Set(built.templateSkills);
+    const missing = baseSkillsFor().filter((skill) => !baked.has(skill));
     console.log(
       JSON.stringify({
-        msg: "base skills preinstalled by template release, skipping hub installs",
+        msg: "fork verified against template release",
         user_id: userId,
         box_id: target.instanceId,
         release: built.release.version,
+        baked_skills: baked.size,
+        missing_skills: missing,
       })
     );
+    if (missing.length > 0) await installBaseSkills(target, missing);
   } else {
     await installBaseSkills(target);
   }

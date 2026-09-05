@@ -24,8 +24,15 @@ HERMES_REF="$(grep -m1 '^HERMES_REF=' "$REPO_ROOT/infra/template/setup.sh" \
 # Via a file, not an env var: the base64 template tarball is megabytes and
 # passing it in the environment blows the exec argument limit (E2BIG).
 ARTIFACT_FILE="$(mktemp)"
-trap 'rm -f "$ARTIFACT_FILE"' EXIT
-tar czf - -C "$REPO_ROOT/infra" template | base64 -w0 > "$ARTIFACT_FILE"
+STAGE_DIR="$(mktemp -d)"
+trap 'rm -rf "$ARTIFACT_FILE" "$STAGE_DIR"' EXIT
+# The artifact carries its own identity: setup.sh / sync-box.sh copy RELEASE
+# to ~/.hermes/.template-release, which is how provisioning tells that a
+# fork really came from the channel's release (never from a working tree).
+cp -a "$REPO_ROOT/infra/template" "$STAGE_DIR/template"
+printf 'version=%s\ngit_sha=%s\nhermes_ref=%s\n' "$VERSION" "$GIT_SHA" "$HERMES_REF" \
+  > "$STAGE_DIR/template/RELEASE"
+tar czf - -C "$STAGE_DIR" template | base64 -w0 > "$ARTIFACT_FILE"
 
 RELEASE_ORIGIN="$ORIGIN" RELEASE_KEY="$KEY" RELEASE_VERSION="$VERSION" \
 RELEASE_GIT_SHA="$GIT_SHA" RELEASE_HERMES_REF="$HERMES_REF" \

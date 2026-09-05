@@ -2137,11 +2137,28 @@ export const onboarding: MiniAppModule = {
       // Same row lease as the operator reprovision route: a double-tap here,
       // or an operator replacing this box at the same moment, must not fork
       // two boxes for one user.
-      const { data: currentBox } = await supabase
+      const { data: currentBox, error: currentBoxError } = await supabase
         .from("boxes")
         .select("provider_box_id")
         .eq("user_id", userId)
         .maybeSingle();
+      if (currentBoxError) {
+        // Unknown whether a box exists: an unleased switch here could fork a
+        // second box for the user, so ask them to retry instead.
+        console.error(
+          JSON.stringify({
+            msg: "environment switch box lookup failed",
+            user_id: userId,
+            environment: value,
+            error: currentBoxError.message,
+          })
+        );
+        return respond(
+          ctx,
+          "environment",
+          "Couldn't check on your computer just now — try again in a moment."
+        );
+      }
       const currentBoxId = (currentBox as { provider_box_id?: unknown } | null)
         ?.provider_box_id;
       let setupIncomplete = false;
