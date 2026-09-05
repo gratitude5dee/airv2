@@ -14,7 +14,7 @@ import {
   MEDIA_MAX_BYTES,
   MediaGuardError,
 } from "./guard";
-import { addUsage } from "./buckets";
+import { releaseQuota, reserveQuota } from "./buckets";
 import {
   deleteObject,
   getObject,
@@ -67,17 +67,22 @@ async function takeReservation(
 }
 
 interface StaleUpload {
+  key: string;
   user_id: string;
-  charged_bytes: number;
 }
+
+/** Stale reservations handled per sweep; the rest wait for the next tick. */
+export const SWEEP_BATCH = 200;
 
 /**
  * Release abandoned presign reservations: a pending_uploads row older than
  * the presign TTL belongs to an upload that was never confirmed, so its
- * pre-charge would leak quota forever. Delete-returning keeps the release
- * exactly-once even across concurrent sweeps. The cutoff includes a grace
- * window past the presign expiry so a confirm racing the sweep still finds
- * its reservation.
+ * pre-charge would leak quota forever. Whatever the client PUT at the key
+ * never went through confirm's guard, so the object is deleted before the
+ * charge goes back — an R2 failure leaves the row (and the charge) for the
+ * next sweep. Delete-returning the row keeps the release exactly-once even
+ * across concurrent sweeps. The cutoff includes a grace window past the
+ * presign expiry so a confirm racing the sweep still finds its reservation.
  */
 export async function sweepAbandonedUploads(
   supabase: SupabaseClient,
@@ -86,17 +91,29 @@ export async function sweepAbandonedUploads(
   const cutoff = new Date(Date.now() - ttlSeconds * 1000).toISOString();
   const { data, error } = await supabase
     .from("pending_uploads")
-    .delete()
+    .select("key, user_id")
     .lt("created_at", cutoff)
-    .select("user_id, charged_bytes");
+    .limit(SWEEP_BATCH);
   if (error) {
     throw new Error(`upload sweep failed: ${error.message}`);
   }
   let released = 0;
   for (const row of (data ?? []) as StaleUpload[]) {
-    const charged = Number(row.charged_bytes ?? 0);
+    try {
+      await deleteObject(row.key);
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          msg: "sweeper object delete failed",
+          error: error instanceof Error ? error.message : String(error),
+        })
+      );
+      continue;
+    }
+    const charged = await takeReservation(supabase, row.user_id, row.key);
+    if (charged === null) continue;
     if (charged > 0) {
-      await addUsage(supabase, row.user_id, -charged);
+      await releaseQuota(supabase, { userId: row.user_id, bytes: charged });
     }
     released += 1;
   }
@@ -116,34 +133,53 @@ export async function confirmUpload(
   if (charged === null) {
     return { ok: false, status: 409, error: "no pending upload for key" };
   }
+  const hold = { userId, bytes: charged };
   const head = await headObject(key);
   if (!head) {
-    await addUsage(supabase, userId, -charged);
+    await releaseQuota(supabase, hold);
     return { ok: false, status: 404, error: "object not found" };
   }
   if (head.sizeBytes > MEDIA_MAX_BYTES || !allowedMediaType(head.contentType)) {
     await deleteObject(key);
-    await addUsage(supabase, userId, -charged);
+    await releaseQuota(supabase, hold);
     return { ok: false, status: 422, error: "upload rejected" };
   }
   const object = await getObject(key);
   if (!object) {
-    await addUsage(supabase, userId, -charged);
+    await releaseQuota(supabase, hold);
     return { ok: false, status: 404, error: "object not found" };
   }
+  let sanitized: Buffer;
   try {
-    const sanitized = guardMediaUpload(object.body, head.contentType);
-    if (!sanitized.equals(object.body)) {
-      await putObject(key, sanitized, head.contentType);
-    }
-    await addUsage(supabase, userId, sanitized.length - charged);
+    sanitized = guardMediaUpload(object.body, head.contentType);
   } catch (error) {
     if (error instanceof MediaGuardError) {
       await deleteObject(key);
-      await addUsage(supabase, userId, -charged);
+      await releaseQuota(supabase, hold);
       return { ok: false, status: error.status, error: error.message };
     }
     throw error;
+  }
+  // The declaration was the client's; the object is what counts. Bytes over
+  // it go through the same reserve as a fresh upload, so an understated
+  // declaration cannot land past the quota. A smaller object refunds.
+  const delta = sanitized.length - charged;
+  if (delta > 0) {
+    try {
+      await reserveQuota(supabase, userId, delta);
+    } catch (error) {
+      if (error instanceof MediaGuardError) {
+        await deleteObject(key);
+        await releaseQuota(supabase, hold);
+        return { ok: false, status: error.status, error: error.message };
+      }
+      throw error;
+    }
+  } else if (delta < 0) {
+    await releaseQuota(supabase, { userId, bytes: -delta });
+  }
+  if (!sanitized.equals(object.body)) {
+    await putObject(key, sanitized, head.contentType);
   }
   return { ok: true, publicUrl: publicUrl(key) };
 }

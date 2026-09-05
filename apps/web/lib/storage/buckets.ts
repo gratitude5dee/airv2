@@ -109,33 +109,3 @@ export function assertWithinQuota(bucket: UserBucket, addBytes: number): void {
     );
   }
 }
-
-/**
- * Optimistic usage bump (compare-and-set on bytes_used, same shape as guest
- * grant redemption). Retries a handful of times under contention.
- */
-export async function addUsage(
-  supabase: SupabaseClient,
-  userId: string,
-  deltaBytes: number
-): Promise<void> {
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const { data: row } = await supabase
-      .from("user_buckets")
-      .select("bytes_used")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (!row) return;
-    const current = row.bytes_used as number;
-    const next = Math.max(0, current + deltaBytes);
-    const { data: updated, error } = await supabase
-      .from("user_buckets")
-      .update({ bytes_used: next })
-      .eq("user_id", userId)
-      .eq("bytes_used", current)
-      .select("user_id");
-    if (error) throw new Error(`usage update failed: ${error.message}`);
-    if ((updated?.length ?? 0) > 0) return;
-  }
-  throw new Error("usage update failed: contention");
-}
