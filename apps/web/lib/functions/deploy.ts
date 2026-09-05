@@ -113,16 +113,16 @@ export async function loadRelease(
   const moduleKey = functionsModuleKey(slug, version);
   const keys = await listKeys(prefix, 1000);
   const files: BundleFile[] = [];
-  let module: Buffer | null = null;
+  let fnModule: Buffer | null = null;
   for (const key of keys) {
     const object = await getObject(key);
     if (!object) continue;
-    if (key === moduleKey) module = object.body;
+    if (key === moduleKey) fnModule = object.body;
     else if (!key.slice(prefix.length).startsWith(FUNCTIONS_MODULE_DIR)) {
       files.push({ path: key.slice(prefix.length), bytes: object.body });
     }
   }
-  return { files, module };
+  return { files, module: fnModule };
 }
 
 export interface StaticDeploy {
@@ -261,12 +261,13 @@ export async function deployStaticVersion(
   // The module runs only where the backend row allows it for this target
   // (§11.6: draft follows the declaration, live the approved manifest; the
   // kill switch blocks both). Otherwise the version serves as a static app.
-  const module =
+  const fnModule =
     input.module === undefined
       ? (await loadRelease(input.slug, input.version)).module
       : input.module;
-  const backend = module ? await loadFunctions(supabase, input.appId) : null;
-  const runsFunctions = module !== null && backend !== null && moduleAllowed(backend, input.target);
+  const backend = fnModule ? await loadFunctions(supabase, input.appId) : null;
+  const runsFunctions =
+    fnModule !== null && backend !== null && moduleAllowed(backend, input.target);
   const assets = await uploadAssets(
     script,
     toAssetFiles(input.files),
@@ -285,7 +286,7 @@ export async function deployStaticVersion(
           modules: [
             {
               name: FUNCTIONS_MAIN,
-              content: module.toString("utf8"),
+              content: fnModule.toString("utf8"),
               type: "application/javascript+module",
             },
           ],

@@ -45,6 +45,14 @@ import {
 } from "@/lib/calendar/schedule";
 import { approveCatalogPublish } from "@/lib/commerce/catalog";
 import { CommerceError } from "@/lib/commerce/merchants";
+import {
+  approveBackendForOwner,
+  isBackendError,
+  resolveBackendDecisionRow,
+} from "@/lib/functions/approval";
+import { BACKEND_DECISION_KIND } from "@/lib/functions/backend";
+import { AppOriginRefusedError } from "@/lib/functions/deploy";
+import { PublishError } from "@/lib/miniapps/publish";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -323,6 +331,53 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: "not found" }, { status: 404 });
     }
     return NextResponse.json({ ok: true, published: approval.published });
+  }
+
+  if (decision.kind === BACKEND_DECISION_KIND && decision.ref) {
+    // MC5 (goal-create-v11 §4.1, CR4): the owner's tap is the only thing
+    // that turns a declared backend into an approved manifest. The row is
+    // claimed first so a racing dismissal approves nothing; approval then
+    // stamps, redeploys the live Worker and re-signs the manifest.
+    const slug = decision.ref as string;
+    const claimed = await resolveBackendDecisionRow(
+      supabase,
+      userId,
+      slug,
+      body.action === "approve" ? "approved" : "dismissed",
+    );
+    if (!claimed) {
+      return NextResponse.json({ error: "not found" }, { status: 404 });
+    }
+    if (body.action !== "approve") return NextResponse.json({ ok: true });
+    try {
+      const row = await approveBackendForOwner(supabase, userId, slug);
+      return NextResponse.json({
+        ok: true,
+        backend: row ? { status: row.status, approved: row.approved_manifest } : null,
+      });
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          msg: "miniapp_backend approval failed",
+          user_id: userId,
+          app: slug,
+          error: error instanceof Error ? error.message : "unknown",
+        }),
+      );
+      if (isBackendError(error) || error instanceof PublishError) {
+        return NextResponse.json(
+          { error: error.message },
+          { status: error.status },
+        );
+      }
+      if (error instanceof AppOriginRefusedError) {
+        return NextResponse.json({ error: "app is being deleted" }, { status: 409 });
+      }
+      return NextResponse.json(
+        { error: "approved, but the backend could not be deployed — try again from the Functions tab" },
+        { status: 502 },
+      );
+    }
   }
 
   if (decision.kind === "crm_update" && body.action === "approve") {

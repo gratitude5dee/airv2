@@ -24,7 +24,7 @@ const KIB = 1024;
 const MIB = 1024 * KIB;
 const LIMITS = {
   chat: 256 * KIB,
-  state: 16 * KIB,
+  state: 256 * KIB,
   actions: 16 * KIB,
   media: 50 * MIB,
 };

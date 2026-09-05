@@ -28,7 +28,12 @@ export type OpsEventKind =
   | "create.push"
   | "create.build"
   | "create.turn"
-  | "create.qa";
+  | "create.qa"
+  | "fn_request"
+  | "fn_secret"
+  | "fn_rotate"
+  | "fn_kill"
+  | "fn_backend";
 
 /** Per-user launch mints (store session or plugin bearer), per hour. */
 export const LAUNCHES_PER_HOUR = 60;

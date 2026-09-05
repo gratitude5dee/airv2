@@ -36,7 +36,7 @@ import { nestedPathFor } from "../miniapps/nested";
 import { PublishError, validateAppName } from "../miniapps/publish";
 import type { RegistryApp } from "../miniapps/registry";
 import { appOriginLaneReady } from "../functions/deploy";
-import { stageDeclaration } from "../functions/backend";
+import { fileBackendDecision, stageDeclaration } from "../functions/backend";
 import {
   functionsDeclarationSchema,
   type FunctionsDeclaration,
@@ -1080,7 +1080,8 @@ export async function buildApp(
   }
   // A declared backend is staged, never enabled (CR4): the row records the
   // declaration, resources are provisioned once so the draft can use them,
-  // and the owner's `miniapp_backend` decision is what publish files.
+  // and anything the approved manifest does not already cover becomes the
+  // owner's `miniapp_backend` decision (one pending per app, refreshed).
   if (output.functions && output.air?.functions) {
     const row = await stageDeclaration(supabase, app, output.air.functions);
     if (appOriginLaneReady()) {
@@ -1089,7 +1090,9 @@ export async function buildApp(
         kv: output.air.functions.kv,
       });
     }
+    const decision = await fileBackendDecision(supabase, app, row);
     output.log.push(`functions: declared (db=${output.air.functions.db}, kv=${output.air.functions.kv}, egress=${output.air.functions.egress.length})`);
+    if (decision) output.log.push("functions: backend changes need the owner's approval");
   }
   const stored = await uploadVersion(supabase, app, output.files, "vibe", {
     findings: output.findings,

@@ -5,6 +5,12 @@
  * per-box GATEWAY_TOKEN; the speed tier is resolved server-side to a real
  * model ID; spend caps are enforced with 429; the upstream stream passes
  * through unmodified while usage is metered into agent_runs.
+ *
+ * A second principal (goal-create-v11 §11.3, CR8): a Functions Worker's
+ * runtime token (`art_…`, arriving through the Outbound Worker) resolves to
+ * the app's owner. It may only name `fast|balanced|deep`, is metered as
+ * `trigger='app'`, `label=<slug>`, and hits the app's own daily cap before
+ * the owner's monthly one.
  */
 import { after, NextRequest, NextResponse } from "next/server";
 import { env } from "@/lib/env";
@@ -34,6 +40,15 @@ import {
   createRunLabel,
   projectBudget,
 } from "@/lib/create/budget";
+import {
+  appCapReached,
+  authenticateRuntimeToken,
+  isRuntimeModel,
+  recordAppSpend,
+  RUNTIME_MODELS,
+  type RuntimePrincipal,
+} from "@/lib/functions/runtime";
+import { recordOpsEvent } from "@/lib/security/limits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -57,6 +72,9 @@ interface RouteTrace {
   /** `create:<slug>` when the completion is a Create turn's; drives the
    * per-project budget (goal-create-v11 §9.1). */
   label?: string | null;
+  /** Set for a Functions Worker's call: `trigger='app'`, spend also lands
+   * on the app's daily counter (CR8). */
+  app?: { id: string } | null;
 }
 
 async function meter(
@@ -77,7 +95,7 @@ async function meter(
   const supabase = serviceClient();
   const { error: runError } = await supabase.from("agent_runs").insert({
     user_id: userId,
-    trigger: null,
+    trigger: trace?.app ? "app" : null,
     ended_at: new Date().toISOString(),
     outcome: "gateway_completion",
     cost_usd: cost,
@@ -114,6 +132,12 @@ async function meter(
   if (spendError) {
     console.error(JSON.stringify({ msg: "add_spend failed", user_id: userId, error: spendError.message }));
   }
+  if (trace?.app) await recordAppSpend(supabase, trace.app.id, cost);
+}
+
+/** Runtime tokens are prefixed so the two principals never share a lookup. */
+function isRuntimeBearer(token: string): boolean {
+  return token.startsWith("art_");
 }
 
 /** Watches the SSE pass-through for the final usage chunk without altering it. */
@@ -189,18 +213,36 @@ export async function POST(
   if (!token) return unauthorized();
 
   const supabase = serviceClient();
-  const { data: box } = await supabase
-    .from("boxes")
-    .select("user_id")
-    .eq("gateway_token", token)
-    .maybeSingle();
-  if (!box) return unauthorized();
-  const userId = box.user_id as string;
+  let userId: string;
+  let app: RuntimePrincipal | null = null;
+  if (isRuntimeBearer(token)) {
+    app = await authenticateRuntimeToken(supabase, token);
+    if (!app) return unauthorized();
+    userId = app.userId;
+  } else {
+    const { data: box } = await supabase
+      .from("boxes")
+      .select("user_id")
+      .eq("gateway_token", token)
+      .maybeSingle();
+    if (!box) return unauthorized();
+    userId = box.user_id as string;
+  }
 
   // Only the metered completion endpoint is proxied (review 2026-08 P1-1);
   // any other upstream path would carry the platform key without metering.
   if (path.join("/") !== "chat/completions") {
     return NextResponse.json({ error: "not found" }, { status: 404 });
+  }
+
+  // The app's own cap comes first (CR8): a runaway Worker stops at its
+  // owner-approved dollar figure, never at the owner's whole month.
+  if (app && appCapReached(app.functions)) {
+    await recordOpsEvent(supabase, "fn_capped", userId, app.slug);
+    return NextResponse.json(
+      { error: "insufficient_quota", reason: "fn_capped" },
+      { status: 429 }
+    );
   }
 
   const { data: entitlement } = await supabase
@@ -273,13 +315,27 @@ export async function POST(
   // project's budget is checked against its own metered rows before the
   // upstream call, and the family is only reachable from inside a Create
   // run — nothing else may spend on it.
-  const createTier = parseCreateTier(rawBody["model"]);
+  // A Functions Worker names a tier and nothing else (§11.3): no Create
+  // family, no bare model ID; the tier is clamped to the owner's entitlement.
+  if (app && !isRuntimeModel(rawBody["model"])) {
+    return NextResponse.json(
+      { error: "unknown_model", allowed: [...RUNTIME_MODELS] },
+      { status: 400 }
+    );
+  }
+  const createTier = app ? null : parseCreateTier(rawBody["model"]);
+  const appTier =
+    app && isRuntimeModel(rawBody["model"])
+      ? clampCreateTier(rawBody["model"], entitledTier)
+      : null;
   const tier =
-    createTier !== null
-      ? clampCreateTier(createTier, entitledTier)
-      : rawBody["model"] === "fast"
-        ? "fast"
-        : entitledTier;
+    appTier !== null
+      ? appTier
+      : createTier !== null
+        ? clampCreateTier(createTier, entitledTier)
+        : rawBody["model"] === "fast"
+          ? "fast"
+          : entitledTier;
   let createLabel: string | null = null;
   if (createTier !== null) {
     const slug = await activeCreateSlug(supabase, userId);
@@ -548,7 +604,8 @@ export async function POST(
       reasoningEffort: servedReasoning,
       startedAtMs: requestStartedMs,
       requestedFamily: createTier !== null ? "openai" : family,
-      label: createLabel,
+      label: app ? app.slug : createLabel,
+      app: app ? { id: app.appId } : null,
     };
     const stream = meteringTee(upstream.body, (usage) => {
       after(
@@ -581,7 +638,8 @@ export async function POST(
         reasoningEffort: servedReasoning,
         startedAtMs: requestStartedMs,
         requestedFamily: createTier !== null ? "openai" : family,
-        label: createLabel,
+        label: app ? app.slug : createLabel,
+        app: app ? { id: app.appId } : null,
       })
     );
   }

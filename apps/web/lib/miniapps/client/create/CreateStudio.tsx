@@ -3,8 +3,8 @@
  * Three regions in a full browser: Chat (prompt → `/api/create/turn`, the
  * run's event stream, the tier picker, the build log), Preview (an iframe on
  * the draft's app origin with device presets and the lite toggle, reloaded
- * whenever `draft_version` changes), and Project (Files, Versions, Functions
- * placeholder, Settings, Share). The lite layout is one column: preview,
+ * whenever `draft_version` changes), and Project (Files, Versions, Functions,
+ * Settings, Share). The lite layout is one column: preview,
  * prompt bar, Publish. Every write goes through the existing owner routes —
  * the surface never talks to a Box directly and never sees a model id.
  */
@@ -16,6 +16,11 @@ import {
   useState,
   type FormEvent,
 } from "react";
+import {
+  describeEgressRejection,
+  egressHostRejection,
+  normalizeEgressHost,
+} from "../../../functions/egress";
 
 export interface Finding {
   rule: string;
@@ -79,6 +84,64 @@ export interface StatusResponse {
   budget: BudgetMeter;
   versions: VersionSummary[];
 }
+
+interface FunctionsDeclared {
+  entry: string;
+  db: boolean;
+  kv: boolean;
+  egress: string[];
+  ai: { dailyCapUsd: number };
+}
+
+interface FunctionsApproved {
+  egress: string[];
+  db: boolean;
+  kv: boolean;
+  dailyCapUsd: number;
+  secretNames: string[];
+}
+
+interface FunctionsSecret {
+  name: string;
+  set_at: string;
+  live: boolean;
+  draft: boolean;
+}
+
+/** Mirrors `functionsStatus` in lib/functions/tab.ts (metadata only). */
+interface FunctionsStatus {
+  slug: string;
+  status: string;
+  enabled: boolean;
+  killed: boolean;
+  killed_by: string | null;
+  declared: FunctionsDeclared | null;
+  approved: FunctionsApproved | null;
+  pending: unknown | null;
+  decision_id: string | null;
+  resources: { db: string; kv: string };
+  secrets: FunctionsSecret[];
+  secrets_missing: { live: string[]; draft: string[] };
+  cap: {
+    daily_usd: number;
+    spent_today_usd: number;
+    min_usd: number;
+    max_usd: number;
+  } | null;
+  limits: {
+    egress_hosts: number;
+    secrets: number;
+    cpu_ms: number | null;
+    subrequests: number | null;
+  };
+  token_ref: string | null;
+  deployed_at: string | null;
+  last_error: string | null;
+  requests: Array<{ status: number; at: string }>;
+}
+
+/** Mirrors `SECRET_NAME_RE` in lib/functions/secrets.ts. */
+const SECRET_NAME_RE = /^[A-Z][A-Z0-9_]{0,63}$/;
 
 interface ProjectSummary {
   slug: string;
@@ -950,6 +1013,398 @@ function SettingsTab({
   );
 }
 
+/**
+ * V11 §5.1 Functions tab. Everything here stages or reads; the only thing
+ * that enables a backend is the owner tapping "Enable backend" / "Approve
+ * changes", which resolves the `miniapp_backend` decision. Values shown are
+ * metadata: hosts, flags, caps, secret *names*, request status codes.
+ */
+function FunctionsTab({
+  status,
+  busy,
+  run,
+  onError,
+}: {
+  status: StatusResponse;
+  busy: boolean;
+  run: (action: () => Promise<void>) => void;
+  onError: (message: string) => void;
+}) {
+  const [fn, setFn] = useState<FunctionsStatus | null>(null);
+  const [hosts, setHosts] = useState("");
+  const [cap, setCap] = useState("");
+  const [db, setDb] = useState(false);
+  const [kv, setKv] = useState(false);
+  const [secretName, setSecretName] = useState("");
+  const [secretValue, setSecretValue] = useState("");
+
+  const load = useCallback(async () => {
+    const res = await fetch(
+      `/api/create/functions?slug=${encodeURIComponent(status.slug)}`,
+    );
+    const data = await readJson<FunctionsStatus>(res);
+    if (!res.ok || data.error) {
+      onError(data.error ?? `functions status failed (${res.status})`);
+      return;
+    }
+    const next = data as FunctionsStatus;
+    setFn(next);
+    setHosts((next.declared?.egress ?? []).join("\n"));
+    setCap(String(next.declared?.ai.dailyCapUsd ?? next.cap?.daily_usd ?? 1));
+    setDb(next.declared?.db ?? false);
+    setKv(next.declared?.kv ?? false);
+  }, [status.slug, onError]);
+
+  useEffect(() => {
+    void load();
+  }, [load, status.draft_version, status.status]);
+
+  const hostList = useMemo(
+    () =>
+      hosts
+        .split(/[\n,\s]+/)
+        .map((host) => host.trim())
+        .filter(Boolean),
+    [hosts],
+  );
+  const hostProblems = useMemo(() => {
+    const problems: string[] = [];
+    for (const host of hostList) {
+      const rejection = egressHostRejection(host);
+      if (rejection) problems.push(`${host} ${describeEgressRejection(rejection)}`);
+    }
+    if (fn && hostList.length > fn.limits.egress_hosts) {
+      problems.push(`at most ${fn.limits.egress_hosts} hosts`);
+    }
+    return problems;
+  }, [hostList, fn]);
+  const capNumber = Number(cap);
+  const capProblem =
+    !Number.isFinite(capNumber) || !fn?.cap
+      ? null
+      : capNumber < fn.cap.min_usd || capNumber > fn.cap.max_usd
+        ? `daily cap must be between ${usd(fn.cap.min_usd)} and ${usd(fn.cap.max_usd)}`
+        : capNumber > status.budget.budget_usd
+          ? "daily cap cannot exceed this project's monthly budget"
+          : null;
+
+  const declaredHosts = (fn?.declared?.egress ?? []).join("\n");
+  const dirty =
+    fn !== null &&
+    (hostList.map(normalizeEgressHost).join("\n") !== declaredHosts ||
+      capNumber !== (fn.declared?.ai.dailyCapUsd ?? fn.cap?.daily_usd ?? 1) ||
+      db !== (fn.declared?.db ?? false) ||
+      kv !== (fn.declared?.kv ?? false));
+
+  if (!fn) {
+    return <p className="m-0 text-[12px] text-muted">Loading backend…</p>;
+  }
+  const hasBackend = fn.declared !== null;
+  const needsApproval = fn.decision_id !== null || fn.pending !== null;
+  const stateLabel = fn.killed
+    ? `killed by ${fn.killed_by ?? "owner"}`
+    : fn.enabled
+      ? "live"
+      : hasBackend
+        ? needsApproval
+          ? "needs your approval"
+          : fn.status
+        : "no backend";
+
+  const stage = () =>
+    run(async () => {
+      await postJson("/api/create/functions", {
+        slug: status.slug,
+        egress: hostList.map(normalizeEgressHost),
+        cap: capNumber,
+        db,
+        kv,
+      });
+      await load();
+    });
+
+  return (
+    <div className="flex flex-col gap-4 text-[12px]">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="rounded border border-current/20 px-2 py-0.5">
+          Backend: {stateLabel}
+        </span>
+        <span className="text-muted">
+          database: {fn.resources.db} · kv: {fn.resources.kv}
+          {fn.limits.cpu_ms ? ` · ${fn.limits.cpu_ms} ms CPU` : ""}
+        </span>
+        {fn.last_error ? (
+          <span className="text-[11px] text-red-500">{fn.last_error}</span>
+        ) : null}
+      </div>
+      {!hasBackend ? (
+        <p className="m-0 text-muted">
+          Add <code>functions/index.ts</code> and a <code>functions</code> block
+          to <code>air.json</code> (or ask the agent for a backend). The build
+          stages it; nothing runs until you approve it here.
+        </p>
+      ) : null}
+
+      <label className="flex flex-col gap-1">
+        <span className="text-muted">
+          Egress hosts (one per line, exact hostnames, https only, ≤{" "}
+          {fn.limits.egress_hosts})
+        </span>
+        <textarea
+          className="min-h-[72px] rounded border border-current/20 bg-transparent px-2 py-1 font-mono"
+          value={hosts}
+          spellCheck={false}
+          onChange={(event) => setHosts(event.currentTarget.value)}
+        />
+        {hostProblems.map((problem) => (
+          <span key={problem} className="text-[11px] text-red-500">
+            {problem}
+          </span>
+        ))}
+      </label>
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="flex flex-col gap-1">
+          <span className="text-muted">Daily inference cap (USD)</span>
+          <input
+            className="w-28 rounded border border-current/20 bg-transparent px-2 py-1"
+            type="number"
+            min={fn.cap?.min_usd ?? 0.05}
+            max={fn.cap?.max_usd ?? 5}
+            step={0.05}
+            value={cap}
+            onChange={(event) => setCap(event.currentTarget.value)}
+          />
+        </label>
+        <label className="flex items-center gap-1">
+          <input
+            type="checkbox"
+            checked={db}
+            onChange={(event) => setDb(event.currentTarget.checked)}
+          />
+          database
+        </label>
+        <label className="flex items-center gap-1">
+          <input
+            type="checkbox"
+            checked={kv}
+            onChange={(event) => setKv(event.currentTarget.checked)}
+          />
+          kv
+        </label>
+        <button
+          className="btn-ghost text-[11px]"
+          type="button"
+          disabled={
+            busy ||
+            !dirty ||
+            hostProblems.length > 0 ||
+            capProblem !== null ||
+            !Number.isFinite(capNumber)
+          }
+          onClick={stage}
+        >
+          Stage changes
+        </button>
+      </div>
+      {capProblem ? (
+        <span className="text-[11px] text-red-500">{capProblem}</span>
+      ) : null}
+      {fn.cap ? (
+        <span className="text-[11px] text-muted">
+          today {usd(fn.cap.spent_today_usd)} of {usd(fn.cap.daily_usd)}
+          {fn.approved
+            ? ` · approved: ${fn.approved.egress.length} host${
+                fn.approved.egress.length === 1 ? "" : "s"
+              }, cap ${usd(fn.approved.dailyCapUsd)}, db ${
+                fn.approved.db ? "on" : "off"
+              }, kv ${fn.approved.kv ? "on" : "off"}`
+            : " · nothing approved yet"}
+        </span>
+      ) : null}
+
+      {hasBackend ? (
+        <div className="flex flex-wrap gap-2">
+          {needsApproval || !fn.approved ? (
+            <button
+              className="btn text-[11px]"
+              type="button"
+              disabled={busy}
+              onClick={() =>
+                run(async () => {
+                  await postJson("/api/create/functions/approve", {
+                    slug: status.slug,
+                  });
+                  await load();
+                })
+              }
+            >
+              {fn.approved ? "Approve changes" : "Enable backend"}
+            </button>
+          ) : null}
+          {fn.approved ? (
+            <button
+              className="btn-ghost text-[11px]"
+              type="button"
+              disabled={busy}
+              onClick={() =>
+                run(async () => {
+                  await postJson("/api/create/functions/kill", {
+                    slug: status.slug,
+                    killed: !fn.killed,
+                  });
+                  await load();
+                })
+              }
+            >
+              {fn.killed ? "Restore backend" : "Kill switch"}
+            </button>
+          ) : null}
+          {fn.token_ref ? (
+            <button
+              className="btn-ghost text-[11px]"
+              type="button"
+              disabled={busy}
+              onClick={() =>
+                run(async () => {
+                  await postJson("/api/create/functions/rotate", {
+                    slug: status.slug,
+                  });
+                  await load();
+                })
+              }
+            >
+              Rotate runtime token
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div className="flex flex-col gap-2">
+        <span className="text-muted">
+          Secrets ({fn.secrets.length}/{fn.limits.secrets}) — names only;
+          values live in the Worker
+        </span>
+        {fn.secrets.length === 0 ? (
+          <span className="text-[11px] text-muted">none</span>
+        ) : (
+          <ul className="m-0 list-none p-0">
+            {fn.secrets.map((secret) => (
+              <li key={secret.name} className="flex items-center gap-2 font-mono">
+                <span className="flex-1">{secret.name}</span>
+                <span className="text-[11px] text-muted">
+                  {secret.set_at ? secret.set_at.slice(0, 10) : ""}
+                  {secret.live && secret.draft
+                    ? ""
+                    : secret.draft
+                      ? " · draft only"
+                      : secret.live
+                        ? " · live only"
+                        : " · not deployed"}
+                </span>
+                <button
+                  className="btn-ghost text-[11px]"
+                  type="button"
+                  disabled={busy}
+                  onClick={() =>
+                    run(async () => {
+                      await postJson(
+                        "/api/create/functions/secrets",
+                        { slug: status.slug, name: secret.name },
+                        "DELETE",
+                      );
+                      await load();
+                    })
+                  }
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="flex gap-2">
+          <input
+            className="w-40 rounded border border-current/20 bg-transparent px-2 py-1 font-mono"
+            placeholder="API_KEY"
+            value={secretName}
+            autoComplete="off"
+            onChange={(event) =>
+              setSecretName(event.currentTarget.value.toUpperCase())
+            }
+          />
+          <input
+            className="flex-1 rounded border border-current/20 bg-transparent px-2 py-1"
+            type="password"
+            placeholder="value"
+            value={secretValue}
+            autoComplete="off"
+            onChange={(event) => setSecretValue(event.currentTarget.value)}
+          />
+          <button
+            className="btn-ghost text-[11px]"
+            type="button"
+            disabled={
+              busy ||
+              !hasBackend ||
+              !SECRET_NAME_RE.test(secretName) ||
+              !secretValue ||
+              fn.secrets.length >= fn.limits.secrets
+            }
+            onClick={() =>
+              run(async () => {
+                await postJson("/api/create/functions/secrets", {
+                  slug: status.slug,
+                  name: secretName,
+                  value: secretValue,
+                });
+                setSecretName("");
+                setSecretValue("");
+                await load();
+              })
+            }
+          >
+            Set
+          </button>
+        </div>
+        {secretName && !SECRET_NAME_RE.test(secretName) ? (
+          <span className="text-[11px] text-red-500">
+            names are UPPER_SNAKE_CASE, starting with a letter
+          </span>
+        ) : null}
+        <span className="text-[11px] text-muted">
+          A new or removed name changes what you approved; the build fails if
+          a value is pasted into code.
+        </span>
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <span className="text-muted">Recent requests (status codes)</span>
+        {fn.requests.length === 0 ? (
+          <span className="text-[11px] text-muted">none yet</span>
+        ) : (
+          <div className="flex flex-wrap gap-1 font-mono text-[11px]">
+            {fn.requests.map((req, index) => (
+              <span
+                key={`${req.at}-${index}`}
+                title={req.at}
+                className={`rounded border px-1 ${
+                  req.status >= 500
+                    ? "border-red-500/60 text-red-500"
+                    : req.status >= 400
+                      ? "border-amber-500/60 text-amber-600"
+                      : "border-current/20"
+                }`}
+              >
+                {req.status}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ShareTab({ status }: { status: StatusResponse }) {
   const [qr, setQr] = useState<string | null>(null);
   useEffect(() => {
@@ -1083,10 +1538,7 @@ function Project({
         />
       ) : null}
       {tab === "functions" ? (
-        <p className="m-0 text-[12px] text-muted">
-          Backend (database, secrets, egress, inference budget) arrives with
-          Functions. Until then this app is static and stays on the app origin.
-        </p>
+        <FunctionsTab status={status} busy={busy} run={run} onError={onError} />
       ) : null}
       {tab === "settings" ? (
         <SettingsTab

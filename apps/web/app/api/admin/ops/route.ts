@@ -14,6 +14,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminAuthorized } from "@/lib/admin/auth";
 import { miniAppOps, scheduleBudget, socialUsage } from "@/lib/admin/ops";
 import { serviceClient } from "@/lib/supabase";
+import { killBackend } from "@/lib/functions/approval";
+import { BackendError } from "@/lib/functions/backend";
+import { parseRegistryApp, REGISTRY_COLUMNS } from "@/lib/miniapps/registry";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,6 +26,40 @@ const DAILY_CEILING = 1500;
 const LINE_DAILY_QUOTA = 5000;
 const ALERT_RATIO = 0.7;
 const DORMANT_DAYS = 50; // alert before Apple's ~2-month deactivation
+const SLUG_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+
+/**
+ * MC5 §11.7: the admin side of the Functions kill switch. `{ action:
+ * "fn_kill", slug }` drops the app's user module (static app keeps serving).
+ * Admins only kill — re-enabling is the owner's, from the Functions tab.
+ */
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  if (!adminAuthorized(request)) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+  const body = (await request.json().catch(() => ({}))) as { action?: unknown; slug?: unknown };
+  if (body.action !== "fn_kill" || typeof body.slug !== "string" || !SLUG_RE.test(body.slug)) {
+    return NextResponse.json({ error: "invalid request" }, { status: 400 });
+  }
+  const supabase = serviceClient();
+  const { data } = await supabase
+    .from("mini_apps")
+    .select(REGISTRY_COLUMNS)
+    .eq("slug", body.slug)
+    .maybeSingle();
+  const app = parseRegistryApp(data);
+  if (!app) return NextResponse.json({ error: "not found" }, { status: 404 });
+  try {
+    const row = await killBackend(supabase, app, true, "admin");
+    if (!row) return NextResponse.json({ error: "no backend" }, { status: 409 });
+    return NextResponse.json({ ok: true, slug: app.slug, status: row.status });
+  } catch (error) {
+    if (error instanceof BackendError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    throw error;
+  }
+}
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   if (!adminAuthorized(request)) {

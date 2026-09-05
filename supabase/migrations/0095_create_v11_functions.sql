@@ -38,6 +38,18 @@ create index if not exists decisions_kind_ref_pending_idx
 create index if not exists miniapp_runtime_tokens_active_idx
   on miniapp_runtime_tokens (app_id) where revoked_at is null;
 
+-- Content-free request ring for the Functions tab (§5.1): one row per
+-- runtime-API call, ref = '<slug>:<status>', no body, no path beyond the
+-- route kind in bytes=0. fn_capped stays the cap event.
+alter table ops_events drop constraint ops_events_kind_check;
+alter table ops_events add constraint ops_events_kind_check check (kind in (
+  'store_open','launch','publish','upload','upload_rejected',
+  'guest_session','grant','rate_limited','pair_attempt',
+  'build','build_failed','deploy_fn','fn_capped','rollback','import',
+  'create.drop','create.push','create.build','create.turn','create.qa',
+  'fn_request','fn_secret','fn_rotate','fn_kill','fn_backend'
+));
+
 -- CR8: the app's daily inference counter, rolled on write like add_spend so
 -- a stale day can never keep accumulating. Service role only.
 create or replace function miniapp_fn_spend(p_app_id uuid, p_usd numeric)
