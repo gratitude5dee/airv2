@@ -21,6 +21,7 @@ import {
 import { ASSETS_BUCKET, userPrefix } from "@/lib/assets/keys";
 import { deletePrefix, r2Configured } from "@/lib/storage/r2";
 import { appOriginLaneReady, teardownAppOrigin } from "@/lib/functions/deploy";
+import { teardownBackends } from "@/lib/functions/teardown";
 import { forgetInstallations } from "@/lib/create/import";
 import { githubAppConfigured } from "@/lib/github/app";
 import { openAdsKey, updateCampaign } from "@/lib/ads/openai";
@@ -128,6 +129,24 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   } else {
     steps["app_origin"] =
       ownedSlugs.length > 0 ? "lane not configured; never deployed" : "none";
+  }
+
+  // MC5 CR16: the backends behind those apps — D1 databases, KV namespaces,
+  // runtime tokens and their Outbound-KV copies — go with the scripts. Same
+  // rule as the origins: if the vendor refuses, nothing else is deleted yet.
+  if (ownedSlugs.length > 0 && appOriginLaneReady()) {
+    try {
+      const backends = await teardownBackends(supabase, userId);
+      steps["functions"] =
+        backends.apps === 0
+          ? "none"
+          : `tore down ${backends.apps} backend(s): ${backends.databases} database(s), ${backends.namespaces} namespace(s)`;
+    } catch {
+      steps["functions"] = "error: backend resources still allocated; nothing deleted";
+      return NextResponse.json({ ok: false, steps, retry: true }, { status: 502 });
+    }
+  } else {
+    steps["functions"] = "none";
   }
 
   // CM8: neutralize live state before rows disappear. Unfired slots are
