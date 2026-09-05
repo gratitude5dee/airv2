@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
 import { storeSessionUserId } from "@/lib/miniapps/storeSession";
+import { PublishError } from "@/lib/miniapps/publish";
 import { stopCreateTurn } from "@/lib/create/turn";
 
 export const runtime = "nodejs";
@@ -32,6 +33,9 @@ export async function POST(
       return NextResponse.json({ error: "not found" }, { status: 404 });
     }
   } catch (error) {
+    if (error instanceof PublishError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     console.error(
       JSON.stringify({
         msg: "create stop failed",

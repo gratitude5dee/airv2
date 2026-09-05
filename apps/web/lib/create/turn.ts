@@ -174,16 +174,7 @@ export async function startCreateTurn(
   }
   const rowId = opened.id;
   const closeRow = async (): Promise<void> => {
-    for (let attempt = 0; attempt < CLOSE_ROW_ATTEMPTS; attempt += 1) {
-      const { error } = await supabase
-        .from("agent_runs")
-        .update({ ended_at: new Date().toISOString(), outcome: "failed" })
-        .eq("id", rowId)
-        .is("ended_at", null);
-      if (!error) return;
-      if (attempt + 1 < CLOSE_ROW_ATTEMPTS) await sleep(CLOSE_ROW_BACKOFF_MS * (attempt + 1));
-    }
-    console.error(JSON.stringify({ msg: "create run close failed", user_id: userId, row_id: rowId }));
+    await closeCreateRunRow(supabase, userId, rowId, "failed");
   };
   let box: Awaited<ReturnType<typeof ensureBoxAwake>>;
   try {
@@ -277,10 +268,29 @@ export async function stopCreateTurn(
   } finally {
     await armStopAfter(supabase, userId).catch(() => undefined);
   }
-  await supabase
-    .from("agent_runs")
-    .update({ outcome: "interrupted", ended_at: new Date().toISOString() })
-    .eq("id", row.id)
-    .is("ended_at", null);
+  if (!(await closeCreateRunRow(supabase, userId, row.id, "interrupted"))) {
+    throw new PublishError("the run was stopped but its row could not be closed", 503);
+  }
   return true;
+}
+
+/** Close an open Create run row, retrying a failed write a bounded number
+ * of times; false (after a content-free log line) when it stayed open. */
+async function closeCreateRunRow(
+  supabase: SupabaseClient,
+  userId: string,
+  rowId: string,
+  outcome: "failed" | "interrupted"
+): Promise<boolean> {
+  for (let attempt = 0; attempt < CLOSE_ROW_ATTEMPTS; attempt += 1) {
+    const { error } = await supabase
+      .from("agent_runs")
+      .update({ ended_at: new Date().toISOString(), outcome })
+      .eq("id", rowId)
+      .is("ended_at", null);
+    if (!error) return true;
+    if (attempt + 1 < CLOSE_ROW_ATTEMPTS) await sleep(CLOSE_ROW_BACKOFF_MS * (attempt + 1));
+  }
+  console.error(JSON.stringify({ msg: "create run close failed", user_id: userId, row_id: rowId }));
+  return false;
 }

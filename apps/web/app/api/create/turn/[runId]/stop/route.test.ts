@@ -14,6 +14,7 @@ const turn = vi.hoisted(() => ({
 vi.mock("@/lib/create/turn", () => turn);
 
 import { NextRequest } from "next/server";
+import { PublishError } from "@/lib/miniapps/publish";
 import { POST } from "./route";
 
 function stop(runId: string): Promise<Response> {
@@ -48,6 +49,13 @@ describe("POST /api/create/turn/[runId]/stop", () => {
   it("404 when the run is not one of the owner's open Create runs", async () => {
     turn.stopCreateTurn.mockResolvedValue(false);
     expect((await stop("run-1")).status).toBe(404);
+  });
+
+  it("passes through a stopped run whose row could not be closed", async () => {
+    turn.stopCreateTurn.mockRejectedValue(new PublishError("row still open", 503));
+    const response = await stop("run-1");
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: "row still open" });
   });
 
   it("502 when the stop does not reach the Box", async () => {

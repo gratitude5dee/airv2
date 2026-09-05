@@ -431,6 +431,26 @@ describe("stopCreateTurn", () => {
     expect(state.rows[1]!.outcome).toBe("success");
   });
 
+  it("retries a failed close, and reports a row that stayed open after the run was stopped", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    state.rows.push(openRow("create:alice-countdown", 1, "run-9"));
+    state.closeFailures = 1;
+    await expect(stopCreateTurn(supabase, "user-alice", "run-9")).resolves.toBe(true);
+    expect(state.rows[0]).toMatchObject({ outcome: "interrupted" });
+    expect(spy).not.toHaveBeenCalled();
+
+    state.rows.push(openRow("create:alice-other", 1, "run-8"));
+    state.closeFailures = 10;
+    const error = await stopCreateTurn(supabase, "user-alice", "run-8").catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(PublishError);
+    expect((error as PublishError).status).toBe(503);
+    expect(hermes.stopRun).toHaveBeenCalledTimes(2);
+    expect(state.rows[1]!.ended_at).toBeNull();
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0]![0]).not.toContain("run-8");
+    spy.mockRestore();
+  });
+
   it("leaves the row open when the stop never reached the Box", async () => {
     state.rows.push(openRow("create:alice-countdown", 1, "run-9"));
     hermes.stopRun.mockRejectedValueOnce(new Error("box unreachable"));
