@@ -359,6 +359,31 @@ export async function putRuntimeKvValue(key: string, value: string): Promise<voi
   );
 }
 
+/**
+ * Whether the Outbound Worker can resolve `key`. Uses the metadata endpoint
+ * so the secret itself never travels back to the control plane.
+ */
+export async function hasRuntimeKvValue(key: string): Promise<boolean> {
+  const creds = credentials();
+  const url =
+    `${API}/accounts/${creds.accountId}/storage/kv/namespaces/${runtimeKv()}` +
+    `/metadata/${encodeURIComponent(key)}`;
+  const headers = { Authorization: `Bearer ${creds.apiToken}` };
+  let response = await fetch(url, { headers });
+  if (response.status >= 500) {
+    response = await fetch(url, { headers });
+  }
+  if (response.status === 404) return false;
+  if (!response.ok) {
+    const text = await response.text();
+    throw new CloudflareError(
+      response.status,
+      `cloudflare HEAD runtime kv ${key} failed: ${text.slice(0, 200)}`
+    );
+  }
+  return true;
+}
+
 export async function deleteRuntimeKvValue(key: string): Promise<void> {
   try {
     await call(

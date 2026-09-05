@@ -23,10 +23,11 @@ vi.mock("./cloudflare", async (importOriginal) => {
     deleteRuntimeKvValue: async (key: string) => {
       cf.kv.delete(key);
     },
+    hasRuntimeKvValue: async (key: string) => cf.kv.has(key),
   };
 });
 
-import { rotateRuntimeToken, runtimeTokenKey } from "./runtime";
+import { ensureRuntimeToken, rotateRuntimeToken, runtimeTokenKey } from "./runtime";
 import { approvalDeployed } from "./approval";
 
 type Row = Record<string, unknown>;
@@ -132,6 +133,34 @@ describe("rotateRuntimeToken", () => {
     expect(bResult.tokenId).toBe(pointer);
     expect(pointer).not.toBe(original);
     expect([...cf.kv.keys()]).toEqual([runtimeTokenKey(pointer as string)]);
+  });
+});
+
+describe("ensureRuntimeToken", () => {
+  const rowFor = (tokenId: string | null) =>
+    ({ app_id: "app-1", user_id: "user-1", runtime_token_id: tokenId }) as unknown as FunctionsRow;
+
+  it("keeps an active token the Outbound Worker can resolve", async () => {
+    const first = (await rotateRuntimeToken(supabase, "app-1", "user-1")).tokenId;
+    expect(await ensureRuntimeToken(supabase, rowFor(first))).toBe(first);
+    expect(active()).toEqual([first]);
+  });
+
+  it("rotates an active token whose secret never reached the runtime KV", async () => {
+    // A token minted before the runtime KV existed: a DB row, no KV value.
+    tables["miniapp_runtime_tokens"]!.push({
+      id: "legacy",
+      app_id: "app-1",
+      created_at: "000000",
+      revoked_at: null,
+      token_hash: "0".repeat(64),
+    });
+    tables["miniapp_functions"]![0]!["runtime_token_id"] = "legacy";
+    const ref = await ensureRuntimeToken(supabase, rowFor("legacy"));
+    expect(ref).not.toBe("legacy");
+    expect(active()).toEqual([ref]);
+    expect(cf.kv.has(runtimeTokenKey(ref))).toBe(true);
+    expect(tables["miniapp_functions"]![0]!["runtime_token_id"]).toBe(ref);
   });
 });
 

@@ -22,6 +22,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   deleteRuntimeKvValue,
+  hasRuntimeKvValue,
   putRuntimeKvValue,
   runtimeKvConfigured,
 } from "./cloudflare";
@@ -150,7 +151,11 @@ export async function ensureRuntimeToken(
       .eq("id", row.runtime_token_id)
       .is("revoked_at", null)
       .maybeSingle();
-    if (data) return row.runtime_token_id;
+    // An active row whose secret the Outbound Worker cannot resolve (minted
+    // before the runtime KV existed, or a lost write) is useless; rotate it.
+    if (data && (await hasRuntimeKvValue(runtimeTokenKey(row.runtime_token_id)))) {
+      return row.runtime_token_id;
+    }
   }
   return (await rotateRuntimeToken(supabase, row.app_id, row.user_id)).tokenId;
 }

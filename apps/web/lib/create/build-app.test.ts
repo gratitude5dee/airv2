@@ -34,6 +34,7 @@ vi.mock("../compute/runtime", async (importOriginal) => ({
 const backend = vi.hoisted(() => ({
   calls: [] as string[],
   row: { app_id: "app-1", declared: null as unknown, declared_at: null as string | null, status: "disabled" },
+  decisionError: null as Error | null,
 }));
 vi.mock("../functions/backend", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../functions/backend")>()),
@@ -50,12 +51,23 @@ vi.mock("../functions/backend", async (importOriginal) => ({
   },
   fileBackendDecision: async () => {
     backend.calls.push("decision");
+    if (backend.decisionError) throw backend.decisionError;
     return "dec-1";
   },
 }));
+const lane = vi.hoisted(() => ({ ready: false }));
 vi.mock("../functions/deploy", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../functions/deploy")>()),
-  appOriginLaneReady: () => false,
+  appOriginLaneReady: () => lane.ready,
+}));
+const provision = vi.hoisted(() => ({ error: null as Error | null }));
+vi.mock("../functions/provision", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../functions/provision")>()),
+  ensureResources: async (_s: unknown, row: unknown) => {
+    backend.calls.push("provision");
+    if (provision.error) throw provision.error;
+    return row;
+  },
 }));
 const boxes = vi.hoisted(() => ({ armStopAfter: vi.fn(async () => undefined) }));
 vi.mock("../orchestrator/boxes", async (importOriginal) => ({
@@ -125,6 +137,9 @@ beforeEach(() => {
   drop.resolveOrCreateDropApp.mockResolvedValue({ app, created: false });
   backend.calls = [];
   backend.row = { app_id: "app-1", declared: null, declared_at: null, status: "disabled" };
+  backend.decisionError = null;
+  lane.ready = false;
+  provision.error = null;
   versions.uploadVersion.mockResolvedValue("v1700000000009");
 });
 
@@ -211,6 +226,27 @@ describe("buildApp", () => {
     expect(backend.calls).toEqual(["stage", "unstage"]);
     expect(backend.row.declared).toBeNull();
     expect(backend.row.status).toBe("disabled");
+  }, 60_000);
+
+  it("puts the previous declaration back when provisioning fails before the upload", async () => {
+    lane.ready = true;
+    provision.error = new Error("d1 create failed");
+    await expect(
+      buildApp(supabase, "user-alice", { appname: "countdown", files: fnTree() })
+    ).rejects.toThrow(/d1 create failed/);
+    expect(backend.calls).toEqual(["stage", "provision", "unstage"]);
+    expect(versions.uploadVersion).not.toHaveBeenCalled();
+    expect(backend.row.declared).toBeNull();
+    expect(backend.row.status).toBe("disabled");
+  }, 60_000);
+
+  it("reports the stored draft even when the approval card cannot be filed", async () => {
+    backend.decisionError = new Error("decisions down");
+    const result = await buildApp(supabase, "user-alice", { appname: "countdown", files: fnTree() });
+    expect(result.version).toBe("v1700000000009");
+    expect(backend.calls).toEqual(["stage", "decision"]);
+    expect(result.log.some((l) => l.includes("approval card could not be filed"))).toBe(true);
+    expect(result.log.some((l) => l.includes("need the owner's approval"))).toBe(false);
   }, 60_000);
 
   it("refuses an air.json that names another app", async () => {
