@@ -9,6 +9,7 @@
 import { z } from "zod";
 import { env } from "../env";
 import { requestSignal } from "../http/timeout";
+import { shellQuote } from "./shell";
 
 export type BoxState =
   | "provisioned"
@@ -251,13 +252,37 @@ export async function command(
   });
 }
 
+/** `cat` in the C locale so ENOENT has one spelling regardless of the Box's LANG. */
+export function readFileCommand(path: string): string {
+  return `LC_ALL=C cat ${shellQuote(path)}`;
+}
+
+/**
+ * `cat: <path>: No such file or directory` — strerror(ENOENT) in the C locale
+ * (coreutils and busybox alike), anchored to the end so the path itself
+ * can't spell it.
+ */
+const ENOENT_MESSAGE = /: No such file or directory\s*$/;
+
+/**
+ * Only ENOENT is a 404; any other failure (permission denied on the file or
+ * a parent, I/O error, killed, timed out) is a 500 so read-modify-write
+ * callers don't mistake an unreadable file for an empty one.
+ */
+export function classifyReadFile(path: string, result: CommandResult): string {
+  if (result.exitCode === 0) return result.stdout;
+  if (result.exitCode === 1 && ENOENT_MESSAGE.test(result.stderr)) {
+    throw new BoxApiError(404, `readFile ${path}: ${result.stderr.trim()}`);
+  }
+  throw new BoxApiError(
+    500,
+    `readFile ${path}: exit ${result.exitCode}: ${result.stderr.trim()}`
+  );
+}
+
 /** Reads via the command endpoint; the files API is write-oriented. */
 export async function readFile(boxId: string, path: string): Promise<string> {
-  const result = await command(boxId, `cat ${JSON.stringify(path)}`);
-  if (result.exitCode !== 0) {
-    throw new BoxApiError(404, `readFile ${path}: ${result.stderr}`);
-  }
-  return result.stdout;
+  return classifyReadFile(path, await command(boxId, readFileCommand(path)));
 }
 
 export async function writeFile(

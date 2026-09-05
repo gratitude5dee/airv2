@@ -26,7 +26,7 @@ vi.mock("../box/client", async (importOriginal) => {
       const raw = files.get(path);
       if (readGate) await readGate;
       if (failReads) throw failReads;
-      // The real client maps a non-zero `cat` exit to a 404.
+      // The real client maps only an absent path to a 404.
       if (raw === undefined) throw new actual.BoxApiError(404, `readFile ${path}`);
       return raw;
     }),
