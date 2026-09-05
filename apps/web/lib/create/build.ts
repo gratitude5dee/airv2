@@ -36,7 +36,14 @@ import { nestedPathFor } from "../miniapps/nested";
 import { PublishError, validateAppName } from "../miniapps/publish";
 import type { RegistryApp } from "../miniapps/registry";
 import { appOriginLaneReady } from "../functions/deploy";
-import { fileBackendDecision, stageDeclaration } from "../functions/backend";
+import {
+  ensureFunctionsRow,
+  fileBackendDecision,
+  loadFunctions,
+  stageDeclaration,
+  unstageDeclaration,
+  type FunctionsRow,
+} from "../functions/backend";
 import {
   functionsDeclarationSchema,
   type FunctionsDeclaration,
@@ -1157,28 +1164,47 @@ export async function buildApp(
     };
   }
   // A declared backend is staged, never enabled (CR4): the row records the
-  // declaration, resources are provisioned once so the draft can use them,
-  // and anything the approved manifest does not already cover becomes the
-  // owner's `miniapp_backend` decision (one pending per app, refreshed).
-  if (output.functions && output.air?.functions) {
-    const row = await stageDeclaration(supabase, app, output.air.functions);
+  // declaration (the draft Worker's bindings follow it), resources are
+  // provisioned once so the draft can use them, and — only once the version
+  // that carries the module is stored — anything the approved manifest does
+  // not already cover becomes the owner's `miniapp_backend` decision (one
+  // pending per app, refreshed). A build that fails after staging puts the
+  // previous declaration back so the card never describes a module that was
+  // never uploaded; a build that was overtaken leaves the card to the newer one.
+  const declared = output.functions ? output.air?.functions ?? null : null;
+  let before: FunctionsRow | null = null;
+  let stagedAt: string | null = null;
+  if (declared) {
+    before = await ensureFunctionsRow(supabase, app);
+    const row = await stageDeclaration(supabase, app, declared);
+    stagedAt = row.declared_at;
     if (appOriginLaneReady()) {
-      await ensureResources(supabase, row, app.slug, {
-        db: output.air.functions.db,
-        kv: output.air.functions.kv,
-      });
+      await ensureResources(supabase, row, app.slug, { db: declared.db, kv: declared.kv });
     }
-    const decision = await fileBackendDecision(supabase, app, row);
-    output.log.push(`functions: declared (db=${output.air.functions.db}, kv=${output.air.functions.kv}, egress=${output.air.functions.egress.length})`);
-    if (decision) output.log.push("functions: backend changes need the owner's approval");
+    output.log.push(`functions: declared (db=${declared.db}, kv=${declared.kv}, egress=${declared.egress.length})`);
   }
-  const stored = await uploadVersion(supabase, app, output.files, "vibe", {
-    findings: output.findings,
-    promote: false,
-    version,
-    kitVersion: output.manifest?.kit.version ?? null,
-    functionsModule: output.functions?.module ?? null,
-  });
+  let stored: string;
+  try {
+    stored = await uploadVersion(supabase, app, output.files, "vibe", {
+      findings: output.findings,
+      promote: false,
+      version,
+      kitVersion: output.manifest?.kit.version ?? null,
+      functionsModule: output.functions?.module ?? null,
+    });
+  } catch (error) {
+    if (before && stagedAt) {
+      await unstageDeclaration(supabase, app.id, before, stagedAt).catch(() => undefined);
+    }
+    throw error;
+  }
+  if (declared && stagedAt) {
+    const current = await loadFunctions(supabase, app.id);
+    if (current && current.declared_at === stagedAt) {
+      const decision = await fileBackendDecision(supabase, app, current);
+      if (decision) output.log.push("functions: backend changes need the owner's approval");
+    }
+  }
   output.log.push(`version: ${stored} staged as draft`);
   const staged: RegistryApp = { ...app, draft_version: stored };
   return {

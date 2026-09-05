@@ -7,10 +7,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
 import {
+  approvalDeployed,
   approveBackendForOwner,
   resolveBackendDecisionRow,
 } from "@/lib/functions/approval";
-import { loadFunctions, pendingProposal } from "@/lib/functions/backend";
+import { loadFunctions } from "@/lib/functions/backend";
 import {
   appOf,
   callerOf,
@@ -36,7 +37,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
     await resolveBackendDecisionRow(supabase, caller.userId, app.slug, action);
     if (action === "dismissed") return NextResponse.json({ ok: true, dismissed: true });
-    if (!pendingProposal(row) && row.status === "live") {
+    if (approvalDeployed(row)) {
       return NextResponse.json({ ok: true, unchanged: true, status: row.status });
     }
     const approved = await approveBackendForOwner(supabase, caller.userId, app.slug);
