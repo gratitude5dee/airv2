@@ -7,17 +7,23 @@
  * bounded PUT against that already-resolved Box (no wake/resume inside), the
  * holder renews it between the read and the write (and aborts instead of
  * writing when the renewal is refused), and a lease that outlives a crashed
- * writer expires on its own.
+ * writer expires on its own. A whole-document PUT of the same resource
+ * through the generic state routes takes the same lease, so it can't land
+ * between an append's read and write.
  */
 import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ensureBoxAwake } from "../orchestrator/boxes";
-import { readAppStateFrom, writeAppStateTo } from "./store";
+import { readAppStateFrom, writeAppState, writeAppStateTo } from "./store";
 
 export const ACTION_LOG_RESOURCE = "actions";
 export const ACTION_LOG_MAX_ENTRIES = 200;
 
-/** Longer than one Box request timeout (`BOX_REQUEST_TIMEOUT_MS`), so a single `cat` or PUT cannot outlive the lease. */
+/**
+ * Longer than a Box files PUT can take (`BOX_REQUEST_TIMEOUT_MS`, 60s). A
+ * `cat` runs through the command endpoint with a longer budget, which is why
+ * the holder renews after the read and aborts when refused.
+ */
 export const LEASE_TTL_MS = 90_000;
 export const LEASE_ATTEMPTS = 6;
 export const LEASE_BACKOFF_MS = 50;
@@ -112,6 +118,40 @@ async function releaseLease(
 }
 
 /**
+ * Wake the Box, take the action-log lease, run `fn` against that Box, release.
+ * `renew` extends the holder's own lease and throws `ActionLogBusyError` when
+ * it has lapsed and been re-taken, so `fn` can check before a write that
+ * follows a long read.
+ */
+async function withActionLogLease<T>(
+  supabase: SupabaseClient,
+  userId: string,
+  app: string,
+  options: LeaseOptions,
+  fn: (boxId: string, renew: () => Promise<void>) => Promise<T>
+): Promise<T> {
+  const box = await ensureBoxAwake(supabase, userId);
+  const holder = randomUUID();
+  const ttlMs = options.ttlMs ?? LEASE_TTL_MS;
+  await acquireLease(supabase, userId, app, ACTION_LOG_RESOURCE, holder, options);
+  try {
+    return await fn(box.boxId, async () => {
+      const stillHeld = await tryLease(
+        supabase,
+        userId,
+        app,
+        ACTION_LOG_RESOURCE,
+        holder,
+        ttlMs
+      );
+      if (!stillHeld) throw new ActionLogBusyError();
+    });
+  } finally {
+    await releaseLease(supabase, userId, app, ACTION_LOG_RESOURCE, holder);
+  }
+}
+
+/**
  * Append one entry to the app's action log, keeping the newest
  * `ACTION_LOG_MAX_ENTRIES`. Throws `ActionLogBusyError` when the lease could
  * not be taken within the retry budget; the entry is then not written.
@@ -123,33 +163,54 @@ export async function appendActionLogEntry(
   entry: ActionLogEntry,
   options: LeaseOptions = {}
 ): Promise<void> {
-  const box = await ensureBoxAwake(supabase, userId);
-  const holder = randomUUID();
-  await acquireLease(supabase, userId, app, ACTION_LOG_RESOURCE, holder, options);
-  try {
-    const existing = await readAppStateFrom(box.boxId, app, ACTION_LOG_RESOURCE);
+  await withActionLogLease(supabase, userId, app, options, async (boxId, renew) => {
+    const existing = await readAppStateFrom(boxId, app, ACTION_LOG_RESOURCE);
     const entries: ActionLogEntry[] = Array.isArray(existing)
       ? (existing as ActionLogEntry[])
       : [];
     entries.push(entry);
-    // The same holder extends its own lease; a refusal means it expired and
-    // someone else took it, so writing now would race their read-modify-write.
-    const stillHeld = await tryLease(
-      supabase,
-      userId,
-      app,
-      ACTION_LOG_RESOURCE,
-      holder,
-      options.ttlMs ?? LEASE_TTL_MS
-    );
-    if (!stillHeld) throw new ActionLogBusyError();
+    await renew();
     await writeAppStateTo(
-      box.boxId,
+      boxId,
       app,
       ACTION_LOG_RESOURCE,
       entries.slice(-ACTION_LOG_MAX_ENTRIES)
     );
-  } finally {
-    await releaseLease(supabase, userId, app, ACTION_LOG_RESOURCE, holder);
+  });
+}
+
+/**
+ * Replace the action log wholesale (the generic `PUT state?resource=actions`
+ * path) under the append lease: last writer wins, but never in the middle of
+ * an append. Stored verbatim, like any other state document.
+ */
+export async function replaceActionLog(
+  supabase: SupabaseClient,
+  userId: string,
+  app: string,
+  state: unknown,
+  options: LeaseOptions = {}
+): Promise<void> {
+  await withActionLogLease(supabase, userId, app, options, async (boxId) => {
+    await writeAppStateTo(boxId, app, ACTION_LOG_RESOURCE, state);
+  });
+}
+
+/**
+ * Whole-document state PUT for the generic state routes: the action log's is
+ * leased, every other resource's is a plain write (no server-side
+ * read-modify-write there to race).
+ */
+export async function putAppState(
+  supabase: SupabaseClient,
+  userId: string,
+  app: string,
+  resource: string,
+  state: unknown
+): Promise<void> {
+  if (resource === ACTION_LOG_RESOURCE) {
+    await replaceActionLog(supabase, userId, app, state);
+    return;
   }
+  await writeAppState(supabase, userId, app, resource, state);
 }

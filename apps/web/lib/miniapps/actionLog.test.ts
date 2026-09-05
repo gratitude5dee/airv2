@@ -10,25 +10,33 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 const files = new Map<string, string>();
 let readGate: Promise<void> | null = null;
 let failWrites = false;
+let failReads: Error | null = null;
 const boxCalls: string[] = [];
 
 vi.mock("../orchestrator/boxes", () => ({
   ensureBoxAwake: vi.fn(async () => ({ boxId: "box-1" })),
 }));
-vi.mock("../box/client", () => ({
-  readFile: vi.fn(async (_box: string, path: string) => {
-    boxCalls.push(`read ${path}`);
-    if (readGate) await readGate;
-    const raw = files.get(path);
-    if (raw === undefined) throw new Error("readFile: not found");
-    return raw;
-  }),
-  writeFile: vi.fn(async (_box: string, path: string, content: string) => {
-    boxCalls.push(`write ${path}`);
-    if (failWrites) throw new Error("box PUT failed");
-    files.set(path, content);
-  }),
-}));
+vi.mock("../box/client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../box/client")>();
+  return {
+    BoxApiError: actual.BoxApiError,
+    readFile: vi.fn(async (_box: string, path: string) => {
+      boxCalls.push(`read ${path}`);
+      // `cat` snapshots the file when it runs; the gate stalls the response.
+      const raw = files.get(path);
+      if (readGate) await readGate;
+      if (failReads) throw failReads;
+      // The real client maps a non-zero `cat` exit to a 404.
+      if (raw === undefined) throw new actual.BoxApiError(404, `readFile ${path}`);
+      return raw;
+    }),
+    writeFile: vi.fn(async (_box: string, path: string, content: string) => {
+      boxCalls.push(`write ${path}`);
+      if (failWrites) throw new Error("box PUT failed");
+      files.set(path, content);
+    }),
+  };
+});
 
 // In-memory twin of miniapp_state_lease / miniapp_state_release (0101):
 // one row per (user, app, resource); take when absent, expired or already ours.
@@ -83,6 +91,7 @@ beforeEach(() => {
   rpcCalls.length = 0;
   readGate = null;
   failWrites = false;
+  failReads = null;
   leaseError = null;
 });
 afterEach(() => vi.restoreAllMocks());
@@ -163,6 +172,29 @@ describe("appendActionLogEntry", () => {
     files.set(LOG_PATH, '{"not":"an array"}');
     await appendActionLogEntry(supabase, "u1", "party", entry("second"));
     expect(log().map((e) => e.action)).toEqual(["second"]);
+  });
+
+  it("a failed read is not an empty log: timeouts and Box 5xx abort the append, keeping the file", async () => {
+    const { appendActionLogEntry } = await import("./actionLog");
+    const { BoxApiError } = await import("../box/client");
+    const before = JSON.stringify(Array.from({ length: 3 }, (_, i) => entry(`kept${i}`)));
+    files.set(LOG_PATH, before);
+    for (const failure of [
+      new BoxApiError(504, "box not ready"),
+      new BoxApiError(502, "unexpected response shape"),
+      Object.assign(new Error("This operation was aborted"), { name: "AbortError" }),
+    ]) {
+      failReads = failure;
+      await expect(
+        appendActionLogEntry(supabase, "u1", "party", entry("lost"), { attempts: 1 })
+      ).rejects.toBe(failure);
+    }
+    expect(files.get(LOG_PATH)).toBe(before);
+    expect(boxCalls.filter((c) => c.startsWith("write"))).toHaveLength(0);
+    expect(leases.size).toBe(0);
+    failReads = null;
+    await appendActionLogEntry(supabase, "u1", "party", entry("after"), { attempts: 1 });
+    expect(log().map((e) => e.action)).toEqual(["kept0", "kept1", "kept2", "after"]);
   });
 
   it("gives up with ActionLogBusyError when the lease stays held, writing nothing", async () => {
@@ -273,6 +305,60 @@ describe("appendActionLogEntry", () => {
     await expect(failure).rejects.toThrow("state lease failed");
     await expect(failure).rejects.not.toBeInstanceOf(ActionLogBusyError);
     expect(boxCalls).toHaveLength(0);
+  });
+
+  it("an unleased whole-document PUT lands between an append's read and write and is lost (the race)", async () => {
+    const { appendActionLogEntry } = await import("./actionLog");
+    const { writeAppState } = await import("./store");
+    files.set(LOG_PATH, "[]");
+    let open!: () => void;
+    readGate = new Promise((resolve) => (open = resolve));
+    const a = appendActionLogEntry(supabase, "u1", "party", entry("rsvp"));
+    await vi.waitFor(() => expect(boxCalls).toContain(`read ${LOG_PATH}`));
+    readGate = null;
+    await writeAppState(supabase, "u1", "party", "actions", [entry("reset")]);
+    open();
+    await a;
+    expect(log().map((e) => e.action)).toEqual(["rsvp"]);
+  });
+
+  it("putAppState on `actions` waits for the append lease, so neither write is interleaved", async () => {
+    const { appendActionLogEntry, putAppState } = await import("./actionLog");
+    files.set(LOG_PATH, "[]");
+    let open!: () => void;
+    readGate = new Promise((resolve) => (open = resolve));
+    const a = appendActionLogEntry(supabase, "u1", "party", entry("rsvp"));
+    await vi.waitFor(() => expect(boxCalls).toContain(`read ${LOG_PATH}`));
+    readGate = null;
+    const put = putAppState(supabase, "u1", "party", "actions", [entry("reset")]);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(boxCalls.filter((c) => c.startsWith("write"))).toHaveLength(0);
+    open();
+    await Promise.all([a, put]);
+    expect(boxCalls.filter((c) => c.startsWith("write"))).toHaveLength(2);
+    expect(log().map((e) => e.action)).toEqual(["reset"]);
+    expect(leases.size).toBe(0);
+  });
+
+  it("replaceActionLog gives up with ActionLogBusyError while an append holds the lease, writing nothing", async () => {
+    const { replaceActionLog, ActionLogBusyError } = await import("./actionLog");
+    files.set(LOG_PATH, JSON.stringify([entry("kept")]));
+    leases.set("u1/party/actions", { holder: "appender", expiresAt: Date.now() + 60_000 });
+    await expect(
+      replaceActionLog(supabase, "u1", "party", [entry("reset")], { attempts: 2, backoffMs: 1 })
+    ).rejects.toBeInstanceOf(ActionLogBusyError);
+    expect(boxCalls).toHaveLength(0);
+    expect(log().map((e) => e.action)).toEqual(["kept"]);
+    expect(leases.get("u1/party/actions")?.holder).toBe("appender");
+  });
+
+  it("putAppState on any other resource is a plain unleased write", async () => {
+    const { putAppState } = await import("./actionLog");
+    await putAppState(supabase, "u1", "party", "default", { score: 7 });
+    expect(files.get(".hermes/miniapps/party/default.json")).toBe(
+      JSON.stringify({ score: 7 }, null, 2)
+    );
+    expect(rpcCalls).toHaveLength(0);
   });
 
   it("scopes leases per (user, app): another app's writer is never blocked", async () => {
