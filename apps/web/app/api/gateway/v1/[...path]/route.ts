@@ -287,14 +287,18 @@ export async function POST(
   };
 
   // Personal provider keys (Settings): when saved, the request is served on
-  // the user's own token spend and platform metering records zero cost.
-  const personalKeys = {
-    openrouter: await getProviderKey(supabase, userId, "openrouter").catch(
-      () => null
-    ),
-    venice: await getProviderKey(supabase, userId, "venice").catch(() => null),
-    gmi: await getProviderKey(supabase, userId, "gmi").catch(() => null),
-  };
+  // the user's own token spend and platform metering records zero cost. The
+  // app principal never rides them — its daily cap (CR8) only binds when the
+  // spend is metered.
+  const personalKeys = app
+    ? { openrouter: null, venice: null, gmi: null }
+    : {
+        openrouter: await getProviderKey(supabase, userId, "openrouter").catch(
+          () => null
+        ),
+        venice: await getProviderKey(supabase, userId, "venice").catch(() => null),
+        gmi: await getProviderKey(supabase, userId, "gmi").catch(() => null),
+      };
 
   let parsedBody: unknown;
   try {

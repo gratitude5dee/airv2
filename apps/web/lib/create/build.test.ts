@@ -8,6 +8,7 @@ import {
   hard,
   parseAirJson,
   safeWorkspacePath,
+  sweepWorkspaceSecrets,
   type WorkspaceFile,
 } from "./build";
 
@@ -367,4 +368,25 @@ describe("compileWorkspace", () => {
     expect(clash.files).toEqual([]);
     expect(clash.findings.some((f) => f.hint.includes("collides"))).toBe(true);
   }, 60_000);
+
+  it("sweeps public/ text assets for pasted secrets like src/ and functions/", () => {
+    const pasted = 'const key = "sk-ownerStripeLikeSecretPasted9876543210zyxw";';
+    for (const p of ["public/config.json", "src/keys.ts", "functions/index.ts"]) {
+      const hits = sweepWorkspaceSecrets([file(p, pasted)]);
+      expect(hits.map((f) => f.file)).toEqual([p]);
+      expect(hits[0]!.rule).toBe("secret");
+    }
+    expect(sweepWorkspaceSecrets([file("public/hero.png", pasted)])).toEqual([]);
+    expect(sweepWorkspaceSecrets([file("public/notes.txt", "see the Secrets tab")])).toEqual([]);
+  });
+
+  it("functions.entry cannot climb out of functions/", () => {
+    for (const entry of ["functions/../src/main.tsx", "functions/x/../../src/a.ts", "functions//a.ts", "src/api.ts"]) {
+      const parsed = parseAirJson(JSON.stringify({ ...AIR, functions: { entry } }));
+      expect(parsed.air).toBeNull();
+      expect(parsed.findings.some((f) => f.severity === "hard")).toBe(true);
+    }
+    const ok = parseAirJson(JSON.stringify({ ...AIR, functions: { entry: "functions/api/rsvp.ts" } }));
+    expect(ok.air?.functions?.entry).toBe("functions/api/rsvp.ts");
+  });
 });

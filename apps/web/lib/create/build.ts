@@ -302,7 +302,13 @@ export function checkWorkspace(files: WorkspaceFile[]): Finding[] {
 export function sweepWorkspaceSecrets(files: WorkspaceFile[]): Finding[] {
   const findings: Finding[] = [];
   for (const file of files) {
-    if (!file.path.startsWith("src/") && !file.path.startsWith("functions/")) continue;
+    if (
+      !file.path.startsWith("src/") &&
+      !file.path.startsWith("functions/") &&
+      !file.path.startsWith("public/")
+    ) {
+      continue;
+    }
     if (!SWEPT_EXT.has(path.posix.extname(file.path).toLowerCase())) continue;
     const reason = textContainsSecrets(file.bytes.toString("utf8"));
     if (reason) {
@@ -569,7 +575,14 @@ async function compileFunctions(
   nodeModules: string
 ): Promise<{ module: Buffer | null; findings: Finding[] }> {
   const findings: Finding[] = [];
-  const entry = path.join(sandbox, ...declared.entry.split("/"));
+  const fnRoot = path.join(sandbox, "functions");
+  const entry = path.resolve(sandbox, ...declared.entry.split("/"));
+  if (!within(fnRoot, entry) || entry === fnRoot) {
+    return {
+      module: null,
+      findings: [finding("air.json", "path-escape", "functions.entry must stay under functions/")],
+    };
+  }
   if (!fs.existsSync(entry)) {
     return {
       module: null,

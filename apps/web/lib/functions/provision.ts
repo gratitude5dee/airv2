@@ -6,7 +6,10 @@
  *   1. claim   — set the id column to `pending:<nonce>:<ms>` where it is
  *                null (or a stale pending marker from a writer that died);
  *                zero rows updated means someone else owns the create.
- *   2. vendor  — create the resource under a name no one else can pick.
+ *   2. vendor  — create the resource under a name derived from the marker's
+ *                nonce, so a writer that dies between create and confirm
+ *                leaves something the next claimant can find by name and
+ *                delete before it reclaims the stale marker.
  *   3. confirm — write the real id where the column still holds *our*
  *                marker; zero rows means we were taken over, so delete what
  *                we just made (no orphaned vendor resources — CR16).
@@ -21,6 +24,8 @@ import {
   createKvNamespace,
   deleteD1Database,
   deleteKvNamespace,
+  findD1Database,
+  findKvNamespace,
 } from "./cloudflare";
 import { AppOriginRefusedError } from "./deploy";
 
@@ -48,6 +53,15 @@ export function resourceId(row: FunctionsRow, resource: Resource): string | null
 function markerAge(marker: string, now: number): number {
   const ms = Number(marker.split(":")[2]);
   return Number.isFinite(ms) ? now - ms : Number.POSITIVE_INFINITY;
+}
+
+function markerNonce(marker: string): string | null {
+  return marker.split(":")[1] ?? null;
+}
+
+/** Vendor name for the resource a given claim creates: unique per claim, findable later. */
+export function vendorName(resource: Resource, slug: string, nonce: string): string {
+  return `air-${slug}-${resource}-${nonce}`;
 }
 
 async function fenced(supabase: SupabaseClient, appId: string, slug: string): Promise<void> {
@@ -92,8 +106,7 @@ async function confirm(
   return (data ?? []).length > 0;
 }
 
-async function vendorCreate(resource: Resource, slug: string): Promise<string> {
-  const name = `air-${slug}-${randomBytes(3).toString("hex")}`;
+async function vendorCreate(resource: Resource, name: string): Promise<string> {
   if (resource === "db") return (await createD1Database(name)).uuid;
   return (await createKvNamespace(name)).id;
 }
@@ -101,6 +114,15 @@ async function vendorCreate(resource: Resource, slug: string): Promise<string> {
 async function vendorDelete(resource: Resource, id: string): Promise<void> {
   if (resource === "db") await deleteD1Database(id);
   else await deleteKvNamespace(id);
+}
+
+/** Delete whatever a dead writer's claim created but never confirmed. */
+async function reapStale(resource: Resource, slug: string, marker: string): Promise<void> {
+  const nonce = markerNonce(marker);
+  if (!nonce) return;
+  const name = vendorName(resource, slug, nonce);
+  const id = resource === "db" ? await findD1Database(name) : await findKvNamespace(name);
+  if (id) await vendorDelete(resource, id);
 }
 
 /**
@@ -126,11 +148,13 @@ export async function ensureResources(
       throw new BackendError(409, `${resource} is being provisioned; retry the build`);
     }
     await fenced(supabase, current.app_id, slug);
-    const marker = `${PENDING_PREFIX}${randomBytes(6).toString("hex")}:${now}`;
+    if (isPendingMarker(existing)) await reapStale(resource, slug, existing as string);
+    const nonce = randomBytes(6).toString("hex");
+    const marker = `${PENDING_PREFIX}${nonce}:${now}`;
     if (!(await claim(supabase, current.app_id, resource, existing, marker))) {
       throw new BackendError(409, `${resource} is being provisioned; retry the build`);
     }
-    const id = await vendorCreate(resource, slug);
+    const id = await vendorCreate(resource, vendorName(resource, slug, nonce));
     await fenced(supabase, current.app_id, slug).catch(async (error) => {
       await vendorDelete(resource, id).catch(() => undefined);
       throw error;

@@ -147,7 +147,7 @@ export const functionsDeclarationSchema = z
     entry: z
       .string()
       .regex(
-        /^functions\/[A-Za-z0-9_./-]+\.(ts|js|mjs|tsx)$/,
+        /^functions\/(?:[A-Za-z0-9_-][A-Za-z0-9_.-]*\/)*[A-Za-z0-9_-][A-Za-z0-9_.-]*\.(ts|js|mjs|tsx)$/,
         "functions.entry must be a file under functions/"
       )
       .default("functions/index.ts"),
