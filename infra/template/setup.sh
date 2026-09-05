@@ -283,7 +283,7 @@ printf 'y\n' | "$HERMES_VENV/bin/hermes" mcp add daytona --command /usr/local/bi
 # by skills-manifest.py (lockfile + SKILL.md on disk, not the CLI exit code,
 # which is 0 even when nothing was installed); provisioning re-asserts only
 # the identifiers missing from that manifest.
-grep -Ev '^\s*(#|$)' "$TEMPLATE_DIR/base-skills.txt" | while read -r skill; do
+grep -Ev '^\s*(#|$)' "$TEMPLATE_DIR/base-skills.txt" | while read -r skill _options; do
   "$HERMES_VENV/bin/hermes" skills install "$skill" --yes </dev/null \
     || echo "WARN: base skill $skill install failed" >&2
 done

@@ -6,10 +6,13 @@ Usage: skills-manifest.py HOME_DIR BASE_SKILLS_FILE
 `hermes skills install` exits 0 whether or not anything landed (no exact match,
 hub fetch rate-limited, quarantined by the scanner), so its exit code cannot be
 the record of a baked skill. A skill counts only when the hub lockfile has an
-entry for its identifier whose install path holds a SKILL.md, or — for skills
-Hermes ships as builtins and never records in the lockfile — when a directory
-named after the identifier's last segment holds a SKILL.md. Provisioning trusts
-this file to skip installs on a fork, so it must never over-report.
+entry for exactly its identifier whose install path holds a SKILL.md. Skills
+Hermes ships as builtins never reach the lockfile; those are declared in the
+list as `<identifier> builtin=<path under ~/.hermes/skills>` and count when
+that exact path holds a SKILL.md. Nothing is matched by name, so two hub
+identifiers sharing a last segment can never stand in for each other.
+Provisioning trusts this file to skip installs on a fork, so it must never
+over-report.
 """
 import json
 import os
@@ -17,19 +20,30 @@ import sys
 
 
 def read_list(path):
+    """Yield (identifier, builtin_path_or_None) per non-comment line."""
     with open(path, encoding="utf-8") as fh:
         for line in fh:
             line = line.strip()
-            if line and not line.startswith("#"):
-                yield line
+            if not line or line.startswith("#"):
+                continue
+            identifier, *options = line.split()
+            builtin = None
+            for option in options:
+                key, sep, value = option.partition("=")
+                if key == "builtin" and sep and value:
+                    builtin = value
+            yield identifier, builtin
 
 
 def lock_entries(skills_dir):
     lock = os.path.join(skills_dir, ".hub", "lock.json")
     try:
         with open(lock, encoding="utf-8") as fh:
-            installed = json.load(fh).get("installed", {})
+            data = json.load(fh)
     except (OSError, ValueError):
+        return {}
+    installed = data.get("installed") if isinstance(data, dict) else None
+    if not isinstance(installed, dict):
         return {}
     by_identifier = {}
     for entry in installed.values():
@@ -46,26 +60,16 @@ def has_skill_md(skills_dir, rel):
     return os.path.isfile(os.path.join(skills_dir, rel, "SKILL.md"))
 
 
-def builtin_dir(skills_dir, name):
-    for root, dirs, _files in os.walk(skills_dir):
-        dirs[:] = [d for d in dirs if not d.startswith(".")]
-        if root[len(skills_dir):].count(os.sep) >= 2:
-            dirs[:] = []
-        if name in dirs and has_skill_md(root, name):
-            return True
-    return False
-
-
 def main():
     home, list_path = sys.argv[1], sys.argv[2]
     skills_dir = os.path.join(home, ".hermes", "skills")
     locked = lock_entries(skills_dir)
     present = []
-    for identifier in read_list(list_path):
+    for identifier, builtin in read_list(list_path):
         install_path = locked.get(identifier)
         if install_path is not None and has_skill_md(skills_dir, install_path):
             present.append(identifier)
-        elif builtin_dir(skills_dir, identifier.rsplit("/", 1)[-1]):
+        elif builtin is not None and has_skill_md(skills_dir, builtin):
             present.append(identifier)
         else:
             print(f"WARN: base skill {identifier} is not on disk", file=sys.stderr)
