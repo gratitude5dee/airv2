@@ -371,11 +371,12 @@ export async function hasRuntimeKvValue(key: string): Promise<boolean> {
   const headers = { Authorization: `Bearer ${creds.apiToken}` };
   let response = await fetch(url, { headers });
   if (response.status >= 500) {
+    await response.arrayBuffer();
     response = await fetch(url, { headers });
   }
+  const text = await response.text();
   if (response.status === 404) return false;
   if (!response.ok) {
-    const text = await response.text();
     throw new CloudflareError(
       response.status,
       `cloudflare HEAD runtime kv ${key} failed: ${text.slice(0, 200)}`
