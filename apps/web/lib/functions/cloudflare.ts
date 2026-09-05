@@ -371,7 +371,7 @@ export async function hasRuntimeKvValue(key: string): Promise<boolean> {
   const headers = { Authorization: `Bearer ${creds.apiToken}` };
   let response = await fetch(url, { headers });
   if (response.status >= 500) {
-    await response.arrayBuffer();
+    await response.arrayBuffer().catch(() => undefined);
     response = await fetch(url, { headers });
   }
   const text = await response.text();
