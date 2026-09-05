@@ -119,11 +119,12 @@ function req(
   if (init.version) headers["X-Air-Version"] = init.version;
   if (init.type) headers["content-type"] = init.type;
   if (init.body !== undefined) headers["content-length"] = String(Buffer.byteLength(init.body));
+  const body = init.body === undefined ? undefined : new Uint8Array(Buffer.from(init.body));
   return new NextRequest(url, {
-    method: init.method ?? (init.body === undefined ? "GET" : "POST"),
+    method: init.method ?? (body === undefined ? "GET" : "POST"),
     headers,
-    ...(init.body !== undefined ? { body: init.body } : {}),
-  } as RequestInit);
+    ...(body !== undefined ? { body } : {}),
+  });
 }
 
 beforeEach(() => {

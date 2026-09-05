@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# air-create — Vibe + Drop CLI for the create-miniapp skill (V11 §8, §9.5).
+# air-create — Vibe + Drop CLI for the create-miniapp skill (V11 §8, §9.5, §11).
 #
 #   air-create new <appname> [--lane vibe|drop|import] [--title <t>]
 #   air-create build <appname>
@@ -7,6 +7,7 @@
 #   air-create status <appname|slug>
 #   air-create drop <file.html|file.zip|dir> [--name <app-name>] [--title <t>]
 #   air-create publish <app-name> [--title <t>]
+#   air-create functions <appname> [--egress <host> …] [--cap <usd>] [--db] [--kv]
 #
 # new     scaffolds ~/.hermes/create/<appname>/ (air.json, create.plan.md,
 #         src/main.tsx, public/) and records it in ~/.hermes/create/.active.
@@ -20,12 +21,17 @@
 # drop    stages a DRAFT version from an HTML file, zip, or folder.
 # publish files a Needs-you decision; the OWNER approves it on their phone.
 #         Nothing here ever flips an app live.
+# functions
+#         stages the backend declaration (egress hosts, daily inference cap,
+#         database / kv) and files the miniapp_backend decision; with no
+#         flags it prints the backend status. The OWNER approves; nothing here
+#         enables a backend or widens what one may reach or spend.
 #
 # Folders are zipped with python3 -m zipfile (no `zip` binary is assumed).
 set -euo pipefail
 
 usage() {
-  sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//' >&2
+  sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//' >&2
   exit 2
 }
 
@@ -369,6 +375,42 @@ cmd_publish() {
   finish "$(api POST /api/miniapps/publish "$body")"
 }
 
+cmd_functions() {
+  local name="" cap="" db="" kv="" hosts="" staging=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --egress)
+        [ -n "${2:-}" ] || usage
+        hosts="$hosts${hosts:+,}$(json_string "$2")"; staging=1; shift 2 ;;
+      --cap) cap="$2"; staging=1; shift 2 ;;
+      --db) db=true; staging=1; shift ;;
+      --no-db) db=false; staging=1; shift ;;
+      --kv) kv=true; staging=1; shift ;;
+      --no-kv) kv=false; staging=1; shift ;;
+      -*) usage ;;
+      *) name="$1"; shift ;;
+    esac
+  done
+  name="$(resolve_appname "$name")"
+  if [ "$staging" -eq 0 ]; then
+    finish "$(api GET "/api/create/functions?app=$(url_encode "$name")")"
+    return
+  fi
+  if [ -n "$cap" ]; then
+    case "$cap" in
+      *[!0-9.]*|""|.|*.*.*) echo "air-create: --cap takes a dollar amount, e.g. --cap 0.50" >&2; exit 3 ;;
+    esac
+  fi
+  local body
+  body="{\"app\":$(json_string "$name")"
+  [ -n "$hosts" ] && body="$body,\"egress\":[$hosts]"
+  [ -n "$cap" ] && body="$body,\"cap\":$cap"
+  [ -n "$db" ] && body="$body,\"db\":$db"
+  [ -n "$kv" ] && body="$body,\"kv\":$kv"
+  body="$body}"
+  finish "$(api POST /api/create/functions "$body")"
+}
+
 case "${1:-}" in
   new) shift; cmd_new "$@" ;;
   build) shift; cmd_build "$@" ;;
@@ -376,5 +418,6 @@ case "${1:-}" in
   drop) shift; cmd_drop "$@" ;;
   status) shift; cmd_status "$@" ;;
   publish) shift; cmd_publish "$@" ;;
+  functions) shift; cmd_functions "$@" ;;
   *) usage ;;
 esac
