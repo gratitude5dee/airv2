@@ -5,6 +5,8 @@
  * log (.hermes/miniapps/<slug>/actions.json) for the user's agent to pick up
  * through the normal decision-gated tool paths (MA10: the agent sees a file,
  * not a special subsystem; no gate is bypassed because nothing fires here).
+ * The Functions runtime API appends to the same log through the same leased
+ * helper, so neither writer can drop the other's entry.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
@@ -13,7 +15,10 @@ import {
   bundleManifest,
   stateUserId,
 } from "@/lib/miniapps/appsApi";
-import { readAppState, writeAppState } from "@/lib/miniapps/store";
+import {
+  ActionLogBusyError,
+  appendActionLogEntry,
+} from "@/lib/miniapps/actionLog";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,14 +26,6 @@ export const maxDuration = 300;
 
 const ACTION_NAME_RE = /^[a-z0-9_.-]{1,64}$/;
 const PAYLOAD_MAX_BYTES = 16 * 1024;
-const LOG_MAX_ENTRIES = 200;
-
-interface ActionEntry {
-  action: string;
-  payload: unknown;
-  role: string;
-  at: string;
-}
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const supabase = serviceClient();
@@ -67,28 +64,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!userId) {
     return NextResponse.json({ error: "no app owner" }, { status: 403 });
   }
-  const logResource = "actions";
-  const existing = await readAppState(
-    supabase,
-    userId,
-    auth.app.slug,
-    logResource
-  );
-  const entries: ActionEntry[] = Array.isArray(existing)
-    ? (existing as ActionEntry[])
-    : [];
-  entries.push({
-    action,
-    payload: body.payload ?? null,
-    role: auth.session.role,
-    at: new Date().toISOString(),
-  });
-  await writeAppState(
-    supabase,
-    userId,
-    auth.app.slug,
-    logResource,
-    entries.slice(-LOG_MAX_ENTRIES)
-  );
+  try {
+    await appendActionLogEntry(supabase, userId, auth.app.slug, {
+      action,
+      payload: body.payload ?? null,
+      role: auth.session.role,
+      at: new Date().toISOString(),
+    });
+  } catch (error) {
+    if (error instanceof ActionLogBusyError) {
+      return NextResponse.json(
+        { error: "busy, try again" },
+        { status: 503, headers: { "Retry-After": "1" } }
+      );
+    }
+    throw error;
+  }
   return NextResponse.json({ ok: true });
 }

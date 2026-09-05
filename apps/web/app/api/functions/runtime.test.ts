@@ -52,8 +52,30 @@ const manifests: Record<string, unknown> = {
 };
 const uploaded: { key: string; bytes: number }[] = [];
 
+// Action-log leases (0101) resolve in memory; the Box is always awake.
+const leases = new Map<string, string>();
 vi.mock("@/lib/supabase", () => ({
-  serviceClient: () => ({}) as unknown as SupabaseClient,
+  serviceClient: () =>
+    ({
+      rpc: async (fn: string, args: Record<string, unknown>) => {
+        const key = `${args["p_user_id"]}/${args["p_app"]}/${args["p_resource"]}`;
+        if (fn === "miniapp_state_lease") {
+          const held = leases.get(key);
+          if (held && held !== args["p_holder"]) return { data: false, error: null };
+          leases.set(key, String(args["p_holder"]));
+          return { data: true, error: null };
+        }
+        if (fn === "miniapp_state_release") {
+          const freed = leases.get(key) === args["p_holder"];
+          if (freed) leases.delete(key);
+          return { data: freed, error: null };
+        }
+        return { data: null, error: { message: `unknown rpc ${fn}` } };
+      },
+    }) as unknown as SupabaseClient,
+}));
+vi.mock("@/lib/orchestrator/boxes", () => ({
+  ensureBoxAwake: vi.fn(async () => ({ boxId: "box-1" })),
 }));
 vi.mock("@/lib/functions/runtime", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/functions/runtime")>();
@@ -71,6 +93,13 @@ vi.mock("@/lib/miniapps/store", () => ({
       docs.set(`${userId}/${app}/${resource}`, state);
     }
   ),
+  // Box-scoped twins used under the action-log lease; box-1 is user-1's Box.
+  readAppStateFrom: vi.fn(async (_box: string, app: string, resource: string) =>
+    docs.get(`user-1/${app}/${resource}`) ?? {}
+  ),
+  writeAppStateTo: vi.fn(async (_box: string, app: string, resource: string, state: unknown) => {
+    docs.set(`user-1/${app}/${resource}`, state);
+  }),
 }));
 vi.mock("@/lib/security/limits", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/security/limits")>();
