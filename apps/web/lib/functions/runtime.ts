@@ -20,6 +20,7 @@
  * monthly cap.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { costUsd, type SpeedTier } from "../entitlements/models";
 import {
   deleteRuntimeKvValue,
   hasRuntimeKvValue,
@@ -241,24 +242,91 @@ export function appDailyCapUsd(row: FunctionsRow): number {
   return row.approved_manifest?.dailyCapUsd ?? row.ai_daily_cap_usd;
 }
 
+/**
+ * Cheap deny on the row already in hand (settled spend only). Admission is
+ * decided by reserveAppSpend; this just spares the RPC once the day is over.
+ */
 export function appCapReached(row: FunctionsRow, now = new Date()): boolean {
   return appSpentTodayUsd(row, now) >= appDailyCapUsd(row);
 }
 
-/** Atomic day-scoped add (miniapp_fn_spend); best effort like add_spend. */
-export async function recordAppSpend(
+/**
+ * What a call holds against the cap until its usage is known: a generous
+ * prompt plus a long answer at the tier's price. Settled to the real cost.
+ */
+export const RESERVE_PROMPT_TOKENS = 8_000;
+export const RESERVE_COMPLETION_TOKENS = 2_000;
+
+export function appReserveUsd(tier: SpeedTier): number {
+  return costUsd(tier, RESERVE_PROMPT_TOKENS, RESERVE_COMPLETION_TOKENS);
+}
+
+/** A hold taken by miniapp_fn_reserve; settled or released exactly once. */
+export interface AppHold {
+  appId: string;
+  reservedUsd: number;
+  /** UTC day (YYYY-MM-DD) the ledger booked the hold on. */
+  day: string;
+}
+
+export type AppReservation =
+  | { status: "held"; hold: AppHold }
+  /** spent + held has reached the cap (CR8). */
+  | { status: "capped" }
+  /** The ledger did not answer; the call is refused rather than unmetered. */
+  | { status: "unavailable" };
+
+/**
+ * Reserve-then-dispatch (CR8): one statement decides admission and takes the
+ * hold, so two calls racing under the cap cannot both pass on a stale read.
+ */
+export async function reserveAppSpend(
   supabase: SupabaseClient,
-  appId: string,
-  usd: number
-): Promise<void> {
-  if (!(usd > 0)) return;
-  const { error } = await supabase.rpc("miniapp_fn_spend", {
-    p_app_id: appId,
-    p_usd: usd,
+  row: FunctionsRow,
+  tier: SpeedTier,
+  now = new Date()
+): Promise<AppReservation> {
+  if (appCapReached(row, now)) return { status: "capped" };
+  const reservedUsd = appReserveUsd(tier);
+  const { data, error } = await supabase.rpc("miniapp_fn_reserve", {
+    p_app_id: row.app_id,
+    p_usd: reservedUsd,
+    p_cap: appDailyCapUsd(row),
   });
   if (error) {
     console.error(
-      JSON.stringify({ msg: "fn spend record failed", app_id: appId, error: error.message })
+      JSON.stringify({ msg: "fn reserve failed", app_id: row.app_id, error: error.message })
+    );
+    return { status: "unavailable" };
+  }
+  return typeof data === "string" && data.length > 0
+    ? { status: "held", hold: { appId: row.app_id, reservedUsd, day: data } }
+    : { status: "capped" };
+}
+
+/**
+ * Replace the hold with the call's real cost (0 when the call produced no
+ * metered usage). Best effort like add_spend: a failure here leaves the hold
+ * counted until the UTC day rolls over, never spend uncounted.
+ */
+export async function settleAppSpend(
+  supabase: SupabaseClient,
+  hold: AppHold,
+  usd: number
+): Promise<void> {
+  const { error } = await supabase.rpc("miniapp_fn_settle", {
+    p_app_id: hold.appId,
+    p_reserved: hold.reservedUsd,
+    p_usd: usd > 0 ? usd : 0,
+    p_day: hold.day,
+  });
+  if (error) {
+    console.error(
+      JSON.stringify({ msg: "fn settle failed", app_id: hold.appId, error: error.message })
     );
   }
+}
+
+export function releaseAppSpend(supabase: SupabaseClient, hold: AppHold): Promise<void> {
+  return settleAppSpend(supabase, hold, 0);
 }
