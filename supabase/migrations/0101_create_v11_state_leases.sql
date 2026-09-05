@@ -7,7 +7,7 @@
 -- releases it after. Rows are content-free — a slug, a resource name, an
 -- opaque holder id and an expiry — and an expired lease is simply re-taken,
 -- so a crashed writer can only delay the next one, never wedge the log.
-create table miniapp_state_leases (
+create table if not exists miniapp_state_leases (
   user_id uuid not null references users(id) on delete cascade,
   app text not null,
   resource text not null,
