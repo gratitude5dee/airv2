@@ -552,5 +552,8 @@ if [ -f "$TEMPLATE_DIR/RELEASE" ]; then
 else
   rm -f "$HOME_DIR/.hermes/.template-release"
 fi
+# Skill manifest: what is on disk right now, so a fork of this box skips only
+# the hub installs it really inherits.
+python3 "$TEMPLATE_DIR/skills-manifest.py" "$HOME_DIR" "$TEMPLATE_DIR/base-skills.txt"
 
 echo "Baseline sync complete."

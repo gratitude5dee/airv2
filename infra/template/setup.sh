@@ -269,50 +269,28 @@ printf 'y\n' | "$HERMES_VENV/bin/hermes" mcp add daytona --command /usr/local/bi
 # ── 3c. Preinstall base skills into ~/.hermes/skills ────────────────────────
 # On top of the bundled library; forks inherit these so provisioning doesn't
 # pay the install cost per user. Failures warn but don't abort the template.
-# Identifiers are pinned from real `hermes skills search` results (never
-# guessed) and mirrored in BASE_SKILLS (apps/web/lib/skills/hub.ts) so
-# provisioning re-asserts them per fork. The eval-test set (V0 web latency)
-# rides along so the agent-suite can exercise them without per-box installs.
+# Identifiers live in base-skills.txt (pinned from real `hermes skills search`
+# results, never guessed) and are mirrored in BASE_SKILLS
+# (apps/web/lib/skills/hub.ts) so provisioning re-asserts them per fork. The
+# eval-test set (V0 web latency) rides along so the agent-suite can exercise
+# them without per-box installs.
 # Mail: official/email/agentmail is the legacy AgentMail path
 # (MAIL_PROVIDER=agentmail); the native wzrdmail skill is not a hub skill and
 # is baked from skills/wzrdmail in the local-skills loop below. Provisioning
 # enables exactly one mail MCP (wzrdmail or agentmail) per box, so having both
 # skills on the image is harmless during the cutover.
-# Every install that succeeds is recorded in ~/.hermes/.template-skills;
-# provisioning re-asserts only the identifiers missing from that manifest, so
-# a warned-past failure here is never mistaken for a baked skill on a fork.
-SKILLS_MANIFEST="$HOME_DIR/.hermes/.template-skills"
-: > "$SKILLS_MANIFEST.tmp"
-for skill in \
-  official/email/agentmail \
-  official/research/duckduckgo-search \
-  official/creative/hyperframes \
-  skills-sh/kepano/obsidian-skills/defuddle \
-  browser-harness \
-  skills-sh/panniantong/agent-reach/agent-reach \
-  skills-sh/jakubkrehel/make-interfaces-feel-better/make-interfaces-feel-better \
-  skills-sh/addyosmani/agent-skills/browser-testing-with-devtools \
-  skills-sh/composiohq/skills/composio \
-  skills-sh/zeropointrepo/youtube-skills/youtube-full \
-  skills-sh/nousresearch/hermes-agent/humanizer \
-  skills-sh/mattpocock/skills/setup-matt-pocock-skills \
-  skills-sh/aradotso/trending-skills/skillclaw-skill-evolution \
-  skills-sh/aradotso/mcp-skills/codebase-memory-mcp-intelligence \
-  skills-sh/forward-future/loopy/loopy \
-  skills-sh/calesthio/openmontage/ai-video-gen \
-  skills-sh/aradotso/security-skills/anthropic-cybersecurity-skills \
-; do
-  if "$HERMES_VENV/bin/hermes" skills install "$skill" --yes; then
-    printf '%s\n' "$skill" >> "$SKILLS_MANIFEST.tmp"
-  else
-    echo "WARN: base skill $skill install failed" >&2
-  fi
+# The skills that actually landed are recorded in ~/.hermes/.template-skills
+# by skills-manifest.py (lockfile + SKILL.md on disk, not the CLI exit code,
+# which is 0 even when nothing was installed); provisioning re-asserts only
+# the identifiers missing from that manifest.
+grep -Ev '^\s*(#|$)' "$TEMPLATE_DIR/base-skills.txt" | while read -r skill; do
+  "$HERMES_VENV/bin/hermes" skills install "$skill" --yes </dev/null \
+    || echo "WARN: base skill $skill install failed" >&2
 done
-mv "$SKILLS_MANIFEST.tmp" "$SKILLS_MANIFEST"
+python3 "$TEMPLATE_DIR/skills-manifest.py" "$HOME_DIR" "$TEMPLATE_DIR/base-skills.txt"
 
 # Bake local skills shipped with this template (e.g. the computer relay,
 # which teaches the agent to send its human a live screen card for logins).
-TEMPLATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 mkdir -p "$HOME_DIR/.hermes/skills"
 for local_skill in "$TEMPLATE_DIR"/skills/*/; do
   name="$(basename "$local_skill")"
