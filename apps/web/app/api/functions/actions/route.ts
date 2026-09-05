@@ -3,13 +3,16 @@
  * `actions.json` for the owner's agent — the same log the MA3 Apps API
  * writes, so the agent sees a file, not a subsystem, and no gate is bypassed.
  * Only names the running version's manifest declares; guests only the
- * guest-safe ones. 16 KiB.
+ * guest-safe ones. 16 KiB. The append itself is leased (actionLog.ts) so a
+ * concurrent Apps API write can't drop it.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
-import { readAppState, writeAppState } from "@/lib/miniapps/store";
 import {
-  ACTION_LOG_MAX_ENTRIES,
+  ActionLogBusyError,
+  appendActionLogEntry,
+} from "@/lib/miniapps/actionLog";
+import {
   ACTION_NAME_RE,
   ACTIONS_MAX_BYTES,
   declaredActions,
@@ -24,14 +27,6 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
-
-interface ActionEntry {
-  action: string;
-  payload: unknown;
-  role: string;
-  at: string;
-  source: "functions";
-}
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const supabase = serviceClient();
@@ -49,24 +44,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       throw new RuntimeApiError(403, "guest_forbidden");
     }
     const { userId, slug } = call.principal;
-    const existing = await readAppState(supabase, userId, slug, "actions");
-    const entries: ActionEntry[] = Array.isArray(existing)
-      ? (existing as ActionEntry[])
-      : [];
-    entries.push({
-      action,
-      payload: record["payload"] ?? null,
-      role: call.role,
-      at: new Date().toISOString(),
-      source: "functions",
-    });
-    await writeAppState(
-      supabase,
-      userId,
-      slug,
-      "actions",
-      entries.slice(-ACTION_LOG_MAX_ENTRIES)
-    );
+    try {
+      await appendActionLogEntry(supabase, userId, slug, {
+        action,
+        payload: record["payload"] ?? null,
+        role: call.role,
+        at: new Date().toISOString(),
+        source: "functions",
+      });
+    } catch (error) {
+      if (error instanceof ActionLogBusyError) {
+        throw new RuntimeApiError(503, "state_busy");
+      }
+      throw error;
+    }
     return runtimeJson({ ok: true });
   });
 }

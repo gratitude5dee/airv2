@@ -90,6 +90,8 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
     column: "user_id",
     select: "id, app_id, created_at, revoked_at",
   },
+  // Action-log leases: slug, resource name, opaque holder, expiry — no content.
+  all("miniapp_state_leases"),
   // V11 MC7 Import: installation and repository ids only — the tables hold
   // no tokens.
   all("github_installations"),

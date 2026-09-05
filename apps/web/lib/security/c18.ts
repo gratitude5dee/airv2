@@ -193,6 +193,8 @@ export const V9_USER_TABLES: readonly { table: string; column: string }[] = [
   { table: "miniapp_versions", column: "user_id" },
   { table: "miniapp_functions", column: "user_id" },
   { table: "miniapp_runtime_tokens", column: "user_id" },
+  // V11 MC5 action-log leases (0099)
+  { table: "miniapp_state_leases", column: "user_id" },
   // V11 MC7 Import (0090)
   { table: "github_installations", column: "user_id" },
   { table: "github_repo_links", column: "user_id" },

@@ -48,8 +48,11 @@ import {
   appCapReached,
   authenticateRuntimeToken,
   isRuntimeModel,
-  recordAppSpend,
+  releaseAppSpend,
+  reserveAppSpend,
   RUNTIME_MODELS,
+  settleAppSpend,
+  type AppHold,
   type RuntimePrincipal,
 } from "@/lib/functions/runtime";
 import { recordOpsEvent } from "@/lib/security/limits";
@@ -78,9 +81,10 @@ interface RouteTrace {
   /** `create:<slug>` when the completion is a Create turn's; drives the
    * per-project budget (goal-create-v11 §9.1). */
   label?: string | null;
-  /** Set for a Functions Worker's call: `trigger='app'`, spend also lands
-   * on the app's daily counter (CR8). */
-  app?: { id: string } | null;
+  /** Set for a Functions Worker's call: `trigger='app'`, and the hold taken
+   * before dispatch settles to the real cost on the app's daily counter
+   * (CR8). */
+  app?: { id: string; hold: AppHold } | null;
 }
 
 async function meter(
@@ -138,7 +142,7 @@ async function meter(
   if (spendError) {
     console.error(JSON.stringify({ msg: "add_spend failed", user_id: userId, error: spendError.message }));
   }
-  if (trace?.app) await recordAppSpend(supabase, trace.app.id, cost);
+  if (trace?.app) await settleAppSpend(supabase, trace.app.hold, cost);
 }
 
 /** Runtime tokens are prefixed so the two principals never share a lookup. */
@@ -146,32 +150,42 @@ function isRuntimeBearer(token: string): boolean {
   return token.startsWith("art_");
 }
 
-/** Watches the SSE pass-through for the final usage chunk without altering it. */
+/**
+ * Watches the SSE pass-through for the final usage chunk without altering
+ * it. `onEnd` fires exactly once when the stream closes: with the usage, or
+ * null when no chunk carried one (a Functions hold is then released).
+ */
 function meteringTee(
   upstream: ReadableStream<Uint8Array>,
-  onUsage: (usage: Usage) => void
+  onEnd: (usage: Usage | null) => void
 ): ReadableStream<Uint8Array> {
   const [client, monitor] = upstream.tee();
   void (async () => {
     const reader = monitor.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+      }
+    } catch {
+      // upstream dropped mid-stream; whatever arrived is still scanned
     }
+    let usage: Usage | null = null;
     for (const line of buffer.split("\n")) {
       if (!line.startsWith("data:")) continue;
       const data = line.slice(5).trim();
       if (!data || data === "[DONE]") continue;
       try {
         const parsed = JSON.parse(data) as { usage?: Usage };
-        if (parsed.usage) onUsage(parsed.usage);
+        if (parsed.usage) usage = parsed.usage;
       } catch {
         // non-JSON keepalive; ignore
       }
     }
+    onEnd(usage);
   })();
   return client;
 }
@@ -242,7 +256,8 @@ export async function POST(
   }
 
   // The app's own cap comes first (CR8): a runaway Worker stops at its
-  // owner-approved dollar figure, never at the owner's whole month.
+  // owner-approved dollar figure, never at the owner's whole month. This is
+  // the cheap deny on the row in hand; admission is the reservation below.
   if (app && appCapReached(app.functions)) {
     await recordOpsEvent(supabase, "fn_capped", userId, app.slug);
     return NextResponse.json(
@@ -391,6 +406,39 @@ export async function POST(
     }
   }
 
+  // Reserve-then-dispatch (CR8): admission and the hold are one statement,
+  // so two calls racing under the cap cannot both pass on a stale read. The
+  // hold is handed to meter() (settled to the real cost) or released.
+  let hold: AppHold | null = null;
+  if (app) {
+    const reservation = await reserveAppSpend(supabase, app.functions, tier);
+    if (reservation.status === "capped") {
+      await recordOpsEvent(supabase, "fn_capped", userId, app.slug);
+      return NextResponse.json(
+        { error: "insufficient_quota", reason: "fn_capped" },
+        { status: 429 }
+      );
+    }
+    if (reservation.status === "unavailable") {
+      return NextResponse.json(
+        { error: "cap_unavailable", reason: "fn_reserve" },
+        { status: 503 }
+      );
+    }
+    hold = reservation.hold;
+  }
+  const takeHold = (): AppHold | null => {
+    const taken = hold;
+    hold = null;
+    return taken;
+  };
+  const release = (): void => {
+    const taken = takeHold();
+    if (taken) after(releaseAppSpend(supabase, taken));
+  };
+  const appTrace = (taken: AppHold | null): { id: string; hold: AppHold } | null =>
+    app && taken ? { id: app.appId, hold: taken } : null;
+
   const requestStartedMs = Date.now();
   const requestedModel =
     typeof rawBody["model"] === "string" ? (rawBody["model"] as string) : null;
@@ -520,183 +568,198 @@ export async function POST(
     });
   };
 
-  // The Create family is OpenAI-only: the owner's chat family never applies.
-  let servedFamily: ModelFamily = createTier !== null ? "openai" : family;
-  let upstream = await dispatch(servedFamily);
+  // Every path out of here either meters (the hold settles to the real
+  // cost in meter()) or releases the hold: an upstream error, a stream that
+  // closed without a usage chunk, or an exception.
+  const proxy = async (): Promise<Response> => {
+    // The Create family is OpenAI-only: the owner's chat family never applies.
+    let servedFamily: ModelFamily = createTier !== null ? "openai" : family;
+    let upstream = await dispatch(servedFamily);
 
-  // Non-OpenAI families can degrade to empty completions (e.g. an endpoint
-  // answering tool-bearing calls with `native_finish_reason: "network_error"`
-  // and a null message). The box would otherwise retry into the same wall and
-  // the user gets silence, so a dead or empty upstream falls back once to the
-  // tier-resolved OpenAI model.
-  // An unconfigured provider is a user-facing settings problem, not a dead
-  // upstream — surface the 503 instead of silently answering with OpenAI.
-  if (upstream.headers.get("X-Provider-Unconfigured") === "1") {
-    return new NextResponse(await upstream.text(), {
-      status: upstream.status,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-  const canFallBack = providerForFamily(servedFamily) !== "openai";
-  if (
-    canFallBack &&
-    [429, 500, 502, 503, 504].includes(upstream.status)
-  ) {
-    console.warn(
-      JSON.stringify({
-        msg: "gateway upstream retry",
-        user_id: userId,
-        family,
-        model: servedModel,
+    // Non-OpenAI families can degrade to empty completions (e.g. an endpoint
+    // answering tool-bearing calls with `native_finish_reason: "network_error"`
+    // and a null message). The box would otherwise retry into the same wall and
+    // the user gets silence, so a dead or empty upstream falls back once to the
+    // tier-resolved OpenAI model.
+    // An unconfigured provider is a user-facing settings problem, not a dead
+    // upstream — surface the 503 instead of silently answering with OpenAI.
+    if (upstream.headers.get("X-Provider-Unconfigured") === "1") {
+      return new NextResponse(await upstream.text(), {
         status: upstream.status,
-      })
-    );
-    await upstream.body?.cancel().catch(() => undefined);
-    if (RETRY_DELAY_MS > 0) {
-      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+        headers: { "Content-Type": "application/json" },
+      });
     }
-    upstream = await dispatch(servedFamily);
-  }
-  if (canFallBack && (!upstream.ok || !upstream.body)) {
-    console.warn(
-      JSON.stringify({
-        msg: "gateway upstream rejected",
-        user_id: userId,
-        family,
-        model: servedModel,
-        status: upstream.status,
-        detail: (await upstream.clone().text().catch(() => "")).slice(0, 400),
-      })
-    );
-    servedFamily = "openai";
-    upstream = await dispatch(servedFamily);
-  } else if (canFallBack && !streaming) {
-    const parsed = (await upstream.clone().json().catch(() => null)) as {
-      choices?: {
-        message?: {
-          content?: string | null;
-          tool_calls?: unknown[];
-          reasoning?: string | null;
-        };
-      }[];
-    } | null;
-    const choice = parsed?.choices?.[0];
-    const message = choice?.message;
-    const empty =
-      choice !== undefined &&
-      (message == null ||
-        (!message.content &&
-          !message.reasoning &&
-          !(Array.isArray(message.tool_calls) && message.tool_calls.length > 0)));
-    if (parsed === null || empty) {
-      servedFamily = "openai";
-      upstream = await dispatch(servedFamily);
-    }
-  }
-
-  if (!upstream.ok || !upstream.body) {
-    const errorBody = await upstream.text();
-    return new NextResponse(errorBody, {
-      status: upstream.status,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  // Streamed non-OpenAI answers get the same empty check: the whole SSE body
-  // is buffered (these families answer in one burst) and replayed, or
-  // replaced by an OpenAI stream when no delta ever carried content.
-  if (streaming && servedFamily !== "openai" && canFallBack) {
-    const raw = new Uint8Array(await upstream.clone().arrayBuffer());
-    const text = new TextDecoder().decode(raw);
-    let sawContent = false;
-    for (const line of text.split("\n")) {
-      if (!line.startsWith("data:")) continue;
-      const data = line.slice(5).trim();
-      if (!data || data === "[DONE]") continue;
-      try {
-        const parsed = JSON.parse(data) as {
-          choices?: {
-            delta?: {
-              content?: string | null;
-              tool_calls?: unknown[];
-              reasoning?: string | null;
-            };
-          }[];
-        };
-        const delta = parsed.choices?.[0]?.delta;
-        if (
-          delta &&
-          (delta.content ||
-            delta.reasoning ||
-            (Array.isArray(delta.tool_calls) && delta.tool_calls.length > 0))
-        ) {
-          sawContent = true;
-          break;
-        }
-      } catch {
-        // non-JSON keepalive; ignore
-      }
-    }
-    if (!sawContent) {
-      servedFamily = "openai";
-      upstream = await dispatch(servedFamily);
-      if (!upstream.ok || !upstream.body) {
-        const errorBody = await upstream.text();
-        return new NextResponse(errorBody, {
+    const canFallBack = providerForFamily(servedFamily) !== "openai";
+    if (
+      canFallBack &&
+      [429, 500, 502, 503, 504].includes(upstream.status)
+    ) {
+      console.warn(
+        JSON.stringify({
+          msg: "gateway upstream retry",
+          user_id: userId,
+          family,
+          model: servedModel,
           status: upstream.status,
-          headers: { "Content-Type": "application/json" },
-        });
+        })
+      );
+      await upstream.body?.cancel().catch(() => undefined);
+      if (RETRY_DELAY_MS > 0) {
+        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+      }
+      upstream = await dispatch(servedFamily);
+    }
+    if (canFallBack && (!upstream.ok || !upstream.body)) {
+      console.warn(
+        JSON.stringify({
+          msg: "gateway upstream rejected",
+          user_id: userId,
+          family,
+          model: servedModel,
+          status: upstream.status,
+          detail: (await upstream.clone().text().catch(() => "")).slice(0, 400),
+        })
+      );
+      servedFamily = "openai";
+      upstream = await dispatch(servedFamily);
+    } else if (canFallBack && !streaming) {
+      const parsed = (await upstream.clone().json().catch(() => null)) as {
+        choices?: {
+          message?: {
+            content?: string | null;
+            tool_calls?: unknown[];
+            reasoning?: string | null;
+          };
+        }[];
+      } | null;
+      const choice = parsed?.choices?.[0];
+      const message = choice?.message;
+      const empty =
+        choice !== undefined &&
+        (message == null ||
+          (!message.content &&
+            !message.reasoning &&
+            !(Array.isArray(message.tool_calls) && message.tool_calls.length > 0)));
+      if (parsed === null || empty) {
+        servedFamily = "openai";
+        upstream = await dispatch(servedFamily);
       }
     }
-  }
 
-  if (streaming) {
-    const meteredFamily = servedFamily;
-    const meteredModel = servedModel;
-    const meteredPersonal = servedOnPersonalKey;
-    const meteredTrace: RouteTrace = {
-      requestedModel,
-      reasoningEffort: servedReasoning,
-      startedAtMs: requestStartedMs,
-      requestedFamily: createTier !== null ? "openai" : family,
-      label: app ? app.slug : createLabel,
-      app: app ? { id: app.appId } : null,
-    };
-    const stream = meteringTee(upstream.body, (usage) => {
-      after(
-        meter(
-          userId,
-          tier,
-          meteredFamily,
-          usage,
-          meteredModel,
-          meteredPersonal,
-          meteredTrace
-        )
-      );
-    });
-    return new Response(stream, {
-      status: 200,
-      headers: {
-        "Content-Type": upstream.headers.get("content-type") ?? "text/event-stream",
-        "Cache-Control": "no-cache",
-      },
-    });
-  }
+    if (!upstream.ok || !upstream.body) {
+      const errorBody = await upstream.text();
+      return new NextResponse(errorBody, {
+        status: upstream.status,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
 
-  const json = (await upstream.json()) as { usage?: Usage };
-  if (json.usage) {
-    const usage = json.usage;
-    after(
-      meter(userId, tier, servedFamily, usage, servedModel, servedOnPersonalKey, {
+    // Streamed non-OpenAI answers get the same empty check: the whole SSE body
+    // is buffered (these families answer in one burst) and replayed, or
+    // replaced by an OpenAI stream when no delta ever carried content.
+    if (streaming && servedFamily !== "openai" && canFallBack) {
+      const raw = new Uint8Array(await upstream.clone().arrayBuffer());
+      const text = new TextDecoder().decode(raw);
+      let sawContent = false;
+      for (const line of text.split("\n")) {
+        if (!line.startsWith("data:")) continue;
+        const data = line.slice(5).trim();
+        if (!data || data === "[DONE]") continue;
+        try {
+          const parsed = JSON.parse(data) as {
+            choices?: {
+              delta?: {
+                content?: string | null;
+                tool_calls?: unknown[];
+                reasoning?: string | null;
+              };
+            }[];
+          };
+          const delta = parsed.choices?.[0]?.delta;
+          if (
+            delta &&
+            (delta.content ||
+              delta.reasoning ||
+              (Array.isArray(delta.tool_calls) && delta.tool_calls.length > 0))
+          ) {
+            sawContent = true;
+            break;
+          }
+        } catch {
+          // non-JSON keepalive; ignore
+        }
+      }
+      if (!sawContent) {
+        servedFamily = "openai";
+        upstream = await dispatch(servedFamily);
+        if (!upstream.ok || !upstream.body) {
+          const errorBody = await upstream.text();
+          return new NextResponse(errorBody, {
+            status: upstream.status,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      }
+    }
+
+    if (streaming) {
+      const meteredFamily = servedFamily;
+      const meteredModel = servedModel;
+      const meteredPersonal = servedOnPersonalKey;
+      const streamHold = takeHold();
+      const meteredTrace: RouteTrace = {
         requestedModel,
         reasoningEffort: servedReasoning,
         startedAtMs: requestStartedMs,
         requestedFamily: createTier !== null ? "openai" : family,
         label: app ? app.slug : createLabel,
-        app: app ? { id: app.appId } : null,
-      })
-    );
+        app: appTrace(streamHold),
+      };
+      const stream = meteringTee(upstream.body, (usage) => {
+        if (usage) {
+          after(
+            meter(
+              userId,
+              tier,
+              meteredFamily,
+              usage,
+              meteredModel,
+              meteredPersonal,
+              meteredTrace
+            )
+          );
+        } else if (streamHold) {
+          after(releaseAppSpend(supabase, streamHold));
+        }
+      });
+      return new Response(stream, {
+        status: 200,
+        headers: {
+          "Content-Type": upstream.headers.get("content-type") ?? "text/event-stream",
+          "Cache-Control": "no-cache",
+        },
+      });
+    }
+
+    const json = (await upstream.json()) as { usage?: Usage };
+    if (json.usage) {
+      const usage = json.usage;
+      after(
+        meter(userId, tier, servedFamily, usage, servedModel, servedOnPersonalKey, {
+          requestedModel,
+          reasoningEffort: servedReasoning,
+          startedAtMs: requestStartedMs,
+          requestedFamily: createTier !== null ? "openai" : family,
+          label: app ? app.slug : createLabel,
+          app: appTrace(takeHold()),
+        })
+      );
+    }
+    return NextResponse.json(json, { status: 200 });
+  };
+  try {
+    return await proxy();
+  } finally {
+    release();
   }
-  return NextResponse.json(json, { status: 200 });
 }

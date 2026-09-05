@@ -245,11 +245,30 @@ export async function provisionUser(
 }
 
 /**
+ * The new box is live and the boxes row already points at it, but its
+ * post-fork setup (base skills, connectors) failed. The previous instance has
+ * been torn down either way; `boxId` is the user's box from here on.
+ */
+export class SwitchSetupError extends Error {
+  constructor(
+    readonly boxId: string,
+    cause: unknown
+  ) {
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    super(`box ${boxId} is live but its setup failed: ${detail}`);
+    this.name = "SwitchSetupError";
+  }
+}
+
+/**
  * Move an existing user to a different environment: build the new compute,
  * repoint the boxes row at it, then tear the old instance down. The user's
  * account, line, and connectors are untouched — the connectors are re-installed
  * on the new machine by finishSetup (Composio is provider-agnostic: the same
- * per-user MCP URL is registered wherever the agent happens to live).
+ * per-user MCP URL is registered wherever the agent happens to live). Once the
+ * row points at the new box the old one is torn down even if setup fails, so
+ * no instance is left running unreferenced; that case surfaces as
+ * SwitchSetupError.
  */
 export async function switchEnvironment(
   supabase: ReturnType<typeof serviceClient>,
@@ -288,9 +307,17 @@ export async function switchEnvironment(
     await teardown(built.target);
     throw persistError;
   }
-  await finishSetup(supabase, userId, built.target);
+  let setupError: unknown = null;
+  try {
+    await finishSetup(supabase, userId, built.target);
+  } catch (error) {
+    setupError = error;
+  }
   if (previous && previous.instanceId !== built.target.instanceId) {
     await teardown(previous);
+  }
+  if (setupError !== null) {
+    throw new SwitchSetupError(built.target.instanceId, setupError);
   }
   return {
     userId,
