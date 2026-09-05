@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cutRelease, type TemplateRelease } from "./releases";
-import { isChannelName } from "./channels";
+import { isChannelName, setChannelRelease } from "./channels";
 import { hermesCommands, syncCommand } from "./sync";
 
 vi.mock("../storage/r2", () => ({
@@ -62,6 +62,101 @@ describe("isChannelName", () => {
     expect(isChannelName("prod")).toBe(true);
     expect(isChannelName("staging")).toBe(false);
     expect(isChannelName(undefined)).toBe(false);
+  });
+});
+
+/**
+ * In-memory box_channels row plus the release lookup, shaped like the
+ * PostgREST builder chains setChannelRelease uses. Update filters on
+ * release_id decide whether the row matches, as the database would.
+ */
+function fakeChannelStore(initialRelease: string | null) {
+  const row = { name: "prod", release_id: initialRelease };
+  const supabase = {
+    from(table: string) {
+      if (table === "template_releases") {
+        return {
+          select: () => ({
+            eq: (_col: string, id: string) => ({
+              maybeSingle: async () => ({
+                data: id === release.id ? release : null,
+                error: null,
+              }),
+            }),
+          }),
+        };
+      }
+      return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => ({ data: { ...row }, error: null }),
+          }),
+        }),
+        update(patch: { release_id: string }) {
+          let matches = true;
+          const builder = {
+            eq(col: string, value: string) {
+              if (col === "release_id" && row.release_id !== value) {
+                matches = false;
+              }
+              return builder;
+            },
+            is(col: string, value: null) {
+              if (col === "release_id" && row.release_id !== value) {
+                matches = false;
+              }
+              return builder;
+            },
+            async select() {
+              if (!matches) return { data: [], error: null };
+              row.release_id = patch.release_id;
+              return { data: [{ name: row.name }], error: null };
+            },
+          };
+          return builder;
+        },
+      };
+    },
+  } as unknown as SupabaseClient;
+  return { supabase, row };
+}
+
+describe("setChannelRelease", () => {
+  it("moves the pointer unconditionally when no expectation is given", async () => {
+    const { supabase, row } = fakeChannelStore("rel-0");
+    await setChannelRelease(supabase, "prod", release.id);
+    expect(row.release_id).toBe(release.id);
+  });
+
+  it("moves the pointer when it still reads the expected release", async () => {
+    const { supabase, row } = fakeChannelStore("rel-0");
+    await setChannelRelease(supabase, "prod", release.id, "rel-0");
+    expect(row.release_id).toBe(release.id);
+  });
+
+  it("treats null as 'no release yet' and matches an empty pointer", async () => {
+    const { supabase, row } = fakeChannelStore(null);
+    await setChannelRelease(supabase, "prod", release.id, null);
+    expect(row.release_id).toBe(release.id);
+  });
+
+  it("refuses with 409 and leaves the pointer alone when it moved meanwhile", async () => {
+    const { supabase, row } = fakeChannelStore("rel-other");
+    await expect(
+      setChannelRelease(supabase, "prod", release.id, "rel-0")
+    ).rejects.toMatchObject({
+      status: 409,
+      message: "channel prod moved to rel-other since it was read",
+    });
+    expect(row.release_id).toBe("rel-other");
+  });
+
+  it("refuses when a release appeared where none was expected", async () => {
+    const { supabase, row } = fakeChannelStore("rel-other");
+    await expect(
+      setChannelRelease(supabase, "prod", release.id, null)
+    ).rejects.toMatchObject({ status: 409 });
+    expect(row.release_id).toBe("rel-other");
   });
 });
 
