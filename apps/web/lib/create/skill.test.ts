@@ -53,9 +53,19 @@ describe("create-miniapp skill", () => {
     expect(cli).toMatch(/\*\.png\|\*\.jpg/);
   });
 
-  it("supports new, build, qa, drop, status, and publish only (skill v2)", () => {
+  it("supports new, build, qa, drop, status, publish and functions only (skill v3)", () => {
     const subcommands = [...cli.matchAll(/^\s{2}(\w+)\) shift; cmd_\w+/gm)].map((m) => m[1]);
-    expect(subcommands.sort()).toEqual(["build", "drop", "new", "publish", "qa", "status"]);
+    expect(subcommands.sort()).toEqual(["build", "drop", "functions", "new", "publish", "qa", "status"]);
+  });
+
+  it("functions stages a declaration for the owner's approval and never enables one (v11 §9.5, CR4)", () => {
+    expect(skill).toContain("air-create functions");
+    expect(skill).toMatch(/needs? your approval/i);
+    expect(skill).toMatch(/MUST NOT say a backend is enabled/);
+    expect(cli).toContain("/api/create/functions");
+    expect(cli).not.toContain("/api/create/functions/approve");
+    expect(cli).not.toContain("/api/create/functions/kill");
+    expect(cli).not.toContain("/api/create/functions/secrets");
   });
 
   it("builds through the control plane and never installs or resolves the Kit itself", () => {

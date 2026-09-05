@@ -605,18 +605,18 @@ async function compileFunctions(
       if (file && !within(sandbox, path.resolve(sandbox, file))) continue;
       findings.push(finding(file ?? declared.entry, "compile", warning.text, "soft", warning.location?.line));
     }
-    const module = Buffer.from(out.contents);
-    if (module.length > FUNCTIONS_MODULE_MAX_BYTES) {
+    const fnModule = Buffer.from(out.contents);
+    if (fnModule.length > FUNCTIONS_MODULE_MAX_BYTES) {
       findings.push(
         finding(
           declared.entry,
           "size",
-          `functions module is ${(module.length / 1024).toFixed(0)} KiB; the limit is ${FUNCTIONS_MODULE_MAX_BYTES / 1024} KiB`
+          `functions module is ${(fnModule.length / 1024).toFixed(0)} KiB; the limit is ${FUNCTIONS_MODULE_MAX_BYTES / 1024} KiB`
         )
       );
       return { module: null, findings };
     }
-    return { module, findings };
+    return { module: fnModule, findings };
   } catch (error) {
     if (hard(findings).length > 0) return { module: null, findings };
     const messages =

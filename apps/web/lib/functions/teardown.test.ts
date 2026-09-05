@@ -8,9 +8,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 const cf = vi.hoisted(() => ({
-  deleteD1Database: vi.fn(async (_id: string) => undefined),
-  deleteKvNamespace: vi.fn(async (_id: string) => undefined),
-  deleteRuntimeKvValue: vi.fn(async (_key: string) => undefined),
+  deleteD1Database: vi.fn<(id: string) => Promise<void>>(async () => undefined),
+  deleteKvNamespace: vi.fn<(id: string) => Promise<void>>(async () => undefined),
+  deleteRuntimeKvValue: vi.fn<(key: string) => Promise<void>>(async () => undefined),
 }));
 
 vi.mock("./cloudflare", async (importOriginal) => {

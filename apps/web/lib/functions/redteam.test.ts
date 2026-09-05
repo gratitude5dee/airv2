@@ -123,7 +123,7 @@ function mockFetch(status = 200) {
 }
 
 const workerFetch = (request: Request, env: ReturnType<typeof outboundEnv>) =>
-  (outbound as { fetch(r: Request, e: unknown): Promise<Response> }).fetch(request, env);
+  outbound.fetch(request, env);
 
 describe("Outbound Worker — egress is deny-by-default (CR7)", () => {
   it.each(PLATFORM_HOSTS)("a user Worker cannot reach %s", async (host) => {
