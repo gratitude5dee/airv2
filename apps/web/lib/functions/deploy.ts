@@ -311,6 +311,7 @@ export async function deployStaticVersion(
             },
           ],
           bindings: [{ type: "assets", name: "ASSETS" }],
+          keepSecrets: true,
           tags,
           compatibilityDate: WORKER_COMPATIBILITY_DATE,
           limits: { cpu_ms: 50, subrequests: 0 },

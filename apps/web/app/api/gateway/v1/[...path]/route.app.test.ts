@@ -111,8 +111,9 @@ vi.mock("@/lib/functions/runtime", async (importOriginal) => {
     }),
   };
 });
+const providerKeys = vi.hoisted(() => ({ getProviderKey: vi.fn(async () => null as string | null) }));
 vi.mock("@/lib/providers/keys", () => ({
-  getProviderKey: vi.fn(async () => null),
+  getProviderKey: providerKeys.getProviderKey,
   PROVIDER_LABELS: { openrouter: "OpenRouter", venice: "Venice", gmi: "GMI" },
 }));
 vi.mock("@/lib/env", () => ({
@@ -172,8 +173,19 @@ describe("gateway app principal (MC5 §11.3)", () => {
     meteredRows.length = 0;
     opsRows.length = 0;
     appSpend.length = 0;
+    providerKeys.getProviderKey.mockResolvedValue(null);
   });
   afterEach(() => vi.unstubAllGlobals());
+
+  it("never rides the owner's personal provider key, so the daily cap always meters", async () => {
+    providerKeys.getProviderKey.mockResolvedValue("sk-owner-personal");
+    const { response } = await complete("art_a", { model: "fast", messages: [] });
+    expect(response.status).toBe(200);
+    expect(providerKeys.getProviderKey).not.toHaveBeenCalled();
+    expect(meteredRows[0]).toMatchObject({ trigger: "app" });
+    expect(Number(meteredRows[0]?.["cost_usd"] ?? 0)).toBeGreaterThan(0);
+    expect(appSpend).toEqual([expect.objectContaining({ appId: "app-a" })]);
+  });
 
   it("rejects an unknown or revoked runtime token like any stranger", async () => {
     const { response } = await complete("art_nope", { model: "fast", messages: [] });

@@ -189,7 +189,11 @@ export default {
 
     if (host === AIR_INTERNAL_HOST) return handleRuntime(request, env, url);
 
-    if (url.protocol !== "https:" || !egressAllowed(env.params, host)) {
+    if (
+      url.protocol !== "https:" ||
+      (url.port !== "" && url.port !== "443") ||
+      !egressAllowed(env.params, host)
+    ) {
       return json({ error: "egress_denied", host }, 403);
     }
     const headers = new Headers(request.headers);
