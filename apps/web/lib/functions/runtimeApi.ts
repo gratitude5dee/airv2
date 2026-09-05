@@ -22,7 +22,6 @@ export const ACTION_NAME_RE = /^[a-z0-9_.-]{1,64}$/;
 export const STATE_MAX_BYTES = 256 * 1024;
 export const ACTIONS_MAX_BYTES = 16 * 1024;
 export const MEDIA_MAX_BYTES = 50 * 1024 * 1024;
-export const ACTION_LOG_MAX_ENTRIES = 200;
 
 const ROLES: readonly AppRole[] = ["owner", "guest", "anon", "agent"];
 

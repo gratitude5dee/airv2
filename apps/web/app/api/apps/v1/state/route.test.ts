@@ -10,7 +10,10 @@ import type { RegistryApp } from "@/lib/miniapps/registry";
 import type { MiniSession } from "@/lib/miniapps/gates";
 import { makeApp } from "../../../../mini/loader-test-utils";
 
-vi.mock("@/lib/supabase", () => ({ serviceClient: () => ({}) }));
+// The action route leases its append (0099); an uncontended lease is granted.
+vi.mock("@/lib/supabase", () => ({
+  serviceClient: () => ({ rpc: async () => ({ data: true, error: null }) }),
+}));
 
 let fakeAuth: { app: RegistryApp; session: MiniSession } | null = null;
 vi.mock("@/lib/miniapps/appsApi", async (importOriginal) => {
