@@ -182,6 +182,13 @@ describe("hermesCommands", () => {
     );
   });
 
+  it("clears a stale fetch lock before fetching, but only when no git is running", () => {
+    const checkout = hermesCommands("b".repeat(40))[0] ?? "";
+    const lockGuard = checkout.indexOf("pgrep -x git >/dev/null || rm -f .git/shallow.lock");
+    expect(lockGuard).toBeGreaterThan(-1);
+    expect(lockGuard).toBeLessThan(checkout.indexOf("git fetch"));
+  });
+
   it("keeps every step independent so each fits the provider's 600s command cap", () => {
     const steps = hermesCommands("b".repeat(40));
     expect(steps.length).toBeGreaterThan(1);
