@@ -195,14 +195,20 @@ export function syncCommand(release: TemplateRelease): string {
  * checkout, dependency install, then ref write + service restart.
  *
  * A fetch killed mid-flight (box stopped or archived under it) leaves
- * .git/shallow.lock behind and every later fetch fails with "File exists",
- * so stale locks are cleared first when no git process holds them.
+ * .git/shallow.lock behind and every later fetch fails with "File exists".
+ * Git holds a lock for the life of one operation, and no operation on this
+ * shallow checkout outlives the provider's 600s command cap, so a lock file
+ * older than STALE_GIT_LOCK_MINUTES is orphaned. Judging by age keeps the
+ * cleanup scoped to ~/hermes-agent and never touches a lock created after
+ * the check, unlike a process-table probe.
  */
+export const STALE_GIT_LOCK_MINUTES = 15;
+
 export function hermesCommands(hermesRef: string): string[] {
   return [
     [
       `cd ~/hermes-agent`,
-      "pgrep -x git >/dev/null || rm -f .git/shallow.lock .git/index.lock .git/FETCH_HEAD.lock",
+      `find .git -maxdepth 1 -name '*.lock' -mmin +${STALE_GIT_LOCK_MINUTES} -delete`,
       `git fetch --depth 1 origin ${shellQuote(hermesRef)}`,
       "git checkout --force FETCH_HEAD",
     ].join(" && "),

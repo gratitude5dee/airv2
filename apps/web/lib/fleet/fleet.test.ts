@@ -1,8 +1,12 @@
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, utimesSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cutRelease, type TemplateRelease } from "./releases";
 import { isChannelName, setChannelRelease } from "./channels";
-import { hermesCommands, syncCommand } from "./sync";
+import { hermesCommands, STALE_GIT_LOCK_MINUTES, syncCommand } from "./sync";
 
 vi.mock("../storage/r2", () => ({
   putObject: vi.fn().mockResolvedValue(undefined),
@@ -182,11 +186,36 @@ describe("hermesCommands", () => {
     );
   });
 
-  it("clears a stale fetch lock before fetching, but only when no git is running", () => {
+  it("clears stale git locks before fetching without consulting the process table", () => {
     const checkout = hermesCommands("b".repeat(40))[0] ?? "";
-    const lockGuard = checkout.indexOf("pgrep -x git >/dev/null || rm -f .git/shallow.lock");
+    const lockGuard = checkout.indexOf("find .git -maxdepth 1 -name '*.lock' -mmin +");
     expect(lockGuard).toBeGreaterThan(-1);
     expect(lockGuard).toBeLessThan(checkout.indexOf("git fetch"));
+    expect(checkout).not.toContain("pgrep");
+  });
+
+  it("removes only locks older than the stale threshold, so a lock taken after the check survives", () => {
+    const checkout = hermesCommands("b".repeat(40))[0] ?? "";
+    const guard = checkout
+      .split(" && ")
+      .find((step) => step.startsWith("find .git"));
+    expect(guard).toBeDefined();
+
+    const repo = mkdtempSync(join(tmpdir(), "hermes-lock-"));
+    mkdirSync(join(repo, ".git", "refs"), { recursive: true });
+    const orphaned = join(repo, ".git", "shallow.lock");
+    const live = join(repo, ".git", "index.lock");
+    const nested = join(repo, ".git", "refs", "HEAD.lock");
+    for (const path of [orphaned, live, nested]) writeFileSync(path, "");
+    const old = new Date(Date.now() - (STALE_GIT_LOCK_MINUTES + 5) * 60_000);
+    utimesSync(orphaned, old, old);
+    utimesSync(nested, old, old);
+
+    execFileSync("sh", ["-c", guard ?? ""], { cwd: repo });
+
+    expect(existsSync(orphaned)).toBe(false);
+    expect(existsSync(live)).toBe(true);
+    expect(existsSync(nested)).toBe(true);
   });
 
   it("keeps every step independent so each fits the provider's 600s command cap", () => {
