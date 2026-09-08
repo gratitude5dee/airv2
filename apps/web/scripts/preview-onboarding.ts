@@ -63,6 +63,7 @@ const snapshot: OnboardingSnapshot = {
     from_date: "2026-05-01",
     to_date: "2026-08-17",
     cursor: "2026-08-17T09:58:12.000Z",
+    pending_resolutions: 0,
   },
   imports: {
     sources: {
@@ -89,7 +90,9 @@ const snapshot: OnboardingSnapshot = {
   ingestCommand:
     "curl -fsSL https://app.wzrd.tech/imessage-ingest.sh -o /tmp/air-ingest.sh && AIR_INGEST_ENDPOINT=https://app.wzrd.tech/api/me/imessage-history bash /tmp/air-ingest.sh tkt_example_ticket_value",
   boxBusy: false,
+  boxAwake: true,
   linkPairing: false,
+  resolutions: null,
 };
 
 mkdirSync(outDir, { recursive: true });
