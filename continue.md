@@ -253,10 +253,27 @@ the user's explicit authorization. The user has authorized this GitHub push.
    delete, a semantic refresh racing `clear` — now settled and re-checked by
    `ovctl clear`). `.github/workflows/box-replica.yml` reran it on a fresh
    Tenki 4c/8g VM (Ubuntu 24.04, systemd 255): also 8/8 (run 34268232169;
-   interrupted 3.3 MB replay 305 s, peak RSS 681 MB). Still open: provider
-   `stop()`/`resume()` around a live claim on a real Box, the sweeper driving
-   `ovctl` over the command API, and a strategy for a job exceeding the
-   600-second server wait that avoids continually restarting expensive work.
+   interrupted 3.3 MB replay 305 s, peak RSS 681 MB). Then on a real
+   ascii.dev Box (`bx_8mgkj4kb`, a disposable fork of the template candidate
+   converged with `sync-box.sh`, everything driven over the provider command
+   API): 8/8 from a clean queue (interrupted replay 595 s, peak RSS 660 MB),
+   and two provider `stop()`/`resume()` cycles around a live claim with
+   deferred work — snapshot preserved `pending.json` and the claim, the boot
+   id changed, the stale claim was ignored, and the queue replayed and was
+   searchable after resume (cycle 2). Cycle 1 exposed a poison entry: a
+   queued source under `/tmp` was gone after the restore and the worker
+   failed silently forever, pinning the Box awake; `resume-pending` now drops
+   missing-source entries with a metadata-only journal line. The first full
+   Box run was 6/8 because the fork carried an old failing archive replay in
+   its queue (kept in the report as evidence). Still open: the sweeper
+   itself driving claim + `stop()` from the control plane against a real Box
+   (needs a Supabase row for the Box), old boxes without the claim command,
+   and a strategy for a job exceeding the 600-second server wait that avoids
+   continually restarting expensive work. Tenki Cloud vs the Box: identical
+   pass/fail on all 8 scenarios; Tenki is a CI runner, not a Box provider, so
+   the agent eval suite (`evals/agent-suite`, needs a control plane, a
+   provisioned test user and `EVAL_*`/Supabase credentials) has NOT been run
+   there and Tenki is not the primary provisioning path.
 5. Archive co-ship: done locally (unit level) — owner-facing resolution for
    ambiguous legacy labels (API and the onboarding iMessage step, which reads
    labels live only when the box is already awake), resumable cursor in

@@ -284,6 +284,14 @@ def cmd_resume_pending(block: bool = False) -> int:
         failed = False
         try:
             for uri, entry in snapshot.items():
+                if not pathlib.Path(entry["path"]).exists():
+                    # Nothing can ever index a source that is gone; a queued
+                    # entry that never drains would pin the box awake.
+                    print(json.dumps({"dropped": uri, "reason": "source_missing"}), file=sys.stderr)
+                    with pending_state() as state:
+                        if state.get(uri) == entry:
+                            del state[uri]
+                    continue
                 try:
                     if not add_resource(c, pathlib.Path(entry["path"]), uri, wait=True):
                         failed = True

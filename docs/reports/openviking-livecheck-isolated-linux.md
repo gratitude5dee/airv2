@@ -1,11 +1,13 @@
-# OpenViking live check on an isolated Linux/systemd host
+# OpenViking live check: isolated Linux/systemd hosts and a real ascii.dev Box
 
 This is runtime evidence from the pinned OpenViking server (0.4.16, SDK 0.1.7)
 running under the template's real `openviking.service`, `openviking-index.service`
-and `openviking-index.timer` units on a fresh Linux host with systemd as PID 1.
-It is **not** evidence from an ascii.dev Box: provider stop/resume transitions,
-fleet compatibility and product acceptance are still unmeasured. The ascii.dev
-account was out of usage (HTTP 402 `billing_required`) when this was run.
+and `openviking-index.timer` units on three hosts with systemd as PID 1: the
+local VM, a fresh Tenki Cloud VM, and a disposable ascii.dev Box forked from
+the template candidate. The first two are isolated Linux evidence only. The
+Box run (below) adds the provider transitions — `stop()` around a live claim,
+`resume()`, boot-id change, replay — but not the sweeper driving them from the
+control plane, fleet compatibility, or product acceptance.
 
 The runner is `infra/template/openviking/livecheck.py`; the host is provisioned
 by `infra/template/openviking/replica-provision.sh`, which installs only the
@@ -56,6 +58,90 @@ the fresh-store case. Two earlier runs of the workflow failed in provisioning
 only (runner `XDG_CONFIG_HOME` and the checkout's `uv.toml` leaking into the
 box user's `uv`), fixed by giving the box user a clean environment and cwd.
 
+## Real ascii.dev Box (`bx_8mgkj4kb`, Hetzner 4 vCPU / 8 GB, 8 scenarios)
+
+A disposable fork of the template candidate `bx_xf5q64x7`, converged to the
+checkpoint template with `infra/template/sync-box.sh` (release stamp
+`livecheck-03d188d`, `verify-box: OK`; the deployed `ovctl.py`/`livecheck.py`
+hashes match the tree). Ubuntu 24.04.4, systemd 255, kernel `6.8.0-117`.
+Everything below was driven over the provider command API
+(`infra/template/boxctl.sh cmd|stop|resume|get`), the same endpoint the
+sweeper uses. Fixtures are synthetic; no owner content was read or exported.
+
+**Full run after a clean start (pending 0): 8/8 pass.**
+
+| Scenario | Seconds | Key metadata |
+| --- | --- | --- |
+| units_and_health | 1.0 | service `active/running`, `NRestarts=0`, timer active, index service `oneshot` |
+| synchronous_index_and_search | 6.4 | 43 KB indexed in 6.0 s, 10 hits |
+| queued_index_timer_replay | 15.4 | timer replayed in 15 s |
+| interrupted_index_recovery | 647.9 | 3.3 MB document; peak server RSS 660 MB at SIGKILL; index service exited 1, queue survived, no receipt; `NRestarts=1`; timer replayed in 595 s; receipt advanced, pending 0 |
+| stop_claim_coordination | 32.9 | grace refusal, grant, second claimant refused, enqueue-under-claim durable, worker `deferred/stop_claimed`, foreign token refused, owner release, replay |
+| stale_claim_and_corrupt_state | 0.4 | fail-closed as on the other hosts |
+| rm_and_clear | 155.1 | rm/root-rm/cancelled descendant/clear as on the other hosts |
+| user_md_compare_and_swap | 0.1 | pass |
+
+A first full run on the same Box, before the queue was clean, was **6/8**:
+`interrupted_index_recovery` and `stop_claim_coordination` failed because the
+forked image carried an old queued archive partition
+(`…/imessage-history/threads/<id>/2024-03`) whose replay kept failing
+(`RemoteProtocolError`, `ConnectError`, `DeadlineExceededError`) and held the
+worker for the whole 900 s window. A focused rerun of `stop_claim_coordination`
+once that entry had drained passed (62.9 s). The 6/8 is kept here as evidence
+that a poisoned queue entry blocks every scenario behind it.
+
+The interrupted 3.3 MB replay is slower here (595 s) than on Tenki (305 s) or
+locally (170 s): same vCPU count, but the Box was also running Hermes, the
+gateway and the ascii runtime alongside the embedder.
+
+### Provider `stop()`/`resume()` around a live claim (two cycles)
+
+Sequence per cycle, all over the command API: `ovctl stop-claim
+--grace-seconds 1` → granted; `ovctl add-resource <fixture> --to
+viking://resources/context/livecheck-lifecycle --no-wait` → `pending:true`;
+`ovctl resume-pending` → `{"deferred":true,"reason":"stop_claimed","pending":1}`;
+`idle-check` → `can_stop:false, pending:1, stop_claimed:true`; provider `stop`.
+
+| Observation | Cycle 1 | Cycle 2 |
+| --- | --- | --- |
+| provider states after `stop` | `archiving` → `archived` (`snapshotCompletedAt` advanced during archiving) | same |
+| `resume` call → box `idle` | 50 s | 90 s |
+| boot id changed | yes | yes |
+| `openviking.service` / `-index.timer` / `hermes-gateway` at `idle` | all `inactive` | all `inactive` |
+| services `active` after `idle` | not sampled | ≈78 s |
+| `pending.json` and `stop-claim.json` survived the snapshot | yes | yes |
+| stale claim (old boot id) ignored by `idle-check` (`stop_claimed:false`) | yes | yes |
+| queued work replayed after resume | **no** — see below | yes, within ≈15 s of the timer becoming active; `find` under the URI returned 5 hits (4 content parts + `.abstract.md`); `ovctl rm` then removed it |
+
+Cycle 1 used a fixture under `/tmp`, which the provider snapshot does not
+preserve. After resume `openviking-index.service` failed on every timer tick
+with no journal line (the missing-path branch returned `False` silently), the
+entry never drained, and `idle-check` kept answering `can_stop:false` —
+the Box could never have slept again. Production writers stage under
+`~/.hermes/context/…`, which is on the persisted disk, but any deleted source
+(a forgotten import chunk, a cleared archive partition) would pin a Box awake
+the same way. `ovctl resume-pending` now drops an entry whose source no longer
+exists and journals `{"dropped": <uri>, "reason": "source_missing"}` (metadata
+only). Deploying that `ovctl.py` to the resumed Box cleared the stuck entry on
+the next tick and `pending` returned to 0.
+
+Cycle 2 repeated the run with the fixture under `~/.hermes/context/` and the
+fixed worker; the deferred work replayed after the provider resume and was
+searchable.
+
+Also observed: the Box API reports `idle` roughly a minute before the
+restored units are running. `ensureBoxAwake` already waits for `idle` and then
+probes Hermes `/api/health` with a 180 s deadline; the ≈78 s to active services
+measured here consumed under half of that budget, on one sample.
+
+Not covered by the Box run: the sweeper (`apps/web/app/api/cron/sweep`)
+issuing the claim and the stop itself (it needs the control plane with a
+Supabase row for this Box; only `ovctl` was driven over the command API),
+old boxes without the claim command, and any owner-corpus recall/coverage.
+`/tmp` is not preserved across a provider stop/resume; nothing in the template
+relies on it, but `livecheck.py` had to be re-uploaded to `~` for the second
+run.
+
 ## Server behaviour observed (0.4.16) and what changed because of it
 
 - **`rm` is idempotent.** Deleting an absent URI succeeds instead of raising
@@ -93,9 +179,14 @@ semantics, stop-claim grant/refuse/release and its interaction with the durable
 worker, stale/corrupt state fail-closed behaviour, `rm`/`clear` semantics
 including cancelled descendants, and the USER.md compare-and-swap shell.
 
-Not covered: ascii.dev `stop()`/`resume()` transitions around a live claim,
-the sweeper calling `ovctl` over the provider command API, old boxes without
-the claim command in a real fleet, first-index time on the actual Box image,
-and any recall/coverage measurement on an owner corpus. MEM-21 and the archive
-findings (MEM-01/18/19) therefore stay unverified; MEM-26's clear behaviour is
-`implemented` with the caveats above, not `verified`.
+Covered on the real Box in addition: the same 8 scenarios, provider
+`stop()`/`resume()` around a live claim with the queue replaying after the
+boot-id change, and the missing-source poison-entry failure mode.
+
+Not covered: the sweeper issuing the claim/stop from the control plane against
+this Box, old boxes without the claim command in a real fleet, first-index time
+on a freshly forked user Box, and any recall/coverage measurement on an owner
+corpus. MEM-21 stays `in_progress` (box side and provider transitions measured;
+sweeper path not) and the archive findings (MEM-01/18/19) stay unverified;
+MEM-26's clear behaviour is `implemented` with the caveats above, not
+`verified`.

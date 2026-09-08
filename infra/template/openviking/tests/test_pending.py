@@ -48,6 +48,24 @@ class PendingTests(unittest.TestCase):
                 add.assert_called_once_with(client, self.source, self.uri, wait=True)
         self.assertEqual(self.state(), {})
 
+    def test_missing_source_is_dropped_with_metadata_only_journal_line(self):
+        gone = self.root / "gone.md"
+        gone.write_text("private content")
+        ovctl.enqueue_resource(gone, self.uri + "/gone")
+        ovctl.enqueue_resource(self.source, self.uri)
+        gone.unlink()
+        stderr = io.StringIO()
+        with patch.object(ovctl, "client", return_value=Mock()), \
+             patch.object(ovctl, "add_resource", return_value=True) as add, \
+             contextlib.redirect_stderr(stderr):
+            self.assertEqual(ovctl.cmd_resume_pending(), 0)
+        add.assert_called_once()
+        self.assertEqual(add.call_args.args[1:], (self.source, self.uri))
+        self.assertEqual(self.state(), {})
+        line = json.loads(stderr.getvalue().strip())
+        self.assertEqual(line, {"dropped": self.uri + "/gone", "reason": "source_missing"})
+        self.assertNotIn("private content", stderr.getvalue())
+
     def test_new_generation_during_index_is_not_acknowledged(self):
         ovctl.enqueue_resource(self.source, self.uri)
         old = self.state()[self.uri]
