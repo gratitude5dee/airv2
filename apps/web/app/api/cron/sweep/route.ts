@@ -14,6 +14,7 @@ import { serviceClient } from "@/lib/supabase";
 import { getBox, stop } from "@/lib/box/client";
 import { claimFlush, runFlush } from "@/lib/orchestrator/flush";
 import { findSweepableBoxes } from "@/lib/orchestrator/sweep";
+import { indexingAllowsIdleStop } from "@/lib/orchestrator/indexIdle";
 import { recordBoxStateEvent } from "@/lib/box/events";
 import { sweepAbandonedUploads } from "@/lib/storage/confirm";
 import { runSyncJobs } from "@/lib/fleet/sync";
@@ -52,8 +53,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   const idleBoxes = await findSweepableBoxes(supabase, new Date());
   let stopped = 0;
+  let indexingDeferred = 0;
   for (const box of idleBoxes) {
     try {
+      if (!(await indexingAllowsIdleStop(box.provider_box_id))) {
+        indexingDeferred += 1;
+        continue;
+      }
       // last_active_at also starts the stale-transition clock below, so an
       // interrupted stop is reconciled 30 minutes after the attempt.
       await supabase
@@ -251,6 +257,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   return NextResponse.json({
     ok: true,
     stopped,
+    indexingDeferred,
     reconciled,
     flushed,
     uploadsReleased,

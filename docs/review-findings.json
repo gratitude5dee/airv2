@@ -1,0 +1,6546 @@
+{
+  "schema_version": 1,
+  "review": "review.md",
+  "reviewed_commit": "bb82c05",
+  "acceptance_document": "docs/review-implementation-plan.md",
+  "product_acceptance": {
+    "status": "not_measured",
+    "target_percent": 95,
+    "evidence": []
+  },
+  "findings": [
+    {
+      "id": "MEM-01",
+      "severity": "P1",
+      "effort": "M",
+      "area": "Memory (§4)",
+      "finding": "iMessage ingest is not idempotent",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 937
+      },
+      "workstream": "memory",
+      "phase": "2-core-task-and-memory-loop",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MEM-01"
+      ],
+      "depends_on": [],
+      "co_ship_with": [
+        "MEM-18",
+        "MEM-19",
+        "MEM-20"
+      ],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MEM-02",
+      "severity": "P1",
+      "effort": "M",
+      "area": "Memory (§4)",
+      "finding": "Recall is not wired into the turn",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 938
+      },
+      "workstream": "memory",
+      "phase": "2-core-task-and-memory-loop",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MEM-02"
+      ],
+      "depends_on": [
+        "MEM-03",
+        "MEM-11",
+        "TC-19",
+        "TC-05"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MEM-03",
+      "severity": "P1",
+      "effort": "S",
+      "area": "Memory (§4)",
+      "finding": "`ov.conf` is rendered at template time when the gateway token is a placeholder",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 939
+      },
+      "workstream": "memory",
+      "phase": "2-core-task-and-memory-loop",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MEM-03"
+      ],
+      "depends_on": [
+        "TC-19"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "apps/web/lib/provisioning/provision.test.ts: ensure follows credential merge; initialization failure rolls back fork",
+        "infra/template/openviking/tests/test_configuration.py: placeholder-to-fork configuration, credential rotation, atomic failure and non-recursive service pre-start"
+      ],
+      "notes": "29 provisioning tests, four OpenViking Python tests and typecheck pass locally. Existing sync already calls ensure. Live fork, resume and fleet convergence remain unverified."
+    },
+    {
+      "id": "MEM-06",
+      "severity": "P1",
+      "effort": "M",
+      "area": "Memory (§4)",
+      "finding": "Every turn on every channel fetches up to 500 transcript rows (the endpoint's default page; `?limit=` exists and is unused),…",
+      "review_verification": "partially confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 940
+      },
+      "workstream": "memory",
+      "phase": "3-cutovers-and-continuity",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MEM-06"
+      ],
+      "depends_on": [
+        "MEM-16",
+        "MEM-29"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MEM-16",
+      "severity": "P1",
+      "effort": "S",
+      "area": "Memory (§4)",
+      "finding": "The replay is redundant. The pinned Hermes `/v1/runs` loads the session transcript itself when `conversation_history` is…",
+      "review_verification": "author-verified",
+      "source": {
+        "path": "review.md",
+        "line": 941
+      },
+      "workstream": "memory",
+      "phase": "2-core-task-and-memory-loop",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MEM-16"
+      ],
+      "depends_on": [
+        "MEM-01",
+        "MEM-18",
+        "MEM-19",
+        "MEM-20"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MEM-17",
+      "severity": "P1",
+      "effort": "M",
+      "area": "Memory (§4)",
+      "finding": "No write policy: explicit \"remember\" requests never reach the archive",
+      "review_verification": "author-verified",
+      "source": {
+        "path": "review.md",
+        "line": 942
+      },
+      "workstream": "memory",
+      "phase": "2-core-task-and-memory-loop",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MEM-17"
+      ],
+      "depends_on": [
+        "MEM-03",
+        "MEM-11",
+        "TC-19",
+        "TC-05"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MEM-18",
+      "severity": "P1",
+      "effort": "S",
+      "area": "Memory (§4)",
+      "finding": "The extractor selects only `m.text` and filters `text IS NOT NULL`",
+      "review_verification": "author-verified",
+      "source": {
+        "path": "review.md",
+        "line": 943
+      },
+      "workstream": "memory",
+      "phase": "2-core-task-and-memory-loop",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MEM-18"
+      ],
+      "depends_on": [],
+      "co_ship_with": [
+        "MEM-01",
+        "MEM-19",
+        "MEM-20"
+      ],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MEM-19",
+      "severity": "P1",
+      "effort": "M",
+      "area": "Memory (§4)",
+      "finding": "Production chunks are raw JSON arrays",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 944
+      },
+      "workstream": "memory",
+      "phase": "2-core-task-and-memory-loop",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MEM-19"
+      ],
+      "depends_on": [],
+      "co_ship_with": [
+        "MEM-01",
+        "MEM-18",
+        "MEM-20"
+      ],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MEM-20",
+      "severity": "P1",
+      "effort": "S",
+      "area": "Memory (§4)",
+      "finding": "Agent-import re-indexes the whole source directory on every chunk",
+      "review_verification": "author-verified",
+      "source": {
+        "path": "review.md",
+        "line": 945
+      },
+      "workstream": "memory",
+      "phase": "2-core-task-and-memory-loop",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MEM-20"
+      ],
+      "depends_on": [],
+      "co_ship_with": [
+        "MEM-01",
+        "MEM-18",
+        "MEM-19"
+      ],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "apps/web/lib/context/importer.test.ts: intermediate chunks do not index; final chunk indexes the complete source",
+        "infra/template/openviking/tests/test_reindex.py: manual reindex covers each agent import and Dictionary.MD at upload URIs"
+      ],
+      "notes": "Locally tested. Live indexing and co-shipped archive changes remain unverified; repeated final requests are not deduplicated."
+    },
+    {
+      "id": "MEM-21",
+      "severity": "P1",
+      "effort": "M",
+      "area": "Memory (§4)",
+      "finding": "Enqueue-only indexing has no durability across the idle stop",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 946
+      },
+      "workstream": "memory",
+      "phase": "2-core-task-and-memory-loop",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MEM-21"
+      ],
+      "depends_on": [
+        "MEM-03",
+        "MEM-11",
+        "BOX-03"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MEM-04",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Memory (§4)",
+      "finding": "`Dictionary.MD` is never indexed",
+      "review_verification": "partially confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 947
+      },
+      "workstream": "memory",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MEM-04"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MEM-05",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Memory (§4)",
+      "finding": "Cortex/Mitosis is an unpoliced third-party memory path, not a display-only panel",
+      "review_verification": "partially confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 948
+      },
+      "workstream": "memory",
+      "phase": "0-instrument-and-stabilize",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MEM-05"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [
+        "remove-mitosis-experiment"
+      ],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MEM-07",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Memory (§4)",
+      "finding": "Onairos sync splices ~1 KB into USER.md with no length check",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 949
+      },
+      "workstream": "memory",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MEM-07"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "apps/web/lib/onairos/context.test.ts: long persona fields fit a 300-character block with an intact full-context pointer",
+        "apps/web/lib/onairos/sync.test.ts: exact 1375-character boundary, oversized update refusal, read failure preservation and typed missing-file initialization"
+      ],
+      "notes": "40 Onairos tests and full typecheck pass locally. Deployment and runtime personalization remain unverified; coordination with other memory writers remains MEM-10."
+    },
+    {
+      "id": "MEM-08",
+      "severity": "P2",
+      "effort": "M",
+      "area": "Memory (§4)",
+      "finding": "Onairos disconnect is not zero-byte",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 950
+      },
+      "workstream": "memory",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MEM-08"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MEM-09",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Memory (§4)",
+      "finding": "Reindex is synchronous: `ovctl ensure` (180 s) + `ovctl reindex` (600 s, wait=True) inside a route with `maxDuration = 300`",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 951
+      },
+      "workstream": "memory",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MEM-09"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MEM-10",
+      "severity": "P2",
+      "effort": "L",
+      "area": "Memory (§4)",
+      "finding": "Four uncoordinated writers, no consolidation, no decay, no supersession",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 952
+      },
+      "workstream": "memory",
+      "phase": "3-cutovers-and-continuity",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MEM-10"
+      ],
+      "depends_on": [
+        "MEM-02",
+        "MEM-17"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MEM-11",
+      "severity": "P2",
+      "effort": "M",
+      "area": "Memory (§4)",
+      "finding": "No recall-quality eval. `score.ts` passes \"context use\" on `/memory|viking|crm|people/` in tool names",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 953
+      },
+      "workstream": "evals",
+      "phase": "2-core-task-and-memory-loop",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MEM-11"
+      ],
+      "depends_on": [
+        "MEM-01",
+        "MEM-18",
+        "MEM-19",
+        "MEM-20",
+        "MEM-03"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MEM-12",
+      "severity": "P2",
+      "effort": "M",
+      "area": "Memory (§4)",
+      "finding": "Email turns never reach `air-main` or deep memory",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 954
+      },
+      "workstream": "memory",
+      "phase": "3-cutovers-and-continuity",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MEM-12"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MEM-13",
+      "severity": "P2",
+      "effort": "M",
+      "area": "Memory (§4)",
+      "finding": "Dictionary run reads up to 200 MB of raw import into the model with no budget, no failure signal",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 955
+      },
+      "workstream": "memory",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MEM-13"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MEM-22",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Memory (§4)",
+      "finding": "Onairos disconnect cannot be zero-byte by design",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 956
+      },
+      "workstream": "memory",
+      "phase": "3-cutovers-and-continuity",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MEM-22"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MEM-24",
+      "severity": "P2",
+      "effort": "M",
+      "area": "Memory (§4)",
+      "finding": "Working memory is polluted by automation",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 957
+      },
+      "workstream": "memory",
+      "phase": "4-remaining-review-closure",
+      "kind": "alias",
+      "canonical_ids": [
+        "CA-22"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [
+        "automation-purpose-sessions"
+      ],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MEM-25",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Memory (§4)",
+      "finding": "The amnesia guard misfires on a session with no assistant row",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 958
+      },
+      "workstream": "memory",
+      "phase": "2-core-task-and-memory-loop",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MEM-25"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MEM-26",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Memory (§4)",
+      "finding": "Deep memory has no owner clear or forget surface",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 959
+      },
+      "workstream": "memory",
+      "phase": "3-cutovers-and-continuity",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MEM-26"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MEM-29",
+      "severity": "P2",
+      "effort": "M",
+      "area": "Memory (§4)",
+      "finding": "The eval harness runs all 109 cases in `air-main`",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 960
+      },
+      "workstream": "evals",
+      "phase": "2-core-task-and-memory-loop",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MEM-29"
+      ],
+      "depends_on": [
+        "CA-29"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MEM-30",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Memory (§4)",
+      "finding": "Mitosis is not display-only in practice",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 961
+      },
+      "workstream": "memory",
+      "phase": "0-instrument-and-stabilize",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MEM-30"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [
+        "remove-mitosis-experiment"
+      ],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MEM-14",
+      "severity": "P3",
+      "effort": "S",
+      "area": "Memory (§4)",
+      "finding": "`ovctl`'s header docstring claims stdout is content-free",
+      "review_verification": "partially confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 962
+      },
+      "workstream": "memory",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MEM-14"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MEM-15",
+      "severity": "P3",
+      "effort": "S",
+      "area": "Memory (§4)",
+      "finding": "The Persona render wakes a stopped box (three box commands) merely to draw health/count chips, so a card tap can spend a start…",
+      "review_verification": "partially confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 963
+      },
+      "workstream": "memory",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MEM-15"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [
+        "remove-mitosis-experiment"
+      ],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MEM-23",
+      "severity": "P3",
+      "effort": "S",
+      "area": "Memory (§4)",
+      "finding": "Resolved in source, guard missing",
+      "review_verification": "author-verified",
+      "source": {
+        "path": "review.md",
+        "line": 964
+      },
+      "workstream": "memory",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MEM-23"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MEM-27",
+      "severity": "P3",
+      "effort": "S",
+      "area": "Memory (§4)",
+      "finding": "Persona memory stats are wrong by construction",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 965
+      },
+      "workstream": "memory",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MEM-27"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MEM-28",
+      "severity": "P3",
+      "effort": "S",
+      "area": "Memory (§4)",
+      "finding": "`ovctl.py` and `lib/memory/deep.ts` have no tests while `taskrouter`, `learning` and `plugins/air-vault` each ship a suite",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 966
+      },
+      "workstream": "memory",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MEM-28"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MEM-31",
+      "severity": "P3",
+      "effort": "S",
+      "area": "Memory (§4)",
+      "finding": "Two prompt sections share the heading `## What you know about your owner`",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 967
+      },
+      "workstream": "memory",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MEM-31"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "LAT-01",
+      "severity": "P1",
+      "effort": "S",
+      "area": "iMessage latency (§5)",
+      "finding": "The gateway buffers the entire SSE body for every non-OpenAI family (`await upstream.clone().arrayBuffer()`) to check for an…",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 968
+      },
+      "workstream": "imessage",
+      "phase": "1-first-response-and-lifecycle",
+      "kind": "engineering",
+      "canonical_ids": [
+        "LAT-01"
+      ],
+      "depends_on": [
+        "WEB-23",
+        "WEB-24"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [
+        "model-tiers"
+      ],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "LAT-02",
+      "severity": "P1",
+      "effort": "M",
+      "area": "iMessage latency (§5)",
+      "finding": "Instant first bubble is neither instant nor free",
+      "review_verification": "partially confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 969
+      },
+      "workstream": "imessage",
+      "phase": "1-first-response-and-lifecycle",
+      "kind": "engineering",
+      "canonical_ids": [
+        "LAT-02"
+      ],
+      "depends_on": [
+        "LAT-15"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [
+        "template-ack"
+      ],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "LAT-03",
+      "severity": "P1",
+      "effort": "S",
+      "area": "iMessage latency (§5)",
+      "finding": "Spectrum SDK fully initialised two to six times per inbound message (webhook, `runFlush`, once per card marker up to four)",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 970
+      },
+      "workstream": "imessage",
+      "phase": "1-first-response-and-lifecycle",
+      "kind": "alias",
+      "canonical_ids": [
+        "MS-01"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "LAT-04",
+      "severity": "P1",
+      "effort": "M",
+      "area": "iMessage latency (§5)",
+      "finding": "Cold-box retry has no in-process waiter",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 971
+      },
+      "workstream": "imessage",
+      "phase": "1-first-response-and-lifecycle",
+      "kind": "engineering",
+      "canonical_ids": [
+        "LAT-04"
+      ],
+      "depends_on": [
+        "LAT-15",
+        "BOX-03"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "LAT-05",
+      "severity": "P1",
+      "effort": "M",
+      "area": "iMessage latency (§5)",
+      "finding": "Wake loop built from fixed 5 s sleeps and a 10 s health timeout",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 972
+      },
+      "workstream": "imessage",
+      "phase": "1-first-response-and-lifecycle",
+      "kind": "engineering",
+      "canonical_ids": [
+        "LAT-05"
+      ],
+      "depends_on": [
+        "LAT-15",
+        "BOX-03"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "LAT-17",
+      "severity": "P1",
+      "effort": "S",
+      "area": "iMessage latency (§5)",
+      "finding": "The quick-ack marker is drained by the real turn before the ack text exists",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 973
+      },
+      "workstream": "imessage",
+      "phase": "1-first-response-and-lifecycle",
+      "kind": "engineering",
+      "canonical_ids": [
+        "LAT-17"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [
+        "template-ack"
+      ],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "LAT-18",
+      "severity": "P1",
+      "effort": "S",
+      "area": "iMessage latency (§5)",
+      "finding": "No fast lane exists for the default family",
+      "review_verification": "author-verified",
+      "source": {
+        "path": "review.md",
+        "line": 974
+      },
+      "workstream": "imessage",
+      "phase": "1-first-response-and-lifecycle",
+      "kind": "engineering",
+      "canonical_ids": [
+        "LAT-18"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [
+        "model-tiers",
+        "template-ack"
+      ],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "LAT-06",
+      "severity": "P2",
+      "effort": "S",
+      "area": "iMessage latency (§5)",
+      "finding": "Typing indicator sent once, in the webhook, after Spectrum init and a two-RPC `markRead` (~1.3 s)",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 975
+      },
+      "workstream": "imessage",
+      "phase": "1-first-response-and-lifecycle",
+      "kind": "engineering",
+      "canonical_ids": [
+        "LAT-06"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "LAT-07",
+      "severity": "P2",
+      "effort": "S",
+      "area": "iMessage latency (§5)",
+      "finding": "Message path never waits for post-resume home hydration (`waitForHomeSteady` exists, used only by fleet sync)",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 976
+      },
+      "workstream": "imessage",
+      "phase": "1-first-response-and-lifecycle",
+      "kind": "alias",
+      "canonical_ids": [
+        "BOX-01"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "LAT-08",
+      "severity": "P2",
+      "effort": "S",
+      "area": "iMessage latency (§5)",
+      "finding": "Every inbound pays the full 2.5 s debounce, including `/commands`, attachment-only bubbles and single messages after long silence",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 977
+      },
+      "workstream": "imessage",
+      "phase": "1-first-response-and-lifecycle",
+      "kind": "engineering",
+      "canonical_ids": [
+        "LAT-08"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "LAT-09",
+      "severity": "P2",
+      "effort": "M",
+      "area": "iMessage latency (§5)",
+      "finding": "7-8 sequential DB round trips pre-ack and ~10 more between claim and `createRun`",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 978
+      },
+      "workstream": "imessage",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "LAT-09"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "LAT-10",
+      "severity": "P2",
+      "effort": "M",
+      "area": "iMessage latency (§5)",
+      "finding": "History is re-fetched and re-shipped every turn (ensureSession + a 500-row GET + 60-message replay = three hosted-proxy hops)…",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 979
+      },
+      "workstream": "imessage",
+      "phase": "3-cutovers-and-continuity",
+      "kind": "alias",
+      "canonical_ids": [
+        "MEM-06",
+        "MEM-16"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "LAT-11",
+      "severity": "P2",
+      "effort": "S",
+      "area": "iMessage latency (§5)",
+      "finding": "Gateway preflight is up to 5 sequential DB reads per model…",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 980
+      },
+      "workstream": "imessage",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "LAT-11"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "LAT-12",
+      "severity": "P2",
+      "effort": "S",
+      "area": "iMessage latency (§5)",
+      "finding": "Gateway upstream `fetch` has no timeout at all (`grep signal` = 0 hits)",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 981
+      },
+      "workstream": "imessage",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "LAT-12"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "LAT-13",
+      "severity": "P2",
+      "effort": "L",
+      "area": "iMessage latency (§5)",
+      "finding": "The webhook function holds the whole turn in `after()`",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 982
+      },
+      "workstream": "imessage",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "LAT-13"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "LAT-15",
+      "severity": "P2",
+      "effort": "M",
+      "area": "iMessage latency (§5)",
+      "finding": "No latency instrumentation or eval for the iMessage path",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 983
+      },
+      "workstream": "imessage",
+      "phase": "0-instrument-and-stabilize",
+      "kind": "engineering",
+      "canonical_ids": [
+        "LAT-15"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "LAT-19",
+      "severity": "P2",
+      "effort": "M",
+      "area": "iMessage latency (§5)",
+      "finding": "Any inbound during a streaming turn cancels it, and the successor runs alongside the dying chain",
+      "review_verification": "author-verified",
+      "source": {
+        "path": "review.md",
+        "line": 984
+      },
+      "workstream": "imessage",
+      "phase": "2-core-task-and-memory-loop",
+      "kind": "engineering",
+      "canonical_ids": [
+        "LAT-19"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [
+        "explicit-stop"
+      ],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "LAT-20",
+      "severity": "P2",
+      "effort": "M",
+      "area": "iMessage latency (§5)",
+      "finding": "Cold wake self-sabotage. Resume re-boots every enabled unit, so `hermes-gateway` starts from zero on each cold turn,…",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 985
+      },
+      "workstream": "imessage",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "LAT-20"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "LAT-22",
+      "severity": "P2",
+      "effort": "S",
+      "area": "iMessage latency (§5)",
+      "finding": "An existing session that replays empty is carried and rescheduled with nothing sent",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 986
+      },
+      "workstream": "imessage",
+      "phase": "1-first-response-and-lifecycle",
+      "kind": "engineering",
+      "canonical_ids": [
+        "LAT-22"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "LAT-14",
+      "severity": "P3",
+      "effort": "S",
+      "area": "iMessage latency (§5)",
+      "finding": "Read receipts and typing events from the user are acked and discarded instead of prewarming a stopped box",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 987
+      },
+      "workstream": "imessage",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "LAT-14"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "LAT-16",
+      "severity": "P3",
+      "effort": "S",
+      "area": "iMessage latency (§5)",
+      "finding": "The SDK's in-place edit budget (`INITIAL_THROTTLE_MS 1000`, backoff ×2, `MAX_EDITS 5`) freezes a first bubble that streams >15 s",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 988
+      },
+      "workstream": "imessage",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "LAT-16"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "LAT-21",
+      "severity": "P3",
+      "effort": "S",
+      "area": "iMessage latency (§5)",
+      "finding": "Attachment materialisation is three sequential Box API round trips plus a base64-in-JSON PUT per attachment",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 989
+      },
+      "workstream": "imessage",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "LAT-21"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "LAT-23",
+      "severity": "P3",
+      "effort": "S",
+      "area": "iMessage latency (§5)",
+      "finding": "The minute sweep runs idle-box stops and stale reconciliation before overdue flushes, in one sequential function",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 990
+      },
+      "workstream": "imessage",
+      "phase": "1-first-response-and-lifecycle",
+      "kind": "engineering",
+      "canonical_ids": [
+        "LAT-23"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WEB-01",
+      "severity": "P1",
+      "effort": "S",
+      "area": "Web chat / gateway (§5.4)",
+      "finding": "Same as LAT-01, found independently (canonical: LAT-01, §5)",
+      "review_verification": "partially confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 991
+      },
+      "workstream": "gateway-web",
+      "phase": "1-first-response-and-lifecycle",
+      "kind": "alias",
+      "canonical_ids": [
+        "LAT-01"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WEB-02",
+      "severity": "P1",
+      "effort": "M",
+      "area": "Web chat / gateway (§5.4)",
+      "finding": "Fallback silently changes the served model, provider and paying key",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 992
+      },
+      "workstream": "gateway-web",
+      "phase": "1-first-response-and-lifecycle",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WEB-02"
+      ],
+      "depends_on": [
+        "WEB-23",
+        "WEB-24"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [
+        "no-personal-key-spend-fallback"
+      ],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WEB-03",
+      "severity": "P1",
+      "effort": "M",
+      "area": "Web chat / gateway (§5.4)",
+      "finding": "Warm web chat needs 2 invocations and ~16 sequential round trips before the first Hermes byte",
+      "review_verification": "partially confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 993
+      },
+      "workstream": "gateway-web",
+      "phase": "2-core-task-and-memory-loop",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WEB-03"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WEB-17",
+      "severity": "P1",
+      "effort": "S",
+      "area": "Web chat / gateway (§5.4)",
+      "finding": "The box proxy never re-arms the idle deadline",
+      "review_verification": "author-verified",
+      "source": {
+        "path": "review.md",
+        "line": 994
+      },
+      "workstream": "gateway-web",
+      "phase": "0-instrument-and-stabilize",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WEB-17"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WEB-04",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Web chat / gateway (§5.4)",
+      "finding": "Gateway preflight: 2 sequential DB reads per model call, plus 3 sequential `provider_keys` reads when `PROVIDER_VAULT_KEY` is…",
+      "review_verification": "partially confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 995
+      },
+      "workstream": "gateway-web",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WEB-04"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WEB-05",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Web chat / gateway (§5.4)",
+      "finding": "Metering keep-alive is registered only when the tee monitor reaches EOF",
+      "review_verification": "partially confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 996
+      },
+      "workstream": "gateway-web",
+      "phase": "1-first-response-and-lifecycle",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WEB-05"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WEB-06",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Web chat / gateway (§5.4)",
+      "finding": "No timeout on the gateway provider fetch, the box proxy upstream fetch, or the dashboard login",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 997
+      },
+      "workstream": "gateway-web",
+      "phase": "1-first-response-and-lifecycle",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WEB-06"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WEB-07",
+      "severity": "P2",
+      "effort": "M",
+      "area": "Web chat / gateway (§5.4)",
+      "finding": "`agent_runs` rows are never closed on client disconnect, stream-open failure, or timeout",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 998
+      },
+      "workstream": "gateway-web",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WEB-07"
+      ],
+      "depends_on": [
+        "CA-04"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WEB-08",
+      "severity": "P2",
+      "effort": "M",
+      "area": "Web chat / gateway (§5.4)",
+      "finding": "The web client treats any SSE error as terminal (\"Connection lost\"), disables the browser's auto-reconnect, and never resumes a…",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 999
+      },
+      "workstream": "gateway-web",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WEB-08"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WEB-09",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Web chat / gateway (§5.4)",
+      "finding": "Every run re-downloads up to 500 transcript rows and keeps 60 (same root as MEM-06/LAT-10; redundant per MEM-16)",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1000
+      },
+      "workstream": "gateway-web",
+      "phase": "3-cutovers-and-continuity",
+      "kind": "alias",
+      "canonical_ids": [
+        "MEM-06",
+        "MEM-16"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WEB-10",
+      "severity": "P2",
+      "effort": "M",
+      "area": "Web chat / gateway (§5.4)",
+      "finding": "Box proxy pays a full wake check per request",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1001
+      },
+      "workstream": "gateway-web",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WEB-10"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WEB-11",
+      "severity": "P2",
+      "effort": "M",
+      "area": "Web chat / gateway (§5.4)",
+      "finding": "`/home` first paint is fully client-rendered with an 8-request fan-out",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1002
+      },
+      "workstream": "gateway-web",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WEB-11"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [
+        "no-localstorage-transcript"
+      ],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WEB-12",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Web chat / gateway (§5.4)",
+      "finding": "Dashboard hosted-route refresh can run twice concurrently (background on wake + synchronous on 401), last write wins on the…",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1003
+      },
+      "workstream": "gateway-web",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WEB-12"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WEB-18",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Web chat / gateway (§5.4)",
+      "finding": "The relay's happy-path close-out and re-arm are detached promises (`void supabase.update`, `void armStopAfter`) fired from the…",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1004
+      },
+      "workstream": "gateway-web",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WEB-18"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WEB-19",
+      "severity": "P2",
+      "effort": "M",
+      "area": "Web chat / gateway (§5.4)",
+      "finding": "Completions that carry no usage chunk are never metered",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1005
+      },
+      "workstream": "gateway-web",
+      "phase": "1-first-response-and-lifecycle",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WEB-19"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WEB-20",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Web chat / gateway (§5.4)",
+      "finding": "Network-level provider failures bypass the retry and fallback ladder",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1006
+      },
+      "workstream": "gateway-web",
+      "phase": "0-instrument-and-stabilize",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WEB-20"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [
+        "no-personal-key-spend-fallback"
+      ],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WEB-21",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Web chat / gateway (§5.4)",
+      "finding": "`ensureBoxAwake` treats any false from `health()`, including a 10 s timeout on a box that is merely slow, as a rotated token and…",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1007
+      },
+      "workstream": "gateway-web",
+      "phase": "1-first-response-and-lifecycle",
+      "kind": "alias",
+      "canonical_ids": [
+        "BOX-19",
+        "LAT-05"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WEB-22",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Web chat / gateway (§5.4)",
+      "finding": "Transcript replay failures are silent",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1008
+      },
+      "workstream": "gateway-web",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WEB-22"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WEB-23",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Web chat / gateway (§5.4)",
+      "finding": "`latency_ms` excludes the gateway's own pre-dispatch overhead",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1009
+      },
+      "workstream": "gateway-web",
+      "phase": "0-instrument-and-stabilize",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WEB-23"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WEB-24",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Web chat / gateway (§5.4)",
+      "finding": "Eval \"latency per case\" is not agent latency",
+      "review_verification": "author-verified",
+      "source": {
+        "path": "review.md",
+        "line": 1010
+      },
+      "workstream": "evals",
+      "phase": "0-instrument-and-stabilize",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WEB-24"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "evals/agent-suite/timing.ts",
+        "evals/agent-suite/run.ts",
+        "evals/agent-suite/score.ts",
+        "apps/web/lib/security/evalTiming.test.ts: 3 tests passed; synthetic scorer checked; live eval outstanding"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "WEB-25",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Web chat / gateway (§5.4)",
+      "finding": "The suite sent 4,575,672 prompt tokens against 23,574 completion tokens",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1011
+      },
+      "workstream": "gateway-web",
+      "phase": "3-cutovers-and-continuity",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WEB-25"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WEB-13",
+      "severity": "P3",
+      "effort": "S",
+      "area": "Web chat / gateway (§5.4)",
+      "finding": "Retry + fallback can triple upstream cost of a failing call with a fixed 1.5 s sleep before the second attempt",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1012
+      },
+      "workstream": "gateway-web",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WEB-13"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WEB-14",
+      "severity": "P3",
+      "effort": "S",
+      "area": "Web chat / gateway (§5.4)",
+      "finding": "`agent_runs` updates by `hermes_run_id` have no supporting index while the gateway inserts one metering row per model call",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1013
+      },
+      "workstream": "gateway-web",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WEB-14"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WEB-15",
+      "severity": "P3",
+      "effort": "S",
+      "area": "Web chat / gateway (§5.4)",
+      "finding": "Two near-identical SSE relays (web, bots) have already drifted",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1014
+      },
+      "workstream": "gateway-web",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WEB-15"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WEB-16",
+      "severity": "P3",
+      "effort": "S",
+      "area": "Web chat / gateway (§5.4)",
+      "finding": "Desktop stream iframe triggers a wake check + provider desktop-URL mint on every remount",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1015
+      },
+      "workstream": "gateway-web",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WEB-16"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WEB-26",
+      "severity": "P3",
+      "effort": "S",
+      "area": "Web chat / gateway (§5.4)",
+      "finding": "`GET /api/bots` is DB-only only while the box is asleep",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1016
+      },
+      "workstream": "gateway-web",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WEB-26"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WEB-27",
+      "severity": "P3",
+      "effort": "S",
+      "area": "Web chat / gateway (§5.4)",
+      "finding": "The edge middleware matcher excludes only `_next/` and the favicon, so every gateway completion, every `/api/chat`, every…",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1017
+      },
+      "workstream": "gateway-web",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WEB-27"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WEB-28",
+      "severity": "P3",
+      "effort": "M",
+      "area": "Web chat / gateway (§5.4)",
+      "finding": "Every 3 MiB upload chunk runs a full wake check (select, update, `getBox`, health, update), is base64-encoded through the…",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1018
+      },
+      "workstream": "gateway-web",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WEB-28"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WEB-29",
+      "severity": "P3",
+      "effort": "S",
+      "area": "Web chat / gateway (§5.4)",
+      "finding": "Every `message.delta` event calls `setMessages(replaceLast(...))`, one React commit per token chunk on the 1,250-line client…",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1019
+      },
+      "workstream": "gateway-web",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WEB-29"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MS-01",
+      "severity": "P1",
+      "effort": "M",
+      "area": "Mini-apps / Spectrum (§6)",
+      "finding": "Every send re-creates the Spectrum SDK",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1020
+      },
+      "workstream": "miniapps-spectrum",
+      "phase": "1-first-response-and-lifecycle",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MS-01"
+      ],
+      "depends_on": [
+        "LAT-15"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MS-02",
+      "severity": "P1",
+      "effort": "M",
+      "area": "Mini-apps / Spectrum (§6)",
+      "finding": "Kanban/todo/crm views and actions hit the box 1-3 times per request",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1021
+      },
+      "workstream": "miniapps-spectrum",
+      "phase": "1-first-response-and-lifecycle",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MS-02"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MS-03",
+      "severity": "P1",
+      "effort": "S",
+      "area": "Mini-apps / Spectrum (§6)",
+      "finding": "A 790 KB PNG wordmark (1600×396, gzip-incompressible) is loaded by every mini-app shell and the onboarding deck for a ~25 px logo",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1022
+      },
+      "workstream": "miniapps-spectrum",
+      "phase": "1-first-response-and-lifecycle",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MS-03"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MS-04",
+      "severity": "P1",
+      "effort": "M",
+      "area": "Mini-apps / Spectrum (§6)",
+      "finding": "Prompt-bar (\"Ask your agent\") runs are fire-and-forget",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1023
+      },
+      "workstream": "miniapps-spectrum",
+      "phase": "1-first-response-and-lifecycle",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MS-04"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MS-05",
+      "severity": "P1",
+      "effort": "M",
+      "area": "Mini-apps / Spectrum (§6)",
+      "finding": "Card tap never warms the box; a sleeping box turns a tap into a 30-240 s spinner inside Messages",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1024
+      },
+      "workstream": "miniapps-spectrum",
+      "phase": "1-first-response-and-lifecycle",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MS-05"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MS-19",
+      "severity": "P1",
+      "effort": "S",
+      "area": "Mini-apps / Spectrum (§6)",
+      "finding": "`readDoc` catches every `readFile` error (Box 5xx, timeout, hosted-route failure) and returns `DEFAULT_BOARD`/`DEFAULT_TODOS`",
+      "review_verification": "author-verified",
+      "source": {
+        "path": "review.md",
+        "line": 1025
+      },
+      "workstream": "miniapps-spectrum",
+      "phase": "0-instrument-and-stabilize",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MS-19"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "apps/web/lib/miniapps/store.ts",
+        "apps/web/lib/miniapps/store.readFailure.test.ts: 4 local regression tests passed"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "MS-20",
+      "severity": "P1",
+      "effort": "S",
+      "area": "Mini-apps / Spectrum (§6)",
+      "finding": "The V11 hand-off lands on a path nothing serves",
+      "review_verification": "author-verified",
+      "source": {
+        "path": "review.md",
+        "line": 1026
+      },
+      "workstream": "miniapps-spectrum",
+      "phase": "1-first-response-and-lifecycle",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MS-20"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MS-21",
+      "severity": "P1",
+      "effort": "M",
+      "area": "Mini-apps / Spectrum (§6)",
+      "finding": "Kit apps on the app origin cannot reach the Apps API",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1027
+      },
+      "workstream": "miniapps-spectrum",
+      "phase": "1-first-response-and-lifecycle",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MS-21"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MS-06",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Mini-apps / Spectrum (§6)",
+      "finding": "Typing indicator never re-armed after the quick-ack and never stopped",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1028
+      },
+      "workstream": "miniapps-spectrum",
+      "phase": "4-remaining-review-closure",
+      "kind": "alias",
+      "canonical_ids": [
+        "LAT-06"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MS-07",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Mini-apps / Spectrum (§6)",
+      "finding": "The marker-path 2-min card cooldown silently drops an explicit \"open X\" while the text says \"tap the card below\"",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1029
+      },
+      "workstream": "miniapps-spectrum",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MS-07"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MS-08",
+      "severity": "P2",
+      "effort": "M",
+      "area": "Mini-apps / Spectrum (§6)",
+      "finding": "Card bubbles are text-only; the SDK's image layout is never used, so a calendar or image card carries no glanceable content",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1030
+      },
+      "workstream": "miniapps-spectrum",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MS-08"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MS-09",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Mini-apps / Spectrum (§6)",
+      "finding": "Lite (card) sessions still download and run WebGL backdrops (~300 KB gzipped of three.js…",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1031
+      },
+      "workstream": "miniapps-spectrum",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MS-09"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MS-10",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Mini-apps / Spectrum (§6)",
+      "finding": "The token-exchange hop awaits two ledger inserts before the 303 although the gate ledger is documented best-effort",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1032
+      },
+      "workstream": "miniapps-spectrum",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MS-10"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MS-11",
+      "severity": "P2",
+      "effort": "M",
+      "area": "Mini-apps / Spectrum (§6)",
+      "finding": "Onboarding's Onairos step ships a 2.49 MB client bundle, 981 KB…",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1033
+      },
+      "workstream": "miniapps-spectrum",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MS-11"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MS-12",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Mini-apps / Spectrum (§6)",
+      "finding": "Marker cards are sent only after the whole stream ends, sequentially, each with a fresh SDK init",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1034
+      },
+      "workstream": "miniapps-spectrum",
+      "phase": "1-first-response-and-lifecycle",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MS-12"
+      ],
+      "depends_on": [
+        "MS-01"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MS-13",
+      "severity": "P2",
+      "effort": "M",
+      "area": "Mini-apps / Spectrum (§6)",
+      "finding": "Hand-rolled webhook verify/parse duplicates `spectrum.webhook()` and already carries legacy payload shims",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1035
+      },
+      "workstream": "miniapps-spectrum",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MS-13"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MS-14",
+      "severity": "P2",
+      "effort": "M",
+      "area": "Mini-apps / Spectrum (§6)",
+      "finding": "V11 published apps take three redirects and a Durable Object round trip per open",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1036
+      },
+      "workstream": "miniapps-spectrum",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MS-14"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MS-22",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Mini-apps / Spectrum (§6)",
+      "finding": "Home tiles and the shell wordmark link are minted with a 15-minute TTL at render time inside a sheet whose session cookie slides…",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1037
+      },
+      "workstream": "miniapps-spectrum",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MS-22"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [
+        "dedicated-paying-lines"
+      ],
+      "external_evidence_needed": [
+        "Verified Photon shared-line webview/reply behavior or dedicated-line availability"
+      ],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MS-23",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Mini-apps / Spectrum (§6)",
+      "finding": "Guest sessions resume and keep awake the owner's box",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1038
+      },
+      "workstream": "miniapps-spectrum",
+      "phase": "1-first-response-and-lifecycle",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MS-23"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [
+        "guests-no-wake"
+      ],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MS-24",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Mini-apps / Spectrum (§6)",
+      "finding": "Multiplayer kanban/todo read-modify-write has no serialisation",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1039
+      },
+      "workstream": "miniapps-spectrum",
+      "phase": "0-instrument-and-stabilize",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MS-24"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "apps/web/lib/miniapps/stateLease.ts",
+        "apps/web/lib/miniapps/store.ts",
+        "apps/web/lib/miniapps/apps/kanban.tsx",
+        "apps/web/lib/miniapps/apps/todo.tsx",
+        "apps/web/lib/miniapps/actionLog.test.ts: 4 new concurrency tests and 18 existing tests passed; live Box/DB checks outstanding"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "MS-25",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Mini-apps / Spectrum (§6)",
+      "finding": "kanban/todo views null `stop_after` through `ensureBoxAwake` and never re-arm it",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1040
+      },
+      "workstream": "miniapps-spectrum",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MS-25"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MS-15",
+      "severity": "P3",
+      "effort": "S",
+      "area": "Mini-apps / Spectrum (§6)",
+      "finding": "Stable-named bundles cached 24 h reference hash-named chunks deleted on every rebuild",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1041
+      },
+      "workstream": "miniapps-spectrum",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MS-15"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MS-16",
+      "severity": "P3",
+      "effort": "S",
+      "area": "Mini-apps / Spectrum (§6)",
+      "finding": "A 75.8 MB `airintrofin.mov` is committed and shipped in `public/` as a dead `<source>` fallback behind a 5.9 MB mp4",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1042
+      },
+      "workstream": "miniapps-spectrum",
+      "phase": "1-first-response-and-lifecycle",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MS-16"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MS-17",
+      "severity": "P3",
+      "effort": "S",
+      "area": "Mini-apps / Spectrum (§6)",
+      "finding": "Copy and docs still call mini-app links single-use",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1043
+      },
+      "workstream": "miniapps-spectrum",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MS-17"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MS-18",
+      "severity": "P3",
+      "effort": "S",
+      "area": "Mini-apps / Spectrum (§6)",
+      "finding": "The Home launcher mints ~20 tokens per render and logs a line per mint",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1044
+      },
+      "workstream": "miniapps-spectrum",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MS-18"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MS-26",
+      "severity": "P3",
+      "effort": "S",
+      "area": "Mini-apps / Spectrum (§6)",
+      "finding": "No card-tap funnel: the loader logs every `?t=` exchange as `app_opened` with ref `\"token\"` although `claims.via` already says…",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1045
+      },
+      "workstream": "miniapps-spectrum",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MS-26"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MS-27",
+      "severity": "P3",
+      "effort": "S",
+      "area": "Mini-apps / Spectrum (§6)",
+      "finding": "Calendar render does its two Box reads (events, then people) and the `user_buckets` read sequentially after the wake",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1046
+      },
+      "workstream": "miniapps-spectrum",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MS-27"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "MS-28",
+      "severity": "P3",
+      "effort": "S",
+      "area": "Mini-apps / Spectrum (§6)",
+      "finding": "V11 app-origin sheets dead-end twice after 15 minutes",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1047
+      },
+      "workstream": "miniapps-spectrum",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "MS-28"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "TC-01",
+      "severity": "P1",
+      "effort": "M",
+      "area": "Task completion (§7)",
+      "finding": "`agent_runs.outcome` is a transport outcome, not a task outcome",
+      "review_verification": "partially confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1048
+      },
+      "workstream": "task-spine",
+      "phase": "2-core-task-and-memory-loop",
+      "kind": "engineering",
+      "canonical_ids": [
+        "TC-01"
+      ],
+      "depends_on": [
+        "CA-04",
+        "TC-20"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "TC-02",
+      "severity": "P1",
+      "effort": "M",
+      "area": "Task completion (§7)",
+      "finding": "`social_post` approval is structurally dead for iMessage-originated proposals",
+      "review_verification": "partially confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1049
+      },
+      "workstream": "task-spine",
+      "phase": "2-core-task-and-memory-loop",
+      "kind": "engineering",
+      "canonical_ids": [
+        "TC-02"
+      ],
+      "depends_on": [
+        "CA-04"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "TC-03",
+      "severity": "P1",
+      "effort": "S",
+      "area": "Task completion (§7)",
+      "finding": "No box-callable reminder/schedule primitive",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1050
+      },
+      "workstream": "task-spine",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "TC-03"
+      ],
+      "depends_on": [
+        "CA-04"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "TC-05",
+      "severity": "P1",
+      "effort": "S",
+      "area": "Task completion (§7)",
+      "finding": "The Aug P1-12 fix was scoped to one skill",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1051
+      },
+      "workstream": "template-steering",
+      "phase": "0-instrument-and-stabilize",
+      "kind": "engineering",
+      "canonical_ids": [
+        "TC-05"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "infra/template/skills: 15 sourcing snippets replaced in 11 skills",
+        "apps/web/lib/security/templateSkillEnv.test.ts: 21 guards passed; live sync outstanding"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "TC-06",
+      "severity": "P1",
+      "effort": "M",
+      "area": "Task completion (§7)",
+      "finding": "Six of eight agent-staged decision kinds never notify the owner on iMessage, and the two that do are throttled…",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1052
+      },
+      "workstream": "task-spine",
+      "phase": "2-core-task-and-memory-loop",
+      "kind": "engineering",
+      "canonical_ids": [
+        "TC-06"
+      ],
+      "depends_on": [
+        "CA-04",
+        "CA-08",
+        "TC-21",
+        "TC-27"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [
+        "freeze-surface"
+      ],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "TC-08",
+      "severity": "P1",
+      "effort": "S",
+      "area": "Task completion (§7)",
+      "finding": "Agent-authored skills persist forever and out-compete template skills",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1053
+      },
+      "workstream": "task-spine",
+      "phase": "2-core-task-and-memory-loop",
+      "kind": "engineering",
+      "canonical_ids": [
+        "TC-08"
+      ],
+      "depends_on": [
+        "TC-06",
+        "TC-07"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "TC-19",
+      "severity": "P1",
+      "effort": "S",
+      "area": "Task completion (§7)",
+      "finding": "`sync-box.sh`, the in-place sync for every provisioned box, never installs the two SOUL sections written for the eval failure…",
+      "review_verification": "author-verified",
+      "source": {
+        "path": "review.md",
+        "line": 1054
+      },
+      "workstream": "template-steering",
+      "phase": "0-instrument-and-stabilize",
+      "kind": "engineering",
+      "canonical_ids": [
+        "TC-19"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "infra/template/soul-managed.md",
+        "infra/template/manage-soul.py",
+        "infra/template/setup.sh",
+        "infra/template/sync-box.sh",
+        "infra/template/verify-box.sh",
+        "infra/template/tests/test_manage_soul.py: 6 tests pass; all three shell scripts pass bash -n; live release and convergence pending"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "TC-20",
+      "severity": "P1",
+      "effort": "M",
+      "area": "Task completion (§7)",
+      "finding": "A reconciliation backstop already exists for email drafts",
+      "review_verification": "author-verified",
+      "source": {
+        "path": "review.md",
+        "line": 1055
+      },
+      "workstream": "task-spine",
+      "phase": "2-core-task-and-memory-loop",
+      "kind": "engineering",
+      "canonical_ids": [
+        "TC-20"
+      ],
+      "depends_on": [
+        "CA-04",
+        "TC-21",
+        "TC-27"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "TC-21",
+      "severity": "P1",
+      "effort": "M",
+      "area": "Task completion (§7)",
+      "finding": "The eval never exercises the iMessage path",
+      "review_verification": "author-verified",
+      "source": {
+        "path": "review.md",
+        "line": 1056
+      },
+      "workstream": "evals",
+      "phase": "2-core-task-and-memory-loop",
+      "kind": "engineering",
+      "canonical_ids": [
+        "TC-21"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "TC-22",
+      "severity": "P1",
+      "effort": "M",
+      "area": "Task completion (§7)",
+      "finding": "`social_post` is a per-item proposal",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1057
+      },
+      "workstream": "task-spine",
+      "phase": "2-core-task-and-memory-loop",
+      "kind": "engineering",
+      "canonical_ids": [
+        "TC-22"
+      ],
+      "depends_on": [
+        "TC-07",
+        "TC-02"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "TC-04",
+      "severity": "P2",
+      "effort": "M",
+      "area": "Task completion (§7)",
+      "finding": "No account-less draft state for `ad_write`",
+      "review_verification": "partially confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1058
+      },
+      "workstream": "task-spine",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "TC-04"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "TC-07",
+      "severity": "P2",
+      "effort": "M",
+      "area": "Task completion (§7)",
+      "finding": "Decision creation scattered across ≥10 raw inserts",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1059
+      },
+      "workstream": "task-spine",
+      "phase": "2-core-task-and-memory-loop",
+      "kind": "engineering",
+      "canonical_ids": [
+        "TC-07"
+      ],
+      "depends_on": [
+        "CA-04",
+        "CA-08",
+        "TC-21",
+        "TC-27"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "TC-09",
+      "severity": "P2",
+      "effort": "L",
+      "area": "Task completion (§7)",
+      "finding": "Tool discovery dominates the turn because control-plane actions are curl recipes, not tools",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1060
+      },
+      "workstream": "task-spine",
+      "phase": "2-core-task-and-memory-loop",
+      "kind": "engineering",
+      "canonical_ids": [
+        "TC-09"
+      ],
+      "depends_on": [
+        "TC-19",
+        "TC-05"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "TC-10",
+      "severity": "P2",
+      "effort": "M",
+      "area": "Task completion (§7)",
+      "finding": "`fast` and `balanced` both resolve to gpt-5.6-luna, and tool-bearing calls on `/v1/chat/completions` are pinned…",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1061
+      },
+      "workstream": "task-spine",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "TC-10"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [
+        "model-tiers"
+      ],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "TC-11",
+      "severity": "P2",
+      "effort": "M",
+      "area": "Task completion (§7)",
+      "finding": "Smart approvals pause runs no surface can resume",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1062
+      },
+      "workstream": "task-spine",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "TC-11"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "TC-12",
+      "severity": "P2",
+      "effort": "S (control plane)",
+      "area": "Task completion (§7)",
+      "finding": "Learning plane has no producer; task router has no consumer",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1063
+      },
+      "workstream": "task-spine",
+      "phase": "3-cutovers-and-continuity",
+      "kind": "engineering",
+      "canonical_ids": [
+        "TC-12"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "TC-13",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Task completion (§7)",
+      "finding": "Storefront and payments missing from `connected-tools.md`",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1064
+      },
+      "workstream": "template-steering",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "TC-13"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "TC-14",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Task completion (§7)",
+      "finding": "`crm-people` teaches only the update call",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1065
+      },
+      "workstream": "template-steering",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "TC-14"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "TC-15",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Task completion (§7)",
+      "finding": "Eval honesty and gating axes are blind to fabrication and to \"not connected\" excuses, and the harness has two larger blind spots",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1066
+      },
+      "workstream": "evals",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "TC-15"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "TC-16",
+      "severity": "P2",
+      "effort": "M",
+      "area": "Task completion (§7)",
+      "finding": "Approval outcomes never flow back to the agent or the owner thread (except `content_plan`)",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1067
+      },
+      "workstream": "task-spine",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "TC-16"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "TC-17",
+      "severity": "P2",
+      "effort": "M",
+      "area": "Task completion (§7)",
+      "finding": "Merchant purchases are over-choreographed",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1068
+      },
+      "workstream": "task-spine",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "TC-17"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "TC-23",
+      "severity": "P2",
+      "effort": "M",
+      "area": "Task completion (§7)",
+      "finding": "The gateway sees every model tool call (it already parses `choices[].message.tool_calls` for the empty-answer fallback) and…",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1069
+      },
+      "workstream": "task-spine",
+      "phase": "3-cutovers-and-continuity",
+      "kind": "engineering",
+      "canonical_ids": [
+        "TC-23"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "TC-24",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Task completion (§7)",
+      "finding": "Scheduled runs (reminders, briefs, routines) bypass the outbound lanes",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1070
+      },
+      "workstream": "task-spine",
+      "phase": "2-core-task-and-memory-loop",
+      "kind": "engineering",
+      "canonical_ids": [
+        "TC-24"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "TC-25",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Task completion (§7)",
+      "finding": "Bot escalation string-matches `[NEEDS-USER]` in the routine's last output and files a `run_approval` with a `bot:` ref",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1071
+      },
+      "workstream": "task-spine",
+      "phase": "2-core-task-and-memory-loop",
+      "kind": "engineering",
+      "canonical_ids": [
+        "TC-25"
+      ],
+      "depends_on": [
+        "TC-06",
+        "TC-07"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "TC-26",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Task completion (§7)",
+      "finding": "Bot profiles are provisioned blind",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1072
+      },
+      "workstream": "template-steering",
+      "phase": "0-instrument-and-stabilize",
+      "kind": "engineering",
+      "canonical_ids": [
+        "TC-26"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "TC-27",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Task completion (§7)",
+      "finding": "The execution axis rests on the 7-case union of `must_do` (5 cases) and `must_not_do` (those 5 plus A02 and H95), and…",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1073
+      },
+      "workstream": "evals",
+      "phase": "2-core-task-and-memory-loop",
+      "kind": "engineering",
+      "canonical_ids": [
+        "TC-27"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "TC-18",
+      "severity": "P3",
+      "effort": "S",
+      "area": "Task completion (§7)",
+      "finding": "Skill grades: five skills describe more than they command",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1074
+      },
+      "workstream": "template-steering",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "TC-18"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "TC-28",
+      "severity": "P3",
+      "effort": "S",
+      "area": "Task completion (§7)",
+      "finding": "`sendEmailReviewCard` returns silently when `claimCardSend(\"inbox\")` fails",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1075
+      },
+      "workstream": "task-spine",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "TC-28"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "TC-29",
+      "severity": "P3",
+      "effort": "S",
+      "area": "Task completion (§7)",
+      "finding": "`content/plan` rejects LinkedIn (any platform outside `SLOT_PLATFORMS`) with a bare `invalid request` 400…",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1076
+      },
+      "workstream": "task-spine",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "TC-29"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "TC-30",
+      "severity": "P3",
+      "effort": "S",
+      "area": "Task completion (§7)",
+      "finding": "Per-run `instructions` is a live, unused steering channel",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1077
+      },
+      "workstream": "template-steering",
+      "phase": "2-core-task-and-memory-loop",
+      "kind": "engineering",
+      "canonical_ids": [
+        "TC-30"
+      ],
+      "depends_on": [
+        "TC-19",
+        "TC-05"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [
+        "disable-taskrouter"
+      ],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WZ-01",
+      "severity": "P1",
+      "effort": "M",
+      "area": "wzrdmail cutover (§8)",
+      "finding": "`MAIL_PROVIDER` is a global flip with no per-user provider",
+      "review_verification": "partially confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1078
+      },
+      "workstream": "mail",
+      "phase": "0-instrument-and-stabilize",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WZ-01"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WZ-02",
+      "severity": "P1",
+      "effort": "L",
+      "area": "wzrdmail cutover (§8)",
+      "finding": "No migration path for existing users",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1079
+      },
+      "workstream": "mail",
+      "phase": "3-cutovers-and-continuity",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WZ-02"
+      ],
+      "depends_on": [
+        "WZ-01",
+        "WZ-03",
+        "WZ-16",
+        "WZ-17",
+        "WZ-20",
+        "WZ-21",
+        "WZ-12"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [
+        "dns-owner-required"
+      ],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WZ-03",
+      "severity": "P1",
+      "effort": "S",
+      "area": "wzrdmail cutover (§8)",
+      "finding": "`ensureWebhook` PATCHes `pod_ids`, which wzrdmail fixes at create, and discards the one-time signing secret",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1080
+      },
+      "workstream": "mail",
+      "phase": "0-instrument-and-stabilize",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WZ-03"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WZ-04",
+      "severity": "P1",
+      "effort": "M",
+      "area": "wzrdmail cutover (§8)",
+      "finding": "Send idempotency unverified: the only replay guard on `sendDraft` and `replyToMessage` is an `Idempotency-Key` header that…",
+      "review_verification": "partially confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1081
+      },
+      "workstream": "mail",
+      "phase": "3-cutovers-and-continuity",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WZ-04"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [
+        "Provider-confirmed send idempotency semantics and staging replay test"
+      ],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WZ-05",
+      "severity": "P1",
+      "effort": "S",
+      "area": "wzrdmail cutover (§8)",
+      "finding": "Admin deletion reports the pod \"deleted\" when the active provider 404s the other provider's pod id",
+      "review_verification": "partially confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1082
+      },
+      "workstream": "mail",
+      "phase": "0-instrument-and-stabilize",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WZ-05"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WZ-06",
+      "severity": "P1",
+      "effort": "M",
+      "area": "wzrdmail cutover (§8)",
+      "finding": "Hosted calendar is AgentMail-only and imported directly by the calendar mini-app",
+      "review_verification": "partially confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1083
+      },
+      "workstream": "mail",
+      "phase": "3-cutovers-and-continuity",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WZ-06"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WZ-16",
+      "severity": "P1",
+      "effort": "M",
+      "area": "wzrdmail cutover (§8)",
+      "finding": "Box replacement strips the mail wiring and nothing re-applies it",
+      "review_verification": "author-verified",
+      "source": {
+        "path": "review.md",
+        "line": 1084
+      },
+      "workstream": "mail",
+      "phase": "3-cutovers-and-continuity",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WZ-16"
+      ],
+      "depends_on": [
+        "WZ-01",
+        "WZ-10"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WZ-17",
+      "severity": "P1",
+      "effort": "S",
+      "area": "wzrdmail cutover (§8)",
+      "finding": "Block enforcement is per-inbox at the provider and never replayed",
+      "review_verification": "author-verified",
+      "source": {
+        "path": "review.md",
+        "line": 1085
+      },
+      "workstream": "mail",
+      "phase": "3-cutovers-and-continuity",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WZ-17"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WZ-18",
+      "severity": "P1",
+      "effort": "S",
+      "area": "wzrdmail cutover (§8)",
+      "finding": "The wzrdmail block-list body is wrong",
+      "review_verification": "author-verified",
+      "source": {
+        "path": "review.md",
+        "line": 1086
+      },
+      "workstream": "mail",
+      "phase": "0-instrument-and-stabilize",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WZ-18"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WZ-07",
+      "severity": "P2",
+      "effort": "S",
+      "area": "wzrdmail cutover (§8)",
+      "finding": "Username collision on the shared `@wzrd.tech` namespace leaves the user with no inbox and a log line",
+      "review_verification": "partially confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1087
+      },
+      "workstream": "mail",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WZ-07"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WZ-08",
+      "severity": "P2",
+      "effort": "M",
+      "area": "wzrdmail cutover (§8)",
+      "finding": "No 429/`Retry-After` or 5xx handling",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1088
+      },
+      "workstream": "mail",
+      "phase": "3-cutovers-and-continuity",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WZ-08"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WZ-09",
+      "severity": "P2",
+      "effort": "S",
+      "area": "wzrdmail cutover (§8)",
+      "finding": "Legacy credentials and MCP linger on the box after a…",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1089
+      },
+      "workstream": "mail",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WZ-09"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WZ-10",
+      "severity": "P2",
+      "effort": "M",
+      "area": "wzrdmail cutover (§8)",
+      "finding": "MCP swap restarts `hermes-gateway` on a live box from a settings write",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1090
+      },
+      "workstream": "mail",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WZ-10"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WZ-11",
+      "severity": "P2",
+      "effort": "S",
+      "area": "wzrdmail cutover (§8)",
+      "finding": "`ensurePod` fallback and `ensureWebhook` read page 1 only",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1091
+      },
+      "workstream": "mail",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WZ-11"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WZ-12",
+      "severity": "P2",
+      "effort": "M",
+      "area": "wzrdmail cutover (§8)",
+      "finding": "The parity eval cannot support a cutover decision",
+      "review_verification": "partially confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1092
+      },
+      "workstream": "mail",
+      "phase": "3-cutovers-and-continuity",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WZ-12"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [
+        "current-email-tiers"
+      ],
+      "external_evidence_needed": [
+        "Email tier policy pinned; code behavior remains until then"
+      ],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WZ-13",
+      "severity": "P2",
+      "effort": "S",
+      "area": "wzrdmail cutover (§8)",
+      "finding": "CC'd mail never resolves (only `to[]`)",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1093
+      },
+      "workstream": "mail",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WZ-13"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WZ-14",
+      "severity": "P2",
+      "effort": "M",
+      "area": "wzrdmail cutover (§8)",
+      "finding": "Consumer tests mock `../agentmail/client` directly, so `MAIL_PROVIDER=wzrdmail` never exercises the wzrdmail path",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1094
+      },
+      "workstream": "mail",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WZ-14"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WZ-19",
+      "severity": "P2",
+      "effort": "S",
+      "area": "wzrdmail cutover (§8)",
+      "finding": "Draft-only keys can never be revoked",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1095
+      },
+      "workstream": "mail",
+      "phase": "3-cutovers-and-continuity",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WZ-19"
+      ],
+      "depends_on": [
+        "WZ-01"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WZ-20",
+      "severity": "P2",
+      "effort": "S",
+      "area": "wzrdmail cutover (§8)",
+      "finding": "Renaming back to a previous username, or rolling `MAIL_PROVIDER` back after a migration, leaves the user with no primary address",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1096
+      },
+      "workstream": "mail",
+      "phase": "3-cutovers-and-continuity",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WZ-20"
+      ],
+      "depends_on": [
+        "WZ-01"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WZ-21",
+      "severity": "P2",
+      "effort": "S",
+      "area": "wzrdmail cutover (§8)",
+      "finding": "`email_draft` decisions record only `ref = draft_id`, not the inbox or provider holding the draft",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1097
+      },
+      "workstream": "mail",
+      "phase": "3-cutovers-and-continuity",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WZ-21"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WZ-22",
+      "severity": "P2",
+      "effort": "S",
+      "area": "wzrdmail cutover (§8)",
+      "finding": "A missing or wrong `WZRDMAIL_WEBHOOK_SECRET` turns every inbound POST into a 500, not a 401",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1098
+      },
+      "workstream": "mail",
+      "phase": "3-cutovers-and-continuity",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WZ-22"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WZ-24",
+      "severity": "P2",
+      "effort": "S",
+      "area": "wzrdmail cutover (§8)",
+      "finding": "Both providers cannot receive for `@wzrd.tech` at once",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1099
+      },
+      "workstream": "mail",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WZ-24"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [
+        "dns-owner-required"
+      ],
+      "external_evidence_needed": [
+        "Owner of wzrd.tech DNS and existing AgentMail domain inventory; no review default"
+      ],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WZ-15",
+      "severity": "P3",
+      "effort": "S",
+      "area": "wzrdmail cutover (§8)",
+      "finding": "Eight copy-pasted primary-inbox lookups hard-code `agentmail_inbox_id`",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1100
+      },
+      "workstream": "mail",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WZ-15"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WZ-23",
+      "severity": "P3",
+      "effort": "S",
+      "area": "wzrdmail cutover (§8)",
+      "finding": "The draft review route maps every provider error (429, 5xx, timeout) to 404 \"no such draft\"",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1101
+      },
+      "workstream": "mail",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WZ-23"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "WZ-25",
+      "severity": "P3",
+      "effort": "S",
+      "area": "wzrdmail cutover (§8)",
+      "finding": "No env or ops documentation for the wzrdmail lane",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1102
+      },
+      "workstream": "mail",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "WZ-25"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "SOC-01",
+      "severity": "P1",
+      "effort": "M",
+      "area": "Social / Composio → self-hosted (§9)",
+      "finding": "The agent has an ungated direct publish path through the Composio tool-router",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1103
+      },
+      "workstream": "social",
+      "phase": "0-instrument-and-stabilize",
+      "kind": "engineering",
+      "canonical_ids": [
+        "SOC-01"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "SOC-02",
+      "severity": "P1",
+      "effort": "M",
+      "area": "Social / Composio → self-hosted (§9)",
+      "finding": "Every plan-originated slot carries `account_ref = \"primary\"`, which the Facebook adapter sends as the Graph `page_id`",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1104
+      },
+      "workstream": "social",
+      "phase": "3-cutovers-and-continuity",
+      "kind": "engineering",
+      "canonical_ids": [
+        "SOC-02"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "SOC-03",
+      "severity": "P1",
+      "effort": "S",
+      "area": "Social / Composio → self-hosted (§9)",
+      "finding": "Adapter tool slugs diverge from the slugs the verification doc recorded from Composio",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1105
+      },
+      "workstream": "social",
+      "phase": "3-cutovers-and-continuity",
+      "kind": "engineering",
+      "canonical_ids": [
+        "SOC-03"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "SOC-04",
+      "severity": "P1",
+      "effort": "M",
+      "area": "Social / Composio → self-hosted (§9)",
+      "finding": "`validate()` media checks are dead",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1106
+      },
+      "workstream": "social",
+      "phase": "3-cutovers-and-continuity",
+      "kind": "engineering",
+      "canonical_ids": [
+        "SOC-04"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "SOC-05",
+      "severity": "P1",
+      "effort": "L",
+      "area": "Social / Composio → self-hosted (§9)",
+      "finding": "No media upload engine: X is text-only by design (`validate()` rejects media although `specs/x.ts` advertises 4 images or 1 video)",
+      "review_verification": "partially confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1107
+      },
+      "workstream": "social",
+      "phase": "3-cutovers-and-continuity",
+      "kind": "engineering",
+      "canonical_ids": [
+        "SOC-05"
+      ],
+      "depends_on": [
+        "SOC-02",
+        "SOC-03",
+        "SOC-04",
+        "SOC-19"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [
+        "cleanroom-social"
+      ],
+      "external_evidence_needed": [
+        "Approved native API access and quota for each enabled platform; no paid tier inferred"
+      ],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "SOC-16",
+      "severity": "P1",
+      "effort": "S",
+      "area": "Social / Composio → self-hosted (§9)",
+      "finding": "A publish that succeeds on the platform but fails the `external_id` write is re-posted",
+      "review_verification": "author-verified",
+      "source": {
+        "path": "review.md",
+        "line": 1108
+      },
+      "workstream": "social",
+      "phase": "0-instrument-and-stabilize",
+      "kind": "engineering",
+      "canonical_ids": [
+        "SOC-16"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "SOC-17",
+      "severity": "P1",
+      "effort": "M",
+      "area": "Social / Composio → self-hosted (§9)",
+      "finding": "Approved `social_post` decisions execute nothing server-side",
+      "review_verification": "author-verified",
+      "source": {
+        "path": "review.md",
+        "line": 1109
+      },
+      "workstream": "social",
+      "phase": "2-core-task-and-memory-loop",
+      "kind": "engineering",
+      "canonical_ids": [
+        "SOC-17"
+      ],
+      "depends_on": [
+        "CA-04",
+        "TC-07",
+        "SOC-01",
+        "SOC-16"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "SOC-18",
+      "severity": "P1",
+      "effort": "M",
+      "area": "Social / Composio → self-hosted (§9)",
+      "finding": "The sweep is single-threaded with no time budget against `maxDuration = 800`",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1110
+      },
+      "workstream": "social",
+      "phase": "3-cutovers-and-continuity",
+      "kind": "engineering",
+      "canonical_ids": [
+        "SOC-18"
+      ],
+      "depends_on": [
+        "SOC-16"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "SOC-19",
+      "severity": "P1",
+      "effort": "M",
+      "area": "Social / Composio → self-hosted (§9)",
+      "finding": "Ingest buffers every asset in function memory with a permanent 100 MB cap",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1111
+      },
+      "workstream": "social",
+      "phase": "3-cutovers-and-continuity",
+      "kind": "engineering",
+      "canonical_ids": [
+        "SOC-19"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [
+        "cleanroom-social"
+      ],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "SOC-06",
+      "severity": "P2",
+      "effort": "M",
+      "area": "Social / Composio → self-hosted (§9)",
+      "finding": "Pending processing is an in-function sleep loop",
+      "review_verification": "partially confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1112
+      },
+      "workstream": "social",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "SOC-06"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "SOC-07",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Social / Composio → self-hosted (§9)",
+      "finding": "`dailyCap` counts only `published` rows, ignores in-flight and non-slot posts, ignores Instagram's live limit endpoint, and…",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1113
+      },
+      "workstream": "social",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "SOC-07"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "SOC-08",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Social / Composio → self-hosted (§9)",
+      "finding": "Reconnect decisions loop hourly and never lead to…",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1114
+      },
+      "workstream": "social",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "SOC-08"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "SOC-09",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Social / Composio → self-hosted (§9)",
+      "finding": "Raw platform/Composio error bodies persisted to `content_slots.error_message` and returned by `/api/slots`…",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1115
+      },
+      "workstream": "social",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "SOC-09"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "SOC-10",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Social / Composio → self-hosted (§9)",
+      "finding": "Coalescing publishes slots up to 10 min early, contradicting \"fires at 09:00 local\"",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1116
+      },
+      "workstream": "social",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "SOC-10"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "SOC-11",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Social / Composio → self-hosted (§9)",
+      "finding": "Instagram resume path can record the container id as `external_id`",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1117
+      },
+      "workstream": "social",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "SOC-11"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "SOC-12",
+      "severity": "P2",
+      "effort": "M",
+      "area": "Social / Composio → self-hosted (§9)",
+      "finding": "No analytics path; `metrics()` never invoked",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1118
+      },
+      "workstream": "social",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "SOC-12"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "SOC-13",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Social / Composio → self-hosted (§9)",
+      "finding": "Connection lookups ignore `provider` (`maybeSingle` on…",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1119
+      },
+      "workstream": "social",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "SOC-13"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "SOC-14",
+      "severity": "P2",
+      "effort": "M",
+      "area": "Social / Composio → self-hosted (§9)",
+      "finding": "Non-social Composio dependents (Google Calendar, Shopify, Gmail hint, onboarding step 3, deletion) must be scoped explicitly or…",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1120
+      },
+      "workstream": "social",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "SOC-14"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [
+        "cleanroom-social",
+        "keep-nonsocial-composio"
+      ],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "SOC-20",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Social / Composio → self-hosted (§9)",
+      "finding": "The worker wakes the box before any pre-flight",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1121
+      },
+      "workstream": "social",
+      "phase": "3-cutovers-and-continuity",
+      "kind": "engineering",
+      "canonical_ids": [
+        "SOC-20"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "SOC-21",
+      "severity": "P2",
+      "effort": "M",
+      "area": "Social / Composio → self-hosted (§9)",
+      "finding": "No package-readiness signal between plan approval and fire time",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1122
+      },
+      "workstream": "social",
+      "phase": "3-cutovers-and-continuity",
+      "kind": "engineering",
+      "canonical_ids": [
+        "SOC-21"
+      ],
+      "depends_on": [
+        "SOC-18",
+        "SOC-20"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "SOC-22",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Social / Composio → self-hosted (§9)",
+      "finding": "TikTok and YouTube adapters omit required settings, and TikTok's post id is parsed as a string",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1123
+      },
+      "workstream": "social",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "SOC-22"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "SOC-23",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Social / Composio → self-hosted (§9)",
+      "finding": "`GET /api/browser/social` advertises adapters by name only",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1124
+      },
+      "workstream": "social",
+      "phase": "3-cutovers-and-continuity",
+      "kind": "engineering",
+      "canonical_ids": [
+        "SOC-23"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [
+        "cleanroom-social"
+      ],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "SOC-24",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Social / Composio → self-hosted (§9)",
+      "finding": "Approving a revise card re-queues the identical package with the attempt reset",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1125
+      },
+      "workstream": "social",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "SOC-24"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "SOC-15",
+      "severity": "P3",
+      "effort": "S",
+      "area": "Social / Composio → self-hosted (§9)",
+      "finding": "The eval scorer counts any Composio tool call as social-engage routing evidence",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1126
+      },
+      "workstream": "evals",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "SOC-15"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "SOC-25",
+      "severity": "P3",
+      "effort": "S",
+      "area": "Social / Composio → self-hosted (§9)",
+      "finding": "Backoff, cap deferral and re-queue all overwrite `scheduled_at`",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1127
+      },
+      "workstream": "social",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "SOC-25"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "SOC-26",
+      "severity": "P3",
+      "effort": "S",
+      "area": "Social / Composio → self-hosted (§9)",
+      "finding": "Connection status changes trigger box wakes and gateway restarts from the Connect render path",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1128
+      },
+      "workstream": "social",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "SOC-26"
+      ],
+      "depends_on": [
+        "WZ-10"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "BOX-01",
+      "severity": "P1",
+      "effort": "S",
+      "area": "Box template / fleet (§10)",
+      "finding": "Canonical for the hydration gate (LAT-07, §5, is the same root seen from the message path)",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1129
+      },
+      "workstream": "box-fleet",
+      "phase": "1-first-response-and-lifecycle",
+      "kind": "engineering",
+      "canonical_ids": [
+        "BOX-01"
+      ],
+      "depends_on": [
+        "BOX-03"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "BOX-03",
+      "severity": "P1",
+      "effort": "S",
+      "area": "Box template / fleet (§10)",
+      "finding": "`start_rate` in ops is not a proxy for machine starts at all",
+      "review_verification": "partially confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1130
+      },
+      "workstream": "box-fleet",
+      "phase": "0-instrument-and-stabilize",
+      "kind": "engineering",
+      "canonical_ids": [
+        "BOX-03"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "BOX-18",
+      "severity": "P1",
+      "effort": "S",
+      "area": "Box template / fleet (§10)",
+      "finding": "Fleet sync resumes boxes outside the `boxes.state` machine",
+      "review_verification": "author-verified",
+      "source": {
+        "path": "review.md",
+        "line": 1131
+      },
+      "workstream": "box-fleet",
+      "phase": "1-first-response-and-lifecycle",
+      "kind": "engineering",
+      "canonical_ids": [
+        "BOX-18"
+      ],
+      "depends_on": [
+        "BOX-03"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "BOX-19",
+      "severity": "P1",
+      "effort": "S",
+      "area": "Box template / fleet (§10)",
+      "finding": "The wake loop restarts a still-booting gateway after one failed post-refresh probe",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1132
+      },
+      "workstream": "box-fleet",
+      "phase": "1-first-response-and-lifecycle",
+      "kind": "engineering",
+      "canonical_ids": [
+        "BOX-19"
+      ],
+      "depends_on": [
+        "BOX-03"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "BOX-02",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Box template / fleet (§10)",
+      "finding": "Fleet sync restarts every unit under a live turn",
+      "review_verification": "partially confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1133
+      },
+      "workstream": "box-fleet",
+      "phase": "1-first-response-and-lifecycle",
+      "kind": "engineering",
+      "canonical_ids": [
+        "BOX-02"
+      ],
+      "depends_on": [
+        "CA-04"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "BOX-04",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Box template / fleet (§10)",
+      "finding": "Every cold message issues two `resume` calls (prewarm + `ensureBoxAwake`)",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1134
+      },
+      "workstream": "box-fleet",
+      "phase": "1-first-response-and-lifecycle",
+      "kind": "engineering",
+      "canonical_ids": [
+        "BOX-04"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "BOX-05",
+      "severity": "P2",
+      "effort": "M",
+      "area": "Box template / fleet (§10)",
+      "finding": "`sync-box.sh` builds llama-cpp-python from source, unguarded and non-resumable, inside the single 600 s sync command",
+      "review_verification": "partially confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1135
+      },
+      "workstream": "box-fleet",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "BOX-05"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "BOX-06",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Box template / fleet (§10)",
+      "finding": "`verify-box.sh` gates nothing about OpenViking, task router or learningd",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1136
+      },
+      "workstream": "box-fleet",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "BOX-06"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "BOX-07",
+      "severity": "P2",
+      "effort": "M",
+      "area": "Box template / fleet (§10)",
+      "finding": "Supply chain still floats: `curl | sh` uv, nvm, `npm -g agent-browser`, Daytona `latest`, a GGUF from `resolve/main` with no…",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1137
+      },
+      "workstream": "box-fleet",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "BOX-07"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "BOX-08",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Box template / fleet (§10)",
+      "finding": "Task router runs on every box with `Restart=always` and a q4_k_m GGUF in…",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1138
+      },
+      "workstream": "template-steering",
+      "phase": "0-instrument-and-stabilize",
+      "kind": "engineering",
+      "canonical_ids": [
+        "BOX-08"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [
+        "disable-taskrouter"
+      ],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "BOX-09",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Box template / fleet (§10)",
+      "finding": "Canonical: MEM-03, §4. Fresh forks never run `ovctl ensure` (same root as MEM-03)",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1139
+      },
+      "workstream": "box-fleet",
+      "phase": "2-core-task-and-memory-loop",
+      "kind": "alias",
+      "canonical_ids": [
+        "MEM-03"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "BOX-10",
+      "severity": "P2",
+      "effort": "M",
+      "area": "Box template / fleet (§10)",
+      "finding": "Fleet sync resumes boxes with no start-budget check",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1140
+      },
+      "workstream": "box-fleet",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "BOX-10"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "BOX-11",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Box template / fleet (§10)",
+      "finding": "Canonical: LAT-05, §5. On a cold wake the first health probe fails (the box reports ready before the gateway is up) and the…",
+      "review_verification": "partially confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1141
+      },
+      "workstream": "box-fleet",
+      "phase": "1-first-response-and-lifecycle",
+      "kind": "alias",
+      "canonical_ids": [
+        "LAT-05"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "BOX-12",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Box template / fleet (§10)",
+      "finding": "No hardening, priorities or memory limits on gateway/dashboard/openviking/taskrouter",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1142
+      },
+      "workstream": "box-fleet",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "BOX-12"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "BOX-13",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Box template / fleet (§10)",
+      "finding": "No resident-memory or cold-start telemetry, although three specs require it",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1143
+      },
+      "workstream": "box-fleet",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "BOX-13"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "BOX-20",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Box template / fleet (§10)",
+      "finding": "Sync's `finally` stop can stop a box a user woke mid-sync",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1144
+      },
+      "workstream": "box-fleet",
+      "phase": "1-first-response-and-lifecycle",
+      "kind": "engineering",
+      "canonical_ids": [
+        "BOX-20"
+      ],
+      "depends_on": [
+        "BOX-18"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "BOX-21",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Box template / fleet (§10)",
+      "finding": "The provisioning fork path runs configure, host and skill commands inside the hydration window",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1145
+      },
+      "workstream": "box-fleet",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "BOX-21"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "BOX-22",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Box template / fleet (§10)",
+      "finding": "The fleet wave runs first inside the same 800 s sweep invocation as the C10 draft backstop, version retention, the origin…",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1146
+      },
+      "workstream": "box-fleet",
+      "phase": "1-first-response-and-lifecycle",
+      "kind": "engineering",
+      "canonical_ids": [
+        "BOX-22"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "BOX-23",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Box template / fleet (§10)",
+      "finding": "A desktop-only wake writes `state: 'starting'` without `last_active_at`, so a box asleep for hours still looks stale to the…",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1147
+      },
+      "workstream": "box-fleet",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "BOX-23"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "BOX-14",
+      "severity": "P3",
+      "effort": "S",
+      "area": "Box template / fleet (§10)",
+      "finding": "Template warm step is manual and unrecorded",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1148
+      },
+      "workstream": "box-fleet",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "BOX-14"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "BOX-15",
+      "severity": "P3",
+      "effort": "S",
+      "area": "Box template / fleet (§10)",
+      "finding": "Two Node runtimes and a C++ toolchain ride every fork's snapshot",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1149
+      },
+      "workstream": "box-fleet",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "BOX-15"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "BOX-16",
+      "severity": "P3",
+      "effort": "S",
+      "area": "Box template / fleet (§10)",
+      "finding": "`systemctl restart hermes-host` (a oneshot with a 420 s timeout) inside sync can eat the 600 s budget",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1150
+      },
+      "workstream": "box-fleet",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "BOX-16"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "BOX-17",
+      "severity": "P3",
+      "effort": "S",
+      "area": "Box template / fleet (§10)",
+      "finding": "Alternate environments drift: two hand-copied `HERMES_REF`s (template and template-macos; `release.sh` greps the first),…",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1151
+      },
+      "workstream": "box-fleet",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "BOX-17"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "BOX-24",
+      "severity": "P3",
+      "effort": "S",
+      "area": "Box template / fleet (§10)",
+      "finding": "Provisioning never passes a box size and records none",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1152
+      },
+      "workstream": "box-fleet",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "BOX-24"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "BOX-25",
+      "severity": "P3",
+      "effort": "S",
+      "area": "Box template / fleet (§10)",
+      "finding": "Sync jobs enrol only boxes in `ready` or `stopped` at job creation, but the control plane writes `starting` and `stopping`…",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1153
+      },
+      "workstream": "box-fleet",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "BOX-25"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "CA-01",
+      "severity": "P1",
+      "effort": "S",
+      "area": "Product / cognitive architecture (§11)",
+      "finding": "Two voices answer every owner burst, warm or cold",
+      "review_verification": "partially confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1154
+      },
+      "workstream": "cognitive-architecture",
+      "phase": "1-first-response-and-lifecycle",
+      "kind": "engineering",
+      "canonical_ids": [
+        "CA-01"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [
+        "template-ack"
+      ],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "CA-02",
+      "severity": "P1",
+      "effort": "S",
+      "area": "Product / cognitive architecture (§11)",
+      "finding": "Every new inbound cancels the in-flight reply",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1155
+      },
+      "workstream": "cognitive-architecture",
+      "phase": "2-core-task-and-memory-loop",
+      "kind": "engineering",
+      "canonical_ids": [
+        "CA-02"
+      ],
+      "depends_on": [
+        "LAT-19"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [
+        "explicit-stop"
+      ],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "CA-03",
+      "severity": "P1",
+      "effort": "L",
+      "area": "Product / cognitive architecture (§11)",
+      "finding": "The agent describes instead of does",
+      "review_verification": "partially confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1156
+      },
+      "workstream": "cognitive-architecture",
+      "phase": "2-core-task-and-memory-loop",
+      "kind": "umbrella",
+      "canonical_ids": [
+        "CA-04",
+        "TC-01",
+        "TC-02",
+        "TC-06",
+        "TC-07",
+        "TC-09",
+        "TC-20",
+        "TC-21",
+        "TC-27",
+        "CA-23"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "CA-04",
+      "severity": "P1",
+      "effort": "S",
+      "area": "Product / cognitive architecture (§11)",
+      "finding": "Canonical for opening the `agent_runs` row at `createRun`",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1157
+      },
+      "workstream": "cognitive-architecture",
+      "phase": "0-instrument-and-stabilize",
+      "kind": "engineering",
+      "canonical_ids": [
+        "CA-04"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "CA-05",
+      "severity": "P1",
+      "effort": "M",
+      "area": "Product / cognitive architecture (§11)",
+      "finding": "No progress reporting for long tasks on iMessage",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1158
+      },
+      "workstream": "cognitive-architecture",
+      "phase": "3-cutovers-and-continuity",
+      "kind": "engineering",
+      "canonical_ids": [
+        "CA-05"
+      ],
+      "depends_on": [
+        "CA-08",
+        "TC-06"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "CA-06",
+      "severity": "P1",
+      "effort": "M",
+      "area": "Product / cognitive architecture (§11)",
+      "finding": "Canonical: MEM-06/MEM-16. Prompt budget unbounded",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1159
+      },
+      "workstream": "cognitive-architecture",
+      "phase": "3-cutovers-and-continuity",
+      "kind": "alias",
+      "canonical_ids": [
+        "MEM-06",
+        "MEM-16"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "CA-08",
+      "severity": "P1",
+      "effort": "M",
+      "area": "Product / cognitive architecture (§11)",
+      "finding": "Web chat is a different agent from iMessage",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1160
+      },
+      "workstream": "cognitive-architecture",
+      "phase": "2-core-task-and-memory-loop",
+      "kind": "engineering",
+      "canonical_ids": [
+        "CA-08"
+      ],
+      "depends_on": [
+        "MS-01",
+        "LAT-03",
+        "CA-04"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "CA-17",
+      "severity": "P1",
+      "effort": "M",
+      "area": "Product / cognitive architecture (§11)",
+      "finding": "Canonical: §5 (LAT-02/03/05/09/10)",
+      "review_verification": "confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1161
+      },
+      "workstream": "cognitive-architecture",
+      "phase": "2-core-task-and-memory-loop",
+      "kind": "umbrella",
+      "canonical_ids": [
+        "LAT-02",
+        "LAT-03",
+        "LAT-05",
+        "LAT-09",
+        "LAT-10"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "CA-18",
+      "severity": "P1",
+      "effort": "L",
+      "area": "Product / cognitive architecture (§11)",
+      "finding": "\"Own number\" is provisioned as optional and is a commercial dependency, not a code path",
+      "review_verification": "partially confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1162
+      },
+      "workstream": "product-commercial",
+      "phase": "4-remaining-review-closure",
+      "kind": "commercial",
+      "canonical_ids": [
+        "CA-18"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [
+        "dedicated-paying-lines"
+      ],
+      "external_evidence_needed": [
+        "Photon dedicated-line pricing/capacity and paying-user provisioning commitment"
+      ],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "CA-20",
+      "severity": "P1",
+      "effort": "M",
+      "area": "Product / cognitive architecture (§11)",
+      "finding": "Tier-1 contacts run inside the owner's `air-main` session with no identity or tier in the prompt",
+      "review_verification": "author-verified",
+      "source": {
+        "path": "review.md",
+        "line": 1163
+      },
+      "workstream": "cognitive-architecture",
+      "phase": "2-core-task-and-memory-loop",
+      "kind": "engineering",
+      "canonical_ids": [
+        "CA-20"
+      ],
+      "depends_on": [
+        "CA-08"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "CA-21",
+      "severity": "P1",
+      "effort": "S",
+      "area": "Product / cognitive architecture (§11)",
+      "finding": "A Hermes run failure after the drain silently loses the burst",
+      "review_verification": "author-verified",
+      "source": {
+        "path": "review.md",
+        "line": 1164
+      },
+      "workstream": "cognitive-architecture",
+      "phase": "0-instrument-and-stabilize",
+      "kind": "engineering",
+      "canonical_ids": [
+        "CA-21"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "CA-22",
+      "severity": "P1",
+      "effort": "M",
+      "area": "Product / cognitive architecture (§11)",
+      "finding": "Canonical for session coherence (MEM-24, §4, cross-references it)",
+      "review_verification": "author-verified",
+      "source": {
+        "path": "review.md",
+        "line": 1165
+      },
+      "workstream": "cognitive-architecture",
+      "phase": "2-core-task-and-memory-loop",
+      "kind": "engineering",
+      "canonical_ids": [
+        "CA-22"
+      ],
+      "depends_on": [
+        "CA-04",
+        "CA-08"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [
+        "automation-purpose-sessions"
+      ],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "CA-23",
+      "severity": "P1",
+      "effort": "M",
+      "area": "Product / cognitive architecture (§11)",
+      "finding": "The approval loop is open on both ends",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1166
+      },
+      "workstream": "cognitive-architecture",
+      "phase": "2-core-task-and-memory-loop",
+      "kind": "engineering",
+      "canonical_ids": [
+        "CA-23"
+      ],
+      "depends_on": [
+        "TC-06",
+        "TC-07",
+        "TC-20"
+      ],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "CA-07",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Product / cognitive architecture (§11)",
+      "finding": "Canonical: WEB-02 for the credit exhaustion and silent fallback",
+      "review_verification": "partially confirmed",
+      "source": {
+        "path": "review.md",
+        "line": 1167
+      },
+      "workstream": "cognitive-architecture",
+      "phase": "4-remaining-review-closure",
+      "kind": "alias",
+      "canonical_ids": [
+        "WEB-02"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [
+        "no-personal-key-spend-fallback"
+      ],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "CA-09",
+      "severity": "P2",
+      "effort": "M",
+      "area": "Product / cognitive architecture (§11)",
+      "finding": "Four session namespaces, three memory substrates plus the un-indexed context files (§4.1), three instruction channels",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1168
+      },
+      "workstream": "cognitive-architecture",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "CA-09"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [
+        "automation-purpose-sessions"
+      ],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "CA-10",
+      "severity": "P2",
+      "effort": "M",
+      "area": "Product / cognitive architecture (§11)",
+      "finding": "Canonical: TC-12. Learning plane dark end to end",
+      "review_verification": "cross-reference",
+      "source": {
+        "path": "review.md",
+        "line": 1169
+      },
+      "workstream": "cognitive-architecture",
+      "phase": "3-cutovers-and-continuity",
+      "kind": "alias",
+      "canonical_ids": [
+        "TC-12"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "CA-11",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Product / cognitive architecture (§11)",
+      "finding": "Canonical: BOX-08 for the service",
+      "review_verification": "cross-reference",
+      "source": {
+        "path": "review.md",
+        "line": 1170
+      },
+      "workstream": "template-steering",
+      "phase": "0-instrument-and-stabilize",
+      "kind": "alias",
+      "canonical_ids": [
+        "BOX-08"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [
+        "disable-taskrouter"
+      ],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "CA-12",
+      "severity": "P2",
+      "effort": "M",
+      "area": "Product / cognitive architecture (§11)",
+      "finding": "Proactive behaviour incoherent: no Brief (ARCHITECTURE promises \"Hermes cron → delivery\"), three…",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1171
+      },
+      "workstream": "cognitive-architecture",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "CA-12"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "CA-13",
+      "severity": "P2",
+      "effort": "M",
+      "area": "Product / cognitive architecture (§11)",
+      "finding": "Onboarding hand-off relies on the model guessing the user is \"brand new\"",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1172
+      },
+      "workstream": "cognitive-architecture",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "CA-13"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "CA-14",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Product / cognitive architecture (§11)",
+      "finding": "Email policy diverges from SECURITY-DECISIONS (doc: tier-1 auto-sends; code: holds tier 1 as a draft) and runs without owner…",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1173
+      },
+      "workstream": "cognitive-architecture",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "CA-14"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [
+        "current-email-tiers"
+      ],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "CA-15",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Product / cognitive architecture (§11)",
+      "finding": "Stop/cancel semantics differ on every surface",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1174
+      },
+      "workstream": "cognitive-architecture",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "CA-15"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [
+        "explicit-stop"
+      ],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "CA-16",
+      "severity": "P2",
+      "effort": "M",
+      "area": "Product / cognitive architecture (§11)",
+      "finding": "Canonical: TC-01. `completed` on stream end in all three lanes, including the calendar sweep and email",
+      "review_verification": "cross-reference",
+      "source": {
+        "path": "review.md",
+        "line": 1175
+      },
+      "workstream": "cognitive-architecture",
+      "phase": "4-remaining-review-closure",
+      "kind": "alias",
+      "canonical_ids": [
+        "TC-01"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "CA-24",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Product / cognitive architecture (§11)",
+      "finding": "Cancelled and failed iMessage turns leave no `agent_runs` receipt",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1176
+      },
+      "workstream": "cognitive-architecture",
+      "phase": "0-instrument-and-stabilize",
+      "kind": "alias",
+      "canonical_ids": [
+        "CA-04",
+        "CA-21"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "CA-25",
+      "severity": "P2",
+      "effort": "M",
+      "area": "Product / cognitive architecture (§11)",
+      "finding": "History replay drops every tool row",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1177
+      },
+      "workstream": "cognitive-architecture",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "CA-25"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "CA-26",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Product / cognitive architecture (§11)",
+      "finding": "The Speed & Intelligence knob is inert on the default family (canonical: LAT-18, §5)",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1178
+      },
+      "workstream": "cognitive-architecture",
+      "phase": "4-remaining-review-closure",
+      "kind": "alias",
+      "canonical_ids": [
+        "LAT-18"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [
+        "model-tiers"
+      ],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "CA-27",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Product / cognitive architecture (§11)",
+      "finding": "Schedule and email deliveries bypass the renderer (canonical for the schedule lane: TC-24, §7)",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1179
+      },
+      "workstream": "cognitive-architecture",
+      "phase": "2-core-task-and-memory-loop",
+      "kind": "alias",
+      "canonical_ids": [
+        "TC-24"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "CA-28",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Product / cognitive architecture (§11)",
+      "finding": "Calendar sync is an LLM cron turn every 15 minutes on every awake box",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1180
+      },
+      "workstream": "template-steering",
+      "phase": "0-instrument-and-stabilize",
+      "kind": "engineering",
+      "canonical_ids": [
+        "CA-28"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "CA-29",
+      "severity": "P2",
+      "effort": "M",
+      "area": "Product / cognitive architecture (§11)",
+      "finding": "The eval suite runs against the founder's live production box",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1181
+      },
+      "workstream": "evals",
+      "phase": "2-core-task-and-memory-loop",
+      "kind": "engineering",
+      "canonical_ids": [
+        "CA-29"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "CA-30",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Product / cognitive architecture (§11)",
+      "finding": "First-run experience: `handleOnboarding` consumes the first inbound as the claim and the second as the OTP, neither reaches the…",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1182
+      },
+      "workstream": "cognitive-architecture",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "CA-30"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "CA-31",
+      "severity": "P2",
+      "effort": "S",
+      "area": "Product / cognitive architecture (§11)",
+      "finding": "Owner-tier email is an unconditional autoresponder",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1183
+      },
+      "workstream": "cognitive-architecture",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "CA-31"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [
+        "current-email-tiers"
+      ],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "CA-19",
+      "severity": "P3",
+      "effort": "S",
+      "area": "Product / cognitive architecture (§11)",
+      "finding": "Feature sprawl outpaces the core",
+      "review_verification": "reviewer-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1184
+      },
+      "workstream": "product-freeze",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "CA-19"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [
+        "freeze-surface"
+      ],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "CA-32",
+      "severity": "P3",
+      "effort": "M",
+      "area": "Product / cognitive architecture (§11)",
+      "finding": "`run_approval` is one decision kind carrying four unrelated semantics",
+      "review_verification": "critic-evidenced",
+      "source": {
+        "path": "review.md",
+        "line": 1185
+      },
+      "workstream": "cognitive-architecture",
+      "phase": "4-remaining-review-closure",
+      "kind": "engineering",
+      "canonical_ids": [
+        "CA-32"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [
+        "freeze-surface"
+      ],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    }
+  ]
+}

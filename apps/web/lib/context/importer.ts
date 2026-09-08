@@ -295,9 +295,12 @@ export async function storeImportChunk(
   status.sources[chunk.source].bytes += bytes;
   status.last_upload_at = new Date().toISOString();
   await writeFile(box.boxId, STATUS_PATH, JSON.stringify(status, null, 2));
-  // Deep memory (docs/memory-upgrade.md): make the imported store
-  // semantically searchable box-side. Best-effort, enqueue-only.
-  await deepMemoryIndex(box.boxId, `${IMPORT_DIR}/${chunk.source}`, `${OV_IMPORT_URI}/${chunk.source}`);
+  // Replacing an index while a multi-chunk upload is incomplete cancels
+  // prior indexing and repeatedly embeds the same files. Enqueue once the
+  // extractor confirms this source's final chunk has been durably written.
+  if (chunk.final) {
+    await deepMemoryIndex(box.boxId, `${IMPORT_DIR}/${chunk.source}`, `${OV_IMPORT_URI}/${chunk.source}`);
+  }
   console.log(
     JSON.stringify({
       msg: "agent context chunk stored",

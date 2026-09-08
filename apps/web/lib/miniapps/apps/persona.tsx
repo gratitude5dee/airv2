@@ -243,6 +243,11 @@ function renderOpenVikingSection(
     <div class="mem-stat"><b>${history?.memories.length ?? 0}</b><span>memories</span></div>
     <div class="mem-stat"><b>${esc(humanBytes(status.workspace_bytes))}</b><span>workspace</span></div>
   </div>
+  <p class="muted">${status.pending == null
+    ? "Indexing progress unavailable."
+    : status.pending > 0
+      ? `${status.pending} resources awaiting indexing. Recall may be incomplete; unfinished work retries automatically.`
+      : "No indexing work pending."}</p>
   ${list}
 </section>`;
 }

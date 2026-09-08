@@ -187,6 +187,7 @@ interface DeepMemoryState {
   healthy: boolean;
   resources: number;
   workspace_bytes: number;
+  pending: number | null;
 }
 
 /** Deep memory (docs/memory-upgrade.md): live status of the box-local
@@ -232,8 +233,8 @@ function DeepMemoryCard() {
       if (res.status === 503) setNote(BUSY_NOTE);
       else if (!res.ok) setNote("Reindex failed.");
       else {
-        setNote("Reindexed.");
-        void load();
+        await load();
+        setNote("Reindex queued. Refresh to check progress.");
       }
     } catch {
       setNote("Reindex failed.");
@@ -260,6 +261,13 @@ function DeepMemoryCard() {
             {state.healthy ? "Running" : "Not running — recall degraded"} ·{" "}
             {state.resources} indexed{" "}
             {state.resources === 1 ? "resource" : "resources"}
+          </p>
+          <p className="m-0 text-[12px]" role="status">
+            {state.pending == null
+              ? "Indexing progress unavailable."
+              : state.pending > 0
+                ? `${state.pending} ${state.pending === 1 ? "resource" : "resources"} awaiting indexing. Recall may be incomplete; unfinished work retries automatically.`
+                : "No indexing work pending."}
           </p>
           <div className="flex flex-wrap gap-2">
             <DitherButton color="blue" disabled={busy} onClick={() => void reindex()}>

@@ -19,7 +19,9 @@ search the directory and hand back the link.
 ## Search
 
 ```bash
-set -a; . ~/.hermes/.env; set +a
+# Read only the gateway settings as data; never execute the environment file.
+OPENAI_BASE_URL="$(grep -m1 '^OPENAI_BASE_URL=' ~/.hermes/.env | cut -d= -f2-)"
+OPENAI_API_KEY="$(grep -m1 '^OPENAI_API_KEY=' ~/.hermes/.env | cut -d= -f2-)"
 BASE="${OPENAI_BASE_URL%/api/gateway/v1}"
 curl -fsS "$BASE/api/store/search?q=<keywords>" \
   -H "Authorization: Bearer $OPENAI_API_KEY"

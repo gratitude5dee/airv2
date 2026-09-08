@@ -1085,7 +1085,7 @@ function stepBody(
     const statusLine =
       ingest && ingest.chunks > 0
         ? `<p>Ingested <strong>${ingest.messages.toLocaleString("en-US")}</strong> messages${ingest.last_upload_at ? ` (last upload ${esc(ingest.last_upload_at.slice(0, 10))})` : ""} — they live on your agent's computer, never on the platform.</p>`
-        : `<p class="muted">Your iMessage history lives only on your Mac. Run one command there to copy recent messages to your agent's computer as personal context.</p>`;
+        : `<p class="muted">Your iMessage history lives only on your Mac. Run one command there to copy the last 365 days to your agent's computer as personal context. Add a different number of days after the upload ticket to change the window.</p>`;
     const pluginLine =
       snapshot.pluginSessions > 0
         ? `<p class="muted">WZRD ChatGPT/Claude plugin: ${snapshot.pluginSessions} active session${snapshot.pluginSessions === 1 ? "" : "s"}.</p>`

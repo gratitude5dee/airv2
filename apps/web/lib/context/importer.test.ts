@@ -7,6 +7,7 @@
  * metadata-only fields.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { deepMemoryIndex } from "../memory/deep";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 const boxFiles = new Map<string, string>();
@@ -69,6 +70,7 @@ const supabase = {
 const STATUS_PATH = ".hermes/context/agent-import/status.json";
 
 beforeEach(() => {
+  vi.mocked(deepMemoryIndex).mockClear();
   boxFiles.clear();
   createRunMock.mockClear();
   insertMock.mockClear();
@@ -153,6 +155,21 @@ describe("parseImportChunk", () => {
 });
 
 describe("storeImportChunk", () => {
+  it("indexes a complete source once, after all chunks are stored", async () => {
+    await storeImportChunk(supabase, "user-1", {
+      source: "codex", files: [{ path: "a.jsonl", content: "first" }], final: false,
+    });
+    expect(deepMemoryIndex).not.toHaveBeenCalled();
+    await storeImportChunk(supabase, "user-1", {
+      source: "codex", files: [{ path: "b.jsonl", content: "last" }], final: true,
+    });
+    expect(boxFiles.get(".hermes/context/agent-import/codex/a.jsonl")).toBe("first");
+    expect(boxFiles.get(".hermes/context/agent-import/codex/b.jsonl")).toBe("last");
+    expect(deepMemoryIndex).toHaveBeenCalledExactlyOnceWith(
+      "box-1", ".hermes/context/agent-import/codex", "viking://resources/context/agent-import/codex",
+    );
+  });
+
   it("writes content into the box only and bumps per-source counters", async () => {
     const status = await storeImportChunk(supabase, "user-1", {
       source: "codex",

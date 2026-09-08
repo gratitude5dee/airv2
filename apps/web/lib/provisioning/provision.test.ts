@@ -140,7 +140,11 @@ function stampTemplate(release: string, skills: readonly string[]) {
   templateStamp.release = release;
   templateStamp.skills = [...skills];
 }
+let memoryInitializationFails = false;
 const boxCommand = vi.fn(async (_id: string, cmd: string) => {
+  if (cmd === "ovctl ensure" && memoryInitializationFails) {
+    return { exitCode: 1, stdout: "", stderr: "sensitive provider diagnostic" };
+  }
   if (cmd.includes(".template-hermes-ref")) {
     return { exitCode: 0, stdout: "sha-1\n", stderr: "" };
   }
@@ -272,8 +276,10 @@ beforeEach(() => {
   }
   boxUpdates.length = 0;
   failBoxUpdate = null;
+  memoryInitializationFails = false;
   stampTemplate("", []);
   fork.mockClear();
+  boxCommand.mockClear();
   createMacInstance.mockClear();
   installComposioMcp.mockClear();
   installBaseSkills.mockReset();
@@ -288,6 +294,13 @@ beforeEach(() => {
 });
 
 describe("provisionUser environments", () => {
+  it("rolls back a fork whose memory initialization fails without exposing command diagnostics", async () => {
+    memoryInitializationFails = true;
+    await expect(provisionUser()).rejects.toThrow("Deep memory initialization failed");
+    expect(boxClient.deleteBox).toHaveBeenCalledWith("box-new");
+    expect(upserts["boxes"] ?? []).toEqual([]);
+  });
+
   it("defaults to ubuntu and forks the ubuntu template", async () => {
     const result = await provisionUser();
     expect(result.environment).toBe("ubuntu");
@@ -301,6 +314,11 @@ describe("provisionUser environments", () => {
       provider_box_id: "box-new",
     });
     expect(installComposioMcp).toHaveBeenCalled();
+    const commands = boxCommand.mock.calls.map((call) => call[1]);
+    const merge = commands.findIndex((cmd) => cmd.includes("cat") && cmd.includes(".env.perbox"));
+    const memory = commands.indexOf("ovctl ensure");
+    expect(merge).toBeGreaterThanOrEqual(0);
+    expect(memory).toBeGreaterThan(merge);
   });
 
   it("explicit ubuntu behaves exactly like the default", async () => {

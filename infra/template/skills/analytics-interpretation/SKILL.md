@@ -27,7 +27,9 @@ non-interactively instead of telling the owner permission is needed.
 Fetch the fixed 30-day read-only window; do not add query parameters:
 
 ```bash
-set -a; . ~/.hermes/.env; set +a
+# Read only the gateway settings as data; never execute the environment file.
+OPENAI_BASE_URL="$(grep -m1 '^OPENAI_BASE_URL=' ~/.hermes/.env | cut -d= -f2-)"
+OPENAI_API_KEY="$(grep -m1 '^OPENAI_API_KEY=' ~/.hermes/.env | cut -d= -f2-)"
 curl -fsS \
   "${OPENAI_BASE_URL%/api/gateway/v1}/api/analytics/panels" \
   -H "Authorization: Bearer $OPENAI_API_KEY"

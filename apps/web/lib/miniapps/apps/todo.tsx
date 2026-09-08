@@ -1,5 +1,6 @@
 /** To-Do mini-app renderer (extracted from the M7.5 monolith, MA1). */
 import { NextResponse } from "next/server";
+import { StateBusyError } from "../stateLease";
 import { StartLimitError } from "@/lib/orchestrator/boxes";
 import { externalOrigin } from "../gates";
 import { esc, withBaseHeaders } from "../html";
@@ -47,6 +48,16 @@ export const todo: MiniAppModule = {
         ctx.session.resourceId
       );
     } catch (error) {
+      if (error instanceof StateBusyError) {
+        const response = shellHtml(renderShell({
+          title: "Edit in progress",
+          kicker: "Tasks",
+          body: '<section class="panel"><p>Another edit is still saving. Your change was not saved. Please try again in a moment.</p></section>',
+          lite: ctx.session.via === "card",
+        }));
+        response.headers.set("Retry-After", "1");
+        return new NextResponse(response.body, { status: 503, headers: response.headers });
+      }
       if (error instanceof StartLimitError) {
         return unavailable(ctx.session.via === "card");
       }
@@ -83,6 +94,16 @@ export const todo: MiniAppModule = {
         );
       }
     } catch (error) {
+      if (error instanceof StateBusyError) {
+        const response = shellHtml(renderShell({
+          title: "Edit in progress",
+          kicker: "Tasks",
+          body: '<section class="panel"><p>Another edit is still saving. Your change was not saved. Please try again in a moment.</p></section>',
+          lite: ctx.session.via === "card",
+        }));
+        response.headers.set("Retry-After", "1");
+        return new NextResponse(response.body, { status: 503, headers: response.headers });
+      }
       if (error instanceof StartLimitError) {
         return unavailable(ctx.session.via === "card");
       }

@@ -12,7 +12,7 @@
  * `disconnectOnairos`, `onairosStatus`.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { command, readFile, writeFile } from "@/lib/box/client";
+import { BoxApiError, command, readFile, writeFile } from "@/lib/box/client";
 import { shellQuote } from "@/lib/box/shell";
 import { env } from "@/lib/env";
 import {
@@ -36,7 +36,7 @@ import {
   deepMemoryIndex,
   OV_ONAIROS_URI,
 } from "@/lib/memory/deep";
-import { USER_PROFILE_PATH } from "@/lib/memory/files";
+import { USER_PROFILE_CHAR_LIMIT, USER_PROFILE_PATH } from "@/lib/memory/files";
 import { ONAIROS_PROVIDER, ONAIROS_TOOLKIT } from "./ids";
 
 const PROVIDER = ONAIROS_PROVIDER;
@@ -165,6 +165,16 @@ async function writeContext(
   syncedAtInput?: string
 ): Promise<void> {
   const syncedAt = syncedAtInput ?? new Date().toISOString();
+  // Validate the hot-memory update before changing any stored persona or grant.
+  // An unreadable profile is never an empty profile.
+  const user = await readFile(boxId, USER_PROFILE_PATH).catch((error: unknown) => {
+    if (error instanceof BoxApiError && error.status === 404) return "";
+    throw error;
+  });
+  const updated = upsertPersonaBlock(user, personaBlock(persona, syncedAt));
+  if (updated.length > USER_PROFILE_CHAR_LIMIT) {
+    throw new OnairosError("Owner profile is full. Shorten it before syncing personal context.", 409);
+  }
   const mkdir = await command(boxId, "mkdir -p .hermes/context");
   if (mkdir.exitCode !== 0) throw new OnairosError("box write failed", 502);
   await writeFile(boxId, ONAIROS_MD_PATH, contextMarkdown(persona, syncedAt));
@@ -179,11 +189,7 @@ async function writeContext(
     JSON.stringify({ apiUrl: handoff.apiUrl, token: handoff.token })
   );
   await command(boxId, `chmod 600 ${shellQuote(ONAIROS_GRANT_PATH)}`);
-  // USER.md carries a compact persona digest (the onairos-hermes-mcp shape:
-  // archetype, ranked traits, summary, growth areas, platforms) so the agent
-  // is personalized from the first message — replaced wholesale on re-sync.
-  const user = await readFile(boxId, USER_PROFILE_PATH).catch(() => "");
-  const updated = upsertPersonaBlock(user, personaBlock(persona, syncedAt));
+  // The bounded digest points to full context and replaces only our block.
   if (updated !== user) {
     await command(boxId, "mkdir -p .hermes/memories");
     await writeFile(boxId, USER_PROFILE_PATH, updated);

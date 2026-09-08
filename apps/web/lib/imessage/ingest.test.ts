@@ -14,16 +14,20 @@ const boxFiles = new Map<string, string>();
 vi.mock("../env", () => ({
   env: { miniappSigningKey: () => "test-signing-key" },
 }));
-vi.mock("../box/client", () => ({
+vi.mock("../box/client", async (importOriginal) => {
+  const { BoxApiError } = await importOriginal<typeof import("../box/client")>();
+  return {
+  BoxApiError,
   readFile: vi.fn(async (_boxId: string, path: string) => {
     const value = boxFiles.get(path);
-    if (value === undefined) throw new Error("not found");
+    if (value === undefined) throw new BoxApiError(404, "not found");
     return value;
   }),
   writeFile: vi.fn(async (_boxId: string, path: string, content: string) => {
     boxFiles.set(path, content);
   }),
-}));
+  };
+});
 vi.mock("../orchestrator/boxes", () => ({
   ensureBoxAwake: vi.fn(async () => ({ boxId: "box-1", target: "target-1" })),
 }));
@@ -37,9 +41,13 @@ import {
   verifyIngestTicket,
 } from "./ingest";
 
-const supabase = {} as SupabaseClient;
+const supabase = { rpc: async () => ({ data: true, error: null }) } as unknown as SupabaseClient;
+import { readFile, writeFile } from "../box/client";
+vi.mock("./archiveMigrateStore", () => ({ migrateLegacyArchive: vi.fn(async () => undefined) }));
+vi.mock("./archiveWrite", () => ({ writeArchiveFile: (box: string, path: string, content: string) => writeFile(box, path, content) }));
+vi.mock("../memory/deep", () => ({ deepMemoryIndex: vi.fn(async () => true), OV_IMESSAGE_URI: "viking://resources/context/imessage-history" }));
 
-beforeEach(() => boxFiles.clear());
+beforeEach(() => { boxFiles.clear(); vi.clearAllMocks(); });
 
 describe("ingest tickets", () => {
   it("round-trips for the minting user", () => {
@@ -107,6 +115,22 @@ describe("parseChunk", () => {
     expect(chunk.from_date).toBe("a");
   });
 
+  it("preserves stable extractor message and thread identities", () => {
+    const parsed = parseChunk({ messages: [{ ...message, id: "message-guid", chat_id: "chat-guid" }] });
+    expect(parsed.messages[0]).toMatchObject({ id: "message-guid", chat_id: "chat-guid" });
+  });
+
+  it("preserves a complete thread catalogue including duplicate display labels", () => {
+    const threads = [{ id: "one", label: "Friends" }, { id: "two", label: "Friends" }];
+    expect(parseChunk({ messages: [message], threads }).threads).toEqual(threads);
+  });
+
+  it.each([null, {}, [{ id: "", label: "Friends" }], [{ id: "one", label: 3 }]])(
+    "rejects malformed thread catalogues: %s", (threads) => {
+      expect(() => parseChunk({ messages: [message], threads })).toThrow(IngestInputError);
+    }
+  );
+
   it("rejects non-objects, empty arrays, and bad message shapes", () => {
     expect(() => parseChunk(null)).toThrow(IngestInputError);
     expect(() => parseChunk({ messages: [] })).toThrow(IngestInputError);
@@ -135,26 +159,72 @@ describe("storeChunk / readIngestStatus", () => {
     to_date: "2026-08-18",
   };
 
-  it("writes chunk + status into the box and accumulates counts", async () => {
+  it("writes thread history and derives counts without duplicating retried uploads", async () => {
     let status = await storeChunk(supabase, "user-1", chunk);
     expect(status.chunks).toBe(1);
     expect(status.messages).toBe(1);
     status = await storeChunk(supabase, "user-1", chunk);
-    expect(status.chunks).toBe(2);
-    expect(status.messages).toBe(2);
-    expect(status.from_date).toBe("2026-05-01");
+    expect(status.chunks).toBe(1);
+    expect(status.messages).toBe(1);
+    expect(status.from_date).toBe("2026-08-18T12:00:00.000Z");
     const paths = [...boxFiles.keys()];
     expect(paths).toContain(".hermes/context/imessage-history/status.json");
     expect(
-      paths.filter((p) => p.includes("/chunk-")).length
-    ).toBeGreaterThanOrEqual(1);
+      paths.filter((p) => p.endsWith(".md")).length
+    ).toBe(1);
     const read = await readIngestStatus(supabase, "user-1");
-    expect(read.messages).toBe(2);
+    expect(read.messages).toBe(1);
   });
 
   it("returns the default status when nothing was uploaded", async () => {
     const status = await readIngestStatus(supabase, "user-1");
     expect(status.chunks).toBe(0);
     expect(status.last_upload_at).toBeNull();
+  });
+
+  it("serializes overlapping uploads without losing either message", async () => {
+    let holder: string | null = null;
+    let denied = 0;
+    const leases = { rpc: async (name: string, args: { p_holder: string; p_app: string; p_resource: string }) => {
+      expect(args.p_app).toBe("imessage");
+      expect(args.p_resource).toBe("archive");
+      if (name === "miniapp_state_release") {
+        if (holder === args.p_holder) holder = null;
+        return { data: true, error: null };
+      }
+      if (holder && holder !== args.p_holder) {
+        denied++;
+        return { data: false, error: null };
+      }
+      holder = args.p_holder;
+      return { data: true, error: null };
+    } } as unknown as SupabaseClient;
+    const second = { ...chunk, messages: [{ ...chunk.messages[0]!, text: "second message" }] };
+    const results = await Promise.all([
+      storeChunk(leases, "user-1", chunk),
+      storeChunk(leases, "user-1", second),
+    ]);
+    expect(denied).toBeGreaterThan(0);
+    expect(results.map((result) => result.messages).sort()).toEqual([1, 2]);
+    expect((await readIngestStatus(supabase, "user-1")).messages).toBe(2);
+    const markdown = [...boxFiles.entries()].find(([path]) => path.endsWith(".md"))?.[1];
+    expect(markdown).toContain("hello");
+    expect(markdown).toContain("second message");
+    expect(holder).toBeNull();
+  });
+
+  it.each(["{broken", "null", '{"chunks":-1,"messages":2}', '{"chunks":1,"messages":"2"}'])(
+    "does not reset or write over invalid status: %s", async (content) => {
+      boxFiles.set(".hermes/context/imessage-history/status.json", content);
+      await expect(storeChunk(supabase, "user-1", chunk)).rejects.toThrow();
+      await expect(readIngestStatus(supabase, "user-1")).rejects.toThrow();
+      expect(writeFile).not.toHaveBeenCalled();
+    }
+  );
+
+  it("preserves status when its read fails", async () => {
+    vi.mocked(readFile).mockRejectedValueOnce(new Error("offline"));
+    await expect(storeChunk(supabase, "user-1", chunk)).rejects.toThrow("offline");
+    expect(writeFile).not.toHaveBeenCalled();
   });
 });

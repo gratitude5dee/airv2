@@ -22,6 +22,9 @@ import { writeStatusMirror } from "@/lib/miniapps/onboardingMirror";
 import { armStopAfter, StartLimitError } from "@/lib/orchestrator/boxes";
 import { serviceClient } from "@/lib/supabase";
 import { env } from "@/lib/env";
+import { readUploadBody, UploadTooLargeError } from "@/lib/imessage/uploadBody";
+import { StateBusyError } from "@/lib/miniapps/stateLease";
+import { ArchiveMigrationError } from "@/lib/imessage/archiveMigrateStore";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -68,12 +71,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       { status: 401, headers: NO_STORE }
     );
   }
-  const raw = await request.text();
-  if (raw.length > MAX_CHUNK_BYTES) {
-    return NextResponse.json(
-      { error: "upload too large — chunk it" },
-      { status: 413, headers: NO_STORE }
-    );
+  let raw: string;
+  try {
+    raw = await readUploadBody(request, MAX_CHUNK_BYTES);
+  } catch (error) {
+    if (error instanceof UploadTooLargeError) {
+      return NextResponse.json(
+        { error: "upload too large — chunk it" },
+        { status: 413, headers: NO_STORE }
+      );
+    }
+    return NextResponse.json({ error: "could not read upload" }, { status: 400, headers: NO_STORE });
   }
   let body: unknown;
   try {
@@ -96,6 +104,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         { error: error.message },
         { status: 400, headers: NO_STORE }
       );
+    }
+    if (error instanceof StateBusyError) {
+      return NextResponse.json({ error: "Another archive upload is in progress; retry shortly." },
+        { status: 503, headers: { ...NO_STORE, "Retry-After": "2" } });
+    }
+    if (error instanceof ArchiveMigrationError) {
+      return NextResponse.json({ error: error.message }, { status: 409, headers: NO_STORE });
     }
     if (error instanceof StartLimitError) return busy();
     return NextResponse.json(

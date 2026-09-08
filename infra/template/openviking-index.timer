@@ -1,0 +1,10 @@
+[Unit]
+Description=Retry pending deep-memory indexing after startup and failures
+
+[Timer]
+OnBootSec=15s
+OnUnitInactiveSec=15s
+Unit=openviking-index.service
+
+[Install]
+WantedBy=timers.target

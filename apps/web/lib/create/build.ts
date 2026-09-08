@@ -676,7 +676,10 @@ function resolveSandboxFile(target: string): string | null {
 }
 
 function writeSandbox(files: WorkspaceFile[]): string {
-  const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "air-build-"));
+  // esbuild resolves symlinks (including macOS /var -> /private/var).
+  // Compare imports against the same physical root without weakening the
+  // workspace containment policy.
+  const sandbox = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "air-build-")));
   for (const file of files) {
     const dest = path.join(sandbox, ...file.path.split("/"));
     if (!within(sandbox, dest)) continue;
@@ -865,8 +868,9 @@ export async function compileWorkspace(
 
   const version = options.version ?? `v${Date.now()}`;
   const vendor = vendorPackageNames();
-  const nodeModules = await ensureVendorExtracted();
-  const restrictedDir = options.restricted === false ? null : await ensureRestrictedExtracted();
+  const nodeModules = fs.realpathSync(await ensureVendorExtracted());
+  const extractedRestricted = options.restricted === false ? null : await ensureRestrictedExtracted();
+  const restrictedDir = extractedRestricted === null ? null : fs.realpathSync(extractedRestricted);
   const sandbox = writeSandbox(files);
   const state: KitPluginState = {
     findings: [],

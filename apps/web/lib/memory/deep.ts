@@ -24,6 +24,8 @@ export interface DeepMemoryStatus {
   healthy: boolean;
   resources: number;
   workspace_bytes: number;
+  /** Null means this box could not report its durable queue. */
+  pending: number | null;
 }
 
 function parseJson(stdout: string): Record<string, unknown> | null {
@@ -44,11 +46,14 @@ export async function deepMemoryStatus(
     resources: typeof doc?.["resources"] === "number" ? doc["resources"] : 0,
     workspace_bytes:
       typeof doc?.["workspace_bytes"] === "number" ? doc["workspace_bytes"] : 0,
+    pending:
+      typeof doc?.["pending"] === "number" && Number.isSafeInteger(doc["pending"]) && doc["pending"] >= 0
+        ? doc["pending"] : null,
   };
 }
 
 /** Index a box-local file/dir at a stable URI. Enqueue-only (`--no-wait`):
- * the server keeps indexing after the command returns, so callers on a
+ * the box persists work for its indexing worker, so callers on a
  * request path never stall behind embedding work. Best-effort: failures are
  * swallowed after a metadata-only log line (no path contents, no memory). */
 export async function deepMemoryIndex(
@@ -99,13 +104,13 @@ export async function deepMemoryForget(
   }
 }
 
-/** Re-render ov.conf from the box's .env and re-index the onboarding context
- * (imessage-history/ + onairos.md). Owner-triggered from Settings. */
+/** Re-render ov.conf and durably enqueue the imported context for indexing.
+ * Success acknowledges the queue; status reports unfinished work. */
 export async function deepMemoryReindex(boxId: string): Promise<boolean> {
   try {
     const ensure = await command(boxId, "ovctl ensure", 180);
     if (ensure.exitCode !== 0) return false;
-    const result = await command(boxId, "ovctl reindex", OVCTL_TIMEOUT_SECONDS);
+    const result = await command(boxId, "ovctl reindex", OVCTL_ENQUEUE_TIMEOUT_SECONDS);
     return result.exitCode === 0;
   } catch {
     return false;

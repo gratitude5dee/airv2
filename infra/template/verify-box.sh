@@ -6,6 +6,7 @@
 set -uo pipefail
 
 HOME_DIR="${HOME:-/home/user}"
+TEMPLATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FAILED=0
 
 check() {
@@ -20,6 +21,7 @@ check() {
 }
 
 check "soul-identity" grep -q '^## You are air' "$HOME_DIR/.hermes/SOUL.md"
+check "soul-managed-current" python3 "$TEMPLATE_DIR/manage-soul.py" "$HOME_DIR/.hermes/SOUL.md" --check
 check "air-vault" command -v air-vault
 check "open-miniapp-card" command -v open-miniapp-card
 check "air-create" command -v air-create

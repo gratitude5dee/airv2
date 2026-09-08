@@ -156,6 +156,12 @@ export interface CaseResult {
   /** Concatenated message.delta text, falling back to run.completed output. */
   output: string;
   elapsed_ms: number;
+  /** Start request through stream termination; excludes stop, settle and ledger reads. */
+  agent_ms?: number;
+  /** First nonempty streamed delta from request start; null if none was observed. */
+  ttft_ms?: number | null;
+  /** Configured evidence reconciliation delay, kept separate from agent time. */
+  settle_ms?: number;
   /** The agent_runs row the control plane opened for this run. */
   run_row: AgentRunRow | null;
   /** Every agent_runs row in the window (chat row plus gateway_completion metering rows). */

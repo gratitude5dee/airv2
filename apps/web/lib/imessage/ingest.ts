@@ -10,9 +10,13 @@
  */
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { readFile, writeFile } from "../box/client";
+import { BoxApiError, readFile } from "../box/client";
 import { asRecord } from "../records";
-import { deepMemoryIndex, OV_IMESSAGE_URI } from "../memory/deep";
+import { withStateLease } from "../miniapps/stateLease";
+import { migrateLegacyArchive } from "./archiveMigrateStore";
+import { storeArchiveMessages } from "./archiveStore";
+import { writeArchiveFile } from "./archiveWrite";
+import { archivePartition } from "./archive";
 import { ensureBoxAwake } from "../orchestrator/boxes";
 import { env } from "../env";
 
@@ -82,6 +86,8 @@ export function verifyIngestTicket(token: string): IngestTicketClaims | null {
 }
 
 export interface IngestMessage {
+  id?: string;
+  chat_id?: string;
   ts: string;
   chat: string;
   from: string;
@@ -90,6 +96,7 @@ export interface IngestMessage {
 }
 
 export interface IngestChunk {
+  threads?: Array<{ id: string; label: string }>;
   messages: IngestMessage[];
   /** Extractor-reported range, echoed into the status document. */
   from_date?: string;
@@ -104,10 +111,24 @@ export function parseChunk(raw: unknown): IngestChunk {
     throw new IngestInputError("body must be a JSON object");
   }
   const doc = raw as {
+    threads?: unknown;
     messages?: unknown;
     from_date?: unknown;
     to_date?: unknown;
   };
+  let threads: IngestChunk["threads"];
+  if (doc.threads !== undefined) {
+    if (!Array.isArray(doc.threads) || doc.threads.length > 20_000) {
+      throw new IngestInputError("threads must be an array with at most 20000 entries");
+    }
+    threads = doc.threads.map((entry: unknown) => {
+      const thread = asRecord(entry);
+      if (!thread || typeof thread["id"] !== "string" || !thread["id"] || typeof thread["label"] !== "string") {
+        throw new IngestInputError("each thread needs a nonempty id and a label");
+      }
+      return { id: thread["id"], label: thread["label"] };
+    });
+  }
   if (!Array.isArray(doc.messages)) {
     throw new IngestInputError("messages must be an array");
   }
@@ -136,16 +157,22 @@ export function parseChunk(raw: unknown): IngestChunk {
         "each message needs ts, chat, from, is_from_me, text"
       );
     }
-    messages.push({
+    const message: IngestMessage = {
+      ...(typeof m["id"] === "string" && m["id"] ? { id: m["id"] } : {}),
+      ...(typeof m["chat_id"] === "string" && m["chat_id"] ? { chat_id: m["chat_id"] } : {}),
       ts: m["ts"],
       chat: m["chat"],
       from: m["from"],
       is_from_me: m["is_from_me"],
       text: m["text"],
-    });
+    };
+    try { archivePartition(message); }
+    catch { throw new IngestInputError("each message needs a valid timestamp and thread identity"); }
+    messages.push(message);
   }
   return {
     messages,
+    ...(threads ? { threads } : {}),
     ...(typeof doc.from_date === "string" ? { from_date: doc.from_date } : {}),
     ...(typeof doc.to_date === "string" ? { to_date: doc.to_date } : {}),
   };
@@ -188,10 +215,21 @@ export async function readIngestStatus(
   userId: string
 ): Promise<IngestStatus> {
   const box = await ensureBoxAwake(supabase, userId);
+  return readBoxIngestStatus(box.boxId);
+}
+
+async function readBoxIngestStatus(boxId: string): Promise<IngestStatus> {
   try {
-    return normalizeIngestStatus(JSON.parse(await readFile(box.boxId, STATUS_PATH)));
-  } catch {
-    return defaultStatus();
+    const raw: unknown = JSON.parse(await readFile(boxId, STATUS_PATH));
+    const doc = asRecord(raw);
+    if (!doc || !Number.isSafeInteger(doc["chunks"]) || Number(doc["chunks"]) < 0 ||
+        !Number.isSafeInteger(doc["messages"]) || Number(doc["messages"]) < 0) {
+      throw new Error("Invalid iMessage archive status");
+    }
+    return normalizeIngestStatus(doc);
+  } catch (error) {
+    if (error instanceof BoxApiError && error.status === 404) return defaultStatus();
+    throw error;
   }
 }
 
@@ -201,40 +239,18 @@ export async function storeChunk(
   userId: string,
   chunk: IngestChunk
 ): Promise<IngestStatus> {
-  const box = await ensureBoxAwake(supabase, userId);
-  let status = defaultStatus();
-  try {
-    status = normalizeIngestStatus(JSON.parse(await readFile(box.boxId, STATUS_PATH)));
-  } catch {
-    // first upload
-  }
-  const stamp = Date.now();
-  const chunkPath = `${HISTORY_DIR}/chunk-${stamp}.json`;
-  await writeFile(box.boxId, chunkPath, JSON.stringify(chunk.messages));
-  status.chunks += 1;
-  status.messages += chunk.messages.length;
-  status.last_upload_at = new Date(stamp).toISOString();
-  if (chunk.from_date) status.from_date = chunk.from_date;
-  if (chunk.to_date) status.to_date = chunk.to_date;
-  await writeFile(box.boxId, STATUS_PATH, JSON.stringify(status, null, 2));
-  // Deep memory (docs/memory-upgrade.md): make the chunk semantically
-  // searchable in the box-local OpenViking store. Runs after the durable
-  // chunk + status writes and is best-effort — a slow or degraded
-  // deep-memory layer never fails or double-counts an upload; `ovctl
-  // reindex` re-adds the whole directory at its stable URI later.
-  await deepMemoryIndex(
-    box.boxId,
-    chunkPath,
-    `${OV_IMESSAGE_URI}/chunk-${stamp}`
-  );
-  console.log(
-    JSON.stringify({
-      msg: "imessage history chunk stored",
-      user_id: userId,
-      box_id: box.boxId,
-      messages: chunk.messages.length,
-      chunks_total: status.chunks,
-    })
-  );
-  return status;
+  return withStateLease(supabase, userId, "imessage", "archive", {}, async (boxId, renew) => {
+    await readBoxIngestStatus(boxId);
+    await migrateLegacyArchive(boxId, chunk.threads ?? [], renew);
+    const archive = await storeArchiveMessages(boxId, chunk.messages, renew);
+    const status: IngestStatus = {
+      chunks: archive.partitions,
+      messages: archive.messages,
+      last_upload_at: new Date().toISOString(),
+      from_date: archive.from || null,
+      to_date: archive.to || null,
+    };
+    await writeArchiveFile(boxId, STATUS_PATH, JSON.stringify(status), renew);
+    return status;
+  });
 }

@@ -74,7 +74,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           { status: 502, headers: NO_STORE }
         );
       }
-      return NextResponse.json({ ok: true }, { headers: NO_STORE });
+      return NextResponse.json({ ok: true, queued: true }, { status: 202, headers: NO_STORE });
     } finally {
       await armStopAfter(supabase, userId).catch(() => undefined);
     }

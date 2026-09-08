@@ -53,7 +53,9 @@ Then file the matching control-plane decision in the same turn, so the
 owner sees it in Needs you and not only in their Link app:
 
 ```bash
-set -a; . ~/.hermes/.env; set +a
+# Read only the gateway settings as data; never execute the environment file.
+OPENAI_BASE_URL="$(grep -m1 '^OPENAI_BASE_URL=' ~/.hermes/.env | cut -d= -f2-)"
+OPENAI_API_KEY="$(grep -m1 '^OPENAI_API_KEY=' ~/.hermes/.env | cut -d= -f2-)"
 curl -fsS -X POST \
   "${OPENAI_BASE_URL%/api/gateway/v1}/api/miniapps/commerce" \
   -H "Authorization: Bearer $OPENAI_API_KEY" \

@@ -695,6 +695,15 @@ async function configureCompute(
     throw new Error(`env merge failed: ${mergeResult.stderr}`);
   }
 
+  // Forks inherit a template-time OpenViking config with placeholder keys.
+  // Configure and check memory using the just-written per-instance credentials.
+  if (kindFor(environment) === "box") {
+    const memory = await runCommand(target, "ovctl ensure", 180);
+    if (memory.exitCode !== 0) {
+      throw new Error("Deep memory initialization failed");
+    }
+  }
+
   // Hermes resolves the custom provider's credential from model.api_key in
   // config.yaml (credential_pool seeds "model_config" when provider=custom
   // and base_url matches) — the value is the box's GATEWAY_TOKEN, never a

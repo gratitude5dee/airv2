@@ -8,8 +8,12 @@ Type=simple
 User=user
 WorkingDirectory=/home/user/.openviking
 # ov.conf binds 127.0.0.1 only — the MCP/REST surface never leaves the box
-# (C4: memory is content; it has no network path out).
+# Persona abstracts use the inference gateway; the server itself is loopback-only.
+ExecStartPre=/usr/local/bin/ovctl ensure --configure-only
 ExecStart=/home/user/.openviking-venv/bin/openviking-server --config /home/user/.openviking/ov.conf
+# Dispatch without waiting: the worker's After= ordering starts it once this
+# unit finishes starting. Waiting here would deadlock those two start jobs.
+ExecStartPost=+/bin/systemctl --no-block start openviking-index.service
 Restart=always
 RestartSec=5
 

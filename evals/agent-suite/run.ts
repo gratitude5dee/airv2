@@ -16,6 +16,7 @@
  */
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { CaseTiming } from "./timing";
 import {
   createSseParser,
   loadCases,
@@ -109,7 +110,7 @@ interface StreamResult {
 }
 
 /** Read the run's SSE stream to its terminal event (or the case timeout). */
-async function streamRun(cfg: Config, runId: string): Promise<StreamResult> {
+async function streamRun(cfg: Config, runId: string, timing: CaseTiming): Promise<StreamResult> {
   const tools: string[] = [];
   const toolEvents: ToolEvent[] = [];
   const skillsViewed: string[] = [];
@@ -148,7 +149,10 @@ async function streamRun(cfg: Config, runId: string): Promise<StreamResult> {
           const skill = skillFromPreview(event);
           if (skill && !skillsViewed.includes(skill)) skillsViewed.push(skill);
         }
-        if (event.event === "message.delta" && event.delta) deltas += event.delta;
+        if (event.event === "message.delta" && event.delta) {
+          timing.delta(event.delta);
+          deltas += event.delta;
+        }
         if (event.event === "run.completed") {
           completedOutput = event.output ?? "";
           await reader.cancel().catch(() => undefined);
@@ -300,6 +304,7 @@ async function runCase(cfg: Config, testCase: EvalCase): Promise<CaseResult> {
   // so a decision written in the first instant of the run is not missed.
   const windowStart = new Date(Date.now() - 2_000).toISOString();
   const startedAt = Date.now();
+  const timing = new CaseTiming();
   const base: CaseResult = {
     id: testCase.id,
     category: testCase.category,
@@ -332,10 +337,12 @@ async function runCase(cfg: Config, testCase: EvalCase): Promise<CaseResult> {
   try {
     runId = await startRun(cfg, testCase.message);
   } catch (error) {
-    return { ...base, error: redact(String(error)), elapsed_ms: Date.now() - startedAt };
+    timing.stop();
+    return { ...base, ...timing.snapshot(), error: redact(String(error)), elapsed_ms: Date.now() - startedAt };
   }
 
-  const stream = await streamRun(cfg, runId);
+  const stream = await streamRun(cfg, runId, timing);
+  timing.stop();
   // Aborting our end of the SSE stream does not stop the run: the box keeps
   // working, and its later metering rows and decisions would land inside the
   // *next* case's window and be scored against that case. Cut the run first.
@@ -368,6 +375,8 @@ async function runCase(cfg: Config, testCase: EvalCase): Promise<CaseResult> {
     skills_viewed: stream.skillsViewed,
     output: redact(stream.output),
     elapsed_ms: Date.now() - startedAt,
+    ...timing.snapshot(),
+    settle_ms: SETTLE_MS,
     run_row: windowRuns.find((r) => r.hermes_run_id === runId) ?? null,
     window_runs: windowRuns,
     cost_usd: windowRuns.reduce((sum, r) => sum + (r.cost_usd ?? 0), 0),
