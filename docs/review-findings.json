@@ -307,9 +307,10 @@
         "infra/template/openviking/tests/test_timeouts.py: replay client constructed with timeout=660 for the 600 s server wait; routine clients timeout=60",
         "infra/template/openviking/tests/test_replace.py: only typed NotFoundError is tolerated before add; other remove failures keep work pending",
         "infra/template/openviking/tests/test_stop_claim.py: stop-claim refuses while pending/in grace/worker busy; resume-pending defers under a live claim; release, TTL and boot-id invalidation",
-        "apps/web/lib/orchestrator/indexIdle.test.ts, idleStop.test.ts: sweeper claims before provider stop, releases on abort, bounded legacy fallback for boxes without the command"
+        "apps/web/lib/orchestrator/indexIdle.test.ts, idleStop.test.ts: sweeper claims before provider stop, releases on abort, bounded legacy fallback for boxes without the command",
+        "docs/reports/openviking-livecheck-isolated-linux.md: livecheck.py 8/8 on an isolated Linux/systemd host against the pinned server 0.4.16 (real units; SIGKILL mid-index -> durable replay, stop-claim grant/refuse/release, corrupt state fails closed). Not an ascii.dev Box: provider stop()/resume() unverified"
       ],
-      "notes": "Unit-level only. The probe->stop race is closed by a box-side flock claim the sweeper must hold before provider stop(); this has not been exercised on an isolated Linux/systemd box with the real timer, units and provider, so it stays open. Rollout: boxes without stop-claim use the read-only idle-check probe; boxes with neither are stopped after a bounded 20-minute legacy grace."
+      "notes": "Box-side behaviour exercised on an isolated Linux/systemd host (8/8 livecheck scenarios; see the report), not a real ascii.dev Box. The probe->stop race is closed by a box-side flock claim the sweeper must hold before provider stop(); provider stop()/resume() around a live claim and the sweeper driving ovctl over the command API remain unexercised, so it stays open. Rollout: boxes without stop-claim use the read-only idle-check probe; boxes with neither are stopped after a bounded 20-minute legacy grace."
     },
     {
       "id": "MEM-04",
@@ -658,9 +659,10 @@
       "evidence": [
         "infra/template/openviking/tests/test_clear.py: clear --scope resources|memories|all removes the right roots under the worker lock, drops queued work beneath them, tolerates only typed NotFoundError, and prints metadata only",
         "apps/web/lib/memory/deep.test.ts, apps/web/app/api/me/memory/deep/route.test.ts: confirm-gated clear POST, scope validation, fixed-message 502 on failure",
-        "apps/web/lib/onairos/sync.test.ts: disconnect forgets the indexed persona subtree"
+        "apps/web/lib/onairos/sync.test.ts: disconnect forgets the indexed persona subtree",
+        "docs/reports/openviking-livecheck-isolated-linux.md: rm/clear against server 0.4.16 on an isolated host — cleared content unreadable and absent from find; rm is idempotent; dangling .abstract.md vectors linger for minutes; a semantic refresh racing clear can re-create the root, which ovctl clear now settles and re-removes (`resurrected`)"
       ],
-      "notes": "Owner clear surface exists in the Context panel and memory card (target=both offers deep clear). Unit-level only; the real OpenViking server's rm semantics for a populated store are unmeasured."
+      "notes": "Owner clear surface exists in the Context panel and memory card (target=both offers deep clear). rm/clear semantics measured against the pinned server on an isolated Linux host, not a real Box; find hits are pointers that may dangle for minutes after a clear, and a Box with an LLM configured would hold derived summaries in directory abstracts until the re-check removes them."
     },
     {
       "id": "MEM-29",

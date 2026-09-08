@@ -53,6 +53,15 @@ class ClearTests(unittest.TestCase):
         self.source = self.root / "source.md"
         self.source.write_text("private content")
 
+    @staticmethod
+    def server(**overrides):
+        """A client whose cleared roots stay gone unless a test says otherwise."""
+        client = Mock()
+        client.ls.side_effect = NotFoundError("gone")
+        for name, value in overrides.items():
+            setattr(client, name, value)
+        return client
+
     def run_json(self, command, *args):
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
@@ -67,20 +76,22 @@ class ClearTests(unittest.TestCase):
         return json.loads((self.root / "pending.json").read_text())
 
     def test_resources_scope_removes_only_the_context_root(self):
-        client = Mock()
+        client = self.server()
         status, result = self.clear("resources", client)
         self.assertEqual((status, result), (0, {"ok": True, "scope": "resources", "removed": [RESOURCES], "absent": []}))
         client.rm.assert_called_once_with(RESOURCES, recursive=True, wait=True)
+        client.wait_processed.assert_called_once_with(timeout=ovctl.CLEAR_SETTLE_SECONDS)
+        client.ls.assert_called_once_with(RESOURCES)
         client.close.assert_called_once()
 
     def test_memories_scope_removes_only_the_user_root(self):
-        client = Mock()
+        client = self.server()
         status, result = self.clear("memories", client)
         self.assertEqual((status, result), (0, {"ok": True, "scope": "memories", "removed": [MEMORIES], "absent": []}))
         client.rm.assert_called_once_with(MEMORIES, recursive=True, wait=True)
 
     def test_all_scope_removes_both_roots(self):
-        client = Mock()
+        client = self.server()
         status, result = self.clear("all", client)
         self.assertEqual((status, result), (0, {"ok": True, "scope": "all", "removed": [RESOURCES, MEMORIES], "absent": []}))
         self.assertEqual([call.args[0] for call in client.rm.call_args_list], [RESOURCES, MEMORIES])
@@ -89,7 +100,7 @@ class ClearTests(unittest.TestCase):
     def test_queued_work_under_the_cleared_root_is_dropped_before_removal(self):
         ovctl.enqueue_resource(self.source, f"{RESOURCES}/imessage-history/threads/a/2024-01")
         ovctl.enqueue_resource(self.source, "viking://resources/other")
-        client = Mock()
+        client = self.server()
         observed = {}
 
         def rm(uri, **kwargs):
@@ -106,21 +117,51 @@ class ClearTests(unittest.TestCase):
 
     def test_memories_scope_leaves_resource_queue_alone(self):
         ovctl.enqueue_resource(self.source, f"{RESOURCES}/onairos")
-        self.assertEqual(self.clear("memories", Mock())[0], 0)
+        self.assertEqual(self.clear("memories", self.server())[0], 0)
         self.assertEqual(list(self.state()), [f"{RESOURCES}/onairos"])
 
     def test_typed_absence_is_already_cleared(self):
-        client = Mock()
+        client = self.server()
         client.rm.side_effect = NotFoundError("nothing at uri")
         status, result = self.clear("all", client)
         self.assertEqual((status, result), (0, {"ok": True, "scope": "all", "removed": [], "absent": [RESOURCES, MEMORIES]}))
+        client.ls.assert_not_called()
+
+    def test_root_recreated_by_a_racing_semantic_refresh_is_removed_again(self):
+        # Observed against server 0.4.16: a parent_refresh racing the delete can
+        # bring back <root>/.abstract.md (a derived summary) after rm returned.
+        client = self.server()
+        client.ls.side_effect = [{"name": ".abstract.md"}, NotFoundError("gone")]
+        status, result = self.clear("all", client)
+        self.assertEqual((status, result), (0, {
+            "ok": True, "scope": "all", "removed": [RESOURCES, MEMORIES], "absent": [], "resurrected": [RESOURCES],
+        }))
+        self.assertEqual([call.args[0] for call in client.rm.call_args_list], [RESOURCES, MEMORIES, RESOURCES])
+
+    def test_recheck_survives_a_server_without_wait_processed(self):
+        client = self.server()
+        client.wait_processed.side_effect = InternalError("no such endpoint")
+        status, result = self.clear("resources", client)
+        self.assertEqual((status, result), (0, {"ok": True, "scope": "resources", "removed": [RESOURCES], "absent": []}))
+        client.ls.assert_called_once_with(RESOURCES)
+
+    def test_failed_second_removal_is_a_failure(self):
+        client = self.server()
+        client.ls.side_effect = None
+        client.ls.return_value = [{"name": ".abstract.md"}]
+        client.rm.side_effect = [None, InternalError("storage failure: private content")]
+        status, result = self.clear("resources", client)
+        self.assertEqual((status, result), (1, {"ok": False, "scope": "resources", "failed": [RESOURCES], "errors": ["InternalError"]}))
+        self.assertNotIn("private content", json.dumps(result))
 
     def test_real_failure_reports_only_uris_and_acknowledges_nothing(self):
         for error in (InternalError("storage failure: private content"), ConnectionError(), TimeoutError()):
-            client = Mock()
+            client = self.server()
             client.rm.side_effect = [error, None]
             status, result = self.clear("all", client)
-            self.assertEqual((status, result), (1, {"ok": False, "scope": "all", "failed": [RESOURCES]}))
+            self.assertEqual((status, result), (1, {
+                "ok": False, "scope": "all", "failed": [RESOURCES], "errors": [type(error).__name__],
+            }))
             self.assertNotIn("removed", result)
             self.assertNotIn("private content", json.dumps(result))
             client.close.assert_called_once()
@@ -137,7 +178,7 @@ class ClearTests(unittest.TestCase):
             order.append("index")
             return True
 
-        client = Mock()
+        client = self.server()
         client.rm.side_effect = lambda *args, **kwargs: order.append("clear")
         with patch.object(ovctl, "client", return_value=client), patch.object(ovctl, "add_resource", side_effect=index):
             thread = threading.Thread(target=ovctl.cmd_resume_pending)
@@ -152,7 +193,7 @@ class ClearTests(unittest.TestCase):
         self.assertEqual((status, order), (0, ["index", "clear"]))
 
     def test_clear_holds_the_worker_lock_against_a_stop_claim(self):
-        client = Mock()
+        client = self.server()
         observed = {}
 
         def rm(uri, **kwargs):
@@ -168,7 +209,7 @@ class ClearTests(unittest.TestCase):
         self.assertTrue(observed["locked"])
 
     def test_cli_wires_scope_and_rejects_unknown_scopes(self):
-        client = Mock()
+        client = self.server()
         with patch.object(ovctl, "client", return_value=client), patch.object(ovctl.sys, "argv", ["ovctl", "clear", "--scope", "memories"]):
             status, result = self.run_json(ovctl.main)
         self.assertEqual((status, result["ok"], result["removed"]), (0, True, [MEMORIES]))

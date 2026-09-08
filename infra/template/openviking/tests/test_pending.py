@@ -1,8 +1,12 @@
+import contextlib
+import fcntl
 import importlib.util
+import io
 import json
 from pathlib import Path
 import sys
 import tempfile
+import threading
 import types
 import unittest
 from unittest.mock import Mock, patch
@@ -82,6 +86,43 @@ class PendingTests(unittest.TestCase):
         with patch.object(ovctl, "client", return_value=client):
             self.assertEqual(ovctl.cmd_rm(self.uri), 1)
         client.close.assert_called_once()
+
+    def test_worker_failure_logs_error_class_only(self):
+        ovctl.enqueue_resource(self.source, self.uri)
+        stderr = io.StringIO()
+        with patch.object(ovctl, "client", return_value=Mock()), patch.object(
+            ovctl, "add_resource", side_effect=TimeoutError("private content")
+        ), contextlib.redirect_stderr(stderr):
+            self.assertEqual(ovctl.cmd_resume_pending(), 1)
+        self.assertEqual(json.loads(stderr.getvalue()), {"failed": self.uri, "error": "TimeoutError"})
+
+    def test_timer_yields_but_synchronous_add_waits_for_a_running_worker(self):
+        ovctl.enqueue_resource(self.source, self.uri)
+        release = threading.Event()
+
+        def hold_lock():
+            with (self.root / "pending-worker.lock").open("a") as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX)
+                held.set()
+                release.wait(5)
+
+        held = threading.Event()
+        holder = threading.Thread(target=hold_lock)
+        holder.start()
+        self.addCleanup(holder.join)
+        self.assertTrue(held.wait(5))
+        with patch.object(ovctl, "client", return_value=Mock()), patch.object(ovctl, "add_resource", return_value=True) as add:
+            self.assertEqual(ovctl.cmd_resume_pending(), 0)
+            add.assert_not_called()
+            self.assertIn(self.uri, self.state())
+            output = io.StringIO()
+            timer = threading.Timer(0.2, release.set)
+            timer.start()
+            with contextlib.redirect_stdout(output):
+                self.assertEqual(ovctl.cmd_add_resource(str(self.source), self.uri, wait=True), 0)
+            add.assert_called_once()
+        self.assertEqual(output.getvalue(), "")
+        self.assertEqual(self.state(), {})
 
 
 if __name__ == "__main__":

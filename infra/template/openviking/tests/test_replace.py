@@ -103,7 +103,7 @@ class ReplaceTests(unittest.TestCase):
         output = io.StringIO()
         with patch.object(ovctl, "client", return_value=client), contextlib.redirect_stdout(output):
             self.assertEqual(ovctl.cmd_rm(self.uri), 1)
-        self.assertEqual(json.loads(output.getvalue()), {"ok": False, "uri": self.uri})
+        self.assertEqual(json.loads(output.getvalue()), {"ok": False, "uri": self.uri, "error": "InternalError"})
 
 
 if __name__ == "__main__":

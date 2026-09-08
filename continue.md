@@ -240,11 +240,22 @@ the user's explicit authorization. The user has authorized this GitHub push.
    (item 4). Rollout order still matters: until the template with `stop-claim`
    ships, boxes with `idle-check` use the read-only probe and boxes with
    neither are stopped after the 20-minute legacy grace.
-4. Test the service units and interrupted indexing on an isolated Linux box.
-   Confirm SDK completion receipts with the actual pinned server, verify
-   restart recovery and deletion behavior, and measure indexing wall time and
-   idle RSS. A job exceeding the 600-second server wait still needs a strategy
-   that avoids continually restarting expensive work.
+4. Partly done on an isolated Linux/systemd host (not an ascii.dev Box — the
+   account was out of usage, HTTP 402). `infra/template/openviking/livecheck.py`
+   ran the real units against the pinned server 0.4.16: 8/8 scenarios pass
+   (units/health, sync and queued indexing, 3.3 MB index SIGKILLed mid-run →
+   queue survived, no receipt, `Restart=always`, timer replayed in 170 s,
+   peak server RSS 695 MB; stop-claim grant/refuse/release with the worker
+   deferring under a live claim; stale-boot and corrupt-state fail closed;
+   `rm`/`clear`; USER.md compare-and-swap). See
+   `docs/reports/openviking-livecheck-isolated-linux.md` for the server
+   behaviours found (idempotent `rm`, dangling `.abstract.md` vectors after
+   delete, a semantic refresh racing `clear` — now settled and re-checked by
+   `ovctl clear`). `.github/workflows/box-replica.yml` reruns this on a fresh
+   Tenki 4c/8g VM. Still open: provider `stop()`/`resume()` around a live claim
+   on a real Box, the sweeper driving `ovctl` over the command API, and a
+   strategy for a job exceeding the 600-second server wait that avoids
+   continually restarting expensive work.
 5. Archive co-ship: done locally (unit level) — owner-facing resolution for
    ambiguous legacy labels (API and the onboarding iMessage step, which reads
    labels live only when the box is already awake), resumable cursor in

@@ -67,6 +67,7 @@ CLEAR_SCOPES = {
 }
 INDEX_WAIT_SECONDS = 600
 INDEX_HTTP_TIMEOUT_SECONDS = INDEX_WAIT_SECONDS + 60
+CLEAR_SETTLE_SECONDS = 30
 STOP_CLAIM_FILE = "stop-claim.json"
 STOP_CLAIM_TTL_SECONDS = 900
 BOOT_ID_FILE = pathlib.Path("/proc/sys/kernel/random/boot_id")
@@ -257,16 +258,17 @@ def enqueue_resource(path: pathlib.Path, uri: str) -> None:
         state[uri] = {"path": str(path), "generation": uuid.uuid4().hex}
 
 
-def cmd_resume_pending() -> int:
+def cmd_resume_pending(block: bool = False) -> int:
     """Replay interrupted work; remove a receipt only after synchronous success.
 
     A separate worker lock permits concurrent enqueues while preventing two
-    workers from replacing the same resource underneath one another.
+    workers from replacing the same resource underneath one another. The
+    timer yields to a running worker; a synchronous add waits for it.
     """
     OV_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
     with (OV_DIR / "pending-worker.lock").open("a") as lock:
         try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(lock, fcntl.LOCK_EX | (0 if block else fcntl.LOCK_NB))
         except BlockingIOError:
             return 0
         with pending_state() as state:
@@ -286,7 +288,9 @@ def cmd_resume_pending() -> int:
                     if not add_resource(c, pathlib.Path(entry["path"]), uri, wait=True):
                         failed = True
                         continue
-                except Exception:
+                except Exception as error:
+                    # Journal gets the error class only, never the document.
+                    print(json.dumps({"failed": uri, "error": type(error).__name__}), file=sys.stderr)
                     failed = True
                     continue
                 with pending_state() as state:
@@ -529,7 +533,7 @@ def cmd_add_resource(path: str, to: str, wait: bool) -> int:
     if not wait:
         print(json.dumps({"ok": True, "uri": to, "pending": True}))
         return 0
-    status = cmd_resume_pending()
+    status = cmd_resume_pending(block=True)
     with pending_state() as state:
         if to in state:
             print(json.dumps({"ok": False, "uri": to, "pending": True}))
@@ -553,7 +557,7 @@ def cmd_rm(uri: str) -> int:
             c.rm(uri, recursive=True, wait=True)
         except Exception as error:
             if not resource_absent(error):
-                print(json.dumps({"ok": False, "uri": uri}))
+                print(json.dumps({"ok": False, "uri": uri, "error": type(error).__name__}))
                 return 1
             absent = True
         finally:
@@ -570,7 +574,12 @@ def cmd_clear(scope: str) -> int:
     """Owner-initiated wipe of whole roots. Same exclusion as `rm`: hold the
     worker lock so no replay is mid-flight, cancel queued work under the
     cleared roots before removing, so the durable timer cannot restore what
-    the owner just cleared. Output is metadata only (roots, never content)."""
+    the owner just cleared. Output is metadata only (roots, never content).
+
+    The server's semantic processor refreshes a parent directory's abstract
+    when children change; a refresh racing the delete can re-create a cleared
+    root holding a derived summary. After the server settles, any root that
+    resolves again is removed a second time and reported as `resurrected`."""
     roots = CLEAR_SCOPES[scope]
     OV_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
     with (OV_DIR / "pending-worker.lock").open("a") as lock:
@@ -580,22 +589,56 @@ def cmd_clear(scope: str) -> int:
                 if any(under_root(queued, root) for root in roots):
                     del state[queued]
         c = client()
-        removed, absent, failed = [], [], []
+        removed, absent, failed, errors = [], [], [], []
         try:
             for root in roots:
                 try:
                     c.rm(root, recursive=True, wait=True)
                 except Exception as error:
-                    (absent if resource_absent(error) else failed).append(root)
+                    if resource_absent(error):
+                        absent.append(root)
+                    else:
+                        failed.append(root)
+                        errors.append(type(error).__name__)
                     continue
                 removed.append(root)
+            resurrected = []
+            for root in resurrected_roots(c, removed):
+                try:
+                    c.rm(root, recursive=True, wait=True)
+                except Exception as error:
+                    if not resource_absent(error):
+                        failed.append(root)
+                        errors.append(type(error).__name__)
+                    continue
+                resurrected.append(root)
         finally:
             c.close()
     if failed:
-        print(json.dumps({"ok": False, "scope": scope, "failed": failed}))
+        print(json.dumps({"ok": False, "scope": scope, "failed": failed, "errors": errors}))
         return 1
-    print(json.dumps({"ok": True, "scope": scope, "removed": removed, "absent": absent}))
+    report = {"ok": True, "scope": scope, "removed": removed, "absent": absent}
+    if resurrected:
+        report["resurrected"] = resurrected
+    print(json.dumps(report))
     return 0
+
+
+def resurrected_roots(c, roots: list[str]) -> list[str]:
+    """Roots that resolve again once the server's background processors settle."""
+    try:
+        c.wait_processed(timeout=CLEAR_SETTLE_SECONDS)
+    except Exception:
+        pass  # older server without the endpoint, or a slow settle: still re-check
+    back = []
+    for root in roots:
+        try:
+            c.ls(root)
+        except Exception as error:
+            if resource_absent(error):
+                continue
+        back.append(root)
+    return back
 
 
 def queue_existing(path: pathlib.Path, uri: str) -> bool:
