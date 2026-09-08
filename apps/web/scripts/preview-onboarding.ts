@@ -62,6 +62,7 @@ const snapshot: OnboardingSnapshot = {
     last_upload_at: "2026-08-17T10:00:00Z",
     from_date: "2026-05-01",
     to_date: "2026-08-17",
+    cursor: "2026-08-17T09:58:12.000Z",
   },
   imports: {
     sources: {

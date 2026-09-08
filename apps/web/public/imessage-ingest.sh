@@ -92,7 +92,7 @@ sqlite3 -json "file:$DB?mode=ro" "
 " > "$CATALOGUE"
 
 /usr/bin/python3 - "$TMP" "$ENDPOINT" "$TICKET" "$DAYS" "$DECODER" "$CATALOGUE" <<'PYEOF'
-import hashlib, json, sys, urllib.request
+import hashlib, json, sys, time, urllib.error, urllib.request
 
 rows_path, endpoint, ticket, days = sys.argv[1:5]
 if len(sys.argv) > 5:
@@ -177,10 +177,30 @@ def chunks():
         size += len(data) + (1 if i > start else 0)
     yield start, len(messages)
 
-total = 0
-for start, end in chunks():
-    prefix, suffix = envelope(messages[start], messages[end - 1])
-    body = prefix + b",".join(encoded[start:end]) + suffix
+# Failure envelope from the server: {error, code, retriable, retry_after_seconds?, resolve_at?}.
+# Retriable failures (archive busy, box starting, transient upload failure)
+# are retried with bounded backoff; anything else stops with the reason and
+# the cursor to resume from. Network errors are treated as retriable.
+MAX_ATTEMPTS = 8
+MAX_WAIT_SECONDS = 120
+
+def parse_error(status, raw):
+    try:
+        doc = json.loads(raw) if raw else {}
+    except ValueError:
+        doc = {}
+    if not isinstance(doc, dict):
+        doc = {}
+    return {
+        "status": status,
+        "code": doc.get("code") if isinstance(doc.get("code"), str) else "http_%d" % status,
+        "error": doc.get("error") if isinstance(doc.get("error"), str) else "HTTP %d" % status,
+        "retriable": doc.get("retriable") is True or status in (502, 503, 504),
+        "retry_after": doc.get("retry_after_seconds") if isinstance(doc.get("retry_after_seconds"), (int, float)) else None,
+        "resolve_at": doc.get("resolve_at") if isinstance(doc.get("resolve_at"), str) else None,
+    }
+
+def post(body):
     req = urllib.request.Request(
         endpoint,
         data=body,
@@ -190,10 +210,57 @@ for start, end in chunks():
         },
         method="POST",
     )
-    with urllib.request.urlopen(req) as resp:
-        json.load(resp)
+    try:
+        with urllib.request.urlopen(req) as resp:
+            return json.load(resp), None
+    except urllib.error.HTTPError as http_error:
+        return None, parse_error(http_error.code, http_error.read().decode("utf-8", "replace"))
+    except (urllib.error.URLError, OSError, ValueError) as network_error:
+        return None, {"status": 0, "code": "network", "error": str(network_error) or "network error",
+                      "retriable": True, "retry_after": None, "resolve_at": None}
+
+def wait_seconds(failure, attempt):
+    if failure["retry_after"] is not None:
+        wait = float(failure["retry_after"])
+    else:
+        wait = 2.0 * (2 ** (attempt - 1))
+    return min(max(wait, 1.0), MAX_WAIT_SECONDS)
+
+def stop(failure, cursor, uploaded):
+    lines = [f"Upload stopped ({failure['code']}): {failure['error']}"]
+    if failure["code"] == "resolution_required" and failure["resolve_at"]:
+        lines.append(f"Resolve the pending chat identities here (signed in): {failure['resolve_at']}")
+    if uploaded:
+        lines.append(f"{uploaded} messages were saved before stopping.")
+    if cursor:
+        lines.append(f"Archive cursor: {cursor} — a fresh command from the app resumes there automatically.")
+    raise SystemExit("\n".join(lines))
+
+def upload(body, cursor, uploaded):
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        result, failure = post(body)
+        if failure is None:
+            return result
+        if not failure["retriable"] or attempt == MAX_ATTEMPTS:
+            if failure["retriable"]:
+                failure = dict(failure, error=f"{failure['error']} (gave up after {MAX_ATTEMPTS} attempts)")
+            stop(failure, cursor, uploaded)
+        wait = wait_seconds(failure, attempt)
+        print(f"Retrying in {wait:.0f}s ({failure['code']}): {failure['error']}", file=sys.stderr)
+        time.sleep(wait)
+
+total = 0
+cursor = None
+for start, end in chunks():
+    prefix, suffix = envelope(messages[start], messages[end - 1])
+    body = prefix + b",".join(encoded[start:end]) + suffix
+    result = upload(body, cursor, total)
+    if isinstance(result, dict) and isinstance(result.get("cursor"), str):
+        cursor = result["cursor"]
     total += end - start
     print(f"Uploaded {total}/{len(messages)} messages…")
 
 print(f"Done — {total} messages from the last {days} days are on your agent's computer.")
+if cursor:
+    print(f"Archive cursor: {cursor} (the next command from the app resumes here automatically).")
 PYEOF

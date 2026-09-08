@@ -6,10 +6,15 @@
  * POST (Bearer upload ticket) validates the extracted JSON and writes it to
  * the owner's box under .hermes/context/imessage-history/ — content never
  * touches Postgres (C4).
+ *
+ * POST failures share one envelope the uploader can act on:
+ * `{error, code, retriable, retry_after_seconds?, resolve_at?}`. Bodies carry
+ * fixed text or validation messages only — never labels or message text.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { sessionUserId } from "@/lib/auth/user";
 import {
+  buildIngestCommand,
   IngestInputError,
   MAX_CHUNK_BYTES,
   mintIngestTicket,
@@ -24,18 +29,44 @@ import { serviceClient } from "@/lib/supabase";
 import { env } from "@/lib/env";
 import { readUploadBody, UploadTooLargeError } from "@/lib/imessage/uploadBody";
 import { StateBusyError } from "@/lib/miniapps/stateLease";
-import { ArchiveMigrationError } from "@/lib/imessage/archiveMigrateStore";
+import { ArchiveMigrationError, ArchiveResolutionError } from "@/lib/imessage/archiveMigrateStore";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const NO_STORE = { "Cache-Control": "no-store" };
+const RESOLUTIONS_PATH = "/api/me/imessage-history/resolutions";
+
+export type UploadErrorCode =
+  | "invalid_ticket" | "upload_too_large" | "unreadable_upload" | "invalid_json"
+  | "invalid_chunk" | "archive_busy" | "box_starting" | "resolution_required"
+  | "migration_failed" | "upload_failed";
+
+export interface UploadErrorBody {
+  error: string;
+  code: UploadErrorCode;
+  retriable: boolean;
+  retry_after_seconds?: number;
+  /** Owner-session URL where pending identities are listed and resolved. */
+  resolve_at?: string;
+}
+
+function uploadError(
+  status: number, code: UploadErrorCode, error: string,
+  options: { retryAfter?: number; resolveAt?: string } = {}
+): NextResponse {
+  const body: UploadErrorBody = { error, code, retriable: options.retryAfter !== undefined };
+  const headers: Record<string, string> = { ...NO_STORE };
+  if (options.retryAfter !== undefined) {
+    body.retry_after_seconds = options.retryAfter;
+    headers["Retry-After"] = String(options.retryAfter);
+  }
+  if (options.resolveAt) body.resolve_at = options.resolveAt;
+  return NextResponse.json(body, { status, headers });
+}
 
 function busy(): NextResponse {
-  return NextResponse.json(
-    { error: "box busy starting — try again in a minute" },
-    { status: 503, headers: NO_STORE }
-  );
+  return uploadError(503, "box_starting", "Your agent's computer is still starting — retrying in a minute.", { retryAfter: 60 });
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
@@ -48,8 +79,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const status = await readIngestStatus(supabase, userId);
     await writeStatusMirror(supabase, userId, { ingest: status });
     const ticket = mintIngestTicket(userId);
-    const command = `curl -fsSL ${env.appOrigin()}/imessage-ingest.sh -o /tmp/air-ingest.sh && AIR_INGEST_ENDPOINT=${env.appOrigin()}/api/me/imessage-history bash /tmp/air-ingest.sh ${ticket}`;
-    return NextResponse.json({ status, command }, { headers: NO_STORE });
+    const command = buildIngestCommand(ticket, status.cursor);
+    return NextResponse.json({ status, command, cursor: status.cursor }, { headers: NO_STORE });
   } catch (error) {
     if (error instanceof StartLimitError) return busy();
     return NextResponse.json(
@@ -66,57 +97,52 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
   const claims = verifyIngestTicket(token);
   if (!claims) {
-    return NextResponse.json(
-      { error: "invalid or expired upload ticket" },
-      { status: 401, headers: NO_STORE }
-    );
+    return uploadError(401, "invalid_ticket",
+      "Invalid or expired upload ticket — open the iMessage step again to get a fresh command.");
   }
   let raw: string;
   try {
     raw = await readUploadBody(request, MAX_CHUNK_BYTES);
   } catch (error) {
     if (error instanceof UploadTooLargeError) {
-      return NextResponse.json(
-        { error: "upload too large — chunk it" },
-        { status: 413, headers: NO_STORE }
-      );
+      return uploadError(413, "upload_too_large",
+        `Upload exceeds ${MAX_CHUNK_BYTES} bytes — send smaller chunks.`);
     }
-    return NextResponse.json({ error: "could not read upload" }, { status: 400, headers: NO_STORE });
+    return uploadError(400, "unreadable_upload", "Could not read the upload body.");
   }
   let body: unknown;
   try {
     body = JSON.parse(raw);
   } catch {
-    return NextResponse.json(
-      { error: "body must be JSON" },
-      { status: 400, headers: NO_STORE }
-    );
+    return uploadError(400, "invalid_json", "Upload body must be JSON.");
   }
   const supabase = serviceClient();
   try {
     const chunk = parseChunk(body);
     const status = await storeChunk(supabase, claims.userId, chunk);
     await writeStatusMirror(supabase, claims.userId, { ingest: status });
-    return NextResponse.json({ ok: true, status }, { headers: NO_STORE });
+    return NextResponse.json({ ok: true, status, cursor: status.cursor }, { headers: NO_STORE });
   } catch (error) {
     if (error instanceof IngestInputError) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: 400, headers: NO_STORE }
-      );
+      return uploadError(400, "invalid_chunk", `Upload rejected: ${error.message}.`);
     }
     if (error instanceof StateBusyError) {
-      return NextResponse.json({ error: "Another archive upload is in progress; retry shortly." },
-        { status: 503, headers: { ...NO_STORE, "Retry-After": "2" } });
+      return uploadError(503, "archive_busy",
+        "Another archive upload is in progress — retrying shortly.", { retryAfter: 2 });
+    }
+    if (error instanceof ArchiveResolutionError) {
+      // Never echo error.unresolved here: labels stay box-side / owner-session only.
+      return uploadError(409, "resolution_required",
+        "Some earlier chat labels match more than one conversation. Sign in and resolve them, then rerun this command.",
+        { resolveAt: `${env.appOrigin()}${RESOLUTIONS_PATH}` });
     }
     if (error instanceof ArchiveMigrationError) {
-      return NextResponse.json({ error: error.message }, { status: 409, headers: NO_STORE });
+      return uploadError(409, "migration_failed", `Archive migration failed: ${error.message}.`,
+        error.retriable ? { retryAfter: 5 } : {});
     }
     if (error instanceof StartLimitError) return busy();
-    return NextResponse.json(
-      { error: "upload failed" },
-      { status: 502, headers: NO_STORE }
-    );
+    return uploadError(502, "upload_failed",
+      "Upload failed on the agent's computer — retrying.", { retryAfter: 10 });
   } finally {
     await armStopAfter(supabase, claims.userId).catch(() => undefined);
   }
