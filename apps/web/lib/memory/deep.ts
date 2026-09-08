@@ -20,6 +20,13 @@ const OVCTL_TIMEOUT_SECONDS = 600;
  * far below any platform function timeout. */
 const OVCTL_ENQUEUE_TIMEOUT_SECONDS = 60;
 
+export const DEEP_MEMORY_CLEAR_SCOPES = ["resources", "memories", "all"] as const;
+export type DeepMemoryClearScope = (typeof DEEP_MEMORY_CLEAR_SCOPES)[number];
+
+export function isDeepMemoryClearScope(value: unknown): value is DeepMemoryClearScope {
+  return DEEP_MEMORY_CLEAR_SCOPES.some((scope) => scope === value);
+}
+
 export interface DeepMemoryStatus {
   healthy: boolean;
   /** Indexed resource documents (leaves; directory nodes excluded). */
@@ -110,6 +117,43 @@ export async function deepMemoryForget(
   } catch {
     console.log(
       JSON.stringify({ msg: "deep memory forget", box_id: boxId, uri, ok: false })
+    );
+    return false;
+  }
+}
+
+/** Owner-initiated wipe of whole roots: indexed context (`resources`),
+ * OpenViking-derived memories (`memories`) or both. The box drops queued
+ * indexing work under the cleared roots first, so a durable replay cannot
+ * restore what the owner cleared. Renders ov.conf first like reindex, so a
+ * box whose OpenViking was never configured still clears instead of failing.
+ * Not best-effort: the caller surfaces failure. Metadata-only log line
+ * (scope, never URIs of user content). */
+export async function deepMemoryClear(
+  boxId: string,
+  scope: DeepMemoryClearScope
+): Promise<boolean> {
+  try {
+    const ensure = await command(boxId, "ovctl ensure", 180);
+    if (ensure.exitCode !== 0) {
+      console.log(
+        JSON.stringify({ msg: "deep memory clear", box_id: boxId, scope, ok: false, stage: "ensure" })
+      );
+      return false;
+    }
+    const result = await command(
+      boxId,
+      `ovctl clear --scope ${shellQuote(scope)}`,
+      OVCTL_TIMEOUT_SECONDS
+    );
+    const ok = result.exitCode === 0;
+    console.log(
+      JSON.stringify({ msg: "deep memory clear", box_id: boxId, scope, ok })
+    );
+    return ok;
+  } catch {
+    console.log(
+      JSON.stringify({ msg: "deep memory clear", box_id: boxId, scope, ok: false })
     );
     return false;
   }

@@ -63,6 +63,7 @@ function MemoryCard() {
   const [userDraft, setUserDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [deepOffer, setDeepOffer] = useState(false);
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -107,11 +108,17 @@ function MemoryCard() {
     }
   }
 
-  async function clear(target: "memory" | "user") {
-    const label = target === "memory" ? "agent memory" : "your profile";
+  async function clear(target: "memory" | "user" | "both") {
+    const label =
+      target === "memory"
+        ? "agent memory"
+        : target === "user"
+          ? "your profile"
+          : "agent memory and your profile";
     if (!window.confirm(`Clear ${label}? This is irreversible.`)) return;
     setBusy(true);
     setNote(null);
+    setDeepOffer(false);
     try {
       const res = await fetch("/api/me/memory", {
         method: "POST",
@@ -120,9 +127,37 @@ function MemoryCard() {
       });
       if (res.status === 503) setNote(BUSY_NOTE);
       else if (!res.ok) setNote("Clear failed.");
-      else void load();
+      else {
+        const data = (await res.json()) as { deep_memory_offer?: boolean };
+        setDeepOffer(data.deep_memory_offer === true);
+        void load();
+      }
     } catch {
       setNote("Clear failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** The files route only offers this; the wipe itself rides the deep
+   * memory route, confirm-gated by the owner's click here. */
+  async function clearDeep() {
+    setBusy(true);
+    setNote(null);
+    try {
+      const res = await fetch("/api/me/memory/deep", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "clear", scope: "all", confirm: true }),
+      });
+      if (res.status === 503) setNote(BUSY_NOTE);
+      else if (!res.ok) setNote("Deep memory clear failed.");
+      else {
+        setDeepOffer(false);
+        setNote("Deep memory cleared.");
+      }
+    } catch {
+      setNote("Deep memory clear failed.");
     } finally {
       setBusy(false);
     }
@@ -176,7 +211,43 @@ function MemoryCard() {
             >
               Clear profile
             </button>
+            <button
+              className="btn btn-ghost !text-danger"
+              disabled={busy}
+              onClick={() => void clear("both")}
+            >
+              Clear both
+            </button>
           </div>
+          {deepOffer ? (
+            <div
+              className="grid gap-2 rounded-[7px] border border-[var(--ring)] bg-surface-2 p-2"
+              role="group"
+              aria-label="Also clear deep memory"
+            >
+              <p className="m-0 text-[12px]">
+                Memory files cleared. Deep memory — imported context and learned
+                memories on your box — is still there. Clear it too for a fresh
+                start?
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className="btn btn-ghost !text-danger"
+                  disabled={busy}
+                  onClick={() => void clearDeep()}
+                >
+                  {busy ? "Clearing…" : "Clear deep memory too"}
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  disabled={busy}
+                  onClick={() => setDeepOffer(false)}
+                >
+                  Keep it
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </section>
@@ -190,14 +261,24 @@ interface DeepMemoryState {
   pending: number | null;
 }
 
+type DeepClearScope = "resources" | "memories" | "all";
+
+const DEEP_CLEAR_SCOPES: { scope: DeepClearScope; label: string }[] = [
+  { scope: "resources", label: "Imported context" },
+  { scope: "memories", label: "Learned memories" },
+  { scope: "all", label: "Everything" },
+];
+
 /** Deep memory (docs/memory-upgrade.md): live status of the box-local
- * semantic store + owner-triggered reindex. Metadata only — the contents
- * stay on the box and surface through chat recall, not here. */
+ * semantic store + owner-triggered reindex and clear-with-confirm. Metadata
+ * only — the contents stay on the box and surface through chat recall, not
+ * here. */
 function DeepMemoryCard() {
   const [state, setState] = useState<DeepMemoryState | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [clearScope, setClearScope] = useState<DeepClearScope | null>(null);
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -243,6 +324,29 @@ function DeepMemoryCard() {
     }
   }
 
+  async function clear(scope: DeepClearScope) {
+    setBusy(true);
+    setNote(null);
+    try {
+      const res = await fetch("/api/me/memory/deep", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "clear", scope, confirm: true }),
+      });
+      if (res.status === 503) setNote(BUSY_NOTE);
+      else if (!res.ok) setNote("Clear failed.");
+      else {
+        setClearScope(null);
+        await load();
+        setNote("Deep memory cleared.");
+      }
+    } catch {
+      setNote("Clear failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <section className="panel !p-4">
       <CardHeader
@@ -276,7 +380,59 @@ function DeepMemoryCard() {
             <button className="btn btn-ghost" disabled={busy} onClick={() => void load()}>
               Refresh
             </button>
+            {clearScope === null ? (
+              <button
+                className="btn btn-ghost !text-danger"
+                disabled={busy}
+                onClick={() => setClearScope("all")}
+              >
+                Clear deep memory
+              </button>
+            ) : null}
           </div>
+          {clearScope !== null ? (
+            <div
+              className="grid gap-2 rounded-[7px] border border-[var(--ring)] bg-surface-2 p-2"
+              role="group"
+              aria-label="Clear deep memory"
+            >
+              <p className="m-0 text-[12px]">
+                Clear deep memory? This is irreversible — recall over what you
+                clear stops until it is imported or learned again.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {DEEP_CLEAR_SCOPES.map(({ scope, label }) => (
+                  <label key={scope} className="flex items-center gap-1 text-[12px]">
+                    <input
+                      type="radio"
+                      name="deep-clear-scope"
+                      value={scope}
+                      checked={clearScope === scope}
+                      disabled={busy}
+                      onChange={() => setClearScope(scope)}
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className="btn btn-ghost !text-danger"
+                  disabled={busy}
+                  onClick={() => void clear(clearScope)}
+                >
+                  {busy ? "Clearing…" : "Confirm"}
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  disabled={busy}
+                  onClick={() => setClearScope(null)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </section>

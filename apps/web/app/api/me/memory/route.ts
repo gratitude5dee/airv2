@@ -126,7 +126,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const box = await ensureBoxAwake(supabase, userId);
     try {
       await clearMemoryFiles(box.boxId, target as MemoryTarget);
-      return NextResponse.json({ ok: true }, { headers: NO_STORE });
+      // A "fresh start" clear of both files leaves deep memory (the box's
+      // OpenViking store) intact; offer that separate, confirm-gated wipe
+      // via POST /api/me/memory/deep rather than forcing it here.
+      return NextResponse.json(
+        target === "both" ? { ok: true, deep_memory_offer: true } : { ok: true },
+        { headers: NO_STORE }
+      );
     } finally {
       await armStopAfter(supabase, userId).catch(() => undefined);
     }
