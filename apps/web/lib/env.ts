@@ -109,10 +109,9 @@ export const env = {
   spectrumProjectId: (): string => required("SPECTRUM_PROJECT_ID"),
   spectrumProjectSecret: (): string => required("SPECTRUM_PROJECT_SECRET"),
   spectrumWebhookSecret: (): string => required("SPECTRUM_WEBHOOK_SECRET"),
-  // Mail provider cutover flag: AgentMail stays the default until the
-  // wzrdmail staging validation passes (see lib/mail/provider.ts).
+  // Mail provider: wzrdmail is the deployment default; AGENTMAIL_* stays for rollback (see lib/mail/provider.ts).
   mailProvider: (): "agentmail" | "wzrdmail" => {
-    const value = optional("MAIL_PROVIDER", "agentmail");
+    const value = optional("MAIL_PROVIDER", "wzrdmail");
     if (value !== "agentmail" && value !== "wzrdmail") {
       throw new Error(`MAIL_PROVIDER must be "agentmail" or "wzrdmail", got "${value}"`);
     }
@@ -129,7 +128,7 @@ export const env = {
   agentEmailDomain: (): string =>
     optional(
       "AGENT_EMAIL_DOMAIN",
-      optional("MAIL_PROVIDER", "agentmail") === "wzrdmail" ? "wzrd.tech" : "agentmail.to",
+      optional("MAIL_PROVIDER", "wzrdmail") === "wzrdmail" ? "wzrd.tech" : "agentmail.to",
     ),
   composioApiKey: (): string => required("COMPOSIO_API_KEY"),
   // MasterKey (x402 service catalog + MCP). The partner secret is the

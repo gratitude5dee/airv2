@@ -31,14 +31,19 @@ afterEach(() => {
 });
 
 describe("MAIL_PROVIDER", () => {
-  it("defaults to agentmail", () => {
-    expect(env.mailProvider()).toBe("agentmail");
-    expect(mailProvider()).toBe("agentmail");
+  it("defaults to wzrdmail", () => {
+    expect(env.mailProvider()).toBe("wzrdmail");
+    expect(mailProvider()).toBe("wzrdmail");
   });
 
-  it("selects wzrdmail when set", () => {
+  it("selects wzrdmail when explicitly set", () => {
     process.env["MAIL_PROVIDER"] = "wzrdmail";
     expect(mailProvider()).toBe("wzrdmail");
+  });
+
+  it("selects agentmail when explicitly set", () => {
+    process.env["MAIL_PROVIDER"] = "agentmail";
+    expect(mailProvider()).toBe("agentmail");
   });
 
   it("rejects unknown providers loudly", () => {
@@ -46,8 +51,10 @@ describe("MAIL_PROVIDER", () => {
     expect(() => env.mailProvider()).toThrow(/MAIL_PROVIDER/);
   });
 
-  it("derives the default agent email domain from the provider", () => {
+  it("derives the agent email domain from the provider", () => {
     delete process.env["AGENT_EMAIL_DOMAIN"];
+    expect(env.agentEmailDomain()).toBe("wzrd.tech");
+    process.env["MAIL_PROVIDER"] = "agentmail";
     expect(env.agentEmailDomain()).toBe("agentmail.to");
     process.env["MAIL_PROVIDER"] = "wzrdmail";
     expect(env.agentEmailDomain()).toBe("wzrd.tech");
@@ -64,7 +71,16 @@ describe("MAIL_PROVIDER", () => {
 });
 
 describe("provider dispatch", () => {
-  it("routes to the AgentMail client by default", async () => {
+  it("routes to the wzrdmail client by default", async () => {
+    await expect(createDraft("inbox", { text: "hi" })).resolves.toBe(
+      "wm-draft",
+    );
+    expect(wzrdmailCreateDraft).toHaveBeenCalledWith("inbox", { text: "hi" });
+    expect(agentmailCreateDraft).not.toHaveBeenCalled();
+  });
+
+  it("routes to the AgentMail client when explicitly set", async () => {
+    process.env["MAIL_PROVIDER"] = "agentmail";
     await expect(createDraft("inbox", { text: "hi" })).resolves.toBe(
       "am-draft",
     );
@@ -72,7 +88,7 @@ describe("provider dispatch", () => {
     expect(wzrdmailCreateDraft).not.toHaveBeenCalled();
   });
 
-  it("routes to the wzrdmail client behind the flag, evaluated per call", async () => {
+  it("routes to the wzrdmail client when explicitly set, evaluated per call", async () => {
     process.env["MAIL_PROVIDER"] = "wzrdmail";
     await expect(createDraft("inbox", { text: "hi" })).resolves.toBe(
       "wm-draft",
@@ -81,6 +97,8 @@ describe("provider dispatch", () => {
   });
 
   it("picks the matching inbound webhook secret", () => {
+    expect(inboundWebhookSecret()).toBe("whsec_wzrdmail");
+    process.env["MAIL_PROVIDER"] = "agentmail";
     expect(inboundWebhookSecret()).toBe("whsec_agentmail");
     process.env["MAIL_PROVIDER"] = "wzrdmail";
     expect(inboundWebhookSecret()).toBe("whsec_wzrdmail");
