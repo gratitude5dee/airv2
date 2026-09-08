@@ -114,13 +114,22 @@ export async function deepMemoryForget(
 /** Owner-initiated wipe of whole roots: indexed context (`resources`),
  * OpenViking-derived memories (`memories`) or both. The box drops queued
  * indexing work under the cleared roots first, so a durable replay cannot
- * restore what the owner cleared. Not best-effort: the caller surfaces
- * failure. Metadata-only log line (scope, never URIs of user content). */
+ * restore what the owner cleared. Renders ov.conf first like reindex, so a
+ * box whose OpenViking was never configured still clears instead of failing.
+ * Not best-effort: the caller surfaces failure. Metadata-only log line
+ * (scope, never URIs of user content). */
 export async function deepMemoryClear(
   boxId: string,
   scope: DeepMemoryClearScope
 ): Promise<boolean> {
   try {
+    const ensure = await command(boxId, "ovctl ensure", 180);
+    if (ensure.exitCode !== 0) {
+      console.log(
+        JSON.stringify({ msg: "deep memory clear", box_id: boxId, scope, ok: false, stage: "ensure" })
+      );
+      return false;
+    }
     const result = await command(
       boxId,
       `ovctl clear --scope ${shellQuote(scope)}`,
