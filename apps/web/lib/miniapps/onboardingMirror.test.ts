@@ -27,6 +27,7 @@ import {
   readIngestStatusOrMirror,
   readStatusMirror,
   refreshStatusMirror,
+  refreshStatusMirrorIfAwake,
   toLinkMeta,
   writeStatusMirror,
 } from "./onboardingMirror";
@@ -222,5 +223,36 @@ describe("refreshStatusMirror", () => {
     const live = await refreshStatusMirror(supabase, "user-1");
     expect(live.boxBusy).toBe(true);
     expect(upserts).toHaveLength(0);
+  });
+});
+
+describe("refreshStatusMirrorIfAwake", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("leaves a sleeping box asleep and reads nothing", async () => {
+    vi.mocked(peekBoxState).mockResolvedValueOnce({ boxId: "box-1", awake: false });
+    const { supabase, upserts } = fakeSupabase(null);
+    const live = await refreshStatusMirrorIfAwake(supabase, "user-1");
+    expect(live).toBeNull();
+    expect(ensureBoxAwake).not.toHaveBeenCalled();
+    expect(ensureComputeAwake).not.toHaveBeenCalled();
+    expect(readFile).not.toHaveBeenCalled();
+    expect(upserts).toHaveLength(0);
+  });
+
+  it("skips users without a box", async () => {
+    vi.mocked(peekBoxState).mockResolvedValueOnce(null);
+    const { supabase, upserts } = fakeSupabase(null);
+    expect(await refreshStatusMirrorIfAwake(supabase, "user-1")).toBeNull();
+    expect(ensureComputeAwake).not.toHaveBeenCalled();
+    expect(upserts).toHaveLength(0);
+  });
+
+  it("refreshes the row from a box that is already awake", async () => {
+    vi.mocked(peekBoxState).mockResolvedValueOnce({ boxId: "box-1", awake: true });
+    const { supabase, upserts } = fakeSupabase(null);
+    const live = await refreshStatusMirrorIfAwake(supabase, "user-1");
+    expect(live?.boxBusy).toBe(false);
+    expect(upserts).toHaveLength(1);
   });
 });

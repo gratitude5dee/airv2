@@ -245,3 +245,56 @@ so archive recall/coverage is unmeasured and source/manifest/enqueue receipts
 do not prove searchability (item 5); MEM-01/MEM-18/MEM-19 stay not verified.
 Rollout still requires the template with `stop-claim` to ship before the
 claim path is exercised in production. No A+/95 score is claimed.
+
+Memory follow-up (MEM-04/14/15/25/26/27 implemented at unit level, MEM-10 in
+progress, archive resolution UI): the importer enqueues `Dictionary.MD` only
+on the first status read after `dictionary_built_at` flips, with a persisted
+`dictionary_indexed_for` marker so a failed enqueue retries and a repeat read
+is idempotent. `ovctl` now documents `export`/`recent` as content-bearing,
+walks the resource and memory trees breadth-first to count leaf nodes (bounded
+at 20,000 nodes, reporting truncation), orders `recent` by modification time
+then URI, and gains `clear --scope resources|memories|all` (worker lock,
+queued-work filtering, typed-absence tolerance only, metadata-only output).
+Persona totals come from `status`, not the bounded preview. The amnesia guard
+distinguishes an empty/failed transcript read (retry once, then hold) from
+rows present but nothing replayable (proceed). `peekBoxState` reads the
+mirrored `boxes.state` without a provider call; Persona, `GET
+/api/me/memory/deep` (default; `?wake=1` is the explicit owner wake), the
+import/ingest status readers, the iMessage/agent-context routes and the
+stale-mirror refresh use it so a sleeping box is answered from the Postgres
+status mirror and never woken for chips. Content reads (memory files, vault,
+exports) and mutations still wake by design. The Context panel gains a
+confirm-gated deep-memory clear and a two-step "Check status" / "Wake and
+check" flow. The onboarding iMessage step renders pending legacy-label
+decisions for the authenticated owner (live only when the box is already
+awake; the mirror carries a count only) and saves them through
+`saveResolutions`; `migrateLegacyArchive` re-inventories raw chunks before
+writing its completion marker.
+
+MEM-10 writer inventory: USER.md is written by (1) Hermes's memory tool
+box-side, (2) the owner edit (`PUT /api/me/memory`, mini-app
+`memory.save_user`), (3) Onairos sync/disconnect (marker-delimited persona
+block, read-modify-write after the 1,375 budget check) and (4) owner clear
+(truncate). The owner edit was a blind overwrite; it is now a compare-and-swap
+on the box keyed by the sha256 of the profile the owner loaded
+(`user_revision` from GET, `base_revision` on PUT, hidden field in the
+mini-app form): an agent rewrite in between returns 409 and the panel keeps
+the draft, refreshes the base and lets the owner re-save knowingly. Onairos
+still writes its digest into USER.md directly with a narrow read-then-write
+window against a concurrent Hermes tool write (no lock is shared with
+Hermes), and there is no consolidation, decay or supersession; moving Onairos
+behind a Hermes-consumed intermediate is the remaining design work, so MEM-10
+stays in progress.
+
+Validation: 57 OpenViking Python tests pass (`tests/test_*.py`). Full
+Vitest: 259 files, 2,702 tests pass, one skipped. Typecheck passes. Lint:
+zero errors, the same 38 pre-existing warnings. Production build passes.
+Inventory check: 249 rows, 15 implemented, 2 in progress, 232 not verified,
+product acceptance not measured.
+
+Limits: every check above runs against mocked box/provider state or an
+in-memory SDK stub. No real provider sleep/wake transition, mirror lag,
+populated OpenViking store, live Dictionary build, or gateway session store
+was exercised; none of these findings is `verified`. Live isolated
+Linux/systemd verification (item 4) and archive recall/coverage (item 5)
+remain outstanding. No A+/95 score is claimed.

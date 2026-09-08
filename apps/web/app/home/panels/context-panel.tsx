@@ -20,6 +20,9 @@ interface MemoryState {
   memory: string | null;
   user: string | null;
   user_char_limit: number;
+  /** Fingerprint of `user` as served; echoed on save so an agent rewrite
+   * in between surfaces as a conflict instead of being overwritten. */
+  user_revision: string;
 }
 
 interface TraceReceipt {
@@ -96,11 +99,32 @@ function MemoryCard() {
       const res = await fetch("/api/me/memory", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user: userDraft }),
+        body: JSON.stringify({
+          user: userDraft,
+          base_revision: state?.user_revision,
+        }),
       });
       if (res.status === 503) setNote(BUSY_NOTE);
-      else if (!res.ok) setNote("Couldn't save your profile.");
-      else setNote("Saved.");
+      else if (res.status === 409) {
+        // Keep the draft; refresh the base so a second save is an informed
+        // overwrite of whatever the agent wrote in between.
+        const fresh = await fetch("/api/me/memory");
+        if (fresh.ok) setState((await fresh.json()) as MemoryState);
+        setNote(
+          "Your agent updated your profile while you were editing. Save again to overwrite it with your version."
+        );
+      } else if (!res.ok) setNote("Couldn't save your profile.");
+      else {
+        const data = (await res.json()) as { user_revision?: string };
+        if (data.user_revision) {
+          setState((prev) =>
+            prev
+              ? { ...prev, user: userDraft, user_revision: data.user_revision! }
+              : prev
+          );
+        }
+        setNote("Saved.");
+      }
     } catch {
       setNote("Couldn't save your profile.");
     } finally {
@@ -272,19 +296,21 @@ const DEEP_CLEAR_SCOPES: { scope: DeepClearScope; label: string }[] = [
 /** Deep memory (docs/memory-upgrade.md): live status of the box-local
  * semantic store + owner-triggered reindex and clear-with-confirm. Metadata
  * only — the contents stay on the box and surface through chat recall, not
- * here. */
+ * here. A status check never wakes a sleeping box by itself; the owner opts
+ * into the wake with a second click. */
 function DeepMemoryCard() {
   const [state, setState] = useState<DeepMemoryState | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [asleep, setAsleep] = useState(false);
   const [clearScope, setClearScope] = useState<DeepClearScope | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (wake = false) => {
     setBusy(true);
     setNote(null);
     try {
-      const res = await fetch("/api/me/memory/deep");
+      const res = await fetch(wake ? "/api/me/memory/deep?wake=1" : "/api/me/memory/deep");
       if (res.status === 503) {
         setNote(BUSY_NOTE);
         return;
@@ -293,7 +319,13 @@ function DeepMemoryCard() {
         setNote("Couldn't read deep memory status.");
         return;
       }
-      setState((await res.json()) as DeepMemoryState);
+      const body = (await res.json()) as DeepMemoryState | { asleep: true };
+      if ("asleep" in body) {
+        setAsleep(true);
+        return;
+      }
+      setAsleep(false);
+      setState(body);
       setLoaded(true);
     } catch {
       setNote("Couldn't read deep memory status.");
@@ -356,9 +388,21 @@ function DeepMemoryCard() {
       />
       {note ? <p className="muted m-0 mb-2 text-[12px]">{note}</p> : null}
       {!loaded ? (
-        <DitherButton color="blue" disabled={busy} onClick={() => void load()}>
-          {busy ? "Waking box…" : "Check status"}
-        </DitherButton>
+        asleep ? (
+          <div className="grid gap-2">
+            <p className="m-0 text-[12px]" role="status">
+              Your agent&apos;s computer is asleep. It wakes with your next
+              message, or you can wake it now to read deep memory status.
+            </p>
+            <DitherButton color="blue" disabled={busy} onClick={() => void load(true)}>
+              {busy ? "Waking box…" : "Wake and check"}
+            </DitherButton>
+          </div>
+        ) : (
+          <DitherButton color="blue" disabled={busy} onClick={() => void load()}>
+            {busy ? "Checking…" : "Check status"}
+          </DitherButton>
+        )
       ) : state ? (
         <div className="grid gap-3">
           <p className="m-0 text-[12px]">

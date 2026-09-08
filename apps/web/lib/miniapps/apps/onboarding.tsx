@@ -88,6 +88,7 @@ import {
   MIRROR_STALE_MS,
   readStatusMirror,
   refreshStatusMirror,
+  refreshStatusMirrorIfAwake,
   writeStatusMirror,
 } from "../onboardingMirror";
 import {
@@ -554,7 +555,7 @@ async function loadSnapshot(
       if (!(age < MIRROR_STALE_MS)) {
         try {
           after(() =>
-            refreshStatusMirror(supabase, userId).catch(() => undefined)
+            refreshStatusMirrorIfAwake(supabase, userId).catch(() => undefined)
           );
         } catch {
           // outside a request scope — skip the background refresh

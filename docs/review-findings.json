@@ -332,9 +332,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
-      "notes": ""
+      "implementation_status": "implemented",
+      "evidence": [
+        "apps/web/lib/context/importer.test.ts: Dictionary.MD is not enqueued before the subagent has written it and dictionary_built_at flipped; it is enqueued once on the first status read after the build lands, with the marker persisted for retry/idempotency"
+      ],
+      "notes": "Unit-level only (mocked box). Live Dictionary indexing on a real box and recall of dictionary terms are unmeasured."
     },
     {
       "id": "MEM-05",
@@ -465,9 +467,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
-      "notes": ""
+      "implementation_status": "in_progress",
+      "evidence": [
+        "apps/web/app/api/me/memory/route.test.ts: owner PUT with base_revision compare-and-swaps on the box and 409s instead of overwriting an agent rewrite; malformed revisions are rejected before any box command"
+      ],
+      "notes": "Writer inventory (all direct USER.md writers): (1) Hermes memory tool box-side, the intended primary writer; (2) owner edit via /api/me/memory PUT and the mini-app memory.save_user — now a revision-guarded compare-and-swap (sha256 of the loaded profile; agent rewrite in between => 409 and an informed re-save) instead of a blind overwrite; (3) Onairos sync/disconnect — bounded marker-delimited persona block upsert/remove via read-modify-write with the 1,375 budget checked first (still a narrow read-then-write window against a concurrent Hermes tool write; no box-side lock is shared with Hermes); (4) owner clear (truncate). No consolidation, decay or supersession exists yet; Onairos still writes its digest into USER.md directly rather than via a Hermes-consumed intermediate. Not resolved."
     },
     {
       "id": "MEM-11",
@@ -623,9 +627,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
-      "notes": ""
+      "implementation_status": "implemented",
+      "evidence": [
+        "apps/web/lib/orchestrator/flush.test.ts: rows present but nothing replayable proceeds without rescheduling; empty/failed transcript read still retries once then holds"
+      ],
+      "notes": "Unit-level only; not exercised against a live gateway session store."
     },
     {
       "id": "MEM-26",
@@ -648,9 +654,13 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
-      "notes": ""
+      "implementation_status": "implemented",
+      "evidence": [
+        "infra/template/openviking/tests/test_clear.py: clear --scope resources|memories|all removes the right roots under the worker lock, drops queued work beneath them, tolerates only typed NotFoundError, and prints metadata only",
+        "apps/web/lib/memory/deep.test.ts, apps/web/app/api/me/memory/deep/route.test.ts: confirm-gated clear POST, scope validation, fixed-message 502 on failure",
+        "apps/web/lib/onairos/sync.test.ts: disconnect forgets the indexed persona subtree"
+      ],
+      "notes": "Owner clear surface exists in the Context panel and memory card (target=both offers deep clear). Unit-level only; the real OpenViking server's rm semantics for a populated store are unmeasured."
     },
     {
       "id": "MEM-29",
@@ -727,9 +737,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
-      "notes": ""
+      "implementation_status": "implemented",
+      "evidence": [
+        "infra/template/openviking/tests/test_inventory.py: status/queue/claim output is metadata-only; export/recent are documented and tested as content-bearing"
+      ],
+      "notes": "Header docstring corrected to name the two content-printing commands. Unit-level only."
     },
     {
       "id": "MEM-15",
@@ -754,9 +766,14 @@
         "remove-mitosis-experiment"
       ],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
-      "notes": ""
+      "implementation_status": "implemented",
+      "evidence": [
+        "apps/web/lib/miniapps/apps/persona.test.ts: sleeping/missing box renders the asleep state with no ensureBoxAwake; awake box reads live and re-arms idle",
+        "apps/web/app/api/me/memory/deep/route.test.ts: default GET returns {asleep:true} without waking; ?wake=1 is the explicit wake path",
+        "apps/web/lib/miniapps/onboardingMirror.test.ts: import/ingest status served from the mirror for a sleeping box; refreshStatusMirrorIfAwake never wakes",
+        "apps/web/app/api/me/imessage-history/route.test.ts: sleeping box answered from the mirror, resuming from the mirrored cursor"
+      ],
+      "notes": "Status/metadata reads (Persona chips, deep-memory status, import/ingest status, stale mirror refresh) no longer wake a stopped box; content reads (memory files, vault, exports) still wake by design. Unit-level with mocked box state; real provider sleeping/awake transitions and mirror lag are unmeasured."
     },
     {
       "id": "MEM-23",
@@ -804,9 +821,12 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
-      "notes": ""
+      "implementation_status": "implemented",
+      "evidence": [
+        "infra/template/openviking/tests/test_inventory.py: recursive leaf counts, truncation reporting, recent ordering by mtime then URI",
+        "apps/web/lib/miniapps/apps/persona.test.ts: Persona totals come from status, not the bounded recent preview"
+      ],
+      "notes": "Counts are leaf nodes under a bounded walk (WALK_NODE_LIMIT) and report truncation. Unit-level only; not measured against a real populated OpenViking store."
     },
     {
       "id": "MEM-28",

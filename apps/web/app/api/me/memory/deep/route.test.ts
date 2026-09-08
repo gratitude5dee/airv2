@@ -1,7 +1,8 @@
 /**
  * Deep memory route invariants: owner session required, clear demands an
- * explicit confirm and a known scope, the reindex branch is untouched, and
- * only metadata (scope, booleans) transits the response.
+ * explicit confirm and a known scope, the reindex branch is untouched, only
+ * metadata (scope, booleans) transits the response, and a status read never
+ * wakes a stopped box unless the owner asks for it.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
@@ -16,9 +17,15 @@ vi.mock("@/lib/supabase", () => ({
   serviceClient: () => ({ from: supabaseFrom }),
 }));
 
-vi.mock("@/lib/orchestrator/boxes", () => ({
+const boxes = vi.hoisted(() => ({
   ensureBoxAwake: vi.fn(async () => ({ boxId: "box-1" })),
+  peekBoxState: vi.fn<() => Promise<{ boxId: string; awake: boolean } | null>>(
+    async () => ({ boxId: "box-1", awake: true })
+  ),
   armStopAfter: vi.fn(async () => undefined),
+}));
+vi.mock("@/lib/orchestrator/boxes", () => ({
+  ...boxes,
   StartLimitError: class extends Error {},
 }));
 
@@ -32,9 +39,13 @@ vi.mock("@/lib/memory/deep", async (importOriginal) => ({
   ...deep,
 }));
 
-import { POST } from "./route";
+import { GET, POST } from "./route";
 
 const url = "https://air.test/api/me/memory/deep";
+
+function get(query = ""): Promise<Response> {
+  return GET(new NextRequest(`${url}${query}`));
+}
 
 function post(body: unknown): Promise<Response> {
   return POST(new NextRequest(url, { method: "POST", body: JSON.stringify(body) }));
@@ -43,8 +54,47 @@ function post(body: unknown): Promise<Response> {
 beforeEach(() => {
   auth.userId = "user-1";
   supabaseFrom.mockClear();
+  boxes.ensureBoxAwake.mockClear();
+  boxes.armStopAfter.mockClear();
+  boxes.peekBoxState.mockReset().mockResolvedValue({ boxId: "box-1", awake: true });
+  deep.deepMemoryStatus.mockClear();
   deep.deepMemoryClear.mockReset().mockResolvedValue(true);
   deep.deepMemoryReindex.mockReset().mockResolvedValue(true);
+});
+
+describe("GET /api/me/memory/deep", () => {
+  it("401s without a session", async () => {
+    auth.userId = undefined;
+    expect((await get()).status).toBe(401);
+    expect(boxes.peekBoxState).not.toHaveBeenCalled();
+  });
+
+  it("reads status live from a box that is already awake without a wake call", async () => {
+    const response = await get();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ healthy: true, resources: 1, workspace_bytes: 0, pending: 0 });
+    expect(deep.deepMemoryStatus).toHaveBeenCalledWith("box-1");
+    expect(boxes.ensureBoxAwake).not.toHaveBeenCalled();
+    expect(boxes.armStopAfter).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([{ boxId: "box-1", awake: false }, null])("answers asleep without waking when the box is %j", async (peek) => {
+    boxes.peekBoxState.mockResolvedValue(peek);
+    const response = await get();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ asleep: true });
+    expect(boxes.ensureBoxAwake).not.toHaveBeenCalled();
+    expect(deep.deepMemoryStatus).not.toHaveBeenCalled();
+    expect(boxes.armStopAfter).not.toHaveBeenCalled();
+  });
+
+  it("wakes a stopped box only on the owner's explicit ?wake=1", async () => {
+    boxes.peekBoxState.mockResolvedValue({ boxId: "box-1", awake: false });
+    const response = await get("?wake=1");
+    expect(response.status).toBe(200);
+    expect(boxes.ensureBoxAwake).toHaveBeenCalledTimes(1);
+    expect(deep.deepMemoryStatus).toHaveBeenCalledWith("box-1");
+  });
 });
 
 describe("POST /api/me/memory/deep (clear)", () => {

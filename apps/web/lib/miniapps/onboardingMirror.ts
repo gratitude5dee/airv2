@@ -265,16 +265,33 @@ export async function refreshStatusMirror(
 }
 
 /**
+ * `refreshStatusMirror` only while the box is already up. Background and
+ * stale-while-revalidate refreshes go through here: a stale row is a fine
+ * thing to keep showing, whereas a wake is the scarce operation and is never
+ * spent on keeping a status row fresh. Resolves null when the box is asleep
+ * (or has no box yet) and nothing was read.
+ */
+export async function refreshStatusMirrorIfAwake(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<LiveOnboardingStatus | null> {
+  const box = await peekBoxState(supabase, userId);
+  if (!box?.awake) return null;
+  return refreshStatusMirror(supabase, userId);
+}
+
+/**
  * Refresh the mirror off the response path so the owner's next open reads a
  * warm row instead of paying for five Box reads. Best-effort in every sense:
- * outside a request scope it runs detached, and a failure is silent.
+ * outside a request scope it runs detached, a failure is silent, and a
+ * sleeping box is left asleep.
  */
 export function warmStatusMirror(
   supabase: SupabaseClient,
   userId: string
 ): void {
   const run = (): Promise<void> =>
-    refreshStatusMirror(supabase, userId).then(
+    refreshStatusMirrorIfAwake(supabase, userId).then(
       () => undefined,
       () => undefined
     );

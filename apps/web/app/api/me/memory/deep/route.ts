@@ -2,8 +2,10 @@
  * Deep memory (docs/memory-upgrade.md) — owner-session status, reindex and
  * clear-with-confirm for the box-local OpenViking store. Status is read live
  * from the box (the shared DB stores nothing about deep memory — not even a
- * flag it doesn't need); reindex re-renders ov.conf and re-adds the
- * onboarding context; clear wipes whole roots on the box.
+ * flag it doesn't need) but only while the box is already up: a stopped box
+ * answers `{ asleep: true }` and is woken for a status read only on the
+ * owner's explicit `?wake=1` (MEM-15). Reindex re-renders ov.conf and
+ * re-adds the onboarding context; clear wipes whole roots on the box.
  * Only metadata transits: counts, booleans, bytes — never memory content.
  */
 import { NextRequest, NextResponse } from "next/server";
@@ -17,6 +19,7 @@ import {
 import {
   armStopAfter,
   ensureBoxAwake,
+  peekBoxState,
   StartLimitError,
 } from "@/lib/orchestrator/boxes";
 import { serviceClient } from "@/lib/supabase";
@@ -40,8 +43,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const supabase = serviceClient();
+  const wake = request.nextUrl.searchParams.get("wake") === "1";
   try {
-    const box = await ensureBoxAwake(supabase, userId);
+    const peek = await peekBoxState(supabase, userId);
+    if (!peek?.awake && !wake) {
+      return NextResponse.json({ asleep: true }, { headers: NO_STORE });
+    }
+    const box = peek?.awake ? peek : await ensureBoxAwake(supabase, userId);
     try {
       const status = await deepMemoryStatus(box.boxId);
       return NextResponse.json(status, { headers: NO_STORE });

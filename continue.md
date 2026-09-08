@@ -246,15 +246,35 @@ the user's explicit authorization. The user has authorized this GitHub push.
    idle RSS. A job exceeding the 600-second server wait still needs a strategy
    that avoids continually restarting expensive work.
 5. Archive co-ship: done locally (unit level) — owner-facing resolution for
-   ambiguous legacy labels, resumable cursor in status/command, actionable
-   upload error envelope. Still open: rollout quiescence against old writers,
-   an onboarding UI for the resolutions route (only the API exists), and live
-   corpus recall/coverage verification on a real owner export. Source,
-   manifest and enqueue receipts are not proof that every resource is
-   searchable; MEM-01/18/19 stay `not_verified` in the ledger.
-6. Finish Dictionary completion ordering (MEM-04), coordinate all USER.md
-   writers (MEM-10), privacy/forget retry and clear flows, and other memory
-   findings. Avoid claiming a timer alone proves memory durability.
+   ambiguous legacy labels (API and the onboarding iMessage step, which reads
+   labels live only when the box is already awake), resumable cursor in
+   status/command, actionable upload error envelope, and a mid-migration
+   guard (the migration re-inventories raw chunks before writing its
+   completion marker, so a chunk an old writer drops mid-run fails the
+   attempt retriably instead of being orphaned behind the marker). Still
+   open: old-writer quiescence cannot be enforced — the legacy chunk writer
+   holds no lease or marker, so it can only be detected after the fact, not
+   fenced; and live corpus recall/coverage verification on a real owner
+   export. Source, manifest and enqueue receipts are not proof that every
+   resource is searchable; MEM-01/18/19 stay `not_verified` in the ledger.
+6. Memory findings, done locally (unit level; ledger `implemented`, none
+   `verified`): MEM-04 Dictionary.MD enqueued only after `dictionary_built_at`
+   flips; MEM-14/27 `ovctl` docstring, leaf counts, truncation, sorted
+   `recent`, Persona totals from status; MEM-25 rows-present-but-nothing-
+   replayable proceeds without the amnesia backoff; MEM-15 status/metadata
+   reads (Persona chips, deep-memory status, import/ingest status, stale
+   mirror refresh) are served from the Postgres mirror for a sleeping box and
+   never wake it — content reads still wake by design; MEM-26 `ovctl clear
+   --scope` plus a confirm-gated owner clear surface. MEM-10 is `in_progress`:
+   the USER.md writer inventory is Hermes's memory tool (box-side), owner edit
+   (now a revision-guarded compare-and-swap: a 409 instead of a blind
+   overwrite of an agent rewrite), Onairos's bounded persona block
+   (read-modify-write, narrow race window, no lock shared with Hermes) and
+   owner clear. No consolidation/decay/supersession exists and Onairos still
+   writes into USER.md directly; moving it behind a Hermes-consumed digest is
+   the remaining design work. Nothing above is live-verified against a real
+   box, provider sleep/wake transition or populated OpenViking store. Avoid
+   claiming a timer alone proves memory durability.
 7. Continue every remaining review workstream in dependency order: silent
    damage prevention, instrumentation, template steering, sender/wake paths,
    shared task/run/effect/approval evidence, sessions, memory, mail and social

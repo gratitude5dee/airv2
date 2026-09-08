@@ -37,6 +37,7 @@ const box = vi.hoisted(() => ({
 vi.mock("@/lib/box/client", () => box);
 
 import { GET, POST, PUT } from "./route";
+import { profileRevision } from "@/lib/memory/files";
 
 const url = "https://air.test/api/me/memory";
 
@@ -60,6 +61,7 @@ describe("GET /api/me/memory", () => {
     const body = await response.json();
     expect(body.memory).toBe("secret agent notes");
     expect(body.user).toBe("user profile");
+    expect(body.user_revision).toBe(profileRevision("user profile"));
     expect(supabaseFrom).not.toHaveBeenCalled();
   });
 });
@@ -79,6 +81,54 @@ describe("PUT /api/me/memory", () => {
       "I prefer tea."
     );
     expect(supabaseFrom).not.toHaveBeenCalled();
+  });
+
+  it("compare-and-swaps on the box when the owner echoes the loaded revision", async () => {
+    const base = profileRevision("user profile");
+    const response = await PUT(
+      new NextRequest(url, {
+        method: "PUT",
+        body: JSON.stringify({ user: "I prefer tea.", base_revision: base }),
+      })
+    );
+    expect(response.status).toBe(200);
+    expect((await response.json()).user_revision).toBe(
+      profileRevision("I prefer tea.")
+    );
+    expect(box.writeFile).not.toHaveBeenCalled();
+    expect(box.command).toHaveBeenCalledTimes(1);
+    const script = box.command.mock.calls[0]?.[1] ?? "";
+    expect(script).toContain(`'${base}'`);
+    expect(script).toContain("'I prefer tea.'");
+    expect(script).toContain("mv -f");
+  });
+
+  it("409s instead of overwriting a profile the agent rewrote meanwhile", async () => {
+    box.command.mockResolvedValueOnce({ exitCode: 3, stdout: "", stderr: "" });
+    const response = await PUT(
+      new NextRequest(url, {
+        method: "PUT",
+        body: JSON.stringify({
+          user: "I prefer tea.",
+          base_revision: profileRevision("stale"),
+        }),
+      })
+    );
+    expect(response.status).toBe(409);
+    expect((await response.json()).conflict).toBe(true);
+    expect(box.writeFile).not.toHaveBeenCalled();
+  });
+
+  it("rejects a malformed base_revision before touching the box", async () => {
+    const response = await PUT(
+      new NextRequest(url, {
+        method: "PUT",
+        body: JSON.stringify({ user: "hi", base_revision: "'; rm -rf ~'" }),
+      })
+    );
+    expect(response.status).toBe(400);
+    expect(box.command).not.toHaveBeenCalled();
+    expect(box.writeFile).not.toHaveBeenCalled();
   });
 
   it("rejects oversized profiles", async () => {

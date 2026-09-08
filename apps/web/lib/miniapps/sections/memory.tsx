@@ -16,8 +16,11 @@ import { externalOrigin } from "../gates";
 import { esc, withBaseHeaders } from "../html";
 import {
   clearMemoryFiles,
+  isProfileRevision,
+  profileRevision,
   readMemoryFiles,
   USER_PROFILE_CHAR_LIMIT,
+  UserProfileConflictError,
   writeUserProfile,
   type MemoryTarget,
 } from "@/lib/memory/files";
@@ -63,6 +66,7 @@ export async function renderMemorySection(
 <h3>About you (USER.md)</h3>
 <form method="post">
 <input type="hidden" name="action" value="memory.save_user">
+<input type="hidden" name="base_revision" value="${profileRevision(user)}">
 <textarea name="user" rows="8" maxlength="${USER_PROFILE_CHAR_LIMIT}" style="width:100%">${esc(user ?? "")}</textarea>
 <button>Save profile</button></form>
 <form method="post" onsubmit="return confirm('Clear your profile? This cannot be undone.')" style="margin:0">
@@ -97,7 +101,27 @@ export async function memoryAction(
           NextResponse.json({ error: "profile too long" }, { status: 400 })
         );
       }
-      await writeUserProfile(box.boxId, user);
+      const baseRevision = form.get("base_revision");
+      try {
+        await writeUserProfile(
+          box.boxId,
+          user,
+          isProfileRevision(baseRevision) ? baseRevision : undefined
+        );
+      } catch (error) {
+        if (error instanceof UserProfileConflictError) {
+          return withBaseHeaders(
+            NextResponse.json(
+              {
+                error:
+                  "Your agent updated your profile while you were editing. Reload, then re-apply your change.",
+              },
+              { status: 409 }
+            )
+          );
+        }
+        throw error;
+      }
       return redirect;
     }
     if (action === "memory.clear") {
