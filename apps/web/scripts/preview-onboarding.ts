@@ -90,7 +90,7 @@ const snapshot: OnboardingSnapshot = {
   ingestCommand:
     "curl -fsSL https://app.wzrd.tech/imessage-ingest.sh -o /tmp/air-ingest.sh && AIR_INGEST_ENDPOINT=https://app.wzrd.tech/api/me/imessage-history bash /tmp/air-ingest.sh tkt_example_ticket_value",
   boxBusy: false,
-  boxAwake: true,
+  awakeBoxId: "bx_preview",
   linkPairing: false,
   resolutions: null,
 };

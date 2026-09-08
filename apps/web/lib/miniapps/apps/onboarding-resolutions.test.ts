@@ -18,15 +18,15 @@ const mirrorRows: Array<Record<string, unknown>> = [];
 const logs: string[] = [];
 const ensureBoxAwake = vi.fn(async () => ({ boxId: "box-1", target: "target-1" }));
 const readIngestStatus = vi.fn<() => Promise<IngestStatus>>();
-const readResolutionView = vi.fn<() => Promise<ResolutionView>>();
 const saveResolutions = vi.fn<(...args: unknown[]) => Promise<ResolutionView>>();
 
+const readFile = vi.fn(async (_boxId: string, path: string) => {
+  const value = boxFiles.get(path);
+  if (value === undefined) throw new Error("not found");
+  return value;
+});
 vi.mock("@/lib/box/client", () => ({
-  readFile: vi.fn(async (_boxId: string, path: string) => {
-    const value = boxFiles.get(path);
-    if (value === undefined) throw new Error("not found");
-    return value;
-  }),
+  readFile: (...args: [string, string]) => readFile(...args),
   writeFile: vi.fn(async (_boxId: string, path: string, content: string) => {
     boxFiles.set(path, content);
   }),
@@ -49,7 +49,6 @@ vi.mock("@/lib/imessage/ingest", async (importOriginal) => ({
 }));
 vi.mock("@/lib/imessage/archiveResolutions", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/imessage/archiveResolutions")>()),
-  readResolutionView: (...args: unknown[]) => readResolutionView(...(args as [])),
   saveResolutions: (...args: unknown[]) => saveResolutions(...args),
 }));
 vi.mock("@/lib/commerce/merchants", () => ({
@@ -77,7 +76,11 @@ vi.mock("@/lib/miniapps/cardSends", () => ({
 }));
 
 import { onboarding } from "@/lib/miniapps/apps/onboarding";
-import { ResolutionInputError } from "@/lib/imessage/archiveResolutions";
+import {
+  PENDING_RESOLUTION_PATH,
+  RESOLUTIONS_PATH,
+  ResolutionInputError,
+} from "@/lib/imessage/archiveResolutions";
 import { StateBusyError } from "@/lib/miniapps/stateLease";
 
 const LABEL_A = "Book club <friends> & co";
@@ -104,6 +107,12 @@ const pendingView = () => view([
   { label: LABEL_A, candidates: [CANDIDATE_A1, CANDIDATE_A2] },
   { label: LABEL_B, candidates: [] },
 ]);
+/** What the box holds: the migration's pending report plus the owner's saved decisions. */
+function seedBox(pending: ResolutionView["unresolved"], resolutions: ResolutionView["resolutions"] = []) {
+  boxFiles.set(PENDING_RESOLUTION_PATH, JSON.stringify({ schema: 1, unresolved: pending, reported_at: "2026-09-01T00:00:02.000Z" }));
+  boxFiles.set(RESOLUTIONS_PATH, JSON.stringify({ schema: 1, resolutions }));
+}
+const resolutionReads = () => readFile.mock.calls.filter(([, path]) => path === PENDING_RESOLUTION_PATH || path === RESOLUTIONS_PATH);
 
 function thenable(rows: unknown, single: unknown = null) {
   const builder: Record<string, unknown> = {};
@@ -173,8 +182,8 @@ afterEach(() => {
   mirrorRows.length = 0;
   logs.length = 0;
   ensureBoxAwake.mockClear();
+  readFile.mockClear();
   readIngestStatus.mockReset();
-  readResolutionView.mockReset();
   saveResolutions.mockReset();
   for (const spy of spies) spy.mockClear();
 });
@@ -185,14 +194,14 @@ describe("onboarding iMessage step: legacy label resolution", () => {
     const body = await (await onboarding.render(makeCtx())).text();
     expect(body).not.toContain("resolve_threads");
     expect(body).not.toContain("earlier chat label");
-    expect(readResolutionView).not.toHaveBeenCalled();
+    expect(resolutionReads()).toEqual([]);
   });
 
   it("lists each pending label with its candidates or the no-match option, escaped, on the owner slide only", async () => {
     readIngestStatus.mockResolvedValue(status(2));
-    readResolutionView.mockResolvedValue(pendingView());
+    seedBox(pendingView().unresolved);
     const body = await (await onboarding.render(makeCtx())).text();
-    expect(readResolutionView).toHaveBeenCalledWith(expect.anything(), "user-1");
+    expect(resolutionReads().map(([boxId]) => boxId)).toEqual(["box-1", "box-1"]);
     expect(body).toContain("<strong>2</strong> earlier chat labels");
     expect(body).toContain('value="resolve_threads"');
     expect(body).toContain("Book club &lt;friends&gt; &amp; co");
@@ -214,26 +223,37 @@ describe("onboarding iMessage step: legacy label resolution", () => {
     expect(body).toContain("computer is asleep");
     expect(body).toContain('value="refresh_ingest"');
     expect(body).not.toContain("resolve_threads");
-    expect(readResolutionView).not.toHaveBeenCalled();
+    expect(readFile).not.toHaveBeenCalled();
     expect(readIngestStatus).not.toHaveBeenCalled();
     expect(ensureBoxAwake).not.toHaveBeenCalled();
     expectNoContentLeaked();
   });
 
-  it("reads the labels live when the mirror says pending and the box is already awake", async () => {
-    readResolutionView.mockResolvedValue(pendingView());
+  it("reads the labels straight off the box by id when the mirror says pending and boxes.state says awake — without resuming it", async () => {
+    seedBox(pendingView().unresolved);
     const body = await (await onboarding.render(makeCtx({ boxState: "idle", mirror: freshMirror(2) }))).text();
-    expect(readResolutionView).toHaveBeenCalledOnce();
+    expect(resolutionReads().map(([boxId]) => boxId)).toEqual(["box-1", "box-1"]);
+    expect(ensureBoxAwake).not.toHaveBeenCalled();
     expect(body).toContain("Book club &lt;friends&gt; &amp; co");
     expect(body).not.toContain("computer is asleep");
     expect(mirrorRows).toEqual([]);
     expectNoContentLeaked();
   });
 
+  it("falls back to the asleep state when the box stopped between the state read and the file read", async () => {
+    const body = await (await onboarding.render(makeCtx({ boxState: "ready", mirror: freshMirror(1) }))).text();
+    expect(resolutionReads().length).toBeGreaterThan(0);
+    expect(ensureBoxAwake).not.toHaveBeenCalled();
+    expect(body).toContain("<strong>1</strong> earlier chat label needs");
+    expect(body).toContain("computer is asleep");
+    expect(body).not.toContain("resolve_threads");
+    expect(mirrorRows).toEqual([]);
+  });
+
   it("resolve_threads posts every decision through saveResolutions untouched and reports the remaining count", async () => {
     readIngestStatus.mockResolvedValue(status(1));
     saveResolutions.mockResolvedValue(view([{ label: LABEL_B, candidates: [] }], [{ label: LABEL_A, id: CANDIDATE_A2 }]));
-    readResolutionView.mockResolvedValue(view([{ label: LABEL_B, candidates: [] }], [{ label: LABEL_A, id: CANDIDATE_A2 }]));
+    seedBox(pendingView().unresolved, [{ label: LABEL_A, id: CANDIDATE_A2 }]);
     const form = new FormData();
     form.set("action", "resolve_threads");
     form.set("label_0", LABEL_A);
@@ -258,7 +278,7 @@ describe("onboarding iMessage step: legacy label resolution", () => {
   it("tells the owner to rerun the upload once every label is decided", async () => {
     readIngestStatus.mockResolvedValue(status(2));
     saveResolutions.mockResolvedValue(view([], [{ label: LABEL_A, id: CANDIDATE_A1 }, { label: LABEL_B, id: null }]));
-    readResolutionView.mockResolvedValue(view([], [{ label: LABEL_A, id: CANDIDATE_A1 }, { label: LABEL_B, id: null }]));
+    seedBox(pendingView().unresolved, [{ label: LABEL_A, id: CANDIDATE_A1 }, { label: LABEL_B, id: null }]);
     const form = new FormData();
     form.set("action", "resolve_threads");
     form.set("label_0", LABEL_A);

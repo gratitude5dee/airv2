@@ -157,12 +157,17 @@ function view(pending: PendingResolution | null, resolutions: ThreadResolution[]
   };
 }
 
-export async function readResolutionView(supabase: SupabaseClient, userId: string): Promise<ResolutionView> {
-  const box = await ensureBoxAwake(supabase, userId);
+/** Reads from a box the caller already knows to be awake; never resumes it. */
+export async function readBoxResolutionView(boxId: string): Promise<ResolutionView> {
   const [pending, resolutions] = await Promise.all([
-    readPendingResolution(box.boxId), readThreadResolutions(box.boxId),
+    readPendingResolution(boxId), readThreadResolutions(boxId),
   ]);
   return view(pending, resolutions);
+}
+
+export async function readResolutionView(supabase: SupabaseClient, userId: string): Promise<ResolutionView> {
+  const box = await ensureBoxAwake(supabase, userId);
+  return readBoxResolutionView(box.boxId);
 }
 
 /** Validate an owner's `{resolutions}` body against the pending report and
