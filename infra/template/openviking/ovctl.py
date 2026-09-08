@@ -14,6 +14,11 @@ Subcommands:
   status                       JSON: {healthy, resources, workspace_bytes}
   add-resource PATH --to URI   idempotent: replaces URI if it already exists
   rm URI                       recursive remove, tolerates absence
+  idle-check                   JSON: {can_stop, pending, idle_remaining_seconds}
+  stop-claim                   atomically claim an idle stop; the durable
+                               worker refuses to start indexing while a
+                               claim from this boot is live
+  stop-release --token TOKEN   release an aborted stop claim
   reindex                      re-add the onboarding context dirs/files
   export                       JSON inventory: resource/memory URIs + memory
                                contents (bounded), for /api/admin/export
@@ -48,6 +53,79 @@ IMPORT_URI = "viking://resources/context/agent-import"
 DICTIONARY_URI = "viking://resources/context/dictionary"
 INDEX_WAIT_SECONDS = 600
 INDEX_HTTP_TIMEOUT_SECONDS = INDEX_WAIT_SECONDS + 60
+STOP_CLAIM_FILE = "stop-claim.json"
+STOP_CLAIM_TTL_SECONDS = 900
+BOOT_ID_FILE = pathlib.Path("/proc/sys/kernel/random/boot_id")
+
+
+def not_found_error():
+    """The pinned SDK's typed 'nothing at this URI' failure (server code NOT_FOUND)."""
+    from openviking_sdk.errors import NotFoundError
+
+    return NotFoundError
+
+
+def resource_absent(error: Exception) -> bool:
+    return isinstance(error, not_found_error())
+
+
+def boot_id() -> str:
+    try:
+        return BOOT_ID_FILE.read_text().strip()
+    except OSError:
+        return ""
+
+
+def read_stop_claim() -> dict | None:
+    """Live claim from this boot, or None. Call under the pending lock.
+
+    A claim survives in the snapshot of a box that was stopped, so a claim
+    from an earlier boot is void; a sweeper that died mid-stop is bounded by
+    the claim's TTL.
+    """
+    try:
+        claim = json.loads((OV_DIR / STOP_CLAIM_FILE).read_text())
+    except FileNotFoundError:
+        return None
+    if (
+        not isinstance(claim, dict)
+        or not isinstance(claim.get("token"), str)
+        or not isinstance(claim.get("expires_at"), (int, float))
+        or isinstance(claim.get("expires_at"), bool)
+        or not isinstance(claim.get("boot_id"), str)
+    ):
+        raise ValueError("invalid stop claim")
+    if claim["boot_id"] != boot_id() or claim["expires_at"] <= time.time():
+        return None
+    return claim
+
+
+def write_stop_claim(claim: dict) -> None:
+    fd, temporary = tempfile.mkstemp(prefix=".stop-claim-", dir=OV_DIR)
+    try:
+        with os.fdopen(fd, "w") as output:
+            json.dump(claim, output)
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(temporary, OV_DIR / STOP_CLAIM_FILE)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def idle_state(state: dict, grace_seconds: int) -> dict:
+    """Queue emptiness plus the post-index grace window. Call under the pending lock."""
+    pending = len(state)
+    try:
+        receipt = json.loads((OV_DIR / "index-completed.json").read_text())
+        completed = receipt["completed_at"]
+        if not isinstance(completed, (int, float)) or isinstance(completed, bool) or not 0 <= completed < float("inf"):
+            raise ValueError("invalid index completion time")
+    except FileNotFoundError:
+        completed = 0
+    remaining = max(0, completed + grace_seconds - time.time())
+    return {"can_stop": pending == 0 and remaining == 0,
+            "pending": pending, "idle_remaining_seconds": remaining}
 
 
 def write_idle_receipt() -> None:
@@ -73,17 +151,53 @@ def cmd_idle_check(grace_seconds: int) -> int:
     # Read under the enqueue lock. Unknown/corrupt state raises instead of
     # granting permission to stop. The caller must also handle command errors.
     with pending_state() as state:
-        pending = len(state)
+        result = idle_state(state, grace_seconds)
+        result["stop_claimed"] = read_stop_claim() is not None
+    print(json.dumps(result))
+    return 0
+
+
+def cmd_stop_claim(grace_seconds: int, ttl_seconds: int) -> int:
+    """Claim the idle stop or explain why not; exit 0 either way.
+
+    Holding the worker lock excludes an in-flight index; holding the pending
+    lock makes the emptiness check and the claim write one atomic step, so a
+    worker that starts afterwards observes the claim before it can index.
+    """
+    OV_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
+    with (OV_DIR / "pending-worker.lock").open("a") as lock:
         try:
-            receipt = json.loads((OV_DIR / "index-completed.json").read_text())
-            completed = receipt["completed_at"]
-            if not isinstance(completed, (int, float)) or isinstance(completed, bool) or not 0 <= completed < float("inf"):
-                raise ValueError("invalid index completion time")
-        except FileNotFoundError:
-            completed = 0
-        remaining = max(0, completed + grace_seconds - time.time())
-    print(json.dumps({"can_stop": pending == 0 and remaining == 0,
-                      "pending": pending, "idle_remaining_seconds": remaining}))
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            print(json.dumps({"claimed": False, "reason": "busy"}))
+            return 0
+        with pending_state() as state:
+            result = idle_state(state, grace_seconds)
+            if read_stop_claim() is not None:
+                result.update({"claimed": False, "reason": "claimed"})
+            elif result["pending"]:
+                result.update({"claimed": False, "reason": "pending"})
+            elif result["idle_remaining_seconds"]:
+                result.update({"claimed": False, "reason": "grace"})
+            else:
+                claim = {"token": uuid.uuid4().hex, "boot_id": boot_id(),
+                         "claimed_at": time.time(), "expires_at": time.time() + ttl_seconds}
+                write_stop_claim(claim)
+                result.update({"claimed": True, "token": claim["token"],
+                               "expires_at": claim["expires_at"]})
+    print(json.dumps(result))
+    return 0
+
+
+def cmd_stop_release(token: str) -> int:
+    with pending_state():
+        claim = read_stop_claim()
+        if claim is not None and claim["token"] != token:
+            print(json.dumps({"released": False, "reason": "token_mismatch"}))
+            return 1
+        with contextlib.suppress(FileNotFoundError):
+            (OV_DIR / STOP_CLAIM_FILE).unlink()
+    print(json.dumps({"released": True}))
     return 0
 
 
@@ -143,7 +257,12 @@ def cmd_resume_pending() -> int:
             return 0
         with pending_state() as state:
             snapshot = dict(state)
+            claimed = read_stop_claim() is not None
         if not snapshot:
+            return 0
+        if claimed:
+            # Enqueued work stays durable; the next boot's timer replays it.
+            print(json.dumps({"deferred": True, "reason": "stop_claimed", "pending": len(snapshot)}))
             return 0
         c = client(timeout=INDEX_HTTP_TIMEOUT_SECONDS)
         failed = False
@@ -321,8 +440,11 @@ def add_resource(c, path: pathlib.Path, to: str, wait: bool = True) -> bool:
         return False
     try:
         c.rm(to, recursive=True, wait=True)
-    except Exception:
-        pass  # first ingest — nothing to replace
+    except Exception as error:
+        # Only "nothing to replace" is harmless; a failed removal must not be
+        # papered over by adding on top of stale content.
+        if not resource_absent(error):
+            raise
     result = c.add_resource(str(path), to=to, wait=wait, timeout=INDEX_WAIT_SECONDS, strict=True)
     # The pinned SDK returns the result body, including non-exception error
     # and cancellation outcomes. Only a completed resource receipt can
@@ -355,7 +477,12 @@ def cmd_add_resource(path: str, to: str, wait: bool) -> int:
     if not wait:
         print(json.dumps({"ok": True, "uri": to, "pending": True}))
         return 0
-    return cmd_resume_pending()
+    status = cmd_resume_pending()
+    with pending_state() as state:
+        if to in state:
+            print(json.dumps({"ok": False, "uri": to, "pending": True}))
+            return 1
+    return status
 
 
 def cmd_rm(uri: str) -> int:
@@ -369,14 +496,17 @@ def cmd_rm(uri: str) -> int:
                 if queued == uri or queued.startswith(uri.rstrip("/") + "/"):
                     del state[queued]
         c = client()
+        absent = False
         try:
             c.rm(uri, recursive=True, wait=True)
-        except Exception:
-            print(json.dumps({"ok": False, "uri": uri}))
-            return 1
+        except Exception as error:
+            if not resource_absent(error):
+                print(json.dumps({"ok": False, "uri": uri}))
+                return 1
+            absent = True
         finally:
             c.close()
-    print(json.dumps({"ok": True, "uri": uri}))
+    print(json.dumps({"ok": True, "uri": uri, "absent": absent}))
     return 0
 
 
@@ -490,6 +620,11 @@ def main() -> int:
     sub.add_parser("resume-pending")
     p_idle = sub.add_parser("idle-check")
     p_idle.add_argument("--grace-seconds", type=int, default=1200)
+    p_claim = sub.add_parser("stop-claim")
+    p_claim.add_argument("--grace-seconds", type=int, default=1200)
+    p_claim.add_argument("--ttl-seconds", type=int, default=STOP_CLAIM_TTL_SECONDS)
+    p_release = sub.add_parser("stop-release")
+    p_release.add_argument("--token", required=True)
     p_add = sub.add_parser("add-resource")
     p_add.add_argument("path")
     p_add.add_argument("--to", required=True)
@@ -514,6 +649,12 @@ def main() -> int:
         if args.grace_seconds < 1:
             parser.error("grace-seconds must be positive")
         return cmd_idle_check(args.grace_seconds)
+    if args.cmd == "stop-claim":
+        if args.grace_seconds < 1 or args.ttl_seconds < 1:
+            parser.error("grace-seconds and ttl-seconds must be positive")
+        return cmd_stop_claim(args.grace_seconds, args.ttl_seconds)
+    if args.cmd == "stop-release":
+        return cmd_stop_release(args.token)
     if args.cmd == "add-resource":
         return cmd_add_resource(args.path, args.to, wait=not args.no_wait)
     if args.cmd == "rm":

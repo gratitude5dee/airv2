@@ -18,7 +18,12 @@ export const NULL_DEADLINE_GRACE_MS = 30 * 60_000;
 export interface SweepableBox {
   provider_box_id: string;
   user_id: string;
+  /** Armed deadline, or null for the leaked population. */
+  stop_after: string | null;
+  last_active_at: string | null;
 }
+
+const COLUMNS = "provider_box_id, user_id, stop_after, last_active_at";
 
 export async function findSweepableBoxes(
   supabase: SupabaseClient,
@@ -27,13 +32,13 @@ export async function findSweepableBoxes(
   const nowIso = now.toISOString();
   const { data: overdue } = await supabase
     .from("boxes")
-    .select("provider_box_id, user_id")
+    .select(COLUMNS)
     .lt("stop_after", nowIso)
     .in("state", ["ready", "idle"]);
   const staleIso = new Date(now.getTime() - NULL_DEADLINE_GRACE_MS).toISOString();
   const { data: leaked } = await supabase
     .from("boxes")
-    .select("provider_box_id, user_id")
+    .select(COLUMNS)
     .is("stop_after", null)
     .in("state", ["ready", "idle"])
     .lt("last_active_at", staleIso);

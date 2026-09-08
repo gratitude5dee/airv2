@@ -1,7 +1,9 @@
 import importlib.util
 import json
 from pathlib import Path
+import sys
 import tempfile
+import types
 import unittest
 from unittest.mock import Mock, patch
 
@@ -18,6 +20,11 @@ class PendingTests(unittest.TestCase):
         patcher = patch.object(ovctl, "OV_DIR", self.root)
         patcher.start()
         self.addCleanup(patcher.stop)
+        errors = types.ModuleType("openviking_sdk.errors")
+        errors.NotFoundError = type("NotFoundError", (Exception,), {})
+        modules = patch.dict(sys.modules, {"openviking_sdk": types.ModuleType("openviking_sdk"), "openviking_sdk.errors": errors})
+        modules.start()
+        self.addCleanup(modules.stop)
         self.source = self.root / "source.md"
         self.source.write_text("private content")
         self.uri = "viking://resources/test"

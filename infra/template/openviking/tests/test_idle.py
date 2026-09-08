@@ -29,7 +29,7 @@ class IdleTests(unittest.TestCase):
                 ovctl.enqueue_resource(source, "viking://resources/test")
                 self.assertFalse(self.check()["can_stop"])
                 ovctl.cmd_resume_pending()
-                self.assertEqual(self.check(), {"can_stop": False, "pending": 0, "idle_remaining_seconds": 1200})
+                self.assertEqual(self.check(), {"can_stop": False, "pending": 0, "idle_remaining_seconds": 1200, "stop_claimed": False})
                 clock.return_value = 11199
                 self.assertFalse(self.check()["can_stop"])
                 clock.return_value = 11200
