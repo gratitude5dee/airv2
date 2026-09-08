@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const files = new Map<string, string>();
 let failMarker = false;
+let listings = 0;
+let beforeListing: (() => void) | null = null;
 vi.mock("../box/client", async (importOriginal) => {
   const { BoxApiError } = await importOriginal<typeof import("../box/client")>();
   return { BoxApiError,
@@ -9,7 +11,11 @@ vi.mock("../box/client", async (importOriginal) => {
       return files.get(path)!;
     }),
     command: vi.fn(async (_box: string, script: string) => {
-      if (script.includes("names = set()")) return { exitCode: 0, stdout: JSON.stringify([...new Set([...files.keys()].filter((p) => /chunk-\d+\.json$/.test(p)).map((p) => p.split("/").at(-1)))]), stderr: "" };
+      if (script.includes("names = set()")) {
+        listings += 1;
+        beforeListing?.();
+        return { exitCode: 0, stdout: JSON.stringify([...new Set([...files.keys()].filter((p) => /chunk-\d+\.json$/.test(p)).map((p) => p.split("/").at(-1)))]), stderr: "" };
+      }
       const name = script.match(/chunk-\d+\.json/)?.[0];
       if (name) {
         const source = `.hermes/context/imessage-history/${name}`;
@@ -35,7 +41,7 @@ import { PENDING_RESOLUTION_PATH, RESOLUTIONS_PATH } from "./archiveResolutions"
 const legacy = { chat: "Friends", ts: "2026-09-01T00:00:00Z", from: "Sam", text: "Hello", is_from_me: false };
 const catalogue = [{ id: "thread", label: "Friends" }];
 const renew = async () => undefined;
-beforeEach(() => { files.clear(); failMarker = false; vi.clearAllMocks(); vi.mocked(deepMemoryForget).mockResolvedValue(true); });
+beforeEach(() => { files.clear(); failMarker = false; listings = 0; beforeListing = null; vi.clearAllMocks(); vi.mocked(deepMemoryForget).mockResolvedValue(true); });
 describe("legacy archive migration orchestration", () => {
   it.each(["{broken", JSON.stringify([{ ...legacy, ts: "2026-02-30T00:00:00Z" }])])(
     "rejects a corrupt later chunk before migrating the first: %s", async (corrupt) => {
@@ -108,6 +114,33 @@ describe("legacy archive migration orchestration", () => {
     failMarker = false;
     await migrateLegacyArchive("box", catalogue, renew);
     expect(storeArchiveMessages).toHaveBeenCalledTimes(2);
+    expect(files.has(".hermes/context/imessage-archive-state/migration.json")).toBe(true);
+  });
+  it("refuses the marker when a raw chunk appears mid-migration, then migrates it on retry", async () => {
+    files.set(".hermes/context/imessage-history/chunk-1.json", JSON.stringify([legacy]));
+    const late = JSON.stringify([{ ...legacy, chat: "Work", ts: "2026-09-02T00:00:00Z" }]);
+    beforeListing = () => {
+      if (listings === 2) files.set(".hermes/context/imessage-history/chunk-2.json", late);
+    };
+    const error = await migrateLegacyArchive("box", [...catalogue, { id: "work", label: "Work" }], renew).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ArchiveMigrationError);
+    expect((error as ArchiveMigrationError).message).toBe("Legacy archive changed during migration");
+    expect((error as ArchiveMigrationError).retriable).toBe(true);
+    expect(listings).toBe(2);
+    expect(files.has(".hermes/context/imessage-archive-state/migration.json")).toBe(false);
+    expect(files.get(".hermes/context/imessage-history/chunk-2.json")).toBe(late);
+    expect(storeArchiveMessages).toHaveBeenCalledOnce();
+    await migrateLegacyArchive("box", [...catalogue, { id: "work", label: "Work" }], renew);
+    expect(storeArchiveMessages).toHaveBeenLastCalledWith("box", [
+      { ...legacy, chat: "Work", ts: "2026-09-02T00:00:00Z", chat_id: "work" },
+    ], renew);
+    expect(files.get(".hermes/context/imessage-archive-state/legacy/chunk-2.json")).toBe(late);
+    expect(JSON.parse(files.get(".hermes/context/imessage-archive-state/migration.json")!)).toMatchObject({ schema: 1, legacy_chunks: 2 });
+  });
+  it("takes the inventory once more before the marker and accepts an unchanged one", async () => {
+    files.set(".hermes/context/imessage-history/chunk-1.json", JSON.stringify([legacy]));
+    await migrateLegacyArchive("box", catalogue, renew);
+    expect(listings).toBe(2);
     expect(files.has(".hermes/context/imessage-archive-state/migration.json")).toBe(true);
   });
   it("retains the original when legacy index cleanup fails", async () => {

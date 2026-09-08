@@ -13,7 +13,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { BoxApiError, readFile } from "../box/client";
 import { asRecord } from "../records";
 import { withStateLease } from "../miniapps/stateLease";
-import { migrateLegacyArchive } from "./archiveMigrateStore";
+import { ArchiveResolutionError, migrateLegacyArchive } from "./archiveMigrateStore";
 import { storeArchiveMessages } from "./archiveStore";
 import { writeArchiveFile } from "./archiveWrite";
 import { archivePartition } from "./archive";
@@ -189,6 +189,9 @@ export interface IngestStatus {
   /** Latest durably committed message timestamp (ISO UTC), or null before
    * the first upload. Inclusive resume point for the extractor. */
   cursor: string | null;
+  /** Legacy thread labels the last migration preflight left for the owner
+   * to map. A count only — the labels themselves stay box-side. */
+  pending_resolutions: number;
 }
 
 function defaultStatus(): IngestStatus {
@@ -199,6 +202,7 @@ function defaultStatus(): IngestStatus {
     from_date: null,
     to_date: null,
     cursor: null,
+    pending_resolutions: 0,
   };
 }
 
@@ -230,6 +234,10 @@ export function normalizeIngestStatus(raw: unknown): IngestStatus {
   if (typeof doc["from_date"] === "string") status.from_date = doc["from_date"];
   if (typeof doc["to_date"] === "string") status.to_date = doc["to_date"];
   status.cursor = normalizeCursor(doc["cursor"] ?? doc["to_date"]);
+  const pending = doc["pending_resolutions"];
+  if (Number.isSafeInteger(pending) && Number(pending) > 0) {
+    status.pending_resolutions = Number(pending);
+  }
   return status;
 }
 
@@ -272,8 +280,16 @@ export async function storeChunk(
   chunk: IngestChunk
 ): Promise<IngestStatus> {
   return withStateLease(supabase, userId, "imessage", "archive", {}, async (boxId, renew) => {
-    await readBoxIngestStatus(boxId);
-    await migrateLegacyArchive(boxId, chunk.threads ?? [], renew);
+    const before = await readBoxIngestStatus(boxId);
+    try {
+      await migrateLegacyArchive(boxId, chunk.threads ?? [], renew);
+    } catch (error) {
+      if (error instanceof ArchiveResolutionError) {
+        const status: IngestStatus = { ...before, pending_resolutions: error.unresolved.length };
+        await writeArchiveFile(boxId, STATUS_PATH, JSON.stringify(status), renew);
+      }
+      throw error;
+    }
     const archive = await storeArchiveMessages(boxId, chunk.messages, renew);
     const status: IngestStatus = {
       chunks: archive.partitions,
@@ -282,6 +298,7 @@ export async function storeChunk(
       from_date: archive.from || null,
       to_date: archive.to || null,
       cursor: normalizeCursor(archive.to),
+      pending_resolutions: 0,
     };
     await writeArchiveFile(boxId, STATUS_PATH, JSON.stringify(status), renew);
     return status;

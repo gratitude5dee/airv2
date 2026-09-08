@@ -46,7 +46,11 @@ import {
 
 const supabase = { rpc: async () => ({ data: true, error: null }) } as unknown as SupabaseClient;
 import { readFile, writeFile } from "../box/client";
-vi.mock("./archiveMigrateStore", () => ({ migrateLegacyArchive: vi.fn(async () => undefined) }));
+vi.mock("./archiveMigrateStore", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./archiveMigrateStore")>()),
+  migrateLegacyArchive: vi.fn(async () => undefined),
+}));
+import { ArchiveResolutionError, migrateLegacyArchive } from "./archiveMigrateStore";
 vi.mock("./archiveWrite", () => ({ writeArchiveFile: (box: string, path: string, content: string) => writeFile(box, path, content) }));
 vi.mock("../memory/deep", () => ({ deepMemoryIndex: vi.fn(async () => true), OV_IMESSAGE_URI: "viking://resources/context/imessage-history" }));
 
@@ -242,6 +246,35 @@ describe("storeChunk / readIngestStatus", () => {
     vi.mocked(readFile).mockRejectedValueOnce(new Error("offline"));
     await expect(storeChunk(supabase, "user-1", chunk)).rejects.toThrow("offline");
     expect(writeFile).not.toHaveBeenCalled();
+  });
+
+  it("records only the count of labels awaiting the owner when migration needs resolution, and clears it once an upload lands", async () => {
+    await storeChunk(supabase, "user-1", chunk);
+    const unresolved = [
+      { label: "Family group canary-a1", candidates: ["chat-fam-1", "chat-fam-2"] },
+      { label: "Unknown canary-b2", candidates: [] },
+    ];
+    vi.mocked(migrateLegacyArchive).mockRejectedValueOnce(new ArchiveResolutionError(unresolved));
+    const later = { ...chunk, messages: [{ ...chunk.messages[0]!, ts: "2026-08-20 08:30:00", text: "later" }] };
+    await expect(storeChunk(supabase, "user-1", later)).rejects.toBeInstanceOf(ArchiveResolutionError);
+    const status = await readIngestStatus(supabase, "user-1");
+    expect(status.pending_resolutions).toBe(2);
+    expect(status.messages).toBe(1);
+    expect(status.cursor).toBe("2026-08-18T12:00:00.000Z");
+    const boxBytes = [...boxFiles.values()].join("\n");
+    for (const canary of ["canary-a1", "canary-b2", "chat-fam-1", "chat-fam-2", "later"]) {
+      expect(boxBytes).not.toContain(canary);
+    }
+    expect((await storeChunk(supabase, "user-1", later)).pending_resolutions).toBe(0);
+    expect((await readIngestStatus(supabase, "user-1")).pending_resolutions).toBe(0);
+  });
+
+  it("reads pending_resolutions as a non-negative count only", () => {
+    expect(normalizeIngestStatus({ chunks: 1, messages: 1 }).pending_resolutions).toBe(0);
+    expect(normalizeIngestStatus({ chunks: 1, messages: 1, pending_resolutions: 3 }).pending_resolutions).toBe(3);
+    for (const bad of [-1, 1.5, "2", null, ["label"]]) {
+      expect(normalizeIngestStatus({ chunks: 1, messages: 1, pending_resolutions: bad }).pending_resolutions).toBe(0);
+    }
   });
 });
 

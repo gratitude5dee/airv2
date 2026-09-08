@@ -47,6 +47,13 @@ import {
   type IngestStatus,
 } from "@/lib/imessage/ingest";
 import {
+  readResolutionView,
+  ResolutionInputError,
+  saveResolutions,
+  type ResolutionView,
+} from "@/lib/imessage/archiveResolutions";
+import { StateBusyError } from "../stateLease";
+import {
   DictionaryStartError,
   importedFileCount,
   mintImportTicket,
@@ -402,8 +409,13 @@ export interface OnboardingSnapshot {
   browserProfile: BrowserProfileStatus | null;
   browserProfileCommand: string | null;
   boxBusy: boolean;
+  /** boxes.state says the computer is up (ready/idle) — live reads won't wake it. */
+  boxAwake: boolean;
   /** A pairing phrase/URL exists box-side but isn't in `link` yet. */
   linkPairing: boolean;
+  /** Legacy thread labels awaiting the owner's decision. Content: read live
+   * from the Box for the iMessage slide only, never mirrored to Postgres. */
+  resolutions: ResolutionView | null;
   /**
    * Which optional parts this snapshot actually read. A slide-scoped load
    * skips the ones only that slide renders; `hydrateSlide` tops them up
@@ -501,7 +513,7 @@ async function loadSnapshot(
       timedPart(parts, "box", () =>
         supabase
           .from("boxes")
-          .select("environment")
+          .select("environment, state")
           .eq("user_id", userId)
           .maybeSingle()
       ),
@@ -519,6 +531,7 @@ async function loadSnapshot(
     let link: LinkAuthDoc | null;
     let linkPairing = false;
     let boxBusy = false;
+    let readLive = false;
     // A row written only by a step-mark (state present, docs never refreshed)
     // still counts as a hit; a row with no state yet does not.
     if (mirror?.state) {
@@ -553,6 +566,7 @@ async function loadSnapshot(
       );
       ({ state, ingest, imports, browserProfile, link, boxBusy } = live);
       linkPairing = link?.phrase != null || link?.verification_url != null;
+      readLive = !boxBusy;
     }
 
     // A step the state file already resolves needs no live evidence:
@@ -628,7 +642,9 @@ async function loadSnapshot(
       browserProfile,
       browserProfileCommand: buildBrowserProfileCommand(userId),
       boxBusy,
+      boxAwake: readLive || boxRow?.state === "ready" || boxRow?.state === "idle",
       linkPairing,
+      resolutions: null,
       loaded: {
         identityUrls: rendering("booth"),
         twin: identityNeeded,
@@ -870,6 +886,43 @@ function boothMount(mode: "photo" | "video"): string {
   return `<div class="identity-booth" data-mode="${mode}"></div>`;
 }
 
+/** Labels shown per save; the rest follow once these are decided. */
+export const RESOLUTION_PAGE_SIZE = 100;
+export const KEEP_OWN_THREAD = "Keep as its own thread";
+
+/**
+ * The owner's decision list for legacy chat labels the catalogue could not
+ * settle. Labels and candidate IDs come straight from the Box for this
+ * owner-session page; when the computer is asleep only the mirrored count
+ * is known, so the section asks for a Refresh instead of waking it.
+ */
+function renderResolutions(snapshot: OnboardingSnapshot): string {
+  const pending = snapshot.ingest?.pending_resolutions ?? 0;
+  const view = snapshot.resolutions;
+  if (!view) {
+    if (pending <= 0) return "";
+    return `<p><strong>${pending}</strong> earlier chat label${pending === 1 ? "" : "s"} need${pending === 1 ? "s" : ""} your decision before the upload can finish. Your agent's computer is asleep — tap Refresh status to wake it and load them.</p><form method="post" class="inline"><input type="hidden" name="action" value="refresh_ingest"><button class="ghost">Refresh status</button></form>`;
+  }
+  const remaining = view.unresolved.length;
+  if (remaining === 0) {
+    return `<p>All earlier chat labels are decided${view.resolutions.length ? ` (${view.resolutions.length} saved)` : ""}. Rerun the upload command below to finish.</p>`;
+  }
+  const shown = view.unresolved.slice(0, RESOLUTION_PAGE_SIZE);
+  const rows = shown
+    .map((entry, index) => {
+      const options = entry.candidates
+        .map((candidate) => `<option value="${esc(candidate)}">${esc(candidate)}</option>`)
+        .join("");
+      const keep = `<option value="">${entry.candidates.length ? KEEP_OWN_THREAD : `No match — ${KEEP_OWN_THREAD.toLowerCase()}`}</option>`;
+      return `<div class="item"><span class="grow">${esc(entry.label)}</span><input type="hidden" name="label_${index}" value="${esc(entry.label)}"><select name="id_${index}">${options}${keep}</select></div>`;
+    })
+    .join("");
+  const more = remaining > shown.length
+    ? `<p class="muted">${remaining - shown.length} more follow once these are saved.</p>`
+    : "";
+  return `<p><strong>${remaining}</strong> earlier chat label${remaining === 1 ? "" : "s"} match${remaining === 1 ? "es" : ""} more than one conversation (or none). Pick the right conversation for each, or keep it as its own thread, then rerun the upload command.</p><form method="post" class="stack"><input type="hidden" name="action" value="resolve_threads">${rows}${more}<button>Save decisions</button></form>`;
+}
+
 function skipForm(step: OnboardingStepId, label = "Skip for now"): string {
   return `<form method="post" class="inline"><input type="hidden" name="action" value="skip"><input type="hidden" name="step" value="${esc(step)}"><button class="ghost">${esc(label)}</button></form>`;
 }
@@ -1092,7 +1145,7 @@ function stepBody(
     const command = snapshot.ingestCommand
       ? `<details><summary>Get the one-time upload command</summary><p class="muted">Run in Terminal on your Mac (needs Full Disk Access; link valid ~30 minutes):</p><pre>${esc(snapshot.ingestCommand)}</pre><form method="post" class="inline"><input type="hidden" name="action" value="refresh_ingest"><button class="ghost">Refresh status</button></form></details>`
       : "";
-    return `${statusLine}${command}${pluginLine}<div class="row actions">${skipForm("imessage")}</div>`;
+    return `${statusLine}${renderResolutions(snapshot)}${command}${pluginLine}<div class="row actions">${skipForm("imessage")}</div>`;
   }
   if (step === "onairos") {
     return onairosBody(snapshot, browserSignin);
@@ -1954,6 +2007,22 @@ async function withLiveLink(
   }
 }
 
+/**
+ * Legacy thread labels are message content: they render only on the owner's
+ * iMessage slide, straight from the Box. The mirror carries just the count,
+ * and a sleeping computer is never woken to fetch them.
+ */
+async function withLiveResolutions(
+  supabase: SupabaseClient,
+  userId: string,
+  snapshot: OnboardingSnapshot,
+  active: OnboardingStepId
+): Promise<void> {
+  if (active !== "imessage" || snapshot.boxBusy || !snapshot.boxAwake) return;
+  if (!((snapshot.ingest?.pending_resolutions ?? 0) > 0)) return;
+  snapshot.resolutions = await readResolutionView(supabase, userId).catch(() => null);
+}
+
 async function respond(
   ctx: MiniAppContext,
   step: OnboardingStepId | null,
@@ -1966,6 +2035,7 @@ async function respond(
   );
   const current = activeTheme(ctx);
   await withLiveLink(ctx.supabase, ctx.session.userId, snapshot, active);
+  await withLiveResolutions(ctx.supabase, ctx.session.userId, snapshot, active);
   return slides(
     current,
     renderOnboarding(
@@ -2058,6 +2128,7 @@ export const onboarding: MiniAppModule = {
     }
     const current = activeTheme(ctx);
     await withLiveLink(ctx.supabase, ctx.session.userId, snapshot, active);
+    await withLiveResolutions(ctx.supabase, ctx.session.userId, snapshot, active);
     return slides(
       current,
       renderOnboarding(
@@ -2508,6 +2579,35 @@ export const onboarding: MiniAppModule = {
         await markSafely(supabase, userId, "imessage", "done");
       }
       return respond(ctx, "imessage", null);
+    }
+
+    // Labels and ids pass through untouched: saveResolutions owns validation
+    // and persists box-side only. Nothing from this form is logged or mirrored.
+    if (action === "resolve_threads") {
+      const resolutions: Array<{ label: FormDataEntryValue | null; id: FormDataEntryValue | null }> = [];
+      for (let index = 0; form.has(`label_${index}`); index++) {
+        const id = form.get(`id_${index}`);
+        resolutions.push({ label: form.get(`label_${index}`), id: id === "" ? null : id });
+      }
+      let notice: string;
+      try {
+        const view = await saveResolutions(supabase, userId, { resolutions });
+        const remaining = view.unresolved.length;
+        notice = remaining > 0
+          ? `Saved. ${remaining} label${remaining === 1 ? "" : "s"} still need${remaining === 1 ? "s" : ""} a decision; rerun the upload command once all are decided.`
+          : "Saved — every label is decided. Rerun the upload command on your Mac to finish.";
+      } catch (error) {
+        if (error instanceof ResolutionInputError) {
+          notice = `Couldn't save: ${error.message}. Tap Refresh status and try again.`;
+        } else if (error instanceof StateBusyError) {
+          notice = "An upload is writing to your archive right now — try again in a moment.";
+        } else if (error instanceof StartLimitError) {
+          notice = "The computer is starting up — try again in a minute.";
+        } else {
+          throw error;
+        }
+      }
+      return respond(ctx, "imessage", notice);
     }
 
     if (action === "connect_stripe") {

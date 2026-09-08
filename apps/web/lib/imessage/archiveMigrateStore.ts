@@ -45,12 +45,25 @@ for root in roots:
 print(json.dumps(sorted(names)))
 `;
 
+async function listLegacyChunks(boxId: string): Promise<string[]> {
+  const listed = await command(boxId, `python3 -c ${shellQuote(LIST)}`, 30);
+  if (listed.exitCode !== 0) throw new ArchiveMigrationError("Could not inspect legacy archive", { retriable: true });
+  const names: unknown = JSON.parse(listed.stdout);
+  if (!Array.isArray(names) || names.some((name: unknown) => typeof name !== "string" || !/^chunk-\d+\.json$/.test(name))) {
+    throw new ArchiveMigrationError("Invalid legacy archive inventory");
+  }
+  return names as string[];
+}
+
 /** Caller holds the archive lease. Two passes ensure ambiguous or corrupt
  * legacy chunks cause no archive writes; an ambiguous preflight records the
  * full unresolved list box-side for the owner and throws. Owner resolutions
  * saved there merge into the catalogue on the next attempt. Backups
  * participate on retries, including a crash after moving the last original
- * but before writing the marker. */
+ * but before writing the marker. The inventory is taken again before the
+ * marker: a raw chunk that a pre-archive writer dropped in mid-migration
+ * (rollout overlap) would otherwise be orphaned behind a completed marker,
+ * so the attempt fails retriable and the next one includes it. */
 export async function migrateLegacyArchive(
   boxId: string, catalogue: KnownArchiveThread[], renew: () => Promise<void>
 ): Promise<void> {
@@ -63,12 +76,7 @@ export async function migrateLegacyArchive(
   } catch (error) {
     if (!(error instanceof BoxApiError && error.status === 404)) throw error;
   }
-  const listed = await command(boxId, `python3 -c ${shellQuote(LIST)}`, 30);
-  if (listed.exitCode !== 0) throw new ArchiveMigrationError("Could not inspect legacy archive", { retriable: true });
-  const names: unknown = JSON.parse(listed.stdout);
-  if (!Array.isArray(names) || names.some((name: unknown) => typeof name !== "string" || !/^chunk-\d+\.json$/.test(name))) {
-    throw new ArchiveMigrationError("Invalid legacy archive inventory");
-  }
+  const names = await listLegacyChunks(boxId);
   const resolutions = await readThreadResolutions(boxId);
   async function load(name: string) {
     let text: string;
@@ -83,7 +91,7 @@ export async function migrateLegacyArchive(
   }
   const hashes = new Map<string, string>();
   const unresolved = new Map<string, string[]>();
-  for (const name of names as string[]) {
+  for (const name of names) {
     await renew();
     const source = await load(name);
     hashes.set(name, source.hash);
@@ -96,7 +104,7 @@ export async function migrateLegacyArchive(
     await writePendingResolution(boxId, report, renew);
     throw new ArchiveResolutionError(report);
   }
-  for (const name of names as string[]) {
+  for (const name of names) {
     await renew();
     const source = await load(name);
     if (source.hash !== hashes.get(name)) throw new ArchiveMigrationError("Legacy archive changed during migration", { retriable: true });
@@ -121,6 +129,11 @@ if source.exists():
     const move = await command(boxId,
       `python3 -c ${shellQuote(moveScript)} ${shellQuote(`${HISTORY}/${name}`)} ${shellQuote(`${BACKUP}/${name}`)}`, 30);
     if (move.exitCode !== 0) throw new ArchiveMigrationError("Legacy archive backup failed", { retriable: true });
+  }
+  await renew();
+  const after = await listLegacyChunks(boxId);
+  if (after.length !== names.length || after.some((name, index) => name !== names[index])) {
+    throw new ArchiveMigrationError("Legacy archive changed during migration", { retriable: true });
   }
   if (names.length) await writePendingResolution(boxId, [], renew);
   await writeArchiveFile(boxId, MARKER, JSON.stringify({ schema: 1, legacy_chunks: names.length }), renew);

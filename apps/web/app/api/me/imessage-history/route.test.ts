@@ -16,7 +16,7 @@ vi.mock("@/lib/miniapps/onboardingMirror", async () => {
 vi.mock("@/lib/orchestrator/boxes", () => ({ armStopAfter: vi.fn(async () => undefined), StartLimitError: class extends Error {} }));
 vi.mock("@/lib/env", () => ({ env: { appOrigin: () => "https://air.test", miniappSigningKey: () => "secret" } }));
 const status = vi.hoisted(() => ({ chunks: 1, messages: 1, last_upload_at: "2026-09-01T00:00:01.000Z", from_date: "2026-08-01T00:00:00Z",
-  to_date: "2026-09-01T00:00:00Z", cursor: "2026-09-01T00:00:00.000Z" }));
+  to_date: "2026-09-01T00:00:00Z", cursor: "2026-09-01T00:00:00.000Z", pending_resolutions: 0 }));
 vi.mock("@/lib/imessage/ingest", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/lib/imessage/ingest")>(),
   verifyIngestTicket: vi.fn(() => ({ userId: "owner" })),
