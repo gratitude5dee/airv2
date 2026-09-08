@@ -35,7 +35,8 @@ jobs:
         run: sudo bash infra/template/openviking/replica-provision.sh
       - name: Live check
         run: |
-          sudo -u user -H /home/user/.openviking-venv/bin/python /home/user/.openviking/livecheck.py \
+          sudo -u user env -i HOME=/home/user USER=user PATH=/usr/local/bin:/usr/bin:/bin \
+            /home/user/.openviking-venv/bin/python /home/user/.openviking/livecheck.py \
             --report /home/user/livecheck.json \
             --large-lines "${{ inputs.large_lines || '30000' }}" \
             --interrupt-after "${{ inputs.interrupt_after || '15' }}"

@@ -27,7 +27,9 @@ chmod 440 /etc/sudoers.d/90-box-user
 apt-get update -qq
 apt-get install -y -qq --no-install-recommends cmake build-essential curl ca-certificates python3
 
-sudo -u "$BOX_USER" -H env OV_PIN="$OV_PIN" bash -s <<'SH'
+# Clean environment: a CI runner's XDG_* variables would otherwise point uv at
+# the runner account's home.
+sudo -u "$BOX_USER" env -i HOME="$HOME_DIR" USER="$BOX_USER" PATH=/usr/local/bin:/usr/bin:/bin OV_PIN="$OV_PIN" bash -s <<'SH'
 set -euo pipefail
 command -v uv >/dev/null || curl -LsSf https://astral.sh/uv/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
