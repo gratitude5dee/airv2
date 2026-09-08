@@ -47,7 +47,7 @@ import {
   type IngestStatus,
 } from "@/lib/imessage/ingest";
 import {
-  readResolutionView,
+  readBoxResolutionView,
   ResolutionInputError,
   saveResolutions,
   type ResolutionView,
@@ -410,8 +410,9 @@ export interface OnboardingSnapshot {
   browserProfile: BrowserProfileStatus | null;
   browserProfileCommand: string | null;
   boxBusy: boolean;
-  /** boxes.state says the computer is up (ready/idle) — live reads won't wake it. */
-  boxAwake: boolean;
+  /** Provider box id when boxes.state says the computer is up (ready/idle),
+   * so live reads can address it without resuming it; null otherwise. */
+  awakeBoxId: string | null;
   /** A pairing phrase/URL exists box-side but isn't in `link` yet. */
   linkPairing: boolean;
   /** Legacy thread labels awaiting the owner's decision. Content: read live
@@ -514,7 +515,7 @@ async function loadSnapshot(
       timedPart(parts, "box", () =>
         supabase
           .from("boxes")
-          .select("environment, state")
+          .select("provider_box_id, environment, state")
           .eq("user_id", userId)
           .maybeSingle()
       ),
@@ -643,7 +644,11 @@ async function loadSnapshot(
       browserProfile,
       browserProfileCommand: buildBrowserProfileCommand(userId),
       boxBusy,
-      boxAwake: readLive || boxRow?.state === "ready" || boxRow?.state === "idle",
+      awakeBoxId:
+        typeof boxRow?.provider_box_id === "string" &&
+        (readLive || boxRow.state === "ready" || boxRow.state === "idle")
+          ? boxRow.provider_box_id
+          : null,
       linkPairing,
       resolutions: null,
       loaded: {
@@ -2014,14 +2019,12 @@ async function withLiveLink(
  * and a sleeping computer is never woken to fetch them.
  */
 async function withLiveResolutions(
-  supabase: SupabaseClient,
-  userId: string,
   snapshot: OnboardingSnapshot,
   active: OnboardingStepId
 ): Promise<void> {
-  if (active !== "imessage" || snapshot.boxBusy || !snapshot.boxAwake) return;
+  if (active !== "imessage" || snapshot.boxBusy || !snapshot.awakeBoxId) return;
   if (!((snapshot.ingest?.pending_resolutions ?? 0) > 0)) return;
-  snapshot.resolutions = await readResolutionView(supabase, userId).catch(() => null);
+  snapshot.resolutions = await readBoxResolutionView(snapshot.awakeBoxId).catch(() => null);
 }
 
 async function respond(
@@ -2036,7 +2039,7 @@ async function respond(
   );
   const current = activeTheme(ctx);
   await withLiveLink(ctx.supabase, ctx.session.userId, snapshot, active);
-  await withLiveResolutions(ctx.supabase, ctx.session.userId, snapshot, active);
+  await withLiveResolutions(snapshot, active);
   return slides(
     current,
     renderOnboarding(
@@ -2129,7 +2132,7 @@ export const onboarding: MiniAppModule = {
     }
     const current = activeTheme(ctx);
     await withLiveLink(ctx.supabase, ctx.session.userId, snapshot, active);
-    await withLiveResolutions(ctx.supabase, ctx.session.userId, snapshot, active);
+    await withLiveResolutions(snapshot, active);
     return slides(
       current,
       renderOnboarding(
