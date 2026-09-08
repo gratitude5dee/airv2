@@ -3,15 +3,19 @@
 
 Runs INSIDE the user's box against the loopback-only OpenViking server. The
 control plane invokes it over the box command API; the agent never calls it
-(the agent reaches OpenViking through the MCP tools). Everything it prints is
-metadata — counts, URIs, statuses — never resource or memory content, so its
-stdout is safe to relay through control-plane logs (C4).
+(the agent reaches OpenViking through the MCP tools). Every subcommand except
+`export` and `recent` prints only metadata — counts, URIs, statuses — so that
+stdout is safe to relay through control-plane logs (C4). `export` and `recent`
+print memory TEXT and must be treated as content by their callers (box →
+response only, never logged or persisted).
 
 Subcommands:
   ensure                       render ov.conf from ~/.hermes/.env, (re)start
                                the service when the conf changed, wait healthy
   ensure --configure-only      render config only (safe inside ExecStartPre)
-  status                       JSON: {healthy, resources, workspace_bytes}
+  status                       JSON: {healthy, resources, memories,
+                               workspace_bytes, pending, truncated} — leaf
+                               (file) counts, directories excluded
   add-resource PATH --to URI   idempotent: replaces URI if it already exists
   rm URI                       recursive remove, tolerates absence
   idle-check                   JSON: {can_stop, pending, idle_remaining_seconds}
@@ -26,6 +30,7 @@ Subcommands:
 
 import argparse
 import contextlib
+import datetime
 import fcntl
 import json
 import os
@@ -385,27 +390,56 @@ def client(timeout: float = 60):
     return c
 
 
+# Bounds one directory listing and one whole walk; the server's own `tree`
+# stops at three levels, which hides per-month archive documents.
+LS_PAGE_LIMIT = 1000
+WALK_NODE_LIMIT = 20000
+
+
+def walk_entries(c, root: str, limit: int = WALK_NODE_LIMIT) -> tuple:
+    """Breadth-first `ls` walk yielding (entries, truncated). Entries are the
+    server's original-format dicts ({uri, isDir, modTime, ...}); an absent
+    root lists as empty. Hidden files stay hidden (no .abstract/.overview)."""
+    if not isinstance(root, str) or not root.startswith("viking://"):
+        raise ValueError("invalid viking uri")
+    entries: list = []
+    truncated = False
+    queue = [root]
+    while queue:
+        directory = queue.pop(0)
+        try:
+            listed = c.ls(directory, output="original", node_limit=LS_PAGE_LIMIT)
+        except Exception as error:
+            if directory == root and resource_absent(error):
+                return [], False
+            raise
+        if not isinstance(listed, list):
+            raise ValueError("invalid listing")
+        if len(listed) >= LS_PAGE_LIMIT:
+            truncated = True
+        for entry in listed:
+            if not isinstance(entry, dict) or not isinstance(entry.get("uri"), str):
+                continue
+            if len(entries) >= limit:
+                return entries, True
+            entries.append(entry)
+            if entry.get("isDir") is True:
+                queue.append(entry["uri"])
+    return entries, truncated
+
+
+def leaf_entries(entries: list) -> list:
+    return [entry for entry in entries if entry.get("isDir") is not True]
+
+
 def list_uris(c, root: str) -> list:
-    """Flat URI listing under a root; tolerate an absent tree."""
+    """Flat URI listing under a root (directories included); tolerate an
+    unreadable tree."""
     try:
-        entries = c.tree(root)
+        entries, _ = walk_entries(c, root)
     except Exception:
         return []
-    uris = []
-
-    def walk(node):
-        if isinstance(node, dict):
-            uri = node.get("uri")
-            if uri:
-                uris.append(uri)
-            for child in node.get("children") or []:
-                walk(child)
-        elif isinstance(node, list):
-            for item in node:
-                walk(item)
-
-    walk(entries)
-    return uris
+    return [entry["uri"] for entry in entries]
 
 
 def cmd_status() -> int:
@@ -413,11 +447,19 @@ def cmd_status() -> int:
     with pending_state() as state:
         pending = len(state)
     resources = 0
+    memories = 0
+    truncated = False
     if ok:
         try:
             c = client()
-            resources = len(list_uris(c, "viking://resources/context"))
-            c.close()
+            try:
+                context, context_truncated = walk_entries(c, "viking://resources/context")
+                user, user_truncated = walk_entries(c, "viking://user")
+            finally:
+                c.close()
+            resources = len(leaf_entries(context))
+            memories = len(leaf_entries(user))
+            truncated = context_truncated or user_truncated
         except Exception:
             ok = False
     workspace_bytes = 0
@@ -428,8 +470,9 @@ def cmd_status() -> int:
         )
     print(
         json.dumps(
-            {"healthy": ok, "resources": resources, "workspace_bytes": workspace_bytes,
-             "pending": pending}
+            {"healthy": ok, "resources": resources, "memories": memories,
+             "workspace_bytes": workspace_bytes, "pending": pending,
+             "truncated": truncated}
         )
     )
     return 0
@@ -582,11 +625,32 @@ def cmd_export() -> int:
     return 0
 
 
+def modified_at(entry: dict) -> float | None:
+    stamp = entry.get("modTime")
+    if not isinstance(stamp, str):
+        return None
+    try:
+        return datetime.datetime.fromisoformat(stamp.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
+def recent_first(entries: list) -> list:
+    """Newest first by the server's modTime; undated entries follow, and ties
+    fall back to URI descending so the order is stable across calls."""
+    dated = [entry for entry in entries if modified_at(entry) is not None]
+    undated = [entry for entry in entries if modified_at(entry) is None]
+    dated.sort(key=lambda entry: (-modified_at(entry), entry["uri"]))
+    undated.sort(key=lambda entry: entry["uri"], reverse=True)
+    return dated + undated
+
+
 def cmd_recent(limit: int) -> int:
-    """Bounded preview listing for the Persona view: at most `limit` memory
-    URIs with a 240-char content preview each, truncated box-side so the
-    control plane never buffers the full store. Same content posture as
-    export (box → response only, never persisted)."""
+    """Bounded preview listing for the Persona view: the `limit` most recently
+    modified memories with a 240-char content preview each, truncated box-
+    side so the control plane never buffers the full store. Same content
+    posture as export (box → response only, never persisted). Totals come
+    from `status`; this list is a preview, not a count."""
     if not healthy():
         print(json.dumps({"error": "openviking not running"}))
         return 1
@@ -594,15 +658,16 @@ def cmd_recent(limit: int) -> int:
     c = client()
     try:
         resources = list_uris(c, "viking://resources")
+        entries, _ = walk_entries(c, "viking://user")
         memories = []
-        for uri in list_uris(c, "viking://user"):
+        for entry in recent_first(leaf_entries(entries)):
             try:
-                content = c.read(uri, limit=1024)
+                content = c.read(entry["uri"], limit=1024)
             except Exception:
-                continue  # directory node or unreadable
+                continue  # unreadable
             if not content:
                 continue
-            memories.append({"uri": uri, "preview": content[:240]})
+            memories.append({"uri": entry["uri"], "preview": content[:240]})
             if len(memories) >= limit:
                 break
     finally:

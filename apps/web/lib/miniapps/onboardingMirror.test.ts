@@ -2,11 +2,12 @@
  * The mirror row must carry status metadata only — in particular the Link
  * pairing phrase and verification URL must never reach Postgres (C4).
  */
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 vi.mock("../orchestrator/boxes", () => ({
   ensureBoxAwake: vi.fn(async () => ({ boxId: "box-1", target: "target-1" })),
+  peekBoxState: vi.fn(async () => ({ boxId: "box-1", awake: false })),
   armStopAfter: vi.fn(async () => undefined),
   StartLimitError: class extends Error {},
 }));
@@ -18,9 +19,12 @@ vi.mock("../box/client", () => ({
   command: vi.fn(),
 }));
 
-import { StartLimitError } from "../orchestrator/boxes";
+import { ensureBoxAwake, peekBoxState, StartLimitError } from "../orchestrator/boxes";
+import { readFile } from "../box/client";
 import { ensureComputeAwake } from "../compute/awake";
 import {
+  readImportStatusOrMirror,
+  readIngestStatusOrMirror,
   readStatusMirror,
   refreshStatusMirror,
   toLinkMeta,
@@ -136,6 +140,67 @@ describe("readStatusMirror", () => {
       updated_at: null,
     });
     expect(mirror?.refreshedAt).toBe("2026-01-02T00:00:00Z");
+  });
+});
+
+describe("mirror-aware status reads (MEM-15)", () => {
+  const ingestRow = {
+    state: null,
+    ingest: { chunks: 3, messages: 42, cursor: "2026-01-01T00:00:00.000Z" },
+    imports: { last_upload_at: "2026-01-01T00:00:00Z" },
+    browser_profile: null,
+    link: null,
+    refreshed_at: "2026-01-02T00:00:00Z",
+  };
+  beforeEach(() => vi.clearAllMocks());
+
+  it("serves a sleeping box from the mirror without waking it", async () => {
+    vi.mocked(peekBoxState).mockResolvedValueOnce({ boxId: "box-1", awake: false });
+    const { supabase, upserts } = fakeSupabase(ingestRow);
+    const read = await readIngestStatusOrMirror(supabase, "user-1");
+    expect(read.source).toBe("mirror");
+    expect(read.status?.chunks).toBe(3);
+    expect(read.status?.cursor).toBe("2026-01-01T00:00:00.000Z");
+    expect(read.refreshedAt).toBe("2026-01-02T00:00:00Z");
+    expect(ensureBoxAwake).not.toHaveBeenCalled();
+    expect(readFile).not.toHaveBeenCalled();
+    expect(upserts).toHaveLength(0);
+  });
+
+  it("reports a null status when the box sleeps and no mirror row exists", async () => {
+    vi.mocked(peekBoxState).mockResolvedValueOnce(null);
+    const { supabase } = fakeSupabase(null);
+    const read = await readImportStatusOrMirror(supabase, "user-1");
+    expect(read).toEqual({ status: null, source: "mirror", refreshedAt: null });
+    expect(ensureBoxAwake).not.toHaveBeenCalled();
+  });
+
+  it("reads live and refreshes the mirror when the box is already awake", async () => {
+    vi.mocked(peekBoxState).mockResolvedValueOnce({ boxId: "box-1", awake: true });
+    vi.mocked(readFile).mockResolvedValueOnce(
+      JSON.stringify({ chunks: 9, messages: 100, cursor: null })
+    );
+    const { supabase, upserts } = fakeSupabase(ingestRow);
+    const read = await readIngestStatusOrMirror(supabase, "user-1");
+    expect(read.source).toBe("live");
+    expect(read.status?.chunks).toBe(9);
+    expect(ensureBoxAwake).toHaveBeenCalledTimes(1);
+    expect(upserts).toHaveLength(1);
+    expect(upserts[0]?.["ingest"]).toMatchObject({ chunks: 9 });
+  });
+
+  it("live import reads refresh the imports column", async () => {
+    vi.mocked(peekBoxState).mockResolvedValueOnce({ boxId: "box-1", awake: true });
+    vi.mocked(readFile).mockResolvedValueOnce(
+      JSON.stringify({ last_upload_at: "2026-03-01T00:00:00Z" })
+    );
+    const { supabase, upserts } = fakeSupabase(null);
+    const read = await readImportStatusOrMirror(supabase, "user-1");
+    expect(read.source).toBe("live");
+    expect(read.status?.last_upload_at).toBe("2026-03-01T00:00:00Z");
+    expect(upserts[0]?.["imports"]).toMatchObject({
+      last_upload_at: "2026-03-01T00:00:00Z",
+    });
   });
 });
 

@@ -236,6 +236,89 @@ describe("startDictionaryRun", () => {
     expect(Object.values(request.metadata).join(" ")).not.toContain("# style");
     expect(insertMock).toHaveBeenCalledTimes(1);
   });
+
+  it("does not enqueue the dictionary before the subagent has written it", async () => {
+    await storeImportChunk(supabase, "user-1", {
+      source: "claude",
+      files: [{ path: "CLAUDE.md", content: "# style" }],
+      final: false,
+    });
+    boxFiles.set(
+      STATUS_PATH,
+      JSON.stringify({
+        ...JSON.parse(boxFiles.get(STATUS_PATH)!),
+        dictionary_built_at: "2026-01-01T00:00:00Z",
+        dictionary_indexed_for: "2026-01-01T00:00:00Z",
+      })
+    );
+    const status = await startDictionaryRun(supabase, "user-1");
+    expect(deepMemoryIndex).not.toHaveBeenCalled();
+    expect(status.dictionary_built_at).toBeNull();
+    expect(status.dictionary_indexed_for).toBeNull();
+    const persisted = JSON.parse(boxFiles.get(STATUS_PATH)!) as Record<string, unknown>;
+    expect(persisted["dictionary_indexed_for"]).toBeNull();
+  });
+});
+
+describe("dictionary completion ordering", () => {
+  const built = {
+    sources: { claude: { files: 1, bytes: 7 } },
+    dictionary_started_at: "2026-01-01T00:00:00Z",
+    dictionary_run_id: "run-42",
+    dictionary_built_at: "2026-01-01T00:05:00Z",
+  };
+
+  it("enqueues Dictionary.MD on the first status read after the build lands", async () => {
+    boxFiles.set(STATUS_PATH, JSON.stringify(built));
+    const status = await readImportStatus(supabase, "user-1");
+    expect(deepMemoryIndex).toHaveBeenCalledExactlyOnceWith(
+      "box-1",
+      ".hermes/context/Dictionary.MD",
+      "viking://resources/context/dictionary"
+    );
+    expect(status.dictionary_indexed_for).toBe(built.dictionary_built_at);
+    const persisted = JSON.parse(boxFiles.get(STATUS_PATH)!) as Record<string, unknown>;
+    expect(persisted["dictionary_indexed_for"]).toBe(built.dictionary_built_at);
+    expect(persisted["dictionary_built_at"]).toBe(built.dictionary_built_at);
+  });
+
+  it("enqueues once per build and again when the build timestamp changes", async () => {
+    boxFiles.set(STATUS_PATH, JSON.stringify(built));
+    await readImportStatus(supabase, "user-1");
+    await readImportStatus(supabase, "user-1");
+    expect(deepMemoryIndex).toHaveBeenCalledTimes(1);
+    boxFiles.set(
+      STATUS_PATH,
+      JSON.stringify({
+        ...JSON.parse(boxFiles.get(STATUS_PATH)!),
+        dictionary_built_at: "2026-02-01T00:00:00Z",
+      })
+    );
+    const status = await readImportStatus(supabase, "user-1");
+    expect(deepMemoryIndex).toHaveBeenCalledTimes(2);
+    expect(status.dictionary_indexed_for).toBe("2026-02-01T00:00:00Z");
+  });
+
+  it("does not enqueue while the build is still running", async () => {
+    boxFiles.set(
+      STATUS_PATH,
+      JSON.stringify({ ...built, dictionary_built_at: null })
+    );
+    await readImportStatus(supabase, "user-1");
+    expect(deepMemoryIndex).not.toHaveBeenCalled();
+  });
+
+  it("keeps the build unrecorded when the enqueue fails so the next read retries", async () => {
+    boxFiles.set(STATUS_PATH, JSON.stringify(built));
+    vi.mocked(deepMemoryIndex).mockResolvedValueOnce(false);
+    const first = await readImportStatus(supabase, "user-1");
+    expect(first.dictionary_indexed_for).toBeNull();
+    const persisted = JSON.parse(boxFiles.get(STATUS_PATH)!) as Record<string, unknown>;
+    expect(persisted["dictionary_indexed_for"]).toBeUndefined();
+    const second = await readImportStatus(supabase, "user-1");
+    expect(deepMemoryIndex).toHaveBeenCalledTimes(2);
+    expect(second.dictionary_indexed_for).toBe(built.dictionary_built_at);
+  });
 });
 
 describe("status normalization", () => {

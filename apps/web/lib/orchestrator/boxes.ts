@@ -166,6 +166,36 @@ export async function prewarmBox(
   }
 }
 
+export interface BoxPeek {
+  boxId: string;
+  /** The mirrored provider state says the box is up; nothing was woken. */
+  awake: boolean;
+}
+
+/**
+ * The user's box and its mirrored state, without a provider call and without
+ * waking anything. Read-only views use this to decide between a live read
+ * and the Postgres status mirror: a wake is the scarce, rate-limited
+ * operation and must never be spent just to draw a status chip. The mirror
+ * can lag the provider, so a caller that reads live on `awake` still needs
+ * its usual error path.
+ */
+export async function peekBoxState(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<BoxPeek | null> {
+  const { data, error } = await supabase
+    .from("boxes")
+    .select("provider_box_id, state")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) {
+    throw new Error(`box lookup failed for user ${userId}: ${error.message}`);
+  }
+  if (!data || typeof data.provider_box_id !== "string") return null;
+  return { boxId: data.provider_box_id, awake: data.state === "ready" };
+}
+
 /**
  * Resolve the user's box and make sure Hermes answers, resuming if needed.
  * Clears stop_after for the duration of the run (the caller re-arms it).

@@ -19,7 +19,7 @@ import { command, writeFile } from "../box/client";
 import {
   createRun,
   ensureSession,
-  loadConversationHistory,
+  loadConversationTranscript,
   MAIN_SESSION,
   MAIN_SESSION_TITLE,
   runEvents,
@@ -438,9 +438,12 @@ async function requeueMessages(
  * already had is logged as a dropped replay. Counts only — transcript
  * content never enters control-plane logs (C4).
  *
- * Returns null when an existing session replays empty even after a retry —
- * running that turn would answer with total amnesia, so the caller should
- * hold the burst and try again rather than reply blank.
+ * Returns null when an existing session returns no transcript rows even
+ * after a retry — running that turn would answer with total amnesia, so the
+ * caller should hold the burst and try again rather than reply blank. A
+ * transcript whose rows sanitise to nothing replayable (user inputs with no
+ * assistant reply yet) is not amnesia: the store is hydrated, so the turn
+ * proceeds with an empty history.
  */
 export async function replayHistory(
   target: HermesBoxTarget,
@@ -470,13 +473,13 @@ export async function replayHistory(
       })
     );
   }
-  let history = await loadConversationHistory(target, sessionId);
-  if (history.length === 0 && !firstTurn) {
+  let transcript = await loadConversationTranscript(target, sessionId);
+  if (transcript.rows === 0 && !firstTurn) {
     // One immediate retry: the load is best-effort and a transient proxy
     // hiccup or a box mid-resume often clears within a moment.
-    history = await loadConversationHistory(target, sessionId);
+    transcript = await loadConversationTranscript(target, sessionId);
   }
-  if (history.length === 0 && !firstTurn) {
+  if (transcript.rows === 0 && !firstTurn) {
     console.error(
       JSON.stringify({
         msg: "history replay empty on existing session",
@@ -486,19 +489,19 @@ export async function replayHistory(
       })
     );
     return null;
-  } else {
-    console.log(
-      JSON.stringify({
-        msg: "history replayed",
-        user_id: context.userId,
-        space_id: context.spaceId,
-        session_id: sessionId,
-        messages: history.length,
-        first_turn: firstTurn,
-      })
-    );
   }
-  return history;
+  console.log(
+    JSON.stringify({
+      msg: "history replayed",
+      user_id: context.userId,
+      space_id: context.spaceId,
+      session_id: sessionId,
+      rows: transcript.rows,
+      messages: transcript.history.length,
+      first_turn: firstTurn,
+    })
+  );
+  return transcript.history;
 }
 
 /**

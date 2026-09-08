@@ -14,7 +14,7 @@
  */
 import { after } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { StartLimitError } from "../orchestrator/boxes";
+import { peekBoxState, StartLimitError } from "../orchestrator/boxes";
 import {
   defaultOnboardingState,
   normalizeOnboardingState,
@@ -149,6 +149,68 @@ export async function writeStatusMirror(
       })
     );
   }
+}
+
+export interface MirroredStatus<T> {
+  /** Null when the box is asleep and no mirror row exists yet. */
+  status: T | null;
+  /** `mirror` means the box was asleep and nothing was woken. */
+  source: "live" | "mirror";
+  /** When the mirror row was last refreshed; null for live reads. */
+  refreshedAt: string | null;
+}
+
+async function readOrMirror<T>(
+  supabase: SupabaseClient,
+  userId: string,
+  live: () => Promise<T>,
+  mirrored: (mirror: OnboardingStatusMirror) => T | null,
+  patch: (status: T) => MirrorPatch
+): Promise<MirroredStatus<T>> {
+  const box = await peekBoxState(supabase, userId);
+  if (box?.awake) {
+    const status = await live();
+    await writeStatusMirror(supabase, userId, patch(status));
+    return { status, source: "live", refreshedAt: null };
+  }
+  const mirror = await readStatusMirror(supabase, userId);
+  return {
+    status: mirror ? mirrored(mirror) : null,
+    source: "mirror",
+    refreshedAt: mirror?.refreshedAt ?? null,
+  };
+}
+
+/**
+ * Read-only status for the owner's views: live when the box is already up,
+ * otherwise the Postgres mirror — a status chip never spends a wake. The
+ * mirror refreshes on every control-plane write (each upload chunk, each
+ * live read), so a sleeping box's mirror is as fresh as its last activity.
+ */
+export function readImportStatusOrMirror(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<MirroredStatus<ImportStatus>> {
+  return readOrMirror(
+    supabase,
+    userId,
+    () => readImportStatus(supabase, userId),
+    (mirror) => mirror.imports,
+    (imports) => ({ imports })
+  );
+}
+
+export function readIngestStatusOrMirror(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<MirroredStatus<IngestStatus>> {
+  return readOrMirror(
+    supabase,
+    userId,
+    () => readIngestStatus(supabase, userId),
+    (mirror) => mirror.ingest,
+    (ingest) => ({ ingest })
+  );
 }
 
 export interface LiveOnboardingStatus {

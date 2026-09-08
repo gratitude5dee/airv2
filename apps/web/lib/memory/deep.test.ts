@@ -17,6 +17,20 @@ describe("durable indexing status", () => {
     expect((await deepMemoryStatus("box")).pending).toBeNull();
   });
 
+  it("carries leaf counts and the truncation flag from the box", async () => {
+    vi.mocked(command).mockResolvedValue({
+      exitCode: 0,
+      stdout: JSON.stringify({ healthy: true, resources: 12, memories: 40, pending: 0, truncated: true }),
+      stderr: "",
+    });
+    expect(await deepMemoryStatus("box")).toMatchObject({ resources: 12, memories: 40, truncated: true });
+  });
+
+  it("reports an unknown memory total for boxes that predate the count", async () => {
+    vi.mocked(command).mockResolvedValue({ exitCode: 0, stdout: JSON.stringify({ healthy: true, resources: 3 }), stderr: "" });
+    expect(await deepMemoryStatus("box")).toMatchObject({ resources: 3, memories: null, truncated: false });
+  });
+
   it("reports unknown progress when the command fails", async () => {
     vi.mocked(command).mockRejectedValue(new Error("unavailable"));
     expect(await deepMemoryStatus("box")).toMatchObject({ healthy: false, pending: null });

@@ -54,7 +54,9 @@ class TimeoutTests(unittest.TestCase):
         self.assertEqual(self.constructed_timeouts(), [ovctl.INDEX_HTTP_TIMEOUT_SECONDS])
 
     def test_routine_commands_keep_the_sdk_default(self):
-        with patch.object(ovctl, "healthy", return_value=True), patch.object(ovctl, "list_uris", return_value=[]):
+        with patch.object(ovctl, "healthy", return_value=True), \
+                patch.object(ovctl, "list_uris", return_value=[]), \
+                patch.object(ovctl, "walk_entries", return_value=([], False)):
             for command in (ovctl.cmd_status, ovctl.cmd_export, lambda: ovctl.cmd_recent(5)):
                 with contextlib.redirect_stdout(io.StringIO()):
                     self.assertEqual(command(), 0)

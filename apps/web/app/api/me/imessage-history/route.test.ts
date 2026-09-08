@@ -2,7 +2,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 vi.mock("@/lib/auth/user", () => ({ sessionUserId: () => "owner" }));
 vi.mock("@/lib/supabase", () => ({ serviceClient: () => ({}) }));
-vi.mock("@/lib/miniapps/onboardingMirror", () => ({ writeStatusMirror: vi.fn() }));
+vi.mock("@/lib/miniapps/onboardingMirror", async () => {
+  const ingest = await import("@/lib/imessage/ingest");
+  return {
+    writeStatusMirror: vi.fn(),
+    readIngestStatusOrMirror: vi.fn(async (supabase: unknown, userId: string) => ({
+      status: await ingest.readIngestStatus(supabase as never, userId),
+      source: "live" as const,
+      refreshedAt: null,
+    })),
+  };
+});
 vi.mock("@/lib/orchestrator/boxes", () => ({ armStopAfter: vi.fn(async () => undefined), StartLimitError: class extends Error {} }));
 vi.mock("@/lib/env", () => ({ env: { appOrigin: () => "https://air.test", miniappSigningKey: () => "secret" } }));
 const status = vi.hoisted(() => ({ chunks: 1, messages: 1, last_upload_at: "2026-09-01T00:00:01.000Z", from_date: "2026-08-01T00:00:00Z",
@@ -19,7 +29,7 @@ import { readIngestStatus, storeChunk, verifyIngestTicket, MAX_CHUNK_BYTES } fro
 import { StateBusyError } from "@/lib/miniapps/stateLease";
 import { ArchiveMigrationError, ArchiveResolutionError } from "@/lib/imessage/archiveMigrateStore";
 import { StartLimitError } from "@/lib/orchestrator/boxes";
-import { writeStatusMirror } from "@/lib/miniapps/onboardingMirror";
+import { readIngestStatusOrMirror, writeStatusMirror } from "@/lib/miniapps/onboardingMirror";
 const body = { messages: [{ id: "msg", chat_id: "chat", chat: "Friends", from: "Sam", text: "Hello", ts: "2026-09-01T00:00:00Z", is_from_me: false }], threads: [{ id: "chat", label: "Friends" }] };
 function request(value = JSON.stringify(body)) {
   return new NextRequest("https://air.test/api/me/imessage-history", { method: "POST", headers: { authorization: "Bearer ticket" }, body: value });
@@ -120,7 +130,25 @@ describe("archive status route", () => {
     expect(json.status).toEqual(status);
     expect(json.command).toContain("bash /tmp/air-ingest.sh ticket 365 2026-09-01T00:00:00.000Z");
     expect(json.command).toContain("AIR_INGEST_ENDPOINT=https://air.test/api/me/imessage-history");
-    expect(writeStatusMirror).toHaveBeenCalledWith({}, "owner", { ingest: status });
+    expect(json.source).toBe("live");
+  });
+  it("answers from the mirror for a sleeping box and still resumes from the mirrored cursor", async () => {
+    vi.mocked(readIngestStatusOrMirror).mockResolvedValueOnce({
+      status: { ...status, cursor: "2026-08-15T00:00:00.000Z" }, source: "mirror", refreshedAt: "2026-09-01T00:00:02.000Z",
+    });
+    const json = await (await get()).json();
+    expect(json.source).toBe("mirror");
+    expect(json.refreshed_at).toBe("2026-09-01T00:00:02.000Z");
+    expect(json.cursor).toBe("2026-08-15T00:00:00.000Z");
+    expect(json.command).toContain("bash /tmp/air-ingest.sh ticket 365 2026-08-15T00:00:00.000Z");
+    expect(readIngestStatus).not.toHaveBeenCalled();
+  });
+  it("returns a null status when the box sleeps and nothing has been mirrored yet", async () => {
+    vi.mocked(readIngestStatusOrMirror).mockResolvedValueOnce({ status: null, source: "mirror", refreshedAt: null });
+    const json = await (await get()).json();
+    expect(json.status).toBeNull();
+    expect(json.cursor).toBeNull();
+    expect(json.command).toMatch(/air-ingest\.sh ticket$/);
   });
   it("omits the cursor argument when none is saved or it is out of bounds", async () => {
     vi.mocked(readIngestStatus).mockResolvedValueOnce({ ...status, cursor: null });

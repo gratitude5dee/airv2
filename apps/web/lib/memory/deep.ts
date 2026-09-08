@@ -22,10 +22,21 @@ const OVCTL_ENQUEUE_TIMEOUT_SECONDS = 60;
 
 export interface DeepMemoryStatus {
   healthy: boolean;
+  /** Indexed resource documents (leaves; directory nodes excluded). */
   resources: number;
+  /** Derived memory documents; null on boxes whose ovctl predates the count. */
+  memories: number | null;
   workspace_bytes: number;
   /** Null means this box could not report its durable queue. */
   pending: number | null;
+  /** The box hit its listing bound, so counts are lower bounds. */
+  truncated: boolean;
+}
+
+function nonNegativeInteger(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : null;
 }
 
 function parseJson(stdout: string): Record<string, unknown> | null {
@@ -43,12 +54,12 @@ export async function deepMemoryStatus(
   const doc = result && result.exitCode === 0 ? parseJson(result.stdout) : null;
   return {
     healthy: doc?.["healthy"] === true,
-    resources: typeof doc?.["resources"] === "number" ? doc["resources"] : 0,
+    resources: nonNegativeInteger(doc?.["resources"]) ?? 0,
+    memories: nonNegativeInteger(doc?.["memories"]),
     workspace_bytes:
       typeof doc?.["workspace_bytes"] === "number" ? doc["workspace_bytes"] : 0,
-    pending:
-      typeof doc?.["pending"] === "number" && Number.isSafeInteger(doc["pending"]) && doc["pending"] >= 0
-        ? doc["pending"] : null,
+    pending: nonNegativeInteger(doc?.["pending"]),
+    truncated: doc?.["truncated"] === true,
   };
 }
 

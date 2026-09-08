@@ -239,10 +239,11 @@ function renderOpenVikingSection(
 <section class="mem">
   <div class="mem-head"><h2>OpenViking history</h2><span class="chip${status.healthy ? " on" : ""}">${status.healthy ? "healthy" : "degraded"}</span></div>
   <div class="mem-stats">
-    <div class="mem-stat"><b>${status.resources}</b><span>resources</span></div>
-    <div class="mem-stat"><b>${history?.memories.length ?? 0}</b><span>memories</span></div>
+    <div class="mem-stat"><b>${status.truncated ? `${status.resources}+` : status.resources}</b><span>resources</span></div>
+    <div class="mem-stat"><b>${status.memories == null ? "–" : status.truncated ? `${status.memories}+` : status.memories}</b><span>memories</span></div>
     <div class="mem-stat"><b>${esc(humanBytes(status.workspace_bytes))}</b><span>workspace</span></div>
   </div>
+  ${history && history.memories.length > 0 ? `<p class="muted">Showing the ${history.memories.length} most recent memories.</p>` : ""}
   <p class="muted">${status.pending == null
     ? "Indexing progress unavailable."
     : status.pending > 0

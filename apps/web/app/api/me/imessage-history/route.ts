@@ -19,11 +19,13 @@ import {
   MAX_CHUNK_BYTES,
   mintIngestTicket,
   parseChunk,
-  readIngestStatus,
   storeChunk,
   verifyIngestTicket,
 } from "@/lib/imessage/ingest";
-import { writeStatusMirror } from "@/lib/miniapps/onboardingMirror";
+import {
+  readIngestStatusOrMirror,
+  writeStatusMirror,
+} from "@/lib/miniapps/onboardingMirror";
 import { armStopAfter, StartLimitError } from "@/lib/orchestrator/boxes";
 import { serviceClient } from "@/lib/supabase";
 import { env } from "@/lib/env";
@@ -75,12 +77,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const supabase = serviceClient();
+  // A sleeping box answers from the Postgres mirror (refreshed on every
+  // upload chunk) rather than spending a wake on a read-only status view.
+  let read: Awaited<ReturnType<typeof readIngestStatusOrMirror>>;
   try {
-    const status = await readIngestStatus(supabase, userId);
-    await writeStatusMirror(supabase, userId, { ingest: status });
-    const ticket = mintIngestTicket(userId);
-    const command = buildIngestCommand(ticket, status.cursor);
-    return NextResponse.json({ status, command, cursor: status.cursor }, { headers: NO_STORE });
+    read = await readIngestStatusOrMirror(supabase, userId);
   } catch (error) {
     if (error instanceof StartLimitError) return busy();
     return NextResponse.json(
@@ -90,6 +91,19 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   } finally {
     await armStopAfter(supabase, userId).catch(() => undefined);
   }
+  const cursor = read.status?.cursor ?? null;
+  const ticket = mintIngestTicket(userId);
+  const command = buildIngestCommand(ticket, cursor);
+  return NextResponse.json(
+    {
+      status: read.status,
+      command,
+      cursor,
+      source: read.source,
+      refreshed_at: read.refreshedAt,
+    },
+    { headers: NO_STORE }
+  );
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
