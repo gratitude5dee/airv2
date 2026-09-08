@@ -56,6 +56,8 @@ req = urllib.request.Request(
     headers={
         "Authorization": f"Bearer {os.environ['RELEASE_KEY']}",
         "Content-Type": "application/json",
+        # Cloudflare in front of the control plane rejects urllib's default UA.
+        "User-Agent": "air-release.sh",
     },
 )
 with urllib.request.urlopen(req) as response:
