@@ -1,6 +1,6 @@
 /**
  * Provider-neutral mail client. Every call is routed at invocation time by
- * MAIL_PROVIDER (default `agentmail`) to lib/agentmail/client.ts or
+ * MAIL_PROVIDER (default `wzrdmail`) to lib/agentmail/client.ts or
  * lib/wzrdmail/client.ts, which share one function surface. Callers import
  * from here; the provider modules are implementation detail.
  */

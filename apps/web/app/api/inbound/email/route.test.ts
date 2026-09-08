@@ -105,8 +105,22 @@ describe("POST /api/inbound/email with MAIL_PROVIDER=wzrdmail", () => {
 });
 
 describe("POST /api/inbound/email with the default provider", () => {
-  it("still verifies with AGENTMAIL_WEBHOOK_SECRET and reads the AgentMail envelope", async () => {
+  it("verifies with WZRDMAIL_WEBHOOK_SECRET and reads the wzrdmail envelope", async () => {
     delete process.env["MAIL_PROVIDER"];
+    const response = await POST(signed(wzrdmailEvent, WZRD_KEY));
+    expect(response.status).toBe(200);
+    expect(inbound.processInboundEmail).toHaveBeenCalledWith(
+      {},
+      "user-1",
+      "sam@wzrd.tech",
+      "m1",
+    );
+  });
+});
+
+describe("POST /api/inbound/email with MAIL_PROVIDER=agentmail", () => {
+  it("verifies with AGENTMAIL_WEBHOOK_SECRET and reads the AgentMail envelope", async () => {
+    process.env["MAIL_PROVIDER"] = "agentmail";
     const response = await POST(
       signed(
         {

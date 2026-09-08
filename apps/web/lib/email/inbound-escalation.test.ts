@@ -62,6 +62,7 @@ async function* deltas(): AsyncGenerator<string> {
 
 describe("processInboundEmail reply escalation", () => {
   beforeEach(() => {
+    process.env["MAIL_PROVIDER"] = "agentmail";
     vi.mocked(getMessage).mockReset().mockResolvedValue({
       message_id: "<msg-1@example.com>",
       inbox_id: "inbox-1",

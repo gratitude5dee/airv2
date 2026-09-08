@@ -88,6 +88,7 @@ describe("hostile ICS fields (I5)", () => {
 
 describe("tier-2 attempts are decision-or-nothing", () => {
   beforeEach(() => {
+    process.env["MAIL_PROVIDER"] = "agentmail";
     vi.clearAllMocks();
   });
 

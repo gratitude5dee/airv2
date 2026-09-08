@@ -64,6 +64,7 @@ const PENDING = {
 
 describe("resolveEmailDraftDecision", () => {
   beforeEach(() => {
+    process.env["MAIL_PROVIDER"] = "agentmail";
     vi.mocked(sendDraft).mockReset().mockResolvedValue(undefined);
   });
 
