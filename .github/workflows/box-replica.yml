@@ -8,6 +8,11 @@ name: Box replica
 # (ascii.dev) stop/resume transitions still need a real Box.
 
 on:
+  push:
+    branches: ["codex/**"]
+    paths:
+      - infra/template/openviking/**
+      - .github/workflows/box-replica.yml
   workflow_dispatch:
     inputs:
       large_lines:
@@ -32,8 +37,8 @@ jobs:
         run: |
           sudo -u user -H /home/user/.openviking-venv/bin/python /home/user/.openviking/livecheck.py \
             --report /home/user/livecheck.json \
-            --large-lines "${{ inputs.large_lines }}" \
-            --interrupt-after "${{ inputs.interrupt_after }}"
+            --large-lines "${{ inputs.large_lines || '30000' }}" \
+            --interrupt-after "${{ inputs.interrupt_after || '15' }}"
       - name: Unit state
         if: always()
         run: |
