@@ -301,9 +301,15 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
-      "notes": ""
+      "implementation_status": "in_progress",
+      "evidence": [
+        "infra/template/openviking/tests/test_pending.py: durable queue survives worker failure; receipts acknowledged only for the processed generation",
+        "infra/template/openviking/tests/test_timeouts.py: replay client constructed with timeout=660 for the 600 s server wait; routine clients timeout=60",
+        "infra/template/openviking/tests/test_replace.py: only typed NotFoundError is tolerated before add; other remove failures keep work pending",
+        "infra/template/openviking/tests/test_stop_claim.py: stop-claim refuses while pending/in grace/worker busy; resume-pending defers under a live claim; release, TTL and boot-id invalidation",
+        "apps/web/lib/orchestrator/indexIdle.test.ts, idleStop.test.ts: sweeper claims before provider stop, releases on abort, bounded legacy fallback for boxes without the command"
+      ],
+      "notes": "Unit-level only. The probe->stop race is closed by a box-side flock claim the sweeper must hold before provider stop(); this has not been exercised on an isolated Linux/systemd box with the real timer, units and provider, so it stays open. Rollout: boxes without stop-claim use the read-only idle-check probe; boxes with neither are stopped after a bounded 20-minute legacy grace."
     },
     {
       "id": "MEM-04",
@@ -823,9 +829,12 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
-      "notes": ""
+      "implementation_status": "implemented",
+      "evidence": [
+        "infra/template/openviking/tests/: test_configuration, test_pending, test_idle, test_reindex, test_timeouts, test_replace, test_stop_claim (python3 -m unittest)",
+        "apps/web/lib/memory/deep.test.ts"
+      ],
+      "notes": "Suites exist and pass locally with an in-memory SDK stub; they do not exercise the pinned server or a live box."
     },
     {
       "id": "MEM-31",

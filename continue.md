@@ -102,6 +102,36 @@ the user's explicit authorization. The user has authorized this GitHub push.
 - Reindex enumerates only exact archive Markdown resources, excluding raw
   legacy chunks, metadata, and staging files. Legacy chunks cause a visible
   migration-pending result rather than being indexed indiscriminately.
+- Owner resolution of ambiguous legacy labels (unit level). The migration
+  preflight now collects every unresolved label→candidates pair across all
+  chunks, writes it box-side to
+  `.hermes/context/imessage-archive-state/pending-resolution.json`, and throws
+  `ArchiveResolutionError`. The upload-ticket POST maps that to
+  `409 resolution_required` (terminal, fixed text plus a `resolve_at` URL —
+  never the labels). The owner-session route
+  `GET/POST /api/me/imessage-history/resolutions` lists pending labels and
+  candidates and accepts `{resolutions: [{label, id | null}]}`; POSTs are only
+  accepted for labels in the pending report and ids from the offered
+  candidates (`id: null` keeps the label as its own legacy-label thread).
+  Saved resolutions are persisted under the archive lease to
+  `resolutions.json` and merged into `resolveLegacyThreads` on the next
+  attempt. Labels travel box → authenticated owner response only; nothing is
+  logged or mirrored to Postgres.
+- Resumable cursor. `IngestStatus.cursor` is the latest durably committed
+  message timestamp (canonical ISO UTC, bounded [2001-01-01, now+24h],
+  impossible calendar dates rejected, legacy `to_date` accepted as fallback).
+  It is returned by GET and POST, and GET's generated command passes it as the
+  extractor's inclusive `SINCE_ISO_UTC` argument so a rerun sends only new
+  work (`imessage-ingest.sh` gained the argument; `>=` inclusive boundary and
+  GUID dedupe unchanged).
+- Actionable upload errors. Every POST failure uses one envelope
+  `{error, code, retriable, retry_after_seconds?, resolve_at?}` with stable
+  codes (`invalid_ticket`, `upload_too_large`, `unreadable_upload`,
+  `invalid_json`, `invalid_chunk`, `archive_busy`, `box_starting`,
+  `resolution_required`, `migration_failed`, `upload_failed`); retriable cases
+  also send `Retry-After`. `ArchiveMigrationError` carries `retriable`
+  (inventory/hash-change/cleanup/backup failures retry; invalid inventory and
+  unresolved labels are terminal).
 
 ### Durable indexing (MEM-21 still incomplete)
 
@@ -117,8 +147,17 @@ the user's explicit authorization. The user has authorized this GitHub push.
   strict parsing.
 - SDK 0.1.7 defaults to a 60-second HTTP timeout. The worker now explicitly
   uses 660 seconds for a 600-second server wait; routine clients stay at 60.
-  The wheel is cached at `/private/tmp/air-openviking-sdk-0.1.7.whl` for further
-  inspection, not installed into the application.
+  `tests/test_timeouts.py` patches `openviking_sdk.SyncHTTPClient` and asserts
+  the `timeout=` kwarg for `cmd_resume_pending` (660) and for `client()`,
+  `cmd_status`, `cmd_export`, `cmd_recent` (60). The wheel referenced at
+  `/private/tmp/air-openviking-sdk-0.1.7.whl` was not present in this
+  environment; the published 0.1.7 wheel was inspected in a scratch venv
+  instead (same `NotFoundError` class and 60 s default).
+- Index replacement no longer swallows every remove error. `add_resource` and
+  `cmd_rm` treat only the SDK's typed `openviking_sdk.errors.NotFoundError`
+  as "nothing to remove"; any other removal error propagates, the resource is
+  not re-added on top of a failed remove, and the durable receipt stays
+  pending (`tests/test_replace.py`).
 - Status exposes pending count. Context and Persona distinguish pending,
   empty, and unavailable progress. Reindex is durable/enqueue-only; the API
   returns 202 and the UI reports queued instead of completed.
@@ -127,8 +166,32 @@ the user's explicit authorization. The user has authorized this GitHub push.
   failure instead of being swallowed.
 - Before clearing completed work, the worker persists completion time.
   `idle-check` denies shutdown while work is pending and for 20 minutes after
-  completion. The cron sweeper checks this before stopping and reports
-  `indexingDeferred`; corrupt/unreadable state defers shutdown.
+  completion, and now also reports `stop_claimed`.
+- Coordinated shutdown claim. `ovctl stop-claim --grace-seconds N` takes the
+  worker lock non-blocking (a replay in flight → `busy`) and the queue lock,
+  evaluates pending/grace state and writes `~/.openviking/stop-claim.json`
+  (`token`, `boot_id`, `expires_at`, default TTL 900 s) in one critical
+  section. `resume-pending` re-reads the claim under the queue lock and defers
+  (`{"deferred": true, "reason": "stop_claimed"}`) instead of starting new
+  indexing; enqueues still persist durably and replay on the next boot's timer.
+  `stop-release --token T` removes the claim (token mismatch → exit 1). Claims
+  from a previous boot or past `expires_at` are ignored; a malformed claim file
+  raises rather than being treated as "no claim" (`tests/test_stop_claim.py`).
+- Sweeper (`apps/web/lib/orchestrator/indexIdle.ts`, `idleStop.ts`,
+  `app/api/cron/sweep/route.ts`): `claimIdleStop` runs `ovctl stop-claim`
+  before the provider `stop()` and only proceeds on `claimed: true` with a
+  32-hex token; provider-stop failure releases the claim and returns the box to
+  `ready`. Old boxes: if `stop-claim` is an unknown subcommand it falls back to
+  the read-only `idle-check` probe; if that is also missing (pre-`idle-check`
+  template or no `ovctl`) it defers only until the box is `LEGACY_STOP_GRACE_MS`
+  (20 min) past `stop_after`/`last_active_at`, then stops — bounded, so the
+  control plane does not depend on a fleet update having shipped. Any other
+  failure (non-zero exit, corrupt JSON, wrong shape, box command error) defers.
+  The cron response reports `indexing: { deferred: {pending, grace, busy,
+  claimed, probe_failed, legacy_grace}, claimed, legacyProbe, legacyStop,
+  released, releaseFailed }` alongside `stopped`/`indexingDeferred`.
+- Explicit `outputFileTracingRoot` (workspace root) in `apps/web/next.config.ts`;
+  the production build log no longer contains the inferred-tracing-root warning.
 
 ## Validation evidence and limits
 
@@ -136,17 +199,24 @@ the user's explicit authorization. The user has authorized this GitHub push.
   all **16 OpenViking Python tests pass**, inventory check passes, and full
   TypeScript checking passes. `git diff --check` passes in the isolated clone.
 
-- Latest box-side run: **16 Python tests pass**, including durable retries,
-  concurrent generations, failed writes, malformed completion receipts,
-  cancellation recovery, forgetting, and idle-window behavior.
-- Latest targeted sweeper/guard run: **11 web tests pass**.
-- Memory status/reindex tests: **9 pass**.
-- Full TypeScript check and targeted lint passed after the idle guard changes.
-- Earlier full Vitest run reported 249 files passing, 2,532 tests passing and
-  one skipped. It predates the latest queue/idle changes; rerun the full suite.
-- A production build passed earlier, before most archive/queue changes. It
-  warned that Next inferred a tracing root outside this repository. Fix the
-  explicit tracing root and rebuild before deployment.
+- Latest box-side run: **39 Python tests pass**
+  (`python3 -m unittest infra/template/openviking/tests/test_*.py`), including
+  durable retries, concurrent generations, failed writes, malformed completion
+  receipts, cancellation recovery, forgetting, idle-window behavior, worker
+  timeouts, typed remove-error handling and stop-claim acquisition, conflict,
+  release, TTL/boot invalidation and worker deferral.
+- Uploader tests: **11 pass** (`scripts/tests/test_imessage_upload.py`).
+- Targeted Vitest on the touched modules (`lib/imessage`,
+  `app/api/me/imessage-history`, `lib/orchestrator`): **204 tests across 20
+  files pass**.
+- Full suite after the claim, archive and tracing-root changes (see the
+  implementation plan for exact numbers): Vitest, typecheck, lint and
+  production build all pass; the inferred-tracing-root warning is gone.
+  Remaining build/lint warnings are pre-existing unused-`_arg` warnings in
+  test files and the `libheif-js` critical-dependency notice.
+- None of the above is product acceptance. The idle-stop race closure has not
+  been exercised on an isolated Linux/systemd box (item 4), and no owner
+  corpus has been imported to measure archive recall/coverage (item 5).
 - `docs/reports/openviking-index-completion.md` records source inspection and
   local regression evidence. This is not a live Linux/systemd or recall test.
 - No owner iMessage corpus was imported, no test message was sent to others,
@@ -158,25 +228,30 @@ the user's explicit authorization. The user has authorized this GitHub push.
    new review files against baseline `bb82c05`; generated bundles, dependencies,
    local skill caches, and environment files are excluded. Verify the branch
    head and review its diff before merging or deploying.
-2. Add explicit tests for worker HTTP timeout configuration and rerun targeted
-   tests after the latest timeout change. Inspect SDK error types: the index
-   replacement still catches all remove errors before add, which can hide an
-   actual failed removal. Treat only genuine absence as harmless.
-3. Close the idle probe→provider-stop race using a coordinated shutdown claim
-   shared with writers. The current separate probe is insufficient to prove
-   never-stop-during-indexing. Old boxes without `idle-check` defer indefinitely;
-   do not deploy the control plane ahead of matching fleet updates. Design and
-   verify rollout compatibility and failure visibility.
+2. Done locally (unit level): worker HTTP timeout tests and the typed
+   absence-only remove handling. Still open: confirm against the real pinned
+   server that a removal of a missing URI surfaces as `NotFoundError` (server
+   0.4.16 source reads as idempotent delete, so the typed path may never fire;
+   that is harmless but unmeasured).
+3. Done locally (unit level): `stop-claim`/`stop-release` and the claim-first
+   sweeper with bounded legacy fallback. Still open: the race guarantee is only
+   as strong as the box-side locks; it has NOT been exercised on an isolated
+   Linux/systemd box with the real timer, service units and provider `stop()`
+   (item 4). Rollout order still matters: until the template with `stop-claim`
+   ships, boxes with `idle-check` use the read-only probe and boxes with
+   neither are stopped after the 20-minute legacy grace.
 4. Test the service units and interrupted indexing on an isolated Linux box.
    Confirm SDK completion receipts with the actual pinned server, verify
    restart recovery and deletion behavior, and measure indexing wall time and
    idle RSS. A job exceeding the 600-second server wait still needs a strategy
    that avoids continually restarting expensive work.
-5. Finish archive co-ship requirements: owner-facing resolution for ambiguous
-   legacy thread labels, automatic resumable cursor behavior, actionable upload
-   errors/retries, rollout quiescence against old writers, and live corpus
-   recall/coverage verification. Source/manifest/enqueue receipts are not proof
-   that every resource is searchable.
+5. Archive co-ship: done locally (unit level) — owner-facing resolution for
+   ambiguous legacy labels, resumable cursor in status/command, actionable
+   upload error envelope. Still open: rollout quiescence against old writers,
+   an onboarding UI for the resolutions route (only the API exists), and live
+   corpus recall/coverage verification on a real owner export. Source,
+   manifest and enqueue receipts are not proof that every resource is
+   searchable; MEM-01/18/19 stay `not_verified` in the ledger.
 6. Finish Dictionary completion ordering (MEM-04), coordinate all USER.md
    writers (MEM-10), privacy/forget retry and clear flows, and other memory
    findings. Avoid claiming a timer alone proves memory durability.

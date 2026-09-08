@@ -199,3 +199,49 @@ and the UI says queued. Full TypeScript checking passes, with targeted status
 and reindex tests plus the 11 Python tests. Idle-stop coordination, service
 restart-hook coverage, SDK completion semantics, and live interruption testing
 remain open; the timer alone does not prove those requirements.
+
+Checkpoint follow-up (worker timeouts, coordinated idle stop, archive
+co-ship): `tests/test_timeouts.py` patches `openviking_sdk.SyncHTTPClient` and
+asserts the replay worker passes `timeout=660` for the 600-second server wait
+while `client()`, `status`, `export` and `recent` stay at the SDK 0.1.7 default
+of 60. `add_resource` and `cmd_rm` now tolerate only the SDK's typed
+`NotFoundError` before an add; any other removal error propagates and the
+durable receipt stays pending (`tests/test_replace.py`). The probe-then-stop
+race is closed by a box-side claim: `ovctl stop-claim` takes the worker and
+queue locks, refuses while work is pending, in grace, busy or already claimed,
+otherwise writes a token/boot-id/TTL claim that `resume-pending` honors by
+deferring; `stop-release` removes it. The sweeper (`indexIdle.ts`,
+`idleStop.ts`, `cron/sweep`) acquires the claim before provider `stop()`,
+releases it on stop failure, falls back to the read-only `idle-check` probe on
+boxes without `stop-claim`, and stops boxes with neither only after a bounded
+20-minute legacy grace; the cron response reports every claim/deferral outcome
+(`tests/test_stop_claim.py`, `indexIdle.test.ts`, `idleStop.test.ts`).
+Archive: the migration preflight persists unresolved label→candidate pairs
+box-side and the owner resolves them through
+`GET/POST /api/me/imessage-history/resolutions`; saved resolutions merge into
+`resolveLegacyThreads`. Ingest status carries a validated `cursor` returned by
+GET/POST and passed to the extractor as `SINCE_ISO_UTC`; the uploader resumes
+from it. Upload-ticket errors share one envelope with stable codes, a
+retriable flag and `Retry-After`; `resolution_required` (409) carries only
+fixed text and a resolve URL, never labels. `apps/web/next.config.ts` sets
+`outputFileTracingRoot` to the workspace root and the inferred-tracing-root
+build warning is gone.
+
+Validation: 39 OpenViking Python tests pass; 11 uploader tests pass; targeted
+Vitest on `lib/imessage`, `app/api/me/imessage-history` and `lib/orchestrator`
+passes 204 tests in 20 files. Full Vitest: 255 files, 2,632 tests pass, one
+skipped. Typecheck passes. Lint reports zero errors and the same 38
+pre-existing warnings as before, after the ESLint ignore list was extended to
+the remaining git-ignored esbuild bundles under `public/creator-os/` (the
+generated `create.js` had produced two `no-this-alias` errors once a build had
+emitted it). Production build passes. Inventory check: 249 rows, 9 implemented,
+1 in progress, 239 not verified, product acceptance not measured.
+
+Limits: these are unit-level checks with an in-memory SDK stub and mocked
+box/provider calls. The idle-stop race guarantee has not been exercised on an
+isolated Linux/systemd box with the real timer, units and provider `stop()`
+(continue.md item 4); MEM-21 stays in progress. No owner corpus was imported,
+so archive recall/coverage is unmeasured and source/manifest/enqueue receipts
+do not prove searchability (item 5); MEM-01/MEM-18/MEM-19 stay not verified.
+Rollout still requires the template with `stop-claim` to ship before the
+claim path is exercised in production. No A+/95 score is claimed.
