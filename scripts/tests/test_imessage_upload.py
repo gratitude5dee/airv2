@@ -9,6 +9,7 @@ import time
 import subprocess
 import tempfile
 import unittest
+import urllib.error
 from unittest.mock import patch
 
 SCRIPT = Path(__file__).resolve().parents[2] / "apps/web/public/imessage-ingest.sh"
@@ -22,12 +23,24 @@ def row(index, text):
             "chat": "Friends", "sender": "Sam", "is_from_me": 0, "text": text}
 
 
+def failure(status, **body):
+    """An HTTPError carrying the server's JSON failure envelope."""
+    return urllib.error.HTTPError("https://air.test/upload", status, "error", {}, io.BytesIO(json.dumps(body).encode()))
+
+
 class UploadTests(unittest.TestCase):
-    def upload(self, rows, catalogue=None):
-        requests = []
+    def upload(self, rows, catalogue=None, responses=None):
+        """Run the embedded uploader. `responses` scripts each POST in order: a
+        dict is a 200 body, an exception is raised from urlopen; the default is
+        a plain 200. Sleeps and stdout land on self._sleeps / self._stdout."""
+        requests, sleeps, output = [], [], io.StringIO()
+        scripted = list(responses or [])
         def send(request):
             requests.append(request)
-            return io.BytesIO(b'{"ok":true}')
+            response = scripted.pop(0) if scripted else {"ok": True}
+            if isinstance(response, Exception):
+                raise response
+            return io.BytesIO(json.dumps(response).encode())
         with tempfile.TemporaryDirectory() as directory:
             fixture = Path(directory) / "rows.json"
             fixture.write_text(json.dumps(rows))
@@ -36,8 +49,14 @@ class UploadTests(unittest.TestCase):
                 catalogue_path = Path(directory) / "catalogue.json"
                 catalogue_path.write_text(json.dumps(catalogue))
                 arguments.append(str(catalogue_path))
-            with patch.object(sys, "argv", arguments), patch("urllib.request.urlopen", side_effect=send), contextlib.redirect_stdout(io.StringIO()):
-                exec(compile(SOURCE, str(SCRIPT), "exec"), {})
+            self._sleeps, self._stdout = sleeps, ""
+            try:
+                with patch.object(sys, "argv", arguments), patch("urllib.request.urlopen", side_effect=send), \
+                     patch("time.sleep", side_effect=sleeps.append), contextlib.redirect_stdout(output), \
+                     contextlib.redirect_stderr(io.StringIO()):
+                    exec(compile(SOURCE, str(SCRIPT), "exec"), {})
+            finally:
+                self._stdout = output.getvalue()
         return requests
 
     def test_unicode_splits_by_bytes_preserving_all_rows_and_ids(self):
@@ -117,6 +136,45 @@ class UploadTests(unittest.TestCase):
                 self.upload([row(0, "valid"), {**row(1, ""), "attributed_body": "deadbeef"}])
             request.assert_not_called()
 
+    def test_retriable_failures_back_off_then_succeed_without_resending_committed_chunks(self):
+        rows = [row(i, "🧠" * 300000) for i in range(5)]
+        responses = [
+            {"ok": True, "cursor": "2026-09-01T12:00:00.000Z"},
+            failure(503, code="archive_busy", error="busy", retriable=True, retry_after_seconds=2),
+            urllib.error.URLError("connection reset"),
+            failure(502, error="gateway"),
+            {"ok": True, "cursor": "2026-09-01T12:00:00.000Z"},
+        ]
+        requests = self.upload(rows, responses=responses)
+        self.assertEqual(len(requests), 5)
+        self.assertEqual(requests[1].data, requests[4].data)
+        self.assertNotEqual(requests[0].data, requests[1].data)
+        self.assertEqual(self._sleeps, [2.0, 4.0, 8.0])
+        self.assertIn("Archive cursor: 2026-09-01T12:00:00.000Z", self._stdout)
+
+    def test_terminal_failure_stops_with_code_and_cursor(self):
+        rows = [row(i, "🧠" * 300000) for i in range(5)]
+        responses = [
+            {"ok": True, "cursor": "2026-09-01T12:00:00.000Z"},
+            failure(400, code="invalid_chunk", error="Upload rejected: bad ts.", retriable=False),
+        ]
+        with self.assertRaisesRegex(SystemExit, r"(?s)stopped \(invalid_chunk\).*bad ts.*Archive cursor: 2026-09-01T12:00:00.000Z"):
+            self.upload(rows, responses=responses)
+        self.assertEqual(self._sleeps, [])
+
+    def test_resolution_required_names_where_to_resolve_and_never_retries(self):
+        responses = [failure(409, code="resolution_required", error="Some earlier chat labels match more than one conversation.",
+                             retriable=False, resolve_at="https://air.test/api/me/imessage-history/resolutions")]
+        with self.assertRaisesRegex(SystemExit, r"(?s)resolution_required.*https://air.test/api/me/imessage-history/resolutions"):
+            self.upload([row(0, "hi")], responses=responses)
+        self.assertEqual(self._sleeps, [])
+
+    def test_retries_are_bounded(self):
+        responses = [failure(503, code="archive_busy", error="busy", retriable=True, retry_after_seconds=1) for _ in range(20)]
+        with self.assertRaisesRegex(SystemExit, r"archive_busy.*gave up after 8 attempts"):
+            self.upload([row(0, "hi")], responses=responses)
+        self.assertEqual(self._sleeps, [1.0] * 7)
+
     def test_cursor_validates_timezone_and_emits_only_numeric_sql_data(self):
         source = SCRIPT.read_text().split("<<'CURSORPY'\n", 1)[1].split("\nCURSORPY", 1)[0]
         def run(value):
@@ -126,6 +184,7 @@ class UploadTests(unittest.TestCase):
         self.assertEqual(utc.returncode, 0)
         self.assertTrue(utc.stdout.strip().isdigit())
         self.assertEqual(utc.stdout, run("2026-09-01T13:00:00+01:00").stdout)
+        self.assertEqual(utc.stdout, run("2026-09-01T12:00:00.000Z").stdout)
         for invalid in ("2026-09-01", "yesterday", "0; DROP TABLE message;", "1960-01-01T00:00:00Z"):
             result = run(invalid)
             self.assertNotEqual(result.returncode, 0)

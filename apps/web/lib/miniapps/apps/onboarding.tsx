@@ -41,6 +41,7 @@ import {
 } from "@/lib/entitlements/models";
 import { getMerchant, startOnboarding, type Merchant } from "@/lib/commerce/merchants";
 import {
+  buildIngestCommand as buildIngestCommandForTicket,
   mintIngestTicket,
   readIngestStatus,
   type IngestStatus,
@@ -621,7 +622,7 @@ async function loadSnapshot(
       link,
       pluginSessions: pluginCount ?? 0,
       ingest,
-      ingestCommand: buildIngestCommand(userId),
+      ingestCommand: buildIngestCommand(userId, ingest),
       imports,
       importCommand: buildImportCommand(userId),
       browserProfile,
@@ -750,11 +751,9 @@ function buildBrowserProfileCommand(userId: string): string | null {
 
 /** The upload command shown on the iMessage step — owner-only page, ticket
  * is short-TTL and scoped to the ingest endpoint. */
-function buildIngestCommand(userId: string): string | null {
+function buildIngestCommand(userId: string, ingest: IngestStatus | null): string | null {
   try {
-    const origin = env.appOrigin();
-    const ticket = mintIngestTicket(userId);
-    return `curl -fsSL ${origin}/imessage-ingest.sh -o /tmp/air-ingest.sh && AIR_INGEST_ENDPOINT=${origin}/api/me/imessage-history bash /tmp/air-ingest.sh ${ticket}`;
+    return buildIngestCommandForTicket(mintIngestTicket(userId), ingest?.cursor ?? null);
   } catch {
     return null;
   }

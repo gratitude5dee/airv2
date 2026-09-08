@@ -26,6 +26,8 @@ export const INGEST_TTL_MINUTES = 30;
 /** Cap one upload at 4 MB of JSON — the extractor chunks beyond that. */
 export const MAX_CHUNK_BYTES = 4 * 1024 * 1024;
 export const MAX_MESSAGES_PER_CHUNK = 20_000;
+/** Matches the extractor's default window. */
+export const DEFAULT_INGEST_DAYS = 365;
 
 const HISTORY_DIR = ".hermes/context/imessage-history";
 const STATUS_PATH = `${HISTORY_DIR}/status.json`;
@@ -184,6 +186,9 @@ export interface IngestStatus {
   last_upload_at: string | null;
   from_date: string | null;
   to_date: string | null;
+  /** Latest durably committed message timestamp (ISO UTC), or null before
+   * the first upload. Inclusive resume point for the extractor. */
+  cursor: string | null;
 }
 
 function defaultStatus(): IngestStatus {
@@ -193,7 +198,24 @@ function defaultStatus(): IngestStatus {
     last_upload_at: null,
     from_date: null,
     to_date: null,
+    cursor: null,
   };
+}
+
+const CURSOR_FLOOR_MS = Date.UTC(2001, 0, 1);
+const CURSOR_SKEW_MS = 24 * 60 * 60 * 1000;
+
+/** A resume cursor is a full ISO-8601 UTC instant between the Apple epoch and
+ * now (plus a day of clock skew); anything else resumes from scratch. */
+export function normalizeCursor(value: unknown, now = Date.now()): string | null {
+  if (typeof value !== "string") return null;
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(value)) return null;
+  const ms = new Date(value).getTime();
+  if (!Number.isFinite(ms) || ms < CURSOR_FLOOR_MS || ms > now + CURSOR_SKEW_MS) return null;
+  const iso = new Date(ms).toISOString();
+  // Date rolls impossible calendar dates forward (Feb 30 → Mar 2); refuse those.
+  if (iso.slice(0, 19) !== value.slice(0, 19)) return null;
+  return iso;
 }
 
 export function normalizeIngestStatus(raw: unknown): IngestStatus {
@@ -207,7 +229,17 @@ export function normalizeIngestStatus(raw: unknown): IngestStatus {
   }
   if (typeof doc["from_date"] === "string") status.from_date = doc["from_date"];
   if (typeof doc["to_date"] === "string") status.to_date = doc["to_date"];
+  status.cursor = normalizeCursor(doc["cursor"] ?? doc["to_date"]);
   return status;
+}
+
+/** The owner-facing upload command. A saved cursor becomes the extractor's
+ * inclusive `SINCE_ISO_UTC` argument so a rerun only sends new work. */
+export function buildIngestCommand(ticket: string, cursor: string | null): string {
+  const origin = env.appOrigin();
+  const since = normalizeCursor(cursor);
+  const args = since ? ` ${DEFAULT_INGEST_DAYS} ${since}` : "";
+  return `curl -fsSL ${origin}/imessage-ingest.sh -o /tmp/air-ingest.sh && AIR_INGEST_ENDPOINT=${origin}/api/me/imessage-history bash /tmp/air-ingest.sh ${ticket}${args}`;
 }
 
 export async function readIngestStatus(
@@ -249,6 +281,7 @@ export async function storeChunk(
       last_upload_at: new Date().toISOString(),
       from_date: archive.from || null,
       to_date: archive.to || null,
+      cursor: normalizeCursor(archive.to),
     };
     await writeArchiveFile(boxId, STATUS_PATH, JSON.stringify(status), renew);
     return status;

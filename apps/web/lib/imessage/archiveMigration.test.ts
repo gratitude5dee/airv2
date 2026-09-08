@@ -29,4 +29,21 @@ describe("legacy thread migration preflight", () => {
     expect(result.unresolved).toEqual([]);
     expect(result.messages.map((message) => message.chat_id)).toEqual(["thread-1", "original"]);
   });
+  it("lets owner resolutions settle ambiguous labels, keep a label as its own thread, or override the catalogue", () => {
+    const result = resolveLegacyThreads(
+      [legacy, { ...legacy, chat: "Deleted chat" }, { ...legacy, chat: "Work" }, { ...legacy, chat_id: "original" }],
+      [{ id: "thread-2", label: "Friends" }, { id: "thread-1", label: "Friends" }, { id: "work-1", label: "Work" }],
+      [{ label: "Friends", id: "thread-2" }, { label: "Deleted chat", id: null }, { label: "Work", id: "work-owner" }]
+    );
+    expect(result.unresolved).toEqual([]);
+    expect(result.messages.map((message) => message.chat_id)).toEqual(["thread-2", undefined, "work-owner", "original"]);
+    expect(result.messages[1]).toEqual({ ...legacy, chat: "Deleted chat" });
+  });
+  it("still reports labels the owner has not resolved and rejects empty resolution IDs", () => {
+    const result = resolveLegacyThreads([legacy, { ...legacy, chat: "Deleted chat" }],
+      [{ id: "thread-2", label: "Friends" }, { id: "thread-1", label: "Friends" }],
+      [{ label: "Friends", id: "thread-1" }]);
+    expect(result.unresolved).toEqual([{ label: "Deleted chat", candidates: [] }]);
+    expect(() => resolveLegacyThreads([legacy], [], [{ label: "Friends", id: "" }])).toThrow("Empty resolution thread ID");
+  });
 });

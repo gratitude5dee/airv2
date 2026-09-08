@@ -12,7 +12,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 const boxFiles = new Map<string, string>();
 
 vi.mock("../env", () => ({
-  env: { miniappSigningKey: () => "test-signing-key" },
+  env: { miniappSigningKey: () => "test-signing-key", appOrigin: () => "https://air.test" },
 }));
 vi.mock("../box/client", async (importOriginal) => {
   const { BoxApiError } = await importOriginal<typeof import("../box/client")>();
@@ -33,8 +33,11 @@ vi.mock("../orchestrator/boxes", () => ({
 }));
 
 import {
+  buildIngestCommand,
   IngestInputError,
   mintIngestTicket,
+  normalizeCursor,
+  normalizeIngestStatus,
   parseChunk,
   readIngestStatus,
   storeChunk,
@@ -167,6 +170,7 @@ describe("storeChunk / readIngestStatus", () => {
     expect(status.chunks).toBe(1);
     expect(status.messages).toBe(1);
     expect(status.from_date).toBe("2026-08-18T12:00:00.000Z");
+    expect(status.cursor).toBe("2026-08-18T12:00:00.000Z");
     const paths = [...boxFiles.keys()];
     expect(paths).toContain(".hermes/context/imessage-history/status.json");
     expect(
@@ -180,6 +184,18 @@ describe("storeChunk / readIngestStatus", () => {
     const status = await readIngestStatus(supabase, "user-1");
     expect(status.chunks).toBe(0);
     expect(status.last_upload_at).toBeNull();
+    expect(status.cursor).toBeNull();
+  });
+
+  it("advances the cursor to the latest committed timestamp across chunks and survives a reread", async () => {
+    await storeChunk(supabase, "user-1", chunk);
+    const later = { ...chunk, messages: [{ ...chunk.messages[0]!, ts: "2026-08-20 08:30:00", text: "later" }] };
+    const status = await storeChunk(supabase, "user-1", later);
+    expect(status.cursor).toBe("2026-08-20T08:30:00.000Z");
+    expect(status.to_date).toBe("2026-08-20T08:30:00.000Z");
+    const earlier = { ...chunk, messages: [{ ...chunk.messages[0]!, ts: "2026-08-10 08:30:00", text: "older" }] };
+    expect((await storeChunk(supabase, "user-1", earlier)).cursor).toBe("2026-08-20T08:30:00.000Z");
+    expect((await readIngestStatus(supabase, "user-1")).cursor).toBe("2026-08-20T08:30:00.000Z");
   });
 
   it("serializes overlapping uploads without losing either message", async () => {
@@ -226,5 +242,34 @@ describe("storeChunk / readIngestStatus", () => {
     vi.mocked(readFile).mockRejectedValueOnce(new Error("offline"));
     await expect(storeChunk(supabase, "user-1", chunk)).rejects.toThrow("offline");
     expect(writeFile).not.toHaveBeenCalled();
+  });
+});
+
+describe("resume cursor", () => {
+  const now = Date.UTC(2026, 8, 8, 12);
+  it("accepts full UTC instants inside the Apple epoch..now+skew window and canonicalises them", () => {
+    expect(normalizeCursor("2026-09-01T12:00:00Z", now)).toBe("2026-09-01T12:00:00.000Z");
+    expect(normalizeCursor("2026-09-01T12:00:00.5Z", now)).toBe("2026-09-01T12:00:00.500Z");
+    expect(normalizeCursor("2026-09-09T11:00:00Z", now)).toBe("2026-09-09T11:00:00.000Z");
+    expect(normalizeCursor("2001-01-01T00:00:00Z", now)).toBe("2001-01-01T00:00:00.000Z");
+  });
+  it.each([
+    null, 5, "", "2026-09-01", "2026-09-01 12:00:00", "2026-09-01T12:00:00+01:00", "2026-09-01T12:00:00",
+    "yesterday", "2026-02-30T00:00:00Z", "2000-12-31T23:59:59Z", "2026-09-09T13:00:00Z", "0; DROP TABLE message;",
+  ])("rejects %j so the extractor restarts from scratch instead of trusting it", (value) => {
+    expect(normalizeCursor(value, now)).toBeNull();
+  });
+  it("derives the cursor from a stored status, preferring cursor over to_date", () => {
+    expect(normalizeIngestStatus({ chunks: 1, messages: 1, to_date: "2026-08-18T12:00:00.000Z" }).cursor).toBe("2026-08-18T12:00:00.000Z");
+    expect(normalizeIngestStatus({ chunks: 1, messages: 1, to_date: "2026-08-18T12:00:00.000Z", cursor: "2026-08-19T00:00:00Z" }).cursor).toBe("2026-08-19T00:00:00.000Z");
+    expect(normalizeIngestStatus({ chunks: 1, messages: 1, to_date: "2026-08-18" }).cursor).toBeNull();
+    expect(normalizeIngestStatus({ chunks: 1, messages: 1, cursor: "2999-01-01T00:00:00Z" }).cursor).toBeNull();
+  });
+  it("puts a saved cursor on the command as the inclusive SINCE_ISO_UTC argument, and nothing else", () => {
+    expect(buildIngestCommand("tkt", "2026-08-18T12:00:00.000Z")).toBe(
+      "curl -fsSL https://air.test/imessage-ingest.sh -o /tmp/air-ingest.sh && AIR_INGEST_ENDPOINT=https://air.test/api/me/imessage-history bash /tmp/air-ingest.sh tkt 365 2026-08-18T12:00:00.000Z"
+    );
+    expect(buildIngestCommand("tkt", null)).toMatch(/air-ingest\.sh tkt$/);
+    expect(buildIngestCommand("tkt", "2026-08-18; rm -rf /")).toMatch(/air-ingest\.sh tkt$/);
   });
 });
