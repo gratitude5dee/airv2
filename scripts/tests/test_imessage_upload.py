@@ -3,6 +3,7 @@ import contextlib
 import io
 import json
 from pathlib import Path
+import socket
 import sys
 import sqlite3
 import time
@@ -35,8 +36,10 @@ class UploadTests(unittest.TestCase):
         a plain 200. Sleeps and stdout land on self._sleeps / self._stdout."""
         requests, sleeps, output = [], [], io.StringIO()
         scripted = list(responses or [])
-        def send(request):
+        self._timeouts = []
+        def send(request, timeout=None):
             requests.append(request)
+            self._timeouts.append(timeout)
             response = scripted.pop(0) if scripted else {"ok": True}
             if isinstance(response, Exception):
                 raise response
@@ -168,6 +171,13 @@ class UploadTests(unittest.TestCase):
         with self.assertRaisesRegex(SystemExit, r"(?s)resolution_required.*https://air.test/api/me/imessage-history/resolutions"):
             self.upload([row(0, "hi")], responses=responses)
         self.assertEqual(self._sleeps, [])
+
+    def test_stalled_server_times_out_and_retries_are_bounded(self):
+        responses = [socket.timeout("timed out")] * 3 + [urllib.error.URLError(socket.timeout("timed out"))] * 20
+        with self.assertRaisesRegex(SystemExit, r"stopped \(timeout\): no response within 180s \(gave up after 8 attempts\)"):
+            self.upload([row(0, "hi")], responses=responses)
+        self.assertEqual(self._timeouts, [180] * 8)
+        self.assertEqual(self._sleeps, [2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 120.0])
 
     def test_retries_are_bounded(self):
         responses = [failure(503, code="archive_busy", error="busy", retriable=True, retry_after_seconds=1) for _ in range(20)]

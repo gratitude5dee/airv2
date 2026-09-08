@@ -92,7 +92,7 @@ sqlite3 -json "file:$DB?mode=ro" "
 " > "$CATALOGUE"
 
 /usr/bin/python3 - "$TMP" "$ENDPOINT" "$TICKET" "$DAYS" "$DECODER" "$CATALOGUE" <<'PYEOF'
-import hashlib, json, sys, time, urllib.error, urllib.request
+import hashlib, json, socket, sys, time, urllib.error, urllib.request
 
 rows_path, endpoint, ticket, days = sys.argv[1:5]
 if len(sys.argv) > 5:
@@ -183,6 +183,9 @@ def chunks():
 # the cursor to resume from. Network errors are treated as retriable.
 MAX_ATTEMPTS = 8
 MAX_WAIT_SECONDS = 120
+# Per-attempt socket timeout: generous enough to push a 4 MiB chunk over a
+# slow link, finite so a silent server cannot hang the run.
+REQUEST_TIMEOUT_SECONDS = 180
 
 def parse_error(status, raw):
     try:
@@ -211,13 +214,26 @@ def post(body):
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req) as resp:
+        with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT_SECONDS) as resp:
             return json.load(resp), None
     except urllib.error.HTTPError as http_error:
         return None, parse_error(http_error.code, http_error.read().decode("utf-8", "replace"))
-    except (urllib.error.URLError, OSError, ValueError) as network_error:
-        return None, {"status": 0, "code": "network", "error": str(network_error) or "network error",
-                      "retriable": True, "retry_after": None, "resolve_at": None}
+    except socket.timeout:
+        return None, timeout_failure()
+    except urllib.error.URLError as url_error:
+        if isinstance(url_error.reason, socket.timeout):
+            return None, timeout_failure()
+        return None, network_failure(url_error)
+    except (OSError, ValueError) as network_error:
+        return None, network_failure(network_error)
+
+def timeout_failure():
+    return {"status": 0, "code": "timeout", "error": f"no response within {REQUEST_TIMEOUT_SECONDS}s",
+            "retriable": True, "retry_after": None, "resolve_at": None}
+
+def network_failure(error):
+    return {"status": 0, "code": "network", "error": str(error) or "network error",
+            "retriable": True, "retry_after": None, "resolve_at": None}
 
 def wait_seconds(failure, attempt):
     if failure["retry_after"] is not None:
