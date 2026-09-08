@@ -30,6 +30,32 @@ RSS. No document content leaves the host.
 Three earlier runs of the same harness (7/8) failed only `rm_and_clear`; the
 fixes below came out of those runs.
 
+## Fresh-VM run (Tenki Cloud `tenki-standard-medium-4c-8g`, 8 scenarios)
+
+GitHub Actions run 34268232169 on branch `codex/airv3-review-checkpoint`
+(commit `1ac4cd7`), `.github/workflows/box-replica.yml`, report artifact
+`livecheck-report`. The VM is a fresh Ubuntu 24.04 image with systemd 255 as
+PID 1 (kernel 6.18), provisioned from scratch by `replica-provision.sh`
+(pinned server built with `--no-binary llama-cpp-python`). **8/8 pass.**
+
+| Scenario | Seconds | Key metadata |
+| --- | --- | --- |
+| units_and_health | 12.6 | service `active/running`, `NRestarts=0` on a fresh host |
+| synchronous_index_and_search | 3.7 | 43 KB indexed in 3.5 s, 10 hits |
+| queued_index_timer_replay | 24.2 | timer replayed in 24 s |
+| interrupted_index_recovery | 348.0 | 3.3 MB document; peak server RSS 681 MB at SIGKILL; `NRestarts=1`; timer replayed in 305 s; 1030 leaves, pending 0 |
+| stop_claim_coordination | 41.6 | same grant/refuse/defer/release sequence; released queue replayed in 21 s |
+| stale_claim_and_corrupt_state | 0.2 | fail-closed as locally |
+| rm_and_clear | 148.9 | cleared content unreadable, 0 content hits; two dangling `.abstract.md` vectors still listed after 120 s (informational, none dereference) |
+| user_md_compare_and_swap | 0.0 | pass |
+
+Differences from the local VM: replay of the interrupted 3.3 MB document took
+305 s here versus 170 s locally (embedding on 4 vCPU without a warm cache);
+the dangling abstract vectors had not drained after 120 s on either host in
+the fresh-store case. Two earlier runs of the workflow failed in provisioning
+only (runner `XDG_CONFIG_HOME` and the checkout's `uv.toml` leaking into the
+box user's `uv`), fixed by giving the box user a clean environment and cwd.
+
 ## Server behaviour observed (0.4.16) and what changed because of it
 
 - **`rm` is idempotent.** Deleting an absent URI succeeds instead of raising

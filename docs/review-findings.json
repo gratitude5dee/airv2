@@ -308,7 +308,8 @@
         "infra/template/openviking/tests/test_replace.py: only typed NotFoundError is tolerated before add; other remove failures keep work pending",
         "infra/template/openviking/tests/test_stop_claim.py: stop-claim refuses while pending/in grace/worker busy; resume-pending defers under a live claim; release, TTL and boot-id invalidation",
         "apps/web/lib/orchestrator/indexIdle.test.ts, idleStop.test.ts: sweeper claims before provider stop, releases on abort, bounded legacy fallback for boxes without the command",
-        "docs/reports/openviking-livecheck-isolated-linux.md: livecheck.py 8/8 on an isolated Linux/systemd host against the pinned server 0.4.16 (real units; SIGKILL mid-index -> durable replay, stop-claim grant/refuse/release, corrupt state fails closed). Not an ascii.dev Box: provider stop()/resume() unverified"
+        "docs/reports/openviking-livecheck-isolated-linux.md: livecheck.py 8/8 on an isolated Linux/systemd host against the pinned server 0.4.16 (real units; SIGKILL mid-index -> durable replay, stop-claim grant/refuse/release, corrupt state fails closed). Not an ascii.dev Box: provider stop()/resume() unverified",
+        "GitHub Actions run 34268232169 (.github/workflows/box-replica.yml, Tenki 4c/8g fresh Ubuntu 24.04 VM, systemd 255): livecheck 8/8 from a scratch provision; interrupted 3.3 MB index replayed in 305 s. Still not an ascii.dev Box"
       ],
       "notes": "Box-side behaviour exercised on an isolated Linux/systemd host (8/8 livecheck scenarios; see the report), not a real ascii.dev Box. The probe->stop race is closed by a box-side flock claim the sweeper must hold before provider stop(); provider stop()/resume() around a live claim and the sweeper driving ovctl over the command API remain unexercised, so it stays open. Rollout: boxes without stop-claim use the read-only idle-check probe; boxes with neither are stopped after a bounded 20-minute legacy grace."
     },

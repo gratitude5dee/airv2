@@ -251,11 +251,12 @@ the user's explicit authorization. The user has authorized this GitHub push.
    `docs/reports/openviking-livecheck-isolated-linux.md` for the server
    behaviours found (idempotent `rm`, dangling `.abstract.md` vectors after
    delete, a semantic refresh racing `clear` — now settled and re-checked by
-   `ovctl clear`). `.github/workflows/box-replica.yml` reruns this on a fresh
-   Tenki 4c/8g VM. Still open: provider `stop()`/`resume()` around a live claim
-   on a real Box, the sweeper driving `ovctl` over the command API, and a
-   strategy for a job exceeding the 600-second server wait that avoids
-   continually restarting expensive work.
+   `ovctl clear`). `.github/workflows/box-replica.yml` reran it on a fresh
+   Tenki 4c/8g VM (Ubuntu 24.04, systemd 255): also 8/8 (run 34268232169;
+   interrupted 3.3 MB replay 305 s, peak RSS 681 MB). Still open: provider
+   `stop()`/`resume()` around a live claim on a real Box, the sweeper driving
+   `ovctl` over the command API, and a strategy for a job exceeding the
+   600-second server wait that avoids continually restarting expensive work.
 5. Archive co-ship: done locally (unit level) — owner-facing resolution for
    ambiguous legacy labels (API and the onboarding iMessage step, which reads
    labels live only when the box is already awake), resumable cursor in
