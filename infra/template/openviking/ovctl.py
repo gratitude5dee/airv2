@@ -14,6 +14,8 @@ Subcommands:
   status                       JSON: {healthy, resources, workspace_bytes}
   add-resource PATH --to URI   idempotent: replaces URI if it already exists
   rm URI                       recursive remove, tolerates absence
+  clear --scope SCOPE          owner wipe: resources (viking://resources/context),
+                               memories (viking://user) or all
   idle-check                   JSON: {can_stop, pending, idle_remaining_seconds}
   stop-claim                   atomically claim an idle stop; the durable
                                worker refuses to start indexing while a
@@ -51,6 +53,13 @@ IMESSAGE_URI = "viking://resources/context/imessage-history"
 ONAIROS_URI = "viking://resources/context/onairos"
 IMPORT_URI = "viking://resources/context/agent-import"
 DICTIONARY_URI = "viking://resources/context/dictionary"
+RESOURCES_ROOT = "viking://resources/context"
+MEMORIES_ROOT = "viking://user"
+CLEAR_SCOPES = {
+    "resources": (RESOURCES_ROOT,),
+    "memories": (MEMORIES_ROOT,),
+    "all": (RESOURCES_ROOT, MEMORIES_ROOT),
+}
 INDEX_WAIT_SECONDS = 600
 INDEX_HTTP_TIMEOUT_SECONDS = INDEX_WAIT_SECONDS + 60
 STOP_CLAIM_FILE = "stop-claim.json"
@@ -510,6 +519,42 @@ def cmd_rm(uri: str) -> int:
     return 0
 
 
+def under_root(uri: str, root: str) -> bool:
+    return uri == root or uri.startswith(root.rstrip("/") + "/")
+
+
+def cmd_clear(scope: str) -> int:
+    """Owner-initiated wipe of whole roots. Same exclusion as `rm`: hold the
+    worker lock so no replay is mid-flight, cancel queued work under the
+    cleared roots before removing, so the durable timer cannot restore what
+    the owner just cleared. Output is metadata only (roots, never content)."""
+    roots = CLEAR_SCOPES[scope]
+    OV_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
+    with (OV_DIR / "pending-worker.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        with pending_state() as state:
+            for queued in list(state):
+                if any(under_root(queued, root) for root in roots):
+                    del state[queued]
+        c = client()
+        removed, absent, failed = [], [], []
+        try:
+            for root in roots:
+                try:
+                    c.rm(root, recursive=True, wait=True)
+                except Exception as error:
+                    (absent if resource_absent(error) else failed).append(root)
+                    continue
+                removed.append(root)
+        finally:
+            c.close()
+    if failed:
+        print(json.dumps({"ok": False, "scope": scope, "failed": failed}))
+        return 1
+    print(json.dumps({"ok": True, "scope": scope, "removed": removed, "absent": absent}))
+    return 0
+
+
 def queue_existing(path: pathlib.Path, uri: str) -> bool:
     if not path.exists():
         return False
@@ -634,6 +679,8 @@ def main() -> int:
     p_add.add_argument("--no-wait", action="store_true")
     p_rm = sub.add_parser("rm")
     p_rm.add_argument("uri")
+    p_clear = sub.add_parser("clear")
+    p_clear.add_argument("--scope", required=True, choices=sorted(CLEAR_SCOPES))
     sub.add_parser("reindex")
     sub.add_parser("export")
     p_recent = sub.add_parser("recent")
@@ -659,6 +706,8 @@ def main() -> int:
         return cmd_add_resource(args.path, args.to, wait=not args.no_wait)
     if args.cmd == "rm":
         return cmd_rm(args.uri)
+    if args.cmd == "clear":
+        return cmd_clear(args.scope)
     if args.cmd == "reindex":
         return cmd_reindex()
     if args.cmd == "export":

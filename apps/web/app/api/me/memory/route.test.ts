@@ -144,4 +144,26 @@ describe("POST /api/me/memory (clear)", () => {
     expect(script).toContain(".hermes/memories/USER.md");
     expect(supabaseFrom).not.toHaveBeenCalled();
   });
+
+  it("offers (never forces) a deep memory clear when both files are cleared", async () => {
+    const response = await POST(
+      new NextRequest(url, {
+        method: "POST",
+        body: JSON.stringify({ action: "clear", target: "both", confirm: true }),
+      })
+    );
+    expect(await response.json()).toEqual({ ok: true, deep_memory_offer: true });
+    expect(box.command).toHaveBeenCalledTimes(1);
+    expect(box.command.mock.calls[0]?.[1]).not.toContain("ovctl");
+  });
+
+  it.each(["memory", "user"] as const)("does not offer a deep memory clear for target %s", async (target) => {
+    const response = await POST(
+      new NextRequest(url, {
+        method: "POST",
+        body: JSON.stringify({ action: "clear", target, confirm: true }),
+      })
+    );
+    expect(await response.json()).toEqual({ ok: true });
+  });
 });
