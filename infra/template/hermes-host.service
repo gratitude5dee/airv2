@@ -5,6 +5,10 @@
 Description=Re-register Box hosted routes for 8642 and 9119 on every boot/resume
 After=hermes-gateway.service hermes-dashboard.service
 Wants=hermes-gateway.service hermes-dashboard.service
+# Only ascii.dev Boxes carry the host CLI. On other providers (Tenki) the
+# control plane publishes ports itself, so this unit is skipped — a Condition,
+# not an Assert, so `systemctl start/restart hermes-host` still exits 0 there.
+ConditionPathExists=/home/user/.ascii/host
 
 [Service]
 Type=oneshot

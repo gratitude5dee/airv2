@@ -96,6 +96,65 @@ do not ship.
 6. Warm: stop → resume → wait for units → stop (never `force: true`).
 7. Record the box id as `BOX_TEMPLATE_ID` in Vercel (Production + Preview).
 
+### 1a. Tenki template (opt-in second Linux provider)
+
+The same `setup.sh` also builds the Tenki Sandbox template; the control plane
+selects it only when a user is provisioned with `provider: "tenki"`
+(`apps/web/lib/box/tenki.ts`). ascii.dev stays the default.
+
+```bash
+cd apps/web
+TENKI_API_KEY=... node scripts/tenki-template.mjs [--session <id>] [--keep] [--snapshot-only]
+```
+
+The script creates a fresh 4c/8g/40g session (or reuses a running
+`--session`), creates the `user` account with passwordless sudo, uploads
+`infra/template/`, runs `setup.sh` as `user` (detached, polled — a single
+exec that long dies at the provider's HTTP edge), asserts every unit is up,
+that `hermes-host` was *skipped* (its
+`ConditionPathExists=/home/user/.ascii/host` is what keeps
+`systemctl restart … hermes-host` exit 0 on non-ascii boxes), and takes an
+async snapshot of the running VM. Record the printed `tenki:<snapshot id>` as
+`TENKI_TEMPLATE_ID`. `--keep` leaves the build session running; it is never
+paused (see below). `--snapshot-only --session <id>` re-verifies and
+re-snapshots a session whose setup already finished.
+
+A Tenki snapshot is a *memory* image: a fork of it never boots, so only what
+was running when the template was captured is running in the box. That is
+why `setup.sh` starts every unit it enables (not just enables them for the
+next boot) and why the builder asserts `taskrouter` and `air-learningd` are
+active too.
+Hosted routes on Tenki are `exposePort` preview URLs with no `_token`
+(the Namespace posture: `API_SERVER_KEY` is the only gate), so a Tenki box
+row has `hosted_token = ""`. The URL changes on every wake and the wake path
+re-persists it.
+
+Box lifecycle on Tenki is snapshot-based, not pause-based: `stop()` takes an
+async snapshot of the live session, closes it, and prunes the previous
+snapshot; `resume()` creates a new session from the newest snapshot.
+`boxes.provider_box_id` (`tk_<24 hex>`) is a stable key we mint at fork; the
+provider objects behind it are found by the `air-box:<key>` tag (provider
+tags are capped at 32 lowercase characters, which is what sizes the key).
+Because resume restores memory rather than booting, the box's boot id never
+changes on Tenki — every fork and every resume reports the template's — so
+nothing keyed on "the next boot" fires (`hermes-host` is skipped anyway).
+The OpenViking stop claim is the one thing that relied on it: left alone it
+sat live after a resume and the index worker deferred until the claim's TTL
+(measured: 844 s). The wake path therefore issues `ovctl resumed` after
+every provider resume, which voids the claim (a resume means its stop
+completed); on ascii the boot already voided it and on boxes whose `ovctl`
+predates the subcommand the command exits 2 and is ignored. Pause was
+ruled out empirically: pausing a session with more than a few GB written
+(reproduced with a plain 6 GB `dd`) outruns the guest liveness watchdog
+(`guest-agent liveness failed 12 consecutive checks, silent for 2m0s`) and the
+session ends TERMINATED, whereas an async snapshot of the same session
+completes in seconds and restores in ~2 s. Known gap versus ascii.dev: there
+is no periodic (60 s) snapshot on Tenki, so a live session the provider
+terminates out from under us loses everything since the last `stop()`;
+`getBox()` then reports `stopped` from that snapshot and `resume()` restores
+it. Do not make Tenki the default provider until that gap is closed or
+accepted.
+
 ## 2. Migrate existing user boxes — in place, never re-fork
 
 Existing boxes carry `~/.hermes` state (memory, sessions, skills); a re-fork

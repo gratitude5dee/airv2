@@ -26,6 +26,13 @@ export const env = {
   // itself unavailable instead of falling back to the Ubuntu template.
   omarchyTemplateId: (): string | null =>
     process.env["OMARCHY_TEMPLATE_ID"] ?? null,
+  // Tenki Sandbox (opt-in second Linux provider, lib/box/tenki.ts). The key
+  // is workspace-scoped; the template is a Tenki snapshot of the Ubuntu
+  // template built by apps/web/scripts/tenki-template.mjs, stored as a
+  // `tenki:<snapshot id>` ref so the provider is visible in the pointer.
+  tenkiApiKey: (): string => required("TENKI_API_KEY"),
+  tenkiTemplateId: (): string | null =>
+    process.env["TENKI_TEMPLATE_ID"] ?? null,
   // Namespace (macos environment). The token is a tenant token
   // (`nsc token create`); without it the macos environment is disabled
   // and onboarding does not offer it.

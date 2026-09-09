@@ -25,6 +25,10 @@ mkdir -p "$HOME_DIR/.hermes"
 printf '%s\n' "$RESOLVED_HERMES_SHA" > "$HOME_DIR/.hermes/.template-hermes-ref"
 cd "$HOME_DIR/hermes-agent"
 command -v uv >/dev/null || curl -LsSf https://astral.sh/uv/install.sh | sh
+# The hermes-* units exec ~/.local/bin/uv by absolute path; a base image that
+# ships uv elsewhere (e.g. /usr/local/bin) still needs that path to resolve.
+mkdir -p "$HOME_DIR/.local/bin"
+[ -x "$HOME_DIR/.local/bin/uv" ] || ln -sfn "$(command -v uv || echo /usr/local/bin/uv)" "$HOME_DIR/.local/bin/uv"
 
 # The venv lives OUTSIDE the git checkout: box archive/restore drops
 # gitignored paths inside the repo (same reason web_dist is copied out), and
@@ -517,6 +521,9 @@ cat > "$HOME_DIR/.boxignore" <<'EOF'
 EOF
 
 # ── 4. systemd units — /etc is snapshotted, enabled units restart on resume ──
+# Every unit the box runs is also started here: a Tenki template is a memory
+# snapshot of this VM, so a fork never boots and only what is already running
+# is running in the box.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 sudo cp "$SCRIPT_DIR"/hermes-gateway.service /etc/systemd/system/
 sudo cp "$SCRIPT_DIR"/hermes-dashboard.service /etc/systemd/system/
@@ -533,7 +540,7 @@ sudo cp "$SCRIPT_DIR"/tailscaled.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now openviking-index.timer
 sudo systemctl enable hermes-gateway.service hermes-dashboard.service hermes-host.service hermes-sidecar-owner.timer openviking.service taskrouter.service air-learningd.service
-sudo systemctl start hermes-gateway.service hermes-dashboard.service hermes-host.service hermes-sidecar-owner.timer
+sudo systemctl start hermes-gateway.service hermes-dashboard.service hermes-host.service hermes-sidecar-owner.timer taskrouter.service air-learningd.service
 
 # Render ov.conf (template stage: no gateway token yet → VLM block omitted;
 # the first post-provision `ovctl ensure` re-renders with the per-fork

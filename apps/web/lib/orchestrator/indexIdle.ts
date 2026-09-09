@@ -5,8 +5,9 @@
  * takes an exclusive stop claim (`ovctl stop-claim`) that the worker
  * (`ovctl resume-pending`) refuses to start indexing against, so nothing
  * can begin between the check and the provider stop. The claim is voided
- * by the box's next boot and by a TTL, and is released explicitly when the
- * stop is aborted.
+ * by the box's next boot, by the wake path's `ovctl resumed` (providers
+ * that restore memory keep the boot id) and by a TTL, and is released
+ * explicitly when the stop is aborted.
  *
  * Boxes whose ovctl predates the claim fall back in a bounded way:
  *  - idle-check only: the legacy probe (racy, but no worse than before);

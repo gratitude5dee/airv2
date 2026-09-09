@@ -5,11 +5,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { env } from "@/lib/env";
+import type { BoxProvider } from "@/lib/box/client";
 import { provisionUser } from "@/lib/provisioning/provision";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
+
+function isBoxProvider(value: string): value is BoxProvider {
+  return value === "ascii" || value === "tenki";
+}
 
 function authorized(request: NextRequest): boolean {
   const header = request.headers.get("authorization") ?? "";
@@ -29,12 +34,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       bound_phone?: string;
       line_phone?: string;
       operator?: string;
+      /** Linux box provider; omitted = ascii. Tenki is opt-in per user. */
+      provider?: string;
     };
+    if (body.provider !== undefined && !isBoxProvider(body.provider)) {
+      return NextResponse.json(
+        { error: "provider must be ascii or tenki" },
+        { status: 400 }
+      );
+    }
     const result = await provisionUser({
       displayName: body.display_name,
       boundPhone: body.bound_phone,
       linePhone: body.line_phone,
       operator: body.operator,
+      provider: body.provider,
     });
     return NextResponse.json({
       user_id: result.userId,

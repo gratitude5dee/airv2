@@ -82,6 +82,26 @@ class StopClaimTests(unittest.TestCase):
     def test_release_without_a_claim_is_idempotent(self):
         self.assertEqual(self.run_json(ovctl.cmd_stop_release, "anything"), (0, {"released": True}))
 
+    def test_resume_voids_a_claim_that_survived_a_memory_restore(self):
+        # Same boot id and a live TTL, as after a Tenki resume: the claim
+        # would otherwise defer the worker until it expires.
+        self.claim()
+        ovctl.enqueue_resource(self.source, self.uri)
+        self.clock.return_value = 10100
+        self.assertEqual(self.run_json(ovctl.cmd_resumed), (0, {"released": True}))
+        self.assertFalse((self.root / "stop-claim.json").exists())
+        self.assertFalse(self.run_json(ovctl.cmd_idle_check, 1200)[1]["stop_claimed"])
+        with patch.object(ovctl, "client", return_value=Mock()), patch.object(ovctl, "add_resource", return_value=True) as add:
+            self.assertEqual(ovctl.cmd_resume_pending(), 0)
+            add.assert_called_once()
+
+    def test_resume_after_a_boot_is_a_no_op(self):
+        self.claim()
+        (self.root / "boot_id").write_text("boot-2\n")
+        self.assertEqual(self.run_json(ovctl.cmd_resumed), (0, {"released": False}))
+        self.assertFalse((self.root / "stop-claim.json").exists())
+        self.assertEqual(self.run_json(ovctl.cmd_resumed), (0, {"released": False}))
+
     def test_worker_refuses_to_start_indexing_under_a_live_claim(self):
         token = self.claim()[1]["token"]
         # Work enqueued after the claim stays durable and untouched.

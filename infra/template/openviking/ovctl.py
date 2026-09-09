@@ -25,6 +25,9 @@ Subcommands:
                                worker refuses to start indexing while a
                                claim from this boot is live
   stop-release --token TOKEN   release an aborted stop claim
+  resumed                      the control plane resumed this box: void any
+                               claim (its stop completed); no-op on boxes
+                               that boot on resume
   reindex                      re-add the onboarding context dirs/files
   export                       JSON inventory: resource/memory URIs + memory
                                contents (bounded), for /api/admin/export
@@ -213,6 +216,23 @@ def cmd_stop_release(token: str) -> int:
         with contextlib.suppress(FileNotFoundError):
             (OV_DIR / STOP_CLAIM_FILE).unlink()
     print(json.dumps({"released": True}))
+    return 0
+
+
+def cmd_resumed() -> int:
+    """The control plane has just resumed this box; void any stop claim.
+
+    A claim only ever belongs to the stop that follows it, and a resume means
+    that stop completed. On a provider that boots on resume the boot id
+    already voids it; on one that restores memory (Tenki) the boot id and
+    clock carry over, and without this the worker would defer for the rest
+    of the claim's TTL.
+    """
+    with pending_state():
+        live = read_stop_claim() is not None
+        with contextlib.suppress(FileNotFoundError):
+            (OV_DIR / STOP_CLAIM_FILE).unlink()
+    print(json.dumps({"released": live}))
     return 0
 
 
@@ -786,6 +806,7 @@ def main() -> int:
     p_claim.add_argument("--ttl-seconds", type=int, default=STOP_CLAIM_TTL_SECONDS)
     p_release = sub.add_parser("stop-release")
     p_release.add_argument("--token", required=True)
+    sub.add_parser("resumed")
     p_add = sub.add_parser("add-resource")
     p_add.add_argument("path")
     p_add.add_argument("--to", required=True)
@@ -818,6 +839,8 @@ def main() -> int:
         return cmd_stop_claim(args.grace_seconds, args.ttl_seconds)
     if args.cmd == "stop-release":
         return cmd_stop_release(args.token)
+    if args.cmd == "resumed":
+        return cmd_resumed()
     if args.cmd == "add-resource":
         return cmd_add_resource(args.path, args.to, wait=not args.no_wait)
     if args.cmd == "rm":

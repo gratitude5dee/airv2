@@ -6,7 +6,15 @@
  * can queue and back off rather than drop the turn (task 9).
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { command, getBox, isStartLimit, resume, waitForBox } from "../box/client";
+import {
+  command,
+  getBox,
+  hostRoute,
+  isStartLimit,
+  resume,
+  waitForBox,
+  type HostedRoute,
+} from "../box/client";
 import { health, type HermesBoxTarget } from "../hermes/client";
 import { mirrorBrandIfStale } from "../brand/mirror";
 import { recordBoxStateEvent } from "../box/events";
@@ -21,10 +29,7 @@ export class StartLimitError extends Error {
   }
 }
 
-export interface HostedRoute {
-  url: string;
-  token: string;
-}
+export type { HostedRoute };
 
 export interface UserBox {
   boxId: string;
@@ -48,41 +53,16 @@ interface BoxRow {
 export const API_SERVER_PORT = 8642;
 export const DASHBOARD_PORT = 9119;
 
-const HOSTED_URL_PATTERN =
-  /^(https:\/\/[a-z0-9-]+-(\d+)\.on\.ascii\.dev)\?_token=([a-f0-9]+)$/m;
-
-function parseHostedUrl(
-  stdout: string,
-  port: number
-): { url: string; token: string } {
-  for (const line of stdout.split("\n")) {
-    const match = HOSTED_URL_PATTERN.exec(line.trim());
-    if (match?.[1] && match[3] && Number(match[2]) === port) {
-      return { url: match[1], token: match[3] };
-    }
-  }
-  throw new Error(`hosted URL for port ${port} not found in host output`);
-}
-
 /**
  * Re-register the api_server (8642) hosted route and persist the rotated
- * token. This runs inside the wake retry loop, so it stays a single box
- * command — the dashboard route is refreshed separately, off the critical
- * path.
+ * token. This runs inside the wake retry loop, so it stays a single provider
+ * call — the dashboard route is refreshed separately, off the critical path.
  */
 async function refreshApiServerRoute(
   supabase: SupabaseClient,
   boxId: string
 ): Promise<HostedRoute> {
-  const result = await command(
-    boxId,
-    `eval "$(grep '^export ASCII_' /home/user/.bashrc)"; /home/user/.ascii/host url ${API_SERVER_PORT} --timeout 120 --private`,
-    180
-  );
-  if (result.exitCode !== 0) {
-    throw new Error(`host refresh failed: ${result.stderr}`);
-  }
-  const apiServer = parseHostedUrl(result.stdout, API_SERVER_PORT);
+  const apiServer = await hostRoute(boxId, API_SERVER_PORT);
   await supabase
     .from("boxes")
     .update({ hosted_url: apiServer.url, hosted_token: apiServer.token })
@@ -102,15 +82,7 @@ export async function refreshDashboardRoute(
   boxId: string
 ): Promise<HostedRoute | null> {
   try {
-    const result = await command(
-      boxId,
-      `eval "$(grep '^export ASCII_' /home/user/.bashrc)"; /home/user/.ascii/host url ${DASHBOARD_PORT} --timeout 120 --private`,
-      180
-    );
-    if (result.exitCode !== 0) {
-      return null;
-    }
-    const dashboard = parseHostedUrl(result.stdout, DASHBOARD_PORT);
+    const dashboard = await hostRoute(boxId, DASHBOARD_PORT);
     await supabase
       .from("boxes")
       .update({ dashboard_url: dashboard.url, dashboard_token: dashboard.token })
@@ -252,6 +224,8 @@ export async function ensureBoxAwake(
       const current = await getBox(boxId).catch(() => null);
       const stillDown =
         !current ||
+        current.state === "stopped" ||
+        current.state === "stopping" ||
         current.state === "archived" ||
         current.state === "archiving" ||
         current.state === "error";
@@ -274,6 +248,11 @@ export async function ensureBoxAwake(
       "pkill -9 -f 'agent-browser-linu[x]'; rm -f /home/user/.agent-browser/*.sock /home/user/.agent-browser/*.pid; rm -rf /tmp/agent-browser-*",
       30
     ).catch(() => undefined);
+    // The idle stop's claim is voided by the next boot, but a provider that
+    // restores memory (Tenki) keeps the boot id, and the durable index
+    // worker would sit deferred until the claim's TTL. Boxes without the
+    // subcommand exit 2 and are simply the boot-voided case.
+    void command(boxId, "ovctl resumed", 30).catch(() => undefined);
   }
 
   let target: HermesBoxTarget = {
@@ -281,8 +260,10 @@ export async function ensureBoxAwake(
     hostedToken: row.hosted_token,
     apiServerKey: row.api_server_key,
   };
+  // Namespace/Tenki ingress carries no route token (token is ""), so the
+  // route exists whenever a URL does.
   const dashboard: HostedRoute | undefined =
-    row.dashboard_url && row.dashboard_token
+    row.dashboard_url && row.dashboard_token !== null
       ? { url: row.dashboard_url, token: row.dashboard_token }
       : undefined;
 

@@ -142,6 +142,46 @@ old boxes without the claim command, and any owner-corpus recall/coverage.
 relies on it, but `livecheck.py` had to be re-uploaded to `~` for the second
 run.
 
+## Real Tenki Box through the provider facade (`tenki:2c8ddcce…`, 4 vCPU / 8 GB)
+
+A fork of the Tenki template (built from `infra/template/setup.sh` by
+`apps/web/scripts/tenki-template.mjs`) driven through `lib/box/client.ts`,
+i.e. the same `fork`/`command`/`hostRoute`/`stop`/`resume`/`getBox`/`deleteBox`
+calls the control plane makes, with `ovctl.py` from the working tree.
+
+Template state at fork: `hermes-gateway`, `hermes-dashboard`, `openviking`,
+`openviking-index.timer`, `taskrouter`, `air-learningd` all `active`;
+`hermes-host` correctly skipped (`ConditionPathExists=~/.ascii/host`); Hermes
+`/api/health` 200 through an `exposePort` route (`hosted_token = ""`). The
+same 8 livecheck scenarios passed 8/8.
+
+Provider transitions around a live claim, same `ovctl` sequence as the ascii
+Box run:
+
+| Observation | ascii.dev Box | Tenki Box |
+| --- | --- | --- |
+| `stop()` wall time | provider `archiving` → `archived` (async) | 12–14 s (async snapshot of the live VM, tagged, session closed) |
+| `resume()` call → Box ready | 50–90 s, services active ≈78 s later | ≈5 s, services already active (memory restore, no boot) |
+| boot id after resume | changed | **unchanged** (`629932f6…`, the template's; every fork reports it) |
+| `pending.json` / `stop-claim.json` survived | yes | yes |
+| hosted route after resume | same URL | new URL; `hostRoute()` re-exposes, health 200 |
+| claim after resume, `ovctl` without `resumed` | void (stale boot id) | **live** — worker deferred; queue drained 844 s after resume, when the TTL lapsed |
+| claim after resume via `ensureBoxAwake` (`ovctl resumed`) | n/a (boot voids it) | gone; `idle-check` `stop_claimed:false`; queue drained 32 s after wake |
+
+The second-to-last row is the defect: on a provider that restores memory the
+boot id is not a resume signal, so the claim's only bound was its TTL and a
+resumed Box sat with deferred indexing for up to 15 minutes. `ovctl resumed`
+(voids any claim; a resume means its stop completed) plus the wake path
+issuing it after `waitForBox` closed it; the last row is that run, made
+through the real `ensureBoxAwake` with a fake Supabase client whose row
+started `stopped` with a stale `hosted_url` (writes observed: `stop_after`,
+`state=starting`, `hosted_url`, `state=ready`, one `box_state_events` row).
+On an old Box the command exits 2 and is ignored; on ascii it is redundant.
+
+Still not covered on Tenki: the sweeper driving claim+stop from the control
+plane, a real provisioned user Box (only disposable forks), the agent-suite
+evaluation, and the missing periodic snapshot (see `infra/template/UPGRADE.md`).
+
 ## Server behaviour observed (0.4.16) and what changed because of it
 
 - **`rm` is idempotent.** Deleting an absent URI succeeds instead of raising
@@ -183,10 +223,15 @@ Covered on the real Box in addition: the same 8 scenarios, provider
 `stop()`/`resume()` around a live claim with the queue replaying after the
 boot-id change, and the missing-source poison-entry failure mode.
 
+Covered on a real Tenki Box through the provider facade: the same 8
+scenarios, snapshot-based `stop()`/`resume()` around a live claim, the
+unchanged-boot-id claim persistence and its fix via the wake path, and hosted
+route re-exposure.
+
 Not covered: the sweeper issuing the claim/stop from the control plane against
-this Box, old boxes without the claim command in a real fleet, first-index time
-on a freshly forked user Box, and any recall/coverage measurement on an owner
-corpus. MEM-21 stays `in_progress` (box side and provider transitions measured;
+either Box, old boxes without the claim command in a real fleet, first-index time
+on a freshly forked user Box, the Tenki agent-suite evaluation, and any
+recall/coverage measurement on an owner corpus. MEM-21 stays `in_progress` (box side and provider transitions measured;
 sweeper path not) and the archive findings (MEM-01/18/19) stay unverified;
 MEM-26's clear behaviour is `implemented` with the caveats above, not
 `verified`.
