@@ -29,6 +29,7 @@ interface UserBox {
   provider_box_id: string | null;
   state: string | null;
   provider: string | null;
+  environment: string | null;
   channel: string | null;
   template_version: string | null;
   baseline_version: string | null;
@@ -78,6 +79,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         provider_box_id: null,
         state: null,
         provider: null,
+        environment: null,
         channel: null,
         template_version: null,
         baseline_version: null,
@@ -105,7 +107,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const { data, error } = await supabase
       .from("boxes")
       .select(
-        "user_id, provider, provider_box_id, state, channel, template_version, baseline_version, baseline_synced_at, last_active_at, stop_after, created_at",
+        "user_id, provider, provider_box_id, state, environment, channel, template_version, baseline_version, baseline_synced_at, last_active_at, stop_after, created_at",
       )
       .order("user_id", { ascending: true })
       .range(offset, offset + PAGE - 1);
@@ -115,6 +117,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       const entry = forUser(row.user_id as string);
       entry.state = (row.state as string | null) ?? null;
       entry.provider = (row.provider as string | null) ?? null;
+      entry.environment = (row.environment as string | null) ?? null;
       entry.provider_box_id = (row.provider_box_id as string | null) ?? null;
       entry.channel = (row.channel as string | null) ?? null;
       entry.template_version = (row.template_version as string | null) ?? null;

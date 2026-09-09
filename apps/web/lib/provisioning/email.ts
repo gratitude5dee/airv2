@@ -10,14 +10,14 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "../env";
 import {
   MailApiError,
-  createDraftOnlyKey,
+  createDraftOnlyKeyForProvider,
   createInbox,
   ensurePod,
   ensureWebhook,
   mailProvider,
   type MailProvider,
 } from "../mail/client";
-import { command, readFile, writeFile } from "../box/client";
+import { BoxApiError, command, readFile, writeFile } from "../box/client";
 
 interface BoxMailWiring {
   /** Hermes mcp_servers entry name. */
@@ -78,6 +78,71 @@ async function installMailMcp(boxId: string, wiring: BoxMailWiring): Promise<voi
   if (result.exitCode !== 0) {
     throw new Error(`${wiring.mcpName} mcp install failed: ${result.stderr}`);
   }
+}
+
+export async function installMailboxOnBox(
+  boxId: string,
+  userId: string,
+  inboxId: string,
+  provider: MailProvider = mailProvider(),
+): Promise<void> {
+  const wiring = boxMailWiring(provider);
+  const draftKey = await createDraftOnlyKeyForProvider(
+    provider,
+    inboxId,
+    `box-${userId}`,
+  );
+  // Keep the credential out of command arguments and process listings.
+  let current: string;
+  try {
+    current = await readFile(boxId, ".hermes/.env");
+  } catch (error) {
+    if (!(error instanceof BoxApiError) || error.status !== 404) throw error;
+    current = "";
+  }
+  const kept = current
+    .split("\n")
+    .filter((line) => line && !line.startsWith(wiring.envPrefix));
+  kept.push(`${wiring.apiKeyVar}=${draftKey}`);
+  kept.push(`${wiring.inboxIdVar}=${inboxId}`);
+  await writeFile(boxId, ".hermes/.env", kept.join("\n") + "\n");
+  await installMailMcp(boxId, wiring);
+}
+
+export async function installExistingMailbox(
+  supabase: SupabaseClient,
+  userId: string,
+  boxId: string,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("agent_addresses")
+    .select("agentmail_inbox_id")
+    .eq("user_id", userId)
+    .eq("is_primary", true)
+    .is("retired_at", null)
+    .maybeSingle();
+  if (error) {
+    throw new Error(`agent address lookup failed: ${error.message}`);
+  }
+  if (!data?.agentmail_inbox_id) return false;
+  const provider = mailProvider();
+  try {
+    await installMailboxOnBox(
+      boxId,
+      userId,
+      data.agentmail_inbox_id as string,
+      provider,
+    );
+  } catch (error) {
+    if (!(error instanceof MailApiError) || error.status !== 404) throw error;
+    await installMailboxOnBox(
+      boxId,
+      userId,
+      data.agentmail_inbox_id as string,
+      provider === "wzrdmail" ? "agentmail" : "wzrdmail",
+    );
+  }
+  return true;
 }
 
 export async function provisionEmail(
@@ -151,20 +216,7 @@ export async function provisionEmail(
     const boxId = box.provider_box_id as string;
     const wiring = boxMailWiring();
     try {
-      const draftKey = await createDraftOnlyKey(
-        inbox.inbox_id,
-        `box-${userId}`
-      );
-      // Typed file read/write only — the key must never appear in a shell
-      // command line (visible in command logs / process listings).
-      const current = await readFile(boxId, ".hermes/.env").catch(() => "");
-      const kept = current
-        .split("\n")
-        .filter((line) => line && !line.startsWith(wiring.envPrefix));
-      kept.push(`${wiring.apiKeyVar}=${draftKey}`);
-      kept.push(`${wiring.inboxIdVar}=${inbox.inbox_id}`);
-      await writeFile(boxId, ".hermes/.env", kept.join("\n") + "\n");
-      await installMailMcp(boxId, wiring);
+      await installMailboxOnBox(boxId, userId, inbox.inbox_id);
     } catch (error) {
       console.error(
         JSON.stringify({

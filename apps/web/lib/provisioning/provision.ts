@@ -45,6 +45,7 @@ import {
 } from "../compute/runtime";
 import { installComposioMcp, installMasterkeyMcp } from "./connectors";
 import { provisionDaytona } from "./daytona";
+import { installExistingMailbox } from "./email";
 import { normalizeAddress } from "../routing/trust";
 import { sealSecret } from "../crypto/secretbox";
 import { baseSkillsFor, installBaseSkills } from "../skills/hub";
@@ -381,7 +382,8 @@ export async function replaceBox(
   supabase: ReturnType<typeof serviceClient>,
   userId: string,
   boxId: string,
-  environment: ComputeEnvironment
+  environment: ComputeEnvironment,
+  provider?: BoxProvider
 ): Promise<ProvisionResult> {
   const claimedAt = new Date().toISOString();
   const staleBefore = new Date(Date.now() - REPLACE_CLAIM_TTL_MS).toISOString();
@@ -399,7 +401,7 @@ export async function replaceBox(
     throw new ReplaceInProgressError(boxId);
   }
   try {
-    return await switchEnvironment(supabase, userId, environment);
+    return await switchEnvironment(supabase, userId, environment, provider);
   } finally {
     await releaseClaim(supabase, userId, claimedAt);
   }
@@ -451,7 +453,8 @@ async function releaseClaim(
 export async function switchEnvironment(
   supabase: ReturnType<typeof serviceClient>,
   userId: string,
-  environment: ComputeEnvironment
+  environment: ComputeEnvironment,
+  provider?: BoxProvider
 ): Promise<ProvisionResult> {
   const { data: existing, error } = await supabase
     .from("boxes")
@@ -482,7 +485,18 @@ export async function switchEnvironment(
       }
     : null;
 
-  const built = await buildCompute(supabase, userId, environment, channel);
+  const previousProvider = previous
+    ? providerOf(previous.instanceId)
+    : "ascii";
+  const targetProvider =
+    provider ?? (environment === "ubuntu" ? previousProvider : "ascii");
+  const built = await buildCompute(
+    supabase,
+    userId,
+    environment,
+    channel,
+    targetProvider
+  );
   try {
     await persistBox(supabase, userId, environment, built);
   } catch (persistError) {
@@ -917,10 +931,9 @@ async function persistBox(
 }
 
 /**
- * Best-effort: base skills, the per-user Composio MCP endpoint, and the
- * Daytona child key, so a fresh agent starts with its email/search skills and
- * connector tooling. Identical in every environment — failures log and
- * continue, the user can install from the dashboard.
+ * Best-effort: base skills, per-user connector and mailbox wiring, and the
+ * Daytona child key. Failures log and continue so replacement does not strand
+ * the user without compute.
  *
  * The hub installs are the expensive part (one `hermes skills install` per
  * base skill, sequential, minutes in total) and the template's setup.sh
@@ -967,6 +980,20 @@ async function finishSetup(
     console.error(
       JSON.stringify({ msg: "masterkey preinstall failed", user_id: userId, error: message })
     );
+  }
+  if (kindFor(target.environment) === "box") {
+    try {
+      await installExistingMailbox(supabase, userId, target.instanceId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "unknown error";
+      console.error(
+        JSON.stringify({
+          msg: "mail preinstall failed",
+          user_id: userId,
+          error: message,
+        }),
+      );
+    }
   }
   // P1-11: per-user Daytona child key — the template carries no credential.
   try {

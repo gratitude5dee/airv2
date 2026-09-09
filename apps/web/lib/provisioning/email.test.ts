@@ -4,7 +4,7 @@ const { mail, box } = vi.hoisted(() => ({
   mail: {
     ensurePod: vi.fn(async () => ({ pod_id: "pod_1", client_id: "user-1" })),
     createInbox: vi.fn(async () => ({ inbox_id: "sam@wzrd.tech" })),
-    createDraftOnlyKey: vi.fn(async () => "wm_live_draftonly"),
+    createDraftOnlyKeyForProvider: vi.fn(async () => "wm_live_draftonly"),
     ensureWebhook: vi.fn(async () => undefined),
   },
   box: {
@@ -28,17 +28,32 @@ vi.mock("../mail/client", async () => {
     ...actual,
     ensurePod: mail.ensurePod,
     createInbox: mail.createInbox,
-    createDraftOnlyKey: mail.createDraftOnlyKey,
+    createDraftOnlyKeyForProvider: mail.createDraftOnlyKeyForProvider,
     ensureWebhook: mail.ensureWebhook,
   };
 });
-vi.mock("../box/client", () => box);
+vi.mock("../box/client", async () => {
+  const actual =
+    await vi.importActual<typeof import("../box/client")>("../box/client");
+  return { ...actual, ...box };
+});
 
-import { boxMailWiring, mailMcpInstallScript, provisionEmail } from "./email";
+import {
+  boxMailWiring,
+  installExistingMailbox,
+  installMailboxOnBox,
+  mailMcpInstallScript,
+  provisionEmail,
+} from "./email";
+import { BoxApiError } from "../box/client";
+import { MailApiError } from "../mail/errors";
 
 const ORIGINAL = { ...process.env };
 
-function fakeSupabase(boxId: string | null) {
+function fakeSupabase(
+  boxId: string | null,
+  existingInboxId: string | null = null,
+) {
   return {
     from: vi.fn((table: string) => {
       // Every builder method returns the builder; awaiting it resolves to the
@@ -50,7 +65,16 @@ function fakeSupabase(boxId: string | null) {
         update: vi.fn(() => q),
         insert: vi.fn(async () => ({ error: null })),
         maybeSingle: vi.fn(async () => ({
-          data: table === "boxes" && boxId ? { provider_box_id: boxId } : null,
+          data:
+            table === "boxes" && boxId
+              ? { provider_box_id: boxId }
+              : table === "agent_addresses" && existingInboxId
+                ? {
+                    address: "sam@wzrd.tech",
+                    agentmail_inbox_id: existingInboxId,
+                  }
+                : null,
+          error: null,
         })),
       };
       return q;
@@ -116,7 +140,8 @@ describe("provisionEmail (MAIL_PROVIDER=wzrdmail)", () => {
       "https://air.test/api/inbound/email",
       ["pod_1"],
     );
-    expect(mail.createDraftOnlyKey).toHaveBeenCalledWith(
+    expect(mail.createDraftOnlyKeyForProvider).toHaveBeenCalledWith(
+      "wzrdmail",
       "sam@wzrd.tech",
       "box-user-1",
     );
@@ -141,8 +166,101 @@ describe("provisionEmail (MAIL_PROVIDER=wzrdmail)", () => {
 
   it("skips box wiring when the user has no box yet", async () => {
     await provisionEmail(fakeSupabase(null), "user-1", "sam");
-    expect(mail.createDraftOnlyKey).not.toHaveBeenCalled();
+    expect(mail.createDraftOnlyKeyForProvider).not.toHaveBeenCalled();
     expect(box.writeFile).not.toHaveBeenCalled();
+  });
+
+  it("does not mint another key for an already-provisioned address", async () => {
+    await provisionEmail(
+      fakeSupabase("bx_replacement", "sam@wzrd.tech"),
+      "user-1",
+      "sam",
+    );
+    expect(mail.createInbox).not.toHaveBeenCalled();
+    expect(mail.createDraftOnlyKeyForProvider).not.toHaveBeenCalled();
+    expect(box.writeFile).not.toHaveBeenCalled();
+  });
+
+  it.each(["bx_replacement", "tk_replacement"])(
+    "installs an existing mailbox on %s",
+    async (boxId) => {
+      const installed = await installExistingMailbox(
+        fakeSupabase(null, "sam@wzrd.tech"),
+        "user-1",
+        boxId,
+      );
+      expect(installed).toBe(true);
+      expect(mail.createDraftOnlyKeyForProvider).toHaveBeenCalledWith(
+        "wzrdmail",
+        "sam@wzrd.tech",
+        "box-user-1",
+      );
+      expect(box.writeFile).toHaveBeenCalledWith(
+        boxId,
+        ".hermes/.env",
+        expect.stringContaining("WZRDMAIL_INBOX_ID=sam@wzrd.tech"),
+      );
+      expect(box.command).toHaveBeenCalledWith(
+        boxId,
+        expect.stringContaining('"x-api-key": "${WZRDMAIL_API_KEY}"'),
+        120,
+      );
+    },
+  );
+
+  it("falls back to the legacy mailbox provider on a missing current-provider inbox", async () => {
+    mail.createDraftOnlyKeyForProvider
+      .mockRejectedValueOnce(new MailApiError(404, "inbox not found"))
+      .mockResolvedValueOnce("legacy_draft_key");
+
+    await installExistingMailbox(
+      fakeSupabase(null, "legacy@wzrd.tech"),
+      "user-1",
+      "bx_replacement",
+    );
+
+    expect(mail.createDraftOnlyKeyForProvider.mock.calls).toEqual([
+      ["wzrdmail", "legacy@wzrd.tech", "box-user-1"],
+      ["agentmail", "legacy@wzrd.tech", "box-user-1"],
+    ]);
+    expect(box.writeFile).toHaveBeenCalledWith(
+      "bx_replacement",
+      ".hermes/.env",
+      expect.stringContaining("AGENTMAIL_API_KEY=legacy_draft_key"),
+    );
+  });
+
+  it("initializes mailbox variables when .hermes/.env is absent", async () => {
+    box.readFile.mockRejectedValueOnce(new BoxApiError(404, "missing"));
+
+    await installMailboxOnBox(
+      "bx_replacement",
+      "user-1",
+      "sam@wzrd.tech",
+      "wzrdmail",
+    );
+
+    expect(box.writeFile).toHaveBeenCalledWith(
+      "bx_replacement",
+      ".hermes/.env",
+      "WZRDMAIL_API_KEY=wm_live_draftonly\nWZRDMAIL_INBOX_ID=sam@wzrd.tech\n",
+    );
+  });
+
+  it("does not overwrite .hermes/.env after a non-not-found read failure", async () => {
+    box.readFile.mockRejectedValueOnce(new BoxApiError(503, "transport failed"));
+
+    await expect(
+      installMailboxOnBox(
+        "bx_replacement",
+        "user-1",
+        "sam@wzrd.tech",
+        "wzrdmail",
+      ),
+    ).rejects.toMatchObject({ status: 503 });
+
+    expect(box.writeFile).not.toHaveBeenCalled();
+    expect(box.command).not.toHaveBeenCalled();
   });
 });
 

@@ -225,6 +225,11 @@ vi.mock("./connectors", () => ({
     installComposioMcp(...(args as [])),
 }));
 vi.mock("./daytona", () => ({ provisionDaytona: vi.fn() }));
+const installExistingMailbox = vi.fn(async () => true);
+vi.mock("./email", () => ({
+  installExistingMailbox: (...args: unknown[]) =>
+    installExistingMailbox(...(args as [])),
+}));
 const installBaseSkills = vi.fn();
 const BASE_SKILLS = ["official/research/duckduckgo-search", "browser-harness"];
 vi.mock("../skills/hub", () => ({
@@ -294,6 +299,7 @@ beforeEach(() => {
   boxCommand.mockClear();
   createMacInstance.mockClear();
   installComposioMcp.mockClear();
+  installExistingMailbox.mockClear();
   installBaseSkills.mockReset();
   vi.mocked(boxClient.waitForBox)
     .mockReset()
@@ -326,6 +332,11 @@ describe("provisionUser environments", () => {
       provider_box_id: "box-new",
     });
     expect(installComposioMcp).toHaveBeenCalled();
+    expect(installExistingMailbox).toHaveBeenCalledWith(
+      fakeSupabase,
+      expect.any(String),
+      "box-new",
+    );
     const commands = boxCommand.mock.calls.map((call) => call[1]);
     const merge = commands.findIndex((cmd) => cmd.includes("cat") && cmd.includes(".env.perbox"));
     const memory = commands.indexOf("ovctl ensure");
@@ -460,6 +471,11 @@ describe("switchEnvironment", () => {
     expect(boxClient.stop).toHaveBeenCalledWith("box-old");
     expect(boxClient.deleteBox).toHaveBeenCalledWith("box-old");
     expect(boxClient.deleteBox).not.toHaveBeenCalledWith("box-new");
+    expect(installExistingMailbox).toHaveBeenCalledWith(
+      fakeSupabase,
+      "user-1",
+      "box-new",
+    );
   });
 
   it("a setup failure after the row moved still retires the old box and names the new one", async () => {
@@ -483,6 +499,88 @@ describe("switchEnvironment", () => {
     expect(upserts["boxes"]).toBeUndefined();
     expect(boxClient.deleteBox).toHaveBeenCalledWith("box-new");
     expect(boxClient.deleteBox).not.toHaveBeenCalledWith("box-old");
+  });
+
+  it("uses Tenki only when the caller explicitly targets it", async () => {
+    fork.mockResolvedValueOnce({ id: "tk_new" });
+    const result = await switchEnvironment(
+      fakeSupabase,
+      "user-1",
+      "ubuntu",
+      "tenki",
+    );
+    expect(result.boxId).toBe("tk_new");
+    expect(fork).toHaveBeenCalledWith(
+      expect.objectContaining({ templateId: "tenki:snap-1" }),
+    );
+    expect(upserts["boxes"]?.[0]).toMatchObject({
+      provider: "tenki",
+      provider_box_id: "tk_new",
+    });
+    expect(installExistingMailbox).toHaveBeenCalledWith(
+      fakeSupabase,
+      "user-1",
+      "tk_new",
+    );
+    expect(boxClient.deleteBox).toHaveBeenCalledWith("box-old");
+  });
+
+  it("keeps the current provider when no target provider is supplied", async () => {
+    tables["boxes"] = [
+      { user_id: "user-1", provider_box_id: "tk_old", environment: "ubuntu" },
+    ];
+    fork.mockResolvedValueOnce({ id: "tk_new" });
+    await switchEnvironment(fakeSupabase, "user-1", "ubuntu");
+    expect(fork).toHaveBeenCalledWith(
+      expect.objectContaining({ templateId: "tenki:snap-1" }),
+    );
+    expect(boxClient.deleteBox).toHaveBeenCalledWith("tk_old");
+  });
+
+  it("moves a Tenki box to ascii when switching to Omarchy", async () => {
+    tables["boxes"] = [
+      { user_id: "user-1", provider_box_id: "tk_old", environment: "ubuntu" },
+    ];
+    tables["box_environment_templates"] = [
+      {
+        channel: "prod",
+        environment: "omarchy",
+        template_ref: "template-omarchy",
+      },
+    ];
+
+    await switchEnvironment(fakeSupabase, "user-1", "omarchy");
+
+    expect(fork).toHaveBeenCalledWith(
+      expect.objectContaining({ templateId: "template-omarchy" }),
+    );
+    expect(upserts["boxes"]?.[0]).toMatchObject({
+      environment: "omarchy",
+      provider: "ascii",
+    });
+    expect(boxClient.deleteBox).toHaveBeenCalledWith("tk_old");
+  });
+
+  it("moves a Tenki box to Namespace when switching to macOS", async () => {
+    tables["boxes"] = [
+      { user_id: "user-1", provider_box_id: "tk_old", environment: "ubuntu" },
+    ];
+    tables["box_environment_templates"] = [
+      {
+        channel: "prod",
+        environment: "macos",
+        template_ref: "https://air.test/mac-bootstrap.sh",
+      },
+    ];
+
+    await switchEnvironment(fakeSupabase, "user-1", "macos");
+
+    expect(createMacInstance).toHaveBeenCalled();
+    expect(upserts["boxes"]?.[0]).toMatchObject({
+      environment: "macos",
+      provider: "namespace",
+    });
+    expect(boxClient.deleteBox).toHaveBeenCalledWith("tk_old");
   });
 });
 
@@ -652,6 +750,22 @@ describe("replaceBox", () => {
     );
     expect(boxRow()["replace_claimed_at"]).toBeNull();
     expect(boxClient.deleteBox).toHaveBeenCalledWith("box-old");
+  });
+
+  it("passes an explicit target provider through the replacement lease", async () => {
+    fork.mockResolvedValueOnce({ id: "tk_new" });
+    const result = await replaceBox(
+      fakeSupabase,
+      "user-1",
+      "box-old",
+      "ubuntu",
+      "tenki",
+    );
+    expect(result.boxId).toBe("tk_new");
+    expect(fork).toHaveBeenCalledWith(
+      expect.objectContaining({ templateId: "tenki:snap-1" }),
+    );
+    expect(boxRow()["replace_claimed_at"]).toBeNull();
   });
 
   it("a live claim held by another call is a ReplaceInProgressError and forks nothing", async () => {

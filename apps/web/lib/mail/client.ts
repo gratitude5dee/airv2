@@ -30,6 +30,10 @@ function client(): MailClient {
   return mailProvider() === "wzrdmail" ? wzrdmail : agentmail;
 }
 
+function clientFor(provider: MailProvider): MailClient {
+  return provider === "wzrdmail" ? wzrdmail : agentmail;
+}
+
 export const deletePod: MailClient["deletePod"] = (...args) =>
   client().deletePod(...args);
 export const ensurePod: MailClient["ensurePod"] = (...args) =>
@@ -38,6 +42,12 @@ export const createInbox: MailClient["createInbox"] = (...args) =>
   client().createInbox(...args);
 export const createDraftOnlyKey: MailClient["createDraftOnlyKey"] = (...args) =>
   client().createDraftOnlyKey(...args);
+export function createDraftOnlyKeyForProvider(
+  provider: MailProvider,
+  ...args: Parameters<MailClient["createDraftOnlyKey"]>
+): ReturnType<MailClient["createDraftOnlyKey"]> {
+  return clientFor(provider).createDraftOnlyKey(...args);
+}
 export const getAttachmentBytes: MailClient["getAttachmentBytes"] = (...args) =>
   client().getAttachmentBytes(...args);
 export const getMessage: MailClient["getMessage"] = (...args) =>
