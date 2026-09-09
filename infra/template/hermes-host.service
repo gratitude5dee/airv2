@@ -16,6 +16,12 @@ User=user
 # The Box host CLI needs the ASCII_* env exported in ~/.bashrc (which guards
 # against non-interactive sourcing), and /usr/bin/host (the DNS tool) shadows
 # it in systemd's default PATH — hence the eval and the absolute path.
+# `host` opens ufw to the preview gateway once and then trusts the marker
+# below to skip that step. The marker is under /home/user and survives the
+# snapshot; the ufw rule is under /etc and has been seen missing on a fresh
+# fork, which makes the hosted route hang after accepting the token. Drop the
+# marker so `host` re-applies the rule (ufw skips an existing rule) each time.
+ExecStartPre=/bin/rm -f /home/user/.ascii/.gateway-firewall-open
 # Retry loop: right after a fork/resume the box agent token can briefly be
 # stale (API 401 agent_revoked) until the platform rotates it.
 ExecStart=/bin/bash -c 'eval "$(grep "^export ASCII_" /home/user/.bashrc)"; for i in $(seq 1 36); do /home/user/.ascii/host 8642 --private && /home/user/.ascii/host 9119 --private && exit 0; sleep 10; eval "$(grep "^export ASCII_" /home/user/.bashrc)"; done; exit 1'

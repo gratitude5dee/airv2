@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TenkiSandbox } from "@tenkicloud/sandbox";
 import {
+  ASCII_GATEWAY_FIREWALL_MARKER,
   BoxApiError,
   type CommandResult,
   classifyReadFile,
@@ -172,6 +173,9 @@ describe("provider dispatch", () => {
       String((fetchMock.mock.calls[0]?.[1] as RequestInit).body)
     ) as { command: string };
     expect(body.command).toContain(".ascii/host url 8642");
+    expect(body.command).toContain(
+      `rm -f ${ASCII_GATEWAY_FIREWALL_MARKER}; /home/user/.ascii/host url 8642`
+    );
   });
 
   it("parseAsciiHostedUrl fails loudly when the port is absent", () => {

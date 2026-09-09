@@ -290,6 +290,21 @@ export function parseAsciiHostedUrl(
 }
 
 /**
+ * The ascii `host` CLI opens ufw to the preview gateway once and then trusts
+ * this marker to skip the rule forever. The marker lives in /home/user and
+ * survives snapshot/fork; the ufw rule lives in /etc and has been observed
+ * missing on a fresh fork, which leaves the hosted route accepting the token
+ * and then hanging. Dropping the marker makes `host` re-apply the (idempotent)
+ * rule on every registration.
+ */
+export const ASCII_GATEWAY_FIREWALL_MARKER =
+  "/home/user/.ascii/.gateway-firewall-open";
+
+export function asciiHostCommand(port: number): string {
+  return `eval "$(grep '^export ASCII_' /home/user/.bashrc)"; rm -f ${ASCII_GATEWAY_FIREWALL_MARKER}; /home/user/.ascii/host url ${port} --timeout 120 --private`;
+}
+
+/**
  * Publish (or re-read) the hosted route for a port. On ascii this runs the
  * box-side `.ascii/host` client, whose token rotates across stop/resume; on
  * Tenki it is a provider API call and the URL is stable across wakes.
@@ -304,11 +319,7 @@ export async function hostRoute(
     return { url: route.url, token: "" };
   }
   const timeoutSeconds = options?.timeoutSeconds ?? 180;
-  const result = await command(
-    boxId,
-    `eval "$(grep '^export ASCII_' /home/user/.bashrc)"; /home/user/.ascii/host url ${port} --timeout 120 --private`,
-    timeoutSeconds
-  );
+  const result = await command(boxId, asciiHostCommand(port), timeoutSeconds);
   if (result.exitCode !== 0) {
     throw new BoxApiError(
       502,
