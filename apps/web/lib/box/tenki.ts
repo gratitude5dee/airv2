@@ -333,10 +333,33 @@ async function closeConfirmed(live: Session): Promise<boolean> {
   }
 }
 
-/** Close the losers of a concurrent wake; the winner is chosen in resolve(). */
-async function closeDuplicates(duplicates: Session[]): Promise<void> {
+/**
+ * Close the losers of a concurrent wake; the winner is chosen in resolve().
+ * Resolves true only when the provider confirms every loser is gone, so a
+ * stop never reads "stopped" while a duplicate is still running.
+ */
+async function closeDuplicates(duplicates: Session[]): Promise<boolean> {
+  const closed = await Promise.all(duplicates.map(closeConfirmed));
+  return closed.every(Boolean);
+}
+
+/**
+ * Delete snapshots and require the provider to agree. Unlike pruneSnapshots
+ * this is not best effort: it backs account deletion, where a snapshot left
+ * behind is the user's data.
+ */
+async function deleteSnapshots(snapshots: Snapshot[]): Promise<void> {
   await Promise.all(
-    duplicates.map((duplicate) => duplicate.close().catch(() => undefined))
+    snapshots.map(async (snapshot) => {
+      try {
+        await sandbox().deleteSnapshot(snapshot.id);
+      } catch (error) {
+        const mapped = toBoxApiError(error);
+        if (mapped.status !== 404 && !(await snapshotGone(snapshot.id))) {
+          throw mapped;
+        }
+      }
+    })
   );
 }
 
@@ -366,7 +389,8 @@ async function completeStop(
   if (snapshot.state !== "READY") {
     return snapshot.state === "CREATING" ? stoppedBox(boxId, snapshot) : null;
   }
-  if (resolved.session && !(await closeConfirmed(resolved.session))) {
+  const live = resolved.session ? [resolved.session] : [];
+  if (!(await closeDuplicates([...live, ...resolved.duplicates]))) {
     return { ...stoppedBox(boxId, snapshot), state: "stopping" };
   }
   await pruneSnapshots(resolved.snapshots, snapshot.id);
@@ -548,15 +572,25 @@ export async function stop(boxId: string): Promise<Box> {
   }
 }
 
+/**
+ * Remove everything the provider holds for a box. Account deletion records
+ * success on return, so every close and snapshot deletion must be confirmed
+ * and the box re-read as empty; anything left behind is an error.
+ */
 export async function deleteBox(boxId: string): Promise<void> {
   const resolved = await resolve(boxId);
   try {
-    await resolved.session?.close();
-    await pruneSnapshots(resolved.snapshots, null);
+    const live = resolved.session ? [resolved.session] : [];
+    if (!(await closeDuplicates([...live, ...resolved.duplicates]))) {
+      throw new BoxApiError(502, `tenki: box ${boxId} session could not be closed`);
+    }
+    await deleteSnapshots(resolved.snapshots);
   } catch (error) {
-    const mapped = toBoxApiError(error);
-    if (mapped.status === 404) return;
-    throw mapped;
+    throw toBoxApiError(error);
+  }
+  const remaining = await resolve(boxId);
+  if (remaining.session || remaining.snapshots.length > 0) {
+    throw new BoxApiError(502, `tenki: box ${boxId} still has provider resources`);
   }
 }
 

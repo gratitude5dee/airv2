@@ -48,6 +48,7 @@ import {
   nextMessageId,
   pickList,
   replaceLast,
+  stopResponseState,
 } from "./lib";
 import { useDialogFocus } from "./use-dialog";
 
@@ -291,9 +292,12 @@ function HomeShell() {
     setPowerNote(null);
     try {
       const res = await fetch("/api/box/stop", { method: "POST" });
-      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        state?: string;
+      };
       if (res.ok) {
-        setBoxState("stopped");
+        setBoxState(stopResponseState(data));
       } else if (data.error === "run_active") {
         setPowerNote("Your agent is mid-task — wait for it to finish first.");
       } else if (data.error === "stop_refused") {

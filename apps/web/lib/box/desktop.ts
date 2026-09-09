@@ -67,9 +67,11 @@ export async function desktopStreamUrlIfUp(
   if (box.state !== "ready" && box.state !== "idle") {
     try {
       await resume(boxId);
+      // last_active_at starts the stale-transition clock the sweeper
+      // reconciles from; a stale timestamp would put a fresh boot on it.
       await supabase
         .from("boxes")
-        .update({ state: "starting" })
+        .update({ state: "starting", last_active_at: new Date().toISOString() })
         .eq("provider_box_id", boxId);
     } catch (error) {
       if (isStartLimit(error)) {

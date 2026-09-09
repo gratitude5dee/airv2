@@ -454,6 +454,21 @@ describe("stop", () => {
     });
     await expect(stop(BOX)).rejects.toMatchObject({ status: 502 });
   });
+
+  it("does not report stopped while a duplicate session survives its close", async () => {
+    const winner = fakeSession("RUNNING", { id: "sess-a" });
+    const loser = fakeSession("RUNNING", { id: "sess-b" });
+    loser.close = vi.fn(async () => {
+      throw new Error("HTTP 503");
+    });
+    install([winner, loser]);
+    expect((await stop(BOX)).state).toBe("stopping");
+    expect(winner.close).toHaveBeenCalledOnce();
+    expect(loser.close).toHaveBeenCalledOnce();
+    // Once the loser is really gone the next look finishes the stop.
+    loser.state = "TERMINATED";
+    expect((await getBox(BOX)).state).toBe("stopped");
+  });
 });
 
 describe("resume", () => {
@@ -573,6 +588,52 @@ describe("deleteBox", () => {
   it("treats an unknown box as deleted", async () => {
     install();
     await expect(deleteBox(BOX)).resolves.toBeUndefined();
+  });
+
+  it("closes duplicate sessions too", async () => {
+    const a = fakeSession("RUNNING", { id: "sess-a" });
+    const b = fakeSession("RUNNING", { id: "sess-b" });
+    install([a, b]);
+    await deleteBox(BOX);
+    expect(a.close).toHaveBeenCalledOnce();
+    expect(b.close).toHaveBeenCalledOnce();
+  });
+
+  it("fails when the provider refuses to delete a snapshot", async () => {
+    const client = install([], [fakeSnapshot("snap-1", "READY")]);
+    client.deleteSnapshot = vi.fn(async () => {
+      throw new Error("HTTP 500");
+    });
+    await expect(deleteBox(BOX)).rejects.toMatchObject({ status: 502 });
+    expect(client.snapshots.map((snapshot) => snapshot.id)).toEqual(["snap-1"]);
+  });
+
+  it("accepts a snapshot deletion the provider applied but did not acknowledge", async () => {
+    const client = install([], [fakeSnapshot("snap-1", "READY")]);
+    client.deleteSnapshot = vi.fn(async (id: string) => {
+      client.snapshots.splice(
+        client.snapshots.findIndex((snapshot) => snapshot.id === id),
+        1
+      );
+      throw new Error("socket hang up");
+    });
+    await expect(deleteBox(BOX)).resolves.toBeUndefined();
+  });
+
+  it("fails when the provider refuses to close the session", async () => {
+    const session = fakeSession("RUNNING");
+    session.close = vi.fn(async () => {
+      throw new Error("HTTP 503");
+    });
+    const client = install([session], [fakeSnapshot("snap-1", "READY")]);
+    await expect(deleteBox(BOX)).rejects.toMatchObject({ status: 502 });
+    expect(client.deleteSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("fails when a snapshot is still listed after deletion", async () => {
+    const client = install([], [fakeSnapshot("snap-1", "READY")]);
+    client.deleteSnapshot = vi.fn(async () => undefined);
+    await expect(deleteBox(BOX)).rejects.toMatchObject({ status: 502 });
   });
 });
 

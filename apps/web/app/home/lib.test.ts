@@ -4,6 +4,7 @@ import {
   isNearBottom,
   nextMessageId,
   replaceLast,
+  stopResponseState,
 } from "./lib";
 import { clearSwrCache, readSwrCache, writeSwrCache } from "./use-swr";
 
@@ -67,6 +68,18 @@ describe("replaceLast (D11)", () => {
   it("is a no-op on an empty list", () => {
     const empty: { id: string; text: string }[] = [];
     expect(replaceLast(empty, { text: "x" })).toEqual([]);
+  });
+});
+
+describe("stopResponseState", () => {
+  it("keeps a deferred stop visible as stopping", () => {
+    expect(stopResponseState({ state: "stopping" })).toBe("stopping");
+  });
+
+  it("treats a terminal stop (or a bodyless 2xx) as stopped", () => {
+    expect(stopResponseState({ state: "stopped" })).toBe("stopped");
+    expect(stopResponseState({})).toBe("stopped");
+    expect(stopResponseState(undefined)).toBe("stopped");
   });
 });
 
