@@ -170,23 +170,15 @@ describe("provisionEmail (MAIL_PROVIDER=wzrdmail)", () => {
     expect(box.writeFile).not.toHaveBeenCalled();
   });
 
-  it("rewires an already-provisioned address instead of returning early", async () => {
+  it("does not mint another key for an already-provisioned address", async () => {
     await provisionEmail(
       fakeSupabase("bx_replacement", "sam@wzrd.tech"),
       "user-1",
       "sam",
     );
     expect(mail.createInbox).not.toHaveBeenCalled();
-    expect(mail.createDraftOnlyKeyForProvider).toHaveBeenCalledWith(
-      "wzrdmail",
-      "sam@wzrd.tech",
-      "box-user-1",
-    );
-    expect(box.writeFile).toHaveBeenCalledWith(
-      "bx_replacement",
-      ".hermes/.env",
-      expect.stringContaining("WZRDMAIL_API_KEY=wm_live_draftonly"),
-    );
+    expect(mail.createDraftOnlyKeyForProvider).not.toHaveBeenCalled();
+    expect(box.writeFile).not.toHaveBeenCalled();
   });
 
   it.each(["bx_replacement", "tk_replacement"])(

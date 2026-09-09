@@ -18,11 +18,15 @@ vi.mock("@/lib/supabase", () => {
   function builder(table: string) {
     let values = db.rows[table] ?? [];
     let single = false;
+    let countRequested = false;
     const chain: Record<string, unknown> = {};
-    chain["select"] = vi.fn((columns = "*") => {
+    chain["select"] = vi.fn(
+      (columns = "*", options?: { count?: string }) => {
       db.selects.push({ table, columns });
+      countRequested = options?.count === "exact";
       return chain;
-    });
+      },
+    );
     chain["eq"] = vi.fn((column: string, value: unknown) => {
       values = values.filter((entry) => entry[column] === value);
       return chain;
@@ -40,6 +44,7 @@ vi.mock("@/lib/supabase", () => {
         error: db.errors[table]
           ? { message: db.errors[table] }
           : null,
+        count: countRequested ? values.length : null,
       }).then(resolve);
     return chain;
   }
@@ -167,6 +172,11 @@ describe("GET /api/admin/health", () => {
       ],
       box_state_events: [
         { user_id: userId, state: "ready", created_at: "2026-09-09T18:00:00Z" },
+        {
+          user_id: userId,
+          state: "keepawake",
+          created_at: "2026-09-09T17:30:00Z",
+        },
         {
           user_id: userId,
           state: "stopped",

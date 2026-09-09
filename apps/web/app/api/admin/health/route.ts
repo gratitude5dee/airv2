@@ -288,10 +288,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       .limit(10_000),
     supabase
       .from("batch_queue")
-      .select("received_at")
+      .select("received_at", { count: "exact" })
       .eq("user_id", userId)
-      .order("received_at", { ascending: false })
-      .limit(10_000),
+      .order("received_at", { ascending: true })
+      .limit(1),
     supabase
       .from("connections")
       .select("provider, toolkit, status, connected_at")
@@ -450,11 +450,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 
   const inboundCounts = countStatuses(inbound);
-  const oldestQueuedAt =
-    queued
-      .map((event) => stringValue(event["received_at"]))
-      .filter((value): value is string => value !== null)
-      .sort()[0] ?? null;
+  const oldestQueuedAt = stringValue(queued[0]?.["received_at"]);
   const oldestQueuedMs = oldestQueuedAt
     ? timestamp(oldestQueuedAt)
     : null;
@@ -465,10 +461,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     replacementClaimedAt === null
       ? null
       : now - (timestamp(replacementClaimedAt) ?? now);
-  const starts = boxEvents.filter(
-    (event) =>
-      event["state"] === "ready" || event["state"] === "keepawake"
-  ).length;
+  const starts = boxEvents.filter((event) => event["state"] === "ready").length;
   const stops = boxEvents.filter((event) => event["state"] === "stopped").length;
 
   const renderCents = rows(rendersResult.data).reduce(
@@ -532,7 +525,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         dispatched: inboundCounts["dispatched"] ?? 0,
         failed: inboundCounts["failed"] ?? 0,
         ignored: inboundCounts["ignored"] ?? 0,
-        queued: queued.length,
+        queued: queueResult.count ?? 0,
         oldest_queued_at: oldestQueuedAt,
         oldest_queued_age_seconds:
           oldestQueuedMs === null

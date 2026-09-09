@@ -150,42 +150,16 @@ export async function provisionEmail(
   userId: string,
   username: string
 ): Promise<{ address: string }> {
-  // Reuse the existing address and refresh its current box wiring.
+  // Already provisioned for this exact address? Idempotent no-op.
   const desired = `${username}@${env.agentEmailDomain()}`.toLowerCase();
   const { data: existing } = await supabase
     .from("agent_addresses")
-    .select("address, agentmail_inbox_id")
+    .select("address")
     .eq("user_id", userId)
     .eq("address", desired)
     .is("retired_at", null)
     .maybeSingle();
-  if (existing) {
-    const { data: box } = await supabase
-      .from("boxes")
-      .select("provider_box_id")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (box?.provider_box_id && existing.agentmail_inbox_id) {
-      const boxId = box.provider_box_id as string;
-      try {
-        await installMailboxOnBox(
-          boxId,
-          userId,
-          existing.agentmail_inbox_id as string,
-        );
-      } catch (error) {
-        console.error(
-          JSON.stringify({
-            msg: "box mail key injection failed",
-            user_id: userId,
-            box_id: boxId,
-            error: error instanceof Error ? error.message : String(error),
-          }),
-        );
-      }
-    }
-    return { address: desired };
-  }
+  if (existing) return { address: desired };
 
   const pod = await ensurePod(userId);
   // The shared beta domain is global: the username may be taken there even
