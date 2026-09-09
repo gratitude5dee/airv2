@@ -20,6 +20,13 @@ export const env = {
   boxApiBase: (): string =>
     optional("BOX_API_BASE", "https://ascii.dev/api/box/v1"),
   boxTemplateId: (): string => required("BOX_TEMPLATE_ID"),
+  // How long fork/resume waits for an ascii.dev box to report ready/idle.
+  // Forks of an archived template restore from cold storage and have taken
+  // over four minutes; a deployment can raise this up to its route budget.
+  boxReadyTimeoutMs: (): number => {
+    const parsed = Number(optional("BOX_READY_TIMEOUT_MS", "240000"));
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 240_000;
+  },
   // The Omarchy template box (infra/template-omarchy — an ascii.dev box like
   // BOX_TEMPLATE_ID, forked the same way). Optional: without it — and without
   // a box_environment_templates pointer — the omarchy environment reports

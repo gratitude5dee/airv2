@@ -207,7 +207,7 @@ export async function getBox(boxId: string): Promise<Box> {
 /** Poll until the box reaches ready/idle. */
 export async function waitForBox(
   boxId: string,
-  timeoutMs = 240_000
+  timeoutMs = env.boxReadyTimeoutMs()
 ): Promise<Box> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
