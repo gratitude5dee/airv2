@@ -45,6 +45,7 @@ import {
 } from "../compute/runtime";
 import { installComposioMcp, installMasterkeyMcp } from "./connectors";
 import { provisionDaytona } from "./daytona";
+import { installExistingMailbox } from "./email";
 import { normalizeAddress } from "../routing/trust";
 import { sealSecret } from "../crypto/secretbox";
 import { baseSkillsFor, installBaseSkills } from "../skills/hub";
@@ -927,10 +928,9 @@ async function persistBox(
 }
 
 /**
- * Best-effort: base skills, the per-user Composio MCP endpoint, and the
- * Daytona child key, so a fresh agent starts with its email/search skills and
- * connector tooling. Identical in every environment — failures log and
- * continue, the user can install from the dashboard.
+ * Best-effort: base skills, per-user connector and mailbox wiring, and the
+ * Daytona child key. Failures log and continue so replacement does not strand
+ * the user without compute.
  *
  * The hub installs are the expensive part (one `hermes skills install` per
  * base skill, sequential, minutes in total) and the template's setup.sh
@@ -977,6 +977,20 @@ async function finishSetup(
     console.error(
       JSON.stringify({ msg: "masterkey preinstall failed", user_id: userId, error: message })
     );
+  }
+  if (kindFor(target.environment) === "box") {
+    try {
+      await installExistingMailbox(supabase, userId, target.instanceId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "unknown error";
+      console.error(
+        JSON.stringify({
+          msg: "mail preinstall failed",
+          user_id: userId,
+          error: message,
+        }),
+      );
+    }
   }
   // P1-11: per-user Daytona child key — the template carries no credential.
   try {

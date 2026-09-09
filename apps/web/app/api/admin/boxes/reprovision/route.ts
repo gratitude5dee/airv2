@@ -21,7 +21,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuthorized } from "@/lib/admin/auth";
 import { providerOf, type BoxProvider } from "@/lib/box/client";
-import { toComputeEnvironment } from "@/lib/compute/environments";
+import {
+  providerFor,
+  toComputeEnvironment,
+} from "@/lib/compute/environments";
 import {
   ReplaceInProgressError,
   SwitchSetupError,
@@ -90,11 +93,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const environment = toComputeEnvironment(current.environment);
-  const provider = body.provider ??
-    (isBoxProvider(current.provider)
-      ? current.provider
-      : providerOf(current.provider_box_id));
-  if (provider === "tenki" && environment !== "ubuntu") {
+  if (body.provider !== undefined && environment === "macos") {
+    return NextResponse.json(
+      { error: "provider override is not supported for macos" },
+      { status: 400 },
+    );
+  }
+  const targetProvider =
+    body.provider ??
+    (environment === "macos"
+      ? undefined
+      : isBoxProvider(current.provider)
+        ? current.provider
+        : providerOf(current.provider_box_id));
+  if (targetProvider === "tenki" && environment !== "ubuntu") {
     return NextResponse.json(
       { error: "tenki provider supports ubuntu only" },
       { status: 400 },
@@ -106,8 +118,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       userId,
       boxId,
       environment,
-      provider,
+      targetProvider,
     );
+    const provider =
+      targetProvider === "tenki" ? "tenki" : providerFor(result.environment);
     return NextResponse.json({
       user_id: result.userId,
       previous_box_id: boxId,

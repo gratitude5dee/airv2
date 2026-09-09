@@ -80,21 +80,85 @@ async function installMailMcp(boxId: string, wiring: BoxMailWiring): Promise<voi
   }
 }
 
+export async function installMailboxOnBox(
+  boxId: string,
+  userId: string,
+  inboxId: string,
+): Promise<void> {
+  const wiring = boxMailWiring();
+  const draftKey = await createDraftOnlyKey(inboxId, `box-${userId}`);
+  // Keep the credential out of command arguments and process listings.
+  const current = await readFile(boxId, ".hermes/.env").catch(() => "");
+  const kept = current
+    .split("\n")
+    .filter((line) => line && !line.startsWith(wiring.envPrefix));
+  kept.push(`${wiring.apiKeyVar}=${draftKey}`);
+  kept.push(`${wiring.inboxIdVar}=${inboxId}`);
+  await writeFile(boxId, ".hermes/.env", kept.join("\n") + "\n");
+  await installMailMcp(boxId, wiring);
+}
+
+export async function installExistingMailbox(
+  supabase: SupabaseClient,
+  userId: string,
+  boxId: string,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("agent_addresses")
+    .select("agentmail_inbox_id")
+    .eq("user_id", userId)
+    .eq("is_primary", true)
+    .is("retired_at", null)
+    .maybeSingle();
+  if (error) {
+    throw new Error(`agent address lookup failed: ${error.message}`);
+  }
+  if (!data?.agentmail_inbox_id) return false;
+  await installMailboxOnBox(boxId, userId, data.agentmail_inbox_id as string);
+  return true;
+}
+
 export async function provisionEmail(
   supabase: SupabaseClient,
   userId: string,
   username: string
 ): Promise<{ address: string }> {
-  // Already provisioned for this exact address? Idempotent no-op.
+  // Reuse the existing address and refresh its current box wiring.
   const desired = `${username}@${env.agentEmailDomain()}`.toLowerCase();
   const { data: existing } = await supabase
     .from("agent_addresses")
-    .select("address")
+    .select("address, agentmail_inbox_id")
     .eq("user_id", userId)
     .eq("address", desired)
     .is("retired_at", null)
     .maybeSingle();
-  if (existing) return { address: desired };
+  if (existing) {
+    const { data: box } = await supabase
+      .from("boxes")
+      .select("provider_box_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (box?.provider_box_id && existing.agentmail_inbox_id) {
+      const boxId = box.provider_box_id as string;
+      try {
+        await installMailboxOnBox(
+          boxId,
+          userId,
+          existing.agentmail_inbox_id as string,
+        );
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            msg: "box mail key injection failed",
+            user_id: userId,
+            box_id: boxId,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
+      }
+    }
+    return { address: desired };
+  }
 
   const pod = await ensurePod(userId);
   // The shared beta domain is global: the username may be taken there even
@@ -151,20 +215,7 @@ export async function provisionEmail(
     const boxId = box.provider_box_id as string;
     const wiring = boxMailWiring();
     try {
-      const draftKey = await createDraftOnlyKey(
-        inbox.inbox_id,
-        `box-${userId}`
-      );
-      // Typed file read/write only — the key must never appear in a shell
-      // command line (visible in command logs / process listings).
-      const current = await readFile(boxId, ".hermes/.env").catch(() => "");
-      const kept = current
-        .split("\n")
-        .filter((line) => line && !line.startsWith(wiring.envPrefix));
-      kept.push(`${wiring.apiKeyVar}=${draftKey}`);
-      kept.push(`${wiring.inboxIdVar}=${inbox.inbox_id}`);
-      await writeFile(boxId, ".hermes/.env", kept.join("\n") + "\n");
-      await installMailMcp(boxId, wiring);
+      await installMailboxOnBox(boxId, userId, inbox.inbox_id);
     } catch (error) {
       console.error(
         JSON.stringify({

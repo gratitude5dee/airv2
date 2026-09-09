@@ -225,6 +225,11 @@ vi.mock("./connectors", () => ({
     installComposioMcp(...(args as [])),
 }));
 vi.mock("./daytona", () => ({ provisionDaytona: vi.fn() }));
+const installExistingMailbox = vi.fn(async () => true);
+vi.mock("./email", () => ({
+  installExistingMailbox: (...args: unknown[]) =>
+    installExistingMailbox(...(args as [])),
+}));
 const installBaseSkills = vi.fn();
 const BASE_SKILLS = ["official/research/duckduckgo-search", "browser-harness"];
 vi.mock("../skills/hub", () => ({
@@ -294,6 +299,7 @@ beforeEach(() => {
   boxCommand.mockClear();
   createMacInstance.mockClear();
   installComposioMcp.mockClear();
+  installExistingMailbox.mockClear();
   installBaseSkills.mockReset();
   vi.mocked(boxClient.waitForBox)
     .mockReset()
@@ -326,6 +332,11 @@ describe("provisionUser environments", () => {
       provider_box_id: "box-new",
     });
     expect(installComposioMcp).toHaveBeenCalled();
+    expect(installExistingMailbox).toHaveBeenCalledWith(
+      fakeSupabase,
+      expect.any(String),
+      "box-new",
+    );
     const commands = boxCommand.mock.calls.map((call) => call[1]);
     const merge = commands.findIndex((cmd) => cmd.includes("cat") && cmd.includes(".env.perbox"));
     const memory = commands.indexOf("ovctl ensure");
@@ -460,6 +471,11 @@ describe("switchEnvironment", () => {
     expect(boxClient.stop).toHaveBeenCalledWith("box-old");
     expect(boxClient.deleteBox).toHaveBeenCalledWith("box-old");
     expect(boxClient.deleteBox).not.toHaveBeenCalledWith("box-new");
+    expect(installExistingMailbox).toHaveBeenCalledWith(
+      fakeSupabase,
+      "user-1",
+      "box-new",
+    );
   });
 
   it("a setup failure after the row moved still retires the old box and names the new one", async () => {
@@ -501,6 +517,11 @@ describe("switchEnvironment", () => {
       provider: "tenki",
       provider_box_id: "tk_new",
     });
+    expect(installExistingMailbox).toHaveBeenCalledWith(
+      fakeSupabase,
+      "user-1",
+      "tk_new",
+    );
     expect(boxClient.deleteBox).toHaveBeenCalledWith("box-old");
   });
 

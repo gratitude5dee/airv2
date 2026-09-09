@@ -34,11 +34,19 @@ vi.mock("../mail/client", async () => {
 });
 vi.mock("../box/client", () => box);
 
-import { boxMailWiring, mailMcpInstallScript, provisionEmail } from "./email";
+import {
+  boxMailWiring,
+  installExistingMailbox,
+  mailMcpInstallScript,
+  provisionEmail,
+} from "./email";
 
 const ORIGINAL = { ...process.env };
 
-function fakeSupabase(boxId: string | null) {
+function fakeSupabase(
+  boxId: string | null,
+  existingInboxId: string | null = null,
+) {
   return {
     from: vi.fn((table: string) => {
       // Every builder method returns the builder; awaiting it resolves to the
@@ -50,7 +58,16 @@ function fakeSupabase(boxId: string | null) {
         update: vi.fn(() => q),
         insert: vi.fn(async () => ({ error: null })),
         maybeSingle: vi.fn(async () => ({
-          data: table === "boxes" && boxId ? { provider_box_id: boxId } : null,
+          data:
+            table === "boxes" && boxId
+              ? { provider_box_id: boxId }
+              : table === "agent_addresses" && existingInboxId
+                ? {
+                    address: "sam@wzrd.tech",
+                    agentmail_inbox_id: existingInboxId,
+                  }
+                : null,
+          error: null,
         })),
       };
       return q;
@@ -144,6 +161,50 @@ describe("provisionEmail (MAIL_PROVIDER=wzrdmail)", () => {
     expect(mail.createDraftOnlyKey).not.toHaveBeenCalled();
     expect(box.writeFile).not.toHaveBeenCalled();
   });
+
+  it("rewires an already-provisioned address instead of returning early", async () => {
+    await provisionEmail(
+      fakeSupabase("bx_replacement", "sam@wzrd.tech"),
+      "user-1",
+      "sam",
+    );
+    expect(mail.createInbox).not.toHaveBeenCalled();
+    expect(mail.createDraftOnlyKey).toHaveBeenCalledWith(
+      "sam@wzrd.tech",
+      "box-user-1",
+    );
+    expect(box.writeFile).toHaveBeenCalledWith(
+      "bx_replacement",
+      ".hermes/.env",
+      expect.stringContaining("WZRDMAIL_API_KEY=wm_live_draftonly"),
+    );
+  });
+
+  it.each(["bx_replacement", "tk_replacement"])(
+    "installs an existing mailbox on %s",
+    async (boxId) => {
+      const installed = await installExistingMailbox(
+        fakeSupabase(null, "sam@wzrd.tech"),
+        "user-1",
+        boxId,
+      );
+      expect(installed).toBe(true);
+      expect(mail.createDraftOnlyKey).toHaveBeenCalledWith(
+        "sam@wzrd.tech",
+        "box-user-1",
+      );
+      expect(box.writeFile).toHaveBeenCalledWith(
+        boxId,
+        ".hermes/.env",
+        expect.stringContaining("WZRDMAIL_INBOX_ID=sam@wzrd.tech"),
+      );
+      expect(box.command).toHaveBeenCalledWith(
+        boxId,
+        expect.stringContaining('"x-api-key": "${WZRDMAIL_API_KEY}"'),
+        120,
+      );
+    },
+  );
 });
 
 describe("provisionEmail (default provider)", () => {

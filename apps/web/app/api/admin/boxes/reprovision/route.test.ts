@@ -238,6 +238,52 @@ describe("POST /api/admin/boxes/reprovision", () => {
     );
   });
 
+  it("preserves namespace for a macOS replacement when provider is omitted", async () => {
+    db.box = row({
+      provider: "namespace",
+      provider_box_id: "mac_old",
+      environment: "macos",
+    });
+    replaceBox.mockResolvedValue({
+      ...result("macos"),
+      boxId: "mac_new",
+    });
+    const response = await POST(
+      post({ user_id: "u1", box_id: "mac_old" }),
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      user_id: "u1",
+      previous_box_id: "mac_old",
+      box_id: "mac_new",
+      environment: "macos",
+      provider: "namespace",
+    });
+    expect(replaceBox).toHaveBeenCalledWith(
+      expect.anything(),
+      "u1",
+      "mac_old",
+      "macos",
+      undefined,
+    );
+  });
+
+  it("rejects provider overrides for macOS replacements", async () => {
+    db.box = row({
+      provider: "namespace",
+      provider_box_id: "mac_old",
+      environment: "macos",
+    });
+    const response = await POST(
+      post({ user_id: "u1", box_id: "mac_old", provider: "ascii" }),
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "provider override is not supported for macos",
+    });
+    expect(replaceBox).not.toHaveBeenCalled();
+  });
+
   it("rejects Tenki for a non-Ubuntu environment before replacement", async () => {
     db.box = row({ environment: "omarchy" });
     const response = await POST(
