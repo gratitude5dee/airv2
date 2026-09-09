@@ -125,7 +125,7 @@ export async function prewarmBox(
     await resume(boxId);
     await supabase
       .from("boxes")
-      .update({ state: "starting" })
+      .update({ state: "starting", last_active_at: new Date().toISOString() })
       .eq("provider_box_id", boxId);
   } catch (error) {
     console.log(

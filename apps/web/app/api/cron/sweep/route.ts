@@ -68,9 +68,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   for (const box of (staleBoxes ?? []) as { provider_box_id: string; user_id: string }[]) {
     try {
       // A failed lookup throws into the catch below: the row stays put and
-      // the next sweep retries, same as a stop the provider is still finishing.
+      // the next sweep retries, same as a boot or stop the provider is still
+      // finishing.
       const verdict = await reconcileVerdict(box.provider_box_id);
-      if (verdict === "stopping") continue;
+      if (verdict === "pending") continue;
       await supabase
         .from("boxes")
         .update(

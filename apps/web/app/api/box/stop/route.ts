@@ -51,8 +51,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .from("boxes")
     .update({ state: "stopping", last_active_at: new Date().toISOString() })
     .eq("user_id", session.userId);
+  let result;
   try {
-    await stop(row.provider_box_id);
+    result = await stop(row.provider_box_id);
   } catch (error) {
     await supabase
       .from("boxes")
@@ -66,6 +67,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       })
     );
     return NextResponse.json({ error: "stop_refused" }, { status: 409 });
+  }
+  if (result.state === "stopping") {
+    // Snapshot written but a session is still up: the row stays `stopping`
+    // (last_active_at already armed the stale-transition clock) and the
+    // sweeper's reconcile closes it from getBox().
+    return NextResponse.json({ state: "stopping" });
   }
   await supabase
     .from("boxes")

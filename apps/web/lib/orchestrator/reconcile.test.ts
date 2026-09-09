@@ -15,14 +15,27 @@ describe("reconcileVerdict", () => {
     expect(await reconcileVerdict("bx_1")).toBe("ready");
   });
 
-  it("marks a parked box stopped", async () => {
-    vi.mocked(getBox).mockResolvedValue({ state: "stopped" } as never);
-    expect(await reconcileVerdict("tk_1")).toBe("stopped");
+  it("marks a parked or dead box stopped", async () => {
+    for (const state of ["stopped", "archived", "error"]) {
+      vi.mocked(getBox).mockResolvedValue({ state } as never);
+      expect(await reconcileVerdict("tk_1")).toBe("stopped");
+    }
   });
 
   it("leaves a stop the provider is still finishing alone", async () => {
-    vi.mocked(getBox).mockResolvedValue({ state: "stopping" } as never);
-    expect(await reconcileVerdict("tk_1")).toBe("stopping");
+    for (const state of ["stopping", "archiving"]) {
+      vi.mocked(getBox).mockResolvedValue({ state } as never);
+      expect(await reconcileVerdict("tk_1")).toBe("pending");
+    }
+  });
+
+  it("leaves a boot the provider is still finishing alone", async () => {
+    // A stale `starting` row whose VM is still coming up must not be written
+    // `stopped`: that would hide a soon-to-be-running box from the sweeper.
+    for (const state of ["cloning", "starting", "provisioned"]) {
+      vi.mocked(getBox).mockResolvedValue({ state } as never);
+      expect(await reconcileVerdict("bx_1")).toBe("pending");
+    }
   });
 
   it("treats a provider 404 as the box being gone", async () => {

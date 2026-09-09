@@ -10,7 +10,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuthorized } from "@/lib/admin/auth";
 import { serviceClient } from "@/lib/supabase";
-import { deleteBox, stop } from "@/lib/box/client";
+import { BoxApiError, deleteBox, stop } from "@/lib/box/client";
 import { deletePod } from "@/lib/mail/client";
 import { daytonaConfigured, deleteTenantKey } from "@/lib/daytona/client";
 import {
@@ -217,6 +217,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .eq("user_id", userId)
     .maybeSingle();
   if (box?.provider_box_id) {
+    // The boxes row (and with it provider_box_id) cascades away with the user
+    // row, so provider resources that survive this step would be orphaned
+    // with no pointer left to retry from. Abort instead: the account stays
+    // closed (users.deleting_at) and the operator retries once the provider
+    // is back. Everything above this point is idempotent on retry.
     try {
       // The provider soft-deletes running boxes; stop (archive) first so the
       // delete actually releases compute.
@@ -228,7 +233,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       await deleteBox(box.provider_box_id as string);
       steps["box"] = "deleted";
     } catch (error) {
-      steps["box"] = `error: ${error instanceof Error ? error.message : String(error)}`;
+      if (error instanceof BoxApiError && error.status === 404) {
+        steps["box"] = "already gone at the provider";
+      } else {
+        steps["box"] =
+          `error: ${error instanceof Error ? error.message : String(error)}; ` +
+          "provider resources retained, user rows kept for retry";
+        return NextResponse.json({ ok: false, steps, retry: true }, { status: 502 });
+      }
     }
   } else {
     steps["box"] = "none";

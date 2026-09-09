@@ -54,7 +54,9 @@ describe("prewarmBox", () => {
     const supabase = fakeSupabase("bx_1");
     await prewarmBox(supabase, "user-1");
     expect(resume).toHaveBeenCalledWith("bx_1");
-    expect(supabase.updates).toEqual([{ state: "starting" }]);
+    expect(supabase.updates).toEqual([
+      { state: "starting", last_active_at: expect.any(String) },
+    ]);
   });
 
   it("does nothing when the box is already awake", async () => {
