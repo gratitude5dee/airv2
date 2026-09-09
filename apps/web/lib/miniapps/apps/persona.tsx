@@ -6,7 +6,8 @@
  * no third-party loads), followed by the two memory layers the agent draws
  * on: the user's Cortex (Mitosis) office and the box-local OpenViking deep
  * memory history. Memory data flows box → response only (never persisted);
- * a sleeping box or unconfigured memory renders as a quiet empty state.
+ * a sleeping box or unconfigured memory renders as a quiet empty state — a
+ * read-only view never spends a wake on the box (MEM-15).
  * Owner-only; read-only (no actions).
  */
 import { esc } from "../html";
@@ -29,7 +30,7 @@ import {
   type DeepMemoryHistory,
   type DeepMemoryStatus,
 } from "@/lib/memory/deep";
-import { armStopAfter, ensureBoxAwake } from "@/lib/orchestrator/boxes";
+import { armStopAfter, peekBoxState } from "@/lib/orchestrator/boxes";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
 interface PersonaNode {
@@ -165,7 +166,7 @@ function renderCortexSection(
     return `
 <section class="mem">
   <div class="mem-head"><h2>Cortex memory</h2></div>
-  <p class="muted">Your agent's computer is asleep — open this again in a minute.</p>
+  <p class="muted">Your agent's computer is asleep — it wakes with your next message; open this again afterwards.</p>
 </section>`;
   }
   if (!cortex.configured) {
@@ -221,7 +222,7 @@ function renderOpenVikingSection(
     return `
 <section class="mem">
   <div class="mem-head"><h2>OpenViking history</h2></div>
-  <p class="muted">Your agent's computer is asleep — open this again in a minute to browse your deep memory.</p>
+  <p class="muted">Your agent's computer is asleep — it wakes with your next message; open this again afterwards to browse your deep memory.</p>
 </section>`;
   }
   const rows = (history?.memories ?? [])
@@ -239,10 +240,16 @@ function renderOpenVikingSection(
 <section class="mem">
   <div class="mem-head"><h2>OpenViking history</h2><span class="chip${status.healthy ? " on" : ""}">${status.healthy ? "healthy" : "degraded"}</span></div>
   <div class="mem-stats">
-    <div class="mem-stat"><b>${status.resources}</b><span>resources</span></div>
-    <div class="mem-stat"><b>${history?.memories.length ?? 0}</b><span>memories</span></div>
+    <div class="mem-stat"><b>${status.truncated ? `${status.resources}+` : status.resources}</b><span>resources</span></div>
+    <div class="mem-stat"><b>${status.memories == null ? "–" : status.truncated ? `${status.memories}+` : status.memories}</b><span>memories</span></div>
     <div class="mem-stat"><b>${esc(humanBytes(status.workspace_bytes))}</b><span>workspace</span></div>
   </div>
+  ${history && history.memories.length > 0 ? `<p class="muted">Showing the ${history.memories.length} most recent memories.</p>` : ""}
+  <p class="muted">${status.pending == null
+    ? "Indexing progress unavailable."
+    : status.pending > 0
+      ? `${status.pending} resources awaiting indexing. Recall may be incomplete; unfinished work retries automatically.`
+      : "No indexing work pending."}</p>
   ${list}
 </section>`;
 }
@@ -254,25 +261,28 @@ export const persona: MiniAppModule = {
     const data = buildPersonaData(snapshot);
     const pct = Math.round(data.completion * 100);
 
-    // Memory layers live on the box; a box that can't wake must not break
-    // the constellation view.
+    // Memory layers live on the box and are read only while it is already
+    // up; a sleeping box renders the empty states below rather than being
+    // woken for a status view.
     let cortex: CortexOverview = CORTEX_UNAVAILABLE;
     let ovStatus: DeepMemoryStatus | null = null;
     let ovHistory: DeepMemoryHistory | null = null;
     let boxOk = false;
-    try {
-      const box = await ensureBoxAwake(supabase, session.userId);
-      boxOk = true;
-      [cortex, ovStatus, ovHistory] = await Promise.all([
-        cortexOverview(box.boxId),
-        deepMemoryStatus(box.boxId).catch(() => null),
-        deepMemoryHistory(box.boxId).catch(() => null),
-      ]);
-      await logCortexCalls(supabase, session.userId, cortex.calls);
-    } catch {
-      // sleeping/limited box — render the empty states below
-    } finally {
-      await armStopAfter(supabase, session.userId).catch(() => undefined);
+    const box = await peekBoxState(supabase, session.userId).catch(() => null);
+    if (box?.awake) {
+      try {
+        [cortex, ovStatus, ovHistory] = await Promise.all([
+          cortexOverview(box.boxId),
+          deepMemoryStatus(box.boxId).catch(() => null),
+          deepMemoryHistory(box.boxId).catch(() => null),
+        ]);
+        boxOk = true;
+        await logCortexCalls(supabase, session.userId, cortex.calls);
+      } catch {
+        // the mirror lagged the provider — render the empty states below
+      } finally {
+        await armStopAfter(supabase, session.userId).catch(() => undefined);
+      }
     }
 
     const chips = data.nodes

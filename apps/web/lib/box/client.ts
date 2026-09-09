@@ -5,35 +5,37 @@
  * Every user fork passes `noEnv: true` (C1) plus a per-box env carrying at
  * minimum TENANT_ID and GATEWAY_TOKEN (goal.md §5). Never `stop` with
  * `force: true` (C6).
+ *
+ * Provider dispatch: ids prefixed `tk_` (and template refs `tenki:`) route to
+ * the Tenki Sandbox adapter in ./tenki.ts; everything else is ascii.dev. The
+ * exported surface is provider-neutral so callers never branch on provider.
  */
 import { z } from "zod";
 import { env } from "../env";
 import { requestSignal } from "../http/timeout";
 import { shellQuote } from "./shell";
+import * as tenki from "./tenki";
+import {
+  BoxApiError,
+  BoxSchema,
+  START_LIMIT_REACHED,
+  type Box,
+  type CommandResult,
+  type ForkOptions,
+} from "./types";
 
-export type BoxState =
-  | "provisioned"
-  | "cloning"
-  | "ready"
-  | "idle"
-  | "archiving"
-  | "archived"
-  | "error"
-  | string;
+export { BoxApiError, START_LIMIT_REACHED } from "./types";
+export type { Box, BoxState, CommandResult, ForkOptions } from "./types";
 
-const BoxSchema = z.object({
-  id: z.string(),
-  state: z.string(),
-  // A stopped box has no hosted route; the provider reports url as null.
-  url: z
-    .string()
-    .nullish()
-    .transform((value) => value ?? undefined),
-  vcpu: z.number().optional(),
-  memoryGB: z.number().optional(),
-  createdAt: z.string().optional(),
-});
-export type Box = z.infer<typeof BoxSchema>;
+/** Which provider owns a box id or template ref. */
+export type BoxProvider = "ascii" | "tenki";
+
+export function providerOf(idOrTemplateRef: string): BoxProvider {
+  return tenki.isTenkiBoxId(idOrTemplateRef) ||
+    tenki.isTenkiTemplateRef(idOrTemplateRef)
+    ? "tenki"
+    : "ascii";
+}
 
 /** Response of POST /boxes/{id}/desktop (docs.ascii.dev/box/desktop-streaming).
  * `desktopUrl` is a secret-bearing desktop stream URL. Server-side only —
@@ -51,22 +53,6 @@ const BoxEnvelopeSchema = z.object({
   box: BoxSchema,
 });
 
-const CommandResultSchema = z.object({
-  exitCode: z.number(),
-  stdout: z.string(),
-  stderr: z.string(),
-});
-export type CommandResult = z.infer<typeof CommandResultSchema>;
-
-export interface ForkOptions {
-  templateId: string;
-  /** Per-box env. Must include TENANT_ID and GATEWAY_TOKEN. */
-  env: Record<string, string>;
-  size?: "small" | "default" | "large";
-  /** Provider auto-stop TTL; null disables it. Forks default to 1 hour. */
-  ttlSeconds?: number | null;
-}
-
 /**
  * Provider-side auto-stop backstop. Our own sweeper stops idle boxes within
  * minutes; this TTL only exists so a sweeper outage can't leave a box
@@ -75,18 +61,6 @@ export interface ForkOptions {
  * TTL of 1 hour counts from start, not last activity, and would).
  */
 export const BOX_TTL_SECONDS = 24 * 60 * 60;
-
-export class BoxApiError extends Error {
-  readonly status: number;
-  constructor(status: number, message: string) {
-    super(message);
-    this.name = "BoxApiError";
-    this.status = status;
-  }
-}
-
-/** Box returns 429 with this code when platform start ceilings are hit. */
-export const START_LIMIT_REACHED = "start_limit_reached";
 
 export function isStartLimit(error: unknown): boolean {
   return (
@@ -139,6 +113,9 @@ export async function fork(options: ForkOptions): Promise<Box> {
       throw new Error(`fork: per-box env is missing ${key}`);
     }
   }
+  if (providerOf(options.templateId) === "tenki") {
+    return tenki.fork(options);
+  }
   const envelope = await boxFetch(
     `/boxes/${options.templateId}/fork`,
     BoxEnvelopeSchema,
@@ -160,6 +137,7 @@ export async function fork(options: ForkOptions): Promise<Box> {
 
 /** Set the box's display name in the ascii dashboard (max 120 chars). */
 export async function renameBox(boxId: string, name: string): Promise<Box> {
+  if (providerOf(boxId) === "tenki") return tenki.renameBox(boxId, name);
   const envelope = await boxFetch(`/boxes/${boxId}`, BoxEnvelopeSchema, {
     method: "PATCH",
     body: JSON.stringify({ name }),
@@ -168,6 +146,7 @@ export async function renameBox(boxId: string, name: string): Promise<Box> {
 }
 
 export async function resume(boxId: string): Promise<Box> {
+  if (providerOf(boxId) === "tenki") return tenki.resume(boxId);
   const envelope = await boxFetch(`/boxes/${boxId}/resume`, BoxEnvelopeSchema, {
     method: "POST",
     body: JSON.stringify({ ttlSeconds: BOX_TTL_SECONDS }),
@@ -177,6 +156,7 @@ export async function resume(boxId: string): Promise<Box> {
 
 /** Never pass force — a refused stop means the snapshot is failing (C6). */
 export async function stop(boxId: string): Promise<Box> {
+  if (providerOf(boxId) === "tenki") return tenki.stop(boxId);
   const envelope = await boxFetch(`/boxes/${boxId}/stop`, BoxEnvelopeSchema, {
     method: "POST",
   });
@@ -189,6 +169,7 @@ export async function stop(boxId: string): Promise<Box> {
  * X-Ascii-Confirm-Delete.
  */
 export async function deleteBox(boxId: string): Promise<void> {
+  if (providerOf(boxId) === "tenki") return tenki.deleteBox(boxId);
   await boxFetch(`/boxes/${boxId}`, z.unknown(), {
     method: "DELETE",
     headers: { "X-Ascii-Confirm-Delete": boxId },
@@ -204,6 +185,7 @@ export async function requestDesktop(
   boxId: string,
   options?: { vnc?: boolean }
 ): Promise<string | undefined> {
+  if (providerOf(boxId) === "tenki") return tenki.requestDesktop();
   const query = options?.vnc ? "?vnc=1" : "?theme=light";
   const envelope = await boxFetch(
     `/boxes/${boxId}/desktop${query}`,
@@ -215,6 +197,7 @@ export async function requestDesktop(
 }
 
 export async function getBox(boxId: string): Promise<Box> {
+  if (providerOf(boxId) === "tenki") return tenki.getBox(boxId);
   const envelope = await boxFetch(`/boxes/${boxId}`, BoxEnvelopeSchema);
   return envelope.box;
 }
@@ -222,7 +205,7 @@ export async function getBox(boxId: string): Promise<Box> {
 /** Poll until the box reaches ready/idle. */
 export async function waitForBox(
   boxId: string,
-  timeoutMs = 240_000
+  timeoutMs = env.boxReadyTimeoutMs()
 ): Promise<Box> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
@@ -243,13 +226,105 @@ export async function command(
   cmd: string,
   timeoutSeconds = 60
 ): Promise<CommandResult> {
+  if (providerOf(boxId) === "tenki") {
+    return tenki.command(boxId, cmd, timeoutSeconds);
+  }
   // The box-side command runs up to timeoutSeconds; give the HTTP round
   // trip that budget plus margin.
-  return boxFetch(`/boxes/${boxId}/commands`, CommandResultSchema, {
-    method: "POST",
-    body: JSON.stringify({ command: cmd, timeoutSeconds }),
-    timeoutMs: (timeoutSeconds + 60) * 1000,
-  });
+  const result = await boxFetch(
+    `/boxes/${boxId}/commands`,
+    AsciiCommandResultSchema,
+    {
+      method: "POST",
+      body: JSON.stringify({ command: cmd, timeoutSeconds }),
+      timeoutMs: (timeoutSeconds + 60) * 1000,
+    }
+  );
+  // A command ascii.dev killed at timeoutSeconds reports exitCode null
+  // (timedOut true); surface it like a shell `timeout` (124) so callers see
+  // one shape across providers instead of a response-parse failure.
+  if (result.exitCode === null) {
+    return {
+      exitCode: 124,
+      stdout: result.stdout,
+      stderr:
+        result.stderr || `command timed out after ${timeoutSeconds}s`,
+    };
+  }
+  return { exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr };
+}
+
+const AsciiCommandResultSchema = z.object({
+  exitCode: z.number().nullable(),
+  stdout: z.string(),
+  stderr: z.string(),
+  timedOut: z.boolean().optional(),
+});
+
+/** A hosted route to a port on the box; token is "" where ingress has none. */
+export interface HostedRoute {
+  url: string;
+  token: string;
+}
+
+/** `https://<sub>-<port>.on.ascii.dev?_token=<token>` lines from `.ascii/host`. */
+const ASCII_HOSTED_URL_PATTERN =
+  /^(https:\/\/[a-z0-9-]+-(\d+)\.on\.ascii\.dev)\?_token=([A-Za-z0-9._-]+)$/;
+
+export function parseAsciiHostedUrl(
+  stdout: string,
+  port: number
+): HostedRoute {
+  for (const line of stdout.split("\n")) {
+    const match = ASCII_HOSTED_URL_PATTERN.exec(line.trim());
+    if (match?.[1] && match[3] && Number(match[2]) === port) {
+      return { url: match[1], token: match[3] };
+    }
+  }
+  throw new BoxApiError(
+    502,
+    `hosted URL for port ${port} not found in host output`
+  );
+}
+
+/**
+ * The ascii `host` CLI opens ufw to the preview gateway once and then trusts
+ * this marker to skip the rule forever. The marker lives in /home/user and
+ * survives snapshot/fork; the ufw rule lives in /etc and has been observed
+ * missing on a fresh fork, which leaves the hosted route accepting the token
+ * and then hanging. Dropping the marker makes `host` re-apply the (idempotent)
+ * rule on every registration.
+ */
+export const ASCII_GATEWAY_FIREWALL_MARKER =
+  "/home/user/.ascii/.gateway-firewall-open";
+
+export function asciiHostCommand(port: number): string {
+  return `eval "$(grep '^export ASCII_' /home/user/.bashrc)"; rm -f ${ASCII_GATEWAY_FIREWALL_MARKER}; /home/user/.ascii/host url ${port} --timeout 120 --private`;
+}
+
+/**
+ * Publish (or re-read) the hosted route for a port. On ascii this runs the
+ * box-side `.ascii/host` client, whose token rotates across stop/resume; on
+ * Tenki it is a provider API call and the URL is stable across wakes.
+ */
+export async function hostRoute(
+  boxId: string,
+  port: number,
+  options?: { timeoutSeconds?: number }
+): Promise<HostedRoute> {
+  if (providerOf(boxId) === "tenki") {
+    const route = await tenki.hostRoute(boxId, port);
+    return { url: route.url, token: "" };
+  }
+  const timeoutSeconds = options?.timeoutSeconds ?? 180;
+  const result = await command(boxId, asciiHostCommand(port), timeoutSeconds);
+  if (result.exitCode !== 0) {
+    throw new BoxApiError(
+      502,
+      `host registration for port ${port} failed: ${result.stderr.slice(0, 300)}`
+    );
+  }
+  return parseAsciiHostedUrl(result.stdout, port);
 }
 
 /**
@@ -322,6 +397,9 @@ export async function writeFile(
   path: string,
   content: string
 ): Promise<void> {
+  if (providerOf(boxId) === "tenki") {
+    return tenki.writeFile(boxId, path, content);
+  }
   await boxFetch(`/boxes/${boxId}/files`, z.unknown(), {
     method: "PUT",
     body: JSON.stringify({ path, content }),

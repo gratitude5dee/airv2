@@ -20,6 +20,9 @@ interface MemoryState {
   memory: string | null;
   user: string | null;
   user_char_limit: number;
+  /** Fingerprint of `user` as served; echoed on save so an agent rewrite
+   * in between surfaces as a conflict instead of being overwritten. */
+  user_revision: string;
 }
 
 interface TraceReceipt {
@@ -63,6 +66,7 @@ function MemoryCard() {
   const [userDraft, setUserDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [deepOffer, setDeepOffer] = useState(false);
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -95,11 +99,32 @@ function MemoryCard() {
       const res = await fetch("/api/me/memory", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user: userDraft }),
+        body: JSON.stringify({
+          user: userDraft,
+          base_revision: state?.user_revision,
+        }),
       });
       if (res.status === 503) setNote(BUSY_NOTE);
-      else if (!res.ok) setNote("Couldn't save your profile.");
-      else setNote("Saved.");
+      else if (res.status === 409) {
+        // Keep the draft; refresh the base so a second save is an informed
+        // overwrite of whatever the agent wrote in between.
+        const fresh = await fetch("/api/me/memory");
+        if (fresh.ok) setState((await fresh.json()) as MemoryState);
+        setNote(
+          "Your agent updated your profile while you were editing. Save again to overwrite it with your version."
+        );
+      } else if (!res.ok) setNote("Couldn't save your profile.");
+      else {
+        const data = (await res.json()) as { user_revision?: string };
+        if (data.user_revision) {
+          setState((prev) =>
+            prev
+              ? { ...prev, user: userDraft, user_revision: data.user_revision! }
+              : prev
+          );
+        }
+        setNote("Saved.");
+      }
     } catch {
       setNote("Couldn't save your profile.");
     } finally {
@@ -107,11 +132,17 @@ function MemoryCard() {
     }
   }
 
-  async function clear(target: "memory" | "user") {
-    const label = target === "memory" ? "agent memory" : "your profile";
+  async function clear(target: "memory" | "user" | "both") {
+    const label =
+      target === "memory"
+        ? "agent memory"
+        : target === "user"
+          ? "your profile"
+          : "agent memory and your profile";
     if (!window.confirm(`Clear ${label}? This is irreversible.`)) return;
     setBusy(true);
     setNote(null);
+    setDeepOffer(false);
     try {
       const res = await fetch("/api/me/memory", {
         method: "POST",
@@ -120,9 +151,37 @@ function MemoryCard() {
       });
       if (res.status === 503) setNote(BUSY_NOTE);
       else if (!res.ok) setNote("Clear failed.");
-      else void load();
+      else {
+        const data = (await res.json()) as { deep_memory_offer?: boolean };
+        setDeepOffer(data.deep_memory_offer === true);
+        void load();
+      }
     } catch {
       setNote("Clear failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** The files route only offers this; the wipe itself rides the deep
+   * memory route, confirm-gated by the owner's click here. */
+  async function clearDeep() {
+    setBusy(true);
+    setNote(null);
+    try {
+      const res = await fetch("/api/me/memory/deep", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "clear", scope: "all", confirm: true }),
+      });
+      if (res.status === 503) setNote(BUSY_NOTE);
+      else if (!res.ok) setNote("Deep memory clear failed.");
+      else {
+        setDeepOffer(false);
+        setNote("Deep memory cleared.");
+      }
+    } catch {
+      setNote("Deep memory clear failed.");
     } finally {
       setBusy(false);
     }
@@ -176,7 +235,43 @@ function MemoryCard() {
             >
               Clear profile
             </button>
+            <button
+              className="btn btn-ghost !text-danger"
+              disabled={busy}
+              onClick={() => void clear("both")}
+            >
+              Clear both
+            </button>
           </div>
+          {deepOffer ? (
+            <div
+              className="grid gap-2 rounded-[7px] border border-[var(--ring)] bg-surface-2 p-2"
+              role="group"
+              aria-label="Also clear deep memory"
+            >
+              <p className="m-0 text-[12px]">
+                Memory files cleared. Deep memory — imported context and learned
+                memories on your box — is still there. Clear it too for a fresh
+                start?
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className="btn btn-ghost !text-danger"
+                  disabled={busy}
+                  onClick={() => void clearDeep()}
+                >
+                  {busy ? "Clearing…" : "Clear deep memory too"}
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  disabled={busy}
+                  onClick={() => setDeepOffer(false)}
+                >
+                  Keep it
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </section>
@@ -187,22 +282,35 @@ interface DeepMemoryState {
   healthy: boolean;
   resources: number;
   workspace_bytes: number;
+  pending: number | null;
 }
 
+type DeepClearScope = "resources" | "memories" | "all";
+
+const DEEP_CLEAR_SCOPES: { scope: DeepClearScope; label: string }[] = [
+  { scope: "resources", label: "Imported context" },
+  { scope: "memories", label: "Learned memories" },
+  { scope: "all", label: "Everything" },
+];
+
 /** Deep memory (docs/memory-upgrade.md): live status of the box-local
- * semantic store + owner-triggered reindex. Metadata only — the contents
- * stay on the box and surface through chat recall, not here. */
+ * semantic store + owner-triggered reindex and clear-with-confirm. Metadata
+ * only — the contents stay on the box and surface through chat recall, not
+ * here. A status check never wakes a sleeping box by itself; the owner opts
+ * into the wake with a second click. */
 function DeepMemoryCard() {
   const [state, setState] = useState<DeepMemoryState | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [asleep, setAsleep] = useState(false);
+  const [clearScope, setClearScope] = useState<DeepClearScope | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (wake = false) => {
     setBusy(true);
     setNote(null);
     try {
-      const res = await fetch("/api/me/memory/deep");
+      const res = await fetch(wake ? "/api/me/memory/deep?wake=1" : "/api/me/memory/deep");
       if (res.status === 503) {
         setNote(BUSY_NOTE);
         return;
@@ -211,7 +319,13 @@ function DeepMemoryCard() {
         setNote("Couldn't read deep memory status.");
         return;
       }
-      setState((await res.json()) as DeepMemoryState);
+      const body = (await res.json()) as DeepMemoryState | { asleep: true };
+      if ("asleep" in body) {
+        setAsleep(true);
+        return;
+      }
+      setAsleep(false);
+      setState(body);
       setLoaded(true);
     } catch {
       setNote("Couldn't read deep memory status.");
@@ -232,11 +346,34 @@ function DeepMemoryCard() {
       if (res.status === 503) setNote(BUSY_NOTE);
       else if (!res.ok) setNote("Reindex failed.");
       else {
-        setNote("Reindexed.");
-        void load();
+        await load();
+        setNote("Reindex queued. Refresh to check progress.");
       }
     } catch {
       setNote("Reindex failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function clear(scope: DeepClearScope) {
+    setBusy(true);
+    setNote(null);
+    try {
+      const res = await fetch("/api/me/memory/deep", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "clear", scope, confirm: true }),
+      });
+      if (res.status === 503) setNote(BUSY_NOTE);
+      else if (!res.ok) setNote("Clear failed.");
+      else {
+        setClearScope(null);
+        await load();
+        setNote("Deep memory cleared.");
+      }
+    } catch {
+      setNote("Clear failed.");
     } finally {
       setBusy(false);
     }
@@ -251,15 +388,34 @@ function DeepMemoryCard() {
       />
       {note ? <p className="muted m-0 mb-2 text-[12px]">{note}</p> : null}
       {!loaded ? (
-        <DitherButton color="blue" disabled={busy} onClick={() => void load()}>
-          {busy ? "Waking box…" : "Check status"}
-        </DitherButton>
+        asleep ? (
+          <div className="grid gap-2">
+            <p className="m-0 text-[12px]" role="status">
+              Your agent&apos;s computer is asleep. It wakes with your next
+              message, or you can wake it now to read deep memory status.
+            </p>
+            <DitherButton color="blue" disabled={busy} onClick={() => void load(true)}>
+              {busy ? "Waking box…" : "Wake and check"}
+            </DitherButton>
+          </div>
+        ) : (
+          <DitherButton color="blue" disabled={busy} onClick={() => void load()}>
+            {busy ? "Checking…" : "Check status"}
+          </DitherButton>
+        )
       ) : state ? (
         <div className="grid gap-3">
           <p className="m-0 text-[12px]">
             {state.healthy ? "Running" : "Not running — recall degraded"} ·{" "}
             {state.resources} indexed{" "}
             {state.resources === 1 ? "resource" : "resources"}
+          </p>
+          <p className="m-0 text-[12px]" role="status">
+            {state.pending == null
+              ? "Indexing progress unavailable."
+              : state.pending > 0
+                ? `${state.pending} ${state.pending === 1 ? "resource" : "resources"} awaiting indexing. Recall may be incomplete; unfinished work retries automatically.`
+                : "No indexing work pending."}
           </p>
           <div className="flex flex-wrap gap-2">
             <DitherButton color="blue" disabled={busy} onClick={() => void reindex()}>
@@ -268,7 +424,59 @@ function DeepMemoryCard() {
             <button className="btn btn-ghost" disabled={busy} onClick={() => void load()}>
               Refresh
             </button>
+            {clearScope === null ? (
+              <button
+                className="btn btn-ghost !text-danger"
+                disabled={busy}
+                onClick={() => setClearScope("all")}
+              >
+                Clear deep memory
+              </button>
+            ) : null}
           </div>
+          {clearScope !== null ? (
+            <div
+              className="grid gap-2 rounded-[7px] border border-[var(--ring)] bg-surface-2 p-2"
+              role="group"
+              aria-label="Clear deep memory"
+            >
+              <p className="m-0 text-[12px]">
+                Clear deep memory? This is irreversible — recall over what you
+                clear stops until it is imported or learned again.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {DEEP_CLEAR_SCOPES.map(({ scope, label }) => (
+                  <label key={scope} className="flex items-center gap-1 text-[12px]">
+                    <input
+                      type="radio"
+                      name="deep-clear-scope"
+                      value={scope}
+                      checked={clearScope === scope}
+                      disabled={busy}
+                      onChange={() => setClearScope(scope)}
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className="btn btn-ghost !text-danger"
+                  disabled={busy}
+                  onClick={() => void clear(clearScope)}
+                >
+                  {busy ? "Clearing…" : "Confirm"}
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  disabled={busy}
+                  onClick={() => setClearScope(null)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </section>

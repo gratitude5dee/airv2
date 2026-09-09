@@ -1,0 +1,55 @@
+name: Box replica
+
+# Live isolated-Linux/systemd check of the deep-memory slice of the box
+# template (continue.md item 4): the pinned OpenViking server under the real
+# openviking*.service/.timer units, driven by infra/template/openviking/
+# livecheck.py. The runner is a fresh VM sized like the template Box
+# (4 vCPU / 8 GB). Evidence from here covers systemd behaviour only; provider
+# (ascii.dev) stop/resume transitions still need a real Box.
+
+on:
+  push:
+    branches: ["codex/**"]
+    paths:
+      - infra/template/openviking/**
+      - .github/workflows/box-replica.yml
+  workflow_dispatch:
+    inputs:
+      large_lines:
+        description: Lines in the document that is interrupted mid-index
+        default: "30000"
+      interrupt_after:
+        description: Seconds of indexing before the server is SIGKILLed
+        default: "15"
+
+permissions:
+  contents: read
+
+jobs:
+  openviking-live:
+    runs-on: tenki-standard-medium-4c-8g
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Provision box replica
+        run: sudo bash infra/template/openviking/replica-provision.sh
+      - name: Live check
+        run: |
+          sudo -u user env -i HOME=/home/user USER=user PATH=/usr/local/bin:/usr/bin:/bin \
+            /home/user/.openviking-venv/bin/python /home/user/.openviking/livecheck.py \
+            --report /home/user/livecheck.json \
+            --large-lines "${{ inputs.large_lines || '30000' }}" \
+            --interrupt-after "${{ inputs.interrupt_after || '15' }}"
+      - name: Unit state
+        if: always()
+        run: |
+          systemctl --no-pager status openviking.service openviking-index.service openviking-index.timer || true
+          sudo journalctl --no-pager -u openviking-index.service | tail -n 40
+      - name: Collect report
+        if: always()
+        run: sudo cp /home/user/livecheck.json "$RUNNER_TEMP/livecheck.json" && sudo chmod a+r "$RUNNER_TEMP/livecheck.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: livecheck-report
+          path: ${{ runner.temp }}/livecheck.json

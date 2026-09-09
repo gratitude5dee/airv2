@@ -40,10 +40,13 @@ const box = vi.hoisted(() => ({
   files: {} as Record<string, string>,
   removed: [] as string[],
 }));
-vi.mock("@/lib/box/client", () => ({
+vi.mock("@/lib/box/client", async (importOriginal) => {
+  const { BoxApiError } = await importOriginal<typeof import("@/lib/box/client")>();
+  return {
+  BoxApiError,
   readFile: vi.fn(async (_boxId: string, path: string) => {
     if (path in box.files) return box.files[path];
-    throw new Error("not found");
+    throw new BoxApiError(404, "not found");
   }),
   writeFile: vi.fn(async (_boxId: string, path: string, content: string) => {
     box.files[path] = content;
@@ -52,7 +55,8 @@ vi.mock("@/lib/box/client", () => ({
     if (script.startsWith("rm -f ")) box.removed.push(script);
     return { exitCode: 0, stdout: "", stderr: "" };
   }),
-}));
+  };
+});
 
 const fetchSpy = vi.fn(
   async () =>

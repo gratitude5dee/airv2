@@ -20,10 +20,30 @@ const OVCTL_TIMEOUT_SECONDS = 600;
  * far below any platform function timeout. */
 const OVCTL_ENQUEUE_TIMEOUT_SECONDS = 60;
 
+export const DEEP_MEMORY_CLEAR_SCOPES = ["resources", "memories", "all"] as const;
+export type DeepMemoryClearScope = (typeof DEEP_MEMORY_CLEAR_SCOPES)[number];
+
+export function isDeepMemoryClearScope(value: unknown): value is DeepMemoryClearScope {
+  return DEEP_MEMORY_CLEAR_SCOPES.some((scope) => scope === value);
+}
+
 export interface DeepMemoryStatus {
   healthy: boolean;
+  /** Indexed resource documents (leaves; directory nodes excluded). */
   resources: number;
+  /** Derived memory documents; null on boxes whose ovctl predates the count. */
+  memories: number | null;
   workspace_bytes: number;
+  /** Null means this box could not report its durable queue. */
+  pending: number | null;
+  /** The box hit its listing bound, so counts are lower bounds. */
+  truncated: boolean;
+}
+
+function nonNegativeInteger(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : null;
 }
 
 function parseJson(stdout: string): Record<string, unknown> | null {
@@ -41,14 +61,17 @@ export async function deepMemoryStatus(
   const doc = result && result.exitCode === 0 ? parseJson(result.stdout) : null;
   return {
     healthy: doc?.["healthy"] === true,
-    resources: typeof doc?.["resources"] === "number" ? doc["resources"] : 0,
+    resources: nonNegativeInteger(doc?.["resources"]) ?? 0,
+    memories: nonNegativeInteger(doc?.["memories"]),
     workspace_bytes:
       typeof doc?.["workspace_bytes"] === "number" ? doc["workspace_bytes"] : 0,
+    pending: nonNegativeInteger(doc?.["pending"]),
+    truncated: doc?.["truncated"] === true,
   };
 }
 
 /** Index a box-local file/dir at a stable URI. Enqueue-only (`--no-wait`):
- * the server keeps indexing after the command returns, so callers on a
+ * the box persists work for its indexing worker, so callers on a
  * request path never stall behind embedding work. Best-effort: failures are
  * swallowed after a metadata-only log line (no path contents, no memory). */
 export async function deepMemoryIndex(
@@ -99,13 +122,50 @@ export async function deepMemoryForget(
   }
 }
 
-/** Re-render ov.conf from the box's .env and re-index the onboarding context
- * (imessage-history/ + onairos.md). Owner-triggered from Settings. */
+/** Owner-initiated wipe of whole roots: indexed context (`resources`),
+ * OpenViking-derived memories (`memories`) or both. The box drops queued
+ * indexing work under the cleared roots first, so a durable replay cannot
+ * restore what the owner cleared. Renders ov.conf first like reindex, so a
+ * box whose OpenViking was never configured still clears instead of failing.
+ * Not best-effort: the caller surfaces failure. Metadata-only log line
+ * (scope, never URIs of user content). */
+export async function deepMemoryClear(
+  boxId: string,
+  scope: DeepMemoryClearScope
+): Promise<boolean> {
+  try {
+    const ensure = await command(boxId, "ovctl ensure", 180);
+    if (ensure.exitCode !== 0) {
+      console.log(
+        JSON.stringify({ msg: "deep memory clear", box_id: boxId, scope, ok: false, stage: "ensure" })
+      );
+      return false;
+    }
+    const result = await command(
+      boxId,
+      `ovctl clear --scope ${shellQuote(scope)}`,
+      OVCTL_TIMEOUT_SECONDS
+    );
+    const ok = result.exitCode === 0;
+    console.log(
+      JSON.stringify({ msg: "deep memory clear", box_id: boxId, scope, ok })
+    );
+    return ok;
+  } catch {
+    console.log(
+      JSON.stringify({ msg: "deep memory clear", box_id: boxId, scope, ok: false })
+    );
+    return false;
+  }
+}
+
+/** Re-render ov.conf and durably enqueue the imported context for indexing.
+ * Success acknowledges the queue; status reports unfinished work. */
 export async function deepMemoryReindex(boxId: string): Promise<boolean> {
   try {
     const ensure = await command(boxId, "ovctl ensure", 180);
     if (ensure.exitCode !== 0) return false;
-    const result = await command(boxId, "ovctl reindex", OVCTL_TIMEOUT_SECONDS);
+    const result = await command(boxId, "ovctl reindex", OVCTL_ENQUEUE_TIMEOUT_SECONDS);
     return result.exitCode === 0;
   } catch {
     return false;

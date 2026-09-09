@@ -2,13 +2,20 @@
  * MA9.1 — owner-session Memory surface: view MEMORY.md + USER.md, edit
  * USER.md, clear with an explicit confirm. Contents flow box → response only
  * (C4): no Postgres write, no log line ever carries a memory byte.
+ *
+ * GET returns `user_revision`, the fingerprint of USER.md as served; a PUT
+ * that echoes it as `base_revision` only lands if the agent has not
+ * rewritten the profile since (409 otherwise).
  */
 import { NextRequest, NextResponse } from "next/server";
 import { sessionUserId } from "@/lib/auth/user";
 import {
   clearMemoryFiles,
+  isProfileRevision,
+  profileRevision,
   readMemoryFiles,
   USER_PROFILE_CHAR_LIMIT,
+  UserProfileConflictError,
   writeUserProfile,
   type MemoryTarget,
 } from "@/lib/memory/files";
@@ -42,7 +49,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     try {
       const files = await readMemoryFiles(box.boxId);
       return NextResponse.json(
-        { ...files, user_char_limit: USER_PROFILE_CHAR_LIMIT },
+        {
+          ...files,
+          user_char_limit: USER_PROFILE_CHAR_LIMIT,
+          user_revision: profileRevision(files.user),
+        },
         { headers: NO_STORE }
       );
     } finally {
@@ -65,10 +76,20 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
   }
   const body = (await request.json().catch(() => null)) as {
     user?: unknown;
+    base_revision?: unknown;
   } | null;
   if (!body || typeof body.user !== "string") {
     return NextResponse.json(
       { error: "user (string) required" },
+      { status: 400 }
+    );
+  }
+  const baseRevision = isProfileRevision(body.base_revision)
+    ? body.base_revision
+    : undefined;
+  if (body.base_revision !== undefined && baseRevision === undefined) {
+    return NextResponse.json(
+      { error: "base_revision must be a sha256 hex digest" },
       { status: 400 }
     );
   }
@@ -82,13 +103,22 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
   try {
     const box = await ensureBoxAwake(supabase, userId);
     try {
-      await writeUserProfile(box.boxId, body.user);
-      return NextResponse.json({ ok: true }, { headers: NO_STORE });
+      await writeUserProfile(box.boxId, body.user, baseRevision);
+      return NextResponse.json(
+        { ok: true, user_revision: profileRevision(body.user) },
+        { headers: NO_STORE }
+      );
     } finally {
       await armStopAfter(supabase, userId).catch(() => undefined);
     }
   } catch (error) {
     if (error instanceof StartLimitError) return busy();
+    if (error instanceof UserProfileConflictError) {
+      return NextResponse.json(
+        { error: "profile changed since it was loaded", conflict: true },
+        { status: 409, headers: NO_STORE }
+      );
+    }
     return NextResponse.json(
       { error: "memory write failed" },
       { status: 502, headers: NO_STORE }
@@ -126,7 +156,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const box = await ensureBoxAwake(supabase, userId);
     try {
       await clearMemoryFiles(box.boxId, target as MemoryTarget);
-      return NextResponse.json({ ok: true }, { headers: NO_STORE });
+      // A "fresh start" clear of both files leaves deep memory (the box's
+      // OpenViking store) intact; offer that separate, confirm-gated wipe
+      // via POST /api/me/memory/deep rather than forcing it here.
+      return NextResponse.json(
+        target === "both" ? { ok: true, deep_memory_offer: true } : { ok: true },
+        { headers: NO_STORE }
+      );
     } finally {
       await armStopAfter(supabase, userId).catch(() => undefined);
     }

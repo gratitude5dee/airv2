@@ -1,7 +1,12 @@
 import type { NextConfig } from "next";
+import path from "node:path";
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // Workspace root: the traced includes below reach into packages/ and the
+  // hoisted node_modules, so the tracing root must be the monorepo, not
+  // apps/web (Next otherwise infers it from lockfiles and warns).
+  outputFileTracingRoot: path.join(__dirname, "../../"),
   // The Build Service (lib/create/build.ts) drives esbuild's native binary at
   // request time; it must be required from node_modules, not bundled.
   serverExternalPackages: ["esbuild"],

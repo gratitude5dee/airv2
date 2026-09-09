@@ -140,7 +140,11 @@ function stampTemplate(release: string, skills: readonly string[]) {
   templateStamp.release = release;
   templateStamp.skills = [...skills];
 }
+let memoryInitializationFails = false;
 const boxCommand = vi.fn(async (_id: string, cmd: string) => {
+  if (cmd === "ovctl ensure" && memoryInitializationFails) {
+    return { exitCode: 1, stdout: "", stderr: "sensitive provider diagnostic" };
+  }
   if (cmd.includes(".template-hermes-ref")) {
     return { exitCode: 0, stdout: "sha-1\n", stderr: "" };
   }
@@ -166,6 +170,16 @@ const boxCommand = vi.fn(async (_id: string, cmd: string) => {
 });
 vi.mock("../box/client", () => ({
   command: (...args: unknown[]) => boxCommand(...(args as [string, string])),
+  providerOf: (id: string) =>
+    id.startsWith("tk_") || id.startsWith("tenki:") ? "tenki" : "ascii",
+  hostRoute: async (boxId: string, port: number) => {
+    const result = await boxCommand(boxId, `/.ascii/host url ${port}`);
+    const line = result.stdout
+      .split("\n")
+      .find((candidate) => candidate.includes(`-${port}.on.ascii.dev`));
+    const [url = "", token = ""] = (line ?? "").split("?_token=");
+    return { url, token };
+  },
   deleteBox: vi.fn(),
   fork: (...args: unknown[]) => fork(...(args as [])),
   stop: vi.fn(),
@@ -225,8 +239,10 @@ vi.mock("../env", () => ({
     macBootstrapUrl: () => null,
     appOrigin: () => "https://air.test",
     boxDashboardAuthKey: () => null,
+    tenkiTemplateId: () => tenkiTemplate,
   },
 }));
+let tenkiTemplate: string | null = "tenki:snap-1";
 
 import {
   LONGEST_REPLACE_CALLER_SECONDS,
@@ -272,8 +288,10 @@ beforeEach(() => {
   }
   boxUpdates.length = 0;
   failBoxUpdate = null;
+  memoryInitializationFails = false;
   stampTemplate("", []);
-  fork.mockClear();
+  fork.mockReset().mockResolvedValue({ id: "box-new" });
+  boxCommand.mockClear();
   createMacInstance.mockClear();
   installComposioMcp.mockClear();
   installBaseSkills.mockReset();
@@ -288,6 +306,13 @@ beforeEach(() => {
 });
 
 describe("provisionUser environments", () => {
+  it("rolls back a fork whose memory initialization fails without exposing command diagnostics", async () => {
+    memoryInitializationFails = true;
+    await expect(provisionUser()).rejects.toThrow("Deep memory initialization failed");
+    expect(boxClient.deleteBox).toHaveBeenCalledWith("box-new");
+    expect(upserts["boxes"] ?? []).toEqual([]);
+  });
+
   it("defaults to ubuntu and forks the ubuntu template", async () => {
     const result = await provisionUser();
     expect(result.environment).toBe("ubuntu");
@@ -301,6 +326,11 @@ describe("provisionUser environments", () => {
       provider_box_id: "box-new",
     });
     expect(installComposioMcp).toHaveBeenCalled();
+    const commands = boxCommand.mock.calls.map((call) => call[1]);
+    const merge = commands.findIndex((cmd) => cmd.includes("cat") && cmd.includes(".env.perbox"));
+    const memory = commands.indexOf("ovctl ensure");
+    expect(merge).toBeGreaterThanOrEqual(0);
+    expect(memory).toBeGreaterThan(merge);
   });
 
   it("explicit ubuntu behaves exactly like the default", async () => {
@@ -326,6 +356,45 @@ describe("provisionUser environments", () => {
       provider: "ascii",
     });
     expect(installComposioMcp).toHaveBeenCalled();
+  });
+
+  it("provider tenki forks the Tenki snapshot and records the tenki provider", async () => {
+    fork.mockResolvedValueOnce({ id: "tk_sess-1" });
+    vi.mocked(boxClient.waitForBox).mockResolvedValueOnce({
+      id: "tk_sess-1",
+    } as Awaited<ReturnType<typeof boxClient.waitForBox>>);
+    const result = await provisionUser({ provider: "tenki" });
+    expect(result.environment).toBe("ubuntu");
+    expect(result.boxId).toBe("tk_sess-1");
+    expect(fork).toHaveBeenCalledWith(
+      expect.objectContaining({ templateId: "tenki:snap-1" })
+    );
+    expect(upserts["boxes"]?.[0]).toMatchObject({
+      environment: "ubuntu",
+      provider: "tenki",
+      provider_box_id: "tk_sess-1",
+      baseline_version: null,
+    });
+    expect(boxCommand).toHaveBeenCalledWith("tk_sess-1", "ovctl ensure", 180);
+  });
+
+  it("provider tenki without TENKI_TEMPLATE_ID fails before forking", async () => {
+    tenkiTemplate = null;
+    try {
+      await expect(provisionUser({ provider: "tenki" })).rejects.toThrow(
+        /TENKI_TEMPLATE_ID/
+      );
+    } finally {
+      tenkiTemplate = "tenki:snap-1";
+    }
+    expect(fork).not.toHaveBeenCalled();
+  });
+
+  it("provider tenki is ubuntu-only", async () => {
+    await expect(
+      provisionUser({ provider: "tenki", environment: "omarchy" })
+    ).rejects.toThrow(/ubuntu only/);
+    expect(fork).not.toHaveBeenCalled();
   });
 
   it("omarchy with no registered template fails instead of forking ubuntu", async () => {

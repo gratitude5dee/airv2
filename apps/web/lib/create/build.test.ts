@@ -1,5 +1,8 @@
 import { gzipSync } from "node:zlib";
-import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { describe, expect, it, vi } from "vitest";
 import { KitError, readTarGz, safeArchivePath } from "./kit";
 import {
   AIR_APP_SCHEMA,
@@ -177,6 +180,29 @@ describe("compileWorkspace", () => {
     expect(out.sizes.js_gzip).toBeGreaterThan(0);
     expect(out.log.some((line) => line.startsWith("bundle:"))).toBe(true);
     expect(out.log.join("\n")).not.toContain("Tour countdown");
+  }, 60_000);
+
+  it("compiles through a symlinked temporary root while still rejecting escapes", async () => {
+    const physical = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "air-path-test-")));
+    const alias = path.join(physical, "alias");
+    fs.symlinkSync(physical, alias, "dir");
+    const temporaryRoot = vi.spyOn(os, "tmpdir").mockReturnValue(alias);
+    try {
+      const built = await compileWorkspace(workspace(), { restricted: false });
+      expect(hard(built.findings)).toEqual([]);
+      expect(built.files.length).toBeGreaterThan(0);
+      const refused = await compileWorkspace(
+        workspace({ "src/main.tsx": 'import x from "../../outside.ts"; console.log(x);' }),
+        { restricted: false }
+      );
+      expect(refused.files).toEqual([]);
+      expect(refused.findings).toEqual(expect.arrayContaining([
+        expect.objectContaining({ file: "src/main.tsx", rule: "path-escape", severity: "hard" }),
+      ]));
+    } finally {
+      temporaryRoot.mockRestore();
+      fs.rmSync(physical, { recursive: true, force: true });
+    }
   }, 60_000);
 
   it("refuses a foreign specifier as a hard finding and produces no files", async () => {

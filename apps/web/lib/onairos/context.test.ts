@@ -108,9 +108,19 @@ describe("personaBlock", () => {
     expect(block.endsWith(PERSONA_BLOCK_END)).toBe(true);
     expect(block).toContain("Archetype: The Builder");
     expect(block).toContain("Top traits: Curiosity (91), Grit (80), Focus");
-    expect(block).toContain("Growth areas: Patience (40)");
-    expect(block).toContain("Built from: youtube, reddit");
+    expect(block.length).toBeLessThanOrEqual(300);
     expect(block).toContain("~/.hermes/context/onairos.md");
+  });
+
+  it("bounds untrusted long fields without truncating its pointer or closing marker", () => {
+    const block = personaBlock({ traits: {
+      archetype: "🧠".repeat(2000), user_summary: "x".repeat(4000),
+      positive_traits: { ["Long name".repeat(1000)]: 99 },
+    } }, "2026-09-07T00:00:00Z");
+    expect(block.length).toBeLessThanOrEqual(300);
+    expect(block).toContain("~/.hermes/context/onairos.md");
+    expect(block.endsWith(PERSONA_BLOCK_END)).toBe(true);
+    expect(contextMarkdown(persona, "2026-09-07T00:00:00Z")).toContain("Patience");
   });
 
   it("never names the provider in the digest heading or guidance", () => {

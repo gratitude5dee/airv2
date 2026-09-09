@@ -6,6 +6,7 @@
 set -uo pipefail
 
 HOME_DIR="${HOME:-/home/user}"
+TEMPLATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FAILED=0
 
 check() {
@@ -20,6 +21,7 @@ check() {
 }
 
 check "soul-identity" grep -q '^## You are air' "$HOME_DIR/.hermes/SOUL.md"
+check "soul-managed-current" python3 "$TEMPLATE_DIR/manage-soul.py" "$HOME_DIR/.hermes/SOUL.md" --check
 check "air-vault" command -v air-vault
 check "open-miniapp-card" command -v open-miniapp-card
 check "air-create" command -v air-create
@@ -35,7 +37,13 @@ check "plugin-creative" test -d "$HOME_DIR/.hermes/plugins/creative"
 check "plugin-air-vault" test -d "$HOME_DIR/.hermes/plugins/air-vault"
 check "unit-hermes-gateway" systemctl is-active --quiet hermes-gateway
 check "unit-hermes-dashboard" systemctl is-active --quiet hermes-dashboard
-check "unit-hermes-host" systemctl is-active --quiet hermes-host
+# hermes-host is condition-skipped where the host CLI is absent (Tenki): the
+# control plane publishes those routes itself, so the unit is not a gate there.
+if [ -x "$HOME_DIR/.ascii/host" ]; then
+  check "unit-hermes-host" systemctl is-active --quiet hermes-host
+else
+  echo "SKIP unit-hermes-host (no host CLI)"
+fi
 check "unit-hermes-sidecar-owner" systemctl is-active --quiet hermes-sidecar-owner.timer
 
 gateway_health() {

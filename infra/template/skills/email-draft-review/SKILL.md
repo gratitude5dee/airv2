@@ -44,7 +44,9 @@ address, and says "can you send this":
 #      to=["them@example.com"], subject="Checking in", text=<the pasted note>
 #    → returns draft_id (and the inbox_id it landed in)
 # 2. file it for review, same turn:
-set -a; . ~/.hermes/.env; set +a
+# Read only the gateway settings as data; never execute the environment file.
+OPENAI_BASE_URL="$(grep -m1 '^OPENAI_BASE_URL=' ~/.hermes/.env | cut -d= -f2-)"
+OPENAI_API_KEY="$(grep -m1 '^OPENAI_API_KEY=' ~/.hermes/.env | cut -d= -f2-)"
 curl -fsS -X POST \
   "${OPENAI_BASE_URL%/api/gateway/v1}/api/email/drafts/review" \
   -H "Authorization: Bearer $OPENAI_API_KEY" \
@@ -81,7 +83,9 @@ inbox other than `WZRDMAIL_INBOX_ID` / `AGENTMAIL_INBOX_ID`; pass the `inbox_id`
 by the create call alongside `draft_id`:
 
 ```bash
-set -a; . ~/.hermes/.env; set +a
+# Read only the gateway settings as data; never execute the environment file.
+OPENAI_BASE_URL="$(grep -m1 '^OPENAI_BASE_URL=' ~/.hermes/.env | cut -d= -f2-)"
+OPENAI_API_KEY="$(grep -m1 '^OPENAI_API_KEY=' ~/.hermes/.env | cut -d= -f2-)"
 curl -fsS -X POST \
   "${OPENAI_BASE_URL%/api/gateway/v1}/api/email/drafts/review" \
   -H "Authorization: Bearer $OPENAI_API_KEY" \

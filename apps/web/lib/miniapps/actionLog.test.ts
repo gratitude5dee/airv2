@@ -96,6 +96,56 @@ beforeEach(() => {
 });
 afterEach(() => vi.restoreAllMocks());
 
+describe("MS-24 first-party document mutations", () => {
+  for (const app of ["kanban", "todo"] as const) {
+    it(`${app} preserves two interleaved additions`, async () => {
+      const { addKanbanCard, updateTodo } = await import("./store");
+      const path = `.hermes/miniapps/${app}/main.json`;
+      const add = (text: string) => app === "kanban"
+        ? addKanbanCard(supabase, "u1", "main", "todo", text)
+        : updateTodo(supabase, "u1", "main", { kind: "add", text });
+      let open!: () => void;
+      readGate = new Promise((resolve) => (open = resolve));
+      const first = add("first");
+      await vi.waitFor(() => expect(boxCalls).toContain(`read ${path}`));
+      const second = add("second");
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(boxCalls.filter((call) => call.startsWith("read"))).toHaveLength(1);
+      open();
+      await Promise.all([first, second]);
+      const doc = JSON.parse(files.get(path)!);
+      const items = app === "todo" ? doc.items : doc.columns[0].cards;
+      expect(items.map((item: { text: string }) => item.text)).toEqual(["first", "second"]);
+      expect(new Set(items.map((item: { id: string }) => item.id)).size).toBe(2);
+      expect(leases.size).toBe(0);
+    });
+  }
+
+  it("refuses a stale board write if another holder took over during the read", async () => {
+    const { updateTodo } = await import("./store");
+    const { StateBusyError } = await import("./stateLease");
+    let open!: () => void;
+    readGate = new Promise((resolve) => (open = resolve));
+    const pending = updateTodo(supabase, "u1", "main", { kind: "add", text: "stale" });
+    await vi.waitFor(() => expect(boxCalls).toContain("read .hermes/miniapps/todo/main.json"));
+    leases.set("u1/todo/main", { holder: "replacement", expiresAt: Date.now() + 90_000 });
+    open();
+    await expect(pending).rejects.toBeInstanceOf(StateBusyError);
+    expect(boxCalls.some((call) => call.startsWith("write"))).toBe(false);
+    expect(leases.get("u1/todo/main")?.holder).toBe("replacement");
+  });
+
+  it("stops after two retries without reading when the document stays busy", async () => {
+    const { updateTodo } = await import("./store");
+    const { StateBusyError } = await import("./stateLease");
+    leases.set("u1/todo/main", { holder: "other", expiresAt: Date.now() + 90_000 });
+    await expect(updateTodo(supabase, "u1", "main", { kind: "add", text: "later" }))
+      .rejects.toBeInstanceOf(StateBusyError);
+    expect(rpcCalls.filter((call) => call === "miniapp_state_lease")).toHaveLength(3);
+    expect(boxCalls).toEqual([]);
+  });
+});
+
 describe("appendActionLogEntry", () => {
   it("the unleased read-modify-write drops a concurrent append (the race)", async () => {
     const { readAppState, writeAppState } = await import("./store");

@@ -23,7 +23,9 @@ succeeded — its dashboard shows "waiting" until you post this confirmation.
 2. Post the confirmation:
 
 ```bash
-set -a; . ~/.hermes/.env; set +a
+# Read only the gateway settings as data; never execute the environment file.
+OPENAI_BASE_URL="$(grep -m1 '^OPENAI_BASE_URL=' ~/.hermes/.env | cut -d= -f2-)"
+OPENAI_API_KEY="$(grep -m1 '^OPENAI_API_KEY=' ~/.hermes/.env | cut -d= -f2-)"
 curl -fsS -X POST "${OPENAI_BASE_URL%/api/gateway/v1}/api/ads/meta/confirm" \
   -H "Authorization: Bearer $OPENAI_API_KEY" \
   -H "Content-Type: application/json" \
@@ -41,7 +43,9 @@ new creative) goes through the write gate — the control plane files it as a
 pending `ad_write` decision and only owner approval executes it:
 
 ```bash
-set -a; . ~/.hermes/.env; set +a
+# Read only the gateway settings as data; never execute the environment file.
+OPENAI_BASE_URL="$(grep -m1 '^OPENAI_BASE_URL=' ~/.hermes/.env | cut -d= -f2-)"
+OPENAI_API_KEY="$(grep -m1 '^OPENAI_API_KEY=' ~/.hermes/.env | cut -d= -f2-)"
 curl -fsS -X POST "${OPENAI_BASE_URL%/api/gateway/v1}/api/ads/writes" \
   -H "Authorization: Bearer $OPENAI_API_KEY" \
   -H "Content-Type: application/json" \

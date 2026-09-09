@@ -16,12 +16,14 @@ import {
   MAX_CHUNK_BYTES,
   mintImportTicket,
   parseImportChunk,
-  readImportStatus,
   startDictionaryRun,
   storeImportChunk,
   verifyImportTicket,
 } from "@/lib/context/importer";
-import { writeStatusMirror } from "@/lib/miniapps/onboardingMirror";
+import {
+  readImportStatusOrMirror,
+  writeStatusMirror,
+} from "@/lib/miniapps/onboardingMirror";
 import { armStopAfter, StartLimitError } from "@/lib/orchestrator/boxes";
 import { serviceClient } from "@/lib/supabase";
 import { env } from "@/lib/env";
@@ -44,11 +46,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const supabase = serviceClient();
+  // A sleeping box answers from the Postgres mirror (refreshed on every
+  // upload chunk) rather than spending a wake on a read-only status view.
+  let read: Awaited<ReturnType<typeof readImportStatusOrMirror>>;
   try {
-    const status = await readImportStatus(supabase, userId);
-    const ticket = mintImportTicket(userId);
-    const command = `curl -fsSL ${env.appOrigin()}/agent-context-import.sh -o /tmp/air-import.sh && AIR_IMPORT_ENDPOINT=${env.appOrigin()}/api/me/agent-context bash /tmp/air-import.sh ${ticket}`;
-    return NextResponse.json({ status, command }, { headers: NO_STORE });
+    read = await readImportStatusOrMirror(supabase, userId);
   } catch (error) {
     if (error instanceof StartLimitError) return busy();
     return NextResponse.json(
@@ -58,6 +60,17 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   } finally {
     await armStopAfter(supabase, userId).catch(() => undefined);
   }
+  const ticket = mintImportTicket(userId);
+  const command = `curl -fsSL ${env.appOrigin()}/agent-context-import.sh -o /tmp/air-import.sh && AIR_IMPORT_ENDPOINT=${env.appOrigin()}/api/me/agent-context bash /tmp/air-import.sh ${ticket}`;
+  return NextResponse.json(
+    {
+      status: read.status,
+      command,
+      source: read.source,
+      refreshed_at: read.refreshedAt,
+    },
+    { headers: NO_STORE }
+  );
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {

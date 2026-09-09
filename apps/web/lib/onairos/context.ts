@@ -172,15 +172,15 @@ export const PERSONA_BLOCK_END = "<!-- onairos-persona:end -->";
 
 /** USER.md is budgeted (~500 tokens in Hermes), so the digest keeps only the
  * highest-signal fields; the full projection stays in onairos.md. */
-const MAX_DIGEST_TRAITS = 5;
-const MAX_DIGEST_GROWTH = 3;
-const MAX_SUMMARY_CHARS = 400;
+export const PERSONA_BLOCK_CHAR_LIMIT = 300;
+const MAX_DIGEST_TRAITS = 3;
 
 function truncate(text: string, max: number): string {
   if (text.length <= max) return text;
-  const cut = text.slice(0, max);
+  const cut = text.slice(0, max - 1);
   const space = cut.lastIndexOf(" ");
-  return `${cut.slice(0, space > max / 2 ? space : max)}…`;
+  const shortened = cut.slice(0, space > max / 2 ? space : max - 1);
+  return `${shortened.replace(/[\uD800-\uDBFF]$/, "")}…`;
 }
 
 /** Highest-scored trait names first (unscored traits keep their order, last). */
@@ -193,41 +193,26 @@ function rankedTraits(record: Record<string, unknown>, limit: number): string {
     .join(", ");
 }
 
-/** Compact persona digest for USER.md: archetype, ranked traits, summary,
- * growth areas, connected platforms — the onairos-hermes-mcp shape. */
+/** A bounded hot-memory hint; the complete persona stays in onairos.md. */
 export function personaBlock(persona: unknown, syncedAt: string): string {
   const traits = extractTraits(persona);
-  const root = persona as { connectedPlatforms?: unknown } | null;
-  const lines: string[] = [
-    PERSONA_BLOCK_START,
-    "## What you know about your owner",
-    "Use this automatically whenever you personalize — recommendations, tone,",
-    "examples. The owner never needs to name or ask for this context.",
-  ];
+  const lines: string[] = [];
   if (typeof traits.archetype === "string" && traits.archetype) {
     lines.push(`Archetype: The ${traits.archetype}`);
-  }
-  if (typeof traits.user_summary === "string" && traits.user_summary) {
-    lines.push(truncate(traits.user_summary, MAX_SUMMARY_CHARS));
   }
   const strengths = rankedTraits(
     traits.positive_traits ?? {},
     MAX_DIGEST_TRAITS
   );
   if (strengths) lines.push(`Top traits: ${strengths}`);
-  const growth = rankedTraits(traits.traits_to_improve ?? {}, MAX_DIGEST_GROWTH);
-  if (growth) lines.push(`Growth areas: ${growth}`);
-  if (Array.isArray(root?.connectedPlatforms)) {
-    const platforms = root.connectedPlatforms.filter(
-      (entry): entry is string => typeof entry === "string"
-    );
-    if (platforms.length > 0) lines.push(`Built from: ${platforms.join(", ")}`);
+  if (typeof traits.user_summary === "string" && traits.user_summary) {
+    lines.push(traits.user_summary);
   }
-  lines.push(
-    `Synced ${syncedAt} — full detail in ~/.hermes/context/onairos.md.`,
-    PERSONA_BLOCK_END
-  );
-  return lines.join("\n");
+  const prefix = `${PERSONA_BLOCK_START}\n## Owner context\n`;
+  const suffix = `\nPersonalize when relevant: ~/.hermes/context/onairos.md (${syncedAt.slice(0, 10)}).\n${PERSONA_BLOCK_END}`;
+  const digest = lines.join("; ").replace(/\s+/g, " ")
+    .replaceAll(PERSONA_BLOCK_START, "").replaceAll(PERSONA_BLOCK_END, "");
+  return prefix + truncate(digest, PERSONA_BLOCK_CHAR_LIMIT - prefix.length - suffix.length) + suffix;
 }
 
 const BLOCK_PATTERN = new RegExp(

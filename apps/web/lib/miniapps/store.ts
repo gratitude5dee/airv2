@@ -4,9 +4,11 @@
  * `.hermes/miniapps/<app>/<resource>.json`, so the agent's own tools and the
  * mini-app views read and write the same state.
  */
+import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { BoxApiError, readFile, writeFile } from "../box/client";
 import { ensureBoxAwake } from "../orchestrator/boxes";
+import { withStateLease } from "./stateLease";
 
 export interface KanbanCard {
   id: string;
@@ -58,11 +60,20 @@ async function readDoc<T>(
   fallback: T
 ): Promise<T> {
   const box = await ensureBoxAwake(supabase, userId);
+  return readDocFrom(box.boxId, app, resourceId, fallback);
+}
+
+async function readDocFrom<T>(boxId: string, app: string, resourceId: string, fallback: T): Promise<T> {
   try {
-    const raw = await readFile(box.boxId, docPath(app, resourceId));
+    const raw = await readFile(boxId, docPath(app, resourceId));
     return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
+  } catch (error) {
+    // Only an absent document permits initialization. A failed read or
+    // malformed document must never become an empty board on the next write.
+    if (error instanceof BoxApiError && error.status === 404) {
+      return structuredClone(fallback);
+    }
+    throw error;
   }
 }
 
@@ -73,12 +84,28 @@ async function writeDoc<T>(
   resourceId: string,
   doc: T
 ): Promise<void> {
-  const box = await ensureBoxAwake(supabase, userId);
-  await writeFile(
-    box.boxId,
-    docPath(app, resourceId),
-    JSON.stringify(doc, null, 2)
-  );
+  if (app === "kanban" || app === "todo") {
+    await withStateLease(supabase, userId, app, resourceId, { attempts: 3 }, async (boxId) => {
+      await writeAppStateTo(boxId, app, resourceId, doc);
+    });
+  } else {
+    const box = await ensureBoxAwake(supabase, userId);
+    await writeAppStateTo(box.boxId, app, resourceId, doc);
+  }
+}
+
+async function mutateDoc<T>(
+  supabase: SupabaseClient, userId: string, app: string, resourceId: string,
+  fallback: T, mutate: (doc: T) => boolean
+): Promise<T> {
+  return withStateLease(supabase, userId, app, resourceId, { attempts: 3 }, async (boxId, renew) => {
+    const doc = await readDocFrom(boxId, app, resourceId, fallback);
+    if (mutate(doc)) {
+      await renew();
+      await writeAppStateTo(boxId, app, resourceId, doc);
+    }
+    return doc;
+  });
 }
 
 /**
@@ -156,21 +183,23 @@ export async function moveKanbanCard(
   cardId: string,
   toColumnId: string
 ): Promise<KanbanBoard> {
-  const board = await getKanban(supabase, userId, resourceId);
-  let moved: KanbanCard | undefined;
-  for (const column of board.columns) {
-    const index = column.cards.findIndex((c) => c.id === cardId);
-    if (index >= 0) {
-      [moved] = column.cards.splice(index, 1);
-      break;
+  return mutateDoc(supabase, userId, "kanban", resourceId, DEFAULT_BOARD, (board) => {
+    const target = board.columns.find((c) => c.id === toColumnId);
+    if (!target) return false;
+    let moved: KanbanCard | undefined;
+    for (const column of board.columns) {
+      const index = column.cards.findIndex((c) => c.id === cardId);
+      if (index >= 0) {
+        [moved] = column.cards.splice(index, 1);
+        break;
+      }
     }
-  }
-  const target = board.columns.find((c) => c.id === toColumnId);
-  if (moved && target) {
-    target.cards.push(moved);
-    await writeDoc(supabase, userId, "kanban", resourceId, board);
-  }
-  return board;
+    if (moved && target) {
+      target.cards.push(moved);
+      return true;
+    }
+    return false;
+  });
 }
 
 export async function addKanbanCard(
@@ -180,17 +209,18 @@ export async function addKanbanCard(
   columnId: string,
   text: string
 ): Promise<KanbanBoard> {
-  const board = await getKanban(supabase, userId, resourceId);
-  const column =
-    board.columns.find((c) => c.id === columnId) ?? board.columns[0];
-  if (column && text.trim()) {
-    column.cards.push({
-      id: `c${Date.now().toString(36)}`,
-      text: text.trim().slice(0, 200),
-    });
-    await writeDoc(supabase, userId, "kanban", resourceId, board);
-  }
-  return board;
+  return mutateDoc(supabase, userId, "kanban", resourceId, DEFAULT_BOARD, (board) => {
+    const column =
+      board.columns.find((c) => c.id === columnId) ?? board.columns[0];
+    if (column && text.trim()) {
+      column.cards.push({
+        id: `c${randomUUID()}`,
+        text: text.trim().slice(0, 200),
+      });
+      return true;
+    }
+    return false;
+  });
 }
 
 export async function getTodos(
@@ -207,17 +237,21 @@ export async function updateTodo(
   resourceId: string,
   action: { kind: "add"; text: string } | { kind: "toggle"; id: string }
 ): Promise<TodoList> {
-  const list = await getTodos(supabase, userId, resourceId);
-  if (action.kind === "add" && action.text.trim()) {
-    list.items.push({
-      id: `t${Date.now().toString(36)}`,
-      text: action.text.trim().slice(0, 200),
-      done: false,
-    });
-  } else if (action.kind === "toggle") {
-    const item = list.items.find((i) => i.id === action.id);
-    if (item) item.done = !item.done;
-  }
-  await writeDoc(supabase, userId, "todo", resourceId, list);
-  return list;
+  return mutateDoc(supabase, userId, "todo", resourceId, DEFAULT_TODOS, (list) => {
+    if (action.kind === "add" && action.text.trim()) {
+      list.items.push({
+        id: `t${randomUUID()}`,
+        text: action.text.trim().slice(0, 200),
+        done: false,
+      });
+      return true;
+    } else if (action.kind === "toggle") {
+      const item = list.items.find((i) => i.id === action.id);
+      if (item) {
+        item.done = !item.done;
+        return true;
+      }
+    }
+    return false;
+  });
 }

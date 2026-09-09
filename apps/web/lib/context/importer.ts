@@ -197,6 +197,9 @@ export interface ImportStatus {
   dictionary_started_at: string | null;
   dictionary_built_at: string | null;
   dictionary_run_id: string | null;
+  /** The `dictionary_built_at` value whose Dictionary.MD has been enqueued
+   * for indexing; differs from `dictionary_built_at` until the enqueue lands. */
+  dictionary_indexed_for: string | null;
 }
 
 export function defaultImportStatus(): ImportStatus {
@@ -210,6 +213,7 @@ export function defaultImportStatus(): ImportStatus {
     dictionary_started_at: null,
     dictionary_built_at: null,
     dictionary_run_id: null,
+    dictionary_indexed_for: null,
   };
 }
 
@@ -242,7 +246,41 @@ export function normalizeImportStatus(raw: unknown): ImportStatus {
   if (typeof doc["dictionary_run_id"] === "string") {
     status.dictionary_run_id = doc["dictionary_run_id"];
   }
+  if (typeof doc["dictionary_indexed_for"] === "string") {
+    status.dictionary_indexed_for = doc["dictionary_indexed_for"];
+  }
   return status;
+}
+
+export function dictionaryIndexPending(status: ImportStatus): boolean {
+  return (
+    status.dictionary_built_at !== null &&
+    status.dictionary_indexed_for !== status.dictionary_built_at
+  );
+}
+
+/**
+ * The ingest subagent writes Dictionary.MD and then flips
+ * `dictionary_built_at`; nothing box-side enqueues the file, so the control
+ * plane does it on the first status read that observes a build it has not
+ * indexed yet. Only a durable enqueue receipt records the build as indexed;
+ * a failed enqueue leaves the marker behind so the next read retries.
+ */
+async function indexBuiltDictionary(
+  boxId: string,
+  status: ImportStatus
+): Promise<ImportStatus> {
+  if (!dictionaryIndexPending(status)) return status;
+  const ok = await deepMemoryIndex(boxId, DICTIONARY_PATH, OV_DICTIONARY_URI);
+  if (!ok) return status;
+  const indexed = { ...status, dictionary_indexed_for: status.dictionary_built_at };
+  try {
+    await writeFile(boxId, STATUS_PATH, JSON.stringify(indexed, null, 2));
+  } catch {
+    // Enqueue is idempotent; an unrecorded receipt re-enqueues on the next read.
+    return status;
+  }
+  return indexed;
 }
 
 export function importedFileCount(status: ImportStatus): number {
@@ -258,13 +296,15 @@ export async function readImportStatus(
   userId: string
 ): Promise<ImportStatus> {
   const box = await ensureBoxAwake(supabase, userId);
+  let status: ImportStatus;
   try {
-    return normalizeImportStatus(
+    status = normalizeImportStatus(
       JSON.parse(await readFile(box.boxId, STATUS_PATH))
     );
   } catch {
     return defaultImportStatus();
   }
+  return indexBuiltDictionary(box.boxId, status);
 }
 
 /** Write one validated chunk into the box and bump the status document. */
@@ -295,9 +335,12 @@ export async function storeImportChunk(
   status.sources[chunk.source].bytes += bytes;
   status.last_upload_at = new Date().toISOString();
   await writeFile(box.boxId, STATUS_PATH, JSON.stringify(status, null, 2));
-  // Deep memory (docs/memory-upgrade.md): make the imported store
-  // semantically searchable box-side. Best-effort, enqueue-only.
-  await deepMemoryIndex(box.boxId, `${IMPORT_DIR}/${chunk.source}`, `${OV_IMPORT_URI}/${chunk.source}`);
+  // Replacing an index while a multi-chunk upload is incomplete cancels
+  // prior indexing and repeatedly embeds the same files. Enqueue once the
+  // extractor confirms this source's final chunk has been durably written.
+  if (chunk.final) {
+    await deepMemoryIndex(box.boxId, `${IMPORT_DIR}/${chunk.source}`, `${OV_IMPORT_URI}/${chunk.source}`);
+  }
   console.log(
     JSON.stringify({
       msg: "agent context chunk stored",
@@ -364,14 +407,13 @@ export async function startDictionaryRun(
   status.dictionary_started_at = new Date().toISOString();
   status.dictionary_built_at = null;
   status.dictionary_run_id = run.run_id;
+  status.dictionary_indexed_for = null;
   await writeFile(box.boxId, STATUS_PATH, JSON.stringify(status, null, 2));
   await supabase.from("agent_runs").insert({
     user_id: userId,
     hermes_run_id: run.run_id,
     trigger: "web",
   });
-  // Index the dictionary target so deep memory picks it up once written.
-  await deepMemoryIndex(box.boxId, DICTIONARY_PATH, OV_DICTIONARY_URI);
   console.log(
     JSON.stringify({
       msg: "dictionary ingest run started",

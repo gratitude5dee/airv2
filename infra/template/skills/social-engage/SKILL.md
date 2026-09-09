@@ -20,7 +20,9 @@ name are gated. The gates are enforced by the control plane — follow them.
 Before driving the browser, check whether the platform has an API adapter:
 
 ```bash
-set -a; . ~/.hermes/.env; set +a
+# Read only the gateway settings as data; never execute the environment file.
+OPENAI_BASE_URL="$(grep -m1 '^OPENAI_BASE_URL=' ~/.hermes/.env | cut -d= -f2-)"
+OPENAI_API_KEY="$(grep -m1 '^OPENAI_API_KEY=' ~/.hermes/.env | cut -d= -f2-)"
 curl -fsS "${OPENAI_BASE_URL%/api/gateway/v1}/api/browser/social" \
   -H "Authorization: Bearer $OPENAI_API_KEY"
 ```
@@ -38,7 +40,9 @@ week", "a 2-week content calendar", "a hook strategy for X"), the turn ends
 with a staged plan, not prose. File it the same turn:
 
 ```bash
-set -a; . ~/.hermes/.env; set +a
+# Read only the gateway settings as data; never execute the environment file.
+OPENAI_BASE_URL="$(grep -m1 '^OPENAI_BASE_URL=' ~/.hermes/.env | cut -d= -f2-)"
+OPENAI_API_KEY="$(grep -m1 '^OPENAI_API_KEY=' ~/.hermes/.env | cut -d= -f2-)"
 curl -fsS -X POST "${OPENAI_BASE_URL%/api/gateway/v1}/api/content/plan" \
   -H "Authorization: Bearer $OPENAI_API_KEY" \
   -H "Content-Type: application/json" \

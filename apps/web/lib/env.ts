@@ -20,12 +20,26 @@ export const env = {
   boxApiBase: (): string =>
     optional("BOX_API_BASE", "https://ascii.dev/api/box/v1"),
   boxTemplateId: (): string => required("BOX_TEMPLATE_ID"),
+  // How long fork/resume waits for an ascii.dev box to report ready/idle.
+  // Forks of an archived template restore from cold storage and have taken
+  // over four minutes; a deployment can raise this up to its route budget.
+  boxReadyTimeoutMs: (): number => {
+    const parsed = Number(optional("BOX_READY_TIMEOUT_MS", "240000"));
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 240_000;
+  },
   // The Omarchy template box (infra/template-omarchy — an ascii.dev box like
   // BOX_TEMPLATE_ID, forked the same way). Optional: without it — and without
   // a box_environment_templates pointer — the omarchy environment reports
   // itself unavailable instead of falling back to the Ubuntu template.
   omarchyTemplateId: (): string | null =>
     process.env["OMARCHY_TEMPLATE_ID"] ?? null,
+  // Tenki Sandbox (opt-in second Linux provider, lib/box/tenki.ts). The key
+  // is workspace-scoped; the template is a Tenki snapshot of the Ubuntu
+  // template built by apps/web/scripts/tenki-template.mjs, stored as a
+  // `tenki:<snapshot id>` ref so the provider is visible in the pointer.
+  tenkiApiKey: (): string => required("TENKI_API_KEY"),
+  tenkiTemplateId: (): string | null =>
+    process.env["TENKI_TEMPLATE_ID"] ?? null,
   // Namespace (macos environment). The token is a tenant token
   // (`nsc token create`); without it the macos environment is disabled
   // and onboarding does not offer it.

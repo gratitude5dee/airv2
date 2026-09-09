@@ -1,0 +1,344 @@
+# Review implementation and acceptance
+
+The scope is all 249 findings in `review.md`. `review-findings.json` preserves
+each Appendix A ID and dependency. Run `python3 scripts/review-tracker.py --check`
+to check inventory consistency. This check is not a product-quality score.
+
+## Acceptance
+
+The requested A+/95 goal remains unproven. Completion requires reviewing every
+finding against current implementation and runtime evidence, passing the full
+typecheck, lint, tests and build, and validating the deployed application. Task
+completion, approval gating, appropriate memory recall and honest outcomes must
+be measured against representative isolated evaluation cases in both web and
+iMessage lanes. Report denominators and failures; do not substitute static tests
+or an average of unrelated axes for a 95% task-completion or memory-use result.
+The review's 60% execution, 85% gating and 80% recall floors are intermediate
+milestones, not the requested final target. External provider approvals, social
+publishing parity and mail cutover checks remain explicit prerequisites.
+
+Follow the dependency order in review sections 0 and 12: prevent silent damage;
+instrument; deliver template steering; streamline sender and wake paths; unify
+run evidence and approvals; isolate sessions; wire box-side memory; validate
+mail and social cutovers; audit every remaining finding. Preserve the review's
+security invariants and default product decisions throughout.
+
+## Verified local progress
+
+- Upload validation now rejects invalid timestamps and missing thread identity
+  before storage/migration. Calendar validation refuses rollover dates such as
+  February 30 and 24:00 rather than silently moving messages across dates.
+  All 36 ingest/archive/route tests and typecheck pass locally.
+- Archive concurrency: inspected migrations 0101/0102; the metadata lease
+  accepts the archive namespace and renews the current holder. An overlapping
+  upload test runs the real lease helper against a contention-aware RPC fake,
+  proving the second writer is initially refused, both messages survive and
+  the lease is released. All 20 ingest tests and typecheck pass. This does not
+  substitute for concurrency verification against a deployed database/Box.
+- Reindex now uses exactly the uploader's thread/month Markdown paths and
+  URIs, excluding status, pending files and raw legacy chunks. It reports a
+  nonzero legacy migration count and returns failure until those old files
+  are migrated. Five OpenViking Python tests pass. The full Vitest run passes
+  249 files and 2,532 tests (one skipped); five additional upload-route tests
+  pass on their targeted run. Typecheck passes. These checks do not measure
+  live recall or prove completion of background indexing.
+- Latest archive cutover: `storeChunk` now acquires the metadata-only archive
+  lease, preflights/migrates legacy chunks, and writes the thread/month archive
+  and derived status atomically. Earlier notes below about the old writer
+  remaining active are superseded. Migration preserves raw originals in an
+  unindexed backup and retries from backups after interruption; unresolved
+  identities produce an explicit 409. Lease contention produces retryable
+  503. Nineteen ingest tests and four migration orchestration tests pass,
+  including duplicate-count prevention and backup/marker recovery. Full
+  route/concurrency tests, real migration, reindex alignment, unresolved
+  identity resolution UX and live recall remain pending. No archive finding
+  is closed by these unit tests alone.
+- Archive inputs (MEM-01/MEM-18/MEM-19, in progress): added a deterministic
+  thread/month merge and Markdown renderer, with stable GUID deduplication,
+  edit replacement and content hashes. Upload parsing preserves extractor
+  message/thread identities. Fourteen archive/ingest tests pass. The current
+  writer still stores timestamped JSON; do not deploy this as the completed
+  archive fix. Next: extractor attributedBody decoding and year/cursor
+  selection, durable serialized merge/recovery, storage/index cutover and
+  real-output recall validation. These findings remain unverified.
+  Upload transport now splits by encoded UTF-8 bytes and message count,
+  rejects oversized individual rows before sending, preserves extractor GUIDs,
+  and defaults to a validated 365-day window exposed in onboarding. The API
+  bounds streamed body reads to 4 MiB and cancels oversized requests. Three
+  tests of the actual embedded Python uploader and three stream-reader tests
+  pass, along with typecheck and shell syntax validation. Attributed-body
+  decoding, a since cursor and durable archive storage are still outstanding.
+  `archiveStore.ts` now implements retry repair using source records outside
+  the indexed tree and per-partition count/content-hash receipts. Seven tests
+  cover duplicate and overlapping uploads, edits, partial write recovery,
+  enqueue retry, read failure and lease loss. Typecheck passes. This layer is
+  not yet called by the upload route: legacy JSON migration and the caller's
+  archive lease must land before the cutover. An enqueue receipt records
+  acceptance only, not completed indexing (MEM-21 remains open).
+  Archive writes now stage next to their destination, verify a SHA-256
+  checksum, renew the caller's lease and atomically replace/fsync the file.
+  Three real-filesystem tests verify Unicode/shell-safe paths and mode 0600,
+  truncated-upload preservation, and lease-loss preservation. Together with
+  the seven recovery tests these pass; typecheck passes. The route cutover
+  still awaits legacy migration and lease wiring.
+  Attributed-body decoding is now connected to the extractor: SQL includes
+  archived-body rows and a pinned, checksum-verified pure-Python typedstream
+  decoder reads them locally. Five uploader tests pass, including actual SQL
+  against a synthetic two-row chat.db with an Apple-generated attributed
+  string and plain text. Unknown/corrupt bodies stop before any upload.
+  The wheel includes its source and LGPL license; provenance is recorded in
+  `apps/web/public/vendor/README.md`. Real owner-corpus coverage, archive
+  migration/cutover and recall evaluation are still pending.
+  The extractor also accepts an optional third `SINCE_ISO_UTC` argument,
+  converted to numeric SQL input after timezone validation. Selection includes
+  the boundary second, retaining timestamp ties for deduplication. Six Python
+  uploader/cursor tests pass. Automatic reuse of the saved cursor remains
+  disconnected until the deduplicating writer replaces the current route.
+  Latest broad test run: 246 files passed; the Onairos route fixture had two
+  failures because its generic missing-file error no longer matches typed
+  404 initialization. Corrected that fixture; all four route tests pass on
+  rerun. The broad run contained 2,513 tests (one skipped). No live product
+  success rate can be inferred from this local test count.
+  Matching ID-less messages can now be promoted to identified records within
+  a resolved thread/month, regardless of upload order, while preserving
+  distinct GUIDs. Unknown legacy thread identity still requires migration
+  resolution. The active importer also rejects unreadable or malformed
+  stored status before writing; only a typed 404 initializes status. Fourteen
+  ingest tests and fourteen merge/store tests pass. This does not close
+  archive idempotency: the route still uses the original chunk writer.
+  Thread hashes now distinguish stable IDs from legacy labels. Migration
+  preflight resolves labels only against a unique identity in a supplied
+  complete catalogue, reporting missing or ambiguous matches for resolution.
+  Three preflight tests and fifteen merger/storage tests pass; typecheck
+  passes. The extractor still needs to supply that complete catalogue and
+  the migration runner must persist the resolved history before route cutover.
+  Catalogue delivery now exists: the extractor queries all current message
+  thread identities without the date filter and includes the full catalogue
+  in each byte-bounded request. The parser validates and retains it, including
+  ambiguous labels. Seven Python tests (actual SQL plus upload bytes) and
+  nineteen ingest tests pass, with typecheck and shell syntax checks. The
+  active old writer does not consume the catalogue yet; persistence belongs
+  with the serialized migration/cutover operation.
+- MEM-03: provisioning runs `ovctl ensure` after the per-instance credential
+  merge and rolls back the fork on initialization failure. OpenViking's
+  service pre-start renders configuration without restarting its own unit.
+  Configuration replacement is atomic and mode 0600. Existing sync already
+  runs ensure. All 29 provisioning tests, four OpenViking Python tests and
+  typecheck pass; a live fork/resume and fleet convergence remain pending.
+- MEM-07: cap the complete persona block at 300 characters, retaining the
+  full-context pointer. Validate the resulting USER.md against its shared
+  1,375-character limit before changing persona, grant or profile content.
+  Only a typed Box 404 initializes a missing profile; read failures propagate.
+  All 40 Onairos tests pass, including exact-limit and overflow cases. Live
+  personalization and coordination with other memory writers remain pending.
+- MEM-20: agent imports enqueue indexing after the source's final chunk,
+  rather than replacing the index after every chunk. Manual reindex includes
+  Hermes, Codex, Claude imports and Dictionary.MD at their upload URIs. The
+  TypeScript chunk-order test and Python reindex test pass. Live completion,
+  duplicate-final handling and the related archive changes remain pending.
+- Build validation: canonicalize temporary workspace, vendor and restricted
+  component roots before esbuild containment checks. This fixes macOS symlink
+  path mismatches. An explicit symlink-root regression checks successful
+  compilation and rejection of an import outside the workspace.
+- TC-19: new-box setup and existing-box sync both reconcile one canonical
+  `soul-managed.md` block. The verifier checks its full content, not merely a
+  heading. Legacy template text is migrated, owner edits are retained, and
+  the original file is backed up locally before atomic replacement. Six
+  Python tests cover migration, repeat sync, custom content, malformed
+  markers, permissions, and setup/sync/verify wiring. All three shell scripts
+  pass syntax checks. Artifact release and live fleet convergence are pending.
+- MS-24: kanban and to-do mutations now use the existing metadata-only
+  per-resource lease across the full read-modify-write, including renewal
+  before writing. Whole-document writes to these apps use the same lease.
+  Persistent contention returns a retryable 503 from the mini-app; additions
+  use unique IDs. Four interleaving/contention tests pass alongside all 18
+  existing action-log tests. Live database/Box concurrency remains unmeasured.
+- MS-19: kanban/todo document initialization occurs only on a typed Box 404.
+  Network/500 and malformed JSON errors propagate before writes. Defaults are
+  cloned so one user's first document cannot mutate another user's default.
+  Four regression tests pass in `store.readFailure.test.ts`.
+- TC-05: removed 15 whole-environment sourcing snippets in eleven skills;
+  each now reads only the two gateway settings as data. All 21 template skills
+  pass the no-sourcing guard in `templateSkillEnv.test.ts`. Existing live boxes
+  have not been synced by this task.
+- WEB-24: the runner records monotonic `agent_ms` before stop/reconciliation,
+  nullable first-delta `ttft_ms`, and separate `settle_ms`. The scorer uses
+  measured agent timing with explicit denominators, and labels old results as
+  harness elapsed. Three timer tests and a synthetic scorer exercise pass.
+  No live latency improvement has been measured.
+
+Validation update: the locked dependency install now succeeds. Full Vitest
+3.2.7 run: 243 files pass, 2,484 tests pass and one is skipped. The subsequently
+added symlink regression also passes (18 build tests). Full typecheck passes;
+lint previously reported zero errors and 38 warnings. The production build
+also passes, with warnings including an inferred tracing root outside this
+repository that still needs explicit configuration. GitHub publication,
+Vercel deployment and live evaluation remain outstanding.
+
+MEM-21 durability work in progress: `ovctl add-resource --no-wait` now
+atomically persists a generation-tagged entry in `~/.openviking/pending.json`.
+`resume-pending` serializes workers, retries synchronous indexing, and clears
+only the generation it completed. A systemd timer installed by setup/sync
+replays work after startup and failures. `ovctl status` exposes the pending
+count. Forgetting serializes against replay and cancels queued descendants;
+remote deletion failures now return failure instead of success.
+
+Validation: 11 box-side Python tests pass, including queue retry, a concurrent
+new generation, atomic-write failure, corrupt-state preservation, and forget
+cancellation/error reporting. Setup/sync pass shell syntax checks. MEM-21 is
+still incomplete: Context-card status, idle-stop coordination, enqueue-only
+reindex, the specified service restart hook, actual SDK completion semantics,
+and a live interrupted-index/resume evaluation remain to be verified or built.
+No A+/95 score or deployed completion is claimed.
+
+MEM-21 follow-up: the Context card and Persona memory section now display
+pending work separately from server health. Missing or invalid queue counts
+remain unknown, never zero. Reindex now enqueues the exact context resources
+in the durable queue without contacting the SDK; its API returns HTTP 202
+and the UI says queued. Full TypeScript checking passes, with targeted status
+and reindex tests plus the 11 Python tests. Idle-stop coordination, service
+restart-hook coverage, SDK completion semantics, and live interruption testing
+remain open; the timer alone does not prove those requirements.
+
+Checkpoint follow-up (worker timeouts, coordinated idle stop, archive
+co-ship): `tests/test_timeouts.py` patches `openviking_sdk.SyncHTTPClient` and
+asserts the replay worker passes `timeout=660` for the 600-second server wait
+while `client()`, `status`, `export` and `recent` stay at the SDK 0.1.7 default
+of 60. `add_resource` and `cmd_rm` now tolerate only the SDK's typed
+`NotFoundError` before an add; any other removal error propagates and the
+durable receipt stays pending (`tests/test_replace.py`). The probe-then-stop
+race is closed by a box-side claim: `ovctl stop-claim` takes the worker and
+queue locks, refuses while work is pending, in grace, busy or already claimed,
+otherwise writes a token/boot-id/TTL claim that `resume-pending` honors by
+deferring; `stop-release` removes it. The sweeper (`indexIdle.ts`,
+`idleStop.ts`, `cron/sweep`) acquires the claim before provider `stop()`,
+releases it on stop failure, falls back to the read-only `idle-check` probe on
+boxes without `stop-claim`, and stops boxes with neither only after a bounded
+20-minute legacy grace; the cron response reports every claim/deferral outcome
+(`tests/test_stop_claim.py`, `indexIdle.test.ts`, `idleStop.test.ts`).
+Archive: the migration preflight persists unresolved label→candidate pairs
+box-side and the owner resolves them through
+`GET/POST /api/me/imessage-history/resolutions`; saved resolutions merge into
+`resolveLegacyThreads`. Ingest status carries a validated `cursor` returned by
+GET/POST and passed to the extractor as `SINCE_ISO_UTC`; the uploader resumes
+from it. Upload-ticket errors share one envelope with stable codes, a
+retriable flag and `Retry-After`; `resolution_required` (409) carries only
+fixed text and a resolve URL, never labels. `apps/web/next.config.ts` sets
+`outputFileTracingRoot` to the workspace root and the inferred-tracing-root
+build warning is gone.
+
+Validation: 39 OpenViking Python tests pass; 11 uploader tests pass; targeted
+Vitest on `lib/imessage`, `app/api/me/imessage-history` and `lib/orchestrator`
+passes 204 tests in 20 files. Full Vitest: 255 files, 2,632 tests pass, one
+skipped. Typecheck passes. Lint reports zero errors and the same 38
+pre-existing warnings as before, after the ESLint ignore list was extended to
+the remaining git-ignored esbuild bundles under `public/creator-os/` (the
+generated `create.js` had produced two `no-this-alias` errors once a build had
+emitted it). Production build passes. Inventory check: 249 rows, 9 implemented,
+1 in progress, 239 not verified, product acceptance not measured.
+
+Limits: these are unit-level checks with an in-memory SDK stub and mocked
+box/provider calls. The idle-stop race guarantee has not been exercised on an
+isolated Linux/systemd box with the real timer, units and provider `stop()`
+(continue.md item 4); MEM-21 stays in progress. No owner corpus was imported,
+so archive recall/coverage is unmeasured and source/manifest/enqueue receipts
+do not prove searchability (item 5); MEM-01/MEM-18/MEM-19 stay not verified.
+Rollout still requires the template with `stop-claim` to ship before the
+claim path is exercised in production. No A+/95 score is claimed.
+
+Memory follow-up (MEM-04/14/15/25/26/27 implemented at unit level, MEM-10 in
+progress, archive resolution UI): the importer enqueues `Dictionary.MD` only
+on the first status read after `dictionary_built_at` flips, with a persisted
+`dictionary_indexed_for` marker so a failed enqueue retries and a repeat read
+is idempotent. `ovctl` now documents `export`/`recent` as content-bearing,
+walks the resource and memory trees breadth-first to count leaf nodes (bounded
+at 20,000 nodes, reporting truncation), orders `recent` by modification time
+then URI, and gains `clear --scope resources|memories|all` (worker lock,
+queued-work filtering, typed-absence tolerance only, metadata-only output).
+Persona totals come from `status`, not the bounded preview. The amnesia guard
+distinguishes an empty/failed transcript read (retry once, then hold) from
+rows present but nothing replayable (proceed). `peekBoxState` reads the
+mirrored `boxes.state` without a provider call; Persona, `GET
+/api/me/memory/deep` (default; `?wake=1` is the explicit owner wake), the
+import/ingest status readers, the iMessage/agent-context routes and the
+stale-mirror refresh use it so a sleeping box is answered from the Postgres
+status mirror and never woken for chips. Content reads (memory files, vault,
+exports) and mutations still wake by design. The Context panel gains a
+confirm-gated deep-memory clear and a two-step "Check status" / "Wake and
+check" flow. The onboarding iMessage step renders pending legacy-label
+decisions for the authenticated owner (live only when the box is already
+awake; the mirror carries a count only) and saves them through
+`saveResolutions`; `migrateLegacyArchive` re-inventories raw chunks before
+writing its completion marker.
+
+MEM-10 writer inventory: USER.md is written by (1) Hermes's memory tool
+box-side, (2) the owner edit (`PUT /api/me/memory`, mini-app
+`memory.save_user`), (3) Onairos sync/disconnect (marker-delimited persona
+block, read-modify-write after the 1,375 budget check) and (4) owner clear
+(truncate). The owner edit was a blind overwrite; it is now a compare-and-swap
+on the box keyed by the sha256 of the profile the owner loaded
+(`user_revision` from GET, `base_revision` on PUT, hidden field in the
+mini-app form): an agent rewrite in between returns 409 and the panel keeps
+the draft, refreshes the base and lets the owner re-save knowingly. Onairos
+still writes its digest into USER.md directly with a narrow read-then-write
+window against a concurrent Hermes tool write (no lock is shared with
+Hermes), and there is no consolidation, decay or supersession; moving Onairos
+behind a Hermes-consumed intermediate is the remaining design work, so MEM-10
+stays in progress.
+
+Validation: 57 OpenViking Python tests pass (`tests/test_*.py`). Full
+Vitest: 259 files, 2,702 tests pass, one skipped. Typecheck passes. Lint:
+zero errors, the same 38 pre-existing warnings. Production build passes.
+Inventory check: 249 rows, 15 implemented, 2 in progress, 232 not verified,
+product acceptance not measured.
+
+Limits: every check above runs against mocked box/provider state or an
+in-memory SDK stub. No real provider sleep/wake transition, mirror lag,
+populated OpenViking store, live Dictionary build, or gateway session store
+was exercised; none of these findings is `verified`. Live isolated
+Linux/systemd verification (item 4) and archive recall/coverage (item 5)
+remain outstanding. No A+/95 score is claimed.
+
+Live validation on real Boxes and a second provider (MEM-21 → `implemented`):
+Tenki Sandbox is now an opt-in Box provider behind `lib/box/client.ts` (`tk_`
+ids, `tenki:<snapshot>` templates, `{ "provider": "tenki" }` on the admin
+provision route; an omitted provider is ascii.dev, which stays the default).
+The checkpoint build was run locally against the production Supabase project
+and provisioned one user per provider. Evidence, all in
+`docs/reports/openviking-livecheck-isolated-linux.md`: livecheck 8/8 on local
+systemd, a fresh Tenki VM, a real ascii.dev Box and a Tenki Box; provider
+`stop()`/`resume()` around a live claim on both; the real `/api/cron/sweep`
+deferring the Tenki Box through its 20-minute post-index grace, then
+`claimed:1 stopped:1` (two cycles); the bounded legacy path on a real
+production-template ascii Box without the claim command (`legacy_grace` at 10
+minutes overdue, `legacyStop:1` at 25), then `claimed:1 stopped:1` once the
+Box was synced to the checkpoint; `ensureBoxAwake` waking both with the claim
+cleared, units active and hosted routes 200. The agent suite ran 109/109 on
+each: Tenki routing 51% (53/104), execution 14% (1/7), gating 70% (67/96),
+context 45% (17/38), honesty 100%, $2.19, mean 9.9 s; ascii routing 52%
+(47/91), execution 14% (1/7), gating 64% (67/105), context 50% (19/38),
+honesty 100%, $2.30, mean 11.6 s. The Boxes carry different skill inventories
+(87 vs 110) so the axis denominators differ; the numbers are comparable only
+loosely and are not acceptance (execution n=7).
+
+Fixes found by the live runs: ascii command timeouts map to exit 124;
+`BOX_READY_TIMEOUT_MS` for slow forks; the ascii hosted-route firewall marker is
+removed before every registration (routes 500 after fork/resume otherwise);
+Tenki `stop()` snapshots and closes instead of pausing (pause killed sessions
+with several GB written); `ovctl resumed` on wake voids a claim that survives a
+memory-image restore; a queued entry whose source vanished is dropped instead
+of failing forever; the sweeper logs a structured `ovctl probe failed` line.
+
+Validation: 65 OpenViking Python tests pass (`tests/test_*.py`). Full Vitest
+(excluding the untracked `.scratch/` live helpers, which need provider
+credentials): 261 files, 2,760 tests pass, one skipped. Typecheck passes.
+Lint: zero errors, the same 38 pre-existing warnings. Production build passes.
+Inventory check: 249 rows, 16 implemented, 1 in progress, 232 not verified,
+product acceptance not measured.
+
+Limits: one Box per provider on a shared production project (production's own
+minute cron swept the same rows; only local response counters are attributed);
+no fleet rollout of the stop-claim template observed; Tenki has no periodic
+snapshot yet and stays opt-in; no owner corpus was imported, so archive
+recall/coverage is unmeasured (MEM-01/18/19 stay not verified). Nothing is
+`verified`; no A+/95 score is claimed.

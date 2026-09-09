@@ -105,16 +105,24 @@ async function hermesFetch<T>(
   return parsed.data;
 }
 
+export interface ConversationTranscript {
+  /** Rows the box returned before sanitising; 0 when the load failed or the
+   * session has no transcript. Distinguishes "nothing stored" from "stored
+   * rows that are not replayable" (e.g. user inputs with no reply yet). */
+  rows: number;
+  history: ConversationMessage[];
+}
+
 /**
  * Load the persisted transcript for a session as replayable history.
  * Best-effort: a missing session (first turn), an unreachable box, or an
- * unexpected payload all degrade to an empty history rather than failing
+ * unexpected payload all degrade to an empty transcript rather than failing
  * the turn.
  */
-export async function loadConversationHistory(
+export async function loadConversationTranscript(
   target: HermesBoxTarget,
   sessionId: string
-): Promise<ConversationMessage[]> {
+): Promise<ConversationTranscript> {
   try {
     const response = await fetch(
       url(target, `/api/sessions/${encodeURIComponent(sessionId)}/messages`),
@@ -123,11 +131,19 @@ export async function loadConversationHistory(
         headers: headers(target),
       }
     );
-    if (!response.ok) return [];
-    return sanitizeConversation(parseRawMessages(await response.json()));
+    if (!response.ok) return { rows: 0, history: [] };
+    const raw = parseRawMessages(await response.json());
+    return { rows: raw.length, history: sanitizeConversation(raw) };
   } catch {
-    return [];
+    return { rows: 0, history: [] };
   }
+}
+
+export async function loadConversationHistory(
+  target: HermesBoxTarget,
+  sessionId: string
+): Promise<ConversationMessage[]> {
+  return (await loadConversationTranscript(target, sessionId)).history;
 }
 
 export async function createRun(

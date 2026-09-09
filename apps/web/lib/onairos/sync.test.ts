@@ -1,17 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { OnairosError } from "./context";
+import { OnairosError, personaBlock } from "./context";
 import {
   fetchPersona,
   PERSONA_CACHE_TTL_MS,
   personaUrl,
   resyncOnairos,
+  syncOnairos,
 } from "./sync";
-import { command, readFile, writeFile } from "@/lib/box/client";
+import { BoxApiError, command, readFile, writeFile } from "@/lib/box/client";
+import { USER_PROFILE_CHAR_LIMIT, USER_PROFILE_PATH } from "@/lib/memory/files";
 import { armStopAfter, ensureBoxAwake } from "@/lib/orchestrator/boxes";
 import { deepMemoryForget, deepMemoryIndex } from "@/lib/memory/deep";
 
-vi.mock("@/lib/box/client", () => ({
+vi.mock("@/lib/box/client", async (importOriginal) => ({
+  BoxApiError: (await importOriginal<typeof import("@/lib/box/client")>()).BoxApiError,
   command: vi.fn(),
   readFile: vi.fn(),
   writeFile: vi.fn(),
@@ -139,6 +142,7 @@ describe("fetchPersona", () => {
 
 describe("resyncOnairos caching", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     vi.mocked(command).mockResolvedValue({ exitCode: 0, stdout: "", stderr: "" });
     vi.mocked(writeFile).mockResolvedValue(undefined);
     vi.mocked(ensureBoxAwake).mockResolvedValue({
@@ -151,6 +155,50 @@ describe("resyncOnairos caching", () => {
 
   const cachedJson = (syncedAt: string) =>
     JSON.stringify({ synced_at: syncedAt, persona: { traits: {} } });
+
+  it.each([new Error("offline"), new BoxApiError(500, "unavailable")])(
+    "does not write persona, grant, or profile when the profile cannot be read: %s",
+    async (error) => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, { traits: {} }));
+      vi.mocked(readFile).mockRejectedValue(error);
+      await expect(syncOnairos(fakeSupabase(), "user-1", handoff)).rejects.toThrow(error);
+      expect(writeFile).not.toHaveBeenCalled();
+      expect(deepMemoryIndex).not.toHaveBeenCalled();
+    }
+  );
+
+  it("refuses an oversized profile before any content write", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, { traits: {} }));
+    vi.mocked(readFile).mockResolvedValue("x".repeat(USER_PROFILE_CHAR_LIMIT));
+    await expect(syncOnairos(fakeSupabase(), "user-1", handoff)).rejects.toMatchObject({ status: 409 });
+    expect(writeFile).not.toHaveBeenCalled();
+  });
+
+  it("accepts the exact profile budget and rejects one extra character", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => jsonResponse(200, { traits: {} }));
+    const block = personaBlock({ traits: {} }, new Date().toISOString());
+    const owner = "x".repeat(USER_PROFILE_CHAR_LIMIT - block.length - 3);
+    vi.mocked(readFile).mockResolvedValue(owner);
+    await syncOnairos(fakeSupabase(), "user-1", handoff);
+    const written = vi.mocked(writeFile).mock.calls.find((call) => call[1] === USER_PROFILE_PATH)?.[2];
+    expect((written as string).length).toBe(USER_PROFILE_CHAR_LIMIT);
+    vi.mocked(writeFile).mockClear();
+    vi.mocked(readFile).mockResolvedValue(owner + "x");
+    await expect(syncOnairos(fakeSupabase(), "user-1", handoff)).rejects.toMatchObject({ status: 409 });
+    expect(writeFile).not.toHaveBeenCalled();
+  });
+
+  it.each(["I like tea.\n", null])("preserves existing owner text or initializes a typed 404: %s", async (profile) => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(200, { traits: {} }));
+    if (profile === null) vi.mocked(readFile).mockRejectedValue(new BoxApiError(404, "missing"));
+    else vi.mocked(readFile).mockResolvedValue(profile);
+    await syncOnairos(fakeSupabase(), "user-1", handoff);
+    const written = vi.mocked(writeFile).mock.calls.find((call) => call[1] === USER_PROFILE_PATH)?.[2];
+    expect(typeof written).toBe("string");
+    expect((written as string).length).toBeLessThanOrEqual(USER_PROFILE_CHAR_LIMIT);
+    if (profile) expect(written).toContain(profile.trim());
+    expect(deepMemoryIndex).toHaveBeenCalledOnce();
+  });
   const grantJson = JSON.stringify({
     token: "tok",
     apiUrl: "https://api2.onairos.uk/traits-only",

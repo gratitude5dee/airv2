@@ -12,7 +12,14 @@
 import { randomBytes } from "node:crypto";
 import { env } from "../env";
 import { serviceClient } from "../supabase";
-import { command, fork, waitForBox } from "../box/client";
+import {
+  fork,
+  hostRoute,
+  providerOf,
+  waitForBox,
+  type BoxProvider,
+  type HostedRoute,
+} from "../box/client";
 import {
   createMacInstance,
   publishMacIngress,
@@ -74,6 +81,12 @@ export interface ProvisionOptions {
   operator?: string | undefined;
   /** Compute the agent lives on. Defaults to ubuntu — the original path. */
   environment?: ComputeEnvironment | undefined;
+  /**
+   * Linux box provider. Defaults to ascii (the channel's template). `tenki`
+   * is opt-in per provision while the two are evaluated side by side: it forks
+   * TENKI_TEMPLATE_ID on Tenki Sandbox instead, ubuntu environment only.
+   */
+  provider?: BoxProvider | undefined;
 }
 
 export interface ProvisionResult {
@@ -83,27 +96,6 @@ export interface ProvisionResult {
   dashboardUrl: string;
   environment: ComputeEnvironment;
   inviteLink?: string | undefined;
-}
-
-const HOSTED_URL_PATTERN =
-  /^(https:\/\/[a-z0-9-]+-(\d+)\.on\.ascii\.dev)\?_token=([a-f0-9]+)$/m;
-
-function parseHostedUrl(
-  stdout: string,
-  port: number
-): { url: string; token: string } {
-  for (const line of stdout.split("\n")) {
-    const match = HOSTED_URL_PATTERN.exec(line.trim());
-    if (match?.[1] && match[3] && Number(match[2]) === port) {
-      return { url: match[1], token: match[3] };
-    }
-  }
-  throw new Error(`hosted URL for port ${port} not found in host output`);
-}
-
-interface HostedRoute {
-  url: string;
-  token: string;
 }
 
 interface ComputeRoutes {
@@ -311,7 +303,13 @@ export async function provisionUser(
 
   let built: ProvisionedCompute | undefined;
   try {
-    built = await buildCompute(supabase, userId, environment, DEFAULT_CHANNEL);
+    built = await buildCompute(
+      supabase,
+      userId,
+      environment,
+      DEFAULT_CHANNEL,
+      options.provider ?? "ascii"
+    );
     await persistBox(supabase, userId, environment, built);
     await finishSetup(supabase, userId, built);
     return {
@@ -533,11 +531,28 @@ async function teardown(target: ComputeTarget): Promise<void> {
  * per-instance secrets merged into ~/.hermes/.env, config.yaml pointed at the
  * gateway, services restarted, Hermes + dashboard published.
  */
+/**
+ * The template a Tenki fork comes from. Tenki has no channel/release
+ * bootstrap yet, so the pointer is the static TENKI_TEMPLATE_ID snapshot ref
+ * and only the ubuntu template exists there.
+ */
+function tenkiTemplate(environment: ComputeEnvironment): string {
+  if (environment !== "ubuntu") {
+    throw new Error(`tenki provider supports ubuntu only, not ${environment}`);
+  }
+  const templateId = env.tenkiTemplateId();
+  if (!templateId || providerOf(templateId) !== "tenki") {
+    throw new Error("TENKI_TEMPLATE_ID must be set to a tenki:<snapshot id> ref");
+  }
+  return templateId;
+}
+
 async function buildCompute(
   supabase: ReturnType<typeof serviceClient>,
   userId: string,
   environment: ComputeEnvironment,
-  channel: ChannelName
+  channel: ChannelName,
+  provider: BoxProvider = "ascii"
 ): Promise<ProvisionedCompute> {
   const profile = profileFor(environment);
   const gatewayToken = randomBytes(32).toString("hex");
@@ -551,13 +566,19 @@ async function buildCompute(
   // The fork comes from the channel's template for its environment; the
   // static env var pointer is the fallback until the channel is bootstrapped
   // (ubuntu only — the others must be registered).
-  const templateId = await templateForEnvironment(
-    supabase,
-    channel,
-    environment,
-    templateFallback(environment)
-  );
-  const channelRelease = await releaseForChannel(supabase, channel);
+  const templateId =
+    provider === "tenki"
+      ? tenkiTemplate(environment)
+      : await templateForEnvironment(
+          supabase,
+          channel,
+          environment,
+          templateFallback(environment)
+        );
+  // A Tenki fork's provenance is the snapshot, not a channel release, so it
+  // takes the full post-fork setup like any fork of unknown provenance.
+  const channelRelease =
+    provider === "tenki" ? null : await releaseForChannel(supabase, channel);
 
   const created = await createInstance(
     userId,
@@ -695,6 +716,15 @@ async function configureCompute(
     throw new Error(`env merge failed: ${mergeResult.stderr}`);
   }
 
+  // Forks inherit a template-time OpenViking config with placeholder keys.
+  // Configure and check memory using the just-written per-instance credentials.
+  if (kindFor(environment) === "box") {
+    const memory = await runCommand(target, "ovctl ensure", 180);
+    if (memory.exitCode !== 0) {
+      throw new Error("Deep memory initialization failed");
+    }
+  }
+
   // Hermes resolves the custom provider's credential from model.api_key in
   // config.yaml (credential_pool seeds "model_config" when provider=custom
   // and base_url matches) — the value is the box's GATEWAY_TOKEN, never a
@@ -809,17 +839,9 @@ async function publishRoutes(
   ports: Record<number, string>
 ): Promise<ComputeRoutes> {
   if (kindFor(target.environment) === "box") {
-    const hostResult = await command(
-      target.instanceId,
-      `eval "$(grep '^export ASCII_' /home/user/.bashrc)"; /home/user/.ascii/host url 8642 --timeout 120 --private && /home/user/.ascii/host url 9119 --timeout 120 --private`,
-      300
-    );
-    if (hostResult.exitCode !== 0) {
-      throw new Error(`host registration failed: ${hostResult.stderr}`);
-    }
     return {
-      hermes: parseHostedUrl(hostResult.stdout, 8642),
-      dashboard: parseHostedUrl(hostResult.stdout, 9119),
+      hermes: await hostRoute(target.instanceId, 8642),
+      dashboard: await hostRoute(target.instanceId, 9119),
     };
   }
   const hermes = ports[NS_HERMES_PORT];
@@ -856,7 +878,10 @@ async function persistBox(
   const { error } = await supabase.from("boxes").upsert(
     {
       user_id: userId,
-      provider: profileFor(environment).provider,
+      provider:
+        providerOf(built.target.instanceId) === "tenki"
+          ? "tenki"
+          : profileFor(environment).provider,
       provider_box_id: built.target.instanceId,
       environment,
       state: "ready",

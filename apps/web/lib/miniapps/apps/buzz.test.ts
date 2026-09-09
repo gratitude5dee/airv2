@@ -22,16 +22,20 @@ import {
 
 const boxFiles = new Map<string, string>();
 
-vi.mock("@/lib/box/client", () => ({
+vi.mock("@/lib/box/client", async (importOriginal) => {
+  const { BoxApiError } = await importOriginal<typeof import("@/lib/box/client")>();
+  return {
+  BoxApiError,
   readFile: vi.fn(async (_boxId: string, path: string) => {
     const value = boxFiles.get(path);
-    if (value === undefined) throw new Error("not found");
+    if (value === undefined) throw new BoxApiError(404, "not found");
     return value;
   }),
   writeFile: vi.fn(async (_boxId: string, path: string, content: string) => {
     boxFiles.set(path, content);
   }),
-}));
+  };
+});
 vi.mock("@/lib/orchestrator/boxes", () => ({
   ensureBoxAwake: vi.fn(async () => ({ boxId: "box-1", target: "target-1" })),
   armStopAfter: vi.fn(async () => undefined),
