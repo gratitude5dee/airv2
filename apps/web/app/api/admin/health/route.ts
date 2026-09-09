@@ -109,8 +109,7 @@ function outcomeKind(
   if (
     value === "ok" ||
     value === "success" ||
-    value === "completed" ||
-    value === "gateway_completion"
+    value === "completed"
   ) {
     return "success";
   }
@@ -124,6 +123,31 @@ function countStatuses(values: Row[]): Record<string, number> {
     counts[status] = (counts[status] ?? 0) + 1;
   }
   return counts;
+}
+
+interface QueryResult {
+  error: unknown;
+}
+
+function unavailableResponse(failures: readonly string[]): NextResponse {
+  console.error(
+    JSON.stringify({
+      msg: "admin health query failed",
+      sources: failures,
+    })
+  );
+  return NextResponse.json(
+    { error: "health data unavailable", sources: failures },
+    { status: 503, headers: { "Cache-Control": "no-store" } }
+  );
+}
+
+function queryFailures(
+  results: ReadonlyArray<readonly [string, QueryResult]>
+): string[] {
+  return results
+    .filter(([, result]) => result.error !== null)
+    .map(([source]) => source);
 }
 
 interface MemorySnapshot extends DeepMemoryStatus {
@@ -238,19 +262,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const sinceDate = sinceIso.slice(0, 10);
   const supabase = serviceClient();
 
-  const [
-    boxResult,
-    runsResult,
-    inboundResult,
-    connectionsResult,
-    boxEventsResult,
-    entitlementResult,
-    rendersResult,
-    assetsResult,
-    adSpendResult,
-    adSettingsResult,
-    cortexResult,
-  ] = await Promise.all([
+  const initialResults = await Promise.all([
     supabase
       .from("boxes")
       .select(
@@ -272,6 +284,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       .select("received_at, status")
       .eq("user_id", userId)
       .gte("received_at", sinceIso)
+      .order("received_at", { ascending: false })
+      .limit(10_000),
+    supabase
+      .from("batch_queue")
+      .select("received_at")
+      .eq("user_id", userId)
       .order("received_at", { ascending: false })
       .limit(10_000),
     supabase
@@ -320,32 +338,74 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       .eq("user_id", userId)
       .gte("created_at", sinceIso)
       .limit(10_000),
+  ]).catch(() => null);
+  if (!initialResults) {
+    return unavailableResponse(["database"]);
+  }
+
+  const [
+    boxResult,
+    runsResult,
+    inboundResult,
+    queueResult,
+    connectionsResult,
+    boxEventsResult,
+    entitlementResult,
+    rendersResult,
+    assetsResult,
+    adSpendResult,
+    adSettingsResult,
+    cortexResult,
+  ] = initialResults;
+  const failures = queryFailures([
+    ["boxes", boxResult],
+    ["agent_runs", runsResult],
+    ["inbound_events", inboundResult],
+    ["batch_queue", queueResult],
+    ["connections", connectionsResult],
+    ["box_state_events", boxEventsResult],
+    ["entitlements", entitlementResult],
+    ["cost_events", rendersResult],
+    ["creative_assets", assetsResult],
+    ["spend_reports", adSpendResult],
+    ["ad_settings", adSettingsResult],
+    ["cortex_calls", cortexResult],
   ]);
+  if (failures.length > 0) {
+    return unavailableResponse(failures);
+  }
 
   const box = row(boxResult.data);
   const runs = rows(runsResult.data);
   const inbound = rows(inboundResult.data);
+  const queued = rows(queueResult.data);
   const connections = rows(connectionsResult.data);
   const boxEvents = rows(boxEventsResult.data);
   const entitlement = row(entitlementResult.data);
   const adSettings = row(adSettingsResult.data);
 
   const channelName = stringValue(box?.["channel"]) ?? "prod";
-  const { data: channelData } = await supabase
+  const channelResult = await supabase
     .from("box_channels")
     .select("release_id, updated_at")
     .eq("name", channelName)
     .maybeSingle();
-  const channel = row(channelData);
+  if (channelResult.error) {
+    return unavailableResponse(["box_channels"]);
+  }
+  const channel = row(channelResult.data);
   const releaseId = stringValue(channel?.["release_id"]);
-  const { data: targetData } = releaseId
+  const targetResult = releaseId
     ? await supabase
         .from("template_releases")
         .select("version, hermes_ref")
         .eq("id", releaseId)
         .maybeSingle()
-    : { data: null };
-  const target = row(targetData);
+    : { data: null, error: null };
+  if (targetResult.error) {
+    return unavailableResponse(["template_releases"]);
+  }
+  const target = row(targetResult.data);
 
   const runCounts = { success: 0, failed: 0, other: 0, open: 0, stuck: 0 };
   const failureOutcomes: Record<string, number> = {};
@@ -355,7 +415,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   let promptTokens = 0;
   let completionTokens = 0;
   let gatewayCostUsd = 0;
-  for (const run of runs) {
+  const gatewayRuns = runs.filter(
+    (run) => run["outcome"] === "gateway_completion"
+  );
+  for (const run of gatewayRuns) {
+    promptTokens += numberValue(run["prompt_tokens"]);
+    completionTokens += numberValue(run["completion_tokens"]);
+    gatewayCostUsd += numberValue(run["cost_usd"]);
+  }
+  const hermesRuns = runs.filter(
+    (run) => run["outcome"] !== "gateway_completion"
+  );
+  for (const run of hermesRuns) {
     const startedAt = stringValue(run["started_at"]);
     const endedAt = stringValue(run["ended_at"]);
     const outcome = stringValue(run["outcome"]);
@@ -376,13 +447,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
     const latency = numberValue(run["latency_ms"]);
     if (latency > 0) latencies.push(latency);
-    promptTokens += numberValue(run["prompt_tokens"]);
-    completionTokens += numberValue(run["completion_tokens"]);
-    gatewayCostUsd += numberValue(run["cost_usd"]);
   }
 
   const inboundCounts = countStatuses(inbound);
-  const queued = inbound.filter((event) => event["status"] === "received");
   const oldestQueuedAt =
     queued
       .map((event) => stringValue(event["received_at"]))
@@ -403,9 +470,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       event["state"] === "ready" || event["state"] === "keepawake"
   ).length;
   const stops = boxEvents.filter((event) => event["state"] === "stopped").length;
-  const boxFailures = boxEvents.filter(
-    (event) => event["state"] === "failed"
-  ).length;
 
   const renderCents = rows(rendersResult.data).reduce(
     (sum, value) => sum + numberValue(value["amount_cents"]),
@@ -444,9 +508,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       checked_at: new Date().toISOString(),
       memory,
       hermes: {
-        runs: runs.length,
+        runs: hermesRuns.length,
         ...runCounts,
-        last_run_at: stringValue(runs[0]?.["started_at"]),
+        last_run_at: stringValue(hermesRuns[0]?.["started_at"]),
         last_success_at: lastSuccessAt,
         last_failure_at: lastFailureAt,
         p95_latency_ms: percentile95(latencies),
@@ -494,7 +558,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         created_at: stringValue(box?.["created_at"]),
         starts,
         stops,
-        failures: boxFailures,
         last_event_state: stringValue(boxEvents[0]?.["state"]),
         last_event_at: stringValue(boxEvents[0]?.["created_at"]),
         replacement_claimed_at: replacementClaimedAt,

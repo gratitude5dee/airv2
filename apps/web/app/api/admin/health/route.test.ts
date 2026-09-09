@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 
 const db = vi.hoisted(() => ({
   rows: {} as Record<string, Record<string, unknown>[]>,
+  errors: {} as Record<string, string>,
   selects: [] as Array<{ table: string; columns: string }>,
 }));
 
@@ -36,7 +37,9 @@ vi.mock("@/lib/supabase", () => {
     chain["then"] = (resolve: (value: unknown) => unknown) =>
       Promise.resolve({
         data: single ? (values[0] ?? null) : values,
-        error: null,
+        error: db.errors[table]
+          ? { message: db.errors[table] }
+          : null,
       }).then(resolve);
     return chain;
   }
@@ -70,6 +73,7 @@ const authed = (url = base) =>
 beforeEach(() => {
   process.env["ADMIN_API_KEY"] = "admin-key";
   db.rows = {};
+  db.errors = {};
   db.selects = [];
   vi.clearAllMocks();
   memory.armStopAfter.mockResolvedValue(undefined);
@@ -122,6 +126,16 @@ describe("GET /api/admin/health", () => {
           completion_tokens: 0,
           cost_usd: 0.002,
         },
+        {
+          user_id: userId,
+          started_at: "2026-09-09T18:30:00Z",
+          ended_at: "2026-09-09T18:30:01Z",
+          outcome: "gateway_completion",
+          latency_ms: 900,
+          prompt_tokens: 7,
+          completion_tokens: 8,
+          cost_usd: 0.003,
+        },
       ],
       inbound_events: [
         {
@@ -133,6 +147,12 @@ describe("GET /api/admin/health", () => {
           user_id: userId,
           received_at: "2026-09-09T20:09:00Z",
           status: "failed",
+        },
+      ],
+      batch_queue: [
+        {
+          user_id: userId,
+          received_at: "2026-09-09T20:08:00Z",
         },
       ],
       connections: [
@@ -222,8 +242,8 @@ describe("GET /api/admin/health", () => {
       replacement_claim_status: "stale",
     });
     expect(body.spend).toMatchObject({
-      total_tokens: 35,
-      gateway_cost_usd: 0.012,
+      total_tokens: 15,
+      gateway_cost_usd: 0.003,
       monthly_cap_ratio: 0.3,
       render_cents: 20,
       storage_bytes: 1_073_741_824,
@@ -240,6 +260,56 @@ describe("GET /api/admin/health", () => {
       /message_body|prompt_text|document|content|external_account_id|hosted_url/
     );
   });
+
+  it("derives queued work from batch_queue, not inbound receipts", async () => {
+    db.rows = {
+      inbound_events: [
+        {
+          user_id: userId,
+          received_at: "2026-09-09T20:10:00Z",
+          status: "received",
+        },
+      ],
+    };
+
+    const body = await (await GET(authed())).json();
+    expect(body.transport).toMatchObject({
+      received: 1,
+      queued: 0,
+      oldest_queued_at: null,
+    });
+  });
+
+  it("returns unavailable when a required health query fails", async () => {
+    db.errors["agent_runs"] = "database offline";
+
+    const response = await GET(authed());
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      error: "health data unavailable",
+      sources: ["agent_runs"],
+    });
+  });
+
+  it.each(["box_channels", "template_releases"])(
+    "returns unavailable when %s cannot be read",
+    async (table) => {
+      db.rows = {
+        boxes: [{ user_id: userId, channel: "prod" }],
+        box_channels: [
+          { name: "prod", release_id: "release-1" },
+        ],
+      };
+      db.errors[table] = "database offline";
+
+      const response = await GET(authed());
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({
+        error: "health data unavailable",
+        sources: [table],
+      });
+    }
+  );
 
   it("checks memory without waking an asleep box", async () => {
     db.rows = {
