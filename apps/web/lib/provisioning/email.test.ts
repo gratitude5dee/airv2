@@ -147,16 +147,16 @@ describe("provisionEmail (MAIL_PROVIDER=wzrdmail)", () => {
 });
 
 describe("provisionEmail (default provider)", () => {
-  it("keeps the AgentMail env names and MCP", async () => {
+  it("uses the wzrdmail env names and MCP", async () => {
     delete process.env["MAIL_PROVIDER"];
     box.readFile.mockResolvedValueOnce("OPENAI_API_KEY=gw\n");
     await provisionEmail(fakeSupabase("box_1"), "user-1", "sam");
     const written = box.writeFile.mock.calls[0]![2];
-    expect(written).toContain("AGENTMAIL_API_KEY=wm_live_draftonly");
-    expect(written).toContain("AGENTMAIL_INBOX_ID=sam@wzrd.tech");
-    expect(written).not.toContain("WZRDMAIL_");
+    expect(written).toContain("WZRDMAIL_API_KEY=wm_live_draftonly");
+    expect(written).toContain("WZRDMAIL_INBOX_ID=sam@wzrd.tech");
+    expect(written).not.toContain("AGENTMAIL_");
     expect(box.command.mock.calls[0]![1]).toContain(
-      "https://mcp.agentmail.to/mcp",
+      "https://mcp.mail.wzrd.tech/mcp",
     );
   });
 });

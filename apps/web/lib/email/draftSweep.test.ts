@@ -66,6 +66,7 @@ const TOO_OLD = new Date(NOW.getTime() - 72 * 3600_000).toISOString();
 
 describe("sweepUnfiledDrafts", () => {
   beforeEach(() => {
+    process.env["MAIL_PROVIDER"] = "agentmail";
     vi.mocked(listDrafts).mockReset();
     vi.mocked(queueEmailDraftReview).mockReset().mockResolvedValue(undefined);
   });

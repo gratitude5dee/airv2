@@ -63,6 +63,7 @@ function reviewRequest(
 }
 
 beforeEach(() => {
+  process.env["MAIL_PROVIDER"] = "agentmail";
   state.userId = "user-1";
   state.addresses = [
     { agentmail_inbox_id: "inbox-primary", is_primary: true },
