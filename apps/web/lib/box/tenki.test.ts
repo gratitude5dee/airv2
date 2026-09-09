@@ -10,7 +10,7 @@ import {
   type TenkiSandbox,
 } from "@tenkicloud/sandbox";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { BoxApiError } from "./types";
+import { BoxApiError, START_LIMIT_REACHED } from "./types";
 import {
   ROUTE_RENEW_BEFORE_MS,
   ROUTE_TTL_MS,
@@ -252,8 +252,11 @@ describe("toBoxApiError", () => {
     expect(mapped.status).toBe(404);
   });
 
-  it("maps quota/capacity refusals to 429", () => {
-    expect(toBoxApiError(new QuotaExceededError("no")).status).toBe(429);
+  it("maps quota/capacity refusals to a 429 carrying the start-limit sentinel", () => {
+    const mapped = toBoxApiError(new QuotaExceededError("no"));
+    expect(mapped.status).toBe(429);
+    expect(mapped.message).toContain(START_LIMIT_REACHED);
+    expect(toBoxApiError(new Error("boom")).message).not.toContain(START_LIMIT_REACHED);
   });
 
   it("maps anything else to 502 and keeps BoxApiError as is", () => {

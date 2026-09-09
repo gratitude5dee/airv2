@@ -11,6 +11,8 @@ import type { SweepableBox } from "@/lib/orchestrator/sweep";
 
 export interface IdleStopReport {
   stopped: number;
+  /** Provider still writing the snapshot; the row stays `stopping` for reconcile. */
+  stopping: number;
   /** Total deferrals, kept for existing dashboards; `deferred` breaks it down. */
   indexingDeferred: number;
   deferred: Record<DeferReason, number>;
@@ -38,6 +40,7 @@ export async function stopIdleBoxes(
   const nowIso = now.toISOString();
   const report: IdleStopReport = {
     stopped: 0,
+    stopping: 0,
     indexingDeferred: 0,
     deferred: { pending: 0, grace: 0, busy: 0, claimed: 0, probe_failed: 0, legacy_grace: 0 },
     claimed: 0,
@@ -69,7 +72,13 @@ export async function stopIdleBoxes(
         .from("boxes")
         .update({ state: "stopping", last_active_at: nowIso })
         .eq("provider_box_id", box.provider_box_id);
-      await stop(box.provider_box_id);
+      const result = await stop(box.provider_box_id);
+      if (result.state === "stopping") {
+        // Snapshot still being written, VM still up: the row stays
+        // `stopping` with stop_after armed and reconcile closes it via getBox().
+        report.stopping += 1;
+        continue;
+      }
       await supabase
         .from("boxes")
         .update({ state: "stopped", stop_after: null })

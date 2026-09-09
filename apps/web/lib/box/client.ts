@@ -18,12 +18,13 @@ import * as tenki from "./tenki";
 import {
   BoxApiError,
   BoxSchema,
+  START_LIMIT_REACHED,
   type Box,
   type CommandResult,
   type ForkOptions,
 } from "./types";
 
-export { BoxApiError } from "./types";
+export { BoxApiError, START_LIMIT_REACHED } from "./types";
 export type { Box, BoxState, CommandResult, ForkOptions } from "./types";
 
 /** Which provider owns a box id or template ref. */
@@ -60,9 +61,6 @@ const BoxEnvelopeSchema = z.object({
  * TTL of 1 hour counts from start, not last activity, and would).
  */
 export const BOX_TTL_SECONDS = 24 * 60 * 60;
-
-/** Box returns 429 with this code when platform start ceilings are hit. */
-export const START_LIMIT_REACHED = "start_limit_reached";
 
 export function isStartLimit(error: unknown): boolean {
   return (

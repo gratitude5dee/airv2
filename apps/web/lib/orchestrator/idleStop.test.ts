@@ -74,6 +74,17 @@ describe("stopIdleBoxes", () => {
     expect(report).toMatchObject({ stopped: 1, claimed: 1, indexingDeferred: 0, released: 0 });
   });
 
+  it("leaves the row in stopping when the provider is still writing the snapshot", async () => {
+    const updates: Update[] = [];
+    vi.mocked(claimIdleStop).mockResolvedValue({ kind: "claimed", token: TOKEN });
+    vi.mocked(stop).mockResolvedValue({ state: "stopping" } as never);
+    const report = await stopIdleBoxes(makeSupabase(updates), [box("tk_1")], NOW);
+    expect(updates.map((u) => u.values["state"])).toEqual(["stopping"]);
+    expect(recordBoxStateEvent).not.toHaveBeenCalled();
+    expect(releaseIdleStop).not.toHaveBeenCalled();
+    expect(report).toMatchObject({ stopped: 0, stopping: 1, claimed: 0 });
+  });
+
   it("defers without touching the box or its row, and reports why", async () => {
     const updates: Update[] = [];
     vi.mocked(claimIdleStop)

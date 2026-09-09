@@ -43,6 +43,7 @@ import { env } from "../env";
 import { shellQuote } from "./shell";
 import {
   BoxApiError,
+  START_LIMIT_REACHED,
   type Box,
   type BoxState,
   type CommandResult,
@@ -155,12 +156,15 @@ export function toBoxApiError(error: unknown): BoxApiError {
     return new BoxApiError(404, `tenki: ${error.message}`);
   }
   if (error instanceof SandboxError) {
-    // The SDK names quota/capacity/port-limit errors by class; the status only
-    // needs to distinguish "the platform said no" (429-ish) from "we broke".
-    const status = /quota|capacity|limit|ratelimited/i.test(error.name)
-      ? 429
-      : 502;
-    return new BoxApiError(status, `tenki ${error.name}: ${error.message}`);
+    // The SDK names quota/capacity/port-limit errors by class. Those carry
+    // the shared start-limit sentinel so callers defer instead of failing.
+    if (/quota|capacity|limit|ratelimited/i.test(error.name)) {
+      return new BoxApiError(
+        429,
+        `tenki ${error.name} (${START_LIMIT_REACHED}): ${error.message}`
+      );
+    }
+    return new BoxApiError(502, `tenki ${error.name}: ${error.message}`);
   }
   return new BoxApiError(
     502,

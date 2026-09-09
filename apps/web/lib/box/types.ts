@@ -44,6 +44,12 @@ export interface ForkOptions {
   ttlSeconds?: number | null;
 }
 
+/**
+ * Sentinel every provider puts in its 429 message when a start/fork is
+ * refused for platform capacity; isStartLimit() keys off it.
+ */
+export const START_LIMIT_REACHED = "start_limit_reached";
+
 export class BoxApiError extends Error {
   readonly status: number;
   constructor(status: number, message: string) {
