@@ -84,6 +84,17 @@ describe("POST /api/box/stop", () => {
     expect(events.recordBoxStateEvent).not.toHaveBeenCalled();
   });
 
+  it("keeps the row stopping while the provider is still archiving", async () => {
+    // ascii.dev: stop() returns as soon as the archive begins; the VM is
+    // not down until getBox() reports archived/stopped.
+    provider.stop.mockResolvedValue({ id: "bx_abc", state: "archiving" });
+    const res = await POST(post());
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ state: "stopping" });
+    expect(boxUpdates()).toEqual([{ state: "stopping", last_active_at: expect.any(String) }]);
+    expect(events.recordBoxStateEvent).not.toHaveBeenCalled();
+  });
+
   it("puts the row back to ready when the provider refuses the stop", async () => {
     provider.stop.mockRejectedValue(new Error("snapshot failed"));
     const res = await POST(post());

@@ -63,6 +63,17 @@ export function replaceLast<T extends { id: string }>(
   return [...list.slice(0, -1), { ...patch, id: last.id } as T];
 }
 
+/** Power state to show after a 2xx from /api/box/stop: the route answers
+ * `stopping` while the provider is still finishing the stop (the poller
+ * settles it), and `stopped` once the stop is terminal. */
+export function stopResponseState(data: unknown): "stopping" | "stopped" {
+  return typeof data === "object" &&
+    data !== null &&
+    (data as { state?: unknown }).state === "stopping"
+    ? "stopping"
+    : "stopped";
+}
+
 /** 429 means the box is mid-start (retry), 502 means it can't be reached —
  * the copy keeps the two failure modes distinct. */
 export function boxErrorNote(status: number, what: string): string {
