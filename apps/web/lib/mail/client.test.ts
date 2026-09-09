@@ -1,21 +1,35 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { agentmailCreateDraft, wzrdmailCreateDraft } = vi.hoisted(() => ({
+const {
+  agentmailCreateDraft,
+  agentmailCreateDraftOnlyKey,
+  wzrdmailCreateDraft,
+  wzrdmailCreateDraftOnlyKey,
+} = vi.hoisted(() => ({
   agentmailCreateDraft: vi.fn(async () => "am-draft"),
+  agentmailCreateDraftOnlyKey: vi.fn(async () => "am-key"),
   wzrdmailCreateDraft: vi.fn(async () => "wm-draft"),
+  wzrdmailCreateDraftOnlyKey: vi.fn(async () => "wm-key"),
 }));
 
 vi.mock("../agentmail/client", () => ({
   createDraft: agentmailCreateDraft,
+  createDraftOnlyKey: agentmailCreateDraftOnlyKey,
   AgentMailApiError: class extends Error {},
 }));
 vi.mock("../wzrdmail/client", () => ({
   createDraft: wzrdmailCreateDraft,
+  createDraftOnlyKey: wzrdmailCreateDraftOnlyKey,
   WzrdMailApiError: class extends Error {},
 }));
 
 import { env } from "../env";
-import { createDraft, inboundWebhookSecret, mailProvider } from "./client";
+import {
+  createDraft,
+  createDraftOnlyKeyForProvider,
+  inboundWebhookSecret,
+  mailProvider,
+} from "./client";
 
 const ORIGINAL = { ...process.env };
 
@@ -94,6 +108,17 @@ describe("provider dispatch", () => {
       "wm-draft",
     );
     expect(agentmailCreateDraft).not.toHaveBeenCalled();
+  });
+
+  it("can target a mailbox provider independently of the deployment default", async () => {
+    await expect(
+      createDraftOnlyKeyForProvider("agentmail", "inbox", "box-user"),
+    ).resolves.toBe("am-key");
+    expect(agentmailCreateDraftOnlyKey).toHaveBeenCalledWith(
+      "inbox",
+      "box-user",
+    );
+    expect(wzrdmailCreateDraftOnlyKey).not.toHaveBeenCalled();
   });
 
   it("picks the matching inbound webhook secret", () => {

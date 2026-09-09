@@ -485,8 +485,11 @@ export async function switchEnvironment(
       }
     : null;
 
+  const previousProvider = previous
+    ? providerOf(previous.instanceId)
+    : "ascii";
   const targetProvider =
-    provider ?? (previous ? providerOf(previous.instanceId) : "ascii");
+    provider ?? (environment === "ubuntu" ? previousProvider : "ascii");
   const built = await buildCompute(
     supabase,
     userId,

@@ -536,6 +536,52 @@ describe("switchEnvironment", () => {
     );
     expect(boxClient.deleteBox).toHaveBeenCalledWith("tk_old");
   });
+
+  it("moves a Tenki box to ascii when switching to Omarchy", async () => {
+    tables["boxes"] = [
+      { user_id: "user-1", provider_box_id: "tk_old", environment: "ubuntu" },
+    ];
+    tables["box_environment_templates"] = [
+      {
+        channel: "prod",
+        environment: "omarchy",
+        template_ref: "template-omarchy",
+      },
+    ];
+
+    await switchEnvironment(fakeSupabase, "user-1", "omarchy");
+
+    expect(fork).toHaveBeenCalledWith(
+      expect.objectContaining({ templateId: "template-omarchy" }),
+    );
+    expect(upserts["boxes"]?.[0]).toMatchObject({
+      environment: "omarchy",
+      provider: "ascii",
+    });
+    expect(boxClient.deleteBox).toHaveBeenCalledWith("tk_old");
+  });
+
+  it("moves a Tenki box to Namespace when switching to macOS", async () => {
+    tables["boxes"] = [
+      { user_id: "user-1", provider_box_id: "tk_old", environment: "ubuntu" },
+    ];
+    tables["box_environment_templates"] = [
+      {
+        channel: "prod",
+        environment: "macos",
+        template_ref: "https://air.test/mac-bootstrap.sh",
+      },
+    ];
+
+    await switchEnvironment(fakeSupabase, "user-1", "macos");
+
+    expect(createMacInstance).toHaveBeenCalled();
+    expect(upserts["boxes"]?.[0]).toMatchObject({
+      environment: "macos",
+      provider: "namespace",
+    });
+    expect(boxClient.deleteBox).toHaveBeenCalledWith("tk_old");
+  });
 });
 
 describe("fleet position of a fresh fork", () => {
