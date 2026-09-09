@@ -178,9 +178,95 @@ started `stopped` with a stale `hosted_url` (writes observed: `stop_after`,
 `state=starting`, `hosted_url`, `state=ready`, one `box_state_events` row).
 On an old Box the command exits 2 and is ignored; on ascii it is redundant.
 
-Still not covered on Tenki: the sweeper driving claim+stop from the control
-plane, a real provisioned user Box (only disposable forks), the agent-suite
-evaluation, and the missing periodic snapshot (see `infra/template/UPGRADE.md`).
+Still not covered on Tenki after this run: the missing periodic snapshot (see
+`infra/template/UPGRADE.md`). The sweeper, a provisioned user Box and the
+agent-suite evaluation are covered in the next section.
+
+## Control-plane sweeper against provisioned user Boxes (ascii.dev and Tenki)
+
+The checkpoint's `apps/web` was built (`next build`) and started locally against
+the production Supabase project, with `/api/cron/sweep` called by hand with the
+cron secret. Two clearly named evaluation users were provisioned through the
+admin provision route: one with `{ "provider": "tenki" }` (row `provider =
+tenki`, `provider_box_id = tk_7fdbd7877bb1b97ec1522ac2`, template
+`tenki:2c8ddcce…`), one with the provider omitted (row `provider = ascii`,
+`bx_b363yqgb`, the **production** ascii template `29112bef…`, whose `ovctl`
+has neither `stop-claim` nor `idle-check` — a real old Box). `stop_after` was
+moved into the past with a service-role PATCH to make a row sweepable; the
+counters below are the local sweep response, i.e. decisions made by this
+checkout's code.
+
+| Sweep (UTC) | Row | Box-side state | Local sweep response |
+| --- | --- | --- | --- |
+| 16:56–17:15, 19 calls a minute apart | `tk_…` overdue | worker within its 20-min post-index grace | `stopped:0`, `deferred.grace:1` every call |
+| 17:16:38 | `tk_…` overdue | grace elapsed | **`claimed:1`, `stopped:1`**; row `stopped`, `stop_after` null; Tenki session snapshotted and closed |
+| 18:21:54 | `tk_…` overdue again after a wake | idle | **`claimed:1`, `stopped:1`** (second cycle) |
+| 18:35:57 | `bx_…` 10 min overdue | old `ovctl` (exit 2 on both subcommands) | `deferred.legacy_grace:1`, Box left running |
+| 18:37:39 | `bx_…` 25 min overdue | old `ovctl` | **`legacyStop:1`, `stopped:1`**; row `stopped`, `stop_after` null |
+| 18:38:56 | `bx_…` overdue after `sync-box.sh` to the checkpoint (`verify-box` 14/14 incl. `unit-hermes-host`) | current `ovctl` | **`claimed:1`, `stopped:1`** |
+
+Wake afterwards through the real `ensureBoxAwake` (service-role Supabase
+client, `BOX_READY_TIMEOUT_MS=600000`):
+
+| Observation | ascii.dev `bx_b363yqgb` | Tenki `tk_7fdbd7877bb1b97ec1522ac2` |
+| --- | --- | --- |
+| resume from `stopped` (18:28:33) | 6 min to `ready`; boot id changed (`d27eb5de…` → `50427828…`); route re-registered by the control plane, `/health` 200 with `_port_auth` (the firewall-marker fix; before it this returned 500) | 6 s; fresh session from the newest tagged snapshot; **new** hosted URL re-exposed, `/health` 200 in 74 ms; boot id unchanged (memory image) |
+| after the 18:38:56 claimed stop | awake in 3 s: the provider still reported the Box `idle` (its archive had not completed), boot id unchanged | n/a |
+| `stop-claim.json` after wake | absent; `idle-check` `stop_claimed:false` | absent; `idle-check` `stop_claimed:false` |
+| required units after wake | `hermes-gateway`, `hermes-host`, `openviking` active | all six template units active |
+
+Two things to read carefully:
+
+- **Production's own sweeper runs against the same rows.** `apps/web/vercel.json`
+  schedules `/api/cron/sweep` every minute on the deployed app, so a row marked
+  overdue here is also visible to production's (older) sweeper. It stopped
+  `bx_b363yqgb` twice between local calls (18:22:10 and 18:36:10, both without
+  clearing `stop_after`). Only counters in the local response are attributed to
+  the checkpoint; the 18:21:54 local sweep also reported `probe_failed:1` for
+  `bx_b363yqgb`, which coincides with production stopping that Box (the command
+  API answered `409 box_starting … archiving` 55 s later). The sweeper now logs
+  a structured `ovctl probe failed` line (box id, subcommand, exit/stderr or
+  error) so the next such case is attributable rather than inferred.
+- **Two other overdue fleet rows** were claimed and stopped by the 18:35:57
+  local sweep (`claimed:2`, `stopped:2` alongside the `legacy_grace` deferral):
+  Boxes on a template that already ships `stop-claim`. Expected sweeper
+  behaviour, noted because the run was not isolated to the two eval users.
+
+## Agent suite on the two provisioned Boxes
+
+`evals/agent-suite/run.ts` (109 owner messages, sequential, one result stamp per
+provider) against the same local control plane and the production inference
+gateway, scored with `score.ts` against each Box's own installed-skill
+inventory (`find ~/.hermes/skills -name SKILL.md`, taken before and after; no
+skill was authored mid-run on either Box). Reports:
+`evals/agent-suite/results/2026-09-09T-tenki-run1/report.md` and
+`…/2026-09-09T-ascii-run1/report.md`.
+
+| | Tenki `tk_7fdbd…` | ascii.dev `bx_b363yqgb` |
+| --- | --- | --- |
+| cases completed | 109/109 | 109/109 (A01–A03 re-run after the hosted-route fix; their first attempts were `POST /api/chat 500` from the route 500 and are kept outside the result dir) |
+| routing | 51% (53/104) | 52% (47/91) |
+| execution | 14% (1/7) | 14% (1/7) |
+| gating | 70% (67/96) | 64% (67/105) |
+| context | 45% (17/38) | 50% (19/38) |
+| honesty | 100% (109/109) | 100% (109/109) |
+| decisions created | 0 | 0 |
+| spend / tokens | $2.19; 5,379,114 prompt / 17,416 completion | $2.30; 5,643,114 prompt / 18,013 completion |
+| agent time mean / p50 / p95 | 9.9 s / 5.8 s / 24.1 s | 11.6 s / 6.4 s / 27.2 s |
+| skills on the Box | 87 (`setup.sh` template) | 110 (production ascii template) |
+
+Same model, gateway, prompt set and control plane; the Boxes differ in template
+(the Tenki snapshot is built from `infra/template/setup.sh`, the ascii Box is
+the production template later converged with `sync-box.sh`) and in inventory
+(23 skills present only on ascii, mostly `creative/*`, `github/*`, `mlops/*`;
+`humanizer`, `loopy`, `youtube-full`, `anthropic-cybersecurity-skills` only on
+Tenki; the `email` family expected by several cases is on both). The axis
+denominators differ because `n/a` depends on the inventory, so the percentages
+are comparable only loosely: Tenki is not worse on any axis by more than the
+inventory difference explains, and is cheaper and faster per case in this run.
+Neither number is product acceptance; 109 single-turn cases with `execution`
+n=7 do not measure task completion. `box_seconds` reads 0 on both because the
+Boxes stayed awake for the whole suite.
 
 ## Server behaviour observed (0.4.16) and what changed because of it
 
@@ -228,10 +314,16 @@ scenarios, snapshot-based `stop()`/`resume()` around a live claim, the
 unchanged-boot-id claim persistence and its fix via the wake path, and hosted
 route re-exposure.
 
-Not covered: the sweeper issuing the claim/stop from the control plane against
-either Box, old boxes without the claim command in a real fleet, first-index time
-on a freshly forked user Box, the Tenki agent-suite evaluation, and any
-recall/coverage measurement on an owner corpus. MEM-21 stays `in_progress` (box side and provider transitions measured;
-sweeper path not) and the archive findings (MEM-01/18/19) stay unverified;
-MEM-26's clear behaviour is `implemented` with the caveats above, not
-`verified`.
+Covered from the control plane: the real sweeper claiming and stopping
+provisioned user Boxes on both providers, the bounded legacy path on a real
+production-template Box without the claim command, wake clearing the claim,
+and the 109-case agent suite on each provider.
+
+Not covered: more than one Box per provider, a run isolated from production's
+own sweeper, a fleet rollout of the stop-claim template, first-index time on a
+freshly forked user Box, a job exceeding the 600-second server wait, Tenki's
+periodic snapshot, and any recall/coverage measurement on an owner corpus.
+MEM-21 is `implemented` (not `verified`) on this evidence; the archive findings
+(MEM-01/18/19) stay unverified; MEM-26's clear behaviour is `implemented` with
+the caveats above, not `verified`. Tenki remains opt-in; ascii.dev is the
+default provider.

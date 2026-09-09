@@ -58,11 +58,22 @@ export function commandMissing(result: CommandResult, subcommand: string): boole
 }
 
 async function run(boxId: string, subcommand: string, args: string): Promise<CommandResult | null> {
+  let result: CommandResult;
   try {
-    return await command(boxId, `ovctl ${subcommand} ${args}`.trimEnd(), PROBE_TIMEOUT_SECONDS);
-  } catch {
+    result = await command(boxId, `ovctl ${subcommand} ${args}`.trimEnd(), PROBE_TIMEOUT_SECONDS);
+  } catch (error) {
+    probeFailed(boxId, subcommand, { error: error instanceof Error ? error.message : String(error) });
     return null;
   }
+  if (result.exitCode !== 0 && !commandMissing(result, subcommand)) {
+    probeFailed(boxId, subcommand, { exit: result.exitCode, stderr: result.stderr.slice(-300) });
+  }
+  return result;
+}
+
+/** ovctl stderr is diagnostics (tracebacks, argparse), never owner content. */
+function probeFailed(boxId: string, subcommand: string, detail: Record<string, unknown>): void {
+  console.error(JSON.stringify({ msg: "ovctl probe failed", box_id: boxId, subcommand, ...detail }));
 }
 
 /** Old boxes with idle-check but no claim: read-only probe, deny on anything unclear. */

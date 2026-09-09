@@ -298,3 +298,47 @@ populated OpenViking store, live Dictionary build, or gateway session store
 was exercised; none of these findings is `verified`. Live isolated
 Linux/systemd verification (item 4) and archive recall/coverage (item 5)
 remain outstanding. No A+/95 score is claimed.
+
+Live validation on real Boxes and a second provider (MEM-21 → `implemented`):
+Tenki Sandbox is now an opt-in Box provider behind `lib/box/client.ts` (`tk_`
+ids, `tenki:<snapshot>` templates, `{ "provider": "tenki" }` on the admin
+provision route; an omitted provider is ascii.dev, which stays the default).
+The checkpoint build was run locally against the production Supabase project
+and provisioned one user per provider. Evidence, all in
+`docs/reports/openviking-livecheck-isolated-linux.md`: livecheck 8/8 on local
+systemd, a fresh Tenki VM, a real ascii.dev Box and a Tenki Box; provider
+`stop()`/`resume()` around a live claim on both; the real `/api/cron/sweep`
+deferring the Tenki Box through its 20-minute post-index grace, then
+`claimed:1 stopped:1` (two cycles); the bounded legacy path on a real
+production-template ascii Box without the claim command (`legacy_grace` at 10
+minutes overdue, `legacyStop:1` at 25), then `claimed:1 stopped:1` once the
+Box was synced to the checkpoint; `ensureBoxAwake` waking both with the claim
+cleared, units active and hosted routes 200. The agent suite ran 109/109 on
+each: Tenki routing 51% (53/104), execution 14% (1/7), gating 70% (67/96),
+context 45% (17/38), honesty 100%, $2.19, mean 9.9 s; ascii routing 52%
+(47/91), execution 14% (1/7), gating 64% (67/105), context 50% (19/38),
+honesty 100%, $2.30, mean 11.6 s. The Boxes carry different skill inventories
+(87 vs 110) so the axis denominators differ; the numbers are comparable only
+loosely and are not acceptance (execution n=7).
+
+Fixes found by the live runs: ascii command timeouts map to exit 124;
+`BOX_READY_TIMEOUT_MS` for slow forks; the ascii hosted-route firewall marker is
+removed before every registration (routes 500 after fork/resume otherwise);
+Tenki `stop()` snapshots and closes instead of pausing (pause killed sessions
+with several GB written); `ovctl resumed` on wake voids a claim that survives a
+memory-image restore; a queued entry whose source vanished is dropped instead
+of failing forever; the sweeper logs a structured `ovctl probe failed` line.
+
+Validation: 65 OpenViking Python tests pass (`tests/test_*.py`). Full Vitest
+(excluding the untracked `.scratch/` live helpers, which need provider
+credentials): 261 files, 2,760 tests pass, one skipped. Typecheck passes.
+Lint: zero errors, the same 38 pre-existing warnings. Production build passes.
+Inventory check: 249 rows, 16 implemented, 1 in progress, 232 not verified,
+product acceptance not measured.
+
+Limits: one Box per provider on a shared production project (production's own
+minute cron swept the same rows; only local response counters are attributed);
+no fleet rollout of the stop-claim template observed; Tenki has no periodic
+snapshot yet and stays opt-in; no owner corpus was imported, so archive
+recall/coverage is unmeasured (MEM-01/18/19 stay not verified). Nothing is
+`verified`; no A+/95 score is claimed.

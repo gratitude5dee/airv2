@@ -133,7 +133,7 @@ the user's explicit authorization. The user has authorized this GitHub push.
   (inventory/hash-change/cleanup/backup failures retry; invalid inventory and
   unresolved labels are terminal).
 
-### Durable indexing (MEM-21 still incomplete)
+### Durable indexing (MEM-21 `implemented`, not product-verified)
 
 - `ovctl add-resource --no-wait` persists generation-tagged work in
   `~/.openviking/pending.json` under flock and atomic fsync/replace.
@@ -192,6 +192,36 @@ the user's explicit authorization. The user has authorized this GitHub push.
   released, releaseFailed }` alongside `stopped`/`indexingDeferred`.
 - Explicit `outputFileTracingRoot` (workspace root) in `apps/web/next.config.ts`;
   the production build log no longer contains the inferred-tracing-root warning.
+- The sweeper logs a structured `ovctl probe failed` line (box id, subcommand,
+  exit + stderr tail, or the command error) whenever a probe fails for a reason
+  other than a missing subcommand, so a `probe_failed` deferral in the cron
+  response is attributable from the server log.
+
+### Second Box provider: Tenki Sandbox (opt-in, ascii.dev stays the default)
+
+- `apps/web/lib/box/client.ts` dispatches on the id prefix: `bx_` → ascii.dev
+  (unchanged), `tk_` → `lib/box/tenki.ts`; template refs `tenki:<snapshot id>`.
+  Provisioning accepts `{ "provider": "tenki" }` on the admin route
+  (`ubuntu` only, needs `TENKI_TEMPLATE_ID`); an omitted provider is ascii.
+- Tenki lifecycle: fork = session from the snapshot (4 vCPU / 8 GB / 40 GB,
+  sticky, tagged `air-box:<key>`); `stop()` = snapshot the live session, tag it,
+  wait ready, close (Tenki `pause` killed sessions with more than a few GB
+  written — guest-agent liveness during PAUSING); `resume()` = fresh session
+  from the newest ready snapshot, so the hosted URL changes and is re-exposed
+  by `hostRoute()` (`exposePort`, empty route token). Commands run as `user`.
+- Template: `apps/web/scripts/tenki-template.mjs` runs `infra/template/setup.sh`
+  in a session and snapshots it. Current snapshot built from this checkpoint:
+  `tenki:70fd0176-7193-4160-bf65-529958d90802` (all six units active,
+  `hermes-host` condition-skipped, `/health` 200 on a fork). The eval user's Box
+  was provisioned from the earlier `tenki:2c8ddcce…`.
+- `infra/template/verify-box.sh` skips `unit-hermes-host` when
+  `~/.ascii/host` is absent (Tenki); on ascii it is still checked.
+- ascii.dev fixes found while provisioning real Boxes: command timeouts
+  (`exitCode null`) map to 124; the ready wait is `BOX_READY_TIMEOUT_MS`
+  (default 240 s; forks took >4 min some of the day); hosted-route
+  registration removes `~/.ascii/.gateway-firewall-open` first because the
+  marker survives a snapshot while the ufw rule does not (routes returned 500
+  after fork/resume until then).
 
 ## Validation evidence and limits
 
@@ -214,9 +244,17 @@ the user's explicit authorization. The user has authorized this GitHub push.
   production build all pass; the inferred-tracing-root warning is gone.
   Remaining build/lint warnings are pre-existing unused-`_arg` warnings in
   test files and the `libheif-js` critical-dependency notice.
-- None of the above is product acceptance. The idle-stop race closure has not
-  been exercised on an isolated Linux/systemd box (item 4), and no owner
-  corpus has been imported to measure archive recall/coverage (item 5).
+- Live evidence (see `docs/reports/openviking-livecheck-isolated-linux.md`):
+  livecheck 8/8 on local systemd, a fresh Tenki VM, a real ascii.dev Box and a
+  Tenki Box; the control-plane sweeper acquiring the claim and stopping
+  provisioned user Boxes on both providers, the bounded legacy path on a real
+  old ascii Box (`legacy_grace` then `legacyStop`), and wake clearing the claim
+  on both. The 109-case agent suite completed on both providers with
+  comparable scores (Tenki 51/14/70/45/100, ascii 52/14/64/50/100 on
+  routing/execution/gating/context/honesty; inventories differ, 87 vs 110).
+- None of the above is product acceptance. No owner corpus has been imported
+  to measure archive recall/coverage (item 5); the suite's `execution` axis has
+  n=7; A+/95 is not met.
 - `docs/reports/openviking-index-completion.md` records source inspection and
   local regression evidence. This is not a live Linux/systemd or recall test.
 - No owner iMessage corpus was imported, no test message was sent to others,
@@ -233,13 +271,12 @@ the user's explicit authorization. The user has authorized this GitHub push.
    server that a removal of a missing URI surfaces as `NotFoundError` (server
    0.4.16 source reads as idempotent delete, so the typed path may never fire;
    that is harmless but unmeasured).
-3. Done locally (unit level): `stop-claim`/`stop-release` and the claim-first
-   sweeper with bounded legacy fallback. Still open: the race guarantee is only
-   as strong as the box-side locks; it has NOT been exercised on an isolated
-   Linux/systemd box with the real timer, service units and provider `stop()`
-   (item 4). Rollout order still matters: until the template with `stop-claim`
-   ships, boxes with `idle-check` use the read-only probe and boxes with
-   neither are stopped after the 20-minute legacy grace.
+3. Done and live-exercised: `stop-claim`/`stop-release` and the claim-first
+   sweeper with bounded legacy fallback (item 4 below). The race guarantee is
+   only as strong as the box-side locks. Rollout order still matters: until
+   the template with `stop-claim` ships, boxes with `idle-check` use the
+   read-only probe and boxes with neither are stopped after the 20-minute
+   legacy grace — both fallbacks observed on a real production-template Box.
 4. Partly done on an isolated Linux/systemd host (not an ascii.dev Box — the
    account was out of usage, HTTP 402). `infra/template/openviking/livecheck.py`
    ran the real units against the pinned server 0.4.16: 8/8 scenarios pass
@@ -265,15 +302,20 @@ the user's explicit authorization. The user has authorized this GitHub push.
    failed silently forever, pinning the Box awake; `resume-pending` now drops
    missing-source entries with a metadata-only journal line. The first full
    Box run was 6/8 because the fork carried an old failing archive replay in
-   its queue (kept in the report as evidence). Still open: the sweeper
-   itself driving claim + `stop()` from the control plane against a real Box
-   (needs a Supabase row for the Box), old boxes without the claim command,
-   and a strategy for a job exceeding the 600-second server wait that avoids
-   continually restarting expensive work. Tenki Cloud vs the Box: identical
-   pass/fail on all 8 scenarios; Tenki is a CI runner, not a Box provider, so
-   the agent eval suite (`evals/agent-suite`, needs a control plane, a
-   provisioned test user and `EVAL_*`/Supabase credentials) has NOT been run
-   there and Tenki is not the primary provisioning path.
+   its queue (kept in the report as evidence). Then from the control plane:
+   the checkpoint build run locally against the production Supabase project
+   provisioned one Tenki user (`tk_7fdbd…`, `provider: "tenki"`) and one
+   ascii user (`bx_b363yqgb`, production template = a real old Box); the real
+   `/api/cron/sweep` deferred the Tenki Box for its 20-minute grace, then
+   `claimed:1 stopped:1` (twice), deferred the old ascii Box with
+   `legacy_grace` at 10 min overdue and stopped it with `legacyStop:1` at 25,
+   and after `sync-box.sh` claimed and stopped it too; `ensureBoxAwake` woke
+   both with the claim cleared and routes healthy. Caveat: production's
+   own minute cron sweeps the same rows, so only local response counters are
+   attributed. The agent suite ran 109/109 on both (see the report). Still
+   open: a strategy for a job exceeding the 600-second server wait that
+   avoids continually restarting expensive work, and Tenki's missing periodic
+   snapshot. Tenki remains opt-in; ascii.dev is the default provider.
 5. Archive co-ship: done locally (unit level) — owner-facing resolution for
    ambiguous legacy labels (API and the onboarding iMessage step, which reads
    labels live only when the box is already awake), resumable cursor in

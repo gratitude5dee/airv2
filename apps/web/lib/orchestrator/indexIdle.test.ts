@@ -117,6 +117,29 @@ describe("claimIdleStop on old boxes", () => {
     expect(await claimIdleStop("box", LEGACY_STOP_GRACE_MS)).toEqual({ kind: "legacy_stop" });
   });
 
+  it("logs why a probe failed, with the box id and exit or error, never on a missing command", async () => {
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    box({ "stop-claim": { exitCode: 1, stdout: "", stderr: "Traceback\nValueError: invalid pending index state" } });
+    await claimIdleStop("box", 0);
+    expect(stderr).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(stderr.mock.calls[0]?.[0] as string)).toEqual({
+      msg: "ovctl probe failed",
+      box_id: "box",
+      subcommand: "stop-claim",
+      exit: 1,
+      stderr: "Traceback\nValueError: invalid pending index state",
+    });
+    stderr.mockClear();
+    box({ "stop-claim": new Error("command timed out after 15s") });
+    await claimIdleStop("box", 0);
+    expect(JSON.parse(stderr.mock.calls[0]?.[0] as string)).toMatchObject({ error: "command timed out after 15s" });
+    stderr.mockClear();
+    box({});
+    await claimIdleStop("box", 0);
+    expect(stderr).not.toHaveBeenCalled();
+    stderr.mockRestore();
+  });
+
   it("does not mistake other exit-2 failures for a missing command", async () => {
     box({ "stop-claim": { exitCode: 2, stdout: "", stderr: "ovctl: error: argument --grace-seconds: invalid int value" } });
     expect(await claimIdleStop("box", LEGACY_STOP_GRACE_MS)).toEqual({ kind: "deferred", reason: "probe_failed" });
