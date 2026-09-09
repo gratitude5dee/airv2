@@ -68,6 +68,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   for (const box of (staleBoxes ?? []) as { provider_box_id: string; user_id: string }[]) {
     try {
       const current = await getBox(box.provider_box_id).catch(() => null);
+      // The provider is still finishing the stop (snapshot being written or
+      // a close it has not confirmed): getBox() retries on the next sweep.
+      if (current?.state === "stopping") continue;
       const running =
         current && (current.state === "ready" || current.state === "idle");
       await supabase

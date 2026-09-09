@@ -210,14 +210,24 @@ function newestFirst(a: Snapshot, b: Snapshot): number {
 }
 
 /**
- * Everything the provider currently holds for a box: at most one live
- * session, plus the snapshots tagged with the box (newest first). The
- * snapshot whose `sessionId` is the live session is a stop in flight; the
- * one the session was created from (`sourceSnapshotId`) is the previous stop.
+ * Everything the provider currently holds for a box: the live session it
+ * should have (plus any duplicates a concurrent wake created), and the
+ * snapshots tagged with the box (newest first). The snapshot whose
+ * `sessionId` is the live session is a stop in flight; the one the session
+ * was created from (`sourceSnapshotId`) is the previous stop.
  */
 export interface Resolved {
   session: Session | null;
+  /**
+   * Extra live sessions for the same box. The winner is the lowest session
+   * id, so every process that resolves the box agrees on which one to keep.
+   */
+  duplicates: Session[];
   snapshots: Snapshot[];
+}
+
+function byId(a: Session, b: Session): number {
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
 async function resolve(boxId: string): Promise<Resolved> {
@@ -227,13 +237,16 @@ async function resolve(boxId: string): Promise<Resolved> {
       sandbox().list({ tags: [tag] }),
       sandbox().listSnapshots(),
     ]);
-    const live = sessions.filter(
-      (candidate) =>
-        candidate.tags.includes(tag) &&
-        mapSessionState(candidate.state) !== "error"
-    );
+    const live = sessions
+      .filter(
+        (candidate) =>
+          candidate.tags.includes(tag) &&
+          mapSessionState(candidate.state) !== "error"
+      )
+      .sort(byId);
     return {
       session: live[0] ?? null,
+      duplicates: live.slice(1),
       snapshots: snapshots
         .filter(
           (snapshot) => snapshot.tags.includes(tag) && isLiveSnapshot(snapshot)
@@ -287,6 +300,46 @@ async function pruneSnapshots(
   );
 }
 
+/** True once the provider no longer reports the snapshot as live. */
+async function snapshotGone(snapshotId: string): Promise<boolean> {
+  try {
+    return !isLiveSnapshot(await sandbox().getSnapshot(snapshotId));
+  } catch (error) {
+    return toBoxApiError(error).status === 404;
+  }
+}
+
+/** True once the provider no longer reports the session as live. */
+async function sessionGone(sessionId: string): Promise<boolean> {
+  try {
+    const current = await sandbox().get(sessionId);
+    return mapSessionState(current.state) === "error";
+  } catch (error) {
+    return toBoxApiError(error).status === 404;
+  }
+}
+
+/**
+ * Close a session and confirm the provider agrees it is gone. A close the
+ * provider rejected or lost must not read as a stopped box: the VM would
+ * keep running (and billing) behind a row the sweeper no longer watches.
+ */
+async function closeConfirmed(live: Session): Promise<boolean> {
+  try {
+    await live.close();
+    return true;
+  } catch {
+    return await sessionGone(live.id);
+  }
+}
+
+/** Close the losers of a concurrent wake; the winner is chosen in resolve(). */
+async function closeDuplicates(duplicates: Session[]): Promise<void> {
+  await Promise.all(
+    duplicates.map((duplicate) => duplicate.close().catch(() => undefined))
+  );
+}
+
 function stoppedBox(boxId: string, snapshot: Snapshot): Box {
   return {
     id: boxId,
@@ -299,8 +352,10 @@ function stoppedBox(boxId: string, snapshot: Snapshot): Box {
 
 /**
  * Finish a stop whose snapshot is now READY: close the session it came from
- * and prune older snapshots. Returns the stopped box, or null when the
- * snapshot is still being written.
+ * and prune older snapshots. Returns the stopped box; a box still
+ * "stopping" while the snapshot is being written or the close could not be
+ * confirmed (so getBox() retries on the next sweep); or null when the
+ * snapshot failed.
  */
 async function completeStop(
   boxId: string,
@@ -311,7 +366,9 @@ async function completeStop(
   if (snapshot.state !== "READY") {
     return snapshot.state === "CREATING" ? stoppedBox(boxId, snapshot) : null;
   }
-  await resolved.session?.close().catch(() => undefined);
+  if (resolved.session && !(await closeConfirmed(resolved.session))) {
+    return { ...stoppedBox(boxId, snapshot), state: "stopping" };
+  }
   await pruneSnapshots(resolved.snapshots, snapshot.id);
   return stoppedBox(boxId, snapshot);
 }
@@ -366,7 +423,10 @@ export async function getBox(boxId: string): Promise<Box> {
       throw toBoxApiError(error);
     }
   }
-  if (resolved.session) return toBox(boxId, resolved.session);
+  if (resolved.session) {
+    await closeDuplicates(resolved.duplicates);
+    return toBox(boxId, resolved.session);
+  }
   const snapshot = resolved.snapshots[0];
   if (!snapshot) {
     throw new BoxApiError(404, `tenki: box ${boxId} not found`);
@@ -386,17 +446,45 @@ export async function renameBox(boxId: string, name: string): Promise<Box> {
   }
 }
 
+/** Wakes in flight in this process, so overlapping callers share one create. */
+const resumesInFlight = new Map<string, Promise<Box>>();
+
 /**
  * Wake a stopped box: a new session from its newest snapshot (memory and
  * disk restored, so units resume where they were). A live session wins over
- * any stop in flight — the wake aborts the stop and its snapshot is pruned.
+ * any stop in flight — the wake aborts the stop and its snapshot is pruned;
+ * the wake only reads ready once the provider confirms that snapshot is
+ * gone, otherwise the next getBox() would finish the stop and close the VM.
+ *
+ * Two wakes can still race across processes (prewarm and a turn); both
+ * create a session, then re-resolve and keep the same winner, closing the
+ * loser.
  */
 export async function resume(boxId: string): Promise<Box> {
+  const inFlight = resumesInFlight.get(boxId);
+  if (inFlight) return inFlight;
+  const wake = resumeOnce(boxId).finally(() => {
+    resumesInFlight.delete(boxId);
+  });
+  resumesInFlight.set(boxId, wake);
+  return wake;
+}
+
+async function resumeOnce(boxId: string): Promise<Box> {
   const resolved = await resolve(boxId);
   try {
     if (resolved.session) {
       const pending = stopInFlight(resolved);
-      if (pending) await pruneSnapshots([pending], null);
+      if (pending) {
+        await pruneSnapshots([pending], null);
+        if (!(await snapshotGone(pending.id))) {
+          throw new BoxApiError(
+            409,
+            `tenki: box ${boxId} has a stop in flight that could not be cancelled`
+          );
+        }
+      }
+      await closeDuplicates(resolved.duplicates);
       return toBox(boxId, resolved.session);
     }
     const snapshot = resolved.snapshots[0];
@@ -407,7 +495,14 @@ export async function resume(boxId: string): Promise<Box> {
       throw new BoxApiError(409, `tenki: box ${boxId} is still stopping`);
     }
     const created = await createSession(boxId, snapshot.id);
-    return toBox(boxId, created);
+    const settled = await resolve(boxId);
+    const winner = settled.session ?? created;
+    await closeDuplicates(
+      winner.id === created.id
+        ? settled.duplicates
+        : [created, ...settled.duplicates.filter((s) => s.id !== created.id)]
+    );
+    return toBox(boxId, winner);
   } catch (error) {
     throw toBoxApiError(error);
   }

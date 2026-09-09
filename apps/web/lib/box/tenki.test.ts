@@ -345,6 +345,40 @@ describe("getBox", () => {
     install([fakeSession("TERMINATED")], [fakeSnapshot("snap-1", "READY")]);
     expect((await getBox(BOX)).state).toBe("stopped");
   });
+
+  it("keeps reporting stopping when the provider rejects the close and the VM is still up", async () => {
+    const session = fakeSession("RUNNING");
+    session.close = vi.fn(async () => {
+      throw new Error("HTTP 500");
+    });
+    const client = install([session], [fakeSnapshot("snap-1", "READY")]);
+    expect((await getBox(BOX)).state).toBe("stopping");
+    expect(client.deleteSnapshot).not.toHaveBeenCalled();
+    // The next look retries the close; once it lands the box is stopped.
+    session.close = vi.fn(async () => {
+      session.state = "TERMINATED";
+    });
+    expect((await getBox(BOX)).state).toBe("stopped");
+  });
+
+  it("treats a close the provider lost but did apply as stopped", async () => {
+    const session = fakeSession("RUNNING");
+    session.close = vi.fn(async () => {
+      session.state = "TERMINATED";
+      throw new Error("socket hang up");
+    });
+    install([session], [fakeSnapshot("snap-1", "READY")]);
+    expect((await getBox(BOX)).state).toBe("stopped");
+  });
+
+  it("keeps the lowest session id and closes duplicates left by racing wakes", async () => {
+    const b = fakeSession("RUNNING", { id: "sess-b" });
+    const a = fakeSession("RUNNING", { id: "sess-a" });
+    install([b, a]);
+    expect((await getBox(BOX)).state).toBe("ready");
+    expect(b.close).toHaveBeenCalledOnce();
+    expect(a.close).not.toHaveBeenCalled();
+  });
 });
 
 describe("stop", () => {
@@ -401,6 +435,18 @@ describe("stop", () => {
     expect(client.createSnapshotAsync).not.toHaveBeenCalled();
   });
 
+  it("does not report stopped when the provider refuses to close the session", async () => {
+    const session = fakeSession("RUNNING");
+    session.close = vi.fn(async () => {
+      throw new Error("HTTP 503");
+    });
+    const client = install([session]);
+    const box = await stop(BOX);
+    expect(box.state).toBe("stopping");
+    expect(client.get).toHaveBeenCalledWith("sess-1");
+    expect(client.snapshots.map((snapshot) => snapshot.id)).toEqual(["snap-1"]);
+  });
+
   it("propagates a snapshot the provider refused", async () => {
     const client = install([fakeSession("RUNNING")]);
     client.createSnapshotAsync = vi.fn(async () => {
@@ -445,9 +491,65 @@ describe("resume", () => {
     expect(client.create).not.toHaveBeenCalled();
   });
 
+  it("does not report ready while a stop it could not cancel is still in flight", async () => {
+    const session = fakeSession("RUNNING");
+    const client = install([session], [fakeSnapshot("snap-1", "CREATING")]);
+    client.deleteSnapshot = vi.fn(async () => {
+      throw new Error("HTTP 500");
+    });
+    await expect(resume(BOX)).rejects.toMatchObject({ status: 409 });
+    // The stop then completes normally instead of closing a box a caller
+    // believed was awake.
+    client.snapshots[0]!.state = "READY";
+    expect((await getBox(BOX)).state).toBe("stopped");
+    expect(session.close).toHaveBeenCalledOnce();
+  });
+
+  it("accepts a cancellation the provider applied but did not acknowledge", async () => {
+    const client = install(
+      [fakeSession("RUNNING")],
+      [fakeSnapshot("snap-1", "CREATING")]
+    );
+    client.deleteSnapshot = vi.fn(async () => {
+      client.snapshots.splice(0, 1);
+      throw new Error("socket hang up");
+    });
+    expect((await resume(BOX)).state).toBe("ready");
+  });
+
   it("refuses to restore while the snapshot is still being written", async () => {
     install([], [fakeSnapshot("snap-1", "CREATING")]);
     await expect(resume(BOX)).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("shares one create between overlapping wakes in the same process", async () => {
+    const client = install([], [fakeSnapshot("snap-1", "READY")]);
+    const [first, second] = await Promise.all([resume(BOX), resume(BOX)]);
+    expect(client.create).toHaveBeenCalledOnce();
+    expect(first).toEqual(second);
+    expect(client.sessions.filter((s) => s.state !== "TERMINATED")).toHaveLength(1);
+  });
+
+  it("keeps one session when two processes wake the same box at once", async () => {
+    // Both wakes resolve an empty box before either create lands; the
+    // process whose session loses the id tie-break closes its own.
+    const client = install([], [fakeSnapshot("snap-1", "READY")]);
+    const other = fakeSession("CREATING", { id: "sess-0", sourceSnapshotId: "snap-1" });
+    client.create = vi.fn(async (options: { tags?: string[]; snapshotId?: string }) => {
+      client.sessions.push(other);
+      const created = fakeSession("CREATING", {
+        id: "sess-9",
+        tags: options.tags ?? [],
+        sourceSnapshotId: options.snapshotId,
+      });
+      client.sessions.push(created);
+      return created;
+    });
+    const box = await resume(BOX);
+    expect(box.state).toBe("cloning");
+    const live = client.sessions.filter((s) => s.state !== "TERMINATED");
+    expect(live.map((s) => s.id)).toEqual(["sess-0"]);
+    expect(other.close).not.toHaveBeenCalled();
   });
 
   it("404s an unknown box", async () => {
