@@ -20,6 +20,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuthorized } from "@/lib/admin/auth";
+import { providerOf, type BoxProvider } from "@/lib/box/client";
 import { toComputeEnvironment } from "@/lib/compute/environments";
 import {
   ReplaceInProgressError,
@@ -36,6 +37,10 @@ export const dynamic = "force-dynamic";
  */
 export const maxDuration = 300;
 
+function isBoxProvider(value: unknown): value is BoxProvider {
+  return value === "ascii" || value === "tenki";
+}
+
 export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!adminAuthorized(request)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -43,6 +48,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const body = (await request.json().catch(() => ({}))) as {
     user_id?: unknown;
     box_id?: unknown;
+    provider?: unknown;
   };
   if (typeof body.user_id !== "string" || body.user_id.length === 0) {
     return NextResponse.json({ error: "user_id required" }, { status: 400 });
@@ -50,13 +56,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (typeof body.box_id !== "string" || body.box_id.length === 0) {
     return NextResponse.json({ error: "box_id required" }, { status: 400 });
   }
+  if (body.provider !== undefined && !isBoxProvider(body.provider)) {
+    return NextResponse.json(
+      { error: "provider must be ascii or tenki" },
+      { status: 400 },
+    );
+  }
   const userId = body.user_id;
   const boxId = body.box_id;
 
   const supabase = serviceClient();
   const { data: box, error } = await supabase
     .from("boxes")
-    .select("provider_box_id, environment")
+    .select("provider, provider_box_id, environment")
     .eq("user_id", userId)
     .maybeSingle();
   if (error) {
@@ -66,6 +78,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "no box for user" }, { status: 404 });
   }
   const current = box as {
+    provider: string | null;
     provider_box_id: string;
     environment: string | null;
   };
@@ -77,13 +90,30 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const environment = toComputeEnvironment(current.environment);
+  const provider = body.provider ??
+    (isBoxProvider(current.provider)
+      ? current.provider
+      : providerOf(current.provider_box_id));
+  if (provider === "tenki" && environment !== "ubuntu") {
+    return NextResponse.json(
+      { error: "tenki provider supports ubuntu only" },
+      { status: 400 },
+    );
+  }
   try {
-    const result = await replaceBox(supabase, userId, boxId, environment);
+    const result = await replaceBox(
+      supabase,
+      userId,
+      boxId,
+      environment,
+      provider,
+    );
     return NextResponse.json({
       user_id: result.userId,
       previous_box_id: boxId,
       box_id: result.boxId,
       environment: result.environment,
+      provider,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown error";

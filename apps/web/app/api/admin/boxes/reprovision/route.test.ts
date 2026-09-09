@@ -12,6 +12,7 @@ import { NextRequest } from "next/server";
 
 type BoxRow = {
   user_id: string;
+  provider: string | null;
   provider_box_id: string;
   environment: string | null;
   state: string;
@@ -61,6 +62,10 @@ vi.mock("@/lib/provisioning/provision", () => ({
   ReplaceInProgressError,
 }));
 
+vi.mock("@/lib/box/client", () => ({
+  providerOf: (id: string) => (id.startsWith("tk_") ? "tenki" : "ascii"),
+}));
+
 import { POST } from "./route";
 
 const base = "https://air.test/api/admin/boxes/reprovision";
@@ -81,6 +86,7 @@ const result = (environment: string) => ({
 
 const row = (overrides: Partial<BoxRow> = {}): BoxRow => ({
   user_id: "u1",
+  provider: "ascii",
   provider_box_id: "bx_old",
   environment: "ubuntu",
   state: "ready",
@@ -106,6 +112,17 @@ describe("POST /api/admin/boxes/reprovision", () => {
   it("400s without a user_id or box_id", async () => {
     expect((await POST(post({ box_id: "bx_old" }))).status).toBe(400);
     expect((await POST(post({ user_id: "u1" }))).status).toBe(400);
+    expect(replaceBox).not.toHaveBeenCalled();
+  });
+
+  it("400s for an unknown provider", async () => {
+    const response = await POST(
+      post({ user_id: "u1", box_id: "bx_old", provider: "other" }),
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "provider must be ascii or tenki",
+    });
     expect(replaceBox).not.toHaveBeenCalled();
   });
 
@@ -151,12 +168,14 @@ describe("POST /api/admin/boxes/reprovision", () => {
       previous_box_id: "bx_old",
       box_id: "bx_new",
       environment: "omarchy",
+      provider: "ascii",
     });
     expect(replaceBox).toHaveBeenCalledWith(
       expect.anything(),
       "u1",
       "bx_old",
       "omarchy",
+      "ascii",
     );
   });
 
@@ -171,7 +190,64 @@ describe("POST /api/admin/boxes/reprovision", () => {
       "u1",
       "bx_old",
       "ubuntu",
+      "ascii",
     );
+  });
+
+  it("switches an Ubuntu box to Tenki only when explicitly requested", async () => {
+    db.box = row();
+    replaceBox.mockResolvedValue({
+      ...result("ubuntu"),
+      boxId: "tk_new",
+    });
+    const response = await POST(
+      post({ user_id: "u1", box_id: "bx_old", provider: "tenki" }),
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      user_id: "u1",
+      previous_box_id: "bx_old",
+      box_id: "tk_new",
+      environment: "ubuntu",
+      provider: "tenki",
+    });
+    expect(replaceBox).toHaveBeenCalledWith(
+      expect.anything(),
+      "u1",
+      "bx_old",
+      "ubuntu",
+      "tenki",
+    );
+  });
+
+  it("preserves the current provider when provider is omitted", async () => {
+    db.box = row({ provider: "tenki", provider_box_id: "tk_old" });
+    replaceBox.mockResolvedValue({
+      ...result("ubuntu"),
+      boxId: "tk_new",
+    });
+    expect(
+      (await POST(post({ user_id: "u1", box_id: "tk_old" }))).status,
+    ).toBe(200);
+    expect(replaceBox).toHaveBeenCalledWith(
+      expect.anything(),
+      "u1",
+      "tk_old",
+      "ubuntu",
+      "tenki",
+    );
+  });
+
+  it("rejects Tenki for a non-Ubuntu environment before replacement", async () => {
+    db.box = row({ environment: "omarchy" });
+    const response = await POST(
+      post({ user_id: "u1", box_id: "bx_old", provider: "tenki" }),
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "tenki provider supports ubuntu only",
+    });
+    expect(replaceBox).not.toHaveBeenCalled();
   });
 
   it("500s when the fork fails before the row moves", async () => {

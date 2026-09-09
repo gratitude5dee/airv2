@@ -484,6 +484,37 @@ describe("switchEnvironment", () => {
     expect(boxClient.deleteBox).toHaveBeenCalledWith("box-new");
     expect(boxClient.deleteBox).not.toHaveBeenCalledWith("box-old");
   });
+
+  it("uses Tenki only when the caller explicitly targets it", async () => {
+    fork.mockResolvedValueOnce({ id: "tk_new" });
+    const result = await switchEnvironment(
+      fakeSupabase,
+      "user-1",
+      "ubuntu",
+      "tenki",
+    );
+    expect(result.boxId).toBe("tk_new");
+    expect(fork).toHaveBeenCalledWith(
+      expect.objectContaining({ templateId: "tenki:snap-1" }),
+    );
+    expect(upserts["boxes"]?.[0]).toMatchObject({
+      provider: "tenki",
+      provider_box_id: "tk_new",
+    });
+    expect(boxClient.deleteBox).toHaveBeenCalledWith("box-old");
+  });
+
+  it("keeps the current provider when no target provider is supplied", async () => {
+    tables["boxes"] = [
+      { user_id: "user-1", provider_box_id: "tk_old", environment: "ubuntu" },
+    ];
+    fork.mockResolvedValueOnce({ id: "tk_new" });
+    await switchEnvironment(fakeSupabase, "user-1", "ubuntu");
+    expect(fork).toHaveBeenCalledWith(
+      expect.objectContaining({ templateId: "tenki:snap-1" }),
+    );
+    expect(boxClient.deleteBox).toHaveBeenCalledWith("tk_old");
+  });
 });
 
 describe("fleet position of a fresh fork", () => {
@@ -652,6 +683,22 @@ describe("replaceBox", () => {
     );
     expect(boxRow()["replace_claimed_at"]).toBeNull();
     expect(boxClient.deleteBox).toHaveBeenCalledWith("box-old");
+  });
+
+  it("passes an explicit target provider through the replacement lease", async () => {
+    fork.mockResolvedValueOnce({ id: "tk_new" });
+    const result = await replaceBox(
+      fakeSupabase,
+      "user-1",
+      "box-old",
+      "ubuntu",
+      "tenki",
+    );
+    expect(result.boxId).toBe("tk_new");
+    expect(fork).toHaveBeenCalledWith(
+      expect.objectContaining({ templateId: "tenki:snap-1" }),
+    );
+    expect(boxRow()["replace_claimed_at"]).toBeNull();
   });
 
   it("a live claim held by another call is a ReplaceInProgressError and forks nothing", async () => {

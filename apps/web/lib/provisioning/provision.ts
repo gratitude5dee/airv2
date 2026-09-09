@@ -381,7 +381,8 @@ export async function replaceBox(
   supabase: ReturnType<typeof serviceClient>,
   userId: string,
   boxId: string,
-  environment: ComputeEnvironment
+  environment: ComputeEnvironment,
+  provider?: BoxProvider
 ): Promise<ProvisionResult> {
   const claimedAt = new Date().toISOString();
   const staleBefore = new Date(Date.now() - REPLACE_CLAIM_TTL_MS).toISOString();
@@ -399,7 +400,7 @@ export async function replaceBox(
     throw new ReplaceInProgressError(boxId);
   }
   try {
-    return await switchEnvironment(supabase, userId, environment);
+    return await switchEnvironment(supabase, userId, environment, provider);
   } finally {
     await releaseClaim(supabase, userId, claimedAt);
   }
@@ -451,7 +452,8 @@ async function releaseClaim(
 export async function switchEnvironment(
   supabase: ReturnType<typeof serviceClient>,
   userId: string,
-  environment: ComputeEnvironment
+  environment: ComputeEnvironment,
+  provider?: BoxProvider
 ): Promise<ProvisionResult> {
   const { data: existing, error } = await supabase
     .from("boxes")
@@ -482,7 +484,15 @@ export async function switchEnvironment(
       }
     : null;
 
-  const built = await buildCompute(supabase, userId, environment, channel);
+  const targetProvider =
+    provider ?? (previous ? providerOf(previous.instanceId) : "ascii");
+  const built = await buildCompute(
+    supabase,
+    userId,
+    environment,
+    channel,
+    targetProvider
+  );
   try {
     await persistBox(supabase, userId, environment, built);
   } catch (persistError) {
