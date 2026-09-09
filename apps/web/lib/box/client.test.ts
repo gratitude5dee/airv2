@@ -126,6 +126,27 @@ describe("provider dispatch", () => {
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/boxes/bx_1");
   });
 
+  it("maps an ascii command the provider killed at timeout to exit 124", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          exitCode: null,
+          signal: "SIGKILL",
+          stdout: "partial\n",
+          stderr: "",
+          timedOut: true,
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      )
+    );
+    const result = await command("bx_1", "ovctl ensure", 180);
+    expect(result).toEqual({
+      exitCode: 124,
+      stdout: "partial\n",
+      stderr: "command timed out after 180s",
+    });
+  });
+
   it("hostRoute on tenki uses the preview URL with an empty token", async () => {
     const route = await hostRoute("tk_s1", 8642);
     expect(route).toEqual({ url: "https://p8642.tenki.example", token: "" });

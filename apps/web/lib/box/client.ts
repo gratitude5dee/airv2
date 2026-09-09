@@ -18,7 +18,6 @@ import * as tenki from "./tenki";
 import {
   BoxApiError,
   BoxSchema,
-  CommandResultSchema,
   type Box,
   type CommandResult,
   type ForkOptions,
@@ -234,12 +233,35 @@ export async function command(
   }
   // The box-side command runs up to timeoutSeconds; give the HTTP round
   // trip that budget plus margin.
-  return boxFetch(`/boxes/${boxId}/commands`, CommandResultSchema, {
-    method: "POST",
-    body: JSON.stringify({ command: cmd, timeoutSeconds }),
-    timeoutMs: (timeoutSeconds + 60) * 1000,
-  });
+  const result = await boxFetch(
+    `/boxes/${boxId}/commands`,
+    AsciiCommandResultSchema,
+    {
+      method: "POST",
+      body: JSON.stringify({ command: cmd, timeoutSeconds }),
+      timeoutMs: (timeoutSeconds + 60) * 1000,
+    }
+  );
+  // A command ascii.dev killed at timeoutSeconds reports exitCode null
+  // (timedOut true); surface it like a shell `timeout` (124) so callers see
+  // one shape across providers instead of a response-parse failure.
+  if (result.exitCode === null) {
+    return {
+      exitCode: 124,
+      stdout: result.stdout,
+      stderr:
+        result.stderr || `command timed out after ${timeoutSeconds}s`,
+    };
+  }
+  return { exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr };
 }
+
+const AsciiCommandResultSchema = z.object({
+  exitCode: z.number().nullable(),
+  stdout: z.string(),
+  stderr: z.string(),
+  timedOut: z.boolean().optional(),
+});
 
 /** A hosted route to a port on the box; token is "" where ingress has none. */
 export interface HostedRoute {
