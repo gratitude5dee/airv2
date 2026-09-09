@@ -51,7 +51,58 @@ interface BoxRow {
 }
 
 export const API_SERVER_PORT = 8642;
+/** How long after the VM reports ready the wake loop lets the Hermes gateway
+ * finish booting (plugins, MCP servers, tool schemas — ~25s observed on
+ * ascii.dev) before it may restart the units. Restarting earlier kills a
+ * gateway that was merely still starting, along with any run it had just
+ * accepted from a concurrent caller. */
+export const HERMES_RESTART_GRACE_MS = 60_000;
 export const DASHBOARD_PORT = 9119;
+
+/** A VM resume revives the agent-browser daemon process but its Chrome
+ * child is gone (defunct), so every browser tool call hangs until the 60s
+ * tool timeout. Clear the stale daemon and sockets; the next browser call
+ * relaunches cleanly in ~2s. Bracketed pattern so pkill never matches this
+ * command's own shell. */
+export const AGENT_BROWSER_RESET_CMD =
+  "pkill -9 -f 'agent-browser-linu[x]'; rm -f /home/user/.agent-browser/*.sock /home/user/.agent-browser/*.pid; rm -rf /tmp/agent-browser-*";
+/** Void the idle stop's claim: it belongs to the stop this resume just
+ * ended, and a provider that keeps the VM (memory restore, or an archive
+ * cancelled by a quick re-wake) keeps the boot id too, so the durable index
+ * worker would otherwise sit deferred until the claim's TTL. Boxes whose
+ * ovctl predates the subcommand (argparse exit 2) get the file removed
+ * directly. */
+export const VOID_STOP_CLAIM_CMD =
+  "ovctl resumed || rm -f /home/user/.openviking/stop-claim.json";
+const AFTER_RESUME_ATTEMPTS = 3;
+const AFTER_RESUME_RETRY_MS = 5_000;
+
+/** Box-side housekeeping once the provider reports the VM back. Nothing
+ * here gates Hermes health, so it runs detached from the wake path — but
+ * right after resume the provider can report ready before the box's
+ * command agent is up, so a failed round trip is retried instead of
+ * dropped. */
+export async function afterResume(boxId: string): Promise<void> {
+  for (let attempt = 1; attempt <= AFTER_RESUME_ATTEMPTS; attempt += 1) {
+    try {
+      await command(boxId, AGENT_BROWSER_RESET_CMD, 30);
+      await command(boxId, VOID_STOP_CLAIM_CMD, 30);
+      return;
+    } catch (error) {
+      if (attempt === AFTER_RESUME_ATTEMPTS) {
+        console.error(
+          JSON.stringify({
+            msg: "post-resume box housekeeping failed",
+            box_id: boxId,
+            error: error instanceof Error ? error.message : String(error),
+          })
+        );
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, AFTER_RESUME_RETRY_MS));
+    }
+  }
+}
 
 /**
  * Re-register the api_server (8642) hosted route and persist the rotated
@@ -238,21 +289,7 @@ export async function ensureBoxAwake(
       }
     }
     await waitForBox(boxId);
-    // A VM resume revives the agent-browser daemon process but its Chrome
-    // child is gone (defunct), so every browser tool call hangs until the
-    // 60s tool timeout. Clear the stale daemon and sockets; the next
-    // browser call relaunches cleanly in ~2s.
-    void command(
-      boxId,
-      // Bracketed pattern so pkill never matches this command's own shell.
-      "pkill -9 -f 'agent-browser-linu[x]'; rm -f /home/user/.agent-browser/*.sock /home/user/.agent-browser/*.pid; rm -rf /tmp/agent-browser-*",
-      30
-    ).catch(() => undefined);
-    // The idle stop's claim is voided by the next boot, but a provider that
-    // restores memory (Tenki) keeps the boot id, and the durable index
-    // worker would sit deferred until the claim's TTL. Boxes without the
-    // subcommand exit 2 and are simply the boot-voided case.
-    void command(boxId, "ovctl resumed", 30).catch(() => undefined);
+    void afterResume(boxId);
   }
 
   let target: HermesBoxTarget = {
@@ -269,17 +306,22 @@ export async function ensureBoxAwake(
 
   // The hosted token rotates across stop/resume; hermes-host re-registers on
   // boot but the stored token may be stale. Probe, then refresh once.
-  const deadline = Date.now() + 180_000;
+  const started = Date.now();
+  const deadline = started + 180_000;
   let refreshed = false;
   let restarted = false;
   while (!(await health(target))) {
     if (Date.now() > deadline) {
       throw new Error(`hermes on ${boxId} not healthy after resume`);
     }
-    if (refreshed && !restarted) {
-      // Still unhealthy on a fresh token: the gateway/host units are
-      // enabled but can miss a boot after an unclean VM death; one
-      // explicit restart per wake recovers them.
+    if (
+      refreshed &&
+      !restarted &&
+      Date.now() - started >= HERMES_RESTART_GRACE_MS
+    ) {
+      // Still unhealthy on a fresh token well past the gateway's own boot
+      // time: the units are enabled but can miss a boot after an unclean
+      // VM death; one explicit restart per wake recovers them.
       restarted = true;
       await command(
         boxId,
