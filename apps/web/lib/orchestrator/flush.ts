@@ -15,6 +15,7 @@
  * set", so a stale flag cannot orphan a new chain.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { completeOperation } from "../migration/admission";
 import { command, writeFile } from "../box/client";
 import {
   createRun,
@@ -187,16 +188,47 @@ export async function claimFlush(
   supabase: SupabaseClient,
   spaceId: string,
   expectedRunAt: string
-): Promise<{ chainStartedAt: string } | undefined> {
+): Promise<{ chainStartedAt: string; operationId?: string } | undefined> {
   const chainStartedAt = new Date().toISOString();
-  const { data } = await supabase
-    .from("flush_jobs")
-    .update({ chain_started_at: chainStartedAt })
-    .eq("space_id", spaceId)
-    .eq("run_at", expectedRunAt)
-    .select("space_id");
-  if (!data || data.length === 0) return undefined;
-  return { chainStartedAt };
+  // claim_flush CAS + admission check + operation lease in one statement: a
+  // migration that closed admission between our read and this claim wins,
+  // and the flush is deferred rather than racing the fence. While the
+  // migration is dark-shipped the function may not exist yet — fall back to
+  // the plain CAS so flushes keep working pre-deploy.
+  let data: unknown = null;
+  let error: { message: string } | null = null;
+  try {
+    ({ data, error } = await supabase.rpc("claim_flush", {
+      p_space_id: spaceId,
+      p_expected_run_at: expectedRunAt,
+      p_chain_started_at: chainStartedAt,
+      p_ttl_seconds: 300,
+    }));
+  } catch (rpcError) {
+    error = { message: String(rpcError) };
+  }
+  if (error) {
+    const { data: claimed } = await supabase
+      .from("flush_jobs")
+      .update({ chain_started_at: chainStartedAt })
+      .eq("space_id", spaceId)
+      .eq("run_at", expectedRunAt)
+      .select("space_id");
+    if (!claimed || claimed.length === 0) return undefined;
+    return { chainStartedAt };
+  }
+  const result = data as {
+    claimed?: boolean;
+    chain_started_at?: string;
+    operation_id?: string;
+    reason?: string;
+  } | null;
+  if (!result?.claimed) return undefined;
+  const out: { chainStartedAt: string; operationId?: string } = {
+    chainStartedAt: result.chain_started_at ?? chainStartedAt,
+  };
+  if (result.operation_id) out.operationId = result.operation_id;
+  return out;
 }
 
 /** Read in arrival order, then delete exactly the rows read. */
@@ -509,6 +541,26 @@ export async function replayHistory(
  * drain → resume → run → stream → stop_after re-arm.
  */
 export async function runFlush(
+  supabase: SupabaseClient,
+  job: {
+    spaceId: string;
+    userId: string;
+    phone: string;
+    attempts: number;
+    senderTier: number | null;
+  },
+  chainStartedAt: string
+): Promise<void> {
+  try {
+    await runFlushInner(supabase, job, chainStartedAt);
+  } finally {
+    // Release the claim_flush operation lease (held under the space id);
+    // expiry is the backstop when this invocation died mid-run.
+    await completeOperation(supabase, job.spaceId);
+  }
+}
+
+async function runFlushInner(
   supabase: SupabaseClient,
   job: {
     spaceId: string;

@@ -11,6 +11,7 @@ import { env } from "@/lib/env";
 import { openSecret } from "@/lib/crypto/secretbox";
 import { dedupeInboundEvent } from "@/lib/routing/inbound";
 import { armStopAfter, ensureBoxAwake } from "@/lib/orchestrator/boxes";
+import { MigrationBusyError } from "@/lib/migration/types";
 import { nudgeSync } from "@/lib/calendar/store";
 import {
   calcomDedupeKey,
@@ -94,9 +95,23 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // 4. Ack, then work (C8): the nudge runs after the response is sent.
   after(async () => {
+    // A pause mid-migration refuses the nudge; the dedupe row is already
+    // durable, so wait out the pause and retry once before giving up.
+    let waitedOnPause = false;
     try {
-      const box = await ensureBoxAwake(supabase, userId);
-      await nudgeSync(box.target, box.boxId);
+      for (;;) {
+        try {
+          const box = await ensureBoxAwake(supabase, userId);
+          await nudgeSync(box.target, box.boxId);
+          break;
+        } catch (error) {
+          if (!(error instanceof MigrationBusyError) || waitedOnPause) throw error;
+          waitedOnPause = true;
+          await new Promise((resolve) =>
+            setTimeout(resolve, error.retryAfterSeconds * 1000)
+          );
+        }
+      }
       await supabase
         .from("calendar_accounts")
         .update({ last_synced_at: new Date().toISOString() })

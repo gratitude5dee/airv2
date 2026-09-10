@@ -25,6 +25,8 @@ import { teardownBackends } from "@/lib/functions/teardown";
 import { forgetInstallations } from "@/lib/create/import";
 import { githubAppConfigured } from "@/lib/github/app";
 import { openAdsKey, updateCampaign } from "@/lib/ads/openai";
+import { assertNoLiveMigration } from "@/lib/migration/exclusion";
+import { MigrationConflictError } from "@/lib/migration/types";
 import {
   V9_SET_NULL_TABLES,
   V9_USER_TABLES,
@@ -55,6 +57,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .maybeSingle();
   if (!user) {
     return NextResponse.json({ error: "user not found" }, { status: 404 });
+  }
+  // A live migration holds exclusive rights over the user's compute —
+  // deletion waits until it settles (or is cancelled).
+  try {
+    await assertNoLiveMigration(supabase, userId);
+  } catch (error) {
+    if (error instanceof MigrationConflictError) {
+      return NextResponse.json({ error: "migration_active" }, { status: 409 });
+    }
+    throw error;
   }
 
   const steps: Record<string, string> = {};

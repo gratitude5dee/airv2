@@ -125,6 +125,52 @@ function tableApi(table: string) {
 
 const fakeSupabase = {
   from: (table: string) => tableApi(table),
+  rpc: async (name: string, args: Row) => {
+    if (name !== "claim_replace") {
+      return { data: null, error: { message: `unstubbed rpc ${name}` } };
+    }
+    // Mirror 0106's claim_replace: refuse under a live migration, then CAS
+    // the claim timestamp while it is null or stale.
+    const control = tables["tenant_control"]?.find(
+      (r) => r["user_id"] === args["p_user_id"]
+    );
+    if (control?.["active_migration_id"]) {
+      return {
+        data: {
+          claimed: false,
+          reason: "migration_active",
+          migration_id: control["active_migration_id"],
+        },
+        error: null,
+      };
+    }
+    const row = tables["boxes"]?.find(
+      (r) =>
+        r["user_id"] === args["p_user_id"] &&
+        r["provider_box_id"] === args["p_box_id"]
+    );
+    const existing = row?.["replace_claimed_at"] as string | null | undefined;
+    const claimable =
+      !existing || existing < (args["p_stale_before"] as string);
+    if (!row || !claimable) {
+      return {
+        data: { claimed: false, reason: "replace_in_flight" },
+        error: null,
+      };
+    }
+    boxUpdates.push({
+      values: { replace_claimed_at: args["p_claimed_at"] },
+      filters: [
+        `user_id=eq.${String(args["p_user_id"])}`,
+        `provider_box_id=eq.${String(args["p_box_id"])}`,
+        `or(replace_claimed_at.is.null,replace_claimed_at.lt.${String(
+          args["p_stale_before"]
+        )})`,
+      ],
+    });
+    row["replace_claimed_at"] = args["p_claimed_at"];
+    return { data: { claimed: true }, error: null };
+  },
 } as unknown as SupabaseClient;
 
 vi.mock("../supabase", () => ({ serviceClient: () => fakeSupabase }));
@@ -258,6 +304,7 @@ import {
   switchEnvironment,
   SwitchSetupError,
 } from "./provision";
+import { MigrationBusyError } from "../migration/types";
 import * as boxClient from "../box/client";
 
 /** A channel pointing at a release, by default the one the fake fork's template is stamped with. */
@@ -766,6 +813,17 @@ describe("replaceBox", () => {
       expect.objectContaining({ templateId: "tenki:snap-1" }),
     );
     expect(boxRow()["replace_claimed_at"]).toBeNull();
+  });
+
+  it("a live migration refuses the replacement with MigrationBusyError", async () => {
+    tables["tenant_control"] = [
+      { user_id: "user-1", active_migration_id: "mig-1" },
+    ];
+    await expect(
+      replaceBox(fakeSupabase, "user-1", "box-old", "ubuntu")
+    ).rejects.toBeInstanceOf(MigrationBusyError);
+    expect(fork).not.toHaveBeenCalled();
+    delete tables["tenant_control"];
   });
 
   it("a live claim held by another call is a ReplaceInProgressError and forks nothing", async () => {

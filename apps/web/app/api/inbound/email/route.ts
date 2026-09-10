@@ -16,6 +16,8 @@ import {
 } from "@/lib/routing/svix";
 import { dedupeInboundEvent, resolveAgentAddress } from "@/lib/routing/inbound";
 import { processInboundEmail } from "@/lib/email/inbound";
+import { holdReceipt } from "@/lib/migration/replay";
+import { MigrationBusyError } from "@/lib/migration/types";
 
 export const maxDuration = 800;
 
@@ -89,6 +91,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       try {
         await processInboundEmail(supabase, resolvedUserId, inboxId, messageId);
       } catch (error) {
+        if (error instanceof MigrationBusyError) {
+          // Pause mid-migration: the dedupe row plus this receipt are the
+          // durable references; activation replays them by identity.
+          await holdReceipt(
+            supabase, resolvedUserId, "email", `email:${messageId}`,
+            { inbox_id: inboxId, message_id: messageId }
+          );
+          return;
+        }
         console.error(
           JSON.stringify({
             msg: "email turn failed",

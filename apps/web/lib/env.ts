@@ -168,6 +168,37 @@ export const env = {
   // proxy paths return 503.
   boxDashboardAuthKey: (): string | null =>
     process.env["BOX_DASHBOARD_AUTH_KEY"] ?? null,
+  // Compute migrations (Box <-> Tenki). Disabled by default: the schema and
+  // gating ship dark, and prepare/cutover refuse until enabled.
+  migrationEnabled: (): boolean =>
+    process.env["MIGRATION_ENABLED"] === "true",
+  // Seals the per-migration credential envelope on migration_targets — the
+  // same secretbox pattern as the dashboard auth key (64 hex chars).
+  // Defaults to the dashboard auth key so rollout needs no extra secret.
+  migrationSealKey: (): string | null =>
+    process.env["MIGRATION_SEAL_KEY"] ??
+    process.env["BOX_DASHBOARD_AUTH_KEY"] ??
+    null,
+  // Work-pause deadline for the cutover attempt (plan §1: 120s default).
+  migrationCutoverDeadlineMs: (): number =>
+    Number(optional("MIGRATION_CUTOVER_DEADLINE_MS", "120000")),
+  // How long the drain step waits for admitted operations to finish before
+  // the attempt aborts and reopens admission.
+  migrationDrainBudgetMs: (): number =>
+    Number(optional("MIGRATION_DRAIN_BUDGET_MS", "90000")),
+  // Post-activation observe window before the retained source is stopped.
+  migrationObserveMs: (): number =>
+    Number(optional("MIGRATION_OBSERVE_MS", "900000")),
+  // How long the stopped, fenced retained source lives before cleanup may
+  // delete it (plan §7: 24h default; deletion also needs operator approval).
+  migrationRetainMs: (): number =>
+    Number(optional("MIGRATION_RETAIN_MS", "86400000")),
+  // Bounded live-copy passes before the final quiesced pass.
+  migrationPrecopyPasses: (): number =>
+    Number(optional("MIGRATION_PRECOPY_PASSES", "3")),
+  // Drive-lease TTL for the migration worker claim.
+  migrationDriveLeaseSeconds: (): number =>
+    Number(optional("MIGRATION_DRIVE_LEASE_SECONDS", "600")),
   // Seals per-account ad platform API keys at rest (CM6). Defaults to the
   // dashboard auth key so the beta needs no extra deploy config; set it to
   // rotate ad credentials independently.

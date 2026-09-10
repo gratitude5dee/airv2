@@ -20,6 +20,7 @@ import { runSyncJobs } from "@/lib/fleet/sync";
 import { sweepUnfiledDrafts } from "@/lib/email/draftSweep";
 import { sweepVersions } from "@/lib/create/versions";
 import { reconcileAppOriginMarks, reconcileAppOrigins } from "@/lib/functions/deploy";
+import { reconcileMigrations } from "@/lib/migration/sweep";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -206,6 +207,19 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     );
   }
 
+  // Migrations whose deferred work is due (or whose driver died mid-phase).
+  let migrationsDriven = 0;
+  try {
+    migrationsDriven = (await reconcileMigrations(supabase, now)).driven;
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        msg: "sweeper migration reconcile failed",
+        error: error instanceof Error ? error.message : String(error),
+      })
+    );
+  }
+
   const ttlCutoff = new Date(Date.now() - 48 * 3600_000).toISOString();
   await supabase.from("inbound_events").delete().lt("received_at", ttlCutoff);
   await supabase.from("batch_queue").delete().lt("received_at", ttlCutoff);
@@ -232,5 +246,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     versionsRetired,
     originsMarked,
     originsRepaired,
+    migrationsDriven,
   });
 }
