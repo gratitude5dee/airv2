@@ -10,6 +10,7 @@ import { claimIdleStop, releaseIdleStop, type DeferReason } from "@/lib/orchestr
 import type { SweepableBox } from "@/lib/orchestrator/sweep";
 
 export interface IdleStopReport {
+  processed: number;
   stopped: number;
   /** Provider still writing the snapshot; the row stays `stopping` for reconcile. */
   stopping: number;
@@ -35,10 +36,12 @@ export function overdueMs(box: SweepableBox, now: Date): number {
 export async function stopIdleBoxes(
   supabase: SupabaseClient,
   boxes: SweepableBox[],
-  now: Date
+  now: Date,
+  deadlineMs = Number.POSITIVE_INFINITY
 ): Promise<IdleStopReport> {
   const nowIso = now.toISOString();
   const report: IdleStopReport = {
+    processed: 0,
     stopped: 0,
     stopping: 0,
     indexingDeferred: 0,
@@ -50,6 +53,8 @@ export async function stopIdleBoxes(
     releaseFailed: 0,
   };
   for (const box of boxes) {
+    if (Date.now() >= deadlineMs) break;
+    report.processed += 1;
     const decision = await claimIdleStop(box.provider_box_id, overdueMs(box, now));
     if (decision.kind === "deferred") {
       report.indexingDeferred += 1;

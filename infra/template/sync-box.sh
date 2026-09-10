@@ -165,6 +165,7 @@ sed -i '/^PATH=/d' "$ENV_FILE"
 echo "PATH=$HERMES_NODE/bin:$HOME_DIR/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" >> "$ENV_FILE"
 grep -q 'hermes/node/bin' "$HOME_DIR/.bashrc" || \
   echo "export PATH=\"$HERMES_NODE/bin:\$PATH\"" >> "$HOME_DIR/.bashrc"
+bash "$TEMPLATE_DIR/install-command-env.sh"
 chmod 600 "$ENV_FILE"
 
 # ── 3c. OpenViking deep memory (docs/memory-upgrade.md, layer 2) ───────────

@@ -249,6 +249,7 @@ sed -i '/^PATH=/d' "$HOME_DIR/.hermes/.env"
 echo "PATH=$HERMES_NODE/bin:$HOME_DIR/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" >> "$HOME_DIR/.hermes/.env"
 grep -q 'hermes/node/bin' "$HOME_DIR/.bashrc" || \
   echo "export PATH=\"$HERMES_NODE/bin:\$PATH\"" >> "$HOME_DIR/.bashrc"
+bash "$TEMPLATE_DIR/install-command-env.sh"
 
 # ── 3b3. Daytona CLI + MCP: on-demand throwaway code sandboxes ───────────────
 # The Box stays the agent's durable home; Daytona sandboxes are ephemeral
