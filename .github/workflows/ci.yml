@@ -13,6 +13,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  metering:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify receipt duration accounting
+        run: |
+          docker cp supabase "${{ job.services.postgres.id }}:/checks"
+          docker exec "${{ job.services.postgres.id }}" \
+            psql -U postgres -f /checks/tests/agent_run_box_seconds.sql
   web:
     # Tenki Cloud runner (https://tenki.cloud/docs/runners/quickstart). The
     # label must be the complete runs-on value; jobs queue until the Tenki
