@@ -23,14 +23,22 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!adminAuthorized(request)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  let body: { channel?: unknown } = {};
+  const deadlineMs = Date.now() + 150_000;
+  let body: { channel?: unknown; after?: unknown } = {};
   const raw = await request.text();
   if (raw.trim()) {
     try {
-      body = JSON.parse(raw) as { channel?: unknown };
+      const parsed: unknown = JSON.parse(raw);
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        return NextResponse.json({ error: "body must be a JSON object" }, { status: 400 });
+      }
+      body = parsed;
     } catch {
       return NextResponse.json({ error: "invalid json" }, { status: 400 });
     }
+  }
+  if (body.after !== undefined && (typeof body.after !== "string" || !body.after.trim())) {
+    return NextResponse.json({ error: "after must be a non-empty box id" }, { status: 400 });
   }
   let channel: ChannelName = "dev";
   if (body.channel !== undefined) {
@@ -47,34 +55,36 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const now = new Date();
   const nowIso = now.toISOString();
   const targets: SweepableBox[] = [];
-  for (let offset = 0; ; offset += PAGE) {
-    const { data, error } = await supabase
-      .from("boxes")
-      .select("provider_box_id, user_id, last_active_at")
-      .eq("channel", channel)
-      .in("state", RUNNING_STATES)
-      .order("provider_box_id", { ascending: true })
-      .range(offset, offset + PAGE - 1);
-    if (error) {
-      return NextResponse.json(
-        { error: `box list failed: ${error.message}` },
-        { status: 500 },
-      );
-    }
-    const rows = data ?? [];
-    for (const row of rows) {
-      // A deadline of "now" makes the box exactly zero overdue: the claim
-      // path still decides, but the box is not held for its idle window.
-      targets.push({
-        provider_box_id: row.provider_box_id as string,
-        user_id: row.user_id as string,
-        stop_after: nowIso,
-        last_active_at: (row.last_active_at as string | null) ?? null,
-      });
-    }
-    if (rows.length < PAGE) break;
+  let query = supabase
+    .from("boxes")
+    .select("provider_box_id, user_id, last_active_at")
+    .eq("channel", channel)
+    .in("state", RUNNING_STATES)
+    .order("provider_box_id", { ascending: true });
+  if (typeof body.after === "string") query = query.gt("provider_box_id", body.after);
+  const { data, error } = await query.range(0, PAGE - 1);
+  if (error) {
+    return NextResponse.json(
+      { error: `box list failed: ${error.message}` },
+      { status: 500 },
+    );
   }
-
-  const report = await stopIdleBoxes(supabase, targets, now);
-  return NextResponse.json({ channel, targeted: targets.length, ...report });
+  const rows = data ?? [];
+  for (const row of rows) {
+    targets.push({
+      provider_box_id: row.provider_box_id as string,
+      user_id: row.user_id as string,
+      stop_after: nowIso,
+      last_active_at: (row.last_active_at as string | null) ?? null,
+    });
+  }
+  const report = await stopIdleBoxes(supabase, targets, now, deadlineMs);
+  const hasMore = report.processed < targets.length || rows.length === PAGE;
+  const after = targets[report.processed - 1]?.provider_box_id ?? body.after;
+  return NextResponse.json({
+    channel,
+    targeted: targets.length,
+    ...report,
+    continuation: hasMore ? { channel, ...(after ? { after } : {}) } : null,
+  });
 }

@@ -39,7 +39,9 @@ import {
   type SessionState,
   type Snapshot,
 } from "@tenkicloud/sandbox";
+import { createGrpcTransport } from "@connectrpc/connect-node";
 import { env } from "../env";
+import { serviceClient } from "../supabase";
 import { shellQuote } from "./shell";
 import {
   BoxApiError,
@@ -58,7 +60,7 @@ export const TENKI_TAG_MAX_LENGTH = 32;
 export const TENKI_BOX_KEY_BYTES = 12;
 
 /** How long stop() waits for the snapshot before reporting "stopping". */
-export const STOP_WAIT_MS = 5 * 60 * 1000;
+export const STOP_WAIT_MS = 10_000;
 
 /** The account Hermes and the template run as — the same layout as ascii. */
 export const TENKI_BOX_USER = "user";
@@ -178,7 +180,21 @@ let client: TenkiSandbox | null = null;
 
 function sandbox(): TenkiSandbox {
   if (!client) {
-    client = new TenkiSandbox({ authToken: env.tenkiApiKey() });
+    const authToken = env.tenkiApiKey().trim();
+    const baseUrl = process.env["TENKI_API_ENDPOINT"] ||
+      process.env["TENKI_API_URL"] || "https://api.tenki.cloud";
+    client = new TenkiSandbox({
+      authToken,
+      baseUrl,
+      transport: createGrpcTransport({
+        baseUrl,
+        defaultTimeoutMs: 15_000,
+        interceptors: [(next) => (request) => {
+          request.header.set("Authorization", `Bearer ${authToken}`);
+          return next(request);
+        }],
+      }),
+    });
   }
   return client;
 }
@@ -400,7 +416,7 @@ async function completeStop(
 async function createSession(
   boxId: string,
   snapshotId: string,
-  extra: Partial<Pick<CreateOptions, "env" | "metadata">> = {}
+  extra: Partial<Pick<CreateOptions, "name" | "env" | "metadata">> = {}
 ): Promise<Session> {
   return await sandbox().create({
     name: `air-${toBoxKey(boxId)}`.slice(0, 63),
@@ -459,15 +475,39 @@ export async function getBox(boxId: string): Promise<Box> {
 }
 
 export async function renameBox(boxId: string, name: string): Promise<Box> {
-  const current = await session(boxId);
+  boxTag(boxId);
   try {
-    const updated = await sandbox().updateSession(current.id, {
-      name: name.slice(0, 63),
-    });
-    return toBox(boxId, updated);
+    const label = name.slice(0, 63);
+    const { error } = await serviceClient()
+      .from("boxes")
+      .update({ provider_name: label })
+      .eq("provider_box_id", boxId)
+      .select("provider_box_id")
+      .single();
+    if (error) throw new Error(`box label persistence failed: ${error.message}`);
+    const resolved = await resolve(boxId);
+    const live = resolved.session ? [resolved.session, ...resolved.duplicates] : [];
+    await Promise.all([
+      ...live.map((current) => sandbox().updateSession(current.id, { name: label })),
+      ...resolved.snapshots.map((snapshot) => sandbox().updateSnapshot(snapshot.id, { name: label })),
+    ]);
+    if (resolved.session) return toBox(boxId, resolved.session);
+    if (resolved.snapshots[0]) return stoppedBox(boxId, resolved.snapshots[0]);
+    throw new BoxApiError(404, `tenki: box ${boxId} not found`);
   } catch (error) {
     throw toBoxApiError(error);
   }
+}
+
+async function savedName(boxId: string): Promise<string | null> {
+  const { data, error } = await serviceClient()
+    .from("boxes")
+    .select("provider_name")
+    .eq("provider_box_id", boxId)
+    .maybeSingle();
+  if (error?.code === "42703") return null;
+  if (error) throw new Error(`box label lookup failed: ${error.message}`);
+  return typeof data?.provider_name === "string" ? data.provider_name : null;
 }
 
 /** Wakes in flight in this process, so overlapping callers share one create. */
@@ -518,7 +558,8 @@ async function resumeOnce(boxId: string): Promise<Box> {
     if (snapshot.state !== "READY") {
       throw new BoxApiError(409, `tenki: box ${boxId} is still stopping`);
     }
-    const created = await createSession(boxId, snapshot.id);
+    const name = (await savedName(boxId)) ?? snapshot.name;
+    const created = await createSession(boxId, snapshot.id, name ? { name } : {});
     const settled = await resolve(boxId);
     const winner = settled.session ?? created;
     await closeDuplicates(
@@ -526,6 +567,10 @@ async function resumeOnce(boxId: string): Promise<Box> {
         ? settled.duplicates
         : [created, ...settled.duplicates.filter((s) => s.id !== created.id)]
     );
+    const latestName = await savedName(boxId);
+    if (latestName && winner.name !== latestName) {
+      await sandbox().updateSession(winner.id, { name: latestName });
+    }
     return toBox(boxId, winner);
   } catch (error) {
     throw toBoxApiError(error);
@@ -554,12 +599,16 @@ export async function stop(boxId: string): Promise<Box> {
     let pending = stopInFlight(resolved);
     if (!pending) {
       pending = await sandbox().createSnapshotAsync(resolved.session.id, {
-        name: snapshotName(boxId),
+        name: (await savedName(boxId)) ?? snapshotName(boxId),
       });
       pending = await sandbox().updateSnapshot(pending.id, {
         tags: [boxTag(boxId)],
       });
       resolved.snapshots.unshift(pending);
+      const latestName = await savedName(boxId);
+      if (latestName && pending.name !== latestName) {
+        pending = await sandbox().updateSnapshot(pending.id, { name: latestName });
+      }
     }
     await sandbox()
       .waitSnapshotReady(pending.id, STOP_WAIT_MS)
@@ -600,8 +649,8 @@ export async function requestDesktop(): Promise<undefined> {
 }
 
 /**
- * Run a shell command as the box user, in its home, under a login shell so
- * the template's ~/.bashrc exports (uv, nvm, PATH) apply as they do on ascii.
+ * Run as the box user with the tool PATH captured by template setup/sync.
+ * Older templates fall back to their login shell.
  */
 export function userCommand(cmd: string): string[] {
   return [
@@ -610,8 +659,13 @@ export function userCommand(cmd: string): string[] {
     "-u",
     TENKI_BOX_USER,
     "bash",
-    "-lc",
-    `cd ${shellQuote(TENKI_HOME_DIR)}\n${cmd}`,
+    "--noprofile",
+    "--norc",
+    "-c",
+    `if [ -r "$HOME/.air/command-env.sh" ]; then\n` +
+      `. "$HOME/.air/command-env.sh"\n` +
+      `cd ${shellQuote(TENKI_HOME_DIR)}\n${cmd}\n` +
+      `else\nexec bash -lc ${shellQuote(`cd ${shellQuote(TENKI_HOME_DIR)}\n${cmd}`)}\nfi`,
   ];
 }
 

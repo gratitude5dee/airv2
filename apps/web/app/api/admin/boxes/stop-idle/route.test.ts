@@ -32,6 +32,10 @@ vi.mock("@/lib/supabase", () => {
       db.filters.push([column, value]);
       return chain;
     });
+    chain["gt"] = vi.fn((column: string, value: unknown) => {
+      db.filters.push([`gt:${column}`, value]);
+      return chain;
+    });
     chain["then"] = (resolve: (value: unknown) => unknown) =>
       Promise.resolve({
         data: db.error ? null : db.rows,
@@ -53,6 +57,7 @@ const authed = (body?: string) =>
   });
 
 const EMPTY_REPORT: IdleStopReport = {
+  processed: 0,
   stopped: 0,
   stopping: 0,
   indexingDeferred: 0,
@@ -74,6 +79,28 @@ beforeEach(() => {
 });
 
 describe("POST /api/admin/boxes/stop-idle", () => {
+  it("returns a cursor after the last attempted box when the budget expires", async () => {
+    db.rows = ["bx_b", "bx_c"].map((id) => ({ provider_box_id: id, user_id: id }));
+    vi.mocked(stopIdleBoxes).mockResolvedValue({ ...EMPTY_REPORT, processed: 1, stopping: 1 });
+    const response = await POST(authed('{"channel":"prod","after":"bx_a"}'));
+    expect(db.filters).toContainEqual(["gt:provider_box_id", "bx_a"]);
+    expect(await response.json()).toMatchObject({
+      processed: 1, continuation: { channel: "prod", after: "bx_b" },
+    });
+    const [, , now, deadline] = vi.mocked(stopIdleBoxes).mock.calls[0]!;
+    expect(deadline).toBeLessThanOrEqual(now.getTime() + 150_000);
+  });
+
+  it("keeps the same continuation when no box could be attempted", async () => {
+    db.rows = [{ provider_box_id: "bx_b", user_id: "u1" }];
+    const response = await POST(authed('{"after":"bx_a"}'));
+    expect(await response.json()).toMatchObject({ continuation: { channel: "dev", after: "bx_a" } });
+  });
+
+  it.each([null, [], 42, ""])("rejects invalid continuation %j", async (after) => {
+    expect((await POST(authed(JSON.stringify({ after })))).status).toBe(400);
+    expect(stopIdleBoxes).not.toHaveBeenCalled();
+  });
   it("401s without the admin key", async () => {
     const response = await POST(new NextRequest(base, { method: "POST" }));
     expect(response.status).toBe(401);
@@ -86,12 +113,17 @@ describe("POST /api/admin/boxes/stop-idle", () => {
     expect(stopIdleBoxes).not.toHaveBeenCalled();
   });
 
+  it.each(["null", "[]", '"dev"', "42", "true"])("rejects a non-object body: %s", async (raw) => {
+    expect((await POST(authed(raw))).status).toBe(400);
+    expect(stopIdleBoxes).not.toHaveBeenCalled();
+  });
+
   it("targets running dev boxes by default with a zero overdue window", async () => {
     db.rows = [
       { provider_box_id: "bx_a", user_id: "u1", last_active_at: "2026-09-01T00:00:00Z" },
       { provider_box_id: "bx_b", user_id: "u2", last_active_at: null },
     ];
-    vi.mocked(stopIdleBoxes).mockResolvedValue({ ...EMPTY_REPORT, stopped: 2, claimed: 2 });
+    vi.mocked(stopIdleBoxes).mockResolvedValue({ ...EMPTY_REPORT, processed: 2, stopped: 2, claimed: 2 });
     const before = Date.now();
     const response = await POST(authed());
     expect(response.status).toBe(200);

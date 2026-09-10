@@ -29,6 +29,18 @@ import {
 } from "./client";
 import { setTenkiClientForTests } from "./tenki";
 
+vi.mock("../supabase", () => ({
+  serviceClient: () => ({
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({ data: null, error: null }),
+        }),
+      }),
+    }),
+  }),
+}));
+
 const fetchMock = vi.fn();
 
 beforeEach(() => {

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { stop } from "@/lib/box/client";
 import { recordBoxStateEvent } from "@/lib/box/events";
@@ -52,7 +52,30 @@ beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
+afterEach(() => vi.restoreAllMocks());
+
 describe("stopIdleBoxes", () => {
+  it("does not claim another box once the request budget is exhausted", async () => {
+    const clock = vi.spyOn(Date, "now").mockReturnValue(NOW.getTime());
+    vi.mocked(claimIdleStop).mockResolvedValue({ kind: "claimed", token: TOKEN });
+    vi.mocked(stop).mockImplementation(async () => {
+      clock.mockReturnValue(NOW.getTime() + 150_000);
+      return { id: "b1", state: "stopping" };
+    });
+    const report = await stopIdleBoxes(
+      makeSupabase([]), [box("b1"), box("b2")], NOW, NOW.getTime() + 150_000
+    );
+    expect(report).toMatchObject({ processed: 1, stopping: 1 });
+    expect(claimIdleStop).toHaveBeenCalledTimes(1);
+    expect(releaseIdleStop).not.toHaveBeenCalled();
+  });
+
+  it("leaves every box untouched when listing consumed the request budget", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(NOW.getTime());
+    const report = await stopIdleBoxes(makeSupabase([]), [box("b1")], NOW, NOW.getTime());
+    expect(report.processed).toBe(0);
+    expect(claimIdleStop).not.toHaveBeenCalled();
+  });
   it("stops a box only after its claim is granted and records the edge", async () => {
     const updates: Update[] = [];
     const order: string[] = [];

@@ -27,6 +27,7 @@ import {
   isTenkiTemplateRef,
   mapSessionState,
   newBoxKey,
+  renameBox,
   resume,
   routeIsFresh,
   setTenkiClientForTests,
@@ -42,6 +43,7 @@ import {
 
 interface FakeSession {
   id: string;
+  name: string;
   state: SessionState;
   cpuCores: number;
   memoryMb: number;
@@ -59,10 +61,11 @@ const BOX = "tk_box-1";
 
 function fakeSession(
   state: SessionState = "RUNNING",
-  overrides: Partial<Pick<FakeSession, "id" | "tags" | "sourceSnapshotId">> = {}
+  overrides: Partial<Pick<FakeSession, "id" | "name" | "tags" | "sourceSnapshotId">> = {}
 ): FakeSession {
   const session: FakeSession = {
     id: "sess-1",
+    name: "air-box-1",
     state,
     cpuCores: 4,
     memoryMb: 8192,
@@ -126,11 +129,12 @@ function install(
   const client: FakeClient = {
     sessions,
     snapshots,
-    create: vi.fn(async (options: { tags?: string[]; snapshotId?: string }) => {
+    create: vi.fn(async (options: { name?: string; tags?: string[]; snapshotId?: string }) => {
       const created = fakeSession("CREATING", {
         id: `sess-${sessions.length + 1}`,
         tags: options.tags ?? [],
         sourceSnapshotId: options.snapshotId,
+        name: options.name ?? "air-box-1",
       });
       sessions.push(created);
       return created;
@@ -147,9 +151,12 @@ function install(
           (options.tags ?? []).every((tag) => session.tags.includes(tag))
       )
     ),
-    updateSession: vi.fn(async (id: string) =>
-      sessions.find((session) => session.id === id)
-    ),
+    updateSession: vi.fn(async (id: string, options: { name?: string }) => {
+      const found = sessions.find((session) => session.id === id);
+      if (!found) throw new SessionNotFoundError(id);
+      if (options.name) found.name = options.name;
+      return found;
+    }),
     listSnapshots: vi.fn(async () => [...snapshots]),
     getSnapshot: vi.fn(async (id: string) => {
       const found = snapshots.find((snapshot) => snapshot.id === id);
@@ -166,10 +173,11 @@ function install(
       snapshots.push(created);
       return created;
     }),
-    updateSnapshot: vi.fn(async (id: string, options: { tags?: string[] }) => {
+    updateSnapshot: vi.fn(async (id: string, options: { name?: string; tags?: string[] }) => {
       const found = snapshots.find((snapshot) => snapshot.id === id);
       if (!found) throw new SessionNotFoundError(id);
       if (options.tags) found.tags = options.tags;
+      if (options.name) found.name = options.name;
       return found;
     }),
     waitSnapshotReady: vi.fn(async (id: string) => {
@@ -185,6 +193,107 @@ function install(
   setTenkiClientForTests(client as unknown as TenkiSandbox);
   return client;
 }
+
+const labels = vi.hoisted(() => ({ name: null as string | null, error: null as { message: string; code?: string } | null }));
+vi.mock("../supabase", () => ({
+  serviceClient: () => ({
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({ data: { provider_name: labels.name }, error: labels.error }),
+        }),
+      }),
+      update: (values: { provider_name: string }) => ({
+        eq: () => ({
+          select: () => ({
+            single: async () => {
+              if (!labels.error) labels.name = values.provider_name;
+              return { error: labels.error };
+            },
+          }),
+        }),
+      }),
+    }),
+  }),
+}));
+
+beforeEach(() => {
+  labels.name = null;
+  labels.error = null;
+});
+
+describe("durable display names", () => {
+  it("can stop and resume before the label migration is applied", async () => {
+    install([fakeSession("RUNNING")]);
+    labels.error = { code: "42703", message: "column provider_name does not exist" };
+    expect((await stop(BOX)).state).toBe("stopped");
+    expect((await resume(BOX)).id).toBe(BOX);
+    await expect(renameBox(BOX, "air-renamed")).rejects.toThrow("column provider_name");
+  });
+
+  it("renames a stopped snapshot without waking and restores its saved name", async () => {
+    const client = install([], [fakeSnapshot("snap-1", "READY")]);
+    expect((await renameBox(BOX, "air-gratitude")).state).toBe("stopped");
+    expect(labels.name).toBe("air-gratitude");
+    expect(client.snapshots[0]?.name).toBe("air-gratitude");
+    expect(client.create).not.toHaveBeenCalled();
+    await resume(BOX);
+    expect(client.create).toHaveBeenCalledWith(expect.objectContaining({ name: "air-gratitude" }));
+  });
+
+  it("keeps the desired name when a stop creates its snapshot after relabel", async () => {
+    const client = install([fakeSession()]);
+    await renameBox(BOX, "air-gratitude");
+    await stop(BOX);
+    expect(client.snapshots[0]?.name).toBe("air-gratitude");
+    await resume(BOX);
+    expect(client.sessions.at(-1)?.name).toBe("air-gratitude");
+  });
+
+  it("reads the durable label again after a concurrent resume creates a session", async () => {
+    const client = install([], [fakeSnapshot("snap-1", "READY")]);
+    const create = client.create;
+    client.create = vi.fn(async (options) => {
+      const result = await create(options);
+      labels.name = "air-renamed";
+      return result;
+    });
+    await resume(BOX);
+    expect(client.sessions[0]?.name).toBe("air-renamed");
+  });
+
+  it("does not claim a successful rename when persistence fails", async () => {
+    const client = install([fakeSession()]);
+    labels.error = { message: "database unavailable" };
+    await expect(renameBox(BOX, "air-gratitude")).rejects.toThrow("database unavailable");
+    expect(client.updateSession).not.toHaveBeenCalled();
+  });
+
+  it("keeps routing tags and box IDs unchanged while naming every provider resource", async () => {
+    const client = install(
+      [fakeSession(), fakeSession("RUNNING", { id: "sess-duplicate" })],
+      [fakeSnapshot("snap-1", "READY"), fakeSnapshot("snap-2", "READY")],
+    );
+    expect((await renameBox(BOX, "air-gratitude")).id).toBe(BOX);
+    for (const resource of [...client.sessions, ...client.snapshots]) {
+      expect(resource.name).toBe("air-gratitude");
+      expect(resource.tags).toEqual([boxTag(BOX)]);
+    }
+    expect(client.create).not.toHaveBeenCalled();
+  });
+
+  it("propagates a rename that overlaps untagged snapshot creation", async () => {
+    const client = install([fakeSession()]);
+    const create = client.createSnapshotAsync;
+    client.createSnapshotAsync = vi.fn(async (...args) => {
+      const snapshot = await create(...args);
+      labels.name = "air-gratitude";
+      return snapshot;
+    });
+    await stop(BOX);
+    expect(client.snapshots[0]?.name).toBe("air-gratitude");
+  });
+});
 
 function exposed(port: number, expiresAt?: Date): ExposedPort {
   return {
@@ -638,16 +747,19 @@ describe("deleteBox", () => {
 });
 
 describe("command", () => {
-  it("runs as the box user in a login shell from /home/user", () => {
-    expect(userCommand("echo hi")).toEqual([
+  it("runs as the box user with a fast tool environment and a legacy fallback", () => {
+    expect(userCommand("echo hi").slice(0, 8)).toEqual([
       "sudo",
       "-H",
       "-u",
       "user",
       "bash",
-      "-lc",
-      "cd '/home/user'\necho hi",
+      "--noprofile",
+      "--norc",
+      "-c",
     ]);
+    expect(userCommand("echo hi")[8]).toContain('. "$HOME/.air/command-env.sh"');
+    expect(userCommand("echo hi")[8]).toContain("exec bash -lc");
   });
 
   it("returns exit code and decoded output", async () => {
@@ -663,7 +775,7 @@ describe("command", () => {
     expect(session.exec).toHaveBeenCalledWith(
       "sudo",
       expect.objectContaining({
-        args: ["-H", "-u", "user", "bash", "-lc", "cd '/home/user'\nfalse"],
+        args: userCommand("false").slice(1),
         timeoutMs: 7000,
       })
     );
