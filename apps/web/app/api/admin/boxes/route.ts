@@ -144,7 +144,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       .gte("started_at", sinceIso)
       .order("started_at", { ascending: true })
       .range(offset, offset + PAGE - 1);
-    if (error) break;
+    if (error) {
+      return NextResponse.json({ error: "box usage unavailable" }, { status: 503 });
+    }
     const rows = data ?? [];
     for (const row of rows) {
       const entry = forUser(row.user_id as string);

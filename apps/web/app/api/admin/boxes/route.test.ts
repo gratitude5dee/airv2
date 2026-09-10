@@ -61,6 +61,14 @@ describe("GET /api/admin/boxes", () => {
     expect((await GET(authed(`${base}?days=1.5`))).status).toBe(400);
   });
 
+  it("does not report zero usage when the receipt query fails", async () => {
+    db.rows["box_state_events"] = [{ user_id: "u1", state: "ready" }];
+    db.errors["agent_runs"] = { message: "usage database unavailable" };
+    const response = await GET(authed());
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: "box usage unavailable" });
+  });
+
   it("reports box state, wake/stop counts, and box_seconds per user", async () => {
     db.rows = {
       boxes: [

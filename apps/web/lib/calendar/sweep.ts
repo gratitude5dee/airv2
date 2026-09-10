@@ -155,7 +155,6 @@ export async function runSchedule(
   supabase: SupabaseClient,
   schedule: AgentSchedule
 ): Promise<void> {
-  const startedAt = new Date().toISOString();
   try {
     // V8 Computer ▸ Screen: a keep-awake schedule wakes the box and holds it
     // awake for its window — no Hermes run, no delivery. armStopAfter is
@@ -183,12 +182,14 @@ export async function runSchedule(
       sessionId: MAIN_SESSION,
       metadata: { channel: "schedule", schedule_id: schedule.id },
     });
+    const startedAt = new Date();
     let output = "";
     for await (const delta of hermesDeltas(
       await runEvents(box.target, run.run_id)
     )) {
       output += delta;
     }
+    const endedAt = new Date();
 
     // deliver: 'none' runs silently — output visible in History only.
     const trimmed = output.trim();
@@ -214,8 +215,12 @@ export async function runSchedule(
       hermes_run_id: run.run_id,
       trigger: "cron",
       schedule_source: schedule.source,
-      started_at: startedAt,
-      ended_at: new Date().toISOString(),
+      started_at: startedAt.toISOString(),
+      ended_at: endedAt.toISOString(),
+      box_seconds: Math.max(
+        0,
+        Math.ceil((endedAt.getTime() - startedAt.getTime()) / 1000)
+      ),
       outcome: "completed",
     });
     if (schedule.one_shot) {
