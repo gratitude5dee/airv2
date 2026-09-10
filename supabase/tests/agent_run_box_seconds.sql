@@ -46,4 +46,26 @@ begin
 end;
 $$;
 
+alter table agent_runs add column trigger text;
+insert into agent_runs (id, hermes_run_id, started_at, ended_at, box_seconds, trigger) values
+  ('legacy-schedule', 'run-cron-old', '2026-09-10 10:00Z', '2026-09-10 10:01:40Z', null, 'cron'),
+  ('explicit-schedule', 'run-cron-explicit', '2026-09-10 10:00Z', '2026-09-10 10:01:40Z', 10, 'cron');
+
+\ir ../migrations/0105_schedule_execution_duration.sql
+
+insert into agent_runs (id, hermes_run_id, started_at, ended_at, box_seconds, trigger) values
+  ('new-schedule', 'run-cron-new', '2026-09-10 10:01:30Z', '2026-09-10 10:01:40Z', 10, 'cron'),
+  ('old-writer-schedule', 'run-cron-old-writer', '2026-09-10 10:00Z', '2026-09-10 10:01:40Z', null, 'cron'),
+  ('web-run', 'run-web', '2026-09-10 10:01:30Z', '2026-09-10 10:01:40Z', null, 'web');
+
+do $$
+begin
+  assert (select box_seconds is null from agent_runs where id = 'legacy-schedule'), 'discard wake-inclusive historical cron duration';
+  assert (select box_seconds = 10 from agent_runs where id = 'explicit-schedule'), 'preserve distinct explicit cron measurement';
+  assert (select box_seconds = 10 from agent_runs where id = 'new-schedule'), 'preserve new explicit execution duration';
+  assert (select box_seconds is null from agent_runs where id = 'old-writer-schedule'), 'old cron writer remains unmetered during rollout';
+  assert (select box_seconds = 10 from agent_runs where id = 'web-run'), 'other triggers still derive duration';
+end;
+$$;
+
 rollback;
