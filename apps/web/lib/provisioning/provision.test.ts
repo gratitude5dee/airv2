@@ -381,6 +381,55 @@ describe("provisionUser environments", () => {
     });
   });
 
+  it("platform_settings box_default_provider=tenki provisions tenki when a template is set", async () => {
+    tables["platform_settings"] = [
+      { key: "box_default_provider", value: "tenki" },
+    ];
+    fork.mockResolvedValueOnce({ id: "tk_sess-2" });
+    const result = await provisionUser();
+    expect(result.boxId).toBe("tk_sess-2");
+    expect(fork).toHaveBeenCalledWith(
+      expect.objectContaining({ templateId: "tenki:snap-1" })
+    );
+    expect(upserts["boxes"]?.[0]).toMatchObject({
+      environment: "ubuntu",
+      provider: "tenki",
+      provider_box_id: "tk_sess-2",
+    });
+  });
+
+  it.each([null, "snap-123"])(
+    "a tenki platform default falls back to ascii when TENKI_TEMPLATE_ID is %s",
+    async (bad) => {
+      tables["platform_settings"] = [
+        { key: "box_default_provider", value: "tenki" },
+      ];
+      tenkiTemplate = bad;
+      try {
+        const result = await provisionUser();
+        expect(result.boxId).toBe("box-new");
+        expect(fork).toHaveBeenCalledWith(
+          expect.objectContaining({ templateId: "template-ubuntu" })
+        );
+        expect(upserts["boxes"]?.[0]).toMatchObject({ provider: "ascii" });
+      } finally {
+        tenkiTemplate = "tenki:snap-1";
+      }
+    }
+  );
+
+  it("an explicit provider still wins over the platform default", async () => {
+    tables["platform_settings"] = [
+      { key: "box_default_provider", value: "tenki" },
+    ];
+    const result = await provisionUser({ provider: "ascii" });
+    expect(result.boxId).toBe("box-new");
+    expect(fork).toHaveBeenCalledWith(
+      expect.objectContaining({ templateId: "template-ubuntu" })
+    );
+    expect(upserts["boxes"]?.[0]).toMatchObject({ provider: "ascii" });
+  });
+
   it.each([null, "snap-123", "tk_session", "tenki:", "tenki:   "])(
     "a malformed TENKI_TEMPLATE_ID (%s) rejects an explicit tenki request",
     async (bad) => {

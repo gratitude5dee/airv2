@@ -870,18 +870,53 @@ describe("hostRoute", () => {
 });
 
 describe("requestDesktop", () => {
-  it("runs the in-box ensure and returns the noVNC viewer on the 6080 route", async () => {
+  /**
+   * exec dispatch for the desktop flow: ensure script, rotate script (only
+   * on a re-minted route), then the `cat` that reads the VNC secret. The
+   * secret answer is deliberately distinct from anything ensure prints.
+   */
+  function desktopSession(opts: {
+    secret?: string;
+    ensureStdout?: string;
+    ensureFails?: boolean;
+    rotateFails?: boolean;
+  } = {}) {
+    const {
+      secret = "vnc-sec1",
+      ensureStdout = "",
+      ensureFails = false,
+      rotateFails = false,
+    } = opts;
     const session = fakeSession();
-    session.exec = vi.fn(async () => ({
-      exitCode: 0,
-      stdout: new TextEncoder().encode("vnc-secret-1"),
-      stderr: new Uint8Array(),
-    }));
+    session.exec = vi.fn(async (_prog: unknown, req: { args: string[] }) => {
+      const script = req.args.at(-1) ?? "";
+      const ok = { exitCode: 0, stderr: new Uint8Array() };
+      if (script.includes('cat "$HOME/.air-desktop-secret"')) {
+        return { ...ok, stdout: new TextEncoder().encode(secret) };
+      }
+      if (script.includes("-storepasswd") && script.includes("pkill")) {
+        return rotateFails
+          ? { exitCode: 1, stdout: new Uint8Array(), stderr: new Uint8Array() }
+          : { ...ok, stdout: new Uint8Array() };
+      }
+      return ensureFails
+        ? {
+            exitCode: 1,
+            stdout: new Uint8Array(),
+            stderr: new TextEncoder().encode("no X display"),
+          }
+        : { ...ok, stdout: new TextEncoder().encode(ensureStdout) };
+    });
     session.exposePort = vi.fn(async (port: number) => exposed(port));
+    return session;
+  }
+
+  it("runs the in-box ensure and returns the noVNC viewer on the 6080 route", async () => {
+    const session = desktopSession();
     install([session]);
     const url = await requestDesktop(BOX);
     expect(url).toBe(
-      "https://p6080.sandbox.tenki.example/vnc.html?autoconnect=true&resize=scale&password=vnc-secret-1"
+      "https://p6080.sandbox.tenki.example/vnc.html?autoconnect=true&resize=scale&password=vnc-sec1"
     );
     const script = session.exec.mock.calls[0]?.[1].args.at(-1) as string;
     expect(script).toContain("apt-get install");
@@ -893,51 +928,80 @@ describe("requestDesktop", () => {
     });
   });
 
-  it("closes the lock fd in every detached daemon it can start", async () => {
-    // Devin Review regression: a daemon inheriting fd 9 holds the flock
-    // forever, so every later request waits out the 280s lock window.
-    const session = fakeSession();
-    session.exec = vi.fn(async () => ({
-      exitCode: 0,
-      stdout: new Uint8Array(),
-      stderr: new Uint8Array(),
-    }));
-    session.exposePort = vi.fn(async (port: number) => exposed(port));
+  it("reads the VNC password from its file, not the ensure output", async () => {
+    // Devin Review regression: apt noise on first ensure must never land in
+    // the viewer URL — the secret is a separate exec's output.
+    const noise = "Reading package lists...\nBuilding dependency tree...";
+    const session = desktopSession({ secret: "real-sec", ensureStdout: noise });
     install([session]);
-    await requestDesktop(BOX);
-    const script = session.exec.mock.calls[0]?.[1].args.at(-1) as string;
-    for (const line of script.split("\n")) {
-      if (line.includes("setsid nohup")) expect(line).toContain("9>&-");
-    }
-    expect(script).toContain('x11vnc .*5900');
-    expect(script).toContain('-rfbauth "$HOME/.vnc/passwd"');
+    const url = await requestDesktop(BOX);
+    expect(url).toContain("&password=real-sec");
+    expect(url).not.toContain(encodeURIComponent("Reading"));
   });
 
-  it("reuses an existing fresh 6080 exposure", async () => {
-    const session = fakeSession();
-    session.exec = vi.fn(async () => ({
-      exitCode: 0,
-      stdout: new Uint8Array(),
-      stderr: new Uint8Array(),
-    }));
+  it("closes the lock fd in every detached daemon it can start", async () => {
+    // Devin Review regression: a daemon inheriting fd 9 holds the flock
+    // forever, so every later request waits out the lock window.
+    const session = desktopSession();
+    install([session]);
+    await requestDesktop(BOX);
+    for (const call of session.exec.mock.calls) {
+      const script = call[1].args.at(-1) as string;
+      if (!script.includes("flock")) continue;
+      for (const line of script.split("\n")) {
+        if (line.includes("setsid nohup")) expect(line).toContain("9>&-");
+      }
+    }
+    const ensure = session.exec.mock.calls[0]?.[1].args.at(-1) as string;
+    expect(ensure).toContain('x11vnc .*5900');
+    expect(ensure).toContain('-rfbauth "$HOME/.vnc/passwd"');
+  });
+
+  it("rotates the VNC password whenever the route re-mints", async () => {
+    const session = desktopSession();
+    install([session]);
+    const url = await requestDesktop(BOX);
+    const rotate = session.exec.mock.calls
+      .map((call) => call[1].args.at(-1) as string)
+      .find(
+        (script) =>
+          script.includes("-storepasswd") && script.includes("pkill")
+      );
+    expect(rotate).toBeDefined();
+    expect(rotate).toContain("head -c 8");
+    expect(url).toContain("&password=vnc-sec1");
+  });
+
+  it("reuses a fresh exposure without rotating the password", async () => {
+    const session = desktopSession();
     const fresh = new Date(Date.now() + ROUTE_RENEW_BEFORE_MS * 2);
     session.listExposedPorts = vi.fn(async () => [exposed(6080, fresh)]);
     install([session]);
     const url = await requestDesktop(BOX);
     expect(url).toContain("p6080.sandbox.tenki.example/vnc.html");
+    expect(url).toContain("&password=vnc-sec1");
     expect(session.exposePort).not.toHaveBeenCalled();
+    const scripts = session.exec.mock.calls.map(
+      (call) => call[1].args.at(-1) as string
+    );
+    // The rotate script is the only exec that restarts x11vnc.
+    expect(scripts.some((s) => s.includes("pkill"))).toBe(false);
   });
 
   it("returns undefined when the in-box ensure fails", async () => {
-    const session = fakeSession();
-    session.exec = vi.fn(async () => ({
-      exitCode: 1,
-      stdout: new Uint8Array(),
-      stderr: new TextEncoder().encode("no X display"),
-    }));
+    const session = desktopSession({ ensureFails: true });
     install([session]);
     expect(await requestDesktop(BOX)).toBeUndefined();
     expect(session.exposePort).not.toHaveBeenCalled();
+  });
+
+  it("returns undefined when rotation or the secret read fails", async () => {
+    const session = desktopSession({ rotateFails: true });
+    install([session]);
+    expect(await requestDesktop(BOX)).toBeUndefined();
+    const missing = desktopSession({ secret: "" });
+    install([missing]);
+    expect(await requestDesktop(BOX)).toBeUndefined();
   });
 
   it("404s against an unknown box like every other op", async () => {
