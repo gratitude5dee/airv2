@@ -5,6 +5,17 @@ description: How to run and test the airv2 Next.js web app (apps/web) locally, i
 
 # Testing the airv2 web app locally
 
+## Read-only Home dashboard and browser setup fallback
+- For metadata-only Home/store checks against live Supabase, select an existing test account with no `boxes` row and keep Box credentials dummy. Empty calendar/decision previews are real empty-state coverage, not proof of populated previews. Do not seed production to fill the cards. Even a GET dashboard load may attempt `/api/box/wake`; expect no-box 404/502 diagnostics and report them separately.
+- Public store home/detail/publisher pages render without a `mini_store` session; authentication is needed to launch, not to inspect their published catalog. Test both main-host `/mini/<slug>` and mini-host `/store/<slug>` if routing changed.
+- If browser initialization fails and `/tmp/.X11-unix` has no X socket, an installed `Xvfb :0 -screen 0 1440x1000x24 -ac` can provide the display. Launch the installed Playwright Chromium headed with `DISPLAY=:0`, `--no-sandbox`, and `--remote-debugging-port=9222`, then use `sync_playwright().chromium.connect_over_cdp("http://localhost:9222")`. Discover the installed Chromium path under `~/.cache/ms-playwright`; do not assume a version.
+- Without a window manager, maximize flags may do nothing. Use CDP `Browser.setWindowBounds` to set the browser to the display's full dimensions before recording. Narrow viewport emulation can then leave whitespace in a desktop recording; capture cropped viewport screenshots as mobile evidence.
+- Keep locally generated signing secrets and service-role credentials in process memory. A startup process can fetch the service-role key, spawn Next with its environment, and inject a locally signed test cookie through Playwright `context.add_cookies`; there is no need to write secret files or print tokens.
+- Native `<dialog>` elements can be siblings of scoped theme containers. Check visible opacity/centering, computed background, and inherited custom properties; an open dialog flag alone does not prove a readable modal. Test Close, Escape, backdrop, and an inside click separately.
+
+### Devin Secrets Needed
+- `SUPABASE_ACCESS_TOKEN` for real metadata access using the management discovery recipe below. Generate local `SESSION_SECRET` and `MINIAPP_SIGNING_KEY` in memory.
+
 ## Hybrid store origins (main host /mini/... + mini host) local testing
 - Simulate both hosts against one `next start :3999`: `MINIAPP_ORIGIN=http://localhost:3999` makes `localhost:3999` the mini host (middleware compares the Host header to `new URL(MINIAPP_ORIGIN).host`), while `127.0.0.1:3999` is the main host. Main-host routing table (middleware.ts): `/mini` → store home 200, `/mini/<slug>` → internal rewrite to `/mini/store/<slug>` (detail 200), `/mini/store/<slug>` → 308 `/mini/<slug>`, `/mini/<slug>?t=|?g=`, `/mini/login`, `/mini/publish`, `/mini/<slug>/app.js` → 308 to the mini origin.
 - Gotcha: when MINIAPP_ORIGIN is a localhost URL, Next normalizes redirect `Location` headers to RELATIVE paths (e.g. `location: /login` instead of `http://localhost:3999/login`), which looks like a same-host redirect bug. To assert absolute mini-origin Locations, start a second server on another port with `MINIAPP_ORIGIN=https://mini.wzrd.tech` and curl its headers — with a non-localhost origin the 308s carry the full absolute URL.
