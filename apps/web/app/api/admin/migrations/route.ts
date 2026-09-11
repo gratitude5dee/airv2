@@ -56,8 +56,15 @@ function errorResponse(error: unknown): NextResponse {
       { status: 422 }
     );
   }
-  const detail = error instanceof Error ? error.message : String(error);
-  return NextResponse.json({ error: "internal", detail }, { status: 500 });
+  // Unknown errors: log server-side only — the message can carry provider
+  // or driver internals that don't belong in an operator-facing response.
+  console.error(
+    JSON.stringify({
+      msg: "admin migrations op failed",
+      error: error instanceof Error ? error.message : String(error),
+    })
+  );
+  return NextResponse.json({ error: "internal" }, { status: 500 });
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {

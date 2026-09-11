@@ -139,7 +139,10 @@ create table migration_targets (
   integrity       jsonb,           -- per-pass verification receipts
   created_at      timestamptz not null default now(),
   updated_at      timestamptz not null default now(),
-  primary key (migration_id, role)
+  -- Deferred: commit_migration_route swaps retained<->active on the return
+  -- leg; immediate uniqueness checking would fail the first of the two
+  -- updates before the second could clear the collision.
+  primary key (migration_id, role) deferrable initially deferred
 );
 alter table migration_targets enable row level security;
 
@@ -166,7 +169,7 @@ create table delivery_receipts (
   stable_id   text not null,     -- '<schedule uuid>@<due-time ISO>'
   state       text not null check (state in (
                 'pending', 'running', 'held', 'completed', 'delivered', 'failed')),
-  result_ref  text,              -- agent_runs.hermes_run_id etc.
+  result_ref  jsonb,             -- replay metadata (e.g. {inbox_id, message_id})
   attempt     int not null default 0,
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now(),
@@ -197,20 +200,22 @@ declare
 begin
   insert into tenant_control (user_id) values (p_user_id)
   on conflict (user_id) do nothing;
-  insert into tenant_operations
-    (user_id, kind, routing_generation, holder, expires_at, detail)
-  select p_user_id, p_kind, tc.routing_generation, p_holder,
-         now() + make_interval(secs => p_ttl_seconds), p_detail
-  from tenant_control tc
-  where tc.user_id = p_user_id and tc.admission = 'open'
-  returning * into v_op;
-  if not found then
-    select * into v_ctl from tenant_control where user_id = p_user_id;
+  -- Serialize against close_admission: without the row lock an admit that
+  -- began while admission was open could commit its lease after the close's
+  -- drain read ran, leaving fenced work the close never saw.
+  select * into v_ctl from tenant_control
+   where user_id = p_user_id for update;
+  if v_ctl.admission <> 'open' then
     return jsonb_build_object(
       'admitted', false,
       'admission', v_ctl.admission,
       'holder', v_ctl.admission_holder);
   end if;
+  insert into tenant_operations
+    (user_id, kind, routing_generation, holder, expires_at, detail)
+  values (p_user_id, p_kind, v_ctl.routing_generation, p_holder,
+          now() + make_interval(secs => p_ttl_seconds), p_detail)
+  returning * into v_op;
   return jsonb_build_object(
     'admitted', true,
     'operation_id', v_op.id,
@@ -281,8 +286,10 @@ begin
 
   insert into tenant_control (user_id) values (v_user_id)
   on conflict (user_id) do nothing;
+  -- Same serialization as admit_operation: the close holds this lock while
+  -- it drains, so a claim can never slip a lease in past the drain read.
   select admission into v_admission
-    from tenant_control where user_id = v_user_id;
+    from tenant_control where user_id = v_user_id for update;
 
   select * into v_receipt from delivery_receipts
    where user_id = v_user_id and kind = 'schedule_occurrence'
@@ -365,8 +372,11 @@ begin
   end if;
   insert into tenant_control (user_id) values (v_user_id)
   on conflict (user_id) do nothing;
+  -- Lock order matches close_admission/admit_operation: the control row
+  -- first, so a close+drain cannot interleave between the admission check
+  -- and the lease insert below.
   select admission into v_admission
-    from tenant_control where user_id = v_user_id;
+    from tenant_control where user_id = v_user_id for update;
 
   update flush_jobs f
      set chain_started_at = p_chain_started_at

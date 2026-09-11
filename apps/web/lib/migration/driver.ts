@@ -24,6 +24,7 @@ import {
   loadMigration,
   loadTargets,
   newWorkerToken,
+  renewWorker,
   setWake,
   transition,
 } from "./store";
@@ -154,10 +155,28 @@ export async function driveMigration(
     return loadMigration(supabase, migrationId);
   }
 
-  let migration = await loadMigration(supabase, migrationId);
-  if (!migration) return null;
+  // A single step can run a multi-minute external command — renew the lease
+  // on a heartbeat well under the TTL so reconcileMigrations can't hand the
+  // row to a second worker mid-call. If renewal reports the lease is gone,
+  // a real takeover happened: stop driving.
+  let leaseLost = false;
+  const heartbeat = setInterval(() => {
+    void renewWorker(supabase, migrationId, worker).then(
+      (held) => {
+        if (!held) leaseLost = true;
+      },
+      () => {
+        /* a failed renew is just a missed beat; TTL still covers it */
+      }
+    );
+  }, Math.max(5_000, (env.migrationDriveLeaseSeconds() * 1000) / 3));
+
+  try {
+    let migration = await loadMigration(supabase, migrationId);
+    if (!migration) return null;
 
   while (!TERMINAL_PHASES.includes(migration.phase)) {
+    if (leaseLost) return loadMigration(supabase, migrationId);
     if (Date.now() > deadline) {
       await setWake(supabase, migration, worker, new Date(Date.now() + 5_000));
       break;
@@ -313,5 +332,8 @@ export async function driveMigration(
       throw error;
     }
   }
-  return migration;
+    return migration;
+  } finally {
+    clearInterval(heartbeat);
+  }
 }

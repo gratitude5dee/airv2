@@ -49,8 +49,13 @@ const RULES: Rule[] = [
   {
     test: (p) =>
       /(^|\/)(node_modules|__pycache__|\.pytest_cache|\.next|dist|\.turbo|\.cache|\.npm|\.local\/share\/pnpm)(\/|$)/.test(p) ||
-      p.startsWith(".agent-browser/") ||
-      p.startsWith(".vscode-server/"),
+      // Toolchain stores pruned from the air_transfer walk — each must have a
+      // regenerate rule so pruning is classification-justified, never silent.
+      p === ".cargo" || p.startsWith(".cargo/") ||
+      p === ".rustup" || p.startsWith(".rustup/") ||
+      p === ".pnpm-store" || p.startsWith(".pnpm-store/") ||
+      p === ".agent-browser" || p.startsWith(".agent-browser/") ||
+      p === ".vscode-server" || p.startsWith(".vscode-server/"),
     classification: "regenerate",
     reason: "reproducible",
   },

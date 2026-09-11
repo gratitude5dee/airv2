@@ -136,6 +136,29 @@ export function newWorkerToken(): string {
 }
 
 /**
+ * Heartbeat: slide the lease forward while still holding it. A long
+ * external command inside one step can outlive the original lease — the
+ * sweeper must not hand the row to a second worker while the first is
+ * mid-call. False once the lease was genuinely lost (a real takeover).
+ */
+export async function renewWorker(
+  supabase: SupabaseClient,
+  migrationId: string,
+  workerToken: string,
+  leaseSeconds = env.migrationDriveLeaseSeconds()
+): Promise<boolean> {
+  const until = new Date(Date.now() + leaseSeconds * 1000).toISOString();
+  const { data, error } = await supabase
+    .from("compute_migrations")
+    .update({ worker_lease_until: until })
+    .eq("id", migrationId)
+    .eq("worker_token", workerToken)
+    .select("id");
+  if (error) throw new Error(`worker renew failed: ${error.message}`);
+  return (data?.length ?? 0) > 0;
+}
+
+/**
  * Move the machine: a CAS on (id, worker_token, phase ∈ from). Carries any
  * column patch plus a step receipt merged into the steps journal. Throws
  * MigrationStateError when the row moved under us — the caller's driver

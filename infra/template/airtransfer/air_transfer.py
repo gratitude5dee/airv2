@@ -38,14 +38,17 @@ MAGIC = b"AIRX1\n"
 CHUNK = 8 * 1024 * 1024
 SQLITE_MAGIC = b"SQLite format 3\x00"
 
-# Directories pruned from the walk — reproducible trees that would cost real
-# hashing time and always classify as regenerate. Emitted as a single 'dir'
-# entry so the manifest still records their presence.
+# Directories pruned from the walk — trees whose entire contents classify as
+# regenerate under lib/migration/inventory.ts RULES, so skipping the hash loses
+# nothing. Anything that can hold user state (.local, .config/google-chrome)
+# is deliberately NOT here: it is walked and classified like everything else.
+# Pruned dirs are emitted as a single 'dir' entry so the manifest still
+# records their presence.
 PRUNE_DIRS = {
     ".air", "node_modules", "__pycache__", ".hermes-venv",
     ".openviking-venv", ".agent-browser", ".vscode-server", ".cache",
     ".npm", ".pnpm-store", "dist", ".next", ".turbo", "hermes-agent",
-    ".local", ".config/google-chrome", ".rustup", ".cargo",
+    ".rustup", ".cargo",
 }
 
 
@@ -146,12 +149,45 @@ def cmd_inventory(args: argparse.Namespace) -> int:
 
 # ─── export ──────────────────────────────────────────────────────────────────
 
+def _safe_rel(path: str) -> str:
+    """Refuse a manifest path that escapes the home tree."""
+    if not path or path.startswith("/") or path.startswith("~"):
+        raise SystemExit(f"unsafe manifest path {path!r}")
+    if any(part == ".." for part in path.split("/")):
+        raise SystemExit(f"unsafe manifest path {path!r}")
+    return path
+
+
 def _transfer_paths(manifest: dict) -> list[dict]:
-    return [
-        e for e in manifest["entries"]
-        if e.get("classification") in ("transfer", "reconnect")
-        and e.get("kind") != "dir"
-    ]
+    out = []
+    for e in manifest["entries"]:
+        if e.get("classification") in ("transfer", "reconnect") and e.get("kind") != "dir":
+            e["path"] = _safe_rel(e["path"])
+            if e.get("kind") == "symlink":
+                # A symlink's target is data, not a filesystem path to open —
+                # but refuse absolute/out-of-tree targets anyway: apply would
+                # recreate a link pointing at e.g. /etc or ~/.ssh.
+                _safe_rel_link(e.get("link", ""), e["path"])
+            out.append(e)
+    return out
+
+
+def _safe_rel_link(link: str, path: str) -> None:
+    """Resolve a relative symlink target from its own dir; refuse escapes."""
+    if not link:
+        raise SystemExit(f"symlink {path!r} has no target")
+    if link.startswith("/"):
+        raise SystemExit(f"symlink {path!r} escapes home: {link!r}")
+    depth = len([p for p in path.split("/")[:-1] if p])
+    for part in link.split("/"):
+        if part in ("", "."):
+            continue
+        if part == "..":
+            depth -= 1
+            if depth < 0:
+                raise SystemExit(f"symlink {path!r} escapes home: {link!r}")
+        else:
+            depth += 1
 
 
 def _safe_extract(tar: tarfile.TarFile, dest: Path) -> None:
@@ -163,6 +199,19 @@ def _safe_extract(tar: tarfile.TarFile, dest: Path) -> None:
             raise SystemExit(f"unsafe member {member.name}")
         if member.isdev():
             raise SystemExit(f"device member {member.name} refused")
+        if member.issym() or member.islnk():
+            # A link's own name sits inside dest, but its TARGET must too:
+            # symlink targets resolve against the link's parent dir; hardlink
+            # names are archive-rooted member paths.
+            ln = member.linkname
+            if ln.startswith("/"):
+                resolved = Path(ln)
+            elif member.issym():
+                resolved = (target.parent / ln).resolve()
+            else:
+                resolved = (dest_r / ln).resolve()
+            if not str(resolved).startswith(str(dest_r) + os.sep) and resolved != dest_r:
+                raise SystemExit(f"link member {member.name} escapes: {ln}")
     tar.extractall(dest_r)
 
 

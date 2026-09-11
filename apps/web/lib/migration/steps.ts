@@ -249,7 +249,9 @@ export async function stepPreparing(ctx: StepCtx): Promise<StepOutcome> {
       { candidate_box_id: built.target.instanceId }
     );
   }
-  const candidateId = migration.candidate_box_id;
+  // ctx.migration (not the destructured snapshot): recordStep replaces it
+  // with the persisted row, which is where prepare.provision's patch lands.
+  const candidateId = ctx.migration.candidate_box_id;
   if (!candidateId) {
     throw new MigrationStateError("no_candidate", "candidate missing after provision");
   }
@@ -776,10 +778,17 @@ export async function stepCleanupPending(ctx: StepCtx): Promise<StepOutcome> {
 
 export async function runSourceDelete(ctx: StepCtx): Promise<void> {
   const { supabase, migration, worker } = ctx;
-  const { from } = copySides(migration, ctx.targets);
+  // Delete the RETAINED side explicitly: post-commit targets are
+  // retained/active, so copySides' source→candidate roles no longer exist.
+  // On a completed return leg the retained row is the (now-defunct)
+  // candidate — the same side that lost the last commit.
+  const retained = retainedTarget(ctx.targets);
+  if (!retained) {
+    throw new MigrationStateError("targets_missing", "no retained target to delete");
+  }
   const box = await loadBoxRow(supabase, migration.user_id);
   const environment = (box?.["environment"] as string) ?? "ubuntu";
-  const fromTarget = { instanceId: from.provider_box_id, environment: environment as never };
+  const fromTarget = { instanceId: retained.provider_box_id, environment: environment as never };
   if (!hasStep(migration, stepName(ctx, "cleanup.delete_source"))) {
     await destroyCompute(fromTarget);
     ctx.migration = await recordStep(
@@ -802,25 +811,31 @@ export async function runCancelCompensation(ctx: StepCtx): Promise<void> {
   const box = await loadBoxRow(supabase, migration.user_id);
   const environment = (box?.["environment"] as string) ?? "ubuntu";
 
+  // Every action runs best-effort, but failures are collected — any one of
+  // them means the tenant is NOT safe to release (masked gateway, closed
+  // admission, or an orphan candidate), so the caller must land
+  // cleanup_failed rather than settling failed and reopening.
+  const failures: string[] = [];
+
   const sourceId = migration.source_box_id;
   const source = { instanceId: sourceId, environment: environment as never };
   if (hasStep(migration, stepName(ctx, "quiesce.fence")) && migration.leg === "out") {
     await liftFence(source).catch((error) => {
-      console.error(
-        JSON.stringify({
-          msg: "cancel: source fence lift failed",
-          migration_id: migration.id,
-          error: error instanceof Error ? error.message : String(error),
-        })
+      failures.push(
+        `lift_fence: ${error instanceof Error ? error.message : String(error)}`
       );
     });
   }
   if (ctx.control.admission === "closed") {
-    try {
-      await supabase.rpc("open_admission", { p_migration_id: migration.id });
-    } catch {
-      /* lease expiry covers a lost release */
-    }
+    const { error } = await supabase.rpc("open_admission", {
+      p_migration_id: migration.id,
+    }).then(
+      (res) => res,
+      (rpcError: unknown) => ({
+        error: { message: String(rpcError) },
+      })
+    );
+    if (error) failures.push(`open_admission: ${error.message}`);
   }
   if (migration.candidate_box_id) {
     const candidate = {
@@ -828,16 +843,18 @@ export async function runCancelCompensation(ctx: StepCtx): Promise<void> {
       environment: environment as never,
     };
     await destroyCompute(candidate).catch((error) => {
-      console.error(
-        JSON.stringify({
-          msg: "cancel: candidate destroy failed",
-          migration_id: migration.id,
-          error: error instanceof Error ? error.message : String(error),
-        })
+      failures.push(
+        `destroy_candidate: ${error instanceof Error ? error.message : String(error)}`
       );
     });
   }
   void worker;
+  if (failures.length > 0) {
+    throw new MigrationStateError(
+      "compensation_incomplete",
+      `compensation left unresolved state: ${failures.join("; ")}`
+    );
+  }
 }
 
 /**
