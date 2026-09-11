@@ -12,6 +12,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BoxApiError, START_LIMIT_REACHED } from "./types";
 import {
+  DESKTOP_ROUTE_TTL_MS,
   ROUTE_RENEW_BEFORE_MS,
   ROUTE_TTL_MS,
   STOP_WAIT_MS,
@@ -873,22 +874,43 @@ describe("requestDesktop", () => {
     const session = fakeSession();
     session.exec = vi.fn(async () => ({
       exitCode: 0,
-      stdout: new Uint8Array(),
+      stdout: new TextEncoder().encode("vnc-secret-1"),
       stderr: new Uint8Array(),
     }));
     session.exposePort = vi.fn(async (port: number) => exposed(port));
     install([session]);
     const url = await requestDesktop(BOX);
     expect(url).toBe(
-      "https://p6080.sandbox.tenki.example/vnc.html?autoconnect=true&resize=scale"
+      "https://p6080.sandbox.tenki.example/vnc.html?autoconnect=true&resize=scale&password=vnc-secret-1"
     );
     const script = session.exec.mock.calls[0]?.[1].args.at(-1) as string;
     expect(script).toContain("apt-get install");
     expect(script).toContain("websockify");
     expect(script).toContain("x11vnc");
+    // The short desktop TTL, not the 30-day hosted-route default.
     expect(session.exposePort).toHaveBeenCalledWith(6080, {
-      ttlMs: ROUTE_TTL_MS,
+      ttlMs: DESKTOP_ROUTE_TTL_MS,
     });
+  });
+
+  it("closes the lock fd in every detached daemon it can start", async () => {
+    // Devin Review regression: a daemon inheriting fd 9 holds the flock
+    // forever, so every later request waits out the 280s lock window.
+    const session = fakeSession();
+    session.exec = vi.fn(async () => ({
+      exitCode: 0,
+      stdout: new Uint8Array(),
+      stderr: new Uint8Array(),
+    }));
+    session.exposePort = vi.fn(async (port: number) => exposed(port));
+    install([session]);
+    await requestDesktop(BOX);
+    const script = session.exec.mock.calls[0]?.[1].args.at(-1) as string;
+    for (const line of script.split("\n")) {
+      if (line.includes("setsid nohup")) expect(line).toContain("9>&-");
+    }
+    expect(script).toContain('x11vnc .*5900');
+    expect(script).toContain('-rfbauth "$HOME/.vnc/passwd"');
   });
 
   it("reuses an existing fresh 6080 exposure", async () => {

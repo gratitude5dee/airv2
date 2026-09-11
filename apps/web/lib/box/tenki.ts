@@ -672,11 +672,23 @@ export const DESKTOP_WEB_PORT = 6080;
 const DESKTOP_VNC_PORT = 5900;
 
 /**
+ * Desktop routes get a much shorter TTL than hosted service routes: the URL
+ * is the only auth on the viewer, so a leaked link should die in hours, not
+ * the 30-day hosted-route window.
+ */
+export const DESKTOP_ROUTE_TTL_MS = 60 * 60 * 1000;
+const DESKTOP_ROUTE_RENEW_MS = 10 * 60 * 1000;
+
+/**
  * Idempotent ensure: install the stack if absent, start whatever is not
  * running, then wait for the web port to accept. flock serializes the
  * concurrent requests a first view can trigger (stream URL + origin probe).
  * Everything runs detached so the exec's process tree going away cannot
- * take the daemons with it.
+ * take the daemons with it — and every detached command closes fd 9,
+ * otherwise the daemon would inherit the lock and pin it forever.
+ * A random per-box VNC password is generated on first ensure, x11vnc
+ * requires it (-rfbauth), and the plaintext is cat'd last so the caller can
+ * embed it in the viewer URL.
  */
 const DESKTOP_ENSURE_SCRIPT = `set -euo pipefail
 exec 9>"$HOME/.air-desktop.lock"
@@ -686,20 +698,29 @@ if ! command -v Xvfb >/dev/null 2>&1 || ! command -v x11vnc >/dev/null 2>&1 || !
   sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \\
     xvfb openbox x11vnc novnc websockify dbus-x11
 fi
-pgrep -x Xvfb >/dev/null 2>&1 || setsid nohup Xvfb :0 -screen 0 1280x800x24 >/tmp/air-xvfb.log 2>&1 </dev/null &
+mkdir -p "$HOME/.vnc" && chmod 700 "$HOME/.vnc"
+if [ ! -s "$HOME/.vnc/passwd" ] || [ ! -s "$HOME/.air-desktop-secret" ]; then
+  PASS=$(head -c 18 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 24)
+  x11vnc -storepasswd "$PASS" "$HOME/.vnc/passwd"
+  printf %s "$PASS" > "$HOME/.air-desktop-secret"; chmod 600 "$HOME/.air-desktop-secret"
+fi
+pgrep -x Xvfb >/dev/null 2>&1 || setsid nohup Xvfb :0 -screen 0 1280x800x24 9>&- >/tmp/air-xvfb.log 2>&1 </dev/null &
 for i in $(seq 1 50); do [ -S /tmp/.X11-unix/X0 ] && break; sleep 0.2; done
 [ -S /tmp/.X11-unix/X0 ] || { echo "no X display" >&2; exit 1; }
-pgrep -x openbox >/dev/null 2>&1 || setsid nohup env DISPLAY=:0 openbox >/tmp/air-openbox.log 2>&1 </dev/null &
-pgrep -f 'x11vnc .*${DESKTOP_VNC_PORT}' >/dev/null 2>&1 || setsid nohup x11vnc -display :0 -localhost -forever -shared -nopw -rfbport ${DESKTOP_VNC_PORT} >/tmp/air-x11vnc.log 2>&1 </dev/null &
-pgrep -f 'websockify .*${DESKTOP_WEB_PORT}' >/dev/null 2>&1 || setsid nohup websockify --web /usr/share/novnc ${DESKTOP_WEB_PORT} localhost:${DESKTOP_VNC_PORT} >/tmp/air-novnc.log 2>&1 </dev/null &
-for i in $(seq 1 50); do (echo > "/dev/tcp/127.0.0.1/${DESKTOP_WEB_PORT}") 2>/dev/null && exit 0; sleep 0.2; done
-echo "noVNC did not start" >&2; exit 1`;
+pgrep -x openbox >/dev/null 2>&1 || setsid nohup env DISPLAY=:0 openbox 9>&- >/tmp/air-openbox.log 2>&1 </dev/null &
+pgrep -f 'x11vnc .*${DESKTOP_VNC_PORT}' >/dev/null 2>&1 || setsid nohup x11vnc -display :0 -localhost -forever -shared -rfbauth "$HOME/.vnc/passwd" -rfbport ${DESKTOP_VNC_PORT} 9>&- >/tmp/air-x11vnc.log 2>&1 </dev/null &
+pgrep -f 'websockify .*${DESKTOP_WEB_PORT}' >/dev/null 2>&1 || setsid nohup websockify --web /usr/share/novnc ${DESKTOP_WEB_PORT} localhost:${DESKTOP_VNC_PORT} 9>&- >/tmp/air-novnc.log 2>&1 </dev/null &
+for i in $(seq 1 50); do (echo > "/dev/tcp/127.0.0.1/${DESKTOP_WEB_PORT}") 2>/dev/null && break; sleep 0.2; done
+(echo > "/dev/tcp/127.0.0.1/${DESKTOP_WEB_PORT}") 2>/dev/null || { echo "noVNC did not start" >&2; exit 1; }
+cat "$HOME/.air-desktop-secret"`;
 
 /**
  * A noVNC viewer URL on the box's 6080 preview route, or undefined when the
  * stack cannot be brought up (callers render "unavailable"/"waking"). The
- * `vnc` option from the ascii contract is moot — noVNC is the only streamer
- * — so both modes return it.
+ * URL carries the box's random VNC password (a per-box capability, never
+ * persisted), and the route re-mints inside a 10-minute window so a leaked
+ * link is short-lived. The `vnc` option from the ascii contract is moot —
+ * noVNC is the only streamer — so both modes return it.
  */
 export async function requestDesktop(
   boxId: string
@@ -716,9 +737,16 @@ export async function requestDesktop(
     );
     return undefined;
   }
-  const route = await hostRoute(boxId, DESKTOP_WEB_PORT);
+  const route = await hostRoute(boxId, DESKTOP_WEB_PORT, {
+    ttlMs: DESKTOP_ROUTE_TTL_MS,
+    renewBeforeMs: DESKTOP_ROUTE_RENEW_MS,
+  });
   const base = route.url.endsWith("/") ? route.url.slice(0, -1) : route.url;
-  return `${base}/vnc.html?autoconnect=true&resize=scale`;
+  const password = ensure.stdout.trim();
+  return (
+    `${base}/vnc.html?autoconnect=true&resize=scale` +
+    (password ? `&password=${encodeURIComponent(password)}` : "")
+  );
 }
 
 /**
@@ -815,35 +843,41 @@ function routeFrom(port: ExposedPort): TenkiRoute {
 /** A route is reusable when it will still be valid at the next renewal check. */
 export function routeIsFresh(
   route: { expiresAt: Date | undefined },
-  now = Date.now()
+  now = Date.now(),
+  renewBeforeMs = ROUTE_RENEW_BEFORE_MS
 ): boolean {
   return (
     route.expiresAt === undefined ||
-    route.expiresAt.getTime() - now > ROUTE_RENEW_BEFORE_MS
+    route.expiresAt.getTime() - now > renewBeforeMs
   );
 }
 
 /**
  * The hosted route for a port: the existing preview URL when it is still
  * fresh (exposures survive pause/resume, so the persisted hosted_url stays
- * valid across wakes), otherwise a re-exposure with a new URL.
+ * valid across wakes), otherwise a re-exposure with a new URL. ttlMs /
+ * renewBeforeMs override the 30d/7d defaults for routes that should be
+ * short-lived (the desktop stream).
  */
 export async function hostRoute(
   boxId: string,
-  port: number
+  port: number,
+  options: { ttlMs?: number; renewBeforeMs?: number } = {}
 ): Promise<TenkiRoute> {
+  const ttlMs = options.ttlMs ?? ROUTE_TTL_MS;
+  const renewBeforeMs = options.renewBeforeMs ?? ROUTE_RENEW_BEFORE_MS;
   const current = await session(boxId);
   try {
     const existing = (await current.listExposedPorts()).find(
       (exposed) => exposed.port === port
     );
-    if (existing && routeIsFresh(routeFrom(existing))) {
+    if (existing && routeIsFresh(routeFrom(existing), Date.now(), renewBeforeMs)) {
       return routeFrom(existing);
     }
     if (existing) {
       await current.unexposePort(port);
     }
-    return routeFrom(await current.exposePort(port, { ttlMs: ROUTE_TTL_MS }));
+    return routeFrom(await current.exposePort(port, { ttlMs }));
   } catch (error) {
     throw toBoxApiError(error);
   }

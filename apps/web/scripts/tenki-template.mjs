@@ -131,10 +131,17 @@ async function bootstrap(session) {
 // x11vnc behind it, websockify as the watched process — a crash restarts the
 // set together. Runs as the box user so the :0 socket is usable by Chrome.
 const DESKTOP_LAUNCHER = `#!/usr/bin/env bash
+set -u
+mkdir -p "$HOME/.vnc" && chmod 700 "$HOME/.vnc"
+if [ ! -s "$HOME/.vnc/passwd" ] || [ ! -s "$HOME/.air-desktop-secret" ]; then
+  PASS=$(head -c 18 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 24)
+  x11vnc -storepasswd "$PASS" "$HOME/.vnc/passwd"
+  printf %s "$PASS" > "$HOME/.air-desktop-secret"; chmod 600 "$HOME/.air-desktop-secret"
+fi
 Xvfb :0 -screen 0 1280x800x24 &
 until [ -S /tmp/.X11-unix/X0 ]; do sleep 0.2; done
 DISPLAY=:0 openbox &
-x11vnc -display :0 -localhost -forever -shared -nopw -rfbport 5900 &
+x11vnc -display :0 -localhost -forever -shared -rfbauth "$HOME/.vnc/passwd" -rfbport 5900 &
 exec websockify --web /usr/share/novnc 6080 localhost:5900
 `;
 
@@ -159,9 +166,10 @@ async function installDesktop(session) {
     session,
     [
       "set -euo pipefail",
-      `printf %s ${JSON.stringify(DESKTOP_LAUNCHER)} | sudo tee /usr/local/bin/air-desktop >/dev/null`,
+      // base64 so the multi-line content reaches tee with real newlines.
+      `printf %s ${JSON.stringify(Buffer.from(DESKTOP_LAUNCHER, "utf8").toString("base64"))} | base64 -d | sudo tee /usr/local/bin/air-desktop >/dev/null`,
       "sudo chmod 755 /usr/local/bin/air-desktop",
-      `printf %s ${JSON.stringify(DESKTOP_UNIT)} | sudo tee /etc/systemd/system/air-desktop.service >/dev/null`,
+      `printf %s ${JSON.stringify(Buffer.from(DESKTOP_UNIT, "utf8").toString("base64"))} | base64 -d | sudo tee /etc/systemd/system/air-desktop.service >/dev/null`,
       "sudo systemctl daemon-reload",
       "sudo systemctl enable --now air-desktop",
     ].join("\n")
