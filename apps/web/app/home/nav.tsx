@@ -11,6 +11,7 @@
 import { PixelIcon, type PixelGlyph } from "@/components/dither-kit/icon";
 
 export type Section =
+  | "air.home"
   | "air.chat"
   | "apps.store"
   | "apps.installed"
@@ -26,9 +27,10 @@ export type Section =
   | "settings.connectors"
   | "settings.skills";
 
-export const DEFAULT_SECTION: Section = "air.chat";
+export const DEFAULT_SECTION: Section = "air.home";
 
 const SECTIONS = new Set<string>([
+  "air.home",
   "air.chat",
   "apps.store",
   "apps.installed",
@@ -118,6 +120,17 @@ export function HomeNav({
       aria-label="Sections"
     >
       <p className="chrome-2 m-0 hidden px-2 pt-1 md:block">AIR</p>
+      <button
+        aria-current={section === "air.home" ? "page" : undefined}
+        className={
+          "seg flex items-center gap-2" +
+          (section === "air.home" ? " pill-active" : "")
+        }
+        onClick={() => onNavigate("air.home")}
+      >
+        <PixelIcon glyph="home" size={14} />
+        Home
+      </button>
       <button
         aria-current={section === "air.chat" ? "page" : undefined}
         className={

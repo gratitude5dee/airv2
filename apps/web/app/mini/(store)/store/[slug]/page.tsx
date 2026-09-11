@@ -21,12 +21,13 @@ import {
   storePaths,
 } from "@/lib/miniapps/storePaths";
 import { tintHue } from "@/lib/miniapps/shell";
+import { firstPartyAppArt } from "@/lib/miniapps/app-art";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function ogImage(app: RegistryApp): string | null {
-  return app.icon_key ? publicUrl(app.icon_key) : null;
+  return app.icon_key ? publicUrl(app.icon_key) : firstPartyAppArt(app.slug);
 }
 
 export async function generateMetadata({
@@ -92,22 +93,22 @@ export default async function StoreDetail({
     app.agent_identity ?? `${publisher}'s agent`;
 
   return (
-    <main className="relative min-h-screen overflow-hidden">
+    <main className="wabi-store-page relative min-h-screen overflow-hidden">
       {discoverable(app) ? <JsonLd data={jsonLd(app)} /> : null}
       <div className="pointer-events-none absolute inset-x-0 top-0 h-[30vh]">
         <DitherGradient from="blue" direction="down" opacity={0.25} />
       </div>
 
-      <div className="relative mx-auto w-full max-w-[560px] px-6 pb-16 pt-14">
+      <div className="wabi-store-shell relative mx-auto w-full max-w-[560px] px-6 pb-16 pt-14">
         <Link href={paths.home} className="text-[12px] text-muted no-underline">
           ← Store
         </Link>
 
         <header className="rise-in mt-6 flex items-center gap-4">
-          {app.icon_key ? (
+          {app.icon_key || firstPartyAppArt(app.slug) ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={publicUrl(app.icon_key)}
+              src={app.icon_key ? publicUrl(app.icon_key) : firstPartyAppArt(app.slug) ?? ""}
               alt=""
               width={44}
               height={44}
@@ -131,10 +132,10 @@ export default async function StoreDetail({
           }}
           className="rise-in mt-5 flex aspect-video w-full items-center justify-center rounded-[20px] border border-[var(--ring)]"
         >
-          {app.icon_key ? (
+          {app.icon_key || firstPartyAppArt(app.slug) ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={publicUrl(app.icon_key)}
+              src={app.icon_key ? publicUrl(app.icon_key) : firstPartyAppArt(app.slug) ?? ""}
               alt=""
               width={72}
               height={72}
