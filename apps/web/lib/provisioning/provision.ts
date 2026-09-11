@@ -13,6 +13,10 @@ import { randomBytes } from "node:crypto";
 import { env } from "../env";
 import { serviceClient } from "../supabase";
 import {
+  BOX_DEFAULT_PROVIDER_KEY,
+  readPlatformSetting,
+} from "../settings/platform";
+import {
   fork,
   hostRoute,
   providerOf,
@@ -20,6 +24,7 @@ import {
   type BoxProvider,
   type HostedRoute,
 } from "../box/client";
+import { isTenkiSnapshotRef } from "../box/tenki";
 import {
   createMacInstance,
   publishMacIngress,
@@ -84,9 +89,10 @@ export interface ProvisionOptions {
   /** Compute the agent lives on. Defaults to ubuntu — the original path. */
   environment?: ComputeEnvironment | undefined;
   /**
-   * Linux box provider. Defaults to ascii (the channel's template). `tenki`
-   * is opt-in per provision while the two are evaluated side by side: it forks
-   * TENKI_TEMPLATE_ID on Tenki Sandbox instead, ubuntu environment only.
+   * Linux box provider; omitted boxes follow the fleet-wide
+   * platform_settings `box_default_provider` row ("ascii" when unset),
+   * which the admin dashboard's provider switch writes. Tenki is
+   * ubuntu-only.
    */
   provider?: BoxProvider | undefined;
 }
@@ -310,7 +316,7 @@ export async function provisionUser(
       userId,
       environment,
       DEFAULT_CHANNEL,
-      options.provider ?? "ascii"
+      options.provider ?? (await defaultBoxProvider())
     );
     await persistBox(supabase, userId, environment, built);
     await finishSetup(supabase, userId, built);
@@ -560,6 +566,28 @@ async function teardown(target: ComputeTarget): Promise<void> {
  * gateway, services restarted, Hermes + dashboard published.
  */
 /**
+ * The provider a brand-new box lands on when the caller doesn't choose: the
+ * fleet-wide platform_settings `box_default_provider` row ("ascii" when
+ * unset). "tenki" is honored only with a valid TENKI_TEMPLATE_ID snapshot
+ * ref, so the switch can be flipped before the template env lands without
+ * breaking signups.
+ */
+export async function defaultBoxProvider(): Promise<BoxProvider> {
+  const setting = await readPlatformSetting(BOX_DEFAULT_PROVIDER_KEY);
+  if (setting === "tenki") {
+    const templateId = env.tenkiTemplateId();
+    if (templateId && isTenkiSnapshotRef(templateId)) return "tenki";
+    console.error(
+      JSON.stringify({
+        msg: "box_default_provider=tenki but TENKI_TEMPLATE_ID is not a tenki snapshot ref; provisioning on ascii",
+        tenki_template_id: templateId ?? null,
+      })
+    );
+  }
+  return "ascii";
+}
+
+/**
  * The template a Tenki fork comes from. Tenki has no channel/release
  * bootstrap yet, so the pointer is the static TENKI_TEMPLATE_ID snapshot ref
  * and only the ubuntu template exists there.
@@ -569,7 +597,7 @@ function tenkiTemplate(environment: ComputeEnvironment): string {
     throw new Error(`tenki provider supports ubuntu only, not ${environment}`);
   }
   const templateId = env.tenkiTemplateId();
-  if (!templateId || providerOf(templateId) !== "tenki") {
+  if (!templateId || !isTenkiSnapshotRef(templateId)) {
     throw new Error("TENKI_TEMPLATE_ID must be set to a tenki:<snapshot id> ref");
   }
   return templateId;

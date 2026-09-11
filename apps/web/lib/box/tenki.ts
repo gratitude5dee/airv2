@@ -13,6 +13,7 @@
  *   resume        → create a new session from the box's newest snapshot
  *   command       → exec as the `user` account with cwd /home/user
  *   hosted route  → exposePort(8642 | 9119) preview URL
+ *   desktop       → lazy in-box noVNC stack + a 6080 preview URL
  *
  * Ids: `tk_<box key>` in boxes.provider_box_id is a stable key we mint at
  * fork; the provider objects behind it (one live session, or a snapshot when
@@ -86,6 +87,18 @@ export function isTenkiBoxId(boxId: string): boolean {
 
 export function isTenkiTemplateRef(templateRef: string): boolean {
   return templateRef.startsWith(TENKI_TEMPLATE_PREFIX);
+}
+
+/**
+ * Strict form of a template ref a snapshot can actually come from: the
+ * `tenki:` prefix plus a non-empty suffix that isn't a `tk_` box/session id
+ * — `providerOf` alone accepts all of those, so config validation (the
+ * TENKI_TEMPLATE_ID default probe, the tenki fork path) needs this.
+ */
+export function isTenkiSnapshotRef(templateRef: string): boolean {
+  if (!isTenkiTemplateRef(templateRef)) return false;
+  const suffix = templateRef.slice(TENKI_TEMPLATE_PREFIX.length).trim();
+  return suffix.length > 0 && !isTenkiBoxId(suffix);
 }
 
 export function toBoxId(boxKey: string): string {
@@ -643,9 +656,138 @@ export async function deleteBox(boxId: string): Promise<void> {
   }
 }
 
-/** Tenki has no desktop stream API; callers render "unavailable". */
-export async function requestDesktop(): Promise<undefined> {
-  return undefined;
+/**
+ * Tenki has no platform desktop endpoint, so the stream is the box's own
+ * noVNC stack: the first request lazily installs Xvfb + openbox + x11vnc +
+ * websockify inside the box and starts them on :0/5900/6080, then a preview
+ * URL on the noVNC port is minted by hostRoute. The preview URL is the only
+ * credential — the same capability-URL posture as every other hosted route,
+ * and like the ascii stream URL it never leaves the server (lib/box/desktop.ts).
+ *
+ * :0 is also the display the headed agent browser targets (DISPLAY=:0 in
+ * ~/.hermes/.env), so installing the stack gives it a real X server on boxes
+ * whose template predates it.
+ */
+export const DESKTOP_WEB_PORT = 6080;
+const DESKTOP_VNC_PORT = 5900;
+
+/**
+ * Desktop routes get a much shorter TTL than hosted service routes: the URL
+ * is the only auth on the viewer, so a leaked link should die in hours, not
+ * the 30-day hosted-route window.
+ */
+export const DESKTOP_ROUTE_TTL_MS = 60 * 60 * 1000;
+const DESKTOP_ROUTE_RENEW_MS = 10 * 60 * 1000;
+
+/**
+ * The VNC credential is exactly 8 alphanumeric chars — RFB auth truncates at
+ * 8 bytes, so anything longer is dead entropy.
+ */
+const DESKTOP_SECRET_GEN = `tr -dc 'a-zA-Z0-9' </dev/urandom | head -c 8`;
+const DESKTOP_PASSWD_BLOCK = `mkdir -p "$HOME/.vnc" && chmod 700 "$HOME/.vnc"
+if [ ! -s "$HOME/.vnc/passwd" ] || [ ! -s "$HOME/.air-desktop-secret" ]; then
+  PASS=$(${DESKTOP_SECRET_GEN})
+  x11vnc -storepasswd "$PASS" "$HOME/.vnc/passwd"
+  printf %s "$PASS" > "$HOME/.air-desktop-secret"; chmod 600 "$HOME/.air-desktop-secret"
+fi`;
+const X11VNC_START = `setsid nohup x11vnc -display :0 -localhost -forever -shared -rfbauth "$HOME/.vnc/passwd" -rfbport ${DESKTOP_VNC_PORT} 9>&- >/tmp/air-x11vnc.log 2>&1 </dev/null`;
+
+/**
+ * Idempotent ensure: install the stack if absent, start whatever is not
+ * running, then wait for the web port to accept. flock serializes the
+ * concurrent requests a first view can trigger (stream URL + origin probe).
+ * Everything runs detached so the exec's process tree going away cannot
+ * take the daemons with it — and every detached command closes fd 9,
+ * otherwise the daemon would inherit the lock and pin it forever.
+ * The VNC password is generated once; the caller reads it separately so
+ * installer output can never contaminate it.
+ */
+const DESKTOP_ENSURE_SCRIPT = `set -euo pipefail
+exec 9>"$HOME/.air-desktop.lock"
+flock -w 280 9
+if ! command -v Xvfb >/dev/null 2>&1 || ! command -v x11vnc >/dev/null 2>&1 || ! command -v websockify >/dev/null 2>&1; then
+  sudo apt-get update -qq
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \\
+    xvfb openbox x11vnc novnc websockify dbus-x11
+fi
+${DESKTOP_PASSWD_BLOCK}
+pgrep -x Xvfb >/dev/null 2>&1 || setsid nohup Xvfb :0 -screen 0 1280x800x24 9>&- >/tmp/air-xvfb.log 2>&1 </dev/null &
+for i in $(seq 1 50); do [ -S /tmp/.X11-unix/X0 ] && break; sleep 0.2; done
+[ -S /tmp/.X11-unix/X0 ] || { echo "no X display" >&2; exit 1; }
+pgrep -x openbox >/dev/null 2>&1 || setsid nohup env DISPLAY=:0 openbox 9>&- >/tmp/air-openbox.log 2>&1 </dev/null &
+pgrep -f 'x11vnc .*${DESKTOP_VNC_PORT}' >/dev/null 2>&1 || ${X11VNC_START} &
+pgrep -f 'websockify .*${DESKTOP_WEB_PORT}' >/dev/null 2>&1 || setsid nohup websockify --web /usr/share/novnc ${DESKTOP_WEB_PORT} localhost:${DESKTOP_VNC_PORT} 9>&- >/tmp/air-novnc.log 2>&1 </dev/null &
+for i in $(seq 1 50); do (echo > "/dev/tcp/127.0.0.1/${DESKTOP_WEB_PORT}") 2>/dev/null && break; sleep 0.2; done
+(echo > "/dev/tcp/127.0.0.1/${DESKTOP_WEB_PORT}") 2>/dev/null || { echo "noVNC did not start" >&2; exit 1; }`;
+
+/**
+ * Rotating the VNC password ties its lifetime to the route's: run when the
+ * preview route re-mints, so a leaked URL+password pair dies with the route
+ * instead of unlocking every later route. Restarts x11vnc under the same
+ * lock so no request can read a half-updated pair.
+ */
+const DESKTOP_ROTATE_SCRIPT = `set -euo pipefail
+exec 9>"$HOME/.air-desktop.lock"
+flock -w 60 9
+PASS=$(${DESKTOP_SECRET_GEN})
+x11vnc -storepasswd "$PASS" "$HOME/.vnc/passwd"
+printf %s "$PASS" > "$HOME/.air-desktop-secret"; chmod 600 "$HOME/.air-desktop-secret"
+pkill -f 'x11vnc .*${DESKTOP_VNC_PORT}' || true
+${X11VNC_START} &
+sleep 1`;
+
+const DESKTOP_SECRET_READ = 'cat "$HOME/.air-desktop-secret" 2>/dev/null || true';
+
+/**
+ * A noVNC viewer URL on the box's 6080 preview route, or undefined when the
+ * stack cannot be brought up (callers render "unavailable"/"waking"). The
+ * URL carries the box's VNC password — rotated whenever the route itself
+ * re-mints, so a leaked link is short-lived and a leaked password dies with
+ * it. The `vnc` option from the ascii contract is moot — noVNC is the only
+ * streamer — so both modes return it.
+ */
+export async function requestDesktop(
+  boxId: string
+): Promise<string | undefined> {
+  const ensure = await command(boxId, DESKTOP_ENSURE_SCRIPT, 300);
+  if (ensure.exitCode !== 0) {
+    console.log(
+      JSON.stringify({
+        msg: "tenki desktop ensure failed",
+        box_id: boxId,
+        exit_code: ensure.exitCode,
+        stderr: ensure.stderr.trim().slice(0, 500),
+      })
+    );
+    return undefined;
+  }
+  const route = await hostRoute(boxId, DESKTOP_WEB_PORT, {
+    ttlMs: DESKTOP_ROUTE_TTL_MS,
+    renewBeforeMs: DESKTOP_ROUTE_RENEW_MS,
+  });
+  if (route.rotated) {
+    const rotated = await command(boxId, DESKTOP_ROTATE_SCRIPT, 90);
+    if (rotated.exitCode !== 0) {
+      console.log(
+        JSON.stringify({
+          msg: "tenki desktop password rotation failed",
+          box_id: boxId,
+          exit_code: rotated.exitCode,
+          stderr: rotated.stderr.trim().slice(0, 500),
+        })
+      );
+      return undefined;
+    }
+  }
+  const secret = (await command(boxId, DESKTOP_SECRET_READ, 15)).stdout.trim();
+  if (!secret) {
+    console.log(
+      JSON.stringify({ msg: "tenki desktop secret missing", box_id: boxId })
+    );
+    return undefined;
+  }
+  const base = route.url.endsWith("/") ? route.url.slice(0, -1) : route.url;
+  return `${base}/vnc.html?autoconnect=true&resize=scale&password=${encodeURIComponent(secret)}`;
 }
 
 /**
@@ -733,44 +875,52 @@ export async function writeFile(
 export interface TenkiRoute {
   url: string;
   expiresAt: Date | undefined;
+  /** True when the URL was just minted (not a reused exposure). */
+  rotated: boolean;
 }
 
-function routeFrom(port: ExposedPort): TenkiRoute {
-  return { url: port.previewUrl, expiresAt: port.expiresAt };
+function routeFrom(port: ExposedPort, rotated = false): TenkiRoute {
+  return { url: port.previewUrl, expiresAt: port.expiresAt, rotated };
 }
 
 /** A route is reusable when it will still be valid at the next renewal check. */
 export function routeIsFresh(
   route: { expiresAt: Date | undefined },
-  now = Date.now()
+  now = Date.now(),
+  renewBeforeMs = ROUTE_RENEW_BEFORE_MS
 ): boolean {
   return (
     route.expiresAt === undefined ||
-    route.expiresAt.getTime() - now > ROUTE_RENEW_BEFORE_MS
+    route.expiresAt.getTime() - now > renewBeforeMs
   );
 }
 
 /**
  * The hosted route for a port: the existing preview URL when it is still
  * fresh (exposures survive pause/resume, so the persisted hosted_url stays
- * valid across wakes), otherwise a re-exposure with a new URL.
+ * valid across wakes), otherwise a re-exposure with a new URL. ttlMs /
+ * renewBeforeMs override the 30d/7d defaults for routes that should be
+ * short-lived (the desktop stream).
  */
 export async function hostRoute(
   boxId: string,
-  port: number
+  port: number,
+  options: { ttlMs?: number; renewBeforeMs?: number } = {}
 ): Promise<TenkiRoute> {
+  const ttlMs = options.ttlMs ?? ROUTE_TTL_MS;
+  const renewBeforeMs = options.renewBeforeMs ?? ROUTE_RENEW_BEFORE_MS;
   const current = await session(boxId);
   try {
     const existing = (await current.listExposedPorts()).find(
       (exposed) => exposed.port === port
     );
-    if (existing && routeIsFresh(routeFrom(existing))) {
+    if (existing && routeIsFresh(routeFrom(existing), Date.now(), renewBeforeMs)) {
       return routeFrom(existing);
     }
     if (existing) {
       await current.unexposePort(port);
     }
-    return routeFrom(await current.exposePort(port, { ttlMs: ROUTE_TTL_MS }));
+    return routeFrom(await current.exposePort(port, { ttlMs }), true);
   } catch (error) {
     throw toBoxApiError(error);
   }

@@ -185,7 +185,7 @@ export async function requestDesktop(
   boxId: string,
   options?: { vnc?: boolean }
 ): Promise<string | undefined> {
-  if (providerOf(boxId) === "tenki") return tenki.requestDesktop();
+  if (providerOf(boxId) === "tenki") return tenki.requestDesktop(boxId);
   const query = options?.vnc ? "?vnc=1" : "?theme=light";
   const envelope = await boxFetch(
     `/boxes/${boxId}/desktop${query}`,

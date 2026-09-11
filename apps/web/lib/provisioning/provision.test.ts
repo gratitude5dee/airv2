@@ -366,8 +366,87 @@ describe("provisionUser environments", () => {
     expect(upserts["boxes"] ?? []).toEqual([]);
   });
 
-  it("defaults to ubuntu and forks the ubuntu template", async () => {
+  it("explicit tenki forks the TENKI_TEMPLATE_ID snapshot", async () => {
+    fork.mockResolvedValueOnce({ id: "tk_sess-1" });
+    const result = await provisionUser({ provider: "tenki" });
+    expect(result.environment).toBe("ubuntu");
+    expect(result.boxId).toBe("tk_sess-1");
+    expect(fork).toHaveBeenCalledWith(
+      expect.objectContaining({ templateId: "tenki:snap-1" })
+    );
+    expect(upserts["boxes"]?.[0]).toMatchObject({
+      environment: "ubuntu",
+      provider: "tenki",
+      provider_box_id: "tk_sess-1",
+    });
+  });
+
+  it("platform_settings box_default_provider=tenki provisions tenki when a template is set", async () => {
+    tables["platform_settings"] = [
+      { key: "box_default_provider", value: "tenki" },
+    ];
+    fork.mockResolvedValueOnce({ id: "tk_sess-2" });
     const result = await provisionUser();
+    expect(result.boxId).toBe("tk_sess-2");
+    expect(fork).toHaveBeenCalledWith(
+      expect.objectContaining({ templateId: "tenki:snap-1" })
+    );
+    expect(upserts["boxes"]?.[0]).toMatchObject({
+      environment: "ubuntu",
+      provider: "tenki",
+      provider_box_id: "tk_sess-2",
+    });
+  });
+
+  it.each([null, "snap-123"])(
+    "a tenki platform default falls back to ascii when TENKI_TEMPLATE_ID is %s",
+    async (bad) => {
+      tables["platform_settings"] = [
+        { key: "box_default_provider", value: "tenki" },
+      ];
+      tenkiTemplate = bad;
+      try {
+        const result = await provisionUser();
+        expect(result.boxId).toBe("box-new");
+        expect(fork).toHaveBeenCalledWith(
+          expect.objectContaining({ templateId: "template-ubuntu" })
+        );
+        expect(upserts["boxes"]?.[0]).toMatchObject({ provider: "ascii" });
+      } finally {
+        tenkiTemplate = "tenki:snap-1";
+      }
+    }
+  );
+
+  it("an explicit provider still wins over the platform default", async () => {
+    tables["platform_settings"] = [
+      { key: "box_default_provider", value: "tenki" },
+    ];
+    const result = await provisionUser({ provider: "ascii" });
+    expect(result.boxId).toBe("box-new");
+    expect(fork).toHaveBeenCalledWith(
+      expect.objectContaining({ templateId: "template-ubuntu" })
+    );
+    expect(upserts["boxes"]?.[0]).toMatchObject({ provider: "ascii" });
+  });
+
+  it.each([null, "snap-123", "tk_session", "tenki:", "tenki:   "])(
+    "a malformed TENKI_TEMPLATE_ID (%s) rejects an explicit tenki request",
+    async (bad) => {
+      tenkiTemplate = bad;
+      try {
+        await expect(provisionUser({ provider: "tenki" })).rejects.toThrow(
+          "TENKI_TEMPLATE_ID"
+        );
+        expect(fork).not.toHaveBeenCalled();
+      } finally {
+        tenkiTemplate = "tenki:snap-1";
+      }
+    }
+  );
+
+  it("explicit ascii forks the ubuntu channel template", async () => {
+    const result = await provisionUser({ provider: "ascii" });
     expect(result.environment).toBe("ubuntu");
     expect(fork).toHaveBeenCalledWith(
       expect.objectContaining({ templateId: "template-ubuntu" })
@@ -633,7 +712,7 @@ describe("switchEnvironment", () => {
 
 describe("fleet position of a fresh fork", () => {
   it("a fork of unknown provenance installs the hub skills and stays unsynced", async () => {
-    await provisionUser();
+    await provisionUser({ provider: "ascii" });
     expect(installBaseSkills).toHaveBeenCalledTimes(1);
     expect(upserts["boxes"]?.[0]).toMatchObject({
       channel: "prod",
@@ -645,7 +724,7 @@ describe("fleet position of a fresh fork", () => {
 
   it("a fork stamped with the channel's release and every base skill skips the hub installs and records the baseline", async () => {
     pointChannelAtCurrentRelease("prod");
-    await provisionUser();
+    await provisionUser({ provider: "ascii" });
     expect(fork).toHaveBeenCalledWith(
       expect.objectContaining({ templateId: "tpl-prod" })
     );
@@ -664,7 +743,7 @@ describe("fleet position of a fresh fork", () => {
       "version=2026.09.05-prod\ngit_sha=sha-prod\nhermes_ref=sha-1\n",
       ["official/research/duckduckgo-search"]
     );
-    await provisionUser();
+    await provisionUser({ provider: "ascii" });
     expect(installBaseSkills).toHaveBeenCalledTimes(1);
     expect(installBaseSkills).toHaveBeenCalledWith(expect.anything(), [
       "browser-harness",
@@ -676,7 +755,7 @@ describe("fleet position of a fresh fork", () => {
 
   it("a matching Hermes ref alone never claims a release: an unstamped template takes the full setup", async () => {
     pointChannelAtCurrentRelease("prod", "sha-1", null);
-    await provisionUser();
+    await provisionUser({ provider: "ascii" });
     expect(installBaseSkills).toHaveBeenCalledTimes(1);
     expect(installBaseSkills).toHaveBeenCalledWith(expect.anything());
     expect(upserts["boxes"]?.[0]).toMatchObject({
@@ -687,21 +766,21 @@ describe("fleet position of a fresh fork", () => {
 
   it("a template stamped with a different release than the channel points at is not claimed", async () => {
     pointChannelAtCurrentRelease("prod", "sha-1", { version: "2026.09.01-old" });
-    await provisionUser();
+    await provisionUser({ provider: "ascii" });
     expect(installBaseSkills).toHaveBeenCalledTimes(1);
     expect(upserts["boxes"]?.[0]).toMatchObject({ baseline_version: null });
   });
 
   it("a stamp whose git sha disagrees with the release row is not claimed", async () => {
     pointChannelAtCurrentRelease("prod", "sha-1", { gitSha: "sha-elsewhere" });
-    await provisionUser();
+    await provisionUser({ provider: "ascii" });
     expect(installBaseSkills).toHaveBeenCalledTimes(1);
     expect(upserts["boxes"]?.[0]).toMatchObject({ baseline_version: null });
   });
 
   it("a release whose Hermes ref the template does not carry is not claimed", async () => {
     pointChannelAtCurrentRelease("prod", "sha-newer");
-    await provisionUser();
+    await provisionUser({ provider: "ascii" });
     expect(installBaseSkills).toHaveBeenCalledTimes(1);
     expect(upserts["boxes"]?.[0]).toMatchObject({
       baseline_version: null,
@@ -713,7 +792,7 @@ describe("fleet position of a fresh fork", () => {
     tables["box_channels"] = [
       { name: "prod", release_id: null, template_box_id: "tpl-prod" },
     ];
-    await provisionUser();
+    await provisionUser({ provider: "ascii" });
     expect(fork).toHaveBeenCalledWith(
       expect.objectContaining({ templateId: "tpl-prod" })
     );
