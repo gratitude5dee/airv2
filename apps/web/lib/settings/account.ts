@@ -179,7 +179,6 @@ export async function setMiniappHomeOrder(
 }
 
 export const MODEL_FAMILIES = [
-  "ox-alpha",
   "openai",
   "anthropic",
   "minimax-m3",
@@ -192,7 +191,6 @@ export const MODEL_FAMILIES = [
 
 /** Human labels for the family pickers. */
 export const MODEL_FAMILY_LABELS: Record<ModelFamily, string> = {
-  "ox-alpha": "GLM 5.3 Flash",
   openai: "GPT 5.6 Family",
   anthropic: "Anthropic",
   "minimax-m3": "MiniMax M3",

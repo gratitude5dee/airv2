@@ -45,11 +45,10 @@ describe("model catalog", () => {
     expect(providerForFamily("openrouter")).toBe("openrouter");
     expect(providerForFamily("venice")).toBe("venice");
     expect(providerForFamily("openai")).toBe("openai");
-    expect(providerForFamily("ox-alpha")).toBe("openrouter");
     expect(providerForFamily("minimax-m3")).toBe("gmi");
     expect(providerForFamily("minimax-m2.7")).toBe("gmi");
     expect(isOpenRouterFamily("venice")).toBe(false);
-    expect(isOpenRouterFamily("ox-alpha")).toBe(true);
+    expect(isOpenRouterFamily("inkling")).toBe(true);
   });
 
   it("covers all three tiers in the OpenRouter menu", () => {

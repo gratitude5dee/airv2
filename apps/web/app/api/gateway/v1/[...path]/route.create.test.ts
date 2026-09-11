@@ -366,7 +366,7 @@ describe("gateway Create tier family (MC4 §9.1)", () => {
       state.runs = [{ user_id: "user-1", label: "create:alice-recipes" }];
       const { response, url } = await complete({ messages: [], model: "create-balanced" });
       expect(response.status).toBe(200);
-      expect(url).toBe("https://upstream.test/v1/chat/completions");
+      expect(url).toBe("https://upstream.test/v1/responses");
       expect(meteredRows.map((row) => row["label"])).toEqual(["create:alice-recipes"]);
     });
 
