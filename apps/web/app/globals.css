@@ -344,7 +344,8 @@
 }
 
 /* Wabi home and Store: scoped so existing Pixel panels retain their behavior. */
-.wabi-home-dashboard{--wabi-paper:#f8f0e5;--wabi-ink:#2d211b;--wabi-muted:#79685d;--wabi-accent:#c76545;--wabi-line:rgba(95,68,50,.18);color:var(--wabi-ink);background:radial-gradient(circle at 7% 0%,rgba(255,250,240,.95),transparent 32%),radial-gradient(circle at 95% 14%,rgba(232,174,139,.24),transparent 28%),linear-gradient(180deg,var(--wabi-paper),#eadbca);border-radius:18px;padding:clamp(18px,3vw,28px);position:relative;isolation:isolate}
+.wabi-home-dashboard,.wabi-calendar-dialog{--wabi-paper:#f8f0e5;--wabi-ink:#2d211b;--wabi-muted:#79685d;--wabi-accent:#c76545;--wabi-line:rgba(95,68,50,.18)}
+.wabi-home-dashboard{color:var(--wabi-ink);background:radial-gradient(circle at 7% 0%,rgba(255,250,240,.95),transparent 32%),radial-gradient(circle at 95% 14%,rgba(232,174,139,.24),transparent 28%),linear-gradient(180deg,var(--wabi-paper),#eadbca);border-radius:18px;padding:clamp(18px,3vw,28px);position:relative;isolation:isolate}
 .wabi-home-hero,.wabi-card-heading,.wabi-calendar-dialog-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
 .wabi-home-hero{align-items:center;padding:4px 2px 12px}
 .wabi-eyebrow{margin:0 0 6px;color:var(--wabi-accent);font-family:var(--font-chrome);font-size:9px;letter-spacing:.14em;text-transform:uppercase}
@@ -368,7 +369,7 @@
 .wabi-app-item{display:flex;min-width:0;align-items:center;flex-direction:column;gap:7px;padding:0;color:var(--wabi-ink);background:transparent;text-align:center}
 .wabi-app-item .tilebox{border-color:var(--wabi-line);background:rgba(255,251,245,.55);box-shadow:0 5px 12px rgba(94,63,43,.12),inset 0 1px 0 rgba(255,255,255,.75)}
 .wabi-app-item>span:last-child{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--font-chrome);font-size:9px}
-.wabi-calendar-dialog{width:min(760px,calc(100vw - 32px));max-width:760px;max-height:min(90svh,840px);overflow:hidden;padding:0;border:1px solid var(--wabi-line);border-radius:21px;color:var(--wabi-ink);background:var(--wabi-paper);box-shadow:0 26px 90px rgba(45,33,27,.28)}
+.wabi-calendar-dialog{margin:auto;width:min(760px,calc(100vw - 32px));max-width:760px;max-height:min(90svh,840px);overflow:hidden;padding:0;border:1px solid var(--wabi-line);border-radius:21px;color:var(--wabi-ink);background:var(--wabi-paper);box-shadow:0 26px 90px rgba(45,33,27,.28)}
 .wabi-calendar-dialog::backdrop{background:rgba(45,33,27,.32);backdrop-filter:blur(4px)}
 .wabi-calendar-dialog-head{align-items:center;padding:17px 19px 12px;border-bottom:1px solid var(--wabi-line)}
 .wabi-calendar-dialog-body{max-height:calc(min(90svh,840px) - 74px);overflow:auto;padding:15px}
