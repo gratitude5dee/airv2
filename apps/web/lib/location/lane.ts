@@ -24,6 +24,7 @@ import {
   LOCATION_SHARED_BODY,
 } from "./intent";
 import {
+  completeLocationRequest,
   createLocationRequest,
   expediteLocationRequest,
   pendingLocationRequest,
@@ -128,6 +129,11 @@ export async function maybeRunLocationLane(
         request_id: request.id,
       })
     );
+    // No card went out — close the request so the sweep never follows the
+    // unavailable line with a later expiry line.
+    await completeLocationRequest(supabase, request, {
+      status: "declined",
+    }).catch(() => undefined);
     await sender
       .sendText(job.spaceId, job.phone, UNAVAILABLE_LINE)
       .catch(() => undefined);

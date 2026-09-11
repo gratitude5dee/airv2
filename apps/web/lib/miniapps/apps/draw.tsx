@@ -61,7 +61,6 @@ function renderEnded(lite: boolean): NextResponse {
       title: "Draw",
       kicker: "Studio",
       body: SESSION_ENDED_BODY,
-      headline: false,
       lite,
     })
   );
@@ -91,10 +90,9 @@ function renderStudio(
 <noscript><section class="panel"><p class="muted">Draw needs JavaScript — open the card on your phone.</p></section></noscript>`;
   return studioShellHtml(
     renderShell({
-      title: "Draw",
-      kicker: "Studio",
+      title: "Create",
+      kicker: "Draw",
       body,
-      headline: false,
       lite: ctx.session.via === "card",
     })
   );

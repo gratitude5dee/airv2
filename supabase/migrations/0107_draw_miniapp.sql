@@ -116,6 +116,9 @@ alter table location_requests enable row level security;
 create policy own_location_requests on location_requests
   for select using (user_id = auth.uid());
 
+-- carried_rows keep their sender across carry-forward, same as batch_queue.
+alter table carried_messages add column sender_id text;
+
 -- ─── registry row + card kind ────────────────────────────────────────────────
 insert into mini_apps
   (slug, route, kind, scopes, backing_tool, name, description,

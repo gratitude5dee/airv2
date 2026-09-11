@@ -149,8 +149,7 @@ function hasVisibleInk(data: Uint8ClampedArray): boolean {
 
 /* ---------------------------------------------------------------- model */
 
-const COLORS = ["#070a12", "#286dde", "#ef3340", "#26b4ed", "#ffffff"];
-const SIZES = [8, 16, 28, 44, 64];
+const COLORS = ["#0d1017", "#2f6fd0", "#ef3340", "#26b4ed", "#ffffff"];
 const MODES = ["fast", "detailed", "turbo", "hq"] as const;
 type Mode = (typeof MODES)[number];
 const MODE_LABELS: Record<Mode, string> = {
@@ -159,6 +158,93 @@ const MODE_LABELS: Record<Mode, string> = {
   turbo: "Turbo",
   hq: "Sunburst HQ",
 };
+
+const ICON_PROPS = {
+  width: 22,
+  height: 22,
+  viewBox: "0 0 24 24",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 1.8,
+  strokeLinecap: "round",
+  strokeLinejoin: "round",
+} as const;
+
+/** mayor-coast stroke icons: bolt / sliders / rocket / sunburst. */
+function ModeIcon({ mode }: { mode: Mode }): React.ReactElement {
+  if (mode === "fast") {
+    return (
+      <svg {...ICON_PROPS}>
+        <path d="m13.2 2.5-8.1 11.1h6.1l-1 7.9 8.6-11.5h-6.3l.7-7.5Z" />
+      </svg>
+    );
+  }
+  if (mode === "detailed") {
+    return (
+      <svg {...ICON_PROPS}>
+        <path d="M4 6h16M4 12h16M4 18h16" />
+        <path d="M8 4v4M16 10v4M11 16v4" />
+        <circle cx="8" cy="6" r="1.35" />
+        <circle cx="16" cy="12" r="1.35" />
+        <circle cx="11" cy="18" r="1.35" />
+      </svg>
+    );
+  }
+  if (mode === "turbo") {
+    return (
+      <svg {...ICON_PROPS}>
+        <path d="M14.5 3.2c3.3.1 5.4 1.6 6.1 2.4-.9 4.3-3.2 7.5-7 9.6l-4.8-4.8c2.1-3.8 5.3-6.1 5.7-7.2Z" />
+        <path d="m9 10.2-3.8.8-1.5 3.2 3.4.4M13.8 15.2l-.8 3.8-3.2 1.5-.4-3.4M16.3 7.7h.01" />
+        <path d="m8.2 16.8-2 3.1M6.4 15l-2.7.5" />
+      </svg>
+    );
+  }
+  return (
+    <svg {...ICON_PROPS}>
+      <circle cx="12" cy="12" r="3.35" />
+      <path d="M12 2.5v2.1M12 19.4v2.1M21.5 12h-2.1M4.6 12H2.5M18.7 5.3l-1.5 1.5M6.8 17.2l-1.5 1.5M18.7 18.7l-1.5-1.5M6.8 6.8 5.3 5.3" />
+    </svg>
+  );
+}
+
+/** Canvas-rail tool icons (undo / redo / clear / import). */
+function ToolIcon({
+  tool,
+}: {
+  tool: "undo" | "redo" | "clear" | "import";
+}): React.ReactElement {
+  if (tool === "undo") {
+    return (
+      <svg {...ICON_PROPS}>
+        <path d="M9 7 4.5 11.5 9 16" />
+        <path d="M5 11.5h8.1a5.4 5.4 0 0 1 5.4 5.4" />
+      </svg>
+    );
+  }
+  if (tool === "redo") {
+    return (
+      <svg {...ICON_PROPS}>
+        <path d="m15 7 4.5 4.5-4.5 4.5" />
+        <path d="M19 11.5h-8.1a5.4 5.4 0 0 0-5.4 5.4" />
+      </svg>
+    );
+  }
+  if (tool === "clear") {
+    return (
+      <svg {...ICON_PROPS}>
+        <path d="m7.5 8.5 6.8-3.9 4.2 7.3-6.8 3.9z" />
+        <path d="m6.2 15 2.2 3.8h9.3" />
+      </svg>
+    );
+  }
+  return (
+    <svg {...ICON_PROPS}>
+      <path d="M12 15V3.5" />
+      <path d="m7.7 7.8L12 3.5l4.3 4.3" />
+      <path d="M5 14.5v4.2c0 .9.7 1.6 1.6 1.6h10.8c.9 0 1.6-.7 1.6-1.6v-4.2" />
+    </svg>
+  );
+}
 
 const ACTIVE_STATUSES = ["routing", "submitted", "polling", "submit_unknown"];
 
@@ -238,6 +324,9 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
       }
     }
   );
+  // The media the preview/save target: a delivered zap job isn't a draw
+  // revision, so it carries its own pointer until the user picks a revision.
+  const [animatedJobId, setAnimatedJobId] = useState<string | null>(null);
 
   const bgCanvasRef = useRef<HTMLCanvasElement>(null);
   const strokeCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -401,25 +490,28 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
     );
   }, []);
 
-  const flatten = useCallback((): string | null => {
-    const bg = bgCanvasRef.current;
-    const ink = strokeCanvasRef.current;
-    if (!bg || !ink) return null;
-    const out = document.createElement("canvas");
-    out.width = CANVAS_SIZE;
-    out.height = CANVAS_SIZE;
-    const ctx = out.getContext("2d");
-    if (!ctx) return null;
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
-    ctx.drawImage(bg, 0, 0);
-    ctx.drawImage(ink, 0, 0);
-    try {
-      return out.toDataURL("image/png");
-    } catch {
-      return null;
-    }
-  }, []);
+  const flatten = useCallback(
+    (includeBackground: boolean): string | null => {
+      const bg = bgCanvasRef.current;
+      const ink = strokeCanvasRef.current;
+      if (!bg || !ink) return null;
+      const out = document.createElement("canvas");
+      out.width = CANVAS_SIZE;
+      out.height = CANVAS_SIZE;
+      const ctx = out.getContext("2d");
+      if (!ctx) return null;
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+      if (includeBackground) ctx.drawImage(bg, 0, 0);
+      ctx.drawImage(ink, 0, 0);
+      try {
+        return out.toDataURL("image/png");
+      } catch {
+        return null;
+      }
+    },
+    []
+  );
 
   const importImage = useCallback((file: File | undefined): void => {
     if (!file) return;
@@ -451,7 +543,17 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
       setMessage("sketch something, import an image, or write a prompt first");
       return;
     }
-    const parentJobId = refining ? targetRevision!.jobId : undefined;
+    // A context reset breaks the chain entirely: no parent link and the
+    // last result must not bleed back in through the flattened upload.
+    const parentJobId =
+      !resetContext && refining ? targetRevision!.jobId : undefined;
+    const includeBackground = Boolean(
+      backgroundUrl && !(resetContext && backgroundKind === "result")
+    );
+    if (!prompt.trim() && !ink && !includeBackground) {
+      setMessage("sketch something, import an image, or write a prompt first");
+      return;
+    }
     // No fresh pixels → the parent's stored output is the edit source; no
     // upload needed (mayor-coast's reuseParentArtifact).
     const reuseParent = Boolean(parentJobId && !ink && !backgroundUrl);
@@ -459,8 +561,8 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
     setMessage("preparing…");
     try {
       let inputAssetId: string | undefined;
-      if (!reuseParent && (ink || backgroundUrl)) {
-        const flattened = flatten();
+      if (!reuseParent && (ink || includeBackground)) {
+        const flattened = flatten(includeBackground);
         if (!flattened) {
           setMessage("couldn't read the canvas — try again");
           return;
@@ -507,6 +609,7 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
       if (payload.status === "delivered") {
         setStrokes([]);
         setRedoStack([]);
+        setAnimatedJobId(null);
       }
     } finally {
       setBusy(null);
@@ -518,6 +621,7 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
     mode,
     resetContext,
     backgroundUrl,
+    backgroundKind,
     refining,
     targetRevision,
     inkPresent,
@@ -544,19 +648,28 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
           ? "video ready — check iMessage for the clip or tap save"
           : (payload.line ?? null)
       );
-      if (payload.deliveryUrl) setPreviewUrl(payload.deliveryUrl);
+      if (payload.status === "delivered") {
+        setAnimatedJobId(payload.jobId ?? null);
+      }
+      if (payload.deliveryUrl) {
+        setPreviewUrl(payload.deliveryUrl);
+        setTab("preview");
+      }
     } finally {
       setBusy(null);
     }
   }, [busy, targetRevision, prompt]);
 
   const save = useCallback(async (): Promise<void> => {
-    if (busy || !targetRevision) return;
+    // Save whatever the preview shows — an animation when one just
+    // delivered, otherwise the selected revision.
+    const jobId = animatedJobId ?? targetRevision?.jobId;
+    if (busy || !jobId) return;
     setBusy("save");
     try {
       const payload = await postAction({
         action: "save",
-        jobId: targetRevision.jobId,
+        jobId,
       });
       if (payload?.sent) {
         setMessage("sent to iMessage");
@@ -569,7 +682,7 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
     } finally {
       setBusy(null);
     }
-  }, [busy, targetRevision]);
+  }, [busy, targetRevision, animatedJobId]);
 
   const cancel = useCallback(async (): Promise<void> => {
     await postAction({ action: "cancel" });
@@ -579,6 +692,7 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
 
   const refine = useCallback((): void => {
     if (!targetRevision?.outputUrl) return;
+    setAnimatedJobId(null);
     setBackgroundUrl(targetRevision.outputUrl);
     setBackgroundKind("result");
     setStrokes([]);
@@ -592,6 +706,7 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
     setRedoStack([]);
     setBackgroundUrl(null);
     setBackgroundKind("none");
+    setAnimatedJobId(null);
     setMessage(null);
   }, []);
 
@@ -606,6 +721,7 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
       } catch {
         /* private mode */
       }
+      setAnimatedJobId(null);
       if (revision.outputUrl) {
         setPreviewUrl(revision.outputUrl);
         setTab("preview");
@@ -618,11 +734,31 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
 
   const hasInk =
     strokes.length > 0 || livePoints.current.length > 0;
+  const sketchEditable = tab === "sketch" && !jobActive;
+  const saveTarget = animatedJobId ?? targetRevision?.jobId ?? null;
+
+  const undo = (): void => {
+    setStrokes((value) => {
+      const next = [...value];
+      const popped = next.pop();
+      if (popped) setRedoStack((r) => [...r, popped]);
+      return next;
+    });
+  };
+  const redo = (): void => {
+    setRedoStack((value) => {
+      const next = [...value];
+      const popped = next.pop();
+      if (popped) setStrokes((s) => [...s, popped]);
+      return next;
+    });
+  };
 
   return (
     <div className="ds-root">
       <div className="ds-top">
-        <div className="ds-tabs" role="tablist">
+        <div className="ds-view-toggle" data-view={tab} role="tablist">
+          <span className="ds-view-thumb" aria-hidden="true" />
           <button
             type="button"
             role="tab"
@@ -637,6 +773,7 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
             role="tab"
             aria-selected={tab === "preview"}
             className={tab === "preview" ? "active" : ""}
+            disabled={!previewUrl}
             onClick={() => setTab("preview")}
           >
             Preview
@@ -647,7 +784,7 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
             ? jobLabel(activeJob.status)
             : busy === "animate"
               ? "Animating…"
-              : message ?? ""}
+              : ""}
         </span>
       </div>
 
@@ -706,6 +843,51 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
           {tab === "sketch" && !hasInk && !backgroundUrl ? (
             <span className="ds-hint">draw here</span>
           ) : null}
+          <div className="ds-rail" aria-label="Canvas actions">
+            <button
+              type="button"
+              className="ds-rail-button"
+              aria-label="Undo"
+              title="Undo"
+              disabled={!sketchEditable || !strokes.length}
+              onClick={undo}
+            >
+              <ToolIcon tool="undo" />
+            </button>
+            <button
+              type="button"
+              className="ds-rail-button"
+              aria-label="Redo"
+              title="Redo"
+              disabled={!sketchEditable || !redoStack.length}
+              onClick={redo}
+            >
+              <ToolIcon tool="redo" />
+            </button>
+            <button
+              type="button"
+              className="ds-rail-button"
+              aria-label="Clear sketch"
+              title="Clear sketch"
+              disabled={!sketchEditable}
+              onClick={discard}
+            >
+              <ToolIcon tool="clear" />
+            </button>
+            <label
+              className={`ds-rail-button ds-import${sketchEditable ? "" : " disabled"}`}
+              aria-label="Import image"
+              title="Import image"
+            >
+              <ToolIcon tool="import" />
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                disabled={!sketchEditable}
+                onChange={(event) => importImage(event.target.files?.[0])}
+              />
+            </label>
+          </div>
         </div>
       </div>
 
@@ -718,6 +900,7 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
               className={`ds-swatch${color === swatch && !eraser ? " selected" : ""}`}
               style={{ background: swatch }}
               aria-label={`color ${swatch}`}
+              disabled={!sketchEditable}
               onClick={() => {
                 setColor(swatch);
                 setEraser(false);
@@ -725,65 +908,26 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
             />
           ))}
         </div>
-        <div className="ds-size">
-          {SIZES.map((s) => (
-            <button
-              key={s}
-              type="button"
-              className={size === s ? "selected" : ""}
-              onClick={() => setSize(s)}
-            >
-              {s}
-            </button>
-          ))}
-        </div>
+        <label className="ds-size">
+          Size
+          <input
+            type="range"
+            min={4}
+            max={64}
+            value={size}
+            disabled={!sketchEditable}
+            aria-label="Brush size"
+            onChange={(event) => setSize(Number(event.target.value))}
+          />
+        </label>
         <button
           type="button"
-          className={`ds-tool${eraser ? " selected" : ""}`}
+          className={`ds-eraser${eraser ? " selected" : ""}`}
+          aria-pressed={eraser}
+          disabled={!sketchEditable}
           onClick={() => setEraser((v) => !v)}
         >
           Eraser
-        </button>
-        <button
-          type="button"
-          className="ds-tool"
-          disabled={!strokes.length}
-          onClick={() => {
-            setStrokes((value) => {
-              const next = [...value];
-              const popped = next.pop();
-              if (popped) setRedoStack((r) => [...r, popped]);
-              return next;
-            });
-          }}
-        >
-          Undo
-        </button>
-        <button
-          type="button"
-          className="ds-tool"
-          disabled={!redoStack.length}
-          onClick={() => {
-            setRedoStack((value) => {
-              const next = [...value];
-              const popped = next.pop();
-              if (popped) setStrokes((s) => [...s, popped]);
-              return next;
-            });
-          }}
-        >
-          Redo
-        </button>
-        <label className="ds-tool ds-import">
-          Import
-          <input
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            onChange={(event) => importImage(event.target.files?.[0])}
-          />
-        </label>
-        <button type="button" className="ds-tool" onClick={discard}>
-          Clear
         </button>
       </div>
 
@@ -805,12 +949,17 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
               type="button"
               role="radio"
               aria-checked={mode === item}
+              aria-label={MODE_LABELS[item]}
+              title={MODE_LABELS[item]}
               className={mode === item ? "active" : ""}
               onClick={() => setMode(item)}
             >
-              {MODE_LABELS[item]}
+              <ModeIcon mode={item} />
             </button>
           ))}
+        </div>
+        <div className="ds-mode-caption" aria-live="polite">
+          {MODE_LABELS[mode]}
         </div>
         {refining ? (
           <button
@@ -838,35 +987,38 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
               {busy === "generate" ? "Generating…" : refining ? "Refine" : "Generate"}
             </button>
           )}
-          {targetRevision ? (
-            <>
-              <button
-                type="button"
-                className="ds-secondary"
-                disabled={busy !== null || jobActive}
-                onClick={() => void animate()}
-              >
-                {busy === "animate" ? "Animating…" : "Animate"}
-              </button>
-              <button
-                type="button"
-                className="ds-secondary"
-                disabled={busy !== null}
-                onClick={refine}
-              >
-                Draw over
-              </button>
-              <button
-                type="button"
-                className="ds-save"
-                disabled={busy !== null}
-                onClick={() => void save()}
-              >
-                {busy === "save" ? "Sending…" : "Send to iMessage"}
-              </button>
-            </>
-          ) : null}
         </div>
+        {saveTarget ? (
+          <div className="ds-actions ds-actions-secondary">
+            <button
+              type="button"
+              className="ds-secondary"
+              disabled={busy !== null || jobActive}
+              onClick={() => void animate()}
+            >
+              {busy === "animate" ? "Animating…" : "Animate"}
+            </button>
+            <button
+              type="button"
+              className="ds-secondary"
+              disabled={busy !== null}
+              onClick={refine}
+            >
+              Draw over
+            </button>
+            <button
+              type="button"
+              className="ds-save"
+              disabled={busy !== null}
+              onClick={() => void save()}
+            >
+              {busy === "save" ? "Sending…" : "Send to iMessage"}
+            </button>
+          </div>
+        ) : null}
+        <p className="ds-tagline">
+          Sketch it, describe it, then make it real.
+        </p>
         {message ? <p className="ds-message">{message}</p> : null}
       </div>
     </div>
@@ -875,54 +1027,69 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
 
 /* ------------------------------------------------------------------ css */
 
+/* Midnight-navy glass skin (mayor-coast draw parity) on the shared shell. */
 const CSS = `
-.ds-root{display:flex;flex-direction:column;gap:0.55rem;width:min(100%,44rem);min-height:0;flex:1}
-.ds-top{display:flex;justify-content:space-between;align-items:center;gap:0.6rem}
-.ds-tabs{display:flex;gap:0.3rem}
-.ds-tabs button{background:transparent;color:var(--ink-muted);border:0;border-radius:var(--radius-well);padding:0.45rem 0.9rem;min-height:2.4rem;font-weight:600;box-shadow:none}
-.ds-tabs button.active{background:var(--well-bg);color:var(--ink);border:1px solid var(--ring)}
-.ds-status{font-size:0.72rem;color:var(--accent);letter-spacing:0.04em;min-height:1rem;text-align:right}
-.ds-revisions{display:flex;gap:0.4rem;overflow-x:auto;scrollbar-width:none;padding-bottom:0.15rem}
-.ds-revisions button{display:flex;flex-direction:column;gap:0.15rem;min-width:4.8rem;padding:0.4rem;text-align:left;color:var(--ink);border:1px solid var(--ring);border-radius:var(--radius-well);background:var(--panel-bg);min-height:3.2rem;box-shadow:none}
-.ds-revisions button.selected{border-color:var(--accent)}
+.ds-root{display:flex;flex-direction:column;gap:0.5rem;width:min(100%,45rem);min-height:0;flex:1;color:#f8fbff}
+.ds-top{display:flex;align-items:center;gap:0.6rem}
+.ds-view-toggle{position:relative;display:flex;flex:1;max-width:28rem;margin:0 auto;padding:3px;background:#0c1426d9;border:1px solid #5c99e433;border-radius:14px}
+.ds-view-thumb{position:absolute;top:3px;left:3px;width:calc(50% - 4px);height:calc(100% - 6px);border-radius:11px;background:linear-gradient(135deg,#1d4b8f,#16345f);box-shadow:inset 0 0 0 1px #4db0ff66;transition:transform .22s ease;pointer-events:none}
+.ds-view-toggle[data-view="preview"] .ds-view-thumb{transform:translateX(100%)}
+.ds-view-toggle button{position:relative;z-index:1;flex:1;background:transparent;color:#9db8e2;border:0;min-height:44px;border-radius:11px;font-weight:800;font-size:0.8rem;letter-spacing:0.04em;box-shadow:none;text-transform:none}
+.ds-view-toggle button.active{color:#fff}
+.ds-view-toggle button:disabled{opacity:0.4}
+.ds-status{font-size:0.72rem;color:#7cc4ff;letter-spacing:0.04em;min-height:1rem;text-align:right;font-family:var(--font-ui)}
+.ds-revisions{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:0.15rem}
+.ds-revisions button{display:flex;flex-direction:column;gap:2px;min-width:4.8rem;padding:6px 8px;text-align:left;color:#f8fbff;border:1px solid #6dadf044;border-radius:10px;background:#0b111ebd;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);min-height:3.2rem;box-shadow:none}
+.ds-revisions button.selected{background:#123d72c7;border-color:#4db0ff}
 .ds-revisions button:disabled{opacity:0.45}
-.ds-revisions img{width:3.2rem;height:2rem;object-fit:cover;border-radius:0.35rem;pointer-events:none}
-.ds-rev-empty{width:3.2rem;height:2rem;border-radius:0.35rem;background:var(--well-bg)}
-.ds-revisions small,.ds-revisions em{font-size:0.55rem;font-style:normal;color:var(--ink-muted);white-space:nowrap;font-family:var(--font-ui)}
-.ds-revisions em{color:var(--accent)}
-.ds-canvas-zone{flex:1;min-height:0;display:grid;place-items:center}
-.ds-viewport{position:relative;width:min(100%,26rem);aspect-ratio:1;background:#fff;border-radius:var(--radius-panel);overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;box-shadow:var(--shadow)}
+.ds-revisions img{width:3.2rem;height:2rem;object-fit:cover;border-radius:5px;pointer-events:none}
+.ds-rev-empty{width:3.2rem;height:2rem;border-radius:5px;background:#12213a}
+.ds-revisions small,.ds-revisions em{font-size:0.55rem;font-style:normal;color:#dbe8ff;white-space:nowrap;font-family:var(--font-ui)}
+.ds-revisions em{color:#9dd8ff}
+.ds-canvas-zone{flex:1;min-height:0;display:grid;place-items:center;overscroll-behavior:contain}
+.ds-viewport{position:relative;width:min(100%,26rem);aspect-ratio:1;background:#fff;border-radius:14px;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;box-shadow:0 8px 30px #0003}
 .ds-layer{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
 .ds-ink{transition:opacity 0.2s ease}
 .ds-ink.is-faded{opacity:0.25;pointer-events:none}
 .ds-preview{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;z-index:3}
-.ds-hint{position:absolute;right:0.7rem;bottom:0.55rem;color:#8a8a95;font-size:0.62rem;z-index:4;pointer-events:none}
-.ds-ink-controls{display:flex;align-items:center;gap:0.45rem;overflow-x:auto;scrollbar-width:none;padding:0.45rem 0.5rem;border:1px solid var(--ring);border-radius:var(--radius-panel);background:var(--panel-bg);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur)}
-.ds-palette{display:flex;gap:0.3rem;flex:0 0 auto}
-.ds-swatch{display:block;width:2rem;min-height:2rem;padding:0;border:2px solid var(--ring);border-radius:50%;flex:0 0 2rem;box-shadow:none}
-.ds-swatch.selected{outline:2px solid var(--accent);outline-offset:2px}
-.ds-size{display:flex;align-items:center;gap:0.25rem;flex:0 0 auto}
-.ds-size button{min-width:2rem;min-height:2rem;padding:0 0.3rem;border:1px solid var(--ring);border-radius:0.5rem;background:var(--well-bg);color:var(--ink-muted);font-size:0.6rem;box-shadow:none}
-.ds-size button.selected{border-color:var(--accent);color:var(--ink)}
-.ds-tool{min-height:2rem;padding:0.3rem 0.7rem;flex:0 0 auto;border:1px solid var(--ring);border-radius:0.55rem;background:var(--well-bg);color:var(--ink);font-size:0.6rem;letter-spacing:0.06em;text-transform:uppercase;box-shadow:none}
-.ds-tool.selected{border-color:var(--accent)}
-.ds-tool:disabled{opacity:0.35}
-.ds-import{position:relative;display:inline-flex;align-items:center;cursor:pointer;overflow:hidden}
+.ds-hint{position:absolute;right:0.7rem;bottom:0.55rem;color:#625d6c;font-size:0.62rem;z-index:4;pointer-events:none}
+.ds-rail{position:absolute;top:8px;left:8px;z-index:7;display:flex;gap:5px;padding:4px;border:1px solid #6facf155;border-radius:16px;background:linear-gradient(135deg,#17345ad9,#0a1427e8);box-shadow:inset 0 1px #eff8ff24,0 8px 20px #0005;backdrop-filter:blur(18px) saturate(135%);-webkit-backdrop-filter:blur(18px) saturate(135%)}
+.ds-rail-button{position:relative;display:grid;place-items:center;width:44px;min-height:44px;padding:0;border:0;border-radius:11px;background:#1f4d7d8a;color:#dbeeff;box-shadow:inset 0 1px #eff8ff20;cursor:pointer}
+.ds-rail-button svg{width:21px;height:21px}
+.ds-rail-button:disabled,.ds-rail-button.disabled{opacity:0.35;cursor:default}
+.ds-rail-button:focus-visible,.ds-rail-button:focus-within{outline:2px solid #6bc0ff;outline-offset:2px}
 .ds-import input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
-.ds-sheet{display:flex;flex-direction:column;gap:0.45rem;border:1px solid var(--ring);border-radius:var(--radius-panel);background:var(--panel-bg);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);padding:0.6rem}
-.ds-sheet textarea{width:100%;min-height:3rem;max-height:6rem;font-size:0.9rem}
-.ds-modes{display:grid;grid-template-columns:repeat(4,1fr);gap:0.3rem}
-.ds-modes button{min-height:2.4rem;border:1px solid var(--ring);border-radius:0.55rem;background:var(--well-bg);color:var(--ink-muted);font-size:0.58rem;letter-spacing:0.04em;text-transform:uppercase;box-shadow:none;padding:0 0.2rem}
-.ds-modes button.active{border-color:var(--accent);color:var(--on-accent);background:var(--accent)}
-.ds-reset{min-height:2rem;border:1px solid var(--ring);border-radius:0.55rem;background:var(--well-bg);color:var(--ink-muted);font-size:0.62rem;letter-spacing:0.04em;box-shadow:none}
-.ds-reset.selected{border-color:var(--accent);color:var(--accent)}
-.ds-actions{display:flex;gap:0.4rem}
-.ds-generate,.ds-save{flex:1;background:var(--accent);color:var(--on-accent)}
-.ds-secondary{background:var(--well-bg);color:var(--ink);border:1px solid var(--ring)}
-.ds-cancel{background:var(--well-bg);color:var(--ink);border:1px solid var(--ring);flex:1}
+.ds-import.disabled{pointer-events:none}
+.ds-ink-controls{display:flex;align-items:center;gap:7px;min-height:56px;padding:6px 8px;overflow-x:auto;scrollbar-width:none;border:1px solid #5c99e433;border-radius:18px;background:linear-gradient(135deg,#17345a7a,#070d1be0);box-shadow:inset 0 1px #d4ecff18,0 10px 28px #0005;backdrop-filter:blur(20px) saturate(135%);-webkit-backdrop-filter:blur(20px) saturate(135%)}
+.ds-palette{display:flex;gap:5px;flex:0 0 auto}
+.ds-swatch{display:block;width:34px;min-height:34px;padding:0;border:2px solid #f8fbff;border-radius:50%;flex:0 0 34px;box-shadow:none}
+.ds-swatch.selected{outline:2px solid #4db0ff;outline-offset:2px;box-shadow:0 0 0 1px #3ca7ff55,0 0 17px #3ca7ff77}
+.ds-swatch:disabled{opacity:0.35}
+.ds-size{display:flex;align-items:center;gap:5px;flex:0 0 auto;color:#dbe8ff;font-size:12px;white-space:nowrap;font-family:var(--font-ui)}
+.ds-size input{width:70px;accent-color:#3ca7ff}
+.ds-eraser{min-height:44px;padding:8px 12px;flex:0 0 auto;border:1px solid #6facf144;border-radius:12px;background:#183354aa;color:#f8fbff;font-weight:750;font-size:0.7rem;letter-spacing:0.05em;text-transform:uppercase;box-shadow:inset 0 1px #e8f5ff18}
+.ds-eraser.selected{border-color:#4db0ff;box-shadow:inset 0 1px #eff8ff30,0 0 0 1px #3ca7ff55}
+.ds-eraser:disabled{opacity:0.35}
+.ds-sheet{display:flex;flex-direction:column;gap:7px;border:1px solid #75baff44;border-radius:16px;background:linear-gradient(135deg,#111d35d9,#080d1ae8);box-shadow:inset 0 1px #e6f4ff1c,0 18px 42px #0007;backdrop-filter:blur(24px) saturate(135%);-webkit-backdrop-filter:blur(24px) saturate(135%);padding:8px}
+.ds-sheet textarea{width:100%;min-height:3rem;max-height:6rem;font-size:1rem;background:#12213a9c;border-color:#7dbfff55;color:#f8fbff;box-shadow:inset 0 1px #eff8ff12;border-radius:10px}
+.ds-modes{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;background:#070a12;border-radius:12px;padding:3px}
+.ds-modes button{display:grid;place-items:center;min-height:52px;border:0;border-radius:10px;background:transparent;color:#7d94bb;box-shadow:none;text-transform:none}
+.ds-modes button.active{background:#123d72c7;color:#9dd8ff;box-shadow:inset 0 0 0 1px #4db0ff55}
+.ds-mode-caption{height:18px;text-align:center;color:#9dd8ff;font-size:12px;font-weight:750;font-family:var(--font-ui)}
+.ds-reset{min-height:34px;border:1px solid #5d9de455;border-radius:9px;background:#0b1425c9;color:#f8fbff;font-weight:700;font-size:0.68rem;letter-spacing:0.03em;box-shadow:none;text-transform:none}
+.ds-reset.selected{border-color:#4db0ff;color:#9dd8ff}
+.ds-actions{display:flex;gap:6px}
+.ds-generate,.ds-save{background:linear-gradient(135deg,#2f8be8,#1760c8);color:#f8fbff;box-shadow:inset 0 1px #eff9ff4a,0 10px 22px #0a52b64c;text-transform:none;font-weight:850}
+.ds-generate{flex:1;min-height:46px;font-size:0.9rem}
+.ds-save{flex:1}
+.ds-secondary{background:#183354aa;color:#f8fbff;border:1px solid #6facf144;box-shadow:inset 0 1px #e8f5ff18;text-transform:none;font-weight:700}
+.ds-actions-secondary .ds-secondary,.ds-actions-secondary .ds-save{flex:1}
+.ds-cancel{background:#183354aa;color:#f8fbff;border:1px solid #6facf144;flex:1}
 .ds-actions button:disabled{opacity:0.5}
-.ds-message{font-size:0.68rem;color:var(--ink-muted);margin:0;min-height:0.9rem}
-@media(prefers-reduced-motion:reduce){.ds-ink{transition:none}}
+.ds-tagline{margin:0;text-align:center;font-size:0.68rem;color:#7d94bb;font-family:var(--font-ui)}
+.ds-message{font-size:0.72rem;color:#dbe8ff;margin:0;min-height:0.9rem;text-align:center}
+@media(prefers-reduced-motion:reduce){.ds-ink,.ds-view-thumb{transition:none}}
+@media(max-height:680px){.ds-rail{top:6px;left:6px;gap:4px;padding:3px}.ds-rail-button{width:40px;min-height:40px}.ds-ink-controls{min-height:50px;padding-block:4px}.ds-modes button{min-height:46px}}
 `;
 
 const mountEl = document.getElementById("draw-studio");

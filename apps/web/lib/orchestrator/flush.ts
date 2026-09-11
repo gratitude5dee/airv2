@@ -436,6 +436,7 @@ async function carryMessages(
     messages.map((message) => ({
       user_id: userId,
       space_id: spaceId,
+      sender_id: message.sender_id ?? null,
       message_id: message.message_id,
       body: message.body,
     }))
@@ -455,6 +456,7 @@ async function requeueMessages(
       user_id: userId,
       space_id: spaceId,
       phone,
+      sender_id: message.sender_id ?? null,
       message_id: message.message_id,
       body: message.body,
     }))

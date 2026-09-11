@@ -26,6 +26,8 @@ const MAX_LOCATION_ACCURACY_METERS = 2000;
 const MAX_LOCATION_AGE_MS = 15 * 60 * 1000;
 /** After this many resolver passes the ask gives up (cron granularity). */
 const MAX_RESOLUTION_ATTEMPTS = 4;
+/** Provider-supplied label — untrusted text bound for a Hermes prompt. */
+const MAX_COARSE_LABEL_LENGTH = 120;
 
 const EXPIRED_LINE =
   "didn't get your location — try 'find my' again or tell me a neighborhood";
@@ -60,13 +62,29 @@ function isValidSharedLocation(location: SharedFriendLocation): boolean {
   return true;
 }
 
+/** Newlines/control chars out (a crafted label can't inject prompt lines),
+ * whitespace collapsed, length capped; empty after cleaning is unusable. */
+function sanitizeCoarseLabel(value: string): string | undefined {
+  const clean = value
+    .replace(/[\p{Cc}\p{Cf}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, MAX_COARSE_LABEL_LENGTH);
+  return clean || undefined;
+}
+
 function coarseLabelFor(location: SharedFriendLocation): string | undefined {
-  return (
-    location.shortAddress?.trim() ||
-    location.name?.trim() ||
-    location.longAddress?.trim() ||
-    undefined
-  );
+  for (const field of [
+    location.shortAddress,
+    location.name,
+    location.longAddress,
+  ]) {
+    if (field) {
+      const label = sanitizeCoarseLabel(field);
+      if (label) return label;
+    }
+  }
+  return undefined;
 }
 
 async function deliverHeldBurst(
@@ -149,6 +167,9 @@ export async function resolveDueLocationRequests(
               .catch(() => undefined);
             continue;
           }
+          // Requeue before consuming: a failed batch_queue insert must keep
+          // the request retryable rather than dropping the held burst.
+          await deliverHeldBurst(supabase, request, label);
           await completeLocationRequest(supabase, request, {
             status: "consumed",
             coarseLabel: label,
@@ -157,7 +178,6 @@ export async function resolveDueLocationRequests(
           await sender
             ?.sendText(request.space_id, request.phone, GOT_IT_LINE)
             .catch(() => undefined);
-          await deliverHeldBurst(supabase, request, label);
           continue;
         }
         await releaseLocationRequest(supabase, request, request.revision);

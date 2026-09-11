@@ -271,23 +271,21 @@ export async function admitDrawGeneration(
 ): Promise<CreativeJob> {
   requireActiveSession(session);
 
-  if (session.active_job_id) {
-    const active = await getCreativeJob(
-      supabase,
-      session.user_id,
-      session.active_job_id
-    );
-    if (active && ACTIVE_JOB_STATUSES.includes(active.status)) {
+  // A caller-supplied edit source must belong to this owner — the job row
+  // persists the reference, so a foreign asset id would be cross-tenant.
+  if (input.inputAssetId) {
+    const { data: owned } = await supabase
+      .from("creative_assets")
+      .select("id")
+      .eq("id", input.inputAssetId)
+      .eq("user_id", session.user_id)
+      .maybeSingle();
+    if (!owned) {
       throw new DrawError(
-        "JOB_ALREADY_ACTIVE",
-        "another image is still generating"
+        "PARENT_UNAVAILABLE",
+        "that image isn't available"
       );
     }
-    // Stale pointer (job died or was cancelled) — release it.
-    await supabase
-      .from("draw_sessions")
-      .update({ active_job_id: null })
-      .eq("id", session.id);
   }
 
   let parentJobId: string | undefined;
@@ -339,12 +337,50 @@ export async function admitDrawGeneration(
     job.root_job_id = job.id;
   }
 
-  const { error } = await supabase
-    .from("draw_sessions")
-    .update({ active_job_id: job.id, latest_job_id: job.id })
-    .eq("id", session.id);
-  if (error) {
-    throw new Error(`draw session update failed: ${error.message}`);
+  // The session's in-flight slot is a compare-and-set lease: claim only an
+  // empty slot, release a stale one by its recorded id first. A cancelled
+  // job that finishes late can never free a successor's slot.
+  const claimSlot = () =>
+    supabase
+      .from("draw_sessions")
+      .update({ active_job_id: job.id, latest_job_id: job.id })
+      .eq("id", session.id)
+      .is("active_job_id", null)
+      .select("id");
+  let { data: claimed } = await claimSlot();
+  if (!claimed?.length && session.active_job_id) {
+    const active = await getCreativeJob(
+      supabase,
+      session.user_id,
+      session.active_job_id
+    );
+    if (active && ACTIVE_JOB_STATUSES.includes(active.status)) {
+      await updateCreativeJob(supabase, job.id, {
+        status: "failed",
+        error: "superseded before admission",
+      });
+      throw new DrawError(
+        "JOB_ALREADY_ACTIVE",
+        "another image is still generating"
+      );
+    }
+    // Stale pointer (job died or was cancelled) — release it by identity.
+    await supabase
+      .from("draw_sessions")
+      .update({ active_job_id: null })
+      .eq("id", session.id)
+      .eq("active_job_id", session.active_job_id);
+    ({ data: claimed } = await claimSlot());
+  }
+  if (!claimed?.length) {
+    await updateCreativeJob(supabase, job.id, {
+      status: "failed",
+      error: "superseded before admission",
+    });
+    throw new DrawError(
+      "JOB_ALREADY_ACTIVE",
+      "another image is still generating"
+    );
   }
   await appendDrawEvent(supabase, session.id, {
     jobId: job.id,
@@ -451,10 +487,12 @@ export async function runDrawJob(
       errorCode: safeDrawErrorCode(result.line),
     });
   }
+  // Clear by identity — a successor may already own the slot.
   await supabase
     .from("draw_sessions")
     .update({ active_job_id: null, latest_job_id: job.id })
-    .eq("id", session.id);
+    .eq("id", session.id)
+    .eq("active_job_id", job.id);
   return result;
 }
 
@@ -536,7 +574,8 @@ export async function cancelActiveDrawJob(
   await supabase
     .from("draw_sessions")
     .update({ active_job_id: null })
-    .eq("id", session.id);
+    .eq("id", session.id)
+    .eq("active_job_id", session.active_job_id);
 }
 
 export function safeDrawErrorCode(line: string): string {
