@@ -9,6 +9,7 @@
  * Needs you.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { completeOperation } from "../migration/admission";
 import { command, readFile } from "../box/client";
 import { createDraft, sendDraft } from "../mail/client";
 import { createRun, MAIN_SESSION, runEvents } from "../hermes/client";
@@ -29,16 +30,27 @@ import {
 const MAX_FAILURES = 5;
 const SWEEP_BATCH = 10;
 
+export interface ScheduleClaim {
+  schedule: AgentSchedule;
+  /** tenant_operations lease id — released after the run lands. */
+  operationId?: string;
+  /** The delivery ledger already records this occurrence — skip the run. */
+  duplicate: boolean;
+}
+
 /**
- * Claim a due schedule: advance next_run_at conditioned on the value we
- * read, so exactly one of any number of racing sweepers wins.
+ * Claim a due schedule via claim_schedule: CAS on next_run_at + admission
+ * gate + delivery-receipt dedupe + operation lease in one statement, so a
+ * migration that closed admission between our read and this claim wins and
+ * the firing defers instead of racing the fence.
  */
 export async function claimSchedule(
   supabase: SupabaseClient,
   schedule: AgentSchedule
-): Promise<AgentSchedule | undefined> {
+): Promise<ScheduleClaim | undefined> {
   // Compute from the later of now and the due time so the new next_run_at
-  // is strictly after the claimed fire — the CAS below must change the value.
+  // is strictly after the claimed fire — the CAS inside the RPC must change
+  // the value.
   const base = new Date(
     Math.max(Date.now(), Date.parse(schedule.next_run_at) || 0)
   );
@@ -49,18 +61,51 @@ export async function claimSchedule(
     next = new Date(base.getTime() + 24 * 60 * 60 * 1000);
   }
   const clamped = clampToWakingHours(next, schedule.timezone, schedule.deliver);
-  const { data } = await supabase
-    .from("agent_schedules")
-    .update({
-      next_run_at: clamped.toISOString(),
-      last_run_at: new Date().toISOString(),
-    })
-    .eq("id", schedule.id)
-    .eq("status", "active")
-    .eq("next_run_at", schedule.next_run_at)
-    .select(SCHEDULE_COLUMNS);
-  if (!data || data.length === 0) return undefined;
-  return parseAgentSchedule(data[0]) ?? undefined;
+  let data: unknown = null;
+  let error: { message: string } | null = null;
+  try {
+    ({ data, error } = await supabase.rpc("claim_schedule", {
+      p_schedule_id: schedule.id,
+      p_expected_next_run_at: schedule.next_run_at,
+      p_next_run_at: clamped.toISOString(),
+      p_holder: `schedule-${schedule.id}-${Date.parse(schedule.next_run_at) || 0}`,
+      p_ttl_seconds: 600,
+    }));
+  } catch (rpcError) {
+    error = { message: String(rpcError) };
+  }
+  if (error) {
+    // Pre-deploy (or a client without rpc): the plain CAS keeps sweeps
+    // working — no lease or receipt, exactly as before this dark ship.
+    const { data: won } = await supabase
+      .from("agent_schedules")
+      .update({
+        next_run_at: clamped.toISOString(),
+        last_run_at: new Date().toISOString(),
+      })
+      .eq("id", schedule.id)
+      .eq("status", "active")
+      .eq("next_run_at", schedule.next_run_at)
+      .select(SCHEDULE_COLUMNS);
+    if (!won || won.length === 0) return undefined;
+    const claimed = parseAgentSchedule(won[0]);
+    return claimed ? { schedule: claimed, duplicate: false } : undefined;
+  }
+  const result = data as {
+    claimed?: boolean;
+    duplicate?: boolean;
+    operation_id?: string;
+    schedule?: Record<string, unknown>;
+  } | null;
+  if (!result?.claimed || !result.schedule) return undefined;
+  const claimed = parseAgentSchedule(result.schedule);
+  if (!claimed) return undefined;
+  const claim: ScheduleClaim = {
+    schedule: claimed,
+    duplicate: result.duplicate ?? false,
+  };
+  if (result.operation_id) claim.operationId = result.operation_id;
+  return claim;
 }
 
 async function deliverImessage(
@@ -277,8 +322,15 @@ export async function sweepSchedules(
   for (const schedule of due) {
     const claimed = await claimSchedule(supabase, schedule);
     if (!claimed) continue;
+    if (claimed.duplicate) continue; // ledger already has this occurrence
     fired += 1;
-    await runSchedule(supabase, claimed);
+    try {
+      await runSchedule(supabase, claimed.schedule);
+    } finally {
+      if (claimed.operationId) {
+        await completeOperation(supabase, claimed.operationId);
+      }
+    }
   }
   return { fired };
 }

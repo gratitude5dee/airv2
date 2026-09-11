@@ -23,6 +23,7 @@ import {
   waitForHomeSteady,
 } from "../box/client";
 import { presignGet } from "../storage/r2";
+import { activeMigrationFor } from "../migration/exclusion";
 import { FleetError, getRelease, type TemplateRelease } from "./releases";
 import { getChannel, type ChannelName } from "./channels";
 
@@ -242,10 +243,16 @@ async function syncOneBox(
     // idle window so services are not restarted under a live turn.
     const { data: row } = await supabase
       .from("boxes")
-      .select("stop_after")
+      .select("stop_after, user_id")
       .eq("provider_box_id", boxId)
       .maybeSingle();
     const stopAfter = row?.stop_after as string | null | undefined;
+    // A live migration owns the box: never sync under a fence, and never
+    // touch the retained side while it is the return target.
+    const owner = row?.user_id as string | undefined;
+    if (owner && (await activeMigrationFor(supabase, owner))) {
+      return { outcome: "deferred" };
+    }
     if (stopAfter && Date.parse(stopAfter) > Date.now()) {
       return { outcome: "deferred" };
     }

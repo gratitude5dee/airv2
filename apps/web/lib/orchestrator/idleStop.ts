@@ -7,6 +7,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { stop } from "@/lib/box/client";
 import { recordBoxStateEvent } from "@/lib/box/events";
 import { claimIdleStop, releaseIdleStop, type DeferReason } from "@/lib/orchestrator/indexIdle";
+import { activeMigrationFor } from "@/lib/migration/exclusion";
 import type { SweepableBox } from "@/lib/orchestrator/sweep";
 
 export interface IdleStopReport {
@@ -55,6 +56,12 @@ export async function stopIdleBoxes(
   for (const box of boxes) {
     if (Date.now() >= deadlineMs) break;
     report.processed += 1;
+    // A live migration owns the box's lifecycle: the migration's own steps
+    // decide when each side stops, and a paused tenant's source must not be
+    // idled out from under a running copy pass.
+    if (await activeMigrationFor(supabase, box.user_id)) {
+      continue;
+    }
     const decision = await claimIdleStop(box.provider_box_id, overdueMs(box, now));
     if (decision.kind === "deferred") {
       report.indexingDeferred += 1;

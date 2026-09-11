@@ -8,6 +8,8 @@ import { serviceClient } from "@/lib/supabase";
 import { requestSession } from "@/lib/auth/surface";
 import { stop } from "@/lib/box/client";
 import { recordBoxStateEvent } from "@/lib/box/events";
+import { assertNoLiveMigration } from "@/lib/migration/exclusion";
+import { MigrationConflictError } from "@/lib/migration/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,6 +31,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
   const row = box as { provider_box_id: string; state: string };
+  try {
+    await assertNoLiveMigration(supabase, session.userId);
+  } catch (error) {
+    if (error instanceof MigrationConflictError) {
+      return NextResponse.json({ error: "migration_active" }, { status: 409 });
+    }
+    throw error;
+  }
   if (row.state === "stopped" || row.state === "stopping") {
     return NextResponse.json({ state: row.state });
   }

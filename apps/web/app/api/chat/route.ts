@@ -7,6 +7,7 @@ import { after, NextRequest, NextResponse } from "next/server";
 import { sessionUserId } from "@/lib/auth/user";
 import { serviceClient } from "@/lib/supabase";
 import { StartLimitError } from "@/lib/orchestrator/boxes";
+import { migrationBusyResponse } from "@/lib/migration/admission";
 import { CHAT_SESSION_RE, isCreateSession, startChatRun } from "@/lib/chat/relay";
 import {
   AMBIGUOUS_COMMAND_LINE,
@@ -167,6 +168,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
       return NextResponse.json({ run_id: runId, bot: toPublic(delegate) });
     } catch (error) {
+      const busy = migrationBusyResponse(error);
+      if (busy) return busy;
       if (error instanceof StartLimitError) {
         return NextResponse.json({ error: "busy" }, { status: 429 });
       }
@@ -189,6 +192,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
     return NextResponse.json({ run_id: runId });
   } catch (error) {
+    const busy = migrationBusyResponse(error);
+    if (busy) return busy;
     if (error instanceof StartLimitError) {
       return NextResponse.json({ error: "busy" }, { status: 429 });
     }

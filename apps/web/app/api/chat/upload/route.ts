@@ -13,6 +13,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { sessionUserId } from "@/lib/auth/user";
 import { serviceClient } from "@/lib/supabase";
 import {
+  admitOperation,
+  completeOperation,
+  migrationBusyResponse,
+} from "@/lib/migration/admission";
+import {
   armStopAfter,
   ensureBoxAwake,
   StartLimitError,
@@ -94,7 +99,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     path = key;
   }
   const supabase = serviceClient();
+  let op: { operationId: string } | null = null;
   try {
+    // Upload lease: the pause's drain waits for in-flight uploads to land
+    // (or fail) before the final copy runs.
+    op = await admitOperation(
+      supabase, userId, "upload", `upload:${userId}:${path}:${index}`
+    );
     const box = await ensureBoxAwake(supabase, userId);
     const base64 = Buffer.from(await file.arrayBuffer()).toString("base64");
     // Single-quote paths at the call site — safety must not depend solely
@@ -146,6 +157,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       marker: attachmentMarker(mimeType, path),
     });
   } catch (error) {
+    const busy = migrationBusyResponse(error);
+    if (busy) return busy;
     if (error instanceof StartLimitError) {
       return NextResponse.json({ error: "busy" }, { status: 429 });
     }
@@ -158,6 +171,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
     return NextResponse.json({ error: "upload failed" }, { status: 502 });
   } finally {
+    if (op) {
+      await completeOperation(supabase, op.operationId).catch(() => undefined);
+    }
     await armStopAfter(supabase, userId).catch(() => undefined);
   }
 }

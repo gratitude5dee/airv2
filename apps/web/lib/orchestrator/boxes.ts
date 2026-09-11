@@ -19,6 +19,7 @@ import { health, type HermesBoxTarget } from "../hermes/client";
 import { mirrorBrandIfStale } from "../brand/mirror";
 import { recordBoxStateEvent } from "../box/events";
 import { boxTarget } from "../compute/runtime";
+import { assertAdmissionOpen } from "../migration/admission";
 
 export const STOP_AFTER_MINUTES = 20;
 
@@ -227,6 +228,9 @@ export async function ensureBoxAwake(
   supabase: SupabaseClient,
   userId: string
 ): Promise<UserBox> {
+  // The pause window of a live migration holds box work out; callers should
+  // translate MigrationBusyError to a retryable response where they have one.
+  await assertAdmissionOpen(supabase, userId);
   const { data, error: selectError } = await supabase
     .from("boxes")
     .select(

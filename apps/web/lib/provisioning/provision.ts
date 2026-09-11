@@ -44,6 +44,7 @@ import {
   type ComputeTarget,
 } from "../compute/runtime";
 import { installComposioMcp, installMasterkeyMcp } from "./connectors";
+import { MigrationBusyError } from "../migration/types";
 import { provisionDaytona } from "./daytona";
 import { installExistingMailbox } from "./email";
 import { normalizeAddress } from "../routing/trust";
@@ -116,7 +117,7 @@ export interface TemplateReleaseStamp {
 }
 
 /** Everything the boxes row needs about a freshly built compute instance. */
-interface ProvisionedCompute {
+export interface ProvisionedCompute {
   target: ComputeTarget;
   routes: ComputeRoutes;
   templateHermesRef: string | null;
@@ -387,17 +388,30 @@ export async function replaceBox(
 ): Promise<ProvisionResult> {
   const claimedAt = new Date().toISOString();
   const staleBefore = new Date(Date.now() - REPLACE_CLAIM_TTL_MS).toISOString();
-  const { data: claimed, error } = await supabase
-    .from("boxes")
-    .update({ replace_claimed_at: claimedAt })
-    .eq("user_id", userId)
-    .eq("provider_box_id", boxId)
-    .or(`replace_claimed_at.is.null,replace_claimed_at.lt.${staleBefore}`)
-    .select("provider_box_id");
-  if (error) {
-    throw new Error(`box claim failed for user ${userId}: ${error.message}`);
+  // claim_replace locks the tenant's control row before claiming so a live
+  // compute migration and an environment replacement can never overlap
+  // (begin_migration holds the same lock).
+  const { data: claimResult, error: claimError } = await supabase.rpc(
+    "claim_replace",
+    {
+      p_user_id: userId,
+      p_box_id: boxId,
+      p_claimed_at: claimedAt,
+      p_stale_before: staleBefore,
+    }
+  );
+  if (claimError) {
+    throw new Error(`box claim failed for user ${userId}: ${claimError.message}`);
   }
-  if (!claimed || claimed.length === 0) {
+  const claim = claimResult as {
+    claimed?: boolean;
+    reason?: string;
+    migration_id?: string;
+  } | null;
+  if (claim?.reason === "migration_active") {
+    throw new MigrationBusyError();
+  }
+  if (!claim?.claimed) {
     throw new ReplaceInProgressError(boxId);
   }
   try {
@@ -561,7 +575,7 @@ function tenkiTemplate(environment: ComputeEnvironment): string {
   return templateId;
 }
 
-async function buildCompute(
+export async function buildCompute(
   supabase: ReturnType<typeof serviceClient>,
   userId: string,
   environment: ComputeEnvironment,

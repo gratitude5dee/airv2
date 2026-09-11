@@ -20,58 +20,67 @@ const SCHEDULE: AgentSchedule = {
 };
 
 /**
- * A supabase stub whose conditional update only matches while the stored
- * next_run_at equals the caller's expectation — the same compare-and-swap
- * the real claim relies on.
+ * A supabase stub whose claim_schedule RPC emulates the real one's contract:
+ * CAS on (id, status=active, next_run_at=expected) + admission check +
+ * delivery-receipt dedupe, all in one statement.
  */
-function makeSupabase(row: { next_run_at: string; status: string }) {
-  const updates: Array<Record<string, unknown>> = [];
+function makeSupabase(
+  row: { next_run_at: string; status: string },
+  opts: { admission?: "open" | "closed"; receipts?: Map<string, string> } = {}
+) {
+  const claims: string[][] = [];
+  const receipts = opts.receipts ?? new Map<string, string>();
   const client = {
-    from: (table: string) => {
-      expect(table).toBe("agent_schedules");
-      return {
-        update: (values: Record<string, unknown>) => {
-          const filters: Record<string, unknown> = {};
-          const builder = {
-            eq: (column: string, value: unknown) => {
-              filters[column] = value;
-              return builder;
-            },
-            select: () => {
-              const matches =
-                filters["id"] === SCHEDULE.id &&
-                filters["status"] === row.status &&
-                filters["next_run_at"] === row.next_run_at;
-              if (!matches) return Promise.resolve({ data: [] });
-              row.next_run_at = values["next_run_at"] as string;
-              updates.push(values);
-              return Promise.resolve({
-                data: [{ ...SCHEDULE, ...values }],
-              });
-            },
-          };
-          return builder;
+    rpc: (name: string, args: Record<string, unknown>) => {
+      expect(name).toBe("claim_schedule");
+      const expected = args["p_expected_next_run_at"] as string;
+      const next = args["p_next_run_at"] as string;
+      claims.push([expected, next]);
+      const stableId = `${SCHEDULE.id}@${expected}`;
+      if (opts.admission === "closed") {
+        return Promise.resolve({ data: { claimed: false, reason: "admission_closed" } });
+      }
+      if (row.status !== "active" || row.next_run_at !== expected) {
+        return Promise.resolve({ data: { claimed: false, reason: "lost" } });
+      }
+      row.next_run_at = next;
+      const existing = receipts.get(stableId);
+      if (existing && existing !== "held") {
+        return Promise.resolve({
+          data: { claimed: true, duplicate: true, schedule: { ...SCHEDULE, next_run_at: next } },
+        });
+      }
+      receipts.set(stableId, "running");
+      return Promise.resolve({
+        data: {
+          claimed: true,
+          duplicate: false,
+          schedule: { ...SCHEDULE, next_run_at: next },
+          operation_id: "op-1",
         },
-      };
+      });
+    },
+    from: () => {
+      throw new Error("claimSchedule must not touch tables directly — the RPC owns the claim");
     },
   } as unknown as SupabaseClient;
-  return { client, updates };
+  return { client, claims, receipts };
 }
-
 describe("claimSchedule", () => {
-  it("claims a due row and advances next_run_at", async () => {
-    const { client, updates } = makeSupabase({
+  it("claims a due row and returns the advanced schedule + lease", async () => {
+    const { client } = makeSupabase({
       next_run_at: SCHEDULE.next_run_at,
       status: "active",
     });
     const claimed = await claimSchedule(client, SCHEDULE);
     expect(claimed).toBeDefined();
-    expect(updates).toHaveLength(1);
-    expect(updates[0]?.["next_run_at"]).not.toBe(SCHEDULE.next_run_at);
+    expect(claimed?.schedule.next_run_at).not.toBe(SCHEDULE.next_run_at);
+    expect(claimed?.operationId).toBe("op-1");
+    expect(claimed?.duplicate).toBe(false);
   });
 
   it("is idempotent — a second racing claim of the same fire loses", async () => {
-    const { client, updates } = makeSupabase({
+    const { client } = makeSupabase({
       next_run_at: SCHEDULE.next_run_at,
       status: "active",
     });
@@ -79,7 +88,6 @@ describe("claimSchedule", () => {
     const second = await claimSchedule(client, SCHEDULE);
     expect(first).toBeDefined();
     expect(second).toBeUndefined();
-    expect(updates).toHaveLength(1);
   });
 
   it("does not claim a paused schedule", async () => {
@@ -88,5 +96,23 @@ describe("claimSchedule", () => {
       status: "paused",
     });
     expect(await claimSchedule(client, SCHEDULE)).toBeUndefined();
+  });
+
+  it("does not claim while admission is closed (migration pause)", async () => {
+    const { client } = makeSupabase(
+      { next_run_at: SCHEDULE.next_run_at, status: "active" },
+      { admission: "closed" }
+    );
+    expect(await claimSchedule(client, SCHEDULE)).toBeUndefined();
+  });
+
+  it("flags a delivered occurrence as duplicate (no second run)", async () => {
+    const stableId = `${SCHEDULE.id}@${SCHEDULE.next_run_at}`;
+    const { client } = makeSupabase(
+      { next_run_at: SCHEDULE.next_run_at, status: "active" },
+      { receipts: new Map([[stableId, "completed"]]) }
+    );
+    const claimed = await claimSchedule(client, SCHEDULE);
+    expect(claimed?.duplicate).toBe(true);
   });
 });

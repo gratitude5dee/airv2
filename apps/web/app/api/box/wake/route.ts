@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
 import { requestSession } from "@/lib/auth/surface";
+import { migrationBusyResponse } from "@/lib/migration/admission";
 import {
   ensureBoxAwake,
   armStopAfter,
@@ -37,6 +38,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     await armStopAfter(supabase, session.userId, keepAwakeMinutes);
     return NextResponse.json({ status: "awake" });
   } catch (error) {
+    const busy = migrationBusyResponse(error);
+    if (busy) return busy;
     if (error instanceof StartLimitError) {
       return NextResponse.json(
         { error: "start_limit_reached" },
