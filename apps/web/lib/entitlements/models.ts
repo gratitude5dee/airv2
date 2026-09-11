@@ -8,13 +8,10 @@ export type SpeedTier = "fast" | "balanced" | "deep";
 
 /**
  * The model family sits on top of the tiers: `openai` resolves through the
- * speed tier, every other family is a single upstream slug. `ox-alpha` is the
- * default for anyone who never touches the setting; the stealth endpoint it
- * was named after graduated into Z.ai's GLM 5.3 Flash, which now serves it.
+ * speed tier, every other family is a single upstream slug.
  */
 export type ModelFamily =
   | "openai"
-  | "ox-alpha"
   | "inkling"
   | "inkling-small"
   | "anthropic"
@@ -23,7 +20,7 @@ export type ModelFamily =
   | "openrouter"
   | "venice";
 
-export const DEFAULT_MODEL_FAMILY: ModelFamily = "ox-alpha";
+export const DEFAULT_MODEL_FAMILY: ModelFamily = "openai";
 
 const TIER_MODELS: Record<SpeedTier, string> = {
   fast: "gpt-5.6-luna",
@@ -62,7 +59,6 @@ const FAMILY_MODELS: Record<
   Exclude<ModelFamily, "openai" | "openrouter" | "venice">,
   string
 > = {
-  "ox-alpha": "z-ai/glm-5.3-flash",
   inkling: "thinkingmachines/inkling:free",
   "inkling-small": "thinkingmachines/inkling-small:free",
   anthropic: "anthropic/claude-sonnet-5",
@@ -202,7 +198,6 @@ export const CONSENT_FAMILIES: readonly ModelFamily[] = [
 export function isModelFamily(value: string): value is ModelFamily {
   return (
     value === "openai" ||
-    value === "ox-alpha" ||
     value === "inkling" ||
     value === "inkling-small" ||
     value === "anthropic" ||
@@ -255,13 +250,14 @@ function tierOverride(tier: SpeedTier): string | undefined {
  * Optional per-tier reasoning effort (MODEL_REASONING_FAST / _BALANCED /
  * _DEEP), injected by the gateway for providers that accept
  * `reasoning_effort` (OpenAI GPT-5.x). Unset means don't send the field —
- * except the fast tier, which defaults to "low": there is no faster model
- * slug behind "fast", so low reasoning effort IS the fast-mode lever.
- * Set MODEL_REASONING_FAST="" to disable the default.
+ * except the fast tier, which defaults to "xhigh": agent quality is the
+ * fleet default, and the Responses path carries effort on tool-bearing
+ * calls so nothing runs unreasoned. Set MODEL_REASONING_FAST="low" for
+ * cheaper delegated children, or "" to omit.
  */
 export function reasoningForTier(tier: SpeedTier): string | undefined {
   const byTier: Record<SpeedTier, string | undefined> = {
-    fast: process.env["MODEL_REASONING_FAST"] ?? "low",
+    fast: process.env["MODEL_REASONING_FAST"] ?? "xhigh",
     balanced: process.env["MODEL_REASONING_BALANCED"],
     deep: process.env["MODEL_REASONING_DEEP"],
   };
@@ -297,7 +293,6 @@ const FAMILY_PRICING: Record<
   Exclude<ModelFamily, "openai" | "openrouter" | "venice">,
   { input: number; output: number }
 > = {
-  "ox-alpha": { input: 0.075, output: 0.25 },
   inkling: { input: 0, output: 0 },
   "inkling-small": { input: 0, output: 0 },
   anthropic: { input: 2, output: 10 },

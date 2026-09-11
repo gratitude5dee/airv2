@@ -52,15 +52,15 @@ describe("speed tiers", () => {
 });
 
 describe("model families", () => {
-  it("defaults to the ox-alpha family, served by its GLM successor", () => {
-    expect(DEFAULT_MODEL_FAMILY).toBe("ox-alpha");
+  it("defaults to the openai family, resolved through the tier", () => {
+    expect(DEFAULT_MODEL_FAMILY).toBe("openai");
     expect(modelForSelection(DEFAULT_MODEL_FAMILY, "balanced")).toBe(
-      "z-ai/glm-5.3-flash"
+      modelForTier("balanced")
     );
   });
 
   it("validates family names", () => {
-    expect(isModelFamily("ox-alpha")).toBe(true);
+    expect(isModelFamily("ox-alpha")).toBe(false);
     expect(isModelFamily("openai")).toBe(true);
     expect(isModelFamily("inkling")).toBe(true);
     expect(isModelFamily("inkling-small")).toBe(true);
@@ -80,7 +80,6 @@ describe("model families", () => {
   });
 
   it("keeps the OpenRouter slugs out of the reasoning-param path", () => {
-    expect(isReasoningModel(modelForSelection("ox-alpha", "fast"))).toBe(false);
     expect(isReasoningModel(modelForSelection("inkling", "fast"))).toBe(false);
     expect(isReasoningModel(modelForSelection("inkling-small", "fast"))).toBe(
       false
@@ -90,13 +89,12 @@ describe("model families", () => {
   it("gates only the free Inkling endpoints behind consent", () => {
     expect(requiresConsent("inkling")).toBe(true);
     expect(requiresConsent("inkling-small")).toBe(true);
-    expect(requiresConsent("ox-alpha")).toBe(false);
     expect(requiresConsent("openai")).toBe(false);
   });
 
   it("meters the free families at zero and priced families above it", () => {
     expect(costUsd("deep", 1000, 1000, "inkling")).toBe(0);
-    expect(costUsd("deep", 1000, 1000, "ox-alpha")).toBeGreaterThan(0);
+    expect(costUsd("deep", 1000, 1000, "anthropic")).toBeGreaterThan(0);
     expect(costUsd("deep", 1000, 1000, "openai")).toBeGreaterThan(0);
   });
 });

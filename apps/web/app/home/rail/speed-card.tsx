@@ -16,9 +16,8 @@ interface Entitlement {
   spend_mtd_usd: number;
 }
 
-/** Families in picker order; Ox Alpha is the default anyone lands on. */
+/** Families in picker order; OpenAI is the default anyone lands on. */
 export const MODEL_FAMILY_OPTIONS = [
-  ["ox-alpha", "Ox Alpha"],
   ["openai", "OpenAI"],
   ["inkling", "Inkling (free)"],
   ["inkling-small", "Inkling Small (free)"],

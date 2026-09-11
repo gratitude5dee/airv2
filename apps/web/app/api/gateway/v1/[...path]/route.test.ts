@@ -1,7 +1,10 @@
 /**
  * P1-7: reasoning_effort is only injected for model families that accept it
  * — a non-reasoning override model must go upstream without the field.
- * Also covers the model-family dimension: Ox Alpha is the default when the
+ * OpenAI reasoning models are served through /responses (chat/completions
+ * rejects tools + effort), so their assertions read `reasoning.effort` and
+ * the translated `input`/`tools` shape.
+ * Also covers the model-family dimension: OpenAI is the default when the
  * entitlement carries no family, each family resolves to its own slug, and
  * GET /v1/models still exposes tier names only (C2).
  */
@@ -133,15 +136,120 @@ describe("gateway reasoning_effort gating (P1-7)", () => {
   it("injects the configured effort for reasoning models", async () => {
     const sent = await upstreamBody({ messages: [] });
     expect(sent["model"]).toBe("gpt-5.6-luna");
-    expect(sent["reasoning_effort"]).toBe("low");
+    expect(sent["reasoning"]).toEqual({ effort: "low" });
   });
 
-  it("pins none on tool-bearing calls", async () => {
+  it("carries the configured effort on tool-bearing calls via /responses", async () => {
+    const call = await upstreamCall({
+      messages: [{ role: "user", content: "hi" }],
+      tools: [
+        {
+          type: "function",
+          function: { name: "lookup", parameters: { type: "object" } },
+        },
+      ],
+    });
+    expect(call.url).toBe("https://upstream.test/v1/responses");
+    const sent = call.body;
+    expect(sent["reasoning"]).toEqual({ effort: "low" });
+    expect(sent["tools"]).toEqual([
+      {
+        type: "function",
+        name: "lookup",
+        parameters: { type: "object" },
+      },
+    ]);
+    expect(sent["input"]).toEqual([
+      {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "hi" }],
+      },
+    ]);
+    expect(sent["messages"]).toBeUndefined();
+    expect(sent["store"]).toBe(false);
+  });
+
+  it("lets a caller-set reasoning_effort win over the tier default on /responses", async () => {
     const sent = await upstreamBody({
       messages: [],
-      tools: [{ type: "function" }],
+      reasoning_effort: "minimal",
     });
-    expect(sent["reasoning_effort"]).toBe("none");
+    expect(sent["reasoning"]).toEqual({ effort: "minimal" });
+  });
+
+  it("maps response_format to the Responses text.format field", async () => {
+    const sent = await upstreamBody({
+      messages: [],
+      response_format: { type: "json_object" },
+    });
+    expect(sent["text"]).toEqual({ format: { type: "json_object" } });
+    expect(sent["response_format"]).toBeUndefined();
+
+    const schema = {
+      name: "thing",
+      schema: { type: "object", properties: { a: { type: "string" } } },
+      strict: true,
+    };
+    const structured = await upstreamBody({
+      messages: [],
+      response_format: { type: "json_schema", json_schema: schema },
+    });
+    expect(structured["text"]).toEqual({
+      format: { type: "json_schema", ...schema },
+    });
+  });
+
+  it("retries a /responses-incompatible upstream once through chat/completions", async () => {
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, _init?: RequestInit) =>
+      String(url).endsWith("/responses")
+        ? new Response("not found", { status: 404 })
+        : new Response(
+            JSON.stringify({
+              choices: [{ message: { content: "hi" } }],
+              usage: { prompt_tokens: 3, completion_tokens: 2 },
+            }),
+            { status: 200 }
+          )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await POST(
+      completionRequest({ messages: [], tools: [{ type: "function" }] }),
+      { params: Promise.resolve({ path: ["chat", "completions"] }) }
+    );
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[1]?.[0])).toBe(
+      "https://upstream.test/v1/chat/completions"
+    );
+    // The compat lane carries the pre-Responses pin, not an effort field.
+    const secondBody = JSON.parse(
+      String((fetchMock.mock.calls[1]?.[1] as RequestInit).body)
+    ) as Record<string, unknown>;
+    expect(secondBody["reasoning_effort"]).toBe("none");
+  });
+
+  it("surfaces a failed responses stream as a stream error, not a clean stop", async () => {
+    const failedSse =
+      'data: {"type":"response.output_text.delta","delta":"partial"}\n\n' +
+      'data: {"type":"response.failed","response":{"status":"failed","error":{"message":"kaboom"}}}\n\n' +
+      "data: [DONE]\n\n";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(failedSse, {
+            status: 200,
+            headers: { "Content-Type": "text/event-stream" },
+          })
+      )
+    );
+    const response = await POST(
+      completionRequest({ messages: [], stream: true }),
+      { params: Promise.resolve({ path: ["chat", "completions"] }) }
+    );
+    expect(response.status).toBe(200);
+    await expect(response.text()).rejects.toThrow(/kaboom/);
   });
 
   it("omits reasoning_effort for non-reasoning override models", async () => {
@@ -169,13 +277,13 @@ describe("gateway fast-tier delegation override", () => {
     setEntitlement({ speed_tier: "deep" });
     const sent = await upstreamBody({ model: "fast", messages: [] });
     expect(sent["model"]).toBe("gpt-5.6-luna");
-    expect(sent["reasoning_effort"]).toBe("low");
+    expect(sent["reasoning"]).toEqual({ effort: "low" });
   });
 
   it("lands fast-lane reasoning even when the entitled tier is balanced", async () => {
     const sent = await upstreamBody({ model: "fast", messages: [] });
     expect(sent["model"]).toBe("gpt-5.6-luna");
-    expect(sent["reasoning_effort"]).toBe("low");
+    expect(sent["reasoning"]).toEqual({ effort: "low" });
   });
 
   it("never upgrades: a request-body deep stays on the entitled tier", async () => {
@@ -192,16 +300,16 @@ describe("gateway fast-tier delegation override", () => {
     expect(sent["model"]).toBe("gpt-5.6-terra");
   });
 
-  it("defaults MODEL_REASONING_FAST to low so the fast lane is actually fast", async () => {
+  it("defaults MODEL_REASONING_FAST to xhigh", async () => {
     delete process.env["MODEL_REASONING_FAST"];
     const sent = await upstreamBody({ model: "fast", messages: [] });
-    expect(sent["reasoning_effort"]).toBe("low");
+    expect(sent["reasoning"]).toEqual({ effort: "xhigh" });
   });
 
   it("lets MODEL_REASONING_FAST='' disable the default", async () => {
     process.env["MODEL_REASONING_FAST"] = "";
     const sent = await upstreamBody({ model: "fast", messages: [] });
-    expect(sent["reasoning_effort"]).toBeUndefined();
+    expect(sent["reasoning"]).toBeUndefined();
   });
 });
 
@@ -224,8 +332,18 @@ describe("gateway task-router traces", () => {
       vi.fn(async () =>
         new Response(
           JSON.stringify({
-            choices: [{ message: { content: "ok" } }],
-            usage: { prompt_tokens: 11, completion_tokens: 7 },
+            id: "resp_1",
+            object: "response",
+            model: "gpt-5.6-luna",
+            status: "completed",
+            output: [
+              {
+                type: "message",
+                role: "assistant",
+                content: [{ type: "output_text", text: "ok" }],
+              },
+            ],
+            usage: { input_tokens: 11, output_tokens: 7, total_tokens: 18 },
           }),
           { status: 200, headers: { "Content-Type": "application/json" } }
         )
@@ -276,24 +394,23 @@ describe("gateway model families", () => {
     vi.unstubAllGlobals();
   });
 
-  it("falls back to Ox Alpha when the entitlement carries no family", async () => {
+  it("defaults to the OpenAI family when the entitlement carries none", async () => {
     setEntitlement({ speed_tier: "fast", model_family: null });
     const call = await upstreamCall({ messages: [], max_tokens: 100 });
-    expect(call.body["model"]).toBe("z-ai/glm-5.3-flash");
-    // OpenAI-only params are never injected for an OpenRouter slug
-    expect(call.body["reasoning_effort"]).toBeUndefined();
-    expect(call.body["max_tokens"]).toBe(100);
-    expect(call.body["max_completion_tokens"]).toBeUndefined();
-    expect(call.url).toBe("https://openrouter.test/api/v1/chat/completions");
+    expect(call.body["model"]).toBe("gpt-5.6-luna");
+    expect(call.body["reasoning"]).toEqual({ effort: "low" });
+    expect(call.body["max_output_tokens"]).toBe(100);
+    expect(call.body["max_tokens"]).toBeUndefined();
+    expect(call.url).toBe("https://upstream.test/v1/responses");
     const headers = call.init.headers as Record<string, string>;
-    expect(headers["Authorization"]).toBe("Bearer openrouter-key");
-    expect(headers["HTTP-Referer"]).toBe("https://app.test");
+    expect(headers["Authorization"]).toBe("Bearer provider-key");
+    expect(headers["HTTP-Referer"]).toBeUndefined();
   });
 
   it("keeps the OpenAI-only service_tier off OpenRouter requests", async () => {
     process.env["MODEL_SERVICE_TIER_FAST"] = "priority";
     try {
-      setEntitlement({ speed_tier: "fast", model_family: "ox-alpha" });
+      setEntitlement({ speed_tier: "fast", model_family: "openrouter" });
       expect(
         (await upstreamBody({ messages: [] }))["service_tier"]
       ).toBeUndefined();
@@ -321,7 +438,7 @@ describe("gateway model families", () => {
     setEntitlement({ speed_tier: "deep", model_family: "openai" });
     const call = await upstreamCall({ messages: [] });
     expect(call.body["model"]).toBe("gpt-5.6-terra");
-    expect(call.url).toBe("https://upstream.test/v1/chat/completions");
+    expect(call.url).toBe("https://upstream.test/v1/responses");
     const headers = call.init.headers as Record<string, string>;
     expect(headers["Authorization"]).toBe("Bearer provider-key");
     expect(headers["HTTP-Referer"]).toBeUndefined();
@@ -359,13 +476,25 @@ describe("gateway model families", () => {
 
   it("falls back to OpenAI after a retryable GMI error repeats", async () => {
     setEntitlement({ speed_tier: "balanced", model_family: "minimax-m3" });
-    const completion = {
-      choices: [{ message: { role: "assistant", content: "hi" } }],
-    };
     const fetchMock = vi.fn(async (url: RequestInfo | URL) =>
       String(url).includes("gmi.test")
         ? new Response("temporarily unavailable", { status: 429 })
-        : new Response(JSON.stringify(completion), { status: 200 })
+        : new Response(
+            JSON.stringify({
+              id: "resp_1",
+              object: "response",
+              model: "gpt-5.6-luna",
+              status: "completed",
+              output: [
+                {
+                  type: "message",
+                  role: "assistant",
+                  content: [{ type: "output_text", text: "hi" }],
+                },
+              ],
+            }),
+            { status: 200 }
+          )
     );
     vi.stubGlobal("fetch", fetchMock);
     const response = await POST(completionRequest({ messages: [] }), {
@@ -380,13 +509,13 @@ describe("gateway model families", () => {
       "https://gmi.test/v1/chat/completions"
     );
     expect(String(fetchMock.mock.calls[2]?.[0])).toBe(
-      "https://upstream.test/v1/chat/completions"
+      "https://upstream.test/v1/responses"
     );
     expect((await response.json()).choices[0].message.content).toBe("hi");
   });
 
   it("falls back to the OpenAI tier model when OpenRouter answers empty", async () => {
-    setEntitlement({ speed_tier: "fast", model_family: "ox-alpha" });
+    setEntitlement({ speed_tier: "fast", model_family: "openrouter" });
     const emptyCompletion = {
       choices: [
         {
@@ -396,14 +525,24 @@ describe("gateway model families", () => {
         },
       ],
     };
-    const goodCompletion = {
-      choices: [{ message: { role: "assistant", content: "hi" } }],
+    const responsesCompletion = {
+      id: "resp_1",
+      object: "response",
+      model: "gpt-5.6-luna",
+      status: "completed",
+      output: [
+        {
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: "hi" }],
+        },
+      ],
     };
     const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
       void init;
       return String(url).includes("openrouter")
         ? new Response(JSON.stringify(emptyCompletion), { status: 200 })
-        : new Response(JSON.stringify(goodCompletion), { status: 200 });
+        : new Response(JSON.stringify(responsesCompletion), { status: 200 });
     });
     vi.stubGlobal("fetch", fetchMock);
     const response = await POST(
@@ -417,7 +556,7 @@ describe("gateway model families", () => {
     ) as Record<string, unknown>;
     expect(secondBody["model"]).toBe("gpt-5.6-luna");
     expect(String(fetchMock.mock.calls[1]?.[0])).toBe(
-      "https://upstream.test/v1/chat/completions"
+      "https://upstream.test/v1/responses"
     );
     const payload = (await (response as Response).json()) as {
       choices: { message: { content: string } }[];
@@ -426,15 +565,25 @@ describe("gateway model families", () => {
   });
 
   it("attributes a fallback turn to OpenAI and records the requested family", async () => {
-    setEntitlement({ speed_tier: "fast", model_family: "ox-alpha" });
+    setEntitlement({ speed_tier: "fast", model_family: "openrouter" });
     meteredRows.length = 0;
     const fetchMock = vi.fn(async (url: RequestInfo | URL) =>
       String(url).includes("openrouter")
         ? new Response("no endpoints found", { status: 404 })
         : new Response(
             JSON.stringify({
-              choices: [{ message: { role: "assistant", content: "hi" } }],
-              usage: { prompt_tokens: 3, completion_tokens: 5 },
+              id: "resp_1",
+              object: "response",
+              model: "gpt-5.6-luna",
+              status: "completed",
+              output: [
+                {
+                  type: "message",
+                  role: "assistant",
+                  content: [{ type: "output_text", text: "hi" }],
+                },
+              ],
+              usage: { input_tokens: 3, output_tokens: 5, total_tokens: 8 },
             }),
             { status: 200, headers: { "Content-Type": "application/json" } }
           )
@@ -448,13 +597,15 @@ describe("gateway model families", () => {
     const row = meteredRows[0]!;
     expect(row["model_family"]).toBe("openai");
     expect(row["model"]).toBe("gpt-5.6-luna");
-    expect(row["fallback_from"]).toBe("ox-alpha");
+    expect(row["fallback_from"]).toBe("openrouter");
+    expect(row["prompt_tokens"]).toBe(3);
+    expect(row["completion_tokens"]).toBe(5);
     // OpenAI tier rates, not the family's — the cost follows what served.
     expect(row["cost_usd"]).toBeCloseTo((3 * 0.4 + 5 * 2.4) / 1_000_000, 12);
   });
 
   it("leaves fallback_from null when the requested family serves", async () => {
-    setEntitlement({ speed_tier: "fast", model_family: "ox-alpha" });
+    setEntitlement({ speed_tier: "fast", model_family: "openrouter" });
     meteredRows.length = 0;
     vi.stubGlobal(
       "fetch",
@@ -474,12 +625,12 @@ describe("gateway model families", () => {
     expect(response.status).toBe(200);
     await new Promise((resolve) => setTimeout(resolve, 0));
     const row = meteredRows[0]!;
-    expect(row["model_family"]).toBe("ox-alpha");
+    expect(row["model_family"]).toBe("openrouter");
     expect(row["fallback_from"]).toBeNull();
   });
 
   it("does not fall back when OpenRouter answers with content", async () => {
-    setEntitlement({ speed_tier: "fast", model_family: "ox-alpha" });
+    setEntitlement({ speed_tier: "fast", model_family: "openrouter" });
     const completion = {
       choices: [{ message: { role: "assistant", content: "hello" } }],
     };
@@ -495,11 +646,11 @@ describe("gateway model families", () => {
   });
 
   it("falls back to OpenAI when a streamed OpenRouter answer carries no deltas", async () => {
-    setEntitlement({ speed_tier: "fast", model_family: "ox-alpha" });
+    setEntitlement({ speed_tier: "fast", model_family: "openrouter" });
     const emptySse =
       'data: {"choices":[{"delta":{"role":"assistant"}}]}\n\ndata: [DONE]\n\n';
     const goodSse =
-      'data: {"choices":[{"delta":{"content":"hi"}}]}\n\ndata: [DONE]\n\n';
+      'data: {"type":"response.output_text.delta","delta":"hi"}\n\ndata: {"type":"response.completed","response":{"id":"resp_1","status":"completed","usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}\n\ndata: [DONE]\n\n';
     const fetchMock = vi.fn(async (url: RequestInfo | URL) =>
       new Response(String(url).includes("openrouter") ? emptySse : goodSse, {
         status: 200,
@@ -517,7 +668,7 @@ describe("gateway model families", () => {
   });
 
   it("replays a streamed OpenRouter answer that has content", async () => {
-    setEntitlement({ speed_tier: "fast", model_family: "ox-alpha" });
+    setEntitlement({ speed_tier: "fast", model_family: "openrouter" });
     const goodSse =
       'data: {"choices":[{"delta":{"content":"ox"}}]}\n\ndata: [DONE]\n\n';
     const fetchMock = vi.fn(

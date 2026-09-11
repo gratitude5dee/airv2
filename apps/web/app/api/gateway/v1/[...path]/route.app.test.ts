@@ -203,8 +203,18 @@ async function complete(
   const fetchMock = vi.fn(async () =>
     new Response(
       JSON.stringify({
-        choices: [{ message: { content: "ok" } }],
-        usage: { prompt_tokens: 10, completion_tokens: 5 },
+        id: "resp_1",
+        object: "response",
+        model: "gpt-5.6-luna",
+        status: "completed",
+        output: [
+          {
+            type: "message",
+            role: "assistant",
+            content: [{ type: "output_text", text: "ok" }],
+          },
+        ],
+        usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
       }),
       { status: 200, headers: { "Content-Type": "application/json" } }
     )
@@ -359,8 +369,18 @@ describe("gateway app principal (MC5 §11.3)", () => {
         await gate;
         return new Response(
           JSON.stringify({
-            choices: [{ message: { content: "ok" } }],
-            usage: { prompt_tokens: 10, completion_tokens: 5 },
+            id: "resp_1",
+            object: "response",
+            model: "gpt-5.6-luna",
+            status: "completed",
+            output: [
+              {
+                type: "message",
+                role: "assistant",
+                content: [{ type: "output_text", text: "ok" }],
+              },
+            ],
+            usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
           }),
           { status: 200, headers: { "Content-Type": "application/json" } }
         );
@@ -400,8 +420,18 @@ describe("gateway app principal (MC5 §11.3)", () => {
           await gate;
           return new Response(
             JSON.stringify({
-              choices: [{ message: { content: "ok" } }],
-              usage: { prompt_tokens: 10, completion_tokens: 5 },
+              id: "resp_1",
+              object: "response",
+              model: "gpt-5.6-luna",
+              status: "completed",
+              output: [
+                {
+                  type: "message",
+                  role: "assistant",
+                  content: [{ type: "output_text", text: "ok" }],
+                },
+              ],
+              usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
             }),
             { status: 200, headers: { "Content-Type": "application/json" } }
           );
@@ -475,8 +505,13 @@ describe("gateway app principal (MC5 §11.3)", () => {
         "fetch",
         vi.fn(async () =>
           sse([
-            { choices: [{ delta: { content: "hi" } }], usage: null },
-            { choices: [], usage: { prompt_tokens: 10, completion_tokens: 5 } },
+            { type: "response.output_text.delta", delta: "hi", item_id: "m1", output_index: 0, content_index: 0 },
+            {
+              type: "response.completed",
+              response: {
+                usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
+              },
+            },
           ])
         )
       );
@@ -496,7 +531,11 @@ describe("gateway app principal (MC5 §11.3)", () => {
       nearCap();
       vi.stubGlobal(
         "fetch",
-        vi.fn(async () => sse([{ choices: [{ delta: { content: "hi" } }] }]))
+        vi.fn(async () =>
+          sse([
+            { type: "response.output_text.delta", delta: "hi", item_id: "m1", output_index: 0, content_index: 0 },
+          ])
+        )
       );
       const response = await post("art_a", { model: "fast", messages: [], stream: true });
       expect(response.status).toBe(200);

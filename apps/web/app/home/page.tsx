@@ -33,6 +33,7 @@ import { MAX_UPLOAD_BYTES, UPLOAD_CHUNK_BYTES } from "@/lib/chat/attachments";
 import { HomeNav, parseSection, type Section, type ThreadItem } from "./nav";
 import { ComputerCard, type ComputerDockState } from "./air/computer-card";
 import { MODEL_FAMILY_OPTIONS, SpeedCard } from "./rail/speed-card";
+import { isModelFamily } from "@/lib/entitlements/models";
 import { InklingConsentDialog } from "./rail/inkling-consent";
 import { AppsGrid } from "./rail/apps-grid";
 import { SelectionAsk } from "./selection-ask";
@@ -57,7 +58,7 @@ interface Me {
   entitlement: {
     plan: string;
     speed_tier: string;
-    /** Defaults to "ox-alpha" for anyone who never picked a family. */
+    /** Defaults to "openai" for anyone who never picked a family. */
     model_family?: string;
     tier_models?: { fast: string; balanced: string; deep: string };
     family_models?: Record<string, string>;
@@ -155,7 +156,7 @@ function HomeShell() {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [tier, setTier] = useState("balanced");
-  const [family, setFamily] = useState("ox-alpha");
+  const [family, setFamily] = useState("openai");
   // Set while an Inkling family waits on its consent pop-up.
   const [pendingFamily, setPendingFamily] = useState<string | null>(null);
   const [computerEpoch, setComputerEpoch] = useState(0);
@@ -322,7 +323,8 @@ function HomeShell() {
       setMe(data);
       if (data.entitlement) {
         setTier(data.entitlement.speed_tier);
-        setFamily(data.entitlement.model_family ?? "ox-alpha");
+        const familyValue = data.entitlement.model_family ?? "";
+        setFamily(isModelFamily(familyValue) ? familyValue : "openai");
       }
       // Pre-warm the box so the first message / panel load doesn't wait on
       // a cold resume. Best-effort: every consumer handles a sleeping box.

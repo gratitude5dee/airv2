@@ -56,11 +56,18 @@ import {
   type RuntimePrincipal,
 } from "@/lib/functions/runtime";
 import { recordOpsEvent } from "@/lib/security/limits";
+import {
+  fromResponsesResponse,
+  responsesStreamToChat,
+  toResponsesRequest,
+} from "@/lib/gateway/responses";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const RETRY_DELAY_MS = process.env.NODE_ENV === "test" ? 0 : 1500;
+
+type Json = Record<string, unknown>;
 
 interface Usage {
   prompt_tokens?: number;
@@ -445,9 +452,12 @@ export async function POST(
   let servedModel = "";
   let servedReasoning: string | null = null;
   let servedOnPersonalKey = false;
+  /** True while the in-flight dispatch is talking to upstream /responses. */
+  let servedViaResponses = false;
 
-  const dispatch = async (
-    toFamily: ModelFamily
+  const dispatchOnce = async (
+    toFamily: ModelFamily,
+    preferResponses = true
   ): Promise<Response> => {
     // The tier and family names are the only things that ever appear in a
     // box's config — the real model ID is resolved here and only here.
@@ -457,49 +467,68 @@ export async function POST(
         ? modelForCreateTier(tier)
         : modelForSelection(toFamily, tier, selection);
     servedModel = String(body["model"]);
-    // gpt-5.6 on /v1/chat/completions rejects function tools with any
-    // reasoning_effort other than "none", so tool-bearing calls (every Hermes
-    // agent turn) pin it there; plain completions get the configured effort.
-    // Non-reasoning models reject the field entirely, so it is only injected
-    // for families that accept it.
-    if (isReasoningModel(String(body["model"]))) {
-      const hasTools = Array.isArray(body["tools"]) && body["tools"].length > 0;
-      const reasoning = hasTools ? "none" : reasoningForTier(tier);
-      if (reasoning && body["reasoning_effort"] === undefined) {
-        body["reasoning_effort"] = reasoning;
-      }
-      servedReasoning =
-        typeof body["reasoning_effort"] === "string"
-          ? (body["reasoning_effort"] as string)
-          : null;
-    }
-    // service_tier is OpenAI-only, like reasoning_effort above.
+    servedViaResponses = false;
+    // service_tier is OpenAI-only, like reasoning_effort.
     const provider = providerForFamily(toFamily);
     const openRouter = provider === "openrouter";
     const serviceTier = provider === "openai" ? serviceTierForTier(tier) : undefined;
     if (serviceTier && body["service_tier"] === undefined) {
       body["service_tier"] = serviceTier;
     }
-    // OpenAI reasoning models (gpt-5.x/o-series) reject the legacy knobs
-    // clients still send: max_tokens must be max_completion_tokens, and only
-    // the default sampling params are accepted.
-    if (isReasoningModel(String(body["model"]))) {
-      if (body["max_tokens"] !== undefined) {
-        if (body["max_completion_tokens"] === undefined) {
-          body["max_completion_tokens"] = body["max_tokens"];
+    const reasoningModel = isReasoningModel(String(body["model"]));
+    if (provider === "openai" && reasoningModel && preferResponses) {
+      // /responses accepts tools + reasoning.effort together, which
+      // /chat/completions does not — every agent turn carries tools, so the
+      // OpenAI lane is always served through it. A caller-set
+      // reasoning_effort wins over the tier default, as on the chat lane.
+      servedReasoning =
+        (typeof body["reasoning_effort"] === "string"
+          ? (body["reasoning_effort"] as string)
+          : reasoningForTier(tier)) ?? null;
+      servedViaResponses = true;
+    } else {
+      // gpt-5.6 on /v1/chat/completions rejects function tools with any
+      // reasoning_effort other than "none", so tool-bearing calls on the
+      // non-Responses fallback pin it there; plain completions get the
+      // configured effort. Non-reasoning models reject the field entirely,
+      // so it is only injected for families that accept it.
+      if (reasoningModel) {
+        const hasTools = Array.isArray(body["tools"]) && body["tools"].length > 0;
+        const reasoning = hasTools ? "none" : reasoningForTier(tier);
+        if (reasoning && body["reasoning_effort"] === undefined) {
+          body["reasoning_effort"] = reasoning;
         }
-        delete body["max_tokens"];
+        servedReasoning =
+          typeof body["reasoning_effort"] === "string"
+            ? (body["reasoning_effort"] as string)
+            : null;
       }
-      if (body["temperature"] !== undefined && body["temperature"] !== 1) {
-        delete body["temperature"];
+      // OpenAI reasoning models (gpt-5.x/o-series) reject the legacy knobs
+      // clients still send: max_tokens must be max_completion_tokens, and
+      // only the default sampling params are accepted. The Responses
+      // translation renames/strips them itself.
+      if (reasoningModel) {
+        if (body["max_tokens"] !== undefined) {
+          if (body["max_completion_tokens"] === undefined) {
+            body["max_completion_tokens"] = body["max_tokens"];
+          }
+          delete body["max_tokens"];
+        }
+        if (body["temperature"] !== undefined && body["temperature"] !== 1) {
+          delete body["temperature"];
+        }
+        if (body["top_p"] !== undefined && body["top_p"] !== 1) {
+          delete body["top_p"];
+        }
       }
-      if (body["top_p"] !== undefined && body["top_p"] !== 1) {
-        delete body["top_p"];
+      if (streaming) {
+        body["stream_options"] = { ...(body["stream_options"] as object), include_usage: true };
       }
     }
-    if (streaming) {
-      body["stream_options"] = { ...(body["stream_options"] as object), include_usage: true };
-    }
+    const upstreamPath = servedViaResponses ? "responses" : endpoint;
+    const upstreamBody = servedViaResponses
+      ? toResponsesRequest(body, servedReasoning ?? undefined)
+      : body;
 
     let baseUrl: string;
     let personalKey: string | null;
@@ -551,7 +580,7 @@ export async function POST(
         }
       );
     }
-    return fetch(`${baseUrl}/${endpoint}`, {
+    return fetch(`${baseUrl}/${upstreamPath}`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -564,8 +593,37 @@ export async function POST(
             }
           : {}),
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify(upstreamBody),
     });
+  };
+
+  const dispatch = async (
+    toFamily: ModelFamily,
+    preferResponses = true
+  ): Promise<Response> => {
+    const upstream = await dispatchOnce(toFamily, preferResponses);
+    // An upstream that fronts chat/completions but not /responses (an older
+    // relay or an incompatible proxy) 4xxs the translated call; retry once
+    // through the pinned chat lane rather than failing the turn. This runs
+    // on every OpenAI dispatch, including provider-fallback ones.
+    if (
+      preferResponses &&
+      servedViaResponses &&
+      !upstream.ok &&
+      [400, 404, 405, 422].includes(upstream.status)
+    ) {
+      console.warn(
+        JSON.stringify({
+          msg: "gateway responses unsupported, using chat/completions",
+          user_id: userId,
+          model: servedModel,
+          status: upstream.status,
+        })
+      );
+      await upstream.body?.cancel().catch(() => undefined);
+      return dispatchOnce(toFamily, false);
+    }
+    return upstream;
   };
 
   // Every path out of here either meters (the hold settles to the real
@@ -706,6 +764,7 @@ export async function POST(
       const meteredFamily = servedFamily;
       const meteredModel = servedModel;
       const meteredPersonal = servedOnPersonalKey;
+      const meteredViaResponses = servedViaResponses;
       const streamHold = takeHold();
       const meteredTrace: RouteTrace = {
         requestedModel,
@@ -715,7 +774,10 @@ export async function POST(
         label: app ? app.slug : createLabel,
         app: appTrace(streamHold),
       };
-      const stream = meteringTee(upstream.body, (usage) => {
+      const clientBody = meteredViaResponses
+        ? responsesStreamToChat(upstream.body)
+        : upstream.body;
+      const stream = meteringTee(clientBody, (usage) => {
         if (usage) {
           after(
             meter(
@@ -741,7 +803,10 @@ export async function POST(
       });
     }
 
-    const json = (await upstream.json()) as { usage?: Usage };
+    const upstreamJson = (await upstream.json()) as Json;
+    const json = (servedViaResponses
+      ? fromResponsesResponse(upstreamJson)
+      : upstreamJson) as { usage?: Usage };
     if (json.usage) {
       const usage = json.usage;
       after(
