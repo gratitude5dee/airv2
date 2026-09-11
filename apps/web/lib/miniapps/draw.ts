@@ -456,7 +456,30 @@ export async function runDrawJob(
       session.user_id,
       job.input_asset_id
     );
-    if (url) mediaInputs.push({ kind: "image", url });
+    if (!url) {
+      // The edit source can no longer be signed — submitting without it
+      // would turn a paid refine into an unrelated text-to-image render.
+      await updateCreativeJob(supabase, job.id, {
+        status: "failed",
+        error: "edit source expired",
+      });
+      await appendDrawEvent(supabase, session.id, {
+        jobId: job.id,
+        kind: "state",
+        state: "failed",
+        errorCode: "PARENT_EXPIRED",
+      });
+      await supabase
+        .from("draw_sessions")
+        .update({ active_job_id: null, latest_job_id: job.id })
+        .eq("id", session.id)
+        .eq("active_job_id", job.id);
+      return {
+        status: "failed",
+        line: "that image isn't available anymore — start a new one",
+      };
+    }
+    mediaInputs.push({ kind: "image", url });
   }
 
   const cleanPrompt = sanitizeDrawPrompt(prompt);

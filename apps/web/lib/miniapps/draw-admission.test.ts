@@ -9,6 +9,7 @@ import {
   admitDrawGeneration,
   animateDrawJob,
   drawStatus,
+  runDrawJob,
   sanitizeDrawPrompt,
   storeDrawUpload,
   type DrawSession,
@@ -265,6 +266,55 @@ describe("animateDrawJob", () => {
       "job-new",
       { status: "failed", error: "superseded before admission" }
     );
+  });
+});
+
+describe("runDrawJob", () => {
+  it("fails the job instead of submitting when the edit source can't be signed", async () => {
+    const { supabase, calls } = fakeDb((q) => {
+      if (q.table === "creative_assets" && q.op === "select") {
+        return { data: null }; // the referenced asset row is gone
+      }
+      return { data: null, error: null };
+    });
+    const job = {
+      id: "job-1",
+      draw_mode: "fast",
+      input_asset_id: "asset-gone",
+    } as never;
+    const result = await runDrawJob(
+      supabase,
+      drawSession(),
+      job,
+      "make it pop"
+    );
+    expect(result.status).toBe("failed");
+    // A paid submit without the edit source would render an unrelated
+    // text-to-image — it must never reach executeCreativeJob.
+    expect(vi.mocked(executeCreativeJob)).not.toHaveBeenCalled();
+    expect(vi.mocked(updateCreativeJob)).toHaveBeenCalledWith(
+      supabase,
+      "job-1",
+      expect.objectContaining({ status: "failed" })
+    );
+    const event = calls.find(
+      (c) => c.table === "draw_events" && c.method === "insert"
+    );
+    expect(event?.args[0]).toMatchObject({
+      kind: "state",
+      state: "failed",
+      error_code: "PARENT_EXPIRED",
+    });
+    const release = calls.find(
+      (c) =>
+        c.table === "draw_sessions" &&
+        c.method === "update" &&
+        "active_job_id" in (c.args[0] as object)
+    );
+    expect(release?.args[0]).toMatchObject({
+      active_job_id: null,
+      latest_job_id: "job-1",
+    });
   });
 });
 

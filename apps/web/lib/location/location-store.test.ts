@@ -6,8 +6,10 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   claimDueLocationRequests,
+  completeLocationRequest,
   expediteLocationRequest,
   releaseLocationRequest,
+  supersedeLocationRequests,
   RESOLUTION_BACKOFF_MS,
   type LocationRequest,
 } from "./requests";
@@ -162,6 +164,48 @@ describe("expediteLocationRequest", () => {
   });
 });
 
+describe("supersedeLocationRequests", () => {
+  it("bumps revision on a resolving row so its claimed fence goes stale", async () => {
+    const { supabase, calls } = fakeDb((q) => {
+      if (q.table === "location_requests" && q.op === "select") {
+        return { data: [{ id: "req-1", revision: 5 }] };
+      }
+      return { data: null, error: null };
+    });
+    await supersedeLocationRequests(supabase, base.space_id);
+    const update = calls.find(
+      (c) => c.table === "location_requests" && c.method === "update"
+    );
+    expect(update?.args[0]).toEqual({ status: "cancelled", revision: 6 });
+    expect(
+      calls.some(
+        (c) => c.method === "eq" && c.args[0] === "revision" && c.args[1] === 5
+      )
+    ).toBe(true);
+  });
+});
+
+describe("completeLocationRequest", () => {
+  const resolving = { ...base, status: "resolving" as const, revision: 2 };
+
+  it("throws on a supabase error so the resolver recovers", async () => {
+    const { supabase } = fakeDb(() => ({
+      data: null,
+      error: { message: "transient" },
+    }));
+    await expect(
+      completeLocationRequest(supabase, resolving, { status: "expired" })
+    ).rejects.toThrow("completion failed");
+  });
+
+  it("throws when the revision fence matches no row", async () => {
+    const { supabase } = fakeDb(() => ({ data: [], error: null }));
+    await expect(
+      completeLocationRequest(supabase, resolving, { status: "expired" })
+    ).rejects.toThrow("revision fence");
+  });
+});
+
 describe("claimDueLocationRequests", () => {
   it("claims CAS winners only and bumps revision on the claim", async () => {
     const rows = [
@@ -251,12 +295,38 @@ describe("resolveDueLocationRequests", () => {
     sender.getSharedLocation.mockResolvedValue(sharedLocation);
   });
 
-  function claimedResolveDb(request: LocationRequest = base) {
+  function claimedResolveDb(
+    request: LocationRequest = base,
+    overrides?: { freshBurst?: string[]; superseded?: boolean }
+  ) {
+    // The claim bumps revision once; the delivery re-read sees that row at
+    // the claimed revision — or a superseded shape when the test wants it.
+    const claimedRevision = request.revision + 1;
     return fakeDb((q) => {
       if (q.table === "location_requests" && q.op === "select") {
+        if (q.calls.at(-1)?.method === "maybeSingle") {
+          return {
+            data: overrides?.superseded
+              ? {
+                  status: "cancelled",
+                  revision: claimedRevision + 1,
+                  burst_input: request.burst_input,
+                }
+              : {
+                  status: "resolving",
+                  revision: claimedRevision,
+                  burst_input: overrides?.freshBurst ?? request.burst_input,
+                },
+          };
+        }
         return { data: [{ ...request }] };
       }
-      if (q.op === "update" && q.returning) return { data: { id: request.id } };
+      if (q.op === "update" && q.returning) {
+        // claim ends in maybeSingle (object), completion selects id (array)
+        return q.calls.at(-1)?.method === "maybeSingle"
+          ? { data: { id: request.id } }
+          : { data: [{ id: request.id }] };
+      }
       return { data: null, error: null };
     });
   }
@@ -324,5 +394,40 @@ describe("resolveDueLocationRequests", () => {
           (c.args[0] as { status?: string }).status === "awaiting_share"
       )
     ).toBe(true);
+  });
+
+  it("delivers a caption appended while the provider probe ran", async () => {
+    const { supabase, calls } = claimedResolveDb(base, {
+      freshBurst: ["tacos near me", "open now"],
+    });
+    const out = await resolveDueLocationRequests(supabase);
+    expect(out).toEqual({ resolved: 1, expired: 0 });
+    const insert = calls.find(
+      (c) => c.table === "batch_queue" && c.method === "insert"
+    );
+    const rows = insert!.args[0] as { body: string }[];
+    expect(rows.map((r) => r.body)).toContain("open now");
+  });
+
+  it("drops delivery when the request was superseded mid-resolution", async () => {
+    const { supabase, calls } = claimedResolveDb(base, { superseded: true });
+    const out = await resolveDueLocationRequests(supabase);
+    expect(out).toEqual({ resolved: 0, expired: 0 });
+    expect(
+      calls.some((c) => c.table === "batch_queue" && c.method === "insert")
+    ).toBe(false);
+    expect(
+      calls.some(
+        (c) =>
+          c.table === "location_requests" &&
+          c.method === "update" &&
+          (c.args[0] as { status?: string }).status === "consumed"
+      )
+    ).toBe(false);
+    expect(sender.sendText).not.toHaveBeenCalledWith(
+      base.space_id,
+      base.phone,
+      expect.stringContaining("got it")
+    );
   });
 });

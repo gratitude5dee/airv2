@@ -10,8 +10,8 @@
  * Progress is a ~2.5s status poll against the same route — GMI delivers
  * the finished render only, so there is no preview stream to wire (the
  * plan's documented divergence from mayor-coast's live partial_images).
- * sessionStorage holds only ephemeral UI state (selected revision); the
- * content of the studio lives server-side on draw_sessions + creative_jobs.
+ * All studio state lives in React or server-side on draw_sessions +
+ * creative_jobs — the mini-app contract (C17) forbids browser storage.
  */
 import {
   StrictMode,
@@ -317,15 +317,7 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
     initial.revisions.filter((r) => r.outputUrl).at(-1)?.outputUrl ?? null
   );
   const [selectedRevisionId, setSelectedRevisionId] = useState<string | null>(
-    () => {
-      try {
-        return sessionStorage.getItem(
-          `air-draw-revision:${initial.sessionId}`
-        );
-      } catch {
-        return null;
-      }
-    }
+    null
   );
   // The media the preview/save target: a delivered zap job isn't a draw
   // revision, so it carries its own pointer until the user picks a revision.
@@ -764,21 +756,13 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
   const selectRevision = useCallback(
     (revision: DrawRevision): void => {
       setSelectedRevisionId(revision.jobId);
-      try {
-        sessionStorage.setItem(
-          `air-draw-revision:${initial.sessionId}`,
-          revision.jobId
-        );
-      } catch {
-        /* private mode */
-      }
       clearAnimation();
       if (revision.outputUrl) {
         setPreviewUrl(revision.outputUrl);
         setTab("preview");
       }
     },
-    [initial.sessionId, clearAnimation]
+    [clearAnimation]
   );
 
   /* ------------------------------------------------------------ render */

@@ -205,10 +205,31 @@ export async function resolveDueLocationRequests(
               .catch(() => undefined);
             continue;
           }
+          // Ownership + freshness re-read under our claimed revision:
+          // supersession bumps the revision, and a share's caption may have
+          // been appended while the provider probe ran — the claim snapshot
+          // is stale by design.
+          const { data: fresh } = await supabase
+            .from("location_requests")
+            .select("status, revision, burst_input")
+            .eq("id", request.id)
+            .maybeSingle();
+          if (
+            !fresh ||
+            fresh.status !== "resolving" ||
+            fresh.revision !== request.revision
+          ) {
+            continue;
+          }
+          const current = {
+            ...request,
+            burst_input:
+              (fresh.burst_input as string[] | null) ?? request.burst_input,
+          };
           // Requeue before consuming: a failed batch_queue insert must keep
           // the request retryable rather than dropping the held burst.
-          await deliverHeldBurst(supabase, request, label);
-          await completeLocationRequest(supabase, request, {
+          await deliverHeldBurst(supabase, current, label);
+          await completeLocationRequest(supabase, current, {
             status: "consumed",
             coarseLabel: label,
           });

@@ -204,11 +204,23 @@ export async function supersedeLocationRequests(
   supabase: SupabaseClient,
   spaceId: string
 ): Promise<void> {
-  await supabase
+  const { data: inflight } = await supabase
     .from("location_requests")
-    .update({ status: "cancelled" })
+    .select("id, revision")
     .eq("space_id", spaceId)
     .in("status", ["pending_provider", "awaiting_share", "resolving"]);
+  for (const row of (inflight ?? []) as { id: string; revision: number }[]) {
+    // The revision bump is the point on resolving rows: a sweeper holding
+    // the row fences every terminal/release write on its claimed revision,
+    // so a plain status write would leave it authorized to deliver the
+    // stale burst and complete a request the user already superseded.
+    await supabase
+      .from("location_requests")
+      .update({ status: "cancelled", revision: row.revision + 1 })
+      .eq("id", row.id)
+      .eq("revision", row.revision)
+      .in("status", ["pending_provider", "awaiting_share", "resolving"]);
+  }
 }
 
 /**
@@ -256,7 +268,7 @@ export async function releaseLocationRequest(
     RESOLUTION_BACKOFF_MS[
       Math.min(attemptIndex, RESOLUTION_BACKOFF_MS.length - 1)
     ]!;
-  await supabase
+  const { error } = await supabase
     .from("location_requests")
     .update({
       status: "awaiting_share",
@@ -264,6 +276,11 @@ export async function releaseLocationRequest(
     })
     .eq("id", request.id)
     .eq("revision", request.revision);
+  // A failed release must surface — callers that swallow it leave the row
+  // stuck in `resolving`, which claimDueLocationRequests never re-selects.
+  if (error) {
+    throw new Error(`location request release failed: ${error.message}`);
+  }
 }
 
 /** Terminal write — consumed keeps only the coarse label. */
@@ -274,7 +291,7 @@ export async function completeLocationRequest(
     | { status: "consumed"; coarseLabel: string }
     | { status: "expired" | "declined" | "cancelled" }
 ): Promise<void> {
-  await supabase
+  const { data, error } = await supabase
     .from("location_requests")
     .update({
       status: outcome.status,
@@ -284,5 +301,14 @@ export async function completeLocationRequest(
       resolved_at: new Date().toISOString(),
     })
     .eq("id", request.id)
-    .eq("revision", request.revision);
+    .eq("revision", request.revision)
+    .select("id");
+  // Throw so the resolver enters its recovery path instead of announcing
+  // completion while the row is still `resolving` (a state nothing claims).
+  if (error) {
+    throw new Error(`location request completion failed: ${error.message}`);
+  }
+  if (!data?.length) {
+    throw new Error("location request completion lost the revision fence");
+  }
 }
