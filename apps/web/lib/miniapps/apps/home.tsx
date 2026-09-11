@@ -18,6 +18,7 @@ import { esc, forbidden, withBaseHeaders } from "../html";
 import { avatarHtml, renderShell, shellHtml, tintHue } from "../shell";
 import type { MiniAppContext, MiniAppModule } from "./types";
 import type { RegistryApp } from "../registry";
+import { firstPartyAppArt } from "../app-art";
 
 // App icons come from R2 — widen the shell's theme-derived img-src.
 function homeHtml(body: string): NextResponse {
@@ -34,7 +35,7 @@ function avatar(app: RegistryApp): string {
   return avatarHtml(
     app.name,
     app.slug,
-    app.icon_key ? publicUrl(app.icon_key) : null
+    app.icon_key ? publicUrl(app.icon_key) : firstPartyAppArt(app.slug)
   );
 }
 

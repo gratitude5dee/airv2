@@ -140,7 +140,10 @@ export function middleware(request: NextRequest): NextResponse {
   // First-party static assets (public/) are shared across both hosts —
   // mini-app shells reference them by absolute path, so they must not be
   // rewritten into loader slugs.
-  if (pathname.startsWith("/creator-os/")) {
+  if (
+    pathname.startsWith("/creator-os/") ||
+    pathname.startsWith("/app-icons/")
+  ) {
     return NextResponse.next({ request: { headers } });
   }
 

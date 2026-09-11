@@ -43,6 +43,7 @@ import { HistoryPanel } from "./panels/history-panel";
 import { WalletPanel } from "./panels/wallet-panel";
 import { SettingsScreen } from "./panels/settings-screen";
 import { ContextPanel } from "./panels/context-panel";
+import { HomeDashboard } from "./home-dashboard";
 import {
   isComputerTool,
   isNearBottom,
@@ -143,7 +144,7 @@ function HomeShell() {
   );
 
   const navigate = useCallback(
-    (next: Section) => setParams({ s: next === "air.chat" ? null : next }),
+    (next: Section) => setParams({ s: next === "air.home" ? null : next }),
     [setParams]
   );
   const setDock = useCallback(
@@ -940,6 +941,23 @@ function HomeShell() {
         />
 
         <section className="panel relative flex h-[72vh] flex-col !p-4">
+          <HomeDashboard
+            active={section === "air.home"}
+            needsCount={needsCount}
+            onPendingCount={setNeedsCount}
+            onNavigate={navigate}
+            onOpenApp={(slug) => void openAppInChat(slug)}
+            calendarPrefill={calendarPrefill}
+            onPrefillConsumed={() => setCalendarPrefill(null)}
+            onAgentRun={(prompt) => {
+              navigate("air.chat");
+              if (busy) {
+                setInput(prompt);
+              } else {
+                void send(prompt);
+              }
+            }}
+          />
           <NeedsPanel
             active={section === "personal.needs"}
             onPendingCount={setNeedsCount}

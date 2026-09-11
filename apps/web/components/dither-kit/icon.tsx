@@ -39,6 +39,7 @@ const GLYPHS = {
   eye: ["........", "..XXXX..", ".X....X.", "X..XX..X", "X..XX..X", ".X....X.", "..XXXX..", "........"],
   eyeoff: ["X.......", ".X.XXX..", "..X...X.", "X..X...X", "X...X..X", ".X...X..", "..XXXX.X", ".......X"],
   browser: ["........", "XXXXXXXX", "X.X....X", "XXXXXXXX", "X......X", "X......X", "XXXXXXXX", "........"],
+  home: ["...XX...", "..XXXX..", ".XXXXXX.", ".X.XX.X.", ".X.XX.X.", ".XXXXXX.", ".X....X.", "........"],
 } as const;
 
 export type PixelGlyph = keyof typeof GLYPHS;
@@ -63,6 +64,7 @@ const APP_GLYPHS: Record<string, PixelGlyph> = {
   vault: "lock",
   kanban: "kanban",
   todo: "todo",
+  home: "home",
   ads: "ads",
 };
 

@@ -6,8 +6,10 @@
  * exists, and a deterministic DitherAvatar pixel glyph as the fallback for
  * everything else (same hash family, D19).
  */
+import { useEffect, useState } from "react";
 import { DitherAvatar } from "@/components/dither-kit/avatar";
 import { PixelIcon, appGlyph } from "@/components/dither-kit/icon";
+import { firstPartyAppArt } from "@/lib/miniapps/app-art";
 
 export function AppTile({
   slug,
@@ -26,6 +28,15 @@ export function AppTile({
   className?: string;
 }) {
   const glyph = appGlyph(slug);
+  const bundledArt = firstPartyAppArt(slug);
+  const imageSources = [iconUrl, bundledArt].filter(
+    (source): source is string => Boolean(source)
+  );
+  const [imageIndex, setImageIndex] = useState(0);
+  useEffect(() => {
+    setImageIndex(0);
+  }, [iconUrl, bundledArt]);
+  const imageSrc = imageSources[imageIndex] ?? null;
   const iconSize = Math.max(12, Math.round(size * 0.45));
   return (
     <span
@@ -33,17 +44,18 @@ export function AppTile({
       style={{ width: size, height: size, borderRadius: radius }}
       aria-hidden
     >
-      {glyph ? (
-        <PixelIcon glyph={glyph} size={iconSize} />
-      ) : iconUrl ? (
+      {imageSrc ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={iconUrl}
+          src={imageSrc}
           alt=""
           width={iconSize}
           height={iconSize}
-          style={{ imageRendering: "pixelated" }}
+          className="rounded-[28%] object-cover"
+          onError={() => setImageIndex((index) => index + 1)}
         />
+      ) : glyph ? (
+        <PixelIcon glyph={glyph} size={iconSize} />
       ) : (
         <DitherAvatar
           name={name || slug}
