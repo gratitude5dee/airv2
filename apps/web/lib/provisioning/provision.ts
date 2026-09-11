@@ -205,7 +205,10 @@ interface CreatedInstance {
  */
 function defaultBoxProvider(environment: ComputeEnvironment): BoxProvider {
   if (environment !== "ubuntu") return "ascii";
-  if (env.tenkiTemplateId()) return "tenki";
+  const templateId = env.tenkiTemplateId();
+  // A malformed value can't fork — select tenki only on a well-formed
+  // `tenki:` ref so a bad setting degrades to ascii instead of an outage.
+  if (templateId && providerOf(templateId) === "tenki") return "tenki";
   console.log(
     JSON.stringify({
       msg: "TENKI_TEMPLATE_ID unset — defaulting new user to the ascii channel template",

@@ -399,6 +399,20 @@ describe("provisionUser environments", () => {
     }
   });
 
+  it("a malformed TENKI_TEMPLATE_ID degrades to ascii rather than failing", async () => {
+    tenkiTemplate = "snap-123"; // missing the tenki: prefix
+    try {
+      const result = await provisionUser();
+      expect(result.environment).toBe("ubuntu");
+      expect(fork).toHaveBeenCalledWith(
+        expect.objectContaining({ templateId: "template-ubuntu" })
+      );
+      expect(upserts["boxes"]?.[0]).toMatchObject({ provider: "ascii" });
+    } finally {
+      tenkiTemplate = "tenki:snap-1";
+    }
+  });
+
   it("explicit ascii forks the ubuntu channel template", async () => {
     const result = await provisionUser({ provider: "ascii" });
     expect(result.environment).toBe("ubuntu");
