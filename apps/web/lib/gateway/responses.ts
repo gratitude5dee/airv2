@@ -79,8 +79,14 @@ export function toResponsesRequest(
       }
       // Reasoning items precede the calls they produced on the real output
       // stream; restore that order so the model can resume its own thought.
+      // The echo is caller-controlled data crossing a trust boundary: only
+      // reasoning items may come back — anything else would let a caller
+      // inject forged provider input (tool calls, messages) into history.
       for (const detail of message.reasoning_details ?? []) {
-        if (detail.type === REASONING_DETAIL && detail.item !== undefined) {
+        if (
+          detail.type === REASONING_DETAIL &&
+          detail.item?.["type"] === "reasoning"
+        ) {
           input.push(detail.item);
         }
       }
@@ -306,6 +312,7 @@ export function responsesStreamToChat(
       const toolIndexByOutput = new Map<number, number>();
       let sawToolCall = false;
       let sawTerminal = false;
+      let finished = false;
 
       const emit = (delta: Json, finish: string | null = null): void => {
         controller.enqueue(
@@ -404,11 +411,17 @@ export function responsesStreamToChat(
             sawTerminal = true;
             emit({}, res ? finishReason(res, sawToolCall) : "stop");
             emitUsage(res?.["usage"] as Json | undefined);
+            // The terminal event IS the authoritative result — trailing
+            // bytes ([DONE], EOF) carry nothing, and a socket reset after
+            // completion must not turn a finished turn into a retryable
+            // transport error.
+            finished = true;
             break;
           case "response.incomplete":
             sawTerminal = true;
             emit({}, "length");
             emitUsage(res?.["usage"] as Json | undefined);
+            finished = true;
             break;
           case "response.failed":
           case "error": {
@@ -457,10 +470,20 @@ export function responsesStreamToChat(
             }
             sep = buffer.indexOf("\n\n");
           }
+          if (finished) break;
         }
       } catch (error) {
-        failure = error;
+        // A transport failure after the terminal event can't un-complete a
+        // finished turn — swallow it so the client sees a clean close.
+        failure = finished ? null : error;
       } finally {
+        try {
+          // `finished` exits the loop before EOF — release the upstream
+          // socket rather than letting the body drain on its own.
+          await reader.cancel();
+        } catch {
+          // already errored/closed
+        }
         reader.releaseLock();
         if (failure == null && !sawTerminal) {
           // A body that ends before its terminal event is truncated, not
