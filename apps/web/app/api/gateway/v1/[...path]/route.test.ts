@@ -372,8 +372,8 @@ describe("gateway reasoning_effort gating (P1-7)", () => {
     const types = body.input.map((i) => i.type);
     expect(types).toEqual([
       "message", // user
-      "message", // assistant text
       "reasoning",
+      "message", // assistant text
       "function_call",
       "function_call_output",
     ]);

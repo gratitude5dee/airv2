@@ -64,6 +64,19 @@ export function toResponsesRequest(
         input.push({ type: "message", role, content: parts });
       }
     } else if (role === "assistant") {
+      // Reasoning precedes the text and calls it produced on the real
+      // output stream; restore that order so the model resumes its own
+      // thought. The echo is caller-controlled data crossing a trust
+      // boundary: only reasoning items may come back — anything else would
+      // let a caller inject forged provider input into history.
+      for (const detail of message.reasoning_details ?? []) {
+        if (
+          detail.type === REASONING_DETAIL &&
+          detail.item?.["type"] === "reasoning"
+        ) {
+          input.push(detail.item);
+        }
+      }
       const parts: unknown[] = [];
       if (typeof message.content === "string" && message.content) {
         parts.push({ type: "output_text", text: message.content });
@@ -76,19 +89,6 @@ export function toResponsesRequest(
       }
       if (parts.length > 0) {
         input.push({ type: "message", role: "assistant", content: parts });
-      }
-      // Reasoning items precede the calls they produced on the real output
-      // stream; restore that order so the model can resume its own thought.
-      // The echo is caller-controlled data crossing a trust boundary: only
-      // reasoning items may come back — anything else would let a caller
-      // inject forged provider input (tool calls, messages) into history.
-      for (const detail of message.reasoning_details ?? []) {
-        if (
-          detail.type === REASONING_DETAIL &&
-          detail.item?.["type"] === "reasoning"
-        ) {
-          input.push(detail.item);
-        }
       }
       for (const call of message.tool_calls ?? []) {
         input.push({

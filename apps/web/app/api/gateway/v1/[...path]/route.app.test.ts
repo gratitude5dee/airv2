@@ -527,6 +527,29 @@ describe("gateway app principal (MC5 §11.3)", () => {
       expect(ledger["app-a"]?.spent).toBeCloseTo(spent + cost, 10);
     });
 
+    it("a truncated stream settles the hold at the reserved amount", async () => {
+      nearCap();
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () =>
+          sse([
+            // delta, then a close with no terminal event — the translated
+            // stream errors, so provider spend happened but is unmeterable
+            { type: "response.output_text.delta", delta: "hi", item_id: "m1", output_index: 0, content_index: 0 },
+          ])
+        )
+      );
+      const response = await post("art_a", { model: "fast", messages: [], stream: true });
+      expect(response.status).toBe(200);
+      await expect(response.text()).rejects.toThrow();
+      await tick();
+      expect(meteredRows).toHaveLength(0);
+      expect(ledger["app-a"]).toEqual({
+        spent: spent + appReserveUsd("fast"),
+        reserved: 0,
+      });
+    });
+
     it("a stream that closes without usage releases the hold and meters nothing", async () => {
       nearCap();
       vi.stubGlobal(
