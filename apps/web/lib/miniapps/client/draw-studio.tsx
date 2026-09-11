@@ -462,8 +462,11 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
     setActiveJob(payload.activeJob);
     setRevisions(payload.revisions);
     const newest = payload.revisions.filter((r) => r.outputUrl).at(-1);
-    if (newest?.outputUrl) setPreviewUrl(newest.outputUrl);
-  }, [latest]);
+    // A delivered animation isn't a revision — don't swap it for the still.
+    if (newest?.outputUrl && !animatedPreviewUrl) {
+      setPreviewUrl(newest.outputUrl);
+    }
+  }, [latest, animatedPreviewUrl]);
 
   useEffect(() => {
     // ~2.5s cadence: the render lane has no preview stream, so the strip
