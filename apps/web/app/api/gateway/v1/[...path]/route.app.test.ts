@@ -534,6 +534,7 @@ describe("gateway app principal (MC5 §11.3)", () => {
         vi.fn(async () =>
           sse([
             { type: "response.output_text.delta", delta: "hi", item_id: "m1", output_index: 0, content_index: 0 },
+            { type: "response.completed", response: { status: "completed" } },
           ])
         )
       );
