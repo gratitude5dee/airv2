@@ -283,9 +283,11 @@ export const draw: MiniAppModule = {
               ? "image/png"
               : ext === "webp"
                 ? "image/webp"
-                : ext === "mp4" || ext === "mov"
+                : ext === "mp4"
                   ? "video/mp4"
-                  : "image/jpeg";
+                  : ext === "mov"
+                    ? "video/quicktime"
+                    : "image/jpeg";
           let sent = false;
           try {
             const sender = await createSpectrumSender();

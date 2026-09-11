@@ -174,15 +174,17 @@ function buildAppCard(
  * The advanced iMessage client bound to a line. spectrum-ts keeps one
  * RemoteClient per configured line under `__internal.platforms`; the line's
  * phone picks the entry (mayor-coast's advancedClientForThread).
+ * Exported for the contract test — this shape is undocumented SDK internals.
  */
-function advancedClientForLine(
+export function advancedClientForLine(
   app: unknown,
   phone: string
 ): AdvancedIMessage | undefined {
   const platforms = (
     app as { __internal?: { platforms?: Map<string, { client: unknown }> } }
   ).__internal?.platforms;
-  const runtime = platforms?.get("iMessage");
+  const runtime =
+    platforms instanceof Map ? platforms.get("iMessage") : undefined;
   const entries = Array.isArray(runtime?.client)
     ? (runtime.client as { client: AdvancedIMessage; phone: string }[])
     : [];

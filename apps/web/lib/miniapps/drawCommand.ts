@@ -12,6 +12,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ingestUploadedMedia } from "../creative/store";
+import { heifToJpeg, isHeif } from "../identity/heif";
 import type { SpectrumSender } from "../spectrum/sender";
 import {
   cardLayout,
@@ -94,11 +95,22 @@ export async function maybeRunDrawLane(
   for (const id of attachmentIds) {
     const fetched = await sender.getAttachment(id, job.phone).catch(() => undefined);
     if (!fetched || !fetched.mimeType.startsWith("image/")) continue;
+    // iPhones shoot HEIC — transcode to JPEG at ingest, same contract as
+    // stageCreativeInput / identity uploads, so the draw job's edit source
+    // is a format downstream decoders actually read.
+    let bytes = fetched.data;
+    let mimeType = fetched.mimeType;
+    if (isHeif(mimeType, bytes)) {
+      const converted = await heifToJpeg(bytes).catch(() => undefined);
+      if (!converted) continue;
+      bytes = converted;
+      mimeType = "image/jpeg";
+    }
     const asset = await ingestUploadedMedia(
       supabase,
       job.userId,
-      fetched.data,
-      fetched.mimeType
+      bytes,
+      mimeType
     ).catch(() => undefined);
     if (asset) {
       initialAssetId = asset.id;

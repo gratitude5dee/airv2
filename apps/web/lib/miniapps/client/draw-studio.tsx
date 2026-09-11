@@ -551,6 +551,16 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
 
   const importImage = useCallback((file: File | undefined): void => {
     if (!file) return;
+    // Browsers can't decode HEIC to a canvas — an iPhone photo reaches the
+    // studio by texting it with /draw (the iMessage lane transcodes it).
+    if (
+      file.type === "image/heic" ||
+      file.type === "image/heif" ||
+      /\.hei[cf]$/i.test(file.name)
+    ) {
+      setMessage("HEIC photo — text it to me with /draw instead");
+      return;
+    }
     if (
       file.size > IMPORT_MAX_BYTES ||
       !["image/jpeg", "image/png", "image/webp"].includes(file.type)

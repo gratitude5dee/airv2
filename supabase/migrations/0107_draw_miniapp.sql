@@ -120,6 +120,9 @@ create policy own_location_requests on location_requests
 alter table carried_messages add column sender_id text;
 
 -- ─── registry row + card kind ────────────────────────────────────────────────
+-- Registry row + 'draw' card kind: an explicitly requested mayor-coast
+-- parity port — documented exception to the product-freeze surface policy
+-- (review CA-19). Owner-scoped single access, no third-party surface.
 insert into mini_apps
   (slug, route, kind, scopes, backing_tool, name, description,
    visibility, access, status)

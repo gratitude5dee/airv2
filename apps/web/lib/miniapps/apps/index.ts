@@ -41,6 +41,9 @@ export const FIRST_PARTY_MODULES: Record<string, MiniAppModule> = {
   computer,
   connect,
   crm,
+  // Product-freeze exception (review CA-19): /draw is an explicitly
+  // requested parity port from mayor-coast — owner-scoped, no third-party
+  // surface; also adds the 'draw' card kind + mini_apps row.
   draw,
   feedback,
   home,
