@@ -84,9 +84,10 @@ export interface ProvisionOptions {
   /** Compute the agent lives on. Defaults to ubuntu — the original path. */
   environment?: ComputeEnvironment | undefined;
   /**
-   * Linux box provider. Defaults to ascii (the channel's template). `tenki`
-   * is opt-in per provision while the two are evaluated side by side: it forks
-   * TENKI_TEMPLATE_ID on Tenki Sandbox instead, ubuntu environment only.
+   * Linux box provider. New ubuntu boxes default to tenki when a
+   * TENKI_TEMPLATE_ID snapshot is configured — without it the default
+   * falls back to ascii (the channel's template). Non-ubuntu environments
+   * always default to ascii; tenki is ubuntu-only.
    */
   provider?: BoxProvider | undefined;
 }
@@ -195,6 +196,22 @@ interface CreatedInstance {
   target: ComputeTarget;
   /** Public URLs of exported ports, when the provider allocates them eagerly. */
   ports: Record<number, string>;
+}
+
+/**
+ * The provider a new ubuntu box lands on when the caller doesn't say: tenki
+ * when TENKI_TEMPLATE_ID names a snapshot, else ascii. An unset ref would
+ * otherwise break every signup, so the fallback logs loudly.
+ */
+function defaultBoxProvider(environment: ComputeEnvironment): BoxProvider {
+  if (environment !== "ubuntu") return "ascii";
+  if (env.tenkiTemplateId()) return "tenki";
+  console.log(
+    JSON.stringify({
+      msg: "TENKI_TEMPLATE_ID unset — defaulting new user to the ascii channel template",
+    })
+  );
+  return "ascii";
 }
 
 /** Template pointer fallback per environment (null = registration required). */
@@ -310,7 +327,7 @@ export async function provisionUser(
       userId,
       environment,
       DEFAULT_CHANNEL,
-      options.provider ?? "ascii"
+      options.provider ?? defaultBoxProvider(environment)
     );
     await persistBox(supabase, userId, environment, built);
     await finishSetup(supabase, userId, built);
