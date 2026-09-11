@@ -22,6 +22,7 @@ import { getCreativeJob } from "@/lib/creative/jobs";
 import { createSpectrumSender } from "@/lib/spectrum/sender";
 import { esc, withBaseHeaders } from "../html";
 import { renderShell, shellHtml } from "../shell";
+import { theme } from "../themes";
 import {
   admitDrawGeneration,
   animateDrawJob,
@@ -39,7 +40,7 @@ import type { MiniAppContext, MiniAppModule } from "./types";
 
 /** The studio needs script + connect + media beyond the media-shell CSP. */
 function studioShellHtml(body: string): NextResponse {
-  const response = shellHtml(body);
+  const response = shellHtml(body, theme("pixel"));
   let csp = response.headers.get("Content-Security-Policy") ?? "";
   csp = csp.replace("img-src 'self'", "img-src 'self' https:");
   if (!csp.includes("img-src 'self' https:")) {
@@ -61,8 +62,10 @@ function renderEnded(lite: boolean): NextResponse {
       title: "Draw",
       kicker: "Studio",
       body: SESSION_ENDED_BODY,
+      theme: theme("pixel"),
       lite,
-    })
+    }),
+    theme("pixel")
   );
 }
 
@@ -83,7 +86,10 @@ function renderStudio(
   ctx: MiniAppContext,
   payload: Record<string, unknown>
 ): NextResponse {
-  const body = `<div id="draw-studio" data-payload="${esc(
+  // width:100% — as a shrink-to-fit flex child of main.app the div's width
+  // would be indefinite, so the client's min(100%,…) widths could overflow
+  // the column and clip the canvas on narrow screens.
+  const body = `<div id="draw-studio" style="width:100%;flex:1;display:flex;flex-direction:column" data-payload="${esc(
     JSON.stringify(payload)
   )}"></div>
 <script src="/creator-os/draw-studio.js" defer></script>
@@ -93,6 +99,9 @@ function renderStudio(
       title: "Create",
       kicker: "Draw",
       body,
+      // Flat dark surface — the navy studio is styled to it (shader backdrop
+      // would fight the canvas work and the Messages webview's GPU budget).
+      theme: theme("pixel"),
       lite: ctx.session.via === "card",
     })
   );
