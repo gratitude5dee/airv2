@@ -20,6 +20,7 @@ import {
   type BoxProvider,
   type HostedRoute,
 } from "../box/client";
+import { isTenkiSnapshotRef } from "../box/tenki";
 import {
   createMacInstance,
   publishMacIngress,
@@ -207,8 +208,8 @@ function defaultBoxProvider(environment: ComputeEnvironment): BoxProvider {
   if (environment !== "ubuntu") return "ascii";
   const templateId = env.tenkiTemplateId();
   // A malformed value can't fork — select tenki only on a well-formed
-  // `tenki:` ref so a bad setting degrades to ascii instead of an outage.
-  if (templateId && providerOf(templateId) === "tenki") return "tenki";
+  // snapshot ref so a bad setting degrades to ascii instead of an outage.
+  if (templateId && isTenkiSnapshotRef(templateId)) return "tenki";
   console.log(
     JSON.stringify({
       msg: "TENKI_TEMPLATE_ID unset — defaulting new user to the ascii channel template",
@@ -589,7 +590,7 @@ function tenkiTemplate(environment: ComputeEnvironment): string {
     throw new Error(`tenki provider supports ubuntu only, not ${environment}`);
   }
   const templateId = env.tenkiTemplateId();
-  if (!templateId || providerOf(templateId) !== "tenki") {
+  if (!templateId || !isTenkiSnapshotRef(templateId)) {
     throw new Error("TENKI_TEMPLATE_ID must be set to a tenki:<snapshot id> ref");
   }
   return templateId;

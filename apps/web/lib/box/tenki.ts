@@ -88,6 +88,18 @@ export function isTenkiTemplateRef(templateRef: string): boolean {
   return templateRef.startsWith(TENKI_TEMPLATE_PREFIX);
 }
 
+/**
+ * Strict form of a template ref a snapshot can actually come from: the
+ * `tenki:` prefix plus a non-empty suffix that isn't a `tk_` box/session id
+ * — `providerOf` alone accepts all of those, so config validation (the
+ * TENKI_TEMPLATE_ID default probe, the tenki fork path) needs this.
+ */
+export function isTenkiSnapshotRef(templateRef: string): boolean {
+  if (!isTenkiTemplateRef(templateRef)) return false;
+  const suffix = templateRef.slice(TENKI_TEMPLATE_PREFIX.length).trim();
+  return suffix.length > 0 && !isTenkiBoxId(suffix);
+}
+
 export function toBoxId(boxKey: string): string {
   return `${TENKI_ID_PREFIX}${boxKey}`;
 }
