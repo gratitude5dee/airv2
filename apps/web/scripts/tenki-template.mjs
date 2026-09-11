@@ -117,7 +117,53 @@ async function bootstrap(session) {
       "sudo apt-get update -qq",
       "sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends " +
         "git curl ca-certificates sudo python3 python3-venv build-essential cmake pkg-config " +
-        "libssl-dev unzip rsync jq",
+        "libssl-dev unzip rsync jq " +
+        // Desktop stream stack for tenki boxes (lib/box/tenki.ts
+        // requestDesktop): Xvfb provides :0 — also the display the headed
+        // agent browser targets — x11vnc shares it, websockify + the bundled
+        // noVNC web root serve the viewer the preview route points at.
+        "xvfb openbox x11vnc novnc websockify dbus-x11",
+    ].join("\n")
+  );
+}
+
+// The desktop stream is a single foreground supervisor: Xvfb + openbox +
+// x11vnc behind it, websockify as the watched process — a crash restarts the
+// set together. Runs as the box user so the :0 socket is usable by Chrome.
+const DESKTOP_LAUNCHER = `#!/usr/bin/env bash
+Xvfb :0 -screen 0 1280x800x24 &
+until [ -S /tmp/.X11-unix/X0 ]; do sleep 0.2; done
+DISPLAY=:0 openbox &
+x11vnc -display :0 -localhost -forever -shared -nopw -rfbport 5900 &
+exec websockify --web /usr/share/novnc 6080 localhost:5900
+`;
+
+const DESKTOP_UNIT = `[Unit]
+Description=Air desktop stream (Xvfb/openbox/x11vnc/noVNC)
+After=network.target
+
+[Service]
+User=${BOX_USER}
+ExecStart=/usr/local/bin/air-desktop
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+`;
+
+async function installDesktop(session) {
+  // Written via sudo tee: the file API is confined to the VM account's
+  // workdir, and both paths are root-owned.
+  await sh(
+    session,
+    [
+      "set -euo pipefail",
+      `printf %s ${JSON.stringify(DESKTOP_LAUNCHER)} | sudo tee /usr/local/bin/air-desktop >/dev/null`,
+      "sudo chmod 755 /usr/local/bin/air-desktop",
+      `printf %s ${JSON.stringify(DESKTOP_UNIT)} | sudo tee /etc/systemd/system/air-desktop.service >/dev/null`,
+      "sudo systemctl daemon-reload",
+      "sudo systemctl enable --now air-desktop",
     ].join("\n")
   );
 }
@@ -213,6 +259,7 @@ async function verify(session) {
   // A fork of the snapshot never boots, so every unit a box needs must
   // already be running here.
   const started = [
+    "air-desktop",
     "hermes-gateway",
     "hermes-dashboard",
     "openviking",
@@ -290,6 +337,7 @@ try {
     const attach = Boolean(sessionArg) && (await setupInProgress(session));
     if (!attach) {
       await bootstrap(session);
+      await installDesktop(session);
       await uploadTemplate(session);
     }
     await runSetup(session, { attach });
