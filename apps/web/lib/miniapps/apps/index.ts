@@ -13,6 +13,7 @@ import { calendar } from "./calendar";
 import { computer } from "./computer";
 import { connect } from "./connect";
 import { crm } from "./crm";
+import { draw } from "./draw";
 import { feedback } from "./feedback";
 import { home } from "./home";
 import { image } from "./image";
@@ -40,6 +41,10 @@ export const FIRST_PARTY_MODULES: Record<string, MiniAppModule> = {
   computer,
   connect,
   crm,
+  // Product-freeze exception (review CA-19): /draw is an explicitly
+  // requested parity port from mayor-coast — owner-scoped, no third-party
+  // surface; also adds the 'draw' card kind + mini_apps row.
+  draw,
   feedback,
   home,
   inbox,

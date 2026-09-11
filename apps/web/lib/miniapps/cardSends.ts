@@ -32,6 +32,7 @@ export const CARD_KINDS = [
   "home",
   "persona",
   "feedback",
+  "draw",
   "create",
   "app",
 ] as const;

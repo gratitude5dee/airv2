@@ -128,7 +128,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     inbound.attachmentIds.length > 0
       ? `[attachment:${inbound.attachmentIds.join(",")}]`
       : "";
-  const body = [marker, inbound.text ?? ""].filter(Boolean).join("\n");
+  // A private Find My share is persisted as a marker only — the
+  // coordinates never reach Postgres (§2.6, C4).
+  const body = inbound.locationSignal
+    ? ["[location shared]", inbound.text ?? ""].filter(Boolean).join("\n")
+    : [marker, inbound.text ?? ""].filter(Boolean).join("\n");
   if (!body) {
     // Identifiers only (C4): a conversational payload whose content parsed to
     // nothing would otherwise vanish without a trace.
@@ -325,7 +329,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       if (
         message.senderTier === 0 &&
         !body.trimStart().startsWith("/") &&
-        !body.trimStart().startsWith("[attachment:")
+        !body.trimStart().startsWith("[attachment:") &&
+        !body.trimStart().startsWith("[location shared]")
       ) {
         try {
           if (await isBurstStart(supabase, message.spaceId)) {
