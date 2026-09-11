@@ -164,7 +164,9 @@ export function HomeDashboard({
         timestamp: eventTimestamp(event.starts_at),
       }));
     const scheduleRows = schedules
-      .filter((schedule) => schedule.status !== "deleted" && schedule.next_run_at)
+      // The sweeper only executes `active` rows; paused ones keep their
+      // next_run_at but never fire, so they shouldn't read as upcoming.
+      .filter((schedule) => schedule.status === "active" && schedule.next_run_at)
       .map((schedule) => ({
         id: `schedule-${schedule.id}`,
         title: schedule.name,

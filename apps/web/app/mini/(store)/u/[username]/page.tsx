@@ -20,6 +20,7 @@ import { env } from "@/lib/env";
 import { storePaths } from "@/lib/miniapps/storePaths";
 import { tintHue } from "@/lib/miniapps/shell";
 import { firstPartyAppArt } from "@/lib/miniapps/app-art";
+import { StoreAppIcon } from "../../store-icon";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -65,22 +66,7 @@ function tintStyle(slug: string): CSSProperties {
 }
 
 function AppCircle({ app, size }: { app: RegistryApp; size: number }) {
-  const iconUrl = app.icon_key
-    ? publicUrl(app.icon_key)
-    : firstPartyAppArt(app.slug);
-  if (iconUrl) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={iconUrl}
-        alt=""
-        width={size}
-        height={size}
-        className="shrink-0 rounded-full border border-[var(--ring)] object-cover"
-      />
-    );
-  }
-  return (
+  const fallback = (
     <span
       aria-hidden="true"
       style={{ ...tintStyle(app.slug), width: size, height: size }}
@@ -88,6 +74,18 @@ function AppCircle({ app, size }: { app: RegistryApp; size: number }) {
     >
       {(app.name || app.slug).slice(0, 1)}
     </span>
+  );
+  const iconUrl = app.icon_key
+    ? publicUrl(app.icon_key)
+    : firstPartyAppArt(app.slug);
+  if (!iconUrl) return fallback;
+  return (
+    <StoreAppIcon
+      iconUrl={iconUrl}
+      size={size}
+      className="shrink-0 rounded-full border border-[var(--ring)] object-cover"
+      fallback={fallback}
+    />
   );
 }
 

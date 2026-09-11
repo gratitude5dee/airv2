@@ -22,6 +22,7 @@ import {
 } from "@/lib/miniapps/storePaths";
 import { tintHue } from "@/lib/miniapps/shell";
 import { firstPartyAppArt } from "@/lib/miniapps/app-art";
+import { StoreAppIcon } from "../../store-icon";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -106,13 +107,11 @@ export default async function StoreDetail({
 
         <header className="rise-in mt-6 flex items-center gap-4">
           {app.icon_key || firstPartyAppArt(app.slug) ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={app.icon_key ? publicUrl(app.icon_key) : firstPartyAppArt(app.slug) ?? ""}
-              alt=""
-              width={44}
-              height={44}
+            <StoreAppIcon
+              iconUrl={app.icon_key ? publicUrl(app.icon_key) : firstPartyAppArt(app.slug) ?? ""}
+              size={44}
               className="shrink-0 rounded-full border border-[var(--ring)] object-cover"
+              fallback={<Orb size={44} label={app.name || app.slug} />}
             />
           ) : (
             <Orb size={44} label={app.name || app.slug} />
@@ -133,13 +132,11 @@ export default async function StoreDetail({
           className="rise-in mt-5 flex aspect-video w-full items-center justify-center rounded-[20px] border border-[var(--ring)]"
         >
           {app.icon_key || firstPartyAppArt(app.slug) ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={app.icon_key ? publicUrl(app.icon_key) : firstPartyAppArt(app.slug) ?? ""}
-              alt=""
-              width={72}
-              height={72}
+            <StoreAppIcon
+              iconUrl={app.icon_key ? publicUrl(app.icon_key) : firstPartyAppArt(app.slug) ?? ""}
+              size={72}
               className="rounded-full border border-white/40 object-cover"
+              fallback={<Orb size={72} label={app.name || app.slug} />}
             />
           ) : (
             <Orb size={72} label={app.name || app.slug} />
