@@ -343,6 +343,49 @@
   animation: rise-in 300ms var(--ease-out) both;
 }
 
+/* Wabi home and Store: scoped so existing Pixel panels retain their behavior. */
+.wabi-home-dashboard{--wabi-paper:#f8f0e5;--wabi-ink:#2d211b;--wabi-muted:#79685d;--wabi-accent:#c76545;--wabi-line:rgba(95,68,50,.18);color:var(--wabi-ink);background:radial-gradient(circle at 7% 0%,rgba(255,250,240,.95),transparent 32%),radial-gradient(circle at 95% 14%,rgba(232,174,139,.24),transparent 28%),linear-gradient(180deg,var(--wabi-paper),#eadbca);border-radius:18px;padding:clamp(18px,3vw,28px);position:relative;isolation:isolate}
+.wabi-home-hero,.wabi-card-heading,.wabi-calendar-dialog-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.wabi-home-hero{align-items:center;padding:4px 2px 12px}
+.wabi-eyebrow{margin:0 0 6px;color:var(--wabi-accent);font-family:var(--font-chrome);font-size:9px;letter-spacing:.14em;text-transform:uppercase}
+.wabi-home-title{margin:0;max-width:18ch;color:var(--wabi-ink);font-family:Georgia,"Times New Roman",serif;font-size:clamp(26px,4vw,40px);font-weight:500;letter-spacing:-.045em;line-height:.98}
+.wabi-home-copy{max-width:42ch;margin:10px 0 0;color:var(--wabi-muted);font-family:Georgia,"Times New Roman",serif;font-size:15px;line-height:1.35}
+.wabi-home-card{border:1px solid var(--wabi-line);border-radius:18px;background:rgba(255,251,245,.72);box-shadow:0 16px 38px rgba(94,63,43,.14),inset 0 1px 0 rgba(255,255,255,.78);padding:17px}
+.wabi-home-card h3,.wabi-calendar-dialog h2{margin:0;color:var(--wabi-ink);font-family:Georgia,"Times New Roman",serif;font-size:22px;font-weight:500;letter-spacing:-.035em}
+.wabi-muted{color:var(--wabi-muted);font-family:var(--font-chrome);font-size:10px;line-height:1.45}
+.wabi-link-button,.wabi-text-button,.wabi-primary-button,.wabi-event-row,.wabi-need-row,.wabi-app-item{cursor:pointer;border:0;font:inherit}
+.wabi-link-button,.wabi-text-button{padding:3px 0;color:var(--wabi-accent);background:transparent;font-family:var(--font-chrome);font-size:10px;letter-spacing:.05em;text-transform:uppercase}
+.wabi-event-list,.wabi-needs-list{display:grid;gap:7px;margin-top:16px}
+.wabi-event-row,.wabi-need-row{display:flex;align-items:center;gap:9px;min-height:43px;width:100%;padding:8px 9px;border:1px solid transparent;border-radius:11px;color:var(--wabi-ink);background:rgba(239,225,211,.58);text-align:left;transition:transform 160ms ease,border-color 160ms ease}
+.wabi-event-row:hover,.wabi-need-row:hover{transform:translateY(-1px);border-color:var(--wabi-line)}
+.wabi-event-row strong,.wabi-need-row{font-family:Georgia,"Times New Roman",serif;font-size:14px}
+.wabi-event-dot,.wabi-need-mark{display:block;width:9px;height:9px;flex:0 0 auto;border-radius:50%;background:var(--wabi-accent);box-shadow:0 0 0 4px rgba(199,101,69,.13)}
+.wabi-need-mark{width:10px;height:10px;background:transparent;box-shadow:none;color:var(--wabi-accent);font-size:17px;line-height:6px;text-align:center}
+.wabi-count{display:inline-flex;align-items:center;justify-content:center;min-width:27px;height:27px;padding:0 7px;border-radius:50%;color:var(--wabi-ink);background:#e8b89f;font-family:var(--font-chrome);font-size:11px}
+.wabi-primary-button{min-height:38px;margin-top:16px;padding:8px 14px;border-radius:999px;color:#fffaf2;background:var(--wabi-ink);font-family:var(--font-chrome);font-size:10px;letter-spacing:.06em;text-transform:uppercase}
+.wabi-empty-state{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:16px;color:var(--wabi-muted);font-family:Georgia,"Times New Roman",serif;font-size:15px}
+.wabi-app-shelf{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:13px 8px;margin-top:16px}
+.wabi-app-item{display:flex;min-width:0;align-items:center;flex-direction:column;gap:7px;padding:0;color:var(--wabi-ink);background:transparent;text-align:center}
+.wabi-app-item .tilebox{border-color:var(--wabi-line);background:rgba(255,251,245,.55);box-shadow:0 5px 12px rgba(94,63,43,.12),inset 0 1px 0 rgba(255,255,255,.75)}
+.wabi-app-item>span:last-child{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--font-chrome);font-size:9px}
+.wabi-calendar-dialog{width:min(760px,calc(100vw - 32px));max-width:760px;max-height:min(90svh,840px);overflow:hidden;padding:0;border:1px solid var(--wabi-line);border-radius:21px;color:var(--wabi-ink);background:var(--wabi-paper);box-shadow:0 26px 90px rgba(45,33,27,.28)}
+.wabi-calendar-dialog::backdrop{background:rgba(45,33,27,.32);backdrop-filter:blur(4px)}
+.wabi-calendar-dialog-head{align-items:center;padding:17px 19px 12px;border-bottom:1px solid var(--wabi-line)}
+.wabi-calendar-dialog-body{max-height:calc(min(90svh,840px) - 74px);overflow:auto;padding:15px}
+.wabi-calendar-dialog-body .panel{width:100%;margin:0;border:0;border-radius:0;background:transparent;box-shadow:none;padding:0}
+.wabi-store-page{color:#2d211b;background:radial-gradient(circle at 8% 0%,rgba(255,250,240,.96),transparent 30%),radial-gradient(circle at 94% 14%,rgba(229,172,140,.22),transparent 26%),linear-gradient(180deg,#f8f0e5,#ede0d1)}
+.wabi-store-page .wabi-store-gradient{opacity:.16;mix-blend-mode:multiply}
+.wabi-store-page .wabi-store-shell{color:#2d211b}
+.wabi-store-page .wabi-store-header h1,.wabi-store-page>.wabi-store-shell h1{color:#2d211b;font-family:Georgia,"Times New Roman",serif;font-weight:500}
+.wabi-store-page .text-muted,.wabi-store-page .text-muted-2{color:#79685d}
+.wabi-store-page .btn-ghost{border-color:rgba(95,68,50,.18);color:#5e493d;background:rgba(255,251,245,.58)}
+.wabi-store-page .input{border:1px solid rgba(95,68,50,.18);color:#2d211b;background:rgba(255,251,245,.78)}
+.wabi-store-page .btn{border-radius:999px;color:#fffaf2;background:#2d211b}
+.wabi-store-page .wabi-store-apps,.wabi-store-page .wabi-store-category{padding:16px;border:1px solid rgba(95,68,50,.16);border-radius:18px;background:rgba(255,251,245,.6);box-shadow:0 14px 32px rgba(94,63,43,.1),inset 0 1px 0 rgba(255,255,255,.75)}
+.wabi-store-page .wabi-store-category{padding:18px}
+.wabi-store-page .panel{border-color:rgba(95,68,50,.16);background:rgba(255,251,245,.7);box-shadow:0 12px 28px rgba(94,63,43,.1)}
+@media(max-width:640px){.wabi-home-dashboard{border-radius:14px;padding:15px}.wabi-home-title{font-size:30px}.wabi-app-shelf{grid-template-columns:repeat(3,minmax(0,1fr))}.wabi-calendar-dialog{width:100vw;max-width:none;max-height:100svh;height:100svh;border-radius:0}.wabi-calendar-dialog-body{max-height:calc(100svh - 74px)}}
+
 @media (prefers-reduced-motion: reduce) {
   .rise-in {
     animation: none;

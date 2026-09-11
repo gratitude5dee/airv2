@@ -10,7 +10,7 @@
  * self-hosted fx.js custom elements, a CSS-only backdrop needs nothing.
  */
 
-export const THEME_IDS = ["atmosphere", "pixel"] as const;
+export const THEME_IDS = ["atmosphere", "pixel", "clay"] as const;
 export type ThemeId = (typeof THEME_IDS)[number];
 export const DEFAULT_THEME: ThemeId = "atmosphere";
 
@@ -206,7 +206,43 @@ const pixel: Theme = {
   fontFaces: null,
 };
 
-export const THEMES: Record<ThemeId, Theme> = { atmosphere, pixel };
+/** Clay — a warm, tactile, CSS-only Wabi surface. */
+const clay: Theme = {
+  id: "clay",
+  name: "Clay",
+  description:
+    "Warm Wabi surfaces, soft clay shadows, and editorial type with a paper grain.",
+  tokens: {
+    canvas:
+      "radial-gradient(circle at 8% 0%, rgba(255,248,235,0.96), transparent 34%)," +
+      "radial-gradient(circle at 92% 16%, rgba(232,174,139,0.22), transparent 30%)," +
+      "linear-gradient(180deg,#f8f0e5 0%,#efe2d4 54%,#e5d2c1 100%)",
+    ink: "#2d211b",
+    inkMuted: "#79685d",
+    onAccent: "#2d211b",
+    onInk: "#fffaf2",
+    accent: "#c76545",
+    panelBg: "rgba(255,251,245,0.82)",
+    wellBg: "rgba(239,225,211,0.78)",
+    logoPlate: "rgba(255,250,242,0.88)",
+    scrim: "none",
+    ring: "rgba(95,68,50,0.18)",
+    shadow:
+      "0 18px 44px rgba(94,63,43,0.14),0 2px 6px rgba(94,63,43,0.08),inset 0 1px 0 rgba(255,255,255,0.78)",
+    blur: "blur(12px) saturate(112%)",
+    fontBody: "'Newsreader',Georgia,serif",
+    fontUi: "'Azeret Mono',ui-monospace,Consolas,monospace",
+    radiusPanel: "1.35rem",
+    radiusWell: "1rem",
+    radiusPill: "999px",
+    textShadow: "0 1px 0 rgba(255,255,255,0.72)",
+    slideIn: "460ms",
+  },
+  backdrop: { kind: "css", grain: true },
+  fontFaces: WZRD_FONT_FACES,
+};
+
+export const THEMES: Record<ThemeId, Theme> = { atmosphere, pixel, clay };
 
 export function theme(id: ThemeId): Theme {
   return THEMES[id];

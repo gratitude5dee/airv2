@@ -18,6 +18,7 @@ import {
   type StorePaths,
 } from "@/lib/miniapps/storePaths";
 import { tintHue } from "@/lib/miniapps/shell";
+import { firstPartyAppArt } from "@/lib/miniapps/app-art";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -65,11 +66,14 @@ function tintStyle(slug: string, angle = 145): CSSProperties {
 
 /** Circular app icon (Photon drawer style): image or tinted initial. */
 function AppCircle({ app, size }: { app: RegistryApp; size: number }) {
-  if (app.icon_key) {
+  const iconUrl = app.icon_key
+    ? publicUrl(app.icon_key)
+    : firstPartyAppArt(app.slug);
+  if (iconUrl) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
-        src={publicUrl(app.icon_key)}
+        src={iconUrl}
         alt=""
         width={size}
         height={size}
@@ -169,13 +173,13 @@ export default async function StoreHome({
   const rest = filtered.filter((app) => !categorized.has(app.slug));
 
   return (
-    <main className="relative min-h-screen overflow-hidden">
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-[30vh]">
+    <main className="wabi-store-page relative min-h-screen overflow-hidden">
+      <div className="wabi-store-gradient pointer-events-none absolute inset-x-0 top-0 h-[30vh]">
         <DitherGradient from="blue" direction="down" opacity={0.25} />
       </div>
 
-      <div className="relative mx-auto w-full max-w-[720px] px-6 pb-16 pt-14">
-        <header className="rise-in flex flex-col items-start gap-4">
+      <div className="wabi-store-shell relative mx-auto w-full max-w-[720px] px-6 pb-16 pt-14">
+        <header className="wabi-store-header rise-in flex flex-col items-start gap-4">
           <div className="flex w-full items-center gap-3">
             <Orb size={28} label="air" />
             <h1 className="m-0 text-[28px] font-semibold tracking-[-0.03em]">
@@ -192,7 +196,7 @@ export default async function StoreHome({
             Apps for your agent. Every app here is a view over your own agent
             — open one and it&apos;s already yours.
           </p>
-          <form method="get" action={paths.home} className="flex w-full gap-2">
+          <form method="get" action={paths.home} className="wabi-store-search flex w-full gap-2">
             <input
               type="text"
               name="q"
@@ -207,7 +211,7 @@ export default async function StoreHome({
         </header>
 
         {filtered.length > 0 ? (
-          <section className="rise-in mt-10">
+          <section className="wabi-store-apps rise-in mt-10">
             <h2 className="m-0 mb-4 text-[12px] font-semibold uppercase tracking-[0.08em] text-muted">
               Apps
             </h2>
@@ -232,7 +236,7 @@ export default async function StoreHome({
           const [featured, ...others] = row;
           if (!featured) return null;
           return (
-            <section key={label} className="rise-in mt-8">
+            <section key={label} className="wabi-store-category rise-in mt-8">
               <h3 className="m-0 mb-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
                 {label}
               </h3>
