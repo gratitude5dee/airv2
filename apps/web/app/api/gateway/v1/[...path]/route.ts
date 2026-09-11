@@ -160,17 +160,21 @@ function isRuntimeBearer(token: string): boolean {
 /**
  * Watches the SSE pass-through for the final usage chunk without altering
  * it. `onEnd` fires exactly once when the stream closes: with the usage, or
- * null when no chunk carried one (a Functions hold is then released).
+ * null when no chunk carried one. A usage-less close means a Functions hold
+ * is released — but when the stream errored the call did consume provider
+ * spend, so `errored` lets the caller settle the reservation instead of
+ * releasing it for free.
  */
 function meteringTee(
   upstream: ReadableStream<Uint8Array>,
-  onEnd: (usage: Usage | null) => void
+  onEnd: (usage: Usage | null, errored: boolean) => void
 ): ReadableStream<Uint8Array> {
   const [client, monitor] = upstream.tee();
   void (async () => {
     const reader = monitor.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
+    let errored = false;
     try {
       for (;;) {
         const { done, value } = await reader.read();
@@ -179,6 +183,7 @@ function meteringTee(
       }
     } catch {
       // upstream dropped mid-stream; whatever arrived is still scanned
+      errored = true;
     }
     let usage: Usage | null = null;
     for (const line of buffer.split("\n")) {
@@ -192,7 +197,7 @@ function meteringTee(
         // non-JSON keepalive; ignore
       }
     }
-    onEnd(usage);
+    onEnd(usage, errored);
   })();
   return client;
 }
@@ -777,7 +782,7 @@ export async function POST(
       const clientBody = meteredViaResponses
         ? responsesStreamToChat(upstream.body)
         : upstream.body;
-      const stream = meteringTee(clientBody, (usage) => {
+      const stream = meteringTee(clientBody, (usage, errored) => {
         if (usage) {
           after(
             meter(
@@ -791,7 +796,14 @@ export async function POST(
             )
           );
         } else if (streamHold) {
-          after(releaseAppSpend(supabase, streamHold));
+          // A failed stream generated billable provider output but reported
+          // no usage — settle at the reserved amount so a retry loop can't
+          // burn provider spend through budget it keeps getting refunded.
+          after(
+            errored
+              ? settleAppSpend(supabase, streamHold, streamHold.reservedUsd)
+              : releaseAppSpend(supabase, streamHold)
+          );
         }
       });
       return new Response(stream, {

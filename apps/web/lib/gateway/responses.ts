@@ -18,6 +18,13 @@ interface ChatMessage {
     function?: { name?: string; arguments?: unknown };
   }[];
   tool_call_id?: string;
+  /**
+   * Stateless reasoning continuation: whole Responses `reasoning` output
+   * items the gateway emitted on an earlier turn, echoed back verbatim by
+   * callers that preserve `reasoning_details` (the OpenRouter-shaped field
+   * the translator writes them under).
+   */
+  reasoning_details?: { type?: string; item?: Json }[];
 }
 
 function textParts(content: unknown): unknown[] {
@@ -57,6 +64,19 @@ export function toResponsesRequest(
         input.push({ type: "message", role, content: parts });
       }
     } else if (role === "assistant") {
+      // Reasoning precedes the text and calls it produced on the real
+      // output stream; restore that order so the model resumes its own
+      // thought. The echo is caller-controlled data crossing a trust
+      // boundary: only reasoning items may come back — anything else would
+      // let a caller inject forged provider input into history.
+      for (const detail of message.reasoning_details ?? []) {
+        if (
+          detail.type === REASONING_DETAIL &&
+          detail.item?.["type"] === "reasoning"
+        ) {
+          input.push(detail.item);
+        }
+      }
       const parts: unknown[] = [];
       if (typeof message.content === "string" && message.content) {
         parts.push({ type: "output_text", text: message.content });
@@ -125,6 +145,10 @@ export function toResponsesRequest(
     // Server-side conversation state would leak one tenant's thread into
     // another's; every call carries its full history instead.
     store: false,
+    // Reasoning output items carry an opaque encrypted continuation blob —
+    // the only way a store:false caller can hand a turn's reasoning state
+    // back on the next request.
+    include: ["reasoning.encrypted_content"],
     ...(tools && tools.length > 0 ? { tools } : {}),
     ...(toolChoice !== undefined ? { tool_choice: toolChoice } : {}),
     ...(chat["stream"] === true ? { stream: true } : {}),
@@ -178,12 +202,21 @@ function finishReason(res: Json, sawToolCall: boolean): string {
   return "stop";
 }
 
+/** Marker type under `reasoning_details` so echoes get reconstructed. */
+const REASONING_DETAIL = "air_reasoning_item";
+
+/** A whole reasoning output item, kept opaque for the round-trip. */
+function reasoningDetail(item: Json): Json {
+  return { type: REASONING_DETAIL, item };
+}
+
 /** /responses JSON → chat.completion JSON. */
 export function fromResponsesResponse(res: Json): Json {
   const output = (res["output"] as ResponsesOutputItem[] | undefined) ?? [];
   let content = "";
   let reasoning = "";
   const toolCalls: Json[] = [];
+  const reasoningDetails: Json[] = [];
   for (const item of output) {
     if (item.type === "message") {
       for (const part of item.content ?? []) {
@@ -198,6 +231,9 @@ export function fromResponsesResponse(res: Json): Json {
         function: { name: item.name ?? "", arguments: item.arguments ?? "" },
       });
     } else if (item.type === "reasoning") {
+      // The summary is display text; the item itself (id + encrypted_content)
+      // is the continuation state the next request needs.
+      reasoningDetails.push(reasoningDetail(item as Json));
       for (const part of item.summary ?? []) {
         if (part.type === "summary_text" && typeof part.text === "string") {
           reasoning += part.text;
@@ -208,6 +244,8 @@ export function fromResponsesResponse(res: Json): Json {
   const message: Json = { role: "assistant", content };
   if (toolCalls.length > 0) message["tool_calls"] = toolCalls;
   if (reasoning) message["reasoning"] = reasoning;
+  if (reasoningDetails.length > 0)
+    message["reasoning_details"] = reasoningDetails;
   const usage = res["usage"] as Json | undefined;
   return {
     id:
@@ -273,6 +311,8 @@ export function responsesStreamToChat(
       let sentRole = false;
       const toolIndexByOutput = new Map<number, number>();
       let sawToolCall = false;
+      let sawTerminal = false;
+      let finished = false;
 
       const emit = (delta: Json, finish: string | null = null): void => {
         controller.enqueue(
@@ -360,13 +400,28 @@ export function responsesStreamToChat(
             }
             break;
           }
+          case "response.output_item.done": {
+            const item = event["item"] as Json | undefined;
+            if (item?.["type"] === "reasoning") {
+              emit({ reasoning_details: [reasoningDetail(item)] });
+            }
+            break;
+          }
           case "response.completed":
+            sawTerminal = true;
             emit({}, res ? finishReason(res, sawToolCall) : "stop");
             emitUsage(res?.["usage"] as Json | undefined);
+            // The terminal event IS the authoritative result — trailing
+            // bytes ([DONE], EOF) carry nothing, and a socket reset after
+            // completion must not turn a finished turn into a retryable
+            // transport error.
+            finished = true;
             break;
           case "response.incomplete":
+            sawTerminal = true;
             emit({}, "length");
             emitUsage(res?.["usage"] as Json | undefined);
+            finished = true;
             break;
           case "response.failed":
           case "error": {
@@ -415,11 +470,28 @@ export function responsesStreamToChat(
             }
             sep = buffer.indexOf("\n\n");
           }
+          if (finished) break;
         }
       } catch (error) {
-        failure = error;
+        // A transport failure after the terminal event can't un-complete a
+        // finished turn — swallow it so the client sees a clean close.
+        failure = finished ? null : error;
       } finally {
+        try {
+          // `finished` exits the loop before EOF — release the upstream
+          // socket rather than letting the body drain on its own.
+          await reader.cancel();
+        } catch {
+          // already errored/closed
+        }
         reader.releaseLock();
+        if (failure == null && !sawTerminal) {
+          // A body that ends before its terminal event is truncated, not
+          // complete — surface a transport error, never a clean [DONE].
+          failure = new Error(
+            "upstream stream ended before a terminal response event"
+          );
+        }
         if (failure != null) {
           controller.error(
             failure instanceof Error ? failure : new Error(String(failure))
