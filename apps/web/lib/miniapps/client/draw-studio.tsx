@@ -1039,7 +1039,7 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
 
 /* Midnight-navy glass skin (mayor-coast draw parity) on the shared shell. */
 const CSS = `
-.ds-root{display:flex;flex-direction:column;gap:0.5rem;width:min(100%,45rem);min-height:0;flex:1;color:#f8fbff}
+.ds-root{display:flex;flex-direction:column;gap:0.5rem;width:min(100%,45rem);margin:0 auto;min-height:0;flex:1;color:#f8fbff}
 .ds-top{display:flex;align-items:center;gap:0.6rem}
 .ds-view-toggle{position:relative;display:flex;flex:1;max-width:28rem;margin:0 auto;padding:3px;background:#0c1426d9;border:1px solid #5c99e433;border-radius:14px}
 .ds-view-thumb{position:absolute;top:3px;left:3px;width:calc(50% - 4px);height:calc(100% - 6px);border-radius:11px;background:linear-gradient(135deg,#1d4b8f,#16345f);box-shadow:inset 0 0 0 1px #4db0ff66;transition:transform .22s ease;pointer-events:none}
@@ -1100,6 +1100,7 @@ const CSS = `
 .ds-message{font-size:0.72rem;color:#dbe8ff;margin:0;min-height:0.9rem;text-align:center}
 @media(prefers-reduced-motion:reduce){.ds-ink,.ds-view-thumb{transition:none}}
 @media(max-height:680px){.ds-rail{top:6px;left:6px;gap:4px;padding:3px}.ds-rail-button{width:40px;min-height:40px}.ds-ink-controls{min-height:50px;padding-block:4px}.ds-modes button{min-height:46px}}
+@media(max-width:420px){.ds-ink-controls{gap:5px;padding:6px}.ds-swatch{width:30px;min-height:30px;flex:0 0 30px}.ds-size input{width:56px}.ds-eraser{padding:8px 10px;font-size:0.62rem}}
 `;
 
 const mountEl = document.getElementById("draw-studio");
