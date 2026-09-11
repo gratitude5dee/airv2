@@ -879,11 +879,12 @@ function HomeShell() {
   function newThread() {
     const id = `air-w${Date.now().toString(36)}`;
     setLocalThreads((t) => [{ id, title: "New thread" }, ...t]);
-    setParams({ s: null, t: id });
+    // Missing `s` resolves to Home now — threads must name Chat explicitly.
+    setParams({ s: "air.chat", t: id });
   }
 
   function selectThread(id: string) {
-    setParams({ s: null, t: id === "air-main" ? null : id });
+    setParams({ s: "air.chat", t: id === "air-main" ? null : id });
   }
 
   // Spec §5: dock a mini-app in-chat via a signed link; fall back to a new

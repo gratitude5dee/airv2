@@ -17,12 +17,14 @@ interface HomeApp {
   description?: string;
   icon_url?: string | null;
   status?: string;
+  installed?: boolean;
 }
 
 interface HomeEvent {
   id: string;
   title: string;
   starts_at: string;
+  ends_at?: string;
   all_day?: boolean;
 }
 
@@ -49,6 +51,19 @@ function eventTime(iso: string, allDay = false): string {
 function eventTimestamp(iso: string): number {
   const value = new Date(iso).getTime();
   return Number.isNaN(value) ? Number.MAX_SAFE_INTEGER : value;
+}
+
+/** When an event stops being current: its end, else end of day (all-day) or start + 1h. */
+function eventEndsAt(event: HomeEvent): number {
+  const end = event.ends_at ? new Date(event.ends_at).getTime() : Number.NaN;
+  if (!Number.isNaN(end)) return end;
+  const start = new Date(event.starts_at);
+  if (Number.isNaN(start.getTime())) return Number.MAX_SAFE_INTEGER;
+  if (event.all_day) {
+    start.setHours(23, 59, 59, 999);
+    return start.getTime();
+  }
+  return start.getTime() + 60 * 60 * 1000;
 }
 
 export function HomeDashboard({
@@ -89,33 +104,48 @@ export function HomeDashboard({
     if (!active) return;
     let stale = false;
     setLoading(true);
-    void Promise.all([
+    // Independent chains: one slow or failed summary must not hold back the
+    // others. `?peek=1` keeps the preview read-only — an ambient Home open
+    // never wakes a stopped box.
+    const jobs = [
       fetch("/api/mini/apps")
         .then((response) =>
           response.ok ? (response.json() as Promise<{ apps?: HomeApp[] }>) : { apps: [] }
         )
-        .catch(() => ({ apps: [] })),
-      fetch("/api/calendar")
+        .then((data) => {
+          if (!stale) setApps(data.apps ?? []);
+        })
+        .catch(() => undefined),
+      fetch("/api/calendar?peek=1")
         .then((response) =>
           response.ok
             ? (response.json() as Promise<{ events?: HomeEvent[]; schedules?: HomeSchedule[] }>)
             : { events: [], schedules: [] }
         )
-        .catch(() => ({ events: [], schedules: [] })),
+        .then((data) => {
+          if (stale) return;
+          setEvents(data.events ?? []);
+          setSchedules(data.schedules ?? []);
+        })
+        .catch(() => undefined),
       fetch("/api/decisions")
         .then((response) =>
-          response.ok ? (response.json() as Promise<{ decisions?: Decision[] }>) : { decisions: [] }
+          response.ok
+            ? (response.json() as Promise<{ decisions?: Decision[] }>)
+            : Promise.reject(new Error(`decisions ${response.status}`))
         )
-        .catch(() => ({ decisions: [] })),
-    ]).then(([appData, calendarData, decisionData]) => {
-      if (stale) return;
-      setApps(appData.apps ?? []);
-      setEvents(calendarData.events ?? []);
-      setSchedules(calendarData.schedules ?? []);
-      const nextDecisions = decisionData.decisions ?? [];
-      setDecisions(nextDecisions);
-      onPendingCount(nextDecisions.length);
-      setLoading(false);
+        .then((data) => {
+          if (stale) return;
+          const nextDecisions = data.decisions ?? [];
+          setDecisions(nextDecisions);
+          onPendingCount(nextDecisions.length);
+        })
+        // A failed read keeps the last queue and count rather than reporting
+        // an empty one (NeedsPanel does the same).
+        .catch(() => undefined),
+    ];
+    void Promise.allSettled(jobs).then(() => {
+      if (!stale) setLoading(false);
     });
     return () => {
       stale = true;
@@ -125,7 +155,7 @@ export function HomeDashboard({
   const upcoming = useMemo(() => {
     const now = Date.now();
     const eventRows = events
-      .filter((event) => eventTimestamp(event.starts_at) >= now - 60 * 60 * 1000)
+      .filter((event) => eventEndsAt(event) >= now)
       .map((event) => ({
         id: `event-${event.id}`,
         title: event.title,
@@ -147,8 +177,10 @@ export function HomeDashboard({
       .slice(0, 3);
   }, [events, schedules]);
 
+  // The shelf is the owner's toolkit — only apps they installed, never the
+  // whole published catalog.
   const featuredApps = apps
-    .filter((app) => app.status === "published" && app.slug !== "home")
+    .filter((app) => app.installed && app.slug !== "home")
     .slice(0, 6);
   const needsPreview = decisions.slice(0, 3);
 
