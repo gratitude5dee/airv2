@@ -327,6 +327,8 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
   // The media the preview/save target: a delivered zap job isn't a draw
   // revision, so it carries its own pointer until the user picks a revision.
   const [animatedJobId, setAnimatedJobId] = useState<string | null>(null);
+  // While set, the revision poll must not restore a still over the video.
+  const [animatedPreviewUrl, setAnimatedPreviewUrl] = useState<string | null>(null);
 
   const bgCanvasRef = useRef<HTMLCanvasElement>(null);
   const strokeCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -473,12 +475,15 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
   }, [poll]);
 
   useEffect(() => {
+    // A delivered animation isn't a revision — keep it on screen until the
+    // user picks a revision or generates again.
+    if (animatedPreviewUrl) return;
     setPreviewUrl(
       targetRevision?.outputUrl ??
         revisions.filter((r) => r.outputUrl).at(-1)?.outputUrl ??
         null
     );
-  }, [targetRevision?.outputUrl, revisions]);
+  }, [targetRevision?.outputUrl, revisions, animatedPreviewUrl]);
 
   /* ----------------------------------------------------------- actions */
 
@@ -610,6 +615,7 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
         setStrokes([]);
         setRedoStack([]);
         setAnimatedJobId(null);
+        setAnimatedPreviewUrl(null);
       }
     } finally {
       setBusy(null);
@@ -650,6 +656,7 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
       );
       if (payload.status === "delivered") {
         setAnimatedJobId(payload.jobId ?? null);
+        setAnimatedPreviewUrl(payload.deliveryUrl ?? null);
       }
       if (payload.deliveryUrl) {
         setPreviewUrl(payload.deliveryUrl);
@@ -693,6 +700,7 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
   const refine = useCallback((): void => {
     if (!targetRevision?.outputUrl) return;
     setAnimatedJobId(null);
+    setAnimatedPreviewUrl(null);
     setBackgroundUrl(targetRevision.outputUrl);
     setBackgroundKind("result");
     setStrokes([]);
@@ -707,6 +715,7 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
     setBackgroundUrl(null);
     setBackgroundKind("none");
     setAnimatedJobId(null);
+    setAnimatedPreviewUrl(null);
     setMessage(null);
   }, []);
 
@@ -722,6 +731,7 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
         /* private mode */
       }
       setAnimatedJobId(null);
+      setAnimatedPreviewUrl(null);
       if (revision.outputUrl) {
         setPreviewUrl(revision.outputUrl);
         setTab("preview");
