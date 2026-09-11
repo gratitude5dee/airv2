@@ -62,6 +62,7 @@ const CARD_COPY: Partial<Record<string, { name: string; line: string }>> = {
   feedback: { name: "Feedback", line: "Report a bug or ask for a feature" },
   create: { name: "Create", line: "Build a mini-app" },
   app: { name: "Your app", line: "Draft — preview & publish" },
+  draw: { name: "Draw", line: "Sketch it, then see it" },
 };
 
 /**

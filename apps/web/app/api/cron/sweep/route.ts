@@ -21,6 +21,7 @@ import { sweepUnfiledDrafts } from "@/lib/email/draftSweep";
 import { sweepVersions } from "@/lib/create/versions";
 import { reconcileAppOriginMarks, reconcileAppOrigins } from "@/lib/functions/deploy";
 import { reconcileMigrations } from "@/lib/migration/sweep";
+import { resolveDueLocationRequests } from "@/lib/location/resolve";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -220,6 +221,23 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     );
   }
 
+  // Find My: pending "near me" requests probe the shared location on the
+  // sweep tick — consume (coarse label only), back off, or expire.
+  let locationsResolved = 0;
+  let locationsExpired = 0;
+  try {
+    const outcome = await resolveDueLocationRequests(supabase);
+    locationsResolved = outcome.resolved;
+    locationsExpired = outcome.expired;
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        msg: "sweeper location resolve failed",
+        error: error instanceof Error ? error.message : String(error),
+      })
+    );
+  }
+
   const ttlCutoff = new Date(Date.now() - 48 * 3600_000).toISOString();
   await supabase.from("inbound_events").delete().lt("received_at", ttlCutoff);
   await supabase.from("batch_queue").delete().lt("received_at", ttlCutoff);
@@ -247,5 +265,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     originsMarked,
     originsRepaired,
     migrationsDriven,
+    locationsResolved,
+    locationsExpired,
   });
 }

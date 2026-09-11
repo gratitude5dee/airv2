@@ -43,6 +43,11 @@ export interface InboundSpectrumMessage {
   text?: string | undefined;
   /** Metadata only — bytes are fetched via getAttachment through the SDK. */
   attachmentIds: string[];
+  /**
+   * A private Find My share arrived. Detected by a bounded walk of the raw
+   * payload — coordinates are never read out, logged, or persisted (C4).
+   */
+  locationSignal?: boolean | undefined;
 }
 
 type UnknownRecord = Record<string, unknown>;
@@ -54,6 +59,67 @@ const asRecord = (value: unknown): UnknownRecord | undefined =>
 
 const asString = (value: unknown): string | undefined =>
   typeof value === "string" && value.trim() ? value.trim() : undefined;
+
+const PRIVATE_LOCATION_TOKENS = new Set([
+  "livelocation",
+  "locationshare",
+  "locationsharing",
+  "locationupdated",
+  "sharedfriendlocation",
+  "sharedlocation",
+]);
+
+const hasCoordinatePair = (value: UnknownRecord): boolean => {
+  const latitude = value["latitude"] ?? value["lat"];
+  const longitude = value["longitude"] ?? value["lng"] ?? value["lon"];
+  return typeof latitude === "number" && typeof longitude === "number";
+};
+
+/**
+ * Bounded private-location walk (mayor-coast transport.ts port): depth ≤6,
+ * ≤200 nodes visited, nothing stringified or logged. A coordinate pair or a
+ * location type token anywhere in the payload flags the share.
+ */
+function containsPrivateLocation(root: unknown): boolean {
+  const seen = new Set<object>();
+  let visited = 0;
+  const visit = (value: unknown, depth: number): boolean => {
+    if (depth > 6 || visited >= 200) return false;
+    const record = asRecord(value);
+    if (!record || seen.has(record)) return false;
+    seen.add(record);
+    visited += 1;
+    if (hasCoordinatePair(record)) return true;
+    for (const key of ["type", "kind", "eventType", "contentType"]) {
+      const token = record[key];
+      if (typeof token === "string") {
+        const normalized = token.toLowerCase().replace(/[^a-z]/g, "");
+        if (normalized === "location" || PRIVATE_LOCATION_TOKENS.has(normalized)) {
+          return true;
+        }
+      }
+    }
+    for (const [key, nested] of Object.entries(record)) {
+      const normalizedKey = key.toLowerCase().replace(/[^a-z]/g, "");
+      if (
+        PRIVATE_LOCATION_TOKENS.has(normalizedKey) &&
+        (typeof nested === "object" && nested !== null)
+      ) {
+        return true;
+      }
+      if (Array.isArray(nested)) {
+        for (const item of nested) {
+          if (visit(item, depth + 1)) return true;
+          if (visited >= 200) break;
+        }
+      } else if (visit(nested, depth + 1)) {
+        return true;
+      }
+    }
+    return false;
+  };
+  return visit(root, 0);
+}
 
 export function spectrumWebhookHeaders(
   headers: Headers
@@ -193,5 +259,8 @@ export function parseInboundSpectrumMessage(
     webhookId: headers.webhookId,
     text: textParts.length > 0 ? textParts.join("\n") : undefined,
     attachmentIds,
+    // A Find My share may carry no text — flag it so the webhook persists a
+    // marker instead of dropping the event as an empty body.
+    ...(containsPrivateLocation(content) ? { locationSignal: true } : {}),
   };
 }

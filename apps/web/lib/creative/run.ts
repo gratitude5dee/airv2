@@ -66,6 +66,17 @@ export interface CreativeRunResult {
   deliveryLine?: string;
 }
 
+export interface CreativeJobOptions {
+  /**
+   * Pre-built plan (draw studio): the caller already made the routing
+   * decision, so the vision pre-pass and the Groq compile are skipped; the
+   * render still runs on the user's lane prefs and personal key.
+   */
+  plan?: RouterPlan;
+  /** prompt_version written to the job row (defaults to the turn mode's). */
+  promptVersion?: string;
+}
+
 /**
  * Execute one creative job end to end. The caller has already created the
  * creative_jobs row (status 'routing') and verified the sender is allowed
@@ -75,7 +86,8 @@ export async function executeCreativeJob(
   supabase: SupabaseClient,
   jobId: string,
   userId: string,
-  turn: CreativeCommandTurn
+  turn: CreativeCommandTurn,
+  options?: CreativeJobOptions
 ): Promise<CreativeRunResult> {
   const fail = async (
     status: "failed" | "refused" | "submit_unknown",
@@ -86,7 +98,7 @@ export async function executeCreativeJob(
   };
 
   await updateCreativeJob(supabase, jobId, {
-    prompt_version: PROMPT_VERSIONS[turn.mode],
+    prompt_version: options?.promptVersion ?? PROMPT_VERSIONS[turn.mode],
   });
 
   // Daily cap is checked before any provider call (goal.md §7.11).
@@ -112,50 +124,54 @@ export async function executeCreativeJob(
     }
     plan = directZapPlan(turn);
   } else {
-    // Non-fatal vision pre-pass over attached images.
-    let imageDescription: string | null = null;
-    const imageUrls = turn.mediaInputs
-      .filter((media) => media.kind === "image")
-      .map((media) => media.url);
-    if (imageUrls.length > 0) {
-      imageDescription = await describeImage(imageUrls).catch(() => null);
-    }
-
     // The user's lane model choices (Settings) and, when saved, their
     // personal GMI key. Both degrade to platform defaults on any failure.
     prefs = await loadCreativePrefs(supabase, userId).catch(() => undefined);
     personalGmiKey = await getProviderKey(supabase, userId, "gmi").catch(
       () => null
     );
-    // Metaprompt: the guide for the model this turn will render on. /imagine
-    // with an attached image runs the edit lane's model.
-    const laneModel = prefs
-      ? turn.mode === "imagine"
-        ? turn.mediaInputs.some((media) => media.kind === "image")
-          ? prefs.edit
-          : prefs.imagine
-        : prefs[turn.mode]
-      : null;
-    const modelGuide = laneModel ? guideForModel(laneModel) : null;
-
-    try {
-      plan = await routeExplicitCommand(
-        turn,
-        imageDescription,
-        undefined,
-        modelGuide
-      );
-    } catch (error) {
-      if (error instanceof CreativeUnconfiguredError) {
-        return await fail("failed", UNCONFIGURED_LINE);
+    if (options?.plan) {
+      plan = options.plan;
+    } else {
+      // Non-fatal vision pre-pass over attached images.
+      let imageDescription: string | null = null;
+      const imageUrls = turn.mediaInputs
+        .filter((media) => media.kind === "image")
+        .map((media) => media.url);
+      if (imageUrls.length > 0) {
+        imageDescription = await describeImage(imageUrls).catch(() => null);
       }
-      if (error instanceof CreativeRouterUnavailableError) {
+
+      // Metaprompt: the guide for the model this turn will render on. /imagine
+      // with an attached image runs the edit lane's model.
+      const laneModel = prefs
+        ? turn.mode === "imagine"
+          ? turn.mediaInputs.some((media) => media.kind === "image")
+            ? prefs.edit
+            : prefs.imagine
+          : prefs[turn.mode]
+        : null;
+      const modelGuide = laneModel ? guideForModel(laneModel) : null;
+
+      try {
+        plan = await routeExplicitCommand(
+          turn,
+          imageDescription,
+          undefined,
+          modelGuide
+        );
+      } catch (error) {
+        if (error instanceof CreativeUnconfiguredError) {
+          return await fail("failed", UNCONFIGURED_LINE);
+        }
+        if (error instanceof CreativeRouterUnavailableError) {
+          return await fail("failed", ROUTER_DOWN_LINE);
+        }
         return await fail("failed", ROUTER_DOWN_LINE);
       }
-      return await fail("failed", ROUTER_DOWN_LINE);
-    }
-    if (plan.mode === "refuse") {
-      return await fail("refused", REFUSAL_LINE);
+      if (plan.mode === "refuse") {
+        return await fail("refused", REFUSAL_LINE);
+      }
     }
   }
 
@@ -229,6 +245,7 @@ export async function executeCreativeJob(
     await updateCreativeJob(supabase, jobId, {
       status: "delivered",
       delivered_at: new Date().toISOString(),
+      output_asset_id: asset.id,
     });
     // A render on the user's personal GMI key is their own provider spend —
     // no platform cost event (the job still counts toward the daily cap).

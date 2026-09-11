@@ -22,6 +22,11 @@ import {
   customizedMiniApp,
   imessage,
 } from "spectrum-ts/providers/imessage";
+import type {
+  AdvancedIMessage,
+  LocationRequestReceipt,
+  SharedFriendLocation,
+} from "@photon-ai/advanced-imessage";
 import { env } from "../env";
 import {
   parseMiniAppCardSession,
@@ -102,6 +107,26 @@ export interface SpectrumSender {
     attachmentId: string,
     phone: string
   ): Promise<{ data: Buffer; mimeType: string; name: string } | undefined>;
+  /**
+   * Send a visible Find My request card into the chat (advanced-imessage
+   * `locations.request`). spaceId is the DM chat guid; address the
+   * participant's handle. Resolves undefined when the line has no advanced
+   * client — the caller degrades to a text ask.
+   */
+  requestLocation(
+    spaceId: string,
+    phone: string,
+    address: string,
+    clientMessageId: string
+  ): Promise<LocationRequestReceipt | undefined>;
+  /**
+   * One consented Find My snapshot for immediate routing only — callers
+   * must not persist or log the returned coordinates (§2.6).
+   */
+  getSharedLocation(
+    phone: string,
+    address: string
+  ): Promise<SharedFriendLocation | undefined>;
   close(): Promise<void>;
 }
 
@@ -143,6 +168,28 @@ function buildAppCard(
       ...(layout?.summary ? { summary: layout.summary } : {}),
     },
   });
+}
+
+/**
+ * The advanced iMessage client bound to a line. spectrum-ts keeps one
+ * RemoteClient per configured line under `__internal.platforms`; the line's
+ * phone picks the entry (mayor-coast's advancedClientForThread).
+ */
+function advancedClientForLine(
+  app: unknown,
+  phone: string
+): AdvancedIMessage | undefined {
+  const platforms = (
+    app as { __internal?: { platforms?: Map<string, { client: unknown }> } }
+  ).__internal?.platforms;
+  const runtime = platforms?.get("iMessage");
+  const entries = Array.isArray(runtime?.client)
+    ? (runtime.client as { client: AdvancedIMessage; phone: string }[])
+    : [];
+  const selected =
+    entries.find((entry) => entry.phone === phone) ??
+    (entries.length === 1 ? entries[0] : undefined);
+  return selected?.client;
 }
 
 export async function createSpectrumSender(): Promise<SpectrumSender> {
@@ -223,6 +270,16 @@ export async function createSpectrumSender(): Promise<SpectrumSender> {
       });
       await s.send(edit(buildAppCard(await url(), layout), target));
       return parseMiniAppCardSession(target.miniAppCardSession);
+    },
+    requestLocation: async (spaceId, phone, address, clientMessageId) => {
+      const client = advancedClientForLine(app, phone);
+      if (!client) return undefined;
+      return client.locations.request(spaceId, address, { clientMessageId });
+    },
+    getSharedLocation: async (phone, address) => {
+      const client = advancedClientForLine(app, phone);
+      if (!client) return undefined;
+      return client.locations.get(address);
     },
     getAttachment: async (attachmentId, phone) => {
       // @ts-expect-error spectrum-ts provider generics are not exactOptionalPropertyTypes-compatible; runtime is correct.

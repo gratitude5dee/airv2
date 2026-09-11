@@ -41,6 +41,8 @@ import {
   OWNER_ONLY_CARD_LINE,
 } from "../miniapps/imessageCommand";
 import { sendMarkedCards } from "../miniapps/cards";
+import { maybeRunDrawLane } from "../miniapps/drawCommand";
+import { maybeRunLocationLane } from "../location/lane";
 import {
   armStopAfter,
   ensureBoxAwake,
@@ -83,6 +85,7 @@ interface QueuedMessage {
   id: string;
   message_id: string;
   body: string;
+  sender_id?: string | undefined;
 }
 
 const HAS_ATTACHMENT_MARKER = /\[attachment:[^\]]+\]/;
@@ -239,7 +242,7 @@ async function drainTable(
 ): Promise<QueuedMessage[]> {
   const { data, error } = await supabase
     .from(table)
-    .select("id, message_id, body")
+    .select("id, message_id, body, sender_id")
     .eq("space_id", spaceId)
     .order("received_at", { ascending: true });
   if (error) {
@@ -594,6 +597,65 @@ async function runFlushInner(
       return;
     }
     const rawInput = composeInput(carried, fresh);
+    // /draw runs before the generic card path: a bare command must mint a
+    // session-bound studio card, and "/draw <prompt> [image]" also consumes
+    // the burst for the auto-start job.
+    try {
+      const handled = await maybeRunDrawLane(
+        supabase,
+        sender,
+        {
+          spaceId: job.spaceId,
+          userId: job.userId,
+          phone: job.phone,
+          senderTier: job.senderTier,
+        },
+        rawInput
+      );
+      if (handled) {
+        if (!(await chainCancelled(supabase, job.spaceId, chainStartedAt))) {
+          await supabase
+            .from("flush_jobs")
+            .delete()
+            .eq("space_id", job.spaceId)
+            .eq("chain_started_at", chainStartedAt);
+        }
+        return;
+      }
+    } catch (error) {
+      if (error instanceof MiniAppRegistryLookupError) {
+        if (job.attempts < MAX_ATTEMPTS) {
+          await requeueMessages(
+            supabase,
+            job.userId,
+            job.spaceId,
+            job.phone,
+            drained
+          );
+          await rescheduleWithBackoff(supabase, job.spaceId, job.attempts);
+          return;
+        }
+        throw error;
+      }
+      console.error(
+        JSON.stringify({
+          msg: "draw command failed",
+          user_id: job.userId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      );
+      await sender
+        .sendText(job.spaceId, job.phone, "couldn't open draw. try again?")
+        .catch(() => undefined);
+      if (!(await chainCancelled(supabase, job.spaceId, chainStartedAt))) {
+        await supabase
+          .from("flush_jobs")
+          .delete()
+          .eq("space_id", job.spaceId)
+          .eq("chain_started_at", chainStartedAt);
+      }
+      return;
+    }
     try {
       const handled = await maybeSendMiniAppLink(
         supabase,
@@ -694,6 +756,47 @@ async function runFlushInner(
       }
       return;
     }
+    // Find My lane (§5.1): a "near me" burst is held behind a Find My
+    // request card and resolved by the sweep — it must not wake the box.
+    // A share/ack also short-circuits here (it just expedites the pending
+    // request). A fresh-enough prior share rides in as a context line.
+    let locationContext: string | undefined;
+    try {
+      const located = await maybeRunLocationLane(
+        supabase,
+        sender,
+        {
+          spaceId: job.spaceId,
+          userId: job.userId,
+          phone: job.phone,
+          senderTier: job.senderTier,
+          senderId: drained.find((row) => row.sender_id)?.sender_id,
+        },
+        rawInput,
+        drained[0]?.message_id ?? String(Date.now())
+      );
+      if (located.handled) {
+        if (!(await chainCancelled(supabase, job.spaceId, chainStartedAt))) {
+          await supabase
+            .from("flush_jobs")
+            .delete()
+            .eq("space_id", job.spaceId)
+            .eq("chain_started_at", chainStartedAt);
+        }
+        return;
+      }
+      locationContext = located.contextLine;
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          msg: "location lane failed",
+          user_id: job.userId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      );
+      // Location is best-effort: a lane failure must never eat the burst —
+      // fall through so Hermes answers the "near me" text itself.
+    }
 
     let box: Awaited<ReturnType<typeof ensureBoxAwake>>;
     try {
@@ -754,7 +857,7 @@ async function runFlushInner(
       sender,
       box.boxId,
       job.phone,
-      rawInput
+      locationContext ? `${locationContext}\n${rawInput}` : rawInput
     );
 
     // V7: an @mention validated against the roster delegates the burst to
