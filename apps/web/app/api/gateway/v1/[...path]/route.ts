@@ -455,7 +455,7 @@ export async function POST(
   /** True while the in-flight dispatch is talking to upstream /responses. */
   let servedViaResponses = false;
 
-  const dispatch = async (
+  const dispatchOnce = async (
     toFamily: ModelFamily,
     preferResponses = true
   ): Promise<Response> => {
@@ -479,8 +479,12 @@ export async function POST(
     if (provider === "openai" && reasoningModel && preferResponses) {
       // /responses accepts tools + reasoning.effort together, which
       // /chat/completions does not — every agent turn carries tools, so the
-      // OpenAI lane is always served through it.
-      servedReasoning = reasoningForTier(tier) ?? null;
+      // OpenAI lane is always served through it. A caller-set
+      // reasoning_effort wins over the tier default, as on the chat lane.
+      servedReasoning =
+        (typeof body["reasoning_effort"] === "string"
+          ? (body["reasoning_effort"] as string)
+          : reasoningForTier(tier)) ?? null;
       servedViaResponses = true;
     } else {
       // gpt-5.6 on /v1/chat/completions rejects function tools with any
@@ -593,18 +597,17 @@ export async function POST(
     });
   };
 
-  // Every path out of here either meters (the hold settles to the real
-  // cost in meter()) or releases the hold: an upstream error, a stream that
-  // closed without a usage chunk, or an exception.
-  const proxy = async (): Promise<Response> => {
-    // The Create family is OpenAI-only: the owner's chat family never applies.
-    let servedFamily: ModelFamily = createTier !== null ? "openai" : family;
-    let upstream = await dispatch(servedFamily);
-
+  const dispatch = async (
+    toFamily: ModelFamily,
+    preferResponses = true
+  ): Promise<Response> => {
+    const upstream = await dispatchOnce(toFamily, preferResponses);
     // An upstream that fronts chat/completions but not /responses (an older
     // relay or an incompatible proxy) 4xxs the translated call; retry once
-    // through the pinned chat lane rather than failing the turn.
+    // through the pinned chat lane rather than failing the turn. This runs
+    // on every OpenAI dispatch, including provider-fallback ones.
     if (
+      preferResponses &&
       servedViaResponses &&
       !upstream.ok &&
       [400, 404, 405, 422].includes(upstream.status)
@@ -618,8 +621,18 @@ export async function POST(
         })
       );
       await upstream.body?.cancel().catch(() => undefined);
-      upstream = await dispatch(servedFamily, false);
+      return dispatchOnce(toFamily, false);
     }
+    return upstream;
+  };
+
+  // Every path out of here either meters (the hold settles to the real
+  // cost in meter()) or releases the hold: an upstream error, a stream that
+  // closed without a usage chunk, or an exception.
+  const proxy = async (): Promise<Response> => {
+    // The Create family is OpenAI-only: the owner's chat family never applies.
+    let servedFamily: ModelFamily = createTier !== null ? "openai" : family;
+    let upstream = await dispatch(servedFamily);
 
     // Non-OpenAI families can degrade to empty completions (e.g. an endpoint
     // answering tool-bearing calls with `native_finish_reason: "network_error"`

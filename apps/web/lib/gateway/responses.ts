@@ -135,6 +135,30 @@ export function toResponsesRequest(
   };
   const maxTokens = chat["max_completion_tokens"] ?? chat["max_tokens"];
   if (typeof maxTokens === "number") body["max_output_tokens"] = maxTokens;
+
+  // Chat `response_format` → Responses `text.format`, so structured-output
+  // callers keep their schema instead of silently getting prose.
+  const responseFormat = chat["response_format"] as Json | undefined;
+  if (responseFormat && typeof responseFormat === "object") {
+    if (responseFormat["type"] === "json_object") {
+      body["text"] = { format: { type: "json_object" } };
+    } else if (responseFormat["type"] === "json_schema") {
+      const schema = (responseFormat["json_schema"] as Json | undefined) ?? {};
+      body["text"] = {
+        format: {
+          type: "json_schema",
+          name: schema["name"],
+          schema: schema["schema"],
+          ...(schema["strict"] !== undefined
+            ? { strict: schema["strict"] }
+            : {}),
+          ...(schema["description"] !== undefined
+            ? { description: schema["description"] }
+            : {}),
+        },
+      };
+    }
+  }
   return body;
 }
 
@@ -345,13 +369,27 @@ export function responsesStreamToChat(
             emitUsage(res?.["usage"] as Json | undefined);
             break;
           case "response.failed":
-            emit({}, "stop");
-            break;
+          case "error": {
+            // A failed upstream response must not read as a finished turn:
+            // erroring the stream surfaces a transport failure to the
+            // client, which retries, instead of a clean stop + [DONE].
+            const error = res?.["error"] as Json | undefined;
+            const detail =
+              (typeof error?.["message"] === "string"
+                ? error["message"]
+                : undefined) ??
+              (typeof event["message"] === "string"
+                ? event["message"]
+                : undefined) ??
+              "upstream response failed";
+            throw new Error(`upstream ${type}: ${detail}`);
+          }
           default:
             break;
         }
       };
 
+      let failure: unknown = null;
       try {
         for (;;) {
           const { done, value } = await reader.read();
@@ -367,19 +405,29 @@ export function responsesStreamToChat(
               if (!data || data === "[DONE]") continue;
               try {
                 handleEvent(JSON.parse(data) as Json);
-              } catch {
-                // non-JSON keepalive
+              } catch (error) {
+                if (error instanceof SyntaxError) {
+                  // non-JSON keepalive
+                  continue;
+                }
+                throw error;
               }
             }
             sep = buffer.indexOf("\n\n");
           }
         }
-      } catch {
-        // upstream dropped mid-stream; close out what we have
+      } catch (error) {
+        failure = error;
       } finally {
         reader.releaseLock();
-        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-        controller.close();
+        if (failure != null) {
+          controller.error(
+            failure instanceof Error ? failure : new Error(String(failure))
+          );
+        } else {
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+        }
       }
     },
   });

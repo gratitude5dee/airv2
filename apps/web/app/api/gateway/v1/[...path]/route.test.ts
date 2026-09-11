@@ -170,6 +170,88 @@ describe("gateway reasoning_effort gating (P1-7)", () => {
     expect(sent["store"]).toBe(false);
   });
 
+  it("lets a caller-set reasoning_effort win over the tier default on /responses", async () => {
+    const sent = await upstreamBody({
+      messages: [],
+      reasoning_effort: "minimal",
+    });
+    expect(sent["reasoning"]).toEqual({ effort: "minimal" });
+  });
+
+  it("maps response_format to the Responses text.format field", async () => {
+    const sent = await upstreamBody({
+      messages: [],
+      response_format: { type: "json_object" },
+    });
+    expect(sent["text"]).toEqual({ format: { type: "json_object" } });
+    expect(sent["response_format"]).toBeUndefined();
+
+    const schema = {
+      name: "thing",
+      schema: { type: "object", properties: { a: { type: "string" } } },
+      strict: true,
+    };
+    const structured = await upstreamBody({
+      messages: [],
+      response_format: { type: "json_schema", json_schema: schema },
+    });
+    expect(structured["text"]).toEqual({
+      format: { type: "json_schema", ...schema },
+    });
+  });
+
+  it("retries a /responses-incompatible upstream once through chat/completions", async () => {
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, _init?: RequestInit) =>
+      String(url).endsWith("/responses")
+        ? new Response("not found", { status: 404 })
+        : new Response(
+            JSON.stringify({
+              choices: [{ message: { content: "hi" } }],
+              usage: { prompt_tokens: 3, completion_tokens: 2 },
+            }),
+            { status: 200 }
+          )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await POST(
+      completionRequest({ messages: [], tools: [{ type: "function" }] }),
+      { params: Promise.resolve({ path: ["chat", "completions"] }) }
+    );
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[1]?.[0])).toBe(
+      "https://upstream.test/v1/chat/completions"
+    );
+    // The compat lane carries the pre-Responses pin, not an effort field.
+    const secondBody = JSON.parse(
+      String((fetchMock.mock.calls[1]?.[1] as RequestInit).body)
+    ) as Record<string, unknown>;
+    expect(secondBody["reasoning_effort"]).toBe("none");
+  });
+
+  it("surfaces a failed responses stream as a stream error, not a clean stop", async () => {
+    const failedSse =
+      'data: {"type":"response.output_text.delta","delta":"partial"}\n\n' +
+      'data: {"type":"response.failed","response":{"status":"failed","error":{"message":"kaboom"}}}\n\n' +
+      "data: [DONE]\n\n";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(failedSse, {
+            status: 200,
+            headers: { "Content-Type": "text/event-stream" },
+          })
+      )
+    );
+    const response = await POST(
+      completionRequest({ messages: [], stream: true }),
+      { params: Promise.resolve({ path: ["chat", "completions"] }) }
+    );
+    expect(response.status).toBe(200);
+    await expect(response.text()).rejects.toThrow(/kaboom/);
+  });
+
   it("omits reasoning_effort for non-reasoning override models", async () => {
     process.env["MODEL_FAST"] = "gpt-4o-mini";
     const sent = await upstreamBody({ messages: [], max_tokens: 100 });
