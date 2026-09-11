@@ -243,7 +243,7 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
   const strokeCanvasRef = useRef<HTMLCanvasElement>(null);
   const pointerId = useRef<number | null>(null);
   const livePoints = useRef<Point[]>([]);
-  const [, forceInk] = useState(0);
+  const [inkTick, forceInk] = useState(0);
 
   const delivered = revisions.filter((r) => r.state === "delivered");
   const targetRevision =
@@ -274,7 +274,9 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
         erase: eraser,
       });
     }
-  }, [strokes, color, size, eraser]);
+    // inkTick in deps: livePoints mutate via ref mid-drag, so the counter
+    // forces this repaint on every pointermove batch.
+  }, [strokes, color, size, eraser, inkTick]);
 
   useEffect(() => {
     const canvas = bgCanvasRef.current;
