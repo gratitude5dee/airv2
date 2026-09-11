@@ -366,9 +366,9 @@ describe("provisionUser environments", () => {
     expect(upserts["boxes"] ?? []).toEqual([]);
   });
 
-  it("defaults new ubuntu users to the tenki snapshot when configured", async () => {
+  it("explicit tenki forks the TENKI_TEMPLATE_ID snapshot", async () => {
     fork.mockResolvedValueOnce({ id: "tk_sess-1" });
-    const result = await provisionUser();
+    const result = await provisionUser({ provider: "tenki" });
     expect(result.environment).toBe("ubuntu");
     expect(result.boxId).toBe("tk_sess-1");
     expect(fork).toHaveBeenCalledWith(
@@ -381,35 +381,15 @@ describe("provisionUser environments", () => {
     });
   });
 
-  it("falls back to the ascii channel template when TENKI_TEMPLATE_ID is unset", async () => {
-    tenkiTemplate = null;
-    try {
-      const result = await provisionUser();
-      expect(result.environment).toBe("ubuntu");
-      expect(fork).toHaveBeenCalledWith(
-        expect.objectContaining({ templateId: "template-ubuntu" })
-      );
-      expect(upserts["boxes"]?.[0]).toMatchObject({
-        environment: "ubuntu",
-        provider: "ascii",
-        provider_box_id: "box-new",
-      });
-    } finally {
-      tenkiTemplate = "tenki:snap-1";
-    }
-  });
-
-  it.each(["snap-123", "tk_session", "tenki:", "tenki:   "])(
-    "a malformed TENKI_TEMPLATE_ID (%s) degrades to ascii rather than failing",
+  it.each([null, "snap-123", "tk_session", "tenki:", "tenki:   "])(
+    "a malformed TENKI_TEMPLATE_ID (%s) rejects an explicit tenki request",
     async (bad) => {
       tenkiTemplate = bad;
       try {
-        const result = await provisionUser();
-        expect(result.environment).toBe("ubuntu");
-        expect(fork).toHaveBeenCalledWith(
-          expect.objectContaining({ templateId: "template-ubuntu" })
+        await expect(provisionUser({ provider: "tenki" })).rejects.toThrow(
+          "TENKI_TEMPLATE_ID"
         );
-        expect(upserts["boxes"]?.[0]).toMatchObject({ provider: "ascii" });
+        expect(fork).not.toHaveBeenCalled();
       } finally {
         tenkiTemplate = "tenki:snap-1";
       }
@@ -445,7 +425,7 @@ describe("provisionUser environments", () => {
     const result = await provisionUser({ environment: "ubuntu" });
     expect(result.environment).toBe("ubuntu");
     expect(fork).toHaveBeenCalledWith(
-      expect.objectContaining({ templateId: "tenki:snap-1" })
+      expect.objectContaining({ templateId: "template-ubuntu" })
     );
   });
 

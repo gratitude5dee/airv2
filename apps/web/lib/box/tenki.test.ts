@@ -28,6 +28,7 @@ import {
   mapSessionState,
   newBoxKey,
   renameBox,
+  requestDesktop,
   resume,
   routeIsFresh,
   setTenkiClientForTests,
@@ -864,6 +865,62 @@ describe("hostRoute", () => {
   it("routeIsFresh treats a missing expiry as permanent", () => {
     expect(routeIsFresh({ expiresAt: undefined })).toBe(true);
     expect(routeIsFresh({ expiresAt: new Date(Date.now() + 1000) })).toBe(false);
+  });
+});
+
+describe("requestDesktop", () => {
+  it("runs the in-box ensure and returns the noVNC viewer on the 6080 route", async () => {
+    const session = fakeSession();
+    session.exec = vi.fn(async () => ({
+      exitCode: 0,
+      stdout: new Uint8Array(),
+      stderr: new Uint8Array(),
+    }));
+    session.exposePort = vi.fn(async (port: number) => exposed(port));
+    install([session]);
+    const url = await requestDesktop(BOX);
+    expect(url).toBe(
+      "https://p6080.sandbox.tenki.example/vnc.html?autoconnect=true&resize=scale"
+    );
+    const script = session.exec.mock.calls[0]?.[1].args.at(-1) as string;
+    expect(script).toContain("apt-get install");
+    expect(script).toContain("websockify");
+    expect(script).toContain("x11vnc");
+    expect(session.exposePort).toHaveBeenCalledWith(6080, {
+      ttlMs: ROUTE_TTL_MS,
+    });
+  });
+
+  it("reuses an existing fresh 6080 exposure", async () => {
+    const session = fakeSession();
+    session.exec = vi.fn(async () => ({
+      exitCode: 0,
+      stdout: new Uint8Array(),
+      stderr: new Uint8Array(),
+    }));
+    const fresh = new Date(Date.now() + ROUTE_RENEW_BEFORE_MS * 2);
+    session.listExposedPorts = vi.fn(async () => [exposed(6080, fresh)]);
+    install([session]);
+    const url = await requestDesktop(BOX);
+    expect(url).toContain("p6080.sandbox.tenki.example/vnc.html");
+    expect(session.exposePort).not.toHaveBeenCalled();
+  });
+
+  it("returns undefined when the in-box ensure fails", async () => {
+    const session = fakeSession();
+    session.exec = vi.fn(async () => ({
+      exitCode: 1,
+      stdout: new Uint8Array(),
+      stderr: new TextEncoder().encode("no X display"),
+    }));
+    install([session]);
+    expect(await requestDesktop(BOX)).toBeUndefined();
+    expect(session.exposePort).not.toHaveBeenCalled();
+  });
+
+  it("404s against an unknown box like every other op", async () => {
+    install();
+    await expect(requestDesktop(BOX)).rejects.toMatchObject({ status: 404 });
   });
 });
 

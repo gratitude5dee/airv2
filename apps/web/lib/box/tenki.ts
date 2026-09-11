@@ -13,6 +13,7 @@
  *   resume        → create a new session from the box's newest snapshot
  *   command       → exec as the `user` account with cwd /home/user
  *   hosted route  → exposePort(8642 | 9119) preview URL
+ *   desktop       → lazy in-box noVNC stack + a 6080 preview URL
  *
  * Ids: `tk_<box key>` in boxes.provider_box_id is a stable key we mint at
  * fork; the provider objects behind it (one live session, or a snapshot when
@@ -655,9 +656,69 @@ export async function deleteBox(boxId: string): Promise<void> {
   }
 }
 
-/** Tenki has no desktop stream API; callers render "unavailable". */
-export async function requestDesktop(): Promise<undefined> {
-  return undefined;
+/**
+ * Tenki has no platform desktop endpoint, so the stream is the box's own
+ * noVNC stack: the first request lazily installs Xvfb + openbox + x11vnc +
+ * websockify inside the box and starts them on :0/5900/6080, then a preview
+ * URL on the noVNC port is minted by hostRoute. The preview URL is the only
+ * credential — the same capability-URL posture as every other hosted route,
+ * and like the ascii stream URL it never leaves the server (lib/box/desktop.ts).
+ *
+ * :0 is also the display the headed agent browser targets (DISPLAY=:0 in
+ * ~/.hermes/.env), so installing the stack gives it a real X server on boxes
+ * whose template predates it.
+ */
+export const DESKTOP_WEB_PORT = 6080;
+const DESKTOP_VNC_PORT = 5900;
+
+/**
+ * Idempotent ensure: install the stack if absent, start whatever is not
+ * running, then wait for the web port to accept. flock serializes the
+ * concurrent requests a first view can trigger (stream URL + origin probe).
+ * Everything runs detached so the exec's process tree going away cannot
+ * take the daemons with it.
+ */
+const DESKTOP_ENSURE_SCRIPT = `set -euo pipefail
+exec 9>"$HOME/.air-desktop.lock"
+flock -w 280 9
+if ! command -v Xvfb >/dev/null 2>&1 || ! command -v x11vnc >/dev/null 2>&1 || ! command -v websockify >/dev/null 2>&1; then
+  sudo apt-get update -qq
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \\
+    xvfb openbox x11vnc novnc websockify dbus-x11
+fi
+pgrep -x Xvfb >/dev/null 2>&1 || setsid nohup Xvfb :0 -screen 0 1280x800x24 >/tmp/air-xvfb.log 2>&1 </dev/null &
+for i in $(seq 1 50); do [ -S /tmp/.X11-unix/X0 ] && break; sleep 0.2; done
+[ -S /tmp/.X11-unix/X0 ] || { echo "no X display" >&2; exit 1; }
+pgrep -x openbox >/dev/null 2>&1 || setsid nohup env DISPLAY=:0 openbox >/tmp/air-openbox.log 2>&1 </dev/null &
+pgrep -f 'x11vnc .*${DESKTOP_VNC_PORT}' >/dev/null 2>&1 || setsid nohup x11vnc -display :0 -localhost -forever -shared -nopw -rfbport ${DESKTOP_VNC_PORT} >/tmp/air-x11vnc.log 2>&1 </dev/null &
+pgrep -f 'websockify .*${DESKTOP_WEB_PORT}' >/dev/null 2>&1 || setsid nohup websockify --web /usr/share/novnc ${DESKTOP_WEB_PORT} localhost:${DESKTOP_VNC_PORT} >/tmp/air-novnc.log 2>&1 </dev/null &
+for i in $(seq 1 50); do (echo > "/dev/tcp/127.0.0.1/${DESKTOP_WEB_PORT}") 2>/dev/null && exit 0; sleep 0.2; done
+echo "noVNC did not start" >&2; exit 1`;
+
+/**
+ * A noVNC viewer URL on the box's 6080 preview route, or undefined when the
+ * stack cannot be brought up (callers render "unavailable"/"waking"). The
+ * `vnc` option from the ascii contract is moot — noVNC is the only streamer
+ * — so both modes return it.
+ */
+export async function requestDesktop(
+  boxId: string
+): Promise<string | undefined> {
+  const ensure = await command(boxId, DESKTOP_ENSURE_SCRIPT, 300);
+  if (ensure.exitCode !== 0) {
+    console.log(
+      JSON.stringify({
+        msg: "tenki desktop ensure failed",
+        box_id: boxId,
+        exit_code: ensure.exitCode,
+        stderr: ensure.stderr.trim().slice(0, 500),
+      })
+    );
+    return undefined;
+  }
+  const route = await hostRoute(boxId, DESKTOP_WEB_PORT);
+  const base = route.url.endsWith("/") ? route.url.slice(0, -1) : route.url;
+  return `${base}/vnc.html?autoconnect=true&resize=scale`;
 }
 
 /**

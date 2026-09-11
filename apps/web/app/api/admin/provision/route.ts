@@ -34,8 +34,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       bound_phone?: string;
       line_phone?: string;
       operator?: string;
-      /** Linux box provider; omitted = the new-user default (tenki when
-       * TENKI_TEMPLATE_ID is set, else ascii). Tenki is ubuntu-only. */
+      /** Linux box provider; omitted = ascii. Tenki is ubuntu-only. */
       provider?: string;
     };
     if (body.provider !== undefined && !isBoxProvider(body.provider)) {
