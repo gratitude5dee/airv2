@@ -128,6 +128,16 @@ function HomeShell() {
   const thread = parseThread(searchParams.get("t"));
   const dock = parseDock(searchParams.get("c"));
 
+  // Pre-warm the box once the user heads somewhere the box serves — the
+  // dashboard itself reads via ?peek=1 and stays wake-free on its own.
+  // Best-effort: every consumer handles a sleeping box.
+  const prewarmedRef = useRef(false);
+  useEffect(() => {
+    if (section === "air.home" || prewarmedRef.current) return;
+    prewarmedRef.current = true;
+    fetch("/api/box/wake", { method: "POST" }).catch(() => {});
+  }, [section]);
+
   const setParams = useCallback(
     (updates: Record<string, string | null>, replace = false) => {
       const params = new URLSearchParams(window.location.search);
@@ -327,9 +337,6 @@ function HomeShell() {
         const familyValue = data.entitlement.model_family ?? "";
         setFamily(isModelFamily(familyValue) ? familyValue : "openai");
       }
-      // Pre-warm the box so the first message / panel load doesn't wait on
-      // a cold resume. Best-effort: every consumer handles a sleeping box.
-      fetch("/api/box/wake", { method: "POST" }).catch(() => {});
     }).catch(() => {
       // /api/me is retried on the next mount; the shell renders without it
     });
