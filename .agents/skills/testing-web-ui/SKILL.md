@@ -265,3 +265,14 @@ Real Supabase creds can be fetched at runtime — no `.env` needed and no OTP lo
 ### Devin Secrets Needed for Functions testing
 - Browser mocked-read validation and anonymous API checks need no Cloudflare/Box credentials. Local `SESSION_SECRET` and `MINIAPP_SIGNING_KEY` can be generated for local use.
 - If real database-backed access is needed, use an explicitly approved non-production Supabase environment; `SUPABASE_ACCESS_TOKEN` may be needed for management discovery. Never put secret values into fixtures or evidence.
+
+## Draw studio client smoke
+- Before signed-session testing, check that migration `0107_draw_miniapp.sql` is applied: `draw_sessions`, `draw_events`, and the published `mini_apps` row for slug `draw` must exist. Missing registry rows yield loader 404 before auth; do not interpret this as proof that the route is absent.
+- Main-origin `/mini/draw` without a token is the store detail; the runtime is mini-origin `/draw`. Set local `MINIAPP_ORIGIN=http://localhost:3999` and use `127.0.0.1:3999` for the main host.
+- When explicitly approved for an isolated smoke, serve a scratch HTML page with `#draw-studio` carrying JSON `data-payload`: `sessionId`, `expiresAt`, `latest: -1`, `activeJob: null`, `latestJobId: null`, `initialAssetUrl: null`, and `revisions: []`. Load the actual `/creator-os/draw-studio.js` bundle, and visibly label the page synthetic. This tests client behavior only, not loader CSP/auth or backend persistence.
+- Capture screenshots while the pointer is still down: blue/red strokes and eraser gaps must appear before pointerup, not merely after release. Recheck Undo/Redo after repaint changes. Disable browser cache or reload with cache bypass after rebuilding the bundle.
+- A static scratch server rejects status/upload POSTs (e.g. 501); expect client retry text, but never report this as a successful status poll, upload, or render.
+
+### Devin Secrets Needed for Draw testing
+- Synthetic client smoke: none.
+- Real session testing: approved test Supabase URL/service-role key plus locally generated `SESSION_SECRET` and `MINIAPP_SIGNING_KEY`. `SUPABASE_ACCESS_TOKEN` can discover project/schema access. Rendering and messaging need their respective provider credentials; keep those outside client-only smoke scope.
