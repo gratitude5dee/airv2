@@ -427,7 +427,8 @@ export async function stepPrecopy(ctx: StepCtx): Promise<StepOutcome> {
   const environment = (box?.["environment"] as string) ?? "ubuntu";
   const maxPasses = env.migrationPrecopyPasses();
   for (let pass = 1; pass <= maxPasses; pass += 1) {
-    const name = stepName(ctx, `precopy.pass.${pass}`);
+    // Guard on the receipt key runPass actually records.
+    const name = stepName(ctx, `precopy-pass-${pass}.done`);
     if (hasStep(migration, name)) continue;
     await runPass(ctx, `precopy-pass-${pass}`, from, to, environment);
   }
@@ -567,7 +568,7 @@ export async function stepFinalCopy(ctx: StepCtx): Promise<StepOutcome> {
   const { from, to } = copySides(migration, ctx.targets);
   const box = await loadBoxRow(ctx.supabase, migration.user_id);
   const environment = (box?.["environment"] as string) ?? "ubuntu";
-  const name = stepName(ctx, "final.pass");
+  const name = stepName(ctx, `${migration.leg}-final.done`);
   if (!hasStep(migration, name)) {
     await runPass(ctx, `${migration.leg}-final`, from, to, environment);
   }
