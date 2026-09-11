@@ -43,6 +43,7 @@ import { HistoryPanel } from "./panels/history-panel";
 import { WalletPanel } from "./panels/wallet-panel";
 import { SettingsScreen } from "./panels/settings-screen";
 import { ContextPanel } from "./panels/context-panel";
+import { HomeDashboard } from "./home-dashboard";
 import {
   isComputerTool,
   isNearBottom,
@@ -127,6 +128,16 @@ function HomeShell() {
   const thread = parseThread(searchParams.get("t"));
   const dock = parseDock(searchParams.get("c"));
 
+  // Pre-warm the box once the user heads somewhere the box serves — the
+  // dashboard itself reads via ?peek=1 and stays wake-free on its own.
+  // Best-effort: every consumer handles a sleeping box.
+  const prewarmedRef = useRef(false);
+  useEffect(() => {
+    if (section === "air.home" || prewarmedRef.current) return;
+    prewarmedRef.current = true;
+    fetch("/api/box/wake", { method: "POST" }).catch(() => {});
+  }, [section]);
+
   const setParams = useCallback(
     (updates: Record<string, string | null>, replace = false) => {
       const params = new URLSearchParams(window.location.search);
@@ -143,7 +154,7 @@ function HomeShell() {
   );
 
   const navigate = useCallback(
-    (next: Section) => setParams({ s: next === "air.chat" ? null : next }),
+    (next: Section) => setParams({ s: next === "air.home" ? null : next }),
     [setParams]
   );
   const setDock = useCallback(
@@ -326,9 +337,6 @@ function HomeShell() {
         const familyValue = data.entitlement.model_family ?? "";
         setFamily(isModelFamily(familyValue) ? familyValue : "openai");
       }
-      // Pre-warm the box so the first message / panel load doesn't wait on
-      // a cold resume. Best-effort: every consumer handles a sleeping box.
-      fetch("/api/box/wake", { method: "POST" }).catch(() => {});
     }).catch(() => {
       // /api/me is retried on the next mount; the shell renders without it
     });
@@ -878,11 +886,12 @@ function HomeShell() {
   function newThread() {
     const id = `air-w${Date.now().toString(36)}`;
     setLocalThreads((t) => [{ id, title: "New thread" }, ...t]);
-    setParams({ s: null, t: id });
+    // Missing `s` resolves to Home now — threads must name Chat explicitly.
+    setParams({ s: "air.chat", t: id });
   }
 
   function selectThread(id: string) {
-    setParams({ s: null, t: id === "air-main" ? null : id });
+    setParams({ s: "air.chat", t: id === "air-main" ? null : id });
   }
 
   // Spec §5: dock a mini-app in-chat via a signed link; fall back to a new
@@ -940,6 +949,23 @@ function HomeShell() {
         />
 
         <section className="panel relative flex h-[72vh] flex-col !p-4">
+          <HomeDashboard
+            active={section === "air.home"}
+            needsCount={needsCount}
+            onPendingCount={setNeedsCount}
+            onNavigate={navigate}
+            onOpenApp={(slug) => void openAppInChat(slug)}
+            calendarPrefill={calendarPrefill}
+            onPrefillConsumed={() => setCalendarPrefill(null)}
+            onAgentRun={(prompt) => {
+              navigate("air.chat");
+              if (busy) {
+                setInput(prompt);
+              } else {
+                void send(prompt);
+              }
+            }}
+          />
           <NeedsPanel
             active={section === "personal.needs"}
             onPendingCount={setNeedsCount}

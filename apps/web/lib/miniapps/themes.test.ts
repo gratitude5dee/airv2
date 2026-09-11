@@ -30,6 +30,7 @@ describe("theme tokens", () => {
 
   it("rejects unknown theme ids", () => {
     expect(isThemeId("atmosphere")).toBe(true);
+    expect(isThemeId("clay")).toBe(true);
     expect(isThemeId("liquid-glass")).toBe(false);
   });
 });
@@ -39,6 +40,7 @@ describe("themeCsp", () => {
     expect(themeCsp(theme("atmosphere"))).toContain("img-src 'self' data:");
     expect(themeCsp(theme("pixel"))).toContain("img-src 'self'");
     expect(themeCsp(theme("pixel"))).not.toContain("data:");
+    expect(themeCsp(theme("clay"))).toContain("img-src 'self' data:");
   });
 
   it("widens script-src and font-src only for the assets a theme uses", () => {

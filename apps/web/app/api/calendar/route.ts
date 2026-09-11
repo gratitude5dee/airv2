@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sessionUserId } from "@/lib/auth/user";
 import { serviceClient } from "@/lib/supabase";
-import { armStopAfter, ensureBoxAwake } from "@/lib/orchestrator/boxes";
+import { armStopAfter, ensureBoxAwake, peekUserBox } from "@/lib/orchestrator/boxes";
 import { readEventsStore, type CalendarEvent } from "@/lib/calendar/store";
 import { SCHEDULE_COLUMNS } from "@/lib/calendar/schedule";
 import { listBots } from "@/lib/bots/store";
@@ -25,6 +25,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const supabase = serviceClient();
+  // ?peek=1 — ambient summary for surfaces like the Home dashboard. Never
+  // wakes a stopped box: schedules always come back; events and bot routines
+  // only when the mirror already says the box is up.
+  const peekOnly = request.nextUrl.searchParams.get("peek") === "1";
 
   const { data: scheduleRows } = await supabase
     .from("agent_schedules")
@@ -44,7 +48,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     next_run_at: string | null;
   }> = [];
   try {
-    const box = await ensureBoxAwake(supabase, userId);
+    const box = peekOnly
+      ? await peekUserBox(supabase, userId)
+      : await ensureBoxAwake(supabase, userId);
+    if (!box) {
+      boxAwake = false;
+      return NextResponse.json({
+        events,
+        schedules: scheduleRows ?? [],
+        bot_routines: botRoutines,
+        box_awake: boxAwake,
+      });
+    }
     events = await readEventsStore(box.boxId);
     const bots = await listBots(supabase, userId);
     for (const bot of bots) {
@@ -68,8 +83,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   } catch {
     boxAwake = false;
   } finally {
-    // ensureBoxAwake nulls stop_after before it can fail; re-arm on every exit.
-    await armStopAfter(supabase, userId).catch(() => undefined);
+    // ensureBoxAwake nulls stop_after before it can fail; re-arm on every
+    // exit. Peek reads never disarmed it, so there is nothing to restore.
+    if (!peekOnly) {
+      await armStopAfter(supabase, userId).catch(() => undefined);
+    }
   }
 
   return NextResponse.json({

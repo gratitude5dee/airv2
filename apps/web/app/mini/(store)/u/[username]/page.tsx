@@ -19,6 +19,8 @@ import { publicUrl } from "@/lib/storage/r2";
 import { env } from "@/lib/env";
 import { storePaths } from "@/lib/miniapps/storePaths";
 import { tintHue } from "@/lib/miniapps/shell";
+import { firstPartyAppArt } from "@/lib/miniapps/app-art";
+import { StoreAppIcon } from "../../store-icon";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -64,19 +66,7 @@ function tintStyle(slug: string): CSSProperties {
 }
 
 function AppCircle({ app, size }: { app: RegistryApp; size: number }) {
-  if (app.icon_key) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={publicUrl(app.icon_key)}
-        alt=""
-        width={size}
-        height={size}
-        className="shrink-0 rounded-full border border-[var(--ring)] object-cover"
-      />
-    );
-  }
-  return (
+  const fallback = (
     <span
       aria-hidden="true"
       style={{ ...tintStyle(app.slug), width: size, height: size }}
@@ -84,6 +74,18 @@ function AppCircle({ app, size }: { app: RegistryApp; size: number }) {
     >
       {(app.name || app.slug).slice(0, 1)}
     </span>
+  );
+  const iconUrl = app.icon_key
+    ? publicUrl(app.icon_key)
+    : firstPartyAppArt(app.slug);
+  if (!iconUrl) return fallback;
+  return (
+    <StoreAppIcon
+      iconUrl={iconUrl}
+      size={size}
+      className="shrink-0 rounded-full border border-[var(--ring)] object-cover"
+      fallback={fallback}
+    />
   );
 }
 
@@ -108,12 +110,12 @@ export default async function PublisherPage({
     apps.find((app) => app.agent_identity)?.agent_identity ?? null;
 
   return (
-    <main className="relative min-h-screen overflow-hidden">
+    <main className="wabi-store-page relative min-h-screen overflow-hidden">
       <div className="pointer-events-none absolute inset-x-0 top-0 h-[30vh]">
         <DitherGradient from="blue" direction="down" opacity={0.25} />
       </div>
 
-      <div className="relative mx-auto w-full max-w-[720px] px-6 pb-16 pt-14">
+      <div className="wabi-store-shell relative mx-auto w-full max-w-[720px] px-6 pb-16 pt-14">
         <header className="rise-in flex flex-col items-start gap-4">
           <div className="flex w-full items-center gap-3">
             <Link

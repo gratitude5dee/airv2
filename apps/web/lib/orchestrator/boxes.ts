@@ -221,6 +221,47 @@ export async function peekBoxState(
 }
 
 /**
+ * The user's box with live-read credentials, only while the mirrored state
+ * already says it is up. Never resumes, waits, or touches stop_after — the
+ * read-only twin of ensureBoxAwake for ambient surfaces (e.g. the Home
+ * dashboard preview) that must not spend a wake to render a summary. The
+ * mirror can lag, so reads on the returned box can still fail; callers use
+ * their usual error path. Returns null when there is no box or it is not
+ * mirrored as ready.
+ */
+export async function peekUserBox(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<UserBox | null> {
+  const { data, error } = await supabase
+    .from("boxes")
+    .select(
+      "provider_box_id, hosted_url, hosted_token, api_server_key, dashboard_url, dashboard_token, dashboard_auth, state"
+    )
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) {
+    throw new Error(`box lookup failed for user ${userId}: ${error.message}`);
+  }
+  if (!data) return null;
+  const row = data as BoxRow & { state: string | null };
+  if (row.state !== "ready") return null;
+  return {
+    boxId: row.provider_box_id,
+    target: {
+      hostedUrl: row.hosted_url,
+      hostedToken: row.hosted_token,
+      apiServerKey: row.api_server_key,
+    },
+    dashboard:
+      row.dashboard_url && row.dashboard_token !== null
+        ? { url: row.dashboard_url, token: row.dashboard_token }
+        : undefined,
+    dashboardAuthSealed: row.dashboard_auth ?? undefined,
+  };
+}
+
+/**
  * Resolve the user's box and make sure Hermes answers, resuming if needed.
  * Clears stop_after for the duration of the run (the caller re-arms it).
  */
