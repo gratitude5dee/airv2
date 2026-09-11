@@ -188,13 +188,20 @@ export async function appendDrawEvent(
     errorCode?: string | undefined;
   }
 ): Promise<void> {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const { data } = await supabase
-      .from("draw_sessions")
-      .select("event_sequence")
-      .eq("id", sessionId)
-      .single();
-    const next = ((data?.event_sequence as number | undefined) ?? -1) + 1;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    // Derive from the committed event rows, not the session counter: a
+    // writer that lost the unique race reads the counter before the
+    // winner bumps it and would retry the occupied sequence forever. The
+    // winner's committed row is visible immediately, so re-reading
+    // draw_events converges on the next free sequence.
+    const { data: last } = await supabase
+      .from("draw_events")
+      .select("sequence")
+      .eq("session_id", sessionId)
+      .order("sequence", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const next = ((last?.sequence as number | undefined) ?? -1) + 1;
     const { error } = await supabase.from("draw_events").insert({
       session_id: sessionId,
       job_id: event.jobId ?? null,
@@ -206,10 +213,13 @@ export async function appendDrawEvent(
       error_code: event.errorCode ?? null,
     });
     if (!error) {
+      // Best-effort counter for clients that read the session row; never
+      // regress a higher value written by a later event.
       await supabase
         .from("draw_sessions")
         .update({ event_sequence: next })
-        .eq("id", sessionId);
+        .eq("id", sessionId)
+        .lt("event_sequence", next);
       return;
     }
     if (error.code !== "23505") {
@@ -223,6 +233,28 @@ export async function appendDrawEvent(
       return;
     }
   }
+  console.error(
+    JSON.stringify({
+      msg: "draw event dropped: sequence retries exhausted",
+      session_id: sessionId,
+      kind: event.kind,
+      state: event.state ?? null,
+    })
+  );
+}
+
+const MAX_DRAW_PROMPT_CHARS = 2000;
+const FALLBACK_SKETCH_PROMPT =
+  "Turn this sketch into a polished finished image while preserving its composition.";
+
+/** Image-model input: no control/format characters, collapsed whitespace,
+ * bounded length. Newlines in a textarea prompt are prose, not structure. */
+export function sanitizeDrawPrompt(prompt: string): string {
+  return prompt
+    .replace(/[\p{Cc}\p{Cf}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, MAX_DRAW_PROMPT_CHARS);
 }
 
 /**
@@ -235,12 +267,15 @@ export function directDrawPlan(
   mode: DrawMode,
   hasImage: boolean
 ): RouterPlan {
+  const cleaned = sanitizeDrawPrompt(prompt);
   return {
     mode: "imagine",
     needs_input: false,
     chat_reply: hasImage ? "editing your sketch" : "drawing your idea",
     delivery_line: "here is your image",
-    expanded_prompt: prompt,
+    // A bare "polish this image" upload still needs an instruction — an
+    // empty expanded_prompt renders as a literal blank in the template.
+    expanded_prompt: cleaned || (hasImage ? FALLBACK_SKETCH_PROMPT : cleaned),
     params: {
       aspect_ratio: "1:1",
       duration: null,
@@ -340,39 +375,7 @@ export async function admitDrawGeneration(
   // The session's in-flight slot is a compare-and-set lease: claim only an
   // empty slot, release a stale one by its recorded id first. A cancelled
   // job that finishes late can never free a successor's slot.
-  const claimSlot = () =>
-    supabase
-      .from("draw_sessions")
-      .update({ active_job_id: job.id, latest_job_id: job.id })
-      .eq("id", session.id)
-      .is("active_job_id", null)
-      .select("id");
-  let { data: claimed } = await claimSlot();
-  if (!claimed?.length && session.active_job_id) {
-    const active = await getCreativeJob(
-      supabase,
-      session.user_id,
-      session.active_job_id
-    );
-    if (active && ACTIVE_JOB_STATUSES.includes(active.status)) {
-      await updateCreativeJob(supabase, job.id, {
-        status: "failed",
-        error: "superseded before admission",
-      });
-      throw new DrawError(
-        "JOB_ALREADY_ACTIVE",
-        "another image is still generating"
-      );
-    }
-    // Stale pointer (job died or was cancelled) — release it by identity.
-    await supabase
-      .from("draw_sessions")
-      .update({ active_job_id: null })
-      .eq("id", session.id)
-      .eq("active_job_id", session.active_job_id);
-    ({ data: claimed } = await claimSlot());
-  }
-  if (!claimed?.length) {
+  if (!(await claimDrawSlot(supabase, session, job.id, true))) {
     await updateCreativeJob(supabase, job.id, {
       status: "failed",
       error: "superseded before admission",
@@ -456,18 +459,19 @@ export async function runDrawJob(
     if (url) mediaInputs.push({ kind: "image", url });
   }
 
+  const cleanPrompt = sanitizeDrawPrompt(prompt);
   const result = await executeCreativeJob(
     supabase,
     job.id,
     session.user_id,
     {
       mode: "imagine",
-      cleanedText: prompt,
+      cleanedText: cleanPrompt,
       text: prompt,
       mediaInputs,
     },
     {
-      plan: directDrawPlan(prompt, mode, mediaInputs.length > 0),
+      plan: directDrawPlan(cleanPrompt, mode, mediaInputs.length > 0),
       promptVersion: DRAW_PROMPT_VERSION,
     }
   );
@@ -494,6 +498,61 @@ export async function runDrawJob(
     .eq("id", session.id)
     .eq("active_job_id", job.id);
   return result;
+}
+
+/**
+ * CAS lease on the session's one in-flight slot. `claimLatest` also moves
+ * latest_job_id (generation only — an animation must not anchor the
+ * revision strip). A recorded-but-stale slot (terminal/cancelled job) is
+ * released by its own id before retrying, so it can't evict a newer claim.
+ */
+async function claimDrawSlot(
+  supabase: SupabaseClient,
+  session: DrawSession,
+  jobId: string,
+  claimLatest: boolean
+): Promise<boolean> {
+  const attempt = () =>
+    supabase
+      .from("draw_sessions")
+      .update(
+        claimLatest
+          ? { active_job_id: jobId, latest_job_id: jobId }
+          : { active_job_id: jobId }
+      )
+      .eq("id", session.id)
+      .is("active_job_id", null)
+      .select("id");
+  let { data } = await attempt();
+  if (data?.length) return true;
+  if (session.active_job_id) {
+    const active = await getCreativeJob(
+      supabase,
+      session.user_id,
+      session.active_job_id
+    );
+    if (active && ACTIVE_JOB_STATUSES.includes(active.status)) return false;
+    await supabase
+      .from("draw_sessions")
+      .update({ active_job_id: null })
+      .eq("id", session.id)
+      .eq("active_job_id", session.active_job_id);
+    ({ data } = await attempt());
+  }
+  return Boolean(data?.length);
+}
+
+/** Release the lease — only if this job still owns it. */
+async function releaseDrawSlot(
+  supabase: SupabaseClient,
+  sessionId: string,
+  jobId: string
+): Promise<void> {
+  await supabase
+    .from("draw_sessions")
+    .update({ active_job_id: null })
+    .eq("id", sessionId)
+    .eq("active_job_id", jobId);
 }
 
 export const DRAW_PROMPT_VERSION = "generation.draw.v1";
@@ -530,7 +589,8 @@ export async function animateDrawJob(
   if (!url) {
     throw new DrawError("PARENT_EXPIRED", "the source image expired");
   }
-  const prompt = (motionPrompt ?? "").trim() || DEFAULT_MOTION_PROMPT;
+  const prompt =
+    sanitizeDrawPrompt(motionPrompt ?? "") || DEFAULT_MOTION_PROMPT;
   const job = await createCreativeJob(
     supabase,
     session.user_id,
@@ -538,21 +598,45 @@ export async function animateDrawJob(
     "zap",
     { drawSessionId: session.id }
   );
-  const result = await executeCreativeJob(supabase, job.id, session.user_id, {
-    mode: "zap",
-    cleanedText: prompt,
-    text: prompt,
-    mediaInputs: [{ kind: "image", url }],
-  });
-  await appendDrawEvent(supabase, session.id, {
-    jobId: job.id,
-    kind: result.status === "delivered" ? "completed" : "state",
-    state: result.status,
-    assetId: result.asset?.id,
-    errorCode:
-      result.status === "delivered" ? undefined : safeDrawErrorCode(result.line),
-  });
-  return { job, result };
+  // The same in-flight lease as generation: without it two open copies of
+  // one card could each run a paid animation, or an animation could race
+  // a fresh draw. latest_job_id stays with the revisions — not the zap.
+  if (!(await claimDrawSlot(supabase, session, job.id, false))) {
+    await updateCreativeJob(supabase, job.id, {
+      status: "failed",
+      error: "superseded before admission",
+    });
+    throw new DrawError(
+      "JOB_ALREADY_ACTIVE",
+      "another image is still generating"
+    );
+  }
+  try {
+    const result = await executeCreativeJob(
+      supabase,
+      job.id,
+      session.user_id,
+      {
+        mode: "zap",
+        cleanedText: prompt,
+        text: prompt,
+        mediaInputs: [{ kind: "image", url }],
+      }
+    );
+    await appendDrawEvent(supabase, session.id, {
+      jobId: job.id,
+      kind: result.status === "delivered" ? "completed" : "state",
+      state: result.status,
+      assetId: result.asset?.id,
+      errorCode:
+        result.status === "delivered"
+          ? undefined
+          : safeDrawErrorCode(result.line),
+    });
+    return { job, result };
+  } finally {
+    await releaseDrawSlot(supabase, session.id, job.id);
+  }
 }
 
 /** Best-effort cancel: GMI has no provider cancel, so the job row is marked
@@ -597,6 +681,7 @@ export async function drawStatus(
   activeJob: { id: string; status: string; error: string | null } | null;
   latestJobId: string | null;
   initialAssetUrl: string | null;
+  latestAnimation: { jobId: string; url: string } | null;
   revisions: DrawRevision[];
 }> {
   const { data } = await supabase
@@ -627,6 +712,31 @@ export async function drawStatus(
       )) ?? null)
     : null;
 
+  // Animations are zap-mode jobs — outside the draw revision chain — so
+  // the latest delivered one is projected separately or a reload would
+  // lose the video (preview + save target) entirely.
+  const { data: animation } = await supabase
+    .from("creative_jobs")
+    .select("id, output_asset_id")
+    .eq("user_id", session.user_id)
+    .eq("draw_session_id", session.id)
+    .eq("mode", "zap")
+    .eq("status", "delivered")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const animationUrl = animation?.output_asset_id
+    ? ((await signedAssetUrl(
+        supabase,
+        session.user_id,
+        animation.output_asset_id
+      )) ?? null)
+    : null;
+  const latestAnimation =
+    animation && animationUrl
+      ? { jobId: animation.id, url: animationUrl }
+      : null;
+
   const latest = events.length
     ? events[events.length - 1]!.sequence
     : session.event_sequence;
@@ -636,6 +746,7 @@ export async function drawStatus(
     activeJob,
     latestJobId: session.latest_job_id,
     initialAssetUrl,
+    latestAnimation,
     revisions,
   };
 }
@@ -710,7 +821,9 @@ async function listDrawRevisions(
   return revisions;
 }
 
-const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+const PNG_SIGNATURE = Buffer.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+]);
 
 /**
  * Store the studio's flattened canvas (PNG data URL) as a content-addressed
@@ -731,9 +844,15 @@ export async function storeDrawUpload(
     return null;
   }
   if (
-    !buffer.byteLength ||
+    // 8-byte signature + IHDR immediately after + IEND trailer — the
+    // structural minimum a real PNG decoder requires, not just magic bytes.
+    buffer.byteLength < 45 ||
     buffer.byteLength > MAX_DRAW_UPLOAD_BYTES ||
-    !buffer.subarray(0, 4).equals(PNG_MAGIC)
+    !buffer.subarray(0, 8).equals(PNG_SIGNATURE) ||
+    buffer.subarray(12, 16).toString("latin1") !== "IHDR" ||
+    buffer
+      .subarray(buffer.byteLength - 8, buffer.byteLength - 4)
+      .toString("latin1") !== "IEND"
   ) {
     return null;
   }

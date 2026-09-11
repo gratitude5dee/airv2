@@ -43,6 +43,9 @@ const UNAVAILABLE_LINE =
 export interface LocationLaneResult {
   handled: boolean;
   contextLine?: string;
+  /** A share that arrived with a caption and nothing pending: the marker
+   * is stripped and the caller continues with the caption as input. */
+  inputOverride?: string;
 }
 
 export async function maybeRunLocationLane(
@@ -60,14 +63,24 @@ export async function maybeRunLocationLane(
 ): Promise<LocationLaneResult> {
   const trimmed = rawInput.trim();
 
+  // The webhook writes a share as the marker on line 1; anything after it
+  // is the caption the user typed alongside.
+  const lines = trimmed.split("\n");
+  const isShare = lines[0]?.trim() === LOCATION_SHARED_BODY;
+  const shareCaption = isShare ? lines.slice(1).join("\n").trim() : "";
+
   // Share/acknowledgement fast-path: expedite the pending request and eat
   // the burst — a share is never conversational content.
-  if (
-    trimmed === LOCATION_SHARED_BODY ||
-    isLocationAcknowledgement(trimmed)
-  ) {
-    const expedited = await expediteLocationRequest(supabase, job.spaceId);
+  if (isShare || isLocationAcknowledgement(trimmed)) {
+    const expedited = await expediteLocationRequest(
+      supabase,
+      job.spaceId,
+      shareCaption ? [shareCaption] : undefined
+    );
     if (!expedited) {
+      if (shareCaption) {
+        return { handled: false, inputOverride: shareCaption };
+      }
       await sender
         .sendText(job.spaceId, job.phone, STRAY_LINE)
         .catch(() => undefined);

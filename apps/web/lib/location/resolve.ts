@@ -12,7 +12,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { SharedFriendLocation } from "@photon-ai/advanced-imessage";
-import { enqueueInbound } from "../orchestrator/flush";
+import { scheduleFlush } from "../orchestrator/flush";
 import { createSpectrumSender } from "../spectrum/sender";
 import {
   claimDueLocationRequests,
@@ -87,29 +87,67 @@ function coarseLabelFor(location: SharedFriendLocation): string | undefined {
   return undefined;
 }
 
+/**
+ * Requeue the held burst plus the location context line. batch_queue has
+ * no uniqueness on message_id, so a partial failure + retry would
+ * duplicate the leading prefix — purge any rows from an earlier attempt
+ * first, then land the whole set in ONE insert statement (atomic: either
+ * the full burst is queued or nothing is). One schedule_flush after the
+ * batch, mirroring enqueueInbound's destination bookkeeping.
+ */
 async function deliverHeldBurst(
   supabase: SupabaseClient,
   request: LocationRequest,
   coarseLabel: string
 ): Promise<void> {
   const bodies = (request.burst_input ?? []) as string[];
-  for (const [index, body] of bodies.entries()) {
-    await enqueueInbound(supabase, {
-      userId: request.user_id,
-      spaceId: request.space_id,
-      phone: request.phone,
-      senderId: request.sender_address,
-      messageId: `location:${request.id}:${index}`,
-      body,
-      senderTier: 0,
-    });
+  const idPrefix = `location:${request.id}:`;
+  await supabase
+    .from("batch_queue")
+    .delete()
+    .eq("space_id", request.space_id)
+    .like("message_id", `${idPrefix}%`);
+  const rows = [
+    `${LOCATION_CONTEXT_PREFIX} ${coarseLabel}`,
+    ...bodies,
+  ].map((body, index) => ({
+    user_id: request.user_id,
+    space_id: request.space_id,
+    phone: request.phone,
+    sender_id: request.sender_address,
+    message_id: `${idPrefix}${index}`,
+    body,
+  }));
+  const { error } = await supabase.from("batch_queue").insert(rows);
+  if (error) {
+    throw new Error(`location burst requeue failed: ${error.message}`);
   }
-  await enqueueInbound(supabase, {
+  const { error: destError } = await supabase
+    .from("imessage_destinations")
+    .upsert(
+      {
+        user_id: request.user_id,
+        space_id: request.space_id,
+        phone: request.phone,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id" }
+    );
+  if (destError) {
+    console.error(
+      JSON.stringify({
+        msg: "location burst destination upsert failed",
+        user_id: request.user_id,
+        error: destError.message,
+      })
+    );
+  }
+  await scheduleFlush(supabase, {
     userId: request.user_id,
     spaceId: request.space_id,
     phone: request.phone,
     senderId: request.sender_address,
-    messageId: `location:${request.id}:ctx`,
+    messageId: `${idPrefix}ctx`,
     body: `${LOCATION_CONTEXT_PREFIX} ${coarseLabel}`,
     senderTier: 0,
   });

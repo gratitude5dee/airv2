@@ -109,7 +109,7 @@ export function debounceMsFor(body: string): number {
  * out) is pulled in by fresh input. cancelled_at is stamped here, on the same
  * clock that writes chain_started_at, so isCancelled compares like with like.
  */
-async function scheduleFlush(
+export async function scheduleFlush(
   supabase: SupabaseClient,
   message: InboundMessage
 ): Promise<string> {
@@ -763,6 +763,7 @@ async function runFlushInner(
     // A share/ack also short-circuits here (it just expedites the pending
     // request). A fresh-enough prior share rides in as a context line.
     let locationContext: string | undefined;
+    let locationInput: string | undefined;
     try {
       const located = await maybeRunLocationLane(
         supabase,
@@ -788,6 +789,8 @@ async function runFlushInner(
         return;
       }
       locationContext = located.contextLine;
+      // A captioned share with nothing pending: the caption is the turn.
+      locationInput = located.inputOverride;
     } catch (error) {
       console.error(
         JSON.stringify({
@@ -821,7 +824,7 @@ async function runFlushInner(
           const bridged = await sharedBridgeReply(
             supabase,
             job.userId,
-            rawInput
+            locationInput ?? rawInput
           ).catch(() => null);
           // Holding lines are best-effort: a Spectrum send failure here
           // must not throw past the reschedule below, or the carried burst
@@ -855,11 +858,12 @@ async function runFlushInner(
       throw error;
     }
 
+    const turnInput = locationInput ?? rawInput;
     const input = await materializeAttachments(
       sender,
       box.boxId,
       job.phone,
-      locationContext ? `${locationContext}\n${rawInput}` : rawInput
+      locationContext ? `${locationContext}\n${turnInput}` : turnInput
     );
 
     // V7: an @mention validated against the roster delegates the burst to

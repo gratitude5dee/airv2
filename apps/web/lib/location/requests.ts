@@ -155,20 +155,47 @@ export async function recentSharedLocation(
  * share itself bumps the pending request to resolve on the next tick
  * (revision++ is the fence — a resolver already holding the row loses).
  */
+/**
+ * Pull the pending request's next probe to now. `appendBodies` folds text
+ * that arrived with a share (a caption) into the held burst so it reaches
+ * Hermes with the location context.
+ *
+ * Never touches a `resolving` row's revision: the sweeper holds that
+ * revision as the fence for every terminal/release write, so bumping it
+ * mid-resolution would stale those writes and wedge the row forever. A
+ * resolving row already reads the provider — the share needs no nudge.
+ */
 export async function expediteLocationRequest(
   supabase: SupabaseClient,
-  spaceId: string
+  spaceId: string,
+  appendBodies?: string[]
 ): Promise<string | null> {
   const pending = await pendingLocationRequest(supabase, spaceId);
   if (!pending) return null;
+  const burstInput = appendBodies?.length
+    ? [...((pending.burst_input ?? []) as string[]), ...appendBodies]
+    : undefined;
+  if (pending.status === "resolving") {
+    if (burstInput) {
+      await supabase
+        .from("location_requests")
+        .update({ burst_input: burstInput })
+        .eq("id", pending.id)
+        .eq("revision", pending.revision)
+        .eq("status", "resolving");
+    }
+    return pending.id;
+  }
   const { error } = await supabase
     .from("location_requests")
     .update({
       next_attempt_at: new Date().toISOString(),
       revision: pending.revision + 1,
+      ...(burstInput ? { burst_input: burstInput } : {}),
     })
     .eq("id", pending.id)
-    .eq("revision", pending.revision);
+    .eq("revision", pending.revision)
+    .in("status", ["pending_provider", "awaiting_share"]);
   return error ? null : pending.id;
 }
 

@@ -50,6 +50,9 @@ interface Payload {
   activeJob: ActiveJob | null;
   latestJobId: string | null;
   initialAssetUrl: string | null;
+  /** the latest delivered zap job — animations aren't draw revisions, so
+   * the server projects them separately or a reload loses the video. */
+  latestAnimation?: { jobId: string; url: string } | null;
   revisions: DrawRevision[];
   /** present on action responses */
   jobId?: string;
@@ -326,9 +329,21 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
   );
   // The media the preview/save target: a delivered zap job isn't a draw
   // revision, so it carries its own pointer until the user picks a revision.
-  const [animatedJobId, setAnimatedJobId] = useState<string | null>(null);
+  const [animatedJobId, setAnimatedJobId] = useState<string | null>(
+    initial.latestAnimation?.jobId ?? null
+  );
   // While set, the revision poll must not restore a still over the video.
-  const [animatedPreviewUrl, setAnimatedPreviewUrl] = useState<string | null>(null);
+  const [animatedPreviewUrl, setAnimatedPreviewUrl] = useState<string | null>(
+    initial.latestAnimation?.url ?? null
+  );
+  // An animation the user navigated away from must not be resurrected by
+  // the next poll — a NEW animation (different job id) still adopts.
+  const dismissedAnimation = useRef<string | null>(null);
+  const clearAnimation = useCallback((): void => {
+    dismissedAnimation.current = animatedJobId;
+    setAnimatedJobId(null);
+    setAnimatedPreviewUrl(null);
+  }, [animatedJobId]);
 
   const bgCanvasRef = useRef<HTMLCanvasElement>(null);
   const strokeCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -466,7 +481,20 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
     if (newest?.outputUrl && !animatedPreviewUrl) {
       setPreviewUrl(newest.outputUrl);
     }
-  }, [latest, animatedPreviewUrl]);
+    // An animation that finished while the page was closed/mid-poll lands
+    // only here — adopt it unless it's the one the user dismissed.
+    const next = payload.latestAnimation;
+    if (
+      next?.url &&
+      next.jobId !== dismissedAnimation.current &&
+      next.jobId !== animatedJobId
+    ) {
+      dismissedAnimation.current = null;
+      setAnimatedJobId(next.jobId);
+      setAnimatedPreviewUrl(next.url);
+      setPreviewUrl(next.url);
+    }
+  }, [latest, animatedPreviewUrl, animatedJobId]);
 
   useEffect(() => {
     // ~2.5s cadence: the render lane has no preview stream, so the strip
@@ -617,8 +645,7 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
       if (payload.status === "delivered") {
         setStrokes([]);
         setRedoStack([]);
-        setAnimatedJobId(null);
-        setAnimatedPreviewUrl(null);
+        clearAnimation();
       }
     } finally {
       setBusy(null);
@@ -635,6 +662,7 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
     targetRevision,
     inkPresent,
     flatten,
+    clearAnimation,
   ]);
 
   const animate = useCallback(async (): Promise<void> => {
@@ -658,6 +686,7 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
           : (payload.line ?? null)
       );
       if (payload.status === "delivered") {
+        dismissedAnimation.current = null;
         setAnimatedJobId(payload.jobId ?? null);
         setAnimatedPreviewUrl(payload.deliveryUrl ?? null);
       }
@@ -733,14 +762,13 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
       } catch {
         /* private mode */
       }
-      setAnimatedJobId(null);
-      setAnimatedPreviewUrl(null);
+      clearAnimation();
       if (revision.outputUrl) {
         setPreviewUrl(revision.outputUrl);
         setTab("preview");
       }
     },
-    [initial.sessionId]
+    [initial.sessionId, clearAnimation]
   );
 
   /* ------------------------------------------------------------ render */

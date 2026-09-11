@@ -54,7 +54,16 @@ export async function maybeRunDrawLane(
   job: DrawFlushJob,
   rawInput: string
 ): Promise<boolean> {
-  const match = DRAW_COMMAND.exec(rawInput.trim());
+  // The burst composes media markers before the text ("[attachment:x]\n
+  // /draw fox" — a photo sent first, or a captioned share). Extract ids
+  // from the raw input, then match the command on text alone.
+  const attachmentIds: string[] = [];
+  for (const marker of rawInput.matchAll(ATTACHMENT_MARKER)) {
+    attachmentIds.push(...(marker[1] ?? "").split(",").filter(Boolean));
+  }
+  const match = DRAW_COMMAND.exec(
+    rawInput.replace(ATTACHMENT_MARKER, " ").trim()
+  );
   if (!match) return false;
 
   const rest = (match[1] ?? "").trim();
@@ -65,14 +74,7 @@ export async function maybeRunDrawLane(
     ? (words.shift(), first as DrawMode)
     : DEFAULT_DRAW_MODE;
 
-  const attachmentIds: string[] = [];
-  const prompt = words
-    .join(" ")
-    .replace(ATTACHMENT_MARKER, (_, ids: string) => {
-      attachmentIds.push(...ids.split(",").filter(Boolean));
-      return " ";
-    })
-    .trim();
+  const prompt = words.join(" ").trim();
 
   const app = await getRegistryApp(supabase, "draw").catch((error: unknown) => {
     throw new MiniAppRegistryLookupError(
