@@ -25,9 +25,22 @@ import {
 } from "../commerce/paymentRequests";
 import { CommerceError, getMerchant } from "../commerce/merchants";
 import { updateMiniAppCard } from "../miniapps/cards";
+import {
+  resolveTradeCancel,
+  resolveTradeOrder,
+  resolveTradeSettings,
+} from "../trade/service";
+import { TradeError } from "../trade/order";
+import { TradeVenueError } from "../trade/venue";
 import { env } from "../env";
 
-export const HOSTED_KINDS = ["purchase_review", "payment_request"] as const;
+export const HOSTED_KINDS = [
+  "purchase_review",
+  "payment_request",
+  "trade_order",
+  "trade_cancel",
+  "trade_settings",
+] as const;
 
 export interface HostedDecision {
   id: string;
@@ -41,12 +54,26 @@ export interface HostedDecision {
 
 export interface HostedApprovalView {
   id: string;
-  kind: "purchase_review" | "payment_request";
+  kind:
+    | "purchase_review"
+    | "payment_request"
+    | "trade_order"
+    | "trade_cancel"
+    | "trade_settings";
   status: string;
   label: string | null;
   agent: string | null;
   /** Countdown target: the payment request's expiry, or the deep link's. */
   expires_at: string | null;
+  trade?: {
+    mode: string | null;
+    estimated_price: string | null;
+    estimated_fill: string | null;
+    fee: string | null;
+    total: string | null;
+    currency: string | null;
+    note: string | null;
+  };
   purchase?: {
     host: string;
     summary: string;
@@ -109,6 +136,25 @@ export async function loadHostedApproval(
     expires_at: tokenExp ? new Date(tokenExp * 1000).toISOString() : null,
   };
   const payload = (decision.payload ?? {}) as Record<string, unknown>;
+
+  if (
+    decision.kind === "trade_order" ||
+    decision.kind === "trade_cancel" ||
+    decision.kind === "trade_settings"
+  ) {
+    const expires = str(payload["expires_at"]);
+    view.trade = {
+      mode: str(payload["mode"]) || null,
+      estimated_price: str(payload["estimated_price"]) || null,
+      estimated_fill: str(payload["estimated_fill"]) || null,
+      fee: str(payload["fee"]) || null,
+      total: str(payload["total"]) || null,
+      currency: str(payload["currency"]) || null,
+      note: str(payload["note"]) || null,
+    };
+    if (expires) view.expires_at = expires;
+    return view;
+  }
 
   if (decision.kind === "purchase_review") {
     view.purchase = {
@@ -175,7 +221,9 @@ export async function resolveHostedDecision(
   action: "approve" | "dismiss",
   method: "fill" | "link" = "fill"
 ): Promise<ApproveResult> {
-  let result: ApproveResult = {};
+  // ApproveResult comes from paymentRequests; `trade` rides on the
+  // intersection returned to the two callers (needs-you + hosted page).
+  let result: ApproveResult & { trade?: { state: string; detail: string } } = {};
 
   if (decision.kind === "purchase_review") {
     // V6 (C20): approving mints + redeems the single-use fill ticket,
@@ -199,6 +247,41 @@ export async function resolveHostedDecision(
     } finally {
       await armStopAfter(supabase, userId).catch(() => undefined);
     }
+  } else if (
+    decision.kind === "trade_order" ||
+    decision.kind === "trade_cancel" ||
+    decision.kind === "trade_settings"
+  ) {
+    // T1: the resolver is the only execution path — the box stages, the
+    // owner decides. Approve runs the venue call; dismiss just closes it.
+    if (decision.kind === "trade_order" && decision.ref) {
+      const outcome = await resolveTradeOrder(
+        supabase,
+        userId,
+        decision.ref,
+        action,
+      );
+      result.trade = outcome;
+    } else if (decision.kind === "trade_cancel" && decision.ref) {
+      const outcome = await resolveTradeCancel(
+        supabase,
+        userId,
+        decision.ref,
+        action,
+      );
+      result.trade = outcome;
+    } else {
+      await resolveTradeSettings(
+        supabase,
+        userId,
+        (decision.payload ?? {}) as Record<string, unknown>,
+        action,
+      );
+      result.trade = {
+        state: action === "approve" ? "applied" : "dismissed",
+        detail: "",
+      };
+    }
   } else if (decision.kind === "payment_request" && decision.ref) {
     // MA8 #12: approval resolves through rails with their own invariants —
     // fiat mints a Stripe Checkout (Link) session on the payee's connected
@@ -216,6 +299,8 @@ export async function resolveHostedDecision(
     }
   }
 
+  // Only a pending decision may flip — a resolver that lost its own race
+  // (another resolver already settled it) must not overwrite the receipt.
   await supabase
     .from("decisions")
     .update({
@@ -223,7 +308,8 @@ export async function resolveHostedDecision(
       resolved_at: new Date().toISOString(),
     })
     .eq("id", decision.id)
-    .eq("user_id", userId);
+    .eq("user_id", userId)
+    .eq("status", "pending");
   if (decision.kind === "purchase_review") {
     await updateMiniAppCard(supabase, userId, "vault", "default");
   }
@@ -232,6 +318,12 @@ export async function resolveHostedDecision(
 
 /** Map a resolution failure to the same HTTP shape /api/decisions used. */
 export function hostedErrorResponse(error: unknown): NextResponse | null {
+  if (error instanceof TradeError || error instanceof TradeVenueError) {
+    return Response.json(
+      { error: error.message, code: error.code },
+      { status: error.status },
+    );
+  }
   if (error instanceof PurchaseError) {
     return Response.json(
       { error: error.code, message: error.message },

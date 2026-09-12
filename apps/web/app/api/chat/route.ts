@@ -19,6 +19,9 @@ import { parseMention } from "@/lib/bots/mentions";
 import { listBots, toPublic, type BotRow } from "@/lib/bots/store";
 import { startBotChatRun } from "@/lib/bots/chat";
 import { attachmentMarker } from "@/lib/chat/attachments";
+import { parseTradeCommand } from "@/lib/trade/parse";
+import { runTradeCommand } from "@/lib/trade/imessage";
+import { mintSignedLink } from "@/lib/miniapps/cards";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -126,6 +129,47 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
       return NextResponse.json({ error: "run failed" }, { status: 500 });
     }
+  }
+
+  // /trade (docs/trade/plan.md §4.1): deterministic arms answer inline —
+  // the web lane is already owner-session scoped, so no tier check applies;
+  // bare `/trade` links to the mini-app, and freeform `/trade ...` text
+  // continues to the Hermes run for the box-side trade skill.
+  const tradeCommand = parseTradeCommand(typed);
+  if (tradeCommand) {
+    if (tradeCommand.kind === "card") {
+      return NextResponse.json({
+        creative_line: `Trade is one tap away — ${mintSignedLink(userId, "trade", "default")}`,
+      });
+    }
+    let tradeAnswer: string | null = null;
+    try {
+      const { handled } = await runTradeCommand(
+        supabase,
+        async (text) => {
+          tradeAnswer = tradeAnswer ? `${tradeAnswer}\n${text}` : text;
+        },
+        { userId, senderTier: 0 },
+        tradeCommand
+      );
+      if (handled) {
+        return NextResponse.json({
+          creative_line: tradeAnswer ?? "Done.",
+        });
+      }
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          msg: "trade web command failed",
+          user_id: userId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      );
+      return NextResponse.json({
+        creative_line: "Couldn't reach trading — try again.",
+      });
+    }
+    // trade.kind === "agent": falls through to the normal run.
   }
 
   // Ordinary chat: the Hermes input is the typed text plus the attachment

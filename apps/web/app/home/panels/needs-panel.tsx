@@ -48,6 +48,9 @@ const DECISION_KIND_LABELS: Record<string, string> = {
   spend_ceiling: "Spend ceiling reached",
   social_post: "Social post awaiting approval",
   purchase_review: "Card fill awaiting approval",
+  trade_order: "Trade order awaiting approval",
+  trade_cancel: "Order cancel awaiting approval",
+  trade_settings: "Trade cap change awaiting approval",
   crm_update: "CRM update awaiting approval",
   shop_publish: "Shop catalog awaiting publish",
   new_contact: "New contact",
@@ -71,6 +74,9 @@ const DECISION_APPROVE_CTAS: Record<string, string> = {
   revise: "Retry",
   social_post: "Post it",
   purchase_review: "Fill card",
+  trade_order: "Place order",
+  trade_cancel: "Cancel it",
+  trade_settings: "Apply caps",
   shop_publish: "Publish shop",
 };
 

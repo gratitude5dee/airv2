@@ -96,6 +96,23 @@ export const env = {
   // disabled until it is set, and it rotates independently of every other
   // secret. Rotating it invalidates previously sealed keys.
   providerVaultKey: (): string | null => process.env["PROVIDER_VAULT_KEY"] || null,
+  // Trade (docs/trade/plan.md). The preview-token HMAC key defaults to the
+  // mini-app signing key — a different use-prefix separates the domains. Set
+  // TRADE_PREVIEW_SIGNING_KEY to rotate preview authority independently of
+  // mini-app sessions.
+  tradePreviewSigningKey: (): string =>
+    process.env["TRADE_PREVIEW_SIGNING_KEY"] ?? required("MINIAPP_SIGNING_KEY"),
+  // Kill switch for live orders: paper mode always works; venue submits
+  // refuse unless explicitly enabled.
+  tradeLiveEnabled: (): boolean =>
+    optional("TRADE_LIVE_ENABLED", "false") === "true",
+  // Optional user-id allowlist for live trading (comma-separated). Empty =
+  // every owner can connect and trade once live is enabled.
+  tradeAllowlist: (): string[] =>
+    optional("TRADE_ALLOWLIST", "")
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean),
   thirdwebSecretKey: (): string => required("THIRDWEB_SECRET_KEY"),
   // Speech-to-text (M13). Defaults to the main model provider; STT_* overrides
   // exist for providers with no audio endpoint (goal.md §5).
