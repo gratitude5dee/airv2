@@ -918,6 +918,26 @@ function Studio(props: { initial: Payload }) {
   const cameraRef = useRef<HTMLInputElement | null>(null);
   const lastMediaRefresh = useRef(0);
   const sourceAssetRef = useRef(props.initial.sourceAssetId);
+  // Object URL minted for the instant camera-stage preview — revoked once a
+  // signed URL (or another preview) replaces it.
+  const objectUrlRef = useRef<string | null>(null);
+
+  const applySourceUrl = useCallback((url: string) => {
+    const prev = objectUrlRef.current;
+    if (prev && prev !== url) {
+      URL.revokeObjectURL(prev);
+      objectUrlRef.current = null;
+    }
+    if (url.startsWith("blob:")) objectUrlRef.current = url;
+    setSourceUrl(url);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+    },
+    []
+  );
 
   const adopt = useCallback(
     (payload: Payload, forceSource = false) => {
@@ -933,7 +953,7 @@ function Studio(props: { initial: Payload }) {
         payload.sourceUrl &&
         (forceSource || payload.sourceAssetId !== sourceAssetRef.current)
       ) {
-        setSourceUrl(payload.sourceUrl);
+        applySourceUrl(payload.sourceUrl);
       }
       if (payload.sourceAssetId) {
         sourceAssetRef.current = payload.sourceAssetId;
@@ -953,6 +973,7 @@ function Studio(props: { initial: Payload }) {
               setLine(null);
               setStage("result");
             } else {
+              setShowSketch(false);
               setLine("still delivered — set the camera move");
               setStage("camera");
             }
@@ -962,7 +983,7 @@ function Studio(props: { initial: Payload }) {
         }
       }
     },
-    [watchJob]
+    [watchJob, applySourceUrl]
   );
 
   const refresh = useCallback(async () => {
@@ -1019,21 +1040,32 @@ function Studio(props: { initial: Payload }) {
       if (!file || busy) return;
       setBusy(true);
       setLine("reading the photo…");
+      // Mint the preview up front — the camera stage shows the still the
+      // instant the upload is accepted instead of waiting on a status pull.
+      // HEIC/HEIF can't render in <img> — those wait for the server's
+      // converted PNG (delivered by the same trailing status pull).
+      const previewable =
+        file.type.startsWith("image/") && !/hei[cf]/i.test(file.type);
+      const previewUrl = previewable ? URL.createObjectURL(file) : null;
       const form = new FormData();
       form.set("action", "source");
       form.set("file", file);
       const payload = await postAction(form);
       setBusy(false);
       if (!payload || payload.error || payload.sourceAssetId === undefined) {
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
         fail(payload, "that photo didn't come through — try another.");
         return;
       }
       setLine(null);
-      // a fresh status pull picks up the signed preview + source pointer
-      await refresh();
+      setSourceAssetId(payload.sourceAssetId);
+      if (previewUrl) applySourceUrl(previewUrl);
       setStage("camera");
+      // The status pull follows behind: its sourceUrl (signed, media-
+      // refreshable) swaps in over the object URL once it lands.
+      void refresh();
     },
-    [busy, refresh]
+    [busy, refresh, applySourceUrl]
   );
 
   const onSketch = useCallback(
