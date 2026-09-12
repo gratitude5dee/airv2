@@ -497,6 +497,8 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
   const onPointerDown = useCallback(
     (event: React.PointerEvent<HTMLCanvasElement>): void => {
       if (tab !== "sketch" || jobActive) return;
+      // Secondary buttons (context-click, pen barrel) don't start a stroke.
+      if (event.button !== 0) return;
       event.preventDefault();
       event.stopPropagation();
       const point = eventPoint(event);
