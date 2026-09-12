@@ -124,8 +124,16 @@ async function renderPortfolio(ctx: MiniAppContext): Promise<string> {
 
 /* -------------------------------------------------------------- trade */
 
+const TRADE_DECISION_KINDS = [
+  "trade_order",
+  "trade_cancel",
+  "trade_settings",
+] as const;
+type TradeDecisionKind = (typeof TRADE_DECISION_KINDS)[number];
+
 interface PendingApproval {
   decisionId: string;
+  kind: TradeDecisionKind;
   label: string;
   summary: string;
   estimated: Record<string, unknown>;
@@ -136,9 +144,9 @@ interface PendingApproval {
 async function pendingApproval(ctx: MiniAppContext): Promise<PendingApproval | null> {
   const { data } = await ctx.supabase
     .from("decisions")
-    .select("id, ref, label, payload")
+    .select("id, kind, ref, label, payload")
     .eq("user_id", ctx.session.userId)
-    .eq("kind", "trade_order")
+    .in("kind", [...TRADE_DECISION_KINDS])
     .eq("status", "pending")
     .order("created_at", { ascending: false })
     .limit(1);
@@ -148,6 +156,7 @@ async function pendingApproval(ctx: MiniAppContext): Promise<PendingApproval | n
   const order = (payload["order"] ?? {}) as Record<string, unknown>;
   return {
     decisionId: row.id as string,
+    kind: row.kind as TradeDecisionKind,
     label: (row.label as string) ?? "",
     summary: `${order["side"] ?? ""} ${order["productId"] ?? ""}`,
     estimated: payload,
@@ -158,26 +167,43 @@ async function pendingApproval(ctx: MiniAppContext): Promise<PendingApproval | n
 
 function approvalBlock(pending: PendingApproval): string {
   const est = pending.estimated;
+  const heading =
+    pending.kind === "trade_order"
+      ? "Approve this exact order"
+      : pending.kind === "trade_cancel"
+        ? "Approve this cancellation"
+        : "Approve these cap changes";
+  const approveCta =
+    pending.kind === "trade_order"
+      ? "Approve — place it"
+      : pending.kind === "trade_cancel"
+        ? "Approve — cancel it"
+        : "Approve — apply caps";
+  const denyLabel = pending.kind === "trade_order" ? "Deny" : "Keep as-is";
+  const detailRows =
+    pending.kind === "trade_order"
+      ? [
+          `<table><tbody>`,
+          `<tr><td class="nowrap">Est. price</td><td class="nowrap">${esc(String(est["estimated_price"] ?? "—"))}</td></tr>`,
+          `<tr><td class="nowrap">Est. fill</td><td class="nowrap">${esc(String(est["estimated_fill"] ?? "—"))}</td></tr>`,
+          `<tr><td class="nowrap">Fee</td><td class="nowrap">${esc(String(est["fee"] ?? "—"))}</td></tr>`,
+          `<tr><td class="nowrap">Total</td><td class="nowrap"><strong>${esc(String(est["total"] ?? "—"))} ${esc(String(est["currency"] ?? ""))}</strong></td></tr>`,
+          `</tbody></table>`,
+        ].join("")
+      : "";
   const lines = [
-    `<div class="card" style="border-style:dashed"><strong>Approve this exact order</strong><p style="font-size:1.05rem;margin:0.35rem 0">${esc(
+    `<div class="card" style="border-style:dashed"><strong>${heading}</strong><p style="font-size:1.05rem;margin:0.35rem 0">${esc(
       pending.label,
     )}</p>`,
-    `<table><tbody>`,
-    `<tr><td class="nowrap">Est. price</td><td class="nowrap">${esc(String(est["estimated_price"] ?? "—"))}</td></tr>`,
-    `<tr><td class="nowrap">Est. fill</td><td class="nowrap">${esc(String(est["estimated_fill"] ?? "—"))}</td></tr>`,
-    `<tr><td class="nowrap">Fee</td><td class="nowrap">${esc(String(est["fee"] ?? "—"))}</td></tr>`,
-    `<tr><td class="nowrap">Total</td><td class="nowrap"><strong>${esc(String(est["total"] ?? "—"))} ${esc(String(est["currency"] ?? ""))}</strong></td></tr>`,
-    `</tbody></table>`,
-    `<p class="when" style="margin-top:0.4rem">${esc(pending.mode)} · approval expires ${esc(
-      pending.expiresAt ? new Date(pending.expiresAt).toLocaleTimeString() : "soon",
-    )}</p>`,
+    detailRows,
+    `<p class="when" style="margin-top:0.4rem;white-space:normal">${esc(pending.mode)}${pending.expiresAt ? ` · approval expires ${esc(new Date(pending.expiresAt).toLocaleTimeString())}` : ""}</p>`,
     `<div class="row actions">`,
     `<form method="post"><input type="hidden" name="action" value="resolve"><input type="hidden" name="tab" value="trade"><input type="hidden" name="decision" value="${esc(
       pending.decisionId,
-    )}"><input type="hidden" name="choice" value="approve"><button>Approve — place it</button></form>`,
+    )}"><input type="hidden" name="choice" value="approve"><button>${approveCta}</button></form>`,
     `<form method="post"><input type="hidden" name="action" value="resolve"><input type="hidden" name="tab" value="trade"><input type="hidden" name="decision" value="${esc(
       pending.decisionId,
-    )}"><input type="hidden" name="choice" value="dismiss"><button class="ghost">Deny</button></form>`,
+    )}"><input type="hidden" name="choice" value="dismiss"><button class="ghost">${denyLabel}</button></form>`,
     `</div></div>`,
   ];
   return lines.join("");
@@ -211,7 +237,7 @@ function reviewBlock(result: {
     `<tr><td class="nowrap">Fee</td><td class="nowrap">${esc(result.preview.fee ?? "—")}</td></tr>`,
     `<tr><td class="nowrap">Total</td><td class="nowrap"><strong>${esc(result.preview.total ?? "—")} ${esc(result.preview.currency ?? "")}</strong></td></tr>`,
   ].join("");
-  return `<div class="card" style="border-style:dashed"><strong>Review the exact order</strong><table><tbody>${rows}</tbody></table><p class="when">Preview expires ${esc(
+  return `<div class="card" style="border-style:dashed"><strong>Review the exact order</strong><table><tbody>${rows}</tbody></table><p class="when" style="white-space:normal">Preview expires ${esc(
     new Date(result.expiresAt).toLocaleTimeString(),
   )} — approving after that does nothing.</p><div class="row actions"><form method="post">${fields}<input type="hidden" name="action" value="propose"><input type="hidden" name="tab" value="trade"><button>Send to approval</button></form><a class="navlink ghost" style="font-size:0.6rem" href="?tab=trade">Discard</a></div></div>`;
 }
@@ -342,11 +368,13 @@ async function renderSettings(ctx: MiniAppContext): Promise<string> {
         ? `<span class="chip">key error</span>`
         : `<span class="chip">not connected</span>`;
   const modeButtons = `<div class="row"><form method="post"><input type="hidden" name="action" value="mode"><input type="hidden" name="tab" value="settings"><input type="hidden" name="mode" value="paper"><button class="${mode === "paper" ? "" : "ghost"}">Paper</button></form><form method="post"><input type="hidden" name="action" value="mode"><input type="hidden" name="tab" value="settings"><input type="hidden" name="mode" value="live"><button class="${mode === "live" ? "" : "ghost"}">Live</button></form></div>`;
-  const caps = `<form method="post" class="stack"><input type="hidden" name="action" value="caps"><input type="hidden" name="tab" value="settings"><div class="row"><input type="text" name="per_order" inputmode="decimal" placeholder="per-order $" value="${esc(
+  // minmax(0,1fr) — stack's implicit auto column would size to the inputs'
+  // max-content and spill past the panel.
+  const caps = `<form method="post" class="stack" style="grid-template-columns:minmax(0,1fr)"><input type="hidden" name="action" value="caps"><input type="hidden" name="tab" value="settings"><div class="row"><input type="text" name="per_order" inputmode="decimal" placeholder="per-order $" value="${esc(
     String(conn?.per_order_usd_cap ?? 250),
   )}"><input type="text" name="daily" inputmode="decimal" placeholder="daily $" value="${esc(
     String(conn?.daily_usd_cap ?? 1000),
-  )}"></div><button class="ghost">Update caps</button><p class="when">Lowering caps applies now. Raising them files a Needs-you approval.</p></form>`;
+  )}"></div><button class="ghost">Update caps</button><p class="when" style="white-space:normal">Lowering caps applies now. Raising them files a Needs-you approval.</p></form>`;
   const connect = `<details${linked ? "" : " open"}><summary>Coinbase key (BYOK)</summary><p class="muted" style="font-size:0.85rem">Create an Advanced Trade API key at <strong>portal.coinbase.com</strong> with spot trading permission. Paste it once — it's sealed and never shown again. Rotating means re-entering both fields.</p><form method="post" class="stack"><input type="hidden" name="action" value="connect"><input type="hidden" name="tab" value="settings"><input type="text" name="key_id" placeholder="Key name / id" autocomplete="off" required><input type="password" name="key_secret" placeholder="Key secret" autocomplete="off" required><input type="text" name="portfolio_uuid" placeholder="Portfolio UUID (optional)" autocomplete="off"><button>${linked ? "Replace key" : "Connect Coinbase"}</button></form>${
     linked
       ? `<form method="post" style="margin-top:0.6rem"><input type="hidden" name="action" value="disconnect"><input type="hidden" name="tab" value="settings"><button class="ghost">Disconnect &amp; delete key</button></form>`
@@ -413,10 +441,16 @@ function orderFromForm(form: FormData): Record<string, unknown> {
 
 export const trade: MiniAppModule = {
   async render(ctx: MiniAppContext): Promise<NextResponse> {
+    if (ctx.session.role !== "owner") {
+      return forbidden("Trade is owner-only.");
+    }
     return renderPage(ctx, null);
   },
 
   async action(ctx: MiniAppContext, form: FormData): Promise<NextResponse> {
+    if (ctx.session.role !== "owner") {
+      return forbidden("Trade is owner-only.");
+    }
     const action = String(form.get("action") ?? "");
     const userId = ctx.session.userId;
 
@@ -494,7 +528,10 @@ export const trade: MiniAppModule = {
         .eq("user_id", userId)
         .eq("status", "pending")
         .maybeSingle();
-      if (!decision || decision.kind !== "trade_order") {
+      if (
+        !decision ||
+        !TRADE_DECISION_KINDS.includes(decision.kind as TradeDecisionKind)
+      ) {
         return renderPage(ctx, "That approval is no longer pending.");
       }
       try {
@@ -514,7 +551,12 @@ export const trade: MiniAppModule = {
                 : "Approved.";
           return renderPage(ctx, msg);
         }
-        return renderPage(ctx, "Denied — nothing was placed.");
+        return renderPage(
+          ctx,
+          decision.kind === "trade_order"
+            ? "Denied — nothing was placed."
+            : "Kept as-is.",
+        );
       } catch (error) {
         return renderPage(ctx, errorNotice(error));
       }

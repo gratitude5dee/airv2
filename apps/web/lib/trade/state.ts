@@ -15,8 +15,12 @@ export interface TradeWatchlistItem {
   productId: string;
   op: ">" | "<";
   price: string;
-  state: "armed" | "fired";
+  /** firing = crossed + persisted, alert delivery in flight (retried). */
+  state: "armed" | "firing" | "fired";
   firedAt?: string;
+  /** Price at the moment of the cross — reused across delivery retries. */
+  hitPrice?: string;
+  sendAttempts?: number;
 }
 
 export interface TradeWatchlistDoc {
@@ -82,9 +86,14 @@ async function readDoc<T>(boxId: string, resource: string, fallback: T): Promise
   }
   try {
     const parsed = JSON.parse(raw) as T;
-    return parsed ?? structuredClone(fallback);
-  } catch {
-    return structuredClone(fallback);
+    if (parsed === null || typeof parsed !== "object") {
+      throw new Error("not an object");
+    }
+    return parsed;
+  } catch (error) {
+    // Fail closed: only a 404 means "uninitialized" — a truncated or corrupt
+    // doc must never be overwritten with defaults by the next mutation.
+    throw new Error(`trade ${resource} document is malformed`, { cause: error });
   }
 }
 
@@ -99,19 +108,25 @@ export async function readTradeDoc<T>(
   return readDoc(box.boxId, resource, fallback);
 }
 
-/** Lease-serialized read-modify-write; `mutate` returning false skips the write. */
+/**
+ * Lease-serialized read-modify-write. `mutate` returns the document to
+ * persist (it may be a normalized replacement — what it returns is what gets
+ * written), or false to skip the write.
+ */
 export async function mutateTradeDoc<T>(
   supabase: SupabaseClient,
   userId: string,
   resource: "paper" | "watchlist" | "snapshot",
   fallback: T,
-  mutate: (doc: T) => boolean,
+  mutate: (doc: T) => T | false,
 ): Promise<T> {
   return withStateLease(supabase, userId, "trade", resource, { attempts: 3 }, async (boxId, renew) => {
     const doc = await readDoc(boxId, resource, fallback);
-    if (mutate(doc)) {
+    const next = mutate(doc);
+    if (next !== false) {
       await renew();
-      await writeAppStateTo(boxId, "trade", resource, doc);
+      await writeAppStateTo(boxId, "trade", resource, next);
+      return next;
     }
     return doc;
   });

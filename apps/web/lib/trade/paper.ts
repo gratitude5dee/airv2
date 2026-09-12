@@ -106,11 +106,28 @@ export function paperVenue(supabase: SupabaseClient, userId: string): TradeVenue
     },
 
     async previewOrder(order) {
+      // Paper fills the whole quantity at one price — modelling open limit or
+      // untriggered stop orders needs a pending-order state machine, so v1
+      // paper is honestly market-only.
+      if (order.type !== "market") {
+        throw new TradeVenueError(
+          "Paper trading is market orders only — limit and stop-limit need a connected Coinbase key.",
+          400,
+          "paper_market_only",
+        );
+      }
       return estimateFill(order, await paperPrice(order.productId));
     },
 
     async createOrder(order, clientOrderId): Promise<TradeFillResult> {
       const canonical = canonicalOrder(order);
+      if (canonical.type !== "market") {
+        throw new TradeVenueError(
+          "Paper trading is market orders only.",
+          400,
+          "paper_market_only",
+        );
+      }
       const price = await paperPrice(canonical.productId);
       const base = canonical.productId.split("-")[0] ?? "";
       const preview = estimateFill(canonical, price);
@@ -169,7 +186,7 @@ export function paperVenue(supabase: SupabaseClient, userId: string): TradeVenue
           feeUsd: dec(feeUsd, 2),
         };
         doc.ledger.push(result.fill);
-        return true;
+        return doc;
       });
       const fillRow = result.fill;
       return {

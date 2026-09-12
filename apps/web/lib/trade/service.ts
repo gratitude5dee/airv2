@@ -414,11 +414,29 @@ export async function resolveTradeOrder(
   }
   const order = row as TradeOrderRow;
   if (action === "dismiss") {
-    await supabase
+    // CAS so a concurrent approve wins: a losing dismiss reports what the
+    // order actually did rather than claiming a denial that never happened.
+    const { data: denied } = await supabase
       .from("trade_orders")
       .update({ state: "denied" })
       .eq("id", order.id)
-      .eq("state", "pending_approval");
+      .eq("state", "pending_approval")
+      .select("id");
+    if (!denied || denied.length === 0) {
+      const { data: current } = await supabase
+        .from("trade_orders")
+        .select("state")
+        .eq("id", order.id)
+        .maybeSingle();
+      const actual = (current?.state as string | undefined) ?? order.state;
+      if (actual === "pending_approval") {
+        return { state: "pending", detail: "Still waiting on you." };
+      }
+      return {
+        state: actual,
+        detail: `This approval was already answered — the order is ${actual}.`,
+      };
+    }
     return { state: "denied", detail: orderSummary(orderFromRow(order)) };
   }
   if (order.state !== "pending_approval") {
@@ -431,19 +449,9 @@ export async function resolveTradeOrder(
     );
   }
 
-  // Claim: previewed→pending_approval→submitting. The conditional update is
-  // the single-flip gate (double-taps can't both pass).
-  const { data: claimed } = await supabase
-    .from("trade_orders")
-    .update({ state: "submitting" })
-    .eq("id", order.id)
-    .eq("user_id", userId)
-    .eq("state", "pending_approval")
-    .select("id");
-  if (!claimed || claimed.length === 0) {
-    throw new TradeError("This order is already being submitted.", 409, "not_pending");
-  }
-
+  // Deterministic preflight BEFORE the claim: a thrown check must leave the
+  // order at pending_approval (the approval survives), not strand it at
+  // submitting where nothing can recover it.
   if (order.mode === "live") {
     if (!env.tradeLiveEnabled()) {
       throw new TradeError(
@@ -466,16 +474,39 @@ export async function resolveTradeOrder(
   const orderSpec = orderFromRow(order);
   const preview = (order.preview ?? {}) as Record<string, unknown>;
   const token = typeof preview["token"] === "string" ? preview["token"] : "";
+  // T2 at execution time: the signed preview must still match exactly — and
+  // an order with no token can never reach the venue at all.
+  if (!token) {
+    throw new TradeError(
+      "That order is missing its signed preview — ask for a fresh one.",
+      400,
+      "bad_token",
+    );
+  }
+  verifyPreviewToken(token, orderSpec, userId);
+  assertTradableSpotProduct(await venue.getProduct(orderSpec.productId)); // T4
+  const connection = await getTradeConnection(supabase, userId);
+  await assertCaps(supabase, userId, order, connection); // T6, again
+
+  // Claim: pending_approval→submitting. The conditional update is the
+  // single-flip gate (double-taps can't both pass), run immediately before
+  // the one potentially-mutating call.
+  const { data: claimed } = await supabase
+    .from("trade_orders")
+    .update({ state: "submitting" })
+    .eq("id", order.id)
+    .eq("user_id", userId)
+    .eq("state", "pending_approval")
+    .select("id");
+  if (!claimed || claimed.length === 0) {
+    throw new TradeError("This order is already being submitted.", 409, "not_pending");
+  }
+
   try {
-    // T2 at execution time: the signed preview must still match exactly.
-    if (token) verifyPreviewToken(token, orderSpec, userId);
-    assertTradableSpotProduct(await venue.getProduct(orderSpec.productId)); // T4
-    const connection = await getTradeConnection(supabase, userId);
-    await assertCaps(supabase, userId, order, connection); // T6, again
     const result = await venue.createOrder(orderSpec, order.client_order_id);
     const live = order.mode === "live";
     const next = live ? "submitted" : "filled";
-    await supabase
+    const { data: recorded, error: recordError } = await supabase
       .from("trade_orders")
       .update({
         state: next,
@@ -483,7 +514,28 @@ export async function resolveTradeOrder(
         updated_at: new Date().toISOString(),
       })
       .eq("id", order.id)
-      .eq("user_id", userId);
+      .eq("user_id", userId)
+      .select("id");
+    if (recordError || !recorded || recorded.length === 0) {
+      // The venue confirmed an order id but the ledger didn't record it. The
+      // order exists at Coinbase under our client_order_id — mark it
+      // uncertain (never a silent success) and persist the venue id so a
+      // repair path can find it.
+      await supabase
+        .from("trade_orders")
+        .update({
+          state: "uncertain",
+          error_code: "record_failed",
+          venue_order_id: result.orderId || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", order.id)
+        .eq("user_id", userId);
+      return {
+        state: "uncertain",
+        detail: `Placed at Coinbase${result.orderId ? ` as ${result.orderId}` : ""} but the ledger couldn't record it — check Orders before touching it again.`,
+      };
+    }
     return { state: next, detail: orderSummary(orderSpec) };
   } catch (error) {
     // C23: a venue rejection ("insufficient funds", "product offline") is a
@@ -588,7 +640,8 @@ export async function resolveTradeCancel(
 
 /* ------------------------------------------------------- reconciliation */
 
-const LIVE_OPEN_STATES = ["submitted", "partially_filled"] as const;
+const LIVE_OPEN_STATES = ["submitted", "partially_filled", "submitting"] as const;
+const SUBMITTING_STALE_MS = 10 * 60 * 1000;
 
 function venueStateToOurs(status: string): TradeOrderRow["state"] {
   switch (status) {
@@ -619,7 +672,23 @@ export async function reconcileTradeOrders(
   const { venue } = await venueFor(supabase, userId);
   let synced = 0;
   for (const order of open) {
-    if (!order.venue_order_id) continue;
+    if (!order.venue_order_id) {
+      // Stuck at `submitting` with no venue id: the submit's outcome is
+      // unknown — after a grace period it's terminal uncertain (C23), never
+      // resubmitted.
+      if (Date.now() - Date.parse(order.updated_at) > SUBMITTING_STALE_MS) {
+        await supabase
+          .from("trade_orders")
+          .update({
+            state: "uncertain",
+            error_code: "submit_outcome_unknown",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", order.id);
+        synced += 1;
+      }
+      continue;
+    }
     try {
       const venueOrder = await venue.getOrder(order.venue_order_id);
       const next = venueStateToOurs(venueOrder.status.toUpperCase());
@@ -699,6 +768,9 @@ export async function connectCoinbase(
   if (keySecret.length < 16 || keySecret.length > 8192) {
     throw new TradeError("That doesn't look like a Coinbase key secret.", 400, "bad_key");
   }
+  const allowlist = env.tradeAllowlist();
+  const liveAllowed =
+    env.tradeLiveEnabled() && (allowlist.length === 0 || allowlist.includes(userId));
 
   // Verify against the live API before persisting — a key that can't read
   // accounts is saved as status='error' so the UI says so plainly.
@@ -730,7 +802,7 @@ export async function connectCoinbase(
       secret_sealed: sealSecret(keySecret, vaultKey),
       portfolio_uuid: portfolioUuid,
       portfolio_name: portfolioName,
-      mode: status === "connected" ? "live" : "paper",
+      mode: status === "connected" && liveAllowed ? "live" : "paper",
       status,
       last_verified_at: status === "connected" ? new Date().toISOString() : null,
       updated_at: new Date().toISOString(),
@@ -740,13 +812,7 @@ export async function connectCoinbase(
   if (error) {
     throw new TradeError(`Couldn't save the connection. (${error.message})`, 500, "store_failed");
   }
-  const allowlist = env.tradeAllowlist();
-  if (status === "connected" && allowlist.length > 0 && !allowlist.includes(userId)) {
-    await supabase
-      .from("trade_connections")
-      .update({ mode: "paper", updated_at: new Date().toISOString() })
-      .eq("user_id", userId)
-      .eq("provider", "coinbase");
+  if (status === "connected" && !liveAllowed) {
     return { portfolioName, mode: "paper" };
   }
   if (status !== "connected") {
@@ -815,12 +881,29 @@ export async function setTradeMode(
   mode: TradeMode,
 ): Promise<TradeConnectionRow | null> {
   const connection = await getTradeConnection(supabase, userId);
-  if (mode === "live" && (!connection || connection.status !== "connected")) {
-    throw new TradeError(
-      "Connect a Coinbase key first — Trade → Settings.",
-      400,
-      "not_connected",
-    );
+  if (mode === "live") {
+    if (!env.tradeLiveEnabled()) {
+      throw new TradeError(
+        "Live trading isn't enabled on this deployment — stay in paper.",
+        403,
+        "live_disabled",
+      );
+    }
+    const allowlist = env.tradeAllowlist();
+    if (allowlist.length > 0 && !allowlist.includes(userId)) {
+      throw new TradeError(
+        "Live trading isn't open for your account yet.",
+        403,
+        "not_allowlisted",
+      );
+    }
+    if (!connection || connection.status !== "connected") {
+      throw new TradeError(
+        "Connect a Coinbase key first — Trade → Settings.",
+        400,
+        "not_connected",
+      );
+    }
   }
   if (!connection) return null;
   await supabase
@@ -892,7 +975,24 @@ export async function resolveTradeSettings(
   if (action !== "approve") return;
   const perOrder = Number(payload["per_order_usd_cap"]);
   const daily = Number(payload["daily_usd_cap"]);
-  if (!Number.isFinite(perOrder) || !Number.isFinite(daily)) return;
+  // The approval's payload is data, not authority — re-validate the same
+  // bounds updateTradeCaps enforces so a malformed decision can't install
+  // negative or absurd caps.
+  if (
+    !Number.isFinite(perOrder) ||
+    !Number.isFinite(daily) ||
+    perOrder < 1 ||
+    daily < 1 ||
+    perOrder > 100_000 ||
+    daily > 1_000_000 ||
+    perOrder > daily
+  ) {
+    throw new TradeError(
+      "Those cap values don't look right — set them again in Settings.",
+      400,
+      "bad_caps",
+    );
+  }
   await supabase.from("trade_connections").upsert(
     {
       user_id: userId,

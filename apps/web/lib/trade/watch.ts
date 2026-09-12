@@ -71,7 +71,7 @@ export async function addWatch(
     } else {
       doc.items.push(item);
     }
-    return true;
+    return doc;
   });
   return { item };
 }
@@ -91,7 +91,7 @@ export async function removeWatch(
     const before = doc.items.length;
     doc.items = doc.items.filter((item) => item.symbol !== sym);
     removed = before - doc.items.length;
-    return removed > 0;
+    return removed > 0 ? doc : false;
   });
   return { removed };
 }
@@ -112,7 +112,8 @@ export async function tickWatchlists(supabase: SupabaseClient): Promise<number> 
       ),
     );
     const armed = doc.items.filter((item) => item.state === "armed");
-    if (armed.length === 0) continue;
+    const pending = doc.items.filter((item) => item.state === "firing");
+    if (armed.length === 0 && pending.length === 0) continue;
 
     const prices = new Map<string, number>();
     const products = [...new Set(armed.map((item) => item.productId))];
@@ -121,47 +122,78 @@ export async function tickWatchlists(supabase: SupabaseClient): Promise<number> 
       const parsed = price ? Number(price) : NaN;
       if (Number.isFinite(parsed)) prices.set(productId, parsed);
     }
-    if (prices.size === 0) continue;
+    // No prices AND nothing pending delivery → nothing to do this tick.
+    if (prices.size === 0 && pending.length === 0) continue;
 
+    // armed → firing is persisted BEFORE delivery, and delivery retries items
+    // already at firing — a send we can't confirm never double-alerts, and a
+    // persisted firing never silently vanishes.
     let changed = false;
-    const hits: { item: TradeWatchlistItem; last: number }[] = [];
+    const hits: TradeWatchlistItem[] = [];
     for (const item of doc.items) {
+      if (item.state === "firing") {
+        hits.push(item); // earlier persist succeeded but delivery didn't
+        continue;
+      }
       if (item.state !== "armed") continue;
       const last = prices.get(item.productId);
       if (last === undefined) continue;
       const crossed =
         item.op === ">" ? last >= Number(item.price) : last <= Number(item.price);
       if (crossed) {
-        item.state = "fired";
+        item.state = "firing";
         item.firedAt = new Date().toISOString();
-        hits.push({ item, last });
+        item.hitPrice = String(last);
+        item.sendAttempts = 0;
+        hits.push(item);
         changed = true;
-        fired += 1;
       }
     }
-    if (!changed) continue;
-    await writeTradeDocTo(boxId, "watchlist", doc).catch(() => undefined);
+    if (hits.length === 0) continue;
+    if (changed) {
+      const persisted = await writeTradeDocTo(boxId, "watchlist", doc).then(
+        () => true,
+        () => false,
+      );
+      // The durable cross didn't land — deliver nothing this tick; the next
+      // tick rereads armed and tries again.
+      if (!persisted) continue;
+    }
 
     const { data: dest } = await supabase
       .from("imessage_destinations")
       .select("space_id, phone")
       .eq("user_id", userId)
       .maybeSingle();
-    if (!dest?.space_id || !dest.phone) continue;
-    const sender = await createSpectrumSender().catch(() => null);
-    if (!sender) continue;
-    try {
-      for (const hit of hits) {
-        await sender
-          .sendText(
-            dest.space_id as string,
-            dest.phone as string,
-            `⏰ ${hit.item.symbol} ${hit.item.op} $${hit.item.price} — it's at $${hit.last} now.`,
-          )
-          .catch(() => undefined);
+    const sender =
+      dest?.space_id && dest.phone
+        ? await createSpectrumSender().catch(() => null)
+        : null;
+    if (sender && dest?.space_id && dest.phone) {
+      let delivered = false;
+      try {
+        for (const item of hits) {
+          const ok = await sender
+            .sendText(
+              dest.space_id as string,
+              dest.phone as string,
+              `⏰ ${item.symbol} ${item.op} $${item.price} — it's at $${item.hitPrice ?? item.price} now.`,
+            )
+            .then(() => true, () => false);
+          item.sendAttempts = (item.sendAttempts ?? 0) + 1;
+          // Give up after enough retries — a stuck alert shouldn't retry forever.
+          if (ok || item.sendAttempts >= 5) {
+            item.state = "fired";
+            delivered = true;
+            if (ok) fired += 1;
+          }
+        }
+      } finally {
+        await sender.close().catch(() => undefined);
       }
-    } finally {
-      await sender.close().catch(() => undefined);
+      if (delivered) {
+        await writeTradeDocTo(boxId, "watchlist", doc).catch(() => undefined);
+      }
     }
   }
   return fired;

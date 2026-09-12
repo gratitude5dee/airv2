@@ -299,6 +299,8 @@ export async function resolveHostedDecision(
     }
   }
 
+  // Only a pending decision may flip — a resolver that lost its own race
+  // (another resolver already settled it) must not overwrite the receipt.
   await supabase
     .from("decisions")
     .update({
@@ -306,7 +308,8 @@ export async function resolveHostedDecision(
       resolved_at: new Date().toISOString(),
     })
     .eq("id", decision.id)
-    .eq("user_id", userId);
+    .eq("user_id", userId)
+    .eq("status", "pending");
   if (decision.kind === "purchase_review") {
     await updateMiniAppCard(supabase, userId, "vault", "default");
   }
