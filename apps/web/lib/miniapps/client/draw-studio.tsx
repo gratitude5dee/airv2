@@ -1224,6 +1224,8 @@ main.app{min-height:0}
 .ds-message{font-size:0.72rem;color:#dbe8ff;margin:0;min-height:0.9rem;text-align:center}
 @media(prefers-reduced-motion:reduce){.ds-ink,.ds-view-thumb{transition:none}}
 @media(max-height:680px){.ds-rail{top:6px;left:6px;gap:4px;padding:3px}.ds-rail-button{width:40px;min-height:40px}.ds-ink-controls{min-height:50px;padding-block:4px}.ds-modes button{min-height:46px}}
+/* Messages sheet heights: yield chrome back to the canvas. */
+@media(max-height:560px){.ds-tagline,.ds-mode-caption{display:none}.ds-sheet{max-height:min(30dvh,210px);gap:5px;padding:6px}.ds-sheet textarea{min-height:2.4rem}}
 @media(max-width:420px){.ds-ink-controls{gap:5px;padding:6px}.ds-swatch{width:30px;min-height:30px;flex:0 0 30px}.ds-size input{width:56px}.ds-eraser{padding:8px 10px;font-size:0.62rem}}
 `;
 

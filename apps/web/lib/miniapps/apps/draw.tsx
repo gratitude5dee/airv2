@@ -102,6 +102,9 @@ function renderStudio(
       // Flat dark surface — the navy studio is styled to it (shader backdrop
       // would fight the canvas work and the Messages webview's GPU budget).
       theme: theme("pixel"),
+      // The studio is viewport-pinned — the headline would eat ~90px of the
+      // frame the canvas needs at Messages sheet heights.
+      headline: false,
       lite: ctx.session.via === "card",
     })
   );
