@@ -401,14 +401,20 @@ async function admitFreezeJob(
       status: "failed",
       error: "superseded before admission",
     });
-    // The claim predicates on still-active; a zero-row result can mean the
-    // session expired mid-admission rather than that the slot is held.
+    // The claim predicates on still-active-and-unexpired; a zero-row
+    // result can mean the session crossed its TTL mid-admission — but
+    // expiry is lazy, so `status` alone still reads "active". Check the
+    // deadline too before blaming a held slot.
     const { data: fresh } = await supabase
       .from("freeze_sessions")
-      .select("status")
+      .select("status, expires_at")
       .eq("id", session.id)
       .maybeSingle();
-    if (fresh && (fresh.status as string) !== "active") {
+    if (
+      !fresh ||
+      (fresh.status as string) !== "active" ||
+      new Date(fresh.expires_at as string).getTime() <= Date.now()
+    ) {
       session.status = "expired";
       throw new FreezeError(
         "SESSION_EXPIRED",

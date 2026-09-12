@@ -401,10 +401,13 @@ function VideoFramePick(props: {
   // Set on every scrub until the element's "seeked" lands — capture must
   // not drawImage while a seek is still decoding (it paints the old frame).
   const pendingSeekRef = useRef(false);
+  // Monotonic generation per clip pick: a slower read must not revoke or
+  // overwrite the state of a clip selected after it.
+  const pickGenRef = useRef(0);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [duration, setDuration] = useState(0);
   const [time, setTime] = useState(0);
-  const [thumbs, setThumbs] = useState<string[]>([]);
+  const [thumbs, setThumbs] = useState<{ src: string; time: number }[]>([]);
   const [reading, setReading] = useState(false);
   const [snapping, setSnapping] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -428,7 +431,9 @@ function VideoFramePick(props: {
       return;
     }
     setReading(true);
+    const gen = ++pickGenRef.current;
     const url = URL.createObjectURL(file);
+    const stale = () => pickGenRef.current !== gen;
     try {
       const video = document.createElement("video");
       video.preload = "auto";
@@ -456,15 +461,27 @@ function VideoFramePick(props: {
       ) {
         throw new Error("choose a clip under two minutes");
       }
-      // Filmstrip — ten evenly spaced frames for quick orientation.
-      const strip: string[] = [];
-      for (let i = 0; i < 10; i++) {
+      if (stale()) {
+        URL.revokeObjectURL(url);
+        return;
+      }
+      // Filmstrip — ten evenly spaced frames for quick orientation, each
+      // tagged with its own timestamp so a dropped frame can't shift the
+      // seek targets of the ones that remain. Bounded overall: a slow
+      // decode shouldn't hold the picker past the strip deadline.
+      const strip: { src: string; time: number }[] = [];
+      const stripDeadline = Date.now() + 15_000;
+      for (let i = 0; i < 10 && !stale() && Date.now() < stripDeadline; i++) {
         const at = Math.max(
           0,
           Math.min(video.duration - 0.05, (video.duration * i) / 10)
         );
         const thumb = await thumbAt(video, at);
-        if (thumb) strip.push(thumb);
+        if (thumb) strip.push({ src: thumb, time: at });
+      }
+      if (stale()) {
+        URL.revokeObjectURL(url);
+        return;
       }
       if (urlRef.current) URL.revokeObjectURL(urlRef.current);
       urlRef.current = url;
@@ -476,9 +493,13 @@ function VideoFramePick(props: {
       video.load();
     } catch (e) {
       URL.revokeObjectURL(url);
-      setErr(e instanceof Error ? e.message : "that video didn't load");
+      // A superseded read neither reports its error nor stands the
+      // "different clip" button down — the newer pick owns both.
+      if (!stale()) {
+        setErr(e instanceof Error ? e.message : "that video didn't load");
+      }
     } finally {
-      setReading(false);
+      if (!stale()) setReading(false);
     }
   }, []);
 
@@ -588,23 +609,13 @@ function VideoFramePick(props: {
           />
           {thumbs.length > 0 && (
             <div className="fz-strip">
-              {thumbs.map((src, i) => (
+              {thumbs.map((t, i) => (
                 // eslint-disable-next-line @next/next/no-img-element -- jpeg data URLs, not optimizable
                 <img
                   key={i}
-                  src={src}
+                  src={t.src}
                   alt=""
-                  onClick={() =>
-                    scrubTo(
-                      Math.max(
-                        0,
-                        Math.min(
-                          duration - 0.05,
-                          (duration * i) / Math.max(1, thumbs.length)
-                        )
-                      )
-                    )
-                  }
+                  onClick={() => scrubTo(t.time)}
                 />
               ))}
             </div>
@@ -623,6 +634,7 @@ function VideoFramePick(props: {
             <button
               type="button"
               className="fz-ghost"
+              disabled={reading}
               onClick={() => inputRef.current?.click()}
             >
               different clip
