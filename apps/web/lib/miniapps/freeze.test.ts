@@ -155,6 +155,26 @@ describe("resolveFreezeRender", () => {
     expect(open.returnsToStart).toBe(false);
   });
 
+  it("rejects defined-but-invalid settings instead of defaulting", () => {
+    // A malformed request must not start a paid render on defaults the
+    // caller never picked — only omitted fields fall back.
+    expect(() =>
+      resolveFreezeRender({ presetId: "swing", resolution: "4K" })
+    ).toThrow(FreezeError);
+    expect(() =>
+      resolveFreezeRender({ presetId: "swing", duration: 7 })
+    ).toThrow(FreezeError);
+    expect(() =>
+      resolveFreezeRender({ trajectory: okTrajectory, duration: 3 })
+    ).toThrow(FreezeError);
+    expect(() =>
+      resolveFreezeRender({ presetId: "swing", seed: -1 })
+    ).toThrow(FreezeError);
+    expect(
+      resolveFreezeRender({ presetId: "swing", duration: 6, seed: 42 }).seed
+    ).toBe(42);
+  });
+
   it("treats a ±360 endpoint as the opening bearing", () => {
     const loop = resolveFreezeRender({
       trajectory: [

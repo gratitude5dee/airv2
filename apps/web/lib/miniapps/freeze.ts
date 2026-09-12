@@ -309,6 +309,9 @@ async function claimFreezeSlot(
           : { active_job_id: jobId }
       )
       .eq("id", session.id)
+      // Status is part of the predicate: a session another request expired
+      // since this one loaded it must not claim the slot and start paid work.
+      .eq("status", "active")
       .is("active_job_id", null)
       .select("id");
   let { data } = await attempt();
@@ -387,6 +390,20 @@ async function admitFreezeJob(
       status: "failed",
       error: "superseded before admission",
     });
+    // The claim predicates on still-active; a zero-row result can mean the
+    // session expired mid-admission rather than that the slot is held.
+    const { data: fresh } = await supabase
+      .from("freeze_sessions")
+      .select("status")
+      .eq("id", session.id)
+      .maybeSingle();
+    if (fresh && (fresh.status as string) !== "active") {
+      session.status = "expired";
+      throw new FreezeError(
+        "SESSION_EXPIRED",
+        "this freeze session has ended"
+      );
+    }
     throw new FreezeError(
       "JOB_ALREADY_ACTIVE",
       "another render is still running"
@@ -501,6 +518,10 @@ export async function executeFreezeSketch(
   job: CreativeJob,
   input: Omit<FreezeSketchInput, "channel">
 ): Promise<CreativeRunResult> {
+  // The in-memory row is this request's snapshot — the source the owner saw
+  // at admission. A photo uploaded while the sketch runs is a newer choice
+  // and must win over the delivered still.
+  const sourceAtAdmit = session.source_asset_id;
   try {
     const mediaInputs: MediaInput[] = [];
     if (input.sketchAssetId) {
@@ -537,17 +558,20 @@ export async function executeFreezeSketch(
       }
     );
     await finishFreezeRun(supabase, session, job, result);
-    // A delivered sketch becomes the camera stage's source still. Gated on
-    // still holding the slot: if the owner cancelled and re-sourced, this
-    // late delivery must not stamp itself over the newer still.
+    // A delivered sketch becomes the camera stage's source still — only
+    // when it still owns the slot AND the source hasn't changed since
+    // admission (a mid-flight upload or cancel wins over this delivery).
     if (result.status === "delivered" && result.asset) {
-      const { data: claimed } = await supabase
+      const update = supabase
         .from("freeze_sessions")
         .update({ source_asset_id: result.asset.id })
         .eq("id", session.id)
         .eq("status", "active")
-        .eq("active_job_id", job.id)
-        .select("id");
+        .eq("active_job_id", job.id);
+      const { data: claimed } = await (sourceAtAdmit
+        ? update.eq("source_asset_id", sourceAtAdmit)
+        : update.is("source_asset_id", null)
+      ).select("id");
       if (claimed?.length === 1) session.source_asset_id = result.asset.id;
     }
     return result;
@@ -679,19 +703,28 @@ export function resolveFreezeRender(input: {
   returnsToStart: boolean;
   seed?: number | undefined;
 } {
-  const resolution =
-    input.resolution !== undefined && isFreezeResolution(input.resolution)
-      ? input.resolution
-      : "768P";
-  // Seed rides a paid provider call — keep it inside the uint32 window
-  // rather than letting an out-of-range value reach admission.
-  const seed =
+  // Defaults cover omitted fields only — a defined value that fails its
+  // validator is a malformed render request, not a reason to quietly run a
+  // paid render with settings the caller never picked.
+  if (input.resolution !== undefined && !isFreezeResolution(input.resolution)) {
+    throw new FreezeError("BAD_PATH", "unknown resolution");
+  }
+  if (input.duration !== undefined && !isFreezeDuration(input.duration)) {
+    throw new FreezeError("BAD_PATH", "unknown duration");
+  }
+  if (
     input.seed !== undefined &&
-    Number.isSafeInteger(input.seed) &&
-    input.seed >= 0 &&
-    input.seed <= 4_294_967_295
-      ? input.seed
-      : undefined;
+    !(
+      Number.isSafeInteger(input.seed) &&
+      input.seed >= 0 &&
+      input.seed <= 4_294_967_295
+    )
+  ) {
+    throw new FreezeError("BAD_PATH", "seed must fit in uint32");
+  }
+  const resolution: FreezeResolution =
+    (input.resolution as FreezeResolution | undefined) ?? "768P";
+  const seed = input.seed;
 
   if (input.presetId) {
     const preset = getPreset(input.presetId);
@@ -701,7 +734,7 @@ export function resolveFreezeRender(input: {
     // The preset duration is a default — an explicit valid duration wins,
     // so the client can retime a preset without forking its trajectory.
     const duration: FreezeDuration =
-      input.duration !== undefined && isFreezeDuration(input.duration)
+      input.duration !== undefined
         ? input.duration
         : preset.duration === 6
           ? 6
@@ -717,10 +750,8 @@ export function resolveFreezeRender(input: {
   if (!input.trajectory) {
     throw new FreezeError("BAD_PATH", "a camera path is required");
   }
-  const duration =
-    input.duration !== undefined && isFreezeDuration(input.duration)
-      ? input.duration
-      : 5;
+  const duration: FreezeDuration =
+    (input.duration as FreezeDuration | undefined) ?? 5;
   // A custom path whose last keyframe lands back on the opening pose earns
   // the return clause — the render then holds the opening frame and loops.
   const first = input.trajectory[0]!;
@@ -832,21 +863,25 @@ export async function freezeStatus(
     .order("created_at", { ascending: true });
   const sketches: FreezeJobRow[] = [];
   const renders: FreezeJobRow[] = [];
-  for (const row of (jobRows ?? []) as {
+  const rows = (jobRows ?? []) as {
     id: string;
     freeze_kind: string | null;
     status: string;
     error: string | null;
     output_asset_id: string | null;
     created_at: string;
-  }[]) {
-    const outputUrl = row.output_asset_id
-      ? ((await signedAssetUrl(
-          supabase,
-          session.user_id,
-          row.output_asset_id
-        )) ?? null)
-      : null;
+  }[];
+  // Sign in parallel — a serial await per output row scales the poll's
+  // latency with session history.
+  const outputUrls = await Promise.all(
+    rows.map((row) =>
+      row.output_asset_id
+        ? signedAssetUrl(supabase, session.user_id, row.output_asset_id)
+        : Promise.resolve(undefined)
+    )
+  );
+  for (const [index, row] of rows.entries()) {
+    const outputUrl = outputUrls[index] ?? null;
     const entry: FreezeJobRow = {
       jobId: row.id,
       kind: row.freeze_kind === "render" ? "render" : "sketch",

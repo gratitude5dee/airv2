@@ -83,6 +83,9 @@ async function studioPayload(
   return {
     sessionId: session.id,
     expiresAt: session.expires_at,
+    // The card surface forbids WebGL — the client renders the 2D editor
+    // directly instead of attempting a Three.js init that must fail.
+    lite: ctx.session.via === "card",
     // The client renders the preset chip rail and previews each path from
     // this; preset ids are stable across deploys.
     presets: PRESETS.map((preset) => ({
@@ -375,7 +378,7 @@ export const freeze: MiniAppModule = {
             duration: Number.isFinite(duration) ? duration : undefined,
             resolution:
               String(form.get("resolution") ?? "").trim() || undefined,
-            seed: Number.isSafeInteger(seed) ? seed : undefined,
+            seed: Number.isFinite(seed) ? seed : undefined,
           });
           const job = await admitFreezeRender(ctx.supabase, session, {
             channel: "web",

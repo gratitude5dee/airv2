@@ -65,6 +65,8 @@ interface ActiveJob {
 interface Payload {
   sessionId: string;
   expiresAt: string;
+  /** lite (card) surfaces skip the WebGL stage entirely */
+  lite?: boolean;
   latest: number;
   activeJob: ActiveJob | null;
   latestJobId: string | null;
@@ -607,6 +609,8 @@ interface StageProps {
   keyframes: CameraKeyframe[];
   scrubT: number;
   selected: number | null;
+  /** lite (card) surfaces don't get WebGL — render the 2D editor directly */
+  lite: boolean | undefined;
   onDragPose: (azimuth: number, elevation: number) => void;
   onPick: (index: number | null) => void;
 }
@@ -623,7 +627,7 @@ function StageCanvas(props: StageProps) {
 
   useEffect(() => {
     const host = hostRef.current;
-    if (!host) return;
+    if (!host || propsRef.current.lite) return;
     let stage: ThreeStage | null = null;
     try {
       stage = createThreeStage(host);
@@ -1315,6 +1319,7 @@ function Studio(props: { initial: Payload }) {
               keyframes={keyframes}
               scrubT={scrubT}
               selected={selected}
+              lite={props.initial.lite}
               onDragPose={onDragPose}
               onPick={setSelected}
             />
