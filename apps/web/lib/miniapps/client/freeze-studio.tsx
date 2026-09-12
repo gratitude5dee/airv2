@@ -1010,22 +1010,31 @@ function Studio(props: { initial: Payload }) {
   // (e.g. HEIC whose inline sign failed) gets a bounded wait for the
   // converted URL — the editor stays cleared rather than showing the
   // previous still.
-  const waitForSignedSource = useCallback(async () => {
-    for (let i = 0; i < 10; i++) {
-      const payload = await refresh();
-      if (payload) {
-        // adopt skips URL swaps for an already-known asset — the known
-        // asset is exactly what we're waiting on, so force it.
-        adopt(payload, true);
-        if (payload.sourceUrl) {
-          setLine(null);
-          return;
+  const waitForSignedSource = useCallback(
+    async (assetId: string) => {
+      for (let i = 0; i < 10; i++) {
+        // A newer accepted upload ends this loop — it must never write the
+        // line or force-adopt after being superseded.
+        if (sourceAssetRef.current !== assetId) return;
+        const payload = await refresh();
+        if (sourceAssetRef.current !== assetId) return;
+        if (payload && payload.sourceAssetId === assetId) {
+          // adopt skips URL swaps for an already-known asset — the known
+          // asset is exactly what we're waiting on, so force it.
+          adopt(payload, true);
+          if (payload.sourceUrl) {
+            setLine(null);
+            return;
+          }
         }
+        await new Promise((r) => setTimeout(r, 1200));
       }
-      await new Promise((r) => setTimeout(r, 1200));
-    }
-    setLine("still converting — back out and re-upload if it stalls");
-  }, [refresh, adopt]);
+      if (sourceAssetRef.current === assetId) {
+        setLine("still converting — back out and re-upload if it stalls");
+      }
+    },
+    [refresh, adopt]
+  );
 
   // Signed media URLs lapse after the delivery TTL; a media element that
   // errors on an open surface pulls fresh signatures — throttled so a
@@ -1039,7 +1048,12 @@ function Studio(props: { initial: Payload }) {
     });
   }, [refresh, adopt]);
 
+  // Load generation: consecutive uploads start decodes that can finish out
+  // of order — only the current generation may write imageRef.
+  const imgGenRef = useRef(0);
+
   useEffect(() => {
+    const gen = ++imgGenRef.current;
     if (!sourceUrl) {
       imageRef.current = null;
       // A cleared source still has to reach the stage — without the bump the
@@ -1050,19 +1064,30 @@ function Studio(props: { initial: Payload }) {
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => {
+      if (gen !== imgGenRef.current) return;
       imageRef.current = img;
       imageBump((n) => n + 1);
     };
-    img.onerror = () => refreshMedia();
+    img.onerror = () => {
+      if (gen === imgGenRef.current) refreshMedia();
+    };
     img.src = sourceUrl;
   }, [sourceUrl, refreshMedia]);
 
   // While a job is in flight (this device started it or a reload found it)
-  // poll so the stage flips when it lands.
+  // poll so the stage flips when it lands. Serialized: a pull slower than
+  // the interval must not be superseded by its own successor — the seq
+  // guard exists for cross-call ordering (uploads, retries), not to starve
+  // the poll itself.
   useEffect(() => {
     if (!activeJob) return;
+    let inFlight = false;
     const timer = window.setInterval(() => {
-      void refresh();
+      if (inFlight) return;
+      inFlight = true;
+      void refresh().finally(() => {
+        inFlight = false;
+      });
     }, 2500);
     return () => window.clearInterval(timer);
   }, [activeJob, refresh]);
@@ -1101,7 +1126,9 @@ function Studio(props: { initial: Payload }) {
       sourceAssetRef.current = payload.sourceAssetId;
       if (payload.sourceUrl) {
         // The upload response signs the stored still — HEIC included, since
-        // conversion already happened server-side.
+        // conversion already happened server-side. The minted preview is
+        // unused on this path; release it now.
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
         applySourceUrl(payload.sourceUrl);
       } else if (previewUrl) {
         applySourceUrl(previewUrl);
@@ -1112,7 +1139,9 @@ function Studio(props: { initial: Payload }) {
       }
       setStage("camera");
       void refresh();
-      if (!payload.sourceUrl && !previewUrl) void waitForSignedSource();
+      if (!payload.sourceUrl && !previewUrl && payload.sourceAssetId) {
+        void waitForSignedSource(payload.sourceAssetId);
+      }
     },
     [busy, refresh, applySourceUrl, clearSourceUrl, waitForSignedSource]
   );

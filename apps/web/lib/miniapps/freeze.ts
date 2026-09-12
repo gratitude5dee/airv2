@@ -277,11 +277,19 @@ export async function setFreezeSource(
   session: FreezeSession,
   assetId: string
 ): Promise<void> {
-  await supabase
+  const { data, error } = await supabase
     .from("freeze_sessions")
     .update({ source_asset_id: assetId })
     .eq("id", session.id)
-    .eq("status", "active");
+    .eq("status", "active")
+    .select("id");
+  if (error) {
+    throw new FreezeError("STORE_FAILED", error.message);
+  }
+  if (!data?.length) {
+    throw new FreezeError("SESSION_EXPIRED", "this freeze session has ended");
+  }
+  session.source_asset_id = assetId;
   await appendFreezeEvent(supabase, session.id, {
     kind: "state",
     state: "source",
