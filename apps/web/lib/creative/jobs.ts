@@ -35,7 +35,7 @@ export interface CreativeJob {
   delivered_at: string | null;
   /** Draw-studio linkage (0107) — null on non-draw jobs. */
   draw_session_id?: string | null;
-  /** Freeze-studio linkage (0109) — null on non-freeze jobs. */
+  /** Freeze-studio linkage (0110) — null on non-freeze jobs. */
   freeze_session_id?: string | null;
   freeze_kind?: "sketch" | "render" | null;
   draw_mode?: string | null;
@@ -56,7 +56,7 @@ export interface CreativeJobDrawLinkage {
   inputAssetId?: string | undefined;
 }
 
-/** Freeze-studio linkage written at insert (0109). */
+/** Freeze-studio linkage written at insert (0110). */
 export interface CreativeJobFreezeLinkage {
   freezeSessionId: string;
   /** 'sketch' = source-image generation; 'render' = camera-trajectory video. */
