@@ -233,13 +233,30 @@ export const freeze: MiniAppModule = {
               sketchAssetId = asset.id;
             }
 
-            const { job } = await runFreezeSketch(ctx.supabase, session, {
-              prompt,
-              mode,
-              sketchAssetId,
-              channel: "web",
+            const { job, result } = await runFreezeSketch(
+              ctx.supabase,
+              session,
+              {
+                prompt,
+                mode,
+                sketchAssetId,
+                channel: "web",
+              }
+            );
+            // The job already ran — surface its terminal status (and the
+            // refreshed studio state) so a failed render isn't presented
+            // as a delivered still.
+            return json({
+              jobId: job.id,
+              status: result.status,
+              line:
+                result.status === "delivered"
+                  ? (result.deliveryLine ?? "still delivered")
+                  : result.line,
+              assetId: result.asset?.id,
+              deliveryUrl: result.deliveryUrl,
+              ...(await studioPayload(ctx, session, -1)),
             });
-            return json({ jobId: job.id });
           }
 
           // Capture / upload lanes: the client posts a File (raw HEIC bytes
@@ -316,11 +333,25 @@ export const freeze: MiniAppModule = {
               String(form.get("resolution") ?? "").trim() || undefined,
             seed: Number.isSafeInteger(seed) ? seed : undefined,
           });
-          const { job } = await runFreezeRender(ctx.supabase, session, {
-            ...resolved,
-            channel: "web",
+          const { job, result } = await runFreezeRender(
+            ctx.supabase,
+            session,
+            {
+              ...resolved,
+              channel: "web",
+            }
+          );
+          return json({
+            jobId: job.id,
+            status: result.status,
+            line:
+              result.status === "delivered"
+                ? (result.deliveryLine ?? "rendered")
+                : result.line,
+            assetId: result.asset?.id,
+            deliveryUrl: result.deliveryUrl,
+            ...(await studioPayload(ctx, session, -1)),
           });
-          return json({ jobId: job.id });
         }
         case "save": {
           const jobId = String(form.get("job") ?? "").trim();

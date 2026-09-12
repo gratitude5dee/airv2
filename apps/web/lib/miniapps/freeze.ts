@@ -28,6 +28,7 @@ import {
 } from "../creative/run";
 import { ingestUploadedMedia } from "../creative/store";
 import { heifToPng, isHeif } from "../identity/heif";
+import { guardMediaUpload } from "../storage/guard";
 import { directDrawPlan, type DrawMode } from "./draw";
 import {
   directFreezePlan,
@@ -256,6 +257,15 @@ export async function storeFreezeUpload(
     type = "image/png";
   }
   if (!["image/jpeg", "image/png", "image/webp"].includes(type)) return null;
+  try {
+    // MA8 boundary: EXIF/GPS comes off owner bytes here — the still is what
+    // ships to fal for the render.
+    body = guardMediaUpload(body, type, {
+      maxBytes: MAX_FREEZE_UPLOAD_BYTES,
+    });
+  } catch {
+    return null;
+  }
   return await ingestUploadedMedia(supabase, userId, body, type).catch(
     () => null
   );
@@ -567,8 +577,13 @@ export function resolveFreezeRender(input: {
     input.resolution !== undefined && isFreezeResolution(input.resolution)
       ? input.resolution
       : "768P";
+  // Seed rides a paid provider call — keep it inside the uint32 window
+  // rather than letting an out-of-range value reach admission.
   const seed =
-    input.seed !== undefined && Number.isSafeInteger(input.seed)
+    input.seed !== undefined &&
+    Number.isSafeInteger(input.seed) &&
+    input.seed >= 0 &&
+    input.seed <= 4_294_967_295
       ? input.seed
       : undefined;
 
@@ -577,7 +592,14 @@ export function resolveFreezeRender(input: {
     if (!preset) {
       throw new FreezeError("BAD_PATH", "unknown camera preset");
     }
-    const duration: FreezeDuration = preset.duration === 6 ? 6 : 5;
+    // The preset duration is a default — an explicit valid duration wins,
+    // so the client can retime a preset without forking its trajectory.
+    const duration: FreezeDuration =
+      input.duration !== undefined && isFreezeDuration(input.duration)
+        ? input.duration
+        : preset.duration === 6
+          ? 6
+          : 5;
     return {
       trajectory: preset.trajectory.map((keyframe) => ({ ...keyframe })),
       duration,

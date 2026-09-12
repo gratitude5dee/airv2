@@ -25,6 +25,8 @@ import {
   useState,
 } from "react";
 import { createRoot } from "react-dom/client";
+import * as THREE from "three";
+import { FREEZE_MAX_KEYFRAMES } from "../freezeRecipe";
 
 /* ------------------------------------------------------------ protocol */
 
@@ -73,6 +75,9 @@ interface Payload {
   /** present on action responses */
   ok?: boolean;
   jobId?: string;
+  status?: string;
+  assetId?: string;
+  deliveryUrl?: string;
   sent?: boolean;
   downloadUrl?: string;
   error?: string;
@@ -355,14 +360,322 @@ function project(
   };
 }
 
-function StageCanvas(props: {
+/* ---------------------------------------------------------- 3D viewport */
+
+/**
+ * The studio viewport is a real 3D scene (the reference editor's look): the
+ * photo stands as a plane at the origin over a floor grid, the trajectory
+ * sweeps around it as a tube, and the shot camera glyph rides the scrub
+ * time. `poseToWorld` maps the render contract's spherical pose — azimuth
+ * around Y, elevation off the horizon, distance as a radius multiplier —
+ * into editor space. Fallback below is the original flat projection when
+ * WebGL isn't available.
+ */
+const SUBJECT_Y = 0.95;
+const ORBIT_RADIUS = 2.3;
+
+function poseToWorld(
+  pose: CameraKeyframe,
+  out: THREE.Vector3
+): THREE.Vector3 {
+  const az = pose.azimuth * DEG;
+  const el = pose.elevation * DEG;
+  const d = ORBIT_RADIUS * pose.distance;
+  out.set(
+    Math.sin(az) * Math.cos(el) * d,
+    SUBJECT_Y + Math.sin(el) * d,
+    Math.cos(az) * Math.cos(el) * d
+  );
+  return out;
+}
+
+interface ThreeStage {
+  setImage(img: HTMLImageElement | null): void;
+  update(
+    frames: CameraKeyframe[],
+    scrubT: number,
+    selected: number | null
+  ): void;
+  pick(x: number, y: number): number | null;
+  dispose(): void;
+}
+
+/** Flat MeshBasicMaterial everywhere — no lights, matches the pixel shell. */
+function createThreeStage(host: HTMLDivElement): ThreeStage {
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  host.appendChild(renderer.domElement);
+  renderer.domElement.style.position = "absolute";
+  renderer.domElement.style.inset = "0";
+
+  const disposables: { dispose(): void }[] = [];
+  const track = <T extends { dispose(): void }>(item: T): T => {
+    disposables.push(item);
+    return item;
+  };
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(42, 1, 0.05, 80);
+  camera.position.set(3.15, 2.05, 3.55);
+  camera.lookAt(0, 0.85, 0);
+
+  const grid = track(new THREE.GridHelper(14, 28, 0x2c4a6e, 0x16263e));
+  scene.add(grid);
+
+  // photo billboard: backing plate + image plane + border edge
+  const photoW = 1.7;
+  const photoH = photoW * 0.72;
+  const frame = new THREE.Mesh(
+    track(new THREE.PlaneGeometry(photoW * 1.07, photoH * 1.1)),
+    track(new THREE.MeshBasicMaterial({ color: 0x0e1a30 }))
+  );
+  frame.position.set(0, SUBJECT_Y, 0);
+  const photoMat = track(
+    new THREE.MeshBasicMaterial({ color: 0x44598a })
+  );
+  const photoGeo = track(new THREE.PlaneGeometry(photoW, photoH));
+  const photo = new THREE.Mesh(photoGeo, photoMat);
+  photo.position.set(0, SUBJECT_Y, 0.001);
+  const border = new THREE.LineSegments(
+    track(new THREE.EdgesGeometry(photoGeo)),
+    track(new THREE.LineBasicMaterial({ color: 0x7dbeff }))
+  );
+  border.position.copy(photo.position);
+  scene.add(frame, photo, border);
+
+  const tubeMat = track(
+    new THREE.MeshBasicMaterial({ color: 0x60dcff })
+  );
+  let tube: THREE.Mesh | null = null;
+
+  const kfGroup = new THREE.Group();
+  scene.add(kfGroup);
+  const kfGeo = track(new THREE.SphereGeometry(0.05, 16, 12));
+  const kfMat = track(new THREE.MeshBasicMaterial({ color: 0x60dcff }));
+  const kfSelMat = track(new THREE.MeshBasicMaterial({ color: 0xffffff }));
+
+  // shot-camera glyph: gold body + nose cone aimed at the subject
+  const glyphMat = track(
+    new THREE.MeshBasicMaterial({ color: 0xffd166, transparent: true })
+  );
+  const glyph = new THREE.Group();
+  glyph.add(
+    new THREE.Mesh(track(new THREE.SphereGeometry(0.075, 18, 14)), glyphMat)
+  );
+  const nose = new THREE.Mesh(
+    track(new THREE.ConeGeometry(0.048, 0.17, 12)),
+    glyphMat
+  );
+  nose.rotation.x = Math.PI / 2; // cone axis +Y → +Z so lookAt aims the tip
+  nose.position.z = 0.14;
+  glyph.add(nose);
+  scene.add(glyph);
+
+  const sightGeo = track(
+    new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(),
+      new THREE.Vector3(0, SUBJECT_Y, 0),
+    ])
+  );
+  const sight = new THREE.Line(
+    sightGeo,
+    track(
+      new THREE.LineDashedMaterial({
+        color: 0xffd166,
+        dashSize: 0.09,
+        gapSize: 0.09,
+        transparent: true,
+        opacity: 0.45,
+      })
+    )
+  );
+  sight.computeLineDistances();
+  scene.add(sight);
+
+  const tmp = new THREE.Vector3();
+  const subject = new THREE.Vector3(0, SUBJECT_Y, 0);
+  let lastFrames: CameraKeyframe[] = [];
+
+  const render = () => {
+    const w = host.clientWidth;
+    const h = host.clientHeight;
+    if (w === 0 || h === 0) return;
+    const size = new THREE.Vector2();
+    renderer.getSize(size);
+    if (size.x !== w || size.y !== h) {
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    }
+    renderer.render(scene, camera);
+  };
+
+  const observer = new ResizeObserver(render);
+  observer.observe(host);
+
+  return {
+    setImage(img) {
+      if (img) {
+        const tex = new THREE.Texture(img);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.needsUpdate = true;
+        photoMat.map = tex;
+        photoMat.color.set(0xffffff);
+      } else {
+        photoMat.map = null;
+        photoMat.color.set(0x44598a);
+      }
+      photoMat.needsUpdate = true;
+      render();
+    },
+    update(frames, scrubT, selected) {
+      lastFrames = frames;
+      if (frames.length >= 2) {
+        const pts: THREE.Vector3[] = [];
+        for (let i = 0; i <= 96; i++) {
+          pts.push(poseToWorld(poseAt(frames, i / 96), new THREE.Vector3()));
+        }
+        const curve = new THREE.CatmullRomCurve3(pts);
+        const geo = new THREE.TubeGeometry(curve, 120, 0.018, 8, false);
+        const next = new THREE.Mesh(geo, tubeMat);
+        if (tube) {
+          scene.remove(tube);
+          tube.geometry.dispose();
+        }
+        tube = next;
+        scene.add(tube);
+      } else if (tube) {
+        scene.remove(tube);
+        tube.geometry.dispose();
+        tube = null;
+      }
+      kfGroup.clear();
+      frames.forEach((kf, i) => {
+        const dot = new THREE.Mesh(kfGeo, i === selected ? kfSelMat : kfMat);
+        dot.position.copy(poseToWorld(kf, tmp));
+        if (i === selected) dot.scale.setScalar(1.3);
+        dot.userData["index"] = i;
+        kfGroup.add(dot);
+      });
+      const camPose = poseAt(frames, scrubT);
+      glyph.position.copy(poseToWorld(camPose, tmp));
+      glyph.lookAt(subject);
+      // behind the photo (back hemisphere) the glyph dims, same as 2D depth
+      glyphMat.opacity = Math.cos(camPose.azimuth * DEG) < -0.05 ? 0.45 : 1;
+      sightGeo.setFromPoints([glyph.position.clone(), subject.clone()]);
+      sight.computeLineDistances();
+      render();
+    },
+    pick(x, y) {
+      const w = host.clientWidth;
+      const h = host.clientHeight;
+      let best: number | null = null;
+      let bestD = 30;
+      lastFrames.forEach((kf, i) => {
+        poseToWorld(kf, tmp).project(camera);
+        const sx = (tmp.x * 0.5 + 0.5) * w;
+        const sy = (-tmp.y * 0.5 + 0.5) * h;
+        const d = Math.hypot(sx - x, sy - y);
+        if (d < bestD) {
+          bestD = d;
+          best = i;
+        }
+      });
+      return best;
+    },
+    dispose() {
+      observer.disconnect();
+      disposables.forEach((d) => d.dispose());
+      tube?.geometry.dispose();
+      renderer.dispose();
+      renderer.domElement.remove();
+    },
+  };
+}
+
+interface StageProps {
   image: HTMLImageElement | null;
   keyframes: CameraKeyframe[];
   scrubT: number;
   selected: number | null;
   onDragPose: (azimuth: number, elevation: number) => void;
   onPick: (index: number | null) => void;
-}) {
+}
+
+function StageCanvas(props: StageProps) {
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  const stageRef = useRef<ThreeStage | null>(null);
+  const [glReady, setGlReady] = useState(false);
+  const dragRef = useRef<{ moved: boolean; picked: number | null } | null>(
+    null
+  );
+  const propsRef = useRef(props);
+  propsRef.current = props;
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    let stage: ThreeStage | null = null;
+    try {
+      stage = createThreeStage(host);
+    } catch {
+      return; // no WebGL — the 2D canvas below keeps editing working
+    }
+    stageRef.current = stage;
+    setGlReady(true);
+    return () => {
+      stageRef.current = null;
+      stage.dispose();
+    };
+  }, []);
+
+  useEffect(() => {
+    stageRef.current?.setImage(props.image);
+  }, [glReady, props.image]);
+
+  useEffect(() => {
+    stageRef.current?.update(props.keyframes, props.scrubT, props.selected);
+  });
+
+  return (
+    <div
+      ref={hostRef}
+      className="fz-stage-canvas"
+      onPointerDown={(e) => {
+        if (!glReady) return;
+        e.currentTarget.setPointerCapture(e.pointerId);
+        const rect = e.currentTarget.getBoundingClientRect();
+        const hit =
+          stageRef.current?.pick(
+            e.clientX - rect.left,
+            e.clientY - rect.top
+          ) ?? null;
+        if (hit !== null) propsRef.current.onPick(hit);
+        dragRef.current = { moved: false, picked: hit };
+      }}
+      onPointerMove={(e) => {
+        const drag = dragRef.current;
+        if (!drag || !glReady) return;
+        const dx = e.movementX;
+        const dy = e.movementY;
+        if (Math.abs(dx) + Math.abs(dy) < 0.5) return;
+        drag.moved = true;
+        propsRef.current.onDragPose(dx * 0.6, -dy * 0.4);
+      }}
+      onPointerUp={() => {
+        const drag = dragRef.current;
+        dragRef.current = null;
+        if (!drag || drag.moved || !glReady) return;
+        propsRef.current.onPick(drag.picked);
+      }}
+    >
+      {!glReady && <StageCanvas2D {...props} />}
+    </div>
+  );
+}
+
+/** No-WebGL fallback: the original flat orbit-ellipse projection. */
+function StageCanvas2D(props: StageProps) {
   const ref = useRef<HTMLCanvasElement | null>(null);
   const dragRef = useRef<{ x: number; y: number; moved: boolean } | null>(null);
 
@@ -584,6 +897,32 @@ function Studio(props: { initial: Payload }) {
   const [, imageBump] = useState(0);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const cameraRef = useRef<HTMLInputElement | null>(null);
+  const lastMediaRefresh = useRef(0);
+
+  const adopt = useCallback((payload: Payload) => {
+    if (typeof payload.latest === "number") setLatest(payload.latest);
+    setActiveJob(payload.activeJob ?? null);
+    if (payload.sourceUrl) setSourceUrl(payload.sourceUrl);
+    if (payload.sourceAssetId) setSourceAssetId(payload.sourceAssetId);
+    if (payload.renders) setRenders(payload.renders);
+  }, []);
+
+  const refresh = useCallback(async () => {
+    const payload = await postAction({ action: "status", after: String(latest) });
+    if (!payload) return;
+    adopt(payload);
+    return payload;
+  }, [latest, adopt]);
+
+  // Signed media URLs lapse after the delivery TTL; a media element that
+  // errors on an open surface pulls fresh signatures — throttled so a
+  // genuinely-gone asset doesn't loop forever.
+  const refreshMedia = useCallback(() => {
+    const now = Date.now();
+    if (now - lastMediaRefresh.current < 30_000) return;
+    lastMediaRefresh.current = now;
+    void refresh();
+  }, [refresh]);
 
   useEffect(() => {
     if (!sourceUrl) {
@@ -596,19 +935,9 @@ function Studio(props: { initial: Payload }) {
       imageRef.current = img;
       imageBump((n) => n + 1);
     };
+    img.onerror = () => refreshMedia();
     img.src = sourceUrl;
-  }, [sourceUrl]);
-
-  const refresh = useCallback(async () => {
-    const payload = await postAction({ action: "status", after: String(latest) });
-    if (!payload) return;
-    setLatest(payload.latest ?? latest);
-    setActiveJob(payload.activeJob ?? null);
-    if (payload.sourceUrl) setSourceUrl(payload.sourceUrl);
-    if (payload.sourceAssetId) setSourceAssetId(payload.sourceAssetId);
-    if (payload.renders) setRenders(payload.renders);
-    return payload;
-  }, [latest]);
+  }, [sourceUrl, refreshMedia]);
 
   // While a job is in flight (this device started it or a reload found it)
   // poll so the stage flips when it lands.
@@ -660,15 +989,15 @@ function Studio(props: { initial: Payload }) {
       if (canvas) form.set("canvas", canvas, "sketch.png");
       const payload = await postAction(form);
       setBusy(false);
-      if (!payload || payload.error || !payload.jobId) {
+      if (!payload || payload.error || payload.status !== "delivered") {
         fail(payload, "that didn't work — try again?");
         return;
       }
-      setLine("still delivered — set the camera move");
-      await refresh();
+      setLine(payload.line ?? "still delivered — set the camera move");
+      adopt(payload);
       setStage("camera");
     },
-    [busy, refresh]
+    [busy, adopt]
   );
 
   /* ------------------------------- camera stage */
@@ -683,6 +1012,7 @@ function Studio(props: { initial: Payload }) {
 
   const addKeyframe = useCallback(() => {
     setKeyframes((frames) => {
+      if (frames.length >= FREEZE_MAX_KEYFRAMES) return frames;
       const t = clamp(scrubT, 0.02, 0.98);
       if (frames.some((f) => Math.abs(f.time - t) < 0.01)) return frames;
       const pose = poseAt(frames, t);
@@ -749,27 +1079,29 @@ function Studio(props: { initial: Payload }) {
     if (busy || !sourceAssetId) return;
     setBusy(true);
     setLine("rendering the freeze — a few minutes");
-    const fields: Record<string, string> = { action: "render" };
+    const fields: Record<string, string> = {
+      action: "render",
+      duration: String(duration),
+      resolution,
+      seed: String(seed),
+    };
+    // A preset is a named trajectory — the chosen duration still applies
+    // on top of the preset's default.
     if (preset) {
       fields["preset"] = preset;
-      fields["resolution"] = resolution;
-      fields["seed"] = String(seed);
     } else {
       fields["trajectory"] = JSON.stringify(keyframes);
-      fields["duration"] = String(duration);
-      fields["resolution"] = resolution;
-      fields["seed"] = String(seed);
     }
     const payload = await postAction(fields);
     setBusy(false);
-    if (!payload || payload.error || !payload.jobId) {
-      fail(payload, "that render didn't start — try again?");
+    if (!payload || payload.error || payload.status !== "delivered") {
+      fail(payload, "that render didn't come out — try again?");
       return;
     }
-    setLine(null);
-    await refresh();
+    setLine(payload.line ?? null);
+    adopt(payload);
     setStage("result");
-  }, [busy, sourceAssetId, preset, resolution, seed, keyframes, duration, refresh]);
+  }, [busy, sourceAssetId, preset, resolution, seed, keyframes, duration, adopt]);
 
   const onSave = useCallback(
     async (jobId: string) => {
@@ -978,7 +1310,12 @@ function Studio(props: { initial: Payload }) {
                   : " · tap a dot, drag the stage"}
               </span>
               <div className="fz-timeline-actions">
-                <button type="button" className="fz-ghost" onClick={addKeyframe}>
+                <button
+                  type="button"
+                  className="fz-ghost"
+                  disabled={keyframes.length >= FREEZE_MAX_KEYFRAMES}
+                  onClick={addKeyframe}
+                >
                   + keyframe
                 </button>
                 <button
@@ -1051,6 +1388,7 @@ function Studio(props: { initial: Payload }) {
                 loop
                 autoPlay
                 muted
+                onError={refreshMedia}
               />
               <div className="fz-actions">
                 <button
@@ -1085,6 +1423,7 @@ function Studio(props: { initial: Payload }) {
                     muted
                     playsInline
                     preload="metadata"
+                    onError={refreshMedia}
                   />
                   <button
                     type="button"

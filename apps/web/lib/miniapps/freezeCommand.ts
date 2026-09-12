@@ -83,7 +83,9 @@ export async function maybeRunFreezeLane(
     const fetched = await sender
       .getAttachment(id, job.phone)
       .catch(() => undefined);
-    if (!fetched || !fetched.mimeType.startsWith("image/")) continue;
+    // Spectrum can label HEIC octet-stream — sniff the container before
+    // the image/* gate so those attachments aren't skipped.
+    if (!fetched) continue;
     let bytes = fetched.data;
     let mimeType = fetched.mimeType;
     if (isHeif(mimeType, bytes)) {
@@ -91,6 +93,8 @@ export async function maybeRunFreezeLane(
       if (!converted) continue;
       bytes = converted;
       mimeType = "image/png";
+    } else if (!mimeType.startsWith("image/")) {
+      continue;
     }
     const asset = await ingestUploadedMedia(
       supabase,
