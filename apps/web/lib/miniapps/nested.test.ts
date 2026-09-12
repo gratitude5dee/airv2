@@ -194,6 +194,19 @@ describe("middleware nested routing (V11 §6)", () => {
     expect(res.headers.get("x-middleware-request-x-mini-nested")).toBeNull();
   });
 
+  it("every first-party module slug is reserved (or it routes as a publisher page)", async () => {
+    // A module slug missing from FIRST_PARTY_RESERVED falls through
+    // parseNestedPath as a username → /mini/u/<slug> → 404. 'freeze'
+    // shipped exactly that way.
+    const { FIRST_PARTY_MODULES } = await import("./apps");
+    for (const slug of Object.keys(FIRST_PARTY_MODULES)) {
+      expect(
+        isReservedWord(slug),
+        `first-party slug '${slug}' must be in FIRST_PARTY_RESERVED`
+      ).toBe(true);
+    }
+  });
+
   it("passes /api/create/* through marked as mini-host", () => {
     const res = mini("/api/create/projects");
     expect(res.status).toBe(200);
