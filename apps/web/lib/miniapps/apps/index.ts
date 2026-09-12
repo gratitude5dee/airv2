@@ -15,6 +15,7 @@ import { connect } from "./connect";
 import { crm } from "./crm";
 import { draw } from "./draw";
 import { feedback } from "./feedback";
+import { freeze } from "./freeze";
 import { home } from "./home";
 import { image } from "./image";
 import { inbox } from "./inbox";
@@ -47,6 +48,9 @@ export const FIRST_PARTY_MODULES: Record<string, MiniAppModule> = {
   // surface; also adds the 'draw' card kind + mini_apps row.
   draw,
   feedback,
+  // Same CA-19 shape as /draw: owner-scoped camera-move studio riding the
+  // metered creative lanes; adds the 'freeze' card kind + mini_apps row.
+  freeze,
   home,
   inbox,
   kanban,

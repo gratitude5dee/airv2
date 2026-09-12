@@ -13,6 +13,7 @@ const config = [
       "public/creator-os/deck-swipe.js", "public/creator-os/calendar-month.js",
       "public/creator-os/deck-stepper.js", "public/creator-os/intro-cinematic.js",
       "public/creator-os/create.js", "public/creator-os/bg/**",
+      "public/creator-os/freeze-studio.js",
       "lib/miniapps/client/backgrounds/**",
     ],
   },

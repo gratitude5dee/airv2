@@ -63,6 +63,7 @@ const CARD_COPY: Partial<Record<string, { name: string; line: string }>> = {
   create: { name: "Create", line: "Build a mini-app" },
   app: { name: "Your app", line: "Draft — preview & publish" },
   draw: { name: "Draw", line: "Sketch it, then see it" },
+  freeze: { name: "Freeze", line: "Freeze the scene — move the camera" },
   trade: { name: "Trade", line: "Approve before it moves" },
 };
 

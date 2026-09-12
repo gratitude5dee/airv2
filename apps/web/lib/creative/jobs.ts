@@ -9,9 +9,10 @@ import { env } from "../env";
 import type { CreativeMode } from "./parse";
 
 export type CreativeChannel = "web" | "imessage";
-/** Router modes plus box-side timeline assembly (MA7 'video_render') and the
- * draw studio's sketch-to-image lane ('draw'). */
-export type CreativeJobMode = CreativeMode | "video_render" | "draw";
+/** Router modes plus box-side timeline assembly (MA7 'video_render'), the
+ * draw studio's sketch-to-image lane ('draw'), and the freeze studio's
+ * camera-trajectory renders ('freeze'). */
+export type CreativeJobMode = CreativeMode | "video_render" | "draw" | "freeze";
 export type CreativeJobStatus =
   | "routing"
   | "submitted"
@@ -34,6 +35,9 @@ export interface CreativeJob {
   delivered_at: string | null;
   /** Draw-studio linkage (0107) — null on non-draw jobs. */
   draw_session_id?: string | null;
+  /** Freeze-studio linkage (0110) — null on non-freeze jobs. */
+  freeze_session_id?: string | null;
+  freeze_kind?: "sketch" | "render" | null;
   draw_mode?: string | null;
   parent_job_id?: string | null;
   root_job_id?: string | null;
@@ -52,6 +56,14 @@ export interface CreativeJobDrawLinkage {
   inputAssetId?: string | undefined;
 }
 
+/** Freeze-studio linkage written at insert (0110). */
+export interface CreativeJobFreezeLinkage {
+  freezeSessionId: string;
+  /** 'sketch' = source-image generation; 'render' = camera-trajectory video. */
+  freezeKind?: "sketch" | "render" | undefined;
+  inputAssetId?: string | undefined;
+}
+
 export const DAILY_LIMIT_LINE = "you've hit today's creative limit.";
 
 export async function createCreativeJob(
@@ -59,7 +71,8 @@ export async function createCreativeJob(
   userId: string,
   channel: CreativeChannel,
   mode: CreativeJobMode,
-  draw?: CreativeJobDrawLinkage
+  draw?: CreativeJobDrawLinkage,
+  freeze?: CreativeJobFreezeLinkage
 ): Promise<CreativeJob> {
   const { data, error } = await supabase
     .from("creative_jobs")
@@ -76,6 +89,13 @@ export async function createCreativeJob(
             root_job_id: draw.rootJobId ?? null,
             revision_number: draw.revisionNumber ?? null,
             input_asset_id: draw.inputAssetId ?? null,
+          }
+        : {}),
+      ...(freeze
+        ? {
+            freeze_session_id: freeze.freezeSessionId,
+            freeze_kind: freeze.freezeKind ?? null,
+            input_asset_id: freeze.inputAssetId ?? null,
           }
         : {}),
     })

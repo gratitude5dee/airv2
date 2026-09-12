@@ -8,6 +8,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { CARD_KINDS } from "../miniapps/cardSends";
 
 const MIGRATIONS_DIR = join(__dirname, "../../../../supabase/migrations");
 
@@ -45,6 +46,40 @@ describe("migration ledger", () => {
       const [from, to] = entry as [string, string];
       expect(files.has(from)).toBe(false);
       expect(files.has(to)).toBe(true);
+    }
+  });
+
+  it("the final card-kind check constraints cover every CARD_KINDS entry", () => {
+    // Migrations rebuild kind CHECK constraints by rewriting the whole
+    // list — a migration that copies a stale list silently disables kinds
+    // a newer CARD_KINDS entry depends on (0110 almost dropped 'trade').
+    const files = readdirSync(MIGRATIONS_DIR)
+      .filter((file) => file.endsWith(".sql"))
+      .sort();
+    for (const constraint of [
+      "card_sends_kind_check",
+      "miniapp_card_sessions_kind_check",
+    ]) {
+      let kinds: Set<string> | undefined;
+      for (const file of files) {
+        const sql = readFileSync(join(MIGRATIONS_DIR, file), "utf8");
+        const pattern = new RegExp(
+          `add constraint ${constraint}[\\s\\S]*?check\\s*\\(kind in \\(([^)]*)\\)\\)`,
+          "gi"
+        );
+        for (const match of sql.matchAll(pattern)) {
+          kinds = new Set(
+            (match[1]!.match(/'([a-z_]+)'/g) ?? []).map((k) => k.slice(1, -1))
+          );
+        }
+      }
+      expect(kinds, `${constraint} must be defined by a migration`).toBeDefined();
+      for (const kind of CARD_KINDS) {
+        expect(
+          kinds!.has(kind),
+          `${constraint} is missing '${kind}' — rebuild the list from the preceding schema`
+        ).toBe(true);
+      }
     }
   });
 });

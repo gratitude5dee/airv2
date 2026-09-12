@@ -42,6 +42,7 @@ import {
 } from "../miniapps/imessageCommand";
 import { sendMarkedCards } from "../miniapps/cards";
 import { maybeRunDrawLane } from "../miniapps/drawCommand";
+import { maybeRunFreezeLane } from "../miniapps/freezeCommand";
 import { maybeRunLocationLane } from "../location/lane";
 import { parseTradeCommand } from "../trade/parse";
 import { runTradeCommand } from "../trade/imessage";
@@ -93,8 +94,12 @@ interface QueuedMessage {
 const HAS_ATTACHMENT_MARKER = /\[attachment:[^\]]+\]/;
 
 /** The debounce a message earns: media and creative commands wait for each other. */
+const MINIAPP_COMMAND = /(^|[^A-Za-z0-9_/])\/(draw|freeze)(?=$|[^A-Za-z0-9_-])/i;
 export function debounceMsFor(body: string): number {
   if (HAS_ATTACHMENT_MARKER.test(body)) return REFERENCE_WINDOW_MS;
+  // Mini-app commands earn the same window as creative commands — the
+  // photo they act on often lands as a second message inside the burst.
+  if (MINIAPP_COMMAND.test(body)) return REFERENCE_WINDOW_MS;
   const command = parseExplicitGenerationCommand(body);
   if (command && !("ambiguous" in command)) return REFERENCE_WINDOW_MS;
   return DEBOUNCE_MS;
@@ -650,6 +655,65 @@ async function runFlushInner(
       );
       await sender
         .sendText(job.spaceId, job.phone, "couldn't open draw. try again?")
+        .catch(() => undefined);
+      if (!(await chainCancelled(supabase, job.spaceId, chainStartedAt))) {
+        await supabase
+          .from("flush_jobs")
+          .delete()
+          .eq("space_id", job.spaceId)
+          .eq("chain_started_at", chainStartedAt);
+      }
+      return;
+    }
+    // /freeze runs next, same shape as /draw: a bare command mints a
+    // session-bound studio card; "/freeze <prompt>" consumes the burst for
+    // a sketch-lane source render.
+    try {
+      const handled = await maybeRunFreezeLane(
+        supabase,
+        sender,
+        {
+          spaceId: job.spaceId,
+          userId: job.userId,
+          phone: job.phone,
+          senderTier: job.senderTier,
+        },
+        rawInput
+      );
+      if (handled) {
+        if (!(await chainCancelled(supabase, job.spaceId, chainStartedAt))) {
+          await supabase
+            .from("flush_jobs")
+            .delete()
+            .eq("space_id", job.spaceId)
+            .eq("chain_started_at", chainStartedAt);
+        }
+        return;
+      }
+    } catch (error) {
+      if (error instanceof MiniAppRegistryLookupError) {
+        if (job.attempts < MAX_ATTEMPTS) {
+          await requeueMessages(
+            supabase,
+            job.userId,
+            job.spaceId,
+            job.phone,
+            drained
+          );
+          await rescheduleWithBackoff(supabase, job.spaceId, job.attempts);
+          return;
+        }
+        throw error;
+      }
+      console.error(
+        JSON.stringify({
+          msg: "freeze command failed",
+          user_id: job.userId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      );
+      await sender
+        .sendText(job.spaceId, job.phone, "couldn't open freeze. try again?")
         .catch(() => undefined);
       if (!(await chainCancelled(supabase, job.spaceId, chainStartedAt))) {
         await supabase
