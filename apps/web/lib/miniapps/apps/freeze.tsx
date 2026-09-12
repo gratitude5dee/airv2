@@ -350,7 +350,13 @@ export const freeze: MiniAppModule = {
             );
           }
           await setFreezeSource(ctx.supabase, session, asset.id);
-          return json({ sourceAssetId: asset.id });
+          session.source_asset_id = asset.id;
+          // Return the signed (converted, for HEIC) URL with the accept so
+          // the client can show the still without waiting on a status pull.
+          return json({
+            sourceAssetId: asset.id,
+            ...(await studioPayload(ctx, session, -1)),
+          });
         }
         case "render": {
           const presetId = String(form.get("preset") ?? "").trim() || undefined;

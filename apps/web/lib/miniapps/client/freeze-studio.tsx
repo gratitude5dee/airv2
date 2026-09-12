@@ -932,6 +932,14 @@ function Studio(props: { initial: Payload }) {
     setSourceUrl(url);
   }, []);
 
+  const clearSourceUrl = useCallback(() => {
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
+    }
+    setSourceUrl(null);
+  }, []);
+
   useEffect(
     () => () => {
       if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
@@ -986,12 +994,38 @@ function Studio(props: { initial: Payload }) {
     [watchJob, applySourceUrl]
   );
 
+  // Sequence guard: status pulls are detached and can land out of order —
+  // a stale response must not restore an older source over a newer upload.
+  const statusSeqRef = useRef(0);
+
   const refresh = useCallback(async () => {
+    const seq = ++statusSeqRef.current;
     const payload = await postAction({ action: "status", after: String(latest) });
-    if (!payload) return;
+    if (!payload || seq !== statusSeqRef.current) return;
     adopt(payload);
     return payload;
   }, [latest, adopt]);
+
+  // An accepted upload without a signed URL and without a local preview
+  // (e.g. HEIC whose inline sign failed) gets a bounded wait for the
+  // converted URL — the editor stays cleared rather than showing the
+  // previous still.
+  const waitForSignedSource = useCallback(async () => {
+    for (let i = 0; i < 10; i++) {
+      const payload = await refresh();
+      if (payload) {
+        // adopt skips URL swaps for an already-known asset — the known
+        // asset is exactly what we're waiting on, so force it.
+        adopt(payload, true);
+        if (payload.sourceUrl) {
+          setLine(null);
+          return;
+        }
+      }
+      await new Promise((r) => setTimeout(r, 1200));
+    }
+    setLine("still converting — back out and re-upload if it stalls");
+  }, [refresh, adopt]);
 
   // Signed media URLs lapse after the delivery TTL; a media element that
   // errors on an open surface pulls fresh signatures — throttled so a
@@ -1008,6 +1042,9 @@ function Studio(props: { initial: Payload }) {
   useEffect(() => {
     if (!sourceUrl) {
       imageRef.current = null;
+      // A cleared source still has to reach the stage — without the bump the
+      // last image stays textured until some unrelated re-render.
+      imageBump((n) => n + 1);
       return;
     }
     const img = new Image();
@@ -1059,13 +1096,25 @@ function Studio(props: { initial: Payload }) {
       }
       setLine(null);
       setSourceAssetId(payload.sourceAssetId);
-      if (previewUrl) applySourceUrl(previewUrl);
+      // Mark the accepted asset before the trailing status pull: its adopt
+      // must swap in the fresh URL (or leave a same-asset blob preview).
+      sourceAssetRef.current = payload.sourceAssetId;
+      if (payload.sourceUrl) {
+        // The upload response signs the stored still — HEIC included, since
+        // conversion already happened server-side.
+        applySourceUrl(payload.sourceUrl);
+      } else if (previewUrl) {
+        applySourceUrl(previewUrl);
+      } else {
+        // Never show the previous still while the new source is enabled.
+        clearSourceUrl();
+        setLine("converting the photo…");
+      }
       setStage("camera");
-      // The status pull follows behind: its sourceUrl (signed, media-
-      // refreshable) swaps in over the object URL once it lands.
       void refresh();
+      if (!payload.sourceUrl && !previewUrl) void waitForSignedSource();
     },
-    [busy, refresh, applySourceUrl]
+    [busy, refresh, applySourceUrl, clearSourceUrl, waitForSignedSource]
   );
 
   const onSketch = useCallback(
@@ -1170,7 +1219,7 @@ function Studio(props: { initial: Payload }) {
   );
 
   const onRender = useCallback(async () => {
-    if (busy || !sourceAssetId) return;
+    if (busy || !sourceAssetId || !sourceUrl) return;
     setBusy(true);
     setLine("rendering the freeze — a few minutes");
     const fields: Record<string, string> = {
@@ -1195,7 +1244,7 @@ function Studio(props: { initial: Payload }) {
     setWatchJob({ id: payload.jobId, kind: "render" });
     adopt(payload);
     setLine("freezing — a few minutes");
-  }, [busy, sourceAssetId, preset, resolution, seed, keyframes, duration, adopt]);
+  }, [busy, sourceAssetId, sourceUrl, preset, resolution, seed, keyframes, duration, adopt]);
 
   const onSave = useCallback(
     async (jobId: string) => {
@@ -1471,7 +1520,7 @@ function Studio(props: { initial: Payload }) {
             <button
               type="button"
               className="fz-primary"
-              disabled={busy || !sourceAssetId || watchJob !== null}
+              disabled={busy || !sourceAssetId || !sourceUrl || watchJob !== null}
               onClick={() => void onRender()}
             >
               {watchJob?.kind === "render" || busy ? "freezing…" : "freeze it"}
