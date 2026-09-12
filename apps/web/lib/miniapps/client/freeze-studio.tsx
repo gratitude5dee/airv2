@@ -346,7 +346,11 @@ const FRAME_STEP = 1 / 30;
 /** Room under the 12MB upload cap for the extracted JPEG. */
 const MAX_FRAME_BYTES = 10 * 1024 * 1024;
 
-function seekTo(video: HTMLVideoElement, time: number): Promise<void> {
+function seekTo(
+  video: HTMLVideoElement,
+  time: number,
+  timeoutMs = 10000
+): Promise<void> {
   return new Promise((resolve, reject) => {
     if (Math.abs(video.currentTime - time) < 0.001 && video.readyState >= 2) {
       resolve();
@@ -355,7 +359,7 @@ function seekTo(video: HTMLVideoElement, time: number): Promise<void> {
     const timer = window.setTimeout(() => {
       video.removeEventListener("seeked", done);
       reject(new Error("couldn't read that frame"));
-    }, 10000);
+    }, timeoutMs);
     function done() {
       window.clearTimeout(timer);
       resolve();
@@ -379,10 +383,11 @@ function drawFrame(video: HTMLVideoElement, width: number) {
 
 async function thumbAt(
   video: HTMLVideoElement,
-  at: number
+  at: number,
+  timeoutMs = 10000
 ): Promise<string | null> {
   try {
-    await seekTo(video, at);
+    await seekTo(video, at, timeoutMs);
     const canvas = drawFrame(video, 160);
     return canvas ? canvas.toDataURL("image/jpeg", 0.8) : null;
   } catch {
@@ -414,6 +419,9 @@ function VideoFramePick(props: {
 
   useEffect(
     () => () => {
+      // Invalidate any read still in flight — its stale() checkpoints
+      // revoke its own URL — then release whichever clip was installed.
+      pickGenRef.current++;
       if (urlRef.current) URL.revokeObjectURL(urlRef.current);
     },
     []
@@ -462,24 +470,31 @@ function VideoFramePick(props: {
         throw new Error("choose a clip under two minutes");
       }
       if (stale()) {
+        video.removeAttribute("src");
+        video.load();
         URL.revokeObjectURL(url);
         return;
       }
       // Filmstrip — ten evenly spaced frames for quick orientation, each
       // tagged with its own timestamp so a dropped frame can't shift the
-      // seek targets of the ones that remain. Bounded overall: a slow
-      // decode shouldn't hold the picker past the strip deadline.
+      // seek targets of the ones that remain. Bounded overall: each seek
+      // gets only the strip's remaining budget so a slow decode can't
+      // hold the picker past the deadline.
       const strip: { src: string; time: number }[] = [];
       const stripDeadline = Date.now() + 15_000;
-      for (let i = 0; i < 10 && !stale() && Date.now() < stripDeadline; i++) {
+      for (let i = 0; i < 10 && !stale(); i++) {
+        const remaining = stripDeadline - Date.now();
+        if (remaining <= 0) break;
         const at = Math.max(
           0,
           Math.min(video.duration - 0.05, (video.duration * i) / 10)
         );
-        const thumb = await thumbAt(video, at);
+        const thumb = await thumbAt(video, at, remaining);
         if (thumb) strip.push({ src: thumb, time: at });
       }
       if (stale()) {
+        video.removeAttribute("src");
+        video.load();
         URL.revokeObjectURL(url);
         return;
       }
