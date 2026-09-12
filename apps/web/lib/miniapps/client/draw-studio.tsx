@@ -329,6 +329,20 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
   const [decodedPreviewUrl, setDecodedPreviewUrl] = useState<string | null>(
     null
   );
+  // Which job the preview currently shows. Signed URLs rotate on every
+  // poll, so asset identity — not the URL string — decides when to swap
+  // the media src; otherwise each poll would blank the decode-gated image.
+  const previewKey = useRef<string | null>(
+    initial.revisions.filter((r) => r.outputUrl).at(-1)?.jobId ?? null
+  );
+  const showAsset = useCallback(
+    (jobId: string | null, url: string | null): void => {
+      if (url && jobId && previewKey.current === jobId) return;
+      previewKey.current = jobId;
+      setPreviewUrl(url);
+    },
+    []
+  );
   // A job submitted this session may flip itself to Preview exactly once;
   // an explicit tab choice by the user cancels that (explicit view wins).
   // Reopening a card mid-render arms it too — the user came back to watch
@@ -607,7 +621,7 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
     const newest = payload.revisions.filter((r) => r.outputUrl).at(-1);
     // A delivered animation isn't a revision — don't swap it for the still.
     if (newest?.outputUrl && !animatedPreviewUrl) {
-      setPreviewUrl(newest.outputUrl);
+      showAsset(newest.jobId, newest.outputUrl);
     }
     // An animation that finished while the page was closed/mid-poll lands
     // only here — adopt it unless it's the one the user dismissed.
@@ -620,9 +634,9 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
       dismissedAnimation.current = null;
       setAnimatedJobId(next.jobId);
       setAnimatedPreviewUrl(next.url);
-      setPreviewUrl(next.url);
+      showAsset(next.jobId, next.url);
     }
-  }, [latest, activeJob, animatedPreviewUrl, animatedJobId]);
+  }, [latest, activeJob, animatedPreviewUrl, animatedJobId, showAsset]);
 
   useEffect(() => {
     // ~2.5s cadence: the render lane has no preview stream, so the strip
@@ -637,12 +651,12 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
     // A delivered animation isn't a revision — keep it on screen until the
     // user picks a revision or generates again.
     if (animatedPreviewUrl) return;
-    setPreviewUrl(
-      targetRevision?.outputUrl ??
-        revisions.filter((r) => r.outputUrl).at(-1)?.outputUrl ??
-        null
-    );
-  }, [targetRevision?.outputUrl, revisions, animatedPreviewUrl]);
+    const rev =
+      (targetRevision?.outputUrl ? targetRevision : null) ??
+      revisions.filter((r) => r.outputUrl).at(-1) ??
+      null;
+    showAsset(rev?.jobId ?? null, rev?.outputUrl ?? null);
+  }, [targetRevision, revisions, animatedPreviewUrl, showAsset]);
 
   /* -------------------------------------------- preview decode + reveal */
 
@@ -683,11 +697,26 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
       revisions.find((r) => r.jobId === jobId)?.outputUrl ??
       (animatedJobId === jobId ? animatedPreviewUrl : null);
     if (!url) return;
-    const video = /\.(mp4|mov)(\?|$)/i.test(url);
-    if (!video && decodedPreviewUrl !== url) return;
+    // Adopt the job's media first — the tab flip still waits on decode.
+    // The shown URL is stable per job, so compare by identity below.
+    showAsset(jobId, url);
+    const video = /\.(mp4|mov)(\?|$)/i.test(previewUrl ?? url);
+    if (
+      !video &&
+      !(previewKey.current === jobId && decodedPreviewUrl === previewUrl)
+    ) {
+      return;
+    }
     autoRevealJob.current = null;
     setTab("preview");
-  }, [revisions, decodedPreviewUrl, animatedJobId, animatedPreviewUrl]);
+  }, [
+    revisions,
+    decodedPreviewUrl,
+    previewUrl,
+    animatedJobId,
+    animatedPreviewUrl,
+    showAsset,
+  ]);
 
   /* --------------------------------------------------------- keyboard */
 
@@ -887,7 +916,9 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
           : (payload.line ?? null)
       );
       // The tab flips via the auto-reveal effect once the preview decodes.
-      if (payload.deliveryUrl) setPreviewUrl(payload.deliveryUrl);
+      if (payload.deliveryUrl) {
+        showAsset(payload.jobId ?? null, payload.deliveryUrl);
+      }
       if (payload.status === "delivered") {
         setStrokes([]);
         setRedoStack([]);
@@ -909,6 +940,7 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
     inkPresent,
     flatten,
     clearAnimation,
+    showAsset,
   ]);
 
   const animate = useCallback(async (): Promise<void> => {
@@ -941,12 +973,12 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
         if (viewVersion.current === startViewVersion) {
           autoRevealJob.current = payload.jobId ?? null;
         }
-        setPreviewUrl(payload.deliveryUrl);
+        showAsset(payload.jobId ?? null, payload.deliveryUrl);
       }
     } finally {
       setBusy(null);
     }
-  }, [busy, targetRevision, prompt]);
+  }, [busy, targetRevision, prompt, showAsset]);
 
   const save = useCallback(async (): Promise<void> => {
     // Save whatever the preview shows — an animation when one just
@@ -1005,11 +1037,11 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
       setSelectedRevisionId(revision.jobId);
       clearAnimation();
       if (revision.outputUrl) {
-        setPreviewUrl(revision.outputUrl);
+        showAsset(revision.jobId, revision.outputUrl);
         setTab("preview");
       }
     },
-    [clearAnimation]
+    [clearAnimation, showAsset]
   );
 
   /* ------------------------------------------------------------ render */
