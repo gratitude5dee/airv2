@@ -454,6 +454,33 @@ export async function admitFreezeSketch(
   );
 }
 
+/**
+ * Turn a post-admission setup failure into a terminal state: an admitted
+ * job that never reaches the provider still holds the slot until
+ * released, and a job left in `routing` would block every later claim.
+ */
+async function failAdmittedJob(
+  supabase: SupabaseClient,
+  session: FreezeSession,
+  job: CreativeJob,
+  error: unknown
+): Promise<void> {
+  const line = error instanceof Error ? error.message : String(error);
+  const current = await getCreativeJob(supabase, session.user_id, job.id);
+  if (current && ACTIVE_JOB_STATUSES.includes(current.status)) {
+    await updateCreativeJob(supabase, job.id, {
+      status: "failed",
+      error: line,
+    });
+  }
+  await appendFreezeEvent(supabase, session.id, {
+    jobId: job.id,
+    kind: "state",
+    state: "failed",
+    errorCode: safeFreezeErrorCode(line),
+  });
+}
+
 /** Run an admitted sketch job to delivery (scheduled via `after()`). */
 export async function executeFreezeSketch(
   supabase: SupabaseClient,
@@ -507,6 +534,11 @@ export async function executeFreezeSketch(
       session.source_asset_id = result.asset.id;
     }
     return result;
+  } catch (error) {
+    await failAdmittedJob(supabase, session, job, error).catch(
+      () => undefined
+    );
+    throw error;
   } finally {
     await releaseFreezeSlot(supabase, session.id, job.id);
   }
@@ -568,17 +600,26 @@ export async function executeFreezeRender(
   job: CreativeJob,
   input: Omit<FreezeRenderInput, "channel">
 ): Promise<CreativeRunResult> {
-  // The admitted source wins even if the owner swapped photos mid-flight —
-  // input_asset_id was pinned when the slot was claimed.
-  const sourceAssetId = job.input_asset_id ?? session.source_asset_id;
-  if (!sourceAssetId) {
-    throw new FreezeError("NO_SOURCE", "pick a photo first");
-  }
-  const url = await signedAssetUrl(supabase, session.user_id, sourceAssetId);
-  if (!url) {
-    throw new FreezeError("SOURCE_UNAVAILABLE", "the source photo expired");
-  }
   try {
+    // The admitted source wins even if the owner swapped photos mid-flight
+    // — input_asset_id was pinned when the slot was claimed. Signing lives
+    // inside the try so a transient storage failure still terminalizes the
+    // job instead of stranding the slot on a `routing` row.
+    const sourceAssetId = job.input_asset_id ?? session.source_asset_id;
+    if (!sourceAssetId) {
+      throw new FreezeError("NO_SOURCE", "pick a photo first");
+    }
+    const url = await signedAssetUrl(
+      supabase,
+      session.user_id,
+      sourceAssetId
+    );
+    if (!url) {
+      throw new FreezeError(
+        "SOURCE_UNAVAILABLE",
+        "the source photo expired"
+      );
+    }
     const result = await executeCreativeJob(
       supabase,
       job.id,
@@ -596,6 +637,11 @@ export async function executeFreezeRender(
     );
     await finishFreezeRun(supabase, session, job, result);
     return result;
+  } catch (error) {
+    await failAdmittedJob(supabase, session, job, error).catch(
+      () => undefined
+    );
+    throw error;
   } finally {
     await releaseFreezeSlot(supabase, session.id, job.id);
   }

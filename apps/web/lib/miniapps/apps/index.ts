@@ -28,6 +28,7 @@ import { persona } from "./persona";
 import { shop } from "./shop";
 import { settings } from "./settings";
 import { todo } from "./todo";
+import { trade } from "./trade";
 import { vault } from "./vault";
 import { video } from "./video";
 
@@ -60,6 +61,7 @@ export const FIRST_PARTY_MODULES: Record<string, MiniAppModule> = {
   settings,
   shop,
   todo,
+  trade,
   vault,
   video,
 };

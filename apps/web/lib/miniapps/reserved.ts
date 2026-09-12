@@ -22,7 +22,7 @@ const FIRST_PARTY_RESERVED = [
   "ads", "analytics", "berd", "browser", "buzz", "calendar", "computer",
   "connect", "crm", "draw", "feedback", "home", "image", "inbox", "kanban",
   "masterkey", "onboarding", "pay", "persona", "settings", "shop", "todo",
-  "vault", "video",
+  "trade", "vault", "video",
 ];
 
 export const RESERVED_WORDS: ReadonlySet<string> = new Set([

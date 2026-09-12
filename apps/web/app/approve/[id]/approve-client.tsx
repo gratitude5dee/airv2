@@ -13,11 +13,25 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 interface View {
   id: string;
-  kind: "purchase_review" | "payment_request";
+  kind:
+    | "purchase_review"
+    | "payment_request"
+    | "trade_order"
+    | "trade_cancel"
+    | "trade_settings";
   status: string;
   label: string | null;
   agent: string | null;
   expires_at: string | null;
+  trade?: {
+    mode: string | null;
+    estimated_price: string | null;
+    estimated_fill: string | null;
+    fee: string | null;
+    total: string | null;
+    currency: string | null;
+    note: string | null;
+  };
   purchase?: {
     host: string;
     summary: string;
@@ -272,18 +286,30 @@ export function ApproveClient({ decisionId }: { decisionId: string }) {
   const expired = countdown === "Expired";
   const purchase = view?.purchase;
   const payment = view?.payment;
+  const trade = view?.trade;
+  const isTrade = !!trade;
   const agent = view?.agent ?? "Your agent";
-  const amount = purchase
-    ? purchase.amount_band
-    : (payment?.amount_display ?? "");
+  const amount = trade
+    ? (trade.total && trade.currency ? `${trade.total} ${trade.currency}` : "")
+    : purchase
+      ? purchase.amount_band
+      : (payment?.amount_display ?? "");
   const host = purchase?.host ?? null;
   const cardName = purchase?.card_name ?? null;
   const cardMasked = purchase?.card_masked ?? null;
   const summary = purchase?.summary ?? payment?.memo ?? view?.label ?? "";
-  const merchantName = host
-    ? host.replace(/\.(com|net|org|co|io|shop)$/i, "")
-    : (payment?.payee ?? "");
+  const merchantName = trade
+    ? "Coinbase"
+    : host
+      ? host.replace(/\.(com|net|org|co|io|shop)$/i, "")
+      : (payment?.payee ?? "");
   const initial = (merchantName || "?").charAt(0).toUpperCase();
+  const tradeAsk =
+    view?.kind === "trade_cancel"
+      ? "wants to cancel an order"
+      : view?.kind === "trade_settings"
+        ? "wants to change your trading caps"
+        : "wants to place this order";
 
   return (
     <main className="approve-sheet">
@@ -327,7 +353,7 @@ export function ApproveClient({ decisionId }: { decisionId: string }) {
         <header className="approve-head">
           <div className="wallet-brand">
             <span className="wallet-dot">›</span>
-            {purchase ? "link" : "air pay"}
+            {trade ? "air trade" : purchase ? "link" : "air pay"}
           </div>
         </header>
 
@@ -366,8 +392,10 @@ export function ApproveClient({ decisionId }: { decisionId: string }) {
           <>
             <div className="agent-chip">&lt;/&gt;</div>
             <h1 className="ask">
-              {agent} is requesting to spend
-              <span className="amt">{amount}</span>
+              {isTrade
+                ? `${agent} ${tradeAsk}`
+                : `${agent} is requesting to spend`}
+              <span className="amt">{isTrade ? summary : amount}</span>
             </h1>
             <div className={`expiry${expired ? " warn" : ""}`}>
               {countdown ?? "Waiting for you"}
@@ -379,10 +407,14 @@ export function ApproveClient({ decisionId }: { decisionId: string }) {
                 <div>
                   <div className="merchant-name">{merchantName}</div>
                   <div className="merchant-url">
-                    {host ? `https://${host}` : (payment?.payee ?? "")}
+                    {trade
+                      ? `${trade.mode === "live" ? "live" : "paper"} · spot only`
+                      : host
+                        ? `https://${host}`
+                        : (payment?.payee ?? "")}
                   </div>
                 </div>
-                {summary ? (
+                {summary && !isTrade ? (
                   <button
                     type="button"
                     className="inspect-btn"
@@ -392,10 +424,25 @@ export function ApproveClient({ decisionId }: { decisionId: string }) {
                   </button>
                 ) : null}
               </div>
-              {inspecting && summary ? (
+              {inspecting && summary && !isTrade ? (
                 <div className="cart-line">
                   <span aria-hidden>🛍</span>
                   <span>{summary}</span>
+                </div>
+              ) : null}
+              {trade && view?.kind === "trade_order" ? (
+                <div className="cart-line" style={{ flexDirection: "column", gap: 4 }}>
+                  <span>Est. price {trade.estimated_price ?? "—"}</span>
+                  <span>Est. fill {trade.estimated_fill ?? "—"}</span>
+                  <span>Fee {trade.fee ?? "—"}</span>
+                  <span>
+                    Total {trade.total ?? "—"} {trade.currency ?? ""}
+                  </span>
+                </div>
+              ) : null}
+              {trade?.note ? (
+                <div className="cart-line">
+                  <span>{trade.note}</span>
                 </div>
               ) : null}
             </section>
@@ -418,9 +465,13 @@ export function ApproveClient({ decisionId }: { decisionId: string }) {
             {notice ? <p className="notice">{notice}</p> : null}
             {express ? <div id="express-checkout" /> : null}
             <p className="legal">
-              {purchase
-                ? "By approving, you authorize your agent to fill this saved card at checkout. Your real payment details are never shared with the platform."
-                : "By approving, you authorize this payment to the payee shown. Your payment details stay with Stripe."}
+              {trade
+                ? view?.kind === "trade_order"
+                  ? "By approving, you authorize this exact order. The preview is bound to this approval — any change voids it."
+                  : "By approving, you authorize this change to your trading setup."
+                : purchase
+                  ? "By approving, you authorize your agent to fill this saved card at checkout. Your real payment details are never shared with the platform."
+                  : "By approving, you authorize this payment to the payee shown. Your payment details stay with Stripe."}
             </p>
             <div className="actions">
               <button

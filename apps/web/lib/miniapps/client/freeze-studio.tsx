@@ -514,15 +514,22 @@ function createThreeStage(host: HTMLDivElement): ThreeStage {
   const observer = new ResizeObserver(render);
   observer.observe(host);
 
+  let photoTex: THREE.Texture | null = null;
+
   return {
     setImage(img) {
+      // A re-signed URL re-uploads the same still — dispose the previous
+      // texture or a polling render leaks GPU memory until the WebView OOMs.
+      photoTex?.dispose();
       if (img) {
         const tex = new THREE.Texture(img);
         tex.colorSpace = THREE.SRGBColorSpace;
         tex.needsUpdate = true;
+        photoTex = tex;
         photoMat.map = tex;
         photoMat.color.set(0xffffff);
       } else {
+        photoTex = null;
         photoMat.map = null;
         photoMat.color.set(0x44598a);
       }
@@ -586,6 +593,7 @@ function createThreeStage(host: HTMLDivElement): ThreeStage {
     },
     dispose() {
       observer.disconnect();
+      photoTex?.dispose();
       disposables.forEach((d) => d.dispose());
       tube?.geometry.dispose();
       renderer.dispose();
@@ -905,13 +913,25 @@ function Studio(props: { initial: Payload }) {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const cameraRef = useRef<HTMLInputElement | null>(null);
   const lastMediaRefresh = useRef(0);
+  const sourceAssetRef = useRef(props.initial.sourceAssetId);
 
   const adopt = useCallback(
-    (payload: Payload) => {
+    (payload: Payload, forceSource = false) => {
       if (typeof payload.latest === "number") setLatest(payload.latest);
       setActiveJob(payload.activeJob ?? null);
-      if (payload.sourceUrl) setSourceUrl(payload.sourceUrl);
-      if (payload.sourceAssetId) setSourceAssetId(payload.sourceAssetId);
+      // The poll re-mints the source URL every round trip — only take a new
+      // one when the asset changed (or a media error forced a re-sign), so
+      // the stage doesn't re-upload the same still to the GPU each poll.
+      if (
+        payload.sourceUrl &&
+        (forceSource || payload.sourceAssetId !== sourceAssetRef.current)
+      ) {
+        setSourceUrl(payload.sourceUrl);
+      }
+      if (payload.sourceAssetId) {
+        sourceAssetRef.current = payload.sourceAssetId;
+        setSourceAssetId(payload.sourceAssetId);
+      }
       if (payload.renders) setRenders(payload.renders);
       // Resolve a watched job once its slot frees: the deliver outcome
       // advances the stage, the failure surfaces its line.
@@ -952,8 +972,10 @@ function Studio(props: { initial: Payload }) {
     const now = Date.now();
     if (now - lastMediaRefresh.current < 30_000) return;
     lastMediaRefresh.current = now;
-    void refresh();
-  }, [refresh]);
+    void refresh().then((payload) => {
+      if (payload) adopt(payload, true);
+    });
+  }, [refresh, adopt]);
 
   useEffect(() => {
     if (!sourceUrl) {
