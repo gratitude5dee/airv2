@@ -2201,7 +2201,7 @@ const CSS = `
 .fz-timeline-meta span:last-child{font-variant-numeric:tabular-nums;color:#c5d2d0;text-align:right}
 .fz-track{position:relative;height:44px;touch-action:none;cursor:pointer;background:#1d2728;border-radius:7px}
 .fz-track-ticks{position:absolute;inset:12px 8px;background:repeating-linear-gradient(90deg,#354445 0,#354445 1px,transparent 1px,transparent 14px);opacity:0.65;-webkit-mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent);mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent);pointer-events:none}
-.fz-kf{position:absolute;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;padding:0;border:2px solid #8fd4bd;border-radius:50%;background:#0d181b}
+.fz-kf{position:absolute;top:50%;width:12px;height:12px;min-width:0;min-height:0;margin:-6px 0 0 -6px;padding:0;border:2px solid #8fd4bd;border-radius:50%;background:#0d181b}
 .fz-kf.selected{background:#d1eadd;border-color:#d1eadd}
 .fz-head{position:absolute;top:-3px;bottom:-3px;width:2px;margin-left:-1px;background:#d1eadd;box-shadow:0 0 12px #d1eadd30;pointer-events:none}
 .fz-head i{position:absolute;top:-4px;left:-3px;width:8px;height:8px;border-radius:2px;background:#d1eadd}
