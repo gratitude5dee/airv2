@@ -951,11 +951,16 @@ function Studio(props: { initial: Payload }) {
                   type="button"
                   className={`fz-kf${selected === i ? " selected" : ""}`}
                   style={{ left: `${kf.time * 100}%` }}
-                  onClick={(e) => {
+                  // Stop propagation on pointerdown: the track captures the
+                  // pointer there, and a captured pointer retargets every
+                  // later event (incl. click) to the track — the dot's own
+                  // click never lands without this.
+                  onPointerDown={(e) => {
                     e.stopPropagation();
                     setSelected(i);
                     setScrubT(kf.time);
                   }}
+                  onClick={(e) => e.stopPropagation()}
                   aria-label={`keyframe ${i + 1} at ${Math.round(kf.time * 100)}%`}
                 />
               ))}
