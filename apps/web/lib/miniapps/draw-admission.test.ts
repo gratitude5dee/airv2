@@ -404,9 +404,15 @@ describe("drawStatus", () => {
       if (
         q.table === "creative_jobs" &&
         q.op === "select" &&
-        q.args[0] === "id, output_asset_id"
+        q.args[0] === "id, output_asset_id, created_at"
       ) {
-        return { data: { id: "zap-9", output_asset_id: "a-9" } };
+        return {
+          data: {
+            id: "zap-9",
+            output_asset_id: "a-9",
+            created_at: "2026-09-11T00:00:00.000Z",
+          },
+        };
       }
       if (q.table === "creative_jobs" && q.op === "select") {
         return { data: [] };
@@ -418,6 +424,7 @@ describe("drawStatus", () => {
     expect(status.latestAnimation).toEqual({
       jobId: "zap-9",
       url: "https://signed/asset.mp4",
+      createdAt: "2026-09-11T00:00:00.000Z",
     });
   });
 
@@ -427,7 +434,7 @@ describe("drawStatus", () => {
       if (
         q.table === "creative_jobs" &&
         q.op === "select" &&
-        q.args[0] === "id, output_asset_id"
+        q.args[0] === "id, output_asset_id, created_at"
       ) {
         return { data: { id: "zap-9", output_asset_id: "a-9" } };
       }
