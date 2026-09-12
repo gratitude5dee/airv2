@@ -331,7 +331,16 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
   );
   // A job submitted this session may flip itself to Preview exactly once;
   // an explicit tab choice by the user cancels that (explicit view wins).
-  const autoRevealJob = useRef<string | null>(null);
+  // Reopening a card mid-render arms it too — the user came back to watch
+  // that job finish.
+  const autoRevealJob = useRef<string | null>(
+    initial.activeJob && ACTIVE_STATUSES.includes(initial.activeJob.status)
+      ? initial.activeJob.id
+      : null
+  );
+  // Bumped on every explicit tab pick — a response that lands after the
+  // user chose a view during the request must not re-arm the reveal.
+  const viewVersion = useRef(0);
   // The media the preview/save target: a delivered zap job isn't a draw
   // revision, so it carries its own pointer until the user picks a revision.
   const [animatedJobId, setAnimatedJobId] = useState<string | null>(
@@ -563,6 +572,17 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
   const poll = useCallback(async (): Promise<void> => {
     const payload = await postAction({ action: "status", after: String(latest) });
     if (!payload || payload.error) return;
+    // A job we watched go active here (mount or a POST whose response was
+    // lost) still earns its reveal when the poll reports it delivered — as
+    // long as nothing else already claimed the reveal.
+    const stillActive =
+      payload.activeJob && ACTIVE_STATUSES.includes(payload.activeJob.status);
+    if (activeJob?.id && !stillActive && autoRevealJob.current === null) {
+      const finished = payload.revisions.find(
+        (r) => r.jobId === activeJob.id && r.state === "delivered" && r.outputUrl
+      );
+      if (finished) autoRevealJob.current = activeJob.id;
+    }
     setLatest(payload.latest);
     setActiveJob(payload.activeJob);
     setRevisions(payload.revisions);
@@ -584,7 +604,7 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
       setAnimatedPreviewUrl(next.url);
       setPreviewUrl(next.url);
     }
-  }, [latest, animatedPreviewUrl, animatedJobId]);
+  }, [latest, activeJob, animatedPreviewUrl, animatedJobId]);
 
   useEffect(() => {
     // ~2.5s cadence: the render lane has no preview stream, so the strip
@@ -615,11 +635,21 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
       setDecodedPreviewUrl(null);
       return;
     }
+    // A superseded load finishing late must not un-decode the preview that
+    // is actually selected — drop callbacks from stale image instances.
+    let current = true;
     const image = new Image();
-    image.onload = () => setDecodedPreviewUrl(previewUrl);
-    image.onerror = () =>
-      setMessage("the image is ready, but its preview couldn't load — reopen the card");
+    image.onload = () => {
+      if (current) setDecodedPreviewUrl(previewUrl);
+    };
+    image.onerror = () => {
+      if (current)
+        setMessage("the image is ready, but its preview couldn't load — reopen the card");
+    };
     image.src = previewUrl;
+    return () => {
+      current = false;
+    };
   }, [previewUrl, previewIsVideo]);
 
   const showPreview = Boolean(
@@ -644,6 +674,7 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
   /* --------------------------------------------------------- keyboard */
 
   const selectView = useCallback((next: "sketch" | "preview"): void => {
+    viewVersion.current += 1;
     autoRevealJob.current = null;
     setTab(next);
   }, []);
@@ -783,6 +814,9 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
     const reuseParent = Boolean(parentJobId && !ink && !backgroundUrl);
     setBusy("generate");
     setMessage("preparing…");
+    // If the user picks a view while this blocking request is in flight,
+    // that choice must win — the response won't arm the reveal then.
+    const startViewVersion = viewVersion.current;
     try {
       let inputAssetId: string | undefined;
       if (!reuseParent && (ink || includeBackground)) {
@@ -818,7 +852,9 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
         setMessage(errorLine(payload));
         return;
       }
-      autoRevealJob.current = payload.jobId ?? null;
+      if (viewVersion.current === startViewVersion) {
+        autoRevealJob.current = payload.jobId ?? null;
+      }
       setActiveJob(payload.activeJob);
       setLatest(payload.latest);
       setRevisions(payload.revisions);
@@ -856,6 +892,7 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
     if (busy || !targetRevision) return;
     setBusy("animate");
     setMessage("animating…");
+    const startViewVersion = viewVersion.current;
     try {
       const fields: Record<string, string> = {
         action: "animate",
@@ -878,7 +915,9 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
         setAnimatedPreviewUrl(payload.deliveryUrl ?? null);
       }
       if (payload.deliveryUrl) {
-        autoRevealJob.current = payload.jobId ?? null;
+        if (viewVersion.current === startViewVersion) {
+          autoRevealJob.current = payload.jobId ?? null;
+        }
         setPreviewUrl(payload.deliveryUrl);
       }
     } finally {
