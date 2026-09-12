@@ -693,8 +693,12 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
 
   const selectView = useCallback((next: "sketch" | "preview"): void => {
     viewVersion.current += 1;
-    dismissedReveal.current = autoRevealJob.current;
-    autoRevealJob.current = null;
+    // Record only an armed reveal — a second pick would otherwise overwrite
+    // the remembered dismissal with null and let the poll re-arm it.
+    if (autoRevealJob.current !== null) {
+      dismissedReveal.current = autoRevealJob.current;
+      autoRevealJob.current = null;
+    }
     setTab(next);
   }, []);
 
