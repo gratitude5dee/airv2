@@ -282,6 +282,7 @@ export async function setFreezeSource(
     .update({ source_asset_id: assetId })
     .eq("id", session.id)
     .eq("status", "active")
+    .gt("expires_at", new Date().toISOString())
     .select("id");
   if (error) {
     throw new FreezeError("STORE_FAILED", error.message);
@@ -317,9 +318,11 @@ async function claimFreezeSlot(
           : { active_job_id: jobId }
       )
       .eq("id", session.id)
-      // Status is part of the predicate: a session another request expired
-      // since this one loaded it must not claim the slot and start paid work.
+      // Status and TTL are part of the predicate: a session that expired
+      // since this request loaded it must not claim the slot and start
+      // paid work.
       .eq("status", "active")
+      .gt("expires_at", new Date().toISOString())
       .is("active_job_id", null)
       .select("id");
   let { data } = await attempt();
@@ -575,6 +578,7 @@ export async function executeFreezeSketch(
         .update({ source_asset_id: result.asset.id })
         .eq("id", session.id)
         .eq("status", "active")
+        .gt("expires_at", new Date().toISOString())
         .eq("active_job_id", job.id);
       const { data: claimed } = await (sourceAtAdmit
         ? update.eq("source_asset_id", sourceAtAdmit)
