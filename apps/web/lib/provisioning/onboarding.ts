@@ -56,31 +56,35 @@ export async function signupSender(
   }
   const userId = user.id as string;
 
-  const { error: entitlementError } = await supabase
-    .from("entitlements")
-    .insert({ user_id: userId });
-  if (entitlementError) {
-    throw new Error(`entitlements insert failed: ${entitlementError.message}`);
-  }
-  const { error: provisioningError } = await supabase
-    .from("provisioning")
-    .insert({
-      user_id: userId,
-      state: "created",
-      bound_phone: address,
-      operator: "self-serve",
-    });
-  if (provisioningError) {
-    throw new Error(`provisioning insert failed: ${provisioningError.message}`);
-  }
+  try {
+    const { error: entitlementError } = await supabase
+      .from("entitlements")
+      .insert({ user_id: userId });
+    if (entitlementError) {
+      throw new Error(
+        `entitlements insert failed: ${entitlementError.message}`
+      );
+    }
+    const { error: provisioningError } = await supabase
+      .from("provisioning")
+      .insert({
+        user_id: userId,
+        state: "created",
+        bound_phone: address,
+        operator: "self-serve",
+      });
+    if (provisioningError) {
+      throw new Error(
+        `provisioning insert failed: ${provisioningError.message}`
+      );
+    }
 
-  const { error: handleError } = await supabase.from("handles").insert({
-    user_id: userId,
-    platform: "imessage",
-    address,
-  });
-  if (handleError) {
-    if (handleError.code === "23505") {
+    const { error: handleError } = await supabase.from("handles").insert({
+      user_id: userId,
+      platform: "imessage",
+      address,
+    });
+    if (handleError?.code === "23505") {
       // A concurrent webhook won the race — return the existing account.
       const { data: won } = await supabase
         .from("handles")
@@ -88,20 +92,30 @@ export async function signupSender(
         .eq("platform", "imessage")
         .eq("address", address)
         .maybeSingle();
+      // The loser's entitlements/provisioning/senders rows cascade away
+      // with its user.
+      await supabase.from("users").delete().eq("id", userId);
       if (won?.user_id) return won.user_id as string;
+      throw new Error(`handles insert failed: ${handleError.message}`);
     }
-    throw new Error(`handles insert failed: ${handleError.message}`);
+    if (handleError) {
+      throw new Error(`handles insert failed: ${handleError.message}`);
+    }
+    const { error: senderError } = await supabase.from("senders").insert({
+      user_id: userId,
+      platform: "imessage",
+      address,
+      trust_tier: 0,
+    });
+    if (senderError && senderError.code !== "23505") {
+      throw new Error(`senders insert failed: ${senderError.message}`);
+    }
+    return userId;
+  } catch (error) {
+    // Roll the half-created account back — children cascade from users.
+    await supabase.from("users").delete().eq("id", userId);
+    throw error;
   }
-  const { error: senderError } = await supabase.from("senders").insert({
-    user_id: userId,
-    platform: "imessage",
-    address,
-    trust_tier: 0,
-  });
-  if (senderError && senderError.code !== "23505") {
-    throw new Error(`senders insert failed: ${senderError.message}`);
-  }
-  return userId;
 }
 
 interface ProvisioningRow {

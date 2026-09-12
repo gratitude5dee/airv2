@@ -113,6 +113,7 @@ function fakeSupabase(opts: Row | null | FakeOptions): SupabaseClient & {
       select: () => builder(table, "select"),
       insert: (values: unknown) => builder(table, "insert", values),
       update: (values: unknown) => builder(table, "update", values),
+      delete: () => builder(table, "delete"),
     }),
   };
   return client as unknown as SupabaseClient & {
@@ -312,5 +313,22 @@ describe("signupSender", () => {
     });
     const userId = await signupSender(client, "+15106341410");
     expect(userId).toBe("u-winner");
+    // The losing account's rows cascade away with its user.
+    expect(
+      client.calls.some((c) => c.table === "users" && c.op === "delete")
+    ).toBe(true);
+  });
+
+  it("rolls back the user row when signup fails partway through", async () => {
+    const client = fakeSupabase({
+      nextUserId: "u-dead",
+      handleInsertError: { code: "42501", message: "rls denied" },
+    });
+    await expect(signupSender(client, "+15106341410")).rejects.toThrow(
+      "handles insert failed"
+    );
+    expect(
+      client.calls.some((c) => c.table === "users" && c.op === "delete")
+    ).toBe(true);
   });
 });

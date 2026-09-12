@@ -174,12 +174,25 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       inbound.senderId &&
       (await isOnboardingLine(supabase, inbound.phone))
     ) {
-      if (normalizeAddress("imessage", inbound.senderId)) {
-        route = { userId: await signupSender(supabase, inbound.senderId) };
+      const senderAddress = normalizeAddress("imessage", inbound.senderId);
+      if (/^\+?\d{8,15}$/.test(senderAddress)) {
+        try {
+          route = { userId: await signupSender(supabase, inbound.senderId) };
+        } catch (error) {
+          // A failed signup must not be deduped away — release the event so
+          // Spectrum's redelivery retries account creation.
+          await supabase
+            .from("inbound_events")
+            .delete()
+            .eq("webhook_id", inbound.webhookId ?? "spectrum")
+            .eq("message_id", inbound.messageId);
+          throw error;
+        }
       } else {
-        // An iMessage sent from an email Apple ID carries no phone number,
-        // so the SMS OTP could never reach them — say so instead of signing
-        // up an account every later text would still ignore.
+        // An iMessage sent from an email Apple ID carries no phone number
+        // (digits in the address don't make it one) — the SMS OTP could
+        // never reach them, so say so instead of signing up an account
+        // every later text would still ignore.
         const spaceId = inbound.spaceId;
         const phone = inbound.phone;
         const messageId = inbound.messageId;
@@ -227,11 +240,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const phone = inbound.phone;
     const messageId = inbound.messageId;
     after(async () => {
-      // A self-serve activation owns no box yet — fork it here, in the
-      // background, so the "setting up" reply lands first and the build
-      // isn't bounded by the reply send.
+      // Reply first; then the build. `after` keeps the invocation alive
+      // only for awaited work — a detached provision promise could freeze
+      // before the boxes row exists.
+      await sendLineReply(spaceId, phone, messageId, reply);
       if (startCompute) {
-        void ensureComputeProvisioned(supabase, userId).catch(
+        await ensureComputeProvisioned(supabase, userId).catch(
           (error: unknown) => {
             console.error(
               JSON.stringify({
@@ -243,7 +257,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           },
         );
       }
-      await sendLineReply(spaceId, phone, messageId, reply);
     });
     return NextResponse.json({ ok: true }, { status: 200 });
   }
