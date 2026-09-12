@@ -89,7 +89,7 @@ function renderStudio(
   // width:100% — as a shrink-to-fit flex child of main.app the div's width
   // would be indefinite, so the client's min(100%,…) widths could overflow
   // the column and clip the canvas on narrow screens.
-  const body = `<div id="draw-studio" style="width:100%;flex:1;display:flex;flex-direction:column" data-payload="${esc(
+  const body = `<div id="draw-studio" style="width:100%;flex:1;min-height:0;display:flex;flex-direction:column" data-payload="${esc(
     JSON.stringify(payload)
   )}"></div>
 <script src="/creator-os/draw-studio.js" defer></script>

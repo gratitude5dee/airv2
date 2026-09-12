@@ -102,7 +102,12 @@ interface Stroke {
 
 function canvasPoint(clientX: number, clientY: number, rect: DOMRect): Point {
   const scale = CANVAS_SIZE / Math.max(1, Math.min(rect.width, rect.height));
-  return { x: (clientX - rect.left) * scale, y: (clientY - rect.top) * scale };
+  // Clamp to the pad: a finger sliding off the edge mid-stroke must not
+  // paint (or measure) beyond the 1024 canvas.
+  return {
+    x: Math.max(0, Math.min(CANVAS_SIZE, (clientX - rect.left) * scale)),
+    y: Math.max(0, Math.min(CANVAS_SIZE, (clientY - rect.top) * scale)),
+  };
 }
 
 /** Contain-fit a source rect into the square canvas (mayor-coast parity). */
@@ -339,8 +344,11 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
 
   const bgCanvasRef = useRef<HTMLCanvasElement>(null);
   const strokeCanvasRef = useRef<HTMLCanvasElement>(null);
+  const canvasZoneRef = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
   const pointerId = useRef<number | null>(null);
   const livePoints = useRef<Point[]>([]);
+  const touchDrawing = useRef(false);
   const [inkTick, forceInk] = useState(0);
 
   const delivered = revisions.filter((r) => r.state === "delivered");
@@ -397,6 +405,84 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
     image.src = backgroundUrl;
   }, [backgroundUrl]);
 
+  /* -------------------------------------------------- gesture pinning */
+
+  // Messages WebViews sometimes ignore touch-action during a sheet gesture.
+  // This narrowly-scoped non-passive fallback only owns a gesture that began
+  // on the drawing surface, so rail and sheet controls still work normally.
+  useEffect(() => {
+    const zone = canvasZoneRef.current;
+    if (!zone) return;
+    const startTouch = (event: TouchEvent): void => {
+      const target = event.target as Element | null;
+      if (
+        target &&
+        viewportRef.current?.contains(target) &&
+        !target.closest(".ds-rail")
+      ) {
+        touchDrawing.current = true;
+        event.preventDefault();
+      }
+    };
+    const moveTouch = (event: TouchEvent): void => {
+      if (touchDrawing.current) event.preventDefault();
+    };
+    const endTouch = (): void => {
+      touchDrawing.current = false;
+    };
+    zone.addEventListener("touchstart", startTouch, { passive: false });
+    zone.addEventListener("touchmove", moveTouch, { passive: false });
+    zone.addEventListener("touchend", endTouch, { passive: true });
+    zone.addEventListener("touchcancel", endTouch, { passive: true });
+    return () => {
+      zone.removeEventListener("touchstart", startTouch);
+      zone.removeEventListener("touchmove", moveTouch);
+      zone.removeEventListener("touchend", endTouch);
+      zone.removeEventListener("touchcancel", endTouch);
+    };
+  }, []);
+
+  // The iOS keyboard shrinks the visual viewport; tracking it lets the
+  // pinned frame shrink too instead of the document sliding under a finger.
+  useEffect(() => {
+    const update = (): void => {
+      document.documentElement.style.setProperty(
+        "--ds-vvh",
+        `${window.visualViewport?.height ?? window.innerHeight}px`
+      );
+    };
+    update();
+    window.visualViewport?.addEventListener("resize", update);
+    window.addEventListener("resize", update);
+    return () => {
+      window.visualViewport?.removeEventListener("resize", update);
+      window.removeEventListener("resize", update);
+    };
+  }, []);
+
+  // Size the square to the space the canvas zone actually gets — the sheet
+  // is capped, so the zone shrinks first and the pad follows it.
+  useEffect(() => {
+    const zone = canvasZoneRef.current;
+    if (!zone || typeof ResizeObserver === "undefined") return;
+    let frame = 0;
+    const sizeCanvas = (): void => {
+      const viewport = viewportRef.current;
+      if (!viewport) return;
+      const bounds = zone.getBoundingClientRect();
+      const edge = Math.floor(Math.min(bounds.width, bounds.height, 720));
+      if (edge > 0)
+        viewport.style.setProperty("--ds-canvas-edge", `${edge}px`);
+    };
+    const observer = new ResizeObserver(sizeCanvas);
+    observer.observe(zone);
+    frame = requestAnimationFrame(sizeCanvas);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, []);
+
   const eventPoint = useCallback(
     (event: React.PointerEvent<HTMLCanvasElement>): Point | null => {
       const canvas = strokeCanvasRef.current;
@@ -412,6 +498,7 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
     (event: React.PointerEvent<HTMLCanvasElement>): void => {
       if (tab !== "sketch" || jobActive) return;
       event.preventDefault();
+      event.stopPropagation();
       const point = eventPoint(event);
       if (!point) return;
       pointerId.current = event.pointerId;
@@ -430,6 +517,7 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
     (event: React.PointerEvent<HTMLCanvasElement>): void => {
       if (pointerId.current !== event.pointerId) return;
       event.preventDefault();
+      event.stopPropagation();
       const point = eventPoint(event);
       if (point && livePoints.current.length < 4096) {
         livePoints.current.push(point);
@@ -852,8 +940,8 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
         </div>
       ) : null}
 
-      <div className="ds-canvas-zone">
-        <div className="ds-viewport">
+      <div className="ds-canvas-zone" ref={canvasZoneRef}>
+        <div className="ds-viewport" ref={viewportRef}>
           <canvas ref={bgCanvasRef} className="ds-layer" />
           <canvas
             ref={strokeCanvasRef}
@@ -862,6 +950,9 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerUp}
+            onLostPointerCapture={onPointerUp}
+            onContextMenu={(event) => event.preventDefault()}
+            aria-label="Drawing canvas"
           />
           {tab === "preview" && previewUrl ? (
             /\.(mp4|mov)(\?|$)/i.test(previewUrl) ? (
@@ -1064,7 +1155,15 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
 
 /* Midnight-navy glass skin (mayor-coast draw parity) on the shared shell. */
 const CSS = `
-.ds-root{display:flex;flex-direction:column;gap:0.5rem;width:min(100%,45rem);margin:0 auto;min-height:0;flex:1;color:#f8fbff}
+/* Pin the studio to the visual viewport: the document must never scroll —
+   a vertical stroke is a draw gesture, not a page pan. The sheet and rail
+   get their own internal scroll instead. */
+html,body{height:100%;overscroll-behavior:none}
+body{overflow:hidden}
+.frame{height:var(--ds-vvh,100dvh);min-height:0;overflow:hidden}
+main.app{min-height:0}
+#draw-studio{min-height:0}
+.ds-root{display:flex;flex-direction:column;gap:0.5rem;width:min(100%,45rem);margin:0 auto;min-height:0;flex:1;height:100%;color:#f8fbff}
 .ds-top{display:flex;align-items:center;gap:0.6rem}
 .ds-view-toggle{position:relative;display:flex;flex:1;max-width:28rem;margin:0 auto;padding:3px;background:#0c1426d9;border:1px solid #5c99e433;border-radius:14px}
 .ds-view-thumb{position:absolute;top:3px;left:3px;width:calc(50% - 4px);height:calc(100% - 6px);border-radius:11px;background:linear-gradient(135deg,#1d4b8f,#16345f);box-shadow:inset 0 0 0 1px #4db0ff66;transition:transform .22s ease;pointer-events:none}
@@ -1081,8 +1180,8 @@ const CSS = `
 .ds-rev-empty{width:3.2rem;height:2rem;border-radius:5px;background:#12213a}
 .ds-revisions small,.ds-revisions em{font-size:0.55rem;font-style:normal;color:#dbe8ff;white-space:nowrap;font-family:var(--font-ui)}
 .ds-revisions em{color:#9dd8ff}
-.ds-canvas-zone{flex:1;min-height:0;display:grid;place-items:center;overscroll-behavior:contain}
-.ds-viewport{position:relative;width:min(100%,26rem);aspect-ratio:1;background:#fff;border-radius:14px;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;box-shadow:0 8px 30px #0003}
+.ds-canvas-zone{flex:1;min-height:0;display:grid;place-items:center;overscroll-behavior:contain;touch-action:none}
+.ds-viewport{position:relative;width:min(100%,var(--ds-canvas-edge,26rem));aspect-ratio:1;max-height:100%;background:#fff;border-radius:14px;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;box-shadow:0 8px 30px #0003}
 .ds-layer{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
 .ds-ink{transition:opacity 0.2s ease}
 .ds-ink.is-faded{opacity:0.25;pointer-events:none}
@@ -1105,7 +1204,7 @@ const CSS = `
 .ds-eraser{min-height:44px;padding:8px 12px;flex:0 0 auto;border:1px solid #6facf144;border-radius:12px;background:#183354aa;color:#f8fbff;font-weight:750;font-size:0.7rem;letter-spacing:0.05em;text-transform:uppercase;box-shadow:inset 0 1px #e8f5ff18}
 .ds-eraser.selected{border-color:#4db0ff;box-shadow:inset 0 1px #eff8ff30,0 0 0 1px #3ca7ff55}
 .ds-eraser:disabled{opacity:0.35}
-.ds-sheet{display:flex;flex-direction:column;gap:7px;border:1px solid #75baff44;border-radius:16px;background:linear-gradient(135deg,#111d35d9,#080d1ae8);box-shadow:inset 0 1px #e6f4ff1c,0 18px 42px #0007;backdrop-filter:blur(24px) saturate(135%);-webkit-backdrop-filter:blur(24px) saturate(135%);padding:8px}
+.ds-sheet{display:flex;flex-direction:column;gap:7px;max-height:min(34dvh,250px);overflow:auto;overscroll-behavior:contain;border:1px solid #75baff44;border-radius:16px;background:linear-gradient(135deg,#111d35d9,#080d1ae8);box-shadow:inset 0 1px #e6f4ff1c,0 18px 42px #0007;backdrop-filter:blur(24px) saturate(135%);-webkit-backdrop-filter:blur(24px) saturate(135%);padding:8px}
 .ds-sheet textarea{width:100%;min-height:3rem;max-height:6rem;font-size:1rem;background:#12213a9c;border-color:#7dbfff55;color:#f8fbff;box-shadow:inset 0 1px #eff8ff12;border-radius:10px}
 .ds-modes{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;background:#070a12;border-radius:12px;padding:3px}
 .ds-modes button{display:grid;place-items:center;min-height:52px;border:0;border-radius:10px;background:transparent;color:#7d94bb;box-shadow:none;text-transform:none}
