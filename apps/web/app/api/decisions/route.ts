@@ -264,7 +264,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   if (
     decision.kind === "purchase_review" ||
-    decision.kind === "payment_request"
+    decision.kind === "payment_request" ||
+    decision.kind === "trade_order" ||
+    decision.kind === "trade_cancel" ||
+    decision.kind === "trade_settings"
   ) {
     // Shared with the hosted approval page (lib/approvals/hosted) so both
     // surfaces resolve through the same rails and can never disagree.

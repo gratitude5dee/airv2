@@ -43,6 +43,8 @@ import {
 import { sendMarkedCards } from "../miniapps/cards";
 import { maybeRunDrawLane } from "../miniapps/drawCommand";
 import { maybeRunLocationLane } from "../location/lane";
+import { parseTradeCommand } from "../trade/parse";
+import { runTradeCommand } from "../trade/imessage";
 import {
   armStopAfter,
   ensureBoxAwake,
@@ -713,6 +715,55 @@ async function runFlushInner(
           .eq("chain_started_at", chainStartedAt);
       }
       return;
+    }
+    // Trade lane (docs/trade/plan.md §4.2): `/trade <arm>` commands answer
+    // deterministically here — before any box wake. A bare `/trade` was
+    // already carded by the mini-app branch above; freeform `/trade ...`
+    // text falls through to the Hermes turn and the box-side trade skill.
+    const tradeCommand = parseTradeCommand(rawInput);
+    if (tradeCommand) {
+      try {
+        const { handled } = await runTradeCommand(
+          supabase,
+          (text) => sender.sendText(job.spaceId, job.phone, text),
+          {
+            spaceId: job.spaceId,
+            userId: job.userId,
+            phone: job.phone,
+            senderTier: job.senderTier,
+          },
+          tradeCommand
+        );
+        if (handled) {
+          if (!(await chainCancelled(supabase, job.spaceId, chainStartedAt))) {
+            await supabase
+              .from("flush_jobs")
+              .delete()
+              .eq("space_id", job.spaceId)
+              .eq("chain_started_at", chainStartedAt);
+          }
+          return;
+        }
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            msg: "trade command failed",
+            user_id: job.userId,
+            error: error instanceof Error ? error.message : String(error),
+          })
+        );
+        await sender
+          .sendText(job.spaceId, job.phone, "couldn't reach trading. try again?")
+          .catch(() => undefined);
+        if (!(await chainCancelled(supabase, job.spaceId, chainStartedAt))) {
+          await supabase
+            .from("flush_jobs")
+            .delete()
+            .eq("space_id", job.spaceId)
+            .eq("chain_started_at", chainStartedAt);
+        }
+        return;
+      }
     }
     // M16 creative lane: an explicit /imagine, /animate, or /zap in the
     // settled burst is handled here, before any box wake or Hermes run.
