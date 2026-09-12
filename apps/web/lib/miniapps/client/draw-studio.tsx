@@ -341,6 +341,9 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
   // Bumped on every explicit tab pick — a response that lands after the
   // user chose a view during the request must not re-arm the reveal.
   const viewVersion = useRef(0);
+  // The job whose reveal the user cancelled. null alone can't distinguish
+  // "never armed" from "cancelled", so the poll must not re-arm it.
+  const dismissedReveal = useRef<string | null>(null);
   // The media the preview/save target: a delivered zap job isn't a draw
   // revision, so it carries its own pointer until the user picks a revision.
   const [animatedJobId, setAnimatedJobId] = useState<string | null>(
@@ -577,7 +580,12 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
     // long as nothing else already claimed the reveal.
     const stillActive =
       payload.activeJob && ACTIVE_STATUSES.includes(payload.activeJob.status);
-    if (activeJob?.id && !stillActive && autoRevealJob.current === null) {
+    if (
+      activeJob?.id &&
+      !stillActive &&
+      autoRevealJob.current === null &&
+      dismissedReveal.current !== activeJob.id
+    ) {
       const finished = payload.revisions.find(
         (r) => r.jobId === activeJob.id && r.state === "delivered" && r.outputUrl
       );
@@ -675,6 +683,7 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
 
   const selectView = useCallback((next: "sketch" | "preview"): void => {
     viewVersion.current += 1;
+    dismissedReveal.current = autoRevealJob.current;
     autoRevealJob.current = null;
     setTab(next);
   }, []);
