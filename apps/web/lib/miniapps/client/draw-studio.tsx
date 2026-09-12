@@ -318,8 +318,17 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
     initial.activeJob
   );
   const [latest, setLatest] = useState(initial.latest);
+  // The shown asset starts from the same source as the Send target — a
+  // delivered animation wins over the latest still, so Preview can't show
+  // one thing while Send delivers another.
+  const initialPreview = (() => {
+    const anim = initial.latestAnimation;
+    if (anim?.url && anim.jobId) return { jobId: anim.jobId, url: anim.url };
+    const rev = initial.revisions.filter((r) => r.outputUrl).at(-1);
+    return { jobId: rev?.jobId ?? null, url: rev?.outputUrl ?? null };
+  })();
   const [previewUrl, setPreviewUrl] = useState<string | null>(
-    initial.revisions.filter((r) => r.outputUrl).at(-1)?.outputUrl ?? null
+    initialPreview.url
   );
   const [selectedRevisionId, setSelectedRevisionId] = useState<string | null>(
     null
@@ -340,9 +349,8 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
     freshUrl: string | null;
     refreshedAt: number;
   }>({
-    jobId: initial.revisions.filter((r) => r.outputUrl).at(-1)?.jobId ?? null,
-    url:
-      initial.revisions.filter((r) => r.outputUrl).at(-1)?.outputUrl ?? null,
+    jobId: initialPreview.jobId,
+    url: initialPreview.url,
     freshUrl: null,
     refreshedAt: 0,
   });
