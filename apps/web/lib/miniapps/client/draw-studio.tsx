@@ -52,7 +52,9 @@ interface Payload {
   initialAssetUrl: string | null;
   /** the latest delivered zap job — animations aren't draw revisions, so
    * the server projects them separately or a reload loses the video. */
-  latestAnimation?: { jobId: string; url: string } | null;
+  latestAnimation?:
+    | { jobId: string; url: string; createdAt?: string }
+    | null;
   revisions: DrawRevision[];
   /** present on action responses */
   jobId?: string;
@@ -318,15 +320,27 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
     initial.activeJob
   );
   const [latest, setLatest] = useState(initial.latest);
-  // The shown asset starts from the same source as the Send target — a
-  // delivered animation wins over the latest still, so Preview can't show
-  // one thing while Send delivers another.
-  const initialPreview = (() => {
-    const anim = initial.latestAnimation;
-    if (anim?.url && anim.jobId) return { jobId: anim.jobId, url: anim.url };
-    const rev = initial.revisions.filter((r) => r.outputUrl).at(-1);
-    return { jobId: rev?.jobId ?? null, url: rev?.outputUrl ?? null };
-  })();
+  // The shown asset starts from the same source as the Send target. The
+  // animation only wins when it's the newest delivered media — a still
+  // generated after animating must not resurrect the older video on reload.
+  const initialNewestRev = initial.revisions
+    .filter((r) => r.outputUrl)
+    .at(-1);
+  const anim = initial.latestAnimation;
+  const initialAnimation =
+    anim?.url &&
+    anim.jobId &&
+    (!anim.createdAt ||
+      !initialNewestRev?.createdAt ||
+      Date.parse(anim.createdAt) >= Date.parse(initialNewestRev.createdAt))
+      ? anim
+      : null;
+  const initialPreview = initialAnimation
+    ? { jobId: initialAnimation.jobId, url: initialAnimation.url }
+    : {
+        jobId: initialNewestRev?.jobId ?? null,
+        url: initialNewestRev?.outputUrl ?? null,
+      };
   const [previewUrl, setPreviewUrl] = useState<string | null>(
     initialPreview.url
   );
@@ -406,11 +420,11 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
   // The media the preview/save target: a delivered zap job isn't a draw
   // revision, so it carries its own pointer until the user picks a revision.
   const [animatedJobId, setAnimatedJobId] = useState<string | null>(
-    initial.latestAnimation?.jobId ?? null
+    initialAnimation?.jobId ?? null
   );
   // While set, the revision poll must not restore a still over the video.
   const [animatedPreviewUrl, setAnimatedPreviewUrl] = useState<string | null>(
-    initial.latestAnimation?.url ?? null
+    initialAnimation?.url ?? null
   );
   // An animation the user navigated away from must not be resurrected by
   // the next poll — a NEW animation (different job id) still adopts.
@@ -672,14 +686,16 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
     // An animation that finished while the page was closed/mid-poll lands
     // only here — adopt it unless it's the one the user dismissed.
     const next = payload.latestAnimation;
-    if (
-      next?.url &&
-      next.jobId !== dismissedAnimation.current &&
-      next.jobId !== animatedJobId
-    ) {
-      dismissedAnimation.current = null;
-      setAnimatedJobId(next.jobId);
-      setAnimatedPreviewUrl(next.url);
+    if (next?.url && next.jobId !== dismissedAnimation.current) {
+      if (next.jobId !== animatedJobId) {
+        dismissedAnimation.current = null;
+        setAnimatedJobId(next.jobId);
+      } else if (next.url !== animatedPreviewUrl) {
+        // Same animation, re-signed URL — keep it fresh for save/reveal.
+        setAnimatedPreviewUrl(next.url);
+      }
+      // Same job too: showAsset only records freshUrl for video, so the
+      // playing preview never restarts but an expired src can retry.
       showAsset(next.jobId, next.url);
     }
   }, [
