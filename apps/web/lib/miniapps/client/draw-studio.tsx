@@ -52,7 +52,9 @@ interface Payload {
   initialAssetUrl: string | null;
   /** the latest delivered zap job — animations aren't draw revisions, so
    * the server projects them separately or a reload loses the video. */
-  latestAnimation?: { jobId: string; url: string } | null;
+  latestAnimation?:
+    | { jobId: string; url: string; createdAt?: string }
+    | null;
   revisions: DrawRevision[];
   /** present on action responses */
   jobId?: string;
@@ -102,7 +104,12 @@ interface Stroke {
 
 function canvasPoint(clientX: number, clientY: number, rect: DOMRect): Point {
   const scale = CANVAS_SIZE / Math.max(1, Math.min(rect.width, rect.height));
-  return { x: (clientX - rect.left) * scale, y: (clientY - rect.top) * scale };
+  // Clamp to the pad: a finger sliding off the edge mid-stroke must not
+  // paint (or measure) beyond the 1024 canvas.
+  return {
+    x: Math.max(0, Math.min(CANVAS_SIZE, (clientX - rect.left) * scale)),
+    y: Math.max(0, Math.min(CANVAS_SIZE, (clientY - rect.top) * scale)),
+  };
 }
 
 /** Contain-fit a source rect into the square canvas (mayor-coast parity). */
@@ -313,20 +320,111 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
     initial.activeJob
   );
   const [latest, setLatest] = useState(initial.latest);
+  // The shown asset starts from the same source as the Send target. The
+  // animation only wins when it's the newest delivered media — a still
+  // generated after animating must not resurrect the older video on reload.
+  const initialNewestRev = initial.revisions
+    .filter((r) => r.outputUrl)
+    .at(-1);
+  const anim = initial.latestAnimation;
+  const initialAnimation =
+    anim?.url &&
+    anim.jobId &&
+    (!anim.createdAt ||
+      !initialNewestRev?.createdAt ||
+      Date.parse(anim.createdAt) >= Date.parse(initialNewestRev.createdAt))
+      ? anim
+      : null;
+  const initialPreview = initialAnimation
+    ? { jobId: initialAnimation.jobId, url: initialAnimation.url }
+    : {
+        jobId: initialNewestRev?.jobId ?? null,
+        url: initialNewestRev?.outputUrl ?? null,
+      };
   const [previewUrl, setPreviewUrl] = useState<string | null>(
-    initial.revisions.filter((r) => r.outputUrl).at(-1)?.outputUrl ?? null
+    initialPreview.url
   );
   const [selectedRevisionId, setSelectedRevisionId] = useState<string | null>(
     null
   );
+  // The preview only paints once its image actually decoded — a blind tab
+  // flip shows a torn frame in a constrained webview (mayor-coast parity).
+  const [decodedPreviewUrl, setDecodedPreviewUrl] = useState<string | null>(
+    null
+  );
+  // Which job the preview shows, plus the freshest signed URL seen for it.
+  // Signatures rotate every poll and expire after 30 min, while sessions
+  // live 24h — so the rendered src stays stable per asset, images quietly
+  // swap to a decoded re-signed URL at most once a minute, and video keeps
+  // its src (a swap would restart playback) with freshUrl for error retry.
+  const previewAsset = useRef<{
+    jobId: string | null;
+    url: string | null;
+    freshUrl: string | null;
+    refreshedAt: number;
+  }>({
+    jobId: initialPreview.jobId,
+    url: initialPreview.url,
+    freshUrl: null,
+    refreshedAt: 0,
+  });
+  const showAsset = useCallback(
+    (jobId: string | null, url: string | null): void => {
+      const shown = previewAsset.current;
+      if (url && jobId && shown.jobId === jobId) {
+        shown.freshUrl = url;
+        if (url === shown.url) return;
+        if (/\.(mp4|mov)(\?|$)/i.test(url)) return;
+        if (Date.now() - shown.refreshedAt < 60_000) return;
+        shown.refreshedAt = Date.now();
+        const image = new Image();
+        image.onload = () => {
+          if (previewAsset.current.jobId === jobId) {
+            previewAsset.current.url = url;
+            setPreviewUrl(url);
+            setDecodedPreviewUrl(url);
+          }
+        };
+        image.src = url;
+        return;
+      }
+      previewAsset.current = { jobId, url, freshUrl: null, refreshedAt: 0 };
+      setPreviewUrl(url);
+    },
+    []
+  );
+  // Expired media src → swap to the freshest signed URL the polls recorded.
+  const retryFreshUrl = useCallback((): void => {
+    const shown = previewAsset.current;
+    if (shown.freshUrl && shown.freshUrl !== shown.url) {
+      previewAsset.current = { ...shown, url: shown.freshUrl, freshUrl: null };
+      setDecodedPreviewUrl(null);
+      setPreviewUrl(shown.freshUrl);
+    }
+  }, []);
+  // A job submitted this session may flip itself to Preview exactly once;
+  // an explicit tab choice by the user cancels that (explicit view wins).
+  // Reopening a card mid-render arms it too — the user came back to watch
+  // that job finish.
+  const autoRevealJob = useRef<string | null>(
+    initial.activeJob && ACTIVE_STATUSES.includes(initial.activeJob.status)
+      ? initial.activeJob.id
+      : null
+  );
+  // Bumped on every explicit tab pick — a response that lands after the
+  // user chose a view during the request must not re-arm the reveal.
+  const viewVersion = useRef(0);
+  // The job whose reveal the user cancelled. null alone can't distinguish
+  // "never armed" from "cancelled", so the poll must not re-arm it.
+  const dismissedReveal = useRef<string | null>(null);
   // The media the preview/save target: a delivered zap job isn't a draw
   // revision, so it carries its own pointer until the user picks a revision.
   const [animatedJobId, setAnimatedJobId] = useState<string | null>(
-    initial.latestAnimation?.jobId ?? null
+    initialAnimation?.jobId ?? null
   );
   // While set, the revision poll must not restore a still over the video.
   const [animatedPreviewUrl, setAnimatedPreviewUrl] = useState<string | null>(
-    initial.latestAnimation?.url ?? null
+    initialAnimation?.url ?? null
   );
   // An animation the user navigated away from must not be resurrected by
   // the next poll — a NEW animation (different job id) still adopts.
@@ -339,8 +437,13 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
 
   const bgCanvasRef = useRef<HTMLCanvasElement>(null);
   const strokeCanvasRef = useRef<HTMLCanvasElement>(null);
+  const canvasZoneRef = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
   const pointerId = useRef<number | null>(null);
   const livePoints = useRef<Point[]>([]);
+  // Identifier of the touch that owns the current draw gesture — a second
+  // finger ending must not release the sheet-gesture lock mid-stroke.
+  const drawTouchId = useRef<number | null>(null);
   const [inkTick, forceInk] = useState(0);
 
   const delivered = revisions.filter((r) => r.state === "delivered");
@@ -397,6 +500,92 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
     image.src = backgroundUrl;
   }, [backgroundUrl]);
 
+  /* -------------------------------------------------- gesture pinning */
+
+  // Messages WebViews sometimes ignore touch-action during a sheet gesture.
+  // This narrowly-scoped non-passive fallback only owns a gesture that began
+  // on the drawing surface, so rail and sheet controls still work normally.
+  useEffect(() => {
+    const zone = canvasZoneRef.current;
+    if (!zone) return;
+    const startTouch = (event: TouchEvent): void => {
+      const target = event.target as Element | null;
+      // Only the drawing surface owns the gesture — touches on the preview
+      // media (video controls, image) and the rail must behave natively.
+      if (
+        target &&
+        viewportRef.current?.contains(target) &&
+        !target.closest(".ds-rail, .ds-preview")
+      ) {
+        if (drawTouchId.current === null) {
+          drawTouchId.current = event.changedTouches[0]?.identifier ?? null;
+        }
+        event.preventDefault();
+      }
+    };
+    const moveTouch = (event: TouchEvent): void => {
+      if (drawTouchId.current !== null) event.preventDefault();
+    };
+    const endTouch = (event: TouchEvent): void => {
+      for (const touch of Array.from(event.changedTouches)) {
+        if (touch.identifier === drawTouchId.current) {
+          drawTouchId.current = null;
+        }
+      }
+    };
+    zone.addEventListener("touchstart", startTouch, { passive: false });
+    zone.addEventListener("touchmove", moveTouch, { passive: false });
+    zone.addEventListener("touchend", endTouch, { passive: true });
+    zone.addEventListener("touchcancel", endTouch, { passive: true });
+    return () => {
+      zone.removeEventListener("touchstart", startTouch);
+      zone.removeEventListener("touchmove", moveTouch);
+      zone.removeEventListener("touchend", endTouch);
+      zone.removeEventListener("touchcancel", endTouch);
+    };
+  }, []);
+
+  // The iOS keyboard shrinks the visual viewport; tracking it lets the
+  // pinned frame shrink too instead of the document sliding under a finger.
+  useEffect(() => {
+    const update = (): void => {
+      document.documentElement.style.setProperty(
+        "--ds-vvh",
+        `${window.visualViewport?.height ?? window.innerHeight}px`
+      );
+    };
+    update();
+    window.visualViewport?.addEventListener("resize", update);
+    window.addEventListener("resize", update);
+    return () => {
+      window.visualViewport?.removeEventListener("resize", update);
+      window.removeEventListener("resize", update);
+    };
+  }, []);
+
+  // Size the square to the space the canvas zone actually gets — the sheet
+  // is capped, so the zone shrinks first and the pad follows it.
+  useEffect(() => {
+    const zone = canvasZoneRef.current;
+    if (!zone || typeof ResizeObserver === "undefined") return;
+    let frame = 0;
+    const sizeCanvas = (): void => {
+      const viewport = viewportRef.current;
+      if (!viewport) return;
+      const bounds = zone.getBoundingClientRect();
+      const edge = Math.floor(Math.min(bounds.width, bounds.height, 720));
+      if (edge > 0)
+        viewport.style.setProperty("--ds-canvas-edge", `${edge}px`);
+    };
+    const observer = new ResizeObserver(sizeCanvas);
+    observer.observe(zone);
+    frame = requestAnimationFrame(sizeCanvas);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, []);
+
   const eventPoint = useCallback(
     (event: React.PointerEvent<HTMLCanvasElement>): Point | null => {
       const canvas = strokeCanvasRef.current;
@@ -411,7 +600,10 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
   const onPointerDown = useCallback(
     (event: React.PointerEvent<HTMLCanvasElement>): void => {
       if (tab !== "sketch" || jobActive) return;
+      // Secondary buttons (context-click, pen barrel) don't start a stroke.
+      if (event.button !== 0) return;
       event.preventDefault();
+      event.stopPropagation();
       const point = eventPoint(event);
       if (!point) return;
       pointerId.current = event.pointerId;
@@ -430,6 +622,7 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
     (event: React.PointerEvent<HTMLCanvasElement>): void => {
       if (pointerId.current !== event.pointerId) return;
       event.preventDefault();
+      event.stopPropagation();
       const point = eventPoint(event);
       if (point && livePoints.current.length < 4096) {
         livePoints.current.push(point);
@@ -465,28 +658,54 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
   const poll = useCallback(async (): Promise<void> => {
     const payload = await postAction({ action: "status", after: String(latest) });
     if (!payload || payload.error) return;
+    // A job we watched go active here (mount or a POST whose response was
+    // lost) still earns its reveal when the poll reports it delivered — as
+    // long as nothing else already claimed the reveal.
+    const stillActive =
+      payload.activeJob && ACTIVE_STATUSES.includes(payload.activeJob.status);
+    if (
+      activeJob?.id &&
+      !stillActive &&
+      autoRevealJob.current === null &&
+      dismissedReveal.current !== activeJob.id
+    ) {
+      const finished = payload.revisions.find(
+        (r) => r.jobId === activeJob.id && r.state === "delivered" && r.outputUrl
+      );
+      if (finished) autoRevealJob.current = activeJob.id;
+    }
     setLatest(payload.latest);
     setActiveJob(payload.activeJob);
     setRevisions(payload.revisions);
     const newest = payload.revisions.filter((r) => r.outputUrl).at(-1);
-    // A delivered animation isn't a revision — don't swap it for the still.
-    if (newest?.outputUrl && !animatedPreviewUrl) {
-      setPreviewUrl(newest.outputUrl);
+    // A delivered animation isn't a revision — don't swap it for the still,
+    // and never stomp an explicitly selected revision.
+    if (newest?.outputUrl && !animatedPreviewUrl && !selectedRevisionId) {
+      showAsset(newest.jobId, newest.outputUrl);
     }
     // An animation that finished while the page was closed/mid-poll lands
     // only here — adopt it unless it's the one the user dismissed.
     const next = payload.latestAnimation;
-    if (
-      next?.url &&
-      next.jobId !== dismissedAnimation.current &&
-      next.jobId !== animatedJobId
-    ) {
-      dismissedAnimation.current = null;
-      setAnimatedJobId(next.jobId);
-      setAnimatedPreviewUrl(next.url);
-      setPreviewUrl(next.url);
+    if (next?.url && next.jobId !== dismissedAnimation.current) {
+      if (next.jobId !== animatedJobId) {
+        dismissedAnimation.current = null;
+        setAnimatedJobId(next.jobId);
+      } else if (next.url !== animatedPreviewUrl) {
+        // Same animation, re-signed URL — keep it fresh for save/reveal.
+        setAnimatedPreviewUrl(next.url);
+      }
+      // Same job too: showAsset only records freshUrl for video, so the
+      // playing preview never restarts but an expired src can retry.
+      showAsset(next.jobId, next.url);
     }
-  }, [latest, animatedPreviewUrl, animatedJobId]);
+  }, [
+    latest,
+    activeJob,
+    animatedPreviewUrl,
+    animatedJobId,
+    selectedRevisionId,
+    showAsset,
+  ]);
 
   useEffect(() => {
     // ~2.5s cadence: the render lane has no preview stream, so the strip
@@ -501,12 +720,131 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
     // A delivered animation isn't a revision — keep it on screen until the
     // user picks a revision or generates again.
     if (animatedPreviewUrl) return;
-    setPreviewUrl(
-      targetRevision?.outputUrl ??
-        revisions.filter((r) => r.outputUrl).at(-1)?.outputUrl ??
-        null
-    );
-  }, [targetRevision?.outputUrl, revisions, animatedPreviewUrl]);
+    const rev =
+      (targetRevision?.outputUrl ? targetRevision : null) ??
+      revisions.filter((r) => r.outputUrl).at(-1) ??
+      null;
+    showAsset(rev?.jobId ?? null, rev?.outputUrl ?? null);
+  }, [targetRevision, revisions, animatedPreviewUrl, showAsset]);
+
+  /* -------------------------------------------- preview decode + reveal */
+
+  const previewIsVideo = /\.(mp4|mov)(\?|$)/i.test(previewUrl ?? "");
+
+  useEffect(() => {
+    if (!previewUrl || previewIsVideo) {
+      setDecodedPreviewUrl(null);
+      return;
+    }
+    // A superseded load finishing late must not un-decode the preview that
+    // is actually selected — drop callbacks from stale image instances.
+    let current = true;
+    const image = new Image();
+    image.onload = () => {
+      if (current) setDecodedPreviewUrl(previewUrl);
+    };
+    image.onerror = () => {
+      if (current)
+        setMessage("the image is ready, but its preview couldn't load — reopen the card");
+    };
+    image.src = previewUrl;
+    return () => {
+      current = false;
+    };
+  }, [previewUrl, previewIsVideo]);
+
+  const showPreview = Boolean(
+    tab === "preview" &&
+      previewUrl &&
+      (previewIsVideo || decodedPreviewUrl === previewUrl)
+  );
+
+  useEffect(() => {
+    const jobId = autoRevealJob.current;
+    if (!jobId) return;
+    const url =
+      revisions.find((r) => r.jobId === jobId)?.outputUrl ??
+      (animatedJobId === jobId ? animatedPreviewUrl : null);
+    if (!url) return;
+    // Adopt the job's media first — the tab flip still waits on decode.
+    // The shown URL is stable per job, so compare by identity below.
+    showAsset(jobId, url);
+    const video = /\.(mp4|mov)(\?|$)/i.test(previewUrl ?? url);
+    if (
+      !video &&
+      !(previewAsset.current.jobId === jobId && decodedPreviewUrl === previewUrl)
+    ) {
+      return;
+    }
+    autoRevealJob.current = null;
+    setTab("preview");
+  }, [
+    revisions,
+    decodedPreviewUrl,
+    previewUrl,
+    animatedJobId,
+    animatedPreviewUrl,
+    showAsset,
+  ]);
+
+  /* --------------------------------------------------------- keyboard */
+
+  const selectView = useCallback((next: "sketch" | "preview"): void => {
+    viewVersion.current += 1;
+    // Record only an armed reveal — a second pick would otherwise overwrite
+    // the remembered dismissal with null and let the poll re-arm it.
+    if (autoRevealJob.current !== null) {
+      dismissedReveal.current = autoRevealJob.current;
+      autoRevealJob.current = null;
+    }
+    setTab(next);
+  }, []);
+
+  const viewKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLButtonElement>): void => {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key))
+        return;
+      event.preventDefault();
+      const next =
+        event.key === "Home" || event.key === "ArrowLeft"
+          ? "sketch"
+          : "preview";
+      if (next === "preview" && !previewUrl) return;
+      selectView(next);
+      (
+        event.currentTarget.parentElement?.querySelector(
+          `[data-draw-view="${next}"]`
+        ) as HTMLButtonElement | null
+      )?.focus();
+    },
+    [previewUrl, selectView]
+  );
+
+  const modeKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLButtonElement>, currentMode: Mode): void => {
+      const horizontal =
+        event.key === "ArrowRight" || event.key === "ArrowLeft";
+      if (!horizontal && event.key !== "Home" && event.key !== "End") return;
+      event.preventDefault();
+      const index = MODES.indexOf(currentMode);
+      const next =
+        event.key === "Home"
+          ? MODES[0]!
+          : event.key === "End"
+            ? MODES.at(-1)!
+            : MODES[
+                (index + (event.key === "ArrowRight" ? 1 : -1) + MODES.length) %
+                  MODES.length
+              ]!;
+      setMode(next);
+      (
+        event.currentTarget.parentElement?.querySelector(
+          `[data-mode="${next}"]`
+        ) as HTMLButtonElement | null
+      )?.focus();
+    },
+    []
+  );
 
   /* ----------------------------------------------------------- actions */
 
@@ -597,6 +935,9 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
     const reuseParent = Boolean(parentJobId && !ink && !backgroundUrl);
     setBusy("generate");
     setMessage("preparing…");
+    // If the user picks a view while this blocking request is in flight,
+    // that choice must win — the response won't arm the reveal then.
+    const startViewVersion = viewVersion.current;
     try {
       let inputAssetId: string | undefined;
       if (!reuseParent && (ink || includeBackground)) {
@@ -632,6 +973,9 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
         setMessage(errorLine(payload));
         return;
       }
+      if (viewVersion.current === startViewVersion) {
+        autoRevealJob.current = payload.jobId ?? null;
+      }
       setActiveJob(payload.activeJob);
       setLatest(payload.latest);
       setRevisions(payload.revisions);
@@ -640,13 +984,15 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
           ? (payload.line ?? "image ready")
           : (payload.line ?? null)
       );
+      // The tab flips via the auto-reveal effect once the preview decodes.
       if (payload.deliveryUrl) {
-        setPreviewUrl(payload.deliveryUrl);
-        setTab("preview");
+        showAsset(payload.jobId ?? null, payload.deliveryUrl);
       }
       if (payload.status === "delivered") {
         setStrokes([]);
         setRedoStack([]);
+        // The just-generated asset becomes what the preview follows again.
+        setSelectedRevisionId(null);
         clearAnimation();
       }
     } finally {
@@ -665,12 +1011,14 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
     inkPresent,
     flatten,
     clearAnimation,
+    showAsset,
   ]);
 
   const animate = useCallback(async (): Promise<void> => {
     if (busy || !targetRevision) return;
     setBusy("animate");
     setMessage("animating…");
+    const startViewVersion = viewVersion.current;
     try {
       const fields: Record<string, string> = {
         action: "animate",
@@ -693,13 +1041,15 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
         setAnimatedPreviewUrl(payload.deliveryUrl ?? null);
       }
       if (payload.deliveryUrl) {
-        setPreviewUrl(payload.deliveryUrl);
-        setTab("preview");
+        if (viewVersion.current === startViewVersion) {
+          autoRevealJob.current = payload.jobId ?? null;
+        }
+        showAsset(payload.jobId ?? null, payload.deliveryUrl);
       }
     } finally {
       setBusy(null);
     }
-  }, [busy, targetRevision, prompt]);
+  }, [busy, targetRevision, prompt, showAsset]);
 
   const save = useCallback(async (): Promise<void> => {
     // Save whatever the preview shows — an animation when one just
@@ -758,11 +1108,11 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
       setSelectedRevisionId(revision.jobId);
       clearAnimation();
       if (revision.outputUrl) {
-        setPreviewUrl(revision.outputUrl);
+        showAsset(revision.jobId, revision.outputUrl);
         setTab("preview");
       }
     },
-    [clearAnimation]
+    [clearAnimation, showAsset]
   );
 
   /* ------------------------------------------------------------ render */
@@ -792,24 +1142,37 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
   return (
     <div className="ds-root">
       <div className="ds-top">
-        <div className="ds-view-toggle" data-view={tab} role="tablist">
+        <div
+          className="ds-view-toggle"
+          data-view={tab}
+          role="tablist"
+          aria-label="Canvas view"
+        >
           <span className="ds-view-thumb" aria-hidden="true" />
           <button
             type="button"
             role="tab"
+            data-draw-view="sketch"
             aria-selected={tab === "sketch"}
+            aria-controls="ds-canvas-panel"
+            tabIndex={tab === "sketch" ? 0 : -1}
             className={tab === "sketch" ? "active" : ""}
-            onClick={() => setTab("sketch")}
+            onClick={() => selectView("sketch")}
+            onKeyDown={viewKeyDown}
           >
             Sketch
           </button>
           <button
             type="button"
             role="tab"
+            data-draw-view="preview"
             aria-selected={tab === "preview"}
+            aria-controls="ds-canvas-panel"
+            tabIndex={tab === "preview" ? 0 : -1}
             className={tab === "preview" ? "active" : ""}
             disabled={!previewUrl}
-            onClick={() => setTab("preview")}
+            onClick={() => selectView("preview")}
+            onKeyDown={viewKeyDown}
           >
             Preview
           </button>
@@ -852,8 +1215,12 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
         </div>
       ) : null}
 
-      <div className="ds-canvas-zone">
-        <div className="ds-viewport">
+      <div className="ds-canvas-zone" ref={canvasZoneRef} id="ds-canvas-panel">
+        <div
+          className="ds-viewport"
+          ref={viewportRef}
+          data-testid="draw-canvas-viewport"
+        >
           <canvas ref={bgCanvasRef} className="ds-layer" />
           <canvas
             ref={strokeCanvasRef}
@@ -862,17 +1229,27 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerUp}
+            onLostPointerCapture={onPointerUp}
+            onContextMenu={(event) => event.preventDefault()}
+            aria-label="Drawing canvas"
+            data-testid="draw-canvas"
           />
-          {tab === "preview" && previewUrl ? (
-            /\.(mp4|mov)(\?|$)/i.test(previewUrl) ? (
+          {showPreview && previewUrl ? (
+            previewIsVideo ? (
               <video
                 className="ds-preview is-visible"
                 src={previewUrl}
                 controls
                 playsInline
+                onError={retryFreshUrl}
               />
             ) : (
-              <img className="ds-preview is-visible" src={previewUrl} alt="Generated" />
+              <img
+                className="ds-preview is-visible"
+                src={previewUrl}
+                alt="Generated"
+                onError={retryFreshUrl}
+              />
             )
           ) : null}
           {tab === "sketch" && !hasInk && !backgroundUrl ? (
@@ -983,11 +1360,14 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
               key={item}
               type="button"
               role="radio"
+              data-mode={item}
               aria-checked={mode === item}
               aria-label={MODE_LABELS[item]}
               title={MODE_LABELS[item]}
+              tabIndex={mode === item ? 0 : -1}
               className={mode === item ? "active" : ""}
               onClick={() => setMode(item)}
+              onKeyDown={(event) => modeKeyDown(event, item)}
             >
               <ModeIcon mode={item} />
             </button>
@@ -1016,7 +1396,7 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
             <button
               type="button"
               className="ds-generate"
-              disabled={busy !== null}
+              disabled={busy !== null || tab === "preview"}
               onClick={() => void generate()}
             >
               {busy === "generate" ? "Generating…" : refining ? "Refine" : "Generate"}
@@ -1054,7 +1434,9 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
         <p className="ds-tagline">
           Sketch it, describe it, then make it real.
         </p>
-        {message ? <p className="ds-message">{message}</p> : null}
+        <p className="ds-message" aria-live="polite">
+          {message}
+        </p>
       </div>
     </div>
   );
@@ -1064,7 +1446,15 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
 
 /* Midnight-navy glass skin (mayor-coast draw parity) on the shared shell. */
 const CSS = `
-.ds-root{display:flex;flex-direction:column;gap:0.5rem;width:min(100%,45rem);margin:0 auto;min-height:0;flex:1;color:#f8fbff}
+/* Pin the studio to the visual viewport: the document must never scroll —
+   a vertical stroke is a draw gesture, not a page pan. The sheet and rail
+   get their own internal scroll instead. */
+html,body{height:100%;overscroll-behavior:none}
+body{overflow:hidden}
+.frame{height:var(--ds-vvh,100dvh);min-height:0;overflow:hidden}
+main.app{min-height:0}
+#draw-studio{min-height:0}
+.ds-root{display:flex;flex-direction:column;gap:0.5rem;width:min(100%,45rem);margin:0 auto;min-height:0;flex:1;height:100%;color:#f8fbff}
 .ds-top{display:flex;align-items:center;gap:0.6rem}
 .ds-view-toggle{position:relative;display:flex;flex:1;max-width:28rem;margin:0 auto;padding:3px;background:#0c1426d9;border:1px solid #5c99e433;border-radius:14px}
 .ds-view-thumb{position:absolute;top:3px;left:3px;width:calc(50% - 4px);height:calc(100% - 6px);border-radius:11px;background:linear-gradient(135deg,#1d4b8f,#16345f);box-shadow:inset 0 0 0 1px #4db0ff66;transition:transform .22s ease;pointer-events:none}
@@ -1081,8 +1471,8 @@ const CSS = `
 .ds-rev-empty{width:3.2rem;height:2rem;border-radius:5px;background:#12213a}
 .ds-revisions small,.ds-revisions em{font-size:0.55rem;font-style:normal;color:#dbe8ff;white-space:nowrap;font-family:var(--font-ui)}
 .ds-revisions em{color:#9dd8ff}
-.ds-canvas-zone{flex:1;min-height:0;display:grid;place-items:center;overscroll-behavior:contain}
-.ds-viewport{position:relative;width:min(100%,26rem);aspect-ratio:1;background:#fff;border-radius:14px;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;box-shadow:0 8px 30px #0003}
+.ds-canvas-zone{flex:1;min-height:0;display:grid;place-items:center;overscroll-behavior:contain;touch-action:none}
+.ds-viewport{position:relative;width:min(100%,var(--ds-canvas-edge,26rem));aspect-ratio:1;max-height:100%;background:#fff;border-radius:14px;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;box-shadow:0 8px 30px #0003}
 .ds-layer{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
 .ds-ink{transition:opacity 0.2s ease}
 .ds-ink.is-faded{opacity:0.25;pointer-events:none}
@@ -1105,7 +1495,7 @@ const CSS = `
 .ds-eraser{min-height:44px;padding:8px 12px;flex:0 0 auto;border:1px solid #6facf144;border-radius:12px;background:#183354aa;color:#f8fbff;font-weight:750;font-size:0.7rem;letter-spacing:0.05em;text-transform:uppercase;box-shadow:inset 0 1px #e8f5ff18}
 .ds-eraser.selected{border-color:#4db0ff;box-shadow:inset 0 1px #eff8ff30,0 0 0 1px #3ca7ff55}
 .ds-eraser:disabled{opacity:0.35}
-.ds-sheet{display:flex;flex-direction:column;gap:7px;border:1px solid #75baff44;border-radius:16px;background:linear-gradient(135deg,#111d35d9,#080d1ae8);box-shadow:inset 0 1px #e6f4ff1c,0 18px 42px #0007;backdrop-filter:blur(24px) saturate(135%);-webkit-backdrop-filter:blur(24px) saturate(135%);padding:8px}
+.ds-sheet{display:flex;flex-direction:column;gap:7px;max-height:min(34dvh,250px);overflow:auto;overscroll-behavior:contain;border:1px solid #75baff44;border-radius:16px;background:linear-gradient(135deg,#111d35d9,#080d1ae8);box-shadow:inset 0 1px #e6f4ff1c,0 18px 42px #0007;backdrop-filter:blur(24px) saturate(135%);-webkit-backdrop-filter:blur(24px) saturate(135%);padding:8px}
 .ds-sheet textarea{width:100%;min-height:3rem;max-height:6rem;font-size:1rem;background:#12213a9c;border-color:#7dbfff55;color:#f8fbff;box-shadow:inset 0 1px #eff8ff12;border-radius:10px}
 .ds-modes{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;background:#070a12;border-radius:12px;padding:3px}
 .ds-modes button{display:grid;place-items:center;min-height:52px;border:0;border-radius:10px;background:transparent;color:#7d94bb;box-shadow:none;text-transform:none}
@@ -1125,6 +1515,8 @@ const CSS = `
 .ds-message{font-size:0.72rem;color:#dbe8ff;margin:0;min-height:0.9rem;text-align:center}
 @media(prefers-reduced-motion:reduce){.ds-ink,.ds-view-thumb{transition:none}}
 @media(max-height:680px){.ds-rail{top:6px;left:6px;gap:4px;padding:3px}.ds-rail-button{width:40px;min-height:40px}.ds-ink-controls{min-height:50px;padding-block:4px}.ds-modes button{min-height:46px}}
+/* Messages sheet heights: yield chrome back to the canvas. */
+@media(max-height:560px){.ds-tagline,.ds-mode-caption{display:none}.ds-sheet{max-height:min(30dvh,210px);gap:5px;padding:6px}.ds-sheet textarea{min-height:2.4rem}.ds-rail{flex-wrap:wrap;max-width:calc(100% - 8px)}}
 @media(max-width:420px){.ds-ink-controls{gap:5px;padding:6px}.ds-swatch{width:30px;min-height:30px;flex:0 0 30px}.ds-size input{width:56px}.ds-eraser{padding:8px 10px;font-size:0.62rem}}
 `;
 

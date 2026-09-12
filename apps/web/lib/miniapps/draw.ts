@@ -704,7 +704,7 @@ export async function drawStatus(
   activeJob: { id: string; status: string; error: string | null } | null;
   latestJobId: string | null;
   initialAssetUrl: string | null;
-  latestAnimation: { jobId: string; url: string } | null;
+  latestAnimation: { jobId: string; url: string; createdAt: string } | null;
   revisions: DrawRevision[];
 }> {
   const { data } = await supabase
@@ -740,7 +740,7 @@ export async function drawStatus(
   // lose the video (preview + save target) entirely.
   const { data: animation } = await supabase
     .from("creative_jobs")
-    .select("id, output_asset_id")
+    .select("id, output_asset_id, created_at")
     .eq("user_id", session.user_id)
     .eq("draw_session_id", session.id)
     .eq("mode", "zap")
@@ -757,7 +757,11 @@ export async function drawStatus(
     : null;
   const latestAnimation =
     animation && animationUrl
-      ? { jobId: animation.id, url: animationUrl }
+      ? {
+          jobId: animation.id,
+          url: animationUrl,
+          createdAt: animation.created_at,
+        }
       : null;
 
   const latest = events.length
