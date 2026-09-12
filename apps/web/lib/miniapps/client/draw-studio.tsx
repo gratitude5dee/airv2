@@ -368,7 +368,9 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
   const viewportRef = useRef<HTMLDivElement>(null);
   const pointerId = useRef<number | null>(null);
   const livePoints = useRef<Point[]>([]);
-  const touchDrawing = useRef(false);
+  // Identifier of the touch that owns the current draw gesture — a second
+  // finger ending must not release the sheet-gesture lock mid-stroke.
+  const drawTouchId = useRef<number | null>(null);
   const [inkTick, forceInk] = useState(0);
 
   const delivered = revisions.filter((r) => r.state === "delivered");
@@ -435,20 +437,28 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
     if (!zone) return;
     const startTouch = (event: TouchEvent): void => {
       const target = event.target as Element | null;
+      // Only the drawing surface owns the gesture — touches on the preview
+      // media (video controls, image) and the rail must behave natively.
       if (
         target &&
         viewportRef.current?.contains(target) &&
-        !target.closest(".ds-rail")
+        !target.closest(".ds-rail, .ds-preview")
       ) {
-        touchDrawing.current = true;
+        if (drawTouchId.current === null) {
+          drawTouchId.current = event.changedTouches[0]?.identifier ?? null;
+        }
         event.preventDefault();
       }
     };
     const moveTouch = (event: TouchEvent): void => {
-      if (touchDrawing.current) event.preventDefault();
+      if (drawTouchId.current !== null) event.preventDefault();
     };
-    const endTouch = (): void => {
-      touchDrawing.current = false;
+    const endTouch = (event: TouchEvent): void => {
+      for (const touch of Array.from(event.changedTouches)) {
+        if (touch.identifier === drawTouchId.current) {
+          drawTouchId.current = null;
+        }
+      }
     };
     zone.addEventListener("touchstart", startTouch, { passive: false });
     zone.addEventListener("touchmove", moveTouch, { passive: false });
