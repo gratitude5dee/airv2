@@ -122,7 +122,9 @@ export async function executeCreativeJob(
     if (problem) {
       return await fail("refused", problem);
     }
-    plan = directZapPlan(turn);
+    // A caller-built plan (/freeze's camera-trajectory render) skips the
+    // default zap plan the same way the GMI lanes do.
+    plan = options?.plan ?? directZapPlan(turn);
   } else {
     // The user's lane model choices (Settings) and, when saved, their
     // personal GMI key. Both degrade to platform defaults on any failure.

@@ -35,6 +35,21 @@ export interface GenerationParams {
   use_input_image_as: InputImageUse;
 }
 
+/** Extra input a caller-built plan can pin for the fal multi-angle endpoint
+ * (the /freeze studio). Router output never carries it — parseRouterPlan
+ * reconstructs the params object explicitly, and the Groq strict schema
+ * keeps additionalProperties: false — so only a direct plan sets this. */
+export interface FreezeRequest {
+  camera_trajectory: readonly {
+    time: number;
+    azimuth: number;
+    elevation: number;
+    distance: number;
+  }[];
+  resolution: "480P" | "768P" | "1080P";
+  seed?: number | undefined;
+}
+
 export interface RouterPlan {
   chat_reply: string;
   delivery_line: string;
@@ -42,6 +57,7 @@ export interface RouterPlan {
   mode: Mode;
   needs_input: boolean;
   params: GenerationParams;
+  freeze?: FreezeRequest | undefined;
 }
 
 export const ROUTER_JSON_SCHEMA = {

@@ -43,6 +43,10 @@ import type { RouterPlan } from "./schema";
 export const FAL_ZAP_TEXT_TO_VIDEO = "minimax/h3-max-turbo/text-to-video";
 export const FAL_ZAP_IMAGE_TO_VIDEO = "minimax/h3-max-turbo/image-to-video";
 export const FAL_ZAP_REFERENCE_TO_VIDEO = "minimax/h3-max/reference-to-video";
+/** /freeze's camera-move render — image-to-video driven by an explicit
+ * camera_trajectory keyframe list instead of prompt-described motion. */
+export const FAL_FREEZE_IMAGE_TO_VIDEO =
+  "minimax/h3-max/multi-angle/image-to-video";
 
 /** reference-to-video caps per modality (the schema's maxItems). */
 const MAX_REFERENCE_IMAGES = 9;
@@ -215,6 +219,34 @@ export function buildFalZapRequest(
   turn: CreativeTurn,
 ): FalGenerationRequest {
   const images = ofKind(turn, "image");
+
+  // The /freeze studio pins a camera path: `plan.freeze` (a caller-built
+  // field the router can never emit) swaps this submit onto the multi-angle
+  // endpoint with the trajectory verbatim.
+  const freeze = plan.freeze;
+  if (freeze) {
+    const source = images[0];
+    if (!source) {
+      throw new FalRequestError("freeze render needs a source image");
+    }
+    return {
+      kind: "video",
+      model: FAL_FREEZE_IMAGE_TO_VIDEO,
+      input: {
+        image_url: source.url,
+        // The multi-angle endpoint takes exactly 5s or 6s.
+        duration: plan.params.duration === 6 ? 6 : 5,
+        resolution: freeze.resolution,
+        prompt: plan.expanded_prompt,
+        prompt_expansion_mode: "balanced",
+        enable_safety_checker: true,
+        ...(freeze.seed === undefined ? {} : { seed: freeze.seed }),
+        camera_trajectory: freeze.camera_trajectory.map((keyframe) => ({
+          ...keyframe,
+        })),
+      },
+    };
+  }
   const videos = ofKind(turn, "video");
   const audio = ofKind(turn, "audio");
   const soundUrls = urls(selectedAudio(turn), MAX_REFERENCE_CLIPS);

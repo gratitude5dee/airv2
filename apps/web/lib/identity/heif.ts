@@ -47,3 +47,12 @@ export async function heifToJpeg(bytes: Buffer, quality = 0.9): Promise<Buffer> 
   const out = await convert({ buffer: bytes, format: "JPEG", quality });
   return Buffer.from(out);
 }
+
+/** Decode a HEIF buffer and re-encode as PNG — same decoder, lossless
+ * output for lanes that need exact pixels (the /freeze studio's source
+ * still). Slower and larger than the JPEG path; use only when the format
+ * matters. */
+export async function heifToPng(bytes: Buffer): Promise<Buffer> {
+  const out = await convert({ buffer: bytes, format: "PNG" });
+  return Buffer.from(out);
+}
