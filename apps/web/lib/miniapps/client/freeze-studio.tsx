@@ -339,6 +339,310 @@ function SketchPad(props: {
   );
 }
 
+/* ------------------------------------------------------ video → frame */
+
+/** Scrub step — the reference editor steps in 1/30-second increments. */
+const FRAME_STEP = 1 / 30;
+/** Room under the 12MB upload cap for the extracted JPEG. */
+const MAX_FRAME_BYTES = 10 * 1024 * 1024;
+
+function seekTo(video: HTMLVideoElement, time: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (Math.abs(video.currentTime - time) < 0.001 && video.readyState >= 2) {
+      resolve();
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      video.removeEventListener("seeked", done);
+      reject(new Error("couldn't read that frame"));
+    }, 10000);
+    function done() {
+      window.clearTimeout(timer);
+      resolve();
+    }
+    video.addEventListener("seeked", done, { once: true });
+    video.currentTime = time;
+  });
+}
+
+function drawFrame(video: HTMLVideoElement, width: number) {
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.min(width, video.videoWidth);
+  canvas.height = Math.round(
+    (canvas.width * video.videoHeight) / Math.max(1, video.videoWidth)
+  );
+  const ctx = canvas.getContext("2d");
+  if (!ctx || !canvas.width) return null;
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  return canvas;
+}
+
+async function thumbAt(
+  video: HTMLVideoElement,
+  at: number
+): Promise<string | null> {
+  try {
+    await seekTo(video, at);
+    const canvas = drawFrame(video, 160);
+    return canvas ? canvas.toDataURL("image/jpeg", 0.8) : null;
+  } catch {
+    return null;
+  }
+}
+
+function VideoFramePick(props: {
+  busy: boolean;
+  onFrame: (file: File) => void;
+}) {
+  const { busy, onFrame } = props;
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const urlRef = useRef<string | null>(null);
+  // Set on every scrub until the element's "seeked" lands — capture must
+  // not drawImage while a seek is still decoding (it paints the old frame).
+  const pendingSeekRef = useRef(false);
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [duration, setDuration] = useState(0);
+  const [time, setTime] = useState(0);
+  const [thumbs, setThumbs] = useState<string[]>([]);
+  const [reading, setReading] = useState(false);
+  const [snapping, setSnapping] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(
+    () => () => {
+      if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+    },
+    []
+  );
+
+  const onPick = useCallback(async (file: File | null) => {
+    if (!file) return;
+    setErr(null);
+    if (!file.type.startsWith("video/")) {
+      setErr("choose a video — mp4, mov, or webm");
+      return;
+    }
+    if (file.size > 150 * 1024 * 1024) {
+      setErr("choose a clip under 150mb");
+      return;
+    }
+    setReading(true);
+    const url = URL.createObjectURL(file);
+    try {
+      const video = document.createElement("video");
+      video.preload = "auto";
+      video.muted = true;
+      video.playsInline = true;
+      await new Promise<void>((resolve, reject) => {
+        const timer = window.setTimeout(
+          () => reject(new Error("that clip took too long to read")),
+          20000
+        );
+        video.onloadeddata = () => {
+          window.clearTimeout(timer);
+          resolve();
+        };
+        video.onerror = () => {
+          window.clearTimeout(timer);
+          reject(new Error("can't decode that video — try an h.264 mp4"));
+        };
+        video.src = url;
+      });
+      if (
+        !Number.isFinite(video.duration) ||
+        video.duration <= 0 ||
+        video.duration > 120
+      ) {
+        throw new Error("choose a clip under two minutes");
+      }
+      // Filmstrip — ten evenly spaced frames for quick orientation.
+      const strip: string[] = [];
+      for (let i = 0; i < 10; i++) {
+        const at = Math.max(
+          0,
+          Math.min(video.duration - 0.05, (video.duration * i) / 10)
+        );
+        const thumb = await thumbAt(video, at);
+        if (thumb) strip.push(thumb);
+      }
+      if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+      urlRef.current = url;
+      setVideoUrl(url);
+      setDuration(video.duration);
+      setTime(video.duration / 2);
+      setThumbs(strip);
+      video.removeAttribute("src");
+      video.load();
+    } catch (e) {
+      URL.revokeObjectURL(url);
+      setErr(e instanceof Error ? e.message : "that video didn't load");
+    } finally {
+      setReading(false);
+    }
+  }, []);
+
+  const scrubTo = useCallback(
+    (t: number) => {
+      setTime(t);
+      const video = videoRef.current;
+      if (video) {
+        video.pause();
+        pendingSeekRef.current = true;
+        video.currentTime = t;
+      }
+    },
+    []
+  );
+
+  const snap = useCallback(async () => {
+    const video = videoRef.current;
+    if (!video || snapping || busy) return;
+    setSnapping(true);
+    try {
+      // Land the exact timestamp before capture — drawImage on an
+      // un-decoded time paints the previous frame. A scrub already in
+      // flight counts: wait out its "seeked" rather than re-seeking.
+      if (
+        pendingSeekRef.current ||
+        video.readyState < 2 ||
+        Math.abs(video.currentTime - time) > 0.001
+      ) {
+        await new Promise<void>((resolve, reject) => {
+          const timer = window.setTimeout(() => {
+            video.removeEventListener("seeked", done);
+            reject(new Error("couldn't read that frame"));
+          }, 10000);
+          const done = () => {
+            window.clearTimeout(timer);
+            resolve();
+          };
+          video.addEventListener("seeked", done, { once: true });
+          if (!pendingSeekRef.current) video.currentTime = time;
+        });
+      }
+      let width = Math.min(1920, video.videoWidth);
+      let blob: Blob | null = null;
+      while (width > 0) {
+        const canvas = drawFrame(video, width);
+        if (!canvas) throw new Error("frame capture isn't available");
+        blob = await new Promise<Blob | null>((r) =>
+          canvas.toBlob((b) => r(b), "image/jpeg", 0.94)
+        );
+        if (!blob) throw new Error("frame capture isn't available");
+        if (blob.size <= MAX_FRAME_BYTES || width <= 320) break;
+        width = Math.floor(width * 0.75);
+      }
+      if (!blob || blob.size > MAX_FRAME_BYTES) {
+        throw new Error("that frame is too large — try a smaller clip");
+      }
+      onFrame(new File([blob], "freeze-frame.jpg", { type: "image/jpeg" }));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "couldn't capture the frame");
+    } finally {
+      setSnapping(false);
+    }
+  }, [time, snapping, busy, onFrame]);
+
+  return (
+    <div className="fz-framepick">
+      <input
+        ref={inputRef}
+        type="file"
+        accept="video/*"
+        hidden
+        onChange={(e) => void onPick(e.target.files?.[0] ?? null)}
+      />
+      {!videoUrl ? (
+        <div className="fz-video-empty">
+          <p className="fz-sub">
+            pick the clip — then scrub to the moment to freeze
+          </p>
+          <button
+            type="button"
+            className="fz-primary"
+            disabled={reading}
+            onClick={() => inputRef.current?.click()}
+          >
+            {reading ? "reading the clip…" : "choose a video"}
+          </button>
+        </div>
+      ) : (
+        <>
+          <video
+            ref={videoRef}
+            className="fz-video"
+            src={videoUrl}
+            muted
+            playsInline
+            preload="auto"
+            onLoadedData={(e) => {
+              // First decode lands on frame 0 — the selection starts
+              // mid-clip.
+              pendingSeekRef.current = true;
+              e.currentTarget.currentTime = time;
+            }}
+            onSeeked={() => {
+              pendingSeekRef.current = false;
+            }}
+          />
+          {thumbs.length > 0 && (
+            <div className="fz-strip">
+              {thumbs.map((src, i) => (
+                // eslint-disable-next-line @next/next/no-img-element -- jpeg data URLs, not optimizable
+                <img
+                  key={i}
+                  src={src}
+                  alt=""
+                  onClick={() =>
+                    scrubTo(
+                      Math.max(
+                        0,
+                        Math.min(
+                          duration - 0.05,
+                          (duration * i) / Math.max(1, thumbs.length)
+                        )
+                      )
+                    )
+                  }
+                />
+              ))}
+            </div>
+          )}
+          <input
+            type="range"
+            className="fz-scrub"
+            min={0}
+            max={Math.max(FRAME_STEP, duration)}
+            step={FRAME_STEP}
+            value={time}
+            onChange={(e) => scrubTo(Number(e.target.value))}
+            aria-label="pick the frame"
+          />
+          <div className="fz-row">
+            <button
+              type="button"
+              className="fz-ghost"
+              onClick={() => inputRef.current?.click()}
+            >
+              different clip
+            </button>
+            <button
+              type="button"
+              className="fz-primary"
+              disabled={snapping || busy}
+              onClick={() => void snap()}
+            >
+              {snapping ? "capturing…" : `freeze at ${time.toFixed(2)}s`}
+            </button>
+          </div>
+        </>
+      )}
+      {err && <p className="fz-err">{err}</p>}
+    </div>
+  );
+}
+
 /* ---------------------------------------------------------- stage canvas */
 
 /**
@@ -893,6 +1197,7 @@ function Studio(props: { initial: Payload }) {
   const [busy, setBusy] = useState(false);
   const [line, setLine] = useState<string | null>(null);
   const [showSketch, setShowSketch] = useState(false);
+  const [showVideo, setShowVideo] = useState(false);
   // The job this page admitted — the action returns at admit-time and the
   // poll resolves it, so cancel stays reachable through the whole render.
   const [watchJob, setWatchJob] = useState<{
@@ -1121,6 +1426,8 @@ function Studio(props: { initial: Payload }) {
       }
       setLine(null);
       setSourceAssetId(payload.sourceAssetId);
+      setShowSketch(false);
+      setShowVideo(false);
       // Mark the accepted asset before the trailing status pull: its adopt
       // must swap in the fresh URL (or leave a same-asset blob preview).
       sourceAssetRef.current = payload.sourceAssetId;
@@ -1341,7 +1648,7 @@ function Studio(props: { initial: Payload }) {
 
       {stage === "source" && (
         <div className="fz-stage">
-          {!showSketch ? (
+          {!showSketch && !showVideo ? (
             <>
               <div className="fz-hero">
                 <p className="fz-title">freeze the scene</p>
@@ -1377,6 +1684,15 @@ function Studio(props: { initial: Payload }) {
                   <span className="fz-card-icon">✎</span>
                   sketch + generate
                 </button>
+                <button
+                  type="button"
+                  className="fz-card"
+                  disabled={busy}
+                  onClick={() => setShowVideo(true)}
+                >
+                  <span className="fz-card-icon">▶</span>
+                  video → freeze a frame
+                </button>
               </div>
               <input
                 ref={cameraRef}
@@ -1403,7 +1719,7 @@ function Studio(props: { initial: Payload }) {
                 </button>
               )}
             </>
-          ) : (
+          ) : showSketch ? (
             <>
               <button
                 type="button"
@@ -1416,6 +1732,17 @@ function Studio(props: { initial: Payload }) {
                 busy={busy || watchJob?.kind === "sketch"}
                 onGenerate={onSketch}
               />
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="fz-ghost"
+                onClick={() => setShowVideo(false)}
+              >
+                ← back
+              </button>
+              <VideoFramePick busy={busy} onFrame={(f) => void onFile(f)} />
             </>
           )}
         </div>
@@ -1680,6 +2007,13 @@ const CSS = `
 .fz-ghost.selected{border-color:#4db0ff;color:#9dd8ff}
 .fz-result{display:flex;flex-direction:column;gap:10px}
 .fz-video{width:100%;border-radius:14px;background:#000;max-height:56vh}
+.fz-framepick{display:flex;flex-direction:column;gap:8px}
+.fz-video-empty{display:flex;flex-direction:column;gap:10px;align-items:center;padding:18px 8px}
+.fz-strip{display:grid;grid-template-columns:repeat(5,1fr);gap:4px}
+.fz-strip img{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:6px;border:1px solid #75baff33;display:block}
+.fz-scrub{width:100%;min-height:36px;accent-color:#3ca7ff;touch-action:pan-x}
+.fz-row{display:flex;gap:8px;align-items:center}
+.fz-err{margin:0;text-align:center;font-size:0.72rem;color:#ff9d9d}
 .fz-actions{display:flex;gap:8px}
 .fz-history{display:flex;flex-direction:column;gap:8px;margin-top:4px}
 .fz-history-row{display:flex;align-items:center;gap:10px}
