@@ -1036,7 +1036,9 @@ function StageCanvas(props: StageProps) {
           az: 0,
           el: 0,
           travel: 0,
-          samples: [],
+          // Seeded so the first move event already yields a two-sample path —
+          // a fast one-event stroke can't die below the gate's min length.
+          samples: [{ azimuth: 0, elevation: 0 }],
         };
       }}
       onPointerMove={(e) => {
@@ -1058,18 +1060,43 @@ function StageCanvas(props: StageProps) {
         drag.travel += Math.abs(dx) + Math.abs(dy);
         drag.az = clamp(drag.az + dx * 0.6, -360, 360);
         drag.el = clamp(drag.el - dy * 0.4, -90, 90);
+        // Bound the array without losing the fingertip: at the cap the tail
+        // sample keeps tracking the pointer so the drawn endpoint is where
+        // the finger lifts, not where the 600th event landed.
         if (drag.samples.length < 600) {
           drag.samples.push({ azimuth: drag.az, elevation: drag.el });
+        } else {
+          drag.samples[drag.samples.length - 1] = {
+            azimuth: drag.az,
+            elevation: drag.el,
+          };
         }
-        if (drag.travel >= DRAW_GATE_PX && drag.samples.length >= 2) {
+        // Live-rebuild the path on a throttle — every accepted call rebuilds
+        // the tube geometry, so sustained drawing only pays for every fourth
+        // sample; pointer-up flushes the tail.
+        if (
+          drag.travel >= DRAW_GATE_PX &&
+          drag.samples.length >= 2 &&
+          (drag.samples.length < 4 || drag.samples.length % 4 === 0)
+        ) {
           propsRef.current.onDrawPath(drag.samples);
         }
       }}
       onPointerUp={() => {
         const drag = dragRef.current;
         dragRef.current = null;
-        if (!drag || drag.moved || !glReady) return;
-        propsRef.current.onPick(drag.picked);
+        if (!drag || !glReady) return;
+        if (!drag.moved) {
+          propsRef.current.onPick(drag.picked);
+          return;
+        }
+        if (
+          drag.mode === "draw" &&
+          drag.travel >= DRAW_GATE_PX &&
+          drag.samples.length >= 2
+        ) {
+          propsRef.current.onDrawPath(drag.samples);
+        }
       }}
     >
       {!glReady && <StageCanvas2D {...props} />}
@@ -1242,7 +1269,9 @@ function StageCanvas2D(props: StageProps) {
           az: 0,
           el: 0,
           travel: 0,
-          samples: [],
+          // Seeded so the first move event already yields a two-sample path —
+          // a fast one-event stroke can't die below the gate's min length.
+          samples: [{ azimuth: 0, elevation: 0 }],
         };
       }}
       onPointerMove={(e) => {
@@ -1261,17 +1290,42 @@ function StageCanvas2D(props: StageProps) {
         drag.travel += Math.abs(dx) + Math.abs(dy);
         drag.az = clamp(drag.az + dx * 0.6, -360, 360);
         drag.el = clamp(drag.el - dy * 0.4, -90, 90);
+        // Bound the array without losing the fingertip: at the cap the tail
+        // sample keeps tracking the pointer so the drawn endpoint is where
+        // the finger lifts, not where the 600th event landed.
         if (drag.samples.length < 600) {
           drag.samples.push({ azimuth: drag.az, elevation: drag.el });
+        } else {
+          drag.samples[drag.samples.length - 1] = {
+            azimuth: drag.az,
+            elevation: drag.el,
+          };
         }
-        if (drag.travel >= DRAW_GATE_PX && drag.samples.length >= 2) {
+        // Same throttle as the WebGL stage: tube/geometry rebuilds are the
+        // expensive path, and pointer-up flushes the tail either way.
+        if (
+          drag.travel >= DRAW_GATE_PX &&
+          drag.samples.length >= 2 &&
+          (drag.samples.length < 4 || drag.samples.length % 4 === 0)
+        ) {
           props.onDrawPath(drag.samples);
         }
       }}
       onPointerUp={() => {
         const drag = dragRef.current;
         dragRef.current = null;
-        if (drag && !drag.moved) props.onPick(drag.picked);
+        if (!drag) return;
+        if (!drag.moved) {
+          props.onPick(drag.picked);
+          return;
+        }
+        if (
+          drag.mode === "draw" &&
+          drag.travel >= DRAW_GATE_PX &&
+          drag.samples.length >= 2
+        ) {
+          props.onDrawPath(drag.samples);
+        }
       }}
     />
   );
