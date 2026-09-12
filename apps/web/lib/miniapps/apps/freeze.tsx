@@ -122,6 +122,11 @@ function renderStudio(
 const json = (payload: Record<string, unknown>, status = 200): NextResponse =>
   withBaseHeaders(NextResponse.json(payload, { status }));
 
+/** base64 inflates by 4/3 — a data URL past this can't hold a legal upload. */
+const MAX_DATA_URL_CHARS = Math.ceil(MAX_FREEZE_UPLOAD_BYTES * (4 / 3)) + 256;
+const TOO_LARGE = () =>
+  json({ error: "TOO_LARGE", line: "that image is too large" }, 400);
+
 const errLine = (error: unknown): { code: string; line: string } => {
   if (error instanceof FreezeError) {
     switch (error.code) {
@@ -180,6 +185,28 @@ export const freeze: MiniAppModule = {
     try {
       switch (action) {
         case "status": {
+          // Status stays answerable on an ended session so a polling client
+          // can stand down — but it returns a stub that mints no signed
+          // URLs rather than re-signing media on an expired session.
+          if (session.status !== "active") {
+            const { code, line } = errLine(
+              new FreezeError("SESSION_EXPIRED", "expired")
+            );
+            return json({
+              sessionId: session.id,
+              expiresAt: session.expires_at,
+              events: [],
+              latest: -1,
+              activeJob: null,
+              latestJobId: null,
+              sourceAssetId: null,
+              sourceUrl: null,
+              sketches: [],
+              renders: [],
+              error: code,
+              line,
+            });
+          }
           const after = Number(form.get("after") ?? -1);
           return json(
             await studioPayload(ctx, session, Number.isFinite(after) ? after : -1)
@@ -208,9 +235,15 @@ export const freeze: MiniAppModule = {
             const canvasFile = form.get("canvas");
             let canvasBytes: Buffer | undefined;
             if (canvasFile instanceof File && canvasFile.size > 0) {
+              // Cap before buffering — the File is fully materialized by
+              // arrayBuffer, so the 12 MB guard must run on declared size.
+              if (canvasFile.size > MAX_FREEZE_UPLOAD_BYTES) {
+                return TOO_LARGE();
+              }
               canvasBytes = Buffer.from(await canvasFile.arrayBuffer());
             } else {
               const dataUrl = String(form.get("image") ?? "");
+              if (dataUrl.length > MAX_DATA_URL_CHARS) return TOO_LARGE();
               const comma = dataUrl.indexOf(",");
               if (
                 dataUrl.startsWith("data:image/png") &&
@@ -286,6 +319,7 @@ export const freeze: MiniAppModule = {
             mimeType = file.type || "application/octet-stream";
           } else {
             const dataUrl = String(form.get("image") ?? "");
+            if (dataUrl.length > MAX_DATA_URL_CHARS) return TOO_LARGE();
             const comma = dataUrl.indexOf(",");
             if (dataUrl.startsWith("data:") && comma > -1) {
               mimeType = dataUrl.slice(5, dataUrl.indexOf(";"));

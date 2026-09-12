@@ -91,13 +91,14 @@ on conflict (slug) do update set
   status = excluded.status,
   updated_at = now();
 
+-- 0109 (trade) widened both lists before this migration ran; keep trade.
 alter table card_sends drop constraint card_sends_kind_check;
 alter table card_sends add constraint card_sends_kind_check
   check (kind in (
     'computer','calendar','vault','browser','kanban','todo','onboarding',
     'connect','video','image','crm','analytics','inbox','pay','shop',
     'settings','ads','home','persona','feedback','create','app','draw',
-    'freeze'
+    'trade','freeze'
   ));
 alter table miniapp_card_sessions drop constraint miniapp_card_sessions_kind_check;
 alter table miniapp_card_sessions add constraint miniapp_card_sessions_kind_check
@@ -105,5 +106,5 @@ alter table miniapp_card_sessions add constraint miniapp_card_sessions_kind_chec
     'computer','calendar','vault','browser','kanban','todo','onboarding',
     'connect','video','image','crm','analytics','inbox','pay','shop',
     'settings','ads','home','persona','feedback','create','app','draw',
-    'freeze'
+    'trade','freeze'
   ));

@@ -312,7 +312,15 @@ async function claimFreezeSlot(
       .is("active_job_id", null)
       .select("id");
   let { data } = await attempt();
-  if (data?.length) return true;
+  if (data?.length) {
+    // Keep the in-memory row authoritative with the claim — the studio
+    // builds its admit response from `session`, so a job id that's only
+    // in the db reads as no active job and the client never starts
+    // polling.
+    session.active_job_id = jobId;
+    if (claimLatest) session.latest_job_id = jobId;
+    return true;
+  }
   if (session.active_job_id) {
     const active = await getCreativeJob(
       supabase,
@@ -325,7 +333,12 @@ async function claimFreezeSlot(
       .update({ active_job_id: null })
       .eq("id", session.id)
       .eq("active_job_id", session.active_job_id);
+    session.active_job_id = null;
     ({ data } = await attempt());
+    if (data?.length) {
+      session.active_job_id = jobId;
+      if (claimLatest) session.latest_job_id = jobId;
+    }
   }
   return Boolean(data?.length);
 }
@@ -524,14 +537,18 @@ export async function executeFreezeSketch(
       }
     );
     await finishFreezeRun(supabase, session, job, result);
-    // A delivered sketch becomes the camera stage's source still.
+    // A delivered sketch becomes the camera stage's source still. Gated on
+    // still holding the slot: if the owner cancelled and re-sourced, this
+    // late delivery must not stamp itself over the newer still.
     if (result.status === "delivered" && result.asset) {
-      await supabase
+      const { data: claimed } = await supabase
         .from("freeze_sessions")
         .update({ source_asset_id: result.asset.id })
         .eq("id", session.id)
-        .eq("status", "active");
-      session.source_asset_id = result.asset.id;
+        .eq("status", "active")
+        .eq("active_job_id", job.id)
+        .select("id");
+      if (claimed?.length === 1) session.source_asset_id = result.asset.id;
     }
     return result;
   } catch (error) {

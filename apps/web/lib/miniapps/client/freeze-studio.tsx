@@ -919,6 +919,9 @@ function Studio(props: { initial: Payload }) {
     (payload: Payload, forceSource = false) => {
       if (typeof payload.latest === "number") setLatest(payload.latest);
       setActiveJob(payload.activeJob ?? null);
+      // The expired-status stub carries a line instead of job rows — the
+      // poll stood itself down, so the note is all the client shows.
+      if (payload.line) setLine(payload.line);
       // The poll re-mints the source URL every round trip — only take a new
       // one when the asset changed (or a media error forced a re-sign), so
       // the stage doesn't re-upload the same still to the GPU each poll.
