@@ -404,12 +404,16 @@ async function admitFreezeJob(
     // The claim predicates on still-active-and-unexpired; a zero-row
     // result can mean the session crossed its TTL mid-admission — but
     // expiry is lazy, so `status` alone still reads "active". Check the
-    // deadline too before blaming a held slot.
-    const { data: fresh } = await supabase
+    // deadline too before blaming a held slot. A failed read isn't a
+    // missing row: surface it as a retryable store error, not expiry.
+    const { data: fresh, error: freshErr } = await supabase
       .from("freeze_sessions")
       .select("status, expires_at")
       .eq("id", session.id)
       .maybeSingle();
+    if (freshErr) {
+      throw new FreezeError("STORE_FAILED", freshErr.message);
+    }
     if (
       !fresh ||
       (fresh.status as string) !== "active" ||

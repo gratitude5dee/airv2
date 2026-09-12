@@ -5,6 +5,7 @@
  * caller-built plan the fal lane reads off `plan.freeze`.
  */
 import { describe, expect, it } from "vitest";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   directFreezePlan,
   FROZEN_SCENE_PROMPT,
@@ -12,7 +13,12 @@ import {
   getPreset,
   validateTrajectory,
 } from "./freezeRecipe";
-import { resolveFreezeRender, FreezeError } from "./freeze";
+import {
+  admitFreezeSketch,
+  resolveFreezeRender,
+  FreezeError,
+  type FreezeSession,
+} from "./freeze";
 
 const okTrajectory = [
   { time: 0, azimuth: 0, elevation: 0, distance: 1 },
@@ -184,5 +190,167 @@ describe("resolveFreezeRender", () => {
       ],
     });
     expect(loop.returnsToStart).toBe(true);
+  });
+});
+
+/**
+ * admission classification: a failed slot claim must distinguish a session
+ * that crossed its TTL mid-admission (or died, or the read itself failed)
+ * from one whose in-flight slot is genuinely held.
+ */
+describe("admitFreezeSketch claim-failure classification", () => {
+  const futureIso = () => new Date(Date.now() + 60_000).toISOString();
+  const pastIso = () => new Date(Date.now() - 1_000).toISOString();
+
+  const session = (over: Partial<FreezeSession> = {}): FreezeSession => ({
+    id: "sess-1",
+    user_id: "user-1",
+    space_id: "space-1",
+    phone: "+15550001",
+    status: "active",
+    source_asset_id: null,
+    active_job_id: null,
+    latest_job_id: null,
+    event_sequence: 0,
+    expires_at: futureIso(),
+    created_at: "",
+    ...over,
+  });
+
+  const sketchInput = {
+    prompt: "a diner scene",
+    mode: "fast" as const,
+    channel: "web" as const,
+  };
+
+  /**
+   * Fluent-builder stub: `insert().select("*").single()` mints the job row,
+   * the slot claim (`update().eq().gt().is().select("id")`) resolves
+   * `claimRows`, and the fallback `select("status, expires_at").maybeSingle()`
+   * resolves `sessionRow`/`sessionErr`. Every other await resolves empty.
+   */
+  function fakeSupabase(db: {
+    claimRows?: { id: string }[];
+    sessionRow?: { status: string; expires_at: string } | null;
+    sessionErr?: { message: string } | null;
+  }): SupabaseClient {
+    function builder(table: string) {
+      const chain: Record<string, unknown> = {};
+      const self = () => chain;
+      for (const m of [
+        "eq", "is", "in", "order", "limit", "gt", "gte", "lt", "lte", "neq",
+      ]) {
+        chain[m] = self;
+      }
+      chain["insert"] = self;
+      chain["update"] = self;
+      chain["select"] = (cols?: string) => {
+        chain["__cols"] = cols;
+        return chain;
+      };
+      chain["single"] = () =>
+        Promise.resolve({
+          data: { id: "job-1", status: "routing" },
+          error: null,
+        });
+      chain["maybeSingle"] = () => {
+        if (table === "freeze_sessions") {
+          return Promise.resolve({
+            data: db.sessionRow ?? null,
+            error: db.sessionErr ?? null,
+          });
+        }
+        return Promise.resolve({ data: null, error: null });
+      };
+      chain["then"] = (
+        resolve: (value: unknown) => unknown,
+        reject?: (reason: unknown) => unknown
+      ) => {
+        const isClaim =
+          table === "freeze_sessions" && chain["__cols"] === "id";
+        return Promise.resolve(
+          isClaim
+            ? { data: db.claimRows ?? [], error: null }
+            : { data: null, error: null }
+        ).then(resolve, reject);
+      };
+      return chain;
+    }
+    return { from: builder } as unknown as SupabaseClient;
+  }
+
+  it("reports SESSION_EXPIRED when the deadline passed mid-admission", async () => {
+    await expect(
+      admitFreezeSketch(
+        fakeSupabase({
+          claimRows: [],
+          sessionRow: { status: "active", expires_at: pastIso() },
+        }),
+        session(),
+        sketchInput
+      )
+    ).rejects.toMatchObject({ code: "SESSION_EXPIRED" });
+  });
+
+  it("reports SESSION_EXPIRED when the row flipped inactive", async () => {
+    await expect(
+      admitFreezeSketch(
+        fakeSupabase({
+          claimRows: [],
+          sessionRow: { status: "expired", expires_at: futureIso() },
+        }),
+        session(),
+        sketchInput
+      )
+    ).rejects.toMatchObject({ code: "SESSION_EXPIRED" });
+  });
+
+  it("reports SESSION_EXPIRED when the session row is gone", async () => {
+    await expect(
+      admitFreezeSketch(
+        fakeSupabase({ claimRows: [], sessionRow: null }),
+        session(),
+        sketchInput
+      )
+    ).rejects.toMatchObject({ code: "SESSION_EXPIRED" });
+  });
+
+  it("reports STORE_FAILED when the fallback read itself fails", async () => {
+    await expect(
+      admitFreezeSketch(
+        fakeSupabase({
+          claimRows: [],
+          sessionRow: null,
+          sessionErr: { message: "postgrest unreachable" },
+        }),
+        session(),
+        sketchInput
+      )
+    ).rejects.toMatchObject({ code: "STORE_FAILED" });
+  });
+
+  it("reports JOB_ALREADY_ACTIVE on a live session whose slot is held", async () => {
+    await expect(
+      admitFreezeSketch(
+        fakeSupabase({
+          claimRows: [],
+          sessionRow: { status: "active", expires_at: futureIso() },
+        }),
+        session(),
+        sketchInput
+      )
+    ).rejects.toMatchObject({ code: "JOB_ALREADY_ACTIVE" });
+  });
+
+  it("admits when the claim lands", async () => {
+    const job = await admitFreezeSketch(
+      fakeSupabase({
+        claimRows: [{ id: "sess-1" }],
+        sessionRow: { status: "active", expires_at: futureIso() },
+      }),
+      session(),
+      sketchInput
+    );
+    expect(job.id).toBe("job-1");
   });
 });
