@@ -1339,6 +1339,8 @@ function Studio(props: { initial: Payload }) {
   const [line, setLine] = useState<string | null>(null);
   const [showSketch, setShowSketch] = useState(false);
   const [showVideo, setShowVideo] = useState(false);
+  // The draw hint only teaches the gesture — it clears on the first stroke.
+  const [hintSeen, setHintSeen] = useState(false);
   // The job this page admitted — the action returns at admit-time and the
   // poll resolves it, so cancel stays reachable through the whole render.
   const [watchJob, setWatchJob] = useState<{
@@ -1657,6 +1659,7 @@ function Studio(props: { initial: Payload }) {
 
   const onDragPose = useCallback(
     (dAzimuth: number, dElevation: number, grabbed: number | null) => {
+      setHintSeen(true);
       setPreset(null);
       setKeyframes((frames) => {
         // A drag off a keyframe dot edits that keyframe directly. With no
@@ -1703,6 +1706,7 @@ function Studio(props: { initial: Payload }) {
    */
   const onDrawPath = useCallback((samples: DrawSample[]) => {
     if (samples.length === 0) return;
+    setHintSeen(true);
     setPreset(null);
     setSelected(null);
     const n = Math.min(samples.length, FREEZE_MAX_KEYFRAMES - 1);
@@ -1937,10 +1941,12 @@ function Studio(props: { initial: Payload }) {
               onDrawPath={onDrawPath}
               onPick={setSelected}
             />
-            <div className="fz-stage-hint">
-              <span className="fz-stage-dot" />
-              drag to draw the camera path
-            </div>
+            {!hintSeen && (
+              <div className="fz-stage-hint">
+                <span className="fz-stage-dot" />
+                drag to draw the camera path
+              </div>
+            )}
           </div>
 
           <div className="fz-ctl-label">camera move</div>
@@ -2184,7 +2190,7 @@ const CSS = `
 .fz-modes button.active{background:#20382e;color:#d1eadd}
 .fz-stage-wrap{position:relative;flex:1;min-height:240px;border-radius:16px;overflow:hidden;background:#0b1011;border:1px solid #2c3c35}
 .fz-stage-canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair}
-.fz-stage-hint{position:absolute;top:12px;left:12px;display:flex;align-items:center;gap:8px;border-radius:20px;padding:8px 12px;background:#0d181bc7;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);font-size:11px;color:#dbe7e4;pointer-events:none;z-index:2}
+.fz-stage-hint{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);display:flex;align-items:center;gap:8px;border-radius:20px;padding:8px 12px;background:#0d181bc7;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);font-size:11px;color:#dbe7e4;pointer-events:none;z-index:2;white-space:nowrap}
 .fz-stage-dot{width:5px;height:5px;border-radius:50%;background:#b4dcce;flex:0 0 5px}
 .fz-ctl-label{color:#8d9e9c;font-size:0.66rem;letter-spacing:0.1em;text-transform:uppercase;padding:0 2px}
 .fz-prail{display:flex;gap:8px;overflow-x:auto;padding:2px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
