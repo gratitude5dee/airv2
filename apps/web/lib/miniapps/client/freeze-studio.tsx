@@ -1042,6 +1042,9 @@ function Studio(props: { initial: Payload }) {
   useEffect(() => {
     if (!sourceUrl) {
       imageRef.current = null;
+      // A cleared source still has to reach the stage — without the bump the
+      // last image stays textured until some unrelated re-render.
+      imageBump((n) => n + 1);
       return;
     }
     const img = new Image();
