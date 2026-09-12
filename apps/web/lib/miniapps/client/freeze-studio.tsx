@@ -751,9 +751,9 @@ function createThreeStage(host: HTMLDivElement): ThreeStage {
   const scene = new THREE.Scene();
   // FOV/look target frame the whole pose envelope: el=90 tops out at
   // y≈3.25 (SUBJECT_Y + radius), so the frustum must reach ~3.5.
-  const camera = new THREE.PerspectiveCamera(50, 1, 0.05, 80);
-  camera.position.set(3.2, 2.5, 3.7);
-  camera.lookAt(0, 1.0, 0);
+  const camera = new THREE.PerspectiveCamera(55, 1, 0.05, 80);
+  camera.position.set(3.2, 2.55, 3.7);
+  camera.lookAt(0, 1.1, 0);
 
   const grid = track(new THREE.GridHelper(14, 28, 0x3a5048, 0x1c2825));
   scene.add(grid);
