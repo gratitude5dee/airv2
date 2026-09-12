@@ -349,8 +349,9 @@ export const freeze: MiniAppModule = {
               400
             );
           }
+          // Throws on a failed/expired write — never sign an asset the
+          // session doesn't actually point at.
           await setFreezeSource(ctx.supabase, session, asset.id);
-          session.source_asset_id = asset.id;
           // Return the signed (converted, for HEIC) URL with the accept so
           // the client can show the still without waiting on a status pull.
           return json({
