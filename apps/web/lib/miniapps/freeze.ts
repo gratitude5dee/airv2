@@ -259,10 +259,10 @@ export async function storeFreezeUpload(
   if (!["image/jpeg", "image/png", "image/webp"].includes(type)) return null;
   try {
     // MA8 boundary: EXIF/GPS comes off owner bytes here — the still is what
-    // ships to fal for the render.
-    body = guardMediaUpload(body, type, {
-      maxBytes: MAX_FREEZE_UPLOAD_BYTES,
-    });
+    // ships to fal for the render. The 12 MB cap applies to inbound bytes
+    // above; a decoded PNG can legitimately outgrow its compressed HEIC
+    // source, so the guard keeps the shared media cap.
+    body = guardMediaUpload(body, type);
   } catch {
     return null;
   }
@@ -280,7 +280,8 @@ export async function setFreezeSource(
   await supabase
     .from("freeze_sessions")
     .update({ source_asset_id: assetId })
-    .eq("id", session.id);
+    .eq("id", session.id)
+    .eq("status", "active");
   await appendFreezeEvent(supabase, session.id, {
     kind: "state",
     state: "source",
@@ -342,48 +343,30 @@ async function releaseFreezeSlot(
 }
 
 /**
- * Admit + run a sketch-lane generation: the flattened canvas is the edit
- * source (or absent for a prompt-only render) and the delivered image
- * becomes the session's source still. The draw lane's plan builder is
- * reused verbatim — the Flare modes are draw modes.
+ * Shared admission: the session must be live, the job row exists, and the
+ * in-flight slot is CAS-claimed before any provider work starts. The
+ * studio schedules the matching executeFreeze* inside `after()` — the
+ * admit response returns the job id immediately, so the client can show
+ * the cancel control and poll while a minutes-long render runs.
  */
-export async function runFreezeSketch(
+async function admitFreezeJob(
   supabase: SupabaseClient,
   session: FreezeSession,
-  input: {
-    prompt: string;
-    mode: DrawMode;
-    sketchAssetId?: string | undefined;
-    channel: CreativeChannel;
-  }
-): Promise<{ job: CreativeJob; result: CreativeRunResult }> {
+  channel: CreativeChannel,
+  kind: "sketch" | "render",
+  inputAssetId?: string | undefined
+): Promise<CreativeJob> {
   requireActiveFreezeSession(session);
-
-  if (input.sketchAssetId) {
-    const { data: owned } = await supabase
-      .from("creative_assets")
-      .select("id")
-      .eq("id", input.sketchAssetId)
-      .eq("user_id", session.user_id)
-      .maybeSingle();
-    if (!owned) {
-      throw new FreezeError(
-        "SOURCE_UNAVAILABLE",
-        "that sketch isn't available"
-      );
-    }
-  }
-
   const job = await createCreativeJob(
     supabase,
     session.user_id,
-    input.channel,
+    channel,
     "freeze",
     undefined,
     {
       freezeSessionId: session.id,
-      freezeKind: "sketch",
-      ...(input.sketchAssetId ? { inputAssetId: input.sketchAssetId } : {}),
+      freezeKind: kind,
+      ...(inputAssetId ? { inputAssetId } : {}),
     }
   );
   if (!(await claimFreezeSlot(supabase, session, job.id, true))) {
@@ -401,7 +384,83 @@ export async function runFreezeSketch(
     kind: "state",
     state: "admitted",
   });
+  return job;
+}
 
+/** The terminal bookkeeping both execute paths share. Post-admit session
+ * writes stay gated on still-active: an expired session doesn't collect
+ * late mutations from a render that outlived it. */
+async function finishFreezeRun(
+  supabase: SupabaseClient,
+  session: FreezeSession,
+  job: CreativeJob,
+  result: CreativeRunResult
+): Promise<void> {
+  await appendFreezeEvent(supabase, session.id, {
+    jobId: job.id,
+    kind: result.status === "delivered" ? "completed" : "state",
+    state: result.status,
+    assetId: result.asset?.id,
+    errorCode:
+      result.status === "delivered"
+        ? undefined
+        : safeFreezeErrorCode(result.line),
+  });
+  await supabase
+    .from("freeze_sessions")
+    .update({ latest_job_id: job.id })
+    .eq("id", session.id)
+    .eq("status", "active");
+}
+
+export interface FreezeSketchInput {
+  prompt: string;
+  mode: DrawMode;
+  sketchAssetId?: string | undefined;
+  channel: CreativeChannel;
+}
+
+/**
+ * Admit a sketch-lane generation: the flattened canvas is the edit source
+ * (or absent for a prompt-only render) and the delivered image becomes
+ * the session's source still. The draw lane's plan builder is reused
+ * verbatim — the Flare modes are draw modes.
+ */
+export async function admitFreezeSketch(
+  supabase: SupabaseClient,
+  session: FreezeSession,
+  input: FreezeSketchInput
+): Promise<CreativeJob> {
+  if (input.sketchAssetId) {
+    const { data: owned } = await supabase
+      .from("creative_assets")
+      .select("id")
+      .eq("id", input.sketchAssetId)
+      .eq("user_id", session.user_id)
+      .maybeSingle();
+    if (!owned) {
+      throw new FreezeError(
+        "SOURCE_UNAVAILABLE",
+        "that sketch isn't available"
+      );
+    }
+  }
+  return await admitFreezeJob(
+    supabase,
+    session,
+    input.channel,
+    "sketch",
+    input.sketchAssetId
+  );
+}
+
+/** Run an admitted sketch job to delivery (scheduled via `after()`). */
+export async function executeFreezeSketch(
+  supabase: SupabaseClient,
+  session: FreezeSession,
+  job: CreativeJob,
+  input: Omit<FreezeSketchInput, "channel">
+): Promise<CreativeRunResult> {
   try {
     const mediaInputs: MediaInput[] = [];
     if (input.sketchAssetId) {
@@ -437,55 +496,81 @@ export async function runFreezeSketch(
         promptVersion: FREEZE_PROMPT_VERSION,
       }
     );
-    await appendFreezeEvent(supabase, session.id, {
-      jobId: job.id,
-      kind: result.status === "delivered" ? "completed" : "state",
-      state: result.status,
-      assetId: result.asset?.id,
-      errorCode:
-        result.status === "delivered"
-          ? undefined
-          : safeFreezeErrorCode(result.line),
-    });
+    await finishFreezeRun(supabase, session, job, result);
     // A delivered sketch becomes the camera stage's source still.
     if (result.status === "delivered" && result.asset) {
       await supabase
         .from("freeze_sessions")
         .update({ source_asset_id: result.asset.id })
-        .eq("id", session.id);
+        .eq("id", session.id)
+        .eq("status", "active");
+      session.source_asset_id = result.asset.id;
     }
-    await supabase
-      .from("freeze_sessions")
-      .update({ latest_job_id: job.id })
-      .eq("id", session.id);
-    return { job, result };
+    return result;
   } finally {
     await releaseFreezeSlot(supabase, session.id, job.id);
   }
 }
 
+/** Flush-lane compat: admit + run inline — the caller already owns the
+ * burst, so there's no request boundary to honor. */
+export async function runFreezeSketch(
+  supabase: SupabaseClient,
+  session: FreezeSession,
+  input: FreezeSketchInput
+): Promise<{ job: CreativeJob; result: CreativeRunResult }> {
+  const job = await admitFreezeSketch(supabase, session, input);
+  const result = await executeFreezeSketch(supabase, session, job, input);
+  return { job, result };
+}
+
+export interface FreezeRenderInput {
+  trajectory: CameraKeyframe[];
+  duration: FreezeDuration;
+  resolution: FreezeResolution;
+  returnsToStart: boolean;
+  seed?: number | undefined;
+  channel: CreativeChannel;
+}
+
 /**
- * Admit + run a camera-move render. The trajectory (preset id or posted
+ * Admit a camera-move render. The trajectory (preset id or posted
  * keyframes) is validated before a job exists — a bad path never spends a
  * render. The job rides the fal lane via an injected plan (plan.freeze),
  * so metering, submit/poll, ingest, and the delivery URL are identical to
  * /zap.
  */
-export async function runFreezeRender(
+export async function admitFreezeRender(
   supabase: SupabaseClient,
   session: FreezeSession,
-  input: {
-    trajectory: CameraKeyframe[];
-    duration: FreezeDuration;
-    resolution: FreezeResolution;
-    returnsToStart: boolean;
-    seed?: number | undefined;
-    channel: CreativeChannel;
-  }
-): Promise<{ job: CreativeJob; result: CreativeRunResult }> {
-  requireActiveFreezeSession(session);
-
+  input: { channel: CreativeChannel }
+): Promise<CreativeJob> {
   const sourceAssetId = session.source_asset_id;
+  if (!sourceAssetId) {
+    throw new FreezeError("NO_SOURCE", "pick a photo first");
+  }
+  if (!(await signedAssetUrl(supabase, session.user_id, sourceAssetId))) {
+    throw new FreezeError("SOURCE_UNAVAILABLE", "the source photo expired");
+  }
+  return await admitFreezeJob(
+    supabase,
+    session,
+    input.channel,
+    "render",
+    sourceAssetId
+  );
+}
+
+/** Run an admitted render job to delivery (scheduled via `after()`). */
+export async function executeFreezeRender(
+  supabase: SupabaseClient,
+  session: FreezeSession,
+  job: CreativeJob,
+  input: Omit<FreezeRenderInput, "channel">
+): Promise<CreativeRunResult> {
+  // The admitted source wins even if the owner swapped photos mid-flight —
+  // input_asset_id was pinned when the slot was claimed.
+  const sourceAssetId = job.input_asset_id ?? session.source_asset_id;
   if (!sourceAssetId) {
     throw new FreezeError("NO_SOURCE", "pick a photo first");
   }
@@ -493,35 +578,6 @@ export async function runFreezeRender(
   if (!url) {
     throw new FreezeError("SOURCE_UNAVAILABLE", "the source photo expired");
   }
-
-  const job = await createCreativeJob(
-    supabase,
-    session.user_id,
-    input.channel,
-    "freeze",
-    undefined,
-    {
-      freezeSessionId: session.id,
-      freezeKind: "render",
-      inputAssetId: sourceAssetId,
-    }
-  );
-  if (!(await claimFreezeSlot(supabase, session, job.id, true))) {
-    await updateCreativeJob(supabase, job.id, {
-      status: "failed",
-      error: "superseded before admission",
-    });
-    throw new FreezeError(
-      "JOB_ALREADY_ACTIVE",
-      "another render is still running"
-    );
-  }
-  await appendFreezeEvent(supabase, session.id, {
-    jobId: job.id,
-    kind: "state",
-    state: "admitted",
-  });
-
   try {
     const result = await executeCreativeJob(
       supabase,
@@ -538,21 +594,8 @@ export async function runFreezeRender(
         promptVersion: FREEZE_PROMPT_VERSION,
       }
     );
-    await appendFreezeEvent(supabase, session.id, {
-      jobId: job.id,
-      kind: result.status === "delivered" ? "completed" : "state",
-      state: result.status,
-      assetId: result.asset?.id,
-      errorCode:
-        result.status === "delivered"
-          ? undefined
-          : safeFreezeErrorCode(result.line),
-    });
-    await supabase
-      .from("freeze_sessions")
-      .update({ latest_job_id: job.id })
-      .eq("id", session.id);
-    return { job, result };
+    await finishFreezeRun(supabase, session, job, result);
+    return result;
   } finally {
     await releaseFreezeSlot(supabase, session.id, job.id);
   }
@@ -666,6 +709,7 @@ export interface FreezeJobRow {
   jobId: string;
   kind: "sketch" | "render";
   state: string;
+  error: string | null;
   outputAssetId: string | null;
   outputUrl: string | null;
   createdAt: string;
@@ -719,7 +763,7 @@ export async function freezeStatus(
 
   const { data: jobRows } = await supabase
     .from("creative_jobs")
-    .select("id, freeze_kind, status, output_asset_id, created_at")
+    .select("id, freeze_kind, status, error, output_asset_id, created_at")
     .eq("user_id", session.user_id)
     .eq("freeze_session_id", session.id)
     .order("created_at", { ascending: true });
@@ -729,6 +773,7 @@ export async function freezeStatus(
     id: string;
     freeze_kind: string | null;
     status: string;
+    error: string | null;
     output_asset_id: string | null;
     created_at: string;
   }[]) {
@@ -743,6 +788,7 @@ export async function freezeStatus(
       jobId: row.id,
       kind: row.freeze_kind === "render" ? "render" : "sketch",
       state: row.status,
+      error: row.error,
       outputAssetId: row.output_asset_id,
       outputUrl,
       createdAt: row.created_at,

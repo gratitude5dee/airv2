@@ -50,6 +50,7 @@ interface FreezeJob {
   jobId: string;
   kind: "sketch" | "render";
   state: string;
+  error: string | null;
   outputAssetId: string | null;
   outputUrl: string | null;
   createdAt: string;
@@ -880,6 +881,12 @@ function Studio(props: { initial: Payload }) {
   const [busy, setBusy] = useState(false);
   const [line, setLine] = useState<string | null>(null);
   const [showSketch, setShowSketch] = useState(false);
+  // The job this page admitted — the action returns at admit-time and the
+  // poll resolves it, so cancel stays reachable through the whole render.
+  const [watchJob, setWatchJob] = useState<{
+    id: string;
+    kind: "sketch" | "render";
+  } | null>(null);
 
   const [keyframes, setKeyframes] = useState<CameraKeyframe[]>([
     START_KEYFRAME,
@@ -899,13 +906,37 @@ function Studio(props: { initial: Payload }) {
   const cameraRef = useRef<HTMLInputElement | null>(null);
   const lastMediaRefresh = useRef(0);
 
-  const adopt = useCallback((payload: Payload) => {
-    if (typeof payload.latest === "number") setLatest(payload.latest);
-    setActiveJob(payload.activeJob ?? null);
-    if (payload.sourceUrl) setSourceUrl(payload.sourceUrl);
-    if (payload.sourceAssetId) setSourceAssetId(payload.sourceAssetId);
-    if (payload.renders) setRenders(payload.renders);
-  }, []);
+  const adopt = useCallback(
+    (payload: Payload) => {
+      if (typeof payload.latest === "number") setLatest(payload.latest);
+      setActiveJob(payload.activeJob ?? null);
+      if (payload.sourceUrl) setSourceUrl(payload.sourceUrl);
+      if (payload.sourceAssetId) setSourceAssetId(payload.sourceAssetId);
+      if (payload.renders) setRenders(payload.renders);
+      // Resolve a watched job once its slot frees: the deliver outcome
+      // advances the stage, the failure surfaces its line.
+      if (watchJob && !payload.activeJob) {
+        const list =
+          watchJob.kind === "render" ? payload.renders : payload.sketches;
+        const entry = list?.find((r) => r.jobId === watchJob.id);
+        if (entry && (entry.state === "delivered" || entry.state === "failed")) {
+          setWatchJob(null);
+          if (entry.state === "delivered") {
+            if (watchJob.kind === "render") {
+              setLine(null);
+              setStage("result");
+            } else {
+              setLine("still delivered — set the camera move");
+              setStage("camera");
+            }
+          } else {
+            setLine(entry.error ?? "that didn't come out — try again?");
+          }
+        }
+      }
+    },
+    [watchJob]
+  );
 
   const refresh = useCallback(async () => {
     const payload = await postAction({ action: "status", after: String(latest) });
@@ -989,13 +1020,15 @@ function Studio(props: { initial: Payload }) {
       if (canvas) form.set("canvas", canvas, "sketch.png");
       const payload = await postAction(form);
       setBusy(false);
-      if (!payload || payload.error || payload.status !== "delivered") {
+      if (!payload || payload.error || !payload.jobId) {
         fail(payload, "that didn't work — try again?");
         return;
       }
-      setLine(payload.line ?? "still delivered — set the camera move");
+      // The job keeps running after this response — watch it through the
+      // status poll; the still lands in the payload's source fields.
+      setWatchJob({ id: payload.jobId, kind: "sketch" });
       adopt(payload);
-      setStage("camera");
+      setLine("generating the still — about a minute");
     },
     [busy, adopt]
   );
@@ -1094,13 +1127,13 @@ function Studio(props: { initial: Payload }) {
     }
     const payload = await postAction(fields);
     setBusy(false);
-    if (!payload || payload.error || payload.status !== "delivered") {
-      fail(payload, "that render didn't come out — try again?");
+    if (!payload || payload.error || !payload.jobId) {
+      fail(payload, "that render didn't start — try again?");
       return;
     }
-    setLine(payload.line ?? null);
+    setWatchJob({ id: payload.jobId, kind: "render" });
     adopt(payload);
-    setStage("result");
+    setLine("freezing — a few minutes");
   }, [busy, sourceAssetId, preset, resolution, seed, keyframes, duration, adopt]);
 
   const onSave = useCallback(
@@ -1126,6 +1159,8 @@ function Studio(props: { initial: Payload }) {
 
   const onCancel = useCallback(async () => {
     await postAction({ action: "cancel" });
+    setWatchJob(null);
+    setLine(null);
     await refresh();
   }, [refresh]);
 
@@ -1155,6 +1190,15 @@ function Studio(props: { initial: Payload }) {
           </button>
         ))}
       </div>
+      {activeJob && (
+        <button
+          type="button"
+          className="fz-ghost"
+          onClick={() => void onCancel()}
+        >
+          cancel the running job
+        </button>
+      )}
 
       {stage === "source" && (
         <div className="fz-stage">
@@ -1229,7 +1273,10 @@ function Studio(props: { initial: Payload }) {
               >
                 ← back
               </button>
-              <SketchPad busy={busy} onGenerate={onSketch} />
+              <SketchPad
+                busy={busy || watchJob?.kind === "sketch"}
+                onGenerate={onSketch}
+              />
             </>
           )}
         </div>
@@ -1362,17 +1409,12 @@ function Studio(props: { initial: Payload }) {
             <button
               type="button"
               className="fz-primary"
-              disabled={busy || !sourceAssetId}
+              disabled={busy || !sourceAssetId || watchJob !== null}
               onClick={() => void onRender()}
             >
-              {busy ? "freezing…" : "freeze it"}
+              {watchJob?.kind === "render" || busy ? "freezing…" : "freeze it"}
             </button>
           </div>
-          {activeJob && (
-            <button type="button" className="fz-ghost" onClick={() => void onCancel()}>
-              cancel the running job
-            </button>
-          )}
         </div>
       )}
 

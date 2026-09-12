@@ -11,13 +11,14 @@
  *   source — set the source still; `kind=sketch` runs a Flare sketch job
  *            (canvas file or PNG data URL optional), otherwise a raw file
  *            upload or data URL (iPhone HEIC converted to PNG server-side)
- *   render — admit + run a camera-move job on the fal multi-angle lane
- *            (blocks on the render, like every studio action here)
+ *   render — admit a camera-move job on the fal multi-angle lane, then
+ *            run it via after() so the response returns the job id
+ *            immediately (the client shows cancel and polls)
  *   save   — attachment-send a render's video back to the iMessage chat
  *   cancel — free the in-flight slot (provider keeps running; the job is
  *            marked failed — fal has no cancel on this endpoint)
  */
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { ASSETS_BUCKET } from "@/lib/assets/keys";
 import { mintDelivery, type CreativeAsset } from "@/lib/assets/pipeline";
 import { createSpectrumSender } from "@/lib/spectrum/sender";
@@ -32,9 +33,11 @@ import {
   getFreezeSession,
   type FreezeSession,
   MAX_FREEZE_UPLOAD_BYTES,
+  admitFreezeRender,
+  admitFreezeSketch,
+  executeFreezeRender,
+  executeFreezeSketch,
   resolveFreezeRender,
-  runFreezeRender,
-  runFreezeSketch,
   setFreezeSource,
   storeFreezeUpload,
 } from "../freeze";
@@ -233,28 +236,35 @@ export const freeze: MiniAppModule = {
               sketchAssetId = asset.id;
             }
 
-            const { job, result } = await runFreezeSketch(
-              ctx.supabase,
-              session,
-              {
+            const job = await admitFreezeSketch(ctx.supabase, session, {
+              prompt,
+              mode,
+              sketchAssetId,
+              channel: "web",
+            });
+            // Admission returns immediately; the generation runs after the
+            // response so the client sees the job (and can cancel it) while
+            // it's still running.
+            const supabase = ctx.supabase;
+            after(() =>
+              executeFreezeSketch(supabase, session, job, {
                 prompt,
                 mode,
                 sketchAssetId,
-                channel: "web",
-              }
+              }).catch((error: unknown) =>
+                console.error(
+                  JSON.stringify({
+                    msg: "freeze sketch run failed",
+                    session_id: session.id,
+                    error:
+                      error instanceof Error ? error.message : String(error),
+                  })
+                )
+              )
             );
-            // The job already ran — surface its terminal status (and the
-            // refreshed studio state) so a failed render isn't presented
-            // as a delivered still.
             return json({
               jobId: job.id,
-              status: result.status,
-              line:
-                result.status === "delivered"
-                  ? (result.deliveryLine ?? "still delivered")
-                  : result.line,
-              assetId: result.asset?.id,
-              deliveryUrl: result.deliveryUrl,
+              admitted: true,
               ...(await studioPayload(ctx, session, -1)),
             });
           }
@@ -333,23 +343,26 @@ export const freeze: MiniAppModule = {
               String(form.get("resolution") ?? "").trim() || undefined,
             seed: Number.isSafeInteger(seed) ? seed : undefined,
           });
-          const { job, result } = await runFreezeRender(
-            ctx.supabase,
-            session,
-            {
-              ...resolved,
-              channel: "web",
-            }
+          const job = await admitFreezeRender(ctx.supabase, session, {
+            channel: "web",
+          });
+          const supabase = ctx.supabase;
+          after(() =>
+            executeFreezeRender(supabase, session, job, resolved).catch(
+              (error: unknown) =>
+                console.error(
+                  JSON.stringify({
+                    msg: "freeze render run failed",
+                    session_id: session.id,
+                    error:
+                      error instanceof Error ? error.message : String(error),
+                  })
+                )
+            )
           );
           return json({
             jobId: job.id,
-            status: result.status,
-            line:
-              result.status === "delivered"
-                ? (result.deliveryLine ?? "rendered")
-                : result.line,
-            assetId: result.asset?.id,
-            deliveryUrl: result.deliveryUrl,
+            admitted: true,
             ...(await studioPayload(ctx, session, -1)),
           });
         }

@@ -92,8 +92,12 @@ interface QueuedMessage {
 const HAS_ATTACHMENT_MARKER = /\[attachment:[^\]]+\]/;
 
 /** The debounce a message earns: media and creative commands wait for each other. */
+const MINIAPP_COMMAND = /(^|[^A-Za-z0-9_/])\/(draw|freeze)(?=$|[^A-Za-z0-9_-])/i;
 export function debounceMsFor(body: string): number {
   if (HAS_ATTACHMENT_MARKER.test(body)) return REFERENCE_WINDOW_MS;
+  // Mini-app commands earn the same window as creative commands — the
+  // photo they act on often lands as a second message inside the burst.
+  if (MINIAPP_COMMAND.test(body)) return REFERENCE_WINDOW_MS;
   const command = parseExplicitGenerationCommand(body);
   if (command && !("ambiguous" in command)) return REFERENCE_WINDOW_MS;
   return DEBOUNCE_MS;

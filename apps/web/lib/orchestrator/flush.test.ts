@@ -114,6 +114,12 @@ describe("debounceMsFor", () => {
     expect(debounceMsFor("/animate slowly")).toBe(REFERENCE_WINDOW_MS);
   });
 
+  it("holds a bare mini-app command open for media that follows it", () => {
+    expect(debounceMsFor("/freeze")).toBe(REFERENCE_WINDOW_MS);
+    expect(debounceMsFor("/freeze orbit the photo")).toBe(REFERENCE_WINDOW_MS);
+    expect(debounceMsFor("/draw")).toBe(REFERENCE_WINDOW_MS);
+  });
+
   it("keeps the short debounce for prose and ambiguous commands", () => {
     expect(debounceMsFor("what's on my calendar")).toBe(DEBOUNCE_MS);
     expect(debounceMsFor("/imagine or /zap it")).toBe(DEBOUNCE_MS);

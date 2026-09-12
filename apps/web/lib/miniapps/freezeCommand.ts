@@ -12,15 +12,17 @@
  * the burst instead of eating it.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { ingestUploadedMedia } from "../creative/store";
-import { heifToPng, isHeif } from "../identity/heif";
 import type { SpectrumSender } from "../spectrum/sender";
 import {
   cardLayout,
   mintSignedLink,
   persistCardSession,
 } from "./cards";
-import { createFreezeSession, runFreezeSketch } from "./freeze";
+import {
+  createFreezeSession,
+  runFreezeSketch,
+  storeFreezeUpload,
+} from "./freeze";
 import {
   MiniAppRegistryLookupError,
   OWNER_ONLY_CARD_LINE,
@@ -83,24 +85,14 @@ export async function maybeRunFreezeLane(
     const fetched = await sender
       .getAttachment(id, job.phone)
       .catch(() => undefined);
-    // Spectrum can label HEIC octet-stream — sniff the container before
-    // the image/* gate so those attachments aren't skipped.
+    // storeFreezeUpload owns the whole contract: HEIC sniff + PNG convert
+    // (octet-stream mislabels included), media guard, type allowlist.
     if (!fetched) continue;
-    let bytes = fetched.data;
-    let mimeType = fetched.mimeType;
-    if (isHeif(mimeType, bytes)) {
-      const converted = await heifToPng(bytes).catch(() => undefined);
-      if (!converted) continue;
-      bytes = converted;
-      mimeType = "image/png";
-    } else if (!mimeType.startsWith("image/")) {
-      continue;
-    }
-    const asset = await ingestUploadedMedia(
+    const asset = await storeFreezeUpload(
       supabase,
       job.userId,
-      bytes,
-      mimeType
+      fetched.data,
+      fetched.mimeType
     ).catch(() => undefined);
     if (asset) {
       sourceAssetId = asset.id;
