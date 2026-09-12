@@ -324,6 +324,14 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
   const [selectedRevisionId, setSelectedRevisionId] = useState<string | null>(
     null
   );
+  // The preview only paints once its image actually decoded — a blind tab
+  // flip shows a torn frame in a constrained webview (mayor-coast parity).
+  const [decodedPreviewUrl, setDecodedPreviewUrl] = useState<string | null>(
+    null
+  );
+  // A job submitted this session may flip itself to Preview exactly once;
+  // an explicit tab choice by the user cancels that (explicit view wins).
+  const autoRevealJob = useRef<string | null>(null);
   // The media the preview/save target: a delivered zap job isn't a draw
   // revision, so it carries its own pointer until the user picks a revision.
   const [animatedJobId, setAnimatedJobId] = useState<string | null>(
@@ -598,6 +606,94 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
     );
   }, [targetRevision?.outputUrl, revisions, animatedPreviewUrl]);
 
+  /* -------------------------------------------- preview decode + reveal */
+
+  const previewIsVideo = /\.(mp4|mov)(\?|$)/i.test(previewUrl ?? "");
+
+  useEffect(() => {
+    if (!previewUrl || previewIsVideo) {
+      setDecodedPreviewUrl(null);
+      return;
+    }
+    const image = new Image();
+    image.onload = () => setDecodedPreviewUrl(previewUrl);
+    image.onerror = () =>
+      setMessage("the image is ready, but its preview couldn't load — reopen the card");
+    image.src = previewUrl;
+  }, [previewUrl, previewIsVideo]);
+
+  const showPreview = Boolean(
+    tab === "preview" &&
+      previewUrl &&
+      (previewIsVideo || decodedPreviewUrl === previewUrl)
+  );
+
+  useEffect(() => {
+    const jobId = autoRevealJob.current;
+    if (!jobId) return;
+    const url =
+      revisions.find((r) => r.jobId === jobId)?.outputUrl ??
+      (animatedJobId === jobId ? animatedPreviewUrl : null);
+    if (!url) return;
+    const video = /\.(mp4|mov)(\?|$)/i.test(url);
+    if (!video && decodedPreviewUrl !== url) return;
+    autoRevealJob.current = null;
+    setTab("preview");
+  }, [revisions, decodedPreviewUrl, animatedJobId, animatedPreviewUrl]);
+
+  /* --------------------------------------------------------- keyboard */
+
+  const selectView = useCallback((next: "sketch" | "preview"): void => {
+    autoRevealJob.current = null;
+    setTab(next);
+  }, []);
+
+  const viewKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLButtonElement>): void => {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key))
+        return;
+      event.preventDefault();
+      const next =
+        event.key === "Home" || event.key === "ArrowLeft"
+          ? "sketch"
+          : "preview";
+      if (next === "preview" && !previewUrl) return;
+      selectView(next);
+      (
+        event.currentTarget.parentElement?.querySelector(
+          `[data-draw-view="${next}"]`
+        ) as HTMLButtonElement | null
+      )?.focus();
+    },
+    [previewUrl, selectView]
+  );
+
+  const modeKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLButtonElement>, currentMode: Mode): void => {
+      const horizontal =
+        event.key === "ArrowRight" || event.key === "ArrowLeft";
+      if (!horizontal && event.key !== "Home" && event.key !== "End") return;
+      event.preventDefault();
+      const index = MODES.indexOf(currentMode);
+      const next =
+        event.key === "Home"
+          ? MODES[0]!
+          : event.key === "End"
+            ? MODES.at(-1)!
+            : MODES[
+                (index + (event.key === "ArrowRight" ? 1 : -1) + MODES.length) %
+                  MODES.length
+              ]!;
+      setMode(next);
+      (
+        event.currentTarget.parentElement?.querySelector(
+          `[data-mode="${next}"]`
+        ) as HTMLButtonElement | null
+      )?.focus();
+    },
+    []
+  );
+
   /* ----------------------------------------------------------- actions */
 
   const inkPresent = useCallback((): boolean => {
@@ -722,6 +818,7 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
         setMessage(errorLine(payload));
         return;
       }
+      autoRevealJob.current = payload.jobId ?? null;
       setActiveJob(payload.activeJob);
       setLatest(payload.latest);
       setRevisions(payload.revisions);
@@ -730,10 +827,8 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
           ? (payload.line ?? "image ready")
           : (payload.line ?? null)
       );
-      if (payload.deliveryUrl) {
-        setPreviewUrl(payload.deliveryUrl);
-        setTab("preview");
-      }
+      // The tab flips via the auto-reveal effect once the preview decodes.
+      if (payload.deliveryUrl) setPreviewUrl(payload.deliveryUrl);
       if (payload.status === "delivered") {
         setStrokes([]);
         setRedoStack([]);
@@ -783,8 +878,8 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
         setAnimatedPreviewUrl(payload.deliveryUrl ?? null);
       }
       if (payload.deliveryUrl) {
+        autoRevealJob.current = payload.jobId ?? null;
         setPreviewUrl(payload.deliveryUrl);
-        setTab("preview");
       }
     } finally {
       setBusy(null);
@@ -882,24 +977,37 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
   return (
     <div className="ds-root">
       <div className="ds-top">
-        <div className="ds-view-toggle" data-view={tab} role="tablist">
+        <div
+          className="ds-view-toggle"
+          data-view={tab}
+          role="tablist"
+          aria-label="Canvas view"
+        >
           <span className="ds-view-thumb" aria-hidden="true" />
           <button
             type="button"
             role="tab"
+            data-draw-view="sketch"
             aria-selected={tab === "sketch"}
+            aria-controls="ds-canvas-panel"
+            tabIndex={tab === "sketch" ? 0 : -1}
             className={tab === "sketch" ? "active" : ""}
-            onClick={() => setTab("sketch")}
+            onClick={() => selectView("sketch")}
+            onKeyDown={viewKeyDown}
           >
             Sketch
           </button>
           <button
             type="button"
             role="tab"
+            data-draw-view="preview"
             aria-selected={tab === "preview"}
+            aria-controls="ds-canvas-panel"
+            tabIndex={tab === "preview" ? 0 : -1}
             className={tab === "preview" ? "active" : ""}
             disabled={!previewUrl}
-            onClick={() => setTab("preview")}
+            onClick={() => selectView("preview")}
+            onKeyDown={viewKeyDown}
           >
             Preview
           </button>
@@ -942,8 +1050,12 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
         </div>
       ) : null}
 
-      <div className="ds-canvas-zone" ref={canvasZoneRef}>
-        <div className="ds-viewport" ref={viewportRef}>
+      <div className="ds-canvas-zone" ref={canvasZoneRef} id="ds-canvas-panel">
+        <div
+          className="ds-viewport"
+          ref={viewportRef}
+          data-testid="draw-canvas-viewport"
+        >
           <canvas ref={bgCanvasRef} className="ds-layer" />
           <canvas
             ref={strokeCanvasRef}
@@ -955,9 +1067,10 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
             onLostPointerCapture={onPointerUp}
             onContextMenu={(event) => event.preventDefault()}
             aria-label="Drawing canvas"
+            data-testid="draw-canvas"
           />
-          {tab === "preview" && previewUrl ? (
-            /\.(mp4|mov)(\?|$)/i.test(previewUrl) ? (
+          {showPreview && previewUrl ? (
+            previewIsVideo ? (
               <video
                 className="ds-preview is-visible"
                 src={previewUrl}
@@ -965,7 +1078,11 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
                 playsInline
               />
             ) : (
-              <img className="ds-preview is-visible" src={previewUrl} alt="Generated" />
+              <img
+                className="ds-preview is-visible"
+                src={previewUrl}
+                alt="Generated"
+              />
             )
           ) : null}
           {tab === "sketch" && !hasInk && !backgroundUrl ? (
@@ -1076,11 +1193,14 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
               key={item}
               type="button"
               role="radio"
+              data-mode={item}
               aria-checked={mode === item}
               aria-label={MODE_LABELS[item]}
               title={MODE_LABELS[item]}
+              tabIndex={mode === item ? 0 : -1}
               className={mode === item ? "active" : ""}
               onClick={() => setMode(item)}
+              onKeyDown={(event) => modeKeyDown(event, item)}
             >
               <ModeIcon mode={item} />
             </button>
@@ -1109,7 +1229,7 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
             <button
               type="button"
               className="ds-generate"
-              disabled={busy !== null}
+              disabled={busy !== null || tab === "preview"}
               onClick={() => void generate()}
             >
               {busy === "generate" ? "Generating…" : refining ? "Refine" : "Generate"}
@@ -1147,7 +1267,9 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
         <p className="ds-tagline">
           Sketch it, describe it, then make it real.
         </p>
-        {message ? <p className="ds-message">{message}</p> : null}
+        <p className="ds-message" aria-live="polite">
+          {message}
+        </p>
       </div>
     </div>
   );
