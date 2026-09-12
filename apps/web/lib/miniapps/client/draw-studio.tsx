@@ -329,20 +329,57 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
   const [decodedPreviewUrl, setDecodedPreviewUrl] = useState<string | null>(
     null
   );
-  // Which job the preview currently shows. Signed URLs rotate on every
-  // poll, so asset identity — not the URL string — decides when to swap
-  // the media src; otherwise each poll would blank the decode-gated image.
-  const previewKey = useRef<string | null>(
-    initial.revisions.filter((r) => r.outputUrl).at(-1)?.jobId ?? null
-  );
+  // Which job the preview shows, plus the freshest signed URL seen for it.
+  // Signatures rotate every poll and expire after 30 min, while sessions
+  // live 24h — so the rendered src stays stable per asset, images quietly
+  // swap to a decoded re-signed URL at most once a minute, and video keeps
+  // its src (a swap would restart playback) with freshUrl for error retry.
+  const previewAsset = useRef<{
+    jobId: string | null;
+    url: string | null;
+    freshUrl: string | null;
+    refreshedAt: number;
+  }>({
+    jobId: initial.revisions.filter((r) => r.outputUrl).at(-1)?.jobId ?? null,
+    url:
+      initial.revisions.filter((r) => r.outputUrl).at(-1)?.outputUrl ?? null,
+    freshUrl: null,
+    refreshedAt: 0,
+  });
   const showAsset = useCallback(
     (jobId: string | null, url: string | null): void => {
-      if (url && jobId && previewKey.current === jobId) return;
-      previewKey.current = jobId;
+      const shown = previewAsset.current;
+      if (url && jobId && shown.jobId === jobId) {
+        shown.freshUrl = url;
+        if (url === shown.url) return;
+        if (/\.(mp4|mov)(\?|$)/i.test(url)) return;
+        if (Date.now() - shown.refreshedAt < 60_000) return;
+        shown.refreshedAt = Date.now();
+        const image = new Image();
+        image.onload = () => {
+          if (previewAsset.current.jobId === jobId) {
+            previewAsset.current.url = url;
+            setPreviewUrl(url);
+            setDecodedPreviewUrl(url);
+          }
+        };
+        image.src = url;
+        return;
+      }
+      previewAsset.current = { jobId, url, freshUrl: null, refreshedAt: 0 };
       setPreviewUrl(url);
     },
     []
   );
+  // Expired media src → swap to the freshest signed URL the polls recorded.
+  const retryFreshUrl = useCallback((): void => {
+    const shown = previewAsset.current;
+    if (shown.freshUrl && shown.freshUrl !== shown.url) {
+      previewAsset.current = { ...shown, url: shown.freshUrl, freshUrl: null };
+      setDecodedPreviewUrl(null);
+      setPreviewUrl(shown.freshUrl);
+    }
+  }, []);
   // A job submitted this session may flip itself to Preview exactly once;
   // an explicit tab choice by the user cancels that (explicit view wins).
   // Reopening a card mid-render arms it too — the user came back to watch
@@ -619,8 +656,9 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
     setActiveJob(payload.activeJob);
     setRevisions(payload.revisions);
     const newest = payload.revisions.filter((r) => r.outputUrl).at(-1);
-    // A delivered animation isn't a revision — don't swap it for the still.
-    if (newest?.outputUrl && !animatedPreviewUrl) {
+    // A delivered animation isn't a revision — don't swap it for the still,
+    // and never stomp an explicitly selected revision.
+    if (newest?.outputUrl && !animatedPreviewUrl && !selectedRevisionId) {
       showAsset(newest.jobId, newest.outputUrl);
     }
     // An animation that finished while the page was closed/mid-poll lands
@@ -636,7 +674,14 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
       setAnimatedPreviewUrl(next.url);
       showAsset(next.jobId, next.url);
     }
-  }, [latest, activeJob, animatedPreviewUrl, animatedJobId, showAsset]);
+  }, [
+    latest,
+    activeJob,
+    animatedPreviewUrl,
+    animatedJobId,
+    selectedRevisionId,
+    showAsset,
+  ]);
 
   useEffect(() => {
     // ~2.5s cadence: the render lane has no preview stream, so the strip
@@ -703,7 +748,7 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
     const video = /\.(mp4|mov)(\?|$)/i.test(previewUrl ?? url);
     if (
       !video &&
-      !(previewKey.current === jobId && decodedPreviewUrl === previewUrl)
+      !(previewAsset.current.jobId === jobId && decodedPreviewUrl === previewUrl)
     ) {
       return;
     }
@@ -922,6 +967,8 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
       if (payload.status === "delivered") {
         setStrokes([]);
         setRedoStack([]);
+        // The just-generated asset becomes what the preview follows again.
+        setSelectedRevisionId(null);
         clearAnimation();
       }
     } finally {
@@ -1170,12 +1217,14 @@ function Studio({ initial }: { initial: Payload }): React.ReactElement {
                 src={previewUrl}
                 controls
                 playsInline
+                onError={retryFreshUrl}
               />
             ) : (
               <img
                 className="ds-preview is-visible"
                 src={previewUrl}
                 alt="Generated"
+                onError={retryFreshUrl}
               />
             )
           ) : null}
