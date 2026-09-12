@@ -16,6 +16,7 @@ import {
 } from "@/lib/routing/spectrum";
 import {
   dedupeInboundEvent,
+  isOnboardingLine,
   resolveLine,
   resolveSenderHandle,
 } from "@/lib/routing/inbound";
@@ -31,8 +32,16 @@ import {
 import { quickAckReply } from "@/lib/orchestrator/sharedBridge";
 import { prewarmBox } from "@/lib/orchestrator/boxes";
 import { createSpectrumSender } from "@/lib/spectrum/sender";
-import { handleOnboarding } from "@/lib/provisioning/onboarding";
-import { createDecision, resolveTrustTier } from "@/lib/routing/trust";
+import {
+  handleOnboarding,
+  signupSender,
+} from "@/lib/provisioning/onboarding";
+import { ensureComputeProvisioned } from "@/lib/provisioning/provision";
+import {
+  createDecision,
+  normalizeAddress,
+  resolveTrustTier,
+} from "@/lib/routing/trust";
 import {
   isOnairosTrigger,
   relayToOnairos,
@@ -45,6 +54,28 @@ export const maxDuration = 800;
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+/**
+ * Reply on the line: thread under the source message when the target
+ * resolves, plain send otherwise.
+ */
+async function sendLineReply(
+  spaceId: string,
+  phone: string,
+  messageId: string,
+  text: string,
+): Promise<void> {
+  const sender = await createSpectrumSender().catch(() => undefined);
+  if (!sender) return;
+  try {
+    const threaded = await sender
+      .sendReply(spaceId, phone, messageId, text)
+      .catch(() => false);
+    if (!threaded) await sender.sendText(spaceId, phone, text);
+  } finally {
+    await sender.close().catch(() => undefined);
+  }
+}
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const rawBody = new Uint8Array(await request.arrayBuffer());
@@ -110,20 +141,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ ok: true, deduped: true }, { status: 200 });
   }
 
-  if (!route || !inbound.phone) {
-    // Unroutable line: recorded as an event, no work dispatched. Log the
-    // line identifier (never content) so misrouted numbers are diagnosable.
-    console.error(
-      JSON.stringify({
-        msg: "imessage inbound unroutable",
-        line_phone: inbound.phone ?? null,
-        space_id: inbound.spaceId,
-        message_id: inbound.messageId,
-      }),
-    );
-    return NextResponse.json({ ok: true }, { status: 200 });
-  }
-
   const marker =
     inbound.attachmentIds.length > 0
       ? `[attachment:${inbound.attachmentIds.join(",")}]`
@@ -139,12 +156,56 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     console.error(
       JSON.stringify({
         msg: "imessage inbound empty body",
-        user_id: route.userId,
+        user_id: route?.userId ?? null,
         space_id: inbound.spaceId,
         message_id: inbound.messageId,
       }),
     );
     return NextResponse.json({ ok: true }, { status: 200 });
+  }
+
+  if (!route || !inbound.phone) {
+    // Self-serve signup (platform.md §user lifecycle): the onboarding line
+    // answers unknown senders with a fresh pre-active account bound to their
+    // own handle, then the same claim/OTP flow an invited user runs. On any
+    // other line an unroutable inbound is recorded and dropped.
+    if (
+      inbound.phone &&
+      inbound.senderId &&
+      (await isOnboardingLine(supabase, inbound.phone))
+    ) {
+      if (normalizeAddress("imessage", inbound.senderId)) {
+        route = { userId: await signupSender(supabase, inbound.senderId) };
+      } else {
+        // An iMessage sent from an email Apple ID carries no phone number,
+        // so the SMS OTP could never reach them — say so instead of signing
+        // up an account every later text would still ignore.
+        const spaceId = inbound.spaceId;
+        const phone = inbound.phone;
+        const messageId = inbound.messageId;
+        after(async () => {
+          await sendLineReply(
+            spaceId,
+            phone,
+            messageId,
+            "To sign up, text me from your phone number — I can't reach an email address.",
+          );
+        });
+        return NextResponse.json({ ok: true }, { status: 200 });
+      }
+    } else {
+      // Unroutable line: recorded as an event, no work dispatched. Log the
+      // line identifier (never content) so misrouted numbers are diagnosable.
+      console.error(
+        JSON.stringify({
+          msg: "imessage inbound unroutable",
+          line_phone: inbound.phone ?? null,
+          space_id: inbound.spaceId,
+          message_id: inbound.messageId,
+        }),
+      );
+      return NextResponse.json({ ok: true }, { status: 200 });
+    }
   }
 
   // M3: pre-active accounts are handled by the claim/OTP flow; inbound from
@@ -160,22 +221,29 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
   if (onboarding.kind === "reply") {
     const reply = onboarding.text;
+    const startCompute = onboarding.startCompute === true;
+    const userId = route.userId;
     const spaceId = inbound.spaceId;
     const phone = inbound.phone;
     const messageId = inbound.messageId;
     after(async () => {
-      const sender = await createSpectrumSender().catch(() => undefined);
-      if (!sender) return;
-      try {
-        // Thread under the message being answered; plain send when the
-        // target can't be resolved.
-        const threaded = await sender
-          .sendReply(spaceId, phone, messageId, reply)
-          .catch(() => false);
-        if (!threaded) await sender.sendText(spaceId, phone, reply);
-      } finally {
-        await sender.close().catch(() => undefined);
+      // A self-serve activation owns no box yet — fork it here, in the
+      // background, so the "setting up" reply lands first and the build
+      // isn't bounded by the reply send.
+      if (startCompute) {
+        void ensureComputeProvisioned(supabase, userId).catch(
+          (error: unknown) => {
+            console.error(
+              JSON.stringify({
+                msg: "self-serve compute provision failed",
+                user_id: userId,
+                error: error instanceof Error ? error.message : String(error),
+              }),
+            );
+          },
+        );
       }
+      await sendLineReply(spaceId, phone, messageId, reply);
     });
     return NextResponse.json({ ok: true }, { status: 200 });
   }

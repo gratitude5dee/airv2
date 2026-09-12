@@ -53,6 +53,25 @@ export async function resolveLine(
 }
 
 /**
+ * Whether `phone` is the project's public onboarding line (lines row with
+ * role 'onboarding' — `phone` is the literal "shared" for the pool line, or
+ * a dedicated E.164 for a named signup line). Unknown senders there are new
+ * signups, not tier-2 drops.
+ */
+export async function isOnboardingLine(
+  supabase: SupabaseClient,
+  phone: string
+): Promise<boolean> {
+  const { data } = await supabase
+    .from("lines")
+    .select("id")
+    .eq("phone", phone)
+    .eq("role", "onboarding")
+    .maybeSingle();
+  return data !== null;
+}
+
+/**
  * Resolve a sender handle (platform + address) to its user — the fallback
  * when the line phone doesn't identify the account (Spectrum reports
  * `space.phone: "shared"` on shared-line spaces, so the line alone can't

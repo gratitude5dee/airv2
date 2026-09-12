@@ -561,6 +561,34 @@ async function teardown(target: ComputeTarget): Promise<void> {
 }
 
 /**
+ * Build compute for an existing account that has none — the self-serve
+ * signup path creates the user rows before any box exists, and the first
+ * verified message is what forks their template. No-op when a boxes row
+ * already exists (operator-invited users are provisioned up front).
+ */
+export async function ensureComputeProvisioned(
+  supabase: ReturnType<typeof serviceClient>,
+  userId: string
+): Promise<boolean> {
+  const { data: existing, error } = await supabase
+    .from("boxes")
+    .select("user_id")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) {
+    throw new Error(`box lookup failed for user ${userId}: ${error.message}`);
+  }
+  if (existing) return false;
+  await switchEnvironment(
+    supabase,
+    userId,
+    DEFAULT_ENVIRONMENT,
+    await defaultBoxProvider()
+  );
+  return true;
+}
+
+/**
  * Create the instance and bring it to the state the boxes row describes:
  * per-instance secrets merged into ~/.hermes/.env, config.yaml pointed at the
  * gateway, services restarted, Hermes + dashboard published.

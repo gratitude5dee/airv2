@@ -8,12 +8,101 @@
  * though the operator vouched and Photon named the sender.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { normalizeAddress } from "../routing/trust";
 import { completeSmsAuth, initiateSmsAuth } from "../thirdweb/client";
 
 export type OnboardingAction =
   | { kind: "ignore" }
-  | { kind: "reply"; text: string }
+  | {
+      kind: "reply";
+      text: string;
+      /**
+       * Set when this reply activated a self-serve account that has no
+       * compute yet — the caller provisions the box after the response
+       * (the build outlives any request budget).
+       */
+      startCompute?: boolean;
+    }
   | { kind: "continue" };
+
+/**
+ * Self-serve signup on the public onboarding line (platform.md §user
+ * lifecycle): an unknown sender gets a pending account bound to their own
+ * handle, then runs the same claim → OTP → activate flow an invited user
+ * does — the texter *is* the owner, so there is no claim code to steal and
+ * the OTP is the possession proof. Idempotent: a redelivered first message
+ * or a burst racing itself resolves the handle created moments earlier.
+ */
+export async function signupSender(
+  supabase: SupabaseClient,
+  senderId: string
+): Promise<string> {
+  const address = normalizeAddress("imessage", senderId);
+  const { data: existing } = await supabase
+    .from("handles")
+    .select("user_id")
+    .eq("platform", "imessage")
+    .eq("address", address)
+    .maybeSingle();
+  if (existing?.user_id) return existing.user_id as string;
+
+  const { data: user, error: userError } = await supabase
+    .from("users")
+    .insert({ status: "pending" })
+    .select("id")
+    .single();
+  if (userError || !user) {
+    throw new Error(`users insert failed: ${userError?.message}`);
+  }
+  const userId = user.id as string;
+
+  const { error: entitlementError } = await supabase
+    .from("entitlements")
+    .insert({ user_id: userId });
+  if (entitlementError) {
+    throw new Error(`entitlements insert failed: ${entitlementError.message}`);
+  }
+  const { error: provisioningError } = await supabase
+    .from("provisioning")
+    .insert({
+      user_id: userId,
+      state: "created",
+      bound_phone: address,
+      operator: "self-serve",
+    });
+  if (provisioningError) {
+    throw new Error(`provisioning insert failed: ${provisioningError.message}`);
+  }
+
+  const { error: handleError } = await supabase.from("handles").insert({
+    user_id: userId,
+    platform: "imessage",
+    address,
+  });
+  if (handleError) {
+    if (handleError.code === "23505") {
+      // A concurrent webhook won the race — return the existing account.
+      const { data: won } = await supabase
+        .from("handles")
+        .select("user_id")
+        .eq("platform", "imessage")
+        .eq("address", address)
+        .maybeSingle();
+      if (won?.user_id) return won.user_id as string;
+    }
+    throw new Error(`handles insert failed: ${handleError.message}`);
+  }
+  const { error: senderError } = await supabase.from("senders").insert({
+    user_id: userId,
+    platform: "imessage",
+    address,
+    trust_tier: 0,
+  });
+  if (senderError && senderError.code !== "23505") {
+    throw new Error(`senders insert failed: ${senderError.message}`);
+  }
+  return userId;
+}
 
 interface ProvisioningRow {
   state: string;
@@ -76,10 +165,14 @@ export async function handleOnboarding(
       );
       // Wallet setup unavailable: activate without it so the agent works;
       // the wallet can be attached later from settings.
-      await activate(supabase, userId, row.bound_phone, null);
+      const activated = await activate(supabase, userId, row.bound_phone, null);
+      const startCompute = activated && !(await hasCompute(supabase, userId));
       return {
         kind: "reply",
-        text: "Hey! I'm your agent — you're all set. Text me anything.",
+        text: startCompute
+          ? "Hey! I'm your agent — I'm setting up your computer now, give me a minute and then text me anything."
+          : "Hey! I'm your agent — you're all set. Text me anything.",
+        ...(startCompute ? { startCompute: true } : {}),
       };
     }
   }
@@ -94,10 +187,19 @@ export async function handleOnboarding(
   }
   try {
     const auth = await completeSmsAuth(row.bound_phone, match[1]);
-    await activate(supabase, userId, row.bound_phone, auth.walletAddress);
+    const activated = await activate(
+      supabase,
+      userId,
+      row.bound_phone,
+      auth.walletAddress
+    );
+    const startCompute = activated && !(await hasCompute(supabase, userId));
     return {
       kind: "reply",
-      text: "Verified — your account is secured. Text me anything, any time.",
+      text: startCompute
+        ? "Verified — I'm setting up your computer now, give me a minute and then text me anything."
+        : "Verified — your account is secured. Text me anything, any time.",
+      ...(startCompute ? { startCompute: true } : {}),
     };
   } catch {
     const attempts = row.otp_attempts + 1;
@@ -126,17 +228,36 @@ export async function handleOnboarding(
   }
 }
 
+async function hasCompute(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<boolean> {
+  const { data } = await supabase
+    .from("boxes")
+    .select("user_id")
+    .eq("user_id", userId)
+    .maybeSingle();
+  return data !== null;
+}
+
+/**
+ * The claimed→active transition, claimed atomically: only the first call
+ * resolves true, so a replayed OTP can't kick a second box build.
+ */
 async function activate(
   supabase: SupabaseClient,
   userId: string,
   boundPhone: string,
   walletAddress: string | null
-): Promise<void> {
+): Promise<boolean> {
   const now = new Date().toISOString();
-  await supabase
+  const { data: transitioned } = await supabase
     .from("provisioning")
     .update({ state: "active", updated_at: now })
-    .eq("user_id", userId);
+    .eq("user_id", userId)
+    .neq("state", "active")
+    .select("user_id");
+  if (!transitioned || transitioned.length === 0) return false;
   await supabase
     .from("users")
     .update({
@@ -150,4 +271,5 @@ async function activate(
     .eq("user_id", userId)
     .eq("platform", "imessage")
     .eq("address", boundPhone);
+  return true;
 }
