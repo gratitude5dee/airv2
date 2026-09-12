@@ -4,24 +4,26 @@ Compares the mayor-coast COAST Draw mini-app against the airv2 port. Mayor-coast
 
 Severity and effort follow `review.md` conventions: P1 materially degrades the product, P2 worth scheduling, P3 hygiene; S under a day, M one to three days, L more. Findings carry `DR-##` IDs and `file:line` evidence.
 
+**Status (post-review):** DR-01, DR-02, DR-03, DR-04, DR-05, DR-06, DR-07, DR-08, DR-11 are **implemented and browser-verified in this PR**. Still open: DR-09 and DR-10 (owner design decisions), DR-12 (needs an async job runner — larger change).
+
 ## TL;DR
 
 The port carries the complete feature skeleton — dual-canvas raster editor, palette/eraser/size, image import, revision strip, refine/reset-context, generate → animate → send, and the `/draw` iMessage lane — but it **dropped the gesture-confinement layer mayor-coast built specifically for the Messages webview**. That is the reported accessibility bug: DR-01/02/03 are one root cause in three parts and should land together. The rest is parity work: keyboard/ARIA gaps (DR-04), preview-state handling (DR-05), pointer hardening (DR-06), and three port decisions that need an owner call (tldraw, effects, preview streaming).
 
-| ID | Finding | Sev | Effort |
-|----|---------|-----|--------|
-| DR-01 | Draw strokes scroll the whole mini-app — the webview touch fallback was not ported | P1 | S |
-| DR-02 | Studio is not viewport-bound — page scrolls, square overflows short screens | P1 | S |
-| DR-03 | No `visualViewport` tracking — keyboard open/close slides the layout | P1 | S |
-| DR-04 | Keyboard/ARIA parity gaps: roving tabindex, arrow keys, `aria-live` on the message line | P2 | S |
-| DR-05 | Preview not decode-gated; poll-delivered results never auto-reveal | P2 | S |
-| DR-06 | Dropped pointer hardening: `onLostPointerCapture`, context-menu guard, `stopPropagation`, point clamp | P2 | S |
-| DR-07 | Canvas-zone gutters scroll the page (no `touch-action:none` on the zone) | P2 | S |
-| DR-08 | Generate stays enabled on the Preview tab | P3 | S |
-| DR-09 | Decision needed: tldraw licensed editor not ported | P3 | — |
-| DR-10 | Decision needed: GlowCursor pencil trail / Silk / GhostFibers effects not ported | P3 | — |
-| DR-11 | No `data-testid` hooks — mayor-coast's `draw-layout.spec.ts` can't be ported as-is | P3 | S |
-| DR-12 | Generate/animate run as one blocking POST for the whole render | P2 | M |
+| ID | Finding | Sev | Effort | Status |
+|----|---------|-----|--------|--------|
+| DR-01 | Draw strokes scroll the whole mini-app — the webview touch fallback was not ported | P1 | S | **fixed** |
+| DR-02 | Studio is not viewport-bound — page scrolls, square overflows short screens | P1 | S | **fixed** |
+| DR-03 | No `visualViewport` tracking — keyboard open/close slides the layout | P1 | S | **fixed** |
+| DR-04 | Keyboard/ARIA parity gaps: roving tabindex, arrow keys, `aria-live` on the message line | P2 | S | **fixed** |
+| DR-05 | Preview not decode-gated; poll-delivered results never auto-reveal | P2 | S | **fixed** |
+| DR-06 | Dropped pointer hardening: `onLostPointerCapture`, context-menu guard, `stopPropagation`, point clamp | P2 | S | **fixed** |
+| DR-07 | Canvas-zone gutters scroll the page (no `touch-action:none` on the zone) | P2 | S | **fixed** |
+| DR-08 | Generate stays enabled on the Preview tab | P3 | S | **fixed** |
+| DR-09 | Decision needed: tldraw licensed editor not ported | P3 | — | open |
+| DR-10 | Decision needed: GlowCursor pencil trail / Silk / GhostFibers effects not ported | P3 | — | open |
+| DR-11 | No `data-testid` hooks — mayor-coast's `draw-layout.spec.ts` can't be ported as-is | P3 | S | **fixed** |
+| DR-12 | Generate/animate run as one blocking POST for the whole render | P2 | M | open |
 
 ## The reported bug — "while user draws, the mini-app slides up and down"
 
