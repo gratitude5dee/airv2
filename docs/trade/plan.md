@@ -60,7 +60,7 @@ Do not rebuild any of this. Extend it.
 | First-party box skills | `infra/template/skills/<name>/SKILL.md`, `base-skills.txt`, `sync-box.sh`/`verify-box.sh` | Live. New `infra/template/skills/trade/SKILL.md`, a port of Adaam's `coinbase.md` rewritten against `/api/trade/*`. |
 | Adaam — order schema & preview token | `agent/lib/coinbase-order.ts` (`coinbaseOrderSchema`, `createOrderPreviewToken`/`verifyOrderPreviewToken`, `clientOrderIdForPreview`) | Reference. Port nearly verbatim into `lib/trade/order.ts`; rebind the principal hash from a chat principal to `user_id`. |
 | Adaam — mutation idempotency | `agent/lib/coinbase-operation-store.ts` (`started → succeeded | uncertain`, `nx` insert, 30-day TTL) | Reference. We have Postgres; this becomes the `trade_orders` state machine, not Redis. |
-| Adaam — approval mini-app | `agent/channels/photon-approval-app.ts`, `agent/lib/photon-approval.ts` (`orderApprovalSummary`, order expiry = min(preview expiry, 5 min), thread-bound `YES`/`NO` fallback) | Reference. Summary text and expiry rule port as-is. The `YES/NO` text fallback is **new** for Air (§5.5). |
+| Adaam — approval mini-app | `agent/channels/photon-approval-app.ts`, `agent/lib/photon-approval.ts` (`orderApprovalSummary`, order expiry = min(preview expiry, 5 min), thread-bound `YES`/`NO` fallback) | Reference. Summary text and expiry rule port as-is. The `YES/NO` text fallback does **not** port (§5.5). |
 | Adaam — Coinbase transport | `agent/lib/coinbase-mcp.ts` spawns `@coinbase/coinbase-cli mcp` over bounded stdio | Reference only. See §7.1 for why we do **not** spawn a child MCP inside a Vercel function. |
 | Adaam — evals | `evals/coinbase/*.eval.ts` (order approval, denial, balance language, chained-trade decomposition) | Reference. These four become the acceptance tests for the skill (§9). |
 
@@ -206,9 +206,9 @@ Three surfaces, one resolver:
 
 The resolver, for `trade_order`, in this order: verify decision `pending` and owner; verify preview token (T2) against the decision `ref`; re-verify product SPOT/online (T4); re-check caps against today's ledger (T6); mark `trade_orders.state='submitting'`; call Coinbase create with `client_order_id` (T5); on 2xx → `submitted` and store the Coinbase order id; on unknown → `uncertain` and stop (C23); then the conditional `status='approved'` flip. Deny → `denied`, token discarded. Expiry → a sweep marks `expired` and the card reloads to "Expired — ask again for a fresh preview".
 
-### 5.5 Text fallback on iMessage (new for Air)
+### 5.5 No text approval on iMessage — deliberately
 
-Adaam accepts a thread-bound `YES`/`NO`. Air has no text approval parser today. Add one, narrowly: while a `trade_order` is `pending` for this user *and* the inbound arrives within its expiry, a message whose entire trimmed body is `yes|approve` or `no|deny|cancel` resolves it through the same resolver. Anything else falls through as normal chat. Never match inside a longer sentence ("yes but make it $40" is a new request, and T3 refuses it until the pending one is resolved or denied). Logged as `decision.resolved_via='text'`.
+Adaam accepts a thread-bound `YES`/`NO`. Air does **not** add that, and the architecture note is explicit about why ("an approval arrives as a card that flips to Approved ✓ in place when tapped. No 'reply YES to confirm' parsing"). A typed "yes" while a `trade_order` is pending is answered with the card re-sent (or the `mintApprovalUrl` rich link if the card cannot be sent), never resolved from text. Reasons specific to money: a text approval can be triggered by a forwarded or misread message, cannot show the receipt block it is approving, and cannot be made single-use per rendering the way a card/link token is (architecture §2.4 rule 3, "single-use for anything with a side effect"). "Yes but make it $40" is a new request; T3 refuses it until the pending order is approved, denied, or expired.
 
 ---
 
@@ -373,7 +373,7 @@ A port of Adaam's `coinbase.md` with tool names replaced by the `curl` recipes t
 |---|---|---|---|
 | **T0** | Parser + both dispatch sites; `trade` module with Portfolio/Trade/Orders/Watch/Settings in **paper mode only**; box document types; `0109` migration (row, kinds, tables); `trade` skill; deterministic `/trade portfolio|orders|watch|help`; paper preview→approve→fill through the real decision resolver | 1 session | Product exists here. No Coinbase key anywhere yet. |
 | **T1** | `coinbaseVenue` REST client + JWT; Settings → Connect (sealed store, verify, portfolio pick); live reads (balances, products, orders) in the app and via `/api/trade/*` | 1 session | Needs a CDP Advanced Trade key on a test portfolio (owner action). |
-| **T2** | Live orders: `propose` → `trade_order` decision → three approve surfaces → create with `client_order_id`; caps; `trade_expire` cron; text `yes/no` fallback; failure copy; live gate run | 1 session | The four ported evals pass on paper before this starts. |
+| **T2** | Live orders: `propose` → `trade_order` decision → three approve surfaces → create with `client_order_id`; caps; `trade_expire` cron; card re-send on typed "yes"; failure copy; live gate run | 1 session | The four ported evals pass on paper before this starts. |
 | **T3** | Limit / stop-limit tickets, `trade_cancel`, reconciliation of `submitted → filled` from fills, receipts in chat, snapshot history + sparkline | 0.5–1 session | |
 | **T4** | Watchlist alerts (`trade-watch` cron, public prices, per-line delivery), `trade_settings` decision for caps, alias words, `open-miniapp` skill mention | 0.5 session | |
 | Later | Onchain venue (`thirdwebVenue`: USDC↔token swaps on Base from the user's existing wallet, same `TradeVenue`, same approval card); Adaam strategy packs as read-only research lanes; USD/USDC convert + portfolio transfer (Adaam has these; each is one more approval kind) | — | Not v1. |
