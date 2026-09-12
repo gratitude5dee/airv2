@@ -753,7 +753,7 @@ function createThreeStage(host: HTMLDivElement): ThreeStage {
   camera.position.set(3.15, 2.05, 3.55);
   camera.lookAt(0, 0.85, 0);
 
-  const grid = track(new THREE.GridHelper(14, 28, 0x2c4a6e, 0x16263e));
+  const grid = track(new THREE.GridHelper(14, 28, 0x3a5048, 0x1c2825));
   scene.add(grid);
 
   // photo billboard: backing plate + image plane + border edge
@@ -761,32 +761,32 @@ function createThreeStage(host: HTMLDivElement): ThreeStage {
   const photoH = photoW * 0.72;
   const frame = new THREE.Mesh(
     track(new THREE.PlaneGeometry(photoW * 1.07, photoH * 1.1)),
-    track(new THREE.MeshBasicMaterial({ color: 0x0e1a30 }))
+    track(new THREE.MeshBasicMaterial({ color: 0x0d181b }))
   );
   frame.position.set(0, SUBJECT_Y, 0);
   const photoMat = track(
-    new THREE.MeshBasicMaterial({ color: 0x44598a })
+    new THREE.MeshBasicMaterial({ color: 0x4a6159 })
   );
   const photoGeo = track(new THREE.PlaneGeometry(photoW, photoH));
   const photo = new THREE.Mesh(photoGeo, photoMat);
   photo.position.set(0, SUBJECT_Y, 0.001);
   const border = new THREE.LineSegments(
     track(new THREE.EdgesGeometry(photoGeo)),
-    track(new THREE.LineBasicMaterial({ color: 0x7dbeff }))
+    track(new THREE.LineBasicMaterial({ color: 0x7fa89b }))
   );
   border.position.copy(photo.position);
   scene.add(frame, photo, border);
 
   const tubeMat = track(
-    new THREE.MeshBasicMaterial({ color: 0x60dcff })
+    new THREE.MeshBasicMaterial({ color: 0x8fd4bd })
   );
   let tube: THREE.Mesh | null = null;
 
   const kfGroup = new THREE.Group();
   scene.add(kfGroup);
   const kfGeo = track(new THREE.SphereGeometry(0.05, 16, 12));
-  const kfMat = track(new THREE.MeshBasicMaterial({ color: 0x60dcff }));
-  const kfSelMat = track(new THREE.MeshBasicMaterial({ color: 0xffffff }));
+  const kfMat = track(new THREE.MeshBasicMaterial({ color: 0x8fd4bd }));
+  const kfSelMat = track(new THREE.MeshBasicMaterial({ color: 0xf0f5f4 }));
 
   // shot-camera glyph: gold body + nose cone aimed at the subject
   const glyphMat = track(
@@ -864,7 +864,7 @@ function createThreeStage(host: HTMLDivElement): ThreeStage {
       } else {
         photoTex = null;
         photoMat.map = null;
-        photoMat.color.set(0x44598a);
+        photoMat.color.set(0x4a6159);
       }
       photoMat.needsUpdate = true;
       render();
@@ -935,6 +935,29 @@ function createThreeStage(host: HTMLDivElement): ThreeStage {
   };
 }
 
+interface DrawSample {
+  azimuth: number;
+  elevation: number;
+}
+
+/** A pointer stroke on the stage: dot hit → keyframe edit, miss → path draw. */
+interface StageDrag {
+  mode: "edit" | "draw";
+  picked: number | null;
+  moved: boolean;
+  lastX: number;
+  lastY: number;
+  /** draw mode: accumulated pose under the fingertip */
+  az: number;
+  el: number;
+  /** total finger travel — a draw only applies once it clears the wiggle gate */
+  travel: number;
+  samples: DrawSample[];
+}
+
+/** Finger travel before a stage stroke counts as a path draw (not a tap). */
+const DRAW_GATE_PX = 14;
+
 interface StageProps {
   image: HTMLImageElement | null;
   keyframes: CameraKeyframe[];
@@ -942,7 +965,9 @@ interface StageProps {
   selected: number | null;
   /** lite (card) surfaces don't get WebGL — render the 2D editor directly */
   lite: boolean | undefined;
-  onDragPose: (azimuth: number, elevation: number) => void;
+  onDragPose: (azimuth: number, elevation: number, index: number | null) => void;
+  /** Live-replaces the trajectory with the stroke's samples. */
+  onDrawPath: (samples: DrawSample[]) => void;
   onPick: (index: number | null) => void;
 }
 
@@ -950,9 +975,7 @@ function StageCanvas(props: StageProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<ThreeStage | null>(null);
   const [glReady, setGlReady] = useState(false);
-  const dragRef = useRef<{ moved: boolean; picked: number | null } | null>(
-    null
-  );
+  const dragRef = useRef<StageDrag | null>(null);
   const propsRef = useRef(props);
   propsRef.current = props;
 
@@ -995,16 +1018,50 @@ function StageCanvas(props: StageProps) {
             e.clientY - rect.top
           ) ?? null;
         if (hit !== null) propsRef.current.onPick(hit);
-        dragRef.current = { moved: false, picked: hit };
+        // A grab on a pinned endpoint can't edit anything — the stroke
+        // starts a path draw instead of no-op'ing where users naturally
+        // begin strokes.
+        const pinned =
+          hit !== null &&
+          (propsRef.current.keyframes[hit]?.time === 0 ||
+            propsRef.current.keyframes[hit]?.time === 1);
+        dragRef.current = {
+          mode: hit === null || pinned ? "draw" : "edit",
+          picked: hit,
+          moved: false,
+          lastX: e.clientX,
+          lastY: e.clientY,
+          az: 0,
+          el: 0,
+          travel: 0,
+          samples: [],
+        };
       }}
       onPointerMove={(e) => {
         const drag = dragRef.current;
         if (!drag || !glReady) return;
-        const dx = e.movementX;
-        const dy = e.movementY;
+        const dx = e.clientX - drag.lastX;
+        const dy = e.clientY - drag.lastY;
         if (Math.abs(dx) + Math.abs(dy) < 0.5) return;
+        drag.lastX = e.clientX;
+        drag.lastY = e.clientY;
         drag.moved = true;
-        propsRef.current.onDragPose(dx * 0.6, -dy * 0.4);
+        if (drag.mode === "edit") {
+          propsRef.current.onDragPose(dx * 0.6, -dy * 0.4, drag.picked);
+          return;
+        }
+        // draw mode: the stroke's horizontal travel sweeps azimuth, its
+        // vertical travel lifts elevation — the path ends where the finger
+        // lifts, so the camera lands under the fingertip.
+        drag.travel += Math.abs(dx) + Math.abs(dy);
+        drag.az = clamp(drag.az + dx * 0.6, -360, 360);
+        drag.el = clamp(drag.el - dy * 0.4, -90, 90);
+        if (drag.samples.length < 600) {
+          drag.samples.push({ azimuth: drag.az, elevation: drag.el });
+        }
+        if (drag.travel >= DRAW_GATE_PX && drag.samples.length >= 2) {
+          propsRef.current.onDrawPath(drag.samples);
+        }
       }}
       onPointerUp={() => {
         const drag = dragRef.current;
@@ -1021,7 +1078,7 @@ function StageCanvas(props: StageProps) {
 /** No-WebGL fallback: the original flat orbit-ellipse projection. */
 function StageCanvas2D(props: StageProps) {
   const ref = useRef<HTMLCanvasElement | null>(null);
-  const dragRef = useRef<{ x: number; y: number; moved: boolean } | null>(null);
+  const dragRef = useRef<StageDrag | null>(null);
 
   const draw = useCallback(() => {
     const canvas = ref.current;
@@ -1038,7 +1095,7 @@ function StageCanvas2D(props: StageProps) {
     ctx.clearRect(0, 0, w, h);
 
     // floor grid
-    ctx.strokeStyle = "rgba(120,170,255,0.10)";
+    ctx.strokeStyle = "rgba(160,196,182,0.10)";
     ctx.lineWidth = 1;
     const horizon = h * 0.62;
     for (let i = 0; i <= 12; i++) {
@@ -1060,7 +1117,7 @@ function StageCanvas2D(props: StageProps) {
     // orbit ring
     const rx = w * 0.36;
     const ry = h * 0.11;
-    ctx.strokeStyle = "rgba(125,190,255,0.22)";
+    ctx.strokeStyle = "rgba(159,216,197,0.22)";
     ctx.setLineDash([4, 6]);
     ctx.beginPath();
     ctx.ellipse(cx, cy + h * 0.16, rx, ry, 0, 0, Math.PI * 2);
@@ -1070,7 +1127,7 @@ function StageCanvas2D(props: StageProps) {
     // trajectory ribbon
     const path = props.keyframes;
     if (path.length >= 2) {
-      ctx.strokeStyle = "rgba(96,220,255,0.9)";
+      ctx.strokeStyle = "rgba(143,212,189,0.9)";
       ctx.lineWidth = 3;
       ctx.lineCap = "round";
       ctx.beginPath();
@@ -1089,7 +1146,7 @@ function StageCanvas2D(props: StageProps) {
     ctx.save();
     ctx.shadowColor = "rgba(0,0,0,0.6)";
     ctx.shadowBlur = 24;
-    ctx.fillStyle = "#0e1a30";
+    ctx.fillStyle = "#0d181b";
     ctx.fillRect(cx - pw / 2, cy - ph / 2, pw, ph);
     ctx.restore();
     if (props.image) {
@@ -1099,12 +1156,12 @@ function StageCanvas2D(props: StageProps) {
       const ih = img.height * scale;
       ctx.drawImage(img, cx - iw / 2, cy - ih / 2, iw, ih);
     } else {
-      ctx.fillStyle = "rgba(219,232,255,0.5)";
+      ctx.fillStyle = "rgba(214,233,226,0.5)";
       ctx.font = "13px ui-monospace, monospace";
       ctx.textAlign = "center";
       ctx.fillText("no photo", cx, cy);
     }
-    ctx.strokeStyle = "rgba(125,190,255,0.5)";
+    ctx.strokeStyle = "rgba(159,216,197,0.45)";
     ctx.strokeRect(cx - pw / 2, cy - ph / 2, pw, ph);
 
     // keyframe dots
@@ -1112,10 +1169,10 @@ function StageCanvas2D(props: StageProps) {
       const p = project(kf, w, h);
       ctx.beginPath();
       ctx.arc(p.x, p.y, i === props.selected ? 7 : 5, 0, Math.PI * 2);
-      ctx.fillStyle = i === props.selected ? "#ffffff" : "#60dcff";
+      ctx.fillStyle = i === props.selected ? "#f0f5f4" : "#8fd4bd";
       ctx.fill();
       if (i === props.selected) {
-        ctx.strokeStyle = "rgba(96,220,255,0.6)";
+        ctx.strokeStyle = "rgba(143,212,189,0.6)";
         ctx.lineWidth = 2;
         ctx.stroke();
       }
@@ -1170,35 +1227,90 @@ function StageCanvas2D(props: StageProps) {
           return Math.hypot(p.x - x, p.y - y) < 20;
         });
         if (hit >= 0) props.onPick(hit);
-        dragRef.current = { x, y, moved: false };
+        const pinned =
+          hit >= 0 &&
+          (props.keyframes[hit]?.time === 0 ||
+            props.keyframes[hit]?.time === 1);
+        dragRef.current = {
+          mode: hit < 0 || pinned ? "draw" : "edit",
+          picked: hit >= 0 ? hit : null,
+          moved: false,
+          lastX: e.clientX,
+          lastY: e.clientY,
+          az: 0,
+          el: 0,
+          travel: 0,
+          samples: [],
+        };
       }}
       onPointerMove={(e) => {
         const drag = dragRef.current;
         if (!drag) return;
-        const dx = e.movementX ?? e.clientX - drag.x;
-        const dy = e.movementY ?? e.clientY - drag.y;
+        const dx = e.clientX - drag.lastX;
+        const dy = e.clientY - drag.lastY;
         if (Math.abs(dx) + Math.abs(dy) < 0.5) return;
+        drag.lastX = e.clientX;
+        drag.lastY = e.clientY;
         drag.moved = true;
-        drag.x = e.clientX;
-        drag.y = e.clientY;
-        props.onDragPose(dx * 0.6, -dy * 0.4);
-      }}
-      onPointerUp={(e) => {
-        const drag = dragRef.current;
-        dragRef.current = null;
-        if (drag && !drag.moved) {
-          const rect = e.currentTarget.getBoundingClientRect();
-          const hit = props.keyframes.findIndex((kf) => {
-            const p = project(kf, rect.width, rect.height);
-            return (
-              Math.hypot(p.x - (e.clientX - rect.left), p.y - (e.clientY - rect.top)) <
-              20
-            );
-          });
-          props.onPick(hit >= 0 ? hit : null);
+        if (drag.mode === "edit") {
+          props.onDragPose(dx * 0.6, -dy * 0.4, drag.picked);
+          return;
+        }
+        drag.travel += Math.abs(dx) + Math.abs(dy);
+        drag.az = clamp(drag.az + dx * 0.6, -360, 360);
+        drag.el = clamp(drag.el - dy * 0.4, -90, 90);
+        if (drag.samples.length < 600) {
+          drag.samples.push({ azimuth: drag.az, elevation: drag.el });
+        }
+        if (drag.travel >= DRAW_GATE_PX && drag.samples.length >= 2) {
+          props.onDrawPath(drag.samples);
         }
       }}
+      onPointerUp={() => {
+        const drag = dragRef.current;
+        dragRef.current = null;
+        if (drag && !drag.moved) props.onPick(drag.picked);
+      }}
     />
+  );
+}
+
+/* ---------------------------------------------------------- preset rail */
+
+/**
+ * Top-down camera-path glyph for a preset — the same mini-map the
+ * reference editor draws beside each camera move (orbit ellipse, subject
+ * pip, motion curve, camera dot).
+ */
+function CameraPath({ kind }: { kind: string }) {
+  const paths: Record<string, string> = {
+    orbit: "M50 43a34 13 0 1 1 1 0l-5-4m5 4-5 3",
+    "orbit-left": "M50 43a34 13 0 1 0-1 0l5-4m-5 4 5 3",
+    swing: "M50 43Q84 44 84 30Q82 20 67 19",
+    rise: "M50 43Q88 43 77 18Q68 4 50 7",
+    "arc-return":
+      "M50 43Q84 44 84 30Q82 20 67 19M67 23Q78 24 79 30Q79 39 50 39l5-4m-5 4 5 3",
+    "rise-return": "M46 43V10l-4 5m4-5 4 5M56 10v33l-4-5m4 5 4-5",
+    "arc-left-return":
+      "M50 43Q16 44 16 30Q18 20 33 19M33 23Q22 24 21 30Q21 39 50 39l-5-4m5 4-5 3",
+    "wide-return": "M50 43C5 43 5 17 50 17C90 17 90 39 50 39l5-4m-5 4 5 3",
+    "dip-return": "M46 16v32l-4-5m4 5 4-5M56 48V16l-4 5m4-5 4 5",
+    "high-arc-return": "M50 43Q84 30 72 8M72 8Q76 30 50 39l5-5",
+    "low-arc-return": "M50 24Q16 30 28 49M28 49Q24 30 50 28l-5-4",
+    "sway-return": "M50 43Q16 43 16 30Q50 8 84 30Q84 43 50 43l5-4m-5 4 5 3",
+    halo: "M50 43C96 43 91 5 50 5C9 5 4 43 50 43l-5-4m5 4-5 3",
+    "halo-left": "M50 43C4 43 9 5 50 5C91 5 96 43 50 43l5-4m-5 4 5 3",
+    "arc-left": "M50 43Q16 44 16 30Q18 20 33 19",
+    "low-angle": "M50 20Q85 20 78 48l-5-4m5 4 3-5",
+  };
+  return (
+    <svg className="fz-path" viewBox="0 0 100 56" aria-hidden="true">
+      <ellipse cx="50" cy="30" rx="34" ry="13" className="fz-path-guide" />
+      <path d="M50 13v25M43 33l7 5 7-5" className="fz-path-axis" />
+      <circle cx="50" cy="29" r="4" className="fz-path-subject" />
+      <path className="fz-path-motion" d={paths[kind] ?? paths["orbit"]} />
+      <circle cx="50" cy="43" r="3" className="fz-path-camera" />
+    </svg>
   );
 }
 
@@ -1542,13 +1654,13 @@ function Studio(props: { initial: Payload }) {
   }, [selected]);
 
   const onDragPose = useCallback(
-    (dAzimuth: number, dElevation: number) => {
+    (dAzimuth: number, dElevation: number, grabbed: number | null) => {
       setPreset(null);
       setKeyframes((frames) => {
-        // Dragging edits the selected keyframe — with nothing selected it
-        // edits whichever keyframe sits nearest the scrub time, so the
-        // "move the camera to change it" gesture always lands somewhere.
-        let index = selected;
+        // A drag off a keyframe dot edits that keyframe directly. With no
+        // dot grabbed, the selected keyframe (then the one nearest the
+        // scrub time) takes the edit.
+        let index = grabbed ?? selected;
         if (index === null) {
           let best = Infinity;
           frames.forEach((kf, i) => {
@@ -1580,6 +1692,41 @@ function Studio(props: { initial: Payload }) {
     },
     [selected, scrubT]
   );
+
+  /**
+   * A drawn stroke becomes the whole trajectory: the start stays pinned to
+   * the reference framing, evenly-spaced interior keyframes follow the
+   * stroke's az/el travel, and the last sample lands at t=1 — the camera
+   * ends where the finger lifted. Keeps FREEZE_MAX_KEYFRAMES by resampling.
+   */
+  const onDrawPath = useCallback((samples: DrawSample[]) => {
+    if (samples.length === 0) return;
+    setPreset(null);
+    setSelected(null);
+    const n = Math.min(samples.length, FREEZE_MAX_KEYFRAMES - 1);
+    const next: CameraKeyframe[] = [{ ...START_KEYFRAME }];
+    for (let i = 0; i < n - 1; i++) {
+      const idx = Math.floor(
+        (i * (samples.length - 1)) / Math.max(1, n - 1)
+      );
+      const s = samples[Math.min(idx, samples.length - 1)]!;
+      next.push({
+        time: Number(((i + 1) / n).toFixed(4)),
+        azimuth: Math.round(s.azimuth * 10) / 10,
+        elevation: Math.round(s.elevation * 10) / 10,
+        distance: 1,
+      });
+    }
+    const last = samples[samples.length - 1]!;
+    next.push({
+      time: 1,
+      azimuth: Math.round(last.azimuth * 10) / 10,
+      elevation: Math.round(last.elevation * 10) / 10,
+      distance: 1,
+    });
+    setKeyframes(next);
+    setScrubT(1);
+  }, []);
 
   const onRender = useCallback(async () => {
     if (busy || !sourceAssetId || !sourceUrl) return;
@@ -1785,25 +1932,51 @@ function Studio(props: { initial: Payload }) {
               selected={selected}
               lite={props.initial.lite}
               onDragPose={onDragPose}
+              onDrawPath={onDrawPath}
               onPick={setSelected}
             />
+            <div className="fz-stage-hint">
+              <span className="fz-stage-dot" />
+              drag to draw the camera path
+            </div>
           </div>
 
-          <div className="fz-presets">
+          <div className="fz-ctl-label">camera move</div>
+          <div className="fz-prail">
             {props.initial.presets.map((entry) => (
               <button
                 key={entry.id}
                 type="button"
-                className={`fz-chip${preset === entry.id ? " active" : ""}`}
+                className={`fz-preset${preset === entry.id ? " active" : ""}`}
                 title={entry.description}
+                aria-pressed={preset === entry.id}
                 onClick={() => applyPreset(entry)}
               >
-                {entry.name}
+                <CameraPath kind={entry.id} />
+                <span className="fz-preset-name">{entry.name}</span>
+                <span className="fz-preset-return">
+                  {entry.returnsToStart ? "returns to start" : "new angle"}
+                </span>
               </button>
             ))}
           </div>
 
           <div className="fz-timeline">
+            <div className="fz-timeline-meta">
+              <span>
+                {(scrubT * duration).toFixed(2)}s / {duration}s
+              </span>
+              <span>
+                {keyframes.length} keyframes
+                {preset
+                  ? ` · ${props.initial.presets.find((p) => p.id === preset)?.name ?? preset}`
+                  : " · drawn"}
+                {selected !== null &&
+                  (keyframes[selected]!.time === 0 || keyframes[selected]!.time === 1
+                    ? " · endpoint"
+                    : ` · kf ${selected + 1}`)}
+              </span>
+            </div>
             <div
               className="fz-track"
               onPointerDown={(e) => {
@@ -1817,7 +1990,7 @@ function Studio(props: { initial: Payload }) {
                 setScrubT(clamp((e.clientX - rect.left) / rect.width, 0, 1));
               }}
             >
-              <div className="fz-track-line" />
+              <div className="fz-track-ticks" />
               {keyframes.map((kf, i) => (
                 <button
                   key={i}
@@ -1837,18 +2010,17 @@ function Studio(props: { initial: Payload }) {
                   aria-label={`keyframe ${i + 1} at ${Math.round(kf.time * 100)}%`}
                 />
               ))}
-              <div className="fz-head" style={{ left: `${scrubT * 100}%` }} />
+              <div className="fz-head" style={{ left: `${scrubT * 100}%` }}>
+                <i />
+              </div>
             </div>
             <div className="fz-timeline-row">
               <span className="fz-meta">
-                {keyframes.length} keyframes · {duration}s
                 {selected !== null
-                  ? ` · keyframe ${selected + 1}: ${
-                      keyframes[selected]!.time === 0 || keyframes[selected]!.time === 1
-                        ? "endpoints stay"
-                        : "drag the stage to change it"
-                    }`
-                  : " · tap a dot, drag the stage"}
+                  ? keyframes[selected]!.time === 0 || keyframes[selected]!.time === 1
+                    ? "endpoints hold the framing"
+                    : "drag this dot on the scene"
+                  : "drag the scene to draw · drag a dot to nudge"}
               </span>
               <div className="fz-timeline-actions">
                 <button
@@ -1983,69 +2155,82 @@ function Studio(props: { initial: Payload }) {
 /* ----------------------------------------------------------------- css */
 
 const CSS = `
-.fz{display:flex;flex-direction:column;gap:8px;flex:1;min-height:0;font-family:var(--font-ui,ui-monospace,monospace)}
-.fz-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;background:#070a12;border-radius:12px;padding:3px}
-.fz-tabs button{min-height:40px;border:0;border-radius:9px;background:transparent;color:#7d94bb;font-weight:750;font-size:0.72rem;letter-spacing:0.04em;text-transform:uppercase}
-.fz-tabs button.active{background:#123d72c7;color:#9dd8ff;box-shadow:inset 0 0 0 1px #4db0ff55}
+.fz{display:flex;flex-direction:column;gap:8px;flex:1;min-height:0;font-family:var(--font-ui,ui-monospace,monospace);color:#d6e9e2}
+.fz-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;background:#101415;border:1px solid #2c3c35;border-radius:12px;padding:3px}
+.fz-tabs button{min-height:40px;border:0;border-radius:9px;background:transparent;color:#7f9090;font-weight:700;font-size:0.72rem;letter-spacing:0.04em;text-transform:uppercase}
+.fz-tabs button.active{background:#20382e;color:#d1eadd}
 .fz-tabs button:disabled{opacity:0.35}
 .fz-stage{display:flex;flex-direction:column;gap:10px;flex:1;min-height:0}
 .fz-hero{text-align:center;padding:14px 8px 4px}
-.fz-title{margin:0;color:#f8fbff;font-size:1.5rem;font-weight:850;letter-spacing:-0.02em}
-.fz-sub{margin:6px 0 0;color:#7d94bb;font-size:0.8rem}
+.fz-title{margin:0;color:#f0f5f4;font-size:1.5rem;font-weight:800;letter-spacing:-0.02em}
+.fz-sub{margin:6px 0 0;color:#8da59b;font-size:0.8rem}
 .fz-source-grid{display:grid;grid-template-columns:1fr;gap:10px;padding:10px 4px}
-.fz-card{display:flex;align-items:center;gap:14px;min-height:84px;padding:16px;border:1px solid #75baff44;border-radius:16px;background:linear-gradient(135deg,#111d35d9,#080d1ae8);color:#f8fbff;font-size:1rem;font-weight:750;text-align:left;box-shadow:inset 0 1px #e6f4ff1c,0 14px 34px #0006}
-.fz-card-icon{display:grid;place-items:center;width:46px;height:46px;border-radius:12px;background:#123d72c7;color:#9dd8ff;font-size:1.3rem;flex:0 0 46px}
+.fz-card{display:flex;align-items:center;gap:14px;min-height:84px;padding:16px;border:1px solid #344943;border-radius:14px;background:#1b2925;color:#d6e9e2;font-size:1rem;font-weight:700;text-align:left;box-shadow:0 8px 24px #0005}
+.fz-card-icon{display:grid;place-items:center;width:46px;height:46px;border-radius:12px;background:#14211d;border:1px solid #2c3c35;color:#cbe4d9;font-size:1.3rem;flex:0 0 46px}
 .fz-card:active{transform:translateY(1px)}
 .fz-card:disabled{opacity:0.5}
 .fz-sketch{display:flex;flex-direction:column;gap:8px}
-.fz-sketch-canvas{width:100%;aspect-ratio:1;border-radius:14px;background:#0a1120;border:1px solid #75baff44;touch-action:none}
+.fz-sketch-canvas{width:100%;aspect-ratio:1;border-radius:14px;background:#0b1011;border:1px solid #344943;touch-action:none}
 .fz-tools{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
-.fz-swatch{display:block;width:32px;min-height:32px;padding:0;border:2px solid #f8fbff33;border-radius:50%;flex:0 0 32px}
-.fz-swatch.selected{border-color:#f8fbff;outline:2px solid #4db0ff;outline-offset:2px}
-.fz-size{flex:1;min-width:70px;accent-color:#3ca7ff}
-.fz-prompt{width:100%;min-height:3rem;max-height:6rem;font-size:1rem;padding:10px 12px;background:#12213a9c;border:1px solid #7dbfff55;border-radius:10px;color:#f8fbff;font-family:inherit;resize:vertical}
-.fz-prompt::placeholder{color:#5d739a}
-.fz-modes{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;background:#070a12;border-radius:12px;padding:3px}
-.fz-modes button{display:grid;place-items:center;min-height:44px;border:0;border-radius:9px;background:transparent;color:#7d94bb;font-size:0.66rem;font-weight:700;padding:4px}
-.fz-modes button.active{background:#123d72c7;color:#9dd8ff;box-shadow:inset 0 0 0 1px #4db0ff55}
-.fz-stage-wrap{position:relative;flex:1;min-height:240px;border-radius:16px;overflow:hidden;background:radial-gradient(120% 90% at 50% 10%,#101d36 0%,#070b15 70%);border:1px solid #75baff33}
-.fz-stage-canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
-.fz-presets{display:flex;gap:6px;overflow-x:auto;padding:2px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
-.fz-presets::-webkit-scrollbar{display:none}
-.fz-chip{flex:0 0 auto;min-height:36px;padding:6px 13px;border:1px solid #6facf144;border-radius:999px;background:#0b1425c9;color:#dbe8ff;font-size:0.72rem;font-weight:700;white-space:nowrap}
-.fz-chip.active{background:#123d72c7;color:#9dd8ff;border-color:#4db0ff;box-shadow:0 0 0 1px #3ca7ff55,0 0 14px #3ca7ff44}
-.fz-timeline{display:flex;flex-direction:column;gap:4px;padding:0 2px}
-.fz-track{position:relative;height:44px;touch-action:none;cursor:pointer}
-.fz-track-line{position:absolute;left:0;right:0;top:50%;height:2px;background:#2a4a78;border-radius:2px}
-.fz-kf{position:absolute;top:50%;width:16px;height:16px;margin:-8px 0 0 -8px;padding:0;border:2px solid #60dcff;border-radius:50%;background:#0a1120}
-.fz-kf.selected{background:#ffd166;border-color:#ffd166}
-.fz-head{position:absolute;top:6px;bottom:6px;width:2px;margin-left:-1px;background:#ffd166;border-radius:2px;pointer-events:none}
+.fz-swatch{display:block;width:32px;min-height:32px;padding:0;border:2px solid #d6e9e233;border-radius:50%;flex:0 0 32px}
+.fz-swatch.selected{border-color:#f0f5f4;outline:2px solid #cbe4d9;outline-offset:2px}
+.fz-size{flex:1;min-width:70px;accent-color:#8fd4bd}
+.fz-prompt{width:100%;min-height:3rem;max-height:6rem;font-size:1rem;padding:10px 12px;background:#14211d;border:1px solid #2c3c35;border-radius:10px;color:#d6e9e2;font-family:inherit;resize:vertical}
+.fz-prompt::placeholder{color:#5f7169}
+.fz-modes{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;background:#101415;border:1px solid #2c3c35;border-radius:12px;padding:3px}
+.fz-modes button{display:grid;place-items:center;min-height:44px;border:0;border-radius:9px;background:transparent;color:#7f9090;font-size:0.66rem;font-weight:700;padding:4px}
+.fz-modes button.active{background:#20382e;color:#d1eadd}
+.fz-stage-wrap{position:relative;flex:1;min-height:240px;border-radius:16px;overflow:hidden;background:#0b1011;border:1px solid #2c3c35}
+.fz-stage-canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair}
+.fz-stage-hint{position:absolute;top:12px;left:12px;display:flex;align-items:center;gap:8px;border-radius:20px;padding:8px 12px;background:#0d181bc7;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);font-size:11px;color:#dbe7e4;pointer-events:none;z-index:2}
+.fz-stage-dot{width:5px;height:5px;border-radius:50%;background:#b4dcce;flex:0 0 5px}
+.fz-ctl-label{color:#8d9e9c;font-size:0.66rem;letter-spacing:0.1em;text-transform:uppercase;padding:0 2px}
+.fz-prail{display:flex;gap:8px;overflow-x:auto;padding:2px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.fz-prail::-webkit-scrollbar{display:none}
+.fz-preset{flex:0 0 118px;display:flex;flex-direction:column;gap:3px;padding:10px 10px 9px;border:1px solid #344943;border-radius:14px;background:#1b2925;color:#9fc4b4;text-align:left}
+.fz-preset.active{background:#20382e;border-color:#5f8577;color:#d1eadd}
+.fz-path{display:block;width:100%;height:auto;max-height:64px}
+.fz-path-guide,.fz-path-axis{stroke:currentColor;stroke-width:0.7;opacity:0.25;fill:none}
+.fz-path-subject{fill:currentColor;opacity:0.6}
+.fz-path-motion{stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round}
+.fz-path-camera{fill:currentColor}
+.fz-preset-name{font-size:12px;font-weight:600;color:#d6e9e2;white-space:nowrap}
+.fz-preset-return{font-size:10px;color:#8da59b;white-space:nowrap}
+.fz-timeline{display:flex;flex-direction:column;gap:6px;padding:0 2px}
+.fz-timeline-meta{display:flex;justify-content:space-between;gap:10px;font-size:11px;color:#9aa9a8}
+.fz-timeline-meta span:last-child{font-variant-numeric:tabular-nums;color:#c5d2d0;text-align:right}
+.fz-track{position:relative;height:44px;touch-action:none;cursor:pointer;background:#1d2728;border-radius:7px}
+.fz-track-ticks{position:absolute;inset:12px 8px;background:repeating-linear-gradient(90deg,#354445 0,#354445 1px,transparent 1px,transparent 14px);opacity:0.65;-webkit-mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent);mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent);pointer-events:none}
+.fz-kf{position:absolute;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;padding:0;border:2px solid #8fd4bd;border-radius:50%;background:#0d181b}
+.fz-kf.selected{background:#d1eadd;border-color:#d1eadd}
+.fz-head{position:absolute;top:-3px;bottom:-3px;width:2px;margin-left:-1px;background:#d1eadd;box-shadow:0 0 12px #d1eadd30;pointer-events:none}
+.fz-head i{position:absolute;top:-4px;left:-3px;width:8px;height:8px;border-radius:2px;background:#d1eadd}
 .fz-timeline-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.fz-meta{color:#7d94bb;font-size:0.66rem}
+.fz-meta{color:#8da59b;font-size:0.66rem}
 .fz-timeline-actions{display:flex;gap:6px}
 .fz-render-row{display:flex;align-items:center;gap:8px}
-.fz-seg{display:flex;background:#070a12;border-radius:10px;padding:2px}
-.fz-seg button{min-width:44px;min-height:38px;border:0;border-radius:8px;background:transparent;color:#7d94bb;font-size:0.7rem;font-weight:750}
-.fz-seg button.active{background:#123d72c7;color:#9dd8ff}
-.fz-primary{flex:1;min-height:46px;border:0;border-radius:12px;background:linear-gradient(135deg,#2f8be8,#1760c8);color:#f8fbff;font-weight:850;font-size:0.9rem;letter-spacing:0.02em;box-shadow:inset 0 1px #eff9ff4a,0 10px 22px #0a52b64c}
-.fz-primary:disabled{opacity:0.5}
-.fz-ghost{min-height:38px;padding:8px 12px;border:1px solid #6facf144;border-radius:10px;background:#183354aa;color:#f8fbff;font-weight:700;font-size:0.7rem;letter-spacing:0.04em;text-transform:uppercase}
+.fz-seg{display:flex;background:#101415;border:1px solid #2c3c35;border-radius:10px;padding:2px}
+.fz-seg button{min-width:44px;min-height:38px;border:0;border-radius:8px;background:transparent;color:#7f9090;font-size:0.7rem;font-weight:700}
+.fz-seg button.active{background:#20382e;color:#d1eadd}
+.fz-primary{flex:1;min-height:46px;border:0;border-radius:26px;background:#cbe4d9;color:#193329;font-weight:600;font-size:0.9rem;letter-spacing:0.01em}
+.fz-primary:disabled{opacity:0.4}
+.fz-ghost{min-height:38px;padding:8px 12px;border:1px solid #344943;border-radius:10px;background:transparent;color:#a6b9b5;font-weight:600;font-size:0.7rem;letter-spacing:0.04em;text-transform:uppercase}
 .fz-ghost:disabled{opacity:0.35}
-.fz-ghost.selected{border-color:#4db0ff;color:#9dd8ff}
+.fz-ghost.selected{border-color:#5f8577;color:#d1eadd}
 .fz-result{display:flex;flex-direction:column;gap:10px}
 .fz-video{width:100%;border-radius:14px;background:#000;max-height:56vh}
 .fz-framepick{display:flex;flex-direction:column;gap:8px}
 .fz-video-empty{display:flex;flex-direction:column;gap:10px;align-items:center;padding:18px 8px}
 .fz-strip{display:grid;grid-template-columns:repeat(5,1fr);gap:4px}
-.fz-strip img{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:6px;border:1px solid #75baff33;display:block}
-.fz-scrub{width:100%;min-height:36px;accent-color:#3ca7ff;touch-action:pan-x}
+.fz-strip img{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:6px;border:1px solid #2c3c35;display:block;filter:brightness(0.85)}
+.fz-scrub{width:100%;min-height:36px;accent-color:#cbe4d9;touch-action:pan-x}
 .fz-row{display:flex;gap:8px;align-items:center}
-.fz-err{margin:0;text-align:center;font-size:0.72rem;color:#ff9d9d}
+.fz-err{margin:0;text-align:center;font-size:0.72rem;color:#e8a9a9}
 .fz-actions{display:flex;gap:8px}
 .fz-history{display:flex;flex-direction:column;gap:8px;margin-top:4px}
 .fz-history-row{display:flex;align-items:center;gap:10px}
 .fz-thumb{width:88px;border-radius:8px;background:#000}
-.fz-line{margin:0;min-height:1rem;text-align:center;font-size:0.72rem;color:#dbe8ff}
+.fz-line{margin:0;min-height:1rem;text-align:center;font-size:0.72rem;color:#83968f}
 @media(prefers-reduced-motion:reduce){.fz-card,.fz-primary{transition:none}}
 `;
 
