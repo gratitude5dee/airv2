@@ -1160,7 +1160,7 @@ interface StageProps {
   viewCtl: { current: StageViewCtl | null };
   onDragPose: (azimuth: number, elevation: number, index: number | null) => void;
   /** Live-replaces the trajectory with the stroke's samples. */
-  onDrawPath: (samples: DrawSample[]) => void;
+  onDrawPath: (samples: DrawSample[], finalize?: boolean) => void;
   /** Restores the trajectory a mid-draw pinch interrupted. */
   onDrawRevert: (frames: CameraKeyframe[]) => void;
   onPick: (index: number | null) => void;
@@ -1264,6 +1264,24 @@ function StageCanvas(props: StageProps) {
           };
           return;
         }
+        if (propsRef.current.mode === "look") {
+          // One-finger look: the pointer is a viewport control — no
+          // hit-test, so orbiting never re-selects a keyframe.
+          dragRef.current = {
+            mode: "view",
+            picked: null,
+            moved: false,
+            lastX: e.clientX,
+            lastY: e.clientY,
+            az: 0,
+            el: 0,
+            travel: 0,
+            samples: [],
+            pinchD: 0,
+            snapshot: null,
+          };
+          return;
+        }
         const rect = e.currentTarget.getBoundingClientRect();
         const hit =
           stageRef.current?.pick(
@@ -1281,11 +1299,9 @@ function StageCanvas(props: StageProps) {
           mode:
             propsRef.current.mode === "draw"
               ? "draw"
-              : propsRef.current.mode === "look"
-                ? "view"
-                : hit === null || pinned
-                  ? "none"
-                  : "edit",
+              : hit === null || pinned
+                ? "none"
+                : "edit",
           picked: hit,
           moved: false,
           lastX: e.clientX,
@@ -1395,7 +1411,9 @@ function StageCanvas(props: StageProps) {
           drag.travel >= DRAW_GATE_PX &&
           drag.samples.length >= 2
         ) {
-          propsRef.current.onDrawPath(drag.samples);
+          // The flush commit clears preset/selection and parks the scrub
+          // head — mid-stroke calls only preview frames.
+          propsRef.current.onDrawPath(drag.samples, true);
         }
       }}
       onPointerCancel={(e) => {
@@ -1583,8 +1601,11 @@ function StageCanvas2D(props: StageProps) {
       },
     };
     propsRef.current.viewCtl.current = ctl;
-    // Fresh stage = home view; clears the chip after tab-away remounts too.
-    propsRef.current.onViewChange(false);
+    // Report the view's actual dirtiness: at mount viewRef is home (clears
+    // the chip after tab-away remounts), but re-runs caused by `draw`
+    // identity changes must not hide the chip while the orbit survives in
+    // viewRef.
+    propsRef.current.onViewChange(isDirty());
     return () => {
       if (propsRef.current.viewCtl.current === ctl) {
         propsRef.current.viewCtl.current = null;
@@ -1627,6 +1648,24 @@ function StageCanvas2D(props: StageProps) {
           };
           return;
         }
+        if (props.mode === "look") {
+          // Same as the WebGL stage: a look pointer only steers the
+          // viewport — it never hit-tests or re-selects a keyframe.
+          dragRef.current = {
+            mode: "view",
+            picked: null,
+            moved: false,
+            lastX: e.clientX,
+            lastY: e.clientY,
+            az: 0,
+            el: 0,
+            travel: 0,
+            samples: [],
+            pinchD: 0,
+            snapshot: null,
+          };
+          return;
+        }
         const rect = e.currentTarget.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
@@ -1644,11 +1683,9 @@ function StageCanvas2D(props: StageProps) {
           mode:
             props.mode === "draw"
               ? "draw"
-              : props.mode === "look"
-                ? "view"
-                : hit < 0 || pinned
-                  ? "none"
-                  : "edit",
+              : hit < 0 || pinned
+                ? "none"
+                : "edit",
           picked: hit >= 0 ? hit : null,
           moved: false,
           lastX: e.clientX,
@@ -1763,7 +1800,7 @@ function StageCanvas2D(props: StageProps) {
           drag.travel >= DRAW_GATE_PX &&
           drag.samples.length >= 2
         ) {
-          props.onDrawPath(drag.samples);
+          props.onDrawPath(drag.samples, true);
         }
       }}
       onPointerCancel={(e) => {
@@ -2229,7 +2266,8 @@ function Studio(props: { initial: Payload }) {
    * stroke's az/el travel, and the last sample lands at t=1 — the camera
    * ends where the finger lifted. Keeps FREEZE_MAX_KEYFRAMES by resampling.
    */
-  const onDrawPath = useCallback((samples: DrawSample[]) => {
+  const onDrawPath = useCallback(
+    (samples: DrawSample[], finalize = false) => {
     if (samples.length === 0) return;
     const n = Math.min(samples.length, FREEZE_MAX_KEYFRAMES - 1);
     const next: CameraKeyframe[] = [{ ...START_KEYFRAME }];
@@ -2276,19 +2314,24 @@ function Studio(props: { initial: Payload }) {
     // A stroke that never left the reference pose isn't a path — keep
     // whatever trajectory was there.
     if (deduped.length < 2) return;
-    setHintSeen(true);
-    setPreset(null);
-    setSelected(null);
     setKeyframes(deduped);
-    setScrubT(1);
+    // Only the completed stroke commits: preset identity, selection, the
+    // hint, and the playhead stay put while a stroke is mid-air so a
+    // second-finger conversion can roll back to an untouched editor by
+    // restoring just the frames it snapshotted at stroke start.
+    if (finalize) {
+      setHintSeen(true);
+      setPreset(null);
+      setSelected(null);
+      setScrubT(1);
+    }
   }, []);
 
   // A pinch landing mid-stroke converts the gesture to a view orbit — the
-  // partial path it already committed is rolled back to the snapshot taken
-  // at stroke start.
+  // preview frames it committed roll back to the stroke-start snapshot;
+  // preset, selection, scrub, and hint were never touched.
   const onDrawRevert = useCallback((frames: CameraKeyframe[]) => {
     setKeyframes(frames.map((frame) => ({ ...frame })));
-    setSelected(null);
   }, []);
 
   /** Slider edits — direct pose sets, no stage drag required. */
