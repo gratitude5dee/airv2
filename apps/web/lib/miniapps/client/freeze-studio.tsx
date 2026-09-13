@@ -2184,7 +2184,7 @@ function Studio(props: { initial: Payload }) {
                   setScrubT(clamp(x / rect.width, 0, 1));
                 }
                 e.currentTarget.setPointerCapture(e.pointerId);
-              }}}, {
+              }}
               onPointerMove={(e) => {
                 if (e.buttons !== 1) return;
                 const rect = e.currentTarget.getBoundingClientRect();
