@@ -7,10 +7,11 @@
  *   source — take a photo (raw HEIC goes up as a File and converts to PNG
  *            server-side), upload one, or sketch + prompt through the
  *            Flare lanes; the delivered sketch becomes the source still
- *   camera — a 2D-canvas orbit editor (the lite surface forbids WebGL):
- *            the photo billboard sits center stage, the trajectory ribbon
- *            sweeps an orbit ring around it, and the camera glyph rides the
- *            scrubbed time; a keyframe strip below + preset rail on top
+ *   camera — a Three.js orbit editor (2D-canvas fallback when WebGL or the
+ *            lite surface forbids it): the photo billboard stands over a
+ *            floor grid, the trajectory tube sweeps around it, and the
+ *            camera glyph rides the scrubbed time; draw/edit/look gestures,
+ *            a keyframe strip below, and a preset rail on top
  *   result — delivered renders with a send-to-iMessage action
  *
  * All state lives in React or server-side on freeze_sessions +
@@ -672,6 +673,15 @@ function VideoFramePick(props: {
 
 /* ---------------------------------------------------------- stage canvas */
 
+/** The 2D fallback's view offset — the flat projection's stand-in for the
+ * 3D rig's orbit/pinch. yaw spins the ellipse, tilt pans vertically, zoom
+ * scales the whole layout. */
+interface View2D {
+  yaw: number;
+  tilt: number;
+  zoom: number;
+}
+
 /**
  * The orbit editor's camera model: azimuth sweeps the ellipse ring around
  * the photo billboard, elevation lifts the glyph off the ring, distance
@@ -680,13 +690,15 @@ function VideoFramePick(props: {
 function project(
   pose: CameraKeyframe,
   w: number,
-  h: number
+  h: number,
+  view?: View2D
 ): { x: number; y: number; depth: number } {
   const cx = w / 2;
-  const cy = h * 0.46;
-  const rx = w * 0.36 * pose.distance;
-  const ry = h * 0.11 * pose.distance;
-  const a = pose.azimuth * DEG;
+  const cy = h * 0.46 + (view?.tilt ?? 0) * h * 0.24;
+  const z = view?.zoom ?? 1;
+  const rx = w * 0.36 * pose.distance * z;
+  const ry = h * 0.11 * pose.distance * z;
+  const a = (pose.azimuth + (view?.yaw ?? 0)) * DEG;
   return {
     x: cx + Math.sin(a) * rx,
     y: cy + h * 0.16 + Math.cos(a) * ry - Math.sin(pose.elevation * DEG) * h * 0.3,
@@ -731,6 +743,12 @@ interface ThreeStage {
     selected: number | null
   ): void;
   pick(x: number, y: number): number | null;
+  /** px deltas → view orbit (grab-the-world: the scene follows the finger) */
+  orbit(dx: number, dy: number): void;
+  /** pinch scale factor (>1 = fingers apart = closer) */
+  zoom(scale: number): void;
+  viewDirty(): boolean;
+  resetView(): boolean;
   dispose(): void;
 }
 
@@ -749,19 +767,99 @@ function createThreeStage(host: HTMLDivElement): ThreeStage {
   };
 
   const scene = new THREE.Scene();
-  // FOV/look target frame the whole pose envelope: el=90 tops out at
-  // y≈3.25 (SUBJECT_Y + radius), so the frustum must reach ~3.5.
-  const camera = new THREE.PerspectiveCamera(55, 1, 0.05, 80);
-  // More frontal than the first pass — at az≈33° the subject plane reads
-  // nearer center-frame instead of pinned to the right edge.
-  camera.position.set(2.9, 2.4, 4.4);
-  camera.lookAt(0, 1.05, 0);
+  // Grid + path fade into the stage ink at distance — reads as depth even
+  // on unlit basic materials.
+  scene.fog = new THREE.Fog(0x0b1011, 6.5, 16);
+  const camera = new THREE.PerspectiveCamera(54, 1, 0.05, 80);
+
+  // The view is an orbitable rig around a fixed target on the subject: yaw /
+  // pitch / dist recompose the camera, so look-mode and two-finger gestures
+  // just retune these three numbers.
+  const VIEW_TARGET = new THREE.Vector3(0, 1.12, 0);
+  const viewHome = { yaw: 0.52, pitch: 0.19, dist: 5.2 };
+  const view = { ...viewHome };
+  const applyView = () => {
+    const cp = Math.cos(view.pitch);
+    camera.position.set(
+      VIEW_TARGET.x + Math.sin(view.yaw) * cp * view.dist,
+      VIEW_TARGET.y + Math.sin(view.pitch) * view.dist,
+      VIEW_TARGET.z + Math.cos(view.yaw) * cp * view.dist
+    );
+    camera.lookAt(VIEW_TARGET);
+  };
+  applyView();
 
   const grid = track(new THREE.GridHelper(14, 28, 0x46635c, 0x243430));
   scene.add(grid);
 
+  // The equator guide marks the el=0 orbit plane at subject height; the
+  // post + foot ring ground the floating billboard.
+  const guideMat = track(
+    new THREE.LineDashedMaterial({
+      color: 0x44645c,
+      dashSize: 0.16,
+      gapSize: 0.12,
+      transparent: true,
+      opacity: 0.55,
+    })
+  );
+  const guidePts: THREE.Vector3[] = [];
+  for (let i = 0; i <= 128; i++) {
+    const a = (i / 128) * Math.PI * 2;
+    guidePts.push(
+      new THREE.Vector3(
+        Math.sin(a) * ORBIT_RADIUS,
+        SUBJECT_Y,
+        Math.cos(a) * ORBIT_RADIUS
+      )
+    );
+  }
+  const guide = new THREE.Line(
+    track(new THREE.BufferGeometry().setFromPoints(guidePts)),
+    guideMat
+  );
+  guide.computeLineDistances();
+  scene.add(guide);
+  const postGeo = track(
+    new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, 0.02, 0),
+      new THREE.Vector3(0, SUBJECT_Y, 0),
+    ])
+  );
+  scene.add(
+    new THREE.Line(
+      postGeo,
+      track(
+        new THREE.LineBasicMaterial({
+          color: 0x3d5a52,
+          transparent: true,
+          opacity: 0.6,
+        })
+      )
+    )
+  );
+  const footPts: THREE.Vector3[] = [];
+  for (let i = 0; i <= 64; i++) {
+    const a = (i / 64) * Math.PI * 2;
+    footPts.push(
+      new THREE.Vector3(Math.sin(a) * 0.55, 0.02, Math.cos(a) * 0.55)
+    );
+  }
+  scene.add(
+    new THREE.Line(
+      track(new THREE.BufferGeometry().setFromPoints(footPts)),
+      track(
+        new THREE.LineBasicMaterial({
+          color: 0x3d5a52,
+          transparent: true,
+          opacity: 0.7,
+        })
+      )
+    )
+  );
+
   // photo billboard: backing plate + image plane + border edge
-  const photoW = 1.7;
+  const photoW = 1.9;
   const photoH = photoW * 0.72;
   const frame = new THREE.Mesh(
     track(new THREE.PlaneGeometry(photoW * 1.07, photoH * 1.1)),
@@ -785,6 +883,24 @@ function createThreeStage(host: HTMLDivElement): ThreeStage {
     new THREE.MeshBasicMaterial({ color: 0x8fd4bd })
   );
   let tube: THREE.Mesh | null = null;
+
+  // The path's floor shadow — reading a 3D curve against a flat plane is
+  // hard, so a dashed projection onto the grid shows the shape in plan.
+  const shadowGeo = track(new THREE.BufferGeometry());
+  const shadow = new THREE.Line(
+    shadowGeo,
+    track(
+      new THREE.LineDashedMaterial({
+        color: 0x8fd4bd,
+        dashSize: 0.12,
+        gapSize: 0.1,
+        transparent: true,
+        opacity: 0.28,
+      })
+    )
+  );
+  shadow.visible = false;
+  scene.add(shadow);
 
   const kfGroup = new THREE.Group();
   scene.add(kfGroup);
@@ -886,7 +1002,7 @@ function createThreeStage(host: HTMLDivElement): ThreeStage {
       }
       if (pts.length >= 2) {
         const curve = new THREE.CatmullRomCurve3(pts);
-        const geo = new THREE.TubeGeometry(curve, 120, 0.026, 8, false);
+        const geo = new THREE.TubeGeometry(curve, 120, 0.03, 8, false);
         const next = new THREE.Mesh(geo, tubeMat);
         if (tube) {
           scene.remove(tube);
@@ -894,10 +1010,16 @@ function createThreeStage(host: HTMLDivElement): ThreeStage {
         }
         tube = next;
         scene.add(tube);
+        shadowGeo.setFromPoints(
+          pts.map((p) => new THREE.Vector3(p.x, 0.02, p.z))
+        );
+        shadow.computeLineDistances();
+        shadow.visible = true;
       } else if (tube) {
         scene.remove(tube);
         tube.geometry.dispose();
         tube = null;
+        shadow.visible = false;
       }
       kfGroup.clear();
       frames.forEach((kf, i) => {
@@ -915,6 +1037,40 @@ function createThreeStage(host: HTMLDivElement): ThreeStage {
       sightGeo.setFromPoints([glyph.position.clone(), subject.clone()]);
       sight.computeLineDistances();
       render();
+    },
+    orbit(dx, dy) {
+      // Grab-the-world: content follows the fingertip — dragging right
+      // brings the scene's left edge around, so the camera circles the
+      // other way. Pitch clamps keep the floor in frame.
+      view.yaw -= dx * 0.0075;
+      view.pitch = clamp(view.pitch + dy * 0.006, -0.15, 1.35);
+      applyView();
+      render();
+    },
+    zoom(scale) {
+      view.dist = clamp(view.dist / scale, 3.2, 10);
+      applyView();
+      render();
+    },
+    viewDirty() {
+      return (
+        Math.abs(view.yaw - viewHome.yaw) > 0.01 ||
+        Math.abs(view.pitch - viewHome.pitch) > 0.01 ||
+        Math.abs(view.dist - viewHome.dist) > 0.05
+      );
+    },
+    resetView() {
+      if (
+        Math.abs(view.yaw - viewHome.yaw) <= 0.01 &&
+        Math.abs(view.pitch - viewHome.pitch) <= 0.01 &&
+        Math.abs(view.dist - viewHome.dist) <= 0.05
+      ) {
+        return false;
+      }
+      Object.assign(view, viewHome);
+      applyView();
+      render();
+      return true;
     },
     pick(x, y) {
       const w = host.clientWidth;
@@ -950,10 +1106,11 @@ interface DrawSample {
 }
 
 /** A pointer stroke on the stage: dot hit → keyframe edit, miss → path draw.
- * "none" = edit mode's empty-space grab — inert, so the mode toggle means
- * exactly what it says. */
+ * "view" = viewport manipulation (look mode, or a second finger landing on
+ * any stroke). "none" = edit mode's empty-space grab — inert, so the mode
+ * toggle means exactly what it says. */
 interface StageDrag {
-  mode: "edit" | "draw" | "none";
+  mode: "edit" | "draw" | "view" | "none";
   picked: number | null;
   moved: boolean;
   lastX: number;
@@ -964,6 +1121,13 @@ interface StageDrag {
   /** total finger travel — a draw only applies once it clears the wiggle gate */
   travel: number;
   samples: DrawSample[];
+  /** view mode: baseline two-finger distance for pinch zoom; 0 single-pointer */
+  pinchD: number;
+}
+
+/** Live view controls a stage exposes to the reset chip. */
+interface StageViewCtl {
+  reset(): boolean;
 }
 
 /** Finger travel before a stage stroke counts as a path draw (not a tap). */
@@ -976,8 +1140,12 @@ interface StageProps {
   selected: number | null;
   /** lite (card) surfaces don't get WebGL — render the 2D editor directly */
   lite: boolean | undefined;
-  /** draw: every stroke sketches the path · edit: dot grabs move the dot */
-  mode: "draw" | "edit";
+  /** draw: every stroke sketches · edit: dot grabs move · look: orbit view */
+  mode: "draw" | "edit" | "look";
+  /** The stage reports whether its view differs from home (drives the chip). */
+  onViewChange: (dirty: boolean) => void;
+  /** The stage writes its reset control here so the wrap-level chip can call it. */
+  viewCtl: { current: StageViewCtl | null };
   onDragPose: (azimuth: number, elevation: number, index: number | null) => void;
   /** Live-replaces the trajectory with the stroke's samples. */
   onDrawPath: (samples: DrawSample[]) => void;
@@ -989,6 +1157,9 @@ function StageCanvas(props: StageProps) {
   const stageRef = useRef<ThreeStage | null>(null);
   const [glReady, setGlReady] = useState(false);
   const dragRef = useRef<StageDrag | null>(null);
+  // Live contact points — a second finger turns any stroke into a view
+  // gesture, so single-finger actions never fight the camera.
+  const ptrsRef = useRef(new Map<number, { x: number; y: number }>());
   const propsRef = useRef(props);
   propsRef.current = props;
 
@@ -1002,9 +1173,24 @@ function StageCanvas(props: StageProps) {
       return; // no WebGL — the 2D canvas below keeps editing working
     }
     stageRef.current = stage;
+    const ctl: StageViewCtl = {
+      reset: () => {
+        if (stage.resetView()) {
+          propsRef.current.onViewChange(false);
+          return true;
+        }
+        return false;
+      },
+    };
+    propsRef.current.viewCtl.current = ctl;
     setGlReady(true);
     return () => {
       stageRef.current = null;
+      // Only retract our own control — the 2D fallback's cleanup may run
+      // during the glReady flip and must not clobber the live one.
+      if (propsRef.current.viewCtl.current === ctl) {
+        propsRef.current.viewCtl.current = null;
+      }
       stage.dispose();
     };
   }, []);
@@ -1022,8 +1208,27 @@ function StageCanvas(props: StageProps) {
       ref={hostRef}
       className="fz-stage-canvas"
       onPointerDown={(e) => {
+        // Before WebGL attaches the nested 2D canvas owns all gestures —
+        // grabbing the pointer here would retarget its moves to this div.
         if (!glReady) return;
+        ptrsRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
         e.currentTarget.setPointerCapture(e.pointerId);
+        if (ptrsRef.current.size >= 2) {
+          const pts = [...ptrsRef.current.values()];
+          dragRef.current = {
+            mode: "view",
+            picked: null,
+            moved: true,
+            lastX: (pts[0]!.x + pts[1]!.x) / 2,
+            lastY: (pts[0]!.y + pts[1]!.y) / 2,
+            az: 0,
+            el: 0,
+            travel: 0,
+            samples: [],
+            pinchD: Math.hypot(pts[0]!.x - pts[1]!.x, pts[0]!.y - pts[1]!.y),
+          };
+          return;
+        }
         const rect = e.currentTarget.getBoundingClientRect();
         const hit =
           stageRef.current?.pick(
@@ -1041,9 +1246,11 @@ function StageCanvas(props: StageProps) {
           mode:
             propsRef.current.mode === "draw"
               ? "draw"
-              : hit === null || pinned
-                ? "none"
-                : "edit",
+              : propsRef.current.mode === "look"
+                ? "view"
+                : hit === null || pinned
+                  ? "none"
+                  : "edit",
           picked: hit,
           moved: false,
           lastX: e.clientX,
@@ -1054,11 +1261,34 @@ function StageCanvas(props: StageProps) {
           // Seeded so the first move event already yields a two-sample path —
           // a fast one-event stroke can't die below the gate's min length.
           samples: [{ azimuth: 0, elevation: 0 }],
+          pinchD: 0,
         };
       }}
       onPointerMove={(e) => {
         const drag = dragRef.current;
         if (!drag || !glReady) return;
+        if (ptrsRef.current.has(e.pointerId)) {
+          ptrsRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        }
+        if (drag.mode === "view") {
+          const stage = stageRef.current;
+          const pts = [...ptrsRef.current.values()];
+          if (!stage || pts.length === 0) return;
+          const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
+          const cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+          stage.orbit(cx - drag.lastX, cy - drag.lastY);
+          drag.lastX = cx;
+          drag.lastY = cy;
+          if (pts.length === 2) {
+            const d = Math.hypot(pts[0]!.x - pts[1]!.x, pts[0]!.y - pts[1]!.y);
+            if (drag.pinchD > 0) stage.zoom(d / drag.pinchD);
+            drag.pinchD = d;
+          } else {
+            drag.pinchD = 0;
+          }
+          propsRef.current.onViewChange(stage.viewDirty());
+          return;
+        }
         const dx = e.clientX - drag.lastX;
         const dy = e.clientY - drag.lastY;
         if (Math.abs(dx) + Math.abs(dy) < 0.5) return;
@@ -1098,8 +1328,22 @@ function StageCanvas(props: StageProps) {
           propsRef.current.onDrawPath(drag.samples);
         }
       }}
-      onPointerUp={() => {
+      onPointerUp={(e) => {
+        ptrsRef.current.delete(e.pointerId);
         const drag = dragRef.current;
+        if (drag?.mode === "view") {
+          if (ptrsRef.current.size === 0) {
+            dragRef.current = null;
+          } else {
+            // A finger left over from a pinch keeps orbiting — re-baseline
+            // so the view doesn't jump to the remaining fingertip.
+            const p = [...ptrsRef.current.values()][0]!;
+            drag.lastX = p.x;
+            drag.lastY = p.y;
+            drag.pinchD = 0;
+          }
+          return;
+        }
         dragRef.current = null;
         if (!drag || !glReady) return;
         if (!drag.moved) {
@@ -1114,7 +1358,16 @@ function StageCanvas(props: StageProps) {
           propsRef.current.onDrawPath(drag.samples);
         }
       }}
-      onPointerCancel={() => {
+      onPointerCancel={(e) => {
+        ptrsRef.current.delete(e.pointerId);
+        const drag = dragRef.current;
+        if (drag?.mode === "view" && ptrsRef.current.size > 0) {
+          const p = [...ptrsRef.current.values()][0]!;
+          drag.lastX = p.x;
+          drag.lastY = p.y;
+          drag.pinchD = 0;
+          return;
+        }
         // A cancelled/interrupted gesture drops in place — no pick, no flush.
         dragRef.current = null;
       }}
@@ -1128,6 +1381,10 @@ function StageCanvas(props: StageProps) {
 function StageCanvas2D(props: StageProps) {
   const ref = useRef<HTMLCanvasElement | null>(null);
   const dragRef = useRef<StageDrag | null>(null);
+  const ptrsRef = useRef(new Map<number, { x: number; y: number }>());
+  const viewRef = useRef<View2D>({ yaw: 0, tilt: 0, zoom: 1 });
+  const propsRef = useRef(props);
+  propsRef.current = props;
 
   const draw = useCallback(() => {
     const canvas = ref.current;
@@ -1161,11 +1418,12 @@ function StageCanvas2D(props: StageProps) {
       ctx.stroke();
     }
 
+    const view = viewRef.current;
     const cx = w / 2;
-    const cy = h * 0.46;
+    const cy = h * 0.46 + view.tilt * h * 0.24;
     // orbit ring
-    const rx = w * 0.36;
-    const ry = h * 0.11;
+    const rx = w * 0.36 * view.zoom;
+    const ry = h * 0.11 * view.zoom;
     ctx.strokeStyle = "rgba(159,216,197,0.22)";
     ctx.setLineDash([4, 6]);
     ctx.beginPath();
@@ -1182,7 +1440,7 @@ function StageCanvas2D(props: StageProps) {
       ctx.beginPath();
       const STEPS = 96;
       for (let i = 0; i <= STEPS; i++) {
-        const p = project(poseAt(path, i / STEPS), w, h);
+        const p = project(poseAt(path, i / STEPS), w, h, view);
         if (i === 0) ctx.moveTo(p.x, p.y);
         else ctx.lineTo(p.x, p.y);
       }
@@ -1215,7 +1473,7 @@ function StageCanvas2D(props: StageProps) {
 
     // keyframe dots
     path.forEach((kf, i) => {
-      const p = project(kf, w, h);
+      const p = project(kf, w, h, view);
       ctx.beginPath();
       ctx.arc(p.x, p.y, i === props.selected ? 7 : 5, 0, Math.PI * 2);
       ctx.fillStyle = i === props.selected ? "#f0f5f4" : "#8fd4bd";
@@ -1229,7 +1487,7 @@ function StageCanvas2D(props: StageProps) {
 
     // camera glyph at scrub time
     const cam = poseAt(path, props.scrubT);
-    const p = project(cam, w, h);
+    const p = project(cam, w, h, view);
     const behind = p.depth < -0.05;
     ctx.globalAlpha = behind ? 0.45 : 1;
     ctx.beginPath();
@@ -1252,6 +1510,31 @@ function StageCanvas2D(props: StageProps) {
   }, [props.image, props.keyframes, props.scrubT, props.selected]);
 
   useEffect(() => {
+    const isDirty = () => {
+      const v = viewRef.current;
+      return (
+        Math.abs(v.yaw) > 0.5 || Math.abs(v.tilt) > 0.02 ||
+        Math.abs(v.zoom - 1) > 0.02
+      );
+    };
+    const ctl: StageViewCtl = {
+      reset: () => {
+        if (!isDirty()) return false;
+        viewRef.current = { yaw: 0, tilt: 0, zoom: 1 };
+        draw();
+        propsRef.current.onViewChange(false);
+        return true;
+      },
+    };
+    propsRef.current.viewCtl.current = ctl;
+    return () => {
+      if (propsRef.current.viewCtl.current === ctl) {
+        propsRef.current.viewCtl.current = null;
+      }
+    };
+  }, [draw]);
+
+  useEffect(() => {
     draw();
   }, [draw]);
 
@@ -1266,13 +1549,30 @@ function StageCanvas2D(props: StageProps) {
       ref={ref}
       className="fz-stage-canvas"
       onPointerDown={(e) => {
+        ptrsRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
         e.currentTarget.setPointerCapture(e.pointerId);
+        if (ptrsRef.current.size >= 2) {
+          const pts = [...ptrsRef.current.values()];
+          dragRef.current = {
+            mode: "view",
+            picked: null,
+            moved: true,
+            lastX: (pts[0]!.x + pts[1]!.x) / 2,
+            lastY: (pts[0]!.y + pts[1]!.y) / 2,
+            az: 0,
+            el: 0,
+            travel: 0,
+            samples: [],
+            pinchD: Math.hypot(pts[0]!.x - pts[1]!.x, pts[0]!.y - pts[1]!.y),
+          };
+          return;
+        }
         const rect = e.currentTarget.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
         // pick a nearby keyframe dot first
         const hit = props.keyframes.findIndex((kf) => {
-          const p = project(kf, rect.width, rect.height);
+          const p = project(kf, rect.width, rect.height, viewRef.current);
           return Math.hypot(p.x - x, p.y - y) < 20;
         });
         if (hit >= 0) props.onPick(hit);
@@ -1284,9 +1584,11 @@ function StageCanvas2D(props: StageProps) {
           mode:
             props.mode === "draw"
               ? "draw"
-              : hit < 0 || pinned
-                ? "none"
-                : "edit",
+              : props.mode === "look"
+                ? "view"
+                : hit < 0 || pinned
+                  ? "none"
+                  : "edit",
           picked: hit >= 0 ? hit : null,
           moved: false,
           lastX: e.clientX,
@@ -1297,11 +1599,46 @@ function StageCanvas2D(props: StageProps) {
           // Seeded so the first move event already yields a two-sample path —
           // a fast one-event stroke can't die below the gate's min length.
           samples: [{ azimuth: 0, elevation: 0 }],
+          pinchD: 0,
         };
       }}
       onPointerMove={(e) => {
         const drag = dragRef.current;
         if (!drag) return;
+        if (ptrsRef.current.has(e.pointerId)) {
+          ptrsRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        }
+        if (drag.mode === "view") {
+          const pts = [...ptrsRef.current.values()];
+          if (pts.length === 0) return;
+          const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
+          const cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+          const dx = cx - drag.lastX;
+          const dy = cy - drag.lastY;
+          const v = viewRef.current;
+          // The flat view spins instead of orbiting — a drag pans the layout
+          // around the subject ellipse, a pinch scales it.
+          v.yaw -= dx * 0.3;
+          v.tilt = clamp(v.tilt + dy * 0.0035, -0.5, 0.7);
+          drag.lastX = cx;
+          drag.lastY = cy;
+          if (pts.length === 2) {
+            const d = Math.hypot(pts[0]!.x - pts[1]!.x, pts[0]!.y - pts[1]!.y);
+            if (drag.pinchD > 0) {
+              v.zoom = clamp(v.zoom * (d / drag.pinchD), 0.7, 2.2);
+            }
+            drag.pinchD = d;
+          } else {
+            drag.pinchD = 0;
+          }
+          draw();
+          propsRef.current.onViewChange(
+            Math.abs(v.yaw) > 0.5 ||
+              Math.abs(v.tilt) > 0.02 ||
+              Math.abs(v.zoom - 1) > 0.02
+          );
+          return;
+        }
         const dx = e.clientX - drag.lastX;
         const dy = e.clientY - drag.lastY;
         if (Math.abs(dx) + Math.abs(dy) < 0.5) return;
@@ -1337,8 +1674,20 @@ function StageCanvas2D(props: StageProps) {
           props.onDrawPath(drag.samples);
         }
       }}
-      onPointerUp={() => {
+      onPointerUp={(e) => {
+        ptrsRef.current.delete(e.pointerId);
         const drag = dragRef.current;
+        if (drag?.mode === "view") {
+          if (ptrsRef.current.size === 0) {
+            dragRef.current = null;
+          } else {
+            const p = [...ptrsRef.current.values()][0]!;
+            drag.lastX = p.x;
+            drag.lastY = p.y;
+            drag.pinchD = 0;
+          }
+          return;
+        }
         dragRef.current = null;
         if (!drag) return;
         if (!drag.moved) {
@@ -1353,7 +1702,16 @@ function StageCanvas2D(props: StageProps) {
           props.onDrawPath(drag.samples);
         }
       }}
-      onPointerCancel={() => {
+      onPointerCancel={(e) => {
+        ptrsRef.current.delete(e.pointerId);
+        const drag = dragRef.current;
+        if (drag?.mode === "view" && ptrsRef.current.size > 0) {
+          const p = [...ptrsRef.current.values()][0]!;
+          drag.lastX = p.x;
+          drag.lastY = p.y;
+          drag.pinchD = 0;
+          return;
+        }
         dragRef.current = null;
       }}
     />
@@ -1439,9 +1797,15 @@ function Studio(props: { initial: Payload }) {
   const [scrubT, setScrubT] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
   // Stage strokes are mode-split: draw = every stroke sketches the path;
-  // edit = dot grabs move that dot. An explicit toggle keeps the gesture
-  // unambiguous instead of disambiguating on a 30px hit test.
-  const [stageMode, setStageMode] = useState<"draw" | "edit">("draw");
+  // edit = dot grabs move that dot; look = one-finger viewport orbit.
+  // An explicit toggle keeps the gesture unambiguous instead of
+  // disambiguating on a 30px hit test. A second finger always orbits the
+  // view regardless of mode.
+  const [stageMode, setStageMode] = useState<"draw" | "edit" | "look">(
+    "draw"
+  );
+  const [viewDirty, setViewDirty] = useState(false);
+  const viewCtl = useRef<StageViewCtl | null>(null);
   const [preset, setPreset] = useState<string | null>(null);
   const [duration, setDuration] = useState<5 | 6>(5);
   const [resolution, setResolution] = useState("768P");
@@ -2097,16 +2461,29 @@ function Studio(props: { initial: Payload }) {
               selected={selected}
               lite={props.initial.lite}
               mode={stageMode}
+              onViewChange={setViewDirty}
+              viewCtl={viewCtl}
               onDragPose={onDragPose}
               onDrawPath={onDrawPath}
               onPick={setSelected}
             />
+            {viewDirty && (
+              <button
+                type="button"
+                className="fz-viewreset"
+                onClick={() => viewCtl.current?.reset()}
+              >
+                reset view
+              </button>
+            )}
             {!hintSeen && (
               <div className="fz-stage-hint">
                 <span className="fz-stage-dot" />
                 {stageMode === "draw"
                   ? "drag to draw the camera path"
-                  : "drag a dot to move it"}
+                  : stageMode === "look"
+                    ? "drag to look — pinch to zoom"
+                    : "drag a dot to move it"}
               </div>
             )}
           </div>
@@ -2129,6 +2506,14 @@ function Studio(props: { initial: Payload }) {
                 onClick={() => setStageMode("edit")}
               >
                 move dot
+              </button>
+              <button
+                type="button"
+                className={stageMode === "look" ? "active" : ""}
+                aria-pressed={stageMode === "look"}
+                onClick={() => setStageMode("look")}
+              >
+                look
               </button>
             </div>
           </div>
@@ -2230,7 +2615,9 @@ function Studio(props: { initial: Payload }) {
                     : "move this dot with the sliders or the scene"
                   : stageMode === "draw"
                     ? "drag the scene to sketch the path"
-                    : "drag a dot to move it"}
+                    : stageMode === "look"
+                      ? "drag to look around — pinch to zoom"
+                      : "drag a dot to move it"}
               </span>
               <div className="fz-timeline-actions">
                 <button
@@ -2439,12 +2826,14 @@ const CSS = `
 .fz-modes{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;background:#101415;border:1px solid #2c3c35;border-radius:12px;padding:3px}
 .fz-modes button{display:grid;place-items:center;min-height:44px;border:0;border-radius:9px;background:transparent;color:#7f9090;font-size:0.66rem;font-weight:700;padding:4px}
 .fz-modes button.active{background:#20382e;color:#d1eadd}
-.fz-stage-wrap{position:relative;flex:1;min-height:240px;border-radius:16px;overflow:hidden;background:#0b1011;border:1px solid #2c3c35}
+.fz-stage-wrap{position:relative;flex:1;min-height:240px;border-radius:16px;overflow:hidden;background:radial-gradient(120% 90% at 50% 12%,#131f1d 0%,#0b1011 62%);border:1px solid #2c3c35}
 .fz-stage-canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair}
 .fz-modebar{display:flex;align-items:center;gap:10px;padding:0 2px}
 .fz-modebar .fz-seg{flex:1}
 .fz-modebar .fz-seg button{flex:1}
-.fz-stage-hint{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);display:flex;align-items:center;gap:8px;border-radius:20px;padding:8px 12px;background:#0d181bc7;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);font-size:11px;color:#dbe7e4;pointer-events:none;z-index:2;white-space:nowrap}
+.fz-viewreset{position:absolute;top:10px;right:10px;z-index:3;min-width:0;min-height:0;border:1px solid #35524b;border-radius:16px;padding:7px 12px;background:#0d181bd9;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);font-size:10.5px;font-weight:700;color:#b9e8d4;letter-spacing:.04em;text-transform:uppercase}
+.fz-viewreset:active{background:#20382e;color:#dff5ec}
+.fz-stage-hint{position:absolute;left:50%;top:12px;transform:translateX(-50%);display:flex;align-items:center;gap:8px;border-radius:20px;padding:8px 12px;background:#0d181bc7;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);font-size:11px;color:#dbe7e4;pointer-events:none;z-index:2;white-space:nowrap}
 .fz-stage-dot{width:5px;height:5px;border-radius:50%;background:#b4dcce;flex:0 0 5px}
 .fz-ctl-label{color:#8d9e9c;font-size:0.66rem;letter-spacing:0.1em;text-transform:uppercase;padding:0 2px}
 .fz-prail{display:flex;gap:8px;overflow-x:auto;padding:2px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
