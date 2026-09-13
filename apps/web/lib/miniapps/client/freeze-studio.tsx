@@ -876,12 +876,17 @@ function createThreeStage(host: HTMLDivElement): ThreeStage {
   const photoGeo = track(new THREE.PlaneGeometry(photoW, photoH));
   const photo = new THREE.Mesh(photoGeo, photoMat);
   photo.position.set(0, SUBJECT_Y, 0.001);
+  // The backing plate occludes the photo from behind — a mirrored twin on
+  // the -Z face keeps the subject visible through a full orbit.
+  const photoBack = new THREE.Mesh(photoGeo, photoMat);
+  photoBack.position.set(0, SUBJECT_Y, -0.001);
+  photoBack.rotation.y = Math.PI;
   const border = new THREE.LineSegments(
     track(new THREE.EdgesGeometry(photoGeo)),
     track(new THREE.LineBasicMaterial({ color: 0x7fa89b }))
   );
   border.position.copy(photo.position);
-  scene.add(frame, photo, border);
+  scene.add(frame, photo, photoBack, border);
 
   const tubeMat = track(
     new THREE.MeshBasicMaterial({ color: 0x8fd4bd })
@@ -2889,7 +2894,7 @@ const CSS = `
 .fz-modebar{display:flex;align-items:center;gap:10px;padding:0 2px}
 .fz-modebar .fz-seg{flex:1}
 .fz-modebar .fz-seg button{flex:1}
-.fz-viewreset{position:absolute;top:10px;right:10px;z-index:3;min-width:0;min-height:0;border:1px solid #35524b;border-radius:16px;padding:7px 12px;background:#0d181bd9;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);font-size:10.5px;font-weight:700;color:#b9e8d4;letter-spacing:.04em;text-transform:uppercase}
+.fz-viewreset{position:absolute;bottom:10px;right:10px;z-index:3;min-width:0;min-height:0;border:1px solid #35524b;border-radius:16px;padding:7px 12px;background:#0d181bd9;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);font-size:10.5px;font-weight:700;color:#b9e8d4;letter-spacing:.04em;text-transform:uppercase}
 .fz-viewreset:active{background:#20382e;color:#dff5ec}
 .fz-stage-hint{position:absolute;left:50%;top:12px;transform:translateX(-50%);display:flex;align-items:center;gap:8px;border-radius:20px;padding:8px 12px;background:#0d181bc7;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);font-size:11px;color:#dbe7e4;pointer-events:none;z-index:2;white-space:nowrap}
 .fz-stage-dot{width:5px;height:5px;border-radius:50%;background:#b4dcce;flex:0 0 5px}
