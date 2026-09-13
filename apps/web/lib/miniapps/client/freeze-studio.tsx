@@ -696,12 +696,18 @@ function project(
   const cx = w / 2;
   const cy = h * 0.46 + (view?.tilt ?? 0) * h * 0.24;
   const z = view?.zoom ?? 1;
-  const rx = w * 0.36 * pose.distance * z;
-  const ry = h * 0.11 * pose.distance * z;
+  const rx = w * 0.36 * pose.distance;
+  const ry = h * 0.11 * pose.distance;
   const a = (pose.azimuth + (view?.yaw ?? 0)) * DEG;
+  // Zoom scales the whole displacement from the subject — orbit radius
+  // and elevation lift alike — so a pinch reads as a dolly, not a
+  // deformation of elevated paths.
   return {
-    x: cx + Math.sin(a) * rx,
-    y: cy + h * 0.16 + Math.cos(a) * ry - Math.sin(pose.elevation * DEG) * h * 0.3,
+    x: cx + Math.sin(a) * rx * z,
+    y:
+      cy +
+      h * 0.16 +
+      (Math.cos(a) * ry - Math.sin(pose.elevation * DEG) * h * 0.3) * z,
     depth: Math.cos(a),
   };
 }
@@ -1133,8 +1139,12 @@ interface StageDrag {
   /** view mode: baseline two-finger distance for pinch zoom; 0 single-pointer */
   pinchD: number;
   /** draw mode: trajectory before the stroke — restored if a second finger
-   * converts the gesture into a view orbit mid-draw. */
+   * converts the gesture into a view orbit mid-draw, or the stroke is
+   * cancelled before commit. */
   snapshot: CameraKeyframe[] | null;
+  /** selection captured with the snapshot — a live preview can shrink the
+   * frame list under it, so the stroke owns the clamp-and-restore too. */
+  snapshotSel: number | null;
 }
 
 /** Live view controls a stage exposes to the reset chip. */
@@ -1161,8 +1171,9 @@ interface StageProps {
   onDragPose: (azimuth: number, elevation: number, index: number | null) => void;
   /** Live-replaces the trajectory with the stroke's samples. */
   onDrawPath: (samples: DrawSample[], finalize?: boolean) => void;
-  /** Restores the trajectory a mid-draw pinch interrupted. */
-  onDrawRevert: (frames: CameraKeyframe[]) => void;
+  /** Restores the trajectory (and selection) a live preview displaced —
+   * pinch conversion or pointercancel before the stroke committed. */
+  onDrawRevert: (frames: CameraKeyframe[], sel?: number | null) => void;
   onPick: (index: number | null) => void;
 }
 
@@ -1177,9 +1188,9 @@ function StageCanvas(props: StageProps) {
   const propsRef = useRef(props);
   propsRef.current = props;
 
-  // A second finger converting a draw stroke to a view gesture mustn't
-  // strand the partial path the stroke already committed — restore the
-  // trajectory captured at stroke start.
+  // A second finger converting a draw stroke to a view gesture — or a
+  // pointercancel mid-stroke — mustn't strand the partial path the stroke
+  // already committed: restore the trajectory captured at stroke start.
   const revertLiveDraw = () => {
     const drag = dragRef.current;
     if (
@@ -1188,7 +1199,7 @@ function StageCanvas(props: StageProps) {
       drag.travel >= DRAW_GATE_PX &&
       drag.samples.length >= 2
     ) {
-      propsRef.current.onDrawRevert(drag.snapshot);
+      propsRef.current.onDrawRevert(drag.snapshot, drag.snapshotSel);
     }
   };
 
@@ -1268,6 +1279,7 @@ function StageCanvas(props: StageProps) {
                 ? Math.hypot(pts[0]!.x - pts[1]!.x, pts[0]!.y - pts[1]!.y)
                 : 0,
             snapshot: null,
+            snapshotSel: null,
           };
           return;
         }
@@ -1286,6 +1298,7 @@ function StageCanvas(props: StageProps) {
             samples: [],
             pinchD: 0,
             snapshot: null,
+            snapshotSel: null,
           };
           return;
         }
@@ -1321,6 +1334,7 @@ function StageCanvas(props: StageProps) {
           samples: [{ azimuth: 0, elevation: 0 }],
           pinchD: 0,
           snapshot: propsRef.current.keyframes,
+          snapshotSel: propsRef.current.selected,
         };
       }}
       onPointerMove={(e) => {
@@ -1436,7 +1450,9 @@ function StageCanvas(props: StageProps) {
               : 0;
           return;
         }
-        // A cancelled/interrupted gesture drops in place — no pick, no flush.
+        // A cancelled/interrupted draw drops in place — no pick, no flush —
+        // and its live preview rolls back to the stroke-start trajectory.
+        revertLiveDraw();
         dragRef.current = null;
       }}
     >
@@ -1454,7 +1470,7 @@ function StageCanvas2D(props: StageProps) {
   const propsRef = useRef(props);
   propsRef.current = props;
 
-  // Same pinch-conversion rollback as the WebGL stage.
+  // Same pinch-conversion/cancel rollback as the WebGL stage.
   const revertLiveDraw = () => {
     const drag = dragRef.current;
     if (
@@ -1463,7 +1479,7 @@ function StageCanvas2D(props: StageProps) {
       drag.travel >= DRAW_GATE_PX &&
       drag.samples.length >= 2
     ) {
-      propsRef.current.onDrawRevert(drag.snapshot);
+      propsRef.current.onDrawRevert(drag.snapshot, drag.snapshotSel);
     }
   };
 
@@ -1655,6 +1671,7 @@ function StageCanvas2D(props: StageProps) {
                 ? Math.hypot(pts[0]!.x - pts[1]!.x, pts[0]!.y - pts[1]!.y)
                 : 0,
             snapshot: null,
+            snapshotSel: null,
           };
           return;
         }
@@ -1673,6 +1690,7 @@ function StageCanvas2D(props: StageProps) {
             samples: [],
             pinchD: 0,
             snapshot: null,
+            snapshotSel: null,
           };
           return;
         }
@@ -1708,6 +1726,7 @@ function StageCanvas2D(props: StageProps) {
           samples: [{ azimuth: 0, elevation: 0 }],
           pinchD: 0,
           snapshot: props.keyframes,
+          snapshotSel: props.selected,
         };
       }}
       onPointerMove={(e) => {
@@ -1826,6 +1845,9 @@ function StageCanvas2D(props: StageProps) {
               : 0;
           return;
         }
+        // A cancelled draw drops in place — the live preview must roll
+        // back too, or the visible path and the editor state split.
+        revertLiveDraw();
         dragRef.current = null;
       }}
     />
@@ -2325,24 +2347,39 @@ function Studio(props: { initial: Payload }) {
     // whatever trajectory was there.
     if (deduped.length < 2) return;
     setKeyframes(deduped);
-    // Only the completed stroke commits: preset identity, selection, the
-    // hint, and the playhead stay put while a stroke is mid-air so a
-    // second-finger conversion can roll back to an untouched editor by
-    // restoring just the frames it snapshotted at stroke start.
+    // Only the completed stroke commits: preset identity, the hint, and
+    // the playhead stay put while a stroke is mid-air so a second-finger
+    // conversion can roll back to an untouched editor from the snapshot it
+    // took at stroke start. The one exception is the selection index — a
+    // preview can shrink the list under it, and every read dereferences it
+    // directly, so it clamps live and restores on rollback.
     if (finalize) {
       setHintSeen(true);
       setPreset(null);
       setSelected(null);
       setScrubT(1);
+    } else {
+      setSelected((sel) =>
+        sel !== null && sel >= deduped.length ? null : sel
+      );
     }
   }, []);
 
-  // A pinch landing mid-stroke converts the gesture to a view orbit — the
-  // preview frames it committed roll back to the stroke-start snapshot;
-  // preset, selection, scrub, and hint were never touched.
-  const onDrawRevert = useCallback((frames: CameraKeyframe[]) => {
-    setKeyframes(frames.map((frame) => ({ ...frame })));
-  }, []);
+  // A pinch landing mid-stroke — or a pointercancel before commit — rolls
+  // back to the stroke-start snapshot; preset, scrub, and hint were never
+  // touched, and the selection returns when it still fits the restored
+  // list.
+  const onDrawRevert = useCallback(
+    (frames: CameraKeyframe[], sel?: number | null) => {
+      setKeyframes(frames.map((frame) => ({ ...frame })));
+      setSelected(
+        typeof sel === "number" && sel >= 0 && sel < frames.length
+          ? sel
+          : null
+      );
+    },
+    []
+  );
 
   /** Slider edits — direct pose sets, no stage drag required. */
   const onAim = useCallback(
