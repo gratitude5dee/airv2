@@ -1248,18 +1248,25 @@ function StageCanvas(props: StageProps) {
         e.currentTarget.setPointerCapture(e.pointerId);
         if (ptrsRef.current.size >= 2) {
           revertLiveDraw();
+          // Baseline on the centroid of ALL live contacts — a third finger
+          // joining mid-pinch re-baselines here too, and anchoring to just
+          // the first two would jump the view when the cluster moves. The
+          // pinch ruler only exists for exactly two contacts.
           const pts = [...ptrsRef.current.values()];
           dragRef.current = {
             mode: "view",
             picked: null,
             moved: true,
-            lastX: (pts[0]!.x + pts[1]!.x) / 2,
-            lastY: (pts[0]!.y + pts[1]!.y) / 2,
+            lastX: pts.reduce((s, p) => s + p.x, 0) / pts.length,
+            lastY: pts.reduce((s, p) => s + p.y, 0) / pts.length,
             az: 0,
             el: 0,
             travel: 0,
             samples: [],
-            pinchD: Math.hypot(pts[0]!.x - pts[1]!.x, pts[0]!.y - pts[1]!.y),
+            pinchD:
+              pts.length === 2
+                ? Math.hypot(pts[0]!.x - pts[1]!.x, pts[0]!.y - pts[1]!.y)
+                : 0,
             snapshot: null,
           };
           return;
@@ -1637,13 +1644,16 @@ function StageCanvas2D(props: StageProps) {
             mode: "view",
             picked: null,
             moved: true,
-            lastX: (pts[0]!.x + pts[1]!.x) / 2,
-            lastY: (pts[0]!.y + pts[1]!.y) / 2,
+            lastX: pts.reduce((s, p) => s + p.x, 0) / pts.length,
+            lastY: pts.reduce((s, p) => s + p.y, 0) / pts.length,
             az: 0,
             el: 0,
             travel: 0,
             samples: [],
-            pinchD: Math.hypot(pts[0]!.x - pts[1]!.x, pts[0]!.y - pts[1]!.y),
+            pinchD:
+              pts.length === 2
+                ? Math.hypot(pts[0]!.x - pts[1]!.x, pts[0]!.y - pts[1]!.y)
+                : 0,
             snapshot: null,
           };
           return;
