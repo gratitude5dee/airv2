@@ -10,7 +10,12 @@
  *   status — events + job rows for the ~2s client poll
  *   source — set the source still; `kind=sketch` runs a Flare sketch job
  *            (canvas file or PNG data URL optional), otherwise a raw file
- *            upload or data URL (iPhone HEIC converted to PNG server-side)
+ *            upload or data URL (iPhone HEIC converted to PNG server-side).
+ *            Clip fields (clipPath/clipSha/clipBytes + the window) attach
+ *            a registered video asset so a later render stitches back into
+ *            the footage; a plain source write clears them.
+ *   clip   — mint a signed direct-to-storage upload URL for the source
+ *            video (the bytes never cross this action's body cap)
  *   render — admit a camera-move job on the fal multi-angle lane, then
  *            run it via after() so the response returns the job id
  *            immediately (the client shows cancel and polls)
@@ -19,6 +24,7 @@
  *            marked failed — fal has no cancel on this endpoint)
  */
 import { NextResponse, after } from "next/server";
+import { env } from "@/lib/env";
 import { ASSETS_BUCKET } from "@/lib/assets/keys";
 import { mintDelivery, type CreativeAsset } from "@/lib/assets/pipeline";
 import { createSpectrumSender } from "@/lib/spectrum/sender";
@@ -37,6 +43,9 @@ import {
   admitFreezeSketch,
   executeFreezeRender,
   executeFreezeSketch,
+  mintFreezeClipUpload,
+  deleteFreezeClipObject,
+  registerFreezeClip,
   resolveFreezeRender,
   setFreezeSource,
   storeFreezeUpload,
@@ -44,7 +53,10 @@ import {
 import { PRESETS, validateTrajectory } from "../freezeRecipe";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
-/** The studio needs script + connect + media beyond the media-shell CSP. */
+/** The studio needs script + connect + media beyond the media-shell CSP.
+ * connect-src reaches the storage origin too — clip uploads travel on a
+ * signed URL straight to Supabase storage, never through this action's
+ * (capped) request body. */
 function studioShellHtml(body: string): NextResponse {
   const response = shellHtml(body, theme("pixel"));
   let csp = response.headers.get("Content-Security-Policy") ?? "";
@@ -54,7 +66,14 @@ function studioShellHtml(body: string): NextResponse {
   }
   if (!csp.includes("media-src")) csp += "; media-src 'self' https:";
   if (!csp.includes("script-src")) csp += "; script-src 'self'";
-  if (!csp.includes("connect-src")) csp += "; connect-src 'self'";
+  let storageOrigin = "";
+  try {
+    storageOrigin = new URL(env.supabaseUrl()).origin;
+  } catch {
+    storageOrigin = "";
+  }
+  const connectSrc = `connect-src 'self'${storageOrigin ? ` ${storageOrigin}` : ""}`;
+  if (!csp.includes("connect-src")) csp += `; ${connectSrc}`;
   response.headers.set("Content-Security-Policy", csp);
   return response;
 }
@@ -152,6 +171,16 @@ const errLine = (error: unknown): { code: string; line: string } => {
           code: error.code,
           line: "that camera path doesn't work — adjust it",
         };
+      case "BAD_CLIP":
+        return {
+          code: error.code,
+          line: "that clip can't be used — mp4, mov, or webm under 250mb",
+        };
+      case "CLIP_MISSING":
+        return {
+          code: error.code,
+          line: "the clip upload didn't land — try again",
+        };
     }
   }
   return { code: "FREEZE_ERROR", line: "that didn't work — try again?" };
@@ -213,6 +242,12 @@ export const freeze: MiniAppModule = {
           const after = Number(form.get("after") ?? -1);
           return json(
             await studioPayload(ctx, session, Number.isFinite(after) ? after : -1)
+          );
+        }
+        case "clip": {
+          const mime = String(form.get("mime") ?? "").trim();
+          return json(
+            await mintFreezeClipUpload(ctx.supabase, session, mime)
           );
         }
         case "source": {
@@ -349,9 +384,42 @@ export const freeze: MiniAppModule = {
               400
             );
           }
+          // A clip-backed source links the registered video asset + the
+          // picked window in the same write — a plain upload clears them,
+          // so a photo swap can never stitch a stale clip.
+          const clipPath = String(form.get("clipPath") ?? "").trim();
+          let clipAttach: ({
+            assetId: string;
+          } & import("../freeze").FreezeClipWindow) | null = null;
+          if (clipPath) {
+            const window = {
+              clipIn: Number(form.get("clipIn") ?? NaN),
+              clipOut: Number(form.get("clipOut") ?? NaN),
+              freezeAt: Number(form.get("freezeAt") ?? NaN),
+            };
+            const clipAssetId = await registerFreezeClip(
+              ctx.supabase,
+              session,
+              {
+                path: clipPath,
+                sha: String(form.get("clipSha") ?? ""),
+                bytes: Number(form.get("clipBytes") ?? NaN),
+                window,
+              }
+            );
+            clipAttach = { assetId: clipAssetId, ...window };
+          }
           // Throws on a failed/expired write — never sign an asset the
-          // session doesn't actually point at.
-          await setFreezeSource(ctx.supabase, session, asset.id);
+          // session doesn't actually point at. A clip we couldn't link is
+          // nobody's asset — drop the object instead of leaking it.
+          try {
+            await setFreezeSource(ctx.supabase, session, asset.id, clipAttach);
+          } catch (error) {
+            if (clipPath) {
+              await deleteFreezeClipObject(ctx.supabase, session, clipPath);
+            }
+            throw error;
+          }
           // Return the signed (converted, for HEIC) URL with the accept so
           // the client can show the still without waiting on a status pull.
           return json({

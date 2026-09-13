@@ -86,6 +86,11 @@ interface Payload {
   downloadUrl?: string;
   error?: string;
   line?: string;
+  /** the session has a clip linked — the render stitches into footage */
+  hasClip?: boolean;
+  /** `clip` action response — direct-to-storage upload coordinates */
+  clipPath?: string;
+  uploadUrl?: string;
 }
 
 async function postAction(
@@ -346,6 +351,43 @@ function SketchPad(props: {
 const FRAME_STEP = 1 / 30;
 /** Room under the 12MB upload cap for the extracted JPEG. */
 const MAX_FRAME_BYTES = 10 * 1024 * 1024;
+/** The section of the clip the finished video keeps — longer footage
+ * slides a 30-second window under the playhead. */
+const CLIP_WINDOW_S = 30;
+/** Matches the server's clip lane cap — the clip itself rides a signed
+ * direct-to-storage upload, not the (12MB-capped) action body. */
+const MAX_CLIP_BYTES = 250 * 1024 * 1024;
+const CLIP_MIME: Record<string, string> = {
+  mp4: "video/mp4",
+  mov: "video/quicktime",
+  webm: "video/webm",
+};
+
+/** The clip's server-side identity — `path` is the storage object the
+ * minted URL wrote, `sha` the (head-slice + size) fingerprint the commit
+ * dedupes on, and the window pins which seconds the stitch keeps. */
+interface ClipRef {
+  path: string;
+  sha: string;
+  bytes: number;
+  clipIn: number;
+  clipOut: number;
+  freezeAt: number;
+}
+
+/** Hash only the head + length — a full-file digest of a 250mb clip on
+ * an iPhone WebView is slow enough to feel broken; the storage object
+ * itself is verified server-side by name and the session-scoped dir. */
+async function clipFingerprint(file: File): Promise<string> {
+  const head = file.slice(0, 8 * 1024 * 1024);
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    await new Blob([head, `:${file.size}`]).arrayBuffer()
+  );
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
 
 function seekTo(
   video: HTMLVideoElement,
@@ -398,12 +440,16 @@ async function thumbAt(
 
 function VideoFramePick(props: {
   busy: boolean;
-  onFrame: (file: File) => void;
+  /** clipError carries the splice-loss warning up — this picker unmounts
+   * on accept, so its local error would vanish with the view. */
+  onFrame: (file: File, clip: ClipRef | null, clipError?: string) => void;
 }) {
   const { busy, onFrame } = props;
   const inputRef = useRef<HTMLInputElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const urlRef = useRef<string | null>(null);
+  /** The picked File — kept for the signed clip upload on freeze. */
+  const fileRef = useRef<File | null>(null);
   // Set on every scrub until the element's "seeked" lands — capture must
   // not drawImage while a seek is still decoding (it paints the old frame).
   const pendingSeekRef = useRef(false);
@@ -413,6 +459,10 @@ function VideoFramePick(props: {
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [duration, setDuration] = useState(0);
   const [time, setTime] = useState(0);
+  /** Start of the ≤30s keep-window — the scrub slider and the stitch
+   * both stay inside [winStart, winStart + CLIP_WINDOW_S]. */
+  const [winStart, setWinStart] = useState(0);
+  const [uploading, setUploading] = useState(false);
   const [thumbs, setThumbs] = useState<{ src: string; time: number }[]>([]);
   const [reading, setReading] = useState(false);
   const [snapping, setSnapping] = useState(false);
@@ -431,12 +481,14 @@ function VideoFramePick(props: {
   const onPick = useCallback(async (file: File | null) => {
     if (!file) return;
     setErr(null);
-    if (!file.type.startsWith("video/")) {
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+    const mime = CLIP_MIME[ext] ?? file.type;
+    if (!Object.values(CLIP_MIME).includes(mime)) {
       setErr("choose a video — mp4, mov, or webm");
       return;
     }
-    if (file.size > 150 * 1024 * 1024) {
-      setErr("choose a clip under 150mb");
+    if (file.size > MAX_CLIP_BYTES) {
+      setErr("choose a clip under 250mb");
       return;
     }
     setReading(true);
@@ -466,9 +518,9 @@ function VideoFramePick(props: {
       if (
         !Number.isFinite(video.duration) ||
         video.duration <= 0 ||
-        video.duration > 120
+        video.duration > 15 * 60
       ) {
-        throw new Error("choose a clip under two minutes");
+        throw new Error("choose a clip under fifteen minutes");
       }
       if (stale()) {
         video.removeAttribute("src");
@@ -501,8 +553,11 @@ function VideoFramePick(props: {
       }
       if (urlRef.current) URL.revokeObjectURL(urlRef.current);
       urlRef.current = url;
+      fileRef.current = file;
       setVideoUrl(url);
       setDuration(video.duration);
+      const half = Math.min(CLIP_WINDOW_S, video.duration) / 2;
+      setWinStart(Math.max(0, video.duration / 2 - half));
       setTime(video.duration / 2);
       setThumbs(strip);
       video.removeAttribute("src");
@@ -519,8 +574,32 @@ function VideoFramePick(props: {
     }
   }, []);
 
+  const winEnd = Math.min(duration, winStart + CLIP_WINDOW_S);
+
   const scrubTo = useCallback(
     (t: number) => {
+      const bounded = clamp(t, winStart, winEnd);
+      setTime(bounded);
+      const video = videoRef.current;
+      if (video) {
+        video.pause();
+        pendingSeekRef.current = true;
+        video.currentTime = bounded;
+      }
+    },
+    [winStart, winEnd]
+  );
+
+  /** A thumb outside the window recenters the window on it — the strip
+   * still orients the whole clip even though the freeze stays inside
+   * the kept 30 seconds. */
+  const jumpTo = useCallback(
+    (t: number) => {
+      if (t < winStart || t > winEnd) {
+        setWinStart(
+          clamp(t - CLIP_WINDOW_S / 2, 0, Math.max(0, duration - CLIP_WINDOW_S))
+        );
+      }
       setTime(t);
       const video = videoRef.current;
       if (video) {
@@ -529,7 +608,7 @@ function VideoFramePick(props: {
         video.currentTime = t;
       }
     },
-    []
+    [duration, winStart, winEnd]
   );
 
   const snap = useCallback(async () => {
@@ -573,13 +652,55 @@ function VideoFramePick(props: {
       if (!blob || blob.size > MAX_FRAME_BYTES) {
         throw new Error("that frame is too large — try a smaller clip");
       }
-      onFrame(new File([blob], "freeze-frame.jpg", { type: "image/jpeg" }));
+      const frameFile = new File([blob], "freeze-frame.jpg", {
+        type: "image/jpeg",
+      });
+      // The clip rides a signed direct-to-storage upload — its body is
+      // far over the action POST cap. A failed clip upload still ships
+      // the frame (the freeze works, it just won't splice back).
+      let clipFailed: string | null = null;
+      const clip = fileRef.current;
+      if (clip) {
+        setUploading(true);
+        try {
+          const ext = clip.name.split(".").pop()?.toLowerCase() ?? "";
+          const mime = CLIP_MIME[ext] ?? clip.type;
+          const mint = await postAction({ action: "clip", mime });
+          if (mint?.clipPath && mint.uploadUrl) {
+            const sha = await clipFingerprint(clip);
+            const body = new FormData();
+            body.append("cacheControl", "3600");
+            body.append("", clip);
+            const put = await fetch(mint.uploadUrl, {
+              method: "PUT",
+              body,
+            });
+            if (!put.ok) throw new Error(`clip upload ${put.status}`);
+            onFrame(frameFile, {
+              path: mint.clipPath,
+              sha,
+              bytes: clip.size,
+              clipIn: winStart,
+              clipOut: winEnd,
+              freezeAt: time,
+            });
+            return;
+          }
+          throw new Error(mint?.line ?? "the clip upload didn't start");
+        } catch (e) {
+          clipFailed = `${e instanceof Error ? e.message : "the clip didn't upload"} — the freeze still works, it just won't splice into the footage`;
+          setErr(clipFailed);
+        } finally {
+          setUploading(false);
+        }
+      }
+      onFrame(frameFile, null, clipFailed ?? undefined);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "couldn't capture the frame");
     } finally {
       setSnapping(false);
     }
-  }, [time, snapping, busy, onFrame]);
+  }, [time, snapping, busy, onFrame, winStart, winEnd]);
 
   return (
     <div className="fz-framepick">
@@ -631,16 +752,47 @@ function VideoFramePick(props: {
                   key={i}
                   src={t.src}
                   alt=""
-                  onClick={() => scrubTo(t.time)}
+                  onClick={() => jumpTo(t.time)}
                 />
               ))}
+            </div>
+          )}
+          {duration > CLIP_WINDOW_S && (
+            <div className="fz-win">
+              <input
+                type="range"
+                className="fz-scrub"
+                min={0}
+                max={Math.max(FRAME_STEP, duration - CLIP_WINDOW_S)}
+                step={FRAME_STEP}
+                value={winStart}
+                onChange={(e) => {
+                  const next = Number(e.target.value);
+                  setWinStart(next);
+                  // Keep the playhead inside the kept window — set
+                  // directly; scrubTo still closes over the old window.
+                  const t = clamp(time, next, next + CLIP_WINDOW_S);
+                  setTime(t);
+                  const video = videoRef.current;
+                  if (video) {
+                    video.pause();
+                    pendingSeekRef.current = true;
+                    video.currentTime = t;
+                  }
+                }}
+                aria-label="which 30 seconds to keep"
+              />
+              <span className="fz-meta">
+                keeping {winStart.toFixed(1)}s – {winEnd.toFixed(1)}s of{" "}
+                {duration.toFixed(1)}s
+              </span>
             </div>
           )}
           <input
             type="range"
             className="fz-scrub"
-            min={0}
-            max={Math.max(FRAME_STEP, duration)}
+            min={winStart}
+            max={Math.max(winStart + FRAME_STEP, winEnd)}
             step={FRAME_STEP}
             value={time}
             onChange={(e) => scrubTo(Number(e.target.value))}
@@ -658,15 +810,124 @@ function VideoFramePick(props: {
             <button
               type="button"
               className="fz-primary"
-              disabled={snapping || busy}
+              disabled={snapping || busy || uploading}
               onClick={() => void snap()}
             >
-              {snapping ? "capturing…" : `freeze at ${time.toFixed(2)}s`}
+              {snapping
+                ? "capturing…"
+                : uploading
+                  ? "saving the clip…"
+                  : `freeze at ${time.toFixed(2)}s`}
             </button>
           </div>
         </>
       )}
       {err && <p className="fz-err">{err}</p>}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------ dither loader */
+
+/**
+ * The generation loading state — a canvas pixel field that dithers in and
+ * keeps shimmering while a job runs (ported from React Bits' PixelCard:
+ * same radial-delay appear, then a continuous per-pixel size shimmer so
+ * the field breathes for the whole render). Reduced-motion drops the
+ * shimmer to a static noise field.
+ */
+function PixelDither(props: { label: string; sub?: string }) {
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    const host = hostRef.current;
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!host || !canvas || !ctx) return;
+    const reduced = window.matchMedia(
+      "(prefers-reduced-motion: reduce)"
+    ).matches;
+    const gap = 6;
+    const colors = ["#dff5ec", "#8fd4bd", "#3d7a5f", "#1b2f28"];
+    interface Px {
+      x: number;
+      y: number;
+      color: string;
+      max: number;
+      delay: number;
+      counter: number;
+      step: number;
+      phase: number;
+      speed: number;
+    }
+    let pxs: Px[] = [];
+    const init = () => {
+      const rect = host.getBoundingClientRect();
+      canvas.width = Math.max(1, Math.floor(rect.width));
+      canvas.height = Math.max(1, Math.floor(rect.height));
+      pxs = [];
+      for (let x = 0; x < canvas.width; x += gap) {
+        for (let y = 0; y < canvas.height; y += gap) {
+          const dist = Math.hypot(
+            x - canvas.width / 2,
+            y - canvas.height / 2
+          );
+          pxs.push({
+            x,
+            y,
+            color: colors[Math.floor(Math.random() * colors.length)]!,
+            max: 0.6 + Math.random() * 1.6,
+            delay: reduced ? 0 : dist,
+            counter: 0,
+            step: Math.random() * 4 + (canvas.width + canvas.height) * 0.01,
+            phase: Math.random() * Math.PI * 2,
+            speed: 0.0016 + Math.random() * 0.0028,
+          });
+        }
+      }
+    };
+    init();
+    let raf = 0;
+    let prev = performance.now();
+    const tick = (now: number) => {
+      raf = requestAnimationFrame(tick);
+      const passed = now - prev;
+      if (passed < 1000 / 60) return;
+      prev = now - (passed % (1000 / 60));
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      for (const p of pxs) {
+        let size: number;
+        if (p.counter <= p.delay) {
+          p.counter += p.step;
+          continue;
+        } else if (reduced) {
+          size = p.max;
+        } else {
+          // Appear grows into the shimmer band; the sine keeps it there.
+          size = p.max * (0.55 + 0.45 * Math.sin(now * p.speed + p.phase));
+        }
+        const off = p.max - size / 2;
+        ctx.fillStyle = p.color;
+        ctx.fillRect(p.x + off, p.y + off, Math.max(0.4, size), Math.max(0.4, size));
+      }
+    };
+    raf = requestAnimationFrame(tick);
+    const observer = new ResizeObserver(init);
+    observer.observe(host);
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(raf);
+    };
+  }, []);
+
+  return (
+    <div ref={hostRef} className="fz-dither" role="status" aria-live="polite">
+      <canvas ref={canvasRef} className="fz-dither-canvas" />
+      <div className="fz-dither-label">
+        <b>{props.label}</b>
+        {props.sub && <span>{props.sub}</span>}
+      </div>
     </div>
   );
 }
@@ -1975,6 +2236,12 @@ function Studio(props: { initial: Payload }) {
   const [sourceAssetId, setSourceAssetId] = useState<string | null>(
     props.initial.sourceAssetId
   );
+  /** True while a clip is linked — the render splices back into the
+   * footage instead of shipping the bare camera move. */
+  const [hasClip, setHasClip] = useState(props.initial.hasClip === true);
+  // The frame-picker unmounts on accept — a clip-upload failure has to
+  // surface here or the user never learns the render won't splice.
+  const [clipNotice, setClipNotice] = useState<string | null>(null);
   const [renders, setRenders] = useState<FreezeJob[]>(props.initial.renders);
   const [activeJob, setActiveJob] = useState<ActiveJob | null>(
     props.initial.activeJob
@@ -2021,6 +2288,7 @@ function Studio(props: { initial: Payload }) {
   const cameraRef = useRef<HTMLInputElement | null>(null);
   const lastMediaRefresh = useRef(0);
   const sourceAssetRef = useRef(props.initial.sourceAssetId);
+  const railRef = useRef<HTMLDivElement | null>(null);
   // Object URL minted for the instant camera-stage preview — revoked once a
   // signed URL (or another preview) replaces it.
   const objectUrlRef = useRef<string | null>(null);
@@ -2070,6 +2338,7 @@ function Studio(props: { initial: Payload }) {
         sourceAssetRef.current = payload.sourceAssetId;
         setSourceAssetId(payload.sourceAssetId);
       }
+      if (typeof payload.hasClip === "boolean") setHasClip(payload.hasClip);
       if (payload.renders) setRenders(payload.renders);
       // Resolve a watched job once its slot frees: the deliver outcome
       // advances the stage, the failure surfaces its line.
@@ -2096,6 +2365,38 @@ function Studio(props: { initial: Payload }) {
     },
     [watchJob, applySourceUrl]
   );
+
+  // Preset rail coverflow — cards tilt/settle by distance from center as
+  // the rail scrolls (the DepthCarousel depth cue, flattened to a 1D fan).
+  // DOM-var writes, not state: 60fps scroll churn must not re-render.
+  useEffect(() => {
+    const rail = railRef.current;
+    if (!rail) return;
+    let raf = 0;
+    const paint = () => {
+      raf = 0;
+      const box = rail.getBoundingClientRect();
+      const mid = box.left + rail.clientWidth / 2;
+      for (const el of Array.from(rail.children) as HTMLElement[]) {
+        const r = el.getBoundingClientRect();
+        const d = ((r.left + r.width / 2 - mid) / rail.clientWidth) * 2.4;
+        const k = clamp(d, -1, 1);
+        el.style.setProperty("--tilt", `${(-k * 10).toFixed(2)}deg`);
+        el.style.setProperty("--pop", (1 - Math.abs(k) * 0.12).toFixed(3));
+      }
+    };
+    const onScroll = () => {
+      if (!raf) raf = requestAnimationFrame(paint);
+    };
+    paint();
+    rail.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    return () => {
+      rail.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [stage]);
 
   // Sequence guard: status pulls are detached and can land out of order —
   // a stale response must not restore an older source over a newer upload.
@@ -2201,7 +2502,7 @@ function Studio(props: { initial: Payload }) {
   /* ------------------------------- source stage */
 
   const onFile = useCallback(
-    async (file: File | null) => {
+    async (file: File | null, clip?: ClipRef | null, clipError?: string) => {
       if (!file || busy) return;
       setBusy(true);
       setLine("reading the photo…");
@@ -2215,6 +2516,16 @@ function Studio(props: { initial: Payload }) {
       const form = new FormData();
       form.set("action", "source");
       form.set("file", file);
+      if (clip) {
+        // Attach the already-uploaded clip + its window — the source
+        // write links it so a later render splices into the footage.
+        form.set("clipPath", clip.path);
+        form.set("clipSha", clip.sha);
+        form.set("clipBytes", String(clip.bytes));
+        form.set("clipIn", String(clip.clipIn));
+        form.set("clipOut", String(clip.clipOut));
+        form.set("freezeAt", String(clip.freezeAt));
+      }
       const payload = await postAction(form);
       setBusy(false);
       if (!payload || payload.error || payload.sourceAssetId === undefined) {
@@ -2224,6 +2535,11 @@ function Studio(props: { initial: Payload }) {
       }
       setLine(null);
       setSourceAssetId(payload.sourceAssetId);
+      if (typeof payload.hasClip === "boolean") setHasClip(payload.hasClip);
+      // A linked clip clears the notice; a failed clip upload keeps it
+      // on the camera stage where the render row lives. Any fresh source
+      // re-picks it.
+      setClipNotice(clip ? null : (clipError ?? null));
       setShowSketch(false);
       setShowVideo(false);
       // Mark the accepted asset before the trailing status pull: its adopt
@@ -2574,7 +2890,7 @@ function Studio(props: { initial: Payload }) {
             className={stage === tab ? "active" : ""}
             disabled={
               (tab === "camera" && !sourceAssetId) ||
-              (tab === "result" && rendersReady.length === 0)
+              (tab === "result" && rendersReady.length === 0 && !activeJob)
             }
             onClick={() => setStage(tab)}
           >
@@ -2638,6 +2954,9 @@ function Studio(props: { initial: Payload }) {
                 >
                   <span className="fz-card-icon">▶</span>
                   video → freeze a frame
+                  <span className="fz-card-sub">
+                    the clip splices back around it
+                  </span>
                 </button>
               </div>
               <input
@@ -2674,6 +2993,12 @@ function Studio(props: { initial: Payload }) {
               >
                 ← back
               </button>
+              {watchJob?.kind === "sketch" && (
+                <PixelDither
+                  label="generating the still"
+                  sub="the camera stage opens when it lands"
+                />
+              )}
               <SketchPad
                 busy={busy || watchJob?.kind === "sketch"}
                 onGenerate={onSketch}
@@ -2688,7 +3013,12 @@ function Studio(props: { initial: Payload }) {
               >
                 ← back
               </button>
-              <VideoFramePick busy={busy} onFrame={(f) => void onFile(f)} />
+              <VideoFramePick
+                busy={busy}
+                onFrame={(f, clip, clipError) =>
+                void onFile(f, clip, clipError)
+              }
+              />
             </>
           )}
         </div>
@@ -2765,7 +3095,7 @@ function Studio(props: { initial: Payload }) {
           </div>
 
           <div className="fz-ctl-label">camera move</div>
-          <div className="fz-prail">
+          <div className="fz-prail" ref={railRef}>
             {props.initial.presets.map((entry) => (
               <button
                 key={entry.id}
@@ -2938,6 +3268,20 @@ function Studio(props: { initial: Payload }) {
             </div>
           </div>
 
+          {watchJob?.kind === "render" && (
+            <PixelDither
+              label={hasClip ? "freezing into your clip" : "freezing"}
+              sub="a few minutes — the result tab lights up"
+            />
+          )}
+          {hasClip && !watchJob && !clipNotice && (
+            <p className="fz-meta">this freeze splices back into your clip</p>
+          )}
+          {clipNotice && !hasClip && (
+            <p className="fz-clipwarn" role="alert">
+              {clipNotice}
+            </p>
+          )}
           <div className="fz-render-row">
             <div className="fz-seg">
               {[5, 6].map((s) => (
@@ -2979,16 +3323,26 @@ function Studio(props: { initial: Payload }) {
         <div className="fz-stage">
           {latestRender ? (
             <div className="fz-result">
-              <video
-                className="fz-video"
-                src={latestRender.outputUrl ?? undefined}
-                controls
-                playsInline
-                loop
-                autoPlay
-                muted
-                onError={refreshMedia}
-              />
+              <div className="fz-result-media">
+                <video
+                  className="fz-video"
+                  src={latestRender.outputUrl ?? undefined}
+                  controls
+                  playsInline
+                  loop
+                  autoPlay
+                  muted
+                  onError={refreshMedia}
+                />
+                {activeJob && (
+                  <div className="fz-dither-veil">
+                    <PixelDither
+                      label={hasClip ? "freezing into your clip" : "freezing"}
+                      sub="the new camera move renders over the last result"
+                    />
+                  </div>
+                )}
+              </div>
               <div className="fz-actions">
                 <button
                   type="button"
@@ -3008,7 +3362,10 @@ function Studio(props: { initial: Payload }) {
               </div>
             </div>
           ) : activeJob ? (
-            <p className="fz-sub">rendering — this takes a few minutes</p>
+            <PixelDither
+              label={hasClip ? "freezing into your clip" : "freezing"}
+              sub="the camera move renders, then splices in — a few minutes"
+            />
           ) : (
             <p className="fz-sub">nothing rendered yet</p>
           )}
@@ -3082,9 +3439,9 @@ const CSS = `
 .fz-stage-hint{position:absolute;left:50%;top:12px;transform:translateX(-50%);display:flex;align-items:center;gap:8px;border-radius:20px;padding:8px 12px;background:#0d181bc7;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);font-size:11px;color:#dbe7e4;pointer-events:none;z-index:2;white-space:nowrap}
 .fz-stage-dot{width:5px;height:5px;border-radius:50%;background:#b4dcce;flex:0 0 5px}
 .fz-ctl-label{color:#8d9e9c;font-size:0.66rem;letter-spacing:0.1em;text-transform:uppercase;padding:0 2px}
-.fz-prail{display:flex;gap:8px;overflow-x:auto;padding:2px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.fz-prail{display:flex;gap:8px;overflow-x:auto;padding:6px 2px 10px;-webkit-overflow-scrolling:touch;scrollbar-width:none;perspective:640px}
 .fz-prail::-webkit-scrollbar{display:none}
-.fz-preset{flex:0 0 118px;display:flex;flex-direction:column;gap:3px;padding:10px 10px 9px;border:1px solid #344943;border-radius:14px;background:#1b2925;color:#9fc4b4;text-align:left}
+.fz-preset{flex:0 0 118px;display:flex;flex-direction:column;gap:3px;padding:10px 10px 9px;border:1px solid #344943;border-radius:14px;background:#1b2925;color:#9fc4b4;text-align:left;transform:rotateY(var(--tilt,0deg)) scale(var(--pop,1));will-change:transform}
 .fz-preset.active{background:#20382e;border-color:#5f8577;color:#d1eadd}
 .fz-path{display:block;width:100%;height:auto;max-height:64px}
 .fz-path-guide,.fz-path-axis{stroke:currentColor;stroke-width:0.7;opacity:0.25;fill:none}
@@ -3128,12 +3485,23 @@ const CSS = `
 .fz-ghost:disabled{opacity:0.35}
 .fz-ghost.selected{border-color:#5f8577;color:#d1eadd}
 .fz-result{display:flex;flex-direction:column;gap:10px}
+.fz-result-media{position:relative}
+.fz-dither-veil{position:absolute;inset:0;z-index:2;border-radius:16px;overflow:hidden}
+.fz-dither-veil .fz-dither{min-height:0;height:100%}
+.fz-clipwarn{margin:0;padding:8px 12px;border:1px solid #6b5136;border-radius:10px;background:#241d13;color:#e8c9a9;font-size:0.72rem;text-align:center}
 .fz-video{width:100%;border-radius:14px;background:#000;max-height:56vh}
 .fz-framepick{display:flex;flex-direction:column;gap:8px}
 .fz-video-empty{display:flex;flex-direction:column;gap:10px;align-items:center;padding:18px 8px}
 .fz-strip{display:grid;grid-template-columns:repeat(5,1fr);gap:4px}
 .fz-strip img{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:6px;border:1px solid #2c3c35;display:block;filter:brightness(0.85)}
 .fz-scrub{width:100%;min-height:36px;accent-color:#cbe4d9;touch-action:pan-x}
+.fz-win{display:flex;flex-direction:column;gap:2px;padding:8px 10px;border:1px dashed #35524b;border-radius:10px;background:#14211d}
+.fz-card-sub{display:block;font-size:0.66rem;font-weight:500;color:#8da59b;letter-spacing:0.02em}
+.fz-dither{position:relative;min-height:150px;border-radius:16px;overflow:hidden;border:1px solid #2c3c35;background:#0d1312;isolation:isolate}
+.fz-dither-canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.fz-dither-label{position:relative;z-index:1;display:flex;flex-direction:column;gap:3px;align-items:center;justify-content:center;min-height:150px;padding:14px;text-align:center}
+.fz-dither-label b{color:#e6f5ee;font-size:0.85rem;letter-spacing:0.02em}
+.fz-dither-label span{color:#8da59b;font-size:0.7rem}
 .fz-row{display:flex;gap:8px;align-items:center}
 .fz-err{margin:0;text-align:center;font-size:0.72rem;color:#e8a9a9}
 .fz-actions{display:flex;gap:8px;flex-wrap:wrap}
