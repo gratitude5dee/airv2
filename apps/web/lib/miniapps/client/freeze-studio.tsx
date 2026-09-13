@@ -863,11 +863,15 @@ function createThreeStage(host: HTMLDivElement): ThreeStage {
   const photoH = photoW * 0.72;
   const frame = new THREE.Mesh(
     track(new THREE.PlaneGeometry(photoW * 1.07, photoH * 1.1)),
-    track(new THREE.MeshBasicMaterial({ color: 0x0d181b }))
+    track(
+      new THREE.MeshBasicMaterial({ color: 0x0d181b, side: THREE.DoubleSide })
+    )
   );
   frame.position.set(0, SUBJECT_Y, 0);
+  // Double-sided so the subject stays visible when the viewport orbits
+  // behind the billboard.
   const photoMat = track(
-    new THREE.MeshBasicMaterial({ color: 0x4a6159 })
+    new THREE.MeshBasicMaterial({ color: 0x4a6159, side: THREE.DoubleSide })
   );
   const photoGeo = track(new THREE.PlaneGeometry(photoW, photoH));
   const photo = new THREE.Mesh(photoGeo, photoMat);
@@ -1123,6 +1127,9 @@ interface StageDrag {
   samples: DrawSample[];
   /** view mode: baseline two-finger distance for pinch zoom; 0 single-pointer */
   pinchD: number;
+  /** draw mode: trajectory before the stroke — restored if a second finger
+   * converts the gesture into a view orbit mid-draw. */
+  snapshot: CameraKeyframe[] | null;
 }
 
 /** Live view controls a stage exposes to the reset chip. */
@@ -1149,6 +1156,8 @@ interface StageProps {
   onDragPose: (azimuth: number, elevation: number, index: number | null) => void;
   /** Live-replaces the trajectory with the stroke's samples. */
   onDrawPath: (samples: DrawSample[]) => void;
+  /** Restores the trajectory a mid-draw pinch interrupted. */
+  onDrawRevert: (frames: CameraKeyframe[]) => void;
   onPick: (index: number | null) => void;
 }
 
@@ -1162,6 +1171,21 @@ function StageCanvas(props: StageProps) {
   const ptrsRef = useRef(new Map<number, { x: number; y: number }>());
   const propsRef = useRef(props);
   propsRef.current = props;
+
+  // A second finger converting a draw stroke to a view gesture mustn't
+  // strand the partial path the stroke already committed — restore the
+  // trajectory captured at stroke start.
+  const revertLiveDraw = () => {
+    const drag = dragRef.current;
+    if (
+      drag?.mode === "draw" &&
+      drag.snapshot &&
+      drag.travel >= DRAW_GATE_PX &&
+      drag.samples.length >= 2
+    ) {
+      propsRef.current.onDrawRevert(drag.snapshot);
+    }
+  };
 
   useEffect(() => {
     const host = hostRef.current;
@@ -1183,6 +1207,10 @@ function StageCanvas(props: StageProps) {
       },
     };
     propsRef.current.viewCtl.current = ctl;
+    // A freshly mounted stage always starts at the home view — clearing the
+    // flag here also covers remounts (tab switch), where the previous
+    // stage's orbit died with it.
+    propsRef.current.onViewChange(false);
     setGlReady(true);
     return () => {
       stageRef.current = null;
@@ -1214,6 +1242,7 @@ function StageCanvas(props: StageProps) {
         ptrsRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
         e.currentTarget.setPointerCapture(e.pointerId);
         if (ptrsRef.current.size >= 2) {
+          revertLiveDraw();
           const pts = [...ptrsRef.current.values()];
           dragRef.current = {
             mode: "view",
@@ -1226,6 +1255,7 @@ function StageCanvas(props: StageProps) {
             travel: 0,
             samples: [],
             pinchD: Math.hypot(pts[0]!.x - pts[1]!.x, pts[0]!.y - pts[1]!.y),
+            snapshot: null,
           };
           return;
         }
@@ -1262,6 +1292,7 @@ function StageCanvas(props: StageProps) {
           // a fast one-event stroke can't die below the gate's min length.
           samples: [{ azimuth: 0, elevation: 0 }],
           pinchD: 0,
+          snapshot: propsRef.current.keyframes,
         };
       }}
       onPointerMove={(e) => {
@@ -1385,6 +1416,19 @@ function StageCanvas2D(props: StageProps) {
   const viewRef = useRef<View2D>({ yaw: 0, tilt: 0, zoom: 1 });
   const propsRef = useRef(props);
   propsRef.current = props;
+
+  // Same pinch-conversion rollback as the WebGL stage.
+  const revertLiveDraw = () => {
+    const drag = dragRef.current;
+    if (
+      drag?.mode === "draw" &&
+      drag.snapshot &&
+      drag.travel >= DRAW_GATE_PX &&
+      drag.samples.length >= 2
+    ) {
+      propsRef.current.onDrawRevert(drag.snapshot);
+    }
+  };
 
   const draw = useCallback(() => {
     const canvas = ref.current;
@@ -1527,6 +1571,8 @@ function StageCanvas2D(props: StageProps) {
       },
     };
     propsRef.current.viewCtl.current = ctl;
+    // Fresh stage = home view; clears the chip after tab-away remounts too.
+    propsRef.current.onViewChange(false);
     return () => {
       if (propsRef.current.viewCtl.current === ctl) {
         propsRef.current.viewCtl.current = null;
@@ -1552,6 +1598,7 @@ function StageCanvas2D(props: StageProps) {
         ptrsRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
         e.currentTarget.setPointerCapture(e.pointerId);
         if (ptrsRef.current.size >= 2) {
+          revertLiveDraw();
           const pts = [...ptrsRef.current.values()];
           dragRef.current = {
             mode: "view",
@@ -1564,6 +1611,7 @@ function StageCanvas2D(props: StageProps) {
             travel: 0,
             samples: [],
             pinchD: Math.hypot(pts[0]!.x - pts[1]!.x, pts[0]!.y - pts[1]!.y),
+            snapshot: null,
           };
           return;
         }
@@ -1600,6 +1648,7 @@ function StageCanvas2D(props: StageProps) {
           // a fast one-event stroke can't die below the gate's min length.
           samples: [{ azimuth: 0, elevation: 0 }],
           pinchD: 0,
+          snapshot: props.keyframes,
         };
       }}
       onPointerMove={(e) => {
@@ -2216,6 +2265,14 @@ function Studio(props: { initial: Payload }) {
     setScrubT(1);
   }, []);
 
+  // A pinch landing mid-stroke converts the gesture to a view orbit — the
+  // partial path it already committed is rolled back to the snapshot taken
+  // at stroke start.
+  const onDrawRevert = useCallback((frames: CameraKeyframe[]) => {
+    setKeyframes(frames.map((frame) => ({ ...frame })));
+    setSelected(null);
+  }, []);
+
   /** Slider edits — direct pose sets, no stage drag required. */
   const onAim = useCallback(
     (index: number, patch: { azimuth?: number; elevation?: number }) => {
@@ -2465,6 +2522,7 @@ function Studio(props: { initial: Payload }) {
               viewCtl={viewCtl}
               onDragPose={onDragPose}
               onDrawPath={onDrawPath}
+              onDrawRevert={onDrawRevert}
               onPick={setSelected}
             />
             {viewDirty && (
