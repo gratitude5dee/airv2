@@ -875,11 +875,16 @@ function createThreeStage(host: HTMLDivElement): ThreeStage {
     },
     update(frames, scrubT, selected) {
       lastFrames = frames;
-      if (frames.length >= 2) {
-        const pts: THREE.Vector3[] = [];
-        for (let i = 0; i <= 96; i++) {
-          pts.push(poseToWorld(poseAt(frames, i / 96), new THREE.Vector3()));
-        }
+      const pts: THREE.Vector3[] = [];
+      for (let i = 0; i <= 96; i++) {
+        const p = poseToWorld(poseAt(frames, i / 96), new THREE.Vector3());
+        const prev = pts[pts.length - 1];
+        // Consecutive identical points make CatmullRom tangents NaN — a
+        // flat run in the trajectory must not take the tube down.
+        if (prev && p.distanceToSquared(prev) < 1e-8) continue;
+        pts.push(p);
+      }
+      if (pts.length >= 2) {
         const curve = new THREE.CatmullRomCurve3(pts);
         const geo = new THREE.TubeGeometry(curve, 120, 0.026, 8, false);
         const next = new THREE.Mesh(geo, tubeMat);
@@ -1781,9 +1786,6 @@ function Studio(props: { initial: Payload }) {
    */
   const onDrawPath = useCallback((samples: DrawSample[]) => {
     if (samples.length === 0) return;
-    setHintSeen(true);
-    setPreset(null);
-    setSelected(null);
     const n = Math.min(samples.length, FREEZE_MAX_KEYFRAMES - 1);
     const next: CameraKeyframe[] = [{ ...START_KEYFRAME }];
     for (let i = 0; i < n - 1; i++) {
@@ -1805,7 +1807,34 @@ function Studio(props: { initial: Payload }) {
       elevation: Math.round(last.elevation * 10) / 10,
       distance: 1,
     });
-    setKeyframes(next);
+    // Collapse consecutive duplicate poses: a zero-length CatmullRom
+    // segment produces NaN tangents and the rendered tube vanishes. The
+    // seeded zero sample makes a leading run normal, not degenerate. A
+    // run merges into its last member's time — except the pinned start,
+    // which must stay at t=0.
+    const deduped: CameraKeyframe[] = [];
+    for (const kf of next) {
+      const prev = deduped[deduped.length - 1];
+      if (
+        prev &&
+        Math.abs(kf.azimuth - prev.azimuth) < 0.05 &&
+        Math.abs(kf.elevation - prev.elevation) < 0.05
+      ) {
+        deduped[deduped.length - 1] = {
+          ...prev,
+          time: deduped.length === 1 ? prev.time : kf.time,
+        };
+      } else {
+        deduped.push(kf);
+      }
+    }
+    // A stroke that never left the reference pose isn't a path — keep
+    // whatever trajectory was there.
+    if (deduped.length < 2) return;
+    setHintSeen(true);
+    setPreset(null);
+    setSelected(null);
+    setKeyframes(deduped);
     setScrubT(1);
   }, []);
 
