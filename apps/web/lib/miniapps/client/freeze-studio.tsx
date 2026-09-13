@@ -1015,7 +1015,7 @@ function StageCanvas(props: StageProps) {
 
   useEffect(() => {
     stageRef.current?.update(props.keyframes, props.scrubT, props.selected);
-  });
+  }, [glReady, props.keyframes, props.scrubT, props.selected]);
 
   return (
     <div
@@ -1113,6 +1113,10 @@ function StageCanvas(props: StageProps) {
         ) {
           propsRef.current.onDrawPath(drag.samples);
         }
+      }}
+      onPointerCancel={() => {
+        // A cancelled/interrupted gesture drops in place — no pick, no flush.
+        dragRef.current = null;
       }}
     >
       {!glReady && <StageCanvas2D {...props} />}
@@ -1348,6 +1352,9 @@ function StageCanvas2D(props: StageProps) {
         ) {
           props.onDrawPath(drag.samples);
         }
+      }}
+      onPointerCancel={() => {
+        dragRef.current = null;
       }}
     />
   );
@@ -1713,22 +1720,25 @@ function Studio(props: { initial: Payload }) {
   }, []);
 
   const addKeyframe = useCallback(() => {
-    setKeyframes((frames) => {
-      if (frames.length >= FREEZE_MAX_KEYFRAMES) return frames;
-      const t = clamp(scrubT, 0.02, 0.98);
-      if (frames.some((f) => Math.abs(f.time - t) < 0.01)) return frames;
-      const pose = poseAt(frames, t);
-      const next = [...frames, { ...pose, time: t }]
-        .sort((a, b) => a.time - b.time)
-        .map((f) => ({ ...f }));
-      return next;
-    });
+    const t = clamp(scrubT, 0.02, 0.98);
+    if (
+      keyframes.length >= FREEZE_MAX_KEYFRAMES ||
+      keyframes.some((f) => Math.abs(f.time - t) < 0.01)
+    ) {
+      return;
+    }
+    const pose = poseAt(keyframes, t);
+    const next = [...keyframes, { ...pose, time: t }]
+      .sort((a, b) => a.time - b.time)
+      .map((f) => ({ ...f }));
+    setKeyframes(next);
     // Selection is index-based — an insert before it would silently retarget
     // the aim sliders onto the new frame. Clear it; the nearest-free
-    // fallback still lands on the just-added dot.
+    // fallback still lands on the just-added dot. Only on a real insert — a
+    // rejected add leaves the existing selection alone.
     setSelected(null);
     setPreset(null);
-  }, [scrubT]);
+  }, [keyframes, scrubT]);
 
   const removeKeyframe = useCallback(() => {
     setKeyframes((frames) => {
@@ -2198,7 +2208,6 @@ function Studio(props: { initial: Payload }) {
                   type="button"
                   className={`fz-kf${selected === i ? " selected" : ""}`}
                   style={{ left: `${kf.time * 100}%` }}
-                  tabIndex={-1}
                   onClick={() => {
                     // Keyboard/AT activation only — pointer events are
                     // disabled on dots so the track picks nearest-in-x.
@@ -2278,7 +2287,7 @@ function Studio(props: { initial: Payload }) {
               <span className="fz-aim-label">height</span>
               <input
                 type="range"
-                min={-30}
+                min={-90}
                 max={90}
                 step={1}
                 value={aimKf?.elevation ?? 0}
