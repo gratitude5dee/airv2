@@ -39,7 +39,7 @@ User-facing story stays in the product's vocabulary: pick family "GMI Cloud", th
 
 ### 1.1 Changes
 
-1. **Migration `0111_model_family_gmi.sql`**
+1. **Migration `0112_model_family_gmi.sql`**
    - Widen `entitlements_model_family_check` to include `'gmi'`.
    - `alter table entitlements add column if not exists gmi_model text;`
    - (`provider_keys` needs nothing — `'gmi'` is already in its check constraint.)
