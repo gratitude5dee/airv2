@@ -31,6 +31,7 @@ import {
 import {
   aspectRatioFromText,
   compilerForMode,
+  directCreativePlan,
   directZapPlan,
   durationFromText,
   ROUTER_MODEL,
@@ -513,6 +514,61 @@ describe("directZapPlan", () => {
     expect(directZapPlan(zapTurn("   ")).expanded_prompt).toBe(
       "Create a short kinetic video from the user's creative idea, with one clear motion and a strong visual hook.",
     );
+  });
+});
+
+describe("directCreativePlan", () => {
+  const cmdTurn = (
+    mode: "imagine" | "animate",
+    cleanedText: string,
+    mediaInputs: CreativeTurn["mediaInputs"] = [],
+  ) => ({
+    mode,
+    cleanedText,
+    text: `/${mode} ${cleanedText}`,
+    mediaInputs,
+  });
+
+  it("ships the user's words as the prompt without a model call", () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const result = directCreativePlan(
+      cmdTurn("imagine", "watercolor fog over Dolores park, square"),
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result.mode).toBe("imagine");
+    expect(result.expanded_prompt).toBe(
+      "watercolor fog over Dolores park, square",
+    );
+    expect(result.params).toEqual({
+      aspect_ratio: "1:1",
+      duration: null,
+      generate_audio: false,
+      quality: "auto",
+      use_input_image_as: "none",
+    });
+    expect(result.chat_reply).toBe("creating your image");
+  });
+
+  it("reads ratio and duration for animate, audio on by default", () => {
+    const result = directCreativePlan(
+      cmdTurn("animate", "vertical timelapse of fog, 6 seconds"),
+    );
+    expect(result.params.aspect_ratio).toBe("9:16");
+    expect(result.params.duration).toBe(6);
+    expect(result.params.generate_audio).toBe(true);
+  });
+
+  it("marks an attached image as the edit source / first frame", () => {
+    const image = [{ kind: "image" as const, url: "https://signed.example/a.jpg" }];
+    expect(
+      directCreativePlan(cmdTurn("imagine", "make it pop", image)).params
+        .use_input_image_as,
+    ).toBe("edit_source");
+    expect(
+      directCreativePlan(cmdTurn("animate", "make it move", image)).params
+        .use_input_image_as,
+    ).toBe("first_frame");
   });
 });
 

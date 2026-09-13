@@ -731,6 +731,73 @@ describe("gateway model families", () => {
     expect(child["reasoning_effort"]).toBe("low");
   });
 
+  it("serves a routine opening turn on the GLM lane under gmi", async () => {
+    // Task-type routing: a short signal-free user opener is routine work —
+    // it rides the fast lane even though the owner entitled deep+Astra.
+    setEntitlement({
+      speed_tier: "deep",
+      model_family: "gmi",
+      gmi_model: "openai/gpt-6-astra",
+    });
+    const sent = await upstreamBody({
+      messages: [{ role: "user", content: "what's on my calendar today?" }],
+    });
+    expect(sent["model"]).toBe("zai-org/GLM-5.3-Flash");
+    expect(sent["reasoning_effort"]).toBe("low");
+  });
+
+  it("keeps deep-cued and risky openers on the entitled gmi tier", async () => {
+    setEntitlement({ speed_tier: "deep", model_family: "gmi", gmi_model: null });
+    const research = await upstreamBody({
+      messages: [
+        { role: "user", content: "research four venues for a 40-person dinner" },
+      ],
+    });
+    expect(research["model"]).toBe("openai/gpt-6-astra");
+    const payment = await upstreamBody({
+      messages: [{ role: "user", content: "wire $200 to Dana tonight" }],
+    });
+    expect(payment["model"]).toBe("openai/gpt-6-astra");
+  });
+
+  it("leaves mid-turn continuations on the entitled gmi tier", async () => {
+    // The task type lives on the opener; a tool-result tail is a
+    // continuation of whatever the opener resolved to.
+    setEntitlement({ speed_tier: "deep", model_family: "gmi", gmi_model: null });
+    const sent = await upstreamBody({
+      messages: [
+        { role: "user", content: "hi" },
+        {
+          role: "tool",
+          tool_call_id: "call_1",
+          content: "{\"events\":[]}",
+        },
+      ],
+    });
+    expect(sent["model"]).toBe("openai/gpt-6-astra");
+  });
+
+  it("does not route routine turns for non-gmi families", async () => {
+    setEntitlement({ speed_tier: "deep", model_family: "openai" });
+    const sent = await upstreamBody({
+      messages: [{ role: "user", content: "what's on my calendar today?" }],
+    });
+    expect(sent["model"]).toBe("gpt-5.6-terra");
+  });
+
+  it("honors GMI_ROUTINE_FAST=off", async () => {
+    process.env["GMI_ROUTINE_FAST"] = "off";
+    try {
+      setEntitlement({ speed_tier: "deep", model_family: "gmi", gmi_model: null });
+      const sent = await upstreamBody({
+        messages: [{ role: "user", content: "what's on my calendar today?" }],
+      });
+      expect(sent["model"]).toBe("openai/gpt-6-astra");
+    } finally {
+      delete process.env["GMI_ROUTINE_FAST"];
+    }
+  });
+
   it("strips caller-set reasoning_effort on tool-bearing gmi openai calls", async () => {
     setEntitlement({ speed_tier: "balanced", model_family: "gmi", gmi_model: null });
     // Forwarding it would 400 upstream and silently land on OpenAI instead

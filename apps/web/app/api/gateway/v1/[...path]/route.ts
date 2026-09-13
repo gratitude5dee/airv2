@@ -79,6 +79,58 @@ function unauthorized(): NextResponse {
   return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 }
 
+// Task-type routing for the gmi family (goal-gmi-models Phase 2): a turn
+// that opens with a short user message carrying no depth cue and no
+// money/publish cue is routine work — draft an email, check the calendar,
+// quick lookup — and rides the fast lane (GLM-5.3-Flash) instead of the
+// entitled tier. The rule only ever downgrades, so spend stays
+// entitlement-bounded; it mirrors the deterministic half of the box's
+// shadow taskrouter (infra/template/taskrouter) until hermes can consult it
+// per-turn upstream. Mid-turn continuations (the last message is a tool
+// result, not the opener) keep the request's resolution, and a caller's
+// explicit `model:"fast"` is unaffected either way. GMI_ROUTINE_FAST=off
+// disables the rule.
+const GMI_ROUTINE_MAX_CHARS = 280;
+// Depth cues keep the entitled tier — these are the turns Astra is for.
+const GMI_DEEP_TURN_RE =
+  /\b(research|analy[sz]e|compare|plan(?:ning)?|strategy|debug|investigate|essay|whitepaper|refactor|architect)\b/i;
+// Money movement and public publishing never ride the routine lane — the
+// approval queue is the real control, but those turns keep the entitled
+// model regardless.
+const GMI_RISK_TURN_RE =
+  /(\$\s?\d|\b(wire|venmo|zelle|paypal|checkout|charge|deposit|renew|reorder|refund|invoice|payment|purchase|transfer|delete|publish|tweet)\b)/i;
+
+/** Text of the request's opening user message, or null for any other shape. */
+function openingUserTurnText(body: Json): string | null {
+  const messages = body["messages"];
+  if (!Array.isArray(messages) || messages.length === 0) return null;
+  const last = messages[messages.length - 1];
+  if (!last || typeof last !== "object") return null;
+  const msg = last as { role?: unknown; content?: unknown };
+  if (msg.role !== "user") return null;
+  if (typeof msg.content === "string") return msg.content;
+  if (Array.isArray(msg.content)) {
+    const text = (msg.content as { type?: unknown; text?: unknown }[])
+      .map((part) =>
+        part && part.type === "text" && typeof part.text === "string"
+          ? part.text
+          : ""
+      )
+      .join("\n")
+      .trim();
+    return text || null;
+  }
+  return null;
+}
+
+/** True when a gmi request's opening user turn reads as routine work. */
+function gmiRoutineTurn(body: Json): boolean {
+  if (process.env["GMI_ROUTINE_FAST"] === "off") return false;
+  const text = openingUserTurnText(body)?.trim();
+  if (!text || text.length > GMI_ROUTINE_MAX_CHARS) return false;
+  return !GMI_DEEP_TURN_RE.test(text) && !GMI_RISK_TURN_RE.test(text);
+}
+
 /** Router decision facts recorded alongside usage — the admin trace row. */
 interface RouteTrace {
   requestedModel: string | null;
@@ -400,7 +452,9 @@ export async function POST(
         ? clampCreateTier(createTier, entitledTier)
         : rawBody["model"] === "fast"
           ? "fast"
-          : entitledTier;
+          : family === "gmi" && gmiRoutineTurn(rawBody)
+            ? "fast"
+            : entitledTier;
   let createLabel: string | null = null;
   if (createModel !== null) {
     const { slug } = createModel;

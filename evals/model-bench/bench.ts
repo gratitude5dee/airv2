@@ -257,7 +257,8 @@ interface Result {
   promptTokens: number;
   completionTokens: number;
   costUsd: number | null;
-  toolCalls: number;
+  /** null = the provider streamed calls with no index and no id — count unverifiable. */
+  toolCalls: number | null;
   error?: string;
 }
 
@@ -269,7 +270,7 @@ function requireEnv(name: string): string {
 
 /** chat/completions (non-streaming) or /responses, timed. */
 async function oneCall(p: Provider, cell: Cell, call: Call): Promise<Result["ttftMs"] extends never ? never : {
-  totalMs: number; ttftMs: number | null; prompt: number; completion: number; toolCalls: number;
+  totalMs: number; ttftMs: number | null; prompt: number; completion: number; toolCalls: number | null;
 }> {
   const t0 = performance.now();
   if (cell.responses) {
@@ -335,7 +336,8 @@ async function oneCall(p: Provider, cell: Cell, call: Call): Promise<Result["ttf
   let buf = "";
   let ttft: number | null = null;
   let prompt = 0, completion = 0;
-  const toolCallIndexes = new Set<number>();
+  const toolCallKeys = new Set<number | string>();
+  let toolCallsIdentifiable = true;
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -354,7 +356,7 @@ async function oneCall(p: Provider, cell: Cell, call: Call): Promise<Result["ttf
             choices?: {
               delta?: {
                 content?: string;
-                tool_calls?: { index?: number }[];
+                tool_calls?: { index?: number; id?: string }[];
               };
             }[];
           };
@@ -363,11 +365,17 @@ async function oneCall(p: Provider, cell: Cell, call: Call): Promise<Result["ttf
             ttft = performance.now() - t0;
           }
           // A streamed call arrives as many deltas sharing one index —
-          // count distinct indexes, not chunks. An indexless provider gets
-          // the delta array position as the stable fallback so repeats of
-          // the same call don't accrete.
-          for (const [position, tc] of (d?.tool_calls ?? []).entries()) {
-            toolCallIndexes.add(tc.index ?? position);
+          // count distinct calls, not chunks. index is the identity; id is
+          // the fallback for providers that stream indexless. A delta with
+          // neither can't be told apart from a repeat chunk of an earlier
+          // call, so the count is unverifiable and reported as unknown.
+          for (const tc of d?.tool_calls ?? []) {
+            const key = tc.index ?? tc.id;
+            if (key === undefined) {
+              toolCallsIdentifiable = false;
+            } else {
+              toolCallKeys.add(key);
+            }
           }
           if (ev.usage) {
             prompt = ev.usage.prompt_tokens ?? prompt;
@@ -383,7 +391,7 @@ async function oneCall(p: Provider, cell: Cell, call: Call): Promise<Result["ttf
     ttftMs: ttft,
     prompt,
     completion,
-    toolCalls: toolCallIndexes.size,
+    toolCalls: toolCallsIdentifiable ? toolCallKeys.size : null,
   };
 }
 
@@ -407,7 +415,7 @@ async function runCell(cell: Cell, workload: string, rep: number): Promise<Resul
   } catch (e) {
     return {
       cell: cell.id, workload, rep, ok: false, ttftMs: null, totalMs: 0,
-      promptTokens: 0, completionTokens: 0, costUsd: null, toolCalls: 0,
+      promptTokens: 0, completionTokens: 0, costUsd: null, toolCalls: null,
       error: e instanceof Error ? e.message : String(e),
     };
   }
@@ -467,7 +475,7 @@ async function main(): Promise<void> {
         console.log(
           `${w.padEnd(8)} ${c.id.padEnd(26)} rep${rep} ` +
           `${r.ok ? `${(r.totalMs / 1000).toFixed(1)}s ttft=${r.ttftMs ? (r.ttftMs / 1000).toFixed(1) + "s" : "—"} ` +
-          `${r.promptTokens}→${r.completionTokens} tok ${r.costUsd !== null ? "$" + r.costUsd.toFixed(4) : "$?"} tools=${r.toolCalls}` : `ERR ${r.error}`}`
+          `${r.promptTokens}→${r.completionTokens} tok ${r.costUsd !== null ? "$" + r.costUsd.toFixed(4) : "$?"} tools=${r.toolCalls ?? "?"}` : `ERR ${r.error}`}`
         );
       }
     }

@@ -58,3 +58,16 @@ GMI_CLOUD_API_KEY=... OPENAI_API_KEY=... npx tsx bench.ts
 ```
 
 Raw rows: `results/2026-09-13T06-28-55-565Z.json` (gitignored).
+
+## Follow-up: routine-turn lane check (Phase 2, 2026-09-13)
+
+Re-ran the `toolcall` workload (the turn type the gateway's `gmiRoutineTurn` rule now routes to the fast lane), 2 reps:
+
+| cell | workload | mean total | mean TTFT | in tok | out tok | cost |
+|---|---|---|---|---|---|---|
+| gmi/luna | toolcall | 6.0s | 5.9s | 267 | 152 | $0.0005 |
+| gmi/glm-flash-low | toolcall | 4.2s | 2.6s | 426 | 92 | $0.0001 |
+
+Routine turns on GLM-low are faster *and* ~5× cheaper than Luna — the task-type rule pays on both axes.
+
+Separately: the deterministic-command change (`directCreativePlan` for `/imagine`+`/animate`) removes one Groq `openai/gpt-oss-20b` compile call (~1–2s, ~1K tokens) per creative command — deterministic, so nothing to bench.
