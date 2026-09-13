@@ -79,6 +79,8 @@ User-facing story stays in the product's vocabulary: pick family "GMI Cloud", th
 **Optional Phase-2 leverage** (only if the bench + suite justify it):
 
 - Let the box's taskrouter escalate a mid-turn fan-out: today only Hermes' own delegation uses `"fast"`; the box's local GGUF router could additionally pin simple tool turns to `"fast"` under `gmi`. Zero gateway change — `"fast"` is already the sanctioned downgrade.
+- Task-type routing on the same seam: routine tool-shaped turns (email drafts, calendar ops, reminders) are exactly what GLM-low is good at — a box-side classifier can pin them to `"fast"`/GLM without gateway changes. For "big" tasks (research, shopping comparisons, trading sweeps) Astra-parent + GLM-children is what `gmi`+`deep` already delivers, but the bench says gate Astra on *planning hardness*, not task size — on a shallow fan-out `luna→luna` still wins on both latency and cost.
+- Extend the deterministic slash-command path: `lib/creative/router.ts` already compiles unambiguous `/zap`-style commands without a model call (`directZapPlan`, `enforceExplicitCommandIntent`). Each additional deterministic slash command (e.g. `/mini-apps`) skips a model turn entirely.
 - `GMI_BALANCED_MODEL`/`GMI_DEEP_MODEL` env overrides for ops, mirroring `MODEL_FAST`/`MODEL_BALANCED`/`MODEL_DEEP`.
 
 ## 3. Evals
