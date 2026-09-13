@@ -363,9 +363,11 @@ async function oneCall(p: Provider, cell: Cell, call: Call): Promise<Result["ttf
             ttft = performance.now() - t0;
           }
           // A streamed call arrives as many deltas sharing one index —
-          // count distinct indexes, not chunks.
-          for (const tc of d?.tool_calls ?? []) {
-            toolCallIndexes.add(tc.index ?? toolCallIndexes.size);
+          // count distinct indexes, not chunks. An indexless provider gets
+          // the delta array position as the stable fallback so repeats of
+          // the same call don't accrete.
+          for (const [position, tc] of (d?.tool_calls ?? []).entries()) {
+            toolCallIndexes.add(tc.index ?? position);
           }
           if (ev.usage) {
             prompt = ev.usage.prompt_tokens ?? prompt;
