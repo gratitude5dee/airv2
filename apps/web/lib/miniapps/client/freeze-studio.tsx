@@ -1223,6 +1223,7 @@ function createThreeStage(host: HTMLDivElement): ThreeStage {
   const tmp = new THREE.Vector3();
   const subject = new THREE.Vector3(0, SUBJECT_Y, 0);
   let lastFrames: CameraKeyframe[] = [];
+  let lastSelected: number | null = null;
   let lastPose: CameraKeyframe = {
     time: 0,
     azimuth: 0,
@@ -1278,48 +1279,59 @@ function createThreeStage(host: HTMLDivElement): ThreeStage {
       render();
     },
     update(frames, scrubT, selected) {
+      // Scrub moves the glyph every tick — the tube, shadow, and dots only
+      // depend on the trajectory/selection, so static geometry rebuilds
+      // solely when those actually changed (keyframes always arrive as a
+      // fresh array reference).
+      const framesChanged = frames !== lastFrames;
+      const selectedChanged = selected !== lastSelected;
       lastFrames = frames;
-      const pts: THREE.Vector3[] = [];
-      for (let i = 0; i <= 96; i++) {
-        const p = poseToWorld(poseAt(frames, i / 96), new THREE.Vector3());
-        const prev = pts[pts.length - 1];
-        // Consecutive identical points make CatmullRom tangents NaN — a
-        // flat run in the trajectory must not take the tube down.
-        if (prev && p.distanceToSquared(prev) < 1e-8) continue;
-        pts.push(p);
-      }
-      if (pts.length >= 2) {
-        const curve = new THREE.CatmullRomCurve3(pts);
-        const geo = new THREE.TubeGeometry(curve, 120, 0.03, 8, false);
-        const next = new THREE.Mesh(geo, tubeMat);
-        if (tube) {
+      lastSelected = selected;
+      if (framesChanged) {
+        const pts: THREE.Vector3[] = [];
+        for (let i = 0; i <= 96; i++) {
+          const p = poseToWorld(poseAt(frames, i / 96), new THREE.Vector3());
+          const prev = pts[pts.length - 1];
+          // Consecutive identical points make CatmullRom tangents NaN — a
+          // flat run in the trajectory must not take the tube down.
+          if (prev && p.distanceToSquared(prev) < 1e-8) continue;
+          pts.push(p);
+        }
+        if (pts.length >= 2) {
+          const curve = new THREE.CatmullRomCurve3(pts);
+          const geo = new THREE.TubeGeometry(curve, 120, 0.03, 8, false);
+          const next = new THREE.Mesh(geo, tubeMat);
+          if (tube) {
+            scene.remove(tube);
+            tube.geometry.dispose();
+          }
+          tube = next;
+          scene.add(tube);
+          shadowGeo.setFromPoints(
+            pts.map((p) => new THREE.Vector3(p.x, 0.02, p.z))
+          );
+          // setFromPoints reuses an oversized position attribute — without a
+          // draw range a shorter path keeps drawing the old one's tail.
+          shadowGeo.setDrawRange(0, pts.length);
+          shadow.computeLineDistances();
+          shadow.visible = true;
+        } else if (tube) {
           scene.remove(tube);
           tube.geometry.dispose();
+          tube = null;
+          shadow.visible = false;
         }
-        tube = next;
-        scene.add(tube);
-        shadowGeo.setFromPoints(
-          pts.map((p) => new THREE.Vector3(p.x, 0.02, p.z))
-        );
-        // setFromPoints reuses an oversized position attribute — without a
-        // draw range a shorter path keeps drawing the old one's tail.
-        shadowGeo.setDrawRange(0, pts.length);
-        shadow.computeLineDistances();
-        shadow.visible = true;
-      } else if (tube) {
-        scene.remove(tube);
-        tube.geometry.dispose();
-        tube = null;
-        shadow.visible = false;
       }
-      kfGroup.clear();
-      frames.forEach((kf, i) => {
-        const dot = new THREE.Mesh(kfGeo, i === selected ? kfSelMat : kfMat);
-        dot.position.copy(poseToWorld(kf, tmp));
-        if (i === selected) dot.scale.setScalar(1.3);
-        dot.userData["index"] = i;
-        kfGroup.add(dot);
-      });
+      if (framesChanged || selectedChanged) {
+        kfGroup.clear();
+        frames.forEach((kf, i) => {
+          const dot = new THREE.Mesh(kfGeo, i === selected ? kfSelMat : kfMat);
+          dot.position.copy(poseToWorld(kf, tmp));
+          if (i === selected) dot.scale.setScalar(1.3);
+          dot.userData["index"] = i;
+          kfGroup.add(dot);
+        });
+      }
       lastPose = poseAt(frames, scrubT);
       glyph.position.copy(poseToWorld(lastPose, tmp));
       glyph.lookAt(subject);
@@ -1362,6 +1374,7 @@ function createThreeStage(host: HTMLDivElement): ThreeStage {
       }
       Object.assign(view, viewHome);
       applyView();
+      updateGlyphDepth();
       render();
       return true;
     },
@@ -1423,6 +1436,11 @@ interface StageDrag {
   /** selection captured with the snapshot — a live preview can shrink the
    * frame list under it, so the stroke owns the clamp-and-restore too. */
   snapshotSel: number | null;
+  /** preset + hint captured with the snapshot — an edit clears both live,
+   * so a rolled-back edit must hand them back or the reverted trajectory
+   * reads as a custom path. */
+  snapshotPreset: string | null;
+  snapshotHint: boolean;
 }
 
 /** Live view controls a stage exposes to the reset chip. */
@@ -1450,9 +1468,19 @@ interface StageProps {
   /** Live-replaces the trajectory with the stroke's samples. */
   onDrawPath: (samples: DrawSample[], finalize?: boolean) => void;
   /** Restores the trajectory (and selection) a live preview displaced —
-   * pinch conversion or pointercancel before the stroke committed. */
-  onDrawRevert: (frames: CameraKeyframe[], sel?: number | null) => void;
+   * pinch conversion or pointercancel before the stroke committed. `meta`
+   * carries the preset/hint state the stroke snapped at pointer-down —
+   * edits clear both live, so a rollback restores them with the frames. */
+  onDrawRevert: (
+    frames: CameraKeyframe[],
+    sel?: number | null,
+    meta?: { preset: string | null; hintSeen: boolean }
+  ) => void;
   onPick: (index: number | null) => void;
+  /** Snapshot at pointer-down — a converted/cancelled edit restores these
+   * along with the trajectory so a reverted preset keeps its identity. */
+  preset: string | null;
+  hintSeen: boolean;
 }
 
 function StageCanvas(props: StageProps) {
@@ -1479,7 +1507,10 @@ function StageCanvas(props: StageProps) {
         ? drag.travel >= DRAW_GATE_PX && drag.samples.length >= 2
         : drag.mode === "edit" && drag.moved;
     if (committed) {
-      propsRef.current.onDrawRevert(drag.snapshot, drag.snapshotSel);
+      propsRef.current.onDrawRevert(drag.snapshot, drag.snapshotSel, {
+        preset: drag.snapshotPreset,
+        hintSeen: drag.snapshotHint,
+      });
     }
   };
 
@@ -1560,6 +1591,8 @@ function StageCanvas(props: StageProps) {
                 : 0,
             snapshot: null,
             snapshotSel: null,
+            snapshotPreset: null,
+            snapshotHint: false,
           };
           return;
         }
@@ -1579,6 +1612,8 @@ function StageCanvas(props: StageProps) {
             pinchD: 0,
             snapshot: null,
             snapshotSel: null,
+            snapshotPreset: null,
+            snapshotHint: false,
           };
           return;
         }
@@ -1615,6 +1650,8 @@ function StageCanvas(props: StageProps) {
           pinchD: 0,
           snapshot: propsRef.current.keyframes,
           snapshotSel: propsRef.current.selected,
+          snapshotPreset: propsRef.current.preset,
+          snapshotHint: propsRef.current.hintSeen,
         };
       }}
       onPointerMove={(e) => {
@@ -1760,7 +1797,10 @@ function StageCanvas2D(props: StageProps) {
         ? drag.travel >= DRAW_GATE_PX && drag.samples.length >= 2
         : drag.mode === "edit" && drag.moved;
     if (committed) {
-      propsRef.current.onDrawRevert(drag.snapshot, drag.snapshotSel);
+      propsRef.current.onDrawRevert(drag.snapshot, drag.snapshotSel, {
+        preset: drag.snapshotPreset,
+        hintSeen: drag.snapshotHint,
+      });
     }
   };
 
@@ -1953,6 +1993,8 @@ function StageCanvas2D(props: StageProps) {
                 : 0,
             snapshot: null,
             snapshotSel: null,
+            snapshotPreset: null,
+            snapshotHint: false,
           };
           return;
         }
@@ -1972,6 +2014,8 @@ function StageCanvas2D(props: StageProps) {
             pinchD: 0,
             snapshot: null,
             snapshotSel: null,
+            snapshotPreset: null,
+            snapshotHint: false,
           };
           return;
         }
@@ -2008,6 +2052,8 @@ function StageCanvas2D(props: StageProps) {
           pinchD: 0,
           snapshot: props.keyframes,
           snapshotSel: props.selected,
+          snapshotPreset: props.preset,
+          snapshotHint: props.hintSeen,
         };
       }}
       onPointerMove={(e) => {
@@ -2699,13 +2745,23 @@ function Studio(props: { initial: Payload }) {
   // touched, and the selection returns when it still fits the restored
   // list.
   const onDrawRevert = useCallback(
-    (frames: CameraKeyframe[], sel?: number | null) => {
+    (
+      frames: CameraKeyframe[],
+      sel?: number | null,
+      meta?: { preset: string | null; hintSeen: boolean }
+    ) => {
       setKeyframes(frames.map((frame) => ({ ...frame })));
       setSelected(
         typeof sel === "number" && sel >= 0 && sel < frames.length
           ? sel
           : null
       );
+      // An edit clears preset/hint live; the rollback hands back the
+      // stroke-start identity so a reverted "Arc Return" is still a preset.
+      if (meta) {
+        setPreset(meta.preset);
+        setHintSeen(meta.hintSeen);
+      }
     },
     []
   );
@@ -2973,6 +3029,8 @@ function Studio(props: { initial: Payload }) {
               onDrawPath={onDrawPath}
               onDrawRevert={onDrawRevert}
               onPick={setSelected}
+              preset={preset}
+              hintSeen={hintSeen}
             />
             {viewDirty && (
               <button
