@@ -382,9 +382,86 @@ export async function mintFreezeClipUpload(
   return { clipPath: data.path, uploadUrl: data.signedUrl };
 }
 
-/** Verify the uploaded object and register it as a creative asset — the
- * row dedupes on the client's (head-slice + size) sha fingerprint and the
- * session only links a clip whose bytes actually landed. */
+/** Head bytes hashed for the clip fingerprint — identical scheme to the
+ * client's (slice + size), but computed here over the stored object so the
+ * dedupe identity is never client-forged. */
+const CLIP_HEAD_BYTES = 8 * 1024 * 1024;
+const CLIP_BASENAME = /^[0-9a-f-]{36}\.(mp4|mov|webm)$/;
+
+/** Read the clip's head through a short-lived signed URL. A Range ask is
+ * honored by the storage proxy; where it isn't, the stream is cancelled
+ * after the head — either way the read never buffers the whole object. */
+async function clipFingerprint(
+  supabase: SupabaseClient,
+  clipPath: string,
+  bytes: number
+): Promise<string> {
+  const { data, error } = await supabase.storage
+    .from(ASSETS_BUCKET)
+    .createSignedUrl(clipPath, 60);
+  if (error || !data?.signedUrl) {
+    throw new FreezeError(
+      "STORE_FAILED",
+      error?.message ?? "clip signing failed"
+    );
+  }
+  const res = await fetch(data.signedUrl, {
+    headers: { Range: `bytes=0-${CLIP_HEAD_BYTES - 1}` },
+  });
+  if (!res.ok || !res.body) {
+    throw new FreezeError("CLIP_MISSING", "the clip upload didn't land");
+  }
+  const reader = res.body.getReader();
+  const chunks: Buffer[] = [];
+  let read = 0;
+  try {
+    while (read < CLIP_HEAD_BYTES) {
+      const { done, value } = await reader.read();
+      if (done || !value) break;
+      chunks.push(Buffer.from(value));
+      read += value.length;
+    }
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+  return createHash("sha256")
+    .update(Buffer.concat(chunks))
+    .update(`:${bytes}`)
+    .digest("hex");
+}
+
+/** Best-effort removal of a session clip object — registration failures
+ * and superseded dedupe uploads drop their object here. The path is
+ * re-checked against the session's clip dir so this can never reach
+ * outside it. */
+export async function deleteFreezeClipObject(
+  supabase: SupabaseClient,
+  session: FreezeSession,
+  clipPath: string
+): Promise<void> {
+  const dir = `${session.user_id}/freeze-clips/${session.id}`;
+  const name = clipPath.startsWith(`${dir}/`)
+    ? clipPath.slice(dir.length + 1)
+    : "";
+  if (!CLIP_BASENAME.test(name)) return;
+  await supabase.storage
+    .from(ASSETS_BUCKET)
+    .remove([clipPath])
+    .then(({ error }) => {
+      if (error) {
+        console.warn(
+          JSON.stringify({ msg: "freeze clip cleanup failed", clipPath })
+        );
+      }
+    })
+    .catch(() => undefined);
+}
+
+/** Verify the uploaded object and register it as a creative asset. The
+ * client's sha/bytes are claims, not identity: the size must match the
+ * stored object's metadata and the dedupe fingerprint is recomputed
+ * server-side from the object's head bytes — then a dedupe hit removes
+ * the just-uploaded duplicate object instead of leaking it. */
 export async function registerFreezeClip(
   supabase: SupabaseClient,
   session: FreezeSession,
@@ -399,9 +476,13 @@ export async function registerFreezeClip(
   const dir = `${session.user_id}/freeze-clips/${session.id}`;
   const ext = clip.path.split(".").pop() ?? "";
   const { clipIn, clipOut, freezeAt } = clip.window;
+  const name = clip.path.startsWith(`${dir}/`)
+    ? clip.path.slice(dir.length + 1)
+    : "";
   if (
     !CLIP_MIME_BY_EXT[ext] ||
-    !clip.path.startsWith(`${dir}/`) ||
+    // Minted names are one flat uuid file — no nesting, no chosen keys.
+    !CLIP_BASENAME.test(name) ||
     !/^[0-9a-f]{64}$/.test(clip.sha) ||
     !(clip.bytes > 0 && clip.bytes <= MAX_FREEZE_CLIP_BYTES) ||
     ![clipIn, clipOut, freezeAt].every(Number.isFinite) ||
@@ -414,40 +495,57 @@ export async function registerFreezeClip(
   ) {
     throw new FreezeError("BAD_CLIP", "that clip window doesn't work");
   }
-  const name = clip.path.slice(dir.length + 1);
   const { data: objects, error: listErr } = await supabase.storage
     .from(ASSETS_BUCKET)
     .list(dir, { search: name, limit: 5 });
   if (listErr) {
     throw new FreezeError("STORE_FAILED", listErr.message);
   }
-  if (!objects?.some((o) => o.name === name)) {
+  const object = objects?.find((o) => o.name === name);
+  if (!object) {
     throw new FreezeError(
       "CLIP_MISSING",
       "the clip upload didn't land — try again"
     );
   }
+  // The stored object is the source of truth for size — a forged claim
+  // can't sneak a 400MB clip through the 250MB cap or desync the sha.
+  const realBytes = Number(
+    (object.metadata as { size?: number } | null)?.size ?? 0
+  );
+  if (realBytes !== clip.bytes) {
+    throw new FreezeError("BAD_CLIP", "the clip metadata doesn't match");
+  }
+  const sha = await clipFingerprint(supabase, clip.path, realBytes);
   const { data: existing } = await supabase
     .from("creative_assets")
-    .select("id")
+    .select("id, storage_key")
     .eq("user_id", session.user_id)
-    .eq("sha256", clip.sha)
+    .eq("sha256", sha)
     .maybeSingle();
-  if (existing) return existing.id as string;
+  if (existing) {
+    // Re-uploading an identical clip reuses the asset — the duplicate
+    // object this attempt wrote is dropped, not left to leak per try.
+    if (existing.storage_key !== clip.path) {
+      await deleteFreezeClipObject(supabase, session, clip.path);
+    }
+    return existing.id as string;
+  }
   const { data: row, error } = await supabase
     .from("creative_assets")
     .insert({
       user_id: session.user_id,
       box_asset_id: `freeze-clip:${session.id}`,
-      sha256: clip.sha,
+      sha256: sha,
       ext,
       kind: ext,
-      bytes: clip.bytes,
+      bytes: realBytes,
       storage_key: clip.path,
     })
     .select("id")
     .single();
   if (error) {
+    await deleteFreezeClipObject(supabase, session, clip.path);
     throw new FreezeError("STORE_FAILED", error.message);
   }
   return row.id as string;
@@ -740,7 +838,16 @@ export async function executeFreezeSketch(
     if (result.status === "delivered" && result.asset) {
       const update = supabase
         .from("freeze_sessions")
-        .update({ source_asset_id: result.asset.id })
+        .update({
+          source_asset_id: result.asset.id,
+          // A generated still isn't a frame of the old clip — keeping the
+          // window would splice the sketch's camera move into footage it
+          // has nothing to do with.
+          clip_asset_id: null,
+          clip_in: null,
+          clip_out: null,
+          freeze_at: null,
+        })
         .eq("id", session.id)
         .eq("status", "active")
         .gt("expires_at", new Date().toISOString())
@@ -749,7 +856,13 @@ export async function executeFreezeSketch(
         ? update.eq("source_asset_id", sourceAtAdmit)
         : update.is("source_asset_id", null)
       ).select("id");
-      if (claimed?.length === 1) session.source_asset_id = result.asset.id;
+      if (claimed?.length === 1) {
+        session.source_asset_id = result.asset.id;
+        session.clip_asset_id = null;
+        session.clip_in = null;
+        session.clip_out = null;
+        session.freeze_at = null;
+      }
     }
     return result;
   } catch (error) {
@@ -860,7 +973,13 @@ export async function executeFreezeRender(
     // A failed stitch degrades to the raw camera move rather than
     // failing the whole render.
     if (result.status === "delivered" && result.asset) {
-      await stitchFreezeIntoClip(supabase, session, job.id, result.asset)
+      await stitchFreezeIntoClip(
+        supabase,
+        session,
+        job.id,
+        sourceAssetId,
+        result.asset
+      )
         .catch((error: unknown) =>
           console.error(
             JSON.stringify({
@@ -1008,14 +1127,20 @@ async function stitchFreezeIntoClip(
   supabase: SupabaseClient,
   session: FreezeSession,
   jobId: string,
+  pinnedSourceId: string,
   freezeAsset: CreativeAsset
 ): Promise<void> {
   const { data: fresh } = await supabase
     .from("freeze_sessions")
-    .select("clip_asset_id, clip_in, clip_out, freeze_at")
+    .select("source_asset_id, clip_asset_id, clip_in, clip_out, freeze_at")
     .eq("id", session.id)
     .eq("status", "active")
     .maybeSingle();
+  // The render animated the still pinned at admission. If the source was
+  // swapped mid-render — to a different clip or a plain photo — the
+  // current clip describes footage this camera move was never framed
+  // against; splice nothing and ship the raw move.
+  if (fresh?.source_asset_id !== pinnedSourceId) return;
   const clipAssetId = fresh?.clip_asset_id as string | null;
   const clipIn = fresh?.clip_in as number | null;
   const clipOut = fresh?.clip_out as number | null;

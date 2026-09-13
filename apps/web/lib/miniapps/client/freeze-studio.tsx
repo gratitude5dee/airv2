@@ -440,7 +440,9 @@ async function thumbAt(
 
 function VideoFramePick(props: {
   busy: boolean;
-  onFrame: (file: File, clip: ClipRef | null) => void;
+  /** clipError carries the splice-loss warning up — this picker unmounts
+   * on accept, so its local error would vanish with the view. */
+  onFrame: (file: File, clip: ClipRef | null, clipError?: string) => void;
 }) {
   const { busy, onFrame } = props;
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -656,6 +658,7 @@ function VideoFramePick(props: {
       // The clip rides a signed direct-to-storage upload — its body is
       // far over the action POST cap. A failed clip upload still ships
       // the frame (the freeze works, it just won't splice back).
+      let clipFailed: string | null = null;
       const clip = fileRef.current;
       if (clip) {
         setUploading(true);
@@ -685,14 +688,13 @@ function VideoFramePick(props: {
           }
           throw new Error(mint?.line ?? "the clip upload didn't start");
         } catch (e) {
-          setErr(
-            `${e instanceof Error ? e.message : "the clip didn't upload"} — the freeze still works, it just won't splice into the footage`
-          );
+          clipFailed = `${e instanceof Error ? e.message : "the clip didn't upload"} — the freeze still works, it just won't splice into the footage`;
+          setErr(clipFailed);
         } finally {
           setUploading(false);
         }
       }
-      onFrame(frameFile, null);
+      onFrame(frameFile, null, clipFailed ?? undefined);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "couldn't capture the frame");
     } finally {
@@ -2237,6 +2239,9 @@ function Studio(props: { initial: Payload }) {
   /** True while a clip is linked — the render splices back into the
    * footage instead of shipping the bare camera move. */
   const [hasClip, setHasClip] = useState(props.initial.hasClip === true);
+  // The frame-picker unmounts on accept — a clip-upload failure has to
+  // surface here or the user never learns the render won't splice.
+  const [clipNotice, setClipNotice] = useState<string | null>(null);
   const [renders, setRenders] = useState<FreezeJob[]>(props.initial.renders);
   const [activeJob, setActiveJob] = useState<ActiveJob | null>(
     props.initial.activeJob
@@ -2497,7 +2502,7 @@ function Studio(props: { initial: Payload }) {
   /* ------------------------------- source stage */
 
   const onFile = useCallback(
-    async (file: File | null, clip?: ClipRef | null) => {
+    async (file: File | null, clip?: ClipRef | null, clipError?: string) => {
       if (!file || busy) return;
       setBusy(true);
       setLine("reading the photo…");
@@ -2531,6 +2536,10 @@ function Studio(props: { initial: Payload }) {
       setLine(null);
       setSourceAssetId(payload.sourceAssetId);
       if (typeof payload.hasClip === "boolean") setHasClip(payload.hasClip);
+      // A linked clip clears the notice; a failed clip upload keeps it
+      // on the camera stage where the render row lives. Any fresh source
+      // re-picks it.
+      setClipNotice(clip ? null : (clipError ?? null));
       setShowSketch(false);
       setShowVideo(false);
       // Mark the accepted asset before the trailing status pull: its adopt
@@ -2881,7 +2890,7 @@ function Studio(props: { initial: Payload }) {
             className={stage === tab ? "active" : ""}
             disabled={
               (tab === "camera" && !sourceAssetId) ||
-              (tab === "result" && rendersReady.length === 0)
+              (tab === "result" && rendersReady.length === 0 && !activeJob)
             }
             onClick={() => setStage(tab)}
           >
@@ -3006,7 +3015,9 @@ function Studio(props: { initial: Payload }) {
               </button>
               <VideoFramePick
                 busy={busy}
-                onFrame={(f, clip) => void onFile(f, clip)}
+                onFrame={(f, clip, clipError) =>
+                void onFile(f, clip, clipError)
+              }
               />
             </>
           )}
@@ -3263,8 +3274,13 @@ function Studio(props: { initial: Payload }) {
               sub="a few minutes — the result tab lights up"
             />
           )}
-          {hasClip && !watchJob && (
+          {hasClip && !watchJob && !clipNotice && (
             <p className="fz-meta">this freeze splices back into your clip</p>
+          )}
+          {clipNotice && !hasClip && (
+            <p className="fz-clipwarn" role="alert">
+              {clipNotice}
+            </p>
           )}
           <div className="fz-render-row">
             <div className="fz-seg">
@@ -3307,16 +3323,26 @@ function Studio(props: { initial: Payload }) {
         <div className="fz-stage">
           {latestRender ? (
             <div className="fz-result">
-              <video
-                className="fz-video"
-                src={latestRender.outputUrl ?? undefined}
-                controls
-                playsInline
-                loop
-                autoPlay
-                muted
-                onError={refreshMedia}
-              />
+              <div className="fz-result-media">
+                <video
+                  className="fz-video"
+                  src={latestRender.outputUrl ?? undefined}
+                  controls
+                  playsInline
+                  loop
+                  autoPlay
+                  muted
+                  onError={refreshMedia}
+                />
+                {activeJob && (
+                  <div className="fz-dither-veil">
+                    <PixelDither
+                      label={hasClip ? "freezing into your clip" : "freezing"}
+                      sub="the new camera move renders over the last result"
+                    />
+                  </div>
+                )}
+              </div>
               <div className="fz-actions">
                 <button
                   type="button"
@@ -3459,6 +3485,10 @@ const CSS = `
 .fz-ghost:disabled{opacity:0.35}
 .fz-ghost.selected{border-color:#5f8577;color:#d1eadd}
 .fz-result{display:flex;flex-direction:column;gap:10px}
+.fz-result-media{position:relative}
+.fz-dither-veil{position:absolute;inset:0;z-index:2;border-radius:16px;overflow:hidden}
+.fz-dither-veil .fz-dither{min-height:0;height:100%}
+.fz-clipwarn{margin:0;padding:8px 12px;border:1px solid #6b5136;border-radius:10px;background:#241d13;color:#e8c9a9;font-size:0.72rem;text-align:center}
 .fz-video{width:100%;border-radius:14px;background:#000;max-height:56vh}
 .fz-framepick{display:flex;flex-direction:column;gap:8px}
 .fz-video-empty{display:flex;flex-direction:column;gap:10px;align-items:center;padding:18px 8px}

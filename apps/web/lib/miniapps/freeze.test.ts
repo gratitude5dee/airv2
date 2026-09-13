@@ -4,7 +4,7 @@
  * elevation ±90, distance > 0), the preset catalog integrity, and the
  * caller-built plan the fal lane reads off `plan.freeze`.
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   directFreezePlan,
@@ -472,9 +472,17 @@ describe("freeze clip lane", () => {
     ).rejects.toMatchObject({ code: "SESSION_EXPIRED" });
   });
 
+  const uuid = "11111111-2222-4333-8444-555555555555";
+  const clipDir = "user-1/freeze-clips/sess-1";
+  const clipPath = `${clipDir}/${uuid}.mp4`;
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("rejects out-of-window and malformed commits before storage", async () => {
     const base = {
-      path: "user-1/freeze-clips/sess-1/abc.mp4",
+      path: clipPath,
       sha: "a".repeat(64),
       bytes: 1024,
     };
@@ -497,12 +505,163 @@ describe("freeze clip lane", () => {
         window: { clipIn: 0, clipOut: 20, freezeAt: 5 },
       })
     ).rejects.toMatchObject({ code: "BAD_CLIP" });
+    // Off-session keys, nested paths, and non-uuid names are all refused —
+    // only the flat minted basename shape is admissible.
     await expect(
       registerFreezeClip(none, session(), {
         ...base,
-        path: "user-1/freeze-clips/other/abc.mp4",
+        path: `user-1/freeze-clips/other/${uuid}.mp4`,
         window: { clipIn: 0, clipOut: 20, freezeAt: 5 },
       })
     ).rejects.toMatchObject({ code: "BAD_CLIP" });
+    await expect(
+      registerFreezeClip(none, session(), {
+        ...base,
+        path: `${clipDir}/sub/${uuid}.mp4`,
+        window: { clipIn: 0, clipOut: 20, freezeAt: 5 },
+      })
+    ).rejects.toMatchObject({ code: "BAD_CLIP" });
+    await expect(
+      registerFreezeClip(none, session(), {
+        ...base,
+        path: `${clipDir}/clip.mp4`,
+        window: { clipIn: 0, clipOut: 20, freezeAt: 5 },
+      })
+    ).rejects.toMatchObject({ code: "BAD_CLIP" });
+  });
+
+  /** Storage + table stub: `storage.from()` answers list/createSignedUrl/
+   * remove, `from("creative_assets")` answers the dedupe select and the
+   * insert. The signed fetch is stubbed to a one-chunk stream. */
+  function fakeClipSupabase(db: {
+    storedSize?: number;
+    missingObject?: boolean;
+    dedupe?: { id: string; storage_key: string } | null;
+    insertErr?: { message: string } | null;
+    removed: string[][];
+  }): SupabaseClient {
+    function builder() {
+      const chain: Record<string, unknown> = {};
+      const self = () => chain;
+      for (const m of ["eq", "is", "in", "insert", "update", "select"]) {
+        chain[m] = self;
+      }
+      chain["single"] = () =>
+        Promise.resolve({
+          data: db.insertErr ? null : { id: "asset-1" },
+          error: db.insertErr ?? null,
+        });
+      chain["maybeSingle"] = () =>
+        Promise.resolve({ data: db.dedupe ?? null, error: null });
+      chain["then"] = (
+        resolve: (value: unknown) => unknown,
+        reject?: (reason: unknown) => unknown
+      ) =>
+        Promise.resolve({ data: null, error: null }).then(resolve, reject);
+      return chain;
+    }
+    const storage = {
+      from: () => ({
+        list: () =>
+          Promise.resolve({
+            data: db.missingObject
+              ? []
+              : [{ name: `${uuid}.mp4`, metadata: { size: db.storedSize ?? 1024 } }],
+            error: null,
+          }),
+        createSignedUrl: () =>
+          Promise.resolve({
+            data: { signedUrl: "https://storage.test/signed" },
+            error: null,
+          }),
+        remove: (paths: string[]) => {
+          db.removed.push(paths);
+          return Promise.resolve({ data: null, error: null });
+        },
+      }),
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        body: {
+          getReader: () => {
+            let sent = false;
+            return {
+              read: () =>
+                Promise.resolve(
+                  sent
+                    ? { done: true, value: undefined }
+                    : ((sent = true),
+                      { done: false, value: new Uint8Array([1, 2, 3]) })
+                ),
+              cancel: () => Promise.resolve(),
+            };
+          },
+        },
+      }))
+    );
+    return { from: builder, storage } as unknown as SupabaseClient;
+  }
+
+  const clipArgs = {
+    path: clipPath,
+    sha: "b".repeat(64),
+    bytes: 1024,
+    window: { clipIn: 0, clipOut: 20, freezeAt: 5 },
+  };
+
+  it("rejects when the object never landed or its size was forged", async () => {
+    await expect(
+      registerFreezeClip(
+        fakeClipSupabase({ missingObject: true, removed: [] }),
+        session(),
+        clipArgs
+      )
+    ).rejects.toMatchObject({ code: "CLIP_MISSING" });
+    await expect(
+      registerFreezeClip(
+        fakeClipSupabase({ storedSize: 4096, removed: [] }),
+        session(),
+        clipArgs
+      )
+    ).rejects.toMatchObject({ code: "BAD_CLIP" });
+  });
+
+  it("registers a verified object and ignores the claimed sha", async () => {
+    const removed: string[][] = [];
+    const id = await registerFreezeClip(
+      fakeClipSupabase({ removed }),
+      session(),
+      clipArgs
+    );
+    expect(id).toBe("asset-1");
+    expect(removed).toEqual([]);
+  });
+
+  it("drops the duplicate object on a dedupe hit", async () => {
+    const removed: string[][] = [];
+    const id = await registerFreezeClip(
+      fakeClipSupabase({
+        removed,
+        dedupe: { id: "asset-9", storage_key: `${clipDir}/older.mp4` },
+      }),
+      session(),
+      clipArgs
+    );
+    expect(id).toBe("asset-9");
+    expect(removed).toEqual([[clipPath]]);
+  });
+
+  it("removes the object when the asset insert fails", async () => {
+    const removed: string[][] = [];
+    await expect(
+      registerFreezeClip(
+        fakeClipSupabase({ removed, insertErr: { message: "rls denied" } }),
+        session(),
+        clipArgs
+      )
+    ).rejects.toMatchObject({ code: "STORE_FAILED" });
+    expect(removed).toEqual([[clipPath]]);
   });
 });

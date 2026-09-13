@@ -44,6 +44,7 @@ import {
   executeFreezeRender,
   executeFreezeSketch,
   mintFreezeClipUpload,
+  deleteFreezeClipObject,
   registerFreezeClip,
   resolveFreezeRender,
   setFreezeSource,
@@ -409,8 +410,16 @@ export const freeze: MiniAppModule = {
             clipAttach = { assetId: clipAssetId, ...window };
           }
           // Throws on a failed/expired write — never sign an asset the
-          // session doesn't actually point at.
-          await setFreezeSource(ctx.supabase, session, asset.id, clipAttach);
+          // session doesn't actually point at. A clip we couldn't link is
+          // nobody's asset — drop the object instead of leaking it.
+          try {
+            await setFreezeSource(ctx.supabase, session, asset.id, clipAttach);
+          } catch (error) {
+            if (clipPath) {
+              await deleteFreezeClipObject(ctx.supabase, session, clipPath);
+            }
+            throw error;
+          }
           // Return the signed (converted, for HEIC) URL with the accept so
           // the client can show the still without waiting on a status pull.
           return json({
