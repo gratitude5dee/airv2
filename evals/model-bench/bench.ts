@@ -334,7 +334,8 @@ async function oneCall(p: Provider, cell: Cell, call: Call): Promise<Result["ttf
   const dec = new TextDecoder();
   let buf = "";
   let ttft: number | null = null;
-  let prompt = 0, completion = 0, toolCalls = 0;
+  let prompt = 0, completion = 0;
+  const toolCallIndexes = new Set<number>();
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -350,13 +351,22 @@ async function oneCall(p: Provider, cell: Cell, call: Call): Promise<Result["ttf
         try {
           const ev = JSON.parse(data) as {
             usage?: { prompt_tokens?: number; completion_tokens?: number };
-            choices?: { delta?: { content?: string; tool_calls?: unknown[] } }[];
+            choices?: {
+              delta?: {
+                content?: string;
+                tool_calls?: { index?: number }[];
+              };
+            }[];
           };
           const d = ev.choices?.[0]?.delta;
           if (d && (d.content || (d.tool_calls && d.tool_calls.length > 0)) && ttft === null) {
             ttft = performance.now() - t0;
           }
-          if (d?.tool_calls) toolCalls += d.tool_calls.length;
+          // A streamed call arrives as many deltas sharing one index —
+          // count distinct indexes, not chunks.
+          for (const tc of d?.tool_calls ?? []) {
+            toolCallIndexes.add(tc.index ?? toolCallIndexes.size);
+          }
           if (ev.usage) {
             prompt = ev.usage.prompt_tokens ?? prompt;
             completion = ev.usage.completion_tokens ?? completion;
@@ -366,7 +376,13 @@ async function oneCall(p: Provider, cell: Cell, call: Call): Promise<Result["ttf
       sep = buf.indexOf("\n\n");
     }
   }
-  return { totalMs: performance.now() - t0, ttftMs: ttft, prompt, completion, toolCalls };
+  return {
+    totalMs: performance.now() - t0,
+    ttftMs: ttft,
+    prompt,
+    completion,
+    toolCalls: toolCallIndexes.size,
+  };
 }
 
 function cost(cell: Cell, prompt: number, completion: number): number | null {
