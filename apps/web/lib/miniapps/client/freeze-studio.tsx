@@ -1287,6 +1287,9 @@ function createThreeStage(host: HTMLDivElement): ThreeStage {
         shadowGeo.setFromPoints(
           pts.map((p) => new THREE.Vector3(p.x, 0.02, p.z))
         );
+        // setFromPoints reuses an oversized position attribute — without a
+        // draw range a shorter path keeps drawing the old one's tail.
+        shadowGeo.setDrawRange(0, pts.length);
         shadow.computeLineDistances();
         shadow.visible = true;
       } else if (tube) {
