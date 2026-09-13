@@ -752,10 +752,12 @@ function createThreeStage(host: HTMLDivElement): ThreeStage {
   // FOV/look target frame the whole pose envelope: el=90 tops out at
   // y≈3.25 (SUBJECT_Y + radius), so the frustum must reach ~3.5.
   const camera = new THREE.PerspectiveCamera(55, 1, 0.05, 80);
-  camera.position.set(3.2, 2.55, 3.7);
-  camera.lookAt(0, 1.1, 0);
+  // More frontal than the first pass — at az≈33° the subject plane reads
+  // nearer center-frame instead of pinned to the right edge.
+  camera.position.set(2.9, 2.4, 4.4);
+  camera.lookAt(0, 1.05, 0);
 
-  const grid = track(new THREE.GridHelper(14, 28, 0x3a5048, 0x1c2825));
+  const grid = track(new THREE.GridHelper(14, 28, 0x46635c, 0x243430));
   scene.add(grid);
 
   // photo billboard: backing plate + image plane + border edge
@@ -786,7 +788,7 @@ function createThreeStage(host: HTMLDivElement): ThreeStage {
 
   const kfGroup = new THREE.Group();
   scene.add(kfGroup);
-  const kfGeo = track(new THREE.SphereGeometry(0.05, 16, 12));
+  const kfGeo = track(new THREE.SphereGeometry(0.066, 16, 12));
   const kfMat = track(new THREE.MeshBasicMaterial({ color: 0x8fd4bd }));
   const kfSelMat = track(new THREE.MeshBasicMaterial({ color: 0xf0f5f4 }));
 
@@ -796,14 +798,14 @@ function createThreeStage(host: HTMLDivElement): ThreeStage {
   );
   const glyph = new THREE.Group();
   glyph.add(
-    new THREE.Mesh(track(new THREE.SphereGeometry(0.075, 18, 14)), glyphMat)
+    new THREE.Mesh(track(new THREE.SphereGeometry(0.1, 18, 14)), glyphMat)
   );
   const nose = new THREE.Mesh(
-    track(new THREE.ConeGeometry(0.048, 0.17, 12)),
+    track(new THREE.ConeGeometry(0.062, 0.22, 12)),
     glyphMat
   );
   nose.rotation.x = Math.PI / 2; // cone axis +Y → +Z so lookAt aims the tip
-  nose.position.z = 0.14;
+  nose.position.z = 0.18;
   glyph.add(nose);
   scene.add(glyph);
 
@@ -873,13 +875,18 @@ function createThreeStage(host: HTMLDivElement): ThreeStage {
     },
     update(frames, scrubT, selected) {
       lastFrames = frames;
-      if (frames.length >= 2) {
-        const pts: THREE.Vector3[] = [];
-        for (let i = 0; i <= 96; i++) {
-          pts.push(poseToWorld(poseAt(frames, i / 96), new THREE.Vector3()));
-        }
+      const pts: THREE.Vector3[] = [];
+      for (let i = 0; i <= 96; i++) {
+        const p = poseToWorld(poseAt(frames, i / 96), new THREE.Vector3());
+        const prev = pts[pts.length - 1];
+        // Consecutive identical points make CatmullRom tangents NaN — a
+        // flat run in the trajectory must not take the tube down.
+        if (prev && p.distanceToSquared(prev) < 1e-8) continue;
+        pts.push(p);
+      }
+      if (pts.length >= 2) {
         const curve = new THREE.CatmullRomCurve3(pts);
-        const geo = new THREE.TubeGeometry(curve, 120, 0.018, 8, false);
+        const geo = new THREE.TubeGeometry(curve, 120, 0.026, 8, false);
         const next = new THREE.Mesh(geo, tubeMat);
         if (tube) {
           scene.remove(tube);
@@ -942,9 +949,11 @@ interface DrawSample {
   elevation: number;
 }
 
-/** A pointer stroke on the stage: dot hit → keyframe edit, miss → path draw. */
+/** A pointer stroke on the stage: dot hit → keyframe edit, miss → path draw.
+ * "none" = edit mode's empty-space grab — inert, so the mode toggle means
+ * exactly what it says. */
 interface StageDrag {
-  mode: "edit" | "draw";
+  mode: "edit" | "draw" | "none";
   picked: number | null;
   moved: boolean;
   lastX: number;
@@ -967,6 +976,8 @@ interface StageProps {
   selected: number | null;
   /** lite (card) surfaces don't get WebGL — render the 2D editor directly */
   lite: boolean | undefined;
+  /** draw: every stroke sketches the path · edit: dot grabs move the dot */
+  mode: "draw" | "edit";
   onDragPose: (azimuth: number, elevation: number, index: number | null) => void;
   /** Live-replaces the trajectory with the stroke's samples. */
   onDrawPath: (samples: DrawSample[]) => void;
@@ -1004,7 +1015,7 @@ function StageCanvas(props: StageProps) {
 
   useEffect(() => {
     stageRef.current?.update(props.keyframes, props.scrubT, props.selected);
-  });
+  }, [glReady, props.keyframes, props.scrubT, props.selected]);
 
   return (
     <div
@@ -1020,15 +1031,19 @@ function StageCanvas(props: StageProps) {
             e.clientY - rect.top
           ) ?? null;
         if (hit !== null) propsRef.current.onPick(hit);
-        // A grab on a pinned endpoint can't edit anything — the stroke
-        // starts a path draw instead of no-op'ing where users naturally
-        // begin strokes.
+        // A grab on a pinned endpoint can't edit anything — in draw mode
+        // the stroke draws anyway; in edit mode it stays inert.
         const pinned =
           hit !== null &&
           (propsRef.current.keyframes[hit]?.time === 0 ||
             propsRef.current.keyframes[hit]?.time === 1);
         dragRef.current = {
-          mode: hit === null || pinned ? "draw" : "edit",
+          mode:
+            propsRef.current.mode === "draw"
+              ? "draw"
+              : hit === null || pinned
+                ? "none"
+                : "edit",
           picked: hit,
           moved: false,
           lastX: e.clientX,
@@ -1054,6 +1069,7 @@ function StageCanvas(props: StageProps) {
           propsRef.current.onDragPose(dx * 0.6, -dy * 0.4, drag.picked);
           return;
         }
+        if (drag.mode === "none") return;
         // draw mode: the stroke's horizontal travel sweeps azimuth, its
         // vertical travel lifts elevation — the path ends where the finger
         // lifts, so the camera lands under the fingertip.
@@ -1097,6 +1113,10 @@ function StageCanvas(props: StageProps) {
         ) {
           propsRef.current.onDrawPath(drag.samples);
         }
+      }}
+      onPointerCancel={() => {
+        // A cancelled/interrupted gesture drops in place — no pick, no flush.
+        dragRef.current = null;
       }}
     >
       {!glReady && <StageCanvas2D {...props} />}
@@ -1261,7 +1281,12 @@ function StageCanvas2D(props: StageProps) {
           (props.keyframes[hit]?.time === 0 ||
             props.keyframes[hit]?.time === 1);
         dragRef.current = {
-          mode: hit < 0 || pinned ? "draw" : "edit",
+          mode:
+            props.mode === "draw"
+              ? "draw"
+              : hit < 0 || pinned
+                ? "none"
+                : "edit",
           picked: hit >= 0 ? hit : null,
           moved: false,
           lastX: e.clientX,
@@ -1287,6 +1312,7 @@ function StageCanvas2D(props: StageProps) {
           props.onDragPose(dx * 0.6, -dy * 0.4, drag.picked);
           return;
         }
+        if (drag.mode === "none") return;
         drag.travel += Math.abs(dx) + Math.abs(dy);
         drag.az = clamp(drag.az + dx * 0.6, -360, 360);
         drag.el = clamp(drag.el - dy * 0.4, -90, 90);
@@ -1326,6 +1352,9 @@ function StageCanvas2D(props: StageProps) {
         ) {
           props.onDrawPath(drag.samples);
         }
+      }}
+      onPointerCancel={() => {
+        dragRef.current = null;
       }}
     />
   );
@@ -1409,6 +1438,10 @@ function Studio(props: { initial: Payload }) {
   ]);
   const [scrubT, setScrubT] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
+  // Stage strokes are mode-split: draw = every stroke sketches the path;
+  // edit = dot grabs move that dot. An explicit toggle keeps the gesture
+  // unambiguous instead of disambiguating on a 30px hit test.
+  const [stageMode, setStageMode] = useState<"draw" | "edit">("draw");
   const [preset, setPreset] = useState<string | null>(null);
   const [duration, setDuration] = useState<5 | 6>(5);
   const [resolution, setResolution] = useState("768P");
@@ -1687,18 +1720,25 @@ function Studio(props: { initial: Payload }) {
   }, []);
 
   const addKeyframe = useCallback(() => {
-    setKeyframes((frames) => {
-      if (frames.length >= FREEZE_MAX_KEYFRAMES) return frames;
-      const t = clamp(scrubT, 0.02, 0.98);
-      if (frames.some((f) => Math.abs(f.time - t) < 0.01)) return frames;
-      const pose = poseAt(frames, t);
-      const next = [...frames, { ...pose, time: t }]
-        .sort((a, b) => a.time - b.time)
-        .map((f) => ({ ...f }));
-      return next;
-    });
+    const t = clamp(scrubT, 0.02, 0.98);
+    if (
+      keyframes.length >= FREEZE_MAX_KEYFRAMES ||
+      keyframes.some((f) => Math.abs(f.time - t) < 0.01)
+    ) {
+      return;
+    }
+    const pose = poseAt(keyframes, t);
+    const next = [...keyframes, { ...pose, time: t }]
+      .sort((a, b) => a.time - b.time)
+      .map((f) => ({ ...f }));
+    setKeyframes(next);
+    // Selection is index-based — an insert before it would silently retarget
+    // the aim sliders onto the new frame. Clear it; the nearest-free
+    // fallback still lands on the just-added dot. Only on a real insert — a
+    // rejected add leaves the existing selection alone.
+    setSelected(null);
     setPreset(null);
-  }, [scrubT]);
+  }, [keyframes, scrubT]);
 
   const removeKeyframe = useCallback(() => {
     setKeyframes((frames) => {
@@ -1760,9 +1800,6 @@ function Studio(props: { initial: Payload }) {
    */
   const onDrawPath = useCallback((samples: DrawSample[]) => {
     if (samples.length === 0) return;
-    setHintSeen(true);
-    setPreset(null);
-    setSelected(null);
     const n = Math.min(samples.length, FREEZE_MAX_KEYFRAMES - 1);
     const next: CameraKeyframe[] = [{ ...START_KEYFRAME }];
     for (let i = 0; i < n - 1; i++) {
@@ -1784,9 +1821,59 @@ function Studio(props: { initial: Payload }) {
       elevation: Math.round(last.elevation * 10) / 10,
       distance: 1,
     });
-    setKeyframes(next);
+    // Collapse consecutive duplicate poses: a zero-length CatmullRom
+    // segment produces NaN tangents and the rendered tube vanishes. The
+    // seeded zero sample makes a leading run normal, not degenerate. A
+    // run merges into its last member's time — except the pinned start,
+    // which must stay at t=0.
+    const deduped: CameraKeyframe[] = [];
+    for (const kf of next) {
+      const prev = deduped[deduped.length - 1];
+      if (
+        prev &&
+        Math.abs(kf.azimuth - prev.azimuth) < 0.05 &&
+        Math.abs(kf.elevation - prev.elevation) < 0.05
+      ) {
+        deduped[deduped.length - 1] = {
+          ...prev,
+          time: deduped.length === 1 ? prev.time : kf.time,
+        };
+      } else {
+        deduped.push(kf);
+      }
+    }
+    // A stroke that never left the reference pose isn't a path — keep
+    // whatever trajectory was there.
+    if (deduped.length < 2) return;
+    setHintSeen(true);
+    setPreset(null);
+    setSelected(null);
+    setKeyframes(deduped);
     setScrubT(1);
   }, []);
+
+  /** Slider edits — direct pose sets, no stage drag required. */
+  const onAim = useCallback(
+    (index: number, patch: { azimuth?: number; elevation?: number }) => {
+      setPreset(null);
+      setHintSeen(true);
+      setKeyframes((frames) =>
+        frames.map((kf, i) => {
+          if (i !== index || kf.time === 0 || kf.time === 1) return kf;
+          return {
+            ...kf,
+            ...(patch.azimuth !== undefined
+              ? { azimuth: clamp(patch.azimuth, -360, 360) }
+              : {}),
+            ...(patch.elevation !== undefined
+              ? { elevation: clamp(patch.elevation, -90, 90) }
+              : {}),
+          };
+        })
+      );
+    },
+    []
+  );
 
   const onRender = useCallback(async () => {
     if (busy || !sourceAssetId || !sourceUrl) return;
@@ -1849,6 +1936,24 @@ function Studio(props: { initial: Payload }) {
     [renders]
   );
   const latestRender = rendersReady[rendersReady.length - 1];
+
+  // The aim pad's target: an explicit selection, else the free keyframe
+  // nearest the playhead. Endpoints stay pinned to the source framing.
+  let aimIndex: number | null =
+    selected !== null && selected < keyframes.length ? selected : null;
+  if (aimIndex === null) {
+    let best = Infinity;
+    keyframes.forEach((kf, i) => {
+      if (kf.time === 0 || kf.time === 1) return;
+      const d = Math.abs(kf.time - scrubT);
+      if (d < best) {
+        best = d;
+        aimIndex = i;
+      }
+    });
+  }
+  const aimKf = aimIndex !== null ? keyframes[aimIndex] : undefined;
+  const aimEnabled = !!aimKf && aimKf.time !== 0 && aimKf.time !== 1;
 
   /* ------------------------------- render */
 
@@ -1983,7 +2088,7 @@ function Studio(props: { initial: Payload }) {
       )}
 
       {stage === "camera" && (
-        <div className="fz-stage">
+        <div className="fz-stage fz-cam">
           <div className="fz-stage-wrap">
             <StageCanvas
               image={imageRef.current}
@@ -1991,6 +2096,7 @@ function Studio(props: { initial: Payload }) {
               scrubT={scrubT}
               selected={selected}
               lite={props.initial.lite}
+              mode={stageMode}
               onDragPose={onDragPose}
               onDrawPath={onDrawPath}
               onPick={setSelected}
@@ -1998,9 +2104,33 @@ function Studio(props: { initial: Payload }) {
             {!hintSeen && (
               <div className="fz-stage-hint">
                 <span className="fz-stage-dot" />
-                drag to draw the camera path
+                {stageMode === "draw"
+                  ? "drag to draw the camera path"
+                  : "drag a dot to move it"}
               </div>
             )}
+          </div>
+
+          <div className="fz-modebar" role="group" aria-label="stage gesture">
+            <span className="fz-ctl-label">stage</span>
+            <div className="fz-seg">
+              <button
+                type="button"
+                className={stageMode === "draw" ? "active" : ""}
+                aria-pressed={stageMode === "draw"}
+                onClick={() => setStageMode("draw")}
+              >
+                draw path
+              </button>
+              <button
+                type="button"
+                className={stageMode === "edit" ? "active" : ""}
+                aria-pressed={stageMode === "edit"}
+                onClick={() => setStageMode("edit")}
+              >
+                move dot
+              </button>
+            </div>
           </div>
 
           <div className="fz-ctl-label">camera move</div>
@@ -2043,7 +2173,26 @@ function Studio(props: { initial: Payload }) {
               className="fz-track"
               onPointerDown={(e) => {
                 const rect = e.currentTarget.getBoundingClientRect();
-                setScrubT(clamp((e.clientX - rect.left) / rect.width, 0, 1));
+                const x = e.clientX - rect.left;
+                // Dot selection lives here — the dots are pointer-inert
+                // visuals, so two keyframes closer than a touch target
+                // still resolve to the nearest one instead of whichever
+                // pseudo-element happens to paint on top.
+                let near: number | null = null;
+                let best = 23; // px — a touch wider than the visual affordance
+                keyframes.forEach((kf, i) => {
+                  const d = Math.abs(kf.time * rect.width - x);
+                  if (d < best) {
+                    best = d;
+                    near = i;
+                  }
+                });
+                if (near !== null) {
+                  setSelected(near);
+                  setScrubT(keyframes[near]!.time);
+                } else {
+                  setScrubT(clamp(x / rect.width, 0, 1));
+                }
                 e.currentTarget.setPointerCapture(e.pointerId);
               }}
               onPointerMove={(e) => {
@@ -2059,16 +2208,12 @@ function Studio(props: { initial: Payload }) {
                   type="button"
                   className={`fz-kf${selected === i ? " selected" : ""}`}
                   style={{ left: `${kf.time * 100}%` }}
-                  // Stop propagation on pointerdown: the track captures the
-                  // pointer there, and a captured pointer retargets every
-                  // later event (incl. click) to the track — the dot's own
-                  // click never lands without this.
-                  onPointerDown={(e) => {
-                    e.stopPropagation();
+                  onClick={() => {
+                    // Keyboard/AT activation only — pointer events are
+                    // disabled on dots so the track picks nearest-in-x.
                     setSelected(i);
                     setScrubT(kf.time);
                   }}
-                  onClick={(e) => e.stopPropagation()}
                   aria-label={`keyframe ${i + 1} at ${Math.round(kf.time * 100)}%`}
                 />
               ))}
@@ -2079,10 +2224,13 @@ function Studio(props: { initial: Payload }) {
             <div className="fz-timeline-row">
               <span className="fz-meta">
                 {selected !== null
-                  ? keyframes[selected]!.time === 0 || keyframes[selected]!.time === 1
+                  ? keyframes[selected]!.time === 0 ||
+                    keyframes[selected]!.time === 1
                     ? "endpoints hold the framing"
-                    : "drag this dot on the scene"
-                  : "drag the scene to draw · drag a dot to nudge"}
+                    : "move this dot with the sliders or the scene"
+                  : stageMode === "draw"
+                    ? "drag the scene to sketch the path"
+                    : "drag a dot to move it"}
               </span>
               <div className="fz-timeline-actions">
                 <button
@@ -2106,6 +2254,54 @@ function Studio(props: { initial: Payload }) {
                   − remove
                 </button>
               </div>
+            </div>
+          </div>
+
+          <div className="fz-aim">
+            <div className="fz-ctl-label">
+              {aimEnabled
+                ? `aim — keyframe ${(aimIndex ?? 0) + 1}`
+                : "aim — tap a middle dot on the timeline"}
+            </div>
+            <div className="fz-aim-row">
+              <span className="fz-aim-label">orbit</span>
+              <input
+                type="range"
+                min={-360}
+                max={360}
+                step={1}
+                value={aimKf?.azimuth ?? 0}
+                disabled={!aimEnabled}
+                aria-label="orbit angle in degrees"
+                onChange={(e) => {
+                  if (aimIndex !== null) {
+                    onAim(aimIndex, { azimuth: Number(e.target.value) });
+                  }
+                }}
+              />
+              <span className="fz-aim-val">
+                {aimEnabled && aimKf ? `${Math.round(aimKf.azimuth)}°` : "—"}
+              </span>
+            </div>
+            <div className="fz-aim-row">
+              <span className="fz-aim-label">height</span>
+              <input
+                type="range"
+                min={-90}
+                max={90}
+                step={1}
+                value={aimKf?.elevation ?? 0}
+                disabled={!aimEnabled}
+                aria-label="camera height in degrees"
+                onChange={(e) => {
+                  if (aimIndex !== null) {
+                    onAim(aimIndex, { elevation: Number(e.target.value) });
+                  }
+                }}
+              />
+              <span className="fz-aim-val">
+                {aimEnabled && aimKf ? `${Math.round(aimKf.elevation)}°` : "—"}
+              </span>
             </div>
           </div>
 
@@ -2223,6 +2419,7 @@ const CSS = `
 .fz-tabs button.active{background:#20382e;color:#d1eadd}
 .fz-tabs button:disabled{opacity:0.35}
 .fz-stage{display:flex;flex-direction:column;gap:10px;flex:1;min-height:0}
+.fz-cam{background:#101415;border:1px solid #2c3c35;border-radius:18px;padding:12px}
 .fz-hero{text-align:center;padding:14px 8px 4px}
 .fz-title{margin:0;color:#f0f5f4;font-size:1.5rem;font-weight:800;letter-spacing:-0.02em}
 .fz-sub{margin:6px 0 0;color:#8da59b;font-size:0.8rem}
@@ -2244,6 +2441,9 @@ const CSS = `
 .fz-modes button.active{background:#20382e;color:#d1eadd}
 .fz-stage-wrap{position:relative;flex:1;min-height:240px;border-radius:16px;overflow:hidden;background:#0b1011;border:1px solid #2c3c35}
 .fz-stage-canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair}
+.fz-modebar{display:flex;align-items:center;gap:10px;padding:0 2px}
+.fz-modebar .fz-seg{flex:1}
+.fz-modebar .fz-seg button{flex:1}
 .fz-stage-hint{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);display:flex;align-items:center;gap:8px;border-radius:20px;padding:8px 12px;background:#0d181bc7;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);font-size:11px;color:#dbe7e4;pointer-events:none;z-index:2;white-space:nowrap}
 .fz-stage-dot{width:5px;height:5px;border-radius:50%;background:#b4dcce;flex:0 0 5px}
 .fz-ctl-label{color:#8d9e9c;font-size:0.66rem;letter-spacing:0.1em;text-transform:uppercase;padding:0 2px}
@@ -2263,10 +2463,23 @@ const CSS = `
 .fz-timeline-meta span:last-child{font-variant-numeric:tabular-nums;color:#c5d2d0;text-align:right}
 .fz-track{position:relative;height:44px;touch-action:none;cursor:pointer;background:#1d2728;border-radius:7px}
 .fz-track-ticks{position:absolute;inset:12px 8px;background:repeating-linear-gradient(90deg,#354445 0,#354445 1px,transparent 1px,transparent 14px);opacity:0.65;-webkit-mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent);mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent);pointer-events:none}
-.fz-kf{position:absolute;top:50%;width:12px;height:12px;min-width:0;min-height:0;margin:-6px 0 0 -6px;padding:0;border:2px solid #8fd4bd;border-radius:50%;background:#0d181b}
+.fz-kf{position:absolute;top:50%;width:14px;height:14px;min-width:0;min-height:0;margin:-7px 0 0 -7px;padding:0;border:2px solid #8fd4bd;border-radius:50%;background:#0d181b;pointer-events:none}
+/* The ring reads as the touch affordance; the track resolves the tap */
+.fz-kf::after{content:"";position:absolute;inset:-16px;border-radius:50%}
 .fz-kf.selected{background:#d1eadd;border-color:#d1eadd}
 .fz-head{position:absolute;top:-3px;bottom:-3px;width:2px;margin-left:-1px;background:#d1eadd;box-shadow:0 0 12px #d1eadd30;pointer-events:none}
 .fz-head i{position:absolute;top:-4px;left:-3px;width:8px;height:8px;border-radius:2px;background:#d1eadd}
+.fz-aim{display:flex;flex-direction:column;gap:4px;padding:8px 12px 10px;border:1px solid #2c3c35;border-radius:12px;background:#0f1514}
+.fz-aim .fz-ctl-label{padding:0 0 2px}
+.fz-aim-row{display:flex;align-items:center;gap:10px}
+.fz-aim-label{flex:0 0 46px;font-size:0.64rem;letter-spacing:0.08em;text-transform:uppercase;color:#8da59b}
+.fz-aim input[type="range"]{flex:1;appearance:none;-webkit-appearance:none;height:40px;margin:0;background:transparent}
+.fz-aim input[type="range"]::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:#2c3c35}
+.fz-aim input[type="range"]::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;width:26px;height:26px;margin-top:-11px;border:0;border-radius:50%;background:#8fd4bd}
+.fz-aim input[type="range"]::-moz-range-track{height:4px;border-radius:2px;background:#2c3c35}
+.fz-aim input[type="range"]::-moz-range-thumb{width:26px;height:26px;border:0;border-radius:50%;background:#8fd4bd}
+.fz-aim input[type="range"]:disabled{opacity:0.35}
+.fz-aim-val{flex:0 0 42px;text-align:right;font-size:0.68rem;color:#c5d2d0;font-variant-numeric:tabular-nums}
 .fz-timeline-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .fz-meta{color:#8da59b;font-size:0.66rem}
 .fz-timeline-actions{display:flex;gap:6px}
