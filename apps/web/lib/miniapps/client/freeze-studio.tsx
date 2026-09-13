@@ -1223,6 +1223,20 @@ function createThreeStage(host: HTMLDivElement): ThreeStage {
   const tmp = new THREE.Vector3();
   const subject = new THREE.Vector3(0, SUBJECT_Y, 0);
   let lastFrames: CameraKeyframe[] = [];
+  let lastPose: CameraKeyframe = {
+    time: 0,
+    azimuth: 0,
+    elevation: 0,
+    distance: 1,
+  };
+
+  /** Behind-the-photo dimming is viewer-relative: the viewer orbits at
+   * view.yaw, so the glyph dims when its azimuth sits opposite the view —
+   * same hemisphere split the 2D projection draws. */
+  const updateGlyphDepth = () => {
+    glyphMat.opacity =
+      Math.cos(lastPose.azimuth * DEG - view.yaw) < -0.05 ? 0.45 : 1;
+  };
 
   const render = () => {
     const w = host.clientWidth;
@@ -1306,11 +1320,10 @@ function createThreeStage(host: HTMLDivElement): ThreeStage {
         dot.userData["index"] = i;
         kfGroup.add(dot);
       });
-      const camPose = poseAt(frames, scrubT);
-      glyph.position.copy(poseToWorld(camPose, tmp));
+      lastPose = poseAt(frames, scrubT);
+      glyph.position.copy(poseToWorld(lastPose, tmp));
       glyph.lookAt(subject);
-      // behind the photo (back hemisphere) the glyph dims, same as 2D depth
-      glyphMat.opacity = Math.cos(camPose.azimuth * DEG) < -0.05 ? 0.45 : 1;
+      updateGlyphDepth();
       sightGeo.setFromPoints([glyph.position.clone(), subject.clone()]);
       sight.computeLineDistances();
       render();
@@ -1322,6 +1335,9 @@ function createThreeStage(host: HTMLDivElement): ThreeStage {
       view.yaw -= dx * 0.0075;
       view.pitch = clamp(view.pitch + dy * 0.006, -0.15, 1.35);
       applyView();
+      // The depth cue is viewer-relative — orbiting changes which side of
+      // the billboard the glyph rides, so it repaints with the view.
+      updateGlyphDepth();
       render();
     },
     zoom(scale) {
@@ -1450,17 +1466,19 @@ function StageCanvas(props: StageProps) {
   const propsRef = useRef(props);
   propsRef.current = props;
 
-  // A second finger converting a draw stroke to a view gesture — or a
+  // A second finger converting a stroke to a view gesture — or a
   // pointercancel mid-stroke — mustn't strand the partial path the stroke
   // already committed: restore the trajectory captured at stroke start.
+  // Covers edit drags too — the first finger of a pinch can move a dot
+  // before the second lands and converts the gesture.
   const revertLiveDraw = () => {
     const drag = dragRef.current;
-    if (
-      drag?.mode === "draw" &&
-      drag.snapshot &&
-      drag.travel >= DRAW_GATE_PX &&
-      drag.samples.length >= 2
-    ) {
+    if (!drag?.snapshot) return;
+    const committed =
+      drag.mode === "draw"
+        ? drag.travel >= DRAW_GATE_PX && drag.samples.length >= 2
+        : drag.mode === "edit" && drag.moved;
+    if (committed) {
       propsRef.current.onDrawRevert(drag.snapshot, drag.snapshotSel);
     }
   };
@@ -1732,15 +1750,16 @@ function StageCanvas2D(props: StageProps) {
   const propsRef = useRef(props);
   propsRef.current = props;
 
-  // Same pinch-conversion/cancel rollback as the WebGL stage.
+  // Same pinch-conversion/cancel rollback as the WebGL stage — covers
+  // edit drags too (a pinch's first finger can move a dot first).
   const revertLiveDraw = () => {
     const drag = dragRef.current;
-    if (
-      drag?.mode === "draw" &&
-      drag.snapshot &&
-      drag.travel >= DRAW_GATE_PX &&
-      drag.samples.length >= 2
-    ) {
+    if (!drag?.snapshot) return;
+    const committed =
+      drag.mode === "draw"
+        ? drag.travel >= DRAW_GATE_PX && drag.samples.length >= 2
+        : drag.mode === "edit" && drag.moved;
+    if (committed) {
       propsRef.current.onDrawRevert(drag.snapshot, drag.snapshotSel);
     }
   };
