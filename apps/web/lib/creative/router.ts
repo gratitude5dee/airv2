@@ -1,16 +1,16 @@
 /**
- * One strict-JSON call compiles a deterministically locked command mode into
- * a generation plan (ported from outsideairworker src/router.ts). The lane
- * only ever runs for an explicit slash command, so this router always
- * receives a locked mode; the model can refuse but never re-route the paid
- * mode (enforceExplicitCommandIntent re-locks after the call). Router
- * failure becomes a clarification plan, never a user-visible provider error.
+ * Explicit slash commands build their plan deterministically — no compile
+ * call. The renderers expand and screen the prompt on their side, so
+ * `directCreativePlan` hands the user's own words straight to the lane and
+ * only reads aspect ratio, duration, and the attachment role out of the
+ * text.
  *
- * /zap does not compile at all: H3 Max Turbo expands the prompt on fal's
- * side (`prompt_expansion_mode`) and screens it (`enable_safety_checker`),
- * so `directZapPlan` hands the user's own words straight to the renderer and
- * only reads aspect ratio and duration out of the text. Every other lane
- * compiles on the Groq router model.
+ * The Groq compile path (`routeExplicitCommand`, one strict-JSON call that
+ * writes a model-optimized `expanded_prompt` for a locked mode) stays
+ * exported for callers that want a model-written expansion; on it the model
+ * can refuse but never re-route the paid mode (enforceExplicitCommandIntent
+ * re-locks after the call), and router failure becomes a clarification
+ * plan, never a user-visible provider error.
  */
 import type { MediaInput } from "./gmi";
 import { CreativeUnconfiguredError, groqChat } from "./groq";
@@ -168,6 +168,36 @@ export const durationFromText = (text: string): number | null => {
   }
   return null;
 };
+
+/**
+ * The direct plan for an explicit slash command — no compile call. Like
+ * /zap, the renderer expands and screens the prompt itself, so the user's
+ * words are the prompt; the plan only contributes what the lane models read
+ * structurally (aspect ratio, duration, attachment role).
+ */
+export function directCreativePlan(turn: CreativeCommandTurn): RouterPlan {
+  const hasImage = turn.mediaInputs.some((media) => media.kind === "image");
+  const words = turn.cleanedText.trim();
+  const isVideo = turn.mode !== "imagine";
+  return {
+    mode: turn.mode,
+    needs_input: false,
+    ...deterministicGenerationLines(turn.mode, turn.mediaInputs),
+    expanded_prompt:
+      words || fallbackPromptForCommand({ ...turn, cleanedText: words }, null),
+    params: {
+      aspect_ratio: aspectRatioFromText(words),
+      duration: isVideo ? durationFromText(words) : null,
+      generate_audio: isVideo,
+      quality: "auto",
+      use_input_image_as: !hasImage
+        ? "none"
+        : turn.mode === "imagine"
+          ? "edit_source"
+          : "first_frame",
+    },
+  };
+}
 
 /**
  * The /zap plan without a compile call. The renderer expands and screens

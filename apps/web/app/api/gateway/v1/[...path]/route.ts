@@ -20,6 +20,7 @@ import {
   clampCreateTier,
   costUsd,
   DEFAULT_MODEL_FAMILY,
+  gmiReasoningEffort,
   isModelFamily,
   isCreateModelRequest,
   isReasoningModel,
@@ -76,6 +77,58 @@ interface Usage {
 
 function unauthorized(): NextResponse {
   return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+}
+
+// Task-type routing for the gmi family (goal-gmi-models Phase 2): a turn
+// that opens with a short user message carrying no depth cue and no
+// money/publish cue is routine work — draft an email, check the calendar,
+// quick lookup — and rides the fast lane (GLM-5.3-Flash) instead of the
+// entitled tier. The rule only ever downgrades, so spend stays
+// entitlement-bounded; it mirrors the deterministic half of the box's
+// shadow taskrouter (infra/template/taskrouter) until hermes can consult it
+// per-turn upstream. Mid-turn continuations (the last message is a tool
+// result, not the opener) keep the request's resolution, and a caller's
+// explicit `model:"fast"` is unaffected either way. GMI_ROUTINE_FAST=off
+// disables the rule.
+const GMI_ROUTINE_MAX_CHARS = 280;
+// Depth cues keep the entitled tier — these are the turns Astra is for.
+const GMI_DEEP_TURN_RE =
+  /\b(research|analy[sz]e|compare|plan(?:ning)?|strategy|debug|investigate|essay|whitepaper|refactor|architect)\b/i;
+// Money movement and public publishing never ride the routine lane — the
+// approval queue is the real control, but those turns keep the entitled
+// model regardless.
+const GMI_RISK_TURN_RE =
+  /(\$\s?\d|\b(wire|venmo|zelle|paypal|checkout|charge|deposit|renew|reorder|refund|invoice|payment|purchase|transfer|delete|publish|tweet)\b)/i;
+
+/** Text of the request's opening user message, or null for any other shape. */
+function openingUserTurnText(body: Json): string | null {
+  const messages = body["messages"];
+  if (!Array.isArray(messages) || messages.length === 0) return null;
+  const last = messages[messages.length - 1];
+  if (!last || typeof last !== "object") return null;
+  const msg = last as { role?: unknown; content?: unknown };
+  if (msg.role !== "user") return null;
+  if (typeof msg.content === "string") return msg.content;
+  if (Array.isArray(msg.content)) {
+    const text = (msg.content as { type?: unknown; text?: unknown }[])
+      .map((part) =>
+        part && part.type === "text" && typeof part.text === "string"
+          ? part.text
+          : ""
+      )
+      .join("\n")
+      .trim();
+    return text || null;
+  }
+  return null;
+}
+
+/** True when a gmi request's opening user turn reads as routine work. */
+function gmiRoutineTurn(body: Json): boolean {
+  if (process.env["GMI_ROUTINE_FAST"] === "off") return false;
+  const text = openingUserTurnText(body)?.trim();
+  if (!text || text.length > GMI_ROUTINE_MAX_CHARS) return false;
+  return !GMI_DEEP_TURN_RE.test(text) && !GMI_RISK_TURN_RE.test(text);
 }
 
 /** Router decision facts recorded alongside usage — the admin trace row. */
@@ -281,7 +334,7 @@ export async function POST(
   const { data: entitlement } = await supabase
     .from("entitlements")
     .select(
-      "speed_tier, model_family, openrouter_model, venice_model, monthly_cap_usd, spend_mtd_usd, spend_period_start, suspended_reason"
+      "speed_tier, model_family, openrouter_model, venice_model, gmi_model, monthly_cap_usd, spend_mtd_usd, spend_period_start, suspended_reason"
     )
     .eq("user_id", userId)
     .maybeSingle();
@@ -311,6 +364,7 @@ export async function POST(
   const selection: ModelSelection = {
     openrouterModel: (entitlement.openrouter_model as string | null) ?? null,
     veniceModel: (entitlement.venice_model as string | null) ?? null,
+    gmiModel: (entitlement.gmi_model as string | null) ?? null,
   };
 
   // Personal provider keys (Settings): when saved, the request is served on
@@ -398,7 +452,9 @@ export async function POST(
         ? clampCreateTier(createTier, entitledTier)
         : rawBody["model"] === "fast"
           ? "fast"
-          : entitledTier;
+          : family === "gmi" && gmiRoutineTurn(rawBody)
+            ? "fast"
+            : entitledTier;
   let createLabel: string | null = null;
   if (createModel !== null) {
     const { slug } = createModel;
@@ -525,6 +581,37 @@ export async function POST(
         if (body["top_p"] !== undefined && body["top_p"] !== 1) {
           delete body["top_p"];
         }
+      }
+      if (provider === "gmi") {
+        // GMI's OpenAI-prefixed slugs (astra/luna/terra) normalize max_tokens
+        // to max_completion_tokens upstream and reject values under their
+        // floor — send the name they actually validate so a small cap does
+        // not come back as a 400.
+        if (String(body["model"]).startsWith("openai/")) {
+          if (body["max_tokens"] !== undefined) {
+            if (body["max_completion_tokens"] === undefined) {
+              body["max_completion_tokens"] = body["max_tokens"];
+            }
+            delete body["max_tokens"];
+          }
+          // …and they 400 on tools + reasoning_effort, caller-set or not —
+          // forward it and the request silently lands on the OpenAI
+          // fallback instead of the GMI model the owner picked.
+          if (Array.isArray(body["tools"]) && body["tools"].length > 0) {
+            delete body["reasoning_effort"];
+          }
+        }
+        // GLM-5.3-Flash's reasoning is mandatory; "low" collapses
+        // reasoning_tokens to ~1 (verified live). Only zai-org/* slugs get
+        // the field — openai/* + tools + reasoning_effort 400s upstream.
+        const gmiEffort = gmiReasoningEffort(String(body["model"]));
+        if (gmiEffort && body["reasoning_effort"] === undefined) {
+          body["reasoning_effort"] = gmiEffort;
+        }
+        servedReasoning =
+          typeof body["reasoning_effort"] === "string"
+            ? (body["reasoning_effort"] as string)
+            : null;
       }
       if (streaming) {
         body["stream_options"] = { ...(body["stream_options"] as object), include_usage: true };

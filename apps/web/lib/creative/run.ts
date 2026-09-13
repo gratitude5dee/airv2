@@ -4,11 +4,11 @@
  * → asset pipeline, recording lifecycle transitions in creative_jobs
  * (metadata only — no prompts, no media, no provider URLs).
  *
- * /zap renders on fal (MiniMax H3 Max Turbo) straight from the user's words —
- * no vision pass, no compile call — because the model expands and screens the
- * prompt itself. Every other lane runs the vision pre-pass and the Groq
- * router, then renders on the GMI queue. Both paths return the same
- * GeneratedMedia, so download, ingestion, and native-video delivery are
+ * Explicit slash commands never pay a routing turn: the direct plan hands
+ * the user's own words plus structurally-read parameters (aspect ratio,
+ * duration, attachment role) to the lane renderer — /zap on fal (MiniMax H3
+ * Max Turbo), /imagine and /animate on the GMI queue. Every lane returns the
+ * same GeneratedMedia, so download, ingestion, and native-video delivery are
  * identical.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -34,23 +34,21 @@ import {
 import { CreativeUnconfiguredError } from "./groq";
 import { insertRenderCostEvent, updateCreativeJob, underDailyLimit, DAILY_LIMIT_LINE } from "./jobs";
 import { fetchSafeGeneratedMedia } from "./media-url";
-import { guideForModel, loadCreativePrefs } from "./model-prefs";
+import { loadCreativePrefs } from "./model-prefs";
 import { getProviderKey } from "../providers/keys";
 import { PROMPT_VERSIONS } from "./prompts";
 import {
-  CreativeRouterUnavailableError,
+  directCreativePlan,
   directZapPlan,
-  routeExplicitCommand,
   type CreativeCommandTurn,
 } from "./router";
 import type { RouterPlan } from "./schema";
 import { ingestGeneratedMedia, mintJobDelivery } from "./store";
-import { describeImage } from "./vision";
 
 export const REFUSAL_LINE =
   "can't make that one. want to try a different angle?";
 export const BUSY_LINE = "i'm juggling a few. try again in a sec.";
-export const ROUTER_DOWN_LINE = "creative brain is offline. try again soon.";
+
 export const UNCONFIGURED_LINE = "creative generation isn't set up yet.";
 export const FAILED_LINE = "that one didn't come out. try again?";
 export const SUBMIT_UNKNOWN_LINE =
@@ -132,49 +130,7 @@ export async function executeCreativeJob(
     personalGmiKey = await getProviderKey(supabase, userId, "gmi").catch(
       () => null
     );
-    if (options?.plan) {
-      plan = options.plan;
-    } else {
-      // Non-fatal vision pre-pass over attached images.
-      let imageDescription: string | null = null;
-      const imageUrls = turn.mediaInputs
-        .filter((media) => media.kind === "image")
-        .map((media) => media.url);
-      if (imageUrls.length > 0) {
-        imageDescription = await describeImage(imageUrls).catch(() => null);
-      }
-
-      // Metaprompt: the guide for the model this turn will render on. /imagine
-      // with an attached image runs the edit lane's model.
-      const laneModel = prefs
-        ? turn.mode === "imagine"
-          ? turn.mediaInputs.some((media) => media.kind === "image")
-            ? prefs.edit
-            : prefs.imagine
-          : prefs[turn.mode]
-        : null;
-      const modelGuide = laneModel ? guideForModel(laneModel) : null;
-
-      try {
-        plan = await routeExplicitCommand(
-          turn,
-          imageDescription,
-          undefined,
-          modelGuide
-        );
-      } catch (error) {
-        if (error instanceof CreativeUnconfiguredError) {
-          return await fail("failed", UNCONFIGURED_LINE);
-        }
-        if (error instanceof CreativeRouterUnavailableError) {
-          return await fail("failed", ROUTER_DOWN_LINE);
-        }
-        return await fail("failed", ROUTER_DOWN_LINE);
-      }
-      if (plan.mode === "refuse") {
-        return await fail("refused", REFUSAL_LINE);
-      }
-    }
+    plan = options?.plan ?? directCreativePlan(turn);
   }
 
   const creativeTurn: CreativeTurn = {

@@ -62,6 +62,7 @@ describe("model families", () => {
   it("validates family names", () => {
     expect(isModelFamily("ox-alpha")).toBe(false);
     expect(isModelFamily("openai")).toBe(true);
+    expect(isModelFamily("gmi")).toBe(true);
     expect(isModelFamily("inkling")).toBe(true);
     expect(isModelFamily("inkling-small")).toBe(true);
     expect(isModelFamily("stealth/ox-alpha")).toBe(false);
@@ -90,12 +91,14 @@ describe("model families", () => {
     expect(requiresConsent("inkling")).toBe(true);
     expect(requiresConsent("inkling-small")).toBe(true);
     expect(requiresConsent("openai")).toBe(false);
+    expect(requiresConsent("gmi")).toBe(false);
   });
 
   it("meters the free families at zero and priced families above it", () => {
     expect(costUsd("deep", 1000, 1000, "inkling")).toBe(0);
     expect(costUsd("deep", 1000, 1000, "anthropic")).toBeGreaterThan(0);
     expect(costUsd("deep", 1000, 1000, "openai")).toBeGreaterThan(0);
+    expect(costUsd("deep", 1000, 1000, "gmi")).toBeGreaterThan(0);
   });
 });
 

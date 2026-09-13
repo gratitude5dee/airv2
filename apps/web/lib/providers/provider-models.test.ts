@@ -3,7 +3,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   costUsd,
   DEFAULT_VENICE_MODEL,
+  defaultGmiModelForTier,
   defaultOpenRouterModelForTier,
+  gmiReasoningEffort,
+  isGmiModel,
   isModelFamily,
   isOpenRouterFamily,
   isOpenRouterModel,
@@ -45,6 +48,7 @@ describe("model catalog", () => {
     expect(providerForFamily("openrouter")).toBe("openrouter");
     expect(providerForFamily("venice")).toBe("venice");
     expect(providerForFamily("openai")).toBe("openai");
+    expect(providerForFamily("gmi")).toBe("gmi");
     expect(providerForFamily("minimax-m3")).toBe("gmi");
     expect(providerForFamily("minimax-m2.7")).toBe("gmi");
     expect(isOpenRouterFamily("venice")).toBe(false);
@@ -83,6 +87,52 @@ describe("model catalog", () => {
       "MiniMaxAI/MiniMax-M2.7",
     );
     expect(isVeniceModel("nope")).toBe(false);
+  });
+
+  it("tier-maps the gmi family: GLM fast, Luna balanced, Astra deep", () => {
+    for (const tier of ["fast", "balanced", "deep"] as const) {
+      expect(isGmiModel(defaultGmiModelForTier(tier))).toBe(true);
+    }
+    expect(modelForSelection("gmi", "fast")).toBe("zai-org/GLM-5.3-Flash");
+    expect(modelForSelection("gmi", "balanced")).toBe("openai/gpt-5.6-luna");
+    expect(modelForSelection("gmi", "deep")).toBe("openai/gpt-6-astra");
+    // A catalog pin binds the owner-visible tiers only — the fast lane is
+    // what delegated children ride, so it can never be repriced upward.
+    const pin = { gmiModel: "openai/gpt-6-astra" };
+    expect(modelForSelection("gmi", "fast", pin)).toBe(
+      "zai-org/GLM-5.3-Flash",
+    );
+    expect(modelForSelection("gmi", "balanced", pin)).toBe(
+      "openai/gpt-6-astra",
+    );
+    expect(modelForSelection("gmi", "deep", pin)).toBe("openai/gpt-6-astra");
+    // Stale slugs fall back to the tier default, never upstream.
+    expect(modelForSelection("gmi", "deep", { gmiModel: "evil/model" })).toBe(
+      "openai/gpt-6-astra",
+    );
+    expect(isGmiModel("openai/gpt-5.6-terra")).toBe(false);
+  });
+
+  it("keeps reasoning_effort off GMI's openai slugs and low on GLM", () => {
+    expect(gmiReasoningEffort("openai/gpt-6-astra")).toBeUndefined();
+    expect(gmiReasoningEffort("openai/gpt-5.6-luna")).toBeUndefined();
+    expect(gmiReasoningEffort("zai-org/GLM-5.3-Flash")).toBe("low");
+    expect(gmiReasoningEffort("MiniMaxAI/MiniMax-M3")).toBeUndefined();
+    vi.stubEnv("GMI_GLM_EFFORT", "high");
+    expect(gmiReasoningEffort("zai-org/GLM-5.3-Flash")).toBe("high");
+  });
+
+  it("prices gmi usage per served slug", () => {
+    expect(
+      costUsd("fast", 1_000_000, 1_000_000, "gmi", "zai-org/GLM-5.3-Flash"),
+    ).toBeCloseTo(0.15 + 0.5);
+    expect(
+      costUsd("deep", 1_000_000, 1_000_000, "gmi", "openai/gpt-6-astra"),
+    ).toBeCloseTo(10 + 50);
+    // An unknown slug falls back to the tier default's rate, not zero.
+    expect(costUsd("fast", 1_000_000, 0, "gmi", "unknown/slug")).toBeCloseTo(
+      0.15,
+    );
   });
 
   it("prices OpenRouter usage per model and Venice at zero", () => {

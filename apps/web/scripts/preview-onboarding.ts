@@ -23,8 +23,8 @@ const snapshot: OnboardingSnapshot = {
   state: defaultOnboardingState(),
   environment: "ubuntu",
   username: "gratitude",
-  address: "gratitude@agents.wzrd.tech",
-  mailboxDomain: "agents.wzrd.tech",
+  address: "gratitude@wzrd.tech",
+  mailboxDomain: "wzrd.tech",
   identityMedia: [],
   avatarAssetId: null,
   twin: null,
@@ -47,6 +47,7 @@ const snapshot: OnboardingSnapshot = {
   onairos: { available: true, connected: false, connect_url: null },
   speedTier: "balanced",
   modelFamily: "openai",
+  gmiModel: null,
   merchant: null,
   link: {
     installed: true,
