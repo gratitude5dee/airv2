@@ -2087,11 +2087,19 @@ function Studio(props: { initial: Payload }) {
               onDrawPath={onDrawPath}
               onPick={setSelected}
             />
-            <div
-              className="fz-stage-mode"
-              role="group"
-              aria-label="stage gesture"
-            >
+            {!hintSeen && (
+              <div className="fz-stage-hint">
+                <span className="fz-stage-dot" />
+                {stageMode === "draw"
+                  ? "drag to draw the camera path"
+                  : "drag a dot to move it"}
+              </div>
+            )}
+          </div>
+
+          <div className="fz-modebar" role="group" aria-label="stage gesture">
+            <span className="fz-ctl-label">stage</span>
+            <div className="fz-seg">
               <button
                 type="button"
                 className={stageMode === "draw" ? "active" : ""}
@@ -2109,14 +2117,6 @@ function Studio(props: { initial: Payload }) {
                 move dot
               </button>
             </div>
-            {!hintSeen && (
-              <div className="fz-stage-hint">
-                <span className="fz-stage-dot" />
-                {stageMode === "draw"
-                  ? "drag to draw the camera path"
-                  : "drag a dot to move it"}
-              </div>
-            )}
           </div>
 
           <div className="fz-ctl-label">camera move</div>
@@ -2412,9 +2412,9 @@ const CSS = `
 .fz-modes button.active{background:#20382e;color:#d1eadd}
 .fz-stage-wrap{position:relative;flex:1;min-height:240px;border-radius:16px;overflow:hidden;background:#0b1011;border:1px solid #2c3c35}
 .fz-stage-canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair}
-.fz-stage-mode{position:absolute;top:10px;left:10px;z-index:3;display:flex;gap:2px;padding:3px;border-radius:999px;background:#0d181bc7;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
-.fz-stage-mode button{min-width:0;min-height:0;padding:8px 13px;border:0;border-radius:999px;background:transparent;color:#9aa9a8;font-size:0.68rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase}
-.fz-stage-mode button.active{background:#20382e;color:#d1eadd}
+.fz-modebar{display:flex;align-items:center;gap:10px;padding:0 2px}
+.fz-modebar .fz-seg{flex:1}
+.fz-modebar .fz-seg button{flex:1}
 .fz-stage-hint{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);display:flex;align-items:center;gap:8px;border-radius:20px;padding:8px 12px;background:#0d181bc7;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);font-size:11px;color:#dbe7e4;pointer-events:none;z-index:2;white-space:nowrap}
 .fz-stage-dot{width:5px;height:5px;border-radius:50%;background:#b4dcce;flex:0 0 5px}
 .fz-ctl-label{color:#8d9e9c;font-size:0.66rem;letter-spacing:0.1em;text-transform:uppercase;padding:0 2px}
@@ -2436,7 +2436,7 @@ const CSS = `
 .fz-track-ticks{position:absolute;inset:12px 8px;background:repeating-linear-gradient(90deg,#354445 0,#354445 1px,transparent 1px,transparent 14px);opacity:0.65;-webkit-mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent);mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent);pointer-events:none}
 .fz-kf{position:absolute;top:50%;width:14px;height:14px;min-width:0;min-height:0;margin:-7px 0 0 -7px;padding:0;border:2px solid #8fd4bd;border-radius:50%;background:#0d181b}
 /* The visible dot stays small; the pseudo-element carries the touch target */
-.fz-kf::after{content:"";position:absolute;inset:-15px;border-radius:50%}
+.fz-kf::after{content:"";position:absolute;inset:-16px;border-radius:50%}
 .fz-kf.selected{background:#d1eadd;border-color:#d1eadd}
 .fz-head{position:absolute;top:-3px;bottom:-3px;width:2px;margin-left:-1px;background:#d1eadd;box-shadow:0 0 12px #d1eadd30;pointer-events:none}
 .fz-head i{position:absolute;top:-4px;left:-3px;width:8px;height:8px;border-radius:2px;background:#d1eadd}
