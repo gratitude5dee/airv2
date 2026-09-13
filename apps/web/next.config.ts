@@ -7,9 +7,10 @@ const nextConfig: NextConfig = {
   // hoisted node_modules, so the tracing root must be the monorepo, not
   // apps/web (Next otherwise infers it from lockfiles and warns).
   outputFileTracingRoot: path.join(__dirname, "../../"),
-  // The Build Service (lib/create/build.ts) drives esbuild's native binary at
-  // request time; it must be required from node_modules, not bundled.
-  serverExternalPackages: ["esbuild"],
+  // The Build Service (lib/create/build.ts) drives esbuild's native binary
+  // and the freeze stitch drives ffmpeg-static at request time; both must be
+  // required from node_modules, not bundled.
+  serverExternalPackages: ["esbuild", "ffmpeg-static"],
   // The Build Service reads the Kit, its vendor tarballs and Tailwind's theme
   // from disk at request time; none of that is reachable from the import graph.
   outputFileTracingIncludes: {
@@ -23,6 +24,10 @@ const nextConfig: NextConfig = {
       "../../packages/create-kit/kit.lock.json",
       "../../packages/create-kit/prompts/create-agent.system.md",
     ],
+    // The freeze mini route splices the rendered camera move back into the
+    // user's clip with the ffmpeg-static binary — traced explicitly since the
+    // binary ships outside the JS import graph.
+    "/mini/[app]": ["../../node_modules/ffmpeg-static/ffmpeg"],
   },
   // Mini-app shells are no-store, but the assets they pull are static and
   // were being refetched on every card tap.

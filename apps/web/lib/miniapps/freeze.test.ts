@@ -15,6 +15,9 @@ import {
 } from "./freezeRecipe";
 import {
   admitFreezeSketch,
+  buildFreezeEditGraph,
+  mintFreezeClipUpload,
+  registerFreezeClip,
   resolveFreezeRender,
   FreezeError,
   type FreezeSession,
@@ -209,6 +212,10 @@ describe("admitFreezeSketch claim-failure classification", () => {
     phone: "+15550001",
     status: "active",
     source_asset_id: null,
+    clip_asset_id: null,
+    clip_in: null,
+    clip_out: null,
+    freeze_at: null,
     active_job_id: null,
     latest_job_id: null,
     event_sequence: 0,
@@ -352,5 +359,150 @@ describe("admitFreezeSketch claim-failure classification", () => {
       sketchInput
     );
     expect(job.id).toBe("job-1");
+  });
+});
+
+/**
+ * The stitched edit graph — the port of the reference editor's filter
+ * plan. Segments: source[clipIn→freezeAt] + camera + source[freezeAt→
+ * clipOut]; edges under one frame are dropped; audio legs mirror the
+ * video and pad silent where a side has no track.
+ */
+describe("buildFreezeEditGraph", () => {
+  const win = { clipIn: 4, clipOut: 20, freezeAt: 12 };
+
+  it("splices the camera move between two source legs", () => {
+    const { graph, hasAudio } = buildFreezeEditGraph(
+      1920,
+      1080,
+      win,
+      5,
+      true,
+      false
+    );
+    expect(hasAudio).toBe(true);
+    expect(graph).toContain("trim=start=4:end=12");
+    expect(graph).toContain("trim=start=12:end=20");
+    expect(graph).toContain(
+      "scale=1920:1080,setsar=1,fps=30,format=yuv420p"
+    );
+    expect(graph).toContain("[before][camera][after]concat=n=3:v=1:a=0[v]");
+    // Source audio around the freeze, silence under the camera move.
+    expect(graph).toContain("atrim=start=4:end=12");
+    expect(graph).toContain("atrim=start=12:end=20");
+    expect(graph).toContain("anullsrc=r=48000:cl=stereo,atrim=duration=5");
+    expect(graph).toContain("concat=n=3:v=0:a=1[a]");
+  });
+
+  it("drops a sub-frame front edge instead of emitting an empty leg", () => {
+    const { graph } = buildFreezeEditGraph(
+      1280,
+      720,
+      { clipIn: 10, clipOut: 20, freezeAt: 10.01 },
+      5,
+      false,
+      false
+    );
+    expect(graph).not.toContain("[before]");
+    expect(graph).toContain("[camera][after]concat=n=2:v=1:a=0[v]");
+  });
+
+  it("freeze-at-start yields camera + tail only", () => {
+    const { graph, hasAudio } = buildFreezeEditGraph(
+      1280,
+      720,
+      { clipIn: 0, clipOut: 8, freezeAt: 0 },
+      6,
+      true,
+      true
+    );
+    expect(graph).not.toContain("[before]");
+    expect(graph).toContain("[camera][after]concat=n=2:v=1:a=0[v]");
+    // camera audio + source tail, no silent pad for a dropped leg
+    expect(graph).toContain("[1:a]asetpts");
+    expect(graph).toContain("[acamera][aafter]concat=n=2:v=0:a=1[a]");
+    expect(hasAudio).toBe(true);
+  });
+
+  it("emits no audio branch when neither side has a track", () => {
+    const { graph, hasAudio } = buildFreezeEditGraph(
+      1280,
+      720,
+      win,
+      5,
+      false,
+      false
+    );
+    expect(hasAudio).toBe(false);
+    expect(graph).not.toContain("[a]");
+    expect(graph).not.toContain("anullsrc");
+  });
+});
+
+/** Clip lane guards — the mint rejects non-video mimes and the commit
+ * validates the window before touching storage (a fake without .storage
+ * suffices: the BAD_CLIP checks all throw first). */
+describe("freeze clip lane", () => {
+  const futureIso = () => new Date(Date.now() + 60_000).toISOString();
+  const session = (): FreezeSession => ({
+    id: "sess-1",
+    user_id: "user-1",
+    space_id: "space-1",
+    phone: "+15550001",
+    status: "active",
+    source_asset_id: null,
+    clip_asset_id: null,
+    clip_in: null,
+    clip_out: null,
+    freeze_at: null,
+    active_job_id: null,
+    latest_job_id: null,
+    event_sequence: 0,
+    expires_at: futureIso(),
+    created_at: "",
+  });
+  const none = {} as unknown as SupabaseClient;
+
+  it("rejects a non-video mime on the mint", async () => {
+    await expect(
+      mintFreezeClipUpload(none, session(), "image/png")
+    ).rejects.toMatchObject({ code: "BAD_CLIP" });
+    await expect(
+      mintFreezeClipUpload(none, { ...session(), status: "expired" }, "video/mp4")
+    ).rejects.toMatchObject({ code: "SESSION_EXPIRED" });
+  });
+
+  it("rejects out-of-window and malformed commits before storage", async () => {
+    const base = {
+      path: "user-1/freeze-clips/sess-1/abc.mp4",
+      sha: "a".repeat(64),
+      bytes: 1024,
+    };
+    await expect(
+      registerFreezeClip(none, session(), {
+        ...base,
+        window: { clipIn: 0, clipOut: 31, freezeAt: 5 },
+      })
+    ).rejects.toMatchObject({ code: "BAD_CLIP" });
+    await expect(
+      registerFreezeClip(none, session(), {
+        ...base,
+        window: { clipIn: 0, clipOut: 20, freezeAt: 25 },
+      })
+    ).rejects.toMatchObject({ code: "BAD_CLIP" });
+    await expect(
+      registerFreezeClip(none, session(), {
+        ...base,
+        sha: "not-hex",
+        window: { clipIn: 0, clipOut: 20, freezeAt: 5 },
+      })
+    ).rejects.toMatchObject({ code: "BAD_CLIP" });
+    await expect(
+      registerFreezeClip(none, session(), {
+        ...base,
+        path: "user-1/freeze-clips/other/abc.mp4",
+        window: { clipIn: 0, clipOut: 20, freezeAt: 5 },
+      })
+    ).rejects.toMatchObject({ code: "BAD_CLIP" });
   });
 });

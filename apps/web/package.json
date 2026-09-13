@@ -20,6 +20,7 @@
     "@tenkicloud/sandbox": "1.0.2",
     "clsx": "^2.1.1",
     "cron-parser": "4.9.0",
+    "ffmpeg-static": "^5.2.0",
     "heic-convert": "^2.1.0",
     "lucide-react": "^1.30.0",
     "motion": "^13.0.0",

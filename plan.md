@@ -12,7 +12,7 @@ Three steps, one screen each, sized for an iPhone in a Messages webview:
 2. **Camera.** A touch camera-path editor. The reference video shows fal's playground editor: a 3D viewport with the photo standing on a grid, an orbit path with keyframe dots, a draggable camera glyph, and a keyframe timeline along the bottom with a scrub playhead. We keep the model and interaction grammar, and rebuild the rendering as a 2D canvas projection (no WebGL: the lite surface forbids it). Preset moves sit one tap away on a chip rail.
 3. **Result.** Loop the MP4, Send it to iMessage, or go back and try another move on the same source.
 
-The reference app freezes a frame out of a user video and splices the rendered camera move back into the footage. Ours starts from a still and ships only the rendered clip, so the whole ffmpeg assembly lane in the reference (`lib/edit-plan.ts`, `lib/export.ts`) is out of scope.
+The reference app freezes a frame out of a user video and splices the rendered camera move back into the footage. The video lane is in scope: a clip source (≤250mb via a signed direct-to-storage upload, ≤30s kept window) freezes one frame for the camera stage, and after the render lands, `stitchFreezeIntoClip` splices the camera move back into the footage at `freeze_at` — a port of the reference's `lib/edit-plan.ts` filter graph onto our own ffmpeg-static inside the mini route.
 
 ## 2. Render contract (from the reference)
 

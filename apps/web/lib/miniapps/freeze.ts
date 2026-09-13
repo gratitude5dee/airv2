@@ -8,8 +8,19 @@
  * admission and terminal states (C4). The session's one in-flight slot is
  * the same compare-and-set lease as the draw studio.
  */
-import { createHash } from "node:crypto";
+import { execFile } from "node:child_process";
+import { createHash, randomUUID } from "node:crypto";
+import {
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { promisify } from "node:util";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import ffmpegPath from "ffmpeg-static";
 import {
   ASSETS_BUCKET,
   DELIVERY_TTL_SECONDS,
@@ -26,7 +37,10 @@ import {
   executeCreativeJob,
   type CreativeRunResult,
 } from "../creative/run";
-import { ingestUploadedMedia } from "../creative/store";
+import {
+  ingestGeneratedMedia,
+  ingestUploadedMedia,
+} from "../creative/store";
 import { heifToPng, isHeif } from "../identity/heif";
 import { guardMediaUpload } from "../storage/guard";
 import { directDrawPlan, type DrawMode } from "./draw";
@@ -68,6 +82,14 @@ export interface FreezeSession {
   phone: string;
   status: "active" | "expired";
   source_asset_id: string | null;
+  /** Video lane (0111): the owner's source clip + the ≤30s window the
+   * stitch keeps, and the absolute source time the frozen frame sits on.
+   * Null until a clip-backed source lands — photo/sketch sessions leave
+   * all four columns empty and ship only the rendered camera move. */
+  clip_asset_id: string | null;
+  clip_in: number | null;
+  clip_out: number | null;
+  freeze_at: number | null;
   active_job_id: string | null;
   latest_job_id: string | null;
   event_sequence: number;
@@ -271,15 +293,23 @@ export async function storeFreezeUpload(
   );
 }
 
-/** Point the session at a new source still. */
+/** Point the session at a new source still — atomically linking (or
+ * clearing) the clip window the stitch uses after the render lands. */
 export async function setFreezeSource(
   supabase: SupabaseClient,
   session: FreezeSession,
-  assetId: string
+  assetId: string,
+  clip?: { assetId: string } & FreezeClipWindow | null
 ): Promise<void> {
   const { data, error } = await supabase
     .from("freeze_sessions")
-    .update({ source_asset_id: assetId })
+    .update({
+      source_asset_id: assetId,
+      clip_asset_id: clip?.assetId ?? null,
+      clip_in: clip?.clipIn ?? null,
+      clip_out: clip?.clipOut ?? null,
+      freeze_at: clip?.freezeAt ?? null,
+    })
     .eq("id", session.id)
     .eq("status", "active")
     .gt("expires_at", new Date().toISOString())
@@ -291,11 +321,136 @@ export async function setFreezeSource(
     throw new FreezeError("SESSION_EXPIRED", "this freeze session has ended");
   }
   session.source_asset_id = assetId;
+  session.clip_asset_id = clip?.assetId ?? null;
+  session.clip_in = clip?.clipIn ?? null;
+  session.clip_out = clip?.clipOut ?? null;
+  session.freeze_at = clip?.freezeAt ?? null;
   await appendFreezeEvent(supabase, session.id, {
     kind: "state",
     state: "source",
     assetId,
   });
+}
+
+/* ───────────────────────────── clip lane ───────────────────────────── */
+
+/** The clip's body can't cross the action POST (the 12MB cap protects the
+ * function's memory), so uploads travel direct-to-storage on a signed URL
+ * and the commit below verifies the object before the session links it. */
+export const MAX_FREEZE_CLIP_BYTES = 250 * 1024 * 1024;
+/** The stitch keeps at most this many source seconds — the client trims
+ * longer clips to a window before freeze. */
+export const FREEZE_CLIP_WINDOW_S = 30;
+const CLIP_MIME_BY_EXT: Record<string, string> = {
+  mp4: "video/mp4",
+  mov: "video/quicktime",
+  webm: "video/webm",
+};
+const CLIP_EXT_BY_MIME: Record<string, string> = Object.fromEntries(
+  Object.entries(CLIP_MIME_BY_EXT).map(([ext, mime]) => [mime, ext])
+);
+
+export interface FreezeClipWindow {
+  /** absolute source seconds — the section the finished video keeps */
+  clipIn: number;
+  clipOut: number;
+  /** absolute source time the frozen frame lands on */
+  freezeAt: number;
+}
+
+/** Mint a signed upload URL for the session's clip — 2h TTL, one object. */
+export async function mintFreezeClipUpload(
+  supabase: SupabaseClient,
+  session: FreezeSession,
+  mimeType: string
+): Promise<{ clipPath: string; uploadUrl: string }> {
+  requireActiveFreezeSession(session);
+  const ext = CLIP_EXT_BY_MIME[mimeType];
+  if (!ext) {
+    throw new FreezeError("BAD_CLIP", "mp4, mov, or webm only");
+  }
+  const clipPath = `${session.user_id}/freeze-clips/${session.id}/${randomUUID()}.${ext}`;
+  const { data, error } = await supabase.storage
+    .from(ASSETS_BUCKET)
+    .createSignedUploadUrl(clipPath);
+  if (error || !data?.signedUrl) {
+    throw new FreezeError(
+      "STORE_FAILED",
+      error?.message ?? "clip upload url failed"
+    );
+  }
+  return { clipPath: data.path, uploadUrl: data.signedUrl };
+}
+
+/** Verify the uploaded object and register it as a creative asset — the
+ * row dedupes on the client's (head-slice + size) sha fingerprint and the
+ * session only links a clip whose bytes actually landed. */
+export async function registerFreezeClip(
+  supabase: SupabaseClient,
+  session: FreezeSession,
+  clip: {
+    path: string;
+    sha: string;
+    bytes: number;
+    window: FreezeClipWindow;
+  }
+): Promise<string> {
+  requireActiveFreezeSession(session);
+  const dir = `${session.user_id}/freeze-clips/${session.id}`;
+  const ext = clip.path.split(".").pop() ?? "";
+  const { clipIn, clipOut, freezeAt } = clip.window;
+  if (
+    !CLIP_MIME_BY_EXT[ext] ||
+    !clip.path.startsWith(`${dir}/`) ||
+    !/^[0-9a-f]{64}$/.test(clip.sha) ||
+    !(clip.bytes > 0 && clip.bytes <= MAX_FREEZE_CLIP_BYTES) ||
+    ![clipIn, clipOut, freezeAt].every(Number.isFinite) ||
+    clipIn < 0 ||
+    clipOut <= clipIn ||
+    clipOut - clipIn > FREEZE_CLIP_WINDOW_S + 0.05 ||
+    clipOut > 20 * 60 ||
+    freezeAt < clipIn ||
+    freezeAt > clipOut
+  ) {
+    throw new FreezeError("BAD_CLIP", "that clip window doesn't work");
+  }
+  const name = clip.path.slice(dir.length + 1);
+  const { data: objects, error: listErr } = await supabase.storage
+    .from(ASSETS_BUCKET)
+    .list(dir, { search: name, limit: 5 });
+  if (listErr) {
+    throw new FreezeError("STORE_FAILED", listErr.message);
+  }
+  if (!objects?.some((o) => o.name === name)) {
+    throw new FreezeError(
+      "CLIP_MISSING",
+      "the clip upload didn't land — try again"
+    );
+  }
+  const { data: existing } = await supabase
+    .from("creative_assets")
+    .select("id")
+    .eq("user_id", session.user_id)
+    .eq("sha256", clip.sha)
+    .maybeSingle();
+  if (existing) return existing.id as string;
+  const { data: row, error } = await supabase
+    .from("creative_assets")
+    .insert({
+      user_id: session.user_id,
+      box_asset_id: `freeze-clip:${session.id}`,
+      sha256: clip.sha,
+      ext,
+      kind: ext,
+      bytes: clip.bytes,
+      storage_key: clip.path,
+    })
+    .select("id")
+    .single();
+  if (error) {
+    throw new FreezeError("STORE_FAILED", error.message);
+  }
+  return row.id as string;
 }
 
 /**
@@ -699,6 +854,24 @@ export async function executeFreezeRender(
       }
     );
     await finishFreezeRun(supabase, session, job, result);
+    // A clip-backed source gets the camera move spliced back into the
+    // footage at the picked frame — the stitch runs inside the slot so
+    // the client keeps waiting until the cut video is the job's output.
+    // A failed stitch degrades to the raw camera move rather than
+    // failing the whole render.
+    if (result.status === "delivered" && result.asset) {
+      await stitchFreezeIntoClip(supabase, session, job.id, result.asset)
+        .catch((error: unknown) =>
+          console.error(
+            JSON.stringify({
+              msg: "freeze stitch failed — delivering the raw camera move",
+              session_id: session.id,
+              job_id: job.id,
+              error: error instanceof Error ? error.message : String(error),
+            })
+          )
+        );
+    }
     return result;
   } catch (error) {
     await failAdmittedJob(supabase, session, job, error).catch(
@@ -707,6 +880,254 @@ export async function executeFreezeRender(
     throw error;
   } finally {
     await releaseFreezeSlot(supabase, session.id, job.id);
+  }
+}
+
+/* ───────────────────────── stitch lane ───────────────────────────── */
+
+const execFileAsync = promisify(execFile);
+
+interface MediaProbe {
+  duration: number;
+  hasAudio: boolean;
+  width: number;
+  height: number;
+}
+
+/** `ffmpeg -i` reports on stderr and exits nonzero — parse, don't spawn a
+ * second binary (ffprobe isn't shipped by ffmpeg-static). */
+async function probeMedia(file: string): Promise<MediaProbe> {
+  const probe: MediaProbe = {
+    duration: 0,
+    hasAudio: false,
+    width: 0,
+    height: 0,
+  };
+  try {
+    await execFileAsync(ffmpegPath as string, ["-hide_banner", "-i", file], {
+      timeout: 30_000,
+    });
+  } catch (error) {
+    const stderr = String((error as { stderr?: unknown }).stderr ?? "");
+    const dm = stderr.match(/Duration: (\d+):(\d+):([\d.]+)/);
+    if (dm) {
+      probe.duration =
+        Number(dm[1]) * 3600 + Number(dm[2]) * 60 + Number(dm[3]);
+    }
+    probe.hasAudio = /Stream .*Audio:/.test(stderr);
+    const vm = stderr.match(/Stream .*Video:.* (\d{2,5})x(\d{2,5})/);
+    if (vm) {
+      probe.width = Number(vm[1]);
+      probe.height = Number(vm[2]);
+    }
+  }
+  return probe;
+}
+
+/**
+ * The reference editor's edit plan, ported: source[clipIn→freezeAt] +
+ * camera move + source[freezeAt→clipOut], all normalized to the camera
+ * clip's geometry at 30fps. Sub-frame edges (<1/30s) are dropped instead
+ * of producing an empty concat leg; audio legs mirror the video legs,
+ * padding silent where a side has no track.
+ */
+export function buildFreezeEditGraph(
+  width: number,
+  height: number,
+  window: FreezeClipWindow,
+  cameraDuration: number,
+  sourceAudio: boolean,
+  cameraAudio: boolean
+): { graph: string; hasAudio: boolean } {
+  const clipIn = Math.max(0, window.clipIn);
+  const freezeAt = Math.min(
+    Math.max(window.freezeAt, clipIn),
+    window.clipOut
+  );
+  const clipOut = window.clipOut;
+  const normalize = `scale=${width}:${height},setsar=1,fps=30,format=yuv420p`;
+  const graph: string[] = [];
+  const segments: string[] = [];
+  const audios: string[] = [];
+  const hasAudio = sourceAudio || cameraAudio;
+  const segmentDuration = freezeAt - clipIn;
+  if (segmentDuration >= 1 / 30) {
+    graph.push(
+      `[0:v]trim=start=${clipIn}:end=${freezeAt},setpts=PTS-STARTPTS,${normalize}[before]`
+    );
+    segments.push("[before]");
+    if (hasAudio) {
+      graph.push(
+        sourceAudio
+          ? `[0:a]atrim=start=${clipIn}:end=${freezeAt},asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo,apad,atrim=duration=${segmentDuration}[abefore]`
+          : `anullsrc=r=48000:cl=stereo,atrim=duration=${segmentDuration},asetpts=PTS-STARTPTS[abefore]`
+      );
+      audios.push("[abefore]");
+    }
+  }
+  graph.push(`[1:v]setpts=PTS-STARTPTS,${normalize}[camera]`);
+  segments.push("[camera]");
+  if (hasAudio) {
+    graph.push(
+      cameraAudio
+        ? `[1:a]asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo,apad,atrim=duration=${cameraDuration}[acamera]`
+        : `anullsrc=r=48000:cl=stereo,atrim=duration=${cameraDuration},asetpts=PTS-STARTPTS[acamera]`
+    );
+    audios.push("[acamera]");
+  }
+  const afterDuration = clipOut - freezeAt;
+  if (afterDuration >= 1 / 30) {
+    graph.push(
+      `[0:v]trim=start=${freezeAt}:end=${clipOut},setpts=PTS-STARTPTS,${normalize}[after]`
+    );
+    segments.push("[after]");
+    if (hasAudio) {
+      graph.push(
+        sourceAudio
+          ? `[0:a]atrim=start=${freezeAt}:end=${clipOut},asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo,apad,atrim=duration=${afterDuration}[aafter]`
+          : `anullsrc=r=48000:cl=stereo,atrim=duration=${afterDuration},asetpts=PTS-STARTPTS[aafter]`
+      );
+      audios.push("[aafter]");
+    }
+  }
+  graph.push(`${segments.join("")}concat=n=${segments.length}:v=1:a=0[v]`);
+  if (hasAudio) {
+    graph.push(`${audios.join("")}concat=n=${audios.length}:v=0:a=1[a]`);
+  }
+  return { graph: graph.join(";"), hasAudio };
+}
+
+/**
+ * Delivered camera move → cut back into the source clip at freeze_at.
+ * Re-reads the session first: a mid-render source swap clears the clip
+ * link, and stitching a detached clip would ship footage the owner
+ * already replaced. On success the job's output_asset_id swaps to the
+ * stitched asset — the studio + save lanes see only the cut video.
+ */
+async function stitchFreezeIntoClip(
+  supabase: SupabaseClient,
+  session: FreezeSession,
+  jobId: string,
+  freezeAsset: CreativeAsset
+): Promise<void> {
+  const { data: fresh } = await supabase
+    .from("freeze_sessions")
+    .select("clip_asset_id, clip_in, clip_out, freeze_at")
+    .eq("id", session.id)
+    .eq("status", "active")
+    .maybeSingle();
+  const clipAssetId = fresh?.clip_asset_id as string | null;
+  const clipIn = fresh?.clip_in as number | null;
+  const clipOut = fresh?.clip_out as number | null;
+  const freezeAt = fresh?.freeze_at as number | null;
+  if (
+    !clipAssetId ||
+    clipIn === null ||
+    clipOut === null ||
+    freezeAt === null
+  ) {
+    return;
+  }
+  const { data: clipRow } = await supabase
+    .from("creative_assets")
+    .select("storage_key, ext")
+    .eq("id", clipAssetId)
+    .eq("user_id", session.user_id)
+    .maybeSingle();
+  const clipKey = clipRow?.storage_key as string | undefined;
+  if (!clipKey || !freezeAsset.storage_key) return;
+
+  const dir = await mkdtemp(path.join(tmpdir(), "fz-"));
+  try {
+    const [clipDl, freezeDl] = await Promise.all([
+      supabase.storage.from(ASSETS_BUCKET).download(clipKey),
+      supabase.storage
+        .from(ASSETS_BUCKET)
+        .download(freezeAsset.storage_key),
+    ]);
+    if (clipDl.error || !clipDl.data || freezeDl.error || !freezeDl.data) {
+      throw new FreezeError(
+        "CLIP_MISSING",
+        clipDl.error?.message ??
+          freezeDl.error?.message ??
+          "clip asset download failed"
+      );
+    }
+    const srcPath = path.join(dir, `src.${clipRow?.ext ?? "mp4"}`);
+    const camPath = path.join(dir, "cam.mp4");
+    const outPath = path.join(dir, "out.mp4");
+    await writeFile(srcPath, Buffer.from(await clipDl.data.arrayBuffer()));
+    await writeFile(camPath, Buffer.from(await freezeDl.data.arrayBuffer()));
+
+    const [srcProbe, camProbe] = await Promise.all([
+      probeMedia(srcPath),
+      probeMedia(camPath),
+    ]);
+    if (camProbe.width <= 0 || camProbe.height <= 0 || camProbe.duration <= 0) {
+      return;
+    }
+    // A file shorter than the remembered window just runs out — clamp the
+    // plan to what the probe measured.
+    const window: FreezeClipWindow = {
+      clipIn,
+      clipOut: srcProbe.duration > 0 ? Math.min(clipOut, srcProbe.duration) : clipOut,
+      freezeAt,
+    };
+    if (window.clipOut - window.clipIn < 0.1) return;
+
+    const { graph, hasAudio } = buildFreezeEditGraph(
+      camProbe.width,
+      camProbe.height,
+      window,
+      camProbe.duration,
+      srcProbe.hasAudio,
+      camProbe.hasAudio
+    );
+    const args = [
+      "-y",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-i",
+      srcPath,
+      "-i",
+      camPath,
+      "-filter_complex",
+      graph,
+      "-map",
+      "[v]",
+      ...(hasAudio ? ["-map", "[a]", "-c:a", "aac", "-b:a", "128k"] : []),
+      "-c:v",
+      "libx264",
+      "-preset",
+      "veryfast",
+      "-crf",
+      "21",
+      "-movflags",
+      "+faststart",
+      outPath,
+    ];
+    await execFileAsync(ffmpegPath as string, args, {
+      timeout: 300_000,
+      maxBuffer: 8 * 1024 * 1024,
+    });
+    const bytes = await readFile(outPath);
+    const stitched = await ingestGeneratedMedia(supabase, session.user_id, {
+      bytes,
+      mimeType: "video/mp4",
+      url: `freeze-stitch:${jobId}`,
+    });
+    await updateCreativeJob(supabase, jobId, {
+      output_asset_id: stitched.id,
+    });
+    await appendFreezeEvent(supabase, session.id, {
+      jobId,
+      kind: "completed",
+      state: "delivered",
+      assetId: stitched.id,
+    });
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => undefined);
   }
 }
 
@@ -849,6 +1270,9 @@ export async function freezeStatus(
   sourceUrl: string | null;
   sketches: FreezeJobRow[];
   renders: FreezeJobRow[];
+  /** the session has a clip linked — the next delivered render splices
+   * into the source footage instead of shipping bare */
+  hasClip: boolean;
 }> {
   const { data } = await supabase
     .from("freeze_events")
@@ -929,5 +1353,6 @@ export async function freezeStatus(
     sourceUrl,
     sketches,
     renders,
+    hasClip: session.clip_asset_id !== null,
   };
 }
