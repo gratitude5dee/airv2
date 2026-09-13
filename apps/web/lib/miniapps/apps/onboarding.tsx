@@ -28,6 +28,7 @@ import {
 import {
   isSpeedTier,
   MODEL_FAMILY_LABELS,
+  setGmiModel,
   setModelFamily,
   setSpeedTier,
   setUsername,
@@ -35,6 +36,8 @@ import {
 } from "@/lib/settings/account";
 import {
   DEFAULT_MODEL_FAMILY,
+  GMI_MODELS,
+  isGmiModel,
   isModelFamily,
   requiresConsent,
   type ModelFamily,
@@ -400,6 +403,7 @@ export interface OnboardingSnapshot {
   onairos: OnairosStatus;
   speedTier: string | null;
   modelFamily: ModelFamily;
+  gmiModel: string | null;
   merchant: Merchant | null;
   link: LinkAuthDoc | null;
   pluginSessions: number;
@@ -494,7 +498,7 @@ async function loadSnapshot(
       timedPart(parts, "entitlement", () =>
         supabase
           .from("entitlements")
-          .select("speed_tier, model_family")
+          .select("speed_tier, model_family, gmi_model")
           .eq("user_id", userId)
           .maybeSingle()
       ),
@@ -634,6 +638,7 @@ async function loadSnapshot(
       modelFamily: isModelFamily(String(entitlement?.model_family ?? ""))
         ? (entitlement?.model_family as ModelFamily)
         : DEFAULT_MODEL_FAMILY,
+      gmiModel: (entitlement?.gmi_model as string | null) ?? null,
       merchant,
       link,
       pluginSessions: pluginCount ?? 0,
@@ -984,6 +989,7 @@ const ONBOARDING_FAMILIES: readonly ModelFamily[] = [
   "anthropic",
   "minimax-m3",
   "minimax-m2.7",
+  "gmi",
 ];
 
 function modelBody(snapshot: OnboardingSnapshot): string {
@@ -995,7 +1001,17 @@ function modelBody(snapshot: OnboardingSnapshot): string {
     (tier) =>
       `<form method="post" class="inline"><input type="hidden" name="action" value="set_speed"><input type="hidden" name="speed_tier" value="${esc(tier)}"><button${tier === snapshot.speedTier ? "" : ' class="ghost"'}>${esc(tier)}</button></form>`
   ).join("");
-  return `<p class="muted">Pick the family your agent thinks with.</p><div class="famgrid">${families}</div><p class="muted">(you can select others in settings later)</p><p class="muted">Thinking speed — faster answers or deeper reasoning:</p><div class="row">${tiers}</div><div class="row actions">${skipForm("model")}</div>`;
+  // With GMI Cloud the tier pick IS the model pick (fast → GLM-5.3 Flash,
+  // balanced → Luna, deep → Astra); the pin row lets a new owner choose one
+  // model across tiers instead. Subagent runs always stay on GLM-5.3 Flash.
+  const gmiPins =
+    snapshot.modelFamily === "gmi"
+      ? `<p class="muted">GMI Cloud model — or leave unpinned and let the tier choose:</p><div class="famgrid">${GMI_MODELS.map(
+          (model) =>
+            `<form method="post" class="famform"><input type="hidden" name="action" value="set_gmi_model"><input type="hidden" name="gmi_model" value="${esc(model.slug)}"><button${model.slug === snapshot.gmiModel ? "" : ' class="ghost"'}>${esc(model.label)}</button></form>`
+        ).join("")}</div>`
+      : "";
+  return `<p class="muted">Pick the family your agent thinks with.</p><div class="famgrid">${families}</div><p class="muted">(you can select others in settings later)</p>${gmiPins}<p class="muted">Thinking speed — faster answers or deeper reasoning:</p><div class="row">${tiers}</div><div class="row actions">${skipForm("model")}</div>`;
 }
 
 /** Messages app glyph — green tile with a white speech bubble. */
@@ -2365,6 +2381,20 @@ export const onboarding: MiniAppModule = {
         }
         throw error;
       }
+    }
+
+    if (action === "set_gmi_model") {
+      const slug = String(form.get("gmi_model") ?? "");
+      if (!isGmiModel(slug)) return forbidden("invalid model");
+      const ok =
+        (await setGmiModel(supabase, userId, slug)) &&
+        (await setModelFamily(supabase, userId, "gmi"));
+      if (ok) await markSafely(supabase, userId, "model", "done");
+      return respond(
+        ctx,
+        ok ? null : "model",
+        ok ? "GMI Cloud model set." : "Update failed — try again."
+      );
     }
 
     if (action === "set_speed") {

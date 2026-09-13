@@ -20,6 +20,7 @@ import {
   clampCreateTier,
   costUsd,
   DEFAULT_MODEL_FAMILY,
+  gmiReasoningEffort,
   isModelFamily,
   isCreateModelRequest,
   isReasoningModel,
@@ -281,7 +282,7 @@ export async function POST(
   const { data: entitlement } = await supabase
     .from("entitlements")
     .select(
-      "speed_tier, model_family, openrouter_model, venice_model, monthly_cap_usd, spend_mtd_usd, spend_period_start, suspended_reason"
+      "speed_tier, model_family, openrouter_model, venice_model, gmi_model, monthly_cap_usd, spend_mtd_usd, spend_period_start, suspended_reason"
     )
     .eq("user_id", userId)
     .maybeSingle();
@@ -311,6 +312,7 @@ export async function POST(
   const selection: ModelSelection = {
     openrouterModel: (entitlement.openrouter_model as string | null) ?? null,
     veniceModel: (entitlement.venice_model as string | null) ?? null,
+    gmiModel: (entitlement.gmi_model as string | null) ?? null,
   };
 
   // Personal provider keys (Settings): when saved, the request is served on
@@ -524,6 +526,28 @@ export async function POST(
         }
         if (body["top_p"] !== undefined && body["top_p"] !== 1) {
           delete body["top_p"];
+        }
+      }
+      if (provider === "gmi") {
+        // GMI's OpenAI-prefixed slugs (astra/luna/terra) normalize max_tokens
+        // to max_completion_tokens upstream and reject values under their
+        // floor — send the name they actually validate so a small cap does
+        // not come back as a 400.
+        if (String(body["model"]).startsWith("openai/")) {
+          if (body["max_tokens"] !== undefined) {
+            if (body["max_completion_tokens"] === undefined) {
+              body["max_completion_tokens"] = body["max_tokens"];
+            }
+            delete body["max_tokens"];
+          }
+        }
+        // GLM-5.3-Flash's reasoning is mandatory; "low" collapses
+        // reasoning_tokens to ~1 (verified live). Only zai-org/* slugs get
+        // the field — openai/* + tools + reasoning_effort 400s upstream.
+        const gmiEffort = gmiReasoningEffort(String(body["model"]));
+        if (gmiEffort && body["reasoning_effort"] === undefined) {
+          body["reasoning_effort"] = gmiEffort;
+          servedReasoning = gmiEffort;
         }
       }
       if (streaming) {

@@ -18,6 +18,7 @@ import {
   MODEL_FAMILY_LABELS,
   setMiniappBackground,
   setMiniappTheme,
+  setGmiModel,
   setModelFamily,
   setOpenRouterModel,
   setSpeedTier,
@@ -28,7 +29,10 @@ import {
 import {
   DEFAULT_MODEL_FAMILY,
   DEFAULT_VENICE_MODEL,
+  defaultGmiModelForTier,
   defaultOpenRouterModelForTier,
+  GMI_MODELS,
+  isGmiModel,
   isModelFamily,
   isOpenRouterModel,
   isVeniceModel,
@@ -117,6 +121,7 @@ interface SettingsData {
   modelFamily: string;
   openrouterModel: string | null;
   veniceModel: string | null;
+  gmiModel: string | null;
   creativePrefs: CreativePrefs;
   providerKeys: ProviderKeyStatus[];
   providerVault: boolean;
@@ -158,7 +163,9 @@ async function loadSettings(
       .maybeSingle(),
     supabase
       .from("entitlements")
-      .select("plan, speed_tier, model_family, openrouter_model, venice_model")
+      .select(
+        "plan, speed_tier, model_family, openrouter_model, venice_model, gmi_model"
+      )
       .eq("user_id", userId)
       .maybeSingle(),
     supabase
@@ -218,6 +225,7 @@ async function loadSettings(
     openrouterModel:
       (entitlement?.openrouter_model as string | null) ?? null,
     veniceModel: (entitlement?.venice_model as string | null) ?? null,
+    gmiModel: (entitlement?.gmi_model as string | null) ?? null,
     creativePrefs,
     providerKeys,
     providerVault: providerVaultAvailable(),
@@ -341,9 +349,25 @@ function renderSettings(
       `<option value="${esc(model.slug)}"${model.slug === veniceSelected ? " selected" : ""}>${esc(model.label)}</option>`
   ).join("");
   const veniceCard = `<div class="card"><h2>Venice model</h2><form method="post" class="row"><input type="hidden" name="action" value="set_venice_model"><select name="venice_model">${veniceOptions}</select><button${data.modelFamily === "venice" ? "" : ' class="ghost"'}>Use</button></form><p class="muted">Private, OpenAI-compatible inference — add a personal Venice key below to use your own balance.</p></div>`;
+  const gmiSelected =
+    data.gmiModel && isGmiModel(data.gmiModel)
+      ? data.gmiModel
+      : defaultGmiModelForTier(tierValue);
+  const gmiOptions = SPEED_TIERS.map(
+    (tier) =>
+      `<optgroup label="${esc(tier)}">${GMI_MODELS.filter(
+        (model) => model.tier === tier
+      )
+        .map(
+          (model) =>
+            `<option value="${esc(model.slug)}"${model.slug === gmiSelected ? " selected" : ""}>${esc(model.label)}</option>`
+        )
+        .join("")}</optgroup>`
+  ).join("");
+  const gmiCard = `<div class="card"><h2>GMI Cloud model</h2><form method="post" class="row"><input type="hidden" name="action" value="set_gmi_model"><select name="gmi_model">${gmiOptions}</select><button${data.modelFamily === "gmi" ? "" : ' class="ghost"'}>Use</button></form><p class="muted">Astra, Luna, or GLM on GMI Cloud — subagent runs always stay on GLM-5.3 Flash. Add a personal GMI key below to use your own balance.</p></div>`;
   const modelSection = section(
     "MODEL",
-    `<div class="card"><div class="row">${plainFamilyButtons}</div><p class="muted">Ox Alpha unless you pick otherwise. OpenAI follows your speed tier above.</p><div class="row"><p class="muted">${consentHtml()}</p></div>${consentFamilyForms}</div>${openrouterCard}${veniceCard}`
+    `<div class="card"><div class="row">${plainFamilyButtons}</div><p class="muted">Ox Alpha unless you pick otherwise. OpenAI follows your speed tier above.</p><div class="row"><p class="muted">${consentHtml()}</p></div>${consentFamilyForms}</div>${gmiCard}${openrouterCard}${veniceCard}`
   );
   const creativeCards = CREATIVE_LANES.map((lane) => {
     const selected = data.creativePrefs[lane];
@@ -656,6 +680,15 @@ export const settings: MiniAppModule = {
         (await setVeniceModel(ctx.supabase, userId, slug)) &&
         (await setModelFamily(ctx.supabase, userId, "venice"));
       return respond(ctx, ok ? "Venice model saved." : "Update failed.");
+    }
+
+    if (action === "set_gmi_model") {
+      const slug = String(form.get("gmi_model") ?? "");
+      if (!isGmiModel(slug)) return forbidden("invalid model");
+      const ok =
+        (await setGmiModel(ctx.supabase, userId, slug)) &&
+        (await setModelFamily(ctx.supabase, userId, "gmi"));
+      return respond(ctx, ok ? "GMI Cloud model saved." : "Update failed.");
     }
 
     if (action === "set_creative_model") {

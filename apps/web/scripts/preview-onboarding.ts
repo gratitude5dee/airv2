@@ -47,6 +47,7 @@ const snapshot: OnboardingSnapshot = {
   onairos: { available: true, connected: false, connect_url: null },
   speedTier: "balanced",
   modelFamily: "openai",
+  gmiModel: null,
   merchant: null,
   link: {
     installed: true,

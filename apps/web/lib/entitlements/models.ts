@@ -18,7 +18,8 @@ export type ModelFamily =
   | "minimax-m3"
   | "minimax-m2.7"
   | "openrouter"
-  | "venice";
+  | "venice"
+  | "gmi";
 
 export const DEFAULT_MODEL_FAMILY: ModelFamily = "openai";
 
@@ -56,7 +57,7 @@ export interface CreateModelRequest {
 
 /** Slugs for the fixed families that don't go through the tiers. */
 const FAMILY_MODELS: Record<
-  Exclude<ModelFamily, "openai" | "openrouter" | "venice">,
+  Exclude<ModelFamily, "openai" | "openrouter" | "venice" | "gmi">,
   string
 > = {
   inkling: "thinkingmachines/inkling:free",
@@ -183,10 +184,76 @@ export function defaultOpenRouterModelForTier(tier: SpeedTier): string {
 
 export const DEFAULT_VENICE_MODEL = VENICE_MODELS[0].slug;
 
+/**
+ * GMI Cloud chat models (api.gmi-serving.com, OpenAI-compatible). Unlike the
+ * menu families, `gmi` resolves per tier — fast is the delegation lane
+ * (delegation.model = "fast" in every box's config), so it is pinned to
+ * GLM-5.3-Flash regardless of the owner's gmi_model pick: the pin binds the
+ * owner-visible tiers only. Pricing is list price; Astra/Luna assume the
+ * OpenAI list until the GMI console figure is confirmed (goal-gmi-models §4).
+ */
+export const GMI_MODELS: readonly [CatalogModel, ...CatalogModel[]] = [
+  {
+    slug: "zai-org/GLM-5.3-Flash",
+    label: "GLM-5.3 Flash",
+    tier: "fast",
+    pricing: { input: 0.15, output: 0.5 },
+  },
+  {
+    slug: "openai/gpt-5.6-luna",
+    label: "GPT-5.6 Luna (GMI)",
+    tier: "balanced",
+    pricing: { input: 0.4, output: 2.4 },
+  },
+  {
+    slug: "openai/gpt-6-astra",
+    label: "GPT-6 Astra (GMI)",
+    tier: "deep",
+    pricing: { input: 10, output: 50 },
+  },
+];
+
+export const GMI_TIER_MODELS: Record<SpeedTier, string> = {
+  fast: "zai-org/GLM-5.3-Flash",
+  balanced: "openai/gpt-5.6-luna",
+  deep: "openai/gpt-6-astra",
+};
+
+export function isGmiModel(slug: string): boolean {
+  return GMI_MODELS.some((model) => model.slug === slug);
+}
+
+export function defaultGmiModelForTier(tier: SpeedTier): string {
+  const override = gmiTierOverride(tier);
+  return override ?? GMI_TIER_MODELS[tier];
+}
+
+/** GMI_FAST_MODEL / GMI_BALANCED_MODEL / GMI_DEEP_MODEL — ops re-pin without
+ * a deploy, mirroring MODEL_FAST/… on the openai lane. The override must
+ * still name a catalog slug so a typo can't route spend to anything else. */
+function gmiTierOverride(tier: SpeedTier): string | undefined {
+  const byTier: Record<SpeedTier, string | undefined> = {
+    fast: process.env["GMI_FAST_MODEL"],
+    balanced: process.env["GMI_BALANCED_MODEL"],
+    deep: process.env["GMI_DEEP_MODEL"],
+  };
+  const value = byTier[tier];
+  return value && isGmiModel(value) ? value : undefined;
+}
+
+/** GLM-5.3-Flash bills mandatory reasoning inside the output cap; "low"
+ * keeps child calls cheap. GMI_GLM_EFFORT overrides; "" omits the field. */
+export function gmiReasoningEffort(model: string): string | undefined {
+  if (!model.startsWith("zai-org/")) return undefined;
+  const value = process.env["GMI_GLM_EFFORT"] ?? "low";
+  return value && value.trim() ? value.trim() : undefined;
+}
+
 /** Per-user model selections read from entitlements alongside the family. */
 export interface ModelSelection {
   openrouterModel?: string | null;
   veniceModel?: string | null;
+  gmiModel?: string | null;
 }
 
 /** Families whose selection needs the TML free-endpoint consent (§7). */
@@ -204,7 +271,8 @@ export function isModelFamily(value: string): value is ModelFamily {
     value === "minimax-m3" ||
     value === "minimax-m2.7" ||
     value === "openrouter" ||
-    value === "venice"
+    value === "venice" ||
+    value === "gmi"
   );
 }
 
@@ -214,7 +282,12 @@ export type ModelProvider = "openai" | "openrouter" | "venice" | "gmi";
 export function providerForFamily(family: ModelFamily): ModelProvider {
   if (family === "openai") return "openai";
   if (family === "venice") return "venice";
-  if (family === "minimax-m3" || family === "minimax-m2.7") return "gmi";
+  if (
+    family === "minimax-m3" ||
+    family === "minimax-m2.7" ||
+    family === "gmi"
+  )
+    return "gmi";
   return "openrouter";
 }
 
@@ -290,7 +363,7 @@ const TIER_PRICING: Record<SpeedTier, { input: number; output: number }> = {
 
 /** USD per 1M tokens for the fixed model families. */
 const FAMILY_PRICING: Record<
-  Exclude<ModelFamily, "openai" | "openrouter" | "venice">,
+  Exclude<ModelFamily, "openai" | "openrouter" | "venice" | "gmi">,
   { input: number; output: number }
 > = {
   inkling: { input: 0, output: 0 },
@@ -389,6 +462,15 @@ export function modelForSelection(
     const chosen = selection.veniceModel ?? "";
     return isVeniceModel(chosen) ? chosen : DEFAULT_VENICE_MODEL;
   }
+  if (family === "gmi") {
+    // The fast tier is the delegation lane (delegation.model = "fast" on
+    // every box): it always resolves to the cheap GMI tier model, never to
+    // the owner's pin — a pinned Astra must not price children at the deep
+    // rate.
+    if (tier === "fast") return defaultGmiModelForTier("fast");
+    const chosen = selection.gmiModel ?? "";
+    return isGmiModel(chosen) ? chosen : defaultGmiModelForTier(tier);
+  }
   return FAMILY_MODELS[family];
 }
 
@@ -405,7 +487,9 @@ export function modelLabelForFamily(
       ? VENICE_MODELS
       : family === "openrouter"
         ? OPENROUTER_MODELS
-        : null;
+        : family === "gmi"
+          ? GMI_MODELS
+          : null;
   return catalog?.find((model) => model.slug === slug)?.label ?? slug;
 }
 
@@ -434,11 +518,18 @@ export function costUsd(
   const pricing =
     family === "openai"
       ? TIER_PRICING[tier]
-      : family === "openrouter" || family === "venice"
-        ? ((family === "venice" ? VENICE_MODELS : OPENROUTER_MODELS).find(
-            (entry) => entry.slug === model,
-          )?.pricing ?? { input: 0, output: 0 })
-        : FAMILY_PRICING[family];
+      : family === "gmi"
+        ? (GMI_MODELS.find((entry) => entry.slug === model)?.pricing ??
+          // Served on an ops override or an unpinned tier — price by the
+          // tier's default slug rather than the family floor.
+          GMI_MODELS.find(
+            (entry) => entry.slug === GMI_TIER_MODELS[tier],
+          )!.pricing)
+        : family === "openrouter" || family === "venice"
+          ? ((family === "venice" ? VENICE_MODELS : OPENROUTER_MODELS).find(
+              (entry) => entry.slug === model,
+            )?.pricing ?? { input: 0, output: 0 })
+          : FAMILY_PRICING[family];
   return (
     (promptTokens * pricing.input + completionTokens * pricing.output) /
     1_000_000

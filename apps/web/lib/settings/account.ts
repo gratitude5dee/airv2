@@ -183,6 +183,7 @@ export const MODEL_FAMILIES = [
   "anthropic",
   "minimax-m3",
   "minimax-m2.7",
+  "gmi",
   "openrouter",
   "venice",
   "inkling",
@@ -195,6 +196,7 @@ export const MODEL_FAMILY_LABELS: Record<ModelFamily, string> = {
   anthropic: "Anthropic",
   "minimax-m3": "MiniMax M3",
   "minimax-m2.7": "MiniMax M2.7",
+  gmi: "GMI Cloud",
   openrouter: "OpenRouter",
   venice: "Venice",
   inkling: "Inkling (free)",
@@ -224,6 +226,21 @@ export async function setOpenRouterModel(
   const { error } = await supabase
     .from("entitlements")
     .update({ openrouter_model: slug })
+    .eq("user_id", userId);
+  return !error;
+}
+
+/** Writes entitlements.gmi_model — a catalog slug, validated by the
+ * caller (isGmiModel) and re-validated at the gateway. The pin binds the
+ * owner-visible tiers only: the fast/delegation lane always resolves GLM. */
+export async function setGmiModel(
+  supabase: SupabaseClient,
+  userId: string,
+  slug: string
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("entitlements")
+    .update({ gmi_model: slug })
     .eq("user_id", userId);
   return !error;
 }

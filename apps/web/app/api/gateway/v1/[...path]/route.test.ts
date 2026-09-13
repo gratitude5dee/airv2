@@ -14,6 +14,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 interface EntitlementRow {
   speed_tier: string;
   model_family?: string | null;
+  gmi_model?: string | null;
   monthly_cap_usd: number;
   spend_mtd_usd: number;
   spend_period_start: string;
@@ -698,6 +699,114 @@ describe("gateway model families", () => {
       "https://upstream.test/v1/responses"
     );
     expect((await response.json()).choices[0].message.content).toBe("hi");
+  });
+
+  it("resolves the gmi family per tier on chat/completions", async () => {
+    setEntitlement({ speed_tier: "balanced", model_family: "gmi" });
+    const call = await upstreamCall({ messages: [], max_tokens: 200 });
+    expect(call.body["model"]).toBe("openai/gpt-5.6-luna");
+    expect(call.url).toBe("https://gmi.test/v1/chat/completions");
+    const headers = call.init.headers as Record<string, string>;
+    expect(headers["Authorization"]).toBe("Bearer gmi-key");
+    // GMI's openai/* slugs validate max_completion_tokens, not max_tokens.
+    expect(call.body["max_tokens"]).toBeUndefined();
+    expect(call.body["max_completion_tokens"]).toBe(200);
+    // …and reject reasoning_effort on tool-bearing calls, so none is sent.
+    expect(call.body["reasoning_effort"]).toBeUndefined();
+  });
+
+  it("pins the owner's tier via gmi_model but keeps the fast lane on GLM", async () => {
+    setEntitlement({
+      speed_tier: "deep",
+      model_family: "gmi",
+      gmi_model: "openai/gpt-6-astra",
+    });
+    expect((await upstreamBody({ messages: [] }))["model"]).toBe(
+      "openai/gpt-6-astra"
+    );
+    // A delegated child asks for model:"fast" — the pin cannot raise what a
+    // subagent costs, so the request still lands on GLM-5.3-Flash.
+    const child = await upstreamBody({ messages: [], model: "fast" });
+    expect(child["model"]).toBe("zai-org/GLM-5.3-Flash");
+    expect(child["reasoning_effort"]).toBe("low");
+  });
+
+  it("lets a caller-set reasoning_effort win on the GLM lane", async () => {
+    setEntitlement({ speed_tier: "fast", model_family: "gmi", gmi_model: null });
+    const sent = await upstreamBody({
+      messages: [],
+      reasoning_effort: "high",
+    });
+    expect(sent["model"]).toBe("zai-org/GLM-5.3-Flash");
+    expect(sent["reasoning_effort"]).toBe("high");
+  });
+
+  it("meters gmi usage at the served GLM slug's rates", async () => {
+    setEntitlement({ speed_tier: "fast", model_family: "gmi", gmi_model: null });
+    meteredRows.length = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            choices: [{ message: { role: "assistant", content: "hi" } }],
+            usage: {
+              prompt_tokens: 3,
+              completion_tokens: 5,
+              total_tokens: 8,
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      )
+    );
+    const response = await POST(completionRequest({ messages: [] }), {
+      params: Promise.resolve({ path: ["chat", "completions"] }),
+    });
+    expect(response.status).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const row = meteredRows[0]!;
+    expect(row["model_family"]).toBe("gmi");
+    expect(row["model"]).toBe("zai-org/GLM-5.3-Flash");
+    expect(row["reasoning_effort"]).toBe("low");
+    expect(row["cost_usd"]).toBeCloseTo((3 * 0.15 + 5 * 0.5) / 1_000_000, 12);
+  });
+
+  it("falls back to the OpenAI tier model after a repeated gmi error", async () => {
+    setEntitlement({
+      speed_tier: "balanced",
+      model_family: "gmi",
+      gmi_model: null,
+    });
+    const fetchMock = vi.fn(async (url: RequestInfo | URL) =>
+      String(url).includes("gmi.test")
+        ? new Response("temporarily unavailable", { status: 429 })
+        : new Response(
+            JSON.stringify({
+              id: "resp_1",
+              object: "response",
+              model: "gpt-5.6-luna",
+              status: "completed",
+              output: [
+                {
+                  type: "message",
+                  role: "assistant",
+                  content: [{ type: "output_text", text: "hi" }],
+                },
+              ],
+            }),
+            { status: 200 }
+          )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await POST(completionRequest({ messages: [] }), {
+      params: Promise.resolve({ path: ["chat", "completions"] }),
+    });
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(String(fetchMock.mock.calls[2]?.[0])).toBe(
+      "https://upstream.test/v1/responses"
+    );
   });
 
   it("falls back to the OpenAI tier model when OpenRouter answers empty", async () => {
