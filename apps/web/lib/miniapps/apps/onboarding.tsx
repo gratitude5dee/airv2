@@ -28,6 +28,7 @@ import {
 import {
   isSpeedTier,
   MODEL_FAMILY_LABELS,
+  clearGmiModel,
   setGmiModel,
   setModelFamily,
   setSpeedTier,
@@ -1009,7 +1010,7 @@ function modelBody(snapshot: OnboardingSnapshot): string {
       ? `<p class="muted">GMI Cloud model — or leave unpinned and let the tier choose:</p><div class="famgrid">${GMI_MODELS.map(
           (model) =>
             `<form method="post" class="famform"><input type="hidden" name="action" value="set_gmi_model"><input type="hidden" name="gmi_model" value="${esc(model.slug)}"><button${model.slug === snapshot.gmiModel ? "" : ' class="ghost"'}>${esc(model.label)}</button></form>`
-        ).join("")}</div>`
+        ).join("")}${snapshot.gmiModel ? `<form method="post" class="famform"><input type="hidden" name="action" value="clear_gmi_model"><button class="ghost">Follow speed tier</button></form>` : ""}</div>`
       : "";
   return `<p class="muted">Pick the family your agent thinks with.</p><div class="famgrid">${families}</div><p class="muted">(you can select others in settings later)</p>${gmiPins}<p class="muted">Thinking speed — faster answers or deeper reasoning:</p><div class="row">${tiers}</div><div class="row actions">${skipForm("model")}</div>`;
 }
@@ -2394,6 +2395,15 @@ export const onboarding: MiniAppModule = {
         ctx,
         ok ? null : "model",
         ok ? "GMI Cloud model set." : "Update failed — try again."
+      );
+    }
+
+    if (action === "clear_gmi_model") {
+      const ok = await clearGmiModel(supabase, userId);
+      return respond(
+        ctx,
+        ok ? null : "model",
+        ok ? "Back on speed tier." : "Update failed — try again."
       );
     }
 

@@ -245,6 +245,18 @@ export async function setGmiModel(
   return !error;
 }
 
+/** Clears entitlements.gmi_model, returning the family to tier mapping. */
+export async function clearGmiModel(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("entitlements")
+    .update({ gmi_model: null })
+    .eq("user_id", userId);
+  return !error;
+}
+
 /** Writes entitlements.venice_model — a catalog slug, validated by the
  * caller (isVeniceModel) and re-validated at the gateway. */
 export async function setVeniceModel(

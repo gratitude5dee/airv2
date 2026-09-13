@@ -18,6 +18,7 @@ import {
   MODEL_FAMILY_LABELS,
   setMiniappBackground,
   setMiniappTheme,
+  clearGmiModel,
   setGmiModel,
   setModelFamily,
   setOpenRouterModel,
@@ -364,7 +365,10 @@ function renderSettings(
         )
         .join("")}</optgroup>`
   ).join("");
-  const gmiCard = `<div class="card"><h2>GMI Cloud model</h2><form method="post" class="row"><input type="hidden" name="action" value="set_gmi_model"><select name="gmi_model">${gmiOptions}</select><button${data.modelFamily === "gmi" ? "" : ' class="ghost"'}>Use</button></form><p class="muted">Astra, Luna, or GLM on GMI Cloud — subagent runs always stay on GLM-5.3 Flash. Add a personal GMI key below to use your own balance.</p></div>`;
+  const gmiUnpin = data.gmiModel
+    ? `<form method="post" class="row"><input type="hidden" name="action" value="clear_gmi_model"><button class="ghost">Follow speed tier</button></form>`
+    : "";
+  const gmiCard = `<div class="card"><h2>GMI Cloud model</h2><form method="post" class="row"><input type="hidden" name="action" value="set_gmi_model"><select name="gmi_model">${gmiOptions}</select><button${data.modelFamily === "gmi" ? "" : ' class="ghost"'}>Use</button></form>${gmiUnpin}<p class="muted">Astra, Luna, or GLM on GMI Cloud — a pinned model overrides the speed tier for your own turns; subagent runs always stay on GLM-5.3 Flash. Add a personal GMI key below to use your own balance.</p></div>`;
   const modelSection = section(
     "MODEL",
     `<div class="card"><div class="row">${plainFamilyButtons}</div><p class="muted">Ox Alpha unless you pick otherwise. OpenAI follows your speed tier above.</p><div class="row"><p class="muted">${consentHtml()}</p></div>${consentFamilyForms}</div>${gmiCard}${openrouterCard}${veniceCard}`
@@ -689,6 +693,11 @@ export const settings: MiniAppModule = {
         (await setGmiModel(ctx.supabase, userId, slug)) &&
         (await setModelFamily(ctx.supabase, userId, "gmi"));
       return respond(ctx, ok ? "GMI Cloud model saved." : "Update failed.");
+    }
+
+    if (action === "clear_gmi_model") {
+      const ok = await clearGmiModel(ctx.supabase, userId);
+      return respond(ctx, ok ? "Back on speed tier." : "Update failed.");
     }
 
     if (action === "set_creative_model") {

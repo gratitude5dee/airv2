@@ -731,6 +731,22 @@ describe("gateway model families", () => {
     expect(child["reasoning_effort"]).toBe("low");
   });
 
+  it("strips caller-set reasoning_effort on tool-bearing gmi openai calls", async () => {
+    setEntitlement({ speed_tier: "balanced", model_family: "gmi", gmi_model: null });
+    // Forwarding it would 400 upstream and silently land on OpenAI instead
+    // of the Luna the owner picked.
+    const sent = await upstreamBody({
+      messages: [],
+      tools: [{ type: "function", function: { name: "noop" } }],
+      reasoning_effort: "high",
+    });
+    expect(sent["model"]).toBe("openai/gpt-5.6-luna");
+    expect(sent["reasoning_effort"]).toBeUndefined();
+    // Without tools the caller's effort is theirs to send.
+    const plain = await upstreamBody({ messages: [], reasoning_effort: "high" });
+    expect(plain["reasoning_effort"]).toBe("high");
+  });
+
   it("lets a caller-set reasoning_effort win on the GLM lane", async () => {
     setEntitlement({ speed_tier: "fast", model_family: "gmi", gmi_model: null });
     const sent = await upstreamBody({

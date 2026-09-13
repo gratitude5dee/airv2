@@ -540,6 +540,12 @@ export async function POST(
             }
             delete body["max_tokens"];
           }
+          // …and they 400 on tools + reasoning_effort, caller-set or not —
+          // forward it and the request silently lands on the OpenAI
+          // fallback instead of the GMI model the owner picked.
+          if (Array.isArray(body["tools"]) && body["tools"].length > 0) {
+            delete body["reasoning_effort"];
+          }
         }
         // GLM-5.3-Flash's reasoning is mandatory; "low" collapses
         // reasoning_tokens to ~1 (verified live). Only zai-org/* slugs get
@@ -547,8 +553,11 @@ export async function POST(
         const gmiEffort = gmiReasoningEffort(String(body["model"]));
         if (gmiEffort && body["reasoning_effort"] === undefined) {
           body["reasoning_effort"] = gmiEffort;
-          servedReasoning = gmiEffort;
         }
+        servedReasoning =
+          typeof body["reasoning_effort"] === "string"
+            ? (body["reasoning_effort"] as string)
+            : null;
       }
       if (streaming) {
         body["stream_options"] = { ...(body["stream_options"] as object), include_usage: true };
