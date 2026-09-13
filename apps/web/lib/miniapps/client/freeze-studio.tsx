@@ -1372,11 +1372,15 @@ function StageCanvas(props: StageProps) {
             dragRef.current = null;
           } else {
             // A finger left over from a pinch keeps orbiting — re-baseline
-            // so the view doesn't jump to the remaining fingertip.
-            const p = [...ptrsRef.current.values()][0]!;
-            drag.lastX = p.x;
-            drag.lastY = p.y;
-            drag.pinchD = 0;
+            // on the centroid of the remaining contacts so the view doesn't
+            // jump to one arbitrary fingertip, and re-arm the pinch ruler.
+            const rest = [...ptrsRef.current.values()];
+            drag.lastX = rest.reduce((s, p) => s + p.x, 0) / rest.length;
+            drag.lastY = rest.reduce((s, p) => s + p.y, 0) / rest.length;
+            drag.pinchD =
+              rest.length === 2
+                ? Math.hypot(rest[0]!.x - rest[1]!.x, rest[0]!.y - rest[1]!.y)
+                : 0;
           }
           return;
         }
@@ -1398,10 +1402,13 @@ function StageCanvas(props: StageProps) {
         ptrsRef.current.delete(e.pointerId);
         const drag = dragRef.current;
         if (drag?.mode === "view" && ptrsRef.current.size > 0) {
-          const p = [...ptrsRef.current.values()][0]!;
-          drag.lastX = p.x;
-          drag.lastY = p.y;
-          drag.pinchD = 0;
+          const rest = [...ptrsRef.current.values()];
+          drag.lastX = rest.reduce((s, p) => s + p.x, 0) / rest.length;
+          drag.lastY = rest.reduce((s, p) => s + p.y, 0) / rest.length;
+          drag.pinchD =
+            rest.length === 2
+              ? Math.hypot(rest[0]!.x - rest[1]!.x, rest[0]!.y - rest[1]!.y)
+              : 0;
           return;
         }
         // A cancelled/interrupted gesture drops in place — no pick, no flush.
@@ -1496,8 +1503,8 @@ function StageCanvas2D(props: StageProps) {
       ctx.stroke();
     }
 
-    // photo billboard
-    const pw = Math.min(w * 0.4, h * 0.4 * (4 / 3));
+    // photo billboard — scales with view zoom like the 3D stage's dolly
+    const pw = Math.min(w * 0.4, h * 0.4 * (4 / 3)) * view.zoom;
     const ph = pw * 0.72;
     ctx.save();
     ctx.shadowColor = "rgba(0,0,0,0.6)";
@@ -1735,10 +1742,13 @@ function StageCanvas2D(props: StageProps) {
           if (ptrsRef.current.size === 0) {
             dragRef.current = null;
           } else {
-            const p = [...ptrsRef.current.values()][0]!;
-            drag.lastX = p.x;
-            drag.lastY = p.y;
-            drag.pinchD = 0;
+            const rest = [...ptrsRef.current.values()];
+            drag.lastX = rest.reduce((s, p) => s + p.x, 0) / rest.length;
+            drag.lastY = rest.reduce((s, p) => s + p.y, 0) / rest.length;
+            drag.pinchD =
+              rest.length === 2
+                ? Math.hypot(rest[0]!.x - rest[1]!.x, rest[0]!.y - rest[1]!.y)
+                : 0;
           }
           return;
         }
@@ -1760,10 +1770,13 @@ function StageCanvas2D(props: StageProps) {
         ptrsRef.current.delete(e.pointerId);
         const drag = dragRef.current;
         if (drag?.mode === "view" && ptrsRef.current.size > 0) {
-          const p = [...ptrsRef.current.values()][0]!;
-          drag.lastX = p.x;
-          drag.lastY = p.y;
-          drag.pinchD = 0;
+          const rest = [...ptrsRef.current.values()];
+          drag.lastX = rest.reduce((s, p) => s + p.x, 0) / rest.length;
+          drag.lastY = rest.reduce((s, p) => s + p.y, 0) / rest.length;
+          drag.pinchD =
+            rest.length === 2
+              ? Math.hypot(rest[0]!.x - rest[1]!.x, rest[0]!.y - rest[1]!.y)
+              : 0;
           return;
         }
         dragRef.current = null;
