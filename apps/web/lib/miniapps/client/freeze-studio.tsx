@@ -1723,6 +1723,10 @@ function Studio(props: { initial: Payload }) {
         .map((f) => ({ ...f }));
       return next;
     });
+    // Selection is index-based — an insert before it would silently retarget
+    // the aim sliders onto the new frame. Clear it; the nearest-free
+    // fallback still lands on the just-added dot.
+    setSelected(null);
     setPreset(null);
   }, [scrubT]);
 
@@ -2159,9 +2163,28 @@ function Studio(props: { initial: Payload }) {
               className="fz-track"
               onPointerDown={(e) => {
                 const rect = e.currentTarget.getBoundingClientRect();
-                setScrubT(clamp((e.clientX - rect.left) / rect.width, 0, 1));
+                const x = e.clientX - rect.left;
+                // Dot selection lives here — the dots are pointer-inert
+                // visuals, so two keyframes closer than a touch target
+                // still resolve to the nearest one instead of whichever
+                // pseudo-element happens to paint on top.
+                let near: number | null = null;
+                let best = 23; // px — a touch wider than the visual affordance
+                keyframes.forEach((kf, i) => {
+                  const d = Math.abs(kf.time * rect.width - x);
+                  if (d < best) {
+                    best = d;
+                    near = i;
+                  }
+                });
+                if (near !== null) {
+                  setSelected(near);
+                  setScrubT(keyframes[near]!.time);
+                } else {
+                  setScrubT(clamp(x / rect.width, 0, 1));
+                }
                 e.currentTarget.setPointerCapture(e.pointerId);
-              }}
+              }}}, {
               onPointerMove={(e) => {
                 if (e.buttons !== 1) return;
                 const rect = e.currentTarget.getBoundingClientRect();
@@ -2175,16 +2198,13 @@ function Studio(props: { initial: Payload }) {
                   type="button"
                   className={`fz-kf${selected === i ? " selected" : ""}`}
                   style={{ left: `${kf.time * 100}%` }}
-                  // Stop propagation on pointerdown: the track captures the
-                  // pointer there, and a captured pointer retargets every
-                  // later event (incl. click) to the track — the dot's own
-                  // click never lands without this.
-                  onPointerDown={(e) => {
-                    e.stopPropagation();
+                  tabIndex={-1}
+                  onClick={() => {
+                    // Keyboard/AT activation only — pointer events are
+                    // disabled on dots so the track picks nearest-in-x.
                     setSelected(i);
                     setScrubT(kf.time);
                   }}
-                  onClick={(e) => e.stopPropagation()}
                   aria-label={`keyframe ${i + 1} at ${Math.round(kf.time * 100)}%`}
                 />
               ))}
@@ -2434,8 +2454,8 @@ const CSS = `
 .fz-timeline-meta span:last-child{font-variant-numeric:tabular-nums;color:#c5d2d0;text-align:right}
 .fz-track{position:relative;height:44px;touch-action:none;cursor:pointer;background:#1d2728;border-radius:7px}
 .fz-track-ticks{position:absolute;inset:12px 8px;background:repeating-linear-gradient(90deg,#354445 0,#354445 1px,transparent 1px,transparent 14px);opacity:0.65;-webkit-mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent);mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent);pointer-events:none}
-.fz-kf{position:absolute;top:50%;width:14px;height:14px;min-width:0;min-height:0;margin:-7px 0 0 -7px;padding:0;border:2px solid #8fd4bd;border-radius:50%;background:#0d181b}
-/* The visible dot stays small; the pseudo-element carries the touch target */
+.fz-kf{position:absolute;top:50%;width:14px;height:14px;min-width:0;min-height:0;margin:-7px 0 0 -7px;padding:0;border:2px solid #8fd4bd;border-radius:50%;background:#0d181b;pointer-events:none}
+/* The ring reads as the touch affordance; the track resolves the tap */
 .fz-kf::after{content:"";position:absolute;inset:-16px;border-radius:50%}
 .fz-kf.selected{background:#d1eadd;border-color:#d1eadd}
 .fz-head{position:absolute;top:-3px;bottom:-3px;width:2px;margin-left:-1px;background:#d1eadd;box-shadow:0 0 12px #d1eadd30;pointer-events:none}
