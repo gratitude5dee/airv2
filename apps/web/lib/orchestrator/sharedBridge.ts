@@ -11,6 +11,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "../env";
 import { requestSignal } from "../http/timeout";
 import {
+  deterministicAcknowledgementAnswer,
   deterministicArithmeticAnswer,
   initialHoldingReply,
   isFastInitialQuestion,
@@ -109,7 +110,7 @@ export async function initialReply(
 export interface InitialResponse {
   body: string;
   disposition: "final" | "holding";
-  source: "arithmetic" | "gmi" | "fallback";
+  source: "acknowledgement" | "arithmetic" | "gmi" | "fallback";
 }
 
 /** Plan the first bubble and tell the inbound route whether it finished the turn. */
@@ -118,6 +119,15 @@ export async function initialResponse(
   userId: string,
   burst: string
 ): Promise<InitialResponse> {
+  const acknowledgement = deterministicAcknowledgementAnswer(burst);
+  if (acknowledgement !== null) {
+    return {
+      body: acknowledgement,
+      disposition: "final",
+      source: "acknowledgement",
+    };
+  }
+
   const arithmetic = deterministicArithmeticAnswer(burst);
   if (arithmetic !== null) {
     return { body: arithmetic, disposition: "final", source: "arithmetic" };

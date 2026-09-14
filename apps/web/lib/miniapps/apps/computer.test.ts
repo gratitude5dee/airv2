@@ -14,7 +14,6 @@ vi.mock("@/lib/box/screenshot", () => ({
   captureScreenshotPng: vi.fn().mockRejectedValue(new Error("no shot")),
 }));
 vi.mock("@/lib/box/desktop", () => ({
-  desktopStreamOrigin: vi.fn(async () => "https://d.on.ascii.dev"),
   desktopStreamUrlIfUp: vi.fn(),
 }));
 
@@ -57,17 +56,15 @@ describe("computer mini-app live embed", () => {
     expect(html).toContain('src="/computer?view=live"');
     expect(html).toContain(">Connecting</span>");
     expect(html).not.toContain(">Live</span>");
-    // The keyboard forwarder pins postMessage to this exact origin.
-    expect(html).toContain('data-stream-origin="https://d.on.ascii.dev"');
+    expect(html).not.toContain("data-stream-origin");
     expect(html).not.toContain("?embed=1");
     const csp = res.headers.get("Content-Security-Policy") ?? "";
     expect(csp).toContain("frame-src 'self' https://*.on.ascii.dev");
     // The embedded viewer needs autoplay (video won't start in an iframe
-    // without it) and the self-hosted keyboard forwarder.
+    // without it). Rendering the shell no longer mints a second desktop URL.
     expect(html).toContain('allow="autoplay; fullscreen');
-    expect(html).toContain('<script src="/creator-os/computer.js" defer>');
+    expect(html).not.toContain("computer.js");
     expect(html).toContain("View latest screenshot");
-    expect(csp).toContain("script-src 'self'");
   });
 
   it("offers a genuine, non-interactive screenshot only on an explicit owner request", async () => {

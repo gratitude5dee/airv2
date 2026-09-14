@@ -3,7 +3,7 @@
  * URL (never in HTML), a waking machine gets a self-refreshing progress
  * page instead of a blocked request or an error, and guests are refused.
  */
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { renderPassthrough } from "./passthrough";
 import { desktopStreamUrlIfUp } from "@/lib/box/desktop";
@@ -18,10 +18,24 @@ vi.mock("@/lib/orchestrator/boxes", () => ({
   StartLimitError: class extends Error {},
 }));
 
-function ctx(role = "owner", url = "/computer?view=live"): MiniAppContext {
+const priorSigningKey = process.env["MINIAPP_SIGNING_KEY"];
+beforeAll(() => {
+  process.env["MINIAPP_SIGNING_KEY"] = "passthrough-test-signing-key";
+});
+afterAll(() => {
+  if (priorSigningKey === undefined) delete process.env["MINIAPP_SIGNING_KEY"];
+  else process.env["MINIAPP_SIGNING_KEY"] = priorSigningKey;
+});
+
+function ctx(
+  role = "owner",
+  url = "/computer?view=live",
+  cookie?: string
+): MiniAppContext {
   return {
     request: new NextRequest(
-      new URL(url, "https://mini.wzrd.tech")
+      new URL(url, "https://mini.wzrd.tech"),
+      cookie ? { headers: { cookie } } : undefined
     ),
     supabase: {},
     app: { slug: "computer" },
@@ -50,6 +64,8 @@ describe("renderPassthrough", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("refresh")).toBe("1; url=/computer?view=live&retry=1");
     expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(res.headers.get("set-cookie")).toContain("mini_desktop_attempt=");
+    expect(res.headers.get("set-cookie")).toContain("HttpOnly");
     const html = await res.text();
     expect(html).toContain("Waking your agent");
   });
@@ -70,7 +86,7 @@ describe("renderPassthrough", () => {
     const res = await renderPassthrough(ctx());
     const html = await res.text();
     expect(html).toContain("Couldn't prepare your agent's computer right now");
-    expect(html).toContain('href="/computer?view=live"');
+    expect(html).toContain('href="/computer?view=live&amp;restart=1"');
   });
 
   it("renders a bounded recovery page while the desktop daemon prepares", async () => {
@@ -97,7 +113,30 @@ describe("renderPassthrough", () => {
     vi.mocked(desktopStreamUrlIfUp).mockResolvedValue({ status: "waking" });
     const res = await renderPassthrough(ctx("owner", "/computer?view=live&retry=6"));
     expect(res.headers.get("refresh")).toBeNull();
-    expect(await res.text()).toContain("Retry now");
+    const html = await res.text();
+    expect(html).toContain("Retry now");
+    expect(html).toContain("restart=1");
+  });
+
+  it("does not let a URL refresh reset an expired readiness deadline", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-09-14T16:00:00Z"));
+      vi.mocked(desktopStreamUrlIfUp).mockResolvedValue({ status: "preparing" });
+      const first = await renderPassthrough(ctx());
+      const cookie = first.headers.get("set-cookie")?.split(";", 1)[0];
+      expect(cookie).toContain("mini_desktop_attempt=");
+
+      vi.advanceTimersByTime(31_000);
+      const refreshed = await renderPassthrough(
+        ctx("owner", "/computer?view=live&retry=0", cookie)
+      );
+
+      expect(refreshed.headers.get("refresh")).toBeNull();
+      expect(await refreshed.text()).toContain("Automatic retries stopped");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("refuses guests", async () => {

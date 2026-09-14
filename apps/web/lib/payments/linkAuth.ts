@@ -18,6 +18,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { command, readFile, writeFile } from "../box/client";
+import { shellQuote } from "../box/shell";
 import { asRecord } from "../records";
 import { ensureBoxAwake } from "../orchestrator/boxes";
 
@@ -29,10 +30,18 @@ const LINK_DOC_PATH = ".hermes/miniapps/onboarding/link.json";
 const LINK_CLI = "/home/user/.hermes/node/bin/link-cli";
 /** Name the owner sees in their Link app when approving the device. */
 const CLIENT_NAME = "air agent";
+const REQUIRED_SCOPES = ["userinfo:read", "payment_methods.agentic"] as const;
+
+export type AgentPaymentGrant = "ready" | "missing" | "unknown";
 
 export interface LinkAuthDoc {
   /** false when the box predates the CLI bake (sync-box.sh not yet run). */
   installed: boolean;
+  /** True when Link has an active device session, independent of its grants. */
+  session_authenticated: boolean;
+  /** Required scopes are verified before payments are advertised as ready. */
+  agent_payment_grant: AgentPaymentGrant;
+  /** True only when the session and both agent-payment grants are verified. */
   authenticated: boolean;
   verification_url: string | null;
   phrase: string | null;
@@ -42,6 +51,8 @@ export interface LinkAuthDoc {
 export function defaultLinkAuthDoc(): LinkAuthDoc {
   return {
     installed: true,
+    session_authenticated: false,
+    agent_payment_grant: "unknown",
     authenticated: false,
     verification_url: null,
     phrase: null,
@@ -68,7 +79,20 @@ function normalize(raw: unknown): LinkAuthDoc {
   if (typeof raw !== "object" || raw === null) return doc;
   const value = raw as Partial<Record<keyof LinkAuthDoc, unknown>>;
   if (value.installed === false) doc.installed = false;
-  if (value.authenticated === true) doc.authenticated = true;
+  if (value.session_authenticated === true) doc.session_authenticated = true;
+  if (
+    value.agent_payment_grant === "ready" ||
+    value.agent_payment_grant === "missing" ||
+    value.agent_payment_grant === "unknown"
+  ) {
+    doc.agent_payment_grant = value.agent_payment_grant;
+  }
+  // Legacy docs only had `authenticated`. Preserve the knowledge that the
+  // device session existed, but do not claim agent-payment readiness until
+  // the current CLI status verifies both required scopes.
+  if (value.authenticated === true) doc.session_authenticated = true;
+  doc.authenticated =
+    doc.session_authenticated && doc.agent_payment_grant === "ready";
   doc.verification_url = safeVerificationUrl(
     typeof value.verification_url === "string" ? value.verification_url : null
   );
@@ -113,6 +137,69 @@ function cliMissing(exitCode: number, stderr: string): boolean {
   return exitCode === 127 || /not found|No such file/i.test(stderr);
 }
 
+function parseScopes(payload: Record<string, unknown> | null): {
+  present: boolean;
+  values: Set<string>;
+} {
+  if (!payload) return { present: false, values: new Set() };
+  const values = new Set<string>();
+  let present = false;
+  const candidates = [
+    payload["scope"],
+    payload["scopes"],
+    asRecord(payload["session"])?.["scope"],
+    asRecord(payload["session"])?.["scopes"],
+    asRecord(payload["authorization"])?.["scope"],
+    asRecord(payload["authorization"])?.["scopes"],
+  ];
+  for (const candidate of candidates) {
+    if (candidate === undefined || candidate === null) continue;
+    present = true;
+    const items = Array.isArray(candidate) ? candidate : [candidate];
+    for (const item of items) {
+      if (typeof item !== "string") continue;
+      for (const scope of item.split(/[\s,]+/u)) {
+        if (scope) values.add(scope);
+      }
+    }
+  }
+  return { present, values };
+}
+
+function applyStatus(doc: LinkAuthDoc, payload: Record<string, unknown> | null): void {
+  doc.session_authenticated = payload?.["authenticated"] === true;
+  if (!doc.session_authenticated) {
+    doc.agent_payment_grant = "unknown";
+    doc.authenticated = false;
+    return;
+  }
+  const scopes = parseScopes(payload);
+  doc.agent_payment_grant = !scopes.present
+    ? "unknown"
+    : REQUIRED_SCOPES.every((scope) => scopes.values.has(scope))
+      ? "ready"
+      : "missing";
+  doc.authenticated = doc.agent_payment_grant === "ready";
+}
+
+function statusCommand(): string {
+  return `${LINK_CLI} auth status --format json --auth ${shellQuote(LINK_CREDENTIALS_PATH)}`;
+}
+
+function pairingCommand(mode: "login" | "upgrade"): string {
+  const cli =
+    `${LINK_CLI} auth ${mode} --clientName ${shellQuote(CLIENT_NAME)} ` +
+    `--scope ${shellQuote(REQUIRED_SCOPES.join(" "))} --format json ` +
+    `--auth ${shellQuote(LINK_CREDENTIALS_PATH)}`;
+  // Preserve the CLI's real exit status while applying least-privilege file
+  // modes when it created or refreshed the credential file.
+  return (
+    `install -d -m 700 /home/user/.hermes/link; ${cli}; ` +
+    `link_status=$?; if [ -f ${shellQuote(LINK_CREDENTIALS_PATH)} ]; then ` +
+    `chmod 600 ${shellQuote(LINK_CREDENTIALS_PATH)}; fi; exit $link_status`
+  );
+}
+
 /**
  * Start device pairing: `auth login` returns the verification URL and the
  * pairing phrase immediately (no polling — the slide's "check status"
@@ -124,14 +211,16 @@ export async function startLinkAuth(
 ): Promise<LinkAuthDoc> {
   const box = await ensureBoxAwake(supabase, userId);
   const doc = defaultLinkAuthDoc();
-  const result = await command(
-    box.boxId,
-    `mkdir -p /home/user/.hermes/link && chmod 700 /home/user/.hermes/link && ` +
-      `${LINK_CLI} auth login --client-name ${JSON.stringify(CLIENT_NAME)} ` +
-      `--format json --auth ${JSON.stringify(LINK_CREDENTIALS_PATH)} && ` +
-      `chmod 600 ${JSON.stringify(LINK_CREDENTIALS_PATH)} 2>/dev/null || true`,
-    55
-  );
+  const status = await command(box.boxId, statusCommand(), 55);
+  if (cliMissing(status.exitCode, status.stderr)) {
+    doc.installed = false;
+    return saveDoc(box.boxId, doc);
+  }
+  applyStatus(doc, parseCliJson(status.stdout));
+  if (doc.authenticated) return saveDoc(box.boxId, doc);
+
+  const mode = doc.session_authenticated ? "upgrade" : "login";
+  const result = await command(box.boxId, pairingCommand(mode), 55);
   if (cliMissing(result.exitCode, result.stderr)) {
     doc.installed = false;
     return saveDoc(box.boxId, doc);
@@ -139,7 +228,7 @@ export async function startLinkAuth(
   const payload = parseCliJson(result.stdout);
   if (payload) {
     if (payload["authenticated"] === true) {
-      doc.authenticated = true;
+      applyStatus(doc, payload);
     } else {
       doc.verification_url = safeVerificationUrl(
         typeof payload["verification_url"] === "string"
@@ -164,7 +253,7 @@ export async function checkLinkAuth(
     .catch(() => defaultLinkAuthDoc());
   const result = await command(
     box.boxId,
-    `${LINK_CLI} auth status --format json --auth ${JSON.stringify(LINK_CREDENTIALS_PATH)}`,
+    statusCommand(),
     55
   );
   if (cliMissing(result.exitCode, result.stderr)) {
@@ -173,8 +262,8 @@ export async function checkLinkAuth(
   }
   previous.installed = true;
   const payload = parseCliJson(result.stdout);
-  previous.authenticated = payload?.["authenticated"] === true;
-  if (previous.authenticated) {
+  applyStatus(previous, payload);
+  if (previous.session_authenticated) {
     previous.verification_url = null;
     previous.phrase = null;
   }

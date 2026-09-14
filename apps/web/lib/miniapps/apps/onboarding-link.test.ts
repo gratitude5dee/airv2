@@ -184,6 +184,11 @@ describe("onboarding link step", () => {
 
   it("link_connect starts pairing and surfaces the approval prompt", async () => {
     command.mockResolvedValueOnce({
+      exitCode: 1,
+      stdout: JSON.stringify([{ authenticated: false }]),
+      stderr: "",
+    });
+    command.mockResolvedValueOnce({
       exitCode: 0,
       stdout: JSON.stringify([
         {
@@ -206,7 +211,12 @@ describe("onboarding link step", () => {
   it("link_check marks the step done once authenticated", async () => {
     command.mockResolvedValueOnce({
       exitCode: 0,
-      stdout: JSON.stringify([{ authenticated: true }]),
+      stdout: JSON.stringify([
+        {
+          authenticated: true,
+          scope: "userinfo:read payment_methods.agentic",
+        },
+      ]),
       stderr: "",
     });
     const form = new FormData();
@@ -217,6 +227,25 @@ describe("onboarding link step", () => {
     expect(body).toContain("Link connected");
     const state = boxFiles.get(".hermes/miniapps/onboarding/state.json");
     expect(state).toContain('"link": "done"');
+  });
+
+  it("asks the owner to update permissions when the session lacks grants", async () => {
+    boxFiles.set(
+      DOC_PATH,
+      JSON.stringify({
+        installed: true,
+        session_authenticated: true,
+        agent_payment_grant: "missing",
+        authenticated: false,
+      })
+    );
+
+    const response = await onboarding.render(makeCtx());
+    const body = await response.text();
+
+    expect(body).toContain("Update Link permissions");
+    expect(body).toContain("agent-payment permission");
+    expect(body).not.toContain("Link connected —");
   });
 
   it("link_check without approval keeps the step open", async () => {

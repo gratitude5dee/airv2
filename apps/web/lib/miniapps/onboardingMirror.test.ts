@@ -55,6 +55,8 @@ describe("toLinkMeta", () => {
   it("keeps booleans and timestamps, drops phrase and URL", () => {
     const meta = toLinkMeta({
       installed: true,
+      session_authenticated: false,
+      agent_payment_grant: "unknown",
       authenticated: false,
       verification_url: "https://app.link.com/device/setup?code=a-b-c",
       phrase: "a-b-c",
@@ -62,6 +64,8 @@ describe("toLinkMeta", () => {
     });
     expect(meta).toEqual({
       installed: true,
+      session_authenticated: false,
+      agent_payment_grant: "unknown",
       authenticated: false,
       pairing: true,
       updated_at: "2026-01-01T00:00:00Z",
@@ -72,6 +76,8 @@ describe("toLinkMeta", () => {
   it("pairing is false when no phrase or URL exists", () => {
     const meta = toLinkMeta({
       installed: true,
+      session_authenticated: true,
+      agent_payment_grant: "ready",
       authenticated: true,
       verification_url: null,
       phrase: null,
@@ -87,6 +93,8 @@ describe("writeStatusMirror", () => {
     await writeStatusMirror(supabase, "user-1", {
       link: {
         installed: true,
+        session_authenticated: false,
+        agent_payment_grant: "unknown",
         authenticated: false,
         verification_url: "https://app.link.com/device/setup?code=q-r-s",
         phrase: "q-r-s",
@@ -136,7 +144,9 @@ describe("readStatusMirror", () => {
     expect(mirror?.imports).toBeNull();
     expect(mirror?.link).toEqual({
       installed: true,
-      authenticated: true,
+      session_authenticated: true,
+      agent_payment_grant: "unknown",
+      authenticated: false,
       pairing: false,
       updated_at: null,
     });

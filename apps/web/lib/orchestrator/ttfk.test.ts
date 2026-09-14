@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ACK_REACTION,
+  deterministicAcknowledgementAnswer,
   deterministicArithmeticAnswer,
   FINALIZING_AT_MS,
   initialHoldingReply,
@@ -10,6 +11,7 @@ import {
   PROGRESS_ONE_AT_MS,
   PROGRESS_TWO_AT_MS,
   REACTION_SLA_MS,
+  shouldStartProgressTimeline,
   startProgressTimeline,
 } from "./ttfk";
 
@@ -38,6 +40,27 @@ describe("TTFK policy", () => {
     expect(isFastInitialQuestion("find deals for Portola Fest")).toBe(false);
     expect(isFastInitialQuestion("/freeze")).toBe(false);
     expect(isFastInitialQuestion("[attachment:abc]")).toBe(false);
+    // These depend on the existing conversation or fresh external data.
+    // A history-free quick completion must never consume them as final.
+    expect(isFastInitialQuestion("Any update?")).toBe(false);
+    expect(isFastInitialQuestion("What's going on today?")).toBe(false);
+    expect(isFastInitialQuestion("What's going on tomorrow?")).toBe(false);
+    expect(isFastInitialQuestion("What's on my calendar today?")).toBe(false);
+  });
+
+  it("answers standalone acknowledgements without starting another agent run", () => {
+    expect(deterministicAcknowledgementAnswer("Ok let me know")).toBe("Will do.");
+    expect(deterministicAcknowledgementAnswer("Okay, keep me posted.")).toBe("Will do.");
+    expect(deterministicAcknowledgementAnswer("Thanks")).toBe("You’re welcome.");
+    expect(deterministicAcknowledgementAnswer("Any update?")).toBeNull();
+    expect(deterministicAcknowledgementAnswer("Ok plan the trip")).toBeNull();
+  });
+
+  it("does not restart the canned progress clock for conversational follow-ups", () => {
+    expect(shouldStartProgressTimeline("Any update?")).toBe(false);
+    expect(shouldStartProgressTimeline("Ok let me know")).toBe(false);
+    expect(shouldStartProgressTimeline("What's going on today?")).toBe(true);
+    expect(shouldStartProgressTimeline("Plan a ten-day trip")).toBe(true);
   });
 
   it("chooses a stable, task-aware holding line", () => {

@@ -125,7 +125,11 @@ grep -q '^DISPLAY=' "$ENV_FILE" || echo "DISPLAY=:0" >> "$ENV_FILE"
 uv tool install --python 3.12 'browser-use==0.13.8'
 
 # ── 3b+. Stripe Link CLI (pinned) — owner-approved payment credentials ───────
-command -v link-cli >/dev/null || npm install -g @stripe/link-cli@0.13.1 --no-audit --no-fund
+LINK_CLI_VERSION="$(link-cli --version 2>/dev/null || true)"
+case "$LINK_CLI_VERSION" in
+  *0.19.1*) ;;
+  *) npm install -g @stripe/link-cli@0.19.1 --no-audit --no-fund ;;
+esac
 mkdir -p "$HOME_DIR/.hermes/link" && chmod 700 "$HOME_DIR/.hermes/link"
 
 # ── 3b++. 1Password CLI (pinned, checksum-verified) — opt-in fill path ───────

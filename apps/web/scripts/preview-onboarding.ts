@@ -51,6 +51,8 @@ const snapshot: OnboardingSnapshot = {
   merchant: null,
   link: {
     installed: true,
+    session_authenticated: false,
+    agent_payment_grant: "unknown",
     authenticated: false,
     verification_url: null,
     phrase: null,

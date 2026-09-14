@@ -550,6 +550,8 @@ async function loadSnapshot(
         ? {
             ...defaultLinkAuthDoc(),
             installed: mirror.link.installed,
+            session_authenticated: mirror.link.session_authenticated,
+            agent_payment_grant: mirror.link.agent_payment_grant,
             authenticated: mirror.link.authenticated,
             updated_at: mirror.link.updated_at,
           }
@@ -1216,6 +1218,9 @@ function stepBody(
         ? `<div class="linkphrase">${esc(link.phrase)}</div><p class="muted">Link shows this phrase — confirm it matches.</p>`
         : "";
       return `${intro}<a class="linkcta" href="${esc(pendingUrl)}" target="_blank" rel="noopener">Approve at link.com →</a>${phrase}<p class="muted">Opens in your browser — log in with the email on your Link wallet. The code expires after a few minutes.</p><div class="row actions">${checkForm}${connectForm("Start over", true)}${skipForm("link", "Later")}</div>`;
+    }
+    if (link?.session_authenticated) {
+      return `${intro}<p class="muted">Link is signed in, but the agent-payment permission is missing or could not be verified. Update permissions before your agent can request a one-time payment credential.</p><div class="row actions">${connectForm("Update Link permissions")}${skipForm("link", "Later")}</div>`;
     }
     return `${intro}<div class="row actions">${connectForm("Connect Link")}${skipForm("link", "Later")}</div>`;
   }
@@ -2698,6 +2703,13 @@ export const onboarding: MiniAppModule = {
             ctx,
             "link",
             "Open the link below and approve the connection at link.com, then check status. The code expires after a few minutes — Start over mints a fresh one."
+          );
+        }
+        if (doc.session_authenticated) {
+          return respond(
+            ctx,
+            "link",
+            "Link is signed in, but agent-payment permission isn't verified yet — tap Update Link permissions to approve the required access."
           );
         }
         return respond(

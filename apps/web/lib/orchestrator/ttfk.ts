@@ -110,6 +110,42 @@ export function deterministicArithmeticAnswer(body: string): string | null {
 }
 
 /**
+ * Close a pure conversational acknowledgement without waking the user's box.
+ * Keep this grammar intentionally narrow: a message that also contains work
+ * must continue through the full agent path.
+ */
+export function deterministicAcknowledgementAnswer(body: string): string | null {
+  const text = body.trim();
+  if (/^(?:ok(?:ay)?[, ]+)?(?:let me know|keep me posted)[.!]?$/i.test(text)) {
+    return "Will do.";
+  }
+  if (/^(?:thanks|thank you)[.!]?$/i.test(text)) return "You’re welcome.";
+  if (/^(?:ok(?:ay)?|got it|sounds good)[.!]?$/i.test(text)) return "Got it.";
+  return null;
+}
+
+/**
+ * A quick completion has no conversation transcript or fresh tool data. These
+ * shapes are therefore never safe to consume as a complete answer there.
+ */
+function needsConversationOrFreshData(text: string): boolean {
+  return (
+    /^(?:any\s+)?(?:update|updates|status)\b/i.test(text) ||
+    /\b(?:today|tomorrow|latest|current|right now)\b/i.test(text) ||
+    /\b(?:my|our)\s+(?:calendar|schedule|inbox|email|files?|tasks?|plans?)\b/i.test(text)
+  );
+}
+
+/** Follow-ups should inspect the existing task, not start a second timer fan-out. */
+export function shouldStartProgressTimeline(body: string): boolean {
+  const text = body.trim();
+  return (
+    deterministicAcknowledgementAnswer(text) === null &&
+    !/^(?:any\s+)?(?:update|updates|status)\b/i.test(text)
+  );
+}
+
+/**
  * Tool, media, financial, or research work must not receive a speculative
  * model answer in the first bubble. It gets a deterministic, specific holding
  * line instead. Short, plain-language questions may use the fast GMI lane.
@@ -120,6 +156,7 @@ export function isFastInitialQuestion(body: string): boolean {
   if (/^\//.test(text) || /\[attachment:|\[location shared\]/i.test(text)) {
     return false;
   }
+  if (needsConversationOrFreshData(text)) return false;
   return !/\b(research|investigate|compare|analy[sz]e|plan|strategy|debug|build|code|deploy|book|buy|pay|send money|transfer|delete|publish|find deals|discount|near me)\b/i.test(
     text
   );
@@ -128,6 +165,12 @@ export function isFastInitialQuestion(body: string): boolean {
 /** Stable, task-aware fallback used when a fast completion is unsuitable or late. */
 export function initialHoldingReply(body: string): string {
   const text = body.trim();
+  if (/^(?:any\s+)?(?:update|updates|status)\b/i.test(text)) {
+    return "I’m checking the current task now.";
+  }
+  if (/\b(?:today|tomorrow|latest|current|right now)\b/i.test(text)) {
+    return "I’m checking the latest details now.";
+  }
   if (/\[attachment:/i.test(text)) return "I’m looking at that now.";
   if (/\[location shared\]|\bnear me\b/i.test(text)) return "I’m checking that now.";
   if (/^\/(draw|freeze|image|image-editor)\b/i.test(text)) return "Opening that now.";

@@ -67,6 +67,10 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const RETRY_DELAY_MS = process.env.NODE_ENV === "test" ? 0 : 1500;
+// The box sees abstract tier IDs whose concrete provider model can change.
+// Advertise a conservative common window so Hermes does not misclassify our
+// custom gateway as Ollama, probe /api/show, then assume an unsafe 256K.
+const GATEWAY_CONTEXT_LENGTH = 128_000;
 
 type Json = Record<string, unknown>;
 
@@ -295,6 +299,7 @@ export async function GET(
       id,
       object: "model",
       owned_by: "air",
+      context_length: GATEWAY_CONTEXT_LENGTH,
     })),
   });
 }
@@ -842,40 +847,51 @@ export async function POST(
 
     // Streamed non-OpenAI answers get the same empty check: the whole SSE body
     // is buffered (these families answer in one burst) and replayed, or
-    // replaced by an OpenAI stream when no delta ever carried content.
+    // replaced by an OpenAI stream when no delta carried user-visible content
+    // or a tool call. Reasoning alone is not an answer: accepting it leaves
+    // Hermes with an empty final_response and the iMessage turn retries forever.
     if (streaming && servedFamily !== "openai" && nonOpenAiProvider) {
-      const raw = new Uint8Array(await upstream.clone().arrayBuffer());
-      const text = new TextDecoder().decode(raw);
-      let sawContent = false;
-      for (const line of text.split("\n")) {
-        if (!line.startsWith("data:")) continue;
-        const data = line.slice(5).trim();
-        if (!data || data === "[DONE]") continue;
-        try {
-          const parsed = JSON.parse(data) as {
-            choices?: {
-              delta?: {
-                content?: string | null;
-                tool_calls?: unknown[];
-                reasoning?: string | null;
-              };
-            }[];
-          };
-          const delta = parsed.choices?.[0]?.delta;
-          if (
-            delta &&
-            (delta.content ||
-              delta.reasoning ||
-              (Array.isArray(delta.tool_calls) && delta.tool_calls.length > 0))
-          ) {
-            sawContent = true;
-            break;
+      const carriesAssistantWork = async (response: Response): Promise<boolean> => {
+        const raw = new Uint8Array(await response.clone().arrayBuffer());
+        const text = new TextDecoder().decode(raw);
+        for (const line of text.split("\n")) {
+          if (!line.startsWith("data:")) continue;
+          const data = line.slice(5).trim();
+          if (!data || data === "[DONE]") continue;
+          try {
+            const parsed = JSON.parse(data) as {
+              choices?: {
+                delta?: {
+                  content?: string | null;
+                  tool_calls?: unknown[];
+                };
+              }[];
+            };
+            const delta = parsed.choices?.[0]?.delta;
+            if (
+              delta &&
+              (delta.content ||
+                (Array.isArray(delta.tool_calls) && delta.tool_calls.length > 0))
+            ) {
+              return true;
+            }
+          } catch {
+            // non-JSON keepalive; ignore
           }
-        } catch {
-          // non-JSON keepalive; ignore
         }
-      }
-      if (!sawContent) {
+        return false;
+      };
+      if (!(await carriesAssistantWork(upstream))) {
+        console.warn(
+          JSON.stringify({
+            msg: "gateway response missing user-visible work",
+            user_id: userId,
+            family: servedFamily,
+            model: servedModel,
+            streaming: true,
+          })
+        );
+        await upstream.body.cancel().catch(() => undefined);
         if (canFallBack) {
           servedFamily = "openai";
           upstream = await dispatch(servedFamily);
@@ -887,15 +903,29 @@ export async function POST(
             });
           }
         } else {
-          return NextResponse.json(
-            {
-              error: {
-                message: `${servedFamily} returned an empty response`,
-                type: "upstream_empty_response",
+          // The fleet GMI override cannot spill to OpenAI, but a reasoning-only
+          // completion is often a transient output-limit/provider edge. Retry
+          // once on GMI before surfacing a controlled error to the box.
+          upstream = await dispatch(servedFamily);
+          if (!upstream.ok || !upstream.body) {
+            const errorBody = await upstream.text();
+            return new NextResponse(errorBody, {
+              status: upstream.status,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (!(await carriesAssistantWork(upstream))) {
+            await upstream.body.cancel().catch(() => undefined);
+            return NextResponse.json(
+              {
+                error: {
+                  message: `${servedFamily} returned no user-visible response`,
+                  type: "upstream_empty_response",
+                },
               },
-            },
-            { status: 502 }
-          );
+              { status: 502 }
+            );
+          }
         }
       }
     }

@@ -12,6 +12,9 @@ vi.mock("@/lib/checkout/handoffs", () => ({
 }));
 vi.mock("../cards", () => ({
   mintSignedLink: vi.fn(() => "https://mini.example/computer?t=token"),
+  mintCheckoutBrowserLink: vi.fn(
+    () => "https://mini.example/api/mini/checkout-launch#t=browser-token"
+  ),
   refreshCheckoutCard,
 }));
 
@@ -56,7 +59,9 @@ describe("checkout mini-app", () => {
     expect(html).toContain("Two festival tickets");
     expect(html).toContain("$480.00");
     expect(html).toContain("Complete merchant verification");
-    expect(html).toContain("Continue on merchant site");
+    expect(html).toContain("Open checkout in browser");
+    expect(html).toContain("/api/mini/checkout-launch#t=browser-token");
+    expect(html).toContain("Open merchant site — you may need to rebuild the cart");
     expect(html).toContain("Control existing browser");
     expect(html).toContain("Verified:");
     expect(html).toContain("Hold expires:");

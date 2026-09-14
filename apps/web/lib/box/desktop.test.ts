@@ -24,6 +24,9 @@ const supabase = {} as SupabaseClient;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(resume).mockResolvedValue({ state: "ready" } as Awaited<
+    ReturnType<typeof resume>
+  >);
 });
 
 function supabaseWithBox(boxId: string | null): SupabaseClient {
@@ -117,14 +120,46 @@ describe("desktopStreamUrlIfUp", () => {
   });
 
   it("still reports waking when a concurrent wake owns the resume", async () => {
-    vi.mocked(getBox).mockResolvedValue({ state: "archived" } as Awaited<
-      ReturnType<typeof getBox>
-    >);
+    vi.mocked(getBox)
+      .mockResolvedValueOnce({ state: "archived" } as Awaited<
+        ReturnType<typeof getBox>
+      >)
+      .mockResolvedValueOnce({ state: "ready" } as Awaited<
+        ReturnType<typeof getBox>
+      >);
     vi.mocked(resume).mockRejectedValue(new Error("already resuming"));
     vi.mocked(isStartLimit).mockReturnValue(false);
     await expect(
       desktopStreamUrlIfUp(supabaseWithBox("bx_1"), "user-1")
     ).resolves.toEqual({ status: "waking" });
+  });
+
+  it("surfaces a resume failure when the provider still reports the box down", async () => {
+    vi.mocked(getBox).mockResolvedValue({ state: "archived" } as Awaited<
+      ReturnType<typeof getBox>
+    >);
+    vi.mocked(resume).mockRejectedValue(new Error("resume network failure"));
+
+    await expect(
+      desktopStreamUrlIfUp(supabaseWithBox("bx_1"), "user-1")
+    ).rejects.toThrow("resume network failure");
+  });
+
+  it("deduplicates concurrent resume requests for the same box", async () => {
+    vi.mocked(getBox).mockResolvedValue({ state: "archived" } as Awaited<
+      ReturnType<typeof getBox>
+    >);
+    vi.mocked(resume).mockResolvedValue({ state: "ready" } as Awaited<
+      ReturnType<typeof resume>
+    >);
+
+    await expect(
+      Promise.all([
+        desktopStreamUrlIfUp(supabaseWithBox("bx_1"), "user-1"),
+        desktopStreamUrlIfUp(supabaseWithBox("bx_1"), "user-1"),
+      ])
+    ).resolves.toEqual([{ status: "waking" }, { status: "waking" }]);
+    expect(resume).toHaveBeenCalledTimes(1);
   });
 
   it("reports waking when the machine is up but the stream isn't ready", async () => {
@@ -151,5 +186,28 @@ describe("desktopStreamUrlIfUp", () => {
     await expect(
       desktopStreamUrlIfUp(supabaseWithBox("bx_1"), "user-1")
     ).resolves.toEqual({ status: "preparing" });
+  });
+
+  it("deduplicates concurrent stream URL requests for the same viewer", async () => {
+    vi.mocked(getBox).mockResolvedValue({ state: "ready" } as Awaited<
+      ReturnType<typeof getBox>
+    >);
+    let release!: (url: string) => void;
+    vi.mocked(requestDesktop).mockReturnValue(
+      new Promise<string>((resolve) => {
+        release = resolve;
+      })
+    );
+
+    const first = desktopStreamUrlIfUp(supabaseWithBox("bx_1"), "user-1");
+    const second = desktopStreamUrlIfUp(supabaseWithBox("bx_1"), "user-1");
+    await Promise.resolve();
+    release("https://d.on.ascii.dev/stream.html?token=abc");
+
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      { status: "up", url: "https://d.on.ascii.dev/stream.html?token=abc" },
+      { status: "up", url: "https://d.on.ascii.dev/stream.html?token=abc" },
+    ]);
+    expect(requestDesktop).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isIP } from "node:net";
+import { getPaymentRequest } from "../commerce/paymentRequests";
 
 export type CheckoutHandoffStatus =
   | "preparing" | "needs_human" | "ready_for_review" | "payment_pending"
@@ -48,6 +49,18 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 export function isCheckoutHandoffId(value: string): boolean {
   return UUID_RE.test(value);
+}
+
+async function requireOwnedPaymentRequest(
+  supabase: SupabaseClient,
+  userId: string,
+  requestId: string | null | undefined
+): Promise<string | null> {
+  if (requestId == null) return null;
+  if (!UUID_RE.test(requestId)) throw new Error("checkout payment request is invalid");
+  const request = await getPaymentRequest(supabase, userId, requestId);
+  if (!request) throw new Error("checkout payment request not found");
+  return requestId;
 }
 
 /** Only public HTTPS merchant URLs are valid destinations. */
@@ -106,6 +119,11 @@ export async function createCheckoutHandoff(supabase: SupabaseClient, input: Cre
   if (currency !== null && !/^[a-z]{3}$/.test(currency)) throw new Error("checkout currency is invalid");
   const taskId = input.taskId?.trim().slice(0, 200) || null;
   if (input.taskId && !taskId) throw new Error("checkout task id is invalid");
+  const paymentRequestId = await requireOwnedPaymentRequest(
+    supabase,
+    input.userId,
+    input.paymentRequestId
+  );
   if (taskId) {
     const { data: existing, error: existingError } = await supabase
       .from("checkout_handoffs")
@@ -133,7 +151,7 @@ export async function createCheckoutHandoff(supabase: SupabaseClient, input: Cre
     quantity, amount_cents: amountCents,
     currency, blocker: input.blocker?.trim().slice(0, 500) ?? null,
     verified_at: input.verifiedAt ?? null, expires_at: input.expiresAt ?? null,
-    same_session: input.sameSession ?? true, payment_request_id: input.paymentRequestId ?? null,
+    same_session: input.sameSession ?? true, payment_request_id: paymentRequestId,
   }).select(COLUMNS).single();
   if (error) {
     // A concurrent retry can win the partial unique (user_id, task_id)
@@ -195,12 +213,16 @@ export async function updateCheckoutHandoff(
   if (TERMINAL_STATUSES.has(current.status) && nextStatus !== current.status) {
     throw new Error("checkout handoff is terminal");
   }
+  const paymentRequestId =
+    input.paymentRequestId === undefined
+      ? undefined
+      : await requireOwnedPaymentRequest(supabase, userId, input.paymentRequestId);
   const patch: Record<string, unknown> = {};
   if (nextStatus !== current.status) patch["status"] = nextStatus;
   if (input.blocker !== undefined) patch["blocker"] = input.blocker === null ? null : input.blocker.trim().slice(0, 500) || null;
   if (input.verifiedAt !== undefined) patch["verified_at"] = input.verifiedAt;
   if (input.expiresAt !== undefined) patch["expires_at"] = input.expiresAt;
-  if (input.paymentRequestId !== undefined) patch["payment_request_id"] = input.paymentRequestId;
+  if (paymentRequestId !== undefined) patch["payment_request_id"] = paymentRequestId;
   if (Object.keys(patch).length === 0) return current;
   const { data, error } = await supabase
     .from("checkout_handoffs")

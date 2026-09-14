@@ -140,16 +140,44 @@ describe("first response and progress lanes", () => {
     });
   });
 
-  it("keeps tool-dependent GMI acknowledgements on the full agent path", async () => {
+  it("never lets a history-free fast completion consume a status follow-up", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        choices: [{ message: { content: "FINAL: I don't have context." } }],
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await initialResponse(fakeSupabase("t"), "user-1", "Any update?")).toEqual({
+      body: "I’m checking the current task now.",
+      disposition: "holding",
+      source: "fallback",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("finishes a standalone acknowledgement without waking Hermes", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await initialResponse(fakeSupabase("t"), "user-1", "Ok let me know")).toEqual({
+      body: "Will do.",
+      disposition: "final",
+      source: "acknowledgement",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps private-context requests on the full agent path", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: () => Promise.resolve({ choices: [{ message: { content: "HOLD: I’m checking." } }] }),
     });
     vi.stubGlobal("fetch", fetchMock);
     expect(await initialResponse(fakeSupabase("t"), "user-1", "summarize my inbox")).toMatchObject({
-      body: "I’m checking.",
+      body: "Got it — checking now.",
       disposition: "holding",
     });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("uses an immediate static line for tool-dependent first replies", async () => {

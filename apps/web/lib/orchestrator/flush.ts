@@ -63,7 +63,11 @@ import {
   sharedBridgeReply,
 } from "./sharedBridge";
 import { streamBubbles } from "./bubbles";
-import { startProgressTimeline, type ProgressTimeline } from "./ttfk";
+import {
+  shouldStartProgressTimeline,
+  startProgressTimeline,
+  type ProgressTimeline,
+} from "./ttfk";
 
 const ATTACHMENT_MARKER = /^\[attachment:([^\]]+)\]$/;
 
@@ -681,7 +685,11 @@ async function runFlushInner(
     // received a visible update, so it never restarts this clock.
     const firstFreshAt = fresh[0]?.received_at;
     const receivedAtMs = firstFreshAt ? Date.parse(firstFreshAt) : Number.NaN;
-    if (fresh.length > 0 && Number.isFinite(receivedAtMs)) {
+    if (
+      fresh.length > 0 &&
+      Number.isFinite(receivedAtMs) &&
+      shouldStartProgressTimeline(rawInput)
+    ) {
       progressTimeline = startProgressTimeline({
         receivedAtMs,
         send: (body) => sender.sendText(job.spaceId, job.phone, body),

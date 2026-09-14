@@ -50,6 +50,8 @@ export const MIRROR_STALE_MS = 60_000;
  */
 export interface LinkAuthMeta {
   installed: boolean;
+  session_authenticated: boolean;
+  agent_payment_grant: "ready" | "missing" | "unknown";
   authenticated: boolean;
   pairing: boolean;
   updated_at: string | null;
@@ -57,9 +59,18 @@ export interface LinkAuthMeta {
 
 export function toLinkMeta(doc: LinkAuthDoc | LinkAuthMeta): LinkAuthMeta {
   const source = doc as Partial<LinkAuthDoc & LinkAuthMeta>;
+  const sessionAuthenticated =
+    source.session_authenticated === true || source.authenticated === true;
+  const grant =
+    source.agent_payment_grant === "ready" ||
+    source.agent_payment_grant === "missing"
+      ? source.agent_payment_grant
+      : "unknown";
   return {
     installed: source.installed !== false,
-    authenticated: source.authenticated === true,
+    session_authenticated: sessionAuthenticated,
+    agent_payment_grant: grant,
+    authenticated: sessionAuthenticated && grant === "ready",
     pairing:
       source.pairing === true ||
       typeof source.phrase === "string" ||

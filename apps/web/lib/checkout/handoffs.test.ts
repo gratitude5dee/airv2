@@ -1,5 +1,15 @@
-import { describe, expect, it } from "vitest";
-import { checkoutTransitionAllowed, isCheckoutHandoffId, safeCheckoutUrl } from "./handoffs";
+import { describe, expect, it, vi } from "vitest";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+const getPaymentRequest = vi.hoisted(() => vi.fn());
+vi.mock("../commerce/paymentRequests", () => ({ getPaymentRequest }));
+
+import {
+  checkoutTransitionAllowed,
+  createCheckoutHandoff,
+  isCheckoutHandoffId,
+  safeCheckoutUrl,
+} from "./handoffs";
 
 describe("checkout handoff URL validation", () => {
   it("accepts public HTTPS checkout URLs", () => {
@@ -37,5 +47,46 @@ describe("checkout handoff lifecycle", () => {
     expect(isCheckoutHandoffId("123e4567-e89b-12d3-a456-426614174000")).toBe(true);
     expect(isCheckoutHandoffId("------------------------------------")).toBe(false);
     expect(isCheckoutHandoffId("handoff-1")).toBe(false);
+  });
+});
+
+describe("checkout handoff payment request ownership", () => {
+  it("rejects a cross-tenant payment request before creating a handoff", async () => {
+    getPaymentRequest.mockResolvedValueOnce(null);
+    const supabase = {} as SupabaseClient;
+
+    await expect(
+      createCheckoutHandoff(supabase, {
+        userId: "owner-a",
+        spaceId: "space-a",
+        phone: "+14155550123",
+        merchantUrl: "https://checkout.example.test/session/abc",
+        itemSummary: "Two tickets",
+        paymentRequestId: "123e4567-e89b-12d3-a456-426614174999",
+      })
+    ).rejects.toThrow("checkout payment request not found");
+
+    expect(getPaymentRequest).toHaveBeenCalledWith(
+      supabase,
+      "owner-a",
+      "123e4567-e89b-12d3-a456-426614174999"
+    );
+  });
+
+  it("rejects a malformed payment request id without querying storage", async () => {
+    getPaymentRequest.mockClear();
+
+    await expect(
+      createCheckoutHandoff({} as SupabaseClient, {
+        userId: "owner-a",
+        spaceId: "space-a",
+        phone: "+14155550123",
+        merchantUrl: "https://checkout.example.test/session/abc",
+        itemSummary: "Two tickets",
+        paymentRequestId: "payment-from-another-tenant",
+      })
+    ).rejects.toThrow("checkout payment request is invalid");
+
+    expect(getPaymentRequest).not.toHaveBeenCalled();
   });
 });

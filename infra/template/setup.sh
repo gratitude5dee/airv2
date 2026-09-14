@@ -205,7 +205,7 @@ uv tool install --python 3.12 'browser-use==0.13.8'
 # ~/.hermes/link/ (600/700, snapshotted); every spend request still needs
 # the owner's in-app approval, and the human always clicks the final Pay
 # button. Pinned version (C24); npm -g lands in the hermes Node prefix.
-npm install -g @stripe/link-cli@0.13.1 --no-audit --no-fund
+npm install -g @stripe/link-cli@0.19.1 --no-audit --no-fund
 mkdir -p "$HOME_DIR/.hermes/link" && chmod 700 "$HOME_DIR/.hermes/link"
 
 # ── 3b2d. 1Password CLI (pinned, checksum-verified) ─────────────────────────

@@ -630,6 +630,40 @@ describe("gateway model families", () => {
     )).toBe(true);
   });
 
+  it("retries GMI when a streamed turn contains reasoning but no user-visible answer", async () => {
+    process.env["GATEWAY_MODEL_FAMILY_OVERRIDE"] = "gmi";
+    setEntitlement({ speed_tier: "balanced", model_family: "openai" });
+    const reasoningOnly =
+      'data: {"choices":[{"delta":{"reasoning":"Still thinking"},"finish_reason":"length"}]}\n\ndata: [DONE]\n\n';
+    const answered =
+      'data: {"choices":[{"delta":{"content":"Here is the answer."},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n';
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(reasoningOnly, {
+          status: 200,
+          headers: { "Content-Type": "text/event-stream" },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(answered, {
+          status: 200,
+          headers: { "Content-Type": "text/event-stream" },
+        })
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await POST(
+      completionRequest({ messages: [], stream: true }),
+      { params: Promise.resolve({ path: ["chat", "completions"] }) }
+    );
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.every((call) =>
+      String(call[0]).startsWith("https://gmi.test/")
+    )).toBe(true);
+    expect(await response.text()).toContain("Here is the answer.");
+  });
+
   it("keeps the OpenAI-only service_tier off OpenRouter requests", async () => {
     process.env["MODEL_SERVICE_TIER_FAST"] = "priority";
     try {
@@ -1128,12 +1162,17 @@ describe("gateway model families", () => {
       { params: Promise.resolve({ path: ["models"] }) }
     );
     const payload = (await response.json()) as {
-      data: { id: string }[];
+      data: { id: string; context_length: number }[];
     };
     expect(payload.data.map((m) => m.id)).toEqual([
       "fast",
       "balanced",
       "deep",
+    ]);
+    expect(payload.data.map((m) => m.context_length)).toEqual([
+      128_000,
+      128_000,
+      128_000,
     ]);
     expect(JSON.stringify(payload)).not.toContain("inkling");
     expect(JSON.stringify(payload)).not.toContain("stealth");

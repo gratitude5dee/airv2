@@ -62,6 +62,11 @@ describe("safeVerificationUrl", () => {
 describe("startLinkAuth", () => {
   it("stores the verification URL and phrase from auth login", async () => {
     command.mockResolvedValueOnce({
+      exitCode: 1,
+      stdout: JSON.stringify([{ authenticated: false }]),
+      stderr: "",
+    });
+    command.mockResolvedValueOnce({
       exitCode: 0,
       stdout: JSON.stringify([
         {
@@ -78,14 +83,28 @@ describe("startLinkAuth", () => {
     );
     expect(doc.phrase).toBe("x-y-z");
     expect(doc.authenticated).toBe(false);
+    expect(doc.session_authenticated).toBe(false);
     expect(boxFiles.get(DOC_PATH)).toContain("app.link.com");
+    expect(String(command.mock.calls[0]?.[1])).toContain("auth status");
+    const pairing = String(command.mock.calls[1]?.[1]);
+    expect(pairing).toContain("auth login");
+    expect(pairing).toContain("--clientName 'air agent'");
+    expect(pairing).toContain(
+      "--scope 'userinfo:read payment_methods.agentic'"
+    );
+    expect(pairing).not.toContain("--client-name");
     // The pairing command targets the box-side credential file.
-    expect(String(command.mock.calls[0]?.[1])).toContain(
+    expect(pairing).toContain(
       "/home/user/.hermes/link/credentials.json"
     );
   });
 
   it("drops non-link.com verification URLs from CLI output", async () => {
+    command.mockResolvedValueOnce({
+      exitCode: 1,
+      stdout: JSON.stringify([{ authenticated: false }]),
+      stderr: "",
+    });
     command.mockResolvedValueOnce({
       exitCode: 0,
       stdout: JSON.stringify([
@@ -107,10 +126,58 @@ describe("startLinkAuth", () => {
     expect(doc.installed).toBe(false);
     expect(doc.authenticated).toBe(false);
   });
+
+  it("upgrades an authenticated session that lacks agent-payment scopes", async () => {
+    command
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: JSON.stringify([
+          { authenticated: true, scope: "userinfo:read" },
+        ]),
+        stderr: "",
+      })
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: JSON.stringify([
+          {
+            authenticated: false,
+            verification_url: "https://app.link.com/device/setup?code=upgrade",
+            phrase: "upgrade",
+          },
+        ]),
+        stderr: "",
+      });
+
+    const doc = await startLinkAuth(supabase, "user-1");
+
+    expect(doc.session_authenticated).toBe(true);
+    expect(doc.agent_payment_grant).toBe("missing");
+    expect(doc.authenticated).toBe(false);
+    expect(String(command.mock.calls[1]?.[1])).toContain("auth upgrade");
+  });
+
+  it("does not start pairing when both required scopes are already verified", async () => {
+    command.mockResolvedValueOnce({
+      exitCode: 0,
+      stdout: JSON.stringify([
+        {
+          authenticated: true,
+          scopes: ["userinfo:read", "payment_methods.agentic"],
+        },
+      ]),
+      stderr: "",
+    });
+
+    const doc = await startLinkAuth(supabase, "user-1");
+
+    expect(doc.authenticated).toBe(true);
+    expect(doc.agent_payment_grant).toBe("ready");
+    expect(command).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("checkLinkAuth", () => {
-  it("clears the pending URL and phrase once authenticated", async () => {
+  it("clears pairing and becomes ready once required scopes are verified", async () => {
     boxFiles.set(
       DOC_PATH,
       JSON.stringify({
@@ -122,11 +189,18 @@ describe("checkLinkAuth", () => {
     );
     command.mockResolvedValueOnce({
       exitCode: 0,
-      stdout: JSON.stringify([{ authenticated: true }]),
+      stdout: JSON.stringify([
+        {
+          authenticated: true,
+          scope: "userinfo:read payment_methods.agentic",
+        },
+      ]),
       stderr: "",
     });
     const doc = await checkLinkAuth(supabase, "user-1");
     expect(doc.authenticated).toBe(true);
+    expect(doc.session_authenticated).toBe(true);
+    expect(doc.agent_payment_grant).toBe("ready");
     expect(doc.verification_url).toBeNull();
     expect(doc.phrase).toBeNull();
   });
@@ -140,6 +214,20 @@ describe("checkLinkAuth", () => {
     const doc = await checkLinkAuth(supabase, "user-1");
     expect(doc.authenticated).toBe(false);
   });
+
+  it("fails closed when an authenticated response omits scope metadata", async () => {
+    command.mockResolvedValueOnce({
+      exitCode: 0,
+      stdout: JSON.stringify([{ authenticated: true }]),
+      stderr: "",
+    });
+
+    const doc = await checkLinkAuth(supabase, "user-1");
+
+    expect(doc.session_authenticated).toBe(true);
+    expect(doc.agent_payment_grant).toBe("unknown");
+    expect(doc.authenticated).toBe(false);
+  });
 });
 
 describe("readLinkAuthDoc", () => {
@@ -147,10 +235,25 @@ describe("readLinkAuthDoc", () => {
     const doc = await readLinkAuthDoc(supabase, "user-1");
     expect(doc).toMatchObject({
       installed: true,
+      session_authenticated: false,
+      agent_payment_grant: "unknown",
       authenticated: false,
       verification_url: null,
       phrase: null,
     });
+  });
+
+  it("does not trust a legacy authenticated bit without verified grants", async () => {
+    boxFiles.set(
+      DOC_PATH,
+      JSON.stringify({ installed: true, authenticated: true })
+    );
+
+    const doc = await readLinkAuthDoc(supabase, "user-1");
+
+    expect(doc.session_authenticated).toBe(true);
+    expect(doc.agent_payment_grant).toBe("unknown");
+    expect(doc.authenticated).toBe(false);
   });
 
   it("sanitizes a box-forged verification URL on read", async () => {
