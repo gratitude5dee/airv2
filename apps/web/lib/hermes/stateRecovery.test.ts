@@ -22,6 +22,20 @@ def repair(path, backup=True):
         conn.execute('REINDEX')
     return {'repaired': True, 'strategy': 'reindex_btree'}
 native.repair_state_db_schema = repair
+class FakeSessionDB:
+    def __init__(self, db_path):
+        pass
+    def close(self):
+        pass
+native.SessionDB = FakeSessionDB
+def healthy(path):
+    try:
+        with sqlite3.connect(path) as conn:
+            validate(conn)
+        return None
+    except Exception as error:
+        return str(error)
+native._db_opens_cleanly = healthy
 sys.modules['hermes_state'] = native
 try:
     db = root / 'state.db'
@@ -146,5 +160,37 @@ assert db.read_bytes() == original
     expect(report).toMatchObject({ recover_exit_code: 0, restore_exit_code: 0, integrity: [["ok"]] });
     expect(report.recovered.normal.messages).toBe(1);
     expect(report.recovered.normal.sessions).toBe(1);
+  });
+
+  it("restores approved recovered history over a damaged schema, retaining raw backup", () => {
+    const report = fixture(`
+folder = root / 'state-recovery/approved-source'
+folder.mkdir(parents=True)
+shutil.copy2(db, folder / 'recovered.db')
+damaged = bytearray(db.read_bytes())
+damaged[100] = 0
+db.write_bytes(damaged)
+report = restore_staged(root, 'approved-restore', 'approved-source')
+assert (root / 'state-recovery/approved-restore/state.db').read_bytes() == damaged
+assert healthy(db) is None
+`);
+    expect(report).toMatchObject({ applied: true, accepted_partial_history: true,
+      services_restart_code: 0, post_restore_health: null });
+    expect(report.restored_counts.messages).toBe(1);
+  });
+
+  it("does not replace history with an empty recovered database", () => {
+    const report = fixture(`
+folder = root / 'state-recovery/empty-source'
+folder.mkdir(parents=True)
+shutil.copy2(db, folder / 'recovered.db')
+with sqlite3.connect(folder / 'recovered.db') as conn:
+    conn.execute('DELETE FROM messages')
+original = db.read_bytes()
+report = restore_staged(root, 'empty-restore', 'empty-source')
+assert db.read_bytes() == original
+`);
+    expect(report.applied).toBe(false);
+    expect(report.error).toContain("refusing empty reset");
   });
 });

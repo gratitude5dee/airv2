@@ -14,11 +14,16 @@ export async function maybeRecoverStateDatabase(
     if (!data) return;
     const operation = data.value?.operation_id as unknown;
     if (typeof operation !== "string" || !/^[a-z0-9-]{8,64}$/.test(operation)) return;
+    const restoreOperation = data.value?.restore_operation_id as unknown;
+    if (restoreOperation !== undefined && (
+      data.value?.accept_partial_history !== true ||
+      typeof restoreOperation !== "string" || !/^[a-z0-9-]{8,64}$/.test(restoreOperation)
+    )) return;
     const { data: claimed, error } = await supabase.from("platform_settings").delete()
       .eq("key", key).eq("updated_at", data.updated_at).select("key");
     if (error || !claimed?.length) return;
     const result = await command(boxId,
-      `/home/user/.hermes-venv/bin/python - ${shellQuote(operation)} <<'PY'\n${STATE_RECOVERY_SCRIPT}\nPY`, 300);
+      `/home/user/.hermes-venv/bin/python - ${shellQuote(operation)} ${shellQuote(typeof restoreOperation === "string" ? restoreOperation : "")} <<'PY'\n${STATE_RECOVERY_SCRIPT}\nPY`, 300);
     console.error(JSON.stringify({msg: "hermes state recovery", box_id: boxId,
       exit_code: result.exitCode, report: result.stdout.slice(-12000)}));
   } catch {
@@ -37,11 +42,15 @@ def quote(name):
     return '"' + name.replace('"', '""') + '"'
 
 def canonical(conn):
-    tables = conn.execute('PRAGMA table_list').fetchall()
-    virtual = [row[1] for row in tables if row[2] == 'virtual']
+    # PRAGMA table_list initializes virtual tables, so damaged FTS can hide
+    # otherwise-readable canonical rows. Enumerate the schema directly.
+    tables = conn.execute("SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall()
+    virtual = [name for name, sql in tables if (sql or '').lstrip().upper().startswith('CREATE VIRTUAL TABLE')]
     if any(not name.startswith('messages_fts') for name in virtual):
         raise RuntimeError('unsupported virtual table')
-    names = sorted(row[1] for row in tables if row[0] == 'main' and row[2] == 'table' and not row[1].startswith('sqlite_'))
+    derived = {root + suffix for root in ('messages_fts', 'messages_fts_trigram', 'messages_fts_cjk')
+               for suffix in ('', '_data', '_idx', '_content', '_docsize', '_config')}
+    names = sorted(name for name, sql in tables if name not in derived)
     if not {'sessions', 'messages'}.issubset(names):
         raise RuntimeError('canonical session tables missing')
     result = {}
@@ -84,10 +93,17 @@ def copy_snapshot(source, destination):
     source.backup(destination, pages=128, progress=progress)
 
 @contextlib.contextmanager
-def exclusive(db):
+def exclusive(db, damaged=False):
     conn = sqlite3.connect(db, timeout=0, isolation_level=None)
     try:
-        conn.execute('PRAGMA synchronous=FULL')
+        try:
+            conn.execute('PRAGMA synchronous=FULL')
+        except sqlite3.DatabaseError:
+            # A damaged sqlite_master may reject pragmas that parse schema.
+            # Python SQLite's default remains FULL; locking statements and
+            # backup can still operate without parsing the damaged schema.
+            if not damaged:
+                raise
         conn.execute('PRAGMA locking_mode=EXCLUSIVE')
         conn.execute('BEGIN EXCLUSIVE')
         conn.execute('ROLLBACK')
@@ -147,6 +163,78 @@ def stage_salvage(folder):
             except sqlite3.Error as error:
                 report['integrity_error'] = str(error)[:300]
     # SQLite salvage can omit/change data; it is NEVER auto-promoted.
+    return report
+
+def restore_staged(root, operation, source_operation):
+    folder = root / 'state-recovery' / operation
+    folder.mkdir(mode=0o700)  # Refuse to overwrite any earlier recovery.
+    recovered = root / 'state-recovery' / source_operation / 'recovered.db'
+    report = {'operation': operation, 'source_operation': source_operation,
+              'backup_path': str(folder), 'accepted_partial_history': True, 'applied': False}
+    services = ['hermes-gateway.service', 'hermes-dashboard.service']
+    stopped = False
+    try:
+        prior_report = recovered.parent / 'report.json'
+        if prior_report.exists():
+            report['salvage'] = json.loads(prior_report.read_text()).get('salvage', {})
+        candidate = folder / 'candidate.db'
+        with contextlib.closing(sqlite3.connect(recovered.as_uri() + '?mode=ro', uri=True)) as source:
+            # This must be a real recovered history, never an empty reset.
+            recovered_rows = canonical(source)
+            if not recovered_rows['sessions']['rows'] or not recovered_rows['messages']['rows']:
+                raise RuntimeError('no recovered conversation history; refusing empty reset')
+            with contextlib.closing(sqlite3.connect(candidate)) as dest:
+                copy_snapshot(source, dest)
+        sys.path.insert(0, '/home/user/hermes-agent')
+        from hermes_state import SessionDB, _db_opens_cleanly
+        session_db = SessionDB(db_path=candidate)
+        session_db.close()
+        health = _db_opens_cleanly(candidate)
+        if health is not None:
+            raise RuntimeError('Hermes recovered-store read/write probe failed: ' + health)
+        with contextlib.closing(sqlite3.connect(candidate)) as conn:
+            counts = canonical(conn)
+            report['restored_counts'] = {name: value['rows'] for name, value in counts.items()}
+            # Schema initialization must not rewrite recovered messages.
+            for table in ('sessions', 'messages'):
+                if counts[table] != recovered_rows[table]:
+                    raise RuntimeError('Hermes initialization changed recovered ' + table)
+        subprocess.run(['sudo', 'systemctl', 'stop', *services], check=True, capture_output=True, timeout=35)
+        stopped = True
+        db = root / 'state.db'
+        paths = [pathlib.Path(str(db) + suffix) for suffix in ('', '-wal', '-shm', '-journal')]
+        paths = [path for path in paths if path.exists()]
+        if holders(paths):
+            raise RuntimeError('another process still holds state.db')
+        if shutil.disk_usage(root).free < sum(p.stat().st_size for p in paths) * 3 + 100_000_000:
+            raise RuntimeError('insufficient backup headroom')
+        fingerprints = {}
+        for path in paths:
+            backup = folder / path.name
+            shutil.copy2(path, backup)
+            with backup.open('rb') as saved:
+                os.fsync(saved.fileno())
+            if not path.name.endswith('-shm'):
+                fingerprints[path] = hashlib.sha256(backup.read_bytes()).digest()
+        report['backup_bytes'] = sum((folder / path.name).stat().st_size for path in paths)
+        with exclusive(db, damaged=True) as live:
+            for path, expected in fingerprints.items():
+                if not path.exists() or hashlib.sha256(path.read_bytes()).digest() != expected:
+                    raise RuntimeError('live files changed before exclusive ownership')
+            with contextlib.closing(sqlite3.connect(candidate)) as source:
+                copy_snapshot(source, live)
+            report['applied'] = True
+        report['post_restore_health'] = _db_opens_cleanly(db)
+    except Exception as error:
+        report['error'] = str(error)[:800]
+    finally:
+        if stopped:
+            try:
+                restarted = subprocess.run(['sudo', 'systemctl', 'start', *services], capture_output=True, timeout=35)
+                report['services_restart_code'] = restarted.returncode
+            except Exception as error:
+                report['services_restart_error'] = str(error)[:300]
+        (folder / 'report.json').write_text(json.dumps(report))
     return report
 
 def recover(root, operation):
@@ -230,6 +318,16 @@ def recover(root, operation):
         (folder / 'report.json').write_text(json.dumps(report))
     return report
 
+def public_report(report):
+    # Keep complete diagnostics on the box; logs need only statuses/counts.
+    result = json.loads(json.dumps(report))
+    for phase in result.get('salvage', {}).values():
+        if isinstance(phase, dict):
+            for mode in phase.values():
+                if isinstance(mode, dict):
+                    mode.pop('schema', None)
+    return result
+
 if __name__ == '__main__':
     def expired(*args):
         raise TimeoutError('recovery exceeded time budget')
@@ -238,5 +336,8 @@ if __name__ == '__main__':
     root = pathlib.Path('/home/user/.hermes')
     with (root / '.air-state-recovery.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        print(json.dumps(recover(root, sys.argv[1])))
+        if len(sys.argv) > 2 and sys.argv[2]:
+            print(json.dumps(public_report(restore_staged(root, sys.argv[1], sys.argv[2]))))
+        else:
+            print(json.dumps(public_report(recover(root, sys.argv[1]))))
 `;
