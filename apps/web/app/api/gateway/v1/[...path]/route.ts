@@ -131,6 +131,17 @@ function gmiRoutineTurn(body: Json): boolean {
   return !GMI_DEEP_TURN_RE.test(text) && !GMI_RISK_TURN_RE.test(text);
 }
 
+/**
+ * Temporary fleet-wide provider switch. Unlike changing every entitlement,
+ * this preserves each user's saved preference and can be reversed without a
+ * database migration. An override deliberately uses the platform provider
+ * key so operations can move spend between platform credit pools.
+ */
+function gatewayModelFamilyOverride(): ModelFamily | null {
+  const value = process.env["GATEWAY_MODEL_FAMILY_OVERRIDE"] ?? "";
+  return isModelFamily(value) ? value : null;
+}
+
 /** Router decision facts recorded alongside usage — the admin trace row. */
 interface RouteTrace {
   requestedModel: string | null;
@@ -339,28 +350,20 @@ export async function POST(
     .eq("user_id", userId)
     .maybeSingle();
   if (!entitlement || entitlement.suspended_reason) return unauthorized();
+  const familyOverride = gatewayModelFamilyOverride();
   const spend = await currentPeriodSpend(supabase, userId, {
     spend_mtd_usd: entitlement.spend_mtd_usd as number | string,
     spend_period_start: String(entitlement.spend_period_start),
   });
-  if (spend >= Number(entitlement.monthly_cap_usd)) {
-    return NextResponse.json(
-      {
-        error: {
-          message:
-            "Monthly usage limit reached. Ask your human to raise the cap in Billing & Usage.",
-          type: "insufficient_quota",
-        },
-      },
-      { status: 429 }
-    );
-  }
+  const monthlyCapReached = spend >= Number(entitlement.monthly_cap_usd);
 
   const tierValue = String(entitlement.speed_tier);
   const entitledTier = isSpeedTier(tierValue) ? tierValue : "balanced";
   // A user who never touched the setting gets Ox Alpha, not OpenAI.
   const familyValue = String(entitlement.model_family ?? "");
-  const family = isModelFamily(familyValue) ? familyValue : DEFAULT_MODEL_FAMILY;
+  const family =
+    familyOverride ??
+    (isModelFamily(familyValue) ? familyValue : DEFAULT_MODEL_FAMILY);
   const selection: ModelSelection = {
     openrouterModel: (entitlement.openrouter_model as string | null) ?? null,
     veniceModel: (entitlement.venice_model as string | null) ?? null,
@@ -371,7 +374,7 @@ export async function POST(
   // the user's own token spend and platform metering records zero cost. The
   // app principal never rides them — its daily cap (CR8) only binds when the
   // spend is metered.
-  const personalKeys = app
+  const personalKeys = app || familyOverride !== null
     ? { openrouter: null, venice: null, gmi: null }
     : {
         openrouter: await getProviderKey(supabase, userId, "openrouter").catch(
@@ -445,6 +448,24 @@ export async function POST(
     createModel = { tier: legacyTier, slug };
   }
   const createTier = createModel?.tier ?? null;
+  // A fleet-wide GMI switch spends prepaid GMI credits, so ordinary chat is
+  // not stopped by AIR's platform-paid monthly cap. Explicit Create runs stay
+  // OpenAI-only and therefore keep the cap.
+  if (
+    monthlyCapReached &&
+    !(familyOverride === "gmi" && createTier === null)
+  ) {
+    return NextResponse.json(
+      {
+        error: {
+          message:
+            "Monthly usage limit reached. Ask your human to raise the cap in Billing & Usage.",
+          type: "insufficient_quota",
+        },
+      },
+      { status: 429 }
+    );
+  }
   const tier =
     appTier !== null
       ? appTier
@@ -739,9 +760,12 @@ export async function POST(
         headers: { "Content-Type": "application/json" },
       });
     }
-    const canFallBack = providerForFamily(servedFamily) !== "openai";
+    const nonOpenAiProvider = providerForFamily(servedFamily) !== "openai";
+    // During an operations override, never leak spend back to OpenAI. GMI is
+    // still retried once for transient failures, then its error is surfaced.
+    const canFallBack = nonOpenAiProvider && familyOverride === null;
     if (
-      canFallBack &&
+      nonOpenAiProvider &&
       [429, 500, 502, 503, 504].includes(upstream.status)
     ) {
       console.warn(
@@ -772,7 +796,7 @@ export async function POST(
       );
       servedFamily = "openai";
       upstream = await dispatch(servedFamily);
-    } else if (canFallBack && !streaming) {
+    } else if (nonOpenAiProvider && upstream.ok && !streaming) {
       const parsed = (await upstream.clone().json().catch(() => null)) as {
         choices?: {
           message?: {
@@ -791,8 +815,20 @@ export async function POST(
             !message.reasoning &&
             !(Array.isArray(message.tool_calls) && message.tool_calls.length > 0)));
       if (parsed === null || empty) {
-        servedFamily = "openai";
-        upstream = await dispatch(servedFamily);
+        if (canFallBack) {
+          servedFamily = "openai";
+          upstream = await dispatch(servedFamily);
+        } else {
+          return NextResponse.json(
+            {
+              error: {
+                message: `${servedFamily} returned an empty response`,
+                type: "upstream_empty_response",
+              },
+            },
+            { status: 502 }
+          );
+        }
       }
     }
 
@@ -807,7 +843,7 @@ export async function POST(
     // Streamed non-OpenAI answers get the same empty check: the whole SSE body
     // is buffered (these families answer in one burst) and replayed, or
     // replaced by an OpenAI stream when no delta ever carried content.
-    if (streaming && servedFamily !== "openai" && canFallBack) {
+    if (streaming && servedFamily !== "openai" && nonOpenAiProvider) {
       const raw = new Uint8Array(await upstream.clone().arrayBuffer());
       const text = new TextDecoder().decode(raw);
       let sawContent = false;
@@ -840,14 +876,26 @@ export async function POST(
         }
       }
       if (!sawContent) {
-        servedFamily = "openai";
-        upstream = await dispatch(servedFamily);
-        if (!upstream.ok || !upstream.body) {
-          const errorBody = await upstream.text();
-          return new NextResponse(errorBody, {
-            status: upstream.status,
-            headers: { "Content-Type": "application/json" },
-          });
+        if (canFallBack) {
+          servedFamily = "openai";
+          upstream = await dispatch(servedFamily);
+          if (!upstream.ok || !upstream.body) {
+            const errorBody = await upstream.text();
+            return new NextResponse(errorBody, {
+              status: upstream.status,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+        } else {
+          return NextResponse.json(
+            {
+              error: {
+                message: `${servedFamily} returned an empty response`,
+                type: "upstream_empty_response",
+              },
+            },
+            { status: 502 }
+          );
         }
       }
     }

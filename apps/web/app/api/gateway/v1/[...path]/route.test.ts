@@ -457,6 +457,7 @@ describe("gateway fast-tier delegation override", () => {
   });
   afterEach(() => {
     delete process.env["MODEL_REASONING_FAST"];
+    delete process.env["GATEWAY_MODEL_FAMILY_OVERRIDE"];
     vi.unstubAllGlobals();
   });
 
@@ -578,6 +579,7 @@ describe("gateway model families", () => {
   });
   afterEach(() => {
     delete process.env["MODEL_REASONING_FAST"];
+    delete process.env["GATEWAY_MODEL_FAMILY_OVERRIDE"];
     vi.unstubAllGlobals();
   });
 
@@ -592,6 +594,40 @@ describe("gateway model families", () => {
     const headers = call.init.headers as Record<string, string>;
     expect(headers["Authorization"]).toBe("Bearer provider-key");
     expect(headers["HTTP-Referer"]).toBeUndefined();
+  });
+
+  it("forces ordinary chat onto the platform GMI key despite the user family and cap", async () => {
+    process.env["GATEWAY_MODEL_FAMILY_OVERRIDE"] = "gmi";
+    setEntitlement({
+      speed_tier: "balanced",
+      model_family: "openai",
+      monthly_cap_usd: 0,
+    });
+    const call = await upstreamCall({ messages: [], max_tokens: 200 });
+    expect(call.url).toBe("https://gmi.test/v1/chat/completions");
+    expect(call.body["model"]).toBe("openai/gpt-5.6-luna");
+    expect((call.init.headers as Record<string, string>)["Authorization"]).toBe(
+      "Bearer gmi-key"
+    );
+    setEntitlement({ monthly_cap_usd: 100 });
+  });
+
+  it("does not fall back to OpenAI while the GMI fleet override is active", async () => {
+    process.env["GATEWAY_MODEL_FAMILY_OVERRIDE"] = "gmi";
+    setEntitlement({ speed_tier: "balanced", model_family: "openai" });
+    const fetchMock = vi.fn(async (url: RequestInfo | URL) => {
+      void url;
+      return new Response("temporarily unavailable", { status: 429 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await POST(completionRequest({ messages: [] }), {
+      params: Promise.resolve({ path: ["chat", "completions"] }),
+    });
+    expect(response.status).toBe(429);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.every((call) =>
+      String(call[0]).startsWith("https://gmi.test/")
+    )).toBe(true);
   });
 
   it("keeps the OpenAI-only service_tier off OpenRouter requests", async () => {
