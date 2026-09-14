@@ -1,8 +1,44 @@
 import { execFileSync } from "node:child_process";
-import { describe, expect, it, vi } from "vitest";
-import { STATE_RECOVERY_SCRIPT } from "./stateRecovery";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { command } from "../box/client";
+import { maybeRecoverStateDatabase, STATE_RECOVERY_SCRIPT } from "./stateRecovery";
 
 vi.mock("../box/client", () => ({ command: vi.fn() }));
+
+afterEach(() => vi.clearAllMocks());
+
+describe("operator recovery authorization", () => {
+  function registry(value: unknown) {
+    const claim = vi.fn().mockResolvedValue({ data: [{ key: "claimed" }] });
+    const remove = { eq: vi.fn().mockReturnThis(), select: claim };
+    const lookup = { select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({ data: value === null ? null : { value, updated_at: "version" } }) };
+    const from = vi.fn().mockReturnValueOnce(lookup).mockReturnValue({ delete: () => remove });
+    return { client: { from } as unknown as SupabaseClient, claim };
+  }
+
+  it("does not run without an exact operator request", async () => {
+    const { client, claim } = registry(null);
+    await maybeRecoverStateDatabase(client, "box-one");
+    expect(claim).not.toHaveBeenCalled();
+    expect(command).not.toHaveBeenCalled();
+  });
+
+  it("does not claim partial-history restoration without explicit approval", async () => {
+    const { client, claim } = registry({ operation_id: "valid-operation", restore_operation_id: "prior-operation" });
+    await maybeRecoverStateDatabase(client, "box-one");
+    expect(claim).not.toHaveBeenCalled();
+    expect(command).not.toHaveBeenCalled();
+  });
+
+  it("rejects source paths that are not validated operation IDs", async () => {
+    const { client, claim } = registry({ operation_id: "valid-operation", restore_operation_id: "../state.db", accept_partial_history: true });
+    await maybeRecoverStateDatabase(client, "box-one");
+    expect(claim).not.toHaveBeenCalled();
+    expect(command).not.toHaveBeenCalled();
+  });
+});
 
 function fixture(check: string) {
   const harness = `
@@ -192,5 +228,22 @@ assert db.read_bytes() == original
 `);
     expect(report.applied).toBe(false);
     expect(report.error).toContain("refusing empty reset");
+  });
+
+  it("retries unusable system salvage on retained bytes before an approved restore", () => {
+    const report = fixture(`
+folder = root / 'state-recovery/failed-salvage'
+folder.mkdir(parents=True)
+shutil.copy2(db, folder / 'state.db')
+(folder / 'report.json').write_text(json.dumps({'salvage': {'recover_exit_code': 1}}))
+official_recovery_cli = lambda folder: shutil.which('sqlite3')
+damaged = bytearray(db.read_bytes())
+damaged[100] = 0
+db.write_bytes(damaged)
+report = restore_staged(root, 'retry-restore', 'failed-salvage')
+assert (root / 'state-recovery/retry-restore/state.db').read_bytes() == damaged
+assert healthy(db) is None
+`);
+    expect(report).toMatchObject({ applied: true, salvage: { recover_exit_code: 0, restore_exit_code: 0 } });
   });
 });

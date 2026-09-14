@@ -36,7 +36,7 @@ export async function maybeRecoverStateDatabase(
 // No transcript content leaves the box. Unsupported/deeper corruption fails
 // closed with the untouched original and staged forensic copy retained.
 export const STATE_RECOVERY_SCRIPT = String.raw`
-import contextlib, fcntl, hashlib, json, os, pathlib, shutil, signal, sqlite3, subprocess, sys, time
+import contextlib, fcntl, hashlib, io, json, os, pathlib, platform, shutil, signal, sqlite3, subprocess, sys, time, urllib.request, zipfile
 
 def quote(name):
     return '"' + name.replace('"', '""') + '"'
@@ -135,7 +135,27 @@ def inspect_copy(path):
                     item[name] = {'error': str(error)[:300]}
     return result
 
-def stage_salvage(folder):
+def official_recovery_cli(folder):
+    # Isolated recovery dependency, not a system or Hermes runtime upgrade.
+    # URL and SHA3-256 are pinned to SQLite's official download manifest.
+    if platform.machine() != 'x86_64':
+        raise RuntimeError('official recovery tool requires Linux x86_64')
+    url = 'https://www.sqlite.org/2026/sqlite-tools-linux-x64-3530400.zip'
+    expected = '6eeb57e8f2aef7687f9f016a980992cf2799c8c07a87c5e21495530f91915047'
+    with urllib.request.urlopen(url, timeout=25) as response:
+        archive = response.read(16_000_001)
+    if len(archive) > 16_000_000 or hashlib.sha3_256(archive).hexdigest() != expected:
+        raise RuntimeError('official SQLite archive checksum mismatch')
+    with zipfile.ZipFile(io.BytesIO(archive)) as bundle:
+        members = [info for info in bundle.infolist() if pathlib.PurePosixPath(info.filename).name == 'sqlite3']
+        if len(members) != 1 or members[0].file_size > 20_000_000:
+            raise RuntimeError('unexpected SQLite archive layout')
+        binary = folder / 'sqlite3-recovery'
+        binary.write_bytes(bundle.read(members[0]))
+        binary.chmod(0o700)
+    return str(binary)
+
+def stage_salvage(folder, cli='sqlite3'):
     # Work only from the retained pre-repair bytes, never from a failed native
     # repair's output. Recovered SQL and transcript content stay on this box.
     forensic = folder / 'forensic.db'
@@ -146,13 +166,13 @@ def stage_salvage(folder):
     report = {'source': inspect_copy(forensic)}
     sql = folder / 'recovered.sql'
     with sql.open('wb') as output:
-        recover = subprocess.run(['sqlite3', str(forensic), '.recover --ignore-freelist'],
+        recover = subprocess.run([cli, str(forensic), '.recover --ignore-freelist'],
                                  stdout=output, stderr=subprocess.DEVNULL, timeout=70)
     report['recover_exit_code'] = recover.returncode
     report['sql_bytes'] = sql.stat().st_size
     recovered = folder / 'recovered.db'
     with sql.open('rb') as source:
-        restore = subprocess.run(['sqlite3', str(recovered)], stdin=source,
+        restore = subprocess.run([cli, str(recovered)], stdin=source,
                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=70)
     report['restore_exit_code'] = restore.returncode
     if recovered.exists():
@@ -177,6 +197,17 @@ def restore_staged(root, operation, source_operation):
         prior_report = recovered.parent / 'report.json'
         if prior_report.exists():
             report['salvage'] = json.loads(prior_report.read_text()).get('salvage', {})
+        if report.get('salvage', {}).get('recover_exit_code') not in (None, 0):
+            # Some system sqlite3 builds expose .recover but cannot execute
+            # it. Retry on raw backup bytes with the pinned official shell.
+            retry = folder / 'salvage'
+            retry.mkdir(mode=0o700)
+            for suffix in ('', '-wal', '-shm', '-journal'):
+                raw = recovered.parent / ('state.db' + suffix)
+                if raw.exists():
+                    shutil.copy2(raw, retry / raw.name)
+            report['salvage'] = stage_salvage(retry, official_recovery_cli(folder))
+            recovered = retry / 'recovered.db'
         candidate = folder / 'candidate.db'
         with contextlib.closing(sqlite3.connect(recovered.as_uri() + '?mode=ro', uri=True)) as source:
             # This must be a real recovered history, never an empty reset.
