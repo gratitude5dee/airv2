@@ -13,6 +13,10 @@ import { timingSafeEqual } from "node:crypto";
 import { serviceClient } from "@/lib/supabase";
 import { claimFlush, runFlush } from "@/lib/orchestrator/flush";
 import { recoverOrphanedCarriedJobs } from "@/lib/orchestrator/carryRecovery";
+import {
+  listClaimableOverdueFlushJobs,
+  type OverdueFlushJob,
+} from "@/lib/orchestrator/overdueFlush";
 import { findSweepableBoxes } from "@/lib/orchestrator/sweep";
 import { stopIdleBoxes } from "@/lib/orchestrator/idleStop";
 import { reconcileVerdict } from "@/lib/orchestrator/reconcile";
@@ -35,15 +39,6 @@ function authorized(request: NextRequest): boolean {
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
   if (token.length !== secret.length) return false;
   return timingSafeEqual(Buffer.from(token), Buffer.from(secret));
-}
-
-interface OverdueJob {
-  space_id: string;
-  user_id: string;
-  phone: string;
-  run_at: string;
-  attempts: number;
-  sender_tier: number | null;
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
@@ -114,14 +109,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   // Flush jobs overdue by more than a debounce window: their after() task
   // died. Claim and run them here.
-  const overdueBefore = new Date(Date.now() - 30_000).toISOString();
-  const { data: overdue } = await supabase
-    .from("flush_jobs")
-    .select("space_id, user_id, phone, run_at, attempts, sender_tier")
-    .lt("run_at", overdueBefore)
-    .limit(10);
+  const overdue = await listClaimableOverdueFlushJobs(supabase, now);
   let flushed = 0;
-  for (const job of (overdue ?? []) as OverdueJob[]) {
+  for (const job of overdue as OverdueFlushJob[]) {
     const claim = await claimFlush(supabase, job.space_id, job.run_at);
     if (!claim) continue;
     try {
