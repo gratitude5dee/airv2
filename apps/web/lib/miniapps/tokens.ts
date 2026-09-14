@@ -109,3 +109,35 @@ export async function recordRedemption(
   );
   return true;
 }
+
+/**
+ * Atomically consume a sensitive launch capability. Ordinary card links are
+ * deliberately replayable during their short TTL because messaging clients
+ * preview them before the owner taps. Checkout's browser handoff instead
+ * keeps its token in the URL fragment and calls this path only after the
+ * page has loaded in a real browser. A duplicate JTI is a replay, not a
+ * reason to mint another owner session.
+ */
+export async function consumeRedemptionOnce(
+  supabase: SupabaseClient,
+  claims: MiniAppClaims
+): Promise<boolean> {
+  const { error } = await supabase.from("miniapp_redemptions").insert({
+    jti: claims.jti,
+    user_id: claims.userId,
+    app: claims.app,
+  });
+  if (!error) {
+    console.log(
+      JSON.stringify({
+        msg: "miniapp token consumed once",
+        user_id: claims.userId,
+        app: claims.app,
+        jti: claims.jti,
+      })
+    );
+    return true;
+  }
+  if (error.code === "23505" || error.code === "23503") return false;
+  throw new Error(`miniapp redemption failed: ${error.message}`);
+}

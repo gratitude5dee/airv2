@@ -56,7 +56,7 @@ describe("desktopStreamUrl", () => {
       "https://d.on.ascii.dev/stream.html?token=abc"
     );
     expect(ensureBoxAwake).toHaveBeenCalledWith(supabase, "user-1");
-    expect(requestDesktop).toHaveBeenCalledWith("bx_1", undefined);
+    expect(requestDesktop).toHaveBeenCalledWith("bx_1", { timeoutMs: 5_000 });
   });
 
   it("passes the vnc option through to the desktop request", async () => {
@@ -66,7 +66,7 @@ describe("desktopStreamUrl", () => {
     await expect(
       desktopStreamUrl(supabase, "user-1", { vnc: true })
     ).resolves.toBe("https://d.on.ascii.dev/vnc.html?_token=abc");
-    expect(requestDesktop).toHaveBeenCalledWith("bx_1", { vnc: true });
+    expect(requestDesktop).toHaveBeenCalledWith("bx_1", { vnc: true, timeoutMs: 5_000 });
   });
 
   it("throws DesktopUnavailableError when the stream isn't up", async () => {
@@ -101,7 +101,7 @@ describe("desktopStreamUrlIfUp", () => {
     await expect(
       desktopStreamUrlIfUp(supabaseWithBox("bx_1"), "user-1")
     ).resolves.toEqual({ status: "waking" });
-    expect(resume).toHaveBeenCalledWith("bx_1");
+    expect(resume).toHaveBeenCalledWith("bx_1", { timeoutMs: 5_000 });
     expect(requestDesktop).not.toHaveBeenCalled();
   });
 

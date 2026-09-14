@@ -7,6 +7,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { computer } from "./computer";
+import { captureScreenshotPng } from "@/lib/box/screenshot";
 import type { MiniAppContext } from "./types";
 
 vi.mock("@/lib/box/screenshot", () => ({
@@ -65,7 +66,18 @@ describe("computer mini-app live embed", () => {
     // without it) and the self-hosted keyboard forwarder.
     expect(html).toContain('allow="autoplay; fullscreen');
     expect(html).toContain('<script src="/creator-os/computer.js" defer>');
+    expect(html).toContain("View latest screenshot");
     expect(csp).toContain("script-src 'self'");
+  });
+
+  it("offers a genuine, non-interactive screenshot only on an explicit owner request", async () => {
+    vi.mocked(captureScreenshotPng).mockResolvedValueOnce(Buffer.from("png"));
+    const res = await computer.render(ctxFor("ready", "/computer?snapshot=1"));
+    const html = await res.text();
+    expect(html).not.toContain("<iframe");
+    expect(html).toContain('src="data:image/png;base64,cG5n"');
+    expect(html).toContain("Snapshot captured just now — not interactive.");
+    expect(res.headers.get("Content-Security-Policy")).not.toContain("frame-src");
   });
 
   it("offers Watch live without embedding when the box is stopped", async () => {

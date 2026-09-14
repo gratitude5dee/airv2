@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cancelCheckoutHandoff, getCheckoutHandoff, type CheckoutHandoff } from "@/lib/checkout/handoffs";
-import { mintSignedLink } from "../cards";
+import { mintSignedLink, refreshCheckoutCard } from "../cards";
 import { externalOrigin } from "../gates";
 import { esc, forbidden, withBaseHeaders } from "../html";
 import { renderShell, shellHtml } from "../shell";
@@ -47,7 +47,19 @@ export const checkout: MiniAppModule = {
   async action(ctx: MiniAppContext, form: FormData): Promise<NextResponse> {
     if (ctx.session.role !== "owner") return forbidden("this view is owner-only");
     if (String(form.get("action") ?? "") !== "cancel") return forbidden("unknown action");
-    await cancelCheckoutHandoff(ctx.supabase, ctx.session.userId, ctx.session.resourceId);
+    const cancelled = await cancelCheckoutHandoff(
+      ctx.supabase,
+      ctx.session.userId,
+      ctx.session.resourceId
+    );
+    if (cancelled) {
+      // Do not send a new card after cancellation: only edit the existing
+      // session if there is one, then let the owner return to the mini-app.
+      await refreshCheckoutCard(ctx.supabase, ctx.session.userId, {
+        id: ctx.session.resourceId,
+        status: "cancelled",
+      }).catch(() => undefined);
+    }
     return withBaseHeaders(NextResponse.redirect(new URL(ctx.basePath, externalOrigin(ctx.request)), 303));
   },
 };

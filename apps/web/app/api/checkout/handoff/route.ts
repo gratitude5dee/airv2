@@ -4,6 +4,7 @@ import {
   updateCheckoutHandoff,
   type CheckoutHandoffStatus,
 } from "@/lib/checkout/handoffs";
+import { refreshCheckoutCard } from "@/lib/miniapps/cards";
 import { serviceClient } from "@/lib/supabase";
 
 export const runtime = "nodejs";
@@ -68,6 +69,21 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
     if (body?.["payment_request_id"] === null || typeof body?.["payment_request_id"] === "string") update.paymentRequestId = body["payment_request_id"] as string | null;
     if (typeof body?.["version"] === "number") update.expectedVersion = body["version"];
     const handoff = await updateCheckoutHandoff(supabase, String(box.user_id), id, update);
+    // A status update must never create another card. If the original bubble
+    // is gone, the next agent reply can explicitly send one; this path edits
+    // only the durable Spectrum session that already exists.
+    await refreshCheckoutCard(supabase, String(box.user_id), handoff).catch(
+      (error: unknown) => {
+        console.error(
+          JSON.stringify({
+            msg: "checkout card refresh failed",
+            user_id: String(box.user_id),
+            handoff_id: handoff.id,
+            error: error instanceof Error ? error.message : "unknown",
+          })
+        );
+      }
+    );
     return NextResponse.json({ ok: true, handoff_id: handoff.id, status: handoff.status, version: handoff.version });
   } catch (error) {
     const message = error instanceof Error ? error.message : "invalid handoff update";

@@ -5,12 +5,14 @@ import type { MiniAppContext } from "./types";
 
 const getCheckoutHandoff = vi.hoisted(() => vi.fn());
 const cancelCheckoutHandoff = vi.hoisted(() => vi.fn(async () => true));
+const refreshCheckoutCard = vi.hoisted(() => vi.fn(async () => "updated"));
 vi.mock("@/lib/checkout/handoffs", () => ({
   getCheckoutHandoff,
   cancelCheckoutHandoff,
 }));
 vi.mock("../cards", () => ({
   mintSignedLink: vi.fn(() => "https://mini.example/computer?t=token"),
+  refreshCheckoutCard,
 }));
 
 const handoff = {
@@ -83,6 +85,11 @@ describe("checkout mini-app", () => {
       expect.any(Object),
       "user-1",
       handoff.id
+    );
+    expect(refreshCheckoutCard).toHaveBeenCalledWith(
+      expect.any(Object),
+      "user-1",
+      { id: handoff.id, status: "cancelled" }
     );
     expect(cancelled.status).toBe(303);
   });

@@ -9,6 +9,7 @@ import { CARD_MARKER } from "../orchestrator/outbound";
 import {
   createSurfacePath,
   mintSignedLink,
+  mintCheckoutBrowserLink,
   parseCardMarker,
   sendMarkedCards,
   sendOrUpdateAppCard,
@@ -346,6 +347,30 @@ describe("sendOrUpdateCheckoutCard", () => {
     expect(handoffs.getCheckoutHandoff).toHaveBeenCalledWith(supabase, "user-1", "123e4567-e89b-12d3-a456-426614174000");
     expect(sends.claimCardSend).toHaveBeenCalledWith(supabase, "user-1", "checkout");
     expect(sender.sendApp).toHaveBeenCalledTimes(1);
+    expect(sender.sendText).toHaveBeenCalledTimes(1);
+    const [, , text] = sender.sendText.mock.calls[0] as unknown as [string, string, string];
+    expect(text).toMatch(/^Open checkout in your browser: https:\/\/mini\.example\/api\/mini\/checkout-launch#t=/);
+  });
+
+  it("puts the sensitive browser capability in a fragment, not a request query", () => {
+    const url = new URL(mintCheckoutBrowserLink("user-1", "123e4567-e89b-12d3-a456-426614174000"));
+    expect(url.pathname).toBe("/api/mini/checkout-launch");
+    expect(url.search).toBe("");
+    expect(url.hash).toMatch(/^#t=/);
+  });
+
+  it("falls back to the browser handoff when the native card is unsupported", async () => {
+    const { UnsupportedError } = await import("spectrum-ts");
+    const sender = fakeSender();
+    sender.sendApp.mockRejectedValueOnce(
+      UnsupportedError.content("send", "imessage", "no native card")
+    );
+    vi.mocked(createSpectrumSender).mockResolvedValue(sender as unknown as SpectrumSender);
+    sessions.readMiniAppCardSession.mockResolvedValue(undefined);
+
+    expect(await sendOrUpdateCheckoutCard(supabase, owner, "123e4567-e89b-12d3-a456-426614174000")).toBe("sent");
+    expect(sender.sendText).toHaveBeenCalledTimes(1);
+    expect(sender.close).toHaveBeenCalledTimes(1);
   });
 
   it("edits an existing checkout bubble without claiming a duplicate", async () => {

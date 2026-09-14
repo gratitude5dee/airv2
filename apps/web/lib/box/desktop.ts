@@ -11,6 +11,9 @@ import { getBox, isStartLimit, requestDesktop, resume } from "./client";
 import { BoxApiError } from "./types";
 import { ensureBoxAwake, StartLimitError } from "../orchestrator/boxes";
 
+/** The mini-app retries on a short cadence; never block one browser request. */
+const DESKTOP_PROBE_TIMEOUT_MS = 5_000;
+
 export class DesktopUnavailableError extends Error {
   constructor() {
     super("desktop stream unavailable");
@@ -36,7 +39,10 @@ export async function desktopStreamUrl(
   options?: { vnc?: boolean }
 ): Promise<string> {
   const userBox = await ensureBoxAwake(supabase, userId);
-  const url = await requestDesktop(userBox.boxId, options);
+  const url = await requestDesktop(userBox.boxId, {
+    ...options,
+    timeoutMs: DESKTOP_PROBE_TIMEOUT_MS,
+  });
   if (!url) {
     throw new DesktopUnavailableError();
   }
@@ -59,7 +65,7 @@ export async function desktopStreamUrlIfUp(
 ): Promise<DesktopStreamResult> {
   const { data, error } = await supabase
     .from("boxes")
-    .select("provider_box_id")
+    .select("provider_box_id, state")
     .eq("user_id", userId)
     .maybeSingle();
   if (error) {
@@ -69,10 +75,13 @@ export async function desktopStreamUrlIfUp(
   if (!boxId) {
     throw new Error(`no box for user ${userId}`);
   }
-  const box = await getBox(boxId);
+  // Another Messages tap may already be waking this tenant. Avoid a second
+  // provider resume from the same user-facing recovery loop.
+  if (data?.state === "starting") return { status: "waking" };
+  const box = await getBox(boxId, { timeoutMs: DESKTOP_PROBE_TIMEOUT_MS });
   if (box.state !== "ready" && box.state !== "idle") {
     try {
-      await resume(boxId);
+      await resume(boxId, { timeoutMs: DESKTOP_PROBE_TIMEOUT_MS });
       // last_active_at starts the stale-transition clock the sweeper
       // reconciles from; a stale timestamp would put a fresh boot on it.
       await supabase
@@ -97,7 +106,10 @@ export async function desktopStreamUrlIfUp(
   }
   let url: string | undefined;
   try {
-    url = await requestDesktop(boxId, options);
+    url = await requestDesktop(boxId, {
+      ...options,
+      timeoutMs: DESKTOP_PROBE_TIMEOUT_MS,
+    });
   } catch (error) {
     // ASCII reports a running box before the desktop daemon has finished
     // preparing the stream. This is recoverable and must not become the

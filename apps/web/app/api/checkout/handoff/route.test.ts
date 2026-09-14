@@ -3,10 +3,12 @@ import { NextRequest } from "next/server";
 
 const createCheckoutHandoff = vi.hoisted(() => vi.fn());
 const updateCheckoutHandoff = vi.hoisted(() => vi.fn());
+const refreshCheckoutCard = vi.hoisted(() => vi.fn(async () => "updated"));
 vi.mock("@/lib/checkout/handoffs", () => ({
   createCheckoutHandoff,
   updateCheckoutHandoff,
 }));
+vi.mock("@/lib/miniapps/cards", () => ({ refreshCheckoutCard }));
 
 const box = { user_id: "owner-1" };
 const destination = { space_id: "space-1", phone: "+15550001111" };
@@ -89,6 +91,14 @@ describe("/api/checkout/handoff", () => {
       "owner-1",
       "123e4567-e89b-12d3-a456-426614174000",
       expect.objectContaining({ status: "needs_human", expectedVersion: 0 })
+    );
+    expect(refreshCheckoutCard).toHaveBeenCalledWith(
+      expect.anything(),
+      "owner-1",
+      expect.objectContaining({
+        id: "123e4567-e89b-12d3-a456-426614174000",
+        status: "needs_human",
+      })
     );
     await expect(response.json()).resolves.toEqual({
       ok: true,

@@ -62,13 +62,13 @@ function renderState(
     : "";
   const shot =
     !embed && screenshotDataUri
-      ? `<img src="${screenshotDataUri}" alt="Latest screen" style="width:100%;border-radius:var(--radius-well);box-shadow:var(--shadow);margin-top:10px">`
+      ? `<img src="${screenshotDataUri}" alt="Latest screen" style="width:100%;border-radius:var(--radius-well);box-shadow:var(--shadow);margin-top:10px"><p class="muted">Snapshot captured just now — not interactive.</p>`
       : awake || embed
         ? ""
         : `<p class="muted">The computer is asleep \u2014 watching live will wake it.</p>`;
   const watch = embed
-    ? ""
-    : `<div class="addrow"><a href="${esc(basePath)}?embed=1" style="text-decoration:none"><button>Watch live</button></a></div>`;
+    ? `<p class="muted"><a href="${esc(basePath)}?snapshot=1">View latest screenshot</a></p>`
+    : `<div class="addrow"><a href="${esc(basePath)}?embed=1" style="text-decoration:none"><button>Watch live</button></a>${awake ? `<a href="${esc(basePath)}?snapshot=1" style="display:inline-flex;align-items:center;margin-left:.75rem">View latest screenshot</a>` : ""}</div>`;
   const body = `<section class="panel">${power}${runRow}${live}${shot}${watch}</section>`;
   return renderShell({
     title: "Your agent's computer",
@@ -115,8 +115,10 @@ export const computer: MiniAppModule = {
     const awake = box?.state === "ready" || box?.state === "idle";
     // Embed the live iframe when the box is already awake, or when the user
     // explicitly asked to watch (the iframe's ?view=live request wakes it).
+    const wantsSnapshot = ctx.request.nextUrl.searchParams.get("snapshot") === "1";
     const embed =
-      awake || ctx.request.nextUrl.searchParams.get("embed") === "1";
+      !wantsSnapshot &&
+      (awake || ctx.request.nextUrl.searchParams.get("embed") === "1");
 
     // Thumbnail only when the box is ALREADY awake — looking never wakes it.
     let screenshot: string | null = null;

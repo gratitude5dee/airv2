@@ -28,7 +28,7 @@ export async function renderPassthrough(
       renderShell({
         title: "Computer",
         kicker: "Screen",
-        body: `<section class="panel"><p>${message}</p></section>`,
+        body: `<section class="panel"><p>${message}</p><p><a href="${esc(`${ctx.request.nextUrl.pathname}?view=live`)}" target="_top" rel="noopener">Retry now</a></p></section>`,
         lite: ctx.session.via === "card",
       })
     );
@@ -45,6 +45,9 @@ export async function renderPassthrough(
   // its desktop daemon. Six attempts cover roughly 30 seconds for the slow
   // wake path and leave a deliberate manual retry after that budget.
   const MAX_AUTO_RETRIES = 6;
+  // 1 + 2 + 4 + 5 + 5 + 5 seconds stays inside the readiness budget while
+  // leaving a visible, deliberate manual retry instead of a refresh loop.
+  const retryDelaySeconds = [1, 2, 4, 5, 5, 5][retry] ?? 5;
   const retryUrl = (nextRetry: number): string => {
     const query = new URLSearchParams({
       view: "live",
@@ -69,13 +72,13 @@ export async function renderPassthrough(
         renderShell({
           title: "Computer",
           kicker: "Screen",
-          body: `<section class="panel"><p>Waking your agent's computer\u2026</p><p class="muted">This can take a couple of minutes after a long sleep.${retryAvailable ? " This page refreshes itself." : " Automatic retries stopped after 30 seconds."}</p><p><a href="${esc(next)}" target="_top" rel="noopener">Retry now</a></p></section>`,
+          body: `<section class="panel"><p>Waking your agent's computer\u2026</p><p class="muted">This page retries briefly while the computer wakes.${retryAvailable ? " It will refresh automatically." : " Automatic retries stopped after about 30 seconds."}</p><p><a href="${esc(next)}" target="_top" rel="noopener">Retry now</a></p></section>`,
           lite: ctx.session.via === "card",
         })
       );
       if (retryAvailable) {
-        waking.headers.set("Refresh", `5; url=${retryUrl(retry + 1)}`);
-        waking.headers.set("Retry-After", "5");
+        waking.headers.set("Refresh", `${retryDelaySeconds}; url=${retryUrl(retry + 1)}`);
+        waking.headers.set("Retry-After", String(retryDelaySeconds));
       }
       waking.headers.set("Cache-Control", "no-store");
       return waking;
@@ -86,13 +89,13 @@ export async function renderPassthrough(
         renderShell({
           title: "Computer",
           kicker: "Screen",
-          body: `<section class="panel"><p>Preparing your agent's screen…</p><p class="muted">The computer is on, but its desktop stream is still starting.${retryAvailable ? " This page will retry shortly." : " Automatic retries stopped after 30 seconds."}</p><p style="display:flex;gap:.75rem;flex-wrap:wrap"><a href="${esc(`${ctx.request.nextUrl.pathname}?view=live&vnc=1`)}" target="_top" rel="noopener">Try VNC</a><a href="${esc(next)}" target="_top" rel="noopener">Retry now</a></p></section>`,
+          body: `<section class="panel"><p>Preparing your agent's screen…</p><p class="muted">The computer is on, but its desktop stream is still starting.${retryAvailable ? " This page will retry shortly." : " Automatic retries stopped after about 30 seconds."}</p><p style="display:flex;gap:.75rem;flex-wrap:wrap"><a href="${esc(`${ctx.request.nextUrl.pathname}?view=live&vnc=1`)}" target="_top" rel="noopener">Try VNC</a><a href="${esc(next)}" target="_top" rel="noopener">Retry now</a></p></section>`,
           lite: ctx.session.via === "card",
         })
       );
       if (retryAvailable) {
-        preparing.headers.set("Refresh", `3; url=${next}`);
-        preparing.headers.set("Retry-After", "3");
+        preparing.headers.set("Refresh", `${retryDelaySeconds}; url=${next}`);
+        preparing.headers.set("Retry-After", String(retryDelaySeconds));
       }
       preparing.headers.set("Cache-Control", "no-store");
       return preparing;
@@ -117,7 +120,7 @@ export async function renderPassthrough(
       })
     );
     return errorPage(
-      "Couldn't reach your agent's computer — try again shortly."
+      "Couldn't prepare your agent's computer right now. Check your connection, then retry."
     );
   }
 }

@@ -29,7 +29,12 @@ import { STORE_APP } from "./storeSession";
 import { mintToken } from "./tokens";
 import { warmStatusMirror } from "./onboardingMirror";
 import type { Message } from "spectrum-ts";
-import { getCheckoutHandoff, isCheckoutHandoffId } from "../checkout/handoffs";
+import {
+  getCheckoutHandoff,
+  isCheckoutHandoffId,
+  type CheckoutHandoff,
+  type CheckoutHandoffStatus,
+} from "../checkout/handoffs";
 
 /** Card links stay tappable for a day — cards linger in the transcript. */
 export const CARD_LINK_TTL_MINUTES = 24 * 60;
@@ -123,12 +128,51 @@ export function mintSignedLink(
   return `${env.miniappOrigin()}${nestedPathFor(appSlug)}?t=${mintToken(userId, appSlug, resourceId, CARD_LINK_TTL_MINUTES, { via })}`;
 }
 
+/**
+ * Checkout browser links use a dedicated fragment + POST exchange. The
+ * launch capability is never sent in an HTTP request, link preview, Referer
+ * header, or merchant URL, and is consumed exactly once by the exchange.
+ */
+export function mintCheckoutBrowserLink(userId: string, handoffId: string): string {
+  return `${env.miniappOrigin()}/api/mini/checkout-launch#t=${mintToken(
+    userId,
+    "checkout",
+    handoffId,
+    10
+  )}`;
+}
+
 /** Per-send copy override so a card bubble can carry its occasion (e.g. a
  * payment approval) — value-free metadata only, same rules as CARD_COPY. */
 export interface CardLayoutOverride {
   caption?: string;
   subcaption?: string;
   summary?: string;
+}
+
+/**
+ * Checkout cards are intentionally terse, but they must still say whether
+ * there is something the owner needs to do. The full quote remains in the
+ * owner-only mini-app; no merchant URL, price, or payment capability is put
+ * in the notification bubble itself.
+ */
+export function checkoutCardLayout(
+  status: CheckoutHandoffStatus
+): CardLayoutOverride {
+  const line: Record<CheckoutHandoffStatus, string> = {
+    preparing: "Preparing your checkout",
+    needs_human: "Needs your attention",
+    ready_for_review: "Ready to review",
+    payment_pending: "Payment approval pending",
+    requires_action: "Merchant action required",
+    completed: "Completed — verify receipt",
+    failed: "Couldn’t complete",
+    expired: "Hold expired",
+    cancelled: "Cancelled",
+    unknown_outcome: "Outcome needs verification",
+  };
+  const subcaption = line[status] ?? "Review and continue";
+  return { caption: "Checkout", subcaption, summary: `Checkout — ${subcaption}` };
 }
 
 /**
@@ -263,11 +307,10 @@ export async function sendOrUpdateCheckoutCard(
     handoff.id
   ).catch(() => undefined);
   if (existing) {
-    const outcome = await updateMiniAppCard(
+    const outcome = await refreshCheckoutCard(
       supabase,
       owner.userId,
-      "checkout",
-      handoff.id
+      handoff
     );
     if (outcome === "updated") return "updated";
     if (outcome === "failed") throw new Error("checkout card update failed");
@@ -275,19 +318,83 @@ export async function sendOrUpdateCheckoutCard(
   const claim = await claimCardSend(supabase, owner.userId, "checkout");
   if (!claim) return "cooldown";
   try {
-    await sendMiniAppCard(
-      supabase,
-      owner.spaceId,
-      owner.phone,
-      owner.userId,
-      "checkout",
-      handoff.id
-    );
+    await sendCheckoutHandoffCard(supabase, owner, handoff);
   } catch (error) {
     await claim.release().catch(() => undefined);
     throw error;
   }
   return "sent";
+}
+
+/**
+ * A checkout handoff has two independently-scoped entry points. The native
+ * card is pleasant in Messages when the extension supports it; the browser
+ * link is the durable fallback for clients that do not. Do not reuse the
+ * card-webview URL for Safari: separate links create separate surface
+ * sessions, so a webview's cookie jar is never assumed to transfer.
+ *
+ * A successful native send followed by a failed browser-link send is
+ * deliberately treated as delivered: retrying the whole unit could create a
+ * duplicate native card after an ambiguous transport failure. The card still
+ * opens the same handoff; the browser link is also available from the card
+ * page. If native cards are unsupported, the browser-link send is required.
+ */
+async function sendCheckoutHandoffCard(
+  supabase: SupabaseClient,
+  owner: { userId: string; spaceId: string; phone: string },
+  handoff: CheckoutHandoff
+): Promise<void> {
+  const sender = await createSpectrumSender();
+  const browserLink = mintCheckoutBrowserLink(owner.userId, handoff.id);
+  let nativeDelivered = false;
+  try {
+    try {
+      const message = await sender.sendApp(
+        owner.spaceId,
+        owner.phone,
+        () => mintSignedLink(owner.userId, "checkout", handoff.id, "card"),
+        { ...cardLayout("checkout"), ...checkoutCardLayout(handoff.status) }
+      );
+      nativeDelivered = true;
+      await persistCardSession(
+        supabase,
+        owner.userId,
+        "checkout",
+        handoff.id,
+        owner.spaceId,
+        message
+      );
+    } catch (error) {
+      if (!(error instanceof UnsupportedError)) throw error;
+      console.info(
+        JSON.stringify({
+          msg: "checkout native card unsupported; using browser handoff",
+          user_id: owner.userId,
+        })
+      );
+    }
+
+    try {
+      await sender.sendText(
+        owner.spaceId,
+        owner.phone,
+        `Open checkout in your browser: ${browserLink}`
+      );
+    } catch (error) {
+      if (!nativeDelivered) throw error;
+      // A separate browser link is useful, but an ambiguous second send must
+      // never cause a full-card retry after the native handoff was accepted.
+      console.error(
+        JSON.stringify({
+          msg: "checkout browser handoff link failed after native card",
+          user_id: owner.userId,
+          error: error instanceof Error ? error.message : "unknown",
+        })
+      );
+    }
+  } finally {
+    await sender.close().catch(() => undefined);
+  }
 }
 
 /**
@@ -409,7 +516,8 @@ export async function updateMiniAppCard(
   supabase: SupabaseClient,
   userId: string,
   appSlug: CardKind,
-  resourceId: string
+  resourceId: string,
+  layout?: CardLayoutOverride
 ): Promise<CardUpdateOutcome> {
   let destination:
     | { space_id?: unknown; phone?: unknown }
@@ -489,6 +597,7 @@ export async function updateMiniAppCard(
       {
         ...cardLayout(appSlug),
         ...(appSlug === "app" ? await appCardLayout(supabase, userId, resourceId) : {}),
+        ...layout,
       }
     );
     if (!refreshed) {
@@ -564,4 +673,23 @@ export async function updateMiniAppCard(
   } finally {
     await sender.close().catch(() => undefined);
   }
+}
+
+/**
+ * Refresh only a known checkout bubble. Unlike sendOrUpdateCheckoutCard this
+ * never claims a card slot or sends a replacement, which makes worker
+ * progress changes safe to call repeatedly.
+ */
+export async function refreshCheckoutCard(
+  supabase: SupabaseClient,
+  userId: string,
+  handoff: Pick<CheckoutHandoff, "id" | "status">
+): Promise<CardUpdateOutcome> {
+  return updateMiniAppCard(
+    supabase,
+    userId,
+    "checkout",
+    handoff.id,
+    checkoutCardLayout(handoff.status)
+  );
 }

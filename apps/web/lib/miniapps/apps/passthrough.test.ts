@@ -48,7 +48,7 @@ describe("renderPassthrough", () => {
     vi.mocked(desktopStreamUrlIfUp).mockResolvedValue({ status: "waking" });
     const res = await renderPassthrough(ctx());
     expect(res.status).toBe(200);
-    expect(res.headers.get("refresh")).toBe("5; url=/computer?view=live&retry=1");
+    expect(res.headers.get("refresh")).toBe("1; url=/computer?view=live&retry=1");
     expect(res.headers.get("cache-control")).toBe("no-store");
     const html = await res.text();
     expect(html).toContain("Waking your agent");
@@ -62,14 +62,23 @@ describe("renderPassthrough", () => {
     expect(res.headers.get("refresh")).toBeNull();
     const html = await res.text();
     expect(html).toContain("try again in a few minutes");
+    expect(html).toContain("Retry now");
+  });
+
+  it("keeps an explicit retry control for an unexpected provider failure", async () => {
+    vi.mocked(desktopStreamUrlIfUp).mockRejectedValue(new Error("network timeout"));
+    const res = await renderPassthrough(ctx());
+    const html = await res.text();
+    expect(html).toContain("Couldn't prepare your agent's computer right now");
+    expect(html).toContain('href="/computer?view=live"');
   });
 
   it("renders a bounded recovery page while the desktop daemon prepares", async () => {
     vi.mocked(desktopStreamUrlIfUp).mockResolvedValue({ status: "preparing" });
     const res = await renderPassthrough(ctx());
     expect(res.status).toBe(200);
-    expect(res.headers.get("refresh")).toBe("3; url=/computer?view=live&retry=1");
-    expect(res.headers.get("retry-after")).toBe("3");
+    expect(res.headers.get("refresh")).toBe("1; url=/computer?view=live&retry=1");
+    expect(res.headers.get("retry-after")).toBe("1");
     const html = await res.text();
     expect(html).toContain("Preparing your agent's screen");
     expect(html).toContain("Try VNC");
@@ -81,7 +90,7 @@ describe("renderPassthrough", () => {
     const res = await renderPassthrough(ctx("owner", "/computer?view=live&retry=6"));
     expect(res.headers.get("refresh")).toBeNull();
     expect(res.headers.get("retry-after")).toBeNull();
-    expect(await res.text()).toContain("Automatic retries stopped after 30 seconds");
+    expect(await res.text()).toContain("Automatic retries stopped after about 30 seconds");
   });
 
   it("keeps a manual retry available after a slow wake", async () => {

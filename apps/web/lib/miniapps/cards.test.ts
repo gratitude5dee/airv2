@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { UnsupportedError } from "spectrum-ts";
 import { createSpectrumSender } from "../spectrum/sender";
 import {
+  checkoutCardLayout,
   mintSignedLink,
   sendMiniAppCard,
   updateMiniAppCard,
@@ -184,5 +185,18 @@ describe("mintSignedLink surface", () => {
     expect(
       claims(mintSignedLink("user-1", "onboarding", "default"))?.via
     ).toBeUndefined();
+  });
+});
+
+describe("checkoutCardLayout", () => {
+  it("keeps progress information value-free in the Messages card", () => {
+    expect(checkoutCardLayout("needs_human")).toEqual({
+      caption: "Checkout",
+      subcaption: "Needs your attention",
+      summary: "Checkout — Needs your attention",
+    });
+    expect(checkoutCardLayout("completed").subcaption).toBe(
+      "Completed — verify receipt"
+    );
   });
 });

@@ -185,11 +185,17 @@ export async function renameBox(boxId: string, name: string): Promise<Box> {
   return envelope.box;
 }
 
-export async function resume(boxId: string): Promise<Box> {
+export async function resume(
+  boxId: string,
+  options?: { timeoutMs?: number }
+): Promise<Box> {
   if (providerOf(boxId) === "tenki") return tenki.resume(boxId);
   const envelope = await boxFetch(`/boxes/${boxId}/resume`, BoxEnvelopeSchema, {
     method: "POST",
     body: JSON.stringify({ ttlSeconds: BOX_TTL_SECONDS }),
+    ...(options?.timeoutMs !== undefined
+      ? { timeoutMs: options.timeoutMs }
+      : {}),
   });
   return envelope.box;
 }
@@ -223,22 +229,34 @@ export async function deleteBox(boxId: string): Promise<void> {
  */
 export async function requestDesktop(
   boxId: string,
-  options?: { vnc?: boolean }
+  options?: { vnc?: boolean; timeoutMs?: number }
 ): Promise<string | undefined> {
   if (providerOf(boxId) === "tenki") return tenki.requestDesktop(boxId);
   const query = options?.vnc ? "?vnc=1" : "?theme=light";
   const envelope = await boxFetch(
     `/boxes/${boxId}/desktop${query}`,
     DesktopEnvelopeSchema,
-    { method: "POST" }
+    {
+      method: "POST",
+      ...(options?.timeoutMs !== undefined
+        ? { timeoutMs: options.timeoutMs }
+        : {}),
+    }
   );
   if (!envelope.ok || envelope.success === false) return undefined;
   return envelope.desktopUrl;
 }
 
-export async function getBox(boxId: string): Promise<Box> {
+export async function getBox(
+  boxId: string,
+  options?: { timeoutMs?: number }
+): Promise<Box> {
   if (providerOf(boxId) === "tenki") return tenki.getBox(boxId);
-  const envelope = await boxFetch(`/boxes/${boxId}`, BoxEnvelopeSchema);
+  const envelope = await boxFetch(
+    `/boxes/${boxId}`,
+    BoxEnvelopeSchema,
+    options?.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : undefined
+  );
   return envelope.box;
 }
 
