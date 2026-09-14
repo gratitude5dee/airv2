@@ -28,6 +28,7 @@ import {
   type HermesBoxTarget,
 } from "../hermes/client";
 import type { ConversationMessage } from "../hermes/history";
+import { isStateDatabaseError, logStateDatabaseHealth } from "../hermes/stateHealth";
 import { botTarget, BOT_CHAT_SESSION, BOT_CHAT_TITLE } from "../bots/client";
 import { parseMention } from "../bots/mentions";
 import { listBots } from "../bots/store";
@@ -1155,6 +1156,9 @@ async function runFlushInner(
         sender,
         error
       );
+      if (runSession === MAIN_SESSION && isStateDatabaseError(error)) {
+        await logStateDatabaseHealth(box.boxId);
+      }
       return;
     }
     // Synthetic carried rows (bridge markers) are not real iMessages, so a
