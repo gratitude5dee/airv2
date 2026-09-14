@@ -10,7 +10,9 @@ import {
   BRIDGE_MESSAGE_ID_PREFIX,
   BRIDGE_SYSTEM_PROMPT,
   bridgeCarryMarker,
+  initialReply,
   isBridgeMarkerId,
+  progressUpdateReply,
   sharedBridgeReply,
 } from "./sharedBridge";
 
@@ -98,6 +100,39 @@ describe("sharedBridgeReply", () => {
       })
     );
     expect(await sharedBridgeReply(fakeSupabase("t"), "user-1", "hi")).toBeNull();
+  });
+});
+
+describe("first response and progress lanes", () => {
+  it("uses the fast gateway lane for a simple first reply", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ choices: [{ message: { content: "42" } }] }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await initialReply(fakeSupabase("t"), "user-1", "what is 6 times 7?")).toBe("42");
+    expect(JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string).model).toBe("fast");
+  });
+
+  it("uses an immediate static line for tool-dependent first replies", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await initialReply(fakeSupabase("t"), "user-1", "find deals for Portola Fest"))
+      .toContain("options");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("bounds a GLM progress update through the same fast gateway route", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ choices: [{ message: { content: "Checking the details now." } }] }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await progressUpdateReply(fakeSupabase("t"), "user-1", "find deals", "progress-one"))
+      .toBe("Checking the details now.");
+    const body = JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string);
+    expect(body.model).toBe("fast");
+    expect(body.max_tokens).toBe(32);
   });
 });
 

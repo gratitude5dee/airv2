@@ -41,6 +41,7 @@ vi.mock("./sharedBridge", () => ({
   BRIDGE_MESSAGE_ID_PREFIX: "bridge:",
   bridgeCarryMarker: (reply: string) => `[bridge] ${reply}`,
   isBridgeMarkerId: (id: string) => id.startsWith("bridge:"),
+  progressUpdateReply: vi.fn().mockResolvedValue(null),
   sharedBridgeReply: vi.fn().mockResolvedValue(null),
 }));
 

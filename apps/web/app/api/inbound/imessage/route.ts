@@ -29,7 +29,12 @@ import {
   updateQuickAckMarker,
   type InboundMessage,
 } from "@/lib/orchestrator/flush";
-import { quickAckReply } from "@/lib/orchestrator/sharedBridge";
+import { initialReply } from "@/lib/orchestrator/sharedBridge";
+import {
+  ACK_REACTION,
+  INITIAL_REPLY_SLA_MS,
+  REACTION_SLA_MS,
+} from "@/lib/orchestrator/ttfk";
 import { prewarmBox } from "@/lib/orchestrator/boxes";
 import { createSpectrumSender } from "@/lib/spectrum/sender";
 import {
@@ -77,7 +82,80 @@ async function sendLineReply(
   }
 }
 
+/**
+ * Starts before the HTTP response is returned. The promise is awaited from
+ * `after()` so serverless teardown cannot interrupt it, but establishing the
+ * Spectrum connection and sending the tapback do not wait for debounce,
+ * box wake, or a model request.
+ */
+async function sendImmediateReaction(
+  sender: Awaited<ReturnType<typeof createSpectrumSender>> | undefined,
+  message: InboundMessage,
+  receivedAtMs: number
+): Promise<void> {
+  if (!sender) return;
+  const reacted = await sender
+    .react(message.spaceId, message.phone, message.messageId, ACK_REACTION)
+    .catch(() => false);
+  console.info(
+    JSON.stringify({
+      msg: "imessage ttfk reaction",
+      user_id: message.userId,
+      space_id: message.spaceId,
+      delivered: reacted,
+      elapsed_ms: Date.now() - receivedAtMs,
+      within_sla: Date.now() - receivedAtMs <= REACTION_SLA_MS,
+    })
+  );
+}
+
+/**
+ * A single first bubble per settled burst. The marker is present for normal
+ * agent turns so the final model reply never repeats the acknowledgement.
+ * Explicit commands own their deterministic response lane, so they receive
+ * the visible line without introducing a marker into their command input.
+ */
+async function sendInitialReply(
+  supabase: ReturnType<typeof serviceClient>,
+  sender: Awaited<ReturnType<typeof createSpectrumSender>> | undefined,
+  message: InboundMessage,
+  body: string,
+  receivedAtMs: number
+): Promise<void> {
+  if (!sender || !(await isBurstStart(supabase, message.spaceId))) return;
+  const isCommand = body.trimStart().startsWith("/");
+  const markerId = isCommand
+    ? undefined
+    : await carryQuickAckMarker(supabase, message.userId, message.spaceId);
+  let sent = false;
+  try {
+    const reply = await initialReply(supabase, message.userId, body);
+    await sender.sendText(message.spaceId, message.phone, reply);
+    sent = true;
+    if (markerId) {
+      await updateQuickAckMarker(supabase, message.spaceId, markerId, reply);
+    }
+    console.info(
+      JSON.stringify({
+        msg: "imessage ttfk initial reply",
+        user_id: message.userId,
+        space_id: message.spaceId,
+        elapsed_ms: Date.now() - receivedAtMs,
+        within_sla: Date.now() - receivedAtMs <= INITIAL_REPLY_SLA_MS,
+        kind: isCommand ? "command" : "agent",
+      })
+    );
+  } finally {
+    if (markerId && !sent) {
+      await dropQuickAckMarker(supabase, message.spaceId, markerId);
+    }
+  }
+}
+
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  // Keep SLA accounting anchored to request receipt, rather than after the
+  // routing/database work required to safely identify a trusted recipient.
+  const receivedAtMs = Date.now();
   const rawBody = new Uint8Array(await request.arrayBuffer());
   const headers = spectrumWebhookHeaders(request.headers);
 
@@ -383,70 +461,42 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     body,
     senderTier: tier,
   };
-  const { runAt } = await enqueueInbound(supabase, message);
+  // Start connecting before the 200 leaves this function. The promise is
+  // retained by `after()` below and the reaction begins in parallel with the
+  // durable queue write.
+  const senderPromise = createSpectrumSender().catch(() => undefined);
+  const reaction = senderPromise.then((sender) =>
+    sendImmediateReaction(sender, message, receivedAtMs)
+  );
+  let runAt: string;
+  try {
+    ({ runAt } = await enqueueInbound(supabase, message));
+  } catch (error) {
+    // The sender may already have connected for the reaction. Do not retain a
+    // live client if the durable queue write rejects.
+    void senderPromise.then((sender) => sender?.close().catch(() => undefined));
+    throw error;
+  }
 
-  // 5: ack before work (C8). 6: work after the response — typing indicator
-  // immediately (a cold start becomes a pause, not silence), then the
-  // debounced flush.
+  // First-kindness work starts immediately, while the durable model turn
+  // remains after the 200. A cold wake therefore overlaps the 1s tapback and
+  // 5s first-bubble budgets instead of preceding them.
   after(async () => {
-    // Eager wake (optibox): kick the box resume the instant the message
-    // lands, in parallel with the typing indicator and the debounce wait,
-    // so a cold VM boot overlaps the turn instead of preceding it.
     void prewarmBox(supabase, message.userId);
-    const sender = await createSpectrumSender().catch(() => undefined);
+    const sender = await senderPromise;
     if (sender) {
-      await sender
+      // The tapback was already dispatched before the queue write. Do not
+      // let a slow receipt/read operation consume the five-second first-bubble
+      // budget; all three are best-effort independent iMessage actions.
+      void reaction.catch(() => undefined);
+      void sender
         .markRead(message.spaceId, message.phone, message.messageId)
         .catch(() => undefined);
-      await sender
+      void sender
         .startTyping(message.spaceId, message.phone)
         .catch(() => undefined);
-      // Instant first bubble: on the first message of a burst (owner only,
-      // not a /command or bare attachment) a tightly-bounded fast-lane
-      // completion answers right away while the real turn runs. The carry
-      // marker goes in BEFORE the completion so the agent's turn always
-      // knows an ack went out and never double-greets. Best-effort: any
-      // failure leaves only the typing indicator.
-      if (
-        message.senderTier === 0 &&
-        !body.trimStart().startsWith("/") &&
-        !body.trimStart().startsWith("[attachment:") &&
-        !body.trimStart().startsWith("[location shared]")
-      ) {
-        try {
-          if (await isBurstStart(supabase, message.spaceId)) {
-            const markerId = await carryQuickAckMarker(
-              supabase,
-              message.userId,
-              message.spaceId,
-            );
-            let sent = false;
-            try {
-              const ack = await quickAckReply(supabase, message.userId, body);
-              if (ack) {
-                await sender.sendText(message.spaceId, message.phone, ack);
-                sent = true;
-                // Embed the ack text so the agent knows exactly what went out
-                // and never re-answers a question the ack fully covered.
-                await updateQuickAckMarker(
-                  supabase,
-                  message.spaceId,
-                  markerId,
-                  ack,
-                );
-              }
-            } finally {
-              if (!sent) {
-                // Nothing actually reached the user: drop the marker so the
-                // real turn is never told an acknowledgment was sent.
-                await dropQuickAckMarker(supabase, message.spaceId, markerId);
-              }
-            }
-          }
-        } catch {
-          // quick ack is best-effort; the flush owns the real reply
-        }
-      }
+      await sendInitialReply(supabase, sender, message, body, receivedAtMs)
+        .catch(() => undefined);
     }
     try {
       await flushAfterDebounce(supabase, message, runAt);

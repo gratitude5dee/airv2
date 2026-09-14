@@ -58,10 +58,12 @@ import {
   bridgeCarryMarker,
   isBridgeMarkerId,
   QUICK_ACK_CARRY_MARKER,
+  progressUpdateReply,
   quickAckCarryMarker,
   sharedBridgeReply,
 } from "./sharedBridge";
 import { streamBubbles } from "./bubbles";
+import { startProgressTimeline, type ProgressTimeline } from "./ttfk";
 
 const ATTACHMENT_MARKER = /^\[attachment:([^\]]+)\]$/;
 
@@ -91,6 +93,7 @@ interface QueuedMessage {
   message_id: string;
   body: string;
   sender_id?: string | undefined;
+  received_at?: string | undefined;
 }
 
 const HAS_ATTACHMENT_MARKER = /\[attachment:[^\]]+\]/;
@@ -251,7 +254,7 @@ async function drainTable(
 ): Promise<QueuedMessage[]> {
   const { data, error } = await supabase
     .from(table)
-    .select("id, message_id, body, sender_id")
+    .select("id, message_id, body, sender_id, received_at")
     .eq("space_id", spaceId)
     .order("received_at", { ascending: true });
   if (error) {
@@ -369,7 +372,8 @@ async function materializeAttachments(
 /** Parse Hermes SSE into text deltas; throws on run.failed. */
 export async function* hermesDeltas(
   stream: ReadableStream<Uint8Array>,
-  onDone?: (output: string) => void
+  onDone?: (output: string) => void,
+  onFirstDelta?: () => void
 ): AsyncGenerator<string> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
@@ -400,6 +404,7 @@ export async function* hermesDeltas(
           continue;
         }
         if (event.event === "message.delta" && event.delta) {
+          if (!sawDelta) onFirstDelta?.();
           sawDelta = true;
           yield event.delta;
         } else if (event.event === "run.completed") {
@@ -410,6 +415,7 @@ export async function* hermesDeltas(
             throw new Error("run completed without a response");
           }
           if (!sawDelta && event.output) {
+            onFirstDelta?.();
             yield event.output;
           }
           onDone?.(event.output ?? "");
@@ -660,6 +666,7 @@ async function runFlushInner(
     }
     throw error;
   }
+  let progressTimeline: ProgressTimeline | undefined;
   try {
     const carried = await drainCarried(supabase, job.spaceId);
     const fresh = await drainQueue(supabase, job.spaceId);
@@ -669,6 +676,31 @@ async function runFlushInner(
       return;
     }
     const rawInput = composeInput(carried, fresh);
+    // Timed progress starts from the first fresh iMessage, not from when a
+    // warm box happened to finish booting. Retried carried work has already
+    // received a visible update, so it never restarts this clock.
+    const firstFreshAt = fresh[0]?.received_at;
+    const receivedAtMs = firstFreshAt ? Date.parse(firstFreshAt) : Number.NaN;
+    if (fresh.length > 0 && Number.isFinite(receivedAtMs)) {
+      progressTimeline = startProgressTimeline({
+        receivedAtMs,
+        send: (body) => sender.sendText(job.spaceId, job.phone, body),
+        generate: (stage) =>
+          progressUpdateReply(supabase, job.userId, rawInput, stage),
+        onSent: (stage, elapsedMs, generated) => {
+          console.info(
+            JSON.stringify({
+              msg: "imessage ttfk progress",
+              user_id: job.userId,
+              space_id: job.spaceId,
+              stage,
+              elapsed_ms: elapsedMs,
+              generated,
+            })
+          );
+        },
+      });
+    }
     // /draw runs before the generic card path: a bare command must mint a
     // session-bound studio card, and "/draw <prompt> [image]" also consumes
     // the burst for the auto-start job.
@@ -1119,7 +1151,9 @@ async function runFlushInner(
     // Outbound marker lanes: `[send-file: …]` and `[card: …]` markers are
     // stripped from the streamed text and delivered (native attachments,
     // mini-app cards) after the stream.
-    const stripped = stripSendFileMarkers(hermesDeltas(events));
+    const stripped = stripSendFileMarkers(
+      hermesDeltas(events, undefined, () => progressTimeline?.stop())
+    );
     const deltas = stripped.deltas;
 
     // Stream straight into iMessage: first chunk is a real message, edited
@@ -1271,6 +1305,7 @@ async function runFlushInner(
         .eq("chain_started_at", chainStartedAt);
     }
   } finally {
+    progressTimeline?.stop();
     // Re-arm the idle deadline no matter how the turn ended: ensureBoxAwake
     // cleared it, and a throw mid-turn must not leave the box awake with no
     // deadline. Monotonic, so a no-op for boxes that never woke.

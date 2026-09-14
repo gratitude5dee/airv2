@@ -1,0 +1,130 @@
+/**
+ * Time-to-first-kindness (TTFK) policy for conversational iMessage turns.
+ *
+ * The reaction and first bubble are independent of a box wake. Progress
+ * bubbles are deliberately cancelled as soon as a real reply begins, so a
+ * fast answer never gets padded with performative status chatter.
+ */
+
+export const ACK_REACTION = "👀";
+export const REACTION_SLA_MS = 1_000;
+export const INITIAL_REPLY_SLA_MS = 5_000;
+export const PROGRESS_ONE_AT_MS = 10_000;
+export const PROGRESS_TWO_AT_MS = 20_000;
+export const FINALIZING_AT_MS = 35_000;
+const PROGRESS_GENERATION_HEADSTART_MS = 1_500;
+
+export type ProgressStage = "progress-one" | "progress-two" | "finalizing";
+
+/**
+ * Tool, media, financial, or research work must not receive a speculative
+ * model answer in the first bubble. It gets a deterministic, specific holding
+ * line instead. Short, plain-language questions may use the fast GMI lane.
+ */
+export function isFastInitialQuestion(body: string): boolean {
+  const text = body.trim();
+  if (!text || text.length > 220) return false;
+  if (/^\//.test(text) || /\[attachment:|\[location shared\]/i.test(text)) {
+    return false;
+  }
+  return !/\b(research|investigate|compare|analy[sz]e|plan|strategy|debug|build|code|deploy|book|buy|pay|send money|transfer|delete|publish|find deals|discount|near me)\b/i.test(
+    text
+  );
+}
+
+/** Stable, task-aware fallback used when a fast completion is unsuitable or late. */
+export function initialHoldingReply(body: string): string {
+  const text = body.trim();
+  if (/\[attachment:/i.test(text)) return "I’m looking at that now.";
+  if (/\[location shared\]|\bnear me\b/i.test(text)) return "I’m checking that now.";
+  if (/^\/(draw|freeze|image|image-editor)\b/i.test(text)) return "Opening that now.";
+  if (/^\/(imagine|animate|zap)\b/i.test(text)) return "I’m making that now.";
+  if (/\b(deal|discount|price|shop|find)\b/i.test(text)) return "I’m checking the best options now.";
+  if (/\b(research|investigate|compare|analy[sz]e|plan|strategy|debug|build|code|deploy)\b/i.test(text)) {
+    return "I’m working through that carefully now.";
+  }
+  const choices = [
+    "I’m on it.",
+    "Got it — checking now.",
+    "I’m working on that now.",
+  ];
+  let hash = 0;
+  for (const character of text) hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
+  return choices[hash % choices.length] ?? choices[0]!;
+}
+
+export function progressFallback(stage: ProgressStage): string {
+  switch (stage) {
+    case "progress-one":
+      return "I’m checking the details now.";
+    case "progress-two":
+      return "I’m still working through it — I’ll send the result shortly.";
+    case "finalizing":
+      return "I’m finalizing the result now.";
+  }
+}
+
+export interface ProgressTimeline {
+  /** Prevents every remaining update as soon as a real response can stream. */
+  stop(): void;
+}
+
+export function startProgressTimeline(options: {
+  receivedAtMs: number;
+  send: (body: string) => Promise<void>;
+  /** A fast GMI-generated status. Null means use the deterministic fallback. */
+  generate: (stage: ProgressStage) => Promise<string | null>;
+  now?: () => number;
+  onSent?: (stage: ProgressStage, elapsedMs: number, generated: boolean) => void;
+}): ProgressTimeline {
+  let active = true;
+  const timers: Array<ReturnType<typeof setTimeout>> = [];
+  const now = options.now ?? Date.now;
+
+  const schedule = (stage: ProgressStage, targetMs: number): void => {
+    let sent = false;
+    let generatedBody: string | undefined;
+    const deliver = (body: string, generated: boolean): void => {
+      if (!active || sent) return;
+      sent = true;
+      void options.send(body).then(
+        () => options.onSent?.(stage, now() - options.receivedAtMs, generated),
+        () => undefined
+      );
+    };
+    const generationAt = Math.max(
+      0,
+      options.receivedAtMs + targetMs - now() - PROGRESS_GENERATION_HEADSTART_MS
+    );
+    timers.push(
+      setTimeout(() => {
+        void options.generate(stage).then(
+          (body) => {
+            if (active && body?.trim()) generatedBody = body.trim();
+          },
+          () => undefined
+        );
+      }, generationAt)
+    );
+    timers.push(
+      setTimeout(
+        () =>
+          deliver(
+            generatedBody ?? progressFallback(stage),
+            generatedBody !== undefined
+          ),
+        Math.max(0, options.receivedAtMs + targetMs - now())
+      )
+    );
+  };
+
+  schedule("progress-one", PROGRESS_ONE_AT_MS);
+  schedule("progress-two", PROGRESS_TWO_AT_MS);
+  schedule("finalizing", FINALIZING_AT_MS);
+  return {
+    stop: () => {
+      active = false;
+      for (const timer of timers) clearTimeout(timer);
+    },
+  };
+}
