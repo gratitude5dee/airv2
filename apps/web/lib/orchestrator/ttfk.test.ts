@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ACK_REACTION,
+  deterministicArithmeticAnswer,
   FINALIZING_AT_MS,
   initialHoldingReply,
   INITIAL_REPLY_SLA_MS,
@@ -15,6 +16,14 @@ import {
 afterEach(() => vi.useRealTimers());
 
 describe("TTFK policy", () => {
+  it("answers bounded arithmetic without a model or unsafe evaluation", () => {
+    expect(deterministicArithmeticAnswer("what is 9 × 7?")).toBe("63");
+    expect(deterministicArithmeticAnswer("calculate (12 + 3) / 5")).toBe("3");
+    expect(deterministicArithmeticAnswer("0.1 + 0.2")).toBe("0.3");
+    expect(deterministicArithmeticAnswer("process.exit(1)")).toBeNull();
+    expect(deterministicArithmeticAnswer("1 / 0")).toBeNull();
+  });
+
   it("sets explicit reaction, initial-reply, and visible-progress deadlines", () => {
     expect(ACK_REACTION).toBe("👀");
     expect(REACTION_SLA_MS).toBe(1_000);

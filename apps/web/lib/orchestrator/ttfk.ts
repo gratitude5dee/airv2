@@ -17,6 +17,99 @@ const PROGRESS_GENERATION_HEADSTART_MS = 1_500;
 export type ProgressStage = "progress-one" | "progress-two" | "finalizing";
 
 /**
+ * Evaluate a deliberately small arithmetic grammar without `eval` or a model.
+ * This is the zero-network lane for questions such as “what is 9 × 7?”.
+ */
+export function deterministicArithmeticAnswer(body: string): string | null {
+  const expression = body
+    .trim()
+    .replace(/^(?:what(?:'s| is)|calculate|compute|solve)\s+/i, "")
+    .replace(/[?=]+$/g, "")
+    .trim()
+    .replace(/[×x·]/g, "*")
+    .replace(/÷/g, "/")
+    .replace(/,/g, "");
+  if (
+    !expression ||
+    expression.length > 120 ||
+    !/^[\d\s()+\-*/.^]+$/.test(expression)
+  ) {
+    return null;
+  }
+
+  let index = 0;
+  const skipWhitespace = (): void => {
+    while (/\s/.test(expression[index] ?? "")) index += 1;
+  };
+  const parsePrimary = (): number => {
+    skipWhitespace();
+    if (expression[index] === "(") {
+      index += 1;
+      const value = parseSum();
+      skipWhitespace();
+      if (expression[index] !== ")") throw new Error("missing parenthesis");
+      index += 1;
+      return value;
+    }
+    const match = expression.slice(index).match(/^(?:\d+(?:\.\d*)?|\.\d+)/);
+    if (!match) throw new Error("number expected");
+    index += match[0].length;
+    return Number(match[0]);
+  };
+  const parseUnary = (): number => {
+    skipWhitespace();
+    if (expression[index] === "+") {
+      index += 1;
+      return parseUnary();
+    }
+    if (expression[index] === "-") {
+      index += 1;
+      return -parseUnary();
+    }
+    return parsePrimary();
+  };
+  const parsePower = (): number => {
+    const left = parseUnary();
+    skipWhitespace();
+    if (expression[index] !== "^") return left;
+    index += 1;
+    return left ** parsePower();
+  };
+  const parseProduct = (): number => {
+    let value = parsePower();
+    for (;;) {
+      skipWhitespace();
+      const operator = expression[index];
+      if (operator !== "*" && operator !== "/") return value;
+      index += 1;
+      const right = parsePower();
+      value = operator === "*" ? value * right : value / right;
+    }
+  };
+  function parseSum(): number {
+    let value = parseProduct();
+    for (;;) {
+      skipWhitespace();
+      const operator = expression[index];
+      if (operator !== "+" && operator !== "-") return value;
+      index += 1;
+      const right = parseProduct();
+      value = operator === "+" ? value + right : value - right;
+    }
+  }
+
+  try {
+    const value = parseSum();
+    skipWhitespace();
+    if (index !== expression.length || !Number.isFinite(value)) return null;
+    const rounded = Number(value.toPrecision(15));
+    return Object.is(rounded, -0) ? "0" : String(rounded);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Tool, media, financial, or research work must not receive a speculative
  * model answer in the first bubble. It gets a deterministic, specific holding
  * line instead. Short, plain-language questions may use the fast GMI lane.

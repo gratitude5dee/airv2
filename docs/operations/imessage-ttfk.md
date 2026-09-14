@@ -5,12 +5,14 @@ Every trusted inbound iMessage has a feedback path that does not wait for a Herm
 | Deadline from receipt | User-visible action | Source |
 | --- | --- | --- |
 | Under 1 second target | `👀` reaction | deterministic Spectrum tapback |
-| Under 5 seconds target | first bubble | GLM fast lane for simple questions; deterministic task-aware line otherwise |
+| Under 5 seconds target | first bubble | deterministic arithmetic, GLM fast lane for other simple questions, or a task-aware holding line |
 | 10 seconds | progress update if no reply started | GLM fast lane, deterministic deadline fallback |
 | 20 seconds | second progress update if no reply started | GLM fast lane, deterministic deadline fallback |
 | 35 seconds | finalizing update if no reply started | GLM fast lane, deterministic deadline fallback |
 
-The sender connection begins before the webhook returns. The reaction does not wait for debouncing, box provisioning, or a model call. Telemetry records elapsed time and whether the target was met; it never records message contents.
+The sender connection and fast-response computation begin in parallel before the webhook returns. The reaction does not wait for debouncing, box provisioning, or a model call. Telemetry records elapsed time and whether the target was met; it never records message contents.
+
+A deterministic arithmetic answer is final and removes that exact inbound row before the scheduled flush, so Hermes does not replay history or send progress messages for an already-solved calculation. A GLM response tagged `FINAL:` behaves the same way; `HOLD:` keeps the full agent turn for tool-dependent work.
 
 ## Provider policy
 

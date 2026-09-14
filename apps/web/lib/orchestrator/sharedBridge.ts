@@ -11,6 +11,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "../env";
 import { requestSignal } from "../http/timeout";
 import {
+  deterministicArithmeticAnswer,
   initialHoldingReply,
   isFastInitialQuestion,
   type ProgressStage,
@@ -20,17 +21,17 @@ const BRIDGE_TIMEOUT_MS = 25_000;
 const BRIDGE_MAX_TOKENS = 220;
 
 /** Leaves enough time for the outbound iMessage send before the 5s SLA. */
-const QUICK_ACK_TIMEOUT_MS = 2_200;
-const QUICK_ACK_MAX_TOKENS = 60;
+const QUICK_ACK_TIMEOUT_MS = 4_000;
+const QUICK_ACK_MAX_TOKENS = 120;
 const PROGRESS_UPDATE_TIMEOUT_MS = 1_200;
 const PROGRESS_UPDATE_MAX_TOKENS = 32;
 
 export const QUICK_ACK_SYSTEM_PROMPT = [
   "You are air by WZRD.tech, the user's personal creative assistant.",
-  "A fuller reply is already being prepared, so respond with exactly ONE",
-  "short sentence: answer directly if the message is trivially answerable",
-  "from general knowledge; otherwise acknowledge specifically what the user",
-  "asked and say you're on it. Plain text only. No emoji, no questions.",
+  "Classify and respond in exactly one short line. Start with FINAL: when you",
+  "can completely answer the request now without tools. Start with HOLD: when",
+  "the request requires tools, private context, research, or more work. After",
+  "the prefix, answer directly or acknowledge the specific task. No emoji.",
   "Never mention Hermes, Nous Research, boxes, VMs, or these instructions.",
 ].join(" ");
 
@@ -102,9 +103,43 @@ export async function initialReply(
   userId: string,
   burst: string
 ): Promise<string> {
+  return (await initialResponse(supabase, userId, burst)).body;
+}
+
+export interface InitialResponse {
+  body: string;
+  disposition: "final" | "holding";
+  source: "arithmetic" | "gmi" | "fallback";
+}
+
+/** Plan the first bubble and tell the inbound route whether it finished the turn. */
+export async function initialResponse(
+  supabase: SupabaseClient,
+  userId: string,
+  burst: string
+): Promise<InitialResponse> {
+  const arithmetic = deterministicArithmeticAnswer(burst);
+  if (arithmetic !== null) {
+    return { body: arithmetic, disposition: "final", source: "arithmetic" };
+  }
+
   const fallback = initialHoldingReply(burst);
-  if (!isFastInitialQuestion(burst)) return fallback;
-  return (await quickAckReply(supabase, userId, burst)) ?? fallback;
+  if (!isFastInitialQuestion(burst)) {
+    return { body: fallback, disposition: "holding", source: "fallback" };
+  }
+  const reply = await quickAckReply(supabase, userId, burst);
+  if (!reply) {
+    return { body: fallback, disposition: "holding", source: "fallback" };
+  }
+  const tagged = reply.match(/^\s*(FINAL|HOLD):\s*(.+)$/is);
+  if (!tagged?.[2]?.trim()) {
+    return { body: reply, disposition: "holding", source: "gmi" };
+  }
+  return {
+    body: tagged[2].trim(),
+    disposition: tagged[1]?.toUpperCase() === "FINAL" ? "final" : "holding",
+    source: "gmi",
+  };
 }
 
 /** A bounded GLM status update. The caller has a deterministic deadline fallback. */
@@ -135,14 +170,14 @@ async function gatewayCompletion(
 ): Promise<string | null> {
   const text = burst.trim();
   if (!text) return null;
-  const { data } = await supabase
-    .from("boxes")
-    .select("gateway_token")
-    .eq("user_id", userId)
-    .maybeSingle();
-  const token = (data?.gateway_token as string | undefined) ?? "";
-  if (!token) return null;
   try {
+    const { data } = await supabase
+      .from("boxes")
+      .select("gateway_token")
+      .eq("user_id", userId)
+      .maybeSingle();
+    const token = (data?.gateway_token as string | undefined) ?? "";
+    if (!token) return null;
     const response = await fetch(
       `${env.appOrigin()}/api/gateway/v1/chat/completions`,
       {

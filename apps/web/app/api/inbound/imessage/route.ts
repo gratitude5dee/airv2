@@ -29,7 +29,10 @@ import {
   updateQuickAckMarker,
   type InboundMessage,
 } from "@/lib/orchestrator/flush";
-import { initialReply } from "@/lib/orchestrator/sharedBridge";
+import {
+  initialResponse,
+  type InitialResponse,
+} from "@/lib/orchestrator/sharedBridge";
 import {
   ACK_REACTION,
   INITIAL_REPLY_SLA_MS,
@@ -120,20 +123,25 @@ async function sendInitialReply(
   sender: Awaited<ReturnType<typeof createSpectrumSender>> | undefined,
   message: InboundMessage,
   body: string,
+  response: InitialResponse,
   receivedAtMs: number
-): Promise<void> {
-  if (!sender || !(await isBurstStart(supabase, message.spaceId))) return;
+): Promise<boolean> {
+  if (!sender || !(await isBurstStart(supabase, message.spaceId))) return false;
   const isCommand = body.trimStart().startsWith("/");
-  const markerId = isCommand
+  const markerId = isCommand || response.disposition === "final"
     ? undefined
     : await carryQuickAckMarker(supabase, message.userId, message.spaceId);
   let sent = false;
   try {
-    const reply = await initialReply(supabase, message.userId, body);
-    await sender.sendText(message.spaceId, message.phone, reply);
+    await sender.sendText(message.spaceId, message.phone, response.body);
     sent = true;
     if (markerId) {
-      await updateQuickAckMarker(supabase, message.spaceId, markerId, reply);
+      await updateQuickAckMarker(
+        supabase,
+        message.spaceId,
+        markerId,
+        response.body
+      );
     }
     console.info(
       JSON.stringify({
@@ -143,8 +151,11 @@ async function sendInitialReply(
         elapsed_ms: Date.now() - receivedAtMs,
         within_sla: Date.now() - receivedAtMs <= INITIAL_REPLY_SLA_MS,
         kind: isCommand ? "command" : "agent",
+        disposition: response.disposition,
+        source: response.source,
       })
     );
+    return response.disposition === "final";
   } finally {
     if (markerId && !sent) {
       await dropQuickAckMarker(supabase, message.spaceId, markerId);
@@ -468,6 +479,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const reaction = senderPromise.then((sender) =>
     sendImmediateReaction(sender, message, receivedAtMs)
   );
+  // The fast answer and the Spectrum connection race in parallel. Production
+  // GLM latency is typically longer than sender initialization, so starting
+  // this only after the sender connects would waste the entire 5s budget.
+  const initialResponsePromise = initialResponse(
+    supabase,
+    message.userId,
+    body
+  );
   let runAt: string;
   try {
     ({ runAt } = await enqueueInbound(supabase, message));
@@ -495,8 +514,35 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       void sender
         .startTyping(message.spaceId, message.phone)
         .catch(() => undefined);
-      await sendInitialReply(supabase, sender, message, body, receivedAtMs)
-        .catch(() => undefined);
+      const response = await initialResponsePromise;
+      const completed = await sendInitialReply(
+        supabase,
+        sender,
+        message,
+        body,
+        response,
+        receivedAtMs
+      ).catch(() => false);
+      if (completed) {
+        // The first bubble fully answered this message. Remove only that exact
+        // durable row; flushAfterDebounce still runs to clean the job or serve
+        // any concurrently-arriving message whose newer deadline won.
+        const { error } = await supabase
+          .from("batch_queue")
+          .delete()
+          .eq("space_id", message.spaceId)
+          .eq("message_id", message.messageId);
+        if (error) {
+          console.error(
+            JSON.stringify({
+              msg: "imessage direct completion cleanup failed",
+              user_id: message.userId,
+              space_id: message.spaceId,
+              error: error.message,
+            })
+          );
+        }
+      }
     }
     try {
       await flushAfterDebounce(supabase, message, runAt);

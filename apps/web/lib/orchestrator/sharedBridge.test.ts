@@ -11,6 +11,7 @@ import {
   BRIDGE_SYSTEM_PROMPT,
   bridgeCarryMarker,
   initialReply,
+  initialResponse,
   isBridgeMarkerId,
   progressUpdateReply,
   sharedBridgeReply,
@@ -104,6 +105,18 @@ describe("sharedBridgeReply", () => {
 });
 
 describe("first response and progress lanes", () => {
+  it("answers basic arithmetic deterministically when the fast gateway is unavailable", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new Error("gateway unavailable"));
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await initialResponse(fakeSupabase("t"), "user-1", "what is 9 × 7?")).toEqual({
+      body: "63",
+      disposition: "final",
+      source: "arithmetic",
+    });
+    expect(await initialReply(fakeSupabase("t"), "user-1", "what is 9 × 7?")).toBe("63");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("uses the fast gateway lane for a simple first reply", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -112,6 +125,31 @@ describe("first response and progress lanes", () => {
     vi.stubGlobal("fetch", fetchMock);
     expect(await initialReply(fakeSupabase("t"), "user-1", "what is 6 times 7?")).toBe("42");
     expect(JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string).model).toBe("fast");
+  });
+
+  it("marks a structured GMI answer final so Hermes can be skipped", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ choices: [{ message: { content: "FINAL: Paris" } }] }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await initialResponse(fakeSupabase("t"), "user-1", "capital of France?")).toEqual({
+      body: "Paris",
+      disposition: "final",
+      source: "gmi",
+    });
+  });
+
+  it("keeps tool-dependent GMI acknowledgements on the full agent path", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ choices: [{ message: { content: "HOLD: I’m checking." } }] }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await initialResponse(fakeSupabase("t"), "user-1", "summarize my inbox")).toMatchObject({
+      body: "I’m checking.",
+      disposition: "holding",
+    });
   });
 
   it("uses an immediate static line for tool-dependent first replies", async () => {
