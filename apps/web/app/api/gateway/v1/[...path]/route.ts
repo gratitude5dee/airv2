@@ -153,6 +153,31 @@ function gmiRoutineTurn(body: Json): boolean {
 }
 
 /**
+ * Once a non-sensitive turn has a tool result, Astra has already made the
+ * expensive planning decision. Let GLM interpret the result and choose the
+ * next step so multi-tool iMessage turns do not pay Astra latency on every
+ * loop. Money movement, checkout, deletion, and publishing remain on the
+ * entitled model for the whole conversation.
+ */
+function gmiFastToolContinuation(body: Json): boolean {
+  const messages = body["messages"];
+  if (!Array.isArray(messages) || messages.length === 0) return false;
+  const last = messages[messages.length - 1];
+  if (!last || typeof last !== "object" || (last as { role?: unknown }).role !== "tool") {
+    return false;
+  }
+  return !messages.some((message) => {
+    if (!message || typeof message !== "object") return false;
+    const row = message as { role?: unknown; content?: unknown };
+    return (
+      row.role === "user" &&
+      typeof row.content === "string" &&
+      GMI_RISK_TURN_RE.test(row.content)
+    );
+  });
+}
+
+/**
  * Temporary fleet-wide provider switch. Unlike changing every entitlement,
  * this preserves each user's saved preference and can be reversed without a
  * database migration. An override deliberately uses the platform provider
@@ -495,7 +520,8 @@ export async function POST(
         ? clampCreateTier(createTier, entitledTier)
         : rawBody["model"] === "fast"
           ? "fast"
-          : family === "gmi" && gmiRoutineTurn(rawBody)
+          : family === "gmi" &&
+              (gmiRoutineTurn(rawBody) || gmiFastToolContinuation(rawBody))
             ? "fast"
             : entitledTier;
   let createLabel: string | null = null;

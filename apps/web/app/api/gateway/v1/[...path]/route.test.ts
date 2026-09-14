@@ -704,7 +704,7 @@ describe("gateway model families", () => {
     )).toBe(true);
   });
 
-  it("falls back from an Astra tool-continuation 400 to GLM on the same GMI key", async () => {
+  it("falls back from an Astra compatibility 400 to GLM on the same GMI key", async () => {
     process.env["GATEWAY_MODEL_FAMILY_OVERRIDE"] = "gmi";
     setEntitlement({ speed_tier: "deep", model_family: "openai" });
     const models: string[] = [];
@@ -730,10 +730,7 @@ describe("gateway model families", () => {
 
     const response = await POST(
       completionRequest({
-        messages: [
-          { role: "assistant", tool_calls: [{ id: "call_1", type: "function" }] },
-          { role: "tool", tool_call_id: "call_1", content: "blocked" },
-        ],
+        messages: [{ role: "user", content: "research a ten-day itinerary" }],
       }),
       { params: Promise.resolve({ path: ["chat", "completions"] }) },
     );
@@ -960,17 +957,31 @@ describe("gateway model families", () => {
     expect(payment["model"]).toBe("openai/gpt-6-astra");
   });
 
-  it("leaves mid-turn continuations on the entitled gmi tier", async () => {
-    // The task type lives on the opener; a tool-result tail is a
-    // continuation of whatever the opener resolved to.
+  it("serves non-sensitive tool continuations on GLM after Astra plans", async () => {
     setEntitlement({ speed_tier: "deep", model_family: "gmi", gmi_model: null });
     const sent = await upstreamBody({
       messages: [
-        { role: "user", content: "hi" },
+        { role: "user", content: "plan a ten-day temple itinerary" },
         {
           role: "tool",
           tool_call_id: "call_1",
           content: "{\"events\":[]}",
+        },
+      ],
+    });
+    expect(sent["model"]).toBe("zai-org/GLM-5.3-Flash");
+    expect(sent["reasoning_effort"]).toBe("low");
+  });
+
+  it("keeps sensitive tool continuations on the entitled gmi tier", async () => {
+    setEntitlement({ speed_tier: "deep", model_family: "gmi", gmi_model: null });
+    const sent = await upstreamBody({
+      messages: [
+        { role: "user", content: "start checkout for the tickets" },
+        {
+          role: "tool",
+          tool_call_id: "call_1",
+          content: "{\"cart\":[]}",
         },
       ],
     });
