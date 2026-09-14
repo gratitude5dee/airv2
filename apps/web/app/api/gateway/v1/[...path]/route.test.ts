@@ -704,6 +704,55 @@ describe("gateway model families", () => {
     )).toBe(true);
   });
 
+  it("falls back from an Astra tool-continuation 400 to GLM on the same GMI key", async () => {
+    process.env["GATEWAY_MODEL_FAMILY_OVERRIDE"] = "gmi";
+    setEntitlement({ speed_tier: "deep", model_family: "openai" });
+    const models: string[] = [];
+    const fetchMock = vi.fn(
+      async (_url: RequestInfo | URL, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body)) as { model: string };
+        models.push(body.model);
+        if (body.model === "openai/gpt-6-astra") {
+          return new Response(
+            JSON.stringify({ error: { message: "Backend request failed" } }),
+            { status: 400, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            choices: [{ message: { role: "assistant", content: "Recovered on GLM" } }],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      completionRequest({
+        messages: [
+          { role: "assistant", tool_calls: [{ id: "call_1", type: "function" }] },
+          { role: "tool", tool_call_id: "call_1", content: "blocked" },
+        ],
+      }),
+      { params: Promise.resolve({ path: ["chat", "completions"] }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(models).toEqual([
+      "openai/gpt-6-astra",
+      "zai-org/GLM-5.3-Flash",
+    ]);
+    expect(await response.json()).toEqual(
+      expect.objectContaining({
+        choices: [expect.objectContaining({ message: expect.objectContaining({ content: "Recovered on GLM" }) })],
+      }),
+    );
+    expect(fetchMock.mock.calls.every((call) =>
+      String(call[0]).startsWith("https://gmi.test/")
+    )).toBe(true);
+  });
+
   it("falls back to GLM when Astra times out after opening its stream", async () => {
     process.env["GATEWAY_MODEL_FAMILY_OVERRIDE"] = "gmi";
     setEntitlement({ speed_tier: "deep", model_family: "openai" });

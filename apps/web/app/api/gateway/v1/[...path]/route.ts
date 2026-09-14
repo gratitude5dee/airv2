@@ -800,12 +800,41 @@ export async function POST(
       throw error;
     };
 
+    const recoverRejectedAstra = async (response: Response): Promise<Response> => {
+      if (
+        providerForFamily(servedFamily) === "gmi" &&
+        servedModel === GMI_ASTRA_MODEL &&
+        [400, 422].includes(response.status) &&
+        Date.now() < gmiDeadlineMs
+      ) {
+        console.warn(
+          JSON.stringify({
+            msg: "gateway gmi astra compatibility fallback",
+            user_id: userId,
+            from_model: GMI_ASTRA_MODEL,
+            to_model: GMI_RECOVERY_MODEL,
+            status: response.status,
+            elapsed_ms: Date.now() - requestStartedMs,
+          })
+        );
+        await response.body?.cancel().catch(() => undefined);
+        gmiRecoveryModel = GMI_RECOVERY_MODEL;
+        return dispatch(servedFamily);
+      }
+      return response;
+    };
+
     let upstream: Response;
     try {
       upstream = await dispatch(servedFamily);
     } catch (error) {
       upstream = await recoverTimedOutAstra(error);
     }
+    // Astra's compatibility layer can accept an initial tool turn but reject
+    // a later tool-result continuation with a generic 400. Keep the fleet on
+    // the prepaid GMI lane and finish that exact request on GLM instead of
+    // handing Hermes a terminal provider error and re-running the whole job.
+    upstream = await recoverRejectedAstra(upstream);
 
     // Non-OpenAI families can degrade to empty completions (e.g. an endpoint
     // answering tool-bearing calls with `native_finish_reason: "network_error"`
