@@ -24,7 +24,7 @@ interface LineRow {
 }
 
 interface SenderRow {
-  id: string;
+  address: string;
   trust_tier: number;
 }
 
@@ -101,8 +101,8 @@ export async function recoverOrphanedCarriedJobs(
     senderIds.length > 0
       ? supabase
           .from("senders")
-          .select("id, trust_tier")
-          .in("id", senderIds)
+          .select("address, trust_tier")
+          .in("address", senderIds)
       : Promise.resolve({ data: [], error: null }),
   ]);
   for (const [label, result] of [
@@ -118,7 +118,10 @@ export async function recoverOrphanedCarriedJobs(
   const destinations = (destinationsResult.data ?? []) as DestinationRow[];
   const lines = (linesResult.data ?? []) as LineRow[];
   const senderTiers = new Map(
-    ((sendersResult.data ?? []) as SenderRow[]).map((row) => [row.id, row.trust_tier]),
+    ((sendersResult.data ?? []) as SenderRow[]).map((row) => [
+      row.address,
+      row.trust_tier,
+    ]),
   );
   const linesByUser = new Map<string, LineRow[]>();
   for (const line of lines) {

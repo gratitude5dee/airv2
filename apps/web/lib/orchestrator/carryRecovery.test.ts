@@ -53,7 +53,7 @@ describe("recoverOrphanedCarriedJobs", () => {
         { user_id: "user-1", space_id: "space-1", phone: "shared" },
       ],
       lines: [{ assigned_user_id: "user-1", phone: "+14155952354", mode: "shared" }],
-      senders: [{ id: "sender-1", trust_tier: 0 }],
+      senders: [{ address: "sender-1", trust_tier: 0 }],
     });
 
     const result = await recoverOrphanedCarriedJobs(
