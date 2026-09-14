@@ -9,8 +9,11 @@ function fixture(check: string) {
 import tempfile, types
 root = pathlib.Path(tempfile.mkdtemp(prefix='air-recovery-test-'))
 events = []
+real_run = subprocess.run
 def run(args, **kwargs):
     events.append(args)
+    if args[0] != 'sudo':
+        return real_run(args, **kwargs)
     return types.SimpleNamespace(returncode=1 if 'fuser' in args else 0, stdout=b'')
 subprocess.run = run
 native = types.ModuleType('hermes_state')
@@ -129,5 +132,19 @@ assert events[-1][2] == 'start'
 `);
     expect(report.applied).toBe(false);
     expect(report.services_restart_code).toBe(0);
+  });
+
+  it("stages SQLite salvage without changing the live database", () => {
+    const report = fixture(`
+original = db.read_bytes()
+folder = root / 'salvage-test'
+folder.mkdir()
+shutil.copy2(db, folder / 'state.db')
+report = stage_salvage(folder)
+assert db.read_bytes() == original
+`);
+    expect(report).toMatchObject({ recover_exit_code: 0, restore_exit_code: 0, integrity: [["ok"]] });
+    expect(report.recovered.normal.messages).toBe(1);
+    expect(report.recovered.normal.sessions).toBe(1);
   });
 });

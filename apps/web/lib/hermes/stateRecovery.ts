@@ -97,6 +97,58 @@ def exclusive(db):
     finally:
         conn.close()
 
+def inspect_copy(path):
+    result = {}
+    with contextlib.closing(sqlite3.connect(path.as_uri() + '?mode=ro', uri=True)) as conn:
+        # Connection-only tolerance for malformed schema: this does not
+        # change the image and is diagnostic, never proof for promotion.
+        for tolerant in (False, True):
+            label = 'tolerant' if tolerant else 'normal'
+            if tolerant:
+                conn.execute('PRAGMA writable_schema=ON')
+            item = {}
+            result[label] = item
+            try:
+                item['schema'] = conn.execute("SELECT name,type,rootpage FROM sqlite_master LIMIT 100").fetchall()
+            except sqlite3.Error as error:
+                item['schema_error'] = str(error)[:300]
+            for name in ('sessions', 'messages', 'lost_and_found'):
+                try:
+                    item[name] = conn.execute('SELECT COUNT(*) FROM ' + quote(name) + ' NOT INDEXED').fetchone()[0]
+                except sqlite3.Error as error:
+                    item[name] = {'error': str(error)[:300]}
+    return result
+
+def stage_salvage(folder):
+    # Work only from the retained pre-repair bytes, never from a failed native
+    # repair's output. Recovered SQL and transcript content stay on this box.
+    forensic = folder / 'forensic.db'
+    for suffix in ('', '-wal', '-shm', '-journal'):
+        raw = folder / ('state.db' + suffix)
+        if raw.exists():
+            shutil.copy2(raw, pathlib.Path(str(forensic) + suffix))
+    report = {'source': inspect_copy(forensic)}
+    sql = folder / 'recovered.sql'
+    with sql.open('wb') as output:
+        recover = subprocess.run(['sqlite3', str(forensic), '.recover --ignore-freelist'],
+                                 stdout=output, stderr=subprocess.DEVNULL, timeout=70)
+    report['recover_exit_code'] = recover.returncode
+    report['sql_bytes'] = sql.stat().st_size
+    recovered = folder / 'recovered.db'
+    with sql.open('rb') as source:
+        restore = subprocess.run(['sqlite3', str(recovered)], stdin=source,
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=70)
+    report['restore_exit_code'] = restore.returncode
+    if recovered.exists():
+        report['recovered'] = inspect_copy(recovered)
+        with contextlib.closing(sqlite3.connect(recovered)) as conn:
+            try:
+                report['integrity'] = conn.execute('PRAGMA integrity_check').fetchmany(8)
+            except sqlite3.Error as error:
+                report['integrity_error'] = str(error)[:300]
+    # SQLite salvage can omit/change data; it is NEVER auto-promoted.
+    return report
+
 def recover(root, operation):
     db = root / 'state.db'
     folder = root / 'state-recovery' / operation
@@ -164,6 +216,11 @@ def recover(root, operation):
         report['applied'] = True
     except Exception as error:
         report['error'] = str(error)[:800]
+        if report.get('source_error') and report.get('backup_bytes'):
+            try:
+                report['salvage'] = stage_salvage(folder)
+            except Exception as diagnostic_error:
+                report['salvage_error'] = str(diagnostic_error)[:500]
     finally:
         try:
             restarted = subprocess.run(['sudo', 'systemctl', 'start', *services], capture_output=True, timeout=35)
