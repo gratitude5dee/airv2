@@ -29,6 +29,7 @@ import { STORE_APP } from "./storeSession";
 import { mintToken } from "./tokens";
 import { warmStatusMirror } from "./onboardingMirror";
 import type { Message } from "spectrum-ts";
+import { getCheckoutHandoff, isCheckoutHandoffId } from "../checkout/handoffs";
 
 /** Card links stay tappable for a day — cards linger in the transcript. */
 export const CARD_LINK_TTL_MINUTES = 24 * 60;
@@ -65,6 +66,7 @@ const CARD_COPY: Partial<Record<string, { name: string; line: string }>> = {
   draw: { name: "Draw", line: "Sketch it, then see it" },
   freeze: { name: "Freeze", line: "Freeze the scene — move the camera" },
   trade: { name: "Trade", line: "Approve before it moves" },
+  checkout: { name: "Checkout", line: "Review and continue" },
 };
 
 /**
@@ -199,8 +201,9 @@ export function parseCardMarker(
 ): { kind: CardKind; resourceId: string } | null {
   const [kind = "", resource] = marker.trim().toLowerCase().split(/\s+/, 2);
   if (!isCardKind(kind)) return null;
-  if (kind === "app") {
+  if (kind === "app" || kind === "checkout") {
     if (!resource || !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(resource)) return null;
+    if (kind === "checkout" && !isCheckoutHandoffId(resource)) return null;
     return { kind, resourceId: resource };
   }
   return { kind, resourceId: "default" };
@@ -242,6 +245,52 @@ export async function sendOrUpdateAppCard(
 }
 
 /**
+ * Checkout handoffs are one logical card per task. Refresh an existing
+ * Spectrum bubble in place when possible; only claim a new send when the
+ * previous bubble is stale or has never been delivered.
+ */
+export async function sendOrUpdateCheckoutCard(
+  supabase: SupabaseClient,
+  owner: { userId: string; spaceId: string; phone: string },
+  handoffId: string
+): Promise<"updated" | "sent" | "cooldown"> {
+  const handoff = await getCheckoutHandoff(supabase, owner.userId, handoffId);
+  if (!handoff) throw new Error("checkout handoff not found");
+  const existing = await readMiniAppCardSession(
+    supabase,
+    owner.userId,
+    "checkout",
+    handoff.id
+  ).catch(() => undefined);
+  if (existing) {
+    const outcome = await updateMiniAppCard(
+      supabase,
+      owner.userId,
+      "checkout",
+      handoff.id
+    );
+    if (outcome === "updated") return "updated";
+    if (outcome === "failed") throw new Error("checkout card update failed");
+  }
+  const claim = await claimCardSend(supabase, owner.userId, "checkout");
+  if (!claim) return "cooldown";
+  try {
+    await sendMiniAppCard(
+      supabase,
+      owner.spaceId,
+      owner.phone,
+      owner.userId,
+      "checkout",
+      handoff.id
+    );
+  } catch (error) {
+    await claim.release().catch(() => undefined);
+    throw error;
+  }
+  return "sent";
+}
+
+/**
  * Deliver the `[card: <kind>]` markers stripped from an agent reply, in
  * order, to the owner's thread. Same contract as POST /api/cards/<kind>:
  * unknown kinds are ignored, each kind is rate limited by claimCardSend
@@ -267,6 +316,11 @@ export async function sendMarkedCards(
           throw new Error("app not found");
         }
         if ((await sendOrUpdateAppCard(supabase, owner, resourceId)) === "cooldown") continue;
+      } else if (kind === "checkout") {
+        if (
+          (await sendOrUpdateCheckoutCard(supabase, owner, resourceId)) ===
+          "cooldown"
+        ) continue;
       } else {
         claim = await claimCardSend(supabase, owner.userId, kind);
         if (!claim) continue;

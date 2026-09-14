@@ -8,7 +8,7 @@
 import { NextResponse } from "next/server";
 import { desktopStreamUrlIfUp } from "@/lib/box/desktop";
 import { armStopAfter, StartLimitError } from "@/lib/orchestrator/boxes";
-import { forbidden } from "../html";
+import { esc, forbidden } from "../html";
 import { renderShell, shellHtml } from "../shell";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
@@ -34,7 +34,26 @@ export async function renderPassthrough(
     );
   // ?vnc=1 requests the HTTPS-tunneled noVNC viewer for restrictive
   // networks; its page must be top-level, so callers open it in a new tab.
-  const vnc = ctx.request.nextUrl.searchParams.get("vnc") === "1";
+  const params = ctx.request.nextUrl.searchParams;
+  const vnc = params.get("vnc") === "1";
+  const parsedRetry = Number.parseInt(params.get("retry") ?? "0", 10);
+  const retry = Number.isFinite(parsedRetry)
+    ? Math.max(0, Math.min(parsedRetry, 20))
+    : 0;
+  // A refresh must advance the attempt in the URL; otherwise a browser can
+  // loop forever on a provider that reports a running box but never starts
+  // its desktop daemon. Six attempts cover roughly 30 seconds for the slow
+  // wake path and leave a deliberate manual retry after that budget.
+  const MAX_AUTO_RETRIES = 6;
+  const retryUrl = (nextRetry: number): string => {
+    const query = new URLSearchParams({
+      view: "live",
+      retry: String(nextRetry),
+      ...(vnc ? { vnc: "1" } : {}),
+    });
+    return `${ctx.request.nextUrl.pathname}?${query.toString()}`;
+  };
+  const retryAvailable = retry < MAX_AUTO_RETRIES;
   try {
     const stream = await desktopStreamUrlIfUp(
       ctx.supabase,
@@ -45,17 +64,38 @@ export async function renderPassthrough(
       // The machine is booting: render a progress page that reloads itself
       // until the stream is ready, instead of holding the request open
       // through a multi-minute resume (the iframe embed recovers by itself).
+      const next = retryUrl(retry + 1);
       const waking = shellHtml(
         renderShell({
           title: "Computer",
           kicker: "Screen",
-          body: `<section class="panel"><p>Waking your agent's computer\u2026</p><p class="muted">This can take a couple of minutes after a long sleep. This page refreshes itself.</p></section>`,
+          body: `<section class="panel"><p>Waking your agent's computer\u2026</p><p class="muted">This can take a couple of minutes after a long sleep.${retryAvailable ? " This page refreshes itself." : " Automatic retries stopped after 30 seconds."}</p><p><a href="${esc(next)}" target="_top" rel="noopener">Retry now</a></p></section>`,
           lite: ctx.session.via === "card",
         })
       );
-      waking.headers.set("Refresh", "5");
+      if (retryAvailable) {
+        waking.headers.set("Refresh", `5; url=${retryUrl(retry + 1)}`);
+        waking.headers.set("Retry-After", "5");
+      }
       waking.headers.set("Cache-Control", "no-store");
       return waking;
+    }
+    if (stream.status === "preparing") {
+      const next = retryUrl(retry + 1);
+      const preparing = shellHtml(
+        renderShell({
+          title: "Computer",
+          kicker: "Screen",
+          body: `<section class="panel"><p>Preparing your agent's screen…</p><p class="muted">The computer is on, but its desktop stream is still starting.${retryAvailable ? " This page will retry shortly." : " Automatic retries stopped after 30 seconds."}</p><p style="display:flex;gap:.75rem;flex-wrap:wrap"><a href="${esc(`${ctx.request.nextUrl.pathname}?view=live&vnc=1`)}" target="_top" rel="noopener">Try VNC</a><a href="${esc(next)}" target="_top" rel="noopener">Retry now</a></p></section>`,
+          lite: ctx.session.via === "card",
+        })
+      );
+      if (retryAvailable) {
+        preparing.headers.set("Refresh", `3; url=${next}`);
+        preparing.headers.set("Retry-After", "3");
+      }
+      preparing.headers.set("Cache-Control", "no-store");
+      return preparing;
     }
     await armStopAfter(ctx.supabase, ctx.session.userId);
     const response = NextResponse.redirect(stream.url, 302);

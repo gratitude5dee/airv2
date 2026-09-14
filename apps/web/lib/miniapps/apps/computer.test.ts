@@ -54,6 +54,8 @@ describe("computer mini-app live embed", () => {
     const res = await computer.render(ctxFor("ready", "/computer"));
     const html = await res.text();
     expect(html).toContain('src="/computer?view=live"');
+    expect(html).toContain(">Connecting</span>");
+    expect(html).not.toContain(">Live</span>");
     // The keyboard forwarder pins postMessage to this exact origin.
     expect(html).toContain('data-stream-origin="https://d.on.ascii.dev"');
     expect(html).not.toContain("?embed=1");

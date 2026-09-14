@@ -203,6 +203,28 @@ that browser rides fill tickets (above); the page content it visits is
 treated as hostile (I5) and can never mint anything — mints require the
 owner's decision.
 
+## Checkout handoffs and delegated Link approval (C25)
+
+An unrelated merchant checkout is handed to the owner through the
+owner-scoped `checkout_handoffs` mini-app. The control plane validates a public
+HTTPS destination, binds it to the authenticated owner and task id, and sends
+the checkout card to the durable owner destination. A merchant URL does not
+transfer the Box browser's cookies, cart, queue position, or challenge
+clearance; the owner may open the merchant site or control the existing Box
+browser. A checkout card is never proof of payment, and `completed` is written
+only from a verified merchant/provider outcome.
+
+Stripe Link for AIR's own connected-merchant checkout remains the existing
+server-derived Stripe Checkout/Express path. Link agent payments for unrelated
+merchants are a separate capability. Automatic/delegated approval is disabled
+until the installed provider reports the required agent-payment grant and the
+owner has enabled a policy. The pure evaluator in
+`apps/web/lib/payments/approvalPolicy.ts` fails closed on owner, exact merchant,
+currency, per-transaction and aggregate limits, category, cart fingerprint,
+expiry, revocation, and provider capability. A future adapter must atomically
+reserve budget and re-check the cart before submission; no LLM message,
+pairing state, or generic “yes” can create a blanket approval.
+
 ## C24 — the platform-disable list is generated, not hand-maintained
 
 **The decision:** the C12 posture ("`api_server` is the only enabled Hermes

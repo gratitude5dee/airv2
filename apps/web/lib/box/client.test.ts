@@ -21,6 +21,7 @@ import {
   getBox,
   hostRoute,
   parseAsciiHostedUrl,
+  parseBoxErrorBody,
   providerOf,
   readFile,
   readFileCommand,
@@ -55,6 +56,23 @@ afterEach(() => {
 });
 
 describe("provider dispatch", () => {
+  it("extracts only stable fields from nested provider errors", () => {
+    const parsed = parseBoxErrorBody(JSON.stringify({
+      ok: false,
+      error: {
+        code: "desktop_not_ready",
+        message: "Desktop streaming is not ready for this box yet.",
+        requestId: "req_123",
+        token: "must-not-escape",
+      },
+    }), 400);
+    expect(parsed).toEqual({
+      message: "Desktop streaming is not ready for this box yet.",
+      info: { code: "desktop_not_ready", requestId: "req_123", providerStatus: 400 },
+    });
+    expect(JSON.stringify(parsed)).not.toContain("must-not-escape");
+  });
+
   const session = {
     id: "s1",
     state: "RUNNING",

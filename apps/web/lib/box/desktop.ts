@@ -8,6 +8,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getBox, isStartLimit, requestDesktop, resume } from "./client";
+import { BoxApiError } from "./types";
 import { ensureBoxAwake, StartLimitError } from "../orchestrator/boxes";
 
 export class DesktopUnavailableError extends Error {
@@ -16,6 +17,11 @@ export class DesktopUnavailableError extends Error {
     this.name = "DesktopUnavailableError";
   }
 }
+
+export type DesktopStreamResult =
+  | { status: "up"; url: string }
+  | { status: "waking" }
+  | { status: "preparing" };
 
 /**
  * Wake the user's own box (never fork a new one) and request a fresh
@@ -50,7 +56,7 @@ export async function desktopStreamUrlIfUp(
   supabase: SupabaseClient,
   userId: string,
   options?: { vnc?: boolean }
-): Promise<{ status: "up"; url: string } | { status: "waking" }> {
+): Promise<DesktopStreamResult> {
   const { data, error } = await supabase
     .from("boxes")
     .select("provider_box_id")
@@ -89,10 +95,25 @@ export async function desktopStreamUrlIfUp(
     }
     return { status: "waking" };
   }
-  const url = await requestDesktop(boxId, options);
+  let url: string | undefined;
+  try {
+    url = await requestDesktop(boxId, options);
+  } catch (error) {
+    // ASCII reports a running box before the desktop daemon has finished
+    // preparing the stream. This is recoverable and must not become the
+    // generic dead-end page shown by the old Computer card.
+    if (
+      error instanceof BoxApiError &&
+      (error.code === "desktop_not_ready" ||
+        /desktop[_ -]not[_ -]ready/i.test(error.message))
+    ) {
+      return { status: "preparing" };
+    }
+    throw error;
+  }
   // A just-resumed machine can report ready before the stream endpoint is
   // prepared — treat that as still waking rather than an error.
-  if (!url) return { status: "waking" };
+  if (!url) return { status: "preparing" };
   return { status: "up", url };
 }
 

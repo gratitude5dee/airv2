@@ -50,11 +50,24 @@ export interface ForkOptions {
  */
 export const START_LIMIT_REACHED = "start_limit_reached";
 
+/** Provider error fields retained for routing and support diagnostics. */
+export interface BoxErrorInfo {
+  code?: string;
+  requestId?: string;
+  providerStatus?: number;
+}
+
 export class BoxApiError extends Error {
   readonly status: number;
-  constructor(status: number, message: string) {
+  readonly code: string | undefined;
+  readonly requestId: string | undefined;
+  readonly providerStatus: number | undefined;
+  constructor(status: number, message: string, info: BoxErrorInfo = {}) {
     super(message);
     this.name = "BoxApiError";
     this.status = status;
+    this.code = info.code;
+    this.requestId = info.requestId;
+    this.providerStatus = info.providerStatus;
   }
 }

@@ -38,6 +38,39 @@ product (a vague "the charger I bought last month", no order history), serve
 the two or three closest candidates with their links and ask which one —
 never end a shopping turn with a question and no link.
 
+When the control plane creates a checkout handoff, emit `[card: checkout <handoff_id>]`
+after the useful summary. The checkout card must carry the validated merchant
+URL and blocker even if the Computer stream is unavailable. A merchant link
+opened on the owner's phone does not transfer the Box browser's cookies,
+cart, queue position, or Cloudflare challenge clearance; say when the cart may
+need to be rebuilt. Emit `[card: computer]` only as an additional same-session
+control option, never as a substitute for the checkout link.
+
+To create a handoff from the Box, call the authenticated endpoint with the
+exact quote and merchant URL, then put the returned id in the card marker:
+
+```bash
+curl -fsS -X POST "$BASE/api/checkout/handoff" \
+  -H "Authorization: Bearer $OPENAI_API_KEY" -H "Content-Type: application/json" \
+  -d '{"task_id":"<run id>","merchant_url":"https://merchant.example/checkout/…",
+       "item_summary":"2 tickets — section 102","quantity":2,
+       "amount_cents":48000,"currency":"usd","blocker":"Complete merchant verification"}'
+# then emit: [card: checkout <handoff_id>]
+```
+
+When the blocker or payment state changes, advance the same handoff with its
+current version, then emit the same marker again. The card updater edits the
+existing bubble in place; a stale version returns `409` and must be re-read
+before retrying.
+
+```bash
+curl -fsS -X PATCH "$BASE/api/checkout/handoff" \
+  -H "Authorization: Bearer $OPENAI_API_KEY" -H "Content-Type: application/json" \
+  -d '{"handoff_id":"<handoff_id>","status":"needs_human",
+       "blocker":"Complete merchant verification","version":0}'
+# then emit: [card: checkout <handoff_id>]
+```
+
 ## 3. Offer the fill — optional
 
 Only offer when ALL of these hold (the control plane enforces them too):
@@ -147,3 +180,9 @@ curl -fsS -X POST "$BASE/api/browser/purchase" \
   vault types them straight into the browser.
 - A denied or expired review means manual checkout only until the owner
   asks again.
+- Delegated Link payment approval is disabled unless the control plane has
+  verified the provider's agent-payment capability **and** an owner policy
+  matches the exact merchant, currency, item/category, cart fingerprint,
+  per-transaction ceiling, aggregate budget, expiry, and revocation state.
+  Pairing, a chat “yes”, or an LLM decision never creates that policy; when
+  the capability is unavailable, keep the human-confirmation path above.

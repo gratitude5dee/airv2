@@ -18,10 +18,10 @@ vi.mock("@/lib/orchestrator/boxes", () => ({
   StartLimitError: class extends Error {},
 }));
 
-function ctx(role = "owner"): MiniAppContext {
+function ctx(role = "owner", url = "/computer?view=live"): MiniAppContext {
   return {
     request: new NextRequest(
-      new URL("/computer?view=live", "https://mini.wzrd.tech")
+      new URL(url, "https://mini.wzrd.tech")
     ),
     supabase: {},
     app: { slug: "computer" },
@@ -48,7 +48,7 @@ describe("renderPassthrough", () => {
     vi.mocked(desktopStreamUrlIfUp).mockResolvedValue({ status: "waking" });
     const res = await renderPassthrough(ctx());
     expect(res.status).toBe(200);
-    expect(res.headers.get("refresh")).toBe("5");
+    expect(res.headers.get("refresh")).toBe("5; url=/computer?view=live&retry=1");
     expect(res.headers.get("cache-control")).toBe("no-store");
     const html = await res.text();
     expect(html).toContain("Waking your agent");
@@ -62,6 +62,33 @@ describe("renderPassthrough", () => {
     expect(res.headers.get("refresh")).toBeNull();
     const html = await res.text();
     expect(html).toContain("try again in a few minutes");
+  });
+
+  it("renders a bounded recovery page while the desktop daemon prepares", async () => {
+    vi.mocked(desktopStreamUrlIfUp).mockResolvedValue({ status: "preparing" });
+    const res = await renderPassthrough(ctx());
+    expect(res.status).toBe(200);
+    expect(res.headers.get("refresh")).toBe("3; url=/computer?view=live&retry=1");
+    expect(res.headers.get("retry-after")).toBe("3");
+    const html = await res.text();
+    expect(html).toContain("Preparing your agent's screen");
+    expect(html).toContain("Try VNC");
+    expect(html).toContain("Retry now");
+  });
+
+  it("stops automatic retries after the readiness budget", async () => {
+    vi.mocked(desktopStreamUrlIfUp).mockResolvedValue({ status: "preparing" });
+    const res = await renderPassthrough(ctx("owner", "/computer?view=live&retry=6"));
+    expect(res.headers.get("refresh")).toBeNull();
+    expect(res.headers.get("retry-after")).toBeNull();
+    expect(await res.text()).toContain("Automatic retries stopped after 30 seconds");
+  });
+
+  it("keeps a manual retry available after a slow wake", async () => {
+    vi.mocked(desktopStreamUrlIfUp).mockResolvedValue({ status: "waking" });
+    const res = await renderPassthrough(ctx("owner", "/computer?view=live&retry=6"));
+    expect(res.headers.get("refresh")).toBeNull();
+    expect(await res.text()).toContain("Retry now");
   });
 
   it("refuses guests", async () => {

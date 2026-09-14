@@ -6,6 +6,7 @@ import {
   DesktopUnavailableError,
 } from "./desktop";
 import { getBox, isStartLimit, requestDesktop, resume } from "./client";
+import { BoxApiError } from "./types";
 import { ensureBoxAwake, StartLimitError } from "../orchestrator/boxes";
 
 vi.mock("./client", () => ({
@@ -133,6 +134,22 @@ describe("desktopStreamUrlIfUp", () => {
     vi.mocked(requestDesktop).mockResolvedValue(undefined);
     await expect(
       desktopStreamUrlIfUp(supabaseWithBox("bx_1"), "user-1")
-    ).resolves.toEqual({ status: "waking" });
+    ).resolves.toEqual({ status: "preparing" });
+  });
+
+  it("normalizes the provider desktop_not_ready error", async () => {
+    vi.mocked(getBox).mockResolvedValue({ state: "ready" } as Awaited<
+      ReturnType<typeof getBox>
+    >);
+    vi.mocked(requestDesktop).mockRejectedValue(
+      new BoxApiError(400, "Desktop streaming is not ready for this box yet.", {
+        code: "desktop_not_ready",
+        requestId: "req_test",
+        providerStatus: 400,
+      })
+    );
+    await expect(
+      desktopStreamUrlIfUp(supabaseWithBox("bx_1"), "user-1")
+    ).resolves.toEqual({ status: "preparing" });
   });
 });

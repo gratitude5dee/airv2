@@ -38,8 +38,10 @@ vi.mock("@/lib/supabase", () => ({
 }));
 
 const sendMiniAppCard = vi.fn(async (..._args: unknown[]) => undefined);
+const sendOrUpdateCheckoutCard = vi.fn(async (..._args: unknown[]) => "sent");
 vi.mock("@/lib/miniapps/cards", () => ({
   sendMiniAppCard: (...args: unknown[]) => sendMiniAppCard(...args),
+  sendOrUpdateCheckoutCard: (...args: unknown[]) => sendOrUpdateCheckoutCard(...args),
 }));
 
 const release = vi.fn(async () => undefined);
@@ -54,11 +56,14 @@ vi.mock("@/lib/miniapps/cardSends", () => ({
 
 import { POST } from "./route";
 
-function post(kind: string, token?: string): [NextRequest, { params: Promise<{ kind: string }> }] {
+function post(kind: string, token?: string, body?: unknown): [NextRequest, { params: Promise<{ kind: string }> }] {
   return [
     new NextRequest(`https://air.example/api/cards/${kind}`, {
       method: "POST",
-      headers: token ? { authorization: `Bearer ${token}` } : {},
+      headers: token
+        ? { authorization: `Bearer ${token}`, ...(body ? { "content-type": "application/json" } : {}) }
+        : {},
+      ...(body ? { body: JSON.stringify(body) } : {}),
     }),
     { params: Promise.resolve({ kind }) },
   ];
@@ -68,6 +73,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   destRow = { space_id: "space-1", phone: "+15550001111" };
   claimCardSend.mockResolvedValue({ release });
+  sendOrUpdateCheckoutCard.mockResolvedValue("sent");
 });
 
 describe("POST /api/cards/[kind]", () => {
@@ -143,5 +149,18 @@ describe("POST /api/cards/[kind]", () => {
     const response = await POST(...post("kanban", "good-token"));
     expect(response.status).toBe(502);
     expect(release).toHaveBeenCalled();
+  });
+
+  it("routes checkout cards through the owner-scoped handoff updater", async () => {
+    const response = await POST(
+      ...post("checkout", "good-token", { resource_id: "handoff-1" })
+    );
+    expect(response.status).toBe(200);
+    expect(sendOrUpdateCheckoutCard).toHaveBeenCalledWith(
+      expect.any(Object),
+      { userId: "owner-1", spaceId: "space-1", phone: "+15550001111" },
+      "handoff-1"
+    );
+    expect(claimCardSend).not.toHaveBeenCalled();
   });
 });

@@ -2,7 +2,7 @@
  * MA2.3 Stripe wrapper — the only module allowed to touch the stripe SDK.
  * Platform-account client, webhook signature verification, event-id
  * idempotency (stripe_events, first-insert-wins) and a Checkout-session
- * helper (Link surfaces automatically on Checkout).
+ * helper (Checkout explicitly allows card + Link).
  */
 import Stripe from "stripe";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -67,14 +67,15 @@ export interface CheckoutSession {
 }
 
 /**
- * One-off USD Checkout session. Link (and other wallets) surface
- * automatically on Stripe Checkout — no extra configuration here.
+ * One-off USD Checkout session. Keep card + Link explicit so a merchant's
+ * Checkout configuration cannot accidentally hide Link from the owner.
  */
 export async function createCheckoutSession(
   params: CheckoutParams
 ): Promise<CheckoutSession> {
   const session = await stripeClient().checkout.sessions.create({
     mode: "payment",
+    payment_method_types: ["card", "link"],
     line_items: [
       {
         quantity: 1,
@@ -223,7 +224,7 @@ export async function retrieveConnectPaymentIntent(
  * Direct-charge Checkout session created ON the merchant's connected
  * account (the `stripeAccount` request option): the merchant is the payee
  * of record, the funds settle to their own Stripe balance, and the platform
- * is never in the money path. Link surfaces automatically on Checkout. The
+ * is never in the money path. Card + Link are explicitly allowed. The
  * session expires after 30 minutes so abandoned checkouts release.
  */
 export async function createConnectCheckoutSession(
@@ -233,6 +234,7 @@ export async function createConnectCheckoutSession(
   const session = await stripeClient().checkout.sessions.create(
     {
       mode: "payment",
+      payment_method_types: ["card", "link"],
       line_items: [
         {
           quantity: params.quantity ?? 1,

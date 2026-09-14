@@ -11,6 +11,7 @@ import { berd } from "./berd";
 import { buzz } from "./buzz";
 import { calendar } from "./calendar";
 import { computer } from "./computer";
+import { checkout } from "./checkout";
 import { connect } from "./connect";
 import { crm } from "./crm";
 import { draw } from "./draw";
@@ -41,6 +42,7 @@ export const FIRST_PARTY_MODULES: Record<string, MiniAppModule> = {
   calendar,
   image,
   computer,
+  checkout,
   connect,
   crm,
   // Product-freeze exception (review CA-19): /draw is an explicitly

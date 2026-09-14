@@ -18,6 +18,7 @@ import * as tenki from "./tenki";
 import {
   BoxApiError,
   BoxSchema,
+  type BoxErrorInfo,
   START_LIMIT_REACHED,
   type Box,
   type CommandResult,
@@ -66,12 +67,53 @@ export function isStartLimit(error: unknown): boolean {
   return (
     error instanceof BoxApiError &&
     error.status === 429 &&
-    error.message.includes(START_LIMIT_REACHED)
+    (error.code === START_LIMIT_REACHED ||
+      error.message.includes(START_LIMIT_REACHED))
   );
 }
 
 /** Box control-plane calls answer fast; forks/resumes are async server-side. */
 const BOX_REQUEST_TIMEOUT_MS = 60_000;
+
+const CONTROL_RE = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g;
+
+/** Extract only stable, non-secret provider fields from an error envelope. */
+export function parseBoxErrorBody(body: string, fallbackStatus?: number): {
+  message: string;
+  info: BoxErrorInfo;
+} {
+  const safe = (value: string): string =>
+    value.replace(CONTROL_RE, " ").slice(0, 300);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return { message: safe(body), info: {} };
+  }
+  let code: string | undefined;
+  let requestId: string | undefined;
+  let providerStatus: number | undefined;
+  let message: string | undefined;
+  const seen = new Set<object>();
+  const visit = (value: unknown, depth: number): void => {
+    if (depth > 5 || value === null || typeof value !== "object") return;
+    if (seen.has(value)) return;
+    seen.add(value);
+    for (const [key, raw] of Object.entries(value)) {
+      const normalized = key.toLowerCase().replace(/[-_]/g, "");
+      if (!code && normalized === "code" && typeof raw === "string") code = safe(raw);
+      if (!requestId && ["requestid", "traceid"].includes(normalized) && typeof raw === "string") requestId = safe(raw);
+      if (providerStatus === undefined && normalized === "status" && typeof raw === "number") providerStatus = raw;
+      if (!message && ["message", "detail"].includes(normalized) && typeof raw === "string") message = safe(raw);
+      visit(raw, depth + 1);
+    }
+  };
+  visit(parsed, 0);
+  return {
+    message: message ?? safe(body),
+    info: { ...(code ? { code } : {}), ...(requestId ? { requestId } : {}), ...(providerStatus !== undefined ? { providerStatus } : fallbackStatus !== undefined ? { providerStatus: fallbackStatus } : {}) },
+  };
+}
 
 async function boxFetch<S extends z.ZodTypeAny>(
   path: string,
@@ -92,15 +134,13 @@ async function boxFetch<S extends z.ZodTypeAny>(
   });
   if (!response.ok) {
     const body = await response.text();
-    throw new BoxApiError(response.status, body.slice(0, 500));
+    const parsed = parseBoxErrorBody(body, response.status);
+    throw new BoxApiError(response.status, parsed.message, parsed.info);
   }
   const json: unknown = await response.json();
   const parsed = schema.safeParse(json);
   if (!parsed.success) {
-    throw new BoxApiError(
-      502,
-      `unexpected response shape from ${path}: ${parsed.error.message.slice(0, 300)}`
-    );
+    throw new BoxApiError(502, `unexpected response shape from ${path}: ${parsed.error.message.slice(0, 300)}`);
   }
   return parsed.data;
 }

@@ -12,6 +12,7 @@ import {
   parseCardMarker,
   sendMarkedCards,
   sendOrUpdateAppCard,
+  sendOrUpdateCheckoutCard,
 } from "./cards";
 import { isCardKind } from "./cardSends";
 import { maybeSendMiniAppLink, OWNER_ONLY_CARD_LINE } from "./imessageCommand";
@@ -23,6 +24,13 @@ vi.mock("../spectrum/sender", () => ({
 }));
 const registry = vi.hoisted(() => ({ getRegistryApp: vi.fn(async () => null) }));
 vi.mock("./registry", () => registry);
+const handoffs = vi.hoisted(() => ({
+  getCheckoutHandoff: vi.fn(async () => ({ id: "123e4567-e89b-12d3-a456-426614174000" })),
+  isCheckoutHandoffId: vi.fn((value: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+  ),
+}));
+vi.mock("../checkout/handoffs", () => handoffs);
 const sessions = vi.hoisted(() => ({
   readMiniAppCardSession: vi.fn(async (): Promise<unknown> => undefined),
   upsertMiniAppCardSession: vi.fn(async () => undefined),
@@ -46,12 +54,14 @@ beforeEach(() => {
   vi.clearAllMocks();
   process.env["MINIAPP_SIGNING_KEY"] = "test-signing-key";
   process.env["MINIAPP_ORIGIN"] = "https://mini.example";
+  handoffs.getCheckoutHandoff.mockResolvedValue({ id: "123e4567-e89b-12d3-a456-426614174000" } as never);
 });
 
 describe("card kinds", () => {
   it("registers create and app", () => {
     expect(isCardKind("create")).toBe(true);
     expect(isCardKind("app")).toBe(true);
+    expect(isCardKind("checkout")).toBe(true);
   });
 });
 
@@ -60,11 +70,16 @@ describe("parseCardMarker", () => {
     expect(parseCardMarker("onboarding")).toEqual({ kind: "onboarding", resourceId: "default" });
     expect(parseCardMarker("create")).toEqual({ kind: "create", resourceId: "default" });
     expect(parseCardMarker("app alice-promo")).toEqual({ kind: "app", resourceId: "alice-promo" });
+    expect(parseCardMarker("checkout 123e4567-e89b-12d3-a456-426614174000")).toEqual({
+      kind: "checkout",
+      resourceId: "123e4567-e89b-12d3-a456-426614174000",
+    });
   });
 
   it("rejects an app card without a slug, a bad slug, or an unknown kind", () => {
     expect(parseCardMarker("app")).toBeNull();
     expect(parseCardMarker("app ../x")).toBeNull();
+    expect(parseCardMarker("checkout not-a-uuid")).toBeNull();
     expect(parseCardMarker("nope")).toBeNull();
   });
 });
@@ -305,5 +320,40 @@ describe("sendMarkedCards app markers", () => {
     registry.getRegistryApp.mockResolvedValue(app("user-1"));
     expect(await sendMarkedCards(supabase, owner, ["app alice-promo"])).toBe(1);
     expect(sender.sendApp).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("sendOrUpdateCheckoutCard", () => {
+  const owner = { userId: "user-1", spaceId: "space-1", phone: "+15550001111" };
+  const supabase = {
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({
+            data: { space_id: "space-1", phone: "+15550001111" },
+            error: null,
+          }),
+        }),
+      }),
+    }),
+  } as unknown as SupabaseClient;
+
+  it("validates the owner handoff and sends a fresh checkout card", async () => {
+    const sender = fakeSender();
+    vi.mocked(createSpectrumSender).mockResolvedValue(sender as unknown as SpectrumSender);
+    sessions.readMiniAppCardSession.mockResolvedValue(undefined);
+    expect(await sendOrUpdateCheckoutCard(supabase, owner, "123e4567-e89b-12d3-a456-426614174000")).toBe("sent");
+    expect(handoffs.getCheckoutHandoff).toHaveBeenCalledWith(supabase, "user-1", "123e4567-e89b-12d3-a456-426614174000");
+    expect(sends.claimCardSend).toHaveBeenCalledWith(supabase, "user-1", "checkout");
+    expect(sender.sendApp).toHaveBeenCalledTimes(1);
+  });
+
+  it("edits an existing checkout bubble without claiming a duplicate", async () => {
+    const sender = fakeSender();
+    vi.mocked(createSpectrumSender).mockResolvedValue(sender as unknown as SpectrumSender);
+    sessions.readMiniAppCardSession.mockResolvedValue({ sessionId: "s" });
+    expect(await sendOrUpdateCheckoutCard(supabase, owner, "123e4567-e89b-12d3-a456-426614174000")).toBe("updated");
+    expect(sender.editApp).toHaveBeenCalledTimes(1);
+    expect(sends.claimCardSend).not.toHaveBeenCalled();
   });
 });

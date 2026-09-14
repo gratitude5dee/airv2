@@ -19,7 +19,7 @@ const PLATFORM_RESERVED = [
 
 /** First-party registry slugs (goal.md §MA5–MA8) — bare slugs by design. */
 const FIRST_PARTY_RESERVED = [
-  "ads", "analytics", "berd", "browser", "buzz", "calendar", "computer",
+  "ads", "analytics", "berd", "browser", "buzz", "calendar", "checkout", "computer",
   "connect", "crm", "draw", "feedback", "freeze", "home", "image", "inbox",
   "kanban", "masterkey", "onboarding", "pay", "persona", "settings", "shop",
   "todo", "trade", "vault", "video",

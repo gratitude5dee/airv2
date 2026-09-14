@@ -13,7 +13,11 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
-import { sendMiniAppCard, sendOrUpdateAppCard } from "@/lib/miniapps/cards";
+import {
+  sendMiniAppCard,
+  sendOrUpdateAppCard,
+  sendOrUpdateCheckoutCard,
+} from "@/lib/miniapps/cards";
 import { claimCardSend, type CardClaim } from "@/lib/miniapps/cardSends";
 import { ownedApp, PublishError } from "@/lib/miniapps/publish";
 
@@ -44,6 +48,7 @@ const CARD_KINDS = [
   "feedback",
   "create",
   "app",
+  "checkout",
 ] as const;
 
 type Kind = (typeof CARD_KINDS)[number];
@@ -116,6 +121,31 @@ export async function POST(
       console.error(
         JSON.stringify({ msg: "card send failed", kind, user_id: userId, error: message })
       );
+      return NextResponse.json({ error: "card send failed" }, { status: 502 });
+    }
+  }
+
+  if (kind === "checkout") {
+    const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+    const handoffId = typeof body?.["resource_id"] === "string" ? body["resource_id"] : "";
+    try {
+      const outcome = await sendOrUpdateCheckoutCard(
+        supabase,
+        { userId, spaceId, phone },
+        handoffId
+      );
+      if (outcome === "cooldown") {
+        return NextResponse.json(
+          { error: "a checkout card was sent recently — wait before sending another" },
+          { status: 429 }
+        );
+      }
+      return NextResponse.json({ ok: true, outcome });
+    } catch (error) {
+      if (error instanceof Error && error.message === "checkout handoff not found") {
+        return NextResponse.json({ error: error.message }, { status: 404 });
+      }
+      console.error(JSON.stringify({ msg: "checkout card send failed", user_id: userId, error: error instanceof Error ? error.message : "unknown" }));
       return NextResponse.json({ error: "card send failed" }, { status: 502 });
     }
   }

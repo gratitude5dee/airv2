@@ -37,6 +37,7 @@ export const CARD_KINDS = [
   "create",
   "app",
   "trade",
+  "checkout",
 ] as const;
 
 export type CardKind = (typeof CARD_KINDS)[number];
