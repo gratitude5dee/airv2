@@ -10,6 +10,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { runFlush } from "./flush";
 import { createSpectrumSender } from "../spectrum/sender";
+import {
+  createRun,
+  ensureSession,
+  loadConversationTranscript,
+  runEvents,
+} from "../hermes/client";
+import { probeForTapback } from "../spectrum/tapbacks";
 import { ensureBoxAwake } from "./boxes";
 import { sharedBridgeReply } from "./sharedBridge";
 
@@ -18,7 +25,9 @@ vi.mock("../box/client", () => ({ command: vi.fn(), writeFile: vi.fn() }));
 vi.mock("../hermes/client", () => ({
   createRun: vi.fn(),
   ensureSession: vi.fn(),
+  loadConversationTranscript: vi.fn(),
   MAIN_SESSION: "main",
+  MAIN_SESSION_TITLE: "Air",
   runEvents: vi.fn(),
   stopRun: vi.fn(),
 }));
@@ -174,5 +183,56 @@ describe("runFlush during a Spectrum outage", () => {
       (update) => update.table === "flush_jobs"
     );
     expect(reschedule?.values["attempts"]).toBe(1);
+  });
+
+  it("carries and retries a model stream failure before any bubble is sent", async () => {
+    const sendText = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(createSpectrumSender).mockResolvedValue({
+      sendText,
+      close: vi.fn().mockResolvedValue(undefined),
+    } as never);
+    vi.mocked(ensureBoxAwake).mockResolvedValue({
+      boxId: "box-1",
+      target: {
+        hostedUrl: "https://box.example",
+        hostedToken: "t",
+        apiServerKey: "k",
+      },
+    } as never);
+    vi.mocked(ensureSession).mockResolvedValue({ created: false });
+    vi.mocked(loadConversationTranscript).mockResolvedValue({
+      rows: 2,
+      history: [],
+    });
+    vi.mocked(createRun).mockResolvedValue({ run_id: "run-1" });
+    vi.mocked(runEvents).mockResolvedValue(undefined as never);
+    vi.mocked(probeForTapback).mockRejectedValue(
+      new Error("Provider returned an empty stream with no finish_reason")
+    );
+    const supabase = fakeSupabase([
+      { id: "q1", message_id: "m1", body: "hello" },
+    ]);
+
+    await runFlush(supabase, job, new Date().toISOString());
+
+    expect(supabase.ops.inserts).toContainEqual({
+      table: "carried_messages",
+      rows: [
+        expect.objectContaining({ message_id: "m1", body: "hello" }),
+      ],
+    });
+    const reschedule = supabase.ops.updates.find(
+      (update) =>
+        update.table === "flush_jobs" && update.values["attempts"] === 1
+    );
+    expect(reschedule?.values).toMatchObject({
+      attempts: 1,
+      chain_started_at: null,
+    });
+    expect(sendText).toHaveBeenCalledWith(
+      "space-1",
+      "+15551234567",
+      "I hit a temporary connection issue. I'm retrying your message now."
+    );
   });
 });

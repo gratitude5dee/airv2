@@ -587,6 +587,20 @@ describe("hermesDeltas", () => {
     expect(await collect(hermesDeltas(stream))).toEqual(["PONG"]);
   });
 
+  it("rejects a completed run with no response instead of silently finishing", async () => {
+    const stream = sse([{ event: "run.completed", output: "" }]);
+    await expect(collect(hermesDeltas(stream))).rejects.toThrow(
+      "run completed without a response"
+    );
+  });
+
+  it("rejects a stream that ends without a terminal event", async () => {
+    const stream = sse([{ event: "message.delta", delta: "partial" }]);
+    await expect(collect(hermesDeltas(stream))).rejects.toThrow(
+      "run event stream ended before completion"
+    );
+  });
+
   it("throws on run.failed", async () => {
     const stream = sse([{ event: "run.failed", error: "HTTP 500" }]);
     await expect(collect(hermesDeltas(stream))).rejects.toThrow("HTTP 500");

@@ -401,6 +401,12 @@ export async function* hermesDeltas(
           sawDelta = true;
           yield event.delta;
         } else if (event.event === "run.completed") {
+          // A completed event without either deltas or a final output would
+          // otherwise look like a successful turn and silently consume the
+          // human's queued message without sending a reply.
+          if (!sawDelta && !event.output?.trim()) {
+            throw new Error("run completed without a response");
+          }
           if (!sawDelta && event.output) {
             yield event.output;
           }
@@ -411,6 +417,10 @@ export async function* hermesDeltas(
         }
       }
     }
+    // The upstream must terminate the SSE stream with run.completed or
+    // run.failed. Treat a truncated stream as retryable rather than letting
+    // it masquerade as an empty, successfully delivered answer.
+    throw new Error("run event stream ended before completion");
   } finally {
     reader.releaseLock();
   }
@@ -468,6 +478,57 @@ async function requeueMessages(
       body: message.body,
     }))
   );
+}
+
+/**
+ * The tapback probe runs before the first iMessage bubble is created. If the
+ * model stream fails there, the drained burst has not produced any visible
+ * reply and is therefore safe to carry forward and retry without duplicates.
+ */
+async function retryUndeliveredStream(
+  supabase: SupabaseClient,
+  job: {
+    spaceId: string;
+    userId: string;
+    phone: string;
+    attempts: number;
+  },
+  chainStartedAt: string,
+  drained: QueuedMessage[],
+  sender: SpectrumSender,
+  error: unknown
+): Promise<void> {
+  if (await chainCancelled(supabase, job.spaceId, chainStartedAt)) {
+    // A newer inbound already owns the job. Preserve this burst as history
+    // for that successor, but never overwrite its deadline with a backoff.
+    await carryMessages(supabase, job.userId, job.spaceId, drained);
+    return;
+  }
+
+  await carryMessages(supabase, job.userId, job.spaceId, drained);
+  await rescheduleWithBackoff(supabase, job.spaceId, job.attempts);
+  console.error(
+    JSON.stringify({
+      msg: "imessage stream retry scheduled",
+      user_id: job.userId,
+      space_id: job.spaceId,
+      attempt: job.attempts + 1,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  );
+
+  // A single visible status avoids another silent failure while the durable
+  // retry runs. Later retries stay quiet so an extended provider outage does
+  // not flood the conversation.
+  if (job.attempts === 0) {
+    await sender
+      .sendText(
+        job.spaceId,
+        job.phone,
+        "I hit a temporary connection issue. I'm retrying your message now."
+      )
+      .catch(() => undefined);
+  }
 }
 
 /**
@@ -1082,7 +1143,20 @@ async function runFlushInner(
     // (SOUL.md tells the agent this convention). Anything longer streams
     // exactly as before, prefixed by what the probe consumed.
     const iterator = guarded()[Symbol.asyncIterator]();
-    const probe = await probeForTapback(iterator);
+    let probe: Awaited<ReturnType<typeof probeForTapback>>;
+    try {
+      probe = await probeForTapback(iterator);
+    } catch (error) {
+      await retryUndeliveredStream(
+        supabase,
+        job,
+        chainStartedAt,
+        drained,
+        sender,
+        error
+      );
+      return;
+    }
     // Synthetic carried rows (bridge markers) are not real iMessages, so a
     // reaction can never pin to them; target the last real inbound instead.
     const tapbackTarget = [...drained]
