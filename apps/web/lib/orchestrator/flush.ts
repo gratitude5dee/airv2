@@ -80,6 +80,32 @@ export const DEBOUNCE_MS = 2_500;
 export const REFERENCE_WINDOW_MS = 3_000;
 const MAX_ATTEMPTS = 5;
 const CANCEL_POLL_MS = 2_000;
+/**
+ * A Hermes turn may keep its SSE body open forever after the headers arrive.
+ * Bound the full generation before delivery: the 5-second acknowledgment and
+ * timed updates cover the wait, while buffering avoids a partial iMessage that
+ * could not be retried safely without duplication.
+ */
+export const FINAL_RESPONSE_DEADLINE_MS = 45_000;
+
+export async function beforeDeadline<T>(
+  pending: Promise<T>,
+  deadlineAt: number,
+  message: string
+): Promise<T> {
+  const remainingMs = Math.max(0, deadlineAt - Date.now());
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      pending,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), remainingMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 export interface InboundMessage {
   userId: string;
@@ -1141,56 +1167,148 @@ async function runFlushInner(
     // burst on the floor.
     const conversationHistory = replayed ?? [];
 
-    const run = await createRun(runTarget, {
-      input: runInput,
-      sessionId: runSession,
-      conversationHistory,
-      metadata: { channel: "imessage" },
-    });
+    const finalResponseDeadlineAt = Date.now() + FINAL_RESPONSE_DEADLINE_MS;
+    let run: Awaited<ReturnType<typeof createRun>>;
+    try {
+      run = await beforeDeadline(
+        createRun(runTarget, {
+          input: runInput,
+          sessionId: runSession,
+          conversationHistory,
+          metadata: { channel: "imessage" },
+        }),
+        finalResponseDeadlineAt,
+        "Hermes did not create the run before the final-response deadline"
+      );
+    } catch (error) {
+      await retryUndeliveredStream(
+        supabase,
+        job,
+        chainStartedAt,
+        drained,
+        sender,
+        error
+      );
+      return;
+    }
     await supabase
       .from("flush_jobs")
       .update({ hermes_run_id: run.run_id })
       .eq("space_id", job.spaceId);
 
     const startedAt = new Date().toISOString();
+    const { error: openReceiptError } = await supabase
+      .from("agent_runs")
+      .insert({
+        user_id: job.userId,
+        hermes_run_id: run.run_id,
+        trigger: "imessage",
+        started_at: startedAt,
+      });
+    if (openReceiptError) {
+      console.error(
+        JSON.stringify({
+          msg: "imessage agent run receipt open failed",
+          user_id: job.userId,
+          hermes_run_id: run.run_id,
+          error: openReceiptError.message,
+        })
+      );
+    }
     let cancelled = false;
     let lastCancelCheck = Date.now();
-    const events = await runEvents(runTarget, run.run_id);
-    // Outbound marker lanes: `[send-file: …]` and `[card: …]` markers are
-    // stripped from the streamed text and delivered (native attachments,
-    // mini-app cards) after the stream.
-    const stripped = stripSendFileMarkers(
-      hermesDeltas(events, undefined, () => progressTimeline?.stop())
-    );
-    const deltas = stripped.deltas;
-
-    // Stream straight into iMessage: first chunk is a real message, edited
-    // in place as more arrives. Delegated replies carry the bot attribution
-    // on the first chunk.
-    async function* guarded(): AsyncGenerator<string> {
-      let first = true;
-      for await (const delta of deltas) {
-        if (Date.now() - lastCancelCheck > CANCEL_POLL_MS) {
-          lastCancelCheck = Date.now();
-          if (await chainCancelled(supabase, job.spaceId, chainStartedAt)) {
-            cancelled = true;
-            await stopRun(runTarget, run.run_id).catch(() => undefined);
-            return;
-          }
-        }
-        yield first ? `${botPrefix}${delta}` : delta;
-        first = false;
-      }
-    }
-    // Tapback lane: when the whole reply is one tapback emoji, pin it to the
-    // human's last message as a native reaction instead of a new bubble
-    // (SOUL.md tells the agent this convention). Anything longer streams
-    // exactly as before, prefixed by what the probe consumed.
-    const iterator = guarded()[Symbol.asyncIterator]();
-    let probe: Awaited<ReturnType<typeof probeForTapback>>;
+    let prepared: {
+      stripped: ReturnType<typeof stripSendFileMarkers>;
+      probe: Awaited<ReturnType<typeof probeForTapback>>;
+    };
     try {
-      probe = await probeForTapback(iterator);
+      const events = await beforeDeadline(
+        runEvents(runTarget, run.run_id),
+        finalResponseDeadlineAt,
+        "Hermes did not open the event stream before the final-response deadline"
+      );
+      // Outbound marker lanes: `[send-file: …]` and `[card: …]` markers are
+      // stripped from the streamed text and delivered (native attachments,
+      // mini-app cards) after the stream.
+      const stripped = stripSendFileMarkers(
+        hermesDeltas(events, undefined, () => progressTimeline?.stop())
+      );
+      const deltas = stripped.deltas;
+
+      // Stream straight into iMessage: first chunk is a real message, edited
+      // in place as more arrives. Delegated replies carry the bot attribution
+      // on the first chunk.
+      async function* guarded(): AsyncGenerator<string> {
+        let first = true;
+        for await (const delta of deltas) {
+          if (Date.now() - lastCancelCheck > CANCEL_POLL_MS) {
+            lastCancelCheck = Date.now();
+            if (await chainCancelled(supabase, job.spaceId, chainStartedAt)) {
+              cancelled = true;
+              await stopRun(runTarget, run.run_id).catch(() => undefined);
+              return;
+            }
+          }
+          yield first ? `${botPrefix}${delta}` : delta;
+          first = false;
+        }
+      }
+      // Tapback lane: when the whole reply is one tapback emoji, pin it to the
+      // human's last message as a native reaction instead of a new bubble
+      // (SOUL.md tells the agent this convention). Anything longer streams
+      // exactly as before, prefixed by what the probe consumed.
+      const iterator = guarded()[Symbol.asyncIterator]();
+      const initialProbe = await beforeDeadline(
+        probeForTapback(iterator),
+        finalResponseDeadlineAt,
+        "Hermes did not complete a response within 45 seconds"
+      );
+      // Finish consuming the reply before Spectrum sees any of it. If Hermes
+      // stalls after its first few tokens, the same durable burst can still be
+      // retried without leaving a duplicate or half-answer in Messages.
+      const replyChunks = initialProbe.buffered
+        ? [initialProbe.buffered]
+        : [];
+      if (!initialProbe.ended) {
+        for (;;) {
+          const next = await beforeDeadline(
+            iterator.next(),
+            finalResponseDeadlineAt,
+            "Hermes did not complete a response within 45 seconds"
+          );
+          if (next.done) break;
+          replyChunks.push(next.value);
+        }
+      }
+      prepared = {
+        stripped,
+        probe: {
+          ...initialProbe,
+          buffered: replyChunks.join(""),
+          ended: true,
+        },
+      };
     } catch (error) {
+      progressTimeline?.stop();
+      await stopRun(runTarget, run.run_id).catch(() => undefined);
+      const { error: failReceiptError } = await supabase
+        .from("agent_runs")
+        .update({
+          ended_at: new Date().toISOString(),
+          outcome: "first_response_failed",
+        })
+        .eq("user_id", job.userId)
+        .eq("hermes_run_id", run.run_id);
+      if (failReceiptError) {
+        console.error(
+          JSON.stringify({
+            msg: "imessage agent run receipt failure close failed",
+            user_id: job.userId,
+            hermes_run_id: run.run_id,
+            error: failReceiptError.message,
+          })
+        );
+      }
       await retryUndeliveredStream(
         supabase,
         job,
@@ -1205,6 +1323,7 @@ async function runFlushInner(
       }
       return;
     }
+    const { stripped, probe } = prepared;
     // Synthetic carried rows (bridge markers) are not real iMessages, so a
     // reaction can never pin to them; target the last real inbound instead.
     const tapbackTarget = [...drained]
@@ -1232,12 +1351,6 @@ async function runFlushInner(
     } else if (!(probe.ended && probe.buffered.length === 0)) {
       async function* remainder(): AsyncGenerator<string> {
         if (probe.buffered) yield probe.buffered;
-        if (probe.ended) return;
-        for (;;) {
-          const next = await iterator.next();
-          if (next.done) return;
-          yield next.value;
-        }
       }
       await streamBubbles(sender, job.spaceId, job.phone, remainder());
     }
@@ -1280,20 +1393,45 @@ async function runFlushInner(
     // V6: a purchase outcome recorded mid-run already inserted this run's
     // row (keyed by hermes_run_id) — close it instead of duplicating, and
     // never overwrite a purchase_* outcome with the generic "completed".
-    const { data: existingRun } = await supabase
+    const { data: existingRun, error: existingRunError } = await supabase
       .from("agent_runs")
-      .select("id")
+      .select("id, outcome")
       .eq("user_id", job.userId)
       .eq("hermes_run_id", run.run_id)
       .limit(1)
       .maybeSingle();
-    if (existingRun) {
-      await supabase
+    if (existingRunError) {
+      console.error(
+        JSON.stringify({
+          msg: "imessage agent run receipt lookup failed",
+          user_id: job.userId,
+          hermes_run_id: run.run_id,
+          error: existingRunError.message,
+        })
+      );
+    } else if (existingRun) {
+      const { error: updateReceiptError } = await supabase
         .from("agent_runs")
-        .update({ started_at: startedAt, ended_at: new Date().toISOString() })
+        .update({
+          started_at: startedAt,
+          ended_at: new Date().toISOString(),
+          // A purchase/approval handler may have already recorded a more
+          // specific terminal outcome while Hermes was running. Preserve it.
+          ...(!existingRun.outcome ? { outcome: "completed" } : {}),
+        })
         .eq("id", existingRun.id);
+      if (updateReceiptError) {
+        console.error(
+          JSON.stringify({
+            msg: "imessage agent run receipt close failed",
+            user_id: job.userId,
+            hermes_run_id: run.run_id,
+            error: updateReceiptError.message,
+          })
+        );
+      }
     } else {
-      await supabase
+      const { error: insertReceiptError } = await supabase
         .from("agent_runs")
         .insert({
           user_id: job.userId,
@@ -1303,6 +1441,16 @@ async function runFlushInner(
           ended_at: new Date().toISOString(),
           outcome: "completed",
         });
+      if (insertReceiptError) {
+        console.error(
+          JSON.stringify({
+            msg: "imessage agent run receipt insert failed",
+            user_id: job.userId,
+            hermes_run_id: run.run_id,
+            error: insertReceiptError.message,
+          })
+        );
+      }
     }
     // If a new inbound arrived while we streamed, its flush owns the job now.
     if (!(await chainCancelled(supabase, job.spaceId, chainStartedAt))) {

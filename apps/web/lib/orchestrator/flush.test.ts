@@ -6,6 +6,7 @@ import {
   debounceMsFor,
   dropQuickAckMarker,
   enqueueInbound,
+  FINAL_RESPONSE_DEADLINE_MS,
   hermesDeltas,
   isCancelled,
   REFERENCE_WINDOW_MS,
@@ -16,6 +17,7 @@ import {
   ensureSession,
   loadConversationTranscript,
   runEvents,
+  stopRun,
 } from "../hermes/client";
 import { createSpectrumSender } from "../spectrum/sender";
 import { ensureBoxAwake } from "./boxes";
@@ -343,31 +345,40 @@ describe("runFlush history replay", () => {
     senderTier: 0,
   };
 
-  function fakeSupabase(queueRows: Array<Record<string, unknown>>) {
+  function fakeSupabase(
+    queueRows: Array<Record<string, unknown>>,
+    options: { agentRunInsertError?: string } = {}
+  ) {
     return {
-      from: (table: string) => ({
-        select: () => {
-          const rows = table === "batch_queue" ? queueRows : [];
-          const chain = {
-            eq: () => chain,
-            limit: () => chain,
-            order: () => Promise.resolve({ data: rows, error: null }),
-            maybeSingle: () => Promise.resolve({ data: null, error: null }),
-          };
-          return chain;
-        },
-        delete: () => {
-          const chain = {
-            eq: () => chain,
-            in: () => Promise.resolve({ error: null }),
-            then: (resolve: (value: { error: null }) => void) =>
-              resolve({ error: null }),
-          };
-          return chain;
-        },
-        update: () => ({ eq: () => Promise.resolve({ error: null }) }),
-        insert: () => Promise.resolve({ error: null }),
-      }),
+      from: (table: string) => {
+        const mutationChain = {
+          eq: () => mutationChain,
+          in: () => Promise.resolve({ error: null }),
+          then: (resolve: (value: { error: null }) => void) =>
+            resolve({ error: null }),
+        };
+        return {
+          select: () => {
+            const rows = table === "batch_queue" ? queueRows : [];
+            const chain = {
+              eq: () => chain,
+              limit: () => chain,
+              order: () => Promise.resolve({ data: rows, error: null }),
+              maybeSingle: () => Promise.resolve({ data: null, error: null }),
+            };
+            return chain;
+          },
+          delete: () => mutationChain,
+          update: () => mutationChain,
+          insert: () =>
+            Promise.resolve({
+              error:
+                table === "agent_runs" && options.agentRunInsertError
+                  ? { message: options.agentRunInsertError }
+                  : null,
+            }),
+        };
+      },
     } as unknown as SupabaseClient;
   }
 
@@ -375,6 +386,8 @@ describe("runFlush history replay", () => {
     vi.mocked(createRun).mockClear();
     vi.mocked(ensureSession).mockClear();
     vi.mocked(loadConversationTranscript).mockClear();
+    vi.mocked(stopRun).mockClear();
+    vi.mocked(stopRun).mockResolvedValue(undefined);
     vi.mocked(createSpectrumSender).mockResolvedValue({
       sendText: vi.fn().mockResolvedValue(undefined),
       streamText: vi.fn(async (_space, _phone, chunks) => {
@@ -480,6 +493,89 @@ describe("runFlush history replay", () => {
     expect(vi.mocked(createRun).mock.calls[0]?.[1].conversationHistory).toEqual(
       []
     );
+  });
+
+  it("stops and durably retries a run that does not complete its response by 45 seconds", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-14T17:00:00.000Z"));
+    vi.mocked(loadConversationTranscript).mockResolvedValue({
+      rows: 2,
+      history: [
+        { role: "user", content: "plan the trip" },
+        { role: "assistant", content: "Where from?" },
+      ],
+    });
+    const encoder = new TextEncoder();
+    vi.mocked(runEvents).mockResolvedValue(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                event: "message.delta",
+                delta: "I started the answer",
+              })}\n\n`
+            )
+          );
+          // Deliberately remain open without a terminal event.
+        },
+      }) as never
+    );
+    vi.mocked(probeForTapback).mockImplementation(async (iterator) => {
+      const first = await iterator.next();
+      return {
+        buffered: first.done ? "" : first.value,
+        ended: false,
+      };
+    });
+
+    const pending = runFlush(
+      fakeSupabase([{ id: "q1", message_id: "m1", body: "from Hyderabad" }]),
+      job,
+      new Date().toISOString()
+    );
+    await vi.advanceTimersByTimeAsync(FINAL_RESPONSE_DEADLINE_MS);
+    await pending;
+
+    expect(stopRun).toHaveBeenCalledWith(target, "run-1");
+    const sender = (await vi.mocked(createSpectrumSender).mock.results.at(-1)!
+      .value) as { sendText: ReturnType<typeof vi.fn> };
+    expect(sender.sendText).toHaveBeenCalledWith(
+      "space-1",
+      "+15551234567",
+      "I hit a temporary connection issue. I'm retrying your message now."
+    );
+    vi.useRealTimers();
+  });
+
+  it("logs receipt write failures without suppressing the delivered answer", async () => {
+    vi.mocked(loadConversationTranscript).mockResolvedValue({
+      rows: 2,
+      history: [
+        { role: "user", content: "hi" },
+        { role: "assistant", content: "hey" },
+      ],
+    });
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await runFlush(
+      fakeSupabase(
+        [{ id: "q1", message_id: "m1", body: "tell me something" }],
+        { agentRunInsertError: "receipt store offline" }
+      ),
+      job,
+      new Date().toISOString()
+    );
+
+    expect(
+      errors.mock.calls.some((call) =>
+        String(call[0]).includes("imessage agent run receipt open failed")
+      )
+    ).toBe(true);
+    const sender = (await vi.mocked(createSpectrumSender).mock.results.at(-1)!
+      .value) as { streamText: ReturnType<typeof vi.fn> };
+    expect(sender.streamText).toHaveBeenCalled();
+    errors.mockRestore();
   });
 
   describe("card markers", () => {
