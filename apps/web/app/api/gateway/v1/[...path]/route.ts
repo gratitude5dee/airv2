@@ -62,11 +62,19 @@ import {
   responsesStreamToChat,
   toResponsesRequest,
 } from "@/lib/gateway/responses";
+import { requestSignal } from "@/lib/http/timeout";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const RETRY_DELAY_MS = process.env.NODE_ENV === "test" ? 0 : 1500;
+// User-facing iMessage turns cannot wait several minutes for Astra. Give it
+// most of the completion window, then finish the same request on GLM through
+// the same GMI key. Every subsequent GMI attempt shares the hard deadline.
+const GMI_TURN_BUDGET_MS = 44_000;
+const GMI_ASTRA_BUDGET_MS = 30_000;
+const GMI_ASTRA_MODEL = "openai/gpt-6-astra";
+const GMI_RECOVERY_MODEL = "zai-org/GLM-5.3-Flash";
 // The box sees abstract tier IDs whose concrete provider model can change.
 // Advertise a conservative common window so Hermes does not misclassify our
 // custom gateway as Ollama, probe /api/show, then assume an unsafe 256K.
@@ -81,6 +89,15 @@ interface Usage {
 
 function unauthorized(): NextResponse {
   return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+}
+
+function isTimeoutError(error: unknown): boolean {
+  if (!(error instanceof Error || error instanceof DOMException)) return false;
+  return (
+    error.name === "TimeoutError" ||
+    error.name === "AbortError" ||
+    /timed?\s*out|timeout/i.test(error.message)
+  );
 }
 
 // Task-type routing for the gmi family (goal-gmi-models Phase 2): a turn
@@ -534,6 +551,7 @@ export async function POST(
     app && taken ? { id: app.appId, hold: taken } : null;
 
   const requestStartedMs = Date.now();
+  const gmiDeadlineMs = requestStartedMs + GMI_TURN_BUDGET_MS;
   const requestedModel =
     typeof rawBody["model"] === "string" ? (rawBody["model"] as string) : null;
   let servedModel = "";
@@ -541,6 +559,8 @@ export async function POST(
   let servedOnPersonalKey = false;
   /** True while the in-flight dispatch is talking to upstream /responses. */
   let servedViaResponses = false;
+  /** Set after Astra exhausts its latency budget; later retries stay on GLM. */
+  let gmiRecoveryModel: string | null = null;
 
   const dispatchOnce = async (
     toFamily: ModelFamily,
@@ -549,14 +569,16 @@ export async function POST(
     // The tier and family names are the only things that ever appear in a
     // box's config — the real model ID is resolved here and only here.
     const body: Record<string, unknown> = { ...rawBody };
+    const provider = providerForFamily(toFamily);
     body["model"] =
-      createTier !== null
-        ? modelForCreateTier(tier)
-        : modelForSelection(toFamily, tier, selection);
+      provider === "gmi" && gmiRecoveryModel
+        ? gmiRecoveryModel
+        : createTier !== null
+          ? modelForCreateTier(tier)
+          : modelForSelection(toFamily, tier, selection);
     servedModel = String(body["model"]);
     servedViaResponses = false;
     // service_tier is OpenAI-only, like reasoning_effort.
-    const provider = providerForFamily(toFamily);
     const openRouter = provider === "openrouter";
     const serviceTier = provider === "openai" ? serviceTierForTier(tier) : undefined;
     if (serviceTier && body["service_tier"] === undefined) {
@@ -698,6 +720,11 @@ export async function POST(
         }
       );
     }
+    const gmiRemainingMs = Math.max(1, gmiDeadlineMs - Date.now());
+    const gmiAttemptMs =
+      servedModel === GMI_ASTRA_MODEL
+        ? Math.min(GMI_ASTRA_BUDGET_MS, gmiRemainingMs)
+        : gmiRemainingMs;
     return fetch(`${baseUrl}/${upstreamPath}`, {
       method: "POST",
       headers: {
@@ -711,6 +738,7 @@ export async function POST(
             }
           : {}),
       },
+      ...(provider === "gmi" ? { signal: requestSignal(gmiAttemptMs) } : {}),
       body: JSON.stringify(upstreamBody),
     });
   };
@@ -750,7 +778,34 @@ export async function POST(
   const proxy = async (): Promise<Response> => {
     // The Create family is OpenAI-only: the owner's chat family never applies.
     let servedFamily: ModelFamily = createTier !== null ? "openai" : family;
-    let upstream = await dispatch(servedFamily);
+    const recoverTimedOutAstra = async (error: unknown): Promise<Response> => {
+      if (
+        providerForFamily(servedFamily) === "gmi" &&
+        servedModel === GMI_ASTRA_MODEL &&
+        isTimeoutError(error) &&
+        Date.now() < gmiDeadlineMs
+      ) {
+        console.warn(
+          JSON.stringify({
+            msg: "gateway gmi astra latency fallback",
+            user_id: userId,
+            from_model: GMI_ASTRA_MODEL,
+            to_model: GMI_RECOVERY_MODEL,
+            elapsed_ms: Date.now() - requestStartedMs,
+          })
+        );
+        gmiRecoveryModel = GMI_RECOVERY_MODEL;
+        return dispatch(servedFamily);
+      }
+      throw error;
+    };
+
+    let upstream: Response;
+    try {
+      upstream = await dispatch(servedFamily);
+    } catch (error) {
+      upstream = await recoverTimedOutAstra(error);
+    }
 
     // Non-OpenAI families can degrade to empty completions (e.g. an endpoint
     // answering tool-bearing calls with `native_finish_reason: "network_error"`
@@ -881,7 +936,15 @@ export async function POST(
         }
         return false;
       };
-      if (!(await carriesAssistantWork(upstream))) {
+      let hasAssistantWork: boolean;
+      try {
+        hasAssistantWork = await carriesAssistantWork(upstream);
+      } catch (error) {
+        await upstream.body?.cancel().catch(() => undefined);
+        upstream = await recoverTimedOutAstra(error);
+        hasAssistantWork = await carriesAssistantWork(upstream);
+      }
+      if (!hasAssistantWork) {
         console.warn(
           JSON.stringify({
             msg: "gateway response missing user-visible work",
@@ -891,7 +954,7 @@ export async function POST(
             streaming: true,
           })
         );
-        await upstream.body.cancel().catch(() => undefined);
+        await upstream.body?.cancel().catch(() => undefined);
         if (canFallBack) {
           servedFamily = "openai";
           upstream = await dispatch(servedFamily);
@@ -928,6 +991,17 @@ export async function POST(
           }
         }
       }
+    }
+
+    // A latency recovery dispatch can itself return an upstream error. The
+    // earlier status check ran before stream validation, so repeat the guard
+    // before handing the body to the metering/translation pipeline.
+    if (!upstream.ok || !upstream.body) {
+      const errorBody = await upstream.text();
+      return new NextResponse(errorBody, {
+        status: upstream.status,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     if (streaming) {
@@ -1001,6 +1075,28 @@ export async function POST(
   };
   try {
     return await proxy();
+  } catch (error) {
+    if (isTimeoutError(error)) {
+      console.warn(
+        JSON.stringify({
+          msg: "gateway provider deadline exceeded",
+          user_id: userId,
+          family,
+          model: servedModel || null,
+          elapsed_ms: Date.now() - requestStartedMs,
+        })
+      );
+      return NextResponse.json(
+        {
+          error: {
+            message: "The model provider exceeded the response deadline.",
+            type: "upstream_timeout",
+          },
+        },
+        { status: 504 }
+      );
+    }
+    throw error;
   } finally {
     release();
   }

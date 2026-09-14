@@ -664,6 +664,87 @@ describe("gateway model families", () => {
     expect(await response.text()).toContain("Here is the answer.");
   });
 
+  it("falls back from a timed-out GMI Astra turn to GLM on the same GMI key", async () => {
+    process.env["GATEWAY_MODEL_FAMILY_OVERRIDE"] = "gmi";
+    setEntitlement({ speed_tier: "deep", model_family: "openai" });
+    const models: string[] = [];
+    const fetchMock = vi.fn(
+      async (_url: RequestInfo | URL, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body)) as { model: string };
+        models.push(body.model);
+        if (body.model === "openai/gpt-6-astra") {
+          throw new DOMException("The operation timed out", "TimeoutError");
+        }
+        return new Response(
+          JSON.stringify({
+            choices: [{ message: { role: "assistant", content: "Fast answer" } }],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(completionRequest({ messages: [] }), {
+      params: Promise.resolve({ path: ["chat", "completions"] }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(models).toEqual([
+      "openai/gpt-6-astra",
+      "zai-org/GLM-5.3-Flash",
+    ]);
+    expect(await response.json()).toEqual(
+      expect.objectContaining({
+        choices: [expect.objectContaining({ message: expect.objectContaining({ content: "Fast answer" }) })],
+      }),
+    );
+    expect(fetchMock.mock.calls.every((call) =>
+      String(call[0]).startsWith("https://gmi.test/")
+    )).toBe(true);
+  });
+
+  it("falls back to GLM when Astra times out after opening its stream", async () => {
+    process.env["GATEWAY_MODEL_FAMILY_OVERRIDE"] = "gmi";
+    setEntitlement({ speed_tier: "deep", model_family: "openai" });
+    const models: string[] = [];
+    const fetchMock = vi.fn(
+      async (_url: RequestInfo | URL, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body)) as { model: string };
+        models.push(body.model);
+        if (body.model === "openai/gpt-6-astra") {
+          return new Response(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.error(
+                  new DOMException("The operation timed out", "TimeoutError"),
+                );
+              },
+            }),
+            { status: 200, headers: { "Content-Type": "text/event-stream" } },
+          );
+        }
+        return new Response(
+          'data: {"choices":[{"delta":{"content":"Recovered answer"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
+          { status: 200, headers: { "Content-Type": "text/event-stream" } },
+        );
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      completionRequest({ messages: [], stream: true }),
+      { params: Promise.resolve({ path: ["chat", "completions"] }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(models).toEqual([
+      "openai/gpt-6-astra",
+      "zai-org/GLM-5.3-Flash",
+    ]);
+    expect(await response.text()).toContain("Recovered answer");
+  });
+
   it("keeps the OpenAI-only service_tier off OpenRouter requests", async () => {
     process.env["MODEL_SERVICE_TIER_FAST"] = "priority";
     try {

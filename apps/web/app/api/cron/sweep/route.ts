@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { serviceClient } from "@/lib/supabase";
 import { claimFlush, runFlush } from "@/lib/orchestrator/flush";
+import { recoverOrphanedCarriedJobs } from "@/lib/orchestrator/carryRecovery";
 import { findSweepableBoxes } from "@/lib/orchestrator/sweep";
 import { stopIdleBoxes } from "@/lib/orchestrator/idleStop";
 import { reconcileVerdict } from "@/lib/orchestrator/reconcile";
@@ -93,6 +94,22 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         })
       );
     }
+  }
+
+  // A failure between carrying a drained burst and re-scheduling its job can
+  // preserve the user's input with nothing left to wake it. Repair that
+  // invariant before the overdue read; recovered jobs are stamped old enough
+  // to be claimed in this same sweep tick.
+  let orphanedCarried = { restored: 0, unresolved: 0 };
+  try {
+    orphanedCarried = await recoverOrphanedCarriedJobs(supabase, now);
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        msg: "sweeper carried recovery failed",
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
   }
 
   // Flush jobs overdue by more than a debounce window: their after() task
@@ -257,6 +274,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     indexingDeferred,
     indexing,
     reconciled,
+    orphanedCarried,
     flushed,
     uploadsReleased,
     fleet,
