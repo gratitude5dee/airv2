@@ -2,13 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   close: vi.fn(async () => undefined),
-  createHttpClient: vi.fn(),
+  createGrpcClient: vi.fn(),
   issueImessageTokens: vi.fn(),
   setReaction: vi.fn(async () => ({ guid: "reaction-1" })),
 }));
 
-vi.mock("@photon-ai/advanced-imessage", () => ({
-  createHttpClient: mocks.createHttpClient,
+vi.mock("@photon-ai/advanced-imessage/grpc", () => ({
+  createGrpcClient: mocks.createGrpcClient,
 }));
 
 vi.mock("spectrum-ts", () => ({
@@ -27,13 +27,13 @@ describe("fast iMessage reactions", () => {
     vi.resetModules();
     vi.clearAllMocks();
     delete process.env["SPECTRUM_IMESSAGE_ADDRESS"];
-    mocks.createHttpClient.mockReturnValue({
+    mocks.createGrpcClient.mockReturnValue({
       close: mocks.close,
       messages: { setReaction: mocks.setReaction },
     });
   });
 
-  it("uses one direct HTTP call and reuses a warm shared token", async () => {
+  it("uses one direct gRPC call and reuses a warm shared token", async () => {
     mocks.issueImessageTokens.mockResolvedValue({
       type: "shared",
       token: "shared-token",
@@ -46,12 +46,11 @@ describe("fast iMessage reactions", () => {
     await first?.react("any;-;+15550001111", "message-1", "👀");
 
     expect(mocks.issueImessageTokens).toHaveBeenCalledTimes(1);
-    expect(mocks.createHttpClient).toHaveBeenCalledTimes(2);
-    expect(mocks.createHttpClient).toHaveBeenCalledWith(
+    expect(mocks.createGrpcClient).toHaveBeenCalledTimes(2);
+    expect(mocks.createGrpcClient).toHaveBeenCalledWith(
       expect.objectContaining({
         address: "imessage.spectrum.photon.codes:443",
         token: "shared-token",
-        timeout: 900,
       }),
     );
     expect(mocks.setReaction).toHaveBeenCalledWith(
@@ -80,8 +79,11 @@ describe("fast iMessage reactions", () => {
 
     await sender?.react("any;-;+15550003333", "p:2/parent-guid", "👀");
 
-    expect(mocks.createHttpClient).toHaveBeenCalledWith(
-      expect.objectContaining({ server: "line-b", token: "token-b" }),
+    expect(mocks.createGrpcClient).toHaveBeenCalledWith(
+      expect.objectContaining({
+        address: "line-b.imsg.photon.codes:443",
+        token: "token-b",
+      }),
     );
     expect(mocks.setReaction).toHaveBeenCalledWith(
       "any;-;+15550003333",
@@ -104,6 +106,6 @@ describe("fast iMessage reactions", () => {
     await expect(
       createFastReactionSender("+15550009999"),
     ).resolves.toBeUndefined();
-    expect(mocks.createHttpClient).not.toHaveBeenCalled();
+    expect(mocks.createGrpcClient).not.toHaveBeenCalled();
   });
 });

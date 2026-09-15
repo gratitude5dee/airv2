@@ -138,7 +138,7 @@ async function sendImmediateReaction(
   message: InboundMessage,
   receivedAtMs: number
 ): Promise<void> {
-  let transport: "http-direct" | "spectrum-fallback" = "http-direct";
+  let transport: "grpc-direct" | "spectrum-fallback" = "grpc-direct";
   let fastSender: FastReactionSender | undefined;
   let reacted = false;
   try {

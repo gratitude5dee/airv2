@@ -4,17 +4,16 @@
  * The universal Spectrum sender must first build an app, resolve the message,
  * and then issue the reaction. For the deterministic acknowledgement we
  * already have the chat guid and message guid from the signed webhook, so the
- * Advanced iMessage HTTP client can set the reaction in one request. Cloud
+ * Advanced iMessage client can set the reaction in one request. Cloud
  * tokens are cached only in this warm process and refreshed before expiry;
  * no bearer is persisted or logged.
  */
-import { createHttpClient } from "@photon-ai/advanced-imessage";
+import { createGrpcClient } from "@photon-ai/advanced-imessage/grpc";
 import { cloud, type TokenData } from "spectrum-ts";
 import { env } from "../env";
 
 const DEFAULT_IMESSAGE_ADDRESS = "imessage.spectrum.photon.codes:443";
 const TOKEN_REFRESH_SKEW_MS = 30_000;
-const HTTP_TIMEOUT_MS = 900;
 const CHILD_MESSAGE_ID = /^p:(\d+)\/(.+)$/;
 
 interface CachedTokenData {
@@ -88,27 +87,25 @@ export async function createFastReactionSender(
   phone: string,
 ): Promise<FastReactionSender | undefined> {
   const tokenData = await issueTokenData();
-  const address =
+  let address =
     process.env["SPECTRUM_IMESSAGE_ADDRESS"] ?? DEFAULT_IMESSAGE_ADDRESS;
   let token: string;
-  let server: string | undefined;
   if (tokenData.type === "shared") {
     token = tokenData.token;
   } else {
-    server = dedicatedInstanceForPhone(tokenData, phone);
+    const server = dedicatedInstanceForPhone(tokenData, phone);
     if (!server) return undefined;
     const dedicatedToken = tokenData.auth[server];
     if (!dedicatedToken) return undefined;
     token = dedicatedToken;
+    address = `${server}.imsg.photon.codes:443`;
   }
-  const client = createHttpClient({
+  const client = createGrpcClient({
     address,
     autoIdempotency: true,
     retry: true,
-    timeout: HTTP_TIMEOUT_MS,
     tls: true,
     token,
-    ...(server ? { server } : {}),
   });
   return {
     react: async (spaceId, messageId, emoji) => {
