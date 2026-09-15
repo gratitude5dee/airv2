@@ -26,6 +26,22 @@ import { checkInTicket, listOrders, type Order } from "@/lib/commerce/checkout";
 import { proposeForUser } from "@/lib/publish/propose";
 import { requestAdWrite, AdWriteError } from "@/lib/ads/approvals";
 import { StartLimitError } from "@/lib/orchestrator/boxes";
+import {
+  createPayLink,
+  deletePayLink,
+  listPayLinks,
+  payLinkUrl,
+  setPayLinkStatus,
+  type PayLink,
+  type PayLinkProduct,
+} from "@/lib/commerce/payLinks";
+import { kernelAvailable, KernelError } from "@/lib/kernel/client";
+import {
+  ensureKernelVault,
+  listKernelVaultItems,
+  syncKernelVaultItems,
+} from "@/lib/kernel/vaults";
+import { stageKernelAction } from "@/lib/kernel/actions";
 import { promptBar, runPrompt } from "../promptBar";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
@@ -46,10 +62,50 @@ function shopHtml(body: string): NextResponse {
   return response;
 }
 
-function productCard(product: StorefrontProduct): string {
+function productCard(
+  product: StorefrontProduct,
+  link: (PayLink & { product: PayLinkProduct | null }) | undefined,
+  linksEnabled: boolean
+): string {
+  const linkRow = linksEnabled
+    ? link
+      ? `<div class="muted" style="margin:4px 0">${esc(payLinkUrl(link.slug))}${link.status === "paused" ? " · paused" : ""}</div>`
+      : `<form method="post"><input type="hidden" name="action" value="pay_link_create"><input type="hidden" name="product_id" value="${esc(product.id)}"><button class="ghost">Create payment link</button></form>`
+    : "";
   return `<div class="card">${product.image_url ? `<img src="${esc(product.image_url)}" alt="" style="max-width:100%;border-radius:var(--radius-well)">` : ""}<strong>${esc(product.name)}</strong> — $${(product.price_cents / 100).toFixed(2)} <span class="when">${esc(product.kind)}${product.inventory !== null ? ` · ${product.inventory} left` : ""}${product.active ? "" : " · inactive"}</span>
-<form method="post"><input type="hidden" name="action" value="promote"><button class="ghost">Propose a promo</button></form>
+${linkRow}<form method="post"><input type="hidden" name="action" value="promote"><button class="ghost">Propose a promo</button></form>
 <form method="post"><input type="hidden" name="action" value="retarget"><input type="hidden" name="product_key" value="${esc(product.product_key)}"><button class="ghost">Propose retargeting</button></form></div>`;
+}
+
+function payLinkRow(link: PayLink & { product: PayLinkProduct | null }): string {
+  const toggle =
+    link.status === "active"
+      ? `<form method="post" style="display:inline"><input type="hidden" name="action" value="pay_link_pause"><input type="hidden" name="link_id" value="${esc(link.id)}"><button class="ghost">Pause</button></form>`
+      : `<form method="post" style="display:inline"><input type="hidden" name="action" value="pay_link_resume"><input type="hidden" name="link_id" value="${esc(link.id)}"><button class="ghost">Resume</button></form>`;
+  return `<div class="item"><span class="grow"><strong>${esc(link.product?.name ?? link.slug)}</strong><br><span class="muted">${esc(payLinkUrl(link.slug))} · ${link.views} views · ${link.checkouts} checkouts${link.status === "paused" ? " · paused" : ""}</span></span><span>${toggle}<form method="post" style="display:inline"><input type="hidden" name="action" value="pay_link_delete"><input type="hidden" name="link_id" value="${esc(link.id)}"><button class="ghost">Remove</button></form></span></div>`;
+}
+
+function kernelCardsSection(
+  enabled: boolean,
+  items: Array<{ item_key: string; provider: string; kind: string; state: string; brand: string | null; last4: string | null }>
+): string {
+  if (!enabled) {
+    return `<div class="day">Payment cards</div><p class="muted">Cloud card payments aren't enabled yet.</p>`;
+  }
+  const cards = items.filter((item) => item.kind === "card");
+  const wallets = items.filter((item) => item.kind === "wallet");
+  const rows = cards.length > 0
+    ? cards
+        .map(
+          (item) =>
+            `<div class="item"><span class="grow"><strong>${esc(item.brand ?? item.provider)}</strong>${item.last4 ? ` •••• ${esc(item.last4)}` : ""}<br><span class="muted">${esc(item.state)}</span></span></div>`
+        )
+        .join("")
+    : `<p class="muted">No cards yet — enroll once and every purchase still asks you first.</p>`;
+  const walletLine = wallets
+    .map((item) => `${esc(item.provider)}: ${esc(item.state)}`)
+    .join(" · ");
+  return `<div class="day">Payment cards</div>${rows}${walletLine ? `<p class="muted">${walletLine}</p>` : ""}<form method="post"><input type="hidden" name="action" value="payment_enroll"><button class="ghost">Set up card</button></form>`;
 }
 
 function orderRow(order: Order): string {
@@ -69,15 +125,27 @@ export const shop: MiniAppModule = {
     const slug = merchant?.charges_enabled
       ? await storefrontSlug(supabase, session.userId)
       : null;
+    const payLinks = await listPayLinks(supabase, session.userId);
+    const linksEnabled = env.linkHostEnabled();
+    const vaultsEnabled = env.kernelVaultsEnabled() && kernelAvailable();
+    const kernelItems = vaultsEnabled
+      ? await listKernelVaultItems(supabase, session.userId).catch(
+          () => [] as Awaited<ReturnType<typeof listKernelVaultItems>>
+        )
+      : [];
     const status = !merchant
       ? `<div class="card">Connect your own Stripe account to start selling — funds settle directly to you.<form method="post"><input type="hidden" name="action" value="connect"><button>Connect Stripe</button></form></div>`
       : merchant.charges_enabled
         ? `<div class="card">Stripe connected — charges enabled.${slug ? ` Your storefront: <strong>${esc(env.miniappOrigin())}/${esc(slug)}</strong>` : ""}</div>`
         : `<div class="card">Stripe onboarding in progress.<form method="post"><input type="hidden" name="action" value="connect"><button>Resume onboarding</button></form></div>`;
+    const linksByProduct = new Map(payLinks.map((link) => [link.product_id, link]));
     const body = `<section class="panel">
 ${status}
+${kernelCardsSection(vaultsEnabled, kernelItems)}
+<div class="day">Payment links</div>
+${payLinks.length > 0 ? payLinks.map(payLinkRow).join("") : '<p class="muted">No payment links yet — create one from a product below, then share the link.</p>'}
 <div class="day">Published products</div>
-${products.length > 0 ? products.map(productCard).join("") : '<p class="muted">No published products — ask your agent to build your catalog, then approve the publish.</p>'}
+${products.length > 0 ? products.map((product) => productCard(product, linksByProduct.get(product.id), linksEnabled)).join("") : '<p class="muted">No published products — ask your agent to build your catalog, then approve the publish.</p>'}
 <div class="day">Orders</div>
 ${orders.length > 0 ? orders.map(orderRow).join("") : '<p class="muted">No orders yet.</p>'}
 <div class="day">Event check-in</div>
@@ -132,6 +200,58 @@ ${promptBar("Ask your agent — e.g. draft a promo for my newest product…")}</
         const count = await applyCatalogPublish(ctx.supabase, ctx.session.userId);
         return back(`published ${count} product${count === 1 ? "" : "s"}`);
       }
+      if (action === "pay_link_create") {
+        const productId = String(form.get("product_id") ?? "");
+        const link = await createPayLink(
+          ctx.supabase,
+          ctx.session.userId,
+          productId
+        );
+        return back(`payment link: ${payLinkUrl(link.slug)}`);
+      }
+      if (action === "pay_link_pause" || action === "pay_link_resume") {
+        await setPayLinkStatus(
+          ctx.supabase,
+          ctx.session.userId,
+          String(form.get("link_id") ?? ""),
+          action === "pay_link_pause" ? "paused" : "active"
+        );
+        return back(action === "pay_link_pause" ? "link paused" : "link resumed");
+      }
+      if (action === "pay_link_delete") {
+        await deletePayLink(
+          ctx.supabase,
+          ctx.session.userId,
+          String(form.get("link_id") ?? "")
+        );
+        return back("link removed");
+      }
+      if (action === "payment_enroll") {
+        if (!env.kernelVaultsEnabled() || !kernelAvailable()) {
+          return back("cloud card payments aren't enabled yet");
+        }
+        const vault = await ensureKernelVault(
+          ctx.supabase,
+          ctx.session.userId
+        );
+        const { action: pending } = await syncKernelVaultItems(
+          ctx.supabase,
+          ctx.session.userId,
+          vault
+        );
+        if (pending) {
+          // Provider-hosted enrollment — the owner goes straight to the
+          // staged presenter, which carries the sealed URL once.
+          const staged = await stageKernelAction(
+            ctx.supabase,
+            ctx.session.userId,
+            pending,
+            null
+          );
+          return withBaseHeaders(NextResponse.redirect(staged.url, 303));
+        }
+        return back("no payment step is needed right now");
+      }
       if (action === "check_in") {
         const result = await checkInTicket(
           ctx.supabase,
@@ -173,6 +293,7 @@ ${promptBar("Ask your agent — e.g. draft a promo for my newest product…")}</
       }
     } catch (error) {
       if (error instanceof CommerceError) return back(error.message);
+      if (error instanceof KernelError) return back(error.message);
       if (error instanceof AdWriteError) return back(error.message);
       if (error instanceof StartLimitError) {
         return back(

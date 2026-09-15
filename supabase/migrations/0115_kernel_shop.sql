@@ -146,6 +146,12 @@ create policy own_pay_links on pay_links for select using (user_id = auth.uid())
 create policy public_pay_links_read on pay_links
   for select using (status = 'active');
 
+-- Shopify/catalog sync refs on products (provider -> {external_id, url, synced_at}).
+alter table storefront_products
+  add column if not exists external_refs jsonb not null default '{}'::jsonb;
+comment on column storefront_products.external_refs is
+  'Provider-side ids/URLs reported by box sync skills (e.g. shopify). Value-free refs only — never credentials.';
+
 -- A checkout handoff may ride a Kernel cloud session instead of the box Chrome.
 alter table checkout_handoffs
   add column if not exists kernel_session_id uuid references kernel_sessions(id) on delete set null;

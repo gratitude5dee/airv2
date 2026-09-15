@@ -35,6 +35,19 @@ function miniHost(): string {
   }
 }
 
+/** Public payment-link host (Phase 3). link.wzrd.tech/<slug> is a dedicated
+ * public route — not a registry mini_app — so pay links are shareable URLs
+ * on their own origin, behind LINK_HOST_ENABLED. */
+function linkHost(): string | null {
+  if (process.env["LINK_HOST_ENABLED"] !== "true") return null;
+  const origin = process.env["LINKAPP_ORIGIN"] ?? "https://link.wzrd.tech";
+  try {
+    return new URL(origin).host;
+  } catch {
+    return null;
+  }
+}
+
 export function middleware(request: NextRequest): NextResponse {
   const host = request.headers.get("host") ?? "";
   const { pathname, search } = request.nextUrl;
@@ -49,6 +62,22 @@ export function middleware(request: NextRequest): NextResponse {
   const headers = new Headers(request.headers);
   headers.delete("x-mini-host");
   headers.delete("x-mini-nested");
+
+  const onLink = linkHost() !== null && host === linkHost();
+  if (onLink) {
+    // Shared first-party assets resolve as-served; everything else is one
+    // public route per slug.
+    if (
+      pathname.startsWith("/creator-os/") ||
+      pathname.startsWith("/app-icons/")
+    ) {
+      return NextResponse.next({ request: { headers } });
+    }
+    const rewritten = new URL(request.nextUrl);
+    rewritten.pathname =
+      pathname === "/" ? "/mini/link" : `/mini/link${pathname}`;
+    return NextResponse.rewrite(rewritten, { request: { headers } });
+  }
 
   if (!onMini) {
     // Discovery is served from the mini origin (MA10); the backing search
