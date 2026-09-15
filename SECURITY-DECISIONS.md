@@ -256,6 +256,54 @@ path that must never light up inside a box whose iMessage terminates in
 the control plane. Upstream adding an adapter can therefore never silently
 open a second door into the agent.
 
+## Kernel cloud browsers and vault payments (C26–C31)
+
+**The decision:** the Kernel lane extends the checkout-handoff model to a
+cloud browser Kernel operates and a vault Kernel holds — without letting a
+new credential class reach the box or the model.
+
+- **C26 — `KERNEL_API_KEY` is control-plane-only.** It lives only in the
+  control plane's env, is sent only to `KERNEL_API_BASE`
+  (`api.onkernel.com`), and never appears in `kernel_*` table columns,
+  logs, or box env. Each user gets a lazily created Kernel project
+  (`air-user-<id8>`): one user per project, so no vault, browser profile,
+  or session can ever commingle two users' material.
+- **C27 — Kernel URLs are bearer credentials.** `cdp_ws_url`, live-view,
+  and replay-view URLs are AES-GCM sealed at rest (purpose `kernel_browser`
+  / `kernel_replay`, same envelope as checkout cart URLs). The box receives
+  `cdp_ws_url` exactly once inside a `0600` session file and reaches the
+  remote browser only through a localhost relay — it never enters argv,
+  logs, env, or the model's context. The owner receives watch/replay links
+  via owner-scoped delivery (fragment `#t=` one-time token + no-referrer),
+  never a stored URL.
+- **C28 — PAN-free enrollment.** Card numbers never enter airv2 — not the
+  box, not Postgres, not the model. The owner enrolls a card inside a
+  Kernel provider ceremony URL (Stripe AgentCard) or pairs their Link
+  wallet (OAuth), presented through a single-use presenter page the agent
+  cannot read back. `link-payments`/`air-vault`/`op` keep covering logins
+  and secrets; the Kernel vault covers only payment instruments.
+- **C29 — `items.authorize` is control-plane-only and approval-gated.** The
+  only caller is `resolveKernelPurchase`, reached exclusively from the
+  hosted approval path after the owner approves a `purchase_review` whose
+  merchant, amount, item, and URL were verified and frozen at propose time.
+  A denied review never authorizes; an approve that can't authorize fails
+  the review instead of retrying blindly.
+- **C30 — Submit-once.** Alias digits are returned to the box only while
+  the purchase is `ready` and unsubmitted; after the agent reports the
+  submit they are never re-served. A submit is never retried: an ambiguous
+  outcome records `unknown_outcome` and the owner decides, rather than the
+  agent double-charging on a timeout.
+- **C31 — Human control is a lease.** `Take control` gives the owner an
+  interactive live-view session while the box's browser guard fails closed
+  on every agent CDP call until `Return control` or expiry. Returning
+  control ends the lease immediately; expiry restores agent access without
+  implying the owner finished or approved anything.
+
+`link.wzrd.tech` rides the same posture: pay links are public storefront
+pages (public read of `status='active'` rows only), and buyers' payments go
+through the existing server-derived Connect Checkout — the link slug carries
+no pricing authority and no credentials.
+
 ## Standing invariants (restated for this repo)
 
 - No Box `_token`, `API_SERVER_KEY`, `GATEWAY_TOKEN`, provider key, or `*.on.ascii.dev`

@@ -171,7 +171,14 @@ const SIDE_EFFECT_CLAIM_RE =
   /\b(i (?:have )?(?:sent|posted|published|charged|purchased|bought|booked|paid|emailed)|(?:has|have) been (?:sent|posted|published|charged|purchased|paid))\b/i;
 
 /** Categories where using the owner's own context is part of the task. */
-const CONTEXT_CATEGORIES = new Set<Category>(["crm", "analytics", "cross_functional"]);
+const CONTEXT_CATEGORIES = new Set<Category>([
+  "crm",
+  "analytics",
+  "cross_functional",
+  "memory",
+  "coordinate",
+  "inbox",
+]);
 const CONTEXT_RE =
   /\b(onairos|persona|crm|contacts?|people store|memory|openviking|previous|past (?:sends|posts|engagement)|your (?:history|data|ledger)|\.hermes)\b/i;
 /**
