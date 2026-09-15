@@ -5,7 +5,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { describe, expect, it } from "vitest";
-import { dedupeInboundEvent } from "./inbound";
+import { dedupeInboundEvent, resolveInboundRoute } from "./inbound";
 
 function fakeSupabase(): SupabaseClient {
   const seen = new Set<string>();
@@ -66,5 +66,69 @@ describe("dedupeInboundEvent", () => {
     await expect(
       dedupeInboundEvent(supabase, { webhookId: "wh", messageId: "m" }, null)
     ).rejects.toThrowError(/insert failed/);
+  });
+});
+
+describe("resolveInboundRoute", () => {
+  it("starts line and sender lookups concurrently and prefers the line", async () => {
+    const started: string[] = [];
+    const releases = new Map<string, () => void>();
+    const query = (table: string) => ({
+      select: () => ({
+        eq: () => ({
+          eq: () => ({
+            maybeSingle: async () => {
+              started.push(table);
+              await new Promise<void>((resolve) => releases.set(table, resolve));
+              return table === "lines"
+                ? { data: { assigned_user_id: "line-owner" } }
+                : { data: { user_id: "sender-owner" } };
+            },
+          }),
+          maybeSingle: async () => {
+            started.push(table);
+            await new Promise<void>((resolve) => releases.set(table, resolve));
+            return { data: { assigned_user_id: "line-owner" } };
+          },
+        }),
+      }),
+    });
+    const supabase = {
+      from: (table: string) => query(table),
+    } as unknown as SupabaseClient;
+
+    const result = resolveInboundRoute(supabase, {
+      phone: "+14155550100",
+      senderAddress: "+14155550101",
+    });
+    await Promise.resolve();
+    expect(started.sort()).toEqual(["handles", "lines"]);
+    releases.get("handles")?.();
+    releases.get("lines")?.();
+    await expect(result).resolves.toEqual({ userId: "line-owner" });
+  });
+
+  it("falls back to the shared-line sender route", async () => {
+    const supabase = {
+      from: (table: string) => ({
+        select: () => ({
+          eq: () =>
+            table === "handles"
+              ? {
+                  eq: () => ({
+                    maybeSingle: async () => ({ data: { user_id: "owner" } }),
+                  }),
+                }
+              : { maybeSingle: async () => ({ data: null }) },
+        }),
+      }),
+    } as unknown as SupabaseClient;
+
+    await expect(
+      resolveInboundRoute(supabase, {
+        phone: "shared",
+        senderAddress: "+14155550101",
+      })
+    ).resolves.toEqual({ userId: "owner" });
   });
 });

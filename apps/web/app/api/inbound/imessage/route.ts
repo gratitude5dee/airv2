@@ -17,8 +17,7 @@ import {
 import {
   dedupeInboundEvent,
   isOnboardingLine,
-  resolveLine,
-  resolveSenderHandle,
+  resolveInboundRoute,
 } from "@/lib/routing/inbound";
 import {
   carryQuickAckMarker,
@@ -73,8 +72,9 @@ async function sendLineReply(
   phone: string,
   messageId: string,
   text: string,
+  senderPromise?: ReturnType<typeof warmSpectrumSender>,
 ): Promise<void> {
-  const sender = await createSpectrumSender().catch(() => undefined);
+  const sender = await (senderPromise ?? warmSpectrumSender());
   if (!sender) return;
   try {
     const threaded = await sender
@@ -83,6 +83,42 @@ async function sendLineReply(
     if (!threaded) await sender.sendText(spaceId, phone, text);
   } finally {
     await sender.close().catch(() => undefined);
+  }
+}
+
+/**
+ * Token minting and gRPC client construction are read-only, but account for a
+ * material part of first-kindness latency. Start them as soon as a known user
+ * route exists, while dedupe/onboarding/trust checks continue. No send occurs
+ * until those gates pass, so tier-2 contacts still cause zero outbound work.
+ */
+function warmSpectrumSender() {
+  return createSpectrumSender().catch(() => undefined);
+}
+
+async function closeWarmSpectrumSender(
+  senderPromise: ReturnType<typeof warmSpectrumSender> | undefined,
+): Promise<void> {
+  const sender = await senderPromise;
+  await sender?.close().catch(() => undefined);
+}
+
+function closeWarmSpectrumSenderAfter(
+  senderPromise: ReturnType<typeof warmSpectrumSender> | undefined,
+): void {
+  if (!senderPromise) return;
+  after(() => closeWarmSpectrumSender(senderPromise));
+}
+
+async function withWarmSenderCleanup<T>(
+  operation: Promise<T>,
+  senderPromise: ReturnType<typeof warmSpectrumSender> | undefined,
+): Promise<T> {
+  try {
+    return await operation;
+  } catch (error) {
+    closeWarmSpectrumSenderAfter(senderPromise);
+    throw error;
   }
 }
 
@@ -181,6 +217,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     });
   } catch (error) {
     if (error instanceof SpectrumWebhookError) {
+      console.warn(
+        JSON.stringify({
+          msg: "spectrum webhook rejected",
+          status: error.status,
+          reason: error.message,
+          event: headers.event ?? null,
+          has_signature: Boolean(headers.signature),
+          signature_format: headers.signature?.startsWith("v0=")
+            ? "v0"
+            : headers.signature
+              ? "bare"
+              : "missing",
+          has_timestamp: Boolean(headers.timestamp),
+        }),
+      );
       return NextResponse.json(
         { error: error.message },
         { status: error.status },
@@ -212,23 +263,28 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // 3: resolve (line, sender) → user_id. A dedicated line identifies the
   // user by itself; on the shared line (space.phone "shared") the sender's
   // registered handle does.
-  let route = inbound.phone
-    ? await resolveLine(supabase, inbound.phone)
+  let route = await resolveInboundRoute(supabase, {
+    phone: inbound.phone,
+    senderAddress: inbound.senderId,
+  });
+  const warmSenderPromise = route && inbound.phone
+    ? warmSpectrumSender()
     : undefined;
-  if (!route && inbound.senderId) {
-    route = await resolveSenderHandle(supabase, "imessage", inbound.senderId);
-  }
 
   // 4: dedupe. A conflict means already-seen: return 200 and stop.
-  const { alreadySeen } = await dedupeInboundEvent(
-    supabase,
-    {
-      webhookId: inbound.webhookId ?? "spectrum",
-      messageId: inbound.messageId,
-    },
-    route?.userId ?? null,
+  const { alreadySeen } = await withWarmSenderCleanup(
+    dedupeInboundEvent(
+      supabase,
+      {
+        webhookId: inbound.webhookId ?? "spectrum",
+        messageId: inbound.messageId,
+      },
+      route?.userId ?? null,
+    ),
+    warmSenderPromise,
   );
   if (alreadySeen) {
+    closeWarmSpectrumSenderAfter(warmSenderPromise);
     return NextResponse.json({ ok: true, deduped: true }, { status: 200 });
   }
 
@@ -252,6 +308,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         message_id: inbound.messageId,
       }),
     );
+    closeWarmSpectrumSenderAfter(warmSenderPromise);
     return NextResponse.json({ ok: true }, { status: 200 });
   }
 
@@ -314,13 +371,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // M3: pre-active accounts are handled by the claim/OTP flow; inbound from
   // any sender other than bound_phone routes nowhere (C11).
-  const onboarding = await handleOnboarding(
-    supabase,
-    route.userId,
-    inbound.senderId,
-    body,
+  const onboarding = await withWarmSenderCleanup(
+    handleOnboarding(
+      supabase,
+      route.userId,
+      inbound.senderId,
+      body,
+    ),
+    warmSenderPromise,
   );
   if (onboarding.kind === "ignore") {
+    closeWarmSpectrumSenderAfter(warmSenderPromise);
     return NextResponse.json({ ok: true }, { status: 200 });
   }
   if (onboarding.kind === "reply") {
@@ -334,7 +395,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       // Reply first; then the build. `after` keeps the invocation alive
       // only for awaited work — a detached provision promise could freeze
       // before the boxes row exists.
-      await sendLineReply(spaceId, phone, messageId, reply);
+      await sendLineReply(
+        spaceId,
+        phone,
+        messageId,
+        reply,
+        warmSenderPromise,
+      );
       if (startCompute) {
         await ensureComputeProvisioned(supabase, userId).catch(
           (error: unknown) => {
@@ -356,11 +423,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // may not cause any side effect — no run, no reply; it lands in "Needs
   // you" for the owner to triage (ARCHITECTURE.md §2.5c).
   const tier = inbound.senderId
-    ? await resolveTrustTier(
-        supabase,
-        route.userId,
-        "imessage",
-        inbound.senderId,
+    ? await withWarmSenderCleanup(
+        resolveTrustTier(
+          supabase,
+          route.userId,
+          "imessage",
+          inbound.senderId,
+        ),
+        warmSenderPromise,
       )
     : 2;
   if (tier === 2) {
@@ -380,6 +450,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         }),
       );
     });
+    closeWarmSpectrumSenderAfter(warmSenderPromise);
     return NextResponse.json({ ok: true }, { status: 200 });
   }
 
@@ -392,7 +463,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     tier === 0 &&
     inbound.senderId &&
     env.onairosApiKey() !== null &&
-    ((await spectrumFlowActive(supabase, route.userId)) ||
+    ((await withWarmSenderCleanup(
+      spectrumFlowActive(supabase, route.userId),
+      warmSenderPromise,
+    )) ||
       isOnairosTrigger(body))
   ) {
     const relayInput = {
@@ -405,7 +479,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const userId = route.userId;
     // 5: ack before work (C8); the relay + reply happen after the response.
     after(async () => {
-      const sender = await createSpectrumSender().catch(() => undefined);
+      const sender = await (warmSenderPromise ?? warmSpectrumSender());
       try {
         let result;
         try {
@@ -477,7 +551,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // Start connecting before the 200 leaves this function. The promise is
   // retained by `after()` below and the reaction begins in parallel with the
   // durable queue write.
-  const senderPromise = createSpectrumSender().catch(() => undefined);
+  const senderPromise = warmSenderPromise ?? warmSpectrumSender();
   const reaction = senderPromise.then((sender) =>
     sendImmediateReaction(sender, message, receivedAtMs)
   );

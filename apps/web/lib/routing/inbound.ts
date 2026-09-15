@@ -93,6 +93,26 @@ export async function resolveSenderHandle(
 }
 
 /**
+ * Resolve the dedicated-line and shared-line routes concurrently. A shared
+ * Spectrum space reports `phone: "shared"`, so waiting for the guaranteed
+ * line miss before looking up the sender wastes one database round trip on
+ * the latency-critical iMessage path. Dedicated-line ownership still wins
+ * when both records exist.
+ */
+export async function resolveInboundRoute(
+  supabase: SupabaseClient,
+  input: { phone?: string | undefined; senderAddress?: string | undefined }
+): Promise<ResolvedRoute | undefined> {
+  const [lineRoute, senderRoute] = await Promise.all([
+    input.phone ? resolveLine(supabase, input.phone) : undefined,
+    input.senderAddress
+      ? resolveSenderHandle(supabase, "imessage", input.senderAddress)
+      : undefined,
+  ]);
+  return lineRoute ?? senderRoute;
+}
+
+/**
  * Resolve an agent email address to its user, including retired aliases —
  * a retired address routes forever (SECURITY-DECISIONS.md).
  */
