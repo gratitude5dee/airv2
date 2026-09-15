@@ -12,9 +12,13 @@ afterEach(() => vi.clearAllMocks());
 // command, which Python's sqlite3 module does not expose. Keep them active on
 // developer/production-like hosts with the CLI, and make its absence an
 // explicit capability skip rather than a false product regression in CI.
-const hasSqliteRecoveryCli = spawnSync("sqlite3", ["-version"], {
+const hasSqliteRecoveryCli = spawnSync(
+  "sqlite3",
+  [":memory:", ".recover --ignore-freelist"],
+  {
   stdio: "ignore",
-}).status === 0;
+  }
+).status === 0;
 
 describe("operator recovery authorization", () => {
   function registry(value: unknown) {
