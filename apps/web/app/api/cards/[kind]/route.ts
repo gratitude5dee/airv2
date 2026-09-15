@@ -18,44 +18,16 @@ import {
   sendOrUpdateAppCard,
   sendOrUpdateCheckoutCard,
 } from "@/lib/miniapps/cards";
-import { claimCardSend, type CardClaim } from "@/lib/miniapps/cardSends";
+import {
+  claimCardSend,
+  isCardKind,
+  type CardClaim,
+} from "@/lib/miniapps/cardSends";
 import { ownedApp, PublishError } from "@/lib/miniapps/publish";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
-
-const CARD_KINDS = [
-  "ads",
-  "computer",
-  "calendar",
-  "vault",
-  "browser",
-  "kanban",
-  "todo",
-  "onboarding",
-  "connect",
-  "video",
-  "image",
-  "crm",
-  "analytics",
-  "inbox",
-  "pay",
-  "shop",
-  "settings",
-  "home",
-  "persona",
-  "feedback",
-  "create",
-  "app",
-  "checkout",
-] as const;
-
-type Kind = (typeof CARD_KINDS)[number];
-
-function isCardKind(value: string): value is Kind {
-  return (CARD_KINDS as readonly string[]).includes(value);
-}
 
 export async function POST(
   request: NextRequest,

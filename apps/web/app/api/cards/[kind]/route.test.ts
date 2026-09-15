@@ -50,7 +50,8 @@ const claimCardSend = vi.fn(
     ..._args: unknown[]
   ): Promise<{ release: () => Promise<void> } | undefined> => ({ release })
 );
-vi.mock("@/lib/miniapps/cardSends", () => ({
+vi.mock("@/lib/miniapps/cardSends", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/miniapps/cardSends")>()),
   claimCardSend: (...args: unknown[]) => claimCardSend(...args),
 }));
 
@@ -140,6 +141,24 @@ describe("POST /api/cards/[kind]", () => {
       "+15550001111",
       "owner-1",
       "ads",
+      "default"
+    );
+  });
+
+  it("sends the Watch card used for Kernel browser handoff", async () => {
+    const response = await POST(...post("watch", "good-token"));
+    expect(response.status).toBe(200);
+    expect(claimCardSend).toHaveBeenCalledWith(
+      expect.anything(),
+      "owner-1",
+      "watch"
+    );
+    expect(sendMiniAppCard).toHaveBeenCalledWith(
+      expect.any(Object),
+      "space-1",
+      "+15550001111",
+      "owner-1",
+      "watch",
       "default"
     );
   });

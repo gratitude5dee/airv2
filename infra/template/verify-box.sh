@@ -26,6 +26,8 @@ check "air-vault" command -v air-vault
 check "open-miniapp-card" command -v open-miniapp-card
 check "air-create" command -v air-create
 check "box-browser-use" command -v box-browser-use
+check "air-kernel" command -v air-kernel
+check "kernel-cdp-relay" test -x /usr/local/lib/air/kernel-cdp-relay.js
 check "link-cli" test -x "$HOME_DIR/.hermes/node/bin/link-cli"
 # Present for everyone, active only for boxes whose owner connected
 # 1Password (OP_SERVICE_ACCOUNT_TOKEN); `op --version` reads no credential.
@@ -33,6 +35,7 @@ check "op-cli" op --version
 check "skill-air-onboarding" test -f "$HOME_DIR/.hermes/skills/air-onboarding/SKILL.md"
 check "skill-open-miniapp" test -f "$HOME_DIR/.hermes/skills/open-miniapp/SKILL.md"
 check "skill-create-miniapp" test -f "$HOME_DIR/.hermes/skills/create-miniapp/SKILL.md"
+check "skill-kernel-browser" test -f "$HOME_DIR/.hermes/skills/kernel-browser/SKILL.md"
 check "plugin-creative" test -d "$HOME_DIR/.hermes/plugins/creative"
 check "plugin-air-vault" test -d "$HOME_DIR/.hermes/plugins/air-vault"
 check "unit-hermes-gateway" systemctl is-active --quiet hermes-gateway
