@@ -391,6 +391,21 @@ export function composeInput(
   return parts.join("\n");
 }
 
+/**
+ * Deterministic response lanes receive the user's burst, not acknowledgments
+ * previously sent by the bridge. Real carried user rows keep their original
+ * message ids, so they remain part of the command input.
+ */
+export function composeResponseLaneInput(
+  carried: QueuedMessage[],
+  fresh: QueuedMessage[]
+): string {
+  return composeInput(
+    carried.filter((message) => !isBridgeMarkerId(message.message_id)),
+    fresh
+  );
+}
+
 /** True when a cancellation stamped after this chain began. */
 export function isCancelled(
   cancelledAt: string | null,
@@ -765,6 +780,7 @@ async function runFlushInner(
       return;
     }
     const rawInput = composeInput(carried, fresh);
+    const responseLaneInput = composeResponseLaneInput(carried, fresh);
     // Timed progress starts from the first fresh iMessage, not from when a
     // warm box happened to finish booting. Retried carried work has already
     // received a visible update, so it never restarts this clock.
@@ -773,13 +789,13 @@ async function runFlushInner(
     if (
       fresh.length > 0 &&
       Number.isFinite(receivedAtMs) &&
-      shouldStartProgressTimeline(rawInput)
+      shouldStartProgressTimeline(responseLaneInput)
     ) {
       progressTimeline = startProgressTimeline({
         receivedAtMs,
         send: (body) => sender.sendText(job.spaceId, job.phone, body),
         generate: (stage) =>
-          progressUpdateReply(supabase, job.userId, rawInput, stage),
+          progressUpdateReply(supabase, job.userId, responseLaneInput, stage),
         onSent: (stage, elapsedMs, generated) => {
           console.info(
             JSON.stringify({
@@ -807,7 +823,7 @@ async function runFlushInner(
           phone: job.phone,
           senderTier: job.senderTier,
         },
-        rawInput
+        responseLaneInput
       );
       if (handled) {
         if (!(await chainCancelled(supabase, job.spaceId, chainStartedAt))) {
@@ -866,7 +882,7 @@ async function runFlushInner(
           phone: job.phone,
           senderTier: job.senderTier,
         },
-        rawInput
+        responseLaneInput
       );
       if (handled) {
         if (!(await chainCancelled(supabase, job.spaceId, chainStartedAt))) {
@@ -922,7 +938,7 @@ async function runFlushInner(
           phone: job.phone,
           senderTier: job.senderTier,
         },
-        rawInput
+        responseLaneInput
       );
       if (handled) {
         if (!(await chainCancelled(supabase, job.spaceId, chainStartedAt))) {
@@ -1032,7 +1048,7 @@ async function runFlushInner(
           phone: job.phone,
           ...(Number.isFinite(receivedAtMs) ? { receivedAtMs } : {}),
         },
-        rawInput
+        responseLaneInput
       );
       if (handled) {
         if (!(await chainCancelled(supabase, job.spaceId, chainStartedAt))) {

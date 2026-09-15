@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   composeInput,
+  composeResponseLaneInput,
   CREATIVE_READY_DEBOUNCE_MS,
   DEBOUNCE_MS,
   debounceMsFor,
@@ -107,6 +108,24 @@ describe("composeInput", () => {
   it("is just the batch when nothing was carried", () => {
     expect(composeInput([], [{ id: "1", message_id: "m", body: "hi" }])).toBe(
       "hi"
+    );
+  });
+
+  it("keeps real carried input but removes synthetic bridge context for response lanes", () => {
+    const carried = [
+      { id: "1", message_id: "m-photo", body: "[attachment:att-photo]" },
+      {
+        id: "2",
+        message_id: "bridge:ack-1",
+        body: "[You already sent a brief acknowledgment]",
+      },
+    ];
+    const fresh = [
+      { id: "3", message_id: "m-zap", body: "/zap make it rain" },
+    ];
+
+    expect(composeResponseLaneInput(carried, fresh)).toBe(
+      "[Earlier message] [attachment:att-photo]\n/zap make it rain"
     );
   });
 });
