@@ -95,7 +95,11 @@ export async function beforeDeadline<T>(
   deadlineAt: number,
   message: string
 ): Promise<T> {
-  const remainingMs = Math.max(0, deadlineAt - Date.now());
+  const remainingMs = deadlineAt - Date.now();
+  // A zero-delay timer still loses to an already-resolved promise in the
+  // microtask queue. Without this guard, a busy SSE stream can keep winning
+  // after the absolute deadline and turn 45 seconds into an unbounded wait.
+  if (remainingMs <= 0) throw new Error(message);
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
@@ -608,7 +612,8 @@ async function retryUndeliveredStream(
   chainStartedAt: string,
   drained: QueuedMessage[],
   sender: SpectrumSender,
-  error: unknown
+  error: unknown,
+  statusAlreadyAttempted = false
 ): Promise<void> {
   if (await chainCancelled(supabase, job.spaceId, chainStartedAt)) {
     // A newer inbound already owns the job. Preserve this burst as history
@@ -632,15 +637,24 @@ async function retryUndeliveredStream(
   // A single visible status avoids another silent failure while the durable
   // retry runs. Later retries stay quiet so an extended provider outage does
   // not flood the conversation.
-  if (job.attempts === 0) {
-    await sender
-      .sendText(
-        job.spaceId,
-        job.phone,
-        "I need a little more time. I’m continuing with the same request."
-      )
-      .catch(() => undefined);
+  if (job.attempts === 0 && !statusAlreadyAttempted) {
+    await notifyFirstRetry(job, sender);
   }
+}
+
+async function notifyFirstRetry(
+  job: { spaceId: string; phone: string; attempts: number },
+  sender: SpectrumSender
+): Promise<boolean> {
+  if (job.attempts !== 0) return false;
+  await sender
+    .sendText(
+      job.spaceId,
+      job.phone,
+      "I need a little more time. I’m continuing with the same request."
+    )
+    .catch(() => undefined);
+  return true;
 }
 
 /**
@@ -1370,6 +1384,10 @@ async function runFlushInner(
       };
     } catch (error) {
       progressTimeline?.stop();
+      // The user-facing deadline must not wait behind a slow or unavailable
+      // stop endpoint. The durable retry is still scheduled only after the
+      // stop attempt settles, which prevents overlapping side-effectful runs.
+      const statusAttempted = await notifyFirstRetry(job, sender);
       await stopRun(runTarget, run.run_id).catch(() => undefined);
       const { error: failReceiptError } = await supabase
         .from("agent_runs")
@@ -1395,7 +1413,8 @@ async function runFlushInner(
         chainStartedAt,
         drained,
         sender,
-        error
+        error,
+        statusAttempted
       );
       if (runSession === MAIN_SESSION && isStateDatabaseError(error)) {
         await logStateDatabaseHealth(box.boxId);

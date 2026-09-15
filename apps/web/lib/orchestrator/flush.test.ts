@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  beforeDeadline,
   composeInput,
   composeResponseLaneInput,
   CREATIVE_READY_DEBOUNCE_MS,
@@ -92,6 +93,14 @@ const collect = async (
   }
   return chunks;
 };
+
+describe("beforeDeadline", () => {
+  it("rejects work that is already late even when its promise is immediately ready", async () => {
+    await expect(
+      beforeDeadline(Promise.resolve("late"), Date.now() - 1, "deadline expired")
+    ).rejects.toThrow("deadline expired");
+  });
+});
 
 describe("composeInput", () => {
   it("prepends carried messages as history", () => {
@@ -644,6 +653,66 @@ describe("runFlush history replay", () => {
       "+15551234567",
       "I need a little more time. I’m continuing with the same request."
     );
+    vi.useRealTimers();
+  });
+
+  it("notifies the user at the deadline without waiting for a slow Hermes stop", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-15T20:23:12.000Z"));
+    vi.mocked(loadConversationTranscript).mockResolvedValue({
+      rows: 2,
+      history: [
+        { role: "user", content: "find the latest drop" },
+        { role: "assistant", content: "I’m checking." },
+      ],
+    });
+    const encoder = new TextEncoder();
+    vi.mocked(runEvents).mockResolvedValue(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                event: "message.delta",
+                delta: "I started the answer",
+              })}\n\n`
+            )
+          );
+        },
+      }) as never
+    );
+    vi.mocked(probeForTapback).mockImplementation(async (iterator) => {
+      const first = await iterator.next();
+      return {
+        buffered: first.done ? "" : first.value,
+        ended: false,
+      };
+    });
+    let releaseStop = () => {};
+    vi.mocked(stopRun).mockReturnValue(
+      new Promise<void>((resolve) => {
+        releaseStop = resolve;
+      })
+    );
+
+    const pending = runFlush(
+      fakeSupabase([{ id: "q1", message_id: "m1", body: "/shop latest drop" }]),
+      job,
+      new Date().toISOString()
+    );
+    await vi.advanceTimersByTimeAsync(FINAL_RESPONSE_DEADLINE_MS);
+
+    const sender = (await vi.mocked(createSpectrumSender).mock.results.at(-1)!
+      .value) as { sendText: ReturnType<typeof vi.fn> };
+    const notifiedBeforeStopSettled = sender.sendText.mock.calls.some(
+      (call) =>
+        call[2] ===
+        "I need a little more time. I’m continuing with the same request."
+    );
+    releaseStop();
+    await pending;
+
+    expect(notifiedBeforeStopSettled).toBe(true);
     vi.useRealTimers();
   });
 
