@@ -35,6 +35,7 @@ import {
 } from "@/lib/orchestrator/sharedBridge";
 import {
   ACK_REACTION,
+  hasExplicitResponseLane,
   INITIAL_REPLY_SLA_MS,
   REACTION_SLA_MS,
 } from "@/lib/orchestrator/ttfk";
@@ -127,7 +128,8 @@ async function sendInitialReply(
   receivedAtMs: number
 ): Promise<boolean> {
   if (!sender || !(await isBurstStart(supabase, message.spaceId))) return false;
-  const isCommand = body.trimStart().startsWith("/");
+  const isCommand =
+    body.trimStart().startsWith("/") || hasExplicitResponseLane(body);
   const markerId = isCommand || response.disposition === "final"
     ? undefined
     : await carryQuickAckMarker(supabase, message.userId, message.spaceId);

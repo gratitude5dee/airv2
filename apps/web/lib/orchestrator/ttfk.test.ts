@@ -4,6 +4,7 @@ import {
   deterministicAcknowledgementAnswer,
   deterministicArithmeticAnswer,
   FINALIZING_AT_MS,
+  hasExplicitResponseLane,
   initialHoldingReply,
   INITIAL_REPLY_SLA_MS,
   isFastInitialQuestion,
@@ -65,6 +66,18 @@ describe("TTFK policy", () => {
     expect(
       shouldStartProgressTimeline("[attachment:abc]\n/zap make this move")
     ).toBe(false);
+  });
+
+  it("recognizes response-lane commands after Spectrum attachment markers", () => {
+    expect(hasExplicitResponseLane("/zap make this move")).toBe(true);
+    expect(
+      hasExplicitResponseLane("[attachment:abc]\n/zap make this move")
+    ).toBe(true);
+    expect(hasExplicitResponseLane("[attachment:abc]\n/draw hq a fox")).toBe(
+      true
+    );
+    expect(hasExplicitResponseLane("see docs//zap")).toBe(false);
+    expect(hasExplicitResponseLane("ordinary prose")).toBe(false);
   });
 
   it("chooses a stable, task-aware holding line", () => {

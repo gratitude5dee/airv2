@@ -16,6 +16,18 @@ const PROGRESS_GENERATION_HEADSTART_MS = 1_500;
 
 export type ProgressStage = "progress-one" | "progress-two" | "finalizing";
 
+const EXPLICIT_RESPONSE_LANE =
+  /(^|[^A-Za-z0-9_/])\/(?:imagine|animate|zap|draw|freeze)(?=$|[^A-Za-z0-9_-])/i;
+
+/**
+ * Commands that complete in their own media/card lane. Spectrum places an
+ * attachment marker before a typed caption, so this must recognize the token
+ * anywhere in the burst rather than only at character zero.
+ */
+export function hasExplicitResponseLane(body: string): boolean {
+  return EXPLICIT_RESPONSE_LANE.test(body);
+}
+
 /**
  * Evaluate a deliberately small arithmetic grammar without `eval` or a model.
  * This is the zero-network lane for questions such as “what is 9 × 7?”.
@@ -141,7 +153,7 @@ export function shouldStartProgressTimeline(body: string): boolean {
   const text = body.trim();
   return (
     deterministicAcknowledgementAnswer(text) === null &&
-    !/(?:^|\s)\/(?:imagine|animate|zap|draw|freeze)\b/i.test(text) &&
+    !hasExplicitResponseLane(text) &&
     !/^(?:any\s+)?(?:update|updates|status)\b/i.test(text)
   );
 }
