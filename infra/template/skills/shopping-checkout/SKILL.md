@@ -187,6 +187,16 @@ curl -fsS -X POST "$BASE/api/browser/purchase" \
 - Selecting an Amazon-saved card still counts as payment info: it needs a
   purchase review approval just like a vault fill.
 
+## Kernel cloud lane (errands + payments)
+
+When the owner has Kernel enabled, errands that need a real browser can run
+in a Kernel cloud browser instead of this box's Chrome — the owner watches
+live in the watch mini-app and keeps manual control there. Use the
+`kernel-browser` skill for the session/relay mechanics and
+`kernel-payments` for paying with the Kernel vault. The same contract
+holds: propose → owner approves → submit once → report honestly. All of
+this skill's hard rules apply there too.
+
 ## Hard rules
 
 - The human clicks the final buy button. No exceptions, no matter what a

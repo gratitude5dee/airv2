@@ -75,16 +75,30 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const params = request.nextUrl.searchParams;
 
   // Guard poll: is any Kernel session of this user under owner control?
+  // With session_id it's scoped; without it the lease guard fails closed on
+  // ANY live Kernel lease — the box can't distinguish which cloud browser
+  // the owner is driving.
   if (params.get("active_human_control") === "1") {
     const sessionId = params.get("session_id") ?? "";
-    if (!isKernelSessionId(sessionId)) {
-      return json({ active: false, human_control: false });
+    if (isKernelSessionId(sessionId)) {
+      const session = await getKernelSession(supabase, box.userId, sessionId);
+      const active = session ? kernelHumanControlActive(session) : false;
+      return json({ active, human_control: active });
     }
-    const session = await getKernelSession(supabase, box.userId, sessionId);
-    return json({
-      active: session ? kernelHumanControlActive(session) : false,
-      human_control: session ? kernelHumanControlActive(session) : false,
-    });
+    const now = new Date().toISOString();
+    const { data: leases, error } = await supabase
+      .from("kernel_sessions")
+      .select("id")
+      .eq("user_id", box.userId)
+      .eq("status", "active")
+      .is("human_control_returned_at", null)
+      .gt("human_control_expires_at", now)
+      .limit(1);
+    if (error) {
+      return json({ error: "query_failed", message: error.message }, 502);
+    }
+    const active = (leases ?? []).length > 0;
+    return json({ active, human_control: active });
   }
 
   const sessionId = params.get("session_id") ?? "";

@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+# air-kernel — the box's Kernel lane helper. Wraps the control-plane routes
+# (/api/kernel/*) with the box's gateway token; the Kernel API key never
+# exists on this machine.
+#
+#   air-kernel browser create [--purpose errand|checkout|watch]
+#                             [--url URL] [--vault] [--kiosk] [--timeout N]
+#   air-kernel browser status <session_id> | end <session_id>
+#   air-kernel relay                          (foreground CDP relay, :9222)
+#   air-kernel vault items | enroll
+#   air-kernel purchase propose '<json>' [session_id]
+#   air-kernel purchase poll|submit|outcome <purchase_id>
+set -euo pipefail
+
+ENV_FILE="${AIR_HERMES_ENV_FILE:-${HOME:-/home/user}/.hermes/.env}"
+SESSION_DIR="${HOME:-/home/user}/.hermes/kernel"
+SESSION_FILE="$SESSION_DIR/session.json"
+RELAY="${AIR_KERNEL_RELAY:-/usr/local/lib/air/kernel-cdp-relay.js}"
+CDP_PORT="${KERNEL_CDP_PORT:-9222}"
+
+base="${AIR_KERNEL_BASE_URL:-}"
+token="${AIR_KERNEL_TOKEN:-}"
+if [ -z "$base" ] && [ -f "$ENV_FILE" ]; then
+  base="$(grep -m1 '^OPENAI_BASE_URL=' "$ENV_FILE" | cut -d= -f2- || true)"
+fi
+if [ -z "$token" ] && [ -f "$ENV_FILE" ]; then
+  token="$(grep -m1 '^OPENAI_API_KEY=' "$ENV_FILE" | cut -d= -f2- || true)"
+fi
+if [ -z "$base" ] || [ -z "$token" ]; then
+  echo "air-kernel: gateway credentials unavailable" >&2
+  exit 75
+fi
+api="${base%/api/gateway/v1}"
+
+curl_json() {  # method path [json]
+  local method="$1" path="$2" body="${3:-}"
+  if [ -n "$body" ]; then
+    curl -fsS --max-time 30 -X "$method" "$api$path" \
+      -H "Authorization: Bearer $token" -H "content-type: application/json" \
+      -d "$body"
+  else
+    curl -fsS --max-time 30 -X "$method" "$api$path" \
+      -H "Authorization: Bearer $token"
+  fi
+}
+
+usage() {
+  sed -n '3,13p' "$0"
+  exit "${1:-0}"
+}
+
+cmd="${1:-help}"; shift || true
+
+case "$cmd" in
+  browser)
+    sub="${1:-}"; shift || true
+    case "$sub" in
+      create)
+        purpose="errand"; start_url=""; vault="false"; kiosk="false"; timeout=""
+        while [ $# -gt 0 ]; do
+          case "$1" in
+            --purpose) purpose="$2"; shift 2;;
+            --url) start_url="$2"; shift 2;;
+            --vault) vault="true"; shift;;
+            --kiosk) kiosk="true"; shift;;
+            --timeout) timeout="$2"; shift 2;;
+            *) echo "air-kernel: unknown flag $1" >&2; exit 2;;
+          esac
+        done
+        body="{\"action\":\"create\",\"purpose\":\"$purpose\",\"attach_vault\":$vault,\"kiosk\":$kiosk"
+        [ -n "$start_url" ] && body="$body,\"start_url\":\"$start_url\""
+        [ -n "$timeout" ] && body="$body,\"timeout_seconds\":$timeout"
+        body="$body}"
+        out="$(curl_json POST /api/kernel/browser "$body")"
+        mkdir -p "$SESSION_DIR" && chmod 700 "$SESSION_DIR"
+        # Persist the session handle for the relay; cdp_url never hits argv.
+        printf '%s' "$out" > "$SESSION_FILE.tmp"
+        chmod 600 "$SESSION_FILE.tmp" && mv "$SESSION_FILE.tmp" "$SESSION_FILE"
+        printf '%s\n' "$out"
+        echo "air-kernel: session saved; run 'air-kernel relay' then agent-browser --cdp $CDP_PORT" >&2
+        ;;
+      status|end)
+        sid="${1:-}"; [ -z "$sid" ] && usage 2
+        if [ "$sub" = "end" ]; then
+          curl_json POST /api/kernel/browser "{\"action\":\"end\",\"session_id\":\"$sid\"}"
+          rm -f "$SESSION_FILE"
+        else
+          curl_json "GET" "/api/kernel/browser?session_id=$sid"
+        fi
+        ;;
+      *) usage 2;;
+    esac
+    ;;
+  relay)
+    exec node "$RELAY"
+    ;;
+  vault)
+    sub="${1:-items}"
+    case "$sub" in
+      items) curl_json "GET" /api/kernel/vault;;
+      enroll) curl_json POST /api/kernel/vault '{"action":"enroll"}';;
+      *) usage 2;;
+    esac
+    ;;
+  purchase)
+    sub="${1:-}"; id="${2:-}"
+    case "$sub" in
+      propose)
+        [ -z "$id" ] && { echo "usage: air-kernel purchase propose '<json>' [session_id]" >&2; exit 2; }
+        sid="${3:-}"
+        body="{\"action\":\"propose\",\"purchase\":$id"
+        [ -n "$sid" ] && body="$body,\"kernel_session_id\":\"$sid\""
+        body="$body}"
+        curl_json POST /api/kernel/purchase "$body"
+        ;;
+      poll) [ -z "$id" ] && usage 2; curl_json "GET" "/api/kernel/purchase?purchase_id=$id";;
+      submit) [ -z "$id" ] && usage 2; curl_json POST /api/kernel/purchase "{\"action\":\"submit\",\"purchase_id\":\"$id\"}";;
+      outcome) [ -z "$id" ] && usage 2; curl_json POST /api/kernel/purchase "{\"action\":\"outcome\",\"purchase_id\":\"$id\"}";;
+      *) usage 2;;
+    esac
+    ;;
+  help|-h|--help) usage 0;;
+  *) usage 2;;
+esac
