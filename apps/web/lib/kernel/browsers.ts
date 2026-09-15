@@ -36,6 +36,7 @@ export interface KernelSession {
   save_profile: boolean;
   human_control_expires_at: string | null;
   human_control_returned_at: string | null;
+  recording_replay_id: string | null;
   replay_ids: string[];
   ended_at: string | null;
   version: number;
@@ -50,7 +51,7 @@ interface KernelSessionRow extends KernelSession {
 }
 
 const COLUMNS =
-  "id, user_id, kernel_session_id, project_id, purpose, task_id, profile_name, vault_id, status, stealth, save_profile, human_control_expires_at, human_control_returned_at, cdp_url_sealed, live_view_sealed, replay_views_sealed, ended_at, version, created_at, updated_at";
+  "id, user_id, kernel_session_id, project_id, purpose, task_id, profile_name, vault_id, status, stealth, save_profile, human_control_expires_at, human_control_returned_at, recording_replay_id, cdp_url_sealed, live_view_sealed, replay_views_sealed, ended_at, version, created_at, updated_at";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -75,6 +76,7 @@ function hydrate(row: KernelSessionRow): KernelSession {
     save_profile: row.save_profile,
     human_control_expires_at: row.human_control_expires_at,
     human_control_returned_at: row.human_control_returned_at,
+    recording_replay_id: row.recording_replay_id,
     replay_ids: Object.keys(replayViews),
     ended_at: row.ended_at,
     version: row.version,
@@ -504,7 +506,18 @@ export async function startKernelReplay(
     const replay = await kernelClient(session.project_id).browsers.replays.start(
       session.kernel_session_id
     );
-    return { replay_id: replay.replay_id ?? null };
+    const replayId = replay.replay_id ?? null;
+    if (replayId) {
+      await supabase
+        .from("kernel_sessions")
+        .update({
+          recording_replay_id: replayId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id)
+        .eq("user_id", userId);
+    }
+    return { replay_id: replayId };
   } catch (cause) {
     throw kernelFailure(cause);
   }
@@ -515,24 +528,34 @@ export async function stopKernelReplay(
   supabase: SupabaseClient,
   userId: string,
   id: string,
-  replayId: string
+  replayId?: string
 ): Promise<KernelReplayView | null> {
   const session = await getKernelSession(supabase, userId, id);
   if (!session) throw new KernelError("kernel_not_found", "session not found", 404);
+  const target = replayId ?? session.recording_replay_id;
+  if (!target) return null;
   let viewUrl: string | null = null;
   try {
     await kernelClient(session.project_id).browsers.replays.stop(
-      replayId,
+      target,
       { id_or_name: session.kernel_session_id }
     );
     const replays = await kernelClient(session.project_id).browsers.replays.list(
       session.kernel_session_id
     );
     viewUrl =
-      replays.find((r) => r.replay_id === replayId)?.replay_view_url ?? null;
+      replays.find((r) => r.replay_id === target)?.replay_view_url ?? null;
   } catch (cause) {
     throw kernelFailure(cause);
   }
+  await supabase
+    .from("kernel_sessions")
+    .update({
+      recording_replay_id: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .eq("user_id", userId);
   if (viewUrl) {
     const { data: row } = await supabase
       .from("kernel_sessions")
@@ -542,7 +565,7 @@ export async function stopKernelReplay(
       .maybeSingle();
     const views =
       (row?.replay_views_sealed as Record<string, string> | null) ?? {};
-    views[replayId] = sealKernelUrl(viewUrl, "browser");
+    views[target] = sealKernelUrl(viewUrl, "browser");
     await supabase
       .from("kernel_sessions")
       .update({
@@ -552,7 +575,7 @@ export async function stopKernelReplay(
       .eq("id", id)
       .eq("user_id", userId);
   }
-  return { replay_id: replayId, viewUrl };
+  return { replay_id: target, viewUrl };
 }
 
 /** Owner-only replay view URLs, unsealed for iframe embed. */

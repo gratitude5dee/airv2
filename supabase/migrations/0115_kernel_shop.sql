@@ -33,6 +33,7 @@ create table kernel_sessions (
   save_profile      boolean not null default false,
   human_control_expires_at timestamptz,
   human_control_returned_at timestamptz,
+  recording_replay_id text,
   cdp_url_sealed    text,
   live_view_sealed  text,
   replay_views_sealed jsonb not null default '{}'::jsonb,
