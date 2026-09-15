@@ -637,7 +637,7 @@ async function retryUndeliveredStream(
       .sendText(
         job.spaceId,
         job.phone,
-        "I hit a temporary connection issue. I'm retrying your message now."
+        "I need a little more time. I’m continuing with the same request."
       )
       .catch(() => undefined);
   }

@@ -11,9 +11,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "../env";
 import { requestSignal } from "../http/timeout";
 import {
+  contextDependentHoldingReply,
   deterministicAcknowledgementAnswer,
   deterministicArithmeticAnswer,
   initialHoldingReply,
+  isContextDependentFollowup,
   isFastInitialQuestion,
   type ProgressStage,
 } from "./ttfk";
@@ -110,7 +112,7 @@ export async function initialReply(
 export interface InitialResponse {
   body: string;
   disposition: "final" | "holding";
-  source: "acknowledgement" | "arithmetic" | "gmi" | "fallback";
+  source: "acknowledgement" | "arithmetic" | "context" | "gmi" | "fallback";
 }
 
 /** Plan the first bubble and tell the inbound route whether it finished the turn. */
@@ -119,6 +121,13 @@ export async function initialResponse(
   userId: string,
   burst: string
 ): Promise<InitialResponse> {
+  if (isContextDependentFollowup(burst)) {
+    return {
+      body: contextDependentHoldingReply(burst),
+      disposition: "holding",
+      source: "context",
+    };
+  }
   const acknowledgement = deterministicAcknowledgementAnswer(burst);
   if (acknowledgement !== null) {
     return {

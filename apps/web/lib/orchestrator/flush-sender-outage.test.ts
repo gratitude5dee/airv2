@@ -240,7 +240,7 @@ describe("runFlush during a Spectrum outage", () => {
     expect(sendText).toHaveBeenCalledWith(
       "space-1",
       "+15551234567",
-      "I hit a temporary connection issue. I'm retrying your message now."
+      "I need a little more time. I’m continuing with the same request."
     );
   });
 });
