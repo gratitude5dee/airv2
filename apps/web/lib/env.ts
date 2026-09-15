@@ -382,6 +382,23 @@ export const env = {
   /** The `aud` a repo's Actions OIDC token must carry to push to /api/create/push. */
   githubOidcAudience: (): string =>
     optional("GITHUB_OIDC_AUDIENCE", "wzrd-create"),
+  // Kernel cloud browsers + vaults (docs/plans/kernel-shop-commerce-swe2.md).
+  // All optional: with KERNEL_ENABLED unset/false every Kernel lane reports
+  // itself unconfigured and fails closed, and the key never leaves the
+  // control plane (C26) — it is never NEXT_PUBLIC_, never written to a box,
+  // and never sent to any Kernel host other than kernelApiBase.
+  kernelApiKey: (): string | null => process.env["KERNEL_API_KEY"] ?? null,
+  kernelApiBase: (): string =>
+    optional("KERNEL_API_BASE", "https://api.onkernel.com"),
+  kernelEnabled: (): boolean => optional("KERNEL_ENABLED", "false") === "true",
+  kernelVaultsEnabled: (): boolean =>
+    optional("KERNEL_VAULTS_ENABLED", "false") === "true",
+  // Link host: link.wzrd.tech/<slug> serves public product payment
+  // pages (Phase 4). Flag-gated like the Kernel lanes.
+  linkappOrigin: (): string =>
+    optional("LINKAPP_ORIGIN", "https://link.wzrd.tech").replace(/\/+$/, ""),
+  linkHostEnabled: (): boolean =>
+    optional("LINK_HOST_ENABLED", "false") === "true",
   // MA9.2 Onairos developer API key. Optional: absent = the connect step
   // reports itself unconfigured and the onboarding UI hides the button.
   // Never NEXT_PUBLIC_ (goal.md §5): the key is not baked into any client

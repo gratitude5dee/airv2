@@ -222,8 +222,12 @@ export async function resolveHostedDecision(
   method: "fill" | "link" = "fill"
 ): Promise<ApproveResult> {
   // ApproveResult comes from paymentRequests; `trade` rides on the
-  // intersection returned to the two callers (needs-you + hosted page).
-  let result: ApproveResult & { trade?: { state: string; detail: string } } = {};
+  // intersection returned to the two callers (needs-you + hosted page), and
+  // `kernel` carries the Kernel-purchase resolution outcome.
+  let result: ApproveResult & {
+    trade?: { state: string; detail: string };
+    kernel?: { state: string; actionUrl?: string | null };
+  } = {};
 
   if (decision.kind === "purchase_review") {
     // V6 (C20): approving mints + redeems the single-use fill ticket,
@@ -231,21 +235,38 @@ export async function resolveHostedDecision(
     // the fill_denied receipt and resumes the run with approved=false.
     // Denying (and Link selection, which mints no ticket) must resolve even
     // while the box is start-limited — their run resumes are best-effort.
-    try {
-      const box =
-        action === "approve" && method !== "link"
-          ? await ensureBoxAwake(supabase, userId)
-          : await ensureBoxAwake(supabase, userId).catch(() => null);
-      await resolvePurchaseReview(
+    // Kernel lane (C29): payload.kernel_purchase_id resolves through the
+    // Kernel vault path instead — authorize → aliases to box → fill →
+    // submit-once. The vault lane is untouched.
+    const kernelPurchaseId = (
+      (decision.payload ?? {}) as Record<string, unknown>
+    )["kernel_purchase_id"];
+    if (typeof kernelPurchaseId === "string" && kernelPurchaseId) {
+      const { resolveKernelPurchase } = await import("../kernel/purchases");
+      const outcome = await resolveKernelPurchase(
         supabase,
         userId,
-        decision,
-        action === "approve",
-        box,
-        method
+        kernelPurchaseId,
+        action === "approve"
       );
-    } finally {
-      await armStopAfter(supabase, userId).catch(() => undefined);
+      result = { kernel: outcome };
+    } else {
+      try {
+        const box =
+          action === "approve" && method !== "link"
+            ? await ensureBoxAwake(supabase, userId)
+            : await ensureBoxAwake(supabase, userId).catch(() => null);
+        await resolvePurchaseReview(
+          supabase,
+          userId,
+          decision,
+          action === "approve",
+          box,
+          method
+        );
+      } finally {
+        await armStopAfter(supabase, userId).catch(() => undefined);
+      }
     }
   } else if (
     decision.kind === "trade_order" ||
