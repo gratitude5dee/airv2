@@ -76,7 +76,18 @@ case "$cmd" in
         # Persist the session handle for the relay; cdp_url never hits argv.
         printf '%s' "$out" > "$SESSION_FILE.tmp"
         chmod 600 "$SESSION_FILE.tmp" && mv "$SESSION_FILE.tmp" "$SESSION_FILE"
-        printf '%s\n' "$out"
+        # Never print the create response: it contains cdp_url, a bearer
+        # credential. Emit only non-secret handles/status for the agent.
+        node -e '
+          const fs = require("node:fs");
+          const value = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+          process.stdout.write(JSON.stringify({
+            ok: value.ok === true,
+            session_id: value.session_id ?? null,
+            kernel_session_id: value.kernel_session_id ?? null,
+            live_view_available: value.live_view_available === true,
+          }) + "\n");
+        ' "$SESSION_FILE"
         echo "air-kernel: session saved; run 'air-kernel relay' then agent-browser --cdp $CDP_PORT" >&2
         ;;
       status|end)

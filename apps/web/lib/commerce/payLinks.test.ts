@@ -14,20 +14,20 @@ import { slugifyPayLink, payLinkUrl } from "./payLinks";
 
 describe("slugifyPayLink", () => {
   it("slugifies product names", () => {
-    expect(slugifyPayLink("Espresso Beans 2lb")).toBe("espresso-beans-2lb");
-    expect(slugifyPayLink("  The  Listening   Party! ")).toBe("the-listening-party");
-    expect(slugifyPayLink("tour tee — xl")).toBe("tour-tee-xl");
+    expect(slugifyPayLink("maya", "Espresso Beans 2lb")).toBe("maya-espresso-beans-2lb");
+    expect(slugifyPayLink("Maya", "  The  Listening   Party! ")).toBe("maya-the-listening-party");
+    expect(slugifyPayLink("maya", "tour tee — xl")).toBe("maya-tour-tee-xl");
   });
 
   it("produces a URL-safe slug even for degenerate names", () => {
-    expect(slugifyPayLink("!!!")).toMatch(/^[a-z0-9-]+$/);
-    expect(slugifyPayLink("")).toMatch(/^[a-z0-9-]+$/);
-    expect(slugifyPayLink("").length).toBeGreaterThan(0);
+    expect(slugifyPayLink("!!!", "!!!")).toMatch(/^[a-z0-9-]+$/);
+    expect(slugifyPayLink("", "")).toMatch(/^[a-z0-9-]+$/);
+    expect(slugifyPayLink("", "").length).toBeGreaterThan(0);
   });
 
   it("caps slug length for URLs", () => {
     const long = "a".repeat(100) + " product";
-    expect(slugifyPayLink(long).length).toBeLessThanOrEqual(60);
+    expect(slugifyPayLink("maya", long).length).toBeLessThanOrEqual(64);
   });
 });
 

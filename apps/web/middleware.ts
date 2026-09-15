@@ -65,6 +65,10 @@ export function middleware(request: NextRequest): NextResponse {
 
   const onLink = linkHost() !== null && host === linkHost();
   if (onLink) {
+    // Link-host APIs are real route handlers, not payment-link slugs.
+    if (pathname.startsWith("/api/mini/")) {
+      return NextResponse.next({ request: { headers } });
+    }
     // Shared first-party assets resolve as-served; everything else is one
     // public route per slug.
     if (

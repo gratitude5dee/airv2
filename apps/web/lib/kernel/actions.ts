@@ -59,14 +59,43 @@ export async function stageKernelAction(
       400
     );
   }
+  return stageKernelUrlAction(supabase, userId, action.name, url, itemKey);
+}
+
+/** Stage any Kernel-owned bearer URL (provider action, live view, replay)
+ * behind the same owner-bound, fragment-token presenter. */
+export async function stageKernelUrlAction(
+  supabase: SupabaseClient,
+  userId: string,
+  actionName: string,
+  url: string,
+  itemKey: string | null
+): Promise<{ id: string; url: string }> {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new KernelError(
+      "kernel_action_unsupported",
+      "this provider action has no valid hosted URL to present",
+      400
+    );
+  }
+  if (parsed.protocol !== "https:") {
+    throw new KernelError(
+      "kernel_action_unsupported",
+      "this provider action is not a secure hosted URL",
+      400
+    );
+  }
   const expiresAt = new Date(Date.now() + ACTION_TTL_MINUTES * 60_000);
   const { data, error } = await supabase
     .from("kernel_actions")
     .insert({
       user_id: userId,
       item_key: itemKey,
-      action: action.name,
-      url_sealed: sealKernelUrl(url, "action"),
+      action: actionName.slice(0, 80),
+      url_sealed: sealKernelUrl(parsed.toString(), "action"),
       expires_at: expiresAt.toISOString(),
     })
     .select("id")

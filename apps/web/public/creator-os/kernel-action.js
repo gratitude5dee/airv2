@@ -29,10 +29,10 @@
   })
     .then(function (response) {
       return response.json().catch(function () { return {}; }).then(function (data) {
-        if (!response.ok || !data.url) {
+        if (!response.ok || !data.next) {
           throw new Error(typeof data.error === "string" ? data.error : "Could not open this payment step.");
         }
-        window.location.replace(data.url);
+        window.location.replace(data.next);
       });
     })
     .catch(function (error) {

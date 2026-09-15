@@ -159,8 +159,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       startUrl:
         typeof body?.start_url === "string" ? body.start_url : undefined,
       stealth: body?.stealth === undefined ? undefined : body.stealth === true,
-      saveProfile:
-        body?.save_profile === undefined ? undefined : body.save_profile === true,
+      // Box callers cannot opt themselves into persistent login state. An
+      // owner-facing keep-login control can enable this in a later session.
+      saveProfile: false,
       timeoutSeconds:
         typeof body?.timeout_seconds === "number" ? body.timeout_seconds : undefined,
       kiosk: body?.kiosk === true,

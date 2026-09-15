@@ -28,10 +28,11 @@ import { requestAdWrite, AdWriteError } from "@/lib/ads/approvals";
 import { StartLimitError } from "@/lib/orchestrator/boxes";
 import {
   createPayLink,
-  deletePayLink,
+  ensurePublishedPayLinks,
   listPayLinks,
   payLinkUrl,
   setPayLinkStatus,
+  setPayLinkSlug,
   type PayLink,
   type PayLinkProduct,
 } from "@/lib/commerce/payLinks";
@@ -70,7 +71,7 @@ function productCard(
   const linkRow = linksEnabled
     ? link
       ? `<div class="muted" style="margin:4px 0">${esc(payLinkUrl(link.slug))}${link.status === "paused" ? " · paused" : ""}</div>`
-      : `<form method="post"><input type="hidden" name="action" value="pay_link_create"><input type="hidden" name="product_id" value="${esc(product.id)}"><button class="ghost">Create payment link</button></form>`
+      : `<form method="post"><input type="hidden" name="action" value="pay_link_create"><input type="hidden" name="product_id" value="${esc(product.id)}"><input type="text" name="slug" placeholder="custom slug (optional)" maxlength="65"><button class="ghost">Create payment link</button></form>`
     : "";
   return `<div class="card">${product.image_url ? `<img src="${esc(product.image_url)}" alt="" style="max-width:100%;border-radius:var(--radius-well)">` : ""}<strong>${esc(product.name)}</strong> — $${(product.price_cents / 100).toFixed(2)} <span class="when">${esc(product.kind)}${product.inventory !== null ? ` · ${product.inventory} left` : ""}${product.active ? "" : " · inactive"}</span>
 ${linkRow}<form method="post"><input type="hidden" name="action" value="promote"><button class="ghost">Propose a promo</button></form>
@@ -82,7 +83,7 @@ function payLinkRow(link: PayLink & { product: PayLinkProduct | null }): string 
     link.status === "active"
       ? `<form method="post" style="display:inline"><input type="hidden" name="action" value="pay_link_pause"><input type="hidden" name="link_id" value="${esc(link.id)}"><button class="ghost">Pause</button></form>`
       : `<form method="post" style="display:inline"><input type="hidden" name="action" value="pay_link_resume"><input type="hidden" name="link_id" value="${esc(link.id)}"><button class="ghost">Resume</button></form>`;
-  return `<div class="item"><span class="grow"><strong>${esc(link.product?.name ?? link.slug)}</strong><br><span class="muted">${esc(payLinkUrl(link.slug))} · ${link.views} views · ${link.checkouts} checkouts${link.status === "paused" ? " · paused" : ""}</span></span><span>${toggle}<form method="post" style="display:inline"><input type="hidden" name="action" value="pay_link_delete"><input type="hidden" name="link_id" value="${esc(link.id)}"><button class="ghost">Remove</button></form></span></div>`;
+  return `<div class="item"><span class="grow"><strong>${esc(link.product?.name ?? link.slug)}</strong><br><span class="muted">${esc(payLinkUrl(link.slug))} · ${link.views} views · ${link.checkouts} checkouts${link.status === "paused" ? " · paused" : ""}</span><form method="post"><input type="hidden" name="action" value="pay_link_slug"><input type="hidden" name="link_id" value="${esc(link.id)}"><input type="text" name="slug" value="${esc(link.slug)}" maxlength="65"><button class="ghost">Update URL</button></form></span><span>${toggle}</span></div>`;
 }
 
 function kernelCardsSection(
@@ -198,6 +199,9 @@ ${promptBar("Ask your agent — e.g. draft a promo for my newest product…")}</
       if (action === "publish_catalog") {
         // Owner session = the approval surface; project the box catalog now.
         const count = await applyCatalogPublish(ctx.supabase, ctx.session.userId);
+        if (env.linkHostEnabled()) {
+          await ensurePublishedPayLinks(ctx.supabase, ctx.session.userId);
+        }
         return back(`published ${count} product${count === 1 ? "" : "s"}`);
       }
       if (action === "pay_link_create") {
@@ -205,7 +209,8 @@ ${promptBar("Ask your agent — e.g. draft a promo for my newest product…")}</
         const link = await createPayLink(
           ctx.supabase,
           ctx.session.userId,
-          productId
+          productId,
+          String(form.get("slug") ?? "") || null
         );
         return back(`payment link: ${payLinkUrl(link.slug)}`);
       }
@@ -218,13 +223,14 @@ ${promptBar("Ask your agent — e.g. draft a promo for my newest product…")}</
         );
         return back(action === "pay_link_pause" ? "link paused" : "link resumed");
       }
-      if (action === "pay_link_delete") {
-        await deletePayLink(
+      if (action === "pay_link_slug") {
+        await setPayLinkSlug(
           ctx.supabase,
           ctx.session.userId,
-          String(form.get("link_id") ?? "")
+          String(form.get("link_id") ?? ""),
+          String(form.get("slug") ?? "")
         );
-        return back("link removed");
+        return back("payment link updated");
       }
       if (action === "payment_enroll") {
         if (!env.kernelVaultsEnabled() || !kernelAvailable()) {

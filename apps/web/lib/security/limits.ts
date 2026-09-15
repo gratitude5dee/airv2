@@ -18,6 +18,7 @@ export type OpsEventKind =
   | "grant"
   | "rate_limited"
   | "pair_attempt"
+  | "pay_link_checkout"
   | "build"
   | "build_failed"
   | "deploy_fn"
@@ -47,6 +48,8 @@ export const GRANTS_PER_HOUR = 30;
 export const ROLLBACKS_PER_DAY = 20;
 /** Unauthenticated pairing-code exchange attempts, per source per hour. */
 export const PAIR_ATTEMPTS_PER_HOUR = 20;
+/** Checkout starts for one public payment link and source, per minute. */
+export const PAY_LINK_CHECKOUTS_PER_MINUTE = 10;
 /** Repository imports (link + first sync), per user per day (V11 §14.2). */
 export const IMPORTS_PER_DAY = 10;
 /** Build Service runs (Vibe), per user per hour (V11 §9.3). */
@@ -321,6 +324,47 @@ export async function pairExchangeRateLimited(
     return true;
   }
   await recordOpsEvent(supabase, "pair_attempt", null, source);
+  return false;
+}
+
+/** Durable anonymous throttle for payment-link checkout creation. The source
+ * is already hashed by pairAttemptSource; no address is persisted. */
+export async function payLinkCheckoutRateLimited(
+  supabase: SupabaseClient,
+  source: string,
+  linkId: string
+): Promise<boolean> {
+  const windowMs = 60_000;
+  const ref = `${linkId}:${source}`;
+  const since = new Date(Date.now() - windowMs).toISOString();
+  const { count, error } = await supabase
+    .from("ops_events")
+    .select("id", { count: "exact", head: true })
+    .eq("kind", "pay_link_checkout")
+    .eq("ref", ref)
+    .gte("created_at", since);
+  if (error) {
+    // Money-facing anonymous mutation fails closed if its abuse ledger is
+    // unavailable; buyers can safely retry after the brief outage.
+    console.error(
+      JSON.stringify({
+        msg: "ops event count failed",
+        kind: "pay_link_checkout",
+        error: error.message,
+      })
+    );
+    return true;
+  }
+  if ((count ?? 0) >= PAY_LINK_CHECKOUTS_PER_MINUTE) {
+    await recordOpsEvent(
+      supabase,
+      "rate_limited",
+      null,
+      `pay_link_checkout:${ref}`
+    );
+    return true;
+  }
+  await recordOpsEvent(supabase, "pay_link_checkout", null, ref);
   return false;
 }
 

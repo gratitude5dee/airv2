@@ -15,13 +15,14 @@ import { serviceClient } from "@/lib/supabase";
 import { baseHeaders, page } from "@/lib/miniapps/html";
 import {
   consumeRedemptionOnce,
+  mintToken,
   verifyToken,
 } from "@/lib/miniapps/tokens";
-import { redeemKernelAction } from "@/lib/kernel/actions";
-import { ACTION_LABELS } from "@/lib/kernel/actions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+const ACTION_COOKIE = "air_kernel_action";
+const ACTION_SESSION_SECONDS = 60;
 
 export async function GET(
   _request: NextRequest,
@@ -54,7 +55,7 @@ export async function POST(
     | null;
   const token = typeof body?.token === "string" ? body.token : "";
   const claims = verifyToken(token, "kernel-action");
-  if (!claims || claims.resourceId !== id) {
+  if (!claims || claims.resourceId !== id || claims.role !== "owner") {
     return NextResponse.json(
       { error: "This link is invalid or expired." },
       { status: 403, headers: baseHeaders() }
@@ -69,25 +70,23 @@ export async function POST(
       { status: 409, headers: baseHeaders() }
     );
   }
-  const action = await redeemKernelAction(supabase, claims.userId, id);
-  if (!action) {
-    return NextResponse.json(
-      { error: "This payment step is no longer available." },
-      { status: 410, headers: baseHeaders() }
-    );
-  }
-  return NextResponse.json(
-    { ok: true, url: action.url },
+  const next = `/api/kernel/action/${encodeURIComponent(id)}/continue`;
+  const response = NextResponse.json(
+    { ok: true, next },
+    { headers: { ...baseHeaders(), "Referrer-Policy": "no-referrer" } }
+  );
+  response.cookies.set(
+    ACTION_COOKIE,
+    mintToken(claims.userId, "kernel-action-session", id, 1, {
+      role: "owner",
+    }),
     {
-      headers: {
-        ...baseHeaders(),
-        "Referrer-Policy": "no-referrer",
-      },
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      path: next,
+      maxAge: ACTION_SESSION_SECONDS,
     }
   );
-}
-
-/** Label text for the presenter page (surfaced for future rich variants). */
-export function actionLabel(name: string): string {
-  return ACTION_LABELS[name] ?? "finish a payment step";
+  return response;
 }

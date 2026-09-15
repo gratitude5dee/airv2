@@ -5,6 +5,11 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { lookup } from "node:dns/promises";
+
+vi.mock("node:dns/promises", () => ({
+  lookup: vi.fn(async () => [{ address: "93.184.216.34", family: 4 }]),
+}));
 
 /* -------------------------------------------------------- fetch mock */
 
@@ -28,7 +33,18 @@ vi.mock("@/lib/kernel/vaults", () => ({
   LINK_WALLET_KEY: "link-wallet",
   ensureKernelVault: async () => "vault-1",
   authorizeKernelItem: vi.fn(),
-  getKernelItem: async () => ({ type: "card", state: { status: "ready" } }),
+  getKernelItem: async () => ({
+    type: "card",
+    state: {
+      status: "ready",
+      aliases: {
+        number: "4242424242424242",
+        cvc: "123",
+        exp_month: 12,
+        exp_year: 2030,
+      },
+    },
+  }),
   kernelItemEvents: async () => itemEvents,
   syncKernelVaultItems: async () => [],
 }));
@@ -59,11 +75,15 @@ vi.mock("@/lib/env", () => ({
 }));
 
 import {
+  assertFrozenKernelQuoteCurrent,
+  pollKernelPurchase,
   proposeKernelPurchase,
   quoteMerchantUrl,
   reconcileKernelPurchase,
   reportKernelSubmit,
   verifyKernelPurchase,
+  resolvesOnlyPublicAddresses,
+  isPublicAddress,
 } from "./purchases";
 import { PurchaseError } from "../vault/purchase";
 
@@ -171,6 +191,8 @@ function purchaseRow(overrides: Row = {}): Row {
       amount_cents: 4299,
       currency: "usd",
       provider: "link",
+      context:
+        "The owner requested this exact purchase; the merchant, item, quantity, currency, and final checkout total were verified before approval.",
     },
     status: "ready",
     item_key: "card-abc",
@@ -194,6 +216,13 @@ afterEach(() => {
 });
 
 describe("quoteMerchantUrl", () => {
+  it("accepts a hostname only when DNS resolves exclusively to public addresses", async () => {
+    expect(isPublicAddress("93.184.216.34")).toBe(true);
+    await expect(lookup("example.com", { all: true })).resolves.toEqual([
+      { address: "93.184.216.34", family: 4 },
+    ]);
+    await expect(resolvesOnlyPublicAddresses("example.com")).resolves.toBe(true);
+  });
   it("extracts a Stripe checkout blob", async () => {
     mockFetch(`<html>{"line_item_group":{"total":4299,"currency":"usd"},
       "display_name":"Example Store","item_name":"Beans","unit_amount":4299}</html>`);
@@ -238,11 +267,13 @@ describe("quoteMerchantUrl", () => {
 });
 
 describe("verifyKernelPurchase", () => {
+  const context =
+    "The owner requested this exact purchase; the merchant, item, quantity, currency, and final checkout total were verified before approval.";
   const proposal = {
     merchant_url: "https://buy.stripe.com/test",
     amount_cents: 4299,
     currency: "usd",
-    context: "beans restock",
+    context,
   };
 
   it("accepts a proposal matching the verified quote", async () => {
@@ -251,7 +282,7 @@ describe("verifyKernelPurchase", () => {
     expect(verified.amount_cents).toBe(4299);
     expect(verified.currency).toBe("usd");
     expect(verified.provider).toBe("link");
-    expect(verified.context).toBe("beans restock");
+    expect(verified.context).toBe(context);
   });
 
   it("rejects an unverifiable page with kernel_quote_unverified (422)", async () => {
@@ -280,13 +311,46 @@ describe("verifyKernelPurchase", () => {
       verifyKernelPurchase({ ...proposal, merchant_url: "file:///etc/passwd" })
     ).rejects.toMatchObject({ code: "kernel_purchase_invalid" });
   });
+
+  it("rejects short Link context and unsupported AgentCard ordering", async () => {
+    mockFetch(`{"line_item_group":{"total":4299,"currency":"usd"}}`);
+    await expect(
+      verifyKernelPurchase({ ...proposal, context: "buy this" })
+    ).rejects.toMatchObject({ code: "kernel_context_required" });
+    await expect(
+      verifyKernelPurchase({ ...proposal, provider: "agentcard" })
+    ).rejects.toMatchObject({ code: "kernel_agentcard_not_ready" });
+  });
+});
+
+describe("assertFrozenKernelQuoteCurrent", () => {
+  const frozen = purchaseRow()["purchase"] as Parameters<
+    typeof assertFrozenKernelQuoteCurrent
+  >[0];
+
+  it("accepts only the exact approved amount and currency", async () => {
+    mockFetch(`<script type="application/ld+json">
+      {"@type":"Offer","price":"42.99","priceCurrency":"USD"}</script>`);
+    await expect(assertFrozenKernelQuoteCurrent(frozen)).resolves.toBeUndefined();
+  });
+
+  it("fails closed when the post-approval cart changes", async () => {
+    mockFetch(`<script type="application/ld+json">
+      {"@type":"Offer","price":"52.99","priceCurrency":"USD"}</script>`);
+    await expect(assertFrozenKernelQuoteCurrent(frozen)).rejects.toMatchObject({
+      code: "kernel_cart_changed",
+    });
+  });
 });
 
 describe("proposeKernelPurchase", () => {
+  const context =
+    "The owner requested this exact purchase; the merchant, item, quantity, currency, and final checkout total were verified before approval.";
   const proposal = {
     merchant_url: "https://example.com/checkout",
     amount_cents: 4299,
     currency: "usd",
+    context,
   };
 
   it("freezes the verified object into a purchase_review decision", async () => {
@@ -317,6 +381,20 @@ describe("proposeKernelPurchase", () => {
 });
 
 describe("submit-once (C30)", () => {
+  it("delivers aliases only to the poll that atomically claims ready", async () => {
+    const { client } = makeSupabase({
+      purchases: [purchaseRow({ status: "authorized" })],
+      decisions: [{ id: "dec-1", user_id: "u-1", status: "approved" }],
+    });
+    const first = await pollKernelPurchase(client, "u-1", "p-1");
+    expect(first.status).toBe("ready");
+    expect(first.aliases).toBeDefined();
+
+    const second = await pollKernelPurchase(client, "u-1", "p-1");
+    expect(second.status).toBe("ready");
+    expect(second.aliases).toBeUndefined();
+  });
+
   it("transitions ready → submitted exactly once", async () => {
     const { client } = makeSupabase({ purchases: [purchaseRow()] });
     const submitted = await reportKernelSubmit(client, "u-1", "p-1");
@@ -329,6 +407,15 @@ describe("submit-once (C30)", () => {
   it("refuses submit before authorization", async () => {
     const { client } = makeSupabase({
       purchases: [purchaseRow({ status: "proposed" })],
+    });
+    await expect(reportKernelSubmit(client, "u-1", "p-1")).rejects.toMatchObject({
+      code: "kernel_not_ready",
+    });
+  });
+
+  it("refuses an authorized row until the alias-delivery poll claims ready", async () => {
+    const { client } = makeSupabase({
+      purchases: [purchaseRow({ status: "authorized" })],
     });
     await expect(reportKernelSubmit(client, "u-1", "p-1")).rejects.toMatchObject({
       code: "kernel_not_ready",

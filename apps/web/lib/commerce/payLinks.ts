@@ -67,13 +67,19 @@ function hydrateProduct(row: Record<string, unknown> | null): PayLinkProduct | n
   };
 }
 
-export function slugifyPayLink(name: string): string {
-  const base = name
+function slugPart(value: string, max: number): string {
+  return value
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 60)
+    .slice(0, max)
     .replace(/-+$/g, "");
+}
+
+export function slugifyPayLink(username: string, name: string): string {
+  const owner = slugPart(username, 24) || "shop";
+  const product = slugPart(name, 64 - owner.length - 1) || "link";
+  const base = `${owner}-${product}`.slice(0, 64).replace(/-+$/g, "");
   return base.length >= 3 ? base : `${base}-link`;
 }
 
@@ -138,7 +144,8 @@ export async function listPayLinks(
 export async function createPayLink(
   supabase: SupabaseClient,
   userId: string,
-  productId: string
+  productId: string,
+  customSlug?: string | null
 ): Promise<PayLink> {
   const { data: existing } = await supabase
     .from("pay_links")
@@ -158,30 +165,42 @@ export async function createPayLink(
   if (!parsed || !parsed.active) {
     throw new CommerceError("product not found or unpublished", 404);
   }
-  const base = slugifyPayLink(parsed.name);
-  for (let attempt = 0; attempt < 8; attempt += 1) {
-    const slug = attempt === 0 ? base : `${base}-${attempt + 1}`;
-    const { data, error } = await supabase
-      .from("pay_links")
-      .insert({ user_id: userId, product_id: productId, slug })
-      .select(PAY_LINK_COLUMNS)
-      .single();
-    if (!error && data) return hydrate(data);
-    if (error?.code === SLUG_TAKEN) {
-      // Either the slug collided (retry with suffix) or the product's link
-      // already exists (concurrent create) — re-read the product row.
-      const { data: raced } = await supabase
-        .from("pay_links")
-        .select(PAY_LINK_COLUMNS)
-        .eq("user_id", userId)
-        .eq("product_id", productId)
-        .maybeSingle();
-      if (raced) return hydrate(raced);
-      continue;
-    }
-    throw new CommerceError("could not create the payment link", 500);
+  const requested = customSlug?.trim().toLowerCase() ?? "";
+  if (requested && !SLUG_RE.test(requested)) {
+    throw new CommerceError(
+      "custom link must be 3–65 lowercase letters, numbers, or hyphens",
+      400
+    );
   }
-  throw new CommerceError("could not find a free slug — name the product differently", 409);
+  const { data: user } = await supabase
+    .from("users")
+    .select("username")
+    .eq("id", userId)
+    .maybeSingle();
+  const username = (user?.username as string | null) ?? null;
+  if (!username) {
+    throw new CommerceError("choose a username before publishing a payment link", 409);
+  }
+  const slug = requested || slugifyPayLink(username, parsed.name);
+  const { data, error } = await supabase
+    .from("pay_links")
+    .insert({ user_id: userId, product_id: productId, slug })
+    .select(PAY_LINK_COLUMNS)
+    .single();
+  if (!error && data) return hydrate(data);
+  if (error?.code === SLUG_TAKEN) {
+    // A concurrent idempotent create may have won for this product. A slug
+    // collision with another product is explicit; URLs never silently drift.
+    const { data: raced } = await supabase
+      .from("pay_links")
+      .select(PAY_LINK_COLUMNS)
+      .eq("user_id", userId)
+      .eq("product_id", productId)
+      .maybeSingle();
+    if (raced) return hydrate(raced);
+    throw new CommerceError("that payment-link slug is already taken", 409);
+  }
+  throw new CommerceError("could not create the payment link", 500);
 }
 
 export async function setPayLinkStatus(
@@ -198,17 +217,45 @@ export async function setPayLinkStatus(
   if (error) throw new CommerceError("could not update the payment link", 500);
 }
 
-export async function deletePayLink(
+export async function setPayLinkSlug(
   supabase: SupabaseClient,
   userId: string,
-  id: string
+  id: string,
+  slug: string
 ): Promise<void> {
+  const normalized = slug.trim().toLowerCase();
+  if (!SLUG_RE.test(normalized)) {
+    throw new CommerceError(
+      "custom link must be 3–65 lowercase letters, numbers, or hyphens",
+      400
+    );
+  }
   const { error } = await supabase
     .from("pay_links")
-    .delete()
+    .update({ slug: normalized, updated_at: new Date().toISOString() })
     .eq("id", id)
     .eq("user_id", userId);
-  if (error) throw new CommerceError("could not delete the payment link", 500);
+  if (error?.code === SLUG_TAKEN) {
+    throw new CommerceError("that payment-link slug is already taken", 409);
+  }
+  if (error) throw new CommerceError("could not update the payment link", 500);
+}
+
+/** Auto-mint links for every active product after the owner approves a
+ * catalog publish. A collision fails the publish instead of renaming URLs. */
+export async function ensurePublishedPayLinks(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<void> {
+  const { data, error } = await supabase
+    .from("storefront_products")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("active", true);
+  if (error) throw new CommerceError("could not read published products", 500);
+  for (const row of data ?? []) {
+    await createPayLink(supabase, userId, row.id as string);
+  }
 }
 
 /** Public counters — best-effort increments, never on the money path. */

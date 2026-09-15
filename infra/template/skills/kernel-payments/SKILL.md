@@ -33,14 +33,10 @@ right before the submit button. Do not submit.
 air-kernel purchase propose '{
   "merchant_domain": "example.com",
   "merchant_name": "Example Store",
+  "merchant_url": "https://example.com/checkout",
   "amount_cents": 4299,
   "currency": "usd",
-  "merchant_amount_cents": 4299,
-  "merchant_currency": "usd",
-  "item_name": "Item — variant",
-  "quantity": 1,
-  "checkout_url": "https://example.com/checkout",
-  "quote_evidence": ["page text: 'Total $42.99'"]
+  "context": "The owner requested this exact item and quantity. I verified the merchant identity, checkout URL, currency, and final total of $42.99 on the review page before requesting approval."
 }' <kernel_session_id>
 ```
 
@@ -54,19 +50,29 @@ an honest failure: stop and tell the owner what you could verify.
 air-kernel purchase poll <purchase_id>
 ```
 
-Poll until `status` is `authorized`. While the card alias exists only when
-status is `ready` and the purchase is unsubmitted — the response includes
-`aliases.number/cvc/exp_month/exp_year` exactly once it is safe to fill.
+Poll until `status` is `ready`. The response includes
+`aliases.number/cvc/exp_month/exp_year` exactly once. Save them only long
+enough to fill the current checkout; a later poll intentionally omits them.
 
 ## 4. Fill and submit ONCE
 
-Fill the card fields with the aliases, submit the checkout exactly once
-(C30 — never retry, never double-click), then:
+Fill the card fields with the aliases. Immediately before clicking the final
+merchant button, claim the one permitted submit attempt:
 
 ```bash
-air-kernel purchase submit <purchase_id>   # marks the submit attempt
-air-kernel purchase outcome <purchase_id>  # reconciles charge vs ambiguity
+air-kernel purchase submit <purchase_id>   # claim BEFORE the click
 ```
+
+Only after that command succeeds, click the final submit button exactly once
+(C30 — never retry, never double-click). Then reconcile:
+
+```bash
+air-kernel purchase outcome <purchase_id>
+```
+
+If the submit claim fails, do not click. If the process crashes after the
+claim, do not click or retry when it resumes; reconcile as an ambiguous
+outcome and ask the owner to verify before starting a fresh purchase.
 
 If the page's response is ambiguous (timeout, spinner, unclear error),
 report `unknown_outcome` — never invent a success, never resubmit.

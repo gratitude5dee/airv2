@@ -113,7 +113,7 @@ create table kernel_purchases (
   purchase     jsonb not null,
   card_item_id text,
   status       text not null default 'proposed'
-               check (status in ('proposed','pending_approval','authorized','ready',
+               check (status in ('proposed','pending_approval','authorizing','authorized','ready',
                  'consumed','submitted','unknown_outcome','failed','expired',
                  'declined','cancelled')),
   submitted_at timestamptz,
@@ -125,9 +125,9 @@ create index kernel_purchases_user_idx on kernel_purchases (user_id, created_at 
 alter table kernel_purchases enable row level security;
 create policy own_kernel_purchases on kernel_purchases for select using (user_id = auth.uid());
 
--- link.wzrd.tech/<slug> payment links: one public slug per product. The row is
--- public-read by design — the link page renders only listing data that is
--- already public on the storefront — but writes stay owner-scoped.
+-- link.wzrd.tech/<slug> payment links: one public slug per product. Public
+-- reads go through the server-rendered route, which projects listing fields;
+-- anonymous Supabase clients must not see owner ids or traffic counters.
 create table pay_links (
   id         uuid primary key default gen_random_uuid(),
   user_id    uuid not null references users(id) on delete cascade,
@@ -143,8 +143,16 @@ create table pay_links (
 create index pay_links_slug_idx on pay_links (slug);
 alter table pay_links enable row level security;
 create policy own_pay_links on pay_links for select using (user_id = auth.uid());
-create policy public_pay_links_read on pay_links
-  for select using (status = 'active');
+
+-- Durable, hashed-source checkout throttle events for public pay links.
+alter table ops_events drop constraint ops_events_kind_check;
+alter table ops_events add constraint ops_events_kind_check check (kind in (
+  'store_open','launch','publish','upload','upload_rejected',
+  'guest_session','grant','rate_limited','pair_attempt','pay_link_checkout',
+  'build','build_failed','deploy_fn','fn_capped','rollback','import',
+  'create.drop','create.push','create.build','create.turn','create.qa',
+  'fn_request','fn_secret','fn_rotate','fn_kill','fn_backend'
+));
 
 -- Shopify/catalog sync refs on products (provider -> {external_id, url, synced_at}).
 alter table storefront_products

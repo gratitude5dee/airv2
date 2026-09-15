@@ -228,6 +228,7 @@ export async function resolveHostedDecision(
     trade?: { state: string; detail: string };
     kernel?: { state: string; actionUrl?: string | null };
   } = {};
+  let decisionClaimed = false;
 
   if (decision.kind === "purchase_review") {
     // V6 (C20): approving mints + redeems the single-use fill ticket,
@@ -242,6 +243,35 @@ export async function resolveHostedDecision(
       (decision.payload ?? {}) as Record<string, unknown>
     )["kernel_purchase_id"];
     if (typeof kernelPurchaseId === "string" && kernelPurchaseId) {
+      // Claim the decision before any Kernel mutation. A competing approve
+      // or dismiss cannot both cross this conditional write. Never reopen a
+      // claimed money decision: a provider mutation may have succeeded even
+      // when its response or our persistence failed, so retrying the same
+      // approval would be unsafe. A failed purchase requires a fresh review.
+      const claimedAt = new Date().toISOString();
+      const claimedStatus = action === "approve" ? "approved" : "dismissed";
+      const { data: claimed, error: claimError } = await supabase
+        .from("decisions")
+        .update({ status: claimedStatus, resolved_at: claimedAt })
+        .eq("id", decision.id)
+        .eq("user_id", userId)
+        .eq("status", "pending")
+        .select("id");
+      if (claimError) {
+        throw new PurchaseError(
+          "kernel_store_error",
+          "could not claim this purchase decision",
+          500
+        );
+      }
+      if (!claimed || claimed.length === 0) {
+        throw new PurchaseError(
+          "already_resolved",
+          "this purchase decision was already resolved",
+          409
+        );
+      }
+      decisionClaimed = true;
       const { resolveKernelPurchase } = await import("../kernel/purchases");
       const outcome = await resolveKernelPurchase(
         supabase,
@@ -322,15 +352,17 @@ export async function resolveHostedDecision(
 
   // Only a pending decision may flip — a resolver that lost its own race
   // (another resolver already settled it) must not overwrite the receipt.
-  await supabase
-    .from("decisions")
-    .update({
-      status: action === "approve" ? "approved" : "dismissed",
-      resolved_at: new Date().toISOString(),
-    })
-    .eq("id", decision.id)
-    .eq("user_id", userId)
-    .eq("status", "pending");
+  if (!decisionClaimed) {
+    await supabase
+      .from("decisions")
+      .update({
+        status: action === "approve" ? "approved" : "dismissed",
+        resolved_at: new Date().toISOString(),
+      })
+      .eq("id", decision.id)
+      .eq("user_id", userId)
+      .eq("status", "pending");
+  }
   if (decision.kind === "purchase_review") {
     await updateMiniAppCard(supabase, userId, "vault", "default");
   }

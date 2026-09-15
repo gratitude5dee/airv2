@@ -11,8 +11,10 @@
  *   GET  /json/version, /json/list  → synthetic target pointing back here
  *   WS   any path                   → piped to the remote browser endpoint
  *
- * Human control (C31): the agent-browser guard already fails closed on an
- * active owner lease; this relay is transport-only and adds no policy.
+ * Human control (C31): the relay independently verifies the owner lease
+ * before accepting a WebSocket and before forwarding every CDP message.
+ * This is the policy boundary; callers cannot bypass it by opening the
+ * localhost relay directly instead of using agent-browser.
  */
 "use strict";
 
@@ -34,6 +36,64 @@ function loadSession() {
     return JSON.parse(fs.readFileSync(SESSION_FILE, "utf8"));
   } catch {
     return null;
+  }
+}
+
+function loadGatewayCredentials() {
+  const envFile =
+    process.env.AIR_HERMES_ENV_FILE ||
+    path.join(os.homedir(), ".hermes/.env");
+  let raw = "";
+  try {
+    raw = fs.readFileSync(envFile, "utf8");
+  } catch {
+    return null;
+  }
+  const values = new Map();
+  for (const line of raw.split(/\r?\n/)) {
+    const match = line.match(/^([A-Z0-9_]+)=(.*)$/);
+    if (!match) continue;
+    let value = match[2] ?? "";
+    if (
+      value.length >= 2 &&
+      ((value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'")))
+    ) {
+      value = value.slice(1, -1);
+    }
+    values.set(match[1], value);
+  }
+  const base = process.env.AIR_KERNEL_BASE_URL || values.get("OPENAI_BASE_URL");
+  const token = process.env.AIR_KERNEL_TOKEN || values.get("OPENAI_API_KEY");
+  if (!base || !token) return null;
+  return { base: base.replace(/\/api\/gateway\/v1\/?$/, ""), token };
+}
+
+async function leaseAllowsAgent(session) {
+  const credentials = loadGatewayCredentials();
+  const localSessionId = session?.session_id;
+  if (!credentials || typeof localSessionId !== "string" || !localSessionId) {
+    return false;
+  }
+  const endpoint = new URL("/api/kernel/browser", credentials.base);
+  endpoint.searchParams.set("active_human_control", "1");
+  endpoint.searchParams.set("session_id", localSessionId);
+  try {
+    const response = await fetch(endpoint, {
+      method: "GET",
+      cache: "no-store",
+      redirect: "error",
+      signal: AbortSignal.timeout(4000),
+      headers: {
+        authorization: `Bearer ${credentials.token}`,
+        accept: "application/json",
+      },
+    });
+    if (!response.ok) return false;
+    const value = await response.json();
+    return value?.active === false && value?.human_control === false;
+  } catch {
+    return false;
   }
 }
 
@@ -189,10 +249,16 @@ const server = http.createServer((req, res) => {
   res.end("not found");
 });
 
-server.on("upgrade", (req, socket) => {
+server.on("upgrade", async (req, socket) => {
   const key = req.headers["sec-websocket-key"];
+  const session = loadSession();
   const remote = remoteWsUrl();
-  if (!key || !remote) {
+  if (
+    !key ||
+    !remote ||
+    req.url !== "/devtools/browser" ||
+    !(await leaseAllowsAgent(session))
+  ) {
     socket.write("HTTP/1.1 503 Service Unavailable\r\n\r\n");
     socket.destroy();
     return;
@@ -215,13 +281,34 @@ server.on("upgrade", (req, socket) => {
       socket.write(encodeFrame(OPCODE_CLOSE, Buffer.alloc(0)));
     } catch {}
   };
+  const closeBoth = () => {
+    writeClose();
+    try {
+      upstream.close();
+    } catch {}
+    socket.destroy();
+  };
+  const upstreamReady = new Promise((resolve, reject) => {
+    upstream.addEventListener("open", resolve, { once: true });
+    upstream.addEventListener("error", reject, { once: true });
+  });
+  // The frame parser is synchronous but lease checks are not. Chain each
+  // complete CDP message so authorization cannot reorder browser commands,
+  // and wait for the remote socket rather than dropping early commands.
+  let delivery = Promise.resolve();
   const feed = makeClientParser(
     (message, binary) => {
-      try {
+      delivery = delivery.then(async () => {
+        // Re-check for every CDP command. A lease acquired after the socket
+        // opened must pause the already-connected agent immediately.
+        if (!(await leaseAllowsAgent(loadSession()))) {
+          throw new Error("owner lease blocks agent control");
+        }
+        await upstreamReady;
         if (upstream.readyState === WebSocket.OPEN) {
           upstream.send(binary ? new Uint8Array(message) : message.toString("utf8"));
         }
-      } catch {}
+      }).catch(closeBoth);
     },
     () => {
       try {
@@ -234,6 +321,7 @@ server.on("upgrade", (req, socket) => {
       } catch {}
     }
   );
+  upstreamReady.catch(closeBoth);
   socket.on("data", feed);
   socket.on("error", () => {});
   socket.on("close", () => {

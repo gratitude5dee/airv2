@@ -199,7 +199,7 @@ export interface CreateKernelSessionInput {
   taskId?: string | null;
   startUrl?: string | null | undefined;
   stealth?: boolean | undefined;
-  /** Persist the user's signed-in profile when the session ends. Default true. */
+  /** Persist the user's signed-in profile only after an owner-side opt-in. */
   saveProfile?: boolean | undefined;
   /** Attach a vault so the browser can mint payment cards. Requires a vault id. */
   vaultId?: string | null | undefined;
@@ -223,7 +223,7 @@ export async function createKernelSession(
   const account = await ensureKernelAccount(supabase, userId);
   const client = kernelClient(account.project_id);
   const purpose: KernelSessionPurpose = input.purpose ?? "errand";
-  const saveProfile = input.saveProfile ?? true;
+  const saveProfile = input.saveProfile ?? false;
   const profileName = saveProfile
     ? await ensureKernelProfile(supabase, userId, account)
     : null;
@@ -271,7 +271,8 @@ export async function createKernelSession(
       ...(startUrl ? { start_url: startUrl } : {}),
       headless: false,
       kiosk_mode: input.kiosk ?? false,
-      timeout_seconds: Math.min(Math.max(input.timeoutSeconds ?? 600, 60), 3600),
+      // Kernel enforces inactivity; the hard cap remains 30 minutes.
+      timeout_seconds: Math.min(Math.max(input.timeoutSeconds ?? 600, 60), 1800),
     });
   } catch (cause) {
     throw kernelFailure(cause);

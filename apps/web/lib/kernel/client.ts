@@ -54,6 +54,10 @@ export function kernelClient(projectId?: string | null): Kernel {
     apiKey,
     baseURL: env.kernelApiBase(),
     projectID: projectId ?? null,
+    // Bound each upstream attempt and disable implicit retries. Purchase and
+    // browser state transitions own their retry/idempotency policy here.
+    timeout: 15_000,
+    maxRetries: 0,
   });
 }
 

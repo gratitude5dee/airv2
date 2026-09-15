@@ -21,13 +21,16 @@ import {
   type KernelSession,
 } from "@/lib/kernel/browsers";
 import { kernelAvailable } from "@/lib/kernel/client";
+import { stageKernelUrlAction } from "@/lib/kernel/actions";
 import { externalOrigin } from "../gates";
 import { esc, forbidden, withBaseHeaders } from "../html";
 import { renderShell, shellHtml } from "../shell";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
 /** Kernel live-view/replay hosts — CSP frame-src is widened to these only. */
-const KERNEL_FRAME_SOURCES = "https://*.onkernel.com https://*.kernel.run";
+const KERNEL_FRAME_SOURCES =
+  "'self' https://*.onkernel.com https://*.onkernel.com:8443 " +
+  "https://*.kernel.run https://*.kernel.sh https://*.kernel.sh:8443";
 
 function widenFrameSrc(response: NextResponse): NextResponse {
   const csp = response.headers.get("Content-Security-Policy") ?? "";
@@ -51,7 +54,7 @@ function sessionCard(
   const live = kernelHumanControlActive(session);
   const active = session.status === "active";
   const iframe = (url: string, readOnly: boolean) =>
-    `<iframe src="${esc(url)}" style="width:100%;height:340px;border:0;border-radius:10px;background:#000" allow="clipboard-read; clipboard-write"${readOnly ? " sandbox=\"allow-scripts allow-same-origin\"" : ""}></iframe>`;
+    `<iframe src="${esc(url)}" style="width:100%;height:340px;border:0;border-radius:10px;background:#000" allow="autoplay; clipboard-read; clipboard-write" referrerpolicy="no-referrer"${readOnly ? " sandbox=\"allow-scripts allow-same-origin allow-forms\"" : ""}></iframe>`;
   const control = active
     ? live
       ? `<form method="post"><input type="hidden" name="action" value="return_control"><input type="hidden" name="session" value="${session.id}"><button>Return control to agent</button></form>`
@@ -68,9 +71,7 @@ function sessionCard(
   const viewer =
     liveViewUrl !== null
       ? iframe(
-          liveViewUrl.includes("?")
-            ? `${liveViewUrl}&readOnly=${live ? "false" : "true"}`
-            : `${liveViewUrl}?readOnly=${live ? "false" : "true"}`,
+          liveViewUrl,
           !live
         ) +
         `<p class="muted">${live ? "You're in control — agent input is paused." : "Read-only view — take control to interact."}</p>`
@@ -110,19 +111,46 @@ async function renderWatch(ctx: MiniAppContext): Promise<NextResponse> {
     let liveView: string | null = null;
     let replay: string | null = null;
     if (session.status === "active") {
-      liveView = await kernelSessionSecret(
+      const bearer = await kernelSessionSecret(
         ctx.supabase,
         ctx.session.userId,
         session.id,
         "live_view"
       );
+      if (bearer) {
+        const providerUrl = new URL(bearer);
+        providerUrl.searchParams.set(
+          "readOnly",
+          kernelHumanControlActive(session) ? "false" : "true"
+        );
+        liveView = (
+          await stageKernelUrlAction(
+            ctx.supabase,
+            ctx.session.userId,
+            "live_view",
+            providerUrl.toString(),
+            session.id
+          )
+        ).url;
+      }
     } else if (session.replay_ids.length > 0) {
-      replay = await kernelReplayViewUrl(
+      const bearer = await kernelReplayViewUrl(
         ctx.supabase,
         ctx.session.userId,
         session.id,
         session.replay_ids[session.replay_ids.length - 1] as string
       );
+      if (bearer) {
+        replay = (
+          await stageKernelUrlAction(
+            ctx.supabase,
+            ctx.session.userId,
+            "replay_view",
+            bearer,
+            session.id
+          )
+        ).url;
+      }
     }
     cards.push(sessionCard(session, liveView, replay));
   }

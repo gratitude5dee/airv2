@@ -29,6 +29,10 @@ import {
   startCheckout,
 } from "@/lib/commerce/checkout";
 import { env } from "@/lib/env";
+import {
+  pairAttemptSource,
+  payLinkCheckoutRateLimited,
+} from "@/lib/security/limits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -125,6 +129,13 @@ export async function POST(
     return html(`<h1>Payment link</h1><div class="card">This link is not available.</div>`, 404);
   }
   const { link, product } = found;
+  const source = pairAttemptSource(request.headers);
+  if (await payLinkCheckoutRateLimited(supabase, source, link.id)) {
+    return html(
+      `<h1>Payment link</h1><div class="card">Too many checkout attempts. Try again in a minute.</div>`,
+      429
+    );
+  }
   const form = await request.formData();
   const linkOrigin = `${env.linkappOrigin()}/${slug}`;
   try {
