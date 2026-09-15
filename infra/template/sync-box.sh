@@ -183,6 +183,15 @@ exec "$HOME_DIR/.local/bin/browser-use" "\$@"
 SH
 sudo chmod +x /usr/local/bin/box-browser-use
 
+# ── 3b2e. Kernel cloud-browser lane: air-kernel helper + localhost CDP relay ──
+# Existing boxes must receive the same Kernel runtime as newly provisioned
+# boxes. Copying the kernel-browser skill alone leaves its air-kernel command
+# missing and silently pushes errands back onto the legacy desktop browser.
+sudo install -d -m 755 /usr/local/lib/air
+sudo install -m 755 "$TEMPLATE_DIR/kernel-cdp-relay.js" /usr/local/lib/air/kernel-cdp-relay.js
+sudo install -m 755 "$TEMPLATE_DIR/air-kernel" /usr/local/bin/air-kernel
+mkdir -p "$HOME_DIR/.hermes/kernel" && chmod 700 "$HOME_DIR/.hermes/kernel"
+
 sed -i '/^PATH=/d' "$ENV_FILE"
 echo "PATH=$HERMES_NODE/bin:$HOME_DIR/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" >> "$ENV_FILE"
 grep -q 'hermes/node/bin' "$HOME_DIR/.bashrc" || \
