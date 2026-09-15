@@ -32,6 +32,7 @@ import { todo } from "./todo";
 import { trade } from "./trade";
 import { vault } from "./vault";
 import { video } from "./video";
+import { watch } from "./watch";
 
 export const FIRST_PARTY_MODULES: Record<string, MiniAppModule> = {
   ads,
@@ -66,6 +67,7 @@ export const FIRST_PARTY_MODULES: Record<string, MiniAppModule> = {
   trade,
   vault,
   video,
+  watch,
 };
 
 export type { MiniAppContext, MiniAppModule } from "./types";

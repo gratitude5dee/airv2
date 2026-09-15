@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { command } from "../box/client";
@@ -7,6 +7,18 @@ import { maybeRecoverStateDatabase, STATE_RECOVERY_SCRIPT } from "./stateRecover
 vi.mock("../box/client", () => ({ command: vi.fn() }));
 
 afterEach(() => vi.clearAllMocks());
+
+// The two salvage integration cases exercise SQLite's `.recover` shell
+// command, which Python's sqlite3 module does not expose. Keep them active on
+// developer/production-like hosts with the CLI, and make its absence an
+// explicit capability skip rather than a false product regression in CI.
+const hasSqliteRecoveryCli = spawnSync(
+  "sqlite3",
+  [":memory:", ".recover --ignore-freelist"],
+  {
+  stdio: "ignore",
+  }
+).status === 0;
 
 describe("operator recovery authorization", () => {
   function registry(value: unknown) {
@@ -184,7 +196,7 @@ assert events[-1][2] == 'start'
     expect(report.services_restart_code).toBe(0);
   });
 
-  it("stages SQLite salvage without changing the live database", () => {
+  it.skipIf(!hasSqliteRecoveryCli)("stages SQLite salvage without changing the live database", () => {
     const report = fixture(`
 original = db.read_bytes()
 folder = root / 'salvage-test'
@@ -230,7 +242,7 @@ assert db.read_bytes() == original
     expect(report.error).toContain("refusing empty reset");
   });
 
-  it("retries unusable system salvage on retained bytes before an approved restore", () => {
+  it.skipIf(!hasSqliteRecoveryCli)("retries unusable system salvage on retained bytes before an approved restore", () => {
     const report = fixture(`
 folder = root / 'state-recovery/failed-salvage'
 folder.mkdir(parents=True)

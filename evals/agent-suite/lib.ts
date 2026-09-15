@@ -39,6 +39,15 @@ export const CATEGORIES = [
   "cross_functional",
   "adversarial",
   "research",
+  "errands",
+  "travel",
+  "build",
+  "comms",
+  "watch_for",
+  "reminders",
+  "coordinate",
+  "inbox",
+  "memory",
 ] as const;
 
 export type Category = (typeof CATEGORIES)[number];

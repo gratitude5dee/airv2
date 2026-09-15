@@ -44,6 +44,8 @@ export interface CheckoutHandoff {
   currency: string | null; blocker: string | null; verified_at: string | null;
   expires_at: string | null; same_session: boolean; payment_request_id: string | null;
   human_control_expires_at: string | null; human_control_returned_at: string | null;
+  /** Kernel cloud-browser session driving this handoff, when present. */
+  kernel_session_id: string | null;
   version: number; created_at: string; updated_at: string;
 }
 
@@ -52,7 +54,7 @@ interface CheckoutHandoffRow extends CheckoutHandoff {
   merchant_url_sealed?: string | null;
 }
 
-const COLUMNS = "id, user_id, space_id, phone, task_id, status, merchant_host, merchant_url, merchant_url_sealed, item_summary, quantity, amount_cents, currency, blocker, verified_at, expires_at, same_session, payment_request_id, human_control_expires_at, human_control_returned_at, version, created_at, updated_at";
+const COLUMNS = "id, user_id, space_id, phone, task_id, status, merchant_host, merchant_url, merchant_url_sealed, item_summary, quantity, amount_cents, currency, blocker, verified_at, expires_at, same_session, payment_request_id, human_control_expires_at, human_control_returned_at, kernel_session_id, version, created_at, updated_at";
 const HOST_RE = /^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const HUMAN_CONTROL_MINUTES = 15;

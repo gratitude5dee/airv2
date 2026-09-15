@@ -72,6 +72,7 @@ const CARD_COPY: Partial<Record<string, { name: string; line: string }>> = {
   freeze: { name: "Freeze", line: "Freeze the scene — move the camera" },
   trade: { name: "Trade", line: "Approve before it moves" },
   checkout: { name: "Checkout", line: "Review and continue" },
+  watch: { name: "Watch", line: "Watch your agent work" },
 };
 
 /**

@@ -23,12 +23,34 @@ response="$($CURL_BIN -fsS --max-time 4 "$endpoint" \
   echo "Browser input paused: checkout control guard could not be verified." >&2
   exit 75
 }
-if grep -Eq '"active"[[:space:]]*:[[:space:]]*false' <<<"$response"; then
-  exit 0
-fi
 if grep -Eq '"active"[[:space:]]*:[[:space:]]*true' <<<"$response"; then
   echo "Browser input paused: the owner currently controls this browser." >&2
   exit 75
 fi
-echo "Browser input paused: checkout control guard returned an invalid response." >&2
-exit 75
+if ! grep -Eq '"active"[[:space:]]*:[[:space:]]*false' <<<"$response"; then
+  echo "Browser input paused: checkout control guard returned an invalid response." >&2
+  exit 75
+fi
+
+# Kernel cloud-browser lane (C31): while a cloud session file exists, any
+# live owner lease pauses agent input — the relay could otherwise drive the
+# same browser. Without a session file there is no cloud browser to drive,
+# so the check is skipped and this guard can't brick pre-migration boxes.
+KERNEL_SESSION_FILE="${AIR_KERNEL_SESSION_FILE:-${HOME:-/home/user}/.hermes/kernel/session.json}"
+if [ -f "$KERNEL_SESSION_FILE" ]; then
+  kernel_response="$($CURL_BIN -fsS --max-time 4 \
+    "${base%/api/gateway/v1}/api/kernel/browser?active_human_control=1" \
+    -H "Authorization: Bearer $token" 2>/dev/null)" || {
+    echo "Browser input paused: kernel control guard could not be verified." >&2
+    exit 75
+  }
+  if grep -Eq '"active"[[:space:]]*:[[:space:]]*true' <<<"$kernel_response"; then
+    echo "Browser input paused: the owner currently controls a cloud browser." >&2
+    exit 75
+  fi
+  if ! grep -Eq '"active"[[:space:]]*:[[:space:]]*false' <<<"$kernel_response"; then
+    echo "Browser input paused: kernel control guard returned an invalid response." >&2
+    exit 75
+  fi
+fi
+exit 0

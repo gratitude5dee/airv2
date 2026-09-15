@@ -253,6 +253,20 @@ exec "$HOME_DIR/.local/bin/browser-use" "\$@"
 SH
 sudo chmod +x /usr/local/bin/box-browser-use
 
+# ── 3b2e. Kernel cloud-browser lane: air-kernel helper + localhost CDP relay ──
+# The control plane owns the Kernel API key (C26); the box never sees it.
+# `air-kernel` calls the box-auth /api/kernel/* routes with the box's
+# gateway token and writes the session handle (incl. the remote cdp_ws_url
+# bearer credential, C27) to ~/.hermes/kernel/session.json (0600). The
+# relay serves a local DevTools endpoint on 127.0.0.1:$KERNEL_CDP_PORT so
+# `agent-browser --cdp` drives the cloud browser without the remote URL
+# ever entering argv, logs, or env. Zero-dependency Node script; runs under
+# the hermes Node toolchain.
+sudo install -d -m 755 /usr/local/lib/air
+sudo install -m 755 "$TEMPLATE_DIR/kernel-cdp-relay.js" /usr/local/lib/air/kernel-cdp-relay.js
+sudo install -m 755 "$TEMPLATE_DIR/air-kernel" /usr/local/bin/air-kernel
+mkdir -p "$HOME_DIR/.hermes/kernel" && chmod 700 "$HOME_DIR/.hermes/kernel"
+
 # Make the CLI resolvable by the systemd services (they inherit systemd's
 # default PATH and only load ~/.hermes/.env, which does no $-expansion) and
 # by the agent's local terminal backend.

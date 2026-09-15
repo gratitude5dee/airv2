@@ -378,6 +378,10 @@ export async function approveCatalogPublish(
   if (!claimed || claimed.length === 0) return { outcome: "resolved" };
   try {
     const published = await applyCatalogPublish(supabase, userId);
+    if (env.linkHostEnabled()) {
+      const { ensurePublishedPayLinks } = await import("./payLinks");
+      await ensurePublishedPayLinks(supabase, userId);
+    }
     return { outcome: "approved", published };
   } catch (cause) {
     const { error: undoError } = await supabase
