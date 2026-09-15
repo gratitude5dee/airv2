@@ -73,6 +73,8 @@ export interface CreativeJobOptions {
   plan?: RouterPlan;
   /** prompt_version written to the job row (defaults to the turn mode's). */
   promptVersion?: string;
+  /** Metadata-only timing hook. Prompts, URLs, and provider payloads are never exposed. */
+  onLifecycle?: (event: GmiLifecycleEvent) => Promise<void> | void;
 }
 
 /**
@@ -95,13 +97,15 @@ export async function executeCreativeJob(
     return { status, line };
   };
 
-  await updateCreativeJob(supabase, jobId, {
-    prompt_version: options?.promptVersion ?? PROMPT_VERSIONS[turn.mode],
-  });
-
   // Daily cap is checked before any provider call (goal.md §7.11).
   try {
-    if (!(await underDailyLimit(supabase, userId))) {
+    const [, withinLimit] = await Promise.all([
+      updateCreativeJob(supabase, jobId, {
+        prompt_version: options?.promptVersion ?? PROMPT_VERSIONS[turn.mode],
+      }),
+      underDailyLimit(supabase, userId),
+    ]);
+    if (!withinLimit) {
       return await fail("failed", DAILY_LIMIT_LINE);
     }
   } catch {
@@ -149,6 +153,7 @@ export async function executeCreativeJob(
         ...(event.requestId ? { provider_request_id: event.requestId } : {}),
       });
     }
+    await options?.onLifecycle?.(event);
   };
 
   const generationOptions = {
@@ -200,16 +205,17 @@ export async function executeCreativeJob(
     const fetched = await fetchSafeGeneratedMedia(media.url, media.kind);
     const asset = await ingestGeneratedMedia(supabase, userId, fetched);
     const delivery = await mintJobDelivery(supabase, asset, jobId);
-    await updateCreativeJob(supabase, jobId, {
-      status: "delivered",
-      delivered_at: new Date().toISOString(),
-      output_asset_id: asset.id,
-    });
+    const deliveredWrite = updateCreativeJob(supabase, jobId, {
+        status: "delivered",
+        delivered_at: new Date().toISOString(),
+        output_asset_id: asset.id,
+      });
     // A render on the user's personal GMI key is their own provider spend —
     // no platform cost event (the job still counts toward the daily cap).
-    if (onFal || !personalGmiKey) {
-      await insertRenderCostEvent(supabase, userId, jobId, media.kind);
-    }
+    const costWrite = onFal || !personalGmiKey
+      ? insertRenderCostEvent(supabase, userId, jobId, media.kind)
+      : Promise.resolve();
+    await Promise.all([deliveredWrite, costWrite]);
     return {
       status: "delivered",
       line: plan.delivery_line || "made this for you",

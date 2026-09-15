@@ -15,6 +15,7 @@ import {
   ensureSession,
   loadConversationTranscript,
   runEvents,
+  stopRun,
 } from "../hermes/client";
 import { probeForTapback } from "../spectrum/tapbacks";
 import { ensureBoxAwake } from "./boxes";
@@ -88,7 +89,12 @@ function fakeSupabase(queueRows: Array<Record<string, unknown>>) {
       },
       update: (values: Record<string, unknown>) => {
         ops.updates.push({ table, values });
-        return { eq: () => Promise.resolve({ error: null }) };
+        const chain = {
+          eq: () => chain,
+          then: (resolve: (value: { error: null }) => void) =>
+            resolve({ error: null }),
+        };
+        return chain;
       },
       insert: (rows: unknown) => {
         ops.inserts.push({ table, rows });
@@ -111,6 +117,7 @@ beforeEach(() => {
   vi.mocked(createSpectrumSender).mockReset();
   vi.mocked(ensureBoxAwake).mockReset();
   vi.mocked(sharedBridgeReply).mockReset();
+  vi.mocked(stopRun).mockResolvedValue(undefined);
 });
 
 describe("runFlush during a Spectrum outage", () => {

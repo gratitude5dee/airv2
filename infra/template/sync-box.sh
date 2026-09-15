@@ -64,6 +64,16 @@ fi
 sudo tee /usr/local/bin/air-vault >/dev/null <<SH
 #!/usr/bin/env bash
 set -euo pipefail
+# Secret fields are browser input too; block every fill while the owner holds
+# the checkout control lease. Metadata/list operations remain available.
+case "\${1:-}" in
+  type|op-fill) /usr/local/bin/air-browser-lease-guard ;;
+  totp)
+    for arg in "\$@"; do
+      [ "\$arg" = "--type" ] && /usr/local/bin/air-browser-lease-guard
+    done
+    ;;
+esac
 if [ -z "\${AIR_VAULT_KEY:-}" ] && [ -f "$HOME_DIR/.hermes/.env" ]; then
   AIR_VAULT_KEY="\$(grep -m1 '^AIR_VAULT_KEY=' "$HOME_DIR/.hermes/.env" | cut -d= -f2- || true)"
   export AIR_VAULT_KEY
@@ -106,6 +116,13 @@ fi
 export PATH="$HERMES_NODE/bin:$PATH"
 command -v agent-browser >/dev/null || npm install -g agent-browser --no-audit --no-fund
 [ -d "$HOME_DIR/.agent-browser" ] || agent-browser install
+
+# Put the checkout control lease in front of Hermes' built-in browser_* CLI.
+sudo install -m 755 "$TEMPLATE_DIR/browser-lease-guard.sh" /usr/local/bin/air-browser-lease-guard
+if ! grep -q 'AIR_AGENT_BROWSER_REAL' "$HERMES_NODE/bin/agent-browser" 2>/dev/null; then
+  mv "$HERMES_NODE/bin/agent-browser" "$HERMES_NODE/bin/agent-browser-air-real"
+fi
+install -m 755 "$TEMPLATE_DIR/agent-browser-guard.sh" "$HERMES_NODE/bin/agent-browser"
 
 # agent-browser parses AGENT_BROWSER_ARGS comma-separated; keep it minimal —
 # overriding --remote-debugging-port/--user-data-dir breaks the daemon's own
@@ -150,6 +167,7 @@ fi
 sudo tee /usr/local/bin/box-browser-use >/dev/null <<SH
 #!/usr/bin/env bash
 set -euo pipefail
+/usr/local/bin/air-browser-lease-guard
 # Attach the Browser Use CLI to this box's headed daemon Chrome over CDP.
 # The daemon launches Chrome with --remote-debugging-port=0; the chosen port
 # is read from the newest DevToolsActivePort file (same discovery as

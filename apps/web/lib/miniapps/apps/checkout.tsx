@@ -1,5 +1,13 @@
 import { NextResponse } from "next/server";
-import { cancelCheckoutHandoff, getCheckoutHandoff, type CheckoutHandoff } from "@/lib/checkout/handoffs";
+import {
+  beginCheckoutHumanControl,
+  cancelCheckoutHandoff,
+  getCheckoutHandoff,
+  humanControlActive,
+  returnCheckoutHumanControl,
+  type CheckoutHandoff,
+} from "@/lib/checkout/handoffs";
+import { armStopAfter } from "@/lib/orchestrator/boxes";
 import {
   mintCheckoutBrowserLink,
   mintSignedLink,
@@ -25,10 +33,14 @@ function timestamp(value: string | null, unknownLabel: string): string {
 function renderCheckout(ctx: MiniAppContext, h: CheckoutHandoff): NextResponse {
   const expired = h.expires_at !== null && Date.parse(h.expires_at) <= Date.now();
   const status = expired && !["completed", "cancelled"].includes(h.status) ? "expired" : h.status;
-  const computer = mintSignedLink(ctx.session.userId, "computer", "default");
   const browserLaunch = mintCheckoutBrowserLink(ctx.session.userId, h.id);
+  const controlActive = humanControlActive(h);
   const blocker = h.blocker ? `<div class="card"><strong>Needs you</strong><div>${esc(h.blocker)}</div></div>` : "";
-  const browser = h.same_session ? `<p class="muted">A merchant link may not carry over the remote browser's cookies, cart, queue, or challenge clearance.</p><p><a href="${esc(computer)}" target="_blank" rel="noopener">Control existing browser</a></p>` : "";
+  const browser = !h.same_session
+    ? ""
+    : controlActive
+      ? `<div class="card"><strong>You control this browser</strong><p class="muted">Agent browser input stays paused until you return control or this short lease expires.</p><form method="post"><input type="hidden" name="action" value="return_control"><button>Return control to agent</button></form></div>`
+      : `<p class="muted">A merchant link may not carry over the remote browser's cookies, cart, queue, or challenge clearance.</p><form method="post"><input type="hidden" name="action" value="take_control"><button>Control existing browser</button></form>`;
   const cancel = ["preparing", "needs_human", "ready_for_review", "payment_pending", "requires_action"].includes(status) ? `<form method="post"><input type="hidden" name="action" value="cancel"><button class="ghost">Cancel handoff</button></form>` : "";
   const payment = h.payment_request_id
     ? status === "payment_pending"
@@ -51,19 +63,41 @@ export const checkout: MiniAppModule = {
   },
   async action(ctx: MiniAppContext, form: FormData): Promise<NextResponse> {
     if (ctx.session.role !== "owner") return forbidden("this view is owner-only");
-    if (String(form.get("action") ?? "") !== "cancel") return forbidden("unknown action");
-    const cancelled = await cancelCheckoutHandoff(
-      ctx.supabase,
-      ctx.session.userId,
-      ctx.session.resourceId
-    );
-    if (cancelled) {
-      // Do not send a new card after cancellation: only edit the existing
-      // session if there is one, then let the owner return to the mini-app.
-      await refreshCheckoutCard(ctx.supabase, ctx.session.userId, {
-        id: ctx.session.resourceId,
-        status: "cancelled",
-      }).catch(() => undefined);
+    const action = String(form.get("action") ?? "");
+    if (action === "take_control") {
+      await beginCheckoutHumanControl(
+        ctx.supabase,
+        ctx.session.userId,
+        ctx.session.resourceId
+      );
+      await armStopAfter(ctx.supabase, ctx.session.userId, 20);
+      return withBaseHeaders(NextResponse.redirect(
+        mintSignedLink(ctx.session.userId, "computer", "default"),
+        303
+      ));
+    }
+    if (action === "return_control") {
+      await returnCheckoutHumanControl(
+        ctx.supabase,
+        ctx.session.userId,
+        ctx.session.resourceId
+      );
+    } else if (action === "cancel") {
+      const cancelled = await cancelCheckoutHandoff(
+        ctx.supabase,
+        ctx.session.userId,
+        ctx.session.resourceId
+      );
+      if (cancelled) {
+        // Do not send a new card after cancellation: only edit the existing
+        // session if there is one, then let the owner return to the mini-app.
+        await refreshCheckoutCard(ctx.supabase, ctx.session.userId, {
+          id: ctx.session.resourceId,
+          status: "cancelled",
+        }).catch(() => undefined);
+      }
+    } else {
+      return forbidden("unknown action");
     }
     return withBaseHeaders(NextResponse.redirect(new URL(ctx.basePath, externalOrigin(ctx.request)), 303));
   },

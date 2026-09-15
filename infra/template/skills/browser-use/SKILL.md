@@ -55,6 +55,11 @@ Useful checks: `box-browser-use --help`, `box-browser-use --doctor`.
 
 ## Hard rules
 
+- The `box-browser-use` and built-in `browser_*` transports enforce checkout
+  owner-control leases. If either reports that browser input is paused, STOP;
+  do not invoke the unwrapped executable, connect to CDP directly, or use a
+  different automation path. Re-read the checkout handoff and wait for the
+  owner to return control or for the lease to expire.
 - All shopping/payment work follows the shopping-checkout skill unchanged:
   purchase review approval before any card fill, `air-vault type` for card
   values, and the human ALWAYS clicks the final Place order / Pay / Buy

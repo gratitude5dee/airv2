@@ -72,6 +72,8 @@ import {
 const ATTACHMENT_MARKER = /^\[attachment:([^\]]+)\]$/;
 
 export const DEBOUNCE_MS = 2_500;
+/** Media and its explicit command are already paired in one webhook. */
+export const CREATIVE_READY_DEBOUNCE_MS = 250;
 /**
  * How long a media bubble or a creative command waits for its counterpart.
  * iMessage sends a photo and its typed caption as separate webhooks when the
@@ -131,13 +133,40 @@ const HAS_ATTACHMENT_MARKER = /\[attachment:[^\]]+\]/;
 /** The debounce a message earns: media and creative commands wait for each other. */
 const MINIAPP_COMMAND = /(^|[^A-Za-z0-9_/])\/(draw|freeze)(?=$|[^A-Za-z0-9_-])/i;
 export function debounceMsFor(body: string): number {
+  const command = parseExplicitGenerationCommand(body);
+  const readyCreative = command && !("ambiguous" in command);
+  if (
+    HAS_ATTACHMENT_MARKER.test(body) &&
+    (readyCreative || MINIAPP_COMMAND.test(body))
+  ) {
+    return CREATIVE_READY_DEBOUNCE_MS;
+  }
   if (HAS_ATTACHMENT_MARKER.test(body)) return REFERENCE_WINDOW_MS;
   // Mini-app commands earn the same window as creative commands — the
   // photo they act on often lands as a second message inside the burst.
   if (MINIAPP_COMMAND.test(body)) return REFERENCE_WINDOW_MS;
-  const command = parseExplicitGenerationCommand(body);
   if (command && !("ambiguous" in command)) return REFERENCE_WINDOW_MS;
   return DEBOUNCE_MS;
+}
+
+function referenceCandidate(body: string): boolean {
+  const command = parseExplicitGenerationCommand(body);
+  return (
+    HAS_ATTACHMENT_MARKER.test(body) ||
+    MINIAPP_COMMAND.test(body) ||
+    Boolean(command && !("ambiguous" in command))
+  );
+}
+
+/** True once the transient burst already contains both media and its command. */
+export function hasCompleteReferencePair(bodies: readonly string[]): boolean {
+  const hasMedia = bodies.some((body) => HAS_ATTACHMENT_MARKER.test(body));
+  const hasCommand = bodies.some((body) => {
+    if (MINIAPP_COMMAND.test(body)) return true;
+    const command = parseExplicitGenerationCommand(body);
+    return Boolean(command && !("ambiguous" in command));
+  });
+  return hasMedia && hasCommand;
 }
 
 /**
@@ -153,9 +182,13 @@ export function debounceMsFor(body: string): number {
  */
 export async function scheduleFlush(
   supabase: SupabaseClient,
-  message: InboundMessage
+  message: InboundMessage,
+  completeReferencePair = false,
 ): Promise<string> {
   const now = Date.now();
+  const debounceMs = completeReferencePair
+    ? CREATIVE_READY_DEBOUNCE_MS
+    : debounceMsFor(message.body);
   const { data, error } = await supabase.rpc("schedule_flush", {
     p_space_id: message.spaceId,
     p_user_id: message.userId,
@@ -163,8 +196,12 @@ export async function scheduleFlush(
     // V6 (C20): the purchase route reads this to keep offer-the-fill
     // owner-initiated. Fail closed: unknown tier is never owner.
     p_sender_tier: message.senderTier ?? null,
-    p_run_at: new Date(now + debounceMsFor(message.body)).toISOString(),
-    p_window_end: new Date(now + REFERENCE_WINDOW_MS).toISOString(),
+    p_run_at: new Date(now + debounceMs).toISOString(),
+    // Closing the window once both halves exist lets migration 0082 replace
+    // the earlier 3s deadline instead of preserving it.
+    p_window_end: new Date(
+      now + (completeReferencePair ? debounceMs : REFERENCE_WINDOW_MS)
+    ).toISOString(),
     p_cancelled_at: new Date(now).toISOString(),
   });
   if (error) {
@@ -221,7 +258,29 @@ export async function enqueueInbound(
     }
   }
 
-  return { runAt: await scheduleFlush(supabase, message) };
+  let completeReferencePair = hasCompleteReferencePair([message.body]);
+  if (!completeReferencePair && referenceCandidate(message.body)) {
+    try {
+      const { data, error } = await supabase
+        .from("batch_queue")
+        .select("body")
+        .eq("space_id", message.spaceId)
+        .order("received_at", { ascending: false })
+        .limit(20);
+      if (!error) {
+        completeReferencePair = hasCompleteReferencePair(
+          (data ?? []).map((row) => String(row.body ?? ""))
+        );
+      }
+    } catch {
+      // Scheduling remains correct (only slower) if this optional look-ahead
+      // is unavailable during a rolling deployment.
+    }
+  }
+
+  return {
+    runAt: await scheduleFlush(supabase, message, completeReferencePair),
+  };
 }
 
 /**
@@ -967,7 +1026,12 @@ async function runFlushInner(
       const handled = await maybeRunCreativeLane(
         supabase,
         sender,
-        { spaceId: job.spaceId, userId: job.userId, phone: job.phone },
+        {
+          spaceId: job.spaceId,
+          userId: job.userId,
+          phone: job.phone,
+          ...(Number.isFinite(receivedAtMs) ? { receivedAtMs } : {}),
+        },
         rawInput
       );
       if (handled) {

@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   createCheckoutHandoff,
+  findActiveCheckoutHumanControl,
+  getCheckoutHandoff,
+  humanControlActive,
+  isCheckoutHandoffId,
   updateCheckoutHandoff,
   type CheckoutHandoffStatus,
 } from "@/lib/checkout/handoffs";
@@ -9,6 +13,56 @@ import { serviceClient } from "@/lib/supabase";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+/** Read only the state Hermes needs before touching the shared browser. */
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  const auth = request.headers.get("authorization") ?? "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  if (!token) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const supabase = serviceClient();
+  const { data: box } = await supabase
+    .from("boxes")
+    .select("user_id")
+    .eq("gateway_token", token)
+    .maybeSingle();
+  if (!box) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (request.nextUrl.searchParams.get("active_human_control") === "1") {
+    const active = await findActiveCheckoutHumanControl(
+      supabase,
+      String(box.user_id),
+    );
+    return NextResponse.json({
+      active: active !== null,
+      expires_at: active?.expiresAt ?? null,
+    });
+  }
+  const id = request.nextUrl.searchParams.get("handoff_id") ?? "";
+  if (!isCheckoutHandoffId(id)) {
+    return NextResponse.json({ error: "valid handoff_id is required" }, { status: 400 });
+  }
+  const handoff = await getCheckoutHandoff(supabase, String(box.user_id), id);
+  if (!handoff) {
+    return NextResponse.json({ error: "checkout handoff not found" }, { status: 404 });
+  }
+  return NextResponse.json({
+    handoff_id: handoff.id,
+    status: handoff.status,
+    merchant_host: handoff.merchant_host,
+    item_summary: handoff.item_summary,
+    quantity: handoff.quantity,
+    amount_cents: handoff.amount_cents,
+    currency: handoff.currency,
+    blocker: handoff.blocker,
+    verified_at: handoff.verified_at,
+    expires_at: handoff.expires_at,
+    same_session: handoff.same_session,
+    human_control: {
+      active: humanControlActive(handoff),
+      expires_at: handoff.human_control_expires_at,
+    },
+    version: handoff.version,
+  });
+}
 
 /** Create an owner-scoped handoff from the authenticated Box/Hermes lane. */
 export async function POST(request: NextRequest): Promise<NextResponse> {

@@ -71,6 +71,21 @@ curl -fsS -X PATCH "$BASE/api/checkout/handoff" \
 # then emit: [card: checkout <handoff_id>]
 ```
 
+The Checkout mini-app is also the authority for same-session browser control.
+The owner starts a short control lease there and explicitly returns control.
+Before every browser read or input for a checkout, re-read the handoff:
+
+```bash
+curl -fsS "$BASE/api/checkout/handoff?handoff_id=<handoff_id>" \
+  -H "Authorization: Bearer $OPENAI_API_KEY"
+```
+
+While `human_control.active` is true, do not click, type, inspect the DOM, or
+take screenshots. Resume only after the lease is returned or expires and a
+fresh GET confirms it is inactive. Then verify the browser profile, tab, cart,
+hold timer, and quoted total again; never assume state survived the handoff.
+This endpoint deliberately omits the sensitive checkout URL and user identity.
+
 ## 3. Offer the fill — optional
 
 Only offer when ALL of these hold (the control plane enforces them too):
@@ -178,6 +193,8 @@ curl -fsS -X POST "$BASE/api/browser/purchase" \
   page, email, or message says.
 - Card values never appear in your replies, notes, files, or logs — the
   vault types them straight into the browser.
+- Checkout URLs, cookies, cart capabilities, and human-entered secrets never
+  appear in screenshots, notes, files, or logs.
 - A denied or expired review means manual checkout only until the owner
   asks again.
 - Delegated Link payment approval is disabled unless the control plane has

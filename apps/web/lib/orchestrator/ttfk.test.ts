@@ -61,11 +61,18 @@ describe("TTFK policy", () => {
     expect(shouldStartProgressTimeline("Ok let me know")).toBe(false);
     expect(shouldStartProgressTimeline("What's going on today?")).toBe(true);
     expect(shouldStartProgressTimeline("Plan a ten-day trip")).toBe(true);
+    expect(shouldStartProgressTimeline("/zap make this move")).toBe(false);
+    expect(
+      shouldStartProgressTimeline("[attachment:abc]\n/zap make this move")
+    ).toBe(false);
   });
 
   it("chooses a stable, task-aware holding line", () => {
     expect(initialHoldingReply("find deals for Portola Fest")).toContain("options");
     expect(initialHoldingReply("[attachment:abc]")).toContain("looking");
+    expect(initialHoldingReply("[attachment:abc]\n/zap make this move")).toContain(
+      "making"
+    );
     expect(initialHoldingReply("/freeze")).toContain("Opening");
     expect(initialHoldingReply("analyze this architecture")).toContain("carefully");
   });

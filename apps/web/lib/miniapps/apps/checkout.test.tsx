@@ -5,11 +5,20 @@ import type { MiniAppContext } from "./types";
 
 const getCheckoutHandoff = vi.hoisted(() => vi.fn());
 const cancelCheckoutHandoff = vi.hoisted(() => vi.fn(async () => true));
+const beginCheckoutHumanControl = vi.hoisted(() => vi.fn());
+const returnCheckoutHumanControl = vi.hoisted(() => vi.fn());
 const refreshCheckoutCard = vi.hoisted(() => vi.fn(async () => "updated"));
+const armStopAfter = vi.hoisted(() => vi.fn(async () => undefined));
 vi.mock("@/lib/checkout/handoffs", () => ({
   getCheckoutHandoff,
   cancelCheckoutHandoff,
+  beginCheckoutHumanControl,
+  returnCheckoutHumanControl,
+  humanControlActive: (value: { human_control_expires_at: string | null }) =>
+    value.human_control_expires_at !== null &&
+    Date.parse(value.human_control_expires_at) > Date.now(),
 }));
+vi.mock("@/lib/orchestrator/boxes", () => ({ armStopAfter }));
 vi.mock("../cards", () => ({
   mintSignedLink: vi.fn(() => "https://mini.example/computer?t=token"),
   mintCheckoutBrowserLink: vi.fn(
@@ -36,6 +45,8 @@ const handoff = {
   expires_at: "2099-09-14T18:00:00.000Z",
   same_session: true,
   payment_request_id: null,
+  human_control_expires_at: null,
+  human_control_returned_at: null,
   version: 0,
   created_at: "2026-09-14T15:00:00.000Z",
   updated_at: "2026-09-14T15:00:00.000Z",
@@ -97,5 +108,59 @@ describe("checkout mini-app", () => {
       { id: handoff.id, status: "cancelled" }
     );
     expect(cancelled.status).toBe(303);
+  });
+
+  it("starts a bounded human-control lease before opening the same browser", async () => {
+    beginCheckoutHumanControl.mockResolvedValueOnce({
+      ...handoff,
+      human_control_expires_at: "2099-09-14T18:15:00.000Z",
+      version: 1,
+    });
+    const form = new FormData();
+    form.set("action", "take_control");
+
+    const response = await checkout.action!(ctx(), form);
+
+    expect(beginCheckoutHumanControl).toHaveBeenCalledWith(
+      expect.any(Object),
+      "user-1",
+      handoff.id,
+    );
+    expect(armStopAfter).toHaveBeenCalledWith(
+      expect.any(Object),
+      "user-1",
+      20,
+    );
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe(
+      "https://mini.example/computer?t=token",
+    );
+  });
+
+  it("returns browser control explicitly and renders the active lease truthfully", async () => {
+    getCheckoutHandoff.mockResolvedValueOnce({
+      ...handoff,
+      human_control_expires_at: "2099-09-14T18:15:00.000Z",
+    });
+    const html = await (await checkout.render(ctx())).text();
+    expect(html).toContain("You control this browser");
+    expect(html).toContain("Return control to agent");
+    expect(html).not.toContain(">Control existing browser<");
+
+    returnCheckoutHumanControl.mockResolvedValueOnce({
+      ...handoff,
+      human_control_expires_at: null,
+      human_control_returned_at: "2026-09-14T18:10:00.000Z",
+      version: 2,
+    });
+    const form = new FormData();
+    form.set("action", "return_control");
+    const response = await checkout.action!(ctx(), form);
+    expect(returnCheckoutHumanControl).toHaveBeenCalledWith(
+      expect.any(Object),
+      "user-1",
+      handoff.id,
+    );
+    expect(response.status).toBe(303);
   });
 });

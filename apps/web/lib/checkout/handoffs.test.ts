@@ -7,6 +7,7 @@ vi.mock("../commerce/paymentRequests", () => ({ getPaymentRequest }));
 import {
   checkoutTransitionAllowed,
   createCheckoutHandoff,
+  humanControlActive,
   isCheckoutHandoffId,
   safeCheckoutUrl,
 } from "./handoffs";
@@ -48,6 +49,21 @@ describe("checkout handoff lifecycle", () => {
     expect(isCheckoutHandoffId("------------------------------------")).toBe(false);
     expect(isCheckoutHandoffId("handoff-1")).toBe(false);
   });
+
+  it("treats human control as an expiring lease, never a permanent flag", () => {
+    const base = {
+      human_control_expires_at: "2026-09-14T16:15:00.000Z",
+      human_control_returned_at: null,
+    };
+    expect(humanControlActive(base, Date.parse("2026-09-14T16:14:59.000Z"))).toBe(true);
+    expect(humanControlActive(base, Date.parse("2026-09-14T16:15:00.000Z"))).toBe(false);
+    expect(
+      humanControlActive(
+        { ...base, human_control_returned_at: "2026-09-14T16:10:00.000Z" },
+        Date.parse("2026-09-14T16:11:00.000Z"),
+      ),
+    ).toBe(false);
+  });
 });
 
 describe("checkout handoff payment request ownership", () => {
@@ -88,5 +104,58 @@ describe("checkout handoff payment request ownership", () => {
     ).rejects.toThrow("checkout payment request is invalid");
 
     expect(getPaymentRequest).not.toHaveBeenCalled();
+  });
+});
+
+describe("checkout handoff sensitive URL storage", () => {
+  it("seals the cart URL at rest and keeps only its public origin in metadata", async () => {
+    vi.stubEnv("SESSION_SECRET", "checkout-test-session-secret");
+    const inserted: Record<string, unknown>[] = [];
+    const supabase = {
+      from(table: string) {
+        expect(table).toBe("checkout_handoffs");
+        return {
+          insert(row: Record<string, unknown>) {
+            inserted.push(row);
+            return {
+              select() {
+                return {
+                  async single() {
+                    return {
+                      data: {
+                        id: "123e4567-e89b-12d3-a456-426614174000",
+                        version: 0,
+                        created_at: "2026-09-14T00:00:00.000Z",
+                        updated_at: "2026-09-14T00:00:00.000Z",
+                        ...row,
+                      },
+                      error: null,
+                    };
+                  },
+                };
+              },
+            };
+          },
+        };
+      },
+    } as unknown as SupabaseClient;
+    const sensitive =
+      "https://tickets.example.test/checkout/session-secret?cart_token=secret-value";
+
+    const handoff = await createCheckoutHandoff(supabase, {
+      userId: "owner-a",
+      spaceId: "space-a",
+      phone: "+14155550123",
+      merchantUrl: sensitive,
+      itemSummary: "Two tickets",
+    });
+
+    expect(inserted[0]?.["merchant_url"]).toBe("https://tickets.example.test/");
+    expect(inserted[0]?.["merchant_url_sealed"]).toMatch(/^v1:/);
+    expect(String(inserted[0]?.["merchant_url_sealed"])).not.toContain(
+      "secret-value",
+    );
+    expect(handoff.merchant_url).toBe(sensitive);
+    vi.unstubAllEnvs();
   });
 });

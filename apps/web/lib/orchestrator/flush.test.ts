@@ -2,12 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   composeInput,
+  CREATIVE_READY_DEBOUNCE_MS,
   DEBOUNCE_MS,
   debounceMsFor,
   dropQuickAckMarker,
   enqueueInbound,
   FINAL_RESPONSE_DEADLINE_MS,
   hermesDeltas,
+  hasCompleteReferencePair,
   isCancelled,
   REFERENCE_WINDOW_MS,
   runFlush,
@@ -123,6 +125,25 @@ describe("debounceMsFor", () => {
     expect(debounceMsFor("/animate slowly")).toBe(REFERENCE_WINDOW_MS);
   });
 
+  it("starts quickly when the command and its media already arrived together", () => {
+    expect(debounceMsFor("[attachment:att-1]\n/zap make it rain")).toBe(
+      CREATIVE_READY_DEBOUNCE_MS
+    );
+    expect(CREATIVE_READY_DEBOUNCE_MS).toBeLessThan(DEBOUNCE_MS);
+  });
+
+  it("recognizes either ordering once separate media and command bubbles coexist", () => {
+    expect(hasCompleteReferencePair([
+      "[attachment:att-1]",
+      "/zap make it rain",
+    ])).toBe(true);
+    expect(hasCompleteReferencePair([
+      "/freeze orbit",
+      "[attachment:att-1]",
+    ])).toBe(true);
+    expect(hasCompleteReferencePair(["[attachment:att-1]", "looks good"])).toBe(false);
+  });
+
   it("holds a bare mini-app command open for media that follows it", () => {
     expect(debounceMsFor("/freeze")).toBe(REFERENCE_WINDOW_MS);
     expect(debounceMsFor("/freeze orbit the photo")).toBe(REFERENCE_WINDOW_MS);
@@ -147,7 +168,10 @@ describe("enqueueInbound scheduling", () => {
 
   // Mirrors schedule_flush (migration 0082): the deadline is chosen under the
   // row lock, so the fake serializes calls against one shared row.
-  function fakeSupabase(existingRunAt: string | null) {
+  function fakeSupabase(
+    existingRunAt: string | null,
+    queuedBodies: readonly string[] = [],
+  ) {
     let current = existingRunAt ? Date.parse(existingRunAt) : null;
     let cancelledAt: number | null = null;
     const calls: Array<{ fn: string; args: Record<string, unknown> }> = [];
@@ -169,10 +193,22 @@ describe("enqueueInbound scheduling", () => {
       return { data: rendered, error: null };
     };
     const supabase = {
-      from: () => ({
-        insert: () => Promise.resolve({ error: null }),
-        upsert: () => Promise.resolve({ error: null }),
-      }),
+      from: (table: string) => {
+        const chain = {
+          insert: () => Promise.resolve({ error: null }),
+          upsert: () => Promise.resolve({ error: null }),
+          select: () => chain,
+          eq: () => chain,
+          order: () => chain,
+          limit: () => Promise.resolve({
+            data: table === "batch_queue"
+              ? queuedBodies.map((body) => ({ body }))
+              : [],
+            error: null,
+          }),
+        };
+        return chain;
+      },
       rpc: (fn: string, args: Record<string, unknown>) => {
         calls.push({ fn, args });
         const held = gate;
@@ -231,6 +267,40 @@ describe("enqueueInbound scheduling", () => {
     expect(runAt).toBe(new Date(Date.now() + DEBOUNCE_MS).toISOString());
   });
 
+  it("closes the reference window once one webhook already has media and command", async () => {
+    const { supabase, calls } = fakeSupabase(null);
+    await enqueueInbound(supabase, {
+      ...message,
+      body: "[attachment:att-1]\n/zap make it rain",
+    });
+    expect(calls[0]?.args).toMatchObject({
+      p_run_at: new Date(Date.now() + CREATIVE_READY_DEBOUNCE_MS).toISOString(),
+      p_window_end: new Date(Date.now() + CREATIVE_READY_DEBOUNCE_MS).toISOString(),
+    });
+  });
+
+  it("closes an earlier media window when a separate /zap bubble arrives", async () => {
+    const open = new Date(Date.now() + REFERENCE_WINDOW_MS).toISOString();
+    const { supabase, calls, rowRunAt } = fakeSupabase(open, [
+      "/zap make it rain",
+      "[attachment:att-1]",
+    ]);
+
+    const { runAt } = await enqueueInbound(supabase, {
+      ...message,
+      messageId: "m-2",
+      body: "/zap make it rain",
+    });
+
+    const fastDeadline = Date.now() + CREATIVE_READY_DEBOUNCE_MS;
+    expect(calls[0]?.args).toMatchObject({
+      p_run_at: new Date(fastDeadline).toISOString(),
+      p_window_end: new Date(fastDeadline).toISOString(),
+    });
+    expect(Date.parse(runAt)).toBe(fastDeadline);
+    expect(rowRunAt()).toBe(fastDeadline);
+  });
+
   it("returns the deadline the database chose, normalized to ISO", async () => {
     const open = new Date(Date.now() + REFERENCE_WINDOW_MS - 300).toISOString();
     const { supabase, rowRunAt } = fakeSupabase(open);
@@ -274,8 +344,18 @@ describe("enqueueInbound scheduling", () => {
       enqueueInbound(supabase, { ...message, body: "hey" }),
     ]);
     expect(Date.parse(media.runAt) - Date.now()).toBe(REFERENCE_WINDOW_MS);
-    expect(Date.parse(prose.runAt) - Date.now()).toBe(REFERENCE_WINDOW_MS + 1);
-    expect(rowRunAt()).toBe(Date.parse(prose.runAt));
+    // The optional pair look-ahead adds one await to the media webhook, so
+    // either RPC can acquire the row lock first. The authoritative row must
+    // still retain the full reference window (with at most the +1ms CAS
+    // ownership nudge); an individual stale caller may receive its own short
+    // deadline and harmlessly lose claim_flush later.
+    expect(Date.parse(prose.runAt) - Date.now()).toBe(DEBOUNCE_MS);
+    expect(rowRunAt()).toBeGreaterThanOrEqual(
+      Date.now() + REFERENCE_WINDOW_MS,
+    );
+    expect(rowRunAt()).toBeLessThanOrEqual(
+      Date.now() + REFERENCE_WINDOW_MS + 1,
+    );
 
     const { supabase: reversed, rowRunAt: reversedRow } = fakeSupabase(null);
     const [prose2, media2] = await Promise.all([

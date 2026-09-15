@@ -35,6 +35,23 @@ curl -fsS -X POST "${OPENAI_BASE_URL%/api/gateway/v1}/api/cards/computer" \
 4. Wait for them to finish, then continue the task in the same browser
    session.
 
+For a checkout handoff, the owner must start control from the Checkout
+mini-app. That creates a short owner-scoped control lease. Before every
+browser read or input, GET the handoff state using its id:
+
+```bash
+BASE="${OPENAI_BASE_URL%/api/gateway/v1}"
+curl -fsS "$BASE/api/checkout/handoff?handoff_id=<handoff_id>" \
+  -H "Authorization: Bearer $OPENAI_API_KEY"
+```
+
+If `human_control.active` is true, do not click, type, inspect the DOM, or
+take screenshots. Wait for the owner to press **Return control to agent** or
+for `human_control.expires_at` to pass, then GET the state again. On resume,
+re-check the same browser profile and tab, cart contents, hold timer, and total
+before taking any action. A chat message saying “done” does not override an
+active lease.
+
 Notes:
 
 - The card link opens a live view of this machine's desktop on their phone.
@@ -46,3 +63,5 @@ Notes:
 - Never read, log, or store anything the human types during their turn
   (passwords, codes). Credentials belong to the browser session, not to
   your notes or memory.
+- Never place checkout URLs, cookies, payment details, or credentials in
+  screenshots, notes, logs, or memory.

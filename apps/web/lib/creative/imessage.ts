@@ -25,7 +25,6 @@ import {
   AMBIGUOUS_COMMAND_LINE,
   parseExplicitGenerationCommand,
 } from "./parse";
-import { deterministicGenerationLines } from "./router";
 import { executeCreativeJob } from "./run";
 import { removeStagedInputs, stageCreativeInputs } from "./store";
 
@@ -61,6 +60,22 @@ export interface CreativeFlushJob {
   spaceId: string;
   userId: string;
   phone: string;
+  /** First fresh inbound timestamp, used only for metadata-only latency logs. */
+  receivedAtMs?: number;
+}
+
+function logCreativeLatency(
+  job: CreativeFlushJob,
+  stage: string,
+  startedAtMs: number,
+): void {
+  console.info(JSON.stringify({
+    msg: "creative imessage latency",
+    user_id: job.userId,
+    space_id: job.spaceId,
+    stage,
+    elapsed_ms: Math.max(0, Date.now() - startedAtMs),
+  }));
 }
 
 /**
@@ -73,6 +88,9 @@ export async function maybeRunCreativeLane(
   job: CreativeFlushJob,
   rawInput: string,
 ): Promise<boolean> {
+  const startedAtMs = Number.isFinite(job.receivedAtMs)
+    ? Number(job.receivedAtMs)
+    : Date.now();
   // Strip debounce framing so the parser sees only the user's words.
   const attachmentIds: string[] = [];
   const text = rawInput
@@ -94,20 +112,24 @@ export async function maybeRunCreativeLane(
     return true;
   }
 
-  // Stage inbound attachments as short-lived signed provider inputs.
+  // Stage inbound attachments as short-lived signed provider inputs. Each
+  // attachment is independent, so fetch/transcode/upload them concurrently.
   const mediaInputs: MediaInput[] = [];
   const stagedKeys: string[] = [];
-  for (const id of attachmentIds) {
+  const stagedByAttachment = await Promise.all(attachmentIds.map(async (id) => {
     const fetched = await sender
       .getAttachment(id, job.phone)
       .catch(() => undefined);
-    if (!fetched) continue;
-    for (const staged of await stageCreativeInputs(
+    if (!fetched) return [];
+    return await stageCreativeInputs(
       supabase,
       job.userId,
       fetched.data,
       fetched.mimeType,
-    )) {
+    );
+  }));
+  for (const stagedInputs of stagedByAttachment) {
+    for (const staged of stagedInputs) {
       mediaInputs.push({
         url: staged.url,
         kind: staged.kind,
@@ -117,11 +139,7 @@ export async function maybeRunCreativeLane(
       stagedKeys.push(staged.storageKey);
     }
   }
-
-  const ack = deterministicGenerationLines(command.mode, mediaInputs);
-  const ackSent = await trySend("ack", job, () =>
-    sender.sendText(job.spaceId, job.phone, ack.chat_reply),
-  );
+  logCreativeLatency(job, "inputs_staged", startedAtMs);
 
   const creativeJob = await createCreativeJob(
     supabase,
@@ -136,6 +154,10 @@ export async function maybeRunCreativeLane(
       cleanedText: command.cleanedText,
       text,
       mediaInputs,
+    }, {
+      onLifecycle: (event) => {
+        logCreativeLatency(job, `provider_${event.stage}`, startedAtMs);
+      },
     });
   } finally {
     // Staged inputs are single-use provider references; reclaim them now.
@@ -143,9 +165,11 @@ export async function maybeRunCreativeLane(
   }
 
   if (result.status !== "delivered" || !result.asset) {
+    logCreativeLatency(job, `job_${result.status}`, startedAtMs);
     await sender.sendText(job.spaceId, job.phone, result.line);
     return true;
   }
+  logCreativeLatency(job, "artifact_ingested", startedAtMs);
 
   // Native bytes first: re-read our own stored master, never provider bytes.
   let sent = false;
@@ -188,7 +212,7 @@ export async function maybeRunCreativeLane(
   const captionSent = await trySend("caption", job, () =>
     sender.sendText(job.spaceId, job.phone, caption),
   );
-  if (!ackSent && !sent && !captionSent) {
+  if (!sent && !captionSent) {
     // The job is `delivered` in the database and the chat saw nothing.
     console.error(
       JSON.stringify({
@@ -200,6 +224,7 @@ export async function maybeRunCreativeLane(
       }),
     );
   }
+  logCreativeLatency(job, "delivery_complete", startedAtMs);
   return true;
 }
 

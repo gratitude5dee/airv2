@@ -214,6 +214,14 @@ clearance; the owner may open the merchant site or control the existing Box
 browser. A checkout card is never proof of payment, and `completed` is written
 only from a verified merchant/provider outcome.
 
+Credential-bearing cart URLs are AES-GCM sealed at rest with a
+purpose-separated key; ordinary row metadata retains only the public merchant
+origin as a fail-closed fallback. Same-session human control is a bounded,
+owner-scoped lease. The built-in browser transport, Browser Use CLI, and vault
+field-fill wrapper consult a value-free authenticated guard and fail closed
+while it is active. Returning control ends the lease immediately; timeout only
+restores agent tool access and never implies checkout completion.
+
 Stripe Link for AIR's own connected-merchant checkout remains the existing
 server-derived Stripe Checkout/Express path. Link agent payments for unrelated
 merchants are a separate capability. Automatic/delegated approval is disabled
@@ -224,6 +232,14 @@ currency, per-transaction and aggregate limits, category, cart fingerprint,
 expiry, revocation, and provider capability. A future adapter must atomically
 reserve budget and re-check the cart before submission; no LLM message,
 pairing state, or generic “yes” can create a blanket approval.
+
+The box-local `apps/web/lib/payments/linkSpend.ts` adapter is separately gated
+by `LINK_AGENT_PAYMENTS_ENABLED=false` by default. It creates human-approval
+SpendRequests only, strips credential/token fields from its normalized return,
+passes the public merchant origin rather than a bearer cart URL, and requires
+verified LPT/MPP capability markers. Delegated auto-approval remains disabled;
+the adapter has no `--approve` path and does not relax the human final-submit
+stop for interactive merchant checkouts.
 
 ## C24 — the platform-disable list is generated, not hand-maintained
 

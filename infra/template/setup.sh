@@ -11,6 +11,7 @@ HERMES_REPO="${HERMES_REPO:-https://github.com/NousResearch/hermes-agent.git}"
 # (goal.md §12.4).
 HERMES_REF="${HERMES_REF:-29112bef099274229cadff79cdff7bf7b99c4b77}"
 HOME_DIR="${HOME:-/home/user}"
+TEMPLATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ── 1. Hermes from source at the pinned revision ────────────────────────
 if [ ! -d "$HOME_DIR/hermes-agent/.git" ]; then
@@ -187,6 +188,15 @@ export PATH="$HERMES_NODE/bin:$PATH"
 npm install -g agent-browser --no-audit --no-fund
 agent-browser install   # downloads Chrome for Testing into ~/.agent-browser
 
+# Put the checkout control lease in front of Hermes' built-in browser_* CLI.
+# Preserve npm's real executable under a private name so maintenance commands
+# remain available while every interactive command is guarded.
+sudo install -m 755 "$TEMPLATE_DIR/browser-lease-guard.sh" /usr/local/bin/air-browser-lease-guard
+if ! grep -q 'AIR_AGENT_BROWSER_REAL' "$HERMES_NODE/bin/agent-browser" 2>/dev/null; then
+  mv "$HERMES_NODE/bin/agent-browser" "$HERMES_NODE/bin/agent-browser-air-real"
+fi
+install -m 755 "$TEMPLATE_DIR/agent-browser-guard.sh" "$HERMES_NODE/bin/agent-browser"
+
 # air-vault type talks CDP to the daemon's Chrome via its DevToolsActivePort
 # file (C19); no fixed port or profile override is needed.
 
@@ -227,6 +237,7 @@ op --version
 sudo tee /usr/local/bin/box-browser-use >/dev/null <<SH
 #!/usr/bin/env bash
 set -euo pipefail
+/usr/local/bin/air-browser-lease-guard
 # Attach the Browser Use CLI to this box's headed daemon Chrome over CDP.
 # The daemon launches Chrome with --remote-debugging-port=0; the chosen port
 # is read from the newest DevToolsActivePort file (same discovery as
@@ -425,6 +436,16 @@ rm -rf "$HOME_DIR/.hermes/plugins/air-vault/tests"
 sudo tee /usr/local/bin/air-vault >/dev/null <<SH
 #!/usr/bin/env bash
 set -euo pipefail
+# Secret fields are browser input too; block every fill while the owner holds
+# the checkout control lease. Metadata/list operations remain available.
+case "\${1:-}" in
+  type|op-fill) /usr/local/bin/air-browser-lease-guard ;;
+  totp)
+    for arg in "\$@"; do
+      [ "\$arg" = "--type" ] && /usr/local/bin/air-browser-lease-guard
+    done
+    ;;
+esac
 if [ -z "\${AIR_VAULT_KEY:-}" ] && [ -f "$HOME_DIR/.hermes/.env" ]; then
   AIR_VAULT_KEY="\$(grep -m1 '^AIR_VAULT_KEY=' "$HOME_DIR/.hermes/.env" | cut -d= -f2- || true)"
   export AIR_VAULT_KEY

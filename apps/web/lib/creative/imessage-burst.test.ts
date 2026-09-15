@@ -141,6 +141,28 @@ describe("/zap and its media as separate bubbles", () => {
     expect(s.getAttachment).toHaveBeenCalledTimes(3);
   });
 
+  it("stages independent references concurrently before provider submission", async () => {
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    vi.mocked(stageCreativeInputs).mockImplementation(async () => {
+      await gate;
+      return [];
+    });
+    const s = sender();
+    const pending = maybeRunCreativeLane(
+      supabase,
+      s,
+      job,
+      "[attachment:att-photo,att-clip,att-memo]\n/zap cut to the beat",
+    );
+
+    await vi.waitFor(() => {
+      expect(stageCreativeInputs).toHaveBeenCalledTimes(3);
+    });
+    release();
+    await pending;
+  });
+
   it("a memo alone reaches the executor, which refuses before fal", async () => {
     const s = sender();
     const burst = composeInput(

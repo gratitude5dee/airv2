@@ -83,7 +83,6 @@ describe("creative delivery observability", () => {
       .filter((entry) => entry.msg === "creative delivery send failed")
       .map((entry) => entry.stage);
     expect(stages).toEqual([
-      "ack",
       "attachment",
       "rich_link",
       "delivery_url",

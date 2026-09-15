@@ -141,6 +141,7 @@ export function shouldStartProgressTimeline(body: string): boolean {
   const text = body.trim();
   return (
     deterministicAcknowledgementAnswer(text) === null &&
+    !/(?:^|\s)\/(?:imagine|animate|zap|draw|freeze)\b/i.test(text) &&
     !/^(?:any\s+)?(?:update|updates|status)\b/i.test(text)
   );
 }
@@ -171,10 +172,12 @@ export function initialHoldingReply(body: string): string {
   if (/\b(?:today|tomorrow|latest|current|right now)\b/i.test(text)) {
     return "I’m checking the latest details now.";
   }
+  if (/(?:^|\s)\/(?:imagine|animate|zap)\b/i.test(text)) {
+    return "I’m making that now.";
+  }
   if (/\[attachment:/i.test(text)) return "I’m looking at that now.";
   if (/\[location shared\]|\bnear me\b/i.test(text)) return "I’m checking that now.";
   if (/^\/(draw|freeze|image|image-editor)\b/i.test(text)) return "Opening that now.";
-  if (/^\/(imagine|animate|zap)\b/i.test(text)) return "I’m making that now.";
   if (/\b(deal|discount|price|shop|find)\b/i.test(text)) return "I’m checking the best options now.";
   if (/\b(research|investigate|compare|analy[sz]e|plan|strategy|debug|build|code|deploy)\b/i.test(text)) {
     return "I’m working through that carefully now.";
