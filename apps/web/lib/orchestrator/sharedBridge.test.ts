@@ -156,11 +156,46 @@ describe("first response and progress lanes", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("finishes a standalone acknowledgement without waking Hermes", async () => {
+  it.each(["Yee", "yes", "I meant yes", "go ahead", "ok", "sounds good"])(
+    "never lets a history-free completion consume contextual follow-up %j",
+    async (body) => {
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          choices: [{ message: { content: "FINAL: What creative spark can I help with?" } }],
+        }),
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      expect(await initialResponse(fakeSupabase("t"), "user-1", body)).toEqual({
+        body: "Got it — continuing.",
+        disposition: "holding",
+        source: "context",
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["no", "never mind", "cancel", "stop"])(
+    "keeps negative contextual follow-up %j without claiming it will continue",
+    async (body) => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+
+      expect(await initialResponse(fakeSupabase("t"), "user-1", body)).toEqual({
+        body: "Got it — adjusting.",
+        disposition: "holding",
+        source: "context",
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it("finishes a standalone expression of thanks without waking Hermes", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    expect(await initialResponse(fakeSupabase("t"), "user-1", "Ok let me know")).toEqual({
-      body: "Will do.",
+    expect(await initialResponse(fakeSupabase("t"), "user-1", "Thanks")).toEqual({
+      body: "You’re welcome.",
       disposition: "final",
       source: "acknowledgement",
     });

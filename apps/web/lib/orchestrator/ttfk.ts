@@ -137,6 +137,28 @@ export function deterministicAcknowledgementAnswer(body: string): string | null 
 }
 
 /**
+ * Short replies that only make sense beside an earlier turn must never be
+ * completed by the history-free fast lane. They stay in the durable queue so
+ * Hermes can interpret them with the preceding question or offer.
+ */
+export function isContextDependentFollowup(body: string): boolean {
+  const text = body.trim();
+  if (!text || text.length > 120) return false;
+  return /^(?:(?:y(?:e+s+|e+a*h?|e+|up)|yeah+|yep+|sure)|(?:ok(?:ay)?|sounds good)|(?:go ahead|do it|please do|continue|proceed)|(?:no+|nope|nah|never mind|cancel|stop)|(?:i\s+(?:mean|meant)(?:\s+.+)?)|(?:same(?:\s+(?:one|thing|size|color|colour|place|time|way))?)|(?:(?:the|that|this)\s+(?:one|.+\s+one))|(?:(?:do|check|use|get|try|pick|choose)\s+(?:it|that|this))|(?:what about\s+(?:it|that|this))|(?:not\s+(?:it|that|this)))\s*[.!?]*$/i.test(
+    text
+  );
+}
+
+/** Acknowledge a contextual reply without pretending its intent is standalone. */
+export function contextDependentHoldingReply(body: string): string {
+  return /^(?:no+|nope|nah|never mind|cancel|stop|not\s+(?:it|that|this))\s*[.!?]*$/i.test(
+    body.trim()
+  )
+    ? "Got it — adjusting."
+    : "Got it — continuing.";
+}
+
+/**
  * A quick completion has no conversation transcript or fresh tool data. These
  * shapes are therefore never safe to consume as a complete answer there.
  */
@@ -153,6 +175,7 @@ export function shouldStartProgressTimeline(body: string): boolean {
   const text = body.trim();
   return (
     deterministicAcknowledgementAnswer(text) === null &&
+    !isContextDependentFollowup(text) &&
     !hasExplicitResponseLane(text) &&
     !/^(?:any\s+)?(?:update|updates|status)\b/i.test(text)
   );
@@ -166,6 +189,7 @@ export function shouldStartProgressTimeline(body: string): boolean {
 export function isFastInitialQuestion(body: string): boolean {
   const text = body.trim();
   if (!text || text.length > 220) return false;
+  if (isContextDependentFollowup(text)) return false;
   if (/^\//.test(text) || /\[attachment:|\[location shared\]/i.test(text)) {
     return false;
   }
@@ -209,7 +233,7 @@ export function progressFallback(stage: ProgressStage): string {
     case "progress-one":
       return "I’m checking the details now.";
     case "progress-two":
-      return "I’m still working through it — I’ll send the result shortly.";
+      return "This is taking a little longer than expected. I’m still working on it.";
     case "finalizing":
       return "I’m finalizing the result now.";
   }
@@ -269,9 +293,10 @@ export function startProgressTimeline(options: {
     );
   };
 
-  schedule("progress-one", PROGRESS_ONE_AT_MS);
+  // One elapsed-time update is useful; three generic fallbacks look like
+  // progress even when no observable stage changed. Concrete lane-specific
+  // updates should be sent by the lane that observed the change.
   schedule("progress-two", PROGRESS_TWO_AT_MS);
-  schedule("finalizing", FINALIZING_AT_MS);
   return {
     stop: () => {
       active = false;

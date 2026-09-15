@@ -7,6 +7,7 @@ import {
   hasExplicitResponseLane,
   initialHoldingReply,
   INITIAL_REPLY_SLA_MS,
+  isContextDependentFollowup,
   isFastInitialQuestion,
   progressFallback,
   PROGRESS_ONE_AT_MS,
@@ -49,6 +50,27 @@ describe("TTFK policy", () => {
     expect(isFastInitialQuestion("What's on my calendar today?")).toBe(false);
   });
 
+  it("keeps ambiguous follow-ups on the contextual agent path", () => {
+    for (const body of [
+      "Yee",
+      "yes",
+      "I meant yes",
+      "go ahead",
+      "ok",
+      "sounds good",
+      "the blue one",
+      "same size",
+      "do that",
+      "no",
+      "never mind",
+    ]) {
+      expect(isContextDependentFollowup(body), body).toBe(true);
+      expect(isFastInitialQuestion(body), body).toBe(false);
+    }
+    expect(isContextDependentFollowup("capital of France?")).toBe(false);
+    expect(isContextDependentFollowup("what is 9 times 7?")).toBe(false);
+  });
+
   it("answers standalone acknowledgements without starting another agent run", () => {
     expect(deterministicAcknowledgementAnswer("Ok let me know")).toBe("Will do.");
     expect(deterministicAcknowledgementAnswer("Okay, keep me posted.")).toBe("Will do.");
@@ -60,6 +82,8 @@ describe("TTFK policy", () => {
   it("does not restart the canned progress clock for conversational follow-ups", () => {
     expect(shouldStartProgressTimeline("Any update?")).toBe(false);
     expect(shouldStartProgressTimeline("Ok let me know")).toBe(false);
+    expect(shouldStartProgressTimeline("Yee")).toBe(false);
+    expect(shouldStartProgressTimeline("I meant yes")).toBe(false);
     expect(shouldStartProgressTimeline("What's going on today?")).toBe(true);
     expect(shouldStartProgressTimeline("Plan a ten-day trip")).toBe(true);
     expect(shouldStartProgressTimeline("/zap make this move")).toBe(false);
@@ -90,7 +114,7 @@ describe("TTFK policy", () => {
     expect(initialHoldingReply("analyze this architecture")).toContain("carefully");
   });
 
-  it("uses fallback progress text exactly at the deadlines when GLM is late", async () => {
+  it("sends one truthful fallback update at 20 seconds when generation is late", async () => {
     vi.useFakeTimers();
     const send = vi.fn().mockResolvedValue(undefined);
     const generate = vi.fn(() => new Promise<string | null>(() => undefined));
@@ -100,10 +124,12 @@ describe("TTFK policy", () => {
       generate,
     });
 
-    await vi.advanceTimersByTimeAsync(PROGRESS_ONE_AT_MS);
-    expect(send).toHaveBeenLastCalledWith(progressFallback("progress-one"));
-    await vi.advanceTimersByTimeAsync(PROGRESS_TWO_AT_MS - PROGRESS_ONE_AT_MS);
+    await vi.advanceTimersByTimeAsync(PROGRESS_TWO_AT_MS - 1);
+    expect(send).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
     expect(send).toHaveBeenLastCalledWith(progressFallback("progress-two"));
+    await vi.advanceTimersByTimeAsync(FINALIZING_AT_MS - PROGRESS_TWO_AT_MS);
+    expect(send).toHaveBeenCalledTimes(1);
     timeline.stop();
   });
 
@@ -116,7 +142,7 @@ describe("TTFK policy", () => {
       generate: vi.fn().mockResolvedValue("I’m checking the details now."),
     });
 
-    await vi.advanceTimersByTimeAsync(PROGRESS_ONE_AT_MS - 1);
+    await vi.advanceTimersByTimeAsync(PROGRESS_TWO_AT_MS - 1);
     expect(send).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     expect(send).toHaveBeenLastCalledWith("I’m checking the details now.");
