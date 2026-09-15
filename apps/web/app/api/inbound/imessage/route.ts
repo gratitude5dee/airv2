@@ -41,6 +41,10 @@ import {
 import { prewarmBox } from "@/lib/orchestrator/boxes";
 import { createSpectrumSender } from "@/lib/spectrum/sender";
 import {
+  createFastReactionSender,
+  type FastReactionSender,
+} from "@/lib/spectrum/fast-reaction";
+import {
   handleOnboarding,
   signupSender,
 } from "@/lib/provisioning/onboarding";
@@ -129,22 +133,48 @@ async function withWarmSenderCleanup<T>(
  * box wake, or a model request.
  */
 async function sendImmediateReaction(
-  sender: Awaited<ReturnType<typeof createSpectrumSender>> | undefined,
+  fastSenderPromise: Promise<FastReactionSender | undefined> | undefined,
+  senderPromise: ReturnType<typeof warmSpectrumSender>,
   message: InboundMessage,
   receivedAtMs: number
 ): Promise<void> {
-  if (!sender) return;
-  const reacted = await sender
-    .react(message.spaceId, message.phone, message.messageId, ACK_REACTION)
-    .catch(() => false);
+  let transport: "http-direct" | "spectrum-fallback" = "http-direct";
+  let fastSender: FastReactionSender | undefined;
+  let reacted = false;
+  try {
+    fastSender = await fastSenderPromise?.catch(() => undefined);
+    reacted = fastSender
+      ? await fastSender
+          .react(message.spaceId, message.messageId, ACK_REACTION)
+          .catch(() => false)
+      : false;
+  } finally {
+    await fastSender?.close().catch(() => undefined);
+  }
+  if (!reacted) {
+    transport = "spectrum-fallback";
+    const sender = await senderPromise;
+    reacted = sender
+      ? await sender
+          .react(
+            message.spaceId,
+            message.phone,
+            message.messageId,
+            ACK_REACTION,
+          )
+          .catch(() => false)
+      : false;
+  }
+  const elapsedMs = Date.now() - receivedAtMs;
   console.info(
     JSON.stringify({
       msg: "imessage ttfk reaction",
       user_id: message.userId,
       space_id: message.spaceId,
       delivered: reacted,
-      elapsed_ms: Date.now() - receivedAtMs,
-      within_sla: Date.now() - receivedAtMs <= REACTION_SLA_MS,
+      transport,
+      elapsed_ms: elapsedMs,
+      within_sla: elapsedMs <= REACTION_SLA_MS,
     })
   );
 }
@@ -269,6 +299,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   });
   const warmSenderPromise = route && inbound.phone
     ? warmSpectrumSender()
+    : undefined;
+  const fastReactionSenderPromise = route && inbound.phone
+    ? createFastReactionSender(inbound.phone).catch(() => undefined)
     : undefined;
 
   // 4: dedupe. A conflict means already-seen: return 200 and stop.
@@ -552,8 +585,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // retained by `after()` below and the reaction begins in parallel with the
   // durable queue write.
   const senderPromise = warmSenderPromise ?? warmSpectrumSender();
-  const reaction = senderPromise.then((sender) =>
-    sendImmediateReaction(sender, message, receivedAtMs)
+  const reaction = sendImmediateReaction(
+    fastReactionSenderPromise,
+    senderPromise,
+    message,
+    receivedAtMs,
   );
   // The fast answer and the Spectrum connection race in parallel. Production
   // GLM latency is typically longer than sender initialization, so starting
