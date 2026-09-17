@@ -188,10 +188,27 @@ export async function listThreads(
   inboxId: string,
   limit = 25
 ): Promise<AgentMailThread[]> {
-  const result = await wzrdmailFetch<{ threads?: AgentMailThread[] }>(
-    `/inboxes/${encodeURIComponent(inboxId)}/threads?limit=${limit}`
+  return (await listThreadsPage(inboxId, limit)).threads;
+}
+
+/** WzrdMail uses the same opaque page-token convention as AgentMail. */
+export async function listThreadsPage(
+  inboxId: string,
+  limit = 25,
+  pageToken?: string
+): Promise<{ threads: AgentMailThread[]; next_page_token?: string | null }> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (pageToken) params.set("page_token", pageToken);
+  const result = await wzrdmailFetch<{
+    threads?: AgentMailThread[];
+    next_page_token?: string | null;
+  }>(
+    `/inboxes/${encodeURIComponent(inboxId)}/threads?${params}`
   );
-  return result.threads ?? [];
+  return {
+    threads: result.threads ?? [],
+    ...(result.next_page_token ? { next_page_token: result.next_page_token } : {}),
+  };
 }
 
 export async function getThread(
