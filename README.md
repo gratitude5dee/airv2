@@ -10,6 +10,8 @@ One user = one Hermes agent inside one Box sandbox, orchestrated by a Next.js co
 
 **Specification of record:** [`goal.md`](goal.md) (executable milestone plan) and [`ARCHITECTURE.md`](ARCHITECTURE.md) (reasoning; tie-breaker where they disagree). Security posture decisions live in [`SECURITY-DECISIONS.md`](SECURITY-DECISIONS.md).
 
+**Create:** [`docs/goal-create-v11.md`](docs/goal-create-v11.md) (lanes, Build Service, Kit, Functions — shipped) and [`docs/goal-create-v12.md`](docs/goal-create-v12.md) (the `/create` conversation: intake → plan → GLM build with tests → dev URL on `link.wzrd.tech` → finalize → production on `mini.wzrd.tech` → `wzrd-create` mirror; plus the admin contract). The operator-side plan lives in `gratitude5dee/admin` → `goal.md`.
+
 ## Layout
 
 ```
