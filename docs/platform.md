@@ -226,7 +226,15 @@ Full rationale in [`SECURITY-DECISIONS.md`](../SECURITY-DECISIONS.md).
   Create app, each writing an `admin_audit` row (migration 0120). Suspend is
   fail-closed and idempotent: dev Worker, then app-origin manifest, then the
   registry row, so the app answers 404 on both origins within one request
-  (CR16).
+  (CR16). Suspending an app whose source was mirrored also replaces its
+  folder in `wzrd-create` with a README saying it was removed (§10.2); a
+  failed removal is logged and never keeps the app live.
+- `POST /api/create/finalize` `{ app, name, description, icon_key?, mirror,
+  store }` and `POST /api/create/icon` (multipart, `{ path }` from the Box, or
+  `{ generate: true }`) — the owner's two finalize calls (V12 §9). Finalize
+  files the `miniapp_publish` decision with the production payload; only the
+  owner's tap on that decision publishes, and that tap is what kicks the
+  mirror (§9.3, §10.2). Icon generation is capped at two per app.
 - The operator dashboard (admin.wzrd.tech, `gratitude5dee/admin`) is the only
   consumer of these; it holds `ADMIN_API_KEY` server-side and never exposes it
   to the browser.

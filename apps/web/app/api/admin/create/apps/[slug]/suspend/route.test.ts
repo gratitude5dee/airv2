@@ -19,6 +19,8 @@ vi.mock("@/lib/create/release", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/create/release")>()),
   revokeDev: release.revokeDev,
 }));
+const mirror = vi.hoisted(() => ({ removeMirror: vi.fn(async () => ({ commit: "c1", folder: "apps/alice/promo" })) }));
+vi.mock("@/lib/create/mirror", () => mirror);
 const deploy = vi.hoisted(() => ({ suspendOnAppOrigin: vi.fn() }));
 vi.mock("@/lib/functions/deploy", () => ({ suspendOnAppOrigin: deploy.suspendOnAppOrigin }));
 
@@ -160,5 +162,43 @@ describe("POST /api/admin/create/apps/[slug]/suspend", () => {
     refused.name = "AppOriginRefusedError";
     deploy.suspendOnAppOrigin.mockRejectedValueOnce(refused);
     expect((await post("alice-promo")).status).toBe(409);
+  });
+});
+
+describe("mirror removal (§10.2)", () => {
+  it("replaces the mirror folder when a version was mirrored and the lane is on", async () => {
+    process.env["CREATE_MIRROR_ENABLED"] = "true";
+    process.env["WZRD_CREATE_INSTALLATION_ID"] = "12345";
+    fake.tables["miniapp_versions"] = [
+      { id: "ver-1", app_id: "app-1", mirrored_at: "2026-09-10T00:00:00.000Z" },
+    ];
+    expect((await post("alice-promo")).status).toBe(200);
+    expect(mirror.removeMirror).toHaveBeenCalled();
+    delete process.env["CREATE_MIRROR_ENABLED"];
+    delete process.env["WZRD_CREATE_INSTALLATION_ID"];
+  });
+
+  it("leaves the mirror alone when nothing was ever mirrored", async () => {
+    process.env["CREATE_MIRROR_ENABLED"] = "true";
+    process.env["WZRD_CREATE_INSTALLATION_ID"] = "12345";
+    fake.tables["miniapp_versions"] = [{ id: "ver-1", app_id: "app-1", mirrored_at: null }];
+    expect((await post("alice-promo")).status).toBe(200);
+    expect(mirror.removeMirror).not.toHaveBeenCalled();
+    delete process.env["CREATE_MIRROR_ENABLED"];
+    delete process.env["WZRD_CREATE_INSTALLATION_ID"];
+  });
+
+  it("a failed removal still suspends the app", async () => {
+    process.env["CREATE_MIRROR_ENABLED"] = "true";
+    process.env["WZRD_CREATE_INSTALLATION_ID"] = "12345";
+    fake.tables["miniapp_versions"] = [
+      { id: "ver-1", app_id: "app-1", mirrored_at: "2026-09-10T00:00:00.000Z" },
+    ];
+    mirror.removeMirror.mockRejectedValueOnce(new Error("github 502"));
+    const response = await post("alice-promo");
+    expect(response.status).toBe(200);
+    expect(fake.rows("mini_apps")[0]).toMatchObject({ status: "suspended" });
+    delete process.env["CREATE_MIRROR_ENABLED"];
+    delete process.env["WZRD_CREATE_INSTALLATION_ID"];
   });
 });

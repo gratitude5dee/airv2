@@ -13,6 +13,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminAuthorized } from "@/lib/admin/auth";
 import { recordAdminAudit } from "@/lib/admin/audit";
 import { ReleaseError, revokeDev } from "@/lib/create/release";
+import { removeMirror } from "@/lib/create/mirror";
+import { createConfig } from "@/lib/create/config";
 import { suspendOnAppOrigin } from "@/lib/functions/deploy";
 import {
   getRegistryApp,
@@ -27,6 +29,18 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const SLUG_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+
+/** True when any version of this app has a mirror commit (§10.2). */
+async function wasMirrored(supabase: SupabaseClient, app: RegistryApp): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("miniapp_versions")
+    .select("id")
+    .eq("app_id", app.id)
+    .not("mirrored_at", "is", null)
+    .limit(1);
+  if (error) return false;
+  return Array.isArray(data) && data.length > 0;
+}
 
 function appRow(app: RegistryApp) {
   return {
@@ -89,6 +103,22 @@ export async function POST(
     }
     await suspendOnAppOrigin(supabase, current);
     const fresh = await flipSuspended(supabase, current);
+    // §10.2: a suspended app's mirror folder is replaced by a README saying
+    // it was removed. The history stays public, which the owner was told in
+    // the decision card. A mirror failure never keeps an app live.
+    const mirrored = await wasMirrored(supabase, current);
+    if (mirrored && createConfig.mirrorEnabled() && createConfig.mirrorInstallationId()) {
+      await removeMirror(supabase, fresh).catch((error: unknown) => {
+        console.warn(
+          JSON.stringify({
+            msg: "mirror removal failed",
+            app: current.slug,
+            error: error instanceof Error ? error.message : "unknown",
+          })
+        );
+        return null;
+      });
+    }
     await recordAdminAudit(supabase, {
       action: "suspend",
       app,
