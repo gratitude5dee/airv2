@@ -73,6 +73,13 @@ vi.mock("@/lib/create/budget", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/create/budget")>()),
   createSpendUsd: async () => budget.spent,
 }));
+// V12: the status route also reads the intake stage (§5.1); the table is new,
+// so a missing row (and a control plane without the table) reads as null.
+const intake = vi.hoisted(() => ({ getIntake: vi.fn(async (): Promise<unknown> => null) }));
+vi.mock("@/lib/create/intake", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/create/intake")>()),
+  getIntake: intake.getIntake,
+}));
 
 import { NextRequest } from "next/server";
 import { PublishError } from "@/lib/miniapps/publish";
@@ -89,6 +96,7 @@ beforeEach(() => {
   session.storeSessionUserId.mockReturnValue(null);
   box.boxUserId.mockResolvedValue(undefined);
   publish.ownedApp.mockResolvedValue(app);
+  intake.getIntake.mockResolvedValue(null);
 });
 
 describe("GET /api/create/status", () => {
@@ -187,4 +195,37 @@ describe("GET /api/create/status", () => {
     );
     expect(((await response.json()) as { build: unknown }).build).toBeNull();
   });
+  it("reports the dev pointer and the intake stage while the release is live (§6.3)", async () => {
+    box.boxUserId.mockResolvedValue("user-alice");
+    const expires = new Date(Date.now() + 7 * 86_400_000).toISOString();
+    publish.ownedApp.mockResolvedValue({
+      ...app,
+      dev_version: "v1700000000001",
+      dev_released_at: "2026-01-01T00:00:00.000Z",
+      dev_expires_at: expires,
+    });
+    intake.getIntake.mockResolvedValue({ stage: "dev_ready" });
+    const body = await (await GET(statusRequest("alice-promo", "gw-1"))).json();
+    expect(body.dev).toMatchObject({
+      channel: "dev",
+      version: "v1700000000001",
+      url: "https://link.wzrd.tech/alice/promo",
+      expires_at: expires,
+    });
+    expect(body.intake_stage).toBe("dev_ready");
+  });
+
+  it("drops the dev pointer once it has expired", async () => {
+    box.boxUserId.mockResolvedValue("user-alice");
+    publish.ownedApp.mockResolvedValue({
+      ...app,
+      dev_version: "v1700000000001",
+      dev_released_at: "2026-01-01T00:00:00.000Z",
+      dev_expires_at: "2026-01-02T00:00:00.000Z",
+    });
+    const body = await (await GET(statusRequest("alice-promo", "gw-1"))).json();
+    expect(body.dev).toBeNull();
+    expect(body.intake_stage).toBeNull();
+  });
+
 });
