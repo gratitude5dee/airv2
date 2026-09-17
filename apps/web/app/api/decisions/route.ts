@@ -52,7 +52,9 @@ import {
 } from "@/lib/functions/approval";
 import { BACKEND_DECISION_KIND } from "@/lib/functions/backend";
 import { AppOriginRefusedError } from "@/lib/functions/deploy";
-import { PublishError } from "@/lib/miniapps/publish";
+import { PublishError, setPublishStatus } from "@/lib/miniapps/publish";
+import { onPublishDecision, PUBLISH_DECISION_KIND } from "@/lib/create/finalize";
+import { recordOpsEvent } from "@/lib/security/limits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -334,6 +336,55 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: "not found" }, { status: 404 });
     }
     return NextResponse.json({ ok: true, published: approval.published });
+  }
+
+  if (decision.kind === PUBLISH_DECISION_KIND && decision.ref) {
+    // V12 §9.3 (and §18: only the decision tap flips status). The row is
+    // claimed first, so a racing dismissal publishes nothing; the flip then
+    // points live at the staged version and the hook lists the app, moves
+    // the intake and kicks the mirror. The hook never throws (CR20).
+    const slug = decision.ref as string;
+    const resolution = body.action === "approve" ? "approved" : "dismissed";
+    const { data: claimed } = await supabase
+      .from("decisions")
+      .update({ status: resolution, resolved_at: new Date().toISOString() })
+      .eq("id", decision.id)
+      .eq("user_id", userId)
+      .eq("status", "pending")
+      .select("id, payload");
+    if (!claimed || claimed.length === 0) {
+      return NextResponse.json({ error: "not found" }, { status: 404 });
+    }
+    if (body.action === "approve") {
+      try {
+        await setPublishStatus(supabase, userId, slug, "published");
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            msg: "miniapp_publish approval failed",
+            user_id: userId,
+            app: slug,
+            error: error instanceof Error ? error.message : "unknown",
+          })
+        );
+        if (error instanceof PublishError) {
+          return NextResponse.json({ error: error.message }, { status: error.status });
+        }
+        return NextResponse.json(
+          { error: "approved, but publishing failed — try again from the app's Share tab" },
+          { status: 502 }
+        );
+      }
+      await recordOpsEvent(supabase, "publish", userId, slug);
+    }
+    await onPublishDecision(
+      supabase,
+      userId,
+      slug,
+      body.action === "approve" ? "approved" : "declined",
+      (claimed as { id: string; payload?: unknown }[]).map((row) => ({ id: row.id, payload: row.payload }))
+    );
+    return NextResponse.json({ ok: true, published: body.action === "approve" });
   }
 
   if (decision.kind === BACKEND_DECISION_KIND && decision.ref) {

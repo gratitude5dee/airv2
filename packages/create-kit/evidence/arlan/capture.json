@@ -41,6 +41,26 @@
       "liquid/sdf.ts"
     ]
   },
+  "rush-type": {
+    "url": "https://arlan.me/vault/rush-type",
+    "capturedAt": "2026-09-17",
+    "sha256": "87e5885b0dc9e8fa6b41b16e43d1830b83458fe7283cbf8ce9119a13cba396c5",
+    "files": [
+      "rush-type/RushTypeCard.tsx",
+      "rush-type/engine.ts",
+      "rush-type/params.ts"
+    ]
+  },
+  "shutter-type": {
+    "url": "https://arlan.me/vault/shutter-type",
+    "capturedAt": "2026-09-17",
+    "sha256": "dec3204506f97accb6d9b6a0fc3a9d00e2211320deb100e1fee9fc4cd6260016",
+    "files": [
+      "shutter-type/ShutterTypeCard.tsx",
+      "shutter-type/engine.ts",
+      "shutter-type/params.ts"
+    ]
+  },
   "squircle": {
     "url": "https://arlan.me/vault/squircle",
     "capturedAt": "2026-09-04",
@@ -51,6 +71,16 @@
       "squircle/playground.tsx",
       "squircle/superellipse.ts",
       "squircle/tokens.ts"
+    ]
+  },
+  "swing-type": {
+    "url": "https://arlan.me/vault/swing-type",
+    "capturedAt": "2026-09-17",
+    "sha256": "0ef0c0ac6188145060bad6a19df62c869fc42d1e86e542d275538e0d8ef0b362",
+    "files": [
+      "swing-type/SwingTypeCard.tsx",
+      "swing-type/engine.ts",
+      "swing-type/params.ts"
     ]
   },
   "typer": {

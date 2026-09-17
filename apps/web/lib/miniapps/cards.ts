@@ -260,12 +260,15 @@ export function parseCardMarker(
  * "cards update in place"). A bubble the line no longer knows (its session
  * was dropped) is gone for good, so that case falls through to a fresh send
  * under the usual claim; a delivery failure surfaces as a thrown error, the
- * same as a failed send.
+ * same as a failed send. `layout` (V12 §8.2 progress relay) overrides the
+ * bubble copy — `<name> · <stage> · <percent>%` and a content-free detail —
+ * on top of the registry's default line; value-free metadata only.
  */
 export async function sendOrUpdateAppCard(
   supabase: SupabaseClient,
   owner: { userId: string; spaceId: string; phone: string },
-  slug: string
+  slug: string,
+  layout?: CardLayoutOverride
 ): Promise<"updated" | "sent" | "cooldown"> {
   const existing = await readMiniAppCardSession(
     supabase,
@@ -274,14 +277,14 @@ export async function sendOrUpdateAppCard(
     slug
   ).catch(() => undefined);
   if (existing) {
-    const outcome = await updateMiniAppCard(supabase, owner.userId, "app", slug);
+    const outcome = await updateMiniAppCard(supabase, owner.userId, "app", slug, layout);
     if (outcome === "updated") return "updated";
     if (outcome === "failed") throw new Error("app card update failed");
   }
   const claim = await claimCardSend(supabase, owner.userId, "app");
   if (!claim) return "cooldown";
   try {
-    await sendMiniAppCard(supabase, owner.spaceId, owner.phone, owner.userId, "app", slug);
+    await sendMiniAppCard(supabase, owner.spaceId, owner.phone, owner.userId, "app", slug, layout);
   } catch (error) {
     await claim.release().catch(() => undefined);
     throw error;

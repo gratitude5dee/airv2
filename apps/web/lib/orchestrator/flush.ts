@@ -43,6 +43,8 @@ import {
   OWNER_ONLY_CARD_LINE,
 } from "../miniapps/imessageCommand";
 import { sendMarkedCards } from "../miniapps/cards";
+import { maybeOpenIntake } from "../create/intake";
+import { startRelayForOwner, type RelayHandle } from "../create/progress";
 import { maybeRunDrawLane } from "../miniapps/drawCommand";
 import { maybeRunFreezeLane } from "../miniapps/freezeCommand";
 import { maybeRunLocationLane } from "../location/lane";
@@ -785,6 +787,9 @@ async function runFlushInner(
     throw error;
   }
   let progressTimeline: ProgressTimeline | undefined;
+  // V12 §8.2: while this owner has an app building, the Create relay ticks
+  // their app card every CREATE_PROGRESS_TICK_MS beside the turn.
+  let createRelay: RelayHandle | null = null;
   try {
     const carried = await drainCarried(supabase, job.spaceId);
     const fresh = await drainQueue(supabase, job.spaceId);
@@ -793,7 +798,7 @@ async function runFlushInner(
       await supabase.from("flush_jobs").delete().eq("space_id", job.spaceId);
       return;
     }
-    const rawInput = composeInput(carried, fresh);
+    let rawInput = composeInput(carried, fresh);
     const responseLaneInput = composeResponseLaneInput(carried, fresh);
     // Timed progress starts from the first fresh iMessage, not from when a
     // warm box happened to finish booting. Retried carried work has already
@@ -942,6 +947,32 @@ async function runFlushInner(
       }
       return;
     }
+    // V12 §8.1: "/create <text>" from the owner opens the create_intakes row
+    // here and marks the turn; the Planner itself runs in air-main (V11 §9.2),
+    // so the turn is never short-circuited. Anyone else gets the owner-only
+    // line, exactly like the card path.
+    const intake = await maybeOpenIntake(
+      supabase,
+      sender,
+      { spaceId: job.spaceId, userId: job.userId, phone: job.phone, senderTier: job.senderTier },
+      responseLaneInput
+    );
+    if (intake?.kind === "non_owner") {
+      if (!(await chainCancelled(supabase, job.spaceId, chainStartedAt))) {
+        await supabase
+          .from("flush_jobs")
+          .delete()
+          .eq("space_id", job.spaceId)
+          .eq("chain_started_at", chainStartedAt);
+      }
+      return;
+    }
+    if (intake?.kind === "owner") rawInput = `${intake.line}\n${rawInput}`;
+    createRelay = await startRelayForOwner(supabase, sender, {
+      userId: job.userId,
+      spaceId: job.spaceId,
+      phone: job.phone,
+    });
     try {
       const handled = await maybeSendMiniAppLink(
         supabase,
@@ -1561,6 +1592,7 @@ async function runFlushInner(
     }
   } finally {
     progressTimeline?.stop();
+    await createRelay?.stop().catch(() => undefined);
     // Re-arm the idle deadline no matter how the turn ended: ensureBoxAwake
     // cleared it, and a throw mid-turn must not leave the box awake with no
     // deadline. Monotonic, so a no-op for boxes that never woke.

@@ -3,7 +3,9 @@
  * owner (or the owner's Box) staged and what is live for one app: the live
  * and draft versions with their lint findings, the owner-only preview link,
  * the latest build (state + a content-free log tail), the draft's QA score
- * and the project's Create budget meter (MC4). Owner-scoped (store session
+ * and the project's Create budget meter (MC4). V12 adds the dev pointer
+ * (§6.3) and the intake stage (§5.1) so the Create surface can render the
+ * Release and Progress panes from one read. Owner-scoped (store session
  * or gateway bearer); anyone else gets the same 404 as a missing app.
  * Metadata only — never bundle contents or workspace source (CR5, CR14).
  */
@@ -22,6 +24,8 @@ import { listVersions, type VersionRow } from "@/lib/create/versions";
 import { draftPreviewUrl } from "@/lib/create/preview";
 import { getBuild, latestBuild, logTail } from "@/lib/create/build";
 import { budgetMeter, createSpendUsd } from "@/lib/create/budget";
+import { devReleaseActive, devUrl } from "@/lib/create/release";
+import { getIntake, IntakeError } from "@/lib/create/intake";
 import { env } from "@/lib/env";
 
 export const runtime = "nodejs";
@@ -70,10 +74,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: "invalid slug" }, { status: 400 });
     }
     const app = await ownedApp(supabase, userId, slug);
-    const [versions, build, spent] = await Promise.all([
+    const [versions, build, spent, intake] = await Promise.all([
       listVersions(supabase, app.id),
       buildId ? getBuild(supabase, userId, app.id, buildId) : latestBuild(supabase, app.id),
       createSpendUsd(supabase, userId, app.slug),
+      // The intake table is V12; an app created before it simply has none,
+      // and a nested app row may carry no appname at all.
+      app.appname
+        ? getIntake(supabase, userId, app.appname).catch((error: unknown) => {
+            if (error instanceof IntakeError) return null;
+            throw error;
+          })
+        : null,
     ]);
     const live = app.status === "published" ? app.bundle_version : null;
     const draft = app.draft_version ?? app.bundle_version;
@@ -92,6 +104,17 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       draft: versionDetail(draftRow),
       draft_version: draft,
       qa_score: draftRow?.qa_score ?? null,
+      // §6.3: the dev pointer, or null once it is revoked or expired.
+      dev:
+        devReleaseActive(app) && app.dev_version
+          ? {
+              channel: "dev" as const,
+              version: app.dev_version,
+              url: devUrl(app),
+              expires_at: app.dev_expires_at,
+            }
+          : null,
+      intake_stage: intake?.stage ?? null,
       build: build
         ? {
             id: build.id,

@@ -1,7 +1,8 @@
 /**
  * V11 §13.1 versions ledger. Every build, drop, import, and push inserts one
  * miniapp_versions row — digest, size, file count, findings, never content
- * (CR14). Rows are immutable except `published_at`, `retired_at`, `qa_score`.
+ * (CR14). Rows are immutable except `published_at`, `retired_at`, `qa_score`,
+ * the V12 test counts (`tests_total`, `tests_passed`) and the mirror receipt.
  * `mini_apps.draft_version` and `mini_apps.bundle_version` point into it.
  *
  * Retention (§13.1): a published version lives 30 days after it is
@@ -82,6 +83,13 @@ export interface VersionRow {
   functions: VersionFunctions | null;
   findings: Finding[];
   qa_score: number | null;
+  /** V12 §8.4 (CR22): counts from the last `air-create test`; ids stay in
+   * the Box (CR21). Absent on rows read before migration 0118. */
+  tests_total?: number | null | undefined;
+  tests_passed?: number | null | undefined;
+  /** V12 §10 (CR20): the mirror receipt for a production version. */
+  mirrored_at?: string | null | undefined;
+  mirror_commit?: string | null | undefined;
   created_at: string;
   published_at: string | null;
   retired_at: string | null;
@@ -120,6 +128,10 @@ const VersionSchema = z.object({
   functions: VersionFunctionsSchema.nullable().catch(null),
   findings: z.array(FindingSchema).catch([]),
   qa_score: z.number().nullable(),
+  tests_total: z.number().int().nullable().optional(),
+  tests_passed: z.number().int().nullable().optional(),
+  mirrored_at: z.string().nullable().optional(),
+  mirror_commit: z.string().nullable().optional(),
   created_at: z.string(),
   published_at: z.string().nullable(),
   retired_at: z.string().nullable(),
@@ -128,7 +140,8 @@ const VersionSchema = z.object({
 
 export const VERSION_COLUMNS =
   "id, app_id, user_id, version, lane, bundle_sha256, bundle_bytes, " +
-  "file_count, worker_sha256, kit_version, functions, findings, qa_score, created_at, " +
+  "file_count, worker_sha256, kit_version, functions, findings, qa_score, " +
+  "tests_total, tests_passed, mirrored_at, mirror_commit, created_at, " +
   "published_at, retired_at, purged_at";
 
 export function parseVersionRow(value: unknown): VersionRow | null {

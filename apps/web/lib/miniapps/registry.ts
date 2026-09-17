@@ -38,6 +38,10 @@ export interface RegistryApp {
   appname: string | null;
   /** V11: draft version the owner is previewing (points into miniapp_versions). */
   draft_version: string | null;
+  /** V12 CR17: the version served on link.wzrd.tech/<u>/<a> via `<slug>-dev`. */
+  dev_version?: string | null;
+  dev_released_at?: string | null;
+  dev_expires_at?: string | null;
   lane: CreateLane | null;
   functions_enabled: boolean;
   kit_version: string | null;
@@ -84,6 +88,10 @@ const RegistryAppSchema = z.object({
   // still parse; normalized below.
   appname: z.string().nullable().optional(),
   draft_version: z.string().nullable().optional(),
+  // V12 columns (0117), same treatment.
+  dev_version: z.string().nullable().optional(),
+  dev_released_at: z.string().nullable().optional(),
+  dev_expires_at: z.string().nullable().optional(),
   lane: z.enum(["drop", "vibe", "import", "push"]).nullable().optional(),
   functions_enabled: z.boolean().optional(),
   kit_version: z.string().nullable().optional(),
@@ -110,6 +118,9 @@ export function parseRegistryApp(value: unknown): RegistryApp | null {
     create_budget_usd: createBudgetUsd,
     appname: row.appname ?? null,
     draft_version: row.draft_version ?? null,
+    dev_version: row.dev_version ?? null,
+    dev_released_at: row.dev_released_at ?? null,
+    dev_expires_at: row.dev_expires_at ?? null,
     lane: row.lane ?? null,
     functions_enabled: row.functions_enabled ?? false,
     kit_version: row.kit_version ?? null,
@@ -121,7 +132,8 @@ export const REGISTRY_COLUMNS =
   "publisher_username, publisher_wallet, agent_identity, visibility, access, " +
   "password_hash, x402_enabled, x402_price_usdc, plugin_signin_enabled, " +
   "status, bundle_version, listed_at, updated_at, " +
-  "appname, draft_version, lane, functions_enabled, kit_version, create_budget_usd";
+  "appname, draft_version, dev_version, dev_released_at, dev_expires_at, " +
+  "lane, functions_enabled, kit_version, create_budget_usd";
 const COLUMNS = REGISTRY_COLUMNS;
 
 const SLUG_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/;

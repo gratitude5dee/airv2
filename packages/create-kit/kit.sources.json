@@ -230,16 +230,23 @@
         "arlan/color-depth",
         "arlan/ghosty-reveal",
         "arlan/holo",
-        "arlan/liquid-ui"
+        "arlan/liquid-ui",
+        "arlan/shutter-type",
+        "arlan/swing-type",
+        "arlan/rush-type"
       ],
       "excluded": [
         {
-          "name": "amo, midjourney, figma, dia-gradient",
+          "name": "amo, midjourney, figma (URL slug vector-editor), dia-gradient",
           "reason": "recreations of third-party trade dress"
         },
         {
           "name": "arcade-pixel, fade-motion, chroma-glow, emboss",
           "reason": "WebGL"
+        },
+        {
+          "name": "sandbox (\"Symbols effect\", listed as symbols on the 2026-09-04 index)",
+          "reason": "GPU-rendered image/video quantiser (WebGL); non-lite by policy and no still frame without the source media"
         }
       ],
       "gaps": [

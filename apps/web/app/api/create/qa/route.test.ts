@@ -114,7 +114,7 @@ describe("POST /api/create/qa", () => {
       qa_score: 100,
       failed: [],
     });
-    expect(qa.recordQaScore).toHaveBeenCalledWith(expect.anything(), app.id, fullReport);
+    expect(qa.recordQaScore).toHaveBeenCalledWith(expect.anything(), app.id, fullReport, null);
     expect(limits.recordOpsEvent).toHaveBeenCalledWith(
       expect.anything(),
       "create.qa",
@@ -147,6 +147,39 @@ describe("POST /api/create/qa", () => {
       expect.anything(),
       expect.anything()
     );
+  });
+
+  describe("V12 §8.4 — tests: { total, passed, failed_ids }", () => {
+    const tests = { total: 5, passed: 4, failed_ids: ["rsvp-saves"] };
+
+    it("passes valid test counts to recordQaScore and echoes them", async () => {
+      const response = await POST(post({ appname: "countdown", report: fullReport, tests }));
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ ok: true, qa_score: 100, tests });
+      expect(qa.recordQaScore).toHaveBeenCalledWith(expect.anything(), app.id, fullReport, tests);
+    });
+
+    it("still records a report that came without tests", async () => {
+      const response = await POST(post({ appname: "countdown", report: fullReport }));
+      expect(response.status).toBe(200);
+      expect(await response.json()).not.toHaveProperty("tests");
+      expect(qa.recordQaScore).toHaveBeenCalledWith(expect.anything(), app.id, fullReport, null);
+    });
+
+    it("400 on inconsistent or content-bearing test results", async () => {
+      for (const bad of [
+        { total: 5, passed: 6, failed_ids: [] },
+        { total: 5, passed: 4, failed_ids: [] },
+        { total: 5, passed: 4, failed_ids: ["rsvp-saves"], transcript: "hello" },
+        { total: 1, passed: 0, failed_ids: ["Not An Id"] },
+        "5/4",
+      ]) {
+        const response = await POST(post({ appname: "countdown", report: fullReport, tests: bad }));
+        expect(response.status).toBe(400);
+        expect(await response.json()).toEqual({ error: "invalid test results" });
+      }
+      expect(qa.recordQaScore).not.toHaveBeenCalled();
+    });
   });
 
   it("429 when the owner is over the QA rate limit", async () => {

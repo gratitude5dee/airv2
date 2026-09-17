@@ -13,7 +13,7 @@ import type { MiniSession } from "../miniapps/gates";
 import { appOriginHost } from "../miniapps/nested";
 import type { RegistryApp } from "../miniapps/registry";
 import { appOriginLaneReady } from "./deploy";
-import { appPrincipal, guestPrincipal, type Principal } from "./identity";
+import { anonPrincipal, appPrincipal, guestPrincipal, type Principal } from "./identity";
 import { mintAppToken, type AppRole } from "./tokens";
 
 export const ENTER_PATH = "/__air/enter";
@@ -49,15 +49,33 @@ export function principalFor(app: RegistryApp, session: MiniSession): Principal 
   return appPrincipal(session.userId, app.id);
 }
 
+export interface HandoffOptions {
+  /** V12 CR17: hand off to the `<slug>-dev` Worker (the Dispatcher routes by this claim). */
+  channel?: "dev";
+  /**
+   * A visitor with no session of their own (a dev link opened by a guest,
+   * §6.2): the token carries the daily-rotating anonymous principal for the
+   * address and the `anon` role — never the owner's principal (CR9).
+   */
+  anonymous?: { address: string };
+}
+
 /** The hand-off URL for an approved session, or null when the lane is off. */
-export function handoffUrl(app: RegistryApp, session: MiniSession): URL | null {
-  const principal = principalFor(app, session);
+export function handoffUrl(
+  app: RegistryApp,
+  session: MiniSession,
+  options: HandoffOptions = {}
+): URL | null {
+  const principal = options.anonymous
+    ? anonPrincipal(options.anonymous.address, app.id)
+    : principalFor(app, session);
   if (!principal) return null;
   const token = mintAppToken({
     app: app.slug,
     principal,
-    role: appRoleFor(session),
+    role: options.anonymous ? "anon" : appRoleFor(session),
     resource: session.resourceId,
+    ...(options.channel ? { channel: options.channel } : {}),
   });
   if (!token) return null;
   const url = appOriginUrl(app.slug);

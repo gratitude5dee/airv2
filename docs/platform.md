@@ -196,6 +196,45 @@ Full rationale in [`SECURITY-DECISIONS.md`](../SECURITY-DECISIONS.md).
 - `GET /api/admin/onboarding` — onboarding telemetry: the step funnel across
   all users, mirror health (warm/cold/stale), and per-user progress rows from
   the Postgres status mirror plus the onboarding card send. Metadata only (C4).
+- `GET /api/admin/deployments` — what is live where (Air Create V12 §12):
+  control-plane git SHA / deploy time / region (Vercel env), Kit version and
+  restricted (Tier B) version, one Dispatcher health probe (2 s timeout;
+  `null` when the app-origin lane is unconfigured), fleet channels, Create
+  app totals (`dev_live`, `prod_live`, `drafts_only`, `expiring_7d`) and one
+  row per Create app: dev / live / draft versions, last build, QA score,
+  tests, Functions state, Worker sha prefix, mirror time. `?channel=dev|prod`,
+  `?user_id=`, `?limit=` (default 100, max 500). Metadata only (C4).
+- `GET /api/admin/create` — the Create funnel over `?days=` (default 30):
+  intakes by stage, stage medians (`plan` = opened → confirmed,
+  `confirm_to_dev`, `dev_to_prod`; `first_question` is null until a
+  timestamp column records it), builds by status and first hard rule, QA
+  p50/p90/below-70, declared tests and pass ratio, mirror ok/failed, budget
+  exhaustions (`ops_events` kind `rate_limited`, ref `create_budget`) and the
+  template breakdown. Relay counters read zero until the progress relay
+  records `ops_events` kinds.
+- `GET /api/admin/tokens?group=user|model|family|provider|tier|lane|stage|project`
+  — the existing per-user shape plus `groups[]` over the same `agent_runs`
+  receipts; `lane` splits `create:*` labels from chat, `stage` uses
+  `agent_runs.create_stage`, `project` groups by the `create:<slug>` label;
+  `cost_estimated` marks groups that include a GMI-served slug priced at the
+  OpenAI list (Astra, Luna — goal-gmi-models §4).
+- `GET /api/admin/timeseries?series=tokens,cost,builds,dev_releases,publishes`
+  — the existing points plus per-bucket `builds` (create_builds),
+  `dev_releases` and `publishes` (ops_events kinds `dev_release`, `publish`).
+- `POST /api/admin/create/apps/<slug>/dev` `{ action: "revoke" | "renew" }` and
+  `POST /api/admin/create/apps/<slug>/suspend` — operator actions on one
+  Create app, each writing an `admin_audit` row (migration 0120). Suspend is
+  fail-closed and idempotent: dev Worker, then app-origin manifest, then the
+  registry row, so the app answers 404 on both origins within one request
+  (CR16). Suspending an app whose source was mirrored also replaces its
+  folder in `wzrd-create` with a README saying it was removed (§10.2); a
+  failed removal is logged and never keeps the app live.
+- `POST /api/create/finalize` `{ app, name, description, icon_key?, mirror,
+  store }` and `POST /api/create/icon` (multipart, `{ path }` from the Box, or
+  `{ generate: true }`) — the owner's two finalize calls (V12 §9). Finalize
+  files the `miniapp_publish` decision with the production payload; only the
+  owner's tap on that decision publishes, and that tap is what kicks the
+  mirror (§9.3, §10.2). Icon generation is capped at two per app.
 - The operator dashboard (admin.wzrd.tech, `gratitude5dee/admin`) is the only
   consumer of these; it holds `ADMIN_API_KEY` server-side and never exposes it
   to the browser.
@@ -224,3 +263,13 @@ fires come from `agent_runs` receipts (`trigger='cron'`), keep-awake fires
 from the dedicated `'keepawake'` receipts the sweeper's keep-awake branch
 writes to `box_state_events` — not from `'ready'` rows, which every wake
 (message, chat, cron, upload) records.
+
+### Thresholds (Air Create V12, §12)
+
+| Metric | Budget | Alarm |
+| --- | --- | --- |
+| Create builds (platform) | `BUILDS_PER_HOUR` (60) × active creators per hour | 70% of that ceiling (`timeseries?series=builds`) |
+| Dev releases | `CREATE_DEV_TTL_DAYS` (14) per release | any release expiring within 24 h that still has traffic (`deployments` rows, `dev_expires_at`) |
+| Mirror | every production version mirrored once | `create.mirror.failed > 0` |
+| Progress relay | one card update per tick (`CREATE_PROGRESS_TICK_MS`) | `update_failures > 5%` of ticks (`update_failures / (cards_updated + update_failures)`) |
+| Create budget | per-project `create_budget_usd` | `budget_exhausted` rising between two windows |

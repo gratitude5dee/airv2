@@ -1,0 +1,21 @@
+{
+  "schema": "air.app.v1",
+  "appname": "tool",
+  "name": "Checklist",
+  "description": "An owner-edited checklist guests can read.",
+  "lane": "vibe",
+  "entry": "src/main.tsx",
+  "theme": "atmosphere",
+  "surface": { "lite": true, "expanded": true },
+  "kit": {
+    "components": ["air", "arlan/typer", "beautiful/foundation", "beautiful/value-pill"]
+  },
+  "actions": ["add", "toggle", "clear-done"],
+  "guestActions": [],
+  "functions": null,
+  "tests": [
+    { "id": "title-visible", "see": "Checklist", "locked": true },
+    { "id": "add-item", "role": "owner", "type": ["[data-test=new]", "Water the plants"], "tap": "[data-test=add]", "see": "Water the plants", "locked": true },
+    { "id": "guest-readonly", "role": "guest", "type": ["[data-test=new]", "Nope"], "tap": "[data-test=add]", "see": "Guests are read-only." }
+  ]
+}

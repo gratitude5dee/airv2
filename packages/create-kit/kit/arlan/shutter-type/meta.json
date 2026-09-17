@@ -1,0 +1,46 @@
+{
+  "id": "arlan/shutter-type",
+  "title": "Shutter Type",
+  "tags": [
+    "text",
+    "motion",
+    "hero",
+    "canvas"
+  ],
+  "when": "Two lines of type seen through a rolling shutter: stripes lag the ink so a word tears into bands only while it moves and is whole at rest. One hero motion for a title card; the phrases are props.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {},
+  "deps": [],
+  "weightKb": {
+    "js": 3.7,
+    "css": 0.1,
+    "jsFull": 3.7
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "static",
+  "author": "Arlan Marat",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "arlan.me/vault@2026-09-04"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 305,
+    "errors": []
+  },
+  "notes": [
+    "Upstream set the type in Neue Montreal; the Kit reads `--font-body`, re-measuring the ink boxes when the webfont arrives so the composition holds still.",
+    "PAPER/SKY are the piece's own colours (warm paper, sky blue) and stay literal by design; the card's frame follows the shell tokens."
+  ]
+}

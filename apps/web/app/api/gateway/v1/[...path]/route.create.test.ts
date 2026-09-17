@@ -1,10 +1,13 @@
 /**
  * MC4 (goal-create-v11 §9.1): the Create tier family. `create-<tier>:<slug>`
  * clamps to the entitlement (never upgrades), resolves on
- * CREATE_TIER_MODELS / MODEL_CREATE_* only, is always served by OpenAI, is
- * attributed to the project the request names — which must be one of the
- * owner's open or just-closed Create runs — and stops with
- * `429 create_budget` when that project's budget is spent.
+ * CREATE_TIER_MODELS / MODEL_CREATE_* only, is served by the provider of the
+ * resolved slug (V12 §7.1: GMI for Astra/GLM, OpenAI for an OpenAI override)
+ * regardless of the owner's chat family, is attributed to the project the
+ * request names — which must be one of the owner's open or just-closed
+ * Create runs — and stops with `429 create_budget` when that project's
+ * budget is spent. V12 §7.3: an optional `#<stage>` is metered as
+ * `agent_runs.create_stage`.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -146,6 +149,8 @@ vi.mock("@/lib/env", () => ({
     modelProviderApiKey: () => "provider-key",
     openRouterBaseUrl: () => "https://openrouter.test/api/v1",
     openRouterApiKey: () => "openrouter-key",
+    gmiInferenceBaseUrl: () => "https://gmi.test/v1",
+    gmiCloudApiKey: () => "gmi-key",
     appOrigin: () => "https://app.test",
   },
 }));
@@ -187,6 +192,8 @@ async function complete(
 }
 
 const COUNTDOWN = "create-balanced:alice-countdown";
+const GLM = "zai-org/GLM-5.3-Flash";
+const ASTRA = "openai/gpt-6-astra";
 
 describe("gateway Create tier family (MC4 §9.1)", () => {
   beforeEach(() => {
@@ -203,6 +210,8 @@ describe("gateway Create tier family (MC4 §9.1)", () => {
       "MODEL_CREATE_DEEP",
       "MODEL_BALANCED",
       "MODEL_DEEP",
+      "GMI_CREATE_BUILD_EFFORT",
+      "GMI_GLM_EFFORT",
     ]) {
       delete process.env[key];
     }
@@ -212,7 +221,7 @@ describe("gateway Create tier family (MC4 §9.1)", () => {
   it("clamps create-deep to a Balanced owner's tier and serves the Create slug", async () => {
     const { response, sent } = await complete({ messages: [], model: "create-deep:alice-countdown" });
     expect(response.status).toBe(200);
-    expect(sent?.["model"]).toBe("gpt-5.6-terra");
+    expect(sent?.["model"]).toBe(GLM);
     expect(meteredRows[0]?.["speed_tier"]).toBe("balanced");
     expect(meteredRows[0]?.["requested_model"]).toBe("create-deep:alice-countdown");
   });
@@ -220,21 +229,103 @@ describe("gateway Create tier family (MC4 §9.1)", () => {
   it("never upgrades: create-balanced for a Fast owner lands on fast", async () => {
     state.entitlement = { ...state.entitlement, speed_tier: "fast" };
     const { sent } = await complete({ messages: [], model: COUNTDOWN });
-    expect(sent?.["model"]).toBe("gpt-5.6-luna");
+    expect(sent?.["model"]).toBe(GLM);
     expect(meteredRows[0]?.["speed_tier"]).toBe("fast");
   });
 
   it("downgrades create-fast for a Deep owner", async () => {
     state.entitlement = { ...state.entitlement, speed_tier: "deep" };
     const { sent } = await complete({ messages: [], model: "create-fast:alice-countdown" });
-    expect(sent?.["model"]).toBe("gpt-5.6-luna");
+    expect(sent?.["model"]).toBe(GLM);
   });
 
-  it("is served by OpenAI regardless of the owner's chat family", async () => {
-    const { url } = await complete({ messages: [], model: COUNTDOWN });
-    expect(url).toContain("https://upstream.test/v1");
+  it("is served by the slug's provider regardless of the owner's chat family (§7.1)", async () => {
+    const { url, sent } = await complete({ messages: [], model: COUNTDOWN });
+    expect(url).toBe("https://gmi.test/v1/chat/completions");
     expect(url).not.toContain("openrouter");
-    expect(meteredRows[0]?.["model_family"]).toBe("openai");
+    expect(sent?.["model"]).toBe(GLM);
+    expect(meteredRows[0]?.["model_family"]).toBe("gmi");
+    expect(meteredRows[0]?.["model"]).toBe(GLM);
+  });
+
+  describe("V12 §7.1 — Astra plans, GLM builds (CR18)", () => {
+    it("create-deep for a Deep owner serves openai/gpt-6-astra through the GMI base URL", async () => {
+      state.entitlement = { ...state.entitlement, speed_tier: "deep" };
+      const { response, url, sent } = await complete({
+        messages: [],
+        model: "create-deep:alice-countdown",
+      });
+      expect(response.status).toBe(200);
+      expect(url).toBe("https://gmi.test/v1/chat/completions");
+      expect(sent?.["model"]).toBe(ASTRA);
+      // The Planner sends no effort.
+      expect(sent?.["reasoning_effort"]).toBeUndefined();
+      expect(meteredRows[0]?.["model_family"]).toBe("gmi");
+      expect(meteredRows[0]?.["model"]).toBe(ASTRA);
+      expect(meteredRows[0]?.["speed_tier"]).toBe("deep");
+    });
+
+    it("create-balanced serves GLM with reasoning_effort medium, winning over the fleet GLM default", async () => {
+      process.env["GMI_GLM_EFFORT"] = "xhigh";
+      const { sent } = await complete({ messages: [], model: COUNTDOWN });
+      expect(sent?.["model"]).toBe(GLM);
+      expect(sent?.["reasoning_effort"]).toBe("medium");
+      expect(meteredRows[0]?.["reasoning_effort"]).toBe("medium");
+    });
+
+    it("GMI_CREATE_BUILD_EFFORT re-pins the Builder's effort; the Reviewer stays low", async () => {
+      process.env["GMI_CREATE_BUILD_EFFORT"] = "high";
+      const balanced = await complete({ messages: [], model: COUNTDOWN });
+      expect(balanced.sent?.["reasoning_effort"]).toBe("high");
+      const fast = await complete({ messages: [], model: "create-fast:alice-countdown" });
+      expect(fast.sent?.["model"]).toBe(GLM);
+      expect(fast.sent?.["reasoning_effort"]).toBe("low");
+    });
+
+    it("an OpenAI slug override routes to OpenAI and meters on the openai family", async () => {
+      state.entitlement = { ...state.entitlement, speed_tier: "deep" };
+      process.env["MODEL_CREATE_DEEP"] = "gpt-5.6-terra";
+      const { response, url, sent } = await complete({
+        messages: [],
+        model: "create-deep:alice-countdown",
+      });
+      expect(response.status).toBe(200);
+      expect(url).toBe("https://upstream.test/v1/responses");
+      expect(url).not.toContain("gmi.test");
+      expect(sent?.["model"]).toBe("gpt-5.6-terra");
+      expect(meteredRows[0]?.["model_family"]).toBe("openai");
+    });
+
+    it("meters the #<stage> suffix as create_stage and strips it before resolution (§7.3)", async () => {
+      const { response, sent } = await complete({
+        messages: [],
+        model: "create-balanced:alice-countdown#build",
+      });
+      expect(response.status).toBe(200);
+      expect(sent?.["model"]).toBe(GLM);
+      expect(meteredRows[0]?.["create_stage"]).toBe("build");
+      expect(meteredRows[0]?.["label"]).toBe("create:alice-countdown");
+      expect(meteredRows[0]?.["requested_model"]).toBe("create-balanced:alice-countdown#build");
+      await complete({ messages: [], model: COUNTDOWN });
+      expect(meteredRows[1]?.["create_stage"]).toBeNull();
+    });
+
+    it("refuses a malformed #<stage> with 400 rather than serving it unattributed", async () => {
+      for (const model of [
+        "create-balanced:alice-countdown#deploy",
+        "create-balanced:alice-countdown#",
+        "create-balanced:alice-countdown#Build",
+      ]) {
+        const { response, url } = await complete({ messages: [], model });
+        expect(response.status).toBe(400);
+        expect(await response.json()).toEqual({
+          error: "invalid_request",
+          reason: "create_project_required",
+        });
+        expect(url).toBeNull();
+      }
+      expect(meteredRows.length).toBe(0);
+    });
   });
 
   it("reads MODEL_CREATE_* and ignores the ordinary MODEL_* overrides", async () => {
@@ -366,8 +457,9 @@ describe("gateway Create tier family (MC4 §9.1)", () => {
       state.runs = [{ user_id: "user-1", label: "create:alice-recipes" }];
       const { response, url } = await complete({ messages: [], model: "create-balanced" });
       expect(response.status).toBe(200);
-      expect(url).toBe("https://upstream.test/v1/responses");
+      expect(url).toBe("https://gmi.test/v1/chat/completions");
       expect(meteredRows.map((row) => row["label"])).toEqual(["create:alice-recipes"]);
+      expect(meteredRows[0]?.["create_stage"]).toBeNull();
     });
 
     it("transitional: a project-less create-<tier> with no open run is refused (403), not guessed", async () => {

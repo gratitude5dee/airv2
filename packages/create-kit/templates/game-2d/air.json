@@ -1,0 +1,21 @@
+{
+  "schema": "air.app.v1",
+  "appname": "game-2d",
+  "name": "Skyline dash",
+  "description": "A one-tap Canvas 2D runner with an owner-kept high score.",
+  "lane": "vibe",
+  "entry": "src/main.tsx",
+  "theme": "atmosphere",
+  "surface": { "lite": true, "expanded": true },
+  "kit": {
+    "components": ["air", "arlan/typer", "beautiful/foundation", "beautiful/value-pill", "fancy/basic-number-ticker"]
+  },
+  "actions": ["start", "jump", "save-best"],
+  "guestActions": ["start", "jump"],
+  "functions": null,
+  "tests": [
+    { "id": "title-visible", "see": "Skyline dash", "locked": true },
+    { "id": "game-runs", "tap": "[data-test=start]", "wait": 1100, "changed": "[data-test=score]", "locked": true },
+    { "id": "guest-plays", "role": "guest", "see": "Play" }
+  ]
+}

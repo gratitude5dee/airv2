@@ -53,9 +53,56 @@ describe("create-miniapp skill", () => {
     expect(cli).toMatch(/\*\.png\|\*\.jpg/);
   });
 
-  it("supports new, build, qa, drop, status, publish and functions only (skill v3)", () => {
+  it("supports the v3 subcommands plus the V12 intake loop (skill v4, §11.1)", () => {
     const subcommands = [...cli.matchAll(/^\s{2}(\w+)\) shift; cmd_\w+/gm)].map((m) => m[1]);
-    expect(subcommands.sort()).toEqual(["build", "drop", "functions", "new", "publish", "qa", "status"]);
+    expect(subcommands.sort()).toEqual([
+      "build",
+      "confirm",
+      "drop",
+      "finalize",
+      "fork",
+      "functions",
+      "new",
+      "plan",
+      "publish",
+      "qa",
+      "release",
+      "status",
+      "test",
+    ]);
+  });
+
+  it("drives the /create intake loop from the marker line and never pastes the plan (V12 §8.1, §11.1)", () => {
+    expect(skill).toContain("[create-intake <appname> stage=<stage> questions_max=<n>]");
+    expect(skill).toContain("reply in one message; say **you pick** for any");
+    expect(skill).toContain("air-create plan <appname> --deliver");
+    expect(skill).toMatch(/never paste the plan into chat/i);
+    expect(skill).toContain("air-create confirm <appname>");
+    expect(skill).toContain("air-create release <appname> dev");
+    expect(skill).toContain("dev build is live: <url>");
+    expect(skill).toContain("ship it");
+    expect(cli).toContain("/api/create/intake");
+    expect(cli).toContain("/api/create/plan/deliver");
+    expect(cli).toContain("/api/create/release");
+    expect(cli).toContain("/api/create/finalize");
+    expect(cli).toContain("finalize is not available on this control plane yet");
+    expect(cli).toMatch(/event.*plan_written/);
+    expect(cli).toMatch(/event.*confirm/);
+    expect(cli).toContain('\\"channel\\":\\"dev\\"');
+  });
+
+  it("runs air.json.tests[] through the same runner as qa and reports ids only (V12 §8.4)", () => {
+    const runner = readFileSync(join(skillDir, "scripts", "air-qa.py"), "utf8");
+    expect(cli).toContain("--tests");
+    expect(runner).toContain("--tests");
+    for (const verb of ["see", "missing", "tap", "type", "wait", "changed", "expectHref", "viewport", "role"]) {
+      expect(runner).toContain(`"${verb}"`);
+    }
+    expect(runner).toContain("failed_ids");
+    expect(runner).toMatch(/TEST_VIEWPORT = \(390, 760\)/);
+    expect(runner).not.toMatch(/^import (?!json|os|re|subprocess|sys|time)\w+/m);
+    expect(skill).toMatch(/never narrate progress/i);
+    expect(skill).toMatch(/## 7\. Progress/);
   });
 
   it("functions stages a declaration for the owner's approval and never enables one (v11 §9.5, CR4)", () => {

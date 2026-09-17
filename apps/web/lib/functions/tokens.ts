@@ -34,6 +34,8 @@ export interface AppTokenClaims {
   exp: number;
   /** Present only on owner previews of the draft Worker (CR13). */
   draft?: true;
+  /** V12 CR17: routes the Dispatcher to `<slug>-dev` (a guest-readable dev release). */
+  channel?: "dev";
 }
 
 export function appOriginConfigured(): boolean {
@@ -67,6 +69,7 @@ export function mintAppToken(
       role: full.role,
       jti: full.jti,
       draft: full.draft === true,
+      channel: full.channel ?? null,
     })
   );
   return `${payload}.${sign(payload, key)}`;
@@ -101,6 +104,7 @@ export function verifyAppToken(
   if (claims.exp - now > APP_TOKEN_TTL_SECONDS) return null;
   if (!claims.principal || !claims.jti || !claims.resource) return null;
   if (!["owner", "guest", "anon", "agent"].includes(claims.role)) return null;
+  if (claims.channel !== undefined && claims.channel !== "dev") return null;
   return claims;
 }
 

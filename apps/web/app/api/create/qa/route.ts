@@ -4,7 +4,10 @@
  * post one too (store session). The control plane never runs the browser:
  * it validates the content-free report (lib/create/qa.ts), scores it, stamps
  * `qa_score` on the version row and logs `create.qa`. Screenshots and any
- * page text stay in the Box.
+ * page text stay in the Box. V12 §8.4 (extended): the body may carry
+ * `tests: { total, passed, failed_ids[] }` from `air-create test`; the counts
+ * are stamped beside `qa_score`, the ids are echoed back and not stored
+ * (CR21).
  */
 import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
@@ -18,6 +21,7 @@ import {
   PublishError,
 } from "@/lib/miniapps/publish";
 import { QaError, QaReportSchema, recordQaScore } from "@/lib/create/qa";
+import { TestResultsSchema, type TestResults } from "@/lib/create/tests";
 import { qaRateLimited, recordOpsEvent } from "@/lib/security/limits";
 
 export const runtime = "nodejs";
@@ -35,10 +39,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     slug?: unknown;
     appname?: unknown;
     report?: unknown;
+    tests?: unknown;
   } | null;
   const parsed = QaReportSchema.safeParse(body?.report);
   if (!parsed.success) {
     return NextResponse.json({ error: "invalid qa report" }, { status: 400 });
+  }
+  let tests: TestResults | null = null;
+  if (body?.tests !== undefined && body.tests !== null) {
+    const parsedTests = TestResultsSchema.safeParse(body.tests);
+    if (!parsedTests.success) {
+      return NextResponse.json({ error: "invalid test results" }, { status: 400 });
+    }
+    tests = parsedTests.data;
   }
   try {
     let slug = typeof body?.slug === "string" ? body.slug : "";
@@ -53,7 +66,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: "too many qa runs" }, { status: 429 });
     }
     const app = await ownedApp(supabase, userId, slug);
-    const { summary } = await recordQaScore(supabase, app.id, parsed.data);
+    const { summary } = await recordQaScore(supabase, app.id, parsed.data, tests);
     await recordOpsEvent(supabase, "create.qa", userId, app.slug);
     return NextResponse.json({
       ok: true,
@@ -61,6 +74,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       version: parsed.data.version,
       qa_score: summary.score,
       failed: summary.failed,
+      ...(tests ? { tests } : {}),
     });
   } catch (error) {
     if (error instanceof PublishError || error instanceof QaError) {

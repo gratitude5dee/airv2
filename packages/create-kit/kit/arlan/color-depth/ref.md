@@ -2,7 +2,7 @@
 
 # Color Depth (`arlan/color-depth`)
 
-Ten layered-light materials (glossy, metal, glass, neon…) for buttons. Pure CSS classes; the SKILL.md ships as ref.
+Buttons that feel like real objects: glossy plastic, brushed metal, glass, a soft cushion, neon, a pressed-in key. Pick one material per screen for the primary action; glass needs backdrop-filter, so never under lite.
 
 - **Weight**: 0.7 KiB JS + 2.7 KiB CSS (own, gzip); 0.7 KiB with vendor deps. **Lite**: true. **Touch**: true. **Reduced motion**: n/a.
 - **License**: MIT, tier A, from `arlan.me/vault@2026-09-04` by Arlan Marat.
@@ -28,6 +28,12 @@ _No props beyond `className`/`children`._
 ## Failure modes
 
 - Upstream self-initialised on import; the Kit exports initColorDepth/useColorDepth instead.
+- depth-glass needs backdrop-filter (banned under lite) and an SVG #liquid-glass-filter the Kit does not ship; use depth-layered or satin.
+- depth-foil needs its child layer spans, loops two drifts with screen blends and stops only on reduced motion: one CTA, the hero motion.
+- Metal and foil glints follow the pointer; on touch they move only while the finger is down, so the resting face must read as the material.
+- Only layered, inset, duotone and satin have :active press states; add press feedback to the others or taps feel dead on touch.
+- Colours and the font are literals (#fff label, cyan --neon, system sans); override per material with Air tokens or they fight the theme.
+- Keep one light direction (top) and at most two materials per screen; neighbouring controls that disagree about the light break the illusion.
 
 ## Air tokens
 

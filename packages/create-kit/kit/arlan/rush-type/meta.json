@@ -1,0 +1,49 @@
+{
+  "id": "arlan/rush-type",
+  "title": "Rush Type",
+  "tags": [
+    "text",
+    "motion",
+    "hero",
+    "webgl"
+  ],
+  "when": "One lowercase word rests, then blasts twelve times taller and tears into green and violet streaks from speed alone, resolving to plain white at rest; the next word falls out of the blur. Non-lite: WebGL1.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {},
+  "deps": [],
+  "weightKb": {
+    "js": 6.5,
+    "css": 0.1,
+    "jsFull": 6.5
+  },
+  "lite": false,
+  "liteReason": "WebGL1 fragment shader; lite surfaces draw the resting word as a still",
+  "touch": true,
+  "reducedMotion": "static",
+  "author": "Arlan Marat",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "arlan.me/vault@2026-09-04"
+  },
+  "csp": {
+    "ok": true,
+    "findings": [
+      "soft webgl arlan/rush-type/engine.ts:360 WebGL: component must stay non-lite and degrade to a static frame."
+    ]
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 150,
+    "errors": []
+  },
+  "notes": [
+    "Pointing at the card holds the word at its peak (pointer events, no preventDefault); inside a Messages webview the scroll coupling is inert.",
+    "Under lite, reduced motion or no WebGL the engine draws one crisp still of the resting word — never a mid-blast frame.",
+    "Keep WORDS short and the count even: a word lives in an atlas half by index parity."
+  ]
+}

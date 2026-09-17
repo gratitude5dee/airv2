@@ -96,6 +96,12 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
   // no tokens.
   all("github_installations"),
   all("github_repo_links"),
+  // V12 Create intakes (0116, CR21): stage, template id, counters, hashes
+  // and timestamps only — prompt, plan and goal text never reach Postgres.
+  all("create_intakes"),
+  // V12 operator actions on this owner's apps (0120): who did what and when,
+  // never a reason anyone typed (§12, CR21). The owner may read their own.
+  all("admin_audit"),
   all("miniapp_installs"),
   { table: "miniapp_guest_grants", column: "created_by", select: "*" },
   all("miniapp_gate_events"),

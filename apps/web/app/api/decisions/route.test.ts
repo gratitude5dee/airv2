@@ -53,6 +53,23 @@ function fakeSupabase() {
 
 vi.mock("@/lib/supabase", () => ({ serviceClient: () => fakeSupabase() }));
 vi.mock("@/lib/auth/user", () => ({ sessionUserId: () => "user-1" }));
+// V12 §9.3: the publish branch flips status and runs the finalize hook.
+const publish = vi.hoisted(() => ({
+  setPublishStatus: vi.fn(async (): Promise<void> => undefined),
+}));
+vi.mock("@/lib/miniapps/publish", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/miniapps/publish")>()),
+  setPublishStatus: publish.setPublishStatus,
+}));
+const finalize = vi.hoisted(() => ({
+  onPublishDecision: vi.fn(async (): Promise<void> => undefined),
+  PUBLISH_DECISION_KIND: "miniapp_publish",
+}));
+vi.mock("@/lib/create/finalize", () => finalize);
+vi.mock("@/lib/security/limits", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/security/limits")>()),
+  recordOpsEvent: vi.fn(async () => undefined),
+}));
 
 function post(action: "approve" | "dismiss"): NextRequest {
   return new NextRequest("https://air.test/api/decisions", {
@@ -117,5 +134,78 @@ describe("POST /api/decisions generic resolution", () => {
     const response = await POST(post("approve"));
     expect(response.status).toBe(500);
     expect(decisions[0]).toMatchObject({ status: "pending" });
+  });
+});
+
+describe("POST /api/decisions — miniapp_publish (V12 §9.3)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    publish.setPublishStatus.mockResolvedValue(undefined);
+    decisions = [
+      {
+        id: "decision-1",
+        user_id: "user-1",
+        kind: "miniapp_publish",
+        ref: "alice-tour",
+        status: "pending",
+        payload: { channel: "production", store: "listed", mirror: true },
+      },
+    ];
+    updateError = null;
+    beforeUpdate = null;
+  });
+
+  it("approve flips status, records the event and runs the hook", async () => {
+    const response = await POST(post("approve"));
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ ok: true, published: true });
+    expect(publish.setPublishStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      "user-1",
+      "alice-tour",
+      "published"
+    );
+    expect(finalize.onPublishDecision).toHaveBeenCalledWith(
+      expect.anything(),
+      "user-1",
+      "alice-tour",
+      "approved",
+      [expect.objectContaining({ id: "decision-1" })]
+    );
+    expect(decisions[0]).toMatchObject({ status: "approved" });
+  });
+
+  it("dismiss never publishes and tells the hook it was declined", async () => {
+    const response = await POST(post("dismiss"));
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ ok: true, published: false });
+    expect(publish.setPublishStatus).not.toHaveBeenCalled();
+    expect(finalize.onPublishDecision).toHaveBeenCalledWith(
+      expect.anything(),
+      "user-1",
+      "alice-tour",
+      "declined",
+      expect.anything()
+    );
+    expect(decisions[0]).toMatchObject({ status: "dismissed" });
+  });
+
+  it("a row someone else already resolved is a 404 and publishes nothing", async () => {
+    decisions[0]!["status"] = "approved";
+    const response = await POST(post("approve"));
+    expect(response.status).toBe(404);
+    expect(publish.setPublishStatus).not.toHaveBeenCalled();
+    expect(finalize.onPublishDecision).not.toHaveBeenCalled();
+  });
+
+  it("a failed flip reports the publish error and still leaves the row resolved", async () => {
+    const { PublishError } = await import("@/lib/miniapps/publish");
+    publish.setPublishStatus.mockRejectedValue(new PublishError("upload a bundle before publishing", 409));
+    const response = await POST(post("approve"));
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error: expect.stringContaining("upload a bundle"),
+    });
+    expect(finalize.onPublishDecision).not.toHaveBeenCalled();
   });
 });

@@ -14,6 +14,7 @@ import {
 } from "@/lib/miniapps/publish";
 import { VersionError } from "@/lib/create/versions";
 import { publishRateLimited, recordOpsEvent } from "@/lib/security/limits";
+import { onPublishDecision } from "@/lib/create/finalize";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -51,7 +52,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       visibilityValue
     );
     // The owner acted: settle any pending agent-staged publish decision.
-    await supabase
+    const { data: settled } = await supabase
       .from("decisions")
       .update({
         status: status === "published" ? "approved" : "dismissed",
@@ -60,10 +61,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       .eq("user_id", userId)
       .eq("kind", "miniapp_publish")
       .eq("ref", slug)
-      .eq("status", "pending");
+      .eq("status", "pending")
+      .select("id, payload");
     if (status === "published") {
       await recordOpsEvent(supabase, "publish", userId, slug);
     }
+    // V12 §9.3: the tap that flipped status also lists the app, moves the
+    // intake and kicks the mirror (§10); the hook never throws (CR20).
+    await onPublishDecision(
+      supabase,
+      userId,
+      slug,
+      status === "published" ? "approved" : "declined",
+      ((settled ?? []) as { id: string; payload?: unknown }[]).map((row) => ({ id: row.id, payload: row.payload }))
+    );
     return NextResponse.json({ ok: true });
   } catch (error) {
     if (error instanceof PublishError || error instanceof VersionError) {

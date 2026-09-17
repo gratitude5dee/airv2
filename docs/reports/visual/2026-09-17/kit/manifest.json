@@ -1,0 +1,59 @@
+{
+  "recorded": "2026-09-17",
+  "viewport": "390x760@2x",
+  "lite": false,
+  "components": [
+    {
+      "id": "arlan/shutter-type",
+      "lite": true,
+      "seconds": 3,
+      "heightPx": 305,
+      "errors": [],
+      "screenshots": [
+        "arlan--shutter-type/t0_4s.png",
+        "arlan--shutter-type/t1_5s.png",
+        "arlan--shutter-type/t3_0s.png"
+      ],
+      "video": "arlan--shutter-type/motion.webm"
+    },
+    {
+      "id": "arlan/swing-type",
+      "lite": true,
+      "seconds": 3,
+      "heightPx": 305,
+      "errors": [],
+      "screenshots": [
+        "arlan--swing-type/t0_4s.png",
+        "arlan--swing-type/t1_5s.png",
+        "arlan--swing-type/t3_0s.png"
+      ],
+      "video": "arlan--swing-type/motion.webm"
+    },
+    {
+      "id": "arlan/rush-type",
+      "lite": false,
+      "seconds": 3,
+      "heightPx": 161,
+      "errors": [],
+      "screenshots": [
+        "arlan--rush-type/t0_4s.png",
+        "arlan--rush-type/t1_5s.png",
+        "arlan--rush-type/t3_0s.png"
+      ],
+      "video": "arlan--rush-type/motion.webm"
+    },
+    {
+      "id": "arlan/holo",
+      "lite": true,
+      "seconds": 3,
+      "heightPx": 123,
+      "errors": [],
+      "screenshots": [
+        "arlan--holo/t0_4s.png",
+        "arlan--holo/t1_5s.png",
+        "arlan--holo/t3_0s.png"
+      ],
+      "video": "arlan--holo/motion.webm"
+    }
+  ]
+}

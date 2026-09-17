@@ -80,6 +80,24 @@ describe("app tokens (V11 §6.4)", () => {
     expect(draft?.draft).toBe(true);
   });
 
+  it("carries the dev channel claim only when asked, and rejects any other channel (V12 CR17)", () => {
+    const live = verifyAppToken(mintAppToken(claims)!, "alice-notes");
+    expect(live?.channel).toBeUndefined();
+    const dev = verifyAppToken(
+      mintAppToken({ ...claims, role: "guest", channel: "dev" })!,
+      "alice-notes"
+    );
+    expect(dev?.channel).toBe("dev");
+    expect(dev?.draft).toBeUndefined();
+    // A forged channel value is not a token at all — and the MAC fails first anyway.
+    const token = mintAppToken(claims)!;
+    const [payload] = token.split(".");
+    const parsed = JSON.parse(Buffer.from(payload!, "base64url").toString()) as Record<string, unknown>;
+    parsed["channel"] = "live";
+    const forgedPayload = Buffer.from(JSON.stringify(parsed)).toString("base64url");
+    expect(verifyAppToken(`${forgedPayload}.${token.split(".")[1]}`, "alice-notes")).toBeNull();
+  });
+
   it("returns null (legacy lane) when the key is unset", () => {
     delete process.env["APP_ORIGIN_SIGNING_KEY"];
     expect(appOriginConfigured()).toBe(false);
@@ -188,6 +206,21 @@ describe("mini → app-origin hand-off", () => {
     expect(
       handoffUrl(app, { userId: "user-alice", resourceId: "default", role: "guest" })
     ).toBeNull();
+  });
+
+  it("mints the dev channel claim for a dev hand-off, and none otherwise (V12 §6.2)", () => {
+    const dev = handoffUrl(
+      app,
+      { userId: "user-alice", resourceId: "default", role: "guest", grantId: "grant-77" },
+      { channel: "dev" }
+    );
+    expect(dev).not.toBeNull();
+    expect(dev!.host).toBe("alice-notes.apps.wzrd.tech");
+    const devClaims = verifyAppToken(dev!.searchParams.get("t")!, "alice-notes");
+    expect(devClaims?.channel).toBe("dev");
+    expect(devClaims?.role).toBe("guest");
+    const live = handoffUrl(app, { userId: "user-alice", resourceId: "default", role: "owner" });
+    expect(verifyAppToken(live!.searchParams.get("t")!, "alice-notes")?.channel).toBeUndefined();
   });
 
   it("is null when the app-origin lane is unconfigured", () => {

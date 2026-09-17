@@ -2,7 +2,7 @@
 
 # Squircle (`arlan/squircle`)
 
-True superellipse corners for a button or card via clip-path; the Air pill radius but smoother.
+Apple's corner: the curve eases into the flat edge with no kink, so a button or card reads smooth all the way round. Pick it for the one CTA or hero card whose outline matters; rows and chips keep the Air pill radius.
 
 - **Weight**: 1.5 KiB JS + 0.1 KiB CSS (own, gzip); 1.5 KiB with vendor deps. **Lite**: true. **Touch**: true. **Reduced motion**: n/a.
 - **License**: MIT, tier A, from `arlan.me/vault@2026-09-04` by Arlan Marat.
@@ -37,7 +37,12 @@ import { Squircle } from "./kit/arlan/squircle";
 
 ## Failure modes
 
-- None recorded.
+- Paints a shaped fill or stroke behind the content; it does not clip children. No fill and no stroke means nothing is drawn.
+- Children are overlaid absolutely, so the box has no intrinsic size; give it a width and at least 2.75rem of height or it collapses to 0.
+- It is a div: wrap it in a <button> (position relative, padding 0) so the whole shape is the 44px tap target.
+- Fill and stroke take any CSS colour: pass Air tokens (var(--panel-bg), var(--ring)); a gradient fill switches to a clip-path layer.
+- radius is clamped to half the short side and scaled by smoothing (0-1); on a 44px button radius 22 is a full pill, so use 14-18.
+- compare=true draws an ordinary rounded rect (the vault's A/B toggle); never ship it in an app.
 
 ## Air tokens
 
