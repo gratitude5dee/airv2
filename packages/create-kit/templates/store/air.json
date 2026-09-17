@@ -1,0 +1,21 @@
+{
+  "schema": "air.app.v1",
+  "appname": "store",
+  "name": "Store",
+  "description": "A few things with prices; Buy is a stub until payments land.",
+  "lane": "vibe",
+  "entry": "src/main.tsx",
+  "theme": "atmosphere",
+  "surface": { "lite": true, "expanded": true },
+  "kit": {
+    "components": ["air", "arlan/squircle", "beautiful/foundation", "beautiful/value-pill", "fancy/basic-number-ticker"]
+  },
+  "actions": ["buy"],
+  "guestActions": ["buy"],
+  "functions": null,
+  "tests": [
+    { "id": "product-visible", "see": "Tour tee", "locked": true },
+    { "id": "buy-stub", "tap": "[data-test=buy-tee]", "see": "Checkout is coming soon", "locked": true },
+    { "id": "bag-visible", "see": "In the bag" }
+  ]
+}

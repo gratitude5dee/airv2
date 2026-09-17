@@ -1,0 +1,21 @@
+{
+  "schema": "air.app.v1",
+  "appname": "landing",
+  "name": "Landing",
+  "description": "One promise, one proof strip, one call to action.",
+  "lane": "vibe",
+  "entry": "src/main.tsx",
+  "theme": "atmosphere",
+  "surface": { "lite": true, "expanded": true },
+  "kit": {
+    "components": ["air", "arlan/swing-type", "arlan/squircle", "fancy/vertical-cut-reveal", "fancy/simple-marquee"]
+  },
+  "actions": [],
+  "guestActions": [],
+  "functions": null,
+  "tests": [
+    { "id": "hero-visible", "see": "Twelve cities, one van", "locked": true },
+    { "id": "cta-link", "tap": "[data-test=cta]", "expectHref": "https://example.com/tickets", "locked": true },
+    { "id": "proof-visible", "see": "Sold out" }
+  ]
+}

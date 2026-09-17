@@ -1,0 +1,21 @@
+{
+  "schema": "air.app.v1",
+  "appname": "page",
+  "name": "About",
+  "description": "A single page: a title card, a few sections, a few links.",
+  "lane": "vibe",
+  "entry": "src/main.tsx",
+  "theme": "atmosphere",
+  "surface": { "lite": true, "expanded": true },
+  "kit": {
+    "components": ["air", "arlan/shutter-type", "fancy/text-highlighter"]
+  },
+  "actions": [],
+  "guestActions": [],
+  "functions": null,
+  "tests": [
+    { "id": "title-visible", "see": "About the studio", "locked": true },
+    { "id": "first-link", "tap": "[data-test=link-1]", "expectHref": "https://example.com/", "locked": true },
+    { "id": "section-visible", "see": "Hours" }
+  ]
+}

@@ -1,0 +1,8 @@
+/* game-2d — tokens only; the shell supplies .panel, .row, .chip, button. */
+.stage {
+  display: block; width: 100%; aspect-ratio: 3 / 2; touch-action: manipulation;
+  border-radius: var(--radius-well); border: 1px solid var(--ring); background: var(--well-bg);
+}
+.scoreboard { justify-content: center; margin-top: 0.8rem; }
+.score { font-size: clamp(2rem, 8vw, 3rem); letter-spacing: -0.04em; line-height: 1; font-variant-numeric: tabular-nums; }
+.actions { justify-content: center; }

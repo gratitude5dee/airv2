@@ -1,0 +1,5 @@
+/* tool — tokens only; the shell supplies .item, .addrow, .row, .notice, .done. */
+.list { list-style: none; margin: 0; padding: 0; }
+.list .item { cursor: pointer; }
+.list input[type="checkbox"] { width: 1.35rem; height: 1.35rem; accent-color: var(--accent); }
+.saved { font-family: var(--font-ui); font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; }

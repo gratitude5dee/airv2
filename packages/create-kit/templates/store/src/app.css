@@ -1,0 +1,12 @@
+/* store — tokens only; the shell supplies .grid, .tile, .row, .chip, .notice. */
+.count { font-size: clamp(2.4rem, 9vw, 3.6rem); letter-spacing: -0.04em; text-align: center; line-height: 1; }
+.featured { display: block; width: min(100%, 36rem); margin-bottom: 0.9rem; }
+.featured-body { padding: 1rem 1.05rem; }
+.swatch {
+  display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover;
+  border-radius: var(--radius-well); border: 1px solid var(--ring);
+  background: linear-gradient(160deg, var(--well-bg), var(--accent));
+  margin-bottom: 0.7rem;
+}
+.tile .row, .featured-body .row { justify-content: space-between; margin-top: 0.6rem; }
+.tile button, .featured-body button { min-height: 2.75rem; }

@@ -40,7 +40,7 @@ The app knows the viewer only as owner or guest, and learns which by trying to s
 
 ## 2. Recipes
 
-Eight shapes cover almost every request. Start from the closest one and remove, never add, motion.
+Twelve shapes cover almost every request. Start from the closest one and remove, never add, motion.
 
 ### Status / thinking view
 
@@ -201,6 +201,107 @@ app.post("/api/chat", async (c) => {
 ```
 
 `model` is one of `fast | balanced | deep`, never a vendor name. The daily cap is the owner's; when the gateway returns 429 the app says "The agent is resting today." Streaming renders progressively; under reduced motion the bubble fills without the caret.
+
+### Landing funnel (`landing` template)
+
+One promise, one proof, one tap. Components: `arlan/swing-type` (the hero type, one lite motion), `fancy/vertical-cut-reveal` for the headline under it, `fancy/simple-marquee` for a strip of proof chips, `arlan/squircle` around the single CTA card. The full-surface variant may swap the hero for `arlan/rush-type` (non-lite, WebGL1) — then `useLite()` must fall back to `arlan/swing-type`, never to nothing.
+
+```tsx
+const lite = useLite();
+<main className="app">
+  <section className="panel hero" aria-label="hero">
+    {lite ? <SwingTypeCard /> : <RushTypeCard />}      {/* one hero motion */}
+    <p className="kicker">October tour</p>
+    <h1 data-test="headline"><VerticalCutReveal splitBy="words">Twelve cities, one van</VerticalCutReveal></h1>
+  </section>
+  <Squircle radius={24} smoothing={0.8} className="cta">
+    <a data-test="cta" className="cta-link" href="https://dice.fm/">Get tickets</a>
+  </Squircle>
+  <SimpleMarquee baseVelocity={1.5}><span className="chip">Sold out · Berlin</span> …</SimpleMarquee>
+</main>
+```
+
+The CTA is a real `<a href>` (the runner asserts `expectHref`), never a button that navigates in script. Under reduced motion the swing type draws its final frame and the marquee becomes a static row of chips; under lite there is one hero and no marquee velocity. No form, no counter: a funnel that asks for a name is the `tool` shape.
+
+### Product page (`store` template)
+
+A few things to look at, a price on each, one button per thing. Components: `.grid` of `.tile` from the shell, `arlan/squircle` for the featured tile, `beautiful/value-pill` for the price, `fancy/basic-number-ticker` for the bag count (the one hero motion), `fancy/simple-carousel` when the set is ≤ 8 photos.
+
+```tsx
+const { state, update } = useAirState<{ bag: string[] }>({ bag: [] });   // resource: bag (owner-writable)
+<section className="panel hero">
+  <p className="kicker">In the bag</p>
+  <NumberTicker from={0} target={state.bag.length} className="count" />
+</section>
+<section className="grid">
+  {products.map((p) => (
+    <article key={p.id} className="tile" data-test={`product-${p.id}`}>
+      <img src={p.image} alt={p.alt} loading="lazy" />
+      <h3>{p.name}</h3>
+      <ValuePill tone="accent">{p.price}</ValuePill>
+      <button data-test={`buy-${p.id}`} onClick={() => update((s) => ({ bag: [...s.bag, p.id] }))}>Add</button>
+    </article>
+  ))}
+</section>
+```
+
+Buy is a stub: it changes the bag and says "Checkout is coming soon"; payments are P2 (§13) and nothing in the app talks to a processor. Images come from the owner's media prefix only. Under reduced motion the ticker shows the final number; under lite the carousel is the grid.
+
+### 2D canvas game (`game-2d` template)
+
+One `<canvas>` sized to the panel at `devicePixelRatio`, a `requestAnimationFrame` loop that reads a `ref`, tap to act. Components: `arlan/typer` for the title line, `fancy/basic-number-ticker` for the score readout, `beautiful/value-pill` for the best score; the game itself is plain Canvas 2D and needs no catalog component. The loop is the screen's one motion.
+
+```tsx
+const { state, update, canWrite } = useAirState<{ best: number }>({ best: 0 });   // resource: best
+const [score, setScore] = useState(0);
+const [running, setRunning] = useState(false);
+useEffect(() => {
+  if (!running) return;
+  let raf = 0, last = performance.now();
+  const tick = (now: number) => { step(now - last); last = now; draw(); raf = requestAnimationFrame(tick); };
+  raf = requestAnimationFrame(tick);
+  return () => cancelAnimationFrame(raf);
+}, [running]);
+<section className="panel hero">
+  <h1><TyperText text="Skyline dash" play="in" /></h1>
+  <canvas ref={canvasRef} data-test="stage" onPointerDown={jump} aria-label="game" />
+  <div className="row"><span data-test="score"><NumberTicker from={0} target={score} /></span><ValuePill>best {state.best}</ValuePill></div>
+  <button data-test="start" onClick={() => setRunning(true)}>Play</button>
+</section>
+```
+
+The frame budget is 16ms on a phone: draw with rects and arcs, no filters, no per-frame allocations, no `getImageData`. Pause when `document.hidden`. Under reduced motion the canvas still advances (the game is the motion) but every ambient effect — parallax, screen shake, particles — is off; under lite there is one canvas and no backdrop. The high score is the owner's `useAirState` document; guests play and see the board but never write.
+
+### 3D game (`game-3d` template, `three`)
+
+A scene, a camera, a tap. This shape is not `lite`: WebGL and a renderer are the point. Components: `fancy/scramble-in` for the title, `fancy/basic-number-ticker` for the score; the scene comes from `three` once it is vendored. **`three` is not in `vendor/sbom.json` yet (MC5):** `import * as THREE from "three"` is a hard `foreign-import` finding today, so the recipe and the scaffold ship a Canvas 2D poster — a projected wireframe drawn by hand — under lite, and that poster is the whole game until the tarball lands. Keep the `three` code behind one `Scene` component so swapping the poster for the renderer is one file.
+
+```tsx
+const lite = useLite();
+const reduced = useReducedMotion();
+<section className="panel hero">
+  <h1 data-test="title"><ScrambleIn text="Orbit" autoStart /></h1>
+  {lite || reduced ? <Poster data-test="poster" /> : <Scene onScore={setScore} />}   {/* Poster: Canvas 2D still frame */}
+  <p className="kicker">Score</p>
+  <NumberTicker from={0} target={score} className="count" data-test="score" />
+  <button data-test="start" onClick={start}>Start</button>
+</section>
+```
+
+`air.json` says `surface.lite: false`; the weight (~150 KiB gz for the `three` core) fits the 1 MiB hard budget, not the 300 KiB lite budget. The `libraries/metal-fx` rule applies: under lite, reduced motion or no WebGL the app renders one complete still frame — never a black canvas, never a spinner. Pause the loop when `document.hidden`; dispose geometries on unmount; no postprocessing, no shadows, one light.
+
+### Templates
+
+Runnable scaffolds the Planner copies and edits (`templates/<id>/`: `air.json`, `src/main.tsx`, `src/app.css`, `goal.template.md`, `README.md`). Each builds with zero hard findings; every one but `game-3d` fits the lite budget. Start from the template, keep its locked tests, and change copy before structure.
+
+| Template | What it is | Kit components | Tests | Lite |
+| --- | --- | --- | --- | --- |
+| `game-2d` | A one-tap Canvas 2D runner: a canvas, a score in tenths of a second, an owner-kept best via useAirState, Play/Jump buttons. | `arlan/typer`, `beautiful/foundation`, `beautiful/value-pill`, `fancy/basic-number-ticker` | 3 (2 locked) | yes |
+| `game-3d` | A tap-timing game around a spinning cube: a Canvas 2D stand-in scene today (three is not vendored yet), a still poster under lite and reduced motion, score and status chips. | `fancy/scramble-in`, `fancy/basic-number-ticker` | 3 (2 locked) | no |
+| `landing` | A one-screen landing funnel: swing-type hero, headline, one CTA link, a strip of proof chips. | `arlan/swing-type`, `arlan/squircle`, `fancy/vertical-cut-reveal`, `fancy/simple-marquee` | 3 (2 locked) | yes |
+| `page` | A single reading page: shutter-type title card, a lede with one highlighted phrase, a few sections and a list of link rows. | `arlan/shutter-type`, `fancy/text-highlighter` | 3 (2 locked) | yes |
+| `store` | A product page: a bag counter, one featured squircle tile and a grid of tiles with a price pill and an Add button each; Buy is a stub that files nothing (payments are P2). | `arlan/squircle`, `beautiful/foundation`, `beautiful/value-pill`, `fancy/basic-number-ticker` | 3 (2 locked) | yes |
+| `tool` | An owner utility: a checklist in the owner's useAirState document with an add row, checkboxes, a clear-done chip and a count pill; guests read and are told "Guests are read-only." on a write. | `arlan/typer`, `beautiful/foundation`, `beautiful/value-pill` | 3 (2 locked) | yes |
 
 ## 3. Catalog
 

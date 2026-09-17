@@ -7,7 +7,7 @@ import path from "node:path";
 import type { ComponentSpec } from "./catalog.ts";
 import type { Meta } from "./meta.ts";
 import { BUDGETS, KIT_VERSION } from "./meta.ts";
-import { PROMPTS_SRC } from "./paths.ts";
+import { KIT_ROOT, PROMPTS_SRC } from "./paths.ts";
 import { readText } from "./fsx.ts";
 import { SOURCES } from "./sources.ts";
 import { renderEffects } from "./effects.ts";
@@ -23,6 +23,44 @@ function recipes(): string {
     .sort()
     .map((f) => readText(path.join(dir, f)).trim())
     .join("\n\n");
+}
+
+/**
+ * The six scaffolds under templates/<id>/ (goal-create-v12 §11.2): one row per
+ * template from its air.json and the first line of its README.md, so the
+ * Planner sees what each one already builds before copying it.
+ */
+function templates(): string {
+  const dir = path.join(KIT_ROOT, "templates");
+  if (!fs.existsSync(dir)) return "";
+  const ids = fs
+    .readdirSync(dir)
+    .filter((id) => fs.existsSync(path.join(dir, id, "air.json")))
+    .sort();
+  if (ids.length === 0) return "";
+  const rows = ids.map((id) => {
+    const air = JSON.parse(readText(path.join(dir, id, "air.json"))) as {
+      name?: string;
+      surface?: { lite?: boolean };
+      kit?: { components?: string[] };
+      tests?: { locked?: boolean }[];
+    };
+    const readme = path.join(dir, id, "README.md");
+    const what = fs.existsSync(readme) ? (readText(readme).trim().split("\n")[0] ?? "").trim() : "";
+    const components = (air.kit?.components ?? []).filter((c) => c !== "air").map((c) => `\`${c}\``).join(", ") || "shell only";
+    const tests = air.tests ?? [];
+    const locked = tests.filter((t) => t.locked === true).length;
+    return `| \`${id}\` | ${what} | ${components} | ${tests.length} (${locked} locked) | ${air.surface?.lite === false ? "no" : "yes"} |`;
+  });
+  return [
+    "### Templates",
+    "",
+    "Runnable scaffolds the Planner copies and edits (`templates/<id>/`: `air.json`, `src/main.tsx`, `src/app.css`, `goal.template.md`, `README.md`). Each builds with zero hard findings; every one but `game-3d` fits the lite budget. Start from the template, keep its locked tests, and change copy before structure.",
+    "",
+    "| Template | What it is | Kit components | Tests | Lite |",
+    "| --- | --- | --- | --- | --- |",
+    ...rows,
+  ].join("\n");
 }
 
 
@@ -84,7 +122,7 @@ export function buildDesign(inputs: DesignInputs): string {
     GENERATED("Design doc (goal-create-v11 §12.3)."),
     `# Air Create — Design doc (Kit ${KIT_VERSION})\n\nRead top to bottom once, then open \`ref.md\` only for the components you pick. ${inputs.metas.length} components; ${liteCount} are \`lite\`.\n`,
     readText(path.join(PROMPTS_SRC, "doctrine.md")).trim(),
-    `## 2. Recipes\n\nEight shapes cover almost every request. Start from the closest one and remove, never add, motion.\n\n${recipes()}`,
+    `## 2. Recipes\n\nTwelve shapes cover almost every request. Start from the closest one and remove, never add, motion.\n\n${recipes()}${templates() ? `\n\n${templates()}` : ""}`,
     `## 3. Catalog\n\nOne line per component: \`path\` is the reference to open, \`lite\` whether it may be used on a lite surface, \`weight\` gzipped KiB it adds (JS+CSS, own code), \`tier\` the license tier (only A ships in source), \`touch\` whether it works without hover, \`motion\` what happens under \`prefers-reduced-motion\` (static: a complete still frame; reduced: shorter; none: no motion to begin with; n/a: not animated).\n\n${catalogIndex(inputs.metas)}\n\n### Sources\n\n${sourcesTable()}`,
     renderEffects(inputs.metas),
     readText(path.join(PROMPTS_SRC, "exclusions.md")).trim(),
