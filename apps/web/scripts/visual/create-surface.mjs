@@ -181,6 +181,7 @@ function makeFixture() {
     confirmedAt: null,
     devReadyAt: null,
     finalize: null,
+    icons: 0,
   };
   const now = () => new Date().toISOString();
   const intake = () => ({
@@ -253,7 +254,15 @@ function makeFixture() {
     const url = new URL(req.url());
     const path = url.pathname;
     const method = req.method();
-    const body = method === "POST" ? (req.postDataJSON() ?? {}) : {};
+    // A multipart body (the icon upload) is not JSON; the fixture reads none of it.
+    let body = {};
+    if (method === "POST") {
+      try {
+        body = req.postDataJSON() ?? {};
+      } catch {
+        body = {};
+      }
+    }
 
     if (path === "/api/create/projects") {
       return {
@@ -320,6 +329,11 @@ function makeFixture() {
         body: { slug: APP.slug, percent: step.percent, stage: step.stage, detail: step.detail, updated_at: now() },
       };
     }
+    if (path === "/api/create/icon" && method === "POST") {
+      // Multipart from the form; the fixture only checks the field arrived.
+      fx.icons += 1;
+      return { status: 200, body: { icon_key: "apps/alice-tour/icon/" + "ab".repeat(32) + ".png", generated: false } };
+    }
     if (path === "/api/create/finalize" && method === "POST") {
       if (body.app !== APP.appname) return { status: 404, body: { error: "not found" } };
       if (typeof body.name !== "string" || body.name.trim() === "") {
@@ -328,7 +342,13 @@ function makeFixture() {
       if (typeof body.description !== "string" || body.description.trim() === "") {
         return { status: 400, body: { error: "invalid", issues: ["description"] } };
       }
-      fx.finalize = { name: body.name, description: body.description, mirror: body.mirror, store: body.store };
+      fx.finalize = {
+        name: body.name,
+        description: body.description,
+        mirror: body.mirror,
+        store: body.store,
+        icon_key: typeof body.icon_key === "string" ? body.icon_key : null,
+      };
       fx.stage = "decision_sent";
       return {
         status: 200,
@@ -468,10 +488,22 @@ async function main() {
 
     // Request publish → the finalize route files the decision (§9.3)
     await page.locator('[data-test="finalize-description"]').fill("A walking tour of the city, one stop at a time.");
+    // A 1×1 PNG stands in for the owner's icon; the upload precedes finalize (§9.2).
+    await page.locator('[data-test="finalize-icon"]').setInputFiles({
+      name: "icon.png",
+      mimeType: "image/png",
+      buffer: Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+        "base64"
+      ),
+    });
+    await expectText("icon.png · upload lands when publish is requested");
     const publish = page.getByRole("button", { name: "Request publish", exact: true });
     expectEqual(await publish.isDisabled(), false, "Request publish enabled once name and description are set");
     await publish.click();
     await expectText("decision sent");
+    expectEqual(fx.icons, 1, "icon uploaded once before finalize");
+    expectEqual(typeof fx.finalize?.icon_key, "string", "finalize carries the icon key");
     expectEqual(fx.finalize?.store, "listed", "finalize store");
     expectEqual(fx.finalize?.mirror, true, "finalize mirror");
     expectEqual(fx.stage, "decision_sent", "fixture stage after Request publish");

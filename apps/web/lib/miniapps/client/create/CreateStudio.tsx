@@ -1525,6 +1525,7 @@ function Project({
       </div>
       {tab === "plan" ? (
         <PlanPane
+          key={status.appname}
           appname={status.appname}
           intake={intake}
           busy={busy}
@@ -1535,6 +1536,7 @@ function Project({
       ) : null}
       {tab === "progress" ? (
         <ProgressPane
+          key={status.appname}
           appname={status.appname}
           intake={intake}
           log={status.build?.log ?? []}
@@ -1546,6 +1548,7 @@ function Project({
       ) : null}
       {tab === "release" ? (
         <ReleasePane
+          key={status.appname}
           appname={status.appname}
           name={status.name}
           dev={status.dev ?? null}

@@ -41,6 +41,22 @@ export async function postJson<T>(
   return data;
 }
 
+/** A multipart POST (the icon upload); same error shaping as `postJson`. */
+export async function postForm<T>(url: string, form: FormData): Promise<Reply<T>> {
+  const res = await fetch(url, { method: "POST", body: form });
+  const data = await readJson<T>(res);
+  if (!res.ok) {
+    throw new Error(
+      data.error === "upload_instead"
+        ? "two generated icons is the limit; upload one instead"
+        : (data.error ?? `upload failed (${res.status})`),
+    );
+  }
+  return data;
+}
+
+export const ICON_ROUTE = "/api/create/icon";
+
 /* ----------------------------------------------------------------- intake */
 
 /** Mirrors INTAKE_STAGES in lib/create/intake.ts (§5.1); that module reads

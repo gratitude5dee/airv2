@@ -11,6 +11,8 @@ import { useEffect, useState, type FormEvent } from "react";
 import {
   DESCRIPTION_MAX,
   FINALIZE_AVAILABLE,
+  ICON_ROUTE,
+  postForm,
   FINALIZE_ROUTE,
   NAME_MAX,
   expiryCopy,
@@ -48,12 +50,19 @@ export function ReleasePane({
   onChanged,
 }: ReleasePaneProps) {
   // The release reply is the freshest word on the dev channel; the status
-  // poll catches up on its own cadence.
+  // poll catches up on its own cadence and wins once it lands, including a
+  // null after a revoke or an expiry.
   const [dev, setDev] = useState<DevRelease | null>(statusDev);
   useEffect(() => {
-    if (statusDev) setDev(statusDev);
+    setDev(statusDev);
   }, [statusDev]);
+  // The plan's name is the default answer; a rename from the status wins over
+  // an untouched field, never over what the owner typed here.
   const [name, setName] = useState(initialName);
+  const [nameTouched, setNameTouched] = useState(false);
+  useEffect(() => {
+    if (!nameTouched) setName(initialName);
+  }, [initialName, nameTouched]);
   const [description, setDescription] = useState("");
   const [icon, setIcon] = useState<File | null>(null);
   const [mirror, setMirror] = useState(true);
@@ -86,13 +95,24 @@ export function ReleasePane({
     event.preventDefault();
     if (blocked) return;
     run(async () => {
+      // §9.2: the icon goes up first; finalize then carries its key.
+      let iconKey: string | null = null;
+      if (icon) {
+        const form = new FormData();
+        form.set("appname", appname);
+        form.set("icon", icon, icon.name);
+        const uploaded = await postForm<{ icon_key?: string }>(ICON_ROUTE, form);
+        iconKey = uploaded.icon_key ?? null;
+      }
       await postJson(FINALIZE_ROUTE, {
         app: appname,
         name: name.trim(),
         description: description.trim(),
+        ...(iconKey ? { icon_key: iconKey } : {}),
         mirror,
         store,
       });
+      setIcon(null);
       await onChanged();
     });
   }
@@ -166,7 +186,10 @@ export function ReleasePane({
             data-test="finalize-name"
             maxLength={NAME_MAX}
             value={name}
-            onChange={(event) => setName(event.currentTarget.value)}
+            onChange={(event) => {
+              setNameTouched(true);
+              setName(event.currentTarget.value);
+            }}
           />
         </label>
         <label className="flex flex-col gap-1">
@@ -187,6 +210,7 @@ export function ReleasePane({
           <input
             className="min-h-[44px] text-[12px]"
             type="file"
+            data-test="finalize-icon"
             accept="image/png,image/jpeg,image/webp"
             onChange={(event) =>
               setIcon(event.currentTarget.files?.[0] ?? null)
