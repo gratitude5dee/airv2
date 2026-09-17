@@ -1,26 +1,49 @@
 #!/usr/bin/env bash
-# air-create — Vibe + Drop CLI for the create-miniapp skill (V11 §8, §9.5, §11).
+# air-create — Vibe + Drop CLI for the create-miniapp skill (V11 §8, §9.5,
+# §11; V12 §8.3, §8.4, §11.1).
 #
 #   air-create new <appname> [--lane vibe|drop|import] [--title <t>]
+#   air-create plan <appname> [--deliver] [--answers <file>]
+#   air-create confirm <appname>
 #   air-create build <appname>
 #   air-create qa <appname>
+#   air-create test <appname> [--guest-url <url>]
+#   air-create release <appname> dev [--renew|--revoke]
 #   air-create status <appname|slug>
 #   air-create drop <file.html|file.zip|dir> [--name <app-name>] [--title <t>]
+#   air-create finalize <appname> --name <n> --description <d>
+#                       [--icon <path>|--generate-icon] [--no-mirror] [--unlisted]
 #   air-create publish <app-name> [--title <t>]
+#   air-create fork <old> <new>
 #   air-create functions <appname> [--egress <host> …] [--cap <usd>] [--db] [--kv]
 #
 # new     scaffolds ~/.hermes/create/<appname>/ (air.json, create.plan.md,
 #         src/main.tsx, public/) and records it in ~/.hermes/create/.active.
+# plan    posts the intake event plan_written; with --deliver the control
+#         plane first attaches plan.md to the owner's thread (the plan is
+#         never pasted into chat).
+# confirm checks goal.md and air.json.tests[] (a JSON array) and posts the
+#         intake event confirm; the stage becomes confirmed.
 # build   asks the control plane to compile the workspace into a DRAFT
 #         version; the Build Service pulls the tree, resolves the Kit, lints
 #         and validates the bundle. A hard finding produces no version.
 # qa      drives this Box's agent-browser over the draft (3 viewports ×
 #         reduced-motion on/off), writes screenshots to .build/qa/ and posts
 #         a content-free report; the control plane never runs a browser.
-# status  shows draft/live versions, the last build, qa_score and budget.
+# test    runs the QA matrix plus air.json.tests[] (390×760, reduced motion)
+#         in this Box's browser and posts the report with
+#         tests {total, passed, failed_ids}; exit 1 while a test fails.
+# release promotes the draft to the dev channel (link.wzrd.tech/<u>/<a>);
+#         the control plane checks CR22 and answers 409 not_ready otherwise.
+# status  shows draft/dev/live versions, the last build, qa_score, tests and budget.
 # drop    stages a DRAFT version from an HTML file, zip, or folder.
+# finalize
+#         sends name, description and icon (uploaded or generated) and files
+#         the production decision; exit 3 when the control plane lacks the route.
 # publish files a Needs-you decision; the OWNER approves it on their phone.
 #         Nothing here ever flips an app live.
+# fork    copies ~/.hermes/create/<old> to <new> (without .build/), rewrites
+#         appname in air.json and makes <new> the active project.
 # functions
 #         stages the backend declaration (egress hosts, daily inference cap,
 #         database / kv) and files the miniapp_backend decision; with no
@@ -31,7 +54,7 @@
 set -euo pipefail
 
 usage() {
-  sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//' >&2
+  sed -n '2,50p' "$0" | sed 's/^# \{0,1\}//' >&2
   exit 2
 }
 
@@ -411,13 +434,269 @@ cmd_functions() {
   finish "$(api POST /api/create/functions "$body")"
 }
 
+# --- V12: the /create intake loop (§8.1, §8.3, §8.4, §11.1) -----------------
+
+# Split an `api` response into STATUS and BODY (globals, one call at a time).
+split_response() {
+  STATUS="${1##*$'\n'}"
+  BODY="${1%$'\n'*}"
+}
+
+intake_event() {
+  # intake_event <appname> <event> — POST /api/create/intake, state only.
+  api POST /api/create/intake "{\"appname\":$(json_string "$1"),\"event\":$(json_string "$2")}"
+}
+
+cmd_plan() {
+  local name="" deliver=0 answers=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --deliver) deliver=1; shift ;;
+      --answers) answers="$2"; shift 2 ;;
+      -*) usage ;;
+      *) name="$1"; shift ;;
+    esac
+  done
+  name="$(resolve_appname "$name")"
+  local dir="$CREATE_ROOT/$name"
+  [ -f "$dir/air.json" ] || { echo "air-create: $dir/air.json missing — run air-create new $name first" >&2; exit 3; }
+  [ -s "$dir/plan.md" ] || { echo "air-create: $dir/plan.md missing or empty — write it from the plan skeleton first" >&2; exit 3; }
+  [ -z "$answers" ] || [ -f "$answers" ] || { echo "air-create: --answers file not found: $answers" >&2; exit 3; }
+  set_active "$name"
+  local delivered="null"
+  if [ "$deliver" -eq 1 ]; then
+    # The control plane reads the file out of this Box (readComputeFile) and
+    # attaches it to the owner's thread; the bytes never go through chat.
+    split_response "$(api POST /api/create/plan/deliver \
+      "{\"appname\":$(json_string "$name"),\"path\":$(json_string "~/.hermes/create/$name/plan.md")}")"
+    case "$STATUS" in 2*) delivered="$BODY" ;; *) printf '%s\n' "$BODY"; return 1 ;; esac
+  fi
+  split_response "$(intake_event "$name" plan_written)"
+  case "$STATUS" in
+    2*) ;;
+    # Already plan_sent (a redelivery): the attachment went out, the stage stands.
+    409) [ "$deliver" -eq 1 ] || { printf '%s\n' "$BODY"; return 1; } ;;
+    *) printf '%s\n' "$BODY"; return 1 ;;
+  esac
+  printf '{"ok":true,"appname":%s,"delivered":%s,"intake":%s}\n' "$(json_string "$name")" "$delivered" "${BODY:-null}"
+}
+
+# air.json.tests must be a JSON array of {id, …} objects (§8.4) before the
+# Builder starts; prints "<total> <locked>" or fails with a one-line reason.
+check_tests() {
+  python3 - "$1" <<'EOF'
+import json, re, sys
+path = sys.argv[1]
+try:
+    manifest = json.load(open(path))
+except Exception as exc:
+    sys.stderr.write(f"air-create: {path} is not valid JSON ({exc.__class__.__name__})\n"); sys.exit(3)
+tests = manifest.get("tests") if isinstance(manifest, dict) else None
+if tests is None:
+    sys.stderr.write(f"air-create: {path} has no \"tests\" — copy goal.md ## Tests into air.json.tests\n"); sys.exit(3)
+if not isinstance(tests, list):
+    sys.stderr.write(f"air-create: air.json.tests must be a JSON array, got {type(tests).__name__}\n"); sys.exit(3)
+ids = set()
+for i, t in enumerate(tests):
+    if not isinstance(t, dict) or not isinstance(t.get("id"), str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", t["id"]):
+        sys.stderr.write(f"air-create: air.json.tests[{i}] needs a string id (lowercase letters, digits, hyphens)\n"); sys.exit(3)
+    if t["id"] in ids:
+        sys.stderr.write(f"air-create: air.json.tests has a duplicate id: {t['id']}\n"); sys.exit(3)
+    ids.add(t["id"])
+print(len(tests), sum(1 for t in tests if t.get("locked") is True))
+EOF
+}
+
+cmd_confirm() {
+  local name
+  name="$(resolve_appname "${1:-}")"
+  local dir="$CREATE_ROOT/$name"
+  [ -f "$dir/air.json" ] || { echo "air-create: $dir/air.json missing" >&2; exit 3; }
+  [ -s "$dir/goal.md" ] || { echo "air-create: $dir/goal.md missing or empty — write it from the goal skeleton first" >&2; exit 3; }
+  local counts total locked
+  counts="$(check_tests "$dir/air.json")" || exit 3
+  total="${counts%% *}"
+  locked="${counts##* }"
+  set_active "$name"
+  split_response "$(intake_event "$name" confirm)"
+  case "$STATUS" in 2*) ;; *) printf '%s\n' "$BODY"; return 1 ;; esac
+  printf '{"ok":true,"appname":%s,"tests_total":%s,"tests_locked":%s,"intake":%s}\n' \
+    "$(json_string "$name")" "$total" "$locked" "${BODY:-null}"
+}
+
+cmd_test() {
+  local name="" guest_url=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --guest-url) guest_url="$2"; shift 2 ;;
+      -*) usage ;;
+      *) name="$1"; shift ;;
+    esac
+  done
+  name="$(resolve_appname "$name")"
+  local dir="$CREATE_ROOT/$name"
+  [ -f "$dir/air.json" ] || { echo "air-create: $dir/air.json missing" >&2; exit 3; }
+  check_tests "$dir/air.json" >/dev/null || exit 3
+  command -v agent-browser >/dev/null 2>&1 || {
+    echo "air-create: agent-browser is not installed in this Box" >&2
+    exit 1
+  }
+  split_response "$(api POST /api/create/preview-link "{\"appname\":$(json_string "$name")}")"
+  case "$STATUS" in 2*) ;; *) printf '%s\n' "$BODY"; return 1 ;; esac
+  local preview version
+  preview="$(json_get "$BODY" preview_url)"
+  version="$(json_get "$BODY" version)"
+  [ -n "$preview" ] && [ -n "$version" ] || { echo "air-create: no draft version to test — run air-create build first" >&2; exit 1; }
+
+  local out_dir="$dir/.build/tests"
+  rm -rf "$out_dir"
+  mkdir -p "$out_dir"
+  local -a extra=()
+  [ -z "$guest_url" ] || extra=(--guest-url "$guest_url")
+  local output
+  # Same runner as qa, plus the tests[] pass; the preview token goes to the browser and nowhere else.
+  output="$(python3 "$SCRIPT_DIR/air-qa.py" "$preview" "$version" "$out_dir" --session "air-test-$name" \
+    --tests "$dir/air.json" ${extra[@]+"${extra[@]}"})" || {
+    echo "air-create: test run produced no passes" >&2
+    exit 1
+  }
+  printf '%s\n' "$output" > "$out_dir/report.json"
+  # The QA report schema is strict: `tests` rides beside it, not inside it.
+  local report tests
+  report="$(python3 -c 'import json,sys; r=json.loads(sys.argv[1]); r.pop("tests", None); print(json.dumps(r))' "$output")"
+  tests="$(json_get "$output" tests)"
+  [ -n "$tests" ] || tests='{"total":0,"passed":0,"failed_ids":[]}'
+  split_response "$(api POST /api/create/qa "{\"appname\":$(json_string "$name"),\"report\":$report,\"tests\":$tests}")"
+  python3 -c '
+import json, sys
+body, tests = sys.argv[1], json.loads(sys.argv[2])
+try:
+    out = json.loads(body)
+except Exception:
+    out = {"raw": body}
+if isinstance(out, dict) and "tests" not in out:
+    out["tests"] = tests
+print(json.dumps(out))
+' "$BODY" "$tests"
+  case "$STATUS" in 2*) ;; *) return 1 ;; esac
+  [ "$(json_get "$tests" passed)" = "$(json_get "$tests" total)" ]
+}
+
+cmd_release() {
+  local name="" channel="" action="promote"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --renew) action="renew"; shift ;;
+      --revoke) action="revoke"; shift ;;
+      -*) usage ;;
+      *) if [ -z "$name" ]; then name="$1"; else channel="$1"; fi; shift ;;
+    esac
+  done
+  [ -n "$name" ] || usage
+  [ "$channel" = "dev" ] || { echo "air-create: release takes the channel 'dev' (production is the owner's decision)" >&2; exit 3; }
+  check_appname "$name"
+  split_response "$(api POST /api/create/release \
+    "{\"appname\":$(json_string "$name"),\"channel\":\"dev\",\"action\":$(json_string "$action")}")"
+  # The body carries { version, url, expires_at }; the url is what the skill repeats to the owner.
+  printf '%s\n' "$BODY"
+  case "$STATUS" in 2*) return 0 ;; *) return 1 ;; esac
+}
+
+cmd_finalize() {
+  local name="" title="" desc="" icon="" generate=0 mirror=true store="listed"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --name) title="$2"; shift 2 ;;
+      --description) desc="$2"; shift 2 ;;
+      --icon) icon="$2"; shift 2 ;;
+      --generate-icon) generate=1; shift ;;
+      --no-mirror) mirror=false; shift ;;
+      --mirror) mirror=true; shift ;;
+      --unlisted) store="unlisted"; shift ;;
+      --listed) store="listed"; shift ;;
+      -*) usage ;;
+      *) name="$1"; shift ;;
+    esac
+  done
+  name="$(resolve_appname "$name")"
+  [ -n "$title" ] && [ -n "$desc" ] || { echo "air-create: finalize needs --name and --description" >&2; exit 3; }
+  [ "${#title}" -le 60 ] || { echo "air-create: --name is longer than 60 characters" >&2; exit 3; }
+  [ "${#desc}" -le 160 ] || { echo "air-create: --description is longer than 160 characters" >&2; exit 3; }
+  [ -z "$icon" ] || [ "$generate" -eq 0 ] || { echo "air-create: pass --icon or --generate-icon, not both" >&2; exit 3; }
+  local icon_key=""
+  if [ -n "$icon" ] || [ "$generate" -eq 1 ]; then
+    local icon_body
+    if [ -n "$icon" ]; then
+      icon="$(cd "$(dirname "$icon")" && pwd)/$(basename "$icon")"
+      [ -f "$icon" ] || { echo "air-create: no such icon file: $icon" >&2; exit 1; }
+      case "$icon" in
+        *.png|*.jpg|*.jpeg|*.webp|*.heic) ;;
+        *) echo "air-create: --icon takes a png, jpg, webp or heic image" >&2; exit 3 ;;
+      esac
+      icon_body="{\"appname\":$(json_string "$name"),\"path\":$(json_string "$icon")}"
+    else
+      icon_body="{\"appname\":$(json_string "$name"),\"generate\":true}"
+    fi
+    split_response "$(api POST /api/create/icon "$icon_body")"
+    case "$STATUS" in
+      2*) ;;
+      404) echo "finalize is not available on this control plane yet" >&2; exit 3 ;;
+      *) printf '%s\n' "$BODY"; return 1 ;;
+    esac
+    icon_key="$(json_get "$BODY" icon_key)"
+    [ -n "$icon_key" ] || { printf '%s\n' "$BODY"; echo "air-create: the icon route returned no icon_key" >&2; return 1; }
+  fi
+  local body
+  body="{\"app\":$(json_string "$name"),\"name\":$(json_string "$title"),\"description\":$(json_string "$desc")"
+  [ -n "$icon_key" ] && body="$body,\"icon_key\":$(json_string "$icon_key")"
+  body="$body,\"mirror\":$mirror,\"store\":$(json_string "$store")}"
+  split_response "$(api POST /api/create/finalize "$body")"
+  case "$STATUS" in
+    404) echo "finalize is not available on this control plane yet" >&2; exit 3 ;;
+  esac
+  printf '%s\n' "$BODY"
+  case "$STATUS" in 2*) return 0 ;; *) return 1 ;; esac
+}
+
+cmd_fork() {
+  local old="${1:-}" new="${2:-}"
+  [ -n "$old" ] && [ -n "$new" ] || usage
+  check_appname "$old"
+  check_appname "$new"
+  local src="$CREATE_ROOT/$old" dst="$CREATE_ROOT/$new"
+  [ -f "$src/air.json" ] || { echo "air-create: $src/air.json missing — nothing to fork" >&2; exit 3; }
+  [ ! -e "$dst" ] || { echo "air-create: $dst already exists; pick another name" >&2; exit 3; }
+  python3 - "$src" "$dst" "$new" <<'EOF'
+import json, shutil, sys
+src, dst, new = sys.argv[1:4]
+# .build/ holds the old app's build reply, QA screenshots and tests; a fork starts clean.
+shutil.copytree(src, dst, ignore=shutil.ignore_patterns(".build"), symlinks=False)
+path = f"{dst}/air.json"
+manifest = json.load(open(path))
+manifest["appname"] = new
+with open(path, "w") as f:
+    json.dump(manifest, f, indent=2)
+    f.write("\n")
+EOF
+  mkdir -p "$dst/.build"
+  set_active "$new"
+  printf '{"ok":true,"appname":%s,"from":%s,"workspace":%s,"active":true}\n' \
+    "$(json_string "$new")" "$(json_string "$old")" "$(json_string "$dst")"
+}
+
 case "${1:-}" in
   new) shift; cmd_new "$@" ;;
+  plan) shift; cmd_plan "$@" ;;
+  confirm) shift; cmd_confirm "$@" ;;
   build) shift; cmd_build "$@" ;;
   qa) shift; cmd_qa "$@" ;;
+  test) shift; cmd_test "$@" ;;
+  release) shift; cmd_release "$@" ;;
   drop) shift; cmd_drop "$@" ;;
   status) shift; cmd_status "$@" ;;
+  finalize) shift; cmd_finalize "$@" ;;
   publish) shift; cmd_publish "$@" ;;
+  fork) shift; cmd_fork "$@" ;;
   functions) shift; cmd_functions "$@" ;;
   *) usage ;;
 esac

@@ -16,12 +16,13 @@ metadata:
 
 ## 1. When this skill owns the turn
 
-The owner wants an app or page to exist at `mini.wzrd.tech/<username>/<app-name>`: **build / make / create / host this / put this up / make this live / share this as a page / turn this into an app / give me a link for this / publish**. Two lanes, one result — a DRAFT the owner previews on their phone and makes live themselves:
+The owner wants an app or page to exist at `mini.wzrd.tech/<username>/<app-name>`: **build / make / create / host this / put this up / make this live / share this as a page / turn this into an app / give me a link for this / publish**. Three ways in, one result — a version the owner previews on their phone and makes live themselves:
 
-- **Vibe** — the owner describes what they want. You plan, write the source, build, run QA, iterate. Read §4 (commands) and §6 (the loop).
+- **`/create`** (V12) — the turn opens with a marker line `[create-intake <appname> stage=<stage> questions_max=<n>]` that the control plane prepends. You run the intake loop in §6: ask (≤ n questions) → plan → **yes** → build → qa → test → dev link → **ship it** → the owner's decision.
+- **Vibe** without a marker — the owner describes what they want in an ordinary turn. You plan, write the source, build, run QA, iterate (§6a).
 - **Drop** — the owner sends an `.html`, a `.zip`, or names a folder. Attachments sit at `~/.hermes/inbox/<ts>-<name>`. Read §5.
 
-Not for **open my app** (`open-miniapp` shows the card). Not for images or video — decline and offer a public media link through `/api/media/publish` (the storefront-commerce skill shows the call). Import from a repo is a later version: say you can build from a description or host a file today.
+Not for **open my app** (`open-miniapp` shows the card). Not for images or video — decline and offer a public media link through `/api/media/publish` (the storefront-commerce skill shows the call). A GitHub URL in a `/create` message skips the questions: the plan is the repo scan's verdict; "yes" runs Import or asks to install the GitHub App.
 
 Run every command with the `terminal` tool (never `execute_code`). `air-create` is on `PATH`; it also lives at `~/.hermes/skills/create-miniapp/scripts/air-create`.
 
@@ -35,10 +36,11 @@ A mini-app is one static bundle behind the Air CSP ceiling. The Build Service en
 - Caps: 400 files, 24 MiB workspace, 512 KiB per source file, 2 MiB per `public/` asset (png/jpg/webp/gif/woff2/mp3/mp4; no svg in v1).
 - Messages viewport: `<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">`, one column ≤ 36rem, `min-height: 100svh`, `env(safe-area-inset-*)` padding, ≥ 2.75rem (44px) touch targets, 16px inputs, a complete still frame under `prefers-reduced-motion`.
 - Lite (`surface.lite: true`, the default): no `backdrop-filter`, no fixed backgrounds, DPR 1, no WebGL, no component whose catalog line says `lite=false`. Compact card 390×360 first, expanded 390×760 second.
+- Every element a test touches carries a `data-test="<id>"` hook (§4 Tests); tests select by those hooks, never by text or class.
 
 ## 3. Where the truth is
 
-Read `~/.hermes/skills/create-miniapp/DESIGN.md` before choosing anything — it is the Kit's design doc, synced from the repo: doctrine, eight recipes, the catalog with `weight`, `lite`, `motion` and `tier` per component. Import only what it lists:
+Read `~/.hermes/skills/create-miniapp/DESIGN.md` before choosing anything — it is the Kit's design doc, synced from the repo: doctrine, recipes, the six templates (`landing`, `store`, `game-2d`, `game-3d`, `tool`, `page`), the catalog with `weight`, `lite`, `motion` and `tier` per component. Import only what it lists:
 
 ```tsx
 import { useAirState, useLite, useReducedMotion, cn } from "@kit/air";
@@ -53,26 +55,35 @@ Use tokens (`var(--canvas)`, `var(--ink)`, `var(--accent)` …) and the shell cl
 
 ```bash
 air-create new <appname> [--lane vibe|drop|import] [--title "<name>"]   # scaffold ~/.hermes/create/<appname>/
-air-create build <appname>        # Build Service → draft version + preview; prints findings
-air-create qa <appname>           # Preview QA in this Box's browser; posts qa_score
-air-create status <appname|slug>  # draft/live versions, findings, build log, qa_score, budget
+air-create plan <appname> [--deliver]     # posts plan_written; --deliver attaches plan.md to the owner's thread
+air-create confirm <appname>              # checks goal.md + air.json.tests[] (a JSON array), posts confirm → stage confirmed
+air-create build <appname>                # Build Service → draft version + preview; prints findings
+air-create qa <appname>                   # Preview QA in this Box's browser; posts qa_score
+air-create test <appname>                 # runs air.json.tests[] in this Box's browser at 390×760; posts {total, passed, failed_ids}
+air-create release <appname> dev          # promotes the draft to the dev channel (CR22 checked server-side); prints the url
+air-create status <appname|slug>          # draft/dev/live versions, findings, build log, qa_score, tests, budget
 air-create drop <path> [--name <appname>] [--title "<name>"]
-air-create publish <appname> [--title "<name>"]   # files the owner's decision; never flips live
+air-create finalize <appname> --name "<n>" --description "<d>" [--icon <path>|--generate-icon] [--no-mirror] [--unlisted]
+air-create publish <appname> [--title "<name>"]   # V11 path: files the owner's decision without finalize answers
+air-create fork <old> <new>               # copies the workspace (without .build/) to a new appname and makes it active
 air-create functions <appname> [--egress <host> …] [--cap <usd>] [--db] [--kv]   # stages the backend; the owner approves
 ```
 
-Each is `curl` to `/api/create/*` on the control plane with this Box's gateway token; nothing here talks to storage, Cloudflare or npm.
+Each is `curl` to `/api/create/*` on the control plane with this Box's gateway token; nothing here talks to storage, Cloudflare or npm. `finalize` printing "finalize is not available on this control plane yet" (exit 3) means the V12 route is not deployed: fall back to `publish`.
 
-`new` writes the workspace and records the project in `~/.hermes/create/.active`. The **active project** is what "make it bigger", "change the colour", "build it" refer to when the owner does not name one — read `.active` first, ask only if it is empty. Chat sessions named `air-create-<appname>` are already scoped to that app.
+`new` writes the workspace and records the project in `~/.hermes/create/.active`. The **active project** is what "make it bigger", "change the colour", "build it" refer to when the owner does not name one — read `.active` first, ask only if it is empty. Chat sessions named `air-create-<appname>` are already scoped to that app. A `/create` intake's workspace already exists when the marker arrives; run `new` only if its `air.json` is missing.
 
 ```text
 ~/.hermes/create/<appname>/
-  air.json          manifest, schema air.app.v1 (below)
-  create.plan.md    your plan; rewrite it when the plan changes; it never leaves the Box
+  air.json          manifest, schema air.app.v1 (below); tests[] is the §4 Tests array
+  intake/           prompt.md, attachments.json (written for you); questions.md, answers.v<n>.md, finalize.json (yours)
+  plan.md           owner-facing plan (Appendix A skeleton, ≤ 60 lines); revisions also saved as plan.v<n>.md
+  goal.md           Builder brief (Appendix B skeleton, ≤ 200 lines); append to ## Build log only
+  create.plan.md    V11 scratch plan for turns without a marker; it never leaves the Box
   src/main.tsx      entry (air.json `entry`); Kit imports allowed
   src/*.css         optional; bundled into app.css
   public/           static assets
-  .build/           last build reply (build.json) and QA output (qa/report.json, qa/*.png)
+  .build/           last build reply (build.json), QA output (qa/report.json, qa/*.png), tests (tests/report.json)
 ```
 
 `air.json` (every field but `schema`, `appname`, `name` has a default):
@@ -84,6 +95,7 @@ Each is `curl` to `/api/create/*` on the control plane with this Box's gateway t
   "surface": { "lite": true, "expanded": true },
   "kit": { "components": ["fancy/basic-number-ticker", "air"] },
   "actions": ["rsvp"], "guestActions": ["rsvp"], "functions": null,
+  "tests": [ { "id": "hero-visible", "see": "October tour", "locked": true } ],
   "visibility": "unlisted", "access": "single" }
 ```
 
@@ -99,11 +111,25 @@ Each is `curl` to `/api/create/*` on the control plane with this Box's gateway t
   "sizes": { "js": 48211, "css": 9020, "total": 61233, "js_gzip": 15800 }, "log": ["…"] }
 ```
 
-`ok: false` (or a non-2xx exit) means **no version was produced**: read `findings` and fix the source. `severity: "hard"` findings block; soft ones ship but name something that will not work under the policy.
+`ok: false` (or a non-2xx exit) means **no version was produced**: read `findings` and fix the source. `severity: "hard"` findings block; soft ones ship but name something that will not work under the policy. `tests.locked-removed` is a hard finding: a `locked: true` test id left `air.json.tests` — put it back; only the Planner (a re-plan) may drop one.
 
 `qa` needs a build first. It drives this Box's browser at the preview link through 390×360 / 390×760 / 390×844 with reduced motion off and on, saves screenshots to `.build/qa/`, and posts a content-free report (LCP is measured unthrottled in this Box, so treat a `lcp` failure as serious). The reply is `{ "qa_score": 0–100, "failed": ["contrast", …] }`. Rule ids: `page-errors`, `console-errors`, `csp-violations`, `off-origin-requests` (floors the score at 0), `contrast` (< 4.5:1), `touch-targets` (< 44px), `horizontal-overflow`, `lcp` (> 2.5 s), `incomplete-matrix`.
 
-`status` on a name returns `status` (`draft`|`published`), `draft`/`live`, `build` (state, log tail, findings), `qa_score`, `budget` (`budget_usd`, `spent_usd`, `remaining_usd`) and `preview_url`.
+**Tests** (`air.json.tests[]`, run by `test` after the QA matrix, each at 390×760 with reduced motion on). One object per test, `id` required; verbs run in this order: `viewport` → open → `type` → `tap` → `wait` → `changed` → `see` → `missing` → `expectHref`:
+
+```json
+{ "id": "hero-visible", "see": "October tour", "locked": true }
+{ "id": "tickets-link", "tap": "[data-test=tickets]", "expectHref": "https://dice.fm/", "locked": true }
+{ "id": "countdown-ticks", "wait": 1100, "changed": "[data-test=countdown]" }
+{ "id": "rsvp-saves", "type": ["[data-test=name]", "Ana"], "tap": "[data-test=rsvp]", "see": "Ana", "role": "owner" }
+{ "id": "guest-readonly", "role": "guest", "missing": "[data-test=rsvp]" }
+```
+
+`see` visible text · `missing` selector absent or hidden · `tap` click · `type` `[selector, text]` · `wait` ms (≤ 10 000) · `changed` the selector's text differs from before the wait · `expectHref` the tapped link's `href` starts with the value (the link is not followed) · `viewport` `"390x760"` · `role` `owner` (the preview link) or `guest` (a guest grant; without one the test is reported failed, not skipped). The reply is `{ "tests": { "total": n, "passed": m, "failed_ids": [...] } }` — ids only, never page text. The dev release needs `passed == total`. Write ≥ 2 `locked: true` tests in the plan turn; the Builder may add tests, never remove locked ones.
+
+`release <appname> dev` asks the control plane to point `link.wzrd.tech/<username>/<appname>` at the draft. It answers `{ "version", "url", "expires_at" }` or `409 { "error": "not_ready", "reasons": [...] }` (a hard finding, `qa_score` < 70, a failing test): fix what the reasons name, rebuild, rerun `qa` and `test`, then release again.
+
+`status` on a name returns `status` (`draft`|`published`), `draft`/`dev`/`live`, `build` (state, log tail, findings), `qa_score`, `tests`, `intake_stage`, `budget` (`budget_usd`, `spent_usd`, `remaining_usd`) and `preview_url`.
 
 ## 5. Drop
 
@@ -115,7 +141,21 @@ air-create drop ~/.hermes/inbox/1712345678-index.html --name promo --title "Tour
 - A folder is zipped for you (`python3 -m zipfile`); `index.html` must be at its root. A `.zip` is sent as-is. One `.html` becomes `index.html`.
 - The reply has the same shape as `build`; report it the same way — `[card: app alice-promo]` for the reply above. Do not edit the owner's file to silence a finding unless they ask.
 
-## 6. The loop (Vibe)
+## 6. The `/create` loop (V12)
+
+The marker line names the intake: `[create-intake tour26 stage=asking questions_max=3]`. The owner never sees it. `<appname>` is the workspace; `stage` is where the intake is; `questions_max` caps the questions. Only the owner advances an intake — anyone else already got the owner-only line before you were called. Stage by stage:
+
+1. **`stage=asking`** — read `intake/prompt.md`, `intake/attachments.json`, DESIGN.md and the template scaffolds; pick the template. Write **zero to `questions_max`** questions to `intake/questions.md`, one per slot in this order and only about what the prompt does not settle: template (when two fit), content (the one fact the app cannot ship without), taste (one binary or "send a screenshot"). Reply with them in ONE message, numbered, ending exactly: `reply in one message; say **you pick** for any`. Nothing else in that message — no plan, no build. Zero questions → go straight to step 2 in the same turn.
+2. **Owner reply** (answers, "you pick", "skip") — write `intake/answers.v<n>.md`; unanswered slots take the template's defaults. Write `plan.md` from the Appendix A skeleton (≤ 60 lines: name, dev and production URLs, template + theme, screens, copy, attachments, Kit ids, exclusions, the closing "Reply **yes** and I'll build this…" line). Run `air-create plan <appname> --deliver`. The control plane attaches the file to the owner's thread — **never paste the plan into chat**. Reply with three lines: `<name> → link.wzrd.tech/<u>/<a>`, template + theme, `reply **yes** to build, or tell me what to change`. A second question round is allowed only when an answer contradicts the prompt; a third never.
+3. **Edits** ("make it dark", "call it tour26") — rewrite `plan.md` (keep the previous as `plan.v<n>.md`), `air-create plan <appname> --deliver` again, one line on what changed. After five revisions say "let's finish this in the Create surface" and stop revising. "cancel" ends the intake: one line, no build.
+4. **"yes" / "go" / "build it"** — write `goal.md` from the Appendix B skeleton (frontmatter `schema: air.goal.v1`, screens with Kit ids, `useAirState` resources and `data-test` hooks, actions, functions, `## Tests` with ≥ 2 `locked: true` tests, acceptance, out of scope, an empty `## Build log`). Copy the `## Tests` array verbatim into `air.json.tests`. Run `air-create confirm <appname>` — it refuses when `tests` is missing or not an array. Then, in the same turn and without narrating (§7): edit `src/`, `air-create build`, fix hard findings, `air-create qa`, `air-create test`, fix what fails, repeat (at most six build turns), then `air-create release <appname> dev`. Say `dev build is live: <url>` **only after `release` has returned the url**, then: `share it with anyone. say **ship it** when you want it in production.` Nothing else — the card already shows the state.
+5. **More edits after dev** — edit → build → qa → test → `release <appname> dev`; the dev pointer moves on success; one line.
+6. **"ship it" / "finalize" / "production"** — ask in one message: `before it ships: name? one-line description? icon — send an image or say **make one**.` ("keep it" accepts the plan's name and description; "unlisted" keeps it out of the App Store; "no mirror" skips the source mirror.) Write the answers to `intake/finalize.json`, then `air-create finalize <appname> --name "…" --description "…" [--icon ~/.hermes/inbox/<file> | --generate-icon] [--no-mirror] [--unlisted]`. Reply `ready for your approval — tap Needs-you to put it on mini.wzrd.tech/<u>/<a>.` Never say `published`, live, or "on mini" before the owner's decision resolves; `air-create status` shows `"status": "published"` when it has.
+7. **"stop"** at any stage — stop; leave the stage as it is. **"try again"** after a failure — rebuild from the last plan.
+
+Rename after `confirmed` is a new project: `air-create fork <old> <new>`, then continue the loop on `<new>`.
+
+## 6a. The loop without a marker (Vibe)
 
 1. **Plan** (first turn): `air-create new <appname> --title "…"`, then write `create.plan.md` — the recipe you start from, the components you picked (with their `weight`/`lite` from the catalog), the screens, what the owner can do vs. what a guest can do. Five lines is enough.
 2. **Build**: edit `src/`, then `air-create build <appname>`. Read `findings` before anything else.
@@ -129,9 +169,17 @@ Countdown is staged as a draft — tap the card to preview it, then say "publish
 
 If a card went out in the last two minutes it is edited in place; do not send a second one. When the owner asks for a change, edit → build → (qa) → one line; the preview on their surface reloads by itself.
 
-## 7. Publish — the owner's decision
+## 7. Progress
 
-When the owner says "publish", "ship it", "make it live":
+While an intake builds, the control plane owns the progress card: it reads the build, QA and test state itself and updates the caption `<name> · <stage> · <percent>%` every few seconds. So:
+
+- Never narrate progress in text while the card is live — no "building…", "running QA", "almost there", no percentages, no stage names. Work silently; the card and the typing indicator carry the state.
+- One message per stage transition, and only the ones §6 lists: the questions, the three plan lines, `dev build is live: <url>`, the finalize question, `ready for your approval`.
+- Findings and failing test ids go into the source, not the chat, until the loop ends. When it ends badly (three failed builds, a `429` `create_budget`, a loop that does not converge in six turns) say one line: `I'm stuck on <first finding rule or failing test id>. open the Create surface to look, or say **try again**.` and stop until the owner speaks.
+
+## 8. Publish — the owner's decision
+
+When the owner says "publish", "ship it", "make it live" on an app that never went through a `/create` intake (no `goal.md`), or when `finalize` reports it is not available:
 
 ```bash
 air-create publish countdown
@@ -143,7 +191,7 @@ That files a **Needs-you** decision on their phone. Reply:
 Publish request is ready for your approval — tap Needs-you to make it live at mini.wzrd.tech/alice/countdown.
 ```
 
-## 7a. Functions — a backend the owner approves
+## 8a. Functions — a backend the owner approves
 
 An app needs a backend when it must remember something across visitors, call inference, or reach one outside API. Add `functions/index.ts` (one Worker; imports only `@air/functions`, `hono`, `zod`) and declare it in `air.json`:
 
@@ -170,19 +218,21 @@ Backend changes are staged — they need your approval in Needs-you (or the Func
 
 Until the owner approves, the live app has no backend and the draft runs against nothing the owner did not already approve. Secrets (`API_KEY`) are set by the owner in the Functions tab and arrive as `env.API_KEY` in the Worker — never write one into `functions/`.
 
-## 8. Reporting rules — no exceptions
+## 9. Reporting rules — no exceptions
 
-- MUST NOT say the app is live, up, public, or shipped until `air-create status` shows `"status": "published"`. You stage; the owner publishes.
-- MUST quote `findings` and QA `failed` rules verbatim (rule id, file, line, hint). Do not paraphrase them away.
-- MUST report the preview as `[card: app <slug>]`. `preview_url` is the owner's and only works from their phone: never paste it, never open it, never curl it. `air-create qa` is the only thing that visits it.
-- MUST NOT put a secret — key, token, password, phone number, address — in `src/`, `public/`, `functions/` or `air.json`. If the owner pastes one, say secrets go in the Functions Secrets tab on their Create surface and leave it out.
+- MUST NOT say the app is live, up, public, or shipped until `air-create status` shows `"status": "published"`. You stage; the owner publishes. After `finalize` or `publish` say "ready for your approval".
+- MUST NOT say "dev build is live" before `air-create release <appname> dev` has returned a url; then say it once, with that url.
+- MUST NOT paste `plan.md` or `goal.md` into chat; `air-create plan --deliver` attaches the plan. MUST NOT narrate progress, stages or percentages while the progress card is live (§7).
+- MUST quote `findings` and QA `failed` rules verbatim (rule id, file, line, hint) when the loop ends without a dev release. Failing tests are named by id only. Do not paraphrase them away.
+- MUST report the preview as `[card: app <slug>]`. `preview_url` is the owner's and only works from their phone: never paste it, never open it, never curl it. `air-create qa` and `air-create test` are the only things that visit it.
+- MUST NOT put a secret — key, token, password, phone number, address — in `src/`, `public/`, `functions/`, `air.json`, `plan.md` or `goal.md`. If the owner pastes one, say secrets go in the Functions Secrets tab on their Create surface and leave it out.
 - MUST NOT say a backend is enabled, approved, connected, or reaching a host until `air-create functions` shows `"status": "live"`. You stage a `miniapp_backend` decision; the owner approves it. Never widen `egress`, raise `dailyCapUsd`, or turn on `db`/`kv` beyond what the owner asked for.
-- MUST NOT run `npm install` (or any installer), fetch code or fonts from the network, change `visibility`/`access`/`price` on a live app, raise the project budget, or touch `bundle_version`. A `429` with `"reason": "create_budget"` means the project's Create budget is spent: stop and tell the owner to raise it on the Create surface.
-- MUST NOT claim "done" while the last build has a hard finding or QA failed `off-origin-requests`, `csp-violations` or `page-errors`.
+- MUST NOT remove a `locked: true` test, run `npm install` (or any installer), fetch code or fonts from the network, change `visibility`/`access`/`price` on a live app, raise the project budget, or touch `bundle_version`. A `429` with `"reason": "create_budget"` means the project's Create budget is spent: stop and tell the owner to raise it on the Create surface.
+- MUST NOT claim "done" while the last build has a hard finding, QA failed `off-origin-requests`, `csp-violations` or `page-errors`, or a test fails.
 
-Bad: "Done — your countdown is live!" after `build` ✗ · "backend enabled, it can now call Stripe" after `functions` ✗ · opening `preview_url` in the browser ✗ · `npm install framer-motion` ✗ · summarizing three findings as "a few CSP things" ✗
+Bad: "Done — your countdown is live!" after `build` ✗ · "building… 40%" in chat ✗ · pasting the plan into the reply ✗ · "dev build is live" before `release` returned ✗ · "backend enabled, it can now call Stripe" after `functions` ✗ · opening `preview_url` in the browser ✗ · `npm install framer-motion` ✗ · summarizing three findings as "a few CSP things" ✗
 
-Good: `new` → plan → `build` → `qa` → one sentence + `[card: app alice-countdown]`, findings quoted, then wait for the owner's word before `publish`. ✓
+Good: questions (one message) → `plan --deliver` + three lines → **yes** → `confirm` → `build` → `qa` → `test` → `release dev` → `dev build is live: link.wzrd.tech/alice/countdown` → **ship it** → `finalize` → `ready for your approval`. ✓ Without a marker: `new` → plan → `build` → `qa` → one sentence + `[card: app alice-countdown]`, findings quoted, then wait for the owner's word before `publish`. ✓
 
 ---
 

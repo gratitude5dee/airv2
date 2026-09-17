@@ -1,13 +1,21 @@
 /**
- * Create (MC4: Vibe) eval runner — the §0.2 golden path against a real Box.
+ * Create eval runner — the §0.2 golden paths against a real Box.
  *
  * Each case is one owner turn in the `air-create-<appname>` session: POST
  * /api/create/turn on the mini origin, follow GET /api/create/events/<runId>
- * to terminal, then read GET /api/create/status?app=<appname> for the draft
- * version, findings, QA score and budget meter the turn left behind. Cases
- * run in file order and share one workspace on purpose — C02/C03 iterate on
- * the app C01 scaffolded, C04 lowers the project budget first and expects the
- * gateway's `create_budget` refusal to surface instead of a build.
+ * to terminal, then read GET /api/create/status?app=<appname> (draft
+ * version, findings, QA score, budget meter, and since V12 the intake stage,
+ * the dev release and the test counts) plus GET /api/create/intake?app= (the
+ * question / revision counters) for what the turn left behind. Cases run in
+ * file order and share workspaces on purpose:
+ *
+ *   C01–C04  MC4 Vibe: scaffold, two iterations, a `create_budget` refusal,
+ *            all on `countdown`.
+ *   C20–C30  V12 §19: intake → plan → confirm → dev → finalize on `tour26`
+ *            (C20 leaves a second, ambiguous intake at `asking`), the two
+ *            GitHub-URL paths, a spent budget, and the non-owner sender —
+ *            which the runner cannot drive over the store cookie and
+ *            therefore reports as skipped, never as passed.
  *
  *   npx tsx evals/agent-suite/create/run.ts
  *
@@ -18,8 +26,9 @@
  * EVAL_RESULTS_STAMP.
  *
  * Nothing from the Box workspace is persisted here beyond redacted tool
- * previews and the agent's transcript — the status route is content-free by
- * construction (log tail, counts, scores), so the result files are too.
+ * previews and the agent's transcript — the status and intake routes are
+ * content-free by construction (log tail, counts, scores, stage names), so
+ * the result files are too.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -38,8 +47,46 @@ const STATUS_SETTLE_MS = Number(process.env["EVAL_SETTLE_MS"] ?? 10_000);
 
 export const CREATE_TIERS = ["fast", "balanced", "deep"] as const;
 export type CreateTier = (typeof CREATE_TIERS)[number];
-export const CREATE_STEPS = ["golden", "iteration", "budget"] as const;
+/**
+ * `golden|iteration|budget` are the MC4 Vibe steps; the rest are the V12
+ * §19 steps, one per stage of the §5.1 machine the case drives the intake
+ * through (`import` is the GitHub-URL path, §8.1).
+ */
+export const CREATE_STEPS = [
+  "golden",
+  "iteration",
+  "budget",
+  "intake",
+  "plan",
+  "confirm",
+  "dev",
+  "finalize",
+  "import",
+] as const;
 export type CreateStep = (typeof CREATE_STEPS)[number];
+
+/**
+ * §4 Stage vocabulary, copied rather than imported: the harness runs
+ * standalone under `tsx` and must not pull `apps/web` in. Keep in step with
+ * `INTAKE_STAGES` in `apps/web/lib/create/intake.ts`.
+ */
+export const CREATE_INTAKE_STAGES = [
+  "asking",
+  "planning",
+  "plan_sent",
+  "revising",
+  "confirmed",
+  "building",
+  "qa",
+  "testing",
+  "dev_ready",
+  "finalizing",
+  "decision_sent",
+  "production",
+  "abandoned",
+  "failed",
+] as const;
+export type CreateIntakeStage = (typeof CREATE_INTAKE_STAGES)[number];
 
 /** Same shape as the skill and the turn route enforce (§9.2). */
 export const APPNAME_RE = /^[a-z0-9][a-z0-9-]{0,47}$/;
@@ -64,6 +111,21 @@ export interface CreateCase {
   budget_usd: number | null;
   /** When set, the turn is expected to hit the gateway's `insufficient_quota` with this reason. */
   budget_reason: string | null;
+  /**
+   * V12: the §4 stage the intake must have reached after the turn (status
+   * `intake_stage`, else GET /api/create/intake). "Reached" because §5.1
+   * chains `confirmed → building → … → dev_ready` inside one owner turn: a
+   * later stage on the golden path passes, `abandoned`/`failed` match exactly.
+   */
+  expect_stage: CreateIntakeStage | null;
+  /** V12: the Planner may have asked at most this many questions (§5.2: ≤ 3; 0 when fully specified). */
+  expect_questions_max: number | null;
+  /** V12: at least this many `locked: true` tests must exist after the turn (§8.3: ≥ 2 on confirm). */
+  expect_locked_tests_min: number | null;
+  /** V12: `true` — status `dev.url` must be set (CR22 held server-side); `false` — it must not; `null` — not graded. */
+  expect_dev_url: boolean | null;
+  /** When set the runner does not drive the case and records it as `skipped` with this reason (C30). */
+  skip_reason: string | null;
 }
 
 export interface CreateStatus {
@@ -86,6 +148,32 @@ export interface CreateStatus {
     findings: number;
     qa_score: number | null;
   }>;
+  /** V12 §14.1 extensions; absent on a pre-V12 control plane. */
+  intake_stage?: string | null;
+  dev?: {
+    version: string | null;
+    url: string | null;
+    expires_at: string | null;
+  } | null;
+  tests?: {
+    total: number | null;
+    passed: number | null;
+    failed_ids?: string[];
+    /** Count of `locked: true` ids on the draft, when the control plane reports it. */
+    locked?: number | null;
+  } | null;
+}
+
+/** `GET /api/create/intake?app=` (§14.1) — counters only, never content. */
+export interface CreateIntake {
+  appname: string | null;
+  stage: string;
+  template: string | null;
+  questions_asked: number;
+  revisions: number;
+  plan_version: number | null;
+  builds: number;
+  failed_builds: number;
 }
 
 export type CheckVerdict = "pass" | "fail" | "n/a";
@@ -96,8 +184,26 @@ export type CheckName =
   | "must_say"
   | "budget"
   | "draft"
-  | "hard_findings";
+  | "hard_findings"
+  | "stage"
+  | "questions"
+  | "locked_tests"
+  | "dev_url";
 export type CaseChecks = Record<CheckName, CheckVerdict>;
+
+export const CHECK_NAMES: readonly CheckName[] = [
+  "terminal",
+  "must_do",
+  "must_not_do",
+  "must_say",
+  "budget",
+  "draft",
+  "hard_findings",
+  "stage",
+  "questions",
+  "locked_tests",
+  "dev_url",
+];
 
 export interface CreateCaseResult {
   id: string;
@@ -107,7 +213,7 @@ export interface CreateCaseResult {
   message: string;
   run_id: string | null;
   session: string | null;
-  /** "completed" | "failed" | "timeout" | "start_error" | "stream_error" | "budget_refused" */
+  /** "completed" | "failed" | "timeout" | "start_error" | "stream_error" | "budget_refused" | "skipped" */
   status: string;
   error: string | null;
   tools: string[];
@@ -115,7 +221,21 @@ export interface CreateCaseResult {
   output: string;
   elapsed_ms: number;
   status_after: CreateStatus | null;
+  /** V12: the intake counters after the turn; null when the route is missing (404) or unreachable. */
+  intake_after: CreateIntake | null;
   checks: CaseChecks;
+}
+
+function optionalInt(
+  value: unknown,
+  where: string,
+  field: string,
+): number | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    throw new Error(`${where}: bad ${field}`);
+  }
+  return value;
 }
 
 export function loadCreateCases(path: string): CreateCase[] {
@@ -158,6 +278,27 @@ export function loadCreateCases(path: string): CreateCase[] {
         throw new Error(`${where}: bad budget_usd`);
       }
     }
+    if (
+      parsed.expect_stage !== undefined &&
+      parsed.expect_stage !== null &&
+      !CREATE_INTAKE_STAGES.includes(parsed.expect_stage as CreateIntakeStage)
+    ) {
+      throw new Error(`${where}: bad expect_stage ${parsed.expect_stage}`);
+    }
+    if (
+      parsed.expect_dev_url !== undefined &&
+      parsed.expect_dev_url !== null &&
+      typeof parsed.expect_dev_url !== "boolean"
+    ) {
+      throw new Error(`${where}: bad expect_dev_url`);
+    }
+    if (
+      parsed.skip_reason !== undefined &&
+      parsed.skip_reason !== null &&
+      (typeof parsed.skip_reason !== "string" || !parsed.skip_reason.trim())
+    ) {
+      throw new Error(`${where}: bad skip_reason`);
+    }
     return {
       id: parsed.id,
       appname: parsed.appname,
@@ -171,6 +312,19 @@ export function loadCreateCases(path: string): CreateCase[] {
       must_say: parsed.must_say ?? [],
       budget_usd: parsed.budget_usd ?? null,
       budget_reason: parsed.budget_reason ?? null,
+      expect_stage: (parsed.expect_stage as CreateIntakeStage | undefined) ?? null,
+      expect_questions_max: optionalInt(
+        parsed.expect_questions_max,
+        where,
+        "expect_questions_max",
+      ),
+      expect_locked_tests_min: optionalInt(
+        parsed.expect_locked_tests_min,
+        where,
+        "expect_locked_tests_min",
+      ),
+      expect_dev_url: parsed.expect_dev_url ?? null,
+      skip_reason: parsed.skip_reason?.trim() ?? null,
     };
   });
 }
@@ -202,13 +356,99 @@ export function hardFindings(status: CreateStatus | null): number {
 }
 
 /**
+ * The §4 stage after the turn: the status route's `intake_stage` when the
+ * project exists, else the intake route (an intake at `asking` has no
+ * project yet, so status 404s). Null when neither reported one.
+ */
+export function intakeStage(
+  r: Pick<CreateCaseResult, "status_after" | "intake_after">,
+): string | null {
+  const fromStatus = r.status_after?.intake_stage;
+  if (typeof fromStatus === "string" && fromStatus) return fromStatus;
+  const fromIntake = r.intake_after?.stage;
+  return typeof fromIntake === "string" && fromIntake ? fromIntake : null;
+}
+
+/** Stages off the golden path; they never satisfy an on-path expectation and vice versa. */
+const OFF_PATH_STAGES: ReadonlySet<string> = new Set(["abandoned", "failed"]);
+
+/**
+ * `expect_stage` semantics: `actual` is `expected`, or a later stage on the
+ * §4 golden path (`asking → … → production`). §5.1 advances an intake
+ * several stages inside one owner turn ("yes" → confirmed → building → qa →
+ * testing → dev_ready), so an exact match would fail a correct run; the
+ * `must_not_do` regexes catch a turn that went further than the owner asked.
+ */
+export function stageReached(
+  actual: string | null,
+  expected: CreateIntakeStage,
+): boolean {
+  if (actual === null) return false;
+  if (actual === expected) return true;
+  if (OFF_PATH_STAGES.has(expected) || OFF_PATH_STAGES.has(actual)) return false;
+  const path = CREATE_INTAKE_STAGES as readonly string[];
+  const at = path.indexOf(actual);
+  return at >= 0 && at > path.indexOf(expected);
+}
+
+/**
+ * Numbered lines ending in `?` — §5.2 questions arrive as one message of
+ * `1.` … `3.` lines. Only the fallback when the intake route is unreachable;
+ * a plan's numbered summary lines do not end in a question mark.
+ */
+export function countNumberedQuestions(output: string): number {
+  const numbers = new Set<string>();
+  for (const match of output.matchAll(/^\s*(\d{1,2})[.)]\s+[^\n]*\?\s*$/gm)) {
+    numbers.add(match[1] ?? "");
+  }
+  return numbers.size;
+}
+
+/** Questions the Planner asked: the intake counter, else the transcript. */
+export function questionsAsked(
+  r: Pick<CreateCaseResult, "intake_after" | "output">,
+): number {
+  const counted = r.intake_after?.questions_asked;
+  if (typeof counted === "number" && Number.isFinite(counted)) return counted;
+  return countNumberedQuestions(r.output);
+}
+
+/**
+ * `locked: true` tests after the turn: the status route's `tests.locked`
+ * when the control plane counts them, else the `"locked": true` entries the
+ * Planner wrote (goal.md `## Tests` / `air.json.tests[]`) that surfaced in
+ * tool previews or the transcript.
+ */
+export function lockedTests(
+  status: CreateStatus | null,
+  evidence: string[],
+): number {
+  const counted = status?.tests?.locked;
+  if (typeof counted === "number" && Number.isFinite(counted)) return counted;
+  const all = evidence.join("\n");
+  return (all.match(/\blocked"?\s*:\s*true\b/gi) ?? []).length;
+}
+
+/** The dev URL (`link.wzrd.tech/<u>/<a>`) the status route reports, or null. */
+export function devUrl(status: CreateStatus | null): string | null {
+  const url = status?.dev?.url;
+  return typeof url === "string" && url ? url : null;
+}
+
+export const SKIPPED_CHECKS: CaseChecks = Object.fromEntries(
+  CHECK_NAMES.map((name) => [name, "n/a"]),
+) as CaseChecks;
+
+/**
  * Grade one result. Pure so the checks can be unit-tested without a Box;
- * `n/a` marks axes the case does not carry.
+ * `n/a` marks axes the case does not carry. A skipped case (C30) carries no
+ * axis at all: it is reported, never counted as a pass.
  */
 export function gradeCase(
   c: CreateCase,
   r: Omit<CreateCaseResult, "checks">,
 ): CaseChecks {
+  if (r.status === "skipped") return { ...SKIPPED_CHECKS };
   const evidence = [
     ...r.tool_events.map((e) => `${e.tool} ${e.preview}`),
     r.output,
@@ -236,6 +476,35 @@ export function gradeCase(
       : "n/a",
   } satisfies Partial<CaseChecks>;
 
+  // V12 axes (§19): graded on every step that carries them, including the
+  // budget step — C29 expects `insufficient_quota` *and* stage `failed`.
+  const stage = intakeStage(r);
+  const v12 = {
+    stage: c.expect_stage
+      ? stageReached(stage, c.expect_stage)
+        ? "pass"
+        : "fail"
+      : "n/a",
+    questions:
+      c.expect_questions_max !== null
+        ? questionsAsked(r) <= c.expect_questions_max
+          ? "pass"
+          : "fail"
+        : "n/a",
+    locked_tests:
+      c.expect_locked_tests_min !== null
+        ? lockedTests(r.status_after, evidence) >= c.expect_locked_tests_min
+          ? "pass"
+          : "fail"
+        : "n/a",
+    dev_url:
+      c.expect_dev_url === null
+        ? "n/a"
+        : (devUrl(r.status_after) !== null) === c.expect_dev_url
+          ? "pass"
+          : "fail",
+  } satisfies Partial<CaseChecks>;
+
   if (c.budget_reason) {
     // A budget case passes when the refusal surfaced (gateway 429 → the agent
     // reports it) and the agent did not pretend a build happened.
@@ -248,6 +517,7 @@ export function gradeCase(
       budget: refused ? "pass" : "fail",
       draft: "n/a",
       hard_findings: "n/a",
+      ...v12,
     };
   }
 
@@ -261,6 +531,29 @@ export function gradeCase(
       : "n/a",
     hard_findings:
       hardFindings(r.status_after) <= c.expect_hard_findings ? "pass" : "fail",
+    ...v12,
+  };
+}
+
+/** The result the runner records for a case it must not drive (`skip_reason`). */
+export function skippedResult(c: CreateCase): CreateCaseResult {
+  return {
+    id: c.id,
+    appname: c.appname,
+    step: c.step,
+    tier: c.tier,
+    message: c.message,
+    run_id: null,
+    session: null,
+    status: "skipped",
+    error: c.skip_reason,
+    tools: [],
+    tool_events: [],
+    output: "",
+    elapsed_ms: 0,
+    status_after: null,
+    intake_after: null,
+    checks: { ...SKIPPED_CHECKS },
   };
 }
 
@@ -313,6 +606,42 @@ async function fetchStatus(
   );
   if (!res.ok) return null;
   return (await res.json()) as CreateStatus;
+}
+
+/**
+ * `GET /api/create/intake?app=` (§14.1). Tolerant of a 404 — no intake for
+ * the app, or a control plane that predates the route — and of anything
+ * else that is not a JSON object with a `stage`: both read as null and the
+ * grader falls back to the status route and the transcript.
+ */
+async function fetchIntake(
+  cfg: Config,
+  appname: string,
+): Promise<CreateIntake | null> {
+  const res = await fetch(
+    `${cfg.baseUrl}/api/create/intake?app=${encodeURIComponent(appname)}`,
+    {
+      headers: headers(cfg),
+    },
+  );
+  if (!res.ok) return null;
+  const body = (await res.json().catch(() => null)) as Partial<CreateIntake> | null;
+  if (!body || typeof body !== "object" || typeof body.stage !== "string") {
+    return null;
+  }
+  return {
+    appname: typeof body.appname === "string" ? body.appname : null,
+    stage: body.stage,
+    template: typeof body.template === "string" ? body.template : null,
+    questions_asked:
+      typeof body.questions_asked === "number" ? body.questions_asked : 0,
+    revisions: typeof body.revisions === "number" ? body.revisions : 0,
+    plan_version:
+      typeof body.plan_version === "number" ? body.plan_version : null,
+    builds: typeof body.builds === "number" ? body.builds : 0,
+    failed_builds:
+      typeof body.failed_builds === "number" ? body.failed_builds : 0,
+  };
 }
 
 async function setBudget(
@@ -457,6 +786,7 @@ async function runCase(cfg: Config, c: CreateCase): Promise<CreateCaseResult> {
     output: "",
     elapsed_ms: 0,
     status_after: null,
+    intake_after: null,
   };
   try {
     if (c.budget_usd !== null) await setBudget(cfg, c.appname, c.budget_usd);
@@ -478,7 +808,10 @@ async function runCase(cfg: Config, c: CreateCase): Promise<CreateCaseResult> {
     base.error = redact(String(error)).slice(0, 300);
   }
   await sleep(STATUS_SETTLE_MS);
-  base.status_after = await fetchStatus(cfg, c.appname).catch(() => null);
+  [base.status_after, base.intake_after] = await Promise.all([
+    fetchStatus(cfg, c.appname).catch(() => null),
+    fetchIntake(cfg, c.appname).catch(() => null),
+  ]);
   base.elapsed_ms = Date.now() - started;
   return { ...base, checks: gradeCase(c, base) };
 }
@@ -499,6 +832,13 @@ async function main(): Promise<void> {
     const file = join(cfg.resultsDir, `${c.id}.json`);
     if (existsSync(file)) {
       console.log(`${c.id}: exists, skipping`);
+      continue;
+    }
+    if (c.skip_reason) {
+      // Not driven, not passed: the result file says `skipped` and every
+      // check reads `n/a`, so a report cannot count it toward the pass rate.
+      writeFileSync(file, JSON.stringify(skippedResult(c), null, 2));
+      console.log(`${c.id} [${c.step}/${c.tier}] skipped — ${c.skip_reason}`);
       continue;
     }
     if (!first) await sleep(DELAY_MS);
