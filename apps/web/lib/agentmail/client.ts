@@ -133,6 +133,8 @@ export interface AgentMailAttachment {
   filename?: string;
   content_type?: string;
   size?: number;
+  /** MIME Content-ID for inline content referenced by an HTML message. */
+  content_id?: string | null;
   inline?: boolean;
 }
 
