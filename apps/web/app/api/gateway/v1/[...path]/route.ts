@@ -551,6 +551,8 @@ export async function POST(
     createLabel = createRunLabel(slug);
     const meter = await projectBudget(supabase, userId, slug);
     if (meter && budgetExhausted(meter)) {
+      // §12: the operator counts exhausted Create budgets from this row.
+      await recordOpsEvent(supabase, "rate_limited", userId, "create_budget");
       return NextResponse.json(
         { error: "insufficient_quota", reason: "create_budget" },
         { status: 429 }

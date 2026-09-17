@@ -198,6 +198,9 @@ export const V9_USER_TABLES: readonly { table: string; column: string }[] = [
   // V11 MC7 Import (0090)
   { table: "github_installations", column: "user_id" },
   { table: "github_repo_links", column: "user_id" },
+  // V12 Create (0116, 0120)
+  { table: "create_intakes", column: "user_id" },
+  { table: "admin_audit", column: "user_id" },
 ] as const;
 
 /**

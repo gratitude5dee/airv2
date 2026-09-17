@@ -17,7 +17,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { SpectrumSender } from "../spectrum/sender";
 import { sendOrUpdateAppCard } from "../miniapps/cards";
-import type { RegistryApp } from "../miniapps/registry";
+import { parseRegistryApp, REGISTRY_COLUMNS, type RegistryApp } from "../miniapps/registry";
 import { latestBuild, type BuildRecord } from "./build";
 import { createConfig } from "./config";
 import { isIntakeStage, type IntakeStage } from "./intake";
@@ -439,4 +439,70 @@ export async function runProgressRelay(
     await sleep(tickMs, options.signal);
   }
   return state;
+}
+
+/* --------------------------------------------- flush-side relay handle */
+
+export interface RelayHandle {
+  /** Stops the loop and waits for the in-flight tick to finish. */
+  stop(): Promise<void>;
+}
+
+/**
+ * §8.2, the flush side: start the relay for whatever the owner has building
+ * right now, or return null when nothing is. The caller stops it in a
+ * `finally`, so a thrown turn can never leave a loop running. This never
+ * throws: no owner loses a turn because their card could not be read.
+ */
+export async function startRelayForOwner(
+  supabase: SupabaseClient,
+  sender: SpectrumSender,
+  owner: RelayOwner,
+  options: { tickMs?: number } = {}
+): Promise<RelayHandle | null> {
+  let app: RegistryApp | null = null;
+  try {
+    const { data, error } = await supabase
+      .from("create_intakes")
+      .select("appname, app_id, stage")
+      .eq("user_id", owner.userId)
+      .in("stage", [...RELAY_STAGES])
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error || !data) return null;
+    const appId = (data as { app_id?: string | null }).app_id ?? null;
+    if (!appId) return null;
+    const { data: appRow } = await supabase
+      .from("mini_apps")
+      .select(REGISTRY_COLUMNS)
+      .eq("id", appId)
+      .maybeSingle();
+    app = parseRegistryApp(appRow);
+  } catch {
+    return null;
+  }
+  if (!app) return null;
+  const controller = new AbortController();
+  const target = app;
+  const loop = runProgressRelay(supabase, sender, owner, target, {
+    signal: controller.signal,
+    ...(options.tickMs === undefined ? {} : { tickMs: options.tickMs }),
+  }).catch((error: unknown) => {
+    console.warn(
+      JSON.stringify({
+        msg: "create progress relay ended",
+        user_id: owner.userId,
+        slug: target.slug,
+        error: error instanceof Error ? error.message : "unknown",
+      })
+    );
+    return newRelayState();
+  });
+  return {
+    async stop() {
+      controller.abort();
+      await loop;
+    },
+  };
 }

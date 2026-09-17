@@ -30,6 +30,7 @@ import {
   relayTick,
   runProgressRelay,
   stageLabel,
+  startRelayForOwner,
   type ProgressInput,
   type ProgressSnapshot,
 } from "./progress";
@@ -456,5 +457,59 @@ describe("runProgressRelay", () => {
     const state = await runProgressRelay(supabase, sender, owner, app, { signal: controller.signal, tickMs: 1, read });
     expect(read).toHaveBeenCalledTimes(3);
     expect(state.ticks).toBe(2);
+  });
+});
+
+describe("startRelayForOwner (§8.2, the flush side)", () => {
+  const owner = { userId: "user-1", spaceId: "space-1", phone: "+15550001111" };
+  const app = makeApp({ slug: "alice-promo", appname: "promo", name: "Promo", owner_user_id: "user-1" });
+  const sender = { sendText: vi.fn(async () => undefined) } as unknown as SpectrumSender;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    cards.sendOrUpdateAppCard.mockResolvedValue("updated");
+  });
+
+  function stubDb(intakeRow: unknown, appRow: unknown) {
+    const chain = (result: unknown) => {
+      const api: Record<string, unknown> = {};
+      for (const key of ["select", "eq", "in", "order", "limit"]) {
+        api[key] = () => api;
+      }
+      api.maybeSingle = async () => ({ data: result, error: null });
+      return api;
+    };
+    return {
+      from: (table: string) => chain(table === "create_intakes" ? intakeRow : appRow),
+    } as unknown as SupabaseClient;
+  }
+
+  it("returns null when nothing of the owner's is building", async () => {
+    expect(await startRelayForOwner(stubDb(null, null), sender, owner)).toBeNull();
+  });
+
+  it("returns null when the building intake has no app row yet", async () => {
+    const db = stubDb({ appname: "tour", app_id: null, stage: "building" }, null);
+    expect(await startRelayForOwner(db, sender, owner)).toBeNull();
+  });
+
+  it("ticks the owner's card until it is stopped", async () => {
+    const db = stubDb({ appname: "tour", app_id: app.id, stage: "building" }, app);
+    versions.getVersion.mockResolvedValue(null);
+    ledger.latestBuild.mockResolvedValue(build({ status: "running" }));
+    const handle = await startRelayForOwner(db, sender, owner, { tickMs: 1 });
+    expect(handle).not.toBeNull();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await handle!.stop();
+    expect(cards.sendOrUpdateAppCard).toHaveBeenCalled();
+  });
+
+  it("never throws when the lookup fails", async () => {
+    const db = {
+      from: () => {
+        throw new Error("db down");
+      },
+    } as unknown as SupabaseClient;
+    expect(await startRelayForOwner(db, sender, owner)).toBeNull();
   });
 });

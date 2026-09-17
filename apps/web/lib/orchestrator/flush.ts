@@ -44,6 +44,7 @@ import {
 } from "../miniapps/imessageCommand";
 import { sendMarkedCards } from "../miniapps/cards";
 import { maybeOpenIntake } from "../create/intake";
+import { startRelayForOwner, type RelayHandle } from "../create/progress";
 import { maybeRunDrawLane } from "../miniapps/drawCommand";
 import { maybeRunFreezeLane } from "../miniapps/freezeCommand";
 import { maybeRunLocationLane } from "../location/lane";
@@ -786,6 +787,9 @@ async function runFlushInner(
     throw error;
   }
   let progressTimeline: ProgressTimeline | undefined;
+  // V12 §8.2: while this owner has an app building, the Create relay ticks
+  // their app card every CREATE_PROGRESS_TICK_MS beside the turn.
+  let createRelay: RelayHandle | null = null;
   try {
     const carried = await drainCarried(supabase, job.spaceId);
     const fresh = await drainQueue(supabase, job.spaceId);
@@ -964,6 +968,11 @@ async function runFlushInner(
       return;
     }
     if (intake?.kind === "owner") rawInput = `${intake.line}\n${rawInput}`;
+    createRelay = await startRelayForOwner(supabase, sender, {
+      userId: job.userId,
+      spaceId: job.spaceId,
+      phone: job.phone,
+    });
     try {
       const handled = await maybeSendMiniAppLink(
         supabase,
@@ -1583,6 +1592,7 @@ async function runFlushInner(
     }
   } finally {
     progressTimeline?.stop();
+    await createRelay?.stop().catch(() => undefined);
     // Re-arm the idle deadline no matter how the turn ended: ensureBoxAwake
     // cleared it, and a throw mid-turn must not leave the box awake with no
     // deadline. Monotonic, so a no-op for boxes that never woke.
