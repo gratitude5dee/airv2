@@ -34,7 +34,7 @@ import {
 import { CreativeUnconfiguredError } from "./groq";
 import { insertRenderCostEvent, updateCreativeJob, underDailyLimit, DAILY_LIMIT_LINE } from "./jobs";
 import { fetchSafeGeneratedMedia } from "./media-url";
-import { loadCreativePrefs } from "./model-prefs";
+import { DEFAULT_LANE_MODELS, loadCreativePrefs } from "./model-prefs";
 import { getProviderKey } from "../providers/keys";
 import { PROMPT_VERSIONS } from "./prompts";
 import {
@@ -75,6 +75,12 @@ export interface CreativeJobOptions {
   promptVersion?: string;
   /** Metadata-only timing hook. Prompts, URLs, and provider payloads are never exposed. */
   onLifecycle?: (event: GmiLifecycleEvent) => Promise<void> | void;
+  /**
+   * Pin the image lane to one model slug regardless of the user's prefs
+   * (V12 §9.2: a generated app icon renders on CREATE_ICON_MODEL). Metering
+   * and the personal key are unchanged; GMI lanes only.
+   */
+  model?: string;
 }
 
 /**
@@ -131,6 +137,9 @@ export async function executeCreativeJob(
     // The user's lane model choices (Settings) and, when saved, their
     // personal GMI key. Both degrade to platform defaults on any failure.
     prefs = await loadCreativePrefs(supabase, userId).catch(() => undefined);
+    if (options?.model) {
+      prefs = { ...(prefs ?? DEFAULT_LANE_MODELS), imagine: options.model, edit: options.model };
+    }
     personalGmiKey = await getProviderKey(supabase, userId, "gmi").catch(
       () => null
     );

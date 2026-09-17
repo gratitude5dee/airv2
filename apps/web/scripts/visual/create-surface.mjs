@@ -180,6 +180,7 @@ function makeFixture() {
     releases: [],
     confirmedAt: null,
     devReadyAt: null,
+    finalize: null,
   };
   const now = () => new Date().toISOString();
   const intake = () => ({
@@ -319,6 +320,21 @@ function makeFixture() {
         body: { slug: APP.slug, percent: step.percent, stage: step.stage, detail: step.detail, updated_at: now() },
       };
     }
+    if (path === "/api/create/finalize" && method === "POST") {
+      if (body.app !== APP.appname) return { status: 404, body: { error: "not found" } };
+      if (typeof body.name !== "string" || body.name.trim() === "") {
+        return { status: 400, body: { error: "invalid", issues: ["name"] } };
+      }
+      if (typeof body.description !== "string" || body.description.trim() === "") {
+        return { status: 400, body: { error: "invalid", issues: ["description"] } };
+      }
+      fx.finalize = { name: body.name, description: body.description, mirror: body.mirror, store: body.store };
+      fx.stage = "decision_sent";
+      return {
+        status: 200,
+        body: { decision_id: "decision-1", stage: "decision_sent", store: body.store, mirror: body.mirror },
+      };
+    }
     if (path === "/api/create/release" && method === "POST") {
       if (body.app !== APP.appname || body.channel !== "dev") return { status: 400, body: { error: "invalid channel" } };
       fx.releases.push(String(body.action));
@@ -450,8 +466,16 @@ async function main() {
     expectEqual(fx.releases.at(-1), "renew", "release action after Renew");
     expectEqual(fx.stage, "finalizing", "fixture stage after Renew");
 
+    // Request publish → the finalize route files the decision (§9.3)
+    await page.locator('[data-test="finalize-description"]').fill("A walking tour of the city, one stop at a time.");
     const publish = page.getByRole("button", { name: "Request publish", exact: true });
-    expectEqual(await publish.isDisabled(), true, "Request publish disabled until the finalize route lands");
+    expectEqual(await publish.isDisabled(), false, "Request publish enabled once name and description are set");
+    await publish.click();
+    await expectText("decision sent");
+    expectEqual(fx.finalize?.store, "listed", "finalize store");
+    expectEqual(fx.finalize?.mirror, true, "finalize mirror");
+    expectEqual(fx.stage, "decision_sent", "fixture stage after Request publish");
+    await shot("release-decision.png");
     expectEqual(pageErrors.length, 0, "page errors");
   } finally {
     const video = page.video();

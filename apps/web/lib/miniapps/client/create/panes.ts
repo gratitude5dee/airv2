@@ -237,7 +237,7 @@ export function finalizeProblem(input: {
   return null;
 }
 
-/** `POST /api/create/finalize` (§14.1) is not in the tree yet; flip this
- * when the route lands and the Request publish button starts posting. */
+/** `POST /api/create/finalize` (§14.1). The icon field stays a client-side
+ * check: uploading it posts to `/api/create/icon` from the Box, not here. */
 export const FINALIZE_ROUTE = "/api/create/finalize";
-export const FINALIZE_AVAILABLE = false;
+export const FINALIZE_AVAILABLE = true;

@@ -476,7 +476,7 @@ describe("startRelayForOwner (§8.2, the flush side)", () => {
       for (const key of ["select", "eq", "in", "order", "limit"]) {
         api[key] = () => api;
       }
-      api.maybeSingle = async () => ({ data: result, error: null });
+      api["maybeSingle"] = async () => ({ data: result, error: null });
       return api;
     };
     return {

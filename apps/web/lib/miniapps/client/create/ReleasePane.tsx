@@ -163,6 +163,7 @@ export function ReleasePane({
           </span>
           <input
             className={FIELD}
+            data-test="finalize-name"
             maxLength={NAME_MAX}
             value={name}
             onChange={(event) => setName(event.currentTarget.value)}
@@ -174,6 +175,7 @@ export function ReleasePane({
           </span>
           <input
             className={FIELD}
+            data-test="finalize-description"
             maxLength={DESCRIPTION_MAX}
             placeholder="one line"
             value={description}

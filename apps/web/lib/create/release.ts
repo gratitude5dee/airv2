@@ -35,8 +35,8 @@ import { getVersion, VERSION_RE, type VersionRow } from "./versions";
 
 // 0117 admits these kinds in ops_events; the OpsEventKind union lives in
 // lib/security/limits.ts (another lane's file — see the lane's open issues).
-const DEV_RELEASE_KIND = "dev_release" as OpsEventKind;
-const DEV_REVOKE_KIND = "dev_revoke" as OpsEventKind;
+const DEV_RELEASE_KIND: OpsEventKind = "dev_release";
+const DEV_REVOKE_KIND: OpsEventKind = "dev_revoke";
 
 export type DevReleaseReason =
   | "hard_findings"
