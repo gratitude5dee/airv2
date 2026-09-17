@@ -374,21 +374,48 @@ Each template is a runnable scaffold (`air.json`, `src/main.tsx`, `src/app.css`,
 
 `game-3d` requires vendoring `three` (MIT) into `vendor/tarballs/` with an SBOM entry (`scripts/vendor.ts --sbom`); its weight (~150 KiB gz for the core) fits the 1 MiB hard budget, not the 300 KiB lite budget, so the scaffold degrades to a 2D canvas poster when `useLite()` is true.
 
-### 11.3 Design references — what to harvest and what is already known
+### 11.3 Design references — the effects vocabulary, the Tier B pack plan, and the vault map
 
-**React Bits** (`DavidHDev/react-bits`, MIT + Commons Clause, **Tier B**): stays out of git (CR11). Today's `restricted/allowlist.json` names 13 backgrounds. V12 extends the allowlist with text and component pieces the templates want; the operator harvests them on a workstation per `restricted/README.md`. Candidates to verify against the live site at harvest time (egress to `reactbits.dev` was blocked in the session that wrote this file, so treat every name as unverified until the checkout confirms the path): Text Animations — Split Text, Blur Text, Shiny Text, Gradient Text, Decrypted Text, Count Up, Rotating Text, Scramble Text, Glitch Text, Text Pressure; Animations — Animated Content, Fade Content, Click Spark, Magnet, Star Border, Glare Hover; Components — Tilted Card, Spotlight Card, Animated List, Stack, Card Swap, Counter, Stepper, Dock, Pill Nav, Magic Bento, Profile Card; Backgrounds beyond the 13 — Aurora, Particles, Dot Grid, Squares, Waves, Threads, Orb. Install mechanics to record in `restricted/README.md`: React Bits distributes through the shadcn registry (`npx shadcn@latest add https://reactbits.dev/r/<Name>-<TS|JS>-<TW|CSS>`) and jsrepo (`npx jsrepo add https://reactbits.dev/<ts|js>/<tailwind|default>/<Category>/<Name>`); the pack script reads files from a git checkout, never from either CLI. Lite policy: WebGL/OGL/Three backgrounds and cursors are `lite: false`; text animations on `motion`/GSAP are `lite: true` when under 15 KiB gz.
+**Verified catalogue (2026-09-17).** The owner supplied the hand-off artifact of a crawl of the React Bits public index (`reactbits.dev/llms.txt`) and the arlan.me vault sitemap: 190 rows, kept verbatim as `packages/create-kit/evidence/catalogues/component-prompts-2026-09-17.csv`. It replaces every "unverified" name this section carried before.
 
-**arlan.me/vault** (Arlan Marat, MIT, **Tier A**, pinned `arlan.me/vault@2026-09-04` in `kit.sources.json`): six pieces are harvested (`color-depth`, `ghosty-reveal`, `holo`, `liquid-ui`, `squircle`, `typer`); `arcade-pixel`, `fade-motion`, `chroma-glow`, `emboss`, `amo`, `midjourney`, `figma`, `dia-gradient`, `ransom-note` are excluded for the reasons in `prompts/src/exclusions.md`. V12 adds three typographic pieces whose complete briefs and implementations the owner supplied on 2026-09-17 and which are checked in as **briefs** under `packages/create-kit/prompts/src/briefs/`:
+| Source | Entries | License / tier | Where it lands |
+| --- | ---: | --- | --- |
+| React Bits — Text Animations | 32 | MIT + Commons Clause, **Tier B** | vocabulary (`build` / `no`), a few `pack` |
+| React Bits — Animations | 38 | Tier B | vocabulary; cursor and scroll pieces are `no` |
+| React Bits — Components | 45 | Tier B | vocabulary; mostly `build` |
+| React Bits — Backgrounds | 57 | Tier B | 13 already packed; shader scenes are `pack` or `no` |
+| arlan.me vault | 18 | MIT, **Tier A** | 6 harvested, 9 excluded, 1 gap, 2 harvest candidates |
 
-| Kit id | Brief | Renderer | Lite | Notes for harvest |
-| --- | --- | --- | --- | --- |
-| `arlan/shutter-type` | `shutter-type.md` — two lines of type through a rolling shutter, 68-frame loop | Canvas 2D | true | `--font-neue-montreal` → `var(--font-body)`; `onTransitionChange` → the Kit's existing `kit/arlan/holo/view-transition.ts` glue; paper/sky colours become props defaulting to `--canvas`/`--accent` |
-| `arlan/swing-type` | `swing-type.md` — enormous coloured letters on a pendulum, angle = (x − centre)/K | Canvas 2D | true | Same font and transition glue; `INK` palette → five token-derived hues; `WORDS` prop, same length enforced |
-| `arlan/rush-type` | `rush-type.md` — one word blasting into per-channel motion blur, WebGL1 | WebGL1 | **false** | Non-lite by policy (WebGL); still frame of the resting word under lite/reduced motion; `SCROLL_GAIN` is a no-op inside a webview (no scroll) |
+**Mechanism: the effects vocabulary (DESIGN.md §4).** Every row was annotated for the Kit — renderer, lite, touch, reduced-motion behaviour, scroll linkage, CSP risk, a Kit-voice when-line, tags, recipe and template fit — and each annotation chunk was audited by an independent adversarial verifier (the annotate → refute workflow; corrections are recorded beside the entries in `evidence/catalogues/kit-annotations-2026-09-17.json`). `packages/create-kit/prompts/src/effects.md` is generated from that file and folded into DESIGN.md as **§4 Effects vocabulary** by `scripts/lib/design.ts`, so the Planner resolves a named look in one lookup to one of five verbs:
 
-Each brief is the "Build this:" prompt verbatim plus the three source files, and is the `ref.md` source for the harvested component (the Kit's rule: the brief is the design intent, the code is the pin). Harvest adds them to `scripts/lib/catalog.ts` as `ARLAN` entries with `litePolicy` as above and the `demo` props from the briefs; `verify.ts` measures them like every other component. The briefs are also what the Planner reads when a prompt asks for "type that tears / swings / blasts", so the doctrine section of `DESIGN.md` gains one line pointing at them.
+| Verb | Meaning | Rule |
+| --- | --- | --- |
+| `@kit/<id>` | A Tier A component already covers it (e.g. Rotating Text → `fancy/text-rotate`, Cursor Grid → `fancy/pixel-trail`) | Import; never rebuild |
+| `@kit/restricted/<name>` | One of the 13 packed React Bits backgrounds | Non-lite; poster frame under reduced motion |
+| `pack` | Worth adding to the Tier B artifact (shader, physics, 3D) | Operator packs per `restricted/README.md`; until then `build` or decline |
+| `build` | Implement an original under the contract from the one-line description | The description is the brief; upstream source is never copied (CR11) |
+| `no` | Not for a mini-app, with the rule broken | Cursor-driven (no pointer on touch), scroll-linked (nothing moves on scroll), WebGL under lite, remote assets |
 
----
+The system prompt gains one sentence pointing the Planner at §4 before it chooses components; the vocabulary itself stays out of the per-turn prompt (it is on disk in the Box with DESIGN.md). Exclusions and Budgets move to §5 and §6.
+
+**Tier B pack plan.** `evidence/catalogues/reactbits-pack-plan-2026-09-17.json` lists every `tier-b-packed` and `tier-b-pack-candidate` component with its CLI identifier, category, an `upstream` path guess in the `src/content/<Category>/<Name>/<Name>.jsx` layout the current `restricted/allowlist.json` uses, and `verify: true`. The operator confirms each path against a checkout at the pinned commit before extending the allowlist, packs with `pack-restricted.ts`, and re-runs `harvest --docs-only` so the effect's verb flips from `pack` to `@kit/restricted/<name>` (procedure in `restricted/README.md` → Pack plan). Candidates are non-lite by construction: anything rebuildable in CSS, SVG, Canvas 2D or DOM was classified `build` and never enters the artifact.
+
+**arlan.me vault map** (`evidence/arlan/vault-index-2026-09-17.md`, superseding the 2026-09-04 index where both list a study):
+
+| Study (URL slug) | Kit decision |
+| --- | --- |
+| squircle, typer, color-depth, ghosty-reveal, holo, liquid-ui | harvested as `@kit/arlan/<slug>`; their catalog when-lines are rewritten in the author's own visual terms (§11.4) |
+| amo, midjourney, vector-editor (recorded as `figma`), dia-gradient | excluded: third-party trade dress |
+| arcade-pixel, fade-motion, chroma-glow, emboss, **sandbox** (Symbols effect, recorded as `symbols`) | excluded: WebGL / GPU, non-lite; `sandbox` is the one new exclusion this pass adds to `sources.ts` and `kit.sources.json` |
+| ransom-note | gap: site-hosted letter imagery never captured |
+| kinetic-typography | harvest candidate (`@kit/arlan/kinetic-typography`, DOM tiles on sine waves, lite); `build` until harvested |
+| pixel-brushes | `build` (a Canvas 2D stamp-along-path brush is a few dozen lines; no harvest needed) |
+
+Three further typographic pieces were supplied by the owner as full briefs with source — `shutter-type`, `swing-type` (Canvas 2D, lite) and `rush-type` (WebGL1, non-lite) — and are checked in under `packages/create-kit/prompts/src/briefs/`. They are **not** in the 2026-09-17 sitemap crawl; the vocabulary lists them as `build` with a pointer to the brief, and harvest adds them to `scripts/lib/catalog.ts` as `ARLAN` entries once their vault pages and license footer are verified (`--font-neue-montreal` → `var(--font-body)`; `onTransitionChange` → the existing `kit/arlan/holo/view-transition.ts` glue; palette → tokens).
+
+### 11.4 Improving the harvested refs
+
+The six harvested arlan components keep their code and measurements; only the catalog line changes. Each `when` is rewritten from the author's own study description (two independent proposals judged and merged), the first tag is kept so DESIGN.md grouping is stable, and new failure-mode notes are added where the description reveals one (a bundled mask asset for ghosty-reveal, one-per-screen for holo, clip-path clipping the focus ring for squircle). The change flows the normal way — `catalog.ts` is the source; `meta.json`, `ref.md`, `kit.lock.json` and the generated docs are regenerated through the Kit's own generator functions and validated by `scripts/verify.ts` — so a later full harvest reproduces the same bytes.
 
 ## 12. Operator view (contract for `gratitude5dee/admin`)
 
@@ -570,7 +597,7 @@ docs/platform.md                         routes + thresholds
 
 ### MC5 — Kit: templates, briefs, references
 
-- Six templates, four recipes, `three` vendored, arlan briefs harvested into `kit/arlan/{shutter,swing,rush}-type`, React Bits allowlist extension packed by the operator.
+- Six templates, four recipes, `three` vendored, arlan briefs harvested into `kit/arlan/{shutter,swing,rush}-type`, `kinetic-typography` harvested, React Bits allowlist extended from the pack plan and packed by the operator; the effects vocabulary (§11.3) already ships ahead of this milestone.
 - Exit: every template builds and passes QA under lite (game-3d shows its poster frame); the three briefs render at 390×760 in the harness; `verify.ts` green.
 
 ### MC6 — operator view
@@ -666,8 +693,8 @@ Scoring reuses `gradeCase`/`hardFindings` in `evals/agent-suite/create/run.ts` w
 - Platform: `apps/web/lib/create/*`, `lib/functions/{deploy,handoff,tokens}.ts`, `lib/miniapps/{cards,cardSends,imessageCommand,publish,registry,discovery}.ts`, `lib/spectrum/sender.ts`, `lib/github/app.ts`, `lib/entitlements/models.ts`, `middleware.ts` — all @ `f6267a7`.
 - V11 spec: `docs/goal-create-v11.md` (§5.2, §6, §9, §14). GMI: `docs/goal-gmi-models.md`.
 - Kit: `packages/create-kit/{kit.sources.json,restricted/allowlist.json,prompts/src/*}` @ Kit `2026.09`.
-- React Bits: `DavidHDev/react-bits`, MIT + Commons Clause (Tier B). Component names in §11.3 are **unverified** (egress blocked at writing); verify against the checkout at harvest.
-- arlan.me/vault: MIT, Tier A, evidence in `packages/create-kit/evidence/`; the three V12 briefs were supplied by the owner on 2026-09-17 and are checked in verbatim under `prompts/src/briefs/`.
+- React Bits: `DavidHDev/react-bits`, MIT + Commons Clause (Tier B). Names, categories and CLI identifiers verified against the public index crawl of 2026-09-17 (`packages/create-kit/evidence/catalogues/`); upstream file paths remain to be confirmed at pack time.
+- arlan.me/vault: MIT, Tier A, evidence in `packages/create-kit/evidence/arlan/` (2026-09-04 capture plus the 2026-09-17 sitemap index); the three V12 briefs were supplied by the owner on 2026-09-17 and are checked in verbatim under `prompts/src/briefs/`.
 - Admin: `gratitude5dee/admin` @ `8174228` — `goal.md` in that repository is the operator-view spec.
 
 ## 22. Definition of done

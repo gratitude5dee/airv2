@@ -6,6 +6,8 @@ The workspace is `~/.hermes/create/<appname>/`: `air.json` (schema `air.app.v1`)
 
 Rules that end the turn if broken: no host references, no client storage, no `eval`, no secrets in `src/` or `functions/`, no WebGL or non-`lite` component when the surface is lite, no `npm install`. Report previews as `[card: app <slug>]`, never a bare URL. After `air-create publish` say "ready for your approval", never "published". Quote build and QA findings verbatim. Never flip status, widen gates, set budgets, or apply `visibility`/`access`/`price` yourself — those are the owner's decisions.
 
+When the owner names a look — glitch text, an aurora, a card that tilts, a cursor trail — open `DESIGN.md` §4 (the effects vocabulary) before anything else: every named effect there says whether to import a Kit component, build an original under the contract, or decline and offer the nearest thing that works on a phone.
+
 What follows is the Kit's doctrine and catalog index, generated from the same sources as `DESIGN.md`.
 
 ## 1. Doctrine
@@ -122,20 +124,20 @@ The app knows the viewer only as owner or guest, and learns which by trying to s
 <libraries/thinking-orbs path="~/.hermes/skills/create-miniapp/kit/libraries/thinking-orbs/ref.md" lite="true" weight="0.7kb" tier="A" touch="true" motion="static">Thinking Orbs — Nine named agent states (working, searching, solving…) on a 2D canvas. Best 'the agent is doing X' indicator. Tags: ai, status, thinking, canvas</libraries/thinking-orbs>
 </components>
 
-## 4. Exclusions
+## 5. Exclusions
 
 Not in the Kit, so stop looking:
 
 - **ReactBits** (`DavidHDev/react-bits`) — "MIT + Commons Clause": may compile into an app, may not be redistributed as source. Tier B: it never lives in Git or in this Kit; the Build Service resolves it from the restricted artifact (`restricted/README.md`). The 13 files under `apps/web/lib/miniapps/client/backgrounds/vendor/` are ReactBits ports and are governed by the same terms.
 - **CanvasUI** (`DavidHDev/canvas-ui`) — same Commons Clause, and it needs WebGL2 + Three + experimental HTML-in-canvas. Excluded outright.
-- **WebGL under lite** — `libraries/metal-fx` is the only WebGL component and is `lite="false"`; `AirMetalFx` renders its child on a flat plate when lite, reduced motion, or no WebGL. arlan's `arcade-pixel`, `fade-motion`, `chroma-glow`, `emboss` (WebGL) and Beautiful UI's `prompt-bar` (WebGL via `glimm`) are not harvested.
+- **WebGL under lite** — `libraries/metal-fx` is the only WebGL component and is `lite="false"`; `AirMetalFx` renders its child on a flat plate when lite, reduced motion, or no WebGL. arlan's `arcade-pixel`, `fade-motion`, `chroma-glow`, `emboss` and `sandbox` (the Symbols effect; all WebGL) and Beautiful UI's `prompt-bar` (WebGL via `glimm`) are not harvested.
 - **Pro / paid components** — AI CSS `file-diff`, `image-generation`, `inline-citations`, `comparison-table` are Pro (private, licensed). Only the ten free components are here.
-- **Trade dress** — arlan's `amo`, `midjourney`, `figma`, `dia-gradient` reproduce other products' identities. Not harvested.
+- **Trade dress** — arlan's `amo`, `midjourney`, `figma` (URL slug `vector-editor`), `dia-gradient` reproduce other products' identities. Not harvested.
 - **Proprietary icon fonts** — Beautiful UI `sidebar-nav` depends on `@central-icons-react`; every other icon import is rewritten to `lucide-react`.
 - **Heavy** — Beautiful UI `insight-cards` (`liveline` charts), libraries.dev `img-fx`, Fancy's variable-font components (need the font), physics components other than `elastic-line` (`matter-js`).
 - **Not available at harvest** — recorded as gaps in `kit.sources.json`, never fabricated: Beautiful UI `agent-screen` (registry lists it, `r/agent-screen.json` is 404), arlan `ransom-note` (depends on site-hosted imagery and a manifest that is not published).
 
-## 5. Budgets
+## 6. Budgets
 
 The Build Service enforces these; `scripts/verify.ts` enforces them on the Kit itself, so a component listed above already fits.
 

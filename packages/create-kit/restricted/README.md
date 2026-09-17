@@ -41,6 +41,18 @@ a hard CSP finding after normalization. Upload with the Build Service's R2 crede
 (`putObject` in `apps/web/lib/storage/r2.ts`, key from the manifest's `r2Key`); the
 manifest's `tarballSha256` is what the Build Service pins.
 
+## Pack plan (goal-create-v12 §11.3)
+
+The public index of the library (`reactbits.dev/llms.txt`, crawled 2026-09-17) lists **172 components** in four categories — 32 Text Animations, 38 Animations, 45 Components, 57 Backgrounds — each with a CLI identifier (`SplitText`, `Aurora`, …) that is the item name its CLI/registry uses. The crawl is kept verbatim in `evidence/catalogues/component-prompts-2026-09-17.csv`; the Kit's per-component annotation (renderer, lite, touch, CSP risk, disposition) is `evidence/catalogues/kit-annotations-2026-09-17.json`, and the derived Tier B extension list is `evidence/catalogues/reactbits-pack-plan-2026-09-17.json`.
+
+Extending `allowlist.json` from the plan, in order:
+
+1. Take only entries with `status: "candidate"`; every `packed` entry is already the 13 backgrounds above.
+2. Each `upstream` path in the plan is a **guess** in the layout the current allowlist uses (`src/content/<Category>/<Name>/<Name>.jsx`, the JS + CSS variant). Confirm the file exists in the checkout at the pinned commit; some components ship only Tailwind or TypeScript variants, and a few have supporting files (shaders, helpers) that must be added as extra `upstream` files or the pack fails.
+3. Every entry is `lite: false` (they are shader, physics or 3D pieces by construction — anything rebuildable was classified `build` and never enters the artifact).
+4. Run `pack-restricted.ts`; a hard CSP finding after normalization (a web font, a remote texture, `eval`) removes the entry from the allowlist rather than being patched around.
+5. Record the artifact version in the Build Service config and the plan entry's `verified_at`; re-run `harvest --docs-only` so DESIGN.md §4 flips the effect's `how` from `pack` to `@kit/restricted/<name>`.
+
 ## Build Service read contract (MC4)
 
 - Reads `_platform/kit/restricted/<version>.tgz` with its own credential. A store-session

@@ -1,4 +1,4 @@
-## 5. Budgets
+## 6. Budgets
 
 The Build Service enforces these; `scripts/verify.ts` enforces them on the Kit itself, so a component listed above already fits.
 

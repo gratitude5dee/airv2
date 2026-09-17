@@ -24,6 +24,11 @@ function recipes(): string {
     .join("\n\n");
 }
 
+/** Effects vocabulary (goal-create-v12 §11.3): named looks and how the Kit gets each one. */
+function effectsSection(): string {
+  return readText(path.join(PROMPTS_SRC, "effects.md")).trim();
+}
+
 function kb(n: number): string {
   return n < 10 ? `${n.toFixed(1)}kb` : `${Math.round(n)}kb`;
 }
@@ -84,6 +89,7 @@ export function buildDesign(inputs: DesignInputs): string {
     readText(path.join(PROMPTS_SRC, "doctrine.md")).trim(),
     `## 2. Recipes\n\nEight shapes cover almost every request. Start from the closest one and remove, never add, motion.\n\n${recipes()}`,
     `## 3. Catalog\n\nOne line per component: \`path\` is the reference to open, \`lite\` whether it may be used on a lite surface, \`weight\` gzipped KiB it adds (JS+CSS, own code), \`tier\` the license tier (only A ships in source), \`touch\` whether it works without hover, \`motion\` what happens under \`prefers-reduced-motion\` (static: a complete still frame; reduced: shorter; none: no motion to begin with; n/a: not animated).\n\n${catalogIndex(inputs.metas)}\n\n### Sources\n\n${sourcesTable()}`,
+    effectsSection(),
     readText(path.join(PROMPTS_SRC, "exclusions.md")).trim(),
     budgetsSection(inputs.liteJsKb, inputs.liteCssKb, inputs.metas),
   ];

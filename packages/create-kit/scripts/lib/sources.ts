@@ -151,8 +151,9 @@ export const SOURCES: readonly SourceSpec[] = [
     licenseEvidence: ["evidence/arlan/license-page.md", "evidence/arlan/vault-index.md"],
     licenseFiles: [],
     excluded: [
-      { name: "amo, midjourney, figma, dia-gradient", reason: "recreations of third-party trade dress" },
+      { name: "amo, midjourney, figma (URL slug vector-editor), dia-gradient", reason: "recreations of third-party trade dress" },
       { name: "arcade-pixel, fade-motion, chroma-glow, emboss", reason: "WebGL" },
+      { name: "sandbox (\"Symbols effect\", listed as symbols on the 2026-09-04 index)", reason: "GPU-rendered image/video quantiser (WebGL); non-lite by policy and no still frame without the source media" },
       { name: "ransom-note", reason: "GAP — component is a manifest of site-hosted cut-out letter images (/vault/ransom/manifest.json) we did not capture; shipping it would redistribute unlicensed imagery" },
     ],
   },
