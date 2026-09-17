@@ -43,7 +43,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 type Channel_ = "dev" | "prod";
 
-export interface DeploymentRow {
+interface DeploymentRow {
   slug: string;
   username: string | null;
   appname: string | null;

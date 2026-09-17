@@ -19,7 +19,7 @@ const SLUG_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const ACTIONS = ["revoke", "renew"] as const;
 type Action = (typeof ACTIONS)[number];
 
-export function appRow(app: RegistryApp) {
+function appRow(app: RegistryApp) {
   return {
     slug: app.slug,
     status: app.status,

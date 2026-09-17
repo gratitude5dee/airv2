@@ -28,7 +28,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** Intake opens + advances per owner per hour. */
-export const INTAKE_CALLS_PER_HOUR = 120;
+const INTAKE_CALLS_PER_HOUR = 120;
 const HOUR_MS = 3_600_000;
 
 async function ownerId(request: NextRequest): Promise<string | null> {
