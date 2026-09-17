@@ -19,6 +19,8 @@ import { serviceClient } from "@/lib/supabase";
 import {
   clampCreateTier,
   costUsd,
+  createEffortFor,
+  createProviderFor,
   DEFAULT_MODEL_FAMILY,
   gmiReasoningEffort,
   isModelFamily,
@@ -33,6 +35,7 @@ import {
   reasoningForTier,
   serviceTierForTier,
   type CreateModelRequest,
+  type CreateStage,
   type ModelFamily,
   type ModelSelection,
 } from "@/lib/entitlements/models";
@@ -198,6 +201,9 @@ interface RouteTrace {
   /** `create:<slug>` when the completion is a Create turn's; drives the
    * per-project budget (goal-create-v11 §9.1). */
   label?: string | null;
+  /** The Create role the turn was made for (`#<stage>`, V12 §7.3); null
+   * when absent or not a Create turn. */
+  createStage?: CreateStage | null;
   /** Set for a Functions Worker's call: `trigger='app'`, and the hold taken
    * before dispatch settles to the real cost on the app's daily counter
    * (CR8). */
@@ -236,6 +242,7 @@ async function meter(
     requested_model: trace?.requestedModel ?? null,
     reasoning_effort: trace?.reasoningEffort ?? null,
     latency_ms: trace ? Date.now() - trace.startedAtMs : null,
+    create_stage: trace?.createStage ?? null,
     ...(trace?.label ? { label: trace.label } : {}),
   });
   if (runError) {
@@ -492,9 +499,10 @@ export async function POST(
         { status: 403 }
       );
     }
-    createModel = { tier: legacyTier, slug };
+    createModel = { tier: legacyTier, slug, stage: null };
   }
   const createTier = createModel?.tier ?? null;
+  const createStage: CreateStage | null = createModel?.stage ?? null;
   // A fleet-wide GMI switch spends prepaid GMI credits, so ordinary chat is
   // not stopped by AIR's platform-paid monthly cap. Explicit Create runs stay
   // OpenAI-only and therefore keep the cap.
@@ -524,6 +532,13 @@ export async function POST(
               (gmiRoutineTurn(rawBody) || gmiFastToolContinuation(rawBody))
             ? "fast"
             : entitledTier;
+  // V12 §7.1 (CR18): a Create turn is served by the provider of its resolved
+  // slug — GMI for the defaults (Astra plans, GLM builds), OpenAI for an
+  // operator override naming an OpenAI slug — never by the owner's chat
+  // family. The family it is metered under follows the same choice so
+  // cost_usd prices by served slug on the GMI branch.
+  const createProvider = createTier !== null ? createProviderFor(modelForCreateTier(tier)) : null;
+  const createFamily: ModelFamily = createProvider === "gmi" ? "gmi" : "openai";
   let createLabel: string | null = null;
   if (createModel !== null) {
     const { slug } = createModel;
@@ -595,7 +610,7 @@ export async function POST(
     // The tier and family names are the only things that ever appear in a
     // box's config — the real model ID is resolved here and only here.
     const body: Record<string, unknown> = { ...rawBody };
-    const provider = providerForFamily(toFamily);
+    const provider = createProvider ?? providerForFamily(toFamily);
     body["model"] =
       provider === "gmi" && gmiRecoveryModel
         ? gmiRecoveryModel
@@ -674,6 +689,14 @@ export async function POST(
           if (Array.isArray(body["tools"]) && body["tools"].length > 0) {
             delete body["reasoning_effort"];
           }
+        }
+        // A Create turn's effort is the role's (§7.1): build effort for the
+        // Builder, low for the Reviewer, none for the Planner. Set first so
+        // the fleet GLM default below never overrides it.
+        const createEffort =
+          createTier !== null ? createEffortFor(tier, String(body["model"])) : undefined;
+        if (createEffort && body["reasoning_effort"] === undefined) {
+          body["reasoning_effort"] = createEffort;
         }
         // GLM-5.3-Flash's reasoning is mandatory; "low" collapses
         // reasoning_tokens to ~1 (verified live). Only zai-org/* slugs get
@@ -802,8 +825,9 @@ export async function POST(
   // cost in meter()) or releases the hold: an upstream error, a stream that
   // closed without a usage chunk, or an exception.
   const proxy = async (): Promise<Response> => {
-    // The Create family is OpenAI-only: the owner's chat family never applies.
-    let servedFamily: ModelFamily = createTier !== null ? "openai" : family;
+    // A Create turn runs on its slug's provider (§7.1): the owner's chat
+    // family never applies.
+    let servedFamily: ModelFamily = createTier !== null ? createFamily : family;
     const recoverTimedOutAstra = async (error: unknown): Promise<Response> => {
       if (
         providerForFamily(servedFamily) === "gmi" &&
@@ -878,7 +902,10 @@ export async function POST(
     const nonOpenAiProvider = providerForFamily(servedFamily) !== "openai";
     // During an operations override, never leak spend back to OpenAI. GMI is
     // still retried once for transient failures, then its error is surfaced.
-    const canFallBack = nonOpenAiProvider && familyOverride === null;
+    // A Create turn on GMI stays on its lane the same way (CR18: neither
+    // role flips providers); Astra's latency/compatibility recovery to GLM
+    // above still applies to it.
+    const canFallBack = nonOpenAiProvider && familyOverride === null && createTier === null;
     if (
       nonOpenAiProvider &&
       [429, 500, 502, 503, 504].includes(upstream.status)
@@ -1069,8 +1096,9 @@ export async function POST(
         requestedModel,
         reasoningEffort: servedReasoning,
         startedAtMs: requestStartedMs,
-        requestedFamily: createTier !== null ? "openai" : family,
+        requestedFamily: createTier !== null ? createFamily : family,
         label: app ? app.slug : createLabel,
+        createStage,
         app: appTrace(streamHold),
       };
       const clientBody = meteredViaResponses
@@ -1120,8 +1148,9 @@ export async function POST(
           requestedModel,
           reasoningEffort: servedReasoning,
           startedAtMs: requestStartedMs,
-          requestedFamily: createTier !== null ? "openai" : family,
+          requestedFamily: createTier !== null ? createFamily : family,
           label: app ? app.slug : createLabel,
+          createStage,
           app: appTrace(takeHold()),
         })
       );

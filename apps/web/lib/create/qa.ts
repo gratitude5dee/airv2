@@ -11,6 +11,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { getVersion, type VersionRow } from "./versions";
+import type { TestResults } from "./tests";
 
 /** Fixed viewports every pass must cover (§9.6). Width is the iMessage sheet. */
 export const QA_VIEWPORTS = [
@@ -162,25 +163,30 @@ export class QaError extends Error {
 }
 
 /**
- * Stamp `qa_score` + the content-free summary on the version row. Only draft
- * or live rows of `appId` qualify; a purged version is a 404. Returns the
- * refreshed row.
+ * Stamp `qa_score` + the content-free summary on the version row, and — when
+ * `air-create test` ran alongside (V12 §8.4) — the two test counts. Only the
+ * counts are stored: `failed_ids` are for the reply to the Box and the
+ * relay's detail line, never a column (CR21). Only draft or live rows of
+ * `appId` qualify; a purged version is a 404. Returns the refreshed row.
  */
 export async function recordQaScore(
   supabase: SupabaseClient,
   appId: string,
-  report: QaReport
+  report: QaReport,
+  tests?: TestResults | null
 ): Promise<{ row: VersionRow; summary: QaSummary }> {
   const row = await getVersion(supabase, appId, report.version);
   if (!row) throw new QaError("unknown version", 404);
   const summary = scoreReport(report);
+  const testCounts = tests ? { tests_total: tests.total, tests_passed: tests.passed } : {};
   const { error } = await supabase
     .from("miniapp_versions")
     .update({
       qa_score: summary.score,
       qa_report: { ...summary, viewports: report.passes.length, at: new Date().toISOString() },
+      ...testCounts,
     })
     .eq("id", row.id);
   if (error) throw new Error(`qa score write failed: ${error.message}`);
-  return { row: { ...row, qa_score: summary.score }, summary };
+  return { row: { ...row, qa_score: summary.score, ...testCounts }, summary };
 }

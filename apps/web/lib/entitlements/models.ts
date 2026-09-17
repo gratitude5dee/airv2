@@ -4,6 +4,8 @@
  * change without touching a single box (ARCHITECTURE.md §2.5a).
  */
 
+import { createConfig } from "../create/config";
+
 export type SpeedTier = "fast" | "balanced" | "deep";
 
 /**
@@ -30,29 +32,44 @@ const TIER_MODELS: Record<SpeedTier, string> = {
 };
 
 /**
- * Create sessions (goal-create-v11 §9.1) resolve on their own tier family so
- * the Vibe lane can move models without touching the chat lane. Served by
- * the `openai` provider regardless of the owner's `model_family`.
+ * Create sessions (goal-create-v11 §9.1, goal-create-v12 §7.1) resolve on
+ * their own tier family so the Vibe lane can move models without touching
+ * the chat lane. Independent of the owner's `model_family`: the provider is
+ * decided per served slug by `createProviderFor` — GMI for the catalog's
+ * GMI slugs (Astra plans, GLM builds; CR18), OpenAI for anything else, so an
+ * operator override can still point a tier at an OpenAI slug.
  */
 export const CREATE_TIER_MODELS: Record<SpeedTier, string> = {
-  fast: "gpt-5.6-luna",
-  balanced: "gpt-5.6-terra",
-  deep: "gpt-5.6-terra",
+  fast: "zai-org/GLM-5.3-Flash",
+  balanced: "zai-org/GLM-5.3-Flash",
+  deep: "openai/gpt-6-astra",
 };
 
+/** §7.3 — which role's turn a Create completion was, for `agent_runs.create_stage`. */
+export const CREATE_STAGES = ["plan", "build", "review", "finalize"] as const;
+export type CreateStage = (typeof CREATE_STAGES)[number];
+
+export function isCreateStage(value: unknown): value is CreateStage {
+  return typeof value === "string" && (CREATE_STAGES as readonly string[]).includes(value);
+}
+
 /**
- * A Create turn's model request: `create-<tier>:<project slug>`. The slug is
- * the project the run was opened for (`agent_runs.label = create:<slug>`),
- * so every completion is attributed — and budgeted — to the project that
- * made it, not to whichever of the owner's runs happened to start last.
- * Still tier names only on the Box side (C2): the gateway resolves the
- * model slug.
+ * A Create turn's model request: `create-<tier>:<project slug>[#<stage>]`.
+ * The slug is the project the run was opened for (`agent_runs.label =
+ * create:<slug>`), so every completion is attributed — and budgeted — to
+ * the project that made it, not to whichever of the owner's runs happened
+ * to start last. The optional `#<stage>` (§7.3) attributes the turn to a
+ * role for the admin Tokens page and is stripped before resolution. Still
+ * tier names only on the Box side (C2): the gateway resolves the model slug.
  */
-export const CREATE_MODEL_RE = /^create-(fast|balanced|deep):([a-z0-9_][a-z0-9_-]{0,79})$/;
+export const CREATE_MODEL_RE =
+  /^create-(fast|balanced|deep):([a-z0-9_][a-z0-9_-]{0,79})(?:#(plan|build|review|finalize))?$/;
 
 export interface CreateModelRequest {
   tier: SpeedTier;
   slug: string;
+  /** Null when the request carried no `#<stage>` suffix. */
+  stage: CreateStage | null;
 }
 
 /** Slugs for the fixed families that don't go through the tiers. */
@@ -397,20 +414,46 @@ export function modelForCreateTier(tier: SpeedTier): string {
   return createTierOverride(tier) ?? CREATE_TIER_MODELS[tier];
 }
 
-const TIER_RANK: Record<SpeedTier, number> = { fast: 0, balanced: 1, deep: 2 };
-
-export function createModelFor(tier: SpeedTier, slug: string): string {
-  return `create-${tier}:${slug}`;
+/**
+ * §7.1 — the upstream that serves a resolved Create slug: GMI for the GMI
+ * catalog (Astra, GLM), OpenAI otherwise. Decided per slug, never per the
+ * owner's chat family, so `MODEL_CREATE_DEEP=gpt-5.6-terra` routes to OpenAI
+ * while the defaults stay on the prepaid GMI lane.
+ */
+export function createProviderFor(slug: string): Extract<ModelProvider, "gmi" | "openai"> {
+  return isGmiModel(slug) ? "gmi" : "openai";
 }
 
-/** `create-<tier>:<slug>` from a Box, or null when the request is not a
- * well-formed Create turn. */
+/**
+ * §7.1 — `reasoning_effort` for a Create turn on a GLM slug: the Builder
+ * (balanced) sends `GMI_CREATE_BUILD_EFFORT` (default medium), the Reviewer
+ * (fast) `low`, and the Planner (deep) — like every non-GLM slug — nothing.
+ * The fast-lane invariant of `gmiReasoningEffort` still holds for delegated
+ * children: they are not Create turns and never reach this function.
+ */
+export function createEffortFor(tier: SpeedTier, slug: string): string | undefined {
+  if (!slug.startsWith("zai-org/")) return undefined;
+  if (tier === "balanced") return createConfig.buildEffort();
+  if (tier === "fast") return "low";
+  return undefined;
+}
+
+const TIER_RANK: Record<SpeedTier, number> = { fast: 0, balanced: 1, deep: 2 };
+
+export function createModelFor(tier: SpeedTier, slug: string, stage?: CreateStage | null): string {
+  return `create-${tier}:${slug}${stage ? `#${stage}` : ""}`;
+}
+
+/** `create-<tier>:<slug>[#<stage>]` from a Box, or null when the request is
+ * not a well-formed Create turn. */
 export function parseCreateModel(model: unknown): CreateModelRequest | null {
   if (typeof model !== "string") return null;
   const match = CREATE_MODEL_RE.exec(model);
   const tier = match?.[1];
   const slug = match?.[2];
-  return tier && slug && isSpeedTier(tier) ? { tier, slug } : null;
+  const stage = match?.[3];
+  if (!tier || !slug || !isSpeedTier(tier)) return null;
+  return { tier, slug, stage: isCreateStage(stage) ? stage : null };
 }
 
 /**

@@ -2,7 +2,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   clampCreateTier,
   costUsd,
+  CREATE_STAGES,
   CREATE_TIER_MODELS,
+  createEffortFor,
+  createProviderFor,
+  gmiReasoningEffort,
   DEFAULT_MODEL_FAMILY,
   isModelFamily,
   isReasoningModel,
@@ -112,14 +116,17 @@ describe("Create tier family (MC4 §9.1)", () => {
     expect(parseCreateModel("create-fast:alice-countdown")).toEqual({
       tier: "fast",
       slug: "alice-countdown",
+      stage: null,
     });
     expect(parseCreateModel("create-deep:bob_app-2")).toEqual({
       tier: "deep",
       slug: "bob_app-2",
+      stage: null,
     });
     expect(parseCreateModel(createModelFor("balanced", "alice-x"))).toEqual({
       tier: "balanced",
       slug: "alice-x",
+      stage: null,
     });
     expect(parseCreateModel("create-fast")).toBeNull();
     expect(parseCreateModel("create-fast:")).toBeNull();
@@ -154,20 +161,96 @@ describe("Create tier family (MC4 §9.1)", () => {
     expect(clampCreateTier("balanced", "balanced")).toBe("balanced");
   });
 
-  it("defaults to the gpt-5.6 luna/terra family", () => {
+  it("defaults to the V12 §7.1 table: Astra plans, GLM builds and reviews", () => {
     expect(CREATE_TIER_MODELS).toEqual({
-      fast: "gpt-5.6-luna",
-      balanced: "gpt-5.6-terra",
-      deep: "gpt-5.6-terra",
+      fast: "zai-org/GLM-5.3-Flash",
+      balanced: "zai-org/GLM-5.3-Flash",
+      deep: "openai/gpt-6-astra",
     });
-    expect(modelForCreateTier("deep")).toBe("gpt-5.6-terra");
+    expect(modelForCreateTier("deep")).toBe("openai/gpt-6-astra");
   });
 
   it("reads MODEL_CREATE_* and never the ordinary MODEL_* override", () => {
     process.env["MODEL_DEEP"] = "ordinary-deep";
-    expect(modelForCreateTier("deep")).toBe("gpt-5.6-terra");
+    expect(modelForCreateTier("deep")).toBe("openai/gpt-6-astra");
     process.env["MODEL_CREATE_DEEP"] = "gpt-5.6-astra";
     expect(modelForCreateTier("deep")).toBe("gpt-5.6-astra");
     expect(modelForTier("deep")).toBe("ordinary-deep");
+  });
+});
+
+describe("Create routing (V12 §7.1, §7.3 — CR18)", () => {
+  afterEach(() => {
+    delete process.env["GMI_CREATE_BUILD_EFFORT"];
+    delete process.env["GMI_GLM_EFFORT"];
+  });
+
+  it("dispatches GMI catalog slugs to gmi and everything else to openai", () => {
+    expect(createProviderFor("openai/gpt-6-astra")).toBe("gmi");
+    expect(createProviderFor("zai-org/GLM-5.3-Flash")).toBe("gmi");
+    expect(createProviderFor("gpt-5.6-terra")).toBe("openai");
+    expect(createProviderFor("gpt-5.6-astra")).toBe("openai");
+    for (const tier of ["fast", "balanced", "deep"] as const) {
+      expect(createProviderFor(modelForCreateTier(tier))).toBe("gmi");
+    }
+  });
+
+  it("accepts an optional #<stage> suffix and strips it from the slug", () => {
+    expect(parseCreateModel("create-deep:alice-countdown#plan")).toEqual({
+      tier: "deep",
+      slug: "alice-countdown",
+      stage: "plan",
+    });
+    expect(parseCreateModel("create-balanced:alice-countdown#build")?.stage).toBe("build");
+    expect(parseCreateModel("create-fast:alice-countdown#review")?.stage).toBe("review");
+    expect(parseCreateModel("create-deep:alice-countdown#finalize")?.stage).toBe("finalize");
+    expect(parseCreateModel("create-deep:alice-countdown")).toEqual({
+      tier: "deep",
+      slug: "alice-countdown",
+      stage: null,
+    });
+    expect(CREATE_STAGES).toEqual(["plan", "build", "review", "finalize"]);
+  });
+
+  it("refuses a malformed stage suffix rather than ignoring it", () => {
+    expect(parseCreateModel("create-deep:alice-countdown#deploy")).toBeNull();
+    expect(parseCreateModel("create-deep:alice-countdown#")).toBeNull();
+    expect(parseCreateModel("create-deep:alice-countdown#PLAN")).toBeNull();
+    expect(parseCreateModel("create-deep:alice-countdown#plan#build")).toBeNull();
+    expect(isCreateModelRequest("create-deep:alice-countdown#deploy")).toBe(true);
+  });
+
+  it("createModelFor emits the stage and round-trips through the parser", () => {
+    expect(createModelFor("deep", "alice-x", "plan")).toBe("create-deep:alice-x#plan");
+    expect(createModelFor("fast", "alice-x", null)).toBe("create-fast:alice-x");
+    expect(createModelFor("fast", "alice-x")).toBe("create-fast:alice-x");
+    expect(parseCreateModel(createModelFor("balanced", "alice-x", "build"))).toEqual({
+      tier: "balanced",
+      slug: "alice-x",
+      stage: "build",
+    });
+  });
+
+  it("sends the build effort for balanced GLM, low for fast GLM, nothing for deep or non-GLM", () => {
+    expect(createEffortFor("balanced", "zai-org/GLM-5.3-Flash")).toBe("medium");
+    process.env["GMI_CREATE_BUILD_EFFORT"] = "high";
+    expect(createEffortFor("balanced", "zai-org/GLM-5.3-Flash")).toBe("high");
+    expect(createEffortFor("fast", "zai-org/GLM-5.3-Flash")).toBe("low");
+    expect(createEffortFor("deep", "zai-org/GLM-5.3-Flash")).toBeUndefined();
+    expect(createEffortFor("deep", "openai/gpt-6-astra")).toBeUndefined();
+    expect(createEffortFor("balanced", "gpt-5.6-terra")).toBeUndefined();
+    expect(createEffortFor("fast", "openai/gpt-5.6-luna")).toBeUndefined();
+  });
+
+  it("fast-lane invariant: delegated children on the gmi family still pin GLM at low effort", () => {
+    // delegation.model = "fast" on every box: never the owner's pin, never
+    // the Create table, and gmiReasoningEffort's "low" default is untouched
+    // by the Create effort table.
+    process.env["GMI_CREATE_BUILD_EFFORT"] = "high";
+    expect(modelForSelection("gmi", "fast", { gmiModel: "openai/gpt-6-astra" })).toBe(
+      "zai-org/GLM-5.3-Flash"
+    );
+    expect(gmiReasoningEffort("zai-org/GLM-5.3-Flash")).toBe("low");
+    expect(gmiReasoningEffort("openai/gpt-6-astra")).toBeUndefined();
   });
 });

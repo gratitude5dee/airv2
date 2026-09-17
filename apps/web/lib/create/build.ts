@@ -21,7 +21,7 @@ import { gzipSync } from "node:zlib";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import esbuild from "esbuild";
 import { z } from "zod";
-import { runCommand, type ComputeTarget } from "../compute/runtime";
+import { readComputeFile, runCommand, type ComputeTarget } from "../compute/runtime";
 import { ensureComputeAwake } from "../compute/awake";
 import { isBoxEnvironment } from "../compute/environments";
 import { armStopAfter } from "../orchestrator/boxes";
@@ -75,6 +75,7 @@ import {
 } from "./kit";
 import { lintBundle, LintError } from "./lint";
 import { draftPreviewUrl } from "./preview";
+import { lockedTestsRemoved, parseTestsSnapshot, TestsSchema, type Test } from "./tests";
 import { newVersionId, uploadVersion, VersionError, type Finding } from "./versions";
 
 export const AIR_APP_SCHEMA = "air.app.v1";
@@ -125,6 +126,8 @@ export const airJsonSchema = z
     access: z.enum(["single", "multiplayer"]).optional(),
     password: z.string().optional(),
     price: z.number().nonnegative().optional(),
+    /** V12 §8.4 acceptance tests; locked ones are the Planner's (CR22). */
+    tests: TestsSchema.optional(),
   })
   .strict();
 
@@ -820,6 +823,8 @@ export interface CompileOptions {
   version?: string;
   /** Skip the Tier B lookup (tests, and builds that cannot reach R2). */
   restricted?: boolean;
+  /** The previous `air.json.tests[]` (CR22): locked ids may not shrink. */
+  previousTests?: Test[] | null;
 }
 
 /**
@@ -854,6 +859,10 @@ export async function compileWorkspace(
   if (!parsedAir.air) return stop();
   const air = parsedAir.air;
   log.push(`air.json: ${air.appname} (${air.theme}, lite=${air.surface.lite})`);
+  const lockedRemoved = lockedTestsRemoved(options.previousTests ?? null, air.tests ?? []);
+  if (lockedRemoved.length > 0) {
+    return stop([finding("air.json", "tests.locked-removed", `locked tests may only be removed by a re-plan: ${lockedRemoved.join(", ")}`)]);
+  }
 
   const entry = files.find((file) => file.path === air.entry);
   if (!entry) return stop([finding("air.json", "schema", `entry ${air.entry} is not in the workspace`)]);
@@ -1100,6 +1109,8 @@ export interface BuildAppInput {
   files?: WorkspaceFile[];
   /** Already-resolved owner app (the tracked build opened its ledger row). */
   app?: RegistryApp;
+  /** Previous `air.json.tests[]` for the locked check (tests; else read from the Box). */
+  previousTests?: Test[] | null;
   onLog?: (line: string) => void;
 }
 
@@ -1115,10 +1126,16 @@ export async function buildApp(
 ): Promise<BuildResult> {
   const appname = validateAppName(input.appname);
   let files = input.files;
+  let previousTests = input.previousTests ?? null;
   if (!files) {
     const target = await ensureComputeAwake(supabase, userId);
     try {
       files = await pullWorkspace(target, appname);
+      // CR22: the Kit snapshots tests[] to .build/last-tests.json (hidden, so
+      // never part of the pulled tree); absent or unreadable = nothing to hold.
+      previousTests ??= parseTestsSnapshot(
+        await readComputeFile(target, `${workspacePath(appname)}/.build/last-tests.json`).catch(() => null)
+      );
     } finally {
       // Waking a Box (ensureBoxAwake) clears its idle deadline; re-arm it
       // whether or not the pull succeeded so a build never leaves the machine
@@ -1151,7 +1168,7 @@ export async function buildApp(
       )
     ).app;
   const version = newVersionId();
-  const output = await compileWorkspace(files, { version });
+  const output = await compileWorkspace(files, { version, previousTests });
   for (const line of output.log) input.onLog?.(line);
   const url = `${env.miniappOrigin().replace(/\/$/, "")}${nestedPathFor(app.slug)}`;
   if (output.files.length === 0 || hard(output.findings).length > 0) {

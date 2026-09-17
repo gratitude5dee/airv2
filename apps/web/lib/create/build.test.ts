@@ -100,6 +100,17 @@ describe("air.json (air.app.v1)", () => {
     expect(air).toBeNull();
     expect(findings.map((f) => f.hint)).toContain("guestActions.rsvp is not one of actions");
   });
+
+  it("accepts air.json.tests[] (V12 §8.4) and refuses a malformed one", () => {
+    const ok = parseAirJson(
+      JSON.stringify({ ...AIR, tests: [{ id: "hero-visible", see: "Tour countdown", locked: true }] })
+    );
+    expect(hard(ok.findings)).toEqual([]);
+    expect(ok.air?.tests?.[0]?.id).toBe("hero-visible");
+    const bad = parseAirJson(JSON.stringify({ ...AIR, tests: [{ id: "Hero", click: "x" }] }));
+    expect(bad.air).toBeNull();
+    expect(bad.findings.some((f) => f.rule === "schema" && f.hint.startsWith("tests."))).toBe(true);
+  });
 });
 
 describe("workspace safety", () => {
@@ -243,6 +254,33 @@ describe("compileWorkspace", () => {
     expect(out.files).toEqual([]);
     expect(out.findings.some((f) => f.rule === "restricted-unavailable" && f.severity === "hard")).toBe(true);
   }, 60_000);
+
+  it("refuses an air.json whose locked tests shrank (CR22 tests.locked-removed)", async () => {
+    const previous = [
+      { id: "hero-visible", see: "Tour countdown", locked: true },
+      { id: "footer", see: "©" },
+    ];
+    const shrunk = await compileWorkspace(
+      workspace({ "air.json": JSON.stringify({ ...AIR, tests: [{ id: "footer", see: "©" }] }) }),
+      { restricted: false, previousTests: previous }
+    );
+    expect(shrunk.files).toEqual([]);
+    expect(hard(shrunk.findings)).toEqual([
+      expect.objectContaining({
+        file: "air.json",
+        rule: "tests.locked-removed",
+        hint: "locked tests may only be removed by a re-plan: hero-visible",
+      }),
+    ]);
+    // The Builder's own test may go; without a snapshot nothing is held.
+    const kept = await compileWorkspace(
+      workspace({ "air.json": JSON.stringify({ ...AIR, tests: [previous[0]] }) }),
+      { restricted: false, previousTests: previous }
+    );
+    expect(kept.findings.some((f) => f.rule === "tests.locked-removed")).toBe(false);
+    const unknown = await compileWorkspace(workspace(), { restricted: false, previousTests: null });
+    expect(unknown.findings.some((f) => f.rule === "tests.locked-removed")).toBe(false);
+  });
 
   it("stops on a missing air.json and on a missing entry", async () => {
     const missing = await compileWorkspace(workspace({ "air.json": null }), { restricted: false });
