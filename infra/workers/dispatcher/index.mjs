@@ -11,7 +11,9 @@
 //     links back to the mini origin, which re-runs the gate chain.
 //  3. The signed manifest `app:<slug>` in AIR_MANIFEST decides: suspended or
 //     unpublished → 404 (unless an owner carries `draft`), and which script
-//     (`<slug>` or `<slug>-draft`) serves.
+//     serves — routed by the cookie's claims: `draft` → `<slug>-draft`,
+//     `channel: "dev"` → `<slug>-dev` (V12 CR17: exactly `manifest.dev`,
+//     any role, 404 once `dev_expires_at` has passed, `noindex`), else live.
 //  4. `/api/*` goes to the app's user Worker with every inbound `X-Air-*`
 //     stripped and the pseudonymous identity headers set; everything else is
 //     the script's static assets. The user Worker's own `fetch()` lands on the
@@ -133,6 +135,7 @@ async function mintCookie(secret, claims, now) {
     resource: claims.resource,
     exp: now + COOKIE_TTL_S,
     ...(claims.draft === true ? { draft: true } : {}),
+    ...(claims.channel === "dev" ? { channel: "dev" } : {}),
   };
   const payload = b64urlEncode(encoder.encode(JSON.stringify(body)));
   return `${payload}.${await sign(secret, payload)}`;
@@ -341,18 +344,27 @@ export default {
       : null;
     if (!session) return unauthorized(env, slug);
 
-    // (3) manifest: suspension and the live/draft pointer.
+    // (3) manifest: suspension and the live/draft/dev pointer.
     const manifest = await readManifest(env, slug);
     if (!manifest || manifest.status === "suspended") {
       return json({ error: "not_found" }, 404);
     }
     const wantsDraft = session.draft === true && session.role === "owner";
-    if (manifest.status !== "published" && !wantsDraft) {
+    // V12 CR17: a dev session serves exactly manifest.dev from `<slug>-dev`
+    // (published or not) until dev_expires_at; never the live or draft pointer.
+    const wantsDev = !wantsDraft && session.channel === "dev";
+    const devHeaders = wantsDev ? { "x-robots-tag": "noindex, nofollow" } : {};
+    if (wantsDev) {
+      const expires = Date.parse(manifest.dev_expires_at ?? "");
+      if (!manifest.dev || !Number.isFinite(expires) || expires <= now * 1000) {
+        return json({ error: "not_found", reason: "dev_expired" }, 404, devHeaders);
+      }
+    } else if (manifest.status !== "published" && !wantsDraft) {
       return json({ error: "not_found" }, 404);
     }
-    const version = wantsDraft ? manifest.draft : manifest.live;
-    if (!version) return json({ error: "not_found" }, 404);
-    const script = wantsDraft ? `${slug}-draft` : slug;
+    const version = wantsDev ? manifest.dev : wantsDraft ? manifest.draft : manifest.live;
+    if (!version) return json({ error: "not_found" }, 404, devHeaders);
+    const script = wantsDev ? `${slug}-dev` : wantsDraft ? `${slug}-draft` : slug;
 
     const isApi = url.pathname === "/api" || url.pathname.startsWith("/api/");
     if (isApi) {
@@ -418,6 +430,7 @@ export default {
 
     // Sliding cookie: every authenticated response refreshes the 15 minutes.
     const out = finalize(response, env, url);
+    for (const [name, value] of Object.entries(devHeaders)) out.headers.set(name, value);
     out.headers.append(
       "set-cookie",
       setCookie(await mintCookie(env.APP_ORIGIN_SIGNING_KEY, session, now))

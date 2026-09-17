@@ -4,7 +4,7 @@
  * grant scoping (MA4), and legacy /mini/<app> redirect preserving
  * token redemption (MA0).
  */
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { mintToken, verifyToken } from "@/lib/miniapps/tokens";
 import type { GuestGrant } from "@/lib/miniapps/guests";
@@ -48,6 +48,7 @@ vi.mock("@/lib/miniapps/store", () => ({
 import { GET, POST } from "./[app]/route";
 import { middleware } from "../../middleware";
 import { hashPassword } from "@/lib/miniapps/gates";
+import { verifyAppToken } from "@/lib/functions/tokens";
 import { makeApp, testDb } from "./loader-test-utils";
 
 function params(app: string) {
@@ -738,5 +739,161 @@ describe("legacy /mini/<app> redirect (MA0)", () => {
     expect(asset.headers.get("location")).toBe(
       "https://mini.wzrd.tech/kanban/app.js"
     );
+  });
+});
+
+/**
+ * V12 §6.2 / §18 dev channel: link.wzrd.tech/<u>/<a> serves `dev_version`
+ * to a guest with noindex and 404s when it is null, expired or revoked;
+ * `<slug>-draft` still refuses a guest; the live path is unchanged.
+ */
+describe("dev channel (V12 CR17)", () => {
+  const FUTURE = new Date(Date.now() + 7 * 86_400_000).toISOString();
+  const PAST = new Date(Date.now() - 60_000).toISOString();
+  const LANE_ENV = {
+    APP_ORIGIN_SIGNING_KEY: "app-origin-signing-key",
+    APPS_ORIGIN_SUFFIX: "apps.wzrd.tech",
+    CLOUDFLARE_ACCOUNT_ID: "acct",
+    CLOUDFLARE_API_TOKEN: "tok",
+    CF_MANIFEST_KV_ID: "kv-1",
+    LINK_HOST_ENABLED: "true",
+  };
+
+  const devApp = (over: Partial<ReturnType<typeof makeApp>> = {}) =>
+    makeApp({
+      slug: "alice-promo",
+      kind: "render",
+      owner_user_id: "owner-1",
+      publisher_username: "alice",
+      appname: "promo",
+      status: "draft",
+      draft_version: "v1700000000001",
+      dev_version: "v1700000000001",
+      dev_released_at: "2026-01-01T00:00:00.000Z",
+      dev_expires_at: FUTURE,
+      ...over,
+    });
+
+  /** A guest tap on link.wzrd.tech/alice/promo, as the middleware hands it to the loader. */
+  function devRequest(path = "/alice/promo", extra: Record<string, string> = {}) {
+    const edge = middleware(
+      new NextRequest(`https://link.wzrd.tech${path}`, {
+        headers: { host: "link.wzrd.tech", "x-forwarded-for": "203.0.113.9" },
+      })
+    );
+    const rewrite = edge.headers.get("x-middleware-rewrite") ?? "";
+    const headers: Record<string, string> = { host: "link.wzrd.tech", ...extra };
+    for (const name of ["x-mini-host", "x-mini-nested", "x-mini-channel"]) {
+      const value = edge.headers.get(`x-middleware-request-${name}`);
+      if (value) headers[name] = value;
+    }
+    return new NextRequest(rewrite, { headers });
+  }
+
+  beforeEach(() => {
+    for (const [key, value] of Object.entries(LANE_ENV)) process.env[key] = value;
+    testDb.apps = [devApp()];
+  });
+  afterEach(() => {
+    for (const key of Object.keys(LANE_ENV)) delete process.env[key];
+  });
+
+  it("serves dev_version to a guest: 303 to <slug>-dev via a channel:dev token, noindex", async () => {
+    const res = await GET(devRequest(), params("alice-promo"));
+    expect(res.status).toBe(303);
+    expect(res.headers.get("x-robots-tag")).toBe("noindex, nofollow");
+    const target = new URL(res.headers.get("location") ?? "");
+    expect(target.host).toBe("alice-promo.apps.wzrd.tech");
+    expect(target.pathname).toBe("/__air/enter");
+    const claims = verifyAppToken(target.searchParams.get("t") ?? "", "alice-promo");
+    expect(claims?.channel).toBe("dev");
+    expect(claims?.role).toBe("anon");
+    expect(claims?.draft).toBeUndefined();
+    expect(claims?.principal).toMatch(/^anon:/);
+    expect(target.toString()).not.toContain("owner-1");
+    expect(testDb.gateEvents).toEqual([
+      { app_id: "app-alice-promo", user_id: null, kind: "app_opened", ref: "dev" },
+    ]);
+  });
+
+  it("404s when dev_version is null, expired, revoked, or the app is suspended", async () => {
+    for (const over of [
+      { dev_version: null },
+      { dev_expires_at: PAST },
+      { dev_version: null, dev_released_at: null, dev_expires_at: null },
+      { status: "suspended" as const },
+    ]) {
+      testDb.apps = [devApp(over)];
+      const res = await GET(devRequest(), params("alice-promo"));
+      expect(res.status).toBe(404);
+      expect(await res.text()).toBe("not found");
+      expect(res.headers.get("x-robots-tag")).toBe("noindex, nofollow");
+    }
+    expect(testDb.gateEvents).toHaveLength(0);
+  });
+
+  it("is a 404 when the app-origin lane is off (nothing could serve a dev Worker)", async () => {
+    delete process.env["CF_MANIFEST_KV_ID"];
+    delete process.env["APP_ORIGIN_SIGNING_KEY"];
+    const res = await GET(devRequest(), params("alice-promo"));
+    expect(res.status).toBe(404);
+  });
+
+  it("the draft stays owner-only: the same app on the mini host has no dev channel", async () => {
+    // mini.wzrd.tech/alice/promo → the loader's ordinary path; a draft is
+    // unpublished, so a guest gets the visibility 404 and no hand-off.
+    const edge = middleware(
+      new NextRequest("https://mini.wzrd.tech/alice/promo", {
+        headers: { host: "mini.wzrd.tech", "x-mini-channel": "dev" },
+      })
+    );
+    expect(edge.headers.get("x-middleware-request-x-mini-channel")).toBeNull();
+    const res = await GET(
+      new NextRequest("https://mini.wzrd.tech/mini/alice-promo", {
+        headers: { host: "mini.wzrd.tech", "x-mini-host": "1", "x-mini-nested": "1" },
+      }),
+      params("alice-promo")
+    );
+    expect(res.status).toBe(404);
+    expect(res.headers.get("location")).toBeNull();
+    expect(res.headers.get("x-robots-tag")).toBeNull();
+  });
+
+  it("leaves the live path unchanged: a published app with a dev release still runs the full gate chain", async () => {
+    testDb.apps = [
+      makeApp({
+        slug: "kanban",
+        kind: "render",
+        name: "Kanban",
+        access: "multiplayer",
+        dev_version: "v1700000000001",
+        dev_expires_at: FUTURE,
+      }),
+    ];
+    const res = await GET(
+      new NextRequest("https://mini.wzrd.tech/mini/kanban", {
+        headers: { host: "mini.wzrd.tech", "x-mini-host": "1" },
+      }),
+      params("kanban")
+    );
+    // No session cookie → the session gate answers, never a dev hand-off.
+    expect(res.status).toBe(403);
+    expect(res.headers.get("x-robots-tag")).toBeNull();
+    expect(res.headers.get("location")).toBeNull();
+  });
+
+  it("an owner who already holds a session for the slug keeps their own principal on dev", async () => {
+    const cookie = mintToken("owner-1", "alice-promo", "default", 15);
+    const res = await GET(
+      devRequest("/alice/promo", { cookie: `mini_alice-promo=${cookie}` }),
+      params("alice-promo")
+    );
+    expect(res.status).toBe(303);
+    const target = new URL(res.headers.get("location") ?? "");
+    const claims = verifyAppToken(target.searchParams.get("t") ?? "", "alice-promo");
+    expect(claims?.channel).toBe("dev");
+    expect(claims?.role).toBe("owner");
+    expect(claims?.principal).toMatch(/^p_/);
+    expect(testDb.gateEvents[0]).toMatchObject({ user_id: "owner-1", ref: "dev" });
   });
 });

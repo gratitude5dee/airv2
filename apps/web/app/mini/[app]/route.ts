@@ -10,6 +10,9 @@
  *    exactly that app + resource (MA4).
  *  - otherwise run the gate chain (visibility → password → x402 → session)
  *    and dispatch to the renderer module at lib/miniapps/apps/<slug> (MA5).
+ *  - x-mini-channel: dev (set only by the link-host middleware, V12 §6.2):
+ *    serve exactly the app's unexpired dev release to anyone, noindex, by
+ *    handing off to `<slug>-dev` — drafts stay owner-only (CR13/CR17).
  * All state lives in the user's box; this origin shares no session with the
  * main app and nothing is ever written to client storage (C17).
  */
@@ -47,6 +50,8 @@ import {
   withBaseHeaders,
 } from "@/lib/miniapps/html";
 import { recordOpsEvent } from "@/lib/security/limits";
+import { handoffUrl } from "@/lib/functions/handoff";
+import { devReleaseActive } from "@/lib/create/release";
 import {
   userStyle,
   withProfileCache,
@@ -71,6 +76,7 @@ type LoadLane =
   | "token_exchange"
   | "grant"
   | "gated_render"
+  | "dev"
   | "unknown_app"
   | "prefetch";
 
@@ -235,6 +241,71 @@ async function runPublicGateChain(
   };
 }
 
+const DEV_ROBOTS_TAG = "noindex, nofollow";
+
+/** Dev releases never join discovery or an index (CR17). */
+function devResponse(response: NextResponse): NextResponse {
+  response.headers.set("X-Robots-Tag", DEV_ROBOTS_TAG);
+  return response;
+}
+
+/**
+ * V12 §6.2 the dev channel. The link-host middleware marks the request
+ * `x-mini-channel: dev` (stripped from every inbound request, so the marker
+ * is middleware-owned); the loader then serves exactly `dev_version` while
+ * `dev_expires_at` is ahead — visibility forced to unlisted (no password, no
+ * x402, guests welcome), the hand-off token carrying `channel: "dev"` so the
+ * Dispatcher routes to `<slug>-dev`. A missing, expired, revoked or
+ * suspended release is the same 404 as an unpublished app. Nothing here
+ * touches the live or draft pointer.
+ */
+async function serveDev(
+  request: NextRequest,
+  supabase: SupabaseClient,
+  app: RegistryApp,
+  log: LoadLog
+): Promise<NextResponse> {
+  log.lane = "dev";
+  if (app.status === "suspended" || !app.owner_user_id || !devReleaseActive(app)) {
+    logLoad(log, "dev release inactive", 404);
+    return devResponse(notFound());
+  }
+  const mark = performance.now();
+  // An owner (or granted guest) who already holds a session for this slug
+  // keeps their own principal; everyone else is an anonymous dev visitor.
+  const existing = sessionFromCookie(request, app.slug);
+  const session: MiniSession = existing ?? {
+    userId: app.owner_user_id,
+    resourceId: "dev",
+    role: "guest",
+  };
+  const sessionMs = elapsedMs(mark);
+  log.gate = { sessionMs, totalMs: sessionMs };
+  const address =
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const target = handoffUrl(app, session, {
+    channel: "dev",
+    ...(existing ? {} : { anonymous: { address } }),
+  });
+  if (!target) {
+    // The app-origin lane is off: nothing can serve a dev Worker.
+    logLoad(log, "dev lane unavailable", 404);
+    return devResponse(notFound());
+  }
+  await logGateEvent(supabase, app.id, existing?.userId ?? null, "app_opened", "dev");
+  console.log(
+    JSON.stringify({
+      msg: "miniapp opened",
+      app: app.slug,
+      channel: "dev",
+      version: app.dev_version,
+      role: existing ? existing.role : "anon",
+    })
+  );
+  logLoad(log, "dev handoff", 303);
+  return devResponse(withBaseHeaders(NextResponse.redirect(target, 303)));
+}
+
 /**
  * The shell wordmark links back to Home for the session owner — a fresh
  * signed link per render (multi-use within its TTL). Guests stay put: Home
@@ -347,6 +418,11 @@ async function handleGet(
     log.lane = "unknown_app";
     logLoad(log, "unknown slug", 404);
     return notFound();
+  }
+  // A dev release may exist before the app has ever been published (no
+  // bundle_version, no module yet), so the dev channel is decided first.
+  if (request.headers.get("x-mini-channel") === "dev") {
+    return serveDev(request, supabase, app, log);
   }
   const appModule = resolveModule(app);
   if (!appModule) {

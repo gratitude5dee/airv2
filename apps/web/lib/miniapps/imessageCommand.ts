@@ -28,6 +28,35 @@ export function parseMiniAppCommand(input: string): string | null {
   return ALIASES[requested] ?? requested;
 }
 
+/**
+ * A public GitHub repository URL at the head of a `/create` prompt
+ * (V12 §8.1): `https://github.com/<owner>/<repo>[/tree/<branch>]`, optionally
+ * followed by a trailing slash. The match must end at whitespace or the end
+ * of the text so a URL glued to prose is not split in half.
+ */
+const GITHUB_URL_RE =
+  /^https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)(?:\/tree\/([^\s/]+(?:\/[^\s/]+)*))?\/?(?=\s|$)/;
+
+/**
+ * V12 §8.1 `/create <text>`: the text may span lines. A bare `/create` (no
+ * text) returns null so the existing card path (`parseMiniAppCommand`)
+ * keeps opening the Create surface. A leading GitHub URL is lifted into
+ * `url`; whatever follows it is the prompt (possibly empty).
+ */
+export function parseCreateCommand(
+  input: string
+): { prompt: string; url: string | null } | null {
+  const match = /^\/create\s+([\s\S]+)$/i.exec(input.trim());
+  const text = match?.[1]?.trim() ?? "";
+  if (!text) return null;
+  const url = GITHUB_URL_RE.exec(text);
+  if (!url) return { prompt: text, url: null };
+  return {
+    prompt: text.slice(url[0].length).trim(),
+    url: url[0].replace(/\/$/, ""),
+  };
+}
+
 export async function maybeSendMiniAppLink(
   supabase: SupabaseClient,
   sender: SpectrumSender,

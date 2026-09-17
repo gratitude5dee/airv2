@@ -47,6 +47,10 @@ export interface AppManifest {
   live: string | null;
   /** Draft version the owner is previewing, or null. */
   draft: string | null;
+  /** V12 CR17: the dev release served by `<slug>-dev`, or null. */
+  dev: string | null;
+  /** When the dev release stops serving (ISO); the Dispatcher 404s past it. */
+  dev_expires_at: string | null;
   /** Owner pseudonym for `outbound.params` — never the user id (CR9). */
   owner_ref: string;
   /** The live Worker runs an approved user module (§11.6). */
@@ -102,6 +106,7 @@ export async function writeManifest(manifest: AppManifest): Promise<void> {
       status: manifest.status,
       live: manifest.live,
       draft: manifest.draft,
+      dev: manifest.dev,
     })
   );
 }
@@ -151,6 +156,9 @@ export async function readManifest(slug: string): Promise<AppManifest | null> {
       status: manifest.status,
       live: typeof manifest.live === "string" ? manifest.live : null,
       draft: typeof manifest.draft === "string" ? manifest.draft : null,
+      dev: typeof manifest.dev === "string" ? manifest.dev : null,
+      dev_expires_at:
+        typeof manifest.dev_expires_at === "string" ? manifest.dev_expires_at : null,
       owner_ref: typeof manifest.owner_ref === "string" ? manifest.owner_ref : "",
       functions: manifest.functions === true,
       updated_at: typeof manifest.updated_at === "string" ? manifest.updated_at : "",

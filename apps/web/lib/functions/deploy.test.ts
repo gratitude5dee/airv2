@@ -26,6 +26,8 @@ const manifest = vi.hoisted(() => ({
       status: string;
       live: string | null;
       draft: string | null;
+      dev: string | null;
+      dev_expires_at: string | null;
       owner_ref: string;
       functions: boolean;
       updated_at: string;
@@ -286,6 +288,8 @@ describe("deployStaticVersion — deletion that begins mid-deploy", () => {
     expect(manifest.deleteManifest).toHaveBeenCalledWith("alice-notes");
     expect(cloudflare.deleteDispatchScript).toHaveBeenCalledWith("alice-notes");
     expect(cloudflare.deleteDispatchScript).toHaveBeenCalledWith("alice-notes-draft");
+    // V12 CR17: the dev release's Worker goes with the tenant too.
+    expect(cloudflare.deleteDispatchScript).toHaveBeenCalledWith("alice-notes-dev");
   });
 
   it("tears down when the row vanished under the deploy", async () => {
@@ -295,7 +299,7 @@ describe("deployStaticVersion — deletion that begins mid-deploy", () => {
     await expect(deployStaticVersion(fakeSupabase(), input)).rejects.toBeInstanceOf(
       AppOriginRefusedError
     );
-    expect(cloudflare.deleteDispatchScript).toHaveBeenCalledTimes(2);
+    expect(cloudflare.deleteDispatchScript).toHaveBeenCalledTimes(3);
   });
 
   it("tears down when the account's deletion started after the claim", async () => {
@@ -305,7 +309,7 @@ describe("deployStaticVersion — deletion that begins mid-deploy", () => {
     await expect(deployStaticVersion(fakeSupabase(), input)).rejects.toBeInstanceOf(
       AppOriginRefusedError
     );
-    expect(cloudflare.deleteDispatchScript).toHaveBeenCalledTimes(2);
+    expect(cloudflare.deleteDispatchScript).toHaveBeenCalledTimes(3);
   });
 
   it("leaves the Worker up (claim on record) when the confirm read fails", async () => {
@@ -345,7 +349,7 @@ describe("deployStaticVersion — deletion that begins mid-deploy", () => {
     await expect(deployStaticVersion(fakeSupabase(), input)).rejects.toBeInstanceOf(
       AppOriginRefusedError
     );
-    expect(cloudflare.deleteDispatchScript).toHaveBeenCalledTimes(2);
+    expect(cloudflare.deleteDispatchScript).toHaveBeenCalledTimes(3);
   });
 
   it("leaves the Worker standing when the slug-owner check cannot be read", async () => {
@@ -565,6 +569,8 @@ describe("reconcileAppOrigins — the registry is the source of truth for the or
     status: "published",
     live: "v1700000000001",
     draft: "v1700000000001",
+    dev: null,
+    dev_expires_at: null,
     owner_ref: "alice",
     functions: false,
     updated_at: OLD,

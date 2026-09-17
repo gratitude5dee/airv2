@@ -34,7 +34,10 @@ export type OpsEventKind =
   | "fn_secret"
   | "fn_rotate"
   | "fn_kill"
-  | "fn_backend";
+  | "fn_backend"
+  // V12 Create intake (docs/goal-create-v12.md §14.2 item 2 adds the kinds).
+  | "intake"
+  | "plan";
 
 /** Per-user launch mints (store session or plugin bearer), per hour. */
 export const LAUNCHES_PER_HOUR = 60;
@@ -158,7 +161,7 @@ async function markRateLimited(
  * user is over the limit for the window; records a `rate_limited` marker so
  * probing shows up in the ops dashboard.
  */
-async function overLimit(
+export async function overLimit(
   supabase: SupabaseClient,
   kind: OpsEventKind,
   userId: string,

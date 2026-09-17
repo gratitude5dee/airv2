@@ -43,6 +43,7 @@ import {
   OWNER_ONLY_CARD_LINE,
 } from "../miniapps/imessageCommand";
 import { sendMarkedCards } from "../miniapps/cards";
+import { maybeOpenIntake } from "../create/intake";
 import { maybeRunDrawLane } from "../miniapps/drawCommand";
 import { maybeRunFreezeLane } from "../miniapps/freezeCommand";
 import { maybeRunLocationLane } from "../location/lane";
@@ -793,7 +794,7 @@ async function runFlushInner(
       await supabase.from("flush_jobs").delete().eq("space_id", job.spaceId);
       return;
     }
-    const rawInput = composeInput(carried, fresh);
+    let rawInput = composeInput(carried, fresh);
     const responseLaneInput = composeResponseLaneInput(carried, fresh);
     // Timed progress starts from the first fresh iMessage, not from when a
     // warm box happened to finish booting. Retried carried work has already
@@ -942,6 +943,27 @@ async function runFlushInner(
       }
       return;
     }
+    // V12 §8.1: "/create <text>" from the owner opens the create_intakes row
+    // here and marks the turn; the Planner itself runs in air-main (V11 §9.2),
+    // so the turn is never short-circuited. Anyone else gets the owner-only
+    // line, exactly like the card path.
+    const intake = await maybeOpenIntake(
+      supabase,
+      sender,
+      { spaceId: job.spaceId, userId: job.userId, phone: job.phone, senderTier: job.senderTier },
+      responseLaneInput
+    );
+    if (intake?.kind === "non_owner") {
+      if (!(await chainCancelled(supabase, job.spaceId, chainStartedAt))) {
+        await supabase
+          .from("flush_jobs")
+          .delete()
+          .eq("space_id", job.spaceId)
+          .eq("chain_started_at", chainStartedAt);
+      }
+      return;
+    }
+    if (intake?.kind === "owner") rawInput = `${intake.line}\n${rawInput}`;
     try {
       const handled = await maybeSendMiniAppLink(
         supabase,

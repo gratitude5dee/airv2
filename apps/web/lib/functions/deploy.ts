@@ -3,8 +3,9 @@
  * one code path. A Drop/Vibe app ships the platform's static stub as its
  * main module plus an ASSETS binding; a Functions app (MC5) swaps the stub
  * for the built module. `<slug>` is live, `<slug>-draft` is the owner's
- * preview. Publishing and rollback re-upload the same digest to the live
- * name and move the KV pointer — no wrangler, no working tree (CR10).
+ * preview, `<slug>-dev` the owner's time-boxed dev release (V12 CR17).
+ * Publishing and rollback re-upload the same digest to the live name and
+ * move the KV pointer — no wrangler, no working tree (CR10).
  *
  * The lane is optional: when the app-origin env is unset every function here
  * is a no-op returning null and callers keep the legacy R2 render.
@@ -59,7 +60,7 @@ export const WORKER_COMPATIBILITY_DATE = "2026-01-01";
 export const FUNCTIONS_CPU_MS = { free: 50, paid: 200 } as const;
 export const FUNCTIONS_SUBREQUESTS = 20;
 
-export type DeployTarget = "live" | "draft";
+export type DeployTarget = "live" | "draft" | "dev";
 
 /** The app row is gone or under deletion: nothing may be deployed for it. */
 export class AppOriginRefusedError extends Error {
@@ -78,7 +79,18 @@ export function appOriginLaneReady(): boolean {
 }
 
 export function scriptNameFor(slug: string, target: DeployTarget): string {
-  return target === "live" ? slug : `${slug}-draft`;
+  return target === "live" ? slug : `${slug}-${target}`;
+}
+
+/**
+ * V12 §6.4: the dev Worker runs a user module only under the approved
+ * manifest, exactly as live does (CR6/CR7 hold on dev), and never binds the
+ * live D1/KV — dev traffic must not touch production data. Until the dev
+ * resource pair (miniapp_functions.dev_d1_database_id / dev_kv_namespace_id)
+ * is provisioned through lib/functions/provision.ts, dev binds ASSETS only.
+ */
+function backendTarget(target: DeployTarget): "live" | "draft" {
+  return target === "dev" ? "live" : target;
 }
 
 export function toAssetFiles(files: BundleFile[]): AssetFile[] {
@@ -157,6 +169,7 @@ export function functionsBindings(
   target: DeployTarget
 ): ScriptBinding[] {
   const bindings: ScriptBinding[] = [{ type: "assets", name: "ASSETS" }];
+  if (target === "dev") return bindings;
   const wants = resourcesFor(row, target);
   const db = resourceId(row, "db");
   const kv = resourceId(row, "kv");
@@ -267,7 +280,9 @@ export async function deployStaticVersion(
       : input.module;
   const backend = fnModule ? await loadFunctions(supabase, input.appId) : null;
   const runsFunctions =
-    fnModule !== null && backend !== null && moduleAllowed(backend, input.target);
+    fnModule !== null &&
+    backend !== null &&
+    moduleAllowed(backend, backendTarget(input.target));
   const assets = await uploadAssets(
     script,
     toAssetFiles(input.files),
@@ -363,6 +378,8 @@ export function manifestFor(app: RegistryApp, backend: FunctionsRow | null = nul
     status,
     live: app.status === "published" ? app.bundle_version : null,
     draft: app.draft_version,
+    dev: app.dev_version ?? null,
+    dev_expires_at: app.dev_expires_at ?? null,
     owner_ref: app.owner_user_id ? appPrincipal(app.owner_user_id, app.id) : "",
     functions: app.functions_enabled && (runtime === undefined || !runtime.killed),
     updated_at: new Date().toISOString(),
@@ -422,12 +439,13 @@ export async function suspendOnAppOrigin(
   });
 }
 
-/** Tenant teardown for /api/admin/delete (CR16): both scripts + the pointer. */
+/** Tenant teardown for /api/admin/delete (CR16): every script + the pointer. */
 export async function teardownAppOrigin(slug: string): Promise<void> {
   if (!appOriginLaneReady()) return;
   await deleteManifest(slug);
   await deleteDispatchScript(scriptNameFor(slug, "live"));
   await deleteDispatchScript(scriptNameFor(slug, "draft"));
+  await deleteDispatchScript(scriptNameFor(slug, "dev"));
 }
 
 /**
@@ -707,18 +725,17 @@ async function readRegistryRow(
   return data ? parseRegistryApp(data) : null;
 }
 
-const DRAFT_SUFFIX = "-draft";
+const SCRIPT_SUFFIXES = ["-draft", "-dev"] as const;
 
-/** The app slugs a dispatch script name may belong to (`-draft` is a legal slug tail). */
+/** The app slugs a dispatch script name may belong to (`-draft`/`-dev` are legal slug tails). */
 function slugCandidates(script: string): string[] {
-  return script.endsWith(DRAFT_SUFFIX)
-    ? [script, script.slice(0, -DRAFT_SUFFIX.length)]
-    : [script];
+  const suffix = SCRIPT_SUFFIXES.find((s) => script.endsWith(s));
+  return suffix ? [script, script.slice(0, -suffix.length)] : [script];
 }
 
 /**
  * Reconcile the deploy marks against the vendor inventory: every script in
- * the dispatch namespace names an app (`<slug>` or `<slug>-draft`); every app
+ * the dispatch namespace names an app (`<slug>`, `<slug>-draft` or `<slug>-dev`); every app
  * a script can name gets app_origin_deployed_at set if it lacks it. Covers
  * Workers put before the mark existed. Scripts naming no app are reported so
  * ops can remove them. No-op when the lane is unconfigured.
