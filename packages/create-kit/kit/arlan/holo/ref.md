@@ -2,7 +2,7 @@
 
 # Holo Card (`arlan/holo`)
 
-Holographic foil card that tilts with the pointer or device orientation. One per screen; heavy blend modes.
+An ID card on holographic foil: tilt it or turn the phone and the foil catches the light, marks rise on the turned side and the photo flips colour. Pick it for one membership, ticket or pass card, the screen's hero.
 
 - **Weight**: 5.9 KiB JS + 0.1 KiB CSS (own, gzip); 5.9 KiB with vendor deps. **Lite**: true. **Touch**: true. **Reduced motion**: static.
 - **License**: MIT, tier A, from `arlan.me/vault@2026-09-04` by Arlan Marat.
@@ -28,6 +28,12 @@ _No props beyond `className`/`children`._
 ## Failure modes
 
 - Upstream baked a site photo into the foil tile layer; the Kit takes `tileSrc` on applyFoil (unset → no tile).
+- No .holo-* layer stylesheet was harvested; the engine only writes CSS variables, so today the card paints as a flat plate.
+- HoloCard and HoloBody hard-code the vault's 'Kamila' copy and aria-label with no props to change them; rewrite both before shipping.
+- deviceorientation is listened to without the iOS permission request, so phone tilt may never arrive; drag and idle drift must carry it.
+- Finger tilt is pointermove on the host and competes with page scroll; unless the card is the whole compact screen, rely on the idle drift.
+- Under reduced motion the loop never starts, so applyFrame never writes the tilt variables; paint one resting frame at mount.
+- The host plate is a literal light gradient plus --border-line, which Air does not define; restyle it with var(--panel-bg) and var(--ring).
 - Under `prefers-reduced-motion` the final frame renders immediately; make sure that frame is complete.
 
 ## Air tokens

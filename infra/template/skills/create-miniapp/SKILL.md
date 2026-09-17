@@ -186,4 +186,4 @@ Good: `new` → plan → `build` → `qa` → one sentence + `[card: app alice-c
 
 ---
 
-Kit 2026.09: 76 components, 74 lite. DESIGN.md beside this file is the catalog.
+Kit 2026.09: 79 components, 76 lite. DESIGN.md beside this file is the catalog.

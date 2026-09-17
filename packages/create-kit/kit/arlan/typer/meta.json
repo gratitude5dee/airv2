@@ -7,7 +7,7 @@
     "hero",
     "status"
   ],
-  "when": "Eased typing with in/out variations as a vanilla class plus a React wrapper; alternative to fancy/typewriter when you need the out-animation.",
+  "when": "A headline that types in instead of fading: a wave runs along the line and each letter flickers through pill, highlight and outline, then lands as text. Pick it over fancy/typewriter when the line must also type away.",
   "kind": "component",
   "entry": "index.tsx",
   "props": {
@@ -46,5 +46,12 @@
     "heightPx": 1,
     "errors": []
   },
-  "notes": []
+  "notes": [
+    "Pill colours are literals; set the four --typer-* variables to --ink, --canvas, --accent and --on-accent or the pills fight the dark canvas.",
+    "Hidden (opacity 0) until its first frame; keep `delay` (seconds) near 0 or the compact card opens with a blank headline.",
+    "Words are white-space: pre and wrap only between words; keep one short line at 390px or the bar breaks mid-wave.",
+    "Merged bars need :has(); older WebKit shows separate pills, which still reads. Pass plain strings only; destroy restores innerHTML.",
+    "One short line per screen; a paragraph of flickering pills is noise. `out` leaves the slot empty, so the next text must land at once.",
+    "Runs at 20 fps on a finite timer and stops; there is no loop to hide, but two typers at once break the one-hero-motion rule."
+  ]
 }

@@ -3,11 +3,12 @@
   "title": "Ghosty Reveal",
   "tags": [
     "reveal",
-    "mask",
+    "media",
     "motion",
-    "media"
+    "hero",
+    "gallery"
   ],
-  "when": "Mask-image wipe that reveals or hides a block using an image mask you supply.",
+  "when": "A photo bleeds in through a soft, cloudy edge, as if forming out of fog. Pick it for the one hero image or a confirmation reveal; the owner bundles the cloud mask, and text takes fancy/vertical-cut-reveal.",
   "kind": "component",
   "entry": "index.tsx",
   "props": {
@@ -49,5 +50,11 @@
     "heightPx": 1,
     "errors": []
   },
-  "notes": []
+  "notes": [
+    "maskSrc is a soft-gradient PNG or SVG bundled in the app; a missing or remote mask resolves transparent, so the block never appears.",
+    "left/right need maskSrcH (a horizontal mask); without it the vertical mask is stretched sideways and the fog edge runs the wrong way.",
+    "Uncontrolled it fires once at 20% visibility, on mount in the compact card. Below the fold, drive play from state (the confirm tap) instead.",
+    "The mask is composited at 500% of the block; keep it to one full-width photo per screen, not a list of thumbnails.",
+    "Under reduced motion the wipe is a 0.3s opacity fade and onHidden never fires (it listens for mask-position); do not gate logic on it."
+  ]
 }

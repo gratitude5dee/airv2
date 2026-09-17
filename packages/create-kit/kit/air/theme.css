@@ -52,6 +52,29 @@ html[data-theme="pixel"] {
   --slide-in:0ms;
 }
 
+html[data-theme="clay"] {
+  --canvas:radial-gradient(circle at 8% 0%, rgba(255,248,235,0.96), transparent 34%),radial-gradient(circle at 92% 16%, rgba(232,174,139,0.22), transparent 30%),linear-gradient(180deg,#f8f0e5 0%,#efe2d4 54%,#e5d2c1 100%);
+  --ink:#2d211b;
+  --ink-muted:#79685d;
+  --on-accent:#2d211b;
+  --on-ink:#fffaf2;
+  --accent:#c76545;
+  --panel-bg:rgba(255,251,245,0.82);
+  --well-bg:rgba(239,225,211,0.78);
+  --logo-plate:rgba(255,250,242,0.88);
+  --scrim:none;
+  --ring:rgba(95,68,50,0.18);
+  --shadow:0 18px 44px rgba(94,63,43,0.14),0 2px 6px rgba(94,63,43,0.08),inset 0 1px 0 rgba(255,255,255,0.78);
+  --blur:blur(12px) saturate(112%);
+  --font-body:'Newsreader',Georgia,serif;
+  --font-ui:'Azeret Mono',ui-monospace,Consolas,monospace;
+  --radius-panel:1.35rem;
+  --radius-well:1rem;
+  --radius-pill:999px;
+  --text-shadow:0 1px 0 rgba(255,255,255,0.72);
+  --slide-in:460ms;
+}
+
 /* Lite: no blur, no fixed backgrounds, no shader. Set <html data-lite="1">. */
 html[data-lite="1"] {
   --blur: none;

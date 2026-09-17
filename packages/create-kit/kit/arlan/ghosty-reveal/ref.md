@@ -2,7 +2,7 @@
 
 # Ghosty Reveal (`arlan/ghosty-reveal`)
 
-Mask-image wipe that reveals or hides a block using an image mask you supply.
+A photo bleeds in through a soft, cloudy edge, as if forming out of fog. Pick it for the one hero image or a confirmation reveal; the owner bundles the cloud mask, and text takes fancy/vertical-cut-reveal.
 
 - **Weight**: 0.9 KiB JS + 0.1 KiB CSS (own, gzip); 0.9 KiB with vendor deps. **Lite**: true. **Touch**: true. **Reduced motion**: static.
 - **License**: MIT, tier A, from `arlan.me/vault@2026-09-04` by Arlan Marat.
@@ -37,6 +37,11 @@ import { GhostyReveal } from "./kit/arlan/ghosty-reveal";
 
 ## Failure modes
 
+- maskSrc is a soft-gradient PNG or SVG bundled in the app; a missing or remote mask resolves transparent, so the block never appears.
+- left/right need maskSrcH (a horizontal mask); without it the vertical mask is stretched sideways and the fog edge runs the wrong way.
+- Uncontrolled it fires once at 20% visibility, on mount in the compact card. Below the fold, drive play from state (the confirm tap) instead.
+- The mask is composited at 500% of the block; keep it to one full-width photo per screen, not a list of thumbnails.
+- Under reduced motion the wipe is a 0.3s opacity fade and onHidden never fires (it listens for mask-position); do not gate logic on it.
 - Under `prefers-reduced-motion` the final frame renders immediately; make sure that frame is complete.
 
 ## Air tokens

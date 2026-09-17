@@ -230,7 +230,10 @@
         "arlan/color-depth",
         "arlan/ghosty-reveal",
         "arlan/holo",
-        "arlan/liquid-ui"
+        "arlan/liquid-ui",
+        "arlan/shutter-type",
+        "arlan/swing-type",
+        "arlan/rush-type"
       ],
       "excluded": [
         {

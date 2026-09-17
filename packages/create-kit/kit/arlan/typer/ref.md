@@ -2,7 +2,7 @@
 
 # Typer (`arlan/typer`)
 
-Eased typing with in/out variations as a vanilla class plus a React wrapper; alternative to fancy/typewriter when you need the out-animation.
+A headline that types in instead of fading: a wave runs along the line and each letter flickers through pill, highlight and outline, then lands as text. Pick it over fancy/typewriter when the line must also type away.
 
 - **Weight**: 2.1 KiB JS + 0.6 KiB CSS (own, gzip); 2.1 KiB with vendor deps. **Lite**: true. **Touch**: true. **Reduced motion**: static.
 - **License**: MIT, tier A, from `arlan.me/vault@2026-09-04` by Arlan Marat.
@@ -31,6 +31,12 @@ import { Typer } from "./kit/arlan/typer";
 
 ## Failure modes
 
+- Pill colours are literals; set the four --typer-* variables to --ink, --canvas, --accent and --on-accent or the pills fight the dark canvas.
+- Hidden (opacity 0) until its first frame; keep `delay` (seconds) near 0 or the compact card opens with a blank headline.
+- Words are white-space: pre and wrap only between words; keep one short line at 390px or the bar breaks mid-wave.
+- Merged bars need :has(); older WebKit shows separate pills, which still reads. Pass plain strings only; destroy restores innerHTML.
+- One short line per screen; a paragraph of flickering pills is noise. `out` leaves the slot empty, so the next text must land at once.
+- Runs at 20 fps on a finite timer and stops; there is no loop to hide, but two typers at once break the one-hero-motion rule.
 - Under `prefers-reduced-motion` the final frame renders immediately; make sure that frame is complete.
 
 ## Air tokens

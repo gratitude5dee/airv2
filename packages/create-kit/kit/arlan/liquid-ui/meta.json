@@ -3,11 +3,11 @@
   "title": "Liquid UI",
   "tags": [
     "motion",
-    "svg",
-    "cards",
+    "card",
+    "layout",
     "decor"
   ],
-  "when": "SDF + marching-squares liquid silhouettes that merge cards. Decorative group backgrounds only.",
+  "when": "Two cards fuse and the corner between them bends inward, as if poured together; one knob runs from crisp joints to gooey blobs. Pick it for a 2-4 card cluster read as one poured shape; menus take libraries/liquid-gooey.",
   "kind": "component",
   "entry": "index.tsx",
   "props": {
@@ -47,6 +47,12 @@
     "errors": []
   },
   "notes": [
-    "The SDF field method `eval()` is renamed `sample()` so the CSP lint's eval rule stays a plain token match."
+    "The SDF field method `eval()` is renamed `sample()` so the CSP lint's eval rule stays a plain token match.",
+    "Default fill var(--bg-hover) is undefined in Air, so the skin falls back to black; always pass fill=\"var(--panel-bg)\" or \"var(--well-bg)\".",
+    "Cards are absolute pixels and the group has no height; lay out for a 358px column and set the wrapper height or it collapses to 0.",
+    "The skin recomputes per render, not per frame: move cards between settled layouts (<= 300ms), never on pointer drag like the vault demo.",
+    "Cards must stay transparent (no .panel background) or they cover the poured skin; the fill lives on the group, the text in the cards.",
+    "Bridges are for cards that do not touch; adjacent cards fuse from k alone. cell below 4 multiplies the main-thread marching cost at mount.",
+    "Text and controls are real DOM above the aria-hidden skin, so keep 44px targets inside each LiquidCard."
   ]
 }

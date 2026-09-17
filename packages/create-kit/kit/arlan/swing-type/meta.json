@@ -1,0 +1,46 @@
+{
+  "id": "arlan/swing-type",
+  "title": "Swing Type",
+  "tags": [
+    "text",
+    "motion",
+    "hero",
+    "canvas"
+  ],
+  "when": "Enormous coloured letters on a pendulum, each turning edge-on as it passes so only two or three read at once and the word never assembles; the word changes by turning. A hero for a title screen, never body copy.",
+  "kind": "component",
+  "entry": "index.tsx",
+  "props": {},
+  "deps": [],
+  "weightKb": {
+    "js": 3,
+    "css": 0.1,
+    "jsFull": 3
+  },
+  "lite": true,
+  "liteReason": null,
+  "touch": true,
+  "reducedMotion": "static",
+  "author": "Arlan Marat",
+  "license": {
+    "spdx": "MIT",
+    "tier": "A",
+    "source": "arlan.me/vault@2026-09-04"
+  },
+  "csp": {
+    "ok": true,
+    "findings": []
+  },
+  "harness": {
+    "viewport": "390x760",
+    "webgl": false,
+    "reducedMotion": true,
+    "ok": true,
+    "heightPx": 305,
+    "errors": []
+  },
+  "notes": [
+    "Every word in WORDS must have the same letter count: the swing amplitude is derived from it and a shorter word swings out of frame.",
+    "The five INK colours are tuned for a white field at equal chroma and lightness; on the dark atmosphere canvas set BG/INK together or keep the card on its own light plate."
+  ]
+}
