@@ -384,7 +384,7 @@ Each template is a runnable scaffold (`air.json`, `src/main.tsx`, `src/app.css`,
 | React Bits — Animations | 38 | Tier B | vocabulary; cursor and scroll pieces are `no` |
 | React Bits — Components | 45 | Tier B | vocabulary; mostly `build` |
 | React Bits — Backgrounds | 57 | Tier B | 13 already packed; shader scenes are `pack` or `no` |
-| arlan.me vault | 18 | MIT, **Tier A** | 6 harvested, 9 excluded, 1 gap, 2 harvest candidates |
+| arlan.me vault | 18 | MIT, **Tier A** | 6 harvested, 9 excluded, 1 gap, 1 harvest candidate, 1 `build` |
 
 **Outcome of the annotation pass (2026-09-17).** 190 entries, 57 verifier corrections (mostly when-lines, CSP risk, reduced-motion and disposition): 50 already covered by a Tier A component (`@kit/<id>`), 13 packed Tier B backgrounds, 8 Tier B pack candidates (Laser Flow, Aero Shards, CRT Warp, Ferrofluid, Ghost Fibers, Lightfall, Plasma Wave, Morph Slider), 64 `build`, 55 `no`. The three owner briefs were harvested the same day as `arlan/shutter-type` and `arlan/swing-type` (lite, Canvas 2D, 3–4 KiB gz) and `arlan/rush-type` (non-lite, WebGL1); the Kit is now 79 components, 76 lite — see §11.4.
 

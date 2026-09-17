@@ -1,0 +1,5850 @@
+{
+ "$schema": "air-create-kit/effects@1",
+ "captured": "2026-09-17",
+ "entries": [
+  {
+   "key": "amo-hover-button",
+   "name": "Amo hover button",
+   "source": "Arlan Vault",
+   "category": "Vault",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "A pill button that plays a short bundled clip of its label puffing into glossy 3D letters on hover; not for mini-apps: it is amo's trade dress and hover-only.",
+   "tags": [
+    "button",
+    "pill",
+    "media",
+    "cursor"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "video",
+   "lite": true,
+   "touch": false,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "apple-s-corners",
+   "name": "Apple's corners",
+   "source": "Arlan Vault",
+   "category": "Vault",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "arlan/squircle",
+   "when": "True superellipse corners for a button or card via clip-path; use where the Air pill radius still shows a kink, one shape per element.",
+   "tags": [
+    "button",
+    "card",
+    "style",
+    "layout"
+   ],
+   "recipe_fit": [
+    "approval-card",
+    "form-confirmation",
+    "product-page"
+   ],
+   "template_fit": [
+    "landing",
+    "store",
+    "tool",
+    "page"
+   ],
+   "renderer": "svg",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "n/a",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "arcade-pixel",
+   "name": "Arcade pixel",
+   "source": "Arlan Vault",
+   "category": "Vault",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "A word drawn tiny and blown up so each pixel becomes a big square, rendered in WebGL; not for mini-apps, WebGL is non-lite and the study is excluded.",
+   "tags": [
+    "text",
+    "webgl",
+    "style",
+    "hero"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "chromatic-glow",
+   "name": "Chromatic glow",
+   "source": "Arlan Vault",
+   "category": "Vault",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "Soft light bloom that splits into colour fringes at the edges, a WebGL post effect; not for mini-apps, WebGL is non-lite and the study is excluded.",
+   "tags": [
+    "text",
+    "decor",
+    "webgl",
+    "ambient"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "dia-browser-s-gradient",
+   "name": "Dia Browser's gradient",
+   "source": "Arlan Vault",
+   "category": "Vault",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "A bottom-of-screen glow of blurred colour bars that grows up on load; not for mini-apps, it reproduces Dia Browser's identity and is a full-screen background.",
+   "tags": [
+    "background",
+    "ambient",
+    "decor",
+    "hero"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "css",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "fade-motion",
+   "name": "Fade motion",
+   "source": "Arlan Vault",
+   "category": "Vault",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "A headline motion-blurred by stacking hundreds of faint copies on the GPU; not for mini-apps, WebGL is non-lite and the study is excluded.",
+   "tags": [
+    "text",
+    "motion",
+    "webgl",
+    "hero"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "figma-vector-editor",
+   "name": "Figma vector editor",
+   "source": "Arlan Vault",
+   "category": "Vault",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "Figma-style selection chrome: thin blue box, corner handles, size tag and draggable bezier points; not for mini-apps, it is Figma's trade dress.",
+   "tags": [
+    "input",
+    "layout",
+    "style"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "svg",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "n/a",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "ghosty-reveal",
+   "name": "Ghosty reveal",
+   "source": "Arlan Vault",
+   "category": "Vault",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "arlan/ghosty-reveal",
+   "when": "Mask-image wipe that lets a photo bleed in through a soft cloudy edge; use for one hero image or gallery reveal per screen, mask asset bundled.",
+   "tags": [
+    "media",
+    "motion",
+    "gallery",
+    "hero"
+   ],
+   "recipe_fit": [
+    "gallery",
+    "product-page"
+   ],
+   "template_fit": [
+    "landing",
+    "store",
+    "page"
+   ],
+   "renderer": "css",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "holo",
+   "name": "Holo",
+   "source": "Arlan Vault",
+   "category": "Vault",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "arlan/holo",
+   "when": "Holographic foil card that tilts with a finger drag or device orientation; use once per screen for a ticket, pass or profile hero.",
+   "tags": [
+    "card",
+    "motion",
+    "hero",
+    "material"
+   ],
+   "recipe_fit": [
+    "rsvp-guest-list",
+    "product-page"
+   ],
+   "template_fit": [
+    "landing",
+    "store",
+    "page"
+   ],
+   "renderer": "css",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "kinetic-typography",
+   "name": "Kinetic typography",
+   "source": "Arlan Vault",
+   "category": "Vault",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "A hero letter or short word sliced into tiles that ripple on independent sine waves; the single hero motion on a title screen, never body copy.",
+   "tags": [
+    "text",
+    "motion",
+    "hero",
+    "decor"
+   ],
+   "recipe_fit": [
+    "countdown-ticker-hero",
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "landing",
+    "page",
+    "game-2d"
+   ],
+   "renderer": "dom",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "liquid-ui",
+   "name": "Liquid UI",
+   "source": "Arlan Vault",
+   "category": "Vault",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "arlan/liquid-ui",
+   "when": "SDF-driven liquid silhouettes that fuse neighbouring cards with an inward bend; a decorative group background behind a card cluster, not layout.",
+   "tags": [
+    "card",
+    "decor",
+    "motion",
+    "layout"
+   ],
+   "recipe_fit": [
+    "gallery",
+    "product-page"
+   ],
+   "template_fit": [
+    "landing",
+    "store",
+    "page"
+   ],
+   "renderer": "svg",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "midjourney-medical-s-ascii",
+   "name": "Midjourney Medical's ASCII",
+   "source": "Arlan Vault",
+   "category": "Vault",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "Loose letters spin and settle into a wordmark as live text on load; not for mini-apps, it reproduces the Midjourney Medical identity.",
+   "tags": [
+    "text",
+    "motion",
+    "hero",
+    "loading"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "dom",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "pixel-brushes",
+   "name": "Pixel brushes",
+   "source": "Arlan Vault",
+   "category": "Vault",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "Canvas 2D brush that stamps a small shape along the finger's path, from crisp line to loose spray; use for a doodle, signature or guestbook sketch.",
+   "tags": [
+    "input",
+    "media",
+    "game",
+    "action"
+   ],
+   "recipe_fit": [
+    "game-2d-canvas",
+    "form-confirmation"
+   ],
+   "template_fit": [
+    "tool",
+    "game-2d"
+   ],
+   "renderer": "canvas2d",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "n/a",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "ransom-note",
+   "name": "Ransom note",
+   "source": "Arlan Vault",
+   "category": "Vault",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "Type with real cut-out magazine letters taped down crooked; not for mini-apps as published, the letter imagery is site-hosted and was never captured.",
+   "tags": [
+    "text",
+    "input",
+    "style",
+    "decor"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "dom",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "n/a",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "realistic-emboss",
+   "name": "Realistic emboss",
+   "source": "Arlan Vault",
+   "category": "Vault",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "Realistic embossed lettering with directional light, rendered in WebGL; not for mini-apps, WebGL is non-lite and the study is excluded.",
+   "tags": [
+    "text",
+    "material",
+    "style",
+    "webgl"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "symbols-effect",
+   "name": "Symbols effect",
+   "source": "Arlan Vault",
+   "category": "Vault",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "GPU filter that cuts an image or live video into four brightness bands stamped with tinted symbols; not for mini-apps, GPU-only makes it non-lite.",
+   "tags": [
+    "media",
+    "filter",
+    "webgl",
+    "style"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "the-art-of-color-depth",
+   "name": "The art of color depth",
+   "source": "Arlan Vault",
+   "category": "Vault",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "arlan/color-depth",
+   "when": "Ten layered-light CSS materials (glossy, glass, metal, cushion) for buttons; use on the one primary action of a screen, never on every control.",
+   "tags": [
+    "button",
+    "material",
+    "style",
+    "action"
+   ],
+   "recipe_fit": [
+    "approval-card",
+    "form-confirmation",
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "landing",
+    "store",
+    "tool",
+    "page"
+   ],
+   "renderer": "css",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "n/a",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "the-typer",
+   "name": "The typer",
+   "source": "Arlan Vault",
+   "category": "Vault",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "arlan/typer",
+   "when": "Eased typing where a wave flickers each letter through pill, highlight and outline states before landing; for one headline or status line.",
+   "tags": [
+    "text",
+    "motion",
+    "hero",
+    "status"
+   ],
+   "recipe_fit": [
+    "status-thinking",
+    "countdown-ticker-hero",
+    "chat-with-agent",
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "landing",
+    "page",
+    "tool"
+   ],
+   "renderer": "dom",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "animated-content",
+   "name": "Animated Content",
+   "source": "React Bits",
+   "category": "Animations",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "air",
+   "when": "A block that fades and slides in from a chosen side on mount; reach for Air's --slide-in for a panel's first paint and never tie the entrance to scroll.",
+   "tags": [
+    "motion",
+    "layout",
+    "hero",
+    "scroll"
+   ],
+   "recipe_fit": [
+    "form-confirmation",
+    "approval-card"
+   ],
+   "template_fit": [
+    "landing",
+    "page",
+    "tool"
+   ],
+   "renderer": "css",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "antigravity",
+   "name": "Antigravity",
+   "source": "React Bits",
+   "category": "Animations",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "A 3D particle field that scatters away from the mouse cursor; a desktop pointer toy with no finger equivalent and no place inside Messages.",
+   "tags": [
+    "cursor",
+    "webgl",
+    "background",
+    "ambient",
+    "motion"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "three",
+   "lite": false,
+   "touch": false,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "blob-cursor",
+   "name": "Blob Cursor",
+   "source": "React Bits",
+   "category": "Animations",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "A gooey blob that trails the mouse pointer with inertia; there is no pointer on a phone, so it has no use in a mini-app.",
+   "tags": [
+    "cursor",
+    "motion",
+    "decor"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "dom",
+   "lite": true,
+   "touch": false,
+   "reduced_motion": "none",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "click-spark",
+   "name": "Click Spark",
+   "source": "React Bits",
+   "category": "Animations",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "A short burst of sparks where the finger taps; use it once for the confirming tap (RSVP sent, item added), never as ambient decoration.",
+   "tags": [
+    "action",
+    "button",
+    "motion",
+    "decor",
+    "game"
+   ],
+   "recipe_fit": [
+    "rsvp-guest-list",
+    "form-confirmation",
+    "approval-card",
+    "list-add-row"
+   ],
+   "template_fit": [
+    "game-2d",
+    "store",
+    "landing"
+   ],
+   "renderer": "canvas2d",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "none",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "crosshair",
+   "name": "Crosshair",
+   "source": "React Bits",
+   "category": "Animations",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "A custom crosshair cursor that tracks the mouse and reacts to links; replacing the cursor means nothing on touch.",
+   "tags": [
+    "cursor",
+    "nav",
+    "decor"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "dom",
+   "lite": true,
+   "touch": false,
+   "reduced_motion": "none",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "cubes",
+   "name": "Cubes",
+   "source": "React Bits",
+   "category": "Animations",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "fancy/css-box",
+   "when": "A small cluster of CSS cubes turning slowly as a hero object; compose it from fancy/css-box, auto-rotating, with hover as an optional extra and never the only input.",
+   "tags": [
+    "hero",
+    "decor",
+    "motion",
+    "ambient"
+   ],
+   "recipe_fit": [
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "landing",
+    "page"
+   ],
+   "renderer": "css",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "cursor-grid",
+   "name": "Cursor Grid",
+   "source": "React Bits",
+   "category": "Animations",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "fancy/pixel-trail",
+   "when": "A canvas grid whose cells glow under the pointer or finger and pulse on tap; the Kit's pixel-trail already does this, so use that.",
+   "tags": [
+    "cursor",
+    "background",
+    "decor",
+    "motion"
+   ],
+   "recipe_fit": [],
+   "template_fit": [
+    "landing"
+   ],
+   "renderer": "canvas2d",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "elastic-mesh",
+   "name": "Elastic Mesh",
+   "source": "React Bits",
+   "category": "Animations",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "A full-surface spring mesh that stretches under the pointer and settles; a hover physics playground, inert under a thumb and too heavy for a card.",
+   "tags": [
+    "cursor",
+    "background",
+    "motion",
+    "material"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "canvas2d",
+   "lite": false,
+   "touch": false,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "electric-border",
+   "name": "Electric Border",
+   "source": "React Bits",
+   "category": "Animations",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "A crackling electric outline around one card; use it for the single live or pending item and fall back to a steady glow under lite or reduced motion.",
+   "tags": [
+    "decor",
+    "card",
+    "motion",
+    "filter",
+    "style"
+   ],
+   "recipe_fit": [
+    "approval-card",
+    "countdown-ticker-hero",
+    "status-thinking"
+   ],
+   "template_fit": [
+    "game-2d",
+    "landing",
+    "store"
+   ],
+   "renderer": "svg",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "fade-content",
+   "name": "Fade Content",
+   "source": "React Bits",
+   "category": "Animations",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "A block that fades or slides in once it scrolls into view; nothing reveals on scroll inside Messages, so use Air's --slide-in on mount instead.",
+   "tags": [
+    "motion",
+    "layout",
+    "scroll"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "css",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "ghost-cursor",
+   "name": "Ghost Cursor",
+   "source": "React Bits",
+   "category": "Animations",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "A translucent trail that follows the mouse cursor; cursor followers do not exist on touch and are out of scope for a mini-app.",
+   "tags": [
+    "cursor",
+    "webgl",
+    "motion",
+    "decor"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": false,
+   "reduced_motion": "none",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "glare-hover",
+   "name": "Glare Hover",
+   "source": "React Bits",
+   "category": "Animations",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "A light glare sweeping across a card on hover; rebuild it as a one-shot CSS sweep on press or on mount, since hover never reveals on touch.",
+   "tags": [
+    "card",
+    "style",
+    "motion",
+    "decor",
+    "media"
+   ],
+   "recipe_fit": [
+    "gallery",
+    "product-page"
+   ],
+   "template_fit": [
+    "store",
+    "landing"
+   ],
+   "renderer": "css",
+   "lite": true,
+   "touch": false,
+   "reduced_motion": "none",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "glow-cursor",
+   "name": "Glow Cursor",
+   "source": "React Bits",
+   "category": "Animations",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "A shader light trail drawn behind the mouse pointer; WebGL, cursor-bound and non-lite, so it is not for a mini-app.",
+   "tags": [
+    "cursor",
+    "webgl",
+    "motion",
+    "decor"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": false,
+   "reduced_motion": "none",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "gradual-blur",
+   "name": "Gradual Blur",
+   "source": "React Bits",
+   "category": "Animations",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "Content that un-blurs from soft to sharp on a trigger. Build it as a one-shot mount reveal (filter: blur to 0 in 300ms), never scroll-driven; sharp from the start under reduced motion.",
+   "tags": [
+    "filter",
+    "motion",
+    "hero",
+    "scroll"
+   ],
+   "recipe_fit": [
+    "form-confirmation",
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "landing",
+    "page"
+   ],
+   "renderer": "css",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "halftone-reveal",
+   "name": "Halftone Reveal",
+   "source": "React Bits",
+   "category": "Animations",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "Halftone dot screen over an image that sharpens where the pointer is. Not used: a hover-revealed image is a hover-only affordance and there is no cursor in Messages.",
+   "tags": [
+    "media",
+    "cursor",
+    "filter",
+    "decor"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": false,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "image-trail",
+   "name": "Image Trail",
+   "source": "React Bits",
+   "category": "Animations",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "Images that spawn and fade along the pointer's path. Not used: cursor-following decoration has no meaning on a 390px touch card; show photos with fancy/simple-carousel.",
+   "tags": [
+    "cursor",
+    "media",
+    "gallery",
+    "motion"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "dom",
+   "lite": true,
+   "touch": false,
+   "reduced_motion": "none",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "laser-flow",
+   "name": "Laser Flow",
+   "source": "React Bits",
+   "category": "Animations",
+   "disposition": "tier-b-pack-candidate",
+   "kit_equivalent": "",
+   "when": "A laser beam that pours light onto a surface behind a hero title. One per screen as the hero motion of a launch or game landing; a flat gradient plate under lite and reduced motion.",
+   "tags": [
+    "background",
+    "webgl",
+    "hero",
+    "ambient"
+   ],
+   "recipe_fit": [
+    "countdown-ticker-hero",
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "landing",
+    "game-3d"
+   ],
+   "renderer": "three",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "logo-loop",
+   "name": "Logo Loop",
+   "source": "React Bits",
+   "category": "Animations",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "fancy/simple-marquee",
+   "when": "Endless strip of logos with seamless repeat and pause on hover. Already covered by fancy/simple-marquee, which takes logos, photos or words and pauses under reduced motion.",
+   "tags": [
+    "marquee",
+    "gallery",
+    "ambient",
+    "layout"
+   ],
+   "recipe_fit": [
+    "gallery",
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "landing",
+    "store"
+   ],
+   "renderer": "dom",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "magic-rings",
+   "name": "Magic Rings",
+   "source": "React Bits",
+   "category": "Animations",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "Concentric glowing rings that ripple as the pointer moves. Build it: a few SVG circles with a stroke pulse fired by a tap; rings sit still under reduced motion.",
+   "tags": [
+    "decor",
+    "ambient",
+    "hero",
+    "motion"
+   ],
+   "recipe_fit": [],
+   "template_fit": [
+    "landing"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": false,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "magnet",
+   "name": "Magnet",
+   "source": "React Bits",
+   "category": "Animations",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "A button that leans toward the cursor and springs back. Not used: there is no cursor in Messages; a 44px target with a press state is the touch affordance.",
+   "tags": [
+    "button",
+    "cursor",
+    "motion"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "dom",
+   "lite": true,
+   "touch": false,
+   "reduced_motion": "none",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "magnet-lines",
+   "name": "Magnet Lines",
+   "source": "React Bits",
+   "category": "Animations",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "A grid of short lines that rotate to point at the cursor. Not used: cursor-following decoration with no touch equivalent, and hundreds of nodes for a 390px card.",
+   "tags": [
+    "cursor",
+    "decor",
+    "background",
+    "motion"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "dom",
+   "lite": true,
+   "touch": false,
+   "reduced_motion": "none",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "meta-balls",
+   "name": "Meta Balls",
+   "source": "React Bits",
+   "category": "Animations",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "arlan/liquid-ui",
+   "when": "Soft blobs that merge and split as they drift. Already covered: arlan/liquid-ui merges card silhouettes and fancy/gooey-svg-filter goos any animated circles, both without WebGL.",
+   "tags": [
+    "ambient",
+    "decor",
+    "webgl",
+    "motion",
+    "background"
+   ],
+   "recipe_fit": [],
+   "template_fit": [
+    "landing"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "metallic-paint",
+   "name": "Metallic Paint",
+   "source": "React Bits",
+   "category": "Animations",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "libraries/metal-fx",
+   "when": "Liquid chrome shimmer filling an SVG logo or word. Already covered by libraries/metal-fx, which renders a flat plate when WebGL, lite or reduced motion is off.",
+   "tags": [
+    "material",
+    "webgl",
+    "hero",
+    "decor"
+   ],
+   "recipe_fit": [
+    "countdown-ticker-hero",
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "landing",
+    "store"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "noise",
+   "name": "Noise",
+   "source": "React Bits",
+   "category": "Animations",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "Film-grain overlay that gives a flat canvas some texture. Build it: SVG feTurbulence as a static tile at low opacity; animate only in atmosphere and only as aria-hidden decoration.",
+   "tags": [
+    "ambient",
+    "material",
+    "background",
+    "decor"
+   ],
+   "recipe_fit": [],
+   "template_fit": [
+    "landing",
+    "game-2d",
+    "page"
+   ],
+   "renderer": "canvas2d",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "orbit-images",
+   "name": "Orbit Images",
+   "source": "React Bits",
+   "category": "Animations",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "fancy/circling-elements",
+   "when": "Images that travel around a custom SVG path. Already covered: fancy/circling-elements orbits avatars or badges around a center, and fancy/text-along-path handles arbitrary paths.",
+   "tags": [
+    "gallery",
+    "media",
+    "ambient",
+    "decor",
+    "motion"
+   ],
+   "recipe_fit": [
+    "rsvp-guest-list",
+    "gallery"
+   ],
+   "template_fit": [
+    "landing",
+    "page"
+   ],
+   "renderer": "svg",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "pixel-swap",
+   "name": "Pixel Swap",
+   "source": "React Bits",
+   "category": "Animations",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "A grid of pixel blocks covers a card, the content swaps underneath, and the blocks dissolve. Build it as a CSS grid with staggered opacity for a tap-to-flip card or a confirmation swap.",
+   "tags": [
+    "card",
+    "motion",
+    "media",
+    "decor"
+   ],
+   "recipe_fit": [
+    "gallery",
+    "form-confirmation"
+   ],
+   "template_fit": [
+    "landing",
+    "game-2d",
+    "store"
+   ],
+   "renderer": "three",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "pixel-trail",
+   "name": "Pixel Trail",
+   "source": "React Bits",
+   "category": "Animations",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "fancy/pixel-trail",
+   "when": "Squares light up and fade behind the pointer for a retro digital feel; use fancy/pixel-trail instead, which does the same under a finger on a 2D canvas and stays lite.",
+   "tags": [
+    "cursor",
+    "background",
+    "motion",
+    "decor"
+   ],
+   "recipe_fit": [],
+   "template_fit": [
+    "landing",
+    "game-2d"
+   ],
+   "renderer": "three",
+   "lite": false,
+   "touch": false,
+   "reduced_motion": "none",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "pixel-transition",
+   "name": "Pixel Transition",
+   "source": "React Bits",
+   "category": "Animations",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "A pixel-grid dissolve swaps one face of a card for another on tap: a photo to its caption, a price to its detail. One per screen; both faces ship in the bundle.",
+   "tags": [
+    "card",
+    "media",
+    "motion",
+    "decor"
+   ],
+   "recipe_fit": [
+    "gallery",
+    "product-page"
+   ],
+   "template_fit": [
+    "landing",
+    "store",
+    "page"
+   ],
+   "renderer": "dom",
+   "lite": true,
+   "touch": false,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "ribbons",
+   "name": "Ribbons",
+   "source": "React Bits",
+   "category": "Animations",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "Physics ribbons stream behind the pointer; there is no pointer in Messages and the layer is empty at rest, so the Kit does not use it.",
+   "tags": [
+    "cursor",
+    "motion",
+    "webgl",
+    "decor"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": false,
+   "reduced_motion": "none",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "ripple-distortion",
+   "name": "Ripple Distortion",
+   "source": "React Bits",
+   "category": "Animations",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "A water-displacement shader warps an image under the pointer and trails a wake; a pointer-following distortion on a WebGL canvas has no place in a touch-only, lite-first card.",
+   "tags": [
+    "cursor",
+    "media",
+    "webgl",
+    "filter"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": false,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "scroll-expand",
+   "name": "Scroll Expand",
+   "source": "React Bits",
+   "category": "Animations",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "A rounded media frame grows to full bleed as the page scrolls; nothing moves on scroll inside the webview, so the Kit does not use it. Use a full-bleed .hero from the start.",
+   "tags": [
+    "scroll",
+    "media",
+    "hero",
+    "motion"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "dom",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "shape-blur",
+   "name": "Shape Blur",
+   "source": "React Bits",
+   "category": "Animations",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "A blurred geometric outline morphs toward the pointer on hover; hover-only and Three-rendered, it fails touch-first and lite. For an ambient blob use fancy/animated-gradient-with-svg.",
+   "tags": [
+    "cursor",
+    "ambient",
+    "webgl",
+    "decor"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "three",
+   "lite": false,
+   "touch": false,
+   "reduced_motion": "none",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "splash-cursor",
+   "name": "Splash Cursor",
+   "source": "React Bits",
+   "category": "Animations",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "A fluid-simulation splash bursts under the cursor and curls into waves; a full-page cursor effect on WebGL is off-limits in Messages.",
+   "tags": [
+    "cursor",
+    "webgl",
+    "motion",
+    "ambient"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": false,
+   "reduced_motion": "none",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "star-border",
+   "name": "Star Border",
+   "source": "React Bits",
+   "category": "Animations",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "libraries/border-beam",
+   "when": "A sparkle border orbits a button to mark the one action that matters; libraries/border-beam already does this around a card or CTA, so use it and keep it to one per screen.",
+   "tags": [
+    "button",
+    "decor",
+    "motion",
+    "style"
+   ],
+   "recipe_fit": [
+    "approval-card",
+    "countdown-ticker-hero",
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "landing",
+    "store",
+    "tool"
+   ],
+   "renderer": "css",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "sticker-peel",
+   "name": "Sticker Peel",
+   "source": "React Bits",
+   "category": "Animations",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "A sticker whose corner lifts and peels when you tap or drag it: a 'going' badge on an RSVP, a 'confirmed' seal on a receipt. One per screen; the image lives in the bundle.",
+   "tags": [
+    "media",
+    "decor",
+    "motion",
+    "card"
+   ],
+   "recipe_fit": [
+    "rsvp-guest-list",
+    "form-confirmation",
+    "gallery"
+   ],
+   "template_fit": [
+    "landing",
+    "store",
+    "page"
+   ],
+   "renderer": "dom",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "strands",
+   "name": "Strands",
+   "source": "React Bits",
+   "category": "Animations",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "Glowing strands ripple and weave behind a landing hero; build it as a few translucent Canvas 2D curves so it stays lite, and reach for packed Beams or Silk only when a recipe wants the shader look.",
+   "tags": [
+    "background",
+    "ambient",
+    "webgl",
+    "hero"
+   ],
+   "recipe_fit": [
+    "landing-funnel",
+    "countdown-ticker-hero"
+   ],
+   "template_fit": [
+    "landing"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "swarm-cursor",
+   "name": "Swarm Cursor",
+   "source": "React Bits",
+   "category": "Animations",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "A flocking particle swarm chases the pointer and scatters at rest; a cursor-following WebGL layer has no role on a touch-only card in Messages.",
+   "tags": [
+    "cursor",
+    "webgl",
+    "motion",
+    "ambient"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": false,
+   "reduced_motion": "none",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "target-cursor",
+   "name": "Target Cursor",
+   "source": "React Bits",
+   "category": "Animations",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "Four corner brackets replace the mouse cursor and snap onto hovered targets; Messages has no cursor, so the Kit does not use it. Use a focus ring on the .item instead.",
+   "tags": [
+    "cursor",
+    "nav",
+    "motion",
+    "decor"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "dom",
+   "lite": true,
+   "touch": false,
+   "reduced_motion": "none",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "acid-squares",
+   "name": "Acid Squares",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "A square tunnel receding into depth behind a title; build it as concentric squares scaling in Canvas 2D for a game title screen, not as a page-wide shader.",
+   "tags": [
+    "background",
+    "ambient",
+    "hero",
+    "webgl"
+   ],
+   "recipe_fit": [
+    "countdown-ticker-hero",
+    "game-2d-canvas"
+   ],
+   "template_fit": [
+    "game-2d",
+    "game-3d",
+    "landing"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "aero-shards",
+   "name": "Aero Shards",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "tier-b-pack-candidate",
+   "kit_equivalent": "",
+   "when": "A 3D field of folded foil shards drifting behind a landing or product hero; non-lite, one per app, flat plate under lite and reduced motion.",
+   "tags": [
+    "background",
+    "webgl",
+    "hero",
+    "material",
+    "ambient"
+   ],
+   "recipe_fit": [
+    "landing-funnel",
+    "product-page"
+   ],
+   "template_fit": [
+    "landing",
+    "store"
+   ],
+   "renderer": "three",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "aurora",
+   "name": "Aurora",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "fancy/animated-gradient-with-svg",
+   "when": "Slow ribbons of color flowing behind a headline; use fancy/animated-gradient-with-svg in aurora tones instead of a shader.",
+   "tags": [
+    "background",
+    "ambient",
+    "hero",
+    "motion"
+   ],
+   "recipe_fit": [
+    "landing-funnel",
+    "countdown-ticker-hero",
+    "rsvp-guest-list"
+   ],
+   "template_fit": [
+    "landing",
+    "page"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "balatro",
+   "name": "Balatro",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "The swirling paint shader from the game Balatro; it reproduces another product's identity, so it stays out of every mini-app.",
+   "tags": [
+    "background",
+    "webgl",
+    "ambient"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "ballpit",
+   "name": "Ballpit",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "A 3D physics ball pit filling the page; too heavy and too playful for a 390px card in Messages, so it stays out.",
+   "tags": [
+    "background",
+    "webgl",
+    "game",
+    "motion"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "three",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "beams",
+   "name": "Beams",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "tier-b-packed",
+   "kit_equivalent": "restricted/beams",
+   "when": "Crossing light ribbons behind a landing or product hero; compiled from the restricted artifact, non-lite, one per app.",
+   "tags": [
+    "background",
+    "webgl",
+    "hero",
+    "ambient"
+   ],
+   "recipe_fit": [
+    "landing-funnel",
+    "product-page",
+    "countdown-ticker-hero"
+   ],
+   "template_fit": [
+    "landing",
+    "store"
+   ],
+   "renderer": "three",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "color-bends",
+   "name": "Color Bends",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "fancy/animated-gradient-with-svg",
+   "when": "Bands of vivid color bending and flowing behind a panel; use fancy/animated-gradient-with-svg, or Grainient from the restricted set for the richer look.",
+   "tags": [
+    "background",
+    "ambient",
+    "hero",
+    "motion"
+   ],
+   "recipe_fit": [
+    "landing-funnel",
+    "form-confirmation"
+   ],
+   "template_fit": [
+    "landing",
+    "page"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "crt-warp",
+   "name": "CRT Warp",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "tier-b-pack-candidate",
+   "kit_equivalent": "",
+   "when": "A curved CRT plasma with scanlines and bloom for a retro game title screen; non-lite, one per app, flat frame under reduced motion, pointer part off.",
+   "tags": [
+    "background",
+    "webgl",
+    "ambient",
+    "hero",
+    "game"
+   ],
+   "recipe_fit": [
+    "game-2d-canvas"
+   ],
+   "template_fit": [
+    "game-2d",
+    "landing"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "dark-veil",
+   "name": "Dark Veil",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "fancy/animated-gradient-with-svg",
+   "when": "A barely moving dark haze behind a chat or tool screen; the atmosphere canvas with fancy/animated-gradient-with-svg in dark tones already gives it.",
+   "tags": [
+    "background",
+    "ambient",
+    "motion"
+   ],
+   "recipe_fit": [
+    "chat-with-agent",
+    "status-thinking"
+   ],
+   "template_fit": [
+    "page",
+    "tool",
+    "landing"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "dither",
+   "name": "Dither",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "tier-b-packed",
+   "kit_equivalent": "restricted/dither",
+   "when": "Retro dithered noise drifting behind a pixel-styled hero or 2D game; compiled from the restricted artifact, non-lite, one per app.",
+   "tags": [
+    "background",
+    "webgl",
+    "ambient",
+    "filter",
+    "game"
+   ],
+   "recipe_fit": [
+    "game-2d-canvas",
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "game-2d",
+    "landing"
+   ],
+   "renderer": "three",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "dot-field",
+   "name": "Dot Field",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "fancy/pixel-trail",
+   "when": "A dot grid that bulges and sparkles under the cursor; on touch use fancy/pixel-trail, and a plain dot grid is one CSS radial-gradient.",
+   "tags": [
+    "background",
+    "cursor",
+    "decor",
+    "motion"
+   ],
+   "recipe_fit": [],
+   "template_fit": [
+    "landing",
+    "game-2d"
+   ],
+   "renderer": "canvas2d",
+   "lite": false,
+   "touch": false,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "dot-grid",
+   "name": "Dot Grid",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "fancy/pixel-trail",
+   "when": "A dot grid that shoves away from the cursor; on touch use fancy/pixel-trail, and a still dot grid is one CSS radial-gradient.",
+   "tags": [
+    "background",
+    "cursor",
+    "decor",
+    "layout"
+   ],
+   "recipe_fit": [],
+   "template_fit": [
+    "landing",
+    "tool"
+   ],
+   "renderer": "canvas2d",
+   "lite": false,
+   "touch": false,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "evil-eye",
+   "name": "Evil Eye",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "A single animated eye with a slit pupil and fiery glow as a hero mark; draw it in SVG with a dilating pupil and one glow, one per screen.",
+   "tags": [
+    "hero",
+    "decor",
+    "ambient",
+    "webgl"
+   ],
+   "recipe_fit": [
+    "countdown-ticker-hero"
+   ],
+   "template_fit": [
+    "landing",
+    "game-2d"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "faulty-terminal",
+   "name": "Faulty Terminal",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "tier-b-packed",
+   "kit_equivalent": "restricted/faulty-terminal",
+   "when": "Flickering CRT terminal squares behind a status or retro game screen; compiled from the restricted artifact, non-lite, one per app.",
+   "tags": [
+    "background",
+    "webgl",
+    "ambient",
+    "status",
+    "game"
+   ],
+   "recipe_fit": [
+    "status-thinking",
+    "game-2d-canvas"
+   ],
+   "template_fit": [
+    "game-2d",
+    "tool",
+    "landing"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "ferrofluid",
+   "name": "Ferrofluid",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "tier-b-pack-candidate",
+   "kit_equivalent": "",
+   "when": "Churning fluid drawn as glowing contour lines behind a landing hero; non-lite, one per app, cursor magnet off or bound to a drag.",
+   "tags": [
+    "background",
+    "webgl",
+    "ambient",
+    "material",
+    "cursor"
+   ],
+   "recipe_fit": [
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "landing"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "floating-lines",
+   "name": "Floating Lines",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "Three.js lines that drift and bend toward the cursor; skip it in a mini-app, since Messages has no cursor and the packed Beams background already gives ambient light lines.",
+   "tags": [
+    "background",
+    "webgl",
+    "cursor",
+    "ambient",
+    "motion"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "three",
+   "lite": false,
+   "touch": false,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "galaxy",
+   "name": "Galaxy",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "tier-b-packed",
+   "kit_equivalent": "",
+   "when": "Twinkling starfield behind a launch countdown or night-event hero; one per app, aria-hidden, never under lite, with pointer parallax switched off.",
+   "tags": [
+    "background",
+    "webgl",
+    "ambient",
+    "hero",
+    "motion"
+   ],
+   "recipe_fit": [
+    "countdown-ticker-hero",
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "landing",
+    "game-3d",
+    "page"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "ghost-fibers",
+   "name": "Ghost Fibers",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "tier-b-pack-candidate",
+   "kit_equivalent": "",
+   "when": "Deep-blue twisting fiber field with glowing bands; a calm atmospheric backdrop for a landing hero or evening invite when the packed Silk and Beams feel too plain.",
+   "tags": [
+    "background",
+    "webgl",
+    "ambient",
+    "hero",
+    "motion"
+   ],
+   "recipe_fit": [
+    "landing-funnel",
+    "rsvp-guest-list"
+   ],
+   "template_fit": [
+    "landing",
+    "page"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "gradient-blinds",
+   "name": "Gradient Blinds",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "Bold diagonal gradient stripes behind a store or landing hero when a flat token gradient feels too quiet; the pointer spotlight means nothing on touch, so leave it out.",
+   "tags": [
+    "background",
+    "style",
+    "decor",
+    "hero"
+   ],
+   "recipe_fit": [
+    "landing-funnel",
+    "product-page"
+   ],
+   "template_fit": [
+    "landing",
+    "store"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": false,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "gradient-waves",
+   "name": "Gradient Waves",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "Stacked sine waves rolling toward a hazy horizon; a calm hero backdrop for a landing or countdown screen where the slow roll is the only motion, flat and still under lite.",
+   "tags": [
+    "background",
+    "ambient",
+    "hero",
+    "motion",
+    "decor"
+   ],
+   "recipe_fit": [
+    "landing-funnel",
+    "countdown-ticker-hero"
+   ],
+   "template_fit": [
+    "landing",
+    "page"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "grainient",
+   "name": "Grainient",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "tier-b-packed",
+   "kit_equivalent": "",
+   "when": "Grainy swirling gradient with soft wave distortion; the packed painterly backdrop for a landing or store hero with one display line over it.",
+   "tags": [
+    "background",
+    "webgl",
+    "ambient",
+    "hero",
+    "material"
+   ],
+   "recipe_fit": [
+    "landing-funnel",
+    "product-page"
+   ],
+   "template_fit": [
+    "landing",
+    "store",
+    "page"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "grid-distortion",
+   "name": "Grid Distortion",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "An image whose mesh warps under the cursor; skip it in a mini-app, since the distortion exists only while a pointer moves and Messages has no pointer.",
+   "tags": [
+    "media",
+    "cursor",
+    "webgl",
+    "filter",
+    "motion"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "three",
+   "lite": false,
+   "touch": false,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "grid-motion",
+   "name": "Grid Motion",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "Rows of tiles that slide with the pointer's position; skip it in a mini-app, since there is no pointer on touch and a drifting wall of tiles fights the single column.",
+   "tags": [
+    "background",
+    "cursor",
+    "gallery",
+    "layout",
+    "motion"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "dom",
+   "lite": false,
+   "touch": false,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "grid-scan",
+   "name": "Grid Scan",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "A perspective grid room with one light plane sweeping through it; the hero backdrop for a retro game or tool screen, with the sweep as the screen's single hero motion.",
+   "tags": [
+    "background",
+    "game",
+    "hero",
+    "motion",
+    "decor"
+   ],
+   "recipe_fit": [
+    "game-2d-canvas",
+    "game-3d-three"
+   ],
+   "template_fit": [
+    "game-2d",
+    "game-3d",
+    "tool"
+   ],
+   "renderer": "three",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "hyperspeed",
+   "name": "Hyperspeed",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "Light streaks racing at the viewer, faster while held; skip it in a mini-app, since it is a heavy full-page Three scene with bloom and the hold gesture collides with iOS long-press.",
+   "tags": [
+    "background",
+    "webgl",
+    "motion",
+    "game",
+    "hero"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "three",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "iridescence",
+   "name": "Iridescence",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "tier-b-packed",
+   "kit_equivalent": "",
+   "when": "Pearlescent shader with slow shifting waves; the packed glossy backdrop for a product or store hero that wants a material feel behind a single display line.",
+   "tags": [
+    "background",
+    "webgl",
+    "material",
+    "hero",
+    "ambient"
+   ],
+   "recipe_fit": [
+    "product-page",
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "store",
+    "landing"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "letter-glitch",
+   "name": "Letter Glitch",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "Matrix-style grid of glyphs flickering on a 2D canvas; build an original for a terminal-themed game or tool backdrop, in the system mono font, finite and aria-hidden.",
+   "tags": [
+    "background",
+    "text",
+    "ambient",
+    "game",
+    "motion"
+   ],
+   "recipe_fit": [
+    "game-2d-canvas"
+   ],
+   "template_fit": [
+    "game-2d",
+    "tool"
+   ],
+   "renderer": "canvas2d",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "light-pillar",
+   "name": "Light Pillar",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "One glowing vertical column of light behind a headline or countdown number; use it when a hero needs a focal glow without a shader, flat and unblurred under lite.",
+   "tags": [
+    "background",
+    "hero",
+    "decor",
+    "ambient",
+    "motion"
+   ],
+   "recipe_fit": [
+    "countdown-ticker-hero",
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "landing",
+    "page",
+    "store"
+   ],
+   "renderer": "three",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "light-rays",
+   "name": "Light Rays",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "tier-b-packed",
+   "kit_equivalent": "",
+   "when": "Volumetric rays falling from a chosen edge; the packed backdrop for a confirmation or reveal hero where light from above is the only motion on the screen.",
+   "tags": [
+    "background",
+    "webgl",
+    "ambient",
+    "hero",
+    "decor"
+   ],
+   "recipe_fit": [
+    "form-confirmation",
+    "landing-funnel",
+    "countdown-ticker-hero"
+   ],
+   "template_fit": [
+    "landing",
+    "page"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "light-tunnel",
+   "name": "Light Tunnel",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "Radial strands converging to a vanishing point with pulses racing inward; a loud launch or game hero backdrop, one pulse cycle as the hero motion, still under reduced motion.",
+   "tags": [
+    "background",
+    "game",
+    "hero",
+    "motion",
+    "ambient"
+   ],
+   "recipe_fit": [
+    "game-3d-three",
+    "countdown-ticker-hero"
+   ],
+   "template_fit": [
+    "game-3d",
+    "game-2d",
+    "landing"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "lightfall",
+   "name": "Lightfall",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "tier-b-pack-candidate",
+   "kit_equivalent": "",
+   "when": "A tunnel of colored light streaks raining toward the viewer; use once as the splash hero of a game-3d or launch screen when Beams and Light Rays feel too calm.",
+   "tags": [
+    "background",
+    "webgl",
+    "hero",
+    "ambient",
+    "motion"
+   ],
+   "recipe_fit": [
+    "game-3d-three",
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "game-3d",
+    "landing"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": false,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "lightning",
+   "name": "Lightning",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "A branching lightning bolt with glow flicker; strike once as the hero moment of a storm, power-up or countdown-hits-zero screen, never as a permanent flashing loop.",
+   "tags": [
+    "background",
+    "hero",
+    "motion",
+    "decor",
+    "game"
+   ],
+   "recipe_fit": [
+    "countdown-ticker-hero",
+    "game-2d-canvas"
+   ],
+   "template_fit": [
+    "game-2d",
+    "landing"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "line-waves",
+   "name": "Line Waves",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "Stacked sine lines that ripple across a panel with a slow color shift; use as a calm ambient header behind a title when a gradient blob feels too soft.",
+   "tags": [
+    "background",
+    "ambient",
+    "motion",
+    "decor"
+   ],
+   "recipe_fit": [
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "landing",
+    "page"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "liquid-chrome",
+   "name": "Liquid Chrome",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "tier-b-packed",
+   "kit_equivalent": "",
+   "when": "A flowing chrome surface behind a hero word or product; import @kit/restricted/liquid-chrome for one non-lite hero, or reach for libraries/metal-fx when you need Tier A.",
+   "tags": [
+    "background",
+    "material",
+    "webgl",
+    "hero",
+    "ambient"
+   ],
+   "recipe_fit": [
+    "landing-funnel",
+    "product-page"
+   ],
+   "template_fit": [
+    "landing",
+    "store"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "liquid-ether",
+   "name": "Liquid Ether",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "tier-b-packed",
+   "kit_equivalent": "",
+   "when": "Fluid color that swirls under a finger and drifts on its own; import @kit/restricted/liquid-ether for a non-lite landing hero that invites a touch.",
+   "tags": [
+    "background",
+    "webgl",
+    "ambient",
+    "hero",
+    "motion"
+   ],
+   "recipe_fit": [
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "landing",
+    "game-3d"
+   ],
+   "renderer": "three",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "molten-metal",
+   "name": "Molten Metal",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "tier-b-packed",
+   "kit_equivalent": "",
+   "when": "Molten plasma filaments with white-hot cores; import @kit/restricted/molten-metal for a dramatic non-lite game or launch hero, one per app.",
+   "tags": [
+    "background",
+    "webgl",
+    "hero",
+    "ambient",
+    "material"
+   ],
+   "recipe_fit": [
+    "game-3d-three",
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "game-3d",
+    "landing"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "orb",
+   "name": "Orb",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "aicss/orbs",
+   "when": "A glowing energy orb that warps under the pointer; the Kit already has aicss/orbs for an ambient presence and libraries/thinking-orbs for named states, so use those.",
+   "tags": [
+    "status",
+    "ambient",
+    "thinking",
+    "webgl",
+    "decor"
+   ],
+   "recipe_fit": [
+    "status-thinking",
+    "chat-with-agent"
+   ],
+   "template_fit": [
+    "tool",
+    "page"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": false,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "particles",
+   "name": "Particles",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "A field of drifting dots behind a hero or empty state; draw a few dozen on Canvas 2D at DPR 1, aria-hidden, and stop them under reduced motion.",
+   "tags": [
+    "background",
+    "ambient",
+    "motion",
+    "decor"
+   ],
+   "recipe_fit": [
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "landing",
+    "game-2d",
+    "page"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "pixel-blast",
+   "name": "Pixel Blast",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "Chunky pixel bursts that ripple out from a tap; rebuild on Canvas 2D as tap feedback in a game or a one-shot celebration when a form confirms.",
+   "tags": [
+    "background",
+    "game",
+    "motion",
+    "action",
+    "decor"
+   ],
+   "recipe_fit": [
+    "game-2d-canvas",
+    "form-confirmation"
+   ],
+   "template_fit": [
+    "game-2d",
+    "landing"
+   ],
+   "renderer": "three",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "pixel-snow",
+   "name": "Pixel Snow",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "Pixelated snow drifting down behind a card; rebuild on Canvas 2D for a seasonal invite or countdown, aria-hidden, frozen to a still scatter under reduced motion.",
+   "tags": [
+    "background",
+    "ambient",
+    "motion",
+    "decor"
+   ],
+   "recipe_fit": [
+    "rsvp-guest-list",
+    "countdown-ticker-hero"
+   ],
+   "template_fit": [
+    "landing",
+    "page"
+   ],
+   "renderer": "three",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "plasma",
+   "name": "Plasma",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "fancy/animated-gradient-with-svg",
+   "when": "Soft plasma gradients that swirl and morph; fancy/animated-gradient-with-svg gives the same ambient wash in lite CSS, and packed Grainient or Silk give the shader look.",
+   "tags": [
+    "background",
+    "ambient",
+    "motion",
+    "webgl"
+   ],
+   "recipe_fit": [
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "landing",
+    "page"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "plasma-wave",
+   "name": "Plasma Wave",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "tier-b-pack-candidate",
+   "kit_equivalent": "",
+   "when": "Raymarched plasma sheets with two interfering waves; a non-lite hero for a game-3d or launch screen when Molten Metal and Silk are already spoken for.",
+   "tags": [
+    "background",
+    "webgl",
+    "hero",
+    "ambient",
+    "motion"
+   ],
+   "recipe_fit": [
+    "game-3d-three",
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "game-3d",
+    "landing"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "prism",
+   "name": "Prism",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "tier-b-packed",
+   "kit_equivalent": "",
+   "when": "A rotating glass prism throwing colored light; import @kit/restricted/prism as the one non-lite hero of a landing or store screen.",
+   "tags": [
+    "background",
+    "webgl",
+    "hero",
+    "ambient"
+   ],
+   "recipe_fit": [
+    "landing-funnel",
+    "product-page"
+   ],
+   "template_fit": [
+    "landing",
+    "store"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "prismatic-burst",
+   "name": "Prismatic Burst",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "Rainbow rays bursting from a center point; rebuild as a slowly rotating CSS conic-gradient sunburst under a radial mask for a celebration or reveal hero.",
+   "tags": [
+    "background",
+    "hero",
+    "motion",
+    "decor"
+   ],
+   "recipe_fit": [
+    "form-confirmation",
+    "countdown-ticker-hero",
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "landing",
+    "store"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "radar",
+   "name": "Radar",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "Concentric rings, spokes and a sweeping beam; rebuild in SVG with a rotating conic-gradient wedge as the searching state of a status or chat screen.",
+   "tags": [
+    "status",
+    "thinking",
+    "loading",
+    "motion",
+    "decor"
+   ],
+   "recipe_fit": [
+    "status-thinking",
+    "chat-with-agent"
+   ],
+   "template_fit": [
+    "tool",
+    "game-2d"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "ripple-grid",
+   "name": "Ripple Grid",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "A grid whose lines ripple outward in slow rings; an ambient backdrop for one hero screen of a tool or game lobby, never behind body copy.",
+   "tags": [
+    "background",
+    "ambient",
+    "motion",
+    "webgl",
+    "decor"
+   ],
+   "recipe_fit": [
+    "landing-funnel",
+    "game-2d-canvas"
+   ],
+   "template_fit": [
+    "landing",
+    "game-2d",
+    "tool"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "scanner",
+   "name": "Scanner",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "Soft interference bands sweep the panel like an oscilloscope trace; use as the ambient plate behind a working or scanning status, one per screen.",
+   "tags": [
+    "background",
+    "ambient",
+    "status",
+    "motion",
+    "thinking"
+   ],
+   "recipe_fit": [
+    "status-thinking",
+    "chat-with-agent"
+   ],
+   "template_fit": [
+    "tool",
+    "page"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "shape-grid",
+   "name": "Shape Grid",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "A field of small squares, hexagons, circles or triangles drifting in one direction; a quiet decorative plate behind a hero card or lobby.",
+   "tags": [
+    "background",
+    "decor",
+    "ambient",
+    "motion",
+    "game"
+   ],
+   "recipe_fit": [
+    "game-2d-canvas",
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "game-2d",
+    "landing",
+    "page"
+   ],
+   "renderer": "canvas2d",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "shape-waves",
+   "name": "Shape Waves",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "Rows of tiny shapes brighten and swell as waves roll across them, optionally parting around a word; a hero plate for a landing or launch card.",
+   "tags": [
+    "background",
+    "hero",
+    "motion",
+    "webgl",
+    "text"
+   ],
+   "recipe_fit": [
+    "landing-funnel",
+    "countdown-ticker-hero"
+   ],
+   "template_fit": [
+    "landing",
+    "store"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "side-rays",
+   "name": "Side Rays",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "tier-b-packed",
+   "kit_equivalent": "restricted/side-rays",
+   "when": "Light rays fanning in from one edge behind a hero word or product shot; already packed as @kit/restricted/side-rays, non-lite, flat plate when off.",
+   "tags": [
+    "background",
+    "hero",
+    "webgl",
+    "ambient",
+    "decor"
+   ],
+   "recipe_fit": [
+    "landing-funnel",
+    "product-page",
+    "countdown-ticker-hero"
+   ],
+   "template_fit": [
+    "landing",
+    "store"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "silk",
+   "name": "Silk",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "tier-b-packed",
+   "kit_equivalent": "restricted/silk",
+   "when": "Slow silk-like waves with soft lighting behind a hero; already packed as @kit/restricted/silk, non-lite, renders a flat gradient when WebGL is off.",
+   "tags": [
+    "background",
+    "hero",
+    "webgl",
+    "material",
+    "ambient"
+   ],
+   "recipe_fit": [
+    "landing-funnel",
+    "product-page",
+    "form-confirmation"
+   ],
+   "template_fit": [
+    "landing",
+    "store",
+    "page"
+   ],
+   "renderer": "three",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "sliced-waves",
+   "name": "Sliced Waves",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "A row of soft glowing bars that ripple like an equalizer; an ambient plate for a music, playlist or listening-party card, one per screen.",
+   "tags": [
+    "background",
+    "ambient",
+    "data",
+    "motion",
+    "media"
+   ],
+   "recipe_fit": [
+    "gallery"
+   ],
+   "template_fit": [
+    "page",
+    "landing"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "soft-aurora",
+   "name": "Soft Aurora",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "fancy/animated-gradient-with-svg",
+   "when": "Slow aurora-like color drift behind a panel; reach for fancy/animated-gradient-with-svg, or a packed shader gradient (Grainient, Silk) when non-lite.",
+   "tags": [
+    "background",
+    "ambient",
+    "hero",
+    "webgl",
+    "motion"
+   ],
+   "recipe_fit": [
+    "landing-funnel",
+    "form-confirmation"
+   ],
+   "template_fit": [
+    "landing",
+    "page"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "threads",
+   "name": "Threads",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "Fine wavy lines that sway like woven fabric; an ambient plate behind a hero headline, drawn once as a still under reduced motion.",
+   "tags": [
+    "background",
+    "ambient",
+    "motion",
+    "webgl",
+    "decor"
+   ],
+   "recipe_fit": [
+    "landing-funnel",
+    "chat-with-agent"
+   ],
+   "template_fit": [
+    "landing",
+    "page",
+    "tool"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "topography",
+   "name": "Topography",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "Glowing contour lines that slowly breathe like a living elevation map; a hero plate for a trip, hike, route or map-flavored card.",
+   "tags": [
+    "background",
+    "hero",
+    "webgl",
+    "data",
+    "ambient"
+   ],
+   "recipe_fit": [
+    "landing-funnel",
+    "rsvp-guest-list"
+   ],
+   "template_fit": [
+    "landing",
+    "page",
+    "tool"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "waves",
+   "name": "Waves",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "Layered flowing lines with a gentle swell; a calm ambient plate behind a hero card, one per screen and still under reduced motion.",
+   "tags": [
+    "background",
+    "ambient",
+    "motion",
+    "decor",
+    "hero"
+   ],
+   "recipe_fit": [
+    "landing-funnel",
+    "form-confirmation"
+   ],
+   "template_fit": [
+    "landing",
+    "page"
+   ],
+   "renderer": "canvas2d",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "web-threads",
+   "name": "Web Threads",
+   "source": "React Bits",
+   "category": "Backgrounds",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "Glowing sine threads converging on a bright focal point; a hero plate for a launch or landing card that wants one luminous center.",
+   "tags": [
+    "background",
+    "hero",
+    "motion",
+    "webgl",
+    "ambient"
+   ],
+   "recipe_fit": [
+    "landing-funnel",
+    "countdown-ticker-hero"
+   ],
+   "template_fit": [
+    "landing",
+    "store"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "accordion-gallery",
+   "name": "Accordion Gallery",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "Hover-widening panels that reveal parallax imagery and captions; not for a mini-app, hover never reveals and there is no cursor to parallax, so a gallery uses fancy/simple-carousel.",
+   "tags": [
+    "gallery",
+    "media",
+    "layout",
+    "cursor"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "dom",
+   "lite": true,
+   "touch": false,
+   "reduced_motion": "none",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "animated-list",
+   "name": "Animated List",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "List rows that enter with a short stagger on mount; use it once as the hero motion when a guest list or task list first appears, never on scroll.",
+   "tags": [
+    "list",
+    "motion"
+   ],
+   "recipe_fit": [
+    "rsvp-guest-list",
+    "list-add-row"
+   ],
+   "template_fit": [
+    "tool",
+    "page",
+    "landing"
+   ],
+   "renderer": "dom",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "border-glow",
+   "name": "Border Glow",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "libraries/border-beam",
+   "when": "A glowing border that chases the cursor; the Kit's border-beam already marks the one card that deserves attention without needing a pointer.",
+   "tags": [
+    "decor",
+    "card",
+    "cursor",
+    "style"
+   ],
+   "recipe_fit": [
+    "approval-card"
+   ],
+   "template_fit": [
+    "landing",
+    "store"
+   ],
+   "renderer": "css",
+   "lite": true,
+   "touch": false,
+   "reduced_motion": "none",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "bounce-cards",
+   "name": "Bounce Cards",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "A fan of cards that springs into place on mount; a hero motion for a gallery or product spread, settling to the same fanned layout under reduced motion.",
+   "tags": [
+    "card",
+    "motion",
+    "gallery",
+    "hero"
+   ],
+   "recipe_fit": [
+    "gallery"
+   ],
+   "template_fit": [
+    "landing",
+    "store"
+   ],
+   "renderer": "dom",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "bubble-menu",
+   "name": "Bubble Menu",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "A round toggle that expands into a staggered ring of action bubbles; use for a compact plus-menu of three to five actions, opened by tap.",
+   "tags": [
+    "menu",
+    "nav",
+    "action",
+    "motion"
+   ],
+   "recipe_fit": [],
+   "template_fit": [
+    "tool",
+    "page",
+    "landing"
+   ],
+   "renderer": "dom",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "card-nav",
+   "name": "Card Nav",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "A header that expands into card panels of grouped links; rarely needed inside Messages, where one screen and header.bar carry navigation, build as a plain disclosure if a landing needs it.",
+   "tags": [
+    "nav",
+    "menu",
+    "layout"
+   ],
+   "recipe_fit": [
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "landing",
+    "page"
+   ],
+   "renderer": "dom",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "card-swap",
+   "name": "Card Swap",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "A small stack of cards where the front card drops to the back on a timer; a testimonial or feature rotator for a landing, paused to the front card under reduced motion.",
+   "tags": [
+    "card",
+    "carousel",
+    "motion",
+    "hero"
+   ],
+   "recipe_fit": [
+    "gallery",
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "landing",
+    "store"
+   ],
+   "renderer": "dom",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "carousel",
+   "name": "Carousel",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "fancy/simple-carousel",
+   "when": "Swipeable carousel with loop and snap; fancy/simple-carousel is the gallery default and already covers it.",
+   "tags": [
+    "carousel",
+    "gallery",
+    "layout",
+    "media"
+   ],
+   "recipe_fit": [
+    "gallery",
+    "product-page"
+   ],
+   "template_fit": [
+    "store",
+    "landing",
+    "page"
+   ],
+   "renderer": "dom",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "reduced",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "chroma-grid",
+   "name": "Chroma Grid",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "Grayscale tiles that regain color under a cursor spotlight; not for a mini-app, hover never reveals and the backdrop-filter overlay is non-lite, use an Air .grid of .tile.",
+   "tags": [
+    "gallery",
+    "card",
+    "cursor",
+    "filter"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "css",
+   "lite": false,
+   "touch": false,
+   "reduced_motion": "none",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "circular-gallery",
+   "name": "Circular Gallery",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "fancy/simple-carousel",
+   "when": "WebGL ring of bent images you drag to spin; a gallery on a phone uses fancy/simple-carousel, since lite forbids WebGL and the fallback is the carousel anyway.",
+   "tags": [
+    "gallery",
+    "media",
+    "webgl",
+    "carousel"
+   ],
+   "recipe_fit": [
+    "gallery"
+   ],
+   "template_fit": [
+    "store",
+    "landing"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "counter",
+   "name": "Counter",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "fancy/basic-number-ticker",
+   "when": "Digits that roll to a value with easing; fancy/basic-number-ticker already counts RSVP totals, prices and countdowns.",
+   "tags": [
+    "data",
+    "text",
+    "motion",
+    "status"
+   ],
+   "recipe_fit": [
+    "countdown-ticker-hero",
+    "rsvp-guest-list"
+   ],
+   "template_fit": [
+    "landing",
+    "store",
+    "tool"
+   ],
+   "renderer": "dom",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "curved-input",
+   "name": "Curved Input",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "An input bent along an arc with a fake caret; not for a mini-app, inputs stay native 16px controls, and decorative arc text is fancy/text-along-path.",
+   "tags": [
+    "input",
+    "composer",
+    "text",
+    "decor"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "svg",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "n/a",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "decay-card",
+   "name": "Decay Card",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "A card whose image displaces and dissolves as the pointer moves; not for a mini-app, there is no cursor to drive it and hover never carries meaning.",
+   "tags": [
+    "card",
+    "media",
+    "cursor",
+    "filter",
+    "motion"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "mixed",
+   "lite": true,
+   "touch": false,
+   "reduced_motion": "none",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "depth-carousel",
+   "name": "Depth Carousel",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "Coverflow-style rail where cards recede into perspective as you drag; build with CSS 3D on top of simple-carousel's snap when a product spread needs depth.",
+   "tags": [
+    "carousel",
+    "card",
+    "gallery",
+    "motion"
+   ],
+   "recipe_fit": [
+    "gallery",
+    "product-page"
+   ],
+   "template_fit": [
+    "store",
+    "landing"
+   ],
+   "renderer": "dom",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "reduced",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "dock",
+   "name": "Dock",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "Icon bar that magnifies items near the cursor; not for a mini-app, proximity scaling has no touch equivalent and it recreates Apple's dock, use a 44px tab row.",
+   "tags": [
+    "nav",
+    "menu",
+    "cursor",
+    "motion"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "dom",
+   "lite": true,
+   "touch": false,
+   "reduced_motion": "none",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "dome-gallery",
+   "name": "Dome Gallery",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "fancy/simple-carousel",
+   "when": "Photos wrapped on a draggable 3D dome as a full-screen showpiece; on a 390px card use the gallery recipe's simple-carousel, or css-box for six faces.",
+   "tags": [
+    "gallery",
+    "media",
+    "hero",
+    "motion"
+   ],
+   "recipe_fit": [
+    "gallery"
+   ],
+   "template_fit": [
+    "page",
+    "landing"
+   ],
+   "renderer": "css",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "drift-wall",
+   "name": "Drift Wall",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "fancy/simple-marquee",
+   "when": "An endless perspective wall of tiles drifting past as ambient decor behind a hero; the Kit's simple-marquee tilted with a CSS perspective does the same job.",
+   "tags": [
+    "marquee",
+    "ambient",
+    "decor",
+    "motion",
+    "background"
+   ],
+   "recipe_fit": [
+    "landing-funnel",
+    "gallery"
+   ],
+   "template_fit": [
+    "landing"
+   ],
+   "renderer": "css",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "elastic-slider",
+   "name": "Elastic Slider",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "A range slider whose thumb overshoots and springs back on release; use for one tunable value (tip, quantity, budget) where the flourish confirms the drop.",
+   "tags": [
+    "input",
+    "motion",
+    "data"
+   ],
+   "recipe_fit": [
+    "form-confirmation"
+   ],
+   "template_fit": [
+    "tool",
+    "store"
+   ],
+   "renderer": "dom",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "reduced",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "flowing-menu",
+   "name": "Flowing Menu",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "beautiful/glide-menu",
+   "when": "A highlight that slides between tabs or menu rows as the active item changes; use for segmented controls and small nav, never as a hover reveal.",
+   "tags": [
+    "menu",
+    "nav",
+    "motion"
+   ],
+   "recipe_fit": [
+    "approval-card"
+   ],
+   "template_fit": [
+    "tool",
+    "page"
+   ],
+   "renderer": "dom",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "reduced",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "fluid-glass",
+   "name": "Fluid Glass",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "A Three.js lens that refracts the page under a pointer-following glass blob; a desktop showpiece with no place inside a 390px lite card.",
+   "tags": [
+    "material",
+    "webgl",
+    "cursor",
+    "style"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "three",
+   "lite": false,
+   "touch": false,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "flying-posters",
+   "name": "Flying Posters",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "Posters on a WebGL ribbon that spin as the page scrolls; scroll-linked motion is forbidden in the webview, so it has no mini-app use.",
+   "tags": [
+    "scroll",
+    "gallery",
+    "webgl",
+    "media"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "folder",
+   "name": "Folder",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "A folder icon that opens on tap to fan out two or three cards; a playful disclosure for a small photo set or the items an agent gathered.",
+   "tags": [
+    "card",
+    "motion",
+    "decor",
+    "layout"
+   ],
+   "recipe_fit": [
+    "gallery"
+   ],
+   "template_fit": [
+    "page",
+    "landing"
+   ],
+   "renderer": "css",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "reduced",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "glass-icons",
+   "name": "Glass Icons",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "arlan/color-depth",
+   "when": "Frosted-glass icon tiles for a feature row or action grid; on Air use the color-depth glass material so lite surfaces get layered gradients, not blur.",
+   "tags": [
+    "button",
+    "style",
+    "material"
+   ],
+   "recipe_fit": [
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "landing",
+    "page"
+   ],
+   "renderer": "css",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "none",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "glass-surface",
+   "name": "Glass Surface",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "air",
+   "when": "A refractive glass panel with edge lighting; Air's .panel with var(--blur) is the glass in atmosphere, and pixel or lite render it flat.",
+   "tags": [
+    "material",
+    "style",
+    "layout",
+    "filter"
+   ],
+   "recipe_fit": [
+    "landing-funnel",
+    "product-page"
+   ],
+   "template_fit": [
+    "landing",
+    "page",
+    "store"
+   ],
+   "renderer": "mixed",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "n/a",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "gooey-nav",
+   "name": "Gooey Nav",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "libraries/liquid-gooey",
+   "when": "A tab thumb that stretches like liquid and splits into droplets as it moves to the tapped item; use liquid-gooey, one nav per screen.",
+   "tags": [
+    "nav",
+    "menu",
+    "motion",
+    "filter"
+   ],
+   "recipe_fit": [
+    "product-page"
+   ],
+   "template_fit": [
+    "tool",
+    "page",
+    "store"
+   ],
+   "renderer": "mixed",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "reduced",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "infinite-menu",
+   "name": "Infinite Menu",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "fancy/simple-carousel",
+   "when": "A menu of items that wraps endlessly as you drag or swipe; on a phone a snap carousel or a wrapping chip row covers it without the WebGL sphere.",
+   "tags": [
+    "menu",
+    "nav",
+    "carousel",
+    "webgl"
+   ],
+   "recipe_fit": [
+    "gallery"
+   ],
+   "template_fit": [
+    "page",
+    "store"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "infinite-spiral",
+   "name": "Infinite Spiral",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "fancy/simple-carousel",
+   "when": "Images on an endlessly turning 3D helix as a hero gallery; heavy, non-lite, and covered on a phone by simple-carousel or css-box.",
+   "tags": [
+    "gallery",
+    "media",
+    "hero",
+    "motion"
+   ],
+   "recipe_fit": [
+    "gallery"
+   ],
+   "template_fit": [
+    "landing",
+    "page"
+   ],
+   "renderer": "css",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "lanyard",
+   "name": "Lanyard",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "A badge card swinging on a physics-simulated lanyard; three, rapier and GLB assets make it a desktop showcase, not a Messages card.",
+   "tags": [
+    "card",
+    "hero",
+    "motion",
+    "webgl"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "three",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "line-sidebar",
+   "name": "Line Sidebar",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "A sidebar list whose items shift toward the cursor; there is no cursor in Messages and no sidebar in a single column, so skip it.",
+   "tags": [
+    "nav",
+    "menu",
+    "cursor",
+    "list"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "dom",
+   "lite": true,
+   "touch": false,
+   "reduced_motion": "none",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "magic-bento",
+   "name": "Magic Bento",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "A bento grid of tiles with tap-to-expand; build it from Air's .grid and .tile and drop the cursor spotlight, glow and magnetism that need a mouse.",
+   "tags": [
+    "layout",
+    "card",
+    "cursor",
+    "motion"
+   ],
+   "recipe_fit": [
+    "landing-funnel",
+    "product-page"
+   ],
+   "template_fit": [
+    "landing",
+    "store"
+   ],
+   "renderer": "dom",
+   "lite": true,
+   "touch": false,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "masonry",
+   "name": "Masonry",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "Two-column grid of mixed-height photo tiles that settle into place once on load; the gallery grid when images vary in shape, never a layout for text.",
+   "tags": [
+    "layout",
+    "gallery",
+    "media",
+    "list"
+   ],
+   "recipe_fit": [
+    "gallery",
+    "product-page"
+   ],
+   "template_fit": [
+    "store",
+    "page",
+    "landing"
+   ],
+   "renderer": "dom",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "model-viewer",
+   "name": "Model Viewer",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "Orbitable Three.js viewer for a 3D model file; not for Messages, where the model is a remote asset, WebGL is off under lite and the card is 390px wide.",
+   "tags": [
+    "media",
+    "webgl",
+    "hero"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "three",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "morph-slider",
+   "name": "Morph Slider",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "tier-b-pack-candidate",
+   "kit_equivalent": "",
+   "when": "Hero image slider that melts one photo into the next through a displacement shader; one per landing or product hero, a plain crossfade or still under lite.",
+   "tags": [
+    "carousel",
+    "gallery",
+    "media",
+    "webgl",
+    "hero"
+   ],
+   "recipe_fit": [
+    "gallery",
+    "landing-funnel",
+    "product-page"
+   ],
+   "template_fit": [
+    "landing",
+    "store"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "option-wheel",
+   "name": "Option Wheel",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "Curved drum picker you drag to choose one value from a short list; use it when the pick is the screen's hero, otherwise reach for a native select.",
+   "tags": [
+    "input",
+    "list",
+    "motion"
+   ],
+   "recipe_fit": [
+    "rsvp-guest-list",
+    "form-confirmation"
+   ],
+   "template_fit": [
+    "tool",
+    "store"
+   ],
+   "renderer": "dom",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "pill-nav",
+   "name": "Pill Nav",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "beautiful/glide-menu",
+   "when": "Row of pills with a highlight that slides to the active one; the section switcher for a tool or page app with two to four sections.",
+   "tags": [
+    "nav",
+    "menu",
+    "pill",
+    "motion"
+   ],
+   "recipe_fit": [],
+   "template_fit": [
+    "tool",
+    "page",
+    "store",
+    "landing"
+   ],
+   "renderer": "dom",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "reduced",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "pixel-card",
+   "name": "Pixel Card",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "Card whose surface fills with animated pixel squares as it appears; a once-on-mount reveal for one featured card, triggered by mount or tap, never hover.",
+   "tags": [
+    "card",
+    "decor",
+    "motion",
+    "media"
+   ],
+   "recipe_fit": [
+    "product-page"
+   ],
+   "template_fit": [
+    "landing",
+    "page"
+   ],
+   "renderer": "canvas2d",
+   "lite": true,
+   "touch": false,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "profile-card",
+   "name": "Profile Card",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "arlan/holo",
+   "when": "Portrait card with a glare that tilts in 3D; the host or artist card at the top of a landing screen, one per screen, built on holo.",
+   "tags": [
+    "card",
+    "motion",
+    "material",
+    "hero"
+   ],
+   "recipe_fit": [
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "landing",
+    "page"
+   ],
+   "renderer": "css",
+   "lite": false,
+   "touch": false,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "reflective-card",
+   "name": "Reflective Card",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "Card that mirrors the viewer's webcam and glares with the cursor; needs camera permission and a mouse, neither of which Messages gives you.",
+   "tags": [
+    "card",
+    "cursor",
+    "media",
+    "material"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "mixed",
+   "lite": false,
+   "touch": false,
+   "reduced_motion": "none",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "scroll-stack",
+   "name": "Scroll Stack",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "fancy/stacking-cards",
+   "when": "Cards that pin and pile up as the page scrolls; a scroll-linked landing section the Kit only allows as sticky stacking-cards, never as JS driven by scroll position.",
+   "tags": [
+    "scroll",
+    "card",
+    "layout",
+    "motion"
+   ],
+   "recipe_fit": [
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "landing",
+    "page"
+   ],
+   "renderer": "dom",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "specular-button",
+   "name": "Specular Button",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "libraries/border-beam",
+   "when": "Glass button with a bright rim light sweeping its edge; the one primary action on a screen, drawn with border-beam over a color-depth glass material.",
+   "tags": [
+    "button",
+    "material",
+    "webgl",
+    "motion",
+    "action"
+   ],
+   "recipe_fit": [
+    "approval-card",
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "landing",
+    "store"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": false,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "spotlight-card",
+   "name": "Spotlight Card",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "Card lit by a gradient spotlight under the cursor; there is no cursor in Messages, and a still highlight is a two-line CSS glow the Builder writes inline.",
+   "tags": [
+    "card",
+    "cursor",
+    "decor",
+    "style"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "css",
+   "lite": true,
+   "touch": false,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "stack",
+   "name": "Stack",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "Deck of cards you swipe to send the top one to the back; a gallery or guest-photo hero when a flat horizontal carousel is not enough.",
+   "tags": [
+    "card",
+    "carousel",
+    "gallery",
+    "motion",
+    "media"
+   ],
+   "recipe_fit": [
+    "gallery"
+   ],
+   "template_fit": [
+    "landing",
+    "store",
+    "page"
+   ],
+   "renderer": "dom",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "staggered-menu",
+   "name": "Staggered Menu",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "Overlay menu whose items slide in one after another on open; the nav for a multi-section page or tool app, opened from the header bar.",
+   "tags": [
+    "menu",
+    "nav",
+    "motion",
+    "layout"
+   ],
+   "recipe_fit": [],
+   "template_fit": [
+    "page",
+    "tool",
+    "landing"
+   ],
+   "renderer": "dom",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "stepper",
+   "name": "Stepper",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "Multi-step form with a progress indicator and animated step changes; use it for RSVP, checkout and any form longer than one compact card.",
+   "tags": [
+    "input",
+    "status",
+    "layout",
+    "motion",
+    "nav"
+   ],
+   "recipe_fit": [
+    "form-confirmation",
+    "rsvp-guest-list",
+    "landing-funnel",
+    "product-page"
+   ],
+   "template_fit": [
+    "tool",
+    "store",
+    "landing"
+   ],
+   "renderer": "dom",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "tilted-card",
+   "name": "Tilted Card",
+   "source": "React Bits",
+   "category": "Components",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "arlan/holo",
+   "when": "Card that tilts in perspective toward the pointer; on a phone use holo, which tilts with device orientation and adds the foil only if you want it.",
+   "tags": [
+    "card",
+    "motion",
+    "media",
+    "hero"
+   ],
+   "recipe_fit": [
+    "product-page",
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "landing",
+    "store",
+    "page"
+   ],
+   "renderer": "css",
+   "lite": true,
+   "touch": false,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "ascii-text",
+   "name": "ASCII Text",
+   "source": "React Bits",
+   "category": "Text Animations",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "Hero word drawn as animated ASCII glyphs for a retro terminal feel; a game or lo-fi title, one per screen, using the bundled monospace, still glyphs under reduced motion.",
+   "tags": [
+    "text",
+    "hero",
+    "decor",
+    "motion"
+   ],
+   "recipe_fit": [],
+   "template_fit": [
+    "game-2d",
+    "landing"
+   ],
+   "renderer": "three",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "blur-text",
+   "name": "Blur Text",
+   "source": "React Bits",
+   "category": "Text Animations",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "Headline or confirmation line that resolves from soft blur to crisp, word by word; a one-shot mount reveal for the hero, never for body copy.",
+   "tags": [
+    "text",
+    "motion",
+    "hero"
+   ],
+   "recipe_fit": [
+    "form-confirmation",
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "landing",
+    "page",
+    "tool"
+   ],
+   "renderer": "css",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "circular-text",
+   "name": "Circular Text",
+   "source": "React Bits",
+   "category": "Text Animations",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "fancy/text-along-path",
+   "when": "Short label set around a circle with a slow spin; a decorative badge or stamp beside a hero. Already fancy/text-along-path.",
+   "tags": [
+    "text",
+    "decor",
+    "motion"
+   ],
+   "recipe_fit": [],
+   "template_fit": [
+    "landing",
+    "page"
+   ],
+   "renderer": "dom",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "count-up",
+   "name": "Count Up",
+   "source": "React Bits",
+   "category": "Text Animations",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "fancy/basic-number-ticker",
+   "when": "A number that counts to its value with formatting and decimals: totals, prices, guest counts. Already fancy/basic-number-ticker.",
+   "tags": [
+    "text",
+    "data",
+    "status",
+    "motion"
+   ],
+   "recipe_fit": [
+    "countdown-ticker-hero",
+    "rsvp-guest-list"
+   ],
+   "template_fit": [
+    "store",
+    "landing",
+    "tool"
+   ],
+   "renderer": "dom",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "curved-loop",
+   "name": "Curved Loop",
+   "source": "React Bits",
+   "category": "Text Animations",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "fancy/text-along-path",
+   "when": "Phrase that loops along an SVG curve and can be dragged; a decorative band under a hero. fancy/text-along-path plus fancy/simple-marquee cover it.",
+   "tags": [
+    "text",
+    "marquee",
+    "decor",
+    "motion"
+   ],
+   "recipe_fit": [],
+   "template_fit": [
+    "landing",
+    "page"
+   ],
+   "renderer": "svg",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "decrypted-text",
+   "name": "Decrypted Text",
+   "source": "React Bits",
+   "category": "Text Animations",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "fancy/scramble-in",
+   "when": "Label that cycles random glyphs before resolving to real text, once on mount or on view. Already fancy/scramble-in (fancy/scramble-hover for hover).",
+   "tags": [
+    "text",
+    "motion",
+    "hero"
+   ],
+   "recipe_fit": [],
+   "template_fit": [
+    "landing",
+    "game-2d"
+   ],
+   "renderer": "dom",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "depth-text",
+   "name": "Depth Text",
+   "source": "React Bits",
+   "category": "Text Animations",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "Extruded layered type whose parallax follows the pointer; there is no pointer in Messages, so write the static extrusion as text-shadow and skip the motion.",
+   "tags": [
+    "text",
+    "cursor",
+    "style"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "css",
+   "lite": true,
+   "touch": false,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "echo-text",
+   "name": "Echo Text",
+   "source": "React Bits",
+   "category": "Text Animations",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "Ghosted copies converge and settle into one hero word; a single mount entrance for a title, static word under reduced motion.",
+   "tags": [
+    "text",
+    "motion",
+    "hero"
+   ],
+   "recipe_fit": [
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "landing"
+   ],
+   "renderer": "dom",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "falling-text",
+   "name": "Falling Text",
+   "source": "React Bits",
+   "category": "Text Animations",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "Letters drop and bounce into a headline as a playful entrance for a game or party app; one per screen, letters already landed under reduced motion.",
+   "tags": [
+    "text",
+    "motion",
+    "hero",
+    "game"
+   ],
+   "recipe_fit": [],
+   "template_fit": [
+    "game-2d",
+    "landing"
+   ],
+   "renderer": "dom",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "fold-text",
+   "name": "Fold Text",
+   "source": "React Bits",
+   "category": "Text Animations",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "Lines unfold into place like creased paper; a one-shot hero entrance for a two or three line title, flat lines under reduced motion.",
+   "tags": [
+    "text",
+    "motion",
+    "hero"
+   ],
+   "recipe_fit": [
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "landing",
+    "page"
+   ],
+   "renderer": "css",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "fuzzy-text",
+   "name": "Fuzzy Text",
+   "source": "React Bits",
+   "category": "Text Animations",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "Word that vibrates with a fuzzy edge on a small canvas; decorative game title or lo-fi hero, aria-hidden, crisp text under reduced motion.",
+   "tags": [
+    "text",
+    "motion",
+    "decor",
+    "game"
+   ],
+   "recipe_fit": [],
+   "template_fit": [
+    "game-2d"
+   ],
+   "renderer": "canvas2d",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "glitch-text",
+   "name": "Glitch Text",
+   "source": "React Bits",
+   "category": "Text Animations",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "RGB-split jitter over a hero word or game title; a short finite CSS glitch, never on status or body text, still under reduced motion.",
+   "tags": [
+    "text",
+    "motion",
+    "decor",
+    "game"
+   ],
+   "recipe_fit": [],
+   "template_fit": [
+    "game-2d",
+    "landing"
+   ],
+   "renderer": "css",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "gradient-text",
+   "name": "Gradient Text",
+   "source": "React Bits",
+   "category": "Text Animations",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "Headline with a colour gradient sweeping across the glyphs; one hero word or CTA per screen, gradient held still under reduced motion.",
+   "tags": [
+    "text",
+    "style",
+    "hero",
+    "motion"
+   ],
+   "recipe_fit": [
+    "landing-funnel",
+    "product-page"
+   ],
+   "template_fit": [
+    "landing",
+    "store"
+   ],
+   "renderer": "css",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "masked-heading",
+   "name": "Masked Heading",
+   "source": "React Bits",
+   "category": "Text Animations",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "Large headline with a drifting gradient (or bundled image) showing through the glyphs, revealed word by word; a landing hero, flat gradient under lite or reduced motion.",
+   "tags": [
+    "text",
+    "hero",
+    "motion",
+    "media"
+   ],
+   "recipe_fit": [
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "landing"
+   ],
+   "renderer": "css",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "particle-text",
+   "name": "Particle Text",
+   "source": "React Bits",
+   "category": "Text Animations",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "Hero word that assembles from drifting particles and scatters again on tap; a Canvas 2D moment for a reveal or game title, assembled text under reduced motion.",
+   "tags": [
+    "text",
+    "motion",
+    "hero",
+    "game"
+   ],
+   "recipe_fit": [
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "landing",
+    "game-2d"
+   ],
+   "renderer": "canvas2d",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "rotating-text",
+   "name": "Rotating Text",
+   "source": "React Bits",
+   "category": "Text Animations",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "fancy/text-rotate",
+   "when": "Slot in a headline that cycles phrases with a flip transition. Already fancy/text-rotate.",
+   "tags": [
+    "text",
+    "motion",
+    "hero"
+   ],
+   "recipe_fit": [
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "landing"
+   ],
+   "renderer": "dom",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "scrambled-text",
+   "name": "Scrambled Text",
+   "source": "React Bits",
+   "category": "Text Animations",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "fancy/scramble-in",
+   "when": "Text that distorts around the cursor; there is no cursor in Messages, so skip it and unscramble a label once on mount with fancy/scramble-in.",
+   "tags": [
+    "text",
+    "cursor",
+    "motion"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "dom",
+   "lite": true,
+   "touch": false,
+   "reduced_motion": "none",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "scroll-float",
+   "name": "Scroll Float",
+   "source": "React Bits",
+   "category": "Text Animations",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "fancy/float",
+   "when": "Text that drifts and parallax-shifts as the page scrolls; nothing moves on scroll inside the webview, so give a hero a gentle idle drift with fancy/float instead.",
+   "tags": [
+    "text",
+    "scroll",
+    "motion"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "dom",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "scroll-reveal",
+   "name": "Scroll Reveal",
+   "source": "React Bits",
+   "category": "Text Animations",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "fancy/vertical-cut-reveal",
+   "when": "Words unblur and rise as they scroll into place; scroll-linked reveals are forbidden, so reveal the headline once on mount with fancy/vertical-cut-reveal.",
+   "tags": [
+    "text",
+    "scroll",
+    "motion",
+    "filter"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "dom",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "scroll-velocity",
+   "name": "Scroll Velocity",
+   "source": "React Bits",
+   "category": "Text Animations",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "fancy/simple-marquee",
+   "when": "A marquee whose speed and skew follow scroll velocity; scroll may not drive motion here, so run a constant strip with fancy/simple-marquee.",
+   "tags": [
+    "text",
+    "marquee",
+    "scroll",
+    "motion"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "dom",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "shiny-text",
+   "name": "Shiny Text",
+   "source": "React Bits",
+   "category": "Text Animations",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "beautiful/shimmer",
+   "when": "A sheen that sweeps across a word or label; use it for a thinking line or one hero word, never on body copy or on more than one element per screen.",
+   "tags": [
+    "text",
+    "loading",
+    "motion",
+    "style"
+   ],
+   "recipe_fit": [
+    "status-thinking",
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "landing",
+    "tool",
+    "page"
+   ],
+   "renderer": "css",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "shuffle",
+   "name": "Shuffle",
+   "source": "React Bits",
+   "category": "Text Animations",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "fancy/scramble-in",
+   "when": "Characters shuffle before settling into a short label; fancy/scramble-in already does this once on mount for a kicker, a price or a status word.",
+   "tags": [
+    "text",
+    "motion",
+    "hero"
+   ],
+   "recipe_fit": [
+    "landing-funnel",
+    "countdown-ticker-hero"
+   ],
+   "template_fit": [
+    "landing",
+    "page"
+   ],
+   "renderer": "dom",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "split-flap-text",
+   "name": "Split Flap Text",
+   "source": "React Bits",
+   "category": "Text Animations",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "A departure board that clacks through phrases tile by tile; the hero for a countdown, a guest count or an event status when fancy/text-rotate feels too soft.",
+   "tags": [
+    "text",
+    "motion",
+    "hero",
+    "status"
+   ],
+   "recipe_fit": [
+    "countdown-ticker-hero",
+    "rsvp-guest-list",
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "landing",
+    "tool",
+    "page"
+   ],
+   "renderer": "dom",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "split-text",
+   "name": "Split Text",
+   "source": "React Bits",
+   "category": "Text Animations",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "fancy/vertical-cut-reveal",
+   "when": "A headline whose words or letters enter with a stagger; fancy/vertical-cut-reveal is the Kit's version, run once on mount as the screen's hero motion.",
+   "tags": [
+    "text",
+    "motion",
+    "hero"
+   ],
+   "recipe_fit": [
+    "landing-funnel",
+    "form-confirmation"
+   ],
+   "template_fit": [
+    "landing",
+    "store",
+    "page"
+   ],
+   "renderer": "dom",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "stroke-text",
+   "name": "Stroke Text",
+   "source": "React Bits",
+   "category": "Text Animations",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "Outlined letters draw themselves on and then fill; a one-shot hero for a confirmation or a launch headline on a screen with no other motion.",
+   "tags": [
+    "text",
+    "motion",
+    "hero"
+   ],
+   "recipe_fit": [
+    "form-confirmation",
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "landing",
+    "page"
+   ],
+   "renderer": "svg",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "text-cursor",
+   "name": "Text Cursor",
+   "source": "React Bits",
+   "category": "Text Animations",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "",
+   "when": "Copies of a word trail the cursor; Messages has no cursor and a drag scrolls the card, so leave it out (fancy/pixel-trail is the finger-safe trail if one is wanted).",
+   "tags": [
+    "text",
+    "cursor",
+    "motion",
+    "decor"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "dom",
+   "lite": true,
+   "touch": false,
+   "reduced_motion": "none",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "text-loop",
+   "name": "Text Loop",
+   "source": "React Bits",
+   "category": "Text Animations",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "fancy/text-along-path",
+   "when": "Text that flows endlessly along a curve; fancy/text-along-path already sets a moving marquee on an SVG arc or circle for a decorative header.",
+   "tags": [
+    "text",
+    "marquee",
+    "motion",
+    "decor"
+   ],
+   "recipe_fit": [
+    "landing-funnel",
+    "gallery"
+   ],
+   "template_fit": [
+    "landing",
+    "store",
+    "page"
+   ],
+   "renderer": "svg",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "text-pressure",
+   "name": "Text Pressure",
+   "source": "React Bits",
+   "category": "Text Animations",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "fancy/breathing-text",
+   "when": "Letters swell and squeeze under the pointer through a variable font; it needs a web font and a cursor, both forbidden, so use fancy/breathing-text for an ambient word.",
+   "tags": [
+    "text",
+    "cursor",
+    "motion",
+    "style"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "dom",
+   "lite": true,
+   "touch": false,
+   "reduced_motion": "none",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "text-type",
+   "name": "Text Type",
+   "source": "React Bits",
+   "category": "Text Animations",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "fancy/typewriter",
+   "when": "A typewriter with a blinking caret and adjustable cadence; fancy/typewriter (or arlan/typer when you need the erase) is the Kit's version for a headline or status line.",
+   "tags": [
+    "text",
+    "motion",
+    "status",
+    "hero"
+   ],
+   "recipe_fit": [
+    "status-thinking",
+    "chat-with-agent",
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "landing",
+    "tool",
+    "page"
+   ],
+   "renderer": "dom",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "true-focus",
+   "name": "True Focus",
+   "source": "React Bits",
+   "category": "Text Animations",
+   "disposition": "build-original",
+   "kit_equivalent": "",
+   "when": "A focus frame steps across a short phrase, sharpening one word at a time; a finite hero for a three or four word promise on a landing screen, never for copy people must read.",
+   "tags": [
+    "text",
+    "motion",
+    "hero",
+    "filter"
+   ],
+   "recipe_fit": [
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "landing",
+    "page"
+   ],
+   "renderer": "dom",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "variable-proximity",
+   "name": "Variable Proximity",
+   "source": "React Bits",
+   "category": "Text Animations",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "fancy/breathing-text",
+   "when": "Letter weight and width bend toward the pointer through a variable font; no cursor in Messages and no web fonts under the CSP, so use fancy/breathing-text for an ambient word.",
+   "tags": [
+    "text",
+    "cursor",
+    "motion",
+    "style"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "dom",
+   "lite": true,
+   "touch": false,
+   "reduced_motion": "none",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "warp-text",
+   "name": "Warp Text",
+   "source": "React Bits",
+   "category": "Text Animations",
+   "disposition": "not-for-miniapp",
+   "kit_equivalent": "libraries/metal-fx",
+   "when": "A WebGL pass bends and refracts a headline around the pointer; cursor-driven and non-lite, so leave it out; libraries/metal-fx is the one WebGL hero treatment the Kit allows.",
+   "tags": [
+    "text",
+    "webgl",
+    "cursor",
+    "motion",
+    "hero"
+   ],
+   "recipe_fit": [],
+   "template_fit": [],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": false,
+   "reduced_motion": "none",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "shutter-type",
+   "name": "Shutter type",
+   "when": "Two lines of type seen through a rolling shutter: stripes lag the ink so a word tears into bands only while it moves and is whole at rest; one hero motion for a title card.",
+   "tags": [
+    "text",
+    "motion",
+    "hero"
+   ],
+   "recipe_fit": [
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "landing",
+    "page"
+   ],
+   "renderer": "canvas2d",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "source": "Arlan Vault (owner brief)",
+   "category": "Vault",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "arlan/shutter-type",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "swing-type",
+   "name": "Swing type",
+   "when": "Enormous coloured letters on a pendulum, each turning edge-on as it passes so only two or three read at once and the word never assembles; the word changes by turning.",
+   "tags": [
+    "text",
+    "motion",
+    "hero"
+   ],
+   "recipe_fit": [
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "landing",
+    "page"
+   ],
+   "renderer": "canvas2d",
+   "lite": true,
+   "touch": true,
+   "reduced_motion": "static",
+   "source": "Arlan Vault (owner brief)",
+   "category": "Vault",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "arlan/swing-type",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  },
+  {
+   "key": "rush-type",
+   "name": "Rush type",
+   "when": "One lowercase word rests, then blasts twelve times taller and tears into green and violet streaks from speed alone, resolving to plain white at rest; the next word falls out of the blur.",
+   "tags": [
+    "text",
+    "motion",
+    "hero",
+    "webgl"
+   ],
+   "recipe_fit": [
+    "landing-funnel"
+   ],
+   "template_fit": [
+    "landing"
+   ],
+   "renderer": "webgl",
+   "lite": false,
+   "touch": true,
+   "reduced_motion": "static",
+   "source": "Arlan Vault (owner brief)",
+   "category": "Vault",
+   "disposition": "kit-a-equivalent",
+   "kit_equivalent": "arlan/rush-type",
+   "brief": "",
+   "build_renderer": "n/a",
+   "fallback": "",
+   "rule": "n/a",
+   "nearest": ""
+  }
+ ]
+}
