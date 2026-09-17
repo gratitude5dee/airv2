@@ -5,6 +5,11 @@
  * day. Optional `user_id` narrows the series to one user for drill-down
  * views. Metadata only — no message content ever reaches the control plane
  * (C4).
+ *
+ * V12 §12: `?series=tokens,cost,builds,dev_releases,publishes` adds the named
+ * Create series per bucket — `builds` from create_builds (started_at),
+ * `dev_releases` / `publishes` from the ops_events kinds `dev_release` and
+ * `publish`. `tokens` and `cost` name columns every point already carries.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuthorized } from "@/lib/admin/auth";
@@ -20,6 +25,13 @@ const PAGE = 1000;
 const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
 
+const SERIES = ["tokens", "cost", "builds", "dev_releases", "publishes"] as const;
+type Series = (typeof SERIES)[number];
+const OPS_KIND_SERIES: Record<"dev_release" | "publish", Series> = {
+  dev_release: "dev_releases",
+  publish: "publishes",
+};
+
 interface Point {
   ts: string;
   runs: number;
@@ -29,6 +41,9 @@ interface Point {
   box_seconds: number;
   starts: number;
   stops: number;
+  builds?: number;
+  dev_releases?: number;
+  publishes?: number;
 }
 
 function windowDays(request: NextRequest): number | null {
@@ -39,6 +54,18 @@ function windowDays(request: NextRequest): number | null {
     return null;
   }
   return days;
+}
+
+/** `?series=` as a set; null when a name is unknown. Absent = none extra. */
+function seriesParam(request: NextRequest): Set<Series> | null {
+  const raw = request.nextUrl.searchParams.get("series");
+  const wanted = new Set<Series>();
+  if (!raw) return wanted;
+  for (const name of raw.split(",").map((part) => part.trim()).filter(Boolean)) {
+    if (!(SERIES as readonly string[]).includes(name)) return null;
+    wanted.add(name as Series);
+  }
+  return wanted;
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
@@ -52,12 +79,24 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       { status: 400 }
     );
   }
+  const series = seriesParam(request);
+  if (series === null) {
+    return NextResponse.json(
+      { error: `series must be a comma list of ${SERIES.join("|")}` },
+      { status: 400 }
+    );
+  }
   const userId = request.nextUrl.searchParams.get("user_id");
 
   const bucketMs = days <= HOURLY_MAX_DAYS ? HOUR_MS : DAY_MS;
   const now = Date.now();
   const since = Math.floor((now - days * DAY_MS) / bucketMs) * bucketMs;
   const sinceIso = new Date(since).toISOString();
+
+  const wantBuilds = series.has("builds");
+  const opsKinds = (Object.keys(OPS_KIND_SERIES) as (keyof typeof OPS_KIND_SERIES)[]).filter(
+    (kind) => series.has(OPS_KIND_SERIES[kind])
+  );
 
   // Pre-seed every bucket in the window so quiet periods chart as zero
   // rather than vanishing from the x axis.
@@ -72,6 +111,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       box_seconds: 0,
       starts: 0,
       stops: 0,
+      ...(wantBuilds ? { builds: 0 } : {}),
+      ...(series.has("dev_releases") ? { dev_releases: 0 } : {}),
+      ...(series.has("publishes") ? { publishes: 0 } : {}),
     });
   }
   const bucketFor = (iso: string): Point | undefined =>
@@ -123,7 +165,52 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     if (rows.length < PAGE) break;
   }
 
-  const series = [...points.values()].map((point) => ({
+  if (wantBuilds) {
+    for (let offset = 0; ; offset += PAGE) {
+      let query = supabase
+        .from("create_builds")
+        .select("user_id, started_at")
+        .gte("started_at", sinceIso);
+      if (userId) query = query.eq("user_id", userId);
+      const { data, error } = await query
+        .order("started_at", { ascending: true })
+        .range(offset, offset + PAGE - 1);
+      if (error) break; // no build ledger yet reads as zero builds
+      const rows = data ?? [];
+      for (const row of rows) {
+        const point = bucketFor(row.started_at as string);
+        if (point) point.builds = (point.builds ?? 0) + 1;
+      }
+      if (rows.length < PAGE) break;
+    }
+  }
+
+  if (opsKinds.length > 0) {
+    for (let offset = 0; ; offset += PAGE) {
+      let query = supabase
+        .from("ops_events")
+        .select("user_id, kind, created_at")
+        .in("kind", opsKinds)
+        .gte("created_at", sinceIso);
+      if (userId) query = query.eq("user_id", userId);
+      const { data, error } = await query
+        .order("created_at", { ascending: true })
+        .range(offset, offset + PAGE - 1);
+      if (error) break;
+      const rows = data ?? [];
+      for (const row of rows) {
+        const point = bucketFor(row.created_at as string);
+        const kind = String(row.kind ?? "");
+        if (!point || !(kind in OPS_KIND_SERIES)) continue;
+        const field = OPS_KIND_SERIES[kind as keyof typeof OPS_KIND_SERIES];
+        if (field === "dev_releases") point.dev_releases = (point.dev_releases ?? 0) + 1;
+        if (field === "publishes") point.publishes = (point.publishes ?? 0) + 1;
+      }
+      if (rows.length < PAGE) break;
+    }
+  }
+
+  const points_ = [...points.values()].map((point) => ({
     ...point,
     cost_usd: Number(point.cost_usd.toFixed(6)),
   }));
@@ -133,6 +220,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     since: sinceIso,
     bucket: bucketMs === HOUR_MS ? "hour" : "day",
     user_id: userId ?? null,
-    points: series,
+    series: [...series],
+    points: points_,
   });
 }

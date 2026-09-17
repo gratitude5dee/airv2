@@ -78,11 +78,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       listVersions(supabase, app.id),
       buildId ? getBuild(supabase, userId, app.id, buildId) : latestBuild(supabase, app.id),
       createSpendUsd(supabase, userId, app.slug),
-      // The intake table is V12; an app created before it simply has none.
-      getIntake(supabase, userId, app.appname).catch((error: unknown) => {
-        if (error instanceof IntakeError) return null;
-        throw error;
-      }),
+      // The intake table is V12; an app created before it simply has none,
+      // and a nested app row may carry no appname at all.
+      app.appname
+        ? getIntake(supabase, userId, app.appname).catch((error: unknown) => {
+            if (error instanceof IntakeError) return null;
+            throw error;
+          })
+        : null,
     ]);
     const live = app.status === "published" ? app.bundle_version : null;
     const draft = app.draft_version ?? app.bundle_version;

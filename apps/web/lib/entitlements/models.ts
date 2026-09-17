@@ -240,6 +240,20 @@ export function isGmiModel(slug: string): boolean {
   return GMI_MODELS.some((model) => model.slug === slug);
 }
 
+/**
+ * GMI catalog entries priced at the OpenAI list until the GMI console figure
+ * is confirmed (goal-gmi-models §4): the admin Tokens page flags their cost
+ * as "list-estimated" (goal-create-v12 §12).
+ */
+const ESTIMATED_PRICE_SLUGS: ReadonlySet<string> = new Set([
+  "openai/gpt-5.6-luna",
+  "openai/gpt-6-astra",
+]);
+
+export function isEstimatedPrice(slug: string): boolean {
+  return ESTIMATED_PRICE_SLUGS.has(slug);
+}
+
 export function defaultGmiModelForTier(tier: SpeedTier): string {
   const override = gmiTierOverride(tier);
   return override ?? GMI_TIER_MODELS[tier];
