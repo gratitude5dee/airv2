@@ -21,6 +21,15 @@ import {
   egressHostRejection,
   normalizeEgressHost,
 } from "../../../functions/egress";
+import {
+  postJson,
+  readJson,
+  type DevRelease,
+  type IntakeStatus,
+} from "./panes";
+import { PlanPane } from "./PlanPane";
+import { ProgressPane } from "./ProgressPane";
+import { ReleasePane } from "./ReleasePane";
 
 export interface Finding {
   rule: string;
@@ -83,6 +92,8 @@ export interface StatusResponse {
   build: BuildState | null;
   budget: BudgetMeter;
   versions: VersionSummary[];
+  /** V12 §14.1 extended status; absent until the status route ships it. */
+  dev?: DevRelease | null;
 }
 
 interface FunctionsDeclared {
@@ -169,9 +180,21 @@ const DEVICES = [
 ] as const;
 type DeviceId = (typeof DEVICES)[number]["id"];
 
-const TABS = ["files", "versions", "functions", "settings", "share"] as const;
+const TABS = [
+  "plan",
+  "progress",
+  "release",
+  "files",
+  "versions",
+  "functions",
+  "settings",
+  "share",
+] as const;
 type Tab = (typeof TABS)[number];
 const TAB_LABEL: Record<Tab, string> = {
+  plan: "Plan",
+  progress: "Progress",
+  release: "Release",
   files: "Files",
   versions: "Versions",
   functions: "Functions",
@@ -188,37 +211,6 @@ interface Message {
   tools?: string[];
   /** Set when the run ended without completing; the text above it is partial. */
   failed?: string;
-}
-
-type Reply<T> = Partial<T> & { error?: string; reason?: string };
-
-async function readJson<T>(res: Response): Promise<Reply<T>> {
-  const data = (await res.json().catch(() => null)) as Reply<T> | null;
-  if (data) return data;
-  return {
-    error: res.ok ? "unexpected reply" : `request failed (${res.status})`,
-  } as Reply<T>;
-}
-
-async function postJson<T>(
-  url: string,
-  body: unknown,
-  method = "POST",
-): Promise<Reply<T>> {
-  const res = await fetch(url, {
-    method,
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = await readJson<T>(res);
-  if (!res.ok) {
-    throw new Error(
-      data.reason === "create_budget"
-        ? "this project's Create budget is spent — raise it in Settings"
-        : (data.error ?? `request failed (${res.status})`),
-    );
-  }
-  return data;
 }
 
 /** Ask the control plane to stop a Create run the owner has walked away
@@ -1478,6 +1470,9 @@ function Project({
   refresh,
   onError,
   onPreview,
+  intake,
+  reloadIntake,
+  onAnswer,
 }: {
   status: StatusResponse;
   busy: boolean;
@@ -1485,8 +1480,18 @@ function Project({
   refresh: () => Promise<void>;
   onError: (message: string) => void;
   onPreview: (version: string) => void;
+  /** V12 §5.4: the open `create_intakes` row for this app, if any. */
+  intake: IntakeStatus | null;
+  reloadIntake: () => Promise<void>;
+  onAnswer: (text: string) => void;
 }) {
   const [tab, setTab] = useState<Tab>("versions");
+  // A stage the progress poll saw before the studio did: the draft, the dev
+  // pointer and the intake all moved, so the whole status is re-read.
+  const onStage = useCallback(
+    () => void refresh().catch(() => undefined),
+    [refresh],
+  );
   const staged =
     status.draft !== null && status.draft.version !== status.live?.version;
   return (
@@ -1518,6 +1523,40 @@ function Project({
           </button>
         ))}
       </div>
+      {tab === "plan" ? (
+        <PlanPane
+          appname={status.appname}
+          intake={intake}
+          busy={busy}
+          run={run}
+          onAdvanced={reloadIntake}
+          onAnswer={onAnswer}
+        />
+      ) : null}
+      {tab === "progress" ? (
+        <ProgressPane
+          appname={status.appname}
+          intake={intake}
+          log={status.build?.log ?? []}
+          qaScore={status.qa_score}
+          onStage={onStage}
+        >
+          <Findings findings={status.draft?.findings ?? []} />
+        </ProgressPane>
+      ) : null}
+      {tab === "release" ? (
+        <ReleasePane
+          appname={status.appname}
+          name={status.name}
+          dev={status.dev ?? null}
+          intake={intake}
+          busy={busy}
+          run={run}
+          onChanged={async () => {
+            await Promise.all([refresh(), reloadIntake()]);
+          }}
+        />
+      ) : null}
       {tab === "files" ? (
         <FilesTab appname={status.appname} onError={onError} />
       ) : null}
@@ -1578,6 +1617,9 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
   const [slug, setSlug] = useState<string | null>(initialSlug);
   const [appname, setAppname] = useState("");
   const [status, setStatus] = useState<StatusResponse | null>(null);
+  // V12 §5.4: the app's open intake (stage, plan version, revisions) — read
+  // through GET /api/create/intake?app=, never from the status poll.
+  const [intake, setIntake] = useState<IntakeStatus | null>(null);
   const [tier, setTier] = useState<Tier>("balanced");
   const [messages, setMessages] = useState<Message[]>([]);
   const [busy, setBusy] = useState(false);
@@ -1619,6 +1661,28 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
     },
     [],
   );
+
+  const intakeAppname = status?.appname ?? null;
+  const loadIntake = useCallback(async () => {
+    if (!intakeAppname) {
+      setIntake(null);
+      return;
+    }
+    const res = await fetch(
+      `/api/create/intake?app=${encodeURIComponent(intakeAppname)}`,
+    );
+    if (res.status === 404) {
+      setIntake(null);
+      return;
+    }
+    if (!res.ok) return;
+    setIntake((await res.json()) as IntakeStatus);
+  }, [intakeAppname]);
+
+  useEffect(() => {
+    setIntake(null);
+    void loadIntake().catch(() => undefined);
+  }, [loadIntake]);
 
   useEffect(() => {
     void loadProjects();
@@ -1684,8 +1748,9 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
     await Promise.all([
       slug ? loadStatus(slug) : Promise.resolve(),
       loadProjects(),
+      loadIntake().catch(() => undefined),
     ]);
-  }, [slug, loadStatus, loadProjects]);
+  }, [slug, loadStatus, loadProjects, loadIntake]);
 
   // Builds land out of band (iMessage turns, `air-create build` from the Box),
   // so the status is polled: quickly while a build is in flight, slowly otherwise.
@@ -1915,6 +1980,19 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
             onSend={send}
             onAppname={setAppname}
           />
+          {status ? (
+            <Project
+              status={status}
+              busy={busy}
+              run={run}
+              refresh={refresh}
+              onError={setMessage}
+              onPreview={previewVersion}
+              intake={intake}
+              reloadIntake={loadIntake}
+              onAnswer={send}
+            />
+          ) : null}
           {status?.draft && status.draft.version !== status.live?.version ? (
             <button
               className="btn text-[13px]"
@@ -1974,6 +2052,9 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
             refresh={refresh}
             onError={setMessage}
             onPreview={previewVersion}
+            intake={intake}
+            reloadIntake={loadIntake}
+            onAnswer={send}
           />
         ) : (
           <section className="panel !p-4" aria-label="Project">

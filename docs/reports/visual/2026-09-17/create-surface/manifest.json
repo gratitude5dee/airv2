@@ -1,0 +1,19 @@
+{
+  "videos": [
+    "/home/user/airv2/docs/reports/visual/2026-09-17/create-surface/page@98fb59e18dcf430414be414e93bbf8d8.webm"
+  ],
+  "screenshots": [
+    "/home/user/airv2/docs/reports/visual/2026-09-17/create-surface/plan.png",
+    "/home/user/airv2/docs/reports/visual/2026-09-17/create-surface/progress-45.png",
+    "/home/user/airv2/docs/reports/visual/2026-09-17/create-surface/progress-100.png",
+    "/home/user/airv2/docs/reports/visual/2026-09-17/create-surface/release-dev.png",
+    "/home/user/airv2/docs/reports/visual/2026-09-17/create-surface/release-finalize.png"
+  ],
+  "assertions": 29,
+  "bytes": 631354,
+  "viewport": {
+    "width": 390,
+    "height": 760
+  },
+  "page_errors": 0
+}
