@@ -641,11 +641,19 @@ One session owns `middleware.ts` and `app/mini/[app]/route.ts` at a time.
 | MC0 | **not started** — needs a real iMessage line, a real Box and push access to `wzrd-create` | the five proofs in `docs/reports/create-v12-mc0.md` are unwritten; `CREATE_MIRROR_ENABLED` stays `false` until the repository is seeded |
 | MC1 | implemented | `parseCreateCommand`, `lib/create/intake.ts`, `/api/create/intake`, `/api/create/plan/deliver`, migration 0116, the flush hook, and the Plan pane |
 | MC2 | implemented | tier map with `#stage`, `tests.ts`, `progress.ts` and its relay handle, `release.ts` with the dev channel through middleware, loader and Dispatcher, migrations 0117–0119, Progress and Release panes |
-| MC3 | implemented, dark | `finalize.ts`, `icon.ts`, `mirror.ts` and the V12 publish payload; the mirror stays off until MC0 seeds the repository |
+| MC3 | implemented, dark | `finalize.ts`, `icon.ts`, `mirror.ts`, the V12 publish payload, and the decision tap that flips status; the mirror stays off until MC0 seeds the repository |
 | MC4 | not started | attachment handling and the public-zip shortcut are V12 work that GP2/GP3 need |
 | MC5 | implemented | four recipes, six templates, the three harvested briefs, the effects vocabulary and `verify.ts` green at 79 components |
 | MC6 | implemented | the six admin routes here with migration 0120, and the Deployments, Create and Tokens pages in `gratitude5dee/admin` |
 | MC7 | partial | the V12 eval cases exist (§19); the red-team cases and `UPGRADE.md` do not |
+
+Known gaps inside the implemented milestones, each of which needs something
+this environment does not have: the intake records no `first_question_at`, so
+that median reads null; the progress relay writes no `ops_events`, so the
+operator's relay counters read zero; and `wzrd-create` is still an empty
+repository, so `CREATE_MIRROR_ENABLED` stays `false` and no mirror commit has
+ever been made. Seeding it needs push access to
+`github.com/gratitude5dee/wzrd-create` and a GitHub App installation on it.
 
 Recorded visual evidence: `docs/reports/visual/2026-09-17/create-surface/` here
 (the Create surface at 390×760) and `docs/visual/2026-09-17/` in the admin
