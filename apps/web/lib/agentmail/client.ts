@@ -209,16 +209,38 @@ export interface AgentMailThreadDetail extends AgentMailThread {
   messages?: AgentMailMessage[];
 }
 
-/** Thread listing for the inbox mini-app (MA6 #11) — the one call the
- * client was missing; everything else (get/reply/draft/send) exists. */
+export interface AgentMailThreadPage {
+  threads: AgentMailThread[];
+  next_page_token?: string | null;
+}
+
+/** A page of mailbox threads. The opaque token makes a long-lived mailbox
+ * usable in the mini-app without inventing cursor semantics client-side. */
+export async function listThreadsPage(
+  inboxId: string,
+  limit = 25,
+  pageToken?: string
+): Promise<AgentMailThreadPage> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (pageToken) params.set("page_token", pageToken);
+  const result = await agentmailFetch<{
+    threads?: AgentMailThread[];
+    next_page_token?: string | null;
+  }>(
+    `/inboxes/${encodeURIComponent(inboxId)}/threads?${params}`
+  );
+  return {
+    threads: result.threads ?? [],
+    ...(result.next_page_token ? { next_page_token: result.next_page_token } : {}),
+  };
+}
+
+/** Convenience listing for callers that only need the newest page. */
 export async function listThreads(
   inboxId: string,
   limit = 25
 ): Promise<AgentMailThread[]> {
-  const result = await agentmailFetch<{ threads?: AgentMailThread[] }>(
-    `/inboxes/${encodeURIComponent(inboxId)}/threads?limit=${limit}`
-  );
-  return result.threads ?? [];
+  return (await listThreadsPage(inboxId, limit)).threads;
 }
 
 /** A thread with its messages, for the thread view. */

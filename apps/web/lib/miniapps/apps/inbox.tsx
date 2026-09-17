@@ -18,7 +18,7 @@ import {
   getDraft,
   getMessage,
   getThread,
-  listThreads,
+  listThreadsPage,
   type MailAttachment,
   type MailMessage as AgentMailMessage,
   type MailThread as AgentMailThread,
@@ -219,7 +219,8 @@ function renderThreads(
   blocked: Set<string>,
   reviews: PendingDraftReview[],
   lite: boolean,
-  notice: string | null
+  notice: string | null,
+  nextPageToken?: string | null
 ): string {
   const rows = threads
     .map((thread) => {
@@ -235,8 +236,11 @@ function renderThreads(
     .join("");
   const empty =
     threads.length === 0 ? `<p class="when">No mail yet.</p>` : "";
+  const older = nextPageToken
+    ? `<a class="navlink" href="${esc(basePath)}?page_token=${encodeURIComponent(nextPageToken)}">Older mail</a>`
+    : "";
   const compose = `<div class="day">Compose</div><form method="post" class="stack"><input type="hidden" name="action" value="compose"><input type="email" name="to" placeholder="To — separate addresses with commas" multiple required><input type="text" name="subject" placeholder="Subject"><textarea name="text" rows="7" placeholder="Write your email…" required></textarea><div class="row"><button>Save draft for review</button></div><p class="when" style="margin:0">Your draft appears above. Tap Approve &amp; send to send it from your Air agent.</p></form>`;
-  const body = `<section class="panel">${renderReviews(reviews)}${rows}${empty}${compose}\n${promptBar("Ask your agent \u2014 e.g. summarize unread threads\u2026")}</section>`;
+  const body = `<section class="panel">${renderReviews(reviews)}${rows}${empty}${older}${compose}\n${promptBar("Ask your agent \u2014 e.g. summarize unread threads\u2026")}</section>`;
   return renderShell({ title: "Inbox", kicker: "Mail", body, lite, notice });
 }
 
@@ -351,20 +355,22 @@ export const inbox: MiniAppModule = {
           )
         );
       }
-      const [threads, reviews] = await Promise.all([
+      const pageToken = ctx.request.nextUrl.searchParams.get("page_token") ?? undefined;
+      const [threadPage, reviews] = await Promise.all([
         // The mini-app is the reader, not a notification teaser. Fetch the
-        // provider's maximum page so an iMessage-opened inbox is useful.
-        listThreads(inboxId, 100),
+        // provider's maximum page and continue via the returned cursor.
+        listThreadsPage(inboxId, 100, pageToken),
         pendingDraftReviews(ctx, inboxId),
       ]);
       return shellHtml(
         renderThreads(
           ctx.basePath,
-          threads,
+          threadPage.threads,
           blocked,
           reviews,
           lite,
-          ctx.request.nextUrl.searchParams.get("notice")
+          ctx.request.nextUrl.searchParams.get("notice"),
+          threadPage.next_page_token
         )
       );
     } catch {

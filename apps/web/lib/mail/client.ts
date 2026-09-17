@@ -15,6 +15,7 @@ export type {
   AgentMailMessage as MailMessage,
   AgentMailThread as MailThread,
   AgentMailThreadDetail as MailThreadDetail,
+  AgentMailThreadPage as MailThreadPage,
 } from "../agentmail/client";
 
 export type MailProvider = "agentmail" | "wzrdmail";
@@ -54,6 +55,8 @@ export const getMessage: MailClient["getMessage"] = (...args) =>
   client().getMessage(...args);
 export const listThreads: MailClient["listThreads"] = (...args) =>
   client().listThreads(...args);
+export const listThreadsPage: MailClient["listThreadsPage"] = (...args) =>
+  client().listThreadsPage(...args);
 export const getThread: MailClient["getThread"] = (...args) =>
   client().getThread(...args);
 export const replyToMessage: MailClient["replyToMessage"] = (...args) =>

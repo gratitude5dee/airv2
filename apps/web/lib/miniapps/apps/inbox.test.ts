@@ -8,7 +8,12 @@ const createDraft = vi.fn(async () => "draft-1");
 const getAttachmentBytes = vi.fn(async () => Buffer.from("image-bytes"));
 const getMessage = vi.fn();
 const getThread = vi.fn();
-const listThreads = vi.fn(async () => []);
+const listThreadsPage = vi.fn<
+  () => Promise<{
+    threads: { thread_id: string; subject?: string }[];
+    next_page_token?: string;
+  }>
+>(async () => ({ threads: [] }));
 const queueEmailDraftReview = vi.fn(async () => undefined);
 
 vi.mock("@/lib/mail/client", () => ({
@@ -17,7 +22,7 @@ vi.mock("@/lib/mail/client", () => ({
   getDraft: vi.fn(),
   getMessage: (...args: unknown[]) => getMessage(...(args as [])),
   getThread: (...args: unknown[]) => getThread(...(args as [])),
-  listThreads: (...args: unknown[]) => listThreads(...(args as [])),
+  listThreadsPage: (...args: unknown[]) => listThreadsPage(...(args as [])),
 }));
 vi.mock("@/lib/email/review", () => ({
   queueEmailDraftReview: (...args: unknown[]) => queueEmailDraftReview(...(args as [])),
@@ -74,6 +79,20 @@ afterEach(() => {
 });
 
 describe("inbox mini-app", () => {
+  it("pages through older threads instead of truncating the mailbox at the first page", async () => {
+    listThreadsPage.mockResolvedValueOnce({
+      threads: [{ thread_id: "thread-1", subject: "Newest mail" }],
+      next_page_token: "opaque-next-page",
+    });
+
+    const response = await inbox.render(context());
+    const html = await response.text();
+
+    expect(listThreadsPage).toHaveBeenCalledWith("agent@wzrd.tech", 100, undefined);
+    expect(html).toContain("Older mail");
+    expect(html).toContain("page_token=opaque-next-page");
+  });
+
   it("renders HTML-only mail as readable escaped text plus same-origin attachments", async () => {
     getThread.mockResolvedValueOnce({
       thread_id: "thread-1",
