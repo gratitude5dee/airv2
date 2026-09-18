@@ -1,0 +1,396 @@
+<template id="shot-10-create-plan-template">
+  <div data-hf-id="hf-s10root" id="s10-root" data-composition-id="shot-10-create-plan" data-start="0" data-width="1920" data-height="1080" data-duration="7.848">
+    <style>
+      @font-face{font-family:'Inter';font-weight:400;font-style:normal;font-display:block;src:url('fonts/Inter-400-latin.woff2') format('woff2')}
+      @font-face{font-family:'Inter';font-weight:700;font-style:normal;font-display:block;src:url('fonts/Inter-700-latin.woff2') format('woff2')}
+      @font-face{font-family:'Newsreader';font-weight:200 800;font-style:normal;font-display:block;src:url('fonts/newsreader-latin.woff2') format('woff2')}
+      @font-face{font-family:'Azeret Mono';font-weight:100 900;font-style:normal;font-display:block;src:url('fonts/azeret-mono-latin.woff2') format('woff2')}
+      #s10-root{--ink:#F4EFE6;--ink-dim:rgba(244,239,230,.62);--imsg:#0A84FF;--ok:#30D158;--glass:rgba(255,255,255,.08);--line:rgba(255,255,255,.12);
+        position:relative;width:1920px;height:1080px;overflow:hidden;background:transparent;
+        font-family:'Inter',system-ui,-apple-system,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased}
+      #s10-root *,#s10-root *::before,#s10-root *::after{box-sizing:border-box}
+      #s10-root .frame{position:absolute;inset:0;perspective:1800px}
+      /* parallax planes: the camera proxy moves, the planes follow it by depth */
+      #s10-root .plane{position:absolute;inset:0;transform-style:preserve-3d;will-change:transform}
+      #s10-root .giant{font-family:'Newsreader',Georgia,serif;font-weight:300;letter-spacing:-.035em;line-height:.86;
+        color:var(--ink);opacity:.92;white-space:nowrap;text-shadow:0 3px 26px rgba(3,7,18,.52)}
+      #s10-root .giant .w{display:inline-block;will-change:transform,opacity;transform-style:preserve-3d}
+      #s10-root .wash{position:absolute;inset:0;pointer-events:none;
+        background:radial-gradient(64% 46% at 50% 44%,rgba(4,9,22,.46) 0%,rgba(4,9,22,.20) 56%,rgba(4,9,22,0) 100%)}
+      #s10-root .washL{position:absolute;inset:0;pointer-events:none;
+        background:linear-gradient(100deg,rgba(4,9,22,.52) 0%,rgba(4,9,22,.30) 42%,rgba(4,9,22,0) 72%)}
+      #s10-root .washR{position:absolute;inset:0;pointer-events:none;
+        background:linear-gradient(262deg,rgba(4,9,22,.54) 0%,rgba(4,9,22,.30) 44%,rgba(4,9,22,0) 76%)}
+      #s10-root .cap{font-family:'Newsreader',Georgia,serif;font-weight:400;font-size:56px;line-height:1.08;color:var(--ink);
+        text-shadow:0 3px 24px rgba(3,7,18,.52)}
+      #s10-root .mono{font-family:'Azeret Mono',ui-monospace,monospace;font-weight:400;font-size:25px;letter-spacing:.02em;
+        color:rgba(244,239,230,.80);line-height:1.45;text-shadow:0 2px 16px rgba(3,7,18,.60)}
+      #s10-root .ph{position:absolute;width:402px;height:874px;will-change:transform}
+      #s10-root .ph-body{position:absolute;inset:0;border-radius:56px;background:linear-gradient(160deg,#3a3f4a 0%,#171b22 38%,#0f1218 100%);
+        padding:3px;box-shadow:0 60px 120px rgba(2,6,18,.62),0 12px 30px rgba(2,6,18,.5),inset 0 1px 0 rgba(255,255,255,.16)}
+      #s10-root .ph-screen{position:absolute;inset:3px;border-radius:53px;overflow:hidden;background:#000}
+      #s10-root .ph-island{position:absolute;top:14px;left:50%;margin-left:-63px;width:126px;height:37px;border-radius:19px;background:#000;z-index:6}
+      #s10-root .ph-nav{position:absolute;top:0;left:0;right:0;height:122px;z-index:5;
+        background:rgba(18,18,20,.82);backdrop-filter:blur(24px) saturate(1.3);border-bottom:1px solid rgba(255,255,255,.08);
+        display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:8px}
+      #s10-root .orb{background:url('logos/air-brand.png') center/cover no-repeat;border-radius:50%;flex:0 0 auto}
+      #s10-root .gly{background-position:center;background-repeat:no-repeat;background-size:contain}
+      #s10-root .ph-nav .orb{width:44px;height:44px}
+      #s10-root .ph-nav .who{font-size:13px;font-weight:600;color:#fff;margin-top:3px;letter-spacing:.01em}
+      #s10-root .ph-fade{position:absolute;top:122px;left:0;right:0;height:52px;z-index:4;pointer-events:none;
+        background:linear-gradient(180deg,rgba(0,0,0,.88) 0%,rgba(0,0,0,0) 100%)}
+      #s10-root .ph-home{position:absolute;bottom:9px;left:50%;margin-left:-67px;width:134px;height:5px;border-radius:3px;background:rgba(255,255,255,.34);z-index:6}
+      #s10-root .ph-composer{position:absolute;bottom:26px;left:12px;right:12px;height:44px;border-radius:22px;z-index:5;
+        border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);display:flex;align-items:center;padding:0 14px;overflow:hidden}
+      #s10-root .ph-composer .txt{font-size:17px;color:#fff;white-space:nowrap;overflow:hidden}
+      #s10-root .ph-composer .car{width:2px;height:19px;background:var(--imsg);margin-left:2px;flex:0 0 auto}
+      #s10-root .ph-composer .glow{position:absolute;inset:-1px;border-radius:22px;pointer-events:none;
+        background:linear-gradient(96deg,rgba(10,132,255,.36),rgba(244,239,230,.14) 48%,rgba(10,132,255,.30));opacity:0}
+      /* the thread: a flow column translated by the timeline — never scrollTop */
+      #s10-root .ph-scroll{position:absolute;top:122px;left:0;right:0;bottom:0;overflow:hidden;z-index:3}
+      #s10-root .ph-thread{position:absolute;left:0;right:0;top:0;padding:0 14px;display:flex;flex-direction:column;
+        align-items:stretch;gap:9px;will-change:transform}
+      #s10-root .it{display:flex;width:100%;will-change:transform,opacity}
+      #s10-root .it.sent{justify-content:flex-end}
+      #s10-root .it.recv{justify-content:flex-start}
+      #s10-root .it.sys{justify-content:center}
+      #s10-root .bub{max-width:78%;padding:9px 14px 10px;font-size:19px;line-height:1.28;border-radius:20px;
+        will-change:transform,opacity;transform-origin:100% 100%}
+      #s10-root .sent .bub{background:#0C72D8;color:#fff;border-bottom-right-radius:7px}
+      #s10-root .recv .bub{background:rgba(255,255,255,.14);color:var(--ink);border-bottom-left-radius:7px}
+      #s10-root .it.dim{opacity:.56}
+      #s10-root .sys .bub{background:none;font-family:'Azeret Mono',monospace;font-size:13px;color:rgba(244,239,230,.55);
+        text-align:center;max-width:94%;letter-spacing:.01em;line-height:1.35}
+      #s10-root .dots{display:flex;gap:6px;padding:13px 16px;background:rgba(255,255,255,.14);border-radius:20px;border-bottom-left-radius:7px}
+      #s10-root .dots i{width:8px;height:8px;border-radius:50%;background:rgba(244,239,230,.62);display:block;will-change:transform,opacity}
+      /* owner-only mini-app card — the film shows one owner, so cards only ever appear here */
+      #s10-root .card{position:relative;width:100%;border-radius:22px;border:1px solid var(--line);background:rgba(255,255,255,.08);
+        backdrop-filter:blur(18px) saturate(1.2);overflow:hidden;will-change:transform,opacity;transform-origin:50% 100%}
+      #s10-root .card .hd{display:flex;align-items:center;gap:10px;padding:12px 14px 10px}
+      #s10-root .card .hd .art{width:36px;height:36px;border-radius:10px;flex:0 0 auto;background-size:cover;background-position:center}
+      #s10-root .card .hd .ic{width:36px;height:36px;border-radius:10px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;
+        background:rgba(255,255,255,.10);border:1px solid var(--line)}
+      #s10-root .card .hd .ic .gly{width:20px;height:20px;opacity:.92}
+      #s10-root .card .ti{font-size:17px;font-weight:700;color:#fff;letter-spacing:-.005em}
+      #s10-root .card .sb{font-family:'Azeret Mono',monospace;font-size:13px;color:rgba(244,239,230,.78);margin-top:2px}
+      #s10-root .card .bd{padding:0 14px 12px;font-size:16px;line-height:1.35;color:rgba(244,239,230,.86)}
+      #s10-root .card .row{display:flex;gap:8px;padding:0 14px 13px}
+      #s10-root .btn{flex:1;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;
+        font-size:16px;font-weight:700;letter-spacing:-.005em;will-change:transform}
+      #s10-root .btn.ok{background:#1FA64F;color:#FFFFFF}
+      #s10-root .btn.gh{background:rgba(255,255,255,.07);border:1px solid var(--line);color:rgba(244,239,230,.82)}
+      #s10-root .card .done{display:flex;align-items:center;gap:8px;padding:0 14px 13px;font-size:16px;font-weight:700;color:var(--ok)}
+      #s10-root .card.flip{transform-style:preserve-3d}
+      #s10-root .card .fa{position:relative}
+      #s10-root .card .fb{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center}
+      /* holo: one moving specular line on a landed card, no rainbow */
+      #s10-root .card .spec{position:absolute;inset:0;pointer-events:none;opacity:0;
+        background:linear-gradient(104deg,rgba(255,255,255,0) 40%,rgba(255,255,255,.22) 50%,rgba(255,255,255,0) 60%)}
+      /* the four spectral moments, and nowhere else */
+      #s10-root .spectral{position:absolute;inset:-1px;border-radius:23px;pointer-events:none;opacity:0;padding:1px;
+        background:conic-gradient(from 210deg,#ffd6a5,#fdffb6,#caffbf,#9bf6ff,#bdb2ff,#ffc6ff,#ffd6a5);
+        -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude}
+      #s10-root .ph-back{position:absolute;inset:0;border-radius:56px;overflow:hidden;background:#07070A;
+        border:3px solid #23262d;backface-visibility:hidden;z-index:7;
+        box-shadow:0 60px 120px rgba(2,6,18,.62),inset 0 1px 0 rgba(255,255,255,.14)}
+      /* --- camera: one stage every layer sits in, so a punch-in is a real move --- */
+      #s10-root .stage{position:absolute;inset:0;will-change:transform;transform-origin:50% 50%}
+      /* --- Chromatic glow (Arlan Vault): the word is bloomed at three radii and split into
+             a warm and a cool copy drifting opposite ways; the gap is the rainbow edge --- */
+      #s10-root .cg{position:relative;display:inline-block}
+      #s10-root .cg .cg-l{position:absolute;left:0;top:0;width:100%;white-space:nowrap;
+        will-change:transform,opacity;pointer-events:none}
+      #s10-root .cg .cg-warm{color:#FF8A4C;mix-blend-mode:screen;filter:blur(.6px)}
+      #s10-root .cg .cg-cool{color:#4CC3FF;mix-blend-mode:screen;filter:blur(.6px)}
+      #s10-root .cg .cg-b1{color:#FFF6E8;filter:blur(7px);opacity:.55;mix-blend-mode:screen}
+      #s10-root .cg .cg-b2{color:#FFF0D8;filter:blur(22px);opacity:.42;mix-blend-mode:screen}
+      #s10-root .cg .cg-b3{color:#FFE9C4;filter:blur(54px);opacity:.34;mix-blend-mode:screen}
+      #s10-root .cg .cg-core{position:relative}
+      /* --- The art of color depth (Arlan Vault): a button as a real object — gradient body,
+             inset bevel and glow, a brighter layer, and a bar of light along the top --- */
+      #s10-root .btn3{position:relative;overflow:hidden;isolation:isolate}
+      #s10-root .btn3::before{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+        background:linear-gradient(180deg,rgba(255,255,255,.34) 0%,rgba(255,255,255,.06) 44%,rgba(0,0,0,.18) 100%)}
+      #s10-root .btn3::after{content:'';position:absolute;left:8%;right:8%;top:2px;height:36%;border-radius:999px;
+        pointer-events:none;background:linear-gradient(180deg,rgba(255,255,255,.52),rgba(255,255,255,0));
+        filter:blur(.4px)}
+      #s10-root .btn3.ok3{background:linear-gradient(180deg,#3FD877 0%,#24A757 52%,#17823F 100%);color:#04240F;
+        box-shadow:inset 0 1px 0 rgba(255,255,255,.55),inset 0 -2px 6px rgba(0,40,14,.45),
+                   0 8px 20px rgba(9,90,40,.40),0 1px 0 rgba(255,255,255,.12)}
+      #s10-root .btn3.gh3{background:linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,.04));
+        color:rgba(244,239,230,.88);box-shadow:inset 0 1px 0 rgba(255,255,255,.28),inset 0 -2px 5px rgba(0,0,0,.35)}
+      /* --- Amo (Arlan Vault): the pill's word puffs up into glossy dimensional letters --- */
+      #s10-root .puff{display:inline-block;position:relative;transform-style:preserve-3d;will-change:transform}
+      #s10-root .puff .pl{display:inline-block;will-change:transform,text-shadow,letter-spacing}
+      /* --- Arcade pixel (Arlan Vault): drawn tiny and blown up, so each pixel is a big square --- */
+      #s10-root .px{display:block;image-rendering:pixelated}
+      /* --- Ghosty reveal (Arlan Vault): images bleed in through a cloudy edge --- */
+      #s10-root .ghosty{-webkit-mask-image:radial-gradient(120% 120% at 50% 50%,#000 0%,#000 40%,transparent 72%);
+        mask-image:radial-gradient(120% 120% at 50% 50%,#000 0%,#000 40%,transparent 72%);
+        -webkit-mask-size:260% 260%;mask-size:260% 260%;-webkit-mask-position:50% 50%;mask-position:50% 50%}
+      /* --- beat punctuation: a flash plate and a chromatic pulse over the whole frame --- */
+      #s10-root .hitflash{position:absolute;inset:0;pointer-events:none;background:#EAF2FF;opacity:0;
+        mix-blend-mode:screen}
+      #s10-root .hero-card{position:absolute;will-change:transform,opacity;transform-origin:50% 50%}
+      #s10-root .ph{left:470px;top:103px}
+      #s10-root .right{position:absolute;left:1010px;top:0;width:880px;height:1080px}
+      #s10-root .slash{position:absolute;left:0;top:262px;font-family:'Azeret Mono',monospace;font-weight:500;
+        font-size:196px;letter-spacing:-.05em;color:var(--ink);opacity:.36;white-space:nowrap;
+        text-shadow:0 6px 40px rgba(3,7,18,.45)}
+      #s10-root .expl{position:absolute;left:4px;top:548px;width:840px}
+      #s10-root .expl .mono{font-size:29px;line-height:1.48}
+      #s10-root .btn.ok{background:none}
+
+      #s10-root .slash{top:250px;font-size:186px}
+      #s10-root .att{display:flex;align-items:center;gap:11px;margin:0 14px 10px;padding:11px 13px;border-radius:13px;
+        background:rgba(255,255,255,.07);border:1px solid var(--line)}
+      #s10-root .att .fi{width:34px;height:42px;border-radius:5px;background:#EDE7DA;position:relative;flex:0 0 auto}
+      #s10-root .att .fi::after{content:'MD';position:absolute;left:0;right:0;bottom:5px;text-align:center;
+        font-family:'Azeret Mono',monospace;font-size:10px;font-weight:700;color:#2A2E36}
+      #s10-root .att .fn{font-size:16px;font-weight:700;color:#fff}
+      #s10-root .att .fs{font-family:'Azeret Mono',monospace;font-size:12px;color:rgba(244,239,230,.7);margin-top:2px}
+      #s10-root .plan{margin:0 14px 12px;padding:12px 13px;border-radius:13px;background:rgba(4,9,22,.42);
+        border:1px solid var(--line);font-family:'Azeret Mono',monospace;font-size:13px;line-height:1.72;
+        color:rgba(244,239,230,.84)}
+      #s10-root .plan b{color:#fff;font-weight:700}
+      /* the plan, at the size a person actually reads it */
+      #s10-root .doc{position:absolute;left:1080px;top:150px;width:720px;border-radius:26px;padding:34px 38px 30px;
+        background:rgba(6,12,28,.72);border:1px solid rgba(255,255,255,.16);backdrop-filter:blur(20px);
+        box-shadow:0 46px 96px rgba(2,6,18,.6)}
+      #s10-root .doc .fh{display:flex;align-items:center;gap:14px;margin-bottom:22px}
+      #s10-root .doc .fh .fi{width:46px;height:56px;border-radius:7px;background:#EDE7DA;position:relative;flex:0 0 auto}
+      #s10-root .doc .fh .fi::after{content:'MD';position:absolute;left:0;right:0;bottom:7px;text-align:center;
+        font-family:'Azeret Mono',monospace;font-size:13px;font-weight:700;color:#2A2E36}
+      #s10-root .doc .fh .fn{font-family:'Newsreader',Georgia,serif;font-weight:300;font-size:38px;color:var(--ink)}
+      #s10-root .doc .ln{font-family:'Azeret Mono',monospace;font-size:19px;line-height:2.0;
+        color:rgba(244,239,230,.82);display:flex;gap:14px;will-change:transform,opacity}
+      #s10-root .doc .ln b{color:#fff;font-weight:500;min-width:74px;display:inline-block}
+    </style>
+
+    <div data-hf-id="hf-s10frame" class="frame clip" id="s10-frame" data-layout-allow-overflow="" data-start="0" data-duration="7.848" data-track-index="1">
+      <div data-hf-id="hf-s10wa" class="washL"></div>
+      <div data-hf-id="hf-s10wb" class="washR"></div>
+      <div data-hf-id="hf-s10st" class="stage" id="s10-stage">
+      <div data-hf-id="hf-s10rt" class="right" id="s10-right">
+        <div data-hf-id="hf-s10sl" class="slash" id="s10-slash">/create</div>
+        <div data-hf-id="hf-s10ex" class="expl" id="s10-expl"><div data-hf-id="hf-s10em" class="mono">describe it. approve the plan. it ships.</div></div>
+      </div>
+      <div data-hf-id="hf-s10ph" class="ph" id="s10-ph">
+        <div data-hf-id="hf-s10phb" class="ph-body" id="s10-phb">
+          <div data-hf-id="hf-s10scr" class="ph-screen" id="s10-screen">
+            <div data-hf-id="hf-s10scl" class="ph-scroll" id="s10-scroll"><div data-hf-id="hf-s10thr" class="ph-thread" id="s10-thread"></div></div>
+            <div data-hf-id="hf-s10fade" class="ph-fade"></div>
+            <div data-hf-id="hf-s10nav" class="ph-nav" data-layout-allow-overlap="" data-layout-allow-occlusion=""><div data-hf-id="hf-s10navi" class="orb"></div><div data-hf-id="hf-s10navw" class="who">air</div></div>
+            <div data-hf-id="hf-s10isl" class="ph-island"></div>
+            <div data-hf-id="hf-s10cmp" class="ph-composer" id="s10-composer"><div data-hf-id="hf-s10cmpg" class="glow" id="s10-composer-glow"></div><div data-hf-id="hf-s10cmpt" class="txt" id="s10-composer-txt"></div><div data-hf-id="hf-s10cmpc" class="car" id="s10-composer-caret"></div></div>
+            <div data-hf-id="hf-s10hb" class="ph-home"></div>
+          </div>
+        </div>
+      </div>
+        <div data-hf-id="hf-s10dc" class="doc" id="s10-doc">
+          <div data-hf-id="hf-s10fh" class="fh"><div data-hf-id="hf-s10dfi" class="fi"></div>
+            <div data-hf-id="hf-s10dfn" class="fn">tour-plan.md</div></div>
+          <div data-hf-id="hf-s10d0" class="ln" id="s10-d0"><b data-hf-id="hf-s10db0">hero</b><span data-hf-id="hf-s10ds0">countdown to Oct 4</span></div><div data-hf-id="hf-s10d1" class="ln" id="s10-d1"><b data-hf-id="hf-s10db1">page</b><span data-hf-id="hf-s10ds1">one scroll · dark</span></div><div data-hf-id="hf-s10d2" class="ln" id="s10-d2"><b data-hf-id="hf-s10db2">tickets</b><span data-hf-id="hf-s10ds2">dice.fm/xyz</span></div><div data-hf-id="hf-s10d3" class="ln" id="s10-d3"><b data-hf-id="hf-s10db3">dev</b><span data-hf-id="hf-s10ds3">link.wzrd.tech/gratitude/tour</span></div>
+        </div>
+      </div>
+      <div data-hf-id="hf-s10hf" class="hitflash" id="s10-flash"></div>
+    </div>
+
+    <script src="vendor/gsap.min.js"></script>
+    <script>
+    (function(){
+      var root=document.querySelector('[data-composition-id="shot-10-create-plan"]');
+      var $=function(s){return root.querySelector(s);};
+      var $$=function(s){return Array.prototype.slice.call(root.querySelectorAll(s));};
+      var tl=gsap.timeline({paused:true,defaults:{immediateRender:false}});
+
+      // ---- thread engine (deterministic; see PLAN-v3 3.5) ----
+      function el(tag, cls, html){ var e=document.createElement(tag); if(cls) e.className=cls; if(html!=null) e.innerHTML=html; return e; }
+      function buildThread(threadEl, items){
+        var built=[];
+        items.forEach(function(it, i){
+          var wrap=el('div','it '+(it.kind==='sys'?'sys':(it.side||'recv'))+(it.dim?' dim':''));
+          var inner;
+          if(it.kind==='dots'){ inner=el('div','dots'); for(var d=0;d<3;d++) inner.appendChild(el('i')); }
+          else if(it.kind==='card'){ inner=el('div','card'); inner.innerHTML=it.html; }
+          else { inner=el('div','bub', it.text); }
+          // a thread genuinely slides under the translucent nav: that layering is the design
+          wrap.appendChild(inner); threadEl.appendChild(wrap);
+          built.push({wrap:wrap, inner:inner, spec:it});
+        });
+        // measure once, after the whole column exists
+        var gap=9, bottom=Number(threadEl.getAttribute('data-bottom')||760), acc=0, stops=[];
+        built.forEach(function(b){ acc += b.wrap.offsetHeight + gap; stops.push(bottom - acc + gap); });
+        var th={el:threadEl, items:built, stops:stops, bottom:bottom, start:bottom};
+        built.forEach(function(b,i){
+          if(b.spec.pre){ gsap.set(b.wrap,{autoAlpha:b.spec.dim?.56:1}); th.start=stops[i]; }
+          else gsap.set(b.wrap,{autoAlpha:0});
+        });
+        gsap.set(threadEl,{y:th.start});
+        return th;
+      }
+      // auto slide duration: never let two column moves overlap on the same property
+      function slideFor(times, i){
+        var d=.42; if(times[i+1]!=null) d=Math.min(d, Math.max(.16, times[i+1]-times[i]-.02)); return d;
+      }
+      // Reveal item i: the column rides up by exactly that item's height, the bubble pops.
+      function showItem(tl, thread, t, i, opts){
+        opts=opts||{};
+        var b=thread.items[i], y=thread.stops[i];
+        if(b.spec.hold){ y=thread.stops[i]+b.spec.hold; }
+        tl.to(thread.el,{y:y,duration:opts.slide||.42,ease:'power3.out'}, t);
+        tl.set(b.wrap,{autoAlpha:1}, t);
+        if(b.spec.kind==='card'){
+          tl.fromTo(b.inner,{y:28,autoAlpha:0,rotationX:12},{y:0,autoAlpha:1,rotationX:0,duration:.55,ease:'expo.out'}, t);
+        } else if(b.spec.dim){
+          tl.fromTo(b.inner,{y:14,autoAlpha:0},{y:0,autoAlpha:.56,duration:.34,ease:'power3.out'}, t);
+        } else if(b.spec.side==='sent'){
+          // the one overshoot in the film, because iMessage does it
+          tl.fromTo(b.inner,{scale:.86,autoAlpha:0},{scale:1,autoAlpha:1,duration:.32,ease:'back.out(1.4)'}, t);
+        } else {
+          tl.fromTo(b.inner,{y:14,autoAlpha:0},{y:0,autoAlpha:1,duration:.34,ease:'power3.out'}, t);
+        }
+      }
+      // typing dots ride the hihat hits of a named roll — one lift per hit, never a loop
+      function typeDots(tl, dotsEl, hits){
+        var ds=dotsEl.querySelectorAll('i');
+        hits.forEach(function(h,i){
+          var d=ds[i%3];
+          tl.to(d,{y:-3,opacity:1,duration:.07,ease:'power2.out'}, h);
+          tl.to(d,{y:0,opacity:.55,duration:.16,ease:'power2.inOut'}, h+.07);
+        });
+      }
+      // per-character reveal at a fixed cadence, always landing on the send downbeat
+      function typeText(tl, node, text, start, end){
+        var per=(end-start)/Math.max(1,text.length);
+        for(var c=1;c<=text.length;c++){
+          (function(n){ tl.set(node,{textContent:text.slice(0,n)}, start+per*n); })(c);
+        }
+      }
+
+      // ---- camera: punch in and out on the beat, one transform on one stage ----
+      function cam(tl, stage, t, o){
+        o=o||{};
+        tl.to(stage,{scale:o.scale!=null?o.scale:1, x:o.x||0, y:o.y||0,
+          rotation:o.rot||0, duration:o.d||.6, ease:o.e||'expo.out'}, t);
+      }
+      // ---- a hit: the frame answers the transient. Scale pop, optional flash, optional shake.
+      function hit(tl, stage, t, o){
+        o=o||{};
+        var s=o.base!=null?o.base:1, amt=o.amt!=null?o.amt:.018;
+        tl.to(stage,{scale:s+amt,duration:.055,ease:'power2.out'},t);
+        tl.to(stage,{scale:s,duration:.30,ease:'power2.out'},t+.055);
+        if(o.flash){ tl.fromTo(o.flash,{opacity:o.flashAmt||.22},{opacity:0,duration:o.flashD||.20,ease:'power2.out'},t); }
+        if(o.shake){
+          var a=o.shake;
+          tl.to(stage,{x:'+='+a,duration:.033,ease:'none'},t);
+          tl.to(stage,{x:'-='+(a*2),duration:.033,ease:'none'},t+.033);
+          tl.to(stage,{x:'+='+a,duration:.033,ease:'none'},t+.066);
+        }
+      }
+      // ---- chromatic glow: the split opens on a transient and settles back ----
+      function cgPulse(tl, id, t, amt, dur){
+        amt=amt||16; dur=dur||.9;
+        var w=document.getElementById(id+'-warm'), c=document.getElementById(id+'-cool');
+        tl.to(w,{x:-amt,y:-amt*.22,duration:.09,ease:'power2.out'},t);
+        tl.to(c,{x:amt,y:amt*.22,duration:.09,ease:'power2.out'},t);
+        tl.to(w,{x:-amt*.18,y:0,duration:dur,ease:'power3.out'},t+.09);
+        tl.to(c,{x:amt*.18,y:0,duration:dur,ease:'power3.out'},t+.09);
+      }
+      function cgSet(id, amt){
+        var w=document.getElementById(id+'-warm'), c=document.getElementById(id+'-cool');
+        gsap.set(w,{x:-amt,y:0}); gsap.set(c,{x:amt,y:0});
+      }
+      // ---- Arcade pixel: draw the word tiny on a canvas, blow it up, and let the block size
+      //      fall to 1 so the letters resolve out of the grid. No pixel grid is ever drawn.
+      function pixelWord(canvas, text, font, color){
+        var W=canvas.width, H=canvas.height, ctx=canvas.getContext('2d');
+        return function(block){
+          block=Math.max(1,Math.round(block));
+          var w=Math.max(1,Math.round(W/block)), h=Math.max(1,Math.round(H/block));
+          var off=pixelWord._o||(pixelWord._o=document.createElement('canvas'));
+          off.width=w; off.height=h;
+          var octx=off.getContext('2d');
+          octx.clearRect(0,0,w,h);
+          octx.fillStyle=color; octx.textAlign='center'; octx.textBaseline='middle';
+          octx.font=font.replace(/(\d+)px/, function(m,n){ return Math.max(1,Math.round(n/block))+'px'; });
+          octx.fillText(text, w/2, h/2);
+          ctx.clearRect(0,0,W,H);
+          ctx.imageSmoothingEnabled=false;
+          ctx.drawImage(off,0,0,w,h,0,0,W,H);
+        };
+      }
+      // ---- a card lifts out of the phone and takes the frame ----
+      function takeover(tl, el, t, from, to){
+        tl.fromTo(el,{x:from.x,y:from.y,scale:from.s,autoAlpha:0,rotationX:10},
+                     {x:to.x,y:to.y,scale:to.s,autoAlpha:1,rotationX:0,duration:to.d||.62,ease:'expo.out'},t);
+      }
+
+      // every mini-app shot shares the same rig: one stage, one phone pose, one right plane
+      function rig(pfx){
+        var st=document.getElementById(pfx+'-stage');
+        gsap.set(document.getElementById(pfx+'-ph'),{rotationY:-9,rotationX:4,scale:1.06,transformOrigin:'50% 50%'});
+        gsap.set(document.getElementById(pfx+'-slash'),{autoAlpha:0,x:60});
+        gsap.set(document.getElementById(pfx+'-expl'),{autoAlpha:0,y:14});
+        return st;
+      }
+      function rightIn(tl, pfx, t){
+        tl.to('#'+pfx+'-slash',{autoAlpha:1,x:0,duration:.60,ease:'expo.out'},t);
+        tl.to('#'+pfx+'-expl',{autoAlpha:1,y:0,duration:.58,ease:'expo.out'},t+.26);
+      }
+      function rightOut(tl, pfx, t){
+        tl.to('#'+pfx+'-slash',{autoAlpha:0,x:-130,duration:.30,ease:'power4.in'},t);
+        tl.to('#'+pfx+'-expl',{autoAlpha:0,y:-12,duration:.26,ease:'power3.in'},t);
+      }
+
+      var ITEMS=[
+        {kind:'sys', text:'Today · 9:41 AM', pre:true},
+        {side:'recv', text:'the clip is in your camera roll. want it on a page people can actually buy from?', pre:true, dim:true},
+        {side:'sent', text:'/create a landing page for my October tour with a ticket link and a countdown'},
+        {side:'recv', text:'got it — 2 quick questions before I plan this:'},
+        {side:'recv', text:'1. landing page (one scroll, one call to action), or a product page with a store?'},
+        {side:'recv', text:'2. dark and cinematic, or bright and simple? (or send a screenshot you like)'},
+        {side:'sent', text:'landing page. dark. tickets are on dice.fm/xyz'},
+        {kind:'card', side:'recv', html:'<div data-hf-id="hf-s10plh" class="hd"><div data-hf-id="hf-s10pla" class="art" style="background-image:url(&quot;assets/icons/onboarding.png&quot;)"></div><div data-hf-id="hf-s10plw"><div data-hf-id="hf-s10plt" class="ti">October tour</div><div data-hf-id="hf-s10pls" class="sb">plan · reply yes to build</div></div></div><div data-hf-id="hf-s10att" class="att"><div data-hf-id="hf-s10fi" class="fi"></div><div data-hf-id="hf-s10fw"><div data-hf-id="hf-s10fn" class="fn">tour-plan.md</div><div data-hf-id="hf-s10fs" class="fs">4 KB · tap to read</div></div></div>'}
+      ];
+      var threadEl=$('#s10-thread'); threadEl.setAttribute('data-bottom','634');
+      var TH=buildThread(threadEl, ITEMS);
+      var stage=rig('s10'), flash=$('#s10-flash');
+      var comp=$('#s10-composer-txt'), cglow=$('#s10-composer-glow'), doc=$('#s10-doc');
+      var dlines=$$('#s10-doc .ln');
+      gsap.set(doc,{autoAlpha:0,x:48,y:20});
+      gsap.set(dlines,{autoAlpha:0,x:22});
+      gsap.set(flash,{opacity:0});
+      gsap.set(stage,{scale:1.0,transformOrigin:'50% 50%'});
+
+      // 70.682 — the prompt types itself, the way the product actually starts
+      tl.to(cglow,{opacity:.55,duration:.3,ease:'power2.out'},0);
+      typeText(tl,comp,'/create a landing page for my October tour with a ticket link and a countdown',0,1.42);
+      tl.to(cglow,{opacity:0,duration:.2,ease:'power2.in'},1.46);
+      tl.set(comp,{textContent:''},1.532);
+      rightIn(tl,'s10',0.10);
+
+      // 72.214 -> 76.185 — at most three questions
+      showItem(tl,TH,1.532,2,{slide:.30}); hit(tl,stage,1.532,{amt:.020});
+      showItem(tl,TH,3.088,3,{slide:.30}); hit(tl,stage,3.088,{amt:.012});
+      showItem(tl,TH,3.480,4,{slide:.38});
+      showItem(tl,TH,4.667,5,{slide:.42}); hit(tl,stage,4.667,{amt:.012});
+      showItem(tl,TH,5.503,6,{slide:.34});
+
+      // 76.974 — the plan arrives as a file, and the film shows you the file
+      showItem(tl,TH,6.292,7,{slide:.42});
+      tl.to(doc,{autoAlpha:1,x:0,y:0,duration:.70,ease:'expo.out'},6.292);
+      rightOut(tl,'s10',6.24);
+      dlines.forEach(function(l,i){
+        tl.to(l,{autoAlpha:1,x:0,duration:.46,ease:'expo.out'},6.42+i*.13);
+      });
+      hit(tl,stage,6.292,{amt:.022,flash:flash,flashAmt:.12,flashD:.22});
+      cam(tl,stage,6.292,{scale:1.03,d:1.3,e:'expo.out'});
+      window.__timelines=window.__timelines||{};
+      window.__timelines['shot-10-create-plan']=tl;
+      var q=new URLSearchParams(location.search);
+      if(q.has('t')){tl.seek(parseFloat(q.get('t'))||0);}else if(q.get('dev')==='1'){tl.play();}
+    })();
+    </script>
+  </div>
+</template>

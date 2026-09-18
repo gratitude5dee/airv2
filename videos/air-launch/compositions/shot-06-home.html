@@ -1,0 +1,386 @@
+<template id="shot-06-home-template">
+  <div data-hf-id="hf-s06root" id="s06-root" data-composition-id="shot-06-home" data-start="0" data-width="1920" data-height="1080" data-duration="6.246">
+    <style>
+      @font-face{font-family:'Inter';font-weight:400;font-style:normal;font-display:block;src:url('fonts/Inter-400-latin.woff2') format('woff2')}
+      @font-face{font-family:'Inter';font-weight:700;font-style:normal;font-display:block;src:url('fonts/Inter-700-latin.woff2') format('woff2')}
+      @font-face{font-family:'Newsreader';font-weight:200 800;font-style:normal;font-display:block;src:url('fonts/newsreader-latin.woff2') format('woff2')}
+      @font-face{font-family:'Azeret Mono';font-weight:100 900;font-style:normal;font-display:block;src:url('fonts/azeret-mono-latin.woff2') format('woff2')}
+      #s06-root{--ink:#F4EFE6;--ink-dim:rgba(244,239,230,.62);--imsg:#0A84FF;--ok:#30D158;--glass:rgba(255,255,255,.08);--line:rgba(255,255,255,.12);
+        position:relative;width:1920px;height:1080px;overflow:hidden;background:transparent;
+        font-family:'Inter',system-ui,-apple-system,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased}
+      #s06-root *,#s06-root *::before,#s06-root *::after{box-sizing:border-box}
+      #s06-root .frame{position:absolute;inset:0;perspective:1800px}
+      /* parallax planes: the camera proxy moves, the planes follow it by depth */
+      #s06-root .plane{position:absolute;inset:0;transform-style:preserve-3d;will-change:transform}
+      #s06-root .giant{font-family:'Newsreader',Georgia,serif;font-weight:300;letter-spacing:-.035em;line-height:.86;
+        color:var(--ink);opacity:.92;white-space:nowrap;text-shadow:0 3px 26px rgba(3,7,18,.52)}
+      #s06-root .giant .w{display:inline-block;will-change:transform,opacity;transform-style:preserve-3d}
+      #s06-root .wash{position:absolute;inset:0;pointer-events:none;
+        background:radial-gradient(64% 46% at 50% 44%,rgba(4,9,22,.46) 0%,rgba(4,9,22,.20) 56%,rgba(4,9,22,0) 100%)}
+      #s06-root .washL{position:absolute;inset:0;pointer-events:none;
+        background:linear-gradient(100deg,rgba(4,9,22,.52) 0%,rgba(4,9,22,.30) 42%,rgba(4,9,22,0) 72%)}
+      #s06-root .washR{position:absolute;inset:0;pointer-events:none;
+        background:linear-gradient(262deg,rgba(4,9,22,.54) 0%,rgba(4,9,22,.30) 44%,rgba(4,9,22,0) 76%)}
+      #s06-root .cap{font-family:'Newsreader',Georgia,serif;font-weight:400;font-size:56px;line-height:1.08;color:var(--ink);
+        text-shadow:0 3px 24px rgba(3,7,18,.52)}
+      #s06-root .mono{font-family:'Azeret Mono',ui-monospace,monospace;font-weight:400;font-size:25px;letter-spacing:.02em;
+        color:rgba(244,239,230,.80);line-height:1.45;text-shadow:0 2px 16px rgba(3,7,18,.60)}
+      #s06-root .ph{position:absolute;width:402px;height:874px;will-change:transform}
+      #s06-root .ph-body{position:absolute;inset:0;border-radius:56px;background:linear-gradient(160deg,#3a3f4a 0%,#171b22 38%,#0f1218 100%);
+        padding:3px;box-shadow:0 60px 120px rgba(2,6,18,.62),0 12px 30px rgba(2,6,18,.5),inset 0 1px 0 rgba(255,255,255,.16)}
+      #s06-root .ph-screen{position:absolute;inset:3px;border-radius:53px;overflow:hidden;background:#000}
+      #s06-root .ph-island{position:absolute;top:14px;left:50%;margin-left:-63px;width:126px;height:37px;border-radius:19px;background:#000;z-index:6}
+      #s06-root .ph-nav{position:absolute;top:0;left:0;right:0;height:122px;z-index:5;
+        background:rgba(18,18,20,.82);backdrop-filter:blur(24px) saturate(1.3);border-bottom:1px solid rgba(255,255,255,.08);
+        display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:8px}
+      #s06-root .orb{background:url('logos/air-brand.png') center/cover no-repeat;border-radius:50%;flex:0 0 auto}
+      #s06-root .gly{background-position:center;background-repeat:no-repeat;background-size:contain}
+      #s06-root .ph-nav .orb{width:44px;height:44px}
+      #s06-root .ph-nav .who{font-size:13px;font-weight:600;color:#fff;margin-top:3px;letter-spacing:.01em}
+      #s06-root .ph-fade{position:absolute;top:122px;left:0;right:0;height:52px;z-index:4;pointer-events:none;
+        background:linear-gradient(180deg,rgba(0,0,0,.88) 0%,rgba(0,0,0,0) 100%)}
+      #s06-root .ph-home{position:absolute;bottom:9px;left:50%;margin-left:-67px;width:134px;height:5px;border-radius:3px;background:rgba(255,255,255,.34);z-index:6}
+      #s06-root .ph-composer{position:absolute;bottom:26px;left:12px;right:12px;height:44px;border-radius:22px;z-index:5;
+        border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);display:flex;align-items:center;padding:0 14px;overflow:hidden}
+      #s06-root .ph-composer .txt{font-size:17px;color:#fff;white-space:nowrap;overflow:hidden}
+      #s06-root .ph-composer .car{width:2px;height:19px;background:var(--imsg);margin-left:2px;flex:0 0 auto}
+      #s06-root .ph-composer .glow{position:absolute;inset:-1px;border-radius:22px;pointer-events:none;
+        background:linear-gradient(96deg,rgba(10,132,255,.36),rgba(244,239,230,.14) 48%,rgba(10,132,255,.30));opacity:0}
+      /* the thread: a flow column translated by the timeline — never scrollTop */
+      #s06-root .ph-scroll{position:absolute;top:122px;left:0;right:0;bottom:0;overflow:hidden;z-index:3}
+      #s06-root .ph-thread{position:absolute;left:0;right:0;top:0;padding:0 14px;display:flex;flex-direction:column;
+        align-items:stretch;gap:9px;will-change:transform}
+      #s06-root .it{display:flex;width:100%;will-change:transform,opacity}
+      #s06-root .it.sent{justify-content:flex-end}
+      #s06-root .it.recv{justify-content:flex-start}
+      #s06-root .it.sys{justify-content:center}
+      #s06-root .bub{max-width:78%;padding:9px 14px 10px;font-size:19px;line-height:1.28;border-radius:20px;
+        will-change:transform,opacity;transform-origin:100% 100%}
+      #s06-root .sent .bub{background:#0C72D8;color:#fff;border-bottom-right-radius:7px}
+      #s06-root .recv .bub{background:rgba(255,255,255,.14);color:var(--ink);border-bottom-left-radius:7px}
+      #s06-root .it.dim{opacity:.56}
+      #s06-root .sys .bub{background:none;font-family:'Azeret Mono',monospace;font-size:13px;color:rgba(244,239,230,.55);
+        text-align:center;max-width:94%;letter-spacing:.01em;line-height:1.35}
+      #s06-root .dots{display:flex;gap:6px;padding:13px 16px;background:rgba(255,255,255,.14);border-radius:20px;border-bottom-left-radius:7px}
+      #s06-root .dots i{width:8px;height:8px;border-radius:50%;background:rgba(244,239,230,.62);display:block;will-change:transform,opacity}
+      /* owner-only mini-app card — the film shows one owner, so cards only ever appear here */
+      #s06-root .card{position:relative;width:100%;border-radius:22px;border:1px solid var(--line);background:rgba(255,255,255,.08);
+        backdrop-filter:blur(18px) saturate(1.2);overflow:hidden;will-change:transform,opacity;transform-origin:50% 100%}
+      #s06-root .card .hd{display:flex;align-items:center;gap:10px;padding:12px 14px 10px}
+      #s06-root .card .hd .art{width:36px;height:36px;border-radius:10px;flex:0 0 auto;background-size:cover;background-position:center}
+      #s06-root .card .hd .ic{width:36px;height:36px;border-radius:10px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;
+        background:rgba(255,255,255,.10);border:1px solid var(--line)}
+      #s06-root .card .hd .ic .gly{width:20px;height:20px;opacity:.92}
+      #s06-root .card .ti{font-size:17px;font-weight:700;color:#fff;letter-spacing:-.005em}
+      #s06-root .card .sb{font-family:'Azeret Mono',monospace;font-size:13px;color:rgba(244,239,230,.78);margin-top:2px}
+      #s06-root .card .bd{padding:0 14px 12px;font-size:16px;line-height:1.35;color:rgba(244,239,230,.86)}
+      #s06-root .card .row{display:flex;gap:8px;padding:0 14px 13px}
+      #s06-root .btn{flex:1;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;
+        font-size:16px;font-weight:700;letter-spacing:-.005em;will-change:transform}
+      #s06-root .btn.ok{background:#1FA64F;color:#FFFFFF}
+      #s06-root .btn.gh{background:rgba(255,255,255,.07);border:1px solid var(--line);color:rgba(244,239,230,.82)}
+      #s06-root .card .done{display:flex;align-items:center;gap:8px;padding:0 14px 13px;font-size:16px;font-weight:700;color:var(--ok)}
+      #s06-root .card.flip{transform-style:preserve-3d}
+      #s06-root .card .fa{position:relative}
+      #s06-root .card .fb{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center}
+      /* holo: one moving specular line on a landed card, no rainbow */
+      #s06-root .card .spec{position:absolute;inset:0;pointer-events:none;opacity:0;
+        background:linear-gradient(104deg,rgba(255,255,255,0) 40%,rgba(255,255,255,.22) 50%,rgba(255,255,255,0) 60%)}
+      /* the four spectral moments, and nowhere else */
+      #s06-root .spectral{position:absolute;inset:-1px;border-radius:23px;pointer-events:none;opacity:0;padding:1px;
+        background:conic-gradient(from 210deg,#ffd6a5,#fdffb6,#caffbf,#9bf6ff,#bdb2ff,#ffc6ff,#ffd6a5);
+        -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude}
+      #s06-root .ph-back{position:absolute;inset:0;border-radius:56px;overflow:hidden;background:#07070A;
+        border:3px solid #23262d;backface-visibility:hidden;z-index:7;
+        box-shadow:0 60px 120px rgba(2,6,18,.62),inset 0 1px 0 rgba(255,255,255,.14)}
+      /* --- camera: one stage every layer sits in, so a punch-in is a real move --- */
+      #s06-root .stage{position:absolute;inset:0;will-change:transform;transform-origin:50% 50%}
+      /* --- Chromatic glow (Arlan Vault): the word is bloomed at three radii and split into
+             a warm and a cool copy drifting opposite ways; the gap is the rainbow edge --- */
+      #s06-root .cg{position:relative;display:inline-block}
+      #s06-root .cg .cg-l{position:absolute;left:0;top:0;width:100%;white-space:nowrap;
+        will-change:transform,opacity;pointer-events:none}
+      #s06-root .cg .cg-warm{color:#FF8A4C;mix-blend-mode:screen;filter:blur(.6px)}
+      #s06-root .cg .cg-cool{color:#4CC3FF;mix-blend-mode:screen;filter:blur(.6px)}
+      #s06-root .cg .cg-b1{color:#FFF6E8;filter:blur(7px);opacity:.55;mix-blend-mode:screen}
+      #s06-root .cg .cg-b2{color:#FFF0D8;filter:blur(22px);opacity:.42;mix-blend-mode:screen}
+      #s06-root .cg .cg-b3{color:#FFE9C4;filter:blur(54px);opacity:.34;mix-blend-mode:screen}
+      #s06-root .cg .cg-core{position:relative}
+      /* --- The art of color depth (Arlan Vault): a button as a real object — gradient body,
+             inset bevel and glow, a brighter layer, and a bar of light along the top --- */
+      #s06-root .btn3{position:relative;overflow:hidden;isolation:isolate}
+      #s06-root .btn3::before{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+        background:linear-gradient(180deg,rgba(255,255,255,.34) 0%,rgba(255,255,255,.06) 44%,rgba(0,0,0,.18) 100%)}
+      #s06-root .btn3::after{content:'';position:absolute;left:8%;right:8%;top:2px;height:36%;border-radius:999px;
+        pointer-events:none;background:linear-gradient(180deg,rgba(255,255,255,.52),rgba(255,255,255,0));
+        filter:blur(.4px)}
+      #s06-root .btn3.ok3{background:linear-gradient(180deg,#3FD877 0%,#24A757 52%,#17823F 100%);color:#04240F;
+        box-shadow:inset 0 1px 0 rgba(255,255,255,.55),inset 0 -2px 6px rgba(0,40,14,.45),
+                   0 8px 20px rgba(9,90,40,.40),0 1px 0 rgba(255,255,255,.12)}
+      #s06-root .btn3.gh3{background:linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,.04));
+        color:rgba(244,239,230,.88);box-shadow:inset 0 1px 0 rgba(255,255,255,.28),inset 0 -2px 5px rgba(0,0,0,.35)}
+      /* --- Amo (Arlan Vault): the pill's word puffs up into glossy dimensional letters --- */
+      #s06-root .puff{display:inline-block;position:relative;transform-style:preserve-3d;will-change:transform}
+      #s06-root .puff .pl{display:inline-block;will-change:transform,text-shadow,letter-spacing}
+      /* --- Arcade pixel (Arlan Vault): drawn tiny and blown up, so each pixel is a big square --- */
+      #s06-root .px{display:block;image-rendering:pixelated}
+      /* --- Ghosty reveal (Arlan Vault): images bleed in through a cloudy edge --- */
+      #s06-root .ghosty{-webkit-mask-image:radial-gradient(120% 120% at 50% 50%,#000 0%,#000 40%,transparent 72%);
+        mask-image:radial-gradient(120% 120% at 50% 50%,#000 0%,#000 40%,transparent 72%);
+        -webkit-mask-size:260% 260%;mask-size:260% 260%;-webkit-mask-position:50% 50%;mask-position:50% 50%}
+      /* --- beat punctuation: a flash plate and a chromatic pulse over the whole frame --- */
+      #s06-root .hitflash{position:absolute;inset:0;pointer-events:none;background:#EAF2FF;opacity:0;
+        mix-blend-mode:screen}
+      #s06-root .hero-card{position:absolute;will-change:transform,opacity;transform-origin:50% 50%}
+      #s06-root .ph{left:470px;top:103px}
+      #s06-root .right{position:absolute;left:1010px;top:0;width:880px;height:1080px}
+      #s06-root .slash{position:absolute;left:0;top:262px;font-family:'Azeret Mono',monospace;font-weight:500;
+        font-size:196px;letter-spacing:-.05em;color:var(--ink);opacity:.36;white-space:nowrap;
+        text-shadow:0 6px 40px rgba(3,7,18,.45)}
+      #s06-root .expl{position:absolute;left:4px;top:548px;width:840px}
+      #s06-root .expl .mono{font-size:29px;line-height:1.48}
+      #s06-root .btn.ok{background:none}
+
+      #s06-root .grid{display:grid;grid-template-columns:repeat(5,1fr);gap:11px;padding:2px 14px 14px}
+      #s06-root .gi{position:relative;aspect-ratio:1/1;border-radius:16px;background-size:cover;
+        background-position:center;will-change:transform,opacity}
+      /* the family shot: the grid lifts out of the phone and owns the frame */
+      #s06-root .hero{position:absolute;left:214px;top:146px;width:1492px}
+      #s06-root .hgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:30px}
+      #s06-root .hi{position:relative;will-change:transform,opacity}
+      #s06-root .hi .art{width:100%;aspect-ratio:1/1;border-radius:38px;background-size:cover;background-position:center;
+        box-shadow:0 26px 54px rgba(3,8,22,.52),0 0 0 1px rgba(255,255,255,.10)}
+      #s06-root .hi .nm{margin-top:14px;text-align:center;font-family:'Azeret Mono',monospace;font-size:17px;
+        letter-spacing:.06em;color:rgba(244,239,230,.86);text-shadow:0 2px 12px rgba(3,7,18,.7)}
+      #s06-root .herocap{position:absolute;left:0;right:0;top:846px;text-align:center}
+      #s06-root .herocap .cap{font-size:76px;line-height:1.02}
+    </style>
+
+    <div data-hf-id="hf-s06frame" class="frame clip" id="s06-frame" data-layout-allow-overflow="" data-start="0" data-duration="6.246" data-track-index="1">
+      <div data-hf-id="hf-s06wa" class="washL"></div>
+      <div data-hf-id="hf-s06wb" class="washR"></div>
+      <div data-hf-id="hf-s06st" class="stage" id="s06-stage">
+      <div data-hf-id="hf-s06rt" class="right" id="s06-right">
+        <div data-hf-id="hf-s06sl" class="slash" id="s06-slash">/home</div>
+        <div data-hf-id="hf-s06ex" class="expl" id="s06-expl"><div data-hf-id="hf-s06em" class="mono">your first-party apps, one text away.</div></div>
+      </div>
+      <div data-hf-id="hf-s06ph" class="ph" id="s06-ph">
+        <div data-hf-id="hf-s06phb" class="ph-body" id="s06-phb">
+          <div data-hf-id="hf-s06scr" class="ph-screen" id="s06-screen">
+            <div data-hf-id="hf-s06scl" class="ph-scroll" id="s06-scroll"><div data-hf-id="hf-s06thr" class="ph-thread" id="s06-thread"></div></div>
+            <div data-hf-id="hf-s06fade" class="ph-fade"></div>
+            <div data-hf-id="hf-s06nav" class="ph-nav" data-layout-allow-overlap="" data-layout-allow-occlusion=""><div data-hf-id="hf-s06navi" class="orb"></div><div data-hf-id="hf-s06navw" class="who">air</div></div>
+            <div data-hf-id="hf-s06isl" class="ph-island"></div>
+            <div data-hf-id="hf-s06cmp" class="ph-composer" id="s06-composer"><div data-hf-id="hf-s06cmpg" class="glow" id="s06-composer-glow"></div><div data-hf-id="hf-s06cmpt" class="txt" id="s06-composer-txt"></div><div data-hf-id="hf-s06cmpc" class="car" id="s06-composer-caret"></div></div>
+            <div data-hf-id="hf-s06hb" class="ph-home"></div>
+          </div>
+        </div>
+      </div>
+        <div data-hf-id="hf-s06hr" class="hero" id="s06-hero"><div data-hf-id="hf-s06hg" class="hgrid"><div data-hf-id="hf-s06h0" class="hi" id="s06-h0"><div data-hf-id="hf-s06ha0" class="art" style="background-image:url(&quot;assets/icons/home.png&quot;)"></div><div data-hf-id="hf-s06hn0" class="nm">home</div></div><div data-hf-id="hf-s06h1" class="hi" id="s06-h1"><div data-hf-id="hf-s06ha1" class="art" style="background-image:url(&quot;assets/icons/shop.png&quot;)"></div><div data-hf-id="hf-s06hn1" class="nm">shop</div></div><div data-hf-id="hf-s06h2" class="hi" id="s06-h2"><div data-hf-id="hf-s06ha2" class="art" style="background-image:url(&quot;assets/icons/pay.png&quot;)"></div><div data-hf-id="hf-s06hn2" class="nm">pay</div></div><div data-hf-id="hf-s06h3" class="hi" id="s06-h3"><div data-hf-id="hf-s06ha3" class="art" style="background-image:url(&quot;assets/icons/inbox.png&quot;)"></div><div data-hf-id="hf-s06hn3" class="nm">inbox</div></div><div data-hf-id="hf-s06h4" class="hi" id="s06-h4"><div data-hf-id="hf-s06ha4" class="art" style="background-image:url(&quot;assets/icons/calendar.png&quot;)"></div><div data-hf-id="hf-s06hn4" class="nm">calendar</div></div><div data-hf-id="hf-s06h5" class="hi" id="s06-h5"><div data-hf-id="hf-s06ha5" class="art" style="background-image:url(&quot;assets/icons/vault.png&quot;)"></div><div data-hf-id="hf-s06hn5" class="nm">key vault</div></div><div data-hf-id="hf-s06h6" class="hi" id="s06-h6"><div data-hf-id="hf-s06ha6" class="art" style="background-image:url(&quot;assets/icons/computer.png&quot;)"></div><div data-hf-id="hf-s06hn6" class="nm">computer</div></div><div data-hf-id="hf-s06h7" class="hi" id="s06-h7"><div data-hf-id="hf-s06ha7" class="art" style="background-image:url(&quot;assets/icons/image.png&quot;)"></div><div data-hf-id="hf-s06hn7" class="nm">imagine</div></div><div data-hf-id="hf-s06h8" class="hi" id="s06-h8"><div data-hf-id="hf-s06ha8" class="art" style="background-image:url(&quot;assets/icons/video.png&quot;)"></div><div data-hf-id="hf-s06hn8" class="nm">zap</div></div><div data-hf-id="hf-s06h9" class="hi" id="s06-h9"><div data-hf-id="hf-s06ha9" class="art" style="background-image:url(&quot;assets/icons/persona.png&quot;)"></div><div data-hf-id="hf-s06hn9" class="nm">persona</div></div></div></div>
+        <div data-hf-id="hf-s06hc" class="herocap" id="s06-herocap"><div data-hf-id="hf-s06hct" class="cap">ten apps. one thread.</div></div>
+      </div>
+      <div data-hf-id="hf-s06hf" class="hitflash" id="s06-flash"></div>
+    </div>
+
+    <script src="vendor/gsap.min.js"></script>
+    <script>
+    (function(){
+      var root=document.querySelector('[data-composition-id="shot-06-home"]');
+      var $=function(s){return root.querySelector(s);};
+      var $$=function(s){return Array.prototype.slice.call(root.querySelectorAll(s));};
+      var tl=gsap.timeline({paused:true,defaults:{immediateRender:false}});
+
+      // ---- thread engine (deterministic; see PLAN-v3 3.5) ----
+      function el(tag, cls, html){ var e=document.createElement(tag); if(cls) e.className=cls; if(html!=null) e.innerHTML=html; return e; }
+      function buildThread(threadEl, items){
+        var built=[];
+        items.forEach(function(it, i){
+          var wrap=el('div','it '+(it.kind==='sys'?'sys':(it.side||'recv'))+(it.dim?' dim':''));
+          var inner;
+          if(it.kind==='dots'){ inner=el('div','dots'); for(var d=0;d<3;d++) inner.appendChild(el('i')); }
+          else if(it.kind==='card'){ inner=el('div','card'); inner.innerHTML=it.html; }
+          else { inner=el('div','bub', it.text); }
+          // a thread genuinely slides under the translucent nav: that layering is the design
+          wrap.appendChild(inner); threadEl.appendChild(wrap);
+          built.push({wrap:wrap, inner:inner, spec:it});
+        });
+        // measure once, after the whole column exists
+        var gap=9, bottom=Number(threadEl.getAttribute('data-bottom')||760), acc=0, stops=[];
+        built.forEach(function(b){ acc += b.wrap.offsetHeight + gap; stops.push(bottom - acc + gap); });
+        var th={el:threadEl, items:built, stops:stops, bottom:bottom, start:bottom};
+        built.forEach(function(b,i){
+          if(b.spec.pre){ gsap.set(b.wrap,{autoAlpha:b.spec.dim?.56:1}); th.start=stops[i]; }
+          else gsap.set(b.wrap,{autoAlpha:0});
+        });
+        gsap.set(threadEl,{y:th.start});
+        return th;
+      }
+      // auto slide duration: never let two column moves overlap on the same property
+      function slideFor(times, i){
+        var d=.42; if(times[i+1]!=null) d=Math.min(d, Math.max(.16, times[i+1]-times[i]-.02)); return d;
+      }
+      // Reveal item i: the column rides up by exactly that item's height, the bubble pops.
+      function showItem(tl, thread, t, i, opts){
+        opts=opts||{};
+        var b=thread.items[i], y=thread.stops[i];
+        if(b.spec.hold){ y=thread.stops[i]+b.spec.hold; }
+        tl.to(thread.el,{y:y,duration:opts.slide||.42,ease:'power3.out'}, t);
+        tl.set(b.wrap,{autoAlpha:1}, t);
+        if(b.spec.kind==='card'){
+          tl.fromTo(b.inner,{y:28,autoAlpha:0,rotationX:12},{y:0,autoAlpha:1,rotationX:0,duration:.55,ease:'expo.out'}, t);
+        } else if(b.spec.dim){
+          tl.fromTo(b.inner,{y:14,autoAlpha:0},{y:0,autoAlpha:.56,duration:.34,ease:'power3.out'}, t);
+        } else if(b.spec.side==='sent'){
+          // the one overshoot in the film, because iMessage does it
+          tl.fromTo(b.inner,{scale:.86,autoAlpha:0},{scale:1,autoAlpha:1,duration:.32,ease:'back.out(1.4)'}, t);
+        } else {
+          tl.fromTo(b.inner,{y:14,autoAlpha:0},{y:0,autoAlpha:1,duration:.34,ease:'power3.out'}, t);
+        }
+      }
+      // typing dots ride the hihat hits of a named roll — one lift per hit, never a loop
+      function typeDots(tl, dotsEl, hits){
+        var ds=dotsEl.querySelectorAll('i');
+        hits.forEach(function(h,i){
+          var d=ds[i%3];
+          tl.to(d,{y:-3,opacity:1,duration:.07,ease:'power2.out'}, h);
+          tl.to(d,{y:0,opacity:.55,duration:.16,ease:'power2.inOut'}, h+.07);
+        });
+      }
+      // per-character reveal at a fixed cadence, always landing on the send downbeat
+      function typeText(tl, node, text, start, end){
+        var per=(end-start)/Math.max(1,text.length);
+        for(var c=1;c<=text.length;c++){
+          (function(n){ tl.set(node,{textContent:text.slice(0,n)}, start+per*n); })(c);
+        }
+      }
+
+      // ---- camera: punch in and out on the beat, one transform on one stage ----
+      function cam(tl, stage, t, o){
+        o=o||{};
+        tl.to(stage,{scale:o.scale!=null?o.scale:1, x:o.x||0, y:o.y||0,
+          rotation:o.rot||0, duration:o.d||.6, ease:o.e||'expo.out'}, t);
+      }
+      // ---- a hit: the frame answers the transient. Scale pop, optional flash, optional shake.
+      function hit(tl, stage, t, o){
+        o=o||{};
+        var s=o.base!=null?o.base:1, amt=o.amt!=null?o.amt:.018;
+        tl.to(stage,{scale:s+amt,duration:.055,ease:'power2.out'},t);
+        tl.to(stage,{scale:s,duration:.30,ease:'power2.out'},t+.055);
+        if(o.flash){ tl.fromTo(o.flash,{opacity:o.flashAmt||.22},{opacity:0,duration:o.flashD||.20,ease:'power2.out'},t); }
+        if(o.shake){
+          var a=o.shake;
+          tl.to(stage,{x:'+='+a,duration:.033,ease:'none'},t);
+          tl.to(stage,{x:'-='+(a*2),duration:.033,ease:'none'},t+.033);
+          tl.to(stage,{x:'+='+a,duration:.033,ease:'none'},t+.066);
+        }
+      }
+      // ---- chromatic glow: the split opens on a transient and settles back ----
+      function cgPulse(tl, id, t, amt, dur){
+        amt=amt||16; dur=dur||.9;
+        var w=document.getElementById(id+'-warm'), c=document.getElementById(id+'-cool');
+        tl.to(w,{x:-amt,y:-amt*.22,duration:.09,ease:'power2.out'},t);
+        tl.to(c,{x:amt,y:amt*.22,duration:.09,ease:'power2.out'},t);
+        tl.to(w,{x:-amt*.18,y:0,duration:dur,ease:'power3.out'},t+.09);
+        tl.to(c,{x:amt*.18,y:0,duration:dur,ease:'power3.out'},t+.09);
+      }
+      function cgSet(id, amt){
+        var w=document.getElementById(id+'-warm'), c=document.getElementById(id+'-cool');
+        gsap.set(w,{x:-amt,y:0}); gsap.set(c,{x:amt,y:0});
+      }
+      // ---- Arcade pixel: draw the word tiny on a canvas, blow it up, and let the block size
+      //      fall to 1 so the letters resolve out of the grid. No pixel grid is ever drawn.
+      function pixelWord(canvas, text, font, color){
+        var W=canvas.width, H=canvas.height, ctx=canvas.getContext('2d');
+        return function(block){
+          block=Math.max(1,Math.round(block));
+          var w=Math.max(1,Math.round(W/block)), h=Math.max(1,Math.round(H/block));
+          var off=pixelWord._o||(pixelWord._o=document.createElement('canvas'));
+          off.width=w; off.height=h;
+          var octx=off.getContext('2d');
+          octx.clearRect(0,0,w,h);
+          octx.fillStyle=color; octx.textAlign='center'; octx.textBaseline='middle';
+          octx.font=font.replace(/(\d+)px/, function(m,n){ return Math.max(1,Math.round(n/block))+'px'; });
+          octx.fillText(text, w/2, h/2);
+          ctx.clearRect(0,0,W,H);
+          ctx.imageSmoothingEnabled=false;
+          ctx.drawImage(off,0,0,w,h,0,0,W,H);
+        };
+      }
+      // ---- a card lifts out of the phone and takes the frame ----
+      function takeover(tl, el, t, from, to){
+        tl.fromTo(el,{x:from.x,y:from.y,scale:from.s,autoAlpha:0,rotationX:10},
+                     {x:to.x,y:to.y,scale:to.s,autoAlpha:1,rotationX:0,duration:to.d||.62,ease:'expo.out'},t);
+      }
+
+      // every mini-app shot shares the same rig: one stage, one phone pose, one right plane
+      function rig(pfx){
+        var st=document.getElementById(pfx+'-stage');
+        gsap.set(document.getElementById(pfx+'-ph'),{rotationY:-9,rotationX:4,scale:1.06,transformOrigin:'50% 50%'});
+        gsap.set(document.getElementById(pfx+'-slash'),{autoAlpha:0,x:60});
+        gsap.set(document.getElementById(pfx+'-expl'),{autoAlpha:0,y:14});
+        return st;
+      }
+      function rightIn(tl, pfx, t){
+        tl.to('#'+pfx+'-slash',{autoAlpha:1,x:0,duration:.60,ease:'expo.out'},t);
+        tl.to('#'+pfx+'-expl',{autoAlpha:1,y:0,duration:.58,ease:'expo.out'},t+.26);
+      }
+      function rightOut(tl, pfx, t){
+        tl.to('#'+pfx+'-slash',{autoAlpha:0,x:-130,duration:.30,ease:'power4.in'},t);
+        tl.to('#'+pfx+'-expl',{autoAlpha:0,y:-12,duration:.26,ease:'power3.in'},t);
+      }
+
+      var ITEMS=[
+        {kind:'sys', text:'Today · 9:14 AM', pre:true},
+        {side:'recv', text:'the tour page is up. 2,140 visits since friday.', pre:true, dim:true},
+        {side:'sent', text:'/home'},
+        {kind:'card', side:'recv', html:'<div data-hf-id="hf-s06hmh" class="hd"><div data-hf-id="hf-s06hma" class="art" style="background-image:url(&quot;assets/icons/home.png&quot;)"></div><div data-hf-id="hf-s06hmw"><div data-hf-id="hf-s06hmt" class="ti">your apps</div><div data-hf-id="hf-s06hms" class="sb">published · tap to open</div></div></div><div data-hf-id="hf-s06grid" class="grid" id="s06-grid"><div data-hf-id="hf-s06g0" class="gi" id="s06-g0" style="background-image:url(&quot;assets/icons/home.png&quot;)"></div><div data-hf-id="hf-s06g1" class="gi" id="s06-g1" style="background-image:url(&quot;assets/icons/shop.png&quot;)"></div><div data-hf-id="hf-s06g2" class="gi" id="s06-g2" style="background-image:url(&quot;assets/icons/pay.png&quot;)"></div><div data-hf-id="hf-s06g3" class="gi" id="s06-g3" style="background-image:url(&quot;assets/icons/inbox.png&quot;)"></div><div data-hf-id="hf-s06g4" class="gi" id="s06-g4" style="background-image:url(&quot;assets/icons/calendar.png&quot;)"></div><div data-hf-id="hf-s06g5" class="gi" id="s06-g5" style="background-image:url(&quot;assets/icons/vault.png&quot;)"></div><div data-hf-id="hf-s06g6" class="gi" id="s06-g6" style="background-image:url(&quot;assets/icons/computer.png&quot;)"></div><div data-hf-id="hf-s06g7" class="gi" id="s06-g7" style="background-image:url(&quot;assets/icons/image.png&quot;)"></div><div data-hf-id="hf-s06g8" class="gi" id="s06-g8" style="background-image:url(&quot;assets/icons/video.png&quot;)"></div><div data-hf-id="hf-s06g9" class="gi" id="s06-g9" style="background-image:url(&quot;assets/icons/persona.png&quot;)"></div></div>'}
+      ];
+      var threadEl=$('#s06-thread'); threadEl.setAttribute('data-bottom','634');
+      var TH=buildThread(threadEl, ITEMS);
+      var stage=rig('s06'), flash=$('#s06-flash');
+      var hero=$('#s06-hero'), herocap=$('#s06-herocap'), tiles=$$('#s06-hero .hi');
+      gsap.set($$('#s06-grid .gi'),{autoAlpha:0,scale:.66,transformOrigin:'50% 50%'});
+      gsap.set(hero,{autoAlpha:0});
+      gsap.set(tiles,{autoAlpha:0,y:64,scale:.82,transformOrigin:'50% 50%'});
+      gsap.set(herocap,{autoAlpha:0,y:18});
+      gsap.set($('#s06-composer-txt'),{textContent:'/home'});
+      gsap.set(stage,{scale:.965,transformOrigin:'50% 50%'});
+      gsap.set(flash,{opacity:0});
+
+      // 45.813 — the command is already typed: the cut lands on send
+      showItem(tl,TH,0.000,2,{slide:.30});
+      tl.set($('#s06-composer-txt'),{textContent:''},0.000);
+      hit(tl,stage,0.000,{base:.965,amt:.020});
+      rightIn(tl,'s06',0.06);
+      // 47.345 — the launcher card
+      showItem(tl,TH,1.532,3,{slide:.42});
+      hit(tl,stage,1.532,{base:.965,amt:.016});
+      // 47.09 -> 48.669 — the icons pop one per hihat hit of the sustained fill
+      $$('#s06-grid .gi').forEach(function(g,i){
+        tl.to(g,{autoAlpha:1,scale:1,duration:.32,ease:'back.out(1.7)'},1.277+i*.158);
+      });
+
+      // 48.901 — THE FAMILY SHOT. The grid leaves the phone and takes the whole frame:
+      // the first time in the film the product is bigger than the device.
+      tl.to(hero,{autoAlpha:1,duration:.01},3.088);
+      tl.to('#s06-ph',{autoAlpha:0,scale:.86,duration:.36,ease:'power3.in'},3.030);
+      rightOut(tl,'s06',3.020);
+      tiles.forEach(function(t,i){
+        tl.to(t,{autoAlpha:1,y:0,scale:1,duration:.62,ease:'expo.out'},3.088+i*.036);
+      });
+      cam(tl,stage,3.088,{scale:1.02,d:1.4,e:'expo.out'});
+      hit(tl,stage,3.088,{base:1.02,amt:.030,flash:flash,flashAmt:.20,flashD:.24});
+      tl.to(herocap,{autoAlpha:1,y:0,duration:.60,ease:'expo.out'},3.560);
+      // 50.480 — one more breath on the downbeat, then the film moves on
+      hit(tl,stage,4.667,{base:1.02,amt:.014});
+      cam(tl,stage,5.10,{scale:1.06,d:1.1,e:'none'});
+      tl.to(tiles,{autoAlpha:0,y:-40,duration:.30,ease:'power4.in',stagger:.012},5.94);
+      tl.to(herocap,{autoAlpha:0,y:-16,duration:.26,ease:'power3.in'},5.94);
+      window.__timelines=window.__timelines||{};
+      window.__timelines['shot-06-home']=tl;
+      var q=new URLSearchParams(location.search);
+      if(q.has('t')){tl.seek(parseFloat(q.get('t'))||0);}else if(q.get('dev')==='1'){tl.play();}
+    })();
+    </script>
+  </div>
+</template>

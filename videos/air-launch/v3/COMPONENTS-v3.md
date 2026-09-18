@@ -24,22 +24,27 @@ The "AIR energy system" applies: spectral colour is spent exactly four times (24
 
 ## 2. Arlan Vault (CSV rows, `source = Arlan Vault`)
 
+**Revised for v3.1.** Four items this matrix first ruled out or held at arm's length are now
+built into the film, on the client's direction and with their implementation prompts in hand.
+Each was re-authored for linear time rather than ported: there is no hover, no cursor and no
+scroll in a film, so the trigger became a transient in the track.
+
 | item | disposition | used in | translation notes |
 | --- | --- | --- | --- |
-| The typer | ADAPT | S06/S07 typing | Its cursor rhythm and burst-pause cadence inform `notes-typing` timings (short bursts ending on beats) |
-| Fade motion | ADAPT | S03 "air" at 24.40–25.30 | Seeded per-letter opacity noise, no translation; the one soft entrance in the film |
-| Chromatic glow | ADAPT | S01 mark rim, the four spectral moments | Reduced to a 1 px rim or a 0.35 s mask sweep; never a full-element glow |
+| The typer | **ADOPT** | S03 sublines | Built: each letter passes through a filled pill, then a highlight, then plain text, on a wave that crosses the line. Runs under the endowment nouns at 25.5, 27.1 and 31.7 s |
+| Fade motion | REFERENCE ONLY | — | Superseded: the drop's "air" is now an arcade-pixel resolve with a chromatic split, which carries the same idea with more force |
+| Chromatic glow | **ADOPT** | S01 name, S03 drop | Built as the reference describes: the word bloomed at three radii and split into a warm and a cool copy drifting opposite ways, the gap reading as a rainbow edge. The split opens on the crash at 24.358 and again on the bass snare, then settles |
 | Liquid UI | ADAPT | bubble → card fusion (S06) | The sent bubble stretches and settles into the card rect (FLIP with a 0.08 s squash), then the card lands |
 | Apple's corners | ADAPT | phone frame, every card, banners | SVG superellipse mask (n = 5) instead of `border-radius` |
 | Holo | ADAPT | `/trade` and `/shop` cards | 1.2° rotateX/rotateY kick on landing with a moving specular line, no rainbow |
 | Dia Browser's gradient | ADAPT | composer bar glow on the phone while typing | Soft blue-cream gradient at 0.25 opacity behind the input, pulsing once per bar |
-| Ghosty reveal | ADAPT | fal sky plates cross-fades | Mask-wipe reveal for a plate change instead of an opacity crossfade |
+| Ghosty reveal | **ADOPT** | S09 `/zap` result | The finished clip bleeds in through a radial fog mask opening from 52% to 300%, instead of fading up |
 | Kinetic typography | REFERENCE ONLY | — | Giant-word energy is right, but v3 uses split-text lands on downbeats, not continuous kinetic motion |
 | Realistic emboss | REFERENCE ONLY | — | Might suit the chrome mark; the PNG already carries the emboss |
-| The art of color depth | REFERENCE ONLY | — | Depth-by-value idea is already covered by the parallax stack |
-| Symbols effect | REFERENCE ONLY | — | Symbol-rain could be a `/zap` fallback; halftone-field wins |
-| Amo hover button | REJECT | — | Hover micro-interaction with no linear equivalent that reads at film scale |
-| Arcade pixel | REJECT | — | Pixel aesthetic is off-brand for Atmosphere |
+| The art of color depth | **ADOPT** | every Approve, the end-card CTA | Built as layers on one button: a gradient body, inset bevel and glow, a brighter layer, and a bar of light along the top. It is what makes an approval in this film read as a physical thing rather than a rectangle |
+| Symbols effect | **ADOPT** | S09 `/zap` render | The generated clip is cut into four brightness bands, each stamped with its own mark and tint, one column band per hihat hit of the 66.80-67.27 roll, then resolved into the picture |
+| Amo hover button | **ADOPT** | S14 CTA pill | The hover is gone; the puff stays. `air.wzrd.tech` sits in a glossy pill and its letters inflate one at a time on a 28 ms stagger as the pill lands at 103.770 |
+| Arcade pixel | **ADOPT** | S01 name reveal | Built with no pixel grid anywhere: "air" is drawn to a canvas at 1/46 scale and blown back up, and the block size falls to 1 over 0.92 s so the letters resolve out of their own pixels. It is the first thing in the film after black |
 | Figma vector editor | REJECT | — | Tool UI, not product UI |
 | Midjourney Medical's ASCII | REJECT | — | ASCII fx conflicts with the photographic sky |
 | Pixel brushes | REJECT | — | Same as Arcade pixel |

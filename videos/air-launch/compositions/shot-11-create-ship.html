@@ -1,0 +1,481 @@
+<template id="shot-11-create-ship-template">
+  <div data-hf-id="hf-s11root" id="s11-root" data-composition-id="shot-11-create-ship" data-start="0" data-width="1920" data-height="1080" data-duration="11.006">
+    <style>
+      @font-face{font-family:'Inter';font-weight:400;font-style:normal;font-display:block;src:url('fonts/Inter-400-latin.woff2') format('woff2')}
+      @font-face{font-family:'Inter';font-weight:700;font-style:normal;font-display:block;src:url('fonts/Inter-700-latin.woff2') format('woff2')}
+      @font-face{font-family:'Newsreader';font-weight:200 800;font-style:normal;font-display:block;src:url('fonts/newsreader-latin.woff2') format('woff2')}
+      @font-face{font-family:'Azeret Mono';font-weight:100 900;font-style:normal;font-display:block;src:url('fonts/azeret-mono-latin.woff2') format('woff2')}
+      #s11-root{--ink:#F4EFE6;--ink-dim:rgba(244,239,230,.62);--imsg:#0A84FF;--ok:#30D158;--glass:rgba(255,255,255,.08);--line:rgba(255,255,255,.12);
+        position:relative;width:1920px;height:1080px;overflow:hidden;background:transparent;
+        font-family:'Inter',system-ui,-apple-system,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased}
+      #s11-root *,#s11-root *::before,#s11-root *::after{box-sizing:border-box}
+      #s11-root .frame{position:absolute;inset:0;perspective:1800px}
+      /* parallax planes: the camera proxy moves, the planes follow it by depth */
+      #s11-root .plane{position:absolute;inset:0;transform-style:preserve-3d;will-change:transform}
+      #s11-root .giant{font-family:'Newsreader',Georgia,serif;font-weight:300;letter-spacing:-.035em;line-height:.86;
+        color:var(--ink);opacity:.92;white-space:nowrap;text-shadow:0 3px 26px rgba(3,7,18,.52)}
+      #s11-root .giant .w{display:inline-block;will-change:transform,opacity;transform-style:preserve-3d}
+      #s11-root .wash{position:absolute;inset:0;pointer-events:none;
+        background:radial-gradient(64% 46% at 50% 44%,rgba(4,9,22,.46) 0%,rgba(4,9,22,.20) 56%,rgba(4,9,22,0) 100%)}
+      #s11-root .washL{position:absolute;inset:0;pointer-events:none;
+        background:linear-gradient(100deg,rgba(4,9,22,.52) 0%,rgba(4,9,22,.30) 42%,rgba(4,9,22,0) 72%)}
+      #s11-root .washR{position:absolute;inset:0;pointer-events:none;
+        background:linear-gradient(262deg,rgba(4,9,22,.54) 0%,rgba(4,9,22,.30) 44%,rgba(4,9,22,0) 76%)}
+      #s11-root .cap{font-family:'Newsreader',Georgia,serif;font-weight:400;font-size:56px;line-height:1.08;color:var(--ink);
+        text-shadow:0 3px 24px rgba(3,7,18,.52)}
+      #s11-root .mono{font-family:'Azeret Mono',ui-monospace,monospace;font-weight:400;font-size:25px;letter-spacing:.02em;
+        color:rgba(244,239,230,.80);line-height:1.45;text-shadow:0 2px 16px rgba(3,7,18,.60)}
+      #s11-root .ph{position:absolute;width:402px;height:874px;will-change:transform}
+      #s11-root .ph-body{position:absolute;inset:0;border-radius:56px;background:linear-gradient(160deg,#3a3f4a 0%,#171b22 38%,#0f1218 100%);
+        padding:3px;box-shadow:0 60px 120px rgba(2,6,18,.62),0 12px 30px rgba(2,6,18,.5),inset 0 1px 0 rgba(255,255,255,.16)}
+      #s11-root .ph-screen{position:absolute;inset:3px;border-radius:53px;overflow:hidden;background:#000}
+      #s11-root .ph-island{position:absolute;top:14px;left:50%;margin-left:-63px;width:126px;height:37px;border-radius:19px;background:#000;z-index:6}
+      #s11-root .ph-nav{position:absolute;top:0;left:0;right:0;height:122px;z-index:5;
+        background:rgba(18,18,20,.82);backdrop-filter:blur(24px) saturate(1.3);border-bottom:1px solid rgba(255,255,255,.08);
+        display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:8px}
+      #s11-root .orb{background:url('logos/air-brand.png') center/cover no-repeat;border-radius:50%;flex:0 0 auto}
+      #s11-root .gly{background-position:center;background-repeat:no-repeat;background-size:contain}
+      #s11-root .ph-nav .orb{width:44px;height:44px}
+      #s11-root .ph-nav .who{font-size:13px;font-weight:600;color:#fff;margin-top:3px;letter-spacing:.01em}
+      #s11-root .ph-fade{position:absolute;top:122px;left:0;right:0;height:52px;z-index:4;pointer-events:none;
+        background:linear-gradient(180deg,rgba(0,0,0,.88) 0%,rgba(0,0,0,0) 100%)}
+      #s11-root .ph-home{position:absolute;bottom:9px;left:50%;margin-left:-67px;width:134px;height:5px;border-radius:3px;background:rgba(255,255,255,.34);z-index:6}
+      #s11-root .ph-composer{position:absolute;bottom:26px;left:12px;right:12px;height:44px;border-radius:22px;z-index:5;
+        border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);display:flex;align-items:center;padding:0 14px;overflow:hidden}
+      #s11-root .ph-composer .txt{font-size:17px;color:#fff;white-space:nowrap;overflow:hidden}
+      #s11-root .ph-composer .car{width:2px;height:19px;background:var(--imsg);margin-left:2px;flex:0 0 auto}
+      #s11-root .ph-composer .glow{position:absolute;inset:-1px;border-radius:22px;pointer-events:none;
+        background:linear-gradient(96deg,rgba(10,132,255,.36),rgba(244,239,230,.14) 48%,rgba(10,132,255,.30));opacity:0}
+      /* the thread: a flow column translated by the timeline — never scrollTop */
+      #s11-root .ph-scroll{position:absolute;top:122px;left:0;right:0;bottom:0;overflow:hidden;z-index:3}
+      #s11-root .ph-thread{position:absolute;left:0;right:0;top:0;padding:0 14px;display:flex;flex-direction:column;
+        align-items:stretch;gap:9px;will-change:transform}
+      #s11-root .it{display:flex;width:100%;will-change:transform,opacity}
+      #s11-root .it.sent{justify-content:flex-end}
+      #s11-root .it.recv{justify-content:flex-start}
+      #s11-root .it.sys{justify-content:center}
+      #s11-root .bub{max-width:78%;padding:9px 14px 10px;font-size:19px;line-height:1.28;border-radius:20px;
+        will-change:transform,opacity;transform-origin:100% 100%}
+      #s11-root .sent .bub{background:#0C72D8;color:#fff;border-bottom-right-radius:7px}
+      #s11-root .recv .bub{background:rgba(255,255,255,.14);color:var(--ink);border-bottom-left-radius:7px}
+      #s11-root .it.dim{opacity:.56}
+      #s11-root .sys .bub{background:none;font-family:'Azeret Mono',monospace;font-size:13px;color:rgba(244,239,230,.55);
+        text-align:center;max-width:94%;letter-spacing:.01em;line-height:1.35}
+      #s11-root .dots{display:flex;gap:6px;padding:13px 16px;background:rgba(255,255,255,.14);border-radius:20px;border-bottom-left-radius:7px}
+      #s11-root .dots i{width:8px;height:8px;border-radius:50%;background:rgba(244,239,230,.62);display:block;will-change:transform,opacity}
+      /* owner-only mini-app card — the film shows one owner, so cards only ever appear here */
+      #s11-root .card{position:relative;width:100%;border-radius:22px;border:1px solid var(--line);background:rgba(255,255,255,.08);
+        backdrop-filter:blur(18px) saturate(1.2);overflow:hidden;will-change:transform,opacity;transform-origin:50% 100%}
+      #s11-root .card .hd{display:flex;align-items:center;gap:10px;padding:12px 14px 10px}
+      #s11-root .card .hd .art{width:36px;height:36px;border-radius:10px;flex:0 0 auto;background-size:cover;background-position:center}
+      #s11-root .card .hd .ic{width:36px;height:36px;border-radius:10px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;
+        background:rgba(255,255,255,.10);border:1px solid var(--line)}
+      #s11-root .card .hd .ic .gly{width:20px;height:20px;opacity:.92}
+      #s11-root .card .ti{font-size:17px;font-weight:700;color:#fff;letter-spacing:-.005em}
+      #s11-root .card .sb{font-family:'Azeret Mono',monospace;font-size:13px;color:rgba(244,239,230,.78);margin-top:2px}
+      #s11-root .card .bd{padding:0 14px 12px;font-size:16px;line-height:1.35;color:rgba(244,239,230,.86)}
+      #s11-root .card .row{display:flex;gap:8px;padding:0 14px 13px}
+      #s11-root .btn{flex:1;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;
+        font-size:16px;font-weight:700;letter-spacing:-.005em;will-change:transform}
+      #s11-root .btn.ok{background:#1FA64F;color:#FFFFFF}
+      #s11-root .btn.gh{background:rgba(255,255,255,.07);border:1px solid var(--line);color:rgba(244,239,230,.82)}
+      #s11-root .card .done{display:flex;align-items:center;gap:8px;padding:0 14px 13px;font-size:16px;font-weight:700;color:var(--ok)}
+      #s11-root .card.flip{transform-style:preserve-3d}
+      #s11-root .card .fa{position:relative}
+      #s11-root .card .fb{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center}
+      /* holo: one moving specular line on a landed card, no rainbow */
+      #s11-root .card .spec{position:absolute;inset:0;pointer-events:none;opacity:0;
+        background:linear-gradient(104deg,rgba(255,255,255,0) 40%,rgba(255,255,255,.22) 50%,rgba(255,255,255,0) 60%)}
+      /* the four spectral moments, and nowhere else */
+      #s11-root .spectral{position:absolute;inset:-1px;border-radius:23px;pointer-events:none;opacity:0;padding:1px;
+        background:conic-gradient(from 210deg,#ffd6a5,#fdffb6,#caffbf,#9bf6ff,#bdb2ff,#ffc6ff,#ffd6a5);
+        -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude}
+      #s11-root .ph-back{position:absolute;inset:0;border-radius:56px;overflow:hidden;background:#07070A;
+        border:3px solid #23262d;backface-visibility:hidden;z-index:7;
+        box-shadow:0 60px 120px rgba(2,6,18,.62),inset 0 1px 0 rgba(255,255,255,.14)}
+      /* --- camera: one stage every layer sits in, so a punch-in is a real move --- */
+      #s11-root .stage{position:absolute;inset:0;will-change:transform;transform-origin:50% 50%}
+      /* --- Chromatic glow (Arlan Vault): the word is bloomed at three radii and split into
+             a warm and a cool copy drifting opposite ways; the gap is the rainbow edge --- */
+      #s11-root .cg{position:relative;display:inline-block}
+      #s11-root .cg .cg-l{position:absolute;left:0;top:0;width:100%;white-space:nowrap;
+        will-change:transform,opacity;pointer-events:none}
+      #s11-root .cg .cg-warm{color:#FF8A4C;mix-blend-mode:screen;filter:blur(.6px)}
+      #s11-root .cg .cg-cool{color:#4CC3FF;mix-blend-mode:screen;filter:blur(.6px)}
+      #s11-root .cg .cg-b1{color:#FFF6E8;filter:blur(7px);opacity:.55;mix-blend-mode:screen}
+      #s11-root .cg .cg-b2{color:#FFF0D8;filter:blur(22px);opacity:.42;mix-blend-mode:screen}
+      #s11-root .cg .cg-b3{color:#FFE9C4;filter:blur(54px);opacity:.34;mix-blend-mode:screen}
+      #s11-root .cg .cg-core{position:relative}
+      /* --- The art of color depth (Arlan Vault): a button as a real object — gradient body,
+             inset bevel and glow, a brighter layer, and a bar of light along the top --- */
+      #s11-root .btn3{position:relative;overflow:hidden;isolation:isolate}
+      #s11-root .btn3::before{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+        background:linear-gradient(180deg,rgba(255,255,255,.34) 0%,rgba(255,255,255,.06) 44%,rgba(0,0,0,.18) 100%)}
+      #s11-root .btn3::after{content:'';position:absolute;left:8%;right:8%;top:2px;height:36%;border-radius:999px;
+        pointer-events:none;background:linear-gradient(180deg,rgba(255,255,255,.52),rgba(255,255,255,0));
+        filter:blur(.4px)}
+      #s11-root .btn3.ok3{background:linear-gradient(180deg,#34B767 0%,#1C8F4C 52%,#0F7038 100%);color:#FFFFFF;
+        box-shadow:inset 0 1px 0 rgba(255,255,255,.55),inset 0 -2px 6px rgba(0,40,14,.45),
+                   0 8px 20px rgba(9,90,40,.40),0 1px 0 rgba(255,255,255,.12)}
+      #s11-root .btn3.gh3{background:linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,.04));
+        color:rgba(244,239,230,.88);box-shadow:inset 0 1px 0 rgba(255,255,255,.28),inset 0 -2px 5px rgba(0,0,0,.35)}
+      /* --- Amo (Arlan Vault): the pill's word puffs up into glossy dimensional letters --- */
+      #s11-root .puff{display:inline-block;position:relative;transform-style:preserve-3d;will-change:transform}
+      #s11-root .puff .pl{display:inline-block;will-change:transform,text-shadow,letter-spacing}
+      /* --- Arcade pixel (Arlan Vault): drawn tiny and blown up, so each pixel is a big square --- */
+      #s11-root .px{display:block;image-rendering:pixelated}
+      /* --- Ghosty reveal (Arlan Vault): images bleed in through a cloudy edge --- */
+      #s11-root .ghosty{-webkit-mask-image:radial-gradient(120% 120% at 50% 50%,#000 0%,#000 40%,transparent 72%);
+        mask-image:radial-gradient(120% 120% at 50% 50%,#000 0%,#000 40%,transparent 72%);
+        -webkit-mask-size:260% 260%;mask-size:260% 260%;-webkit-mask-position:50% 50%;mask-position:50% 50%}
+      /* --- beat punctuation: a flash plate and a chromatic pulse over the whole frame --- */
+      #s11-root .hitflash{position:absolute;inset:0;pointer-events:none;background:#EAF2FF;opacity:0;
+        mix-blend-mode:screen}
+      #s11-root .hero-card{position:absolute;will-change:transform,opacity;transform-origin:50% 50%}
+      #s11-root .ph{left:470px;top:103px}
+      #s11-root .right{position:absolute;left:1010px;top:0;width:880px;height:1080px}
+      #s11-root .slash{position:absolute;left:0;top:262px;font-family:'Azeret Mono',monospace;font-weight:500;
+        font-size:196px;letter-spacing:-.05em;color:var(--ink);opacity:.36;white-space:nowrap;
+        text-shadow:0 6px 40px rgba(3,7,18,.45)}
+      #s11-root .expl{position:absolute;left:4px;top:548px;width:840px}
+      #s11-root .expl .mono{font-size:29px;line-height:1.48}
+      #s11-root .btn.ok{background:none}
+
+      #s11-root .slash{top:250px;font-size:186px}
+      /* the build, at the scale of the thing being built */
+      #s11-root .build{position:absolute;left:236px;top:128px;width:1448px;border-radius:32px;padding:40px 46px 44px;
+        background:rgba(6,12,28,.70);border:1px solid rgba(255,255,255,.16);backdrop-filter:blur(22px);
+        box-shadow:0 54px 110px rgba(2,6,18,.62)}
+      #s11-root .build .top{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:26px}
+      #s11-root .build .nm{font-family:'Newsreader',Georgia,serif;font-weight:300;font-size:58px;color:var(--ink)}
+      #s11-root .build .pc{font-family:'Azeret Mono',monospace;font-size:58px;color:var(--ink);
+        font-variant-numeric:tabular-nums}
+      #s11-root .build .bar{height:14px;border-radius:9px;background:rgba(255,255,255,.12);overflow:hidden}
+      #s11-root .build .bar i{display:block;height:100%;border-radius:9px;background:linear-gradient(90deg,#2C7FE0,#6FB4FF);
+        transform-origin:0% 50%;will-change:transform}
+      #s11-root .build .log{margin-top:30px;height:236px;border-radius:18px;background:rgba(2,6,16,.58);
+        border:1px solid rgba(255,255,255,.10);padding:20px 24px;overflow:hidden;
+        font-family:'Azeret Mono',monospace;font-size:17px;line-height:1.95;color:rgba(244,239,230,.62)}
+      #s11-root .build .log .ll{display:flex;gap:16px;will-change:transform,opacity}
+      #s11-root .build .log .ll b{color:#6FB4FF;font-weight:500;min-width:112px;display:inline-block}
+      #s11-root .build .log .ll i{font-style:normal;color:rgba(244,239,230,.86)}
+      #s11-root .build .steps{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;margin-top:26px}
+      #s11-root .build .st{display:flex;align-items:center;gap:12px;font-family:'Azeret Mono',monospace;font-size:19px;
+        color:rgba(244,239,230,.58)}
+      #s11-root .build .st .dot{width:26px;height:26px;border-radius:50%;border:2px solid rgba(255,255,255,.26);
+        display:flex;align-items:center;justify-content:center;font-size:15px;color:#04240F;flex:0 0 auto}
+      #s11-root .build .st.on .dot{background:#3FD877;border-color:#3FD877}
+      #s11-root .build .st.on{color:var(--ink)}
+      /* the app it built, full bleed */
+      #s11-root .app{position:absolute;left:520px;top:96px;width:880px;height:888px;border-radius:40px;overflow:hidden;
+        background:#0A0B10;border:1px solid rgba(255,255,255,.14);box-shadow:0 60px 120px rgba(2,6,18,.66)}
+      #s11-root .app .gl{position:absolute;left:-30%;top:-26%;width:160%;height:78%;
+        background:radial-gradient(50% 50% at 50% 50%,rgba(90,150,255,.34),rgba(90,150,255,0) 70%)}
+      #s11-root .app .nv{position:absolute;top:46px;left:0;right:0;text-align:center;font-family:'Azeret Mono',monospace;
+        font-size:17px;letter-spacing:.22em;color:rgba(244,239,230,.6)}
+      #s11-root .app .in{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+        justify-content:center;padding:0 60px}
+      #s11-root .app .ti{font-family:'Newsreader',Georgia,serif;font-weight:300;font-size:74px;line-height:1.04;
+        color:#F4EFE6;text-align:center;margin-bottom:38px}
+      #s11-root .app .cd{font-family:'Azeret Mono',monospace;font-size:86px;color:#fff;font-variant-numeric:tabular-nums}
+      #s11-root .app .cl{font-family:'Azeret Mono',monospace;font-size:16px;letter-spacing:.3em;
+        color:rgba(244,239,230,.52);margin-top:12px}
+      #s11-root .app .bt{margin-top:48px;padding:20px 48px;border-radius:999px;background:#F4EFE6;color:#0A0B10;
+        font-size:25px;font-weight:700}
+      #s11-root .urlpill{position:absolute;left:0;right:0;top:1006px;text-align:center;font-family:'Azeret Mono',monospace;
+        font-size:25px;letter-spacing:.05em;color:rgba(244,239,230,.86);text-shadow:0 2px 16px rgba(3,7,18,.7)}
+      /* the decision, glossy and physical */
+      #s11-root .dec{position:absolute;left:400px;top:318px;width:1120px;border-radius:32px;padding:38px 42px 40px;
+        background:rgba(6,12,28,.74);border:1px solid rgba(255,255,255,.17);backdrop-filter:blur(22px);
+        box-shadow:0 54px 110px rgba(2,6,18,.66)}
+      #s11-root .dec .lb{font-family:'Azeret Mono',monospace;font-size:16px;letter-spacing:.14em;
+        color:rgba(244,239,230,.62);margin-bottom:14px}
+      #s11-root .dec .hh{font-family:'Newsreader',Georgia,serif;font-weight:300;font-size:64px;color:var(--ink);line-height:1.04}
+      #s11-root .dec .sub{font-family:'Azeret Mono',monospace;font-size:19px;color:rgba(244,239,230,.76);margin-top:14px}
+      #s11-root .dec .act{display:flex;gap:16px;margin-top:32px}
+      #s11-root .dec .big3{flex:1;height:88px;border-radius:22px;display:flex;align-items:center;justify-content:center;
+        font-size:27px;font-weight:700;will-change:transform}
+      #s11-root .dec .gh{width:220px;height:88px;border-radius:22px;display:flex;align-items:center;justify-content:center;font-size:23px}
+      #s11-root .live{position:absolute;left:0;right:0;top:396px;text-align:center}
+      #s11-root .live .l1{font-family:'Newsreader',Georgia,serif;font-weight:300;font-size:104px;color:var(--ink);line-height:1.02}
+      #s11-root .live .l2{margin-top:26px;font-family:'Azeret Mono',monospace;font-size:28px;letter-spacing:.04em;color:#5BE585}
+      #s11-root .live .l3{margin-top:14px;font-family:'Azeret Mono',monospace;font-size:19px;color:rgba(244,239,230,.72)}
+    </style>
+
+    <div data-hf-id="hf-s11frame" class="frame clip" id="s11-frame" data-layout-allow-overflow="" data-start="0" data-duration="11.006" data-track-index="1">
+      <div data-hf-id="hf-s11wa" class="washL"></div>
+      <div data-hf-id="hf-s11wb" class="washR"></div>
+      <div data-hf-id="hf-s11st" class="stage" id="s11-stage">
+      <div data-hf-id="hf-s11rt" class="right" id="s11-right">
+        <div data-hf-id="hf-s11sl" class="slash" id="s11-slash">/create</div>
+        <div data-hf-id="hf-s11ex" class="expl" id="s11-expl"><div data-hf-id="hf-s11em" class="mono">describe it. approve the plan. it ships.</div></div>
+      </div>
+      <div data-hf-id="hf-s11ph" class="ph" id="s11-ph">
+        <div data-hf-id="hf-s11phb" class="ph-body" id="s11-phb">
+          <div data-hf-id="hf-s11scr" class="ph-screen" id="s11-screen">
+            <div data-hf-id="hf-s11scl" class="ph-scroll" id="s11-scroll"><div data-hf-id="hf-s11thr" class="ph-thread" id="s11-thread"></div></div>
+            <div data-hf-id="hf-s11fade" class="ph-fade"></div>
+            <div data-hf-id="hf-s11nav" class="ph-nav" data-layout-allow-overlap="" data-layout-allow-occlusion=""><div data-hf-id="hf-s11navi" class="orb"></div><div data-hf-id="hf-s11navw" class="who">air</div></div>
+            <div data-hf-id="hf-s11isl" class="ph-island"></div>
+            <div data-hf-id="hf-s11cmp" class="ph-composer" id="s11-composer"><div data-hf-id="hf-s11cmpg" class="glow" id="s11-composer-glow"></div><div data-hf-id="hf-s11cmpt" class="txt" id="s11-composer-txt"></div><div data-hf-id="hf-s11cmpc" class="car" id="s11-composer-caret"></div></div>
+            <div data-hf-id="hf-s11hb" class="ph-home"></div>
+          </div>
+        </div>
+      </div>
+        <div data-hf-id="hf-s11bd" class="build" id="s11-build">
+          <div data-hf-id="hf-s11tp" class="top"><span data-hf-id="hf-s11nm" class="nm">October tour</span>
+            <span data-hf-id="hf-s11pc" class="pc" id="s11-pct">10%</span></div>
+          <div data-hf-id="hf-s11br" class="bar"><i data-hf-id="hf-s11bi" id="s11-bar"></i></div>
+          <div data-hf-id="hf-s11lgw" class="log" id="s11-log"><div data-hf-id="hf-s11lg0" class="ll" id="s11-lg0"><b data-hf-id="hf-s11lb0">resolve</b><i data-hf-id="hf-s11li0">air-kit@12 · next · tailwind</i></div><div data-hf-id="hf-s11lg1" class="ll" id="s11-lg1"><b data-hf-id="hf-s11lb1">scaffold</b><i data-hf-id="hf-s11li1">app/page.tsx · countdown.tsx</i></div><div data-hf-id="hf-s11lg2" class="ll" id="s11-lg2"><b data-hf-id="hf-s11lb2">build</b><i data-hf-id="hf-s11li2">12 routes · 0 errors</i></div><div data-hf-id="hf-s11lg3" class="ll" id="s11-lg3"><b data-hf-id="hf-s11lb3">csp</b><i data-hf-id="hf-s11li3">policy ok · no inline script</i></div><div data-hf-id="hf-s11lg4" class="ll" id="s11-lg4"><b data-hf-id="hf-s11lb4">deploy</b><i data-hf-id="hf-s11li4">link.wzrd.tech/gratitude/tour</i></div></div>
+          <div data-hf-id="hf-s11sw" class="steps"><div data-hf-id="hf-s11s0" class="st" id="s11-st0"><div data-hf-id="hf-s11sd0" class="dot" id="s11-sd0">&check;</div><span data-hf-id="hf-s11sx0">plan approved</span></div><div data-hf-id="hf-s11s1" class="st" id="s11-st1"><div data-hf-id="hf-s11sd1" class="dot" id="s11-sd1">&check;</div><span data-hf-id="hf-s11sx1">app scaffolded</span></div><div data-hf-id="hf-s11s2" class="st" id="s11-st2"><div data-hf-id="hf-s11sd2" class="dot" id="s11-sd2">&check;</div><span data-hf-id="hf-s11sx2">kit resolved</span></div><div data-hf-id="hf-s11s3" class="st" id="s11-st3"><div data-hf-id="hf-s11sd3" class="dot" id="s11-sd3">&check;</div><span data-hf-id="hf-s11sx3">deployed to dev</span></div></div>
+        </div>
+        <div data-hf-id="hf-s11ap" class="app" id="s11-app">
+          <div data-hf-id="hf-s11ag" class="gl"></div>
+          <div data-hf-id="hf-s11an" class="nv">OCTOBER TOUR</div>
+          <div data-hf-id="hf-s11ai" class="in">
+            <div data-hf-id="hf-s11at" class="ti"><div data-hf-id="hf-s11at1">Every date,</div>
+              <div data-hf-id="hf-s11at2">every ticket,</div><div data-hf-id="hf-s11at3">one link.</div></div>
+            <div data-hf-id="hf-s11ac" class="cd" id="s11-count">07:14:22:09</div>
+            <div data-hf-id="hf-s11al" class="cl">DAYS HRS MIN SEC</div>
+            <div data-hf-id="hf-s11ab" class="bt">Tickets</div>
+          </div>
+        </div>
+        <div data-hf-id="hf-s11up" class="urlpill" id="s11-url">link.wzrd.tech/gratitude/tour &middot; live for anyone</div>
+        <div data-hf-id="hf-s11dc" class="dec" id="s11-dec">
+          <div data-hf-id="hf-s11dl" class="lb">PUBLISH TO PRODUCTION</div>
+          <div data-hf-id="hf-s11dh" class="hh">mini.wzrd.tech/gratitude/tour</div>
+          <div data-hf-id="hf-s11ds" class="sub">public &middot; listed in the App Store &middot; source mirrored to wzrd-create</div>
+          <div data-hf-id="hf-s11da" class="act" id="s11-dec-act">
+            <div data-hf-id="hf-s11do" class="big3 btn3 ok3" id="s11-dec-ok">Approve</div>
+            <div data-hf-id="hf-s11de" class="gh btn3 gh3">Edit</div></div>
+        </div>
+        <div data-hf-id="hf-s11lv" class="live" id="s11-live">
+          <div data-hf-id="hf-s11l1" class="l1">It&rsquo;s live.</div>
+          <div data-hf-id="hf-s11l2" class="l2">mini.wzrd.tech/gratitude/tour</div>
+          <div data-hf-id="hf-s11l3" class="l3">listed in the App Store &middot; source on github.com/gratitude5dee/wzrd-create</div>
+        </div>
+      </div>
+      <div data-hf-id="hf-s11hf" class="hitflash" id="s11-flash"></div>
+    </div>
+
+    <script src="vendor/gsap.min.js"></script>
+    <script>
+    (function(){
+      var root=document.querySelector('[data-composition-id="shot-11-create-ship"]');
+      var $=function(s){return root.querySelector(s);};
+      var $$=function(s){return Array.prototype.slice.call(root.querySelectorAll(s));};
+      var tl=gsap.timeline({paused:true,defaults:{immediateRender:false}});
+
+      // ---- thread engine (deterministic; see PLAN-v3 3.5) ----
+      function el(tag, cls, html){ var e=document.createElement(tag); if(cls) e.className=cls; if(html!=null) e.innerHTML=html; return e; }
+      function buildThread(threadEl, items){
+        var built=[];
+        items.forEach(function(it, i){
+          var wrap=el('div','it '+(it.kind==='sys'?'sys':(it.side||'recv'))+(it.dim?' dim':''));
+          var inner;
+          if(it.kind==='dots'){ inner=el('div','dots'); for(var d=0;d<3;d++) inner.appendChild(el('i')); }
+          else if(it.kind==='card'){ inner=el('div','card'); inner.innerHTML=it.html; }
+          else { inner=el('div','bub', it.text); }
+          // a thread genuinely slides under the translucent nav: that layering is the design
+          wrap.appendChild(inner); threadEl.appendChild(wrap);
+          built.push({wrap:wrap, inner:inner, spec:it});
+        });
+        // measure once, after the whole column exists
+        var gap=9, bottom=Number(threadEl.getAttribute('data-bottom')||760), acc=0, stops=[];
+        built.forEach(function(b){ acc += b.wrap.offsetHeight + gap; stops.push(bottom - acc + gap); });
+        var th={el:threadEl, items:built, stops:stops, bottom:bottom, start:bottom};
+        built.forEach(function(b,i){
+          if(b.spec.pre){ gsap.set(b.wrap,{autoAlpha:b.spec.dim?.56:1}); th.start=stops[i]; }
+          else gsap.set(b.wrap,{autoAlpha:0});
+        });
+        gsap.set(threadEl,{y:th.start});
+        return th;
+      }
+      // auto slide duration: never let two column moves overlap on the same property
+      function slideFor(times, i){
+        var d=.42; if(times[i+1]!=null) d=Math.min(d, Math.max(.16, times[i+1]-times[i]-.02)); return d;
+      }
+      // Reveal item i: the column rides up by exactly that item's height, the bubble pops.
+      function showItem(tl, thread, t, i, opts){
+        opts=opts||{};
+        var b=thread.items[i], y=thread.stops[i];
+        if(b.spec.hold){ y=thread.stops[i]+b.spec.hold; }
+        tl.to(thread.el,{y:y,duration:opts.slide||.42,ease:'power3.out'}, t);
+        tl.set(b.wrap,{autoAlpha:1}, t);
+        if(b.spec.kind==='card'){
+          tl.fromTo(b.inner,{y:28,autoAlpha:0,rotationX:12},{y:0,autoAlpha:1,rotationX:0,duration:.55,ease:'expo.out'}, t);
+        } else if(b.spec.dim){
+          tl.fromTo(b.inner,{y:14,autoAlpha:0},{y:0,autoAlpha:.56,duration:.34,ease:'power3.out'}, t);
+        } else if(b.spec.side==='sent'){
+          // the one overshoot in the film, because iMessage does it
+          tl.fromTo(b.inner,{scale:.86,autoAlpha:0},{scale:1,autoAlpha:1,duration:.32,ease:'back.out(1.4)'}, t);
+        } else {
+          tl.fromTo(b.inner,{y:14,autoAlpha:0},{y:0,autoAlpha:1,duration:.34,ease:'power3.out'}, t);
+        }
+      }
+      // typing dots ride the hihat hits of a named roll — one lift per hit, never a loop
+      function typeDots(tl, dotsEl, hits){
+        var ds=dotsEl.querySelectorAll('i');
+        hits.forEach(function(h,i){
+          var d=ds[i%3];
+          tl.to(d,{y:-3,opacity:1,duration:.07,ease:'power2.out'}, h);
+          tl.to(d,{y:0,opacity:.55,duration:.16,ease:'power2.inOut'}, h+.07);
+        });
+      }
+      // per-character reveal at a fixed cadence, always landing on the send downbeat
+      function typeText(tl, node, text, start, end){
+        var per=(end-start)/Math.max(1,text.length);
+        for(var c=1;c<=text.length;c++){
+          (function(n){ tl.set(node,{textContent:text.slice(0,n)}, start+per*n); })(c);
+        }
+      }
+
+      // ---- camera: punch in and out on the beat, one transform on one stage ----
+      function cam(tl, stage, t, o){
+        o=o||{};
+        tl.to(stage,{scale:o.scale!=null?o.scale:1, x:o.x||0, y:o.y||0,
+          rotation:o.rot||0, duration:o.d||.6, ease:o.e||'expo.out'}, t);
+      }
+      // ---- a hit: the frame answers the transient. Scale pop, optional flash, optional shake.
+      function hit(tl, stage, t, o){
+        o=o||{};
+        var s=o.base!=null?o.base:1, amt=o.amt!=null?o.amt:.018;
+        tl.to(stage,{scale:s+amt,duration:.055,ease:'power2.out'},t);
+        tl.to(stage,{scale:s,duration:.30,ease:'power2.out'},t+.055);
+        if(o.flash){ tl.fromTo(o.flash,{opacity:o.flashAmt||.22},{opacity:0,duration:o.flashD||.20,ease:'power2.out'},t); }
+        if(o.shake){
+          var a=o.shake;
+          tl.to(stage,{x:'+='+a,duration:.033,ease:'none'},t);
+          tl.to(stage,{x:'-='+(a*2),duration:.033,ease:'none'},t+.033);
+          tl.to(stage,{x:'+='+a,duration:.033,ease:'none'},t+.066);
+        }
+      }
+      // ---- chromatic glow: the split opens on a transient and settles back ----
+      function cgPulse(tl, id, t, amt, dur){
+        amt=amt||16; dur=dur||.9;
+        var w=document.getElementById(id+'-warm'), c=document.getElementById(id+'-cool');
+        tl.to(w,{x:-amt,y:-amt*.22,duration:.09,ease:'power2.out'},t);
+        tl.to(c,{x:amt,y:amt*.22,duration:.09,ease:'power2.out'},t);
+        tl.to(w,{x:-amt*.18,y:0,duration:dur,ease:'power3.out'},t+.09);
+        tl.to(c,{x:amt*.18,y:0,duration:dur,ease:'power3.out'},t+.09);
+      }
+      function cgSet(id, amt){
+        var w=document.getElementById(id+'-warm'), c=document.getElementById(id+'-cool');
+        gsap.set(w,{x:-amt,y:0}); gsap.set(c,{x:amt,y:0});
+      }
+      // ---- Arcade pixel: draw the word tiny on a canvas, blow it up, and let the block size
+      //      fall to 1 so the letters resolve out of the grid. No pixel grid is ever drawn.
+      function pixelWord(canvas, text, font, color){
+        var W=canvas.width, H=canvas.height, ctx=canvas.getContext('2d');
+        return function(block){
+          block=Math.max(1,Math.round(block));
+          var w=Math.max(1,Math.round(W/block)), h=Math.max(1,Math.round(H/block));
+          var off=pixelWord._o||(pixelWord._o=document.createElement('canvas'));
+          off.width=w; off.height=h;
+          var octx=off.getContext('2d');
+          octx.clearRect(0,0,w,h);
+          octx.fillStyle=color; octx.textAlign='center'; octx.textBaseline='middle';
+          octx.font=font.replace(/(\d+)px/, function(m,n){ return Math.max(1,Math.round(n/block))+'px'; });
+          octx.fillText(text, w/2, h/2);
+          ctx.clearRect(0,0,W,H);
+          ctx.imageSmoothingEnabled=false;
+          ctx.drawImage(off,0,0,w,h,0,0,W,H);
+        };
+      }
+      // ---- a card lifts out of the phone and takes the frame ----
+      function takeover(tl, el, t, from, to){
+        tl.fromTo(el,{x:from.x,y:from.y,scale:from.s,autoAlpha:0,rotationX:10},
+                     {x:to.x,y:to.y,scale:to.s,autoAlpha:1,rotationX:0,duration:to.d||.62,ease:'expo.out'},t);
+      }
+
+      // every mini-app shot shares the same rig: one stage, one phone pose, one right plane
+      function rig(pfx){
+        var st=document.getElementById(pfx+'-stage');
+        gsap.set(document.getElementById(pfx+'-ph'),{rotationY:-9,rotationX:4,scale:1.06,transformOrigin:'50% 50%'});
+        gsap.set(document.getElementById(pfx+'-slash'),{autoAlpha:0,x:60});
+        gsap.set(document.getElementById(pfx+'-expl'),{autoAlpha:0,y:14});
+        return st;
+      }
+      function rightIn(tl, pfx, t){
+        tl.to('#'+pfx+'-slash',{autoAlpha:1,x:0,duration:.60,ease:'expo.out'},t);
+        tl.to('#'+pfx+'-expl',{autoAlpha:1,y:0,duration:.58,ease:'expo.out'},t+.26);
+      }
+      function rightOut(tl, pfx, t){
+        tl.to('#'+pfx+'-slash',{autoAlpha:0,x:-130,duration:.30,ease:'power4.in'},t);
+        tl.to('#'+pfx+'-expl',{autoAlpha:0,y:-12,duration:.26,ease:'power3.in'},t);
+      }
+
+      var ITEMS=[
+        {kind:'sys', text:'Today · 9:44 AM', pre:true},
+        {side:'sent', text:'make the countdown the hero. yes.'},
+        {side:'recv', text:'Creating your app …'}
+      ];
+      var threadEl=$('#s11-thread'); threadEl.setAttribute('data-bottom','634');
+      var TH=buildThread(threadEl, ITEMS);
+      var stage=rig('s11'), flash=$('#s11-flash');
+      var build=$('#s11-build'), app=$('#s11-app'), url=$('#s11-url'), dec=$('#s11-dec'), live=$('#s11-live');
+      gsap.set(build,{autoAlpha:0,y:40,scale:.95,transformOrigin:'50% 50%'});
+      gsap.set(app,{autoAlpha:0,y:70,scale:.90,transformOrigin:'50% 50%'});
+      gsap.set(url,{autoAlpha:0,y:14});
+      gsap.set(dec,{autoAlpha:0,y:40,scale:.95,transformOrigin:'50% 50%'});
+      gsap.set(live,{autoAlpha:0,scale:.94,transformOrigin:'50% 50%'});
+      gsap.set('#s11-bar',{scaleX:.10});
+      gsap.set($$('#s11-log .ll'),{autoAlpha:0,x:18});
+      gsap.set($$('#s11-sd0,#s11-sd1,#s11-sd2,#s11-sd3'),{autoAlpha:.001});
+      gsap.set(flash,{opacity:0});
+      gsap.set(stage,{scale:1.0,transformOrigin:'50% 50%'});
+
+      // 78.530 — "yes" is the whole approval. The build takes the frame immediately.
+      showItem(tl,TH,0.000,1,{slide:.30});
+      hit(tl,stage,0.000,{amt:.022});
+      showItem(tl,TH,0.420,2,{slide:.34});
+      tl.to('#s11-ph',{autoAlpha:0,scale:.9,duration:.34,ease:'power3.in'},0.86);
+      rightOut(tl,'s11',0.80);
+      tl.to(build,{autoAlpha:1,y:0,scale:1,duration:.72,ease:'expo.out'},0.96);
+
+      // 78.530 -> 82.477 — one card, counting, with a step checked on each downbeat
+      var pct={v:10}, pctEl=$('#s11-pct');
+      tl.to(pct,{v:100,duration:3.40,ease:'power1.inOut',onUpdate:function(){
+        pctEl.textContent=Math.round(pct.v)+'%';
+      }},1.10);
+      tl.to('#s11-bar',{scaleX:1,duration:3.40,ease:'power1.inOut'},1.10);
+      // the console fills on the eighths: the machine is visibly doing the work
+      $$('#s11-log .ll').forEach(function(l,i){
+        tl.to(l,{autoAlpha:1,x:0,duration:.30,ease:'power3.out'},1.30+i*.592);
+      });
+      [[0,1.30],[1,1.579],[2,3.158],[3,3.947]].forEach(function(s){
+        tl.to('#s11-sd'+s[0],{autoAlpha:1,duration:.001},s[1]);
+        tl.to('#s11-st'+s[0],{className:'st on',duration:.001},s[1]);
+        hit(tl,stage,s[1],{amt:.010});
+      });
+
+      // 83.244 — the dev build is live, and the film shows the app rather than describing it
+      tl.to(build,{autoAlpha:0,y:-40,scale:.96,duration:.30,ease:'power3.in'},4.560);
+      tl.to(app,{autoAlpha:1,y:0,scale:1,duration:.86,ease:'expo.out'},4.714);
+      tl.to(url,{autoAlpha:1,y:0,duration:.52,ease:'expo.out'},5.00);
+      hit(tl,stage,4.714,{amt:.030,flash:flash,flashAmt:.18,flashD:.24});
+      ['07:14:22:08','07:14:22:07','07:14:22:06','07:14:22:05','07:14:22:04'].forEach(function(v,i){
+        tl.set('#s11-count',{textContent:v},5.10+i*.3947);
+      });
+      cam(tl,stage,4.714,{scale:1.04,d:1.6,e:'expo.out'});
+
+      // 86.378 — "ship it". 86.936 — the decision, as an object you could press.
+      tl.to([app,url],{autoAlpha:0,scale:.94,duration:.28,ease:'power3.in'},7.700);
+      tl.to(dec,{autoAlpha:1,y:0,scale:1,duration:.70,ease:'expo.out'},7.848);
+      hit(tl,stage,7.848,{amt:.024});
+      tl.to('#s11-dec-ok',{scale:.955,duration:.07,ease:'power2.out'},9.427);
+      tl.to('#s11-dec-ok',{scale:1,duration:.16,ease:'power2.inOut'},9.506);
+      // 87.957 — Approve. Spectral moment 3 of 4, and the biggest hit of the act.
+      tl.to(dec,{autoAlpha:0,scale:1.06,duration:.24,ease:'power3.in'},9.427);
+      tl.to(live,{autoAlpha:1,scale:1,duration:.70,ease:'expo.out'},9.427);
+      hit(tl,stage,9.427,{amt:.044,flash:flash,flashAmt:.30,flashD:.30,shake:8});
+      cam(tl,stage,9.60,{scale:1.05,d:1.5,e:'expo.out'});
+      tl.to(live,{autoAlpha:0,y:-60,duration:.30,ease:'power4.in'},10.71);
+      window.__timelines=window.__timelines||{};
+      window.__timelines['shot-11-create-ship']=tl;
+      var q=new URLSearchParams(location.search);
+      if(q.has('t')){tl.seek(parseFloat(q.get('t'))||0);}else if(q.get('dev')==='1'){tl.play();}
+    })();
+    </script>
+  </div>
+</template>

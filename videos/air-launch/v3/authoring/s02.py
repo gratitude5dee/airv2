@@ -1,7 +1,7 @@
 import sys; sys.path.insert(0, __import__('os').path.dirname(__file__))
 import parts as P
 R='s02-root'
-STYLE = P.FONTS + "\n" + P.tokens(R) + "\n" + P.phone_css(R,'s02') + """
+STYLE = P.FONTS + "\n" + P.tokens(R) + "\n" + P.fx_css(R) + "\n" + P.phone_css(R,'s02') + """
       #s02-root .ph{left:1180px;top:103px}
       #s02-root .seed{position:absolute;left:1180px;top:103px;width:402px;height:874px;border-radius:56px;
         background:#0C72D8;box-shadow:0 22px 60px rgba(10,60,140,.5);will-change:transform,opacity}
@@ -48,6 +48,7 @@ STANZA = ''.join(f'<div data-hf-id="hf-s02l{i}" class="giant ln" id="s02-l{i}">'
                  + '</div>' for i,t in enumerate(['TEXT IT','LIKE A','FRIEND.']))
 
 BODY = f"""    <div data-hf-id="hf-s02frame" class="frame clip" id="s02-frame" data-layout-allow-overflow="" data-start="0" data-duration="14.188" data-track-index="1">
+      <div data-hf-id="hf-s02stg" class="stage" id="s02-stage">
       <div data-hf-id="hf-s02st" class="stanza" id="s02-stanza">{STANZA}</div>
       <div data-hf-id="hf-s02cp" class="caps" id="s02-caps">
         <div data-hf-id="hf-s02c1" class="mono" id="s02-cap1">its own email address, working around the clock.</div>
@@ -55,10 +56,12 @@ BODY = f"""    <div data-hf-id="hf-s02frame" class="frame clip" id="s02-frame" d
       </div>
       <div data-hf-id="hf-s02sd" class="seed" id="s02-seed"></div>
 {P.PHONE_HTML.replace('%P%','s02')}
+      </div>
+      <div data-hf-id="hf-s02hf" class="hitflash" id="s02-hitflash"></div>
       <div data-hf-id="hf-s02sl" class="slamblack" id="s02-slam"></div>
     </div>"""
 
-SCRIPT = P.THREAD_JS + f"""
+SCRIPT = P.THREAD_JS + P.FX_JS + f"""
 {ITEMS}
       var threadEl=$('#s02-thread'); threadEl.setAttribute('data-bottom','626');
       var TH=buildThread(threadEl, ITEMS); TH.el=threadEl;
@@ -81,6 +84,9 @@ SCRIPT = P.THREAD_JS + f"""
       gsap.set($('#s02-face-b'),{{autoAlpha:0}});
       gsap.set($('#s02-spec'),{{opacity:0}});
       gsap.set($('#s02-slam'),{{opacity:0}});
+      var stage=$('#s02-stage'), hf=$('#s02-hitflash');
+      gsap.set(hf,{{opacity:0}});
+      gsap.set(stage,{{scale:1.38,x:-430,y:20,transformOrigin:'50% 50%'}});
 
       // 10.170 (0.000) — the bubble the four banners collapsed into becomes the phone.
       // One object across the seam: no dissolve, no cut you can see.
@@ -88,23 +94,34 @@ SCRIPT = P.THREAD_JS + f"""
       tl.to(ph,{{autoAlpha:1,duration:.30,ease:'power2.out'}},.28);
       tl.to(seed,{{autoAlpha:0,duration:.22,ease:'power2.inOut'}},.34);
 
+      // the camera: tight on the first message, open for the stanza, macro for the tap
+      cam(tl,stage,0.349,{{scale:1.38,x:-430,y:20,d:.8,e:'expo.out'}});
+      cam(tl,stage,3.019,{{scale:1.0,x:0,y:0,d:1.6,e:'expo.out'}});
+      cam(tl,stage,10.60,{{scale:1.46,x:-360,y:-40,d:1.1,e:'expo.out'}});
+      cam(tl,stage,12.10,{{scale:1.0,x:0,y:0,d:1.3,e:'expo.out'}});
       var T=[.349, 3.019, 4.551, 6.107, 7.616, 12.260];
       // 10.519 — the first thing you see it do is the thing you already do
+      hit(tl,stage,.349,{{base:1.38,amt:.018}});
       showItem(tl,TH,T[0],3,{{slide:.36}});
       // 11.587 — typing dots ride the sustained hihat fill 9.543-13.259 (absolute)
       tl.to(dw,{{autoAlpha:1,duration:.2,ease:'power2.out'}},1.417);
       typeDots(tl,dots,[1.44,1.63,1.82,2.01,2.20,2.39,2.58,2.77,2.96]);
       tl.to(dw,{{autoAlpha:0,duration:.14,ease:'power2.in'}},2.98);
       // 13.189 — "on it." and the first line of the stanza land on the same downbeat
+      hit(tl,stage,3.019,{{amt:.026}});
       showItem(tl,TH,T[1],4,{{slide:.36}});
       // 14.721 / 16.277 / 17.786 — inbox, the hold, the decision
+      hit(tl,stage,4.551,{{amt:.016}});
       showItem(tl,TH,T[2],5,{{slide:.42}});
+      hit(tl,stage,6.107,{{amt:.022}});
       showItem(tl,TH,T[3],6,{{slide:.42}});
+      hit(tl,stage,7.616,{{amt:.018}});
       showItem(tl,TH,T[4],7,{{slide:.42}});
       // 18.158 — the decision card settles with one specular pass (holo, no rainbow)
       tl.fromTo($('#s02-spec'),{{xPercent:-60,opacity:0}},{{xPercent:60,opacity:.5,duration:.34,ease:'power2.out'}},7.988);
       tl.to($('#s02-spec'),{{opacity:0,duration:.3,ease:'power2.in'}},8.33);
       // 22.430 — the memory chip: the computer that remembers
+      hit(tl,stage,12.260,{{amt:.016}});
       showItem(tl,TH,T[5],8,{{slide:.42}});
 
       // the stanza: the hero line, one clause per downbeat, behind the phone at depth 0
@@ -115,6 +132,7 @@ SCRIPT = P.THREAD_JS + f"""
       tl.to(caps[1],{{autoAlpha:1,y:0,duration:.6,ease:'expo.out'}},12.260);
 
       // 21.223 — the tap. Nothing moves money or messages without this gesture.
+      hit(tl,stage,11.053,{{base:1.46,amt:.020}});
       tl.to($('#s02-approve'),{{scale:.92,duration:.066,ease:'power2.out'}},11.053);
       tl.to($('#s02-approve'),{{scale:1,duration:.12,ease:'power2.inOut'}},11.128);
       tl.to(TH.items[7].inner,{{rotationX:-90,duration:.22,ease:'power2.in'}},11.22);
@@ -130,6 +148,7 @@ SCRIPT = P.THREAD_JS + f"""
       // S03 opens on the sunrise crest one frame later.
       tl.to(stanza,{{x:-230,autoAlpha:0,duration:.30,ease:'power4.in'}},13.90);
       tl.to(caps,{{autoAlpha:0,duration:.2,ease:'power2.in'}},13.90);
+      hit(tl,stage,13.938,{{amt:.05,flash:hf,flashAmt:.34,flashD:.24,shake:10}});
       tl.to(ph,{{scale:2.9,rotationY:0,rotationX:0,x:-160,duration:.25,ease:'power4.in'}},13.938);
       tl.to($('#s02-slam'),{{opacity:1,duration:.10,ease:'power2.in'}},14.088);"""
 print(P.emit('compositions/shot-02-imessage-thread.html','shot-02-imessage-thread','s02',14.188,STYLE,BODY,SCRIPT))

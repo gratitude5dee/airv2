@@ -25,6 +25,45 @@
         text-shadow:0 3px 24px rgba(3,7,18,.52)}
       #s05-root .mono{font-family:'Azeret Mono',ui-monospace,monospace;font-weight:400;font-size:25px;letter-spacing:.02em;
         color:rgba(244,239,230,.80);line-height:1.45;text-shadow:0 2px 16px rgba(3,7,18,.60)}
+      /* --- camera: one stage every layer sits in, so a punch-in is a real move --- */
+      #s05-root .stage{position:absolute;inset:0;will-change:transform;transform-origin:50% 50%}
+      /* --- Chromatic glow (Arlan Vault): the word is bloomed at three radii and split into
+             a warm and a cool copy drifting opposite ways; the gap is the rainbow edge --- */
+      #s05-root .cg{position:relative;display:inline-block}
+      #s05-root .cg .cg-l{position:absolute;left:0;top:0;width:100%;white-space:nowrap;
+        will-change:transform,opacity;pointer-events:none}
+      #s05-root .cg .cg-warm{color:#FF8A4C;mix-blend-mode:screen;filter:blur(.6px)}
+      #s05-root .cg .cg-cool{color:#4CC3FF;mix-blend-mode:screen;filter:blur(.6px)}
+      #s05-root .cg .cg-b1{color:#FFF6E8;filter:blur(7px);opacity:.55;mix-blend-mode:screen}
+      #s05-root .cg .cg-b2{color:#FFF0D8;filter:blur(22px);opacity:.42;mix-blend-mode:screen}
+      #s05-root .cg .cg-b3{color:#FFE9C4;filter:blur(54px);opacity:.34;mix-blend-mode:screen}
+      #s05-root .cg .cg-core{position:relative}
+      /* --- The art of color depth (Arlan Vault): a button as a real object — gradient body,
+             inset bevel and glow, a brighter layer, and a bar of light along the top --- */
+      #s05-root .btn3{position:relative;overflow:hidden;isolation:isolate}
+      #s05-root .btn3::before{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+        background:linear-gradient(180deg,rgba(255,255,255,.34) 0%,rgba(255,255,255,.06) 44%,rgba(0,0,0,.18) 100%)}
+      #s05-root .btn3::after{content:'';position:absolute;left:8%;right:8%;top:2px;height:36%;border-radius:999px;
+        pointer-events:none;background:linear-gradient(180deg,rgba(255,255,255,.52),rgba(255,255,255,0));
+        filter:blur(.4px)}
+      #s05-root .btn3.ok3{background:linear-gradient(180deg,#3FD877 0%,#24A757 52%,#17823F 100%);color:#04240F;
+        box-shadow:inset 0 1px 0 rgba(255,255,255,.55),inset 0 -2px 6px rgba(0,40,14,.45),
+                   0 8px 20px rgba(9,90,40,.40),0 1px 0 rgba(255,255,255,.12)}
+      #s05-root .btn3.gh3{background:linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,.04));
+        color:rgba(244,239,230,.88);box-shadow:inset 0 1px 0 rgba(255,255,255,.28),inset 0 -2px 5px rgba(0,0,0,.35)}
+      /* --- Amo (Arlan Vault): the pill's word puffs up into glossy dimensional letters --- */
+      #s05-root .puff{display:inline-block;position:relative;transform-style:preserve-3d;will-change:transform}
+      #s05-root .puff .pl{display:inline-block;will-change:transform,text-shadow,letter-spacing}
+      /* --- Arcade pixel (Arlan Vault): drawn tiny and blown up, so each pixel is a big square --- */
+      #s05-root .px{display:block;image-rendering:pixelated}
+      /* --- Ghosty reveal (Arlan Vault): images bleed in through a cloudy edge --- */
+      #s05-root .ghosty{-webkit-mask-image:radial-gradient(120% 120% at 50% 50%,#000 0%,#000 40%,transparent 72%);
+        mask-image:radial-gradient(120% 120% at 50% 50%,#000 0%,#000 40%,transparent 72%);
+        -webkit-mask-size:260% 260%;mask-size:260% 260%;-webkit-mask-position:50% 50%;mask-position:50% 50%}
+      /* --- beat punctuation: a flash plate and a chromatic pulse over the whole frame --- */
+      #s05-root .hitflash{position:absolute;inset:0;pointer-events:none;background:#EAF2FF;opacity:0;
+        mix-blend-mode:screen}
+      #s05-root .hero-card{position:absolute;will-change:transform,opacity;transform-origin:50% 50%}
       #s05-root .ring{position:absolute;left:0;top:0;width:1920px;height:1080px}
       #s05-root .lg{position:absolute;left:0;top:0;width:96px;height:96px;border-radius:24px;
         background:rgba(9,15,32,.60);border:1px solid rgba(255,255,255,.15);backdrop-filter:blur(12px);
@@ -41,11 +80,14 @@
     </style>
 
     <div data-hf-id="hf-s05frame" class="frame clip" id="s05-frame" data-layout-allow-overflow="" data-start="0" data-duration="6.223" data-track-index="1">
+      <div data-hf-id="hf-s05stg" class="stage" id="s05-stage">
       <div data-hf-id="hf-s05wa" class="wash"></div>
       <div data-hf-id="hf-s05rg" class="ring" id="s05-ring"><div data-hf-id="hf-s05r00" class="lg" id="s05-l0"><i data-hf-id="hf-s05i00" style="background-image:url(&quot;logos/gmail.svg&quot;)"></i></div><div data-hf-id="hf-s05r01" class="lg" id="s05-l1"><i data-hf-id="hf-s05i01" style="background-image:url(&quot;logos/slack.svg&quot;)"></i></div><div data-hf-id="hf-s05r02" class="lg" id="s05-l2"><i data-hf-id="hf-s05i02" style="background-image:url(&quot;logos/notion.svg&quot;)"></i></div><div data-hf-id="hf-s05r03" class="lg" id="s05-l3"><i data-hf-id="hf-s05i03" style="background-image:url(&quot;logos/shopify.svg&quot;)"></i></div><div data-hf-id="hf-s05r04" class="lg" id="s05-l4"><i data-hf-id="hf-s05i04" style="background-image:url(&quot;logos/stripe.svg&quot;)"></i></div><div data-hf-id="hf-s05r05" class="lg" id="s05-l5"><i data-hf-id="hf-s05i05" style="background-image:url(&quot;logos/github.svg&quot;)"></i></div><div data-hf-id="hf-s05r06" class="lg" id="s05-l6"><i data-hf-id="hf-s05i06" style="background-image:url(&quot;logos/figma.svg&quot;)"></i></div><div data-hf-id="hf-s05r07" class="lg" id="s05-l7"><i data-hf-id="hf-s05i07" style="background-image:url(&quot;logos/spotify.svg&quot;)"></i></div><div data-hf-id="hf-s05r08" class="lg" id="s05-l8"><i data-hf-id="hf-s05i08" style="background-image:url(&quot;logos/drive.svg&quot;)"></i></div><div data-hf-id="hf-s05r09" class="lg" id="s05-l9"><i data-hf-id="hf-s05i09" style="background-image:url(&quot;logos/calendar.svg&quot;)"></i></div><div data-hf-id="hf-s05r10" class="lg" id="s05-l10"><i data-hf-id="hf-s05i10" style="background-image:url(&quot;logos/instagram.svg&quot;)"></i></div><div data-hf-id="hf-s05r11" class="lg" id="s05-l11"><i data-hf-id="hf-s05i11" style="background-image:url(&quot;logos/x.svg&quot;)"></i></div><div data-hf-id="hf-s05r12" class="lg" id="s05-l12"><i data-hf-id="hf-s05i12" style="background-image:url(&quot;logos/tiktok.svg&quot;)"></i></div><div data-hf-id="hf-s05r13" class="lg" id="s05-l13"><i data-hf-id="hf-s05i13" style="background-image:url(&quot;logos/youtube.svg&quot;)"></i></div><div data-hf-id="hf-s05r14" class="lg" id="s05-l14"><i data-hf-id="hf-s05i14" style="background-image:url(&quot;logos/discord.svg&quot;)"></i></div><div data-hf-id="hf-s05r15" class="lg" id="s05-l15"><i data-hf-id="hf-s05i15" style="background-image:url(&quot;logos/telegram.svg&quot;)"></i></div><div data-hf-id="hf-s05r16" class="lg" id="s05-l16"><i data-hf-id="hf-s05i16" style="background-image:url(&quot;logos/whatsapp.svg&quot;)"></i></div><div data-hf-id="hf-s05r17" class="lg" id="s05-l17"><i data-hf-id="hf-s05i17" style="background-image:url(&quot;logos/reddit.svg&quot;)"></i></div><div data-hf-id="hf-s05r20" class="lg" id="s05-l18"><i data-hf-id="hf-s05i20" style="background-image:url(&quot;logos/salesforce.svg&quot;)"></i></div><div data-hf-id="hf-s05r21" class="lg" id="s05-l19"><i data-hf-id="hf-s05i21" style="background-image:url(&quot;logos/hubspot.svg&quot;)"></i></div><div data-hf-id="hf-s05r22" class="lg" id="s05-l20"><i data-hf-id="hf-s05i22" style="background-image:url(&quot;logos/jira.svg&quot;)"></i></div><div data-hf-id="hf-s05r23" class="lg" id="s05-l21"><i data-hf-id="hf-s05i23" style="background-image:url(&quot;logos/asana.svg&quot;)"></i></div><div data-hf-id="hf-s05r24" class="lg" id="s05-l22"><i data-hf-id="hf-s05i24" style="background-image:url(&quot;logos/quickbooks.svg&quot;)"></i></div><div data-hf-id="hf-s05r25" class="lg" id="s05-l23"><i data-hf-id="hf-s05i25" style="background-image:url(&quot;logos/square.svg&quot;)"></i></div></div>
       <div data-hf-id="hf-s05sd" class="seed" id="s05-seed"></div>
       <div data-hf-id="hf-s05nm" class="num" id="s05-num">0</div>
       <div data-hf-id="hf-s05cp" class="cap" id="s05-cap">connect your apps — across 1000+ apps.</div>
+      </div>
+      <div data-hf-id="hf-s05hf" class="hitflash" id="s05-hitflash"></div>
     </div>
 
     <script src="vendor/gsap.min.js"></script>
@@ -54,7 +96,7 @@
       var root=document.querySelector('[data-composition-id="shot-05-connect-apps"]');
       var $=function(s){return root.querySelector(s);};
       var $$=function(s){return Array.prototype.slice.call(root.querySelectorAll(s));};
-      var tl=gsap.timeline({paused:true});
+      var tl=gsap.timeline({paused:true,defaults:{immediateRender:false}});
       var R1=10, R2=8, R3=6;
       var rings=[[R1,645,262,-90],[R2,905,348,18],[R3,1130,198,54]];
       var els=[]; for(var i=0;i<R1+R2+R3;i++) els.push($('#s05-l'+i));

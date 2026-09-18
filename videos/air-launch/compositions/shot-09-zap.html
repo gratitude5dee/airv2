@@ -1,0 +1,461 @@
+<template id="shot-09-zap-template">
+  <div data-hf-id="hf-s09root" id="s09-root" data-composition-id="shot-09-zap" data-start="0" data-width="1920" data-height="1080" data-duration="6.27">
+    <style>
+      @font-face{font-family:'Inter';font-weight:400;font-style:normal;font-display:block;src:url('fonts/Inter-400-latin.woff2') format('woff2')}
+      @font-face{font-family:'Inter';font-weight:700;font-style:normal;font-display:block;src:url('fonts/Inter-700-latin.woff2') format('woff2')}
+      @font-face{font-family:'Newsreader';font-weight:200 800;font-style:normal;font-display:block;src:url('fonts/newsreader-latin.woff2') format('woff2')}
+      @font-face{font-family:'Azeret Mono';font-weight:100 900;font-style:normal;font-display:block;src:url('fonts/azeret-mono-latin.woff2') format('woff2')}
+      #s09-root{--ink:#F4EFE6;--ink-dim:rgba(244,239,230,.62);--imsg:#0A84FF;--ok:#30D158;--glass:rgba(255,255,255,.08);--line:rgba(255,255,255,.12);
+        position:relative;width:1920px;height:1080px;overflow:hidden;background:transparent;
+        font-family:'Inter',system-ui,-apple-system,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased}
+      #s09-root *,#s09-root *::before,#s09-root *::after{box-sizing:border-box}
+      #s09-root .frame{position:absolute;inset:0;perspective:1800px}
+      /* parallax planes: the camera proxy moves, the planes follow it by depth */
+      #s09-root .plane{position:absolute;inset:0;transform-style:preserve-3d;will-change:transform}
+      #s09-root .giant{font-family:'Newsreader',Georgia,serif;font-weight:300;letter-spacing:-.035em;line-height:.86;
+        color:var(--ink);opacity:.92;white-space:nowrap;text-shadow:0 3px 26px rgba(3,7,18,.52)}
+      #s09-root .giant .w{display:inline-block;will-change:transform,opacity;transform-style:preserve-3d}
+      #s09-root .wash{position:absolute;inset:0;pointer-events:none;
+        background:radial-gradient(64% 46% at 50% 44%,rgba(4,9,22,.46) 0%,rgba(4,9,22,.20) 56%,rgba(4,9,22,0) 100%)}
+      #s09-root .washL{position:absolute;inset:0;pointer-events:none;
+        background:linear-gradient(100deg,rgba(4,9,22,.52) 0%,rgba(4,9,22,.30) 42%,rgba(4,9,22,0) 72%)}
+      #s09-root .washR{position:absolute;inset:0;pointer-events:none;
+        background:linear-gradient(262deg,rgba(4,9,22,.54) 0%,rgba(4,9,22,.30) 44%,rgba(4,9,22,0) 76%)}
+      #s09-root .cap{font-family:'Newsreader',Georgia,serif;font-weight:400;font-size:56px;line-height:1.08;color:var(--ink);
+        text-shadow:0 3px 24px rgba(3,7,18,.52)}
+      #s09-root .mono{font-family:'Azeret Mono',ui-monospace,monospace;font-weight:400;font-size:25px;letter-spacing:.02em;
+        color:rgba(244,239,230,.80);line-height:1.45;text-shadow:0 2px 16px rgba(3,7,18,.60)}
+      #s09-root .ph{position:absolute;width:402px;height:874px;will-change:transform}
+      #s09-root .ph-body{position:absolute;inset:0;border-radius:56px;background:linear-gradient(160deg,#3a3f4a 0%,#171b22 38%,#0f1218 100%);
+        padding:3px;box-shadow:0 60px 120px rgba(2,6,18,.62),0 12px 30px rgba(2,6,18,.5),inset 0 1px 0 rgba(255,255,255,.16)}
+      #s09-root .ph-screen{position:absolute;inset:3px;border-radius:53px;overflow:hidden;background:#000}
+      #s09-root .ph-island{position:absolute;top:14px;left:50%;margin-left:-63px;width:126px;height:37px;border-radius:19px;background:#000;z-index:6}
+      #s09-root .ph-nav{position:absolute;top:0;left:0;right:0;height:122px;z-index:5;
+        background:rgba(18,18,20,.82);backdrop-filter:blur(24px) saturate(1.3);border-bottom:1px solid rgba(255,255,255,.08);
+        display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:8px}
+      #s09-root .orb{background:url('logos/air-brand.png') center/cover no-repeat;border-radius:50%;flex:0 0 auto}
+      #s09-root .gly{background-position:center;background-repeat:no-repeat;background-size:contain}
+      #s09-root .ph-nav .orb{width:44px;height:44px}
+      #s09-root .ph-nav .who{font-size:13px;font-weight:600;color:#fff;margin-top:3px;letter-spacing:.01em}
+      #s09-root .ph-fade{position:absolute;top:122px;left:0;right:0;height:52px;z-index:4;pointer-events:none;
+        background:linear-gradient(180deg,rgba(0,0,0,.88) 0%,rgba(0,0,0,0) 100%)}
+      #s09-root .ph-home{position:absolute;bottom:9px;left:50%;margin-left:-67px;width:134px;height:5px;border-radius:3px;background:rgba(255,255,255,.34);z-index:6}
+      #s09-root .ph-composer{position:absolute;bottom:26px;left:12px;right:12px;height:44px;border-radius:22px;z-index:5;
+        border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);display:flex;align-items:center;padding:0 14px;overflow:hidden}
+      #s09-root .ph-composer .txt{font-size:17px;color:#fff;white-space:nowrap;overflow:hidden}
+      #s09-root .ph-composer .car{width:2px;height:19px;background:var(--imsg);margin-left:2px;flex:0 0 auto}
+      #s09-root .ph-composer .glow{position:absolute;inset:-1px;border-radius:22px;pointer-events:none;
+        background:linear-gradient(96deg,rgba(10,132,255,.36),rgba(244,239,230,.14) 48%,rgba(10,132,255,.30));opacity:0}
+      /* the thread: a flow column translated by the timeline — never scrollTop */
+      #s09-root .ph-scroll{position:absolute;top:122px;left:0;right:0;bottom:0;overflow:hidden;z-index:3}
+      #s09-root .ph-thread{position:absolute;left:0;right:0;top:0;padding:0 14px;display:flex;flex-direction:column;
+        align-items:stretch;gap:9px;will-change:transform}
+      #s09-root .it{display:flex;width:100%;will-change:transform,opacity}
+      #s09-root .it.sent{justify-content:flex-end}
+      #s09-root .it.recv{justify-content:flex-start}
+      #s09-root .it.sys{justify-content:center}
+      #s09-root .bub{max-width:78%;padding:9px 14px 10px;font-size:19px;line-height:1.28;border-radius:20px;
+        will-change:transform,opacity;transform-origin:100% 100%}
+      #s09-root .sent .bub{background:#0C72D8;color:#fff;border-bottom-right-radius:7px}
+      #s09-root .recv .bub{background:rgba(255,255,255,.14);color:var(--ink);border-bottom-left-radius:7px}
+      #s09-root .it.dim{opacity:.56}
+      #s09-root .sys .bub{background:none;font-family:'Azeret Mono',monospace;font-size:13px;color:rgba(244,239,230,.55);
+        text-align:center;max-width:94%;letter-spacing:.01em;line-height:1.35}
+      #s09-root .dots{display:flex;gap:6px;padding:13px 16px;background:rgba(255,255,255,.14);border-radius:20px;border-bottom-left-radius:7px}
+      #s09-root .dots i{width:8px;height:8px;border-radius:50%;background:rgba(244,239,230,.62);display:block;will-change:transform,opacity}
+      /* owner-only mini-app card — the film shows one owner, so cards only ever appear here */
+      #s09-root .card{position:relative;width:100%;border-radius:22px;border:1px solid var(--line);background:rgba(255,255,255,.08);
+        backdrop-filter:blur(18px) saturate(1.2);overflow:hidden;will-change:transform,opacity;transform-origin:50% 100%}
+      #s09-root .card .hd{display:flex;align-items:center;gap:10px;padding:12px 14px 10px}
+      #s09-root .card .hd .art{width:36px;height:36px;border-radius:10px;flex:0 0 auto;background-size:cover;background-position:center}
+      #s09-root .card .hd .ic{width:36px;height:36px;border-radius:10px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;
+        background:rgba(255,255,255,.10);border:1px solid var(--line)}
+      #s09-root .card .hd .ic .gly{width:20px;height:20px;opacity:.92}
+      #s09-root .card .ti{font-size:17px;font-weight:700;color:#fff;letter-spacing:-.005em}
+      #s09-root .card .sb{font-family:'Azeret Mono',monospace;font-size:13px;color:rgba(244,239,230,.78);margin-top:2px}
+      #s09-root .card .bd{padding:0 14px 12px;font-size:16px;line-height:1.35;color:rgba(244,239,230,.86)}
+      #s09-root .card .row{display:flex;gap:8px;padding:0 14px 13px}
+      #s09-root .btn{flex:1;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;
+        font-size:16px;font-weight:700;letter-spacing:-.005em;will-change:transform}
+      #s09-root .btn.ok{background:#1FA64F;color:#FFFFFF}
+      #s09-root .btn.gh{background:rgba(255,255,255,.07);border:1px solid var(--line);color:rgba(244,239,230,.82)}
+      #s09-root .card .done{display:flex;align-items:center;gap:8px;padding:0 14px 13px;font-size:16px;font-weight:700;color:var(--ok)}
+      #s09-root .card.flip{transform-style:preserve-3d}
+      #s09-root .card .fa{position:relative}
+      #s09-root .card .fb{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center}
+      /* holo: one moving specular line on a landed card, no rainbow */
+      #s09-root .card .spec{position:absolute;inset:0;pointer-events:none;opacity:0;
+        background:linear-gradient(104deg,rgba(255,255,255,0) 40%,rgba(255,255,255,.22) 50%,rgba(255,255,255,0) 60%)}
+      /* the four spectral moments, and nowhere else */
+      #s09-root .spectral{position:absolute;inset:-1px;border-radius:23px;pointer-events:none;opacity:0;padding:1px;
+        background:conic-gradient(from 210deg,#ffd6a5,#fdffb6,#caffbf,#9bf6ff,#bdb2ff,#ffc6ff,#ffd6a5);
+        -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude}
+      #s09-root .ph-back{position:absolute;inset:0;border-radius:56px;overflow:hidden;background:#07070A;
+        border:3px solid #23262d;backface-visibility:hidden;z-index:7;
+        box-shadow:0 60px 120px rgba(2,6,18,.62),inset 0 1px 0 rgba(255,255,255,.14)}
+      /* --- camera: one stage every layer sits in, so a punch-in is a real move --- */
+      #s09-root .stage{position:absolute;inset:0;will-change:transform;transform-origin:50% 50%}
+      /* --- Chromatic glow (Arlan Vault): the word is bloomed at three radii and split into
+             a warm and a cool copy drifting opposite ways; the gap is the rainbow edge --- */
+      #s09-root .cg{position:relative;display:inline-block}
+      #s09-root .cg .cg-l{position:absolute;left:0;top:0;width:100%;white-space:nowrap;
+        will-change:transform,opacity;pointer-events:none}
+      #s09-root .cg .cg-warm{color:#FF8A4C;mix-blend-mode:screen;filter:blur(.6px)}
+      #s09-root .cg .cg-cool{color:#4CC3FF;mix-blend-mode:screen;filter:blur(.6px)}
+      #s09-root .cg .cg-b1{color:#FFF6E8;filter:blur(7px);opacity:.55;mix-blend-mode:screen}
+      #s09-root .cg .cg-b2{color:#FFF0D8;filter:blur(22px);opacity:.42;mix-blend-mode:screen}
+      #s09-root .cg .cg-b3{color:#FFE9C4;filter:blur(54px);opacity:.34;mix-blend-mode:screen}
+      #s09-root .cg .cg-core{position:relative}
+      /* --- The art of color depth (Arlan Vault): a button as a real object — gradient body,
+             inset bevel and glow, a brighter layer, and a bar of light along the top --- */
+      #s09-root .btn3{position:relative;overflow:hidden;isolation:isolate}
+      #s09-root .btn3::before{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+        background:linear-gradient(180deg,rgba(255,255,255,.34) 0%,rgba(255,255,255,.06) 44%,rgba(0,0,0,.18) 100%)}
+      #s09-root .btn3::after{content:'';position:absolute;left:8%;right:8%;top:2px;height:36%;border-radius:999px;
+        pointer-events:none;background:linear-gradient(180deg,rgba(255,255,255,.52),rgba(255,255,255,0));
+        filter:blur(.4px)}
+      #s09-root .btn3.ok3{background:linear-gradient(180deg,#34B767 0%,#1C8F4C 52%,#0F7038 100%);color:#FFFFFF;
+        box-shadow:inset 0 1px 0 rgba(255,255,255,.55),inset 0 -2px 6px rgba(0,40,14,.45),
+                   0 8px 20px rgba(9,90,40,.40),0 1px 0 rgba(255,255,255,.12)}
+      #s09-root .btn3.gh3{background:linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,.04));
+        color:rgba(244,239,230,.88);box-shadow:inset 0 1px 0 rgba(255,255,255,.28),inset 0 -2px 5px rgba(0,0,0,.35)}
+      /* --- Amo (Arlan Vault): the pill's word puffs up into glossy dimensional letters --- */
+      #s09-root .puff{display:inline-block;position:relative;transform-style:preserve-3d;will-change:transform}
+      #s09-root .puff .pl{display:inline-block;will-change:transform,text-shadow,letter-spacing}
+      /* --- Arcade pixel (Arlan Vault): drawn tiny and blown up, so each pixel is a big square --- */
+      #s09-root .px{display:block;image-rendering:pixelated}
+      /* --- Ghosty reveal (Arlan Vault): images bleed in through a cloudy edge --- */
+      #s09-root .ghosty{-webkit-mask-image:radial-gradient(120% 120% at 50% 50%,#000 0%,#000 40%,transparent 72%);
+        mask-image:radial-gradient(120% 120% at 50% 50%,#000 0%,#000 40%,transparent 72%);
+        -webkit-mask-size:260% 260%;mask-size:260% 260%;-webkit-mask-position:50% 50%;mask-position:50% 50%}
+      /* --- beat punctuation: a flash plate and a chromatic pulse over the whole frame --- */
+      #s09-root .hitflash{position:absolute;inset:0;pointer-events:none;background:#EAF2FF;opacity:0;
+        mix-blend-mode:screen}
+      #s09-root .hero-card{position:absolute;will-change:transform,opacity;transform-origin:50% 50%}
+      #s09-root .ph{left:470px;top:103px}
+      #s09-root .right{position:absolute;left:1010px;top:0;width:880px;height:1080px}
+      #s09-root .slash{position:absolute;left:0;top:262px;font-family:'Azeret Mono',monospace;font-weight:500;
+        font-size:196px;letter-spacing:-.05em;color:var(--ink);opacity:.36;white-space:nowrap;
+        text-shadow:0 6px 40px rgba(3,7,18,.45)}
+      #s09-root .expl{position:absolute;left:4px;top:548px;width:840px}
+      #s09-root .expl .mono{font-size:29px;line-height:1.48}
+      #s09-root .btn.ok{background:none}
+
+      /* the generation takes the frame: a canvas the shot builds out of symbols, then resolves */
+      #s09-root .gen{position:absolute;left:200px;top:150px;width:1520px;height:790px;border-radius:26px;
+        overflow:hidden;box-shadow:0 60px 120px rgba(2,6,18,.62),0 0 0 1px rgba(255,255,255,.12)}
+      #s09-root .gen canvas{display:block;width:1520px;height:790px}
+      #s09-root .gen.ghosty{-webkit-mask-size:var(--m,300%) var(--m,300%);mask-size:var(--m,300%) var(--m,300%)}
+      #s09-root .genbar{position:absolute;left:200px;top:966px;width:1520px;display:flex;align-items:center;
+        justify-content:space-between;font-family:'Azeret Mono',monospace;font-size:19px;letter-spacing:.08em;
+        color:rgba(244,239,230,.80);text-shadow:0 2px 14px rgba(3,7,18,.7)}
+      #s09-root .genbar .st{display:flex;align-items:center;gap:14px}
+      #s09-root .genbar .dot{width:10px;height:10px;border-radius:50%;background:#5BE585}
+      #s09-root .endcap{position:absolute;left:0;right:0;top:404px;text-align:center}
+      #s09-root .endcap .cap{font-size:96px;line-height:1.02}
+    </style>
+
+    <div data-hf-id="hf-s09frame" class="frame clip" id="s09-frame" data-layout-allow-overflow="" data-start="0" data-duration="6.27" data-track-index="1">
+      <div data-hf-id="hf-s09wa" class="washL"></div>
+      <div data-hf-id="hf-s09wb" class="washR"></div>
+      <div data-hf-id="hf-s09st" class="stage" id="s09-stage">
+      <div data-hf-id="hf-s09rt" class="right" id="s09-right">
+        <div data-hf-id="hf-s09sl" class="slash" id="s09-slash">/zap</div>
+        <div data-hf-id="hf-s09ex" class="expl" id="s09-expl"><div data-hf-id="hf-s09em" class="mono">video, images, animation — creative lanes in the thread.</div></div>
+      </div>
+      <div data-hf-id="hf-s09ph" class="ph" id="s09-ph">
+        <div data-hf-id="hf-s09phb" class="ph-body" id="s09-phb">
+          <div data-hf-id="hf-s09scr" class="ph-screen" id="s09-screen">
+            <div data-hf-id="hf-s09scl" class="ph-scroll" id="s09-scroll"><div data-hf-id="hf-s09thr" class="ph-thread" id="s09-thread"></div></div>
+            <div data-hf-id="hf-s09fade" class="ph-fade"></div>
+            <div data-hf-id="hf-s09nav" class="ph-nav" data-layout-allow-overlap="" data-layout-allow-occlusion=""><div data-hf-id="hf-s09navi" class="orb"></div><div data-hf-id="hf-s09navw" class="who">air</div></div>
+            <div data-hf-id="hf-s09isl" class="ph-island"></div>
+            <div data-hf-id="hf-s09cmp" class="ph-composer" id="s09-composer"><div data-hf-id="hf-s09cmpg" class="glow" id="s09-composer-glow"></div><div data-hf-id="hf-s09cmpt" class="txt" id="s09-composer-txt"></div><div data-hf-id="hf-s09cmpc" class="car" id="s09-composer-caret"></div></div>
+            <div data-hf-id="hf-s09hb" class="ph-home"></div>
+          </div>
+        </div>
+      </div>
+        <div data-hf-id="hf-s09gn" class="gen ghosty" id="s09-gen">
+          <canvas data-hf-id="hf-s09cv" id="s09-canvas" width="1520" height="790"></canvas>
+        </div>
+        <div data-hf-id="hf-s09gb" class="genbar" id="s09-genbar">
+          <span data-hf-id="hf-s09g1" class="st"><span data-hf-id="hf-s09gd" class="dot"></span>
+            <span data-hf-id="hf-s09gt" id="s09-genstate">RENDERING</span></span>
+          <span data-hf-id="hf-s09g2">1080&times;1080 &middot; 6s &middot; fal</span>
+        </div>
+        <div data-hf-id="hf-s09ec" class="endcap" id="s09-endcap">
+          <div data-hf-id="hf-s09e1" class="cap">mini-apps.</div>
+          <div data-hf-id="hf-s09e2" class="cap">make your own.</div>
+        </div>
+      </div>
+      <div data-hf-id="hf-s09hf" class="hitflash" id="s09-flash"></div>
+    </div>
+
+    <script src="vendor/gsap.min.js"></script>
+    <script>
+    (function(){
+      var root=document.querySelector('[data-composition-id="shot-09-zap"]');
+      var $=function(s){return root.querySelector(s);};
+      var $$=function(s){return Array.prototype.slice.call(root.querySelectorAll(s));};
+      var tl=gsap.timeline({paused:true,defaults:{immediateRender:false}});
+
+      // ---- thread engine (deterministic; see PLAN-v3 3.5) ----
+      function el(tag, cls, html){ var e=document.createElement(tag); if(cls) e.className=cls; if(html!=null) e.innerHTML=html; return e; }
+      function buildThread(threadEl, items){
+        var built=[];
+        items.forEach(function(it, i){
+          var wrap=el('div','it '+(it.kind==='sys'?'sys':(it.side||'recv'))+(it.dim?' dim':''));
+          var inner;
+          if(it.kind==='dots'){ inner=el('div','dots'); for(var d=0;d<3;d++) inner.appendChild(el('i')); }
+          else if(it.kind==='card'){ inner=el('div','card'); inner.innerHTML=it.html; }
+          else { inner=el('div','bub', it.text); }
+          // a thread genuinely slides under the translucent nav: that layering is the design
+          wrap.appendChild(inner); threadEl.appendChild(wrap);
+          built.push({wrap:wrap, inner:inner, spec:it});
+        });
+        // measure once, after the whole column exists
+        var gap=9, bottom=Number(threadEl.getAttribute('data-bottom')||760), acc=0, stops=[];
+        built.forEach(function(b){ acc += b.wrap.offsetHeight + gap; stops.push(bottom - acc + gap); });
+        var th={el:threadEl, items:built, stops:stops, bottom:bottom, start:bottom};
+        built.forEach(function(b,i){
+          if(b.spec.pre){ gsap.set(b.wrap,{autoAlpha:b.spec.dim?.56:1}); th.start=stops[i]; }
+          else gsap.set(b.wrap,{autoAlpha:0});
+        });
+        gsap.set(threadEl,{y:th.start});
+        return th;
+      }
+      // auto slide duration: never let two column moves overlap on the same property
+      function slideFor(times, i){
+        var d=.42; if(times[i+1]!=null) d=Math.min(d, Math.max(.16, times[i+1]-times[i]-.02)); return d;
+      }
+      // Reveal item i: the column rides up by exactly that item's height, the bubble pops.
+      function showItem(tl, thread, t, i, opts){
+        opts=opts||{};
+        var b=thread.items[i], y=thread.stops[i];
+        if(b.spec.hold){ y=thread.stops[i]+b.spec.hold; }
+        tl.to(thread.el,{y:y,duration:opts.slide||.42,ease:'power3.out'}, t);
+        tl.set(b.wrap,{autoAlpha:1}, t);
+        if(b.spec.kind==='card'){
+          tl.fromTo(b.inner,{y:28,autoAlpha:0,rotationX:12},{y:0,autoAlpha:1,rotationX:0,duration:.55,ease:'expo.out'}, t);
+        } else if(b.spec.dim){
+          tl.fromTo(b.inner,{y:14,autoAlpha:0},{y:0,autoAlpha:.56,duration:.34,ease:'power3.out'}, t);
+        } else if(b.spec.side==='sent'){
+          // the one overshoot in the film, because iMessage does it
+          tl.fromTo(b.inner,{scale:.86,autoAlpha:0},{scale:1,autoAlpha:1,duration:.32,ease:'back.out(1.4)'}, t);
+        } else {
+          tl.fromTo(b.inner,{y:14,autoAlpha:0},{y:0,autoAlpha:1,duration:.34,ease:'power3.out'}, t);
+        }
+      }
+      // typing dots ride the hihat hits of a named roll — one lift per hit, never a loop
+      function typeDots(tl, dotsEl, hits){
+        var ds=dotsEl.querySelectorAll('i');
+        hits.forEach(function(h,i){
+          var d=ds[i%3];
+          tl.to(d,{y:-3,opacity:1,duration:.07,ease:'power2.out'}, h);
+          tl.to(d,{y:0,opacity:.55,duration:.16,ease:'power2.inOut'}, h+.07);
+        });
+      }
+      // per-character reveal at a fixed cadence, always landing on the send downbeat
+      function typeText(tl, node, text, start, end){
+        var per=(end-start)/Math.max(1,text.length);
+        for(var c=1;c<=text.length;c++){
+          (function(n){ tl.set(node,{textContent:text.slice(0,n)}, start+per*n); })(c);
+        }
+      }
+
+      // ---- camera: punch in and out on the beat, one transform on one stage ----
+      function cam(tl, stage, t, o){
+        o=o||{};
+        tl.to(stage,{scale:o.scale!=null?o.scale:1, x:o.x||0, y:o.y||0,
+          rotation:o.rot||0, duration:o.d||.6, ease:o.e||'expo.out'}, t);
+      }
+      // ---- a hit: the frame answers the transient. Scale pop, optional flash, optional shake.
+      function hit(tl, stage, t, o){
+        o=o||{};
+        var s=o.base!=null?o.base:1, amt=o.amt!=null?o.amt:.018;
+        tl.to(stage,{scale:s+amt,duration:.055,ease:'power2.out'},t);
+        tl.to(stage,{scale:s,duration:.30,ease:'power2.out'},t+.055);
+        if(o.flash){ tl.fromTo(o.flash,{opacity:o.flashAmt||.22},{opacity:0,duration:o.flashD||.20,ease:'power2.out'},t); }
+        if(o.shake){
+          var a=o.shake;
+          tl.to(stage,{x:'+='+a,duration:.033,ease:'none'},t);
+          tl.to(stage,{x:'-='+(a*2),duration:.033,ease:'none'},t+.033);
+          tl.to(stage,{x:'+='+a,duration:.033,ease:'none'},t+.066);
+        }
+      }
+      // ---- chromatic glow: the split opens on a transient and settles back ----
+      function cgPulse(tl, id, t, amt, dur){
+        amt=amt||16; dur=dur||.9;
+        var w=document.getElementById(id+'-warm'), c=document.getElementById(id+'-cool');
+        tl.to(w,{x:-amt,y:-amt*.22,duration:.09,ease:'power2.out'},t);
+        tl.to(c,{x:amt,y:amt*.22,duration:.09,ease:'power2.out'},t);
+        tl.to(w,{x:-amt*.18,y:0,duration:dur,ease:'power3.out'},t+.09);
+        tl.to(c,{x:amt*.18,y:0,duration:dur,ease:'power3.out'},t+.09);
+      }
+      function cgSet(id, amt){
+        var w=document.getElementById(id+'-warm'), c=document.getElementById(id+'-cool');
+        gsap.set(w,{x:-amt,y:0}); gsap.set(c,{x:amt,y:0});
+      }
+      // ---- Arcade pixel: draw the word tiny on a canvas, blow it up, and let the block size
+      //      fall to 1 so the letters resolve out of the grid. No pixel grid is ever drawn.
+      function pixelWord(canvas, text, font, color){
+        var W=canvas.width, H=canvas.height, ctx=canvas.getContext('2d');
+        return function(block){
+          block=Math.max(1,Math.round(block));
+          var w=Math.max(1,Math.round(W/block)), h=Math.max(1,Math.round(H/block));
+          var off=pixelWord._o||(pixelWord._o=document.createElement('canvas'));
+          off.width=w; off.height=h;
+          var octx=off.getContext('2d');
+          octx.clearRect(0,0,w,h);
+          octx.fillStyle=color; octx.textAlign='center'; octx.textBaseline='middle';
+          octx.font=font.replace(/(\d+)px/, function(m,n){ return Math.max(1,Math.round(n/block))+'px'; });
+          octx.fillText(text, w/2, h/2);
+          ctx.clearRect(0,0,W,H);
+          ctx.imageSmoothingEnabled=false;
+          ctx.drawImage(off,0,0,w,h,0,0,W,H);
+        };
+      }
+      // ---- a card lifts out of the phone and takes the frame ----
+      function takeover(tl, el, t, from, to){
+        tl.fromTo(el,{x:from.x,y:from.y,scale:from.s,autoAlpha:0,rotationX:10},
+                     {x:to.x,y:to.y,scale:to.s,autoAlpha:1,rotationX:0,duration:to.d||.62,ease:'expo.out'},t);
+      }
+
+      // every mini-app shot shares the same rig: one stage, one phone pose, one right plane
+      function rig(pfx){
+        var st=document.getElementById(pfx+'-stage');
+        gsap.set(document.getElementById(pfx+'-ph'),{rotationY:-9,rotationX:4,scale:1.06,transformOrigin:'50% 50%'});
+        gsap.set(document.getElementById(pfx+'-slash'),{autoAlpha:0,x:60});
+        gsap.set(document.getElementById(pfx+'-expl'),{autoAlpha:0,y:14});
+        return st;
+      }
+      function rightIn(tl, pfx, t){
+        tl.to('#'+pfx+'-slash',{autoAlpha:1,x:0,duration:.60,ease:'expo.out'},t);
+        tl.to('#'+pfx+'-expl',{autoAlpha:1,y:0,duration:.58,ease:'expo.out'},t+.26);
+      }
+      function rightOut(tl, pfx, t){
+        tl.to('#'+pfx+'-slash',{autoAlpha:0,x:-130,duration:.30,ease:'power4.in'},t);
+        tl.to('#'+pfx+'-expl',{autoAlpha:0,y:-12,duration:.26,ease:'power3.in'},t);
+      }
+
+      var ITEMS=[
+        {kind:'sys', text:'Today · 9:34 AM', pre:true},
+        {side:'sent', text:'/zap the orb rising over clouds, 6s'},
+        {side:'recv', text:'on it — about 40s.'}
+      ];
+      var threadEl=$('#s09-thread'); threadEl.setAttribute('data-bottom','634');
+      var TH=buildThread(threadEl, ITEMS);
+      var stage=rig('s09'), flash=$('#s09-flash');
+      var gen=$('#s09-gen'), genbar=$('#s09-genbar'), endcap=$('#s09-endcap');
+
+      // ---- the generated clip, built rather than fetched: a sky, clouds, and the brand orb
+      // rising through them. Then Symbols: four brightness bands, each stamped with its own
+      // mark and tint, resolving into the picture as the render completes.
+      var cv=$('#s09-canvas'), cx=cv.getContext('2d'), W=1520, H=790;
+      var off=document.createElement('canvas'), ox=off.getContext('2d');
+      var CELL=25, CW=Math.ceil(W/CELL), CH=Math.ceil(H/CELL);
+      off.width=CW; off.height=CH;
+      var MARKS=['·','+','\u00d7','\u25a0'];
+      var TINTS=['#3D6AB0','#6C9BDC','#B8D4F5','#FFFFFF'];
+      function scene(g, w, h, t, orbRise){
+        var sky=g.createLinearGradient(0,0,0,h);
+        sky.addColorStop(0,'#1E3F7E'); sky.addColorStop(.52,'#5C8CC9'); sky.addColorStop(1,'#CBDEF2');
+        g.fillStyle=sky; g.fillRect(0,0,w,h);
+        var cl=[[0.10,0.84,0.30],[0.36,0.92,0.34],[0.64,0.86,0.30],[0.88,0.94,0.28],[0.24,0.70,0.16],[0.76,0.66,0.18]];
+        for(var i=0;i<cl.length;i++){
+          var cxp=(cl[i][0]*w + t*11*(i%2?1:-1)+w)%(w*1.2)-w*0.1, cyp=cl[i][1]*h, r=cl[i][2]*w*0.5;
+          var rg=g.createRadialGradient(cxp,cyp,0,cxp,cyp,r);
+          rg.addColorStop(0,'rgba(255,255,255,.95)'); rg.addColorStop(.5,'rgba(244,250,255,.55)');
+          rg.addColorStop(1,'rgba(230,242,255,0)');
+          g.fillStyle=rg; g.fillRect(cxp-r,cyp-r,r*2,r*2);
+        }
+        var oy=h*(0.82-0.42*orbRise), orr=h*0.13;
+        var og=g.createRadialGradient(w*0.5-orr*0.32,oy-orr*0.38,orr*0.08,w*0.5,oy,orr);
+        og.addColorStop(0,'#EAF4FF'); og.addColorStop(.28,'#67A8F2'); og.addColorStop(.72,'#1C5BC4'); og.addColorStop(1,'#0B2C74');
+        g.beginPath(); g.arc(w*0.5,oy,orr,0,6.2832); g.fillStyle=og; g.fill();
+        var hl=g.createRadialGradient(w*0.5-orr*0.34,oy-orr*0.44,0,w*0.5-orr*0.34,oy-orr*0.44,orr*0.5);
+        hl.addColorStop(0,'rgba(255,255,255,.92)'); hl.addColorStop(1,'rgba(255,255,255,0)');
+        g.beginPath(); g.arc(w*0.5,oy,orr,0,6.2832); g.fillStyle=hl; g.fill();
+      }
+      var state={t:0, resolve:0, orb:0, cols:0};
+      function render(){
+        scene(ox, CW, CH, state.t, state.orb);
+        var data=ox.getImageData(0,0,CW,CH).data;
+        cx.clearRect(0,0,W,H);
+        cx.fillStyle='#0A1430'; cx.fillRect(0,0,W,H);
+        if(state.resolve<1){
+          cx.save(); cx.globalAlpha=1-state.resolve;
+          cx.font='700 '+(CELL-4)+'px "Azeret Mono", monospace';
+          cx.textAlign='center'; cx.textBaseline='middle';
+          var lim=Math.round(CW*state.cols);
+          // the columns still to come read as a faint lattice, not a black hole
+          cx.globalAlpha=(1-state.resolve)*.26;
+          for(var gx=lim;gx<CW;gx++){ for(var gy=0;gy<CH;gy++){
+            cx.fillStyle='#4E7CC4'; cx.fillRect(gx*CELL+CELL/2-1, gy*CELL+CELL/2-1, 2, 2); } }
+          cx.globalAlpha=1-state.resolve;
+          for(var y=0;y<CH;y++){
+            for(var x=0;x<lim;x++){
+              var i=(y*CW+x)*4;
+              var b=(data[i]*0.299+data[i+1]*0.587+data[i+2]*0.114)/255;
+              var band=b<0.34?0:(b<0.58?1:(b<0.80?2:3));
+              cx.fillStyle=TINTS[band];
+              cx.fillText(MARKS[band], x*CELL+CELL/2, y*CELL+CELL/2);
+            }
+          }
+          cx.restore();
+        }
+        if(state.resolve>0){
+          cx.save(); cx.globalAlpha=state.resolve;
+          scene(cx, W, H, state.t, state.orb);
+          cx.restore();
+        }
+      }
+      render();
+
+      gsap.set(gen,{autoAlpha:0,scale:.93,transformOrigin:'50% 50%'});
+      gsap.set(genbar,{autoAlpha:0,y:14});
+      gsap.set(endcap,{autoAlpha:0,y:22});
+      gsap.set($('#s09-composer-txt'),{textContent:'/zap the orb rising over clouds, 6s'});
+      gsap.set(flash,{opacity:0});
+      gsap.set(stage,{scale:1.0,transformOrigin:'50% 50%'});
+      gsap.set(gen,{'--m':'52%'});
+
+      // 64.412 — send. 65.991 — it answers with a time, the way a person would.
+      showItem(tl,TH,0.000,1,{slide:.30});
+      tl.set($('#s09-composer-txt'),{textContent:''},0.000);
+      hit(tl,stage,0.000,{amt:.020});
+      rightIn(tl,'s09',0.06);
+      showItem(tl,TH,1.579,2,{slide:.34});
+      hit(tl,stage,1.579,{amt:.014});
+
+      // 66.757 -> 67.524 — the render takes the frame as symbols, one column band per hihat
+      // hit of the accel roll, then resolves into the picture it was asked for.
+      tl.to('#s09-ph',{autoAlpha:0,scale:.9,duration:.30,ease:'power3.in'},2.20);
+      rightOut(tl,'s09',2.16);
+      tl.to(gen,{autoAlpha:1,scale:1,duration:.54,ease:'expo.out'},2.345);
+      tl.to(genbar,{autoAlpha:1,y:0,duration:.44,ease:'expo.out'},2.40);
+      tl.to(state,{cols:1,duration:.767,ease:'none',onUpdate:render},2.345);
+      hit(tl,stage,2.345,{amt:.024});
+      // the mask opens like fog clearing (Ghosty reveal)
+      tl.to(gen,{'--m':'300%',duration:1.30,ease:'power2.out'},2.345);
+      // 67.524 — resolved
+      tl.to(state,{resolve:1,duration:1.05,ease:'power2.inOut',onUpdate:render},3.30);
+      tl.to(state,{orb:1,duration:2.5,ease:'none',onUpdate:render},3.112);
+      tl.to(state,{t:8,duration:3.0,ease:'none',onUpdate:render},3.112);
+      tl.set($('#s09-genstate'),{textContent:'READY · 00:06'},4.35);
+      hit(tl,stage,3.112,{amt:.030,flash:flash,flashAmt:.20,flashD:.24});
+
+      // 69.103 — the turn into /create
+      tl.to([gen,genbar],{autoAlpha:0,scale:.96,duration:.34,ease:'power3.in'},4.691);
+      tl.to(endcap,{autoAlpha:1,y:0,duration:.64,ease:'expo.out'},4.760);
+      hit(tl,stage,4.691,{amt:.020});
+      cam(tl,stage,4.760,{scale:1.04,d:1.3,e:'expo.out'});
+      tl.to(endcap,{autoAlpha:0,x:-200,duration:.30,ease:'power4.in'},5.98);
+      window.__timelines=window.__timelines||{};
+      window.__timelines['shot-09-zap']=tl;
+      var q=new URLSearchParams(location.search);
+      if(q.has('t')){tl.seek(parseFloat(q.get('t'))||0);}else if(q.get('dev')==='1'){tl.play();}
+    })();
+    </script>
+  </div>
+</template>

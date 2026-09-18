@@ -564,3 +564,61 @@ apps.", the "Your agent, your RL environment, your model, your weights." stanza,
 warnings remain and are understood: two software-WebGL `ReadPixels` performance notices from the
 headless renderer, and one 2-sample box-overlap inside the phone during the 360° turntable, where
 the auditor's 2D test cannot model the rotation.
+
+
+---
+
+## 14. v3.1 — the launch-film rebuild
+
+The first cut was structurally honest and rhythmically correct, and it still read as a slideshow.
+A thirty-frame sample across its 120 seconds showed eighteen frames of the same locked-off
+composition: one phone, one size, one tilt, a giant mono word to its right. The product name never
+filled the screen, the camera never moved more than one percent, and nothing in the frame answered
+a transient. This pass fixes that, on the client's direction, using the Arlan Vault implementation
+prompts as the source rather than the previous film.
+
+### What changed
+
+| | v3.0 | v3.1 |
+| --- | --- | --- |
+| Shots | 10 | **14** |
+| Longest single composition | 24.9 s (`/home /shop /trade /zap` in one take) | 11.0 s |
+| Camera | 1–1.5 % drift | a stage per shot: punch-in, macro, pull-out, six-cut montage |
+| Beat punctuation | card lands only | scale pops, frame flashes, shake and chromatic pulses on named transients |
+| Arlan Vault items built | 8 adapted | **14**, including four the first matrix had ruled out |
+
+### The structure now
+
+The mini-apps block is four separate shots, each with its own framing and its own takeover, so the
+film changes shape every 6.2 seconds through the middle act: `/home` ends with the app family
+filling the frame at ten times phone size; `/shop` lifts the listing out as a real product frame;
+`/trade` opens tight and turns the approval into a macro plate with the fill as the loudest frame
+of the act; `/zap` hands the whole frame to the render. `/create` splits into the plan and the
+ship, so the build gets a live console and the app it made plays full-bleed before the publish
+decision. Every seam is still a downbeat and every anchor still comes from `audiomap.json`.
+
+### The four Arlan items that were ruled out and are now in the film
+
+1. **Arcade pixel** opens it. "air" is drawn to a canvas at 1/46 scale and blown back up, and the
+   block size falls to 1 over 0.92 s, so the first thing after black is the product name resolving
+   out of its own pixels. No pixel grid is ever drawn, which is the point of the reference.
+2. **Chromatic glow** carries the drop. The word is bloomed at three radii and split into a warm
+   and a cool copy that drift opposite ways; the gap is the rainbow edge. The split opens on the
+   24.358 crash, again on the bass snare, and settles.
+3. **The art of color depth** makes every approval a physical object: a gradient body, inset bevel
+   and glow, a brighter layer, and a bar of light along the top. It is the reason a tap in this
+   film now reads as pressing something.
+4. **Amo** closes it. The hover is gone and the puff stays: `air.wzrd.tech` sits in a glossy pill
+   whose letters inflate one at a time as it lands at 103.770.
+
+Two more were promoted from reference to built: **Symbols effect** renders the `/zap` generation as
+four brightness bands stamped with their own marks, and **The typer** runs the wave of pills and
+highlights under the endowment sublines.
+
+### One bug worth recording
+
+Every timeline in the project now carries `defaults: {immediateRender: false}`. GSAP renders a
+`fromTo`'s start state at build time by default, which left the first shot's flash plate at 30 %
+over the opening two seconds — a washed-out night sky that no amount of sky tuning would have
+fixed. These timelines are only ever seeked, never played, so nothing may render ahead of its own
+position.

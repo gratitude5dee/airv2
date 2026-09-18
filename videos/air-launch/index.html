@@ -35,6 +35,10 @@
       #shot-08  { position: absolute; inset: 0; z-index: 8; }
       #shot-09  { position: absolute; inset: 0; z-index: 9; }
       #shot-10  { position: absolute; inset: 0; z-index: 10; }
+      #shot-11  { position: absolute; inset: 0; z-index: 11; }
+      #shot-12  { position: absolute; inset: 0; z-index: 12; }
+      #shot-13  { position: absolute; inset: 0; z-index: 13; }
+      #shot-14  { position: absolute; inset: 0; z-index: 14; }
       /* Film grade: soft vignette + a static SVG-turbulence grain (fixed seed — deterministic),
          sitting above every shot, plus the freeze-dim lane used once at 104.606. */
       #grade { position: absolute; inset: 0; z-index: 20; pointer-events: none; }
@@ -59,26 +63,34 @@
 
       <!-- MUSIC — vstar.mp3, 152 BPM, 119.699s. It is the timing spine: every seam below is a
            downbeat from audiomap.json, every card lands on a downbeat, every tap on a kick. -->
-      <audio data-hf-id="hf-6wj5" id="bgm" class="clip" src="assets/bgm.mp3" data-start="0" data-duration="119.699" data-track-index="11" data-volume="0.9" data-automation="{&quot;version&quot;:1,&quot;lanes&quot;:[{&quot;target&quot;:&quot;volume&quot;,&quot;points&quot;:[{&quot;t&quot;:0,&quot;v&quot;:0},{&quot;t&quot;:0.2,&quot;v&quot;:1},{&quot;t&quot;:114.5,&quot;v&quot;:1},{&quot;t&quot;:119.4,&quot;v&quot;:0}]}]}"></audio>
+      <audio data-hf-id="hf-6wj5" id="bgm" class="clip" src="assets/bgm.mp3" data-start="0" data-duration="119.699" data-track-index="15" data-volume="0.9" data-automation="{&quot;version&quot;:1,&quot;lanes&quot;:[{&quot;target&quot;:&quot;volume&quot;,&quot;points&quot;:[{&quot;t&quot;:0,&quot;v&quot;:0},{&quot;t&quot;:0.2,&quot;v&quot;:1},{&quot;t&quot;:114.5,&quot;v&quot;:1},{&quot;t&quot;:119.4,&quot;v&quot;:0}]}]}"></audio>
 
-      <!-- ACT I — the night, the thread, the drop -->
-      <div data-hf-id="hf-nr6q" id="shot-01" data-composition-id="shot-01-cold-open" data-composition-src="compositions/shot-01-cold-open.html" data-start="0" data-duration="10.17" data-track-index="1"></div>
-      <div data-hf-id="hf-qc1v" id="shot-02" data-composition-id="shot-02-imessage-thread" data-composition-src="compositions/shot-02-imessage-thread.html" data-start="10.17" data-duration="14.188" data-track-index="2"></div>
-      <div data-hf-id="hf-jugz" id="shot-03" data-composition-id="shot-03-endowments" data-composition-src="compositions/shot-03-endowments.html" data-start="24.358" data-duration="8.986" data-track-index="3"></div>
+      <!-- ACT I — the name, the thread, the drop -->
+      <div data-hf-id="hf-sh01" id="shot-01" data-composition-id="shot-01-cold-open" data-composition-src="compositions/shot-01-cold-open.html" data-start="0" data-duration="10.17" data-track-index="1"></div>
+      <div data-hf-id="hf-sh02" id="shot-02" data-composition-id="shot-02-imessage-thread" data-composition-src="compositions/shot-02-imessage-thread.html" data-start="10.17" data-duration="14.188" data-track-index="2"></div>
+      <div data-hf-id="hf-sh03" id="shot-03" data-composition-id="shot-03-drop" data-composition-src="compositions/shot-03-drop.html" data-start="24.358" data-duration="8.986" data-track-index="3"></div>
 
-      <!-- ACT II — what it knows, what it reaches, what it runs -->
-      <div data-hf-id="hf-s0qq" id="shot-04" data-composition-id="shot-04-hyperpersonal" data-composition-src="compositions/shot-04-hyperpersonal.html" data-start="33.344" data-duration="6.246" data-track-index="4"></div>
-      <div data-hf-id="hf-fjoy" id="shot-05" data-composition-id="shot-05-connect-apps" data-composition-src="compositions/shot-05-connect-apps.html" data-start="39.59" data-duration="6.223" data-track-index="5"></div>
-      <div data-hf-id="hf-c4kj" id="shot-06" data-composition-id="shot-06-mini-apps" data-composition-src="compositions/shot-06-mini-apps.html" data-start="45.813" data-duration="24.869" data-track-index="6"></div>
-      <div data-hf-id="hf-9da1" id="shot-07" data-composition-id="shot-07-create" data-composition-src="compositions/shot-07-create.html" data-start="70.682" data-duration="18.854" data-track-index="7"></div>
+      <!-- ACT II — what it knows and what it reaches -->
+      <div data-hf-id="hf-sh04" id="shot-04" data-composition-id="shot-04-hyperpersonal" data-composition-src="compositions/shot-04-hyperpersonal.html" data-start="33.344" data-duration="6.246" data-track-index="4"></div>
+      <div data-hf-id="hf-sh05" id="shot-05" data-composition-id="shot-05-connect-apps" data-composition-src="compositions/shot-05-connect-apps.html" data-start="39.59" data-duration="6.223" data-track-index="5"></div>
 
-      <!-- ACT III — yours, the montage, the lockup -->
-      <div data-hf-id="hf-g07v" id="shot-08" data-composition-id="shot-08-yours" data-composition-src="compositions/shot-08-yours.html" data-start="89.536" data-duration="6.293" data-track-index="8"></div>
-      <div data-hf-id="hf-h4v2" id="shot-09" data-composition-id="shot-09-finale-montage" data-composition-src="compositions/shot-09-finale-montage.html" data-start="95.829" data-duration="6.339" data-track-index="9"></div>
-      <div data-hf-id="hf-9zdq" id="shot-10" data-composition-id="shot-10-end-card" data-composition-src="compositions/shot-10-end-card.html" data-start="102.168" data-duration="17.531" data-track-index="10"></div>
+      <!-- ACT III — the mini-apps, one slash at a time -->
+      <div data-hf-id="hf-sh06" id="shot-06" data-composition-id="shot-06-home" data-composition-src="compositions/shot-06-home.html" data-start="45.813" data-duration="6.246" data-track-index="6"></div>
+      <div data-hf-id="hf-sh07" id="shot-07" data-composition-id="shot-07-shop" data-composition-src="compositions/shot-07-shop.html" data-start="52.059" data-duration="6.2" data-track-index="7"></div>
+      <div data-hf-id="hf-sh08" id="shot-08" data-composition-id="shot-08-trade" data-composition-src="compositions/shot-08-trade.html" data-start="58.259" data-duration="6.153" data-track-index="8"></div>
+      <div data-hf-id="hf-sh09" id="shot-09" data-composition-id="shot-09-zap" data-composition-src="compositions/shot-09-zap.html" data-start="64.412" data-duration="6.27" data-track-index="9"></div>
+
+      <!-- ACT IV — make your own -->
+      <div data-hf-id="hf-sh10" id="shot-10" data-composition-id="shot-10-create-plan" data-composition-src="compositions/shot-10-create-plan.html" data-start="70.682" data-duration="7.848" data-track-index="10"></div>
+      <div data-hf-id="hf-sh11" id="shot-11" data-composition-id="shot-11-create-ship" data-composition-src="compositions/shot-11-create-ship.html" data-start="78.53" data-duration="11.006" data-track-index="11"></div>
+
+      <!-- ACT V — yours, the montage, the lockup -->
+      <div data-hf-id="hf-sh12" id="shot-12" data-composition-id="shot-12-yours" data-composition-src="compositions/shot-12-yours.html" data-start="89.536" data-duration="6.293" data-track-index="12"></div>
+      <div data-hf-id="hf-sh13" id="shot-13" data-composition-id="shot-13-montage" data-composition-src="compositions/shot-13-montage.html" data-start="95.829" data-duration="6.339" data-track-index="13"></div>
+      <div data-hf-id="hf-sh14" id="shot-14" data-composition-id="shot-14-end-card" data-composition-src="compositions/shot-14-end-card.html" data-start="102.168" data-duration="17.531" data-track-index="14"></div>
 
       <!-- GRADE — vignette + static grain over the whole film, and the one freeze dim -->
-      <div data-hf-id="hf-syvh" id="grade" class="clip" data-start="0" data-duration="119.699" data-track-index="12">
+      <div data-hf-id="hf-syvh" id="grade" class="clip" data-start="0" data-duration="119.699" data-track-index="16">
         <div data-hf-id="hf-e4a6" class="vig"></div>
         <div data-hf-id="hf-h60x" class="grain"></div>
         <div data-hf-id="hf-frz" class="freeze" id="grade-freeze"></div>

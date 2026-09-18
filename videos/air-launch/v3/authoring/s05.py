@@ -4,7 +4,7 @@ R='s05-root'
 RING1=['gmail.svg','slack.svg','notion.svg','shopify.svg','stripe.svg','github.svg','figma.svg','spotify.svg','drive.svg','calendar.svg']
 RING2=['instagram.svg','x.svg','tiktok.svg','youtube.svg','discord.svg','telegram.svg','whatsapp.svg','reddit.svg']
 RING3=['salesforce.svg','hubspot.svg','jira.svg','asana.svg','quickbooks.svg','square.svg']
-STYLE = P.FONTS + "\n" + P.tokens(R) + """
+STYLE = P.FONTS + "\n" + P.tokens(R) + "\n" + P.fx_css(R) + """
       #s05-root .ring{position:absolute;left:0;top:0;width:1920px;height:1080px}
       #s05-root .lg{position:absolute;left:0;top:0;width:96px;height:96px;border-radius:24px;
         background:rgba(9,15,32,.60);border:1px solid rgba(255,255,255,.15);backdrop-filter:blur(12px);
@@ -24,11 +24,14 @@ def ring(idx, names, start):
                    for i,n in enumerate(names))
 ALL = ring(0,RING1,0)+ring(1,RING2,len(RING1))+ring(2,RING3,len(RING1)+len(RING2))
 BODY = f"""    <div data-hf-id="hf-s05frame" class="frame clip" id="s05-frame" data-layout-allow-overflow="" data-start="0" data-duration="6.223" data-track-index="1">
+      <div data-hf-id="hf-s05stg" class="stage" id="s05-stage">
       <div data-hf-id="hf-s05wa" class="wash"></div>
       <div data-hf-id="hf-s05rg" class="ring" id="s05-ring">{ALL}</div>
       <div data-hf-id="hf-s05sd" class="seed" id="s05-seed"></div>
       <div data-hf-id="hf-s05nm" class="num" id="s05-num">0</div>
       <div data-hf-id="hf-s05cp" class="cap" id="s05-cap">connect your apps — across 1000+ apps.</div>
+      </div>
+      <div data-hf-id="hf-s05hf" class="hitflash" id="s05-hitflash"></div>
     </div>"""
 SCRIPT = f"""      var R1={len(RING1)}, R2={len(RING2)}, R3={len(RING3)};
       var rings=[[R1,645,262,-90],[R2,905,348,18],[R3,1130,198,54]];

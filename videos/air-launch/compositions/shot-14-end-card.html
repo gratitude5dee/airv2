@@ -1,0 +1,267 @@
+<template id="shot-14-end-card-template">
+  <div data-hf-id="hf-s14root" id="s14-root" data-composition-id="shot-14-end-card" data-start="0" data-width="1920" data-height="1080" data-duration="17.531">
+    <style>
+      @font-face{font-family:'Inter';font-weight:400;font-style:normal;font-display:block;src:url('fonts/Inter-400-latin.woff2') format('woff2')}
+      @font-face{font-family:'Inter';font-weight:700;font-style:normal;font-display:block;src:url('fonts/Inter-700-latin.woff2') format('woff2')}
+      @font-face{font-family:'Newsreader';font-weight:200 800;font-style:normal;font-display:block;src:url('fonts/newsreader-latin.woff2') format('woff2')}
+      @font-face{font-family:'Azeret Mono';font-weight:100 900;font-style:normal;font-display:block;src:url('fonts/azeret-mono-latin.woff2') format('woff2')}
+      #s14-root{--ink:#F4EFE6;--ink-dim:rgba(244,239,230,.62);--imsg:#0A84FF;--ok:#30D158;--glass:rgba(255,255,255,.08);--line:rgba(255,255,255,.12);
+        position:relative;width:1920px;height:1080px;overflow:hidden;background:transparent;
+        font-family:'Inter',system-ui,-apple-system,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased}
+      #s14-root *,#s14-root *::before,#s14-root *::after{box-sizing:border-box}
+      #s14-root .frame{position:absolute;inset:0;perspective:1800px}
+      /* parallax planes: the camera proxy moves, the planes follow it by depth */
+      #s14-root .plane{position:absolute;inset:0;transform-style:preserve-3d;will-change:transform}
+      #s14-root .giant{font-family:'Newsreader',Georgia,serif;font-weight:300;letter-spacing:-.035em;line-height:.86;
+        color:var(--ink);opacity:.92;white-space:nowrap;text-shadow:0 3px 26px rgba(3,7,18,.52)}
+      #s14-root .giant .w{display:inline-block;will-change:transform,opacity;transform-style:preserve-3d}
+      #s14-root .wash{position:absolute;inset:0;pointer-events:none;
+        background:radial-gradient(64% 46% at 50% 44%,rgba(4,9,22,.46) 0%,rgba(4,9,22,.20) 56%,rgba(4,9,22,0) 100%)}
+      #s14-root .washL{position:absolute;inset:0;pointer-events:none;
+        background:linear-gradient(100deg,rgba(4,9,22,.52) 0%,rgba(4,9,22,.30) 42%,rgba(4,9,22,0) 72%)}
+      #s14-root .washR{position:absolute;inset:0;pointer-events:none;
+        background:linear-gradient(262deg,rgba(4,9,22,.54) 0%,rgba(4,9,22,.30) 44%,rgba(4,9,22,0) 76%)}
+      #s14-root .cap{font-family:'Newsreader',Georgia,serif;font-weight:400;font-size:56px;line-height:1.08;color:var(--ink);
+        text-shadow:0 3px 24px rgba(3,7,18,.52)}
+      #s14-root .mono{font-family:'Azeret Mono',ui-monospace,monospace;font-weight:400;font-size:25px;letter-spacing:.02em;
+        color:rgba(244,239,230,.80);line-height:1.45;text-shadow:0 2px 16px rgba(3,7,18,.60)}
+      #s14-root .ph{position:absolute;width:402px;height:874px;will-change:transform}
+      #s14-root .ph-body{position:absolute;inset:0;border-radius:56px;background:linear-gradient(160deg,#3a3f4a 0%,#171b22 38%,#0f1218 100%);
+        padding:3px;box-shadow:0 60px 120px rgba(2,6,18,.62),0 12px 30px rgba(2,6,18,.5),inset 0 1px 0 rgba(255,255,255,.16)}
+      #s14-root .ph-screen{position:absolute;inset:3px;border-radius:53px;overflow:hidden;background:#000}
+      #s14-root .ph-island{position:absolute;top:14px;left:50%;margin-left:-63px;width:126px;height:37px;border-radius:19px;background:#000;z-index:6}
+      #s14-root .ph-nav{position:absolute;top:0;left:0;right:0;height:122px;z-index:5;
+        background:rgba(18,18,20,.82);backdrop-filter:blur(24px) saturate(1.3);border-bottom:1px solid rgba(255,255,255,.08);
+        display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:8px}
+      #s14-root .orb{background:url('logos/air-brand.png') center/cover no-repeat;border-radius:50%;flex:0 0 auto}
+      #s14-root .gly{background-position:center;background-repeat:no-repeat;background-size:contain}
+      #s14-root .ph-nav .orb{width:44px;height:44px}
+      #s14-root .ph-nav .who{font-size:13px;font-weight:600;color:#fff;margin-top:3px;letter-spacing:.01em}
+      #s14-root .ph-fade{position:absolute;top:122px;left:0;right:0;height:52px;z-index:4;pointer-events:none;
+        background:linear-gradient(180deg,rgba(0,0,0,.88) 0%,rgba(0,0,0,0) 100%)}
+      #s14-root .ph-home{position:absolute;bottom:9px;left:50%;margin-left:-67px;width:134px;height:5px;border-radius:3px;background:rgba(255,255,255,.34);z-index:6}
+      #s14-root .ph-composer{position:absolute;bottom:26px;left:12px;right:12px;height:44px;border-radius:22px;z-index:5;
+        border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);display:flex;align-items:center;padding:0 14px;overflow:hidden}
+      #s14-root .ph-composer .txt{font-size:17px;color:#fff;white-space:nowrap;overflow:hidden}
+      #s14-root .ph-composer .car{width:2px;height:19px;background:var(--imsg);margin-left:2px;flex:0 0 auto}
+      #s14-root .ph-composer .glow{position:absolute;inset:-1px;border-radius:22px;pointer-events:none;
+        background:linear-gradient(96deg,rgba(10,132,255,.36),rgba(244,239,230,.14) 48%,rgba(10,132,255,.30));opacity:0}
+      /* the thread: a flow column translated by the timeline — never scrollTop */
+      #s14-root .ph-scroll{position:absolute;top:122px;left:0;right:0;bottom:0;overflow:hidden;z-index:3}
+      #s14-root .ph-thread{position:absolute;left:0;right:0;top:0;padding:0 14px;display:flex;flex-direction:column;
+        align-items:stretch;gap:9px;will-change:transform}
+      #s14-root .it{display:flex;width:100%;will-change:transform,opacity}
+      #s14-root .it.sent{justify-content:flex-end}
+      #s14-root .it.recv{justify-content:flex-start}
+      #s14-root .it.sys{justify-content:center}
+      #s14-root .bub{max-width:78%;padding:9px 14px 10px;font-size:19px;line-height:1.28;border-radius:20px;
+        will-change:transform,opacity;transform-origin:100% 100%}
+      #s14-root .sent .bub{background:#0C72D8;color:#fff;border-bottom-right-radius:7px}
+      #s14-root .recv .bub{background:rgba(255,255,255,.14);color:var(--ink);border-bottom-left-radius:7px}
+      #s14-root .it.dim{opacity:.56}
+      #s14-root .sys .bub{background:none;font-family:'Azeret Mono',monospace;font-size:13px;color:rgba(244,239,230,.55);
+        text-align:center;max-width:94%;letter-spacing:.01em;line-height:1.35}
+      #s14-root .dots{display:flex;gap:6px;padding:13px 16px;background:rgba(255,255,255,.14);border-radius:20px;border-bottom-left-radius:7px}
+      #s14-root .dots i{width:8px;height:8px;border-radius:50%;background:rgba(244,239,230,.62);display:block;will-change:transform,opacity}
+      /* owner-only mini-app card — the film shows one owner, so cards only ever appear here */
+      #s14-root .card{position:relative;width:100%;border-radius:22px;border:1px solid var(--line);background:rgba(255,255,255,.08);
+        backdrop-filter:blur(18px) saturate(1.2);overflow:hidden;will-change:transform,opacity;transform-origin:50% 100%}
+      #s14-root .card .hd{display:flex;align-items:center;gap:10px;padding:12px 14px 10px}
+      #s14-root .card .hd .art{width:36px;height:36px;border-radius:10px;flex:0 0 auto;background-size:cover;background-position:center}
+      #s14-root .card .hd .ic{width:36px;height:36px;border-radius:10px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;
+        background:rgba(255,255,255,.10);border:1px solid var(--line)}
+      #s14-root .card .hd .ic .gly{width:20px;height:20px;opacity:.92}
+      #s14-root .card .ti{font-size:17px;font-weight:700;color:#fff;letter-spacing:-.005em}
+      #s14-root .card .sb{font-family:'Azeret Mono',monospace;font-size:13px;color:rgba(244,239,230,.78);margin-top:2px}
+      #s14-root .card .bd{padding:0 14px 12px;font-size:16px;line-height:1.35;color:rgba(244,239,230,.86)}
+      #s14-root .card .row{display:flex;gap:8px;padding:0 14px 13px}
+      #s14-root .btn{flex:1;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;
+        font-size:16px;font-weight:700;letter-spacing:-.005em;will-change:transform}
+      #s14-root .btn.ok{background:#1FA64F;color:#FFFFFF}
+      #s14-root .btn.gh{background:rgba(255,255,255,.07);border:1px solid var(--line);color:rgba(244,239,230,.82)}
+      #s14-root .card .done{display:flex;align-items:center;gap:8px;padding:0 14px 13px;font-size:16px;font-weight:700;color:var(--ok)}
+      #s14-root .card.flip{transform-style:preserve-3d}
+      #s14-root .card .fa{position:relative}
+      #s14-root .card .fb{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center}
+      /* holo: one moving specular line on a landed card, no rainbow */
+      #s14-root .card .spec{position:absolute;inset:0;pointer-events:none;opacity:0;
+        background:linear-gradient(104deg,rgba(255,255,255,0) 40%,rgba(255,255,255,.22) 50%,rgba(255,255,255,0) 60%)}
+      /* the four spectral moments, and nowhere else */
+      #s14-root .spectral{position:absolute;inset:-1px;border-radius:23px;pointer-events:none;opacity:0;padding:1px;
+        background:conic-gradient(from 210deg,#ffd6a5,#fdffb6,#caffbf,#9bf6ff,#bdb2ff,#ffc6ff,#ffd6a5);
+        -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude}
+      #s14-root .ph-back{position:absolute;inset:0;border-radius:56px;overflow:hidden;background:#07070A;
+        border:3px solid #23262d;backface-visibility:hidden;z-index:7;
+        box-shadow:0 60px 120px rgba(2,6,18,.62),inset 0 1px 0 rgba(255,255,255,.14)}
+      /* --- camera: one stage every layer sits in, so a punch-in is a real move --- */
+      #s14-root .stage{position:absolute;inset:0;will-change:transform;transform-origin:50% 50%}
+      /* --- Chromatic glow (Arlan Vault): the word is bloomed at three radii and split into
+             a warm and a cool copy drifting opposite ways; the gap is the rainbow edge --- */
+      #s14-root .cg{position:relative;display:inline-block}
+      #s14-root .cg .cg-l{position:absolute;left:0;top:0;width:100%;white-space:nowrap;
+        will-change:transform,opacity;pointer-events:none}
+      #s14-root .cg .cg-warm{color:#FF8A4C;mix-blend-mode:screen;filter:blur(.6px)}
+      #s14-root .cg .cg-cool{color:#4CC3FF;mix-blend-mode:screen;filter:blur(.6px)}
+      #s14-root .cg .cg-b1{color:#FFF6E8;filter:blur(7px);opacity:.55;mix-blend-mode:screen}
+      #s14-root .cg .cg-b2{color:#FFF0D8;filter:blur(22px);opacity:.42;mix-blend-mode:screen}
+      #s14-root .cg .cg-b3{color:#FFE9C4;filter:blur(54px);opacity:.34;mix-blend-mode:screen}
+      #s14-root .cg .cg-core{position:relative}
+      /* --- The art of color depth (Arlan Vault): a button as a real object — gradient body,
+             inset bevel and glow, a brighter layer, and a bar of light along the top --- */
+      #s14-root .btn3{position:relative;overflow:hidden;isolation:isolate}
+      #s14-root .btn3::before{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+        background:linear-gradient(180deg,rgba(255,255,255,.34) 0%,rgba(255,255,255,.06) 44%,rgba(0,0,0,.18) 100%)}
+      #s14-root .btn3::after{content:'';position:absolute;left:8%;right:8%;top:2px;height:36%;border-radius:999px;
+        pointer-events:none;background:linear-gradient(180deg,rgba(255,255,255,.52),rgba(255,255,255,0));
+        filter:blur(.4px)}
+      #s14-root .btn3.ok3{background:linear-gradient(180deg,#34B767 0%,#1C8F4C 52%,#0F7038 100%);color:#FFFFFF;
+        box-shadow:inset 0 1px 0 rgba(255,255,255,.55),inset 0 -2px 6px rgba(0,40,14,.45),
+                   0 8px 20px rgba(9,90,40,.40),0 1px 0 rgba(255,255,255,.12)}
+      #s14-root .btn3.gh3{background:linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,.04));
+        color:rgba(244,239,230,.88);box-shadow:inset 0 1px 0 rgba(255,255,255,.28),inset 0 -2px 5px rgba(0,0,0,.35)}
+      /* --- Amo (Arlan Vault): the pill's word puffs up into glossy dimensional letters --- */
+      #s14-root .puff{display:inline-block;position:relative;transform-style:preserve-3d;will-change:transform}
+      #s14-root .puff .pl{display:inline-block;will-change:transform,text-shadow,letter-spacing}
+      /* --- Arcade pixel (Arlan Vault): drawn tiny and blown up, so each pixel is a big square --- */
+      #s14-root .px{display:block;image-rendering:pixelated}
+      /* --- Ghosty reveal (Arlan Vault): images bleed in through a cloudy edge --- */
+      #s14-root .ghosty{-webkit-mask-image:radial-gradient(120% 120% at 50% 50%,#000 0%,#000 40%,transparent 72%);
+        mask-image:radial-gradient(120% 120% at 50% 50%,#000 0%,#000 40%,transparent 72%);
+        -webkit-mask-size:260% 260%;mask-size:260% 260%;-webkit-mask-position:50% 50%;mask-position:50% 50%}
+      /* --- beat punctuation: a flash plate and a chromatic pulse over the whole frame --- */
+      #s14-root .hitflash{position:absolute;inset:0;pointer-events:none;background:#EAF2FF;opacity:0;
+        mix-blend-mode:screen}
+      #s14-root .hero-card{position:absolute;will-change:transform,opacity;transform-origin:50% 50%}
+      #s14-root .mark{position:relative;width:880px;height:217.6px;overflow:hidden;will-change:transform,opacity}
+      #s14-root .mark img{position:absolute;left:-44.7px;top:-194.9px;width:987.5px;height:auto;display:block;
+        filter:brightness(1.22) contrast(1.06) drop-shadow(0 0 18px rgba(150,196,255,.34))}
+      #s14-root .mark .sweep{position:absolute;inset:0;pointer-events:none;mix-blend-mode:screen;opacity:0;
+        background:linear-gradient(104deg,rgba(255,255,255,0) 38%,rgba(214,236,255,.62) 50%,rgba(255,255,255,0) 62%)}
+      #s14-root .ph{left:1151px;top:365px}
+      #s14-root .cta{position:absolute;left:150px;top:378px;width:1100px}
+      #s14-root .ctal{font-family:'Newsreader',Georgia,serif;font-weight:300;font-size:148px;letter-spacing:-.035em;
+        line-height:.94;color:var(--ink);text-shadow:0 4px 34px rgba(3,7,18,.55)}
+      /* the CTA pill: a real object (color depth), whose word puffs up (Amo) */
+      #s14-root .ctapill{display:inline-flex;align-items:center;gap:18px;margin-top:44px;padding:26px 46px;
+        border-radius:999px;background:linear-gradient(180deg,#2E86EA 0%,#1667C8 54%,#0C4C9E 100%);
+        box-shadow:inset 0 2px 0 rgba(255,255,255,.55),inset 0 -3px 10px rgba(2,24,62,.55),
+                   0 22px 48px rgba(6,54,124,.5);will-change:transform}
+      #s14-root .ctapill .puff{font-family:'Newsreader',Georgia,serif;font-weight:300;font-size:56px;
+        letter-spacing:-.01em;color:#FFFFFF}
+      #s14-root .ctapill .pl{text-shadow:0 1px 0 rgba(255,255,255,.5)}
+      #s14-root .ctapill .arrow{font-family:'Azeret Mono',monospace;font-size:40px;color:rgba(255,255,255,.86)}
+      #s14-root .url{position:relative;display:inline-block;margin-top:38px;font-family:'Azeret Mono',monospace;
+        font-size:46px;letter-spacing:.01em;color:var(--ink);text-shadow:0 2px 18px rgba(3,7,18,.6)}
+      #s14-root .url .ul{position:absolute;left:0;right:0;bottom:-13px;height:2px;background:var(--ink);
+        transform-origin:0% 50%;will-change:transform}
+      #s14-root .lock{position:absolute;left:520px;top:326px;width:880px;text-align:center}
+      #s14-root .airby{font-family:'Newsreader',Georgia,serif;font-weight:300;font-size:64px;letter-spacing:.12em;
+        color:var(--ink);margin-bottom:26px;text-shadow:0 3px 22px rgba(3,7,18,.5)}
+      #s14-root .wall{position:absolute;left:0;right:0;top:700px;text-align:center}
+      #s14-root .wl{font-family:'Azeret Mono',monospace;font-size:20px;letter-spacing:.10em;
+        color:#F4EFE6;margin-bottom:26px;text-shadow:0 2px 14px rgba(3,7,18,.7)}
+      #s14-root .wr{display:flex;align-items:center;justify-content:center;gap:26px;margin-bottom:18px}
+      #s14-root .wt{width:150px;height:74px;border-radius:16px;background:rgba(6,12,28,.44);
+        border:1px solid rgba(255,255,255,.13);backdrop-filter:blur(12px);display:flex;align-items:center;
+        justify-content:center;will-change:transform,opacity}
+      #s14-root .wt i{display:block;width:84px;height:38px;background-position:center;background-repeat:no-repeat;
+        background-size:contain;filter:brightness(0) invert(1);opacity:.88}
+      /* the partner wall sits on the brightest sky in the film: it gets its own ground */
+      #s14-root .footscrim{position:absolute;inset:0;pointer-events:none;
+        background:linear-gradient(0deg,rgba(4,9,22,.68) 0%,rgba(4,9,22,.34) 26%,rgba(4,9,22,0) 48%)}
+      #s14-root .blk{position:absolute;inset:0;background:#000;opacity:0}
+    </style>
+
+    <div data-hf-id="hf-s14frame" class="frame clip" id="s14-frame" data-layout-allow-overflow="" data-start="0" data-duration="17.531" data-track-index="1">
+      <div data-hf-id="hf-s14wa" class="washL"></div>
+      <div data-hf-id="hf-s14fs" class="footscrim"></div>
+      <div data-hf-id="hf-s14ct" class="cta" id="s14-cta">
+        <div data-hf-id="hf-s14c1" class="ctal">Text your agent.</div>
+        <div data-hf-id="hf-s14pw"><span data-hf-id="hf-s14cp" class="ctapill btn3" id="s14-ctapill"><span data-hf-id="hf-s14pf0" class="puff"><span data-hf-id="hf-s14pl0" class="pl" id="s14-pl0">a</span></span><span data-hf-id="hf-s14pf1" class="puff"><span data-hf-id="hf-s14pl1" class="pl" id="s14-pl1">i</span></span><span data-hf-id="hf-s14pf2" class="puff"><span data-hf-id="hf-s14pl2" class="pl" id="s14-pl2">r</span></span><span data-hf-id="hf-s14pf3" class="puff"><span data-hf-id="hf-s14pl3" class="pl" id="s14-pl3">.</span></span><span data-hf-id="hf-s14pf4" class="puff"><span data-hf-id="hf-s14pl4" class="pl" id="s14-pl4">w</span></span><span data-hf-id="hf-s14pf5" class="puff"><span data-hf-id="hf-s14pl5" class="pl" id="s14-pl5">z</span></span><span data-hf-id="hf-s14pf6" class="puff"><span data-hf-id="hf-s14pl6" class="pl" id="s14-pl6">r</span></span><span data-hf-id="hf-s14pf7" class="puff"><span data-hf-id="hf-s14pl7" class="pl" id="s14-pl7">d</span></span><span data-hf-id="hf-s14pf8" class="puff"><span data-hf-id="hf-s14pl8" class="pl" id="s14-pl8">.</span></span><span data-hf-id="hf-s14pf9" class="puff"><span data-hf-id="hf-s14pl9" class="pl" id="s14-pl9">t</span></span><span data-hf-id="hf-s14pf10" class="puff"><span data-hf-id="hf-s14pl10" class="pl" id="s14-pl10">e</span></span><span data-hf-id="hf-s14pf11" class="puff"><span data-hf-id="hf-s14pl11" class="pl" id="s14-pl11">c</span></span><span data-hf-id="hf-s14pf12" class="puff"><span data-hf-id="hf-s14pl12" class="pl" id="s14-pl12">h</span></span><span data-hf-id="hf-s14ar" class="arrow">&rarr;</span></span></div>
+        <div data-hf-id="hf-s14uw"><span data-hf-id="hf-s14ur" class="url" id="s14-url">text it. it answers.<span data-hf-id="hf-s14ul" class="ul" id="s14-ul"></span></span></div>
+      </div>
+      <div data-hf-id="hf-s14ph" class="ph" id="s14-ph">
+        <div data-hf-id="hf-s14phb" class="ph-body" id="s14-phb">
+          <div data-hf-id="hf-s14scr" class="ph-screen" id="s14-screen">
+            <div data-hf-id="hf-s14scl" class="ph-scroll" id="s14-scroll"><div data-hf-id="hf-s14thr" class="ph-thread" id="s14-thread"></div></div>
+            <div data-hf-id="hf-s14fade" class="ph-fade"></div>
+            <div data-hf-id="hf-s14nav" class="ph-nav" data-layout-allow-overlap="" data-layout-allow-occlusion=""><div data-hf-id="hf-s14navi" class="orb"></div><div data-hf-id="hf-s14navw" class="who">air</div></div>
+            <div data-hf-id="hf-s14isl" class="ph-island"></div>
+            <div data-hf-id="hf-s14cmp" class="ph-composer" id="s14-composer"><div data-hf-id="hf-s14cmpg" class="glow" id="s14-composer-glow"></div><div data-hf-id="hf-s14cmpt" class="txt" id="s14-composer-txt"></div><div data-hf-id="hf-s14cmpc" class="car" id="s14-composer-caret"></div></div>
+            <div data-hf-id="hf-s14hb" class="ph-home"></div>
+          </div>
+        </div>
+      </div>
+      <div data-hf-id="hf-s14lk" class="lock" id="s14-lock">
+        <div data-hf-id="hf-s14ab" class="airby" id="s14-airby">air by</div>
+        <div data-hf-id="hf-s14-markm" class="mark" id="s14-mark"><img data-hf-id="hf-s14-marki" src="logos/wzrdtech-chrome.png" alt="WZRD.tech"><div data-hf-id="hf-s14-marks" class="sweep" id="s14-mark-sweep"></div></div>
+      </div>
+      <div data-hf-id="hf-s14wl" class="wall" id="s14-wall">
+        <div data-hf-id="hf-s14wt" class="wl" id="s14-wline">BUILT ON ZAPS BY WZRD.TECH, IN PARTNERSHIP WITH</div>
+        <div data-hf-id="hf-s14r0" class="wr" id="s14-r0"><div data-hf-id="hf-s14t00" class="wt" id="s14-t00"><i data-hf-id="hf-s14ti00" style="background-image:url(&quot;logos/onairos.svg&quot;)"></i></div><div data-hf-id="hf-s14t01" class="wt" id="s14-t01"><i data-hf-id="hf-s14ti01" style="background-image:url(&quot;logos/coinbase.svg&quot;)"></i></div><div data-hf-id="hf-s14t02" class="wt" id="s14-t02"><i data-hf-id="hf-s14ti02" style="background-image:url(&quot;logos/stripe.svg&quot;)"></i></div><div data-hf-id="hf-s14t03" class="wt" id="s14-t03"><i data-hf-id="hf-s14ti03" style="background-image:url(&quot;logos/openai.svg&quot;)"></i></div><div data-hf-id="hf-s14t04" class="wt" id="s14-t04"><i data-hf-id="hf-s14ti04" style="background-image:url(&quot;logos/anthropic.svg&quot;)"></i></div><div data-hf-id="hf-s14t05" class="wt" id="s14-t05"><i data-hf-id="hf-s14ti05" style="background-image:url(&quot;logos/claude.svg&quot;)"></i></div></div><div data-hf-id="hf-s14r1" class="wr" id="s14-r1"><div data-hf-id="hf-s14t10" class="wt" id="s14-t10"><i data-hf-id="hf-s14ti10" style="background-image:url(&quot;logos/cognition.svg&quot;)"></i></div><div data-hf-id="hf-s14t11" class="wt" id="s14-t11"><i data-hf-id="hf-s14ti11" style="background-image:url(&quot;logos/gmicloud.svg&quot;)"></i></div><div data-hf-id="hf-s14t12" class="wt" id="s14-t12"><i data-hf-id="hf-s14ti12" style="background-image:url(&quot;logos/tenkicloud.svg&quot;)"></i></div><div data-hf-id="hf-s14t13" class="wt" id="s14-t13"><i data-hf-id="hf-s14ti13" style="background-image:url(&quot;logos/omarchy.svg&quot;)"></i></div><div data-hf-id="hf-s14t14" class="wt" id="s14-t14"><i data-hf-id="hf-s14ti14" style="background-image:url(&quot;logos/vercel.svg&quot;)"></i></div><div data-hf-id="hf-s14t15" class="wt" id="s14-t15"><i data-hf-id="hf-s14ti15" style="background-image:url(&quot;logos/github.svg&quot;)"></i></div></div>
+      </div>
+      <div data-hf-id="hf-s14bk" class="blk" id="s14-blk"></div>
+    </div>
+
+    <script src="vendor/gsap.min.js"></script>
+    <script>
+    (function(){
+      var root=document.querySelector('[data-composition-id="shot-14-end-card"]');
+      var $=function(s){return root.querySelector(s);};
+      var $$=function(s){return Array.prototype.slice.call(root.querySelectorAll(s));};
+      var tl=gsap.timeline({paused:true,defaults:{immediateRender:false}});
+      var cta=$('#s14-cta'), url=$('#s14-url'), ul=$('#s14-ul'), ph=$('#s14-ph');
+      var lock=$('#s14-lock'), airby=$('#s14-airby'), mark=$('#s14-mark'), sweep=$('#s14-mark-sweep');
+      var wline=$('#s14-wline'), tiles=$$('.wt');
+      var pill=$('#s14-ctapill'), pls=$$('#s14-ctapill .pl');
+      var ctal=$('.ctal');
+
+      gsap.set(ph,{scale:.42,rotationY:-14,rotationX:5,transformOrigin:'50% 50%'});
+      gsap.set(ctal,{y:26,autoAlpha:0});
+      gsap.set(url,{y:18,autoAlpha:0});
+      gsap.set(pill,{y:26,autoAlpha:0,scale:.94,transformOrigin:'50% 50%'});
+      gsap.set(pls,{transformOrigin:'50% 100%'});
+      gsap.set(ul,{scaleX:0});
+      gsap.set(lock,{autoAlpha:0,y:170});
+      gsap.set(airby,{autoAlpha:0,y:18});
+      gsap.set(sweep,{xPercent:-120,opacity:0});
+      gsap.set(wline,{autoAlpha:0,y:14});
+      gsap.set(tiles,{autoAlpha:0,y:34,transformOrigin:'50% 50%'});
+      gsap.set('#s14-blk',{opacity:0});
+
+      // 102.168 — the ask, in the film's own voice
+      tl.to(ctal,{y:0,autoAlpha:1,duration:.78,ease:'expo.out'},0);
+      // 103.770 — the address arrives as a thing you could press, and its letters puff up
+      // one at a time, the way the Amo pill does on hover.
+      tl.to(pill,{y:0,autoAlpha:1,scale:1,duration:.62,ease:'expo.out'},1.602);
+      pls.forEach(function(l,i){
+        tl.to(l,{scaleY:1.16,scaleX:1.06,y:-5,duration:.10,ease:'power2.out'},1.70+i*.028);
+        tl.to(l,{scaleY:1,scaleX:1,y:0,duration:.34,ease:'back.out(2.2)'},1.80+i*.028);
+      });
+      tl.to(url,{y:0,autoAlpha:1,duration:.56,ease:'expo.out'},2.30);
+      tl.to(ul,{scaleX:1,duration:.36,ease:'power2.out'},2.44);
+      // 104.606 -> 105.535 — THE FREEZE. The track stops; so does every tween in the film.
+      // Nothing is scheduled in this window on purpose.
+      // 105.535 — the release kick lifts the CTA out and brings the mark up
+      tl.to([cta,ph],{y:-120,autoAlpha:0,duration:.30,ease:'power4.in'},3.367);
+      tl.to(lock,{autoAlpha:1,y:0,duration:.90,ease:'expo.out'},3.42);
+      // 106.812 / 107.950 — the partner wall rises on the last two kicks
+      tl.to(wline,{autoAlpha:1,y:0,duration:.44,ease:'expo.out'},4.50);
+      $$('#s14-r0 .wt').forEach(function(t,i){ tl.to(t,{autoAlpha:1,y:0,duration:.50,ease:'expo.out'},4.644+i*.035); });
+      $$('#s14-r1 .wt').forEach(function(t,i){ tl.to(t,{autoAlpha:1,y:0,duration:.50,ease:'expo.out'},5.782+i*.035); });
+      // 108.669 — the lockup the brand film ends on, and the last spectral moment of four
+      tl.to(airby,{autoAlpha:1,y:0,duration:.66,ease:'expo.out'},6.501);
+      tl.fromTo(sweep,{xPercent:-120,opacity:.9},{xPercent:120,opacity:0,duration:.36,ease:'power2.inOut'},6.60);
+      // 111.293 — the last tile settles and the frame is done moving
+      tl.to(lock,{y:-8,duration:2.2,ease:'sine.inOut'},6.70);
+      tl.to('#s14-wall',{y:-6,duration:2.2,ease:'sine.inOut'},6.90);
+      // 113.755 -> silence -> black
+      tl.to('#s14-blk',{opacity:1,duration:4.36,ease:'power1.in'},12.832);
+      window.__timelines=window.__timelines||{};
+      window.__timelines['shot-14-end-card']=tl;
+      var q=new URLSearchParams(location.search);
+      if(q.has('t')){tl.seek(parseFloat(q.get('t'))||0);}else if(q.get('dev')==='1'){tl.play();}
+    })();
+    </script>
+  </div>
+</template>

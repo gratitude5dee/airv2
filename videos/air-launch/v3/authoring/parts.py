@@ -215,7 +215,7 @@ HEAD = """<template id="%ID%-template">
       var root=document.querySelector('[data-composition-id="%ID%"]');
       var $=function(s){return root.querySelector(s);};
       var $$=function(s){return Array.prototype.slice.call(root.querySelectorAll(s));};
-      var tl=gsap.timeline({paused:true});
+      var tl=gsap.timeline({paused:true,defaults:{immediateRender:false}});
 %SCRIPT%
       window.__timelines=window.__timelines||{};
       window.__timelines['%ID%']=tl;
@@ -241,3 +241,148 @@ def inline_glyph(name, cls, pid, stroke=1.6):
     inner = inner.replace('stroke-width="1.6"', f'stroke-width="{stroke}"')
     inner = _re.sub(r'(<(?:path|rect|circle|line|polyline|ellipse)\b)', r'\1 class="gs"', inner)
     return f'<svg data-hf-id="hf-{pid}" id="{pid}" class="{cls}" viewBox="0 0 24 24" aria-hidden="true">{inner}</svg>'
+
+# ======================================================================================
+# v3.1 — the launch-film kit. Camera, beat punctuation, and the Arlan Vault effects
+# re-authored for linear time. Every one of these is deterministic and seek-safe.
+# ======================================================================================
+
+def fx_css(root):
+    return f"""      /* --- camera: one stage every layer sits in, so a punch-in is a real move --- */
+      #{root} .stage{{position:absolute;inset:0;will-change:transform;transform-origin:50% 50%}}
+      /* --- Chromatic glow (Arlan Vault): the word is bloomed at three radii and split into
+             a warm and a cool copy drifting opposite ways; the gap is the rainbow edge --- */
+      #{root} .cg{{position:relative;display:inline-block}}
+      #{root} .cg .cg-l{{position:absolute;left:0;top:0;width:100%;white-space:nowrap;
+        will-change:transform,opacity;pointer-events:none}}
+      #{root} .cg .cg-warm{{color:#FF8A4C;mix-blend-mode:screen;filter:blur(.6px)}}
+      #{root} .cg .cg-cool{{color:#4CC3FF;mix-blend-mode:screen;filter:blur(.6px)}}
+      #{root} .cg .cg-b1{{color:#FFF6E8;filter:blur(7px);opacity:.55;mix-blend-mode:screen}}
+      #{root} .cg .cg-b2{{color:#FFF0D8;filter:blur(22px);opacity:.42;mix-blend-mode:screen}}
+      #{root} .cg .cg-b3{{color:#FFE9C4;filter:blur(54px);opacity:.34;mix-blend-mode:screen}}
+      #{root} .cg .cg-core{{position:relative}}
+      /* --- The art of color depth (Arlan Vault): a button as a real object — gradient body,
+             inset bevel and glow, a brighter layer, and a bar of light along the top --- */
+      #{root} .btn3{{position:relative;overflow:hidden;isolation:isolate}}
+      #{root} .btn3::before{{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+        background:linear-gradient(180deg,rgba(255,255,255,.34) 0%,rgba(255,255,255,.06) 44%,rgba(0,0,0,.18) 100%)}}
+      #{root} .btn3::after{{content:'';position:absolute;left:8%;right:8%;top:2px;height:36%;border-radius:999px;
+        pointer-events:none;background:linear-gradient(180deg,rgba(255,255,255,.52),rgba(255,255,255,0));
+        filter:blur(.4px)}}
+      #{root} .btn3.ok3{{background:linear-gradient(180deg,#34B767 0%,#1C8F4C 52%,#0F7038 100%);color:#FFFFFF;
+        box-shadow:inset 0 1px 0 rgba(255,255,255,.55),inset 0 -2px 6px rgba(0,40,14,.45),
+                   0 8px 20px rgba(9,90,40,.40),0 1px 0 rgba(255,255,255,.12)}}
+      #{root} .btn3.gh3{{background:linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,.04));
+        color:rgba(244,239,230,.88);box-shadow:inset 0 1px 0 rgba(255,255,255,.28),inset 0 -2px 5px rgba(0,0,0,.35)}}
+      /* --- Amo (Arlan Vault): the pill's word puffs up into glossy dimensional letters --- */
+      #{root} .puff{{display:inline-block;position:relative;transform-style:preserve-3d;will-change:transform}}
+      #{root} .puff .pl{{display:inline-block;will-change:transform,text-shadow,letter-spacing}}
+      /* --- Arcade pixel (Arlan Vault): drawn tiny and blown up, so each pixel is a big square --- */
+      #{root} .px{{display:block;image-rendering:pixelated}}
+      /* --- Ghosty reveal (Arlan Vault): images bleed in through a cloudy edge --- */
+      #{root} .ghosty{{-webkit-mask-image:radial-gradient(120% 120% at 50% 50%,#000 0%,#000 40%,transparent 72%);
+        mask-image:radial-gradient(120% 120% at 50% 50%,#000 0%,#000 40%,transparent 72%);
+        -webkit-mask-size:260% 260%;mask-size:260% 260%;-webkit-mask-position:50% 50%;mask-position:50% 50%}}
+      /* --- beat punctuation: a flash plate and a chromatic pulse over the whole frame --- */
+      #{root} .hitflash{{position:absolute;inset:0;pointer-events:none;background:#EAF2FF;opacity:0;
+        mix-blend-mode:screen}}
+      #{root} .hero-card{{position:absolute;will-change:transform,opacity;transform-origin:50% 50%}}"""
+
+# One chromatic-glow word: bloom stack + warm/cool split + crisp core.
+def cg(pid, text, cls=""):
+    layers = "".join(
+        f'<span data-hf-id="hf-{pid}{k}" class="cg-l cg-{k}" id="{pid}-{k}" aria-hidden="true" '
+        f'data-layout-allow-overlap="" data-layout-allow-occlusion="" data-layout-ignore="">{text}</span>'
+        for k in ("b3","b2","b1","warm","cool"))
+    return (f'<span data-hf-id="hf-{pid}" class="cg {cls}" id="{pid}">{layers}'
+            f'<span data-hf-id="hf-{pid}c" class="cg-core" id="{pid}-core" '
+            f'data-layout-allow-overlap="" data-layout-allow-occlusion="">{text}</span></span>')
+
+FX_JS = """
+      // ---- camera: punch in and out on the beat, one transform on one stage ----
+      function cam(tl, stage, t, o){
+        o=o||{};
+        tl.to(stage,{scale:o.scale!=null?o.scale:1, x:o.x||0, y:o.y||0,
+          rotation:o.rot||0, duration:o.d||.6, ease:o.e||'expo.out'}, t);
+      }
+      // ---- a hit: the frame answers the transient. Scale pop, optional flash, optional shake.
+      function hit(tl, stage, t, o){
+        o=o||{};
+        var s=o.base!=null?o.base:1, amt=o.amt!=null?o.amt:.018;
+        tl.to(stage,{scale:s+amt,duration:.055,ease:'power2.out'},t);
+        tl.to(stage,{scale:s,duration:.30,ease:'power2.out'},t+.055);
+        if(o.flash){ tl.fromTo(o.flash,{opacity:o.flashAmt||.22},{opacity:0,duration:o.flashD||.20,ease:'power2.out'},t); }
+        if(o.shake){
+          var a=o.shake;
+          tl.to(stage,{x:'+='+a,duration:.033,ease:'none'},t);
+          tl.to(stage,{x:'-='+(a*2),duration:.033,ease:'none'},t+.033);
+          tl.to(stage,{x:'+='+a,duration:.033,ease:'none'},t+.066);
+        }
+      }
+      // ---- chromatic glow: the split opens on a transient and settles back ----
+      function cgPulse(tl, id, t, amt, dur){
+        amt=amt||16; dur=dur||.9;
+        var w=document.getElementById(id+'-warm'), c=document.getElementById(id+'-cool');
+        tl.to(w,{x:-amt,y:-amt*.22,duration:.09,ease:'power2.out'},t);
+        tl.to(c,{x:amt,y:amt*.22,duration:.09,ease:'power2.out'},t);
+        tl.to(w,{x:-amt*.18,y:0,duration:dur,ease:'power3.out'},t+.09);
+        tl.to(c,{x:amt*.18,y:0,duration:dur,ease:'power3.out'},t+.09);
+      }
+      function cgSet(id, amt){
+        var w=document.getElementById(id+'-warm'), c=document.getElementById(id+'-cool');
+        gsap.set(w,{x:-amt,y:0}); gsap.set(c,{x:amt,y:0});
+      }
+      // ---- Arcade pixel: draw the word tiny on a canvas, blow it up, and let the block size
+      //      fall to 1 so the letters resolve out of the grid. No pixel grid is ever drawn.
+      function pixelWord(canvas, text, font, color){
+        var W=canvas.width, H=canvas.height, ctx=canvas.getContext('2d');
+        return function(block){
+          block=Math.max(1,Math.round(block));
+          var w=Math.max(1,Math.round(W/block)), h=Math.max(1,Math.round(H/block));
+          var off=pixelWord._o||(pixelWord._o=document.createElement('canvas'));
+          off.width=w; off.height=h;
+          var octx=off.getContext('2d');
+          octx.clearRect(0,0,w,h);
+          octx.fillStyle=color; octx.textAlign='center'; octx.textBaseline='middle';
+          octx.font=font.replace(/(\\d+)px/, function(m,n){ return Math.max(1,Math.round(n/block))+'px'; });
+          octx.fillText(text, w/2, h/2);
+          ctx.clearRect(0,0,W,H);
+          ctx.imageSmoothingEnabled=false;
+          ctx.drawImage(off,0,0,w,h,0,0,W,H);
+        };
+      }
+      // ---- a card lifts out of the phone and takes the frame ----
+      function takeover(tl, el, t, from, to){
+        tl.fromTo(el,{x:from.x,y:from.y,scale:from.s,autoAlpha:0,rotationX:10},
+                     {x:to.x,y:to.y,scale:to.s,autoAlpha:1,rotationX:0,duration:to.d||.62,ease:'expo.out'},t);
+      }
+"""
+
+# --- The typer (Arlan Vault): a wave crosses the line and each letter flickers through a
+# filled pill and a highlight before landing on plain text. Adjacent letters in the same
+# state read as one long rounded bar.
+def typer(pid, text):
+    out=[]
+    for i,ch in enumerate(text):
+        c = '&nbsp;' if ch == ' ' else (ch if ch not in '<>&' else {'<':'&lt;','>':'&gt;','&':'&amp;'}[ch])
+        out.append(f'<span data-hf-id="hf-{pid}{i}" class="ty" id="{pid}-{i}">{c}</span>')
+    return f'<span data-hf-id="hf-{pid}" class="typer" id="{pid}">' + "".join(out) + '</span>'
+
+TYPER_CSS = """      #%R% .typer .ty{display:inline-block;border-radius:5px;padding:1px 0;
+        background:rgba(244,239,230,0);color:inherit;will-change:background-color,color,transform}"""
+
+TYPER_JS = """
+      // the wave: each letter is a pill, then a highlight, then plain text
+      function typerWave(tl, pid, t, per, dur){
+        per=per||.026; dur=dur||.42;
+        var n=0, el;
+        while((el=document.getElementById(pid+'-'+n))){
+          var at=t+n*per;
+          tl.to(el,{backgroundColor:'rgba(244,239,230,0.92)',color:'rgba(8,14,30,1)',duration:.001},at);
+          tl.to(el,{backgroundColor:'rgba(244,239,230,0.28)',color:'rgba(244,239,230,1)',duration:.09,ease:'none'},at+.10);
+          tl.to(el,{backgroundColor:'rgba(244,239,230,0)',duration:.18,ease:'power2.out'},at+.20);
+          n++;
+        }
+        return t+n*per+dur;
+      }
+"""

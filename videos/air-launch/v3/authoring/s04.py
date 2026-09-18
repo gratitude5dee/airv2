@@ -3,7 +3,7 @@ import parts as P
 R='s04-root'
 TILES=[('spotify.svg','listening'),('strava.svg','training'),('netflix.svg','watching'),('notion.svg','notes'),
        ('youtube.svg','watching'),('duolingo.svg','learning'),('peloton.svg','training'),('calendar.svg','calendar')]
-STYLE = P.FONTS + "\n" + P.tokens(R) + """
+STYLE = P.FONTS + "\n" + P.tokens(R) + "\n" + P.fx_css(R) + """
       #s04-root .hub{position:absolute;left:760px;top:330px;width:400px;text-align:center;will-change:transform,opacity}
       #s04-root .hub .av{width:190px;height:190px;border-radius:50%;margin:0 auto;display:block;
         background:url('logos/onairos-avatar.png') center/cover no-repeat;
@@ -21,14 +21,26 @@ tiles="".join(f'<div data-hf-id="hf-s04t{i}" class="tile" id="s04-t{i}"><div dat
                f'<div data-hf-id="hf-s04g{i}" class="lg" style="background-image:url(&quot;logos/{f}&quot;)"></div></div>'
                f'<div data-hf-id="hf-s04l{i}" class="lb">{l}</div></div>' for i,(f,l) in enumerate(TILES))
 BODY = f"""    <div data-hf-id="hf-s04frame" class="frame clip" id="s04-frame" data-layout-allow-overflow="" data-start="0" data-duration="6.246" data-track-index="1">
+      <div data-hf-id="hf-s04stg" class="stage" id="s04-stage">
       <div data-hf-id="hf-s04wa" class="wash"></div>
       <div data-hf-id="hf-s04ts" class="plane" id="s04-tiles">{tiles}</div>
       <div data-hf-id="hf-s04hb" class="hub" id="s04-hub"><div data-hf-id="hf-s04av" class="av"></div>
         <div data-hf-id="hf-s04nm" class="nm">ONAIROS PERSONA</div></div>
       <div data-hf-id="hf-s04cp" class="cap" id="s04-cap">hyperpersonalization.</div>
       <div data-hf-id="hf-s04fl" class="flash" id="s04-flash"></div>
+      </div>
+      <div data-hf-id="hf-s04hf" class="hitflash" id="s04-hitflash"></div>
     </div>"""
-SCRIPT = """      var tiles=[0,1,2,3,4,5,6,7].map(function(i){return $('#s04-t'+i);});
+SCRIPT = P.FX_JS + """
+      var stage=$('#s04-stage'), hf=$('#s04-hitflash');
+      gsap.set(hf,{opacity:0});
+      gsap.set(stage,{scale:1.0,transformOrigin:'50% 50%'});
+      hit(tl,stage,0.0,{amt:.028});
+      hit(tl,stage,1.556,{amt:.016});
+      hit(tl,stage,3.135,{amt:.016});
+      hit(tl,stage,4.714,{amt:.016});
+      cam(tl,stage,0.10,{scale:1.035,d:5.8,e:'none'});
+      var tiles=[0,1,2,3,4,5,6,7].map(function(i){return $('#s04-t'+i);});
       var CX=960, CY=470, RX=645, RY=238, N=8;
       // Depth is read off sin(angle): tiles behind the persona shrink, dim and blur; tiles in
       // front pass over it. The ellipse is fixed, so every seek lands on the same pose.

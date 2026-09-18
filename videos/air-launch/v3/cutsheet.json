@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 3.1,
   "project": "air-launch",
   "track": "assets/bgm.mp3 (vstar)",
   "duration_sec": 119.699,
@@ -38,9 +38,19 @@
     33.344,
     39.59,
     45.813,
+    48.901,
+    52.059,
+    58.259,
+    61.301,
+    64.412,
+    66.757,
     70.682,
+    78.53,
+    83.244,
+    87.957,
     89.536,
     95.829,
+    100.589,
     102.168,
     104.606,
     105.535,
@@ -60,13 +70,13 @@
   "shots": [
     {
       "id": "shot-01-cold-open",
-      "title": "Cold open \u00b7 night sky, WZRD mark, four notifications",
+      "title": "Cold open \u00b7 the name resolves out of pixels",
       "track": 1,
       "start": 0.0,
       "end": 10.17,
       "duration": 10.17,
       "bars": 6.44,
-      "mechanism": "Sky brightens one stop per kick; four iMessage banners stack on the four-kick burst; collapse into one bubble on the SURGE.",
+      "mechanism": "Black, one delivered dot, then \"air\" resolving from an arcade-pixel canvas with a chromatic bloom; the chrome mark rises under it; four notification banners on the four accented hits; collapse to one bubble on the SURGE.",
       "energy_mix_sec": {
         "VOID": 8.0,
         "MEDIUM": 2.0,
@@ -149,7 +159,15 @@
           "rel": 0.0
         },
         {
-          "name": "wzrd_mark_up",
+          "name": "dot_up",
+          "target": 0.55,
+          "t": 0.55,
+          "snap": "free",
+          "event": null,
+          "rel": 0.55
+        },
+        {
+          "name": "name_pixel_in",
           "target": 2.415,
           "t": 2.415,
           "snap": "downbeat",
@@ -173,24 +191,12 @@
           "rel": 5.433
         },
         {
-          "name": "sky_step_3",
+          "name": "lockup_forms",
           "target": 7.105,
           "t": 7.105,
           "snap": "downbeat",
           "event": null,
           "rel": 7.105
-        },
-        {
-          "name": "mark_exit",
-          "target": 9.66,
-          "t": 9.66,
-          "snap": "exact",
-          "event": {
-            "drum": "hihat",
-            "energy": 0.42,
-            "grid": "weak"
-          },
-          "rel": 9.66
         },
         {
           "name": "banner_1",
@@ -241,6 +247,18 @@
           "rel": 9.636
         },
         {
+          "name": "mark_exit",
+          "target": 9.66,
+          "t": 9.66,
+          "snap": "exact",
+          "event": {
+            "drum": "hihat",
+            "energy": 0.42,
+            "grid": "weak"
+          },
+          "rel": 9.66
+        },
+        {
           "name": "collapse_to_bubble",
           "target": 10.17,
           "t": 10.17,
@@ -258,7 +276,7 @@
       "end": 24.358,
       "duration": 14.188,
       "bars": 8.99,
-      "mechanism": "chat-thread on a CSS iPhone; giant parallax words TEXT IT / LIKE A / FRIEND. behind the phone; every bubble lands on a snare/downbeat; phone slams on the crash.",
+      "mechanism": "Opens tight on the phone, opens out for the giant stanza on the third downbeat, goes macro for the Approve tap, and slams to camera on the crash.",
       "energy_mix_sec": {
         "HIGH": 6.19,
         "LOW": 5.0,
@@ -384,7 +402,7 @@
           "rel": 3.019
         },
         {
-          "name": "word_TEXT_IT",
+          "name": "camera_opens",
           "target": 13.189,
           "t": 13.189,
           "snap": "downbeat",
@@ -420,18 +438,6 @@
           "rel": 6.107
         },
         {
-          "name": "word_LIKE_A",
-          "target": 16.277,
-          "t": 16.277,
-          "snap": "downbeat",
-          "event": {
-            "drum": "kick",
-            "energy": 0.59,
-            "grid": "strong"
-          },
-          "rel": 6.107
-        },
-        {
           "name": "decision_card",
           "target": 17.786,
           "t": 17.786,
@@ -440,20 +446,24 @@
           "rel": 7.616
         },
         {
-          "name": "decision_card_settle",
-          "target": 18.158,
-          "t": 18.158,
-          "snap": "beat",
-          "event": null,
-          "rel": 7.988
-        },
-        {
           "name": "word_FRIEND",
           "target": 19.319,
           "t": 19.319,
           "snap": "downbeat",
           "event": null,
           "rel": 9.149
+        },
+        {
+          "name": "camera_macro",
+          "target": 20.77,
+          "t": 20.735,
+          "snap": "onset:snare",
+          "event": {
+            "drum": "snare",
+            "energy": 0.49,
+            "grid": "off-grid"
+          },
+          "rel": 10.565
         },
         {
           "name": "approve_flip_published",
@@ -498,14 +508,14 @@
       ]
     },
     {
-      "id": "shot-03-endowments",
-      "title": "The drop \u00b7 one word \"air\", then five nouns",
+      "id": "shot-03-drop",
+      "title": "The drop \u00b7 the name at full frame, then five nouns",
       "track": 3,
       "start": 24.358,
       "end": 33.344,
       "duration": 8.986,
       "bars": 5.69,
-      "mechanism": "Fade-motion single word on the bass slam, then five endowment nouns land on downbeats; each noun carries one glyph + one leftward -230px exit.",
+      "mechanism": "The crash whites the frame, the sun crests, and \"air\" arrives at 452px with its colour pulled apart. The snare re-opens the split; the kick snaps the name to the corner and starts the endowments, whose sublines type themselves in on the Arlan wave.",
       "energy_mix_sec": {
         "HIGH": 4.64,
         "MEDIUM": 3.34,
@@ -565,6 +575,14 @@
       "anchors": [
         {
           "name": "crash",
+          "target": 24.358,
+          "t": 24.358,
+          "snap": "exact",
+          "event": null,
+          "rel": 0.0
+        },
+        {
+          "name": "chromatic_open",
           "target": 24.358,
           "t": 24.358,
           "snap": "exact",
@@ -657,7 +675,7 @@
       "end": 39.59,
       "duration": 6.246,
       "bars": 3.96,
-      "mechanism": "Onairos persona chip at centre, carousel-orbit of taste tiles rotating one slot per downbeat; hihat peak at 39.753 is the hand-off flash.",
+      "mechanism": "Onairos persona at centre with a taste orbit advancing one slot per downbeat; depth read off sin(angle).",
       "energy_mix_sec": {
         "MEDIUM": 4.66,
         "HIGH": 1.59
@@ -721,7 +739,7 @@
         },
         {
           "name": "orbit_slot_2",
-          "target": 36.46,
+          "target": 36.479,
           "t": 36.479,
           "snap": "downbeat",
           "event": {
@@ -733,7 +751,7 @@
         },
         {
           "name": "orbit_slot_3",
-          "target": 38.02,
+          "target": 38.058,
           "t": 38.058,
           "snap": "downbeat",
           "event": null,
@@ -761,7 +779,7 @@
       "end": 45.813,
       "duration": 6.223,
       "bars": 3.94,
-      "mechanism": "carousel-vision ring of partner logos; count-up 0\u21921000+ from the first downbeat; ring snaps to the /home phone on the phrase end.",
+      "mechanism": "Three concentric rings of real connectors bloom out of a point; the count lands on the downbeat; everything collapses into the silhouette of the phone shot 06 opens on.",
       "energy_mix_sec": {
         "HIGH": 4.22,
         "MEDIUM": 2.0
@@ -809,7 +827,7 @@
         },
         {
           "name": "ring_slot_2",
-          "target": 41.13,
+          "target": 41.146,
           "t": 41.146,
           "snap": "downbeat",
           "event": null,
@@ -817,7 +835,7 @@
         },
         {
           "name": "ring_slot_3",
-          "target": 42.69,
+          "target": 42.701,
           "t": 42.701,
           "snap": "downbeat",
           "event": null,
@@ -825,11 +843,19 @@
         },
         {
           "name": "counter_lands_1000",
-          "target": 44.25,
+          "target": 44.257,
           "t": 44.257,
           "snap": "downbeat",
           "event": null,
           "rel": 4.667
+        },
+        {
+          "name": "phone_silhouette",
+          "target": 45.51,
+          "t": 45.51,
+          "snap": "exact",
+          "event": null,
+          "rel": 5.92
         },
         {
           "name": "snap_to_phone",
@@ -842,35 +868,23 @@
       ]
     },
     {
-      "id": "shot-06-mini-apps",
-      "title": "Mini-apps \u00b7 /home /shop /trade /zap",
+      "id": "shot-06-home",
+      "title": "/home \u00b7 the family shot",
       "track": 6,
       "start": 45.813,
-      "end": 70.682,
-      "duration": 24.869,
-      "bars": 15.75,
-      "mechanism": "One persistent iPhone. Each slash command is typed with notes-typing cadence and sent on a downbeat; each card is a modal-morph out of the sent bubble; phone never cuts.",
+      "end": 52.059,
+      "duration": 6.246,
+      "bars": 3.96,
+      "mechanism": "The launcher card lands, the clay icons pop one per hihat hit, then the grid leaves the phone and takes the whole frame at ten times the size.",
       "energy_mix_sec": {
-        "HIGH": 13.19,
-        "MEDIUM": 11.68
+        "HIGH": 4.25,
+        "MEDIUM": 2.0
       },
       "downbeats": [
         45.813,
         47.345,
         48.901,
-        50.48,
-        52.059,
-        53.615,
-        55.147,
-        56.703,
-        58.259,
-        59.791,
-        61.301,
-        62.88,
-        64.412,
-        65.991,
-        67.524,
-        69.103
+        50.48
       ],
       "rolls": [
         {
@@ -902,7 +916,89 @@
           "kind": "fill",
           "drum": "snare",
           "leads_to": null
+        }
+      ],
+      "hard_stops": [],
+      "key_moments": [],
+      "anchors": [
+        {
+          "name": "cmd_home",
+          "target": 45.813,
+          "t": 45.813,
+          "snap": "downbeat",
+          "event": null,
+          "rel": 0.0
         },
+        {
+          "name": "icon_grid_roll_start",
+          "target": 47.09,
+          "t": 47.09,
+          "snap": "onset:snare",
+          "event": {
+            "drum": "snare",
+            "energy": 0.2,
+            "grid": "syncopated"
+          },
+          "rel": 1.277
+        },
+        {
+          "name": "home_card",
+          "target": 47.345,
+          "t": 47.345,
+          "snap": "downbeat",
+          "event": null,
+          "rel": 1.532
+        },
+        {
+          "name": "icon_grid_roll_end",
+          "target": 48.669,
+          "t": 48.669,
+          "snap": "onset:kick",
+          "event": {
+            "drum": "kick",
+            "energy": 0.36,
+            "grid": "weak"
+          },
+          "rel": 2.856
+        },
+        {
+          "name": "grid_takeover",
+          "target": 48.901,
+          "t": 48.901,
+          "snap": "downbeat",
+          "event": null,
+          "rel": 3.088
+        },
+        {
+          "name": "home_settle",
+          "target": 50.48,
+          "t": 50.48,
+          "snap": "downbeat",
+          "event": null,
+          "rel": 4.667
+        }
+      ]
+    },
+    {
+      "id": "shot-07-shop",
+      "title": "/shop \u00b7 the product frame",
+      "track": 7,
+      "start": 52.059,
+      "end": 58.259,
+      "duration": 6.2,
+      "bars": 3.93,
+      "mechanism": "The staged listing lifts out of the thread as a real product frame with a glossy Approve; the tap makes it public and the first order lands on the loudest kick of the bar.",
+      "energy_mix_sec": {
+        "HIGH": 3.94,
+        "MEDIUM": 2.26
+      },
+      "downbeats": [
+        52.059,
+        53.615,
+        55.147,
+        56.703
+      ],
+      "rolls": [
         {
           "start": 57.493,
           "end": 58.538,
@@ -912,7 +1008,77 @@
           "kind": "fill",
           "drum": "hihat",
           "leads_to": null
+        }
+      ],
+      "hard_stops": [],
+      "key_moments": [],
+      "anchors": [
+        {
+          "name": "cmd_shop",
+          "target": 52.059,
+          "t": 52.059,
+          "snap": "downbeat",
+          "event": null,
+          "rel": 0.0
         },
+        {
+          "name": "shop_listing",
+          "target": 53.615,
+          "t": 53.615,
+          "snap": "downbeat",
+          "event": null,
+          "rel": 1.556
+        },
+        {
+          "name": "shop_needs_you_approve",
+          "target": 55.147,
+          "t": 55.147,
+          "snap": "downbeat",
+          "event": null,
+          "rel": 3.088
+        },
+        {
+          "name": "shop_live",
+          "target": 55.519,
+          "t": 55.519,
+          "snap": "beat",
+          "event": null,
+          "rel": 3.46
+        },
+        {
+          "name": "shop_first_order",
+          "target": 56.703,
+          "t": 56.703,
+          "snap": "downbeat",
+          "event": {
+            "drum": "kick",
+            "energy": 0.59,
+            "grid": "strong"
+          },
+          "rel": 4.644
+        }
+      ]
+    },
+    {
+      "id": "shot-08-trade",
+      "title": "/trade \u00b7 the decision, at size",
+      "track": 8,
+      "start": 58.259,
+      "end": 64.412,
+      "duration": 6.153,
+      "bars": 3.9,
+      "mechanism": "Opens tight. The preview becomes a macro plate the size of the frame, the Approve is a physical object, and the fill is the loudest frame of the act: flash, shake, and a number that fills the screen.",
+      "energy_mix_sec": {
+        "MEDIUM": 4.15,
+        "HIGH": 2.0
+      },
+      "downbeats": [
+        58.259,
+        59.791,
+        61.301,
+        62.88
+      ],
+      "rolls": [
         {
           "start": 59.559,
           "end": 60.024,
@@ -932,7 +1098,89 @@
           "kind": "fill",
           "drum": "hihat",
           "leads_to": null
+        }
+      ],
+      "hard_stops": [],
+      "key_moments": [],
+      "anchors": [
+        {
+          "name": "cmd_trade",
+          "target": 58.259,
+          "t": 58.259,
+          "snap": "downbeat",
+          "event": null,
+          "rel": 0.0
         },
+        {
+          "name": "trade_ticket",
+          "target": 59.791,
+          "t": 59.791,
+          "snap": "downbeat",
+          "event": null,
+          "rel": 1.532
+        },
+        {
+          "name": "macro_plate",
+          "target": 59.993,
+          "t": 60.024,
+          "snap": "onset:snare",
+          "event": {
+            "drum": "snare",
+            "energy": 0.44,
+            "grid": "syncopated"
+          },
+          "rel": 1.765
+        },
+        {
+          "name": "trade_approve_tap",
+          "target": 61.068,
+          "t": 61.068,
+          "snap": "onset:kick",
+          "event": {
+            "drum": "kick",
+            "energy": 0.35,
+            "grid": "syncopated"
+          },
+          "rel": 2.809
+        },
+        {
+          "name": "trade_fill",
+          "target": 61.301,
+          "t": 61.301,
+          "snap": "downbeat",
+          "event": null,
+          "rel": 3.042
+        },
+        {
+          "name": "trade_settle",
+          "target": 62.88,
+          "t": 62.88,
+          "snap": "downbeat",
+          "event": null,
+          "rel": 4.621
+        }
+      ]
+    },
+    {
+      "id": "shot-09-zap",
+      "title": "/zap \u00b7 the render",
+      "track": 9,
+      "start": 64.412,
+      "end": 70.682,
+      "duration": 6.27,
+      "bars": 3.97,
+      "mechanism": "The generation takes the frame as four brightness bands stamped with symbols, filling one column band per hihat hit of the accel roll, then resolving into the clip it was asked for through a fog mask.",
+      "energy_mix_sec": {
+        "MEDIUM": 3.27,
+        "HIGH": 3.0
+      },
+      "downbeats": [
+        64.412,
+        65.991,
+        67.524,
+        69.103
+      ],
+      "rolls": [
         {
           "start": 66.804,
           "end": 67.268,
@@ -948,164 +1196,28 @@
       "key_moments": [],
       "anchors": [
         {
-          "name": "cmd_home",
-          "target": 45.813,
-          "t": 45.813,
-          "snap": "downbeat",
-          "event": null,
-          "rel": 0.0
-        },
-        {
-          "name": "home_card",
-          "target": 47.345,
-          "t": 47.345,
-          "snap": "downbeat",
-          "event": null,
-          "rel": 1.532
-        },
-        {
-          "name": "icon_grid_roll_start",
-          "target": 47.09,
-          "t": 47.09,
-          "snap": "onset:snare",
-          "event": {
-            "drum": "snare",
-            "energy": 0.2,
-            "grid": "syncopated"
-          },
-          "rel": 1.277
-        },
-        {
-          "name": "icon_grid_roll_end",
-          "target": 48.669,
-          "t": 48.669,
-          "snap": "onset:kick",
-          "event": {
-            "drum": "kick",
-            "energy": 0.36,
-            "grid": "weak"
-          },
-          "rel": 2.856
-        },
-        {
-          "name": "home_settle",
-          "target": 50.48,
-          "t": 50.48,
-          "snap": "downbeat",
-          "event": null,
-          "rel": 4.667
-        },
-        {
-          "name": "cmd_shop",
-          "target": 52.059,
-          "t": 52.059,
-          "snap": "downbeat",
-          "event": null,
-          "rel": 6.246
-        },
-        {
-          "name": "shop_listing",
-          "target": 53.615,
-          "t": 53.615,
-          "snap": "downbeat",
-          "event": null,
-          "rel": 7.802
-        },
-        {
-          "name": "shop_needs_you_approve",
-          "target": 55.147,
-          "t": 55.147,
-          "snap": "downbeat",
-          "event": null,
-          "rel": 9.334
-        },
-        {
-          "name": "shop_live",
-          "target": 55.519,
-          "t": 55.519,
-          "snap": "beat",
-          "event": null,
-          "rel": 9.706
-        },
-        {
-          "name": "shop_first_order",
-          "target": 56.703,
-          "t": 56.703,
-          "snap": "downbeat",
-          "event": {
-            "drum": "kick",
-            "energy": 0.59,
-            "grid": "strong"
-          },
-          "rel": 10.89
-        },
-        {
-          "name": "cmd_trade",
-          "target": 58.259,
-          "t": 58.259,
-          "snap": "downbeat",
-          "event": null,
-          "rel": 12.446
-        },
-        {
-          "name": "trade_ticket",
-          "target": 59.791,
-          "t": 59.791,
-          "snap": "downbeat",
-          "event": null,
-          "rel": 13.978
-        },
-        {
-          "name": "trade_approve_tap",
-          "target": 61.068,
-          "t": 61.068,
-          "snap": "onset:kick",
-          "event": {
-            "drum": "kick",
-            "energy": 0.35,
-            "grid": "syncopated"
-          },
-          "rel": 15.255
-        },
-        {
-          "name": "trade_fill",
-          "target": 61.301,
-          "t": 61.301,
-          "snap": "downbeat",
-          "event": null,
-          "rel": 15.488
-        },
-        {
-          "name": "trade_settle",
-          "target": 62.88,
-          "t": 62.88,
-          "snap": "downbeat",
-          "event": null,
-          "rel": 17.067
-        },
-        {
           "name": "cmd_zap",
           "target": 64.412,
           "t": 64.412,
           "snap": "downbeat",
           "event": null,
-          "rel": 18.599
+          "rel": 0.0
         },
         {
-          "name": "zap_send",
+          "name": "zap_reply",
           "target": 65.991,
           "t": 65.991,
           "snap": "downbeat",
           "event": null,
-          "rel": 20.178
+          "rel": 1.579
         },
         {
-          "name": "zap_progress_roll_start",
+          "name": "symbols_takeover",
           "target": 66.757,
           "t": 66.757,
           "snap": "beat",
           "event": null,
-          "rel": 20.944
+          "rel": 2.345
         },
         {
           "name": "zap_progress_roll_end",
@@ -1113,23 +1225,15 @@
           "t": 67.524,
           "snap": "downbeat",
           "event": null,
-          "rel": 21.711
+          "rel": 3.112
         },
         {
-          "name": "zap_result",
-          "target": 67.524,
-          "t": 67.524,
-          "snap": "downbeat",
+          "name": "zap_resolve",
+          "target": 67.712,
+          "t": 67.712,
+          "snap": "free",
           "event": null,
-          "rel": 21.711
-        },
-        {
-          "name": "zap_settle",
-          "target": 69.103,
-          "t": 69.103,
-          "snap": "downbeat",
-          "event": null,
-          "rel": 23.29
+          "rel": 3.3
         },
         {
           "name": "caption_make_your_own",
@@ -1137,76 +1241,33 @@
           "t": 69.103,
           "snap": "downbeat",
           "event": null,
-          "rel": 23.29
+          "rel": 4.691
         }
       ]
     },
     {
-      "id": "shot-07-create",
-      "title": "/create \u00b7 build your own in the thread",
-      "track": 7,
+      "id": "shot-10-create-plan",
+      "title": "/create \u00b7 the plan",
+      "track": 10,
       "start": 70.682,
-      "end": 89.536,
-      "duration": 18.854,
-      "bars": 11.94,
-      "mechanism": "Longest single take. notes-typing prompt, \u22643 questions, plan.md attachment, \"yes\", stepper progress, dev URL, phone flips to reveal the running app, \"ship it\", decision card, Approve, live listing.",
+      "end": 78.53,
+      "duration": 7.848,
+      "bars": 4.97,
+      "mechanism": "The prompt types itself, at most three questions, and the plan arrives as a file the film actually opens and reads.",
       "energy_mix_sec": {
-        "HIGH": 8.54,
-        "MEDIUM": 7.32,
-        "LOW": 3.0
+        "HIGH": 4.0,
+        "MEDIUM": 2.85,
+        "LOW": 1.0
       },
       "downbeats": [
         70.682,
         72.214,
         73.77,
         75.349,
-        76.974,
-        78.53,
-        80.109,
-        81.688,
-        83.244,
-        84.822,
-        86.378,
-        87.957
+        76.974
       ],
-      "rolls": [
-        {
-          "start": 79.273,
-          "end": 80.062,
-          "dur_sec": 0.789,
-          "hits": 6,
-          "rate_per_min": 380,
-          "kind": "fill",
-          "drum": "hihat",
-          "leads_to": null
-        },
-        {
-          "start": 85.658,
-          "end": 86.703,
-          "dur_sec": 1.045,
-          "hits": 8,
-          "rate_per_min": 402,
-          "kind": "fill",
-          "drum": "hihat",
-          "leads_to": null
-        },
-        {
-          "start": 86.936,
-          "end": 88.979,
-          "dur_sec": 2.043,
-          "hits": 14,
-          "rate_per_min": 382,
-          "kind": "sustained-fill",
-          "drum": "hihat",
-          "leads_to": "DROP"
-        }
-      ],
+      "rolls": [],
       "hard_stops": [
-        {
-          "t": 86,
-          "kind": "DROP",
-          "delta": -0.52
-        },
         {
           "t": 76,
           "kind": "DROP",
@@ -1287,14 +1348,92 @@
           "snap": "downbeat",
           "event": null,
           "rel": 7.848
+        }
+      ]
+    },
+    {
+      "id": "shot-11-create-ship",
+      "title": "/create \u00b7 the build and the ship",
+      "track": 11,
+      "start": 78.53,
+      "end": 89.536,
+      "duration": 11.006,
+      "bars": 6.97,
+      "mechanism": "The build card takes the frame with a live console; the app it built plays full-bleed with its countdown on the beat; the publish decision is a physical object and Approve is the biggest hit of the act.",
+      "energy_mix_sec": {
+        "HIGH": 4.54,
+        "MEDIUM": 4.47,
+        "LOW": 2.0
+      },
+      "downbeats": [
+        78.53,
+        80.109,
+        81.688,
+        83.244,
+        84.822,
+        86.378,
+        87.957
+      ],
+      "rolls": [
+        {
+          "start": 79.273,
+          "end": 80.062,
+          "dur_sec": 0.789,
+          "hits": 6,
+          "rate_per_min": 380,
+          "kind": "fill",
+          "drum": "hihat",
+          "leads_to": null
         },
+        {
+          "start": 85.658,
+          "end": 86.703,
+          "dur_sec": 1.045,
+          "hits": 8,
+          "rate_per_min": 402,
+          "kind": "fill",
+          "drum": "hihat",
+          "leads_to": null
+        },
+        {
+          "start": 86.936,
+          "end": 88.979,
+          "dur_sec": 2.043,
+          "hits": 14,
+          "rate_per_min": 382,
+          "kind": "sustained-fill",
+          "drum": "hihat",
+          "leads_to": "DROP"
+        }
+      ],
+      "hard_stops": [
+        {
+          "t": 86,
+          "kind": "DROP",
+          "delta": -0.52
+        }
+      ],
+      "key_moments": [],
+      "anchors": [
         {
           "name": "progress_start",
           "target": 78.53,
           "t": 78.53,
           "snap": "downbeat",
           "event": null,
-          "rel": 7.848
+          "rel": 0.0
+        },
+        {
+          "name": "log_line_1",
+          "target": 79.83,
+          "t": 79.853,
+          "snap": "onset:kick",
+          "event": {
+            "drum": "kick",
+            "energy": 0.16,
+            "grid": "syncopated"
+          },
+          "rel": 1.323
         },
         {
           "name": "progress_end",
@@ -1302,7 +1441,7 @@
           "t": 82.477,
           "snap": "beat",
           "event": null,
-          "rel": 11.795
+          "rel": 3.947
         },
         {
           "name": "dev_build_live",
@@ -1310,23 +1449,15 @@
           "t": 83.244,
           "snap": "downbeat",
           "event": null,
-          "rel": 12.562
+          "rel": 4.714
         },
         {
-          "name": "phone_flip_reveal_app",
-          "target": 84.822,
-          "t": 84.822,
+          "name": "app_full_bleed",
+          "target": 83.244,
+          "t": 83.244,
           "snap": "downbeat",
           "event": null,
-          "rel": 14.14
-        },
-        {
-          "name": "phone_flip_back",
-          "target": 86.006,
-          "t": 85.983,
-          "snap": "beat",
-          "event": null,
-          "rel": 15.301
+          "rel": 4.714
         },
         {
           "name": "ship_it",
@@ -1334,7 +1465,7 @@
           "t": 86.378,
           "snap": "downbeat",
           "event": null,
-          "rel": 15.696
+          "rel": 7.848
         },
         {
           "name": "decision_card",
@@ -1346,7 +1477,7 @@
             "energy": 0.65,
             "grid": "weak"
           },
-          "rel": 16.254
+          "rel": 8.406
         },
         {
           "name": "approve",
@@ -1354,7 +1485,7 @@
           "t": 87.957,
           "snap": "downbeat",
           "event": null,
-          "rel": 17.275
+          "rel": 9.427
         },
         {
           "name": "live_listing",
@@ -1362,19 +1493,19 @@
           "t": 89.536,
           "snap": "downbeat",
           "event": null,
-          "rel": 18.854
+          "rel": 11.006
         }
       ]
     },
     {
-      "id": "shot-08-yours",
+      "id": "shot-12-yours",
       "title": "Yours \u00b7 calm, guardian, private",
-      "track": 8,
+      "track": 12,
       "start": 89.536,
       "end": 95.829,
       "duration": 6.293,
       "bars": 3.99,
-      "mechanism": "Energy dips (DROP at 90). Three calm words on downbeats over a widening sky; thin backend cards float at +1.5% parallax.",
+      "mechanism": "The DROP at 90 is a breath. The approved stanza lands one clause per downbeat over the widening sky, with the backend stated once.",
       "energy_mix_sec": {
         "MEDIUM": 4.0,
         "LOW": 1.83,
@@ -1484,14 +1615,14 @@
       ]
     },
     {
-      "id": "shot-09-finale-montage",
-      "title": "Finale montage \u00b7 four hard cuts and a spin",
-      "track": 9,
+      "id": "shot-13-montage",
+      "title": "Finale montage \u00b7 six cuts and a turn",
+      "track": 13,
       "start": 95.829,
       "end": 102.168,
       "duration": 6.339,
       "bars": 4.01,
-      "mechanism": "Four hard cuts on downbeats (thread / mini-apps / create / persona), fill at 99.869 tightens to the 100.589 turntable, spin resolves into the end card on 102.168.",
+      "mechanism": "The film's fastest passage: a cut every half bar, each one a re-pose rather than a transition, then a full turntable on the DROP that resolves into the end card.",
       "energy_mix_sec": {
         "HIGH": 3.17,
         "MEDIUM": 2.0,
@@ -1549,7 +1680,15 @@
           "rel": 0.0
         },
         {
-          "name": "cut_2_miniapps",
+          "name": "cut_2_tight",
+          "target": 96.619,
+          "t": 96.618,
+          "snap": "beat",
+          "event": null,
+          "rel": 0.789
+        },
+        {
+          "name": "cut_3_miniapps",
           "target": 97.408,
           "t": 97.408,
           "snap": "downbeat",
@@ -1557,12 +1696,28 @@
           "rel": 1.579
         },
         {
-          "name": "cut_3_create",
+          "name": "cut_4_tight",
+          "target": 98.198,
+          "t": 98.22,
+          "snap": "beat",
+          "event": null,
+          "rel": 2.391
+        },
+        {
+          "name": "cut_5_create",
           "target": 98.987,
           "t": 98.987,
           "snap": "downbeat",
           "event": null,
           "rel": 3.158
+        },
+        {
+          "name": "cut_6_tight",
+          "target": 99.777,
+          "t": 99.799,
+          "snap": "beat",
+          "event": null,
+          "rel": 3.97
         },
         {
           "name": "fill",
@@ -1577,7 +1732,7 @@
           "rel": 4.04
         },
         {
-          "name": "cut_4_turntable",
+          "name": "cut_turntable",
           "target": 100.589,
           "t": 100.589,
           "snap": "downbeat",
@@ -1595,14 +1750,14 @@
       ]
     },
     {
-      "id": "shot-10-end-card",
-      "title": "End card \u00b7 Text your agent. air.wzrd.tech \u00b7 WZRD lockup",
-      "track": 10,
+      "id": "shot-14-end-card",
+      "title": "End card \u00b7 the CTA, the freeze, the lockup",
+      "track": 14,
       "start": 102.168,
       "end": 119.699,
       "duration": 17.531,
       "bars": 11.1,
-      "mechanism": "cta-close: CTA line, URL on 103.77, TOTAL FREEZE on the hard stop, release rises the chrome WZRD mark and partner wall on the final kicks, lockup on 108.669, still by 113.755, silence to black.",
+      "mechanism": "The ask, then the address as a pressable object whose letters puff up one at a time. Total freeze on the hard stop. The release kick lifts the chrome mark and the partner wall, and the lockup lands on the brightest sky.",
       "energy_mix_sec": {
         "VOID": 5.7,
         "MEDIUM": 5.0,
@@ -1689,12 +1844,20 @@
           "rel": 0.0
         },
         {
-          "name": "url",
+          "name": "cta_pill",
           "target": 103.77,
           "t": 103.77,
           "snap": "downbeat",
           "event": null,
           "rel": 1.602
+        },
+        {
+          "name": "url_line",
+          "target": 104.468,
+          "t": 104.468,
+          "snap": "free",
+          "event": null,
+          "rel": 2.3
         },
         {
           "name": "freeze",
