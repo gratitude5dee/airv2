@@ -1,0 +1,140 @@
+<template id="shot-07-composable-computer-template">
+  <div data-hf-id="hf-xjlo" id="s07-root" data-composition-id="shot-07-composable-computer" data-width="1920" data-height="1080" data-duration="7.5">
+    <style>
+      @font-face{font-family:'Inter var';font-weight:100 900;font-style:normal;font-display:block;src:local('Helvetica Neue')}
+      #s07-root{position:relative;width:1920px;height:1080px;overflow:hidden;background:transparent;
+        font-family:'Inter var',system-ui,sans-serif;color:#EDF3FF;
+        -webkit-font-smoothing:antialiased}
+      #s07-root *,#s07-root *::before,#s07-root *::after{box-sizing:border-box}
+
+      #s07-root .frame{position:absolute;inset:0;perspective:1600px;background:
+        radial-gradient(70% 54% at 50% 8%,rgba(56,110,186,.26) 0%,rgba(5,8,16,0) 72%),
+        radial-gradient(52% 46% at 84% 96%,rgba(112,84,208,.22) 0%,rgba(5,8,16,0) 74%),
+        rgba(5,8,16,.58)}
+
+      #s07-root .head{position:absolute;left:0;right:0;top:118px;text-align:center}
+      #s07-root .num{font-size:26px;font-weight:600;letter-spacing:.34em;text-transform:uppercase;color:#A9C6FF}
+      #s07-root .title{margin-top:22px;font-size:82px;font-weight:600;letter-spacing:-.04em;line-height:1.06}
+
+      #s07-root .cards{position:absolute;left:150px;right:150px;top:340px;display:flex;gap:40px}
+      #s07-root .card{position:relative;flex:1;height:432px;border-radius:40px;padding:38px 36px;
+        background:linear-gradient(180deg,rgba(255,255,255,.15),rgba(255,255,255,.05));
+        border:1px solid rgba(255,255,255,.22);
+        box-shadow:0 54px 100px -34px rgba(0,0,0,.88),inset 0 1px 0 rgba(255,255,255,.4);
+        backdrop-filter:blur(16px);overflow:hidden;will-change:transform}
+      #s07-root .card .badge{width:96px;height:96px;border-radius:26px;display:grid;place-items:center;
+        background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.20)}
+      #s07-root .card .badge img{width:56px;height:56px;display:block}
+      /* The supplied Omarchy Linux mark is square, so it uses the same clean icon geometry as the other options. */
+      #s07-root .card .badge.brand-omarchy{width:96px;height:96px;padding:0;overflow:hidden;border-radius:24px;background:transparent;border:0}
+      #s07-root .card .badge.brand-omarchy img{width:100%;height:100%;object-fit:cover;object-position:50% 50%}
+      #s07-root .card b{display:block;margin-top:32px;font-size:40px;font-weight:600;letter-spacing:-.028em}
+      #s07-root .card p{margin:14px 0 0;font-size:23px;font-weight:450;line-height:1.42;
+        color:#E2EDFF}
+      /* watermark drawn as a CSS background, not an <img> — three identical media nodes
+         confuse the compiler's media discovery */
+      #s07-root .card .machine{position:absolute;right:-26px;bottom:-30px;width:220px;height:220px;
+        opacity:.16;background:url(logos/glyph-computer.svg) no-repeat center/contain}
+
+      #s07-root .soon{position:absolute;left:150px;right:150px;top:838px;height:118px;border-radius:30px;
+        display:flex;align-items:center;gap:26px;padding:0 34px;
+        background:linear-gradient(90deg,rgba(255,255,255,.08),rgba(255,255,255,.03));
+        border:1px dashed rgba(255,255,255,.30);will-change:transform}
+      /* CSS background rather than a second apple mark element, so media discovery sees one node */
+      #s07-root .soon .amark{width:52px;height:52px;flex:0 0 auto;
+        background:url(logos/apple.svg) no-repeat center/contain}
+      #s07-root .soon b{font-size:31px;font-weight:600;letter-spacing:-.02em}
+      #s07-root .soon .pill{margin-left:auto;padding:12px 24px;border-radius:999px;font-size:22px;
+        font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#FFDAA4;
+        border:1px solid rgba(255,201,120,.6);background:rgba(255,201,120,.12);position:relative;
+        box-shadow:0 0 0 rgba(255,201,120,0);will-change:transform,box-shadow}
+      #s07-root .soon .pill::after{content:'';position:absolute;inset:5px 10px auto;height:1px;border-radius:999px;
+        background:rgba(255,240,214,.72);opacity:.72}
+    </style>
+
+    <div data-hf-id="hf-tb07" class="frame clip" id="s07-frame" data-layout-allow-overflow="" data-start="0" data-duration="7.5" data-track-index="1">
+      <div data-hf-id="hf-z992" class="head">
+        <div data-hf-id="hf-dcir" class="num" id="s07-num">4) A composable computer</div>
+        <div data-hf-id="hf-mnbu" class="title" id="s07-title">Three options. One agent.</div>
+      </div>
+
+      <div data-hf-id="hf-wkqz" class="cards" id="s07-cards">
+        <div data-hf-id="hf-66em" class="card" data-card="">
+          <div data-hf-id="hf-9s2p" class="badge"><img data-hf-id="hf-9r34" src="logos/ubuntu.svg" alt=""></div>
+          <b data-hf-id="hf-d6zf">Ubuntu in a VM</b>
+          <p data-hf-id="hf-ielt">The default: a clean cloud machine, provisioned in seconds, always on.</p>
+          <div data-hf-id="hf-oj3b" class="machine"></div>
+        </div>
+        <div data-hf-id="hf-81de" class="card" data-card="">
+          <div data-hf-id="hf-46et" class="badge brand-omarchy"><img data-hf-id="hf-r68m" src="logos/omarchy-linux-brand.jpg" alt="Omarchy"></div>
+          <b data-hf-id="hf-xziv">Omarchy on Linux</b>
+          <p data-hf-id="hf-50vr">A tiled, keyboard-first desktop your agent drives like a power user.</p>
+          <div data-hf-id="hf-q79j" class="machine"></div>
+        </div>
+        <div data-hf-id="hf-8fof" class="card" data-card="">
+          <div data-hf-id="hf-5dbw" class="badge"><img data-hf-id="hf-3n57" src="logos/apple.svg" alt=""></div>
+          <b data-hf-id="hf-1746">macOS on Apple Silicon</b>
+          <p data-hf-id="hf-9nef">Native metal, native apps — the same machine you already trust.</p>
+          <div data-hf-id="hf-psyi" class="machine"></div>
+        </div>
+      </div>
+
+      <div data-hf-id="hf-s86z" class="soon" id="s07-soon">
+        <span data-hf-id="hf-ebh4" class="amark" aria-hidden="true"></span>
+        <b data-hf-id="hf-9aa9">Omarchy on native Apple Silicon</b>
+        <span data-hf-id="hf-qh7m" class="pill">coming soon</span>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+    (function(){
+      var root = document.querySelector('[data-composition-id="shot-07-composable-computer"]');
+      var frame = root.querySelector('#s07-frame');
+      var head = [root.querySelector('#s07-num'),root.querySelector('#s07-title')];
+      var cards = root.querySelectorAll('#s07-cards .card');
+      var badges = root.querySelectorAll('#s07-cards .badge img');
+      var soon = root.querySelector('#s07-soon');
+      var pill = root.querySelector('#s07-soon .pill');
+      var EO = 'expo.out';
+
+      gsap.set(head,{y:52,opacity:0});
+      gsap.set(cards,{y:170,opacity:0,scale:.92,rotateX:-22,transformOrigin:'50% 100%'});
+      gsap.set(badges,{scale:.5,opacity:0});
+      gsap.set(soon,{x:180,opacity:0});
+      gsap.set(pill,{scale:.92,transformOrigin:'50% 50%'});
+
+      var tl = gsap.timeline({paused:true,defaults:{ease:EO}});
+      tl.fromTo(frame,{x:230,opacity:.35},{x:0,opacity:1,duration:.34,ease:'power4.out',immediateRender:false},0);
+      head.forEach(function(el,i){ tl.to(el,{y:0,opacity:1,duration:.7},.08 + i*.11); });
+
+      // three cards land left to right — the third slams home exactly on the track's
+      // 51s SURGE (shot starts at 48.5, so local 2.5) with a two-frame overshoot
+      cards.forEach(function(c,i){
+        var at = [1.10, 1.80, 2.50][i];
+        tl.to(c,{y:0,opacity:1,scale:1.04,rotateX:0,duration:.72},at);
+        tl.to(c,{scale:1,duration:.14,ease:'power2.out',overwrite:'auto'},at+.72);
+        tl.to(badges[i],{scale:1,opacity:1,duration:.6},at+.20);
+      });
+
+      // the fourth state slides in on the film's axis, dashed and clearly unfinished
+      tl.to(soon,{x:0,opacity:1,duration:.85},3.40);
+      // Tactile, time-authored feedback for the pending platform state. This is a
+      // finite pose change, not a hover interaction, so it scrubs identically.
+      tl.to(pill,{scale:1.08,boxShadow:'0 0 32px rgba(255,201,120,.52)',duration:.16,ease:'power2.out'},4.28);
+      tl.to(pill,{scale:1,boxShadow:'0 0 12px rgba(255,201,120,.18)',duration:.46,ease:'elastic.out(1,.48)'},4.44);
+
+      // stillness, then the composed group eases LEFT into the cut
+      tl.to(frame,{x:-40,duration:2.4,ease:'sine.inOut'},4.60);
+      tl.to(frame,{x:-230,duration:.34,ease:'power4.in'},7.16);
+      tl.to(frame,{opacity:0,duration:.20,ease:'none'},7.28);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["shot-07-composable-computer"] = tl;
+      var q = new URLSearchParams(location.search);
+      if(q.has('t')){ tl.seek(parseFloat(q.get('t'))||0); }
+      else if(q.get('dev')==='1'){ tl.play(); }
+    })();
+    </script>
+  </div>
+</template>

@@ -1,0 +1,97 @@
+# COMPONENTS-v3 — disposition matrix
+
+Rubric from `REVIEW-PROMPT.md`: **ADOPT** (install/port as-is, translate interactive triggers to linear time), **ADAPT** (take the idea or one sub-mechanism, re-author to the motion doctrine), **REFERENCE ONLY** (look, do not port), **REJECT** (does not belong in this film; reason given). Translation contract: hover → downbeat, scroll → camera drift, click/tap → the kick named in `cutsheet.json`, autoplay loops → one deterministic pass timed to the phrase. Every ported piece must be seek-safe: no rAF loops, no clocks, no unseeded random.
+
+The "AIR energy system" applies: spectral colour is spent exactly four times (24.358, 61.301, 87.957, 108.669). Any component whose whole point is a coloured glow is out unless it can run in cream/blue at ≤ 0.2 opacity.
+
+## 1. HyperFrames catalog (pasted docs)
+
+| item | disposition | used in | translation notes |
+| --- | --- | --- | --- |
+| `chat-thread` | ADOPT | S02, S06, S07, S09 | Base of the phone thread. Bubbles land on downbeats, typing dots ride hihat rolls, thread column translates (never scrolls). Re-skin to the iMessage spec in PLAN §3.5 |
+| `modal-morph` | ADOPT | S01→S02, S05→S06, decision-card flips | FLIP from banners → bubble → phone; ring → `/home` card; sent bubble → card. One morph per section entrance |
+| `notes-typing` | ADOPT | S06 commands, S07 prompt | Per-character reveal 28–36 ms, deterministic, always finishing on the send downbeat |
+| `cta-close` | ADOPT | S10 | CTA line, URL, freeze, then the WZRD lockup replaces the block's default end state |
+| `caption-parallax-layers` | ADOPT | every shot | Caption plane at +1.5 depth on the shot's `cam` proxy; giant type at 0, phone at +1, sky at −1 |
+| `carousel-orbit-4` | ADOPT | S04 | One 45° slot per downbeat (34.900 / 36.479 / 38.058); facing tile scales 1.18 |
+| `carousel-vision-3` | ADOPT | S05 | 24-logo ring; slot advance on 41.146 / 42.701; collapses into the phone at 45.813 |
+| `carousel-circle-1` | REFERENCE ONLY | — | Same family as orbit/vision; one ring language per film |
+| `halftone-field` | ADAPT | S06 `/zap` progress | 12 × 5 dot field filling one column per hihat hit of the 66.804–67.268 roll; cream dots on glass, no colour |
+| `ios26-liquid-glass` | ADAPT | phone frame, cards | Only the CSS glass (backdrop blur + 1 px line + inner highlight). No refraction shader: it fights the sky and costs WebGL |
+| `vfx-iphone-device` | ADAPT (P2) | S09 turntable at 100.589 only | GLTF needs the canvas-draw-element render flag; budget against the sky's WebGL context. Default turntable is the CSS phone |
+| `stop-motion-cadence` | REJECT | — | Held-frame cadence contradicts the film's continuous expo.out grammar; the freeze at 104.606 is the only held moment and is musical, not stylistic |
+| `svg-stroke-trace` | ADAPT | S03 glyphs, S10 underline | `strokeDashoffset` draws each endowment glyph over 0.35 s on its downbeat; the URL underline at 103.770 |
+
+## 2. Arlan Vault (CSV rows, `source = Arlan Vault`)
+
+| item | disposition | used in | translation notes |
+| --- | --- | --- | --- |
+| The typer | ADAPT | S06/S07 typing | Its cursor rhythm and burst-pause cadence inform `notes-typing` timings (short bursts ending on beats) |
+| Fade motion | ADAPT | S03 "air" at 24.40–25.30 | Seeded per-letter opacity noise, no translation; the one soft entrance in the film |
+| Chromatic glow | ADAPT | S01 mark rim, the four spectral moments | Reduced to a 1 px rim or a 0.35 s mask sweep; never a full-element glow |
+| Liquid UI | ADAPT | bubble → card fusion (S06) | The sent bubble stretches and settles into the card rect (FLIP with a 0.08 s squash), then the card lands |
+| Apple's corners | ADAPT | phone frame, every card, banners | SVG superellipse mask (n = 5) instead of `border-radius` |
+| Holo | ADAPT | `/trade` and `/shop` cards | 1.2° rotateX/rotateY kick on landing with a moving specular line, no rainbow |
+| Dia Browser's gradient | ADAPT | composer bar glow on the phone while typing | Soft blue-cream gradient at 0.25 opacity behind the input, pulsing once per bar |
+| Ghosty reveal | ADAPT | fal sky plates cross-fades | Mask-wipe reveal for a plate change instead of an opacity crossfade |
+| Kinetic typography | REFERENCE ONLY | — | Giant-word energy is right, but v3 uses split-text lands on downbeats, not continuous kinetic motion |
+| Realistic emboss | REFERENCE ONLY | — | Might suit the chrome mark; the PNG already carries the emboss |
+| The art of color depth | REFERENCE ONLY | — | Depth-by-value idea is already covered by the parallax stack |
+| Symbols effect | REFERENCE ONLY | — | Symbol-rain could be a `/zap` fallback; halftone-field wins |
+| Amo hover button | REJECT | — | Hover micro-interaction with no linear equivalent that reads at film scale |
+| Arcade pixel | REJECT | — | Pixel aesthetic is off-brand for Atmosphere |
+| Figma vector editor | REJECT | — | Tool UI, not product UI |
+| Midjourney Medical's ASCII | REJECT | — | ASCII fx conflicts with the photographic sky |
+| Pixel brushes | REJECT | — | Same as Arcade pixel |
+| Ransom note | REJECT | — | Tone mismatch (playful chaos vs. calm authority) |
+
+## 3. React Bits (CSV rows, `source = React Bits`)
+
+Category rules first, then the exceptions.
+
+- **Backgrounds (57)** — REJECT as a class: the film has one background, the sky. Exceptions: `Dither` REFERENCE ONLY (the brand's `wz-dither` already exists in `fx.js`), `Grainient` REFERENCE ONLY (grade grain is already fixed-seed SVG), `Orb` REJECT (the orb is a PNG asset, never a shader).
+- **Animations (38)** — cursor-driven items REJECT (`Blob/Ghost/Glow/Splash/Swarm/Target Cursor`, `Crosshair`, `Cursor Grid`, `Magnet`, `Magnet Lines`, `Click Spark`, `Image Trail`, `Pixel Trail`); glow borders REJECT (`Electric Border`, `Star Border`, `Laser Flow`); the rest per the table below.
+- **Components (45)** — most are navigation/gallery UI; only the items below.
+- **Text Animations (32)** — scramble/glitch/decrypt family REJECT (`Decrypted Text`, `Scrambled Text`, `Glitch Text`, `Fuzzy Text`, `Letter Glitch` (bg), `Shuffle`, `Split Flap Text` — the film never implies computation-as-noise); scroll-triggered items are REFERENCE ONLY unless listed.
+
+| item | category | disposition | used in | translation notes |
+| --- | --- | --- | --- | --- |
+| Split Text | Text | ADOPT | all giant words and captions | Per-word `y 0.6em → 0, rotateX 24 → 0`, stagger 0.04, expo.out 0.7 |
+| Count Up | Text | ADOPT | S05 counter, S07 progress % | `power2.out` for 0 → 1000+, `power1.inOut` for 10 → 100 %; both land on the named downbeat |
+| Shiny Text | Text | ADAPT | S10 lockup chrome sweep | One 0.35 s sweep at 108.669 (spectral moment 4), then static |
+| Blur Text | Text | ADAPT | S08 words dimming to 0.35 | Previous word blurs 2 px as the next lands |
+| Text Type | Text | REFERENCE ONLY | — | `notes-typing` owns typing |
+| Stroke Text | Text | REFERENCE ONLY | — | Considered for the giant slash commands; solid cream at 0.38 reads better on the sky |
+| Stepper | Components | ADAPT | S07 progress card | Four steps check on 80.109 / 81.688 / 82.477 (+ plan at 78.53) |
+| Glass Surface | Components | ADAPT | cards, banners | CSS only; see `ios26-liquid-glass` |
+| Counter | Components | REFERENCE ONLY | — | Count Up covers it |
+| Tilted Card / Reflective Card / Spotlight Card | Components | ADAPT (merged) | `/trade`, `/shop` cards | Folded into the Holo tilt; a single specular line, no spotlight follow |
+| Card Swap / Stack / Bounce Cards | Components | REFERENCE ONLY | S09 montage | Hard cuts on downbeats replace card swapping |
+| Dock / Glass Icons | Components | ADAPT | S06 `/home` icon grid | Icon pop scale 0.7 → 1 with 0.04 s stagger per hihat hit; no dock magnification |
+| Carousel / Circular Gallery / Depth Carousel / Dome Gallery / Orbit Images | Components/Animations | REFERENCE ONLY | — | Catalog `carousel-orbit-4` / `carousel-vision-3` are the ring language |
+| Model Viewer | Components | REFERENCE ONLY | — | `vfx-iphone-device` is the 3D route if any |
+| Animated List | Components | ADAPT | S02/S06 thread growth | Column translate with expo.out; no fade-in per item beyond the bubble land |
+| Logo Loop | Animations | ADAPT | S10 partner wall rows | Static rows rising on kicks; no loop |
+| Fade Content / Animated Content | Animations | REFERENCE ONLY | — | Doctrine already specifies entrances |
+| Gradual Blur | Animations | ADAPT | thread top edge mask on the phone | Static gradient mask on `.thread` so old bubbles fade into the nav bar |
+| Halftone Reveal | Animations | REFERENCE ONLY | — | Catalog `halftone-field` chosen instead |
+| Metallic Paint / Liquid Chrome / Molten Metal | Animations/Backgrounds | REJECT | — | The chrome mark is a PNG; shader chrome fights it |
+| Noise | Animations | REFERENCE ONLY | — | Grade grain already fixed-seed |
+| Scroll Expand / Scroll Reveal / Scroll Float / Scroll Velocity / Scroll Stack | various | REJECT | — | Scroll semantics have no linear equivalent that is not already camera drift |
+| Infinite Menu | Components | REFERENCE ONLY | — | Brand `wz-infinite-menu` exists in `fx.js`; not used in the film |
+| Everything else in the CSV | — | REJECT | — | Category rules above |
+
+## 4. Brand shader components (`apps/web/public/creator-os/fx.js`)
+
+`wz-sky`, `wz-dither`, `wz-chrome`, `wz-prism`, `wz-beams`, `wz-burst`, `wz-gridmotion`, `wz-griddistort`, `wz-pixels`, `wz-pixel-veil`, `wz-terminal`, `wz-trail`, `wz-electric-border`, `wz-infinite-menu`, `wz-ascii-fx` are **REFERENCE ONLY** for palette and feel. They animate on their own clocks and are not seek-safe; do not embed them. `sky.html` is the film's port of `wz-sky`; `wz-prism` informs the four spectral moments (a 6-stop conic gradient, PLAN §3.7).
+
+## 5. External style references
+
+| reference | status | note |
+| --- | --- | --- |
+| github.com/heygen-com/hyperframes-launches | README read; repo tree unreachable | Conventions folded into PLAN §9 (snapshots at seams, one composition per beat) |
+| x.com/mvanhorn/status/2063624356484501832 | unreachable from sandbox | human reviewer note at Gate A |
+| x.com/Miguel07Code/status/2098527121702309905 | unreachable | same |
+| x.com/HeyGen_Official/status/2075262117964615956 | unreachable | same |
+| x.com/HeyGen_Official/status/2077438104982667282 | unreachable | same |
+| `apps/web/public/creator-os/airintrofin.mp4` | analysed (12 frames, contact sheet) | the primary visual reference: sky arc, mark scale 0.62, "air by" lockup |

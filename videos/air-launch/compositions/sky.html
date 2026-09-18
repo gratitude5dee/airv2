@@ -1,0 +1,177 @@
+<template id="sky-template">
+  <div data-hf-id="hf-sg5c" id="sky-root" data-composition-id="sky" data-width="1920" data-height="1080" data-duration="103">
+    <style>
+      #sky-root{position:relative;width:1920px;height:1080px;overflow:hidden;background:#9CCBEA}
+      #sky-root *,#sky-root *::before,#sky-root *::after{box-sizing:border-box}
+      #sky-root #sky-canvas{position:absolute;inset:0;width:1920px;height:1080px;display:block}
+      /* A very light vignette keeps the sky expansive instead of turning it into a dark stage. */
+      #sky-root .veil{position:absolute;inset:0;pointer-events:none;
+        background:radial-gradient(120% 90% at 50% 42%,rgba(0,0,0,0) 44%,rgba(32,73,118,.18) 100%)}
+    </style>
+
+    <canvas data-hf-id="hf-y5j1" id="sky-canvas" width="1920" height="1080" class="clip" data-start="0" data-duration="103" data-track-index="0"></canvas>
+    <div data-hf-id="hf-h5f4" class="veil"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+    (function(){
+      var root = document.querySelector('[data-composition-id="sky"]');
+      var canvas = root.querySelector('#sky-canvas');
+      var tl = gsap.timeline({paused:true});
+      window.__timelines = window.__timelines || {};
+
+      // uProgress: 0 = bright, cloud-lit morning sky (intro) -> 1 = darker, veiled dusk (outro).
+      // Keyed to the master cut list: intro 0-13.8s, mid film hidden behind opaque shots,
+      // outro sky returns at 81s and closes at 103s with the music's silent tail.
+      var proxy = {t:0, p:0};
+
+      function fallback2d(){
+        var ctx = canvas.getContext('2d');
+        if(!ctx) return false;
+        var draw = function(p){
+          var g = ctx.createLinearGradient(0,0,0,1080);
+          var top = p < .5 ? '#5D96CE' : '#193A63';
+          var mid = p < .5 ? '#9DCAEB' : '#416A95';
+          var low = p < .5 ? '#E0F2FF' : '#789ABE';
+          g.addColorStop(0, top); g.addColorStop(.55, mid); g.addColorStop(1, low);
+          ctx.fillStyle = g; ctx.fillRect(0,0,1920,1080);
+          function cloud(x,y,r,a){
+            var c=ctx.createRadialGradient(x,y,0,x,y,r);
+            c.addColorStop(0,'rgba(255,255,255,'+a+')');
+            c.addColorStop(.48,'rgba(238,249,255,'+(a*.56)+')');
+            c.addColorStop(1,'rgba(228,244,255,0)');
+            ctx.fillStyle=c;ctx.fillRect(x-r,y-r,r*2,r*2);
+          }
+          cloud(230,960,420,.74);cloud(680,1020,470,.72);cloud(1230,930,500,.67);cloud(1680,1000,420,.72);
+          cloud(1680,110,285,.28);cloud(250,150,230,.16);
+        };
+        draw(0);
+        tl.to(proxy,{p:1,duration:103,ease:'none',onUpdate:function(){draw(proxy.p);}},0);
+        return true;
+      }
+
+      var gl = canvas.getContext('webgl',{antialias:false,preserveDrawingBuffer:true})
+            || canvas.getContext('experimental-webgl',{antialias:false,preserveDrawingBuffer:true});
+
+      if(!gl){
+        fallback2d();
+        window.__timelines["sky"] = tl;
+        return;
+      }
+
+      var VS = [
+        'attribute vec2 aPos;',
+        'void main(){ gl_Position = vec4(aPos,0.0,1.0); }'
+      ].join('\n');
+
+      var FS = [
+        'precision highp float;',
+        'uniform vec2  uRes;',
+        'uniform float uTime;',
+        'uniform float uProgress;',
+        // deterministic value noise + fBm (no randomness, no time-of-day input)
+        'float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453123); }',
+        'float noise(vec2 p){',
+        '  vec2 i=floor(p), f=fract(p);',
+        '  vec2 u=f*f*(3.0-2.0*f);',
+        '  float a=hash(i), b=hash(i+vec2(1.0,0.0)), c=hash(i+vec2(0.0,1.0)), d=hash(i+vec2(1.0,1.0));',
+        '  return mix(mix(a,b,u.x),mix(c,d,u.x),u.y);',
+        '}',
+        'float fbm(vec2 p){',
+        '  float v=0.0, a=0.5;',
+        '  mat2 rot=mat2(0.8,0.6,-0.6,0.8);',
+        '  for(int i=0;i<6;i++){ v+=a*noise(p); p=rot*p*2.02; a*=0.5; }',
+        '  return v;',
+        '}',
+        'void main(){',
+        '  vec2 uv = gl_FragCoord.xy/uRes;',
+        '  vec2 p  = vec2(uv.x*uRes.x/uRes.y, uv.y);',
+        '  float dusk = uProgress;',
+        // Reference treatment: a clear, high-key blue sky with soft cumulus volume — no sun disc or rays.
+        '  vec3 zenith   = mix(vec3(0.300,0.541,0.760), vec3(0.055,0.125,0.245), dusk);',
+        '  vec3 horizon  = mix(vec3(0.790,0.914,0.986), vec3(0.355,0.500,0.665), dusk);',
+        '  vec3 col = mix(horizon, zenith, pow(uv.y,0.84));',
+        // A broad, non-directional daylight lift replaces the starburst. It is atmosphere, not a light source.
+        '  float daylight = exp(-length(p-vec2(0.92*uRes.x/uRes.y,0.77))*1.70);',
+        '  col += vec3(0.105,0.128,0.145)*daylight*(1.0-dusk*.42);',
+        // Two cloud scales drift slowly left. The lower field forms the billowy horizon; a smaller layer frames the top.
+        '  vec2 q = p*vec2(1.95,2.45);',
+        '  float drift = uTime*0.018;',
+        '  float lowBase = fbm(q + vec2(-drift, uTime*.004) + fbm(q*.56-vec2(drift*.38,0.0))*.38);',
+        '  float lowDetail = fbm(q*2.35 + vec2(-drift*1.42, uTime*.008));',
+        '  float lowShape = lowBase*.72 + lowDetail*.28 + (0.48-uv.y)*.31;',
+        '  float lowerCloud = smoothstep(.50,.76,lowShape) * (1.0-smoothstep(.48,.92,uv.y));',
+        '  float highBase = fbm(q*1.25 + vec2(-drift*.62,1.9));',
+        '  float upperCloud = smoothstep(.66,.84,highBase + (uv.y-.82)*.28) * smoothstep(.73,.98,uv.y);',
+        '  float cloud = max(lowerCloud,upperCloud*.58);',
+        '  vec3 cloudShade = mix(vec3(0.640,0.758,0.878), vec3(0.310,0.405,0.555), dusk);',
+        '  vec3 cloudLight = mix(vec3(0.984,0.993,1.0), vec3(0.675,0.748,0.848), dusk);',
+        '  float softness = clamp(lowBase*.72 + .20,0.0,1.0);',
+        '  vec3 cloudCol = mix(cloudShade,cloudLight,softness);',
+        '  col = mix(col,cloudCol,cloud*(.86-.20*dusk));',
+        // veil that closes the film: a soft dark wash pulled up from the frame edges
+        '  float vig = smoothstep(1.15,0.15,distance(uv,vec2(0.5,0.46)));',
+        '  col *= mix(1.0,0.70,dusk*(1.0-vig*.38));',
+        '  col = mix(col,vec3(0.035,0.070,0.135),dusk*.20);',
+        // ordered dither to kill banding in the large gradients
+        '  float dth = (hash(floor(gl_FragCoord.xy))-0.5)/255.0;',
+        '  gl_FragColor = vec4(pow(max(col+dth,0.0), vec3(0.9545)), 1.0);',
+        '}'
+      ].join('\n');
+
+      function compile(type, src){
+        var s = gl.createShader(type);
+        gl.shaderSource(s, src); gl.compileShader(s);
+        if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)) return null;
+        return s;
+      }
+      var vs = compile(gl.VERTEX_SHADER, VS), fs = compile(gl.FRAGMENT_SHADER, FS);
+      var prog = vs && fs ? gl.createProgram() : null;
+      if(prog){
+        gl.attachShader(prog, vs); gl.attachShader(prog, fs); gl.linkProgram(prog);
+        if(!gl.getProgramParameter(prog, gl.LINK_STATUS)) prog = null;
+      }
+      if(!prog){
+        fallback2d();
+        window.__timelines["sky"] = tl;
+        return;
+      }
+
+      gl.useProgram(prog);
+      var buf = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+      var loc = gl.getAttribLocation(prog, 'aPos');
+      gl.enableVertexAttribArray(loc);
+      gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+      var uRes = gl.getUniformLocation(prog,'uRes');
+      var uTime = gl.getUniformLocation(prog,'uTime');
+      var uProg = gl.getUniformLocation(prog,'uProgress');
+      gl.viewport(0,0,1920,1080);
+
+      // time comes from the seeked timeline only — never a wall clock
+      function renderFrame(t, p){
+        gl.uniform2f(uRes, 1920, 1080);
+        gl.uniform1f(uTime, t);
+        gl.uniform1f(uProg, p);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+      }
+      renderFrame(0, 0);
+
+      tl.to(proxy,{t:103,duration:103,ease:'none',onUpdate:function(){renderFrame(proxy.t, proxy.p);}},0);
+      // bright -> settled through the intro, then the long veil into the outro,
+      // as one tween so the three legs cannot overlap on the same property
+      tl.to(proxy,{ease:'none',keyframes:[
+        {p:0.18,duration:13.8,ease:'none'},
+        {p:0.42,duration:67.2,ease:'none'},
+        {p:0.86,duration:22,ease:'power1.inOut'}
+      ]},0);
+
+      window.__timelines["sky"] = tl;
+      var q = new URLSearchParams(location.search);
+      if(q.has('t')){ tl.seek(parseFloat(q.get('t'))||0); }
+      else if(q.get('dev')==='1'){ tl.play(); }
+    })();
+    </script>
+  </div>
+</template>
