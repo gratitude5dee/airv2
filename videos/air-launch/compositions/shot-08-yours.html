@@ -1,0 +1,85 @@
+<template id="shot-08-yours-template">
+  <div data-hf-id="hf-s08root" id="s08-root" data-composition-id="shot-08-yours" data-start="0" data-width="1920" data-height="1080" data-duration="6.293">
+    <style>
+      @font-face{font-family:'Inter';font-weight:400;font-style:normal;font-display:block;src:url('fonts/Inter-400-latin.woff2') format('woff2')}
+      @font-face{font-family:'Inter';font-weight:700;font-style:normal;font-display:block;src:url('fonts/Inter-700-latin.woff2') format('woff2')}
+      @font-face{font-family:'Newsreader';font-weight:200 800;font-style:normal;font-display:block;src:url('fonts/newsreader-latin.woff2') format('woff2')}
+      @font-face{font-family:'Azeret Mono';font-weight:100 900;font-style:normal;font-display:block;src:url('fonts/azeret-mono-latin.woff2') format('woff2')}
+      #s08-root{--ink:#F4EFE6;--ink-dim:rgba(244,239,230,.62);--imsg:#0A84FF;--ok:#30D158;--glass:rgba(255,255,255,.08);--line:rgba(255,255,255,.12);
+        position:relative;width:1920px;height:1080px;overflow:hidden;background:transparent;
+        font-family:'Inter',system-ui,-apple-system,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased}
+      #s08-root *,#s08-root *::before,#s08-root *::after{box-sizing:border-box}
+      #s08-root .frame{position:absolute;inset:0;perspective:1800px}
+      /* parallax planes: the camera proxy moves, the planes follow it by depth */
+      #s08-root .plane{position:absolute;inset:0;transform-style:preserve-3d;will-change:transform}
+      #s08-root .giant{font-family:'Newsreader',Georgia,serif;font-weight:300;letter-spacing:-.035em;line-height:.86;
+        color:var(--ink);opacity:.92;white-space:nowrap;text-shadow:0 3px 26px rgba(3,7,18,.52)}
+      #s08-root .giant .w{display:inline-block;will-change:transform,opacity;transform-style:preserve-3d}
+      #s08-root .wash{position:absolute;inset:0;pointer-events:none;
+        background:radial-gradient(64% 46% at 50% 44%,rgba(4,9,22,.46) 0%,rgba(4,9,22,.20) 56%,rgba(4,9,22,0) 100%)}
+      #s08-root .washL{position:absolute;inset:0;pointer-events:none;
+        background:linear-gradient(100deg,rgba(4,9,22,.52) 0%,rgba(4,9,22,.30) 42%,rgba(4,9,22,0) 72%)}
+      #s08-root .washR{position:absolute;inset:0;pointer-events:none;
+        background:linear-gradient(262deg,rgba(4,9,22,.54) 0%,rgba(4,9,22,.30) 44%,rgba(4,9,22,0) 76%)}
+      #s08-root .cap{font-family:'Newsreader',Georgia,serif;font-weight:400;font-size:56px;line-height:1.08;color:var(--ink);
+        text-shadow:0 3px 24px rgba(3,7,18,.52)}
+      #s08-root .mono{font-family:'Azeret Mono',ui-monospace,monospace;font-weight:400;font-size:25px;letter-spacing:.02em;
+        color:rgba(244,239,230,.80);line-height:1.45;text-shadow:0 2px 16px rgba(3,7,18,.60)}
+      #s08-root .lines{position:absolute;left:150px;top:300px;width:1180px}
+      #s08-root .gl{font-size:112px;margin-bottom:10px}
+      #s08-root .kick{position:absolute;left:156px;top:664px;font-family:'Azeret Mono',monospace;font-size:27px;
+        letter-spacing:.06em;color:rgba(244,239,230,.86);text-shadow:0 2px 16px rgba(3,7,18,.7)}
+      #s08-root .cards{position:absolute;left:1362px;top:286px;width:440px}
+      #s08-root .bcard{margin-bottom:18px;padding:20px 22px;border-radius:22px;background:rgba(6,12,28,.50);
+        border:1px solid rgba(255,255,255,.14);backdrop-filter:blur(16px);display:flex;gap:15px;align-items:flex-start;
+        will-change:transform,opacity}
+      #s08-root .bcard .ic{width:40px;height:40px;border-radius:11px;flex:0 0 auto;display:flex;align-items:center;
+        justify-content:center;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.13)}
+      #s08-root .bcard .ic i{display:block;width:22px;height:22px;background-position:center;background-repeat:no-repeat;background-size:contain}
+      #s08-root .bcard .ti{font-size:19px;font-weight:700;color:#fff}
+      #s08-root .bcard .sb{font-family:'Azeret Mono',monospace;font-size:14px;line-height:1.5;
+        color:rgba(244,239,230,.68);margin-top:4px}
+    </style>
+
+    <div data-hf-id="hf-s08frame" class="frame clip" id="s08-frame" data-layout-allow-overflow="" data-start="0" data-duration="6.293" data-track-index="1">
+      <div data-hf-id="hf-s08wa" class="washL"></div>
+      <div data-hf-id="hf-s08ln" class="lines" id="s08-lines"><div data-hf-id="hf-s08l0" class="giant gl" id="s08-l0"><span data-hf-id="hf-s08w00" class="w">Your&nbsp;</span><span data-hf-id="hf-s08w01" class="w">agent,&nbsp;</span></div><div data-hf-id="hf-s08l1" class="giant gl" id="s08-l1"><span data-hf-id="hf-s08w10" class="w">your&nbsp;</span><span data-hf-id="hf-s08w11" class="w">RL&nbsp;</span><span data-hf-id="hf-s08w12" class="w">environment,&nbsp;</span></div><div data-hf-id="hf-s08l2" class="giant gl" id="s08-l2"><span data-hf-id="hf-s08w20" class="w">your&nbsp;</span><span data-hf-id="hf-s08w21" class="w">model,&nbsp;</span><span data-hf-id="hf-s08w22" class="w">your&nbsp;</span><span data-hf-id="hf-s08w23" class="w">weights.&nbsp;</span></div></div>
+      <div data-hf-id="hf-s08kk" class="kick" id="s08-kick">air, your guardian angel</div>
+      <div data-hf-id="hf-s08cd" class="cards" id="s08-cards"><div data-hf-id="hf-s08c0" class="bcard" id="s08-c0"><div data-hf-id="hf-s08ci0" class="ic"><i data-hf-id="hf-s08cg0" style="background-image:url(&quot;logos/glyph-computer.svg&quot;)"></i></div><div data-hf-id="hf-s08cw0"><div data-hf-id="hf-s08ct0" class="ti">Custom sandbox</div><div data-hf-id="hf-s08cs0" class="sb">Its own isolated machine, per person.</div></div></div><div data-hf-id="hf-s08c1" class="bcard" id="s08-c1"><div data-hf-id="hf-s08ci1" class="ic"><i data-hf-id="hf-s08cg1" style="background-image:url(&quot;logos/glyph-remote.svg&quot;)"></i></div><div data-hf-id="hf-s08cw1"><div data-hf-id="hf-s08ct1" class="ti">Local task router</div><div data-hf-id="hf-s08cs1" class="sb">A custom quantized model, on the machine.</div></div></div><div data-hf-id="hf-s08c2" class="bcard" id="s08-c2"><div data-hf-id="hf-s08ci2" class="ic"><i data-hf-id="hf-s08cg2" style="background-image:url(&quot;logos/glyph-vault.svg&quot;)"></i></div><div data-hf-id="hf-s08cw2"><div data-hf-id="hf-s08ct2" class="ti">Zero data retention</div><div data-hf-id="hf-s08cs2" class="sb">Clean, content-zero data retention.</div></div></div></div>
+    </div>
+
+    <script src="vendor/gsap.min.js"></script>
+    <script>
+    (function(){
+      var root=document.querySelector('[data-composition-id="shot-08-yours"]');
+      var $=function(s){return root.querySelector(s);};
+      var $$=function(s){return Array.prototype.slice.call(root.querySelectorAll(s));};
+      var tl=gsap.timeline({paused:true});
+      var lines=[$$('#s08-l0 .w'),$$('#s08-l1 .w'),$$('#s08-l2 .w')];
+      var cards=[$('#s08-c0'),$('#s08-c1'),$('#s08-c2')];
+      lines.forEach(function(ws){ gsap.set(ws,{y:'0.6em',autoAlpha:0,rotationX:24,transformOrigin:'50% 80%'}); });
+      gsap.set('#s08-kick',{autoAlpha:0,y:12});
+      gsap.set(cards,{autoAlpha:0,x:60,transformOrigin:'50% 50%'});
+
+      // 89.536 — the DROP at 90 is a breath. One clause per downbeat, nothing hurried.
+      [1.556,3.135,4.737].forEach(function(t,i){
+        tl.to(lines[i],{y:0,autoAlpha:1,rotationX:0,duration:.72,ease:'expo.out',stagger:.045},t);
+        if(i>0) tl.to(lines[i-1],{autoAlpha:.34,filter:'blur(2px)',duration:.5,ease:'power2.out'},t);
+      });
+      tl.to('#s08-kick',{autoAlpha:1,y:0,duration:.52,ease:'expo.out'},5.039);
+      // the backend, stated plainly and only once
+      [0.62,2.20,3.78].forEach(function(t,i){
+        tl.to(cards[i],{autoAlpha:1,x:0,duration:.66,ease:'expo.out'},t);
+      });
+      tl.to('#s08-cards',{y:-10,duration:5.0,ease:'none'},.62);
+      tl.to(['#s08-lines','#s08-kick'],{x:-12,duration:6.0,ease:'none'},0);
+      // hard cut into the montage
+      tl.to(['#s08-lines','#s08-kick','#s08-cards'],{x:-230,autoAlpha:0,duration:.30,ease:'power4.in'},5.99);
+      window.__timelines=window.__timelines||{};
+      window.__timelines['shot-08-yours']=tl;
+      var q=new URLSearchParams(location.search);
+      if(q.has('t')){tl.seek(parseFloat(q.get('t'))||0);}else if(q.get('dev')==='1'){tl.play();}
+    })();
+    </script>
+  </div>
+</template>

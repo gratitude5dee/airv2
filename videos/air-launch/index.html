@@ -3,22 +3,28 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=1920, height=1080">
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="vendor/gsap.min.js"></script>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
       html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: #050810; }
-      /* opaque stage ground: every seam is a mid-motion cut, which opens a summed-opacity < 1
+      /* Opaque stage ground: every seam is a mid-motion cut, which opens a summed-opacity < 1
          window — without this the frame flashes white for a frame or two. */
       #air-root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #050810; }
       #sky      { position: absolute; inset: 0; z-index: 0; }
-      /* The score lifts the exposure of the one shared cloud world. It is not a
-         spectrum display: every pulse is a named musical event from audiomap.json. */
+      /* The score lifts the exposure of the one shared sky. It is not a spectrum display:
+         every pulse is a named kick from audiomap.json with energy >= 0.5. */
       #music-bloom { position: absolute; inset: -180px; z-index: 0; pointer-events: none;
-        opacity: .10; transform-origin: 72% 38%;
+        opacity: .10; transform-origin: 62% 62%;
         background:
-          radial-gradient(40% 36% at 72% 38%, rgba(190,225,255,.42) 0%, rgba(135,178,255,.16) 38%, rgba(75,112,205,0) 76%),
-          radial-gradient(34% 28% at 20% 78%, rgba(183,136,255,.15) 0%, rgba(183,136,255,0) 76%);
+          radial-gradient(42% 38% at 62% 62%, rgba(255,226,186,.40) 0%, rgba(168,198,255,.14) 40%, rgba(75,112,205,0) 78%),
+          radial-gradient(34% 28% at 22% 30%, rgba(150,190,255,.12) 0%, rgba(150,190,255,0) 76%);
         mix-blend-mode: screen; will-change: opacity, transform; }
+      /* The sky goes from night to noon; cream ink has to hold on both. One shared scrim
+         between sky and shots does that without darkening the sky itself into a stage. */
+      #sky-scrim { position: absolute; inset: 0; z-index: 0; pointer-events: none;
+        background:
+          radial-gradient(122% 88% at 50% 44%, rgba(3,7,18,0) 34%, rgba(3,7,18,.30) 100%),
+          linear-gradient(180deg, rgba(3,7,18,.26) 0%, rgba(3,7,18,0) 24%, rgba(3,7,18,0) 58%, rgba(3,7,18,.36) 100%); }
       #shot-01  { position: absolute; inset: 0; z-index: 1; }
       #shot-02  { position: absolute; inset: 0; z-index: 2; }
       #shot-03  { position: absolute; inset: 0; z-index: 3; }
@@ -29,120 +35,91 @@
       #shot-08  { position: absolute; inset: 0; z-index: 8; }
       #shot-09  { position: absolute; inset: 0; z-index: 9; }
       #shot-10  { position: absolute; inset: 0; z-index: 10; }
-      #shot-11  { position: absolute; inset: 0; z-index: 11; }
-      #shot-12  { position: absolute; inset: 0; z-index: 12; }
-      #shot-13  { position: absolute; inset: 0; z-index: 13; opacity: 0; }
-      #shot-14  { position: absolute; inset: 0; z-index: 14; opacity: 0; }
-      /* Two early act breaks get a single inked seam. It is a transition layer, not a recurring decoration. */
-      #ink-transitions{position:absolute;inset:0;z-index:14;width:1920px;height:1080px;pointer-events:none;overflow:hidden}
-      #ink-transitions path{fill:none;stroke-linecap:round;stroke-linejoin:round;will-change:stroke-dashoffset,stroke-width,opacity}
-      #ink-transitions .ink-body{stroke:#10213F;opacity:.90}
-      #ink-transitions .ink-edge{stroke:#E8F4FF;opacity:.56}
-      /* film grade: soft vignette + a static SVG-turbulence grain (fixed seed — deterministic),
-         sitting above every shot. Subtle by design: it reads as texture, not noise. */
+      /* Film grade: soft vignette + a static SVG-turbulence grain (fixed seed — deterministic),
+         sitting above every shot, plus the freeze-dim lane used once at 104.606. */
       #grade { position: absolute; inset: 0; z-index: 20; pointer-events: none; }
       #grade .vig { position: absolute; inset: 0;
         background: radial-gradient(118% 96% at 50% 46%, rgba(0,0,0,0) 58%, rgba(2,5,12,.34) 100%); }
       #grade .grain { position: absolute; inset: 0; opacity: .05; mix-blend-mode: overlay;
         background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' seed='7' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)'/%3E%3C/svg%3E");
         background-size: 240px 240px; }
+      #grade .freeze { position: absolute; inset: 0; background: #02040A; opacity: 0; }
     </style>
   </head>
   <body>
-    <div data-hf-id="hf-t688" id="air-root" data-composition-id="master" data-start="0" data-width="1920" data-height="1080" data-duration="109">
+    <div data-hf-id="hf-t688" id="air-root" data-composition-id="master" data-start="0" data-width="1920" data-height="1080" data-duration="119.699">
 
-      <!-- CLOUD SKY (WebGL fBm cloud field, 2D gradient fallback). One instance for the whole
-           film: it is the open (shots 01-02), it is hidden behind the opaque chapter shots
-           (03-10), and it returns as the closing sky (shots 11-13) as uProgress veils it. -->
-      <div data-hf-id="hf-7t2m" id="sky" data-composition-id="sky" data-composition-src="compositions/sky.html" data-start="0" data-duration="109" data-track-index="0"></div>
-      <div data-hf-id="hf-musicbloom" id="music-bloom" class="clip" data-start="0" data-duration="109" data-track-index="0" data-layout-ignore=""></div>
+      <!-- SKY — one instance for the whole film. It dawns: night (0s) -> blue hour -> the
+           sunrise crest on the crash at 24.358 -> bright cumulus by the lockup, the same arc
+           the brand intro film walks. Every shot above it is transparent-grounded, so the
+           sky is the continuity that makes ten hard cuts read as one take. -->
+      <div data-hf-id="hf-7t2m" id="sky" data-composition-id="sky" data-composition-src="compositions/sky.html" data-start="0" data-duration="119.699" data-track-index="0"></div>
+      <div data-hf-id="hf-skyscrim" id="sky-scrim" class="clip" data-start="0" data-duration="119.699" data-track-index="0" data-layout-ignore=""></div>
+      <div data-hf-id="hf-musicbloom" id="music-bloom" class="clip" data-start="0" data-duration="119.699" data-track-index="0" data-layout-ignore=""></div>
 
-      <!-- MUSIC — Passwords.mp3, the timing spine: every seam below sits on one of its
-           audiomap anchors (SURGE 6/51, phrase edges 13.77/25.33, hard stops 67/69,
-           near-silence 89-103). Volume lane rides the film: full through the beat-driven
-           chapters, a gentle shelf under the quiet backend act, out with the sky. -->
-      <audio data-hf-id="hf-6wj5" id="bgm" class="clip" src="assets/bgm.mp3" data-start="0" data-duration="103" data-track-index="14" data-volume="0.9" data-automation="{&quot;version&quot;:1,&quot;lanes&quot;:[{&quot;target&quot;:&quot;volume&quot;,&quot;points&quot;:[{&quot;t&quot;:0,&quot;v&quot;:0},{&quot;t&quot;:0.35,&quot;v&quot;:1},{&quot;t&quot;:100.5,&quot;v&quot;:1},{&quot;t&quot;:103,&quot;v&quot;:0}]}]}"></audio>
+      <!-- MUSIC — vstar.mp3, 152 BPM, 119.699s. It is the timing spine: every seam below is a
+           downbeat from audiomap.json, every card lands on a downbeat, every tap on a kick. -->
+      <audio data-hf-id="hf-6wj5" id="bgm" class="clip" src="assets/bgm.mp3" data-start="0" data-duration="119.699" data-track-index="11" data-volume="0.9" data-automation="{&quot;version&quot;:1,&quot;lanes&quot;:[{&quot;target&quot;:&quot;volume&quot;,&quot;points&quot;:[{&quot;t&quot;:0,&quot;v&quot;:0},{&quot;t&quot;:0.2,&quot;v&quot;:1},{&quot;t&quot;:114.5,&quot;v&quot;:1},{&quot;t&quot;:119.4,&quot;v&quot;:0}]}]}"></audio>
 
-      <!-- ACT I — the promise, over the sky -->
-      <div data-hf-id="hf-nr6q" id="shot-01" data-composition-id="shot-01-open" data-composition-src="compositions/shot-01-open.html" data-start="0" data-duration="6" data-track-index="1"></div>
-      <div data-hf-id="hf-qc1v" id="shot-02" data-composition-id="shot-02-kinetic" data-composition-src="compositions/shot-02-kinetic.html" data-start="6" data-duration="7.8" data-track-index="2"></div>
+      <!-- ACT I — the night, the thread, the drop -->
+      <div data-hf-id="hf-nr6q" id="shot-01" data-composition-id="shot-01-cold-open" data-composition-src="compositions/shot-01-cold-open.html" data-start="0" data-duration="10.17" data-track-index="1"></div>
+      <div data-hf-id="hf-qc1v" id="shot-02" data-composition-id="shot-02-imessage-thread" data-composition-src="compositions/shot-02-imessage-thread.html" data-start="10.17" data-duration="14.188" data-track-index="2"></div>
+      <div data-hf-id="hf-jugz" id="shot-03" data-composition-id="shot-03-endowments" data-composition-src="compositions/shot-03-endowments.html" data-start="24.358" data-duration="8.986" data-track-index="3"></div>
 
-      <!-- ACT II — what the agent is given, then the six chapters -->
-      <div data-hf-id="hf-jugz" id="shot-03" data-composition-id="shot-03-endowments" data-composition-src="compositions/shot-03-endowments.html" data-start="13.8" data-duration="11.5" data-track-index="3"></div>
-      <div data-hf-id="hf-s0qq" id="shot-04" data-composition-id="shot-04-hyperpersonalization" data-composition-src="compositions/shot-04-hyperpersonalization.html" data-start="25.3" data-duration="7.7" data-track-index="4"></div>
-      <div data-hf-id="hf-fjoy" id="shot-05" data-composition-id="shot-05-import-context" data-composition-src="compositions/shot-05-import-context.html" data-start="33" data-duration="7.5" data-track-index="5"></div>
-      <div data-hf-id="hf-c4kj" id="shot-06" data-composition-id="shot-06-connect-apps" data-composition-src="compositions/shot-06-connect-apps.html" data-start="40.5" data-duration="8" data-track-index="6"></div>
-      <div data-hf-id="hf-9da1" id="shot-07" data-composition-id="shot-07-composable-computer" data-composition-src="compositions/shot-07-composable-computer.html" data-start="48.5" data-duration="7.5" data-track-index="7"></div>
-      <div data-hf-id="hf-g07v" id="shot-08" data-composition-id="shot-08-knowledge-work" data-composition-src="compositions/shot-08-knowledge-work.html" data-start="56" data-duration="7.5" data-track-index="8"></div>
-      <div data-hf-id="hf-h4v2" id="shot-09" data-composition-id="shot-09-remote-control" data-composition-src="compositions/shot-09-remote-control.html" data-start="63.5" data-duration="5.5" data-track-index="9"></div>
+      <!-- ACT II — what it knows, what it reaches, what it runs -->
+      <div data-hf-id="hf-s0qq" id="shot-04" data-composition-id="shot-04-hyperpersonal" data-composition-src="compositions/shot-04-hyperpersonal.html" data-start="33.344" data-duration="6.246" data-track-index="4"></div>
+      <div data-hf-id="hf-fjoy" id="shot-05" data-composition-id="shot-05-connect-apps" data-composition-src="compositions/shot-05-connect-apps.html" data-start="39.59" data-duration="6.223" data-track-index="5"></div>
+      <div data-hf-id="hf-c4kj" id="shot-06" data-composition-id="shot-06-mini-apps" data-composition-src="compositions/shot-06-mini-apps.html" data-start="45.813" data-duration="24.869" data-track-index="6"></div>
+      <div data-hf-id="hf-9da1" id="shot-07" data-composition-id="shot-07-create" data-composition-src="compositions/shot-07-create.html" data-start="70.682" data-duration="18.854" data-track-index="7"></div>
 
-      <!-- ACT III — the backend, then back to the sky to close -->
-      <div data-hf-id="hf-9zdq" id="shot-10" data-composition-id="shot-10-guardian-angel" data-composition-src="compositions/shot-10-guardian-angel.html" data-start="69" data-duration="12" data-track-index="10"></div>
-      <div data-hf-id="hf-r5ph" id="shot-11" data-composition-id="shot-11-yours" data-composition-src="compositions/shot-11-yours.html" data-start="81" data-duration="8" data-track-index="11"></div>
-      <div data-hf-id="hf-fwos" id="shot-12" data-composition-id="shot-12-guardian" data-composition-src="compositions/shot-12-guardian.html" data-start="89" data-duration="7" data-track-index="12"></div>
-      <div data-hf-id="hf-p2w0" id="shot-13" data-composition-id="shot-13-endcard" data-composition-src="compositions/shot-13-endcard.html" data-start="96" data-duration="7" data-track-index="13"></div>
-      <div data-hf-id="hf-s14cta" id="shot-14" data-composition-id="shot-14-cta" data-composition-src="compositions/shot-14-cta.html" data-start="103" data-duration="6" data-track-index="14"></div>
+      <!-- ACT III — yours, the montage, the lockup -->
+      <div data-hf-id="hf-g07v" id="shot-08" data-composition-id="shot-08-yours" data-composition-src="compositions/shot-08-yours.html" data-start="89.536" data-duration="6.293" data-track-index="8"></div>
+      <div data-hf-id="hf-h4v2" id="shot-09" data-composition-id="shot-09-finale-montage" data-composition-src="compositions/shot-09-finale-montage.html" data-start="95.829" data-duration="6.339" data-track-index="9"></div>
+      <div data-hf-id="hf-9zdq" id="shot-10" data-composition-id="shot-10-end-card" data-composition-src="compositions/shot-10-end-card.html" data-start="102.168" data-duration="17.531" data-track-index="10"></div>
 
-      <!-- Hand-drawn, measured SVG wipes: one at the open's cut, one as the endowment act begins. -->
-      <svg data-hf-id="hf-inkwipes" id="ink-transitions" class="clip" data-start="0" data-duration="109" data-track-index="16" data-layout-allow-overflow="" viewBox="0 0 1920 1080" aria-hidden="true">
-        <g data-hf-id="hf-2f91" id="ink-open-cut"><path data-hf-id="hf-j0hu" class="ink-body" d="M -210 720 C 155 330 438 874 850 590 S 1514 306 2140 544" stroke-width="158" /><path data-hf-id="hf-949q" class="ink-edge" d="M -210 720 C 155 330 438 874 850 590 S 1514 306 2140 544" stroke-width="10" /></g>
-        <g data-hf-id="hf-mkft" id="ink-body-cut"><path data-hf-id="hf-m8om" class="ink-body" d="M -190 382 C 196 730 486 230 862 540 S 1480 766 2140 312" stroke-width="152" /><path data-hf-id="hf-70j0" class="ink-edge" d="M -190 382 C 196 730 486 230 862 540 S 1480 766 2140 312" stroke-width="10" /></g>
-      </svg>
-
-      <!-- GRADE — vignette + static grain over the whole film -->
-      <div data-hf-id="hf-syvh" id="grade" class="clip" data-start="0" data-duration="109" data-track-index="15">
+      <!-- GRADE — vignette + static grain over the whole film, and the one freeze dim -->
+      <div data-hf-id="hf-syvh" id="grade" class="clip" data-start="0" data-duration="119.699" data-track-index="12">
         <div data-hf-id="hf-e4a6" class="vig"></div>
         <div data-hf-id="hf-h60x" class="grain"></div>
+        <div data-hf-id="hf-frz" class="freeze" id="grade-freeze"></div>
       </div>
 
     </div>
 
     <script>
-      // Master timeline. Every seam is a hard cut: the outgoing shot is still travelling LEFT
-      // (power4.in, -230px) when the cut lands and the incoming shot picks the same vector up
-      // mid-flight (power4.out, +230px -> 0) inside its own composition. The only dissolve in
-      // the film is shot 12 -> shot 13, and it is carried by the continuous sky underneath.
+      // Master timeline. Every seam is a hard cut on a downbeat: the outgoing shot is still
+      // travelling LEFT (power4.in, -230px) when the cut lands and the incoming shot picks the
+      // same vector up mid-flight (power4.out, +230px -> 0) inside its own composition. There
+      // are no dissolves and no wipes in v3 — the sky carries every seam.
       window.__timelines = window.__timelines || {};
       const rootTimeline = gsap.timeline({ paused: true });
       rootTimeline.set("#music-bloom", { scale: 1 }, 0);
-      // SVG ink is measured from the actual paths, then drawn once across its edit seam.
-      // It is deterministic and seek-safe: a scrub always reconstructs the same wipe state.
-      function addInkWipe(groupId, at) {
-        const paths = Array.from(document.querySelectorAll(groupId + " path"));
-        paths.forEach(function(path) {
-          const length = path.getTotalLength();
-          gsap.set(path, { strokeDasharray: length, strokeDashoffset: length, autoAlpha: 0 });
-        });
-        const body = paths[0], edge = paths[1];
-        rootTimeline.set(paths, { autoAlpha: 1 }, at);
-        rootTimeline.to(body, { strokeDashoffset: 0, duration: .28, ease: "power2.out" }, at);
-        rootTimeline.to(edge, { strokeDashoffset: 0, duration: .22, ease: "power2.out" }, at + .06);
-        rootTimeline.to(body, { strokeWidth: 226, duration: .14, ease: "power2.out" }, at + .18);
-        rootTimeline.to(paths, { autoAlpha: 0, duration: .18, ease: "power1.in" }, at + .40);
-      }
-      addInkWipe("#ink-open-cut", 5.54);
-      addInkWipe("#ink-body-cut", 13.36);
-      // Pre-extracted score anchors from audiomap.json. The shared cloud exposure swells on
-      // actual rises/kicks, then returns to a quiet hold; it deliberately cuts to stillness
-      // at the 67–69s stop so the remote-control freeze remains a real musical void.
+
+      // Pre-extracted from audiomap.json: every kick with energy >= 0.5, plus the two loud
+      // snares that carry the 25s slam. The shared sky exposure lifts on the actual transient
+      // and returns to its quiet hold. Silent through the 104.6 freeze and after the lockup.
       const scoreCues = [
-        [0.813, .16], [1.045, .22], [4.110, .17], [5.341, .28], [6.000, .34],
-        [8.243, .18], [9.683, .22], [10.820, .27], [18.390, .18], [22.198, .22],
-        [25.333, .26], [33.808, .24], [35.968, .23], [39.590, .25], [42.701, .24],
-        [46.231, .22], [49.250, .20], [51.000, .38], [54.938, .25], [59.095, .22],
-        [63.576, .23]
+        [16.277, .26], [25.310, .34], [25.496, .38], [26.821, .22], [35.760, .22],
+        [39.753, .28], [43.980, .22], [48.669, .20], [52.917, .22], [56.703, .26],
+        [61.068, .24], [63.994, .22], [66.339, .20], [69.940, .22], [73.514, .22],
+        [77.253, .22], [82.477, .24], [86.936, .30], [92.717, .28], [97.850, .24],
+        [99.869, .26], [102.679, .24], [106.812, .22], [107.950, .30]
       ];
       scoreCues.forEach(function(cue) {
         const at = cue[0], peak = cue[1];
-        rootTimeline.to("#music-bloom", { opacity: peak, scale: 1.025, duration: .10, ease: "power2.out" }, at);
-        rootTimeline.to("#music-bloom", { opacity: .10, scale: 1, duration: .72, ease: "power2.inOut" }, at + .10);
+        rootTimeline.to("#music-bloom", { opacity: peak, scale: 1.022, duration: .10, ease: "power2.out" }, at);
+        rootTimeline.to("#music-bloom", { opacity: .10, scale: 1, duration: .68, ease: "power2.inOut" }, at + .10);
       });
-      rootTimeline.to("#music-bloom", { opacity: .055, scale: 1, duration: .12, ease: "power2.in" }, 66.88);
-      rootTimeline.to("#music-bloom", { opacity: .10, duration: .42, ease: "power2.out" }, 69.00);
-      // shot 13 fades up over the still-visible sky as shot 12's payoff dissolves out
-      rootTimeline.to("#shot-13", { opacity: 1, duration: 0.42, ease: "power1.inOut" }, 96);
-      rootTimeline.to("#shot-13", { opacity: 0, duration: 0.34, ease: "power1.in" }, 103);
-      rootTimeline.to("#shot-14", { opacity: 1, duration: 0.46, ease: "power1.out" }, 103);
+      // The hard stop at 104.606: the bloom goes with it, and comes back on the release kick.
+      rootTimeline.to("#music-bloom", { opacity: .04, duration: .08, ease: "power2.in" }, 104.55);
+      rootTimeline.to("#music-bloom", { opacity: .10, duration: .40, ease: "power2.out" }, 105.535);
+      rootTimeline.to("#music-bloom", { opacity: 0, duration: 1.6, ease: "power1.inOut" }, 112.2);
+
+      // The freeze: one 8% dim across the whole frame while the track is silent. It is the only
+      // grade move in the film, and it is musical, not stylistic.
+      rootTimeline.to("#grade-freeze", { opacity: .08, duration: .05, ease: "none" }, 104.606);
+      rootTimeline.to("#grade-freeze", { opacity: 0, duration: .15, ease: "power2.out" }, 105.535);
+
       window.__timelines["master"] = rootTimeline;
     </script>
   </body>

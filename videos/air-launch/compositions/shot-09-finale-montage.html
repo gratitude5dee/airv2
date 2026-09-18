@@ -1,0 +1,181 @@
+<template id="shot-09-finale-montage-template">
+  <div data-hf-id="hf-s09root" id="s09-root" data-composition-id="shot-09-finale-montage" data-start="0" data-width="1920" data-height="1080" data-duration="6.339">
+    <style>
+      @font-face{font-family:'Inter';font-weight:400;font-style:normal;font-display:block;src:url('fonts/Inter-400-latin.woff2') format('woff2')}
+      @font-face{font-family:'Inter';font-weight:700;font-style:normal;font-display:block;src:url('fonts/Inter-700-latin.woff2') format('woff2')}
+      @font-face{font-family:'Newsreader';font-weight:200 800;font-style:normal;font-display:block;src:url('fonts/newsreader-latin.woff2') format('woff2')}
+      @font-face{font-family:'Azeret Mono';font-weight:100 900;font-style:normal;font-display:block;src:url('fonts/azeret-mono-latin.woff2') format('woff2')}
+      #s09-root{--ink:#F4EFE6;--ink-dim:rgba(244,239,230,.62);--imsg:#0A84FF;--ok:#30D158;--glass:rgba(255,255,255,.08);--line:rgba(255,255,255,.12);
+        position:relative;width:1920px;height:1080px;overflow:hidden;background:transparent;
+        font-family:'Inter',system-ui,-apple-system,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased}
+      #s09-root *,#s09-root *::before,#s09-root *::after{box-sizing:border-box}
+      #s09-root .frame{position:absolute;inset:0;perspective:1800px}
+      /* parallax planes: the camera proxy moves, the planes follow it by depth */
+      #s09-root .plane{position:absolute;inset:0;transform-style:preserve-3d;will-change:transform}
+      #s09-root .giant{font-family:'Newsreader',Georgia,serif;font-weight:300;letter-spacing:-.035em;line-height:.86;
+        color:var(--ink);opacity:.92;white-space:nowrap;text-shadow:0 3px 26px rgba(3,7,18,.52)}
+      #s09-root .giant .w{display:inline-block;will-change:transform,opacity;transform-style:preserve-3d}
+      #s09-root .wash{position:absolute;inset:0;pointer-events:none;
+        background:radial-gradient(64% 46% at 50% 44%,rgba(4,9,22,.46) 0%,rgba(4,9,22,.20) 56%,rgba(4,9,22,0) 100%)}
+      #s09-root .washL{position:absolute;inset:0;pointer-events:none;
+        background:linear-gradient(100deg,rgba(4,9,22,.52) 0%,rgba(4,9,22,.30) 42%,rgba(4,9,22,0) 72%)}
+      #s09-root .washR{position:absolute;inset:0;pointer-events:none;
+        background:linear-gradient(262deg,rgba(4,9,22,.54) 0%,rgba(4,9,22,.30) 44%,rgba(4,9,22,0) 76%)}
+      #s09-root .cap{font-family:'Newsreader',Georgia,serif;font-weight:400;font-size:56px;line-height:1.08;color:var(--ink);
+        text-shadow:0 3px 24px rgba(3,7,18,.52)}
+      #s09-root .mono{font-family:'Azeret Mono',ui-monospace,monospace;font-weight:400;font-size:25px;letter-spacing:.02em;
+        color:rgba(244,239,230,.80);line-height:1.45;text-shadow:0 2px 16px rgba(3,7,18,.60)}
+      #s09-root .ph{position:absolute;width:402px;height:874px;will-change:transform}
+      #s09-root .ph-body{position:absolute;inset:0;border-radius:56px;background:linear-gradient(160deg,#3a3f4a 0%,#171b22 38%,#0f1218 100%);
+        padding:3px;box-shadow:0 60px 120px rgba(2,6,18,.62),0 12px 30px rgba(2,6,18,.5),inset 0 1px 0 rgba(255,255,255,.16)}
+      #s09-root .ph-screen{position:absolute;inset:3px;border-radius:53px;overflow:hidden;background:#000}
+      #s09-root .ph-island{position:absolute;top:14px;left:50%;margin-left:-63px;width:126px;height:37px;border-radius:19px;background:#000;z-index:6}
+      #s09-root .ph-nav{position:absolute;top:0;left:0;right:0;height:122px;z-index:5;
+        background:rgba(18,18,20,.82);backdrop-filter:blur(24px) saturate(1.3);border-bottom:1px solid rgba(255,255,255,.08);
+        display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:8px}
+      #s09-root .orb{background:url('logos/air-brand.png') center/cover no-repeat;border-radius:50%;flex:0 0 auto}
+      #s09-root .gly{background-position:center;background-repeat:no-repeat;background-size:contain}
+      #s09-root .ph-nav .orb{width:44px;height:44px}
+      #s09-root .ph-nav .who{font-size:13px;font-weight:600;color:#fff;margin-top:3px;letter-spacing:.01em}
+      #s09-root .ph-fade{position:absolute;top:122px;left:0;right:0;height:52px;z-index:4;pointer-events:none;
+        background:linear-gradient(180deg,rgba(0,0,0,.88) 0%,rgba(0,0,0,0) 100%)}
+      #s09-root .ph-home{position:absolute;bottom:9px;left:50%;margin-left:-67px;width:134px;height:5px;border-radius:3px;background:rgba(255,255,255,.34);z-index:6}
+      #s09-root .ph-composer{position:absolute;bottom:26px;left:12px;right:12px;height:44px;border-radius:22px;z-index:5;
+        border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);display:flex;align-items:center;padding:0 14px;overflow:hidden}
+      #s09-root .ph-composer .txt{font-size:17px;color:#fff;white-space:nowrap;overflow:hidden}
+      #s09-root .ph-composer .car{width:2px;height:19px;background:var(--imsg);margin-left:2px;flex:0 0 auto}
+      #s09-root .ph-composer .glow{position:absolute;inset:-1px;border-radius:22px;pointer-events:none;
+        background:linear-gradient(96deg,rgba(10,132,255,.36),rgba(244,239,230,.14) 48%,rgba(10,132,255,.30));opacity:0}
+      /* the thread: a flow column translated by the timeline — never scrollTop */
+      #s09-root .ph-scroll{position:absolute;top:122px;left:0;right:0;bottom:0;overflow:hidden;z-index:3}
+      #s09-root .ph-thread{position:absolute;left:0;right:0;top:0;padding:0 14px;display:flex;flex-direction:column;
+        align-items:stretch;gap:9px;will-change:transform}
+      #s09-root .it{display:flex;width:100%;will-change:transform,opacity}
+      #s09-root .it.sent{justify-content:flex-end}
+      #s09-root .it.recv{justify-content:flex-start}
+      #s09-root .it.sys{justify-content:center}
+      #s09-root .bub{max-width:78%;padding:9px 14px 10px;font-size:19px;line-height:1.28;border-radius:20px;
+        will-change:transform,opacity;transform-origin:100% 100%}
+      #s09-root .sent .bub{background:#0C72D8;color:#fff;border-bottom-right-radius:7px}
+      #s09-root .recv .bub{background:rgba(255,255,255,.14);color:var(--ink);border-bottom-left-radius:7px}
+      #s09-root .it.dim{opacity:.56}
+      #s09-root .sys .bub{background:none;font-family:'Azeret Mono',monospace;font-size:13px;color:rgba(244,239,230,.55);
+        text-align:center;max-width:94%;letter-spacing:.01em;line-height:1.35}
+      #s09-root .dots{display:flex;gap:6px;padding:13px 16px;background:rgba(255,255,255,.14);border-radius:20px;border-bottom-left-radius:7px}
+      #s09-root .dots i{width:8px;height:8px;border-radius:50%;background:rgba(244,239,230,.62);display:block;will-change:transform,opacity}
+      /* owner-only mini-app card — the film shows one owner, so cards only ever appear here */
+      #s09-root .card{position:relative;width:100%;border-radius:22px;border:1px solid var(--line);background:rgba(255,255,255,.08);
+        backdrop-filter:blur(18px) saturate(1.2);overflow:hidden;will-change:transform,opacity;transform-origin:50% 100%}
+      #s09-root .card .hd{display:flex;align-items:center;gap:10px;padding:12px 14px 10px}
+      #s09-root .card .hd .art{width:36px;height:36px;border-radius:10px;flex:0 0 auto;background-size:cover;background-position:center}
+      #s09-root .card .hd .ic{width:36px;height:36px;border-radius:10px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;
+        background:rgba(255,255,255,.10);border:1px solid var(--line)}
+      #s09-root .card .hd .ic .gly{width:20px;height:20px;opacity:.92}
+      #s09-root .card .ti{font-size:17px;font-weight:700;color:#fff;letter-spacing:-.005em}
+      #s09-root .card .sb{font-family:'Azeret Mono',monospace;font-size:13px;color:rgba(244,239,230,.78);margin-top:2px}
+      #s09-root .card .bd{padding:0 14px 12px;font-size:16px;line-height:1.35;color:rgba(244,239,230,.86)}
+      #s09-root .card .row{display:flex;gap:8px;padding:0 14px 13px}
+      #s09-root .btn{flex:1;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;
+        font-size:16px;font-weight:700;letter-spacing:-.005em;will-change:transform}
+      #s09-root .btn.ok{background:#1FA64F;color:#FFFFFF}
+      #s09-root .btn.gh{background:rgba(255,255,255,.07);border:1px solid var(--line);color:rgba(244,239,230,.82)}
+      #s09-root .card .done{display:flex;align-items:center;gap:8px;padding:0 14px 13px;font-size:16px;font-weight:700;color:var(--ok)}
+      #s09-root .card.flip{transform-style:preserve-3d}
+      #s09-root .card .fa{position:relative}
+      #s09-root .card .fb{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center}
+      /* holo: one moving specular line on a landed card, no rainbow */
+      #s09-root .card .spec{position:absolute;inset:0;pointer-events:none;opacity:0;
+        background:linear-gradient(104deg,rgba(255,255,255,0) 40%,rgba(255,255,255,.22) 50%,rgba(255,255,255,0) 60%)}
+      /* the four spectral moments, and nowhere else */
+      #s09-root .spectral{position:absolute;inset:-1px;border-radius:23px;pointer-events:none;opacity:0;padding:1px;
+        background:conic-gradient(from 210deg,#ffd6a5,#fdffb6,#caffbf,#9bf6ff,#bdb2ff,#ffc6ff,#ffd6a5);
+        -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude}
+      #s09-root .ph-back{position:absolute;inset:0;border-radius:56px;overflow:hidden;background:#07070A;
+        border:3px solid #23262d;backface-visibility:hidden;z-index:7;
+        box-shadow:0 60px 120px rgba(2,6,18,.62),inset 0 1px 0 rgba(255,255,255,.14)}
+      #s09-root .ph{left:759px;top:103px;transform-style:preserve-3d}
+      #s09-root .ph-body{backface-visibility:hidden}
+      #s09-root .scn{position:absolute;inset:0;z-index:2;padding:132px 14px 0;display:flex;flex-direction:column;
+        justify-content:flex-end;gap:9px;padding-bottom:124px}
+      #s09-root .ph-back{transform-style:preserve-3d;background:#0A0B10;display:flex;flex-direction:column;
+        align-items:center;justify-content:center;padding:0 26px}
+      #s09-root .ph-back .ti{font-family:'Newsreader',Georgia,serif;font-weight:300;font-size:44px;line-height:1.02;
+        color:#F4EFE6;text-align:center;margin-bottom:24px}
+      #s09-root .ph-back .cd{font-family:'Azeret Mono',monospace;font-size:50px;color:#fff}
+      #s09-root .ph-back .bt{margin-top:32px;padding:13px 30px;border-radius:999px;background:#F4EFE6;color:#0A0B10;
+        font-size:17px;font-weight:700}
+      #s09-root .ph-back .gl{position:absolute;left:-40%;top:-20%;width:180%;height:70%;
+        background:radial-gradient(50% 50% at 50% 50%,rgba(90,150,255,.30),rgba(90,150,255,0) 70%)}
+      #s09-root .footscrim{position:absolute;inset:0;pointer-events:none;
+        background:linear-gradient(0deg,rgba(4,9,22,.56) 0%,rgba(4,9,22,.20) 28%,rgba(4,9,22,0) 52%)}
+      #s09-root .lbl{position:absolute;left:0;right:0;top:922px;text-align:center;font-family:'Azeret Mono',monospace;
+        font-size:26px;letter-spacing:.10em;color:rgba(244,239,230,.82);text-shadow:0 2px 16px rgba(3,7,18,.7)}
+    </style>
+
+    <div data-hf-id="hf-s09frame" class="frame clip" id="s09-frame" data-layout-allow-overflow="" data-start="0" data-duration="6.339" data-track-index="1">
+      <div data-hf-id="hf-s09wa" class="footscrim"></div>
+      <div data-hf-id="hf-s09ph" class="ph" id="s09-ph">
+        <div data-hf-id="hf-s09phb" class="ph-body" id="s09-phb">
+          <div data-hf-id="hf-s09scr" class="ph-screen" id="s09-screen">
+            <div data-hf-id="hf-s09scl" class="ph-scroll" id="s09-scroll"><div data-hf-id="hf-s09thr" class="ph-thread" id="s09-thread"></div></div>
+            <div data-hf-id="hf-s09fade" class="ph-fade"></div>
+            <div data-hf-id="hf-s09nav" class="ph-nav" data-layout-allow-overlap="" data-layout-allow-occlusion=""><div data-hf-id="hf-s09navi" class="orb"></div><div data-hf-id="hf-s09navw" class="who">air</div></div>
+            <div data-hf-id="hf-s09isl" class="ph-island"></div>
+            <div data-hf-id="hf-s09cmp" class="ph-composer" id="s09-composer"><div data-hf-id="hf-s09cmpg" class="glow" id="s09-composer-glow"></div><div data-hf-id="hf-s09cmpt" class="txt" id="s09-composer-txt"></div><div data-hf-id="hf-s09cmpc" class="car" id="s09-composer-caret"></div></div>
+            <div data-hf-id="hf-s09hb" class="ph-home"></div>
+            <div data-hf-id="hf-s09s1" class="scn" id="s09-scn1" data-layout-allow-overlap="" data-layout-allow-occlusion=""><div data-hf-id="hf-s09a1" class="it sent"><div data-hf-id="hf-s09a1b" class="bub">dinner fri 8pm at the usual spot. tell Sam.</div></div><div data-hf-id="hf-s09a2" class="it recv"><div data-hf-id="hf-s09a2b" class="bub">on it.</div></div><div data-hf-id="hf-s09a3" class="it recv"><div data-hf-id="hf-s09a3c" class="card"><div data-hf-id="hf-s09a4h" class="hd"><div data-hf-id="hf-s09a4i" class="ic"><div data-hf-id="hf-s09a4g" class="gly" style="background-image:url(&quot;logos/glyph-calendar-check.svg&quot;)"></div></div><div data-hf-id="hf-s09a4w"><div data-hf-id="hf-s09a4t" class="ti">Held · Fri 8:00 pm</div><div data-hf-id="hf-s09a4s" class="sb">table for 2 · the usual spot</div></div></div></div></div><div data-hf-id="hf-s09a5" class="it recv"><div data-hf-id="hf-s09a5c" class="card"><div data-hf-id="hf-s09a6h" class="hd"><div data-hf-id="hf-s09a6i" class="ic"><div data-hf-id="hf-s09a6g" class="gly" style="background-image:url(&quot;logos/glyph-phone.svg&quot;)"></div></div><div data-hf-id="hf-s09a6w"><div data-hf-id="hf-s09a6t" class="ti">Text Sam?</div><div data-hf-id="hf-s09a6s" class="sb">sent · 2 min ago</div></div></div><div data-hf-id="hf-s09a7" class="done"><span data-hf-id="hf-s09a8">✓</span><span data-hf-id="hf-s09a9">Sent to Sam</span></div></div></div></div><div data-hf-id="hf-s09s2" class="scn" id="s09-scn2" data-layout-allow-overlap="" data-layout-allow-occlusion=""><div data-hf-id="hf-s09b1" class="it sent"><div data-hf-id="hf-s09b1b" class="bub">/trade</div></div><div data-hf-id="hf-s09b2" class="it recv"><div data-hf-id="hf-s09b2c" class="card"><div data-hf-id="hf-s09b3h" class="hd"><div data-hf-id="hf-s09b3i" class="ic"><div data-hf-id="hf-s09b3g" class="gly" style="background-image:url(&quot;logos/glyph-wallet.svg&quot;)"></div></div><div data-hf-id="hf-s09b3w"><div data-hf-id="hf-s09b3t" class="ti">Filled · paper</div><div data-hf-id="hf-s09b3s" class="sb">0.05 BTC @ $62,800 · balance $6,860</div></div></div><div data-hf-id="hf-s09b4" class="done"><span data-hf-id="hf-s09b5">✓</span><span data-hf-id="hf-s09b6">Order filled</span></div></div></div><div data-hf-id="hf-s09b7" class="it recv"><div data-hf-id="hf-s09b7b" class="bub">1 order · $35. shipping label ready.</div></div></div><div data-hf-id="hf-s09s3" class="scn" id="s09-scn3" data-layout-allow-overlap="" data-layout-allow-occlusion=""><div data-hf-id="hf-s09c1" class="it sent"><div data-hf-id="hf-s09c1b" class="bub">confirmed, let&rsquo;s ship it</div></div><div data-hf-id="hf-s09c2" class="it recv"><div data-hf-id="hf-s09c2c" class="card"><div data-hf-id="hf-s09c3h" class="hd"><div data-hf-id="hf-s09c3i" class="ic"><div data-hf-id="hf-s09c3g" class="gly" style="background-image:url(&quot;logos/glyph-miniapp.svg&quot;)"></div></div><div data-hf-id="hf-s09c3w"><div data-hf-id="hf-s09c3t" class="ti">live · October tour</div><div data-hf-id="hf-s09c3s" class="sb">mini.wzrd.tech/gratitude/tour</div></div></div><div data-hf-id="hf-s09c4" class="done"><span data-hf-id="hf-s09c5">✓</span><span data-hf-id="hf-s09c6">Listed in the App Store</span></div></div></div><div data-hf-id="hf-s09c7" class="it sys"><div data-hf-id="hf-s09c8" class="bub">source: github.com/gratitude5dee/wzrd-create</div></div></div>
+          </div>
+        </div>
+        <div data-hf-id="hf-s09bk" class="ph-back" id="s09-back" data-layout-allow-overlap="" data-layout-allow-occlusion=""><div data-hf-id="hf-s09bg" class="gl"></div><div data-hf-id="hf-s09bt" class="ti"><div data-hf-id="hf-s09bt1">Every date,</div><div data-hf-id="hf-s09bt2">every ticket,</div><div data-hf-id="hf-s09bt3">one link.</div></div><div data-hf-id="hf-s09bc" class="cd">07:14:22:06</div><div data-hf-id="hf-s09bb" class="bt">Tickets</div></div>
+      </div>
+      <div data-hf-id="hf-s09lb" class="lbl" id="s09-lbl">one thread</div>
+    </div>
+
+    <script src="vendor/gsap.min.js"></script>
+    <script>
+    (function(){
+      var root=document.querySelector('[data-composition-id="shot-09-finale-montage"]');
+      var $=function(s){return root.querySelector(s);};
+      var $$=function(s){return Array.prototype.slice.call(root.querySelectorAll(s));};
+      var tl=gsap.timeline({paused:true});
+      var ph=$('#s09-ph'), back=$('#s09-back'), lbl=$('#s09-lbl');
+      var scn=[$('#s09-scn1'),$('#s09-scn2'),$('#s09-scn3')];
+      gsap.set(back,{rotationY:180,autoAlpha:0});
+      // the turn shows the back only while it faces camera; the front steps out for that half
+      tl.set(back,{autoAlpha:1},5.30);
+      tl.set($('#s09-phb'),{autoAlpha:0},5.36);
+      tl.set($('#s09-phb'),{autoAlpha:1},5.84);
+      tl.set(back,{autoAlpha:0},5.90);
+      gsap.set(scn,{autoAlpha:0});
+      gsap.set(scn[0],{autoAlpha:1});
+      gsap.set(ph,{scale:1.12,rotationY:-14,rotationX:5,x:0,y:0,transformOrigin:'50% 50%'});
+      gsap.set(lbl,{autoAlpha:0,y:10});
+
+      // Four hard cuts on four downbeats. A cut here is a re-pose, not a transition: the phone
+      // is already at rest in the new attitude on the first frame of the bar.
+      function cut(t, pose, which, label){
+        tl.set(ph, pose, t);
+        tl.set(scn[0],{autoAlpha:which===0?1:0}, t);
+        tl.set(scn[1],{autoAlpha:which===1?1:0}, t);
+        tl.set(scn[2],{autoAlpha:which===2?1:0}, t);
+        if(label!=null){ tl.set(lbl,{textContent:label}, t); tl.fromTo(lbl,{autoAlpha:0,y:10},{autoAlpha:1,y:0,duration:.34,ease:'expo.out'}, t); }
+      }
+      cut(0.000,{scale:1.12,rotationY:-14,rotationX:5,x:0,y:0},0,'one thread');
+      cut(1.579,{scale:1.12,rotationY:14,rotationX:-4,x:0,y:0},1,'five mini-apps');
+      cut(3.158,{scale:1.12,rotationY:0,rotationX:0,x:0,y:0},2,'one you built');
+      // 99.869 — the snare fill tightens the frame for the turn
+      tl.to(ph,{scale:1.20,duration:.24,ease:'power2.out'},4.040);
+      // 100.589 — the DROP: one full turn, and the app it built is on the back of the phone
+      tl.set(lbl,{textContent:'air.'},4.760);
+      tl.fromTo(lbl,{autoAlpha:0,y:10},{autoAlpha:1,y:0,duration:.4,ease:'expo.out'},4.760);
+      tl.to(ph,{rotationY:346,duration:1.579,ease:'power2.inOut'},4.760);
+      tl.to(ph,{scale:.42,y:262,x:392,duration:1.579,ease:'power2.inOut'},4.760);
+      tl.to(lbl,{autoAlpha:0,duration:.3,ease:'power2.in'},6.05);
+      window.__timelines=window.__timelines||{};
+      window.__timelines['shot-09-finale-montage']=tl;
+      var q=new URLSearchParams(location.search);
+      if(q.has('t')){tl.seek(parseFloat(q.get('t'))||0);}else if(q.get('dev')==='1'){tl.play();}
+    })();
+    </script>
+  </div>
+</template>

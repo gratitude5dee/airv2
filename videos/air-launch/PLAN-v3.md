@@ -498,3 +498,69 @@ Time budget guidance: P0 ≈ 60 % of effort, P1 ≈ 30 %, P2 ≈ 10 %. Do not st
 - **fal endpoint id** for "openai sunburst" is unverified; §8 says how to resolve it.
 - **Real phone number**: the hero says "a number". No number is shown; the CTA is the URL. If marketing supplies a public number, it goes under the URL at 103.770 in the same mono style.
 - **Crash frame**: cut sheet keeps 24.358 (grid); §2 says how to verify by ear and nudge ±1 frame.
+
+---
+
+## 13. As built (v3.0, first full cut)
+
+This section records what shipped against the plan above, so a reviewer reads the film and the
+brief as one document. Everything not listed here was built as specified.
+
+### Delivered
+
+| Item | State |
+| --- | --- |
+| `index.html` | v3 master: 10 shot tracks, sky, sky scrim, music bloom, bgm with automation, grade with the freeze lane. Duration 119.699 s |
+| `compositions/sky.html` | Night → blue hour → sunrise crest on the crash → noon on the lockup. The dawn ladder is a pure function of time (no overlapping property tweens), sampled by one driver tween; WebGL fBm with a Canvas-2D fallback on the same curve |
+| `compositions/shot-01-cold-open.html` … `shot-10-end-card.html` | All ten shots, built to the anchors in `v3/cutsheet.json` |
+| `assets/icons/` | The eleven clay mini-app icons the film shows, copied from `apps/web/public/app-icons/wabi-v1/` |
+| `vendor/gsap.min.js` | GSAP 3.14.2, vendored (see below) |
+| `renders/air-launch-v3.mp4` | 1920×1080, 30 fps, `--quality high` |
+
+### Deviations, and why
+
+1. **No fal-generated media.** `FAL_KEY` is not present in this environment, so the four sky
+   plates, the `/shop` product shot and the optional `/zap` clip in §8 were not generated. The
+   shader sky carries the film (it is the plan's default), the shop listing uses a drawn tee on a
+   cream tile, and the `/zap` result is a built mini-sky with the brand orb rising through it —
+   the plan's own fallback. §8 stands unchanged for whoever runs it with a key.
+2. **GSAP is vendored, not a CDN script.** The render browser has no outbound network: every
+   composition failed with `gsap is not defined` on the first check. GSAP 3.14.2 now lives at
+   `vendor/gsap.min.js` and every composition loads it from there. Do not point these files back
+   at jsDelivr.
+3. **CLI pin bumped 0.8.22 → 0.8.48** via `upgrade --project .`, verified with `check` (passing).
+4. **The phone's internal type is one notch above iOS-exact** (19 px bubbles, 17 px card titles).
+   At 1080p with the phone at 86 % of frame height, true iOS metrics are unreadable.
+5. **The iMessage bubble is `#0C72D8`, not `#0A84FF`.** Apple's dark-mode blue is 3.7:1 against
+   white and fails the contrast gate at body size; one notch deeper clears AA and still reads as
+   the iMessage bubble. The Approve button is `#1FA64F` with white type for the same reason.
+6. **A shared sky scrim** sits between the sky and every shot in the master, plus per-shot
+   washes. Cream ink has to hold over both a night sky and a noon sky; this is what makes that
+   work, and it replaces per-shot colour juggling.
+7. **The phone thread is clipped by a real scroll box** (`.ph-scroll`) under the nav bar rather
+   than sliding under translucent glass, so rows that ride up are genuinely gone.
+8. **S09's turntable is the CSS phone**, not the GLTF `vfx-iphone-device` (P2 in the plan). The
+   sky already owns the only WebGL context in the render.
+9. **Two continuity beats were added** that the plan implies but does not name: S05 ends by
+   collapsing its ring into the *silhouette* of the phone S06 opens on, and S07's thread opens on
+   a line that carries the `/zap` clip into `/create` ("the clip is in your camera roll. want it
+   on a page people can actually buy from?"). Both are recorded in `v3/cutsheet.json`.
+10. **S03's nouns** are the approved v2 sentence split five ways, and they assemble along the
+    bottom into that whole sentence by 33.3 s, rather than a leftward stack of three.
+
+### Copy still awaiting sign-off
+
+The cut currently uses the plan's primary lines. Each is a one-line edit away from its approved
+fallback (§6 lists every pair): "Text your agent." (S10), "mini-apps. make your own." (S06),
+"YOUR OWN." (S07), the four explainer lines in S06, "describe it. approve the plan. it ships."
+(S07), and the four cold-open banner bodies. The three giant stanza lines, the `/create`
+transcript, the endowment nouns, "hyperpersonalization.", "connect your apps — across 1000+
+apps.", the "Your agent, your RL environment, your model, your weights." stanza, the
+"air, your guardian angel" kicker and the backend cards are all approved v2 or product copy.
+
+### Gate state at this commit
+
+`npm run check` passes: 0 errors across lint, runtime, layout, motion and contrast. Three
+warnings remain and are understood: two software-WebGL `ReadPixels` performance notices from the
+headless renderer, and one 2-sample box-overlap inside the phone during the 360° turntable, where
+the auditor's 2D test cannot model the rotation.

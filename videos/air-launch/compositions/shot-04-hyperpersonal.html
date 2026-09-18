@@ -1,0 +1,101 @@
+<template id="shot-04-hyperpersonal-template">
+  <div data-hf-id="hf-s04root" id="s04-root" data-composition-id="shot-04-hyperpersonal" data-start="0" data-width="1920" data-height="1080" data-duration="6.246">
+    <style>
+      @font-face{font-family:'Inter';font-weight:400;font-style:normal;font-display:block;src:url('fonts/Inter-400-latin.woff2') format('woff2')}
+      @font-face{font-family:'Inter';font-weight:700;font-style:normal;font-display:block;src:url('fonts/Inter-700-latin.woff2') format('woff2')}
+      @font-face{font-family:'Newsreader';font-weight:200 800;font-style:normal;font-display:block;src:url('fonts/newsreader-latin.woff2') format('woff2')}
+      @font-face{font-family:'Azeret Mono';font-weight:100 900;font-style:normal;font-display:block;src:url('fonts/azeret-mono-latin.woff2') format('woff2')}
+      #s04-root{--ink:#F4EFE6;--ink-dim:rgba(244,239,230,.62);--imsg:#0A84FF;--ok:#30D158;--glass:rgba(255,255,255,.08);--line:rgba(255,255,255,.12);
+        position:relative;width:1920px;height:1080px;overflow:hidden;background:transparent;
+        font-family:'Inter',system-ui,-apple-system,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased}
+      #s04-root *,#s04-root *::before,#s04-root *::after{box-sizing:border-box}
+      #s04-root .frame{position:absolute;inset:0;perspective:1800px}
+      /* parallax planes: the camera proxy moves, the planes follow it by depth */
+      #s04-root .plane{position:absolute;inset:0;transform-style:preserve-3d;will-change:transform}
+      #s04-root .giant{font-family:'Newsreader',Georgia,serif;font-weight:300;letter-spacing:-.035em;line-height:.86;
+        color:var(--ink);opacity:.92;white-space:nowrap;text-shadow:0 3px 26px rgba(3,7,18,.52)}
+      #s04-root .giant .w{display:inline-block;will-change:transform,opacity;transform-style:preserve-3d}
+      #s04-root .wash{position:absolute;inset:0;pointer-events:none;
+        background:radial-gradient(64% 46% at 50% 44%,rgba(4,9,22,.46) 0%,rgba(4,9,22,.20) 56%,rgba(4,9,22,0) 100%)}
+      #s04-root .washL{position:absolute;inset:0;pointer-events:none;
+        background:linear-gradient(100deg,rgba(4,9,22,.52) 0%,rgba(4,9,22,.30) 42%,rgba(4,9,22,0) 72%)}
+      #s04-root .washR{position:absolute;inset:0;pointer-events:none;
+        background:linear-gradient(262deg,rgba(4,9,22,.54) 0%,rgba(4,9,22,.30) 44%,rgba(4,9,22,0) 76%)}
+      #s04-root .cap{font-family:'Newsreader',Georgia,serif;font-weight:400;font-size:56px;line-height:1.08;color:var(--ink);
+        text-shadow:0 3px 24px rgba(3,7,18,.52)}
+      #s04-root .mono{font-family:'Azeret Mono',ui-monospace,monospace;font-weight:400;font-size:25px;letter-spacing:.02em;
+        color:rgba(244,239,230,.80);line-height:1.45;text-shadow:0 2px 16px rgba(3,7,18,.60)}
+      #s04-root .hub{position:absolute;left:760px;top:330px;width:400px;text-align:center;will-change:transform,opacity}
+      #s04-root .hub .av{width:190px;height:190px;border-radius:50%;margin:0 auto;display:block;
+        background:url('logos/onairos-avatar.png') center/cover no-repeat;
+        box-shadow:0 26px 60px rgba(4,12,34,.55),0 0 0 1px rgba(255,255,255,.14)}
+      #s04-root .hub .nm{margin-top:20px;font-family:'Azeret Mono',monospace;font-size:20px;letter-spacing:.06em;
+        color:var(--ink);text-shadow:0 2px 14px rgba(3,7,18,.6)}
+      #s04-root .tile{position:absolute;left:0;top:0;width:128px;will-change:transform,opacity}
+      #s04-root .tile .sq{width:128px;height:128px;border-radius:30px;background:rgba(9,15,32,.62);
+        border:1px solid rgba(255,255,255,.16);backdrop-filter:blur(14px);display:flex;align-items:center;justify-content:center}
+      #s04-root .tile .sq .lg{width:62px;height:62px;background-position:center;background-repeat:no-repeat;background-size:contain}
+      #s04-root .tile .lb{margin-top:9px;text-align:center;font-family:'Azeret Mono',monospace;letter-spacing:.04em;color:rgba(244,239,230,.86);font-size:15px;text-shadow:0 2px 12px rgba(3,7,18,.7)}
+      #s04-root .cap{position:absolute;left:0;right:0;top:856px;text-align:center}
+      #s04-root .flash{position:absolute;inset:0;background:#DCE9FF;opacity:0}
+    </style>
+
+    <div data-hf-id="hf-s04frame" class="frame clip" id="s04-frame" data-layout-allow-overflow="" data-start="0" data-duration="6.246" data-track-index="1">
+      <div data-hf-id="hf-s04wa" class="wash"></div>
+      <div data-hf-id="hf-s04ts" class="plane" id="s04-tiles"><div data-hf-id="hf-s04t0" class="tile" id="s04-t0"><div data-hf-id="hf-s04q0" class="sq"><div data-hf-id="hf-s04g0" class="lg" style="background-image:url(&quot;logos/spotify.svg&quot;)"></div></div><div data-hf-id="hf-s04l0" class="lb">listening</div></div><div data-hf-id="hf-s04t1" class="tile" id="s04-t1"><div data-hf-id="hf-s04q1" class="sq"><div data-hf-id="hf-s04g1" class="lg" style="background-image:url(&quot;logos/strava.svg&quot;)"></div></div><div data-hf-id="hf-s04l1" class="lb">training</div></div><div data-hf-id="hf-s04t2" class="tile" id="s04-t2"><div data-hf-id="hf-s04q2" class="sq"><div data-hf-id="hf-s04g2" class="lg" style="background-image:url(&quot;logos/netflix.svg&quot;)"></div></div><div data-hf-id="hf-s04l2" class="lb">watching</div></div><div data-hf-id="hf-s04t3" class="tile" id="s04-t3"><div data-hf-id="hf-s04q3" class="sq"><div data-hf-id="hf-s04g3" class="lg" style="background-image:url(&quot;logos/notion.svg&quot;)"></div></div><div data-hf-id="hf-s04l3" class="lb">notes</div></div><div data-hf-id="hf-s04t4" class="tile" id="s04-t4"><div data-hf-id="hf-s04q4" class="sq"><div data-hf-id="hf-s04g4" class="lg" style="background-image:url(&quot;logos/youtube.svg&quot;)"></div></div><div data-hf-id="hf-s04l4" class="lb">watching</div></div><div data-hf-id="hf-s04t5" class="tile" id="s04-t5"><div data-hf-id="hf-s04q5" class="sq"><div data-hf-id="hf-s04g5" class="lg" style="background-image:url(&quot;logos/duolingo.svg&quot;)"></div></div><div data-hf-id="hf-s04l5" class="lb">learning</div></div><div data-hf-id="hf-s04t6" class="tile" id="s04-t6"><div data-hf-id="hf-s04q6" class="sq"><div data-hf-id="hf-s04g6" class="lg" style="background-image:url(&quot;logos/peloton.svg&quot;)"></div></div><div data-hf-id="hf-s04l6" class="lb">training</div></div><div data-hf-id="hf-s04t7" class="tile" id="s04-t7"><div data-hf-id="hf-s04q7" class="sq"><div data-hf-id="hf-s04g7" class="lg" style="background-image:url(&quot;logos/calendar.svg&quot;)"></div></div><div data-hf-id="hf-s04l7" class="lb">calendar</div></div></div>
+      <div data-hf-id="hf-s04hb" class="hub" id="s04-hub"><div data-hf-id="hf-s04av" class="av"></div>
+        <div data-hf-id="hf-s04nm" class="nm">ONAIROS PERSONA</div></div>
+      <div data-hf-id="hf-s04cp" class="cap" id="s04-cap">hyperpersonalization.</div>
+      <div data-hf-id="hf-s04fl" class="flash" id="s04-flash"></div>
+    </div>
+
+    <script src="vendor/gsap.min.js"></script>
+    <script>
+    (function(){
+      var root=document.querySelector('[data-composition-id="shot-04-hyperpersonal"]');
+      var $=function(s){return root.querySelector(s);};
+      var $$=function(s){return Array.prototype.slice.call(root.querySelectorAll(s));};
+      var tl=gsap.timeline({paused:true});
+      var tiles=[0,1,2,3,4,5,6,7].map(function(i){return $('#s04-t'+i);});
+      var CX=960, CY=470, RX=645, RY=238, N=8;
+      // Depth is read off sin(angle): tiles behind the persona shrink, dim and blur; tiles in
+      // front pass over it. The ellipse is fixed, so every seek lands on the same pose.
+      function pose(i, step){
+        var a=(i/N)*Math.PI*2 + step*(Math.PI*2/N) - Math.PI/2;
+        var d=(Math.sin(a)+1)/2;
+        return {x:CX+RX*Math.cos(a)-64, y:CY+RY*Math.sin(a)-64,
+                scale:.62+.52*d, autoAlpha:.34+.66*d, filter:'blur('+((1-d)*3.2).toFixed(2)+'px)'};
+      }
+      tiles.forEach(function(t,i){ var p=pose(i,0); gsap.set(t,{x:p.x,y:p.y,scale:p.scale*.72,autoAlpha:0,filter:p.filter,transformOrigin:'50% 50%'}); });
+      gsap.set('#s04-hub',{autoAlpha:0,scale:.9,transformOrigin:'50% 50%'});
+      gsap.set('#s04-cap',{autoAlpha:0,y:16});
+      gsap.set('#s04-flash',{opacity:0});
+
+      // 33.344 — the persona lands first: everything else is what it already knows about you
+      tl.to('#s04-hub',{autoAlpha:1,scale:1,duration:.66,ease:'expo.out'},0);
+      tl.to('#s04-cap',{autoAlpha:1,y:0,duration:.60,ease:'expo.out'},.22);
+      tiles.forEach(function(t,i){
+        var p=pose(i,0);
+        tl.to(t,{x:p.x,y:p.y,scale:p.scale,autoAlpha:p.autoAlpha,duration:.62,ease:'expo.out'},.10+i*.045);
+      });
+      // 34.900 / 36.479 / 38.058 — one slot per downbeat, and only on the downbeat
+      [1.556,3.135,4.714].forEach(function(t,k){
+        tiles.forEach(function(el,i){
+          var p=pose(i,k+1);
+          tl.to(el,{x:p.x,y:p.y,scale:p.scale,autoAlpha:p.autoAlpha,filter:p.filter,duration:.74,ease:'expo.out'},t);
+        });
+        tl.to('#s04-hub',{scale:1.03,duration:.14,ease:'power2.out'},t);
+        tl.to('#s04-hub',{scale:1,duration:.5,ease:'power2.inOut'},t+.14);
+      });
+      // 39.590 — the hand-off: the orbit collapses to the ring shot 05 blooms back out of
+      tl.to(tiles,{x:896,y:470,scale:.12,autoAlpha:0,duration:.30,ease:'power3.in'},5.95);
+      tl.to(['#s04-hub','#s04-cap'],{autoAlpha:0,x:-230,duration:.30,ease:'power4.in'},5.95);
+      tl.fromTo('#s04-flash',{opacity:0},{opacity:.30,duration:.10,ease:'power2.out'},6.14);
+      window.__timelines=window.__timelines||{};
+      window.__timelines['shot-04-hyperpersonal']=tl;
+      var q=new URLSearchParams(location.search);
+      if(q.has('t')){tl.seek(parseFloat(q.get('t'))||0);}else if(q.get('dev')==='1'){tl.play();}
+    })();
+    </script>
+  </div>
+</template>

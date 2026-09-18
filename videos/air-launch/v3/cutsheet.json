@@ -181,6 +181,18 @@
           "rel": 7.105
         },
         {
+          "name": "mark_exit",
+          "target": 9.66,
+          "t": 9.66,
+          "snap": "exact",
+          "event": {
+            "drum": "hihat",
+            "energy": 0.42,
+            "grid": "weak"
+          },
+          "rel": 9.66
+        },
+        {
           "name": "banner_1",
           "target": 8.173,
           "t": 8.173,
@@ -462,6 +474,18 @@
           "snap": "downbeat",
           "event": null,
           "rel": 12.26
+        },
+        {
+          "name": "slam_start",
+          "target": 24.108,
+          "t": 24.108,
+          "snap": "exact",
+          "event": {
+            "drum": "kick",
+            "energy": 0.39,
+            "grid": "syncopated"
+          },
+          "rel": 13.938
         },
         {
           "name": "phone_slam_crash",
@@ -1221,6 +1245,18 @@
           "rel": 3.088
         },
         {
+          "name": "q1_detail",
+          "target": 74.162,
+          "t": 74.165,
+          "snap": "beat",
+          "event": {
+            "drum": "snare",
+            "energy": 0.31,
+            "grid": "weak"
+          },
+          "rel": 3.483
+        },
+        {
           "name": "q2",
           "target": 75.349,
           "t": 75.349,
@@ -1431,9 +1467,9 @@
         },
         {
           "name": "kicker_guardian_angel",
-          "target": 95.062,
+          "target": 95.039,
           "t": 95.039,
-          "snap": "beat",
+          "snap": "exact",
           "event": null,
           "rel": 5.503
         },

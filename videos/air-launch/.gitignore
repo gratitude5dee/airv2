@@ -1,0 +1,4 @@
+# Studio scratch and render working directories — regenerated on demand
+snapshots/
+renders/work-*/
+renders/.*hf-transaction*/

@@ -1,0 +1,291 @@
+<template id="shot-02-imessage-thread-template">
+  <div data-hf-id="hf-s02root" id="s02-root" data-composition-id="shot-02-imessage-thread" data-start="0" data-width="1920" data-height="1080" data-duration="14.188">
+    <style>
+      @font-face{font-family:'Inter';font-weight:400;font-style:normal;font-display:block;src:url('fonts/Inter-400-latin.woff2') format('woff2')}
+      @font-face{font-family:'Inter';font-weight:700;font-style:normal;font-display:block;src:url('fonts/Inter-700-latin.woff2') format('woff2')}
+      @font-face{font-family:'Newsreader';font-weight:200 800;font-style:normal;font-display:block;src:url('fonts/newsreader-latin.woff2') format('woff2')}
+      @font-face{font-family:'Azeret Mono';font-weight:100 900;font-style:normal;font-display:block;src:url('fonts/azeret-mono-latin.woff2') format('woff2')}
+      #s02-root{--ink:#F4EFE6;--ink-dim:rgba(244,239,230,.62);--imsg:#0A84FF;--ok:#30D158;--glass:rgba(255,255,255,.08);--line:rgba(255,255,255,.12);
+        position:relative;width:1920px;height:1080px;overflow:hidden;background:transparent;
+        font-family:'Inter',system-ui,-apple-system,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased}
+      #s02-root *,#s02-root *::before,#s02-root *::after{box-sizing:border-box}
+      #s02-root .frame{position:absolute;inset:0;perspective:1800px}
+      /* parallax planes: the camera proxy moves, the planes follow it by depth */
+      #s02-root .plane{position:absolute;inset:0;transform-style:preserve-3d;will-change:transform}
+      #s02-root .giant{font-family:'Newsreader',Georgia,serif;font-weight:300;letter-spacing:-.035em;line-height:.86;
+        color:var(--ink);opacity:.92;white-space:nowrap;text-shadow:0 3px 26px rgba(3,7,18,.52)}
+      #s02-root .giant .w{display:inline-block;will-change:transform,opacity;transform-style:preserve-3d}
+      #s02-root .wash{position:absolute;inset:0;pointer-events:none;
+        background:radial-gradient(64% 46% at 50% 44%,rgba(4,9,22,.46) 0%,rgba(4,9,22,.20) 56%,rgba(4,9,22,0) 100%)}
+      #s02-root .washL{position:absolute;inset:0;pointer-events:none;
+        background:linear-gradient(100deg,rgba(4,9,22,.52) 0%,rgba(4,9,22,.30) 42%,rgba(4,9,22,0) 72%)}
+      #s02-root .washR{position:absolute;inset:0;pointer-events:none;
+        background:linear-gradient(262deg,rgba(4,9,22,.54) 0%,rgba(4,9,22,.30) 44%,rgba(4,9,22,0) 76%)}
+      #s02-root .cap{font-family:'Newsreader',Georgia,serif;font-weight:400;font-size:56px;line-height:1.08;color:var(--ink);
+        text-shadow:0 3px 24px rgba(3,7,18,.52)}
+      #s02-root .mono{font-family:'Azeret Mono',ui-monospace,monospace;font-weight:400;font-size:25px;letter-spacing:.02em;
+        color:rgba(244,239,230,.80);line-height:1.45;text-shadow:0 2px 16px rgba(3,7,18,.60)}
+      #s02-root .ph{position:absolute;width:402px;height:874px;will-change:transform}
+      #s02-root .ph-body{position:absolute;inset:0;border-radius:56px;background:linear-gradient(160deg,#3a3f4a 0%,#171b22 38%,#0f1218 100%);
+        padding:3px;box-shadow:0 60px 120px rgba(2,6,18,.62),0 12px 30px rgba(2,6,18,.5),inset 0 1px 0 rgba(255,255,255,.16)}
+      #s02-root .ph-screen{position:absolute;inset:3px;border-radius:53px;overflow:hidden;background:#000}
+      #s02-root .ph-island{position:absolute;top:14px;left:50%;margin-left:-63px;width:126px;height:37px;border-radius:19px;background:#000;z-index:6}
+      #s02-root .ph-nav{position:absolute;top:0;left:0;right:0;height:122px;z-index:5;
+        background:rgba(18,18,20,.82);backdrop-filter:blur(24px) saturate(1.3);border-bottom:1px solid rgba(255,255,255,.08);
+        display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:8px}
+      #s02-root .orb{background:url('logos/air-brand.png') center/cover no-repeat;border-radius:50%;flex:0 0 auto}
+      #s02-root .gly{background-position:center;background-repeat:no-repeat;background-size:contain}
+      #s02-root .ph-nav .orb{width:44px;height:44px}
+      #s02-root .ph-nav .who{font-size:13px;font-weight:600;color:#fff;margin-top:3px;letter-spacing:.01em}
+      #s02-root .ph-fade{position:absolute;top:122px;left:0;right:0;height:52px;z-index:4;pointer-events:none;
+        background:linear-gradient(180deg,rgba(0,0,0,.88) 0%,rgba(0,0,0,0) 100%)}
+      #s02-root .ph-home{position:absolute;bottom:9px;left:50%;margin-left:-67px;width:134px;height:5px;border-radius:3px;background:rgba(255,255,255,.34);z-index:6}
+      #s02-root .ph-composer{position:absolute;bottom:26px;left:12px;right:12px;height:44px;border-radius:22px;z-index:5;
+        border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);display:flex;align-items:center;padding:0 14px;overflow:hidden}
+      #s02-root .ph-composer .txt{font-size:17px;color:#fff;white-space:nowrap;overflow:hidden}
+      #s02-root .ph-composer .car{width:2px;height:19px;background:var(--imsg);margin-left:2px;flex:0 0 auto}
+      #s02-root .ph-composer .glow{position:absolute;inset:-1px;border-radius:22px;pointer-events:none;
+        background:linear-gradient(96deg,rgba(10,132,255,.36),rgba(244,239,230,.14) 48%,rgba(10,132,255,.30));opacity:0}
+      /* the thread: a flow column translated by the timeline — never scrollTop */
+      #s02-root .ph-scroll{position:absolute;top:122px;left:0;right:0;bottom:0;overflow:hidden;z-index:3}
+      #s02-root .ph-thread{position:absolute;left:0;right:0;top:0;padding:0 14px;display:flex;flex-direction:column;
+        align-items:stretch;gap:9px;will-change:transform}
+      #s02-root .it{display:flex;width:100%;will-change:transform,opacity}
+      #s02-root .it.sent{justify-content:flex-end}
+      #s02-root .it.recv{justify-content:flex-start}
+      #s02-root .it.sys{justify-content:center}
+      #s02-root .bub{max-width:78%;padding:9px 14px 10px;font-size:19px;line-height:1.28;border-radius:20px;
+        will-change:transform,opacity;transform-origin:100% 100%}
+      #s02-root .sent .bub{background:#0C72D8;color:#fff;border-bottom-right-radius:7px}
+      #s02-root .recv .bub{background:rgba(255,255,255,.14);color:var(--ink);border-bottom-left-radius:7px}
+      #s02-root .it.dim{opacity:.56}
+      #s02-root .sys .bub{background:none;font-family:'Azeret Mono',monospace;font-size:13px;color:rgba(244,239,230,.55);
+        text-align:center;max-width:94%;letter-spacing:.01em;line-height:1.35}
+      #s02-root .dots{display:flex;gap:6px;padding:13px 16px;background:rgba(255,255,255,.14);border-radius:20px;border-bottom-left-radius:7px}
+      #s02-root .dots i{width:8px;height:8px;border-radius:50%;background:rgba(244,239,230,.62);display:block;will-change:transform,opacity}
+      /* owner-only mini-app card — the film shows one owner, so cards only ever appear here */
+      #s02-root .card{position:relative;width:100%;border-radius:22px;border:1px solid var(--line);background:rgba(255,255,255,.08);
+        backdrop-filter:blur(18px) saturate(1.2);overflow:hidden;will-change:transform,opacity;transform-origin:50% 100%}
+      #s02-root .card .hd{display:flex;align-items:center;gap:10px;padding:12px 14px 10px}
+      #s02-root .card .hd .art{width:36px;height:36px;border-radius:10px;flex:0 0 auto;background-size:cover;background-position:center}
+      #s02-root .card .hd .ic{width:36px;height:36px;border-radius:10px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;
+        background:rgba(255,255,255,.10);border:1px solid var(--line)}
+      #s02-root .card .hd .ic .gly{width:20px;height:20px;opacity:.92}
+      #s02-root .card .ti{font-size:17px;font-weight:700;color:#fff;letter-spacing:-.005em}
+      #s02-root .card .sb{font-family:'Azeret Mono',monospace;font-size:13px;color:rgba(244,239,230,.78);margin-top:2px}
+      #s02-root .card .bd{padding:0 14px 12px;font-size:16px;line-height:1.35;color:rgba(244,239,230,.86)}
+      #s02-root .card .row{display:flex;gap:8px;padding:0 14px 13px}
+      #s02-root .btn{flex:1;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;
+        font-size:16px;font-weight:700;letter-spacing:-.005em;will-change:transform}
+      #s02-root .btn.ok{background:#1FA64F;color:#FFFFFF}
+      #s02-root .btn.gh{background:rgba(255,255,255,.07);border:1px solid var(--line);color:rgba(244,239,230,.82)}
+      #s02-root .card .done{display:flex;align-items:center;gap:8px;padding:0 14px 13px;font-size:16px;font-weight:700;color:var(--ok)}
+      #s02-root .card.flip{transform-style:preserve-3d}
+      #s02-root .card .fa{position:relative}
+      #s02-root .card .fb{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center}
+      /* holo: one moving specular line on a landed card, no rainbow */
+      #s02-root .card .spec{position:absolute;inset:0;pointer-events:none;opacity:0;
+        background:linear-gradient(104deg,rgba(255,255,255,0) 40%,rgba(255,255,255,.22) 50%,rgba(255,255,255,0) 60%)}
+      /* the four spectral moments, and nowhere else */
+      #s02-root .spectral{position:absolute;inset:-1px;border-radius:23px;pointer-events:none;opacity:0;padding:1px;
+        background:conic-gradient(from 210deg,#ffd6a5,#fdffb6,#caffbf,#9bf6ff,#bdb2ff,#ffc6ff,#ffd6a5);
+        -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude}
+      #s02-root .ph-back{position:absolute;inset:0;border-radius:56px;overflow:hidden;background:#07070A;
+        border:3px solid #23262d;backface-visibility:hidden;z-index:7;
+        box-shadow:0 60px 120px rgba(2,6,18,.62),inset 0 1px 0 rgba(255,255,255,.14)}
+      #s02-root .ph{left:1180px;top:103px}
+      #s02-root .seed{position:absolute;left:1180px;top:103px;width:402px;height:874px;border-radius:56px;
+        background:#0C72D8;box-shadow:0 22px 60px rgba(10,60,140,.5);will-change:transform,opacity}
+      #s02-root .stanza{position:absolute;left:150px;top:252px;width:900px}
+      #s02-root .ln{font-size:170px;margin-bottom:6px}
+      #s02-root .caps{position:absolute;left:152px;top:842px;width:820px}
+      #s02-root .caps .mono{margin-top:10px}
+      #s02-root .dotswrap{position:absolute;left:14px;bottom:78px;z-index:3}
+      #s02-root .slamblack{position:absolute;inset:0;background:#000;opacity:0}
+    </style>
+
+    <div data-hf-id="hf-s02frame" class="frame clip" id="s02-frame" data-layout-allow-overflow="" data-start="0" data-duration="14.188" data-track-index="1">
+      <div data-hf-id="hf-s02st" class="stanza" id="s02-stanza"><div data-hf-id="hf-s02l0" class="giant ln" id="s02-l0"><span data-hf-id="hf-s02w00" class="w">TEXT&nbsp;</span><span data-hf-id="hf-s02w01" class="w">IT&nbsp;</span></div><div data-hf-id="hf-s02l1" class="giant ln" id="s02-l1"><span data-hf-id="hf-s02w10" class="w">LIKE&nbsp;</span><span data-hf-id="hf-s02w11" class="w">A&nbsp;</span></div><div data-hf-id="hf-s02l2" class="giant ln" id="s02-l2"><span data-hf-id="hf-s02w20" class="w">FRIEND.&nbsp;</span></div></div>
+      <div data-hf-id="hf-s02cp" class="caps" id="s02-caps">
+        <div data-hf-id="hf-s02c1" class="mono" id="s02-cap1">its own email address, working around the clock.</div>
+        <div data-hf-id="hf-s02c2" class="mono" id="s02-cap2">a real machine that remembers everything for you.</div>
+      </div>
+      <div data-hf-id="hf-s02sd" class="seed" id="s02-seed"></div>
+      <div data-hf-id="hf-s02ph" class="ph" id="s02-ph">
+        <div data-hf-id="hf-s02phb" class="ph-body" id="s02-phb">
+          <div data-hf-id="hf-s02scr" class="ph-screen" id="s02-screen">
+            <div data-hf-id="hf-s02scl" class="ph-scroll" id="s02-scroll"><div data-hf-id="hf-s02thr" class="ph-thread" id="s02-thread"></div></div>
+            <div data-hf-id="hf-s02fade" class="ph-fade"></div>
+            <div data-hf-id="hf-s02nav" class="ph-nav" data-layout-allow-overlap="" data-layout-allow-occlusion=""><div data-hf-id="hf-s02navi" class="orb"></div><div data-hf-id="hf-s02navw" class="who">air</div></div>
+            <div data-hf-id="hf-s02isl" class="ph-island"></div>
+            <div data-hf-id="hf-s02cmp" class="ph-composer" id="s02-composer"><div data-hf-id="hf-s02cmpg" class="glow" id="s02-composer-glow"></div><div data-hf-id="hf-s02cmpt" class="txt" id="s02-composer-txt"></div><div data-hf-id="hf-s02cmpc" class="car" id="s02-composer-caret"></div></div>
+            <div data-hf-id="hf-s02hb" class="ph-home"></div>
+          </div>
+        </div>
+      </div>
+      <div data-hf-id="hf-s02sl" class="slamblack" id="s02-slam"></div>
+    </div>
+
+    <script src="vendor/gsap.min.js"></script>
+    <script>
+    (function(){
+      var root=document.querySelector('[data-composition-id="shot-02-imessage-thread"]');
+      var $=function(s){return root.querySelector(s);};
+      var $$=function(s){return Array.prototype.slice.call(root.querySelectorAll(s));};
+      var tl=gsap.timeline({paused:true});
+
+      // ---- thread engine (deterministic; see PLAN-v3 3.5) ----
+      function el(tag, cls, html){ var e=document.createElement(tag); if(cls) e.className=cls; if(html!=null) e.innerHTML=html; return e; }
+      function buildThread(threadEl, items){
+        var built=[];
+        items.forEach(function(it, i){
+          var wrap=el('div','it '+(it.kind==='sys'?'sys':(it.side||'recv'))+(it.dim?' dim':''));
+          var inner;
+          if(it.kind==='dots'){ inner=el('div','dots'); for(var d=0;d<3;d++) inner.appendChild(el('i')); }
+          else if(it.kind==='card'){ inner=el('div','card'); inner.innerHTML=it.html; }
+          else { inner=el('div','bub', it.text); }
+          // a thread genuinely slides under the translucent nav: that layering is the design
+          wrap.appendChild(inner); threadEl.appendChild(wrap);
+          built.push({wrap:wrap, inner:inner, spec:it});
+        });
+        // measure once, after the whole column exists
+        var gap=9, bottom=Number(threadEl.getAttribute('data-bottom')||760), acc=0, stops=[];
+        built.forEach(function(b){ acc += b.wrap.offsetHeight + gap; stops.push(bottom - acc + gap); });
+        var th={el:threadEl, items:built, stops:stops, bottom:bottom, start:bottom};
+        built.forEach(function(b,i){
+          if(b.spec.pre){ gsap.set(b.wrap,{autoAlpha:b.spec.dim?.56:1}); th.start=stops[i]; }
+          else gsap.set(b.wrap,{autoAlpha:0});
+        });
+        gsap.set(threadEl,{y:th.start});
+        return th;
+      }
+      // auto slide duration: never let two column moves overlap on the same property
+      function slideFor(times, i){
+        var d=.42; if(times[i+1]!=null) d=Math.min(d, Math.max(.16, times[i+1]-times[i]-.02)); return d;
+      }
+      // Reveal item i: the column rides up by exactly that item's height, the bubble pops.
+      function showItem(tl, thread, t, i, opts){
+        opts=opts||{};
+        var b=thread.items[i], y=thread.stops[i];
+        if(b.spec.hold){ y=thread.stops[i]+b.spec.hold; }
+        tl.to(thread.el,{y:y,duration:opts.slide||.42,ease:'power3.out'}, t);
+        tl.set(b.wrap,{autoAlpha:1}, t);
+        if(b.spec.kind==='card'){
+          tl.fromTo(b.inner,{y:28,autoAlpha:0,rotationX:12},{y:0,autoAlpha:1,rotationX:0,duration:.55,ease:'expo.out'}, t);
+        } else if(b.spec.dim){
+          tl.fromTo(b.inner,{y:14,autoAlpha:0},{y:0,autoAlpha:.56,duration:.34,ease:'power3.out'}, t);
+        } else if(b.spec.side==='sent'){
+          // the one overshoot in the film, because iMessage does it
+          tl.fromTo(b.inner,{scale:.86,autoAlpha:0},{scale:1,autoAlpha:1,duration:.32,ease:'back.out(1.4)'}, t);
+        } else {
+          tl.fromTo(b.inner,{y:14,autoAlpha:0},{y:0,autoAlpha:1,duration:.34,ease:'power3.out'}, t);
+        }
+      }
+      // typing dots ride the hihat hits of a named roll — one lift per hit, never a loop
+      function typeDots(tl, dotsEl, hits){
+        var ds=dotsEl.querySelectorAll('i');
+        hits.forEach(function(h,i){
+          var d=ds[i%3];
+          tl.to(d,{y:-3,opacity:1,duration:.07,ease:'power2.out'}, h);
+          tl.to(d,{y:0,opacity:.55,duration:.16,ease:'power2.inOut'}, h+.07);
+        });
+      }
+      // per-character reveal at a fixed cadence, always landing on the send downbeat
+      function typeText(tl, node, text, start, end){
+        var per=(end-start)/Math.max(1,text.length);
+        for(var c=1;c<=text.length;c++){
+          (function(n){ tl.set(node,{textContent:text.slice(0,n)}, start+per*n); })(c);
+        }
+      }
+
+      var ITEMS=[
+        {kind:'sys', text:'Today · 8:42 AM', pre:true},
+        {side:'recv', text:'morning — your inbox is clear. three things need you today.', pre:true, dim:true},
+        {side:'sent', text:'nice. i&rsquo;ll look after lunch.', pre:true, dim:true},
+        {side:'sent', text:'dinner fri 8pm at the usual spot. tell Sam.'},
+        {side:'recv', text:'on it.'},
+        {kind:'card', side:'recv', html:'<div data-hf-id="hf-s02ahd" class="hd"><div data-hf-id="hf-s02aic" class="ic"><div data-hf-id="hf-s02aig" class="gly" style="background-image:url(&quot;logos/glyph-mail.svg&quot;)"></div></div><div data-hf-id="hf-s02atw"><div data-hf-id="hf-s02ati" class="ti">Reservation request</div><div data-hf-id="hf-s02asb" class="sb">sent from your inbox</div></div></div>'},
+        {kind:'card', side:'recv', html:'<div data-hf-id="hf-s02bhd" class="hd"><div data-hf-id="hf-s02bic" class="ic"><div data-hf-id="hf-s02big" class="gly" style="background-image:url(&quot;logos/glyph-calendar-check.svg&quot;)"></div></div><div data-hf-id="hf-s02btw"><div data-hf-id="hf-s02bti" class="ti">Held · Fri 8:00 pm</div><div data-hf-id="hf-s02bsb" class="sb">table for 2 · the usual spot</div></div></div>'},
+        {kind:'card', side:'recv', html:'<div data-hf-id="hf-s02df" class="fa" id="s02-face-a"><div data-hf-id="hf-s02dhd" class="hd"><div data-hf-id="hf-s02dic" class="ic"><div data-hf-id="hf-s02dig" class="gly" style="background-image:url(&quot;logos/glyph-phone.svg&quot;)"></div></div><div data-hf-id="hf-s02dtw"><div data-hf-id="hf-s02dti" class="ti">Text Sam?</div><div data-hf-id="hf-s02dsb" class="sb">draft · tap to send</div></div></div><div data-hf-id="hf-s02dbd" class="bd">“dinner fri 8pm, usual spot. see you there.”</div><div data-hf-id="hf-s02drow" class="row"><div data-hf-id="hf-s02dok" class="btn ok" id="s02-approve">Approve</div><div data-hf-id="hf-s02ded" class="btn gh">Edit</div></div></div><div data-hf-id="hf-s02db" class="fb" id="s02-face-b"><div data-hf-id="hf-s02ehd" class="hd"><div data-hf-id="hf-s02eic" class="ic"><div data-hf-id="hf-s02eig" class="gly" style="background-image:url(&quot;logos/glyph-phone.svg&quot;)"></div></div><div data-hf-id="hf-s02etw"><div data-hf-id="hf-s02eti" class="ti">Text Sam?</div><div data-hf-id="hf-s02esb" class="sb">sent · 2 min ago</div></div></div><div data-hf-id="hf-s02done" class="done"><span data-hf-id="hf-s02dk">✓</span><span data-hf-id="hf-s02dt">Sent to Sam</span></div></div><div data-hf-id="hf-s02dsp" class="spec" id="s02-spec"></div>'},
+        {kind:'sys', text:'remembered: Sam · Fridays · the usual spot'}
+      ];
+      var threadEl=$('#s02-thread'); threadEl.setAttribute('data-bottom','626');
+      var TH=buildThread(threadEl, ITEMS); TH.el=threadEl;
+      
+
+      // the typing indicator lives outside the flow so it can vanish without moving the column
+      var dw=el('div','dotswrap'); var dots=el('div','dots');
+      for(var d=0;d<3;d++) dots.appendChild(el('i'));
+      dw.appendChild(dots); $('#s02-screen').appendChild(dw);
+      gsap.set(dw,{autoAlpha:0}); gsap.set(dots.querySelectorAll('i'),{opacity:.55});
+
+      var ph=$('#s02-ph'), seed=$('#s02-seed'), stanza=$('#s02-stanza');
+      var lines=[$$('#s02-l0 .w'),$$('#s02-l1 .w'),$$('#s02-l2 .w')];
+      var caps=[$('#s02-cap1'),$('#s02-cap2')];
+
+      gsap.set(ph,{autoAlpha:0,rotationY:-9,rotationX:4,scale:1.06,transformOrigin:'50% 50%'});
+      gsap.set(seed,{x:-421,scaleX:.796,scaleY:.071,transformOrigin:'50% 50%'});
+      lines.forEach(function(ws){ gsap.set(ws,{y:'0.6em',autoAlpha:0,rotationX:24,transformOrigin:'50% 80%'}); });
+      gsap.set(caps,{autoAlpha:0,y:12});
+      gsap.set($('#s02-face-b'),{autoAlpha:0});
+      gsap.set($('#s02-spec'),{opacity:0});
+      gsap.set($('#s02-slam'),{opacity:0});
+
+      // 10.170 (0.000) — the bubble the four banners collapsed into becomes the phone.
+      // One object across the seam: no dissolve, no cut you can see.
+      tl.to(seed,{x:0,scaleX:1,scaleY:1,duration:.45,ease:'expo.out'},0);
+      tl.to(ph,{autoAlpha:1,duration:.30,ease:'power2.out'},.28);
+      tl.to(seed,{autoAlpha:0,duration:.22,ease:'power2.inOut'},.34);
+
+      var T=[.349, 3.019, 4.551, 6.107, 7.616, 12.260];
+      // 10.519 — the first thing you see it do is the thing you already do
+      showItem(tl,TH,T[0],3,{slide:.36});
+      // 11.587 — typing dots ride the sustained hihat fill 9.543-13.259 (absolute)
+      tl.to(dw,{autoAlpha:1,duration:.2,ease:'power2.out'},1.417);
+      typeDots(tl,dots,[1.44,1.63,1.82,2.01,2.20,2.39,2.58,2.77,2.96]);
+      tl.to(dw,{autoAlpha:0,duration:.14,ease:'power2.in'},2.98);
+      // 13.189 — "on it." and the first line of the stanza land on the same downbeat
+      showItem(tl,TH,T[1],4,{slide:.36});
+      // 14.721 / 16.277 / 17.786 — inbox, the hold, the decision
+      showItem(tl,TH,T[2],5,{slide:.42});
+      showItem(tl,TH,T[3],6,{slide:.42});
+      showItem(tl,TH,T[4],7,{slide:.42});
+      // 18.158 — the decision card settles with one specular pass (holo, no rainbow)
+      tl.fromTo($('#s02-spec'),{xPercent:-60,opacity:0},{xPercent:60,opacity:.5,duration:.34,ease:'power2.out'},7.988);
+      tl.to($('#s02-spec'),{opacity:0,duration:.3,ease:'power2.in'},8.33);
+      // 22.430 — the memory chip: the computer that remembers
+      showItem(tl,TH,T[5],8,{slide:.42});
+
+      // the stanza: the hero line, one clause per downbeat, behind the phone at depth 0
+      [3.019,6.107,9.149].forEach(function(t,i){
+        tl.to(lines[i],{y:0,autoAlpha:1,rotationX:0,duration:.70,ease:'expo.out',stagger:.04},t);
+      });
+      tl.to(caps[0],{autoAlpha:1,y:0,duration:.6,ease:'expo.out'},4.551);
+      tl.to(caps[1],{autoAlpha:1,y:0,duration:.6,ease:'expo.out'},12.260);
+
+      // 21.223 — the tap. Nothing moves money or messages without this gesture.
+      tl.to($('#s02-approve'),{scale:.92,duration:.066,ease:'power2.out'},11.053);
+      tl.to($('#s02-approve'),{scale:1,duration:.12,ease:'power2.inOut'},11.128);
+      tl.to(TH.items[7].inner,{rotationX:-90,duration:.22,ease:'power2.in'},11.22);
+      tl.set($('#s02-face-a'),{autoAlpha:0},11.44);
+      tl.set($('#s02-face-b'),{autoAlpha:1},11.44);
+      tl.to(TH.items[7].inner,{rotationX:0,duration:.23,ease:'power2.out'},11.44);
+
+      // slow camera: the world drifts left under the phone, 1.2% across the shot
+      tl.to(stanza,{x:-22,duration:13.9,ease:'none'},0);
+      tl.to(ph,{x:-9,duration:13.9,ease:'none'},0);
+
+      // 24.358 — the crash. The phone comes at camera and its black screen becomes the cut;
+      // S03 opens on the sunrise crest one frame later.
+      tl.to(stanza,{x:-230,autoAlpha:0,duration:.30,ease:'power4.in'},13.90);
+      tl.to(caps,{autoAlpha:0,duration:.2,ease:'power2.in'},13.90);
+      tl.to(ph,{scale:2.9,rotationY:0,rotationX:0,x:-160,duration:.25,ease:'power4.in'},13.938);
+      tl.to($('#s02-slam'),{opacity:1,duration:.10,ease:'power2.in'},14.088);
+      window.__timelines=window.__timelines||{};
+      window.__timelines['shot-02-imessage-thread']=tl;
+      var q=new URLSearchParams(location.search);
+      if(q.has('t')){tl.seek(parseFloat(q.get('t'))||0);}else if(q.get('dev')==='1'){tl.play();}
+    })();
+    </script>
+  </div>
+</template>
