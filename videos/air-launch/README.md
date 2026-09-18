@@ -39,7 +39,8 @@ The last full render was 1920×1080, 30 fps, 119.70 s, h264 + aac, 79 MB.
 - `fonts/` — Inter 400/700, Newsreader, Azeret Mono (real WOFF2)
 - `logos/` — supplied and partner logo assets; `air-brand.png` is the orb, `wzrdtech-chrome.png` the chrome mark
 - `renders/stills/` — hero stills pulled from the render (the iPhone frames for air.wzrd.tech)
-- `renders/` — render output. The finished film is 79 MB and is **not** committed; rebuild it with
+- `renders/air-launch-v3.mp4` — the delivered master, 79 MB, committed so it has a download URL
+- `renders/` — render output; rebuild with
   `npm run render -- --quality high --output renders/air-launch-v3.mp4` (about 20 minutes here)
 - `STORYBOARD.md`, `PLAN-v2.md` — v2 scene plan and approved claim copy
 - `REVIEW-PROMPT.md` — gate doctrine and disposition rubric (applies to v3 unchanged)

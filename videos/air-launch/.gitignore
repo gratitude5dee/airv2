@@ -3,6 +3,7 @@ snapshots/
 renders/work-*/
 renders/.*hf-transaction*/
 
-# The finished film is 79 MB: too heavy for the repo. Render it with `npm run render`,
-# or take the copy delivered with the build. Stills in renders/stills/ are committed.
+# Working renders stay out of the repo; the delivered master is committed by name so it
+# has a download URL. Stills in renders/stills/ are committed.
 renders/*.mp4
+!renders/air-launch-v3.mp4
