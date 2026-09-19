@@ -96,6 +96,10 @@ SCRIPT = P.FX_JS + """
         tl.to(glow,{opacity:.55,duration:.62,ease:'power2.out'},t+.10);
         hit(tl,stage,t,{amt:.012});
       });
+      // 94.767 — the claim is one sentence, so it has to exist as one. The focus pull that
+      // carried each clause in releases on the kicker: all three come back to full and sharp,
+      // and the film's identity line finally reads as a block.
+      tl.to(lines,{autoAlpha:1,filter:'blur(0px)',duration:.46,ease:'power2.out'},5.231);
       tl.to('#s12-kick',{autoAlpha:1,y:0,duration:.56,ease:'expo.out'},5.503);
 
       // the backend, stated once, at the edges where it belongs

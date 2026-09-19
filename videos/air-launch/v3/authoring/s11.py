@@ -175,11 +175,11 @@ SCRIPT = M.COMMON_JS + f"""
       tl.to([app,url],{{autoAlpha:0,scale:.94,duration:.28,ease:'power3.in'}},7.700);
       tl.to(dec,{{autoAlpha:1,y:0,scale:1,duration:.70,ease:'expo.out'}},7.848);
       hit(tl,stage,7.848,{{amt:.024}});
-      tl.to('#s11-dec-ok',{{scale:.955,duration:.07,ease:'power2.out'}},9.427);
-      tl.to('#s11-dec-ok',{{scale:1,duration:.16,ease:'power2.inOut'}},9.506);
+      tl.to('#s11-dec-ok',{{scale:.955,duration:.07,ease:'power2.out'}},9.230);
+      tl.to('#s11-dec-ok',{{scale:1,duration:.16,ease:'power2.inOut'}},9.309);
       // 87.957 — Approve. Spectral moment 3 of 4, and the biggest hit of the act.
-      tl.to(dec,{{autoAlpha:0,scale:1.06,duration:.24,ease:'power3.in'}},9.427);
-      tl.to(live,{{autoAlpha:1,scale:1,duration:.70,ease:'expo.out'}},9.427);
+      tl.to(dec,{{autoAlpha:0,scale:1.06,duration:.10,ease:'power2.in'}},9.427);
+      tl.to(live,{{autoAlpha:1,scale:1,duration:.62,ease:'expo.out'}},9.532);
       hit(tl,stage,9.427,{{amt:.044,flash:flash,flashAmt:.30,flashD:.30,shake:8}});
       cam(tl,stage,9.60,{{scale:1.05,d:1.5,e:'expo.out'}});
       tl.to(live,{{autoAlpha:0,y:-60,duration:.30,ease:'power4.in'}},10.71);"""

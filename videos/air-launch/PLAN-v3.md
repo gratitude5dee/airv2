@@ -727,3 +727,20 @@ agent." for three and a half seconds with nothing on it — an off slab beside t
 a thread of its own: five dimmed rows of the day already behind it, then two live arrivals on the
 last two bars before the freeze, ending on "any time. i'm here." The film's closing product shot
 is a conversation, which is the whole claim.
+
+### Two more from the same pass
+
+Reviewing the render turned up two beats that were wrong in the same way the freeze-frame
+review usually catches: they read as intended in motion and fell apart on a single frame.
+
+**The identity claim now exists as one sentence.** Each clause of "your agent, your RL
+environment, your model, your weights" dimmed to 34% and blurred as the next arrived — a focus
+pull that carried the reading nicely, but meant the complete claim never appeared in a legible
+frame. The pull now releases on the kicker at 94.767: all three lines come back to full and
+sharp, and the line the film is named for lands as a block.
+
+**The publish payoff is a hard swap, not a dissolve.** "It's live." was fading in over a publish
+card still at full opacity, stacking `mini.wzrd.tech/gratitude/tour` twice across the Approve
+button for about a fifth of a second. The card now leaves in 100 ms and the payoff fills in
+behind it at 9.532 — the same correction `/trade` already had. The approval press moved a half
+beat earlier so it reads before the card goes, instead of on the frame it exits.
