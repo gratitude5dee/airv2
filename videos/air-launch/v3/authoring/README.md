@@ -14,3 +14,20 @@ cd videos/air-launch && python3 v3/authoring/s06.py
 ```
 
 Then re-run `npm run check` and re-snapshot the shot's seams before trusting the result.
+
+## The audio chain
+
+Two scripts, in order, from the project root:
+
+```bash
+python3 v3/authoring/sfx.py            # the 94-cue foley bus -> a scratch .wav at 48 kHz
+python3 v3/authoring/mix.py <that.wav> # track + bus + sidechain -> assets/bgm-mix.mp3
+```
+
+`sfx.py` owns how loud each cue is: a role table of dB-below-music, solved per cue against the
+track's own level in the half second around it, plus the first-half trim. `mix.py` owns the
+balance between the two buses and the one rate conversion in the whole chain. Neither reads the
+other's constants, so a level note only ever changes one file.
+
+`assets/bgm-music-only.mp3` is the untouched track and the source of truth for the beat grid.
+Never overwrite it.

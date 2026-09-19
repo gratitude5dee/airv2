@@ -275,8 +275,19 @@ def cue_rms(sig):
     seg = np.pad(sig, (0, max(0, w-len(sig))))[:w]
     return float(np.sqrt((seg**2).mean())) or 1e-6
 
+# The first half runs another 6 dB down. The opening is sparse — a night sky, one phone,
+# one word — so foley that reads as texture under the chorus reads as clatter under it.
+# The trim lifts across /shop so the second half is untouched and the change is never a
+# step you can hear.
+FH_FULL, FH_CLEAR, FH_DB = 52.059, 62.0, -6.0
+def half_trim(t):
+    if t <= FH_FULL: return FH_DB
+    if t >= FH_CLEAR: return 0.0
+    u = (t - FH_FULL) / (FH_CLEAR - FH_FULL)
+    return FH_DB * (1.0 - u*u*(3.0 - 2.0*u))
+
 for t, sig, role, pan in CUES:
-    target = ROLE_DB.get(role, -10.0)
+    target = ROLE_DB.get(role, -10.0) + half_trim(t)
     m = max(0.035, music_rms(t))
     want = m * (10 ** (target/20.0))
     g = want / max(1e-6, cue_rms(sig))

@@ -144,6 +144,92 @@
       #s14-root .hitflash{position:absolute;inset:0;pointer-events:none;background:#EAF2FF;opacity:0;
         mix-blend-mode:screen}
       #s14-root .hero-card{position:absolute;will-change:transform,opacity;transform-origin:50% 50%}
+
+      /* ====================== v3.4 component kit ======================
+         React Bits studies, re-authored for linear time. Every one of them is a pointer,
+         scroll or hover effect at the source; here the input is the timeline clock, so the
+         behaviour is deterministic and a seek reconstructs it exactly. */
+
+      /* --- DEPTH TEXT: layered extruded type. The source parallaxes against the pointer;
+             here the extrusion is a fixed stack of offset copies and the parallax is a
+             slow push on the stage, so the slash words read as objects with mass. --- */
+      #s14-root .dpt{position:relative;display:inline-block;will-change:transform}
+      #s14-root .dpt .dl{position:absolute;left:0;top:0;white-space:nowrap;pointer-events:none;
+        will-change:transform,opacity}
+      #s14-root .dpt .dface{position:relative;color:var(--ink)}
+      #s14-root .dpt .dsh{color:rgba(3,9,24,.42);filter:blur(.4px)}
+
+      /* --- SHINY TEXT: a metallic sheen crosses the glyphs. Masked to the text itself,
+             so the highlight is in the letterform and not a bar sliding over it. --- */
+      #s14-root .shiny{position:relative;display:inline-block}
+      #s14-root .shiny .sh{position:absolute;left:0;top:0;white-space:nowrap;pointer-events:none;
+        background:linear-gradient(104deg,rgba(255,255,255,0) 40%,rgba(255,255,255,.95) 50%,rgba(255,255,255,0) 60%);
+        -webkit-background-clip:text;background-clip:text;color:transparent;
+        background-size:260% 100%;will-change:background-position;opacity:0}
+
+      /* --- MASKED HEADING: a drifting colour mesh shows through the glyphs, and the line
+             is uncovered word by word rather than faded in whole. --- */
+      #s14-root .mhead{display:inline-block}
+      #s14-root .mhead .mw{display:inline-block;overflow:hidden;vertical-align:bottom}
+      #s14-root .mhead .mw > span{display:inline-block;will-change:transform,opacity}
+      #s14-root .mhead.mesh .mw > span{
+        background:linear-gradient(96deg,#FFF4E4 0%,#CFE3FF 26%,#FFE2C0 52%,#BBD6FF 74%,#FFF4E4 100%);
+        background-size:280% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;
+        will-change:transform,opacity,background-position}
+
+      /* --- SPLIT TEXT: per-character staggered entrance. --- */
+      #s14-root .split .ch{display:inline-block;white-space:pre;will-change:transform,opacity}
+
+      /* --- STAR BORDER: sparkles orbit the edge of a thing with a twinkle pulse. The
+             source animates a gradient on hover; here each spark is a real element placed
+             on the ring and lit on its own beat. --- */
+      #s14-root .starb{position:absolute;inset:-14px;pointer-events:none}
+      #s14-root .starb .sp{position:absolute;left:50%;top:50%;width:7px;height:7px;margin:-3.5px 0 0 -3.5px;
+        border-radius:50%;background:#FFFFFF;opacity:0;mix-blend-mode:screen;
+        box-shadow:0 0 10px rgba(198,226,255,.95),0 0 22px rgba(120,180,255,.55);
+        will-change:transform,opacity}
+      #s14-root .starb .ring{position:absolute;inset:0;border-radius:50%;opacity:0;
+        background:conic-gradient(from 0deg,rgba(150,200,255,0) 0deg,rgba(190,224,255,.60) 40deg,
+                   rgba(150,200,255,0) 110deg,rgba(150,200,255,0) 360deg);
+        -webkit-mask:radial-gradient(closest-side,transparent 92%,#000 93%);
+        mask:radial-gradient(closest-side,transparent 92%,#000 93%);will-change:transform,opacity}
+
+      /* --- SPECULAR BUTTON: a rim light sweeps the edge of the glass. The source tracks
+             the cursor; here the sweep is on the approval's own beat, which is better —
+             the light arrives when the decision does. --- */
+      #s14-root .spec{position:relative;isolation:isolate}
+      #s14-root .spec .rim{position:absolute;inset:-1px;border-radius:inherit;pointer-events:none;opacity:0;
+        background:conic-gradient(from 0deg,rgba(255,255,255,0) 0deg,rgba(255,255,255,.92) 26deg,
+                   rgba(255,255,255,0) 74deg,rgba(255,255,255,0) 360deg);
+        -webkit-mask:linear-gradient(#000,#000) content-box,linear-gradient(#000,#000);
+        -webkit-mask-composite:xor;mask-composite:exclude;padding:1.6px;
+        will-change:transform,opacity}
+      #s14-root .spec .gl{position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:0;
+        background:linear-gradient(100deg,rgba(255,255,255,0) 38%,rgba(255,255,255,.42) 50%,rgba(255,255,255,0) 62%);
+        will-change:transform,opacity;mix-blend-mode:screen}
+
+      /* --- LIGHT RAYS / SIDE RAYS: volumetric beams. Each ray is a masked gradient wedge
+             anchored at the source, so the crest throws light instead of just brightening. --- */
+      #s14-root .rays{position:absolute;pointer-events:none;mix-blend-mode:screen;
+        transform-origin:50% 0%;will-change:transform,opacity}
+      #s14-root .rays .ray{position:absolute;left:50%;top:0;transform-origin:50% 0%;opacity:0;
+        background:linear-gradient(180deg,rgba(255,231,196,.78) 0%,rgba(255,214,160,.22) 42%,rgba(255,200,140,0) 100%);
+        filter:blur(9px);will-change:transform,opacity}
+      #s14-root .rayglow{position:absolute;pointer-events:none;mix-blend-mode:screen;opacity:0;
+        background:radial-gradient(50% 50% at 50% 50%,rgba(255,236,206,.92) 0%,rgba(255,206,150,.34) 38%,rgba(255,190,120,0) 72%);
+        will-change:transform,opacity}
+
+
+      /* --- HALFTONE REVEAL: a print dot matrix that resolves into the picture. The source
+             resolves around the cursor; here the dot radius closes on the beat. --- */
+      #s14-root .halft{position:absolute;inset:0;pointer-events:none;will-change:opacity;
+        background-image:radial-gradient(circle,rgba(6,12,28,.92) 46%,rgba(6,12,28,0) 52%);
+        background-size:14px 14px;background-position:0 0}
+
+      /* --- MAGIC BENTO: a spotlight crosses a grid and the tile under it lifts. --- */
+      #s14-root .bento-spot{position:absolute;pointer-events:none;mix-blend-mode:screen;opacity:0;
+        background:radial-gradient(50% 50% at 50% 50%,rgba(210,232,255,.42) 0%,rgba(160,200,255,.12) 44%,rgba(160,200,255,0) 74%);
+        will-change:transform,opacity}
       #s14-root .mark{position:relative;width:760px;height:187.9px;overflow:hidden;will-change:transform,opacity}
       #s14-root .mark img{position:absolute;left:-38.6px;top:-168.3px;width:852.8px;height:auto;display:block;
         filter:brightness(1.22) contrast(1.06) drop-shadow(0 0 18px rgba(150,196,255,.34))}

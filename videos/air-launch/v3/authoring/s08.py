@@ -56,7 +56,7 @@ BODY = f"""    <div data-hf-id="hf-s08frame" class="frame clip" id="s08-frame" d
           <div data-hf-id="hf-s08ms" class="sub"><span data-hf-id="hf-s08m1">est. $3,140</span>
             <span data-hf-id="hf-s08m2">balance $10,000</span><span data-hf-id="hf-s08m3">expires 4:58</span></div>
           <div data-hf-id="hf-s08mact" class="act" id="s08-act">
-            <div data-hf-id="hf-s08mok" class="big3 btn3 ok3" id="s08-macro-ok">Approve</div>
+            <div data-hf-id="hf-s08mok" class="big3 btn3 ok3 spec" id="s08-macro-ok">Approve{P.specular("s08-mspec")}</div>
             <div data-hf-id="hf-s08med" class="gh btn3 gh3">Edit</div></div>
         </div>
         <div data-hf-id="hf-s08fl" class="filled" id="s08-filled">
@@ -95,6 +95,7 @@ SCRIPT = M.COMMON_JS + f"""
       cam(tl,stage,1.74,{{scale:1.0,x:0,y:0,d:1.1,e:'expo.out'}});
       hit(tl,stage,1.532,{{base:1.16,amt:.016}});
       // 61.068 — the tap, held on a glossy object that reads as a real button
+      specSweep(tl,'s08-mspec',2.809,{{d:0.96}});
       tl.to('#s08-macro-ok',{{scale:.955,duration:.07,ease:'power2.out'}},2.809);
       tl.to('#s08-macro-ok',{{scale:1,duration:.16,ease:'power2.inOut'}},2.888);
       hit(tl,stage,2.809,{{amt:.014}});

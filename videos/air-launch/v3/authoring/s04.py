@@ -34,6 +34,10 @@ STYLE = P.FONTS + "\n" + P.tokens(R) + "\n" + P.fx_css(R) + """
       #s04-root .row .bar i{display:block;height:100%;border-radius:5px;
         background:linear-gradient(90deg,#3C8FE0,#9AD2FF);transform-origin:0% 50%;will-change:transform}
       #s04-root .cap{position:absolute;left:112px;top:862px;width:620px;text-align:center}
+      /* STAR BORDER (React Bits) — the persona is not a static portrait; signal arrives at
+         it. Sparks orbit the ring and twinkle as the sweep reaches them, so the hub reads
+         as something being read from rather than a photograph. */
+      #s04-root .starb{inset:auto;left:50%;margin-left:-157px;top:0;width:314px;height:314px}
       #s04-root .flash{position:absolute;inset:0;background:#DCE9FF;opacity:0}"""
 
 rows="".join(
@@ -49,6 +53,7 @@ BODY = f"""    <div data-hf-id="hf-s04frame" class="frame clip" id="s04-frame" d
       <div data-hf-id="hf-s04st" class="stage" id="s04-stage">
         <div data-hf-id="hf-s04hb" class="hub" id="s04-hub"><div data-hf-id="hf-s04av" class="av"></div>
           <div data-hf-id="hf-s04rg" class="ring" id="s04-ring"></div>
+          {P.star_border('s04-star', n=16)}
           <div data-hf-id="hf-s04nm" class="nm">ONAIROS PERSONA</div>
           <div data-hf-id="hf-s04sb" class="sb">imported, not guessed</div></div>
         <div data-hf-id="hf-s04bd" class="board" id="s04-board">{rows}</div>
@@ -76,6 +81,7 @@ SCRIPT = P.FX_JS + f"""
       // 33.344 — the persona lands first: everything after it is what it already knows
       tl.to('#s04-hub',{{autoAlpha:1,scale:1,x:0,duration:.74,ease:'expo.out'}},0);
       tl.to('#s04-ring',{{autoAlpha:1,scale:1,duration:1.0,ease:'expo.out'}},.12);
+      starBorder(tl,'s04-star',.30,{{r:157,d:5.0,ringOpacity:.7}});
       tl.to('#s04-cap',{{autoAlpha:1,y:0,duration:.60,ease:'expo.out'}},.30);
       hit(tl,stage,0,{{amt:.026}});
 
@@ -90,6 +96,6 @@ SCRIPT = P.FX_JS + f"""
 
       // 39.590 — the hand-off into the connector wall
       tl.to(rows,{{autoAlpha:0,x:-90,duration:.26,ease:'power4.in',stagger:.014}},5.94);
-      tl.to(['#s04-hub','#s04-cap','#s04-ring'],{{autoAlpha:0,x:-230,duration:.30,ease:'power4.in'}},5.94);
+      tl.to(['#s04-hub','#s04-cap','#s04-ring','#s04-star'],{{autoAlpha:0,x:-230,duration:.30,ease:'power4.in'}},5.94);
       tl.fromTo('#s04-flash',{{opacity:0}},{{opacity:.26,duration:.10,ease:'power2.out'}},6.14);"""
 print(P.emit('compositions/shot-04-hyperpersonal.html','shot-04-hyperpersonal','s04',6.246,STYLE,BODY,SCRIPT))

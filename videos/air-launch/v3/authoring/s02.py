@@ -46,8 +46,13 @@ ITEMS = f"""      var ITEMS=[
         {{kind:'sys', text:'remembered: Sam · Fridays · the usual spot'}}
       ];"""
 
-STANZA = ''.join(f'<div data-hf-id="hf-s02l{i}" class="giant ln" id="s02-l{i}">'
-                 + ''.join(f'<span data-hf-id="hf-s02w{i}{j}" class="w">{w}&nbsp;</span>' for j,w in enumerate(t.split()))
+# MASKED HEADING (React Bits): the hero line is not filled with a flat colour — a drifting
+# colour mesh shows through the glyphs, and each word is uncovered from under its own clip
+# rather than faded up. The line arrives the way a title sequence arrives.
+STANZA = ''.join(f'<div data-hf-id="hf-s02l{i}" class="giant ln mhead mesh" id="s02-l{i}">'
+                 + ''.join(f'<span data-hf-id="hf-s02mw{i}{j}" class="mw">'
+                           f'<span data-hf-id="hf-s02w{i}{j}" class="w">{w}</span></span>&nbsp;'
+                           for j,w in enumerate(t.split()))
                  + '</div>' for i,t in enumerate(['TEXT IT','LIKE A','FRIEND.']))
 
 BODY = f"""    <div data-hf-id="hf-s02frame" class="frame clip" id="s02-frame" data-layout-allow-overflow="" data-start="0" data-duration="14.188" data-track-index="1">
@@ -79,11 +84,24 @@ SCRIPT = P.THREAD_JS + P.FX_JS + f"""
       var ph=$('#s02-ph'), seed=$('#s02-seed'), stanza=$('#s02-stanza');
       var lines=[$$('#s02-l0 .w'),$$('#s02-l1 .w'),$$('#s02-l2 .w')];
       var caps=[$('#s02-cap1'),$('#s02-cap2')];
+      // SPLIT TEXT (React Bits): the captions arrive a character at a time, so the line
+      // reads as something being said rather than something being displayed.
+      caps.forEach(function(c){{
+        var txt=c.textContent; c.textContent='';
+        for(var i=0;i<txt.length;i++){{
+          var sp=document.createElement('span');
+          sp.className='ch'; sp.textContent=txt[i]==' '?'\u00a0':txt[i];
+          c.appendChild(sp);
+        }}
+        c.classList.add('split');
+      }});
+      var capChs=[$$('#s02-cap1 .ch'),$$('#s02-cap2 .ch')];
 
       gsap.set(ph,{{autoAlpha:0,rotationY:-9,rotationX:4,scale:1.06,transformOrigin:'50% 50%'}});
       gsap.set(seed,{{x:-421,scaleX:.796,scaleY:.071,transformOrigin:'50% 50%'}});
-      lines.forEach(function(ws){{ gsap.set(ws,{{y:'0.6em',autoAlpha:0,rotationX:24,transformOrigin:'50% 80%'}}); }});
-      gsap.set(caps,{{autoAlpha:0,y:12}});
+      lines.forEach(function(ws){{ gsap.set(ws,{{yPercent:114,autoAlpha:0,backgroundPosition:'0% 50%'}}); }});
+      gsap.set(caps,{{autoAlpha:1,y:0}});
+      capChs.forEach(function(cs){{ gsap.set(cs,{{y:14,autoAlpha:0,rotationX:-38,transformOrigin:'50% 100%'}}); }});
       gsap.set($('#s02-face-b'),{{autoAlpha:0}});
       gsap.set($('#s02-spec'),{{opacity:0}});
       gsap.set($('#s02-slam'),{{opacity:0}});
@@ -129,10 +147,12 @@ SCRIPT = P.THREAD_JS + P.FX_JS + f"""
 
       // the stanza: the hero line, one clause per downbeat, behind the phone at depth 0
       [3.019,6.107,9.149].forEach(function(t,i){{
-        tl.to(lines[i],{{y:0,autoAlpha:1,rotationX:0,duration:.70,ease:'expo.out',stagger:.04}},t);
+        tl.to(lines[i],{{yPercent:0,autoAlpha:1,duration:.74,ease:'expo.out',stagger:.075}},t);
+        // the mesh keeps moving under the glyphs long after the word has landed
+        tl.to(lines[i],{{backgroundPosition:'190% 50%',duration:5.4,ease:'sine.inOut',stagger:.075}},t);
       }});
-      tl.to(caps[0],{{autoAlpha:1,y:0,duration:.6,ease:'expo.out'}},4.551);
-      tl.to(caps[1],{{autoAlpha:1,y:0,duration:.6,ease:'expo.out'}},12.260);
+      tl.to(capChs[0],{{y:0,autoAlpha:1,rotationX:0,duration:.46,ease:'back.out(1.7)',stagger:.011}},4.551);
+      tl.to(capChs[1],{{y:0,autoAlpha:1,rotationX:0,duration:.46,ease:'back.out(1.7)',stagger:.011}},12.260);
 
       // 21.223 — the tap. Nothing moves money or messages without this gesture.
       hit(tl,stage,11.053,{{base:1.46,amt:.020}});

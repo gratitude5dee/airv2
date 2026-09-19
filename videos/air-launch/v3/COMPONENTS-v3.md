@@ -86,6 +86,30 @@ Category rules first, then the exceptions.
 | Infinite Menu | Components | REFERENCE ONLY | — | Brand `wz-infinite-menu` exists in `fx.js`; not used in the film |
 | Everything else in the CSV | — | REJECT | — | Category rules above |
 
+## 3b. v3.4 rulings — the second component catalogue
+
+A second pass over the same catalogue, after the film existed. Several v3 rulings were reversed
+because the shot they would have served had since been built, and a study that was
+REFERENCE ONLY against a storyboard is a different question against a frame.
+
+| component | v3 ruling | v3.4 ruling | where | how it was re-authored for linear time |
+| --- | --- | --- | --- | --- |
+| Noise | REFERENCE ONLY | **ADOPT** | global grade | Six fixed-seed turbulence tiles, one shown per 1/24 s, indexed off the clock. The static plate read as a texture laid on top; grain that changes every frame reads as film. |
+| Grainient | — | **ADOPT** | global grade | Grainy gradient under a turbulence swirl, drifting on two incommensurate periods. Stops the large flat sky from banding. |
+| Gradual Blur | ADAPT (thread mask) | **ADOPT (also global)** | frame boundary | Three masked `backdrop-filter` bands of increasing blur at the crop. The source keys off scroll; here it is static and spatial. |
+| Aurora | REJECT | **ADOPT** | `sky.html`, 0 → 24.358 | Three blurred bands on separate sine periods, up over the cold open and gone before the crest. |
+| Light Pillar | — | **ADOPT** | S01, the name resolving | One blurred column, scaled and faded on the resolve beat. |
+| Light Rays | — | **ADOPT** | S03, the crest | Eleven masked gradient wedges fanned from a point on the horizon. The single biggest lift in the film: the sun now throws light rather than only brightening. |
+| Masked Heading | — | **ADOPT** | S02 hero line | A colour mesh `background-clip: text` behind the glyphs, drifting for 5.4 s; each word uncovered from its own `overflow:hidden` clip instead of faded. |
+| Split Text | REFERENCE ONLY | **ADOPT** | S02 captions | Per-character spans built at load, staggered 11 ms off the caption's beat. |
+| Star Border | REJECT | **ADOPT** | S04 persona ring | Sixteen sparks placed on the ring by angle; each twinkles as a conic sweep reaches it. The source animates a gradient on hover. |
+| Halftone Reveal | REFERENCE ONLY | **ADOPT** | S05 connector wall | A dot-matrix plate whose `background-size` closes 15 px → 2.2 px over 3.6 s. The source resolves around the cursor; here it resolves on the beat. |
+| Magic Bento | REJECT | **ADOPT** | S06 app family | A spotlight translated across the grid; each tile lifts as it passes. No hover, no expansion. |
+| Depth Text | — | **ADOPT** | S06–S11 slash words, S06 caption | A lit face over eight offset shadow copies, the block turning −9° → +4° across the shot. The source parallaxes against the pointer; the camera move replaces it. |
+| Specular Button | — | **ADOPT** | S07, S08, S11 approvals | A conic rim light rotated once around the edge, plus a glass sweep, fired on the approval beat rather than followed from a cursor. |
+| Shiny Text | — | BUILT, UNUSED | — | The helper exists in `parts.py`; no line in the cut wanted a second sheen on top of the chrome mark's own. |
+| Prismatic Burst | — | **REJECT (tried twice)** | — | Behind the giant word on the drop it was occluded and read as one stray line; over `/zap` it screen-blended against bright halftone and vanished. Rebuilding the hairlines as tapered wedges fixed the look, not the placement. A hard radial starburst is a different idiom from this film, and the chromatic split and light rays already do its job. |
+
 ## 4. Brand shader components (`apps/web/public/creator-os/fx.js`)
 
 `wz-sky`, `wz-dither`, `wz-chrome`, `wz-prism`, `wz-beams`, `wz-burst`, `wz-gridmotion`, `wz-griddistort`, `wz-pixels`, `wz-pixel-veil`, `wz-terminal`, `wz-trail`, `wz-electric-border`, `wz-infinite-menu`, `wz-ascii-fx` are **REFERENCE ONLY** for palette and feel. They animate on their own clocks and are not seek-safe; do not embed them. `sky.html` is the film's port of `wz-sky`; `wz-prism` informs the four spectral moments (a 6-stop conic gradient, PLAN §3.7).

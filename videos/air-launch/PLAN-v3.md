@@ -744,3 +744,89 @@ card still at full opacity, stacking `mini.wzrd.tech/gratitude/tour` twice acros
 button for about a fifth of a second. The card now leaves in 100 ms and the payoff fills in
 behind it at 9.532 — the same correction `/trade` already had. The approval press moved a half
 beat earlier so it reads before the card goes, instead of on the frame it exits.
+
+## 17. v3.4 — the component pass
+
+Two notes: the foley is still too loud in the first half, and the design should be pushed hard
+using a supplied catalogue of 190 components (18 Arlan Vault studies, 172 React Bits).
+
+### The first half runs 6 dB quieter
+
+The v3.3 pass cut every role by 6 dB against the music. That was right for the back half and
+still wrong for the front: the opening is a night sky, one phone and one word, and foley that
+reads as texture under the chorus reads as clatter under near-silence.
+
+`v3/authoring/sfx.py` now applies a second trim on top of the role table. Everything before
+`/shop` sits another 6 dB down; across 52.059 → 62.0 the trim smoothsteps back to zero, so the
+second half is untouched and there is no step you can hear. All 37 cues before the boundary are
+exactly 6 dB quieter and none of them hit a gain clip.
+
+The mix itself was a shell pipeline that lived only in a transcript. It is now
+`v3/authoring/mix.py`: read the track and the foley bus, sidechain the track under the cues by
+at most 2 dB, sum at 0.86 / 0.95, limit at 0.94, write the mp3. The 48 kHz bus is resampled to
+the music's 44.1 kHz through a polyphase filter in exactly one place, because an earlier pass
+compared the two rates under one variable and read the balance 24 dB wrong.
+
+Measured foley residual, old mix against new, by window:
+
+| window | before | after |
+| --- | ---: | ---: |
+| shots 03–04, the drop and the board | −32.4 dB | −38.0 dB |
+| shots 05–06, the wall and /home | −31.3 dB | −37.4 dB |
+| shot 07, /shop — the ramp | −26.5 dB | −27.6 dB |
+| shots 08–11, trade to ship | −27.9 dB | −28.0 dB |
+| shots 12–14, yours to the end | −31.2 dB | −31.1 dB |
+
+### Ten components, re-authored for linear time
+
+Every one of these is a pointer, scroll or hover effect at the source. A film has no pointer, so
+in each case the input becomes the timeline clock — which is usually the better trigger, because
+the light can arrive when the decision does instead of when a cursor happens to pass.
+
+**Global, every frame.** *Noise* replaces the static grain plate: six fixed-seed turbulence tiles
+cycle at 24 per second off the clock, so the grain is alive and a seek still lands on the same
+tile. *Grainient* adds a grainy gradient under a slow swirl, drifting on two periods, which keeps
+large flat areas of sky from banding. *Gradual Blur* gives the frame three bands of increasing
+blur at the boundary, so the picture falls off the way it does through a lens instead of stopping
+dead at the crop.
+
+**Aurora** (sky) — the cold open was a clean dark field. Three bands now drift over the night
+half at different rates and are gone before the sun crests, because an aurora under a sunrise is
+a lie.
+
+**Light Pillar** (shot 01) — a column of light behind the name as it resolves, so the word looks
+lit from somewhere rather than drawn bright on black.
+
+**Masked Heading + Split Text** (shot 02) — "TEXT IT LIKE A FRIEND." is no longer filled with a
+flat colour: a colour mesh shows through the glyphs and keeps drifting after the words land, and
+each word is uncovered from under its own clip. The two mono captions arrive a character at a
+time, so they read as something being said.
+
+**Light Rays** (shot 03) — the biggest single lift in the film. The crest now throws an eleven-ray
+volumetric fan up through the frame instead of only brightening the sky.
+
+**Star Border** (shot 04) — sixteen sparks orbit the persona ring and twinkle as the sweep reaches
+them, so the hub reads as something being read from rather than a photograph.
+
+**Halftone Reveal** (shot 05) — the connector wall does not fade up, it develops. A print dot
+matrix sits over the grid and its dots close from 15 px to 2 px as the connectors come online.
+
+**Magic Bento** (shot 06) — a spotlight crosses the app family and each tile lifts as it passes.
+
+**Depth Text** (shots 06–11, and the /home caption) — the slash words were flat ghosts at 36%
+opacity behind the phone. Each is now a lit face over a stack of eight offset shadow copies, and
+the whole block turns from −9° to +4° across its shot, so `/shop`, `/trade`, `/zap` and `/create`
+read as objects with a side.
+
+**Specular Button** (shots 07, 08, 11) — a rim light runs the edge of the glass on the beat the
+approval lands.
+
+### One component rejected
+
+**Prismatic Burst** was tried twice and removed twice. Behind the giant word on the drop it was
+occluded and showed only as one stray horizontal line; over the `/zap` plate it screen-blended
+against bright halftone dots and vanished. Rebuilding its hairlines as tapered wedges fixed the
+look and not the placement. The honest reading is that a hard radial starburst is a different
+idiom from this film, which is soft, atmospheric and photographic — and the chromatic split and
+the light rays already do its job better. A catalogue of 190 components is a menu, not a
+checklist.
