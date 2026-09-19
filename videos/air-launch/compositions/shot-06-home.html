@@ -29,15 +29,27 @@
       #s06-root .ph-body{position:absolute;inset:0;border-radius:56px;background:linear-gradient(160deg,#3a3f4a 0%,#171b22 38%,#0f1218 100%);
         padding:3px;box-shadow:0 60px 120px rgba(2,6,18,.62),0 12px 30px rgba(2,6,18,.5),inset 0 1px 0 rgba(255,255,255,.16)}
       #s06-root .ph-screen{position:absolute;inset:3px;border-radius:53px;overflow:hidden;background:#000}
+      #s06-root .ph-status{position:absolute;top:0;left:0;right:0;height:56px;z-index:8;
+        display:flex;align-items:center;justify-content:space-between;padding:0 30px;
+        font-family:-apple-system,'Inter',system-ui,sans-serif;font-size:16px;font-weight:600;color:#fff;
+        letter-spacing:.01em}
+      #s06-root .ph-status .ico{display:flex;align-items:center;gap:7px}
+      #s06-root .ph-status svg{display:block}
+      /* the screen is glass, not a hole: one raking reflection and a soft top light */
+      #s06-root .ph-sheen{position:absolute;inset:0;z-index:7;pointer-events:none;
+        background:
+          linear-gradient(116deg,rgba(255,255,255,.085) 0%,rgba(255,255,255,.02) 22%,
+                          rgba(255,255,255,0) 44%,rgba(255,255,255,0) 72%,rgba(255,255,255,.05) 100%),
+          radial-gradient(120% 44% at 50% -6%,rgba(190,220,255,.10),rgba(190,220,255,0) 70%)}
       #s06-root .ph-island{position:absolute;top:14px;left:50%;margin-left:-63px;width:126px;height:37px;border-radius:19px;background:#000;z-index:6}
-      #s06-root .ph-nav{position:absolute;top:0;left:0;right:0;height:122px;z-index:5;
+      #s06-root .ph-nav{position:absolute;top:0;left:0;right:0;height:134px;z-index:5;
         background:rgba(18,18,20,.82);backdrop-filter:blur(24px) saturate(1.3);border-bottom:1px solid rgba(255,255,255,.08);
-        display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:8px}
+        display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:8px;padding-top:56px}
       #s06-root .orb{background:url('logos/air-icon.svg') center/contain no-repeat;border-radius:50%;flex:0 0 auto}
       #s06-root .gly{background-position:center;background-repeat:no-repeat;background-size:contain}
       #s06-root .ph-nav .orb{width:44px;height:44px}
       #s06-root .ph-nav .who{font-size:13px;font-weight:600;color:#fff;margin-top:3px;letter-spacing:.01em}
-      #s06-root .ph-fade{position:absolute;top:122px;left:0;right:0;height:52px;z-index:4;pointer-events:none;
+      #s06-root .ph-fade{position:absolute;top:134px;left:0;right:0;height:52px;z-index:4;pointer-events:none;
         background:linear-gradient(180deg,rgba(0,0,0,.88) 0%,rgba(0,0,0,0) 100%)}
       #s06-root .ph-home{position:absolute;bottom:9px;left:50%;margin-left:-67px;width:134px;height:5px;border-radius:3px;background:rgba(255,255,255,.34);z-index:6}
       #s06-root .ph-composer{position:absolute;bottom:26px;left:12px;right:12px;height:44px;border-radius:22px;z-index:5;
@@ -47,7 +59,7 @@
       #s06-root .ph-composer .glow{position:absolute;inset:-1px;border-radius:22px;pointer-events:none;
         background:linear-gradient(96deg,rgba(10,132,255,.36),rgba(244,239,230,.14) 48%,rgba(10,132,255,.30));opacity:0}
       /* the thread: a flow column translated by the timeline — never scrollTop */
-      #s06-root .ph-scroll{position:absolute;top:122px;left:0;right:0;bottom:0;overflow:hidden;z-index:3}
+      #s06-root .ph-scroll{position:absolute;top:134px;left:0;right:0;bottom:0;overflow:hidden;z-index:3}
       #s06-root .ph-thread{position:absolute;left:0;right:0;top:0;padding:0 14px;display:flex;flex-direction:column;
         align-items:stretch;gap:9px;will-change:transform}
       #s06-root .it{display:flex;width:100%;will-change:transform,opacity}
@@ -170,14 +182,14 @@
             <div data-hf-id="hf-s06scl" class="ph-scroll" id="s06-scroll"><div data-hf-id="hf-s06thr" class="ph-thread" id="s06-thread"></div></div>
             <div data-hf-id="hf-s06fade" class="ph-fade"></div>
             <div data-hf-id="hf-s06nav" class="ph-nav" data-layout-allow-overlap="" data-layout-allow-occlusion=""><div data-hf-id="hf-s06navi" class="orb"></div><div data-hf-id="hf-s06navw" class="who">air</div></div>
-            <div data-hf-id="hf-s06isl" class="ph-island"></div>
+            <div data-hf-id="hf-s06sb" class="ph-status" data-layout-allow-overlap="" data-layout-allow-occlusion=""><span data-hf-id="hf-s06sbt">9:41</span><span data-hf-id="hf-s06sbi" class="ico"><svg data-hf-id="hf-s06sg" width="19" height="13" viewBox="0 0 19 13" aria-hidden="true"><rect data-hf-id="hf-s06s1" x="0" y="9" width="3" height="4" rx="1" fill="#fff"/><rect data-hf-id="hf-s06s2" x="5" y="6.5" width="3" height="6.5" rx="1" fill="#fff"/><rect data-hf-id="hf-s06s3" x="10" y="3.5" width="3" height="9.5" rx="1" fill="#fff"/><rect data-hf-id="hf-s06s4" x="15" y="0" width="3" height="13" rx="1" fill="#fff"/></svg><svg data-hf-id="hf-s06wf" width="17" height="13" viewBox="0 0 17 13" aria-hidden="true"><path data-hf-id="hf-s06w1" d="M8.5 11.6 6.2 9.1a3.4 3.4 0 0 1 4.6 0Z" fill="#fff"/><path data-hf-id="hf-s06w2" d="M3.7 6.4a7.1 7.1 0 0 1 9.6 0l-1.5 1.7a5 5 0 0 0-6.6 0Z" fill="#fff" opacity=".95"/><path data-hf-id="hf-s06w3" d="M1.1 3.5a10.9 10.9 0 0 1 14.8 0l-1.5 1.7a8.7 8.7 0 0 0-11.8 0Z" fill="#fff" opacity=".9"/></svg><svg data-hf-id="hf-s06bt" width="27" height="13" viewBox="0 0 27 13" aria-hidden="true"><rect data-hf-id="hf-s06b1" x=".6" y=".6" width="22" height="11.8" rx="3.4" fill="none" stroke="#fff" stroke-opacity=".42" stroke-width="1.2"/><rect data-hf-id="hf-s06b2" x="2.2" y="2.2" width="16.4" height="8.6" rx="2.2" fill="#fff"/><path data-hf-id="hf-s06b3" d="M24.4 4.4a2.6 2.6 0 0 1 0 4.2Z" fill="#fff" opacity=".42"/></svg></span></div><div data-hf-id="hf-s06isl" class="ph-island"></div>
             <div data-hf-id="hf-s06cmp" class="ph-composer" id="s06-composer"><div data-hf-id="hf-s06cmpg" class="glow" id="s06-composer-glow"></div><div data-hf-id="hf-s06cmpt" class="txt" id="s06-composer-txt"></div><div data-hf-id="hf-s06cmpc" class="car" id="s06-composer-caret"></div></div>
-            <div data-hf-id="hf-s06hb" class="ph-home"></div>
+            <div data-hf-id="hf-s06shn" class="ph-sheen"></div><div data-hf-id="hf-s06hb" class="ph-home"></div>
           </div>
         </div>
       </div>
         <div data-hf-id="hf-s06hr" class="hero" id="s06-hero"><div data-hf-id="hf-s06hg" class="hgrid"><div data-hf-id="hf-s06h0" class="hi" id="s06-h0"><div data-hf-id="hf-s06ha0" class="art" style="background-image:url(&quot;assets/icons/home.png&quot;)"></div><div data-hf-id="hf-s06hn0" class="nm">home</div></div><div data-hf-id="hf-s06h1" class="hi" id="s06-h1"><div data-hf-id="hf-s06ha1" class="art" style="background-image:url(&quot;assets/icons/shop.png&quot;)"></div><div data-hf-id="hf-s06hn1" class="nm">shop</div></div><div data-hf-id="hf-s06h2" class="hi" id="s06-h2"><div data-hf-id="hf-s06ha2" class="art" style="background-image:url(&quot;assets/icons/pay.png&quot;)"></div><div data-hf-id="hf-s06hn2" class="nm">pay</div></div><div data-hf-id="hf-s06h3" class="hi" id="s06-h3"><div data-hf-id="hf-s06ha3" class="art" style="background-image:url(&quot;assets/icons/inbox.png&quot;)"></div><div data-hf-id="hf-s06hn3" class="nm">inbox</div></div><div data-hf-id="hf-s06h4" class="hi" id="s06-h4"><div data-hf-id="hf-s06ha4" class="art" style="background-image:url(&quot;assets/icons/calendar.png&quot;)"></div><div data-hf-id="hf-s06hn4" class="nm">calendar</div></div><div data-hf-id="hf-s06h5" class="hi" id="s06-h5"><div data-hf-id="hf-s06ha5" class="art" style="background-image:url(&quot;assets/icons/vault.png&quot;)"></div><div data-hf-id="hf-s06hn5" class="nm">key vault</div></div><div data-hf-id="hf-s06h6" class="hi" id="s06-h6"><div data-hf-id="hf-s06ha6" class="art" style="background-image:url(&quot;assets/icons/computer.png&quot;)"></div><div data-hf-id="hf-s06hn6" class="nm">computer</div></div><div data-hf-id="hf-s06h7" class="hi" id="s06-h7"><div data-hf-id="hf-s06ha7" class="art" style="background-image:url(&quot;assets/icons/image.png&quot;)"></div><div data-hf-id="hf-s06hn7" class="nm">imagine</div></div><div data-hf-id="hf-s06h8" class="hi" id="s06-h8"><div data-hf-id="hf-s06ha8" class="art" style="background-image:url(&quot;assets/icons/video.png&quot;)"></div><div data-hf-id="hf-s06hn8" class="nm">zap</div></div><div data-hf-id="hf-s06h9" class="hi" id="s06-h9"><div data-hf-id="hf-s06ha9" class="art" style="background-image:url(&quot;assets/icons/persona.png&quot;)"></div><div data-hf-id="hf-s06hn9" class="nm">persona</div></div></div></div>
-        <div data-hf-id="hf-s06hc" class="herocap" id="s06-herocap"><div data-hf-id="hf-s06hct" class="cap">ten apps. one thread.</div></div>
+        <div data-hf-id="hf-s06hc" class="herocap" id="s06-herocap"><div data-hf-id="hf-s06hct" class="cap">your apps. one thread.</div></div>
       </div>
       <div data-hf-id="hf-s06hf" class="hitflash" id="s06-flash"></div>
     </div>
@@ -320,6 +332,18 @@
         gsap.set(document.getElementById(pfx+'-expl'),{autoAlpha:0,y:14});
         return st;
       }
+      // A whip: the outgoing shot is still travelling when the cut happens and the incoming
+      // one picks the move up mid-flight, blurred, for two frames. It is the only transition
+      // in the film that is not a straight cut.
+      function whipIn(tl, stage, t, dist){
+        dist = dist==null ? 210 : dist;
+        tl.fromTo(stage,{x:dist,filter:'blur(13px)'},
+                        {x:0,filter:'blur(0px)',duration:.20,ease:'power3.out'}, t);
+      }
+      function whipOut(tl, stage, t, dist){
+        dist = dist==null ? 210 : dist;
+        tl.to(stage,{x:-dist,filter:'blur(13px)',duration:.17,ease:'power3.in'}, t);
+      }
       function rightIn(tl, pfx, t){
         tl.to('#'+pfx+'-slash',{autoAlpha:1,x:0,duration:.60,ease:'expo.out'},t);
         tl.to('#'+pfx+'-expl',{autoAlpha:1,y:0,duration:.58,ease:'expo.out'},t+.26);
@@ -331,11 +355,18 @@
 
       var ITEMS=[
         {kind:'sys', text:'Today · 9:14 AM', pre:true},
-        {side:'recv', text:'the tour page is up. 2,140 visits since friday.', pre:true, dim:true},
+        {side:'recv', text:'shipping label for #218 is printed.', pre:true, dim:true},
+        {side:'sent', text:'thanks', pre:true, dim:true},
+        {side:'recv', text:'flights for the 12th are held, not booked.', pre:true, dim:true},
+        {side:'sent', text:'hold them till friday', pre:true, dim:true},
+        {side:'recv', text:'morning. inbox is clear, and the invoice from thursday cleared overnight.', pre:true, dim:true},
+        {side:'sent', text:'anything i need to look at?', pre:true, dim:true},
+        {side:'recv', text:'nothing urgent. the tour page is up — 2,140 visits since friday.', pre:true, dim:true},
+        {side:'sent', text:'nice.', pre:true, dim:true},
         {side:'sent', text:'/home'},
         {kind:'card', side:'recv', html:'<div data-hf-id="hf-s06hmh" class="hd"><div data-hf-id="hf-s06hma" class="art" style="background-image:url(&quot;assets/icons/home.png&quot;)"></div><div data-hf-id="hf-s06hmw"><div data-hf-id="hf-s06hmt" class="ti">your apps</div><div data-hf-id="hf-s06hms" class="sb">published · tap to open</div></div></div><div data-hf-id="hf-s06grid" class="grid" id="s06-grid"><div data-hf-id="hf-s06g0" class="gi" id="s06-g0" style="background-image:url(&quot;assets/icons/home.png&quot;)"></div><div data-hf-id="hf-s06g1" class="gi" id="s06-g1" style="background-image:url(&quot;assets/icons/shop.png&quot;)"></div><div data-hf-id="hf-s06g2" class="gi" id="s06-g2" style="background-image:url(&quot;assets/icons/pay.png&quot;)"></div><div data-hf-id="hf-s06g3" class="gi" id="s06-g3" style="background-image:url(&quot;assets/icons/inbox.png&quot;)"></div><div data-hf-id="hf-s06g4" class="gi" id="s06-g4" style="background-image:url(&quot;assets/icons/calendar.png&quot;)"></div><div data-hf-id="hf-s06g5" class="gi" id="s06-g5" style="background-image:url(&quot;assets/icons/vault.png&quot;)"></div><div data-hf-id="hf-s06g6" class="gi" id="s06-g6" style="background-image:url(&quot;assets/icons/computer.png&quot;)"></div><div data-hf-id="hf-s06g7" class="gi" id="s06-g7" style="background-image:url(&quot;assets/icons/image.png&quot;)"></div><div data-hf-id="hf-s06g8" class="gi" id="s06-g8" style="background-image:url(&quot;assets/icons/video.png&quot;)"></div><div data-hf-id="hf-s06g9" class="gi" id="s06-g9" style="background-image:url(&quot;assets/icons/persona.png&quot;)"></div></div>'}
       ];
-      var threadEl=$('#s06-thread'); threadEl.setAttribute('data-bottom','634');
+      var threadEl=$('#s06-thread'); threadEl.setAttribute('data-bottom','622');
       var TH=buildThread(threadEl, ITEMS);
       var stage=rig('s06'), flash=$('#s06-flash');
       var hero=$('#s06-hero'), herocap=$('#s06-herocap'), tiles=$$('#s06-hero .hi');
@@ -348,12 +379,12 @@
       gsap.set(flash,{opacity:0});
 
       // 45.813 — the command is already typed: the cut lands on send
-      showItem(tl,TH,0.000,2,{slide:.30});
+      showItem(tl,TH,0.000,9,{slide:.30});
       tl.set($('#s06-composer-txt'),{textContent:''},0.000);
       hit(tl,stage,0.000,{base:.965,amt:.020});
       rightIn(tl,'s06',0.06);
       // 47.345 — the launcher card
-      showItem(tl,TH,1.532,3,{slide:.42});
+      showItem(tl,TH,1.532,10,{slide:.42});
       hit(tl,stage,1.532,{base:.965,amt:.016});
       // 47.09 -> 48.669 — the icons pop one per hihat hit of the sustained fill
       $$('#s06-grid .gi').forEach(function(g,i){

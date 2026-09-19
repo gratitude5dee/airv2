@@ -51,6 +51,20 @@ rows="".join('<div data-hf-id="hf-s14r%d" class="wr" id="s14-r%d">' % (r,r)
                        for i,n in enumerate(row)) + '</div>' for r,row in enumerate(WALL))
 ICON14 = P.inline_icon("s14icon", 214)
 
+# The end-card phone is on screen for 3.4s under the ask. It carries a live thread so the
+# last product shot in the film reads as a running conversation, not an off device.
+ITEMS = """      var ITEMS=[
+        {kind:'sys', text:'Today \u00b7 9:41 AM', pre:true},
+        {side:'recv', text:'the tour page is up \u2014 2,140 visits since friday.', pre:true, dim:true},
+        {side:'sent', text:'nice.', pre:true, dim:true},
+        {side:'recv', text:'41 orders on the tee. label printed for every one.', pre:true, dim:true},
+        {side:'sent', text:'anything need me?', pre:true, dim:true},
+        {side:'recv', text:'nothing urgent. i held friday 8pm at the usual spot.', pre:true},
+        {side:'sent', text:'perfect, thank you'},
+        {side:'recv', text:'any time. i\u2019m here.'}
+      ];"""
+
+
 BODY = f"""    <div data-hf-id="hf-s14frame" class="frame clip" id="s14-frame" data-layout-allow-overflow="" data-start="0" data-duration="17.531" data-track-index="1">
       <div data-hf-id="hf-s14wa" class="washL"></div>
       <div data-hf-id="hf-s14fs" class="footscrim"></div>
@@ -72,13 +86,16 @@ BODY = f"""    <div data-hf-id="hf-s14frame" class="frame clip" id="s14-frame" d
       </div>
       <div data-hf-id="hf-s14bk" class="blk" id="s14-blk"></div>
     </div>"""
-SCRIPT = """      var cta=$('#s14-cta'), url=$('#s14-url'), ul=$('#s14-ul'), ph=$('#s14-ph');
+SCRIPT = P.THREAD_JS + ITEMS + """
+      var cta=$('#s14-cta'), url=$('#s14-url'), ul=$('#s14-ul'), ph=$('#s14-ph');
       var lock=$('#s14-lock'), airby=$('#s14-airby'), mark=$('#s14-mark'), sweep=$('#s14-mark-sweep');
       var wline=$('#s14-wline'), tiles=$$('.wt');
       var lockicon=$('#s14-lockicon'), lockglow=$('#s14-lockglow'), glint=$('#s14-glint');
       var iwaves=$$('#s14icon-air-waves path');
       var pill=$('#s14-ctapill'), pls=$$('#s14-ctapill .pl');
       var ctal=$('.ctal');
+      var threadEl=$('#s14-thread'); threadEl.setAttribute('data-bottom','622');
+      var TH=buildThread(threadEl, ITEMS);
 
       gsap.set(ph,{scale:.42,rotationY:-14,rotationX:5,transformOrigin:'50% 50%'});
       gsap.set(ctal,{y:26,autoAlpha:0});
@@ -98,6 +115,10 @@ SCRIPT = """      var cta=$('#s14-cta'), url=$('#s14-url'), ul=$('#s14-ul'), ph=
 
       // 102.168 — the ask, in the film's own voice
       tl.to(ctal,{y:0,autoAlpha:1,duration:.78,ease:'expo.out'},0);
+      // the phone keeps talking under the ask: two arrivals on the last two bars before
+      // the freeze, so the device the film ends on is lit and mid-thread.
+      showItem(tl,TH,0.579,6,{slide:.34});
+      showItem(tl,TH,2.158,7,{slide:.38});
       // 103.770 — the address arrives as a thing you could press, and its letters puff up
       // one at a time, the way the Amo pill does on hover.
       tl.to(pill,{y:0,autoAlpha:1,scale:1,duration:.62,ease:'expo.out'},1.602);

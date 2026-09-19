@@ -26,7 +26,14 @@ HOME = M.hd('s06hm', None, 'your apps', 'published · tap to open', 'home') + f'
 
 ITEMS = f"""      var ITEMS=[
         {{kind:'sys', text:'Today · 9:14 AM', pre:true}},
-        {{side:'recv', text:'the tour page is up. 2,140 visits since friday.', pre:true, dim:true}},
+        {{side:'recv', text:'shipping label for #218 is printed.', pre:true, dim:true}},
+        {{side:'sent', text:'thanks', pre:true, dim:true}},
+        {{side:'recv', text:'flights for the 12th are held, not booked.', pre:true, dim:true}},
+        {{side:'sent', text:'hold them till friday', pre:true, dim:true}},
+        {{side:'recv', text:'morning. inbox is clear, and the invoice from thursday cleared overnight.', pre:true, dim:true}},
+        {{side:'sent', text:'anything i need to look at?', pre:true, dim:true}},
+        {{side:'recv', text:'nothing urgent. the tour page is up — 2,140 visits since friday.', pre:true, dim:true}},
+        {{side:'sent', text:'nice.', pre:true, dim:true}},
         {{side:'sent', text:'/home'}},
         {{kind:'card', side:'recv', html:{HOME!r}}}
       ];"""
@@ -38,14 +45,14 @@ BODY = f"""    <div data-hf-id="hf-s06frame" class="frame clip" id="s06-frame" d
 {M.right_plane(PFX,'/home','your first-party apps, one text away.')}
 {M.phone(PFX)}
         <div data-hf-id="hf-s06hr" class="hero" id="s06-hero"><div data-hf-id="hf-s06hg" class="hgrid">{hero}</div></div>
-        <div data-hf-id="hf-s06hc" class="herocap" id="s06-herocap"><div data-hf-id="hf-s06hct" class="cap">ten apps. one thread.</div></div>
+        <div data-hf-id="hf-s06hc" class="herocap" id="s06-herocap"><div data-hf-id="hf-s06hct" class="cap">your apps. one thread.</div></div>
       </div>
       <div data-hf-id="hf-s06hf" class="hitflash" id="s06-flash"></div>
     </div>"""
 
 SCRIPT = M.COMMON_JS + f"""
 {ITEMS}
-      var threadEl=$('#s06-thread'); threadEl.setAttribute('data-bottom','634');
+      var threadEl=$('#s06-thread'); threadEl.setAttribute('data-bottom','622');
       var TH=buildThread(threadEl, ITEMS);
       var stage=rig('s06'), flash=$('#s06-flash');
       var hero=$('#s06-hero'), herocap=$('#s06-herocap'), tiles=$$('#s06-hero .hi');
@@ -58,12 +65,12 @@ SCRIPT = M.COMMON_JS + f"""
       gsap.set(flash,{{opacity:0}});
 
       // 45.813 — the command is already typed: the cut lands on send
-      showItem(tl,TH,0.000,2,{{slide:.30}});
+      showItem(tl,TH,0.000,9,{{slide:.30}});
       tl.set($('#s06-composer-txt'),{{textContent:''}},0.000);
       hit(tl,stage,0.000,{{base:.965,amt:.020}});
       rightIn(tl,'s06',0.06);
       // 47.345 — the launcher card
-      showItem(tl,TH,1.532,3,{{slide:.42}});
+      showItem(tl,TH,1.532,10,{{slide:.42}});
       hit(tl,stage,1.532,{{base:.965,amt:.016}});
       // 47.09 -> 48.669 — the icons pop one per hihat hit of the sustained fill
       $$('#s06-grid .gi').forEach(function(g,i){{

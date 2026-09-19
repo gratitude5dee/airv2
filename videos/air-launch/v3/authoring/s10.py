@@ -34,6 +34,12 @@ PLAN = (M.hd('s10pl', None, 'October tour', 'plan · reply yes to build', 'onboa
 
 ITEMS = f"""      var ITEMS=[
         {{kind:'sys', text:'Today · 9:41 AM', pre:true}},
+        {{side:'recv', text:'the tee is selling. 6 since the post.', pre:true, dim:true}},
+        {{side:'sent', text:'keep an eye on stock', pre:true, dim:true}},
+        {{side:'recv', text:'12 left. i&rsquo;ll flag at 5.', pre:true, dim:true}},
+        {{side:'sent', text:'good', pre:true, dim:true}},
+        {{side:'recv', text:'rendered. 6 seconds, 1080 square.', pre:true, dim:true}},
+        {{side:'sent', text:'perfect for the tour post', pre:true, dim:true}},
         {{side:'recv', text:'the clip is in your camera roll. want it on a page people can actually buy from?', pre:true, dim:true}},
         {{side:'sent', text:'/create a landing page for my October tour with a ticket link and a countdown'}},
         {{side:'recv', text:'got it — 2 quick questions before I plan this:'}},
@@ -64,7 +70,7 @@ BODY = f"""    <div data-hf-id="hf-s10frame" class="frame clip" id="s10-frame" d
 
 SCRIPT = M.COMMON_JS + f"""
 {ITEMS}
-      var threadEl=$('#s10-thread'); threadEl.setAttribute('data-bottom','634');
+      var threadEl=$('#s10-thread'); threadEl.setAttribute('data-bottom','622');
       var TH=buildThread(threadEl, ITEMS);
       var stage=rig('s10'), flash=$('#s10-flash');
       var comp=$('#s10-composer-txt'), cglow=$('#s10-composer-glow'), doc=$('#s10-doc');
@@ -83,14 +89,14 @@ SCRIPT = M.COMMON_JS + f"""
       rightIn(tl,'s10',0.10);
 
       // 72.214 -> 76.185 — at most three questions
-      showItem(tl,TH,1.532,2,{{slide:.30}}); hit(tl,stage,1.532,{{amt:.020}});
-      showItem(tl,TH,3.088,3,{{slide:.30}}); hit(tl,stage,3.088,{{amt:.012}});
-      showItem(tl,TH,3.480,4,{{slide:.38}});
-      showItem(tl,TH,4.667,5,{{slide:.42}}); hit(tl,stage,4.667,{{amt:.012}});
-      showItem(tl,TH,5.503,6,{{slide:.34}});
+      showItem(tl,TH,1.532,8,{{slide:.30}}); hit(tl,stage,1.532,{{amt:.020}});
+      showItem(tl,TH,3.088,9,{{slide:.30}}); hit(tl,stage,3.088,{{amt:.012}});
+      showItem(tl,TH,3.480,10,{{slide:.38}});
+      showItem(tl,TH,4.667,11,{{slide:.42}}); hit(tl,stage,4.667,{{amt:.012}});
+      showItem(tl,TH,5.503,12,{{slide:.34}});
 
       // 76.974 — the plan arrives as a file, and the film shows you the file
-      showItem(tl,TH,6.292,7,{{slide:.42}});
+      showItem(tl,TH,6.292,13,{{slide:.42}});
       tl.to(doc,{{autoAlpha:1,x:0,y:0,duration:.70,ease:'expo.out'}},6.292);
       rightOut(tl,'s10',6.24);
       dlines.forEach(function(l,i){{

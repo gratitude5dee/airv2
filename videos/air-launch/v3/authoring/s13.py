@@ -45,7 +45,7 @@ SC2 = (bub('s09b1','sent','/trade')
 SC3 = (bub('s09c1','sent','confirmed, let&rsquo;s ship it')
        + card('s09c2', hd('s09c3','glyph-miniapp.svg','live · October tour','mini.wzrd.tech/gratitude/tour')
               + '<div data-hf-id="hf-s13c4" class="done"><span data-hf-id="hf-s13c5">✓</span><span data-hf-id="hf-s13c6">Listed in the App Store</span></div>')
-       + '<div data-hf-id="hf-s13c7" class="it sys"><div data-hf-id="hf-s13c8" class="bub">source: github.com/gratitude5dee/wzrd-create</div></div>')
+       + bub('s13c7','recv','live. anyone with the link can open it.'))
 BACK = ('<div data-hf-id="hf-s13bk" class="ph-back" id="s13-back" data-layout-allow-overlap="" data-layout-allow-occlusion=""><div data-hf-id="hf-s13bg" class="gl"></div>'
         '<div data-hf-id="hf-s13bt" class="ti"><div data-hf-id="hf-s13bt1">Every date,</div>'
         '<div data-hf-id="hf-s13bt2">every ticket,</div><div data-hf-id="hf-s13bt3">one link.</div></div>'
@@ -94,7 +94,7 @@ SCRIPT = """      var ph=$('#s13-ph'), back=$('#s13-back'), lbl=$('#s13-lbl');
       // inside the bar. Each cut re-poses the phone rather than transitioning to it.
       cut(0.000,{scale:1.16,rotationY:-16,rotationX:6,x:-120,y:0},0,'one thread');
       cut(0.790,{scale:1.42,rotationY:-4,rotationX:2,x:190,y:70},0,null);
-      cut(1.579,{scale:1.16,rotationY:16,rotationX:-5,x:130,y:0},1,'five mini-apps');
+      cut(1.579,{scale:1.16,rotationY:16,rotationX:-5,x:130,y:0},1,'a few of the apps');
       cut(2.369,{scale:1.52,rotationY:2,rotationX:-2,x:-210,y:-60},1,null);
       cut(3.158,{scale:1.16,rotationY:0,rotationX:0,x:0,y:0},2,'one you built');
       cut(3.948,{scale:1.62,rotationY:-8,rotationX:4,x:150,y:110},2,null);

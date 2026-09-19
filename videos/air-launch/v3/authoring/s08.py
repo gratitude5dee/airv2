@@ -33,6 +33,13 @@ TRADE = (M.hd('s08tr','glyph-wallet.svg','Buy 0.05 BTC','paper mode · preview e
            '<span data-hf-id="hf-s08ts" class="sm">est. $3,140</span></div>')
 ITEMS = f"""      var ITEMS=[
         {{kind:'sys', text:'Today · 9:28 AM', pre:true}},
+        {{side:'recv', text:'nothing needs you in the inbox.', pre:true, dim:true}},
+        {{side:'sent', text:'ok', pre:true, dim:true}},
+        {{side:'recv', text:'coinbase is connected in paper mode only.', pre:true, dim:true}},
+        {{side:'sent', text:'keep it that way', pre:true, dim:true}},
+        {{side:'recv', text:'paper balance is $10,000. nothing open.', pre:true, dim:true}},
+        {{side:'sent', text:'what did btc do overnight?', pre:true, dim:true}},
+        {{side:'recv', text:'down 1.4%, then flat since 6am.', pre:true, dim:true}},
         {{side:'sent', text:'/trade'}},
         {{kind:'card', side:'recv', html:{TRADE!r}}}
       ];"""
@@ -63,7 +70,7 @@ BODY = f"""    <div data-hf-id="hf-s08frame" class="frame clip" id="s08-frame" d
 
 SCRIPT = M.COMMON_JS + f"""
 {ITEMS}
-      var threadEl=$('#s08-thread'); threadEl.setAttribute('data-bottom','634');
+      var threadEl=$('#s08-thread'); threadEl.setAttribute('data-bottom','622');
       var TH=buildThread(threadEl, ITEMS);
       var stage=rig('s08'), flash=$('#s08-flash');
       var macro=$('#s08-macro'), filled=$('#s08-filled');
@@ -75,13 +82,13 @@ SCRIPT = M.COMMON_JS + f"""
       gsap.set(stage,{{scale:1.16,x:-120,y:-40,transformOrigin:'50% 50%'}});
 
       // 58.259 — send
-      showItem(tl,TH,0.000,1,{{slide:.30}});
+      showItem(tl,TH,0.000,8,{{slide:.30}});
       tl.set($('#s08-composer-txt'),{{textContent:''}},0.000);
       hit(tl,stage,0.000,{{base:1.16,amt:.020}});
       whipIn(tl,stage,0.000,210);
       rightIn(tl,'s08',0.06);
       // 59.791 — the ticket, then the same ticket at the size the decision deserves
-      showItem(tl,TH,1.532,2,{{slide:.42}});
+      showItem(tl,TH,1.532,9,{{slide:.42}});
       tl.to('#s08-ph',{{autoAlpha:0,scale:.9,duration:.34,ease:'power3.in'}},1.66);
       rightOut(tl,'s08',1.60);
       tl.to(macro,{{autoAlpha:1,y:0,scale:1,duration:.72,ease:'expo.out'}},1.74);

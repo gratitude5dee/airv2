@@ -2,7 +2,7 @@
 
 HyperFrames source project for the `air by WZRD.tech` launch film.
 
-**v3.2, the iMessage cut, is built.** Fourteen shots over the vstar track, 119.699 s, cut to the beat grid in `v3/cutsheet.json`. `PLAN-v3.md` is the brief; section 13 records what shipped and section 14 records the v3.1 rebuild (camera, takeovers, Arlan Vault effects) and section 15 the v3.2 pass (sound design, the audio-driven grade, and the app icon). `v3/COMPONENTS-v3.md` holds the component rulings. The v2 compositions are gone from the tree (git history keeps them); `PLAN-v2.md` and `STORYBOARD.md` stay as the source of the approved claim copy.
+**v3.3, the iMessage cut, is built.** Fourteen shots over the vstar track, 119.699 s, cut to the beat grid in `v3/cutsheet.json`. `PLAN-v3.md` is the brief; section 13 records what shipped and section 14 records the v3.1 rebuild (camera, takeovers, Arlan Vault effects) section 15 the v3.2 pass (sound design, the audio-driven grade, the app icon), and section 16 the v3.3 notes pass (foley level, no app-count claims, no carousels or orbits, and every phone in the film — the end card's included — lit and mid-conversation). `v3/COMPONENTS-v3.md` holds the component rulings. The v2 compositions are gone from the tree (git history keeps them); `PLAN-v2.md` and `STORYBOARD.md` stay as the source of the approved claim copy.
 
 Every composition loads GSAP from `vendor/gsap.min.js`. The render browser has no outbound
 network, so pointing them back at a CDN breaks the render.

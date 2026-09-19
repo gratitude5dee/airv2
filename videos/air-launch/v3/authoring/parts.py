@@ -37,15 +37,27 @@ def phone_css(root, pre):
       #{root} .ph-body{{position:absolute;inset:0;border-radius:56px;background:linear-gradient(160deg,#3a3f4a 0%,#171b22 38%,#0f1218 100%);
         padding:3px;box-shadow:0 60px 120px rgba(2,6,18,.62),0 12px 30px rgba(2,6,18,.5),inset 0 1px 0 rgba(255,255,255,.16)}}
       #{root} .ph-screen{{position:absolute;inset:3px;border-radius:53px;overflow:hidden;background:#000}}
+      #{root} .ph-status{{position:absolute;top:0;left:0;right:0;height:56px;z-index:8;
+        display:flex;align-items:center;justify-content:space-between;padding:0 30px;
+        font-family:-apple-system,'Inter',system-ui,sans-serif;font-size:16px;font-weight:600;color:#fff;
+        letter-spacing:.01em}}
+      #{root} .ph-status .ico{{display:flex;align-items:center;gap:7px}}
+      #{root} .ph-status svg{{display:block}}
+      /* the screen is glass, not a hole: one raking reflection and a soft top light */
+      #{root} .ph-sheen{{position:absolute;inset:0;z-index:7;pointer-events:none;
+        background:
+          linear-gradient(116deg,rgba(255,255,255,.085) 0%,rgba(255,255,255,.02) 22%,
+                          rgba(255,255,255,0) 44%,rgba(255,255,255,0) 72%,rgba(255,255,255,.05) 100%),
+          radial-gradient(120% 44% at 50% -6%,rgba(190,220,255,.10),rgba(190,220,255,0) 70%)}}
       #{root} .ph-island{{position:absolute;top:14px;left:50%;margin-left:-63px;width:126px;height:37px;border-radius:19px;background:#000;z-index:6}}
-      #{root} .ph-nav{{position:absolute;top:0;left:0;right:0;height:122px;z-index:5;
+      #{root} .ph-nav{{position:absolute;top:0;left:0;right:0;height:134px;z-index:5;
         background:rgba(18,18,20,.82);backdrop-filter:blur(24px) saturate(1.3);border-bottom:1px solid rgba(255,255,255,.08);
-        display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:8px}}
+        display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:8px;padding-top:56px}}
       #{root} .orb{{background:url('logos/air-icon.svg') center/contain no-repeat;border-radius:50%;flex:0 0 auto}}
       #{root} .gly{{background-position:center;background-repeat:no-repeat;background-size:contain}}
       #{root} .ph-nav .orb{{width:44px;height:44px}}
       #{root} .ph-nav .who{{font-size:13px;font-weight:600;color:#fff;margin-top:3px;letter-spacing:.01em}}
-      #{root} .ph-fade{{position:absolute;top:122px;left:0;right:0;height:52px;z-index:4;pointer-events:none;
+      #{root} .ph-fade{{position:absolute;top:134px;left:0;right:0;height:52px;z-index:4;pointer-events:none;
         background:linear-gradient(180deg,rgba(0,0,0,.88) 0%,rgba(0,0,0,0) 100%)}}
       #{root} .ph-home{{position:absolute;bottom:9px;left:50%;margin-left:-67px;width:134px;height:5px;border-radius:3px;background:rgba(255,255,255,.34);z-index:6}}
       #{root} .ph-composer{{position:absolute;bottom:26px;left:12px;right:12px;height:44px;border-radius:22px;z-index:5;
@@ -55,7 +67,7 @@ def phone_css(root, pre):
       #{root} .ph-composer .glow{{position:absolute;inset:-1px;border-radius:22px;pointer-events:none;
         background:linear-gradient(96deg,rgba(10,132,255,.36),rgba(244,239,230,.14) 48%,rgba(10,132,255,.30));opacity:0}}
       /* the thread: a flow column translated by the timeline — never scrollTop */
-      #{root} .ph-scroll{{position:absolute;top:122px;left:0;right:0;bottom:0;overflow:hidden;z-index:3}}
+      #{root} .ph-scroll{{position:absolute;top:134px;left:0;right:0;bottom:0;overflow:hidden;z-index:3}}
       #{root} .ph-thread{{position:absolute;left:0;right:0;top:0;padding:0 14px;display:flex;flex-direction:column;
         align-items:stretch;gap:9px;will-change:transform}}
       #{root} .it{{display:flex;width:100%;will-change:transform,opacity}}
@@ -108,9 +120,9 @@ PHONE_HTML = """      <div data-hf-id="hf-%P%ph" class="ph" id="%P%-ph">
             <div data-hf-id="hf-%P%scl" class="ph-scroll" id="%P%-scroll"><div data-hf-id="hf-%P%thr" class="ph-thread" id="%P%-thread"></div></div>
             <div data-hf-id="hf-%P%fade" class="ph-fade"></div>
             <div data-hf-id="hf-%P%nav" class="ph-nav" data-layout-allow-overlap="" data-layout-allow-occlusion=""><div data-hf-id="hf-%P%navi" class="orb"></div><div data-hf-id="hf-%P%navw" class="who">air</div></div>
-            <div data-hf-id="hf-%P%isl" class="ph-island"></div>
+            <div data-hf-id="hf-%P%sb" class="ph-status" data-layout-allow-overlap="" data-layout-allow-occlusion=""><span data-hf-id="hf-%P%sbt">9:41</span><span data-hf-id="hf-%P%sbi" class="ico"><svg data-hf-id="hf-%P%sg" width="19" height="13" viewBox="0 0 19 13" aria-hidden="true"><rect data-hf-id="hf-%P%s1" x="0" y="9" width="3" height="4" rx="1" fill="#fff"/><rect data-hf-id="hf-%P%s2" x="5" y="6.5" width="3" height="6.5" rx="1" fill="#fff"/><rect data-hf-id="hf-%P%s3" x="10" y="3.5" width="3" height="9.5" rx="1" fill="#fff"/><rect data-hf-id="hf-%P%s4" x="15" y="0" width="3" height="13" rx="1" fill="#fff"/></svg><svg data-hf-id="hf-%P%wf" width="17" height="13" viewBox="0 0 17 13" aria-hidden="true"><path data-hf-id="hf-%P%w1" d="M8.5 11.6 6.2 9.1a3.4 3.4 0 0 1 4.6 0Z" fill="#fff"/><path data-hf-id="hf-%P%w2" d="M3.7 6.4a7.1 7.1 0 0 1 9.6 0l-1.5 1.7a5 5 0 0 0-6.6 0Z" fill="#fff" opacity=".95"/><path data-hf-id="hf-%P%w3" d="M1.1 3.5a10.9 10.9 0 0 1 14.8 0l-1.5 1.7a8.7 8.7 0 0 0-11.8 0Z" fill="#fff" opacity=".9"/></svg><svg data-hf-id="hf-%P%bt" width="27" height="13" viewBox="0 0 27 13" aria-hidden="true"><rect data-hf-id="hf-%P%b1" x=".6" y=".6" width="22" height="11.8" rx="3.4" fill="none" stroke="#fff" stroke-opacity=".42" stroke-width="1.2"/><rect data-hf-id="hf-%P%b2" x="2.2" y="2.2" width="16.4" height="8.6" rx="2.2" fill="#fff"/><path data-hf-id="hf-%P%b3" d="M24.4 4.4a2.6 2.6 0 0 1 0 4.2Z" fill="#fff" opacity=".42"/></svg></span></div><div data-hf-id="hf-%P%isl" class="ph-island"></div>
             <div data-hf-id="hf-%P%cmp" class="ph-composer" id="%P%-composer"><div data-hf-id="hf-%P%cmpg" class="glow" id="%P%-composer-glow"></div><div data-hf-id="hf-%P%cmpt" class="txt" id="%P%-composer-txt"></div><div data-hf-id="hf-%P%cmpc" class="car" id="%P%-composer-caret"></div></div>
-            <div data-hf-id="hf-%P%hb" class="ph-home"></div>
+            <div data-hf-id="hf-%P%shn" class="ph-sheen"></div><div data-hf-id="hf-%P%hb" class="ph-home"></div>
           </div>
         </div>
       </div>"""

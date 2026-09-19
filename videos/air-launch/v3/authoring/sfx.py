@@ -265,8 +265,10 @@ def music_rms(t, w=WIN):
     return float(np.sqrt((seg**2).mean())) if len(seg) else 0.12
 
 # how far below the music each role sits, in dB
-ROLE_DB = {'tick':-11.0,'tap':-9.0,'send':-8.0,'recv':-7.0,'land':-9.0,'confirm':-6.0,
-           'whoosh':-7.0,'impact':2.0,'shimmer':-4.0,'riser':-5.0,'grain':-8.0,'swell':-9.0}
+# Tucked behind the song: every role sits 6 dB further down than the first mix, so the
+# foley reads as texture under the track rather than as a second track beside it.
+ROLE_DB = {'tick':-17.0,'tap':-15.0,'send':-14.0,'recv':-13.0,'land':-15.0,'confirm':-12.0,
+           'whoosh':-13.0,'impact':-4.0,'shimmer':-10.0,'riser':-11.0,'grain':-14.0,'swell':-15.0}
 
 def cue_rms(sig):
     w = int(WIN*SR)

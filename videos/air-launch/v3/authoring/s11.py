@@ -64,6 +64,11 @@ STYLE = M.base_style(R, """
 
 ITEMS = f"""      var ITEMS=[
         {{kind:'sys', text:'Today · 9:44 AM', pre:true}},
+        {{side:'recv', text:'the clip is in your camera roll.', pre:true, dim:true}},
+        {{side:'sent', text:'got it', pre:true, dim:true}},
+        {{side:'recv', text:'i can put it on the page too, once it exists.', pre:true, dim:true}},
+        {{side:'recv', text:'here&rsquo;s the plan for &ldquo;October tour&rdquo; &rarr; link.wzrd.tech/gratitude/tour when it&rsquo;s ready.', pre:true, dim:true}},
+        {{side:'recv', text:'reply yes to build, or tell me what to change.', pre:true, dim:true}},
         {{side:'sent', text:'make the countdown the hero. yes.'}},
         {{side:'recv', text:'Creating your app …'}}
       ];"""
@@ -101,7 +106,7 @@ BODY = f"""    <div data-hf-id="hf-s11frame" class="frame clip" id="s11-frame" d
         <div data-hf-id="hf-s11dc" class="dec" id="s11-dec">
           <div data-hf-id="hf-s11dl" class="lb">PUBLISH TO PRODUCTION</div>
           <div data-hf-id="hf-s11dh" class="hh">mini.wzrd.tech/gratitude/tour</div>
-          <div data-hf-id="hf-s11ds" class="sub">public &middot; listed in the App Store &middot; source mirrored to wzrd-create</div>
+          <div data-hf-id="hf-s11ds" class="sub">public &middot; listed in the App Store</div>
           <div data-hf-id="hf-s11da" class="act" id="s11-dec-act">
             <div data-hf-id="hf-s11do" class="big3 btn3 ok3" id="s11-dec-ok">Approve</div>
             <div data-hf-id="hf-s11de" class="gh btn3 gh3">Edit</div></div>
@@ -109,7 +114,7 @@ BODY = f"""    <div data-hf-id="hf-s11frame" class="frame clip" id="s11-frame" d
         <div data-hf-id="hf-s11lv" class="live" id="s11-live">
           <div data-hf-id="hf-s11l1" class="l1">It&rsquo;s live.</div>
           <div data-hf-id="hf-s11l2" class="l2">mini.wzrd.tech/gratitude/tour</div>
-          <div data-hf-id="hf-s11l3" class="l3">listed in the App Store &middot; source on github.com/gratitude5dee/wzrd-create</div>
+          <div data-hf-id="hf-s11l3" class="l3">listed in the App Store</div>
         </div>
       </div>
       <div data-hf-id="hf-s11hf" class="hitflash" id="s11-flash"></div>
@@ -117,7 +122,7 @@ BODY = f"""    <div data-hf-id="hf-s11frame" class="frame clip" id="s11-frame" d
 
 SCRIPT = M.COMMON_JS + f"""
 {ITEMS}
-      var threadEl=$('#s11-thread'); threadEl.setAttribute('data-bottom','634');
+      var threadEl=$('#s11-thread'); threadEl.setAttribute('data-bottom','622');
       var TH=buildThread(threadEl, ITEMS);
       var stage=rig('s11'), flash=$('#s11-flash');
       var build=$('#s11-build'), app=$('#s11-app'), url=$('#s11-url'), dec=$('#s11-dec'), live=$('#s11-live');
@@ -133,9 +138,9 @@ SCRIPT = M.COMMON_JS + f"""
       gsap.set(stage,{{scale:1.0,transformOrigin:'50% 50%'}});
 
       // 78.530 — "yes" is the whole approval. The build takes the frame immediately.
-      showItem(tl,TH,0.000,1,{{slide:.30}});
+      showItem(tl,TH,0.000,6,{{slide:.30}});
       hit(tl,stage,0.000,{{amt:.022}});
-      showItem(tl,TH,0.420,2,{{slide:.34}});
+      showItem(tl,TH,0.420,7,{{slide:.34}});
       tl.to('#s11-ph',{{autoAlpha:0,scale:.9,duration:.34,ease:'power3.in'}},0.86);
       rightOut(tl,'s11',0.80);
       tl.to(build,{{autoAlpha:1,y:0,scale:1,duration:.72,ease:'expo.out'}},0.96);

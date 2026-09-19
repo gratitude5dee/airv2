@@ -33,6 +33,9 @@ DECISION = ('<div data-hf-id="hf-s02df" class="fa" id="s02-face-a">'
 
 ITEMS = f"""      var ITEMS=[
         {{kind:'sys', text:'Today · 8:42 AM', pre:true}},
+        {{side:'recv', text:'flights for the 12th are held, not booked.', pre:true, dim:true}},
+        {{side:'sent', text:'hold them till friday', pre:true, dim:true}},
+        {{side:'recv', text:'done. also the invoice from thursday cleared.', pre:true, dim:true}},
         {{side:'recv', text:'morning — your inbox is clear. three things need you today.', pre:true, dim:true}},
         {{side:'sent', text:'nice. i&rsquo;ll look after lunch.', pre:true, dim:true}},
         {{side:'sent', text:'dinner fri 8pm at the usual spot. tell Sam.'}},
@@ -63,7 +66,7 @@ BODY = f"""    <div data-hf-id="hf-s02frame" class="frame clip" id="s02-frame" d
 
 SCRIPT = P.THREAD_JS + P.FX_JS + f"""
 {ITEMS}
-      var threadEl=$('#s02-thread'); threadEl.setAttribute('data-bottom','626');
+      var threadEl=$('#s02-thread'); threadEl.setAttribute('data-bottom','614');
       var TH=buildThread(threadEl, ITEMS); TH.el=threadEl;
       
 
@@ -135,10 +138,10 @@ SCRIPT = P.THREAD_JS + P.FX_JS + f"""
       hit(tl,stage,11.053,{{base:1.46,amt:.020}});
       tl.to($('#s02-approve'),{{scale:.92,duration:.066,ease:'power2.out'}},11.053);
       tl.to($('#s02-approve'),{{scale:1,duration:.12,ease:'power2.inOut'}},11.128);
-      tl.to(TH.items[7].inner,{{rotationX:-90,duration:.22,ease:'power2.in'}},11.22);
+      tl.to(TH.items[10].inner,{{rotationX:-90,duration:.22,ease:'power2.in'}},11.22);
       tl.set($('#s02-face-a'),{{autoAlpha:0}},11.44);
       tl.set($('#s02-face-b'),{{autoAlpha:1}},11.44);
-      tl.to(TH.items[7].inner,{{rotationX:0,duration:.23,ease:'power2.out'}},11.44);
+      tl.to(TH.items[10].inner,{{rotationX:0,duration:.23,ease:'power2.out'}},11.44);
 
       // slow camera: the world drifts left under the phone, 1.2% across the shot
       tl.to(stanza,{{x:-22,duration:13.9,ease:'none'}},0);

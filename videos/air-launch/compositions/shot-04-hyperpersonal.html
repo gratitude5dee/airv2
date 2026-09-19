@@ -46,7 +46,7 @@
       #s04-root .btn3::after{content:'';position:absolute;left:8%;right:8%;top:2px;height:36%;border-radius:999px;
         pointer-events:none;background:linear-gradient(180deg,rgba(255,255,255,.52),rgba(255,255,255,0));
         filter:blur(.4px)}
-      #s04-root .btn3.ok3{background:linear-gradient(180deg,#3FD877 0%,#24A757 52%,#17823F 100%);color:#04240F;
+      #s04-root .btn3.ok3{background:linear-gradient(180deg,#34B767 0%,#1C8F4C 52%,#0F7038 100%);color:#FFFFFF;
         box-shadow:inset 0 1px 0 rgba(255,255,255,.55),inset 0 -2px 6px rgba(0,40,14,.45),
                    0 8px 20px rgba(9,90,40,.40),0 1px 0 rgba(255,255,255,.12)}
       #s04-root .btn3.gh3{background:linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,.04));
@@ -64,31 +64,47 @@
       #s04-root .hitflash{position:absolute;inset:0;pointer-events:none;background:#EAF2FF;opacity:0;
         mix-blend-mode:screen}
       #s04-root .hero-card{position:absolute;will-change:transform,opacity;transform-origin:50% 50%}
-      #s04-root .hub{position:absolute;left:760px;top:330px;width:400px;text-align:center;will-change:transform,opacity}
-      #s04-root .hub .av{width:190px;height:190px;border-radius:50%;margin:0 auto;display:block;
+      #s04-root .washL2{position:absolute;inset:0;pointer-events:none;
+        background:linear-gradient(100deg,rgba(4,9,22,.56) 0%,rgba(4,9,22,.30) 44%,rgba(4,9,22,.10) 78%)}
+      #s04-root .hub{position:absolute;left:112px;top:296px;width:470px;text-align:center;will-change:transform,opacity}
+      #s04-root .hub .av{width:266px;height:266px;border-radius:50%;margin:0 auto;display:block;
         background:url('logos/onairos-avatar.png') center/cover no-repeat;
-        box-shadow:0 26px 60px rgba(4,12,34,.55),0 0 0 1px rgba(255,255,255,.14)}
-      #s04-root .hub .nm{margin-top:20px;font-family:'Azeret Mono',monospace;font-size:20px;letter-spacing:.06em;
-        color:var(--ink);text-shadow:0 2px 14px rgba(3,7,18,.6)}
-      #s04-root .tile{position:absolute;left:0;top:0;width:128px;will-change:transform,opacity}
-      #s04-root .tile .sq{width:128px;height:128px;border-radius:30px;background:rgba(9,15,32,.62);
-        border:1px solid rgba(255,255,255,.16);backdrop-filter:blur(14px);display:flex;align-items:center;justify-content:center}
-      #s04-root .tile .sq .lg{width:62px;height:62px;background-position:center;background-repeat:no-repeat;background-size:contain}
-      #s04-root .tile .lb{margin-top:9px;text-align:center;font-family:'Azeret Mono',monospace;letter-spacing:.04em;color:rgba(244,239,230,.86);font-size:15px;text-shadow:0 2px 12px rgba(3,7,18,.7)}
-      #s04-root .cap{position:absolute;left:0;right:0;top:856px;text-align:center}
+        box-shadow:0 34px 76px rgba(4,12,34,.62),0 0 0 1px rgba(255,255,255,.16)}
+      #s04-root .hub .ring{position:absolute;left:50%;top:0;margin-left:-157px;width:314px;height:314px;
+        margin-top:-24px;border-radius:50%;border:1px solid rgba(180,214,255,.34);pointer-events:none}
+      #s04-root .hub .nm{margin-top:26px;font-family:'Azeret Mono',monospace;font-size:21px;letter-spacing:.10em;
+        color:var(--ink);text-shadow:0 2px 14px rgba(3,7,18,.7)}
+      #s04-root .hub .sb{margin-top:8px;font-family:'Azeret Mono',monospace;font-size:15px;letter-spacing:.04em;
+        color:rgba(244,239,230,.68)}
+      /* a signal board, not an orbit: each source lands on a beat and states its weight */
+      #s04-root .board{position:absolute;left:672px;top:190px;width:1152px}
+      #s04-root .row{display:flex;align-items:center;gap:24px;height:110px;will-change:transform,opacity}
+      #s04-root .row .tile{width:74px;height:74px;border-radius:20px;flex:0 0 auto;display:flex;
+        align-items:center;justify-content:center;background:rgba(9,15,32,.62);border:1px solid rgba(255,255,255,.16)}
+      #s04-root .row .tile i{display:block;width:38px;height:38px;background-position:center;
+        background-repeat:no-repeat;background-size:contain}
+      #s04-root .row .tx{width:330px;flex:0 0 auto}
+      #s04-root .row .k{font-family:'Azeret Mono',monospace;font-size:24px;letter-spacing:.06em;color:var(--ink)}
+      #s04-root .row .v{font-family:'Azeret Mono',monospace;font-size:17px;color:rgba(244,239,230,.76);margin-top:5px}
+      #s04-root .row .bar{flex:1;height:10px;border-radius:5px;background:rgba(255,255,255,.12);overflow:hidden}
+      #s04-root .row .bar i{display:block;height:100%;border-radius:5px;
+        background:linear-gradient(90deg,#3C8FE0,#9AD2FF);transform-origin:0% 50%;will-change:transform}
+      #s04-root .cap{position:absolute;left:112px;top:862px;width:620px;text-align:center}
       #s04-root .flash{position:absolute;inset:0;background:#DCE9FF;opacity:0}
     </style>
 
     <div data-hf-id="hf-s04frame" class="frame clip" id="s04-frame" data-layout-allow-overflow="" data-start="0" data-duration="6.246" data-track-index="1">
-      <div data-hf-id="hf-s04stg" class="stage" id="s04-stage">
-      <div data-hf-id="hf-s04wa" class="wash"></div>
-      <div data-hf-id="hf-s04ts" class="plane" id="s04-tiles"><div data-hf-id="hf-s04t0" class="tile" id="s04-t0"><div data-hf-id="hf-s04q0" class="sq"><div data-hf-id="hf-s04g0" class="lg" style="background-image:url(&quot;logos/spotify.svg&quot;)"></div></div><div data-hf-id="hf-s04l0" class="lb">listening</div></div><div data-hf-id="hf-s04t1" class="tile" id="s04-t1"><div data-hf-id="hf-s04q1" class="sq"><div data-hf-id="hf-s04g1" class="lg" style="background-image:url(&quot;logos/strava.svg&quot;)"></div></div><div data-hf-id="hf-s04l1" class="lb">training</div></div><div data-hf-id="hf-s04t2" class="tile" id="s04-t2"><div data-hf-id="hf-s04q2" class="sq"><div data-hf-id="hf-s04g2" class="lg" style="background-image:url(&quot;logos/netflix.svg&quot;)"></div></div><div data-hf-id="hf-s04l2" class="lb">watching</div></div><div data-hf-id="hf-s04t3" class="tile" id="s04-t3"><div data-hf-id="hf-s04q3" class="sq"><div data-hf-id="hf-s04g3" class="lg" style="background-image:url(&quot;logos/notion.svg&quot;)"></div></div><div data-hf-id="hf-s04l3" class="lb">notes</div></div><div data-hf-id="hf-s04t4" class="tile" id="s04-t4"><div data-hf-id="hf-s04q4" class="sq"><div data-hf-id="hf-s04g4" class="lg" style="background-image:url(&quot;logos/youtube.svg&quot;)"></div></div><div data-hf-id="hf-s04l4" class="lb">watching</div></div><div data-hf-id="hf-s04t5" class="tile" id="s04-t5"><div data-hf-id="hf-s04q5" class="sq"><div data-hf-id="hf-s04g5" class="lg" style="background-image:url(&quot;logos/duolingo.svg&quot;)"></div></div><div data-hf-id="hf-s04l5" class="lb">learning</div></div><div data-hf-id="hf-s04t6" class="tile" id="s04-t6"><div data-hf-id="hf-s04q6" class="sq"><div data-hf-id="hf-s04g6" class="lg" style="background-image:url(&quot;logos/peloton.svg&quot;)"></div></div><div data-hf-id="hf-s04l6" class="lb">training</div></div><div data-hf-id="hf-s04t7" class="tile" id="s04-t7"><div data-hf-id="hf-s04q7" class="sq"><div data-hf-id="hf-s04g7" class="lg" style="background-image:url(&quot;logos/calendar.svg&quot;)"></div></div><div data-hf-id="hf-s04l7" class="lb">calendar</div></div></div>
-      <div data-hf-id="hf-s04hb" class="hub" id="s04-hub"><div data-hf-id="hf-s04av" class="av"></div>
-        <div data-hf-id="hf-s04nm" class="nm">ONAIROS PERSONA</div></div>
-      <div data-hf-id="hf-s04cp" class="cap" id="s04-cap">hyperpersonalization.</div>
-      <div data-hf-id="hf-s04fl" class="flash" id="s04-flash"></div>
+      <div data-hf-id="hf-s04wa" class="washL2"></div>
+      <div data-hf-id="hf-s04st" class="stage" id="s04-stage">
+        <div data-hf-id="hf-s04hb" class="hub" id="s04-hub"><div data-hf-id="hf-s04av" class="av"></div>
+          <div data-hf-id="hf-s04rg" class="ring" id="s04-ring"></div>
+          <div data-hf-id="hf-s04nm" class="nm">ONAIROS PERSONA</div>
+          <div data-hf-id="hf-s04sb" class="sb">imported, not guessed</div></div>
+        <div data-hf-id="hf-s04bd" class="board" id="s04-board"><div data-hf-id="hf-s04r0" class="row" id="s04-r0"><div data-hf-id="hf-s04t0" class="tile"><i data-hf-id="hf-s04g0" style="background-image:url(&quot;logos/spotify.svg&quot;)"></i></div><div data-hf-id="hf-s04x0" class="tx"><div data-hf-id="hf-s04k0" class="k">listening</div><div data-hf-id="hf-s04v0" class="v">4,120 plays this month</div></div><div data-hf-id="hf-s04b0" class="bar"><i data-hf-id="hf-s04bi0" id="s04-bar0"></i></div></div><div data-hf-id="hf-s04r1" class="row" id="s04-r1"><div data-hf-id="hf-s04t1" class="tile"><i data-hf-id="hf-s04g1" style="background-image:url(&quot;logos/strava.svg&quot;)"></i></div><div data-hf-id="hf-s04x1" class="tx"><div data-hf-id="hf-s04k1" class="k">training</div><div data-hf-id="hf-s04v1" class="v">tue / thu / sun, early</div></div><div data-hf-id="hf-s04b1" class="bar"><i data-hf-id="hf-s04bi1" id="s04-bar1"></i></div></div><div data-hf-id="hf-s04r2" class="row" id="s04-r2"><div data-hf-id="hf-s04t2" class="tile"><i data-hf-id="hf-s04g2" style="background-image:url(&quot;logos/netflix.svg&quot;)"></i></div><div data-hf-id="hf-s04x2" class="tx"><div data-hf-id="hf-s04k2" class="k">watching</div><div data-hf-id="hf-s04v2" class="v">one episode, never two</div></div><div data-hf-id="hf-s04b2" class="bar"><i data-hf-id="hf-s04bi2" id="s04-bar2"></i></div></div><div data-hf-id="hf-s04r3" class="row" id="s04-r3"><div data-hf-id="hf-s04t3" class="tile"><i data-hf-id="hf-s04g3" style="background-image:url(&quot;logos/notion.svg&quot;)"></i></div><div data-hf-id="hf-s04x3" class="tx"><div data-hf-id="hf-s04k3" class="k">notes</div><div data-hf-id="hf-s04v3" class="v">tour plans, then everything else</div></div><div data-hf-id="hf-s04b3" class="bar"><i data-hf-id="hf-s04bi3" id="s04-bar3"></i></div></div><div data-hf-id="hf-s04r4" class="row" id="s04-r4"><div data-hf-id="hf-s04t4" class="tile"><i data-hf-id="hf-s04g4" style="background-image:url(&quot;logos/calendar.svg&quot;)"></i></div><div data-hf-id="hf-s04x4" class="tx"><div data-hf-id="hf-s04k4" class="k">calendar</div><div data-hf-id="hf-s04v4" class="v">never books over a workout</div></div><div data-hf-id="hf-s04b4" class="bar"><i data-hf-id="hf-s04bi4" id="s04-bar4"></i></div></div><div data-hf-id="hf-s04r5" class="row" id="s04-r5"><div data-hf-id="hf-s04t5" class="tile"><i data-hf-id="hf-s04g5" style="background-image:url(&quot;logos/youtube.svg&quot;)"></i></div><div data-hf-id="hf-s04x5" class="tx"><div data-hf-id="hf-s04k5" class="k">watching</div><div data-hf-id="hf-s04v5" class="v">live sets, long form</div></div><div data-hf-id="hf-s04b5" class="bar"><i data-hf-id="hf-s04bi5" id="s04-bar5"></i></div></div></div>
+        <div data-hf-id="hf-s04cp" class="cap" id="s04-cap">hyperpersonalization.</div>
       </div>
       <div data-hf-id="hf-s04hf" class="hitflash" id="s04-hitflash"></div>
+      <div data-hf-id="hf-s04fl" class="flash" id="s04-flash"></div>
     </div>
 
     <script src="vendor/gsap.min.js"></script>
@@ -158,48 +174,37 @@
       }
 
       var stage=$('#s04-stage'), hf=$('#s04-hitflash');
+      var rows=[0,1,2,3,4,5].map(function(i){return $('#s04-r'+i);});
+      var bars=[0,1,2,3,4,5].map(function(i){return $('#s04-bar'+i);});
+      var W=[0.92, 0.74, 0.61, 0.83, 0.88, 0.55];
       gsap.set(hf,{opacity:0});
-      gsap.set(stage,{scale:1.0,transformOrigin:'50% 50%'});
-      hit(tl,stage,0.0,{amt:.028});
-      hit(tl,stage,1.556,{amt:.016});
-      hit(tl,stage,3.135,{amt:.016});
-      hit(tl,stage,4.714,{amt:.016});
-      cam(tl,stage,0.10,{scale:1.035,d:5.8,e:'none'});
-      var tiles=[0,1,2,3,4,5,6,7].map(function(i){return $('#s04-t'+i);});
-      var CX=960, CY=470, RX=645, RY=238, N=8;
-      // Depth is read off sin(angle): tiles behind the persona shrink, dim and blur; tiles in
-      // front pass over it. The ellipse is fixed, so every seek lands on the same pose.
-      function pose(i, step){
-        var a=(i/N)*Math.PI*2 + step*(Math.PI*2/N) - Math.PI/2;
-        var d=(Math.sin(a)+1)/2;
-        return {x:CX+RX*Math.cos(a)-64, y:CY+RY*Math.sin(a)-64,
-                scale:.62+.52*d, autoAlpha:.34+.66*d, filter:'blur('+((1-d)*3.2).toFixed(2)+'px)'};
-      }
-      tiles.forEach(function(t,i){ var p=pose(i,0); gsap.set(t,{x:p.x,y:p.y,scale:p.scale*.72,autoAlpha:0,filter:p.filter,transformOrigin:'50% 50%'}); });
-      gsap.set('#s04-hub',{autoAlpha:0,scale:.9,transformOrigin:'50% 50%'});
-      gsap.set('#s04-cap',{autoAlpha:0,y:16});
       gsap.set('#s04-flash',{opacity:0});
+      gsap.set(stage,{scale:1.0,transformOrigin:'50% 50%'});
+      gsap.set('#s04-hub',{autoAlpha:0,scale:.92,x:-40,transformOrigin:'50% 50%'});
+      gsap.set('#s04-ring',{autoAlpha:0,scale:.86,transformOrigin:'50% 50%'});
+      gsap.set('#s04-cap',{autoAlpha:0,y:16});
+      rows.forEach(function(r){ gsap.set(r,{autoAlpha:0,x:54}); });
+      bars.forEach(function(b){ gsap.set(b,{scaleX:0}); });
 
-      // 33.344 — the persona lands first: everything else is what it already knows about you
-      tl.to('#s04-hub',{autoAlpha:1,scale:1,duration:.66,ease:'expo.out'},0);
-      tl.to('#s04-cap',{autoAlpha:1,y:0,duration:.60,ease:'expo.out'},.22);
-      tiles.forEach(function(t,i){
-        var p=pose(i,0);
-        tl.to(t,{x:p.x,y:p.y,scale:p.scale,autoAlpha:p.autoAlpha,duration:.62,ease:'expo.out'},.10+i*.045);
+      // 33.344 — the persona lands first: everything after it is what it already knows
+      tl.to('#s04-hub',{autoAlpha:1,scale:1,x:0,duration:.74,ease:'expo.out'},0);
+      tl.to('#s04-ring',{autoAlpha:1,scale:1,duration:1.0,ease:'expo.out'},.12);
+      tl.to('#s04-cap',{autoAlpha:1,y:0,duration:.60,ease:'expo.out'},.30);
+      hit(tl,stage,0,{amt:.026});
+
+      // one source per half bar, each stating what it actually knows and how much it weighs
+      var AT=[0.778,1.556,2.334,3.135,3.913,4.714];
+      AT.forEach(function(t,i){
+        tl.to(rows[i],{autoAlpha:1,x:0,duration:.52,ease:'expo.out'},t);
+        tl.to(bars[i],{scaleX:W[i],duration:.66,ease:'power3.out'},t+.08);
+        hit(tl,stage,t,{amt:i%2?.010:.016});
       });
-      // 34.900 / 36.479 / 38.058 — one slot per downbeat, and only on the downbeat
-      [1.556,3.135,4.714].forEach(function(t,k){
-        tiles.forEach(function(el,i){
-          var p=pose(i,k+1);
-          tl.to(el,{x:p.x,y:p.y,scale:p.scale,autoAlpha:p.autoAlpha,filter:p.filter,duration:.74,ease:'expo.out'},t);
-        });
-        tl.to('#s04-hub',{scale:1.03,duration:.14,ease:'power2.out'},t);
-        tl.to('#s04-hub',{scale:1,duration:.5,ease:'power2.inOut'},t+.14);
-      });
-      // 39.590 — the hand-off: the orbit collapses to the ring shot 05 blooms back out of
-      tl.to(tiles,{x:896,y:470,scale:.12,autoAlpha:0,duration:.30,ease:'power3.in'},5.95);
-      tl.to(['#s04-hub','#s04-cap'],{autoAlpha:0,x:-230,duration:.30,ease:'power4.in'},5.95);
-      tl.fromTo('#s04-flash',{opacity:0},{opacity:.30,duration:.10,ease:'power2.out'},6.14);
+      cam(tl,stage,0,{scale:1.035,d:6.1,e:'none'});
+
+      // 39.590 — the hand-off into the connector wall
+      tl.to(rows,{autoAlpha:0,x:-90,duration:.26,ease:'power4.in',stagger:.014},5.94);
+      tl.to(['#s04-hub','#s04-cap','#s04-ring'],{autoAlpha:0,x:-230,duration:.30,ease:'power4.in'},5.94);
+      tl.fromTo('#s04-flash',{opacity:0},{opacity:.26,duration:.10,ease:'power2.out'},6.14);
       window.__timelines=window.__timelines||{};
       window.__timelines['shot-04-hyperpersonal']=tl;
       var q=new URLSearchParams(location.search);

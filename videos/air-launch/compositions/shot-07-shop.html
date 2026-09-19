@@ -29,15 +29,27 @@
       #s07-root .ph-body{position:absolute;inset:0;border-radius:56px;background:linear-gradient(160deg,#3a3f4a 0%,#171b22 38%,#0f1218 100%);
         padding:3px;box-shadow:0 60px 120px rgba(2,6,18,.62),0 12px 30px rgba(2,6,18,.5),inset 0 1px 0 rgba(255,255,255,.16)}
       #s07-root .ph-screen{position:absolute;inset:3px;border-radius:53px;overflow:hidden;background:#000}
+      #s07-root .ph-status{position:absolute;top:0;left:0;right:0;height:56px;z-index:8;
+        display:flex;align-items:center;justify-content:space-between;padding:0 30px;
+        font-family:-apple-system,'Inter',system-ui,sans-serif;font-size:16px;font-weight:600;color:#fff;
+        letter-spacing:.01em}
+      #s07-root .ph-status .ico{display:flex;align-items:center;gap:7px}
+      #s07-root .ph-status svg{display:block}
+      /* the screen is glass, not a hole: one raking reflection and a soft top light */
+      #s07-root .ph-sheen{position:absolute;inset:0;z-index:7;pointer-events:none;
+        background:
+          linear-gradient(116deg,rgba(255,255,255,.085) 0%,rgba(255,255,255,.02) 22%,
+                          rgba(255,255,255,0) 44%,rgba(255,255,255,0) 72%,rgba(255,255,255,.05) 100%),
+          radial-gradient(120% 44% at 50% -6%,rgba(190,220,255,.10),rgba(190,220,255,0) 70%)}
       #s07-root .ph-island{position:absolute;top:14px;left:50%;margin-left:-63px;width:126px;height:37px;border-radius:19px;background:#000;z-index:6}
-      #s07-root .ph-nav{position:absolute;top:0;left:0;right:0;height:122px;z-index:5;
+      #s07-root .ph-nav{position:absolute;top:0;left:0;right:0;height:134px;z-index:5;
         background:rgba(18,18,20,.82);backdrop-filter:blur(24px) saturate(1.3);border-bottom:1px solid rgba(255,255,255,.08);
-        display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:8px}
+        display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:8px;padding-top:56px}
       #s07-root .orb{background:url('logos/air-icon.svg') center/contain no-repeat;border-radius:50%;flex:0 0 auto}
       #s07-root .gly{background-position:center;background-repeat:no-repeat;background-size:contain}
       #s07-root .ph-nav .orb{width:44px;height:44px}
       #s07-root .ph-nav .who{font-size:13px;font-weight:600;color:#fff;margin-top:3px;letter-spacing:.01em}
-      #s07-root .ph-fade{position:absolute;top:122px;left:0;right:0;height:52px;z-index:4;pointer-events:none;
+      #s07-root .ph-fade{position:absolute;top:134px;left:0;right:0;height:52px;z-index:4;pointer-events:none;
         background:linear-gradient(180deg,rgba(0,0,0,.88) 0%,rgba(0,0,0,0) 100%)}
       #s07-root .ph-home{position:absolute;bottom:9px;left:50%;margin-left:-67px;width:134px;height:5px;border-radius:3px;background:rgba(255,255,255,.34);z-index:6}
       #s07-root .ph-composer{position:absolute;bottom:26px;left:12px;right:12px;height:44px;border-radius:22px;z-index:5;
@@ -47,7 +59,7 @@
       #s07-root .ph-composer .glow{position:absolute;inset:-1px;border-radius:22px;pointer-events:none;
         background:linear-gradient(96deg,rgba(10,132,255,.36),rgba(244,239,230,.14) 48%,rgba(10,132,255,.30));opacity:0}
       /* the thread: a flow column translated by the timeline — never scrollTop */
-      #s07-root .ph-scroll{position:absolute;top:122px;left:0;right:0;bottom:0;overflow:hidden;z-index:3}
+      #s07-root .ph-scroll{position:absolute;top:134px;left:0;right:0;bottom:0;overflow:hidden;z-index:3}
       #s07-root .ph-thread{position:absolute;left:0;right:0;top:0;padding:0 14px;display:flex;flex-direction:column;
         align-items:stretch;gap:9px;will-change:transform}
       #s07-root .it{display:flex;width:100%;will-change:transform,opacity}
@@ -141,10 +153,13 @@
       #s07-root .expl .mono{font-size:29px;line-height:1.48}
       #s07-root .btn.ok{background:none}
 
-      #s07-root .tee{width:100%;height:150px;border-radius:14px;background:linear-gradient(170deg,#F3EADA,#DCCFBC);
-        display:flex;align-items:center;justify-content:center}
-      #s07-root .tee svg{width:104px;height:104px;display:block}
-      #s07-root .tee svg path{fill:#14161C}
+      /* this shot is the mirror of the others: type left, phone right, product left */
+      #s07-root .right{left:112px;width:860px}
+      #s07-root .slash{left:0;top:236px}
+      #s07-root .expl{left:4px;top:512px;width:790px}
+      #s07-root .tee{width:100%;height:168px;border-radius:14px;overflow:hidden;display:flex;
+        align-items:center;justify-content:center;background:#EFE6D6}
+      #s07-root .tee .teeart{width:168px;height:168px;display:block}
       #s07-root .prow{display:flex;align-items:center;justify-content:space-between;padding:10px 14px 0}
       #s07-root .prow .pn{font-size:17px;font-weight:700;color:#fff}
       #s07-root .prow .pp{font-family:'Azeret Mono',monospace;font-size:17px;color:var(--ink)}
@@ -152,13 +167,12 @@
         font-family:'Azeret Mono',monospace;font-size:12px;letter-spacing:.02em}
       #s07-root .pill.need{background:rgba(255,196,86,.16);border:1px solid rgba(255,196,86,.42);color:#FFC456}
       /* the hero listing: a real product frame, lifted out of the thread */
-      #s07-root .hero{position:absolute;left:104px;top:186px;width:716px;border-radius:30px;overflow:hidden;
+      #s07-root .hero{position:absolute;left:112px;top:150px;width:756px;border-radius:30px;overflow:hidden;
         background:rgba(8,14,30,.66);border:1px solid rgba(255,255,255,.16);backdrop-filter:blur(20px);
         box-shadow:0 50px 100px rgba(2,6,18,.62)}
-      #s07-root .hero .shot{height:392px;background:linear-gradient(168deg,#F6EEDF 0%,#D9CBB6 100%);
-        display:flex;align-items:center;justify-content:center}
-      #s07-root .hero .shot svg{width:250px;height:250px}
-      #s07-root .hero .shot svg path{fill:#14161C}
+      #s07-root .hero .shot{height:430px;overflow:hidden;display:flex;align-items:center;justify-content:center;
+        background:#EFE6D6}
+      #s07-root .hero .shot .teeart{width:430px;height:430px;display:block}
       #s07-root .hero .meta{padding:26px 30px 8px;display:flex;align-items:baseline;justify-content:space-between}
       #s07-root .hero .nm{font-family:'Newsreader',Georgia,serif;font-weight:300;font-size:50px;letter-spacing:-.02em;color:var(--ink)}
       #s07-root .hero .pr{font-family:'Azeret Mono',monospace;font-size:38px;color:var(--ink)}
@@ -170,10 +184,10 @@
         font-size:23px;font-weight:700;letter-spacing:-.01em;will-change:transform}
       #s07-root .hero .ghost{width:190px;height:76px;border-radius:20px;display:flex;align-items:center;
         justify-content:center;font-size:21px}
-      #s07-root .livepill{position:absolute;left:104px;top:838px;display:inline-flex;align-items:center;gap:12px;
+      #s07-root .livepill{position:absolute;left:112px;top:864px;display:inline-flex;align-items:center;gap:12px;
         padding:16px 26px;border-radius:999px;background:rgba(31,166,79,.16);border:1px solid rgba(63,216,119,.5);
         font-family:'Azeret Mono',monospace;font-size:21px;letter-spacing:.04em;color:#5BE585}
-      #s07-root .ordertag{position:absolute;left:104px;top:920px;font-family:'Azeret Mono',monospace;
+      #s07-root .ordertag{position:absolute;left:112px;top:952px;font-family:'Azeret Mono',monospace;
         font-size:27px;letter-spacing:.05em;color:var(--ink);text-shadow:0 2px 16px rgba(3,7,18,.7)}
       #s07-root .ordertag b{font-weight:500;font-size:44px}
     </style>
@@ -192,14 +206,50 @@
             <div data-hf-id="hf-s07scl" class="ph-scroll" id="s07-scroll"><div data-hf-id="hf-s07thr" class="ph-thread" id="s07-thread"></div></div>
             <div data-hf-id="hf-s07fade" class="ph-fade"></div>
             <div data-hf-id="hf-s07nav" class="ph-nav" data-layout-allow-overlap="" data-layout-allow-occlusion=""><div data-hf-id="hf-s07navi" class="orb"></div><div data-hf-id="hf-s07navw" class="who">air</div></div>
-            <div data-hf-id="hf-s07isl" class="ph-island"></div>
+            <div data-hf-id="hf-s07sb" class="ph-status" data-layout-allow-overlap="" data-layout-allow-occlusion=""><span data-hf-id="hf-s07sbt">9:41</span><span data-hf-id="hf-s07sbi" class="ico"><svg data-hf-id="hf-s07sg" width="19" height="13" viewBox="0 0 19 13" aria-hidden="true"><rect data-hf-id="hf-s07s1" x="0" y="9" width="3" height="4" rx="1" fill="#fff"/><rect data-hf-id="hf-s07s2" x="5" y="6.5" width="3" height="6.5" rx="1" fill="#fff"/><rect data-hf-id="hf-s07s3" x="10" y="3.5" width="3" height="9.5" rx="1" fill="#fff"/><rect data-hf-id="hf-s07s4" x="15" y="0" width="3" height="13" rx="1" fill="#fff"/></svg><svg data-hf-id="hf-s07wf" width="17" height="13" viewBox="0 0 17 13" aria-hidden="true"><path data-hf-id="hf-s07w1" d="M8.5 11.6 6.2 9.1a3.4 3.4 0 0 1 4.6 0Z" fill="#fff"/><path data-hf-id="hf-s07w2" d="M3.7 6.4a7.1 7.1 0 0 1 9.6 0l-1.5 1.7a5 5 0 0 0-6.6 0Z" fill="#fff" opacity=".95"/><path data-hf-id="hf-s07w3" d="M1.1 3.5a10.9 10.9 0 0 1 14.8 0l-1.5 1.7a8.7 8.7 0 0 0-11.8 0Z" fill="#fff" opacity=".9"/></svg><svg data-hf-id="hf-s07bt" width="27" height="13" viewBox="0 0 27 13" aria-hidden="true"><rect data-hf-id="hf-s07b1" x=".6" y=".6" width="22" height="11.8" rx="3.4" fill="none" stroke="#fff" stroke-opacity=".42" stroke-width="1.2"/><rect data-hf-id="hf-s07b2" x="2.2" y="2.2" width="16.4" height="8.6" rx="2.2" fill="#fff"/><path data-hf-id="hf-s07b3" d="M24.4 4.4a2.6 2.6 0 0 1 0 4.2Z" fill="#fff" opacity=".42"/></svg></span></div><div data-hf-id="hf-s07isl" class="ph-island"></div>
             <div data-hf-id="hf-s07cmp" class="ph-composer" id="s07-composer"><div data-hf-id="hf-s07cmpg" class="glow" id="s07-composer-glow"></div><div data-hf-id="hf-s07cmpt" class="txt" id="s07-composer-txt"></div><div data-hf-id="hf-s07cmpc" class="car" id="s07-composer-caret"></div></div>
-            <div data-hf-id="hf-s07hb" class="ph-home"></div>
+            <div data-hf-id="hf-s07shn" class="ph-sheen"></div><div data-hf-id="hf-s07hb" class="ph-home"></div>
           </div>
         </div>
       </div>
         <div data-hf-id="hf-s07hr" class="hero" id="s07-hero">
-          <div data-hf-id="hf-s07hs" class="shot"><svg data-hf-id="hf-s07tee2" viewBox="0 0 24 24" aria-hidden="true"><path data-hf-id="hf-s07tee2p" d="M8.6 2.4 6 3.3 2.4 6.6l2.7 2.9 1.3-1.1V21.6h11.2V8.4l1.3 1.1 2.7-2.9L18 3.3l-2.6-.9a3.5 3.5 0 0 1-6.8 0Z"/></svg></div>
+          <div data-hf-id="hf-s07hs" class="shot"><svg data-hf-id="hf-s07teeB" viewBox="0 0 520 520" class="teeart" aria-hidden="true">
+  <defs>
+    <linearGradient id="s07teeB-cloth" x1=".22" y1="0" x2=".82" y2="1">
+      <stop offset="0" stop-color="#3A3E46"/><stop offset=".34" stop-color="#22262D"/>
+      <stop offset=".72" stop-color="#14171C"/><stop offset="1" stop-color="#0B0D11"/></linearGradient>
+    <linearGradient id="s07teeB-fold" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#000" stop-opacity=".34"/><stop offset=".26" stop-color="#000" stop-opacity="0"/>
+      <stop offset=".62" stop-color="#FFF" stop-opacity=".07"/><stop offset="1" stop-color="#000" stop-opacity=".30"/></linearGradient>
+    <radialGradient id="s07teeB-sweep" cx=".46" cy=".30" r=".92">
+      <stop offset="0" stop-color="#FFFCF4"/><stop offset=".52" stop-color="#F0E7D6"/>
+      <stop offset="1" stop-color="#D9CDB8"/></radialGradient>
+    <filter id="s07teeB-shad" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="17"/></filter>
+    <filter id="s07teeB-soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="5"/></filter>
+  </defs>
+  <rect data-hf-id="hf-s07teeBbg" x="0" y="0" width="520" height="520" fill="url(#s07teeB-sweep)"/>
+  <ellipse data-hf-id="hf-s07teeBsh" cx="264" cy="432" rx="172" ry="30" fill="#6B5E49" opacity=".38" filter="url(#s07teeB-shad)"/>
+  <g data-hf-id="hf-s07teeBg" transform="translate(260 252) rotate(-1.5) translate(-260 -252)">
+    <path data-hf-id="hf-s07teeBbody" d="M188 96 148 112 96 158l38 44 30-25v217c0 7 5 12 12 12h168c7 0 12-5 12-12V177l30 25 38-44-52-46-40-16-31-9a44 44 0 0 1-82 0Z"
+          fill="url(#s07teeB-cloth)"/>
+    <path data-hf-id="hf-s07teeBfold" d="M188 96 148 112 96 158l38 44 30-25v217c0 7 5 12 12 12h168c7 0 12-5 12-12V177l30 25 38-44-52-46-40-16-31-9a44 44 0 0 1-82 0Z"
+          fill="url(#s07teeB-fold)"/>
+    <path data-hf-id="hf-s07teeBcol" d="M219 87a44 44 0 0 0 82 0l-12-3a33 33 0 0 1-58 0Z" fill="#0A0C10" opacity=".9"/>
+    <path data-hf-id="hf-s07teeBcolr" d="M217 86a46 46 0 0 0 86 0" fill="none" stroke="#565C66" stroke-opacity=".55" stroke-width="3.5"/>
+    <path data-hf-id="hf-s07teeBs1" d="M166 196v212" fill="none" stroke="#000" stroke-opacity=".35" stroke-width="2"/>
+    <path data-hf-id="hf-s07teeBs2" d="M354 196v212" fill="none" stroke="#000" stroke-opacity=".35" stroke-width="2"/>
+    <path data-hf-id="hf-s07teeBhl" d="M206 150c-14 60-16 150-8 244" fill="none" stroke="#FFF" stroke-opacity=".10" stroke-width="16" filter="url(#s07teeB-soft)"/>
+    <g data-hf-id="hf-s07teeBpr" opacity=".93">
+      <text data-hf-id="hf-s07teeBt1" x="260" y="244" text-anchor="middle" font-family="Newsreader,Georgia,serif"
+            font-size="34" font-weight="300" letter-spacing="1" fill="#E8DFCC">OCTOBER</text>
+      <text data-hf-id="hf-s07teeBt2" x="260" y="276" text-anchor="middle" font-family="Azeret Mono,monospace"
+            font-size="12" letter-spacing="5" fill="#C2B9A6">TOUR &#183; MMXXVI</text>
+      <path data-hf-id="hf-s07teeBt3" d="M206 292h108" stroke="#C2B9A6" stroke-opacity=".7" stroke-width="1.6"/>
+    </g>
+  </g>
+</svg></div>
           <div data-hf-id="hf-s07hm" class="meta"><span data-hf-id="hf-s07hn" class="nm">tour tee · black</span>
             <span data-hf-id="hf-s07hp" class="pr">$35.00</span></div>
           <div data-hf-id="hf-s07hst" class="state" id="s07-hstate"><span data-hf-id="hf-s07hpl" class="pill need">Needs you</span>
@@ -375,10 +425,17 @@
 
       var ITEMS=[
         {kind:'sys', text:'Today · 9:21 AM', pre:true},
+        {side:'recv', text:'stripe payouts landed this morning.', pre:true, dim:true},
+        {side:'sent', text:'good', pre:true, dim:true},
+        {side:'recv', text:'two people asked about sizing on the last drop.', pre:true, dim:true},
+        {side:'sent', text:'add a size chart next time', pre:true, dim:true},
+        {side:'recv', text:'the tee mockups came back. i staged the black one.', pre:true, dim:true},
+        {side:'sent', text:'how many did we sell last drop?', pre:true, dim:true},
+        {side:'recv', text:'41, and 9 people asked when the next one lands.', pre:true, dim:true},
         {side:'sent', text:'/shop'},
-        {kind:'card', side:'recv', html:'<div data-hf-id="hf-s07sfa" class="fa" id="s07-shop-a"><div data-hf-id="hf-s07shh" class="hd"><div data-hf-id="hf-s07sha" class="art" style="background-image:url(&quot;assets/icons/shop.png&quot;)"></div><div data-hf-id="hf-s07shw"><div data-hf-id="hf-s07sht" class="ti">October tour tee</div><div data-hf-id="hf-s07shs" class="sb">staged listing · not public yet</div></div></div><div data-hf-id="hf-s07sbd" class="bd"><div data-hf-id="hf-s07tw" class="tee"><svg data-hf-id="hf-s07tee" viewBox="0 0 24 24" aria-hidden="true"><path data-hf-id="hf-s07teep" d="M8.6 2.4 6 3.3 2.4 6.6l2.7 2.9 1.3-1.1V21.6h11.2V8.4l1.3 1.1 2.7-2.9L18 3.3l-2.6-.9a3.5 3.5 0 0 1-6.8 0Z"/></svg></div><div data-hf-id="hf-s07pr" class="prow"><span data-hf-id="hf-s07pn" class="pn">tour tee · black</span><span data-hf-id="hf-s07pp" class="pp">$35.00</span></div><div data-hf-id="hf-s07pw" style="padding:9px 0 0"><span data-hf-id="hf-s07pl" class="pill need">Needs you</span></div></div></div>'}
+        {kind:'card', side:'recv', html:'<div data-hf-id="hf-s07sfa" class="fa" id="s07-shop-a"><div data-hf-id="hf-s07shh" class="hd"><div data-hf-id="hf-s07sha" class="art" style="background-image:url(&quot;assets/icons/shop.png&quot;)"></div><div data-hf-id="hf-s07shw"><div data-hf-id="hf-s07sht" class="ti">October tour tee</div><div data-hf-id="hf-s07shs" class="sb">staged listing · not public yet</div></div></div><div data-hf-id="hf-s07sbd" class="bd"><div data-hf-id="hf-s07tw" class="tee"><svg data-hf-id="hf-s07teeA" viewBox="0 0 520 520" class="teeart" aria-hidden="true">\n  <defs>\n    <linearGradient id="s07teeA-cloth" x1=".22" y1="0" x2=".82" y2="1">\n      <stop offset="0" stop-color="#3A3E46"/><stop offset=".34" stop-color="#22262D"/>\n      <stop offset=".72" stop-color="#14171C"/><stop offset="1" stop-color="#0B0D11"/></linearGradient>\n    <linearGradient id="s07teeA-fold" x1="0" y1="0" x2="1" y2="0">\n      <stop offset="0" stop-color="#000" stop-opacity=".34"/><stop offset=".26" stop-color="#000" stop-opacity="0"/>\n      <stop offset=".62" stop-color="#FFF" stop-opacity=".07"/><stop offset="1" stop-color="#000" stop-opacity=".30"/></linearGradient>\n    <radialGradient id="s07teeA-sweep" cx=".46" cy=".30" r=".92">\n      <stop offset="0" stop-color="#FFFCF4"/><stop offset=".52" stop-color="#F0E7D6"/>\n      <stop offset="1" stop-color="#D9CDB8"/></radialGradient>\n    <filter id="s07teeA-shad" x="-30%" y="-30%" width="160%" height="160%">\n      <feGaussianBlur stdDeviation="17"/></filter>\n    <filter id="s07teeA-soft" x="-20%" y="-20%" width="140%" height="140%">\n      <feGaussianBlur stdDeviation="5"/></filter>\n  </defs>\n  <rect data-hf-id="hf-s07teeAbg" x="0" y="0" width="520" height="520" fill="url(#s07teeA-sweep)"/>\n  <ellipse data-hf-id="hf-s07teeAsh" cx="264" cy="432" rx="172" ry="30" fill="#6B5E49" opacity=".38" filter="url(#s07teeA-shad)"/>\n  <g data-hf-id="hf-s07teeAg" transform="translate(260 252) rotate(-1.5) translate(-260 -252)">\n    <path data-hf-id="hf-s07teeAbody" d="M188 96 148 112 96 158l38 44 30-25v217c0 7 5 12 12 12h168c7 0 12-5 12-12V177l30 25 38-44-52-46-40-16-31-9a44 44 0 0 1-82 0Z"\n          fill="url(#s07teeA-cloth)"/>\n    <path data-hf-id="hf-s07teeAfold" d="M188 96 148 112 96 158l38 44 30-25v217c0 7 5 12 12 12h168c7 0 12-5 12-12V177l30 25 38-44-52-46-40-16-31-9a44 44 0 0 1-82 0Z"\n          fill="url(#s07teeA-fold)"/>\n    <path data-hf-id="hf-s07teeAcol" d="M219 87a44 44 0 0 0 82 0l-12-3a33 33 0 0 1-58 0Z" fill="#0A0C10" opacity=".9"/>\n    <path data-hf-id="hf-s07teeAcolr" d="M217 86a46 46 0 0 0 86 0" fill="none" stroke="#565C66" stroke-opacity=".55" stroke-width="3.5"/>\n    <path data-hf-id="hf-s07teeAs1" d="M166 196v212" fill="none" stroke="#000" stroke-opacity=".35" stroke-width="2"/>\n    <path data-hf-id="hf-s07teeAs2" d="M354 196v212" fill="none" stroke="#000" stroke-opacity=".35" stroke-width="2"/>\n    <path data-hf-id="hf-s07teeAhl" d="M206 150c-14 60-16 150-8 244" fill="none" stroke="#FFF" stroke-opacity=".10" stroke-width="16" filter="url(#s07teeA-soft)"/>\n    <g data-hf-id="hf-s07teeApr" opacity=".93">\n      <text data-hf-id="hf-s07teeAt1" x="260" y="244" text-anchor="middle" font-family="Newsreader,Georgia,serif"\n            font-size="34" font-weight="300" letter-spacing="1" fill="#E8DFCC">OCTOBER</text>\n      <text data-hf-id="hf-s07teeAt2" x="260" y="276" text-anchor="middle" font-family="Azeret Mono,monospace"\n            font-size="12" letter-spacing="5" fill="#C2B9A6">TOUR &#183; MMXXVI</text>\n      <path data-hf-id="hf-s07teeAt3" d="M206 292h108" stroke="#C2B9A6" stroke-opacity=".7" stroke-width="1.6"/>\n    </g>\n  </g>\n</svg></div><div data-hf-id="hf-s07pr" class="prow"><span data-hf-id="hf-s07pn" class="pn">tour tee · black</span><span data-hf-id="hf-s07pp" class="pp">$35.00</span></div><div data-hf-id="hf-s07pw" style="padding:9px 0 0"><span data-hf-id="hf-s07pl" class="pill need">Needs you</span></div></div></div>'}
       ];
-      var threadEl=$('#s07-thread'); threadEl.setAttribute('data-bottom','634');
+      var threadEl=$('#s07-thread'); threadEl.setAttribute('data-bottom','622');
       var TH=buildThread(threadEl, ITEMS);
       var stage=rig('s07'), flash=$('#s07-flash');
       var hero=$('#s07-hero'), live=$('#s07-livepill'), order=$('#s07-order');
@@ -388,16 +445,16 @@
       gsap.set(order,{autoAlpha:0,y:16});
       gsap.set(stage,{scale:1.0,transformOrigin:'50% 50%'});
       gsap.set(flash,{opacity:0});
-      gsap.set('#s07-ph',{x:600});
+      gsap.set('#s07-ph',{x:640});
 
       // 52.059 — send, and the phone slides right to make room for the product
-      showItem(tl,TH,0.000,1,{slide:.30});
+      showItem(tl,TH,0.000,8,{slide:.30});
       tl.set($('#s07-composer-txt'),{textContent:''},0.000);
       hit(tl,stage,0.000,{amt:.020});
       whipIn(tl,stage,0.000,210);
       rightIn(tl,'s07',0.06);
       // 53.615 — the listing lands in the thread and lifts out as the real product frame
-      showItem(tl,TH,1.556,2,{slide:.42});
+      showItem(tl,TH,1.556,9,{slide:.42});
       tl.to(hero,{autoAlpha:1,x:0,y:0,scale:1,duration:.70,ease:'expo.out'},1.556);
       hit(tl,stage,1.556,{amt:.018});
       rightOut(tl,'s07',1.24);
@@ -415,7 +472,7 @@
       hit(tl,stage,4.644,{amt:.022});
       cam(tl,stage,4.644,{scale:1.035,d:1.3,e:'expo.out'});
       tl.to([hero,live,order],{autoAlpha:0,x:-180,duration:.30,ease:'power4.in'},5.90);
-      tl.to('#s07-ph',{x:420,autoAlpha:0,duration:.28,ease:'power4.in'},5.92);
+      tl.to('#s07-ph',{x:460,autoAlpha:0,duration:.28,ease:'power4.in'},5.92);
       whipOut(tl,stage,6.03,210);
       window.__timelines=window.__timelines||{};
       window.__timelines['shot-07-shop']=tl;

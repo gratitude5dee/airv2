@@ -682,3 +682,48 @@ crossing a beat behind the chrome sweep.
 Whip transitions between the mini-app cuts: the outgoing shot is still travelling when the cut
 lands and the incoming one picks the move up mid-flight, blurred, for two frames. It is the only
 transition in the film that is not a straight cut.
+
+
+---
+
+## 16. v3.3 — the notes pass
+
+Four corrections from review, all of them things the film was getting wrong about the product.
+
+**The foley sits 6 dB lower.** Every role target in `v3/authoring/sfx.py` dropped six decibels and
+the sidechain duck halved, so the cues read as texture under the song rather than as a second
+track beside it. A send now sits about 15 dB under the music where it sat at 8, and the drop about
+3 dB over where it sat at 7.
+
+**The film no longer counts the apps.** It shows a handful of the mini-apps, so it must not imply
+that is all of them. "ten apps. one thread." became "your apps. one thread.", and the montage
+label "five mini-apps" became "a few of the apps".
+
+**No carousels, no orbiting text.** Both were replaced with mechanics that do not rotate.
+Hyperpersonalisation is now a signal board: the persona on the left, and six sources landing one
+per half bar on the right, each stating what it knows and how much it weighs. Connect is now a
+wall coming online: forty-five connector marks lighting up in a fixed shuffle, unevenly, the way a
+real integration list fills, with the count in front of them.
+
+**The source repository is out of the film.** The line naming the mirror repo is gone from both
+the publish card and the montage.
+
+### And the phone stopped reading as a black slab
+
+Two screenshots made the problem plain: a 402 by 874 screen with three messages at the bottom is
+mostly a black rectangle, and in `/shop` it was a black rectangle parked on top of the giant word.
+
+- Every phone now carries an iOS status bar (time, signal, wifi, battery) and a raking glass
+  reflection, so the device reads as a device before anything happens on it.
+- Every thread opens on a real tail of prior conversation, seven or eight rows of it, dimmed. The
+  screen is full in the first frame of every shot that has a phone.
+- `/shop` is the mirror of the other mini-app shots: the giant word takes the left, the phone the
+  right, and the product frame lands where the word was.
+- The listing shows an actual garment: a lit tee on a studio sweep with fabric shading, a collar
+  rib, side seams, a fold highlight and the tour print, instead of a flat pictogram.
+
+The last device in the film had the same problem. The end card's phone sat under "Text your
+agent." for three and a half seconds with nothing on it — an off slab beside the ask. It now runs
+a thread of its own: five dimmed rows of the day already behind it, then two live arrivals on the
+last two bars before the freeze, ending on "any time. i'm here." The film's closing product shot
+is a conversation, which is the whole claim.

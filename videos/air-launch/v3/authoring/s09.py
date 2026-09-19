@@ -17,6 +17,13 @@ STYLE = M.base_style(R, """
 
 ITEMS = f"""      var ITEMS=[
         {{kind:'sys', text:'Today · 9:34 AM', pre:true}},
+        {{side:'recv', text:'the storefront had 3 orders overnight.', pre:true, dim:true}},
+        {{side:'sent', text:'nice', pre:true, dim:true}},
+        {{side:'recv', text:'all three labels are printed.', pre:true, dim:true}},
+        {{side:'sent', text:'perfect', pre:true, dim:true}},
+        {{side:'recv', text:'the shop is live and the first order is packed.', pre:true, dim:true}},
+        {{side:'sent', text:'i want something to post with it.', pre:true, dim:true}},
+        {{side:'recv', text:'video or a still? i can do either.', pre:true, dim:true}},
         {{side:'sent', text:'/zap the orb rising over clouds, 6s'}},
         {{side:'recv', text:'on it — about 40s.'}}
       ];"""
@@ -45,7 +52,7 @@ BODY = f"""    <div data-hf-id="hf-s09frame" class="frame clip" id="s09-frame" d
 
 SCRIPT = M.COMMON_JS + f"""
 {ITEMS}
-      var threadEl=$('#s09-thread'); threadEl.setAttribute('data-bottom','634');
+      var threadEl=$('#s09-thread'); threadEl.setAttribute('data-bottom','622');
       var TH=buildThread(threadEl, ITEMS);
       var stage=rig('s09'), flash=$('#s09-flash');
       var gen=$('#s09-gen'), genbar=$('#s09-genbar'), endcap=$('#s09-endcap');
@@ -123,12 +130,12 @@ SCRIPT = M.COMMON_JS + f"""
       gsap.set(gen,{{'--m':'52%'}});
 
       // 64.412 — send. 65.991 — it answers with a time, the way a person would.
-      showItem(tl,TH,0.000,1,{{slide:.30}});
+      showItem(tl,TH,0.000,8,{{slide:.30}});
       tl.set($('#s09-composer-txt'),{{textContent:''}},0.000);
       hit(tl,stage,0.000,{{amt:.020}});
       whipIn(tl,stage,0.000,210);
       rightIn(tl,'s09',0.06);
-      showItem(tl,TH,1.579,2,{{slide:.34}});
+      showItem(tl,TH,1.579,9,{{slide:.34}});
       hit(tl,stage,1.579,{{amt:.014}});
 
       // 66.757 -> 67.524 — the render takes the frame as symbols, one column band per hihat
