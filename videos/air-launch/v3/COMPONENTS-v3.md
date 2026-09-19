@@ -86,11 +86,19 @@ Category rules first, then the exceptions.
 | Infinite Menu | Components | REFERENCE ONLY | — | Brand `wz-infinite-menu` exists in `fx.js`; not used in the film |
 | Everything else in the CSV | — | REJECT | — | Category rules above |
 
-## 3b. v3.4 rulings — the second component catalogue
+## 3b. v3.4 rulings — the second component catalogue (shipped, then reverted in v3.5)
 
 A second pass over the same catalogue, after the film existed. Several v3 rulings were reversed
 because the shot they would have served had since been built, and a study that was
 REFERENCE ONLY against a storyboard is a different question against a frame.
+
+**All ten ADOPT rulings below were reverted in v3.5.** Landed together — grain moving on every
+frame, a drifting grainient, an edge blur, an aurora, a light-ray fan, extruded slash words, a
+halftone reveal, a bento spotlight, orbiting sparks, specular rims — the combined weight read as
+busy rather than premium, and the delivered master grew 35% (51 MB → 69 MB) carrying it. The
+table stands as a record of what was tried and why each one seemed right in isolation; none of
+it is in the current source. A future pass that wants to bring one back should do it as a single
+addition to the v3.3 base, not as a batch.
 
 | component | v3 ruling | v3.4 ruling | where | how it was re-authored for linear time |
 | --- | --- | --- | --- | --- |

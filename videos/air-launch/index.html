@@ -58,46 +58,9 @@
       #grade { position: absolute; inset: 0; z-index: 20; pointer-events: none; }
       #grade .vig { position: absolute; inset: 0;
         background: radial-gradient(118% 96% at 50% 46%, rgba(0,0,0,0) 58%, rgba(2,5,12,.34) 100%); }
-      /* NOISE (React Bits) — grain that actually moves. A static plate reads as a texture
-         laid on top; film grain reads as film because the field is different every frame.
-         Six fixed-seed tiles cycle at 24 per second off the timeline clock, so the grain
-         is alive and a seek still lands on exactly the same tile. */
-      #grade .grain { position: absolute; inset: 0; opacity: 0; mix-blend-mode: overlay;
-        background-size: 240px 240px; will-change: opacity; }
-      #grade .grain.g0 { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' seed='7' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)'/%3E%3C/svg%3E"); }
-      #grade .grain.g1 { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' seed='20' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)'/%3E%3C/svg%3E"); }
-      #grade .grain.g2 { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' seed='33' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)'/%3E%3C/svg%3E"); }
-      #grade .grain.g3 { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' seed='46' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)'/%3E%3C/svg%3E"); }
-      #grade .grain.g4 { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' seed='59' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)'/%3E%3C/svg%3E"); }
-      #grade .grain.g5 { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' seed='72' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)'/%3E%3C/svg%3E"); }
-      /* GRAINIENT (React Bits) — grainy gradient swirls under a soft wave distortion. The
-         sky is a clean WebGL field; this is the dye in the emulsion that keeps large flat
-         areas from banding, drifting slowly so the frame is never chemically still. */
-      #grainient { position: absolute; inset: -12%; z-index: 15; pointer-events: none;
-        mix-blend-mode: soft-light; opacity: .30; will-change: transform;
-        background:
-          radial-gradient(38% 30% at 24% 30%, rgba(255,214,168,.55) 0%, rgba(255,214,168,0) 68%),
-          radial-gradient(44% 34% at 74% 26%, rgba(140,188,255,.48) 0%, rgba(140,188,255,0) 70%),
-          radial-gradient(52% 40% at 52% 82%, rgba(96,140,226,.42) 0%, rgba(96,140,226,0) 72%),
-          radial-gradient(30% 26% at 86% 70%, rgba(255,176,132,.34) 0%, rgba(255,176,132,0) 70%);
-        filter: blur(38px) saturate(1.18); }
-      #grainient .swirl { position: absolute; inset: -8%; mix-blend-mode: overlay; opacity: .5;
-        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='600'%3E%3Cfilter id='s'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.006 0.011' numOctaves='3' seed='23'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='600' height='600' filter='url(%23s)'/%3E%3C/svg%3E");
-        background-size: 1400px 1400px; will-change: transform; }
-      /* GRADUAL BLUR (React Bits) — the frame does not end at a hard edge. Three bands of
-         increasing blur ride the boundary so attention falls to centre the way it does
-         through a real lens, instead of the picture stopping dead at the crop. */
-      #edgeblur { position: absolute; inset: 0; z-index: 16; pointer-events: none; }
-      #edgeblur i { position: absolute; display: block; }
-      #edgeblur .b1 { inset: 0; backdrop-filter: blur(2.4px); -webkit-backdrop-filter: blur(2.4px);
-        -webkit-mask-image: radial-gradient(112% 104% at 50% 48%, rgba(0,0,0,0) 62%, #000 100%);
-        mask-image: radial-gradient(112% 104% at 50% 48%, rgba(0,0,0,0) 62%, #000 100%); }
-      #edgeblur .b2 { inset: 0; backdrop-filter: blur(5.5px); -webkit-backdrop-filter: blur(5.5px);
-        -webkit-mask-image: radial-gradient(112% 104% at 50% 48%, rgba(0,0,0,0) 80%, #000 100%);
-        mask-image: radial-gradient(112% 104% at 50% 48%, rgba(0,0,0,0) 80%, #000 100%); }
-      #edgeblur .b3 { inset: 0; backdrop-filter: blur(11px); -webkit-backdrop-filter: blur(11px);
-        -webkit-mask-image: radial-gradient(112% 104% at 50% 48%, rgba(0,0,0,0) 92%, #000 100%);
-        mask-image: radial-gradient(112% 104% at 50% 48%, rgba(0,0,0,0) 92%, #000 100%); }
+      #grade .grain { position: absolute; inset: 0; opacity: .05; mix-blend-mode: overlay;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' seed='7' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)'/%3E%3C/svg%3E");
+        background-size: 240px 240px; }
       #grade .freeze { position: absolute; inset: 0; background: #02040A; opacity: 0; }
     </style>
   </head>
@@ -140,16 +103,12 @@
       <div data-hf-id="hf-sh13" id="shot-13" data-composition-id="shot-13-montage" data-composition-src="compositions/shot-13-montage.html" data-start="95.829" data-duration="6.339" data-track-index="13"></div>
       <div data-hf-id="hf-sh14" id="shot-14" data-composition-id="shot-14-end-card" data-composition-src="compositions/shot-14-end-card.html" data-start="102.168" data-duration="17.531" data-track-index="14"></div>
 
-      <!-- GRAINIENT + GRADUAL BLUR — the emulsion and the lens, under the bloom -->
-      <div data-hf-id="hf-grnt" id="grainient" class="clip" data-start="0" data-duration="119.699" data-track-index="15" data-layout-ignore=""><div data-hf-id="hf-grnts" class="swirl" id="grainient-swirl"></div></div>
-      <div data-hf-id="hf-edgb" id="edgeblur" class="clip" data-start="0" data-duration="119.699" data-track-index="19" data-layout-ignore=""><i data-hf-id="hf-eb1" class="b1"></i><i data-hf-id="hf-eb2" class="b2"></i><i data-hf-id="hf-eb3" class="b3"></i></div>
-
-      <!-- GRADE — vignette + moving grain over the whole film, and the one freeze dim -->
+      <!-- GRADE — vignette + static grain over the whole film, and the one freeze dim -->
       <div data-hf-id="hf-bloom" id="bloom" class="clip" data-start="0" data-duration="119.699" data-track-index="17" data-layout-ignore=""></div>
       <div data-hf-id="hf-fringe" id="fringe" class="clip" data-start="0" data-duration="119.699" data-track-index="18" data-layout-ignore=""></div>
       <div data-hf-id="hf-syvh" id="grade" class="clip" data-start="0" data-duration="119.699" data-track-index="16">
         <div data-hf-id="hf-e4a6" class="vig"></div>
-        <div data-hf-id="hf-grn0" class="grain g0" id="grain-0"></div><div data-hf-id="hf-grn1" class="grain g1" id="grain-1"></div><div data-hf-id="hf-grn2" class="grain g2" id="grain-2"></div><div data-hf-id="hf-grn3" class="grain g3" id="grain-3"></div><div data-hf-id="hf-grn4" class="grain g4" id="grain-4"></div><div data-hf-id="hf-grn5" class="grain g5" id="grain-5"></div>
+        <div data-hf-id="hf-h60x" class="grain"></div>
         <div data-hf-id="hf-frz" class="freeze" id="grade-freeze"></div>
       </div>
 
@@ -198,15 +157,6 @@
       var bloomEl = document.getElementById('bloom');
       var vigEl = document.querySelector('#grade .vig');
       var skyEl = document.getElementById('sky');
-      // NOISE — six fixed-seed grain tiles, one visible per 1/24 s. Picking the tile by
-      // index rather than animating opacity keeps it a pure function of the clock.
-      var grainTiles = [];
-      for (var gi = 0; gi < 6; gi++) grainTiles.push(document.getElementById('grain-' + gi));
-      var grainShown = -1;
-      // GRAINIENT — the swirl drifts and the plate counter-rotates, slowly enough that
-      // nobody reads it as motion and fast enough that the frame is never chemically still.
-      var grntEl = document.getElementById('grainient');
-      var grntSwirl = document.getElementById('grainient-swirl');
       // Depth of field: the sky softens whenever the phone or a card is the subject, and comes
       // back to sharp for the sky's own moments. One value per shot, eased across the seam.
       var FOCUS = [[0,0],[2.2,0],[10.17,7],[24.0,7],[24.358,0],[26.2,2.5],[33.0,2.5],[33.344,0],
@@ -239,22 +189,6 @@
         vigEl.style.opacity = String(0.72 + 0.34*(1-a));
         var blur = lerpTable(FOCUS, t);
         skyEl.style.filter = blur > 0.05 ? ('blur('+blur.toFixed(2)+'px)') : 'none';
-
-        // grain: one tile per 1/24 s, a hair stronger on the transients so the loud frames
-        // look like they were exposed harder
-        var gidx = Math.floor(t * 24) % 6;
-        if (gidx !== grainShown) {
-          if (grainShown >= 0) grainTiles[grainShown].style.opacity = '0';
-          grainShown = gidx;
-        }
-        grainTiles[gidx].style.opacity = String((0.055 + 0.030 * p) * hole);
-
-        // grainient: a long drift, plus a breath on the arrangement
-        grntEl.style.transform = 'translate3d(' + (Math.sin(t * 0.055) * 46).toFixed(2) + 'px,'
-          + (Math.cos(t * 0.041) * 34).toFixed(2) + 'px,0) scale(' + (1.02 + 0.05 * a).toFixed(4) + ')';
-        grntEl.style.opacity = String((0.20 + 0.20 * a) * hole);
-        grntSwirl.style.transform = 'translate3d(' + (Math.cos(t * 0.031) * -70).toFixed(2) + 'px,'
-          + (Math.sin(t * 0.026) * 58).toFixed(2) + 'px,0) rotate(' + (t * 0.42).toFixed(3) + 'deg)';
       }
       applyGrade();
       rootTimeline.to(gradeProxy, { t: 119.699, duration: 119.699, ease: 'none', onUpdate: applyGrade }, 0);

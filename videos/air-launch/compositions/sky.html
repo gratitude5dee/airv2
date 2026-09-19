@@ -7,26 +7,9 @@
       /* A very light vignette keeps the sky expansive instead of turning it into a dark stage. */
       #sky-root .veil{position:absolute;inset:0;pointer-events:none;
         background:radial-gradient(120% 90% at 50% 42%,rgba(0,0,0,0) 44%,rgba(6,14,32,.22) 100%)}
-      /* AURORA (React Bits) — a flowing gradient over the night half of the film. The cold
-         open was a clean dark field; this gives it weather. Three bands drift at different
-         rates and the whole sheet is gone by the time the sun crests, because an aurora
-         under a sunrise is a lie. */
-      #sky-root .aur{position:absolute;left:-14%;right:-14%;top:-18%;height:82%;pointer-events:none;
-        mix-blend-mode:screen;opacity:0;will-change:opacity}
-      #sky-root .aur b{position:absolute;left:0;right:0;display:block;border-radius:50%;
-        filter:blur(72px);will-change:transform,opacity}
-      #sky-root .aur .a1{top:6%;height:46%;
-        background:radial-gradient(60% 50% at 30% 50%,rgba(86,214,180,.52) 0%,rgba(86,214,180,0) 72%),
-                   radial-gradient(52% 44% at 68% 42%,rgba(96,150,255,.44) 0%,rgba(96,150,255,0) 74%)}
-      #sky-root .aur .a2{top:20%;height:40%;
-        background:radial-gradient(54% 46% at 58% 50%,rgba(140,110,255,.38) 0%,rgba(140,110,255,0) 74%),
-                   radial-gradient(44% 38% at 22% 46%,rgba(70,200,210,.34) 0%,rgba(70,200,210,0) 76%)}
-      #sky-root .aur .a3{top:0%;height:34%;
-        background:radial-gradient(50% 44% at 44% 50%,rgba(170,232,255,.30) 0%,rgba(170,232,255,0) 76%)}
     </style>
 
     <canvas data-hf-id="hf-y5j1" id="sky-canvas" width="1920" height="1080" class="clip" data-start="0" data-duration="119.699" data-track-index="0"></canvas>
-    <div data-hf-id="hf-aur" class="aur" id="sky-aurora" data-layout-ignore=""><b data-hf-id="hf-aur1" class="a1" id="sky-aur1"></b><b data-hf-id="hf-aur2" class="a2" id="sky-aur2"></b><b data-hf-id="hf-aur3" class="a3" id="sky-aur3"></b></div>
     <div data-hf-id="hf-h5f4" class="veil"></div>
 
     <script src="vendor/gsap.min.js"></script>
@@ -276,42 +259,8 @@
       }
       renderFrame(0, 0, 0);
 
-      // AURORA — up over the cold open, held through the thread, and gone before the crest.
-      // Its drift is a pure function of the clock like everything else here.
-      var aurWrap = root.querySelector('#sky-aurora');
-      var aurBands = [root.querySelector('#sky-aur1'), root.querySelector('#sky-aur2'),
-                      root.querySelector('#sky-aur3')];
-      var AUR = [[0,0.55,0,'lin'],[0.55,3.2,0.62,'lin'],[3.2,14.0,0.78,'lin'],
-                 [14.0,22.0,0.46,'lin'],[22.0,24.358,0,'lin']];
-      function aurAt(t){
-        if(t >= 24.358) return 0;
-        for(var i=0;i<AUR.length;i++){
-          var a=AUR[i];
-          if(t <= a[1]){
-            var p0 = i ? AUR[i-1][2] : 0, u = (t-a[0])/Math.max(1e-6,(a[1]-a[0]));
-            return p0 + (a[2]-p0)*u*u*(3-2*u);
-          }
-        }
-        return 0;
-      }
-      function renderAurora(t){
-        var o = aurAt(t);
-        aurWrap.style.opacity = o.toFixed(4);
-        if(o <= 0.001) return;
-        for(var i=0;i<3;i++){
-          var k = i+1;
-          var x = Math.sin(t*0.085*k + i*2.1) * (120 - i*28);
-          var y = Math.cos(t*0.062*k + i*1.3) * (34 - i*9);
-          var sx = 1.10 + Math.sin(t*0.047*k + i) * 0.16;
-          aurBands[i].style.transform = 'translate3d('+x.toFixed(1)+'px,'+y.toFixed(1)+'px,0) scaleX('+sx.toFixed(3)+')';
-          aurBands[i].style.opacity = (0.62 + 0.30*Math.sin(t*0.11*k + i*1.7)).toFixed(3);
-        }
-      }
-      renderAurora(0);
-
       tl.to(proxy,{t:119.699,duration:119.699,ease:'none',onUpdate:function(){
         renderFrame(proxy.t, sample(LADDER,proxy.t), sample(CREST,proxy.t));
-        renderAurora(proxy.t);
       }},0);
 
       window.__timelines["sky"] = tl;

@@ -144,101 +144,11 @@
       #s06-root .hitflash{position:absolute;inset:0;pointer-events:none;background:#EAF2FF;opacity:0;
         mix-blend-mode:screen}
       #s06-root .hero-card{position:absolute;will-change:transform,opacity;transform-origin:50% 50%}
-
-      /* ====================== v3.4 component kit ======================
-         React Bits studies, re-authored for linear time. Every one of them is a pointer,
-         scroll or hover effect at the source; here the input is the timeline clock, so the
-         behaviour is deterministic and a seek reconstructs it exactly. */
-
-      /* --- DEPTH TEXT: layered extruded type. The source parallaxes against the pointer;
-             here the extrusion is a fixed stack of offset copies and the parallax is a
-             slow push on the stage, so the slash words read as objects with mass. --- */
-      #s06-root .dpt{position:relative;display:inline-block;will-change:transform}
-      #s06-root .dpt .dl{position:absolute;left:0;top:0;white-space:nowrap;pointer-events:none;
-        will-change:transform,opacity}
-      #s06-root .dpt .dface{position:relative;color:var(--ink)}
-      #s06-root .dpt .dsh{color:rgba(3,9,24,.42);filter:blur(.4px)}
-
-      /* --- SHINY TEXT: a metallic sheen crosses the glyphs. Masked to the text itself,
-             so the highlight is in the letterform and not a bar sliding over it. --- */
-      #s06-root .shiny{position:relative;display:inline-block}
-      #s06-root .shiny .sh{position:absolute;left:0;top:0;white-space:nowrap;pointer-events:none;
-        background:linear-gradient(104deg,rgba(255,255,255,0) 40%,rgba(255,255,255,.95) 50%,rgba(255,255,255,0) 60%);
-        -webkit-background-clip:text;background-clip:text;color:transparent;
-        background-size:260% 100%;will-change:background-position;opacity:0}
-
-      /* --- MASKED HEADING: a drifting colour mesh shows through the glyphs, and the line
-             is uncovered word by word rather than faded in whole. --- */
-      #s06-root .mhead{display:inline-block}
-      #s06-root .mhead .mw{display:inline-block;overflow:hidden;vertical-align:bottom}
-      #s06-root .mhead .mw > span{display:inline-block;will-change:transform,opacity}
-      #s06-root .mhead.mesh .mw > span{
-        background:linear-gradient(96deg,#FFF4E4 0%,#CFE3FF 26%,#FFE2C0 52%,#BBD6FF 74%,#FFF4E4 100%);
-        background-size:280% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;
-        will-change:transform,opacity,background-position}
-
-      /* --- SPLIT TEXT: per-character staggered entrance. --- */
-      #s06-root .split .ch{display:inline-block;white-space:pre;will-change:transform,opacity}
-
-      /* --- STAR BORDER: sparkles orbit the edge of a thing with a twinkle pulse. The
-             source animates a gradient on hover; here each spark is a real element placed
-             on the ring and lit on its own beat. --- */
-      #s06-root .starb{position:absolute;inset:-14px;pointer-events:none}
-      #s06-root .starb .sp{position:absolute;left:50%;top:50%;width:7px;height:7px;margin:-3.5px 0 0 -3.5px;
-        border-radius:50%;background:#FFFFFF;opacity:0;mix-blend-mode:screen;
-        box-shadow:0 0 10px rgba(198,226,255,.95),0 0 22px rgba(120,180,255,.55);
-        will-change:transform,opacity}
-      #s06-root .starb .ring{position:absolute;inset:0;border-radius:50%;opacity:0;
-        background:conic-gradient(from 0deg,rgba(150,200,255,0) 0deg,rgba(190,224,255,.60) 40deg,
-                   rgba(150,200,255,0) 110deg,rgba(150,200,255,0) 360deg);
-        -webkit-mask:radial-gradient(closest-side,transparent 92%,#000 93%);
-        mask:radial-gradient(closest-side,transparent 92%,#000 93%);will-change:transform,opacity}
-
-      /* --- SPECULAR BUTTON: a rim light sweeps the edge of the glass. The source tracks
-             the cursor; here the sweep is on the approval's own beat, which is better —
-             the light arrives when the decision does. --- */
-      #s06-root .spec{position:relative;isolation:isolate}
-      #s06-root .spec .rim{position:absolute;inset:-1px;border-radius:inherit;pointer-events:none;opacity:0;
-        background:conic-gradient(from 0deg,rgba(255,255,255,0) 0deg,rgba(255,255,255,.92) 26deg,
-                   rgba(255,255,255,0) 74deg,rgba(255,255,255,0) 360deg);
-        -webkit-mask:linear-gradient(#000,#000) content-box,linear-gradient(#000,#000);
-        -webkit-mask-composite:xor;mask-composite:exclude;padding:1.6px;
-        will-change:transform,opacity}
-      #s06-root .spec .gl{position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:0;
-        background:linear-gradient(100deg,rgba(255,255,255,0) 38%,rgba(255,255,255,.42) 50%,rgba(255,255,255,0) 62%);
-        will-change:transform,opacity;mix-blend-mode:screen}
-
-      /* --- LIGHT RAYS / SIDE RAYS: volumetric beams. Each ray is a masked gradient wedge
-             anchored at the source, so the crest throws light instead of just brightening. --- */
-      #s06-root .rays{position:absolute;pointer-events:none;mix-blend-mode:screen;
-        transform-origin:50% 0%;will-change:transform,opacity}
-      #s06-root .rays .ray{position:absolute;left:50%;top:0;transform-origin:50% 0%;opacity:0;
-        background:linear-gradient(180deg,rgba(255,231,196,.78) 0%,rgba(255,214,160,.22) 42%,rgba(255,200,140,0) 100%);
-        filter:blur(9px);will-change:transform,opacity}
-      #s06-root .rayglow{position:absolute;pointer-events:none;mix-blend-mode:screen;opacity:0;
-        background:radial-gradient(50% 50% at 50% 50%,rgba(255,236,206,.92) 0%,rgba(255,206,150,.34) 38%,rgba(255,190,120,0) 72%);
-        will-change:transform,opacity}
-
-
-      /* --- HALFTONE REVEAL: a print dot matrix that resolves into the picture. The source
-             resolves around the cursor; here the dot radius closes on the beat. --- */
-      #s06-root .halft{position:absolute;inset:0;pointer-events:none;will-change:opacity;
-        background-image:radial-gradient(circle,rgba(6,12,28,.92) 46%,rgba(6,12,28,0) 52%);
-        background-size:14px 14px;background-position:0 0}
-
-      /* --- MAGIC BENTO: a spotlight crosses a grid and the tile under it lifts. --- */
-      #s06-root .bento-spot{position:absolute;pointer-events:none;mix-blend-mode:screen;opacity:0;
-        background:radial-gradient(50% 50% at 50% 50%,rgba(210,232,255,.42) 0%,rgba(160,200,255,.12) 44%,rgba(160,200,255,0) 74%);
-        will-change:transform,opacity}
       #s06-root .ph{left:470px;top:103px}
       #s06-root .right{position:absolute;left:1010px;top:0;width:880px;height:1080px}
-      /* DEPTH TEXT (React Bits): the slash word was a flat ghost behind the phone. It is now
-         an extruded object — a lit face over a stack of offset shadow copies — and the whole
-         block turns a few degrees across the shot, so the word has a side you can see. */
       #s06-root .slash{position:absolute;left:0;top:262px;font-family:'Azeret Mono',monospace;font-weight:500;
-        font-size:196px;letter-spacing:-.05em;white-space:nowrap}
-      #s06-root .slash .dface{color:rgba(247,242,233,.62);text-shadow:0 6px 40px rgba(3,7,18,.5)}
-      #s06-root .slash .dsh{color:rgba(4,10,26,.50)}
+        font-size:196px;letter-spacing:-.05em;color:var(--ink);opacity:.36;white-space:nowrap;
+        text-shadow:0 6px 40px rgba(3,7,18,.45)}
       #s06-root .expl{position:absolute;left:4px;top:548px;width:840px}
       #s06-root .expl .mono{font-size:29px;line-height:1.48}
       #s06-root .btn.ok{background:none}
@@ -256,12 +166,6 @@
         letter-spacing:.06em;color:rgba(244,239,230,.86);text-shadow:0 2px 12px rgba(3,7,18,.7)}
       #s06-root .herocap{position:absolute;left:0;right:0;top:846px;text-align:center}
       #s06-root .herocap .cap{font-size:76px;line-height:1.02}
-      /* MAGIC BENTO (React Bits): a spotlight crosses the family and each tile lifts as it
-         passes. The grid stops being a wall of icons and becomes a surface with a light
-         moving over it — which is what a home screen under your thumb actually looks like. */
-      #s06-root .bento-spot{left:-420px;top:120px;width:860px;height:780px}
-      #s06-root .herocap .dface{color:var(--ink)}
-      #s06-root .herocap .dsh{color:rgba(3,9,24,.30)}
     </style>
 
     <div data-hf-id="hf-s06frame" class="frame clip" id="s06-frame" data-layout-allow-overflow="" data-start="0" data-duration="6.246" data-track-index="1">
@@ -269,7 +173,7 @@
       <div data-hf-id="hf-s06wb" class="washR"></div>
       <div data-hf-id="hf-s06st" class="stage" id="s06-stage">
       <div data-hf-id="hf-s06rt" class="right" id="s06-right">
-        <div data-hf-id="hf-s06sl" class="slash" id="s06-slash"><span data-hf-id="hf-s06-dslash" class="dpt " id="s06-dslash"><span data-hf-id="hf-s06-dslashd0" class="dl dsh" id="s06-dslash-d0" aria-hidden="true" style="transform:translate3d(20.8px,25.6px,0);opacity:0.130" data-layout-ignore="">/home</span><span data-hf-id="hf-s06-dslashd1" class="dl dsh" id="s06-dslash-d1" aria-hidden="true" style="transform:translate3d(18.2px,22.4px,0);opacity:0.185" data-layout-ignore="">/home</span><span data-hf-id="hf-s06-dslashd2" class="dl dsh" id="s06-dslash-d2" aria-hidden="true" style="transform:translate3d(15.6px,19.2px,0);opacity:0.240" data-layout-ignore="">/home</span><span data-hf-id="hf-s06-dslashd3" class="dl dsh" id="s06-dslash-d3" aria-hidden="true" style="transform:translate3d(13.0px,16.0px,0);opacity:0.295" data-layout-ignore="">/home</span><span data-hf-id="hf-s06-dslashd4" class="dl dsh" id="s06-dslash-d4" aria-hidden="true" style="transform:translate3d(10.4px,12.8px,0);opacity:0.350" data-layout-ignore="">/home</span><span data-hf-id="hf-s06-dslashd5" class="dl dsh" id="s06-dslash-d5" aria-hidden="true" style="transform:translate3d(7.8px,9.6px,0);opacity:0.405" data-layout-ignore="">/home</span><span data-hf-id="hf-s06-dslashd6" class="dl dsh" id="s06-dslash-d6" aria-hidden="true" style="transform:translate3d(5.2px,6.4px,0);opacity:0.460" data-layout-ignore="">/home</span><span data-hf-id="hf-s06-dslashd7" class="dl dsh" id="s06-dslash-d7" aria-hidden="true" style="transform:translate3d(2.6px,3.2px,0);opacity:0.515" data-layout-ignore="">/home</span><span data-hf-id="hf-s06-dslashf" class="dface" id="s06-dslash-face">/home</span></span></div>
+        <div data-hf-id="hf-s06sl" class="slash" id="s06-slash">/home</div>
         <div data-hf-id="hf-s06ex" class="expl" id="s06-expl"><div data-hf-id="hf-s06em" class="mono">your first-party apps, one text away.</div></div>
       </div>
       <div data-hf-id="hf-s06ph" class="ph" id="s06-ph">
@@ -285,8 +189,7 @@
         </div>
       </div>
         <div data-hf-id="hf-s06hr" class="hero" id="s06-hero"><div data-hf-id="hf-s06hg" class="hgrid"><div data-hf-id="hf-s06h0" class="hi" id="s06-h0"><div data-hf-id="hf-s06ha0" class="art" style="background-image:url(&quot;assets/icons/home.png&quot;)"></div><div data-hf-id="hf-s06hn0" class="nm">home</div></div><div data-hf-id="hf-s06h1" class="hi" id="s06-h1"><div data-hf-id="hf-s06ha1" class="art" style="background-image:url(&quot;assets/icons/shop.png&quot;)"></div><div data-hf-id="hf-s06hn1" class="nm">shop</div></div><div data-hf-id="hf-s06h2" class="hi" id="s06-h2"><div data-hf-id="hf-s06ha2" class="art" style="background-image:url(&quot;assets/icons/pay.png&quot;)"></div><div data-hf-id="hf-s06hn2" class="nm">pay</div></div><div data-hf-id="hf-s06h3" class="hi" id="s06-h3"><div data-hf-id="hf-s06ha3" class="art" style="background-image:url(&quot;assets/icons/inbox.png&quot;)"></div><div data-hf-id="hf-s06hn3" class="nm">inbox</div></div><div data-hf-id="hf-s06h4" class="hi" id="s06-h4"><div data-hf-id="hf-s06ha4" class="art" style="background-image:url(&quot;assets/icons/calendar.png&quot;)"></div><div data-hf-id="hf-s06hn4" class="nm">calendar</div></div><div data-hf-id="hf-s06h5" class="hi" id="s06-h5"><div data-hf-id="hf-s06ha5" class="art" style="background-image:url(&quot;assets/icons/vault.png&quot;)"></div><div data-hf-id="hf-s06hn5" class="nm">key vault</div></div><div data-hf-id="hf-s06h6" class="hi" id="s06-h6"><div data-hf-id="hf-s06ha6" class="art" style="background-image:url(&quot;assets/icons/computer.png&quot;)"></div><div data-hf-id="hf-s06hn6" class="nm">computer</div></div><div data-hf-id="hf-s06h7" class="hi" id="s06-h7"><div data-hf-id="hf-s06ha7" class="art" style="background-image:url(&quot;assets/icons/image.png&quot;)"></div><div data-hf-id="hf-s06hn7" class="nm">imagine</div></div><div data-hf-id="hf-s06h8" class="hi" id="s06-h8"><div data-hf-id="hf-s06ha8" class="art" style="background-image:url(&quot;assets/icons/video.png&quot;)"></div><div data-hf-id="hf-s06hn8" class="nm">zap</div></div><div data-hf-id="hf-s06h9" class="hi" id="s06-h9"><div data-hf-id="hf-s06ha9" class="art" style="background-image:url(&quot;assets/icons/persona.png&quot;)"></div><div data-hf-id="hf-s06hn9" class="nm">persona</div></div></div></div>
-        <div data-hf-id="hf-s06bs" class="bento-spot" id="s06-spot" data-layout-ignore=""></div>
-        <div data-hf-id="hf-s06hc" class="herocap" id="s06-herocap"><div data-hf-id="hf-s06hct" class="cap"><span data-hf-id="hf-s06-dcap" class="dpt " id="s06-dcap"><span data-hf-id="hf-s06-dcapd0" class="dl dsh" id="s06-dcap-d0" aria-hidden="true" style="transform:translate3d(6.0px,8.0px,0);opacity:0.130" data-layout-ignore="">your apps. one thread.</span><span data-hf-id="hf-s06-dcapd1" class="dl dsh" id="s06-dcap-d1" aria-hidden="true" style="transform:translate3d(4.8px,6.4px,0);opacity:0.185" data-layout-ignore="">your apps. one thread.</span><span data-hf-id="hf-s06-dcapd2" class="dl dsh" id="s06-dcap-d2" aria-hidden="true" style="transform:translate3d(3.6px,4.8px,0);opacity:0.240" data-layout-ignore="">your apps. one thread.</span><span data-hf-id="hf-s06-dcapd3" class="dl dsh" id="s06-dcap-d3" aria-hidden="true" style="transform:translate3d(2.4px,3.2px,0);opacity:0.295" data-layout-ignore="">your apps. one thread.</span><span data-hf-id="hf-s06-dcapd4" class="dl dsh" id="s06-dcap-d4" aria-hidden="true" style="transform:translate3d(1.2px,1.6px,0);opacity:0.350" data-layout-ignore="">your apps. one thread.</span><span data-hf-id="hf-s06-dcapf" class="dface" id="s06-dcap-face">your apps. one thread.</span></span></div></div>
+        <div data-hf-id="hf-s06hc" class="herocap" id="s06-herocap"><div data-hf-id="hf-s06hct" class="cap">your apps. one thread.</div></div>
       </div>
       <div data-hf-id="hf-s06hf" class="hitflash" id="s06-flash"></div>
     </div>
@@ -421,134 +324,6 @@
                      {x:to.x,y:to.y,scale:to.s,autoAlpha:1,rotationX:0,duration:to.d||.62,ease:'expo.out'},t);
       }
 
-      // =================== v3.4 component drivers ===================
-      // Each one takes a timeline and a beat. Nothing here reads a pointer or a clock of
-      // its own, so every effect reconstructs exactly on a seek.
-
-      // DEPTH TEXT — the extrusion builds outward from the face, then the whole block
-      // parallaxes a few pixels so the depth is something you see rather than infer.
-      function depthIn(tl, pid, t, o){
-        o=o||{};
-        var face=$('#'+pid+'-face'), wrap=$('#'+pid), ls=$$('#'+pid+' .dl');
-        gsap.set(wrap,{transformPerspective:900});
-        gsap.set(face,{y:o.y!=null?o.y:34,autoAlpha:0});
-        tl.to(face,{y:0,autoAlpha:1,duration:o.d||.70,ease:'expo.out'},t);
-        ls.forEach(function(l,i){
-          var k=ls.length-i;                       // deepest layer last
-          gsap.set(l,{autoAlpha:0});
-          tl.to(l,{autoAlpha:Number(l.style.opacity)||.3,duration:.34,ease:'power2.out'},t+.05+k*0.022);
-        });
-        // the slow push that makes the stack read as depth
-        tl.fromTo(wrap,{rotationY:o.ry0!=null?o.ry0:-7,rotationX:2.4},
-                       {rotationY:o.ry1!=null?o.ry1:3,rotationX:-1.2,
-                        duration:o.pd||4.4,ease:'sine.inOut'},t);
-      }
-
-      // SHINY TEXT — one sheen pass across the glyphs.
-      function shine(tl, pid, t, d){
-        var sh=$('#'+pid+'-sh');
-        gsap.set(sh,{backgroundPosition:'190% 0'});
-        tl.to(sh,{opacity:1,duration:.06,ease:'none'},t);
-        tl.to(sh,{backgroundPosition:'-90% 0',duration:d||.72,ease:'power2.inOut'},t);
-        tl.to(sh,{opacity:0,duration:.10,ease:'none'},t+(d||.72)-.06);
-      }
-
-      // MASKED HEADING — each word is uncovered from under its own clip, and the mesh
-      // behind the glyphs keeps drifting after the line has landed.
-      function maskedIn(tl, pid, t, n, o){
-        o=o||{};
-        var step=o.step||.085;
-        for(var i=0;i<n;i++){
-          var w=$('#'+pid+'-w'+i);
-          gsap.set(w,{yPercent:112,autoAlpha:0,backgroundPosition:'0% 50%'});
-          tl.to(w,{yPercent:0,autoAlpha:1,duration:o.d||.74,ease:'expo.out'},t+i*step);
-          tl.to(w,{backgroundPosition:'190% 50%',duration:o.md||5.2,ease:'sine.inOut'},t+i*step);
-        }
-      }
-
-      // SPLIT TEXT — per-character entrance on a fixed stagger.
-      function splitIn(tl, pid, t, o){
-        o=o||{};
-        var chs=$$('#'+pid+' .ch');
-        chs.forEach(function(c,i){
-          gsap.set(c,{y:o.y!=null?o.y:18,autoAlpha:0,rotationX:o.rx!=null?o.rx:-40,
-                      transformOrigin:'50% 100%'});
-          tl.to(c,{y:0,autoAlpha:1,rotationX:0,duration:o.d||.46,ease:'back.out(1.7)'},
-                t+i*(o.step||.024));
-        });
-      }
-
-      // STAR BORDER — the arc sweeps the ring and each spark twinkles as it passes.
-      function starBorder(tl, pid, t, o){
-        o=o||{};
-        var R=o.r||150, dur=o.d||4.2, ring=$('#'+pid+'-ring'), sps=$$('#'+pid+' .sp');
-        gsap.set(ring,{rotation:0,transformOrigin:'50% 50%'});
-        tl.to(ring,{opacity:o.ringOpacity!=null?o.ringOpacity:.85,duration:.4,ease:'power2.out'},t);
-        tl.to(ring,{rotation:360,duration:dur,ease:'none'},t);
-        sps.forEach(function(sp,i){
-          var a=(i/sps.length)*Math.PI*2;
-          gsap.set(sp,{x:Math.cos(a)*R,y:Math.sin(a)*R,scale:.6});
-          // each spark lights as the arc reaches it, then falls back
-          var at=t+(i/sps.length)*dur;
-          tl.to(sp,{opacity:1,scale:1.35,duration:.12,ease:'power2.out'},at);
-          tl.to(sp,{opacity:.32,scale:.78,duration:.46,ease:'power2.inOut'},at+.12);
-        });
-      }
-
-      // SPECULAR BUTTON — the rim light travels the edge and the glass takes a sweep, on
-      // the beat the approval lands.
-      function specSweep(tl, pid, t, o){
-        o=o||{};
-        var rim=$('#'+pid+'-rim'), gl=$('#'+pid+'-gl');
-        gsap.set(rim,{rotation:0,transformOrigin:'50% 50%'});
-        gsap.set(gl,{xPercent:-130});
-        tl.to(rim,{opacity:1,duration:.10,ease:'power2.out'},t);
-        tl.to(rim,{rotation:360,duration:o.d||1.10,ease:'power2.inOut'},t);
-        tl.to(rim,{opacity:0,duration:.26,ease:'power2.in'},t+(o.d||1.10)-.24);
-        tl.to(gl,{opacity:1,duration:.06,ease:'none'},t+.04);
-        tl.to(gl,{xPercent:130,duration:.56,ease:'power2.inOut'},t+.04);
-        tl.to(gl,{opacity:0,duration:.10,ease:'none'},t+.52);
-      }
-
-      // LIGHT RAYS — the fan opens from the source, breathes, and closes.
-      function raysOpen(tl, pid, t, o){
-        o=o||{};
-        var rs=$$('#'+pid+' .ray'), hold=o.hold||3.0;
-        rs.forEach(function(r,i){
-          var mid=Math.abs(i-(rs.length-1)/2)/((rs.length-1)/2||1);
-          var peak=(o.peak||.62)*(1-mid*0.55);
-          tl.to(r,{opacity:peak,scaleY:1,duration:o.d||.90,ease:'expo.out'},t+i*(o.step||.026));
-          tl.to(r,{opacity:peak*0.55,scaleY:0.92,duration:hold,ease:'sine.inOut'},t+(o.d||.90));
-          tl.to(r,{opacity:0,scaleY:0.6,duration:o.out||.70,ease:'power2.in'},t+(o.d||.90)+hold);
-        });
-      }
-
-      // HALFTONE REVEAL — the dot matrix closes and the picture comes through it.
-      function halftoneOut(tl, el, t, o){
-        o=o||{};
-        var px={v:o.from!=null?o.from:14};
-        gsap.set(el,{opacity:1});
-        tl.to(px,{v:o.to!=null?o.to:2,duration:o.d||1.10,ease:'power2.inOut',onUpdate:function(){
-          el.style.backgroundSize=px.v.toFixed(2)+'px '+px.v.toFixed(2)+'px';
-        }},t);
-        tl.to(el,{opacity:0,duration:o.fade||.42,ease:'power2.in'},t+(o.d||1.10)-.30);
-      }
-
-      // MAGIC BENTO — a spotlight crosses the grid; the tile it is over lifts as it passes.
-      function bentoSweep(tl, spotSel, tiles, t, o){
-        o=o||{};
-        var spot=$(spotSel), dur=o.d||2.6;
-        gsap.set(spot,{x:o.x0||0,y:o.y||0});
-        tl.to(spot,{opacity:1,duration:.34,ease:'power2.out'},t);
-        tl.to(spot,{x:o.x1||1200,duration:dur,ease:'sine.inOut'},t);
-        tl.to(spot,{opacity:0,duration:.44,ease:'power2.in'},t+dur-.30);
-        tiles.forEach(function(el,i){
-          var at=t+(i/Math.max(1,tiles.length-1))*dur*0.86;
-          tl.to(el,{y:-9,scale:1.035,duration:.20,ease:'power2.out'},at);
-          tl.to(el,{y:0,scale:1,duration:.52,ease:'power2.inOut'},at+.20);
-        });
-      }
-
       // every mini-app shot shares the same rig: one stage, one phone pose, one right plane
       function rig(pfx){
         var st=document.getElementById(pfx+'-stage');
@@ -571,7 +346,6 @@
       }
       function rightIn(tl, pfx, t){
         tl.to('#'+pfx+'-slash',{autoAlpha:1,x:0,duration:.60,ease:'expo.out'},t);
-        depthIn(tl, pfx+'-dslash', t, {y:26, d:.68, ry0:-9, ry1:4, pd:5.2});
         tl.to('#'+pfx+'-expl',{autoAlpha:1,y:0,duration:.58,ease:'expo.out'},t+.26);
       }
       function rightOut(tl, pfx, t){
@@ -628,9 +402,6 @@
       cam(tl,stage,3.088,{scale:1.02,d:1.4,e:'expo.out'});
       hit(tl,stage,3.088,{base:1.02,amt:.030,flash:flash,flashAmt:.20,flashD:.24});
       tl.to(herocap,{autoAlpha:1,y:0,duration:.60,ease:'expo.out'},3.560);
-      depthIn(tl,'s06-dcap',3.560,{y:20,d:.60,ry0:-4,ry1:2,pd:2.2});
-      // the spotlight crosses the family, and the tile under it lifts as it goes
-      bentoSweep(tl,'#s06-spot',tiles,3.30,{x0:0,x1:1900,d:2.40});
       // 50.480 — one more breath on the downbeat, then the film moves on
       hit(tl,stage,4.667,{base:1.02,amt:.014});
       cam(tl,stage,5.10,{scale:1.06,d:1.1,e:'none'});

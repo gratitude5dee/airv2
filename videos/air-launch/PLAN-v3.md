@@ -830,3 +830,43 @@ look and not the placement. The honest reading is that a hard radial starburst i
 idiom from this film, which is soft, atmospheric and photographic — and the chromatic split and
 the light rays already do its job better. A catalogue of 190 components is a menu, not a
 checklist.
+
+## 18. v3.5 — the component pass reverted, and a real clipping bug fixed
+
+Review of the v3.4 render found it a step backward, not forward: ten effects landed on every
+shot at once — moving grain, a drifting grainient, edge blur, an aurora, light rays, extruded
+slash words, a halftone reveal, a bento spotlight, orbiting sparks, specular rims — and the
+combined weight read as busy rather than premium. The call was to go back to the version before
+that pass (v3.3, commit `6fd8396`) and build forward from there instead.
+
+**Reverted to the v3.3 source.** `index.html`, `compositions/sky.html`, and every touched
+authoring script (`parts.py`, `mini_common.py`, `s01`–`s08`, `s11`, `sfx.py`) are back to their
+v3.3 state — no grain, no grainient, no edge blur, no aurora, no light rays, no depth-text
+extrusion, no halftone, no bento sweep, no star border, no specular rims. `mix.py` stays: it is
+a tooling refactor (a real script instead of a shell pipeline living only in a transcript), not
+a visual or audio change, and there was a real bug in it worth keeping the file open for.
+
+**Shot 01 plays on music alone.** The cold open (0–10.17s) had ten cues — a tap, a riser, two
+layered impacts on the name's resolve, a whoosh on the lockup, four receive-hits on the banner
+arrivals, a closing whoosh. All ten are gone. Ten seconds of picture against the track by itself
+is a cleaner opening than a foley bed under a shot that has no phone yet to justify one. `sfx.py`
+now carries 84 cues, down from 94.
+
+**The mix was clipping, for real, in every version so far.** Measured directly on the decoded
+`assets/bgm-mix.mp3` (not the video's own downstream re-encode, which happened to read lower):
+the v3.3 mix peaked at **+2.4 dBFS**, the v3.4 mix at **+1.9 dBFS** — both past 0, both genuine
+digital clipping on playback. The pre-encode WAV was correctly capped at −0.5 dBFS by the
+sample-domain limiter in both cases; the overshoot was introduced by the MP3 encode itself.
+`libmp3lame`'s synthesis filter bank rings on a hard-limited signal and can produce **intersample
+peaks** — energy between two encoded samples — that a plain `sample.max()` never sees and a
+sample-domain limiter can't prevent.
+
+`mix.py`'s limiter is now true-peak aware: it upsamples the mix 4× with a polyphase filter,
+computes gain reduction against the ceiling at that oversampled rate, applies the gain to the
+oversampled signal, and only then decimates back down — applying the gain to the audio itself
+rather than resampling a gain curve down onto it, which was the first fix attempt's bug (the
+dip in the gain curve got smoothed away by the same interpolation that had made the peak visible
+in the first place). The ceiling is −3 dBTP pre-encode, chosen by decoding the actual delivered
+MP3 and checking its peak, not by trusting the WAV. Result: **−0.7 dBFS** peak on the decoded
+file, with loudness unchanged (−9.9 LUFS on the standalone mix, matching every prior version) —
+the fix removes the clipping without touching the balance already tuned in `v3.3`/`v3.4`.

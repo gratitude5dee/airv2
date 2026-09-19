@@ -8,11 +8,6 @@ NOUNS=[('a phone.','glyph-phone.svg','text it like a friend — it answers on iM
        ('a composable computer.','glyph-computer.svg','a real machine that remembers everything for you.')]
 STYLE = P.FONTS + "\n" + P.tokens(R) + "\n" + P.fx_css(R) + "\n" + P.TYPER_CSS.replace('%R%',R) + """
       #s03-root .flash{position:absolute;inset:0;background:#FFF6E6;opacity:0}
-      /* LIGHT RAYS (React Bits) — the crest throws light instead of only brightening. The
-         fan is anchored on the horizon behind the word, so the beams rake up past it. */
-      #s03-root .rays{left:960px;top:640px;width:0;height:0}
-      #s03-root .rayglow{left:460px;top:300px;width:1000px;height:680px}
-
       #s03-root .airbig{position:absolute;left:0;right:0;top:238px;text-align:center;font-family:'Newsreader',Georgia,serif;
         font-weight:200;font-size:452px;letter-spacing:-.05em;line-height:1;color:#FFFBF2}
       #s03-root .airmark{position:absolute;left:104px;top:72px;font-family:'Newsreader',Georgia,serif;font-weight:300;
@@ -44,8 +39,6 @@ chips = "".join(
 BODY = f"""    <div data-hf-id="hf-s03frame" class="frame clip" id="s03-frame" data-layout-allow-overflow="" data-start="0" data-duration="8.986" data-track-index="1">
       <div data-hf-id="hf-s03wa" class="wash"></div>
       <div data-hf-id="hf-s03st" class="stage" id="s03-stage">
-        <div data-hf-id="hf-s03rg" class="rayglow" id="s03-rayglow" data-layout-ignore=""></div>
-        {P.light_rays('s03-rays', n=11, w=150, h=1240, spread=96)}
         <div data-hf-id="hf-s03ab" class="airbig" id="s03-airbig">{P.cg('s03-cgair','air')}</div>
         <div data-hf-id="hf-s03am" class="airmark" id="s03-airmark">air</div>
 {heroes}
@@ -82,13 +75,6 @@ SCRIPT = P.FX_JS + P.TYPER_JS + """
       // 24.358 — THE CRASH. The sun crests behind, the frame takes a near-white hit, and the
       // name arrives at the size of the whole screen with its colour pulled apart at the edges.
       tl.fromTo('#s03-flash',{opacity:.92},{opacity:0,duration:.34,ease:'power2.out'},0);
-      // the sun crests and throws a fan of light up through the word
-      gsap.set('#s03-rays',{rotation:180,transformOrigin:'50% 0%'});
-      gsap.set('#s03-rayglow',{opacity:0,scale:.7,transformOrigin:'50% 62%'});
-      raysOpen(tl,'s03-rays',0,{peak:.66,d:1.00,step:.030,hold:4.4,out:1.10});
-      tl.to('#s03-rayglow',{opacity:.72,scale:1,duration:1.10,ease:'expo.out'},0);
-      tl.to('#s03-rayglow',{opacity:.34,scale:1.10,duration:4.6,ease:'sine.inOut'},1.10);
-      tl.to('#s03-rayglow',{opacity:0,duration:1.20,ease:'power2.in'},5.70);
       tl.to(big,{autoAlpha:1,scale:1,duration:.90,ease:'expo.out'},0);
       cgPulse(tl,'s03-cgair',0,44,1.10);
       hit(tl,stage,0,{amt:.055,shake:9});

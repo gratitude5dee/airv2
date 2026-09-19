@@ -36,7 +36,6 @@ BODY = f"""    <div data-hf-id="hf-s05frame" class="frame clip" id="s05-frame" d
       <div data-hf-id="hf-s05st" class="stage" id="s05-stage">
         <div data-hf-id="hf-s05wl" class="wall" id="s05-wall">{tiles}</div>
         <div data-hf-id="hf-s05sc" class="scrim"></div>
-        <div data-hf-id="hf-s05ht" class="halft" id="s05-halftone" data-layout-ignore=""></div>
         <div data-hf-id="hf-s05nm" class="num" id="s05-num">0</div>
         <div data-hf-id="hf-s05cp" class="cap" id="s05-cap">connect your apps.</div>
       </div>
@@ -58,10 +57,6 @@ SCRIPT = P.FX_JS + f"""
       gsap.set(hf,{{opacity:0}});
       gsap.set(stage,{{scale:1.02,transformOrigin:'50% 46%'}});
       gsap.set('#s05-cap',{{autoAlpha:0,y:16}});
-      // HALFTONE REVEAL (React Bits): the wall does not fade up, it resolves. A print dot
-      // matrix sits over the grid and its dots close as the connectors come online, so the
-      // shot reads as a picture being developed rather than a layer being turned on.
-      gsap.set('#s05-halftone',{{opacity:0}});
       gsap.set('#s05-seed',{{autoAlpha:0,scale:.08,x:13,y:-40,transformOrigin:'50% 50%'}});
       mk.forEach(function(m){{ gsap.set(m,{{autoAlpha:0,scale:.80,transformOrigin:'50% 50%'}}); }});
       var n={{v:0}}, numEl=$('#s05-num');
@@ -87,7 +82,6 @@ SCRIPT = P.FX_JS + f"""
       tl.set(numEl,{{textContent:'1,000+'}},4.667);
       tl.to(numEl,{{scale:1.05,duration:.12,ease:'power2.out'}},4.667);
       tl.to(numEl,{{scale:1,duration:.42,ease:'power2.inOut'}},4.787);
-      halftoneOut(tl,$('#s05-halftone'),0.10,{{from:15,to:2.2,d:3.60,fade:.70}});
       tl.to('#s05-cap',{{autoAlpha:1,y:0,duration:.60,ease:'expo.out'}},4.667);
       hit(tl,stage,0,{{base:1.02,amt:.026}});
       [1.556,3.111,4.667].forEach(function(t){{ hit(tl,stage,t,{{base:1.02,amt:.014}}); }});

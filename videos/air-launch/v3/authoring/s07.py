@@ -112,7 +112,7 @@ BODY = f"""    <div data-hf-id="hf-s07frame" class="frame clip" id="s07-frame" d
           <div data-hf-id="hf-s07hst" class="state" id="s07-hstate"><span data-hf-id="hf-s07hpl" class="pill need">Needs you</span>
             <span data-hf-id="hf-s07hl" class="lbl">staged · only you can see this</span></div>
           <div data-hf-id="hf-s07ha" class="act" id="s07-hact">
-            <div data-hf-id="hf-s07hok" class="big btn3 ok3 spec" id="s07-hero-ok">Approve{P.specular("s07-hspec")}</div>
+            <div data-hf-id="hf-s07hok" class="big btn3 ok3" id="s07-hero-ok">Approve</div>
             <div data-hf-id="hf-s07hed" class="ghost btn3 gh3">Edit</div></div>
         </div>
         <div data-hf-id="hf-s07lp" class="livepill" id="s07-livepill">LIVE · mini.wzrd.tech/gratitude-shop</div>
@@ -147,10 +147,6 @@ SCRIPT = M.COMMON_JS + f"""
       hit(tl,stage,1.556,{{amt:.018}});
       rightOut(tl,'s07',1.24);
       // 55.147 — the tap. A staged listing is private until the owner says otherwise.
-      // SPECULAR BUTTON (React Bits): a rim light runs the edge of the glass on the beat
-      // the approval lands. The source follows a cursor; here the light arrives with the
-      // decision, which is the better trigger.
-      specSweep(tl,'s07-hspec',3.088,{{d:1.02}});
       tl.to('#s07-hero-ok',{{scale:.94,duration:.07,ease:'power2.out'}},3.088);
       tl.to('#s07-hero-ok',{{scale:1,duration:.16,ease:'power2.inOut'}},3.166);
       hit(tl,stage,3.088,{{amt:.012}});

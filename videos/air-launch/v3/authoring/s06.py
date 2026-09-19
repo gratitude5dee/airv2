@@ -16,13 +16,7 @@ STYLE = M.base_style(R, """
       #s06-root .hi .nm{margin-top:14px;text-align:center;font-family:'Azeret Mono',monospace;font-size:17px;
         letter-spacing:.06em;color:rgba(244,239,230,.86);text-shadow:0 2px 12px rgba(3,7,18,.7)}
       #s06-root .herocap{position:absolute;left:0;right:0;top:846px;text-align:center}
-      #s06-root .herocap .cap{font-size:76px;line-height:1.02}
-      /* MAGIC BENTO (React Bits): a spotlight crosses the family and each tile lifts as it
-         passes. The grid stops being a wall of icons and becomes a surface with a light
-         moving over it — which is what a home screen under your thumb actually looks like. */
-      #s06-root .bento-spot{left:-420px;top:120px;width:860px;height:780px}
-      #s06-root .herocap .dface{color:var(--ink)}
-      #s06-root .herocap .dsh{color:rgba(3,9,24,.30)}""")
+      #s06-root .herocap .cap{font-size:76px;line-height:1.02}""")
 
 grid = ''.join(f'<div data-hf-id="hf-s06g{i}" class="gi" id="s06-g{i}" style="background-image:url(&quot;assets/icons/{n}.png&quot;)"></div>' for i,(n,_) in enumerate(ICONS))
 hero = ''.join(f'<div data-hf-id="hf-s06h{i}" class="hi" id="s06-h{i}">'
@@ -51,8 +45,7 @@ BODY = f"""    <div data-hf-id="hf-s06frame" class="frame clip" id="s06-frame" d
 {M.right_plane(PFX,'/home','your first-party apps, one text away.')}
 {M.phone(PFX)}
         <div data-hf-id="hf-s06hr" class="hero" id="s06-hero"><div data-hf-id="hf-s06hg" class="hgrid">{hero}</div></div>
-        <div data-hf-id="hf-s06bs" class="bento-spot" id="s06-spot" data-layout-ignore=""></div>
-        <div data-hf-id="hf-s06hc" class="herocap" id="s06-herocap"><div data-hf-id="hf-s06hct" class="cap">{P.depth_text('s06-dcap','your apps. one thread.',layers=5,dx=1.2,dy=1.6)}</div></div>
+        <div data-hf-id="hf-s06hc" class="herocap" id="s06-herocap"><div data-hf-id="hf-s06hct" class="cap">your apps. one thread.</div></div>
       </div>
       <div data-hf-id="hf-s06hf" class="hitflash" id="s06-flash"></div>
     </div>"""
@@ -95,9 +88,6 @@ SCRIPT = M.COMMON_JS + f"""
       cam(tl,stage,3.088,{{scale:1.02,d:1.4,e:'expo.out'}});
       hit(tl,stage,3.088,{{base:1.02,amt:.030,flash:flash,flashAmt:.20,flashD:.24}});
       tl.to(herocap,{{autoAlpha:1,y:0,duration:.60,ease:'expo.out'}},3.560);
-      depthIn(tl,'s06-dcap',3.560,{{y:20,d:.60,ry0:-4,ry1:2,pd:2.2}});
-      // the spotlight crosses the family, and the tile under it lifts as it goes
-      bentoSweep(tl,'#s06-spot',tiles,3.30,{{x0:0,x1:1900,d:2.40}});
       // 50.480 — one more breath on the downbeat, then the film moves on
       hit(tl,stage,4.667,{{base:1.02,amt:.014}});
       cam(tl,stage,5.10,{{scale:1.06,d:1.1,e:'none'}});

@@ -143,17 +143,11 @@ def s_swell(dur=1.6, f=196):
 
 # ------------------------------------------------------------------ the score
 CUES = [
-  # shot 01 — the dot, the name, the four banners, the surge
-  (0.550, s_tap(), 'tap', 0.0),
-  (2.180, s_riser(1.05), 'riser', 0.0),
-  (2.415, s_shimmer(2.2), 'send', 0.0),
-  (2.415, s_impact(1.0), 'whoosh', 0.0),
-  (7.105, s_whoosh(.46), 'whoosh', -0.1),
-  (8.173, s_recv(), 'recv', 0.22),
-  (8.661, s_recv(), 'recv', 0.16),
-  (9.149, s_recv(), 'recv', 0.10),
-  (9.636, s_recv(), 'recv', 0.04),
-  (10.100, s_whoosh(.40), 'whoosh', 0.0),
+  # shot 01 — the cold open plays on music alone. Every cue that lived here (the
+  # dot's tap, the riser under the name, the four banner arrivals, the surge)
+  # is cut: ten seconds of picture with nothing behind it but the track is a
+  # cleaner opening than a foley bed under a shot that has no phone yet to
+  # justify one.
   # shot 02 — the thread
   (10.519, s_send(), 'send', 0.18),
   (13.189, s_recv(), 'recv', -0.14),
@@ -275,19 +269,8 @@ def cue_rms(sig):
     seg = np.pad(sig, (0, max(0, w-len(sig))))[:w]
     return float(np.sqrt((seg**2).mean())) or 1e-6
 
-# The first half runs another 6 dB down. The opening is sparse — a night sky, one phone,
-# one word — so foley that reads as texture under the chorus reads as clatter under it.
-# The trim lifts across /shop so the second half is untouched and the change is never a
-# step you can hear.
-FH_FULL, FH_CLEAR, FH_DB = 52.059, 62.0, -6.0
-def half_trim(t):
-    if t <= FH_FULL: return FH_DB
-    if t >= FH_CLEAR: return 0.0
-    u = (t - FH_FULL) / (FH_CLEAR - FH_FULL)
-    return FH_DB * (1.0 - u*u*(3.0 - 2.0*u))
-
 for t, sig, role, pan in CUES:
-    target = ROLE_DB.get(role, -10.0) + half_trim(t)
+    target = ROLE_DB.get(role, -10.0)
     m = max(0.035, music_rms(t))
     want = m * (10 ** (target/20.0))
     g = want / max(1e-6, cue_rms(sig))

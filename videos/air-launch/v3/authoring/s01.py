@@ -12,13 +12,6 @@ STYLE = P.FONTS + "\n" + P.tokens(R) + "\n" + P.fx_css(R) + "\n" + P.chrome_css(
         mix-blend-mode:screen}
       #s01-root .nameglow i{position:absolute;inset:0;display:block;background:
         radial-gradient(38% 34% at 50% 50%,rgba(255,236,200,.42),rgba(255,236,200,0) 70%)}
-      /* LIGHT PILLAR (React Bits): a column of light behind the name as it resolves, so the
-         word looks lit from somewhere rather than simply drawn bright on a dark field. */
-      #s01-root .pillar{position:absolute;left:830px;top:-160px;width:260px;height:1100px;pointer-events:none;
-        mix-blend-mode:screen;opacity:0;will-change:transform,opacity;
-        background:linear-gradient(180deg,rgba(186,220,255,0) 0%,rgba(198,226,255,.42) 26%,
-                   rgba(214,236,255,.54) 50%,rgba(186,220,255,.30) 74%,rgba(186,220,255,0) 100%);
-        filter:blur(46px)}
       #s01-root .markwrap{position:absolute;left:680px;top:686px;width:560px}
       #s01-root .banners{position:absolute;left:777px;top:64px;width:366px}
       #s01-root .bnr{position:absolute;left:0;top:0;width:366px;height:78px;border-radius:24px;
@@ -46,7 +39,6 @@ banners = "\n".join(
 
 BODY = f"""    <div data-hf-id="hf-s01frame" class="frame clip" id="s01-frame" data-layout-allow-overflow="" data-start="0" data-duration="10.17" data-track-index="1">
       <div data-hf-id="hf-s01st" class="stage" id="s01-stage">
-        <div data-hf-id="hf-s01pl" class="pillar" id="s01-pillar" data-layout-ignore=""></div>
         <div data-hf-id="hf-s01gl" class="nameglow" id="s01-glow"><i data-hf-id="hf-s01gi"></i></div>
         <div data-hf-id="hf-s01nw" class="namewrap" id="s01-namewrap">
           <canvas data-hf-id="hf-s01px" id="s01-px" class="px" width="1100" height="420"></canvas>
@@ -97,10 +89,6 @@ SCRIPT = P.FX_JS + """
       tl.to(pxs,{b:1,duration:.92,ease:'power3.out',onUpdate:redraw},2.415);
       tl.to(px,{scale:1,duration:1.0,ease:'expo.out'},2.415);
       tl.to(glow,{opacity:1,duration:.9,ease:'power2.out'},2.46);
-      gsap.set('#s01-pillar',{scaleX:.2,scaleY:.7,transformOrigin:'50% 50%'});
-      tl.to('#s01-pillar',{opacity:.80,scaleX:1,scaleY:1,duration:1.10,ease:'expo.out'},2.415);
-      tl.to('#s01-pillar',{opacity:.34,scaleX:1.5,duration:3.50,ease:'sine.inOut'},2.415+1.10);
-      tl.to('#s01-pillar',{opacity:0,duration:.60,ease:'power2.in'},7.105);
       // the camera breathes back off the name instead of sitting still
       cam(tl,stage,2.415,{scale:1.0,d:1.5,e:'expo.out'});
       hit(tl,stage,2.415,{base:1.10,amt:.05,flash:flash,flashAmt:.30,flashD:.26});

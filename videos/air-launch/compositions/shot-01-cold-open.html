@@ -64,92 +64,6 @@
       #s01-root .hitflash{position:absolute;inset:0;pointer-events:none;background:#EAF2FF;opacity:0;
         mix-blend-mode:screen}
       #s01-root .hero-card{position:absolute;will-change:transform,opacity;transform-origin:50% 50%}
-
-      /* ====================== v3.4 component kit ======================
-         React Bits studies, re-authored for linear time. Every one of them is a pointer,
-         scroll or hover effect at the source; here the input is the timeline clock, so the
-         behaviour is deterministic and a seek reconstructs it exactly. */
-
-      /* --- DEPTH TEXT: layered extruded type. The source parallaxes against the pointer;
-             here the extrusion is a fixed stack of offset copies and the parallax is a
-             slow push on the stage, so the slash words read as objects with mass. --- */
-      #s01-root .dpt{position:relative;display:inline-block;will-change:transform}
-      #s01-root .dpt .dl{position:absolute;left:0;top:0;white-space:nowrap;pointer-events:none;
-        will-change:transform,opacity}
-      #s01-root .dpt .dface{position:relative;color:var(--ink)}
-      #s01-root .dpt .dsh{color:rgba(3,9,24,.42);filter:blur(.4px)}
-
-      /* --- SHINY TEXT: a metallic sheen crosses the glyphs. Masked to the text itself,
-             so the highlight is in the letterform and not a bar sliding over it. --- */
-      #s01-root .shiny{position:relative;display:inline-block}
-      #s01-root .shiny .sh{position:absolute;left:0;top:0;white-space:nowrap;pointer-events:none;
-        background:linear-gradient(104deg,rgba(255,255,255,0) 40%,rgba(255,255,255,.95) 50%,rgba(255,255,255,0) 60%);
-        -webkit-background-clip:text;background-clip:text;color:transparent;
-        background-size:260% 100%;will-change:background-position;opacity:0}
-
-      /* --- MASKED HEADING: a drifting colour mesh shows through the glyphs, and the line
-             is uncovered word by word rather than faded in whole. --- */
-      #s01-root .mhead{display:inline-block}
-      #s01-root .mhead .mw{display:inline-block;overflow:hidden;vertical-align:bottom}
-      #s01-root .mhead .mw > span{display:inline-block;will-change:transform,opacity}
-      #s01-root .mhead.mesh .mw > span{
-        background:linear-gradient(96deg,#FFF4E4 0%,#CFE3FF 26%,#FFE2C0 52%,#BBD6FF 74%,#FFF4E4 100%);
-        background-size:280% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;
-        will-change:transform,opacity,background-position}
-
-      /* --- SPLIT TEXT: per-character staggered entrance. --- */
-      #s01-root .split .ch{display:inline-block;white-space:pre;will-change:transform,opacity}
-
-      /* --- STAR BORDER: sparkles orbit the edge of a thing with a twinkle pulse. The
-             source animates a gradient on hover; here each spark is a real element placed
-             on the ring and lit on its own beat. --- */
-      #s01-root .starb{position:absolute;inset:-14px;pointer-events:none}
-      #s01-root .starb .sp{position:absolute;left:50%;top:50%;width:7px;height:7px;margin:-3.5px 0 0 -3.5px;
-        border-radius:50%;background:#FFFFFF;opacity:0;mix-blend-mode:screen;
-        box-shadow:0 0 10px rgba(198,226,255,.95),0 0 22px rgba(120,180,255,.55);
-        will-change:transform,opacity}
-      #s01-root .starb .ring{position:absolute;inset:0;border-radius:50%;opacity:0;
-        background:conic-gradient(from 0deg,rgba(150,200,255,0) 0deg,rgba(190,224,255,.60) 40deg,
-                   rgba(150,200,255,0) 110deg,rgba(150,200,255,0) 360deg);
-        -webkit-mask:radial-gradient(closest-side,transparent 92%,#000 93%);
-        mask:radial-gradient(closest-side,transparent 92%,#000 93%);will-change:transform,opacity}
-
-      /* --- SPECULAR BUTTON: a rim light sweeps the edge of the glass. The source tracks
-             the cursor; here the sweep is on the approval's own beat, which is better —
-             the light arrives when the decision does. --- */
-      #s01-root .spec{position:relative;isolation:isolate}
-      #s01-root .spec .rim{position:absolute;inset:-1px;border-radius:inherit;pointer-events:none;opacity:0;
-        background:conic-gradient(from 0deg,rgba(255,255,255,0) 0deg,rgba(255,255,255,.92) 26deg,
-                   rgba(255,255,255,0) 74deg,rgba(255,255,255,0) 360deg);
-        -webkit-mask:linear-gradient(#000,#000) content-box,linear-gradient(#000,#000);
-        -webkit-mask-composite:xor;mask-composite:exclude;padding:1.6px;
-        will-change:transform,opacity}
-      #s01-root .spec .gl{position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:0;
-        background:linear-gradient(100deg,rgba(255,255,255,0) 38%,rgba(255,255,255,.42) 50%,rgba(255,255,255,0) 62%);
-        will-change:transform,opacity;mix-blend-mode:screen}
-
-      /* --- LIGHT RAYS / SIDE RAYS: volumetric beams. Each ray is a masked gradient wedge
-             anchored at the source, so the crest throws light instead of just brightening. --- */
-      #s01-root .rays{position:absolute;pointer-events:none;mix-blend-mode:screen;
-        transform-origin:50% 0%;will-change:transform,opacity}
-      #s01-root .rays .ray{position:absolute;left:50%;top:0;transform-origin:50% 0%;opacity:0;
-        background:linear-gradient(180deg,rgba(255,231,196,.78) 0%,rgba(255,214,160,.22) 42%,rgba(255,200,140,0) 100%);
-        filter:blur(9px);will-change:transform,opacity}
-      #s01-root .rayglow{position:absolute;pointer-events:none;mix-blend-mode:screen;opacity:0;
-        background:radial-gradient(50% 50% at 50% 50%,rgba(255,236,206,.92) 0%,rgba(255,206,150,.34) 38%,rgba(255,190,120,0) 72%);
-        will-change:transform,opacity}
-
-
-      /* --- HALFTONE REVEAL: a print dot matrix that resolves into the picture. The source
-             resolves around the cursor; here the dot radius closes on the beat. --- */
-      #s01-root .halft{position:absolute;inset:0;pointer-events:none;will-change:opacity;
-        background-image:radial-gradient(circle,rgba(6,12,28,.92) 46%,rgba(6,12,28,0) 52%);
-        background-size:14px 14px;background-position:0 0}
-
-      /* --- MAGIC BENTO: a spotlight crosses a grid and the tile under it lifts. --- */
-      #s01-root .bento-spot{position:absolute;pointer-events:none;mix-blend-mode:screen;opacity:0;
-        background:radial-gradient(50% 50% at 50% 50%,rgba(210,232,255,.42) 0%,rgba(160,200,255,.12) 44%,rgba(160,200,255,0) 74%);
-        will-change:transform,opacity}
       #s01-root .mark{position:relative;width:560px;height:138.4px;overflow:hidden;will-change:transform,opacity}
       #s01-root .mark img{position:absolute;left:-28.5px;top:-124.0px;width:628.4px;height:auto;display:block;
         filter:brightness(1.22) contrast(1.06) drop-shadow(0 0 18px rgba(150,196,255,.34))}
@@ -165,13 +79,6 @@
         mix-blend-mode:screen}
       #s01-root .nameglow i{position:absolute;inset:0;display:block;background:
         radial-gradient(38% 34% at 50% 50%,rgba(255,236,200,.42),rgba(255,236,200,0) 70%)}
-      /* LIGHT PILLAR (React Bits): a column of light behind the name as it resolves, so the
-         word looks lit from somewhere rather than simply drawn bright on a dark field. */
-      #s01-root .pillar{position:absolute;left:830px;top:-160px;width:260px;height:1100px;pointer-events:none;
-        mix-blend-mode:screen;opacity:0;will-change:transform,opacity;
-        background:linear-gradient(180deg,rgba(186,220,255,0) 0%,rgba(198,226,255,.42) 26%,
-                   rgba(214,236,255,.54) 50%,rgba(186,220,255,.30) 74%,rgba(186,220,255,0) 100%);
-        filter:blur(46px)}
       #s01-root .markwrap{position:absolute;left:680px;top:686px;width:560px}
       #s01-root .banners{position:absolute;left:777px;top:64px;width:366px}
       #s01-root .bnr{position:absolute;left:0;top:0;width:366px;height:78px;border-radius:24px;
@@ -192,7 +99,6 @@
 
     <div data-hf-id="hf-s01frame" class="frame clip" id="s01-frame" data-layout-allow-overflow="" data-start="0" data-duration="10.17" data-track-index="1">
       <div data-hf-id="hf-s01st" class="stage" id="s01-stage">
-        <div data-hf-id="hf-s01pl" class="pillar" id="s01-pillar" data-layout-ignore=""></div>
         <div data-hf-id="hf-s01gl" class="nameglow" id="s01-glow"><i data-hf-id="hf-s01gi"></i></div>
         <div data-hf-id="hf-s01nw" class="namewrap" id="s01-namewrap">
           <canvas data-hf-id="hf-s01px" id="s01-px" class="px" width="1100" height="420"></canvas>
@@ -277,134 +183,6 @@
                      {x:to.x,y:to.y,scale:to.s,autoAlpha:1,rotationX:0,duration:to.d||.62,ease:'expo.out'},t);
       }
 
-      // =================== v3.4 component drivers ===================
-      // Each one takes a timeline and a beat. Nothing here reads a pointer or a clock of
-      // its own, so every effect reconstructs exactly on a seek.
-
-      // DEPTH TEXT — the extrusion builds outward from the face, then the whole block
-      // parallaxes a few pixels so the depth is something you see rather than infer.
-      function depthIn(tl, pid, t, o){
-        o=o||{};
-        var face=$('#'+pid+'-face'), wrap=$('#'+pid), ls=$$('#'+pid+' .dl');
-        gsap.set(wrap,{transformPerspective:900});
-        gsap.set(face,{y:o.y!=null?o.y:34,autoAlpha:0});
-        tl.to(face,{y:0,autoAlpha:1,duration:o.d||.70,ease:'expo.out'},t);
-        ls.forEach(function(l,i){
-          var k=ls.length-i;                       // deepest layer last
-          gsap.set(l,{autoAlpha:0});
-          tl.to(l,{autoAlpha:Number(l.style.opacity)||.3,duration:.34,ease:'power2.out'},t+.05+k*0.022);
-        });
-        // the slow push that makes the stack read as depth
-        tl.fromTo(wrap,{rotationY:o.ry0!=null?o.ry0:-7,rotationX:2.4},
-                       {rotationY:o.ry1!=null?o.ry1:3,rotationX:-1.2,
-                        duration:o.pd||4.4,ease:'sine.inOut'},t);
-      }
-
-      // SHINY TEXT — one sheen pass across the glyphs.
-      function shine(tl, pid, t, d){
-        var sh=$('#'+pid+'-sh');
-        gsap.set(sh,{backgroundPosition:'190% 0'});
-        tl.to(sh,{opacity:1,duration:.06,ease:'none'},t);
-        tl.to(sh,{backgroundPosition:'-90% 0',duration:d||.72,ease:'power2.inOut'},t);
-        tl.to(sh,{opacity:0,duration:.10,ease:'none'},t+(d||.72)-.06);
-      }
-
-      // MASKED HEADING — each word is uncovered from under its own clip, and the mesh
-      // behind the glyphs keeps drifting after the line has landed.
-      function maskedIn(tl, pid, t, n, o){
-        o=o||{};
-        var step=o.step||.085;
-        for(var i=0;i<n;i++){
-          var w=$('#'+pid+'-w'+i);
-          gsap.set(w,{yPercent:112,autoAlpha:0,backgroundPosition:'0% 50%'});
-          tl.to(w,{yPercent:0,autoAlpha:1,duration:o.d||.74,ease:'expo.out'},t+i*step);
-          tl.to(w,{backgroundPosition:'190% 50%',duration:o.md||5.2,ease:'sine.inOut'},t+i*step);
-        }
-      }
-
-      // SPLIT TEXT — per-character entrance on a fixed stagger.
-      function splitIn(tl, pid, t, o){
-        o=o||{};
-        var chs=$$('#'+pid+' .ch');
-        chs.forEach(function(c,i){
-          gsap.set(c,{y:o.y!=null?o.y:18,autoAlpha:0,rotationX:o.rx!=null?o.rx:-40,
-                      transformOrigin:'50% 100%'});
-          tl.to(c,{y:0,autoAlpha:1,rotationX:0,duration:o.d||.46,ease:'back.out(1.7)'},
-                t+i*(o.step||.024));
-        });
-      }
-
-      // STAR BORDER — the arc sweeps the ring and each spark twinkles as it passes.
-      function starBorder(tl, pid, t, o){
-        o=o||{};
-        var R=o.r||150, dur=o.d||4.2, ring=$('#'+pid+'-ring'), sps=$$('#'+pid+' .sp');
-        gsap.set(ring,{rotation:0,transformOrigin:'50% 50%'});
-        tl.to(ring,{opacity:o.ringOpacity!=null?o.ringOpacity:.85,duration:.4,ease:'power2.out'},t);
-        tl.to(ring,{rotation:360,duration:dur,ease:'none'},t);
-        sps.forEach(function(sp,i){
-          var a=(i/sps.length)*Math.PI*2;
-          gsap.set(sp,{x:Math.cos(a)*R,y:Math.sin(a)*R,scale:.6});
-          // each spark lights as the arc reaches it, then falls back
-          var at=t+(i/sps.length)*dur;
-          tl.to(sp,{opacity:1,scale:1.35,duration:.12,ease:'power2.out'},at);
-          tl.to(sp,{opacity:.32,scale:.78,duration:.46,ease:'power2.inOut'},at+.12);
-        });
-      }
-
-      // SPECULAR BUTTON — the rim light travels the edge and the glass takes a sweep, on
-      // the beat the approval lands.
-      function specSweep(tl, pid, t, o){
-        o=o||{};
-        var rim=$('#'+pid+'-rim'), gl=$('#'+pid+'-gl');
-        gsap.set(rim,{rotation:0,transformOrigin:'50% 50%'});
-        gsap.set(gl,{xPercent:-130});
-        tl.to(rim,{opacity:1,duration:.10,ease:'power2.out'},t);
-        tl.to(rim,{rotation:360,duration:o.d||1.10,ease:'power2.inOut'},t);
-        tl.to(rim,{opacity:0,duration:.26,ease:'power2.in'},t+(o.d||1.10)-.24);
-        tl.to(gl,{opacity:1,duration:.06,ease:'none'},t+.04);
-        tl.to(gl,{xPercent:130,duration:.56,ease:'power2.inOut'},t+.04);
-        tl.to(gl,{opacity:0,duration:.10,ease:'none'},t+.52);
-      }
-
-      // LIGHT RAYS — the fan opens from the source, breathes, and closes.
-      function raysOpen(tl, pid, t, o){
-        o=o||{};
-        var rs=$$('#'+pid+' .ray'), hold=o.hold||3.0;
-        rs.forEach(function(r,i){
-          var mid=Math.abs(i-(rs.length-1)/2)/((rs.length-1)/2||1);
-          var peak=(o.peak||.62)*(1-mid*0.55);
-          tl.to(r,{opacity:peak,scaleY:1,duration:o.d||.90,ease:'expo.out'},t+i*(o.step||.026));
-          tl.to(r,{opacity:peak*0.55,scaleY:0.92,duration:hold,ease:'sine.inOut'},t+(o.d||.90));
-          tl.to(r,{opacity:0,scaleY:0.6,duration:o.out||.70,ease:'power2.in'},t+(o.d||.90)+hold);
-        });
-      }
-
-      // HALFTONE REVEAL — the dot matrix closes and the picture comes through it.
-      function halftoneOut(tl, el, t, o){
-        o=o||{};
-        var px={v:o.from!=null?o.from:14};
-        gsap.set(el,{opacity:1});
-        tl.to(px,{v:o.to!=null?o.to:2,duration:o.d||1.10,ease:'power2.inOut',onUpdate:function(){
-          el.style.backgroundSize=px.v.toFixed(2)+'px '+px.v.toFixed(2)+'px';
-        }},t);
-        tl.to(el,{opacity:0,duration:o.fade||.42,ease:'power2.in'},t+(o.d||1.10)-.30);
-      }
-
-      // MAGIC BENTO — a spotlight crosses the grid; the tile it is over lifts as it passes.
-      function bentoSweep(tl, spotSel, tiles, t, o){
-        o=o||{};
-        var spot=$(spotSel), dur=o.d||2.6;
-        gsap.set(spot,{x:o.x0||0,y:o.y||0});
-        tl.to(spot,{opacity:1,duration:.34,ease:'power2.out'},t);
-        tl.to(spot,{x:o.x1||1200,duration:dur,ease:'sine.inOut'},t);
-        tl.to(spot,{opacity:0,duration:.44,ease:'power2.in'},t+dur-.30);
-        tiles.forEach(function(el,i){
-          var at=t+(i/Math.max(1,tiles.length-1))*dur*0.86;
-          tl.to(el,{y:-9,scale:1.035,duration:.20,ease:'power2.out'},at);
-          tl.to(el,{y:0,scale:1,duration:.52,ease:'power2.inOut'},at+.20);
-        });
-      }
-
       var stage=$('#s01-stage'), flash=$('#s01-flash');
       var mark=$('#s01-markwrap'), sweep=$('#s01-mark-sweep'), seed=$('#s01-seed'), dot=$('#s01-seedot');
       var bnrs=$$('.bnr'), glow=$('#s01-glow');
@@ -439,10 +217,6 @@
       tl.to(pxs,{b:1,duration:.92,ease:'power3.out',onUpdate:redraw},2.415);
       tl.to(px,{scale:1,duration:1.0,ease:'expo.out'},2.415);
       tl.to(glow,{opacity:1,duration:.9,ease:'power2.out'},2.46);
-      gsap.set('#s01-pillar',{scaleX:.2,scaleY:.7,transformOrigin:'50% 50%'});
-      tl.to('#s01-pillar',{opacity:.80,scaleX:1,scaleY:1,duration:1.10,ease:'expo.out'},2.415);
-      tl.to('#s01-pillar',{opacity:.34,scaleX:1.5,duration:3.50,ease:'sine.inOut'},2.415+1.10);
-      tl.to('#s01-pillar',{opacity:0,duration:.60,ease:'power2.in'},7.105);
       // the camera breathes back off the name instead of sitting still
       cam(tl,stage,2.415,{scale:1.0,d:1.5,e:'expo.out'});
       hit(tl,stage,2.415,{base:1.10,amt:.05,flash:flash,flashAmt:.30,flashD:.26});

@@ -5,13 +5,9 @@ def base_style(R, extra=""):
     return (P.FONTS + "\n" + P.tokens(R) + "\n" + P.phone_css(R,R[:3]) + "\n" + P.fx_css(R) + f"""
       #{R} .ph{{left:470px;top:103px}}
       #{R} .right{{position:absolute;left:1010px;top:0;width:880px;height:1080px}}
-      /* DEPTH TEXT (React Bits): the slash word was a flat ghost behind the phone. It is now
-         an extruded object — a lit face over a stack of offset shadow copies — and the whole
-         block turns a few degrees across the shot, so the word has a side you can see. */
       #{R} .slash{{position:absolute;left:0;top:262px;font-family:'Azeret Mono',monospace;font-weight:500;
-        font-size:196px;letter-spacing:-.05em;white-space:nowrap}}
-      #{R} .slash .dface{{color:rgba(247,242,233,.62);text-shadow:0 6px 40px rgba(3,7,18,.5)}}
-      #{R} .slash .dsh{{color:rgba(4,10,26,.50)}}
+        font-size:196px;letter-spacing:-.05em;color:var(--ink);opacity:.36;white-space:nowrap;
+        text-shadow:0 6px 40px rgba(3,7,18,.45)}}
       #{R} .expl{{position:absolute;left:4px;top:548px;width:840px}}
       #{R} .expl .mono{{font-size:29px;line-height:1.48}}
       #{R} .btn.ok{{background:none}}
@@ -25,7 +21,7 @@ def hd(pid, glyph, title, sub, art=None):
 
 def right_plane(pfx, slash, expl):
     return f"""      <div data-hf-id="hf-{pfx}rt" class="right" id="{pfx}-right">
-        <div data-hf-id="hf-{pfx}sl" class="slash" id="{pfx}-slash">{P.depth_text(pfx+'-dslash', slash, layers=8, dx=2.6, dy=3.2)}</div>
+        <div data-hf-id="hf-{pfx}sl" class="slash" id="{pfx}-slash">{slash}</div>
         <div data-hf-id="hf-{pfx}ex" class="expl" id="{pfx}-expl"><div data-hf-id="hf-{pfx}em" class="mono">{expl}</div></div>
       </div>"""
 
@@ -59,7 +55,6 @@ COMMON_JS = P.THREAD_JS + P.FX_JS + """
       }
       function rightIn(tl, pfx, t){
         tl.to('#'+pfx+'-slash',{autoAlpha:1,x:0,duration:.60,ease:'expo.out'},t);
-        depthIn(tl, pfx+'-dslash', t, {y:26, d:.68, ry0:-9, ry1:4, pd:5.2});
         tl.to('#'+pfx+'-expl',{autoAlpha:1,y:0,duration:.58,ease:'expo.out'},t+.26);
       }
       function rightOut(tl, pfx, t){

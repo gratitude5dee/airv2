@@ -108,7 +108,7 @@ BODY = f"""    <div data-hf-id="hf-s11frame" class="frame clip" id="s11-frame" d
           <div data-hf-id="hf-s11dh" class="hh">mini.wzrd.tech/gratitude/tour</div>
           <div data-hf-id="hf-s11ds" class="sub">public &middot; listed in the App Store</div>
           <div data-hf-id="hf-s11da" class="act" id="s11-dec-act">
-            <div data-hf-id="hf-s11do" class="big3 btn3 ok3 spec" id="s11-dec-ok">Approve{P.specular("s11-dspec")}</div>
+            <div data-hf-id="hf-s11do" class="big3 btn3 ok3" id="s11-dec-ok">Approve</div>
             <div data-hf-id="hf-s11de" class="gh btn3 gh3">Edit</div></div>
         </div>
         <div data-hf-id="hf-s11lv" class="live" id="s11-live">
@@ -175,7 +175,6 @@ SCRIPT = M.COMMON_JS + f"""
       tl.to([app,url],{{autoAlpha:0,scale:.94,duration:.28,ease:'power3.in'}},7.700);
       tl.to(dec,{{autoAlpha:1,y:0,scale:1,duration:.70,ease:'expo.out'}},7.848);
       hit(tl,stage,7.848,{{amt:.024}});
-      specSweep(tl,'s11-dspec',9.230,{{d:1.10}});
       tl.to('#s11-dec-ok',{{scale:.955,duration:.07,ease:'power2.out'}},9.230);
       tl.to('#s11-dec-ok',{{scale:1,duration:.16,ease:'power2.inOut'}},9.309);
       // 87.957 — Approve. Spectral moment 3 of 4, and the biggest hit of the act.
