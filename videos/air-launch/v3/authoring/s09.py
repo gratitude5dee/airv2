@@ -126,6 +126,7 @@ SCRIPT = M.COMMON_JS + f"""
       showItem(tl,TH,0.000,1,{{slide:.30}});
       tl.set($('#s09-composer-txt'),{{textContent:''}},0.000);
       hit(tl,stage,0.000,{{amt:.020}});
+      whipIn(tl,stage,0.000,210);
       rightIn(tl,'s09',0.06);
       showItem(tl,TH,1.579,2,{{slide:.34}});
       hit(tl,stage,1.579,{{amt:.014}});
@@ -152,5 +153,7 @@ SCRIPT = M.COMMON_JS + f"""
       tl.to(endcap,{{autoAlpha:1,y:0,duration:.64,ease:'expo.out'}},4.760);
       hit(tl,stage,4.691,{{amt:.020}});
       cam(tl,stage,4.760,{{scale:1.04,d:1.3,e:'expo.out'}});
-      tl.to(endcap,{{autoAlpha:0,x:-200,duration:.30,ease:'power4.in'}},5.98);"""
+      tl.to(endcap,{{autoAlpha:0,x:-200,duration:.30,ease:'power4.in'}},5.98);
+      whipOut(tl,stage,6.1,200);"""
+
 print(P.emit('compositions/shot-09-zap.html','shot-09-zap','s09',6.27,STYLE,BODY,SCRIPT))

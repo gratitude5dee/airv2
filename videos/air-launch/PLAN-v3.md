@@ -622,3 +622,63 @@ Every timeline in the project now carries `defaults: {immediateRender: false}`. 
 over the opening two seconds — a washed-out night sky that no amount of sky tuning would have
 fixed. These timelines are only ever seeked, never played, so nothing may render ahead of its own
 position.
+
+---
+
+## 15. v3.2 — sound, grade, and the real mark
+
+Three things separated the cut from a finished launch film, and none of them were shots.
+
+### Sound design
+
+The film had music and nothing else. It now has a foley layer of 94 cues, synthesised rather
+than sampled: `v3/authoring/sfx.py` builds each one from an envelope and an oscillator or a
+filtered noise burst. A send is air moving away from you, a receive is a struck bell, an approval
+is a switch closing, the drop is a body hitting a floor, the `/zap` render is granular and
+deliberately unmusical.
+
+The mix is the part that matters. A fixed gain is wrong: the same tap is lost under the chorus and
+deafening in the silence at 7 s. Every cue declares a role and how far below the music that role
+should sit, and the script solves its gain against the music's own level in the half second around
+it. The music then sidechains under the cues, up to 4 dB. Measured against target:
+
+| cue | target | delivered |
+| --- | ---: | ---: |
+| send, receive | −8 dB | −8 |
+| tap | −9 dB | −7 |
+| card land | −9 dB | −11 |
+| the drop | +2 dB | +3 |
+| the fill, the publish | +2 dB | +1 |
+| the lockup | −4 dB | −2 |
+
+`assets/bgm-mix.mp3` is what the film plays. `assets/bgm-music-only.mp3` is the untouched vstar
+track and remains the source of truth for the beat grid in `audiomap.json`.
+
+### The grade rides the track
+
+A 15 fps envelope of the music is baked into the master at build time: `punch` follows transients,
+`arc` follows the arrangement. Three things read it every frame. A real bloom (a backdrop-filtered
+layer that blurs what is behind it and screens it back, so bright areas spill the way they do
+through glass) breathes between 4 % and 22 %. The vignette opens as the arrangement fills. And the
+sky's depth of field moves shot by shot, from sharp when the sky is the subject to 8 px of blur
+when a phone or a card is. Nothing reads audio at render time; the numbers are baked, so a seek
+always lands on the same grade.
+
+A lens-fringe layer adds warm and cool colour at the extreme frame edges only, where a real lens
+breaks down.
+
+### The supplied mark
+
+The app icon is rebuilt as `logos/air-icon.svg`: a superellipse tile, a white rim, the banded orb
+and its specular, all vector, so the film can scale it from a 44 px avatar to a 430 px hero and
+animate what is inside it. It replaces the old orb everywhere the product appears, and it earns
+two moments of its own. At 89.536 s the DROP hands it the frame: the mark lands, a glint crosses
+the glass, and its wave bands drift for the whole shot while the approved stanza lands around it.
+At 105.535 s it leads the lockup, icon first, then "air by", then the wordmark, with the glint
+crossing a beat behind the chrome sweep.
+
+### Also in this pass
+
+Whip transitions between the mini-app cuts: the outgoing shot is still travelling when the cut
+lands and the incoming one picks the move up mid-flight, blurred, for two frames. It is the only
+transition in the film that is not a straight cut.

@@ -19,7 +19,7 @@ STYLE = P.FONTS + "\n" + P.tokens(R) + "\n" + P.fx_css(R) + "\n" + P.chrome_css(
         box-shadow:0 18px 44px rgba(2,6,18,.5);display:flex;align-items:center;gap:11px;padding:0 14px;
         will-change:transform,opacity}
       #s01-root .bnr .orb{width:34px;height:34px;border-radius:9px;flex:0 0 auto;
-        background:url('logos/air-brand.png') center/cover no-repeat}
+        background:url('logos/air-icon.svg') center/contain no-repeat}
       #s01-root .bnr .tx{flex:1;min-width:0}
       #s01-root .bnr .hd{display:flex;align-items:baseline;gap:6px}
       #s01-root .bnr .ap{font-size:13px;font-weight:700;color:#fff;letter-spacing:.01em}

@@ -93,6 +93,7 @@ SCRIPT = M.COMMON_JS + f"""
       showItem(tl,TH,0.000,1,{{slide:.30}});
       tl.set($('#s07-composer-txt'),{{textContent:''}},0.000);
       hit(tl,stage,0.000,{{amt:.020}});
+      whipIn(tl,stage,0.000,210);
       rightIn(tl,'s07',0.06);
       // 53.615 — the listing lands in the thread and lifts out as the real product frame
       showItem(tl,TH,1.556,2,{{slide:.42}});
@@ -113,5 +114,7 @@ SCRIPT = M.COMMON_JS + f"""
       hit(tl,stage,4.644,{{amt:.022}});
       cam(tl,stage,4.644,{{scale:1.035,d:1.3,e:'expo.out'}});
       tl.to([hero,live,order],{{autoAlpha:0,x:-180,duration:.30,ease:'power4.in'}},5.90);
-      tl.to('#s07-ph',{{x:420,autoAlpha:0,duration:.28,ease:'power4.in'}},5.92);"""
+      tl.to('#s07-ph',{{x:420,autoAlpha:0,duration:.28,ease:'power4.in'}},5.92);
+      whipOut(tl,stage,6.03,210);"""
+
 print(P.emit('compositions/shot-07-shop.html','shot-07-shop','s07',6.2,STYLE,BODY,SCRIPT))

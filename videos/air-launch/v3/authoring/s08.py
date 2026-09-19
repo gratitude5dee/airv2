@@ -78,6 +78,7 @@ SCRIPT = M.COMMON_JS + f"""
       showItem(tl,TH,0.000,1,{{slide:.30}});
       tl.set($('#s08-composer-txt'),{{textContent:''}},0.000);
       hit(tl,stage,0.000,{{base:1.16,amt:.020}});
+      whipIn(tl,stage,0.000,210);
       rightIn(tl,'s08',0.06);
       // 59.791 — the ticket, then the same ticket at the size the decision deserves
       showItem(tl,TH,1.532,2,{{slide:.42}});
@@ -91,11 +92,13 @@ SCRIPT = M.COMMON_JS + f"""
       tl.to('#s08-macro-ok',{{scale:1,duration:.16,ease:'power2.inOut'}},2.888);
       hit(tl,stage,2.809,{{amt:.014}});
       // 61.301 — the fill. Spectral moment 2 of 4, and the loudest frame of this act.
-      tl.to(macro,{{autoAlpha:0,scale:1.06,duration:.22,ease:'power3.in'}},3.042);
-      tl.to(filled,{{autoAlpha:1,scale:1,duration:.56,ease:'expo.out'}},3.042);
+      tl.to(macro,{{autoAlpha:0,scale:1.09,duration:.10,ease:'power3.in'}},3.000);
+      tl.to(filled,{{autoAlpha:1,scale:1,duration:.54,ease:'expo.out'}},3.105);
       hit(tl,stage,3.042,{{amt:.040,flash:flash,flashAmt:.26,flashD:.26,shake:7}});
       // 62.880 — settle, and the frame opens back out
       hit(tl,stage,4.621,{{amt:.014}});
       cam(tl,stage,4.621,{{scale:1.03,d:1.2,e:'expo.out'}});
-      tl.to(filled,{{autoAlpha:0,y:-40,duration:.28,ease:'power4.in'}},5.86);"""
+      tl.to(filled,{{autoAlpha:0,y:-40,duration:.28,ease:'power4.in'}},5.86);
+      whipOut(tl,stage,5.983,230);"""
+
 print(P.emit('compositions/shot-08-trade.html','shot-08-trade','s08',6.153,STYLE,BODY,SCRIPT))

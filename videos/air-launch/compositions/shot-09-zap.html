@@ -33,7 +33,7 @@
       #s09-root .ph-nav{position:absolute;top:0;left:0;right:0;height:122px;z-index:5;
         background:rgba(18,18,20,.82);backdrop-filter:blur(24px) saturate(1.3);border-bottom:1px solid rgba(255,255,255,.08);
         display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:8px}
-      #s09-root .orb{background:url('logos/air-brand.png') center/cover no-repeat;border-radius:50%;flex:0 0 auto}
+      #s09-root .orb{background:url('logos/air-icon.svg') center/contain no-repeat;border-radius:50%;flex:0 0 auto}
       #s09-root .gly{background-position:center;background-repeat:no-repeat;background-size:contain}
       #s09-root .ph-nav .orb{width:44px;height:44px}
       #s09-root .ph-nav .who{font-size:13px;font-weight:600;color:#fff;margin-top:3px;letter-spacing:.01em}
@@ -329,6 +329,18 @@
         gsap.set(document.getElementById(pfx+'-expl'),{autoAlpha:0,y:14});
         return st;
       }
+      // A whip: the outgoing shot is still travelling when the cut happens and the incoming
+      // one picks the move up mid-flight, blurred, for two frames. It is the only transition
+      // in the film that is not a straight cut.
+      function whipIn(tl, stage, t, dist){
+        dist = dist==null ? 210 : dist;
+        tl.fromTo(stage,{x:dist,filter:'blur(13px)'},
+                        {x:0,filter:'blur(0px)',duration:.20,ease:'power3.out'}, t);
+      }
+      function whipOut(tl, stage, t, dist){
+        dist = dist==null ? 210 : dist;
+        tl.to(stage,{x:-dist,filter:'blur(13px)',duration:.17,ease:'power3.in'}, t);
+      }
       function rightIn(tl, pfx, t){
         tl.to('#'+pfx+'-slash',{autoAlpha:1,x:0,duration:.60,ease:'expo.out'},t);
         tl.to('#'+pfx+'-expl',{autoAlpha:1,y:0,duration:.58,ease:'expo.out'},t+.26);
@@ -424,6 +436,7 @@
       showItem(tl,TH,0.000,1,{slide:.30});
       tl.set($('#s09-composer-txt'),{textContent:''},0.000);
       hit(tl,stage,0.000,{amt:.020});
+      whipIn(tl,stage,0.000,210);
       rightIn(tl,'s09',0.06);
       showItem(tl,TH,1.579,2,{slide:.34});
       hit(tl,stage,1.579,{amt:.014});
@@ -451,6 +464,7 @@
       hit(tl,stage,4.691,{amt:.020});
       cam(tl,stage,4.760,{scale:1.04,d:1.3,e:'expo.out'});
       tl.to(endcap,{autoAlpha:0,x:-200,duration:.30,ease:'power4.in'},5.98);
+      whipOut(tl,stage,6.1,200);
       window.__timelines=window.__timelines||{};
       window.__timelines['shot-09-zap']=tl;
       var q=new URLSearchParams(location.search);

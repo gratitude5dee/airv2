@@ -79,6 +79,7 @@ SCRIPT = M.COMMON_JS + f"""
       typeText(tl,comp,'/create a landing page for my October tour with a ticket link and a countdown',0,1.42);
       tl.to(cglow,{{opacity:0,duration:.2,ease:'power2.in'}},1.46);
       tl.set(comp,{{textContent:''}},1.532);
+      whipIn(tl,stage,0.000,190);
       rightIn(tl,'s10',0.10);
 
       // 72.214 -> 76.185 — at most three questions

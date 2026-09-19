@@ -33,7 +33,7 @@
       #s10-root .ph-nav{position:absolute;top:0;left:0;right:0;height:122px;z-index:5;
         background:rgba(18,18,20,.82);backdrop-filter:blur(24px) saturate(1.3);border-bottom:1px solid rgba(255,255,255,.08);
         display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:8px}
-      #s10-root .orb{background:url('logos/air-brand.png') center/cover no-repeat;border-radius:50%;flex:0 0 auto}
+      #s10-root .orb{background:url('logos/air-icon.svg') center/contain no-repeat;border-radius:50%;flex:0 0 auto}
       #s10-root .gly{background-position:center;background-repeat:no-repeat;background-size:contain}
       #s10-root .ph-nav .orb{width:44px;height:44px}
       #s10-root .ph-nav .who{font-size:13px;font-weight:600;color:#fff;margin-top:3px;letter-spacing:.01em}
@@ -114,7 +114,7 @@
       #s10-root .btn3::after{content:'';position:absolute;left:8%;right:8%;top:2px;height:36%;border-radius:999px;
         pointer-events:none;background:linear-gradient(180deg,rgba(255,255,255,.52),rgba(255,255,255,0));
         filter:blur(.4px)}
-      #s10-root .btn3.ok3{background:linear-gradient(180deg,#3FD877 0%,#24A757 52%,#17823F 100%);color:#04240F;
+      #s10-root .btn3.ok3{background:linear-gradient(180deg,#34B767 0%,#1C8F4C 52%,#0F7038 100%);color:#FFFFFF;
         box-shadow:inset 0 1px 0 rgba(255,255,255,.55),inset 0 -2px 6px rgba(0,40,14,.45),
                    0 8px 20px rgba(9,90,40,.40),0 1px 0 rgba(255,255,255,.12)}
       #s10-root .btn3.gh3{background:linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,.04));
@@ -334,6 +334,18 @@
         gsap.set(document.getElementById(pfx+'-expl'),{autoAlpha:0,y:14});
         return st;
       }
+      // A whip: the outgoing shot is still travelling when the cut happens and the incoming
+      // one picks the move up mid-flight, blurred, for two frames. It is the only transition
+      // in the film that is not a straight cut.
+      function whipIn(tl, stage, t, dist){
+        dist = dist==null ? 210 : dist;
+        tl.fromTo(stage,{x:dist,filter:'blur(13px)'},
+                        {x:0,filter:'blur(0px)',duration:.20,ease:'power3.out'}, t);
+      }
+      function whipOut(tl, stage, t, dist){
+        dist = dist==null ? 210 : dist;
+        tl.to(stage,{x:-dist,filter:'blur(13px)',duration:.17,ease:'power3.in'}, t);
+      }
       function rightIn(tl, pfx, t){
         tl.to('#'+pfx+'-slash',{autoAlpha:1,x:0,duration:.60,ease:'expo.out'},t);
         tl.to('#'+pfx+'-expl',{autoAlpha:1,y:0,duration:.58,ease:'expo.out'},t+.26);
@@ -368,6 +380,7 @@
       typeText(tl,comp,'/create a landing page for my October tour with a ticket link and a countdown',0,1.42);
       tl.to(cglow,{opacity:0,duration:.2,ease:'power2.in'},1.46);
       tl.set(comp,{textContent:''},1.532);
+      whipIn(tl,stage,0.000,190);
       rightIn(tl,'s10',0.10);
 
       // 72.214 -> 76.185 — at most three questions

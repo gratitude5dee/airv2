@@ -41,6 +41,18 @@ COMMON_JS = P.THREAD_JS + P.FX_JS + """
         gsap.set(document.getElementById(pfx+'-expl'),{autoAlpha:0,y:14});
         return st;
       }
+      // A whip: the outgoing shot is still travelling when the cut happens and the incoming
+      // one picks the move up mid-flight, blurred, for two frames. It is the only transition
+      // in the film that is not a straight cut.
+      function whipIn(tl, stage, t, dist){
+        dist = dist==null ? 210 : dist;
+        tl.fromTo(stage,{x:dist,filter:'blur(13px)'},
+                        {x:0,filter:'blur(0px)',duration:.20,ease:'power3.out'}, t);
+      }
+      function whipOut(tl, stage, t, dist){
+        dist = dist==null ? 210 : dist;
+        tl.to(stage,{x:-dist,filter:'blur(13px)',duration:.17,ease:'power3.in'}, t);
+      }
       function rightIn(tl, pfx, t){
         tl.to('#'+pfx+'-slash',{autoAlpha:1,x:0,duration:.60,ease:'expo.out'},t);
         tl.to('#'+pfx+'-expl',{autoAlpha:1,y:0,duration:.58,ease:'expo.out'},t+.26);

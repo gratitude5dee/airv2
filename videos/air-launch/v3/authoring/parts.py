@@ -41,7 +41,7 @@ def phone_css(root, pre):
       #{root} .ph-nav{{position:absolute;top:0;left:0;right:0;height:122px;z-index:5;
         background:rgba(18,18,20,.82);backdrop-filter:blur(24px) saturate(1.3);border-bottom:1px solid rgba(255,255,255,.08);
         display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:8px}}
-      #{root} .orb{{background:url('logos/air-brand.png') center/cover no-repeat;border-radius:50%;flex:0 0 auto}}
+      #{root} .orb{{background:url('logos/air-icon.svg') center/contain no-repeat;border-radius:50%;flex:0 0 auto}}
       #{root} .gly{{background-position:center;background-repeat:no-repeat;background-size:contain}}
       #{root} .ph-nav .orb{{width:44px;height:44px}}
       #{root} .ph-nav .who{{font-size:13px;font-weight:600;color:#fff;margin-top:3px;letter-spacing:.01em}}
@@ -386,3 +386,16 @@ TYPER_JS = """
         return t+n*per+dur;
       }
 """
+
+def inline_icon(pid, size, cls=""):
+    """The supplied app icon, inlined so the film can animate what is inside it:
+    the wave bands drift, the specular tracks the light, the rim catches the beat."""
+    s = open('logos/air-icon.svg').read()
+    s = s.replace('<svg ', f'<svg id="{pid}" class="{cls}" ', 1)
+    s = s.replace('width="1024" height="1024"', f'width="{size}" height="{size}"')
+    # ids must be unique once several icons share one document
+    for old in ['tile','orb','core','spec','rim','orbclip','soft','softer','air-waves']:
+        s = s.replace(f'id="{old}"', f'id="{pid}-{old}"')
+        s = s.replace(f'url(#{old})', f'url(#{pid}-{old})')
+    s = s.replace('<path d=', f'<path data-hf-id="hf-{pid}p" d=', 1)
+    return s

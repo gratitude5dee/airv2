@@ -3,7 +3,7 @@ import parts as P
 R='s14-root'
 WALL=[['onairos.svg','coinbase.svg','stripe.svg','openai.svg','anthropic.svg','claude.svg'],
       ['cognition.svg','gmicloud.svg','tenkicloud.svg','omarchy.svg','vercel.svg','github.svg']]
-STYLE = P.FONTS + "\n" + P.tokens(R) + "\n" + P.phone_css(R,'s14') + "\n" + P.fx_css(R) + "\n" + P.chrome_css(R,'mark',880) + """
+STYLE = P.FONTS + "\n" + P.tokens(R) + "\n" + P.phone_css(R,'s14') + "\n" + P.fx_css(R) + "\n" + P.chrome_css(R,'mark',760) + """
       #s14-root .ph{left:1151px;top:365px}
       #s14-root .cta{position:absolute;left:150px;top:378px;width:1100px}
       #s14-root .ctal{font-family:'Newsreader',Georgia,serif;font-weight:300;font-size:148px;letter-spacing:-.035em;
@@ -21,7 +21,15 @@ STYLE = P.FONTS + "\n" + P.tokens(R) + "\n" + P.phone_css(R,'s14') + "\n" + P.fx
         font-size:46px;letter-spacing:.01em;color:var(--ink);text-shadow:0 2px 18px rgba(3,7,18,.6)}
       #s14-root .url .ul{position:absolute;left:0;right:0;bottom:-13px;height:2px;background:var(--ink);
         transform-origin:0% 50%;will-change:transform}
-      #s14-root .lock{position:absolute;left:520px;top:326px;width:880px;text-align:center}
+      #s14-root .lock{position:absolute;left:580px;top:186px;width:760px;text-align:center}
+      #s14-root .lockicon{width:214px;height:214px;margin:0 auto 26px;position:relative;
+        will-change:transform,opacity}
+      #s14-root .lockicon svg{display:block;filter:drop-shadow(0 22px 52px rgba(4,26,62,.55))}
+      #s14-root .lockicon .glint{position:absolute;inset:0;pointer-events:none;mix-blend-mode:screen;opacity:0;
+        background:linear-gradient(104deg,rgba(255,255,255,0) 38%,rgba(255,255,255,.7) 50%,rgba(255,255,255,0) 62%)}
+      #s14-root .lockglow{position:absolute;left:0;right:0;top:-40px;height:280px;pointer-events:none;
+        background:radial-gradient(36% 46% at 50% 44%,rgba(150,214,255,.34),rgba(150,214,255,0) 72%);
+        mix-blend-mode:screen}
       #s14-root .airby{font-family:'Newsreader',Georgia,serif;font-weight:300;font-size:64px;letter-spacing:.12em;
         color:var(--ink);margin-bottom:26px;text-shadow:0 3px 22px rgba(3,7,18,.5)}
       #s14-root .wall{position:absolute;left:0;right:0;top:700px;text-align:center}
@@ -41,6 +49,8 @@ rows="".join('<div data-hf-id="hf-s14r%d" class="wr" id="s14-r%d">' % (r,r)
              + "".join(f'<div data-hf-id="hf-s14t{r}{i}" class="wt" id="s14-t{r}{i}">'
                        f'<i data-hf-id="hf-s14ti{r}{i}" style="background-image:url(&quot;logos/{n}&quot;)"></i></div>'
                        for i,n in enumerate(row)) + '</div>' for r,row in enumerate(WALL))
+ICON14 = P.inline_icon("s14icon", 214)
+
 BODY = f"""    <div data-hf-id="hf-s14frame" class="frame clip" id="s14-frame" data-layout-allow-overflow="" data-start="0" data-duration="17.531" data-track-index="1">
       <div data-hf-id="hf-s14wa" class="washL"></div>
       <div data-hf-id="hf-s14fs" class="footscrim"></div>
@@ -51,6 +61,8 @@ BODY = f"""    <div data-hf-id="hf-s14frame" class="frame clip" id="s14-frame" d
       </div>
 {P.PHONE_HTML.replace('%P%','s14')}
       <div data-hf-id="hf-s14lk" class="lock" id="s14-lock">
+        <div data-hf-id="hf-s14lg" class="lockglow" id="s14-lockglow"></div>
+        <div data-hf-id="hf-s14li" class="lockicon" id="s14-lockicon">{ICON14}<div data-hf-id="hf-s14gt" class="glint" id="s14-glint"></div></div>
         <div data-hf-id="hf-s14ab" class="airby" id="s14-airby">air by</div>
         {P.chrome_html('s14-mark','mark')}
       </div>
@@ -63,6 +75,8 @@ BODY = f"""    <div data-hf-id="hf-s14frame" class="frame clip" id="s14-frame" d
 SCRIPT = """      var cta=$('#s14-cta'), url=$('#s14-url'), ul=$('#s14-ul'), ph=$('#s14-ph');
       var lock=$('#s14-lock'), airby=$('#s14-airby'), mark=$('#s14-mark'), sweep=$('#s14-mark-sweep');
       var wline=$('#s14-wline'), tiles=$$('.wt');
+      var lockicon=$('#s14-lockicon'), lockglow=$('#s14-lockglow'), glint=$('#s14-glint');
+      var iwaves=$$('#s14icon-air-waves path');
       var pill=$('#s14-ctapill'), pls=$$('#s14-ctapill .pl');
       var ctal=$('.ctal');
 
@@ -74,6 +88,9 @@ SCRIPT = """      var cta=$('#s14-cta'), url=$('#s14-url'), ul=$('#s14-ul'), ph=
       gsap.set(ul,{scaleX:0});
       gsap.set(lock,{autoAlpha:0,y:170});
       gsap.set(airby,{autoAlpha:0,y:18});
+      gsap.set(lockicon,{autoAlpha:0,y:34,scale:.88,transformOrigin:'50% 50%'});
+      gsap.set(lockglow,{autoAlpha:0});
+      gsap.set(glint,{xPercent:-130,opacity:0});
       gsap.set(sweep,{xPercent:-120,opacity:0});
       gsap.set(wline,{autoAlpha:0,y:14});
       gsap.set(tiles,{autoAlpha:0,y:34,transformOrigin:'50% 50%'});
@@ -95,6 +112,12 @@ SCRIPT = """      var cta=$('#s14-cta'), url=$('#s14-url'), ul=$('#s14-ul'), ph=
       // 105.535 — the release kick lifts the CTA out and brings the mark up
       tl.to([cta,ph],{y:-120,autoAlpha:0,duration:.30,ease:'power4.in'},3.367);
       tl.to(lock,{autoAlpha:1,y:0,duration:.90,ease:'expo.out'},3.42);
+      // 105.535 — the mark comes up icon first, the way the product is actually recognised
+      tl.to(lockicon,{autoAlpha:1,y:0,scale:1,duration:.86,ease:'expo.out'},3.50);
+      tl.to(lockglow,{autoAlpha:1,duration:1.1,ease:'power2.out'},3.60);
+      iwaves.forEach(function(w,i){
+        tl.fromTo(w,{x:-10-i*4},{x:10+i*4,duration:11.0,ease:'sine.inOut'},3.50);
+      });
       // 106.812 / 107.950 — the partner wall rises on the last two kicks
       tl.to(wline,{autoAlpha:1,y:0,duration:.44,ease:'expo.out'},4.50);
       $$('#s14-r0 .wt').forEach(function(t,i){ tl.to(t,{autoAlpha:1,y:0,duration:.50,ease:'expo.out'},4.644+i*.035); });
@@ -102,6 +125,10 @@ SCRIPT = """      var cta=$('#s14-cta'), url=$('#s14-url'), ul=$('#s14-ul'), ph=
       // 108.669 — the lockup the brand film ends on, and the last spectral moment of four
       tl.to(airby,{autoAlpha:1,y:0,duration:.66,ease:'expo.out'},6.501);
       tl.fromTo(sweep,{xPercent:-120,opacity:.9},{xPercent:120,opacity:0,duration:.36,ease:'power2.inOut'},6.60);
+      // the icon catches the same light, a beat behind the wordmark
+      tl.fromTo(glint,{xPercent:-130,opacity:.95},{xPercent:130,opacity:0,duration:.70,ease:'power2.inOut'},6.62);
+      tl.to(lockicon,{scale:1.035,duration:.12,ease:'power2.out'},6.501);
+      tl.to(lockicon,{scale:1,duration:.7,ease:'power2.out'},6.621);
       // 111.293 — the last tile settles and the frame is done moving
       tl.to(lock,{y:-8,duration:2.2,ease:'sine.inOut'},6.70);
       tl.to('#s14-wall',{y:-6,duration:2.2,ease:'sine.inOut'},6.90);
