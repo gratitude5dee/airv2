@@ -312,6 +312,19 @@ export const env = {
   heygenApiKey: (): string | null => process.env["HEYGEN_API_KEY"] ?? null,
   heygenApiUrl: (): string =>
     optional("HEYGEN_API_URL", "https://api.heygen.com"),
+  // ElevenLabs — Instant Voice Clone + speech for the digital twin. Optional:
+  // without the key the voice step reports itself unconfigured. Control-plane
+  // only; the key never reaches a box or a browser (C2).
+  elevenlabsApiKey: (): string | null =>
+    process.env["ELEVENLABS_API_KEY"] || null,
+  elevenlabsApiUrl: (): string =>
+    optional("ELEVENLABS_API_URL", "https://api.elevenlabs.io"),
+  elevenlabsTtsModel: (): string =>
+    optional("ELEVENLABS_TTS_MODEL", "eleven_multilingual_v2"),
+  // fal endpoint that lip-syncs the twin's profile image to speech — one
+  // place to bump when the provider renames it.
+  falTwinLipsyncModel: (): string =>
+    optional("FAL_TWIN_LIPSYNC_MODEL", "minimax/h3-max/lip-sync/image-to-video"),
   gmiOrganizationId: (): string | null =>
     process.env["GMI_ORGANIZATION_ID"] ?? null,
   gmiRequestQueueUrl: (): string =>

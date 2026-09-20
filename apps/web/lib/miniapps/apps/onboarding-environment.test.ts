@@ -271,13 +271,15 @@ describe("onboarding environment step", () => {
     const dots = stepper.match(/<nav class="dots"[^>]*>.*?<\/nav>/)?.[0] ?? "";
     expect(dots.match(/<(?:a|span) /g) ?? []).toHaveLength(6);
     expect(dots).not.toContain("welcome");
+    expect(stepper).toContain('data-step="consent"');
     expect(stepper).toContain('data-step="selfies"');
+    expect(stepper).toContain('data-step="voice"');
     expect(stepper).toContain('data-step="twin"');
     expect(stepper).toContain('data-step="avatar"');
+    expect(stepper).toContain('data-section="consent"');
     expect(stepper).toContain('data-section="booth_photo"');
-    expect(stepper).toContain('data-section="photo_select"');
     expect(stepper).toContain('data-section="sheet"');
-    expect(stepper).toContain('data-section="booth_video"');
+    expect(stepper).toContain('data-section="voice"');
     expect(stepper).toContain('data-section="twin_create"');
     expect(stepper).toContain('data-section="avatar"');
   });

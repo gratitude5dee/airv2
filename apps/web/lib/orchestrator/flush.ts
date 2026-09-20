@@ -47,6 +47,7 @@ import { maybeOpenIntake } from "../create/intake";
 import { startRelayForOwner, type RelayHandle } from "../create/progress";
 import { maybeRunDrawLane } from "../miniapps/drawCommand";
 import { maybeRunFreezeLane } from "../miniapps/freezeCommand";
+import { maybeRunTwinLane } from "../identity/twinCommand";
 import { maybeRunLocationLane } from "../location/lane";
 import { parseTradeCommand } from "../trade/parse";
 import { runTradeCommand } from "../trade/imessage";
@@ -137,7 +138,7 @@ interface QueuedMessage {
 const HAS_ATTACHMENT_MARKER = /\[attachment:[^\]]+\]/;
 
 /** The debounce a message earns: media and creative commands wait for each other. */
-const MINIAPP_COMMAND = /(^|[^A-Za-z0-9_/])\/(draw|freeze)(?=$|[^A-Za-z0-9_-])/i;
+const MINIAPP_COMMAND = /(^|[^A-Za-z0-9_/])\/(draw|freeze|twin)(?=$|[^A-Za-z0-9_-])/i;
 export function debounceMsFor(body: string): number {
   const command = parseExplicitGenerationCommand(body);
   const readyCreative = command && !("ambiguous" in command);
@@ -1077,6 +1078,53 @@ async function runFlushInner(
         }
         return;
       }
+    }
+    // /twin lane: the digital twin speaks or poses as the owner — voice
+    // clone + lip-sync, or an identity-anchored image. Owner-only, consent
+    // checked server-side, delivered like a creative job; ordinary prose
+    // and the other commands fall through unchanged.
+    try {
+      const handled = await maybeRunTwinLane(
+        supabase,
+        sender,
+        {
+          spaceId: job.spaceId,
+          userId: job.userId,
+          phone: job.phone,
+          senderTier: job.senderTier,
+          ...(Number.isFinite(receivedAtMs) ? { receivedAtMs } : {}),
+        },
+        responseLaneInput
+      );
+      if (handled) {
+        if (!(await chainCancelled(supabase, job.spaceId, chainStartedAt))) {
+          await supabase
+            .from("flush_jobs")
+            .delete()
+            .eq("space_id", job.spaceId)
+            .eq("chain_started_at", chainStartedAt);
+        }
+        return;
+      }
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          msg: "twin lane failed",
+          user_id: job.userId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      );
+      await sender
+        .sendText(job.spaceId, job.phone, "that one didn't come out. try again?")
+        .catch(() => undefined);
+      if (!(await chainCancelled(supabase, job.spaceId, chainStartedAt))) {
+        await supabase
+          .from("flush_jobs")
+          .delete()
+          .eq("space_id", job.spaceId)
+          .eq("chain_started_at", chainStartedAt);
+      }
+      return;
     }
     // M16 creative lane: an explicit /imagine, /animate, or /zap in the
     // settled burst is handled here, before any box wake or Hermes run.

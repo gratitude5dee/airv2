@@ -96,28 +96,65 @@ import {
   writeStatusMirror,
 } from "../onboardingMirror";
 import {
+  deleteIdentityAsset,
   getAvatarAssetId,
+  isIdentityRole,
+  isVaultRole,
   listIdentityAssets,
   listIdentityMediaRoles,
   listIdentityMediaViews,
+  mediaKindForRole,
+  reorderIdentityAsset,
   setAvatarAssetId,
   signedIdentityUrl,
   uploadIdentityImage,
+  uploadIdentityMedia,
   type IdentityMediaView,
+  type IdentityRole,
 } from "@/lib/identity/assets";
 import {
+  CONSENT_COPY,
+  CONSENT_LINES,
+  CONSENT_POLICY_VERSION,
+  CONSENT_SCOPES,
+  consentFor,
+  grantConsent,
+  isConsentScope,
+  listConsents,
+  revokeConsent,
+  type ConsentScope,
+  type TwinConsent,
+} from "@/lib/identity/consent";
+import {
+  approveProfileImageDraft,
+  DESCRIPTION_MAX_CHARS,
   discardCharacterSheetDraft,
+  discardProfileImageDraft,
+  generateAltImage,
   generateCharacterSheet,
+  generateProfileImage,
   saveCharacterSheetDraft,
+  STYLE_MAX_CHARS,
 } from "@/lib/identity/generate";
 import { heygenAvailable } from "@/lib/identity/heygen";
 import {
   createTwinVideo,
   createUserHeygenAvatar,
+  disableVideoAvatar,
+  enableVideoAvatar,
   getDigitalTwin,
+  setTwinSharing,
+  twinAvatarAvailable,
+  twinSpeechAvailable,
   uploadTwinConsent,
   type DigitalTwin,
 } from "@/lib/identity/twin";
+import { elevenlabsAvailable } from "@/lib/identity/voice";
+import {
+  createUserVoiceClone,
+  revokeUserVoiceClone,
+} from "@/lib/identity/voiceClone";
+import { ASSETS_BUCKET, DELIVERY_TTL_SECONDS } from "@/lib/assets/keys";
 import {
   checkLinkAuth,
   defaultLinkAuthDoc,
@@ -179,10 +216,9 @@ export type SlideSectionKey =
   | "computer"
   | "browser"
   | "booth_photo"
-  | "photo_select"
   | "sheet"
-  | "booth_video"
-  | "twin_create";
+  | "twin_create"
+  | "twin_summary";
 
 export interface SlideSection {
   key: SlideSectionKey;
@@ -209,14 +245,15 @@ const SECTION_STEPS: Record<SlideSectionKey, readonly OnboardingStepId[]> = {
   username: ["username"],
   email: ["email"],
   model: ["model"],
+  consent: ["consent"],
   selfies: ["selfies"],
   booth_photo: ["selfies"],
-  photo_select: ["selfies"],
   sheet: ["selfies"],
+  voice: ["voice"],
   twin: ["twin"],
-  booth_video: ["twin"],
   twin_create: ["twin"],
   avatar: ["avatar"],
+  twin_summary: ["agent"],
   imessage: ["imessage"],
   browser: ["import"],
   import: ["import"],
@@ -249,18 +286,18 @@ export const SLIDE_GROUPS: readonly [OnboardingSlide, ...OnboardingSlide[]] = [
   },
   {
     id: "booth",
-    title: "Photo Booth",
-    kicker: "Photo Booth",
+    title: "Your digital twin",
+    kicker: "Digital Twin",
     // Six stepper panels — the deck-stepper folds them into a one-at-a-time
-    // wizard with green-check progress; state still lives on the three step
-    // IDs (selfies/twin/avatar) each panel reads and writes.
+    // wizard with green-check progress; state lives on the five step IDs
+    // (consent/selfies/voice/twin/avatar) each panel reads and writes.
     sections: [
-      { key: "booth_photo", label: "Take photo" },
-      { key: "photo_select", label: "Photo selection" },
-      { key: "sheet", label: "Generate character sheet" },
-      { key: "booth_video", label: "Take video" },
-      { key: "twin_create", label: "Create digital twin" },
-      { key: "avatar", label: "Avatar selection" },
+      { key: "consent", label: "Consent & privacy" },
+      { key: "booth_photo", label: "Reference media" },
+      { key: "sheet", label: "Generated identity" },
+      { key: "voice", label: "Voice" },
+      { key: "twin_create", label: "Video avatar" },
+      { key: "avatar", label: "Representing image" },
     ],
   },
   {
@@ -295,6 +332,7 @@ export const SLIDE_GROUPS: readonly [OnboardingSlide, ...OnboardingSlide[]] = [
     title: "Get started",
     kicker: "Get started",
     sections: [
+      { key: "twin_summary", label: "Your digital twin" },
       { key: "agent", label: "Try a prompt" },
       { key: "walkthrough", label: "Your launcher" },
     ],
@@ -397,7 +435,18 @@ export interface OnboardingSnapshot {
   identityMedia: IdentityMediaView[];
   avatarAssetId: string | null;
   twin: DigitalTwin | null;
+  /** Legacy HeyGen talking-head path (GMI queue) is configured. */
   twinAvailable: boolean;
+  /** Live consent grants (likeness / voice / video_avatar). */
+  consents: TwinConsent[];
+  /** ElevenLabs is configured — the voice step can clone. */
+  voiceAvailable: boolean;
+  /** fal is configured — the video avatar can render. */
+  avatarAvailable: boolean;
+  /** Both providers are configured — `/twin say` works end to end. */
+  speechAvailable: boolean;
+  /** Signed URL of the video-avatar preview, on slides that show it. */
+  twinPreviewUrl: string | null;
   connections: ConnectionRow[];
   managers: ManagerStatus[];
   vaultItemCount: number;
@@ -435,6 +484,7 @@ interface SnapshotParts {
   /** identityMedia carries signed thumbnail URLs, not just roles. */
   identityUrls: boolean;
   twin: boolean;
+  consents: boolean;
   managers: boolean;
   merchant: boolean;
 }
@@ -510,10 +560,11 @@ async function loadSnapshot(
           .eq("user_id", userId)
           .is("revoked_at", null)
       ),
-      // Signed thumbnail URLs are only looked at on the booth slide; every
-      // other slide needs the roles alone (selfie present? avatar set?).
+      // Signed thumbnail URLs are only looked at on the booth slide and the
+      // twin summary; every other slide needs the roles alone (selfie
+      // present? avatar set?).
       timedPart(parts, "identity_media", () =>
-        rendering("booth")
+        rendering("booth") || rendering("start")
           ? listIdentityMediaViews(supabase, userId)
           : listIdentityMediaRoles(supabase, userId)
       ),
@@ -583,10 +634,16 @@ async function loadSnapshot(
     const open = (step: OnboardingStepId): boolean =>
       state.steps[step] !== "done" && state.steps[step] !== "skipped";
     const identityNeeded =
-      rendering("booth") || open("twin") || open("avatar");
+      rendering("booth") ||
+      rendering("start") ||
+      open("twin") ||
+      open("avatar") ||
+      open("voice");
+    const consentsNeeded =
+      rendering("booth") || rendering("start") || open("consent");
     const managersNeeded = rendering("apps") || open("secrets");
     const merchantNeeded = rendering("apps") || open("stripe");
-    const [twin, avatarAssetId, managers, merchant] = await Promise.all([
+    const [twin, avatarAssetId, consents, managers, merchant] = await Promise.all([
       identityNeeded
         ? timedPart(parts, "twin", () =>
             getDigitalTwin(supabase, userId).catch(() => null)
@@ -597,6 +654,11 @@ async function loadSnapshot(
             getAvatarAssetId(supabase, userId).catch(() => null)
           )
         : null,
+      consentsNeeded
+        ? timedPart(parts, "consents", () =>
+            listConsents(supabase, userId).catch(() => [] as TwinConsent[])
+          )
+        : ([] as TwinConsent[]),
       managersNeeded
         ? timedPart(parts, "managers", () =>
             listManagers(supabase, userId).catch(() => [] as ManagerStatus[])
@@ -633,6 +695,11 @@ async function loadSnapshot(
       avatarAssetId,
       twin,
       twinAvailable: env.gmiCloudApiKey() !== null,
+      consents,
+      voiceAvailable: elevenlabsAvailable(),
+      avatarAvailable: twinAvatarAvailable(),
+      speechAvailable: twinSpeechAvailable(),
+      twinPreviewUrl: null,
       connections,
       managers,
       vaultItemCount: count ?? 0,
@@ -660,13 +727,36 @@ async function loadSnapshot(
       linkPairing,
       resolutions: null,
       loaded: {
-        identityUrls: rendering("booth"),
+        identityUrls: rendering("booth") || rendering("start"),
         twin: identityNeeded,
+        consents: consentsNeeded,
         managers: managersNeeded,
         merchant: merchantNeeded,
       },
     };
   });
+}
+
+/** Signed URL of the twin's video-avatar preview asset, if one exists. */
+async function twinPreviewUrl(
+  supabase: SupabaseClient,
+  userId: string,
+  twin: DigitalTwin | null
+): Promise<string | null> {
+  const assetId = twin?.avatar_preview_asset_id;
+  if (!assetId || twin.avatar_status !== "ready") return null;
+  const { data } = await supabase
+    .from("creative_assets")
+    .select("storage_key")
+    .eq("user_id", userId)
+    .eq("id", assetId)
+    .maybeSingle();
+  const key = (data as { storage_key?: unknown } | null)?.storage_key;
+  if (typeof key !== "string") return null;
+  const signed = await supabase.storage
+    .from(ASSETS_BUCKET)
+    .createSignedUrl(key, DELIVERY_TTL_SECONDS);
+  return signed.data?.signedUrl ?? null;
 }
 
 /**
@@ -683,7 +773,7 @@ async function hydrateSlide(
   const loaded = snapshot.loaded;
   if (!loaded) return;
   const jobs: Array<Promise<unknown>> = [];
-  if (slide.id === "booth") {
+  if (slide.id === "booth" || slide.id === "start") {
     if (!loaded.identityUrls) {
       loaded.identityUrls = true;
       jobs.push(
@@ -705,6 +795,16 @@ async function hydrateSlide(
         getAvatarAssetId(supabase, userId)
           .then((assetId) => {
             snapshot.avatarAssetId = assetId;
+          })
+          .catch(() => undefined)
+      );
+    }
+    if (!loaded.consents) {
+      loaded.consents = true;
+      jobs.push(
+        listConsents(supabase, userId)
+          .then((consents) => {
+            snapshot.consents = consents;
           })
           .catch(() => undefined)
       );
@@ -732,8 +832,17 @@ async function hydrateSlide(
       );
     }
   }
-  if (jobs.length === 0) return;
-  await timedFetch("onboarding", "slide_hydrate", () => Promise.all(jobs));
+  if (jobs.length > 0) {
+    await timedFetch("onboarding", "slide_hydrate", () => Promise.all(jobs));
+  }
+  // The preview needs the twin row, so it follows the hydrate above.
+  if (slide.id === "booth" || slide.id === "start") {
+    snapshot.twinPreviewUrl = await twinPreviewUrl(
+      supabase,
+      userId,
+      snapshot.twin
+    ).catch(() => null);
+  }
 }
 
 /**
@@ -818,10 +927,25 @@ export function effectiveStatus(
       // entitlements.speed_tier has a NOT NULL default, so its presence
       // proves nothing — only an explicit choice (recorded above) counts.
       return "todo";
+    case "consent":
+      // Granted → done. Accounts that set up before the consent step existed
+      // (progress recorded on any later step) read as skipped, never bounced.
+      return hasScope(snapshot, "likeness")
+        ? "done"
+        : legacyProgressAfter(snapshot, "consent")
+          ? "skipped"
+          : "todo";
     case "selfies":
       return snapshot.identityMedia.some(isVaultMedia) ? "done" : "todo";
+    case "voice":
+      return snapshot.twin?.voice_status === "ready"
+        ? "done"
+        : legacyProgressAfter(snapshot, "voice")
+          ? "skipped"
+          : "todo";
     case "twin":
-      return snapshot.twin && snapshot.twin.status !== "avatar_only"
+      return snapshot.twin?.avatar_status === "ready" ||
+        (snapshot.twin && snapshot.twin.status !== "avatar_only")
         ? "done"
         : "todo";
     case "avatar":
@@ -859,6 +983,25 @@ function firstOpenStep(snapshot: OnboardingSnapshot): OnboardingStepId {
   return "walkthrough";
 }
 
+/** A live consent grant for the scope. */
+const hasScope = (snapshot: OnboardingSnapshot, scope: ConsentScope): boolean =>
+  consentFor(snapshot.consents, scope) !== null;
+
+/**
+ * True when any step after `step` already has recorded progress — the sign
+ * of a state file written before `step` existed. Such accounts treat the
+ * new step as skipped so the deck never reopens on it.
+ */
+function legacyProgressAfter(
+  snapshot: OnboardingSnapshot,
+  step: OnboardingStepId
+): boolean {
+  const index = ONBOARDING_STEPS.indexOf(step);
+  return ONBOARDING_STEPS.slice(index + 1).some(
+    (later) => snapshot.state.steps[later] !== "todo"
+  );
+}
+
 /** Slide-level status for the deck dots: done once no sub-step is open. */
 function slideStatus(
   snapshot: OnboardingSnapshot,
@@ -888,16 +1031,75 @@ function slideLocked(
   return SLIDE_GROUPS.indexOf(slide) > gate;
 }
 
-/** Confirmed vault references — drafts and the avatar pointer excluded. */
+/** Confirmed vault image references — drafts, clips, samples and the avatar
+ * pointer excluded. */
 const isVaultMedia = (m: IdentityMediaView): boolean =>
-  m.role === "selfie" || m.role === "character_sheet";
+  isVaultRole(m.role) && m.status === "ready";
 
-/** Same-origin photo-booth mount (script-src 'self'); the plain upload
- * forms below it stay the lite/Messages and no-camera path. The bundle is
- * loaded once per slide by renderOnboarding — a grouped slide can hold both
- * the photo and the video booth. */
-function boothMount(mode: "photo" | "video"): string {
+/** Same-origin booth mount (script-src 'self'); the plain upload forms
+ * below it stay the lite/Messages and no-camera path. The bundle is loaded
+ * once per slide by renderOnboarding — a grouped slide can hold the photo,
+ * the audio and the video booth. */
+function boothMount(mode: "photo" | "video" | "audio"): string {
   return `<div class="identity-booth" data-mode="${mode}"></div>`;
+}
+
+/** Status pill: text + tone, never colour alone. */
+function pill(text: string, tone: "ok" | "pending" | "failed" | "off" = "off"): string {
+  return `<span class="pill ${tone}">${esc(text)}</span>`;
+}
+
+/** The consent gate shown on every twin panel until likeness is granted. */
+function consentGate(snapshot: OnboardingSnapshot): string | null {
+  if (hasScope(snapshot, "likeness")) return null;
+  return `<div class="locknote" role="status"><strong>Consent first.</strong> Allow likeness generation on the <a href="?step=consent">Consent &amp; privacy</a> panel — nothing is uploaded or generated before that.</div>`;
+}
+
+const ROLE_LABELS: Record<IdentityRole, string> = {
+  selfie: "photo",
+  character_sheet: "character sheet",
+  character_sheet_draft: "character sheet draft",
+  avatar: "avatar",
+  profile_image: "profile image",
+  profile_image_draft: "profile image draft",
+  alt_image: "alternate look",
+  reference_video: "reference video",
+  voice_sample: "voice sample",
+  consent_recording: "consent recording",
+};
+
+const SOURCE_LABELS: Record<IdentityMediaView["source"], string> = {
+  upload: "uploaded",
+  booth: "booth",
+  generated: "generated",
+};
+
+/** One row of the media manager: preview, labels, reorder, delete. */
+function mediaRow(m: IdentityMediaView, siblings: number, index: number): string {
+  const label = ROLE_LABELS[m.role];
+  const preview =
+    m.kind === "image"
+      ? `<img class="media-thumb" src="${esc(m.url ?? "")}" alt="${esc(label)} ${index + 1}">`
+      : m.kind === "video"
+        ? `<video class="media-thumb" src="${esc(m.url ?? "")}" muted playsinline preload="metadata" aria-label="${esc(label)} ${index + 1}"></video>`
+        : `<audio class="media-audio" src="${esc(m.url ?? "")}" controls preload="none" aria-label="${esc(label)} ${index + 1}"></audio>`;
+  const status =
+    m.status === "processing"
+      ? pill("processing", "pending")
+      : m.status === "failed"
+        ? pill("failed", "failed")
+        : "";
+  const move = (direction: "up" | "down", disabled: boolean): string =>
+    `<form method="post" class="inline"><input type="hidden" name="action" value="move_media"><input type="hidden" name="asset_id" value="${esc(m.assetId)}"><input type="hidden" name="role" value="${esc(m.role)}"><input type="hidden" name="direction" value="${direction}"><button class="ghost icon" aria-label="Move ${esc(label)} ${index + 1} ${direction}"${disabled ? " disabled" : ""}>${direction === "up" ? "↑" : "↓"}</button></form>`;
+  const remove = `<form method="post" class="inline"><input type="hidden" name="action" value="delete_media"><input type="hidden" name="asset_id" value="${esc(m.assetId)}"><button class="ghost" aria-label="Delete ${esc(label)} ${index + 1}">Delete</button></form>`;
+  return `<li class="media-row">${preview}<div class="media-meta"><span class="chip">${esc(label)}</span><span class="chip">${esc(SOURCE_LABELS[m.source])}</span>${status}</div><div class="media-actions">${move("up", index === 0)}${move("down", index === siblings - 1)}${remove}</div></li>`;
+}
+
+/** The media manager for one kind (images / clips / samples). */
+function mediaList(items: IdentityMediaView[], empty: string): string {
+  const shown = items.filter((m) => m.url);
+  if (shown.length === 0) return `<p class="muted">${esc(empty)}</p>`;
+  return `<ul class="media-list">${shown.map((m, i) => mediaRow(m, shown.length, i)).join("")}</ul>`;
 }
 
 /** Labels shown per save; the rest follow once these are decided. */
@@ -1102,11 +1304,17 @@ function stepBody(
   if (step === "model") {
     return modelBody(snapshot);
   }
+  if (step === "consent") {
+    return consentBody(snapshot);
+  }
   if (step === "selfies") {
-    return `${boothPhotoBody(snapshot, lite)}${photoSelectBody(snapshot)}${sheetBody(snapshot)}`;
+    return `${mediaBody(snapshot, lite)}${generatedBody(snapshot)}`;
+  }
+  if (step === "voice") {
+    return voiceBody(snapshot, lite);
   }
   if (step === "twin") {
-    return `${boothVideoBody(snapshot, lite)}${twinCreateBody(snapshot)}`;
+    return videoAvatarBody(snapshot, lite);
   }
   if (step === "avatar") {
     // First option: train a reusable avatar from an identity image (when
@@ -1123,16 +1331,16 @@ function stepBody(
       .filter((m) => isVaultMedia(m) && m.url)
       .map(
         (m) =>
-          `<form method="post" class="idpick"><input type="hidden" name="action" value="set_avatar"><input type="hidden" name="asset_id" value="${esc(m.assetId)}"><img class="idthumb" src="${esc(m.url ?? "")}" alt="identity image"><button${m.assetId === snapshot.avatarAssetId ? "" : ' class="ghost"'}>${m.assetId === snapshot.avatarAssetId ? "Current avatar" : "Use as avatar"}</button></form>`
+          `<form method="post" class="idpick"><input type="hidden" name="action" value="set_avatar"><input type="hidden" name="asset_id" value="${esc(m.assetId)}"><img class="idthumb" src="${esc(m.url ?? "")}" alt="${esc(ROLE_LABELS[m.role])}"><span class="chip">${esc(ROLE_LABELS[m.role])}</span><button${m.assetId === snapshot.avatarAssetId ? "" : ' class="ghost"'}>${m.assetId === snapshot.avatarAssetId ? "Current avatar" : "Use as avatar"}</button></form>`
       )
       .join("");
     const gallery = choices
       ? `<div class="idgrid">${choices}</div>`
-      : `<p class="muted">No identity images yet — upload selfies or generate a character sheet on the <a href="?step=selfies">selfies step</a>.</p>`;
+      : `<p class="muted">No identity images yet — add photos or generate a profile image on the <a href="?step=selfies">reference media panel</a>.</p>`;
     const generate = snapshot.username
-      ? `<form method="post" class="inline"><input type="hidden" name="action" value="generate_character_sheet"><button class="ghost">Generate a new look</button></form>`
+      ? `<form method="post" class="inline"><input type="hidden" name="action" value="generate_alt_image"><button class="ghost">Generate a new look</button></form>`
       : "";
-    return `<p class="muted">Optional — pick the image that represents @${esc(snapshot.username ?? "you")}, or generate a new look. Generated media can reference it as your likeness.</p>${trainedBlock}${gallery}<div class="row actions">${generate}${skipForm("avatar")}</div>`;
+    return `<p class="muted">Optional — pick the image that represents @${esc(snapshot.username ?? "you")} on your public card and in chat. Your approved profile image is the usual choice.</p>${trainedBlock}${gallery}<div class="row actions">${generate}${skipForm("avatar")}</div>`;
   }
   if (step === "connect") {
     // Same webview constraint as the Onairos slide: Google refuses OAuth
@@ -1299,73 +1507,241 @@ function browserBody(snapshot: OnboardingSnapshot): string {
 }
 
 /**
- * Photo Booth wizard panels — the slide's six stepper steps. Each reads and
- * writes the same three step IDs (selfies/twin/avatar) as before; only the
- * presentation is split.
+ * Digital-twin wizard panels — the slide's six stepper steps. Each reads
+ * and writes one of the five step IDs (consent/selfies/voice/twin/avatar);
+ * the consent gate on every panel after the first is server-enforced too.
  */
-function boothPhotoBody(snapshot: OnboardingSnapshot, lite: boolean): string {
+function consentBody(snapshot: OnboardingSnapshot): string {
+  const name = snapshot.username ?? "you";
+  const facts = `<ul class="facts"><li><strong>You add</strong> photos, an optional short video, optional voice samples. They stay in your private vault; only short-lived links ever leave, and only to render.</li><li><strong>Your agent makes</strong> a character sheet and a profile image of @${esc(name)}, optional alternate looks, an optional voice clone, an optional talking video avatar.</li><li><strong>Who processes it</strong> OpenAI GPT Image 2 via GMI Cloud (images) · ElevenLabs (voice clone and speech) · fal.ai / MiniMax (video) · HeyGen only if you train a legacy avatar.</li><li><strong>How long it stays</strong> until you delete it — here, or from Settings. Deleting the voice clone removes it at ElevenLabs too.</li><li><strong>Your controls</strong> delete any file, revoke any consent below at any time, export everything from Settings.</li></ul>`;
+  const pending = CONSENT_SCOPES.filter((scope) => !hasScope(snapshot, scope));
+  const rows = CONSENT_SCOPES.map((scope) => {
+    const copy = CONSENT_COPY[scope];
+    const grant = consentFor(snapshot.consents, scope);
+    const required = scope === "likeness";
+    if (grant) {
+      return `<div class="consent-row granted"><span class="pill ok">granted</span><span class="consent-text"><strong>${esc(copy.title)}</strong>${esc(copy.statement)}<span class="muted small">Granted ${esc(grant.granted_at.slice(0, 10))} · policy ${esc(grant.policy_version)}</span></span></div>`;
+    }
+    return `<label class="consent-row"><input type="checkbox" name="scope" value="${scope}"${required ? " required" : ""}><span class="consent-text"><strong>${esc(copy.title)}${required ? ' <span class="chip">required for the twin</span>' : ' <span class="chip">optional</span>'}</strong>${esc(copy.statement)}<span class="muted small">${esc(copy.detail)}</span></span></label>`;
+  }).join("");
+  const grantForm =
+    pending.length > 0
+      ? `<form method="post" class="stack consent-form"><input type="hidden" name="action" value="grant_consent"><fieldset class="consent-set"><legend class="subhead">What you allow</legend>${rows}</fieldset><p class="muted small">Only you can consent for yourself — these boxes are about your own face and voice, never someone else's. Policy ${esc(CONSENT_POLICY_VERSION)}.</p><button>Save my choices</button></form>`
+      : `<div class="consent-set" aria-label="What you allow">${rows}</div>`;
+  const revokes = CONSENT_SCOPES.filter((scope) => hasScope(snapshot, scope))
+    .map(
+      (scope) =>
+        `<form method="post" class="inline"><input type="hidden" name="action" value="revoke_consent"><input type="hidden" name="scope" value="${scope}"><button class="ghost">Revoke ${esc(CONSENT_COPY[scope].title.toLowerCase())}</button></form>`
+    )
+    .join("");
+  return `<p class="muted">Before anything is uploaded or generated, here is exactly what happens with your face and voice.</p>${facts}${grantForm}<div class="row actions">${revokes}${skipForm("consent", "Skip the twin for now")}</div>`;
+}
+
+function mediaBody(snapshot: OnboardingSnapshot, lite: boolean): string {
+  const gate = consentGate(snapshot);
+  const name = snapshot.username ?? "username";
+  const images = snapshot.identityMedia.filter((m) => m.kind === "image" && isVaultMedia(m));
+  const videos = snapshot.identityMedia.filter((m) => m.role === "reference_video");
   // Booth captures post upload_selfie on finalize; the plain form stays
   // the lite/Messages and no-camera path (capture="user" opens the iPhone
   // camera directly from the picker).
-  const booth = lite ? "" : boothMount("photo");
-  const upload = `<details${lite ? " open" : ""}><summary>Upload from your library</summary><form method="post" enctype="multipart/form-data" class="row"><input type="hidden" name="action" value="upload_selfie"><input type="file" name="file" accept="image/png,image/jpeg,image/webp,image/heic,image/heif" capture="user"><button>Upload</button></form><p class="muted">iPhone HEIC photos convert automatically.</p></details>`;
-  return `<p class="muted">Step into the booth — shoot from your iPhone or your MacBook camera, or upload from your library. Photos live privately in your image vault and anchor your @${esc(snapshot.username ?? "username")} identity for generated media.</p>${booth}${upload}<div class="row actions">${skipForm("selfies")}</div>`;
+  const booth = gate || lite ? "" : boothMount("photo");
+  const photoUpload = gate
+    ? ""
+    : `<details${lite ? " open" : ""}><summary>Upload from your library</summary><form method="post" enctype="multipart/form-data" class="row" aria-busy="false"><input type="hidden" name="action" value="upload_selfie"><label class="sr-only" for="twin-photo">Photo</label><input id="twin-photo" type="file" name="file" accept="image/png,image/jpeg,image/webp,image/heic,image/heif" capture="user"><button>Upload</button></form><p class="muted">PNG, JPEG, WebP or HEIC, 8 MB max. iPhone HEIC photos convert automatically. Face the light, fill the frame, no sunglasses — three to eight shots from different angles give the best sheet.</p></details>`;
+  const videoUpload = gate
+    ? ""
+    : `<details><summary>Add a reference video (optional)</summary><form method="post" enctype="multipart/form-data" class="row"><input type="hidden" name="action" value="upload_media"><input type="hidden" name="role" value="reference_video"><label class="sr-only" for="twin-video">Video</label><input id="twin-video" type="file" name="file" accept="video/mp4,video/webm" capture="user"><button>Upload video</button></form><p class="muted">MP4 or WebM, 50 MB max, 5–30 seconds. Talk or turn your head slowly — motion references help video generation.</p></details>`;
+  return `${gate ?? ""}<p class="muted">Photos anchor @${esc(name)}'s identity for everything generated later. They live privately in your vault; you can reorder or delete them any time.</p><h3 class="subhead">Photos</h3>${booth}${photoUpload}${mediaList(images, "No photos yet — step into the booth or upload one.")}<h3 class="subhead">Video</h3>${videoUpload}${mediaList(videos, "No reference video — optional.")}<p class="muted small">Voice samples live on the <a href="?step=voice">Voice</a> panel.</p><div class="row actions">${skipForm("selfies")}</div>`;
 }
 
-function photoSelectBody(snapshot: OnboardingSnapshot): string {
-  const references = snapshot.identityMedia.filter(isVaultMedia);
-  const cards = references
-    .filter((m) => m.url)
-    .map((m) => {
-      const label = m.role === "character_sheet" ? "character sheet" : "selfie";
-      return `<figure class="pickcard"><img src="${esc(m.url ?? "")}" alt="${esc(label)}"><span class="cgal-check on" aria-hidden="true"><svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5l4 4 8-9"></path></svg></span><figcaption class="chip">${esc(label)}</figcaption></figure>`;
-    })
-    .join("");
-  const gallery = cards
-    ? `<div class="pickgrid">${cards}</div>`
-    : `<p class="muted">Nothing selected yet — take or upload a photo first, then tap shots in the booth gallery and confirm with the green check.</p>`;
-  return `<p class="muted">Your confirmed photos — these live privately in your vault and anchor generated media.</p>${gallery}`;
-}
-
-function sheetBody(snapshot: OnboardingSnapshot): string {
-  const references = snapshot.identityMedia.filter(isVaultMedia);
-  // Two-step character sheet, same card: generate renders a draft; the
-  // owner then saves it into the vault or discards it.
-  const draft = snapshot.identityMedia.find(
-    (m) => m.role === "character_sheet_draft"
-  );
-  return !snapshot.username
-    ? `<p class="muted">Set a <a href="?step=username">username</a> first — the character sheet is bound to your @name.</p>`
-    : draft
-      ? `<div class="sheetcard"><p class="muted">Step 2 of 2 — review your character sheet, then save it to the vault or discard it.</p>${draft.url ? `<img class="sheetpreview" src="${esc(draft.url)}" alt="character sheet draft">` : ""}<div class="row"><form method="post" class="inline"><input type="hidden" name="action" value="save_character_sheet"><input type="hidden" name="asset_id" value="${esc(draft.assetId)}"><button>Save to vault</button></form><form method="post" class="inline"><input type="hidden" name="action" value="discard_character_sheet"><input type="hidden" name="asset_id" value="${esc(draft.assetId)}"><button class="ghost">Discard</button></form></div></div>`
-      : `<div class="sheetcard"><p class="muted">Step 1 of 2 — generate a character sheet from your photos; you review it before anything is saved.</p><form method="post" class="inline"><input type="hidden" name="action" value="generate_character_sheet"><button${references.length > 0 ? "" : ' class="ghost"'}>Generate character sheet</button></form></div>`;
-}
-
-function boothVideoBody(snapshot: OnboardingSnapshot, lite: boolean): string {
-  if (!snapshot.twinAvailable) {
-    return `<p class="muted">Digital twin creation isn't configured on this deployment — set it up later from Settings once it is. Nothing here blocks the rest of setup.</p><div class="row actions">${skipForm("twin", "Skip — not configured")}</div>`;
+function generatedBody(snapshot: OnboardingSnapshot): string {
+  if (!snapshot.username) {
+    return `<p class="muted">Set a <a href="?step=username">username</a> first — the character sheet is bound to your @name.</p>`;
   }
-  const consent = snapshot.twin?.consent_video_key
-    ? `<p>Consent recording on file.</p>`
-    : `${lite ? "" : boothMount("video")}<details${lite ? " open" : ""}><summary>Upload a recording instead</summary><p class="muted">Record or upload a short video of yourself saying you consent to creating a digital twin of your likeness.</p><form method="post" enctype="multipart/form-data" class="row"><input type="hidden" name="action" value="upload_consent"><input type="file" name="file" accept="video/mp4,video/webm" capture="user"><button>Upload consent</button></form></details>`;
-  return `<p class="muted">Optional — record the consent line for a talking-head twin of your likeness. The video is delivered privately: only you can share it.</p>${consent}<div class="row actions">${skipForm("twin")}</div>`;
-}
-
-function twinCreateBody(snapshot: OnboardingSnapshot): string {
-  if (!snapshot.twinAvailable) {
-    return `<p class="muted">Digital twin creation isn't configured on this deployment — nothing here blocks the rest of setup.</p>`;
-  }
-  const twin = snapshot.twin;
-  const reference = snapshot.identityMedia.find(
-    (m) => isVaultMedia(m) && m.url
-  );
-  const create = reference
-    ? `<form method="post" class="stack"><input type="hidden" name="action" value="create_twin"><input type="text" name="script" placeholder="What should @${esc(snapshot.username ?? "you")} say? (a sentence or two)" maxlength="500"><button>Create twin video</button></form>`
-    : `<p class="muted">Add a photo on the <a href="?step=selfies">selfies step</a> first — the twin animates your reference image.</p>`;
-  const statusLine = twin
-    ? `<p>Twin status: <strong>${esc(twin.status)}</strong>.</p>`
+  const gate = consentGate(snapshot);
+  const name = snapshot.username;
+  const photos = snapshot.identityMedia.filter((m) => m.role === "selfie" && m.status === "ready");
+  const sheet = snapshot.identityMedia.find((m) => m.role === "character_sheet");
+  const sheetDraft = snapshot.identityMedia.find((m) => m.role === "character_sheet_draft");
+  const profile = snapshot.identityMedia.find((m) => m.role === "profile_image");
+  const profileDraft = snapshot.identityMedia.find((m) => m.role === "profile_image_draft");
+  const alternates = snapshot.identityMedia.filter((m) => m.role === "alt_image");
+  const preview = (m: IdentityMediaView | undefined, alt: string): string =>
+    m?.url ? `<img class="sheetpreview" src="${esc(m.url)}" alt="${esc(alt)}">` : "";
+  const reviewSheet = sheetDraft
+    ? `<div class="sheetcard"><h3 class="subhead">Character sheet — review</h3>${preview(sheetDraft, "character sheet draft")}<p class="muted">Save it to your vault or discard it. Nothing is reused until you save.</p><div class="row"><form method="post" class="inline"><input type="hidden" name="action" value="save_character_sheet"><input type="hidden" name="asset_id" value="${esc(sheetDraft.assetId)}"><button>Save to vault</button></form><form method="post" class="inline"><input type="hidden" name="action" value="discard_character_sheet"><input type="hidden" name="asset_id" value="${esc(sheetDraft.assetId)}"><button class="ghost">Discard</button></form></div></div>`
     : "";
-  return `<p class="muted">Optional — create a talking-head twin from your reference photo.</p>${statusLine}${create}`;
+  const sheetCard = sheetDraft || gate
+    ? ""
+    : `<div class="sheetcard"><h3 class="subhead">Character sheet ${sheet ? pill("saved", "ok") : ""}</h3>${preview(sheet, "character sheet")}<p class="muted">A multi-view grid that keeps every later image consistent. From your photos, or from a description of an original agent identity.</p><div class="row"><form method="post" class="inline"><input type="hidden" name="action" value="generate_character_sheet"><button${photos.length > 0 ? "" : ' class="ghost"'}>${sheet ? "Regenerate from my photos" : "Generate from my photos"}</button></form></div><details><summary>Or describe an original agent</summary><form method="post" class="stack"><input type="hidden" name="action" value="generate_character_sheet"><label for="twin-description">Describe the agent's look</label><textarea id="twin-description" name="description" rows="3" maxlength="${DESCRIPTION_MAX_CHARS}" placeholder="e.g. a warm, curious guide in their thirties, silver-rimmed glasses, short dark curls, olive linen shirt"></textarea><button>Generate from description</button></form><p class="muted small">Describe an original character, not a real person.</p></details></div>`;
+  const reviewProfile = profileDraft
+    ? `<div class="sheetcard"><h3 class="subhead">Profile image — approve</h3>${preview(profileDraft, "profile image draft")}<p class="muted">This becomes @${esc(name)}'s face in /zap and /twin. Approve it or discard and try another style.</p><div class="row"><form method="post" class="inline"><input type="hidden" name="action" value="approve_profile_image"><input type="hidden" name="asset_id" value="${esc(profileDraft.assetId)}"><button>Approve</button></form><form method="post" class="inline"><input type="hidden" name="action" value="discard_profile_image"><input type="hidden" name="asset_id" value="${esc(profileDraft.assetId)}"><button class="ghost">Discard</button></form></div></div>`
+    : "";
+  const canProfile = Boolean(sheet || photos.length > 0);
+  const profileCard = profileDraft || gate
+    ? ""
+    : `<div class="sheetcard"><h3 class="subhead">Profile image ${profile ? pill("approved", "ok") : ""}</h3>${preview(profile, "approved profile image")}<p class="muted">One reusable high-quality portrait, derived from your sheet or best photo. Renders at high quality on OpenAI GPT Image 2 and counts toward today's creative limit.</p><form method="post" class="stack"><input type="hidden" name="action" value="generate_profile_image"><label for="twin-style">Style (optional)</label><input id="twin-style" type="text" name="style" maxlength="${STYLE_MAX_CHARS}" placeholder="e.g. futuristic editorial, warm film grain"><button${canProfile ? "" : ' class="ghost"'}>${profile ? "Generate a new profile image" : "Generate profile image"}</button></form></div>`;
+  const altCard = !profile || gate
+    ? ""
+    : `<div class="sheetcard"><h3 class="subhead">Alternate looks ${alternates.length > 0 ? pill(`${alternates.length} saved`, "ok") : ""}</h3><p class="muted">Extra outfits or settings, same person. They join your vault straight away.</p><form method="post" class="stack"><input type="hidden" name="action" value="generate_alt_image"><label for="twin-alt-style">Describe the look</label><input id="twin-alt-style" type="text" name="style" maxlength="${STYLE_MAX_CHARS}" placeholder="e.g. on stage under blue light, black turtleneck"><button class="ghost">Add an alternate look</button></form></div>`;
+  return `${gate ?? ""}${reviewSheet}${reviewProfile}${sheetCard}${profileCard}${altCard}`;
+}
+
+function voiceBody(snapshot: OnboardingSnapshot, lite: boolean): string {
+  if (!snapshot.voiceAvailable) {
+    return `<p class="muted">Voice cloning isn't configured on this deployment — nothing here blocks the rest of setup.</p><div class="row actions">${skipForm("voice", "Skip — not configured")}</div>`;
+  }
+  const gate = consentGate(snapshot);
+  const voiceConsent = hasScope(snapshot, "voice");
+  const samples = snapshot.identityMedia.filter((m) => m.role === "voice_sample");
+  const twin = snapshot.twin;
+  const status = twin?.voice_status ?? "none";
+  const optIn = !gate && !voiceConsent
+    ? `<div class="locknote" role="status"><strong>Voice is opt-in.</strong> Tick “Voice clone” on the <a href="?step=consent">Consent &amp; privacy</a> panel to record samples and clone your voice.</div>`
+    : "";
+  const canCollect = !gate && voiceConsent;
+  const booth = canCollect && !lite ? boothMount("audio") : "";
+  const upload = canCollect
+    ? `<details${lite ? " open" : ""}><summary>Upload a recording</summary><form method="post" enctype="multipart/form-data" class="row"><input type="hidden" name="action" value="upload_media"><input type="hidden" name="role" value="voice_sample"><label class="sr-only" for="twin-audio">Voice sample</label><input id="twin-audio" type="file" name="file" accept="audio/mpeg,audio/mp4,audio/wav,audio/ogg,audio/webm,.m4a,.mp3,.wav"><button>Upload sample</button></form><p class="muted">MP3, M4A, WAV or OGG, 25 MB max. One to three clean clips, 30 seconds or more in total, in a quiet room, reading naturally.</p></details>`
+    : "";
+  const statusPill =
+    status === "ready"
+      ? pill("voice clone ready", "ok")
+      : status === "pending"
+        ? pill("awaiting verification at ElevenLabs", "pending")
+        : status === "failed"
+          ? pill("last attempt failed", "failed")
+          : status === "revoked"
+            ? pill("clone deleted", "off")
+            : pill("no voice clone", "off");
+  const error = twin?.voice_error && status === "failed"
+    ? `<p class="muted">${esc(twin.voice_error)}</p>`
+    : "";
+  const cloneButton = canCollect && samples.length > 0 && status !== "ready"
+    ? `<form method="post" class="inline"><input type="hidden" name="action" value="create_voice_clone"><button>${status === "failed" ? "Retry voice clone" : "Create voice clone"}</button></form>`
+    : "";
+  const deleteButton = twin?.voice_id
+    ? `<form method="post" class="inline"><input type="hidden" name="action" value="delete_voice_clone"><button class="ghost">Delete voice clone</button></form>`
+    : "";
+  const cloneCard = `<div class="sheetcard"><h3 class="subhead">Voice clone ${statusPill}</h3><p class="muted">An ElevenLabs Instant Voice Clone made only from the samples above, only when you tap the button. It speaks for @${esc(snapshot.username ?? "you")} in /twin say. The voice id is stored server-side and never shown.</p>${error}<div class="row">${cloneButton}${deleteButton}</div></div>`;
+  return `${gate ?? ""}${optIn}<p class="muted">Optional — give your twin your voice. Samples stay in your private vault until you delete them.</p><h3 class="subhead">Samples</h3>${booth}${upload}${mediaList(samples, "No voice samples yet.")}${cloneCard}<div class="row actions">${skipForm("voice")}</div>`;
+}
+
+function videoAvatarBody(snapshot: OnboardingSnapshot, lite: boolean): string {
+  if (!snapshot.avatarAvailable && !snapshot.twinAvailable) {
+    return `<p class="muted">Digital twin video isn't configured on this deployment — set it up later from Settings once it is. Nothing here blocks the rest of setup.</p><div class="row actions">${skipForm("twin", "Skip — not configured")}</div>`;
+  }
+  const gate = consentGate(snapshot);
+  const twin = snapshot.twin;
+  const name = snapshot.username ?? "you";
+  const avatarConsent = hasScope(snapshot, "video_avatar");
+  const profile = snapshot.identityMedia.find((m) => m.role === "profile_image");
+  const voiceReady = twin?.voice_status === "ready";
+  const sample = snapshot.identityMedia.some((m) => m.role === "voice_sample");
+  const status = twin?.avatar_status ?? "off";
+  const optIn = !gate && !avatarConsent
+    ? `<div class="locknote" role="status"><strong>Video avatar is opt-in.</strong> Tick “Video avatar” on the <a href="?step=consent">Consent &amp; privacy</a> panel to render one.</div>`
+    : "";
+  const check = (ok: boolean, label: string, fix: string): string =>
+    `<li>${ok ? pill("ready", "ok") : pill("missing", "off")} ${esc(label)}${ok ? "" : ` — ${fix}`}</li>`;
+  const requirements = `<ul class="facts"><li class="muted small">What the avatar needs:</li>${check(Boolean(profile), "an approved profile image", '<a href="?step=selfies">generate one</a>')}${check(voiceReady || sample, "a voice", voiceReady ? "" : '<a href="?step=voice">clone your voice or add a sample</a>')}</ul>`;
+  const statusPill =
+    status === "ready"
+      ? pill("video avatar ready", "ok")
+      : status === "pending"
+        ? pill("rendering", "pending")
+        : status === "failed"
+          ? pill("render failed", "failed")
+          : pill("off", "off");
+  const error = status === "failed" && twin?.avatar_error
+    ? `<p class="muted">${esc(twin.avatar_error)}</p>`
+    : "";
+  const preview = snapshot.twinPreviewUrl
+    ? `<video class="twin-preview" src="${esc(snapshot.twinPreviewUrl)}" controls playsinline preload="metadata" aria-label="video avatar preview"></video>`
+    : "";
+  const canEnable = snapshot.avatarAvailable && !gate && avatarConsent && Boolean(profile) && (voiceReady || sample) && status !== "pending";
+  const enable = canEnable
+    ? `<form method="post" class="inline"><input type="hidden" name="action" value="enable_video_avatar"><button>${status === "failed" ? "Retry render" : status === "ready" ? "Re-render preview" : "Enable video avatar"}</button></form>`
+    : "";
+  const refresh = status === "pending"
+    ? `<form method="post" class="inline"><input type="hidden" name="action" value="refresh_twin"><button class="ghost">Refresh status</button></form>`
+    : "";
+  const disable = status !== "off"
+    ? `<form method="post" class="inline"><input type="hidden" name="action" value="disable_video_avatar"><button class="ghost">Turn off</button></form>`
+    : "";
+  const avatarCard = snapshot.avatarAvailable
+    ? `<div class="sheetcard"><h3 class="subhead">Video avatar ${statusPill}</h3><p class="muted">A talking video of @${esc(name)}: your approved profile image lip-synced to your voice on fal.ai (MiniMax H3 Max). Enabling it renders a short preview; /twin say then speaks any line you give it. Every video is labelled as synthetic.</p>${requirements}${error}${preview}<div class="row">${enable}${refresh}${disable}</div></div>`
+    : "";
+  // Legacy talking-head path (HeyGen through the GMI queue) stays reachable
+  // for accounts that trained a look there; its consent recording is the
+  // spoken attestation kept alongside the checkbox grant.
+  const legacy = snapshot.twinAvailable
+    ? `<details class="legacy"><summary>More options — recorded consent and trained avatar</summary>${twin?.consent_video_key ? `<p>Consent recording on file.</p>` : `${lite || gate ? "" : boothMount("video")}<p class="muted">Record or upload a short video of yourself saying you consent to a digital twin of your likeness.</p><form method="post" enctype="multipart/form-data" class="row"><input type="hidden" name="action" value="upload_consent"><label class="sr-only" for="twin-consent-video">Consent recording</label><input id="twin-consent-video" type="file" name="file" accept="video/mp4,video/webm" capture="user"><button>Upload consent</button></form>`}<form method="post" class="stack"><input type="hidden" name="action" value="create_twin"><label for="twin-legacy-script">Talking-head line (legacy renderer)</label><input id="twin-legacy-script" type="text" name="script" placeholder="What should @${esc(name)} say? (a sentence or two)" maxlength="500"><button class="ghost">Create talking-head video</button></form>${twin && twin.status !== "avatar_only" ? `<p class="muted">Legacy twin status: <strong>${esc(twin.status)}</strong>.</p>` : ""}</details>`
+    : "";
+  return `${gate ?? ""}${optIn}<p class="muted">Optional — a high-quality video avatar for @${esc(name)}.</p>${avatarCard}${legacy}<div class="row actions">${skipForm("twin")}</div>`;
+}
+
+function twinSummaryBody(snapshot: OnboardingSnapshot): string {
+  if (!snapshot.username) {
+    return `<p class="muted">Pick a <a href="?step=username">username</a> to build your digital twin — everything below is bound to your @name.</p>`;
+  }
+  const name = snapshot.username;
+  const twin = snapshot.twin;
+  const profile = snapshot.identityMedia.find((m) => m.role === "profile_image");
+  const sheet = snapshot.identityMedia.find((m) => m.role === "character_sheet");
+  const photos = snapshot.identityMedia.filter((m) => m.role === "selfie").length;
+  const videos = snapshot.identityMedia.filter((m) => m.role === "reference_video").length;
+  const samples = snapshot.identityMedia.filter((m) => m.role === "voice_sample").length;
+  const alternates = snapshot.identityMedia.filter((m) => m.role === "alt_image").length;
+  const hero = profile?.url
+    ? `<img class="twin-hero-img" src="${esc(profile.url)}" alt="@${esc(name)} profile image">`
+    : `<span class="twin-hero-img placeholder" aria-hidden="true">@</span>`;
+  const counts = [
+    `${photos} photo${photos === 1 ? "" : "s"}`,
+    `${videos} video${videos === 1 ? "" : "s"}`,
+    `${samples} voice sample${samples === 1 ? "" : "s"}`,
+    ...(alternates > 0 ? [`${alternates} alternate look${alternates === 1 ? "" : "s"}`] : []),
+  ].join(" · ");
+  const rows = [
+    ["Character sheet", sheet ? pill("saved", "ok") : pill("none", "off")],
+    ["Profile image", profile ? pill("approved", "ok") : pill("none", "off")],
+    [
+      "Voice",
+      twin?.voice_status === "ready"
+        ? pill("cloned", "ok")
+        : twin?.voice_status === "pending"
+          ? pill("pending", "pending")
+          : pill("none", "off"),
+    ],
+    [
+      "Video avatar",
+      twin?.avatar_status === "ready"
+        ? pill("ready", "ok")
+        : twin?.avatar_status === "pending"
+          ? pill("rendering", "pending")
+          : pill("off", "off"),
+    ],
+  ]
+    .map(([label, value]) => `<li><span class="grow">${esc(label ?? "")}</span>${value ?? ""}</li>`)
+    .join("");
+  const preview = snapshot.twinPreviewUrl
+    ? `<video class="twin-preview" src="${esc(snapshot.twinPreviewUrl)}" controls playsinline preload="metadata" aria-label="video avatar preview"></video>`
+    : "";
+  const sharing = twin?.sharing === "public";
+  const privacy = `<div class="row"><form method="post" class="inline"><input type="hidden" name="action" value="set_sharing"><input type="hidden" name="sharing" value="${sharing ? "private" : "public"}"><button class="ghost">${sharing ? "Make @" + esc(name) + " private" : "Allow others to reference @" + esc(name)}</button></form><a class="navlink" href="?step=consent">Manage consent</a><a class="navlink" href="?step=selfies">Manage media</a></div><p class="muted small">${sharing ? "Public: other people's /zap can use your profile image and character sheet. Your voice is never shared." : "Private: only you can reference @" + esc(name) + "."}</p>`;
+  const examples = [
+    `/zap Create a cinematic portrait using @${name}`,
+    `/zap Make a short product video starring @${name}`,
+    `/twin say Welcome to AirV2`,
+    `/twin Create a profile image in a futuristic editorial style`,
+  ]
+    .map(
+      (prompt) =>
+        `<div class="prompt" data-prompt="${esc(prompt)}"><code>${esc(prompt)}</code><div class="row"><button class="ghost" type="button" data-copy>Copy</button></div></div>`
+    )
+    .join("");
+  return `<div class="twin-summary"><div class="twin-hero">${hero}<div><strong>@${esc(name)}</strong><p class="muted">${esc(counts)}</p></div></div><ul class="facts status">${rows}</ul>${preview}<h3 class="subhead">Privacy</h3>${privacy}<h3 class="subhead">Use it</h3><p class="muted">In iMessage or the web chat, <strong>/zap</strong> makes any video and can star @${esc(name)}; <strong>/twin</strong> speaks or poses as your twin.</p><div class="prompts">${examples}</div><p class="muted small">Voice and video made from your twin are synthetic — say so when you share them.</p></div>`;
 }
 
 /**
@@ -1377,15 +1753,19 @@ function sectionDone(
   snapshot: OnboardingSnapshot,
   key: SlideSectionKey
 ): boolean {
-  const hasVaultMedia = snapshot.identityMedia.some(
-    (m) => isVaultMedia(m) && m.url
+  const hasVaultMedia = snapshot.identityMedia.some(isVaultMedia);
+  const hasProfileImage = snapshot.identityMedia.some(
+    (m) => m.role === "profile_image"
   );
-  if (key === "booth_photo" || key === "photo_select") return hasVaultMedia;
-  if (key === "sheet")
-    return snapshot.identityMedia.some((m) => m.role === "character_sheet");
-  if (key === "booth_video") return Boolean(snapshot.twin?.consent_video_key);
+  if (key === "consent") return hasScope(snapshot, "likeness");
+  if (key === "booth_photo") return hasVaultMedia;
+  if (key === "sheet" || key === "twin_summary") return hasProfileImage;
+  if (key === "voice") return snapshot.twin?.voice_status === "ready";
   if (key === "twin_create")
-    return Boolean(snapshot.twin && snapshot.twin.status !== "avatar_only");
+    return Boolean(
+      snapshot.twin?.avatar_status === "ready" ||
+        (snapshot.twin && snapshot.twin.status !== "avatar_only")
+    );
   if (key === "avatar")
     return Boolean(
       snapshot.avatarAssetId || snapshot.twin?.provider_avatar_id
@@ -1404,11 +1784,10 @@ function sectionBody(
 ): string {
   if (key === "computer") return computerBody(snapshot);
   if (key === "browser") return browserBody(snapshot);
-  if (key === "booth_photo") return boothPhotoBody(snapshot, lite);
-  if (key === "photo_select") return photoSelectBody(snapshot);
-  if (key === "sheet") return sheetBody(snapshot);
-  if (key === "booth_video") return boothVideoBody(snapshot, lite);
-  if (key === "twin_create") return twinCreateBody(snapshot);
+  if (key === "booth_photo") return mediaBody(snapshot, lite);
+  if (key === "sheet") return generatedBody(snapshot);
+  if (key === "twin_create") return videoAvatarBody(snapshot, lite);
+  if (key === "twin_summary") return twinSummaryBody(snapshot);
   return stepBody(snapshot, key, browserSignin, lite);
 }
 
@@ -1714,6 +2093,15 @@ input[type=file]{flex:1;min-width:0;color:var(--ink-muted);font-size:0.85rem;fon
 .cam-shutter.rec.on{border-radius:0.85rem;transform:scale(0.72)}
 .cam-flip{justify-self:end;width:2.7rem;height:2.7rem;min-height:0;padding:0;border-radius:50%;border:none;background:rgba(255,255,255,0.14);color:#fff;display:flex;align-items:center;justify-content:center}
 .cam-flip:disabled{opacity:0.4}
+/* Audio booth: a mic on the black stage instead of a viewfinder. */
+.cam.audio .cam-stage{min-height:150px}
+.cam-mic{position:relative;width:5.2rem;height:5.2rem;display:flex;align-items:center;justify-content:center;color:#fff}
+.cam-mic-ring{position:absolute;inset:0;border-radius:50%;border:1.5px solid rgba(255,255,255,0.35)}
+.cam-mic-ring.live{border-color:#ff453a;animation:micPulse 1.1s ease-in-out infinite}
+@keyframes micPulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.12);opacity:0.55}}
+.cam-hint{margin:0;text-align:center;font-family:var(--font-ui);font-size:0.62rem;letter-spacing:0.08em;text-transform:uppercase;color:rgba(255,255,255,0.7)}
+.booth-playback.audio{height:44px;background:transparent;border:0}
+@media(prefers-reduced-motion:reduce){.cam-mic-ring.live{animation:none}}
 /* Circular gallery review: cards bent along an arc; tap = select. */
 .cgal{position:relative;touch-action:pan-y;outline:none;user-select:none;-webkit-user-select:none;cursor:grab;overflow:hidden}
 .cgal-stage{position:relative;height:206px}
@@ -1745,6 +2133,54 @@ input[type=file]{flex:1;min-width:0;color:var(--ink-muted);font-size:0.85rem;fon
 .stepper-nav .spacer{flex:1}
 @media(prefers-reduced-motion:reduce){.cam-flash{animation:none;opacity:0}.cam-reddot{animation:none}.cgal-card,.pickcard,.stepper-ind,.stepper-line i{transition:none}}
 @media(hover:hover) and (pointer:fine) and (prefers-reduced-motion:reduce){.pickcard:hover{transform:none}}
+/* Digital twin: consent, media manager, generation cards, summary. */
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.small{font-size:0.8rem;line-height:1.45}
+h3.subhead{margin-top:0.9rem;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap}
+.facts{list-style:none;padding:0;margin:0.2rem 0 0.9rem;display:grid;gap:0.45rem}
+.facts li{display:flex;gap:0.5rem;align-items:baseline;font-size:0.9rem;line-height:1.5;color:var(--ink)}
+.facts li strong{flex:none;color:var(--accent);font-family:var(--font-ui);font-size:0.68rem;letter-spacing:0.1em;text-transform:uppercase;min-width:7.5rem}
+.facts.status li{align-items:center;border:1px solid var(--ring);border-radius:var(--radius-well);background:var(--well-bg);padding:0.55rem 0.85rem}
+@media(max-width:480px){.facts:not(.status) li{flex-direction:column;gap:0.15rem}.facts:not(.status) li strong{min-width:0}}
+.pill{display:inline-flex;align-items:center;gap:0.35rem;font-family:var(--font-ui);font-size:0.62rem;letter-spacing:0.1em;text-transform:uppercase;border-radius:var(--radius-pill);padding:0.22rem 0.6rem;border:1px solid var(--ring);color:var(--ink-muted);white-space:nowrap}
+.pill.ok{color:#30d158;border-color:rgba(48,209,88,0.5)}
+.pill.ok::before{content:"✓"}
+.pill.pending{color:#ffd60a;border-color:rgba(255,214,10,0.5)}
+.pill.pending::before{content:"…"}
+.pill.failed{color:#ff453a;border-color:rgba(255,69,58,0.5)}
+.pill.failed::before{content:"!"}
+.locknote{border:1px solid var(--accent);border-radius:var(--radius-well);background:var(--well-bg);padding:0.7rem 0.85rem;margin-bottom:0.7rem;font-size:0.9rem;line-height:1.5}
+.consent-set{border:1px solid var(--ring);border-radius:var(--radius-well);background:var(--well-bg);padding:0.4rem 0.85rem 0.6rem;margin:0;display:grid;gap:0.2rem}
+.consent-set legend{padding:0 0.3rem}
+.consent-row{display:flex;gap:0.8rem;align-items:flex-start;padding:0.7rem 0;border-top:1px solid var(--ring);cursor:pointer}
+.consent-row:first-of-type{border-top:0}
+.consent-row.granted{cursor:default}
+.consent-row input[type=checkbox]{flex:none;width:1.35rem;height:1.35rem;margin:0.15rem 0 0;accent-color:var(--accent)}
+.consent-text{display:grid;gap:0.3rem;font-size:0.92rem;line-height:1.5}
+.consent-text strong{display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;font-family:var(--font-ui);font-size:0.74rem;letter-spacing:0.1em;text-transform:uppercase}
+.consent-form button{justify-self:start}
+.media-list{list-style:none;margin:0.3rem 0 0.9rem;padding:0;display:grid;gap:0.5rem}
+.media-row{display:grid;grid-template-columns:auto 1fr auto;gap:0.7rem;align-items:center;border:1px solid var(--ring);border-radius:var(--radius-well);background:var(--well-bg);padding:0.5rem 0.6rem}
+.media-thumb{width:64px;height:64px;object-fit:cover;border-radius:calc(var(--radius-well) - 4px);border:1px solid var(--ring);display:block;background:#000}
+.media-audio{width:100%;max-width:220px;height:36px}
+.media-meta{display:flex;gap:0.4rem;flex-wrap:wrap;min-width:0}
+.media-actions{display:flex;gap:0.3rem;align-items:center}
+.media-actions button{min-height:2.25rem;padding:0.35rem 0.7rem}
+button.icon{min-width:2.25rem;padding:0.35rem 0.55rem;font-size:0.95rem;text-transform:none;letter-spacing:0}
+button:disabled{opacity:0.4;cursor:default;transform:none}
+@media(max-width:480px){.media-row{grid-template-columns:auto 1fr}.media-actions{grid-column:1 / -1;justify-content:flex-end}.media-audio{max-width:100%}}
+textarea{width:100%;background:var(--well-bg);color:var(--ink);border:1px solid var(--ring);border-radius:var(--radius-well);padding:0.6rem 0.85rem;font-size:1rem;font-family:var(--font-body);line-height:1.45;resize:vertical;outline:none;min-width:0}
+textarea:focus{border-color:var(--accent)}
+label{font-family:var(--font-ui);font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-muted)}
+label.consent-row{font-family:var(--font-body);font-size:inherit;letter-spacing:0;text-transform:none;color:var(--ink)}
+.twin-preview{display:block;width:100%;border-radius:var(--radius-well);border:1px solid var(--ring);background:#000;margin:0.5rem 0 0.7rem;max-height:320px}
+details.legacy{margin-top:0.6rem}
+.twin-summary{display:grid;gap:0.7rem}
+.twin-hero{display:flex;gap:0.9rem;align-items:center}
+.twin-hero-img{width:88px;height:88px;border-radius:50%;object-fit:cover;border:1.5px solid var(--accent);display:flex;align-items:center;justify-content:center;background:var(--well-bg);font-size:2rem;color:var(--accent);flex:none}
+.twin-hero strong{font-size:1.35rem;letter-spacing:-0.02em}
+.prompt code{font-family:var(--font-ui);font-size:0.8rem;color:var(--accent);word-break:break-word}
+.idpick .chip{text-align:center}
 `;
 
 /**
@@ -1880,7 +2316,9 @@ export function renderOnboarding(
   const draftPending =
     slide.id === "booth" &&
     shownStep === "selfies" &&
-    snapshot.identityMedia.some((m) => m.role === "character_sheet_draft");
+    snapshot.identityMedia.some(
+      (m) => m.role === "character_sheet_draft" || m.role === "profile_image_draft"
+    );
   const activeSection = draftPending
     ? slide.sections.findIndex((s) => s.key === "sheet")
     : Math.max(
@@ -1986,10 +2424,10 @@ function browserSigninHref(
   return `${env.appOrigin()}/mini/onboarding?t=${token}`;
 }
 
-/** Identity slides preview signed private media — the CSP widens only for
- * those renders. */
+/** Identity slides (and the twin summary on Get started) preview signed
+ * private media — the CSP widens only for those renders. */
 const rendersIdentityMedia = (step: OnboardingStepId): boolean =>
-  slideForStep(step).id === "booth";
+  slideForStep(step).id === "booth" || slideForStep(step).id === "start";
 
 /** The selfies/twin slides mount the same-origin photo booth — never in
  * lite/Messages card sessions (tight memory/GPU budget, no camera UX). */
@@ -2079,6 +2517,20 @@ async function respond(
     rendersIntro(active, ctx.session.via === "card"),
     ctx.session.via !== "card"
   );
+}
+
+/** The owner's username, or null before the Computer slide is done. */
+async function currentUsername(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<string | null> {
+  const { data: user } = await supabase
+    .from("users")
+    .select("username")
+    .eq("id", userId)
+    .maybeSingle();
+  const username = (user as { username?: unknown } | null)?.username;
+  return typeof username === "string" && username ? username : null;
 }
 
 async function markSafely(
@@ -2420,31 +2872,270 @@ export const onboarding: MiniAppModule = {
       return respond(ctx, ok ? null : "model", ok ? `Speed set to ${tier}.` : "Update failed — try again.");
     }
 
+    if (action === "grant_consent") {
+      const scopes = form.getAll("scope").map(String).filter(isConsentScope);
+      if (scopes.length === 0) {
+        return respond(ctx, "consent", "Tick at least one box to continue, or skip the twin for now.");
+      }
+      let granted = 0;
+      for (const scope of scopes) {
+        const grant = await grantConsent(supabase, userId, scope, {
+          surface: "onboarding",
+        });
+        if (grant) granted += 1;
+      }
+      if (granted === 0) {
+        return respond(ctx, "consent", "Couldn't save your consent — try again.");
+      }
+      if (scopes.includes("likeness")) {
+        await markSafely(supabase, userId, "consent", "done");
+      }
+      return respond(
+        ctx,
+        scopes.includes("likeness") ? "selfies" : "consent",
+        "Saved — your choices are recorded, and you can revoke them here any time."
+      );
+    }
+
+    if (action === "revoke_consent") {
+      const scope = String(form.get("scope") ?? "");
+      if (!isConsentScope(scope)) return forbidden("unknown scope");
+      // Dependent features switch off with the grant: the provider voice is
+      // deleted, the avatar config cleared.
+      if (scope === "voice") {
+        await revokeUserVoiceClone(supabase, userId, {}).catch(() => false);
+      }
+      if (scope === "video_avatar") {
+        await disableVideoAvatar(supabase, userId).catch(() => false);
+      }
+      const revoked = await revokeConsent(supabase, userId, scope);
+      if (revoked && scope === "likeness") {
+        await markSafely(supabase, userId, "consent", "todo");
+      }
+      return respond(
+        ctx,
+        "consent",
+        revoked
+          ? `${CONSENT_COPY[scope].title} consent revoked.`
+          : "Nothing to revoke."
+      );
+    }
+
     if (action === "upload_selfie") {
+      const consent = consentFor(await listConsents(supabase, userId), "likeness");
+      if (!consent) return respond(ctx, "consent", CONSENT_LINES.likeness);
       const file = form.get("file");
       if (!(file instanceof File) || file.size === 0) {
         return respond(ctx, "selfies", "Choose an image first.");
       }
-      const result = await uploadIdentityImage(supabase, userId, file, "selfie");
+      const result = await uploadIdentityImage(supabase, userId, file, "selfie", {
+        source: form.get("source") === "booth" ? "booth" : "upload",
+        consentId: consent.id,
+      });
       if (!result.ok) return respond(ctx, "selfies", result.error);
       await markSafely(supabase, userId, "selfies", "done");
       return respond(ctx, "selfies", "Added to your image vault.");
     }
 
+    // Reference clips and voice samples: same guarded private path, tagged
+    // with the grant they were added under.
+    if (action === "upload_media") {
+      const role = String(form.get("role") ?? "");
+      if (
+        !isIdentityRole(role) ||
+        role === "avatar" ||
+        role.endsWith("_draft") ||
+        mediaKindForRole(role) === "image"
+      ) {
+        return forbidden("unknown media role");
+      }
+      const scope: ConsentScope = role === "voice_sample" ? "voice" : "likeness";
+      const step: OnboardingStepId = role === "voice_sample" ? "voice" : "selfies";
+      const consent = consentFor(await listConsents(supabase, userId), scope);
+      if (!consent) return respond(ctx, "consent", CONSENT_LINES[scope]);
+      const file = form.get("file");
+      if (!(file instanceof File) || file.size === 0) {
+        return respond(ctx, step, "Choose a file first.");
+      }
+      const result = await uploadIdentityMedia(supabase, userId, file, role, {
+        source: form.get("source") === "booth" ? "booth" : "upload",
+        consentId: consent.id,
+      });
+      if (!result.ok) return respond(ctx, step, result.error);
+      if (role === "reference_video") {
+        await markSafely(supabase, userId, "selfies", "done");
+      }
+      return respond(
+        ctx,
+        step,
+        role === "voice_sample"
+          ? "Voice sample added."
+          : "Reference video added to your vault."
+      );
+    }
+
+    if (action === "move_media") {
+      const assetId = String(form.get("asset_id") ?? "");
+      const role = String(form.get("role") ?? "");
+      const direction = String(form.get("direction") ?? "");
+      if (!assetId || !isIdentityRole(role) || (direction !== "up" && direction !== "down")) {
+        return forbidden("bad reorder");
+      }
+      const step: OnboardingStepId = role === "voice_sample" ? "voice" : "selfies";
+      const ok = await reorderIdentityAsset(supabase, userId, assetId, role, direction);
+      return respond(ctx, step, ok ? null : "Couldn't reorder — refresh and try again.");
+    }
+
+    if (action === "delete_media") {
+      const assetId = String(form.get("asset_id") ?? "");
+      if (!assetId) return forbidden("missing asset");
+      const wasVoice = (await listIdentityAssets(supabase, userId).catch(() => [])).some(
+        (entry) => entry.asset_id === assetId && entry.role === "voice_sample"
+      );
+      const ok = await deleteIdentityAsset(supabase, userId, assetId);
+      return respond(
+        ctx,
+        wasVoice ? "voice" : "selfies",
+        ok ? "Deleted — the original is gone from your vault." : "Nothing to delete."
+      );
+    }
+
     if (action === "generate_character_sheet") {
-      const { data: user } = await supabase
-        .from("users")
-        .select("username")
-        .eq("id", userId)
-        .maybeSingle();
-      const username = (user?.username as string | null) ?? null;
+      const username = await currentUsername(supabase, userId);
       if (!username) {
         return respond(ctx, "username", "Pick a username first — the character sheet is bound to your @name.");
       }
       // Step 1 of 2: the render lands as a draft — nothing enters the
-      // vault until save_character_sheet.
-      const result = await generateCharacterSheet(supabase, userId, username);
+      // vault until save_character_sheet. A description switches to the
+      // original-agent path (no photo reference).
+      const description = String(form.get("description") ?? "").trim();
+      const result = await generateCharacterSheet(supabase, userId, username, {
+        ...(description ? { description } : {}),
+      });
       return respond(ctx, "selfies", result.notice);
+    }
+
+    if (action === "generate_profile_image" || action === "generate_alt_image") {
+      const username = await currentUsername(supabase, userId);
+      if (!username) {
+        return respond(ctx, "username", "Pick a username first — your twin is bound to your @name.");
+      }
+      const style = String(form.get("style") ?? "").trim();
+      const opts = style ? { style } : {};
+      const result =
+        action === "generate_profile_image"
+          ? await generateProfileImage(supabase, userId, username, opts)
+          : await generateAltImage(supabase, userId, username, opts);
+      if (result.ok && action === "generate_alt_image") {
+        await markSafely(supabase, userId, "selfies", "done");
+      }
+      return respond(ctx, "selfies", result.notice);
+    }
+
+    if (action === "approve_profile_image") {
+      const assetId = String(form.get("asset_id") ?? "");
+      if (!assetId) return respond(ctx, "selfies", "No draft to approve.");
+      const approved = await approveProfileImageDraft(supabase, userId, assetId);
+      if (!approved) {
+        return respond(ctx, "selfies", "That draft is gone — generate a new one.");
+      }
+      await markSafely(supabase, userId, "selfies", "done");
+      return respond(ctx, "selfies", "Profile image approved — it's your twin's face now.");
+    }
+
+    if (action === "discard_profile_image") {
+      const assetId = String(form.get("asset_id") ?? "");
+      if (!assetId) return respond(ctx, "selfies", "No draft to discard.");
+      await discardProfileImageDraft(supabase, userId, assetId);
+      return respond(ctx, "selfies", "Draft discarded — try another style any time.");
+    }
+
+    if (action === "create_voice_clone") {
+      const username = await currentUsername(supabase, userId);
+      if (!username) {
+        return respond(ctx, "username", "Pick a username first — your voice is bound to your @name.");
+      }
+      const result = await createUserVoiceClone(supabase, userId, username);
+      if (!result.ok) return respond(ctx, "voice", result.error);
+      if (result.status === "ready") {
+        await markSafely(supabase, userId, "voice", "done");
+        return respond(ctx, "voice", "Voice clone ready — /twin say now speaks in your voice.");
+      }
+      return respond(
+        ctx,
+        "voice",
+        "Voice clone created — ElevenLabs asks you to verify it in their dashboard before it can speak. Tap Refresh once you have."
+      );
+    }
+
+    if (action === "delete_voice_clone") {
+      const ok = await revokeUserVoiceClone(supabase, userId, {});
+      if (ok) await markSafely(supabase, userId, "voice", "todo");
+      return respond(
+        ctx,
+        "voice",
+        ok
+          ? "Voice clone deleted here and at ElevenLabs. Your samples stay until you delete them."
+          : "Couldn't reach the voice provider — try again in a minute."
+      );
+    }
+
+    if (action === "enable_video_avatar") {
+      const username = await currentUsername(supabase, userId);
+      if (!username) {
+        return respond(ctx, "username", "Pick a username first — your twin is bound to your @name.");
+      }
+      // The render takes minutes: it runs after the response, and the panel
+      // reads its state (pending → ready | failed) back from the twin row.
+      const run = (): Promise<unknown> =>
+        enableVideoAvatar(supabase, userId, username, { channel: "web" }).catch(
+          (error: unknown) => {
+            console.error(
+              JSON.stringify({
+                msg: "video avatar render failed",
+                user_id: userId,
+                error: error instanceof Error ? error.message : String(error),
+              })
+            );
+          }
+        );
+      try {
+        after(run);
+      } catch {
+        void run();
+      }
+      return respond(
+        ctx,
+        "twin",
+        "Rendering your video avatar — this takes a few minutes. Tap Refresh status."
+      );
+    }
+
+    if (action === "disable_video_avatar") {
+      const ok = await disableVideoAvatar(supabase, userId);
+      return respond(ctx, "twin", ok ? "Video avatar turned off." : "Update failed — try again.");
+    }
+
+    if (action === "refresh_twin") {
+      const twin = await getDigitalTwin(supabase, userId).catch(() => null);
+      if (twin?.avatar_status === "ready") {
+        await markSafely(supabase, userId, "twin", "done");
+      }
+      return respond(ctx, "twin", null);
+    }
+
+    if (action === "set_sharing") {
+      const sharing = form.get("sharing") === "public" ? "public" : "private";
+      const ok = await setTwinSharing(supabase, userId, sharing);
+      return respond(
+        ctx,
+        "agent",
+        ok
+          ? sharing === "public"
+            ? "Other people can now reference your profile image and character sheet — never your voice."
+            : "Your twin is private again."
+          : "Update failed — try again."
+      );
     }
 
     if (action === "save_character_sheet") {

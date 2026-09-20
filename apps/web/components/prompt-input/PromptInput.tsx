@@ -50,6 +50,7 @@ export const CREATIVE_COMMANDS = [
   { id: "/imagine", desc: "Make an image from your words." },
   { id: "/animate", desc: "Turn an idea into a short video." },
   { id: "/zap", desc: "A quick, kinetic video clip." },
+  { id: "/twin", desc: "Your digital twin speaks or poses — say … or describe an image." },
 ] as const;
 
 /** A pending upload chip shown above the composer (V8). */

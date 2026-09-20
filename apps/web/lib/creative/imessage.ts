@@ -18,9 +18,12 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ASSETS_BUCKET } from "../assets/keys";
+import type { CreativeAsset } from "../assets/pipeline";
+import { attachIdentityReferences } from "../identity/resolve";
+import { recordReferenceUses } from "../identity/twin";
 import type { SpectrumSender } from "../spectrum/sender";
 import type { MediaInput } from "./gmi";
-import { createCreativeJob } from "./jobs";
+import { createCreativeJob, type CreativeJobMode } from "./jobs";
 import {
   AMBIGUOUS_COMMAND_LINE,
   parseExplicitGenerationCommand,
@@ -141,24 +144,41 @@ export async function maybeRunCreativeLane(
   }
   logCreativeLatency(job, "inputs_staged", startedAtMs);
 
+  // @username references resolve to the twin's approved images and join the
+  // turn as ordinary image inputs; the mention becomes "the person in Image
+  // N". A name the user may not use stops the turn before any provider call.
+  const attached = await attachIdentityReferences(supabase, job.userId, {
+    mode: command.mode,
+    cleanedText: command.cleanedText,
+    text,
+    mediaInputs,
+  });
+  if (attached.problem) {
+    await removeStagedInputs(supabase, stagedKeys);
+    await sender.sendText(job.spaceId, job.phone, attached.problem);
+    return true;
+  }
+
   const creativeJob = await createCreativeJob(
     supabase,
     job.userId,
     "imessage",
     command.mode,
   );
+  await recordReferenceUses(supabase, creativeJob.id, job.userId, attached.uses);
   let result: Awaited<ReturnType<typeof executeCreativeJob>>;
   try {
-    result = await executeCreativeJob(supabase, creativeJob.id, job.userId, {
-      mode: command.mode,
-      cleanedText: command.cleanedText,
-      text,
-      mediaInputs,
-    }, {
-      onLifecycle: (event) => {
-        logCreativeLatency(job, `provider_${event.stage}`, startedAtMs);
+    result = await executeCreativeJob(
+      supabase,
+      creativeJob.id,
+      job.userId,
+      attached.turn,
+      {
+        onLifecycle: (event) => {
+          logCreativeLatency(job, `provider_${event.stage}`, startedAtMs);
+        },
       },
-    });
+    );
   } finally {
     // Staged inputs are single-use provider references; reclaim them now.
     await removeStagedInputs(supabase, stagedKeys);
@@ -166,12 +186,50 @@ export async function maybeRunCreativeLane(
 
   if (result.status !== "delivered" || !result.asset) {
     logCreativeLatency(job, `job_${result.status}`, startedAtMs);
-    await sender.sendText(job.spaceId, job.phone, result.line);
-    return true;
+  } else {
+    logCreativeLatency(job, "artifact_ingested", startedAtMs);
   }
-  logCreativeLatency(job, "artifact_ingested", startedAtMs);
+  await deliverCreativeResult(
+    supabase,
+    sender,
+    job,
+    result,
+    creativeJob.id,
+    command.mode,
+  );
+  logCreativeLatency(job, "delivery_complete", startedAtMs);
+  return true;
+}
 
-  // Native bytes first: re-read our own stored master, never provider bytes.
+/** What a lane hands to delivery: the executor's result shape, or a twin's. */
+export interface DeliverableResult {
+  status: "delivered" | "failed" | "refused" | "submit_unknown";
+  line: string;
+  asset?: CreativeAsset | undefined;
+  deliveryUrl?: string | undefined;
+  deliveryLine?: string | undefined;
+}
+
+/**
+ * Deliver one finished job to the thread: native attachment bytes first
+ * (re-read from our own stored master, never provider bytes), then a
+ * rich-link or bare-URL fallback carrying only the short-TTL signed delivery
+ * URL, then the caption. A non-delivered result sends its written line.
+ * Shared by the creative lane and the /twin lane.
+ */
+export async function deliverCreativeResult(
+  supabase: SupabaseClient,
+  sender: SpectrumSender,
+  job: CreativeFlushJob,
+  result: DeliverableResult,
+  jobId: string,
+  mode: CreativeJobMode,
+): Promise<void> {
+  if (result.status !== "delivered" || !result.asset) {
+    await sender.sendText(job.spaceId, job.phone, result.line);
+    return;
+  }
+
   let sent = false;
   const download = await supabase.storage
     .from(ASSETS_BUCKET)
@@ -219,13 +277,11 @@ export async function maybeRunCreativeLane(
         msg: "creative delivery silent",
         user_id: job.userId,
         space_id: job.spaceId,
-        job_id: creativeJob.id,
-        mode: command.mode,
+        job_id: jobId,
+        mode,
       }),
     );
   }
-  logCreativeLatency(job, "delivery_complete", startedAtMs);
-  return true;
 }
 
 const downloadMime = (ext: string): string =>

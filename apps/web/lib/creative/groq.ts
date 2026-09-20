@@ -8,7 +8,7 @@ import { env } from "../env";
 const GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 export class CreativeUnconfiguredError extends Error {
-  constructor(provider: "GMI" | "Groq" | "OpenAI" | "fal") {
+  constructor(provider: "GMI" | "Groq" | "OpenAI" | "fal" | "ElevenLabs") {
     super(`${provider} credentials are not configured`);
     this.name = "CreativeUnconfiguredError";
   }

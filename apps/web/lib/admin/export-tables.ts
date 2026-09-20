@@ -125,4 +125,13 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
   all("payment_requests"),
   all("storefront_events"),
   all("ops_events"),
+  // Identity / digital twin (0061, 0074, 0121): asset references, roles,
+  // consent grants, provider handles (voice_id is a handle, not a secret)
+  // and the provenance ledger — never bytes, prompts or signed URLs.
+  all("identity_assets"),
+  all("digital_twins"),
+  all("profiles"),
+  all("onboarding_status_mirror"),
+  all("twin_consents"),
+  all("identity_reference_uses"),
 ] as const;
