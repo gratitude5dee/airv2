@@ -1,0 +1,19 @@
+# Air × Muse MM0 probe. This is deliberately data-free: it verifies the
+# connector protocol before any Air account, line, Box, or decision route is
+# exposed to Muse.
+name = "air-muse"
+main = "src/index.ts"
+account_id = "e8f42c0430906e1515a2af01d5c1d2d1"
+compatibility_date = "2026-09-20"
+compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
+workers_dev = false
+
+[[kv_namespaces]]
+binding = "OAUTH_KV"
+# Created during first MM0 deployment. Keep OAuth state separate from every
+# control-plane and mail namespace.
+id = "9c469d02ef984cee9da69621692f4bc2"
+
+[observability]
+enabled = true
+head_sampling_rate = 1
