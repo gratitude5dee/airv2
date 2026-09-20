@@ -10,9 +10,19 @@ import type { CreativeMode } from "./parse";
 
 export type CreativeChannel = "web" | "imessage";
 /** Router modes plus box-side timeline assembly (MA7 'video_render'), the
- * draw studio's sketch-to-image lane ('draw'), and the freeze studio's
- * camera-trajectory renders ('freeze'). */
-export type CreativeJobMode = CreativeMode | "video_render" | "draw" | "freeze";
+ * draw studio's sketch-to-image lane ('draw'), the freeze studio's
+ * camera-trajectory renders ('freeze'), and the digital twin's /twin lane
+ * ('twin' — see lib/identity/twin.ts). */
+export type CreativeJobMode =
+  | CreativeMode
+  | "video_render"
+  | "draw"
+  | "freeze"
+  | "twin";
+
+/** What a /twin job produced: a talking video, an identity image, or the
+ * video-avatar preview rendered when the owner enables it. */
+export type TwinJobKind = "speak" | "image" | "preview";
 export type CreativeJobStatus =
   | "routing"
   | "submitted"
@@ -44,6 +54,13 @@ export interface CreativeJob {
   revision_number?: number | null;
   input_asset_id?: string | null;
   output_asset_id?: string | null;
+  /** /twin linkage (0121) — null on non-twin jobs. */
+  twin_kind?: TwinJobKind | null;
+}
+
+/** /twin linkage written at insert (0121). */
+export interface CreativeJobTwinLinkage {
+  twinKind: TwinJobKind;
 }
 
 /** Draw-studio linkage columns written at insert (0107); absent elsewhere. */
@@ -72,7 +89,8 @@ export async function createCreativeJob(
   channel: CreativeChannel,
   mode: CreativeJobMode,
   draw?: CreativeJobDrawLinkage,
-  freeze?: CreativeJobFreezeLinkage
+  freeze?: CreativeJobFreezeLinkage,
+  twin?: CreativeJobTwinLinkage
 ): Promise<CreativeJob> {
   const { data, error } = await supabase
     .from("creative_jobs")
@@ -81,6 +99,7 @@ export async function createCreativeJob(
       channel,
       mode,
       status: "routing",
+      ...(twin ? { twin_kind: twin.twinKind } : {}),
       ...(draw
         ? {
             draw_session_id: draw.drawSessionId,

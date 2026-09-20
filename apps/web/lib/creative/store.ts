@@ -35,9 +35,11 @@ const EXT_BY_MIME: Record<string, string> = {
 };
 
 /**
- * Attachment types accepted as provider *inputs*. Audio joins here (a voice
- * memo or a song as a reference-to-video track) but not in EXT_BY_MIME: a
- * render never produces audio, so ingest keeps rejecting it.
+ * Attachment types accepted as provider *inputs* and as owner uploads. Audio
+ * joins here (a voice memo, a song as a reference-to-video track, a voice
+ * sample for the twin) but not in EXT_BY_MIME: an image/video render never
+ * produces audio, so generated-media ingest keeps rejecting it — speech
+ * synthesized for the twin comes in through ingestGeneratedAudio instead.
  */
 const INPUT_EXT_BY_MIME: Record<string, string> = {
   ...EXT_BY_MIME,
@@ -47,6 +49,7 @@ const INPUT_EXT_BY_MIME: Record<string, string> = {
   "audio/mpeg": "mp3",
   "audio/ogg": "ogg",
   "audio/wav": "wav",
+  "audio/webm": "webm",
   "audio/x-m4a": "m4a",
   "audio/x-wav": "wav",
 };
@@ -78,8 +81,9 @@ async function ingestBytes(
   bytes: Buffer,
   mimeType: string,
   refPrefix: string,
+  accepted: Record<string, string> = EXT_BY_MIME,
 ): Promise<CreativeAsset> {
-  const ext = EXT_BY_MIME[mimeType];
+  const ext = accepted[mimeType];
   if (!ext) {
     throw new AssetPipelineError("media has an unsupported type");
   }
@@ -145,7 +149,8 @@ export async function ingestGeneratedMedia(
 
 /**
  * Store owner-uploaded bytes (already guarded by guardMediaUpload) through
- * the same content-addressed pipeline as generated media.
+ * the same content-addressed pipeline as generated media. Owner uploads may
+ * be audio (twin voice samples), so the wider input table applies.
  */
 export async function ingestUploadedMedia(
   supabase: SupabaseClient,
@@ -153,7 +158,34 @@ export async function ingestUploadedMedia(
   bytes: Buffer,
   mimeType: string,
 ): Promise<CreativeAsset> {
-  return await ingestBytes(supabase, userId, bytes, mimeType, "upload");
+  return await ingestBytes(
+    supabase,
+    userId,
+    bytes,
+    mimeType,
+    "upload",
+    INPUT_EXT_BY_MIME,
+  );
+}
+
+/**
+ * Store speech synthesized for the twin (mp3/wav bytes already read from
+ * the provider) as a private asset. Same content-addressed dedupe.
+ */
+export async function ingestGeneratedAudio(
+  supabase: SupabaseClient,
+  userId: string,
+  bytes: Buffer,
+  mimeType: string,
+): Promise<CreativeAsset> {
+  return await ingestBytes(
+    supabase,
+    userId,
+    bytes,
+    mimeType,
+    "tts",
+    INPUT_EXT_BY_MIME,
+  );
 }
 
 /** Mint the short-TTL delivery URL for one creative job's output. */
