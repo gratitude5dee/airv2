@@ -1,6 +1,5 @@
-# Air × Muse MM0 probe. This is deliberately data-free: it verifies the
-# connector protocol before any Air account, line, Box, or decision route is
-# exposed to Muse.
+# Air × Muse connector. Product routes still fail closed unless the paired
+# Worker and control-plane secrets are present.
 name = "air-muse"
 main = "src/index.ts"
 account_id = "e8f42c0430906e1515a2af01d5c1d2d1"
@@ -18,11 +17,9 @@ id = "9c469d02ef984cee9da69621692f4bc2"
 enabled = true
 head_sampling_rate = 1
 
-# Full connector is dark until both secrets have been set in the Worker and
-# the control plane. No product route is exposed merely by deploying this
-# configuration.
+# Full connector requires both secrets in the Worker and control plane.
 [vars]
-MUSE_ENABLED = "false"
+MUSE_ENABLED = "true"
 CONTROL_PLANE_ORIGIN = "https://app.wzrd.tech"
 DOCS_URL = "https://air.wzrd.tech/docs/muse"
 
