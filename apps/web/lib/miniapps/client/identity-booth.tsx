@@ -27,7 +27,7 @@ import {
 } from "react";
 import { createRoot } from "react-dom/client";
 
-type BoothMode = "photo" | "video";
+type BoothMode = "photo" | "video" | "audio";
 type Facing = "user" | "environment";
 
 interface Shot {
@@ -44,6 +44,15 @@ const MAX_VIDEO_MS = 60_000;
 function preferredVideoMime(): string | null {
   if (typeof MediaRecorder === "undefined") return null;
   for (const mime of ["video/mp4", "video/webm;codecs=vp9", "video/webm"]) {
+    if (MediaRecorder.isTypeSupported(mime)) return mime;
+  }
+  return null;
+}
+
+/** Voice samples: Safari records audio/mp4, Chromium audio/webm (Opus). */
+function preferredAudioMime(): string | null {
+  if (typeof MediaRecorder === "undefined") return null;
+  for (const mime of ["audio/mp4", "audio/webm;codecs=opus", "audio/webm"]) {
     if (MediaRecorder.isTypeSupported(mime)) return mime;
   }
   return null;
@@ -72,10 +81,12 @@ async function postAction(action: string): Promise<void> {
 async function postCapture(
   action: string,
   blob: Blob,
-  filename: string
+  filename: string,
+  fields: Record<string, string> = {}
 ): Promise<boolean> {
   const form = new FormData();
   form.set("action", action);
+  for (const [key, value] of Object.entries(fields)) form.set(key, value);
   form.set("file", new File([blob], filename, { type: blob.type }));
   try {
     const res = await fetch(window.location.href, {
@@ -350,14 +361,18 @@ function Booth({ mode }: { mode: BoothMode }): React.ReactElement {
       setError(null);
       stopStream();
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: want, width: { ideal: 1280 } },
-          audio: mode === "video",
-        });
+        const stream = await navigator.mediaDevices.getUserMedia(
+          mode === "audio"
+            ? { audio: true }
+            : {
+                video: { facingMode: want, width: { ideal: 1280 } },
+                audio: mode === "video",
+              }
+        );
         streamRef.current = stream;
         setFacing(want);
         const video = videoRef.current;
-        if (video) {
+        if (video && mode !== "audio") {
           video.srcObject = stream;
           await video.play().catch(() => undefined);
         }
@@ -365,7 +380,9 @@ function Booth({ mode }: { mode: BoothMode }): React.ReactElement {
       } catch {
         setPhase("error");
         setError(
-          "Camera unavailable — allow camera access, or use the upload form below."
+          mode === "audio"
+            ? "Microphone unavailable — allow microphone access, or upload a recording below."
+            : "Camera unavailable — allow camera access, or use the upload form below."
         );
       }
     },
@@ -420,9 +437,13 @@ function Booth({ mode }: { mode: BoothMode }): React.ReactElement {
 
   const record = useCallback(() => {
     const stream = streamRef.current;
-    const mime = preferredVideoMime();
+    const mime = mode === "audio" ? preferredAudioMime() : preferredVideoMime();
     if (!stream || !mime) {
-      setError("Recording isn't supported in this browser — upload a video below.");
+      setError(
+        mode === "audio"
+          ? "Recording isn't supported in this browser — upload a sample below."
+          : "Recording isn't supported in this browser — upload a video below."
+      );
       return;
     }
     const recorder = new MediaRecorder(stream, { mimeType: mime });
@@ -451,7 +472,7 @@ function Booth({ mode }: { mode: BoothMode }): React.ReactElement {
     recordTimerRef.current = setTimeout(() => {
       if (recorder.state === "recording") recorder.stop();
     }, MAX_VIDEO_MS);
-  }, []);
+  }, [mode]);
 
   const stopRecording = useCallback(() => {
     if (recordTimerRef.current) clearTimeout(recordTimerRef.current);
@@ -487,14 +508,23 @@ function Booth({ mode }: { mode: BoothMode }): React.ReactElement {
   const finalizeClip = useCallback(async () => {
     if (!clip) return;
     setPhase("saving");
-    const ext = clip.blob.type === "video/mp4" ? "mp4" : "webm";
-    if (await postCapture("upload_consent", clip.blob, `consent.${ext}`)) {
+    const type = clip.blob.type;
+    const ext =
+      type === "video/mp4" ? "mp4" : type === "audio/mp4" ? "m4a" : "webm";
+    const ok =
+      mode === "audio"
+        ? await postCapture("upload_media", clip.blob, `sample.${ext}`, {
+            role: "voice_sample",
+            source: "booth",
+          })
+        : await postCapture("upload_consent", clip.blob, `consent.${ext}`);
+    if (ok) {
       window.location.reload();
       return;
     }
     setPhase("review");
     setError("Upload failed — try again, or use the form below.");
-  }, [clip]);
+  }, [clip, mode]);
 
   const keptCount = shots.filter((shot) => shot.kept).length;
   const cameraOn = phase === "live" || phase === "recording";
@@ -527,30 +557,45 @@ function Booth({ mode }: { mode: BoothMode }): React.ReactElement {
           </span>
           {inactive("VIDEO")}
         </>
-      ) : (
+      ) : mode === "video" ? (
         <>
           {inactive("PHOTO")}
           <span className="cam-mode on" role="tab" aria-selected="true">
             VIDEO
           </span>
         </>
+      ) : (
+        <span className="cam-mode on" role="tab" aria-selected="true">
+          AUDIO
+        </span>
       )}
     </div>
   );
+  const isAudio = mode === "audio";
 
   return (
     <StrictMode>
       <div className={`booth booth-mode-${mode}`}>
-        <div className={`cam${cameraOn ? " on" : ""}`}>
+        <div className={`cam${cameraOn && !isAudio ? " on" : ""}${isAudio ? " audio" : ""}`}>
           <div className="cam-stage">
-            <video
-              ref={videoRef}
-              playsInline
-              muted
-              autoPlay
-              className={`cam-video${facing === "user" ? " mirror" : ""}`}
-            />
-            {cameraOn ? (
+            {isAudio ? (
+              <div className="cam-mic" aria-hidden="true">
+                <span className={`cam-mic-ring${phase === "recording" ? " live" : ""}`} />
+                <svg viewBox="0 0 24 24" width="30" height="30">
+                  <rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor" />
+                  <path d="M6 11a6 6 0 0 0 12 0M12 17v4M9 21h6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                </svg>
+              </div>
+            ) : (
+              <video
+                ref={videoRef}
+                playsInline
+                muted
+                autoPlay
+                className={`cam-video${facing === "user" ? " mirror" : ""}`}
+              />
+            )}
+            {cameraOn && !isAudio ? (
               <div className="cam-grid" aria-hidden="true">
                 <i /><i /><i /><i />
               </div>
@@ -571,10 +616,14 @@ function Booth({ mode }: { mode: BoothMode }): React.ReactElement {
                 onClick={() => void start(facing)}
               >
                 {phase === "starting"
-                  ? "Starting camera…"
+                  ? isAudio
+                    ? "Starting microphone…"
+                    : "Starting camera…"
                   : mode === "photo"
                     ? "Open photo booth"
-                    : "Open camera"}
+                    : isAudio
+                      ? "Record a voice sample"
+                      : "Open camera"}
               </button>
             ) : null}
             {phase === "saving" ? (
@@ -620,16 +669,25 @@ function Booth({ mode }: { mode: BoothMode }): React.ReactElement {
                     onClick={record}
                   />
                 )}
-                <button
-                  type="button"
-                  className="cam-flip"
-                  aria-label="flip camera"
-                  disabled={phase !== "live"}
-                  onClick={flip}
-                >
-                  <FlipIcon />
-                </button>
+                {isAudio ? (
+                  <span />
+                ) : (
+                  <button
+                    type="button"
+                    className="cam-flip"
+                    aria-label="flip camera"
+                    disabled={phase !== "live"}
+                    onClick={flip}
+                  >
+                    <FlipIcon />
+                  </button>
+                )}
               </div>
+              {isAudio && phase === "live" ? (
+                <p className="cam-hint">
+                  Quiet room, natural pace — read a few sentences, up to a minute.
+                </p>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -664,7 +722,11 @@ function Booth({ mode }: { mode: BoothMode }): React.ReactElement {
           ) : null
         ) : clip && phase !== "recording" ? (
           <div className="booth-clip">
-            <video src={clip.url} controls playsInline className="booth-playback" />
+            {isAudio ? (
+              <audio src={clip.url} controls className="booth-playback audio" />
+            ) : (
+              <video src={clip.url} controls playsInline className="booth-playback" />
+            )}
             <div className="booth-controls">
               <button
                 type="button"
@@ -673,7 +735,7 @@ function Booth({ mode }: { mode: BoothMode }): React.ReactElement {
                 onClick={() => void finalizeClip()}
               >
                 <CheckBadge on />
-                Use as consent recording
+                {isAudio ? "Use as voice sample" : "Use as consent recording"}
               </button>
               <button
                 type="button"
@@ -700,8 +762,9 @@ function Booth({ mode }: { mode: BoothMode }): React.ReactElement {
 for (const mount of document.querySelectorAll<HTMLElement>(
   "#identity-booth, .identity-booth"
 )) {
+  const requested = mount.getAttribute("data-mode");
   const mode: BoothMode =
-    mount.getAttribute("data-mode") === "video" ? "video" : "photo";
+    requested === "video" ? "video" : requested === "audio" ? "audio" : "photo";
   mount.replaceChildren();
   createRoot(mount).render(<Booth mode={mode} />);
 }

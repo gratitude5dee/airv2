@@ -1,13 +1,17 @@
 /**
- * Identity onboarding: the selfies/twin/avatar steps sit between model and
- * imessage, every slide renders its form plus a skip button, uploads and
- * generations go through the shared lib/identity helpers and mark the step
- * done, and the twin step degrades gracefully when GMI is unconfigured.
+ * Digital-twin onboarding: the consent/selfies/voice/twin/avatar steps sit
+ * between model and imessage, every panel renders its forms plus a skip
+ * button, uploads and generations go through the shared lib/identity
+ * helpers behind a server-checked consent gate, provider-less deployments
+ * degrade gracefully, and the Get started slide summarises the twin.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MiniAppContext } from "@/lib/miniapps/apps/types";
+import type { IdentityMediaView } from "@/lib/identity/assets";
+import type { TwinConsent } from "@/lib/identity/consent";
+import type { DigitalTwin } from "@/lib/identity/twin";
 import { makeApp } from "@/app/mini/loader-test-utils";
 
 const boxFiles = new Map<string, string>();
@@ -60,46 +64,123 @@ vi.mock("@/lib/miniapps/cardSends", () => ({
   claimCardSend: vi.fn(async () => ({ release: vi.fn() })),
 }));
 
+/** Mutable fixtures the module mocks read at call time. */
+const fixtures = vi.hoisted(() => ({
+  media: [] as IdentityMediaView[],
+  grants: [] as TwinConsent[],
+  twin: null as DigitalTwin | null,
+}));
+
+const view = (
+  assetId: string,
+  role: IdentityMediaView["role"],
+  extra: Partial<IdentityMediaView> = {}
+): IdentityMediaView => ({
+  assetId,
+  role,
+  kind: role === "voice_sample" ? "audio" : role === "reference_video" ? "video" : "image",
+  url: `https://signed.example/${assetId}`,
+  position: 0,
+  source: "upload",
+  status: "ready",
+  label: null,
+  createdAt: "2026-09-01T00:00:00Z",
+  ...extra,
+});
+const grant = (scope: TwinConsent["scope"]): TwinConsent => ({
+  id: `c-${scope}`,
+  user_id: "user-1",
+  scope,
+  policy_version: "2026-09-twin-v1",
+  surface: "onboarding",
+  evidence_asset_id: null,
+  granted_at: "2026-09-01T00:00:00Z",
+  revoked_at: null,
+});
+
 const uploadIdentityImage = vi.fn(async () => ({
   ok: true as const,
   asset: { id: "asset-1" },
 }));
+const uploadIdentityMedia = vi.fn(async () => ({
+  ok: true as const,
+  asset: { id: "asset-2" },
+}));
 const setAvatarAssetId = vi.fn(async () => true);
-const identityAsset = {
-  asset_id: "asset-1",
-  role: "selfie" as const,
-  asset: { id: "asset-1", storage_key: "u/asset-1.png" },
-};
-vi.mock("@/lib/identity/assets", () => ({
-  listIdentityAssets: vi.fn(async () => [identityAsset]),
-  listIdentityMediaViews: vi.fn(async () => [
-    { assetId: "asset-1", role: "selfie", url: "https://signed.example/a.png" },
-  ]),
-  listIdentityMediaRoles: vi.fn(async () => [
-    { assetId: "asset-1", role: "selfie", url: null },
-  ]),
+const reorderIdentityAsset = vi.fn(async () => true);
+const deleteIdentityAsset = vi.fn(async () => true);
+vi.mock("@/lib/identity/assets", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/identity/assets")>()),
+  listIdentityAssets: vi.fn(async () =>
+    fixtures.media.map((m) => ({
+      asset_id: m.assetId,
+      role: m.role,
+      status: "ready",
+      asset: { id: m.assetId, storage_key: `u/${m.assetId}.png` },
+    }))
+  ),
+  listIdentityMediaViews: vi.fn(async () => fixtures.media),
+  listIdentityMediaRoles: vi.fn(async () =>
+    fixtures.media.map((m) => ({ ...m, url: null }))
+  ),
   getAvatarAssetId: vi.fn(async () => null),
-  setAvatarAssetId: (...args: unknown[]) =>
-    setAvatarAssetId(...(args as [])),
+  setAvatarAssetId: (...args: unknown[]) => setAvatarAssetId(...(args as [])),
   signedIdentityUrl: vi.fn(async () => "https://signed.example/a.png"),
   uploadIdentityImage: (...args: unknown[]) =>
     uploadIdentityImage(...(args as [])),
+  uploadIdentityMedia: (...args: unknown[]) =>
+    uploadIdentityMedia(...(args as [])),
+  reorderIdentityAsset: (...args: unknown[]) =>
+    reorderIdentityAsset(...(args as [])),
+  deleteIdentityAsset: (...args: unknown[]) =>
+    deleteIdentityAsset(...(args as [])),
 }));
+
+const grantConsent = vi.fn(async (_s: unknown, _u: unknown, scope: string) => ({
+  ...grant(scope as TwinConsent["scope"]),
+}));
+const revokeConsent = vi.fn(async () => true);
+vi.mock("@/lib/identity/consent", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/identity/consent")>()),
+  listConsents: vi.fn(async () => fixtures.grants),
+  grantConsent: (...args: unknown[]) => grantConsent(...(args as [unknown, unknown, string])),
+  revokeConsent: (...args: unknown[]) => revokeConsent(...(args as [])),
+}));
+
 const generateCharacterSheet = vi.fn(async () => ({
   ok: true as const,
-  notice: "character sheet ready — review it below, then save or discard it.",
+  notice: "character sheet ready — review it below, then save or discard.",
   deliveryUrl: "https://signed.example/sheet.png",
 }));
 const saveCharacterSheetDraft = vi.fn(async () => true);
 const discardCharacterSheetDraft = vi.fn(async () => true);
-vi.mock("@/lib/identity/generate", () => ({
+const generateProfileImage = vi.fn(async () => ({
+  ok: true as const,
+  notice: "profile image ready — approve it to make it your twin's face, or discard it.",
+}));
+const approveProfileImageDraft = vi.fn(async () => true);
+const discardProfileImageDraft = vi.fn(async () => true);
+const generateAltImage = vi.fn(async () => ({
+  ok: true as const,
+  notice: "alternate look saved to your vault.",
+}));
+vi.mock("@/lib/identity/generate", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/identity/generate")>()),
   generateCharacterSheet: (...args: unknown[]) =>
     generateCharacterSheet(...(args as [])),
   saveCharacterSheetDraft: (...args: unknown[]) =>
     saveCharacterSheetDraft(...(args as [])),
   discardCharacterSheetDraft: (...args: unknown[]) =>
     discardCharacterSheetDraft(...(args as [])),
+  generateProfileImage: (...args: unknown[]) =>
+    generateProfileImage(...(args as [])),
+  approveProfileImageDraft: (...args: unknown[]) =>
+    approveProfileImageDraft(...(args as [])),
+  discardProfileImageDraft: (...args: unknown[]) =>
+    discardProfileImageDraft(...(args as [])),
+  generateAltImage: (...args: unknown[]) => generateAltImage(...(args as [])),
 }));
+
 const uploadTwinConsent = vi.fn(async () => ({ ok: true as const }));
 const createTwinVideo = vi.fn(async () => ({
   ok: true,
@@ -109,21 +190,53 @@ const createUserHeygenAvatar = vi.fn(async () => ({
   ok: true as const,
   avatarId: "look_abc123",
 }));
-vi.mock("@/lib/identity/twin", () => ({
-  getDigitalTwin: vi.fn(async () => null),
+const enableVideoAvatar = vi.fn(async () => ({
+  ok: true,
+  status: "delivered" as const,
+  line: "video avatar ready",
+  jobId: "job-1",
+}));
+const disableVideoAvatar = vi.fn(async () => true);
+const setTwinSharing = vi.fn(async () => true);
+vi.mock("@/lib/identity/twin", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/identity/twin")>()),
+  getDigitalTwin: vi.fn(async () => fixtures.twin),
   uploadTwinConsent: (...args: unknown[]) =>
     uploadTwinConsent(...(args as [])),
   createTwinVideo: (...args: unknown[]) => createTwinVideo(...(args as [])),
   createUserHeygenAvatar: (...args: unknown[]) =>
     createUserHeygenAvatar(...(args as [])),
+  enableVideoAvatar: (...args: unknown[]) => enableVideoAvatar(...(args as [])),
+  disableVideoAvatar: (...args: unknown[]) =>
+    disableVideoAvatar(...(args as [])),
+  setTwinSharing: (...args: unknown[]) => setTwinSharing(...(args as [])),
 }));
+
+const createUserVoiceClone = vi.fn(async () => ({
+  ok: true as const,
+  status: "ready" as const,
+  voiceId: "voice_1",
+}));
+const revokeUserVoiceClone = vi.fn(async () => true);
+vi.mock("@/lib/identity/voiceClone", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/identity/voiceClone")>()),
+  createUserVoiceClone: (...args: unknown[]) =>
+    createUserVoiceClone(...(args as [])),
+  revokeUserVoiceClone: (...args: unknown[]) =>
+    revokeUserVoiceClone(...(args as [])),
+}));
+
 const heygenAvailable = vi.fn(() => false);
 vi.mock("@/lib/identity/heygen", () => ({
   heygenAvailable: () => heygenAvailable(),
 }));
 
-import { ONBOARDING_STEPS } from "@/lib/miniapps/onboarding";
-import { onboarding } from "@/lib/miniapps/apps/onboarding";
+import { ONBOARDING_STEPS, defaultOnboardingState } from "@/lib/miniapps/onboarding";
+import {
+  effectiveStatus,
+  onboarding,
+  type OnboardingSnapshot,
+} from "@/lib/miniapps/apps/onboarding";
 
 function thenable(rows: unknown, single: unknown = null) {
   const builder: Record<string, unknown> = {};
@@ -175,19 +288,39 @@ function makeCtx(
   } as MiniAppContext;
 }
 
+const render = async (step: string, options?: { username?: string | null; via?: string }) =>
+  (await onboarding.render(makeCtx(step, options))).text();
+const post = async (fields: Record<string, string | File>, step = "selfies") => {
+  const form = new FormData();
+  for (const [key, value] of Object.entries(fields)) form.set(key, value);
+  return onboarding.action!(makeCtx(step), form);
+};
+const stateFile = () => boxFiles.get(".hermes/miniapps/onboarding/state.json") ?? "";
+
+/** A fresh account that granted likeness and has one photo. */
+function seedDefault(): void {
+  fixtures.grants = [grant("likeness")];
+  fixtures.media = [view("asset-1", "selfie")];
+  fixtures.twin = null;
+}
+
 afterEach(() => {
   vi.unstubAllEnvs();
   heygenAvailable.mockReturnValue(false);
-  uploadIdentityImage.mockClear();
-  setAvatarAssetId.mockClear();
-  generateCharacterSheet.mockClear();
-  saveCharacterSheetDraft.mockClear();
-  discardCharacterSheetDraft.mockClear();
-  uploadTwinConsent.mockClear();
-  createTwinVideo.mockClear();
-  createUserHeygenAvatar.mockClear();
+  for (const mock of [
+    uploadIdentityImage, uploadIdentityMedia, setAvatarAssetId, reorderIdentityAsset,
+    deleteIdentityAsset, grantConsent, revokeConsent, generateCharacterSheet,
+    saveCharacterSheetDraft, discardCharacterSheetDraft, generateProfileImage,
+    approveProfileImageDraft, discardProfileImageDraft, generateAltImage,
+    uploadTwinConsent, createTwinVideo, createUserHeygenAvatar, enableVideoAvatar,
+    disableVideoAvatar, setTwinSharing, createUserVoiceClone, revokeUserVoiceClone,
+  ]) {
+    mock.mockClear();
+  }
   boxFiles.clear();
+  seedDefault();
 });
+seedDefault();
 
 function pngFile(): File {
   return new File([new Uint8Array([137, 80, 78, 71])], "selfie.png", {
@@ -196,108 +329,213 @@ function pngFile(): File {
 }
 
 describe("identity step registration", () => {
-  it("places selfies/twin/avatar between model and imessage", () => {
+  it("places consent/selfies/voice/twin/avatar between model and imessage", () => {
     const order = (id: string) =>
       ONBOARDING_STEPS.indexOf(id as (typeof ONBOARDING_STEPS)[number]);
-    expect(order("model")).toBeLessThan(order("selfies"));
-    expect(order("selfies")).toBe(order("twin") - 1);
+    expect(order("model")).toBeLessThan(order("consent"));
+    expect(order("consent")).toBe(order("selfies") - 1);
+    expect(order("selfies")).toBe(order("voice") - 1);
+    expect(order("voice")).toBe(order("twin") - 1);
     expect(order("twin")).toBe(order("avatar") - 1);
     expect(order("avatar")).toBeLessThan(order("imessage"));
   });
+
+  it("treats the new steps as skipped on accounts that set up before they existed", () => {
+    const state = defaultOnboardingState();
+    const legacy = {
+      state: { ...state, steps: { ...state.steps, imessage: "done" as const } },
+      consents: [],
+      identityMedia: [],
+      twin: null,
+    } as unknown as OnboardingSnapshot;
+    expect(effectiveStatus(legacy, "consent")).toBe("skipped");
+    expect(effectiveStatus(legacy, "voice")).toBe("skipped");
+    const fresh = { ...legacy, state } as unknown as OnboardingSnapshot;
+    expect(effectiveStatus(fresh, "consent")).toBe("todo");
+    expect(effectiveStatus(fresh, "voice")).toBe("todo");
+    expect(
+      effectiveStatus({ ...fresh, consents: [grant("likeness")] } as unknown as OnboardingSnapshot, "consent")
+    ).toBe("done");
+  });
 });
 
-describe("selfies step", () => {
-  it("renders the multipart upload form, character sheet button, and skip", async () => {
-    const body = await (await onboarding.render(makeCtx("selfies"))).text();
+describe("consent panel", () => {
+  it("explains uploads, generation, providers and controls, and asks first-person consent", async () => {
+    fixtures.grants = [];
+    const body = await render("consent");
+    expect(body).toContain('value="grant_consent"');
+    expect(body).toContain('name="scope" value="likeness" required');
+    expect(body).toContain('name="scope" value="voice"');
+    expect(body).toContain('name="scope" value="video_avatar"');
+    expect(body).toContain("ElevenLabs");
+    expect(body).toContain("fal.ai");
+    expect(body).toContain("GPT Image 2");
+    expect(body).toContain("Skip the twin for now");
+    expect(body).toContain("I am the person in the photos");
+  });
+
+  it("shows granted scopes with their date and a revoke control", async () => {
+    fixtures.grants = [grant("likeness"), grant("voice")];
+    const body = await render("consent");
+    expect(body).toContain("Granted 2026-09-01");
+    expect(body).toContain('value="revoke_consent"');
+    expect(body).toContain("Revoke voice clone");
+    expect(body).not.toContain('value="likeness" required');
+  });
+
+  it("grant_consent records each ticked scope and marks the step done", async () => {
+    fixtures.grants = [];
+    const form = new FormData();
+    form.set("action", "grant_consent");
+    form.append("scope", "likeness");
+    form.append("scope", "voice");
+    form.append("scope", "telepathy");
+    const response = await onboarding.action!(makeCtx("consent"), form);
+    expect(response.status).toBe(200);
+    expect(grantConsent).toHaveBeenCalledTimes(2);
+    expect(grantConsent).toHaveBeenCalledWith(expect.anything(), "user-1", "likeness", {
+      surface: "onboarding",
+    });
+    expect(stateFile()).toContain('"consent": "done"');
+  });
+
+  it("revoke_consent for voice deletes the clone as well", async () => {
+    const response = await post({ action: "revoke_consent", scope: "voice" }, "consent");
+    expect(response.status).toBe(200);
+    expect(revokeUserVoiceClone).toHaveBeenCalledWith(expect.anything(), "user-1", {});
+    expect(revokeConsent).toHaveBeenCalledWith(expect.anything(), "user-1", "voice");
+  });
+
+  it("gates every later panel and upload until likeness is granted", async () => {
+    fixtures.grants = [];
+    const body = await render("selfies");
+    expect(body).toContain("Consent first.");
+    expect(body).not.toContain('value="upload_selfie"');
+    const response = await post({ action: "upload_selfie", file: pngFile() });
+    expect(await response.text()).toContain("allow likeness generation");
+    expect(uploadIdentityImage).not.toHaveBeenCalled();
+  });
+});
+
+describe("reference media panel", () => {
+  it("renders the booth, the multipart upload forms, the media manager and skip", async () => {
+    const body = await render("selfies");
     expect(body).toContain('enctype="multipart/form-data"');
     expect(body).toContain('value="upload_selfie"');
     expect(body).toContain('value="generate_character_sheet"');
     expect(body).toContain('value="skip"');
-  });
-
-  it("accepts iPhone HEIC uploads on the selfie form", async () => {
-    const body = await (await onboarding.render(makeCtx("selfies"))).text();
     expect(body).toContain(
       'accept="image/png,image/jpeg,image/webp,image/heic,image/heif"'
     );
     expect(body).toContain("HEIC photos convert automatically");
-  });
-
-  it("upload_selfie goes through the shared helper and marks the step done", async () => {
-    const form = new FormData();
-    form.set("action", "upload_selfie");
-    form.set("file", pngFile());
-    const response = await onboarding.action!(makeCtx("selfies"), form);
-    expect(response.status).toBe(200);
-    expect(uploadIdentityImage).toHaveBeenCalledWith(
-      expect.anything(),
-      "user-1",
-      expect.any(File),
-      "selfie"
-    );
-    expect(boxFiles.get(".hermes/miniapps/onboarding/state.json")).toContain(
-      '"selfies": "done"'
-    );
-  });
-
-  it("generate_character_sheet renders a draft without marking the step done", async () => {
-    const form = new FormData();
-    form.set("action", "generate_character_sheet");
-    const response = await onboarding.action!(makeCtx("selfies"), form);
-    expect(response.status).toBe(200);
-    expect(generateCharacterSheet).toHaveBeenCalledWith(
-      expect.anything(),
-      "user-1",
-      "grat"
-    );
-    expect(
-      boxFiles.get(".hermes/miniapps/onboarding/state.json") ?? ""
-    ).not.toContain('"selfies": "done"');
-  });
-
-  it("save_character_sheet retags the draft and marks the step done", async () => {
-    const form = new FormData();
-    form.set("action", "save_character_sheet");
-    form.set("asset_id", "asset-9");
-    const response = await onboarding.action!(makeCtx("selfies"), form);
-    expect(response.status).toBe(200);
-    expect(saveCharacterSheetDraft).toHaveBeenCalledWith(
-      expect.anything(),
-      "user-1",
-      "asset-9"
-    );
-    expect(boxFiles.get(".hermes/miniapps/onboarding/state.json")).toContain(
-      '"selfies": "done"'
-    );
-  });
-
-  it("discard_character_sheet removes the draft without completing the step", async () => {
-    const form = new FormData();
-    form.set("action", "discard_character_sheet");
-    form.set("asset_id", "asset-9");
-    const response = await onboarding.action!(makeCtx("selfies"), form);
-    expect(response.status).toBe(200);
-    expect(discardCharacterSheetDraft).toHaveBeenCalledWith(
-      expect.anything(),
-      "user-1",
-      "asset-9"
-    );
-    expect(
-      boxFiles.get(".hermes/miniapps/onboarding/state.json") ?? ""
-    ).not.toContain('"selfies": "done"');
+    expect(body).toContain('value="upload_media"');
+    expect(body).toContain('value="reference_video"');
+    expect(body).toContain('value="move_media"');
+    expect(body).toContain('value="delete_media"');
+    expect(body).toContain('aria-label="Delete photo 1"');
   });
 
   it("mounts the photo booth bundle outside lite mode only", async () => {
-    const full = await (await onboarding.render(makeCtx("selfies"))).text();
+    const full = await render("selfies");
     expect(full).toContain('class="identity-booth"');
     expect(full).toContain('data-mode="photo"');
     expect(full).toContain("/creator-os/identity-booth.js");
     expect(full).toContain('capture="user"');
 
-    const lite = await (
-      await onboarding.render(makeCtx("selfies", { via: "card" }))
-    ).text();
+    const lite = await render("selfies", { via: "card" });
     expect(lite).not.toContain("identity-booth");
+    expect(lite).toContain('value="upload_selfie"');
+  });
+
+  it("upload_selfie goes through the shared helper with the consent id and marks the step done", async () => {
+    const response = await post({ action: "upload_selfie", file: pngFile() });
+    expect(response.status).toBe(200);
+    expect(uploadIdentityImage).toHaveBeenCalledWith(
+      expect.anything(),
+      "user-1",
+      expect.any(File),
+      "selfie",
+      { source: "upload", consentId: "c-likeness" }
+    );
+    expect(stateFile()).toContain('"selfies": "done"');
+  });
+
+  it("upload_media stores clips and samples behind their own scopes", async () => {
+    const clip = new File([new Uint8Array([0, 0, 0, 24])], "ref.mp4", { type: "video/mp4" });
+    await post({ action: "upload_media", role: "reference_video", file: clip });
+    expect(uploadIdentityMedia).toHaveBeenCalledWith(
+      expect.anything(),
+      "user-1",
+      expect.any(File),
+      "reference_video",
+      { source: "upload", consentId: "c-likeness" }
+    );
+    const sample = new File([new Uint8Array([73, 68, 51])], "s.mp3", { type: "audio/mpeg" });
+    const refused = await post({ action: "upload_media", role: "voice_sample", file: sample }, "voice");
+    expect(await refused.text()).toContain("explicit opt-in");
+    expect(uploadIdentityMedia).toHaveBeenCalledTimes(1);
+    const bad = await post({ action: "upload_media", role: "avatar", file: sample });
+    expect(bad.status).toBe(403);
+  });
+
+  it("move_media and delete_media go through the shared helpers", async () => {
+    await post({ action: "move_media", asset_id: "asset-1", role: "selfie", direction: "down" });
+    expect(reorderIdentityAsset).toHaveBeenCalledWith(
+      expect.anything(), "user-1", "asset-1", "selfie", "down"
+    );
+    const response = await post({ action: "delete_media", asset_id: "asset-1" });
+    expect(deleteIdentityAsset).toHaveBeenCalledWith(expect.anything(), "user-1", "asset-1");
+    expect(await response.text()).toContain("the original is gone");
+  });
+});
+
+describe("generated identity panel", () => {
+  it("offers the photo path and the description path for the character sheet", async () => {
+    const body = await render("selfies");
+    expect(body).toContain("Generate from my photos");
+    expect(body).toContain('name="description"');
+    expect(body).toContain("Describe an original character, not a real person.");
+    expect(body).toContain('value="generate_profile_image"');
+  });
+
+  it("generate_character_sheet renders a draft without marking the step done, passing a description when given", async () => {
+    const response = await post({ action: "generate_character_sheet" });
+    expect(response.status).toBe(200);
+    expect(generateCharacterSheet).toHaveBeenCalledWith(expect.anything(), "user-1", "grat", {});
+    expect(stateFile()).not.toContain('"selfies": "done"');
+    await post({ action: "generate_character_sheet", description: "a warm guide with silver glasses" });
+    expect(generateCharacterSheet).toHaveBeenLastCalledWith(expect.anything(), "user-1", "grat", {
+      description: "a warm guide with silver glasses",
+    });
+  });
+
+  it("save_character_sheet retags the draft and marks the step done", async () => {
+    const response = await post({ action: "save_character_sheet", asset_id: "asset-9" });
+    expect(response.status).toBe(200);
+    expect(saveCharacterSheetDraft).toHaveBeenCalledWith(expect.anything(), "user-1", "asset-9");
+    expect(stateFile()).toContain('"selfies": "done"');
+  });
+
+  it("discard_character_sheet removes the draft without completing the step", async () => {
+    await post({ action: "discard_character_sheet", asset_id: "asset-9" });
+    expect(discardCharacterSheetDraft).toHaveBeenCalledWith(expect.anything(), "user-1", "asset-9");
+    expect(stateFile()).not.toContain('"selfies": "done"');
+  });
+
+  it("generates, approves and discards the profile image through the shared helpers", async () => {
+    await post({ action: "generate_profile_image", style: "futuristic editorial" });
+    expect(generateProfileImage).toHaveBeenCalledWith(expect.anything(), "user-1", "grat", {
+      style: "futuristic editorial",
+    });
+    fixtures.media = [view("asset-1", "selfie"), view("asset-7", "profile_image_draft")];
+    const review = await render("selfies");
+    expect(review).toContain('value="approve_profile_image"');
+    expect(review).toContain('data-stepper data-stepper-active="2"');
+    await post({ action: "approve_profile_image", asset_id: "asset-7" });
+    expect(approveProfileImageDraft).toHaveBeenCalledWith(expect.anything(), "user-1", "asset-7");
+    expect(stateFile()).toContain('"selfies": "done"');
+    await post({ action: "discard_profile_image", asset_id: "asset-7" });
+    expect(discardProfileImageDraft).toHaveBeenCalledWith(expect.anything(), "user-1", "asset-7");
   });
 
   it("points back to the username step when no username is set", async () => {
@@ -307,147 +545,195 @@ describe("selfies step", () => {
       makeCtx("selfies", { username: null }),
       form
     );
-    const body = await response.text();
     expect(generateCharacterSheet).not.toHaveBeenCalled();
-    expect(body).toContain("Pick a username first");
+    expect(await response.text()).toContain("Pick a username first");
   });
 });
 
-describe("twin step", () => {
-  it("degrades gracefully when GMI_CLOUD_API_KEY is unset", async () => {
+describe("voice panel", () => {
+  it("degrades gracefully when ElevenLabs is unset", async () => {
+    vi.stubEnv("ELEVENLABS_API_KEY", undefined);
+    const body = await render("voice");
+    expect(body).toContain("Voice cloning isn't configured on this deployment");
+    expect(body).toContain("Skip — not configured");
+  });
+
+  it("asks for the voice opt-in before collecting samples", async () => {
+    vi.stubEnv("ELEVENLABS_API_KEY", "xi");
+    const body = await render("voice");
+    expect(body).toContain("Voice is opt-in.");
+    expect(body).not.toContain('value="voice_sample"');
+  });
+
+  it("collects samples and clones only on request once opted in", async () => {
+    vi.stubEnv("ELEVENLABS_API_KEY", "xi");
+    fixtures.grants = [grant("likeness"), grant("voice")];
+    const empty = await render("voice");
+    expect(empty).toContain('data-mode="audio"');
+    expect(empty).toContain('value="voice_sample"');
+    expect(empty).not.toContain('value="create_voice_clone"');
+    fixtures.media = [view("asset-1", "selfie"), view("asset-5", "voice_sample")];
+    const withSample = await render("voice");
+    expect(withSample).toContain('value="create_voice_clone"');
+    expect(withSample).toContain("<audio");
+    const response = await post({ action: "create_voice_clone" }, "voice");
+    expect(createUserVoiceClone).toHaveBeenCalledWith(expect.anything(), "user-1", "grat");
+    expect(await response.text()).toContain("Voice clone ready");
+    expect(stateFile()).toContain('"voice": "done"');
+    const lite = await render("voice", { via: "card" });
+    expect(lite).not.toContain("identity-booth");
+  });
+
+  it("delete_voice_clone revokes provider-side and reopens the step", async () => {
+    fixtures.twin = { voice_id: "voice_1", voice_status: "ready" } as unknown as DigitalTwin;
+    const response = await post({ action: "delete_voice_clone" }, "voice");
+    expect(revokeUserVoiceClone).toHaveBeenCalledWith(expect.anything(), "user-1", {});
+    expect(await response.text()).toContain("deleted here and at ElevenLabs");
+  });
+});
+
+describe("video avatar panel", () => {
+  it("degrades gracefully when neither fal nor GMI is configured", async () => {
     vi.stubEnv("GMI_CLOUD_API_KEY", undefined);
-    const body = await (await onboarding.render(makeCtx("twin"))).text();
+    vi.stubEnv("FAL_KEY", undefined);
+    const body = await render("twin");
     expect(body).toContain("isn't configured on this deployment");
     expect(body).toContain("Skip — not configured");
-
-    const form = new FormData();
-    form.set("action", "create_twin");
-    form.set("script", "hello");
-    const response = await onboarding.action!(makeCtx("twin"), form);
+    const response = await post({ action: "create_twin", script: "hello" }, "twin");
     expect(response.status).toBe(200);
     expect(createTwinVideo).not.toHaveBeenCalled();
   });
 
-  it("renders consent upload and create forms when configured", async () => {
+  it("keeps the legacy consent recording and talking-head forms behind More options", async () => {
     vi.stubEnv("GMI_CLOUD_API_KEY", "gmi-key");
-    const body = await (await onboarding.render(makeCtx("twin"))).text();
+    vi.stubEnv("FAL_KEY", undefined);
+    const body = await render("twin");
     expect(body).toContain('value="upload_consent"');
     expect(body).toContain('accept="video/mp4,video/webm"');
     expect(body).toContain('value="create_twin"');
     expect(body).toContain('value="skip"');
-  });
-
-  it("mounts the video booth outside lite mode only", async () => {
-    vi.stubEnv("GMI_CLOUD_API_KEY", "gmi-key");
-    const full = await (await onboarding.render(makeCtx("twin"))).text();
-    expect(full).toContain('data-mode="video"');
-    const lite = await (
-      await onboarding.render(makeCtx("twin", { via: "card" }))
-    ).text();
+    expect(body).toContain('data-mode="video"');
+    const lite = await render("twin", { via: "card" });
     expect(lite).not.toContain("identity-booth");
   });
 
-  it("renders the booth as a six-stage stepper outside lite mode", async () => {
-    const full = await (await onboarding.render(makeCtx("selfies"))).text();
-    expect(full).toContain('data-stepper data-stepper-active="0"');
-    expect(full).toContain("/creator-os/deck-stepper.js");
-    expect(full).toContain("Take photo");
-    expect(full).toContain("Photo selection");
-    expect(full).toContain("Generate character sheet");
-    expect(full).toContain("Take video");
-    expect(full).toContain("Create digital twin");
-    expect(full).toContain("Avatar selection");
-    expect(full).toContain("/creator-os/deck-swipe.js");
-    expect(full).toContain("data-swipe-prev=");
-    expect(full).toContain("data-swipe-next=");
-    // Deep links land on the panel owning the step.
-    const { listIdentityMediaViews } = await import("@/lib/identity/assets");
-    vi.mocked(listIdentityMediaViews).mockResolvedValueOnce([
-      { assetId: "asset-1", role: "selfie", url: "https://signed.example/a.png" },
-      {
-        assetId: "asset-2",
-        role: "character_sheet_draft",
-        url: "https://signed.example/d.png",
-      },
-    ]);
-    // A pending draft pulls ?step=selfies to the review (sheet) panel.
-    const draft = await (await onboarding.render(makeCtx("selfies"))).text();
-    expect(draft).toContain('data-stepper data-stepper-active="2"');
-    const twin = await (await onboarding.render(makeCtx("twin"))).text();
-    expect(twin).toContain('data-stepper data-stepper-active="3"');
-    const avatar = await (await onboarding.render(makeCtx("avatar"))).text();
-    expect(avatar).toContain('data-stepper data-stepper-active="5"');
-
-    const lite = await (
-      await onboarding.render(makeCtx("selfies", { via: "card" }))
-    ).text();
-    expect(lite).not.toContain("data-stepper");
-    expect(lite).not.toContain("deck-swipe.js");
-  });
-
-  it("renders iPhone-style page dots and steppers multi-section slides", async () => {
-    const booth = await (await onboarding.render(makeCtx("selfies"))).text();
-    expect(booth).toContain('class="dots"');
-    expect(booth).not.toContain("stepnode");
-    // Green checks come from server-reported stage completion, not position:
-    // a stage marks data-step-done only once its artifact exists.
-    expect(booth).toContain("data-step-done");
-
-    const context = await (await onboarding.render(makeCtx("imessage"))).text();
-    expect(context).toContain('data-stepper data-stepper-active="0"');
-    expect(context).toContain("/creator-os/deck-stepper.js");
-
-    const lite = await (
-      await onboarding.render(makeCtx("imessage", { via: "card" }))
-    ).text();
-    expect(lite).not.toContain("data-stepper");
-    expect(lite).not.toContain("deck-stepper.js");
-  });
-
-  it("upload_consent and create_twin go through the shared twin module", async () => {
+  it("upload_consent and create_twin still go through the shared twin module", async () => {
     vi.stubEnv("GMI_CLOUD_API_KEY", "gmi-key");
-    const consent = new FormData();
-    consent.set("action", "upload_consent");
-    consent.set(
-      "file",
-      new File([new Uint8Array([0, 0, 0, 24])], "consent.mp4", {
-        type: "video/mp4",
-      })
-    );
-    await onboarding.action!(makeCtx("twin"), consent);
-    expect(uploadTwinConsent).toHaveBeenCalledWith(
-      expect.anything(),
-      "user-1",
-      expect.any(File)
-    );
-
-    const create = new FormData();
-    create.set("action", "create_twin");
-    create.set("script", "Hi, I'm grat's twin.");
-    await onboarding.action!(makeCtx("twin"), create);
+    const consent = new File([new Uint8Array([0, 0, 0, 24])], "consent.mp4", {
+      type: "video/mp4",
+    });
+    await post({ action: "upload_consent", file: consent }, "twin");
+    expect(uploadTwinConsent).toHaveBeenCalledWith(expect.anything(), "user-1", expect.any(File));
+    await post({ action: "create_twin", script: "Hi, I'm grat's twin." }, "twin");
     expect(createTwinVideo).toHaveBeenCalledWith(expect.anything(), "user-1", {
       avatarImageUrl: "https://signed.example/a.png",
       script: "Hi, I'm grat's twin.",
     });
-    expect(boxFiles.get(".hermes/miniapps/onboarding/state.json")).toContain(
-      '"twin": "done"'
-    );
+    expect(stateFile()).toContain('"twin": "done"');
+  });
+
+  it("lists what the avatar needs and enables only when everything is there", async () => {
+    vi.stubEnv("FAL_KEY", "fal");
+    fixtures.grants = [grant("likeness"), grant("video_avatar")];
+    const missing = await render("twin");
+    expect(missing).toContain("an approved profile image");
+    expect(missing).not.toContain('value="enable_video_avatar"');
+    fixtures.media = [
+      view("asset-1", "selfie"),
+      view("asset-3", "profile_image"),
+      view("asset-5", "voice_sample"),
+    ];
+    const ready = await render("twin");
+    expect(ready).toContain('value="enable_video_avatar"');
+    expect(ready).toContain("labelled as synthetic");
+    const response = await post({ action: "enable_video_avatar" }, "twin");
+    expect(await response.text()).toContain("Rendering your video avatar");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(enableVideoAvatar).toHaveBeenCalledWith(expect.anything(), "user-1", "grat", {
+      channel: "web",
+    });
+    fixtures.twin = { avatar_status: "pending" } as unknown as DigitalTwin;
+    const pending = await render("twin");
+    expect(pending).toContain('value="refresh_twin"');
+    await post({ action: "disable_video_avatar" }, "twin");
+    expect(disableVideoAvatar).toHaveBeenCalledWith(expect.anything(), "user-1");
   });
 });
 
-describe("avatar step", () => {
+describe("deck presentation", () => {
+  it("renders the twin as a six-stage stepper outside lite mode", async () => {
+    const full = await render("selfies");
+    expect(full).toContain('data-stepper data-stepper-active="1"');
+    expect(full).toContain("/creator-os/deck-stepper.js");
+    for (const label of [
+      "Consent &amp; privacy",
+      "Reference media",
+      "Generated identity",
+      "Voice",
+      "Video avatar",
+      "Representing image",
+    ]) {
+      expect(full).toContain(label);
+    }
+    expect(full).toContain("/creator-os/deck-swipe.js");
+    expect(await render("consent")).toContain('data-stepper data-stepper-active="0"');
+    expect(await render("voice")).toContain('data-stepper data-stepper-active="3"');
+    expect(await render("twin")).toContain('data-stepper data-stepper-active="4"');
+    expect(await render("avatar")).toContain('data-stepper data-stepper-active="5"');
+    // A pending sheet draft pulls ?step=selfies to the review panel.
+    fixtures.media = [view("asset-1", "selfie"), view("asset-2", "character_sheet_draft")];
+    expect(await render("selfies")).toContain('data-stepper data-stepper-active="2"');
+    const lite = await render("selfies", { via: "card" });
+    expect(lite).not.toContain("data-stepper");
+    expect(lite).not.toContain("deck-swipe.js");
+  });
+
+  it("renders iPhone-style page dots and server-reported stage completion", async () => {
+    const booth = await render("selfies");
+    expect(booth).toContain('class="dots"');
+    expect(booth).toContain("data-step-done");
+    const context = await render("imessage");
+    expect(context).toContain('data-stepper data-stepper-active="0"');
+  });
+});
+
+describe("get started summary", () => {
+  it("summarises the twin with status pills, privacy controls and /zap and /twin examples", async () => {
+    fixtures.media = [
+      view("asset-1", "selfie"),
+      view("asset-3", "profile_image"),
+      view("asset-4", "character_sheet"),
+    ];
+    fixtures.twin = { voice_status: "ready", avatar_status: "off", sharing: "private" } as unknown as DigitalTwin;
+    const body = await render("agent");
+    expect(body).toContain("Your digital twin");
+    expect(body).toContain('alt="@grat profile image"');
+    expect(body).toContain("/zap Create a cinematic portrait using @grat");
+    expect(body).toContain("/twin say Welcome to AirV2");
+    expect(body).toContain('value="set_sharing"');
+    expect(body).toContain("Allow others to reference @grat");
+    expect(body).toContain("synthetic");
+    expect(body).toContain("/creator-os/prompt-copy.js");
+    const response = await post({ action: "set_sharing", sharing: "public" }, "agent");
+    expect(setTwinSharing).toHaveBeenCalledWith(expect.anything(), "user-1", "public");
+    expect(await response.text()).toContain("never your voice");
+  });
+});
+
+describe("representing image", () => {
   it("renders identity picks with the skip button", async () => {
-    const body = await (await onboarding.render(makeCtx("avatar"))).text();
+    const body = await render("avatar");
     expect(body).toContain('value="set_avatar"');
     expect(body).toContain('value="asset-1"');
     expect(body).toContain('value="skip"');
+    expect(body).toContain('value="generate_alt_image"');
     expect(body).not.toContain("Train an avatar");
-    expect(body).not.toContain("HeyGen");
+    expect(body).not.toContain('value="create_heygen_avatar"');
   });
 
   it("offers the trained avatar path first when configured, without naming the provider", async () => {
     heygenAvailable.mockReturnValue(true);
-    const body = await (await onboarding.render(makeCtx("avatar"))).text();
+    const body = await render("avatar");
     expect(body).toContain('value="create_heygen_avatar"');
     expect(body).toContain("Train an avatar");
     expect(body).not.toContain(">HeyGen");
@@ -455,9 +741,7 @@ describe("avatar step", () => {
 
   it("create_heygen_avatar mints an avatar ID via the shared helper", async () => {
     heygenAvailable.mockReturnValue(true);
-    const form = new FormData();
-    form.set("action", "create_heygen_avatar");
-    const response = await onboarding.action!(makeCtx("avatar"), form);
+    const response = await post({ action: "create_heygen_avatar" }, "avatar");
     expect(response.status).toBe(200);
     expect(createUserHeygenAvatar).toHaveBeenCalledWith(
       expect.anything(),
@@ -465,24 +749,13 @@ describe("avatar step", () => {
       "grat",
       "https://signed.example/a.png"
     );
-    expect(boxFiles.get(".hermes/miniapps/onboarding/state.json")).toContain(
-      '"avatar": "done"'
-    );
+    expect(stateFile()).toContain('"avatar": "done"');
   });
 
   it("set_avatar writes through the shared helper and marks the step done", async () => {
-    const form = new FormData();
-    form.set("action", "set_avatar");
-    form.set("asset_id", "asset-1");
-    const response = await onboarding.action!(makeCtx("avatar"), form);
+    const response = await post({ action: "set_avatar", asset_id: "asset-1" }, "avatar");
     expect(response.status).toBe(200);
-    expect(setAvatarAssetId).toHaveBeenCalledWith(
-      expect.anything(),
-      "user-1",
-      "asset-1"
-    );
-    expect(boxFiles.get(".hermes/miniapps/onboarding/state.json")).toContain(
-      '"avatar": "done"'
-    );
+    expect(setAvatarAssetId).toHaveBeenCalledWith(expect.anything(), "user-1", "asset-1");
+    expect(stateFile()).toContain('"avatar": "done"');
   });
 });
