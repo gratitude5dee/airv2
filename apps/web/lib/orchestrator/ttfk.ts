@@ -17,7 +17,7 @@ const PROGRESS_GENERATION_HEADSTART_MS = 1_500;
 export type ProgressStage = "progress-one" | "progress-two" | "finalizing";
 
 const EXPLICIT_RESPONSE_LANE =
-  /(^|[^A-Za-z0-9_/])\/(?:imagine|animate|zap|draw|freeze)(?=$|[^A-Za-z0-9_-])/i;
+  /(^|[^A-Za-z0-9_/])\/(?:imagine|animate|zap|draw|freeze|twin)(?=$|[^A-Za-z0-9_-])/i;
 
 /**
  * Commands that complete in their own media/card lane. Spectrum places an
@@ -211,6 +211,7 @@ export function initialHoldingReply(body: string): string {
   if (/(?:^|\s)\/(?:imagine|animate|zap)\b/i.test(text)) {
     return "I’m making that now.";
   }
+  if (/(?:^|\s)\/twin\b/i.test(text)) return "I’m getting your twin ready now.";
   if (/\[attachment:/i.test(text)) return "I’m looking at that now.";
   if (/\[location shared\]|\bnear me\b/i.test(text)) return "I’m checking that now.";
   if (/^\/(draw|freeze|image|image-editor)\b/i.test(text)) return "Opening that now.";

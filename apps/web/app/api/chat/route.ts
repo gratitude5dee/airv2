@@ -13,8 +13,17 @@ import {
   AMBIGUOUS_COMMAND_LINE,
   parseExplicitGenerationCommand,
 } from "@/lib/creative/parse";
-import { createCreativeJob } from "@/lib/creative/jobs";
+import { createCreativeJob, updateCreativeJob } from "@/lib/creative/jobs";
 import { executeCreativeJob } from "@/lib/creative/run";
+import { attachIdentityReferences } from "@/lib/identity/resolve";
+import { recordReferenceUses } from "@/lib/identity/twin";
+import {
+  parseTwinCommand,
+  runTwinCommand,
+  TWIN_HELP_LINE,
+  twinBuilderLink,
+  twinStatusLine,
+} from "@/lib/identity/twinCommand";
 import { parseMention } from "@/lib/bots/mentions";
 import { listBots, toPublic, type BotRow } from "@/lib/bots/store";
 import { startBotChatRun } from "@/lib/bots/chat";
@@ -83,10 +92,83 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const trigger = body.via === "voice" ? "voice" : "web";
   const supabase = serviceClient();
 
+  // /twin: the digital twin speaks (voice clone + lip-sync) or poses (an
+  // identity-anchored image). Bare /twin answers inline with status and a
+  // link into the builder; renders run like creative jobs and the chat
+  // follows them over the same SSE route.
+  const twinCommand = parseTwinCommand(typed);
+  if (twinCommand) {
+    if (twinCommand.kind === "card" || twinCommand.kind === "status") {
+      let status: string;
+      if (twinCommand.kind === "status") {
+        status = await twinStatusLine(supabase, userId, twinCommand.handle);
+      } else {
+        const { data: me } = await supabase
+          .from("users")
+          .select("username")
+          .eq("id", userId)
+          .maybeSingle();
+        const username = (me as { username?: unknown } | null)?.username;
+        status =
+          typeof username === "string" && username
+            ? await twinStatusLine(supabase, userId, username)
+            : "pick a username first — your twin is bound to your @name.";
+      }
+      return NextResponse.json({
+        creative_line: `${status}\n${TWIN_HELP_LINE}\nBuild or update it here: ${twinBuilderLink(userId)}`,
+      });
+    }
+    try {
+      const job = await createCreativeJob(
+        supabase,
+        userId,
+        "web",
+        "twin",
+        undefined,
+        undefined,
+        { twinKind: twinCommand.kind === "speak" ? "speak" : "image" }
+      );
+      after(async () => {
+        try {
+          const result = await runTwinCommand(supabase, userId, twinCommand, {
+            channel: "web",
+            jobId: job.id,
+          });
+          if (!result.ok && result.jobId === null) {
+            await updateCreativeJob(supabase, job.id, {
+              status: "refused",
+              error: result.line,
+            });
+          }
+        } catch (error) {
+          console.error(
+            JSON.stringify({
+              msg: "twin job execution failed",
+              user_id: userId,
+              job_id: job.id,
+              error: error instanceof Error ? error.message : String(error),
+            })
+          );
+        }
+      });
+      return NextResponse.json({ creative_job_id: job.id, mode: "twin" });
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          msg: "twin job start failed",
+          user_id: userId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      );
+      return NextResponse.json({ error: "run failed" }, { status: 500 });
+    }
+  }
+
   // M16: an explicit /imagine, /animate, or /zap short-circuits before the
   // Hermes run. Parsed against the user's typed text only — the attachment
   // markers are internal bookkeeping, not part of a creative prompt (and the
   // web lane stages no media inputs, so the combination is refused outright).
+  // @username mentions resolve server-side to the twin's approved images.
   const command = parseExplicitGenerationCommand(typed);
   if (command) {
     if ("ambiguous" in command) {
@@ -99,15 +181,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           "Attached files can't be used with /imagine, /animate, or /zap yet — send the command on its own and describe what you want.",
       });
     }
+    const attached = await attachIdentityReferences(supabase, userId, {
+      mode: command.mode,
+      cleanedText: command.cleanedText,
+      text: typed,
+      mediaInputs: [],
+    });
+    if (attached.problem) {
+      return NextResponse.json({ creative_line: attached.problem });
+    }
     try {
       const job = await createCreativeJob(supabase, userId, "web", command.mode);
+      await recordReferenceUses(supabase, job.id, userId, attached.uses);
       after(async () => {
-        await executeCreativeJob(supabase, job.id, userId, {
-          mode: command.mode,
-          cleanedText: command.cleanedText,
-          text: typed,
-          mediaInputs: [],
-        }).catch((error: unknown) => {
+        await executeCreativeJob(supabase, job.id, userId, attached.turn).catch((error: unknown) => {
           console.error(
             JSON.stringify({
               msg: "creative job execution failed",
