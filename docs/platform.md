@@ -52,6 +52,13 @@ the user's Box.
 6. **Deletion/export** — `/api/admin/delete` releases the line, inbox, and
    Box; `/api/admin/export` hands the user their data.
 
+**Muse connector signup** follows the same lifecycle after thirdweb phone OTP:
+it may allocate only an already project-provisioned **dedicated** Photon/
+Spectrum line from `lines` inventory, then provisions the Box and configured
+mail inbox before completing consent. A shared Spectrum route is never shown
+as a personal number. When inventory is empty, the connector reports that
+honestly and makes no provider upgrade, phone purchase, or payment attempt.
+
 ## The dashboard — eight tabs plus wave surfaces
 
 `/home` is the owner's cockpit. Tab order is binding (V8):

@@ -3,6 +3,7 @@ import type { SpectrumSender } from "../spectrum/sender";
 import { cardLayout, mintSignedLink, persistCardSession } from "./cards";
 import { isCardKind } from "./cardSends";
 import { getRegistryApp } from "./registry";
+import { env } from "../env";
 
 const ALIASES: Readonly<Record<string, string>> = {
   "image-editor": "image",
@@ -91,6 +92,10 @@ export async function maybeSendMiniAppLink(
     );
   }
   if (!app || app.status !== "published") return false;
+  // The registry row is shipped ahead of activation so migration order cannot
+  // make the connector unavailable. Do not issue a signed Muse card until its
+  // control-plane feature flag is on.
+  if (app.slug === "muse" && !env.museEnabled()) return false;
   if (job.senderTier !== 0) {
     await sender.sendText(job.spaceId, job.phone, OWNER_ONLY_CARD_LINE);
     return true;

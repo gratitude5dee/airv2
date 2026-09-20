@@ -51,7 +51,7 @@ import {
 import { installComposioMcp, installMasterkeyMcp } from "./connectors";
 import { MigrationBusyError } from "../migration/types";
 import { provisionDaytona } from "./daytona";
-import { installExistingMailbox } from "./email";
+import { installExistingMailbox, provisionEmail } from "./email";
 import { normalizeAddress } from "../routing/trust";
 import { sealSecret } from "../crypto/secretbox";
 import { baseSkillsFor, installBaseSkills } from "../skills/hub";
@@ -83,6 +83,8 @@ export const REPLACE_CLAIM_TTL_MS = 2 * LONGEST_REPLACE_CALLER_SECONDS * 1000;
 
 export interface ProvisionOptions {
   displayName?: string | undefined;
+  /** A system-generated handle for a complete, phone-first signup. */
+  username?: string | undefined;
   boundPhone?: string | undefined;
   linePhone?: string | undefined;
   operator?: string | undefined;
@@ -225,7 +227,10 @@ export async function provisionUser(
   // BEFORE any line exists (goal.md M3 step 1).
   const { data: user, error: userError } = await supabase
     .from("users")
-    .insert({ status: options.boundPhone ? "pending" : "active" })
+    .insert({
+      status: options.boundPhone ? "pending" : "active",
+      ...(options.username ? { username: options.username } : {}),
+    })
     .select("id")
     .single();
   if (userError || !user) {
@@ -320,6 +325,10 @@ export async function provisionUser(
     );
     await persistBox(supabase, userId, environment, built);
     await finishSetup(supabase, userId, built);
+    // Muse phone-first accounts do not stop at a bare compute record. They
+    // receive an address under the existing WZRDMail provisioning path while
+    // their box is live, with the draft-only key installed on that box.
+    if (options.username) await provisionEmail(supabase, userId, options.username);
     return {
       userId,
       boxId: built.target.instanceId,

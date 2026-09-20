@@ -50,7 +50,7 @@ export interface DeviceAuthStart {
   interval: number;
 }
 
-const KNOWN_TOOLS = new Set(["codex", "claude-code", "other"]);
+const KNOWN_TOOLS = new Set(["codex", "claude-code", "muse", "other"]);
 
 export function normalizeTool(tool: string): string | null {
   const cleaned = tool.trim().toLowerCase();

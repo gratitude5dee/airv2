@@ -256,6 +256,23 @@ path that must never light up inside a box whose iMessage terminates in
 the control plane. Upstream adding an adapter can therefore never silently
 open a second door into the agent.
 
+## SD-MU1 — Muse relay content is transient, scoped, and deletable
+
+`/muse` instruction text is not Air control-plane data. The signed Spectrum
+webhook routes an owner-tier instruction directly to that owner's `MuseUser`
+Durable Object, which is the only persistence location for the text. The
+object expires unpulled commands within 24 hours and deletes them immediately
+after acknowledge, successful reply, or unlink; Postgres records only bounded
+metadata (`kind`, agent label, character count, outcome, timestamp).
+
+Only a `control`-scoped Muse credential for the same owner can pull a queued
+instruction. Command IDs are opaque, leases are short, replies are
+single-claim, and a failed reply releases the claim rather than silently
+discarding the instruction. Worker and control-plane logs must never include
+command or notification bodies. A linked Muse agent is still tier 1: it cannot
+turn a send, payment, booking, schedule, calendar change, or wallet request
+into execution; existing Air **Needs you** decisions remain the final gate.
+
 ## Kernel cloud browsers and vault payments (C26–C31)
 
 **The decision:** the Kernel lane extends the checkout-handoff model to a

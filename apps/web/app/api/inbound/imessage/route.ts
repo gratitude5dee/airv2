@@ -61,6 +61,11 @@ import {
   spectrumFlowActive,
   storeSpectrumGrants,
 } from "@/lib/onairos/spectrum";
+import {
+  isMuseInstruction,
+  maybeHandleMuseInbound,
+  museModeIsActive,
+} from "@/lib/muse/commands";
 
 export const maxDuration = 800;
 
@@ -484,6 +489,34 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     });
     closeWarmSpectrumSenderAfter(warmSenderPromise);
+    return NextResponse.json({ ok: true }, { status: 200 });
+  }
+
+  // The owner's /muse command has its own relay lane. The only pre-response
+  // work here is a metadata-only mode lookup; command text crosses straight
+  // to the Worker Durable Object after the webhook has been acknowledged.
+  // It never enters Postgres, the normal agent queue, or an Onairos flow.
+  const museInstruction = tier === 0 && isMuseInstruction(body);
+  const museMode = !museInstruction && tier === 0
+    ? await museModeIsActive(supabase, route.userId)
+    : false;
+  if (museInstruction || museMode) {
+    const userId = route.userId;
+    const spaceId = inbound.spaceId;
+    const phone = inbound.phone;
+    const messageId = inbound.messageId;
+    after(async () => {
+      const result = await maybeHandleMuseInbound(supabase, {
+        userId,
+        text: body,
+        messageId,
+      }).catch(() => ({ handled: true, reply: "Muse is temporarily unavailable. Try again shortly." }));
+      if (result.reply) {
+        await sendLineReply(spaceId, phone, messageId, result.reply, warmSenderPromise);
+      } else {
+        await closeWarmSpectrumSender(warmSenderPromise);
+      }
+    });
     return NextResponse.json({ ok: true }, { status: 200 });
   }
 

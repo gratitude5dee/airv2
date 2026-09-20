@@ -22,6 +22,7 @@ import { image } from "./image";
 import { inbox } from "./inbox";
 import { kanban } from "./kanban";
 import { masterkey } from "./masterkey";
+import { muse } from "./muse";
 import { onboarding } from "./onboarding";
 import { browser } from "./passthrough";
 import { pay } from "./pay";
@@ -58,6 +59,7 @@ export const FIRST_PARTY_MODULES: Record<string, MiniAppModule> = {
   inbox,
   kanban,
   masterkey,
+  muse,
   onboarding,
   pay,
   persona,

@@ -362,6 +362,27 @@ export const env = {
   // the web session secret so the beta needs no new deploy config.
   pluginTokenSigningKey: (): string =>
     process.env["PLUGIN_TOKEN_SIGNING_KEY"] ?? required("SESSION_SECRET"),
+  // Air × Muse stays dark until the control plane and Worker share their
+  // server-to-server credentials. These values are deliberately nullable so
+  // an ordinary web deploy does not accidentally expose a half-configured
+  // connector.
+  museEnabled: (): boolean => optional("MUSE_ENABLED", "false") === "true",
+  museOrigin: (): string =>
+    optional("MUSE_ORIGIN", "https://muse.wzrd.tech").replace(/\/+$/, ""),
+  museWorkerToken: (): string | null => process.env["MUSE_WORKER_TOKEN"] ?? null,
+  museInternalToken: (): string | null => process.env["MUSE_INTERNAL_TOKEN"] ?? null,
+  museUpdatesDailyCap: (): number => {
+    const parsed = Number.parseInt(optional("MUSE_UPDATES_DAILY_CAP", "30"), 10);
+    return Number.isFinite(parsed) ? Math.min(120, Math.max(0, parsed)) : 30;
+  },
+  museUpdatesAlertCap: (): number => {
+    const parsed = Number.parseInt(optional("MUSE_UPDATES_ALERT_CAP", "6"), 10);
+    return Number.isFinite(parsed) ? Math.min(120, Math.max(0, parsed)) : 6;
+  },
+  museModeTtlMinutes: (): number => {
+    const parsed = Number.parseInt(optional("MUSE_MODE_TTL_MINUTES", "30"), 10);
+    return Number.isFinite(parsed) ? Math.min(24 * 60, Math.max(1, parsed)) : 30;
+  },
   // V11 MC7 Import: the WZRD Tech Inc GitHub App. All optional — absent
   // means the Import lane reports itself unconfigured and /create hides
   // "Connect GitHub". The private key is PEM (newlines may be escaped as

@@ -17,3 +17,19 @@ id = "9c469d02ef984cee9da69621692f4bc2"
 [observability]
 enabled = true
 head_sampling_rate = 1
+
+# Full connector is dark until both secrets have been set in the Worker and
+# the control plane. No product route is exposed merely by deploying this
+# configuration.
+[vars]
+MUSE_ENABLED = "false"
+CONTROL_PLANE_ORIGIN = "https://app.wzrd.tech"
+DOCS_URL = "https://air.wzrd.tech/docs/muse"
+
+[[durable_objects.bindings]]
+name = "MUSE_USER"
+class_name = "MuseUser"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["MuseUser"]

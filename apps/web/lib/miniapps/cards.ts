@@ -73,6 +73,7 @@ const CARD_COPY: Partial<Record<string, { name: string; line: string }>> = {
   trade: { name: "Trade", line: "Approve before it moves" },
   checkout: { name: "Checkout", line: "Review and continue" },
   watch: { name: "Watch", line: "Watch your agent work" },
+  muse: { name: "Muse", line: "Updates, relay, and access" },
 };
 
 /**
