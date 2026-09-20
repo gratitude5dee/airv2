@@ -140,6 +140,8 @@ export const env = {
   spectrumProjectId: (): string => required("SPECTRUM_PROJECT_ID"),
   spectrumProjectSecret: (): string => required("SPECTRUM_PROJECT_SECRET"),
   spectrumWebhookSecret: (): string => required("SPECTRUM_WEBHOOK_SECRET"),
+  spectrumApiBase: (): string =>
+    optional("SPECTRUM_API_BASE", "https://spectrum.photon.codes").replace(/\/+$/, ""),
   // Mail provider: wzrdmail is the deployment default; AGENTMAIL_* stays for rollback (see lib/mail/provider.ts).
   mailProvider: (): "agentmail" | "wzrdmail" => {
     const value = optional("MAIL_PROVIDER", "wzrdmail");

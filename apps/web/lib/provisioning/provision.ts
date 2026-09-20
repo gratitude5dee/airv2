@@ -238,80 +238,104 @@ export async function provisionUser(
   }
   const userId = user.id as string;
 
-  const { error: entitlementError } = await supabase
-    .from("entitlements")
-    .insert({ user_id: userId });
-  if (entitlementError) {
-    throw new Error(`entitlements insert failed: ${entitlementError.message}`);
-  }
-
   let inviteLink: string | undefined;
-  if (options.boundPhone) {
-    // Stored in the same canonical form the router compares against
-    // (routing/trust.ts), so the owner's texts resolve to tier 0.
-    const boundPhone = normalizeAddress("imessage", options.boundPhone);
-    const { error: provisioningError } = await supabase
-      .from("provisioning")
-      .insert({
-        user_id: userId,
-        state: "created",
-        bound_phone: boundPhone,
-        operator: options.operator ?? null,
-      });
-    if (provisioningError) {
-      throw new Error(`provisioning insert failed: ${provisioningError.message}`);
-    }
-    const { error: handleError } = await supabase.from("handles").insert({
-      user_id: userId,
-      platform: "imessage",
-      address: boundPhone,
-    });
-    if (handleError) {
-      throw new Error(`handles insert failed: ${handleError.message}`);
-    }
-    const { error: senderError } = await supabase.from("senders").insert({
-      user_id: userId,
-      platform: "imessage",
-      address: boundPhone,
-      trust_tier: 0,
-    });
-    if (senderError) {
-      throw new Error(`senders insert failed: ${senderError.message}`);
+  try {
+    const { error: entitlementError } = await supabase
+      .from("entitlements")
+      .insert({ user_id: userId });
+    if (entitlementError) {
+      throw new Error(`entitlements insert failed: ${entitlementError.message}`);
     }
 
-    if (options.linePhone) {
-      // Assign the dedicated line, bound to bound_phone from birth (C11).
-      const { data: line, error: lineError } = await supabase
-        .from("lines")
-        .update({
-          assigned_user_id: userId,
-          assigned_at: new Date().toISOString(),
-          role: "personal",
-        })
-        .eq("phone", options.linePhone)
-        .is("assigned_user_id", null)
-        .select("id");
-      if (lineError || !line || line.length === 0) {
-        throw new Error(
-          `line assignment failed: ${lineError?.message ?? "line missing or already assigned"}`
-        );
-      }
-      // Invite by deep link, delivered out-of-band by the operator. The user
-      // sends first — the agent never texts a fresh line (C13). Text-only
-      // body: Apple suppresses links until a reply lands.
-      const smsBody = encodeURIComponent(
-        `Hi${options.displayName ? ` — this is ${options.displayName}'s agent` : ""}! Send this to get started.`
-      );
-      inviteLink = `sms:${options.linePhone}&body=${smsBody}`;
-      await supabase
+    if (options.boundPhone) {
+      // Stored in the same canonical form the router compares against
+      // (routing/trust.ts), so the owner's texts resolve to tier 0.
+      const boundPhone = normalizeAddress("imessage", options.boundPhone);
+      const { error: provisioningError } = await supabase
         .from("provisioning")
-        .update({
-          state: "invited",
-          invited_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("user_id", userId);
+        .insert({
+          user_id: userId,
+          state: "created",
+          bound_phone: boundPhone,
+          operator: options.operator ?? null,
+        });
+      if (provisioningError) {
+        throw new Error(`provisioning insert failed: ${provisioningError.message}`);
+      }
+      const { error: handleError } = await supabase.from("handles").insert({
+        user_id: userId,
+        platform: "imessage",
+        address: boundPhone,
+      });
+      if (handleError) {
+        throw new Error(`handles insert failed: ${handleError.message}`);
+      }
+      const { error: senderError } = await supabase.from("senders").insert({
+        user_id: userId,
+        platform: "imessage",
+        address: boundPhone,
+        trust_tier: 0,
+      });
+      if (senderError) {
+        throw new Error(`senders insert failed: ${senderError.message}`);
+      }
+
+      if (options.linePhone) {
+        // Assign this user's line, bound to bound_phone from birth (C11). On a
+        // Spectrum Pro project the DB row is `shared` delivery mode while its
+        // phone is still unique to this project user.
+        const { data: line, error: lineError } = await supabase
+          .from("lines")
+          .update({
+            assigned_user_id: userId,
+            assigned_at: new Date().toISOString(),
+            role: "personal",
+          })
+          .eq("phone", options.linePhone)
+          .is("assigned_user_id", null)
+          .select("id");
+        if (lineError || !line || line.length === 0) {
+          throw new Error(
+            `line assignment failed: ${lineError?.message ?? "line missing or already assigned"}`
+          );
+        }
+        const { error: phoneEntitlementError } = await supabase
+          .from("entitlements")
+          .update({ phone_entitled: true })
+          .eq("user_id", userId);
+        if (phoneEntitlementError) {
+          throw new Error(`phone entitlement failed: ${phoneEntitlementError.message}`);
+        }
+        // Invite by deep link, delivered out-of-band by the operator. The user
+        // sends first — the agent never texts a fresh line (C13). Text-only
+        // body: Apple suppresses links until a reply lands.
+        const smsBody = encodeURIComponent(
+          `Hi${options.displayName ? ` — this is ${options.displayName}'s agent` : ""}! Send this to get started.`
+        );
+        inviteLink = `sms:${options.linePhone}&body=${smsBody}`;
+        await supabase
+          .from("provisioning")
+          .update({
+            state: "invited",
+            invited_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("user_id", userId);
+      }
     }
+  } catch (error) {
+    // Setup failures happen before compute exists, but must receive the same
+    // atomic cleanup as a failed fork. This also closes the duplicate-OTP race
+    // where two requests briefly see the same unclaimed Spectrum number.
+    await supabase.from("users").delete().eq("id", userId);
+    if (options.linePhone) {
+      await supabase
+        .from("lines")
+        .update({ assigned_user_id: null, assigned_at: null })
+        .eq("phone", options.linePhone)
+        .eq("assigned_user_id", userId);
+    }
+    throw error;
   }
 
   let built: ProvisionedCompute | undefined;

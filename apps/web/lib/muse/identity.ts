@@ -3,6 +3,10 @@ import { randomBytes } from "node:crypto";
 import { completeSmsAuth, initiateSmsAuth } from "../thirdweb/client";
 import { normalizeAddress } from "../routing/trust";
 import { provisionUser } from "../provisioning/provision";
+import {
+  createOrUpdateSpectrumSharedUser,
+  SpectrumUserProvisionError,
+} from "../spectrum/users";
 
 /** Same US-default normalization as the ordinary phone login endpoint. */
 export function normalizeMusePhone(value: string): string {
@@ -36,10 +40,10 @@ export interface MuseIdentity {
 /**
  * A successful OTP is the only identity assertion accepted by the connector.
  * Existing Air owners resolve exactly as ordinary web login does. A new owner
- * receives a complete Air project after the SMS proof: a line allocated from
- * this Air project's Photon/Spectrum inventory, a Box, and WZRDMail. We never
- * create a Photon project or buy a line during sign-up; inventory must already
- * have been provisioned to the Air project by the operator.
+ * receives a complete Air project after the SMS proof: its own number from
+ * this Air project's Photon/Spectrum shared pool, a Box, and WZRDMail. We
+ * create an idempotent user inside the existing Photon project; we never
+ * create a Photon project or purchase a Business/dedicated line at sign-up.
  */
 export async function completeMuseOtp(
   supabase: SupabaseClient,
@@ -70,10 +74,20 @@ export async function completeMuseOtp(
   const existingUserId = (byWallet?.id as string | undefined) ?? (byHandle?.user_id as string | undefined);
   if (existingUserId) {
     await attachVerifiedWallet(supabase, existingUserId, canonicalPhone, walletAddress);
-    return { userId: existingUserId, phone: canonicalPhone, provisioned: false, inviteUrl: null };
+    const linePhone = await ensureExistingMuseLine(supabase, existingUserId, canonicalPhone);
+    return {
+      userId: existingUserId,
+      phone: canonicalPhone,
+      provisioned: false,
+      inviteUrl: inviteUrl(linePhone),
+    };
   }
 
-  const linePhone = await reserveMuseLine(supabase);
+  const preparedLine = await prepareMuseLine(supabase, canonicalPhone);
+  if (preparedLine.assignedUserId !== null) {
+    throw new MuseIdentityError("provisioning_failed", 503);
+  }
+  const linePhone = preparedLine.phone;
   let created;
   try {
     created = await provisionUser({
@@ -96,7 +110,7 @@ export async function completeMuseOtp(
     userId,
     phone: canonicalPhone,
     provisioned: true,
-    inviteUrl: created.inviteLink ?? `sms:${linePhone}`,
+    inviteUrl: created.inviteLink ?? inviteUrl(linePhone),
   };
 }
 
@@ -131,31 +145,129 @@ async function attachVerifiedWallet(
 }
 
 /**
- * Lines are provisioned under the existing Air Photon project out-of-band and
- * mirrored here by the operator. Reserving one before provisionUser lets its
- * conditional claim be the race-safe allocation check without ever invoking
- * a paid Photon upgrade from a user signup.
+ * Create (or idempotently recover) one Spectrum shared-project user, then
+ * mirror that user's distinct assigned number into Air. The shared pool is a
+ * delivery mode, not a shared owner number: every user gets their own line.
  */
-async function reserveMuseLine(
+async function prepareMuseLine(
   supabase: SupabaseClient,
+  ownerPhone: string,
+): Promise<{ phone: string; assignedUserId: string | null }> {
+  let spectrumUser;
+  try {
+    spectrumUser = await createOrUpdateSpectrumSharedUser(ownerPhone);
+  } catch (error) {
+    if (error instanceof SpectrumUserProvisionError && error.kind === "capacity") {
+      throw new MuseIdentityError("no_line_available", 409, error);
+    }
+    throw new MuseIdentityError("provisioning_failed", 503, error);
+  }
+
+  const { error: insertError } = await supabase.from("lines").upsert(
+    {
+      platform: "imessage",
+      phone: spectrumUser.assignedPhoneNumber,
+      role: "personal",
+      mode: "shared",
+      provider_ref: spectrumUser.id,
+    },
+    { onConflict: "phone", ignoreDuplicates: true },
+  );
+  if (insertError) {
+    throw new MuseIdentityError("provisioning_failed", 503, insertError);
+  }
+
+  const { data: line, error: lineError } = await supabase
+    .from("lines")
+    .select("phone, platform, role, mode, provider_ref, assigned_user_id")
+    .eq("phone", spectrumUser.assignedPhoneNumber)
+    .maybeSingle();
+  if (lineError || !line) {
+    throw new MuseIdentityError("provisioning_failed", 503, lineError);
+  }
+  if (
+    line.platform !== "imessage" ||
+    line.role !== "personal" ||
+    line.mode !== "shared" ||
+    (line.provider_ref !== null && line.provider_ref !== spectrumUser.id)
+  ) {
+    throw new MuseIdentityError("provisioning_failed", 503);
+  }
+  if (line.provider_ref === null) {
+    const { error: providerRefError } = await supabase
+      .from("lines")
+      .update({ provider_ref: spectrumUser.id })
+      .eq("phone", spectrumUser.assignedPhoneNumber)
+      .is("provider_ref", null);
+    if (providerRefError) {
+      throw new MuseIdentityError("provisioning_failed", 503, providerRefError);
+    }
+  }
+  return {
+    phone: spectrumUser.assignedPhoneNumber,
+    assignedUserId: typeof line.assigned_user_id === "string" ? line.assigned_user_id : null,
+  };
+}
+
+async function ensureExistingMuseLine(
+  supabase: SupabaseClient,
+  userId: string,
+  ownerPhone: string,
 ): Promise<string> {
-  const { data: candidate } = await supabase
+  const { data: current, error: currentError } = await supabase
     .from("lines")
     .select("phone")
+    .eq("assigned_user_id", userId)
     .eq("platform", "imessage")
     .eq("role", "personal")
-    // A pooled Spectrum route reports "shared", which cannot truthfully be
-    // shown as this owner's Air number. Phone-first Muse signup therefore
-    // waits for inventory that was explicitly created as a dedicated project
-    // line; it never silently degrades the identity claim.
-    .eq("mode", "dedicated")
-    .is("assigned_user_id", null)
-    .order("phone", { ascending: true })
-    .limit(1)
     .maybeSingle();
-  const phone = candidate?.phone as string | undefined;
-  if (!phone) throw new MuseIdentityError("no_line_available", 409);
+  if (currentError) throw new MuseIdentityError("provisioning_failed", 503, currentError);
+
+  let phone = current?.phone as string | undefined;
+  if (!phone) {
+    const prepared = await prepareMuseLine(supabase, ownerPhone);
+    phone = prepared.phone;
+    if (prepared.assignedUserId !== null && prepared.assignedUserId !== userId) {
+      throw new MuseIdentityError("provisioning_failed", 503);
+    }
+    if (prepared.assignedUserId === null) {
+      const { data: claimed, error: claimError } = await supabase
+        .from("lines")
+        .update({
+          assigned_user_id: userId,
+          assigned_at: new Date().toISOString(),
+          role: "personal",
+        })
+        .eq("phone", phone)
+        .is("assigned_user_id", null)
+        .select("id");
+      if (claimError) throw new MuseIdentityError("provisioning_failed", 503, claimError);
+      if (!claimed || claimed.length === 0) {
+        const { data: raced } = await supabase
+          .from("lines")
+          .select("assigned_user_id")
+          .eq("phone", phone)
+          .maybeSingle();
+        if (raced?.assigned_user_id !== userId) {
+          throw new MuseIdentityError("provisioning_failed", 503);
+        }
+      }
+    }
+  }
+
+  const { error: entitlementError } = await supabase
+    .from("entitlements")
+    .update({ phone_entitled: true })
+    .eq("user_id", userId);
+  if (entitlementError) {
+    throw new MuseIdentityError("provisioning_failed", 503, entitlementError);
+  }
   return phone;
+}
+
+function inviteUrl(linePhone: string): string {
+  const body = encodeURIComponent("Hi! Send this to get started.");
+  return `sms:${linePhone}&body=${body}`;
 }
 
 export class MuseIdentityError extends Error {
