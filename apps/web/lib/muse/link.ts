@@ -48,6 +48,18 @@ export async function createMuseGrant(
     .select("id, client_id, client_name, scopes, created_at, last_used_at, revoked_at")
     .single();
   if (error || !data) throw new Error(`Muse grant create failed: ${error?.message ?? "unknown error"}`);
+  // OAuthProvider replaces a previous grant for this owner/client when it
+  // completes authorization. Mirror that replacement in the control-plane
+  // ledger so the mini-app and revocation logic cannot show a stale grant as
+  // active. Different Muse clients may still have independent grants.
+  const { error: revokeError } = await supabase
+    .from("muse_grants")
+    .update({ revoked_at: now })
+    .eq("user_id", input.userId)
+    .eq("client_id", input.clientId.slice(0, 512))
+    .neq("id", data.id)
+    .is("revoked_at", null);
+  if (revokeError) throw new Error(`Muse grant rotation failed: ${revokeError.message}`);
   await recordMuseEvent(supabase, { userId: input.userId, kind: "grant", status: "active" });
   return toGrantSummary(data);
 }

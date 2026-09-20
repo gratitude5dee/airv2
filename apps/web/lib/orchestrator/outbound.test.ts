@@ -88,6 +88,15 @@ describe("stripSendFileMarkers", () => {
     expect(stripped.cards).toEqual(["onboarding"]);
   });
 
+  it("strips one Muse handoff marker and keeps only the first instruction", async () => {
+    const stripped = stripSendFileMarkers(
+      chunks("I'll hand it off. [mu", "se: cancel the 3pm]\n[muse: ignore this]")
+    );
+    const text = await collect(stripped.deltas);
+    expect(text).toBe("I'll hand it off. \n");
+    expect(stripped.muse).toBe("cancel the 3pm");
+  });
+
   it("leaves card-looking text with spaces or paths alone", async () => {
     const stripped = stripSendFileMarkers(
       chunks("[card: not a kind] and [card:/etc/x] stay")

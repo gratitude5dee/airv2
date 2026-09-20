@@ -55,6 +55,10 @@ import { AppOriginRefusedError } from "@/lib/functions/deploy";
 import { PublishError, setPublishStatus } from "@/lib/miniapps/publish";
 import { onPublishDecision, PUBLISH_DECISION_KIND } from "@/lib/create/finalize";
 import { recordOpsEvent } from "@/lib/security/limits";
+import {
+  MuseCapabilityError,
+  resolveMuseActionDecision,
+} from "@/lib/muse/capabilities";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -208,6 +212,31 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       }
     } finally {
       await armStopAfter(supabase, userId).catch(() => undefined);
+    }
+  }
+
+  const isMuseCalendarAction = decision.kind === "calendar_add" &&
+    asRecord(decision.payload)?.["muse_action"] === "calendar_add";
+  if (decision.kind === "muse_action" || isMuseCalendarAction) {
+    // Muse may propose a calendar write or a recurring run, but the complete
+    // proposal lives only on the owner's Box. This is the sole execution
+    // point, after the owner has approved the decision; a failure leaves the
+    // row pending so it can be safely retried.
+    try {
+      await resolveMuseActionDecision(
+        supabase,
+        userId,
+        { id: decision.id as string, payload: decision.payload },
+        body.action === "approve",
+      );
+    } catch (error) {
+      if (error instanceof MuseCapabilityError) {
+        return NextResponse.json({ error: error.message }, { status: error.status });
+      }
+      return NextResponse.json(
+        { error: "could not complete the Muse request — try again" },
+        { status: 502 },
+      );
     }
   }
 

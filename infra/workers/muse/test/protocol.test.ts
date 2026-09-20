@@ -1,5 +1,6 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import { openApi } from "../src/full";
 
 const endpoint = "https://muse.wzrd.tech";
 
@@ -15,6 +16,20 @@ async function pkceChallenge(verifier: string): Promise<string> {
 }
 
 describe("Air × Muse MM0 protocol probe", () => {
+  it("keeps the full REST facade in one-to-one parity with the 17-tool registry", () => {
+    const api = openApi() as { paths?: Record<string, unknown> };
+    expect(Object.keys(api.paths ?? {})).toHaveLength(17);
+    expect(Object.keys(api.paths ?? {})).toEqual(expect.arrayContaining([
+      "/v1/run",
+      "/v1/mail/list",
+      "/v1/files/put",
+      "/v1/calendar/add",
+      "/v1/schedule/create",
+      "/v1/wallet/request",
+      "/v1/decisions/status",
+    ]));
+  });
+
   it("serves only the explicit data-free health and contract endpoints", async () => {
     const health = await SELF.fetch(`${endpoint}/__air/health`);
     expect(health.status).toBe(200);

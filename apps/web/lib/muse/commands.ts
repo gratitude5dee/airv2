@@ -12,6 +12,7 @@ interface MuseInbound {
   userId: string;
   text: string;
   messageId: string;
+  agentHint?: string;
 }
 
 function explicitMuseText(text: string): string | null {
@@ -49,10 +50,25 @@ async function enqueue(supabase: SupabaseClient, input: MuseInbound): Promise<Mu
     user_id: input.userId,
     text: input.text,
     message_id: input.messageId,
+    agent_hint: input.agentHint,
   }).catch(() => null);
   if (!response?.ok) return { handled: true, reply: "Muse is temporarily unavailable. Try again shortly." };
   await recordMuseEvent(supabase, { userId: input.userId, kind: "nudge", status: "queued" }).catch(() => undefined);
   return { handled: true, reply: "Sent to Muse." };
+}
+
+/**
+ * Box-originated hand-off. The marker is emitted only by the owner's own
+ * Hermes run, and the instruction travels directly to the Worker DO; it is
+ * never placed in the shared database or sent on the owner's behalf.
+ */
+export async function enqueueMuseHandoff(
+  supabase: SupabaseClient,
+  input: MuseInbound,
+): Promise<boolean> {
+  if (!env.museEnabled() || !(await isConnected(supabase, input.userId))) return false;
+  const result = await enqueue(supabase, input);
+  return result.handled && !result.reply?.startsWith("Muse is temporarily unavailable");
 }
 
 /**

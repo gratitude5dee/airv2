@@ -48,6 +48,7 @@ import { startRelayForOwner, type RelayHandle } from "../create/progress";
 import { maybeRunDrawLane } from "../miniapps/drawCommand";
 import { maybeRunFreezeLane } from "../miniapps/freezeCommand";
 import { maybeRunLocationLane } from "../location/lane";
+import { enqueueMuseHandoff } from "../muse/commands";
 import { parseTradeCommand } from "../trade/parse";
 import { runTradeCommand } from "../trade/imessage";
 import {
@@ -1511,6 +1512,19 @@ async function runFlushInner(
           .sendText(job.spaceId, job.phone, OWNER_ONLY_CARD_LINE)
           .catch(() => undefined);
       }
+    }
+
+    // A box may hand an owner-requested subtask to Muse with one explicit
+    // marker. The marker is removed before delivery; its content crosses
+    // straight into the owner's per-user Worker queue and never reaches
+    // Postgres or another sender's thread.
+    if (!cancelled && stripped.muse) {
+      await enqueueMuseHandoff(supabase, {
+        userId: job.userId,
+        text: stripped.muse,
+        messageId: `${run.run_id}:muse`,
+        agentHint: "air",
+      }).catch(() => false);
     }
 
     if (cancelled) {

@@ -383,6 +383,17 @@ export const env = {
     const parsed = Number.parseInt(optional("MUSE_MODE_TTL_MINUTES", "30"), 10);
     return Number.isFinite(parsed) ? Math.min(24 * 60, Math.max(1, parsed)) : 30;
   },
+  // Admission headroom for work Muse asks the owner's Box to perform. The
+  // inference gateway remains the metering authority; these bounds stop a
+  // Muse relay loop from admitting work beyond the owner's Air plan.
+  museRunMaxUsd: (): number => {
+    const parsed = Number(optional("MUSE_RUN_MAX_USD", "0.50"));
+    return Number.isFinite(parsed) && parsed > 0 ? Math.min(10, parsed) : 0.5;
+  },
+  museRunDailyUsd: (): number => {
+    const parsed = Number(optional("MUSE_RUN_DAILY_USD", "5"));
+    return Number.isFinite(parsed) && parsed > 0 ? Math.min(100, parsed) : 5;
+  },
   // V11 MC7 Import: the WZRD Tech Inc GitHub App. All optional — absent
   // means the Import lane reports itself unconfigured and /create hides
   // "Connect GitHub". The private key is PEM (newlines may be escaped as

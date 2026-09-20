@@ -11,13 +11,15 @@ import { z } from "zod";
 import {
   FULL_SCOPES,
   MuseUser,
+  allowMuseRequest,
   fullEnabled,
   fullMcpHandler,
   fullRestHandler,
   fullScopes,
   isAllowedRedirect,
   openApi,
-  type FullProps
+  type FullProps,
+  type RestPrincipal,
 } from "./full";
 
 /**
@@ -365,13 +367,42 @@ class McpApiHandler extends WorkerEntrypoint<MuseEnv, AuthProps> {
     if (await this.env.OAUTH_KV.get(`muse:revoked:${props.grantId}`)) {
       return json({ error: "invalid_token" }, { status: 401, headers: { "www-authenticate": "Bearer" } });
     }
+    const allowed = await allowMuseRequest(this.env, props.userId, `grant:${props.grantId}`);
+    if (allowed === false) return json({ error: "rate_limited" }, { status: 429, headers: { "retry-after": "60" } });
+    if (allowed === null) return json({ error: "relay_state_unavailable" }, { status: 503 });
     return fullMcpHandler(request, this.env, this.ctx);
   }
 }
 
 function fullBrief(env: MuseEnv): string {
   const docs = env.DOCS_URL ?? "https://air.wzrd.tech/docs/muse";
-  return `# Air × Muse\n\nConnect one owner’s Air account to Muse. OAuth 2.1 authorization-code flow with PKCE is required. Air updates and /muse commands use the owner’s project-provisioned iMessage line. Every send, payment, booking, calendar change, and schedule remains behind Air’s Needs you decisions.\n\n- MCP: \`https://muse.wzrd.tech/mcp\`\n- REST OpenAPI: \`https://muse.wzrd.tech/openapi.json\`\n- Documentation: ${docs}\n`;
+  return `# Air × Muse\n\nConnect one owner’s Air account to Muse. OAuth 2.1 authorization-code flow with PKCE is required. Air updates and /muse commands use the owner’s project-provisioned iMessage line. Every send, payment, booking, calendar change, and schedule remains behind Air’s Needs you decisions.\n\n## Capabilities\n\n- Connection: \`air.whoami\`, \`air.decisions.status\`\n- Relay: \`air.notify\`, \`air.commands.pull\`, \`air.commands.reply\`, \`air.commands.ack\`, \`air.agents.register\`\n- Air work: \`air.run\`, \`air.run.status\`\n- Mail and files: \`air.mail.list\`, \`air.mail.draft\`, \`air.files.put\`, \`air.files.list\`\n- Approval-gated changes: \`air.calendar.add\`, \`air.schedule.create\`, \`air.wallet.request\`\n- Wallet read: \`air.wallet.balance\`\n\n- MCP: \`https://muse.wzrd.tech/mcp\`\n- REST OpenAPI: \`https://muse.wzrd.tech/openapi.json\`\n- Documentation: ${docs}\n`;
+}
+
+/**
+ * `/v1/*` stays outside OAuthProvider's API-route matcher so MUSE_ENABLED
+ * can make it a true 404 in MM0. For full mode we unwrap the same opaque
+ * OAuth access token locally and apply the same revocation tombstone that
+ * protects `/mcp` before passing a scoped principal to the REST facade.
+ */
+async function oauthRestPrincipal(request: Request, env: MuseEnv): Promise<RestPrincipal | null> {
+  const bearer = request.headers.get("authorization")?.startsWith("Bearer ")
+    ? request.headers.get("authorization")!.slice(7)
+    : null;
+  if (!bearer || bearer.startsWith("wzrd_muse_")) return null;
+  const token = await env.OAUTH_PROVIDER.unwrapToken<FullProps>(bearer).catch(() => null);
+  const props = token?.grant.props;
+  if (!token || !props || props.userId !== token.userId || props.grantId !== token.grantId) return null;
+  if (await env.OAUTH_KV.get(`muse:revoked:${props.grantId}`)) return null;
+  const audience = token.audience;
+  const audienceMatches = Array.isArray(audience) ? audience.includes("https://muse.wzrd.tech/mcp") : audience === "https://muse.wzrd.tech/mcp";
+  if (!audienceMatches) return null;
+  return {
+    user_id: props.userId,
+    token_id: props.grantId,
+    scopes: fullScopes(token.scope),
+    credential: "grant",
+  };
 }
 
 async function internalAuthorized(request: Request, env: MuseEnv): Promise<boolean> {
@@ -418,7 +449,9 @@ const defaultHandler: ExportedHandler<MuseEnv> = {
     if (fullEnabled(env) && url.pathname === "/openapi.json" && request.method === "GET") return json(openApi());
     if (fullEnabled(env) && url.pathname === "/.well-known/mcp.json" && request.method === "GET") return json({ name: "Air × Muse", endpoint: "https://muse.wzrd.tech/mcp", authorization: "https://muse.wzrd.tech/.well-known/oauth-protected-resource/mcp", documentation: env.DOCS_URL ?? "https://air.wzrd.tech/docs/muse" });
     if (fullEnabled(env) && url.pathname === "/docs" && request.method === "GET") return Response.redirect(env.DOCS_URL ?? "https://air.wzrd.tech/docs/muse", 302);
-    if (fullEnabled(env) && url.pathname.startsWith("/v1/")) return fullRestHandler(request, env);
+    if (fullEnabled(env) && url.pathname.startsWith("/v1/")) {
+      return fullRestHandler(request, env, await oauthRestPrincipal(request, env));
+    }
     if (url.pathname === "/" && request.method === "GET") {
       return document(fullEnabled(env) ? "<h1>Air × Muse</h1><p>Connect your Air account to Muse with OAuth 2.1 and PKCE. <a href=\"/muse.md\">Read the connector contract.</a></p>" : "<h1>Air × Muse MM0</h1><p>OAuth/MCP protocol probe only. <a href=\"/muse.md\">Read the probe contract.</a></p>");
     }

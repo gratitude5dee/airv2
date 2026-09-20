@@ -36,13 +36,19 @@ After consent, a Muse agent can:
 
 - send bounded updates through the owner's Air iMessage line;
 - receive owner-authored `/muse …` instructions through a pull-based relay;
-- inspect the connected Air's safe status; and
-- request work from Air only through the capabilities the owner grants.
+- inspect the connected Air's safe status and the state of a Needs-you approval;
+- ask Air to run bounded work on the owner's Box and poll its status;
+- list recent mail, prepare unsent mail drafts, and list or place files in
+  the owner's Air inbox folder;
+- read display-only Base wallet balances; and
+- propose calendar events, recurring Air work, and wallet sends.
 
 Air never gives Muse an Air password, a box URL, a phone number, inbox
 credential, or wallet credential. Sending, paying, booking, calendar changes,
 and schedules remain Air **Needs you** decisions; a Muse request is not an
-approval.
+approval. Calendar, schedule, email, and wallet tools return a decision ID
+where appropriate; a completed tool call never means that a side effect has
+been approved or executed.
 
 ## Relay recipe
 

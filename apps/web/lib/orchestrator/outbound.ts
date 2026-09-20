@@ -19,8 +19,9 @@ import type { SpectrumSender } from "../spectrum/sender";
 
 export const SEND_FILE_MARKER = /\[send-file:\s*([^\]\n]+)\]/g;
 export const CARD_MARKER = /\[card:\s*([a-z0-9-]+(?:\s+[a-z0-9_-]+)?)\s*\]/gi;
+export const MUSE_MARKER = /\[muse:\s*([^\]\n]{1,2000})\s*\]/gi;
 
-const MARKER_PREFIXES = ["[send-file:", "[card:"];
+const MARKER_PREFIXES = ["[send-file:", "[card:", "[muse:"];
 
 /** iMessage attachments should stay small; 6 MB of raw bytes ≈ 8 MB base64. */
 const MAX_FILE_BYTES = 6 * 1024 * 1024;
@@ -59,6 +60,8 @@ export interface StrippedStream {
   files: string[];
   /** Card kinds (lowercased, deduplicated) in order of first appearance. */
   cards: string[];
+  /** One instruction to hand to the owner's linked Muse relay. */
+  muse: string | null;
 }
 
 /** Longest text we hold back waiting for a marker's closing bracket. */
@@ -74,6 +77,7 @@ export function stripSendFileMarkers(
 ): StrippedStream {
   const files: string[] = [];
   const cards: string[] = [];
+  let muse: string | null = null;
 
   /** Index from which `buffer` could still be the start of a marker. */
   function holdFrom(buffer: string): number {
@@ -101,6 +105,13 @@ export function stripSendFileMarkers(
         const slug = kind.toLowerCase().replace(/\s+/g, " ");
         if (!cards.includes(slug)) cards.push(slug);
         return "";
+      })
+      .replace(MUSE_MARKER, (_, instruction: string) => {
+        // A marker is a one-shot handoff, not a multiplexed prompt channel.
+        // The first valid instruction wins so the agent cannot create an
+        // accidental burst of external Muse work in one reply.
+        if (!muse) muse = instruction.trim();
+        return "";
       });
   }
 
@@ -118,7 +129,7 @@ export function stripSendFileMarkers(
     if (buffer) yield buffer;
   }
 
-  return { deltas: deltas(), files, cards };
+  return { deltas: deltas(), files, cards, get muse() { return muse; } };
 }
 
 /**

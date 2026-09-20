@@ -35,6 +35,7 @@ check "op-cli" op --version
 check "skill-air-onboarding" test -f "$HOME_DIR/.hermes/skills/air-onboarding/SKILL.md"
 check "skill-open-miniapp" test -f "$HOME_DIR/.hermes/skills/open-miniapp/SKILL.md"
 check "skill-create-miniapp" test -f "$HOME_DIR/.hermes/skills/create-miniapp/SKILL.md"
+check "skill-muse-relay" test -f "$HOME_DIR/.hermes/skills/muse-relay/SKILL.md"
 check "skill-kernel-browser" test -f "$HOME_DIR/.hermes/skills/kernel-browser/SKILL.md"
 check "plugin-creative" test -d "$HOME_DIR/.hermes/plugins/creative"
 check "plugin-air-vault" test -d "$HOME_DIR/.hermes/plugins/air-vault"

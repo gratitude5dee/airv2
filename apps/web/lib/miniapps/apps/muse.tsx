@@ -52,7 +52,7 @@ export const muse: MiniAppModule = {
     if (!museEnabled()) return new NextResponse("Not found", { status: 404 });
     if (ctx.session.role !== "owner") return forbidden("this view is owner-only");
     const userId = ctx.session.userId;
-    const [link, keys, settings, events, line] = await Promise.all([
+    const [link, keys, settings, events, line, relay] = await Promise.all([
       listMuseLink(ctx.supabase, userId),
       listMuseKeys(ctx.supabase, userId),
       getMuseSettings(ctx.supabase, userId),
@@ -68,6 +68,9 @@ export const muse: MiniAppModule = {
         .eq("assigned_user_id", userId)
         .eq("platform", "imessage")
         .maybeSingle(),
+      callMuseWorker("/internal/status", { user_id: userId })
+        .then(async (response) => response?.ok ? await response.json() as { last_pull_at?: unknown; agents?: unknown } : null)
+        .catch(() => null),
     ]);
     const note = ctx.request.nextUrl.searchParams.get("note");
     const linePhone = typeof line.data?.phone === "string" ? line.data.phone : null;
@@ -87,7 +90,7 @@ export const muse: MiniAppModule = {
 <div class="card"><strong>${esc(redactPhone(linePhone))}</strong><div class="muted">This is the iMessage number Muse uses to reach you. It belongs to your Air project and is not a Muse credential.</div></div>
 <div class="day">Status</div>
 <div class="card"><div class="row"><strong>${link.connected ? "Connected" : "Not connected"}</strong><span class="chip${link.connected ? " on" : ""}">${link.connected ? "active" : "setup"}</span></div>
-<div class="muted">${link.connected ? `${link.grants.length} active connection${link.grants.length === 1 ? "" : "s"}.` : "In Muse, say the connection sentence below."}</div></div>
+<div class="muted">${link.connected ? `${link.grants.length} active connection${link.grants.length === 1 ? "" : "s"}.` : "In Muse, say the connection sentence below."}</div>${link.connected ? `<div class="muted">Relay: ${typeof relay?.last_pull_at === "string" ? `last pulled ${esc(new Date(relay.last_pull_at).toLocaleString())}` : "waiting for its first pull"}${Array.isArray(relay?.agents) && relay.agents.length ? ` · ${relay.agents.length} agent${relay.agents.length === 1 ? "" : "s"} seen` : ""}</div>` : ""}</div>
 <div class="day">Connect Muse</div>
 <div class="card"><p>In Muse, say:</p><pre>connect to ${esc(ENDPOINT)}</pre><p class="muted">Sign in with the phone number on your Air account. New verified accounts are provisioned with an Air line, WZRDMail, and a Box before the connection finishes.</p><p><a href="${esc(DOCS)}">Read the public connector brief</a></p></div>
 <div class="day">Updates</div>
