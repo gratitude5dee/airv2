@@ -55,6 +55,8 @@ export interface ResolvedTwin {
   username: string;
   isOwner: boolean;
   twin: DigitalTwin | null;
+  /** Owner-only derived contact sheet of their selected source photos. */
+  referenceSheet: IdentityAssetView | null;
   profileImage: IdentityAssetView | null;
   characterSheet: IdentityAssetView | null;
   alternates: IdentityAssetView[];
@@ -122,6 +124,9 @@ export async function resolveIdentityReference(
   const entries = await listIdentityAssets(supabase, owner.id).catch(
     () => [] as IdentityAssetView[]
   );
+  // This is a derived, private contact sheet. It is never populated for a
+  // non-owner, even when the twin is public.
+  const referenceSheet = isOwner ? ready(entries, "reference_sheet")[0] ?? null : null;
   const profileImage = ready(entries, "profile_image")[0] ?? null;
   const characterSheet = ready(entries, "character_sheet")[0] ?? null;
   const resolved: ResolvedTwin = {
@@ -129,6 +134,7 @@ export async function resolveIdentityReference(
     username: typeof owner.username === "string" ? owner.username : handle,
     isOwner,
     twin,
+    referenceSheet,
     profileImage,
     characterSheet,
     alternates: isOwner ? ready(entries, "alt_image") : [],
@@ -137,7 +143,11 @@ export async function resolveIdentityReference(
     voiceReady:
       isOwner && twin?.voice_status === "ready" && Boolean(twin.voice_id),
   };
-  const anchor = profileImage ?? characterSheet ?? (isOwner ? resolved.selfies[0] : undefined);
+  const anchor =
+    referenceSheet ??
+    profileImage ??
+    characterSheet ??
+    (isOwner ? resolved.selfies[0] : undefined);
   if (!anchor) {
     return { ok: false, reason: "incomplete", line: incompleteTwinLine(handle) };
   }
@@ -147,6 +157,7 @@ export async function resolveIdentityReference(
 /** The images a resolved twin contributes to a generation, best first. */
 export function referenceImagesOf(twin: ResolvedTwin, max = 2): IdentityAssetView[] {
   const ordered = [
+    twin.referenceSheet,
     twin.profileImage,
     twin.characterSheet,
     ...twin.alternates,
@@ -202,7 +213,11 @@ export async function attachIdentityReferences(
     for (const image of images) {
       const url = await signedIdentityUrl(supabase, image.asset).catch(() => null);
       if (!url) continue;
-      mediaInputs.push({ kind: "image", url });
+      mediaInputs.push({
+        kind: "image",
+        url,
+        ...(image.role === "reference_sheet" ? { identityReference: true } : {}),
+      });
       const index = mediaInputs.filter((media) => media.kind === "image").length;
       anchorIndex ??= index;
       uses.push({

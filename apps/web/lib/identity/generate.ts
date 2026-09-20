@@ -31,9 +31,10 @@ import {
   type IdentityRole,
 } from "./assets";
 import { CONSENT_LINES, hasConsent } from "./consent";
+import { selectedReferenceSheet } from "./references";
 
 /** Bump when a template changes; written to creative_jobs.prompt_version. */
-export const IDENTITY_PROMPT_VERSION = "identity-v2";
+export const IDENTITY_PROMPT_VERSION = "identity-v3";
 
 export const DESCRIPTION_MAX_CHARS = 500;
 export const STYLE_MAX_CHARS = 200;
@@ -49,7 +50,7 @@ export function characterSheetPrompt(
 ): string {
   const subject = description?.trim()
     ? `an original character described as: ${description.trim()}`
-    : `the same person from the attached reference photo`;
+    : `the same person from the attached private reference sheet`;
   return (
     `Create a clean character reference sheet for @${username}: ` +
     `a grid of consistent portraits of ${subject} — front, three-quarter, ` +
@@ -85,6 +86,7 @@ export async function referenceImageForGeneration(
   prefer: readonly IdentityRole[] = [
     "profile_image",
     "character_sheet",
+    "reference_sheet",
     "selfie",
     "alt_image",
   ]
@@ -161,7 +163,13 @@ export async function generateCharacterSheet(
   const description = opts.description?.trim().slice(0, DESCRIPTION_MAX_CHARS);
   const reference = description
     ? null
-    : await referenceImageForGeneration(supabase, userId, ["selfie", "profile_image"]);
+    : await selectedReferenceSheet(supabase, userId);
+  if (!description && !reference) {
+    return {
+      ok: false,
+      notice: "choose 1–6 photos in Reference media before generating a character sheet.",
+    };
+  }
   const text = characterSheetPrompt(username, description);
   const rendered = await renderIdentityImage(
     supabase,
@@ -234,6 +242,7 @@ export async function generateProfileImage(
   const reference = await referenceImageForGeneration(supabase, userId, [
     "character_sheet",
     "profile_image",
+    "reference_sheet",
     "selfie",
     "alt_image",
   ]);

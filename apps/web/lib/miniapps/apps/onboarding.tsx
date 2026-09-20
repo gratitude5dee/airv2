@@ -113,6 +113,13 @@ import {
   type IdentityRole,
 } from "@/lib/identity/assets";
 import {
+  clearIdentityReferences,
+  listIdentityReferenceAssetIds,
+  MAX_IDENTITY_REFERENCES,
+  MIN_IDENTITY_REFERENCES,
+  replaceIdentityReferences,
+} from "@/lib/identity/references";
+import {
   CONSENT_COPY,
   CONSENT_LINES,
   CONSENT_POLICY_VERSION,
@@ -433,6 +440,8 @@ export interface OnboardingSnapshot {
   /** Domain the agent's mailbox is provisioned on (AGENT_EMAIL_DOMAIN). */
   mailboxDomain: string;
   identityMedia: IdentityMediaView[];
+  /** Ordered photos selected by the owner for their private reference set. */
+  identityReferenceAssetIds: string[];
   avatarAssetId: string | null;
   twin: DigitalTwin | null;
   /** Legacy HeyGen talking-head path (GMI queue) is configured. */
@@ -568,6 +577,9 @@ async function loadSnapshot(
           ? listIdentityMediaViews(supabase, userId)
           : listIdentityMediaRoles(supabase, userId)
       ),
+      timedPart(parts, "identity_references", () =>
+        listIdentityReferenceAssetIds(supabase, userId).catch(() => [] as string[])
+      ),
       timedPart(parts, "box", () =>
         supabase
           .from("boxes")
@@ -679,6 +691,7 @@ async function loadSnapshot(
       { data: entitlement },
       { count: pluginCount },
       identityMedia,
+      identityReferenceAssetIds,
       { data: boxRow },
     ] = await always;
     const connections = (connectionRows ?? []) as Array<
@@ -692,6 +705,7 @@ async function loadSnapshot(
       address: (addressRow?.address as string | null) ?? null,
       mailboxDomain: env.agentEmailDomain(),
       identityMedia,
+      identityReferenceAssetIds,
       avatarAssetId,
       twin,
       twinAvailable: env.gmiCloudApiKey() !== null,
@@ -1063,6 +1077,7 @@ const ROLE_LABELS: Record<IdentityRole, string> = {
   profile_image: "profile image",
   profile_image_draft: "profile image draft",
   alt_image: "alternate look",
+  reference_sheet: "private reference sheet",
   reference_video: "reference video",
   voice_sample: "voice sample",
   consent_recording: "consent recording",
@@ -1540,19 +1555,25 @@ function consentBody(snapshot: OnboardingSnapshot): string {
 function mediaBody(snapshot: OnboardingSnapshot, lite: boolean): string {
   const gate = consentGate(snapshot);
   const name = snapshot.username ?? "username";
-  const images = snapshot.identityMedia.filter((m) => m.kind === "image" && isVaultMedia(m));
+  const photos = snapshot.identityMedia.filter(
+    (m) => m.role === "selfie" && m.status === "ready" && m.url
+  );
   const videos = snapshot.identityMedia.filter((m) => m.role === "reference_video");
-  // Booth captures post upload_selfie on finalize; the plain form stays
-  // the lite/Messages and no-camera path (capture="user" opens the iPhone
-  // camera directly from the picker).
+  const selected = new Set(snapshot.identityReferenceAssetIds);
+  const selectedCount = snapshot.identityReferenceAssetIds.length;
+  // The live booth is an enhancement. Both native iPhone paths remain in
+  // the document at all times, including when getUserMedia is unavailable.
   const booth = gate || lite ? "" : boothMount("photo");
   const photoUpload = gate
     ? ""
-    : `<details${lite ? " open" : ""}><summary>Upload from your library</summary><form method="post" enctype="multipart/form-data" class="row" aria-busy="false"><input type="hidden" name="action" value="upload_selfie"><label class="sr-only" for="twin-photo">Photo</label><input id="twin-photo" type="file" name="file" accept="image/png,image/jpeg,image/webp,image/heic,image/heif" capture="user"><button>Upload</button></form><p class="muted">PNG, JPEG, WebP or HEIC, 8 MB max. iPhone HEIC photos convert automatically. Face the light, fill the frame, no sunglasses — three to eight shots from different angles give the best sheet.</p></details>`;
+    : `<div class="native-capture" aria-label="Native photo capture"><form method="post" enctype="multipart/form-data" class="stack"><input type="hidden" name="action" value="upload_selfie"><label for="twin-photo-camera">Take photo</label><input id="twin-photo-camera" type="file" name="file" accept="image/png,image/jpeg,image/webp,image/heic,image/heif" capture="user"><button>Save photo</button></form><form method="post" enctype="multipart/form-data" class="stack"><input type="hidden" name="action" value="upload_selfie"><label for="twin-photo-library">Choose from Photos</label><input id="twin-photo-library" type="file" name="file" accept="image/png,image/jpeg,image/webp,image/heic,image/heif"><button>Upload selected photo</button></form><p class="muted">PNG, JPEG, WebP or HEIC, 8 MB max. iPhone HEIC photos convert automatically.</p></div>`;
+  const referenceGallery = photos.length === 0
+    ? `<p class="muted">Recent photos appear here after you take or upload them.</p>`
+    : `<form method="post" class="reference-gallery"><input type="hidden" name="action" value="set_identity_references"><fieldset><legend class="subhead">Choose ${MIN_IDENTITY_REFERENCES}–${MAX_IDENTITY_REFERENCES} photos for @${esc(name)}</legend><p class="muted">This private set creates your character sheet and anchors your own @${esc(name)} image requests. Other people only receive approved generated assets.</p><div class="reference-grid">${photos.map((photo, index) => `<label class="reference-card${selected.has(photo.assetId) ? " selected" : ""}"><input type="checkbox" name="asset_id" value="${esc(photo.assetId)}"${selected.has(photo.assetId) ? " checked" : ""}><img src="${esc(photo.url ?? "")}" alt="Recent photo ${index + 1}"><span class="reference-check" aria-hidden="true">✓</span><span class="reference-label">${esc(photo.source === "booth" ? "Booth photo" : "Uploaded photo")}</span></label>`).join("")}</div></fieldset><div class="row"><button>Use selected photos${selectedCount > 0 ? ` (${selectedCount})` : ""}</button></div></form>`;
   const videoUpload = gate
     ? ""
     : `<details><summary>Add a reference video (optional)</summary><form method="post" enctype="multipart/form-data" class="row"><input type="hidden" name="action" value="upload_media"><input type="hidden" name="role" value="reference_video"><label class="sr-only" for="twin-video">Video</label><input id="twin-video" type="file" name="file" accept="video/mp4,video/webm" capture="user"><button>Upload video</button></form><p class="muted">MP4 or WebM, 50 MB max, 5–30 seconds. Talk or turn your head slowly — motion references help video generation.</p></details>`;
-  return `${gate ?? ""}<p class="muted">Photos anchor @${esc(name)}'s identity for everything generated later. They live privately in your vault; you can reorder or delete them any time.</p><h3 class="subhead">Photos</h3>${booth}${photoUpload}${mediaList(images, "No photos yet — step into the booth or upload one.")}<h3 class="subhead">Video</h3>${videoUpload}${mediaList(videos, "No reference video — optional.")}<p class="muted small">Voice samples live on the <a href="?step=voice">Voice</a> panel.</p><div class="row actions">${skipForm("selfies")}</div>`;
+  return `${gate ?? ""}<p class="muted">Photos anchor @${esc(name)}'s identity for everything generated later. They live privately in your vault; you can delete them any time.</p><h3 class="subhead">Take or add a photo</h3>${booth}${photoUpload}<h3 class="subhead">Recent photos</h3>${referenceGallery}<details><summary>Manage saved photos</summary>${mediaList(photos, "No photos yet — step into the booth or upload one.")}</details><h3 class="subhead">Video</h3>${videoUpload}${mediaList(videos, "No reference video — optional.")}<p class="muted small">Voice samples live on the <a href="?step=voice">Voice</a> panel.</p><div class="row actions">${skipForm("selfies")}</div>`;
 }
 
 function generatedBody(snapshot: OnboardingSnapshot): string {
@@ -1562,6 +1583,7 @@ function generatedBody(snapshot: OnboardingSnapshot): string {
   const gate = consentGate(snapshot);
   const name = snapshot.username;
   const photos = snapshot.identityMedia.filter((m) => m.role === "selfie" && m.status === "ready");
+  const selectedCount = snapshot.identityReferenceAssetIds.length;
   const sheet = snapshot.identityMedia.find((m) => m.role === "character_sheet");
   const sheetDraft = snapshot.identityMedia.find((m) => m.role === "character_sheet_draft");
   const profile = snapshot.identityMedia.find((m) => m.role === "profile_image");
@@ -1574,7 +1596,7 @@ function generatedBody(snapshot: OnboardingSnapshot): string {
     : "";
   const sheetCard = sheetDraft || gate
     ? ""
-    : `<div class="sheetcard"><h3 class="subhead">Character sheet ${sheet ? pill("saved", "ok") : ""}</h3>${preview(sheet, "character sheet")}<p class="muted">A multi-view grid that keeps every later image consistent. From your photos, or from a description of an original agent identity.</p><div class="row"><form method="post" class="inline"><input type="hidden" name="action" value="generate_character_sheet"><button${photos.length > 0 ? "" : ' class="ghost"'}>${sheet ? "Regenerate from my photos" : "Generate from my photos"}</button></form></div><details><summary>Or describe an original agent</summary><form method="post" class="stack"><input type="hidden" name="action" value="generate_character_sheet"><label for="twin-description">Describe the agent's look</label><textarea id="twin-description" name="description" rows="3" maxlength="${DESCRIPTION_MAX_CHARS}" placeholder="e.g. a warm, curious guide in their thirties, silver-rimmed glasses, short dark curls, olive linen shirt"></textarea><button>Generate from description</button></form><p class="muted small">Describe an original character, not a real person.</p></details></div>`;
+    : `<div class="sheetcard"><h3 class="subhead">Character sheet ${sheet ? pill("saved", "ok") : ""}</h3>${preview(sheet, "character sheet")}<p class="muted">A multi-view grid that keeps every later image consistent. It uses the ${selectedCount > 0 ? `${selectedCount} private photo${selectedCount === 1 ? "" : "s"} chosen in Reference media` : "photo set you choose in Reference media"}.</p><div class="row"><form method="post" class="inline"><input type="hidden" name="action" value="generate_character_sheet"><button${selectedCount > 0 ? "" : " disabled"}>${sheet ? "Regenerate from selected photos" : "Generate from selected photos"}</button></form></div>${selectedCount === 0 && photos.length > 0 ? `<p class="muted small">Choose 1–6 photos in <a href="?step=selfies">Reference media</a> first.</p>` : ""}<details><summary>Or describe an original agent</summary><form method="post" class="stack"><input type="hidden" name="action" value="generate_character_sheet"><label for="twin-description">Describe the agent's look</label><textarea id="twin-description" name="description" rows="3" maxlength="${DESCRIPTION_MAX_CHARS}" placeholder="e.g. a warm, curious guide in their thirties, silver-rimmed glasses, short dark curls, olive linen shirt"></textarea><button>Generate from description</button></form><p class="muted small">Describe an original character, not a real person.</p></details></div>`;
   const reviewProfile = profileDraft
     ? `<div class="sheetcard"><h3 class="subhead">Profile image — approve</h3>${preview(profileDraft, "profile image draft")}<p class="muted">This becomes @${esc(name)}'s face in /zap and /twin. Approve it or discard and try another style.</p><div class="row"><form method="post" class="inline"><input type="hidden" name="action" value="approve_profile_image"><input type="hidden" name="asset_id" value="${esc(profileDraft.assetId)}"><button>Approve</button></form><form method="post" class="inline"><input type="hidden" name="action" value="discard_profile_image"><input type="hidden" name="asset_id" value="${esc(profileDraft.assetId)}"><button class="ghost">Discard</button></form></div></div>`
     : "";
@@ -2162,13 +2184,16 @@ h3.subhead{margin-top:0.9rem;display:flex;align-items:center;gap:0.5rem;flex-wra
 .media-list{list-style:none;margin:0.3rem 0 0.9rem;padding:0;display:grid;gap:0.5rem}
 .media-row{display:grid;grid-template-columns:auto 1fr auto;gap:0.7rem;align-items:center;border:1px solid var(--ring);border-radius:var(--radius-well);background:var(--well-bg);padding:0.5rem 0.6rem}
 .media-thumb{width:64px;height:64px;object-fit:cover;border-radius:calc(var(--radius-well) - 4px);border:1px solid var(--ring);display:block;background:#000}
+.native-capture{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0.65rem;margin:0.55rem 0;padding:0.7rem;border:1px solid var(--ring);border-radius:var(--radius-well);background:var(--well-bg)}
+.native-capture form{min-width:0}.native-capture input[type=file]{width:100%;max-width:100%;font-size:0.72rem}.native-capture p{grid-column:1 / -1;margin:0}
+.reference-gallery{margin:0.35rem 0 0.9rem}.reference-gallery fieldset{border:0;padding:0;margin:0}.reference-gallery legend{padding:0}.reference-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0.65rem;margin:0.55rem 0}.reference-card{position:relative;display:block;aspect-ratio:4/5;overflow:hidden;border:2px solid var(--ring);border-radius:var(--radius-well);background:var(--well-bg);cursor:pointer}.reference-card input{position:absolute;opacity:0;pointer-events:none}.reference-card img{width:100%;height:100%;object-fit:cover;display:block}.reference-card::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 55%,rgba(0,0,0,0.62));pointer-events:none}.reference-card.selected{border-color:#30d158;box-shadow:0 0 0 2px rgba(48,209,88,0.22)}.reference-check{display:none;position:absolute;top:0.45rem;right:0.45rem;z-index:1;width:1.8rem;height:1.8rem;border-radius:50%;background:#30d158;color:#fff;align-items:center;justify-content:center;font-weight:800}.reference-card.selected .reference-check{display:flex}.reference-label{position:absolute;left:0.55rem;right:0.55rem;bottom:0.45rem;z-index:1;color:#fff;font-family:var(--font-ui);font-size:0.62rem;letter-spacing:0.08em;text-transform:uppercase;text-shadow:0 1px 2px rgba(0,0,0,0.7)}
 .media-audio{width:100%;max-width:220px;height:36px}
 .media-meta{display:flex;gap:0.4rem;flex-wrap:wrap;min-width:0}
 .media-actions{display:flex;gap:0.3rem;align-items:center}
 .media-actions button{min-height:2.25rem;padding:0.35rem 0.7rem}
 button.icon{min-width:2.25rem;padding:0.35rem 0.55rem;font-size:0.95rem;text-transform:none;letter-spacing:0}
 button:disabled{opacity:0.4;cursor:default;transform:none}
-@media(max-width:480px){.media-row{grid-template-columns:auto 1fr}.media-actions{grid-column:1 / -1;justify-content:flex-end}.media-audio{max-width:100%}}
+@media(max-width:480px){.media-row{grid-template-columns:auto 1fr}.media-actions{grid-column:1 / -1;justify-content:flex-end}.media-audio{max-width:100%}.native-capture{grid-template-columns:1fr}}
 textarea{width:100%;background:var(--well-bg);color:var(--ink);border:1px solid var(--ring);border-radius:var(--radius-well);padding:0.6rem 0.85rem;font-size:1rem;font-family:var(--font-body);line-height:1.45;resize:vertical;outline:none;min-width:0}
 textarea:focus{border-color:var(--accent)}
 label{font-family:var(--font-ui);font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-muted)}
@@ -2378,7 +2403,13 @@ export function renderOnboarding(
     return `<!doctype html><html lang="en" class="cine-page"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>Onboarding — ${esc(slide.title)}</title>${fonts}<style>${tokenBlock(current.tokens)}${SLIDE_CSS}</style></head><body class="cine-page"${prev ? ` data-swipe-prev="${href(prev)}"` : ""}${next ? ` data-swipe-next="${href(next)}"` : ""}>${notices}${intro}${scripts}</body></html>`;
   }
   const deck = `<div class="deck${slide.split ? " split" : ""}"${stepper ? ` data-stepper data-stepper-active="${activeSection}"` : ""}>${sections}</div>${scripts}`;
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>Onboarding — ${esc(slide.title)}</title>${fonts}<style>${tokenBlock(current.tokens)}${SLIDE_CSS}${lite ? LITE_CSS : ""}</style>${shader}</head><body>${backdropHtml}${scrim}${grain}<div class="frame"${prev ? ` data-swipe-prev="${href(prev)}"` : ""}${next ? ` data-swipe-next="${href(next)}"` : ""}><header class="bar"><span class="logo-pill"><img src="/creator-os/wzrd-wordmark-1600.png" alt="WZRD.tech"></span><span class="counter">${counter}${esc(statusTag)}</span></header><main class="slide">${busy}${noticeHtml}<p class="kicker">${kickerNumber}${esc(slide.kicker)}</p><h1>${esc(slide.title)}</h1>${deck}</main><footer class="nav">${prev ? `<a class="navlink" href="${href(prev)}">← Back</a>` : '<span class="navlink ghosted">← Back</span>'}<nav class="dots" aria-label="Slides">${dots}</nav>${next ? `<a class="navlink" href="${href(next)}">Next →</a>` : '<span class="navlink ghosted">Next →</span>'}</footer></div></body></html>`;
+  // A stepped slide already owns progress and navigation. Do not stack the
+  // global dots/back/next bar under a second Back/Continue system — a
+  // particularly confusing duplication in the mobile Photo Booth.
+  const footer = stepper && slide.id === "booth"
+    ? ""
+    : `<footer class="nav">${prev ? `<a class="navlink" href="${href(prev)}">← Back</a>` : '<span class="navlink ghosted">← Back</span>'}<nav class="dots" aria-label="Slides">${dots}</nav>${next ? `<a class="navlink" href="${href(next)}">Next →</a>` : '<span class="navlink ghosted">Next →</span>'}</footer>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>Onboarding — ${esc(slide.title)}</title>${fonts}<style>${tokenBlock(current.tokens)}${SLIDE_CSS}${lite ? LITE_CSS : ""}</style>${shader}</head><body>${backdropHtml}${scrim}${grain}<div class="frame"${prev ? ` data-swipe-prev="${href(prev)}"` : ""}${next ? ` data-swipe-next="${href(next)}"` : ""}><header class="bar"><span class="logo-pill"><img src="/creator-os/wzrd-wordmark-1600.png" alt="WZRD.tech"></span><span class="counter">${counter}${esc(statusTag)}</span></header><main class="slide">${busy}${noticeHtml}<p class="kicker">${kickerNumber}${esc(slide.kicker)}</p><h1>${esc(slide.title)}</h1>${deck}</main>${footer}</div></body></html>`;
 }
 
 /** The step the URL asks for, if it names a real one. */
@@ -2922,19 +2953,52 @@ export const onboarding: MiniAppModule = {
     }
 
     if (action === "upload_selfie") {
+      const boothJson = ctx.request.headers.get("X-Identity-Booth") === "photo";
+      const boothFailure = (message: string, status = 422): NextResponse =>
+        withBaseHeaders(NextResponse.json({ ok: false, error: message }, { status }));
       const consent = consentFor(await listConsents(supabase, userId), "likeness");
-      if (!consent) return respond(ctx, "consent", CONSENT_LINES.likeness);
+      if (!consent) {
+        return boothJson
+          ? boothFailure(CONSENT_LINES.likeness, 403)
+          : respond(ctx, "consent", CONSENT_LINES.likeness);
+      }
       const file = form.get("file");
       if (!(file instanceof File) || file.size === 0) {
-        return respond(ctx, "selfies", "Choose an image first.");
+        return boothJson
+          ? boothFailure("Choose an image first.")
+          : respond(ctx, "selfies", "Choose an image first.");
       }
       const result = await uploadIdentityImage(supabase, userId, file, "selfie", {
         source: form.get("source") === "booth" ? "booth" : "upload",
         consentId: consent.id,
       });
-      if (!result.ok) return respond(ctx, "selfies", result.error);
+      if (!result.ok) {
+        return boothJson
+          ? boothFailure(result.error)
+          : respond(ctx, "selfies", result.error);
+      }
       await markSafely(supabase, userId, "selfies", "done");
+      if (boothJson) {
+        return withBaseHeaders(
+          NextResponse.json({ ok: true, assetId: result.asset.id })
+        );
+      }
       return respond(ctx, "selfies", "Added to your image vault.");
+    }
+
+    if (action === "set_identity_references") {
+      const result = await replaceIdentityReferences(
+        supabase,
+        userId,
+        form.getAll("asset_id").map((value) => String(value))
+      );
+      return respond(
+        ctx,
+        "selfies",
+        result.ok
+          ? `${result.assetIds.length} private photo${result.assetIds.length === 1 ? "" : "s"} selected for @${(await currentUsername(supabase, userId)) ?? "you"}.`
+          : result.error
+      );
     }
 
     // Reference clips and voice samples: same guarded private path, tagged
@@ -2989,6 +3053,21 @@ export const onboarding: MiniAppModule = {
     if (action === "delete_media") {
       const assetId = String(form.get("asset_id") ?? "");
       if (!assetId) return forbidden("missing asset");
+      const selected = await listIdentityReferenceAssetIds(supabase, userId);
+      const wasSelected = selected.includes(assetId);
+      if (wasSelected) {
+        const remaining = selected.filter((id) => id !== assetId);
+        const referencesOk = remaining.length > 0
+          ? (await replaceIdentityReferences(supabase, userId, remaining)).ok
+          : await clearIdentityReferences(supabase, userId);
+        if (!referencesOk) {
+          return respond(
+            ctx,
+            "selfies",
+            "Couldn't update your reference set — the photo was not deleted."
+          );
+        }
+      }
       const wasVoice = (await listIdentityAssets(supabase, userId).catch(() => [])).some(
         (entry) => entry.asset_id === assetId && entry.role === "voice_sample"
       );

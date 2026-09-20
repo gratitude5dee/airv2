@@ -13,6 +13,10 @@ import { env } from "../env";
 export function baseHeaders(): Record<string, string> {
   return {
     "Referrer-Policy": "no-referrer",
+    // The booth is same-origin. Declare that explicitly so Safari and the
+    // Messages web view may request camera/microphone access instead of
+    // being rejected by an inherited default policy.
+    "Permissions-Policy": "camera=(self), microphone=(self)",
     "Content-Security-Policy":
       "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; " +
       `frame-ancestors 'self' ${env.appOrigin()}`,

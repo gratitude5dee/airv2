@@ -34,6 +34,8 @@ export interface MediaInput {
   kind: "image" | "video" | "audio";
   url: string;
   mimeType?: string;
+  /** Server-resolved @identity reference; preferred for one-image edit lanes. */
+  identityReference?: boolean;
   durationSeconds?: number;
   /** For audio lifted out of a clip: the URL of that clip. */
   soundtrackOf?: string;
@@ -247,7 +249,11 @@ export function buildGenerationRequest(
   if (plan.mode === "imagine") {
     const size = imageSizeFor(plan.params.aspect_ratio);
     const quality = qualityFor(plan.params.quality);
-    const editSource = imageInputs[0];
+    // A private @identity reference sheet contains the owner's explicit
+    // multi-photo selection. Preserve an attached user image for other
+    // lanes, but make that sheet the anchor for the one-image edit model.
+    const editSource =
+      imageInputs.find((media) => media.identityReference) ?? imageInputs[0];
     if (editSource) {
       // Each edit model advertises a different schema (GMI model details):
       // reve takes `reference_image`, Gemini flash image takes `image`, and

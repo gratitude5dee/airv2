@@ -28,6 +28,7 @@ vi.mock("./twinRow", async (importOriginal) => ({
 import {
   attachIdentityReferences,
   parseIdentityMentions,
+  referenceImagesOf,
   resolveIdentityReference,
   unknownTwinLine,
 } from "./resolve";
@@ -79,7 +80,11 @@ beforeEach(() => {
     owner === "u-grat"
       ? [entry(owner, "p1", "profile_image"), entry(owner, "cs1", "character_sheet"), entry(owner, "s1", "selfie")]
       : owner === "u-bob"
-        ? [entry(owner, "bp", "profile_image")]
+        ? [
+            entry(owner, "brs", "reference_sheet"),
+            entry(owner, "bp", "profile_image"),
+            entry(owner, "bs", "selfie"),
+          ]
         : []
   );
   twinRow.getDigitalTwin.mockImplementation(async (_s: unknown, owner: string) =>
@@ -126,6 +131,7 @@ describe("resolveIdentityReference", () => {
     expect(image.ok).toBe(true);
     if (image.ok) {
       expect(image.twin.isOwner).toBe(false);
+      expect(image.twin.referenceSheet).toBeNull();
       expect(image.twin.selfies).toEqual([]);
       expect(image.twin.voiceReady).toBe(false);
     }
@@ -139,6 +145,22 @@ describe("resolveIdentityReference", () => {
     expect(empty).toMatchObject({ ok: false, reason: "incomplete" });
     const gone = await resolveIdentityReference(supabase, "u-grat", "gone", "image");
     expect(gone).toMatchObject({ ok: false, reason: "not_found" });
+  });
+
+  it("uses an owner's selected private contact sheet first, without exposing it to others", async () => {
+    assets.listIdentityAssets.mockResolvedValueOnce([
+      entry("u-grat", "rs1", "reference_sheet"),
+      entry("u-grat", "p1", "profile_image"),
+      entry("u-grat", "s1", "selfie"),
+    ]);
+    const owner = await resolveIdentityReference(supabase, "u-grat", "grat", "image");
+    expect(owner.ok).toBe(true);
+    if (!owner.ok) return;
+    expect(owner.twin.referenceSheet?.asset_id).toBe("rs1");
+    expect(referenceImagesOf(owner.twin).map((image) => image.asset_id)).toEqual([
+      "rs1",
+      "p1",
+    ]);
   });
 });
 

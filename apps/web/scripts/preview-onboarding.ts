@@ -118,6 +118,7 @@ const snapshot: OnboardingSnapshot = {
   address: "gratitude@wzrd.tech",
   mailboxDomain: "wzrd.tech",
   identityMedia,
+  identityReferenceAssetIds: [],
   avatarAssetId: built ? "a-profile" : null,
   twin,
   twinAvailable: false,

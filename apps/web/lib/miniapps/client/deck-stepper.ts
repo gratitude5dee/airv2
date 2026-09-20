@@ -106,7 +106,11 @@ function attachStepper(): void {
         panels[i]?.hasAttribute("data-step-done") ?? false
       )
     );
-    back.disabled = current === 0;
+    const previous = document
+      .querySelector("[data-swipe-prev]")
+      ?.getAttribute("data-swipe-prev");
+    back.disabled = current === 0 && !previous;
+    back.textContent = current === 0 && previous ? "Previous slide" : "Previous";
     // The last step's Continue hands off to the next slide when one exists.
     const next = document
       .querySelector("[data-swipe-next]")
@@ -123,7 +127,16 @@ function attachStepper(): void {
       updateUrl(panel, historyMode === "replace");
     }
   };
-  back.addEventListener("click", () => show(current - 1));
+  back.addEventListener("click", () => {
+    if (current !== 0) {
+      show(current - 1);
+      return;
+    }
+    const previous = document
+      .querySelector("[data-swipe-prev]")
+      ?.getAttribute("data-swipe-prev");
+    if (previous) window.location.assign(previous);
+  });
   forward.addEventListener("click", () => {
     if (current === panels.length - 1) {
       const next = document

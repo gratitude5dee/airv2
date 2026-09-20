@@ -6,22 +6,16 @@
  *
  * The capture surface reads as an iPhone camera: black stage, rule-of-thirds
  * grid, a mode strip (PHOTO | VIDEO) above the shutter row, a ring shutter,
- * a flip-camera control, and a last-shot thumbnail. Review happens in a
- * circular gallery (reactbits CircularGallery-style, first-party, DOM
- * transforms instead of WebGL so taps hit real elements): cards curve along
- * an arc, drag/wheel/keyboard to scroll, tap a card to select or deselect
- * it (green check badge), then confirm with the green checkmark to post the
- * selected shots through upload_selfie and kick off the character sheet.
+ * a flip-camera control, and a last-shot thumbnail. Each shutter press is
+ * saved straight to the private vault; selecting the 1–6 generation photos
+ * happens in the server-rendered Recent photos gallery below the booth.
  * Video mode records consent via MediaRecorder with playback review and a
- * green-check confirm, posting through upload_consent. Captures live only
- * in browser memory (blob:) until the owner confirms; nothing is uploaded
- * on capture.
+ * green-check confirm, posting through upload_consent.
  */
 import {
   StrictMode,
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
@@ -30,15 +24,6 @@ import { createRoot } from "react-dom/client";
 type BoothMode = "photo" | "video" | "audio";
 type Facing = "user" | "environment";
 
-interface Shot {
-  id: number;
-  blob: Blob;
-  url: string;
-  /** Selected to send — toggled by tapping the card in the gallery. */
-  kept: boolean;
-}
-
-const MAX_SHOTS = 8;
 const MAX_VIDEO_MS = 60_000;
 
 function preferredVideoMime(): string | null {
@@ -63,26 +48,12 @@ function containerType(mime: string): string {
   return mime.split(";")[0] ?? mime;
 }
 
-/** Fire a plain (fileless) action post; the reload after it renders the result. */
-async function postAction(action: string): Promise<void> {
-  const form = new FormData();
-  form.set("action", action);
-  try {
-    await fetch(window.location.href, {
-      method: "POST",
-      body: form,
-      credentials: "same-origin",
-    });
-  } catch {
-    // Best effort — the slide still offers the manual generate button.
-  }
-}
-
 async function postCapture(
   action: string,
   blob: Blob,
   filename: string,
-  fields: Record<string, string> = {}
+  fields: Record<string, string> = {},
+  expectJson = false
 ): Promise<boolean> {
   const form = new FormData();
   form.set("action", action);
@@ -93,14 +64,80 @@ async function postCapture(
       method: "POST",
       body: form,
       credentials: "same-origin",
+      ...(expectJson ? { headers: { "X-Identity-Booth": "photo" } } : {}),
     });
-    return res.ok;
+    if (!res.ok) return false;
+    if (!expectJson) return true;
+    const body = (await res.json().catch(() => null)) as { ok?: unknown } | null;
+    return body?.ok === true;
   } catch {
     return false;
   }
 }
 
-/** Green selection check — filled circle with a white tick. */
+/** A live camera means a real video track and decodable pixels — never just
+ * a successful getUserMedia promise. Exported to keep the failure contract
+ * easy to exercise without a physical camera. */
+export function isLiveVideo(video: HTMLVideoElement, stream: MediaStream): boolean {
+  const track = stream.getVideoTracks()[0];
+  const currentData =
+    typeof HTMLMediaElement === "undefined"
+      ? 2
+      : HTMLMediaElement.HAVE_CURRENT_DATA;
+  return Boolean(
+    track &&
+      track.readyState === "live" &&
+      video.srcObject === stream &&
+      video.readyState >= currentData &&
+      video.videoWidth > 0 &&
+      video.videoHeight > 0
+  );
+}
+
+export async function waitForLiveVideo(
+  video: HTMLVideoElement,
+  stream: MediaStream
+): Promise<void> {
+  video.srcObject = stream;
+  await video.play();
+  if (isLiveVideo(video, stream)) return;
+  await new Promise<void>((resolve, reject) => {
+    const timer = window.setTimeout(() => finish(false), 6_000);
+    const ready = (): void => {
+      if (isLiveVideo(video, stream)) finish(true);
+    };
+    const finish = (ok: boolean): void => {
+      window.clearTimeout(timer);
+      video.removeEventListener("loadeddata", ready);
+      video.removeEventListener("canplay", ready);
+      if (ok) resolve();
+      else reject(new Error("camera did not produce a video frame"));
+    };
+    video.addEventListener("loadeddata", ready);
+    video.addEventListener("canplay", ready);
+    ready();
+  });
+}
+
+export function captureErrorMessage(error: unknown, mode: BoothMode): string {
+  const name =
+    typeof error === "object" && error !== null && "name" in error
+      ? String((error as { name?: unknown }).name ?? "")
+      : "";
+  const source = mode === "audio" ? "Microphone" : "Camera";
+  if (name === "NotAllowedError" || name === "SecurityError") {
+    return `${source} permission was blocked — allow it in Safari or Messages settings, or use the native option below.`;
+  }
+  if (name === "NotFoundError") {
+    return `${source} not found on this device — use the native option below.`;
+  }
+  if (name === "NotReadableError" || name === "AbortError") {
+    return `${source} is busy in another app — close it there, then retry.`;
+  }
+  return `${source} did not start — retry, or use the native option below.`;
+}
+
+/** Green confirmation check — filled circle with a white tick. */
 function CheckBadge({ on }: { on: boolean }): React.ReactElement {
   return (
     <span className={`cgal-check${on ? " on" : ""}`} aria-hidden="true">
@@ -115,184 +152,6 @@ function CheckBadge({ on }: { on: boolean }): React.ReactElement {
         />
       </svg>
     </span>
-  );
-}
-
-/**
- * Circular gallery review strip — a first-party take on the reactbits
- * CircularGallery: cards lie on a bent arc and rotate along it, with
- * drag/wheel/keyboard scrolling and momentum easing. Tapping a card toggles
- * its selection (green check); honoring prefers-reduced-motion (snap
- * instead of glide).
- */
-function CircularGallery({
-  shots,
-  active,
-  onSelect,
-  onToggle,
-}: {
-  shots: Shot[];
-  active: number;
-  onSelect: (index: number) => void;
-  onToggle: (id: number) => void;
-}): React.ReactElement {
-  const [position, setPosition] = useState(active);
-  const positionRef = useRef(active);
-  const frameRef = useRef(0);
-  const dragRef = useRef<{
-    startX: number;
-    startPos: number;
-    pointerId: number;
-    captured: boolean;
-  } | null>(null);
-  const reduceMotion = useMemo(
-    () =>
-      typeof matchMedia !== "undefined" &&
-      matchMedia("(prefers-reduced-motion: reduce)").matches,
-    []
-  );
-
-  useEffect(() => {
-    if (reduceMotion) {
-      positionRef.current = active;
-      setPosition(active);
-      return;
-    }
-    cancelAnimationFrame(frameRef.current);
-    const tick = (): void => {
-      const delta = active - positionRef.current;
-      if (Math.abs(delta) < 0.002) {
-        positionRef.current = active;
-        setPosition(active);
-        return;
-      }
-      positionRef.current += delta * 0.16;
-      setPosition(positionRef.current);
-      frameRef.current = requestAnimationFrame(tick);
-    };
-    frameRef.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frameRef.current);
-  }, [active, reduceMotion]);
-
-  const step = useCallback(
-    (delta: number) => {
-      const next = Math.min(shots.length - 1, Math.max(0, active + delta));
-      if (next !== active) onSelect(next);
-    },
-    [active, onSelect, shots.length]
-  );
-
-  const onPointerDown = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
-      dragRef.current = {
-        startX: event.clientX,
-        startPos: active,
-        pointerId: event.pointerId,
-        captured: false,
-      };
-    },
-    [active]
-  );
-  const onPointerMove = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
-      const drag = dragRef.current;
-      if (!drag) return;
-      // Capture only once a real drag starts, so plain taps still reach
-      // the cards (tap = select) and the dots.
-      if (!drag.captured) {
-        if (Math.abs(drag.startX - event.clientX) < 8) return;
-        event.currentTarget.setPointerCapture(drag.pointerId);
-        drag.captured = true;
-      }
-      const moved = Math.round((drag.startX - event.clientX) / 90);
-      const next = Math.min(
-        shots.length - 1,
-        Math.max(0, drag.startPos + moved)
-      );
-      if (next !== active) onSelect(next);
-    },
-    [active, onSelect, shots.length]
-  );
-  const onPointerUp = useCallback(() => {
-    dragRef.current = null;
-  }, []);
-
-  // The arc: cards drop and tilt as they leave center, like a strip bent
-  // around a circle of radius R (px).
-  const RADIUS = 620;
-  const SPACING = 116;
-
-  return (
-    <div
-      className="cgal"
-      role="listbox"
-      aria-label="captured photos — tap to select"
-      aria-multiselectable="true"
-      tabIndex={0}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
-      onWheel={(event) => step(event.deltaY > 0 ? 1 : -1)}
-      onKeyDown={(event) => {
-        if (event.key === "ArrowRight") step(1);
-        if (event.key === "ArrowLeft") step(-1);
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          const shot = shots[active];
-          if (shot) onToggle(shot.id);
-        }
-      }}
-    >
-      <div className="cgal-stage">
-        {shots.map((shot, index) => {
-          const offset = index - position;
-          const abs = Math.abs(offset);
-          const x = offset * SPACING;
-          const y = (x * x) / (2 * RADIUS);
-          const rot = (x / RADIUS) * (180 / Math.PI);
-          const scale = Math.max(0.68, 1 - abs * 0.1);
-          const style: React.CSSProperties = {
-            transform:
-              `translate(-50%, -50%) translateX(${x.toFixed(1)}px) ` +
-              `translateY(${y.toFixed(1)}px) rotate(${rot.toFixed(2)}deg) ` +
-              `scale(${scale.toFixed(3)})`,
-            opacity: abs > 2.6 ? 0 : 1 - abs * 0.18,
-            zIndex: 100 - Math.round(abs * 10),
-            pointerEvents: abs > 2.6 ? "none" : "auto",
-          };
-          return (
-            <div
-              key={shot.id}
-              className={`cgal-card${shot.kept ? " picked" : ""}${index === Math.round(position) ? " front" : ""}`}
-              style={style}
-              role="option"
-              aria-selected={shot.kept}
-              onClick={() => {
-                if (index === active) onToggle(shot.id);
-                else onSelect(index);
-              }}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element -- in-memory blob: URL, not optimizable */}
-              <img src={shot.url} alt={`shot ${index + 1}`} draggable={false} />
-              <CheckBadge on={shot.kept} />
-            </div>
-          );
-        })}
-      </div>
-      <div className="cgal-dots" role="presentation">
-        {shots.map((shot, index) => (
-          <button
-            key={shot.id}
-            type="button"
-            className={`cgal-dot${index === active ? " on" : ""}`}
-            aria-label={`go to shot ${index + 1}`}
-            onClick={() => onSelect(index)}
-          />
-        ))}
-      </div>
-      <p className="cgal-hint">Tap a photo to select it — green check = sending</p>
-    </div>
   );
 }
 
@@ -326,18 +185,17 @@ function Booth({ mode }: { mode: BoothMode }): React.ReactElement {
   const recordTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clockRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const nextIdRef = useRef(1);
+  const lastShotRef = useRef<string | null>(null);
   const [phase, setPhase] = useState<
     "idle" | "starting" | "live" | "recording" | "review" | "saving" | "error"
   >("idle");
   const [facing, setFacing] = useState<Facing>("user");
   const [error, setError] = useState<string | null>(null);
   const [flash, setFlash] = useState(false);
-  const [shots, setShots] = useState<Shot[]>([]);
-  const [active, setActive] = useState(0);
+  const [lastShot, setLastShot] = useState<string | null>(null);
   const [clip, setClip] = useState<{ blob: Blob; url: string } | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [saved, setSaved] = useState(0);
-  const [generating, setGenerating] = useState(false);
 
   const stopStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -348,7 +206,7 @@ function Booth({ mode }: { mode: BoothMode }): React.ReactElement {
     () => () => {
       stopStream();
       if (clockRef.current) clearInterval(clockRef.current);
-      shots.forEach((shot) => URL.revokeObjectURL(shot.url));
+      if (lastShotRef.current) URL.revokeObjectURL(lastShotRef.current);
       if (clip) URL.revokeObjectURL(clip.url);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount only
@@ -360,8 +218,12 @@ function Booth({ mode }: { mode: BoothMode }): React.ReactElement {
       setPhase("starting");
       setError(null);
       stopStream();
+      let stream: MediaStream | null = null;
       try {
-        const stream = await navigator.mediaDevices.getUserMedia(
+        if (!navigator.mediaDevices?.getUserMedia) {
+          throw new Error("media devices unavailable");
+        }
+        stream = await navigator.mediaDevices.getUserMedia(
           mode === "audio"
             ? { audio: true }
             : {
@@ -372,18 +234,20 @@ function Booth({ mode }: { mode: BoothMode }): React.ReactElement {
         streamRef.current = stream;
         setFacing(want);
         const video = videoRef.current;
-        if (video && mode !== "audio") {
-          video.srcObject = stream;
-          await video.play().catch(() => undefined);
+        if (mode === "audio") {
+          if (!stream.getAudioTracks().some((track) => track.readyState === "live")) {
+            throw new Error("microphone track unavailable");
+          }
+        } else {
+          if (!video) throw new Error("camera preview unavailable");
+          await waitForLiveVideo(video, stream);
         }
         setPhase("live");
-      } catch {
+      } catch (caught) {
+        stream?.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
         setPhase("error");
-        setError(
-          mode === "audio"
-            ? "Microphone unavailable — allow microphone access, or upload a recording below."
-            : "Camera unavailable — allow camera access, or use the upload form below."
-        );
+        setError(captureErrorMessage(caught, mode));
       }
     },
     [mode, stopStream]
@@ -415,25 +279,36 @@ function Booth({ mode }: { mode: BoothMode }): React.ReactElement {
     );
   }, [facing]);
 
-  const shoot = useCallback(() => {
-    if (phase !== "live" || shots.length >= MAX_SHOTS) return;
+  const shoot = useCallback(async () => {
+    if (phase !== "live") return;
+    setError(null);
     setFlash(true);
     setTimeout(() => setFlash(false), 180);
-    void captureFrame().then((blob) => {
-      if (blob) {
-        setShots((prev) => {
-          const shot: Shot = {
-            id: nextIdRef.current++,
-            blob,
-            url: URL.createObjectURL(blob),
-            kept: true,
-          };
-          setActive(prev.length);
-          return [...prev, shot];
-        });
-      }
-    });
-  }, [captureFrame, phase, shots.length]);
+    const blob = await captureFrame();
+    if (!blob) {
+      setError("Camera did not produce a photo — retry or use Take photo below.");
+      return;
+    }
+    setPhase("saving");
+    const savedPhoto = await postCapture(
+      "upload_selfie",
+      blob,
+      `booth-${nextIdRef.current++}.jpg`,
+      { source: "booth" },
+      true
+    );
+    if (!savedPhoto) {
+      setPhase("live");
+      setError("Photo couldn't be saved — retry or use the native option below.");
+      return;
+    }
+    const preview = URL.createObjectURL(blob);
+    if (lastShotRef.current) URL.revokeObjectURL(lastShotRef.current);
+    lastShotRef.current = preview;
+    setLastShot(preview);
+    setSaved((count) => count + 1);
+    setPhase("live");
+  }, [captureFrame, phase]);
 
   const record = useCallback(() => {
     const stream = streamRef.current;
@@ -480,31 +355,6 @@ function Booth({ mode }: { mode: BoothMode }): React.ReactElement {
     if (recorder && recorder.state === "recording") recorder.stop();
   }, []);
 
-  const finalizePhotos = useCallback(async () => {
-    const kept = shots.filter((shot) => shot.kept);
-    if (kept.length === 0) return;
-    setPhase("saving");
-    let ok = 0;
-    for (const shot of kept) {
-      // Sequential: content-addressed ingestion dedupes per user, and slow
-      // cellular links behave better without parallel multipart posts.
-      if (await postCapture("upload_selfie", shot.blob, `booth-${shot.id}.jpg`)) {
-        ok += 1;
-        setSaved(ok);
-      }
-    }
-    if (ok === kept.length) {
-      // Confirming the shots kicks off the character-sheet draft right away
-      // — the reload lands on the review step (save to vault or discard).
-      setGenerating(true);
-      await postAction("generate_character_sheet");
-      window.location.reload();
-      return;
-    }
-    setPhase("live");
-    setError("Some photos didn't upload — try again.");
-  }, [shots]);
-
   const finalizeClip = useCallback(async () => {
     if (!clip) return;
     setPhase("saving");
@@ -526,9 +376,7 @@ function Booth({ mode }: { mode: BoothMode }): React.ReactElement {
     setError("Upload failed — try again, or use the form below.");
   }, [clip, mode]);
 
-  const keptCount = shots.filter((shot) => shot.kept).length;
   const cameraOn = phase === "live" || phase === "recording";
-  const lastShot = shots[shots.length - 1] ?? null;
 
   // When the other booth mode lives on a sibling pager pane, the mode strip
   // scrolls to it like the iPhone camera's mode dial; when the modes are
@@ -606,13 +454,14 @@ function Booth({ mode }: { mode: BoothMode }): React.ReactElement {
                 <span className="cam-reddot" /> {formatClock(elapsed)}
               </div>
             ) : null}
-            {mode === "photo" && cameraOn && shots.length > 0 ? (
-              <div className="cam-count">{shots.length}/{MAX_SHOTS}</div>
+            {mode === "photo" && cameraOn && saved > 0 ? (
+              <div className="cam-count">{saved} saved</div>
             ) : null}
             {!cameraOn && phase !== "saving" ? (
               <button
                 type="button"
                 className="cam-start"
+                disabled={phase === "starting"}
                 onClick={() => void start(facing)}
               >
                 {phase === "starting"
@@ -630,9 +479,7 @@ function Booth({ mode }: { mode: BoothMode }): React.ReactElement {
               <div className="cam-saving" aria-live="polite">
                 {mode !== "photo"
                   ? "Uploading…"
-                  : generating
-                    ? "Generating your character sheet…"
-                    : `Saving ${saved}/${keptCount}…`}
+                  : "Saving photo…"}
               </div>
             ) : null}
           </div>
@@ -643,7 +490,7 @@ function Booth({ mode }: { mode: BoothMode }): React.ReactElement {
                 <span className="cam-thumb">
                   {lastShot ? (
                     // eslint-disable-next-line @next/next/no-img-element -- in-memory blob: URL
-                    <img src={lastShot.url} alt="last shot" />
+                    <img src={lastShot} alt="last saved shot" />
                   ) : null}
                 </span>
                 {mode === "photo" ? (
@@ -651,8 +498,8 @@ function Booth({ mode }: { mode: BoothMode }): React.ReactElement {
                     type="button"
                     className="cam-shutter"
                     aria-label="take photo"
-                    disabled={phase !== "live" || shots.length >= MAX_SHOTS}
-                    onClick={shoot}
+                    disabled={phase !== "live"}
+                    onClick={() => void shoot()}
                   />
                 ) : phase === "recording" ? (
                   <button
@@ -693,32 +540,18 @@ function Booth({ mode }: { mode: BoothMode }): React.ReactElement {
         </div>
         {error ? <p className="booth-error">{error}</p> : null}
         {mode === "photo" ? (
-          shots.length > 0 && phase !== "saving" ? (
-            <>
-              <CircularGallery
-                shots={shots}
-                active={active}
-                onSelect={setActive}
-                onToggle={(id) =>
-                  setShots((prev) =>
-                    prev.map((shot) =>
-                      shot.id === id ? { ...shot, kept: !shot.kept } : shot
-                    )
-                  )
-                }
-              />
-              <div className="booth-controls">
-                <button
-                  type="button"
-                  className="cam-confirm"
-                  disabled={keptCount === 0}
-                  onClick={() => void finalizePhotos()}
-                >
-                  <CheckBadge on />
-                  Use {keptCount} photo{keptCount === 1 ? "" : "s"}
-                </button>
-              </div>
-            </>
+          saved > 0 ? (
+            <div className="booth-controls">
+              <button
+                type="button"
+                className="cam-confirm"
+                disabled={phase === "saving"}
+                onClick={() => window.location.reload()}
+              >
+                <CheckBadge on />
+                Review {saved} saved photo{saved === 1 ? "" : "s"}
+              </button>
+            </div>
           ) : null
         ) : clip && phase !== "recording" ? (
           <div className="booth-clip">
@@ -759,12 +592,14 @@ function Booth({ mode }: { mode: BoothMode }): React.ReactElement {
 
 // A grouped slide can hold several booths (photo capture and the twin's
 // consent recorder), so every mount point gets its own root.
-for (const mount of document.querySelectorAll<HTMLElement>(
-  "#identity-booth, .identity-booth"
-)) {
-  const requested = mount.getAttribute("data-mode");
-  const mode: BoothMode =
-    requested === "video" ? "video" : requested === "audio" ? "audio" : "photo";
-  mount.replaceChildren();
-  createRoot(mount).render(<Booth mode={mode} />);
+if (typeof document !== "undefined") {
+  for (const mount of document.querySelectorAll<HTMLElement>(
+    "#identity-booth, .identity-booth"
+  )) {
+    const requested = mount.getAttribute("data-mode");
+    const mode: BoothMode =
+      requested === "video" ? "video" : requested === "audio" ? "audio" : "photo";
+    mount.replaceChildren();
+    createRoot(mount).render(<Booth mode={mode} />);
+  }
 }

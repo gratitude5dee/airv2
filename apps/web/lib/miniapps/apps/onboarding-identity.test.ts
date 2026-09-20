@@ -71,6 +71,28 @@ const fixtures = vi.hoisted(() => ({
   twin: null as DigitalTwin | null,
 }));
 
+const references = vi.hoisted(() => ({
+  ids: [] as string[],
+  list: vi.fn(async () => references.ids),
+  replace: vi.fn(async (_s: unknown, _userId: string, assetIds: string[]) => ({
+    ok: true as const,
+    assetIds,
+    referenceSheet: { id: "reference-sheet" },
+  })),
+  clear: vi.fn(async () => true),
+}));
+
+vi.mock("@/lib/identity/references", () => ({
+  MIN_IDENTITY_REFERENCES: 1,
+  MAX_IDENTITY_REFERENCES: 6,
+  listIdentityReferenceAssetIds: (...args: unknown[]) =>
+    references.list(...(args as [])),
+  replaceIdentityReferences: (...args: unknown[]) =>
+    references.replace(...(args as [unknown, string, string[]])),
+  clearIdentityReferences: (...args: unknown[]) =>
+    references.clear(...(args as [])),
+}));
+
 const view = (
   assetId: string,
   role: IdentityMediaView["role"],
@@ -302,6 +324,7 @@ function seedDefault(): void {
   fixtures.grants = [grant("likeness")];
   fixtures.media = [view("asset-1", "selfie")];
   fixtures.twin = null;
+  references.ids = [];
 }
 
 afterEach(() => {
@@ -314,6 +337,7 @@ afterEach(() => {
     approveProfileImageDraft, discardProfileImageDraft, generateAltImage,
     uploadTwinConsent, createTwinVideo, createUserHeygenAvatar, enableVideoAvatar,
     disableVideoAvatar, setTwinSharing, createUserVoiceClone, revokeUserVoiceClone,
+    references.list, references.replace, references.clear,
   ]) {
     mock.mockClear();
   }
@@ -435,6 +459,38 @@ describe("reference media panel", () => {
     expect(body).toContain('aria-label="Delete photo 1"');
   });
 
+  it("renders only real recent photos and marks only the saved reference set", async () => {
+    fixtures.media = [
+      view("booth-1", "selfie", { source: "booth" }),
+      view("upload-2", "selfie"),
+    ];
+    references.ids = ["upload-2"];
+
+    const body = await render("selfies");
+    expect(body).toContain("Recent photos");
+    expect(body).toContain('value="set_identity_references"');
+    expect(body).toContain('value="booth-1"');
+    expect(body).toContain('value="upload-2" checked');
+    expect(body).toContain("Use selected photos (1)");
+    expect(body).toContain("Booth photo");
+    expect(body).toContain("Uploaded photo");
+  });
+
+  it("persists the explicit ordered 1–6 photo set before generation", async () => {
+    const form = new FormData();
+    form.set("action", "set_identity_references");
+    form.append("asset_id", "upload-2");
+    form.append("asset_id", "booth-1");
+
+    const response = await onboarding.action!(makeCtx("selfies"), form);
+    expect(response.status).toBe(200);
+    expect(references.replace).toHaveBeenCalledWith(
+      expect.anything(),
+      "user-1",
+      ["upload-2", "booth-1"]
+    );
+  });
+
   it("mounts the photo booth bundle outside lite mode only", async () => {
     const full = await render("selfies");
     expect(full).toContain('class="identity-booth"');
@@ -458,6 +514,23 @@ describe("reference media panel", () => {
       { source: "upload", consentId: "c-likeness" }
     );
     expect(stateFile()).toContain('"selfies": "done"');
+  });
+
+  it("returns a truthful JSON result to a booth capture instead of treating an HTML reload as saved", async () => {
+    const form = new FormData();
+    form.set("action", "upload_selfie");
+    form.set("source", "booth");
+    form.set("file", pngFile());
+    const context = makeCtx("selfies");
+    context.request = new NextRequest("https://mini.example/mini/setup?step=selfies", {
+      headers: { "X-Identity-Booth": "photo" },
+    });
+
+    const response = await onboarding.action!(context, form);
+    expect(response.headers.get("Permissions-Policy")).toBe(
+      "camera=(self), microphone=(self)"
+    );
+    await expect(response.json()).resolves.toEqual({ ok: true, assetId: "asset-1" });
   });
 
   it("upload_media stores clips and samples behind their own scopes", async () => {
@@ -487,12 +560,21 @@ describe("reference media panel", () => {
     expect(deleteIdentityAsset).toHaveBeenCalledWith(expect.anything(), "user-1", "asset-1");
     expect(await response.text()).toContain("the original is gone");
   });
+
+  it("updates the saved set before deleting a selected source photo", async () => {
+    references.ids = ["asset-1"];
+    const response = await post({ action: "delete_media", asset_id: "asset-1" });
+    expect(references.clear).toHaveBeenCalledWith(expect.anything(), "user-1");
+    expect(deleteIdentityAsset).toHaveBeenCalledWith(expect.anything(), "user-1", "asset-1");
+    expect(await response.text()).toContain("the original is gone");
+  });
 });
 
 describe("generated identity panel", () => {
   it("offers the photo path and the description path for the character sheet", async () => {
     const body = await render("selfies");
-    expect(body).toContain("Generate from my photos");
+    expect(body).toContain("Generate from selected photos");
+    expect(body).toContain("Choose 1–6 photos");
     expect(body).toContain('name="description"');
     expect(body).toContain("Describe an original character, not a real person.");
     expect(body).toContain('value="generate_profile_image"');
@@ -688,12 +770,14 @@ describe("deck presentation", () => {
     expect(lite).not.toContain("deck-swipe.js");
   });
 
-  it("renders iPhone-style page dots and server-reported stage completion", async () => {
+  it("uses the stepper as the booth's only visible navigation and reports stage completion", async () => {
     const booth = await render("selfies");
-    expect(booth).toContain('class="dots"');
+    expect(booth).not.toContain('class="dots"');
+    expect(booth).not.toContain('<footer class="nav">');
     expect(booth).toContain("data-step-done");
     const context = await render("imessage");
     expect(context).toContain('data-stepper data-stepper-active="0"');
+    expect(context).toContain('class="dots"');
   });
 });
 

@@ -22,6 +22,8 @@ export const IDENTITY_ROLES = [
   "profile_image",
   "profile_image_draft",
   "alt_image",
+  /** A private, server-composited image of the owner's selected selfies. */
+  "reference_sheet",
   "reference_video",
   "voice_sample",
   "consent_recording",
@@ -46,6 +48,7 @@ export const IMAGE_ROLES: readonly IdentityRole[] = [
   "profile_image",
   "profile_image_draft",
   "alt_image",
+  "reference_sheet",
 ];
 export const VIDEO_ROLES: readonly IdentityRole[] = [
   "reference_video",
@@ -535,6 +538,15 @@ export async function deleteIdentityAsset(
     .eq("user_id", userId)
     .eq("id", assetId)
     .maybeSingle();
+  // A selected source must disappear from the reference set at the same
+  // time as it disappears from the vault. The FK handles the rare path
+  // where the creative_assets row is deleted first; this covers retained
+  // generated rows as well.
+  await supabase
+    .from("identity_reference_assets")
+    .delete()
+    .eq("user_id", userId)
+    .eq("asset_id", assetId);
   const removed = await removeIdentityAsset(supabase, userId, assetId);
   if (!removed || !asset) return removed;
   const origin = String((asset as { box_asset_id?: unknown }).box_asset_id ?? "");

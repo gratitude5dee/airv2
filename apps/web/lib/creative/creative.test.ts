@@ -167,6 +167,25 @@ describe("buildGenerationRequest", () => {
     });
   });
 
+  it("prefers the owner's selected-photo contact sheet for a one-image edit", () => {
+    const request = buildGenerationRequest(
+      plan(),
+      turn({
+        mediaInputs: [
+          { kind: "image", url: "https://x.test/other-upload.png" },
+          {
+            kind: "image",
+            url: "https://signed.example/private-reference-sheet.jpg",
+            identityReference: true,
+          },
+        ],
+      }),
+    );
+    expect(request.payload["image"]).toBe(
+      "https://signed.example/private-reference-sheet.jpg",
+    );
+  });
+
   it("maps aspect ratios to pinned image sizes", () => {
     const sizeFor = (aspect_ratio: RouterPlan["params"]["aspect_ratio"]) =>
       buildGenerationRequest(

@@ -268,9 +268,10 @@ describe("onboarding environment step", () => {
     const stepper = await (
       await onboarding.render(makeCtx("https://mini.example/mini/setup?step=selfies"))
     ).text();
-    const dots = stepper.match(/<nav class="dots"[^>]*>.*?<\/nav>/)?.[0] ?? "";
-    expect(dots.match(/<(?:a|span) /g) ?? []).toHaveLength(6);
-    expect(dots).not.toContain("welcome");
+    // The Photo Booth's stepper owns its progress/navigation; the global
+    // slide dots are intentionally absent so mobile users do not see two
+    // competing systems.
+    expect(stepper).not.toContain('<nav class="dots"');
     expect(stepper).toContain('data-step="consent"');
     expect(stepper).toContain('data-step="selfies"');
     expect(stepper).toContain('data-step="voice"');
