@@ -541,6 +541,29 @@ export async function generateZapVideo(
     plan,
     await withWavAudio(turn, deadline, options?.transcode),
   );
+  return await runFalVideoRequestUntil(request, deadline, options);
+}
+
+/**
+ * Run one already-built fal video request under the shared creative permit
+ * and the C23 outcome discipline. /zap builds its request from a plan; the
+ * digital twin's lip-sync lane (lib/identity/lipsync.ts) builds its own and
+ * hands it here so both share one submit/poll/result path.
+ */
+export async function runFalVideoRequest(
+  request: FalGenerationRequest,
+  timeoutMs: number,
+  options?: FalGenerationOptions,
+): Promise<GeneratedMedia> {
+  return await runFalVideoRequestUntil(request, Date.now() + timeoutMs, options);
+}
+
+/** The absolute-deadline form: a budget that already elapsed never submits. */
+async function runFalVideoRequestUntil(
+  request: FalGenerationRequest,
+  deadline: number,
+  options?: FalGenerationOptions,
+): Promise<GeneratedMedia> {
   // Paid renders share the provider-neutral creative concurrency permit.
   return await withCreativeSlot(
     async () => {
@@ -553,6 +576,28 @@ export async function generateZapVideo(
     },
     Math.max(1, deadline - Date.now()),
   );
+}
+
+/**
+ * One audio URL → its normalised WAV on fal storage, for endpoints whose
+ * audio loader only reads WAV/MP3. A failed conversion is a FalRequestError:
+ * the audio is the point of the request, so nothing is submitted without it.
+ */
+export async function wavAudioUrl(
+  audioUrl: string,
+  deadline: number,
+  transcoder?: FalAudioTranscoder,
+): Promise<string> {
+  const converted = await withWavAudio(
+    { text: "", mediaInputs: [{ kind: "audio", url: audioUrl }] },
+    deadline,
+    transcoder,
+  );
+  const audio = converted.mediaInputs.find((media) => media.kind === "audio");
+  if (!audio) {
+    throw new FalRequestError("fal audio transcode returned no audio");
+  }
+  return audio.url;
 }
 
 const runZapRequest = async (
