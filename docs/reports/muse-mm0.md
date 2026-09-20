@@ -37,6 +37,7 @@ MM0 stage in unencrypted OAuth grant metadata.
 
 | Probe | Result | Evidence / next action |
 | --- | --- | --- |
+| MM0 public deployment conformance | Pass (2026-09-20) | `muse.wzrd.tech` completed DCR → S256 PKCE → explicit CSRF-protected approval → code exchange → authenticated `air.whoami`; the result was the fixed MM0 object. No Air account data was involved. |
 | P1: connector-form OAuth/MCP handshake | Pending | Run the live Muse connector form with `https://muse.wzrd.tech/mcp`; capture every request/response header and body shape (redacted). |
 | P2: iMessage relay reachability | Pending | Requires a real authorized Air identity after P1. |
 | P3: MCP JSON and timeout behaviour | Pending | Run `tools/list` and `air.whoami` inside Muse after P1. |
