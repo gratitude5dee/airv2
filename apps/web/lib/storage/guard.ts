@@ -28,6 +28,8 @@ export const ALLOWED_MEDIA_TYPES: Record<string, string> = {
   "audio/mp4": "m4a",
   "audio/wav": "wav",
   "audio/ogg": "ogg",
+  // MediaRecorder's audio container on Chromium (twin voice samples).
+  "audio/webm": "weba",
   "application/pdf": "pdf",
   "text/plain": "txt",
   "text/markdown": "md",
