@@ -21,7 +21,7 @@ head_sampling_rate = 1
 [vars]
 MUSE_ENABLED = "true"
 CONTROL_PLANE_ORIGIN = "https://app.wzrd.tech"
-DOCS_URL = "https://air.wzrd.tech/docs/muse"
+DOCS_URL = "https://muse.wzrd.tech/muse.md"
 
 [[durable_objects.bindings]]
 name = "MUSE_USER"
