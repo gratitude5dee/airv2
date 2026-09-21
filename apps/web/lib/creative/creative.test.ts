@@ -1322,6 +1322,14 @@ describe("underDailyLimit", () => {
     expect(await underDailyLimit(supabaseCounting(20), "u1")).toBe(false);
     expect(await underDailyLimit(supabaseCounting(35), "u1")).toBe(false);
   });
+
+  it("exempts only explicitly allowlisted owner accounts from the daily cap", async () => {
+    const ownerId = "7c8fc08b-bea7-48b4-a9da-ce3390968eb1";
+    vi.stubEnv("CREATIVE_DAILY_LIMIT", "20");
+    vi.stubEnv("CREATIVE_UNLIMITED_USER_IDS", ownerId);
+    expect(await underDailyLimit(supabaseCounting(35), ownerId)).toBe(true);
+    expect(await underDailyLimit(supabaseCounting(35), "other-user")).toBe(false);
+  });
 });
 
 describe("creativePreflight", () => {

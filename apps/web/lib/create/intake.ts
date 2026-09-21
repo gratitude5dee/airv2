@@ -16,7 +16,7 @@ import type { SpectrumSender } from "../spectrum/sender";
 import { isReservedWord } from "../miniapps/reserved";
 import {
   OWNER_ONLY_CARD_LINE,
-  parseCreateCommand,
+  parseCreateIntent,
 } from "../miniapps/imessageCommand";
 import { createConfig } from "./config";
 
@@ -655,9 +655,9 @@ export async function maybeOpenIntake(
   job: { spaceId: string; userId: string; phone: string; senderTier: number | null },
   input: string
 ): Promise<IntakeHookResult | null> {
-  let parsed: ReturnType<typeof parseCreateCommand>;
+  let parsed: ReturnType<typeof parseCreateIntent>;
   try {
-    parsed = parseCreateCommand(input);
+    parsed = parseCreateIntent(input);
   } catch {
     return null;
   }

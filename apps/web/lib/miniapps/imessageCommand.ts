@@ -58,6 +58,29 @@ export function parseCreateCommand(
   };
 }
 
+/**
+ * Requests that should enter the Create intake. `/create <text>` remains the
+ * explicit command, while the narrowly-scoped landing-page phrasing lets a
+ * natural reply such as "Build me that landing page" keep the promise made
+ * in the preceding Messages conversation instead of falling into a generic
+ * agent turn.
+ */
+export function parseCreateIntent(
+  input: string
+): { prompt: string; url: string | null } | null {
+  const command = parseCreateCommand(input);
+  if (command) return command;
+  const prose = input.trim();
+  if (
+    /^(?:please\s+)?(?:build|make|create)\s+(?:me\s+)?(?:that\s+)?(?:a\s+|an\s+)?(?:landing\s+(?:page|site)|website|web\s+page)\b/i.test(
+      prose
+    )
+  ) {
+    return { prompt: prose, url: null };
+  }
+  return null;
+}
+
 export async function maybeSendMiniAppLink(
   supabase: SupabaseClient,
   sender: SpectrumSender,

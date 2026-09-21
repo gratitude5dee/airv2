@@ -587,6 +587,17 @@ describe("maybeOpenIntake (flush.ts hook)", () => {
     expect(sender.sendText).not.toHaveBeenCalled();
   });
 
+  it("opens the same intake for a promised landing page in ordinary prose", async () => {
+    const result = await maybeOpenIntake(
+      supabase,
+      sender,
+      job,
+      "Build me that landing page for the tour"
+    );
+    expect(result).toMatchObject({ kind: "owner", appname: "landing-tour" });
+    expect(db.create_intakes[0]).toMatchObject({ source: "imessage", stage: "asking" });
+  });
+
   it("sends the owner-only line to anyone else and opens nothing", async () => {
     const result = await maybeOpenIntake(
       supabase,

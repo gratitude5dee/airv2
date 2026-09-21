@@ -10,6 +10,7 @@ import {
   dropQuickAckMarker,
   enqueueInbound,
   FINAL_RESPONSE_DEADLINE_MS,
+  INITIAL_RESPONSE_DEADLINE_MS,
   hermesDeltas,
   hasCompleteReferencePair,
   isCancelled,
@@ -603,7 +604,57 @@ describe("runFlush history replay", () => {
     );
   });
 
-  it("stops and durably retries a run that does not complete its response by 45 seconds", async () => {
+  it("lets a response that has started finish beyond the initial 45-second deadline", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-14T17:00:00.000Z"));
+    vi.mocked(loadConversationTranscript).mockResolvedValue({
+      rows: 2,
+      history: [
+        { role: "user", content: "build a landing page" },
+        { role: "assistant", content: "What is it for?" },
+      ],
+    });
+    const encoder = new TextEncoder();
+    vi.mocked(runEvents).mockResolvedValue(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                event: "message.delta",
+                delta: "I started the answer",
+              })}\n\n`
+            )
+          );
+          setTimeout(() => {
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({ event: "run.completed", output: "" })}\n\n`
+              )
+            );
+            controller.close();
+          }, INITIAL_RESPONSE_DEADLINE_MS + 1);
+        },
+      }) as never
+    );
+    vi.mocked(probeForTapback).mockImplementation(async (iterator) => {
+      const first = await iterator.next();
+      return { buffered: first.done ? "" : first.value, ended: false };
+    });
+
+    const pending = runFlush(
+      fakeSupabase([{ id: "q1", message_id: "m1", body: "/create build a landing page" }]),
+      job,
+      new Date().toISOString()
+    );
+    await vi.advanceTimersByTimeAsync(INITIAL_RESPONSE_DEADLINE_MS + 1);
+    await pending;
+
+    expect(stopRun).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it("stops and durably retries a run that does not complete its response by the full deadline", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-14T17:00:00.000Z"));
     vi.mocked(loadConversationTranscript).mockResolvedValue({
