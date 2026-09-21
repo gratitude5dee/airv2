@@ -37,6 +37,11 @@ const BLAST_TOTAL_MS = BLAST_MS + PEAK_HOLD_S * 1000;
 
 type Phase = "idle" | "charging" | "film" | "done";
 
+/** The mini-app keeps the cinematic film but never creates its WebGL blast. */
+export function allowsWordmarkBlast(allowBlast: boolean, reduced: boolean): boolean {
+  return allowBlast && !reduced;
+}
+
 function attachIntro(): void {
   const root = document.querySelector<HTMLElement>("[data-intro]");
   if (!root) return;
@@ -51,6 +56,7 @@ function attachIntro(): void {
   const reduced =
     typeof matchMedia === "function" &&
     matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const allowBlast = document.body.dataset["allowBlast"] === "true";
   const canVibrate =
     typeof navigator !== "undefined" && typeof navigator.vibrate === "function";
 
@@ -98,7 +104,9 @@ function attachIntro(): void {
    * pixels. Skipped entirely under reduced motion.
    */
   const prepareBlast = (): void => {
-    if (reduced || blast || blastPending || !blastHost || !mark) return;
+    if (!allowsWordmarkBlast(allowBlast, reduced) || blast || blastPending || !blastHost || !mark) {
+      return;
+    }
     const rect = mark.getBoundingClientRect();
     if (rect.height < 2) return;
     blastPending = true;
@@ -356,4 +364,4 @@ function attachIntro(): void {
   });
 }
 
-attachIntro();
+if (typeof document !== "undefined") attachIntro();

@@ -1389,15 +1389,9 @@ function stepBody(
     // The deck always opens here, so a returning owner needs one tap back to
     // wherever they stopped — the entry slide is a starting line, not a wall.
     const resume = resumeLink(snapshot);
-    // Lite/Messages sessions run on a tight memory budget — they keep the
-    // plain wordmark-and-Continue card. The full webview gets the cinematic
-    // intro: black stage, wordmark with an ambient glow, a single button
-    // whose press-and-hold escalates into the intro film, and the standard
-    // done-form kept in the DOM (visually hidden) so the client bundle can
-    // submit it when the film ends and the server redirects onward.
-    if (lite) {
-      return `<p>An agent of your own: its own computer, its own mailbox, and your context — set up in six short steps.</p><p class="muted">Everything here is optional and re-enterable. Skip anything, come back any time.</p><div class="row actions">${doneForm("welcome", "Continue")}${resume}</div>`;
-    }
+    // The same cinematic welcome is available in the Messages mini-app.
+    // The renderer disables only its WebGL blast there; the film, controls,
+    // and ordinary flash fallback remain safe on the constrained surface.
     return `<div class="cine" data-intro data-noswipe><div class="cine-stage"><span class="wzrd-glow" aria-hidden="true"></span><img class="cine-mark" src="/creator-os/wzrd-wordmark-640.png" width="640" height="158" decoding="async" alt="WZRD.tech"><button type="button" class="cine-cta">Begin</button>${resume ? `<div class="cine-resume">${resume}</div>` : ""}</div><div class="cine-blast" aria-hidden="true"></div><video class="cine-film" playsinline muted preload="metadata" aria-label="air introduction film"><source src="/creator-os/airintrofin.mp4" type="video/mp4"></video><button type="button" class="cine-sound" hidden>Sound on</button><div class="cine-done">${doneForm("welcome", "Continue")}</div></div>`;
   }
   if (step === "environment") {
@@ -2264,7 +2258,11 @@ export function renderOnboarding(
   // what an embedded Messages webview runs out of memory on.
   const stepper =
     !slide.split && panes.length <= 1 && slide.sections.length > 1;
-  const cinematic = !lite && slide.id === "welcome";
+  // Every surface gets the cinematic welcome. The WebGL wordmark blast is
+  // separately gated below, so the Messages mini-app keeps the film without
+  // creating a GPU context.
+  const cinematic = slide.id === "welcome";
+  const allowBlast = cinematic && !lite && fx;
   const backdrop = current.backdrop;
   // The WebGL backdrop is decorative and expensive: a GPU context plus its
   // textures, on top of everything else the slide holds. It runs on desktop
@@ -2364,7 +2362,7 @@ export function renderOnboarding(
     lite ? "" : '<script src="/creator-os/deck-swipe.js" defer></script>',
     // The cinematic welcome intro: press-and-hold escalation into the film,
     // then a programmatic submit of the hidden done-form.
-    !lite && slide.id === "welcome"
+    cinematic
       ? '<script src="/creator-os/intro-cinematic.js" defer></script>'
       : "",
     // Every control on a slide is a link or a form post, so a tap costs a
@@ -2382,7 +2380,7 @@ export function renderOnboarding(
         ? `<div class="cine-notices">${busy}${noticeHtml}</div>`
         : "";
     const intro = sectionBody(snapshot, "welcome", browserSignin, lite);
-    return `<!doctype html><html lang="en" class="cine-page"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>Onboarding — ${esc(slide.title)}</title>${fonts}<link rel="stylesheet" href="/creator-os/onboarding.css"><style>${tokenBlock(current.tokens)}</style></head><body class="cine-page"${prev ? ` data-swipe-prev="${href(prev)}"` : ""}${next ? ` data-swipe-next="${href(next)}"` : ""}>${notices}${intro}${scripts}</body></html>`;
+    return `<!doctype html><html lang="en" class="cine-page"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>Onboarding — ${esc(slide.title)}</title>${fonts}<link rel="stylesheet" href="/creator-os/onboarding.css"><style>${tokenBlock(current.tokens)}</style></head><body class="cine-page" data-allow-blast="${allowBlast ? "true" : "false"}"${prev ? ` data-swipe-prev="${href(prev)}"` : ""}${next ? ` data-swipe-next="${href(next)}"` : ""}>${notices}${intro}${scripts}</body></html>`;
   }
   const deck = `<div class="deck${slide.split ? " split" : ""}"${stepper ? ` data-stepper data-stepper-active="${activeSection}"` : ""}>${sections}</div>${scripts}`;
   // A swipe follows the same pair of targets the visible Previous/Continue
@@ -2496,9 +2494,9 @@ function rendersNativeOnairos(
 const rendersPrompts = (step: OnboardingStepId): boolean =>
   slideForStep(step).id === "start";
 
-/** The welcome slide plays the intro film from /creator-os. */
-const rendersIntro = (step: OnboardingStepId, lite: boolean): boolean =>
-  !lite && slideForStep(step).id === "welcome";
+/** The welcome slide plays the intro film from /creator-os on every surface. */
+const rendersIntro = (step: OnboardingStepId): boolean =>
+  slideForStep(step).id === "welcome";
 
 /**
  * The link slide renders the transient pairing phrase and verification URL,
@@ -2564,7 +2562,7 @@ async function respond(
     rendersIdentityMedia(active),
     rendersBooth(active, ctx.session.via === "card"),
     rendersPrompts(active),
-    rendersIntro(active, ctx.session.via === "card"),
+    rendersIntro(active),
     ctx.session.via !== "card"
   );
 }
@@ -2616,7 +2614,9 @@ function logClientTiming(
 ): NextResponse {
   const metrics: Record<string, number> = {};
   for (const [field, ceiling] of Object.entries(TIMING_FIELDS)) {
-    const raw = Number(form.get(field));
+    const entry = form.get(field);
+    if (entry === null) continue;
+    const raw = Number(entry);
     if (!Number.isFinite(raw) || raw < 0) continue;
     metrics[field] = Math.min(Math.floor(raw), ceiling);
   }
@@ -2821,7 +2821,7 @@ export const onboarding: MiniAppModule = {
       rendersIdentityMedia(active),
       rendersBooth(active, ctx.session.via === "card"),
       rendersPrompts(active),
-      rendersIntro(active, ctx.session.via === "card"),
+      rendersIntro(active),
       ctx.session.via !== "card"
     );
   },

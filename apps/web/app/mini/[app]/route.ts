@@ -96,6 +96,8 @@ interface LoadLog {
   ua?: string | null | undefined;
   /** The session's resolved surface marker, once the gate chain has one. */
   via?: "card" | undefined;
+  /** The signed link's transport marker before the user-agent chose a render. */
+  originVia?: "card" | undefined;
 }
 
 /** Enough to identify the client, short enough to keep a log line legible. */
@@ -124,6 +126,7 @@ function logLoad(
       gate_x402_ms: log.gate?.x402Ms ?? null,
       gate_session_ms: log.gate?.sessionMs ?? null,
       render_ms: log.renderMs ?? null,
+      origin_via: log.originVia ?? null,
       via: log.via ?? null,
       ua: log.ua ?? null,
     })
@@ -334,7 +337,7 @@ function sessionStyle(
   prefix: string
 ): MiniStyle {
   if (session.role !== "owner") return style;
-  const homeHref = `${prefix}home?t=${mintToken(session.userId, "home", "default", 15, { via: session.via })}`;
+  const homeHref = `${prefix}home?t=${mintToken(session.userId, "home", "default", 15, { via: session.originVia })}`;
   return { ...style, homeHref };
 }
 
@@ -356,7 +359,7 @@ function refreshCookie(
     mintToken(session.userId, slug, session.resourceId, 15, {
       role: session.role,
       grantId: session.grantId,
-      via: session.via,
+      via: session.originVia,
     }),
     {
       httpOnly: true,
@@ -490,12 +493,17 @@ async function handleGet(
       NextResponse.redirect(new URL(basePath, externalOrigin(request)), 303)
     );
     const via = resolveVia(claims.via, request.headers.get("user-agent"));
+    log.originVia = claims.via;
+    log.via = via;
     response.cookies.set(
       cookieName(slug, via),
       mintToken(claims.userId, slug, claims.resourceId, 15, {
         role: claims.role ?? "owner",
         grantId: claims.grantId,
-        via,
+        // Preserve the signed-link marker for later telemetry. The cookie
+        // name remains based on the resolved surface, so a card opened in
+        // Safari still receives the full-browser cookie.
+        via: claims.via,
       }),
       {
         httpOnly: true,
@@ -577,6 +585,7 @@ async function handleGet(
     return gate.response;
   }
   log.via = gate.session.via;
+  log.originVia = gate.session.originVia;
 
   const renderStart = performance.now();
   const style = await styleFor(supabase, gate.session, prefetched);
@@ -642,6 +651,7 @@ async function handlePost(
     return gate.response;
   }
   log.via = gate.session.via;
+  log.originVia = gate.session.originVia;
   if (action === "__password") {
     // Already unlocked — just reload the view.
     logLoad(log, "password settled", 303);

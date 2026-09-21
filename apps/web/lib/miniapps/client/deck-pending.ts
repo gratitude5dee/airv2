@@ -14,6 +14,9 @@
 
 /** Controls that must stay instant: they never leave the page. */
 const INERT = "[data-noswipe] .cine-cta, .cine-sound, summary";
+/** A native navigation normally unloads this document. If the browser leaves
+ * it in place after a network failure, release the retry guard eventually. */
+const NAVIGATION_RECOVERY_MS = 30_000;
 
 function markBusy(el: HTMLElement): void {
   el.classList.add("is-busy");
@@ -22,6 +25,27 @@ function markBusy(el: HTMLElement): void {
 
 function attach(): void {
   let settled = false;
+  let recoveryTimer: number | null = null;
+
+  const clearPending = (): void => {
+    settled = false;
+    if (recoveryTimer !== null) {
+      window.clearTimeout(recoveryTimer);
+      recoveryTimer = null;
+    }
+    for (const el of document.querySelectorAll<HTMLElement>(".is-busy")) {
+      el.classList.remove("is-busy");
+      el.removeAttribute("aria-busy");
+    }
+  };
+
+  const armRecovery = (): void => {
+    if (recoveryTimer !== null) window.clearTimeout(recoveryTimer);
+    // Native form navigation provides no rejected Promise to observe. A page
+    // that is still here after this grace period has not navigated, so return
+    // its controls to a usable state instead of requiring a reload.
+    recoveryTimer = window.setTimeout(clearPending, NAVIGATION_RECOVERY_MS);
+  };
   // Lets the stylesheet hide the no-JS fallbacks (the upload tiles' submit
   // buttons) only where something is actually there to replace them.
   document.documentElement.classList.add("js");
@@ -41,12 +65,9 @@ function attach(): void {
   });
 
   // A page restored from the back/forward cache must not still look busy.
-  window.addEventListener("pageshow", () => {
-    settled = false;
-    for (const el of document.querySelectorAll<HTMLElement>(".is-busy")) {
-      el.classList.remove("is-busy");
-      el.removeAttribute("aria-busy");
-    }
+  window.addEventListener("pageshow", clearPending);
+  window.addEventListener("pagehide", () => {
+    if (recoveryTimer !== null) window.clearTimeout(recoveryTimer);
   });
 
   document.addEventListener(
@@ -63,6 +84,7 @@ function attach(): void {
       settled = true;
       const submitter = (event as SubmitEvent).submitter;
       markBusy(submitter instanceof HTMLElement ? submitter : form);
+      armRecovery();
     },
     true
   );

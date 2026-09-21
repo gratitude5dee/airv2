@@ -611,6 +611,12 @@ describe("middleware hardening (MA11)", () => {
   });
 
   it("a card link opened in a real browser mints a full session", async () => {
+    const logged: Record<string, unknown>[] = [];
+    const log = vi.spyOn(console, "log").mockImplementation((line: unknown) => {
+      if (typeof line !== "string") return;
+      const parsed = JSON.parse(line) as Record<string, unknown>;
+      if (parsed["msg"] === "miniapp load") logged.push(parsed);
+    });
     const open = async (userAgent: string): Promise<string> => {
       const token = mintToken("user-1", "kanban", "default", 15, {
         via: "card",
@@ -637,12 +643,16 @@ describe("middleware hardening (MA11)", () => {
     const value = decodeURIComponent(
       (safari.match(/mini_kanban=([^;]+)/) ?? [])[1] ?? ""
     );
-    expect(verifyToken(value, "kanban")?.via).toBeUndefined();
+    // Full rendering is UA-derived, but retain the card origin so the
+    // telemetry can distinguish this launch from an ordinary browser visit.
+    expect(verifyToken(value, "kanban")?.via).toBe("card");
+    expect(logged.at(-1)).toMatchObject({ origin_via: "card", via: null });
     // The iOS Messages extension is a WKWebView (no Safari product token).
     const webview = await open(
       "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148"
     );
     expect(webview).toContain("mini_kanban_card=");
+    log.mockRestore();
   });
 });
 

@@ -110,7 +110,7 @@ function thenable(rows: unknown, single: unknown = null) {
 
 function makeCtx(
   url = "https://mini.example/mini/setup?step=environment",
-  options: { username?: string | null } = {}
+  options: { username?: string | null; userAgent?: string } = {}
 ) {
   const username = options.username === undefined ? "grat" : options.username;
   const tables: Record<string, ReturnType<typeof thenable>> = {
@@ -132,7 +132,10 @@ function makeCtx(
     }),
   };
   return {
-    request: new NextRequest(url),
+    request: new NextRequest(
+      url,
+      options.userAgent ? { headers: { "user-agent": options.userAgent } } : undefined
+    ),
     supabase: {
       from: (table: string) => tables[table] ?? thenable([]),
     } as unknown as SupabaseClient,
@@ -226,7 +229,10 @@ describe("onboarding environment step", () => {
 
   it("widens media-src for the welcome intro film on the live render path", async () => {
     const response = await onboarding.render(
-      makeCtx("https://mini.example/mini/setup?step=welcome")
+      makeCtx("https://mini.example/mini/setup?step=welcome", {
+        userAgent:
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15",
+      })
     );
     expect(response.status).toBe(200);
     const csp = response.headers.get("Content-Security-Policy") ?? "";
@@ -248,7 +254,7 @@ describe("onboarding environment step", () => {
     // The done-form stays in the DOM for the intro bundle to submit.
     expect(body).toContain('name="step" value="welcome"');
     expect(body).toContain('<html lang="en" class="cine-page">');
-    expect(body).toContain('<body class="cine-page" data-swipe-next=');
+    expect(body).toContain('<body class="cine-page" data-allow-blast="true" data-swipe-next=');
     expect(body).toContain('<div class="cine" data-intro data-noswipe>');
     expect(body).toContain('class="cine-blast"');
     expect(body).toContain('<button type="button" class="cine-sound" hidden>Sound on</button>');
@@ -271,7 +277,9 @@ describe("onboarding environment step", () => {
     const liteCtx = makeCtx("https://mini.example/mini/setup?step=welcome");
     liteCtx.session.via = "card";
     const lite = await (await onboarding.render(liteCtx)).text();
-    expect(lite).not.toContain('class="cine-blast"');
+    expect(lite).toContain('class="cine-blast"');
+    expect(lite).toContain('data-allow-blast="false"');
+    expect(lite).toContain("/creator-os/intro-cinematic.js");
 
     const stepper = await (
       await onboarding.render(makeCtx("https://mini.example/mini/setup?step=selfies"))
@@ -298,6 +306,23 @@ describe("onboarding environment step", () => {
     expect(stepper).toContain('data-section="booth_photo"');
     expect(stepper).not.toContain('data-section="voice"');
     expect(stepper).not.toContain('data-section="avatar"');
+  });
+
+  it.each([
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
+    "Mozilla/5.0 (iPad; CPU OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
+    undefined,
+  ])("keeps the cinematic but disables its WebGL blast on a handheld or unknown UA", async (userAgent) => {
+    const options = userAgent === undefined ? {} : { userAgent };
+    const body = await (
+      await onboarding.render(
+        makeCtx("https://mini.example/mini/setup?step=welcome", options)
+      )
+    ).text();
+    expect(body).toContain("/creator-os/intro-cinematic.js");
+    expect(body).toContain('class="cine-blast"');
+    expect(body).toContain('<html lang="en" class="cine-page">');
+    expect(body).toContain('data-allow-blast="false"');
   });
 
   it("renders the three environment choices with no provider names leaking", async () => {
@@ -541,6 +566,8 @@ describe("client load-timing beacon", () => {
     expect(report["fcp_ms"]).toBe(300);
     expect(report).not.toHaveProperty("ttfb_ms");
     expect(report).not.toHaveProperty("img_count");
+    expect(report).not.toHaveProperty("transfer_ms");
+    expect(report).not.toHaveProperty("device_memory");
     expect(report).not.toHaveProperty("note");
     expect(line).not.toContain("<script>");
   });
