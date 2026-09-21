@@ -1,6 +1,18 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type MuseEventKind = "notify" | "reply" | "pull" | "run" | "decision" | "grant" | "key" | "nudge";
+export type MuseEventKind =
+  | "notify"
+  | "reply"
+  | "pull"
+  | "run"
+  | "decision"
+  | "grant"
+  | "key"
+  | "nudge"
+  | "mail_draft"
+  | "calendar_add"
+  | "schedule_create"
+  | "wallet_request";
 
 /** Metadata-only event ledger. Never add a text/body/prompt field here. */
 export async function recordMuseEvent(

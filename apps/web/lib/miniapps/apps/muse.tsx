@@ -19,7 +19,7 @@ import { getMuseSettings, saveMuseSettings } from "@/lib/muse/settings";
 import { callMuseWorker } from "@/lib/muse/worker";
 import { writeConnectedToolsFile } from "@/lib/provisioning/connectors";
 
-const ENDPOINT = "https://muse.wzrd.tech/mcp";
+const ENDPOINT = "https://mcp.mail.wzrd.tech/mcp";
 const DOCS = "https://muse.wzrd.tech/muse.md";
 
 function redactPhone(phone: string | null): string {

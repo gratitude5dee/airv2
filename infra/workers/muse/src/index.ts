@@ -208,24 +208,6 @@ interface WzrdmailFlowState {
   expiresAt: number;
 }
 
-function fullScopeCopy(scope: string): string {
-  const copy: Record<string, string> = {
-    profile: "See that this Air is yours and whether it is awake.",
-    "updates:write": "Text you updates on your Air line within limits you set.",
-    control: "Receive the instructions you text with /muse and reply to them.",
-    "agent:run": "Ask your Air agent to work; sends, payments and bookings still ask you first.",
-    "mail:read": "Read your Air inbox.",
-    "mail:draft": "Write email drafts without sending them.",
-    "files:read": "See files in your Air inbox folder.",
-    "files:write": "Drop files into your Air inbox folder.",
-    "calendar:write": "Propose calendar changes for your approval.",
-    "schedule:write": "Propose recurring Air tasks for your approval.",
-    "wallet:read": "See wallet balances.",
-    "wallet:request": "Ask to send from your wallet; only you can approve it."
-  };
-  return copy[scope] ?? scope;
-}
-
 function fullPage(title: string, body: string, csrf?: string, login?: string): Response {
   const response = document(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title>
 <style>body{font:16px system-ui,sans-serif;max-width:42rem;margin:4rem auto;padding:0 1rem;color:#171717}input,button{font:inherit;padding:.65rem;margin:.35rem 0}input[type=tel],input[type=text]{width:min(100%,28rem)}button{margin-right:.5rem}.note{color:#555;line-height:1.5}.scope{display:block;padding:.65rem 0;border-top:1px solid #ddd}.scope small{display:block;color:#555;margin:.2rem 0 0 1.7rem}</style>
@@ -247,13 +229,6 @@ function fullPhonePage(request: AuthRequest, action: string, clientName: string,
 function fullCodePage(request: AuthRequest, action: string, phone: string, csrf: string, error?: string): Response {
   return fullPage("Verify your phone", `<h1>Verify your phone</h1><p>We sent a six-digit code to <strong>${escapeHtml(phone)}</strong>.</p>${error ? `<p role="alert">${escapeHtml(error)}</p>` : ""}
 <form method="post" action="${escapeHtml(action)}"><input type="hidden" name="csrf" value="${escapeHtml(csrf)}"><input type="hidden" name="stage" value="code"><input type="hidden" name="phone" value="${escapeHtml(phone)}"><label>Code<br><input name="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required></label><br><button type="submit">Verify</button></form>`, csrf);
-}
-
-function fullConsentPage(request: AuthRequest, action: string, clientName: string, scopes: string[], csrf: string, login: string, inviteUrl?: string): Response {
-  const checks = scopes.map((scope) => `<label class="scope"><input type="checkbox" name="scope" value="${escapeHtml(scope)}"${scope === "profile" ? " checked disabled" : " checked"}><strong> ${escapeHtml(scope)}</strong><small>${escapeHtml(fullScopeCopy(scope))}</small></label>`).join("");
-  return fullPage("Connect Air to Muse", `<h1>Connect Air to Muse</h1><p><strong>${escapeHtml(clientName)}</strong> will connect to one Air account.</p>
-${inviteUrl ? `<p class="note">Your Air iMessage line is ready: <a href="${escapeHtml(inviteUrl)}">open Messages</a>. You can also sign back into Air later with this same phone number.</p>` : ""}
-<form method="post" action="${escapeHtml(action)}"><input type="hidden" name="csrf" value="${escapeHtml(csrf)}"><input type="hidden" name="stage" value="consent">${checks}<p class="note">Muse does the thinking on your Muse plan. Air does the doing on your Air. Nothing gives Muse your Air passwords, and nothing sends, pays, books or schedules without your tap.</p><button name="approve" value="yes" type="submit">Connect Air</button><button name="approve" value="no" type="submit">Cancel</button></form>`, csrf, login);
 }
 
 async function controlPlane<T>(env: MuseEnv, path: string, body: unknown): Promise<{ status: number; value: T & { error?: string } }> {
@@ -389,28 +364,18 @@ async function fullAuthorize(request: Request, env: MuseEnv): Promise<Response> 
     if (verified.status !== 200) return fullCodePage(parsed, action, phone, randomToken(), "That code did not work. Try again.");
     const outcome = await controlPlane<{ user_id?: string; invite_url?: string | null }>(env, "/api/muse/wzrdmail/complete", { subject: loginSubject, phone });
     if (outcome.status !== 200 || !outcome.value.user_id) return fullCodePage(parsed, action, phone, randomToken(), outcome.value.error === "no_line_available" ? "Air's current iMessage user capacity is full. Please try again later." : "That code did not work. Try again.");
-    const consentLogin = randomToken();
-    await env.OAUTH_KV.put(`muse:login:${consentLogin}`, JSON.stringify({ userId: outcome.value.user_id, expiresAt: Date.now() + 10 * 60 * 1000 } satisfies LoginState), { expirationTtl: 600 });
-    const scopes = fullScopes(parsed.scope);
-    return fullConsentPage(parsed, action, clientName, scopes.includes("profile") ? scopes : ["profile", ...scopes], randomToken(), consentLogin, outcome.value.invite_url ?? undefined);
-  }
-  if (stage === "consent") {
-    if (form.get("approve") !== "yes") return deniedAuthorization(parsed);
-    const state = loginState;
-    if (!login || !state?.userId || state.expiresAt < Date.now()) return fullPhonePage(parsed, action, clientName, randomToken(), "Your verification expired. Request another code.");
     const requested = fullScopes(parsed.scope);
-    const selected = fullScopes(form.getAll("scope").filter((scope): scope is string => typeof scope === "string"));
-    const scopes = selected.filter((scope) => requested.includes(scope));
+    const scopes = [...requested];
     if (!scopes.includes("profile")) scopes.unshift("profile");
-    const grant = await controlPlane<{ grant_id?: string }>(env, "/api/muse/grants", { user_id: state.userId, client_id: parsed.clientId, client_name: client.clientName ?? null, scopes });
+    const grant = await controlPlane<{ grant_id?: string }>(env, "/api/muse/grants", { user_id: outcome.value.user_id, client_id: parsed.clientId, client_name: client.clientName ?? null, scopes });
     if (grant.status !== 200 || !grant.value.grant_id) return document("<h1>Air is unavailable</h1><p>Your connection was not completed. Please return to Muse and try again.</p>", 503);
     await env.OAUTH_KV.delete(`muse:login:${login}`);
     const { redirectTo } = await env.OAUTH_PROVIDER.completeAuthorization({
       request: parsed,
-      userId: state.userId,
+      userId: outcome.value.user_id,
       metadata: { grant_ref: grant.value.grant_id },
       scope: scopes,
-      props: { userId: state.userId, grantId: grant.value.grant_id, scopes } satisfies FullProps
+      props: { userId: outcome.value.user_id, grantId: grant.value.grant_id, scopes } satisfies FullProps
     });
     return Response.redirect(redirectTo, 302);
   }
@@ -480,7 +445,7 @@ class McpApiHandler extends WorkerEntrypoint<MuseEnv, AuthProps> {
 
 function fullBrief(env: MuseEnv): string {
   const docs = env.DOCS_URL ?? "https://air.wzrd.tech/docs/muse";
-  return `# Air × Muse\n\nConnect one owner’s Air account to Muse. OAuth 2.1 authorization-code flow with PKCE is required. Air updates and /muse commands use the owner’s project-provisioned iMessage line. Every send, payment, booking, calendar change, and schedule remains behind Air’s Needs you decisions.\n\n## Access requirements\n\n- Sign in through WZRDMail’s existing Thirdweb authentication (email, Google, or Apple).\n- A US mobile number that can receive the Thirdweb verification code and will own the Air relay.\n- An available user seat in Air's current Photon Spectrum Pro project (up to 100 users).\n- Every verified user receives their own distinct Air “Texts on” iMessage number from that project; no dedicated-line or Business plan is required.\n- WZRDMail passes Air only a five-minute, single-use opaque subject. Thirdweb tokens and email addresses never cross the service boundary. New owners receive an Air account, line, Box, and WZRDMail during setup.\n\n## Capabilities\n\n- Connection: \`air.whoami\`, \`air.decisions.status\`\n- Relay: \`air.notify\`, \`air.commands.pull\`, \`air.commands.reply\`, \`air.commands.ack\`, \`air.agents.register\`\n- Air work: \`air.run\`, \`air.run.status\`\n- Mail and files: \`air.mail.list\`, \`air.mail.draft\`, \`air.files.put\`, \`air.files.list\`\n- Approval-gated changes: \`air.calendar.add\`, \`air.schedule.create\`, \`air.wallet.request\`\n- Wallet read: \`air.wallet.balance\`\n\n- MCP: \`https://muse.wzrd.tech/mcp\`\n- REST OpenAPI: \`https://muse.wzrd.tech/openapi.json\`\n- Documentation: ${docs}\n`;
+  return `# Air × Muse\n\nConnect one owner’s Air account to Muse. OAuth 2.1 authorization-code flow with PKCE is required. Air updates and /muse commands use the owner’s project-provisioned iMessage line. After WZRDMail sign-in and phone verification, calls made through the connected Muse account execute immediately under the owner’s Air plan and policy; Air does not show an additional consent screen or Needs you card for these connector actions.\n\n## Access requirements\n\n- Sign in through WZRDMail’s existing Thirdweb authentication (email, Google, or Apple).\n- A US mobile number that can receive the Thirdweb verification code and will own the Air relay.\n- An available user seat in Air's current Photon Spectrum Pro project (up to 100 users).\n- Every verified user receives their own distinct Air “Texts on” iMessage number from that project; no dedicated-line or Business plan is required.\n- WZRDMail passes Air only a five-minute, single-use opaque subject. Thirdweb tokens and email addresses never cross the service boundary. New owners receive an Air account, line, Box, and WZRDMail during setup.\n\n## Capabilities\n\n- Connection: \`air.whoami\`\n- Relay: \`air.notify\`, \`air.commands.pull\`, \`air.commands.reply\`, \`air.commands.ack\`, \`air.agents.register\`\n- Air work: \`air.run\`, \`air.run.status\`\n- Mail and files: \`air.mail.list\`, \`air.mail.draft\`, \`air.files.put\`, \`air.files.list\`\n- Direct changes: \`air.calendar.add\`, \`air.schedule.create\`, \`air.wallet.request\`\n- Wallet read: \`air.wallet.balance\`\n\n- MCP: \`https://mcp.mail.wzrd.tech/mcp\`\n- REST OpenAPI: \`https://muse.wzrd.tech/openapi.json\`\n- Documentation: ${docs}\n`;
 }
 
 /**

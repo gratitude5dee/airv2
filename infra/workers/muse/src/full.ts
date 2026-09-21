@@ -134,7 +134,7 @@ export async function fullMcpHandler(request: Request, env: FullEnv, ctx: Execut
 
 function createFullServer(env: FullEnv): McpServer {
   const server = new McpServer({ name: "air-muse", version: "1.0.0" }, {
-    instructions: "Air is the connected user's personal agent. Never ask for an Air password or a second MCP URL. Sending, paying, booking, and scheduling stay behind the owner's Air approval."
+    instructions: "Air is the connected user's personal agent. Never ask for an Air password or a second MCP URL. Calls made through this connected Muse account execute under the owner's Air plan and policy."
   });
   const context = props();
 
@@ -151,16 +151,6 @@ function createFullServer(env: FullEnv): McpServer {
       } catch (error) {
         return toolError(error instanceof ControlPlaneError ? error.message : "Air is unavailable");
       }
-    });
-    server.registerTool("air.decisions.status", {
-      title: "Check an Air approval",
-      description: "Check whether one Air Needs-you approval is pending, approved, denied, or expired. A decision id is not the result of the requested action.",
-      inputSchema: z.object({ decision_id: commandIdSchema }),
-      outputSchema: z.object({ status: z.enum(["pending", "approved", "denied", "expired"]), resolved_at: z.string().nullable() }),
-      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    }, async ({ decision_id }) => {
-      try { return result(await capability(env, context.userId, "decisions-status", { decision_id })); }
-      catch (error) { return toolError(error instanceof ControlPlaneError ? error.message : "Air is unavailable"); }
     });
   }
 
@@ -246,7 +236,7 @@ function createFullServer(env: FullEnv): McpServer {
   if (hasScope(context, "agent:run")) {
     server.registerTool("air.run", {
       title: "Hand work to Air",
-      description: "Start a task on the owner's personal Air computer. Air applies the owner's plan and approval gates to every side effect.",
+      description: "Start a task on the owner's personal Air computer. Air applies the owner's plan and policy to the task.",
       inputSchema: z.object({ prompt: z.string().min(1).max(4000), agent: agentSchema, wait_seconds: z.number().int().min(0).max(8).default(0) }),
       outputSchema: z.object({ run_id: z.string(), status: z.enum(["running", "done", "error", "budget_exhausted"]), result: z.string().optional(), decision_ids: z.array(z.string().uuid()) }),
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
@@ -282,9 +272,9 @@ function createFullServer(env: FullEnv): McpServer {
   if (hasScope(context, "mail:draft")) {
     server.registerTool("air.mail.draft", {
       title: "Draft an Air email",
-      description: "Create a draft in the owner's Air inbox. It cannot send until the owner approves the resulting Needs-you decision.",
+      description: "Create a draft in the owner's Air inbox. This creates a draft and does not send email.",
       inputSchema: z.object({ to: z.array(z.string().email()).min(1).max(20), subject: z.string().min(1).max(240), body: z.string().min(1).max(20_000) }),
-      outputSchema: z.object({ draft_id: z.string(), decision_id: z.string().uuid() }),
+      outputSchema: z.object({ draft_id: z.string() }),
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     }, async (input) => {
       try { return result(await capability(env, context.userId, "mail-draft", input)); }
@@ -320,27 +310,27 @@ function createFullServer(env: FullEnv): McpServer {
 
   if (hasScope(context, "calendar:write")) {
     server.registerTool("air.calendar.add", {
-      title: "Propose an Air calendar event",
-      description: "Create a calendar proposal. Nothing is added until the owner approves it in Air's Needs-you queue.",
+      title: "Create an Air calendar event",
+      description: "Create a calendar event in the owner's Air account.",
       inputSchema: z.object({ title: z.string().min(1).max(160), starts_at: z.string().datetime({ offset: true }), ends_at: z.string().datetime({ offset: true }).optional(), location: z.string().max(240).optional(), notes: z.string().max(2000).optional() }),
-      outputSchema: z.object({ decision_id: z.string().uuid() }),
+      outputSchema: z.object({ event_id: z.string().nullable() }),
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     }, async (input) => {
       try { return result(await capability(env, context.userId, "calendar-add", input)); }
-      catch (error) { return toolError(error instanceof ControlPlaneError ? error.message : "Air could not create the proposal"); }
+      catch (error) { return toolError(error instanceof ControlPlaneError ? error.message : "Air could not create the calendar event"); }
     });
   }
 
   if (hasScope(context, "schedule:write")) {
     server.registerTool("air.schedule.create", {
-      title: "Propose a recurring Air task",
-      description: "Propose a recurring task for the owner's Air computer. It remains inactive until the owner approves it.",
+      title: "Create a recurring Air task",
+      description: "Create and activate a recurring task for the owner's Air computer.",
       inputSchema: z.object({ cron: z.string().min(1).max(120), prompt: z.string().min(1).max(2000), agent: agentSchema, timezone: z.string().min(1).max(80).default("UTC") }),
-      outputSchema: z.object({ decision_id: z.string().uuid() }),
+      outputSchema: z.object({ schedule_id: z.string().uuid(), status: z.literal("active") }),
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     }, async (input) => {
       try { return result(await capability(env, context.userId, "schedule-create", input)); }
-      catch (error) { return toolError(error instanceof ControlPlaneError ? error.message : "Air could not create the proposal"); }
+      catch (error) { return toolError(error instanceof ControlPlaneError ? error.message : "Air could not create the recurring task"); }
     });
   }
 
@@ -359,14 +349,14 @@ function createFullServer(env: FullEnv): McpServer {
 
   if (hasScope(context, "wallet:request")) {
     server.registerTool("air.wallet.request", {
-      title: "Request an Air wallet send",
-      description: "Create a wallet-send approval request. This tool never sends funds; only the owner can approve the request in Air.",
+      title: "Send from an Air wallet",
+      description: "Submit a wallet transfer from the owner's Air wallet.",
       inputSchema: z.object({ to: z.string().min(1).max(128), amount_display: z.string().min(1).max(32), token_address: z.string().nullable().optional(), memo: z.string().max(140).optional() }),
-      outputSchema: z.object({ decision_id: z.string().uuid() }),
+      outputSchema: z.object({ transfer_id: z.string(), transaction_id: z.string() }),
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
     }, async (input) => {
       try { return result(await capability(env, context.userId, "wallet-request", input)); }
-      catch (error) { return toolError(error instanceof ControlPlaneError ? error.message : "Air could not create the approval"); }
+      catch (error) { return toolError(error instanceof ControlPlaneError ? error.message : "Air could not submit the transfer"); }
     });
   }
 
@@ -495,7 +485,6 @@ export async function fullRestHandler(request: Request, env: FullEnv, authentica
     "/v1/schedule/create": { scope: "schedule:write", capability: "schedule-create" },
     "/v1/wallet/balance": { scope: "wallet:read", capability: "wallet-balance" },
     "/v1/wallet/request": { scope: "wallet:request", capability: "wallet-request" },
-    "/v1/decisions/status": { scope: "profile", capability: "decisions-status" },
   };
   const mapped = capabilityRoute[path];
   if (!mapped) return restJson({ error: "not_found" }, 404);
@@ -698,14 +687,13 @@ export function openApi(): Record<string, unknown> {
     ["run", "agent:run", "Delegate a task to the owner's Air computer."],
     ["run/status", "agent:run", "Read the status of an Air task."],
     ["mail/list", "mail:read", "List recent Air inbox threads."],
-    ["mail/draft", "mail:draft", "Create an owner-approved Air email draft."],
+    ["mail/draft", "mail:draft", "Create an Air email draft without sending it."],
     ["files/put", "files:write", "Drop a file into the owner's Air inbox folder."],
     ["files/list", "files:read", "List files in the owner's Air inbox folder."],
-    ["calendar/add", "calendar:write", "Propose an Air calendar event for approval."],
-    ["schedule/create", "schedule:write", "Propose a recurring Air task for approval."],
+    ["calendar/add", "calendar:write", "Create an Air calendar event."],
+    ["schedule/create", "schedule:write", "Create and activate a recurring Air task."],
     ["wallet/balance", "wallet:read", "Read display wallet balances."],
-    ["wallet/request", "wallet:request", "Request, but never execute, a wallet send."],
-    ["decisions/status", "profile", "Read the status of an Air Needs-you decision."],
+    ["wallet/request", "wallet:request", "Submit a wallet transfer from Air."],
   ];
   for (const [path, scope, summary] of toolMap) {
     paths[`/v1/${path}`] = { post: { summary, security: [{ museApiKey: [] }], responses: { "200": { description: "Air response" } } } };

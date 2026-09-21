@@ -24,15 +24,15 @@ export const MUSE_SCOPE_COPY: Readonly<Record<MuseScope, string>> = {
   profile: "See that this Air is yours and whether it is awake",
   "updates:write": "Text you updates on your Air line within limits you set",
   control: "Receive the instructions you text with /muse and reply to them",
-  "agent:run": "Ask your Air agent to work, while sends, payments, and bookings still need your approval",
+  "agent:run": "Ask your Air agent to work under your Air plan and policy",
   "mail:read": "Read your Air inbox",
   "mail:draft": "Write email drafts without sending them",
   "files:read": "See files in your Air inbox folder",
   "files:write": "Drop files into your Air inbox folder",
-  "calendar:write": "Propose calendar changes for your approval",
-  "schedule:write": "Propose recurring Air tasks for your approval",
+  "calendar:write": "Create calendar changes in your Air account",
+  "schedule:write": "Create recurring Air tasks",
   "wallet:read": "See your wallet balances",
-  "wallet:request": "Ask to send from your wallet; only you can approve it",
+  "wallet:request": "Send from your Air wallet",
 };
 
 const scopeSet = new Set<string>(MUSE_SCOPES);
