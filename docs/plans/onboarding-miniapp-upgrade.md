@@ -1,6 +1,8 @@
 # Onboarding mini-app: crash, latency and design upgrade
 
-Status: **stage 1 shipped**, stages 2–4 proposed.
+Status: **stages 1, 3 and 4 shipped; stage 2 part-shipped** — the UA logging
+that answers it is live, the two decisions that depend on its results are
+deliberately still open. See "What is still open" at the end.
 Surface: `apps/web/lib/miniapps/apps/onboarding.tsx` (+ `lib/miniapps/onboarding.ts`,
 `lib/miniapps/shell.ts`, `lib/miniapps/surface.ts`, `lib/miniapps/client/`).
 
@@ -139,71 +141,126 @@ on a stage with no camera mount.
 
 ---
 
-## Stage 2 — proposed: settle the lite/full question properly
+## Stage 2 — the lite/full question: instrumented, not yet answered
 
-`resolveVia` drops the `card` marker whenever the UA carries a `Safari/` token,
-on the documented assumption that the Messages extension's WKWebView does not.
-The screenshots show a **full** render (glass panels, slide animation, the
-client stepper) inside what is plainly a Messages sheet — so either that
-assumption does not hold on current iOS, or the open did not come through a
-card link at all. Stage 1 makes the full render affordable enough that it no
-longer matters for stability, but it is worth knowing.
+`resolveVia` drops the `card` marker whenever the UA carries a `Safari/`
+token, on the documented assumption that the Messages extension's WKWebView
+does not. The screenshots show a **full** render (glass panels, slide
+animation, the client stepper) inside what is plainly a Messages sheet — so
+either that assumption does not hold on current iOS, or the open did not come
+through a card link at all.
 
-1. Log the raw UA alongside the existing `miniapp load` line, keyed by lane, for
-   a week. That answers it directly.
-2. If the extension does send `Safari/`, stop inferring the surface from the UA:
-   have the extension append a query marker the loader trusts, and keep
-   `isFullBrowser` for the Mac-hands-links-to-Safari case only.
-3. Either way, move `lite` from a binary to a budget — `{ fx, camera, film,
-   motion }` — so a surface turns off what it cannot afford instead of
-   everything at once. Mobile Safari should keep the film; the extension should
-   not.
+**Shipped:** the loader's `miniapp load` line now carries the request's raw
+user-agent (truncated to 180 chars) and the session's resolved `via` marker,
+on every lane and both methods (`app/mini/[app]/route.ts`). A card-opened
+render that logs `via: "card"` next to a UA containing `Safari/` settles the
+question in one direction; one that logs `via: null` for an obviously
+embedded UA settles it in the other.
 
-## Stage 3 — proposed: a real performance budget
+**Deliberately not shipped**, because both depend on what that data says:
 
-- **Serve thumbnails.** `signedIdentityUrl` hands out the full-resolution
-  original for a 64 px row and a 180 px grid cell. Supabase Storage image
-  transforms (or a small same-origin resize route) would cut the largest
-  remaining variable cost. Needs verification that transforms are enabled on the
-  project before it can be relied on — a transform URL on a plan without them
-  returns an error, not the original.
-- **Split `SLIDE_CSS`.** ~30 KB of inline CSS ships on every render, most of it
-  for components the open panel does not use. Split per slide, or move the
-  stable part to a cached same-origin stylesheet (it is `no-store` on the
-  document, but a stylesheet under `/creator-os/` is already cached hard).
-- **Instrument the client.** The `miniapp load` line measures the server. Add
-  first-paint and decode timing from the page itself, so "slow" has a number.
-- **Budget test.** A unit test asserting the rendered twin slide stays under a
-  byte ceiling and mounts at most one panel — the regression that caused this
-  is easy to reintroduce.
+- Flipping the surface detection. If the extension does send `Safari/`, the
+  fix is to stop inferring the surface from the UA — have the extension
+  append a query marker the loader trusts, keeping `isFullBrowser` for the
+  Mac-hands-links-to-Safari case only. Guessing the direction now would mean
+  changing how every card session renders on a hunch.
+- Moving `lite` from a binary to a budget (`{ fx, camera, film, motion }`).
+  The point of the budget is that each surface turns off only what it cannot
+  afford — mobile Safari keeps the film, the extension does not — and which
+  surface needs which is exactly what Stage 2's data establishes. Stage 1
+  already split the largest axis out of the binary (`fx` is gated by
+  `isHandheld`, not by `lite`), so the remaining pressure is low.
 
-## Stage 4 — proposed: the iMessage surface itself
+Stage 1 and 3 together make the full render affordable enough that this is
+now a correctness-and-polish question rather than a stability one.
 
-Worth taking from the photon-hq references the user pointed at
-(`advanced-imessage-ts`, `create-spectrum-project`,
-`vercel-chat-adapter-imessage`):
+## Stage 3 — the performance budget — shipped
 
-- **Richer card bubbles.** `buildAppCard` deliberately omits `live` so a tap
-  opens the full-screen sheet. A `live` card renders inline in the transcript —
-  worth a look for short, glanceable steps ("3 of 6 done, next: your voice"),
-  keeping the sheet for anything that needs room. The trade-off is that a live
-  card runs the extension UI in the transcript, which is the same budget
-  problem in a smaller box: it only works for something genuinely small.
-- **Card edit-in-place on progress.** `editApp` already exists and
-  `cardSessions` tracks the sent card. Refreshing the Onboarding bubble as steps
-  complete turns the thread itself into the progress indicator.
-- **Finish a step from the thread.** The consent and skip actions are one-bit
-  decisions; a tapback or a quick reply could settle them without opening the
-  sheet at all. `lib/spectrum/tapbacks.ts` already has the plumbing.
+- **Thumbnails, same-origin.** `signedIdentityUrl` handed every preview the
+  same full-resolution signed URL — a 64px row, a 96px avatar pick, a 240px
+  grid cell. `lib/miniapps/identityThumb.ts` serves a resized JPEG from
+  `?thumb=<assetId>&w=<width>` instead, resolved inside the module's own
+  `render()` against `listIdentityAssets(supabase, userId)` — already scoped
+  to the authenticated owner. No new signing subsystem and no new
+  authorization surface: an asset id that is not this session's, or names a
+  non-image role, 404s like an unknown one. Widths come from a small
+  allowlist; the character-sheet review preview stays full-resolution, since
+  that one is meant to be inspected.
+  - Chosen over Supabase Storage image transforms, which this plan flagged
+    as needing verification first — a transform URL on a project without
+    them returns an error rather than the original, and that could not be
+    checked from here.
+- **The stylesheet is cached, not inlined.** ~40 KB of CSS shipped inline on
+  every `no-store` render; it is now `public/creator-os/onboarding.css`,
+  served under the `/creator-os/` rule that already caches hard
+  (`max-age=86400, stale-while-revalidate=604800`). Per-theme tokens stay
+  inline — they are the only part that varies. `style-src` widens to `'self'`
+  for the `<link>`; `'unsafe-inline'` alone does not cover one.
+- **The client half of the load picture.** `deck-timing.js` (1.3 KB) reports
+  TTFB, transfer, DOM, load, first paint, first contentful paint, document
+  bytes, and the image bytes and count the page went on to pull, plus
+  `deviceMemory` — the coarse bucket the extension-kill hypothesis is about.
+  It beacons to the page's own gated POST path (no new endpoint), and the
+  server clamps every field to an allowlist with a ceiling before logging
+  `miniapp client timing`; nothing a client sends reaches the log as a
+  string.
+- **A budget test that bites.** `page-weight budget` in
+  `onboarding-identity.test.ts` holds one panel per render, a 40 KB ceiling
+  on a fully-loaded twin slide (worst case today: ~28 KB), thumbnails on
+  every gallery `<img>`, no 1600px wordmark, no WebGL on a handheld, and the
+  200 KB camera bundle only on the three stages that mount a booth. Verified
+  by simulating the regression: re-inlining the stylesheet takes the slide to
+  67 KB and the test fails.
+
+Document bytes, twin slide, heaviest panel: **58 KB → 16 KB**.
+
+## Stage 4 — the iMessage surface
+
+**Shipped — the card as the progress indicator.** The Onboarding bubble
+already in the owner's transcript is edited in place as steps settle, so the
+thread reads as where setup stands rather than a static "Set up your agent"
+from whenever it was sent. It reuses `updateMiniAppCard`/`editApp` and the
+existing `cardSessions` row, runs after the response (a Spectrum round trip
+is exactly the latency Stage 1 spent a release removing), and coalesces to
+one edit per request carrying the final line — the Computer slide settles
+username and email together. An owner with no bubble comes back `stale` and
+is left alone; a failure never touches the request that triggered it.
+
+**Not shipped — the two that are product calls, not plumbing:**
+
+- **Live card bubbles.** `buildAppCard` deliberately omits `live` so a tap
+  opens the full-screen sheet. A `live` card renders the extension UI inline
+  in the transcript — which is the same resource budget that caused this
+  whole task, in a smaller box. It could work for something genuinely small
+  ("3 of 6 done, next: your voice"), but deciding what belongs inline and
+  what still needs the sheet is a design call, and getting it wrong
+  reintroduces the original failure in a place that is harder to see.
+- **Finishing a step from the thread** (a tapback settling consent or a
+  skip). `lib/spectrum/tapbacks.ts` has the plumbing, but a tapback is a
+  low-confidence signal to hang a consent grant on, and consent in
+  particular is the one thing in this flow that should stay explicit and
+  legible. Worth designing deliberately rather than shipping alongside a
+  performance pass.
 
 ---
 
+## What is still open
+
+| Item | Why it is open |
+|---|---|
+| Flip the lite/full surface detection (Stage 2) | Needs a week of the UA logging that just shipped |
+| `lite` as a budget, not a binary (Stage 2) | Depends on the above; the largest axis (`fx`) is already split out |
+| Live card bubbles (Stage 4) | Design call with a real regression risk |
+| Step completion from a tapback (Stage 4) | Consent should stay explicit; deserves its own design |
+| Behaviour in a real Messages extension | Only a device confirms the label is gone |
+
 ## Verification
 
-`npm run typecheck`, `npx eslint .` (0 errors), and the full suite —
-**3689 passed, 3 skipped** — plus `scripts/preview-onboarding.ts` rendered to
-static HTML and screenshot at 393×852 for each slide.
+`npm run typecheck`, `npx eslint .` (0 errors, 789 pre-existing warnings in
+vendored bundles), and the full suite — **3713 passed, 3 skipped**. Deck
+slides rendered with `scripts/preview-onboarding.ts` and screenshot at
+393×852, served over HTTP so the extracted stylesheet resolves.
 
-Not verified here: behaviour inside a real Messages extension on a real device.
-Stage 1 removes the specific pressures that make iOS terminate it, but only a
-device confirms the label is gone.
+Not verified here: behaviour inside a real Messages extension on a real
+device. Stages 1 and 3 remove the specific pressures that make iOS terminate
+it, but only a device confirms the label is gone.

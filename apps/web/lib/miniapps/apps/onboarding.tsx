@@ -71,7 +71,7 @@ import {
   type BrowserProfileStatus,
 } from "@/lib/context/browser-profile";
 import { env } from "@/lib/env";
-import { sendMiniAppCard } from "@/lib/miniapps/cards";
+import { sendMiniAppCard, updateMiniAppCard } from "@/lib/miniapps/cards";
 import { claimCardSend, type CardClaim } from "@/lib/miniapps/cardSends";
 import { ComposioApiError } from "@/lib/composio/client";
 import {
@@ -197,6 +197,7 @@ import { mintToken } from "../tokens";
 import { baseHeaders, esc, forbidden, withBaseHeaders } from "../html";
 import { WORDMARK_IMG } from "../shell";
 import { isHandheld } from "../surface";
+import { serveIdentityThumb, thumbHref } from "../identityThumb";
 import {
   DEFAULT_THEME,
   isThemeId,
@@ -1140,7 +1141,7 @@ function mediaRow(m: IdentityMediaView, siblings: number, index: number): string
   const label = ROLE_LABELS[m.role];
   const preview =
     m.kind === "image"
-      ? `<img class="media-thumb" src="${esc(m.url ?? "")}" width="64" height="64" loading="lazy" decoding="async" alt="${esc(label)} ${index + 1}">`
+      ? `<img class="media-thumb" src="${esc(thumbHref(m.assetId, 64))}" width="64" height="64" loading="lazy" decoding="async" alt="${esc(label)} ${index + 1}">`
       : m.kind === "video"
         ? `<video class="media-thumb" src="${esc(m.url ?? "")}" muted playsinline preload="metadata" aria-label="${esc(label)} ${index + 1}"></video>`
         : `<audio class="media-audio" src="${esc(m.url ?? "")}" controls preload="none" aria-label="${esc(label)} ${index + 1}"></audio>`;
@@ -1441,7 +1442,7 @@ function stepBody(
       .filter((m) => isVaultMedia(m) && m.url)
       .map(
         (m) =>
-          `<form method="post" class="idpick"><input type="hidden" name="action" value="set_avatar"><input type="hidden" name="asset_id" value="${esc(m.assetId)}"><img class="idthumb" src="${esc(m.url ?? "")}" width="96" height="96" loading="lazy" decoding="async" alt="${esc(ROLE_LABELS[m.role])}"><span class="chip">${esc(ROLE_LABELS[m.role])}</span><button${m.assetId === snapshot.avatarAssetId ? "" : ' class="ghost"'}>${m.assetId === snapshot.avatarAssetId ? "Current avatar" : "Use as avatar"}</button></form>`
+          `<form method="post" class="idpick"><input type="hidden" name="action" value="set_avatar"><input type="hidden" name="asset_id" value="${esc(m.assetId)}"><img class="idthumb" src="${esc(thumbHref(m.assetId, 96))}" width="96" height="96" loading="lazy" decoding="async" alt="${esc(ROLE_LABELS[m.role])}"><span class="chip">${esc(ROLE_LABELS[m.role])}</span><button${m.assetId === snapshot.avatarAssetId ? "" : ' class="ghost"'}>${m.assetId === snapshot.avatarAssetId ? "Current avatar" : "Use as avatar"}</button></form>`
       )
       .join("");
     const gallery = choices
@@ -1683,7 +1684,7 @@ function mediaBody(snapshot: OnboardingSnapshot, lite: boolean): string {
       })}<p class="muted small">PNG, JPEG, WebP or HEIC, 8 MB max. iPhone HEIC photos convert automatically.</p></div>`;
   const referenceGallery = photos.length === 0
     ? `<p class="muted">Recent photos appear here after you take or upload them.</p>`
-    : `<form method="post" class="reference-gallery"><input type="hidden" name="action" value="set_identity_references"><fieldset><legend class="subhead">Choose ${MIN_IDENTITY_REFERENCES}–${MAX_IDENTITY_REFERENCES} photos for @${esc(name)}</legend><p class="muted">This private set creates your character sheet and anchors your own @${esc(name)} image requests. Other people only receive approved generated assets.</p><div class="reference-grid">${photos.map((photo, index) => `<label class="reference-card${selected.has(photo.assetId) ? " selected" : ""}"><input type="checkbox" name="asset_id" value="${esc(photo.assetId)}"${selected.has(photo.assetId) ? " checked" : ""}><img src="${esc(photo.url ?? "")}" loading="lazy" decoding="async" alt="Recent photo ${index + 1}"><span class="reference-check" aria-hidden="true">✓</span><span class="reference-label">${esc(photo.source === "booth" ? "Booth photo" : "Uploaded photo")}</span></label>`).join("")}</div></fieldset><div class="row"><button>Use selected photos${selectedCount > 0 ? ` (${selectedCount})` : ""}</button></div></form>`;
+    : `<form method="post" class="reference-gallery"><input type="hidden" name="action" value="set_identity_references"><fieldset><legend class="subhead">Choose ${MIN_IDENTITY_REFERENCES}–${MAX_IDENTITY_REFERENCES} photos for @${esc(name)}</legend><p class="muted">This private set creates your character sheet and anchors your own @${esc(name)} image requests. Other people only receive approved generated assets.</p><div class="reference-grid">${photos.map((photo, index) => `<label class="reference-card${selected.has(photo.assetId) ? " selected" : ""}"><input type="checkbox" name="asset_id" value="${esc(photo.assetId)}"${selected.has(photo.assetId) ? " checked" : ""}><img src="${esc(thumbHref(photo.assetId, 240))}" loading="lazy" decoding="async" alt="Recent photo ${index + 1}"><span class="reference-check" aria-hidden="true">✓</span><span class="reference-label">${esc(photo.source === "booth" ? "Booth photo" : "Uploaded photo")}</span></label>`).join("")}</div></fieldset><div class="row"><button>Use selected photos${selectedCount > 0 ? ` (${selectedCount})` : ""}</button></div></form>`;
   const videoUpload = gate
     ? ""
     : `<details><summary>Add a reference video (optional)</summary>${uploadTile(
@@ -1855,7 +1856,7 @@ function twinSummaryBody(snapshot: OnboardingSnapshot): string {
   const samples = snapshot.identityMedia.filter((m) => m.role === "voice_sample").length;
   const alternates = snapshot.identityMedia.filter((m) => m.role === "alt_image").length;
   const hero = profile?.url
-    ? `<img class="twin-hero-img" src="${esc(profile.url)}" width="88" height="88" loading="lazy" decoding="async" alt="@${esc(name)} profile image">`
+    ? `<img class="twin-hero-img" src="${esc(thumbHref(profile.assetId, 96))}" width="88" height="88" loading="lazy" decoding="async" alt="@${esc(name)} profile image">`
     : `<span class="twin-hero-img placeholder" aria-hidden="true">@</span>`;
   const counts = [
     `${photos} photo${photos === 1 ? "" : "s"}`,
@@ -1978,6 +1979,11 @@ function slides(
   // script-src is part of the baseline rather than something each widening
   // below has to remember to add.
   if (!csp.includes("script-src")) csp += "; script-src 'self'";
+  // The deck's own rules (buttons, panels, the stepper, uploaders — Stage 3)
+  // load from /creator-os/onboarding.css, a cached same-origin stylesheet,
+  // rather than shipping inline on every no-store render. 'unsafe-inline'
+  // alone does not cover a <link rel="stylesheet">.
+  csp = csp.replace("style-src 'unsafe-inline'", "style-src 'unsafe-inline' 'self'");
   if (nativeOnairos) {
     if (!csp.includes("script-src")) csp += "; script-src 'self'";
     // The SDK loads Google Identity Services for its Google sign-in path
@@ -1987,8 +1993,8 @@ function slides(
       "script-src 'self' https://accounts.google.com/gsi/client"
     );
     csp = csp.replace(
-      "style-src 'unsafe-inline'",
-      "style-src 'unsafe-inline' https://accounts.google.com/gsi/style"
+      "style-src 'unsafe-inline' 'self'",
+      "style-src 'unsafe-inline' 'self' https://accounts.google.com/gsi/style"
     );
     if (!csp.includes("img-src 'self' data:")) {
       csp = csp.replace("img-src 'self'", "img-src 'self' data:");
@@ -2045,357 +2051,6 @@ function slides(
   });
 }
 
-const GRAIN_SVG =
-  "data:image/svg+xml,%3Csvg viewBox='0 0 160 160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.93' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E";
-
-const SLIDE_CSS = `
-*{box-sizing:border-box}
-html,body{margin:0;min-height:100%}
-html{background:var(--canvas);background-attachment:fixed}
-body{min-height:100svh;background:transparent;color:var(--ink);font-family:var(--font-body);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
-.backdrop{position:fixed;inset:0;z-index:0;pointer-events:none;display:block}
-.scrim{position:fixed;inset:0;z-index:1;pointer-events:none;background:var(--scrim)}
-.grain{position:fixed;inset:0;z-index:1;pointer-events:none;mix-blend-mode:soft-light;opacity:0.15;background-image:url("${GRAIN_SVG}")}
-.frame{position:relative;z-index:2;min-height:100svh;display:flex;flex-direction:column;padding:clamp(0.9rem,3.2vw,1.35rem) clamp(1rem,4.5vw,1.7rem)}
-header.bar{display:flex;align-items:center;justify-content:space-between;gap:0.75rem;font-family:var(--font-ui)}
-.logo-pill{display:inline-flex;align-items:center;height:clamp(2.7rem,9vw,3.4rem);padding:0 clamp(1rem,3.2vw,1.4rem);border-radius:var(--radius-pill);border:1px solid var(--ring);background:var(--logo-plate);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);box-shadow:var(--shadow)}
-.logo-pill img{display:block;height:clamp(1.35rem,4.6vw,1.55rem);width:auto;filter:brightness(0) invert(1);opacity:0.95}
-.counter{display:inline-flex;align-items:center;height:2rem;padding:0 0.75rem;border-radius:var(--radius-pill);border:1px solid var(--ring);background:var(--panel-bg);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);font-size:0.68rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--ink)}
-main.slide{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:clamp(1.2rem,4vw,2.5rem) 0;animation:slideIn var(--slide-in) cubic-bezier(0.22,1,0.36,1)}
-@keyframes slideIn{from{opacity:0;transform:translateY(26px) scale(0.985)}60%{opacity:1}to{opacity:1;transform:translateY(0) scale(1)}}
-@keyframes riseIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
-main.slide .kicker{animation:riseIn var(--slide-in) cubic-bezier(0.22,1,0.36,1) backwards;animation-delay:60ms}
-main.slide h1{animation:riseIn var(--slide-in) cubic-bezier(0.22,1,0.36,1) backwards;animation-delay:130ms}
-main.slide .panel{animation:riseIn var(--slide-in) cubic-bezier(0.22,1,0.36,1) backwards;animation-delay:200ms}
-@media(prefers-reduced-motion:reduce){main.slide,main.slide .kicker,main.slide h1,main.slide .panel{animation:none}.navlink,button,.btn,.uploader,.dots a::before,.dots .locked::before{transition:none}
-/* The busy spinner stays — it is the only thing saying a tap landed — but
-   it stops spinning and reads as a dot. */
-.is-busy::after{animation:none;border-top-color:currentColor;opacity:0.6}}
-.kicker{font-family:var(--font-ui);font-size:clamp(0.74rem,0.9vw,0.85rem);letter-spacing:0.14em;text-transform:uppercase;color:var(--accent);margin:0 0 0.9rem;text-align:center}
-h1{font-weight:400;font-size:clamp(1.9rem,5.4vw,3.6rem);letter-spacing:-0.045em;line-height:0.98;margin:0 0 1.4rem;text-align:center;max-width:26ch;text-shadow:var(--text-shadow)}
-.panel{width:min(100%,34rem);border-radius:var(--radius-panel);border:1px solid var(--ring);background:var(--panel-bg);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);box-shadow:var(--shadow);padding:clamp(1rem,3.4vw,1.5rem)}
-.notice{width:min(100%,34rem);margin:0 0 0.8rem;font-family:var(--font-ui);font-size:0.72rem;line-height:1.45;letter-spacing:0.04em;color:var(--on-accent);background:var(--accent);border-radius:var(--radius-well);padding:0.55rem 0.8rem}
-footer.nav{display:flex;align-items:center;justify-content:space-between;gap:0.75rem;font-family:var(--font-ui)}
-.navlink{display:inline-flex;align-items:center;min-height:2.75rem;padding:0 1.1rem;border-radius:var(--radius-pill);border:1px solid var(--ring);background:var(--panel-bg);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);font-size:0.72rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink);text-decoration:none;white-space:nowrap;transition:box-shadow 200ms ease,transform 200ms ease}
-.navlink.ghosted{opacity:0.35;pointer-events:none}
-.dots{display:flex;gap:0;align-items:center;flex-wrap:nowrap;min-width:0}
-.dots a,.dots .locked{width:1.75rem;height:2.75rem;display:grid;place-items:center;background:none;padding:0;border-radius:0}
-.dots a::before,.dots .locked::before{content:"";width:0.55rem;height:0.55rem;border-radius:50%;background:color-mix(in srgb,var(--ink) 34%,transparent);transition:transform 200ms ease,background 200ms ease}
-.dots .locked{opacity:0.35}
-.dots a.done::before{background:var(--accent)}
-.dots a.skipped::before{background:var(--ink-muted)}
-.dots a.active::before{background:var(--accent);outline:1.5px solid var(--accent);outline-offset:2.5px}
-@media(hover:hover) and (pointer:fine){.navlink:hover{transform:scale(1.04)}button:hover{transform:scale(1.05)}.dots a:hover::before{transform:scale(1.5)}.pickcard:hover{transform:translateY(-4px) rotateX(4deg) rotateY(-4deg);box-shadow:0 14px 34px rgba(0,0,0,0.4)}}
-p{font-size:0.95rem;line-height:1.5;margin:0 0 0.6rem}
-a{color:var(--accent)}
-/* One control, three weights. A slide asks for exactly one thing at a time,
-   so the primary is solid and reads first, the secondary is a tinted plate,
-   and .quiet ("Skip for now") recedes to a link — the old deck shouted every
-   option at the same volume, which is why Skip looked like a commitment.
-   Links carry .btn so navigation and submission feel identical. */
-button,.btn{display:inline-flex;align-items:center;justify-content:center;gap:0.45rem;font-family:var(--font-ui);background:var(--ink);color:var(--on-ink);border:0;border-radius:var(--radius-pill);min-height:3rem;padding:0.6rem 1.35rem;font-size:0.85rem;font-weight:500;line-height:1.1;letter-spacing:0.01em;text-transform:none;text-decoration:none;text-align:center;cursor:pointer;position:relative;transition:transform 180ms ease,background 180ms ease,color 180ms ease,box-shadow 180ms ease}
-button:active,.btn:active{transform:scale(0.97)}
-button.ghost,.btn.ghost{background:transparent;color:var(--ink);border:1px solid color-mix(in srgb,var(--ink) 30%,transparent)}
-button.ghost:hover,.btn.ghost:hover{background:color-mix(in srgb,var(--ink) 10%,transparent)}
-button.quiet,.btn.quiet{background:transparent;color:var(--ink-muted);border:0;padding:0.6rem 0.75rem;text-decoration:underline;text-underline-offset:0.25em;text-decoration-color:var(--ring)}
-button.quiet:hover,.btn.quiet:hover{color:var(--ink)}
-.btn.is-disabled{opacity:0.4;pointer-events:none}
-/* The deck navigates by round trip: a pressed control has to say so, or the
-   wait reads as a dead button and earns a second tap. */
-.is-busy{pointer-events:none;color:transparent !important}
-.is-busy::after{content:"";position:absolute;top:50%;left:50%;width:1.05rem;height:1.05rem;margin:-0.525rem 0 0 -0.525rem;border-radius:50%;border:2px solid currentColor;border-top-color:transparent;color:var(--on-ink);animation:spin 620ms linear infinite}
-button.ghost.is-busy::after,.btn.ghost.is-busy::after,button.quiet.is-busy::after,.btn.quiet.is-busy::after,a.is-busy::after{color:var(--ink)}
-@keyframes spin{to{transform:rotate(360deg)}}
-:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-input[type=text],input[type=password],select{background:var(--well-bg);color:var(--ink);border:1px solid var(--ring);border-radius:var(--radius-well);min-height:2.75rem;padding:0.6rem 0.85rem;flex:1;font-size:1rem;font-family:var(--font-body);outline:none;min-width:0}
-input[type=text]:focus,input[type=password]:focus{border-color:var(--accent)}
-input::placeholder{color:var(--ink-muted)}
-.item{display:flex;align-items:center;min-height:3.4rem;gap:0.7rem;border:1px solid var(--ring);border-radius:var(--radius-well);padding:0.45rem 0.85rem;margin-bottom:0.55rem;font-size:0.95rem;background:var(--well-bg)}
-.item .grow{flex:1;min-width:0}
-.item .chip{margin-left:auto}
-.item button{min-height:2.25rem;padding:0.4rem 0.95rem}
-details{border:1px solid var(--ring);border-radius:var(--radius-well);padding:0.6rem 0.85rem;background:var(--well-bg);margin-bottom:0.6rem}
-summary{font-family:var(--font-ui);font-size:0.74rem;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-muted);cursor:pointer;min-height:2.75rem;display:flex;align-items:center;gap:0.5rem;list-style:none}
-summary::-webkit-details-marker{display:none}
-summary::after{content:"";flex:none;margin-left:auto;width:0.5rem;height:0.5rem;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(45deg) translate(-0.1rem,-0.1rem);transition:transform 200ms ease}
-details[open]>summary::after{transform:rotate(-135deg) translate(-0.1rem,-0.1rem)}
-details[open]>summary{color:var(--ink);margin-bottom:0.4rem}
-pre{background:var(--well-bg);border:1px solid var(--ring);border-radius:var(--radius-well);padding:0.6rem 0.75rem;font-family:var(--font-ui);font-size:0.68rem;line-height:1.45;white-space:pre-wrap;word-break:break-all;max-height:240px;overflow:auto;color:var(--accent)}
-ul{margin:0.2rem 0 0.8rem;padding-left:1.1rem}
-li{font-size:0.92rem;line-height:1.5}
-.muted,li{color:var(--ink-muted);color:color-mix(in srgb,var(--ink) 82%,transparent)}
-li strong{color:var(--ink)}
-form{margin:0}
-form.inline{display:inline-flex}
-form.stack{display:grid;gap:0.5rem;margin-top:0.5rem}
-form.stack select{background:var(--well-bg);color:var(--ink);border:1px solid var(--ring);border-radius:var(--radius-well);padding:0.6rem 0.8rem;font-size:0.9rem;font-family:var(--font-body)}
-.row{display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center}
-.row.actions{margin-top:0.85rem}
-@media(max-width:480px){.row.actions{flex-direction:column;align-items:stretch}.row.actions form.inline{display:flex}.row.actions form.inline button{flex:1;width:100%}}
-.deck{width:min(100%,34rem);display:grid;gap:0.9rem}
-.deck.split{width:min(100%,60rem)}
-@media(min-width:900px){.deck.split{grid-template-columns:1.4fr 1fr;align-items:stretch}.deck.split>.panel{height:100%}}
-.deck,.deck .panel{min-width:0;max-width:100%}
-.deck .panel{width:100%}
-.subhead{font-family:var(--font-ui);font-size:0.72rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--accent);margin:0 0 0.7rem}
-.seg{display:inline-flex;gap:2px;justify-self:center;padding:3px;border-radius:var(--radius-pill);border:1px solid var(--ring);background:var(--panel-bg);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur)}
-.seg a{padding:0.42rem 1.2rem;border-radius:var(--radius-pill);font-family:var(--font-ui);font-size:0.66rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--ink);text-decoration:none}
-.seg a.on{background:var(--accent);color:var(--panel-bg)}
-.pager{display:flex;gap:0.9rem;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scroll-behavior:smooth;overscroll-behavior-x:contain;scrollbar-width:none;margin:0 -0.25rem;padding:0 0.25rem}
-.pager::-webkit-scrollbar{display:none}
-.pane{flex:0 0 100%;scroll-snap-align:center;scroll-snap-stop:always;display:grid;gap:0.9rem;align-content:start;min-width:0}
-.cine{position:fixed;inset:0;z-index:40;background:#000;display:flex;align-items:center;justify-content:center;overflow:hidden}
-html.cine-page,body.cine-page{background:#000}
-.cine-notices{position:fixed;top:0;left:0;right:0;z-index:50;display:flex;flex-direction:column;align-items:center;gap:0.5rem;padding:clamp(0.9rem,3.2vw,1.35rem) clamp(1rem,4.5vw,1.7rem)}
-.cine-stage{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2.4rem;transition:opacity 600ms ease;transform:translateX(calc(var(--cine-intensity,0)*0px))}
-.wzrd-glow{position:absolute;top:50%;left:50%;width:min(80vw,34rem);height:min(80vw,34rem);transform:translate(-50%,-58%);border-radius:50%;pointer-events:none;background:radial-gradient(circle,rgba(255,255,255,0.3) 0%,rgba(255,255,255,0.08) 42%,transparent 70%);opacity:calc(0.55 + var(--cine-intensity,0)*0.45);animation:cineBreathe 5.2s ease-in-out infinite;filter:blur(calc(6px + var(--cine-intensity,0)*10px))}
-@keyframes cineBreathe{0%,100%{transform:translate(-50%,-58%) scale(1)}50%{transform:translate(-50%,-58%) scale(1.08)}}
-.cine-mark{position:relative;width:min(62vw,22rem);height:auto;filter:drop-shadow(0 0 calc(8px + var(--cine-intensity,0)*26px) rgba(255,255,255,calc(0.25 + var(--cine-intensity,0)*0.5)))}
-.cine-cta{position:relative;background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.35);min-width:9rem;transition:transform 120ms linear,background 200ms ease,box-shadow 200ms ease;box-shadow:0 0 calc(var(--cine-intensity,0)*34px) rgba(255,255,255,calc(var(--cine-intensity,0)*0.55))}
-.cine-cta:hover{transform:scale(1.04);background:rgba(255,255,255,0.14)}
-.cine.is-pressed .cine-cta{transform:scale(0.94);transition:transform 90ms linear}
-.cine:not(.is-pressed) .cine-cta{transition:transform 260ms cubic-bezier(0.34,1.56,0.64,1),background 200ms ease,box-shadow 200ms ease}
-.cine.is-charging .cine-stage{animation:cineShake 90ms linear infinite}
-@keyframes cineShake{0%{transform:translate(calc(var(--cine-intensity,0)*-7px),calc(var(--cine-intensity,0)*3px))}25%{transform:translate(calc(var(--cine-intensity,0)*6px),calc(var(--cine-intensity,0)*-5px))}50%{transform:translate(calc(var(--cine-intensity,0)*-4px),calc(var(--cine-intensity,0)*-3px))}75%{transform:translate(calc(var(--cine-intensity,0)*7px),calc(var(--cine-intensity,0)*4px))}100%{transform:translate(calc(var(--cine-intensity,0)*-6px),calc(var(--cine-intensity,0)*5px))}}
-.cine-sound{display:none;position:absolute;left:50%;bottom:clamp(1.4rem,6vw,3rem);z-index:3;min-width:7rem;transform:translateX(-50%);background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.35);font-size:0.68rem;letter-spacing:0.08em;text-transform:uppercase}
-.cine.is-silent.is-film .cine-sound{display:block}
-.cine-blast{position:absolute;inset:0;z-index:1;opacity:0;pointer-events:none;transition:opacity 180ms linear}
-.cine.is-blast .cine-blast{opacity:1}
-.cine.is-blast.is-film .cine-blast{opacity:0;transition:opacity 320ms ease}
-.cine-film{position:absolute;inset:0;z-index:2;width:100%;height:100%;object-fit:contain;opacity:0;transform:scale(1.06);transition:opacity 900ms ease,transform 1400ms cubic-bezier(0.22,1,0.36,1);pointer-events:none}
-.cine.is-blast.is-film .cine-film{transition:opacity 320ms ease,transform 900ms cubic-bezier(0.22,1,0.36,1)}
-@media (orientation:portrait){.cine-film{object-fit:cover;object-position:center}}
-.cine.is-flash .cine-stage{opacity:0}
-.cine.is-film .cine-stage{opacity:0;pointer-events:none}
-.cine.is-film .cine-film{opacity:1;transform:scale(1)}
-.cine-done{position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden}
-.cine:not(.is-ready) .cine-done{position:static;width:auto;height:auto;overflow:visible;margin-top:1.2rem}
-.cine:not(.is-ready) .cine-cta{display:none}
-@media(prefers-reduced-motion:reduce){.wzrd-glow{animation:none}.cine.is-charging .cine-stage{animation:none}.cine-film{transition:opacity 300ms ease;transform:none}.cine.is-reduced .cine-done{position:static;width:auto;height:auto;overflow:visible;margin-top:1.2rem}}
-@view-transition{navigation:auto}
-::view-transition-old(root){animation:220ms ease both cine-view-out}
-::view-transition-new(root){animation:220ms ease both cine-view-in}
-@keyframes cine-view-out{to{opacity:0}}
-@keyframes cine-view-in{from{opacity:0}}
-@media(prefers-reduced-motion:reduce){::view-transition-old(root),::view-transition-new(root){animation:none}}
-.envgrid{display:grid;gap:0.6rem;margin-top:0.6rem;grid-template-columns:repeat(auto-fit,minmax(9.5rem,1fr));align-items:stretch}
-form.envform{display:block;height:100%}
-.envmark{width:1.5rem;height:1.5rem;fill:none;stroke:currentColor;stroke-width:1.4;color:var(--accent)}
-.mailbox{display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;border:1px solid var(--accent);border-radius:var(--radius-well);background:var(--well-bg);padding:0.7rem 0.85rem;margin:0.8rem 0 0.6rem;font-size:0.95rem;word-break:break-all}
-.mailform .suffix{font-family:var(--font-ui);font-size:0.72rem;letter-spacing:0.06em;color:var(--ink-muted)}
-.famgrid{display:grid;gap:0.5rem;grid-template-columns:repeat(auto-fit,minmax(9rem,1fr));margin:0.5rem 0 0.7rem}
-.famform button{width:100%}
-.linkcta{display:flex;align-items:center;justify-content:center;gap:0.5rem;background:var(--ink);color:var(--on-ink);border-radius:var(--radius-pill);min-height:2.75rem;padding:0.5rem 1.15rem;font-family:var(--font-ui);font-size:0.72rem;letter-spacing:0.06em;text-transform:uppercase;text-decoration:none;transition:transform 180ms ease}
-.linkcta:hover{transform:scale(1.03)}
-.linkphrase{display:flex;align-items:center;justify-content:center;border:1px solid var(--accent);border-radius:var(--radius-well);background:var(--well-bg);padding:0.7rem 0.85rem;margin:0.6rem 0;font-size:1.1rem;letter-spacing:0.04em;font-weight:600}
-.prompts{display:grid;gap:0.6rem;margin:0.5rem 0 0.8rem}
-.prompt{display:grid;gap:0.45rem;border:1px solid var(--ring);border-radius:var(--radius-well);background:var(--well-bg);padding:0.75rem 0.85rem}
-.prompt strong{font-family:var(--font-ui);font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase}
-.envcard{display:flex;flex-direction:column;align-items:flex-start;gap:0.35rem;width:100%;height:100%;min-height:4.5rem;padding:0.9rem 1rem;border-radius:var(--radius-well);border:1px solid var(--ring);background:var(--well-bg);text-align:left;text-transform:none;letter-spacing:0;color:var(--ink)}
-button.envcard:hover{transform:none;border-color:var(--accent)}
-button.envcard:active{transform:scale(0.99)}
-.envcard.current{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
-.envcard.off{opacity:0.6}
-.envname{font-family:var(--font-ui);font-size:0.78rem;letter-spacing:0.09em;text-transform:uppercase;display:flex;gap:0.55rem;align-items:center;flex-wrap:wrap}
-.envtag{font-size:0.58rem;letter-spacing:0.1em;color:var(--accent);border:1px solid var(--accent);border-radius:var(--radius-pill);padding:0.15rem 0.5rem}
-.envtag.soon{color:var(--ink-muted);border-color:var(--ring)}
-.envblurb{font-family:var(--font-body);font-size:0.85rem;line-height:1.45;color:var(--ink-muted)}
-.grow{flex:1}
-/* Personality engine: status well (dot + chip + line) over the sign-in well. */
-.oa-status{display:flex;align-items:center;flex-wrap:wrap;gap:0.55rem;border:1px solid var(--ring);border-radius:var(--radius-well);background:var(--well-bg);padding:0.8rem 0.95rem;margin-bottom:0.7rem;font-size:0.95rem}
-.oa-status p{flex-basis:100%;margin:0.2rem 0 0;font-size:0.95rem;line-height:1.5}
-.oa-status .chip{color:var(--ink)}
-.oa-dot{width:0.55rem;height:0.55rem;border-radius:50%;background:var(--ink-muted);box-shadow:0 0 0 3px var(--ring)}
-.oa-status.on{border-color:rgba(48,209,88,0.38)}
-.oa-status.on .oa-dot{background:#30d158;box-shadow:0 0 0 3px rgba(48,209,88,0.22)}
-.oa-status.on .chip{color:#30d158}
-.oa-connect{display:grid;gap:0.5rem;border:1px solid var(--ring);border-radius:var(--radius-well);background:var(--well-bg);padding:0.85rem 0.95rem;margin-bottom:0.6rem;font-size:0.95rem}
-.oa-connect .chip{color:var(--accent)}
-.oa-connect p{margin:0}
-.oa-mount{display:flex;align-items:center;flex-wrap:wrap;gap:0.5rem;min-height:2.75rem;margin-top:0.15rem}
-.oa-mount button.OnairosConnect,.oa-mount [role=button].OnairosConnect{font-family:var(--font-ui)!important;background:var(--ink)!important;color:var(--on-ink)!important;border:0!important;border-radius:var(--radius-pill)!important;min-height:2.75rem!important;padding:0.5rem 1.15rem!important;font-size:0.78rem!important;letter-spacing:0.06em!important;text-transform:uppercase!important;box-shadow:none!important}
-.oa-note{font-size:0.8rem;line-height:1.45;color:var(--ink-muted);padding-top:0.6rem;border-top:1px solid var(--ring)}
-.oa-alt{display:grid;gap:0.55rem;justify-items:start;padding:0.35rem 0.15rem 0;margin-bottom:0.2rem;font-size:0.95rem}
-.oa-alt .chip{color:var(--ink-muted)}
-.oa-alt p{margin:0;font-size:0.95rem;line-height:1.45}
-.oa-bubble{position:relative;display:inline-flex;align-items:center;gap:0.65rem;background:#0b84fe;color:#fff;border-radius:var(--radius-pill);min-height:2.75rem;padding:0.6rem 0.85rem 0.6rem 1.15rem;font-size:0.78rem;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;box-shadow:0 6px 18px -10px rgba(11,132,254,0.6)}
-.oa-bubble:hover{background:#1a8dff}
-.oa-bubble:focus-visible{outline-color:#0b84fe}
-.oa-appicon{width:1.45rem;height:1.45rem;flex:none;border-radius:0.35rem;box-shadow:0 1px 2px rgba(0,0,0,0.25)}
-.oa-tail{position:absolute;left:-0.42rem;bottom:-0.04rem;width:1.05rem;height:1.05rem;color:#0b84fe;pointer-events:none}
-.oa-bubble:hover .oa-tail{color:#1a8dff}
-.muted{font-size:0.95rem}
-.chip{font-family:var(--font-ui);font-size:0.68rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-muted)}
-input[type=file]{flex:1;min-width:0;color:var(--ink-muted);font-size:0.85rem;font-family:var(--font-body)}
-.idgrid{display:flex;gap:0.6rem;flex-wrap:wrap;margin:0.4rem 0 0.8rem}
-.idthumb{width:92px;height:92px;object-fit:cover;border-radius:var(--radius-well);border:1px solid var(--ring);display:block}
-.idpick{display:grid;gap:0.4rem;justify-items:center}
-.pickgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:0.75rem;margin:0.4rem 0 0.8rem;perspective:900px}
-.pickcard{position:relative;margin:0;aspect-ratio:5/6;border-radius:var(--radius-well);border:1.5px solid #30d158;overflow:hidden;background:var(--well-bg);box-shadow:var(--shadow);transform-style:preserve-3d;transition:transform 220ms cubic-bezier(.2,.8,.2,1),box-shadow 220ms ease}
-.pickcard img{width:100%;height:100%;object-fit:cover;display:block}
-.pickcard::after{content:"";position:absolute;inset:0;background:linear-gradient(160deg,rgba(255,255,255,0.18),transparent 45%,rgba(0,0,0,0.35));pointer-events:none}
-.pickcard figcaption{position:absolute;left:0.5rem;bottom:0.45rem;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.6)}
-.sheetcard{border:1px solid var(--ring);border-radius:var(--radius-well);background:var(--well-bg);padding:0.7rem 0.85rem;margin:0.6rem 0}
-.sheetpreview{display:block;width:100%;max-height:280px;object-fit:contain;border-radius:var(--radius-well);border:1px solid var(--ring);margin:0.4rem 0 0.6rem;background:var(--well-bg)}
-.booth{display:grid;gap:0.6rem;margin:0.4rem 0 0.8rem}
-.booth-controls{display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap}
-.booth-error{color:var(--ink);font-size:0.85rem;margin:0}
-.booth-clip{display:grid;gap:0.5rem}
-.booth-playback{width:100%;border-radius:var(--radius-well);border:1px solid var(--ring);background:#000}
-/* iPhone-style camera chrome: black surface, grid, mode strip, ring shutter. */
-.cam{border-radius:var(--radius-well);border:1px solid var(--ring);background:#000;overflow:hidden}
-.cam-stage{position:relative;min-height:120px;display:flex;align-items:center;justify-content:center;background:#000}
-.cam.on .cam-stage{aspect-ratio:3/4;max-height:420px;width:100%}
-.cam-video{display:none;width:100%;height:100%;object-fit:cover}
-.cam-video.mirror{transform:scaleX(-1)}
-.cam.on .cam-video{display:block}
-.cam-grid{position:absolute;inset:0;pointer-events:none;opacity:0.55}
-.cam-grid i{position:absolute;background:rgba(255,255,255,0.32)}
-.cam-grid i:nth-child(1){left:33.33%;top:0;bottom:0;width:1px}
-.cam-grid i:nth-child(2){left:66.66%;top:0;bottom:0;width:1px}
-.cam-grid i:nth-child(3){top:33.33%;left:0;right:0;height:1px}
-.cam-grid i:nth-child(4){top:66.66%;left:0;right:0;height:1px}
-.cam-flash{position:absolute;inset:0;background:#fff;opacity:0.85;animation:boothFlash 200ms ease-out forwards}
-@keyframes boothFlash{to{opacity:0}}
-.cam-clock{position:absolute;top:0.55rem;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:0.35rem;padding:0.15rem 0.6rem;border-radius:var(--radius-pill);background:rgba(0,0,0,0.55);font-family:var(--font-ui);font-size:0.72rem;letter-spacing:0.08em;color:#fff}
-.cam-reddot{width:0.5rem;height:0.5rem;border-radius:50%;background:#ff453a;animation:camPulse 1.1s ease-in-out infinite}
-@keyframes camPulse{50%{opacity:0.35}}
-.cam-count{position:absolute;top:0.55rem;right:0.7rem;padding:0.15rem 0.55rem;border-radius:var(--radius-pill);background:rgba(0,0,0,0.55);font-family:var(--font-ui);font-size:0.66rem;letter-spacing:0.08em;color:#fff}
-.cam-start{margin:1.4rem}
-.cam-saving{font-family:var(--font-ui);font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;color:#fff;padding:1.4rem}
-.cam-deck{display:grid;gap:0.55rem;padding:0.6rem 0.9rem 0.8rem;background:#000}
-.cam-modes{display:flex;gap:1.3rem;justify-content:center}
-.cam-mode{font-family:var(--font-ui);font-size:0.66rem;letter-spacing:0.14em;color:rgba(255,255,255,0.65);text-decoration:none;padding:0.15rem 0.2rem}
-.cam-mode.on{color:#ffd60a}
-.cam-mode.off{opacity:0.45}
-.cam-row{display:grid;grid-template-columns:1fr auto 1fr;align-items:center}
-.cam-thumb{justify-self:start;width:2.6rem;height:2.6rem;border-radius:0.55rem;border:1.5px solid rgba(255,255,255,0.7);background:rgba(255,255,255,0.08);overflow:hidden;display:block}
-.cam-thumb img{width:100%;height:100%;object-fit:cover;display:block}
-.cam-shutter{justify-self:center;width:3.9rem;height:3.9rem;min-height:0;padding:0;border-radius:50%;background:#fff;border:none;box-shadow:0 0 0 3px #000 inset,0 0 0 5.5px #fff;transition:transform 120ms ease}
-.cam-shutter:active{transform:scale(0.92)}
-.cam-shutter:disabled{opacity:0.4;cursor:default}
-.cam-shutter.rec{background:#ff453a;box-shadow:0 0 0 3px #000 inset,0 0 0 5.5px #fff}
-.cam-shutter.rec.on{border-radius:0.85rem;transform:scale(0.72)}
-.cam-flip{justify-self:end;width:2.7rem;height:2.7rem;min-height:0;padding:0;border-radius:50%;border:none;background:rgba(255,255,255,0.14);color:#fff;display:flex;align-items:center;justify-content:center}
-.cam-flip:disabled{opacity:0.4}
-/* Audio booth: a mic on the black stage instead of a viewfinder. */
-.cam.audio .cam-stage{min-height:150px}
-.cam-mic{position:relative;width:5.2rem;height:5.2rem;display:flex;align-items:center;justify-content:center;color:#fff}
-.cam-mic-ring{position:absolute;inset:0;border-radius:50%;border:1.5px solid rgba(255,255,255,0.35)}
-.cam-mic-ring.live{border-color:#ff453a;animation:micPulse 1.1s ease-in-out infinite}
-@keyframes micPulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.12);opacity:0.55}}
-.cam-hint{margin:0;text-align:center;font-family:var(--font-ui);font-size:0.62rem;letter-spacing:0.08em;text-transform:uppercase;color:rgba(255,255,255,0.7)}
-.booth-playback.audio{height:44px;background:transparent;border:0}
-@media(prefers-reduced-motion:reduce){.cam-mic-ring.live{animation:none}}
-/* Circular gallery review: cards bent along an arc; tap = select. */
-.cgal{position:relative;touch-action:pan-y;outline:none;user-select:none;-webkit-user-select:none;cursor:grab;overflow:hidden}
-.cgal-stage{position:relative;height:206px}
-.cgal-card{position:absolute;left:50%;top:44%;width:136px;height:164px;border-radius:var(--radius-well);border:1.5px solid var(--ring);overflow:hidden;background:var(--well-bg);box-shadow:var(--shadow);transition:opacity 180ms ease,border-color 180ms ease}
-.cgal-card img{width:100%;height:100%;object-fit:cover;display:block}
-.cgal-card.picked{border-color:#30d158}
-.cgal-card:not(.picked) img{opacity:0.55}
-.cgal-card.front{box-shadow:0 10px 30px rgba(0,0,0,0.35)}
-.cgal-check{position:absolute;top:0.4rem;right:0.4rem;width:1.5rem;height:1.5rem;border-radius:50%;display:flex;align-items:center;justify-content:center;border:1.5px solid rgba(255,255,255,0.85);background:rgba(0,0,0,0.35);color:transparent;transition:background 150ms ease,color 150ms ease}
-.cgal-check.on{background:#30d158;border-color:#30d158;color:#fff}
-.cgal-dots{display:flex;gap:0.4rem;justify-content:center;margin-top:0.3rem}
-.cgal-dot{width:0.55rem;height:0.55rem;min-height:0;padding:0;border-radius:50%;background:var(--ring)}
-.cgal-dot.on{background:var(--accent)}
-.cgal-hint{font-family:var(--font-ui);font-size:0.6rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-muted);text-align:center;margin:0.35rem 0 0}
-.cam-confirm{display:inline-flex;align-items:center;gap:0.5rem;background:#30d158;border-color:#30d158;color:#fff}
-.cam-confirm .cgal-check{position:static;width:1.3rem;height:1.3rem;background:rgba(255,255,255,0.2);border-color:transparent;color:#fff}
-.cam-confirm:disabled{opacity:0.45}
-/* In-slide stepper: circles + connectors above the panels, one at a time. */
-.stepper-head{display:flex;align-items:center;justify-content:center;width:min(100%,34rem);max-width:100%;margin:0.1rem auto 1rem}
-.stepper-ind{flex:0 0 auto;width:2.2rem;height:2.2rem;min-height:0;padding:0;border-radius:50%;border:1.5px solid var(--ring);background:var(--panel-bg);color:var(--ink-muted);font-family:var(--font-ui);font-size:0.76rem;font-weight:500;letter-spacing:0;text-decoration:none;display:flex;align-items:center;justify-content:center;transition:background 200ms ease,color 200ms ease,border-color 200ms ease,transform 200ms ease}
-.stepper-ind.active{background:var(--accent);border-color:var(--accent);color:var(--panel-bg);transform:scale(1.14);box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 20%,transparent)}
-.stepper-ind.complete{background:#30d158;border-color:#30d158;color:#fff}
-.stepper-ind.complete.active{box-shadow:0 0 0 4px rgba(48,209,88,0.24)}
-.stepper-line{flex:1 1 auto;width:auto;min-width:0.35rem;max-width:2.6rem;height:2px;background:var(--ring);position:relative;overflow:hidden}
-.stepper-line i{position:absolute;inset:0;background:#30d158;transform:scaleX(0);transform-origin:left;transition:transform 300ms ease}
-.stepper-line.complete i{transform:scaleX(1)}
-/* Previous sits left, Continue right, and Continue is the only solid button
-   on a stepped panel — the one thing the slide is asking for. */
-.stepper-nav{display:flex;justify-content:space-between;align-items:center;gap:0.6rem;width:min(100%,34rem);margin:0.9rem auto 0}
-.stepper-nav .spacer{flex:1}
-.stepper-nav .btn{min-width:8rem}
-footer.nav.dots-only{justify-content:center}
-@media(prefers-reduced-motion:reduce){.cam-flash{animation:none;opacity:0}.cam-reddot{animation:none}.cgal-card,.pickcard,.stepper-ind,.stepper-line i{transition:none}}
-@media(hover:hover) and (pointer:fine) and (prefers-reduced-motion:reduce){.pickcard:hover{transform:none}}
-/* Digital twin: consent, media manager, generation cards, summary. */
-.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-.small{font-size:0.8rem;line-height:1.45}
-h3.subhead{margin-top:0.9rem;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap}
-.facts{list-style:none;padding:0;margin:0.2rem 0 0.9rem;display:grid;gap:0.45rem}
-.facts li{display:flex;gap:0.5rem;align-items:baseline;font-size:0.9rem;line-height:1.5;color:var(--ink)}
-.facts li strong{flex:none;color:var(--accent);font-family:var(--font-ui);font-size:0.68rem;letter-spacing:0.1em;text-transform:uppercase;min-width:7.5rem}
-.facts.status li{align-items:center;border:1px solid var(--ring);border-radius:var(--radius-well);background:var(--well-bg);padding:0.55rem 0.85rem}
-@media(max-width:480px){.facts:not(.status) li{flex-direction:column;gap:0.15rem}.facts:not(.status) li strong{min-width:0}}
-.pill{display:inline-flex;align-items:center;gap:0.35rem;font-family:var(--font-ui);font-size:0.62rem;letter-spacing:0.1em;text-transform:uppercase;border-radius:var(--radius-pill);padding:0.22rem 0.6rem;border:1px solid var(--ring);color:var(--ink-muted);white-space:nowrap}
-.pill.ok{color:#30d158;border-color:rgba(48,209,88,0.5)}
-.pill.ok::before{content:"✓"}
-.pill.pending{color:#ffd60a;border-color:rgba(255,214,10,0.5)}
-.pill.pending::before{content:"…"}
-.pill.failed{color:#ff453a;border-color:rgba(255,69,58,0.5)}
-.pill.failed::before{content:"!"}
-.locknote{border:1px solid var(--accent);border-radius:var(--radius-well);background:var(--well-bg);padding:0.7rem 0.85rem;margin-bottom:0.7rem;font-size:0.9rem;line-height:1.5}
-.consent-set{border:1px solid var(--ring);border-radius:var(--radius-well);background:var(--well-bg);padding:0.4rem 0.85rem 0.6rem;margin:0;display:grid;gap:0.2rem}
-.consent-set legend{padding:0 0.3rem}
-.consent-row{display:flex;gap:0.8rem;align-items:flex-start;padding:0.7rem 0;border-top:1px solid var(--ring);cursor:pointer}
-.consent-row:first-of-type{border-top:0}
-.consent-row.granted{cursor:default}
-.consent-row input[type=checkbox]{flex:none;width:1.35rem;height:1.35rem;margin:0.15rem 0 0;accent-color:var(--accent)}
-.consent-text{display:grid;gap:0.3rem;font-size:0.92rem;line-height:1.5}
-.consent-text strong{display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;font-family:var(--font-ui);font-size:0.74rem;letter-spacing:0.1em;text-transform:uppercase}
-.consent-form button{justify-self:start}
-.media-list{list-style:none;margin:0.3rem 0 0.9rem;padding:0;display:grid;gap:0.5rem}
-.media-row{display:grid;grid-template-columns:auto 1fr auto;gap:0.7rem;align-items:center;border:1px solid var(--ring);border-radius:var(--radius-well);background:var(--well-bg);padding:0.5rem 0.6rem}
-.media-thumb{width:64px;height:64px;object-fit:cover;border-radius:calc(var(--radius-well) - 4px);border:1px solid var(--ring);display:block;background:#000}
-/* Upload tiles. The card is the label, so the whole thing is the tap target
-   and the native file button never shows — a 90px "Choose File" control that
-   named neither the source nor the subject was the least legible thing on
-   the booth. */
-.native-capture{display:grid;gap:0.6rem;margin:0.55rem 0}
-.native-capture p{margin:0.1rem 0 0}
-.uploader-form{display:grid;gap:0.5rem;min-width:0}
-.uploader{position:relative;display:grid;grid-template-columns:auto 1fr;align-items:center;gap:0.85rem;font-family:var(--font-body);font-size:1rem;letter-spacing:0;text-transform:none;color:var(--ink);min-height:4.25rem;padding:0.85rem 1rem;border:1px solid var(--ring);border-radius:var(--radius-well);background:var(--well-bg);cursor:pointer;transition:border-color 180ms ease,background 180ms ease,transform 180ms ease}
-.uploader:active{transform:scale(0.99)}
-.uploader:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent)}
-.uploader input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
-.uploader-icon{display:grid;place-items:center;width:2.75rem;height:2.75rem;border-radius:calc(var(--radius-well) - 4px);background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);flex:none}
-.uploader-icon svg{width:1.4rem;height:1.4rem;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
-.uploader-copy{display:grid;gap:0.15rem;min-width:0}
-.uploader-copy strong{font-size:1rem;font-weight:500;letter-spacing:-0.01em}
-.uploader-hint{font-family:var(--font-ui);font-size:0.72rem;letter-spacing:0.04em;color:var(--ink-muted)}
-html.js .uploader-fallback{display:none}
-.reference-gallery{margin:0.35rem 0 0.9rem}.reference-gallery fieldset{border:0;padding:0;margin:0}.reference-gallery legend{padding:0}.reference-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0.65rem;margin:0.55rem 0}.reference-card{position:relative;display:block;aspect-ratio:4/5;overflow:hidden;border:2px solid var(--ring);border-radius:var(--radius-well);background:var(--well-bg);cursor:pointer}.reference-card input{position:absolute;opacity:0;pointer-events:none}.reference-card img{width:100%;height:100%;object-fit:cover;display:block}.reference-card::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 55%,rgba(0,0,0,0.62));pointer-events:none}.reference-card.selected{border-color:#30d158;box-shadow:0 0 0 2px rgba(48,209,88,0.22)}.reference-check{display:none;position:absolute;top:0.45rem;right:0.45rem;z-index:1;width:1.8rem;height:1.8rem;border-radius:50%;background:#30d158;color:#fff;align-items:center;justify-content:center;font-weight:800}.reference-card.selected .reference-check{display:flex}.reference-label{position:absolute;left:0.55rem;right:0.55rem;bottom:0.45rem;z-index:1;color:#fff;font-family:var(--font-ui);font-size:0.62rem;letter-spacing:0.08em;text-transform:uppercase;text-shadow:0 1px 2px rgba(0,0,0,0.7)}
-.media-audio{width:100%;max-width:220px;height:36px}
-.media-meta{display:flex;gap:0.4rem;flex-wrap:wrap;min-width:0}
-.media-actions{display:flex;gap:0.3rem;align-items:center}
-.media-actions button{min-height:2.25rem;padding:0.35rem 0.7rem}
-button.icon{min-width:2.75rem;min-height:2.75rem;padding:0.35rem 0.55rem;font-size:0.95rem;text-transform:none;letter-spacing:0}
-button:disabled{opacity:0.4;cursor:default;transform:none}
-@media(max-width:480px){.media-row{grid-template-columns:auto 1fr}.media-actions{grid-column:1 / -1;justify-content:flex-end}.media-audio{max-width:100%}}
-textarea{width:100%;background:var(--well-bg);color:var(--ink);border:1px solid var(--ring);border-radius:var(--radius-well);padding:0.6rem 0.85rem;font-size:1rem;font-family:var(--font-body);line-height:1.45;resize:vertical;outline:none;min-width:0}
-textarea:focus{border-color:var(--accent)}
-label{font-family:var(--font-ui);font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-muted)}
-label.consent-row{font-family:var(--font-body);font-size:inherit;letter-spacing:0;text-transform:none;color:var(--ink)}
-.twin-preview{display:block;width:100%;border-radius:var(--radius-well);border:1px solid var(--ring);background:#000;margin:0.5rem 0 0.7rem;max-height:320px}
-details.legacy{margin-top:0.6rem}
-.twin-summary{display:grid;gap:0.7rem}
-.twin-hero{display:flex;gap:0.9rem;align-items:center}
-.twin-hero-img{width:88px;height:88px;border-radius:50%;object-fit:cover;border:1.5px solid var(--accent);display:flex;align-items:center;justify-content:center;background:var(--well-bg);font-size:2rem;color:var(--accent);flex:none}
-.twin-hero strong{font-size:1.35rem;letter-spacing:-0.02em}
-.prompt code{font-family:var(--font-ui);font-size:0.8rem;color:var(--accent);word-break:break-word}
-.idpick .chip{text-align:center}
-/* "Pick up where you left off": the deck opens at the beginning now, so a
-   returning owner needs one visible way back to their place — quiet enough
-   that a first-time owner reads Continue first. */
-.resume{display:inline-flex;align-items:center;min-height:2.75rem;padding:0 0.4rem;font-family:var(--font-ui);font-size:0.74rem;letter-spacing:0.04em;color:var(--ink-muted);text-decoration:underline;text-underline-offset:0.25em}
-.resume:hover{color:var(--ink)}
-.cine-resume{margin-top:1.1rem}
-.cine-resume .resume{color:rgba(255,255,255,0.62)}
-.cine-resume .resume:hover{color:#fff}
-`;
 
 /**
  * Messages-extension webviews run under a tight memory/GPU budget — iOS
@@ -2716,6 +2371,10 @@ export function renderOnboarding(
     // round trip before the screen changes. This marks the pressed control
     // busy and swallows the repeat tap that a silent wait invites.
     cinematic ? "" : '<script src="/creator-os/deck-pending.js" defer></script>',
+    // The server's load line stops at the response. This reports what the
+    // surface did with it — transfer, first paint, and how many bytes of
+    // image the page went on to pull.
+    '<script src="/creator-os/deck-timing.js" defer></script>',
   ].join("");
   if (cinematic) {
     const notices =
@@ -2723,7 +2382,7 @@ export function renderOnboarding(
         ? `<div class="cine-notices">${busy}${noticeHtml}</div>`
         : "";
     const intro = sectionBody(snapshot, "welcome", browserSignin, lite);
-    return `<!doctype html><html lang="en" class="cine-page"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>Onboarding — ${esc(slide.title)}</title>${fonts}<style>${tokenBlock(current.tokens)}${SLIDE_CSS}</style></head><body class="cine-page"${prev ? ` data-swipe-prev="${href(prev)}"` : ""}${next ? ` data-swipe-next="${href(next)}"` : ""}>${notices}${intro}${scripts}</body></html>`;
+    return `<!doctype html><html lang="en" class="cine-page"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>Onboarding — ${esc(slide.title)}</title>${fonts}<link rel="stylesheet" href="/creator-os/onboarding.css"><style>${tokenBlock(current.tokens)}</style></head><body class="cine-page"${prev ? ` data-swipe-prev="${href(prev)}"` : ""}${next ? ` data-swipe-next="${href(next)}"` : ""}>${notices}${intro}${scripts}</body></html>`;
   }
   const deck = `<div class="deck${slide.split ? " split" : ""}"${stepper ? ` data-stepper data-stepper-active="${activeSection}"` : ""}>${sections}</div>${scripts}`;
   // A swipe follows the same pair of targets the visible Previous/Continue
@@ -2749,7 +2408,7 @@ export function renderOnboarding(
   const footer = stepper
     ? `<footer class="nav dots-only"><nav class="dots" aria-label="Slides">${dots}</nav></footer>`
     : `<footer class="nav">${prev ? `<a class="navlink" href="${href(prev)}">← Back</a>` : '<span class="navlink ghosted">← Back</span>'}<nav class="dots" aria-label="Slides">${dots}</nav>${next ? `<a class="navlink" href="${href(next)}">Next →</a>` : '<span class="navlink ghosted">Next →</span>'}</footer>`;
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>Onboarding — ${esc(slide.title)}</title>${fonts}<style>${tokenBlock(current.tokens)}${SLIDE_CSS}${lite ? LITE_CSS : ""}</style>${shader}</head><body>${backdropHtml}${scrim}${grain}<div class="frame"${swipeAttrs}><header class="bar"><span class="logo-pill">${WORDMARK_IMG}</span><span class="counter">${counter}${esc(statusTag)}</span></header><main class="slide">${busy}${noticeHtml}<p class="kicker">${kickerNumber}${esc(slide.kicker)}</p><h1>${esc(slide.title)}</h1>${deck}</main>${footer}</div></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>Onboarding — ${esc(slide.title)}</title>${fonts}<link rel="stylesheet" href="/creator-os/onboarding.css"><style>${tokenBlock(current.tokens)}${lite ? LITE_CSS : ""}</style>${shader}</head><body>${backdropHtml}${scrim}${grain}<div class="frame"${swipeAttrs}><header class="bar"><span class="logo-pill">${WORDMARK_IMG}</span><span class="counter">${counter}${esc(statusTag)}</span></header><main class="slide">${busy}${noticeHtml}<p class="kicker">${kickerNumber}${esc(slide.kicker)}</p><h1>${esc(slide.title)}</h1>${deck}</main>${footer}</div></body></html>`;
 }
 
 /** The step the URL asks for, if it names a real one. */
@@ -2924,6 +2583,148 @@ async function currentUsername(
   return typeof username === "string" && username ? username : null;
 }
 
+/** Fields the timing beacon may report, and the ceiling each is clamped to.
+ * Anything absent, unparseable, negative or over its ceiling is dropped —
+ * a client number reaches the log only as a bounded integer. */
+const TIMING_FIELDS: Record<string, number> = {
+  ttfb_ms: 600_000,
+  transfer_ms: 600_000,
+  dom_ms: 600_000,
+  load_ms: 600_000,
+  fp_ms: 600_000,
+  fcp_ms: 600_000,
+  doc_bytes: 100_000_000,
+  img_bytes: 1_000_000_000,
+  img_count: 1_000,
+  other_bytes: 1_000_000_000,
+  device_memory: 1_024,
+};
+
+/**
+ * The client half of the load picture (lib/miniapps/client/deck-timing.ts):
+ * transfer, first paint, and the image bytes the page pulled after the
+ * document landed. Pairs with the server's `miniapp load` line, which stops
+ * at the response.
+ *
+ * Client-reported numbers are never trusted, only bounded: each field is
+ * parsed, floored to an integer and clamped, and nothing else on the form
+ * is read. The reply is an empty 204 — a beacon has no page to render.
+ */
+function logClientTiming(
+  ctx: MiniAppContext,
+  form: FormData
+): NextResponse {
+  const metrics: Record<string, number> = {};
+  for (const [field, ceiling] of Object.entries(TIMING_FIELDS)) {
+    const raw = Number(form.get(field));
+    if (!Number.isFinite(raw) || raw < 0) continue;
+    metrics[field] = Math.min(Math.floor(raw), ceiling);
+  }
+  if (Object.keys(metrics).length > 0) {
+    console.log(
+      JSON.stringify({
+        msg: "miniapp client timing",
+        app: "onboarding",
+        // The surface, not the person: `card` means a Messages webview.
+        via: ctx.session.via ?? null,
+        ...metrics,
+      })
+    );
+  }
+  return new NextResponse(null, { status: 204, headers: baseHeaders() });
+}
+
+/**
+ * Progress as one line of bubble copy. Read from the state file rather than
+ * effectiveStatus(), because this runs after the response with no snapshot
+ * in hand — the two can disagree briefly (a step whose live evidence exists
+ * but was never marked), which is acceptable for a glanceable subcaption
+ * and never for the deck itself.
+ */
+export function progressLine(state: OnboardingState): string {
+  const numbered = SLIDE_GROUPS.filter((slide) => slide.id !== "welcome");
+  const settled = (slide: OnboardingSlide): boolean =>
+    slideSteps(slide).every((step) => state.steps[step] !== "todo");
+  const done = numbered.filter(settled).length;
+  if (done === numbered.length) return "Setup complete";
+  const next = numbered.find((slide) => !settled(slide));
+  const suffix = next ? ` · next: ${next.kicker}` : "";
+  return `${done} of ${numbered.length} done${suffix}`;
+}
+
+/**
+ * One pending card edit per request, keyed by that request's Supabase
+ * client (route.ts builds one per request). A request can settle two steps
+ * — the Computer slide marks username and email together — and the owner
+ * should see one edit carrying the *final* line, not two carrying a stale
+ * one and then the real one. Later marks overwrite the slot; the scheduled
+ * callback reads it at flush time.
+ */
+const pendingCardEdit = new WeakMap<object, { state: OnboardingState }>();
+
+/**
+ * Stage 4: the thread itself as the progress indicator. The Onboarding card
+ * already in the owner's transcript is edited in place as steps settle, so
+ * it reads as where setup stands rather than a static "Set up your agent"
+ * from whenever it was sent.
+ *
+ * Best-effort in every direction: an owner with no card (web-only, or one
+ * never sent) comes back `stale` and is left alone, a send failure never
+ * touches the request that triggered it, and nothing here blocks the
+ * response — a Spectrum round trip on every skip is the latency this deck
+ * just spent a release removing.
+ */
+function refreshOnboardingCard(
+  supabase: SupabaseClient,
+  userId: string,
+  state: OnboardingState
+): void {
+  const pending = pendingCardEdit.get(supabase);
+  if (pending) {
+    // Already scheduled for this request — keep the newest state and let
+    // the queued callback render the line from it.
+    pending.state = state;
+    return;
+  }
+  const slot = { state };
+  pendingCardEdit.set(supabase, slot);
+  try {
+    after(async () => {
+      const line = progressLine(slot.state);
+      try {
+        const outcome = await updateMiniAppCard(
+          supabase,
+          userId,
+          "onboarding",
+          "default",
+          { subcaption: line, summary: `Onboarding — ${line}` }
+        );
+        // `stale` is the ordinary case for an owner who has no bubble; only
+        // a live card that refused the edit is worth a line in the log.
+        if (outcome === "failed") {
+          console.error(
+            JSON.stringify({
+              msg: "onboarding card refresh failed",
+              user_id: userId,
+            })
+          );
+        }
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            msg: "onboarding card refresh failed",
+            user_id: userId,
+            error: error instanceof Error ? error.message : "unknown",
+          })
+        );
+      }
+    });
+  } catch {
+    // Outside a request scope (a test, a background job) — skip the edit.
+    pendingCardEdit.delete(supabase);
+  }
+}
+
 async function markSafely(
   supabase: SupabaseClient,
   userId: string,
@@ -2933,6 +2734,7 @@ async function markSafely(
   try {
     const state = await markOnboardingStep(supabase, userId, step, status);
     await writeStatusMirror(supabase, userId, { state });
+    refreshOnboardingCard(supabase, userId, state);
     return true;
   } catch (error) {
     if (error instanceof StartLimitError) return false;
@@ -2976,6 +2778,10 @@ async function sendHomeCard(
 
 export const onboarding: MiniAppModule = {
   async render(ctx: MiniAppContext): Promise<NextResponse> {
+    // A thumbnail request has nothing else to do — resolve it before any
+    // snapshot work, not after building a page it will discard.
+    const thumb = await serveIdentityThumb(ctx);
+    if (thumb) return thumb;
     const { snapshot, active } = await snapshotForRender(
       ctx.supabase,
       ctx.session.userId,
@@ -3024,6 +2830,10 @@ export const onboarding: MiniAppModule = {
     const supabase = ctx.supabase;
     const userId = ctx.session.userId;
     const action = String(form.get("action") ?? "");
+
+    // A load-timing beacon writes nothing and renders nothing — log the
+    // numbers and answer with an empty 204 before any state work.
+    if (action === "__timing") return logClientTiming(ctx, form);
 
     if (action === "skip" || action === "mark_done") {
       const step = String(form.get("step") ?? "");

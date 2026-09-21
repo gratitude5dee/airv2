@@ -232,6 +232,10 @@ describe("onboarding environment step", () => {
     const csp = response.headers.get("Content-Security-Policy") ?? "";
     expect(csp).toContain("media-src 'self'");
     expect(csp).toContain("script-src 'self'");
+    // The deck's own rules load from a cached same-origin stylesheet
+    // (Stage 3) rather than shipping inline on every no-store render, so
+    // style-src widens to cover the <link>.
+    expect(csp).toContain("style-src 'unsafe-inline' 'self'");
     const body = await response.text();
     expect(body).toContain("/creator-os/airintrofin.mp4");
     // One source, and it is not preloaded: the welcome slide is where most
@@ -249,10 +253,13 @@ describe("onboarding environment step", () => {
     expect(body).toContain('class="cine-blast"');
     expect(body).toContain('<button type="button" class="cine-sound" hidden>Sound on</button>');
     expect(body).toContain('<video class="cine-film" playsinline muted');
-    expect(body).toContain("html.cine-page,body.cine-page{background:#000}");
+    // The deck's rules (including the cine-page rules this used to assert
+    // inline) live in a cached same-origin stylesheet now, not the response
+    // body — see onboarding-css.test.ts for that file's own contents.
     expect(body).toContain(
-      "@media (orientation:portrait){.cine-film{object-fit:cover;object-position:center}}"
+      '<link rel="stylesheet" href="/creator-os/onboarding.css">'
     );
+    expect(body).not.toContain("html.cine-page,body.cine-page{background:#000}");
     expect(body).not.toContain('<div class="frame"');
     expect(body).not.toContain('<header class="bar">');
     expect(body).not.toContain('<main class="slide">');
@@ -482,5 +489,59 @@ describe("onboarding environment step", () => {
     const body = await response.text();
     // The pre-migration state normalizes: environment defaults to todo.
     expect(body).toContain("value=\"set_environment\"");
+  });
+});
+
+describe("client load-timing beacon", () => {
+  it("ships the bundle on every slide, cinematic welcome included", async () => {
+    for (const step of ["welcome", "environment", "imessage"]) {
+      const body = await (
+        await onboarding.render(
+          makeCtx(`https://mini.example/mini/setup?step=${step}`)
+        )
+      ).text();
+      expect(body).toContain("/creator-os/deck-timing.js");
+    }
+  });
+
+  it("answers a beacon with an empty 204 and writes nothing", async () => {
+    const before = boxFiles.get(".hermes/miniapps/onboarding/state.json");
+    const form = new FormData();
+    form.set("action", "__timing");
+    form.set("ttfb_ms", "120");
+    form.set("fcp_ms", "480");
+    form.set("img_bytes", "35000");
+    const response = await onboarding.action!(makeCtx(), form);
+    expect(response.status).toBe(204);
+    expect(await response.text()).toBe("");
+    expect(boxFiles.get(".hermes/miniapps/onboarding/state.json")).toBe(before);
+  });
+
+  it("clamps and drops client numbers rather than logging them as given", async () => {
+    const logged: string[] = [];
+    const log = vi.spyOn(console, "log").mockImplementation((line: unknown) => {
+      logged.push(String(line));
+    });
+    const form = new FormData();
+    form.set("action", "__timing");
+    // Over the ceiling, negative, and not a number at all.
+    form.set("load_ms", "999999999");
+    form.set("ttfb_ms", "-5");
+    form.set("img_count", "not-a-number");
+    form.set("fcp_ms", "300.7");
+    // A field that is not on the allowlist is never echoed.
+    form.set("note", "<script>alert(1)</script>");
+    await onboarding.action!(makeCtx(), form);
+    log.mockRestore();
+
+    const line = logged.find((entry) => entry.includes("miniapp client timing"));
+    expect(line).toBeDefined();
+    const report = JSON.parse(line!) as Record<string, unknown>;
+    expect(report["load_ms"]).toBe(600_000);
+    expect(report["fcp_ms"]).toBe(300);
+    expect(report).not.toHaveProperty("ttfb_ms");
+    expect(report).not.toHaveProperty("img_count");
+    expect(report).not.toHaveProperty("note");
+    expect(line).not.toContain("<script>");
   });
 });

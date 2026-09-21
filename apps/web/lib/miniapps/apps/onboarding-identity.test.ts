@@ -5,7 +5,8 @@
  * helpers behind a server-checked consent gate, provider-less deployments
  * degrade gracefully, and the Get started slide summarises the twin.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import sharp from "sharp";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MiniAppContext } from "@/lib/miniapps/apps/types";
@@ -57,12 +58,35 @@ vi.mock("@/lib/onairos/sync", () => ({
     connectedAt: null,
   })),
 }));
+const updateMiniAppCard = vi.hoisted(() => vi.fn(async () => "updated" as const));
 vi.mock("@/lib/miniapps/cards", () => ({
   sendMiniAppCard: vi.fn(async () => undefined),
+  updateMiniAppCard: (...args: unknown[]) =>
+    updateMiniAppCard(...(args as [])),
 }));
+
+/**
+ * `after()` throws outside a request scope, so the module's post-response
+ * work (the card refresh, background syncs) never runs under test. Collect
+ * the callbacks instead and let a test flush the ones it cares about.
+ */
+const afterCallbacks = vi.hoisted(() => [] as Array<() => unknown>);
+vi.mock("next/server", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/server")>()),
+  after: (fn: () => unknown) => {
+    afterCallbacks.push(fn);
+  },
+}));
+const flushAfter = async (): Promise<void> => {
+  const pending = afterCallbacks.splice(0, afterCallbacks.length);
+  for (const fn of pending) await fn();
+};
 vi.mock("@/lib/miniapps/cardSends", () => ({
   claimCardSend: vi.fn(async () => ({ release: vi.fn() })),
 }));
+
+/** Real image bytes for the thumbnail path, built once in a beforeAll. */
+const thumbBytes = vi.hoisted(() => ({ value: null as Buffer | null }));
 
 /** Mutable fixtures the module mocks read at call time. */
 const fixtures = vi.hoisted(() => ({
@@ -145,6 +169,7 @@ vi.mock("@/lib/identity/assets", async (importOriginal) => ({
   listIdentityMediaRoles: vi.fn(async () =>
     fixtures.media.map((m) => ({ ...m, url: null }))
   ),
+  downloadIdentityAsset: vi.fn(async () => thumbBytes.value),
   getAvatarAssetId: vi.fn(async () => null),
   setAvatarAssetId: (...args: unknown[]) => setAvatarAssetId(...(args as [])),
   signedIdentityUrl: vi.fn(async () => "https://signed.example/a.png"),
@@ -253,10 +278,16 @@ vi.mock("@/lib/identity/heygen", () => ({
   heygenAvailable: () => heygenAvailable(),
 }));
 
-import { ONBOARDING_STEPS, defaultOnboardingState } from "@/lib/miniapps/onboarding";
+import {
+  ONBOARDING_STEPS,
+  defaultOnboardingState,
+  normalizeOnboardingState,
+  type OnboardingStepId,
+} from "@/lib/miniapps/onboarding";
 import {
   effectiveStatus,
   onboarding,
+  progressLine,
   type OnboardingSnapshot,
 } from "@/lib/miniapps/apps/onboarding";
 
@@ -350,9 +381,11 @@ afterEach(() => {
     uploadTwinConsent, createTwinVideo, createUserHeygenAvatar, enableVideoAvatar,
     disableVideoAvatar, setTwinSharing, createUserVoiceClone, revokeUserVoiceClone,
     references.list, references.replace, references.clear,
+    updateMiniAppCard,
   ]) {
     mock.mockClear();
   }
+  afterCallbacks.length = 0;
   boxFiles.clear();
   seedDefault();
 });
@@ -747,7 +780,10 @@ describe("video avatar panel", () => {
     expect(ready).toContain("labelled as synthetic");
     const response = await post({ action: "enable_video_avatar" }, "twin");
     expect(await response.text()).toContain("Rendering your video avatar");
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    // The render takes minutes, so it is scheduled to run after the
+    // response rather than inside it.
+    expect(enableVideoAvatar).not.toHaveBeenCalled();
+    await flushAfter();
     expect(enableVideoAvatar).toHaveBeenCalledWith(expect.anything(), "user-1", "grat", {
       channel: "web",
     });
@@ -873,5 +909,224 @@ describe("representing image", () => {
     expect(response.status).toBe(200);
     expect(setAvatarAssetId).toHaveBeenCalledWith(expect.anything(), "user-1", "asset-1");
     expect(stateFile()).toContain('"avatar": "done"');
+  });
+});
+
+/**
+ * The page-weight budget (Stage 3, docs/plans/onboarding-miniapp-upgrade.md).
+ * "Unable to Load App" was iOS terminating the Messages extension over a
+ * resource budget, and the specific regressions that got it there — six
+ * panels of previews in one document, full-resolution images behind
+ * thumbnails, a 772 KB wordmark, a WebGL context on a phone — are each one
+ * careless edit away from coming back. These hold the line.
+ */
+describe("page-weight budget", () => {
+  /** A well-used account: a full gallery, a sheet, a profile and alternates. */
+  function seedHeavy(): void {
+    fixtures.grants = [grant("likeness"), grant("voice"), grant("video_avatar")];
+    fixtures.media = [
+      ...Array.from({ length: 12 }, (_, i) =>
+        view(`selfie-${i}`, "selfie", { source: i % 2 ? "booth" : "upload" })
+      ),
+      view("sheet-1", "character_sheet", { source: "generated" }),
+      view("profile-1", "profile_image", { source: "generated" }),
+      ...Array.from({ length: 4 }, (_, i) =>
+        view(`alt-${i}`, "alt_image", { source: "generated" })
+      ),
+      view("video-1", "reference_video"),
+      view("voice-1", "voice_sample"),
+    ];
+    references.ids = ["selfie-0", "selfie-1", "selfie-2"];
+  }
+
+  it("renders one panel per request, never the whole stack", async () => {
+    seedHeavy();
+    for (const [step, panel] of [
+      ["consent", "consent"],
+      ["selfies", "booth_photo"],
+      ["selfies", "sheet"],
+      ["voice", "voice"],
+      ["twin", "twin_create"],
+      ["avatar", "avatar"],
+    ] as const) {
+      const body = await renderPanel(step, panel);
+      expect((body.match(/<section class="panel"/g) ?? []).length).toBe(1);
+      expect(body).toContain(`data-section="${panel}"`);
+    }
+  });
+
+  it("keeps a fully-loaded twin slide under its byte ceiling", async () => {
+    seedHeavy();
+    // Worst case today is the reference gallery at ~28 KB (12 photos, each
+    // a card of markup). The ceiling leaves room for copy, and still cannot
+    // absorb either regression it exists for: re-inlining the stylesheet
+    // (+40 KB) or stacking the other five panels back in (+30 KB or so).
+    const CEILING = 40_000;
+    for (const [step, panel] of [
+      ["selfies", "booth_photo"],
+      ["selfies", "sheet"],
+      ["avatar", "avatar"],
+    ] as const) {
+      const bytes = Buffer.byteLength(await renderPanel(step, panel), "utf8");
+      expect(bytes).toBeLessThan(CEILING);
+    }
+  });
+
+  it("points every gallery preview at a same-origin thumbnail, not the original", async () => {
+    seedHeavy();
+    const body = await renderPanel("selfies", "booth_photo");
+    expect(body).toContain('src="?thumb=');
+    // The signed full-resolution URL is still fetched for readiness checks,
+    // but no <img> on the gallery may carry it.
+    for (const match of body.match(/<img[^>]*>/g) ?? []) {
+      expect(match).not.toContain("https://signed.example/");
+    }
+  });
+
+  it("never ships the full-size wordmark or a WebGL backdrop to a handheld", async () => {
+    seedHeavy();
+    const body = await renderPanel("selfies", "booth_photo");
+    expect(body).not.toContain("wzrd-wordmark-1600.png");
+    expect(body).toContain("wzrd-wordmark-320.png");
+    // makeCtx sends no user-agent, which isHandheld treats as handheld —
+    // the safe default. No shader bundle, no grain overlay.
+    expect(body).not.toContain("fx.js");
+    expect(body).not.toContain('class="grain"');
+  });
+
+  it("loads the 200 KB camera bundle only on the stages that mount a booth", async () => {
+    seedHeavy();
+    for (const [step, panel] of [["selfies", "booth_photo"], ["voice", "voice"]] as const) {
+      expect(await renderPanel(step, panel)).toContain("identity-booth.js");
+    }
+    for (const [step, panel] of [
+      ["consent", "consent"],
+      ["selfies", "sheet"],
+      ["avatar", "avatar"],
+    ] as const) {
+      expect(await renderPanel(step, panel)).not.toContain("identity-booth.js");
+    }
+  });
+});
+
+/**
+ * Stage 4 (docs/plans/onboarding-miniapp-upgrade.md): the Onboarding bubble
+ * already in the owner's transcript is edited in place as steps settle, so
+ * the thread itself reads as where setup stands.
+ */
+describe("onboarding card refresh", () => {
+  const stateWith = (
+    done: OnboardingStepId[]
+  ): Parameters<typeof progressLine>[0] => {
+    const state = defaultOnboardingState();
+    for (const step of done) state.steps[step] = "done";
+    return state;
+  };
+
+  it("counts settled slides, not raw steps, and names the next one", () => {
+    expect(progressLine(stateWith([]))).toBe("0 of 6 done · next: Computer");
+    // The Computer slide owns environment + username + email; it is not
+    // settled until all three are.
+    expect(progressLine(stateWith(["environment", "username"]))).toBe(
+      "0 of 6 done · next: Computer"
+    );
+    expect(
+      progressLine(stateWith(["environment", "username", "email", "model"]))
+    ).toBe("1 of 6 done · next: Digital Twin");
+  });
+
+  it("reads as complete once every slide is settled, skips included", () => {
+    const state = defaultOnboardingState();
+    for (const step of ONBOARDING_STEPS) state.steps[step] = "skipped";
+    expect(progressLine(state)).toBe("Setup complete");
+  });
+
+  it("edits the bubble in place after a step settles, never during the request", async () => {
+    const response = await post({ action: "skip", step: "voice" }, "voice");
+    expect(response.status).toBe(200);
+    // The Spectrum round trip must not sit in front of the owner's tap.
+    expect(updateMiniAppCard).not.toHaveBeenCalled();
+
+    await flushAfter();
+    expect(updateMiniAppCard).toHaveBeenCalledTimes(1);
+    const [, userId, slug, resourceId, layout] =
+      updateMiniAppCard.mock.calls[0] as unknown as [
+        unknown,
+        string,
+        string,
+        string,
+        { subcaption?: string },
+      ];
+    expect(userId).toBe("user-1");
+    expect(slug).toBe("onboarding");
+    expect(resourceId).toBe("default");
+    expect(layout.subcaption).toMatch(/^\d of 6 done/);
+  });
+
+  it("coalesces two marks in one request into a single edit carrying the final line", async () => {
+    // The Computer slide settles username and email together; the owner
+    // should see one edit with the finished line, not one stale then one
+    // real. Sharing a ctx shares the Supabase client the slot is keyed on,
+    // which is what one request means here.
+    const ctx = makeCtx("voice");
+    const skip = (step: string): FormData => {
+      const form = new FormData();
+      form.set("action", "skip");
+      form.set("step", step);
+      return form;
+    };
+    await onboarding.action!(ctx, skip("voice"));
+    await onboarding.action!(ctx, skip("twin"));
+    await flushAfter();
+
+    expect(updateMiniAppCard).toHaveBeenCalledTimes(1);
+    const [, , , , layout] = updateMiniAppCard.mock.calls[0] as unknown as [
+      unknown,
+      string,
+      string,
+      string,
+      { subcaption?: string },
+    ];
+    // Rendered at flush time from the newest state, so it reflects both.
+    const state = JSON.parse(stateFile()) as { steps: Record<string, string> };
+    expect(state["steps"]["voice"]).toBe("skipped");
+    expect(state["steps"]["twin"]).toBe("skipped");
+    expect(layout.subcaption).toBe(progressLine(normalizeOnboardingState(state)));
+  });
+});
+
+/**
+ * The thumbnail path is unit-tested in lib/miniapps/identityThumb.test.ts;
+ * this holds the wiring — that the module answers `?thumb=` with the image
+ * and never builds the deck for it.
+ */
+describe("identity thumbnails through the module", () => {
+  beforeAll(async () => {
+    thumbBytes.value = await sharp({
+      create: { width: 900, height: 700, channels: 3, background: { r: 90, g: 120, b: 200 } },
+    })
+      .png()
+      .toBuffer();
+  });
+
+  it("answers ?thumb= with a resized JPEG instead of the slide", async () => {
+    fixtures.media = [view("asset-1", "selfie")];
+    const response = await onboarding.render(
+      makeCtx("selfies", { panel: "booth_photo" }) as MiniAppContext & {
+        request: NextRequest;
+      }
+    );
+    // Without ?thumb= it is still the deck.
+    expect(response.headers.get("Content-Type")).toContain("text/html");
+
+    const ctx = makeCtx("selfies");
+    (ctx as { request: NextRequest }).request = new NextRequest(
+      "https://mini.example/mini/setup?thumb=asset-1&w=64"
+    );
+    const thumb = await onboarding.render(ctx);
+    expect(thumb.status).toBe(200);
+    expect(thumb.headers.get("Content-Type")).toBe("image/jpeg");
+    const meta = await sharp(Buffer.from(await thumb.arrayBuffer())).metadata();
+    expect(meta.width).toBe(64);
   });
 });
