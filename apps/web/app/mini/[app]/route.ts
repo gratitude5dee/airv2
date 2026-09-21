@@ -87,6 +87,23 @@ interface LoadLog {
   lane: LoadLane;
   gate?: GateTimings | undefined;
   renderMs?: number | undefined;
+  /** Raw request UA, truncated. Exists to answer one open question: does the
+   * iOS Messages extension's WKWebView actually omit `Safari/` the way
+   * isFullBrowser (lib/miniapps/surface.ts) assumes? A card-opened render
+   * that resolves `via: "card"` but full-browser markup is loaded says the
+   * assumption is wrong for current iOS. See docs/plans/
+   * onboarding-miniapp-upgrade.md Stage 2. */
+  ua?: string | null | undefined;
+  /** The session's resolved surface marker, once the gate chain has one. */
+  via?: "card" | undefined;
+  /** The signed link's transport marker before the user-agent chose a render. */
+  originVia?: "card" | undefined;
+}
+
+/** Enough to identify the client, short enough to keep a log line legible. */
+function truncateUa(ua: string | null): string | null {
+  if (!ua) return null;
+  return ua.length > 180 ? `${ua.slice(0, 180)}…` : ua;
 }
 
 function logLoad(
@@ -109,6 +126,9 @@ function logLoad(
       gate_x402_ms: log.gate?.x402Ms ?? null,
       gate_session_ms: log.gate?.sessionMs ?? null,
       render_ms: log.renderMs ?? null,
+      origin_via: log.originVia ?? null,
+      via: log.via ?? null,
+      ua: log.ua ?? null,
     })
   );
 }
@@ -317,7 +337,7 @@ function sessionStyle(
   prefix: string
 ): MiniStyle {
   if (session.role !== "owner") return style;
-  const homeHref = `${prefix}home?t=${mintToken(session.userId, "home", "default", 15, { via: session.via })}`;
+  const homeHref = `${prefix}home?t=${mintToken(session.userId, "home", "default", 15, { via: session.originVia })}`;
   return { ...style, homeHref };
 }
 
@@ -339,7 +359,7 @@ function refreshCookie(
     mintToken(session.userId, slug, session.resourceId, 15, {
       role: session.role,
       grantId: session.grantId,
-      via: session.via,
+      via: session.originVia,
     }),
     {
       httpOnly: true,
@@ -407,7 +427,13 @@ async function handleGet(
 ): Promise<NextResponse> {
   const start = performance.now();
   const { app: slug } = await context.params;
-  const log: LoadLog = { slug, method: "GET", start, lane: "gated_render" };
+  const log: LoadLog = {
+    slug,
+    method: "GET",
+    start,
+    lane: "gated_render",
+    ua: truncateUa(request.headers.get("user-agent")),
+  };
   const supabase = serviceClient();
   // Registry lookup, session verification and the style read are independent
   // of each other — start them together so the gated_render lane pays for
@@ -467,12 +493,17 @@ async function handleGet(
       NextResponse.redirect(new URL(basePath, externalOrigin(request)), 303)
     );
     const via = resolveVia(claims.via, request.headers.get("user-agent"));
+    log.originVia = claims.via;
+    log.via = via;
     response.cookies.set(
       cookieName(slug, via),
       mintToken(claims.userId, slug, claims.resourceId, 15, {
         role: claims.role ?? "owner",
         grantId: claims.grantId,
-        via,
+        // Preserve the signed-link marker for later telemetry. The cookie
+        // name remains based on the resolved surface, so a card opened in
+        // Safari still receives the full-browser cookie.
+        via: claims.via,
       }),
       {
         httpOnly: true,
@@ -553,6 +584,8 @@ async function handleGet(
     logLoad(log, "gate blocked", gate.response.status);
     return gate.response;
   }
+  log.via = gate.session.via;
+  log.originVia = gate.session.originVia;
 
   const renderStart = performance.now();
   const style = await styleFor(supabase, gate.session, prefetched);
@@ -578,7 +611,13 @@ async function handlePost(
 ): Promise<NextResponse> {
   const start = performance.now();
   const { app: slug } = await context.params;
-  const log: LoadLog = { slug, method: "POST", start, lane: "gated_render" };
+  const log: LoadLog = {
+    slug,
+    method: "POST",
+    start,
+    lane: "gated_render",
+    ua: truncateUa(request.headers.get("user-agent")),
+  };
   const supabase = serviceClient();
   const app = await getRegistryApp(supabase, slug);
   if (!app) {
@@ -611,6 +650,8 @@ async function handlePost(
     logLoad(log, "gate blocked", gate.response.status);
     return gate.response;
   }
+  log.via = gate.session.via;
+  log.originVia = gate.session.originVia;
   if (action === "__password") {
     // Already unlocked — just reload the view.
     logLoad(log, "password settled", 303);

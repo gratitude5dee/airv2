@@ -12,6 +12,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ensureComputeAwake } from "../compute/awake";
 import { readComputeFile, writeComputeFile } from "../compute/runtime";
+import type { ComputeTarget } from "../compute/runtime";
 import { asRecord } from "../records";
 
 export const ONBOARDING_STEPS = [
@@ -74,11 +75,8 @@ export function normalizeOnboardingState(raw: unknown): OnboardingState {
   return state;
 }
 
-export async function readOnboardingState(
-  supabase: SupabaseClient,
-  userId: string
-): Promise<OnboardingState> {
-  const target = await ensureComputeAwake(supabase, userId);
+/** Read the state document from an already-resolved compute target. */
+async function readState(target: ComputeTarget): Promise<OnboardingState> {
   try {
     const raw = await readComputeFile(target, STATE_PATH);
     return normalizeOnboardingState(JSON.parse(raw));
@@ -87,16 +85,27 @@ export async function readOnboardingState(
   }
 }
 
+export async function readOnboardingState(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<OnboardingState> {
+  return readState(await ensureComputeAwake(supabase, userId));
+}
+
 export async function markOnboardingStep(
   supabase: SupabaseClient,
   userId: string,
   step: OnboardingStepId,
   status: OnboardingStepStatus
 ): Promise<OnboardingState> {
-  const state = await readOnboardingState(supabase, userId);
+  // One wake for the read and the write. Resolving the target twice — as a
+  // read-then-write pair used to — put a second start-and-wait round trip
+  // in front of every skip, every "mark done", and every tap that lands on
+  // this path, which is time the owner spends watching a button do nothing.
+  const target = await ensureComputeAwake(supabase, userId);
+  const state = await readState(target);
   state.steps[step] = status;
   state.updated_at = new Date().toISOString();
-  const target = await ensureComputeAwake(supabase, userId);
   await writeComputeFile(target, STATE_PATH, JSON.stringify(state, null, 2));
   return state;
 }

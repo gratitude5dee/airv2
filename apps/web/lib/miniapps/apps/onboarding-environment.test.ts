@@ -110,7 +110,7 @@ function thenable(rows: unknown, single: unknown = null) {
 
 function makeCtx(
   url = "https://mini.example/mini/setup?step=environment",
-  options: { username?: string | null } = {}
+  options: { username?: string | null; userAgent?: string } = {}
 ) {
   const username = options.username === undefined ? "grat" : options.username;
   const tables: Record<string, ReturnType<typeof thenable>> = {
@@ -132,7 +132,10 @@ function makeCtx(
     }),
   };
   return {
-    request: new NextRequest(url),
+    request: new NextRequest(
+      url,
+      options.userAgent ? { headers: { "user-agent": options.userAgent } } : undefined
+    ),
     supabase: {
       from: (table: string) => tables[table] ?? thenable([]),
     } as unknown as SupabaseClient,
@@ -226,32 +229,43 @@ describe("onboarding environment step", () => {
 
   it("widens media-src for the welcome intro film on the live render path", async () => {
     const response = await onboarding.render(
-      makeCtx("https://mini.example/mini/setup?step=welcome")
+      makeCtx("https://mini.example/mini/setup?step=welcome", {
+        userAgent:
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15",
+      })
     );
     expect(response.status).toBe(200);
     const csp = response.headers.get("Content-Security-Policy") ?? "";
     expect(csp).toContain("media-src 'self'");
     expect(csp).toContain("script-src 'self'");
+    // The deck's own rules load from a cached same-origin stylesheet
+    // (Stage 3) rather than shipping inline on every no-store render, so
+    // style-src widens to cover the <link>.
+    expect(csp).toContain("style-src 'unsafe-inline' 'self'");
     const body = await response.text();
     expect(body).toContain("/creator-os/airintrofin.mp4");
-    expect(body).toContain("/creator-os/airintrofin.mov");
+    // One source, and it is not preloaded: the welcome slide is where most
+    // sessions start, and an idle stage must not pull megabytes of film.
+    expect(body).not.toContain("/creator-os/airintrofin.mov");
+    expect(body).toContain('preload="metadata"');
     expect(body).toContain("/creator-os/intro-cinematic.js");
-    expect(body).toContain("/creator-os/wzrd-wordmark-1600.png");
+    expect(body).toContain("/creator-os/wzrd-wordmark-640.png");
+    expect(body).not.toContain("/creator-os/wzrd-wordmark-1600.png");
     // The done-form stays in the DOM for the intro bundle to submit.
     expect(body).toContain('name="step" value="welcome"');
     expect(body).toContain('<html lang="en" class="cine-page">');
-    expect(body).toContain('<body class="cine-page" data-swipe-next=');
+    expect(body).toContain('<body class="cine-page" data-allow-blast="true" data-swipe-next=');
     expect(body).toContain('<div class="cine" data-intro data-noswipe>');
     expect(body).toContain('class="cine-blast"');
     expect(body).toContain('<button type="button" class="cine-sound" hidden>Sound on</button>');
     expect(body).toContain('<video class="cine-film" playsinline muted');
-    expect(body.indexOf("/creator-os/airintrofin.mp4")).toBeLessThan(
-      body.indexOf("/creator-os/airintrofin.mov")
-    );
-    expect(body).toContain("html.cine-page,body.cine-page{background:#000}");
+    // The deck's rules (including the cine-page rules this used to assert
+    // inline) live in a cached same-origin stylesheet now, not the response
+    // body — see onboarding-css.test.ts for that file's own contents.
     expect(body).toContain(
-      "@media (orientation:portrait){.cine-film{object-fit:cover;object-position:center}}"
+      '<link rel="stylesheet" href="/creator-os/onboarding.css">'
     );
+    expect(body).not.toContain("html.cine-page,body.cine-page{background:#000}");
     expect(body).not.toContain('<div class="frame"');
     expect(body).not.toContain('<header class="bar">');
     expect(body).not.toContain('<main class="slide">');
@@ -263,26 +277,52 @@ describe("onboarding environment step", () => {
     const liteCtx = makeCtx("https://mini.example/mini/setup?step=welcome");
     liteCtx.session.via = "card";
     const lite = await (await onboarding.render(liteCtx)).text();
-    expect(lite).not.toContain('class="cine-blast"');
+    expect(lite).toContain('class="cine-blast"');
+    expect(lite).toContain('data-allow-blast="false"');
+    expect(lite).toContain("/creator-os/intro-cinematic.js");
 
     const stepper = await (
       await onboarding.render(makeCtx("https://mini.example/mini/setup?step=selfies"))
     ).text();
-    // The Photo Booth's stepper owns its progress/navigation; the global
-    // slide dots are intentionally absent so mobile users do not see two
-    // competing systems.
-    expect(stepper).not.toContain('<nav class="dots"');
-    expect(stepper).toContain('data-step="consent"');
-    expect(stepper).toContain('data-step="selfies"');
-    expect(stepper).toContain('data-step="voice"');
-    expect(stepper).toContain('data-step="twin"');
-    expect(stepper).toContain('data-step="avatar"');
-    expect(stepper).toContain('data-section="consent"');
+    // The stepper owns Previous/Continue; the footer keeps the deck dots
+    // (where you are across the six slides) and drops its own Back/Next so
+    // the two navigations do not compete.
+    expect(stepper).toContain('<nav class="dots"');
+    expect(stepper).not.toContain('<footer class="nav">');
+    expect(stepper).toContain('class="stepper-nav"');
+    // Every stage is addressable from the indicator row, but only the open
+    // one is in the document — the other five would drag their signed media
+    // previews into a render that does not show them.
+    for (const section of [
+      "consent",
+      "booth_photo",
+      "sheet",
+      "voice",
+      "twin_create",
+      "avatar",
+    ]) {
+      expect(stepper).toContain(`panel=${section}"`);
+    }
     expect(stepper).toContain('data-section="booth_photo"');
-    expect(stepper).toContain('data-section="sheet"');
-    expect(stepper).toContain('data-section="voice"');
-    expect(stepper).toContain('data-section="twin_create"');
-    expect(stepper).toContain('data-section="avatar"');
+    expect(stepper).not.toContain('data-section="voice"');
+    expect(stepper).not.toContain('data-section="avatar"');
+  });
+
+  it.each([
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
+    "Mozilla/5.0 (iPad; CPU OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
+    undefined,
+  ])("keeps the cinematic but disables its WebGL blast on a handheld or unknown UA", async (userAgent) => {
+    const options = userAgent === undefined ? {} : { userAgent };
+    const body = await (
+      await onboarding.render(
+        makeCtx("https://mini.example/mini/setup?step=welcome", options)
+      )
+    ).text();
+    expect(body).toContain("/creator-os/intro-cinematic.js");
+    expect(body).toContain('class="cine-blast"');
+    expect(body).toContain('<html lang="en" class="cine-page">');
+    expect(body).toContain('data-allow-blast="false"');
   });
 
   it("renders the three environment choices with no provider names leaking", async () => {
@@ -453,13 +493,82 @@ describe("onboarding environment step", () => {
         updated_at: "2026-01-01T00:00:00Z",
       })
     );
-    const response = await onboarding.render(
+    // A URL that names no step opens the deck at the beginning, whatever
+    // the state file says — including a state file written before a step
+    // existed, and including a finished one (which used to resolve through
+    // the first open step to `walkthrough`, the last slide).
+    const entry = await onboarding.render(
       makeCtx("https://mini.example/mini/setup")
+    );
+    expect(entry.status).toBe(200);
+    const landing = await entry.text();
+    expect(landing).toContain('<div class="cine" data-intro');
+    expect(landing).toContain('name="step" value="welcome"');
+    // Progress on the state file earns a one-tap way back to it.
+    expect(landing).toContain('class="resume"');
+
+    const response = await onboarding.render(
+      makeCtx("https://mini.example/mini/setup?step=environment")
     );
     expect(response.status).toBe(200);
     const body = await response.text();
-    // The pre-migration state normalizes: environment defaults to todo, so
-    // the first open step is the environment slide.
+    // The pre-migration state normalizes: environment defaults to todo.
     expect(body).toContain("value=\"set_environment\"");
+  });
+});
+
+describe("client load-timing beacon", () => {
+  it("ships the bundle on every slide, cinematic welcome included", async () => {
+    for (const step of ["welcome", "environment", "imessage"]) {
+      const body = await (
+        await onboarding.render(
+          makeCtx(`https://mini.example/mini/setup?step=${step}`)
+        )
+      ).text();
+      expect(body).toContain("/creator-os/deck-timing.js");
+    }
+  });
+
+  it("answers a beacon with an empty 204 and writes nothing", async () => {
+    const before = boxFiles.get(".hermes/miniapps/onboarding/state.json");
+    const form = new FormData();
+    form.set("action", "__timing");
+    form.set("ttfb_ms", "120");
+    form.set("fcp_ms", "480");
+    form.set("img_bytes", "35000");
+    const response = await onboarding.action!(makeCtx(), form);
+    expect(response.status).toBe(204);
+    expect(await response.text()).toBe("");
+    expect(boxFiles.get(".hermes/miniapps/onboarding/state.json")).toBe(before);
+  });
+
+  it("clamps and drops client numbers rather than logging them as given", async () => {
+    const logged: string[] = [];
+    const log = vi.spyOn(console, "log").mockImplementation((line: unknown) => {
+      logged.push(String(line));
+    });
+    const form = new FormData();
+    form.set("action", "__timing");
+    // Over the ceiling, negative, and not a number at all.
+    form.set("load_ms", "999999999");
+    form.set("ttfb_ms", "-5");
+    form.set("img_count", "not-a-number");
+    form.set("fcp_ms", "300.7");
+    // A field that is not on the allowlist is never echoed.
+    form.set("note", "<script>alert(1)</script>");
+    await onboarding.action!(makeCtx(), form);
+    log.mockRestore();
+
+    const line = logged.find((entry) => entry.includes("miniapp client timing"));
+    expect(line).toBeDefined();
+    const report = JSON.parse(line!) as Record<string, unknown>;
+    expect(report["load_ms"]).toBe(600_000);
+    expect(report["fcp_ms"]).toBe(300);
+    expect(report).not.toHaveProperty("ttfb_ms");
+    expect(report).not.toHaveProperty("img_count");
+    expect(report).not.toHaveProperty("transfer_ms");
+    expect(report).not.toHaveProperty("device_memory");
+    expect(report).not.toHaveProperty("note");
+    expect(line).not.toContain("<script>");
   });
 });

@@ -35,6 +35,11 @@ export interface MiniSession {
    *  extension), not a full browser — see ./surface for how a card link
    *  opened in Safari loses the marker. */
   via?: "card" | undefined;
+  /** The signed link's transport marker before user-agent resolution. This
+   * stays with the short-lived session so load telemetry can distinguish a
+   * card link opened in a browser from a normal browser launch. It must not
+   * decide rendering; `via` above remains the resolved surface. */
+  originVia?: "card" | undefined;
 }
 
 /**
@@ -92,6 +97,7 @@ export function sessionFromCookie(
     role: claims.role ?? "owner",
     grantId: claims.grantId,
     via: resolveVia(claims.via, request.headers.get("user-agent")),
+    originVia: claims.via,
   };
 }
 
@@ -313,4 +319,3 @@ export async function logGateEvent(
     );
   }
 }
-
