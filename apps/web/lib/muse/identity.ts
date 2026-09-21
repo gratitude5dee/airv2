@@ -38,6 +38,66 @@ export interface MuseIdentity {
 }
 
 /**
+ * Resolve or provision an Air account after WZRDMail has verified both the
+ * user's Thirdweb-backed WZRDMail session and the phone they will text from.
+ * `subject` is an opaque, stable WZRDMail organization reference — never an
+ * email address or a Thirdweb bearer token.
+ */
+export async function completeMuseWzrdmailIdentity(
+  supabase: SupabaseClient,
+  subject: string,
+  verifiedPhone: string,
+): Promise<MuseIdentity> {
+  if (!/^wzrdmail:[a-zA-Z0-9_-]{3,160}$/.test(subject)) {
+    throw new MuseIdentityError("invalid_identity", 401);
+  }
+  const phone = normalizeMusePhone(verifiedPhone);
+  if (!isSupportedMusePhone(phone)) throw new MuseIdentityError("invalid_phone", 400);
+  const canonicalPhone = normalizeAddress("imessage", phone);
+  const [{ data: bySubject }, { data: byHandle }] = await Promise.all([
+    supabase.from("users").select("id").eq("thirdweb_user_id", subject).maybeSingle(),
+    supabase
+      .from("handles")
+      .select("user_id")
+      .eq("platform", "imessage")
+      .eq("address", canonicalPhone)
+      .maybeSingle(),
+  ]);
+  const subjectUserId = bySubject?.id as string | undefined;
+  const phoneUserId = byHandle?.user_id as string | undefined;
+  if (subjectUserId && phoneUserId && subjectUserId !== phoneUserId) {
+    throw new MuseIdentityError("identity_conflict", 409);
+  }
+  const existingUserId = subjectUserId ?? phoneUserId;
+  if (existingUserId) {
+    await attachVerifiedWzrdmailIdentity(supabase, existingUserId, canonicalPhone, subject);
+    const linePhone = await ensureExistingMuseLine(supabase, existingUserId, canonicalPhone);
+    return { userId: existingUserId, phone: canonicalPhone, provisioned: false, inviteUrl: inviteUrl(linePhone) };
+  }
+
+  const preparedLine = await prepareMuseLine(supabase, canonicalPhone);
+  if (preparedLine.assignedUserId !== null) throw new MuseIdentityError("provisioning_failed", 503);
+  let created;
+  try {
+    created = await provisionUser({
+      boundPhone: canonicalPhone,
+      linePhone: preparedLine.phone,
+      operator: "muse",
+      username: `muse_${randomBytes(6).toString("hex")}`,
+    });
+  } catch (error) {
+    throw new MuseIdentityError("provisioning_failed", 503, error);
+  }
+  await attachVerifiedWzrdmailIdentity(supabase, created.userId, canonicalPhone, subject);
+  return {
+    userId: created.userId,
+    phone: canonicalPhone,
+    provisioned: true,
+    inviteUrl: created.inviteLink ?? inviteUrl(preparedLine.phone),
+  };
+}
+
+/**
  * A successful OTP is the only identity assertion accepted by the connector.
  * Existing Air owners resolve exactly as ordinary web login does. A new owner
  * receives a complete Air project after the SMS proof: its own number from
@@ -129,6 +189,40 @@ async function attachVerifiedWallet(
       .update({ wallet_address: walletAddress, status: "active" })
       .eq("id", userId)
       .is("wallet_address", null),
+    supabase
+      .from("handles")
+      .update({ verified_at: new Date().toISOString() })
+      .eq("user_id", userId)
+      .eq("platform", "imessage")
+      .eq("address", phone)
+      .is("verified_at", null),
+    supabase
+      .from("provisioning")
+      .update({ state: "active", updated_at: new Date().toISOString() })
+      .eq("user_id", userId)
+      .neq("state", "abandoned"),
+  ]);
+}
+
+async function attachVerifiedWzrdmailIdentity(
+  supabase: SupabaseClient,
+  userId: string,
+  phone: string,
+  subject: string,
+): Promise<void> {
+  // A matching phone can link a pre-existing Air account on its first
+  // WZRDMail sign-in. The guarded update prevents one verified WZRDMail
+  // identity from being silently rebound to a different Air owner.
+  const { data: linked, error: linkError } = await supabase
+    .from("users")
+    .update({ thirdweb_user_id: subject, status: "active" })
+    .eq("id", userId)
+    .or(`thirdweb_user_id.is.null,thirdweb_user_id.eq.${subject}`)
+    .select("id");
+  if (linkError || !linked || linked.length !== 1) {
+    throw new MuseIdentityError("identity_conflict", 409, linkError);
+  }
+  await Promise.all([
     supabase
       .from("handles")
       .update({ verified_at: new Date().toISOString() })
@@ -272,7 +366,7 @@ function inviteUrl(linePhone: string): string {
 
 export class MuseIdentityError extends Error {
   constructor(
-    readonly code: "invalid_phone" | "invalid_code" | "no_line_available" | "provisioning_failed",
+    readonly code: "invalid_phone" | "invalid_code" | "invalid_identity" | "identity_conflict" | "no_line_available" | "provisioning_failed",
     readonly status: number,
     override readonly cause?: unknown,
   ) {

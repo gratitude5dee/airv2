@@ -45,6 +45,10 @@ type MuseEnv = Env & {
   // declaration. They are supplied only at runtime through `wrangler secret`.
   MUSE_WORKER_TOKEN?: string;
   MUSE_INTERNAL_TOKEN?: string;
+  /** Server-to-server only: redeems WZRDMail's Thirdweb identity handoff. */
+  WZRDMAIL_CONNECTOR_TOKEN?: string;
+  WZRDMAIL_API_ORIGIN?: string;
+  WZRDMAIL_CONSOLE_ORIGIN?: string;
 };
 
 function json(body: unknown, init: ResponseInit = {}): Response {
@@ -193,7 +197,14 @@ async function authorize(request: Request, env: MuseEnv): Promise<Response> {
 }
 
 interface LoginState {
-  userId: string;
+  userId?: string;
+  subject?: string;
+  expiresAt: number;
+}
+
+interface WzrdmailFlowState {
+  /** Original, validated OAuth request; never supplied back by the browser. */
+  authorizationUrl: string;
   expiresAt: number;
 }
 
@@ -227,10 +238,10 @@ function fullPage(title: string, body: string, csrf?: string, login?: string): R
   return response;
 }
 
-function fullPhonePage(request: AuthRequest, action: string, clientName: string, csrf: string, error?: string): Response {
+function fullPhonePage(request: AuthRequest, action: string, clientName: string, csrf: string, error?: string, login?: string): Response {
   return fullPage("Sign in to Air", `<h1>Sign in to Air</h1><p><strong>${escapeHtml(clientName)}</strong> wants to connect to your Air.</p>
-<p class="note">Use the US mobile number on your Air account. New accounts are provisioned with an Air iMessage line, WZRDMail, and a computer after verification.</p>${error ? `<p role="alert">${escapeHtml(error)}</p>` : ""}
-<form method="post" action="${escapeHtml(action)}"><input type="hidden" name="csrf" value="${escapeHtml(csrf)}"><input type="hidden" name="stage" value="phone"><label>Mobile number<br><input name="phone" type="tel" autocomplete="tel" inputmode="tel" required></label><br><button type="submit">Send code</button></form>`, csrf);
+<p class="note">Your WZRDMail account is signed in with Thirdweb. Verify the US mobile number you will use to text your Air line. New accounts receive their own iMessage line, WZRDMail, and a computer after verification.</p>${error ? `<p role="alert">${escapeHtml(error)}</p>` : ""}
+<form method="post" action="${escapeHtml(action)}"><input type="hidden" name="csrf" value="${escapeHtml(csrf)}"><input type="hidden" name="stage" value="phone"><label>Mobile number<br><input name="phone" type="tel" autocomplete="tel" inputmode="tel" required></label><br><button type="submit">Send code</button></form>`, csrf, login);
 }
 
 function fullCodePage(request: AuthRequest, action: string, phone: string, csrf: string, error?: string): Response {
@@ -255,25 +266,114 @@ async function controlPlane<T>(env: MuseEnv, path: string, body: unknown): Promi
   return { status: response.status, value: await response.json().catch(() => ({})) as T & { error?: string } };
 }
 
-async function fullAuthorize(request: Request, env: MuseEnv): Promise<Response> {
-  if (request.method !== "GET" && request.method !== "POST") return new Response(null, { status: 405, headers: { allow: "GET, POST" } });
-  const parsed = await parseAuthorization(request, env);
-  if (parsed instanceof Response) return parsed;
-  if (!isAllowedRedirect(parsed.redirectUri)) return document("<h1>Authorization request rejected</h1><p>This redirect URI is not allowed for Air × Muse.</p>", 400);
+async function wzrdmail<T>(env: MuseEnv, path: string, body: unknown): Promise<{ status: number; value: T & { error?: string } }> {
+  const origin = (env.WZRDMAIL_API_ORIGIN ?? "https://api.wzrd.tech").replace(/\/+$/, "");
+  const response = await fetch(`${origin}/v0/console/muse/${path}`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${env.WZRDMAIL_CONNECTOR_TOKEN ?? ""}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  return { status: response.status, value: await response.json().catch(() => ({})) as T & { error?: string } };
+}
+
+function wzrdmailConsoleUrl(env: MuseEnv, flow: string): string {
+  const origin = (env.WZRDMAIL_CONSOLE_ORIGIN ?? "https://console.mail.wzrd.tech").replace(/\/+$/, "");
+  const callback = new URL("https://muse.wzrd.tech/authorize");
+  callback.searchParams.set("wzrdmail_flow", flow);
+  const destination = new URL(`${origin}/connect/muse`);
+  destination.searchParams.set("return_to", callback.toString());
+  return destination.toString();
+}
+
+async function resumeWzrdmailAuthorization(
+  request: Request,
+  env: MuseEnv,
+  flow: string,
+  code: string,
+): Promise<{ parsed: AuthRequest; action: string; clientName: string; subject: string } | Response> {
+  if (!/^[a-zA-Z0-9_-]{32,128}$/.test(flow) || !/^wmc_[a-f0-9]{64}$/.test(code)) {
+    return document("<h1>Expired connection</h1><p>Return to Muse and start the connection again.</p>", 400);
+  }
+  const raw = await env.OAUTH_KV.get(`muse:wzrdmail-flow:${flow}`);
+  const state = raw ? JSON.parse(raw) as WzrdmailFlowState : null;
+  if (!state || state.expiresAt < Date.now()) {
+    return document("<h1>Expired connection</h1><p>Return to Muse and start the connection again.</p>", 400);
+  }
+  const parsed = await parseAuthorization(new Request(state.authorizationUrl), env);
+  if (parsed instanceof Response || !isAllowedRedirect(parsed.redirectUri)) {
+    return parsed instanceof Response ? parsed : document("<h1>Authorization request rejected</h1>", 400);
+  }
   const client = await env.OAUTH_PROVIDER.lookupClient(parsed.clientId);
   if (!client) return document("<h1>Unknown OAuth client</h1>", 400);
-  const clientName = client.clientName ?? "Muse";
-  const action = new URL(request.url).toString();
-  if (request.method === "GET") return fullPhonePage(parsed, action, clientName, randomToken());
+  const redemption = await wzrdmail<{ subject?: string }>(env, "redeem", { code });
+  if (redemption.status !== 200 || !redemption.value.subject) {
+    return document("<h1>Could not verify WZRDMail</h1><p>Return to Muse and try connecting again.</p>", 401);
+  }
+  await env.OAUTH_KV.delete(`muse:wzrdmail-flow:${flow}`);
+  return {
+    parsed,
+    action: state.authorizationUrl,
+    clientName: client.clientName ?? "Muse",
+    subject: redemption.value.subject,
+  };
+}
+
+async function fullAuthorize(request: Request, env: MuseEnv): Promise<Response> {
+  if (request.method !== "GET" && request.method !== "POST") return new Response(null, { status: 405, headers: { allow: "GET, POST" } });
+  const currentUrl = new URL(request.url);
+  let parsed: AuthRequest;
+  let action: string;
+  let clientName: string;
+  let subject: string | undefined;
+  if (request.method === "GET" && currentUrl.searchParams.has("wzrdmail_flow")) {
+    const flow = currentUrl.searchParams.get("wzrdmail_flow") ?? "";
+    const code = currentUrl.searchParams.get("wzrdmail_code") ?? "";
+    const resumed = await resumeWzrdmailAuthorization(request, env, flow, code);
+    if (resumed instanceof Response) return resumed;
+    ({ parsed, action, clientName, subject } = resumed);
+    const identityLogin = randomToken();
+    await env.OAUTH_KV.put(
+      `muse:login:${identityLogin}`,
+      JSON.stringify({ subject, expiresAt: Date.now() + 10 * 60 * 1000 } satisfies LoginState),
+      { expirationTtl: 600 },
+    );
+    return fullPhonePage(parsed, action, clientName, randomToken(), undefined, identityLogin);
+  }
+  const parsedRequest = await parseAuthorization(request, env);
+  if (parsedRequest instanceof Response) return parsedRequest;
+  if (!isAllowedRedirect(parsedRequest.redirectUri)) return document("<h1>Authorization request rejected</h1><p>This redirect URI is not allowed for Air × Muse.</p>", 400);
+  const client = await env.OAUTH_PROVIDER.lookupClient(parsedRequest.clientId);
+  if (!client) return document("<h1>Unknown OAuth client</h1>", 400);
+  parsed = parsedRequest;
+  clientName = client.clientName ?? "Muse";
+  action = currentUrl.toString();
+  if (request.method === "GET") {
+    const flow = randomToken();
+    await env.OAUTH_KV.put(
+      `muse:wzrdmail-flow:${flow}`,
+      JSON.stringify({ authorizationUrl: action, expiresAt: Date.now() + 10 * 60 * 1000 } satisfies WzrdmailFlowState),
+      { expirationTtl: 600 },
+    );
+    return Response.redirect(wzrdmailConsoleUrl(env, flow), 302);
+  }
 
   const form = await request.formData();
   const csrf = form.get("csrf");
   if (typeof csrf !== "string" || !(await csrfMatches(csrf, cookie(request, fullCsrfCookieName)))) return document("<h1>Expired or invalid approval</h1><p>Please return to the connector and try again.</p>", 403);
   const stage = form.get("stage");
+  const login = cookie(request, fullLoginCookieName);
+  const raw = login ? await env.OAUTH_KV.get(`muse:login:${login}`) : null;
+  const loginState = raw ? JSON.parse(raw) as LoginState : null;
   if (stage === "phone") {
     const phone = form.get("phone");
     if (typeof phone !== "string") return fullPhonePage(parsed, action, clientName, randomToken(), "Enter a mobile number.");
-    const outcome = await controlPlane(env, "/api/muse/otp/start", { phone });
+    // A phone binds the iMessage relay to its owner; WZRDMail's Thirdweb
+    // project performs the possession check rather than Air issuing a second
+    // account credential.
+    const outcome = await wzrdmail(env, "phone/start", { phone });
     if (outcome.status !== 200) return fullPhonePage(parsed, action, clientName, randomToken(), outcome.value.error === "invalid_phone" ? "Use a US mobile number that can receive SMS and iMessage." : "We could not send a code. Try again shortly.");
     return fullCodePage(parsed, action, phone, randomToken());
   }
@@ -281,19 +381,23 @@ async function fullAuthorize(request: Request, env: MuseEnv): Promise<Response> 
     const phone = form.get("phone");
     const code = form.get("code");
     if (typeof phone !== "string" || typeof code !== "string") return fullPhonePage(parsed, action, clientName, randomToken(), "Start again and request a new code.");
-    const outcome = await controlPlane<{ user_id?: string; invite_url?: string | null }>(env, "/api/muse/otp/complete", { phone, code });
+    // The WZRDMail subject is staged in the HttpOnly login cookie by the
+    // callback. A direct POST cannot turn a phone OTP into an Air account.
+    const loginSubject = loginState?.subject;
+    if (!loginSubject) return fullPhonePage(parsed, action, clientName, randomToken(), "Your WZRDMail sign-in expired. Return to Muse and try again.");
+    const verified = await wzrdmail(env, "phone/complete", { phone, code });
+    if (verified.status !== 200) return fullCodePage(parsed, action, phone, randomToken(), "That code did not work. Try again.");
+    const outcome = await controlPlane<{ user_id?: string; invite_url?: string | null }>(env, "/api/muse/wzrdmail/complete", { subject: loginSubject, phone });
     if (outcome.status !== 200 || !outcome.value.user_id) return fullCodePage(parsed, action, phone, randomToken(), outcome.value.error === "no_line_available" ? "Air's current iMessage user capacity is full. Please try again later." : "That code did not work. Try again.");
-    const login = randomToken();
-    await env.OAUTH_KV.put(`muse:login:${login}`, JSON.stringify({ userId: outcome.value.user_id, expiresAt: Date.now() + 10 * 60 * 1000 } satisfies LoginState), { expirationTtl: 600 });
+    const consentLogin = randomToken();
+    await env.OAUTH_KV.put(`muse:login:${consentLogin}`, JSON.stringify({ userId: outcome.value.user_id, expiresAt: Date.now() + 10 * 60 * 1000 } satisfies LoginState), { expirationTtl: 600 });
     const scopes = fullScopes(parsed.scope);
-    return fullConsentPage(parsed, action, clientName, scopes.includes("profile") ? scopes : ["profile", ...scopes], randomToken(), login, outcome.value.invite_url ?? undefined);
+    return fullConsentPage(parsed, action, clientName, scopes.includes("profile") ? scopes : ["profile", ...scopes], randomToken(), consentLogin, outcome.value.invite_url ?? undefined);
   }
   if (stage === "consent") {
     if (form.get("approve") !== "yes") return deniedAuthorization(parsed);
-    const login = cookie(request, fullLoginCookieName);
-    const raw = login ? await env.OAUTH_KV.get(`muse:login:${login}`) : null;
-    const state = raw ? JSON.parse(raw) as LoginState : null;
-    if (!login || !state || state.expiresAt < Date.now()) return fullPhonePage(parsed, action, clientName, randomToken(), "Your verification expired. Request another code.");
+    const state = loginState;
+    if (!login || !state?.userId || state.expiresAt < Date.now()) return fullPhonePage(parsed, action, clientName, randomToken(), "Your verification expired. Request another code.");
     const requested = fullScopes(parsed.scope);
     const selected = fullScopes(form.getAll("scope").filter((scope): scope is string => typeof scope === "string"));
     const scopes = selected.filter((scope) => requested.includes(scope));
@@ -376,7 +480,7 @@ class McpApiHandler extends WorkerEntrypoint<MuseEnv, AuthProps> {
 
 function fullBrief(env: MuseEnv): string {
   const docs = env.DOCS_URL ?? "https://air.wzrd.tech/docs/muse";
-  return `# Air × Muse\n\nConnect one owner’s Air account to Muse. OAuth 2.1 authorization-code flow with PKCE is required. Air updates and /muse commands use the owner’s project-provisioned iMessage line. Every send, payment, booking, calendar change, and schedule remains behind Air’s Needs you decisions.\n\n## Access requirements\n\n- A US mobile number that can receive the Air/thirdweb verification code.\n- An available user seat in Air's current Photon Spectrum Pro project (up to 100 users).\n- Every verified user receives their own distinct Air “Texts on” iMessage number from that project; no dedicated-line or Business plan is required.\n- Existing Air owners sign into the same account with the phone number already bound to it. New owners receive an Air account, line, Box, and WZRDMail during setup.\n\n## Capabilities\n\n- Connection: \`air.whoami\`, \`air.decisions.status\`\n- Relay: \`air.notify\`, \`air.commands.pull\`, \`air.commands.reply\`, \`air.commands.ack\`, \`air.agents.register\`\n- Air work: \`air.run\`, \`air.run.status\`\n- Mail and files: \`air.mail.list\`, \`air.mail.draft\`, \`air.files.put\`, \`air.files.list\`\n- Approval-gated changes: \`air.calendar.add\`, \`air.schedule.create\`, \`air.wallet.request\`\n- Wallet read: \`air.wallet.balance\`\n\n- MCP: \`https://muse.wzrd.tech/mcp\`\n- REST OpenAPI: \`https://muse.wzrd.tech/openapi.json\`\n- Documentation: ${docs}\n`;
+  return `# Air × Muse\n\nConnect one owner’s Air account to Muse. OAuth 2.1 authorization-code flow with PKCE is required. Air updates and /muse commands use the owner’s project-provisioned iMessage line. Every send, payment, booking, calendar change, and schedule remains behind Air’s Needs you decisions.\n\n## Access requirements\n\n- Sign in through WZRDMail’s existing Thirdweb authentication (email, Google, or Apple).\n- A US mobile number that can receive the Thirdweb verification code and will own the Air relay.\n- An available user seat in Air's current Photon Spectrum Pro project (up to 100 users).\n- Every verified user receives their own distinct Air “Texts on” iMessage number from that project; no dedicated-line or Business plan is required.\n- WZRDMail passes Air only a five-minute, single-use opaque subject. Thirdweb tokens and email addresses never cross the service boundary. New owners receive an Air account, line, Box, and WZRDMail during setup.\n\n## Capabilities\n\n- Connection: \`air.whoami\`, \`air.decisions.status\`\n- Relay: \`air.notify\`, \`air.commands.pull\`, \`air.commands.reply\`, \`air.commands.ack\`, \`air.agents.register\`\n- Air work: \`air.run\`, \`air.run.status\`\n- Mail and files: \`air.mail.list\`, \`air.mail.draft\`, \`air.files.put\`, \`air.files.list\`\n- Approval-gated changes: \`air.calendar.add\`, \`air.schedule.create\`, \`air.wallet.request\`\n- Wallet read: \`air.wallet.balance\`\n\n- MCP: \`https://muse.wzrd.tech/mcp\`\n- REST OpenAPI: \`https://muse.wzrd.tech/openapi.json\`\n- Documentation: ${docs}\n`;
 }
 
 /**

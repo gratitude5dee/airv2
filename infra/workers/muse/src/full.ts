@@ -16,6 +16,7 @@ type FullEnv = Env & {
   DOCS_URL?: string;
   MUSE_WORKER_TOKEN?: string;
   MUSE_INTERNAL_TOKEN?: string;
+  WZRDMAIL_CONNECTOR_TOKEN?: string;
   MUSE_USER: DurableObjectNamespace;
 };
 
@@ -24,7 +25,7 @@ const agentSchema = z.string().regex(/^[a-z0-9][a-z0-9 _-]{0,31}$/i);
 const commandIdSchema = z.string().uuid();
 
 export function fullEnabled(env: FullEnv): boolean {
-  return String(env.MUSE_ENABLED) === "true" && Boolean(env.MUSE_WORKER_TOKEN) && Boolean(env.MUSE_INTERNAL_TOKEN);
+  return String(env.MUSE_ENABLED) === "true" && Boolean(env.MUSE_WORKER_TOKEN) && Boolean(env.MUSE_INTERNAL_TOKEN) && Boolean(env.WZRDMAIL_CONNECTOR_TOKEN);
 }
 
 export function fullScopes(scopes: readonly string[]): MuseScope[] {
