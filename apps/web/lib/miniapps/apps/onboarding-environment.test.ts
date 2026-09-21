@@ -234,9 +234,13 @@ describe("onboarding environment step", () => {
     expect(csp).toContain("script-src 'self'");
     const body = await response.text();
     expect(body).toContain("/creator-os/airintrofin.mp4");
-    expect(body).toContain("/creator-os/airintrofin.mov");
+    // One source, and it is not preloaded: the welcome slide is where most
+    // sessions start, and an idle stage must not pull megabytes of film.
+    expect(body).not.toContain("/creator-os/airintrofin.mov");
+    expect(body).toContain('preload="metadata"');
     expect(body).toContain("/creator-os/intro-cinematic.js");
-    expect(body).toContain("/creator-os/wzrd-wordmark-1600.png");
+    expect(body).toContain("/creator-os/wzrd-wordmark-640.png");
+    expect(body).not.toContain("/creator-os/wzrd-wordmark-1600.png");
     // The done-form stays in the DOM for the intro bundle to submit.
     expect(body).toContain('name="step" value="welcome"');
     expect(body).toContain('<html lang="en" class="cine-page">');
@@ -245,9 +249,6 @@ describe("onboarding environment step", () => {
     expect(body).toContain('class="cine-blast"');
     expect(body).toContain('<button type="button" class="cine-sound" hidden>Sound on</button>');
     expect(body).toContain('<video class="cine-film" playsinline muted');
-    expect(body.indexOf("/creator-os/airintrofin.mp4")).toBeLessThan(
-      body.indexOf("/creator-os/airintrofin.mov")
-    );
     expect(body).toContain("html.cine-page,body.cine-page{background:#000}");
     expect(body).toContain(
       "@media (orientation:portrait){.cine-film{object-fit:cover;object-position:center}}"
@@ -268,21 +269,28 @@ describe("onboarding environment step", () => {
     const stepper = await (
       await onboarding.render(makeCtx("https://mini.example/mini/setup?step=selfies"))
     ).text();
-    // The Photo Booth's stepper owns its progress/navigation; the global
-    // slide dots are intentionally absent so mobile users do not see two
-    // competing systems.
-    expect(stepper).not.toContain('<nav class="dots"');
-    expect(stepper).toContain('data-step="consent"');
-    expect(stepper).toContain('data-step="selfies"');
-    expect(stepper).toContain('data-step="voice"');
-    expect(stepper).toContain('data-step="twin"');
-    expect(stepper).toContain('data-step="avatar"');
-    expect(stepper).toContain('data-section="consent"');
+    // The stepper owns Previous/Continue; the footer keeps the deck dots
+    // (where you are across the six slides) and drops its own Back/Next so
+    // the two navigations do not compete.
+    expect(stepper).toContain('<nav class="dots"');
+    expect(stepper).not.toContain('<footer class="nav">');
+    expect(stepper).toContain('class="stepper-nav"');
+    // Every stage is addressable from the indicator row, but only the open
+    // one is in the document — the other five would drag their signed media
+    // previews into a render that does not show them.
+    for (const section of [
+      "consent",
+      "booth_photo",
+      "sheet",
+      "voice",
+      "twin_create",
+      "avatar",
+    ]) {
+      expect(stepper).toContain(`panel=${section}"`);
+    }
     expect(stepper).toContain('data-section="booth_photo"');
-    expect(stepper).toContain('data-section="sheet"');
-    expect(stepper).toContain('data-section="voice"');
-    expect(stepper).toContain('data-section="twin_create"');
-    expect(stepper).toContain('data-section="avatar"');
+    expect(stepper).not.toContain('data-section="voice"');
+    expect(stepper).not.toContain('data-section="avatar"');
   });
 
   it("renders the three environment choices with no provider names leaking", async () => {
@@ -453,13 +461,26 @@ describe("onboarding environment step", () => {
         updated_at: "2026-01-01T00:00:00Z",
       })
     );
-    const response = await onboarding.render(
+    // A URL that names no step opens the deck at the beginning, whatever
+    // the state file says — including a state file written before a step
+    // existed, and including a finished one (which used to resolve through
+    // the first open step to `walkthrough`, the last slide).
+    const entry = await onboarding.render(
       makeCtx("https://mini.example/mini/setup")
+    );
+    expect(entry.status).toBe(200);
+    const landing = await entry.text();
+    expect(landing).toContain('<div class="cine" data-intro');
+    expect(landing).toContain('name="step" value="welcome"');
+    // Progress on the state file earns a one-tap way back to it.
+    expect(landing).toContain('class="resume"');
+
+    const response = await onboarding.render(
+      makeCtx("https://mini.example/mini/setup?step=environment")
     );
     expect(response.status).toBe(200);
     const body = await response.text();
-    // The pre-migration state normalizes: environment defaults to todo, so
-    // the first open step is the environment slide.
+    // The pre-migration state normalizes: environment defaults to todo.
     expect(body).toContain("value=\"set_environment\"");
   });
 });

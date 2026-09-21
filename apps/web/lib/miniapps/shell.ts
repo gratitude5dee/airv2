@@ -239,11 +239,21 @@ export function renderShell(options: ShellOptions): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>${esc(options.title)}</title>${fonts}<style>${tokenBlock(current.tokens)}${SHELL_CSS}${lite ? LITE_CSS : ""}</style>${shader}</head><body>${backdropHtml}${scrim}${grain}<div class="frame"${swipeAttrs}><header class="bar">${logoPill()}<span class="app-pill">${esc(options.kicker)}</span></header><main class="app">${noticeHtml}${headline}${options.body}</main></div>${swipeScript}</body></html>`;
 }
 
+/**
+ * The header wordmark, at the two sizes a header plate ever needs. The
+ * 1600px master is 790 KB behind a 24 px-tall image — a cost every card tap
+ * paid, in a webview whose memory budget the Messages extension shares.
+ */
+export const WORDMARK_IMG =
+  '<img src="/creator-os/wzrd-wordmark-320.png" ' +
+  'srcset="/creator-os/wzrd-wordmark-320.png 320w, /creator-os/wzrd-wordmark-640.png 640w" ' +
+  'sizes="160px" width="320" height="79" decoding="async" alt="WZRD.tech">';
+
 /** The header wordmark — a link back to the Home mini-app when the session
  * carries a home link, a plain plate otherwise. */
 function logoPill(): string {
   const home = activeHomeHref();
-  const img = '<img src="/creator-os/wzrd-wordmark-1600.png" alt="WZRD.tech">';
+  const img = WORDMARK_IMG;
   return home
     ? `<a class="logo-pill" href="${esc(home)}" aria-label="Home">${img}</a>`
     : `<span class="logo-pill">${img}</span>`;

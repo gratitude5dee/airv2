@@ -57,6 +57,17 @@ function attachIntro(): void {
   root.classList.add("is-ready");
   if (reduced) root.classList.add("is-reduced");
 
+  // The film ships `preload="metadata"` so an idle welcome slide never pulls
+  // several megabytes it may not need. The press-and-hold escalation gives a
+  // second of runway before playback, so warm it on the first touch.
+  const warmFilm = (): void => {
+    if (video.preload === "auto") return;
+    video.preload = "auto";
+    video.load();
+  };
+  cta.addEventListener("pointerdown", warmFilm, { once: true });
+  cta.addEventListener("touchstart", warmFilm, { once: true, passive: true });
+
   let phase: Phase = "idle";
   let startedAt = 0;
   let frame = 0;

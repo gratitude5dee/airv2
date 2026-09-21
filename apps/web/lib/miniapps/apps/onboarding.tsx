@@ -195,6 +195,8 @@ import { createSpectrumSender } from "@/lib/spectrum/sender";
 import { externalOrigin } from "../gates";
 import { mintToken } from "../tokens";
 import { baseHeaders, esc, forbidden, withBaseHeaders } from "../html";
+import { WORDMARK_IMG } from "../shell";
+import { isHandheld } from "../surface";
 import {
   DEFAULT_THEME,
   isThemeId,
@@ -295,7 +297,7 @@ export const SLIDE_GROUPS: readonly [OnboardingSlide, ...OnboardingSlide[]] = [
     id: "booth",
     title: "Your digital twin",
     kicker: "Digital Twin",
-    // Six stepper panels — the deck-stepper folds them into a one-at-a-time
+    // Six stepper panels — the deck renders them as a one-at-a-time
     // wizard with green-check progress; state lives on the five step IDs
     // (consent/selfies/voice/twin/avatar) each panel reads and writes.
     sections: [
@@ -345,6 +347,15 @@ export const SLIDE_GROUPS: readonly [OnboardingSlide, ...OnboardingSlide[]] = [
     ],
   },
 ];
+
+/**
+ * Where the deck opens when nothing names a step. Setup is a story with a
+ * beginning: a tap on the Onboarding card lands on the welcome slide, not
+ * wherever the state file happens to leave off (and never on the last slide,
+ * which is what a fully done/skipped state file used to resolve to).
+ */
+export const ENTRY_SLIDE: OnboardingSlide = SLIDE_GROUPS[0];
+export const ENTRY_STEP: OnboardingStepId = "welcome";
 
 /** Every step a slide owns, in section order and without duplicates. */
 export function slideSteps(slide: OnboardingSlide): OnboardingStepId[] {
@@ -860,20 +871,33 @@ async function hydrateSlide(
 }
 
 /**
+ * Where a render with no `?step=` lands.
+ *  - "entry": a fresh open (a card tap, the Home launcher). The deck always
+ *    opens on its first slide — a finished account used to resolve through
+ *    firstOpenStep() to `walkthrough`, dropping the owner straight onto the
+ *    last slide with no sense of where setup begins.
+ *  - "next": the redirect that follows an action, which does want the next
+ *    thing left to do.
+ */
+type RenderEntry = "entry" | "next";
+
+/**
  * The snapshot a render works from: scoped to the requested step when the
  * URL names one, then topped up for the slide the deck actually opens on.
  */
 async function snapshotForRender(
   supabase: SupabaseClient,
   userId: string,
-  requested: OnboardingStepId | null
+  requested: OnboardingStepId | null,
+  entry: RenderEntry = "next"
 ): Promise<{ snapshot: OnboardingSnapshot; active: OnboardingStepId }> {
   const snapshot = await loadSnapshot(
     supabase,
     userId,
-    requested ? slideForStep(requested) : "status"
+    requested ? slideForStep(requested) : entry === "entry" ? ENTRY_SLIDE : "status"
   );
-  const active = requested ?? firstOpenStep(snapshot);
+  const active =
+    requested ?? (entry === "entry" ? ENTRY_STEP : firstOpenStep(snapshot));
   await hydrateSlide(supabase, userId, snapshot, slideForStep(active));
   return { snapshot, active };
 }
@@ -990,6 +1014,28 @@ export function effectiveStatus(
   }
 }
 
+/**
+ * "Pick up where you left off" for the welcome slide. Empty for an account
+ * with no progress (the Continue button is the only way on) and for one that
+ * has nothing open left — there is nothing to resume to.
+ */
+function resumeLink(snapshot: OnboardingSnapshot): string {
+  const started = ONBOARDING_STEPS.some(
+    (step) => snapshot.state.steps[step] !== "todo"
+  );
+  if (!started) return "";
+  const next = firstOpenStep(snapshot);
+  if (next === "welcome") return "";
+  const slide = slideForStep(next);
+  if (slideLocked(snapshot, slide)) return "";
+  const open = ONBOARDING_STEPS.some(
+    (step) => effectiveStatus(snapshot, step) === "todo" && step !== "welcome"
+  );
+  const target = open ? next : "walkthrough";
+  const label = open ? "Pick up where you left off" : "Jump to Get started";
+  return `<a class="resume" href="?step=${esc(target)}">${label} → ${esc(slideForStep(target).kicker)}</a>`;
+}
+
 function firstOpenStep(snapshot: OnboardingSnapshot): OnboardingStepId {
   for (const step of ONBOARDING_STEPS) {
     if (effectiveStatus(snapshot, step) === "todo") return step;
@@ -1094,7 +1140,7 @@ function mediaRow(m: IdentityMediaView, siblings: number, index: number): string
   const label = ROLE_LABELS[m.role];
   const preview =
     m.kind === "image"
-      ? `<img class="media-thumb" src="${esc(m.url ?? "")}" alt="${esc(label)} ${index + 1}">`
+      ? `<img class="media-thumb" src="${esc(m.url ?? "")}" width="64" height="64" loading="lazy" decoding="async" alt="${esc(label)} ${index + 1}">`
       : m.kind === "video"
         ? `<video class="media-thumb" src="${esc(m.url ?? "")}" muted playsinline preload="metadata" aria-label="${esc(label)} ${index + 1}"></video>`
         : `<audio class="media-audio" src="${esc(m.url ?? "")}" controls preload="none" aria-label="${esc(label)} ${index + 1}"></audio>`;
@@ -1154,8 +1200,54 @@ function renderResolutions(snapshot: OnboardingSnapshot): string {
   return `<p><strong>${remaining}</strong> earlier chat label${remaining === 1 ? "" : "s"} match${remaining === 1 ? "es" : ""} more than one conversation (or none). Pick the right conversation for each, or keep it as its own thread, then rerun the upload command.</p><form method="post" class="stack"><input type="hidden" name="action" value="resolve_threads">${rows}${more}<button>Save decisions</button></form>`;
 }
 
+/** Everything an iPhone camera roll can hand back; HEIC converts server-side. */
+const PHOTO_ACCEPT = "image/png,image/jpeg,image/webp,image/heic,image/heif";
+
+/** Inline, currentColor, no asset fetch — same posture as ENV_MARKS. */
+const UPLOAD_ICONS: Record<"camera" | "library" | "video" | "audio", string> = {
+  camera:
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8.5A1.5 1.5 0 0 1 4.5 7h2.2l1.1-2h8.4l1.1 2h2.2A1.5 1.5 0 0 1 21 8.5v9A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5v-9Z"/><circle cx="12" cy="13" r="3.6"/></svg>',
+  library:
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m6 16 3.6-4.2 2.8 3 2.3-2.6L18.5 16"/><circle cx="9" cy="9.4" r="1.4"/></svg>',
+  video:
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="12.5" height="12" rx="2"/><path d="m16.5 11 4.5-3v8l-4.5-3Z"/></svg>',
+  audio:
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 12a6.5 6.5 0 0 0 13 0"/><path d="M12 18.5V21"/></svg>',
+};
+
+/**
+ * One upload affordance: a full-width tile the whole of which is the file
+ * picker's label, so the tap target is the card and not a 90px-wide
+ * platform button labelled "Choose File" that says nothing about what it
+ * wants. The input stays a plain `<input type=file>` inside a plain
+ * multipart form — the tile is presentation, the upload path is unchanged.
+ *
+ * With the tap-feedback bundle loaded the picker submits on selection (one
+ * tap end to end); the fallback button below it is what runs without JS,
+ * and is hidden once the bundle marks the document.
+ */
+function uploadTile(options: {
+  id: string;
+  action: string;
+  icon: keyof typeof UPLOAD_ICONS;
+  title: string;
+  hint: string;
+  accept: string;
+  submit: string;
+  capture?: "user" | "environment";
+  role?: string;
+}): string {
+  const capture = options.capture ? ` capture="${options.capture}"` : "";
+  const roleField = options.role
+    ? `<input type="hidden" name="role" value="${esc(options.role)}">`
+    : "";
+  return `<form method="post" enctype="multipart/form-data" class="uploader-form"><input type="hidden" name="action" value="${esc(options.action)}">${roleField}<label class="uploader" for="${esc(options.id)}"><span class="uploader-icon" aria-hidden="true">${UPLOAD_ICONS[options.icon]}</span><span class="uploader-copy"><strong>${esc(options.title)}</strong><span class="uploader-hint">${esc(options.hint)}</span></span><input id="${esc(options.id)}" type="file" name="file" accept="${esc(options.accept)}"${capture} data-autosubmit></label><button class="ghost uploader-fallback">${esc(options.submit)}</button></form>`;
+}
+
 function skipForm(step: OnboardingStepId, label = "Skip for now"): string {
-  return `<form method="post" class="inline"><input type="hidden" name="action" value="skip"><input type="hidden" name="step" value="${esc(step)}"><button class="ghost">${esc(label)}</button></form>`;
+  // Skipping is always allowed and never the recommended move: it reads as a
+  // quiet link beside the step's real action, not as a second solid button.
+  return `<form method="post" class="inline"><input type="hidden" name="action" value="skip"><input type="hidden" name="step" value="${esc(step)}"><button class="quiet">${esc(label)}</button></form>`;
 }
 
 function doneForm(step: OnboardingStepId, label: string): string {
@@ -1293,6 +1385,9 @@ function stepBody(
   lite = false
 ): string {
   if (step === "welcome") {
+    // The deck always opens here, so a returning owner needs one tap back to
+    // wherever they stopped — the entry slide is a starting line, not a wall.
+    const resume = resumeLink(snapshot);
     // Lite/Messages sessions run on a tight memory budget — they keep the
     // plain wordmark-and-Continue card. The full webview gets the cinematic
     // intro: black stage, wordmark with an ambient glow, a single button
@@ -1300,9 +1395,9 @@ function stepBody(
     // done-form kept in the DOM (visually hidden) so the client bundle can
     // submit it when the film ends and the server redirects onward.
     if (lite) {
-      return `<p>An agent of your own: its own computer, its own mailbox, and your context — set up in six short steps.</p><p class="muted">Everything here is optional and re-enterable. Skip anything, come back any time.</p><div class="row actions">${doneForm("welcome", "Continue")}</div>`;
+      return `<p>An agent of your own: its own computer, its own mailbox, and your context — set up in six short steps.</p><p class="muted">Everything here is optional and re-enterable. Skip anything, come back any time.</p><div class="row actions">${doneForm("welcome", "Continue")}${resume}</div>`;
     }
-    return `<div class="cine" data-intro data-noswipe><div class="cine-stage"><span class="wzrd-glow" aria-hidden="true"></span><img class="cine-mark" src="/creator-os/wzrd-wordmark-1600.png" alt="WZRD.tech"><button type="button" class="cine-cta">Begin</button></div><div class="cine-blast" aria-hidden="true"></div><video class="cine-film" playsinline muted preload="auto" aria-label="air introduction film"><source src="/creator-os/airintrofin.mp4" type="video/mp4"><source src="/creator-os/airintrofin.mov" type="video/quicktime"></video><button type="button" class="cine-sound" hidden>Sound on</button><div class="cine-done">${doneForm("welcome", "Continue")}</div></div>`;
+    return `<div class="cine" data-intro data-noswipe><div class="cine-stage"><span class="wzrd-glow" aria-hidden="true"></span><img class="cine-mark" src="/creator-os/wzrd-wordmark-640.png" width="640" height="158" decoding="async" alt="WZRD.tech"><button type="button" class="cine-cta">Begin</button>${resume ? `<div class="cine-resume">${resume}</div>` : ""}</div><div class="cine-blast" aria-hidden="true"></div><video class="cine-film" playsinline muted preload="metadata" aria-label="air introduction film"><source src="/creator-os/airintrofin.mp4" type="video/mp4"></video><button type="button" class="cine-sound" hidden>Sound on</button><div class="cine-done">${doneForm("welcome", "Continue")}</div></div>`;
   }
   if (step === "environment") {
     return `<p class="muted">Your agent gets its own computer. Pick where it lives — you can switch later, but its files start fresh on the new machine.</p>${environmentCards(snapshot)}`;
@@ -1346,7 +1441,7 @@ function stepBody(
       .filter((m) => isVaultMedia(m) && m.url)
       .map(
         (m) =>
-          `<form method="post" class="idpick"><input type="hidden" name="action" value="set_avatar"><input type="hidden" name="asset_id" value="${esc(m.assetId)}"><img class="idthumb" src="${esc(m.url ?? "")}" alt="${esc(ROLE_LABELS[m.role])}"><span class="chip">${esc(ROLE_LABELS[m.role])}</span><button${m.assetId === snapshot.avatarAssetId ? "" : ' class="ghost"'}>${m.assetId === snapshot.avatarAssetId ? "Current avatar" : "Use as avatar"}</button></form>`
+          `<form method="post" class="idpick"><input type="hidden" name="action" value="set_avatar"><input type="hidden" name="asset_id" value="${esc(m.assetId)}"><img class="idthumb" src="${esc(m.url ?? "")}" width="96" height="96" loading="lazy" decoding="async" alt="${esc(ROLE_LABELS[m.role])}"><span class="chip">${esc(ROLE_LABELS[m.role])}</span><button${m.assetId === snapshot.avatarAssetId ? "" : ' class="ghost"'}>${m.assetId === snapshot.avatarAssetId ? "Current avatar" : "Use as avatar"}</button></form>`
       )
       .join("");
     const gallery = choices
@@ -1566,13 +1661,44 @@ function mediaBody(snapshot: OnboardingSnapshot, lite: boolean): string {
   const booth = gate || lite ? "" : boothMount("photo");
   const photoUpload = gate
     ? ""
-    : `<div class="native-capture" aria-label="Native photo capture"><form method="post" enctype="multipart/form-data" class="stack"><input type="hidden" name="action" value="upload_selfie"><label for="twin-photo-camera">Take photo</label><input id="twin-photo-camera" type="file" name="file" accept="image/png,image/jpeg,image/webp,image/heic,image/heif" capture="user"><button>Save photo</button></form><form method="post" enctype="multipart/form-data" class="stack"><input type="hidden" name="action" value="upload_selfie"><label for="twin-photo-library">Choose from Photos</label><input id="twin-photo-library" type="file" name="file" accept="image/png,image/jpeg,image/webp,image/heic,image/heif"><button>Upload selected photo</button></form><p class="muted">PNG, JPEG, WebP or HEIC, 8 MB max. iPhone HEIC photos convert automatically.</p></div>`;
+    : `<div class="native-capture" aria-label="Native photo capture">${uploadTile(
+        {
+          id: "twin-photo-camera",
+          action: "upload_selfie",
+          icon: "camera",
+          title: "Take a photo",
+          hint: "Opens the front camera",
+          accept: PHOTO_ACCEPT,
+          capture: "user",
+          submit: "Save photo",
+        }
+      )}${uploadTile({
+        id: "twin-photo-library",
+        action: "upload_selfie",
+        icon: "library",
+        title: "Choose from Photos",
+        hint: "Pick one from your library",
+        accept: PHOTO_ACCEPT,
+        submit: "Upload selected photo",
+      })}<p class="muted small">PNG, JPEG, WebP or HEIC, 8 MB max. iPhone HEIC photos convert automatically.</p></div>`;
   const referenceGallery = photos.length === 0
     ? `<p class="muted">Recent photos appear here after you take or upload them.</p>`
-    : `<form method="post" class="reference-gallery"><input type="hidden" name="action" value="set_identity_references"><fieldset><legend class="subhead">Choose ${MIN_IDENTITY_REFERENCES}–${MAX_IDENTITY_REFERENCES} photos for @${esc(name)}</legend><p class="muted">This private set creates your character sheet and anchors your own @${esc(name)} image requests. Other people only receive approved generated assets.</p><div class="reference-grid">${photos.map((photo, index) => `<label class="reference-card${selected.has(photo.assetId) ? " selected" : ""}"><input type="checkbox" name="asset_id" value="${esc(photo.assetId)}"${selected.has(photo.assetId) ? " checked" : ""}><img src="${esc(photo.url ?? "")}" alt="Recent photo ${index + 1}"><span class="reference-check" aria-hidden="true">✓</span><span class="reference-label">${esc(photo.source === "booth" ? "Booth photo" : "Uploaded photo")}</span></label>`).join("")}</div></fieldset><div class="row"><button>Use selected photos${selectedCount > 0 ? ` (${selectedCount})` : ""}</button></div></form>`;
+    : `<form method="post" class="reference-gallery"><input type="hidden" name="action" value="set_identity_references"><fieldset><legend class="subhead">Choose ${MIN_IDENTITY_REFERENCES}–${MAX_IDENTITY_REFERENCES} photos for @${esc(name)}</legend><p class="muted">This private set creates your character sheet and anchors your own @${esc(name)} image requests. Other people only receive approved generated assets.</p><div class="reference-grid">${photos.map((photo, index) => `<label class="reference-card${selected.has(photo.assetId) ? " selected" : ""}"><input type="checkbox" name="asset_id" value="${esc(photo.assetId)}"${selected.has(photo.assetId) ? " checked" : ""}><img src="${esc(photo.url ?? "")}" loading="lazy" decoding="async" alt="Recent photo ${index + 1}"><span class="reference-check" aria-hidden="true">✓</span><span class="reference-label">${esc(photo.source === "booth" ? "Booth photo" : "Uploaded photo")}</span></label>`).join("")}</div></fieldset><div class="row"><button>Use selected photos${selectedCount > 0 ? ` (${selectedCount})` : ""}</button></div></form>`;
   const videoUpload = gate
     ? ""
-    : `<details><summary>Add a reference video (optional)</summary><form method="post" enctype="multipart/form-data" class="row"><input type="hidden" name="action" value="upload_media"><input type="hidden" name="role" value="reference_video"><label class="sr-only" for="twin-video">Video</label><input id="twin-video" type="file" name="file" accept="video/mp4,video/webm" capture="user"><button>Upload video</button></form><p class="muted">MP4 or WebM, 50 MB max, 5–30 seconds. Talk or turn your head slowly — motion references help video generation.</p></details>`;
+    : `<details><summary>Add a reference video (optional)</summary>${uploadTile(
+        {
+          id: "twin-video",
+          action: "upload_media",
+          role: "reference_video",
+          icon: "video",
+          title: "Add a reference video",
+          hint: "Record or pick a clip",
+          accept: "video/mp4,video/webm",
+          capture: "user",
+          submit: "Upload video",
+        }
+      )}<p class="muted small">MP4 or WebM, 50 MB max, 5–30 seconds. Talk or turn your head slowly — motion references help video generation.</p></details>`;
   return `${gate ?? ""}<p class="muted">Photos anchor @${esc(name)}'s identity for everything generated later. They live privately in your vault; you can delete them any time.</p><h3 class="subhead">Take or add a photo</h3>${booth}${photoUpload}<h3 class="subhead">Recent photos</h3>${referenceGallery}<details><summary>Manage saved photos</summary>${mediaList(photos, "No photos yet — step into the booth or upload one.")}</details><h3 class="subhead">Video</h3>${videoUpload}${mediaList(videos, "No reference video — optional.")}<p class="muted small">Voice samples live on the <a href="?step=voice">Voice</a> panel.</p><div class="row actions">${skipForm("selfies")}</div>`;
 }
 
@@ -1590,7 +1716,7 @@ function generatedBody(snapshot: OnboardingSnapshot): string {
   const profileDraft = snapshot.identityMedia.find((m) => m.role === "profile_image_draft");
   const alternates = snapshot.identityMedia.filter((m) => m.role === "alt_image");
   const preview = (m: IdentityMediaView | undefined, alt: string): string =>
-    m?.url ? `<img class="sheetpreview" src="${esc(m.url)}" alt="${esc(alt)}">` : "";
+    m?.url ? `<img class="sheetpreview" src="${esc(m.url)}" loading="lazy" decoding="async" alt="${esc(alt)}">` : "";
   const reviewSheet = sheetDraft
     ? `<div class="sheetcard"><h3 class="subhead">Character sheet — review</h3>${preview(sheetDraft, "character sheet draft")}<p class="muted">Save it to your vault or discard it. Nothing is reused until you save.</p><div class="row"><form method="post" class="inline"><input type="hidden" name="action" value="save_character_sheet"><input type="hidden" name="asset_id" value="${esc(sheetDraft.assetId)}"><button>Save to vault</button></form><form method="post" class="inline"><input type="hidden" name="action" value="discard_character_sheet"><input type="hidden" name="asset_id" value="${esc(sheetDraft.assetId)}"><button class="ghost">Discard</button></form></div></div>`
     : "";
@@ -1625,7 +1751,19 @@ function voiceBody(snapshot: OnboardingSnapshot, lite: boolean): string {
   const canCollect = !gate && voiceConsent;
   const booth = canCollect && !lite ? boothMount("audio") : "";
   const upload = canCollect
-    ? `<details${lite ? " open" : ""}><summary>Upload a recording</summary><form method="post" enctype="multipart/form-data" class="row"><input type="hidden" name="action" value="upload_media"><input type="hidden" name="role" value="voice_sample"><label class="sr-only" for="twin-audio">Voice sample</label><input id="twin-audio" type="file" name="file" accept="audio/mpeg,audio/mp4,audio/wav,audio/ogg,audio/webm,.m4a,.mp3,.wav"><button>Upload sample</button></form><p class="muted">MP3, M4A, WAV or OGG, 25 MB max. One to three clean clips, 30 seconds or more in total, in a quiet room, reading naturally.</p></details>`
+    ? `<details${lite ? " open" : ""}><summary>Upload a recording</summary>${uploadTile(
+        {
+          id: "twin-audio",
+          action: "upload_media",
+          role: "voice_sample",
+          icon: "audio",
+          title: "Upload a recording",
+          hint: "MP3, M4A, WAV or OGG",
+          accept:
+            "audio/mpeg,audio/mp4,audio/wav,audio/ogg,audio/webm,.m4a,.mp3,.wav",
+          submit: "Upload sample",
+        }
+      )}<p class="muted small">25 MB max. One to three clean clips, 30 seconds or more in total, in a quiet room, reading naturally.</p></details>`
     : "";
   const statusPill =
     status === "ready"
@@ -1717,7 +1855,7 @@ function twinSummaryBody(snapshot: OnboardingSnapshot): string {
   const samples = snapshot.identityMedia.filter((m) => m.role === "voice_sample").length;
   const alternates = snapshot.identityMedia.filter((m) => m.role === "alt_image").length;
   const hero = profile?.url
-    ? `<img class="twin-hero-img" src="${esc(profile.url)}" alt="@${esc(name)} profile image">`
+    ? `<img class="twin-hero-img" src="${esc(profile.url)}" width="88" height="88" loading="lazy" decoding="async" alt="@${esc(name)} profile image">`
     : `<span class="twin-hero-img placeholder" aria-hidden="true">@</span>`;
   const counts = [
     `${photos} photo${photos === 1 ? "" : "s"}`,
@@ -1836,6 +1974,10 @@ function slides(
   // talks to the Onairos API and inlines its icons as data: URLs — widen
   // only there, only by what the SDK needs.
   let csp = themeCsp(current);
+  // Every non-cinematic slide ships the same-origin tap-feedback bundle, so
+  // script-src is part of the baseline rather than something each widening
+  // below has to remember to add.
+  if (!csp.includes("script-src")) csp += "; script-src 'self'";
   if (nativeOnairos) {
     if (!csp.includes("script-src")) csp += "; script-src 'self'";
     // The SDK loads Google Identity Services for its Google sign-in path
@@ -1925,7 +2067,10 @@ main.slide{flex:1;display:flex;flex-direction:column;align-items:center;justify-
 main.slide .kicker{animation:riseIn var(--slide-in) cubic-bezier(0.22,1,0.36,1) backwards;animation-delay:60ms}
 main.slide h1{animation:riseIn var(--slide-in) cubic-bezier(0.22,1,0.36,1) backwards;animation-delay:130ms}
 main.slide .panel{animation:riseIn var(--slide-in) cubic-bezier(0.22,1,0.36,1) backwards;animation-delay:200ms}
-@media(prefers-reduced-motion:reduce){main.slide,main.slide .kicker,main.slide h1,main.slide .panel{animation:none}.navlink,button,.dots a::before,.dots .locked::before{transition:none}}
+@media(prefers-reduced-motion:reduce){main.slide,main.slide .kicker,main.slide h1,main.slide .panel{animation:none}.navlink,button,.btn,.uploader,.dots a::before,.dots .locked::before{transition:none}
+/* The busy spinner stays — it is the only thing saying a tap landed — but
+   it stops spinning and reads as a dot. */
+.is-busy::after{animation:none;border-top-color:currentColor;opacity:0.6}}
 .kicker{font-family:var(--font-ui);font-size:clamp(0.74rem,0.9vw,0.85rem);letter-spacing:0.14em;text-transform:uppercase;color:var(--accent);margin:0 0 0.9rem;text-align:center}
 h1{font-weight:400;font-size:clamp(1.9rem,5.4vw,3.6rem);letter-spacing:-0.045em;line-height:0.98;margin:0 0 1.4rem;text-align:center;max-width:26ch;text-shadow:var(--text-shadow)}
 .panel{width:min(100%,34rem);border-radius:var(--radius-panel);border:1px solid var(--ring);background:var(--panel-bg);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);box-shadow:var(--shadow);padding:clamp(1rem,3.4vw,1.5rem)}
@@ -1935,7 +2080,7 @@ footer.nav{display:flex;align-items:center;justify-content:space-between;gap:0.7
 .navlink.ghosted{opacity:0.35;pointer-events:none}
 .dots{display:flex;gap:0;align-items:center;flex-wrap:nowrap;min-width:0}
 .dots a,.dots .locked{width:1.75rem;height:2.75rem;display:grid;place-items:center;background:none;padding:0;border-radius:0}
-.dots a::before,.dots .locked::before{content:"";width:0.6rem;height:0.6rem;border-radius:50%;background:var(--ring);transition:transform 200ms ease}
+.dots a::before,.dots .locked::before{content:"";width:0.55rem;height:0.55rem;border-radius:50%;background:color-mix(in srgb,var(--ink) 34%,transparent);transition:transform 200ms ease,background 200ms ease}
 .dots .locked{opacity:0.35}
 .dots a.done::before{background:var(--accent)}
 .dots a.skipped::before{background:var(--ink-muted)}
@@ -1943,10 +2088,24 @@ footer.nav{display:flex;align-items:center;justify-content:space-between;gap:0.7
 @media(hover:hover) and (pointer:fine){.navlink:hover{transform:scale(1.04)}button:hover{transform:scale(1.05)}.dots a:hover::before{transform:scale(1.5)}.pickcard:hover{transform:translateY(-4px) rotateX(4deg) rotateY(-4deg);box-shadow:0 14px 34px rgba(0,0,0,0.4)}}
 p{font-size:0.95rem;line-height:1.5;margin:0 0 0.6rem}
 a{color:var(--accent)}
-button{font-family:var(--font-ui);background:var(--ink);color:var(--on-ink);border:0;border-radius:var(--radius-pill);min-height:2.75rem;padding:0.5rem 1.15rem;font-size:0.78rem;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;transition:transform 180ms ease}
-button:active{transform:scale(0.97)}
-button.ghost{background:transparent;color:var(--ink-muted);border:1px solid var(--ring)}
-button.ghost:hover{color:var(--ink)}
+/* One control, three weights. A slide asks for exactly one thing at a time,
+   so the primary is solid and reads first, the secondary is a tinted plate,
+   and .quiet ("Skip for now") recedes to a link — the old deck shouted every
+   option at the same volume, which is why Skip looked like a commitment.
+   Links carry .btn so navigation and submission feel identical. */
+button,.btn{display:inline-flex;align-items:center;justify-content:center;gap:0.45rem;font-family:var(--font-ui);background:var(--ink);color:var(--on-ink);border:0;border-radius:var(--radius-pill);min-height:3rem;padding:0.6rem 1.35rem;font-size:0.85rem;font-weight:500;line-height:1.1;letter-spacing:0.01em;text-transform:none;text-decoration:none;text-align:center;cursor:pointer;position:relative;transition:transform 180ms ease,background 180ms ease,color 180ms ease,box-shadow 180ms ease}
+button:active,.btn:active{transform:scale(0.97)}
+button.ghost,.btn.ghost{background:transparent;color:var(--ink);border:1px solid color-mix(in srgb,var(--ink) 30%,transparent)}
+button.ghost:hover,.btn.ghost:hover{background:color-mix(in srgb,var(--ink) 10%,transparent)}
+button.quiet,.btn.quiet{background:transparent;color:var(--ink-muted);border:0;padding:0.6rem 0.75rem;text-decoration:underline;text-underline-offset:0.25em;text-decoration-color:var(--ring)}
+button.quiet:hover,.btn.quiet:hover{color:var(--ink)}
+.btn.is-disabled{opacity:0.4;pointer-events:none}
+/* The deck navigates by round trip: a pressed control has to say so, or the
+   wait reads as a dead button and earns a second tap. */
+.is-busy{pointer-events:none;color:transparent !important}
+.is-busy::after{content:"";position:absolute;top:50%;left:50%;width:1.05rem;height:1.05rem;margin:-0.525rem 0 0 -0.525rem;border-radius:50%;border:2px solid currentColor;border-top-color:transparent;color:var(--on-ink);animation:spin 620ms linear infinite}
+button.ghost.is-busy::after,.btn.ghost.is-busy::after,button.quiet.is-busy::after,.btn.quiet.is-busy::after,a.is-busy::after{color:var(--ink)}
+@keyframes spin{to{transform:rotate(360deg)}}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 input[type=text],input[type=password],select{background:var(--well-bg);color:var(--ink);border:1px solid var(--ring);border-radius:var(--radius-well);min-height:2.75rem;padding:0.6rem 0.85rem;flex:1;font-size:1rem;font-family:var(--font-body);outline:none;min-width:0}
 input[type=text]:focus,input[type=password]:focus{border-color:var(--accent)}
@@ -1956,7 +2115,11 @@ input::placeholder{color:var(--ink-muted)}
 .item .chip{margin-left:auto}
 .item button{min-height:2.25rem;padding:0.4rem 0.95rem}
 details{border:1px solid var(--ring);border-radius:var(--radius-well);padding:0.6rem 0.85rem;background:var(--well-bg);margin-bottom:0.6rem}
-summary{font-family:var(--font-ui);font-size:0.74rem;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-muted);cursor:pointer;min-height:2.75rem;display:flex;align-items:center}
+summary{font-family:var(--font-ui);font-size:0.74rem;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-muted);cursor:pointer;min-height:2.75rem;display:flex;align-items:center;gap:0.5rem;list-style:none}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"";flex:none;margin-left:auto;width:0.5rem;height:0.5rem;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(45deg) translate(-0.1rem,-0.1rem);transition:transform 200ms ease}
+details[open]>summary::after{transform:rotate(-135deg) translate(-0.1rem,-0.1rem)}
+details[open]>summary{color:var(--ink);margin-bottom:0.4rem}
 pre{background:var(--well-bg);border:1px solid var(--ring);border-radius:var(--radius-well);padding:0.6rem 0.75rem;font-family:var(--font-ui);font-size:0.68rem;line-height:1.45;white-space:pre-wrap;word-break:break-all;max-height:240px;overflow:auto;color:var(--accent)}
 ul{margin:0.2rem 0 0.8rem;padding-left:1.1rem}
 li{font-size:0.92rem;line-height:1.5}
@@ -2142,17 +2305,20 @@ input[type=file]{flex:1;min-width:0;color:var(--ink-muted);font-size:0.85rem;fon
 .cam-confirm .cgal-check{position:static;width:1.3rem;height:1.3rem;background:rgba(255,255,255,0.2);border-color:transparent;color:#fff}
 .cam-confirm:disabled{opacity:0.45}
 /* In-slide stepper: circles + connectors above the panels, one at a time. */
-.stepper-head{display:flex;align-items:center;justify-content:center;width:100%;max-width:100%;margin:0.2rem 0 0.9rem}
-.stepper-node{display:flex;align-items:center}
-.stepper-ind{flex:0 0 auto;width:2.4rem;height:2.4rem;min-height:0;padding:0;border-radius:50%;border:1.5px solid var(--ring);background:var(--panel-bg);color:var(--ink-muted);font-family:var(--font-ui);font-size:0.78rem;display:flex;align-items:center;justify-content:center;transition:background 200ms ease,color 200ms ease,border-color 200ms ease}
-.stepper-ind.active{background:var(--accent);border-color:var(--accent);color:var(--panel-bg)}
+.stepper-head{display:flex;align-items:center;justify-content:center;width:min(100%,34rem);max-width:100%;margin:0.1rem auto 1rem}
+.stepper-ind{flex:0 0 auto;width:2.2rem;height:2.2rem;min-height:0;padding:0;border-radius:50%;border:1.5px solid var(--ring);background:var(--panel-bg);color:var(--ink-muted);font-family:var(--font-ui);font-size:0.76rem;font-weight:500;letter-spacing:0;text-decoration:none;display:flex;align-items:center;justify-content:center;transition:background 200ms ease,color 200ms ease,border-color 200ms ease,transform 200ms ease}
+.stepper-ind.active{background:var(--accent);border-color:var(--accent);color:var(--panel-bg);transform:scale(1.14);box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 20%,transparent)}
 .stepper-ind.complete{background:#30d158;border-color:#30d158;color:#fff}
+.stepper-ind.complete.active{box-shadow:0 0 0 4px rgba(48,209,88,0.24)}
 .stepper-line{flex:1 1 auto;width:auto;min-width:0.35rem;max-width:2.6rem;height:2px;background:var(--ring);position:relative;overflow:hidden}
 .stepper-line i{position:absolute;inset:0;background:#30d158;transform:scaleX(0);transform-origin:left;transition:transform 300ms ease}
 .stepper-line.complete i{transform:scaleX(1)}
-.stepper-panel-hidden{display:none}
-.stepper-nav{display:flex;justify-content:space-between;align-items:center;margin-top:0.4rem}
+/* Previous sits left, Continue right, and Continue is the only solid button
+   on a stepped panel — the one thing the slide is asking for. */
+.stepper-nav{display:flex;justify-content:space-between;align-items:center;gap:0.6rem;width:min(100%,34rem);margin:0.9rem auto 0}
 .stepper-nav .spacer{flex:1}
+.stepper-nav .btn{min-width:8rem}
+footer.nav.dots-only{justify-content:center}
 @media(prefers-reduced-motion:reduce){.cam-flash{animation:none;opacity:0}.cam-reddot{animation:none}.cgal-card,.pickcard,.stepper-ind,.stepper-line i{transition:none}}
 @media(hover:hover) and (pointer:fine) and (prefers-reduced-motion:reduce){.pickcard:hover{transform:none}}
 /* Digital twin: consent, media manager, generation cards, summary. */
@@ -2184,16 +2350,31 @@ h3.subhead{margin-top:0.9rem;display:flex;align-items:center;gap:0.5rem;flex-wra
 .media-list{list-style:none;margin:0.3rem 0 0.9rem;padding:0;display:grid;gap:0.5rem}
 .media-row{display:grid;grid-template-columns:auto 1fr auto;gap:0.7rem;align-items:center;border:1px solid var(--ring);border-radius:var(--radius-well);background:var(--well-bg);padding:0.5rem 0.6rem}
 .media-thumb{width:64px;height:64px;object-fit:cover;border-radius:calc(var(--radius-well) - 4px);border:1px solid var(--ring);display:block;background:#000}
-.native-capture{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0.65rem;margin:0.55rem 0;padding:0.7rem;border:1px solid var(--ring);border-radius:var(--radius-well);background:var(--well-bg)}
-.native-capture form{min-width:0}.native-capture input[type=file]{width:100%;max-width:100%;font-size:0.72rem}.native-capture p{grid-column:1 / -1;margin:0}
+/* Upload tiles. The card is the label, so the whole thing is the tap target
+   and the native file button never shows — a 90px "Choose File" control that
+   named neither the source nor the subject was the least legible thing on
+   the booth. */
+.native-capture{display:grid;gap:0.6rem;margin:0.55rem 0}
+.native-capture p{margin:0.1rem 0 0}
+.uploader-form{display:grid;gap:0.5rem;min-width:0}
+.uploader{position:relative;display:grid;grid-template-columns:auto 1fr;align-items:center;gap:0.85rem;font-family:var(--font-body);font-size:1rem;letter-spacing:0;text-transform:none;color:var(--ink);min-height:4.25rem;padding:0.85rem 1rem;border:1px solid var(--ring);border-radius:var(--radius-well);background:var(--well-bg);cursor:pointer;transition:border-color 180ms ease,background 180ms ease,transform 180ms ease}
+.uploader:active{transform:scale(0.99)}
+.uploader:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent)}
+.uploader input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.uploader-icon{display:grid;place-items:center;width:2.75rem;height:2.75rem;border-radius:calc(var(--radius-well) - 4px);background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);flex:none}
+.uploader-icon svg{width:1.4rem;height:1.4rem;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.uploader-copy{display:grid;gap:0.15rem;min-width:0}
+.uploader-copy strong{font-size:1rem;font-weight:500;letter-spacing:-0.01em}
+.uploader-hint{font-family:var(--font-ui);font-size:0.72rem;letter-spacing:0.04em;color:var(--ink-muted)}
+html.js .uploader-fallback{display:none}
 .reference-gallery{margin:0.35rem 0 0.9rem}.reference-gallery fieldset{border:0;padding:0;margin:0}.reference-gallery legend{padding:0}.reference-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0.65rem;margin:0.55rem 0}.reference-card{position:relative;display:block;aspect-ratio:4/5;overflow:hidden;border:2px solid var(--ring);border-radius:var(--radius-well);background:var(--well-bg);cursor:pointer}.reference-card input{position:absolute;opacity:0;pointer-events:none}.reference-card img{width:100%;height:100%;object-fit:cover;display:block}.reference-card::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 55%,rgba(0,0,0,0.62));pointer-events:none}.reference-card.selected{border-color:#30d158;box-shadow:0 0 0 2px rgba(48,209,88,0.22)}.reference-check{display:none;position:absolute;top:0.45rem;right:0.45rem;z-index:1;width:1.8rem;height:1.8rem;border-radius:50%;background:#30d158;color:#fff;align-items:center;justify-content:center;font-weight:800}.reference-card.selected .reference-check{display:flex}.reference-label{position:absolute;left:0.55rem;right:0.55rem;bottom:0.45rem;z-index:1;color:#fff;font-family:var(--font-ui);font-size:0.62rem;letter-spacing:0.08em;text-transform:uppercase;text-shadow:0 1px 2px rgba(0,0,0,0.7)}
 .media-audio{width:100%;max-width:220px;height:36px}
 .media-meta{display:flex;gap:0.4rem;flex-wrap:wrap;min-width:0}
 .media-actions{display:flex;gap:0.3rem;align-items:center}
 .media-actions button{min-height:2.25rem;padding:0.35rem 0.7rem}
-button.icon{min-width:2.25rem;padding:0.35rem 0.55rem;font-size:0.95rem;text-transform:none;letter-spacing:0}
+button.icon{min-width:2.75rem;min-height:2.75rem;padding:0.35rem 0.55rem;font-size:0.95rem;text-transform:none;letter-spacing:0}
 button:disabled{opacity:0.4;cursor:default;transform:none}
-@media(max-width:480px){.media-row{grid-template-columns:auto 1fr}.media-actions{grid-column:1 / -1;justify-content:flex-end}.media-audio{max-width:100%}.native-capture{grid-template-columns:1fr}}
+@media(max-width:480px){.media-row{grid-template-columns:auto 1fr}.media-actions{grid-column:1 / -1;justify-content:flex-end}.media-audio{max-width:100%}}
 textarea{width:100%;background:var(--well-bg);color:var(--ink);border:1px solid var(--ring);border-radius:var(--radius-well);padding:0.6rem 0.85rem;font-size:1rem;font-family:var(--font-body);line-height:1.45;resize:vertical;outline:none;min-width:0}
 textarea:focus{border-color:var(--accent)}
 label{font-family:var(--font-ui);font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-muted)}
@@ -2206,6 +2387,14 @@ details.legacy{margin-top:0.6rem}
 .twin-hero strong{font-size:1.35rem;letter-spacing:-0.02em}
 .prompt code{font-family:var(--font-ui);font-size:0.8rem;color:var(--accent);word-break:break-word}
 .idpick .chip{text-align:center}
+/* "Pick up where you left off": the deck opens at the beginning now, so a
+   returning owner needs one visible way back to their place — quiet enough
+   that a first-time owner reads Continue first. */
+.resume{display:inline-flex;align-items:center;min-height:2.75rem;padding:0 0.4rem;font-family:var(--font-ui);font-size:0.74rem;letter-spacing:0.04em;color:var(--ink-muted);text-decoration:underline;text-underline-offset:0.25em}
+.resume:hover{color:var(--ink)}
+.cine-resume{margin-top:1.1rem}
+.cine-resume .resume{color:rgba(255,255,255,0.62)}
+.cine-resume .resume:hover{color:#fff}
 `;
 
 /**
@@ -2220,13 +2409,106 @@ html{background-attachment:scroll}
 main.slide,main.slide .kicker,main.slide h1,main.slide .panel{animation:none}
 `;
 
+const STEPPER_CHECK =
+  '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">' +
+  '<path d="M5 12.5l4.2 4.2L19 7" fill="none" stroke="currentColor" ' +
+  'stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+/**
+ * A multi-section slide as a stepper, rendered by the server: numbered
+ * indicators joined by connectors, a green check on the stages the snapshot
+ * reports done, exactly one panel, and Previous/Continue.
+ *
+ * Only the open panel is in the document. The five it leaves out are the
+ * point: the booth's panels carry signed photo, character-sheet and avatar
+ * previews, and shipping all of them on one render is what pushes an
+ * embedded webview past its memory budget. Every control is a link or a
+ * form, so this needs no JavaScript at all.
+ */
+interface StepperTarget {
+  href: string | null;
+  label: string;
+}
+
+/**
+ * Where a stepped slide's Previous and Continue go. The ends of the stepper
+ * hand off to the deck: the first panel's Previous steps back a slide, the
+ * last panel's Continue steps forward a slide. A swipe reads the same pair,
+ * so the gesture moves through the stages rather than jumping the slide and
+ * skipping them.
+ */
+function stepperTargets(
+  slide: OnboardingSlide,
+  activeSection: number,
+  panelHref: (section: SlideSection) => string,
+  slideNav: { prev: string | null; next: string | null }
+): { back: StepperTarget; forward: StepperTarget } {
+  const index = stepperIndex(slide, activeSection);
+  const previous = slide.sections[index - 1];
+  const next = slide.sections[index + 1];
+  return {
+    back: previous
+      ? { href: panelHref(previous), label: "Previous" }
+      : { href: slideNav.prev, label: "Previous slide" },
+    forward: next
+      ? { href: panelHref(next), label: "Continue" }
+      : { href: slideNav.next, label: "Next slide" },
+  };
+}
+
+function stepperIndex(slide: OnboardingSlide, activeSection: number): number {
+  return Math.min(slide.sections.length - 1, Math.max(0, activeSection));
+}
+
+function stepperHtml(
+  snapshot: OnboardingSnapshot,
+  slide: OnboardingSlide,
+  activeSection: number,
+  card: (section: SlideSection) => string,
+  panelHref: (section: SlideSection) => string,
+  slideNav: { prev: string | null; next: string | null }
+): string {
+  const index = stepperIndex(slide, activeSection);
+  const head = slide.sections
+    .map((section, i) => {
+      const done = sectionDone(snapshot, section.key);
+      const cls = ["stepper-ind", i === index ? "active" : "", done ? "complete" : ""]
+        .filter(Boolean)
+        .join(" ");
+      const label = section.label ?? slide.title;
+      const line =
+        i === 0
+          ? ""
+          : `<span class="stepper-line${
+              sectionDone(snapshot, slide.sections[i - 1]!.key) ? " complete" : ""
+            }" aria-hidden="true"><i></i></span>`;
+      const body = done ? STEPPER_CHECK : String(i + 1);
+      const aria = i === index ? ' aria-current="step"' : "";
+      return `${line}<a class="${cls}" href="${panelHref(section)}"${aria} aria-label="${esc(label)}" title="${esc(label)}">${body}</a>`;
+    })
+    .join("");
+  const section = slide.sections[index]!;
+  const targets = stepperTargets(slide, index, panelHref, slideNav);
+  const back = targets.back.href
+    ? `<a class="btn ghost" href="${targets.back.href}">${targets.back.label}</a>`
+    : `<span class="btn ghost is-disabled" aria-disabled="true">Previous</span>`;
+  const forward = targets.forward.href
+    ? `<a class="btn" href="${targets.forward.href}">${targets.forward.label}</a>`
+    : "";
+  return `<nav class="stepper-head" aria-label="${esc(slide.title)} steps">${head}</nav>${card(
+    section
+  )}<div class="stepper-nav">${back}<span class="spacer"></span>${forward}</div>`;
+}
+
 export function renderOnboarding(
   current: Theme,
   snapshot: OnboardingSnapshot,
   active: OnboardingStepId,
   notice: string | null,
   lite = false,
-  browserSignin: string | null = null
+  browserSignin: string | null = null,
+  panel: string | null = null,
+  fx = true
 ): string {
   // The deck navigates by slide; `active` stays a step ID so deep links,
   // agent-side tools, and post-action redirects keep addressing sub-steps.
@@ -2257,6 +2539,14 @@ export function renderOnboarding(
     return current.id === DEFAULT_THEME
       ? `?step=${esc(step)}`
       : `?step=${esc(step)}&amp;theme=${esc(current.id)}`;
+  };
+  // A stepper panel addresses itself by step *and* section key, so a slide
+  // whose sections share a step still lands on the right one.
+  const panelHref = (target: SlideSection): string => {
+    const step = SECTION_STEPS[target.key][0] ?? "welcome";
+    const theme =
+      current.id === DEFAULT_THEME ? "" : `&amp;theme=${esc(current.id)}`;
+    return `?step=${esc(step)}&amp;panel=${esc(target.key)}${theme}`;
   };
   // iPhone-style page dots: swipe (or tap a dot) to move between slides and
   // skip anything — except that slides past Computer stay locked until the
@@ -2311,24 +2601,33 @@ export function renderOnboarding(
   const panes = lite
     ? []
     : [...new Set(slide.sections.map((s) => s.pane).filter(Boolean))] as string[];
-  // A stacked multi-section slide (no pager, no split columns) renders as
-  // a stepper; deep links land on the panel that owns the active step.
+  // A stacked multi-section slide (no pager, no split columns) renders as a
+  // stepper: indicator circles, one panel, Previous/Continue. The panels it
+  // is not showing are left out of the document rather than hidden with CSS
+  // — the booth alone was shipping six panels and every signed photo,
+  // character sheet and avatar frame in them on a single render, which is
+  // what an embedded Messages webview runs out of memory on.
   const stepper =
-    !lite && !slide.split && panes.length <= 1 && slide.sections.length > 1;
+    !slide.split && panes.length <= 1 && slide.sections.length > 1;
   const cinematic = !lite && slide.id === "welcome";
   const backdrop = current.backdrop;
+  // The WebGL backdrop is decorative and expensive: a GPU context plus its
+  // textures, on top of everything else the slide holds. It runs on desktop
+  // browsers only — handhelds and Messages webviews keep the canvas
+  // gradient, which is what the element falls back to anyway.
+  const canShade = !lite && fx;
   const shader =
-    !cinematic && backdrop.kind === "shader" && !lite
+    !cinematic && backdrop.kind === "shader" && canShade
       ? `<script src="${esc(backdrop.script)}" defer></script>`
       : "";
   // The shader element paints itself; if fx.js or WebGL is unavailable it
   // stays an empty inert box and the canvas gradient carries the page.
   const backdropHtml =
-    !cinematic && backdrop.kind === "shader" && !lite
+    !cinematic && backdrop.kind === "shader" && canShade
       ? backdrop.element.replace("<wz-sky", '<wz-sky class="backdrop"')
       : "";
   const grain =
-    !cinematic && backdrop.grain && !lite
+    !cinematic && backdrop.grain && canShade
       ? '<div class="grain" aria-hidden="true"></div>'
       : "";
   const scrim =
@@ -2344,12 +2643,22 @@ export function renderOnboarding(
     snapshot.identityMedia.some(
       (m) => m.role === "character_sheet_draft" || m.role === "profile_image_draft"
     );
+  // `?panel=` addresses a section directly — several sections can share one
+  // step (the booth's Reference media and Generated identity are both
+  // `selfies`), so the step alone cannot say which one is open. Forms carry
+  // it for free: they post to the current URL, query string included.
+  const requestedPanel =
+    slide === requestedSlide && panel
+      ? slide.sections.findIndex((s) => s.key === panel)
+      : -1;
   const activeSection = draftPending
     ? slide.sections.findIndex((s) => s.key === "sheet")
-    : Math.max(
-        0,
-        slide.sections.findIndex((s) => SECTION_STEPS[s.key].includes(shownStep))
-      );
+    : requestedPanel >= 0
+      ? requestedPanel
+      : Math.max(
+          0,
+          slide.sections.findIndex((s) => SECTION_STEPS[s.key].includes(shownStep))
+        );
   const sections =
     panes.length > 1
       ? (() => {
@@ -2373,10 +2682,23 @@ export function renderOnboarding(
           const rest = slide.sections.filter((s) => !s.pane).map(card).join("");
           return `<div class="seg" role="tablist" aria-label="${esc(slide.title)} modes">${seg}</div><div class="pager">${paged}</div>${rest}`;
         })()
-      : slide.sections.map(card).join("");
+      : stepper
+        ? stepperHtml(snapshot, slide, activeSection, card, panelHref, {
+            prev: prev ? href(prev) : null,
+            next: next ? href(next) : null,
+          })
+        : slide.sections.map(card).join("");
+  // The stepper shows one panel, so the camera bundle follows the panel and
+  // not the slide: it is 200 KB, and four of the booth's six stages mount no
+  // booth at all.
+  const boothPanel =
+    slide.id === "booth" &&
+    ["booth_photo", "voice", "twin_create"].includes(
+      slide.sections[activeSection]?.key ?? ""
+    );
   // Same-origin bundles, one per slide that needs one.
   const scripts = [
-    !lite && slide.id === "booth"
+    !lite && boothPanel
       ? '<script src="/creator-os/identity-booth.js" defer></script>'
       : "",
     slide.id === "start"
@@ -2390,9 +2712,10 @@ export function renderOnboarding(
     !lite && slide.id === "welcome"
       ? '<script src="/creator-os/intro-cinematic.js" defer></script>'
       : "",
-    // Multi-section slides fold into a stepper (one panel at a time with
-    // indicator circles); with no JS the panels simply stack.
-    stepper ? '<script src="/creator-os/deck-stepper.js" defer></script>' : "",
+    // Every control on a slide is a link or a form post, so a tap costs a
+    // round trip before the screen changes. This marks the pressed control
+    // busy and swallows the repeat tap that a silent wait invites.
+    cinematic ? "" : '<script src="/creator-os/deck-pending.js" defer></script>',
   ].join("");
   if (cinematic) {
     const notices =
@@ -2403,19 +2726,54 @@ export function renderOnboarding(
     return `<!doctype html><html lang="en" class="cine-page"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>Onboarding — ${esc(slide.title)}</title>${fonts}<style>${tokenBlock(current.tokens)}${SLIDE_CSS}</style></head><body class="cine-page"${prev ? ` data-swipe-prev="${href(prev)}"` : ""}${next ? ` data-swipe-next="${href(next)}"` : ""}>${notices}${intro}${scripts}</body></html>`;
   }
   const deck = `<div class="deck${slide.split ? " split" : ""}"${stepper ? ` data-stepper data-stepper-active="${activeSection}"` : ""}>${sections}</div>${scripts}`;
-  // A stepped slide already owns progress and navigation. Do not stack the
-  // global dots/back/next bar under a second Back/Continue system — a
-  // particularly confusing duplication in the mobile Photo Booth.
-  const footer = stepper && slide.id === "booth"
-    ? ""
+  // A swipe follows the same pair of targets the visible Previous/Continue
+  // do, so on a stepped slide it walks the stages instead of jumping the
+  // whole slide and skipping them.
+  const swipe = stepper
+    ? (() => {
+        const targets = stepperTargets(slide, activeSection, panelHref, {
+          prev: prev ? href(prev) : null,
+          next: next ? href(next) : null,
+        });
+        return { prev: targets.back.href, next: targets.forward.href };
+      })()
+    : { prev: prev ? href(prev) : null, next: next ? href(next) : null };
+  const swipeAttrs = `${swipe.prev ? ` data-swipe-prev="${swipe.prev}"` : ""}${
+    swipe.next ? ` data-swipe-next="${swipe.next}"` : ""
+  }`;
+
+  // A stepped slide already owns Previous/Continue. Its footer keeps the
+  // deck dots — where you are across the six slides — and drops the
+  // Back/Next links, which would otherwise stack a second, differently
+  // scoped navigation under the stepper's own.
+  const footer = stepper
+    ? `<footer class="nav dots-only"><nav class="dots" aria-label="Slides">${dots}</nav></footer>`
     : `<footer class="nav">${prev ? `<a class="navlink" href="${href(prev)}">← Back</a>` : '<span class="navlink ghosted">← Back</span>'}<nav class="dots" aria-label="Slides">${dots}</nav>${next ? `<a class="navlink" href="${href(next)}">Next →</a>` : '<span class="navlink ghosted">Next →</span>'}</footer>`;
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>Onboarding — ${esc(slide.title)}</title>${fonts}<style>${tokenBlock(current.tokens)}${SLIDE_CSS}${lite ? LITE_CSS : ""}</style>${shader}</head><body>${backdropHtml}${scrim}${grain}<div class="frame"${prev ? ` data-swipe-prev="${href(prev)}"` : ""}${next ? ` data-swipe-next="${href(next)}"` : ""}><header class="bar"><span class="logo-pill"><img src="/creator-os/wzrd-wordmark-1600.png" alt="WZRD.tech"></span><span class="counter">${counter}${esc(statusTag)}</span></header><main class="slide">${busy}${noticeHtml}<p class="kicker">${kickerNumber}${esc(slide.kicker)}</p><h1>${esc(slide.title)}</h1>${deck}</main>${footer}</div></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>Onboarding — ${esc(slide.title)}</title>${fonts}<style>${tokenBlock(current.tokens)}${SLIDE_CSS}${lite ? LITE_CSS : ""}</style>${shader}</head><body>${backdropHtml}${scrim}${grain}<div class="frame"${swipeAttrs}><header class="bar"><span class="logo-pill">${WORDMARK_IMG}</span><span class="counter">${counter}${esc(statusTag)}</span></header><main class="slide">${busy}${noticeHtml}<p class="kicker">${kickerNumber}${esc(slide.kicker)}</p><h1>${esc(slide.title)}</h1>${deck}</main>${footer}</div></body></html>`;
 }
 
 /** The step the URL asks for, if it names a real one. */
 function requestedStep(ctx: MiniAppContext): OnboardingStepId | null {
   const requested = ctx.request.nextUrl.searchParams.get("step") ?? "";
   return isOnboardingStep(requested) ? requested : null;
+}
+
+/**
+ * The stepper panel the URL asks for, if it names a real section. Forms post
+ * to the current URL, so an action keeps the panel it was fired from without
+ * every form having to carry it as a hidden field.
+ */
+/**
+ * Whether this render may run the theme's WebGL backdrop. Desktop browsers
+ * only — see isHandheld; an unknown agent counts as handheld.
+ */
+function allowsFx(ctx: MiniAppContext): boolean {
+  return !isHandheld(ctx.request.headers.get("user-agent"));
+}
+
+function requestedPanelKey(ctx: MiniAppContext): string | null {
+  const requested = ctx.request.nextUrl.searchParams.get("panel") ?? "";
+  return requested in SECTION_STEPS ? requested : null;
 }
 
 /**
@@ -2539,7 +2897,9 @@ async function respond(
       active,
       notice,
       ctx.session.via === "card",
-      browserSigninHref(ctx, snapshot, active)
+      browserSigninHref(ctx, snapshot, active),
+      requestedPanelKey(ctx),
+      allowsFx(ctx)
     ),
     rendersNativeOnairos(snapshot, active),
     rendersIdentityMedia(active),
@@ -2619,7 +2979,8 @@ export const onboarding: MiniAppModule = {
     const { snapshot, active } = await snapshotForRender(
       ctx.supabase,
       ctx.session.userId,
-      requestedStep(ctx)
+      requestedStep(ctx),
+      "entry"
     );
     // A pending Connect Link may have completed on the hosted page. Reading
     // that back from Composio is a third-party round trip, so the page
@@ -2646,7 +3007,9 @@ export const onboarding: MiniAppModule = {
         active,
         null,
         ctx.session.via === "card",
-        browserSigninHref(ctx, snapshot, active)
+        browserSigninHref(ctx, snapshot, active),
+        requestedPanelKey(ctx),
+        allowsFx(ctx)
       ),
       rendersNativeOnairos(snapshot, active),
       rendersIdentityMedia(active),

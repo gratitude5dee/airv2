@@ -275,7 +275,7 @@ function thenable(rows: unknown, single: unknown = null) {
 
 function makeCtx(
   step: string,
-  options: { username?: string | null; via?: string } = {}
+  options: { username?: string | null; via?: string; panel?: string } = {}
 ) {
   const username = options.username === undefined ? "grat" : options.username;
   const tables: Record<string, ReturnType<typeof thenable>> = {
@@ -295,7 +295,11 @@ function makeCtx(
     imessage_destinations: thenable([], null),
   };
   return {
-    request: new NextRequest(`https://mini.example/mini/setup?step=${step}`),
+    request: new NextRequest(
+      `https://mini.example/mini/setup?step=${step}${
+        options.panel ? `&panel=${options.panel}` : ""
+      }`
+    ),
     supabase: {
       from: (table: string) => tables[table] ?? thenable([]),
     } as unknown as SupabaseClient,
@@ -310,8 +314,16 @@ function makeCtx(
   } as MiniAppContext;
 }
 
-const render = async (step: string, options?: { username?: string | null; via?: string }) =>
-  (await onboarding.render(makeCtx(step, options))).text();
+const render = async (
+  step: string,
+  options?: { username?: string | null; via?: string; panel?: string }
+) => (await onboarding.render(makeCtx(step, options))).text();
+/** The booth renders one stepper panel per request — address it directly. */
+const renderPanel = async (
+  step: string,
+  panel: string,
+  options?: { username?: string | null; via?: string }
+) => render(step, { ...options, panel });
 const post = async (fields: Record<string, string | File>, step = "selfies") => {
   const form = new FormData();
   for (const [key, value] of Object.entries(fields)) form.set(key, value);
@@ -446,8 +458,12 @@ describe("reference media panel", () => {
     const body = await render("selfies");
     expect(body).toContain('enctype="multipart/form-data"');
     expect(body).toContain('value="upload_selfie"');
-    expect(body).toContain('value="generate_character_sheet"');
     expect(body).toContain('value="skip"');
+    // The picker is the whole tile, not a bare platform file button.
+    expect(body).toContain('class="uploader" for="twin-photo-camera"');
+    expect(body).toContain("data-autosubmit");
+    // Generation lives on the next stage of the stepper, not this one.
+    expect(body).not.toContain('value="generate_character_sheet"');
     expect(body).toContain(
       'accept="image/png,image/jpeg,image/webp,image/heic,image/heif"'
     );
@@ -572,12 +588,13 @@ describe("reference media panel", () => {
 
 describe("generated identity panel", () => {
   it("offers the photo path and the description path for the character sheet", async () => {
-    const body = await render("selfies");
+    const body = await renderPanel("selfies", "sheet");
     expect(body).toContain("Generate from selected photos");
-    expect(body).toContain("Choose 1–6 photos");
     expect(body).toContain('name="description"');
     expect(body).toContain("Describe an original character, not a real person.");
     expect(body).toContain('value="generate_profile_image"');
+    // Reference media — where the photos are chosen — is its own stage.
+    expect(await render("selfies")).toContain("Choose 1–6 photos");
   });
 
   it("generate_character_sheet renders a draft without marking the step done, passing a description when given", async () => {
@@ -743,10 +760,10 @@ describe("video avatar panel", () => {
 });
 
 describe("deck presentation", () => {
-  it("renders the twin as a six-stage stepper outside lite mode", async () => {
+  it("renders the twin as a six-stage stepper, one panel per request", async () => {
     const full = await render("selfies");
     expect(full).toContain('data-stepper data-stepper-active="1"');
-    expect(full).toContain("/creator-os/deck-stepper.js");
+    // Every stage is reachable from the indicator row…
     for (const label of [
       "Consent &amp; privacy",
       "Reference media",
@@ -757,22 +774,37 @@ describe("deck presentation", () => {
     ]) {
       expect(full).toContain(label);
     }
+    // …but only the open one is rendered. The five it leaves out carry the
+    // signed photo, sheet and avatar previews an embedded webview cannot
+    // afford to decode for panels it is not showing.
+    expect((full.match(/<section class="panel"/g) ?? []).length).toBe(1);
+    expect(full).toContain('data-section="booth_photo"');
+    expect(full).not.toContain('data-section="sheet"');
     expect(full).toContain("/creator-os/deck-swipe.js");
     expect(await render("consent")).toContain('data-stepper data-stepper-active="0"');
     expect(await render("voice")).toContain('data-stepper data-stepper-active="3"');
     expect(await render("twin")).toContain('data-stepper data-stepper-active="4"');
     expect(await render("avatar")).toContain('data-stepper data-stepper-active="5"');
+    // ?panel= disambiguates the two stages that share the `selfies` step.
+    expect(await renderPanel("selfies", "sheet")).toContain(
+      'data-stepper data-stepper-active="2"'
+    );
     // A pending sheet draft pulls ?step=selfies to the review panel.
     fixtures.media = [view("asset-1", "selfie"), view("asset-2", "character_sheet_draft")];
     expect(await render("selfies")).toContain('data-stepper data-stepper-active="2"');
+    // A Messages card session gets the same one-panel stepper — it is the
+    // lighter render, so there is nothing to strip back for it.
     const lite = await render("selfies", { via: "card" });
-    expect(lite).not.toContain("data-stepper");
+    expect(lite).toContain("data-stepper");
     expect(lite).not.toContain("deck-swipe.js");
   });
 
-  it("uses the stepper as the booth's only visible navigation and reports stage completion", async () => {
+  it("gives a stepped slide one navigation and reports stage completion", async () => {
     const booth = await render("selfies");
-    expect(booth).not.toContain('class="dots"');
+    // Previous/Continue come from the stepper; the footer keeps the deck
+    // dots and drops its own Back/Next so the two do not compete.
+    expect(booth).toContain('class="stepper-nav"');
+    expect(booth).toContain('class="dots"');
     expect(booth).not.toContain('<footer class="nav">');
     expect(booth).toContain("data-step-done");
     const context = await render("imessage");
