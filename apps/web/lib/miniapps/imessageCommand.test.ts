@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseCreateCommand, parseMiniAppCommand } from "./imessageCommand";
+import { parseCreateCommand, parseCreateIntent, parseMiniAppCommand } from "./imessageCommand";
 
 describe("parseMiniAppCommand", () => {
   it("accepts an exact slash command and normalizes aliases", () => {
@@ -70,5 +70,22 @@ describe("parseCreateCommand (V12 §8.1)", () => {
       prompt: "https://github.com/acme",
       url: null,
     });
+  });
+});
+
+describe("parseCreateIntent", () => {
+  it("opens a landing-page request written in ordinary Messages prose", () => {
+    expect(parseCreateIntent("Build me that landing page for wzrd.tech")).toEqual({
+      prompt: "Build me that landing page for wzrd.tech",
+      url: null,
+    });
+  });
+
+  it("preserves the exact /create command behavior", () => {
+    expect(parseCreateIntent("/create a landing page for the show")).toEqual({
+      prompt: "a landing page for the show",
+      url: null,
+    });
+    expect(parseCreateIntent("what should we build next?")).toBeNull();
   });
 });

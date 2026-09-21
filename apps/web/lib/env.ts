@@ -350,6 +350,15 @@ export const env = {
     const parsed = Number.parseInt(optional("CREATIVE_DAILY_LIMIT", "20"), 10);
     return parsed > 0 ? parsed : 20;
   },
+  /** Operator-owned UUID allowlist for accounts whose creative jobs are not
+   * subject to the shared daily cap. Never sourced from a user request. */
+  creativeUnlimitedUserIds: (): ReadonlySet<string> =>
+    new Set(
+      optional("CREATIVE_UNLIMITED_USER_IDS", "")
+        .split(",")
+        .map((id) => id.trim())
+        .filter(Boolean)
+    ),
   creativeCostCentsImage: (): number => {
     const parsed = Number.parseInt(
       optional("CREATIVE_COST_CENTS_IMAGE", "5"),

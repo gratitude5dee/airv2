@@ -88,11 +88,12 @@ const MAX_ATTEMPTS = 5;
 const CANCEL_POLL_MS = 2_000;
 /**
  * A Hermes turn may keep its SSE body open forever after the headers arrive.
- * Bound the full generation before delivery: the 5-second acknowledgment and
- * timed updates cover the wait, while buffering avoids a partial iMessage that
- * could not be retried safely without duplication.
+ * A request must start promptly, but a started tool-using turn needs longer
+ * than one model-response window to finish. We still buffer it so a retry can
+ * never duplicate a partial iMessage.
  */
-export const FINAL_RESPONSE_DEADLINE_MS = 45_000;
+export const INITIAL_RESPONSE_DEADLINE_MS = 45_000;
+export const FINAL_RESPONSE_DEADLINE_MS = 120_000;
 
 export async function beforeDeadline<T>(
   pending: Promise<T>,
@@ -1341,6 +1342,7 @@ async function runFlushInner(
     // burst on the floor.
     const conversationHistory = replayed ?? [];
 
+    const initialResponseDeadlineAt = Date.now() + INITIAL_RESPONSE_DEADLINE_MS;
     const finalResponseDeadlineAt = Date.now() + FINAL_RESPONSE_DEADLINE_MS;
     let run: Awaited<ReturnType<typeof createRun>>;
     try {
@@ -1351,8 +1353,8 @@ async function runFlushInner(
           conversationHistory,
           metadata: { channel: "imessage" },
         }),
-        finalResponseDeadlineAt,
-        "Hermes did not create the run before the final-response deadline"
+        initialResponseDeadlineAt,
+        "Hermes did not create the run before the initial-response deadline"
       );
     } catch (error) {
       await retryUndeliveredStream(
@@ -1398,8 +1400,8 @@ async function runFlushInner(
     try {
       const events = await beforeDeadline(
         runEvents(runTarget, run.run_id),
-        finalResponseDeadlineAt,
-        "Hermes did not open the event stream before the final-response deadline"
+        initialResponseDeadlineAt,
+        "Hermes did not open the event stream before the initial-response deadline"
       );
       // Outbound marker lanes: `[send-file: …]` and `[card: …]` markers are
       // stripped from the streamed text and delivered (native attachments,
@@ -1434,8 +1436,8 @@ async function runFlushInner(
       const iterator = guarded()[Symbol.asyncIterator]();
       const initialProbe = await beforeDeadline(
         probeForTapback(iterator),
-        finalResponseDeadlineAt,
-        "Hermes did not complete a response within 45 seconds"
+        initialResponseDeadlineAt,
+        "Hermes did not begin a response within 45 seconds"
       );
       // Finish consuming the reply before Spectrum sees any of it. If Hermes
       // stalls after its first few tokens, the same durable burst can still be
@@ -1448,7 +1450,7 @@ async function runFlushInner(
           const next = await beforeDeadline(
             iterator.next(),
             finalResponseDeadlineAt,
-            "Hermes did not complete a response within 45 seconds"
+            "Hermes did not complete a response within 120 seconds"
           );
           if (next.done) break;
           replyChunks.push(next.value);

@@ -65,7 +65,7 @@ import {
   responsesStreamToChat,
   toResponsesRequest,
 } from "@/lib/gateway/responses";
-import { requestSignal } from "@/lib/http/timeout";
+import { fetchWithHeaderTimeout } from "@/lib/http/timeout";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -776,7 +776,7 @@ export async function POST(
       servedModel === GMI_ASTRA_MODEL
         ? Math.min(GMI_ASTRA_BUDGET_MS, gmiRemainingMs)
         : gmiRemainingMs;
-    return fetch(`${baseUrl}/${upstreamPath}`, {
+    const request: RequestInit = {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -789,9 +789,15 @@ export async function POST(
             }
           : {}),
       },
-      ...(provider === "gmi" ? { signal: requestSignal(gmiAttemptMs) } : {}),
       body: JSON.stringify(upstreamBody),
-    });
+    };
+    const url = `${baseUrl}/${upstreamPath}`;
+    // For GMI, this is deliberately a headers deadline, not an overall
+    // request signal: aborting a healthy SSE body at 44 seconds created the
+    // retry loop seen by iMessage users during long web and Create turns.
+    return provider === "gmi"
+      ? fetchWithHeaderTimeout(url, request, gmiAttemptMs)
+      : fetch(url, request);
   };
 
   const dispatch = async (

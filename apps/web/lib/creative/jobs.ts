@@ -200,6 +200,10 @@ export async function underDailyLimit(
   supabase: SupabaseClient,
   userId: string
 ): Promise<boolean> {
+  // This is an operator-owned, deployment-time exception for the account
+  // funding platform creative work. It is intentionally evaluated before the
+  // count query so the owner is not blocked if the quota projection is slow.
+  if (env.creativeUnlimitedUserIds().has(userId)) return true;
   const dayStart = new Date();
   dayStart.setUTCHours(0, 0, 0, 0);
   const { count, error } = await supabase

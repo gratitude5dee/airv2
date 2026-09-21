@@ -37,8 +37,8 @@ const ASK_LINE =
   "share your location and i'll look around — tap the Find My card i just sent.";
 const STRAY_LINE =
   'Ask me what\'s near you or say "get me directions," then tap Find My so I can use the share for that one request.';
-const UNAVAILABLE_LINE =
-  "find my isn't reachable right now — tell me a neighborhood instead?";
+const UNAVAILABLE_CONTEXT =
+  "[Location unavailable: ask the owner for a neighborhood, then continue this exact search.]";
 
 export interface LocationLaneResult {
   handled: boolean;
@@ -142,15 +142,14 @@ export async function maybeRunLocationLane(
         request_id: request.id,
       })
     );
-    // No card went out — close the request so the sweep never follows the
-    // unavailable line with a later expiry line.
+    // No card went out — close the request so the sweep never follows with a
+    // later expiry line. Crucially, do not consume the user's search: route
+    // it through the agent with a short control note so its resulting question
+    // and the owner's typed neighborhood share the same conversation.
     await completeLocationRequest(supabase, request, {
       status: "declined",
     }).catch(() => undefined);
-    await sender
-      .sendText(job.spaceId, job.phone, UNAVAILABLE_LINE)
-      .catch(() => undefined);
-    return { handled: true };
+    return { handled: false, contextLine: UNAVAILABLE_CONTEXT };
   }
   await sender
     .sendText(job.spaceId, job.phone, ASK_LINE)
