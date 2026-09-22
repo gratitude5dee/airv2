@@ -48,6 +48,8 @@ interface Config {
   supa: Supa;
   resultsDir: string;
   only: Set<string> | null;
+  /** Hermes session the runs land in; unset keeps the shared air-main. */
+  session: string | undefined;
 }
 
 function config(): Config {
@@ -64,6 +66,7 @@ function config(): Config {
     supa: { url: requireEnv("SUPABASE_URL").replace(/\/$/, ""), key: requireEnv("SUPABASE_SERVICE_ROLE_KEY") },
     resultsDir,
     only,
+    session: process.env.EVAL_SESSION,
   };
 }
 
@@ -91,7 +94,9 @@ async function startRun(cfg: Config, input: string): Promise<string> {
       "Content-Type": "application/json",
       Cookie: `air_session=${cfg.cookie}`,
     },
-    body: JSON.stringify({ input, via: "web" }),
+    body: JSON.stringify(
+      cfg.session ? { input, via: "web", session: cfg.session } : { input, via: "web" }
+    ),
   });
   const text = await res.text();
   if (!res.ok) throw new Error(`POST /api/chat ${res.status}: ${text.slice(0, 300)}`);
