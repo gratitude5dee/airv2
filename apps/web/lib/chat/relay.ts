@@ -11,6 +11,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { armStopAfter, ensureBoxAwake } from "../orchestrator/boxes";
 import { createRun, MAIN_SESSION, runEvents } from "../hermes/client";
 import { createTerminalScanner } from "../hermes/terminal";
+import { routeTurn, routingInstructions } from "../jev/router";
 
 export type ChatChannel = "web" | "desktop";
 /** agent_runs.trigger: the channel, or 'voice' when the composer content came from a transcription (M13). */
@@ -38,12 +39,20 @@ export async function startChatRun(
   trigger: ChatTrigger = channel,
   sessionId: string = MAIN_SESSION
 ): Promise<string> {
+  // Jev routing runs concurrently with the box wake — a typed hint, not
+  // the agent's own re-derivation of the same judgment.
+  const route = routeTurn(input);
   const box = await ensureBoxAwake(supabase, userId);
   try {
+    const instructions = routingInstructions(await route);
     const run = await createRun(box.target, {
-      input,
+      // The routing hint rides the turn text itself: in-session GLM weights
+      // user-adjacent context over system-prompt directives, so the same note
+      // lands parenthesized in the input and as the ephemeral system prompt.
+      input: instructions ? `${input}\n\n(${instructions})` : input,
       sessionId,
       metadata: { channel },
+      ...(instructions ? { instructions } : {}),
     });
     await supabase.from("agent_runs").insert({
       user_id: userId,
