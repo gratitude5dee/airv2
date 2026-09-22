@@ -227,7 +227,7 @@ export function routingInstructions(
   ];
   if (route.skill) {
     lines.push(
-      `- First action: call skill_view("${route.skill}") — it only opens the runbook (cheap read, no side effects). Do this before any other tool call and before concluding the task is impossible: missing connectors and unconfigured accounts are exactly what the skill's flow covers, so a "cannot" reply without opening the skill is a wrong answer.`
+      `- First action: call skill_view("${route.skill}") — a cheap read with no side effects. Do it before anything else, including asking the owner for missing details (the runbook names what to ask for — put the ask as a question); unconfigured connectors and missing accounts are the skill's own flow, so replying without opening it is a wrong answer.`
     );
   }
   if (route.gate) {
