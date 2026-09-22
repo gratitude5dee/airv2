@@ -332,11 +332,14 @@ export function isOpenRouterFamily(family: ModelFamily): boolean {
 }
 
 /**
- * OpenAI reasoning families (gpt-5.x / o-series) accept `reasoning_effort`
- * and the reasoning-model parameter rules; everything else rejects them.
+ * OpenAI reasoning families (gpt-5.x / gpt-6.x / o-series) accept
+ * `reasoning_effort` and the reasoning-model parameter rules; everything
+ * else rejects them. A `<provider>/` prefix (gateway/GMI slug form) is
+ * stripped first so `openai/gpt-6-luna` is treated the same as `gpt-6-luna`.
  */
 export function isReasoningModel(model: string): boolean {
-  return /^(gpt-5|o[0-9])/.test(model);
+  const bare = model.replace(/^[a-z0-9][a-z0-9_-]*\//, "");
+  return /^(gpt-[56]|o[0-9])/.test(bare);
 }
 
 /** Env overrides (MODEL_FAST / MODEL_BALANCED / MODEL_DEEP) let ops swap the
