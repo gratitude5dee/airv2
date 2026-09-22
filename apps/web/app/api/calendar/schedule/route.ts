@@ -10,6 +10,7 @@ import { z } from "zod";
 import { sessionUserId } from "@/lib/auth/user";
 import { serviceClient } from "@/lib/supabase";
 import { parseBody } from "@/lib/http/body";
+import { callingBox } from "@/lib/box/auth";
 import { command, writeFile } from "@/lib/box/client";
 import { armStopAfter, ensureBoxAwake } from "@/lib/orchestrator/boxes";
 import {
@@ -69,7 +70,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const userId = sessionUserId(request);
+  const supabase = serviceClient();
+  // The owner's session or the box itself (watch_for files watches the
+  // same way — the persistent check is a schedule, not a promise).
+  const box = await callingBox(supabase, request);
+  const userId = sessionUserId(request) ?? box?.userId;
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
@@ -85,19 +90,26 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: cronError }, { status: 400 });
   }
 
-  const supabase = serviceClient();
   const id = randomUUID();
   const promptRef = `.hermes/schedules/${id}.md`;
 
   let boxId: string;
-  try {
-    const box = await ensureBoxAwake(supabase, userId);
+  if (box) {
+    // The calling box is awake by definition; write the prompt into it
+    // directly rather than waking (or re-waking) anything.
     boxId = box.boxId;
     await command(boxId, "mkdir -p /home/user/.hermes/schedules");
     await writeFile(boxId, promptRef, prompt);
-  } finally {
-    // ensureBoxAwake nulls stop_after before it can fail; re-arm on every exit.
-    await armStopAfter(supabase, userId).catch(() => undefined);
+  } else {
+    try {
+      const target = await ensureBoxAwake(supabase, userId);
+      boxId = target.boxId;
+      await command(boxId, "mkdir -p /home/user/.hermes/schedules");
+      await writeFile(boxId, promptRef, prompt);
+    } finally {
+      // ensureBoxAwake nulls stop_after before it can fail; re-arm on every exit.
+      await armStopAfter(supabase, userId).catch(() => undefined);
+    }
   }
 
   const { error } = await supabase.from("agent_schedules").insert({
