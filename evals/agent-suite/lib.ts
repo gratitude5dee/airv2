@@ -106,7 +106,7 @@ export const PREVIEW_MAX = 600;
 export function skillFromPreview(event: SseEvent): string | null {
   if (event.tool !== "skill_view" || !event.preview) return null;
   const path = event.preview.split("\u2192")[0]?.trim() ?? "";
-  if (!/^[a-z0-9][a-z0-9-]*(\/[a-z0-9][a-z0-9-]*)*$/.test(path)) return null;
+  if (!/^[a-z0-9][a-z0-9_-]*(\/[a-z0-9][a-z0-9_-]*)*$/.test(path)) return null;
   return path.split("/").slice(-1)[0] ?? null;
 }
 
