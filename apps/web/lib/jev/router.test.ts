@@ -103,6 +103,25 @@ describe("parseRoute", () => {
     expect(route.needsContext).toBe(true);
     expect(route.compound).toBe(true);
   });
+
+  it("reads gateway-shaped boolean answers and metadata confidence", () => {
+    const route = parseRoute({
+      answers: {
+        capability: {
+          type: "choice",
+          choice: "watch_for",
+          probabilities: { watch_for: 0.9 },
+        },
+        needs_owner_context: { type: "boolean", probability: 0.8 },
+        compound_request: { type: "boolean", probability: 0.1 },
+      },
+      providerMetadata: { typesafe: { confidence: { capability: 0.97 } } },
+    })!;
+    expect(route.skill).toBe("watch_for");
+    expect(route.needsContext).toBe(true);
+    expect(route.compound).toBe(false);
+    expect(route.confidence).toBe(0.97);
+  });
 });
 
 describe("routingInstructions", () => {
@@ -152,6 +171,8 @@ describe("routeTurn", () => {
 
   it("returns null without an API key", async () => {
     vi.stubEnv("TYPESAFE_API_KEY", "");
+    vi.stubEnv("AI_GATEWAY_API_KEY", "");
+    vi.stubEnv("VERCEL_OIDC_TOKEN", "");
     const spy = vi.fn();
     vi.stubGlobal("fetch", spy);
     expect(await routeTurn("buy me the shoes")).toBeNull();
@@ -180,6 +201,73 @@ describe("routeTurn", () => {
       "compound_request",
     ]);
     expect(route?.skill).toBe("kernel-browser");
+  });
+
+  it("uses the AI Gateway evaluation-model endpoint without a typesafe key", async () => {
+    vi.stubEnv("TYPESAFE_API_KEY", "");
+    vi.stubEnv("AI_GATEWAY_API_KEY", "gw_test_key");
+    const spy = vi.fn<(input: string, init?: RequestInit) => Promise<Response>>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            answers: {
+              capability: {
+                type: "choice",
+                choice: "watch_for",
+                probabilities: { watch_for: 0.9 },
+              },
+              needs_owner_context: { type: "boolean", probability: 0.1 },
+              compound_request: { type: "boolean", probability: 0.2 },
+            },
+            providerMetadata: {
+              typesafe: { confidence: { capability: 0.97 } },
+            },
+          }),
+          { status: 200 }
+        )
+    );
+    vi.stubGlobal("fetch", spy);
+    const route = await routeTurn("watch that fare for me");
+    expect(spy).toHaveBeenCalledTimes(1);
+    const [url, init] = spy.mock.calls[0]!;
+    expect(String(url)).toContain("/v4/ai/evaluation-model");
+    const headers = init?.headers as Record<string, string>;
+    expect(headers["Authorization"]).toBe("Bearer gw_test_key");
+    expect(headers["ai-model-id"]).toBe("typesafe-ai/jev");
+    expect(headers["ai-gateway-protocol-version"]).toBe("0.0.1");
+    expect(headers["ai-evaluation-model-specification-version"]).toBe("4");
+    const body = JSON.parse(String(init?.body));
+    expect(body.questions.capability.type).toBe("choice");
+    expect(body.questions.needs_owner_context.type).toBe("boolean");
+    expect(body.model).toBeUndefined();
+    expect(route?.skill).toBe("watch_for");
+    expect(route?.confidence).toBe(0.97);
+  });
+
+  it("falls back to the injected Vercel OIDC token for the gateway", async () => {
+    vi.stubEnv("TYPESAFE_API_KEY", "");
+    vi.stubEnv("AI_GATEWAY_API_KEY", "");
+    vi.stubEnv("VERCEL_OIDC_TOKEN", "oidc_test_token");
+    const spy = vi.fn<(input: string, init?: RequestInit) => Promise<Response>>(
+      async () => new Response(JSON.stringify(response()), { status: 200 })
+    );
+    vi.stubGlobal("fetch", spy);
+    expect(await routeTurn("hi there")).not.toBeNull();
+    const [, init] = spy.mock.calls[0]!;
+    expect((init?.headers as Record<string, string>)["Authorization"]).toBe(
+      "Bearer oidc_test_token"
+    );
+  });
+
+  it("prefers the typesafe key when both backends are configured", async () => {
+    vi.stubEnv("TYPESAFE_API_KEY", "ts_test_key");
+    vi.stubEnv("AI_GATEWAY_API_KEY", "gw_test_key");
+    const spy = vi.fn<(input: string, init?: RequestInit) => Promise<Response>>(
+      async () => new Response(JSON.stringify(response()), { status: 200 })
+    );
+    vi.stubGlobal("fetch", spy);
+    await routeTurn("hi");
+    expect(String(spy.mock.calls[0]![0])).toContain("/v1/systemone");
   });
 
   it("fails open on a non-200 and on a fetch throw", async () => {

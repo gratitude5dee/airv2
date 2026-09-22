@@ -102,6 +102,15 @@ export const env = {
   typesafeApiBase: (): string =>
     optional("TYPESAFE_API_BASE", "https://api.typesafe.ai"),
   typesafeApiKey: (): string | null => process.env["TYPESAFE_API_KEY"] ?? null,
+  aiGatewayBase: (): string =>
+    optional("AI_GATEWAY_BASE", "https://ai-gateway.vercel.sh/v4/ai"),
+  /** Vercel AI Gateway credential: an AI_GATEWAY_API_KEY, or the OIDC token
+   * Vercel injects into functions when OIDC federation is enabled. `||` so a
+   * set-but-empty key can't shadow the OIDC token. */
+  aiGatewayApiKey: (): string | null =>
+    process.env["AI_GATEWAY_API_KEY"] ||
+    process.env["VERCEL_OIDC_TOKEN"] ||
+    null,
   // Trade (docs/trade/plan.md). The preview-token HMAC key defaults to the
   // mini-app signing key — a different use-prefix separates the domains. Set
   // TRADE_PREVIEW_SIGNING_KEY to rotate preview authority independently of

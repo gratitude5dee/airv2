@@ -14,6 +14,7 @@ import {
   CONTEXT_MIN_NOUL,
   GATE_MIN_PROBABILITY,
   GATE_OPTIONS,
+  JEV_GATEWAY_MODEL,
   JEV_MODEL,
   ROUTE_MIN_PROBABILITY,
   ROUTE_OPTIONS,
@@ -42,13 +43,20 @@ export interface TurnRoute {
 }
 
 interface ChoiceAnswer {
+  /** Wire tag — "choice" on both backends; ignored for parsing. */
+  type?: string;
   choice?: string;
   confidence?: number;
   probabilities?: Record<string, number>;
 }
 
 interface NoulAnswer {
+  /** Wire tag — "noul" on TypeSafe's API, "boolean" on the gateway. */
+  type?: string;
+  /** TypeSafe API: probability the statement is true. */
   noul?: number;
+  /** AI Gateway `boolean` question: probability the statement is true. */
+  probability?: number;
 }
 
 export interface SystemOneResponse {
@@ -58,23 +66,99 @@ export interface SystemOneResponse {
     needs_owner_context?: NoulAnswer;
     compound_request?: NoulAnswer;
   };
+  providerMetadata?: {
+    typesafe?: { confidence?: Record<string, number> };
+  };
+}
+
+/** Two transports, one contract. A direct TYPESAFE_API_KEY hits TypeSafe's
+ * /v1/systemone (noul questions, inline per-answer confidence). Otherwise the
+ * Vercel AI Gateway serves the same Jev model through its evaluation-model
+ * endpoint — noul questions map onto its `boolean` type and confidence lives
+ * in providerMetadata.typesafe.confidence. */
+type JevBackend =
+  | { kind: "typesafe"; url: string; key: string }
+  | { kind: "gateway"; url: string; key: string };
+
+function pickBackend(): JevBackend | null {
+  const typesafeKey = env.typesafeApiKey();
+  if (typesafeKey) {
+    return {
+      kind: "typesafe",
+      url: `${env.typesafeApiBase()}/v1/systemone`,
+      key: typesafeKey,
+    };
+  }
+  const gatewayKey = env.aiGatewayApiKey();
+  if (gatewayKey) {
+    return {
+      kind: "gateway",
+      url: `${env.aiGatewayBase()}/evaluation-model`,
+      key: gatewayKey,
+    };
+  }
+  return null;
+}
+
+/** The gateway's boolean question is the noul primitive — same instructions,
+ * different type tag. Choice questions pass through unchanged. */
+function gatewayQuestions(questions: typeof ROUTING_QUESTIONS) {
+  return Object.fromEntries(
+    Object.entries(questions).map(([id, q]) => [
+      id,
+      q.type === "noul" ? { ...q, type: "boolean" } : q,
+    ])
+  );
+}
+
+function buildRequest(
+  backend: JevBackend,
+  input: string
+): { url: string; init: RequestInit } {
+  const state = { surface: "air-chat", message: input.slice(0, MAX_STATE_CHARS) };
+  if (backend.kind === "typesafe") {
+    return {
+      url: backend.url,
+      init: {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${backend.key}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          state,
+          model: JEV_MODEL,
+          questions: ROUTING_QUESTIONS,
+        }),
+      },
+    };
+  }
+  return {
+    url: backend.url,
+    init: {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${backend.key}`,
+        "Content-Type": "application/json",
+        "ai-gateway-protocol-version": "0.0.1",
+        "ai-evaluation-model-specification-version": "4",
+        "ai-model-id": JEV_GATEWAY_MODEL,
+      },
+      body: JSON.stringify({
+        state,
+        questions: gatewayQuestions(ROUTING_QUESTIONS),
+      }),
+    },
+  };
 }
 
 export async function routeTurn(input: string): Promise<TurnRoute | null> {
-  const apiKey = env.typesafeApiKey();
-  if (!apiKey || !input.trim()) return null;
+  const backend = pickBackend();
+  if (!backend || !input.trim()) return null;
   try {
-    const response = await fetch(`${env.typesafeApiBase()}/v1/systemone`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        state: { surface: "air-chat", message: input.slice(0, MAX_STATE_CHARS) },
-        model: JEV_MODEL,
-        questions: ROUTING_QUESTIONS,
-      }),
+    const { url, init } = buildRequest(backend, input);
+    const response = await fetch(url, {
+      ...init,
       signal: requestSignal(JEV_TIMEOUT_MS),
     });
     if (!response.ok) return null;
@@ -112,9 +196,17 @@ export function parseRoute(body: SystemOneResponse): TurnRoute | null {
     skill,
     gate,
     needsContext:
-      (answers.needs_owner_context?.noul ?? 0) >= CONTEXT_MIN_NOUL,
-    compound: (answers.compound_request?.noul ?? 0) >= 0.5,
-    confidence: answers.capability?.confidence ?? 0,
+      (answers.needs_owner_context?.noul ??
+        answers.needs_owner_context?.probability ??
+        0) >= CONTEXT_MIN_NOUL,
+    compound:
+      (answers.compound_request?.noul ??
+        answers.compound_request?.probability ??
+        0) >= 0.5,
+    confidence:
+      answers.capability?.confidence ??
+      body.providerMetadata?.typesafe?.confidence?.["capability"] ??
+      0,
   };
 }
 

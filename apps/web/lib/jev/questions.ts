@@ -7,7 +7,10 @@
  * Tune questions and thresholds here, never inline in the router.
  */
 
+/** Model id on the TypeSafe API (direct key). */
 export const JEV_MODEL = "jev-latest";
+/** Model slug on the Vercel AI Gateway (`provider/model`). */
+export const JEV_GATEWAY_MODEL = "typesafe-ai/jev";
 
 /** A routed capability below this probability is a guess — emit no hint. */
 export const ROUTE_MIN_PROBABILITY = 0.55;
