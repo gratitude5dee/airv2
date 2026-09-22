@@ -30,13 +30,31 @@ describe("parseRoute", () => {
     expect(route.gate).toBeNull();
   });
 
-  it("drops a capability under the route threshold", () => {
+  it("declares the argmax capability under the threshold when it beats none", () => {
     const route = parseRoute(
       response({
         capability: {
           choice: "kernel-browser",
           confidence: 0.4,
-          probabilities: { "kernel-browser": 0.4, comms: 0.35, email: 0.25 },
+          probabilities: {
+            "kernel-browser": 0.4,
+            comms: 0.35,
+            email: 0.25,
+            none: 0.3,
+          },
+        },
+      })
+    )!;
+    expect(route.skill).toBe("kernel-browser");
+  });
+
+  it("keeps the turn unsteered when none is Jev's argmax", () => {
+    const route = parseRoute(
+      response({
+        capability: {
+          choice: "none",
+          confidence: 0.7,
+          probabilities: { none: 0.55, "kernel-browser": 0.3, email: 0.15 },
         },
       })
     )!;
@@ -160,6 +178,18 @@ describe("routingInstructions", () => {
       confidence: 0.5,
     })!;
     expect(text).toContain("openviking-memory");
+  });
+
+  it("opens the gate-owning skill's runbook on a gate-only route", () => {
+    const text = routingInstructions({
+      skill: null,
+      gate: "purchase_review",
+      needsContext: false,
+      compound: false,
+      confidence: 0.5,
+    })!;
+    expect(text).toContain('skill_view("kernel-payments")');
+    expect(text).toContain("purchase_review");
   });
 });
 

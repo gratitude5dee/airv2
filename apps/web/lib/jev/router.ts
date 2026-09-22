@@ -155,17 +155,20 @@ function buildRequest(
 export async function routeTurn(input: string): Promise<TurnRoute | null> {
   const backend = pickBackend();
   if (!backend || !input.trim()) return null;
-  try {
-    const { url, init } = buildRequest(backend, input);
-    const response = await fetch(url, {
-      ...init,
-      signal: requestSignal(JEV_TIMEOUT_MS),
-    });
-    if (!response.ok) return null;
-    return parseRoute((await response.json()) as SystemOneResponse);
-  } catch {
-    return null;
+  const { url, init } = buildRequest(backend, input);
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        ...init,
+        signal: requestSignal(JEV_TIMEOUT_MS),
+      });
+      if (!response.ok) continue;
+      return parseRoute((await response.json()) as SystemOneResponse);
+    } catch {
+      // Transport/timeout failure — retry once, then fail open.
+    }
   }
+  return null;
 }
 
 export function parseRoute(body: SystemOneResponse): TurnRoute | null {
@@ -173,7 +176,7 @@ export function parseRoute(body: SystemOneResponse): TurnRoute | null {
   if (!answers) return null;
 
   const rawSkill = answers.capability?.choice;
-  const skill: RouteOption | null =
+  let skill: RouteOption | null =
     rawSkill != null &&
     rawSkill !== "none" &&
     rawSkill in ROUTE_OPTIONS &&
@@ -181,6 +184,18 @@ export function parseRoute(body: SystemOneResponse): TurnRoute | null {
       ROUTE_MIN_PROBABILITY
       ? (rawSkill as RouteOption)
       : null;
+  if (!skill) {
+    // Argmax fallback: when Jev prefers a real capability over `none` but
+    // below the declaration threshold, still declare it — opening a runbook
+    // is a cheap read and beats leaving the turn unsteered.
+    const probs = answers.capability?.probabilities ?? {};
+    const best = Object.entries(probs)
+      .filter(([name]) => name !== "none" && name in ROUTE_OPTIONS)
+      .sort((a, b) => b[1] - a[1])[0];
+    if (best && best[1] > (probs["none"] ?? 0)) {
+      skill = best[0] as RouteOption;
+    }
+  }
 
   const rawGate = answers.approval_gate?.choice;
   const gate: GateOption | null =
@@ -210,6 +225,19 @@ export function parseRoute(body: SystemOneResponse): TurnRoute | null {
   };
 }
 
+/** The skill whose runbook owns each approval gate's staging flow — it
+ * names the exact propose/stage call, so a gate-only route still opens it. */
+const GATE_OWNER_SKILL: Partial<Record<GateOption, RouteOption>> = {
+  purchase_review: "kernel-payments",
+  email_draft: "email-draft-review",
+  miniapp_publish: "create-miniapp",
+  shop_publish: "storefront-commerce",
+  social_post: "social-engage",
+  calendar_add: "calendar-native",
+  vault_fill: "vault-use",
+  crm_update: "crm-people",
+};
+
 /** The run `instructions` block — Jev's classification rendered as routing
  * guidance for the agent's system instructions. Returns undefined when
  * nothing cleared its threshold (plain turns get no hint). */
@@ -225,9 +253,11 @@ export function routingInstructions(
   const lines = [
     "Pre-classified routing for this turn (deterministic — apply it rather than re-deriving):",
   ];
-  if (route.skill) {
+  const requiredSkill =
+    route.skill ?? (route.gate ? GATE_OWNER_SKILL[route.gate] : undefined);
+  if (requiredSkill) {
     lines.push(
-      `- First action: call skill_view("${route.skill}") — a cheap read with no side effects. Do it before anything else, including asking the owner for missing details (the runbook names what to ask for — put the ask as a question); unconfigured connectors and missing accounts are the skill's own flow, so replying without opening it is a wrong answer.`
+      `- First action: call skill_view("${requiredSkill}") — a cheap read with no side effects. Do it before anything else, including asking the owner for missing details (the runbook names what to ask for — put the ask as a question); unconfigured connectors and missing accounts are the skill's own flow, so replying without opening it is a wrong answer.`
     );
   }
   if (route.gate) {
