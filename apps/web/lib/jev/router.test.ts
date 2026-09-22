@@ -148,6 +148,7 @@ describe("routingInstructions", () => {
     expect(
       routingInstructions({
         skill: null,
+        secondary: null,
         gate: null,
         needsContext: false,
         compound: false,
@@ -159,6 +160,7 @@ describe("routingInstructions", () => {
   it("names the capability and gate so the agent opens and stages them", () => {
     const text = routingInstructions({
       skill: "kernel-payments",
+      secondary: null,
       gate: "purchase_review",
       needsContext: false,
       compound: false,
@@ -172,6 +174,7 @@ describe("routingInstructions", () => {
   it("mentions context stores when the turn needs owner context", () => {
     const text = routingInstructions({
       skill: null,
+      secondary: null,
       gate: null,
       needsContext: true,
       compound: false,
@@ -183,6 +186,7 @@ describe("routingInstructions", () => {
   it("opens the gate-owning skill's runbook on a gate-only route", () => {
     const text = routingInstructions({
       skill: null,
+      secondary: null,
       gate: "purchase_review",
       needsContext: false,
       compound: false,
@@ -190,6 +194,20 @@ describe("routingInstructions", () => {
     })!;
     expect(text).toContain('skill_view("kernel-payments")');
     expect(text).toContain("purchase_review");
+    expect(text).toContain("air-kernel purchase propose");
+  });
+
+  it("emits the second capability bullet on compound routes", () => {
+    const text = routingInstructions({
+      skill: "calendar-native",
+      secondary: "onairos-connect",
+      gate: null,
+      needsContext: false,
+      compound: true,
+      confidence: 0.7,
+    })!;
+    expect(text).toContain('skill_view("calendar-native")');
+    expect(text).toContain('skill_view("onairos-connect")');
   });
 });
 
@@ -229,6 +247,7 @@ describe("routeTurn", () => {
       "approval_gate",
       "needs_owner_context",
       "compound_request",
+      "secondary_capability",
     ]);
     expect(route?.skill).toBe("kernel-browser");
   });
