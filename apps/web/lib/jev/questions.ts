@@ -31,9 +31,9 @@ export const ROUTE_OPTIONS = {
   "vault-use":
     "Store or retrieve secrets, credentials, ID numbers, or payment cards in the owner's vault",
   watch_for:
-    "Arm a persistent watch — restocks, price drops, availability, releases; recurring checks rather than one-off lookups",
+    "Arm a persistent watch or standing alert — restocks, price drops, availability, releases, or flagging the owner the moment a specific email, message, or event arrives; recurring or trigger-based checks rather than one-off lookups",
   comms:
-    "Work the owner's inbox — triage, read, extract, or act on email and message content (not composing outbound mail)",
+    "Reach people through the owner's messaging channels — iMessage/SMS/chat threads, drafting or acting on direct messages (not mailbox work)",
   "email-draft-review":
     "Compose, reply to, or forward email — anything ending in a draft the owner approves before it sends",
   "calendar-native":
@@ -56,7 +56,8 @@ export const ROUTE_OPTIONS = {
     "Find products and help the owner shop online",
   "browser-use":
     "General web research or lookups that need a browser but no purchase",
-  email: "Read, search, or send from the owner's mailbox — generic email work",
+  email:
+    "Read, search, triage, organize, or send from the owner's email mailbox — inbox sweeps, spam review, folder cleanup, generic email work",
   trade: "Stock or crypto trading, orders, or watchlist changes",
   wzrdmail: "Work in the owner's wzrdmail mailbox",
   none: "Plain conversation, questions, or anything no listed capability covers",
