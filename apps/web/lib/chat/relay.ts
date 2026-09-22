@@ -46,7 +46,10 @@ export async function startChatRun(
   try {
     const instructions = routingInstructions(await route);
     const run = await createRun(box.target, {
-      input,
+      // The routing hint rides the turn text itself: in-session GLM weights
+      // user-adjacent context over system-prompt directives, so the same note
+      // lands parenthesized in the input and as the ephemeral system prompt.
+      input: instructions ? `${input}\n\n(${instructions})` : input,
       sessionId,
       metadata: { channel },
       ...(instructions ? { instructions } : {}),
