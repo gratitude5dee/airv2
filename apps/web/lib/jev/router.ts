@@ -237,7 +237,7 @@ export function routingInstructions(
   }
   if (route.needsContext) {
     lines.push(
-      "- Context: this needs the owner's data — search memory, contacts, calendar, vault, or inbox tools before replying; do not guess from history."
+      "- Context: this needs the owner's data — search openviking-memory, contacts, calendar, vault, or inbox before replying; do not guess from history."
     );
   }
   if (route.compound) {
