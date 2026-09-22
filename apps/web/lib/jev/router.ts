@@ -227,7 +227,7 @@ export function routingInstructions(
   ];
   if (route.skill) {
     lines.push(
-      `- First action: call skill_view("${route.skill}") before any other tool or reply — even if the capability looks unconfigured or the connector seems missing. The skill's own flow covers connection gaps, approval staging, and fallbacks; do not answer from history alone.`
+      `- First action: call skill_view("${route.skill}") — it only opens the runbook (cheap read, no side effects). Do this before any other tool call and before concluding the task is impossible: missing connectors and unconfigured accounts are exactly what the skill's flow covers, so a "cannot" reply without opening the skill is a wrong answer.`
     );
   }
   if (route.gate) {
