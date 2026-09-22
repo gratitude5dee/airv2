@@ -43,10 +43,17 @@ describe("speed tiers", () => {
   it("classifies reasoning model families", () => {
     expect(isReasoningModel("gpt-5.6-luna")).toBe(true);
     expect(isReasoningModel("gpt-5.6-terra")).toBe(true);
+    expect(isReasoningModel("gpt-6-luna")).toBe(true);
+    expect(isReasoningModel("gpt-6-luna-fast")).toBe(true);
     expect(isReasoningModel("o3")).toBe(true);
     expect(isReasoningModel("gpt-4o")).toBe(false);
     expect(isReasoningModel("gpt-4o-mini")).toBe(false);
     expect(isReasoningModel("claude-sonnet-4-5")).toBe(false);
+    // Provider-prefixed slugs (AI Gateway / GMI form) resolve the same way.
+    expect(isReasoningModel("openai/gpt-6-luna-fast")).toBe(true);
+    expect(isReasoningModel("openai/gpt-5.6-luna")).toBe(true);
+    expect(isReasoningModel("zai-org/GLM-5.3-Flash")).toBe(false);
+    expect(isReasoningModel("anthropic/claude-sonnet-4-5")).toBe(false);
   });
 
   it("computes a positive cost from usage", () => {
