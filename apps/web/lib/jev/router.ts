@@ -227,7 +227,7 @@ export function routingInstructions(
   ];
   if (route.skill) {
     lines.push(
-      `- Capability: ${route.skill} — open it with skill_view and follow its choreography before doing anything else.`
+      `- First action: call skill_view("${route.skill}") before any other tool or reply — even if the capability looks unconfigured or the connector seems missing. The skill's own flow covers connection gaps, approval staging, and fallbacks; do not answer from history alone.`
     );
   }
   if (route.gate) {

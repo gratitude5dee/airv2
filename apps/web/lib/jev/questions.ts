@@ -25,9 +25,9 @@ export const CONTEXT_MIN_NOUL = 0.6;
  * plus `none` for ordinary conversation. */
 export const ROUTE_OPTIONS = {
   "kernel-browser":
-    "Live website work in a real browser — navigate, click, fill forms, scrape, check prices, shop, or check out",
+    "Live website work in a real browser — navigate, click, fill forms, scrape, check prices, shop, buy, reorder, or check out; any errand executed on a website even when it ends in a purchase",
   "kernel-payments":
-    "Pay, buy, reorder, or check out — card- and vault-backed payment flows",
+    "Money movement itself — payment links, invoices, charging a card, spend requests; not website errands",
   "vault-use":
     "Store or retrieve secrets, credentials, ID numbers, or payment cards in the owner's vault",
   watch_for:
