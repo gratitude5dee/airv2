@@ -32,6 +32,9 @@ const MAX_STATE_CHARS = 4_000;
 export interface TurnRoute {
   /** Skill to open first (installed leaf/family), null below threshold. */
   readonly skill: RouteOption | null;
+  /** Second capability for compound turns (installed leaf/family), null
+   * when the turn is single-purpose or the pick is `none`. */
+  readonly secondary: RouteOption | null;
   /** Decision kind the turn should end in, null below threshold. */
   readonly gate: GateOption | null;
   /** Whether the turn needs owner context stores. */
@@ -62,6 +65,7 @@ interface NoulAnswer {
 export interface SystemOneResponse {
   answers?: {
     capability?: ChoiceAnswer;
+    secondary_capability?: ChoiceAnswer;
     approval_gate?: ChoiceAnswer;
     needs_owner_context?: NoulAnswer;
     compound_request?: NoulAnswer;
@@ -184,18 +188,33 @@ export function parseRoute(body: SystemOneResponse): TurnRoute | null {
       ROUTE_MIN_PROBABILITY
       ? (rawSkill as RouteOption)
       : null;
-  if (!skill) {
-    // Argmax fallback: when Jev prefers a real capability over `none` but
-    // below the declaration threshold, still declare it — opening a runbook
-    // is a cheap read and beats leaving the turn unsteered.
-    const probs = answers.capability?.probabilities ?? {};
-    const best = Object.entries(probs)
+  const argmaxNonNone = (probs: Record<string, number> | undefined) => {
+    // When Jev prefers a real capability over `none` but below the
+    // declaration threshold, still declare it — opening a runbook is a
+    // cheap read and beats leaving the turn unsteered.
+    const best = Object.entries(probs ?? {})
       .filter(([name]) => name !== "none" && name in ROUTE_OPTIONS)
       .sort((a, b) => b[1] - a[1])[0];
-    if (best && best[1] > (probs["none"] ?? 0)) {
-      skill = best[0] as RouteOption;
-    }
+    return best && best[1] > ((probs ?? {})["none"] ?? 0)
+      ? (best[0] as RouteOption)
+      : null;
+  };
+  if (!skill) {
+    skill = argmaxNonNone(answers.capability?.probabilities);
   }
+
+  const rawSecondary = answers.secondary_capability?.choice;
+  const secondary: RouteOption | null =
+    rawSecondary != null &&
+    rawSecondary !== "none" &&
+    rawSecondary in ROUTE_OPTIONS &&
+    rawSecondary !== skill
+      ? ((answers.secondary_capability?.probabilities?.[rawSecondary] ?? 0) >=
+        ROUTE_MIN_PROBABILITY
+          ? (rawSecondary as RouteOption)
+          : argmaxNonNone(answers.secondary_capability?.probabilities) ??
+            (rawSecondary as RouteOption))
+      : argmaxNonNone(answers.secondary_capability?.probabilities);
 
   const rawGate = answers.approval_gate?.choice;
   const gate: GateOption | null =
@@ -209,6 +228,7 @@ export function parseRoute(body: SystemOneResponse): TurnRoute | null {
 
   return {
     skill,
+    secondary: secondary === skill ? null : secondary,
     gate,
     needsContext:
       (answers.needs_owner_context?.noul ??
@@ -238,6 +258,20 @@ const GATE_OWNER_SKILL: Partial<Record<GateOption, RouteOption>> = {
   crm_update: "crm-people",
 };
 
+/** The literal staging step each gate kind requires — the call that files
+ * the pending decision, named so the agent runs it instead of summarizing. */
+const GATE_STAGING: Record<GateOption, string> = {
+  purchase_review: "run `air-kernel purchase propose '{...}' <session>`",
+  email_draft: "POST to /api/email/drafts/review",
+  miniapp_publish: "run `air-create publish <appname>`",
+  shop_publish: "POST to /api/miniapps/commerce",
+  social_post: "POST to /api/content/plan",
+  calendar_add: "stage the invite so it lands as a pending approval",
+  vault_fill: "stage the vault-fill approval the runbook documents",
+  crm_update: "stage the crm-write approval the runbook documents",
+  none: "",
+};
+
 /** The run `instructions` block — Jev's classification rendered as routing
  * guidance for the agent's system instructions. Returns undefined when
  * nothing cleared its threshold (plain turns get no hint). */
@@ -246,7 +280,11 @@ export function routingInstructions(
 ): string | undefined {
   if (
     !route ||
-    (!route.skill && !route.gate && !route.needsContext && !route.compound)
+    (!route.skill &&
+      !route.secondary &&
+      !route.gate &&
+      !route.needsContext &&
+      !route.compound)
   ) {
     return undefined;
   }
@@ -260,9 +298,18 @@ export function routingInstructions(
       `- First action: call skill_view("${requiredSkill}") — a cheap read with no side effects. Do it before anything else, including asking the owner for missing details (the runbook names what to ask for — put the ask as a question); unconfigured connectors and missing accounts are the skill's own flow, so replying without opening it is a wrong answer.`
     );
   }
+  const secondarySkill =
+    route.secondary && route.secondary !== requiredSkill
+      ? route.secondary
+      : undefined;
+  if (secondarySkill) {
+    lines.push(
+      `- Also required: call skill_view("${secondarySkill}") — the turn's second capability; its runbook applies too.`
+    );
+  }
   if (route.gate) {
     lines.push(
-      `- Approval gate: ${route.gate} — end this turn with that decision pending for the owner; stage it through the skill's flow and never perform the side effect yourself.`
+      `- Approval gate: ${route.gate} — end this turn with that decision pending for the owner: ${GATE_STAGING[route.gate]} per the runbook. Replying with a summary of what you would do instead is a wrong answer.`
     );
   }
   if (route.needsContext) {

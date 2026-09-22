@@ -25,39 +25,39 @@ export const CONTEXT_MIN_NOUL = 0.6;
  * plus `none` for ordinary conversation. */
 export const ROUTE_OPTIONS = {
   "kernel-browser":
-    "Live website work in a real browser — navigate, click, fill forms, scrape, check prices, shop, buy, reorder, or check out; any errand executed on a website even when it ends in a purchase",
+    "Do a concrete errand inside a live, logged-in website in a real browser — book, buy, reorder, fill forms, unsubscribe, cancel, check out, scrape; if the task is performed on a website, pick this even when it ends in a purchase or cancellation",
   "kernel-payments":
     "Money movement itself — payment links, invoices, charging a card, spend requests; not website errands",
   "vault-use":
     "Store or retrieve secrets, credentials, ID numbers, or payment cards in the owner's vault",
   watch_for:
-    "Arm a persistent watch or standing alert — restocks, price drops, availability, releases, or flagging the owner the moment a specific email, message, or event arrives; recurring or trigger-based checks rather than one-off lookups",
+    "Arm a persistent watch on an EXTERNAL thing that changes — site health or downtime, restocks, price drops, ticket or seat availability, releases, a counterpart's status — it fires when the condition does, not on a clock; not time-based reminders or calendars",
   comms:
-    "Reach people through the owner's messaging channels — iMessage/SMS/chat threads, drafting or acting on direct messages (not mailbox work)",
+    "Send or act on direct 1:1 messages through the owner's messaging threads — iMessage/SMS/DM texts to a person (not mailbox work, not channel posts, not calendar)",
   "email-draft-review":
-    "Compose, reply to, or forward email — anything ending in a draft the owner approves before it sends",
+    "Compose, reply to, or forward an email the owner approves before it sends — any turn whose deliverable is a drafted email message, including follow-ups and refund/licence replies",
   "calendar-native":
-    "Read or write calendar events — schedule, reschedule, check availability, RSVP",
+    "The owner's own calendar and time-based reminders — schedule, reschedule, recurring events, check the owner's availability, time-triggered nudges; not coordinating with other people's agents",
   "openviking-memory":
-    "Recall or store durable personal facts, preferences, and notes about the owner",
+    "Recall or store durable facts, preferences, and notes about the owner — things they told you before (contacts, addresses, sizes, their history); not credentials or cards, which belong to vault-use",
   "storefront-commerce":
     "Manage the owner's storefront — products, listings, pricing, publishing shop changes",
   "create-miniapp":
     "Build or iterate a mini-app or small web app for the owner",
   "social-engage":
-    "Social media work — posts, replies, DMs, engagement",
+    "Post to social channels or group chats — venue announcements, #channel posts, band/group-chat updates, social media engagement",
   "tour-planning":
     "Plan tours, trips, venues, or multi-stop itineraries",
   "onairos-connect":
-    "Coordinate with another person's agent, or connect and sync the owner's Onairos persona",
+    "Coordinate person-to-person through agents — another person's Instinct or agent is the counterparty (sharing availability, confirming amounts, delegation, standing syncs between agents, connecting the owner's Onairos persona to someone else's)",
   "crm-people":
     "Look up, add, or update contacts and people records",
   "shopping-checkout":
     "Find products and help the owner shop online",
   "browser-use":
-    "General web research or lookups that need a browser but no purchase",
+    "General web research or lookups that need a browser but perform no action on a site — informational queries only",
   email:
-    "Read, search, triage, organize, or send from the owner's email mailbox — inbox sweeps, spam review, folder cleanup, generic email work",
+    "Read, search, triage, organize, or send directly from the owner's mailbox — inbox sweeps, spam review, unsubscribing, folder cleanup; draft-and-approve flows go to email-draft-review instead",
   trade: "Stock or crypto trading, orders, or watchlist changes",
   wzrdmail: "Work in the owner's wzrdmail mailbox",
   none: "Plain conversation, questions, or anything no listed capability covers",
@@ -105,5 +105,11 @@ export const ROUTING_QUESTIONS = {
     type: "noul",
     instructions:
       "This request asks for more than one distinct action (a compound request).",
+  },
+  secondary_capability: {
+    type: "choice",
+    instructions:
+      "If the request genuinely needs a second capability in addition to the primary one (a real second verb, not the same work restated), name it here; otherwise choose none.",
+    criteria: ROUTE_OPTIONS,
   },
 } as const;
