@@ -5,7 +5,9 @@ name: Box replica
 # openviking*.service/.timer units, driven by infra/template/openviking/
 # livecheck.py. The runner is a fresh VM sized like the template Box
 # (4 vCPU / 8 GB). Evidence from here covers systemd behaviour only; provider
-# (ascii.dev) stop/resume transitions still need a real Box.
+# (ascii.dev) stop/resume transitions still need a real Box. Runs on
+# GitHub-hosted runners — the tenki-hosted label was removed when the
+# workspace ran out of credits.
 
 on:
   push:
@@ -27,7 +29,7 @@ permissions:
 
 jobs:
   openviking-live:
-    runs-on: tenki-standard-medium-4c-8g
+    runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
