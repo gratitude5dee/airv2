@@ -29,15 +29,21 @@ right before the submit button. Do not submit.
 
 ## 2. Propose
 
+Write the payload to a file first — inline JSON inside shell quoting breaks
+on apostrophes and parentheses in the context string.
+
 ```bash
-air-kernel purchase propose '{
+cat > /tmp/proposal.json <<'JSON'
+{
   "merchant_domain": "example.com",
   "merchant_name": "Example Store",
   "merchant_url": "https://example.com/checkout",
   "amount_cents": 4299,
   "currency": "usd",
   "context": "The owner requested this exact item and quantity. I verified the merchant identity, checkout URL, currency, and final total of $42.99 on the review page before requesting approval."
-}' <kernel_session_id>
+}
+JSON
+air-kernel purchase propose "$(cat /tmp/proposal.json)" <kernel_session_id>
 ```
 
 The control plane re-verifies the quote against the frozen cart session —

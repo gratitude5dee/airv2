@@ -47,11 +47,14 @@ address, and says "can you send this":
 # Read only the gateway settings as data; never execute the environment file.
 OPENAI_BASE_URL="$(grep -m1 '^OPENAI_BASE_URL=' ~/.hermes/.env | cut -d= -f2-)"
 OPENAI_API_KEY="$(grep -m1 '^OPENAI_API_KEY=' ~/.hermes/.env | cut -d= -f2-)"
+cat > /tmp/review.json <<'JSON'
+{"draft_id":"<draft_id>","inbox_id":"<inbox_id>"}
+JSON
 curl -fsS -X POST \
   "${OPENAI_BASE_URL%/api/gateway/v1}/api/email/drafts/review" \
   -H "Authorization: Bearer $OPENAI_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"draft_id":"<draft_id>","inbox_id":"<inbox_id>"}'
+  -d @/tmp/review.json
 ```
 
 Then: "Drafted — approve it in Needs-you to send."
@@ -86,11 +89,14 @@ by the create call alongside `draft_id`:
 # Read only the gateway settings as data; never execute the environment file.
 OPENAI_BASE_URL="$(grep -m1 '^OPENAI_BASE_URL=' ~/.hermes/.env | cut -d= -f2-)"
 OPENAI_API_KEY="$(grep -m1 '^OPENAI_API_KEY=' ~/.hermes/.env | cut -d= -f2-)"
+cat > /tmp/review.json <<'JSON'
+{"draft_id":"<draft_id>","inbox_id":"<inbox_id>"}
+JSON
 curl -fsS -X POST \
   "${OPENAI_BASE_URL%/api/gateway/v1}/api/email/drafts/review" \
   -H "Authorization: Bearer $OPENAI_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"draft_id":"<draft_id>","inbox_id":"<inbox_id>"}'
+  -d @/tmp/review.json
 ```
 
 The request body also accepts optional `to` and `subject` fallbacks. The
