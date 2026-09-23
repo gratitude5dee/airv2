@@ -161,9 +161,10 @@ export async function ensureMailboxOnBox(
     if (!(error instanceof MailApiError) || error.status !== 404) throw error;
     // The primary row points at an inbox neither provider can see — an
     // agentmail-era address under a wzrdmail deployment, or a deleted inbox.
-    // Re-mint the same address under the current provider; provisionEmail
-    // retires the stale row, so mail keeps flowing to the same address.
-    const localpart = (address.agentmail_inbox_id as string).split("@")[0];
+    // Re-mint the same address under the current provider; mail keeps
+    // flowing to the same address.
+    const inboxId = address?.agentmail_inbox_id as string | undefined;
+    const localpart = inboxId?.split("@")[0];
     if (!localpart) throw error;
     // Retire the stale row first — provisionEmail treats a live row carrying
     // the same address as "already provisioned" and would no-op the mint.
