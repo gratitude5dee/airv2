@@ -57,8 +57,10 @@ function fakeSupabase(
   username: string | null = null,
 ) {
   // agent_addresses reflects inserts so a just-provisioned mailbox is found
-  // by the follow-up installExistingMailbox lookup, like the real flow.
+  // by the follow-up installExistingMailbox lookup, like the real flow; an
+  // update() retires the stored row the way the real retire+insert does.
   let storedInboxId = existingInboxId;
+  let retired = false;
   return {
     from: vi.fn((table: string) => {
       // Every builder method returns the builder; awaiting it resolves to the
@@ -67,10 +69,14 @@ function fakeSupabase(
         select: vi.fn(() => q),
         eq: vi.fn(() => q),
         is: vi.fn(() => q),
-        update: vi.fn(() => q),
+        update: vi.fn(() => {
+          if (table === "agent_addresses") retired = true;
+          return q;
+        }),
         insert: vi.fn(async (row: { agentmail_inbox_id?: string }) => {
           if (table === "agent_addresses" && row?.agentmail_inbox_id) {
             storedInboxId = row.agentmail_inbox_id;
+            retired = false;
           }
           return { error: null };
         }),
@@ -78,9 +84,9 @@ function fakeSupabase(
           data:
             table === "boxes" && boxId
               ? { provider_box_id: boxId }
-              : table === "agent_addresses" && storedInboxId
+              : table === "agent_addresses" && storedInboxId && !retired
                 ? {
-                    address: "sam@wzrd.tech",
+                    address: `${storedInboxId}`,
                     agentmail_inbox_id: storedInboxId,
                   }
                 : table === "users" && username
@@ -333,6 +339,29 @@ describe("ensureMailboxOnBox", () => {
       "wzrdmail",
       "sam@wzrd.tech",
       "box-user-1",
+    );
+  });
+
+  it("re-mints a dangling address under the current provider when both providers 404", async () => {
+    // Stale row: the inbox exists in neither wzrdmail nor agentmail — the
+    // fallback inside installExistingMailbox exhausts both, then the ensure
+    // migrates the address by re-minting its localpart on the current provider.
+    mail.createDraftOnlyKeyForProvider
+      .mockRejectedValueOnce(new MailApiError(404, "inbox not found"))
+      .mockRejectedValueOnce(new MailApiError(404, "inbox not found"));
+    mail.createInbox.mockResolvedValueOnce({ inbox_id: "legacy@wzrd.tech" });
+
+    const ok = await ensureMailboxOnBox(
+      fakeSupabase("box_1", "legacy@wzrd.tech"),
+      "user-1",
+      "box_1",
+    );
+    expect(ok).toBe(true);
+    expect(mail.createInbox).toHaveBeenCalledWith("pod_1", "legacy");
+    expect(box.writeFile).toHaveBeenCalledWith(
+      "box_1",
+      ".hermes/.env",
+      expect.stringContaining("WZRDMAIL_INBOX_ID=legacy@wzrd.tech"),
     );
   });
 
