@@ -25,42 +25,42 @@ export const CONTEXT_MIN_NOUL = 0.6;
  * plus `none` for ordinary conversation. */
 export const ROUTE_OPTIONS = {
   "kernel-browser":
-    "Do a concrete errand inside a live, logged-in website in a real browser — book, buy, reorder, fill forms, unsubscribe, cancel, check out, scrape; if the task is performed on a website, pick this even when it ends in a purchase or cancellation",
+    "Do a concrete errand inside a live, logged-in website in a real browser — book, buy, reorder, fill forms, unsubscribe, cancel, check out, scrape; travel errands on booking sites (flights, hotels, cabins, cars, appointments) and one-time stock or availability checks count even when nothing is bought yet, and official-document requirements for upcoming travel (visas, eVisas, renewals) are errands when the research feeds a booking or application; if the task is performed on a website, pick this even when it ends in a purchase, a cancellation, or an unsubscribe/cancel link reached from email",
   "kernel-payments":
     "Money movement itself — payment links, invoices, charging a card, spend requests; not website errands",
   "vault-use":
-    "Store or retrieve secrets, credentials, ID numbers, or payment cards in the owner's vault",
+    "Store NOW or retrieve NOW a specific secret, credential, ID number, or payment card this turn; 'I keep X in the vault — pull it when Y' is a standing memory instruction, not a vault action (openviking-memory)",
   watch_for:
-    "Arm a persistent watch on an EXTERNAL thing that changes — site health or downtime, restocks, price drops, ticket or seat availability, releases, a counterpart's status — it fires when the condition does, not on a clock; not time-based reminders or calendars",
+    "Arm a persistent or condition-driven watch — site health or downtime, restocks, price drops, ticket or seat availability, releases, a counterpart's status, remind-me watches on external deadlines (return windows, expiry, closing dates), flag-when-a-message-arrives inbox topics — it fires when the condition does; a 'follow up with / nudge a PERSON if they haven't done X' turn is not a watch (it's email-draft-review or openviking-memory); a single 'check now' errand is kernel-browser; fixed-time calendar reminders go to calendar-native",
   comms:
-    "Send or act on direct 1:1 messages through the owner's messaging threads — iMessage/SMS/DM texts to a person (not mailbox work, not channel posts, not calendar)",
+    "Send or act on direct 1:1 messages through the owner's messaging threads — iMessage/SMS/DM texts to a person; also turns driven by inbox or message content — pulling items (events, confirmations, promises) out of emails or texts and acting on them; not channel posts, not bare calendar ops",
   "email-draft-review":
-    "Compose, reply to, or forward an email the owner approves before it sends — any turn whose deliverable is a drafted email message, including follow-ups and refund/licence replies",
+    "Compose, reply to, or forward an email the owner approves before it sends — any turn whose deliverable is a drafted email message, including follow-ups, refund/licence replies, and drafts carrying fetched files or attachments (the send deliverable dominates the fetch step)",
   "calendar-native":
-    "The owner's own calendar and time-based reminders — schedule, reschedule, recurring events, check the owner's availability, time-triggered nudges; not coordinating with other people's agents",
+    "The owner's own calendar and reminders — schedule, reschedule, recurring events, check the owner's availability, time-triggered nudges, and standing reminder rules anchored to an event or habit (check in 24h before each X, every time Y happens); not coordinating with other people's agents, and not watches that wait on an external condition or a pass-by deadline (watch_for)",
   "openviking-memory":
-    "Recall or store durable facts, preferences, and notes about the owner — things they told you before (contacts, addresses, sizes, their history); not credentials or cards, which belong to vault-use",
+    "Recall or store durable facts, preferences, and notes about the owner — things they told you before (contacts, addresses, sizes, their history, promises and commitments the owner made), recall questions about what the owner said, promised, or owes — the named source (sent mail, texts) is evidence, not the capability — and standing instructions about where reference facts are kept or what to apply later; credential and card writes belong to vault-use; mailbox routing rules belong to email; standing reminder rules belong to calendar-native",
   "storefront-commerce":
-    "Manage the owner's storefront — products, listings, pricing, publishing shop changes",
+    "Manage the owner's storefront — products, listings, pricing, publishing shop changes, and storefront metrics or sales reporting even when the report travels by email",
   "create-miniapp":
-    "Build or iterate a mini-app or small web app for the owner",
+    "Build or iterate a mini-app or small web app for the owner — a mini-app has a UI the owner opens; batch or command-line utilities are none",
   "social-engage":
     "Post to social channels or group chats — venue announcements, #channel posts, band/group-chat updates, social media engagement",
   "tour-planning":
-    "Plan tours, trips, venues, or multi-stop itineraries",
+    "Plan tours, trips, venues, or multi-stop itineraries — including trip-prep artifacts like packing lists and day plans",
   "onairos-connect":
-    "Coordinate person-to-person through agents — another person's Instinct or agent is the counterparty (sharing availability, confirming amounts, delegation, standing syncs between agents, connecting the owner's Onairos persona to someone else's)",
+    "Coordinate person-to-person through agents — another person's Instinct or agent is the counterparty (sharing availability, confirming amounts, delegation, standing syncs between agents, connecting the owner's Onairos persona to someone else's); also setting up channels, bridges, or connectors so agents or people can reach or sync with this agent",
   "crm-people":
     "Look up, add, or update contacts and people records",
   "shopping-checkout":
     "Find products and help the owner shop online",
   "browser-use":
-    "General web research or lookups that need a browser but perform no action on a site — informational queries only",
+    "Pure informational lookups that perform no action on a site and end in no errand — informational queries only",
   email:
-    "Read, search, triage, organize, or send directly from the owner's mailbox — inbox sweeps, spam review, unsubscribing, folder cleanup; draft-and-approve flows go to email-draft-review instead",
+    "Read, search, triage, organize, or send directly from the owner's mailbox — inbox sweeps, spam review, folder cleanup, and mailbox rules that persist (auto-BCC, auto-forward, labeling) even when phrased as 'going forward'; acting on a site or link the email points to (unsubscribe, cancel) is kernel-browser; draft-and-approve flows go to email-draft-review instead",
   trade: "Stock or crypto trading, orders, or watchlist changes",
   wzrdmail: "Work in the owner's wzrdmail mailbox",
-  none: "Plain conversation, questions, or anything no listed capability covers",
+  none: "Plain conversation and questions, plus one-off local work no capability owns — scripts, batch or command-line utilities, fixes to existing pages or layouts; pick none for anything the listed capabilities don't cover",
 } as const;
 
 export type RouteOption = keyof typeof ROUTE_OPTIONS;

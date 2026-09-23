@@ -204,7 +204,10 @@ export function parseRoute(body: SystemOneResponse): TurnRoute | null {
   }
 
   const rawSecondary = answers.secondary_capability?.choice;
+  // A second capability on an unrouted turn is noise — "none" primary means
+  // there is no runbook to pair with.
   const secondary: RouteOption | null =
+    skill != null &&
     rawSecondary != null &&
     rawSecondary !== "none" &&
     rawSecondary in ROUTE_OPTIONS &&
@@ -214,7 +217,9 @@ export function parseRoute(body: SystemOneResponse): TurnRoute | null {
           ? (rawSecondary as RouteOption)
           : argmaxNonNone(answers.secondary_capability?.probabilities) ??
             (rawSecondary as RouteOption))
-      : argmaxNonNone(answers.secondary_capability?.probabilities);
+      : skill != null
+        ? argmaxNonNone(answers.secondary_capability?.probabilities)
+        : null;
 
   const rawGate = answers.approval_gate?.choice;
   const gate: GateOption | null =
