@@ -109,6 +109,55 @@ export async function installMailboxOnBox(
   await installMailMcp(boxId, wiring);
 }
 
+/**
+ * Guarantee this box ends up with a working mailbox. `installExistingMailbox`
+ * alone silently no-ops when the user has no primary agent_addresses row —
+ * e.g. signup paths that pass no username, or accounts provisioned before
+ * this wiring existed — leaving the box with no mail MCP and no draft-only
+ * key at all. When the row is missing we provision the mailbox from the
+ * user's username first, then always install onto the boxId handed to us
+ * (which may differ from `boxes.provider_box_id` mid-migration).
+ */
+export async function ensureMailboxOnBox(
+  supabase: SupabaseClient,
+  userId: string,
+  boxId: string,
+): Promise<boolean> {
+  const { data: address, error: addressError } = await supabase
+    .from("agent_addresses")
+    .select("agentmail_inbox_id")
+    .eq("user_id", userId)
+    .eq("is_primary", true)
+    .is("retired_at", null)
+    .maybeSingle();
+  if (addressError) {
+    throw new Error(`agent address lookup failed: ${addressError.message}`);
+  }
+  if (!address?.agentmail_inbox_id) {
+    const { data: user, error: userError } = await supabase
+      .from("users")
+      .select("username")
+      .eq("id", userId)
+      .maybeSingle();
+    if (userError) {
+      throw new Error(`user lookup failed: ${userError.message}`);
+    }
+    const username = user?.username as string | undefined;
+    if (!username) {
+      console.error(
+        JSON.stringify({
+          msg: "mailbox ensure skipped — user has no username to address",
+          user_id: userId,
+        })
+      );
+      return false;
+    }
+    const provisioned = await provisionEmail(supabase, userId, username);
+    if (provisioned.installedBoxId === boxId) return true;
+  }
+  return installExistingMailbox(supabase, userId, boxId);
+}
+
 export async function installExistingMailbox(
   supabase: SupabaseClient,
   userId: string,
@@ -149,7 +198,7 @@ export async function provisionEmail(
   supabase: SupabaseClient,
   userId: string,
   username: string
-): Promise<{ address: string }> {
+): Promise<{ address: string; installedBoxId: string | null }> {
   // Already provisioned for this exact address? Idempotent no-op.
   const desired = `${username}@${env.agentEmailDomain()}`.toLowerCase();
   const { data: existing } = await supabase
@@ -159,7 +208,7 @@ export async function provisionEmail(
     .eq("address", desired)
     .is("retired_at", null)
     .maybeSingle();
-  if (existing) return { address: desired };
+  if (existing) return { address: desired, installedBoxId: null };
 
   const pod = await ensurePod(userId);
   // The shared beta domain is global: the username may be taken there even
@@ -212,11 +261,13 @@ export async function provisionEmail(
     .select("provider_box_id")
     .eq("user_id", userId)
     .maybeSingle();
+  let installedBoxId: string | null = null;
   if (box?.provider_box_id) {
     const boxId = box.provider_box_id as string;
     const wiring = boxMailWiring();
     try {
       await installMailboxOnBox(boxId, userId, inbox.inbox_id);
+      installedBoxId = boxId;
     } catch (error) {
       console.error(
         JSON.stringify({
@@ -229,5 +280,5 @@ export async function provisionEmail(
     }
   }
 
-  return { address };
+  return { address, installedBoxId };
 }

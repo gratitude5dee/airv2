@@ -10,7 +10,7 @@ import { stopCompute, destroyCompute, runCommand } from "../compute/runtime";
 import { profileFor, kindFor } from "../compute/environments";
 import { buildCompute } from "../provisioning/provision";
 import { installComposioMcp, installMasterkeyMcp } from "../provisioning/connectors";
-import { installExistingMailbox } from "../provisioning/email";
+import { ensureMailboxOnBox } from "../provisioning/email";
 import { provisionDaytona } from "../provisioning/daytona";
 import { providerOf, resume } from "../box/client";
 import { env } from "../env";
@@ -655,7 +655,7 @@ export async function stepActivating(ctx: StepCtx): Promise<StepOutcome> {
       logError("masterkey")
     );
     if (kindFor(environment as never) === "box") {
-      await installExistingMailbox(
+      await ensureMailboxOnBox(
         supabase,
         migration.user_id,
         to.provider_box_id

@@ -51,7 +51,7 @@ import {
 import { installComposioMcp, installMasterkeyMcp } from "./connectors";
 import { MigrationBusyError } from "../migration/types";
 import { provisionDaytona } from "./daytona";
-import { installExistingMailbox, provisionEmail } from "./email";
+import { ensureMailboxOnBox, provisionEmail } from "./email";
 import { normalizeAddress } from "../routing/trust";
 import { sealSecret } from "../crypto/secretbox";
 import { baseSkillsFor, installBaseSkills } from "../skills/hub";
@@ -1086,7 +1086,7 @@ async function finishSetup(
   }
   if (kindFor(target.environment) === "box") {
     try {
-      await installExistingMailbox(supabase, userId, target.instanceId);
+      await ensureMailboxOnBox(supabase, userId, target.instanceId);
     } catch (error) {
       const message = error instanceof Error ? error.message : "unknown error";
       console.error(
