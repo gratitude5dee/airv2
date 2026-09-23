@@ -129,7 +129,7 @@ describe("POST /api/admin/mailboxes/ensure", () => {
     expect(ensureMailboxOnBox).not.toHaveBeenCalled();
   });
 
-  it("ensures mailboxes on every missing-address box, resuming stopped ones", async () => {
+  it("ensures mailboxes on every box, resuming stopped ones", async () => {
     db.boxes = [
       box({ user_id: "u1", provider_box_id: "bx_1", state: "stopped" }),
       box({ user_id: "u2", provider_box_id: "bx_2", state: "ready" }),
@@ -146,16 +146,37 @@ describe("POST /api/admin/mailboxes/ensure", () => {
     expect(response.status).toBe(200);
     const json = await response.json();
     expect(json.processed).toBe(3);
-    expect(json.counts).toMatchObject({ ensured: 2, already: 1 });
-    expect(ensureMailboxOnBox).toHaveBeenCalledTimes(2);
+    // addressed boxes are ensured too — the row does not prove the install
+    expect(json.counts).toMatchObject({ ensured: 3, already: 0 });
+    expect(ensureMailboxOnBox).toHaveBeenCalledTimes(3);
     expect(ensureMailboxOnBox).toHaveBeenCalledWith(
       expect.anything(),
       "u1",
       "bx_1",
     );
-    // stopped box resumed; ready box not
-    expect(resume).toHaveBeenCalledTimes(1);
+    expect(ensureMailboxOnBox).toHaveBeenCalledWith(
+      expect.anything(),
+      "u3",
+      "bx_3",
+    );
+    // stopped boxes resumed; ready box not
+    expect(resume).toHaveBeenCalledTimes(2);
     expect(resume).toHaveBeenCalledWith("bx_1");
+    expect(resume).toHaveBeenCalledWith("bx_3");
+    expect(provisionEmail).not.toHaveBeenCalled();
+  });
+
+  it("ensures addressed users even with no username (no synth mint)", async () => {
+    db.boxes = [box({ user_id: "u1", provider_box_id: "bx_1" })];
+    db.users = new Map([["u1", null]]);
+    db.addressed = new Set(["u1"]);
+    const json = await (await POST(post({}))).json();
+    expect(json.counts).toMatchObject({ ensured: 1 });
+    expect(ensureMailboxOnBox).toHaveBeenCalledWith(
+      expect.anything(),
+      "u1",
+      "bx_1",
+    );
     expect(provisionEmail).not.toHaveBeenCalled();
   });
 

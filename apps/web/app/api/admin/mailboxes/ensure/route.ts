@@ -11,7 +11,9 @@
  * plan without touching anything; `generate_handles` lets users with no
  * username (the phone-signup cohort) receive an address synthesized as
  * `u<id8>@<domain>` — without it they are reported and skipped, since no
- * address can be addressed.
+ * address can be addressed. Addressed boxes are still ensured: an
+ * agent_addresses row alone does not prove the box install completed, so the
+ * install is re-asserted (a fresh draft key replaces the env var).
  *
  * Pages with `after` (a provider_box_id cursor); repeat the returned
  * `continuation` body to finish a fleet that outruns the deadline.
@@ -162,26 +164,33 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     processed += 1;
     const base = { user_id: row.user_id, box_id: row.provider_box_id };
     const username = usernames.get(row.user_id);
-    if (addressed.has(row.user_id)) {
-      results.push({ ...base, outcome: "already" });
-      continue;
-    }
-    if (!username && !generateHandles) {
-      results.push({ ...base, outcome: "no_username" });
-      continue;
-    }
     if (dry) {
       results.push({
         ...base,
-        outcome: username ? "would_ensure" : "would_synthesize",
+        outcome: addressed.has(row.user_id)
+          ? "already"
+          : !username && !generateHandles
+            ? "no_username"
+            : username
+              ? "would_ensure"
+              : "would_synthesize",
       });
+      continue;
+    }
+    // An existing address row does NOT prove the install landed — a prior
+    // run can die after the row insert but before installMailboxOnBox — so
+    // addressed boxes are ensured too (fresh draft key replaces the env var).
+    if (!addressed.has(row.user_id) && !username && !generateHandles) {
+      results.push({ ...base, outcome: "no_username" });
       continue;
     }
     try {
       if (!AWAKE_STATES.has(row.state)) {
         await resume(row.provider_box_id);
       }
-      if (username) {
+      if (username || addressed.has(row.user_id)) {
+        // Addressed users take the ensure path even when username-less — the
+        // ensure only needs the existing row, never mints a new address.
         await ensureMailboxOnBox(supabase, row.user_id, row.provider_box_id);
       } else {
         // provisionEmail derives the address and installs on the user's
