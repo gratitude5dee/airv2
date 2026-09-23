@@ -155,7 +155,26 @@ export async function ensureMailboxOnBox(
     const provisioned = await provisionEmail(supabase, userId, username);
     if (provisioned.installedBoxId === boxId) return true;
   }
-  return installExistingMailbox(supabase, userId, boxId);
+  try {
+    return await installExistingMailbox(supabase, userId, boxId);
+  } catch (error) {
+    if (!(error instanceof MailApiError) || error.status !== 404) throw error;
+    // The primary row points at an inbox neither provider can see — an
+    // agentmail-era address under a wzrdmail deployment, or a deleted inbox.
+    // Re-mint the same address under the current provider; provisionEmail
+    // retires the stale row, so mail keeps flowing to the same address.
+    const localpart = (address.agentmail_inbox_id as string).split("@")[0];
+    if (!localpart) throw error;
+    // Retire the stale row first — provisionEmail treats a live row carrying
+    // the same address as "already provisioned" and would no-op the mint.
+    await supabase
+      .from("agent_addresses")
+      .update({ is_primary: false, retired_at: new Date().toISOString() })
+      .eq("user_id", userId)
+      .eq("is_primary", true);
+    await provisionEmail(supabase, userId, localpart);
+    return installExistingMailbox(supabase, userId, boxId);
+  }
 }
 
 export async function installExistingMailbox(
