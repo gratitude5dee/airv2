@@ -40,6 +40,7 @@ vi.mock("../box/client", async () => {
 
 import {
   boxMailWiring,
+  ensureMailboxOnBox,
   installExistingMailbox,
   installMailboxOnBox,
   mailMcpInstallScript,
@@ -53,7 +54,11 @@ const ORIGINAL = { ...process.env };
 function fakeSupabase(
   boxId: string | null,
   existingInboxId: string | null = null,
+  username: string | null = null,
 ) {
+  // agent_addresses reflects inserts so a just-provisioned mailbox is found
+  // by the follow-up installExistingMailbox lookup, like the real flow.
+  let storedInboxId = existingInboxId;
   return {
     from: vi.fn((table: string) => {
       // Every builder method returns the builder; awaiting it resolves to the
@@ -63,17 +68,24 @@ function fakeSupabase(
         eq: vi.fn(() => q),
         is: vi.fn(() => q),
         update: vi.fn(() => q),
-        insert: vi.fn(async () => ({ error: null })),
+        insert: vi.fn(async (row: { agentmail_inbox_id?: string }) => {
+          if (table === "agent_addresses" && row?.agentmail_inbox_id) {
+            storedInboxId = row.agentmail_inbox_id;
+          }
+          return { error: null };
+        }),
         maybeSingle: vi.fn(async () => ({
           data:
             table === "boxes" && boxId
               ? { provider_box_id: boxId }
-              : table === "agent_addresses" && existingInboxId
+              : table === "agent_addresses" && storedInboxId
                 ? {
                     address: "sam@wzrd.tech",
-                    agentmail_inbox_id: existingInboxId,
+                    agentmail_inbox_id: storedInboxId,
                   }
-                : null,
+                : table === "users" && username
+                  ? { username }
+                  : null,
           error: null,
         })),
       };
@@ -132,7 +144,10 @@ describe("provisionEmail (MAIL_PROVIDER=wzrdmail)", () => {
 
   it("provisions pod → inbox → webhook → draft-only key and rewires the box", async () => {
     const result = await provisionEmail(fakeSupabase("box_1"), "user-1", "sam");
-    expect(result).toEqual({ address: "sam@wzrd.tech" });
+    expect(result).toMatchObject({
+      address: "sam@wzrd.tech",
+      installedBoxId: "box_1",
+    });
 
     expect(mail.ensurePod).toHaveBeenCalledWith("user-1");
     expect(mail.createInbox).toHaveBeenCalledWith("pod_1", "sam");
@@ -261,6 +276,76 @@ describe("provisionEmail (MAIL_PROVIDER=wzrdmail)", () => {
 
     expect(box.writeFile).not.toHaveBeenCalled();
     expect(box.command).not.toHaveBeenCalled();
+  });
+});
+
+describe("ensureMailboxOnBox", () => {
+  beforeEach(() => {
+    process.env["MAIL_PROVIDER"] = "wzrdmail";
+  });
+
+  it("provisions the mailbox from users.username when no address row exists", async () => {
+    const ok = await ensureMailboxOnBox(
+      fakeSupabase("box_1", null, "sam"),
+      "user-1",
+      "box_1",
+    );
+    expect(ok).toBe(true);
+    expect(mail.ensurePod).toHaveBeenCalledWith("user-1");
+    expect(mail.createInbox).toHaveBeenCalledWith("pod_1", "sam");
+    // provisionEmail's own install already hit this box — no second key mint.
+    expect(mail.createDraftOnlyKeyForProvider).toHaveBeenCalledTimes(1);
+    expect(box.writeFile).toHaveBeenCalledWith(
+      "box_1",
+      ".hermes/.env",
+      expect.stringContaining("WZRDMAIL_INBOX_ID=sam@wzrd.tech"),
+    );
+  });
+
+  it("installs on the handed box when the canonical box differs (migration target)", async () => {
+    const ok = await ensureMailboxOnBox(
+      fakeSupabase("box_a", null, "sam"),
+      "user-1",
+      "box_b",
+    );
+    expect(ok).toBe(true);
+    expect(mail.ensurePod).toHaveBeenCalledWith("user-1");
+    // provisionEmail installs on boxes.provider_box_id ("box_a"); the ensure
+    // path then installs the new mailbox on the requested target too.
+    expect(mail.createDraftOnlyKeyForProvider).toHaveBeenCalledTimes(2);
+    expect(box.writeFile).toHaveBeenCalledWith(
+      "box_b",
+      ".hermes/.env",
+      expect.stringContaining("WZRDMAIL_INBOX_ID=sam@wzrd.tech"),
+    );
+  });
+
+  it("delegates to installExistingMailbox when an address row exists", async () => {
+    const ok = await ensureMailboxOnBox(
+      fakeSupabase(null, "sam@wzrd.tech"),
+      "user-1",
+      "box_1",
+    );
+    expect(ok).toBe(true);
+    expect(mail.ensurePod).not.toHaveBeenCalled();
+    expect(mail.createInbox).not.toHaveBeenCalled();
+    expect(mail.createDraftOnlyKeyForProvider).toHaveBeenCalledWith(
+      "wzrdmail",
+      "sam@wzrd.tech",
+      "box-user-1",
+    );
+  });
+
+  it("returns false without provisioning when the user has no username", async () => {
+    const ok = await ensureMailboxOnBox(
+      fakeSupabase("box_1", null, null),
+      "user-1",
+      "box_1",
+    );
+    expect(ok).toBe(false);
+    expect(mail.ensurePod).not.toHaveBeenCalled();
+    expect(mail.createInbox).not.toHaveBeenCalled();
+    expect(box.writeFile).not.toHaveBeenCalled();
   });
 });
 

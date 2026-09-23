@@ -271,10 +271,11 @@ vi.mock("./connectors", () => ({
     installComposioMcp(...(args as [])),
 }));
 vi.mock("./daytona", () => ({ provisionDaytona: vi.fn() }));
-const installExistingMailbox = vi.fn(async () => true);
+const ensureMailboxOnBox = vi.fn(async () => true);
 vi.mock("./email", () => ({
-  installExistingMailbox: (...args: unknown[]) =>
-    installExistingMailbox(...(args as [])),
+  ensureMailboxOnBox: (...args: unknown[]) =>
+    ensureMailboxOnBox(...(args as [])),
+  provisionEmail: vi.fn(async () => ({ address: "a@wzrd.tech", installedBoxId: null })),
 }));
 const installBaseSkills = vi.fn();
 const BASE_SKILLS = ["official/research/duckduckgo-search", "browser-harness"];
@@ -346,7 +347,7 @@ beforeEach(() => {
   boxCommand.mockClear();
   createMacInstance.mockClear();
   installComposioMcp.mockClear();
-  installExistingMailbox.mockClear();
+  ensureMailboxOnBox.mockClear();
   installBaseSkills.mockReset();
   vi.mocked(boxClient.waitForBox)
     .mockReset()
@@ -458,7 +459,7 @@ describe("provisionUser environments", () => {
       provider_box_id: "box-new",
     });
     expect(installComposioMcp).toHaveBeenCalled();
-    expect(installExistingMailbox).toHaveBeenCalledWith(
+    expect(ensureMailboxOnBox).toHaveBeenCalledWith(
       fakeSupabase,
       expect.any(String),
       "box-new",
@@ -597,7 +598,7 @@ describe("switchEnvironment", () => {
     expect(boxClient.stop).toHaveBeenCalledWith("box-old");
     expect(boxClient.deleteBox).toHaveBeenCalledWith("box-old");
     expect(boxClient.deleteBox).not.toHaveBeenCalledWith("box-new");
-    expect(installExistingMailbox).toHaveBeenCalledWith(
+    expect(ensureMailboxOnBox).toHaveBeenCalledWith(
       fakeSupabase,
       "user-1",
       "box-new",
@@ -643,7 +644,7 @@ describe("switchEnvironment", () => {
       provider: "tenki",
       provider_box_id: "tk_new",
     });
-    expect(installExistingMailbox).toHaveBeenCalledWith(
+    expect(ensureMailboxOnBox).toHaveBeenCalledWith(
       fakeSupabase,
       "user-1",
       "tk_new",
