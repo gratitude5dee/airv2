@@ -1,0 +1,972 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>The /create Pipeline</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  --bg:#F3F5F2;--surface:#FFFFFF;--surface-2:#E9ECE7;--ink:#14191C;--muted:#5A6468;--faint:#8A9397;
+  --rule:#D3D8D1;--accent:#0A6C88;--accent-soft:rgba(10,108,136,.10);
+  --ok:#2D7A4B;--warn:#A5670F;--warn-soft:rgba(165,103,15,.12);--bad:#BC3224;--bad-soft:rgba(188,50,36,.09);
+  --on-bad:#FFFFFF;--shadow:0 1px 0 rgba(20,25,28,.04),0 0 0 1px var(--rule);
+  --display:"Bricolage Grotesque","Avenir Next","Segoe UI",system-ui,sans-serif;
+  --body:"IBM Plex Sans","Segoe UI",system-ui,-apple-system,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  color-scheme:dark;
+  --bg:#0E1214;--surface:#151A1D;--surface-2:#1C2327;--ink:#E4E8E5;--muted:#9AA4A8;--faint:#6F7A7F;
+  --rule:#2A3337;--accent:#5BB6D1;--accent-soft:rgba(91,182,209,.13);
+  --ok:#62C08A;--warn:#E1A74E;--warn-soft:rgba(225,167,78,.14);--bad:#F06B5C;--bad-soft:rgba(240,107,92,.12);
+  --on-bad:#1A0B09;--shadow:0 0 0 1px var(--rule);
+}}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#0E1214;--surface:#151A1D;--surface-2:#1C2327;--ink:#E4E8E5;--muted:#9AA4A8;--faint:#6F7A7F;
+  --rule:#2A3337;--accent:#5BB6D1;--accent-soft:rgba(91,182,209,.13);
+  --ok:#62C08A;--warn:#E1A74E;--warn-soft:rgba(225,167,78,.14);--bad:#F06B5C;--bad-soft:rgba(240,107,92,.12);
+  --on-bad:#1A0B09;--shadow:0 0 0 1px var(--rule);
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1200px;margin:0 auto;padding-inline:20px;padding-block:28px 64px}
+h1,h2,h3{font-family:var(--display);font-weight:700;letter-spacing:-.015em;text-wrap:balance;margin:0}
+h1{font-size:clamp(30px,5vw,46px);line-height:1.05}
+h2{font-size:clamp(22px,3vw,28px);line-height:1.15}
+h3{font-size:17px;line-height:1.25;font-weight:600}
+p{margin:0}
+code,.mono{font-family:var(--mono);font-size:.88em}
+code{background:var(--surface-2);padding:1px 5px;border-radius:4px;overflow-wrap:anywhere}
+a{color:var(--accent)}
+.eyebrow{font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.prose{max-width:70ch}
+.lede{font-size:17.5px;line-height:1.5;max-width:64ch}
+section{display:grid;gap:18px;padding-block:40px 8px;border-top:1px solid var(--rule);margin-top:40px}
+.sec-head{display:grid;gap:8px}
+.sec-num{font-family:var(--mono);font-size:12px;color:var(--accent)}
+header.top{display:grid;gap:16px}
+
+/* evidence ledger */
+.ledger{display:grid;gap:14px;margin-top:6px}
+.track{display:grid;grid-template-columns:150px 1fr;gap:12px;align-items:stretch}
+.track-name{font-family:var(--mono);font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);padding-top:12px}
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:6px}
+.step{background:var(--surface);box-shadow:var(--shadow);border-radius:8px;padding:10px 12px;display:grid;gap:2px;position:relative}
+.step b{font-family:var(--display);font-size:28px;line-height:1;font-variant-numeric:tabular-nums;font-weight:700}
+.step span{font-size:12.5px;color:var(--muted);line-height:1.3}
+.step.zero{background:var(--bad-soft);box-shadow:0 0 0 1px color-mix(in srgb,var(--bad) 35%,transparent)}
+.step.zero b{color:var(--bad)}
+.step.warn b{color:var(--warn)}
+.ledger-note{font-size:12.5px;color:var(--muted);max-width:90ch}
+@media (max-width:640px){.track{grid-template-columns:1fr}.track-name{padding-top:0}}
+
+/* verdict chips */
+.verdict{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}
+.vcard{background:var(--surface);box-shadow:var(--shadow);border-radius:10px;padding:14px 16px;display:grid;gap:6px;align-content:start}
+.vcard .k{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase}
+.vcard.good .k{color:var(--ok)} .vcard.bad .k{color:var(--bad)}
+.vcard ul{margin:0;padding-left:18px;display:grid;gap:4px;font-size:14px}
+
+/* figures */
+figure{margin:0;display:grid;gap:10px}
+figcaption{font-size:13px;color:var(--muted);max-width:90ch}
+.canvas{background:var(--surface);box-shadow:var(--shadow);border-radius:12px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.canvas svg{display:block;width:100%;height:auto}
+.canvas.map svg{min-width:960px}
+.canvas.sm svg{min-width:820px}
+.canvas.tl svg{min-width:760px}
+.map-grid{display:grid;grid-template-columns:1fr;gap:14px}
+.panel{background:var(--surface);box-shadow:0 0 0 1.5px var(--accent);border-radius:12px;padding:16px 20px;display:grid;grid-template-columns:minmax(0,300px) minmax(0,1fr);gap:10px 28px}
+.panel .col{display:grid;gap:8px;align-content:start}
+@media (max-width:760px){.panel{grid-template-columns:1fr}}
+.panel .where{font-family:var(--mono);font-size:11.5px;color:var(--muted);overflow-wrap:anywhere}
+.panel p{font-size:14px}
+.panel .fl{display:flex;flex-wrap:wrap;gap:6px}
+.legend{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:12.5px;color:var(--muted);align-items:center}
+.legend i{display:inline-block;width:28px;height:0;border-top:2px solid var(--faint);vertical-align:middle;margin-right:6px}
+.legend i.w{border-top:2px dashed var(--warn)} .legend i.b{border-top:2px dashed var(--bad)}
+.hint{font-size:12.5px;color:var(--muted)}
+
+/* svg styling */
+.zone{fill:none;stroke:var(--rule);stroke-width:1.2;stroke-dasharray:5 5}
+.zl{fill:var(--muted);font-family:var(--mono);font-size:10.5px;letter-spacing:.06em}
+.n rect.box{fill:var(--surface-2);stroke:var(--rule);stroke-width:1}
+.n .t{fill:var(--ink);font-family:var(--body);font-size:12.5px;font-weight:600}
+.n .s{fill:var(--muted);font-family:var(--body);font-size:10.5px}
+.n.ev rect.box{fill:var(--surface)}
+.n.ev .s{fill:var(--bad)}
+.n.ev.okish .s{fill:var(--ok)}
+.n{outline:none;transition:opacity .15s}
+.n[data-id]{cursor:pointer}
+.n[data-id]:hover rect.box,.n[data-id]:focus-visible rect.box{stroke:var(--accent);stroke-width:1.6}
+.n.sel rect.box{stroke:var(--accent);stroke-width:2;fill:var(--accent-soft)}
+svg.dimming .n{opacity:.28} svg.dimming .n.hit{opacity:1}
+svg.dimming .n.hit rect.box{stroke:var(--bad);stroke-width:2}
+.fp rect{fill:var(--bad)} .fp text{fill:var(--on-bad);font-family:var(--mono);font-size:9.5px;font-weight:500}
+.e{stroke:var(--faint);stroke-width:1.4;fill:none}
+.e.w{stroke:var(--warn);stroke-dasharray:5 4}
+.e.b{stroke:var(--bad);stroke-dasharray:5 4;stroke-width:1.6}
+.e.a{stroke:var(--accent);stroke-width:1.8}
+.e.g{stroke:var(--ok)}
+.ah{fill:var(--faint)} .ah.w{fill:var(--warn)} .ah.b{fill:var(--bad)} .ah.a{fill:var(--accent)} .ah.g{fill:var(--ok)}
+.el{fill:var(--muted);font-family:var(--mono);font-size:10px}
+.el.w{fill:var(--warn)} .el.b{fill:var(--bad)} .el.g{fill:var(--ok)} .el.a{fill:var(--accent)}
+.st rect{fill:var(--surface-2);stroke:var(--rule)}
+.st text{fill:var(--ink);font-family:var(--mono);font-size:11.5px}
+.st.here rect{fill:var(--bad-soft);stroke:var(--bad);stroke-width:1.6}
+.st.dead rect{stroke-dasharray:4 3}
+.st.dead text{fill:var(--muted)}
+.axis{stroke:var(--rule);stroke-width:1}
+.tick{fill:var(--muted);font-family:var(--mono);font-size:10px}
+.rowl{fill:var(--ink);font-family:var(--body);font-size:12px;font-weight:500}
+.bar-a{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1}
+.bar-s{fill:var(--accent)}
+.bar-l{fill:var(--accent-soft)}
+.bar-bad{fill:var(--bad-soft);stroke:var(--bad);stroke-width:1}
+.kill{stroke:var(--bad);stroke-width:2}
+.note{fill:var(--muted);font-family:var(--body);font-size:11px}
+.note.b{fill:var(--bad)}
+.cmp-title{fill:var(--ink);font-family:var(--display);font-size:16px;font-weight:700}
+.cmp-sub{fill:var(--muted);font-family:var(--body);font-size:11.5px}
+.lp rect.box{fill:var(--bad-soft);stroke:var(--bad);stroke-width:1.6}
+.la rect.box{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.6}
+
+/* failure register */
+.reg{display:grid;gap:10px}
+.f{background:var(--surface);box-shadow:var(--shadow);border-radius:10px;padding:14px 16px;display:grid;grid-template-columns:52px 1fr;gap:4px 14px;cursor:pointer;transition:box-shadow .15s}
+.f:hover,.f:focus-visible{box-shadow:0 0 0 1.5px var(--accent);outline:none}
+.f.on{box-shadow:0 0 0 2px var(--bad)}
+.f .id{font-family:var(--mono);font-weight:500;font-size:13px;background:var(--bad);color:var(--on-bad);border-radius:6px;height:26px;display:grid;place-items:center}
+.f .hd{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:baseline}
+.sev{font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;border-radius:999px;padding:2px 8px;white-space:nowrap}
+.sev.blk{background:var(--bad-soft);color:var(--bad)}
+.sev.lat{background:var(--warn-soft);color:var(--warn)}
+.sev.maj{background:var(--warn-soft);color:var(--warn)}
+.sev.min{background:var(--surface-2);color:var(--muted)}
+.f .body{grid-column:2;display:grid;gap:6px;font-size:14px}
+.f dl{margin:4px 0 0;display:grid;grid-template-columns:78px 1fr;gap:4px 12px}
+.f dt{font-family:var(--mono);font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);padding-top:2px}
+.f dd{margin:0;min-width:0}
+@media (max-width:560px){.f{grid-template-columns:1fr}.f .body{grid-column:1}.f .id{width:44px}.f dl{grid-template-columns:1fr}.f dt{padding-top:6px}}
+
+/* root causes */
+.causes{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px}
+.cause{background:var(--surface);box-shadow:var(--shadow);border-radius:10px;padding:16px;display:grid;gap:8px;align-content:start}
+.cause .n2{font-family:var(--mono);font-size:11.5px;color:var(--bad)}
+.cause p{font-size:14px}
+
+/* plan */
+.plan{display:grid;gap:14px;counter-reset:ph}
+.phase{background:var(--surface);box-shadow:var(--shadow);border-radius:12px;padding:18px 20px;display:grid;gap:12px}
+.phase-h{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:baseline}
+.phase-h .when{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.phase ol{margin:0;padding-left:22px;display:grid;gap:10px}
+.phase li{padding-left:4px}
+.phase li p{font-size:14.5px}
+.proof{font-size:13px;color:var(--ok);margin-top:3px}
+.proof::before{content:"Done when: ";font-family:var(--mono);font-size:11px;letter-spacing:.05em;text-transform:uppercase}
+.fx{font-family:var(--mono);font-size:11px;color:var(--bad);white-space:nowrap}
+.principles{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
+.pr{border-left:2px solid var(--accent);padding:4px 0 4px 14px;display:grid;gap:4px}
+.pr p{font-size:14px}
+footer{margin-top:48px;padding-top:18px;border-top:1px solid var(--rule);font-size:12.5px;color:var(--muted);display:grid;gap:6px;max-width:100ch}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+<header class="top">
+  <div class="eyebrow">Architecture review · airv2 @ add1266 · production snapshot 24 Sep 2026</div>
+  <h1>The /create pipeline</h1>
+  <p class="lede">The Build Service compiles apps and the gateway serves Create turns, but no app has ever made it past a draft. The one iMessage intake ever opened has been stuck at <code>asking</code> since 18 Sep. None of the 33 draft versions was ever deployed to a Worker, QA'd or tested. Four independent blockers sit on the golden path, and a fifth is hidden behind them.</p>
+
+  <div class="ledger" aria-label="Production funnel">
+    <div class="track">
+      <div class="track-name">Conversation</div>
+      <div class="steps">
+        <div class="step"><b>1</b><span>intake ever opened (iMessage, 18 Sep)</span></div>
+        <div class="step zero"><b>0</b><span>intakes past <code>asking</code></span></div>
+        <div class="step zero"><b>0</b><span>plans confirmed</span></div>
+        <div class="step zero"><b>0</b><span>finalized for production</span></div>
+      </div>
+    </div>
+    <div class="track">
+      <div class="track-name">Build</div>
+      <div class="steps">
+        <div class="step"><b>41</b><span>builds run (38 ok, 3 hard findings, median 4.8 s)</span></div>
+        <div class="step"><b>33</b><span>draft versions in R2</span></div>
+        <div class="step zero"><b>0</b><span>deployed to a draft Worker</span></div>
+        <div class="step zero"><b>0</b><span>QA scores recorded</span></div>
+        <div class="step zero"><b>0</b><span>test results recorded</span></div>
+        <div class="step zero"><b>0</b><span>dev links</span></div>
+      </div>
+    </div>
+    <div class="track">
+      <div class="track-name">iMessage turns · 14 d</div>
+      <div class="steps">
+        <div class="step"><b>69</b><span>completed</span></div>
+        <div class="step warn"><b>37</b><span>stopped at the response deadline</span></div>
+        <div class="step warn"><b>6</b><span>interrupted</span></div>
+        <div class="step warn"><b>2</b><span>never closed</span></div>
+      </div>
+    </div>
+    <p class="ledger-note">Counts come from read-only aggregate queries against the production database (<code>create_intakes</code>, <code>create_builds</code>, <code>miniapp_versions</code>, <code>mini_apps</code>, <code>agent_runs</code>, <code>ops_events</code>). No message content was read. The iMessage row covers every turn, not only <code>/create</code>, and is still the clearest signal of the 120-second ceiling.</p>
+  </div>
+
+  <div class="verdict">
+    <div class="vcard good">
+      <div class="k">Works in production</div>
+      <ul>
+        <li>Build Service: pulls the Box workspace, runs esbuild with Kit-only imports, lints, stores the version (38 of 41 builds, median 4.8 s)</li>
+        <li>Gateway serves Create turns on GMI GLM-5.3-Flash with per-project budgets (21 runs)</li>
+        <li><code>/create</code> opens an intake row and tags the agent turn</li>
+        <li>Web studio streams turns from the project session</li>
+      </ul>
+    </div>
+    <div class="vcard bad">
+      <div class="k">Blocks every app</div>
+      <ul>
+        <li><b>F1</b> Nothing moves the intake past <code>asking</code></li>
+        <li><b>F2</b> The app-origin lane is off, so there's no preview and no QA</li>
+        <li><b>F3</b> A 120 s chat turn is asked to run a multi-minute build loop</li>
+        <li><b>F4</b> Hyphenated app names can't be released or finalized</li>
+      </ul>
+    </div>
+  </div>
+</header>
+
+<!-- ================================================================ 1 -->
+<section id="map">
+  <div class="sec-head">
+    <div class="sec-num">01 · System map</div>
+    <h2>How /create is wired today</h2>
+    <p class="prose">Two entry points feed one Box. iMessage turns run in the owner's main Hermes session (<code>air-main</code>) with the chat model. Web turns run in a per-app session (<code>air-create-&lt;app&gt;</code>) on the Create model tier. In both cases the model reads the <code>create-miniapp</code> skill and drives the pipeline itself: it shells out to <code>air-create</code>, which curls <code>/api/create/*</code> one step at a time. Select any box for its files and failure notes. Select a failure below to highlight where it lives.</p>
+  </div>
+
+  <div class="map-grid">
+    <figure>
+      <div class="canvas map">
+        <svg id="mapsvg" viewBox="0 0 1240 590" role="img" aria-label="System map of /create: owner surfaces, the Vercel control plane, the Hermes Box, production evidence from Supabase, and the Cloudflare app origin. Red dashed edges mark hops that never succeed in production.">
+          <defs>
+            <marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+            <marker id="mw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah w" d="M0,0 L10,5 L0,10 z"/></marker>
+            <marker id="mb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah b" d="M0,0 L10,5 L0,10 z"/></marker>
+          </defs>
+
+          <!-- zones -->
+          <rect class="zone" x="12" y="36" width="180" height="542" rx="14"/>
+          <text class="zl" x="24" y="56">OWNER</text>
+          <rect class="zone" x="238" y="36" width="364" height="542" rx="14"/>
+          <text class="zl" x="250" y="56">CONTROL PLANE · VERCEL · apps/web</text>
+          <rect class="zone" x="648" y="36" width="284" height="542" rx="14"/>
+          <text class="zl" x="660" y="56">BOX · HERMES VM (one per owner)</text>
+          <rect class="zone" x="978" y="36" width="250" height="282" rx="14"/>
+          <text class="zl" x="990" y="56">STATE · PRODUCTION ROWS</text>
+          <rect class="zone" x="978" y="352" width="250" height="226" rx="14"/>
+          <text class="zl" x="990" y="372">APP ORIGIN · CLOUDFLARE</text>
+
+          <!-- edges (drawn first, under nodes) -->
+          <line class="e" x1="180" y1="92" x2="247" y2="92" marker-end="url(#m)"/>
+          <text class="el" x="214" y="85" text-anchor="middle">/create</text>
+
+          <line class="e" x1="590" y1="92" x2="657" y2="92" marker-end="url(#m)"/>
+          <text class="el" x="624" y="85" text-anchor="middle">turn</text>
+          <text class="el" x="624" y="108" text-anchor="middle">+ marker</text>
+
+          <line class="e b" x1="250" y1="152" x2="183" y2="110" marker-end="url(#mb)"/>
+          <text class="el b" x="214" y="166" text-anchor="middle">card</text>
+
+          <line class="e" x1="790" y1="114" x2="790" y2="195" marker-end="url(#m)"/>
+          <text class="el" x="798" y="160">loads</text>
+          <line class="e" x1="790" y1="262" x2="790" y2="245" marker-end="url(#m)"/>
+
+          <line class="e" x1="660" y1="220" x2="593" y2="220" marker-end="url(#m)"/>
+          <text class="el" x="626" y="213" text-anchor="middle">curl</text>
+
+          <line class="e" x1="180" y1="284" x2="247" y2="284" marker-end="url(#m)"/>
+          <text class="el" x="214" y="277" text-anchor="middle">prompt</text>
+
+          <line class="e w" x1="590" y1="284" x2="657" y2="284" marker-end="url(#mw)"/>
+          <text class="el w" x="624" y="277" text-anchor="middle">turn</text>
+          <text class="el w" x="624" y="300" text-anchor="middle">no marker</text>
+
+          <line class="e" x1="660" y1="306" x2="593" y2="342" marker-end="url(#m)"/>
+          <text class="el" x="608" y="318" text-anchor="middle">model</text>
+
+          <line class="e" x1="660" y1="366" x2="593" y2="404" marker-end="url(#m)"/>
+          <text class="el" x="610" y="378" text-anchor="middle">tree</text>
+
+          <line class="e b" x1="590" y1="412" x2="987" y2="412" marker-end="url(#mb)"/>
+          <text class="el b" x="790" y="405" text-anchor="middle">deploy draft · skipped, lane off</text>
+
+          <line class="e" x1="180" y1="476" x2="247" y2="476" marker-end="url(#m)"/>
+          <text class="el" x="214" y="469" text-anchor="middle">opens</text>
+
+          <line class="e b" x1="590" y1="476" x2="987" y2="476" marker-end="url(#mb)"/>
+          <text class="el b" x="790" y="469" text-anchor="middle">dev hand-off · link host off</text>
+
+          <line class="e b" x1="920" y1="530" x2="987" y2="490" marker-end="url(#mb)"/>
+          <text class="el b" x="955" y="552" text-anchor="middle">preview 503</text>
+
+          <line class="e b" x1="1103" y1="454" x2="1103" y2="437" marker-end="url(#mb)"/>
+          <line class="e" x1="1103" y1="498" x2="1103" y2="515" marker-end="url(#m)"/>
+
+          <!-- owner -->
+          <g class="n" data-id="o_imsg" data-f="3 6" tabindex="0" role="button" aria-label="Owner in Messages">
+            <rect class="box" x="24" y="70" width="156" height="44" rx="8"/>
+            <text class="t" x="36" y="88">Messages</text>
+            <text class="s" x="36" y="104">/create &lt;prompt&gt;</text>
+          </g>
+          <g class="n" data-id="o_web" data-f="7" tabindex="0" role="button" aria-label="Create studio on the web">
+            <rect class="box" x="24" y="262" width="156" height="44" rx="8"/>
+            <text class="t" x="36" y="280">Create studio</text>
+            <text class="s" x="36" y="296">mini.wzrd.tech/create</text>
+          </g>
+          <g class="n" data-id="o_dev" data-f="8" tabindex="0" role="button" aria-label="Dev and production links">
+            <rect class="box" x="24" y="454" width="156" height="44" rx="8"/>
+            <text class="t" x="36" y="472">Dev link</text>
+            <text class="s" x="36" y="488">link.wzrd.tech/u/app</text>
+          </g>
+
+          <!-- control plane -->
+          <g class="n" data-id="cp_flush" data-f="3 7" tabindex="0" role="button" aria-label="Flush job">
+            <rect class="box" x="250" y="70" width="340" height="44" rx="8"/>
+            <text class="t" x="262" y="88">Flush job + intake hook</text>
+            <text class="s" x="262" y="104">flush.ts · intake.ts · start by 45 s, finish by 120 s</text>
+            <g class="fp"><rect x="558" y="76" width="24" height="15" rx="4"/><text x="570" y="87" text-anchor="middle">F3</text></g>
+          </g>
+          <g class="n" data-id="cp_relay" data-f="6" tabindex="0" role="button" aria-label="Progress relay">
+            <rect class="box" x="250" y="134" width="340" height="44" rx="8"/>
+            <text class="t" x="262" y="152">Progress relay</text>
+            <text class="s" x="262" y="168">progress.ts · updates the app card every 10 s</text>
+            <g class="fp"><rect x="558" y="140" width="24" height="15" rx="4"/><text x="570" y="151" text-anchor="middle">F6</text></g>
+          </g>
+          <g class="n" data-id="cp_routes" data-f="1 4" tabindex="0" role="button" aria-label="Create API routes">
+            <rect class="box" x="250" y="198" width="340" height="44" rx="8"/>
+            <text class="t" x="262" y="216">Create API · /api/create/*</text>
+            <text class="s" x="262" y="232">intake · build · qa · preview-link · release · finalize</text>
+            <g class="fp"><rect x="530" y="204" width="24" height="15" rx="4"/><text x="542" y="215" text-anchor="middle">F1</text></g>
+            <g class="fp"><rect x="558" y="204" width="24" height="15" rx="4"/><text x="570" y="215" text-anchor="middle">F4</text></g>
+          </g>
+          <g class="n" data-id="cp_turn" data-f="7" tabindex="0" role="button" aria-label="Web turn and event stream">
+            <rect class="box" x="250" y="262" width="340" height="44" rx="8"/>
+            <text class="t" x="262" y="280">Web turn + event stream</text>
+            <text class="s" x="262" y="296">/api/create/turn · /api/create/events · up to 800 s</text>
+            <g class="fp"><rect x="558" y="268" width="24" height="15" rx="4"/><text x="570" y="279" text-anchor="middle">F7</text></g>
+          </g>
+          <g class="n" data-id="cp_gw" tabindex="0" role="button" aria-label="Model gateway">
+            <rect class="box" x="250" y="326" width="340" height="44" rx="8"/>
+            <text class="t" x="262" y="344">Model gateway</text>
+            <text class="s" x="262" y="360">create-&lt;tier&gt;:&lt;slug&gt; → GMI · Astra / GLM · $5 budget</text>
+          </g>
+          <g class="n" data-id="cp_build" data-f="2" tabindex="0" role="button" aria-label="Build Service">
+            <rect class="box" x="250" y="390" width="340" height="44" rx="8"/>
+            <text class="t" x="262" y="408">Build Service</text>
+            <text class="s" x="262" y="424">build.ts · pull tree → esbuild → lint → R2 → deploy</text>
+            <g class="fp"><rect x="558" y="396" width="24" height="15" rx="4"/><text x="570" y="407" text-anchor="middle">F2</text></g>
+          </g>
+          <g class="n" data-id="cp_link" data-f="8" tabindex="0" role="button" aria-label="Link host and mini loader">
+            <rect class="box" x="250" y="454" width="340" height="44" rx="8"/>
+            <text class="t" x="262" y="472">Link host + mini loader</text>
+            <text class="s" x="262" y="488">middleware.ts · app/mini/[app] · release.ts</text>
+            <g class="fp"><rect x="558" y="460" width="24" height="15" rx="4"/><text x="570" y="471" text-anchor="middle">F8</text></g>
+          </g>
+
+          <!-- box -->
+          <g class="n" data-id="b_main" data-f="3 7" tabindex="0" role="button" aria-label="Hermes air-main session">
+            <rect class="box" x="660" y="70" width="260" height="44" rx="8"/>
+            <text class="t" x="672" y="88">Hermes · air-main</text>
+            <text class="s" x="672" y="104">iMessage turns · chat model · no budget</text>
+            <g class="fp"><rect x="860" y="76" width="24" height="15" rx="4"/><text x="872" y="87" text-anchor="middle">F3</text></g>
+            <g class="fp"><rect x="888" y="76" width="24" height="15" rx="4"/><text x="900" y="87" text-anchor="middle">F7</text></g>
+          </g>
+          <g class="n" data-id="b_skill" data-f="1 10" tabindex="0" role="button" aria-label="create-miniapp skill and air-create CLI">
+            <rect class="box" x="660" y="198" width="260" height="44" rx="8"/>
+            <text class="t" x="672" y="216">Skill + air-create CLI</text>
+            <text class="s" x="672" y="232">SKILL.md v4 · the model runs each step</text>
+            <g class="fp"><rect x="856" y="204" width="24" height="15" rx="4"/><text x="868" y="215" text-anchor="middle">F1</text></g>
+            <g class="fp"><rect x="884" y="204" width="28" height="15" rx="4"/><text x="898" y="215" text-anchor="middle">F10</text></g>
+          </g>
+          <g class="n" data-id="b_proj" data-f="7" tabindex="0" role="button" aria-label="Hermes air-create project session">
+            <rect class="box" x="660" y="262" width="260" height="44" rx="8"/>
+            <text class="t" x="672" y="280">Hermes · air-create-&lt;app&gt;</text>
+            <text class="s" x="672" y="296">web turns · Create tier · budgeted</text>
+            <g class="fp"><rect x="888" y="268" width="24" height="15" rx="4"/><text x="900" y="279" text-anchor="middle">F7</text></g>
+          </g>
+          <g class="n" data-id="b_ws" data-f="9" tabindex="0" role="button" aria-label="Workspace">
+            <rect class="box" x="660" y="326" width="260" height="44" rx="8"/>
+            <text class="t" x="672" y="344">Workspace</text>
+            <text class="s" x="672" y="360">~/.hermes/create/&lt;app&gt;/</text>
+            <g class="fp"><rect x="888" y="332" width="24" height="15" rx="4"/><text x="900" y="343" text-anchor="middle">F9</text></g>
+          </g>
+          <g class="n" data-id="b_qa" data-f="2 9" tabindex="0" role="button" aria-label="agent-browser QA">
+            <rect class="box" x="660" y="518" width="260" height="44" rx="8"/>
+            <text class="t" x="672" y="536">agent-browser QA + tests</text>
+            <text class="s" x="672" y="552">air-qa.py · run by air-create qa / test</text>
+            <g class="fp"><rect x="888" y="524" width="24" height="15" rx="4"/><text x="900" y="535" text-anchor="middle">F2</text></g>
+          </g>
+
+          <!-- evidence -->
+          <g class="n ev" data-id="s_intakes" data-f="1" tabindex="0" role="button" aria-label="create_intakes evidence">
+            <rect class="box" x="990" y="70" width="226" height="40" rx="8"/>
+            <text class="t" x="1002" y="86">create_intakes</text>
+            <text class="s" x="1002" y="101">1 row · at asking since 18 Sep</text>
+          </g>
+          <g class="n ev okish" data-id="s_builds" tabindex="0" role="button" aria-label="create_builds evidence">
+            <rect class="box" x="990" y="118" width="226" height="40" rx="8"/>
+            <text class="t" x="1002" y="134">create_builds</text>
+            <text class="s" x="1002" y="149">41 builds · 38 succeeded</text>
+          </g>
+          <g class="n ev" data-id="s_versions" data-f="2" tabindex="0" role="button" aria-label="miniapp_versions evidence">
+            <rect class="box" x="990" y="166" width="226" height="40" rx="8"/>
+            <text class="t" x="1002" y="182">miniapp_versions</text>
+            <text class="s" x="1002" y="197">33 drafts · 0 on a Worker · 0 QA</text>
+          </g>
+          <g class="n ev" data-id="s_apps" data-f="8" tabindex="0" role="button" aria-label="mini_apps evidence">
+            <rect class="box" x="990" y="214" width="226" height="40" rx="8"/>
+            <text class="t" x="1002" y="230">mini_apps</text>
+            <text class="s" x="1002" y="245">15 Create drafts · 0 dev · 0 live</text>
+          </g>
+          <g class="n ev" data-id="s_runs" data-f="3" tabindex="0" role="button" aria-label="agent_runs evidence">
+            <rect class="box" x="990" y="262" width="226" height="40" rx="8"/>
+            <text class="t" x="1002" y="278">agent_runs · iMessage</text>
+            <text class="s" x="1002" y="293">37 of 114 stopped at a deadline</text>
+          </g>
+
+          <!-- app origin -->
+          <g class="n" data-id="e_draft" data-f="2" tabindex="0" role="button" aria-label="Draft Worker">
+            <rect class="box" x="990" y="390" width="226" height="44" rx="8"/>
+            <text class="t" x="1002" y="408">&lt;slug&gt;-draft Worker</text>
+            <text class="s" x="1002" y="424">owner-only preview · never deployed</text>
+          </g>
+          <g class="n" data-id="e_disp" data-f="5" tabindex="0" role="button" aria-label="Dispatcher">
+            <rect class="box" x="990" y="454" width="226" height="44" rx="8"/>
+            <text class="t" x="1002" y="472">Dispatcher</text>
+            <text class="s" x="1002" y="488">*.apps.wzrd.tech · token → cookie</text>
+            <g class="fp"><rect x="1184" y="460" width="24" height="15" rx="4"/><text x="1196" y="471" text-anchor="middle">F5</text></g>
+          </g>
+          <g class="n" data-id="e_dev" data-f="8" tabindex="0" role="button" aria-label="Dev Worker">
+            <rect class="box" x="990" y="518" width="226" height="44" rx="8"/>
+            <text class="t" x="1002" y="536">&lt;slug&gt;-dev Worker</text>
+            <text class="s" x="1002" y="552">dev channel · 0 versions promoted</text>
+          </g>
+        </svg>
+      </div>
+      <div class="legend">
+        <span><i></i>works in production</span>
+        <span><i class="w"></i>works, but not as the spec describes</span>
+        <span><i class="b"></i>never succeeds in production</span>
+        <span class="mono" style="color:var(--bad)">F#</span><span>failure, see register</span>
+      </div>
+      <figcaption>Two surfaces, two Hermes sessions, one skill that makes the model responsible for every step. Red dashed hops show where the chain breaks. The build's deploy step is skipped, so QA has nothing to open, so the dev gate can never pass.</figcaption>
+    </figure>
+
+    <aside class="panel" id="panel" aria-live="polite">
+      <div class="col">
+      <div class="eyebrow">Selected component</div>
+      <h3 id="p-title">Skill + air-create CLI</h3>
+      <div class="where" id="p-where">infra/template/skills/create-miniapp/</div>
+      <div class="fl" id="p-f"></div>
+      </div>
+      <div class="col">
+      <p id="p-what">The model reads SKILL.md, a stage-by-stage script, and runs <code>air-create plan</code>, <code>confirm</code>, <code>build</code>, <code>qa</code>, <code>test</code> and <code>release</code> in order. Each one curls a control-plane route with the Box's gateway token. Only this CLI writes the intake events <code>plan_written</code> and <code>confirm</code>.</p>
+      <p id="p-bad">The first event it sends, <code>plan_written</code>, is illegal from <code>asking</code> and returns 409. The CLI swallows that 409 when <code>--deliver</code> is set, so the model believes the plan step succeeded.</p>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<!-- ================================================================ 2 -->
+<section id="register">
+  <div class="sec-head">
+    <div class="sec-num">02 · Failure register</div>
+    <h2>Where it breaks, in the order an owner hits it</h2>
+    <p class="prose">F1 to F4 each block every app on their own. F5 is invisible today and blocks the moment F2 is fixed. Select a row to light up its components on the map.</p>
+  </div>
+  <div class="reg" id="reg">
+    <div class="f" data-f="1" tabindex="0" role="button">
+      <div class="id">F1</div>
+      <div class="hd"><h3>Nothing moves the intake past <code>asking</code></h3><span class="sev blk">Blocker</span></div>
+      <div class="body">
+        <p>The stage machine has one exit from <code>asking</code>: an <code>owner_reply</code> event. On iMessage nothing sends it. The Box's first move is <code>plan_written</code>, which returns 409, and the CLI hides that 409 when it delivers the plan. <code>confirm</code> then 409s too. No code path ever sends <code>build_started</code>, <code>build_ok</code>, <code>qa_ok</code>, <code>tests_ok</code> or <code>dev_live</code>, so even a perfect run could never reach <code>dev_ready</code>, and finalize requires <code>dev_ready</code>.</p>
+        <dl>
+          <dt>Evidence</dt><dd>The only intake in production has sat at <code>asking</code> since 18 Sep. There are zero <code>intake</code> ops events.</dd>
+          <dt>Code</dt><dd><code>lib/create/intake.ts:136</code> (asking → owner_reply only) · <code>air-create:474-480</code> (409 swallowed) · <code>lib/create/finalize.ts:311</code> · no callers of <code>advanceIntake</code> in build, qa or release</dd>
+          <dt>Fix</dt><dd>Derive stages on the server from facts (build row, QA row, <code>dev_version</code>) and accept <code>plan_written</code> from <code>asking</code>.</dd>
+        </dl>
+      </div>
+    </div>
+    <div class="f" data-f="2" tabindex="0" role="button">
+      <div class="id">F2</div>
+      <div class="hd"><h3>The app-origin lane is off, so drafts can't be previewed</h3><span class="sev blk">Blocker</span></div>
+      <div class="body">
+        <p><code>deployStaticVersion</code> returns early unless the signing key, the Cloudflare account and token, and the manifest KV id are all set. Builds still succeed and store bundles in R2, but no draft Worker ever exists. <code>/api/create/preview-link</code> returns 503, so <code>air-create qa</code> and <code>test</code> exit before opening a browser. The dev release gate needs QA ≥ 70 and all tests passing, so it can never pass. The web studio's preview pane is blank for the same reason.</p>
+        <dl>
+          <dt>Evidence</dt><dd>0 of 33 versions carry a <code>worker_sha256</code>. 0 QA scores and 0 test results exist. There are no <code>create.qa</code> ops events.</dd>
+          <dt>Code</dt><dd><code>lib/functions/deploy.ts:73-79, 271</code> · <code>lib/create/preview.ts:15-16</code> · <code>app/api/create/preview-link/route.ts:50-52</code></dd>
+          <dt>Fix</dt><dd>Configure the lane in production and deploy the Dispatcher with real KV ids. Make <code>/create</code> refuse up front, with one clear line, when the lane is off.</dd>
+        </dl>
+      </div>
+    </div>
+    <div class="f" data-f="3" tabindex="0" role="button">
+      <div class="id">F3</div>
+      <div class="hd"><h3>A 120-second chat turn is asked to run the whole build loop</h3><span class="sev blk">Blocker · iMessage</span></div>
+      <div class="body">
+        <p>SKILL.md step 4 tells the model to write <code>goal.md</code>, confirm, build, QA, test, fix and release "in the same turn", for up to six build rounds. The flush job stops any Hermes run that hasn't finished its reply by 120 s. It then sends "I need a little more time", replays the same burst after a growing backoff, and kills the replay at 120 s again. The build itself is quick (median 4.8 s in production). The time goes to the loop around it: source edits are model generations, QA drives a browser through six passes, and tests add more.</p>
+        <dl>
+          <dt>Evidence</dt><dd>In the last 14 days, 37 of 114 iMessage turns ended as <code>first_response_failed</code>. Only one fix has landed since V12, and it raised the deadline from 45 s to 120 s for exactly this reason (<code>95924dc</code>).</dd>
+          <dt>Code</dt><dd><code>lib/orchestrator/flush.ts:95-96, 1467-1520, 555</code> · <code>SKILL.md</code> §6 step 4 · <code>air-qa.py:113</code></dd>
+          <dt>Fix</dt><dd>Take the loop out of the turn. "yes" confirms and enqueues a job, and the owner gets a reply in seconds.</dd>
+        </dl>
+      </div>
+    </div>
+    <div class="f" data-f="4" tabindex="0" role="button">
+      <div class="id">F4</div>
+      <div class="hd"><h3>Hyphenated app names can't be released or finalized</h3><span class="sev blk">Blocker</span></div>
+      <div class="body">
+        <p><code>release</code>, <code>finalize</code> and <code>icon</code> accept a bare app name or a flat <code>&lt;user&gt;-&lt;app&gt;</code> slug, and they tell the two apart with <code>splitPublishedSlug</code>. An app named <code>october-tour</code> parses as user <code>october</code>, app <code>tour</code>, and returns 404. The intake builds names by joining up to three words with hyphens, so nearly every <code>/create</code> app is affected.</p>
+        <dl>
+          <dt>Code</dt><dd><code>app/api/create/release/route.ts:69-71</code> · <code>lib/create/finalize.ts:276</code> · <code>lib/create/intake.ts</code> <code>provisionalAppname</code></dd>
+          <dt>Fix</dt><dd>Look up the owner's app by app name first, and fall back to the flat slug only when that misses.</dd>
+        </dl>
+      </div>
+    </div>
+    <div class="f" data-f="5" tabindex="0" role="button">
+      <div class="id">F5</div>
+      <div class="hd"><h3>The Dispatcher redirects every preview and dev link to a 404</h3><span class="sev lat">Hidden until F2 is fixed</span></div>
+      <div class="body">
+        <p>Hand-off URLs land on <code>/__air/enter?t=…</code>. After spending the one-time token, the Dispatcher 303s to <code>url.pathname</code>, which is still <code>/__air/enter</code>. The static stub serves assets with <code>not_found_handling: "none"</code>, so that path 404s. The token is gone, so a reload won't help. This was logged as MS-20 in <code>review.md</code> before V12 and is still open.</p>
+        <dl>
+          <dt>Code</dt><dd><code>infra/workers/dispatcher/index.mjs:322-338</code> · <code>lib/functions/handoff.ts:19</code> · <code>infra/workers/static-stub/index.mjs</code></dd>
+          <dt>Fix</dt><dd>After redeeming the token, redirect to <code>/</code> (or a signed <code>next</code> path) whenever the request path is the enter path.</dd>
+        </dl>
+      </div>
+    </div>
+    <div class="f" data-f="6" tabindex="0" role="button">
+      <div class="id">F6</div>
+      <div class="hd"><h3>The progress card never starts</h3><span class="sev maj">Major</span></div>
+      <div class="body">
+        <p>The relay is started once, at the start of each flush turn. It only starts when an intake is already in <code>confirmed</code> to <code>testing</code> with an <code>app_id</code>. Stages never get there (F1), and <code>app_id</code> stays null for a new app until finalize. The build also happens inside the "yes" turn, which began at <code>plan_sent</code>. The web Progress pane shows 0% for any stage before <code>confirmed</code>.</p>
+        <dl>
+          <dt>Code</dt><dd><code>lib/create/progress.ts:73-78, 457-480, 101-104</code> · <code>lib/orchestrator/flush.ts:974</code></dd>
+          <dt>Fix</dt><dd>Attach the relay to the build job rather than the chat turn.</dd>
+        </dl>
+      </div>
+    </div>
+    <div class="f" data-f="7" tabindex="0" role="button">
+      <div class="id">F7</div>
+      <div class="hd"><h3>Two surfaces, two sessions, two different pipelines</h3><span class="sev maj">Major</span></div>
+      <div class="body">
+        <p>iMessage plans and builds in <code>air-main</code> on the chat model. That spend isn't charged to the project budget, and the "Astra plans, GLM builds" split never applies. Web turns use the project session and the Create tier, but they never carry the intake marker, so the skill follows the older non-intake flow. The Plan pane's <b>Build this</b> button posts <code>confirm</code> without sending the agent a turn, so the Box never hears "yes". A project started in Messages can't continue on the web with its context.</p>
+        <dl>
+          <dt>Code</dt><dd><code>lib/orchestrator/flush.ts:1350</code> (no model) · <code>lib/create/turn.ts:193</code> (no <code>#stage</code>) · <code>lib/miniapps/client/create/PlanPane.tsx</code> <code>confirm()</code></dd>
+          <dt>Fix</dt><dd>Route both surfaces into <code>air-create-&lt;app&gt;</code> with the marker, and make <b>Build this</b> call the same confirm-and-enqueue endpoint.</dd>
+        </dl>
+      </div>
+    </div>
+    <div class="f" data-f="8" tabindex="0" role="button">
+      <div class="id">F8</div>
+      <div class="hd"><h3>Dev links are minted for a host that isn't serving</h3><span class="sev maj">Major</span></div>
+      <div class="body">
+        <p><code>LINK_HOST_ENABLED</code> defaults to false, but <code>promoteToDev</code> builds a <code>link.wzrd.tech</code> URL without checking it. The expiry and abandonment sweeps (<code>expireDevReleases</code>, <code>abandonStale</code>) exist but no cron calls them. Workers deploy by hand, and the committed <code>wrangler.toml</code> still contains <code>REPLACE_WITH_…</code> KV ids.</p>
+        <dl>
+          <dt>Code</dt><dd><code>lib/env.ts:471</code> · <code>lib/create/release.ts:67, 146, 236</code> · <code>lib/create/intake.ts:612</code> · <code>infra/workers/wrangler.toml:30</code></dd>
+          <dt>Fix</dt><dd>Turn the flag on, have <code>promoteToDev</code> refuse when it's off, and add both sweeps to <code>/api/cron/sweep</code>.</dd>
+        </dl>
+      </div>
+    </div>
+    <div class="f" data-f="9" tabindex="0" role="button">
+      <div class="id">F9</div>
+      <div class="hd"><h3>Files the skill expects that nothing writes</h3><span class="sev min">Minor</span></div>
+      <div class="body">
+        <p>SKILL.md says <code>intake/prompt.md</code> and <code>attachments.json</code> are "written for you". Nothing writes them. The six template scaffolds are never synced to the Box (<code>templateWorkspace</code> has no caller). The locked-test guard reads <code>.build/last-tests.json</code>, which nothing writes. Guest-role tests need a <code>--guest-url</code> that no command mints, and a failing test blocks the dev release. <code>plan/deliver</code> 409s for owners without an iMessage thread.</p>
+        <dl>
+          <dt>Code</dt><dd><code>SKILL.md:79</code> · <code>lib/create/templates.ts:118</code> · <code>lib/create/build.ts:1134-1137</code> · <code>air-qa.py:458</code> · <code>lib/create/plan.ts:107</code></dd>
+        </dl>
+      </div>
+    </div>
+    <div class="f" data-f="10" tabindex="0" role="button">
+      <div class="id">F10</div>
+      <div class="hd"><h3>The Box and the control plane update separately, with no version check</h3><span class="sev min">Minor</span></div>
+      <div class="body">
+        <p>The control plane ships prompts and the Kit with every Vercel deploy. Boxes get <code>SKILL.md</code> and <code>air-create</code> only when someone cuts a template release and runs a fleet sync. <code>air-create</code> sends no version, so a Box on an older skill silently speaks an older protocol. The CI path filter for the Kit doesn't cover <code>SKILL.md</code>.</p>
+        <dl>
+          <dt>Code</dt><dd><code>lib/fleet/sync.ts</code> · <code>infra/template/sync-box.sh:102</code> · <code>.github/workflows/create-kit.yml</code></dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================ 3 -->
+<section id="intake">
+  <div class="sec-head">
+    <div class="sec-num">03 · The state machine</div>
+    <h2>The intake has no writer for most of its transitions</h2>
+    <p class="prose">This is the spec's twelve-stage path, drawn as <code>lib/create/intake.ts</code> encodes it, with each arrow labeled by the event and by whoever sends it today. Most arrows have no sender. The red arc across the top is what the Box actually sends first.</p>
+  </div>
+  <figure>
+    <div class="canvas sm">
+      <svg viewBox="0 0 1070 300" role="img" aria-label="Intake state machine. Only the web Plan pane sends owner_reply, the Box's first event plan_written is refused from asking, and build_started, build_ok, qa_ok and tests_ok have no sender, so no intake can reach dev_ready.">
+        <defs>
+          <marker id="s-m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+          <marker id="s-g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah g" d="M0,0 L10,5 L0,10 z"/></marker>
+          <marker id="s-w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah w" d="M0,0 L10,5 L0,10 z"/></marker>
+          <marker id="s-b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah b" d="M0,0 L10,5 L0,10 z"/></marker>
+        </defs>
+
+        <!-- arc: what the Box sends -->
+        <path class="e b" d="M82,80 C82,30 442,30 442,78" marker-end="url(#s-b)"/>
+        <text class="el b" x="262" y="30" text-anchor="middle">Box sends plan_written from asking → 409 illegal_transition</text>
+
+        <!-- row 1 -->
+        <g class="st here"><rect x="30" y="80" width="104" height="40" rx="8"/><text x="82" y="105" text-anchor="middle">asking</text></g>
+        <g class="st"><rect x="210" y="80" width="104" height="40" rx="8"/><text x="262" y="105" text-anchor="middle">planning</text></g>
+        <g class="st"><rect x="390" y="80" width="104" height="40" rx="8"/><text x="442" y="105" text-anchor="middle">plan_sent</text></g>
+        <g class="st dead"><rect x="570" y="80" width="104" height="40" rx="8"/><text x="622" y="105" text-anchor="middle">confirmed</text></g>
+        <g class="st dead"><rect x="750" y="80" width="104" height="40" rx="8"/><text x="802" y="105" text-anchor="middle">building</text></g>
+        <g class="st dead"><rect x="930" y="80" width="104" height="40" rx="8"/><text x="982" y="105" text-anchor="middle">qa</text></g>
+
+        <line class="e w" x1="134" y1="100" x2="208" y2="100" marker-end="url(#s-w)"/>
+        <text class="el w" x="172" y="92" text-anchor="middle">owner_reply</text>
+        <text class="el w" x="172" y="116" text-anchor="middle">web only</text>
+
+        <line class="e g" x1="314" y1="100" x2="388" y2="100" marker-end="url(#s-g)"/>
+        <text class="el g" x="352" y="92" text-anchor="middle">plan_written</text>
+        <text class="el g" x="352" y="116" text-anchor="middle">Box CLI</text>
+
+        <line class="e g" x1="494" y1="100" x2="568" y2="100" marker-end="url(#s-g)"/>
+        <text class="el g" x="532" y="92" text-anchor="middle">confirm</text>
+        <text class="el g" x="532" y="116" text-anchor="middle">Box · web</text>
+
+        <line class="e b" x1="674" y1="100" x2="748" y2="100" marker-end="url(#s-b)"/>
+        <text class="el b" x="712" y="92" text-anchor="middle">build_started</text>
+        <text class="el b" x="712" y="116" text-anchor="middle">no sender</text>
+
+        <line class="e b" x1="854" y1="100" x2="928" y2="100" marker-end="url(#s-b)"/>
+        <text class="el b" x="892" y="92" text-anchor="middle">build_ok</text>
+        <text class="el b" x="892" y="116" text-anchor="middle">no sender</text>
+
+        <!-- elbow to row 2 -->
+        <polyline class="e b" points="982,120 982,170 82,170 82,228" marker-end="url(#s-b)"/>
+        <text class="el b" x="540" y="163" text-anchor="middle">qa_ok · no sender</text>
+
+        <text class="note b" x="82" y="140" text-anchor="middle">1 intake, here</text>
+        <text class="note b" x="82" y="154" text-anchor="middle">since 18 Sep</text>
+
+        <!-- row 2 -->
+        <g class="st dead"><rect x="30" y="230" width="104" height="40" rx="8"/><text x="82" y="255" text-anchor="middle">testing</text></g>
+        <g class="st dead"><rect x="210" y="230" width="104" height="40" rx="8"/><text x="262" y="255" text-anchor="middle">dev_ready</text></g>
+        <g class="st dead"><rect x="390" y="230" width="104" height="40" rx="8"/><text x="442" y="255" text-anchor="middle">finalizing</text></g>
+        <g class="st dead"><rect x="570" y="230" width="104" height="40" rx="8"/><text x="622" y="255" text-anchor="middle">decision_sent</text></g>
+        <g class="st dead"><rect x="750" y="230" width="104" height="40" rx="8"/><text x="802" y="255" text-anchor="middle">production</text></g>
+
+        <line class="e b" x1="134" y1="250" x2="208" y2="250" marker-end="url(#s-b)"/>
+        <text class="el b" x="172" y="242" text-anchor="middle">tests_ok</text>
+        <text class="el b" x="172" y="266" text-anchor="middle">no sender</text>
+
+        <line class="e" x1="314" y1="250" x2="388" y2="250" marker-end="url(#s-m)"/>
+        <text class="el" x="352" y="242" text-anchor="middle">ship</text>
+        <text class="el" x="352" y="266" text-anchor="middle">finalize.ts</text>
+
+        <line class="e" x1="494" y1="250" x2="568" y2="250" marker-end="url(#s-m)"/>
+        <text class="el" x="532" y="242" text-anchor="middle">finalize_done</text>
+        <text class="el" x="532" y="266" text-anchor="middle">finalize.ts</text>
+
+        <line class="e" x1="674" y1="250" x2="748" y2="250" marker-end="url(#s-m)"/>
+        <text class="el" x="712" y="242" text-anchor="middle">approved</text>
+        <text class="el" x="712" y="266" text-anchor="middle">decision tap</text>
+
+        <text class="note" x="880" y="246">Wired, but unreachable:</text>
+        <text class="note" x="880" y="262">needs dev_ready first.</text>
+      </svg>
+    </div>
+    <figcaption>Green arrows have a working sender. Amber arrows have a sender only on the web. Red arrows have none. Grey arrows are wired but can't be reached. The <code>revising</code> loop and the <code>stop</code>, <code>cancel</code> and <code>fail</code> exits are left out. <code>finalize_done</code> is shorthand for <code>finalize_complete</code>. The build, QA and release routes all run fine, but none of them updates the intake row. Six parallel build lanes each assumed another lane owned that write.</figcaption>
+  </figure>
+</section>
+
+<!-- ================================================================ 4 -->
+<section id="turn">
+  <div class="sec-head">
+    <div class="sec-num">04 · Time budgets</div>
+    <h2>The build loop doesn't fit in one chat turn</h2>
+    <p class="prose">Everything below is drawn to one scale. The skill asks for confirm → build → QA → test → release inside the "yes" turn. On iMessage that turn is stopped at 120 s and replayed after a growing wait. Each replay is stopped again, and the owner never gets a reply. The build isn't the slow part. The model's edit turns and the browser passes around it are.</p>
+  </div>
+  <figure>
+    <div class="canvas tl">
+      <svg viewBox="0 0 1000 280" role="img" aria-label="Timeline drawn to scale from 0 to 14 minutes. iMessage attempts are each stopped at 120 seconds and retried after 15, 30, 60 and 120 second waits. A build measures about 5 seconds against a 360 second ceiling, and each agent-browser call can take up to 120 seconds. The web turn allows 800 seconds.">
+        <!-- axis: x = 190 + t*0.94  (0..840 s → 190..980) -->
+        <line class="axis" x1="190" y1="236" x2="980" y2="236"/>
+        <g>
+          <line class="axis" x1="190" y1="30" x2="190" y2="240"/><text class="tick" x="190" y="254" text-anchor="middle">0</text>
+          <line class="axis" x1="302.8" y1="232" x2="302.8" y2="240"/><text class="tick" x="302.8" y="254" text-anchor="middle">2 min</text>
+          <line class="axis" x1="415.6" y1="232" x2="415.6" y2="240"/><text class="tick" x="415.6" y="254" text-anchor="middle">4</text>
+          <line class="axis" x1="528.4" y1="232" x2="528.4" y2="240"/><text class="tick" x="528.4" y="254" text-anchor="middle">6</text>
+          <line class="axis" x1="641.2" y1="232" x2="641.2" y2="240"/><text class="tick" x="641.2" y="254" text-anchor="middle">8</text>
+          <line class="axis" x1="754" y1="232" x2="754" y2="240"/><text class="tick" x="754" y="254" text-anchor="middle">10</text>
+          <line class="axis" x1="866.8" y1="232" x2="866.8" y2="240"/><text class="tick" x="866.8" y="254" text-anchor="middle">12</text>
+          <line class="axis" x1="979.6" y1="232" x2="979.6" y2="240"/><text class="tick" x="979.6" y="254" text-anchor="middle">14</text>
+        </g>
+
+        <!-- row 1: iMessage attempts [0,120] [135,255] [285,405] [465,585] [705,825] -->
+        <text class="rowl" x="178" y="54" text-anchor="end">iMessage "yes" turn</text>
+        <rect class="bar-bad" x="190" y="42" width="112.8" height="18" rx="3"/>
+        <rect class="bar-bad" x="316.9" y="42" width="112.8" height="18" rx="3"/>
+        <rect class="bar-bad" x="457.9" y="42" width="112.8" height="18" rx="3"/>
+        <rect class="bar-bad" x="627.1" y="42" width="112.8" height="18" rx="3"/>
+        <rect class="bar-bad" x="852.7" y="42" width="112.8" height="18" rx="3"/>
+        <line class="kill" x1="302.8" y1="36" x2="302.8" y2="66"/>
+        <line class="kill" x1="429.7" y1="36" x2="429.7" y2="66"/>
+        <line class="kill" x1="570.7" y1="36" x2="570.7" y2="66"/>
+        <line class="kill" x1="739.9" y1="36" x2="739.9" y2="66"/>
+        <line class="kill" x1="965.5" y1="36" x2="965.5" y2="66"/>
+        <text class="note b" x="246" y="80" text-anchor="middle">stopped at 120 s</text>
+        <text class="note" x="310" y="80">+15 s wait</text>
+        <text class="note" x="440" y="80">+30 s</text>
+        <text class="note" x="582" y="80">+60 s</text>
+        <text class="note" x="752" y="80">+120 s</text>
+
+        <!-- row 2: one build: held 60 s, then polled up to 300 s -->
+        <text class="rowl" x="178" y="118" text-anchor="end">One air-create build</text>
+        <rect class="bar-l" x="190" y="106" width="338.4" height="18" rx="3"/>
+        <rect class="bar-s" x="190" y="106" width="7.9" height="18" rx="2"/>
+        <text class="note" x="206" y="119">measured: median 4.8 s, p90 8.4 s</text>
+        <text class="note" x="196" y="142">ceiling: request held 60 s, then polled up to 300 s</text>
+
+        <!-- row 3: agent-browser call ceiling -->
+        <text class="rowl" x="178" y="176" text-anchor="end">One agent-browser call</text>
+        <rect class="bar-l" x="190" y="164" width="112.8" height="18" rx="3"/>
+        <text class="note" x="312" y="177">up to 120 s each · QA runs 3 viewports × 2 motion settings</text>
+
+        <!-- row 4: web turn -->
+        <text class="rowl" x="178" y="216" text-anchor="end">Web turn (event stream)</text>
+        <rect class="bar-a" x="190" y="204" width="752" height="18" rx="3"/>
+        <text class="note" x="948" y="217">800 s</text>
+      </svg>
+    </div>
+    <figcaption>The solid build segment is measured from 38 production builds. Every other bar is a limit set in code: flush deadlines at <code>flush.ts:95-96</code>, backoff <code>2^n × 15 s</code> at <code>flush.ts:555</code>, the build hold at <code>build/route.ts:35</code>, polling in <code>air-create</code> (5 s × 60), the agent-browser timeout at <code>air-qa.py:113</code>, and <code>maxDuration = 800</code> on the events route. Nobody has timed a full loop, because none has ever completed. It holds several model generations, six browser passes and a test pass, repeated for up to six rounds, all inside 120 s.</figcaption>
+  </figure>
+</section>
+
+<!-- ================================================================ 5 -->
+<section id="why">
+  <div class="sec-head">
+    <div class="sec-num">05 · Diagnosis</div>
+    <h2>Why a well-specified system produced this</h2>
+    <p class="prose">The spec is careful and much of the code is good. The failures come from four structural choices. Each would keep producing new bugs of the same kind even after the ten above are fixed.</p>
+  </div>
+  <div class="causes">
+    <div class="cause">
+      <div class="n2">Root cause A</div>
+      <h3>The model drives the state machine</h3>
+      <p>Every stage change happens only if the LLM runs the right shell command, in the right order, and it succeeds. The control plane accepts one narrow order of events and rejects the rest, and the CLI hides some of those rejections. Whenever the model skips, retries or reorders a step, the stored state silently stops matching reality.</p>
+    </div>
+    <div class="cause">
+      <div class="n2">Root cause B</div>
+      <h3>A chat turn is used as a job runner</h3>
+      <p>A request/response turn with a 120-second budget is holding a loop that runs for minutes, fans out into network calls, and must survive retries. Nothing durable owns that work. A retry replays the owner's message instead of resuming the job.</p>
+    </div>
+    <div class="cause">
+      <div class="n2">Root cause C</div>
+      <h3>Built in parallel against mocks, and never run end to end</h3>
+      <p>Six lanes were built in parallel, each tested against fakes of the others. The code comments show it: "lane A owns the writer". MC0, the milestone meant to prove the seams on a real line and a real Box, was skipped. The only visual evidence is a screenshot set driven by route mocks.</p>
+    </div>
+    <div class="cause">
+      <div class="n2">Root cause D</div>
+      <h3>Missing config fails silently</h3>
+      <p>Every missing piece of config turns into a 503 or a skipped step, and nothing reports whether the feature can work at all. Production looks deployed while the path is inert, and the owner learns this five steps into a conversation.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================ 6 -->
+<section id="target">
+  <div class="sec-head">
+    <div class="sec-num">06 · Target architecture</div>
+    <h2>Move the build loop from the model to the control plane</h2>
+    <p class="prose">Keep the model for the parts that need judgment: questions, the plan, and edits to source. Give the loop and the state to deterministic code. Only two things change between the diagrams: which component holds the loop, and how the stage gets written.</p>
+  </div>
+  <figure>
+    <div class="canvas sm">
+      <svg viewBox="0 0 1100 380" role="img" aria-label="Comparison. Today the model in the chat turn loops over build, QA, test and release by curling routes, and posts stage events that get refused. In the proposed design a pipeline worker owns the loop, asks the model for bounded edit turns, and writes the stage from facts.">
+        <defs>
+          <marker id="c-m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+          <marker id="c-b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah b" d="M0,0 L10,5 L0,10 z"/></marker>
+          <marker id="c-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah a" d="M0,0 L10,5 L0,10 z"/></marker>
+        </defs>
+        <text class="cmp-title" x="30" y="30">Today</text>
+        <text class="cmp-sub" x="30" y="48">The model runs the loop inside the chat turn</text>
+        <text class="cmp-title" x="590" y="30">Proposed</text>
+        <text class="cmp-sub" x="590" y="48">A pipeline worker runs the loop and calls the model for edits</text>
+        <line class="axis" x1="550" y1="20" x2="550" y2="360"/>
+
+        <!-- LEFT -->
+        <g class="n"><rect class="box" x="170" y="70" width="170" height="36" rx="8"/><text class="t" x="255" y="93" text-anchor="middle">Owner says "yes"</text></g>
+        <g class="n"><rect class="box" x="140" y="136" width="230" height="44" rx="8"/><text class="t" x="255" y="154" text-anchor="middle">iMessage turn</text><text class="s" x="255" y="170" text-anchor="middle">stopped and replayed at 120 s</text></g>
+        <g class="n lp"><rect class="box" x="140" y="210" width="230" height="44" rx="8"/><text class="t" x="255" y="228" text-anchor="middle">Model · air-main</text><text class="s" x="255" y="244" text-anchor="middle">plans, edits and runs the loop</text></g>
+        <g class="n"><rect class="box" x="30" y="300" width="210" height="44" rx="8"/><text class="t" x="135" y="318" text-anchor="middle">/api/create/*</text><text class="s" x="135" y="334" text-anchor="middle">does one step per curl</text></g>
+        <g class="n"><rect class="box" x="290" y="300" width="210" height="44" rx="8"/><text class="t" x="395" y="318" text-anchor="middle">create_intakes</text><text class="s" x="395" y="334" text-anchor="middle">stage = last event that didn't 409</text></g>
+        <line class="e" x1="255" y1="106" x2="255" y2="134" marker-end="url(#c-m)"/>
+        <line class="e" x1="255" y1="180" x2="255" y2="208" marker-end="url(#c-m)"/>
+        <line class="e" x1="200" y1="254" x2="160" y2="298" marker-end="url(#c-m)"/>
+        <text class="el" x="118" y="276" text-anchor="middle">curl each step</text>
+        <line class="e b" x1="310" y1="254" x2="350" y2="298" marker-end="url(#c-b)"/>
+        <text class="el b" x="400" y="276" text-anchor="middle">posts events · 409</text>
+        <path class="e b" d="M370,222 C430,212 430,252 372,244" marker-end="url(#c-b)"/>
+        <text class="el b" x="436" y="226">build → qa →</text>
+        <text class="el b" x="436" y="240">test → release</text>
+
+        <!-- RIGHT -->
+        <g class="n"><rect class="box" x="730" y="70" width="170" height="36" rx="8"/><text class="t" x="815" y="93" text-anchor="middle">Owner says "yes"</text></g>
+        <g class="n"><rect class="box" x="700" y="136" width="230" height="44" rx="8"/><text class="t" x="815" y="154" text-anchor="middle">iMessage turn</text><text class="s" x="815" y="170" text-anchor="middle">confirms + enqueues · replies in seconds</text></g>
+        <g class="n la"><rect class="box" x="700" y="210" width="230" height="44" rx="8"/><text class="t" x="815" y="228" text-anchor="middle">Pipeline worker</text><text class="s" x="815" y="244" text-anchor="middle">create_jobs · resumable steps</text></g>
+        <g class="n"><rect class="box" x="590" y="300" width="210" height="44" rx="8"/><text class="t" x="695" y="318" text-anchor="middle">Model · air-create-&lt;app&gt;</text><text class="s" x="695" y="334" text-anchor="middle">one bounded edit turn per step</text></g>
+        <g class="n"><rect class="box" x="850" y="300" width="210" height="44" rx="8"/><text class="t" x="955" y="318" text-anchor="middle">create_intakes</text><text class="s" x="955" y="334" text-anchor="middle">stage derived from facts</text></g>
+        <line class="e" x1="815" y1="106" x2="815" y2="134" marker-end="url(#c-m)"/>
+        <line class="e a" x1="815" y1="180" x2="815" y2="208" marker-end="url(#c-a)"/>
+        <text class="el a" x="823" y="198">job</text>
+        <line class="e a" x1="760" y1="254" x2="720" y2="298" marker-end="url(#c-a)"/>
+        <text class="el a" x="678" y="276" text-anchor="middle">asks for edits</text>
+        <line class="e a" x1="870" y1="254" x2="910" y2="298" marker-end="url(#c-a)"/>
+        <text class="el a" x="952" y="276" text-anchor="middle">writes facts</text>
+        <path class="e a" d="M930,222 C990,212 990,252 932,244" marker-end="url(#c-a)"/>
+        <text class="el a" x="996" y="220">build → preview</text>
+        <text class="el a" x="996" y="234">→ QA → tests</text>
+        <text class="el a" x="996" y="248">→ dev link</text>
+      </svg>
+    </div>
+    <figcaption>The shapes are identical on both sides. Today the loop and the stage writes belong to the model (red). In the proposal they belong to a durable worker that already knows the results of build, QA and release (blue). The model only edits files and answers the owner.</figcaption>
+  </figure>
+
+  <div class="principles">
+    <div class="pr"><h3>The worker owns the loop</h3><p>A <code>create_jobs</code> row is claimed and advanced by the same claim/deadline pattern <code>flush_jobs</code> already uses, or by Vercel Workflow. Every step is idempotent and resumable, and a retry resumes the job instead of replaying the owner's message.</p></div>
+    <div class="pr"><h3>Stages are derived from facts</h3><p><code>stage = f(plan_sha256, confirmed_at, latest build, QA row, dev_version)</code>. Events are kept only for owner intents (confirm, revise, ship, cancel), and they're idempotent.</p></div>
+    <div class="pr"><h3>One session per project</h3><p>Both surfaces talk to <code>air-create-&lt;app&gt;</code> on the Create tier, carrying the marker. <code>air-main</code> hands off and stays conversational, so budget, the model split and context are the same on both surfaces.</p></div>
+    <div class="pr"><h3>Check readiness before starting</h3><p><code>/create</code> checks readiness first: storage, the app-origin lane, the link host, the provider key and the Box's skill version. If a lane is off, the owner gets one clear line at the start instead of a dead end at step six.</p></div>
+  </div>
+</section>
+
+<!-- ================================================================ 7 -->
+<section id="plan">
+  <div class="sec-head">
+    <div class="sec-num">07 · Fix plan</div>
+    <h2>Three phases, sequenced so each one is testable</h2>
+    <p class="prose">Phase 1 gets the golden path working with small, contained diffs. Phase 2 is the architectural change that stops this class of bug from coming back. Phase 3 makes the system prove itself continuously.</p>
+  </div>
+  <div class="plan">
+    <div class="phase">
+      <div class="phase-h"><h3>Phase 1 · Unblock the golden path</h3><span class="when">small diffs · days</span></div>
+      <ol>
+        <li><p>Turn on the app-origin lane in production (<code>APP_ORIGIN_SIGNING_KEY</code>, <code>CLOUDFLARE_ACCOUNT_ID</code>, <code>CLOUDFLARE_API_TOKEN</code>, <code>CF_MANIFEST_KV_ID</code>). Deploy the Dispatcher with real KV ids, and fix the enter redirect in the same change. <span class="fx">F2 · F5</span></p><p class="proof">a build writes <code>worker_sha256</code>, the preview opens in a browser, and one QA score lands.</p></li>
+        <li><p>Have the server write intake stages: the build route records started/ok/fail, the QA route records <code>qa_ok</code>/<code>tests_ok</code>, and release records <code>dev_live</code>. Accept <code>plan_written</code> from <code>asking</code>, and have the flush hook record the owner's reply while an intake is at <code>asking</code>. <span class="fx">F1</span></p><p class="proof">a route-level test drives the real handlers from <code>asking</code> to <code>dev_ready</code>.</p></li>
+        <li><p>Resolve app names before flat slugs in <code>release</code>, <code>finalize</code> and <code>icon</code>. <span class="fx">F4</span></p><p class="proof"><code>air-create release october-tour dev</code> finds the owner's app.</p></li>
+        <li><p>Set <code>LINK_HOST_ENABLED=true</code> and make <code>promoteToDev</code> refuse when it's off. Set the app's <code>app_id</code> on the intake at the first build so the relay can find it. <span class="fx">F8 · F6</span></p><p class="proof">a dev URL returned by <code>release</code> serves the app to a logged-out browser.</p></li>
+      </ol>
+    </div>
+    <div class="phase">
+      <div class="phase-h"><h3>Phase 2 · Move the loop out of the chat turn</h3><span class="when">the structural fix · about a week</span></div>
+      <ol>
+        <li><p>"yes" in Messages and <b>Build this</b> on the web call one endpoint that confirms and enqueues a <code>create_jobs</code> row. The chat turn replies within seconds. <span class="fx">F3 · F7</span></p><p class="proof">no <code>/create</code> turn runs longer than 30 s.</p></li>
+        <li><p>A pipeline worker runs a builder turn in <code>air-create-&lt;app&gt;</code> (awaited through the existing 800 s event stream), then build → preview → QA and tests (triggered in the Box by <code>runCommand</code>) → dev release. Each step records a fact, retries are bounded, and the <code>failed</code> stage replaces silent stalls. <span class="fx">A · B</span></p><p class="proof">killing the worker mid-build and restarting it resumes from the last recorded fact.</p></li>
+        <li><p>Attach the progress relay to the job. The web Progress pane and the iMessage card read the same job. <span class="fx">F6</span></p><p class="proof">twelve or more card updates for one build, with no new bubbles.</p></li>
+        <li><p>Route iMessage <code>/create</code> into the project session on the Create tier, with the marker on both surfaces and <code>#stage</code> on the model string. <span class="fx">F7</span></p><p class="proof">admin Tokens shows Astra and GLM spend for one intake started in Messages and finished on the web.</p></li>
+      </ol>
+    </div>
+    <div class="phase">
+      <div class="phase-h"><h3>Phase 3 · Make it prove itself</h3><span class="when">ongoing</span></div>
+      <ol>
+        <li><p>Automate MC0 as a nightly smoke test: a synthetic owner on a staging Box runs <code>/create</code> to a dev link, and the test asserts every stage timestamp. <span class="fx">C</span></p><p class="proof">a red nightly run blocks the release channel.</p></li>
+        <li><p>Add a <code>/api/admin/create/health</code> readiness report covering storage, the app-origin lane, the link host, GMI, Dispatcher health, and the skill version per Box. <code>/create</code> refuses up front when any of these is off. <span class="fx">D · F10</span></p></li>
+        <li><p>Add <code>abandonStale</code> and <code>expireDevReleases</code> to <code>/api/cron/sweep</code>, and write relay <code>ops_events</code>. Deploy Workers from CI with KV ids from secrets. <code>air-create</code> sends its skill version and the control plane rejects versions it can't serve. <span class="fx">F8 · F10</span></p></li>
+        <li><p>Close the gaps in what the Box receives: write <code>intake/prompt.md</code> at hook time, sync templates, snapshot tests for the locked-test guard, mint guest test URLs, and fall back to a card when the owner has no iMessage thread. <span class="fx">F9</span></p></li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p><b>Method.</b> I read <code>docs/goal-create-v12.md</code> and the code paths it names in <code>apps/web</code>, <code>infra/template</code> and <code>infra/workers</code>, and cross-checked them against read-only, aggregate-only production queries on 24 Sep 2026. File and line references are to <code>add1266</code>.</p>
+  <p><b>Limits.</b> The Vercel environment listing came back truncated, so "lane off" (F2) is inferred from 33 of 33 versions having no Worker digest rather than read from env keys. The clone is shallow, so V11 history isn't visible. Apart from the build time, durations in section 04 are code limits, not measurements.</p>
+</footer>
+</div>
+
+<script>
+(function(){
+  var D = {
+    o_imsg:{t:"Owner in Messages",w:"lib/miniapps/imessageCommand.ts · parseCreateIntent",d:"The owner texts <code>/create &lt;prompt&gt;</code> or a natural phrase such as \"build me a landing page\". The reply streams back from air-main. By design the owner sees at most three questions, a plan.md attachment, one progress card and a dev link.",b:"Today the owner may get questions and a plan. Once building starts they get \"I need a little more time\" and replays (F3), and no progress card ever appears (F6)."},
+    o_web:{t:"Create studio",w:"app/mini/(store)/create · lib/miniapps/client/create/*",d:"The web surface has Plan, Progress and Release panes plus chat, preview and files. Turns go through <code>/api/create/turn</code> into the project session.",b:"The preview iframe is empty because <code>preview_url</code> is null (F2). <b>Build this</b> posts <code>confirm</code> but never tells the agent (F7)."},
+    o_dev:{t:"Dev and production links",w:"link.wzrd.tech/&lt;u&gt;/&lt;a&gt; · mini.wzrd.tech/&lt;u&gt;/&lt;a&gt;",d:"The shareable dev URL (unlisted, noindex, 14-day TTL) and the production URL the owner gets after approving the decision card.",b:"No dev version has ever been promoted, and the link host is off by default (F8)."},
+    cp_flush:{t:"Flush job + intake hook",w:"lib/orchestrator/flush.ts · lib/create/intake.ts maybeOpenIntake",d:"Drains the owner's message burst. On <code>/create</code> it opens a <code>create_intakes</code> row at <code>asking</code> and prepends <code>[create-intake &lt;app&gt; stage=asking]</code>. It then runs the Hermes turn in air-main, which must start within 45 s and finish within 120 s.",b:"Overruns stop the run and replay the whole burst with backoff (F3). It passes no <code>model</code>, so /create runs on the chat model with no project budget (F7)."},
+    cp_relay:{t:"Progress relay",w:"lib/create/progress.ts · startRelayForOwner, runProgressRelay",d:"Computes <code>{percent, stage, detail}</code> from build, QA and test rows and updates one app card every 10 s. The percentages follow the §8.2 table.",b:"It starts only at the start of a flush turn, and only if an intake is already in confirmed…testing with an app_id. Stages never get there and app_id stays null, so the relay never starts (F6)."},
+    cp_routes:{t:"Create API",w:"app/api/create/{intake,plan/deliver,build,qa,preview-link,release,finalize,icon}",d:"Routes owned by the owner, reached with a store session or the Box's gateway token. The intake route enforces the stage machine. Release checks the dev gate (QA ≥ 70, all tests pass). Finalize files the publish decision.",b:"The intake route rejects the Box's first event with 409 (F1). Release, finalize and icon misread hyphenated app names as flat slugs (F4)."},
+    cp_turn:{t:"Web turn + event stream",w:"lib/create/turn.ts · app/api/create/events/[runId]",d:"Opens a <code>create:&lt;slug&gt;</code> agent_runs row for budget attribution, wakes the Box, and creates a run in <code>air-create-&lt;app&gt;</code> with model <code>create-&lt;tier&gt;:&lt;slug&gt;</code>. The event route relays the SSE stream for up to 800 s.",b:"It never adds the intake marker or the <code>#stage</code> suffix, so the skill follows its older non-intake flow and <code>create_stage</code> stays null (F7)."},
+    cp_gw:{t:"Model gateway",w:"app/api/gateway/v1/[...path]/route.ts · lib/entitlements/models.ts",d:"Parses <code>create-&lt;tier&gt;:&lt;slug&gt;</code>, requires an open Create run row, enforces the $5 project budget, and dispatches to GMI (Astra for deep, GLM-5.3-Flash for balanced and fast). If Astra fails it falls back to GLM, never to OpenAI.",b:"This part works: 21 Create runs were served on GLM-5.3-Flash. iMessage /create turns bypass it because they never request a Create model."},
+    cp_build:{t:"Build Service",w:"lib/create/build.ts · app/api/create/build/route.ts",d:"Pulls the Box workspace over the command channel (<code>tar | base64</code>), bundles it with esbuild using Kit-only resolution, then lints and validates. It stores the version in R2 and deploys it to <code>&lt;slug&gt;-draft</code>. The request is held 60 s, and the rest finishes in <code>after()</code> within <code>maxDuration = 300</code>.",b:"Compiling works (38 of 41 builds). The deploy step is skipped because the app-origin lane isn't configured, so no draft is ever previewable (F2)."},
+    cp_link:{t:"Link host + mini loader",w:"middleware.ts · app/mini/[app]/route.ts · lib/create/release.ts",d:"Rewrites <code>link.wzrd.tech/&lt;u&gt;/&lt;a&gt;</code> to the dev channel and hands off to the Dispatcher with <code>channel: dev</code>. <code>promoteToDev</code> deploys <code>&lt;slug&gt;-dev</code> and sets <code>dev_version</code>.",b:"<code>LINK_HOST_ENABLED</code> defaults to false, but promoteToDev still returns a link.wzrd.tech URL. The expiry sweep has no cron (F8)."},
+    b_main:{t:"Hermes · air-main",w:"Box · main session",d:"The owner's everyday chat session. On iMessage, /create planning and building both happen here, on whatever chat model the Box defaults to.",b:"The whole build loop runs inside a turn capped at 120 s (F3). Spend isn't attributed to the project and the Astra/GLM split doesn't apply (F7)."},
+    b_skill:{t:"Skill + air-create CLI",w:"infra/template/skills/create-miniapp/ · SKILL.md v4 · scripts/air-create",d:"The model reads SKILL.md, a stage-by-stage script, and runs <code>air-create plan</code>, <code>confirm</code>, <code>build</code>, <code>qa</code>, <code>test</code> and <code>release</code> in order. Each one curls a control-plane route with the Box's gateway token. Only this CLI writes the intake events <code>plan_written</code> and <code>confirm</code>.",b:"The first event it sends, <code>plan_written</code>, is illegal from <code>asking</code> and returns 409. The CLI swallows that 409 when <code>--deliver</code> is set (F1). Its version is never checked against the control plane (F10)."},
+    b_proj:{t:"Hermes · air-create-<app>",w:"Box · per-project session",d:"The per-app session web turns use. It runs on the Create tier with a budget and is the right home for all Create work.",b:"It never receives the intake marker, so the V12 loop never starts here (F7)."},
+    b_ws:{t:"Workspace",w:"~/.hermes/create/<app>/",d:"Holds <code>air.json</code>, <code>plan.md</code>, <code>goal.md</code>, <code>src/</code>, <code>public/</code> and <code>.build/</code>. The Build Service pulls a filtered tar of it for every build.",b:"<code>intake/prompt.md</code>, <code>attachments.json</code>, the template scaffolds and <code>.build/last-tests.json</code> are promised to the skill but never written (F9)."},
+    b_qa:{t:"agent-browser QA + tests",w:"scripts/air-qa.py · air-create qa | test",d:"Asks <code>/api/create/preview-link</code> for a 60 s owner token, then drives the Box browser at three viewports with reduced motion on and off, runs <code>air.json.tests[]</code>, and posts a content-free report.",b:"preview-link returns 503 while the lane is off, so QA exits before opening a browser. There are zero QA scores in production (F2). Guest tests need a URL that nothing mints (F9)."},
+    s_intakes:{t:"create_intakes",w:"production · aggregate only",d:"One row ever: opened from iMessage on 18 Sep 2026 and still at <code>asking</code>. It records no <code>intake</code> ops events.",b:"This matches F1 exactly: the Box's first event was refused and nothing else ever wrote to the row."},
+    s_builds:{t:"create_builds",w:"production · aggregate only",d:"41 builds between 22 and 23 Sep, all triggered from a Box. 38 succeeded and 3 stopped on hard findings.",b:"The Build Service itself is healthy."},
+    s_versions:{t:"miniapp_versions",w:"production · aggregate only",d:"33 Create draft versions stored in R2.",b:"None has a <code>worker_sha256</code>, so none was ever deployed to a Worker. None has a QA score or test counts (F2)."},
+    s_apps:{t:"mini_apps",w:"production · aggregate only",d:"15 Create (vibe-lane) drafts. The 31 published apps all predate Create (no lane).",b:"<code>dev_version</code> is null on every row, and no Create app is published."},
+    s_runs:{t:"agent_runs · iMessage, 14 days",w:"production · aggregate only",d:"114 iMessage turns: 69 completed, 37 <code>first_response_failed</code>, 6 interrupted, 2 never closed.",b:"About a third of all turns hit a deadline even without a build loop. A /create build loop in the turn is certain to (F3)."},
+    e_draft:{t:"<slug>-draft Worker",w:"Workers for Platforms · lib/functions/deploy.ts",d:"The owner-only preview origin. It's reached through the Dispatcher with a 60 s owner token swapped for a cookie.",b:"Never deployed in production (F2)."},
+    e_disp:{t:"Dispatcher",w:"infra/workers/dispatcher/index.mjs · deployed by release.sh",d:"Serves <code>*.apps.wzrd.tech</code>. It verifies the app token, redeems it once, sets the session cookie, and routes by <code>claims.channel</code> to the live, draft or dev Worker.",b:"After redeeming the token it 303s back to <code>/__air/enter</code>, which the static stub 404s (F5, MS-20). It's deployed by hand from a tree whose committed KV ids are placeholders (F8)."},
+    e_dev:{t:"<slug>-dev Worker",w:"lib/create/release.ts promoteToDev",d:"The dev channel: whatever version the owner promoted, with its own D1/KV so dev traffic never touches production data.",b:"Unreachable, because promotion requires QA and tests that can't run (F2), and the link host is off (F8)."}
+  };
+  var svg = document.getElementById("mapsvg");
+  var nodes = svg ? svg.querySelectorAll(".n[data-id]") : [];
+  var pt = document.getElementById("p-title"), pw = document.getElementById("p-where"),
+      pd = document.getElementById("p-what"), pb = document.getElementById("p-bad"), pf = document.getElementById("p-f");
+  function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+  function show(id){
+    var n = D[id]; if(!n) return;
+    pt.textContent = n.t; pw.innerHTML = esc(n.w).replace(/&amp;lt;/g,"&lt;").replace(/&amp;gt;/g,"&gt;");
+    pd.innerHTML = n.d; pb.innerHTML = n.b;
+    var el = svg.querySelector('.n[data-id="'+id+'"]');
+    var fs = (el && el.getAttribute("data-f")) ? el.getAttribute("data-f").split(" ") : [];
+    pf.innerHTML = fs.map(function(f){return '<span class="sev blk">F'+f+'</span>';}).join("");
+    for (var i=0;i<nodes.length;i++) nodes[i].classList.toggle("sel", nodes[i].getAttribute("data-id")===id);
+  }
+  for (var i=0;i<nodes.length;i++){
+    (function(g){
+      g.addEventListener("click", function(){ clearF(); show(g.getAttribute("data-id")); });
+      g.addEventListener("keydown", function(e){ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); clearF(); show(g.getAttribute("data-id")); }});
+    })(nodes[i]);
+  }
+  var rows = document.querySelectorAll(".f[data-f]"), active = null;
+  function clearF(){
+    active = null; svg.classList.remove("dimming");
+    for (var i=0;i<nodes.length;i++) nodes[i].classList.remove("hit");
+    for (var j=0;j<rows.length;j++) rows[j].classList.remove("on");
+  }
+  function lightF(f, row){
+    if (active === f){ clearF(); return; }
+    clearF(); active = f; svg.classList.add("dimming"); row.classList.add("on");
+    for (var i=0;i<nodes.length;i++){
+      var list = (nodes[i].getAttribute("data-f")||"").split(" ");
+      if (list.indexOf(f) !== -1) nodes[i].classList.add("hit");
+    }
+    var map = document.getElementById("map");
+    if (map && map.getBoundingClientRect().bottom < 0) map.scrollIntoView({behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"});
+  }
+  for (var k=0;k<rows.length;k++){
+    (function(r){
+      r.addEventListener("click", function(e){ if (window.getSelection && String(window.getSelection()).length) return; lightF(r.getAttribute("data-f"), r); });
+      r.addEventListener("keydown", function(e){ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); lightF(r.getAttribute("data-f"), r); }});
+    })(rows[k]);
+  }
+  show("b_skill");
+})();
+</script>
+</body>
+</html>
