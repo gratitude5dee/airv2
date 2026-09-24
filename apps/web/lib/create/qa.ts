@@ -190,3 +190,37 @@ export async function recordQaScore(
   if (error) throw new Error(`qa score write failed: ${error.message}`);
   return { row: { ...row, qa_score: summary.score, ...testCounts }, summary };
 }
+
+/**
+ * V13 §4.2 step 6 — Browser Run's check already produced a score (smoke +
+ * locked DSL tests, not the V12 QA matrix), so this stamps it directly
+ * instead of deriving one through `scoreReport`. Same content-free contract:
+ * counts and rule ids only.
+ */
+export async function recordCheckScore(
+  supabase: SupabaseClient,
+  appId: string,
+  version: string,
+  score: number,
+  tests?: TestResults | null
+): Promise<VersionRow> {
+  const row = await getVersion(supabase, appId, version);
+  if (!row) throw new QaError("unknown version", 404);
+  const clamped = Math.max(0, Math.min(100, Math.round(score)));
+  const testCounts = tests ? { tests_total: tests.total, tests_passed: tests.passed } : {};
+  const { error } = await supabase
+    .from("miniapp_versions")
+    .update({
+      qa_score: clamped,
+      qa_report: {
+        score: clamped,
+        source: "browser-run",
+        viewports: 1,
+        at: new Date().toISOString(),
+      },
+      ...testCounts,
+    })
+    .eq("id", row.id);
+  if (error) throw new Error(`qa score write failed: ${error.message}`);
+  return { ...row, qa_score: clamped, ...testCounts };
+}

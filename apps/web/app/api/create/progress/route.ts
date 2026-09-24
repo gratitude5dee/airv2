@@ -13,6 +13,7 @@ import { storeSessionUserId } from "@/lib/miniapps/storeSession";
 import { boxUserId } from "@/lib/auth/box";
 import { ownedApp, publisherUsername, slugFor, PublishError } from "@/lib/miniapps/publish";
 import { readProgress } from "@/lib/create/progress";
+import { jobView, latestJobForApp } from "@/lib/create/job";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,13 +41,19 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: "invalid slug" }, { status: 400 });
     }
     const app = await ownedApp(supabase, userId, slug);
-    const snapshot = await readProgress(supabase, userId, app);
+    const [snapshot, job] = await Promise.all([
+      readProgress(supabase, userId, app),
+      latestJobForApp(supabase, userId, app.id).catch(() => null),
+    ]);
     return NextResponse.json({
       slug: app.slug,
       percent: snapshot.progress.percent,
       stage: snapshot.progress.stage,
       detail: snapshot.progress.detail,
       updated_at: snapshot.updated_at,
+      // V13: when a job is running for this app its percent/step are the
+      // progress view's source of truth; null on the V12 lane.
+      job: job === null ? null : jobView(job),
     });
   } catch (error) {
     if (error instanceof PublishError) {

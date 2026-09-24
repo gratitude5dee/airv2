@@ -17,7 +17,6 @@
  *   mini host  /api/create/*    → pass through, marked x-mini-host: 1
  *   link host  /<slug>          → rewrite /mini/link/<slug>  (pay link)
  *   link host  /<u>/<a>[/…]     → rewrite /mini/<u>-<a>[/…] marked x-mini-nested: 1
- *                                 and x-mini-channel: dev  (V12 dev release, CR17/CR23)
  *   link host  anything else    → 404
  *   main host  /mini            → serve store home         (canonical)
  *   main host  /mini/<slug>     → rewrite /mini/store/<slug> (canonical detail)
@@ -57,11 +56,11 @@ export function middleware(request: NextRequest): NextResponse {
   const { pathname, search } = request.nextUrl;
   const onMini = host === miniHost();
 
-  // x-mini-host, x-mini-nested and x-mini-channel are middleware-owned
-  // markers: never trust them from the client — a spoofed value would steer
-  // loader cookie paths, the post-gate redirect origins, or (channel) which
-  // release the loader serves. Strip them from every request; only the
-  // rewrites below set them back.
+  // x-mini-host and x-mini-nested are middleware-owned markers: never trust
+  // them from the client — a spoofed value would steer loader cookie paths
+  // or the post-gate redirect origins. Strip them from every request; only
+  // the rewrites below set them back. (x-mini-channel is retired in V13 —
+  // stripped, never set.)
   const spoofed =
     request.headers.has("x-mini-host") ||
     request.headers.has("x-mini-nested") ||
@@ -69,6 +68,8 @@ export function middleware(request: NextRequest): NextResponse {
   const headers = new Headers(request.headers);
   headers.delete("x-mini-host");
   headers.delete("x-mini-nested");
+  // Retired marker (V13): kept in the strip set so a client can never
+  // inject a channel the loader no longer knows.
   headers.delete("x-mini-channel");
 
   const onLink = linkHost() !== null && host === linkHost();
@@ -85,23 +86,8 @@ export function middleware(request: NextRequest): NextResponse {
     ) {
       return NextResponse.next({ request: { headers } });
     }
-    // V12 §6.1 / CR23: the link host disambiguates by shape. One segment is
-    // a pay link (below); `/<u>/<a>[/rest]` is a dev release, served by the
-    // loader under the flat slug with the dev channel marker (the mini host
-    // never sets it). Nothing else is served here.
-    const segments = pathname.split("/").filter(Boolean);
-    if (segments.length > 1) {
-      const nested = parseNestedPath(pathname);
-      if (!nested || nested.kind !== "app") {
-        return new NextResponse("not found", { status: 404 });
-      }
-      const rewritten = new URL(request.nextUrl);
-      rewritten.pathname = `/mini/${nested.slug}${nested.rest}`;
-      headers.set("x-mini-host", "1");
-      headers.set("x-mini-nested", "1");
-      headers.set("x-mini-channel", "dev");
-      return NextResponse.rewrite(rewritten, { request: { headers } });
-    }
+    // V13: dev releases moved to <slug>.dev.wzrd.tech behind the air-dev
+    // router — the link host now serves one segment per pay link only.
     const rewritten = new URL(request.nextUrl);
     rewritten.pathname =
       pathname === "/" ? "/mini/link" : `/mini/link${pathname}`;

@@ -22,11 +22,12 @@ const app = makeApp({
   bundle_version: null,
   draft_version: "v1700000000001",
 });
-const publish = vi.hoisted(() => ({ ownedApp: vi.fn() }));
+const publish = vi.hoisted(() => ({ ownedApp: vi.fn(), resolveOwnedAppRef: vi.fn() }));
 vi.mock("@/lib/miniapps/publish", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/miniapps/publish")>()),
   ownedApp: publish.ownedApp,
   publisherUsername: async () => "alice",
+  resolveOwnedAppRef: publish.resolveOwnedAppRef,
 }));
 
 const release = vi.hoisted(() => ({
@@ -67,6 +68,12 @@ beforeEach(() => {
   session.storeSessionUserId.mockReturnValue(null);
   box.boxUserId.mockResolvedValue(undefined);
   publish.ownedApp.mockResolvedValue(app);
+  publish.resolveOwnedAppRef.mockImplementation(
+    async (supabase: unknown, userId: string, ref: string) =>
+      ref === "promo" || ref === "alice-promo"
+        ? publish.ownedApp(supabase as never, userId, "alice-promo").catch(() => null)
+        : null,
+  );
   release.promoteToDev.mockResolvedValue(released);
   release.renewDev.mockResolvedValue(released);
   release.revokeDev.mockResolvedValue({ version: "v1700000000001" });

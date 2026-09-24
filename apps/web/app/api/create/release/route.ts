@@ -12,11 +12,8 @@ import { serviceClient } from "@/lib/supabase";
 import { storeSessionUserId } from "@/lib/miniapps/storeSession";
 import { boxUserId } from "@/lib/auth/box";
 import {
-  ownedApp,
-  publisherUsername,
-  slugFor,
-  validateAppName,
   PublishError,
+  resolveOwnedAppRef,
 } from "@/lib/miniapps/publish";
 import {
   promoteToDev,
@@ -25,7 +22,6 @@ import {
   revokeDev,
 } from "@/lib/create/release";
 import { VERSION_RE } from "@/lib/create/versions";
-import { splitPublishedSlug } from "@/lib/miniapps/nested";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -60,20 +56,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "invalid version" }, { status: 400 });
   }
   try {
-    let slug = typeof body.slug === "string" ? body.slug : "";
-    const appname =
-      typeof body.appname === "string" ? body.appname : typeof body.app === "string" ? body.app : "";
-    if (!slug && appname) {
-      // `app` may be the flat `<u>-<a>` slug (the Box's `air-create release`)
-      // or a bare appname (the owner's surface); both resolve to the owner's row.
-      slug = splitPublishedSlug(appname)
-        ? appname
-        : slugFor(await publisherUsername(supabase, userId), validateAppName(appname));
-    }
-    if (!SLUG_RE.test(slug)) {
+    const ref =
+      typeof body.slug === "string" && body.slug !== ""
+        ? body.slug
+        : typeof body.appname === "string"
+          ? body.appname
+          : typeof body.app === "string"
+            ? body.app
+            : "";
+    if (!ref || !SLUG_RE.test(ref)) {
       return NextResponse.json({ error: "invalid slug" }, { status: 400 });
     }
-    const app = await ownedApp(supabase, userId, slug);
+    // F4 (V13 §9.2): appname wins over the flat slug — a hyphenated name
+    // parses as a slug too, so slug-first would shadow the app.
+    const app = await resolveOwnedAppRef(supabase, userId, ref);
+    if (!app) throw new PublishError("app not found", 404);
 
     if (action === "revoke") {
       const revoked = await revokeDev(supabase, app);

@@ -1,0 +1,16 @@
+// air-dev (V13 §7.3): the dev-link router on *.dev.wzrd.tech — dispatches
+// to per-app user Workers in the `air-apps` namespace. Deployed by CI.
+//
+// Secret: CANDIDATE_SECRET (shared with air-create — `wrangler secret put`).
+{
+  "name": "air-dev",
+  "main": "index.mjs",
+  "compatibility_date": "2026-09-01",
+  "routes": [{ "pattern": "*.dev.wzrd.tech/*", "zone_name": "wzrd.tech" }],
+  "dispatch_namespaces": [{ "binding": "APPS", "namespace": "air-apps" }],
+  "kv_namespaces": [
+    { "binding": "AIR_MANIFEST", "id": "REPLACE_WITH_CF_MANIFEST_KV_ID" },
+  ],
+  "vars": { "DEV_ORIGIN_SUFFIX": "dev.wzrd.tech" },
+  "limits": { "cpu_ms": 50 },
+}

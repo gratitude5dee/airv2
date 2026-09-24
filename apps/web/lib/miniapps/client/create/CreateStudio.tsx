@@ -30,6 +30,7 @@ import {
 import { PlanPane } from "./PlanPane";
 import { ProgressPane } from "./ProgressPane";
 import { ReleasePane } from "./ReleasePane";
+import { JobView } from "./JobView";
 
 export interface Finding {
   rule: string;
@@ -94,6 +95,21 @@ export interface StatusResponse {
   versions: VersionSummary[];
   /** V12 §14.1 extended status; absent until the status route ships it. */
   dev?: DevRelease | null;
+  /** V13 §5.2/§8: the app's newest job (open or terminal), null pre-V13. */
+  job?: {
+    id: string;
+    state: "queued" | "running" | "live" | "stuck" | "cancelled" | "superseded" | "failed";
+    step: string | null;
+    step_started_at: string | null;
+    percent: number;
+    round: number;
+    dev_url: string | null;
+    created_at: string;
+    started_at: string | null;
+    finished_at: string | null;
+  } | null;
+  /** §13 rollout flag — whether `go` / JobView are live for this owner. */
+  v13?: boolean;
 }
 
 interface FunctionsDeclared {
@@ -1473,6 +1489,7 @@ function Project({
   intake,
   reloadIntake,
   onAnswer,
+  initialTab,
 }: {
   status: StatusResponse;
   busy: boolean;
@@ -1484,8 +1501,10 @@ function Project({
   intake: IntakeStatus | null;
   reloadIntake: () => Promise<void>;
   onAnswer: (text: string) => void;
+  /** V13 §5.2: a `?job=<id>` deep link (the card) opens on progress. */
+  initialTab?: Tab | undefined;
 }) {
-  const [tab, setTab] = useState<Tab>("versions");
+  const [tab, setTab] = useState<Tab>(initialTab ?? "versions");
   // A stage the progress poll saw before the studio did: the draft, the dev
   // pointer and the intake all moved, so the whole status is re-read.
   const onStage = useCallback(
@@ -1532,19 +1551,27 @@ function Project({
           run={run}
           onAdvanced={reloadIntake}
           onAnswer={onAnswer}
+          v13={status.v13 === true}
+          onGo={() => setTab("progress")}
         />
       ) : null}
       {tab === "progress" ? (
-        <ProgressPane
-          key={status.appname}
-          appname={status.appname}
-          intake={intake}
-          log={status.build?.log ?? []}
-          qaScore={status.qa_score}
-          onStage={onStage}
-        >
-          <Findings findings={status.draft?.findings ?? []} />
-        </ProgressPane>
+        status.v13 === true && status.job ? (
+          // V13 §5.2 — the job's own view (WS live + 3 s poll), replacing
+          // the intake-stage pane once a job exists.
+          <JobView key={status.job.id} jobId={status.job.id} onChanged={refresh} />
+        ) : (
+          <ProgressPane
+            key={status.appname}
+            appname={status.appname}
+            intake={intake}
+            log={status.build?.log ?? []}
+            qaScore={status.qa_score}
+            onStage={onStage}
+          >
+            <Findings findings={status.draft?.findings ?? []} />
+          </ProgressPane>
+        )
       ) : null}
       {tab === "release" ? (
         <ReleasePane
@@ -1612,9 +1639,11 @@ function Project({
 export interface CreateStudioProps {
   /** Project preselected from an app card (`?app=<slug>`). */
   slug: string | null;
+  /** The progress card's `?job=<id>` (V13 §5.1) — opens on the progress tab. */
+  jobId?: string | null;
 }
 
-export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
+export function CreateStudio({ slug: initialSlug, jobId }: CreateStudioProps) {
   const liteLayout = useLiteLayout();
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [slug, setSlug] = useState<string | null>(initialSlug);
@@ -1994,6 +2023,7 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
               intake={intake}
               reloadIntake={loadIntake}
               onAnswer={send}
+              initialTab={jobId ? "progress" : undefined}
             />
           ) : null}
           {status?.draft && status.draft.version !== status.live?.version ? (
@@ -2058,6 +2088,7 @@ export function CreateStudio({ slug: initialSlug }: CreateStudioProps) {
             intake={intake}
             reloadIntake={loadIntake}
             onAnswer={send}
+            initialTab={jobId ? "progress" : undefined}
           />
         ) : (
           <section className="panel !p-4" aria-label="Project">

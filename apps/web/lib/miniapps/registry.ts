@@ -152,6 +152,23 @@ export async function getRegistryApp(
   return parseRegistryApp(data);
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** V13: adapter routes resolve the app a `create_jobs` row names (`app_id`). */
+export async function getRegistryAppById(
+  supabase: SupabaseClient,
+  id: string
+): Promise<RegistryApp | null> {
+  if (!UUID_RE.test(id)) return null;
+  const { data, error } = await supabase
+    .from("mini_apps")
+    .select(COLUMNS)
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw new Error(`mini_apps lookup failed: ${error.message}`);
+  return parseRegistryApp(data);
+}
+
 /** Store home / discovery rows: public + published metadata only (MA7). */
 export async function listPublicApps(
   supabase: SupabaseClient

@@ -22,11 +22,12 @@ const app = makeApp({
   description: "A tour page",
   status: "draft",
 });
-const publish = vi.hoisted(() => ({ ownedApp: vi.fn() }));
+const publish = vi.hoisted(() => ({ ownedApp: vi.fn(), resolveOwnedAppRef: vi.fn() }));
 vi.mock("@/lib/miniapps/publish", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/miniapps/publish")>()),
   ownedApp: publish.ownedApp,
   publisherUsername: async () => "alice",
+  resolveOwnedAppRef: publish.resolveOwnedAppRef,
 }));
 
 const r2 = vi.hoisted(() => ({ configured: true }));
@@ -87,6 +88,10 @@ beforeEach(() => {
   session.storeSessionUserId.mockReturnValue(null);
   box.boxUserId.mockResolvedValue(undefined);
   publish.ownedApp.mockResolvedValue(app);
+  publish.resolveOwnedAppRef.mockImplementation(
+    async (_supabase: unknown, _userId: string, ref: string) =>
+      ref === "promo" || ref === "alice-promo" ? { slug: "alice-promo" } : null,
+  );
   limits.uploadRateLimited.mockResolvedValue(false);
   icon.storeIcon.mockResolvedValue({ icon_key: KEY, resized: true });
   icon.readBoxIcon.mockResolvedValue({ bytes: PNG, contentType: "image/png" });

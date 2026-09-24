@@ -229,3 +229,89 @@ export function byTemplateFrom(intakes: Iterable<IntakeMeta>): Record<string, nu
   }
   return counts;
 }
+
+/* ---------- V13 job rows (docs/goal-create-v13.md §12) ---------- */
+
+export interface JobMeta {
+  id: string;
+  app_id: string | null;
+  kind: string | null;
+  state: string;
+  step: string | null;
+  percent: number | null;
+  round: number | null;
+  error_rule: string | null;
+  skill_ver: number | null;
+  dev_url: string | null;
+  created_at: string | null;
+  finished_at: string | null;
+}
+
+export function asJobMeta(row: Record<string, unknown>): JobMeta {
+  return {
+    id: String(row["id"] ?? ""),
+    app_id: str(row["app_id"]),
+    kind: str(row["kind"]),
+    state: String(row["state"] ?? ""),
+    step: str(row["step"]),
+    percent: num(row["percent"]),
+    round: num(row["round"]),
+    error_rule: str(row["error_rule"]),
+    skill_ver: num(row["skill_ver"]),
+    dev_url: str(row["dev_url"]),
+    created_at: str(row["created_at"]),
+    finished_at: str(row["finished_at"]),
+  };
+}
+
+/**
+ * One-page operator rollup over `create_jobs`: counts by state and kind,
+ * the skill-version histogram (skill-use panel), and the newest
+ * stuck/failed jobs for the failures table. Job rows carry rule ids and
+ * step names only — never prompt or code text (CR21).
+ */
+export function jobsFrom(jobs: Iterable<JobMeta>): {
+  total: number;
+  by_state: Record<string, number>;
+  by_kind: Record<string, number>;
+  dev_live: number;
+  by_skill_ver: Record<string, number>;
+  failures: { id: string; app_id: string | null; state: string; step: string | null; rule: string | null; round: number | null; created_at: string | null }[];
+} {
+  let total = 0;
+  let devLive = 0;
+  const byState: Record<string, number> = {};
+  const byKind: Record<string, number> = {};
+  const bySkill: Record<string, number> = {};
+  const failures: { id: string; app_id: string | null; state: string; step: string | null; rule: string | null; round: number | null; created_at: string | null }[] = [];
+  for (const job of jobs) {
+    total += 1;
+    if (job.state) byState[job.state] = (byState[job.state] ?? 0) + 1;
+    if (job.kind) byKind[job.kind] = (byKind[job.kind] ?? 0) + 1;
+    if (job.skill_ver !== null) {
+      const ver = String(job.skill_ver);
+      bySkill[ver] = (bySkill[ver] ?? 0) + 1;
+    }
+    if (job.state === "live" && job.dev_url !== null) devLive += 1;
+    if (job.state === "stuck" || job.state === "failed" || job.state === "cancelled") {
+      failures.push({
+        id: job.id,
+        app_id: job.app_id,
+        state: job.state,
+        step: job.step,
+        rule: job.error_rule,
+        round: job.round,
+        created_at: job.created_at,
+      });
+    }
+  }
+  failures.sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""));
+  return {
+    total,
+    by_state: byState,
+    by_kind: byKind,
+    dev_live: devLive,
+    by_skill_ver: bySkill,
+    failures: failures.slice(0, 25),
+  };
+}

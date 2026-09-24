@@ -133,9 +133,12 @@ export class IllegalTransitionError extends IntakeError {
  * added in `nextStage` rather than listed fourteen times.
  */
 const TRANSITIONS: Readonly<Record<IntakeStage, Readonly<Partial<Record<IntakeEvent, IntakeStage>>>>> = {
-  asking: { owner_reply: "planning" },
+  // F1 (V13 §9.2): `plan_written` is legal from `asking` — the Planner may
+  // write a zero-question plan before the flush hook's `owner_reply` lands —
+  // and re-sent from `plan_sent` (a redelivery keeps the stage).
+  asking: { owner_reply: "planning", plan_written: "plan_sent" },
   planning: { plan_written: "plan_sent" },
-  plan_sent: { confirm: "confirmed", revise: "revising", cancel: "abandoned" },
+  plan_sent: { plan_written: "plan_sent", confirm: "confirmed", revise: "revising", cancel: "abandoned" },
   revising: {
     plan_written: "plan_sent",
     confirm: "confirmed",
@@ -642,6 +645,42 @@ export function intakeHookInput(appname: string, questionsMax: number): string {
 export type IntakeHookResult =
   | { kind: "owner"; appname: string; line: string }
   | { kind: "non_owner" };
+
+/**
+ * V13 §9.2 (F1): the owner's next message while an intake sits at `asking`
+ * is an `owner_reply` — it stamps `last_owner_message_at` and moves the row
+ * to `planning`, so a Planner that answers its own questions in the same
+ * turn no longer strands the intake at `asking` forever. Applies to the
+ * owner's newest `asking` intake only; failures are logged, never thrown
+ * into the flush path.
+ */
+export async function recordAskingReply(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<void> {
+  try {
+    const { data, error } = await supabase
+      .from("create_intakes")
+      .select("appname")
+      .eq("user_id", userId)
+      .eq("stage", "asking")
+      .order("opened_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    const appname = str((data as { appname?: unknown } | null)?.appname);
+    if (!appname) return;
+    await advanceIntake(supabase, userId, appname, "owner_reply");
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        msg: "create intake owner_reply failed",
+        user_id: userId,
+        error: error instanceof Error ? error.message : "unknown",
+      })
+    );
+  }
+}
 
 /**
  * flush.ts hook for `/create <text>`: null when the burst is not a create

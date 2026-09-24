@@ -126,6 +126,10 @@ export interface CreateCase {
   expect_dev_url: boolean | null;
   /** When set the runner does not drive the case and records it as `skipped` with this reason (C30). */
   skip_reason: string | null;
+  /** V13: status `job.state` must equal this after the turn (the card's job). */
+  expect_job_state: string | null;
+  /** V13: the transcript must carry `[card: create <slug> job=<id>]` exactly once — two bubbles per build. */
+  expect_card: boolean | null;
 }
 
 export interface CreateStatus {
@@ -148,6 +152,16 @@ export interface CreateStatus {
     findings: number;
     qa_score: number | null;
   }>;
+  /** V13 §9.1 — the live CreateJob for the app (null = none). */
+  job?: {
+    id: string;
+    state: string;
+    step: string | null;
+    percent: number | null;
+    dev_url: string | null;
+  } | null;
+  /** V13 flag (CREATE_V13 + allow-list) as the control plane reports it. */
+  v13?: boolean;
   /** V12 §14.1 extensions; absent on a pre-V12 control plane. */
   intake_stage?: string | null;
   dev?: {
@@ -188,7 +202,9 @@ export type CheckName =
   | "stage"
   | "questions"
   | "locked_tests"
-  | "dev_url";
+  | "dev_url"
+  | "job_state"
+  | "card";
 export type CaseChecks = Record<CheckName, CheckVerdict>;
 
 export const CHECK_NAMES: readonly CheckName[] = [
@@ -203,6 +219,8 @@ export const CHECK_NAMES: readonly CheckName[] = [
   "questions",
   "locked_tests",
   "dev_url",
+  "job_state",
+  "card",
 ];
 
 export interface CreateCaseResult {
@@ -299,6 +317,20 @@ export function loadCreateCases(path: string): CreateCase[] {
     ) {
       throw new Error(`${where}: bad skip_reason`);
     }
+    if (
+      parsed.expect_job_state !== undefined &&
+      parsed.expect_job_state !== null &&
+      typeof parsed.expect_job_state !== "string"
+    ) {
+      throw new Error(`${where}: bad expect_job_state`);
+    }
+    if (
+      parsed.expect_card !== undefined &&
+      parsed.expect_card !== null &&
+      typeof parsed.expect_card !== "boolean"
+    ) {
+      throw new Error(`${where}: bad expect_card`);
+    }
     return {
       id: parsed.id,
       appname: parsed.appname,
@@ -325,6 +357,11 @@ export function loadCreateCases(path: string): CreateCase[] {
       ),
       expect_dev_url: parsed.expect_dev_url ?? null,
       skip_reason: parsed.skip_reason?.trim() ?? null,
+      expect_job_state:
+        typeof parsed.expect_job_state === "string"
+          ? parsed.expect_job_state
+          : null,
+      expect_card: parsed.expect_card ?? null,
     };
   });
 }
@@ -501,6 +538,20 @@ export function gradeCase(
       c.expect_dev_url === null
         ? "n/a"
         : (devUrl(r.status_after) !== null) === c.expect_dev_url
+          ? "pass"
+          : "fail",
+    // V13 axes (§15): the job the card points at, and the never-edited
+    // [card: create …] marker — exactly once, no progress narration.
+    job_state:
+      c.expect_job_state === null
+        ? "n/a"
+        : r.status_after?.job?.state === c.expect_job_state
+          ? "pass"
+          : "fail",
+    card:
+      c.expect_card === null || c.expect_card === false
+        ? "n/a"
+        : (r.output.match(/\[card: create [a-z0-9-]+ job=[0-9a-f-]+\]/g) ?? []).length === 1
           ? "pass"
           : "fail",
   } satisfies Partial<CaseChecks>;

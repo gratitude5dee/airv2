@@ -15,7 +15,7 @@
   "functions": null,
   "tests": [
     { "id": "title-visible", "see": "Checklist", "locked": true },
-    { "id": "add-item", "role": "owner", "type": ["[data-test=new]", "Water the plants"], "tap": "[data-test=add]", "see": "Water the plants", "locked": true },
-    { "id": "guest-readonly", "role": "guest", "type": ["[data-test=new]", "Nope"], "tap": "[data-test=add]", "see": "Guests are read-only." }
+    { "id": "add-item", "type": ["[data-test=new]", "Water the plants"], "tap": "[data-test=add]", "see": "Water the plants", "locked": true },
+    { "id": "guest-readonly", "type": ["[data-test=new]", "Nope"], "tap": "[data-test=add]", "see": "Guests are read-only." }
   ]
 }
