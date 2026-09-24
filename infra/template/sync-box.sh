@@ -139,7 +139,12 @@ rm -rf /tmp/agent-browser-*
 grep -q '^DISPLAY=' "$ENV_FILE" || echo "DISPLAY=:0" >> "$ENV_FILE"
 
 # ── 3b. Browser Use CLI 3.0 (pinned) + the box-browser-use CDP wrapper ───────
-uv tool install --python 3.12 'browser-use==0.13.8'
+# `uv tool install` exits 1 when the pinned version is already installed —
+# guard like link-cli/op below: install only when the pin is not what's on
+# the box, so re-syncs stay idempotent under `set -e`.
+if ! uv tool list 2>/dev/null | grep -q '^browser-use v0\.13\.8\b'; then
+  uv tool install --python 3.12 'browser-use==0.13.8'
+fi
 
 # ── 3b+. Stripe Link CLI (pinned) — owner-approved payment credentials ───────
 LINK_CLI_VERSION="$(link-cli --version 2>/dev/null || true)"
